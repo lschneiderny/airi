@@ -212,6 +212,39 @@ repeated misses on unseen human motion make a metric unreliable as a gate.
 This tolerance was set after inspecting the held-out results and before any
 character trace was judged. It is not an independent validation decision.
 
+#### Version 2: pooled body sides, 2026-11-11
+
+Version 2 fits every mirrored left/right band, activity floor and arm move
+speed from both sides pooled. A sided
+metric is a fitted metric whose id names a left or right bone or region and
+whose mirror is also fitted: the shoulder, upper-arm and lower-arm chain
+correlations and lags, the upper-arm ACF, and the arm LDLJ and spike rates.
+For each such pair, in every class, the per-clip values or episodes of both
+sides form one pool. The unchanged percentile, margin, transform, minimum-count
+and vacuous-band rules fit one band from it, and both ids use that band.
+Episode pools take each clip in manifest order, the left side's episodes
+before the right side's. Held-out units are judged on both sides against the
+pooled band: a held-out clip counts once for each side that fails it, an
+episode group counts once for the pair, and the unchanged 0-or-1 rule decides
+whether the pair stays gated. Each left or right bone's activity floor is half
+the P10 of both sides' fitting-clip activities, and `armL` and `armR` share the
+median of both arms' fitting-clip median speeds; both sides use that one
+value. Non-mirrored detector parameters, every declared band, the manifest and
+the fit/held-out split are unchanged. Other bands are fitted by the unchanged
+rules, but metrics that read arm or leg floors are measured with the pooled
+floors. `context.sidePooling` in the bands file lists the pooled pairs per class.
+
+Why: version 1 fitted each side separately from 11 idle clips of one
+performer, so sided bands carried that performer's handedness. For example,
+the idle limit of `chain.leftShoulder-leftUpperArm.zeroLagCorr` was r 0.62
+and the right side's was r 0.98. The floors were lopsided as well: idle
+`leftHand` 0.0054 against `rightHand` 0.0030 rad/s, so a metric could read
+`no-motion` on one side only. A character whose arms move alike on both
+sides failed on the left only. This change was made after a tuned character
+failed left-side metrics only. No character data entered the fit. The user
+decided on 2026-11-11: "Arm bands: Gate v2, pooled sides (Recommended)".
+`bands-v1.json` stays in the repository unchanged as the record of version 1.
+
 The counts below describe frozen version 1. `fixtures/motion3d/bands-v1.json`
 records each metric, bound and report-only reason.
 

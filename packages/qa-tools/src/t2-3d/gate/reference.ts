@@ -7,6 +7,7 @@ import type { ClassBands, MotionBandsFile } from './types'
 import { prepareTrace } from '../metrics'
 import { admitReferences } from './admissions'
 import { HOLDOUT_VALIDATION } from './holdouts'
+import { metricPolicies, sideGroup } from './policy'
 import { emotionContext, idleLoopContext, stylePosture } from './reference-context'
 import { fitClass } from './reference-fit'
 import { amplitudeRange, measureReference, referenceDetectors } from './reference-measure'
@@ -17,6 +18,17 @@ export interface ReferenceBuild {
   readonly manifest: ReferenceManifest
   readonly gitSha: string
   readonly signal: AbortSignal
+}
+
+export const SIDE_POOLING = {
+  rule: 'A fitted metric that names a left or right bone or region and has a fitted mirror is fitted once from both sides pooled, under the unchanged fitting and held-out rules; the one band applies to both ids, and held-out units are judged on both sides against it. Each left or right bone activity floor and the armL/armR move speed are likewise fitted once from both sides pooled under their unchanged rules and applied to both sides.',
+  source: 'User decision, 2026-11-11: "Arm bands: Gate v2, pooled sides (Recommended)".',
+  timing: 'Decided after a tuned character failed left-side arm metrics only; no character data entered the fit.',
+} as const
+
+function pooledPairs(scenario: MotionScenarioClass): readonly (readonly string[])[] {
+  const policies = metricPolicies(scenario).filter(p => p.fit)
+  return policies.map(p => sideGroup(p, policies)).filter((ids, i) => ids.length === 2 && ids[0] === policies[i].id)
 }
 
 /** Manifest order is preserved for both fitting and held-out episode groups. */
@@ -69,7 +81,7 @@ export async function buildReference(options: ReferenceBuild): Promise<MotionBan
     console.error(missing.join('\n'))
   return {
     kind: 'mmd-motion-bands',
-    gate: { id: 'mmd-motion-quality', version: 1 },
+    gate: { id: 'mmd-motion-quality', version: 2 },
     fixture: false,
     builtAt: new Date().toISOString(),
     tool: { gitSha: options.gitSha, rule: 'P5-P50-P95-one-tail-margin' },
@@ -77,6 +89,7 @@ export async function buildReference(options: ReferenceBuild): Promise<MotionBan
     classes,
     context: {
       holdoutValidation: HOLDOUT_VALIDATION,
+      sidePooling: { ...SIDE_POOLING, pairs: Object.fromEntries((['idle', 'talk', 'walk', 'gaze', 'emotion', 'react'] as const).map(scenario => [scenario, pooledPairs(scenario)])) },
       admission: {
         fixed: options.manifest.clips.length,
         admitted: inputs.length,

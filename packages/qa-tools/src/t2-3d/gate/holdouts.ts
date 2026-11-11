@@ -1,5 +1,7 @@
 import type { ClassBands, HoldoutVerdict, MetricBand } from './types'
 
+import { mirroredName } from './policy'
+
 export const HOLDOUT_VALIDATION = {
   reportAtFailures: 2,
   isolatedFailuresAllowed: 1,
@@ -7,10 +9,18 @@ export const HOLDOUT_VALIDATION = {
   timing: 'Set after seeing held-out results and before any character trace was judged.',
 } as const
 
-/** A clip or a consecutive episode group counts once for the metric it failed. */
+/**
+ * A clip or a consecutive episode group counts once for the metric it failed.
+ * Mirrored sides share one band, so a clip counts once for each side that
+ * fails it, and a pooled episode group counts once for the pair.
+ */
 export function heldoutFailureUnits(c: ClassBands, id: string): readonly HoldoutVerdict[] {
   const band = c.metrics[id]
-  return c.holdout.filter(h => h.failed.includes(id) && (band.unit === 'clip' ? !!h.clipSha256 : h.metric === id))
+  const mirror = mirroredName(id)
+  const ids = mirror && c.metrics[mirror]?.basis === 'fitted' ? [id, mirror] : [id]
+  if (band.unit === 'clip')
+    return c.holdout.filter(h => !!h.clipSha256).flatMap(h => ids.filter(side => h.failed.includes(side)).map(() => h))
+  return c.holdout.filter(h => h.metric !== undefined && ids.includes(h.metric) && h.failed.includes(h.metric))
 }
 
 /** Preserve raw held-out verdicts and all numeric bounds; declared rules never change. */

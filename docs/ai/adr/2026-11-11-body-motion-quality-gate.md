@@ -1,6 +1,6 @@
 # T2-3D body-motion quality measurement
 
-Status: accepted; version 1 freezes human-reference bands. Version 0 retains analytic fixtures.
+Status: accepted; version 2 freezes human-reference bands with mirrored sides pooled. Version 1 keeps per-side bands as a record. Version 0 retains analytic fixtures.
 
 ## Decision
 
@@ -180,6 +180,43 @@ completely motionless across two observations is refused, not failed, because
 identical samples are not replication; a refusal is never a pass. Perturbed or
 fabricated trajectories remain outside this local check. Bands, thresholds,
 detector constants and version 1 are unchanged.
+
+## Version 2: pooled body sides, 2026-11-11
+
+What changed: every fitted metric whose id names a left or right bone or
+region and whose mirror is also fitted is fitted once from both sides
+pooled. The pairs are the shoulder, upper-arm and lower-arm chain
+correlations and lags, the upper-arm idle ACF, and the arm LDLJ and spike
+rates. The fitting rules are unchanged: same percentiles, margins, Fisher
+transform, minimum counts and vacuous-band rule. Both ids receive the one band.
+Pooled episodes follow manifest order, left before right within a clip.
+Held-out clips are judged on both sides against the pooled band and count
+once per failing side; a pooled episode group counts once for the pair. The
+0-or-1 held-out tolerance is unchanged. The lead extended the rule before any
+version 2 band existed: every left or right bone activity floor (half the P10
+of fitting-clip activities) and the `armL`/`armR` move speed (median of
+fitting-clip median speeds) are fitted once from both sides pooled under their
+unchanged rules and applied to both sides. No declared band, non-mirrored
+detector parameter, manifest entry or split changed. Non-sided bands keep their
+fitting rules, but metrics that read arm or leg floors are measured with the
+pooled floors. A machine comparison of the two bands files is kept with the
+freeze evidence.
+
+Why: version 1 fitted each side from the same 11 idle clips of one performer,
+so a sided band encoded that performer's handedness. The idle
+`chain.leftShoulder-leftUpperArm.zeroLagCorr` limit was r 0.62, while the
+right side's was r 0.98. The fitted activity floors were lopsided too (idle
+`leftHand` 0.0054 against `rightHand` 0.0030 rad/s), so the left side was
+judged against a higher no-motion threshold. A character whose arms move alike
+on both sides failed on the left only. Pooling treats left and right as two samples of
+one human arm behaviour.
+
+Timing and decision: this change was made after the tuned character failed
+left-side metrics only, so it is a post-hoc change to the gate, not an
+independent validation. No character data entered the fit; the bands were
+rebuilt from the unchanged reference clips alone, and no band was adjusted
+by hand. The user decided on 2026-11-11: "Arm bands: Gate v2, pooled sides
+(Recommended)". `bands-v1.json` stays unchanged as the record of version 1.
 
 Acceptance can now demand named metrics with `gate --require <ids>`.
 Every named metric must be `PASS` in every supplied verdict; the requirement

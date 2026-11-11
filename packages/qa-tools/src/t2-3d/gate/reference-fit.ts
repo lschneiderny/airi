@@ -9,10 +9,10 @@ import { mean, median } from '../metrics/math'
 import { fitBand, fitEpisodeBand, passesBand } from './bands'
 import { applyHoldoutRule } from './holdouts'
 import { judgeMetrics } from './judge'
-import { declaredBands, metricPolicies, reportBand } from './policy'
+import { declaredBands, metricPolicies, reportBand, sideGroup } from './policy'
 
-function poolMeasurements(clip: MeasuredReference, scenario: MotionScenarioClass, policy: MetricPolicy): readonly MetricResult[] {
-  return (clip.pools[scenario] ?? []).filter(m => m.id === policy.id)
+function poolMeasurements(clip: MeasuredReference, scenario: MotionScenarioClass, id: string): readonly MetricResult[] {
+  return (clip.pools[scenario] ?? []).filter(m => m.id === id)
 }
 
 function inPool(clip: MeasuredReference, policy: MetricPolicy): boolean {
@@ -26,31 +26,42 @@ function inPool(clip: MeasuredReference, policy: MetricPolicy): boolean {
 export function fitClass(clips: readonly MeasuredReference[], scenario: MotionScenarioClass, parameters: DetectorParameters, emotionLower: number | null): ClassBands {
   const metrics: Record<string, MetricBand> = {}
   const holdout: HoldoutVerdict[] = []
-  for (const policy of metricPolicies(scenario)) {
+  const policies = metricPolicies(scenario)
+  for (const policy of policies) {
+    // A sided metric was already fitted together with its mirror.
+    if (policy.id in metrics)
+      continue
     if (!policy.fit) {
       metrics[policy.id] = reportBand(policy)
       continue
     }
+    const ids = sideGroup(policy, policies)
     if (policy.unit === 'clip') {
       const fit = clips.filter(c => c.entry.class === scenario && c.entry.split === 'fit' && c.entry.role === 'window')
-      const values = fit.flatMap(c => c.metrics.filter(m => m.id === policy.id && m.status === 'ok' && m.value !== null).flatMap(m => m.value === null ? [] : [m.value]))
-      metrics[policy.id] = fitBand(values, policy)
+      const values = fit.flatMap(c => c.metrics.filter(m => ids.includes(m.id) && m.status === 'ok' && m.value !== null).flatMap(m => m.value === null ? [] : [m.value]))
+      const band = fitBand(values, policy)
+      for (const id of ids)
+        metrics[id] = band
       continue
     }
     const pools: { fit: number[], holdout: number[], subjects: Record<string, number> } = { fit: [], holdout: [], subjects: {} }
     const heldoutSubjects: Record<string, number> = {}
+    // Manifest order, and within a clip the left side's episodes before the right side's.
     for (const clip of clips.filter(c => inPool(c, policy))) {
-      const samples = poolMeasurements(clip, scenario, policy).find(m => m.id === policy.id)?.samples ?? []
-      const values = [...samples].sort((a, b) => a.start - b.start || a.end - b.end).map(s => s.value)
-      pools[clip.entry.split].push(...values)
-      if (clip.entry.split === 'fit')
-        pools.subjects[clip.entry.subject] = (pools.subjects[clip.entry.subject] ?? 0) + values.length
-      else
-        heldoutSubjects[clip.entry.subject] = (heldoutSubjects[clip.entry.subject] ?? 0) + values.length
+      for (const id of ids) {
+        const samples = poolMeasurements(clip, scenario, id).find(m => m.id === id)?.samples ?? []
+        const values = [...samples].sort((a, b) => a.start - b.start || a.end - b.end).map(s => s.value)
+        pools[clip.entry.split].push(...values)
+        if (clip.entry.split === 'fit')
+          pools.subjects[clip.entry.subject] = (pools.subjects[clip.entry.subject] ?? 0) + values.length
+        else
+          heldoutSubjects[clip.entry.subject] = (heldoutSubjects[clip.entry.subject] ?? 0) + values.length
+      }
     }
     const rate = policy.id === 'gaze.orderRate' || policy.id === 'onset.easedOrAnticipated'
     const band = fitEpisodeBand(pools, policy, rate)
-    metrics[policy.id] = { ...band, heldoutEpisodeCounts: heldoutSubjects }
+    for (const id of ids)
+      metrics[id] = { ...band, heldoutEpisodeCounts: heldoutSubjects }
     if (band.status === 'GATED') {
       for (let start = 0; start + 8 <= pools.holdout.length; start += 8) {
         const value = (rate ? mean : median)(pools.holdout.slice(start, start + 8))

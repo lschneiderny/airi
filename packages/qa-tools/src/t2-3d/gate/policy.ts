@@ -75,6 +75,24 @@ export function metricPolicies(scenario: MotionScenarioClass): MetricPolicy[] {
   return policies
 }
 
+const MIRRORED_SIDES: Readonly<Record<string, string>> = { left: 'right', right: 'left', armL: 'armR', armR: 'armL' }
+
+/** The same metric id or bone name on the other body side, or null when it names no side. */
+export function mirroredName(id: string): string | null {
+  const mirrored = id.replace(/left|right|armL|armR/g, side => MIRRORED_SIDES[side])
+  return mirrored === id ? null : mirrored
+}
+
+/**
+ * Version 2 fits a sided metric from both sides pooled whenever its mirror is
+ * also fitted, so one performer's handedness cannot become a one-sided limit.
+ * Returns the ids that share one band, in policy order (left first).
+ */
+export function sideGroup(policy: MetricPolicy, policies: readonly MetricPolicy[]): readonly string[] {
+  const mirror = mirroredName(policy.id)
+  return policies.filter(p => p.fit && (p.id === policy.id || p.id === mirror)).map(p => p.id)
+}
+
 export function reportBand(policy: MetricPolicy): MetricBand {
   const { side, domain, transform, unit } = policy
   return { side, domain, transform, unit, basis: 'fitted', status: 'REPORT', detail: policy.reason, n: 0, p5: null, p50: null, p95: null, lo: null, hi: null }
