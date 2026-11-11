@@ -1,12 +1,9 @@
 import type { Foot, LegGeometry } from '@proj-airi/motion-driver-humanoid/foot-contact'
-import type { GaitEvent, LocomotionFrame, LocomotionInput } from '@proj-airi/motion-driver-humanoid/locomotion'
+import type { LocomotionFrame, LocomotionInput } from '@proj-airi/motion-driver-humanoid/locomotion'
 import type { BodyLocomotionIntent, RigTraits } from '@proj-airi/motion-driver-humanoid/types'
-import type { NaturalBodyComposition } from '@proj-airi/motion-driver-humanoid/weight-shift'
 
 import { createLocomotion } from '@proj-airi/motion-driver-humanoid/locomotion'
-
-/** The gait integrates on the 120 Hz grid its tests cover, whatever the display rate. */
-const TICK = 1 / 120
+import { BODY_TICK, channelIndex } from '@proj-airi/motion-driver-humanoid/performance'
 
 /** Where the body walks. Todo 12's director supplies it; until then the `requestGoal` diagnostics command does. */
 export type MMDLocomotionGoal = Pick<BodyLocomotionIntent, 'goalX' | 'pace' | 'arriveFacing' | 'reason'>
@@ -19,18 +16,40 @@ export interface MMDBodyRoot {
   setPose: (x: number, yaw: number) => void
 }
 
-export function blendBodyComposition(from: NaturalBodyComposition, to: NaturalBodyComposition, weight: number): NaturalBodyComposition {
-  const blended = { ...from }
-  for (const key of Object.keys(from) as (keyof NaturalBodyComposition)[])
-    blended[key] = from[key] + (to[key] - from[key]) * weight
-  return blended
+const swingChannels = {
+  left: { flex: channelIndex('leftFlex'), elbow: channelIndex('leftElbow') },
+  right: { flex: channelIndex('rightFlex'), elbow: channelIndex('rightElbow') },
+} as const
+
+/**
+ * Writes one gait frame into the performer's `BODY_CHANNELS` table: pelvis in leg lengths, angles in radians, zero for
+ * every channel the gait does not drive. The gait models a positive `pelvisLateral` as a shift toward the character's
+ * right (-X, `anchorDrop` in the locomotion module), while the channel's +X is the character's left, so the sign flips.
+ * The legacy weight-shift stage applied it toward +X, against the gait's own reach model.
+ */
+export function writeGaitChannels(frame: LocomotionFrame, legLength: number, out: Float64Array): void {
+  out.fill(0)
+  const { body, armSwing } = frame
+  out[0] = -body.pelvisLateral / legLength
+  out[1] = -body.pelvisDrop / legLength
+  out[2] = body.pelvisForeAft / legLength
+  out[3] = body.lowerBodyYaw
+  out[5] = body.lowerBodyRoll
+  out[7] = body.spinePitch
+  out[8] = body.upperBodyRoll
+  // The legacy chest bone is the top of the chain, which the upper torso control reaches on every chain length.
+  out[12] = body.chestCounterYaw
+  out[13] = body.chestPitch
+  out[14] = body.chestCounterRoll
+  for (const side of ['left', 'right'] as const) {
+    out[swingChannels[side].flex] = armSwing[side].flexion
+    out[swingChannels[side].elbow] = armSwing[side].elbowFlex
+  }
 }
 
-/** Runs one character's gait on a fixed tick, so a walk is the same at 30, 60 or 120 frames per second. */
+/** Runs one character's gait one fixed tick at a time; `MMDBodyClock` decides how many ticks a display frame holds. */
 export class MMDLocomotion {
   private readonly gait
-  private remainder = 0
-  private now = 0
   private current: LocomotionFrame
 
   constructor(legs: Record<Foot, LegGeometry>, traits: Pick<RigTraits, 'legLength' | 'footBaselineY'>, seed: number) {
@@ -64,26 +83,17 @@ export class MMDLocomotion {
     return this.current
   }
 
-  step(dt: number, input: Omit<LocomotionInput, 'now'>): LocomotionFrame {
-    this.remainder += dt
-    const events: GaitEvent[] = []
-    // The tolerance keeps a 1/60 s frame at exactly two ticks despite rounding.
-    while (this.remainder >= TICK - 1e-9) {
-      this.remainder -= TICK
-      this.now += TICK
-      this.current = this.gait.step({ ...input, now: this.now }, TICK)
-      events.push(...this.current.events)
-    }
-    this.current = { ...this.current, events }
+  tick(input: LocomotionInput): LocomotionFrame {
+    this.current = this.gait.step(input, BODY_TICK)
     return this.current
   }
 
   /** Puts the root at `x` with both feet re-planted beside it; the frame is refreshed at once, so the next one cannot undo it. */
-  rebase(x: number, yaw: number): void {
+  rebase(x: number, yaw: number, now: number): void {
     this.gait.rebase({ x, yaw })
     const feet = this.current.feet
     this.current = this.gait.step({
-      now: this.now,
+      now,
       goalX: null,
       pace: 'walk',
       arriveFacing: yaw,

@@ -159,8 +159,9 @@ Root positions divide out the mesh's uniform world scale each frame so they use
 the same model units as bind offsets and leg length.
 
 The headless composition also imports `MMDBody` from `./composables/mmd/body`,
-`MMDNaturalAdapter` from `./composables/mmd/natural/adapter`, and
-`MMDStanceDirector` from `./composables/mmd/stance`.
+`MMDNaturalAdapter` from `./composables/mmd/natural/adapter`,
+`MMDStanceDirector` from `./composables/mmd/stance`, and `composeMMDStages`
+from `./composables/mmd/stage-composition`.
 
 For Node composition, import `MMDFramePipeline` from
 `./composables/mmd/frame-pipeline`, `MMDFrameMetrics` from
@@ -183,11 +184,20 @@ feel the travel, and a teleport resets it once. During a measurement,
 counted.
 
 The scene registers these pose stages in order: `natural`, `locomotion`,
-`weight-shift`, `foot-contact`, `look-at`, `arm-rest`, `eyes`, `classic-gaze`,
+`body-torso`, `foot-contact`, `body-head`, `body-arms`, `eyes`, `classic-gaze`,
 `classic-face`, `lip-sync` and `bone-morphs`. Its surface stages are
 `body-diagnostics`, `morphs` and `motion-trace`.
 The Natural and body stages run only for the Natural driver; the classic
 stages run only for Classic. Every stage is timed under its id.
+
+The order has one owner: `composeMMDStages({ body, host })`
+(`./composables/mmd/stage-composition`) returns both lists from
+`MMD_POSE_STAGE_IDS` and `MMD_SURFACE_STAGE_IDS`, taking the six body stages
+from `MMDBody` and the rest from `host`. A host that does not run a stage
+leaves it out, and the stage keeps its id and slot and does nothing. `MMD.vue`
+registers the result, the headless runner of `@proj-airi/qa-tools` composes
+from it, and `qa:stage capture` refuses with `stage-composition-mismatch` when
+the scene reports any other list.
 
 Classic gaze is a pose stage: it composes head and eye aim with the clean
 clip rotation before solvers and physics, rather than replacing VMD rotation
@@ -195,10 +205,11 @@ with a rest-relative gaze override.
 
 `useMMD().motionDriver` persists at `settings/mmd/motion-driver` and defaults
 to `natural`. Natural seeds its shared controller with FNV-1a over the model
-id's UTF-16 code units. Its pose stage splits head motion between neck (40%)
-and head (60%) over a 30-degree span, and body motion between spine and chest
-over a 10-degree span. Writes are absolute from the clean clip pose and skip
-physics-owned bones. Face and blink use separate morph-runtime layers.
+id's UTF-16 code units. Its pose stage advances Natural and prepares the face
+channels; it writes no bone. The body performer (below) reads Natural's state
+through `bodyFrame.intent` (`controller.bodyIntent()`) and poses the whole body.
+Face and blink use separate morph-runtime layers; the face shows the larger of
+Natural's blink closure and the performer's lid closure (`body.lidClose`).
 Classic retains its gaze, blink and emotion composables. Switching drivers
 clears procedural morph channels and starts a fresh Natural controller.
 
@@ -225,46 +236,86 @@ local yaw in radians.
 
 ### Body layers
 
-`MMDBody` (`src/composables/mmd/body/`) owns the `weight-shift`,
-`foot-contact`, `look-at` and `eyes` pose stages for one model, built on
-`@proj-airi/motion-driver-humanoid`. Weight shift is seeded with FNV-1a over
-the model key and composes Natural body sway, roll and breath into pelvis,
-hips, spine and chest motion. Foot contact keeps mesh-local ankle anchors and
-writes leg IK targets, IK-bone yaw and knee pre-bend before the IK solver; it
-measures ankle error after IK and physics. The look-at stage distributes yaw
-and pitch over spine, chest, neck and head, turns the center bone past the
-turn threshold, and the eyes stage aims both eyes at the target. The target is
-the cursor on the stage plane or the camera (`body/attention.ts`).
+`MMDBody` (`src/composables/mmd/body/`) owns the `locomotion`, `body-torso`,
+`foot-contact`, `body-head`, `body-arms` and `eyes` pose stages for one model.
+Under the Natural driver the whole body is posed by the pure performer of
+`@proj-airi/motion-driver-humanoid/performance`, seeded with FNV-1a over the
+model key; no stage maps Natural's head and body channels onto bones in fixed
+shares. The adapter has four parts:
 
-Ducking follows clip ownership (below), not raw clip weights. Looping stance
-clips duck the body fully but keep half of the head and neck look-at
-(`STANCE_HEAD_ATTENTION`). Breath, sway and weight shift duck by
-`max(stance weight, owned root, owned upperBody)`; head and neck look-at by
-the head ownership of non-stance clips; foot contact by the larger non-stance
+- `MMDBodyClock` (`body/clock.ts`): one 120 Hz clock. For each tick the
+  `locomotion` stage steps the gait, then the performer with that tick's gait
+  frame (`writeGaitChannels` maps it onto `BODY_CHANNELS`). Display-rate inputs
+  are blended linearly across the ticks of a frame, and the stages show the two
+  latest ticks blended by the leftover fraction, so a seed moves the same at
+  any frame rate.
+- `buildBodyRigTraits` (`body/rig-traits.ts`): the rig's bind positions, spine
+  chain, arm segments, feet and the kinematic arm-test and head bodies, each
+  re-expressed in its nearest canonical ancestor's frame. A rig without hips,
+  a spine, neck, head, two full arms or a leg length gets no performer.
+- `MMDBodyIntent` (`body/intent.ts`): maps `NaturalBodyIntent`, the gaze goal,
+  the director's stance, the gait and clip ownership into
+  `BodyPerformanceInput`. Natural head terms are 30 degrees per unit. The gaze
+  goal is the travel direction while walking, the sustained target when the
+  host has one (camera, chat, or the director's attention point), and
+  otherwise Natural's free fixation at 20 degrees per unit around the facing.
+- `MMDBodyPerformer` (`body/performer.ts`): writes the blended channels to
+  bones from `context.clean`. `body-torso` writes the pelvis offset, the hips
+  and the spine chain, spreading the three torso controls with
+  `spineWeights` so the chain's total rotation is the same on one to four
+  bones. `body-head` applies facing to the center bone, then neck and head.
+  `body-arms` writes clavicles, arms, hands and fingers; it carries the
+  canonical straight-down arm onto the bind arm, so the posed segments sit
+  where the performer's own forward kinematics (and its arm collision
+  corrector) put them. Pronation is written on the hand and twist on the
+  upper arm; twist helper bones are not written. Missing and physics-owned
+  bones are skipped. `eyes` aims both eyes from their rendered parents at the
+  far end of the performer's gaze line.
+
+A `BodyCollisionError` from the performer (no clear arm pose against the
+supplied bodies) keeps the previous valid frame on screen, is counted in
+`performance.collision` and is logged once; an intersecting pose is never
+shown. Body blinks and planned gaze shifts reach `body.onEvent`, and both the
+scene recorder and the headless runner record them as trace `marker` events
+labelled `blink` and `gaze-shift:<degrees>`.
+
+Ducking follows clip ownership (below), not raw clip weights, and is applied
+once per written group as `clean * slerp(I, delta, 1 - owned)`. Looping stance
+clips duck the body fully but keep half of the head and neck gaze
+(`STANCE_HEAD_ATTENTION`). The pelvis offset ducks by
+`max(stance weight, owned root, owned lowerBody)`, the hips by
+`max(stance, lowerBody)`, the spine by `max(stance, upperBody)`, head and neck
+by the head ownership of non-stance clips plus half the stance weight, arms and
+fingers by their own groups, and foot contact by the larger non-stance
 ownership of `root`, either leg IK or `lowerBody`. An arm or finger gesture
 therefore keeps breath, sway and planted feet, even during a walk. Stance clips
 reduce contact only through their foot-IK tracks. Diagnostics publish `feet`
-(`maxError`, `errorL`, `errorR`, `contact`) and `lookAt` (`target`, `yaw`,
-`pitch`, `turning`, `turns`) while Natural drives the model. The
-`setDebugFlag` command disables foot contact or look-at for QA.
+(`maxError`, `errorL`, `errorR`, `contact`), `lookAt` (`target`, `yaw`,
+`pitch`, `turning`, `turns`) and `performance` while Natural drives the model.
+The `setDebugFlag` command disables foot contact, or keeps head, neck and eyes
+at the clip pose (`disableLookAt`), for QA.
 
-The `arm-rest` stage runs after look-at and before eyes. It relaxes shoulders,
-upper and lower arms, hands and the finger bones the rig has (`fingerBones`,
-read through `HUMANOID_FINGER_CANDIDATES`: thumbs `親指０/１/２` map to
-Metacarpal, Proximal and Distal; a leading `０` is the metacarpal of the other
-fingers), over the bind pose with `restArmAngles`, `restForearmAngles` and
-`thumbAxis`, and adds the gait's arm swing. A clip owns the arm and finger bones
+Foot contact keeps mesh-local ankle anchors and writes leg IK targets, IK-bone
+yaw and knee pre-bend before the IK solver; it measures ankle error after IK
+and physics. It also plays the performer's turn steps.
+
+The `body-arms` stage runs after `body-head` and before eyes. It poses the
+finger bones the rig has (`fingerBones`, read through
+`HUMANOID_FINGER_CANDIDATES`: thumbs `親指０/１/２` map to Metacarpal, Proximal
+and Distal; a leading `０` is the metacarpal of the other fingers, which is not
+written), curling the thumb about `thumbAxis`. The gait's arm swing arrives in
+the performer's channels. A clip owns the arm and finger bones
 it keys: `registerClip` builds a `ClipBoneMask` once and `body.ownership()`
 returns `min(1, sum(weight * mask))` per group (`root`, `leftLegIk`,
 `rightLegIk`, `lowerBody`, `leftArm`, `rightArm`, `leftFingers`, `rightFingers`,
-`upperBody`, `head`). The rest pose is written with weight `1 - owned`, and the
+`upperBody`, `head`). The performer's arms are written with weight `1 - owned`, and the
 gait is enabled only while no clip owns `root` or a leg IK bone. A clip the body
 never saw owns every group. `registerClip(name, clip, { forceGroups })` adds
 groups the mask did not key, so a full-body action or dance that animates only
 the upper body still stops the gait. `body.performing()` returns the clip the
 animation manager reports on its layer (`MMDBodyInput.layerClip`) and its
 captured weight, or `null` once that weight is 0. Diagnostics publish `arms` (`weight`, `owned`, `penetration`, `clothContact`,
-`hangDeg` and `handBelowHip`). `penetration` per side is the gate and must be 0: the overlap, in model units, of the
+`hangDeg`, `handBelowHip`, `headPenetration` and `correctionDeg`). `penetration` per side is the gate and must be 0: the overlap, in model units, of the
 arm capsules (radius 0.12 of the segment, the hand reaching 0.65 of the forearm beyond the wrist) with the KINEMATIC
 rigid bodies, those that follow a bone (torso, hips, legs, kinematic skirt roots). `clothContact` per side is
 information only: the centerline overlap with DYNAMIC (physics) bodies such as skirt plates, belts and wings, which the
@@ -274,7 +325,11 @@ with their group, and skips only a body wider than 0.65 of the shoulder span (a 
 body). While both arms are free and the gait is idle, a rig whose kinematic overlap persists for 5 frames after the
 60-frame warm-up, at the default 78 degree hang gets a
 per-rig hang: the arm is lifted away from the body in 2 degree steps, down to 60, until the overlap is 0 (the hang is the
-angle below horizontal, so a larger one swings the arm into the hips). `hangDeg` reports the value in effect.
+angle below horizontal, so a larger one swings the arm into the hips). The lift reaches the performer as `armLift`, added
+to its rest abduction; the default hang restates that abduction (12 degrees from vertical). The performer's own
+collision corrector already keeps the arms clear of the same bodies, so the solver acts only where its model and the
+rendered pose differ. `hangDeg` reports the value in effect. `headPenetration` measures the same capsules against the
+kinematic head and neck bodies, and `correctionDeg` is the performer's arm collision correction in effect.
 `setDebugFlag` with `{ flag: 'armRestHangDeg', value }` (0-90, `null` restores the default) overrides the hang for QA
 and switches the solver off. The desktop stage measures its placement rect from the REST-POSED hands and fingertips
 (`body.restPositions`, passed as `reachBones` of `resolveFrameBounds`) plus `ARM_SWING_REACH` of each one's
@@ -292,7 +347,10 @@ including `loadedModelKey: null` when the scene has no model. Commands use
 and `stopMeasurement` capture every frame interval and stage duration, separate
 from the 600-sample rolling FPS and timing readouts. `setDebugFlag`,
 `advanceDirectorClock`, and `setOverlay` carry transient controls for the
-body, director, and overlay consumers. Windows that never publish mirror the
+body, director, and overlay consumers. `setPerformanceLayer` with
+`{ layer, enabled }` turns one performance layer of the body performer on or
+off for tuning; the stack eases it in or out. This slice registers no layer, so
+`performance.layers` is empty until gesture, cue and act layers land. Windows that never publish mirror the
 latest stage snapshot they receive, so the devtools lab reads the stage's
 state from the same store. Overlay toggles also travel as the Eventa event
 `mmdOverlaySetEvent` on the same channel, and the snapshot's `overlays` field
@@ -319,10 +377,10 @@ running (no model, the Classic driver, or the classic window).
 | `loadedModelKey`, `driver` | The mounted model key (`null` without a model) and `natural` or `classic`. |
 | `fps { last, mean60s }`, `timings { <stage>: { lastMs, p95Ms } }` | Rolling frame rate and per-stage timings over the last 600 samples. |
 | `measurement` | The explicit measurement window: `state`, `durationMs`, `frames`, `fps`, `readbackMs { meanMs, maxMs }` (the host's alpha readback cost, `reportReadback`) and `physicsResets` (resets callers requested through `requestPhysicsReset`; loop wraps are not counted). |
-| `rig` | The `MMDRigProfile` of the loaded model. Its `spineChain`, `toeBend`, `twist` and `structure` fields are appended to the diagnostics snapshot. |
-| `natural { events, energy, headYaw }` | Natural event count, requested energy and the head bone's local yaw in radians. |
+| `rig` | The `MMDRigProfile` of the loaded model. Its `spineChain`, `toeBend`, `twist` and `structure` fields are appended to the diagnostics snapshot, and `capabilities { gestures, headClearance }` is the performer's load-time result per side (`null` without a performer). |
+| `natural { events, energy, headYaw }` | Natural event count, requested energy and the head bone's local yaw in radians as `body-head` wrote it. |
 | `feet { maxError, errorL, errorR, contact }` | Ankle error after IK and physics in model units, and the foot-contact weight. |
-| `lookAt { target, yaw, pitch, turning, turns }` | The world-space look target, head yaw and pitch in radians, whether the center bone is turning, and the turn count. |
+| `lookAt { target, yaw, pitch, turning, turns }` | The world-space sustained gaze target, the head bone's local yaw and the neck plus head pitch channels in radians, whether the performer's turn planner is turning the center bone, and the turn count. |
 | `director` | The body director (below). |
 | `touch { lastRegion, hitBody, petActive, headScreenPoint, events }` | The touch classifier state; `headScreenPoint` is in canvas client pixels. |
 | `animation { idle, currentAction, actionsStarted, layer }` | The looping base clip, the one-shot in progress, the one-shot count and the layered clip (`{ seq, name, state }` or null). |
@@ -332,10 +390,11 @@ running (no model, the Classic driver, or the classic window).
 | `stageModel { height, footBaselineY }` | Stage mode: the measured model height and foot baseline in model units, which the host calibrates the camera from. |
 | `world { unitsPerDip, floorRowDip, ground { minX, maxX }, homeX, characterHeightDip, originX, reach }` | Stage mode: the calibration the world was built from. `unitsPerDip` converts work-area DIP to model units on the floor line, `floorRowDip` is the floor line's row, `ground` the reachable root x range, `homeX` the resting root x and `characterHeightDip` the configured height (`stageModel.height / unitsPerDip`). `originX` is the world x of the work area's left edge; it changes when the stage window has moved to another display. `reach` lists every display's ground line while she can walk between displays, and is `null` otherwise. |
 | `locomotion { mode, position { x, z }, yaw, goalX, reason, pace, speed, phase, weight, skate, leashClamps, enabled }` | The gait in world units: `mode` (`idle`, `turning`, `walking`, `stopping`), the root position and yaw, the body's goal and its reason and pace, the speed and gait phase, the gait weight, `skate` (the largest per-frame horizontal world movement of a planted ankle; 0 when the feet stay planted), `leashClamps` (ticks on which the reach leash shortened root travel) and `enabled` (false while a clip owns the root or a leg IK bone). |
-| `arms { weight, owned, penetration { left, right }, clothContact { left, right }, hangDeg, handBelowHip }` | The arm rest layer: `weight` is one minus the larger arm ownership, `owned` the clip ownership per group (`leftArm`, `rightArm`, `leftFingers`, `rightFingers`, 0-1), `penetration` the deepest arm capsule-radius overlap of a kinematic body per side in model units (the gate: 0), `clothContact` the deepest centerline overlap of a dynamic cloth body (information only), `hangDeg` the rest hang in effect and `handBelowHip` whether both hands sit below the hips bone. |
+| `arms { weight, owned, penetration { left, right }, clothContact { left, right }, hangDeg, handBelowHip, headPenetration { left, right }, correctionDeg { left, right } }` | The arm measurement: `weight` is one minus the larger arm ownership, `owned` the clip ownership per group (`leftArm`, `rightArm`, `leftFingers`, `rightFingers`, 0-1), `penetration` the deepest arm capsule-radius overlap of a kinematic body per side in model units (the gate: 0), `clothContact` the deepest centerline overlap of a dynamic cloth body (information only), `hangDeg` the rest hang in effect, `handBelowHip` whether both hands sit below the hips bone, `headPenetration` the same overlap with the kinematic head and neck bodies, and `correctionDeg` the performer's arm collision correction in degrees. |
 | `overlays` | The `MMDOverlayFlags` the stage draws. |
 | `ownership` | The body's clip ownership per mask group (`root`, `leftLegIk`, `rightLegIk`, `lowerBody`, `leftArm`, `rightArm`, `leftFingers`, `rightFingers`, `upperBody`, `head`; 0-1) while the Natural driver runs. |
 | `trace { state, frames, bones, seconds, refused }` | Scene recorder state (`idle`, `recording`, `stopped`), sample and bone counts, motion duration, and named refusal; null without a recorder or refusal. |
+| `performance { tick, layers, support, shift { target, dwellS }, breath { speechLift, inhales }, gaze { kind, shiftDeg, eyeDeg, headDeg, trunkDeg, shifts, blinks }, correctionDeg { left, right }, collision { count, last } }` | The body performer while Natural drives the model: 120 Hz ticks since its reset, each performance layer as 1 on or 0 off, the weight support (+1 on the right foot), the scheduled support target and remaining dwell, the speech chest lift and phrase inhale count, the gaze goal kind with the last planned shift, eye, head and trunk angles in degrees and the shift and body-blink counts, the arm collision correction in degrees, and the `BodyCollisionError` count with the last one (`side`, `depth`, `tick`). |
 
 The `director` block carries `MMDStanceDiagnostics` plus `clockOffsetMs` (the
 `advanceDirectorClock` total) and `centerY` (the センター bone's Y in model

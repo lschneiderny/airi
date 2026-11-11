@@ -1,6 +1,6 @@
 import type { Foot, FootAnchor, LegGeometry } from '@proj-airi/motion-driver-humanoid/foot-contact'
 import type { LocomotionFoot } from '@proj-airi/motion-driver-humanoid/locomotion'
-import type { LookAtFrame } from '@proj-airi/motion-driver-humanoid/look-at'
+import type { TurnStep } from '@proj-airi/motion-driver-humanoid/look-at'
 import type { AnimationClip } from 'three'
 
 import type { MMDFrameContext } from '../frame-pipeline'
@@ -120,7 +120,8 @@ export class MMDFootContact {
     /** Planner duck: one-shots only. Stance clips reduce contact through their foot-IK tracks. */
     contactDuck: number
     disabled: boolean
-    look: LookAtFrame
+    /** The performer's turn steps issued during this frame's ticks; `startTime` is on the same clock as `now`. */
+    turnSteps: readonly TurnStep[]
     now: number
     clips: ReadonlyMap<string, AnimationClip>
     root: MMDRootPose
@@ -180,7 +181,7 @@ export class MMDFootContact {
       if (!input.gait && (!this.planted[leg.side] || (previous?.feet[leg.side].c === 0 && contact.c > 0)))
         this.planted[leg.side] = toGroundAnchor(contact.anchor, root)
     }
-    for (const step of input.look.turnSteps) {
+    for (const step of input.turnSteps) {
       this.plannedYaw += step.yaw
       const left = this.planted.left ?? toGroundAnchor(this.result.feet.left.anchor, root)
       const right = this.planted.right ?? toGroundAnchor(this.result.feet.right.anchor, root)

@@ -1,6 +1,7 @@
 import type { MMD } from '@moeru/three-mmd'
-import type { MotionTraceBone, MotionTraceChannels, MotionTraceRig } from '@proj-airi/motion-driver-humanoid/motion-trace'
+import type { MotionTraceBone, MotionTraceChannels, MotionTraceEvent, MotionTraceRig } from '@proj-airi/motion-driver-humanoid/motion-trace'
 
+import type { MMDBodyEvent } from './body/performer'
 import type { MMDBodyPose } from './body/pose'
 import type { MMDFrameStage } from './frame-pipeline'
 import type { MMDRigProfile } from './rig'
@@ -9,6 +10,21 @@ import { MOTION_TRACE_BONES, motionTraceParents, MotionTraceRecorder } from '@pr
 import { Matrix4, Quaternion, Vector3 } from 'three'
 
 import { HUMANOID_FINGER_CANDIDATES, MMD_CONTROL_BONE_CANDIDATES } from './rig/bone-map'
+
+/**
+ * The trace event of a body `blink` or `gaze-shift` at motion time `t`. Both are `marker` events: `blink`, and
+ * `gaze-shift:<amplitude in degrees, two decimals>`.
+ */
+export function mmdBodyTraceEvent(event: MMDBodyEvent, t: number): MotionTraceEvent {
+  // NOTICE:
+  // Body blinks and gaze shifts are `marker` events with a fixed label grammar, not kinds of their own.
+  // Root cause: the trace v1 reader validates a closed set of event kinds and refuses any other.
+  // Source: packages/qa-tools/src/t2-3d/read-trace.ts, `eventSchema`.
+  // Removal condition: the reader accepts `blink` and `gaze-shift` kinds.
+  return event.kind === 'blink'
+    ? { t, kind: 'marker', label: 'blink' }
+    : { t, kind: 'marker', label: `gaze-shift:${event.amplitudeDeg.toFixed(2)}` }
+}
 
 /**
  * Read-only, post-physics sampler. The caller starts the recorder with `rig` and

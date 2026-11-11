@@ -675,9 +675,13 @@ Output is `trace.json` (shared v1 contract, `source.level: 'rendered'`),
 frame count, median FPS, median/worst wall-frame intervals, frame-gap fraction,
 `noticeDismissed` (`true`, `false` or `'absent'` for the optional close action
 on the host-capability notice before screenshots),
-requested and actual shot times, and `parity.stageOrder`. Parity compares
-the shared Natural/body pose and surface stage order with the headless
-composition; extra rendered stages such as morphs remain in the trace header.
+requested and actual shot times, and `parity.stageOrder` with the recorded
+stage lists. The scene must report exactly the pose and surface stages of
+`composeMMDStages` (`@proj-airi/stage-ui-mmd/composables/mmd/stage-composition`),
+which the headless runner composes from as well. Any other list, an extra,
+missing or reordered stage, refuses the capture with
+`stage-composition-mismatch` (exit 2) after the first recording, so
+`stageOrder` is always `match` in a written manifest.
 The strip has six columns, 320 pixels per shot and no text labels.
 
 Shots are evenly spaced at the midpoint of each interval. If more than 0.5%
@@ -729,7 +733,13 @@ pnpm qa:motion3d run --model "/path/to/model.pmx" --scenario walk --seed 1 --sec
 
 The Node runner loads an external PMX, initializes the shipped Ammo backend,
 and composes the production Natural adapter, stance director, body stages,
-IK, grants, physics and shared motion-trace sampler. It opens no window and
+IK, grants, physics and shared motion-trace sampler. Its stages come from
+`composeMMDStages`, the same composition the scene registers; the stages this
+level does not run (Classic gaze and face, lip-sync, bone and surface morphs)
+keep their ids and slots and do nothing, and `omitted` names that work. Body
+blinks and planned gaze shifts are recorded as `marker` events labelled
+`blink` and `gaze-shift:<degrees>`, because the trace v1 reader accepts no
+other new event kind. It opens no window and
 needs no GPU. Models and textures remain outside the repository. The optional
 load and gaze integration tests use `AIRI_QA_MMD_MODEL` when set.
 

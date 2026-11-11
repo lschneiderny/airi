@@ -1,16 +1,48 @@
-import { AnimationClip, Euler, Quaternion, QuaternionKeyframeTrack, Vector3, VectorKeyframeTrack } from 'three'
+import type { ExtraBody } from './fixture'
+
+import { AnimationClip, Euler, Quaternion, QuaternionKeyframeTrack, VectorKeyframeTrack } from 'three'
 import { describe, expect, it } from 'vitest'
 
-import { MMDArmRest } from './arms'
+import { buildMMDArmTestColliders } from '../touch/colliders'
+import { MMDArms } from './arms'
 import { bodyFixture } from './fixture'
 import { MMDBodyPose } from './pose'
 
 const owned = { leftArm: 0, rightArm: 0, leftFingers: 0, rightFingers: 0 }
 const identityKey = [0, 0, 0, 1]
+const degrees = Math.PI / 180
+/** The fixture's bind arms hang 36 degrees below horizontal. */
+const bindHang = 36
 
 function armClip(name: string, bone: string, angle: number) {
   const bend = new Quaternion().setFromEuler(new Euler(0, 0, angle)).toArray()
   return new AnimationClip(name, 2, [new QuaternionKeyframeTrack(`.bones[${bone}].quaternion`, [0, 1, 2], [...identityKey, ...bend, ...identityKey])])
+}
+
+/** Holds both upper arms `hangDeg` below horizontal; a clip that owns the arms is never corrected by the performer. */
+function hangClip(name: string, hangDeg: number) {
+  const key = (sigma: number) => new Quaternion().setFromEuler(new Euler(0, 0, sigma * (bindHang - hangDeg) * degrees)).toArray()
+  return new AnimationClip(name, 10, [
+    new QuaternionKeyframeTrack('.bones[左腕].quaternion', [0, 10], [...key(1), ...key(1)]),
+    new QuaternionKeyframeTrack('.bones[右腕].quaternion', [0, 10], [...key(-1), ...key(-1)]),
+  ])
+}
+
+/**
+ * The hang solver alone: the arms are posed straight at the hang it asks for, so its stepping is observable even where
+ * the performer's corrector would already clear the body.
+ */
+function solver(extraBodies: ExtraBody[]) {
+  const fixture = bodyFixture(0, Math.PI, { arms: true, bodies: true, extraBodies })
+  const { mmd, rig } = fixture
+  const { skeleton, bindMatrix } = mmd.mesh
+  const arms = new MMDArms(new MMDBodyPose(mmd, rig), buildMMDArmTestColliders(mmd.pmx, skeleton.boneInverses, bindMatrix, rig), [])
+  return (hangDeg: number | null) => {
+    const lift = arms.lift({ swingWeight: 0, owned, hangDeg })
+    for (const [name, sigma] of [['左腕', 1], ['右腕', -1]] as const)
+      fixture.bone(name).quaternion.setFromEuler(new Euler(0, 0, sigma * (bindHang * degrees - (78 * degrees - lift.left))))
+    return arms.measure(owned, { left: 0, right: 0 })
+  }
 }
 
 function play(fixture: ReturnType<typeof bodyFixture>, clip: AnimationClip, registerWithBody = true) {
@@ -20,30 +52,13 @@ function play(fixture: ReturnType<typeof bodyFixture>, clip: AnimationClip, regi
   fixture.pipeline.enqueue(() => fixture.mixer.clipAction(clip).play())
 }
 
-describe('mmd arm rest stage', () => {
-  it('turns the bind A-pose forearm into the design-note direction through the adapter Euler order', () => {
-    const { mmd, rig, pipeline, bone, mesh } = bodyFixture(0, Math.PI, { arms: true })
-    expect(rig.restArmAngles.left).toBeCloseTo(0.2 * Math.PI, 6)
-    expect(rig.restForearmAngles.right).toBeCloseTo(0.2 * Math.PI, 6)
-    const arms = new MMDArmRest(new MMDBodyPose(mmd, rig), { kinematic: [], dynamic: [] })
-    arms.apply(pipeline.clean, { dt: 1 / 60, breath: 0, torsoRoll: 0, swing: undefined, swingWeight: 0, owned, hangDeg: null })
-    mesh.updateMatrixWorld(true)
-    const direction = (elbow: string, wrist: string) => bone(wrist).getWorldPosition(new Vector3()).sub(bone(elbow).getWorldPosition(new Vector3())).normalize()
-    const left = direction('左ひじ', '左手首')
-    const right = direction('右ひじ', '右手首')
-    for (const [actual, expected] of [[left, [0.2034, -0.9399, 0.2741]], [right, [-0.2034, -0.9399, 0.2741]]] as const) {
-      expect(actual.x).toBeCloseTo(expected[0], 3)
-      expect(actual.y).toBeCloseTo(expected[1], 3)
-      expect(actual.z).toBeCloseTo(expected[2], 3)
-    }
-  })
-
+describe('mmd arm measurement and hang solver', () => {
   it('curls the present fingers, skipping bones the model lacks', () => {
-    const { mmd, rig, pipeline, bone } = bodyFixture(0, Math.PI, { arms: true })
+    const { rig, pipeline, bone } = bodyFixture(0, Math.PI, { arms: true })
     expect(rig.fingerBones.leftThumbMetacarpal).toBe('左親指０')
     expect(rig.fingerBones.leftIndexMetacarpal).toBe('左人指０')
-    const arms = new MMDArmRest(new MMDBodyPose(mmd, rig), { kinematic: [], dynamic: [] })
-    arms.apply(pipeline.clean, { dt: 1 / 60, breath: 0, torsoRoll: 0, swing: undefined, swingWeight: 0, owned, hangDeg: null })
+    for (let frame = 0; frame < 30; frame++)
+      pipeline.step(1 / 60)
     expect(bone('左人指１').quaternion.angleTo(new Quaternion())).toBeGreaterThan(0.1)
     expect(bone('左親指０').quaternion.angleTo(new Quaternion())).toBeGreaterThan(0.05)
     expect(bone('左人指０').quaternion.angleTo(new Quaternion())).toBe(0)
@@ -53,20 +68,21 @@ describe('mmd arm rest stage', () => {
     const { pipeline, body } = bodyFixture(0, Math.PI, { arms: true, bodies: true })
     for (let frame = 0; frame < 120; frame++)
       pipeline.step(1 / 60)
-    expect(body.diagnostics.arms).toEqual({ weight: 1, owned, penetration: { left: 0, right: 0 }, clothContact: { left: 0, right: 0 }, hangDeg: 78, handBelowHip: true })
+    expect(body.diagnostics.arms).toMatchObject({ weight: 1, owned, penetration: { left: 0, right: 0 }, headPenetration: { left: 0, right: 0 }, clothContact: { left: 0, right: 0 }, hangDeg: 78, handBelowHip: true })
   })
 
-  it('reports penetration when the arms hang straight into the hip body at 90 degrees, and lifts the hands at 20 degrees', () => {
-    const { pipeline, body, setInput } = bodyFixture(0, Math.PI, { arms: true, bodies: true })
-    setInput({ armRestHangDeg: 90 })
+  it('reports penetration when a clip hangs the arms straight into the hip body, and lifts the hands at a 20 degree hang', () => {
+    const fixture = bodyFixture(0, Math.PI, { arms: true, bodies: true })
+    play(fixture, hangClip('straight-down', 90))
     for (let frame = 0; frame < 30; frame++)
-      pipeline.step(1 / 60)
-    expect(body.diagnostics.arms?.penetration.left).toBeGreaterThan(0)
-    expect(body.diagnostics.arms?.penetration.right).toBeGreaterThan(0)
-    setInput({ armRestHangDeg: 20 })
+      fixture.pipeline.step(1 / 60)
+    expect(fixture.body.diagnostics.arms?.penetration.left).toBeGreaterThan(0)
+    expect(fixture.body.diagnostics.arms?.penetration.right).toBeGreaterThan(0)
+    const raised = bodyFixture(0, Math.PI, { arms: true, bodies: true })
+    raised.setInput({ armRestHangDeg: 20 })
     for (let frame = 0; frame < 30; frame++)
-      pipeline.step(1 / 60)
-    expect(body.diagnostics.arms?.handBelowHip).toBe(false)
+      raised.pipeline.step(1 / 60)
+    expect(raised.body.diagnostics.arms?.handBelowHip).toBe(false)
   })
 
   it('ignores a body around the shoulder joint, which every arm starts inside', () => {
@@ -79,10 +95,11 @@ describe('mmd arm rest stage', () => {
 
   it('counts a kinematic body on the arm path whatever its collision mask, and skips a shell wider than the shoulder span', () => {
     const path = (collisionMask: number, radius: number) => {
-      const { pipeline, body } = bodyFixture(0, Math.PI, { arms: true, bodies: true, extraBodies: [{ name: 'on-the-arm', bone: '上半身2', position: [1.9, 13.8, 0], radius, collisionMask }] })
+      const fixture = bodyFixture(0, Math.PI, { arms: true, bodies: true, extraBodies: [{ name: 'on-the-arm', bone: '上半身2', position: [1.9, 13.8, 0], radius, collisionMask }] })
+      play(fixture, hangClip('rest-hang', 78))
       for (let frame = 0; frame < 60; frame++)
-        pipeline.step(1 / 60)
-      return body.diagnostics.arms?.penetration.left ?? Number.NaN
+        fixture.pipeline.step(1 / 60)
+      return fixture.body.diagnostics.arms?.penetration.left ?? Number.NaN
     }
     expect(path(65535, 0.6)).toBeGreaterThan(0.1)
     // A group-0 body with self-collision off, like a real rig's own torso, still gates the arm.
@@ -102,43 +119,43 @@ describe('mmd arm rest stage', () => {
   })
 
   it('lifts the arm in 2 degree steps after the warm-up, once the clearance to a kinematic body is violated, and settles', () => {
-    const post = { name: 'post', bone: '上半身2', position: [2.2, 12, 0] as [number, number, number], radius: 0.3, collisionMask: 65535 }
+    const step = solver([{ name: 'post', bone: '上半身2', position: [2.2, 12, 0], radius: 0.3, collisionMask: 65535 }])
     const hangs: number[] = []
-    const { pipeline, body } = bodyFixture(0, Math.PI, { arms: true, bodies: true, extraBodies: [post] })
+    let last = step(null)
     for (let frame = 0; frame < 300; frame++) {
-      pipeline.step(1 / 60)
-      hangs.push(body.diagnostics.arms?.hangDeg ?? Number.NaN)
+      last = step(null)
+      hangs.push(last.hangDeg)
     }
-    expect(hangs.slice(0, 60).every(hang => hang === 78)).toBe(true)
+    expect(hangs.slice(0, 59).every(hang => hang === 78)).toBe(true)
     expect(hangs.at(-1)).toBeLessThan(78)
     expect(hangs.at(-1)).toBeGreaterThanOrEqual(60)
     expect(hangs.every((hang, index) => index === 0 || [0, -2].includes(hang - hangs[index - 1]))).toBe(true)
     expect(hangs.slice(-60).every(hang => hang === hangs.at(-1))).toBe(true)
-    expect(body.diagnostics.arms?.penetration).toEqual({ left: 0, right: 0 })
+    expect(last.penetration).toEqual({ left: 0, right: 0 })
   })
 
   it('does not lift the arm for a body that stays clear of it', () => {
-    const { pipeline, body } = bodyFixture(0, Math.PI, { arms: true, bodies: true })
+    const step = solver([])
+    let hang = 0
     for (let frame = 0; frame < 300; frame++)
-      pipeline.step(1 / 60)
-    expect(body.diagnostics.arms?.hangDeg).toBe(78)
+      hang = step(null).hangDeg
+    expect(hang).toBe(78)
   })
 
   it('never lifts the arm below 60 degrees, however long the overlap lasts', () => {
-    const wall = { name: 'wall', bone: '上半身2', position: [2.6, 11, 0] as [number, number, number], radius: 1.9, collisionMask: 65535 }
-    const { pipeline, body } = bodyFixture(0, Math.PI, { arms: true, bodies: true, extraBodies: [wall] })
+    const step = solver([{ name: 'wall', bone: '上半身2', position: [2.6, 11, 0], radius: 1.9, collisionMask: 65535 }])
+    let hang = 0
     for (let frame = 0; frame < 400; frame++)
-      pipeline.step(1 / 60)
-    expect(body.diagnostics.arms?.hangDeg).toBe(60)
+      hang = step(null).hangDeg
+    expect(hang).toBe(60)
   })
 
   it('does not solve a hang while the debug override is set', () => {
-    const post = { name: 'post', bone: '上半身2', position: [2.2, 12, 0] as [number, number, number], radius: 0.3, collisionMask: 65535 }
-    const { pipeline, body, setInput } = bodyFixture(0, Math.PI, { arms: true, bodies: true, extraBodies: [post] })
-    setInput({ armRestHangDeg: 78 })
+    const step = solver([{ name: 'post', bone: '上半身2', position: [2.2, 12, 0], radius: 0.3, collisionMask: 65535 }])
+    let hang = 0
     for (let frame = 0; frame < 120; frame++)
-      pipeline.step(1 / 60)
-    expect(body.diagnostics.arms?.hangDeg).toBe(78)
+      hang = step(78).hangDeg
+    expect(hang).toBe(78)
   })
 
   it('gives a clip ownership only of the groups its keys move', () => {

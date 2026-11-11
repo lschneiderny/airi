@@ -16,9 +16,10 @@ import { MMDBody } from '@proj-airi/stage-ui-mmd/composables/mmd/body'
 import { resolveBodyTarget } from '@proj-airi/stage-ui-mmd/composables/mmd/body/attention'
 import { MMDBodyPose } from '@proj-airi/stage-ui-mmd/composables/mmd/body/pose'
 import { MMDFramePipeline } from '@proj-airi/stage-ui-mmd/composables/mmd/frame-pipeline'
-import { createMMDMotionTraceSampler } from '@proj-airi/stage-ui-mmd/composables/mmd/motion-trace'
+import { createMMDMotionTraceSampler, mmdBodyTraceEvent } from '@proj-airi/stage-ui-mmd/composables/mmd/motion-trace'
 import { MMDNaturalAdapter } from '@proj-airi/stage-ui-mmd/composables/mmd/natural/adapter'
 import { readMMDRigProfile } from '@proj-airi/stage-ui-mmd/composables/mmd/rig'
+import { composeMMDStages } from '@proj-airi/stage-ui-mmd/composables/mmd/stage-composition'
 import { MMDStanceDirector } from '@proj-airi/stage-ui-mmd/composables/mmd/stance'
 import { AnimationMixer, Matrix4, Quaternion } from 'three'
 
@@ -30,8 +31,7 @@ import { Motion3dLookTarget } from './look-target'
 import { Motion3dMeasurement } from './measurement'
 
 export const motion3dStep = 1 / 60
-/** Scene Natural pose order, used by the rendered capture's stage parity check. */
-export const motion3dPoseStageIds = ['natural', 'locomotion', 'weight-shift', 'foot-contact', 'look-at', 'arm-rest', 'eyes'] as const
+/** Production work this level does not run; their stages keep their slots in the shared composition and do nothing. */
 const omitted = ['classic-gaze', 'classic-face', 'lip-sync', 'bone-morphs', 'morphs', 'natural-face', 'touch-colliders', 'overlays', 'clip-layers', 'images', 'render']
 const modes = { idle: 0, turning: 1, starting: 2, walking: 3, stopping: 4 } as const
 
@@ -70,7 +70,7 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
     const modelKey = `qa-${options.seed}`
     const rig = readMMDRigProfile(mmd.pmx)
     const pose = new MMDBodyPose(mmd, rig)
-    const natural = new MMDNaturalAdapter(mmd.mesh, rig, modelKey)
+    const natural = new MMDNaturalAdapter(modelKey)
     const stance = new MMDStanceDirector()
     const sampler = createMMDMotionTraceSampler(mmd, rig, pose)
     sampler.rig.id = modelKey
@@ -87,6 +87,9 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
         enabled: true,
         rootMotion: true,
         frame: natural.bodyFrame.frame,
+        intent: natural.bodyFrame.intent,
+        energy: 0.5,
+        stance: stance.intent?.stance,
         target: resolveBodyTarget(points, natural.bodyFrame, 'mouse', stance.intent),
         disableFootContact: false,
         disableLookAt: false,
@@ -99,31 +102,31 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
         mmd.mesh.updateMatrixWorld(true)
       } },
     })
-    pipeline = new MMDFramePipeline({ mmd, mixer, metrics })
-    pipeline.poseStages.push({
-      id: 'natural',
-      run: ({ dt, clean }) => {
-        natural.advance(dt, {
-          performance: cues.performance,
-          energy: 0.5,
-          voice: cues.voice,
-          cursor,
-          chat: null,
-          placement: null,
-          emotionStrengths: {},
-        }, naturalSeconds)
-        natural.applyPose(clean, true)
+    let motionTime = 0
+    body.onEvent(event => sampler.recorder.event(mmdBodyTraceEvent(event, motionTime)))
+    const stages = composeMMDStages({
+      body,
+      host: {
+        'natural': ({ dt }) => {
+          natural.advance(dt, {
+            performance: cues.performance,
+            energy: 0.5,
+            voice: cues.voice,
+            cursor,
+            chat: null,
+            placement: null,
+            emotionStrengths: {},
+          }, naturalSeconds)
+        },
+        'motion-trace': (context) => {
+          const gait = body.locomotionFrame
+          sampler.inputs.channels.locomotionMode = gait ? modes[gait.mode] : 0
+          sampler.inputs.channels.gaitWeight = gait?.weight ?? 0
+          sampler.stage.run(context)
+        },
       },
-    }, ...body.poseStages)
-    pipeline.surfaceStages.push({
-      id: body.surfaceStage.id,
-      run: (context) => {
-        body.surfaceStage.run(context)
-        const gait = body.locomotionFrame
-        sampler.inputs.channels.locomotionMode = gait ? modes[gait.mode] : 0
-        sampler.inputs.channels.gaitWeight = gait?.weight ?? 0
-      },
-    }, sampler.stage)
+    })
+    pipeline = new MMDFramePipeline({ mmd, mixer, metrics, poseStages: stages.pose, surfaceStages: stages.surface })
     const traceBasis = new Quaternion().setFromRotationMatrix(new Matrix4().makeBasis(pose.right, pose.up, pose.forward)).invert()
     const detail = {
       ...dependencyVersions(),
@@ -163,7 +166,6 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
     const timeline = options.scenario.timeline(options.seed, options.seconds)
     const initializedMs = performance.now() - initializedAt
     let nextCue = 0
-    let motionTime = 0
     const started = performance.now()
     for (let frame = 0; frame < frames; frame++) {
       // Yield for interrupts and the CPU lease heartbeat without advancing pose clocks.

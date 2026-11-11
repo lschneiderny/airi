@@ -164,7 +164,7 @@ describe('mmd frame pipeline', () => {
     expect(pipeline.clipFootIK.get('left')).toEqual({ left: true, right: false })
   })
 
-  it('runs the body stages with locomotion first, before weight-shift, foot-contact, look-at, arm-rest and eyes', () => {
+  it('runs the body stages with locomotion first, before body-torso, foot-contact, body-head, body-arms and eyes', () => {
     const { pipeline } = bodyFixture()
     const order: string[] = []
     const measure = pipeline.metrics.measure.bind(pipeline.metrics)
@@ -173,6 +173,6 @@ describe('mmd frame pipeline', () => {
       measure(id, run)
     })
     pipeline.step(1 / 60)
-    expect(order.slice(order.indexOf('natural') + 1, order.indexOf('beforePhysics'))).toEqual(['locomotion', 'weight-shift', 'foot-contact', 'look-at', 'arm-rest', 'eyes'])
+    expect(order.slice(order.indexOf('natural') + 1, order.indexOf('beforePhysics'))).toEqual(['locomotion', 'body-torso', 'foot-contact', 'body-head', 'body-arms', 'eyes'])
   })
 })

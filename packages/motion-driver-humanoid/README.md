@@ -337,9 +337,8 @@ const frame = performer.step(input)
 The performer owns posture, seeded support transfers, aperiodic sway, breath,
 arm rest and secondary dynamics, gaze planning, layer composition, soft limits,
 and final arm collision correction. It never integrates root position, chooses
-a director goal, reads a clock, writes a bone, or imports Natural. Nothing uses
-this subpath in the scene yet. The existing weight-shift, rest-pose and look-at
-exports retain their behavior.
+a director goal, reads a clock, writes a bone, or imports Natural. The MMD body
+of `@proj-airi/stage-ui-mmd` poses every bone from it under the Natural driver.
 
 `step` advances exactly `BODY_TICK` (1/120 second), regardless of display rate.
 The adapter supplies interpolated continuous inputs, consumes discrete events

@@ -1,6 +1,7 @@
 import type { MMDBodyInput } from './index'
 
 import { MMD, PmxObject } from '@moeru/three-mmd'
+import { NaturalMotion } from '@proj-airi/motion-driver-natural/natural-motion'
 import { AnimationMixer, Bone, BufferGeometry, MeshBasicMaterial, Quaternion, Skeleton, SkinnedMesh, Vector3 } from 'three'
 
 import { createModel } from '../__fixtures__/model'
@@ -10,11 +11,11 @@ import { MMDBody } from './index'
 
 /**
  * Both legs, positive post-parse knees, and a nonidentity IK parent. No model assets. `hair` adds a physics pendulum
- * behind the head: a follow-bone body on the head and a dynamic body on `髪`, joined by a spring joint. `arms` adds A-pose
- * arms at 36 degrees below horizontal with thumb and index finger chains (the index has a Carlotta-style `０` metacarpal),
+ * behind the head: a follow-bone body on the head and a dynamic body on `髪`, joined by a spring joint. `arms` (default true) adds
+ * A-pose arms at 36 degrees below horizontal with thumb and index finger chains (the index has a Carlotta-style `０` metacarpal),
  * and `bodies` adds a torso capsule, a hip box and a physics skirt sphere for the arm penetration check.
  */
-export function bodyFixture(eyeBindYaw = 0, kneeMax = Math.PI, options: { hair?: boolean, arms?: boolean, bodies?: boolean, extraBodies?: ExtraBody[] } = {}) {
+export function bodyFixture(eyeBindYaw = 0, kneeMax = Math.PI, options: { hair?: boolean, arms?: boolean, bodies?: boolean, extraBodies?: ExtraBody[], spine?: 1 | 2 | 3 | 4 } = {}) {
   const mesh = new SkinnedMesh(new BufferGeometry(), new MeshBasicMaterial())
   const definitions: Array<{ name: string, parent: number, position: [number, number, number] }> = [
     { name: 'センター', parent: -1, position: [0, 10, 0] },
@@ -37,7 +38,8 @@ export function bodyFixture(eyeBindYaw = 0, kneeMax = Math.PI, options: { hair?:
     { name: '右足ＩＫ', parent: 15, position: [-4, 1, -2] },
     ...options.hair ? [{ name: '髪', parent: 6, position: [0, -2, -1] as [number, number, number] }] : [],
   ]
-  if (options.arms) {
+  // The body performer needs both arms, as every humanoid MMD rig has; `arms: false` builds a rig without them.
+  if (options.arms ?? true) {
     for (const entry of armDefinitions()) {
       const parent = definitions.findIndex(({ name }) => name === entry.parent)
       definitions.push({ name: entry.name, parent, position: entry.position })
@@ -45,6 +47,20 @@ export function bodyFixture(eyeBindYaw = 0, kneeMax = Math.PI, options: { hair?:
   }
   if (options.bodies)
     definitions.push({ name: 'スカート', parent: 2, position: [0, -1, 0] })
+  // `spine` sets the bones on the neck's parent path: 上半身 alone, the default 上半身 and 上半身2, or one or two more
+  // links above 上半身2. The neck keeps its world position.
+  const neck = definitions[5]
+  if (options.spine === 1)
+    definitions[5] = { ...neck, parent: 3, position: [0, 5, 0] }
+  if (options.spine === 3 || options.spine === 4) {
+    const links = options.spine - 2
+    let parent = 4
+    for (let link = 1; link <= links; link++) {
+      definitions.push({ name: `上半身${link + 2}`, parent, position: [0, 2 / (links + 1), 0] })
+      parent = definitions.length - 1
+    }
+    definitions[5] = { ...neck, parent, position: [0, 2 / (links + 1), 0] }
+  }
   const bones = definitions.map(({ name, position }) => {
     const bone = new Bone()
     bone.name = name
@@ -93,6 +109,9 @@ export function bodyFixture(eyeBindYaw = 0, kneeMax = Math.PI, options: { hair?:
   const pipeline = new MMDFramePipeline({ mmd, mixer })
   pipeline.options.physics = false
   const rig = readMMDRigProfile(pmx)
+  // A real Natural intent at rest: head attitude and posture scales come from the controller, as in the scene.
+  const natural = new NaturalMotion({ seed: 1 })
+  natural.advance(0)
   const input: MMDBodyInput = {
     enabled: true,
     rootMotion: false,
@@ -101,6 +120,7 @@ export function bodyFixture(eyeBindYaw = 0, kneeMax = Math.PI, options: { hair?:
     stanceClips: new Set(),
     dragging: false,
     target: null,
+    intent: natural.bodyIntent(),
     frame: {
       pose: { headX: 0, headY: 0, headZ: 0, bodyX: 0, bodyY: 0, bodyZ: 0, eyeX: 0, eyeY: 0 },
       fixation: { x: 0, y: 0 },

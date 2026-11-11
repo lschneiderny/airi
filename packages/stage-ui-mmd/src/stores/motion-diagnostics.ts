@@ -2,6 +2,7 @@ import type { BroadcastChannelEmitOptions } from '@moeru/eventa/adapters/broadca
 import type { ClipMaskGroup } from '@proj-airi/motion-driver-humanoid/clip-mask'
 import type { ClipKind, ClipLayer, ClipMetaNote } from '@proj-airi/motion-driver-humanoid/clip-meta'
 import type { LocomotionFrame } from '@proj-airi/motion-driver-humanoid/locomotion'
+import type { BodyCapabilities } from '@proj-airi/motion-driver-humanoid/performance'
 import type { BodyLocomotionReason, LocomotionPace } from '@proj-airi/motion-driver-humanoid/types'
 import type { PlacementRect } from '@proj-airi/stage-shared/stage-placement'
 
@@ -29,7 +30,8 @@ export interface MMDMotionSnapshot {
   driver: 'natural' | 'classic'
   fps: { last: number, mean60s: number }
   timings: Record<string, StageTiming>
-  rig: MMDRigProfile | null
+  /** The rig profile; `capabilities` is the body performer's load-time gesture and head-clearance result, null without a performer. */
+  rig: (MMDRigProfile & { capabilities: BodyCapabilities | null }) | null
   natural: { events: number, energy: number, headYaw: number } | null
   feet: { maxError: number, errorL: number, errorR: number, contact: number } | null
   lookAt: { target: { x: number, y: number, z: number } | null, yaw: number, pitch: number, turning: boolean, turns: number } | null
@@ -95,6 +97,10 @@ export interface MMDMotionSnapshot {
     clothContact: { left: number, right: number }
     hangDeg: number
     handBelowHip: boolean
+    /** Deepest arm overlap of a kinematic head or neck body per side, in model units, after physics. */
+    headPenetration: { left: number, right: number }
+    /** The performer's arm collision correction in effect per side, in degrees. */
+    correctionDeg: { left: number, right: number }
   } | null
   /** The overlay flags the stage draws, so a lab opened after a toggle shows the stage's state. */
   overlays: MMDOverlayFlags
@@ -107,6 +113,24 @@ export interface MMDMotionSnapshot {
   /** The body's clip ownership per mask group (0-1) while the Natural driver runs; `arms.owned` repeats the arm groups. */
   ownership: Record<ClipMaskGroup, number> | null
   trace: MMDMotionTraceSnapshot | null
+  /**
+   * The body performer while the Natural driver runs. `tick` counts 120 Hz ticks since its reset; `layers` maps each
+   * performance layer to 1 on or 0 off; `support` is the weight support, +1 on the right foot; `shift` the scheduled
+   * support target and remaining dwell; `breath` the speech chest lift and phrase inhale count; `gaze` the goal kind,
+   * the last planned shift and the eye, head and trunk angles in degrees with the shift and body blink counts;
+   * `correctionDeg` the arm collision correction; `collision` the `BodyCollisionError` count and the last one, which
+   * kept the previous arm pose on screen.
+   */
+  performance: {
+    tick: number
+    layers: Record<string, number>
+    support: number
+    shift: { target: number, dwellS: number }
+    breath: { speechLift: number, inhales: number }
+    gaze: { kind: 'sustained' | 'free' | 'travel', shiftDeg: number, eyeDeg: number, headDeg: number, trunkDeg: number, shifts: number, blinks: number }
+    correctionDeg: { left: number, right: number }
+    collision: { count: number, last: { side: 'left' | 'right', depth: number, tick: number } | null }
+  } | null
 }
 
 export type MMDMotionCommand
@@ -119,6 +143,7 @@ export type MMDMotionCommand
     | { type: 'command', name: 'setRoamMode', value: { mode: MMDRoamMode } }
     | { type: 'command', name: 'playClip', value: { name: string, loop?: boolean } }
     | { type: 'command', name: 'stopClip', value?: undefined }
+    | { type: 'command', name: 'setPerformanceLayer', value: { layer: string, enabled: boolean } }
     | MMDMotionTraceCommand
 
 function isRoamMode(value: unknown): value is MMDRoamMode {
@@ -164,6 +189,8 @@ export const useMMDMotionDiagnostics = defineStore('mmd-motion-diagnostics', () 
    * director as a `debug` request; `loop` unset keeps the clip's own loop setting.
    */
   const clipRequest = shallowRef<{ seq: number, name: string | null, loop: boolean | undefined } | null>(null)
+  /** The latest lab request to turn one performance layer on or off; a new `seq` marks a new request. */
+  const performanceLayerRequest = shallowRef<{ seq: number, layer: string, enabled: boolean } | null>(null)
   /** Set once this window's stage publishes; a stage window never mirrors another window's snapshots. */
   let publisher = false
   const snapshot = shallowRef<MMDMotionSnapshot>({
@@ -189,6 +216,7 @@ export const useMMDMotionDiagnostics = defineStore('mmd-motion-diagnostics', () 
     world: null,
     ownership: null,
     trace: null,
+    performance: null,
   })
 
   function warn() {
@@ -289,6 +317,14 @@ export const useMMDMotionDiagnostics = defineStore('mmd-motion-diagnostics', () 
       case 'stopClip':
         clipRequest.value = { seq: (clipRequest.value?.seq ?? 0) + 1, name: null, loop: undefined }
         break
+      case 'setPerformanceLayer':
+        if (typeof value !== 'object' || value === null || !('layer' in value) || typeof value.layer !== 'string' || value.layer === ''
+          || !('enabled' in value) || typeof value.enabled !== 'boolean') {
+          warn()
+          return
+        }
+        performanceLayerRequest.value = { seq: (performanceLayerRequest.value?.seq ?? 0) + 1, layer: value.layer, enabled: value.enabled }
+        break
       case 'startTrace':
       case 'markTrace':
       case 'stopTrace':
@@ -375,6 +411,7 @@ export const useMMDMotionDiagnostics = defineStore('mmd-motion-diagnostics', () 
     homeX,
     roamModeRequest,
     clipRequest,
+    performanceLayerRequest,
     publish,
     command,
     setOverlays,

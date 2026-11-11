@@ -12,18 +12,15 @@ import type { Camera, SkinnedMesh } from 'three'
 
 import type { MorphSlot } from '../../../constants/morphs'
 import type { SlotLease, SpeechEvent } from '../../../stores/expression-slots'
-import type { MMDCleanPose } from '../frame-pipeline'
 import type { createMMDMorphRuntime } from '../morph-runtime'
-import type { MMDRigProfile } from '../rig'
 
 import { IdleBehaviourReports } from '@proj-airi/motion-driver-natural/idle-activities'
 import { NaturalMotion } from '@proj-airi/motion-driver-natural/natural-motion'
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { screenInwardness } from '@proj-airi/stage-shared/stage-placement'
-import { Euler, Quaternion, Vector3 } from 'three'
+import { Vector3 } from 'three'
 
 import { applySpeechEvent, createLease, leaseReleaseAt } from '../../../stores/expression-slots'
-import { EYE_PITCH_LIMIT, EYE_YAW_LIMIT } from '../gaze'
 import { applyNaturalFace } from './face'
 import { fnv1a32 } from './seed'
 
@@ -67,13 +64,9 @@ export function projectMMDHead(
 /** Owns one model's seeded controller and absolute, pre-physics pose overlay. */
 export class MMDNaturalAdapter {
   readonly natural: NaturalMotion
-  private readonly indices = new Map<string, number>()
-  private readonly delta = new Quaternion()
-  private readonly angles = new Euler(0, 0, 0, 'YXZ')
   private time = 0
   private events = 0
   private energy = 0.5
-  private headYaw = 0
   private placement: number | null = null
   private frame: NaturalMotionFrame
   private readonly pending: NaturalEpisode[] = []
@@ -91,12 +84,7 @@ export class MMDNaturalAdapter {
   private input: MMDNaturalInput | null = null
   private readonly listeners = new Set<NaturalMotionObserver>()
 
-  constructor(
-    private readonly mesh: SkinnedMesh,
-    private readonly rig: MMDRigProfile,
-    modelKey: string,
-  ) {
-    mesh.skeleton.bones.forEach((bone, index) => this.indices.set(bone.name, index))
+  constructor(modelKey: string) {
     this.natural = new NaturalMotion({ seed: fnv1a32(modelKey) })
     this.natural.setRigTraits({ bodyFromHeadPhysics: { x: false, y: false, z: false } })
     this.natural.setObserver((event) => {
@@ -247,48 +235,21 @@ export class MMDNaturalAdapter {
     return this.natural.moodState
   }
 
-  applyPose(clean: MMDCleanPose, eyesOwned = false): void {
-    const { pose, breath } = this.frame
-    const clamp = (value: number) => Math.max(-1, Math.min(1, value))
-    const headSpan = Math.PI / 6
-    const bodySpan = Math.PI / 18
-    const write = (name: string | undefined, pitch: number, yaw: number, roll: number) => {
-      if (!name || this.rig.physicsOwned.includes(name))
-        return
-      const index = this.indices.get(name)
-      if (index === undefined)
-        return
-      this.delta.setFromEuler(this.angles.set(pitch, yaw, roll, 'YXZ'))
-      const bone = this.mesh.skeleton.bones[index]
-      bone.quaternion.copy(clean.quaternions[index]).multiply(this.delta)
-      if (name === this.rig.bones.head)
-        this.headYaw = this.angles.setFromQuaternion(bone.quaternion, 'YXZ').y
-    }
-    this.headYaw = 0
-    for (const [name, share] of [[this.rig.bones.neck, 0.4], [this.rig.bones.head, 0.6]] as const)
-      write(name, -clamp(pose.headY) * headSpan * share, clamp(pose.headX) * headSpan * share, -clamp(pose.headZ) * headSpan * share)
-    for (const [name, share] of [[this.rig.bones.spine, 0.5], [this.rig.bones.chest, 0.5]] as const) {
-      const breathPitch = name === this.rig.bones.chest ? (breath.value - 0.45) * 0.03 : 0
-      write(name, clamp(-(pose.bodyY ?? 0) + breathPitch / (bodySpan * share)) * bodySpan * share, clamp(pose.bodyX ?? 0) * bodySpan * share, -clamp(pose.bodyZ ?? 0) * bodySpan * share)
-    }
-    if (!eyesOwned) {
-      for (const name of [this.rig.bones.leftEye, this.rig.bones.rightEye])
-        write(name, -clamp(pose.eyeY) * EYE_PITCH_LIMIT, clamp(pose.eyeX) * EYE_YAW_LIMIT, 0)
-    }
-  }
-
-  applySurface(runtime: ReturnType<typeof createMMDMorphRuntime>, overrides: Readonly<Partial<Record<MorphSlot, string>>> = {}): void {
-    applyNaturalFace(runtime, this.frame, overrides)
+  /** `lidClose` is the body performer's lid closure; the face shows the larger of it and Natural's own blink closure. */
+  applySurface(runtime: ReturnType<typeof createMMDMorphRuntime>, overrides: Readonly<Partial<Record<MorphSlot, string>>> = {}, lidClose = 0): void {
+    const blinkFactor = Math.min(this.frame.blink.blinkFactor, 1 - lidClose)
+    applyNaturalFace(runtime, blinkFactor === this.frame.blink.blinkFactor ? this.frame : { ...this.frame, blink: { blinkFactor } }, overrides)
   }
 
   get diagnostics() {
-    return { events: this.events, energy: this.energy, headYaw: this.headYaw }
+    return { events: this.events, energy: this.energy }
   }
 
   /** The body adapter consumes the same frame; it must never advance Natural again. */
   get bodyFrame() {
     return {
       frame: this.frame,
+      intent: this.natural.bodyIntent(),
       input: this.input,
       onChat: this.natural.onChat || Math.hypot(this.natural.chatHeadFollow.x, this.natural.chatHeadFollow.y) > 0,
     }

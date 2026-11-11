@@ -1,11 +1,9 @@
-import type { ArmRestInput, ArmRestSwing } from '@proj-airi/motion-driver-humanoid/rest-pose'
-import type { ArmBoneName, HumanoidBoneName, HumanoidFingerBoneName } from '@proj-airi/motion-driver-humanoid/types'
+import type { HumanoidBoneName } from '@proj-airi/motion-driver-humanoid/types'
 
-import type { MMDCleanPose } from '../frame-pipeline'
 import type { MMDArmTestColliders, MMDTouchCollider } from '../touch/colliders'
 import type { MMDBodyPose } from './pose'
 
-import { createArmRest, DEFAULT_ARM_REST_POSE } from '@proj-airi/motion-driver-humanoid/rest-pose'
+import { DEFAULT_ARM_REST_POSE } from '@proj-airi/motion-driver-humanoid/performance'
 import { Matrix4, Vector3 } from 'three'
 
 import { mmdTouchColliderCenter } from '../touch/colliders'
@@ -15,12 +13,7 @@ type Side = 'left' | 'right'
 /** The clip ownership of the arm bone groups, 0 to 1. */
 export type MMDArmOwnership = Record<'leftArm' | 'rightArm' | 'leftFingers' | 'rightFingers', number>
 
-export interface MMDArmRestInput {
-  readonly dt: number
-  /** -1..1 */
-  readonly breath: number
-  readonly torsoRoll: number
-  readonly swing: Readonly<Record<Side, ArmRestSwing>> | undefined
+export interface MMDArmLiftInput {
   readonly swingWeight: number
   readonly owned: MMDArmOwnership
   /** Debug override of the rest hang angle in degrees below horizontal; null keeps the default. */
@@ -39,6 +32,10 @@ export interface MMDArmsMeasurement {
   hangDeg: number
   /** Both hand bones sit below the hips bone, so the arms hang. */
   handBelowHip: boolean
+  /** Deepest arm capsule-radius overlap of a kinematic head or neck body per side, in model units. */
+  headPenetration: Record<Side, number>
+  /** The performer's arm collision correction in effect per side, in degrees. */
+  correctionDeg: Record<Side, number>
 }
 
 const radiansPerDegree = Math.PI / 180
@@ -64,12 +61,8 @@ const SOLVER_CLEARANCE_RATIO = 0.03
 /** A step needs the clearance violated on this many consecutive solving frames, and solving starts after the warm-up, so load transients never move the hang. */
 const SOLVE_PERSISTENCE_FRAMES = 5
 const SOLVE_WARMUP_FRAMES = 60
-const DEFAULT_HANG_DEG = DEFAULT_ARM_REST_POSE.hangAngle / radiansPerDegree
-
-function mean(values: readonly (number | null)[]): number | undefined {
-  const present = values.filter((value): value is number => value !== null)
-  return present.length === 0 ? undefined : present.reduce((sum, value) => sum + value, 0) / present.length
-}
+/** The performer's rest abduction, restated as the hang below horizontal that diagnostics and the debug override use. */
+const DEFAULT_HANG_DEG = 90 - DEFAULT_ARM_REST_POSE.abduct / radiansPerDegree
 
 function signedDistance(collider: MMDTouchCollider, point: Vector3): number {
   const [x, y, z] = collider.size
@@ -111,81 +104,40 @@ function boundingRadius(collider: MMDTouchCollider): number {
   return collider.shape === 'sphere' ? x : collider.shape === 'box' ? Math.hypot(x, y, z) : x + y / 2
 }
 
-/** Relaxes the arms, hands and fingers over the bind pose and measures whether they hang clear of the body. */
-export class MMDArmRest {
-  private readonly layer = createArmRest()
-  private readonly names = new Map<ArmBoneName, string>()
-  private readonly bindArmAngle: number | undefined
-  private readonly bindForearmAngle: number | undefined
-  private readonly thumbAxis: ArmRestInput['thumbAxis']
+/**
+ * Measures whether the posed arms clear the body, and runs the per-rig hang solver whose lift the performer adds to its
+ * rest abduction. The performer owns every arm bone write.
+ */
+export class MMDArms {
   /** Degrees the arm is lifted from the default hang for this rig; only grows, in `HANG_STEP_DEG` steps, while a standing arm keeps overlapping a kinematic body. */
   private liftDeg = 0
   private overlapFrames = 0
   private frames = 0
-  /** The hang the last `apply` posed with, which is the one `measure` reports. */
+  /** The hang the last `lift` reported, which is the one `measure` reports. */
   private appliedHang = DEFAULT_HANG_DEG
   private solving = false
+  private readonly lifted = { left: 0, right: 0 }
 
-  constructor(private readonly pose: MMDBodyPose, private readonly colliders: MMDArmTestColliders) {
-    const { rig } = pose
-    for (const side of ['left', 'right'] as const) {
-      for (const bone of ['Shoulder', 'UpperArm', 'LowerArm', 'Hand'] as const) {
-        const humanoid = `${side}${bone}` as HumanoidBoneName & ArmBoneName
-        const name = rig.bones[humanoid]
-        if (name)
-          this.names.set(humanoid, name)
-      }
-    }
-    for (const [finger, name] of Object.entries(rig.fingerBones) as [HumanoidFingerBoneName, string][])
-      this.names.set(finger, name)
-    this.bindArmAngle = mean([rig.restArmAngles.left, rig.restArmAngles.right])
-    this.bindForearmAngle = mean([rig.restForearmAngles.left, rig.restForearmAngles.right])
-    const { left, right } = rig.thumbAxis
-    this.thumbAxis = left && right
-      ? { left: { x: left[0], y: left[1], z: left[2] }, right: { x: right[0], y: right[1], z: right[2] } }
-      : undefined
-  }
+  constructor(private readonly pose: MMDBodyPose, private readonly colliders: MMDArmTestColliders, private readonly head: readonly MMDTouchCollider[]) {}
 
-  apply(clean: MMDCleanPose, input: MMDArmRestInput): void {
-    if (this.bindArmAngle === undefined)
-      return
+  /** The extra abduction per side in radians for this frame; solving runs only while both arms are free and not swinging. */
+  lift(input: MMDArmLiftInput): Readonly<Record<Side, number>> {
     this.appliedHang = input.hangDeg ?? DEFAULT_HANG_DEG - this.liftDeg
-    // Solve only while both arms are free and not swinging, so a gait or a clip never changes the standing hang.
     this.frames++
     this.solving = this.frames > SOLVE_WARMUP_FRAMES && input.hangDeg === null && input.swingWeight === 0 && input.owned.leftArm === 0 && input.owned.rightArm === 0
-    const pose = { ...DEFAULT_ARM_REST_POSE, hangAngle: this.appliedHang * radiansPerDegree }
-    const frame = this.layer.step({
-      bindArmAngle: this.bindArmAngle,
-      bindForearmAngle: this.bindForearmAngle,
-      thumbAxis: this.thumbAxis,
-      pose,
-      breath: input.breath,
-      torsoRoll: input.torsoRoll,
-      swing: input.swing,
-      swingWeight: input.swingWeight,
-      owned: input.owned,
-    }, input.dt)
-    // NOTICE:
-    // q_final = q_mixer * slerp(I, rest, 1 - owned) only approximates slerp(rest, clip, w) between 0 and 1.
-    // Layers do not blend in delta space.
-    // Source: design notes B.3, clip ownership mask.
-    // Remove when animation layers blend in delta space.
-    for (const [bone, rotation] of Object.entries(frame.rotations) as [ArmBoneName, NonNullable<typeof frame.rotations[ArmBoneName]>][])
-      this.pose.rotate(this.names.get(bone), clean, rotation)
+    this.lifted.left = this.lifted.right = (DEFAULT_HANG_DEG - this.appliedHang) * radiansPerDegree
+    return this.lifted
   }
 
   /**
-   * World positions of the named bones with the arms and fingers in the standing rest pose (no swing, no clip, no breath),
-   * so the stage placement rect is measured from the pose she stands in rather than the bind pose. The bones are restored.
+   * World positions of the named bones with the arms and fingers posed by `pose` (the standing rest pose), so the stage
+   * placement rect is measured from the pose she stands in rather than the bind pose. Every bone is restored.
    */
-  restPositions(clean: MMDCleanPose, names: readonly string[]): Map<string, [number, number, number]> {
-    const bones = [...new Set(this.names.values())].flatMap((name) => {
-      const bone = this.pose.bone(name)
-      return bone ? [bone] : []
-    })
-    const saved = bones.map(bone => bone.quaternion.clone())
-    this.apply(clean, { dt: 0, breath: 0, torsoRoll: 0, swing: undefined, swingWeight: 0, owned: { leftArm: 0, rightArm: 0, leftFingers: 0, rightFingers: 0 }, hangDeg: null })
+  restPositions(names: readonly string[], pose: () => void): Map<string, [number, number, number]> {
     const { mesh } = this.pose.mmd
+    const bones = mesh.skeleton.bones
+    const saved = bones.map(bone => bone.quaternion.clone())
+    pose()
     mesh.updateWorldMatrix(true, true)
     const positions = new Map<string, [number, number, number]>()
     for (const name of names) {
@@ -200,7 +152,7 @@ export class MMDArmRest {
     return positions
   }
 
-  measure(owned: MMDArmOwnership): MMDArmsMeasurement {
+  measure(owned: MMDArmOwnership, correctionDeg: Readonly<Record<Side, number>>): MMDArmsMeasurement {
     const { mesh } = this.pose.mmd
     mesh.updateWorldMatrix(true, true)
     const toMesh = new Matrix4().copy(mesh.matrixWorld).invert()
@@ -210,6 +162,7 @@ export class MMDArmRest {
     }
     const hips = position('hips')
     const penetration = { left: 0, right: 0 }
+    const headPenetration = { left: 0, right: 0 }
     const clothContact = { left: 0, right: 0 }
     let tight = 0
     let handsBelow = hips !== null
@@ -225,6 +178,7 @@ export class MMDArmRest {
       const samples = capsules.flatMap(({ from, to, radius }) =>
         Array.from({ length: SAMPLES_PER_CAPSULE }, (_, index) => ({ point: from.clone().lerp(to, index / (SAMPLES_PER_CAPSULE - 1)), radius, clearance: SOLVER_CLEARANCE_RATIO * from.distanceTo(to) })))
       penetration[side] = this.deepest(samples, this.colliders.kinematic, toMesh)
+      headPenetration[side] = this.deepest(samples, this.head, toMesh)
       if (this.solving)
         tight = Math.max(tight, this.deepest(samples.map(({ point, radius, clearance }) => ({ point, radius: radius + clearance })), this.colliders.kinematic, toMesh))
       clothContact[side] = this.deepest(samples.map(({ point }) => ({ point, radius: 0 })), this.colliders.dynamic, toMesh)
@@ -245,6 +199,8 @@ export class MMDArmRest {
       clothContact,
       hangDeg: this.appliedHang,
       handBelowHip: handsBelow,
+      headPenetration,
+      correctionDeg: { left: correctionDeg.left, right: correctionDeg.right },
     }
   }
 

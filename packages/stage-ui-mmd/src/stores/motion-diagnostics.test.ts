@@ -45,6 +45,7 @@ describe('mmd motion diagnostics channel', () => {
           world: null,
           ownership: null,
           trace: null,
+          performance: null,
         },
       })
     }
@@ -256,6 +257,34 @@ describe('mmd motion diagnostics channel', () => {
     }
     finally {
       now.mockRestore()
+      disposePinia(pinia)
+    }
+  })
+
+  it('accepts a performance layer switch and rejects malformed ones with one warning', async () => {
+    const pinia = createPinia()
+    const store = useMMDMotionDiagnostics(pinia)
+    const peer = new BroadcastChannel('airi-stores-stage-ui-mmd-motion-diagnostics')
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const applied = new Promise<void>((resolve, reject) => {
+        const signal = AbortSignal.timeout(2000)
+        const stop = watch(() => store.performanceLayerRequest, () => resolve(), { once: true, flush: 'sync' })
+        signal.addEventListener('abort', () => {
+          stop()
+          reject(signal.reason)
+        }, { once: true })
+      })
+      peer.postMessage({ type: 'command', name: 'setPerformanceLayer', value: { layer: '', enabled: true } })
+      peer.postMessage({ type: 'command', name: 'setPerformanceLayer', value: { layer: 'gesture', enabled: 'no' } })
+      peer.postMessage({ type: 'command', name: 'setPerformanceLayer', value: { layer: 'gesture', enabled: false } })
+      await applied
+      expect(store.performanceLayerRequest).toEqual({ seq: 1, layer: 'gesture', enabled: false })
+      expect(warning).toHaveBeenCalledTimes(1)
+    }
+    finally {
+      warning.mockRestore()
+      peer.close()
       disposePinia(pinia)
     }
   })

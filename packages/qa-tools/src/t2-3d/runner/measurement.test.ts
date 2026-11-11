@@ -14,6 +14,7 @@ it('keeps scored percentiles and exposes exactly one walk timeline and one arm r
     feet: { maxError: 0, errorL: 0, errorR: 0, contact: 0 },
     lookAt: { target: null, yaw: 0, pitch: 0, turning: false, turns: 0 },
     arms: null,
+    performance: null,
     locomotion: null,
   })
   const summary = measurement.finish({

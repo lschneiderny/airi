@@ -142,6 +142,27 @@ export function buildMMDArmTestColliders(
   }
 }
 
+/**
+ * The kinematic head and neck bodies, which the arm test excludes. The body performer keeps arms clear of them as a
+ * second obstacle list; physics bodies (hair) and coat-sized shells are skipped by the same rules as the arm test.
+ */
+export function buildMMDHeadColliders(
+  source: MMDArmTestSource,
+  boneInverses: readonly Matrix4[],
+  bindMatrix: Matrix4,
+  rig: Pick<MMDRigProfile, 'bones'>,
+): MMDTouchCollider[] {
+  const roots = mmdTouchRegionRoots(rig)
+  const [leftArm, rightArm] = [rig.bones.leftUpperArm, rig.bones.rightUpperArm].map(name => source.bones.find(bone => bone.name === name))
+  const maxSize = leftArm && rightArm ? MAX_BODY_SPAN_FRACTION * new Vector3().fromArray(leftArm.position).distanceTo(new Vector3().fromArray(rightArm.position)) : Number.POSITIVE_INFINITY
+  const rigidBodies = source.rigidBodies.filter(body => body.physicsMode === PHYSICS_FOLLOW_BONE
+    && Math.max(...(body.shapeType === SHAPE_BOX ? body.shapeSize : [body.shapeSize[0]])) <= maxSize)
+  return buildColliders({ bones: source.bones, rigidBodies }, boneInverses, bindMatrix, (boneIndex) => {
+    const region = mmdTouchRegionOf(boneIndex, source.bones, roots)
+    return region === 'head' ? region : null
+  })
+}
+
 function buildColliders(
   source: MMDTouchSource,
   boneInverses: readonly Matrix4[],

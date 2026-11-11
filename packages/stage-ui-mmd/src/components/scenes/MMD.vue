@@ -87,13 +87,14 @@ import { MMDBodyPose } from '../../composables/mmd/body/pose'
 import { ARM_SWING_REACH, resolveFrameBounds } from '../../composables/mmd/camera-bounds'
 import { createMMDMorphRuntime } from '../../composables/mmd/morph-runtime'
 import { MotionRegistrations } from '../../composables/mmd/motion-registrations'
-import { createMMDMotionTraceSampler } from '../../composables/mmd/motion-trace'
+import { createMMDMotionTraceSampler, mmdBodyTraceEvent } from '../../composables/mmd/motion-trace'
 import { MMDNaturalAdapter, mmdScreenInwardness, projectMMDHead } from '../../composables/mmd/natural/adapter'
 import { fnv1a32 } from '../../composables/mmd/natural/seed'
 import { createOverlayLabel } from '../../composables/mmd/overlay-label'
 import { MMDOverlays } from '../../composables/mmd/overlays'
 import { readMMDRigProfile } from '../../composables/mmd/rig'
 import { buildMMDClipMask, mmdClipMaskBones } from '../../composables/mmd/rig/clip-mask'
+import { composeMMDStages } from '../../composables/mmd/stage-composition'
 import { applyStageCamera, applyStageRoot, measureStageExtent, projectCharacterPlacement, rowInputs, stagePixelRatio } from '../../composables/mmd/stage-world'
 import { chatStandX, frameClocks, MMDStanceDirector } from '../../composables/mmd/stance'
 import { buildMMDTouchColliders, MMDTouch, mmdTouchRegionRoots } from '../../composables/mmd/touch'
@@ -742,8 +743,8 @@ function renderLoop(now = performance.now()) {
     diagnostics.publish({
       loadedModelKey,
       driver: motionDriver.value,
-      rig: rig ?? null,
-      natural: natural?.diagnostics ?? null,
+      rig: rig ? { ...rig, capabilities: body?.capabilities ?? null } : null,
+      natural: natural ? { ...natural.diagnostics, headYaw: body?.diagnostics.lookAt.yaw ?? 0 } : null,
       feet: motionDriver.value === 'natural' ? body?.diagnostics.feet ?? null : null,
       lookAt: motionDriver.value === 'natural' ? body?.diagnostics.lookAt ?? null : null,
       locomotion: motionDriver.value === 'natural' ? body?.diagnostics.locomotion ?? null : null,
@@ -757,6 +758,7 @@ function renderLoop(now = performance.now()) {
       stageModel: stageModel.value,
       world: worldSnapshot(),
       ownership: motionDriver.value === 'natural' && body ? { ...body.ownership() } : null,
+      performance: motionDriver.value === 'natural' ? body?.diagnostics.performance ?? null : null,
     })
   }
 }
@@ -1224,7 +1226,7 @@ async function loadModel(src: string) {
     emote = useMMDEmote(expressionMorphs)
     gaze = createGazeController(mesh)
     rig = readMMDRigProfile(resolved.mmd.pmx)
-    natural = new MMDNaturalAdapter(mesh, rig, modelKey)
+    natural = new MMDNaturalAdapter(modelKey)
     const activeStance = new MMDStanceDirector()
     stance = activeStance
     const activeMesh = mesh
@@ -1251,6 +1253,9 @@ async function loadModel(src: string) {
           // The root is placed on the floor line (and the body re-based there) once the stage extent is measured.
           rootMotion: props.stageWorld !== undefined && stageExtent !== undefined,
           frame: natural.bodyFrame.frame,
+          intent: natural.bodyFrame.intent,
+          energy: props.naturalEnergy ?? naturalSettings.document.energy,
+          stance: activeStance.intent?.stance,
           target: resolveBodyTarget(bodyPoints, natural.bodyFrame, gazeMode.value, activeStance.intent),
           ...diagnostics.debugFlags,
           stanceClips: activeStance.baseClips,
@@ -1272,128 +1277,128 @@ async function loadModel(src: string) {
       } },
     })
     diagnostics.setMetrics(animation.pipeline.metrics)
-    animation.pipeline.poseStages.push(
-      { id: 'natural', run: ({ dt, clean }) => {
-        if (motionDriver.value !== 'natural' || !natural || !camera || !canvasRef.value)
-          return
-        const rect = canvasRef.value.getBoundingClientRect()
-        activeMesh.updateWorldMatrix(true, false)
-        const head = projectMMDHead(activeMesh, camera, rect)
-        const cursor = gazeMode.value === 'mouse' && head && props.cursorPosition
-          ? { x: (props.cursorPosition.x - head.x) / head.width, y: (head.y - props.cursorPosition.y) / head.width }
-          : gazeMode.value === 'camera' ? { x: 0, y: 0 } : null
-        const headX = props.stageWorld ? stageHeadDipX(props.stageWorld) ?? head?.x : head?.x
-        const speaking = props.nowSpeaking
-        const placement = props.screenPlacement
-        const dipScale = placement ? placement.windowBounds.width / document.documentElement.clientWidth : 0
-        const bounds = props.chatTarget?.bounds
-        const chatPoint = head && placement && bounds && dipScale > 0
-          ? {
-              x: ((bounds.x + bounds.width / 2 - placement.windowBounds.x) / dipScale - head.x) / head.width,
-              y: (head.y - (bounds.y + bounds.height / 2 - placement.windowBounds.y) / dipScale) / head.width,
-            }
-          : null
-        natural.setPerformanceSettings(toRaw(props.performanceSettings))
-        natural.setIdleDrive(resolveIdleDrive())
-        natural.advance(dt, {
-          performance: props.performance,
-          energy: props.naturalEnergy ?? naturalSettings.document.energy,
-          voice: { speaking, speechActiveOrRecent: speaking, level: props.mouthOpenSize },
-          cursor,
-          chat: props.chatTarget
-            ? { ...props.chatActivity ?? { typing: false, sentSeq: 0, sentWords: 0 }, target: props.chatTarget.visible ? chatPoint : null, unfoldSeq: chatUnfoldSeq }
-            : null,
-          placement: !head || headX === undefined
-            ? null
-            : placement && dipScale > 0
-              ? screenInwardness(placement.displays, placement.windowBounds.x + headX * dipScale)
-              : mmdScreenInwardness(rect, headX),
-          emotionStrengths: naturalSettings.document.emotionStrength[props.modelId ?? ''] ?? defaultEmotionStrengths,
-        }, naturalSeconds)
-        for (const report of natural.idleBehaviours)
-          emit('idle', report)
-        natural.applyPose(clean, true)
-        // Channels must be prepared before bone-morph evaluation. Their surface
-        // effects are applied after physics by the morph-runtime surface stage.
-        natural.applySurface(runtime, morphOverrides.value)
-      } },
-      ...body.poseStages,
-      { id: 'classic-gaze', run: ({ dt, clean }) => {
-        if (motionDriver.value === 'classic')
-          gaze?.update(resolveGazeOffset(), dt, clean)
-      } },
-      { id: 'classic-face', run: ({ dt }) => {
-        if (motionDriver.value !== 'classic')
-          return
-        emote?.update(dt)
-        blink.update(blinkMorphs, dt)
-      } },
-      { id: 'lip-sync', run: ({ dt }) => {
-        lipSync.update(lipMorphs, dt)
-        runtime.setComposition({ speakEnv: props.currentAudioSource ? 1 : 0 })
-      } },
-      { id: 'bone-morphs', run: () => {
-        activeMesh.skeleton.bones.forEach((bone, index) => {
-          const quaternion = proceduralPose[index].quaternion
-          quaternion.x = bone.quaternion.x
-          quaternion.y = bone.quaternion.y
-          quaternion.z = bone.quaternion.z
-          quaternion.w = bone.quaternion.w
-        })
-        runtime.setMaterialOpacityOverrides(materialOpacity.value)
-        runtime.applyBoneStage(proceduralPose)
-      } },
-    )
-    animation.pipeline.surfaceStages.push(
-      body.surfaceStage,
-      { id: 'morphs', run: () => runtime.applySurfaceStage() },
-    )
+    const activeBody = body
     const sampler = createMMDMotionTraceSampler(resolved.mmd, rig, new MMDBodyPose(resolved.mmd, rig))
-    const source: MMDMotionTraceSource = {
+    let source: MMDMotionTraceSource | undefined
+    let lastGoal: string | null = null
+    const stages = composeMMDStages({
+      body: activeBody,
+      host: {
+        'natural': ({ dt }) => {
+          if (motionDriver.value !== 'natural' || !natural || !camera || !canvasRef.value)
+            return
+          const rect = canvasRef.value.getBoundingClientRect()
+          activeMesh.updateWorldMatrix(true, false)
+          const head = projectMMDHead(activeMesh, camera, rect)
+          const cursor = gazeMode.value === 'mouse' && head && props.cursorPosition
+            ? { x: (props.cursorPosition.x - head.x) / head.width, y: (head.y - props.cursorPosition.y) / head.width }
+            : gazeMode.value === 'camera' ? { x: 0, y: 0 } : null
+          const headX = props.stageWorld ? stageHeadDipX(props.stageWorld) ?? head?.x : head?.x
+          const speaking = props.nowSpeaking
+          const placement = props.screenPlacement
+          const dipScale = placement ? placement.windowBounds.width / document.documentElement.clientWidth : 0
+          const bounds = props.chatTarget?.bounds
+          const chatPoint = head && placement && bounds && dipScale > 0
+            ? {
+                x: ((bounds.x + bounds.width / 2 - placement.windowBounds.x) / dipScale - head.x) / head.width,
+                y: (head.y - (bounds.y + bounds.height / 2 - placement.windowBounds.y) / dipScale) / head.width,
+              }
+            : null
+          natural.setPerformanceSettings(toRaw(props.performanceSettings))
+          natural.setIdleDrive(resolveIdleDrive())
+          natural.advance(dt, {
+            performance: props.performance,
+            energy: props.naturalEnergy ?? naturalSettings.document.energy,
+            voice: { speaking, speechActiveOrRecent: speaking, level: props.mouthOpenSize },
+            cursor,
+            chat: props.chatTarget
+              ? { ...props.chatActivity ?? { typing: false, sentSeq: 0, sentWords: 0 }, target: props.chatTarget.visible ? chatPoint : null, unfoldSeq: chatUnfoldSeq }
+              : null,
+            placement: !head || headX === undefined
+              ? null
+              : placement && dipScale > 0
+                ? screenInwardness(placement.displays, placement.windowBounds.x + headX * dipScale)
+                : mmdScreenInwardness(rect, headX),
+            emotionStrengths: naturalSettings.document.emotionStrength[props.modelId ?? ''] ?? defaultEmotionStrengths,
+          }, naturalSeconds)
+          for (const report of natural.idleBehaviours)
+            emit('idle', report)
+          // Channels must be prepared before bone-morph evaluation. Their surface
+          // effects are applied after physics by the morph-runtime surface stage.
+          natural.applySurface(runtime, morphOverrides.value, activeBody.lidClose)
+        },
+        'classic-gaze': ({ dt, clean }) => {
+          if (motionDriver.value === 'classic')
+            gaze?.update(resolveGazeOffset(), dt, clean)
+        },
+        'classic-face': ({ dt }) => {
+          if (motionDriver.value !== 'classic')
+            return
+          emote?.update(dt)
+          blink.update(blinkMorphs, dt)
+        },
+        'lip-sync': ({ dt }) => {
+          lipSync.update(lipMorphs, dt)
+          runtime.setComposition({ speakEnv: props.currentAudioSource ? 1 : 0 })
+        },
+        'bone-morphs': () => {
+          activeMesh.skeleton.bones.forEach((bone, index) => {
+            const quaternion = proceduralPose[index].quaternion
+            quaternion.x = bone.quaternion.x
+            quaternion.y = bone.quaternion.y
+            quaternion.z = bone.quaternion.z
+            quaternion.w = bone.quaternion.w
+          })
+          runtime.setMaterialOpacityOverrides(materialOpacity.value)
+          runtime.applyBoneStage(proceduralPose)
+        },
+        'morphs': () => runtime.applySurfaceStage(),
+        'motion-trace': (context) => {
+          if (!source || sampler.recorder.state() !== 'recording')
+            return
+          if (sampler.recorder.frames === 0)
+            lastGoal = null
+          else
+            source.seconds += context.dt
+          const gait = activeBody.locomotionFrame
+          const target = activeBody.diagnostics.lookAt.target
+          const voice = natural?.bodyFrame.input?.voice
+          sampler.inputs.channels = {
+            voiceLevel: voice?.level ?? 0,
+            speaking: voice?.speaking ? 1 : 0,
+            targetX: target?.x,
+            targetY: target?.y,
+            targetZ: target?.z,
+            locomotionMode: gait ? ['idle', 'turning', 'starting', 'walking', 'stopping'].indexOf(gait.mode) : 0,
+            gaitWeight: gait?.weight ?? 0,
+          }
+          sampler.stage.run(context)
+          for (const event of gait?.events ?? [])
+            sampler.recorder.event({ t: source.seconds, kind: 'gait', gait: event.kind, foot: event.foot })
+          const goal = stance?.intent?.locomotion
+          const key = `${goal?.goalX ?? null}:${goal?.pace ?? null}`
+          if (key !== lastGoal) {
+            sampler.recorder.event({ t: source.seconds, kind: 'goal', x: goal?.goalX ?? null, pace: goal?.pace ?? null })
+            lastGoal = key
+          }
+          if (source.seconds >= source.maxSeconds)
+            sampler.recorder.stop()
+        },
+      },
+    })
+    animation.pipeline.poseStages.push(...stages.pose)
+    animation.pipeline.surfaceStages.push(...stages.surface)
+    // The scene reports the stages it actually registered; `qa:stage capture` compares them with the shared composition.
+    source = {
       recorder: sampler.recorder,
       rig: { ...sampler.rig, id: modelKey },
-      stages: { pose: animation.pipeline.poseStages.map(stage => stage.id), surface: [...animation.pipeline.surfaceStages.map(stage => stage.id), 'motion-trace'] },
+      stages: { pose: animation.pipeline.poseStages.map(stage => stage.id), surface: animation.pipeline.surfaceStages.map(stage => stage.id) },
       seconds: 0,
       maxSeconds: 0,
     }
     traceSource = source
     diagnostics.setTraceSource(source)
     observeTraceEvents()
-    let lastGoal: string | null = null
-    animation.pipeline.surfaceStages.push({
-      id: 'motion-trace',
-      run(context) {
-        if (sampler.recorder.state() !== 'recording')
-          return
-        if (sampler.recorder.frames === 0)
-          lastGoal = null
-        else
-          source.seconds += context.dt
-        const gait = body?.locomotionFrame
-        const target = body?.diagnostics.lookAt.target
-        const voice = natural?.bodyFrame.input?.voice
-        sampler.inputs.channels = {
-          voiceLevel: voice?.level ?? 0,
-          speaking: voice?.speaking ? 1 : 0,
-          targetX: target?.x,
-          targetY: target?.y,
-          targetZ: target?.z,
-          locomotionMode: gait ? ['idle', 'turning', 'starting', 'walking', 'stopping'].indexOf(gait.mode) : 0,
-          gaitWeight: gait?.weight ?? 0,
-        }
-        sampler.stage.run(context)
-        for (const event of gait?.events ?? [])
-          sampler.recorder.event({ t: source.seconds, kind: 'gait', gait: event.kind, foot: event.foot })
-        const goal = stance?.intent?.locomotion
-        const key = `${goal?.goalX ?? null}:${goal?.pace ?? null}`
-        if (key !== lastGoal) {
-          sampler.recorder.event({ t: source.seconds, kind: 'goal', x: goal?.goalX ?? null, pace: goal?.pace ?? null })
-          lastGoal = key
-        }
-        if (source.seconds >= source.maxSeconds)
-          sampler.recorder.stop()
-      },
-    })
     stopMorphOverrides = watch(morphOverrides, (overrides) => {
       for (const morph of runtime.morphs) {
         runtime.clearChannel('naturalFace', morph.name)
@@ -1570,6 +1575,12 @@ watch(() => diagnostics.roamModeRequest, (request) => {
     roamMode.value = request.mode
 })
 
+// Tuning switches one performance layer at a time; the stack eases it in or out.
+watch(() => diagnostics.performanceLayerRequest, (request) => {
+  if (request)
+    body?.setPerformanceLayer(request.layer, request.enabled)
+})
+
 // Lab Play and Stop are debug requests: the director's busy, asleep and dragging rules apply, and a loop skips the
 // gesture repeat cooldown so QA can replay a gesture.
 watch(() => diagnostics.clipRequest, (request) => {
@@ -1630,6 +1641,16 @@ function observeTraceEvents() {
     if (recorded)
       source.recorder.event(recorded)
   })
+  const stopBodyEvents = body?.onEvent((event) => {
+    const source = traceSource
+    if (source?.recorder.state() === 'recording')
+      source.recorder.event(mmdBodyTraceEvent(event, source.seconds))
+  })
+  const stopNaturalEvents = stopTraceEvents
+  stopTraceEvents = () => {
+    stopNaturalEvents?.()
+    stopBodyEvents?.()
+  }
 }
 
 watch(motionDriver, () => {
@@ -1641,7 +1662,8 @@ watch(motionDriver, () => {
     }
   }
   if (mesh && rig)
-    natural = new MMDNaturalAdapter(mesh, rig, props.modelId ?? props.modelSrc ?? '')
+    natural = new MMDNaturalAdapter(props.modelId ?? props.modelSrc ?? '')
+  body?.resetPerformance()
   observeTraceEvents()
 })
 

@@ -4,6 +4,7 @@ import { join } from 'node:path'
 
 import { Transformer } from '@napi-rs/image'
 import { MotionTraceRecorder } from '@proj-airi/motion-driver-humanoid/motion-trace'
+import { MMD_POSE_STAGE_IDS, MMD_SURFACE_STAGE_IDS } from '@proj-airi/stage-ui-mmd/composables/mmd/stage-composition'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { readTrace } from '../t2-3d/read-trace'
@@ -23,6 +24,7 @@ let frameHz: number
 let probeHz: number | undefined
 let recordingPass: number
 let noticeDismissed: boolean | 'absent'
+let sceneStages: { pose: string[], surface: string[] }
 const context = { repoRoot: join(import.meta.dirname, '../../../..'), cwd: '', selfPids: [] }
 
 beforeEach(async () => {
@@ -35,6 +37,7 @@ beforeEach(async () => {
   probeHz = undefined
   recordingPass = 0
   noticeDismissed = 'absent'
+  sceneStages = { pose: [...MMD_POSE_STAGE_IDS], surface: [...MMD_SURFACE_STAGE_IDS] }
   vi.useFakeTimers()
   vi.spyOn(console, 'info').mockImplementation(() => {})
   vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -59,7 +62,7 @@ beforeEach(async () => {
       hz: 60,
       scoredFrom: 0,
       rig: { id: 'fixture', assetSha256: null, legLength: 1, bones: ['hips'], parents: [-1], restOffsets: [[0, 0, 0]], physicsOwned: [], eyeSource: 'none', hasFingers: false },
-      source: { level: 'rendered', scenario: { id: 'attach', class: 'idle', seed: 7 }, gitSha: null, dirty: null, stages: { pose: ['natural', 'locomotion', 'weight-shift', 'foot-contact', 'look-at', 'arm-rest', 'eyes'], surface: ['body-diagnostics', 'morphs', 'motion-trace'] }, omitted: [], detail: {} },
+      source: { level: 'rendered', scenario: { id: 'attach', class: 'idle', seed: 7 }, gitSha: null, dirty: null, stages: sceneStages, omitted: [], detail: {} },
     })
     for (let index = 0; index < 601; index++)
       recorder.sample(index / hz, index / hz, () => ({ x: 0, y: 0, z: 0, w: 1 }), { x: index, y: 0, z: 0 }, {})
@@ -124,6 +127,18 @@ describe('qa:stage capture', () => {
     await vi.runAllTimersAsync()
     expect(await run).toBe(2)
     expect(console.error).toHaveBeenCalledWith(expect.stringContaining(reason))
+    expect(cdp.close).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([
+    ['a stage the composition lacks', { pose: [...MMD_POSE_STAGE_IDS, 'extra'], surface: [...MMD_SURFACE_STAGE_IDS] }],
+    ['a reordered surface list', { pose: [...MMD_POSE_STAGE_IDS], surface: ['morphs', 'body-diagnostics', 'motion-trace'] }],
+  ])('refuses a scene whose stage list differs from the shared composition: %s', async (_, stages) => {
+    sceneStages = stages
+    const run = runStageCli(args, context)
+    await vi.runAllTimersAsync()
+    expect(await run).toBe(2)
+    expect(console.error).toHaveBeenCalledWith(expect.stringContaining('stage-composition-mismatch'))
     expect(cdp.close).toHaveBeenCalledTimes(1)
   })
 

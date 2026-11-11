@@ -11,6 +11,7 @@ import { performance } from 'node:perf_hooks'
 
 import { MOTION_TRACE_CHANNELS } from '@proj-airi/motion-driver-humanoid/motion-trace'
 import { findDebugTarget, CdpClient as RemoteClient } from '@proj-airi/scenarios-stage-tamagotchi-electron/runtime/remote-debug'
+import { MMD_POSE_STAGE_IDS, MMD_SURFACE_STAGE_IDS } from '@proj-airi/stage-ui-mmd/composables/mmd/stage-composition'
 
 import { readGitStateFromRepo } from '../evidence/run'
 import { parseTrace } from '../t2-3d/read-trace'
@@ -31,8 +32,12 @@ export interface CaptureOptions {
   seed: number
 }
 
-const headlessPoseStages = ['natural', 'locomotion', 'weight-shift', 'foot-contact', 'look-at', 'arm-rest', 'eyes']
-const headlessSurfaceStages = ['body-diagnostics', 'motion-trace']
+/** The scene must register exactly the shared composition the headless runner uses, or a capture is no evidence for it. */
+function assertStageComposition(stages: { pose: readonly string[], surface: readonly string[] }): void {
+  const same = (actual: readonly string[], expected: readonly string[]) => actual.length === expected.length && actual.every((id, index) => id === expected[index])
+  if (!same(stages.pose, MMD_POSE_STAGE_IDS) || !same(stages.surface, MMD_SURFACE_STAGE_IDS))
+    throw new CaptureRefusal('stage-composition-mismatch')
+}
 
 function mounted(snapshot: MMDMotionSnapshot | null): MMDMotionSnapshot {
   if (!snapshot?.loadedModelKey || !snapshot.rig)
@@ -154,6 +159,7 @@ export async function captureStage(options: CaptureOptions) {
       return { ...await drainRecordedTrace(client, stopped.trace?.frames ?? 0), shots }
     }
     let measured = await record(true)
+    assertStageComposition(measured.trace.source.stages)
     const probeGapFraction = measured.gapFraction
     const separateShots = probeGapFraction > 0.005
     let shots = measured.shots
@@ -168,7 +174,6 @@ export async function captureStage(options: CaptureOptions) {
       await prepareReplay()
       shots = await captureTimeline(client, options, snapshot, cues, true)
     }
-    const filtered = (actual: string[], expected: string[]) => actual.filter(id => expected.includes(id)).join(',') === expected.join(',')
     const capture = {
       kind: 'stage-capture',
       version: 1,
@@ -185,7 +190,7 @@ export async function captureStage(options: CaptureOptions) {
       noticeDismissed,
       shotsPass: separateShots ? 3 : 1,
       shotsNote: separateShots ? 'Discarded the screenshot probe after more than 0.5% of intervals exceeded 1/24 s, recorded again without screenshots, then replayed cues for shots; attach remains undriven.' : 'Shots were taken during the recorded timeline.',
-      parity: { stageOrder: filtered(trace.source.stages.pose, headlessPoseStages) && filtered(trace.source.stages.surface, headlessSurfaceStages) ? 'match' : 'differs', stages: trace.source.stages },
+      parity: { stageOrder: 'match', stages: trace.source.stages },
       shots: shots.map(shot => ({ ...shot, file: `shots/${shot.file}` })),
       valid: trace.hz >= 20,
       failure: trace.hz < 20 ? 'frame-rate-under-20' : null,
