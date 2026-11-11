@@ -107,6 +107,7 @@ class BodyPerformer {
         penetration: collision.penetration,
         headPenetration: collision.headPenetration,
         collisions: collision.collisions,
+        corrector: collision.corrector,
       },
     }
     for (const layer of this.options.layers ?? [])

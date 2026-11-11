@@ -182,5 +182,11 @@ export interface BodyPerformanceFrame {
      * while the rest of the body moved on; `last` names the latest side, its remaining depth in model units and tick.
      */
     readonly collisions: { readonly count: number, readonly last: { readonly side: BodySide, readonly depth: number, readonly tick: number } | null }
+    /**
+     * Arm ticks, since construction or reset, on which the corrector's discontinuous fallbacks ran: `capHits` when the
+     * 6 degree step cap bounded a projection, `guardScans` when a contact survived projection and the guard scan began.
+     * A hold (`collisions.count`) follows a failed scan.
+     */
+    readonly corrector: { readonly capHits: number, readonly guardScans: number }
   }
 }

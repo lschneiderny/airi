@@ -431,7 +431,11 @@ so the checked endpoint and the applied endpoint are the same pose.
 When no pose of an arm clears the proxies, that arm keeps its last valid arm,
 hand and finger channels while the rest of the body moves on, and
 `diagnostics.collisions` counts the tick with its side, remaining depth and
-tick; the performer never throws for it. Proxy clearance proves neither post-physics
+tick; the performer never throws for it. `diagnostics.corrector` counts the arm
+ticks on which the two discontinuous fallbacks ran: `capHits` when the 6 degree
+step cap bounded a projection step, and `guardScans` when a contact survived
+projection and the guard scan began. The counters observe the corrector and
+never change a channel. Proxy clearance proves neither post-physics
 clearance nor interpolation safety on an imported asset; the adapter unit owns
 those rendered gates.
 

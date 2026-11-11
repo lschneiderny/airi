@@ -33,6 +33,18 @@ describe('performer invariants', () => {
     expect(frame.diagnostics.collisions.count).toBeGreaterThan(0)
     expect(frame.diagnostics.collisions.last).toMatchObject({ tick: frame.tick })
     expect(frame.diagnostics.collisions.last?.depth).toBeGreaterThan(0)
+    // Both discontinuous fallbacks ran before the hold: the 6 degree step cap and the guard scan.
+    expect(frame.diagnostics.corrector.capHits).toBeGreaterThan(0)
+    expect(frame.diagnostics.corrector.guardScans).toBeGreaterThan(0)
+  })
+
+  it('counts no corrector fallback while the arms clear the proxies on their own', () => {
+    const performer = createBodyPerformer({ traits, seed: 1 })
+    let frame = performer.step(idleInput(0))
+    for (let i = 1; i < 480; i++)
+      frame = performer.step(idleInput(i / 120))
+    expect(frame.diagnostics.corrector).toEqual({ capHits: 0, guardScans: 0 })
+    expect(frame.diagnostics.collisions.count).toBe(0)
   })
 
   it('keeps a neutral toe at zero when the rig has a deforming toe bone', () => {

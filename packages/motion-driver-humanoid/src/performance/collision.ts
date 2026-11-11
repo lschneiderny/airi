@@ -16,6 +16,11 @@ export class BodyCollision {
   readonly headPenetration = { left: 0, right: 0 }
   /** Arms held at their last valid pose because no pose cleared the proxies: count, and the latest side, depth and tick. */
   readonly collisions: { count: number, last: { side: BodySide, depth: number, tick: number } | null } = { count: 0, last: null }
+  /**
+   * Arm ticks on which a discontinuous fallback ran: the 6 degree cap bounded a projection step, or the projection left
+   * a contact and the guard scan began. Counters only; they never change a channel.
+   */
+  readonly corrector = { capHits: 0, guardScans: 0 }
   /** Each side's last arm, hand and finger channels that cleared every proxy. */
   private readonly valid = new Float64Array(BODY_CHANNELS.length)
   private readonly skeleton: BodySkeleton
@@ -58,6 +63,8 @@ export class BodyCollision {
     this.previous.fill(0)
     this.collisions.count = 0
     this.collisions.last = null
+    this.corrector.capHits = 0
+    this.corrector.guardScans = 0
   }
 
   private headProbe(side: BodySide, channels: Float32Array): boolean {
@@ -169,6 +176,7 @@ export class BodyCollision {
         channels[index] += this.previous[index] * Math.exp(-BODY_TICK / 0.3)
         channels[index] = Math.max(JOINT_LIMITS[index][0], Math.min(JOINT_LIMITS[index][1], channels[index]))
       }
+      let capped = false
       for (let attempt = 0; attempt < 3; attempt++) {
         const d = this.measure(side, channels)
         if (d.depth <= 0)
@@ -186,7 +194,9 @@ export class BodyCollision {
         // norm (d x n on the chest X and Z axes) is at most |d|, so this is the smallest rotation that clears it. The
         // 1e-6 lever skin lands the linear step just outside the margin, so a grazing contact clears continuously
         // instead of falling through to the guard scan's one-sixteenth step.
-        const angle = Math.min(6 * DEG, (d.depth + 1e-6 * Math.hypot(d.x, d.y, d.z)) / norm)
+        const clearing = (d.depth + 1e-6 * Math.hypot(d.x, d.y, d.z)) / norm
+        capped ||= clearing > 6 * DEG
+        const angle = Math.min(6 * DEG, clearing)
         channels[start + 2] += angle * gx / norm
         channels[start + 3] += angle * gz / norm
         if (d.forearm)
@@ -194,7 +204,10 @@ export class BodyCollision {
         for (let j = 2; j <= 5; j++)
           channels[start + j] = Math.max(JOINT_LIMITS[start + j][0], Math.min(JOINT_LIMITS[start + j][1], channels[start + j]))
       }
+      if (capped)
+        this.corrector.capHits++
       if (this.measure(side, channels).depth > 0) {
+        this.corrector.guardScans++
         const flex = channels[start + 2]
         const abduct = channels[start + 3]
         const twist = channels[start + 4]
