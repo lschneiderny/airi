@@ -506,6 +506,89 @@ The desktop stage gates live in `src/stage/gates.ts`; `src/stage/measure.ts` pro
 - `measure --pairs` launches the app through the same pnpm resolver as T3 and doctor. The resolver finds pnpm's own `.tools` layout under `PNPM_HOME`, a JS `npm_execpath`, or a standalone pnpm binary of the pinned version, such as the one mise installs, through the `dist/pnpm.mjs` beside it.
 - `stage-frame-budget` passes its readback-max criterion with little margin, because the asynchronous read's buffer copy still stalls occasionally. If it fails again, the next fix is a CPU silhouette mask, not a threshold change. The gates and the stage architecture are recorded in [the full-screen stage ADR](../../docs/ai/adr/2026-10-31-fullscreen-stage-and-locomotion.md).
 
+## T2-3D body motion
+
+### Run
+
+`pnpm qa:motion3d run` is reserved for the headless MMD runner and currently prints `qa:motion3d run: not implemented` and exits 2.
+
+### Gate
+
+`pnpm qa:motion3d gate` is reserved for judging trace directories into `gate.json` and currently prints `qa:motion3d gate: not implemented` and exits 2.
+
+### Reference bands
+
+`pnpm qa:motion3d reference` is reserved for deriving bands from human clips and currently prints `qa:motion3d reference: not implemented` and exits 2.
+
+### Trace format
+
+The shared type and codec are exported from
+`@proj-airi/motion-driver-humanoid/motion-trace`. A capture is one `trace.json`,
+written as `JSON.stringify(trace)` with a final newline. Its `kind` is
+`motion-trace` and its integer `version` is 1. Version 1 supports at most 120 s
+of scored time; longer captures need a new format version with chunk files.
+
+`source` identifies the producer (`t2-3d`, `rendered` or `reference`), scenario
+id, class and seed, source revision and dirty state, ordered pose/surface stage
+ids, omitted production work, and provenance in `detail`. Classes are `idle`,
+`talk`, `gaze`, `emotion`, `walk` and `react`. `rig` contains a free-text model
+key (never a personal asset path), optional SHA-256, leg length in model units,
+ordered humanoid bone columns, parent indices, bind offsets, physics-owned
+slots excluded from the columns, eye source and finger availability.
+Parent indices precede their children; -1 identifies a root. Missing canonical
+bones attach to the next present ancestor. Bind offsets are parent-relative
+displacements expressed in trace axes, not bone-local axes. Secondary bones
+(hair and skirts) never become columns. A both-eyes control is copied into both
+eye columns; without an eye source there are no eye columns.
+
+Trace axes are +Y up, +Z forward at rest and +X = Y cross Z. Quaternions use
+Hamilton multiplication and `(x,y,z,w)` order; `a*b` applies b first.
+For bone world orientation W and bind orientation W0 with the model root at
+identity, N = W*conj(W0). Heading yaw is the unwrapped `atan2(f.x,f.z)` for
+`f = N_hips*(0,0,1)`. The hips column stores `Ry(-yaw)*N_hips`; every other
+column stores `conj(N_parent)*N_bone`. Bind rotations therefore become identity,
+and helper joints, IK, grants and physics fold into the recorded humanoid
+world orientations. Every stored quaternion is normalised, with w >= 0 on
+frame zero and its sign chosen for a nonnegative dot with the previous frame.
+
+`frames` is the total frame count. `hz` is the nominal sample rate (60 headless;
+median observed rate for rendered captures), while per-frame time is
+authoritative. `scoredFrom` is the first scored motion time; earlier samples
+are warm-up. Three base64 strings hold little-endian float32 blocks:
+
+| Block | Float count | Order |
+| --- | --- | --- |
+| `rot` | frames * bones * 4 | Frame, bone column, x/y/z/w |
+| `root` | frames * 4 | Hips world x/y/z in model units, then unwrapped yaw in radians |
+| `channels` | frames * 9 | Frame, channel in the fixed order below |
+
+Channels are `time`, `wall`, `voiceLevel`, `speaking`, `targetX`, `targetY`,
+`targetZ`, `locomotionMode`, `gaitWeight`. Time and wall are seconds since
+frame zero; headless wall equals motion time, and motion time sums pipeline dt.
+Voice level and gait weight are 0..1; speaking is 0 or 1. The target is a world
+point in trace axes and model units. Locomotion modes are 0 idle, 1 turning,
+2 starting, 3 walking, 4 stopping. Missing scalar channels use NaN.
+Rotations, root values and motion time must be finite; time strictly increases.
+The codec preserves every float32 bit, including missing-value NaN payloads.
+
+`events` are sorted by motion time `t` and use the shared discriminated union:
+gaze jumps (yaw/pitch in radians), emphasis, emotion pulse/hold/placebo,
+gesture, gait lift-off/heel-strike, goal, touch, mode, or marker. Gaze and
+emphasis events distinguish scenario labels from derived observations.
+Emotion trials carry optional trial ids for pooling, as documented above.
+
+The recorder grows in 600-frame chunks and drains after stopping. Header and
+events accompany only a drain beginning at frame zero. Full 600-frame chunks
+can concatenate as base64 without re-encoding; a final partial chunk ends the
+stream. Raw blocks for a typical 54-bone, 60 s, 60 Hz trace occupy about 3.3 MB,
+or 4.4 MB as base64, plus metadata and events.
+
+`readTrace` and `parseTrace` return the validated trace plus decoded blocks.
+They throw typed structural refusals named `trace-unreadable`, `trace-kind`,
+`trace-shape`, `trace-nonfinite`, `trace-unnormalized`, or `time-nonmonotonic`;
+these are never scored. Quaternion norm tolerance is 1e-3. Rate, frame-gap,
+duration, rig completeness and reference-band policy belong to the future gate.
+
 ## Gates
 
 Gate definitions live in `packages/stage-ui-live2d/src/composables/live2d/natural-motion/gates.ts`.

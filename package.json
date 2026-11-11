@@ -37,6 +37,7 @@
     "qa:mcp": "node --import tsx packages/qa-tools/bin/mcp.ts",
     "qa:model": "pnpm --silent -F @proj-airi/qa-tools run --silent model",
     "qa:motion": "pnpm -F @proj-airi/qa-tools run motion",
+    "qa:motion3d": "pnpm -F @proj-airi/qa-tools run motion3d",
     "qa:host": "node --import tsx packages/qa-tools/bin/host.ts",
     "qa:report": "pnpm -F @proj-airi/qa-tools run report",
     "qa:setup": "node --import tsx packages/qa-tools/bin/setup.ts",
