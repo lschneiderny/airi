@@ -107,18 +107,18 @@ it('sets energy, shows and hides the chat with an unfold count, and drives the c
   driver.apply({ at: 1, kind: 'chat', target: { x: 1, y: -0.5 }, unfold: true }, 1)
   expect(driver.energy).toBe(0.85)
   expect(driver.chat).toEqual({ target: { x: 1, y: -0.5 }, typing: false, sentSeq: 0, sentWords: 0, unfoldSeq: 1 })
-  driver.apply({ at: 2, kind: 'clip-claim', fadeSeconds: 0.3 }, 2)
-  driver.apply({ at: 3, kind: 'clip-release', fadeSeconds: 0.3 }, 3)
+  driver.apply({ at: 2, kind: 'clip-claim' }, 2)
+  driver.apply({ at: 3, kind: 'clip-release' }, 3)
   driver.apply({ at: 4, kind: 'chat', target: null, unfold: false }, 4)
   expect(driver.chat).toBeNull()
-  expect(clip.claim).toHaveBeenCalledWith(0.3)
-  expect(clip.release).toHaveBeenCalledWith(0.3)
+  expect(clip.claim).toHaveBeenCalledTimes(1)
+  expect(clip.release).toHaveBeenCalledTimes(1)
   expect(events.map(event => event.kind === 'marker' ? event.label : event.kind)).toEqual(['energy:0.85', 'chat:show:unfold', 'clip-claim', 'clip-release', 'chat:hide'])
 })
 
 it('refuses a clip cue without the runner clip', () => {
   const { driver } = boundary()
-  expect(() => driver.apply({ at: 0, kind: 'clip-claim', fadeSeconds: 0.3 }, 0)).toThrow(TypeError)
+  expect(() => driver.apply({ at: 0, kind: 'clip-claim' }, 0)).toThrow(TypeError)
 })
 
 it('sets activity and away and records observation markers without adapter calls', () => {

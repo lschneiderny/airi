@@ -39,8 +39,9 @@ pipeline like an app clip, and plays on the runner's mixer.
 Cue kinds beyond voice, gaze, emotion, gesture, touch, goal and activity:
 `energy` sets the user energy handed to Natural and the body (0.5 until set),
 `chat` shows or hides the chat panel (a head-width point, as the gaze cursor)
-and may unfold a reply, and `clip-claim` and `clip-release` fade the runner's
-clip in or out. Each is labelled in the trace as a `marker`.
+and may unfold a reply, and `clip-claim` and `clip-release` start and end the
+runner's clip as the app's upper clip layer, with that layer's smoothstep fade
+(0.25 s in, 0.3 s out, `@proj-airi/stage-ui-mmd/composables/mmd/layer-fade`). Each is labelled in the trace as a `marker`.
 Gaze cursors are three head widths away: x is `3*sin(yaw)`, y is `3*sin(pitch)`;
 the cue type documents how to recover angles for the world target.
 While a cue holds a cursor, the runner circles it around the target by one

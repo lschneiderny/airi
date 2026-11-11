@@ -1,4 +1,5 @@
 import { PERFORMANCE_EMOTIONS } from '@proj-airi/stage-shared/expression-performance'
+import { LAYER_FADE_SECONDS } from '@proj-airi/stage-ui-mmd/composables/mmd/layer-fade'
 import { describe, expect, it } from 'vitest'
 
 import { motion3dScenarios } from './scenarios'
@@ -87,7 +88,7 @@ describe('motion3d scenario timelines', () => {
       const release = cues.find(cue => cue.kind === 'clip-release')
       if (claim?.kind !== 'clip-claim' || release?.kind !== 'clip-release')
         throw new Error('Expected a claim and a release')
-      const full = { from: claim.at + claim.fadeSeconds, to: release.at }
+      const full = { from: claim.at + LAYER_FADE_SECONDS.upperIn, to: release.at }
       expect(full.to - full.from).toBeGreaterThanOrEqual(8)
       const peaks = cues.flatMap(cue => cue.kind === 'voice' ? cue.emphasis.map(peak => cue.at + peak.at) : [])
       expect(peaks.filter(t => t >= full.from && t <= full.to).length).toBeGreaterThanOrEqual(3)

@@ -18,8 +18,8 @@ const HAND = { radius: Math.PI / 180, hz: 1 }
 
 /** The runner's synthetic clip; the driver only says when it claims and releases the arm. */
 export interface Motion3dClipControl {
-  claim: (fadeSeconds: number) => void
-  release: (fadeSeconds: number) => void
+  claim: () => void
+  release: () => void
 }
 
 /** Owns the scenario's mutable performer inputs and labels every applied cue. */
@@ -126,9 +126,9 @@ export class Motion3dCueDriver {
         if (!this.clip)
           throw new TypeError(`${cue.kind} needs the runner's clip`)
         if (cue.kind === 'clip-claim')
-          this.clip.claim(cue.fadeSeconds)
+          this.clip.claim()
         else
-          this.clip.release(cue.fadeSeconds)
+          this.clip.release()
         this.event({ t, kind: 'marker', label: cue.kind })
         return
       default:

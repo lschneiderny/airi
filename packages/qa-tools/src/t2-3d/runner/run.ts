@@ -1,6 +1,7 @@
 import type { MotionTraceSource, MotionTraceV1 } from '@proj-airi/motion-driver-humanoid/motion-trace'
 import type { NaturalChatInput } from '@proj-airi/motion-driver-natural/natural-motion'
 import type { MMDBodyPoints } from '@proj-airi/stage-ui-mmd/composables/mmd/body/attention'
+import type { LayerFade } from '@proj-airi/stage-ui-mmd/composables/mmd/layer-fade'
 import type { Vector3 } from 'three'
 
 import type { RunGitState } from '../../evidence/run'
@@ -19,6 +20,7 @@ import { MMDBody } from '@proj-airi/stage-ui-mmd/composables/mmd/body'
 import { resolveBodyTarget } from '@proj-airi/stage-ui-mmd/composables/mmd/body/attention'
 import { MMDBodyPose } from '@proj-airi/stage-ui-mmd/composables/mmd/body/pose'
 import { MMDFramePipeline } from '@proj-airi/stage-ui-mmd/composables/mmd/frame-pipeline'
+import { LAYER_FADE_SECONDS, stepLayerFade } from '@proj-airi/stage-ui-mmd/composables/mmd/layer-fade'
 import { createMMDMotionTraceSampler } from '@proj-airi/stage-ui-mmd/composables/mmd/motion-trace'
 import { MMDNaturalAdapter } from '@proj-airi/stage-ui-mmd/composables/mmd/natural/adapter'
 import { readMMDRigProfile } from '@proj-airi/stage-ui-mmd/composables/mmd/rig'
@@ -83,15 +85,22 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
     // A scenario that claims an arm gets one programmatic clip on the runner's mixer, registered like an app clip.
     const claim = timeline.some(cue => cue.kind === 'clip-claim') ? new Motion3dClaimClip(pose, rig, options.seconds) : null
     const claimAction = claim ? mixer.clipAction(claim.clip) : null
-    // Clip commands run through the pipeline after it restores the clean pose, as the app's animation manager does, so
-    // play() captures the clean pose as the mixer's original state, not the performer's last written arm.
+    // The claim clip plays as the app's upper layer (animation-manager playLayer, stopLayer): its commands run through
+    // the pipeline after the clean pose is restored, so play() captures the clean pose as the mixer's original state,
+    // and its weight follows the app's smoothstep layer fade, not three's linear fadeIn.
+    let claimFade: LayerFade | null = null
+    let claimAmount = 0
     const cues = new Motion3dCueDriver(natural, rig.legLength ?? 0, event => sampler.recorder.event(event), claimAction && {
-      claim: fadeSeconds => pipeline?.enqueue(() => {
+      claim: () => pipeline?.enqueue(() => {
         claimAction.reset().setLoop(LoopOnce, 1)
         claimAction.clampWhenFinished = true
-        claimAction.fadeIn(fadeSeconds).play()
+        claimAction.weight = 0
+        claimAction.play()
+        claimFade = { from: 0, to: 1, elapsed: 0, duration: LAYER_FADE_SECONDS.upperIn }
       }),
-      release: fadeSeconds => pipeline?.enqueue(() => void claimAction.fadeOut(fadeSeconds)),
+      release: () => pipeline?.enqueue(() => {
+        claimFade = { from: claimAmount, to: 0, elapsed: 0, duration: LAYER_FADE_SECONDS.upperOut }
+      }),
     })
     const look = new Motion3dLookTarget(mmd.mesh, pose)
     const metrics = new Motion3dMeasurement()
@@ -245,6 +254,21 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
         targetZ: targetPoint?.z ?? Number.NaN,
       }
       metrics.scored = frame >= warmupFrames
+      // The animation manager's update: advance the layer fade, set the action and ownership weights, then step.
+      if (claimAction && claimFade) {
+        const { amount, done } = stepLayerFade(claimFade, Math.min(motion3dStep, 1 / 20))
+        claimAmount = amount
+        claimAction.weight = amount
+        pipeline.clipWeightOverrides.set(CLAIM_CLIP_NAME, amount)
+        if (done)
+          claimFade = null
+        if (done && amount === 0) {
+          pipeline.enqueue(() => {
+            claimAction.stop()
+            pipeline?.clipWeightOverrides.delete(CLAIM_CLIP_NAME)
+          })
+        }
+      }
       pipeline.step(motion3dStep)
       // Gait is evaluated inside the pose stages; channels must describe this frame.
       if (metrics.scored)

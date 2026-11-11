@@ -44,8 +44,8 @@ export type Motion3dCue
      * while she answers, so Natural glances at it. Null hides the chat.
      */
     | { at: number, kind: 'chat', target: { x: number, y: number } | null, unfold: boolean }
-    /** The runner's synthetic right-arm clip fades in or out over `fadeSeconds` on its mixer. */
-    | { at: number, kind: 'clip-claim' | 'clip-release', fadeSeconds: number }
+    /** The runner's synthetic right-arm clip starts or ends as the app's upper clip layer, with that layer's fade. */
+    | { at: number, kind: 'clip-claim' | 'clip-release' }
 
 /**
  * Plan 2.2 peaks: the first 0.6 to 1.0 s into the utterance, then seeded gaps of 0.9 to 1.5 s, so no two are closer
@@ -164,12 +164,13 @@ export const motion3dScenarios: readonly Motion3dScenario[] = [
   },
   {
     /**
-     * Plan 2.5 (C004), 30 s, class talk. A synthetic clip claims the right arm and fingers mid-stroke at 3.0 s (0.3 s
-     * fade-in) and releases them at 14.0 s (0.3 s fade-out) while utterance B (8.5 s, 10 s, six peaks) runs on the
+     * Plan 2.5 (C004), 30 s, class talk. A synthetic clip claims the right arm and fingers mid-stroke at 3.0 s and
+     * releases them at 14.0 s, with the app's upper-layer fade (version 2: smoothstep, 0.25 s in and 0.3 s out; version
+     * 1 used three's linear 0.3 s fadeIn and fadeOut), while utterance B (8.5 s, 10 s, six peaks) runs on the
      * left arm; a body poke lands 50 ms after the B peak nearest 12 s; utterance C (20 s, 7 s, four peaks) has both
      * arms free. Utterance A starts at 0.5 s (8 s, five peaks) at energy 0.85.
      */
-    version: 1,
+    version: 2,
     id: 'gesture-under-clip',
     class: 'talk',
     warmupSeconds: 10,
@@ -183,10 +184,10 @@ export const motion3dScenarios: readonly Motion3dScenario[] = [
       const cues: Motion3dCue[] = [
         { at: 0.5, kind: 'energy', level: 0.85 },
         voiceCue(0.5, 8, a),
-        { at: 3, kind: 'clip-claim', fadeSeconds: 0.3 },
+        { at: 3, kind: 'clip-claim' },
         voiceCue(8.5, 10, b),
         { at: 8.5 + poke.at + 0.05, kind: 'touch', touch: 'poke', region: 'body', x: random() * 2 - 1, y: random() * 2 - 1 },
-        { at: 14, kind: 'clip-release', fadeSeconds: 0.3 },
+        { at: 14, kind: 'clip-release' },
         voiceCue(20, 7, c),
       ]
       return cues.filter(cue => cue.at < Math.min(seconds, 120)).sort(byTime)
