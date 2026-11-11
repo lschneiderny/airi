@@ -56,6 +56,8 @@ export interface GazeOrderReport {
   readonly ordered: GazeOrderShare
   /** Over `gaze-shift:<deg>` marker events of at least LARGE_SHIFT_DEG with a `blink` marker inside the shift window. */
   readonly blink: GazeOrderShare
+  /** The accompanied large shifts by the source of their first blink. */
+  readonly blinkSources: { readonly body: number, readonly natural: number }
 }
 
 const SHIFT_PREFIX = 'gaze-shift:'
@@ -222,12 +224,13 @@ export function gazeOrderReport(input: DecodedMotionTrace, params: DetectorParam
       gateOrdered: sample.value === 1,
     }
   })
-  const blinks = markers.filter(e => e.label === 'blink').map(e => e.t)
+  // `blink` from earlier traces, `blink:<body|natural>` since the lids the face shows are recorded.
+  const blinks = markers.filter(e => e.label === 'blink' || e.label.startsWith('blink:')).map(e => ({ t: e.t, source: e.label.slice(6) || 'body' }))
   const large = shifts.flatMap((event, k) => {
     if (Number.parseFloat(event.label.slice(SHIFT_PREFIX.length)) < LARGE_SHIFT_DEG)
       return []
     const until = Math.min(shifts[k + 1]?.t ?? Number.POSITIVE_INFINITY, event.t + WINDOW_SECONDS)
-    return [blinks.some(t => t >= event.t - CLOCK_TOLERANCE && t < until - CLOCK_TOLERANCE)]
+    return [blinks.find(b => b.t >= event.t - CLOCK_TOLERANCE && b.t < until - CLOCK_TOLERANCE)?.source ?? null]
   })
   const eyesAndHead = episodes.filter(e => e.pattern !== 'no-eye-head')
   const withChest = episodes.filter(e => e.headBeforeChest !== null)
@@ -241,7 +244,8 @@ export function gazeOrderReport(input: DecodedMotionTrace, params: DetectorParam
     eyeBeforeHead: share(eyesAndHead.filter(e => e.eyeBeforeHead).length, eyesAndHead.length),
     headBeforeChest: share(withChest.filter(e => e.headBeforeChest).length, withChest.length),
     ordered: share(eyesAndHead.filter(e => e.ordered).length, eyesAndHead.length),
-    blink: share(large.filter(Boolean).length, large.length),
+    blink: share(large.filter(source => source !== null).length, large.length),
+    blinkSources: { body: large.filter(source => source === 'body').length, natural: large.filter(source => source === 'natural').length },
   }
 }
 
@@ -260,7 +264,7 @@ export function formatGazeOrderReport(report: GazeOrderReport): string {
     `eyes-only shifts: ${c.eyesOnly}; no-chest shifts: ${c.noChest}`,
     `shifts of ${LARGE_SHIFT_DEG} deg or more that recruited the head: ${c.large.headRecruited}/${c.large.shifts}`,
     `sustained shifts beyond ${TRUNK_DEG} deg of yaw that recruited the chest: ${c.sustainedWide.chestRecruited}/${c.sustainedWide.shifts}`,
-    line(`blink share over gaze-shift events of ${LARGE_SHIFT_DEG} deg or more`, report.blink),
+    `${line(`blink share over gaze-shift events of ${LARGE_SHIFT_DEG} deg or more`, report.blink)} (body ${report.blinkSources.body}, natural ${report.blinkSources.natural})`,
     '',
     'gate detector, reported only:',
     't s\thead deg\teye lead ms\tchest lag ms\teye<head\thead<chest\tordered\tgate indicator\tpattern',

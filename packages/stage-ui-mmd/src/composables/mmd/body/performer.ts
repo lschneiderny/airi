@@ -32,7 +32,7 @@ export interface MMDBodyWeights {
  * degrees, and the goal kind it moves to.
  */
 export type MMDBodyEvent
-  = | { readonly kind: 'blink' }
+  = | { readonly kind: 'blink', readonly source: 'body' | 'natural' }
     | { readonly kind: 'gaze-shift', readonly amplitudeDeg: number, readonly yawDeg: number, readonly goal: BodyPerformanceInput['gaze']['kind'] }
 
 interface Target {
@@ -214,8 +214,6 @@ export class MMDBodyPerformer {
       this.lastShiftDeg = Math.hypot(wrap(input.gaze.yaw - this.line.yaw), input.gaze.pitch - this.line.pitch) * DEG
       this.onEvent({ kind: 'gaze-shift', amplitudeDeg: this.lastShiftDeg, yawDeg: wrap(input.gaze.yaw - this.line.yaw) * DEG, goal: input.gaze.kind })
     }
-    if (frame.diagnostics.blinks > this.blinks)
-      this.onEvent({ kind: 'blink' })
     this.shifts = frame.diagnostics.gazeShifts
     this.blinks = frame.diagnostics.blinks
     this.line.yaw = frame.gaze.yaw - 0.3 * input.gaze.micro.yaw

@@ -154,9 +154,11 @@ judge eye order (`gaze.eyeLeadMs` is skipped as `missing-eye-floors`).
   never crosses its floor counts as ordered when the eyes lead, and is listed
   as `no-chest`. The count of episodes the accepted range excluded is printed
   beside the shares.
-- The blink share counts the `gaze-shift:<degrees>` marker events of 40 degrees
-  or more with a `blink` marker inside their window, which ends at the next
-  gaze-shift event or 2 s later.
+- The blink share counts the `gaze-shift` marker events of 40 degrees or more
+  with a `blink:<body|natural>` marker inside their window, which ends at the
+  next gaze-shift event or 2 s later, and splits them by the source that closed
+  the lids. The scene and the runner record the marker at the onset of the lid
+  closure the face shows, `max(1 - Natural's blinkFactor, body lidClose)`.
 
 The command prints one row per shift and per episode and writes
 `gaze-order.json` beside the trace. A trace with neither a gaze shift nor a head

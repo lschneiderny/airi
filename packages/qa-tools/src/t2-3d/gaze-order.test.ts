@@ -52,7 +52,7 @@ const eyes = { start: 0, angle: 0.25, duration: 0.08 }
 const head = { start: 0.1, angle: 0.52, duration: 0.5 }
 const chest = { start: 0.25, angle: 0.1, duration: 0.6 }
 const shift = (t: number, degrees: number): MotionTraceEvent => ({ t, kind: 'marker', label: `gaze-shift:${degrees.toFixed(2)}` })
-const blink = (t: number): MotionTraceEvent => ({ t, kind: 'marker', label: 'blink' })
+const blink = (t: number, source = 'body'): MotionTraceEvent => ({ t, kind: 'marker', label: `blink:${source}` })
 
 describe('gaze-order report', () => {
   it('orders head turns whose eyes, head and chest start one after another', () => {
@@ -86,6 +86,12 @@ describe('gaze-order report', () => {
   it('counts a blink inside a large shift\'s window and not one outside it', () => {
     const report = gazeOrderReport(gazeTrace({ eyes, head, chest }, [shift(1, 45), blink(1.5), shift(4, 45), blink(6.5), shift(7, 15), blink(7.2)]), params)
     expect(report.blink).toEqual({ ordered: 1, total: 2, share: 0.5 })
+  })
+
+  it('counts blinks from either source and splits them by source', () => {
+    const report = gazeOrderReport(gazeTrace({ eyes, head, chest }, [shift(1, 45), blink(1.1, 'natural'), shift(4, 45), blink(4.2, 'body'), shift(7, 45)]), params)
+    expect(report.blink).toEqual({ ordered: 2, total: 3, share: 2 / 3 })
+    expect(report.blinkSources).toEqual({ body: 1, natural: 1 })
   })
 
   it('refuses a trace without a head turn', () => {

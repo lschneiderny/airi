@@ -82,6 +82,9 @@ const FIXATION_SPAN = 20 * Math.PI / 180
 /** Walking looks along the travel direction, slightly down. */
 const TRAVEL_PITCH = 5 * Math.PI / 180
 const ABDUCT = { left: channelIndex('leftAbduct'), right: channelIndex('rightAbduct') } as const
+/** Lid closure the face shows at which a blink starts, and below which the lids count as open again. */
+const LID_ONSET = 0.1
+const LID_REOPEN = 0.05
 
 /** Owns one model's body: ownership, the 120 Hz clock, the gait and the performer, and the stages that pose them. */
 export class MMDBody {
@@ -97,6 +100,7 @@ export class MMDBody {
   private readonly clock = new MMDBodyClock()
   private readonly intent = new MMDBodyIntent()
   private readonly listeners = new Set<(event: MMDBodyEvent) => void>()
+  private lidsClosing = false
   private readonly masks = new Map<string, ClipBoneMask>()
   private readonly owned: Record<ClipMaskGroup, number> = { root: 0, leftLegIk: 0, rightLegIk: 0, lowerBody: 0, leftArm: 0, rightArm: 0, leftFingers: 0, rightFingers: 0, upperBody: 0, head: 0 }
   /** Ownership by non-stance clips only. Stance clips reduce foot contact through their foot-IK tracks instead. */
@@ -429,6 +433,7 @@ export class MMDBody {
         this.turns++
     }
     this.performer?.sample(this.clock.fraction)
+    this.observeLids(input)
     if (this.gait)
       this.gait = { ...this.gait, events: [...this.gaitEvents] }
     const gait = this.gait
@@ -438,6 +443,24 @@ export class MMDBody {
     this.rootYaw = gait.root.yaw
     this.root?.setPose(this.rootX, this.rootYaw)
     this.pose.mmd.mesh.updateWorldMatrix(true, true)
+  }
+
+  /**
+   * Raises one `blink` at the onset of each lid closure the face shows, `max(1 - Natural's blinkFactor, lidClose)` as
+   * `MMDNaturalAdapter.applySurface` applies it, naming the source that closes the lids.
+   */
+  private observeLids(input: MMDBodyInput): void {
+    const natural = 1 - input.frame.blink.blinkFactor
+    const body = this.lidClose
+    const closure = Math.max(natural, body)
+    if (!this.lidsClosing && closure > LID_ONSET) {
+      this.lidsClosing = true
+      const event: MMDBodyEvent = { kind: 'blink', source: body >= natural ? 'body' : 'natural' }
+      this.listeners.forEach(listener => listener(event))
+    }
+    else if (this.lidsClosing && closure < LID_REOPEN) {
+      this.lidsClosing = false
+    }
   }
 
   /** Root velocity in stance axes, model units per second; it swings the arms and never moves the root. */

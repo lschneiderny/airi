@@ -1,7 +1,7 @@
 import type { ClipMaskGroup } from '@proj-airi/motion-driver-humanoid/clip-mask'
 
 import type { LayerEvent } from '../animation-manager'
-import type { MMDBodyInput } from './index'
+import type { MMDBodyEvent, MMDBodyInput } from './index'
 
 import { AnimationClip, Euler, Quaternion, QuaternionKeyframeTrack, Vector3, VectorKeyframeTrack } from 'three'
 import { describe, expect, it } from 'vitest'
@@ -138,6 +138,21 @@ describe('mmd full-body stages', () => {
     expect(chat.yaw).toBeLessThan(-10)
     expect(away.kind).toBe('free')
     expect(Math.abs(away.yaw)).toBeLessThan(3)
+  })
+
+  it('raises one blink event per lid closure the face shows, naming Natural as its source', () => {
+    const { pipeline, body, input, setInput } = bodyFixture()
+    const events: MMDBodyEvent[] = []
+    body.onEvent(event => events.push(event))
+    const open = (blinkFactor: number, frames: number) => {
+      setInput({ frame: { ...input.frame, blink: { blinkFactor } } })
+      for (let frame = 0; frame < frames; frame++)
+        pipeline.step(1 / 60)
+    }
+    open(1, 30)
+    open(0.2, 6)
+    open(1, 30)
+    expect(events.filter(event => event.kind === 'blink')).toEqual([{ kind: 'blink', source: 'natural' }])
   })
 
   it('keeps solved feet on the stepping arcs during alternating body turns', () => {

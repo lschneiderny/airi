@@ -71,7 +71,7 @@ it('stamps a body event with the time of the frame that raised it and drops one 
   const { mmd, rig, pipeline, mixer } = bodyFixture()
   const sampler = createMMDMotionTraceSampler(mmd, rig, new MMDBodyPose(mmd, rig))
   const context = { dt: 1 / 60, mmd, mixer, clean: pipeline.clean }
-  sampler.bodyEvent({ kind: 'blink' })
+  sampler.bodyEvent({ kind: 'blink', source: 'body' })
   sampler.recorder.start({
     kind: 'motion-trace',
     version: 1,
