@@ -1794,9 +1794,6 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: 'catalog:'
         version: 1.30.0(supports-color@10.2.2)(zod@4.4.3)
-      '@pnpm/find-workspace-dir':
-        specifier: 'catalog:'
-        version: 1000.1.5
       '@proj-airi/cpu-slots':
         specifier: workspace:^
         version: link:../../packages/cpu-slots
