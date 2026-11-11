@@ -283,7 +283,7 @@ Export presets produce the sidecar runtime that Electron packages for release:
 
 ```bash
 godot --headless --export-release "Windows Desktop" out/win/godot-stage.exe
-godot --headless --export-release "Linux" out/linux/godot-stage
+godot --headless --export-release "Linux x64" out/linux/godot-stage
 godot --headless --export-release "macOS" out/mac/godot-stage.app
 ```
 

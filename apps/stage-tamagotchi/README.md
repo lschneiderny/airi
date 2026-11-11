@@ -134,7 +134,9 @@ Do not omit optional dependencies when building an installer. Windows ARM64 and 
 
 The installer bundles the Godot stage sidecar from `engines/stage-tamagotchi-godot/out/<win|mac|linux>` as `resources/godot-stage`. Exporting it needs the Godot editor version that the root `global.json` pins as `Godot.NET.Sdk`, with export templates, and the .NET 10 SDK (see the engine README, "Exporting").
 
-`electron-builder.config.ts` checks that output in `beforePack`. By default a missing or empty directory logs a warning and the package is built without the sidecar, so the Godot renderer cannot start. Set `AIRI_REQUIRE_GODOT_STAGE=true` to fail packaging instead; the release workflows do.
+`electron-builder.config.ts` checks that output in `beforePack`. By default a missing or empty directory logs a warning and the package is built without the sidecar, so the Godot renderer cannot start. Set `AIRI_REQUIRE_GODOT_STAGE=true` to fail packaging instead; `pnpm release` does.
+
+Build fork releases with `pnpm release <version>` from the repository root. It exports the sidecar, packages the installers, and uploads them to a draft GitHub release. See [`pnpm release`](../../scripts/dev-tools/README.md#pnpm-release). Releases and updates use the fork's repository, `releaseRepository` in `src/shared/release-repository.ts`. macOS builds are ad-hoc signed, so the updater is off on macOS.
 
 Windows installers are x64 only (`--windows --x64`), so only `@koromix/koffi-win32-x64` is bundled.
 

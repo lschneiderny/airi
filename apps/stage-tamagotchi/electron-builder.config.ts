@@ -44,7 +44,7 @@ else {
 
 // NOTICE:
 // electron-builder only logs a missing extraResources source and exits 0, so a package
-// can silently lack the Godot sidecar. Release CI sets AIRI_REQUIRE_GODOT_STAGE=true to fail.
+// can silently lack the Godot sidecar. `pnpm release` sets AIRI_REQUIRE_GODOT_STAGE=true to fail.
 // Remove when electron-builder fails on missing sources.
 const godotStageOutDirByPlatform: Record<string, string> = {
   win32: 'win',
