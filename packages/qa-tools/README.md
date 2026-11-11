@@ -227,8 +227,13 @@ Known limits of these rules as fixed are recorded in the goal-3 unit M and M2
 evidence. The stroke detector still fires on idle arm sway (16 to 23 strokes
 per hand in 120 s on Chisa, 76 to 90 on Ellen) and counts 4a's own 0.015 A
 post-stroke drift as a stroke, so its negative control fails and the rule is
-reported as stopped, not tuned. The pop classifier misses
-mid-stroke steps in strokes faster than 200 ms,. `cue-body`'s split-half control
+reported as stopped, not tuned. The pop classifier, sampled at 60 Hz, cannot
+see a one-frame step of 2.3 degrees in the middle of a stroke of 150 ms or less
+(in 110 ms strokes it misses 6 of 11 injected phases, in 150 ms strokes 5 of
+11); it finds every such step in strokes of 200 and 250 ms. Every pops report
+prints this limit. The arm corrector's 6 degree cap and its guard scan, the
+known source of such steps, are counted in `summary.json` and required to be 0
+by `gesture-timing` and `ownership`. `cue-body`'s split-half control
 holds on the goal-3 emotion runs, but architecture 4b's trunk terms for the
 nod, shake, lean and glance stay inside the placebo spread at the design
 amplitude, so its positive control fails and the rule is reported as stopped.
