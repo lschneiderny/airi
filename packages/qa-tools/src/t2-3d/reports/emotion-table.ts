@@ -9,9 +9,10 @@ import { motionQualityGate } from '../gate/definition'
 import { emotionMetrics, emotionTrials, onsetMetrics } from '../metrics'
 import { UPPER } from '../metrics/bones'
 import { conjugate, DEG, heading, mean, multiply, normalize, rotationVector } from '../metrics/math'
+import { postureClearingScales } from './posture-scale'
 import { criterionReport, fixed, formatReport, gateStatus, requireGate, requirement } from './report'
 
-export const EMOTION_TABLE_VERSION = 2
+export const EMOTION_TABLE_VERSION = 3
 
 /** Plan 2.3's C002 constants: the gate's own windows and threshold, and the placebo band. */
 const C = {
@@ -77,6 +78,8 @@ export interface EmotionTableDetail {
   readonly requiredPairs: readonly string[]
   readonly minSeparationFromNeutral: number | null
   readonly episodes: readonly { readonly run: string, readonly attack: number, readonly eased: number }[]
+  /** Unit M3 item 5, printed only: per emotion, the first 4c table scale clearing 2 SD from neutral and placebo on the designed overlay. */
+  readonly clearingScales: Readonly<Record<string, number | null>>
   readonly placeboP95Deg: number | null
   readonly meanHoldDeg: Readonly<Record<string, number>>
   readonly releases: readonly { readonly trial: string, readonly condition: string, readonly releaseDeg: number | null, readonly inBand: boolean }[]
@@ -84,14 +87,10 @@ export interface EmotionTableDetail {
 }
 
 /**
- * C002 emotion table, version 2 (unit M2 R4) over the pooled emotion runs: the gate's trial vectors and sigma; each
- * non-neutral emotion against neutral and against placebo required at 2 SD, as `emotion.minSeparationFromNeutral`;
- * every other pair printed as report only. The pooled verdict comes from the gate run with `--require` C002's ids.
+ * The gate's S3 separation over pooled trials: condition centres on the trial vectors over the UPPER bones every trial
+ * carries, the pooled within-condition sigma, and every pair's centre distance in sigma units, keyed `a|b` with a < b.
  */
-export function emotionTableReport(runs: readonly LoadedRun[], bands: MotionBandsFile): CriterionReport<EmotionTableDetail> {
-  const emotion = bands.classes.emotion
-  const perRun = runs.map(run => ({ run, trials: emotionTrials(run.p) }))
-  const trials: EmotionTrial[] = perRun.flatMap(x => x.trials)
+export function separationTable(trials: readonly EmotionTrial[]) {
   const conditions = [...new Set(trials.map(t => t.condition))].sort()
   const bones = UPPER.filter(b => trials.every(t => t.posture[b]))
   const vector = (t: EmotionTrial) => bones.flatMap(b => t.posture[b] ?? [])
@@ -106,6 +105,19 @@ export function emotionTableReport(runs: readonly LoadedRun[], bands: MotionBand
     for (let j = i + 1; j < conditions.length; j++)
       separation[`${conditions[i]}|${conditions[j]}`] = sigma > 1e-18 ? distance(centres.get(conditions[i]) ?? [], centres.get(conditions[j]) ?? []) / sigma : 0
   }
+  return { conditions, bones, vector, sigma, separation }
+}
+
+/**
+ * C002 emotion table, version 2 (unit M2 R4) over the pooled emotion runs: the gate's trial vectors and sigma; each
+ * non-neutral emotion against neutral and against placebo required at 2 SD, as `emotion.minSeparationFromNeutral`;
+ * every other pair printed as report only. The pooled verdict comes from the gate run with `--require` C002's ids.
+ */
+export function emotionTableReport(runs: readonly LoadedRun[], bands: MotionBandsFile): CriterionReport<EmotionTableDetail> {
+  const emotion = bands.classes.emotion
+  const perRun = runs.map(run => ({ run, trials: emotionTrials(run.p) }))
+  const trials: EmotionTrial[] = perRun.flatMap(x => x.trials)
+  const { conditions, bones, vector, sigma, separation } = separationTable(trials)
   const noOp = (c: string) => c === 'neutral' || c === 'placebo'
   const required = Object.entries(separation).filter(([pair]) => {
     const [a, b] = pair.split('|')
@@ -159,6 +171,7 @@ export function emotionTableReport(runs: readonly LoadedRun[], bands: MotionBand
     separation,
     failingPairs: failing,
     requiredPairs: required.map(([pair]) => pair),
+    clearingScales: postureClearingScales(runs.map(r => r.input), x => separationTable(x).separation, C.separation),
     minSeparationFromNeutral: fromNeutral,
     episodes,
     placeboP95Deg: placeboP95 === null ? null : placeboP95 * DEG,
@@ -177,6 +190,7 @@ export function formatEmotionTable(report: CriterionReport<EmotionTableDetail>):
     `\t${d.conditions.join('\t')}`,
     ...d.conditions.map(a => `${a}\t${d.conditions.map(b => cell(a, b)).join('\t')}`),
     `required pairs (non-neutral against neutral and placebo) below ${C.separation}: ${d.failingPairs.join(', ') || 'none'}; every other cell is report only`,
+    `designed 4c overlay (report only, unit M3 item 5): first table scale at which each emotion clears ${C.separation} SD from neutral and placebo: ${Object.entries(d.clearingScales).map(([e, s]) => `${e} ${s === null ? '> 8' : s}`).join(', ')}`,
     `mean hold |p| per emotion, deg: ${Object.entries(d.meanHoldDeg).map(([c, v]) => `${c} ${fixed(v, 2)}`).join(', ')}; placebo p95 ${fixed(d.placeboP95Deg, 2)}`,
     'release per trial: trial, condition, |r_release| deg, in band',
     ...d.releases.map(r => `  ${r.trial}\t${r.condition}\t${fixed(r.releaseDeg, 2)}\t${r.inBand ? 'yes' : 'no'}`),

@@ -8,10 +8,12 @@ import { createRandomStream } from '@proj-airi/motion-driver-natural/random'
 import { beforeAll, describe, expect, it } from 'vitest'
 
 import { loadBands } from '../gate/load'
+import { emotionTrials, prepareTrace } from '../metrics'
 import { cueBodyReport } from './cue-body'
-import { C002_REQUIRED, emotionTableReport } from './emotion-table'
+import { C002_REQUIRED, emotionTableReport, separationTable } from './emotion-table'
 import { ownershipReport } from './ownership'
 import { popsReport, upperBodyPopBones } from './pops'
+import { overlayPostures } from './posture-scale'
 import { armWorld, gateStub, loadedRun, moves, rotX, rotY, summaryStub, trace } from './test-runs'
 import { turnReport } from './turn'
 
@@ -84,6 +86,20 @@ describe('emotion-table report (C002, plan 2.3)', () => {
   it('fails the onset guard when the runs hold fewer onset episodes than the gate minimum', () => {
     const report = emotionTableReport([emotions({ amplitude: 0 })], bands)
     expect(report.requirements.find(r => r.id === 'onset-not-vacuous')?.pass).toBe(false)
+  })
+
+  it('prints for each emotion the first 4c table scale at which it clears 2 SD on the designed overlay', () => {
+    const run = emotions({ amplitude: 0 })
+    const scales = emotionTableReport([run], bands).detail.clearingScales
+    const separate = (scale: number) => separationTable(emotionTrials(prepareTrace(overlayPostures(run.input, scale)))).separation
+    for (const emotion of ['happy', 'sad']) {
+      const scale = scales[emotion]
+      expect(scale, emotion).not.toBeNull()
+      const clears = (at: number) => Math.min(separate(at)[`${emotion}|neutral`] ?? separate(at)[`neutral|${emotion}`], separate(at)[`${emotion}|placebo`] ?? separate(at)[`placebo|${emotion}`]) >= 2
+      expect(clears(scale ?? 0), emotion).toBe(true)
+      if ((scale ?? 0) > 0.25)
+        expect(clears((scale ?? 0) - 0.25), emotion).toBe(false)
+    }
   })
 
   it('fails a posture still held outside the placebo band in the release window', () => {
