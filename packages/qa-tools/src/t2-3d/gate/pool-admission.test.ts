@@ -42,6 +42,15 @@ function emotionTrace(seed: number, prefix = `seed-${seed}`): MotionTraceV1 {
   }
 }
 
+function runnerTrace(seed: number): MotionTraceV1 {
+  const trace = emotionTrace(seed)
+  return {
+    ...trace,
+    rig: { ...trace.rig, id: `qa-${seed}`, assetSha256: 'a'.repeat(64) },
+    source: { ...trace.source, gitSha: '1'.repeat(40) },
+  }
+}
+
 async function withTraces(traces: readonly MotionTraceV1[], check: (dirs: string[]) => Promise<void>) {
   const dirs = await Promise.all(traces.map(() => mkdtemp(join(tmpdir(), 'motion3d-pool-admission-'))))
   try {
@@ -84,14 +93,13 @@ describe('emotion pool admission', () => {
     })
   })
 
-  it.each(['rig.id', 'rig.assetSha256', 'source.level', 'source.gitSha'])('refuses incompatible %s cohorts', async (field) => {
+  it.each(['rig.assetSha256', 'source.level', 'source.gitSha'])('refuses incompatible %s cohorts', async (field) => {
+    const first = emotionTrace(1)
     const other = emotionTrace(2)
     switch (field) {
-      case 'rig.id':
-        other.rig.id = 'different-rig'
-        break
       case 'rig.assetSha256':
-        other.rig.assetSha256 = 'a'.repeat(64)
+        first.rig.assetSha256 = 'a'.repeat(64)
+        other.rig.assetSha256 = 'b'.repeat(64)
         break
       case 'source.level':
         other.source.level = 'rendered'
@@ -100,7 +108,7 @@ describe('emotion pool admission', () => {
         other.source.gitSha = 'different-revision'
         break
     }
-    await withTraces([emotionTrace(1), other], async (dirs) => {
+    await withTraces([first, other], async (dirs) => {
       expect(await gateMotion3d(dirs, context)).toBe(2)
       for (const dir of dirs)
         expect(JSON.parse(await readFile(join(dir, 'gate.json'), 'utf8'))).toMatchObject({ verdict: 'REFUSED', refusal: { name: 'pool-mismatch' }, metrics: [] })
@@ -129,6 +137,59 @@ describe('emotion pool admission', () => {
         expect(new Set(verdict.pooledFrom.traces.map((trace: { sha256: string }) => trace.sha256)).size).toBe(3)
         expect(new Set(verdict.pooledFrom.traces.map((trace: { fingerprint: string }) => trace.fingerprint)).size).toBe(3)
       }
+    })
+  })
+})
+
+describe('runner seed cohorts', () => {
+  it.each([false, true])('scores different runner seed ids with matching structure, unknown first asset=%s', async (unknownFirst) => {
+    const traces = [1, 2, 3].map(runnerTrace)
+    if (unknownFirst)
+      traces[0].rig.assetSha256 = null
+    await withTraces(traces, async (dirs) => {
+      expect(await gateMotion3d(dirs, context)).toBe(0)
+      for (const dir of dirs) {
+        const verdict = JSON.parse(await readFile(join(dir, 'gate.json'), 'utf8'))
+        expect(verdict).toMatchObject({ verdict: 'PASS', pooledFrom: { trialCounts: { happy: 6, placebo: 6 } } })
+        expect(verdict.metrics).toContainEqual(expect.objectContaining({ id: 'emotion.minSeparation', status: 'PASS' }))
+      }
+    })
+  })
+
+  it.each(['asset hash', 'rest offset'])('refuses a runner seed pool with a different %s', async (field) => {
+    const traces = [1, 2, 3].map(runnerTrace)
+    if (field === 'asset hash')
+      traces[2].rig.assetSha256 = 'b'.repeat(64)
+    else
+      traces[2].rig.restOffsets[0][0] += 0.01
+    await withTraces(traces, async (dirs) => {
+      expect(await gateMotion3d(dirs, context)).toBe(2)
+      for (const dir of dirs)
+        expect(JSON.parse(await readFile(join(dir, 'gate.json'), 'utf8'))).toMatchObject({ verdict: 'REFUSED', refusal: { name: 'pool-mismatch' }, metrics: [] })
+    })
+  })
+
+  it.each(['restOffsets', 'legLength'])('checks rig structure even when display ids match: %s', async (field) => {
+    const traces = [1, 2, 3].map(seed => emotionTrace(seed))
+    if (field === 'restOffsets')
+      traces[2].rig.restOffsets[0][0] += 0.01
+    else
+      traces[2].rig.legLength *= 2
+    await withTraces(traces, async (dirs) => {
+      expect(await gateMotion3d(dirs, context)).toBe(2)
+      for (const dir of dirs)
+        expect(JSON.parse(await readFile(join(dir, 'gate.json'), 'utf8'))).toMatchObject({ verdict: 'REFUSED', refusal: { name: 'pool-mismatch' }, metrics: [] })
+    })
+  })
+
+  it('refuses conflicting known assets even when the first asset is null', async () => {
+    const traces = [1, 2, 3].map(seed => emotionTrace(seed))
+    traces[1].rig.assetSha256 = 'a'.repeat(64)
+    traces[2].rig.assetSha256 = 'b'.repeat(64)
+    await withTraces(traces, async (dirs) => {
+      expect(await gateMotion3d(dirs, context)).toBe(2)
+      for (const dir of dirs)
+        expect(JSON.parse(await readFile(join(dir, 'gate.json'), 'utf8'))).toMatchObject({ verdict: 'REFUSED', refusal: { name: 'pool-mismatch' }, metrics: [] })
     })
   })
 })

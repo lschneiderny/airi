@@ -57,8 +57,11 @@ pnpm qa:motion3d gate <idle-90s directory> --require period.head.loopPeak,period
 ```
 
 Emotion directories supplied together pool their trials, including placebo.
-They must share `rig.id`, `rig.assetSha256`, `source.level` and `source.gitSha`;
-seeds may differ. Copied trace content, measurement payloads, or a trial id repeated across traces
+They must share bones, parents, rest offsets, leg length, `source.level` and
+`source.gitSha`. All non-null `rig.assetSha256` values must agree; structure is
+always checked even when a hash is unavailable. `rig.id` is a display/controller
+key and may vary with the seed (`qa-1`, `qa-2`, and so on).
+Copied trace content, measurement payloads, or a trial id repeated across traces
 refuses the pool. Pulse and hold labels with the same trial id within one trace
 still count once. Unlabelled trials remain distinct observations.
 Each pooled verdict records `pooledFrom.traces` with directories, whole-file
@@ -81,7 +84,7 @@ use head episodes only.
 | `bands-hash-mismatch` | Frozen band bytes or version do not match the definition. |
 | `no-gated-metrics` | No applicable gated metric was judged. |
 | `pool-duplicate` | Repeated trace digest, measurement fingerprint or trial id across emotion traces. |
-| `pool-mismatch` | Emotion traces have incompatible rig or source identity. |
+| `pool-mismatch` | Emotion traces differ in rig structure, known asset hashes, source level or source revision. Display ids are ignored. |
 
 Version 0 retains explicitly marked analytic fixtures. Version 1 uses frozen
 human-reference bands. Frozen band files

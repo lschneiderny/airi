@@ -88,6 +88,11 @@ export async function gateMotion3d(args: readonly string[], context: Motion3dCli
     const digests = new Set<string>()
     const fingerprints = new Set<string>()
     const cohort = emotions[0]?.input?.trace
+    const rigs = emotions.flatMap(entry => entry.input ? [entry.input.trace.rig] : [])
+    if (new Set(rigs.flatMap(rig => rig.assetSha256 === null ? [] : [rig.assetSha256])).size > 1)
+      throw new GateRefusal('pool-mismatch', 'Emotion traces have different non-null rig.assetSha256 values')
+    if (new Set(rigs.map(rig => JSON.stringify([rig.bones, rig.parents, rig.restOffsets, rig.legLength]))).size > 1)
+      throw new GateRefusal('pool-mismatch', 'Emotion traces must share bones, parents, restOffsets and legLength')
     for (const entry of emotions) {
       if (entry.sha256 && digests.has(entry.sha256))
         throw new GateRefusal('pool-duplicate', `Repeated trace digest ${entry.sha256}`)
@@ -109,9 +114,8 @@ export async function gateMotion3d(args: readonly string[], context: Motion3dCli
           throw new GateRefusal('pool-duplicate', `Repeated measurement fingerprint ${entry.fingerprint}`)
         fingerprints.add(entry.fingerprint)
       }
-      if (trace && cohort && (trace.rig.id !== cohort.rig.id || trace.rig.assetSha256 !== cohort.rig.assetSha256
-        || trace.source.level !== cohort.source.level || trace.source.gitSha !== cohort.source.gitSha)) {
-        throw new GateRefusal('pool-mismatch', 'Emotion traces must share rig.id, rig.assetSha256, source.level and source.gitSha')
+      if (trace && cohort && (trace.source.level !== cohort.source.level || trace.source.gitSha !== cohort.source.gitSha)) {
+        throw new GateRefusal('pool-mismatch', 'Emotion traces must share source.level and source.gitSha')
       }
     }
     const seen = new Set<string>()

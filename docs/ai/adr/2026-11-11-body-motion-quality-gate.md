@@ -143,8 +143,8 @@ length was introduced, and no threshold, detector constant, band or version chan
 The same review showed that copied emotion traces could multiply insufficient
 trials into a pass. Before judging changed character motion, pooling was made
 to refuse duplicate content digests and trial ids across traces as
-`pool-duplicate`, and differences in rig id, asset hash, source level or source
-revision as `pool-mismatch`. Different seeds still pool. Trial identity survives
+`pool-duplicate`, and incompatible rig structure, known asset hashes, source
+level or source revision as `pool-mismatch`. Trial identity survives
 extraction; repeated labels within one trace count once. Each pooled verdict
 records trace directories, digests and per-condition trial counts in
 `pooledFrom`. This admission fix changes no band, threshold or gate version.
@@ -156,6 +156,15 @@ rate, bones and parents. Events, trial ids, seed and provenance labels do not
 enter this identity. A repeated fingerprint is `pool-duplicate`; verdicts keep
 both the original whole-file digest and the fingerprint in `pooledFrom.traces`.
 Passing pool controls now use genuinely different trajectories across seeds.
+
+The re-review found a third defect: comparing `rig.id` refused the runner's
+own seeds because it writes `qa-${seed}` there. Pool cohorts now ignore that
+display/controller key. Bones, parents, rest offsets, leg length, source level
+and revision must agree, and every pair of known asset hashes must agree.
+This also checks conflicts when the first trace's hash is null. The runner
+assigns SHA-256 of PMX bytes to `rig.assetSha256`; it is not null for runner
+traces. No runner code, trace header, existing trace hash, band, threshold,
+detector constant or gate version changed.
 
 Acceptance can now demand named metrics with `gate --require <ids>`.
 Every named metric must be `PASS` in every supplied verdict; the requirement
