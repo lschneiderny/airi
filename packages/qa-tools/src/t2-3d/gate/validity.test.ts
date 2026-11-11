@@ -17,6 +17,7 @@ import { motionQualityGate } from './definition'
 import { heldoutFailureUnits, HOLDOUT_VALIDATION } from './holdouts'
 import { judgeTrace } from './judge'
 import { loadBands, parseBands } from './load'
+import { mirroredName } from './policy'
 import { buildReference } from './reference'
 
 const repoRoot = resolve(import.meta.dirname, '../../../../..')
@@ -69,6 +70,18 @@ describe('gate validity with committed bands', () => {
       expect(rebuilt.classes).toEqual(committed.classes)
     }
   }, 300000)
+
+  it('applies one pooled activity floor and arm move speed to both body sides', async () => {
+    const committed = await loadBands(repoRoot)
+    for (const [scenario, c] of Object.entries(committed.classes)) {
+      for (const [bone, floor] of Object.entries(c.floors)) {
+        const mirror = mirroredName(bone)
+        if (mirror && mirror in c.floors)
+          expect(floor, `${scenario} ${bone}`).toBe(c.floors[mirror as keyof typeof c.floors])
+      }
+      expect(c.moveSpeed.armL, scenario).toBe(c.moveSpeed.armR)
+    }
+  })
 
   it('fails the in-phase sine in both chain and dimensionality families', () => {
     const verdict = judgeTrace(sine(), bands, identity)

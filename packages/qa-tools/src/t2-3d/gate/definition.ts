@@ -3,13 +3,13 @@ import { declaredBands, metricPolicies } from './policy'
 
 export const LIMITATION = 'Scores compare motion statistics with bands derived from human capture. They do not prove naturalness or appeal, which stay a visual review.'
 
-/** Version 1 freezes human-reference bands and the lead-approved held-out tolerance. */
+/** Version 2 freezes human-reference bands with mirrored body sides pooled and the lead-approved held-out tolerance. */
 export const motionQualityGate = {
   id: 'mmd-motion-quality',
-  version: 1,
+  version: 2,
   limitation: LIMITATION,
-  bandsFile: 'packages/qa-tools/fixtures/motion3d/bands-v1.json',
-  bandsSha256: 'c5a5a8eee5c5e3668cbb081d084b3da62ef9441787a975fc5607886e720230d7',
+  bandsFile: 'packages/qa-tools/fixtures/motion3d/bands-v2.json',
+  bandsSha256: '1cffebeca8e973f303128ff2031e9f4a54a38d3e822ee05cb710e050dbe5ecfe',
   refusals: [
     'trace-unreadable',
     'trace-kind',
@@ -33,7 +33,6 @@ export const motionQualityGate = {
       'chain.chest-neck.zeroLagCorr': 'upper',
       'chain.leftShoulder-leftUpperArm.zeroLagCorr': 'upper',
       'chain.leftUpperArm-leftLowerArm.zeroLagCorr': 'upper',
-      'chain.leftUpperArm-leftLowerArm.lagMs': 'lower',
       'chain.leftLowerArm-leftHand.zeroLagCorr': 'upper',
       'chain.rightShoulder-rightUpperArm.zeroLagCorr': 'upper',
       'chain.rightUpperArm-rightLowerArm.zeroLagCorr': 'upper',
@@ -54,6 +53,8 @@ export const motionQualityGate = {
       'bilateral.lowerArm.peakCorr': 'upper',
       'bilateral.hand.peakCorr': 'upper',
       'smooth.head.ldlj': 'two',
+      'smooth.armL.spikeRate': 'upper',
+      'smooth.armR.spikeRate': 'upper',
       'inter.speedCv': 'two',
       'dim.core': 'lower',
       'period.head.loopPeak': 'upper',
@@ -77,9 +78,8 @@ export const motionQualityGate = {
       'bilateral.hand.peakCorr': 'upper',
       'smooth.head.ldlj': 'two',
       'smooth.head.spikeRate': 'upper',
-      'smooth.armL.ldlj': 'two',
       'smooth.armL.spikeRate': 'upper',
-      'smooth.armR.ldlj': 'two',
+      'smooth.armR.spikeRate': 'upper',
       'inter.speedCv': 'two',
       'dim.upper': 'lower',
       'dim.core': 'lower',
@@ -97,9 +97,7 @@ export const motionQualityGate = {
       'chain.neck-head.lagMs': 'lower',
       'chain.leftShoulder-leftUpperArm.zeroLagCorr': 'upper',
       'chain.leftUpperArm-leftLowerArm.zeroLagCorr': 'upper',
-      'chain.leftUpperArm-leftLowerArm.lagMs': 'lower',
       'chain.leftLowerArm-leftHand.zeroLagCorr': 'upper',
-      'chain.leftLowerArm-leftHand.lagMs': 'lower',
       'chain.rightShoulder-rightUpperArm.zeroLagCorr': 'upper',
       'chain.rightUpperArm-rightLowerArm.zeroLagCorr': 'upper',
       'chain.rightLowerArm-rightHand.zeroLagCorr': 'upper',

@@ -1,9 +1,11 @@
-# Human-reference bands for mmd-motion-quality v1
+# Human-reference bands for mmd-motion-quality v2
 
-Frozen bands SHA-256: `c5a5a8eee5c5e3668cbb081d084b3da62ef9441787a975fc5607886e720230d7`.
-Derived by tool commit `76816856c34831879d9267d428a09b4a16019c65` on 2026-11-11T08:37:18.947Z.
+Frozen bands SHA-256: `1cffebeca8e973f303128ff2031e9f4a54a38d3e822ee05cb710e050dbe5ecfe`.
+Derived by tool commit `fedec98842b62030940f6d060d5d698e7bd67308` on 2026-11-11T16:52:31.523Z.
 
-Only derived statistics are stored in bands-v1.json. No raw motion, model, texture, joint trajectory, or capture is committed. Clip identifiers and subjects below document provenance; raw sources remain outside the repository.
+Version 1 remains in `bands-v1.json` (SHA-256 `c5a5a8eee5c5e3668cbb081d084b3da62ef9441787a975fc5607886e720230d7`) as its record and is no longer loaded by the gate.
+
+Only derived statistics are stored in bands-v2.json. No raw motion, model, texture, joint trajectory, or capture is committed. Clip identifiers and subjects below document provenance; raw sources remain outside the repository.
 
 ## Sources and licences
 
@@ -15,36 +17,46 @@ The source selection and split were fixed before measurement. Manifest SHA-256: 
 
 100style:InTheDark_FW (10,245 frames) and 100style:Old_FW (14,949 frames) both ingest after the large-block codec correction. Window-source counts after admission are idle 11 fitting / 3 held-out, talk 16 / 5, and walk 13 / 4. No class uses an 8 s fallback.
 
+## Version 2: pooled body sides, 2026-11-11
+
+Every fitted metric whose id names a left or right bone or region and whose mirror is also fitted is fitted once from both sides pooled, and both ids carry that one band. The pairs are the shoulder, upper-arm and lower-arm chain correlations and lags, the upper-arm idle ACF, and the arm LDLJ and spike rates; `context.sidePooling.pairs` lists them per class. Every left or right bone activity floor and the `armL`/`armR` move speed are fitted once from both sides' human values under their unchanged rules and applied to both sides. Percentiles, margins, the Fisher transform, minimum counts, the vacuous-band rule and the held-out rule are unchanged; a held-out clip is judged on both sides against the pooled band and counts once per failing side, and a pooled episode group counts once for the pair. Non-sided bands keep their fitting rules, but a non-sided metric that reads a pooled floor or arm move speed (coverage, bilateral, dimensionality, gesture stroke rate and onset metrics) is measured with the pooled value, so its band can move; none changed status.
+
+Why: version 1 fitted each side separately from the same clips of one performer, so its sided limits and floors carried that performer's handedness. The idle `chain.leftShoulder-leftUpperArm.zeroLagCorr` limit was r 0.62 and the right side's r 0.98; the idle `leftHand` floor was 0.0054 and `rightHand` 0.0030 rad/s. This change was made after a tuned character failed left-side metrics only. No character data entered the fit, and no band was adjusted by hand. The user decided on 2026-11-11: "Arm bands: Gate v2, pooled sides (Recommended)". The manifest, split and declared bands are unchanged.
+
+Status changes of sided metrics from version 1: idle and walk `chain.leftUpperArm-leftLowerArm.lagMs` and walk `chain.leftLowerArm-leftHand.lagMs` were gated on the left only and are now vacuous for both sides; idle `smooth.armL/armR.spikeRate` and talk `smooth.armR.spikeRate` are now gated, because the pooled count of side values reaches the ten-value minimum; talk `smooth.armL/armR.ldlj` are now REPORT with `holdout-failures: 2`.
+
 ## Held-out validation and its timing
 
 A fitted metric stays gated, without any changed bound, when zero or one held-out unit fails it. Two or more failures make that metric REPORT with detail `holdout-failures: <n>`. Units are clips for clip fits and consecutive groups of eight episodes for pooled fits. Declared bands are unchanged. Every original held-out verdict, value and failed metric remains in the bands file.
 
 The P5 to P95 interval plus a fixed margin can miss isolated unseen values. A clip is judged on about 25 metrics, so an occasional isolated failure is expected by chance. Repeated failures indicate that a metric is not reliable enough to gate unseen human motion. This tolerance was set after the held-out results were inspected and before any character trace was judged. It is a post-selection decision, not independent validation.
 
-The file retains 400 PASS and 12 FAIL unit verdicts. Only gaze.chestLagMs has repeated failures: groups 16, 22, 38 fail, so its status is REPORT with `holdout-failures: 3`. All other failing metrics have one failing unit and retain their original fitted bands. No percentile, margin, numeric bound, detector parameter or source split changed.
+The file retains 386 PASS and 14 FAIL unit verdicts. Two metrics have repeated failures: gaze.chestLagMs (groups 16, 22, 38) is REPORT with `holdout-failures: 3`, and the pooled talk arm LDLJ pair (groups 0 and 1 of the pooled arm episodes) is REPORT with `holdout-failures: 2` on both ids. All other failing metrics have one failing unit and retain their fitted bands. No percentile, margin or source split changed for version 2; only the pooled sided bands, floors and arm move speeds, and bands measured with them, differ from version 1.
 
 | Class | Failing clip or episode group | Failed metrics |
 | --- | --- | --- |
 | idle | 100style/100STYLE/Drunk/Drunk_ID.bvh | period.hips.acfPeak |
 | talk | smooth.head.ldlj/group-5 | smooth.head.ldlj |
-| talk | smooth.armR.ldlj/group-0 | smooth.armR.ldlj |
+| talk | smooth.armL.ldlj/group-0 | smooth.armL.ldlj |
+| talk | smooth.armL.ldlj/group-1 | smooth.armL.ldlj |
 | talk | onset.easedOrAnticipated/group-28 | onset.easedOrAnticipated |
-| talk | cmu/138/138_37.bvh | chain.leftUpperArm-leftLowerArm.zeroLagCorr, chain.leftLowerArm-leftHand.zeroLagCorr, coverage.arms, bilateral.upperArm.peakCorr, bilateral.hand.peakCorr, dim.core |
+| talk | cmu/138/138_37.bvh | chain.leftUpperArm-leftLowerArm.zeroLagCorr, chain.leftLowerArm-leftHand.zeroLagCorr, coverage.arms, bilateral.upperArm.peakCorr, dim.core |
 | walk | 100style/100STYLE/Drunk/Drunk_FW.bvh | smooth.head.spikeRate |
-| walk | 100style/100STYLE/InTheDark/InTheDark_FW.bvh | smooth.armL.spikeRate |
 | walk | 100style/100STYLE/OnPhoneRight/OnPhoneRight_FW.bvh | chain.rightShoulder-rightUpperArm.zeroLagCorr, chain.rightUpperArm-rightLowerArm.zeroLagCorr, chain.rightLowerArm-rightHand.zeroLagCorr, coverage.core, coverage.arms, bilateral.upperArm.peakCorr, bilateral.lowerArm.peakCorr, bilateral.hand.peakCorr |
 | gaze | gaze.chestLagMs/group-16 | gaze.chestLagMs |
 | gaze | gaze.chestLagMs/group-22 | gaze.chestLagMs |
 | gaze | gaze.chestLagMs/group-38 | gaze.chestLagMs |
 | gaze | onset.easedOrAnticipated/group-16 | onset.easedOrAnticipated |
+| emotion | onset.attackFraction/group-6 | onset.attackFraction |
+| emotion | onset.easedOrAnticipated/group-41 | onset.easedOrAnticipated |
 
 ## Known limits
 
-- Existing chain metrics already correlate parent-relative angular velocity. In the 100STYLE idle and walk references, some axial pairs are nearly perfectly correlated: idle neck-head has median correlation 0.999626. The resulting neck-head bands, and the idle spine-chest band, are vacuous and remain REPORT. This prevents the gate from claiming to resolve synchrony that this reference cannot distinguish. Version 1 cannot fail neck-head synchrony through that pair in idle or walk; the CMU talk band can. Upper-arm/lower-arm and lower-arm/hand pairs remain gated in all three classes.
+- Existing chain metrics already correlate parent-relative angular velocity. In the 100STYLE idle and walk references, some axial pairs are nearly perfectly correlated: idle neck-head has median correlation 0.999626. The resulting neck-head bands, and the idle spine-chest band, are vacuous and remain REPORT. This prevents the gate from claiming to resolve synchrony that this reference cannot distinguish. Versions 1 and 2 cannot fail neck-head synchrony through that pair in idle or walk; the CMU talk band can. Upper-arm/lower-arm and lower-arm/hand pairs remain gated in all three classes.
 - UNVERIFIED: the likely explanation is that the capture solve distributes one measured rotation across neighbouring axial segments, with more axial joints in the 23-joint skeleton than independently measured segments. This has not been established from the capture process and is not a measured fact. The proposed duplicate chainRel family was withdrawn before any character trace was judged; the metric library and all chain definitions remain unchanged.
 - Short references give broad bands for single-window clip values; a character median over several windows is less variable. Most whole-trace spectral, burstiness and idle-act statistics therefore remain report only.
-- The talk set is dominated by storyteller 138. The held-out clip cmu:138_37 fails six arm-related talk metrics because the speaker barely moves the arms in its 5 s talk window; core dimensionality also reflects that limited arm activity.
-- OnPhoneRight_FW, InTheDark_FW and Drunk_FW each fail one or more arm or smoothness metrics. These failures are retained, not rewritten as passes.
+- The talk set is dominated by storyteller 138. The held-out clip cmu:138_37 fails five arm-related talk metrics (six in version 1) because the speaker barely moves the arms in its 5 s talk window; core dimensionality also reflects that limited arm activity.
+- OnPhoneRight_FW and Drunk_FW each fail one or more arm or smoothness metrics. InTheDark_FW failed the left arm spike rate in version 1 and passes the pooled band in version 2. These failures are retained, not rewritten as passes.
 - The natural-style selection includes activities that constrain an arm, including holding a phone, using a walking stick and keeping hands in pockets. This widens the arm bands and makes them more lenient.
 - 100STYLE has one performer. Episode draws mix actors and contain dependent trials; the fixed tail margin is the only allowance for those dependencies.
 - The manifest contains only one idle range of at least 20 s, Old at about 24.1 s, rather than four. Its loop values are context only. No range was extended and no source was added.
