@@ -66,9 +66,17 @@ export async function gateMotion3d(args: readonly string[], context: Motion3dCli
   for (const entry of entries) {
     if (context.signal.aborted)
       return 130
-    const verdict = entry.input && !entry.refusal && bands
-      ? judgeTrace(entry.input, bands, { path: entry.path, sha256: entry.sha256 ?? '' }, entry.input.trace.source.scenario.class === 'emotion' ? pooled : undefined)
-      : refusedVerdict(entry.path, entry.refusal ?? { name: 'trace-unreadable', detail: 'No trace' })
+    let verdict: MotionVerdict
+    try {
+      verdict = entry.input && !entry.refusal && bands
+        ? judgeTrace(entry.input, bands, { path: entry.path, sha256: entry.sha256 ?? '' }, entry.input.trace.source.scenario.class === 'emotion' ? pooled : undefined)
+        : refusedVerdict(entry.path, entry.refusal ?? { name: 'trace-unreadable', detail: 'No trace' })
+    }
+    catch (error) {
+      if (!(error instanceof MotionTraceRefusal) && !(error instanceof GateRefusal))
+        throw error
+      verdict = refusedVerdict(entry.path, error)
+    }
     verdicts.push(verdict)
     console.info(`mmd-motion-quality v${verdict.gate.version} ${entry.dir}: ${verdict.verdict}`)
     if (verdict.refusal)

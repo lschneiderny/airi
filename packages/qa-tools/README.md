@@ -781,7 +781,10 @@ frame zero; headless wall equals motion time, and motion time sums pipeline dt.
 Voice level and gait weight are 0..1; speaking is 0 or 1. The target is a world
 point in trace axes and model units. Locomotion modes are 0 idle, 1 turning,
 2 starting, 3 walking, 4 stopping. Missing scalar channels use NaN.
-Rotations, root values and motion time must be finite; time strictly increases.
+Rotations, root values, motion time and wall samples must be finite; time
+strictly increases. All other scalar channels permit NaN for absent data but
+never infinity. Leg length must be finite and greater than zero, rest offsets
+must be finite, and parents must match the canonical nearest present ancestor.
 The codec preserves every float32 bit, including missing-value NaN payloads.
 
 `events` are sorted by motion time `t` and use the shared discriminated union:
@@ -799,8 +802,11 @@ or 4.4 MB as base64, plus metadata and events.
 `readTrace` and `parseTrace` return the validated trace plus decoded blocks.
 They throw typed structural refusals named `trace-unreadable`, `trace-kind`,
 `trace-shape`, `trace-nonfinite`, `trace-unnormalized`, or `time-nonmonotonic`;
-these are never scored. Quaternion norm tolerance is 1e-3. Rate, frame-gap,
-duration, rig completeness and reference-band policy belong to the future gate.
+these are never scored. Arithmetic overflow in prepared kinematic signals also
+refuses as `trace-nonfinite` before detectors run. Nonfinite metric values or
+contributing samples fail applicable gates with `undefined: nonfinite`.
+Quaternion norm tolerance is 1e-3. The gate also checks rate, frame gaps,
+duration, rig completeness and reference-band policy.
 
 ## Gates
 

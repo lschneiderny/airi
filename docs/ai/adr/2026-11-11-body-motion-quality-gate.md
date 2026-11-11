@@ -122,4 +122,15 @@ episode bootstraps, and every named CLI refusal. Real-band tests require that
 no gated fitted metric has two or more held-out failures, without raw clips
 in the environment. They do not rewrite recorded failing verdicts as passes.
 
+## Admission review fixes, 2026-11-11
+
+Independent review found that zero leg length could collapse nonfinite root
+velocity into a passing periodicity score. Before any changed character motion
+was judged, the reader was tightened to require positive finite leg length,
+canonical nearest present parents, finite rest offsets and clocks, and no
+infinite scalar channels. Optional scalar NaNs still mean absent data.
+Preparation refuses nonfinite kinematic signals before detectors can turn them
+into silent zeros; the judge fails nonfinite metric values or contributing
+samples with `undefined: nonfinite`. Bands, thresholds and version 1 are unchanged.
+
 Scores compare motion statistics with bands derived from human capture. They do not prove naturalness or appeal, which stay a visual review.

@@ -13,14 +13,18 @@ export function judgeMetrics(measurements: readonly MetricResult[], bands: Motio
   return measurements.map((metric) => {
     const band = bands?.metrics[metric.id] ?? null
     const gated = band?.status === 'GATED'
-    const status = metric.status.startsWith('skipped:')
-      ? 'SKIPPED'
-      : !gated
-          ? 'REPORT'
-          : metric.value === null || !passesBand(metric.value, band)
-            ? 'FAIL'
-            : 'PASS'
-    return { id: metric.id, family: metric.family, value: metric.value, unit: metric.unit, status, basis: band?.basis ?? null, band, detail: [metric.detail, band?.detail].filter(Boolean).join('; ') }
+    const nonfinite = (metric.value !== null && !Number.isFinite(metric.value)) || metric.samples.some(sample => !Number.isFinite(sample.value))
+    const value = nonfinite ? null : metric.value
+    const status = nonfinite && gated
+      ? 'FAIL'
+      : metric.status.startsWith('skipped:')
+        ? 'SKIPPED'
+        : !gated
+            ? 'REPORT'
+            : value === null || !passesBand(value, band)
+              ? 'FAIL'
+              : 'PASS'
+    return { id: metric.id, family: metric.family, value, unit: metric.unit, status, basis: band?.basis ?? null, band, detail: [nonfinite ? 'undefined: nonfinite' : metric.detail, band?.detail].filter(Boolean).join('; ') }
   })
 }
 

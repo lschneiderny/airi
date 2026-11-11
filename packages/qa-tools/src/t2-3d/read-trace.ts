@@ -2,7 +2,7 @@ import type { MotionTraceV1 } from '@proj-airi/motion-driver-humanoid/motion-tra
 
 import { readFile } from 'node:fs/promises'
 
-import { decodeBlock, MOTION_TRACE_BONES, MOTION_TRACE_CHANNELS } from '@proj-airi/motion-driver-humanoid/motion-trace'
+import { decodeBlock, MOTION_TRACE_BONES, MOTION_TRACE_CHANNELS, motionTraceParents } from '@proj-airi/motion-driver-humanoid/motion-trace'
 
 import * as v from 'valibot'
 
@@ -57,7 +57,7 @@ const traceSchema = v.object({
   rig: v.object({
     id: v.string(),
     assetSha256: sha256,
-    legLength: nonnegative,
+    legLength: v.pipe(finite, v.minValue(Number.MIN_VALUE, 'rig.legLength must be finite and greater than 0')),
     bones: v.array(bone),
     parents: v.array(integer),
     restOffsets: v.array(v.strictTuple([finite, finite, finite])),
@@ -84,6 +84,9 @@ export function parseTrace(input: unknown): DecodedMotionTrace {
     throw new MotionTraceRefusal('trace-shape', v.summarize(parsed.issues))
   const trace = parsed.output
   const { bones, parents, restOffsets, physicsOwned } = trace.rig
+  const canonicalParents = motionTraceParents(bones)
+  if (parents.length !== bones.length || parents.some((parent, index) => parent !== canonicalParents[index]))
+    throw new MotionTraceRefusal('trace-shape', 'rig.parents must use the canonical nearest-present-ancestor mapping')
   if (parents.length !== bones.length || restOffsets.length !== bones.length
     || parents.some((parent, index) => parent < -1 || parent >= index)
     || new Set(bones).size !== bones.length || bones.some(bone => physicsOwned.includes(bone))
@@ -105,6 +108,13 @@ export function parseTrace(input: unknown): DecodedMotionTrace {
   }
   if (rot.some(value => !Number.isFinite(value)) || root.some(value => !Number.isFinite(value)))
     throw new MotionTraceRefusal('trace-nonfinite', 'Nonfinite rotation or root value')
+  // voiceLevel, speaking, targetX/Y/Z, locomotionMode and gaitWeight are
+  // optional scalar channels: NaN means absent. Neither clock is optional.
+  for (const [index, value] of channels.entries()) {
+    const channel = MOTION_TRACE_CHANNELS[index % MOTION_TRACE_CHANNELS.length]
+    if ((channel === 'time' || channel === 'wall') ? !Number.isFinite(value) : !Number.isFinite(value) && !Number.isNaN(value))
+      throw new MotionTraceRefusal('trace-nonfinite', `Nonfinite ${channel} at frame ${Math.floor(index / MOTION_TRACE_CHANNELS.length)}`)
+  }
   for (let i = 0; i < rot.length; i += 4) {
     if (Math.abs(Math.hypot(rot[i], rot[i + 1], rot[i + 2], rot[i + 3]) - 1) > 1e-3)
       throw new MotionTraceRefusal('trace-unnormalized', `Quaternion ${i / 4} is not unit length`)

@@ -12,7 +12,9 @@ import { MotionTraceRefusal, parseTrace, readTrace } from './read-trace'
 function fixture(): MotionTraceV1 {
   const channels = new Float32Array(18).fill(Number.NaN)
   channels[0] = 0
+  channels[1] = 0
   channels[9] = 1 / 60
+  channels[10] = 1 / 60
   return {
     kind: 'motion-trace',
     version: 1,
@@ -66,6 +68,9 @@ describe('motion trace boundary', () => {
     ['trace-shape', trace => ({ ...trace, root: '!!!!' })],
     ['trace-shape', trace => ({ ...trace, rig: { ...trace.rig, parents: [0] } })],
     ['trace-shape', trace => ({ ...trace, rig: { ...trace.rig, restOffsets: [] } })],
+    ...[0, -1, Infinity, Number.NaN].map((legLength): [string, (trace: MotionTraceV1) => unknown] =>
+      ['trace-shape', trace => ({ ...trace, rig: { ...trace.rig, legLength } })]),
+    ['trace-shape', trace => ({ ...trace, rig: { ...trace.rig, restOffsets: [[0, Infinity, 0]] } })],
     ['trace-shape', trace => ({ ...trace, source: { ...trace.source, level: 'unknown' } })],
     ['trace-nonfinite', trace => ({ ...trace, rot: encodeBlock(new Float32Array([Number.NaN, 0, 0, 1, 0, 0, 0, 1])) })],
     ['trace-nonfinite', trace => ({ ...trace, root: encodeBlock(new Float32Array(8).fill(Infinity)) })],
@@ -76,5 +81,17 @@ describe('motion trace boundary', () => {
   it.each(cases)('returns the typed %s refusal without scoring malformed input', (name, malformed) => {
     expect(() => parseTrace(malformed(fixture()))).toThrow(MotionTraceRefusal)
     expect(() => parseTrace(malformed(fixture()))).toThrow(expect.objectContaining({ name }))
+  })
+
+  it.each([Number.NaN, Infinity, -Infinity])('refuses nonfinite required wall samples: %s', (value) => {
+    const trace = fixture()
+    const channels = new Float32Array([0, value, 0, 0, 0, 0, 0, 0, 0, 1 / 60, 1 / 60, 0, 0, 0, 0, 0, 0, 0])
+    expect(() => parseTrace({ ...trace, channels: encodeBlock(channels) })).toThrow(expect.objectContaining({ name: 'trace-nonfinite' }))
+  })
+
+  it.each([Infinity, -Infinity])('refuses infinite optional channels: %s', (value) => {
+    const trace = fixture()
+    const channels = new Float32Array([0, 0, value, 0, 0, 0, 0, 0, 0, 1 / 60, 1 / 60, 0, 0, 0, 0, 0, 0, 0])
+    expect(() => parseTrace({ ...trace, channels: encodeBlock(channels) })).toThrow(expect.objectContaining({ name: 'trace-nonfinite' }))
   })
 })

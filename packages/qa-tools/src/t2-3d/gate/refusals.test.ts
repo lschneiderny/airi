@@ -26,6 +26,25 @@ describe('cLI named refusals', () => {
   const cases: readonly { name: string, input: () => unknown }[] = [
     { name: 'trace-kind', input: () => ({ ...encoded(fixture()), version: 2 }) },
     { name: 'trace-shape', input: () => ({ ...encoded(fixture()), rot: '' }) },
+    { name: 'trace-shape', input: () => {
+      const trace = encoded(fixture())
+      return { ...trace, rig: { ...trace.rig, legLength: 0 } }
+    } },
+    { name: 'trace-shape', input: () => {
+      const trace = encoded(fixture())
+      return { ...trace, rig: { ...trace.rig, parents: trace.rig.parents.map(() => -1) } }
+    } },
+    { name: 'trace-nonfinite', input: () => {
+      const input = fixture()
+      for (let i = 0; i < input.trace.frames; i++)
+        input.channels[i * 9 + 1] = Infinity
+      return encoded(input)
+    } },
+    { name: 'trace-nonfinite', input: () => {
+      const input = analyticTrace({ seconds: 22, bones: CORE, position: t => [0, 0, t] })
+      const trace = encoded(input)
+      return { ...trace, rig: { ...trace.rig, legLength: Number.MIN_VALUE } }
+    } },
     { name: 'trace-nonfinite', input: () => {
       const input = fixture()
       input.root[0] = Number.NaN
@@ -60,6 +79,7 @@ describe('cLI named refusals', () => {
       const verdict = JSON.parse(await readFile(join(dir, 'gate.json'), 'utf8'))
       expect(code).toBe(2)
       expect(verdict).toMatchObject({ verdict: 'REFUSED', refusal: { name }, counts: { pass: 0, fail: 0 } })
+      expect(verdict.metrics).toEqual([])
     }
     finally {
       await rm(dir, { recursive: true, force: true })

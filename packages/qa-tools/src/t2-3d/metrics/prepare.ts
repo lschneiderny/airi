@@ -5,6 +5,7 @@ import type { BoneSeries, PreparedTrace, Quat, Region, Vec3 } from './types'
 
 import { MOTION_TRACE_CHANNELS } from '@proj-airi/motion-driver-humanoid/motion-trace'
 
+import { MotionTraceRefusal } from '../read-trace'
 import { CORE, REGIONS } from './bones'
 import { butterworth, filterVectors } from './filter'
 import { conjugate, dot, heading, HZ, mean, multiply, norm, normalize, rotationVector, scale, slerp, sub, yawQuat } from './math'
@@ -84,6 +85,14 @@ export function prepareTrace(input: DecodedMotionTrace): PreparedTrace {
     armL: regionSpeed(o6, REGIONS.armL, length),
     armR: regionSpeed(o6, REGIONS.armR, length),
     legs: regionSpeed(o6, REGIONS.legs, length),
+  }
+  // Reject arithmetic overflow before a detector can collapse it to a zero
+  // peak or an empty episode set. Optional scalar NaNs remain absent channels.
+  const scalars = [times, yaw, yawRate, bodySpeed, ...Object.values(speeds)]
+  const vectors = [rootPosition, rootVelocity, ...Object.values(orientations), ...Object.values(worldVelocity), ...Object.values(o6), ...Object.values(o15)]
+  if (scalars.some(signal => signal.some(value => !Number.isFinite(value)))
+    || vectors.some(signal => signal.some(value => value.some(component => !Number.isFinite(component))))) {
+    throw new MotionTraceRefusal('trace-nonfinite', 'Nonfinite prepared kinematic signal')
   }
   const scenario = trace.source.scenario.class
   const reference = trace.source.level === 'reference'
