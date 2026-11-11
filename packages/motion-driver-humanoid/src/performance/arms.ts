@@ -44,6 +44,13 @@ const clampDrag = (x: number, degrees: number) => Math.max(-degrees * DEG, Math.
 // The forearm hangs from the upper arm, so the weight reaches the elbow one upper-arm response later: the relaxed
 // upper-arm follower's ramp lag, zeta / (pi f) (architecture 3a), after the shoulder link of the weight chain.
 const ELBOW_WEIGHT_LAG = damping[2] / (Math.PI * relaxed[2])
+/**
+ * Architecture 4a joint start offsets, seconds, by arm channel: clavicle and upper arm 0, elbow 30 ms, forearm twist
+ * 60 ms, wrist 90 ms, fingers (with spread and opposition) 130 ms.
+ */
+function startOffset(j: number): number {
+  return j < 5 ? 0 : j === 5 ? 0.03 : j === 6 ? 0.06 : j < 9 ? 0.09 : 0.13
+}
 
 /** Independent arm identities feed shared secondary dynamics after layer blending. */
 export class BodyArms {
@@ -56,6 +63,12 @@ export class BodyArms {
   private readonly coefficients: SecondOrderCoefficients[]
   private readonly frequencies = new Float64Array(BODY_CHANNELS.length)
   private readonly zetas = new Float64Array(BODY_CHANNELS.length)
+  /** Each channel's own idle noise this tick; it reaches its follower directly, never through the cascade. */
+  private readonly noise = new Float64Array(BODY_CHANNELS.length)
+  /** The proximal-to-distal cascade: one critically damped lag link per arm channel, ahead of its follower. */
+  private readonly links: SecondOrderState[]
+  private readonly linkCoefficients: SecondOrderCoefficients[]
+  private readonly linkDelays = new Float64Array(BODY_CHANNELS.length)
   private readonly skeleton: BodySkeleton
   private readonly shoulder = {
     left: { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 },
@@ -81,6 +94,8 @@ export class BodyArms {
     this.rest.set(this.desired)
     this.states = Array.from(this.rest, value => ({ y: value, v: 0, x: value }))
     this.coefficients = Array.from(this.rest, () => secondOrderCoefficients({ f: 2, zeta: 1, r: 0 }, BODY_TICK))
+    this.links = Array.from(this.rest, value => ({ y: value, v: 0, x: value }))
+    this.linkCoefficients = Array.from(this.rest, () => secondOrderCoefficients({ f: 2, zeta: 1, r: 0 }, BODY_TICK))
   }
 
   private drawRest(): void {
@@ -118,6 +133,7 @@ export class BodyArms {
           const value = this.noises[side][j].step(BODY_TICK) * gate
           noise = j < 9 ? value * ARM_NOISE_DEGREES[j] * DEG : 0.6 * sharedCurl + 0.4 * value * 3 * DEG
         }
+        this.noise[start + j] = noise
         out[start + j] += this.rest[start + j] + noise
       }
       const onSupport = (side === 'right' ? 1 : -1) * support > 0
@@ -131,7 +147,7 @@ export class BodyArms {
     for (const side of SIDES) {
       const start = ARM_START[side]
       for (let j = 0; j < 2; j++)
-        targets[start + j] = this.advance(start + j, targets[start + j], activation[start + j])
+        targets[start + j] = this.advance(start + j, this.cascade(start + j, targets[start + j], activation), activation[start + j])
     }
     // Shoulder velocity comes from the followed clavicle, not its unfiltered target.
     this.skeleton.update(targets)
@@ -163,13 +179,50 @@ export class BodyArms {
     this.warm = true
   }
 
-  private advance(index: number, target: number, used: number): number {
-    const j = (index - ARM_START.left) % 28
+  /** Follower frequency (Hz) and damping of arm channel `j` at activation `used` and the current tension (3a). */
+  private response(j: number, used: number): readonly [number, number] {
     const f0 = j < 9 ? relaxed[j] : 2.5
     const f1 = j < 9 ? active[j] : 4
     const z0 = j < 9 ? damping[j] : 0.6
     const f = (f0 + (f1 - f0) * used) * (0.7 + 0.9 * this.tension)
     const zeta = Math.min(1, (z0 + ((j === 2 || j === 3) ? 0.35 * used : 0)) * (0.8 + 0.5 * this.tension))
+    return [f, zeta]
+  }
+
+  /** Steady ramp lag zeta / (pi f) of arm channel `j`'s follower, seconds (3a with r = 0). */
+  private rampLag(j: number, used: number): number {
+    const [f, zeta] = this.response(j, used)
+    return Math.max(0.3, zeta) / (Math.PI * f)
+  }
+
+  /**
+   * Passes a channel's shared target (everything but its own noise) through its cascade link, so a term several arm
+   * joints receive at once (breath, weight, gait swing, a layer's key) reaches the followers in proximal-to-distal
+   * order by construction: link delay `s_j + max(0, tau_upper - tau_j)` cancels a faster distal follower's head start
+   * and adds the 4a start offset `s_j`. Plan 3.1; the faster distal followers made the lower arm lead (goal-2 finding).
+   */
+  private cascade(index: number, target: number, activation: Float64Array): number {
+    const j = (index - ARM_START.left) % 28
+    const upper = index - j + 2
+    const own = (1 - activation[index]) * this.noise[index]
+    const delay = startOffset(j) + Math.max(0, this.rampLag(2, activation[upper]) - this.rampLag(j, activation[index]))
+    const link = this.links[index]
+    if (delay === 0) {
+      link.y = link.x = target - own
+      link.v = 0
+      return target
+    }
+    if (Math.abs(delay - this.linkDelays[index]) > 0.01 * delay) {
+      this.linkCoefficients[index] = secondOrderCoefficients({ f: 1 / (Math.PI * delay), zeta: 1, r: 0 }, BODY_TICK)
+      this.linkDelays[index] = delay
+    }
+    advanceSecondOrder(link, target - own, this.linkCoefficients[index])
+    return link.y + own
+  }
+
+  private advance(index: number, target: number, used: number): number {
+    const j = (index - ARM_START.left) % 28
+    const [f, zeta] = this.response(j, used)
     if (Math.abs(f - this.frequencies[index]) > 0.01 * f || Math.abs(zeta - this.zetas[index]) > 0.01 * zeta) {
       this.coefficients[index] = secondOrderCoefficients({ f, zeta, r: 0 }, BODY_TICK)
       this.frequencies[index] = f
@@ -192,7 +245,7 @@ export class BodyArms {
         drag = clampDrag(-0.06 * this.states[start + 5].v, 25)
       else if (j >= 9 && j < 24)
         drag = clampDrag(-0.05 * this.states[start + 7].v, 12)
-      targets[index] = this.advance(index, targets[index] + drag, activation[index])
+      targets[index] = this.advance(index, this.cascade(index, targets[index], activation) + drag, activation[index])
     }
   }
 }

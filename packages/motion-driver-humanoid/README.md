@@ -387,6 +387,13 @@ Each arm follower trails its parent through a drag term (architecture 3a).
 The elbow trails the upper arm's swing in the world, its flex rate minus the
 trunk pitch rate, so the plumb line's counter-rotation of the upper arm against
 a pitching trunk (stillness in the world) never swings the forearm.
+Terms that several arm joints receive at once (breath, weight, gait swing, a
+layer's key) pass each joint's lag link before its follower, with delay
+`s_j + max(0, tau_upper - tau_j)`: architecture 4a's start offsets (0 ms for
+clavicle and upper arm, 30 elbow, 60 pronation, 90 wrist, 130 fingers) plus
+the faster distal follower's head start in ramp lag. Shared motion therefore
+reaches the arm from shoulder to fingertip by construction; each joint's own
+noise and its drag bypass the link.
 Nonnegative channels use a C1 lower knee that preserves zero exactly; the
 generic tanh lower knee would bend an otherwise neutral toe. Their upper knee
 and all signed channel limits use the shared `softLimit` primitive.
