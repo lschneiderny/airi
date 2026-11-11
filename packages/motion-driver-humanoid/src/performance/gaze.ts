@@ -8,6 +8,22 @@ import { BODY_TICK, DEG } from './channels'
 const wrap = (angle: number) => Math.atan2(Math.sin(angle), Math.cos(angle))
 const pursuitCoefficients = secondOrderCoefficients({ f: 5, zeta: 1, r: 0 }, BODY_TICK)
 const creepCoefficients = secondOrderCoefficients({ f: 1 / (Math.PI * 1.2), zeta: 1, r: 0 }, BODY_TICK)
+const saccadeSeconds = (amplitude: number) => 0.025 + 0.0024 * amplitude / DEG
+const headSeconds = (travel: number) => 0.28 + 0.0058 * travel / DEG
+
+/** The share of a minimum-jerk move's time at which it has covered `fraction` of its distance. */
+function minJerkTime(fraction: number): number {
+  let lo = 0
+  let hi = 1
+  for (let i = 0; i < 20; i++) {
+    const mid = (lo + hi) / 2
+    if (minJerk(mid) < fraction)
+      lo = mid
+    else
+      hi = mid
+  }
+  return (lo + hi) / 2
+}
 
 /** The line leads; head then trunk take up the sustained eccentricity underneath it. */
 export class BodyGaze {
@@ -46,25 +62,26 @@ export class BodyGaze {
     const goal = input.gaze
     this.sinceBlink += BODY_TICK
     const jump = Math.hypot(wrap(goal.yaw - this.lastYaw), goal.pitch - this.lastPitch)
-    if (goal.saccadeSeq !== this.seq || goal.kind !== this.kind || jump > 4 * DEG) {
+    const triggered = goal.saccadeSeq !== this.seq || goal.kind !== this.kind || jump > 4 * DEG
+    this.seq = goal.saccadeSeq
+    this.kind = goal.kind
+    // A goal that arrives over several display frames, or Natural saccading to where the eyes already go, is the saccade
+    // in flight: it is retargeted, not restarted, so the eyes keep moving and the head keeps its plan.
+    if (triggered && this.elapsed < this.duration + (this.landing < 1 ? 0.18 : 0)) {
+      this.retarget(goal.yaw, goal.pitch, input.facingYaw)
+    }
+    else if (triggered) {
       const amplitude = Math.hypot(wrap(goal.yaw - this.line.yaw), goal.pitch - this.line.pitch)
       this.shifts++
-      this.seq = goal.saccadeSeq
-      this.kind = goal.kind
       this.fromYaw = this.line.yaw
       this.fromPitch = this.line.pitch
       this.toYaw = this.fromYaw + wrap(goal.yaw - this.fromYaw)
       this.toPitch = goal.pitch
-      this.duration = 0.025 + 0.0024 * amplitude / DEG
+      this.duration = saccadeSeconds(amplitude)
       this.elapsed = 0
       this.landing = amplitude > 15 * DEG ? 0.92 + 0.04 * this.random() : 1
-      if (amplitude >= 10 * DEG) {
-        this.recruited = true
-        this.headLatency = amplitude > 40 * DEG ? 0.02 * this.random() : 0.03 + 0.03 * this.random()
-        this.trunkLatency = this.headLatency + 0.12
-        const duration = 0.28 + 0.0058 * Math.abs(wrap(goal.yaw - input.facingYaw) - this.head[0].y) / DEG
-        this.coefficients = secondOrderCoefficients({ f: 0.62 / duration, zeta: 0.72, r: 0.15 }, BODY_TICK)
-      }
+      if (amplitude >= 10 * DEG)
+        this.recruit(amplitude, goal.yaw, input.facingYaw)
       const probability = Math.min(0.85, Math.max(0, (amplitude / DEG - 12) / 30))
       if (this.random() < probability && goal.blinkFactor > 0.95 && this.sinceBlink >= 0.4) {
         this.blinkElapsed = 0
@@ -109,6 +126,28 @@ export class BodyGaze {
       : this.blinkElapsed < 0.1
         ? 1
         : 1 - minJerk((this.blinkElapsed - 0.1) / 0.15)
+  }
+
+  private recruit(amplitude: number, goalYaw: number, facingYaw: number): void {
+    this.recruited = true
+    this.headLatency = amplitude > 40 * DEG ? 0.02 * this.random() : 0.03 + 0.03 * this.random()
+    this.trunkLatency = this.headLatency + 0.12
+    this.coefficients = secondOrderCoefficients({ f: 0.62 / headSeconds(Math.abs(wrap(goalYaw - facingYaw) - this.head[0].y)), zeta: 0.72, r: 0.15 }, BODY_TICK)
+  }
+
+  /** Points the saccade in flight at the new goal; its clock is re-timed so the line keeps the distance it has covered. */
+  private retarget(yaw: number, pitch: number, facingYaw: number): void {
+    const covered = Math.hypot(this.line.yaw - this.fromYaw, this.line.pitch - this.fromPitch)
+    this.toYaw = this.fromYaw + wrap(yaw - this.fromYaw)
+    this.toPitch = pitch
+    const amplitude = Math.hypot(this.toYaw - this.fromYaw, this.toPitch - this.fromPitch)
+    this.duration = saccadeSeconds(amplitude)
+    const fraction = amplitude > 0 ? covered / (amplitude * this.landing) : 1
+    this.elapsed = fraction >= 1 ? this.duration : this.duration * minJerkTime(fraction)
+    if (amplitude >= 10 * DEG && !this.recruited)
+      this.recruit(amplitude, yaw, facingYaw)
+    else if (this.recruited)
+      this.coefficients = secondOrderCoefficients({ f: 0.62 / headSeconds(Math.abs(wrap(yaw - facingYaw) - this.head[0].y)), zeta: 0.72, r: 0.15 }, BODY_TICK)
   }
 
   private advanceLine(yaw: number, pitch: number): void {

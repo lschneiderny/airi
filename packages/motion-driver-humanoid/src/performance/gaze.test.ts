@@ -64,6 +64,23 @@ describe('gaze performance', () => {
     expect(movingSamples).toBeGreaterThan(60)
   })
 
+  it('keeps one saccade when the goal arrives over several ticks or Natural saccades toward it again', () => {
+    const shifts = (goal: (tick: number) => { yaw: number, seq: number }) => {
+      const performer = createBodyPerformer({ traits, seed: 1 })
+      const input = quietInput()
+      let count = 0
+      for (let i = 0; i < 240; i++) {
+        const { yaw, seq } = goal(i)
+        count = performer.step({ ...input, gaze: { ...input.gaze, yaw: yaw * DEG, saccadeSeq: seq } }).diagnostics.gazeShifts
+      }
+      return count
+    }
+    // A target sliding 60 degrees across three ticks, as a goal resolved over three display frames arrives.
+    expect(shifts(i => ({ yaw: i < 120 ? 0 : 20 * Math.min(3, i - 119), seq: 0 }))).toBe(1)
+    // Natural's own saccade toward the cursor the body already turned to, one display frame later.
+    expect(shifts(i => ({ yaw: i < 120 ? 0 : 40, seq: i < 122 ? 0 : 1 }))).toBe(1)
+  })
+
   it('couples blinks more often to large shifts across seeds and respects Natural blinks', () => {
     function count(degrees: number, openness = 1) {
       let blinks = 0
