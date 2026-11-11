@@ -363,7 +363,10 @@ also follows the head plan through its own, faster response. Underneath these,
 the neck and head counter-rotate part of the trunk's world rotation from
 posture and breath (0.5 of yaw, 0.6 of pitch and roll, 80 ms late), so the
 head stays near level while the body sways; the trunk's share of Natural's head
-yaw and the gaze trunk are intent and are not cancelled.
+yaw and the gaze trunk are intent and are not cancelled. At idle the head also
+wanders slowly on the performer's own seeded streams (a gated drift, its
+velocity smoothed at 0.25 Hz), scaled by `posture.amplitude` and eased to 0.3
+while the gaze holds a sustained target or shifts.
 
 The channel table contains 77 scalars: pelvis XYZ in leg lengths; hips,
 three torso controls, neck and head in intrinsic YXZ radians; and per side nine

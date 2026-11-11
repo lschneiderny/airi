@@ -7,6 +7,9 @@ import { BODY_TICK, DEG } from './channels'
 
 const axes = ['yaw', 'pitch', 'roll'] as const
 const heldTerms = ['pet', 'held'] as const
+/** Idle wander size before the gate and drift (yaw, pitch, roll), degrees, and its share while attending. */
+const WANDER_DEG = [6, 3.6, 2.1] as const
+const WANDER_CALM = 0.3
 /** Speech- and cue-timed head accents keep the fast follower so a nod lands on its beat. */
 const accentTerms = ['emphasis', 'impulse', 'gesture', 'cue'] as const
 
@@ -30,6 +33,15 @@ export class BodyPosture {
   private readonly neckCoefficients = secondOrderCoefficients({ f: 1.2, zeta: 0.8, r: 0 }, BODY_TICK)
   private readonly headCoefficients = secondOrderCoefficients({ f: 0.9, zeta: 0.65, r: 0 }, BODY_TICK)
   private readonly accent = Array.from({ length: 3 }, () => ({ y: 0, v: 0, x: 0 }))
+  // Idle head wander: a seeded drift with quiet and moving stretches, its velocity smoothed at 0.25 Hz so it reads as a
+  // slow wander rather than a flicker; it eases to 0.3 while the gaze holds a sustained target or shifts.
+  private readonly wander
+  private readonly wanderGate
+  private readonly wanderSmooth = Array.from({ length: 3 }, () => ({ y: 0, v: 0, x: 0 }))
+  private readonly wanderCoefficients = secondOrderCoefficients({ f: 0.25, zeta: 1, r: 0 }, BODY_TICK)
+  private wanderAttention = 1
+  /** Set by the performer each tick: a gaze shift is under way. */
+  gazeShifting = false
   private readonly accentCoefficients = secondOrderCoefficients({ f: 5, zeta: 1, r: 0 }, BODY_TICK)
   private readonly slow = createLagChain([0.25, 0.15], BODY_TICK)
   private readonly gate
@@ -43,6 +55,8 @@ export class BodyPosture {
     this.random = createRandomStream(deriveSeed(seed, 0))
     this.gate = createActivityGate({ seed: deriveSeed(seed, 1) })
     this.drift = [2, 3, 4, 5, 6, 7].map(index => createDriftNoise({ seed: deriveSeed(seed, index) }))
+    this.wander = [96, 97, 98].map(index => createDriftNoise({ seed: deriveSeed(seed, index) }))
+    this.wanderGate = createActivityGate({ seed: deriveSeed(seed, 99), floor: 0 })
     this.weight = createLagChain(traits.spineChain.length === 1 ? [0.04, 0.11, 0.07, 0.05] : [0.04, 0.11, 0.08, 0.08, 0.07, 0.05], BODY_TICK)
     this.dwell = this.drawDwell()
     this.lateralGain = 0.38 * Math.abs(traits.feet.left.ankle.x - traits.feet.right.ankle.x) / (2 * traits.legLength)
@@ -112,14 +126,18 @@ export class BodyPosture {
     out[12] += trunkUpper * headGain
     out[9] += trunkMid * headGain
     this.trunkIntentYaw = (trunkUpper + trunkMid) * headGain
+    const calm = input.gaze.kind === 'sustained' || this.gazeShifting ? WANDER_CALM : 1
+    this.wanderAttention = calm + (this.wanderAttention - calm) * Math.exp(-BODY_TICK / 0.8)
+    const wanderGate = this.wanderGate.step(BODY_TICK) * input.posture.amplitude * this.wanderAttention
     for (let axis = 0; axis < 3; axis++) {
+      advanceSecondOrder(this.wanderSmooth[axis], WANDER_DEG[axis] * DEG * wanderGate * this.wander[axis].step(BODY_TICK), this.wanderCoefficients)
       let target = input.head.attitude[axes[axis]]
       for (const term of heldTerms)
         target += input.head.terms[term][axes[axis]]
       let accent = 0
       for (const term of accentTerms)
         accent += input.head.terms[term][axes[axis]]
-      const attitude = (target - (axis === 0 ? trunkUpper + trunkMid : 0)) * headGain
+      const attitude = (target - (axis === 0 ? trunkUpper + trunkMid : 0)) * headGain + this.wanderSmooth[axis].y
       advanceSecondOrder(this.attitudeNeck[axis], attitude, this.neckCoefficients)
       advanceSecondOrder(this.attitudeHead[axis], attitude, this.headCoefficients)
       advanceSecondOrder(this.accent[axis], accent * headGain, this.accentCoefficients)

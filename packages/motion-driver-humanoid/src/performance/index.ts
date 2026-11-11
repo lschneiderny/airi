@@ -166,6 +166,7 @@ class BodyPerformer {
       effective = this.mapped
     }
     targets.fill(0)
+    state.posture.gazeShifting = state.gaze.shifting
     state.posture.step(effective, targets)
     state.breath.step(effective, targets)
     this.steadyHead(targets)

@@ -8,6 +8,20 @@ const traits = fixtureRigs[0].traits
 const c = channelIndex
 
 describe('posture performance', () => {
+  it('lets the idle head wander a few degrees, and holds it steadier on a sustained target', () => {
+    const wander = (kind: 'free' | 'sustained') => {
+      const performer = createBodyPerformer({ traits, seed: 1 })
+      const trace = channelTrace(performer, 120, t => ({ ...idleInput(t), gaze: { ...idleInput(t).gaze, kind } }))
+      const yaw = trace[c('neckYaw')].map((v, i) => (v + trace[c('headYaw')][i]) * 180 / Math.PI).slice(1200)
+      const mean = yaw.reduce((s, v) => s + v, 0) / yaw.length
+      return Math.sqrt(yaw.reduce((s, v) => s + (v - mean) ** 2, 0) / yaw.length)
+    }
+    const free = wander('free')
+    expect(free).toBeGreaterThan(1.5)
+    expect(free).toBeLessThan(6)
+    expect(wander('sustained')).toBeLessThan(0.5 * free)
+  })
+
   it('steadies the head against a weight shift: about 0.4 of the trunk roll and 0.5 of its yaw remain at the head', () => {
     const performer = createBodyPerformer({ traits, seed: 1 })
     const trace = channelTrace(performer, 6, t => ({ ...quietInput(t), posture: { amplitude: 0, shiftRate: 0, support: t < 0.5 ? 0 : 1 } }))

@@ -56,6 +56,14 @@ export class BodyGaze {
   private trunkGoal = 0
   private recruited = false
   private blinkElapsed = Infinity
+
+  private sinceRecruit = Infinity
+
+  /** A shift that recruited the head started less than 1.2 s ago: the head and trunk are still on their way. */
+  get shifting(): boolean {
+    return this.sinceRecruit < 1.2
+  }
+
   private sinceBlink = Infinity
 
   constructor(seed: number) {
@@ -65,6 +73,7 @@ export class BodyGaze {
   step(input: BodyPerformanceInput, out: Float64Array): void {
     const goal = input.gaze
     this.sinceBlink += BODY_TICK
+    this.sinceRecruit += BODY_TICK
     const jump = Math.hypot(wrap(goal.yaw - this.lastYaw), goal.pitch - this.lastPitch)
     const triggered = goal.saccadeSeq !== this.seq || goal.kind !== this.kind || jump > 4 * DEG
     this.seq = goal.saccadeSeq
@@ -145,6 +154,7 @@ export class BodyGaze {
 
   private recruit(amplitude: number, goalYaw: number, facingYaw: number): void {
     this.recruited = true
+    this.sinceRecruit = 0
     this.headLatency = amplitude > 40 * DEG ? 0.02 * this.random() : 0.03 + 0.03 * this.random()
     this.trunkLatency = this.headLatency + 0.12
     this.planHead(Math.abs(wrap(goalYaw - facingYaw) - this.head[0].y))
