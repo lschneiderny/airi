@@ -65,6 +65,7 @@ These files exceed 500 lines. Read the owning module before editing them: `godot
 - Do not gate VRM transparency sampling on Auto Hide.
 - Do not detect Wayland or Linux to answer a capability question; read `useHostCapabilitiesStore` or the main host capability service.
 - Do not use uncertain native cursor state to disable Wayland window interaction.
+- Do not move the desktop stage window from the renderer or with `setBounds`. Only `bindStageWindowToDisplay` moves it, and the stage page changes its camera only on a `stageDisplayId` that main confirmed. See the [display hand-off ADR](../../docs/ai/adr/2026-11-10-display-hand-off.md).
 - Do not remove main-owned shortcuts during renderer shortcut resets.
 - Floating chat uses the default pin level to preserve input-method candidate visibility.
 - `UPDATE_SERVER_URL` is development-only. It must not control production update routing.
