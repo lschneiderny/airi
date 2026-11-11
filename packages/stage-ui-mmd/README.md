@@ -161,6 +161,14 @@ The headless composition also imports `MMDBody` from `./composables/mmd/body`,
 `MMDNaturalAdapter` from `./composables/mmd/natural/adapter`, and
 `MMDStanceDirector` from `./composables/mmd/stance`.
 
+For Node composition, import `MMDFramePipeline` from
+`./composables/mmd/frame-pipeline`, `MMDFrameMetrics` from
+`./composables/mmd/frame-metrics`, `readMMDRigProfile` from
+`./composables/mmd/rig`, `MMDBodyPose` from `./composables/mmd/body/pose`,
+and `resolveBodyTarget` from `./composables/mmd/body/attention`.
+These direct entry points avoid the browser audio runtime exported by the
+general `./composables/mmd` barrel.
+
 `MMDFramePipeline` owns a clean, pre-solver pose for each model. It restores
 that pose before queued playback commands and mixer sampling, then captures
 the clip pose before registered pose stages, IK, grants, and physics. Surface
