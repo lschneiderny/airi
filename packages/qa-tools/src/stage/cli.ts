@@ -14,7 +14,7 @@ import { runHandOff } from './handoff'
 import { measureAttached, measurePairs, measureScenario } from './measure'
 
 export const stageUsage = `Usage:
-  stage capture --port <cdp port> --scenario <idle|walk|attach> --seconds <s> --out <dir> [--mode window|desktop] [--shots 12] [--seed 1]
+  stage capture --port <cdp port> --scenario <idle|walk|attach> --seconds <s> --out <dir> [--mode window|desktop] [--shots 12] [--seed 1] [--collect-before]
   stage measure --mode <window|desktop> --port <cdp port> [--seconds 60] [--attempts 3] --out <json>
   stage measure --pairs <n> --profile <profile dir> [--seconds 60] [--settle 10] [--attempts 3] --out <json>
   stage measure --mode <window|desktop> --port <cdp port> --scenario <gesture-walk|action-preempt> --clip <clip name> [--seconds 12] [--attempts 3] --out <json>
@@ -87,7 +87,7 @@ export async function runStageCli(argv: readonly string[], context: { repoRoot: 
     if (command === 'capture') {
       const { values } = parse(() => parseArgs({
         args: [...rest],
-        options: { port: { type: 'string' }, scenario: { type: 'string' }, seconds: { type: 'string' }, out: { type: 'string' }, mode: { type: 'string' }, shots: { type: 'string' }, seed: { type: 'string' } },
+        options: { 'port': { type: 'string' }, 'scenario': { type: 'string' }, 'seconds': { type: 'string' }, 'out': { type: 'string' }, 'mode': { type: 'string' }, 'shots': { type: 'string' }, 'seed': { type: 'string' }, 'collect-before': { type: 'boolean' } },
         strict: true,
       }))
       if (!values.port || !values.scenario || !values.seconds || !values.out)
@@ -113,6 +113,7 @@ export async function runStageCli(argv: readonly string[], context: { repoRoot: 
         seconds,
         shots: positiveInteger('shots', values.shots, 12),
         seed,
+        collectBefore: values['collect-before'] === true,
       })
       console.info(JSON.stringify({ ok: capture.valid, out: resolve(context.cwd, values.out), frames: capture.frames, fps: capture.fps, failure: capture.failure }))
       return capture.valid ? 0 : 1

@@ -142,6 +142,19 @@ describe('qa:stage capture', () => {
     expect(cdp.close).toHaveBeenCalledTimes(1)
   })
 
+  it.each([false, true])('requests a stage collection before recording only with --collect-before (%s) and records the choice', async (collect) => {
+    const run = runStageCli(collect ? [...args, '--collect-before'] : args, context)
+    await vi.runAllTimersAsync()
+    expect(await run).toBe(0)
+    const collection = cdp.send.mock.calls.findIndex(([method]) => method === 'HeapProfiler.collectGarbage')
+    const start = cdp.evaluate.mock.calls.findIndex(([expression]) => String(expression).includes('startTrace'))
+    if (collect)
+      expect(cdp.send.mock.invocationCallOrder[collection]).toBeLessThan(cdp.evaluate.mock.invocationCallOrder[start])
+    else
+      expect(collection).toBe(-1)
+    expect(JSON.parse(readFileSync(join(dir, 'capture/capture.json'), 'utf8'))).toMatchObject({ collectBefore: collect })
+  })
+
   it('assembles multiple drain chunks, provenance, shot timing and a readable rendered trace', async () => {
     const run = runStageCli(args, context)
     await vi.runAllTimersAsync()

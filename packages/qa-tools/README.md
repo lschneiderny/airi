@@ -786,6 +786,16 @@ additional lease. `--mode window|desktop` defaults to `window`, `--shots`
 defaults to 12 and `--seed` to 1. Seconds must be greater than 0 and at most
 120; seed selects the cue timeline and does not reseed the mounted model.
 
+`--collect-before` is an optional measurement protocol, off by default. Before
+each recording it requests a full V8 collection of the stage renderer through
+CDP (`HeapProfiler.collectGarbage`), waits for it, and lets the frames settle
+for one second. This keeps a known product stall out of the motion
+measurement: an old-generation collection whose finalization pause lands
+inside a frame and produces a 50 ms interval. The stall itself is measured
+and reported separately, with idle frame intervals in the running app.
+`capture.json` records the choice as `collectBefore`. The flag does not change
+what the gate refuses.
+
 Capture waits for a mounted MMD model, checks animation, then warms up for
 10 s and waits for a second of standing before starting the recorder.
 `idle` observes the existing motion. `walk` posts the shared scenario's

@@ -30,6 +30,16 @@ export interface CaptureOptions {
   mode: StageMode
   shots: number
   seed: number
+  /** Opt-in protocol: a full collection of the stage renderer before each recording, so a major GC pause stays out of it. */
+  collectBefore: boolean
+}
+
+/** Requests a full V8 collection of the stage renderer and lets the frames after its pause settle for a second. */
+async function collectBeforeRecording(client: CdpClient): Promise<void> {
+  await client.send('HeapProfiler.enable')
+  await client.send('HeapProfiler.collectGarbage', undefined, 60_000)
+  await client.send('HeapProfiler.disable')
+  await client.evaluate('new Promise(resolve => setTimeout(resolve, 1000))', 5000)
 }
 
 /** The scene must register exactly the shared composition the headless runner uses, or a capture is no evidence for it. */
@@ -142,6 +152,8 @@ export async function captureStage(options: CaptureOptions) {
     }
     mkdirSync(join(options.out, 'shots'), { recursive: true })
     const record = async (withShots: boolean) => {
+      if (options.collectBefore)
+        await collectBeforeRecording(client)
       const started = mounted((await captureSnapshot(client, {
         command: { type: 'command', name: 'startTrace', value: { scenario: { id: options.scenario, class: scenario?.class ?? 'idle', seed: options.seed }, maxSeconds: options.seconds } },
         wait: 'recording',
@@ -188,6 +200,7 @@ export async function captureStage(options: CaptureOptions) {
       gapFraction,
       probeGapFraction,
       noticeDismissed,
+      collectBefore: options.collectBefore,
       shotsPass: separateShots ? 3 : 1,
       shotsNote: separateShots ? 'Discarded the screenshot probe after more than 0.5% of intervals exceeded 1/24 s, recorded again without screenshots, then replayed cues for shots; attach remains undriven.' : 'Shots were taken during the recorded timeline.',
       parity: { stageOrder: 'match', stages: trace.source.stages },
