@@ -2,16 +2,14 @@ import type { MotionScenarioClass } from '@proj-airi/motion-driver-humanoid/moti
 
 import type { ReferenceManifest } from '../reference/manifest'
 import type { StylePosture } from './reference-context'
-import type { ReferenceInput } from './reference-measure'
 import type { ClassBands, MotionBandsFile } from './types'
 
 import { prepareTrace } from '../metrics'
-import { parseTrace } from '../read-trace'
-import { ingestClip } from '../reference/ingest'
+import { admitReferences } from './admissions'
 import { emotionContext, idleLoopContext, stylePosture } from './reference-context'
 import { fitClass } from './reference-fit'
-import { amplitudeRange, measureReference, referenceDetectors, referenceInput } from './reference-measure'
-import { checkKinematics } from './refusals'
+import { amplitudeRange, measureReference, referenceDetectors } from './reference-measure'
+import { GateRefusal } from './refusals'
 
 export interface ReferenceBuild {
   readonly directory: string
@@ -22,16 +20,15 @@ export interface ReferenceBuild {
 
 /** Manifest order is preserved for both fitting and held-out episode groups. */
 export async function buildReference(options: ReferenceBuild): Promise<MotionBandsFile> {
-  const inputs: ReferenceInput[] = []
+  const { inputs, refusals } = await admitReferences(options.directory, options.manifest, options.signal)
+  const refusedHoldouts = refusals.filter(r => r.entry.split === 'holdout')
+  if (refusedHoldouts.length)
+    throw new GateRefusal('reference-holdout-refused', refusedHoldouts.map(r => `${r.clipSha256}: ${r.name}: ${r.detail}`).join('; '))
   const styles = new Map<string, StylePosture>()
   const longIdle: { clipSha256: string, seconds: number, loopPeak: Readonly<Record<string, number | null>> }[] = []
-  for (const entry of options.manifest.clips) {
+  for (const c of inputs) {
     options.signal.throwIfAborted()
-    const input = parseTrace(await ingestClip(options.directory, entry))
-    checkKinematics(input, entry.role === 'episode-only' ? 0 : undefined)
-    const c = referenceInput(entry, input)
-    inputs.push(c)
-    console.info(`INGEST ${input.trace.source.scenario.id} ${entry.split} ${entry.role} ${c.seconds.toFixed(6)}s ACCEPTED`)
+    const { entry, input } = c
     if (entry.profile === '100style' && entry.class === 'idle') {
       const name = /\/([^/]+)_ID\.bvh$/.exec(entry.file)?.[1]
       if (name && ['Neutral', 'Angry', 'Depressed', 'Elated', 'Proud'].includes(name))
@@ -78,6 +75,18 @@ export async function buildReference(options: ReferenceBuild): Promise<MotionBan
     datasets: options.manifest.datasets.map(dataset => ({ ...dataset, clips: options.manifest.clips.filter(c => c.dataset === dataset.id).length })),
     classes,
     context: {
+      admission: {
+        fixed: options.manifest.clips.length,
+        admitted: inputs.length,
+        refusals: refusals.map(({ entry, ...refusal }) => ({
+          ...refusal,
+          dataset: entry.dataset,
+          subject: entry.subject,
+          class: entry.class,
+          split: entry.split,
+          role: entry.role,
+        })),
+      },
       emotionStyles: context,
       longIdle,
       longIdleCoverage: { expected: 4, available: longIdle.length, detail: longIdle.length < 4 ? 'The fixed manifest does not contain four idle ranges of at least 20 s; no clips added or ranges extended.' : '' },

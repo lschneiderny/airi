@@ -70,6 +70,9 @@ fitting clip activities; move speeds are medians of fitting clip median speeds.
 Episode-only clips do not fit detector scales. Metrics are recomputed after
 these scales are fitted. Pooled episodes use the detector scales of the class
 being judged, even when a source clip belongs to another class.
+Every fixed entry is attempted. Named fitting-source refusals remain in the
+admission context and do not count toward the class minimum; the manifest is
+never rewritten. A refused held-out source prevents derivation.
 
 Clip bands need ten fitting values. Percentiles interpolate rank `(n - 1) * p`.
 Bounds are `2 * P5 - P50` and `2 * P95 - P50`, using only the declared side.
