@@ -197,6 +197,34 @@ The command prints one row per shift and per episode and writes
 turn of 10 degrees or more, or without eye, head, chest or hips columns, is
 refused by name with exit 2.
 
+### Criterion reports (embodied performance)
+
+Six reports judge goal 3's criteria at criterion level, beside the gate. Their
+rules and constants were fixed by the goal-3 plan before any gesture existed;
+each prints its version and every constant with its source, writes
+`<name>.json` and `<name>.txt` into the run directory (the first one when it
+takes several), and exits 0 on PASS, 1 on FAIL and 2 on a usage error or an
+unreadable input. Reports that read `gate.json` need `qa:motion3d gate` first;
+the gate's own verdict is never changed by them.
+
+| Command | Judges |
+| --- | --- |
+| `pnpm qa:motion3d gesture-timing <speak run>` | C001: labelled peaks hit by a kinematic hand apex within 200 ms (at least 70 % of at least 10 peaks), `gesture-stroke` markers confirmed by an apex within 50 ms (90 %), at least four forms whose median apex pronation, wrist flexion, index curl or stroke direction differ by 10 degrees, one-hand share and two-hand apex lag, upper arm before lower arm before hand in unit preparations (90 %), zero penetration, pops and corrector fallbacks, the C001 required gate ids, and the arm LDLJ inside the printed talk band. |
+| `pnpm qa:motion3d emotion-table <emotions run>...` | C002: the 13 by 13 separation table on the gate's trial vectors and sigma, every pair with a non-neutral emotion at 2 SD (neutral against placebo is printed only), the release window +8 to +11 s inside the placebo trials' p95, the vacuity guards, the gate's onset metrics and arm share, and each onset episode. |
+| `pnpm qa:motion3d cue-body <emotions run>...` | C002: every cue kind moves a bone below the neck (RMS over the cue and 0.5 s at least 3 x its emotion floor and 2 x its RMS in the second before) on at least 5 of its 6 events. `--calibrate <idle run>...` prints the share of 200 seeded idle times that would pass, the adoption check for the factor 2. |
+| `pnpm qa:motion3d ownership <gesture-under-clip run>` | C004: the right arm and fingers written within 0.001 rad of the clip on fully owned frames, with a trace cross-check against the clip's analytic pose; no gesture activation on an owned arm; the left arm still gesturing; no pop around the poke; a stroke after the poke; no stale right stroke and a right arm back in its rest band after the release. |
+| `pnpm qa:motion3d turn <capture>` | C003: a kinematic stroke apex inside speech, a trunk, neck, head and shoulder posture change after the ACT emotion cue above 20 pseudo-placebo times before it, and the gate verdict. |
+| `pnpm qa:motion3d pops <run>...` | Plan 2.6: one-frame velocity spikes and isolated velocity steps of 30 deg/s or more on the shoulder, upper arm, lower arm and hand (fingers reported only). |
+
+The shared building blocks are in `src/t2-3d/reports/kinematics.ts`: the wrist
+path in the chest frame in arm lengths, kinematic strokes bounded by speed
+minima with at least 0.0168 arm lengths of travel, the apex as the first speed
+minimum within 300 ms at half the peak speed or less, and the pop classifier.
+Known limits of these rules as fixed are recorded in the goal-3 unit M evidence:
+the stroke detector also fires on idle arm sway, the pop classifier misses
+mid-stroke steps in strokes faster than 200 ms, and `cue-body` counts a still
+shoulder as moving because the version-2 shoulder emotion floor is 0.
+
 ### Reference bands
 
 ```bash

@@ -30,8 +30,14 @@ async function main(): Promise<number> {
     case 'gate': return (await import('../src/t2-3d/cli/gate')).gateMotion3d(args, context)
     case 'reference': return (await import('../src/t2-3d/cli/reference')).referenceMotion3d(args, context)
     case 'gaze-order': return (await import('../src/t2-3d/cli/gaze-order')).gazeOrderMotion3d(args, context)
+    case 'gesture-timing': return (await import('../src/t2-3d/cli/gesture-timing')).gestureTimingMotion3d(args, context)
+    case 'emotion-table': return (await import('../src/t2-3d/cli/emotion-table')).emotionTableMotion3d(args, context)
+    case 'cue-body': return (await import('../src/t2-3d/cli/cue-body')).cueBodyMotion3d(args, context)
+    case 'ownership': return (await import('../src/t2-3d/cli/ownership')).ownershipMotion3d(args, context)
+    case 'turn': return (await import('../src/t2-3d/cli/turn')).turnMotion3d(args, context)
+    case 'pops': return (await import('../src/t2-3d/cli/pops')).popsMotion3d(args, context)
     default:
-      console.error('Usage: qa:motion3d <run|gate|reference|gaze-order> [arguments]')
+      console.error('Usage: qa:motion3d <run|gate|reference|gaze-order|gesture-timing|emotion-table|cue-body|ownership|turn|pops> [arguments]')
       return 2
   }
 }
