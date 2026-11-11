@@ -6,7 +6,9 @@ import { createRandomStream } from '../random'
 import { BODY_TICK, DEG } from './channels'
 
 const axes = ['yaw', 'pitch', 'roll'] as const
-const headTerms = ['emphasis', 'impulse', 'pet', 'held', 'gesture', 'cue'] as const
+const heldTerms = ['pet', 'held'] as const
+/** Speech- and cue-timed head accents keep the fast follower so a nod lands on its beat. */
+const accentTerms = ['emphasis', 'impulse', 'gesture', 'cue'] as const
 
 /** Weight starts at the ground. Head attitude travels in the opposite direction. */
 export class BodyPosture {
@@ -19,9 +21,14 @@ export class BodyPosture {
   private readonly transfer = { y: 0, v: 0, x: 0 }
   private transferCoefficients = secondOrderCoefficients({ f: 0.55, zeta: 0.7, r: -0.45 }, BODY_TICK)
   private readonly weight
-  private readonly attitude = Array.from({ length: 3 }, () => ({ y: 0, v: 0, x: 0 }))
-  private readonly attitudeCoefficients = secondOrderCoefficients({ f: 5, zeta: 1, r: 0 }, BODY_TICK)
-  private readonly attitudeNeck = [0, 1, 2].map(() => createLagChain([0.035], BODY_TICK))
+  // The neck starts a turn (86 ms ramp lag); the head follows with 3e's head response for a 5 degree move
+  // (f = 0.62 / 0.31 s, 106 ms ramp lag), so the two overlap instead of moving as one.
+  private readonly attitudeNeck = Array.from({ length: 3 }, () => ({ y: 0, v: 0, x: 0 }))
+  private readonly attitudeHead = Array.from({ length: 3 }, () => ({ y: 0, v: 0, x: 0 }))
+  private readonly neckCoefficients = secondOrderCoefficients({ f: 3, zeta: 0.85, r: 0.1 }, BODY_TICK)
+  private readonly headCoefficients = secondOrderCoefficients({ f: 2, zeta: 0.72, r: 0.15 }, BODY_TICK)
+  private readonly accent = Array.from({ length: 3 }, () => ({ y: 0, v: 0, x: 0 }))
+  private readonly accentCoefficients = secondOrderCoefficients({ f: 5, zeta: 1, r: 0 }, BODY_TICK)
   private readonly slow = createLagChain([0.25, 0.15], BODY_TICK)
   private readonly gate
   private readonly drift
@@ -106,13 +113,17 @@ export class BodyPosture {
     out[9] += trunkMid * headGain
     for (let axis = 0; axis < 3; axis++) {
       let target = input.head.attitude[axes[axis]]
-      for (const term of headTerms)
+      for (const term of heldTerms)
         target += input.head.terms[term][axes[axis]]
-      advanceSecondOrder(this.attitude[axis], target * headGain, this.attitudeCoefficients)
-      const attitude = this.attitude[axis].y - (axis === 0 ? (trunkUpper + trunkMid) * headGain : 0)
-      const neck = this.attitudeNeck[axis].step(0.35 * attitude)[0]
-      out[15 + axis] += neck
-      out[18 + axis] += attitude - neck
+      let accent = 0
+      for (const term of accentTerms)
+        accent += input.head.terms[term][axes[axis]]
+      const attitude = (target - (axis === 0 ? trunkUpper + trunkMid : 0)) * headGain
+      advanceSecondOrder(this.attitudeNeck[axis], attitude, this.neckCoefficients)
+      advanceSecondOrder(this.attitudeHead[axis], attitude, this.headCoefficients)
+      advanceSecondOrder(this.accent[axis], accent * headGain, this.accentCoefficients)
+      out[15 + axis] += 0.35 * (this.attitudeNeck[axis].y + this.accent[axis].y)
+      out[18 + axis] += 0.65 * (this.attitudeHead[axis].y + this.accent[axis].y)
     }
   }
 }

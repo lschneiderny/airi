@@ -8,6 +8,19 @@ const traits = fixtureRigs[0].traits
 const c = channelIndex
 
 describe('posture performance', () => {
+  it('starts a head attitude turn in the neck and lets the head follow with its own response', () => {
+    const performer = createBodyPerformer({ traits, seed: 1 })
+    const trace = channelTrace(performer, 3, (t) => {
+      const input = quietInput(t)
+      return { ...input, head: { ...input.head, attitude: { yaw: 0, pitch: t < 0.5 ? 0 : 0.2, roll: 0 } } }
+    })
+    const neck = trace[c('neckPitch')]
+    const head = trace[c('headPitch')]
+    const halfway = (values: number[]) => values.findIndex(v => v >= 0.5 * (values.at(-1) ?? 0))
+    expect(halfway(neck)).toBeLessThan(halfway(head))
+    expect((neck.at(-1) ?? 0) / ((neck.at(-1) ?? 0) + (head.at(-1) ?? 0))).toBeCloseTo(0.35, 2)
+  })
+
   it('moves the pelvis toward the foot named by support after anticipating and settling', () => {
     for (const support of [-1, 1]) {
       const performer = createBodyPerformer({ traits, seed: 1 })

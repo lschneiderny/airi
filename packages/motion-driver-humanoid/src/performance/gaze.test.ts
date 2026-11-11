@@ -23,6 +23,20 @@ function shift(degrees: number, seed = 1) {
 }
 
 describe('gaze performance', () => {
+  it('starts a gaze turn in the neck ahead of the head', () => {
+    const performer = createBodyPerformer({ traits, seed: 1 })
+    const input = quietInput()
+    const neck: number[] = []
+    const head: number[] = []
+    for (let i = 0; i < 360; i++) {
+      const frame = performer.step({ ...input, gaze: { ...input.gaze, yaw: 38 * DEG, saccadeSeq: 1 } })
+      neck.push(frame.channels[c('neckYaw')])
+      head.push(frame.channels[c('headYaw')])
+    }
+    const halfway = (values: number[]) => values.findIndex(v => v >= 0.5 * (values.at(-1) ?? 0))
+    expect(halfway(neck)).toBeLessThan(halfway(head))
+  })
+
   it('passes the head\'s turn up the trunk, so the trunk is half-way at least 120 ms after the head', () => {
     for (const [from, to] of [[0, 38], [0, 60], [40, -38]] as const) {
       const performer = createBodyPerformer({ traits, seed: 1 })

@@ -46,7 +46,9 @@ export class BodyGaze {
   private readonly pursuit = [{ y: 0, v: 0, x: 0 }, { y: 0, v: 0, x: 0 }]
   private readonly head = [{ y: 0, v: 0, x: 0 }, { y: 0, v: 0, x: 0 }]
   private coefficients = secondOrderCoefficients({ f: 1.5, zeta: 0.72, r: 0.15 }, BODY_TICK)
-  private readonly neck = [createLagChain([0.045], BODY_TICK), createLagChain([0.045], BODY_TICK)]
+  /** The neck follows the head goal through its own response, 1.6 times the head's frequency, so it starts the turn. */
+  private neckCoefficients = secondOrderCoefficients({ f: 2.4, zeta: 0.9, r: 0 }, BODY_TICK)
+  private readonly neck = [{ y: 0, v: 0, x: 0 }, { y: 0, v: 0, x: 0 }]
   private readonly trunk = createLagChain([0.095, 0.06, 0.08], BODY_TICK)
   private readonly trunkDrive = { y: 0, v: 0, x: 0 }
   private headLatency = 0
@@ -120,11 +122,14 @@ export class BodyGaze {
     if (this.headLatency <= 0) {
       const follow = this.recruited || Math.hypot(relativeYaw, goal.pitch) >= 10 * DEG
       const coefficients = this.recruited ? this.coefficients : creepCoefficients
+      const neckCoefficients = this.recruited ? this.neckCoefficients : creepCoefficients
       advanceSecondOrder(this.head[0], follow ? headYaw : 0, coefficients)
       advanceSecondOrder(this.head[1], follow ? headPitch : 0, coefficients)
+      advanceSecondOrder(this.neck[0], follow ? headYaw : 0, neckCoefficients)
+      advanceSecondOrder(this.neck[1], follow ? headPitch : 0, neckCoefficients)
     }
-    const neckYaw = this.neck[0].step(this.head[0].y)[0]
-    const neckPitch = this.neck[1].step(this.head[1].y)[0]
+    const neckYaw = this.neck[0].y
+    const neckPitch = this.neck[1].y
     out[15] += 0.35 * neckYaw
     out[18] += 0.65 * this.head[0].y
     out[16] += 0.4 * neckPitch
@@ -142,7 +147,13 @@ export class BodyGaze {
     this.recruited = true
     this.headLatency = amplitude > 40 * DEG ? 0.02 * this.random() : 0.03 + 0.03 * this.random()
     this.trunkLatency = this.headLatency + 0.12
-    this.coefficients = secondOrderCoefficients({ f: 0.62 / headSeconds(Math.abs(wrap(goalYaw - facingYaw) - this.head[0].y)), zeta: 0.72, r: 0.15 }, BODY_TICK)
+    this.planHead(Math.abs(wrap(goalYaw - facingYaw) - this.head[0].y))
+  }
+
+  private planHead(travel: number): void {
+    const f = 0.62 / headSeconds(travel)
+    this.coefficients = secondOrderCoefficients({ f, zeta: 0.72, r: 0.15 }, BODY_TICK)
+    this.neckCoefficients = secondOrderCoefficients({ f: 1.6 * f, zeta: 0.9, r: 0 }, BODY_TICK)
   }
 
   /** Points the saccade in flight at the new goal; its clock is re-timed so the line keeps the distance it has covered. */
@@ -157,7 +168,7 @@ export class BodyGaze {
     if (amplitude >= 10 * DEG && !this.recruited)
       this.recruit(amplitude, yaw, facingYaw)
     else if (this.recruited)
-      this.coefficients = secondOrderCoefficients({ f: 0.62 / headSeconds(Math.abs(wrap(yaw - facingYaw) - this.head[0].y)), zeta: 0.72, r: 0.15 }, BODY_TICK)
+      this.planHead(Math.abs(wrap(yaw - facingYaw) - this.head[0].y))
   }
 
   private advanceLine(yaw: number, pitch: number): void {

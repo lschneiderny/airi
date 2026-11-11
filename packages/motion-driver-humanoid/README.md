@@ -355,6 +355,11 @@ latest event records, directive, clip ownership and root velocity. Inputs are
 finite; amplitudes/rates are nonnegative, weights/tension/voice are [0,1],
 valence/arousal and forced support are [-1,1]. Event times are active seconds.
 Positive support names the RIGHT foot, so its pelvis displacement is negative X.
+The performer follows `attitude`, `pet` and `held` through separate neck and
+head responses, with the neck starting each turn and the head following, and
+the speech- and cue-timed terms `emphasis`, `impulse`, `gesture` and `cue`
+through one fast follower so an accent keeps its beat. In a gaze shift the neck
+also follows the head plan through its own, faster response.
 
 The channel table contains 77 scalars: pelvis XYZ in leg lengths; hips,
 three torso controls, neck and head in intrinsic YXZ radians; and per side nine
