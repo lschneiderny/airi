@@ -5,6 +5,11 @@ Keep its source independent of Three.js, Vue, Pinia, three-mmd, and stage UI
 packages.
 
 - Register a new subpath in `package.json` exports and the README.
+- `./performance` is the whole-body performer the MMD body poses from. It
+  writes no bone and reads no clock; the adapter in `@proj-airi/stage-ui-mmd`
+  owns the 120 Hz clock, the bind-frame mapping and clip ownership. Read
+  `docs/ai/adr/2026-11-11-whole-body-performer.md` before changing its
+  contracts.
 - The director also performs clips: it accepts or refuses a `BodyActionRequest`
   in a fixed order and echoes the `clipId` in `BodyIntent.action`. It never
   starts, stops, or names a clip itself. A refusal still advances
@@ -25,4 +30,5 @@ packages.
 Read `README.md`, `docs/ai/adr/2026-10-30-3d-character-motion.md`,
 `docs/ai/adr/2026-10-31-fullscreen-stage-and-locomotion.md`,
 `docs/ai/adr/2026-11-03-mmd-clip-actions.md`, and
+`docs/ai/adr/2026-11-11-whole-body-performer.md` and
 `docs/ai/adr/2026-11-12-idle-agency.md` before changing a contract.
