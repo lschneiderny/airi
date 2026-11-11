@@ -101,6 +101,7 @@ Refs are selected LSP counts including the declaration. Repository-wide centrali
 - Put conditions before commands. Use Conventional Commits without gitmoji, for example `feat(<package name>): add runner reconnect backoff`.
 - Name branches `username/<type>/short-name`, where `<type>` is a Conventional Commit type such as `feat` or `fix`. Rebase when pulling.
 - This personal fork has no release-note, attachment-upload, or Crowdin maintenance workflow, and no GitHub Actions workflows. `pnpm verify` and the pre-commit hook are the only checks.
+- Desktop releases are manual: `pnpm release <year>.<month>.<n>` on Linux and on macOS uploads installers to a draft GitHub release on the fork. See `scripts/dev-tools/README.md#pnpm-release`.
 
 ### Source control workflow
 - Commit small, self-contained changes directly to `main` after `pnpm verify` passes.

@@ -24,7 +24,7 @@ Parent guidance: [root AGENTS.md](../../AGENTS.md). Its task-routing skills also
 | IO traces | `src/main/services/airi/io-trace-recording/` | JSONL recording; `register.ts` filters spans by sender window |
 | Renderer tool stores | `src/renderer/stores/tools/index.ts` | Built-in, Home Assistant, MCP, plugin, and selection stores |
 | Build and install | `electron.vite.config.ts`, `electron-builder.config.ts` | Native dependencies, model assets, sidecar exports |
-| Release evidence | `scripts/`, `scripts/update-test/` | Artifact metadata, smoke tools, updater fixtures |
+| Releases and updates | `src/shared/release-repository.ts`, root `pnpm release`, `scripts/update-test/` | Fork release repository, installer upload, updater fixtures; macOS builds are ad-hoc signed and do not self-update |
 
 ## CONVENTIONS
 - Main owns native processes, extension sessions, credentials, and cleanup. Renderers use typed Eventa operations.
