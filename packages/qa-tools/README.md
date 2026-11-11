@@ -48,8 +48,8 @@ scenario's trial guarantee. Gaze episodes outside the fitting head-rotation
 P5 to P95 range are excluded and listed in metric details. Gaze onset bands
 use head episodes only.
 
-Version 0 uses explicitly marked analytic fixtures and is not a human-capture
-acceptance gate. A real freeze advances the gate to version 1. Frozen band files
+Version 0 retains explicitly marked analytic fixtures. Version 1 uses frozen
+human-reference bands. Frozen band files
 are immutable. Changing a band, detector, formula, window, or gated list requires
 the next version, a new file and SHA-256, in an isolated freeze commit before
 judging runs. A hash mismatch refuses scoring. A failing run never authorizes
@@ -101,14 +101,17 @@ repeated misses on unseen human motion make a metric unreliable as a gate.
 This tolerance was set after inspecting the held-out results and before any
 character trace was judged. It is not an independent validation decision.
 
-| Scenario | Fitted candidates and sides | Declared bands | Report only |
+The counts below describe frozen version 1. `fixtures/motion3d/bands-v1.json`
+records each metric, bound and report-only reason.
+
+| Scenario | Fitted gates and sides | Declared gates | Report only |
 | --- | --- | --- | --- |
-| idle | chain correlation upper and lag lower; ACF upper; core and arm coverage lower; bilateral upper; head LDLJ two-sided from idle/talk episodes; spike rate upper; speed CV, hold fraction, move rate two-sided; dimensionality lower | head and two root loop peaks below 0.3; active-wrist finger coverage at least 0.5; frozen fingers equal 0 | spectra, arm LDLJ, long burst and duration CV, head top-path share, idle act statistics |
-| speak (talk) | chain, coverage, bilateral, spike rate, intermittency and dimensions as idle; head LDLJ from idle/talk, arm LDLJ from talk; stroke rate two-sided; onset attack two-sided and eased share lower | finger coverage and frozen fingers; stroke binomial tail at most 0.01 and hit lag -200 to 200 ms | spectra, ACF, long intermittency, head top-path share, stroke/head gain, anticipation rate |
-| walk | chain, coverage, bilateral, spike rate, intermittency and dimensions as idle; pelvis twist, arm lag, heel pitch lower; chest counter and toe pitch upper; turn head lead lower from episodes | finger coverage and frozen fingers | spectra, ACF, LDLJ, long intermittency and head top-path share |
-| gaze-shift | chest lag, overshoot and settle two-sided; order share lower; head onset attack two-sided and eased share lower, all from idle/talk episodes | eye lead at least 0 ms | all core metrics, anticipation rate |
-| emotions | onset attack two-sided and eased share lower from idle/talk episodes | minimum separation at least 2 including placebo; arm share at least half the smallest of four emotion-style shares on one skeleton | all core metrics, median separation, anticipation rate; arm share if skeleton context is unavailable |
-| touch | none | none | every metric; cannot produce a gate pass |
+| idle | 26: non-vacuous chain correlation upper and lag lower; ACF upper; core/arm coverage lower; bilateral upper; head LDLJ two-sided; speed CV two-sided; core dimensionality lower | 5: head and two root loop peaks below 0.3; active-wrist finger coverage at least 0.5; frozen fingers equal 0 | 42: vacuous axial correlations and other vacuous bounds, insufficient clip fits, spectra, arm LDLJ, long intermittency and idle acts |
+| speak (talk) | 22: chain correlations except shoulder-upper-arm; core/arm coverage; bilateral except shoulders; head/arm LDLJ; head/left-arm spike rates; speed CV; dimensions; onset attack two-sided and eased share lower | 4: finger coverage and frozen fingers; stroke binomial tail at most 0.01 and hit lag -200 to 200 ms | 49: insufficient clip fits, vacuous bounds, spectra, ACF, long intermittency, speech gains and anticipation |
+| walk | 30: non-vacuous chain correlations/lags, coverage, bilateral, spike rates, speed CV and dimensions; pelvis twist, arm lag, heel pitch and turn head lead lower; chest counter and toe pitch upper | 2: finger coverage and frozen fingers | 41: vacuous bounds including neck-head correlation, spectra, ACF, LDLJ and long intermittency |
+| gaze-shift | 3: settle and head onset attack two-sided; head eased share lower, from idle/talk episodes | 1: eye lead at least 0 ms | 69: chest lag with three held-out failures, vacuous order/overshoot bands, all core metrics and anticipation |
+| emotions | 2: onset attack two-sided and eased share lower from idle/talk episodes | 2: minimum separation at least 2 including placebo; arm share at least half the smallest of four emotion-style shares on one skeleton | 67: all core metrics, median separation, anticipation and unavailable long statistics |
+| touch | none | none | 68: every metric; cannot produce a gate pass |
 
 Fitted candidates without sufficient samples, vacuous bands, and metrics with
 repeated held-out failures remain report only with their reason in the file.
@@ -120,6 +123,17 @@ Finger, gaze order, speech coupling, and emotion bands include lead judgments.
 Body-only capture cannot fit eye floors. Under the current metric contract,
 an eye-bearing trace skips eye lead with `missing-eye-floors`; choosing an
 ordinal eye detector policy requires a lead decision.
+
+Chain metrics already use parent-relative angular velocity. Some axial pairs
+in the 100STYLE idle and walk clips are almost perfectly correlated: idle
+neck-head has median 0.999626. Their vacuous correlation bands remain report
+only, so version 1 cannot reject neck-head synchrony through zero-lag correlation
+in idle or walk. The CMU talk band can; upper-arm/lower-arm and lower-arm/hand
+pairs remain gated in all three classes. UNVERIFIED: the capture solve may
+split one measured axial rotation across neighbouring segments of the 23-joint
+skeleton. The capture process has not been checked. The proposed duplicate
+chainRel family was withdrawn after examining reference values and before any
+character trace was judged; the metric library is unchanged.
 
 Idle ACF detects repeated components with periods from 1 to 6 s, and faster
 ones through a repeated period. It cannot reliably see slower oscillation,

@@ -1,6 +1,6 @@
 # T2-3D body-motion quality measurement
 
-Status: accepted implementation contract; version 0 uses analytic fixture bands.
+Status: accepted; version 1 freezes human-reference bands. Version 0 retains analytic fixtures.
 
 ## Decision
 
@@ -57,6 +57,19 @@ expected occasionally by chance. Repeated misses for one metric show that it
 does not transfer reliably enough to gate. The lead set this tolerance after
 seeing the held-out results and before any character trace was judged. This
 post-selection decision must remain visible when interpreting validation.
+
+Existing chain correlations use angular velocity relative to the parent.
+The 100STYLE idle and walk references have nearly identical axial signals:
+idle neck-head median correlation is 0.999626. Vacuous neck-head correlation
+bands, and idle spine-chest, stay REPORT rather than claiming discrimination
+the reference cannot support. Version 1 cannot reject neck-head synchrony
+through zero-lag correlation in idle or walk; the CMU talk band can. Arm
+upper/lower-segment pairs remain gated in every class with core reference
+fits. UNVERIFIED: the capture solve may distribute one measured rotation
+across neighbouring axial segments of its 23-joint skeleton. This explanation
+has not been established from the capture process. The proposed chainRel
+duplicate was withdrawn after inspecting reference values and before any
+character trace was judged. No metric formula changed.
 
 Head LDLJ pools idle and talk; arm LDLJ pools talk. Gaze and onset pools use idle
 and talk, including episode-only clips. Gaze onset uses only the head region.
