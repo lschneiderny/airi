@@ -83,13 +83,15 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
     // A scenario that claims an arm gets one programmatic clip on the runner's mixer, registered like an app clip.
     const claim = timeline.some(cue => cue.kind === 'clip-claim') ? new Motion3dClaimClip(pose, rig, options.seconds) : null
     const claimAction = claim ? mixer.clipAction(claim.clip) : null
+    // Clip commands run through the pipeline after it restores the clean pose, as the app's animation manager does, so
+    // play() captures the clean pose as the mixer's original state, not the performer's last written arm.
     const cues = new Motion3dCueDriver(natural, rig.legLength ?? 0, event => sampler.recorder.event(event), claimAction && {
-      claim: (fadeSeconds) => {
+      claim: fadeSeconds => pipeline?.enqueue(() => {
         claimAction.reset().setLoop(LoopOnce, 1)
         claimAction.clampWhenFinished = true
         claimAction.fadeIn(fadeSeconds).play()
-      },
-      release: fadeSeconds => void claimAction.fadeOut(fadeSeconds),
+      }),
+      release: fadeSeconds => pipeline?.enqueue(() => void claimAction.fadeOut(fadeSeconds)),
     })
     const look = new Motion3dLookTarget(mmd.mesh, pose)
     const metrics = new Motion3dMeasurement()
