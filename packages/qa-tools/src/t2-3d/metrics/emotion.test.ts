@@ -9,8 +9,8 @@ import { analyticTrace, angleX } from './test-trace'
 describe('pooled emotion postures', () => {
   it('includes every emotion versus placebo in the minimum separation', () => {
     const trials: EmotionTrial[] = [
-      ...['a', 'b', 'copy'].flatMap((condition, c) => [-0.01, 0, 0.01].map(noise => ({ condition, placebo: false, t: 0, posture: { head: [c === 0 ? 0.8 + noise : c === 1 ? -0.8 + noise : noise, 0, 0] as const, leftUpperArm: [c === 0 ? 1 : c === 1 ? -1 : 0, 0, 0] as const } }))),
-      ...[-0.02, -0.01, 0, 0.01, 0.02].map(noise => ({ condition: 'placebo', placebo: true, t: 0, posture: { head: [noise, 0, 0] as const, leftUpperArm: [0, 0, 0] as const } })),
+      ...['a', 'b', 'copy'].flatMap((condition, c) => [-0.01, 0, 0.01].map(noise => ({ condition, placebo: false, t: 0, frames: [], posture: { head: [c === 0 ? 0.8 + noise : c === 1 ? -0.8 + noise : noise, 0, 0] as const, leftUpperArm: [c === 0 ? 1 : c === 1 ? -1 : 0, 0, 0] as const } }))),
+      ...[-0.02, -0.01, 0, 0.01, 0.02].map(noise => ({ condition: 'placebo', placebo: true, t: 0, frames: [], posture: { head: [noise, 0, 0] as const, leftUpperArm: [0, 0, 0] as const } })),
     ]
     const m = emotionMetrics(trials)
     expect(m.find(m => m.id === 'emotion.minSeparation')?.value).toBeCloseTo(0, 12)

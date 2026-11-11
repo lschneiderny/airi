@@ -40,7 +40,8 @@ describe('emotion directory pooling', () => {
             const i = events.findIndex(e => t >= e.t + 1 && t <= e.t + 5)
             const arm = /Arm|Hand|Shoulder/.test(bone)
             const a = i < 0 || !arm ? 0 : (i < 3 ? 0.3 : 0) + (i % 3 - 1 + seed * 0.2) * 0.01
-            return angleX(a)
+            // Seeded drift keeps every observation's measured frames distinct.
+            return angleX(arm ? a + 1e-4 * Math.sin(1.7 * t + seed + CORE.findIndex(b => b === bone)) : a)
           },
         })
         await writeFile(join(dir, 'trace.json'), JSON.stringify({ ...input.trace, rot: encodeBlock(input.rot), root: encodeBlock(input.root), channels: encodeBlock(input.channels) }))

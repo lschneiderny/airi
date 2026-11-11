@@ -166,6 +166,21 @@ assigns SHA-256 of PMX bytes to `rig.assetSha256`; it is not null for runner
 traces. No runner code, trace header, existing trace hash, band, threshold,
 detector constant or gate version changed.
 
+The third review pass at `07b5524a7` found that whole-capture identity was
+still the wrong unit: copies with only nominal `hz` changed, or with unused
+tail frames trimmed, received new fingerprints and their trials were counted
+again. The lead's rule identifies reuse at the counted unit. Each emotion
+observation owns exactly the raw frames its baseline and hold averages read;
+each frame is identified by its sign-normalised raw float32 rotations for all
+bones, without time, index, `hz`, events or provenance. No frame content may
+belong to two observations, across traces or within one trace; a collision is
+`pool-duplicate`. `hz` left the whole-capture fingerprint because scoring takes
+timing from the time channel. Consequence: a pool where the character is
+completely motionless across two observations is refused, not failed, because
+identical samples are not replication; a refusal is never a pass. Perturbed or
+fabricated trajectories remain outside this local check. Bands, thresholds,
+detector constants and version 1 are unchanged.
+
 Acceptance can now demand named metrics with `gate --require <ids>`.
 Every named metric must be `PASS` in every supplied verdict; the requirement
 and its result are recorded separately from the numerical verdict. Unknown

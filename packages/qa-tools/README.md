@@ -67,9 +67,23 @@ still count once. Unlabelled trials remain distinct observations.
 Each pooled verdict records `pooledFrom.traces` with directories, whole-file
 SHA-256 digests and measurement `fingerprint` hashes, and `pooledFrom.trialCounts`
 with the count per condition. Fingerprints hash the encoded rotation, root and
-channel blocks plus frames, sample rate, bones and parents. Events, trial ids,
-seeds and provenance labels are excluded, so relabelling a capture cannot
-manufacture replication.
+channel blocks plus frames, bones and parents. Events, trial ids, seeds, the
+nominal `hz` header and provenance labels are excluded, so relabelling a capture
+cannot manufacture replication.
+
+Reuse is also identified at the unit that is counted. An observation's frame
+set is exactly the raw frames whose rotations its baseline and hold averages
+read. Each frame's identity is a hash of its raw float32 rotations for every
+bone, with each quaternion sign-normalised because `q` and `-q` are one pose;
+time, frame index, `hz`, events and provenance do not enter it. No frame
+content may belong to two observations, whether in two traces or in one trace
+with overlapping trial windows; otherwise the pool is refused as
+`pool-duplicate`, naming both trials and directories. Header edits, trimmed or
+shifted frames, rewritten root/yaw blocks and repeated frames therefore cannot
+recount the same measured samples. A character that is completely motionless
+across two observations is refused rather than failed: identical samples cannot
+count as replication, and a refusal is never a pass. Perturbed or fabricated
+trajectories are outside this check.
 Run seeds 1 through 6 together for the
 scenario's trial guarantee. Gaze episodes outside the fitting head-rotation
 P5 to P95 range are excluded and listed in metric details. Gaze onset bands
@@ -83,7 +97,7 @@ use head episodes only.
 | `rig-incomplete`, `non-upright`, `class-unknown` | Required rig or reference class is unavailable. |
 | `bands-hash-mismatch` | Frozen band bytes or version do not match the definition. |
 | `no-gated-metrics` | No applicable gated metric was judged. |
-| `pool-duplicate` | Repeated trace digest, measurement fingerprint or trial id across emotion traces. |
+| `pool-duplicate` | Repeated trace digest, measurement fingerprint or trial id across emotion traces, or a measured frame shared by two emotion observations. |
 | `pool-mismatch` | Emotion traces differ in rig structure, known asset hashes, source level or source revision. Display ids are ignored. |
 
 Version 0 retains explicitly marked analytic fixtures. Version 1 uses frozen

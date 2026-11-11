@@ -2,6 +2,8 @@ import type { MotionTraceBone } from '@proj-airi/motion-driver-humanoid/motion-t
 
 import type { MetricResult, PreparedTrace, Quat, Vec3 } from './types'
 
+import { MOTION_TRACE_CHANNELS } from '@proj-airi/motion-driver-humanoid/motion-trace'
+
 import { ARMS, UPPER } from './bones'
 import { conjugate, finite, heading, mean, median, multiply, normalize, rotationVector } from './math'
 import { result, skipped } from './result'
@@ -11,6 +13,8 @@ export interface EmotionTrial {
   readonly condition: string
   readonly placebo: boolean
   readonly t: number
+  /** Raw trace frames whose rotations the baseline and hold averages read, ascending. */
+  readonly frames: readonly number[]
   readonly posture: Readonly<Partial<Record<MotionTraceBone, Vec3>>>
 }
 
@@ -23,6 +27,30 @@ function averageQuaternion(q: readonly Quat[]): Quat {
       sum[i] += sign * v[i]
   }
   return normalize([sum[0], sum[1], sum[2], sum[3]])
+}
+
+/**
+ * Mirrors prepareTrace's resampling: each 60 Hz sample slerps its two neighbouring
+ * raw frames; a frame counts only when its interpolation weight is nonzero.
+ */
+function sourceFrames(p: PreparedTrace, indices: readonly number[]): number[] {
+  const stride = MOTION_TRACE_CHANNELS.length
+  const count = p.input.trace.frames
+  const time = (frame: number) => p.input.channels[frame * stride]
+  const frames = new Set<number>()
+  let left = 0
+  for (const i of indices) {
+    const t = p.times[i]
+    while (left + 1 < count - 1 && time(left + 1) < t)
+      left++
+    const right = Math.min(left + 1, count - 1)
+    const weight = left === right ? 0 : (t - time(left)) / (time(right) - time(left))
+    if (weight < 1 - 1e-10)
+      frames.add(left)
+    if (weight > 1e-10)
+      frames.add(right)
+  }
+  return [...frames].sort((a, b) => a - b)
 }
 
 /** S3: r_b=Ry(-yawS(te))*rotvec(mean(N_hold)*conj(mean(N_base))), radians; difference cancels bind pose. */
@@ -49,7 +77,7 @@ export function emotionTrials(p: PreparedTrace): EmotionTrial[] {
         posture[bone] = heading(rotationVector(multiply(held, conjugate(base))), p.yaw[frame])
       }
     }
-    return [{ trialId: e.trialId, condition: e.phase === 'placebo' ? 'placebo' : e.emotion, placebo: e.phase === 'placebo', t: e.t, posture }]
+    return [{ trialId: e.trialId, frames: sourceFrames(p, [...baseline, ...hold]), condition: e.phase === 'placebo' ? 'placebo' : e.emotion, placebo: e.phase === 'placebo', t: e.t, posture }]
   })
 }
 

@@ -12,6 +12,20 @@ import { checkTrace, GateRefusal } from '../gate/refusals'
 import { emotionMetrics, emotionTrials, prepareTrace } from '../metrics'
 import { MotionTraceRefusal, parseTrace } from '../read-trace'
 
+/**
+ * Frame-content identity: the frame's raw float32 rotations for every bone. Each
+ * quaternion is sign-normalised and -0 becomes 0, because q and -q are one measured pose.
+ */
+function frameKey(rot: Float32Array, frame: number, bones: number): string {
+  const values = rot.slice(frame * bones * 4, (frame + 1) * bones * 4)
+  for (let i = 0; i < values.length; i += 4) {
+    const lead = values[i + 3] || values[i] || values[i + 1] || values[i + 2]
+    for (let k = i; k < i + 4; k++)
+      values[k] = (lead < 0 ? -values[k] : values[k]) + 0
+  }
+  return sha256(new Uint8Array(values.buffer))
+}
+
 export async function gateMotion3d(args: readonly string[], context: Motion3dCliContext): Promise<number> {
   const directories: string[] = []
   const required: string[] = []
@@ -106,7 +120,6 @@ export async function gateMotion3d(args: readonly string[], context: Motion3dCli
           root: trace.root,
           channels: trace.channels,
           frames: trace.frames,
-          hz: trace.hz,
           bones: trace.rig.bones,
           parents: trace.rig.parents,
         }))
@@ -119,13 +132,30 @@ export async function gateMotion3d(args: readonly string[], context: Motion3dCli
       }
     }
     const seen = new Set<string>()
+    // Replication is counted per observation, so reuse is identified per measured frame:
+    // no frame content may belong to two observations, across traces or within one.
+    const owners = new Map<string, { readonly trial: string, readonly dir: string, readonly observation: number }>()
+    let observation = 0
     const trials = emotions.flatMap((entry) => {
-      const extracted = entry.input ? emotionTrials(prepareTrace(entry.input)) : []
+      const input = entry.input
+      if (!input)
+        return []
+      const extracted = emotionTrials(prepareTrace(input))
       for (const trial of extracted) {
         if (trial.trialId !== undefined) {
           if (seen.has(trial.trialId))
             throw new GateRefusal('pool-duplicate', `Repeated emotion trial id ${trial.trialId}`)
           seen.add(trial.trialId)
+        }
+        const name = trial.trialId ?? `t=${trial.t}`
+        observation++
+        for (const frame of trial.frames) {
+          const key = frameKey(input.rot, frame, input.trace.rig.bones.length)
+          const owner = owners.get(key)
+          if (!owner)
+            owners.set(key, { trial: name, dir: entry.dir, observation })
+          else if (owner.observation !== observation)
+            throw new GateRefusal('pool-duplicate', `Trials ${owner.trial} (${owner.dir}) and ${name} (${entry.dir}) share a measured frame`)
         }
       }
       return extracted

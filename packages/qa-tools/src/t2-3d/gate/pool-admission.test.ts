@@ -1,66 +1,10 @@
-import type { MotionTraceEvent, MotionTraceV1 } from '@proj-airi/motion-driver-humanoid/motion-trace'
+import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
 
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
-
-import { encodeBlock } from '@proj-airi/motion-driver-humanoid/motion-trace'
 import { describe, expect, it } from 'vitest'
 
 import { gateMotion3d } from '../cli/gate'
-import { CORE } from '../metrics/bones'
-import { analyticTrace, angleX } from '../metrics/test-trace'
-
-const repoRoot = resolve(import.meta.dirname, '../../../../..')
-const context = { repoRoot, cwd: repoRoot, signal: new AbortController().signal }
-
-function emotionTrace(seed: number, prefix = `seed-${seed}`): MotionTraceV1 {
-  const events: MotionTraceEvent[] = [12, 24, 40, 52].map((t, i) => ({
-    t: t + seed * 0.05,
-    kind: 'emotion',
-    emotion: 'happy',
-    band: 'clear',
-    phase: i < 2 ? 'pulse' : 'placebo',
-    trialId: `${prefix}/${i}`,
-  }))
-  const input = analyticTrace({
-    seconds: 60,
-    bones: CORE,
-    scenario: 'emotion',
-    events,
-    world: (bone, t) => {
-      const i = events.findIndex(e => t >= e.t + 1 && t <= e.t + 5)
-      return angleX(i < 0 || !/Arm|Hand|Shoulder/.test(bone) ? 0 : (i < 2 ? 0.3 : 0) + (i % 2 ? 0.01 : -0.01) + seed * 0.001)
-    },
-  })
-  return {
-    ...input.trace,
-    source: { ...input.trace.source, scenario: { ...input.trace.source.scenario, seed } },
-    rot: encodeBlock(input.rot),
-    root: encodeBlock(input.root),
-    channels: encodeBlock(input.channels),
-  }
-}
-
-function runnerTrace(seed: number): MotionTraceV1 {
-  const trace = emotionTrace(seed)
-  return {
-    ...trace,
-    rig: { ...trace.rig, id: `qa-${seed}`, assetSha256: 'a'.repeat(64) },
-    source: { ...trace.source, gitSha: '1'.repeat(40) },
-  }
-}
-
-async function withTraces(traces: readonly MotionTraceV1[], check: (dirs: string[]) => Promise<void>) {
-  const dirs = await Promise.all(traces.map(() => mkdtemp(join(tmpdir(), 'motion3d-pool-admission-'))))
-  try {
-    await Promise.all(dirs.map((dir, i) => writeFile(join(dir, 'trace.json'), JSON.stringify(traces[i]))))
-    await check(dirs)
-  }
-  finally {
-    await Promise.all(dirs.map(dir => rm(dir, { recursive: true, force: true })))
-  }
-}
+import { context, emotionTrace, runnerTrace, withTraces } from './pool-fixture'
 
 describe('emotion pool admission', () => {
   it('refuses three copied directories rather than multiplying insufficient evidence', async () => {
