@@ -83,7 +83,8 @@ export class BodyGaze {
       this.landing = amplitude > 15 * DEG ? 0.92 + 0.04 * this.random() : 1
       if (amplitude >= 10 * DEG)
         this.recruit(amplitude, goal.yaw, input.facingYaw)
-      const probability = Math.min(0.85, Math.max(0, (amplitude / DEG - 12) / 30))
+      // Evinger et al. 1994 (Exp Brain Res 100:337): the lid closes with 97 % of gaze shifts larger than 33 degrees.
+      const probability = Math.min(0.97, Math.max(0, 0.97 * (amplitude / DEG - 12) / 21))
       if (this.random() < probability && goal.blinkFactor > 0.95 && this.sinceBlink >= 0.4) {
         this.blinkElapsed = 0
         this.sinceBlink = 0

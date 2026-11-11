@@ -114,5 +114,7 @@ describe('gaze performance', () => {
     }
     expect(count(45)).toBeGreaterThan(count(16) + 50)
     expect(count(45, 0.5)).toBe(0)
+    // Evinger et al. 1994: the lid-closing muscle fires with 97 % of gaze shifts larger than 33 degrees.
+    expect(count(34)).toBeGreaterThanOrEqual(186)
   })
 })
