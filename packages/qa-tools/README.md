@@ -109,6 +109,31 @@ retuning.
 
 Scores compare motion statistics with bands derived from human capture. They do not prove naturalness or appeal, which stay a visual review.
 
+### Gaze-order report
+
+`pnpm qa:motion3d gaze-order <run directory>` reports, for every body
+`gaze-shift:<degrees>` marker in `trace.json`, when the eyes, the head and the
+chest start to move. It is a report, not a gate: it has no band and does not
+change any verdict. The human body captures have no eyes, so gate version 1
+cannot judge eye order (`gaze.eyeLeadMs` is skipped as `missing-eye-floors`).
+
+- A joint's onset is the first sample at or after the event at which its
+  parent-relative angular speed exceeds 10 percent of its own peak speed in the
+  shift window. The window ends at the next gaze-shift event or 2 s later,
+  whichever comes first. A joint with a zero peak has no onset. The eyes are the
+  mean speed of the eye columns.
+- A shift is ordered when the eye onset is strictly before the head onset and
+  the head onset is strictly before the chest onset. When the head or chest has
+  no onset, the shift is ordered if the eyes moved and the joints that moved are
+  in order. `patterns` counts `full`, `no-chest`, `no-head`, `eyes-only` and
+  `no-eyes` shifts, so the share is not inflated silently.
+- The blink share counts the shifts of 40 degrees or more with a `blink` marker
+  inside their window.
+
+The command prints one row per shift and writes `gaze-order.json` beside the
+trace. A trace with no gaze-shift marker, or without eye, head or chest columns,
+is refused by name with exit 2.
+
 ### Reference bands
 
 ```bash

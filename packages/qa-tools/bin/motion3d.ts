@@ -29,8 +29,9 @@ async function main(): Promise<number> {
     case 'run': return (await import('../src/t2-3d/cli/run')).runMotion3d(args, context)
     case 'gate': return (await import('../src/t2-3d/cli/gate')).gateMotion3d(args, context)
     case 'reference': return (await import('../src/t2-3d/cli/reference')).referenceMotion3d(args, context)
+    case 'gaze-order': return (await import('../src/t2-3d/cli/gaze-order')).gazeOrderMotion3d(args, context)
     default:
-      console.error('Usage: qa:motion3d <run|gate|reference> [arguments]')
+      console.error('Usage: qa:motion3d <run|gate|reference|gaze-order> [arguments]')
       return 2
   }
 }
