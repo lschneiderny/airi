@@ -48,6 +48,7 @@ export class BodyGaze {
   private coefficients = secondOrderCoefficients({ f: 1.5, zeta: 0.72, r: 0.15 }, BODY_TICK)
   private readonly neck = [createLagChain([0.045], BODY_TICK), createLagChain([0.045], BODY_TICK)]
   private readonly trunk = createLagChain([0.095, 0.06, 0.08], BODY_TICK)
+  private readonly trunkDrive = { y: 0, v: 0, x: 0 }
   private headLatency = 0
   private trunkLatency = 0
   private trunkGoal = 0
@@ -104,7 +105,10 @@ export class BodyGaze {
         ? 0
         : Math.sign(relativeYaw) * Math.min(18 * DEG, 0.3 * Math.max(0, Math.abs(relativeYaw) - 25 * DEG))
     }
-    const trunk = this.trunk.step(this.trunkGoal)
+    // The gaze lag chain is driven by a turn shaped like the head's (architecture 3a: the head leads and each link
+    // arrives its delay after the one below), not by a step, so a fast chain cannot overtake a slow head.
+    advanceSecondOrder(this.trunkDrive, this.trunkGoal, this.recruited ? this.coefficients : creepCoefficients)
+    const trunk = this.trunk.step(this.trunkDrive.y)
     out[12] += 0.4 * trunk[0]
     out[9] += 0.35 * trunk[1]
     out[6] += 0.25 * trunk[2]

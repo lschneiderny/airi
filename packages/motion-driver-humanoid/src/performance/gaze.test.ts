@@ -23,6 +23,29 @@ function shift(degrees: number, seed = 1) {
 }
 
 describe('gaze performance', () => {
+  it('passes the head\'s turn up the trunk, so the trunk is half-way at least 120 ms after the head', () => {
+    for (const [from, to] of [[0, 38], [0, 60], [40, -38]] as const) {
+      const performer = createBodyPerformer({ traits, seed: 1 })
+      const input = quietInput()
+      const head: number[] = []
+      const trunk: number[] = []
+      for (let i = 0; i < 960; i++) {
+        const after = i >= 480
+        const frame = performer.step({ ...input, gaze: { ...input.gaze, yaw: (after ? to : from) * DEG, saccadeSeq: after ? 2 : 1 } })
+        if (after) {
+          head.push(frame.channels[c('headYaw')] + frame.channels[c('neckYaw')])
+          trunk.push(frame.channels[c('lowerYaw')] + frame.channels[c('midYaw')] + frame.channels[c('upperYaw')])
+        }
+      }
+      const halfway = (values: number[]) => {
+        const travel = values.map(v => Math.sign(to - from) * (v - values[0]))
+        const excursion = Math.max(...travel)
+        return travel.findIndex(v => v >= 0.5 * excursion)
+      }
+      expect(halfway(trunk) - halfway(head)).toBeGreaterThanOrEqual(Math.round(0.12 * 120))
+    }
+  })
+
   it('holds the trunk until 120 ms after the head starts when a shift reverses or unwinds it', () => {
     for (const kind of ['sustained', 'free'] as const) {
       const performer = createBodyPerformer({ traits, seed: 1 })
