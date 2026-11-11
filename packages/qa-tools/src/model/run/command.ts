@@ -15,7 +15,7 @@ import { parseArgs } from 'node:util'
 
 import { errorMessageFrom } from '@moeru/std'
 import { bucketsOf, DEFAULT_CHARACTER_PROFILE } from '@proj-airi/stage-shared/character-state'
-import { STAGE_CONTRACT_EN_SHA256 } from '@proj-airi/stage-shared/stage-contract'
+import { STAGE_CONTRACT_EN_SHA256, STAGE_RUNTIME_CONFIG } from '@proj-airi/stage-shared/stage-contract'
 
 import { renderStage } from '../../character-state/cli'
 import { createRun, sha256Buffer } from '../../evidence/run'
@@ -27,6 +27,13 @@ import { loadScenario } from './scenario'
 
 /** One request may wait this long. A local model can spend most of a minute loading before its first token. */
 const REQUEST_TIMEOUT_MS = 300_000
+
+/**
+ * How an earlier reply joins the history of the next request. `raw` sends it as the model wrote it. `canonical`
+ * sends it as the app does since it rewrites recovered cues: through core-agent's `canonicalCueText`.
+ */
+const HISTORY_MODES = ['raw', 'canonical'] as const
+type HistoryMode = typeof HISTORY_MODES[number]
 
 interface RunCliIo {
   stdout?: (text: string) => void
@@ -64,7 +71,9 @@ export async function runRunCli(
   let outDir: string | undefined
   let machineLabel: string
   let json: boolean
+  let history: HistoryMode
   let formatTimePrefix: typeof import('@proj-airi/core-agent').formatTimePrefix
+  let canonicalCueText: typeof import('@proj-airi/core-agent').canonicalCueText
   let prompt: ReturnType<typeof buildSystemPrompt>
   try {
     const { values } = parseArgs({
@@ -76,6 +85,7 @@ export async function runRunCli(
         'base-url': { type: 'string' },
         'model': { type: 'string' },
         'config': { type: 'string', default: 'default' },
+        'history': { type: 'string', default: 'raw' },
         'out': { type: 'string' },
         'machine-label': { type: 'string' },
         'json': { type: 'boolean', default: false },
@@ -90,6 +100,10 @@ export async function runRunCli(
     model = values.model!
     configName = values.config
     json = values.json
+    const historyMode = HISTORY_MODES.find(mode => mode === values.history)
+    if (!historyMode)
+      throw new Error(`--history must be one of ${HISTORY_MODES.join(', ')}`)
+    history = historyMode
     try {
       baseUrl = new URL(values['base-url']!)
     }
@@ -112,7 +126,10 @@ export async function runRunCli(
       throw new Error(`scenario ${loaded.scenario.id} has no config ${JSON.stringify(configName)}; it defines ${Object.keys(loaded.scenario.configs).join(', ')}`)
     try {
       // The package resolves to its build, so a missing build must refuse the run instead of breaking every command.
-      formatTimePrefix = (await import('@proj-airi/core-agent')).formatTimePrefix
+      ;({ formatTimePrefix, canonicalCueText } = await import('@proj-airi/core-agent'))
+      // An older build has no such export, and a canonical run would then send raw history under a canonical label.
+      if (typeof canonicalCueText !== 'function')
+        throw new Error('the build is older than the source')
     }
     catch (error) {
       throw new Error(`cannot load @proj-airi/core-agent (${errorMessageFrom(error) ?? 'import failed'}); run pnpm -F @proj-airi/core-agent build`)
@@ -144,7 +161,9 @@ export async function runRunCli(
     try {
       const stages: (ClosenessStage | null)[] = scenario.stages ?? [null]
       for (const stage of stages) {
-        const label = stage === null ? configName : `${configName}@${stage}`
+        // The history mode is part of the label, so records of the two modes never share a run key or a summary row.
+        const configLabel = history === 'raw' ? configName : `${configName}+${history}-history`
+        const label = stage === null ? configLabel : `${configLabel}@${stage}`
         const runKey = `${scenario.id}@${scenario.version}/${model}/${label}`
         // The app sends this text as its `system:character` runtime context. It is empty for a stranger at rest.
         const character = stage === null ? '' : renderStage(stage, bucketsOf(DEFAULT_CHARACTER_PROFILE.resting, null))
@@ -193,7 +212,7 @@ export async function runRunCli(
             errors++
             break
           }
-          messages.push({ role: 'assistant', content: outcome.text })
+          messages.push({ role: 'assistant', content: history === 'canonical' ? await canonicalCueText(outcome.text, STAGE_RUNTIME_CONFIG.recoverCueNames) : outcome.text })
         }
       }
     }
@@ -203,9 +222,9 @@ export async function runRunCli(
     run.addArtifact('transcripts.jsonl', 'model-transcripts')
     run.addArtifact('requests.jsonl', 'model-requests')
     const exitCode = errors > 0 ? 1 : 0
-    run.finish({ exitCode, summary: `${replies} replies, ${errors} failed; scenario ${scenario.id}@${scenario.version}, contract ${prompt.contract.version}` })
+    run.finish({ exitCode, summary: `${replies} replies, ${errors} failed; scenario ${scenario.id}@${scenario.version}, ${history} history, contract ${prompt.contract.version}` })
     stdout(json
-      ? `${JSON.stringify({ runDir: run.dir, transcripts: run.path('transcripts.jsonl'), replies, errors, contractVersion: prompt.contract.version })}\n`
+      ? `${JSON.stringify({ runDir: run.dir, transcripts: run.path('transcripts.jsonl'), replies, errors, history, contractVersion: prompt.contract.version })}\n`
       : `${run.path('transcripts.jsonl')}\n`)
     return exitCode
   }

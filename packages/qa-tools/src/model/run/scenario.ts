@@ -32,8 +32,8 @@ const ConfigSchema = v.strictObject({
 export type ModelScenarioConfig = v.InferOutput<typeof ConfigSchema>
 
 /**
- * Everything a live run fixes besides the endpoint and the model. Bump `version` with any change that alters a
- * request, so records of two versions are never read as one run.
+ * Everything a live run fixes besides the endpoint, the model, and the history mode of the run command. Bump
+ * `version` with any change that alters a request, so records of two versions are never read as one run.
  */
 export const ModelScenarioSchema = v.strictObject({
   schema: v.literal('airi.model-scenario/v1'),

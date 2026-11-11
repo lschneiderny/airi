@@ -215,7 +215,7 @@ describe('run command', () => {
     })
     expect(await endpoint.bodies()).toHaveLength(2)
     const manifest: RunManifest = JSON.parse(await readFile(join(endpoint.out, 'run.json'), 'utf8'))
-    expect(manifest.result).toEqual({ exitCode: 1, summary: `2 replies, 1 failed; scenario general@1, contract ${STAGE_CONTRACT_EN_SHA256.slice(0, 12)}` })
+    expect(manifest.result).toEqual({ exitCode: 1, summary: `2 replies, 1 failed; scenario general@1, raw history, contract ${STAGE_CONTRACT_EN_SHA256.slice(0, 12)}` })
   })
 
   it('runs a scenario file with its own card and records the reasoning effort it sent', async () => {
@@ -251,12 +251,45 @@ describe('run command', () => {
   })
 
   it.each([
+    ['raw', '[ACT happy] hi! [DELAY 1s]', 'quiet'],
+    ['canonical', '<|ACT happy|> hi! ', 'quiet+canonical-history'],
+  ])('sends an earlier reply back as %s history and records the reply as the model wrote it', async (history, sent, config) => {
+    const endpoint = await replay([{ content: '[ACT happy] hi! [DELAY 1s]' }, { content: '<|ACT happy|>bye!' }, { content: 'ok' }])
+    const dir = await mkdtemp(join(tmpdir(), 'model-run-'))
+    owned.push(dir)
+    await writeFile(join(dir, 'custom.json'), JSON.stringify({
+      schema: 'airi.model-scenario/v1',
+      id: 'custom',
+      version: 1,
+      description: 'Three turns whose first reply holds a near-miss cue.',
+      prompt: { register: 'talking' },
+      startsAt: '2026-01-02T10:00',
+      configs: { quiet: { seed: 7 } },
+      turns: ['hey', 'bye', 'still there?'],
+    }))
+
+    const result = await run(['--scenario', join(dir, 'custom.json'), '--base-url', endpoint.baseUrl, '--model', 'airi-replay', '--config', 'quiet', '--history', history, '--out', endpoint.out, '--json'])
+
+    expect(result.code).toBe(0)
+    expect(JSON.parse(result.stdout)).toMatchObject({ replies: 3, errors: 0, history })
+    const bodies = await endpoint.bodies()
+    // A well-formed reply returns byte for byte in both modes.
+    expect(bodies[2].messages.filter((message: { role: string }) => message.role === 'assistant')).toEqual([{ role: 'assistant', content: sent }, { role: 'assistant', content: '<|ACT happy|>bye!' }])
+    // The request before it is a prefix of the next one, so the endpoint's prompt cache holds.
+    expect(bodies[2].messages.slice(0, bodies[1].messages.length)).toEqual(bodies[1].messages)
+    const rows = await records(join(endpoint.out, 'transcripts.jsonl'))
+    expect(rows.map(row => row.reply.text)).toEqual(['[ACT happy] hi! [DELAY 1s]', '<|ACT happy|>bye!', 'ok'])
+    expect(rows[0]).toMatchObject({ runKey: `custom@1/airi-replay/${config}`, generation: { config, options: { seed: 7 } } })
+  })
+
+  it.each([
     ['a missing model', ['--scenario', 'general', '--base-url', 'http://127.0.0.1:9/v1'], '--model is required'],
     ['an unknown scenario', ['--scenario', 'absent', '--base-url', 'http://127.0.0.1:9/v1', '--model', 'm'], 'absent.json'],
     ['an unknown config', ['--scenario', 'general', '--base-url', 'http://127.0.0.1:9/v1', '--model', 'm', '--config', 'hot'], 'has no config "hot"; it defines default, temp-0.6'],
     ['a base URL that is not http', ['--scenario', 'general', '--base-url', 'ftp://127.0.0.1/v1', '--model', 'm'], 'must be an http or https URL'],
     ['a base URL with credentials', ['--scenario', 'general', '--base-url', 'http://user:secret@127.0.0.1:9/v1', '--model', 'm'], 'must not contain credentials'],
     ['an output directory that exists', ['--scenario', 'general', '--base-url', 'http://127.0.0.1:9/v1', '--model', 'm', '--out', tmpdir()], '--out already exists'],
+    ['an unknown history mode', ['--scenario', 'general', '--base-url', 'http://127.0.0.1:9/v1', '--model', 'm', '--history', 'clean'], '--history must be one of raw, canonical'],
     ['an unknown flag', ['--scenario', 'general', '--base-url', 'http://127.0.0.1:9/v1', '--model', 'm', '--tools', 'x'], '--tools'],
   ])('exits 2 for %s without sending a request or creating a run', async (_name, args, message) => {
     const dir = await mkdtemp(join(tmpdir(), 'model-run-'))

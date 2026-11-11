@@ -67,7 +67,7 @@ describe('parseScenario', () => {
 })
 
 describe('loadScenario', () => {
-  it.each(['general', 'relationship-stages'])('loads the committed %s scenario with the app reply cap in every config', async (id) => {
+  it.each(['general', 'general-seeded', 'relationship-stages'])('loads the committed %s scenario with the app reply cap in every config', async (id) => {
     const loaded = await loadScenario(id, repoRoot)
 
     expect(loaded.scenario.id).toBe(id)

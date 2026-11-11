@@ -1,0 +1,75 @@
+{
+  "schema": "airi.model-scenario/v1",
+  "id": "general-seeded",
+  "version": 1,
+  "description": "The turns of the general scenario with six seeded configs at the endpoint's default temperature and six at temperature 0.3, for comparing one change across repeated conversations.",
+  "prompt": {
+    "register": "talking",
+    "exposedActions": "wave:gesture"
+  },
+  "startsAt": "2026-11-10T09:00",
+  "configs": {
+    "seed-1": {
+      "max_tokens": 320,
+      "seed": 1
+    },
+    "seed-2": {
+      "max_tokens": 320,
+      "seed": 2
+    },
+    "seed-3": {
+      "max_tokens": 320,
+      "seed": 3
+    },
+    "seed-4": {
+      "max_tokens": 320,
+      "seed": 4
+    },
+    "seed-5": {
+      "max_tokens": 320,
+      "seed": 5
+    },
+    "seed-6": {
+      "max_tokens": 320,
+      "seed": 6
+    },
+    "temp-0.3-seed-1": {
+      "max_tokens": 320,
+      "seed": 1,
+      "temperature": 0.3
+    },
+    "temp-0.3-seed-2": {
+      "max_tokens": 320,
+      "seed": 2,
+      "temperature": 0.3
+    },
+    "temp-0.3-seed-3": {
+      "max_tokens": 320,
+      "seed": 3,
+      "temperature": 0.3
+    },
+    "temp-0.3-seed-4": {
+      "max_tokens": 320,
+      "seed": 4,
+      "temperature": 0.3
+    },
+    "temp-0.3-seed-5": {
+      "max_tokens": 320,
+      "seed": 5,
+      "temperature": 0.3
+    },
+    "temp-0.3-seed-6": {
+      "max_tokens": 320,
+      "seed": 6,
+      "temperature": 0.3
+    }
+  },
+  "turns": [
+    "hey, good morning!",
+    "i'm kinda nervous about my presentation tomorrow",
+    "update: i got the job i told you about!!",
+    "show me your most surprised face",
+    "can you wave at me?",
+    "what's the difference between a planet and a dwarf planet?"
+  ]
+}

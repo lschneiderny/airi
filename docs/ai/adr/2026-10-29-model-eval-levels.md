@@ -55,7 +55,7 @@ The run builds each request as the app does, with these parts:
 
 - The system message is the composed prompt: formatting rules, card, register section, stage contract, and the `actions` segment when clips are exposed.
 - Each user message is the app's time prefix (`formatTimePrefix`, from the scenario clock) and the turn text. A stage adds a blank line and the `system:character` text of that stage, which is the position the app's request assembly gives runtime context. The text comes from the same preset renderer as `pnpm qa:character render --stage`, with the mood at rest. A stranger at rest has no character text, as in the app.
-- Each reply joins the history as the assistant message of the next request. A failed request ends its conversation, because later turns would continue from a reply that never arrived.
+- Each reply joins the history as the assistant message of the next request. `--history raw`, the default, sends the reply as the model wrote it, which keeps runs of the committed sets reproducible. `--history canonical` sends it through core-agent's `canonicalCueText`, as the app does since 2026-11-10, and marks the records with `+canonical-history` in the config name. A failed request ends its conversation, because later turns would continue from a reply that never arrived.
 
 Known differences from an app request: there is no situation block, no memory, toolset, or sticker segment, no widget instruction on the built-in card, and no tools. The tail segments and the widget instruction name tools, so they wait for the tools decision below.
 

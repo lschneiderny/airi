@@ -12,7 +12,7 @@ import { runScoreCli } from './score/command'
 export const modelUsage = `Usage: pnpm qa:model <command> [options]
 
 Commands:
-  run --scenario <id|file.json> --base-url <url> --model <id> [--config <name>] [--out <dir>] [--machine-label <l>] [--json]  run a scenario against a live OpenAI-compatible chat endpoint and record the replies
+  run --scenario <id|file.json> --base-url <url> --model <id> [--config <name>] [--history raw|canonical] [--out <dir>] [--machine-label <l>] [--json]  run a scenario against a live OpenAI-compatible chat endpoint and record the replies
   score <transcripts.jsonl> [--set <id>] [--label <l>] [--exposed-actions <label:kind,...>]  score a transcript file with the real runtime replay
   prompt [--locale en] [--card <file>] [--full <fixture>] [--exposed-actions <label:kind,...>] [--json]  print the system prompt the app sends and its hashes
   import-ollama-bench <dir> --set <id>                   convert legacy ollama-bench results into transcripts

@@ -30,7 +30,7 @@ Run `pnpm qa:doctor` first. It checks whether the current worktree can produce m
 | `pnpm qa:stage handoff --model <MMD model> [--seconds 120] --out <json>` | Launch the desktop stage on a fresh profile and walk her to another display and back. It needs a session with more than one display. See [Stage gates](#stage-gates). |
 | `pnpm qa:stage gate <json> [<json>...]` | Judge stage evidence with `stage-walk-skate`, `stage-arm-penetration`, `stage-frame-budget`, `stage-gesture-walk`, `stage-action-preempt`, and `stage-handoff`. |
 | `pnpm qa:model prompt [--locale en] [--card <file>] [--full <fixture.json>] [--exposed-actions <label:kind,...>] [--json]` | Print the application's system prompt; JSON mode includes the prompt and contract hashes and contract version. `--full` adds the tail segments of a fixture file. `--exposed-actions` adds the `actions` segment for the listed clips (see below). |
-| `pnpm qa:model run --scenario <id\|file.json> --base-url <url> --model <id> [--config <name>] [--out <dir>] [--machine-label <label>] [--json]` | Run a scenario against a live OpenAI-compatible chat endpoint and record each reply as a transcript record with its request options and provenance (see [Live runs](#live-runs-m2)). |
+| `pnpm qa:model run --scenario <id\|file.json> --base-url <url> --model <id> [--config <name>] [--history raw\|canonical] [--out <dir>] [--machine-label <label>] [--json]` | Run a scenario against a live OpenAI-compatible chat endpoint and record each reply as a transcript record with its request options and provenance (see [Live runs](#live-runs-m2)). |
 | `pnpm qa:model score <transcripts.jsonl> [--set <id>] [--label <l>] [--example-lines-from <file>] [--exposed-actions <label:kind,...>] [--json]` | Score saved replies through the real chat runtime and stage controller, then write reply, JSON summary, and Markdown summary artifacts. |
 | `pnpm qa:model import-ollama-bench <dir> --set <id> [--out <file>] [--machine-label <label>] [--server-version <version>] [--mem-gb <number>]` | Convert saved Ollama bench, sweep, and flash-attention results into transcript JSONL. |
 | `pnpm qa:model help` | Print the model-evaluation command usage. |
@@ -173,7 +173,7 @@ When any scorer definition changes, bump `CUE_CONTRACT_SCORER.version` in the sa
 No real model has been run with this command. Every test and the acceptance run used the replay server as the endpoint, so the tooling is verified and no model result exists yet.
 
 ```bash
-pnpm qa:model run --scenario <id|file.json> --base-url <url> --model <id> [--config <name>] [--out <dir>] [--machine-label <label>] [--json]
+pnpm qa:model run --scenario <id|file.json> --base-url <url> --model <id> [--config <name>] [--history raw|canonical] [--out <dir>] [--machine-label <label>] [--json]
 ```
 
 | Option | Meaning |
@@ -182,9 +182,10 @@ pnpm qa:model run --scenario <id|file.json> --base-url <url> --model <id> [--con
 | `--base-url` | An OpenAI-compatible base URL. The run posts to `<base-url>/chat/completions`. It sends no credentials and refuses a URL that contains them. |
 | `--model` | The model id to request. |
 | `--config` | A config name from the scenario. The default is `default`. |
+| `--history` | How an earlier reply joins the history of the next request. `raw`, the default, sends it as the model wrote it, so runs of the committed sets reproduce. `canonical` sends it as the app does: core-agent's `canonicalCueText` gives recovered near-miss cues their `<\|NAME body\|>` form and leaves out stripped markup. A canonical run adds `+canonical-history` to the config name in its records, so the two modes never share a run key or a summary row. |
 | `--out` | The run directory. It must not exist. The default is `.temp/qa/<timestamp>-model-run-<scenario id>/`. |
 | `--machine-label` | A name for the machine that serves the model. The default is the host of the base URL. |
-| `--json` | Print `{ runDir, transcripts, replies, errors, contractVersion }` instead of the transcript path. |
+| `--json` | Print `{ runDir, transcripts, replies, errors, history, contractVersion }` instead of the transcript path. |
 
 The command prints the path of `transcripts.jsonl` on stdout and one progress line per reply on stderr. It exits 0 when every request returned a reply, 1 when a request failed, and 2 for invalid arguments, an invalid scenario, or a stale build. A failed request is recorded with its error, and it ends its conversation; the records written before it are kept.
 
@@ -211,7 +212,9 @@ pnpm qa:model run --scenario general --base-url http://127.0.0.1:4010/v1 --model
 
 Restart the replay server before each run, because every scripted reply is consumed once.
 
-A scenario is a JSON file that fixes everything about a run except the endpoint and the model:
+The `general-seeded` scenario holds the turns of `general` with six seeded configs at the endpoint's default temperature (`seed-1` to `seed-6`) and six at temperature 0.3 (`temp-0.3-seed-1` to `temp-0.3-seed-6`). Use it to compare one change across repeated conversations: a model copies the cue syntax of its own first reply, so the replies of one conversation are not independent samples, and a comparison needs several conversations. Run each config once per `--history` mode, concatenate the `transcripts.jsonl` files, and score the result.
+
+A scenario is a JSON file that fixes everything about a run except the endpoint, the model, and the `--history` mode:
 
 ```json
 {
@@ -236,7 +239,7 @@ A scenario is a JSON file that fixes everything about a run except the endpoint 
 | `startsAt` | The time prefix of the first user turn, `YYYY-MM-DDTHH:MM`. Each later turn is one minute later. |
 | `stages` | Optional relationship stages. Each stage runs the turns as its own conversation, with the `system:character` text of that stage after each user message. |
 | `configs` | Named request options: `temperature`, `top_p`, `max_tokens`, `seed`, and `reasoning_effort` (`none`, `low`, `medium`, or `high`). An omitted key is not sent. A context size cannot be set here. |
-| `turns` | The user turns. Each reply joins the history of the next request. |
+| `turns` | The user turns. Each reply joins the history of the next request, as `--history` says. |
 
 The run always renders the current stage contract and composes the system prompt with the production composer, so a scenario cannot carry an old contract. It refuses to start when the rendered English contract is not `STAGE_CONTRACT_EN_SHA256`; rebuild i18n with `pnpm -F @proj-airi/i18n build`.
 
