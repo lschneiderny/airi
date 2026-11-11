@@ -4,6 +4,32 @@
 
 This private, Node-only package runs repository QA checks for motion, test failures, rendered Electron scenarios, reports, and evidence. Product packages must not depend on it.
 
+Body-motion contracts live under `src/t2-3d/`: `scenarios.ts` exports the six
+deterministic `motion3dScenarios`, and `read-trace.ts` exports `readTrace(path)`
+and `parseTrace(input)`. Both return `{ trace, rot, root, channels }` with the
+validated header and decoded float32 blocks. `MotionTraceRefusal.name` identifies
+structural refusals; these inputs are never scored.
+
+All six scenarios warm up for 10 s. At their default 60 s scored duration,
+`idle` has one observation marker, `gaze-shift` repeats shuffled targets at
+15, 40 and 80 degrees to both sides, held for a seeded 3 to 5 s, returning
+forward for a seeded 2 to 4 s between targets (18 cues at seed 1), `speak`
+has three voice turns and twelve labelled emphasis peaks, and `touch` has ten pokes.
+Gaze cursors are three head widths away: x is `3*sin(yaw)`, y is `3*sin(pitch)`;
+the cue type documents how to recover angles for the world target.
+`walk` defaults to 120 s with two alternating goals at thirty and zero leg
+lengths, 60 s apart, allowing each leg to reach steady walking.
+Touch is reported only and has no human reference.
+
+`emotions` defaults to 120 s: six clear pulses and two placebos, spaced 12 s
+apart in the first 100 s, then all five cue gestures in seeded order in the last
+20 s. With `E = PERFORMANCE_EMOTIONS`, `k = (seed - 1) mod 6` and
+`p = floor(k / 2)`, rotate E by `3p` and take its first half for even k or
+second half for odd k. Run seeds 1 to 6 and gate them together: each emotion
+then has exactly three trials, with twelve placebo trials. Higher seeds repeat
+the sets with different seeded orders; every trial id includes its seed.
+Shorter runs truncate trials and do not carry this pooling guarantee.
+
 ## Usage
 
 Run `pnpm qa:doctor` first. It checks whether the current worktree can produce meaningful results and does not repair the environment.

@@ -3368,6 +3368,15 @@ importers:
       '@moeru/std':
         specifier: 'catalog:'
         version: 0.1.0-beta.17
+      '@moeru/three-mmd':
+        specifier: 'catalog:'
+        version: 0.2.0-beta.2(@types/three@0.185.4)(three@0.185.1)
+      '@moeru/three-mmd-physics-ammo':
+        specifier: 'catalog:'
+        version: 0.2.0-beta.2(@moeru/three-mmd@0.2.0-beta.2(@types/three@0.185.4)(three@0.185.1))(@types/three@0.185.4)(three@0.185.1)
+      '@napi-rs/image':
+        specifier: 'catalog:'
+        version: 1.14.0
       '@proj-airi/core-agent':
         specifier: workspace:^
         version: link:../core-agent
@@ -3377,6 +3386,9 @@ importers:
       '@proj-airi/i18n':
         specifier: workspace:^
         version: link:../i18n
+      '@proj-airi/motion-driver-humanoid':
+        specifier: workspace:^
+        version: link:../motion-driver-humanoid
       '@proj-airi/motion-driver-natural':
         specifier: workspace:^
         version: link:../motion-driver-natural
@@ -3395,6 +3407,9 @@ importers:
       '@proj-airi/stage-ui-live2d':
         specifier: workspace:^
         version: link:../stage-ui-live2d
+      '@proj-airi/stage-ui-mmd':
+        specifier: workspace:^
+        version: link:../stage-ui-mmd
       jszip:
         specifier: 'catalog:'
         version: 3.10.1
@@ -3404,6 +3419,9 @@ importers:
       pixi-live2d-display:
         specifier: 'catalog:'
         version: 0.4.0(patch_hash=cee60f8b5121eb195718c1935f9a3a6012cc8d4e8b6deeafd29bad772c678530)(0736f5bd67d2e4de7e9fff36ad63fa2e)
+      three:
+        specifier: 'catalog:'
+        version: 0.185.1
       valibot:
         specifier: 'catalog:'
         version: 1.4.2(typescript@6.0.3)
@@ -3420,6 +3438,9 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 26.2.0
+      '@types/three':
+        specifier: 'catalog:'
+        version: 0.185.4
       '@vitejs/plugin-vue':
         specifier: 'catalog:'
         version: 6.0.8(vite@8.2.2(@types/node@26.2.0)(esbuild@0.28.2)(jiti@2.7.0)(less@4.9.0(supports-color@10.2.2))(terser@5.50.0)(tsx@4.23.12)(yaml@2.9.0))(vue@3.5.41(typescript@6.0.3))
