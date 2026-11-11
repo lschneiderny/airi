@@ -1,7 +1,11 @@
 import type { EmotionTrial } from './emotion'
 
+import { fileURLToPath } from 'node:url'
+
 import { describe, expect, it } from 'vitest'
 
+import { judgeMetrics } from '../gate/judge'
+import { loadBands } from '../gate/load'
 import { emotionMetrics, emotionTrials } from './emotion'
 import { prepareTrace } from './prepare'
 import { analyticTrace, angleX } from './test-trace'
@@ -40,6 +44,17 @@ describe('pooled emotion postures', () => {
     expect(m.find(m => m.id === 'emotion.minSeparation')?.value).toBeCloseTo(0, 12)
     expect(m.find(m => m.id === 'emotion.medianSeparation')?.value).toBeGreaterThan(50)
     expect(m.find(m => m.id === 'emotion.armShare')?.value).toBeCloseTo(1 / 1.64, 10)
+  })
+
+  // Offsets of +/-0.01 (emotions) and +/-0.01, +/-0.02 (placebo) give sigma = 0.01 sqrt(14 / 11) over 11 trials. With the
+  // placebo far away, the metric is a's centre over sigma: 1.99 must FAIL and 2.01 PASS the frozen bands.
+  it.each([[1.99, 'FAIL'], [2.01, 'PASS']] as const)('judges a pool at %s SD from neutral as %s through the gate', async (separation, status) => {
+    const sigma = 0.01 * Math.sqrt(14 / 11)
+    const pool = headPool({ neutral: 0, placebo: 1, a: separation * sigma })
+    const bands = await loadBands(fileURLToPath(new URL('../../../../..', import.meta.url)))
+    const judged = judgeMetrics(emotionMetrics(pool), bands.classes.emotion).find(m => m.id === 'emotion.minSeparationFromNeutral')
+    expect(judged?.value).toBeCloseTo(separation, 9)
+    expect(judged?.status).toBe(status)
   })
 
   it('extracts a baseline-relative quaternion posture once for a labelled held trial', () => {
