@@ -13,6 +13,8 @@ deterministic motion algorithms for reusable character motion drivers.
 - `./idle-clips`: `decideIdleClip`, a pure scheduler that picks one of the
   clips the user allowed for idle after enough quiet time. The caller sends
   the pick to the director as an `idle` request.
+- `./dynamics`: `secondOrderCoefficients`, `advanceSecondOrder`, `createLagChain`,
+  `createInertializer`, `softLimit` and `minJerk`, for scalar secondary motion.
 - `./foot-contact`: planted foot anchors, eased contact, shared pelvis reach
   correction, signed knee pre-bend, and body-turn step arcs.
 - `./look-at`: `createLookAt`, look-at and turn-step contracts, and `aimEyes`.
@@ -243,6 +245,48 @@ an upper-only clip is a `gesture` up to `GESTURE_MAX_MS` (6 s) and an `action` a
 gestures never loop; actions loop when the name contains loop, ループ, repeat or ends in `_l`.
 `slugLabel` gives the ascii label (`CLIP_LABEL_PATTERN`), or `null` with the `non-ascii-name` note.
 `effectiveLayer(meta, kindOverride)` keeps any gesture on the `upper` layer.
+
+## Dynamics primitives
+
+`./dynamics` holds pure building blocks for scalar secondary motion. No existing motion driver uses it yet.
+
+```ts
+import { advanceSecondOrder, secondOrderCoefficients } from '@proj-airi/motion-driver-humanoid/dynamics'
+
+const coefficients = secondOrderCoefficients({ f: 2, zeta: 0.7, r: 0 }, 1 / 120)
+const state = { y: 0, v: 0, x: 0 }
+advanceSecondOrder(state, 0.1, coefficients)
+```
+
+`advanceSecondOrder` mutates caller-owned `{ y, v, x }` without allocating; `x`
+is the previous target. It solves `y + k1*y' + k2*y'' = x + k3*x'` exactly for
+a target moving linearly across the tick. Frequency `f` is positive Hz, damping
+`zeta` is limited to [0.3, 1], and response `r` is dimensionless. Negative `r`
+anticipates, underdamping overshoots, and `r = 2` removes steady ramp lag.
+Cache coefficients for each parameter and tick set. Target slope is capped at
+20 units/s (rad/s for angles). Route larger cuts through inertialisation;
+the full target is remembered even when its slope is capped.
+
+`createLagChain(delays, dt).step(driver)` starts at zero and cascades critically
+damped followers. Delays are positive seconds per link, with
+`f = 1 / (pi * delay)`. Its returned array is borrowed and changes next tick.
+`createInertializer(channelCount, dt)` holds borrowed `positions` and `velocities`
+offset buffers. Call `cut(channel, previousPosition - newPosition,
+previousVelocity - newVelocity)` before reading them at the cut instant.
+Add them to the new layer output to preserve position and velocity. Repeated cuts
+add to the current offsets. `step(omega = 9)` applies exact critically damped
+decay and returns the position buffer; `reset()` zeroes both buffers on rebase.
+Omega is positive in inverse seconds; channel indices must be in range.
+
+`softLimit(value, min, max)` requires `min < max`, preserves the middle 80% of
+the interval, and uses smooth tanh knees approaching the bounds. Asymmetric
+ranges are normalised about their midpoint. `minJerk(u)` clamps progress to
+[0, 1] with zero endpoint velocity and acceleration.
+
+All inputs must be finite and time steps are nonnegative seconds. Fixed-tick
+constructors keep their `dt`, and a zero tick advances no state. No step method
+allocates. Copy borrowed buffers when you keep a past frame. Use these primitives
+for renderer-neutral motion synthesis, not for bone writes or wall-clock scheduling.
 
 ## Checks
 
