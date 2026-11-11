@@ -53,9 +53,9 @@ export const GESTURE_TIMING_CONSTANTS: readonly ReportConstant[] = [
   { name: 'placebo window', value: `${C.strokeSeconds} s, no labelled peak within ${C.placeboClearance} s`, unit: 's', source: 'unit M2 R2 (b): same length, same run' },
   { name: 'placebo band', value: C.placeboPercentile, unit: 'percentile of placebo upper-torso displacement', source: 'unit M2 R2 (b)' },
   { name: 'minimum placebo windows', value: C.minimumPlacebo, unit: 'windows', source: 'unit M2 R2 (b): a 95th percentile needs at least 20 samples' },
-  { name: 'idle speed bar', value: C.idlePercentile, unit: 'percentile of the peak hand speeds of candidate apexes in silent spans of the same run', source: 'unit M3 item 1: a stroke apex counts only above its own run\'s idle' },
+  { name: 'idle speed bar', value: C.idlePercentile, unit: 'percentile of the candidate-apex peak hand speeds pooled over companion idle runs of the same model and commit', source: 'unit M3 item 1, lead ruling: detectability above the rig\'s idle noise' },
   { name: 'silent span', value: `no utterance within ${C.silentClearance} s`, unit: 's', source: 'unit M3 item 1' },
-  { name: 'minimum idle apexes', value: C.minimumIdleApexes, unit: 'apexes, else the run is refused as unjudgeable', source: 'unit M3 item 1' },
+  { name: 'minimum idle apexes', value: C.minimumIdleApexes, unit: 'pooled apexes, else the run is refused as unjudgeable', source: 'unit M3 item 1' },
   { name: 'D_min', value: STROKE_CONSTANTS.minTravel.value, unit: STROKE_CONSTANTS.minTravel.unit, source: STROKE_CONSTANTS.minTravel.source },
   { name: 'apex window', value: STROKE_CONSTANTS.apexSeconds.value, unit: STROKE_CONSTANTS.apexSeconds.unit, source: STROKE_CONSTANTS.apexSeconds.source },
   { name: 'apex speed ratio', value: STROKE_CONSTANTS.apexRatio.value, unit: STROKE_CONSTANTS.apexRatio.unit, source: STROKE_CONSTANTS.apexRatio.source },
@@ -84,7 +84,7 @@ export interface FormFeatures {
 }
 
 export interface GestureTimingDetail {
-  readonly idle: { readonly silentSeconds: number, readonly apexes: number, readonly speedBar: number, readonly candidates: number, readonly counted: number }
+  readonly idle: { readonly companions: readonly { readonly dir: string, readonly gitSha: string | null, readonly seed: number | null, readonly apexes: number }[], readonly pooled: number, readonly speedBar: number, readonly silentSeconds: number, readonly silentApexes: number, readonly candidates: number, readonly counted: number }
   readonly peaks: readonly { readonly t: number, readonly hit: boolean, readonly nearestApexMs: number | null }[]
   readonly utterances: readonly { readonly start: number, readonly end: number, readonly apexes: number }[]
   readonly trunk: { readonly torso: MotionTraceBone | null, readonly hits: readonly { readonly peak: number, readonly displacementDeg: number | null }[], readonly placeboWindows: number, readonly placeboP95Deg: number | null }
@@ -196,17 +196,34 @@ function peakTime(run: LoadedRun, bone: MotionTraceBone, start: number, end: num
   return run.p.times[best]
 }
 
-/**
- * Unit M3 item 1: every candidate apex (trunk-parent frame, `D_min`, apex window) and the strokes among them, those
- * whose peak hand speed exceeds the 95th percentile of the candidate apexes in the run's own silent spans (no utterance
- * within 1 s). Refuses the run as unjudgeable with fewer than 20 idle apexes.
- */
-export function strokeApexes(run: LoadedRun): { candidates: Apex[], idle: Apex[], silentSeconds: number, speedBar: number, apexes: Apex[] } {
+function candidateApexes(run: LoadedRun): Apex[] {
   const { p } = run
-  const candidates: Apex[] = SIDES.flatMap((side) => {
+  return SIDES.flatMap((side) => {
     const path = handPath(p, side)
     return path ? kinematicStrokes(path).flatMap(stroke => stroke.apex === null ? [] : [{ side, index: stroke.apex, t: p.times[stroke.apex], stroke }]) : []
   }).sort((a, b) => a.t - b.t)
+}
+
+/**
+ * Unit M3 item 1 (lead ruling): every candidate apex (trunk-parent frame, `D_min`, apex window) of the judged run and
+ * the strokes among them, those whose peak hand speed exceeds the 95th percentile of the candidate apexes pooled over
+ * companion idle runs of the same model and commit. Refuses with fewer than 20 pooled idle apexes or a companion of
+ * another model or commit. The judged run's own silent-span apexes (no utterance within 1 s) are counted, report only.
+ */
+export function strokeApexes(run: LoadedRun, idleRuns: readonly LoadedRun[]) {
+  const { p } = run
+  const { rig, source } = run.input.trace
+  for (const idle of idleRuns) {
+    if (idle.input.trace.rig.assetSha256 !== rig.assetSha256)
+      throw new ReportUsageError(`${idle.dir}: companion idle run of another model (${idle.input.trace.rig.assetSha256} against ${rig.assetSha256})`)
+    if (idle.input.trace.source.gitSha !== source.gitSha)
+      throw new ReportUsageError(`${idle.dir}: companion idle run at another commit (${idle.input.trace.source.gitSha} against ${source.gitSha})`)
+  }
+  const pooled = idleRuns.flatMap(idle => candidateApexes(idle).filter(a => a.t >= idle.input.trace.scoredFrom))
+  if (pooled.length < C.minimumIdleApexes)
+    throw new ReportUsageError(`${run.dir}: unjudgeable, ${pooled.length} idle apexes pooled over ${idleRuns.length} companion idle runs; the idle speed bar needs ${C.minimumIdleApexes}, run more idle seeds`)
+  const speedBar = percentile(pooled.map(a => a.stroke.peakSpeed), C.idlePercentile)
+  const candidates = candidateApexes(run)
   const { scoredFrom: scored, events: traceEvents } = run.input.trace
   const speaking = traceEvents.flatMap((e) => {
     if (e.kind !== 'marker' || e.label !== 'voice-start')
@@ -215,13 +232,15 @@ export function strokeApexes(run: LoadedRun): { candidates: Apex[], idle: Apex[]
     return [[e.t - C.silentClearance, end + C.silentClearance] as const]
   })
   const silent = (t: number) => t >= scored && !speaking.some(([from, to]) => t >= from && t <= to)
-  const idle = candidates.filter(a => silent(a.t))
-  const silentSeconds = p.times.filter(silent).length / HZ
-  if (idle.length < C.minimumIdleApexes)
-    throw new ReportUsageError(`${run.dir}: unjudgeable, ${idle.length} candidate apexes in ${silentSeconds.toFixed(1)} s of silent spans; the idle speed bar needs ${C.minimumIdleApexes}`)
-  const speedBar = percentile(idle.map(a => a.stroke.peakSpeed), C.idlePercentile)
-  const apexes = candidates.filter(a => a.stroke.peakSpeed > speedBar)
-  return { candidates, idle, silentSeconds, speedBar, apexes }
+  return {
+    candidates,
+    silentApexes: candidates.filter(a => silent(a.t)).length,
+    silentSeconds: p.times.filter(silent).length / HZ,
+    companions: idleRuns.map(idle => ({ dir: idle.dir, gitSha: idle.input.trace.source.gitSha, seed: idle.input.trace.source.scenario.seed, apexes: candidateApexes(idle).filter(a => a.t >= idle.input.trace.scoredFrom).length })),
+    pooled: pooled.length,
+    speedBar,
+    apexes: candidates.filter(a => a.stroke.peakSpeed > speedBar),
+  }
 }
 
 /**
@@ -240,11 +259,11 @@ function torsoDisplacement(p: PreparedTrace, bone: MotionTraceBone | null, from:
 }
 
 /** C001 criterion-level report (plan 2.2, unit M2 R2): every rule and constant fixed before any gesture code. */
-export function gestureTimingReport(run: LoadedRun, bands: MotionBandsFile): CriterionReport<GestureTimingDetail> {
+export function gestureTimingReport(run: LoadedRun, bands: MotionBandsFile, idleRuns: readonly LoadedRun[]): CriterionReport<GestureTimingDetail> {
   const summary = requireSummary(run)
   const gate = requireGate(run)
   const { p } = run
-  const { candidates, idle, silentSeconds, speedBar, apexes } = strokeApexes(run)
+  const { candidates, silentApexes, silentSeconds, companions, pooled, speedBar, apexes } = strokeApexes(run, idleRuns)
   const peaks = labelledPeaks(run).map((t) => {
     const nearest = apexes.reduce<Apex | null>((best, a) => !best || Math.abs(a.t - t) < Math.abs(best.t - t) ? a : best, null)
     const lag = nearest ? nearest.t - t : null
@@ -343,7 +362,7 @@ export function gestureTimingReport(run: LoadedRun, bands: MotionBandsFile): Cri
     requirement('arm-ldlj', 'smooth.armL/R.ldlj inside the printed pooled talk band', ldlj.map(x => `${x.id} ${fixed(x.value)} [${fixed(x.band.lo, 2)}, ${fixed(x.band.hi, 2)}]`).join(', '), ldlj.every(x => x.inside)),
   ]
   return criterionReport('gesture-timing', GESTURE_TIMING_VERSION, [run.dir], GESTURE_TIMING_CONSTANTS, requirements, {
-    idle: { silentSeconds, apexes: idle.length, speedBar, candidates: candidates.length, counted: apexes.length },
+    idle: { companions, pooled, speedBar, silentSeconds, silentApexes, candidates: candidates.length, counted: apexes.length },
     peaks,
     utterances,
     trunk: { torso, hits: trunkHits, placeboWindows: placebo.length, placeboP95Deg: placeboP95 },
@@ -362,7 +381,9 @@ export function gestureTimingReport(run: LoadedRun, bands: MotionBandsFile): Cri
 export function formatGestureTiming(report: CriterionReport<GestureTimingDetail>): string {
   const d = report.detail
   return formatReport(report, [
-    `idle speed bar: p${C.idlePercentile * 100} of ${d.idle.apexes} idle apexes in ${fixed(d.idle.silentSeconds, 1)} s silent = ${fixed(d.idle.speedBar, 3)} A/s; ${d.idle.counted} of ${d.idle.candidates} candidate apexes count as strokes`,
+    `idle speed bar: p${C.idlePercentile * 100} of ${d.idle.pooled} idle apexes pooled over ${d.idle.companions.length} companion idle runs = ${fixed(d.idle.speedBar, 3)} A/s; ${d.idle.counted} of ${d.idle.candidates} candidate apexes count as strokes`,
+    ...d.idle.companions.map(c => `  companion ${c.dir}: commit ${c.gitSha ?? '-'}, seed ${c.seed}, ${c.apexes} idle apexes`),
+    `within-run silent spans (report only): ${d.idle.silentApexes} candidate apexes in ${fixed(d.idle.silentSeconds, 1)} s`,
     'labelled peaks: t s, nearest apex ms, hit',
     ...d.peaks.map(x => `  ${x.t.toFixed(3)}\t${fixed(x.nearestApexMs, 1)}\t${x.hit ? 'hit' : 'miss'}`),
     'utterances: start s, end s, kinematic apexes inside',

@@ -81,58 +81,73 @@ function speaker(options: { apexOffset?: number, order?: 'proximal' | 'distal', 
   return { input, gate }
 }
 
+/** A companion idle run of the same synthetic rig: slow 0.03 rad upper-arm swings 2 s apart, each with an apex. */
+function idleRun(swings = 25, change: { gitSha?: string, assetSha256?: string } = {}) {
+  const sway = Array.from({ length: swings }, (_, i) => ({ start: 2 + 2 * i, duration: 0.4, by: (i % 2 ? -1 : 1) * 0.03 }))
+  const input = trace({ seconds: 4 + 2 * swings, scenario: 'talk', world: armWorld({ upper: moves(sway) }, {}) })
+  const { rig, source } = input.trace
+  const changed = { ...input, trace: { ...input.trace, rig: { ...rig, assetSha256: change.assetSha256 ?? rig.assetSha256 }, source: { ...source, gitSha: change.gitSha ?? source.gitSha } } }
+  return loadedRun(changed, null, null, 'idle-companion')
+}
+
 describe('gesture-timing report (C001, plan 2.2)', () => {
   it('passes a speaker whose apexes hit the peaks with four forms, ordered preparations and clean summaries', () => {
     const { input, gate } = speaker()
-    const report = gestureTimingReport(loadedRun(input, summaryStub(input), gate), bands)
+    const report = gestureTimingReport(loadedRun(input, summaryStub(input), gate), bands, [idleRun()])
     expect(report.requirements.filter(r => !r.pass)).toEqual([])
     expect(report.verdict).toBe('PASS')
   })
 
-  it('refuses the vacuous case in which nothing moves: no idle, no speed bar, never a pass', () => {
+  it('fails the vacuous case in which nothing moves', () => {
     const { input, gate } = speaker({ still: true })
-    expect(() => gestureTimingReport(loadedRun(input, summaryStub(input), gate), bands)).toThrow(ReportUsageError)
+    const report = gestureTimingReport(loadedRun(input, summaryStub(input), gate), bands, [idleRun()])
+    expect(report.verdict).toBe('FAIL')
+    expect(report.requirements.find(r => r.id === 'peaks-hit')?.pass).toBe(false)
   })
 
   it.each([[0.19, true], [-0.19, true], [0.25, false]] as const)('counts an apex %s s from its peak as a hit: %s', (offset, hit) => {
     const { input, gate } = speaker({ apexOffset: offset })
-    const report = gestureTimingReport(loadedRun(input, summaryStub(input), gate), bands)
+    const report = gestureTimingReport(loadedRun(input, summaryStub(input), gate), bands, [idleRun()])
     expect(report.requirements.find(r => r.id === 'peaks-hit')?.pass).toBe(hit)
   })
 
   it('fails markers that no kinematic apex confirms within 50 ms', () => {
     const { input, gate } = speaker({ markerOffset: 0.1 })
-    const report = gestureTimingReport(loadedRun(input, summaryStub(input), gate), bands)
+    const report = gestureTimingReport(loadedRun(input, summaryStub(input), gate), bands, [idleRun()])
     expect(report.requirements.find(r => r.id === 'markers-confirmed')?.pass).toBe(false)
   })
 
   it('fails reversed preparation order', () => {
     const { input, gate } = speaker({ order: 'distal' })
-    const report = gestureTimingReport(loadedRun(input, summaryStub(input), gate), bands)
+    const report = gestureTimingReport(loadedRun(input, summaryStub(input), gate), bands, [idleRun()])
     expect(report.requirements.find(r => r.id === 'preparation-order')?.pass).toBe(false)
   })
 
-  it('refuses a run whose silent spans hold fewer than 20 idle apexes', () => {
-    const { input, gate } = speaker({ idleSway: 19 })
-    expect(() => gestureTimingReport(loadedRun(input, summaryStub(input), gate), bands)).toThrow(ReportUsageError)
+  it.each([
+    ['19 pooled idle apexes', [idleRun(19)]],
+    ['a companion of another model', [idleRun(25, { assetSha256: 'other-model' })]],
+    ['a companion at another commit', [idleRun(25, { gitSha: 'f'.repeat(40) })]],
+  ] as const)('refuses %s', (_, idle) => {
+    const { input, gate } = speaker()
+    expect(() => gestureTimingReport(loadedRun(input, summaryStub(input), gate), bands, idle)).toThrow(ReportUsageError)
   })
 
   it('does not count strokes slower than the run\'s own idle sway (unit M3 item 1)', () => {
     const { input, gate } = speaker({ strokeSeconds: 0.4, strokeSize: 0.02, torso: false })
-    const report = gestureTimingReport(loadedRun(input, summaryStub(input), gate), bands)
+    const report = gestureTimingReport(loadedRun(input, summaryStub(input), gate), bands, [idleRun()])
     expect(report.requirements.find(r => r.id === 'peaks-hit')?.value).toMatch(/^0\/12/)
     expect(report.requirements.find(r => r.id === 'utterances')?.pass).toBe(false)
   })
 
   it('fails an utterance without a stroke (R2 a)', () => {
     const { input, gate } = speaker({ silent: 1 })
-    const report = gestureTimingReport(loadedRun(input, summaryStub(input), gate), bands)
+    const report = gestureTimingReport(loadedRun(input, summaryStub(input), gate), bands, [idleRun()])
     expect(report.requirements.find(r => r.id === 'utterances')).toMatchObject({ pass: false, value: '2/3' })
   })
 
   it('fails strokes without upper-torso participation against the placebo windows (R2 b)', () => {
     const { input, gate } = speaker({ torso: false })
-    const report = gestureTimingReport(loadedRun(input, summaryStub(input), gate), bands)
+    const report = gestureTimingReport(loadedRun(input, summaryStub(input), gate), bands, [idleRun()])
     expect(report.requirements.find(r => r.id === 'trunk-participation')?.pass).toBe(false)
     expect(report.requirements.find(r => r.id === 'peaks-hit')?.pass).toBe(true)
   })
@@ -140,15 +155,15 @@ describe('gesture-timing report (C001, plan 2.2)', () => {
   it('fails a gated talk FAIL whatever its id, and ignores report-only values', () => {
     const { input, gate } = speaker()
     const failing = { ...gate, metrics: gate.metrics.map(m => m.id === 'coverage.fingers' ? { ...m, status: 'FAIL' as const } : m.id === 'coverage.arms' ? { ...m, status: 'FAIL' as const } : m) }
-    expect(gestureTimingReport(loadedRun(input, summaryStub(input), failing), bands).requirements.find(r => r.id === 'gate-talk')?.pass).toBe(false)
+    expect(gestureTimingReport(loadedRun(input, summaryStub(input), failing), bands, [idleRun()]).requirements.find(r => r.id === 'gate-talk')?.pass).toBe(false)
     const reportOnlyFail = { ...gate, metrics: gate.metrics.map(m => m.id === 'coverage.arms' ? { ...m, status: 'FAIL' as const } : m) }
-    expect(gestureTimingReport(loadedRun(input, summaryStub(input), reportOnlyFail), bands).requirements.find(r => r.id === 'gate-talk')?.pass).toBe(true)
+    expect(gestureTimingReport(loadedRun(input, summaryStub(input), reportOnlyFail), bands, [idleRun()]).requirements.find(r => r.id === 'gate-talk')?.pass).toBe(true)
   })
 
   it('fails mirrored arms through the gated bilateral metrics', () => {
     const { input, gate } = speaker()
     const mirrored = { ...gate, metrics: gate.metrics.map(m => m.id.startsWith('bilateral.') ? { ...m, status: 'FAIL' as const, band: m.band && { ...m.band, status: 'GATED' as const } } : m) }
-    const report = gestureTimingReport(loadedRun(input, summaryStub(input), mirrored), bands)
+    const report = gestureTimingReport(loadedRun(input, summaryStub(input), mirrored), bands, [idleRun()])
     expect(report.requirements.find(r => r.id === 'bilateral')?.pass).toBe(false)
   })
 

@@ -3,12 +3,18 @@ import type { Motion3dCliContext } from '../../../bin/motion3d'
 import { formatGestureTiming, gestureTimingReport } from '../reports/gesture-timing'
 import { runReportCommand } from './report-cli'
 
-/** `qa:motion3d gesture-timing <run>`: the C001 criterion report (plan 2.2) of one gated talk run. */
+const usage = 'qa:motion3d gesture-timing <run directory> --idle <companion idle run directory>...'
+
+/**
+ * `qa:motion3d gesture-timing <run> --idle <idle run>...`: the C001 criterion report (plan 2.2) of one gated talk run,
+ * its idle speed bar pooled over companion idle runs of the same model and commit (unit M3 item 1).
+ */
 export async function gestureTimingMotion3d(args: readonly string[], context: Motion3dCliContext): Promise<number> {
-  if (args.length !== 1)
-    return runReportCommand('gesture-timing', 'qa:motion3d gesture-timing <run directory>', [], context, () => [])
-  return runReportCommand('gesture-timing', 'qa:motion3d gesture-timing <run directory>', args, context, (runs, bands) => runs.map((run) => {
-    const report = gestureTimingReport(run, bands)
-    return { dir: run.dir, report, text: formatGestureTiming(report) }
-  }))
+  const split = args.indexOf('--idle')
+  if (split !== 1 || args.length < 3)
+    return runReportCommand('gesture-timing', usage, [], context, () => [])
+  return runReportCommand('gesture-timing', usage, [args[0], ...args.slice(2)], context, (runs, bands) => {
+    const report = gestureTimingReport(runs[0], bands, runs.slice(1))
+    return [{ dir: runs[0].dir, report, text: formatGestureTiming(report) }]
+  })
 }
