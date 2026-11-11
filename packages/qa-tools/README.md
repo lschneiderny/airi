@@ -510,7 +510,60 @@ The desktop stage gates live in `src/stage/gates.ts`; `src/stage/measure.ts` pro
 
 ### Run
 
-`pnpm qa:motion3d run` is reserved for the headless MMD runner and currently prints `qa:motion3d run: not implemented` and exits 2.
+```bash
+pnpm qa:motion3d run --model "/path/to/model.pmx" --scenario idle --seed 1 --seconds 60 --out .temp/qa/idle-1
+pnpm qa:motion3d run --model "/path/to/model.pmx" --scenario walk --seed 1 --seconds 30 --warmup 10 --out .temp/qa/walk-1 --verify-determinism
+```
+
+The Node runner loads an external PMX, initializes the shipped Ammo backend,
+and composes the production Natural adapter, stance director, body stages,
+IK, grants, physics and shared motion-trace sampler. It opens no window and
+needs no GPU. Models and textures remain outside the repository. The optional
+load and gaze integration tests use `AIRI_QA_MMD_MODEL` when set.
+
+`--model`, `--scenario` and `--out` are required. Scenarios are `idle`,
+`gaze-shift`, `speak`, `emotions`, `walk` and `touch`. Seed defaults to 1;
+duration and warm-up default to the scenario's values (10 s warm-up).
+Scored duration is capped at 120 s. Relative paths resolve against `INIT_CWD`.
+An existing output directory is refused with exit 2 before a lease is taken.
+Each run takes the `gate` CPU lease and creates:
+
+- `trace.json`: shared trace v1, including warm-up, scenario events, source
+  revision, asset hash, stages, clock policy and omitted work.
+- `summary.json`: `motion3d-run-summary` v1 with provenance, scored per-stage
+  mean/p50/p95/p99/max timings, pose and AIRI p95 sums, and per-frame arm
+  penetration, cloth contact, foot skate and foot error.
+- `run.json`: the standard QA manifest with command, environment, source
+  revision, artifact hashes and result.
+
+Stdout is one JSON line with `ok`, `runDir`, `frames`, `wallMs` and `realtime`.
+Wall time measures the simulation loop, including warm-up, and excludes model
+initialization and serialization. Stage percentiles and diagnostic series
+cover scored frames only. Summary times start at zero and advance by
+1000/60 ms; a 30 s run's last sample is at 29,983.33 ms, so the arm gate's
+30 s span requirement needs a longer run. Only a walk summary with actual
+walking frames belongs in the walk gate. Headless timings never qualify as
+rendered frame-budget evidence.
+
+Every frame advances exactly 1/60 s. Director and Natural clocks derive from
+the frame index; the trace's wall channel equals its accumulated motion time.
+The seed selects the scenario timeline and model key `qa-<seed>`. Fresh
+instances are built for each run. For the same model, scenario, seed, options,
+revision and dirty state on the same host/runtime, `trace.json` is byte-identical.
+It contains no measured wall-clock values. `--verify-determinism` builds and
+steps a second fresh runtime, compares the rotation/root/channel block hashes,
+and fails with exit 1 on a mismatch. This does not claim determinism across
+CPUs, Node versions or Ammo builds.
+
+The image boundary returns inert textures and omits image callbacks, toon
+rotation and alpha inspection. This level also omits Classic gaze/face,
+Natural face surfaces, lip-sync, expression bone morphs, surface morphs,
+touch hit-testing, overlays, animation clip layers and rendering. It drives
+touch and speech cues through the existing inputs; it adds no arm gesture
+behavior. It cannot judge skinning, silhouettes, materials, camera framing,
+window integration or perceived naturalness. Exit codes are 0 completed,
+1 run or determinism failure, 2 invalid arguments or setup refusal, and
+130 interrupted.
 
 ### Gate
 
