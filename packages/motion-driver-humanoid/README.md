@@ -15,6 +15,8 @@ deterministic motion algorithms for reusable character motion drivers.
   the pick to the director as an `idle` request.
 - `./dynamics`: `secondOrderCoefficients`, `advanceSecondOrder`, `createLagChain`,
   `createInertializer`, `softLimit` and `minJerk`, for scalar secondary motion.
+- `./noise`: `deriveSeed`, `gaussian`, `createDriftNoise` and
+  `createActivityGate`, for independent seeded drift and moving holds.
 - `./foot-contact`: planted foot anchors, eased contact, shared pelvis reach
   correction, signed knee pre-bend, and body-turn step arcs.
 - `./look-at`: `createLookAt`, look-at and turn-step contracts, and `aimEyes`.
@@ -287,6 +289,35 @@ All inputs must be finite and time steps are nonnegative seconds. Fixed-tick
 constructors keep their `dt`, and a zero tick advances no state. No step method
 allocates. Copy borrowed buffers when you keep a past frame. Use these primitives
 for renderer-neutral motion synthesis, not for bone writes or wall-clock scheduling.
+
+## Noise primitives
+
+`./noise` holds seeded aperiodic drift and moving holds. No existing motion driver uses it yet.
+
+```ts
+import { createActivityGate, createDriftNoise, deriveSeed } from '@proj-airi/motion-driver-humanoid/noise'
+
+const dt = 1 / 120
+const drift = createDriftNoise({ seed: deriveSeed(7, 0) })
+const gate = createActivityGate({ seed: deriveSeed(7, 1) })
+const offset = 0.01 * gate.step(dt) * drift.step(dt)
+```
+
+Drift sums three equal-variance OU processes (default time constants 0.9, 3.5,
+14 seconds), divided by sqrt(3), then low-passes once (default 0.15 seconds).
+It returns normalised noise; multiply by the channel SD and a regional gate
+outside the primitive. `taus` is a triple of positive seconds; `filterTau = 0`
+bypasses filtering. The gate uses a unit OU (default `tau = 8` seconds) passed
+through a logistic curve into [`floor`, 1], with default `floor = 0.15`.
+Both processes start at zero latent state. Each instance owns its stream.
+Assign permanent stream indices with `deriveSeed(seed, index)` and append new
+indices so adding a channel cannot shift existing sequences. `gaussian(random)`
+consumes exactly two uniforms in [0, 1) per draw. These are local copies of
+Natural's helpers, so the two packages stay independent and Natural's random
+streams never change.
+
+Time steps are finite, nonnegative seconds. A zero tick consumes no draw and
+returns the current value. No step method allocates.
 
 ## Checks
 
