@@ -5,12 +5,13 @@ import type { EmotionTrial, PreparedTrace, Quat, Vec3 } from '../metrics'
 import type { CriterionReport, LoadedRun, ReportConstant } from './report'
 
 import { percentile } from '../gate/bands'
+import { motionQualityGate } from '../gate/definition'
 import { emotionMetrics, emotionTrials, onsetMetrics } from '../metrics'
 import { UPPER } from '../metrics/bones'
 import { conjugate, DEG, heading, mean, multiply, normalize, rotationVector } from '../metrics/math'
 import { criterionReport, fixed, formatReport, gateStatus, requireGate, requirement } from './report'
 
-export const EMOTION_TABLE_VERSION = 1
+export const EMOTION_TABLE_VERSION = 2
 
 /** Plan 2.3's C002 constants: the gate's own windows and threshold, and the placebo band. */
 const C = {
@@ -21,10 +22,17 @@ const C = {
   placeboTrials: 5,
   placeboPercentile: 0.95,
   vacuity: 2,
+  episodes: motionQualityGate.constants.episodeMinimum,
 }
 
+/** Criterion C002's gate run: `qa:motion3d gate <emotion runs> --require` these ids. */
+export const C002_REQUIRED = ['emotion.minSeparationFromNeutral', 'emotion.armShare'] as const
+const ONSET_IDS = ['onset.attackFraction', 'onset.easedOrAnticipated'] as const
+
 export const EMOTION_TABLE_CONSTANTS: readonly ReportConstant[] = [
-  { name: 'pair separation', value: C.separation, unit: 'SD', source: 'gate emotionSeparationMinimum' },
+  { name: 'pair separation', value: C.separation, unit: 'SD, each non-neutral emotion against neutral and against placebo', source: 'gate emotionSeparationMinimum; emotion.minSeparationFromNeutral (gate version 3)' },
+  { name: 'gate requirement', value: C002_REQUIRED.join(','), unit: '--require ids', source: 'criterion C002' },
+  { name: 'onset episodes', value: C.episodes, unit: 'per run, each onset metric', source: 'gate episodeMinimum' },
   { name: 'baseline window', value: C.baseline.join('..'), unit: 's after the cue', source: 'gate emotionBaselineSeconds' },
   { name: 'hold window', value: C.hold.join('..'), unit: 's after the cue', source: 'gate emotionHoldSeconds' },
   { name: 'release window', value: C.release.join('..'), unit: 's after the cue', source: 'plan 2.3: before the next cue at +12 s' },
@@ -66,6 +74,9 @@ export interface EmotionTableDetail {
   /** Pairwise separation in SD units, keyed `a|b` with a < b. */
   readonly separation: Readonly<Record<string, number>>
   readonly failingPairs: readonly string[]
+  readonly requiredPairs: readonly string[]
+  readonly minSeparationFromNeutral: number | null
+  readonly episodes: readonly { readonly run: string, readonly attack: number, readonly eased: number }[]
   readonly placeboP95Deg: number | null
   readonly meanHoldDeg: Readonly<Record<string, number>>
   readonly releases: readonly { readonly trial: string, readonly condition: string, readonly releaseDeg: number | null, readonly inBand: boolean }[]
@@ -73,8 +84,9 @@ export interface EmotionTableDetail {
 }
 
 /**
- * C002 emotion table (plan 2.3) over the pooled emotion runs: the gate's trial vectors and sigma, every pair printed,
- * every pair with a non-neutral emotion required at 2 SD; the neutral-placebo pair is printed only.
+ * C002 emotion table, version 2 (unit M2 R4) over the pooled emotion runs: the gate's trial vectors and sigma; each
+ * non-neutral emotion against neutral and against placebo required at 2 SD, as `emotion.minSeparationFromNeutral`;
+ * every other pair printed as report only. The pooled verdict comes from the gate run with `--require` C002's ids.
  */
 export function emotionTableReport(runs: readonly LoadedRun[], bands: MotionBandsFile): CriterionReport<EmotionTableDetail> {
   const emotion = bands.classes.emotion
@@ -95,7 +107,10 @@ export function emotionTableReport(runs: readonly LoadedRun[], bands: MotionBand
       separation[`${conditions[i]}|${conditions[j]}`] = sigma > 1e-18 ? distance(centres.get(conditions[i]) ?? [], centres.get(conditions[j]) ?? []) / sigma : 0
   }
   const noOp = (c: string) => c === 'neutral' || c === 'placebo'
-  const required = Object.entries(separation).filter(([pair]) => !pair.split('|').every(noOp))
+  const required = Object.entries(separation).filter(([pair]) => {
+    const [a, b] = pair.split('|')
+    return noOp(a) !== noOp(b)
+  })
   const failing = required.filter(([, d]) => d < C.separation).map(([pair]) => pair)
   const placebo = trials.filter(t => t.placebo).map(t => length(vector(t)))
   const placeboP95 = placebo.length ? percentile(placebo, C.placeboPercentile) : null
@@ -118,14 +133,21 @@ export function emotionTableReport(runs: readonly LoadedRun[], bands: MotionBand
     })
   })
   const gates = runs.map(requireGate)
-  const onsetIds = ['onset.attackFraction', 'onset.easedOrAnticipated', 'emotion.armShare'] as const
-  const gateLine = onsetIds.map(id => `${id} ${[...new Set(gates.map(g => gateStatus(g, id).status))].join('/')}`).join(', ')
+  const required2 = gates.map(g => g.requirements)
+  const gateRequired = required2.every(r => r && C002_REQUIRED.every(id => r.metrics.includes(id)) && r.passed)
+  const episodes = runs.map((run) => {
+    const count = (id: string) => (emotion ? onsetMetrics(run.p, emotion).find(m => m.id === id)?.samples?.length : 0) ?? 0
+    return { run: run.dir, attack: count(ONSET_IDS[0]), eased: count(ONSET_IDS[1]) }
+  })
+  const onsetLine = ONSET_IDS.map(id => `${id} ${[...new Set(gates.map(g => gateStatus(g, id).status))].join('/')}`).join(', ')
   const nonNeutral = conditions.filter(c => !noOp(c))
   const vacuous = placeboP95 === null || nonNeutral.some(c => meanHold[c] < C.vacuity * placeboP95 * DEG)
   const pooled = emotionMetrics(trials)
+  const fromNeutral = pooled.find(m => m.id === 'emotion.minSeparationFromNeutral')?.value ?? null
   const requirements = [
-    requirement('pairs', `every pair with a non-neutral emotion >= ${C.separation} SD (neutral-placebo printed only)`, `${required.length - failing.length}/${required.length}; gate minSeparation over all pairs ${fixed(pooled[0].value)}`, required.length > 0 && failing.length === 0),
-    requirement('gate-onset-and-arm-share', 'onset.attackFraction, onset.easedOrAnticipated and emotion.armShare not FAIL in any gate.json', gateLine, onsetIds.every(id => gates.every(g => gateStatus(g, id).status !== 'FAIL'))),
+    requirement('pairs-from-neutral', `each non-neutral emotion >= ${C.separation} SD from neutral and from placebo (emotion.minSeparationFromNeutral); other pairs report only`, `${required.length - failing.length}/${required.length}; emotion.minSeparationFromNeutral ${fixed(fromNeutral)}; all-pairs emotion.minSeparation ${fixed(pooled[0].value)} (report only)`, required.length > 0 && failing.length === 0 && fromNeutral !== null && fromNeutral >= C.separation),
+    requirement('gate-required', `every gate.json carries --require ${C002_REQUIRED.join(',')} and passed it`, required2.map(r => r ? `${r.metrics.join(',')} ${r.passed ? 'PASS' : 'FAIL'}` : 'no --require').join('; '), gateRequired),
+    requirement('onset-not-vacuous', `${ONSET_IDS.join(' and ')} PASS in every gate.json, each from >= ${C.episodes} episodes per run`, `${onsetLine}; episodes per run (attack/eased): ${episodes.map(e => `${e.attack}/${e.eased}`).join(', ')}`, ONSET_IDS.every(id => gates.every(g => gateStatus(g, id).status === 'PASS')) && episodes.every(e => e.attack >= C.episodes && e.eased >= C.episodes)),
     requirement('placebo-trials', `placebo trials >= ${C.placeboTrials}`, `${placebo.length}`, placebo.length >= C.placeboTrials),
     requirement('not-vacuous', `each non-neutral emotion's mean hold |p| >= ${C.vacuity} x placebo p95`, nonNeutral.map(c => `${c} ${fixed(meanHold[c], 2)}`).join(', '), !vacuous),
     requirement('release', 'every trial |r_release| <= placebo p95 of hold |p|', `${releases.filter(r => r.inBand).length}/${releases.length} in band (p95 ${fixed(placeboP95 === null ? null : placeboP95 * DEG, 2)} deg)`, releases.length > 0 && releases.every(r => r.inBand)),
@@ -136,6 +158,9 @@ export function emotionTableReport(runs: readonly LoadedRun[], bands: MotionBand
     sigmaDeg: sigma * DEG,
     separation,
     failingPairs: failing,
+    requiredPairs: required.map(([pair]) => pair),
+    minSeparationFromNeutral: fromNeutral,
+    episodes,
     placeboP95Deg: placeboP95 === null ? null : placeboP95 * DEG,
     meanHoldDeg: meanHold,
     releases,
@@ -151,7 +176,7 @@ export function formatEmotionTable(report: CriterionReport<EmotionTableDetail>):
     `separation table (SD units):`,
     `\t${d.conditions.join('\t')}`,
     ...d.conditions.map(a => `${a}\t${d.conditions.map(b => cell(a, b)).join('\t')}`),
-    `required pairs below ${C.separation}: ${d.failingPairs.join(', ') || 'none'}`,
+    `required pairs (non-neutral against neutral and placebo) below ${C.separation}: ${d.failingPairs.join(', ') || 'none'}; every other cell is report only`,
     `mean hold |p| per emotion, deg: ${Object.entries(d.meanHoldDeg).map(([c, v]) => `${c} ${fixed(v, 2)}`).join(', ')}; placebo p95 ${fixed(d.placeboP95Deg, 2)}`,
     'release per trial: trial, condition, |r_release| deg, in band',
     ...d.releases.map(r => `  ${r.trial}\t${r.condition}\t${fixed(r.releaseDeg, 2)}\t${r.inBand ? 'yes' : 'no'}`),

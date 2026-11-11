@@ -9,7 +9,7 @@ import { beforeAll, describe, expect, it } from 'vitest'
 
 import { loadBands } from '../gate/load'
 import { cueBodyReport } from './cue-body'
-import { emotionTableReport } from './emotion-table'
+import { C002_REQUIRED, emotionTableReport } from './emotion-table'
 import { ownershipReport } from './ownership'
 import { popsReport } from './pops'
 import { armWorld, gateStub, loadedRun, moves, rotX, summaryStub, trace } from './test-runs'
@@ -23,14 +23,14 @@ beforeAll(async () => {
 
 const DEG = Math.PI / 180
 const minJerk = (u: number) => u <= 0 ? 0 : u >= 1 ? 1 : u * u * u * (10 - 15 * u + 6 * u * u)
-const emotionGate = gateStub({ 'onset.attackFraction': { status: 'PASS' }, 'onset.easedOrAnticipated': { status: 'PASS' }, 'emotion.armShare': { status: 'PASS' } })
+const emotionGate = { ...gateStub({ 'onset.attackFraction': { status: 'PASS' }, 'onset.easedOrAnticipated': { status: 'PASS' }, 'emotion.armShare': { status: 'PASS' }, 'emotion.minSeparationFromNeutral': { status: 'PASS' } }), requirements: { metrics: [...C002_REQUIRED], passed: true } }
 
 describe('emotion-table report (C002, plan 2.3)', () => {
-  // Trials 12 s apart: happy and sad pitch the chest +/-10 degrees from +0.3 s, released by +8 s (or held past +11 s),
-  // with 0.5 degree seeded trial noise; neutral and placebo do nothing but noise.
-  function emotions(options: { amplitude?: number, release?: boolean } = {}) {
+  // Trials 12 s apart: happy and sad pitch the chest +/-10 and the head +/-20 degrees (an onset over the gate's head
+  // speed threshold), released by +8 s or held, with seeded trial noise. `sadLike` gives sad another posture.
+  function emotions(options: { amplitude?: number, release?: boolean, sadLike?: 'happy' | 'neutral' } = {}) {
     const random = createRandomStream(3)
-    const conditions = [...Array.from({ length: 3 }, () => ['happy', 'sad', 'neutral']).flat(), 'placebo', 'placebo', 'placebo', 'placebo', 'placebo']
+    const conditions = [...Array.from({ length: 5 }, () => ['happy', 'sad', 'neutral']).flat(), 'placebo', 'placebo', 'placebo', 'placebo', 'placebo']
     const trials = conditions.map((condition, i) => ({ condition, t: 2 + 12 * i, offset: (random() - 0.5) * DEG, head: (random() - 0.5) * DEG }))
     const events: MotionTraceEvent[] = trials.map((trial, i) => trial.condition === 'placebo'
       ? { t: trial.t, kind: 'emotion', emotion: 'neutral', band: 'clear', phase: 'placebo', trialId: `p${i}` }
@@ -41,9 +41,10 @@ describe('emotion-table report (C002, plan 2.3)', () => {
       const trial = trials.find(x => t >= x.t && t < x.t + 12)
       if (!trial || !['chest', 'head'].includes(bone))
         return [0, 0, 0, 1]
-      const sign = trial.condition === 'happy' ? 1 : trial.condition === 'sad' ? -1 : 0
+      const as = trial.condition === 'sad' && options.sadLike ? options.sadLike : trial.condition
+      const sign = as === 'happy' ? 1 : as === 'sad' ? -1 : 0
       const w = envelope(t - trial.t)
-      return rotX(w * (bone === 'chest' ? sign * amplitude + trial.offset : trial.head))
+      return rotX(w * (bone === 'chest' ? sign * amplitude + trial.offset : 2 * sign * amplitude + trial.head))
     }
     return loadedRun(trace({ seconds: 2 + 12 * trials.length, scenario: 'emotion', events, world }), null, emotionGate)
   }
@@ -52,6 +53,37 @@ describe('emotion-table report (C002, plan 2.3)', () => {
     const report = emotionTableReport([emotions()], bands)
     expect(report.requirements.filter(r => !r.pass)).toEqual([])
     expect(report.detail.separation['neutral|placebo']).toBeLessThan(2)
+  })
+
+  it('fails an emotion whose posture equals neutral, and passes two emotions that share one posture clear of neutral', () => {
+    const neutralSad = emotionTableReport([emotions({ sadLike: 'neutral' })], bands)
+    expect(neutralSad.requirements.find(r => r.id === 'pairs-from-neutral')?.pass).toBe(false)
+    expect(neutralSad.detail.failingPairs).toEqual(expect.arrayContaining(['neutral|sad', 'placebo|sad']))
+    const twins = emotionTableReport([emotions({ sadLike: 'happy' })], bands)
+    expect(twins.requirements.find(r => r.id === 'pairs-from-neutral')?.pass).toBe(true)
+    expect(twins.detail.separation['happy|sad']).toBeLessThan(2)
+  })
+
+  it('reports the gate value it would require and agrees with emotion.minSeparationFromNeutral', () => {
+    const report = emotionTableReport([emotions()], bands)
+    const required = report.detail.requiredPairs.map(pair => report.detail.separation[pair])
+    expect(report.detail.requiredPairs).toHaveLength(4)
+    expect(Math.min(...required)).toBeCloseTo(report.detail.minSeparationFromNeutral ?? Number.NaN, 9)
+  })
+
+  it.each([
+    ['no --require', { ...emotionGate, requirements: undefined }, 'gate-required'],
+    ['a failed --require', { ...emotionGate, requirements: { metrics: [...C002_REQUIRED], passed: false } }, 'gate-required'],
+    ['skipped onset metrics', { ...emotionGate, metrics: emotionGate.metrics.map(m => m.id.startsWith('onset.') ? { ...m, status: 'SKIPPED' as const } : m) }, 'onset-not-vacuous'],
+  ] as const)('fails a pooled gate with %s', (_, gate, id) => {
+    const run = emotions()
+    const report = emotionTableReport([{ ...run, gate }], bands)
+    expect(report.requirements.find(r => r.id === id)?.pass).toBe(false)
+  })
+
+  it('fails the onset guard when the runs hold fewer onset episodes than the gate minimum', () => {
+    const report = emotionTableReport([emotions({ amplitude: 0 })], bands)
+    expect(report.requirements.find(r => r.id === 'onset-not-vacuous')?.pass).toBe(false)
   })
 
   it('fails a posture still held outside the placebo band in the release window', () => {
