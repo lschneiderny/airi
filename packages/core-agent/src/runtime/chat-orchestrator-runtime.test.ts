@@ -421,6 +421,41 @@ describe('createChatOrchestratorRuntime', () => {
     expect(stored.map(message => message.content)).toEqual([' Well formed.', ' Bracketed. ', 'Third.'])
   })
 
+  it('shows, speaks, and sends back a swapped marker and a closer that ends the reply without their pipes', async () => {
+    const harness = createHarness()
+    const reply = '|<ACT happy|>\n|<ACT {"emotion":"happy"}|>\nGood morning to you too!|>'
+    const literals: string[] = []
+    const specials: string[] = []
+    harness.runtime.hooks.onTokenLiteral(async (literal) => {
+      literals.push(literal)
+    })
+    harness.runtime.hooks.onTokenSpecial(async (special) => {
+      specials.push(special)
+    })
+    harness.stream.mockImplementationOnce(async (_model, _provider, _context, options) => {
+      const [turn] = chatMessagesToTurns([{ role: 'assistant', content: reply }])
+      if (turn?.type !== 'assistant')
+        throw new Error('Expected assistant turn')
+      // One character per chunk, as a slow provider streams it.
+      for (const text of reply)
+        await options?.onStreamEvent?.({ type: 'text-delta', text })
+      await options?.onGeneratedTurn?.(turn)
+      await options?.onStreamEvent?.({ type: 'finish' })
+    })
+    await harness.runtime.ingest('good morning', { model: 'gpt-test', chatProvider: provider })
+    await harness.runtime.ingest('again', { model: 'gpt-test', chatProvider: provider })
+
+    // The speech hooks feed the voice, and the stored content and slices feed the chat bubble.
+    // The line breaks after the cues stay, as they do after well-formed cues.
+    expect(literals.join('')).toBe('\n\nGood morning to you too!assistant reply')
+    expect(specials).toEqual(['<|ACT happy|>', '<|ACT {"emotion":"happy"}|>'])
+    const stored = harness.sessionMessages['session-1'].find(message => message.role === 'assistant')
+    expect(stored?.content).toBe('\n\nGood morning to you too!')
+    expect(stored?.role === 'assistant' && stored.slices).toEqual([{ type: 'text', text: '\n\nGood morning to you too!' }])
+    const history = conversationToChatMessages(harness.stream.mock.calls[1]![2]).filter(message => message.role === 'assistant')
+    expect(history).toEqual([{ role: 'assistant', content: '<|ACT happy|>\n<|ACT {"emotion":"happy"}|>\nGood morning to you too!' }])
+  })
+
   it('keeps the newest 90 percent of turns when a card context window is exceeded', async () => {
     const harness = createHarness()
     harness.contextWindow.set(10)

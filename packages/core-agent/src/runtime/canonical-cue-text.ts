@@ -16,13 +16,13 @@ import { createStreamingCategorizer } from './response-categoriser'
  *   (`ChatOrchestratorStageConfig.recoverCueNames`).
  *
  * Returns:
- * - `text` itself, byte for byte, when the runtime recovered or stripped no near-miss cue in it. A prompt prefix built
+ * - `text` itself, byte for byte, when the runtime recovered, stripped, or dropped nothing in it. A prompt prefix built
  *   from such replies therefore does not change.
- * - Otherwise the reply as the runtime accepted it. A recovered cue takes its canonical `<|NAME body|>` form, and
- *   near-miss markup that the runtime stripped is left out. Prose that only resembles a cue, such as "[Act 2]", and a
- *   near-miss cue inside a reasoning tag stay as written, because the runtime left them as text. In a rewritten reply,
- *   the escaped marker spelling becomes `<|` and `|>`, and an unfinished `<|` marker that ends the reply is dropped,
- *   as the parser does for speech.
+ * - Otherwise the reply as the runtime accepted it. A recovered cue takes its canonical `<|NAME body|>` form.
+ *   Near-miss markup that the runtime stripped is left out, as is a stray closer that the parser dropped at the end.
+ *   Prose that only resembles a cue, such as "[Act 2]", and a near-miss cue inside a reasoning tag stay as written,
+ *   because the runtime left them as text. In a rewritten reply, the escaped marker spelling becomes `<|` and `|>`,
+ *   and an unfinished `<|` marker that ends the reply is dropped, as the parser does for speech.
  */
 export async function canonicalCueText(text: string, recoverCueNames: readonly string[]): Promise<string> {
   if (!text || !recoverCueNames.length)
@@ -63,7 +63,8 @@ export async function canonicalCueText(text: string, recoverCueNames: readonly s
   })
   await parser.consume(text)
   await parser.end()
-  return rewritten ? canonical : text
+  // A dropped stray closer is not in `canonical`, because the parser never emits it.
+  return rewritten || parser.stats.strayClosers > 0 ? canonical : text
 }
 
 /**

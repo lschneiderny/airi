@@ -17,8 +17,8 @@ describe('canonicalCueText', () => {
     ['markup the runtime strips', '[ACT:{"emotion":"happy",}] Hi', ' Hi'],
     ['a stripped cue beside a recovered one', '[ACT happy] Wait [DELAY 1s] go', '<|ACT happy|> Wait  go'],
     ['prose beside a recovered cue', '[ACT happy] In [ACT 2] she leaves', '<|ACT happy|> In [ACT 2] she leaves'],
-    // The runtime recovers `<ACT happy|>` and speaks the `|` before it, so that `|` stays text here too.
-    ['a swapped pipe and bracket', '|<ACT happy|>\nGood morning!', '|<|ACT happy|>\nGood morning!'],
+    ['a swapped pipe and bracket', '|<ACT happy|>\n|<ACT {"emotion":"happy"}|>\nGood morning!', '<|ACT happy|>\n<|ACT {"emotion":"happy"}|>\nGood morning!'],
+    ['a closer that ends the reply after its last word', '<|ACT happy|>Good morning to you too!|>\n', '<|ACT happy|>Good morning to you too!'],
     ['a recovered cue before an unfinished marker', '[ACT happy] Hi <|ACT sa', '<|ACT happy|> Hi '],
   ])('rewrites %s', async (_case, raw, canonical) => {
     expect(await canonicalCueText(raw, stage.recoverCueNames)).toBe(canonical)
@@ -33,7 +33,8 @@ describe('canonicalCueText', () => {
     ['a near-miss cue inside a reasoning tag', '<think>[ACT happy]</think> Hi'],
     ['the escaped marker spelling', '<{\'|\'}ACT happy{\'|\'}> Hi'],
     ['an unfinished marker', 'Hi there <|ACT happy'],
-    ['a stray closer in the speech', '<|ACT happy|> Hello there |>'],
+    ['a closer after whitespace or before more text', '<|ACT happy|> Write x|> f, the pipe operator is |>'],
+    ['a pipe before a tag that is no cue', 'Run sort |<b>file</b> now'],
     ['a name that is not recoverable', '[MOOD brighter: you came back] Hi'],
   ])('returns a reply with %s unchanged', async (_case, text) => {
     expect(await canonicalCueText(text, stage.recoverCueNames)).toBe(text)
@@ -45,7 +46,7 @@ describe('canonicalCueText', () => {
 
   // The history must say what the runtime did. Replaying the canonical text through the runtime must therefore
   // perform the same cues and speak the same words as the reply the model wrote, with nothing left to recover.
-  it.each(cueContractFixtures)('agrees with the runtime on cue contract fixture $id: $text', async ({ text, thinkingText }) => {
+  it.each(cueContractFixtures)('agrees with the runtime on cue contract fixture $id: $text', async ({ id, text, thinkingText }) => {
     const canonical = await canonicalCueText(text, stage.recoverCueNames)
     const written = await replayReply({ text, thinkingText, stage })
     const rewritten = await replayReply({ text: canonical, thinkingText, stage })
@@ -53,7 +54,8 @@ describe('canonicalCueText', () => {
     expect(rewritten.specials).toEqual(written.specials)
     expect(rewritten.literals.join('')).toBe(written.literals.join(''))
     expect(rewritten.cueStats).toEqual({ ...written.cueStats, recovered: 0, rejected: 0 })
-    if (written.cueStats.recovered === 0 && written.cueStats.rejected === 0)
+    // Fixture 32 ends with a closer that the runtime drops without counting a cue.
+    if (written.cueStats.recovered === 0 && written.cueStats.rejected === 0 && id !== 32)
       expect(canonical).toBe(text)
   })
 })

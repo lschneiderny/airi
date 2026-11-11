@@ -1,6 +1,6 @@
 import type { CueComplianceOutcome } from './cue-compliance'
 
-export const CUE_CONTRACT_FIXTURES = { id: 'cue-contract-fixtures', version: 2 } as const
+export const CUE_CONTRACT_FIXTURES = { id: 'cue-contract-fixtures', version: 3 } as const
 
 export const cueContractFixtures: readonly {
   id: number
@@ -51,4 +51,8 @@ export const cueContractFixtures: readonly {
   { id: 27, text: 'Hi<|MOOD brighter: you came back|>', expect: { act: 0, recovered: 0, stripped: 0, stageRejected: 0, outcome: 'none', leadCue: false, mood: 1, spoken: 'Hi', notes: 'A MOOD cue alone leaves only the words spoken.' } },
   { id: 28, text: '[MOOD brighter: you came back] Hi', expect: { act: 0, recovered: 0, stripped: 0, stageRejected: 0, outcome: 'none', leadCue: false, spoken: '[MOOD brighter: you came back] Hi', notes: 'MOOD is not a recoverable cue name, so a near-miss spelling stays prose.' } },
   { id: 29, text: '<|ACT happy|> Oh! <|MOOD happy|>', expect: { act: 1, recovered: 0, stripped: 0, stageRejected: 0, outcome: 'parsed', leadCue: true, mood: 1, spoken: ' Oh! ', notes: 'A malformed MOOD body still counts as a MOOD marker; parseMoodCue decides validity.' } },
+  { id: 30, text: '|<ACT happy|> Hi.', expect: { act: 1, recovered: 1, stripped: 0, stageRejected: 0, outcome: 'recovered', leadCue: true, spoken: ' Hi.', notes: 'Swapped pipe and bracket: the leading pipe belongs to the recovered marker and is not spoken.' } },
+  { id: 31, text: '|<ACT happy|>\n|<ACT {"emotion":"happy","intensity":"strong"}|>\nHey, good morning!', expect: { act: 2, recovered: 2, stripped: 0, stageRejected: 0, outcome: 'recovered', leadCue: true, spoken: '\n\nHey, good morning!', notes: 'granite4 live run of 2026-11-10, shortened: a bare and a JSON cue, both swapped.' } },
+  { id: 32, text: '<|ACT happy|>Hey there! Good morning to you too!|>', expect: { act: 1, recovered: 0, stripped: 0, stageRejected: 0, outcome: 'parsed', leadCue: true, spoken: 'Hey there! Good morning to you too!', residualChars: 2, notes: 'granite4 live run of 2026-11-10: a closer that ends the reply directly after its last word is dropped.' } },
+  { id: 33, text: '<|ACT happy|> Write x|> f. The pipe operator is |>', expect: { act: 1, recovered: 0, stripped: 0, stageRejected: 0, outcome: 'parsed', leadCue: true, spoken: ' Write x|> f. The pipe operator is |>', notes: 'A closer before more text or after whitespace is prose and stays spoken.' } },
 ]

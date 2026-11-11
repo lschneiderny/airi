@@ -8,6 +8,12 @@ const MAX_RECOVERY_LENGTH = 64
 /** A JSON cue body must balance within this many characters of its opener. */
 const MAX_JSON_BODY_LENGTH = 1024
 
+/**
+ * A `|>` that ends the text directly after a character that is not whitespace, as in `Good morning!|>`.
+ * With no opener before it, it closes nothing. The match starts at the `|`.
+ */
+const STRAY_CLOSER = /(?<=\S)\|>\s*$/
+
 /** A point in the text. The parser settles it once every literal before it is handled. */
 interface MarkerFlush {
   settle: () => void
@@ -15,11 +21,16 @@ interface MarkerFlush {
 
 type MarkerToken
   = | {
-    /** `residual` is dropped unfinished marker text. It is never spoken but still belongs to the full text. */
+    /**
+     * `residual` is dropped marker text: an unfinished `<|` marker, or a stray closer.
+     * It is never spoken but still belongs to the full text.
+     */
     type: 'literal' | 'special' | 'residual'
     value: string
     /** Original text of a near-miss cue that was rewritten into its canonical `<|NAME body|>` form. */
     raw?: string
+    /** Set on the residual of a stray `|>` closer that ended the stream. */
+    strayCloser?: true
   }
   | { type: 'flush', flush: MarkerFlush }
 
@@ -43,18 +54,21 @@ type CueResolution
 function createCueMatcher(names: readonly string[]) {
   const upper = names.map(name => name.toUpperCase()).filter(Boolean)
   const alternatives = upper.map(name => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')
-  const openerPattern = new RegExp(`^([<\\[])(\\|?)(${alternatives})(?![A-Za-z0-9_])`, 'i')
-  const partialPattern = /^[<[]\|?([A-Z]*)$/i
+  // The first alternative is the swapped opener `|<NAME`, in which the pipe and the bracket of `<|NAME` changed places.
+  // Its leading `|` belongs to the marker. It is an unpiped `<` opener in every other respect.
+  const openerPattern = new RegExp(`^(?:(?<swapped>\\|<)|(?<open>[<\\[])(?<pipe>\\|?))(?<name>${alternatives})(?![A-Za-z0-9_])`, 'i')
+  const partialPattern = /^(?:\|<|[<[]\|?)([A-Z]*)$/i
 
   /**
-   * Classifies the text at the start of `text` as a cue opener (`<ACT`, `[ACT`, `<|ACT`).
+   * Classifies the text at the start of `text` as a cue opener (`<ACT`, `[ACT`, `<|ACT`, `|<ACT`).
    * A name that ends exactly at the end of `text` is partial: the next chunk may extend it (`[ACTION`).
    */
   function matchAt(text: string): CueOpener | null {
     if (alternatives) {
       const full = openerPattern.exec(text)
-      if (full && full[0].length < text.length)
-        return { kind: 'full', open: full[1] as '<' | '[', piped: full[2] === '|', name: full[3]!.toUpperCase(), end: full[0].length }
+      const groups = full?.groups
+      if (full && groups && full[0].length < text.length)
+        return { kind: 'full', open: groups.swapped ? '<' : groups.open as '<' | '[', piped: groups.pipe === '|', name: groups.name!.toUpperCase(), end: full[0].length }
     }
     const partial = partialPattern.exec(text)
     if (partial && upper.some(name => name.startsWith(partial[1]!.toUpperCase())))
@@ -64,7 +78,7 @@ function createCueMatcher(names: readonly string[]) {
 
   function find(text: string): { index: number, opener: CueOpener } | null {
     for (let index = 0; index < text.length; index++) {
-      if (text[index] !== '<' && text[index] !== '[')
+      if (text[index] !== '<' && text[index] !== '[' && text[index] !== '|')
         continue
       const opener = matchAt(text.slice(index))
       if (opener)
@@ -316,11 +330,13 @@ function createLlmMarkerParser(options?: MarkerParserOptions) {
   const cues = options?.recoverCueNames?.length ? createCueMatcher(options.recoverCueNames) : null
   let buffer = ''
   let inTag = false
+  // Set once a marker is emitted. Only a reply that carries a marker can end with a stray closer.
+  let markerSeen = false
 
   async function scan(
     onLiteral: (value: string) => Promise<void> | void,
     onSpecial: (value: string, raw?: string) => Promise<void> | void,
-    onResidual: (value: string) => void,
+    onResidual: (value: string, strayCloser?: boolean) => void,
     final: boolean,
   ) {
     while (buffer.length > 0) {
@@ -339,6 +355,10 @@ function createLlmMarkerParser(options?: MarkerParserOptions) {
           }
         }
         if (openTagIndex < 0) {
+          // A closer that may end the reply is held with the character before it, until the stream ends or text follows.
+          const closer = cues ? STRAY_CLOSER.exec(buffer) : null
+          if (closer)
+            holdStart = Math.min(holdStart, closer.index - 1)
           if (holdStart >= minLiteralEmitLength) {
             const emit = buffer.slice(0, holdStart)
             buffer = buffer.slice(holdStart)
@@ -383,6 +403,7 @@ function createLlmMarkerParser(options?: MarkerParserOptions) {
           const raw = buffer.slice(0, resolution.end)
           buffer = buffer.slice(resolution.end)
           inTag = false
+          markerSeen = true
           if (opener.piped && resolution.piped)
             await onSpecial(raw)
           else
@@ -396,6 +417,7 @@ function createLlmMarkerParser(options?: MarkerParserOptions) {
 
         const emit = buffer.slice(0, closeTagIndex + TAG_CLOSE.length)
         buffer = buffer.slice(closeTagIndex + TAG_CLOSE.length)
+        markerSeen = true
         await onSpecial(emit)
         inTag = false
       }
@@ -429,7 +451,7 @@ function createLlmMarkerParser(options?: MarkerParserOptions) {
     async end(
       onLiteral: (value: string) => Promise<void> | void,
       onSpecial: (value: string, raw?: string) => Promise<void> | void,
-      onResidual: (value: string) => void,
+      onResidual: (value: string, strayCloser?: boolean) => void,
     ) {
       if (cues) {
         // Settle every cue that is still waiting for text, then drop what is left of an unfinished `<|...` marker.
@@ -441,6 +463,13 @@ function createLlmMarkerParser(options?: MarkerParserOptions) {
           onResidual(buffer.slice(residualStart))
           buffer = ''
           inTag = false
+        }
+        // A model that wraps its speech in the marker ends the reply with a closer, as in `<|ACT happy|>Hi!|>`.
+        const closer = markerSeen ? STRAY_CLOSER.exec(buffer) : null
+        if (closer) {
+          await onLiteral(buffer.slice(0, closer.index))
+          onResidual(buffer.slice(closer.index), true)
+          buffer = ''
         }
       }
       if (!inTag && buffer.length > 0) {
@@ -473,8 +502,8 @@ function createLlmMarkerStream(input: ReadableStream<string | MarkerFlush>, opti
     await parser.consume(chunk, writeLiteral, writeSpecial)
   })
     .then(async () => {
-      await parser.end(writeLiteral, writeSpecial, (residual) => {
-        write({ type: 'residual', value: residual })
+      await parser.end(writeLiteral, writeSpecial, (residual, strayCloser) => {
+        write({ type: 'residual', value: residual, ...(strayCloser ? { strayCloser } : {}) })
       })
       close()
     })
@@ -519,12 +548,16 @@ export function useLlmmarkerParser(options: {
   minLiteralEmitLength?: number
   /**
    * Cue names (case-insensitive) whose near-miss spellings are rewritten into a canonical `<|NAME body|>`
-   * special instead of being spoken: `<ACT x>`, `[ACT x]`, `<|ACT x>`, `<ACT x|>`.
+   * special instead of being spoken: `<ACT x>`, `[ACT x]`, `<|ACT x>`, `<ACT x|>`, and the swapped `|<ACT x|>`, whose
+   * leading `|` belongs to the marker. A `|` before `<` that starts no cue of these names stays text.
    * A body must close within 64 characters of its opener and before the next marker opener. A JSON body that balances
    * closes at its balanced `}`, which must arrive within 1024 characters, and the closer must follow within 64 characters
    * of that brace. A JSON body that does not balance closes at its closer within 64 characters, like any other body.
    * Otherwise the opener is emitted as literal and the rest is parsed again.
    * An unterminated canonical `<|...` tail is still dropped at the end of the stream.
+   * A reply that carried a marker and ends with a `|>` directly after a character that is not whitespace, such as
+   * `<|ACT happy|>Hi!|>`, loses that closer: it is never passed to `onLiteral`. A `|>` after whitespace, or one that
+   * text follows, stays text, so the pipe operator of a code sample is not removed.
    * Unset keeps the original parsing byte for byte.
    */
   recoverCueNames?: readonly string[]
@@ -533,7 +566,7 @@ export function useLlmmarkerParser(options: {
   const recovering = !!options.recoverCueNames?.length
   // Rebuilt from tokens so recovered markers can be left out of the text handed to `onEnd`.
   let unrecoveredText = ''
-  const stats = { recovered: 0 }
+  const stats = { recovered: 0, strayClosers: 0 }
   const { stream, write, close } = createPushStream<string | MarkerFlush>()
 
   const markerStream = createLlmMarkerStream(stream, {
@@ -558,6 +591,8 @@ export function useLlmmarkerParser(options: {
     }
 
     unrecoveredText += token.value
+    if (token.strayCloser)
+      stats.strayClosers++
     if (token.type === 'literal')
       await options.onLiteral?.(token.value)
     if (token.type === 'special')
@@ -565,7 +600,10 @@ export function useLlmmarkerParser(options: {
   })
 
   return {
-    /** Number of near-miss cues rewritten and accepted so far. Always 0 when `recoverCueNames` is unset. */
+    /**
+     * `recovered` is the number of near-miss cues rewritten and accepted so far. `strayClosers` is the number of
+     * stray `|>` closers dropped at the end of the stream. Both stay 0 when `recoverCueNames` is unset.
+     */
     stats,
 
     /**

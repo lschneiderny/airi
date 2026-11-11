@@ -181,6 +181,8 @@ The flat JSON form also reads a top-level `intensity`.
 The runtime recovers near-miss markers such as `[ACT happy]` or `<ACT happy>` into canonical ACT and DELAY specials.
 A square-bracket near-miss is recovered only when its body is a valid DELAY duration or an ACT payload, so prose such as `[Act 2]` stays in the spoken text.
 An angle-bracket near-miss is always recovered, even with an invalid body such as `<ACT banana>`, so its markup never reaches speech. Otherwise the streaming response categorizer would treat it as a tag and hide the speech after it.
+Since 2026-11-10, a swapped opener counts as an angle-bracket near-miss: in `|<ACT happy|>` the pipe and the bracket changed places, so the leading `|` belongs to the marker and is neither spoken nor shown. A `|` before a `<` that starts no recoverable cue name, as in `sort |<file`, stays text.
+A reply that carried a marker and ends with `|>` directly after its last word, as in `<|ACT happy|>Good morning!|>`, loses that closer. A `|>` after whitespace or before more text is prose, such as a pipe operator, and stays spoken. Both forms came from live runs of `granite4:latest`.
 One ACT that names a motion and an emotion applies both.
 The devtools record ACT compliance per turn.
 The [Natural emotion revamp ADR](2026-10-19-natural-emotion-revamp.md) records the emotion vocabulary of 12 emotions, the hold contract, and the conductor routing that these cues feed.

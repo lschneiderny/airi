@@ -25,7 +25,7 @@ function performs(special: string): boolean {
  * Returns:
  * - `false` for a square-bracket near-miss whose body is not a valid DELAY duration or an ACT payload naming a known
  *   emotion, look, motion, or expression. Prose such as "[Act 2]" therefore stays spoken verbatim.
- * - `true` otherwise.
+ * - `true` otherwise. A swapped opener, as in `|<ACT happy|>`, is an angle-bracket near-miss.
  */
 export function acceptsRecoveredCue(special: string, raw: string): boolean {
   // NOTICE:

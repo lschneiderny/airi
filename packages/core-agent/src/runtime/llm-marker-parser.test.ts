@@ -95,7 +95,7 @@ describe('useLlmmarkerParser', () => {
       for (const chunk of chunks)
         await parser.consume(chunk)
       await parser.end()
-      return { literal: literals.join(''), specials, fullText, recovered: parser.stats.recovered }
+      return { literal: literals.join(''), specials, fullText, recovered: parser.stats.recovered, strayClosers: parser.stats.strayClosers }
     }
 
     function splitsOf(text: string) {
@@ -112,6 +112,12 @@ describe('useLlmmarkerParser', () => {
       ['[ACT] Hi', '<|ACT|>'],
       ['[ACT [x] y] Hi', '<|ACT [x] y|>'],
       ['[ACT {"a":[1]}] Hi', '<|ACT {"a":[1]}|>'],
+      // The pipe and the bracket of the opener changed places. The leading `|` belongs to the marker.
+      ['|<ACT happy|> Hi', '<|ACT happy|>'],
+      ['|<ACT happy> Hi', '<|ACT happy|>'],
+      ['|<act happy|> Hi', '<|ACT happy|>'],
+      ['|<DELAY 2|> Hi', '<|DELAY 2|>'],
+      ['|<ACT {"emotion":"happy","note":"a>b"}|> Hi', '<|ACT {"emotion":"happy","note":"a>b"}|>'],
     ])('recovers %j at every chunk split', async (input, special) => {
       for (const [a, b] of splitsOf(input)) {
         const result = await run([a, b])
@@ -127,7 +133,7 @@ describe('useLlmmarkerParser', () => {
     })
 
     it('leaves non-cue brackets and longer names literal', async () => {
-      for (const input of ['[note] text', '[ACTION] go', '<ACTOR> hi', '<b>bold</b>', 'a < b and [1]', '[ACT']) {
+      for (const input of ['[note] text', '[ACTION] go', '<ACTOR> hi', '<b>bold</b>', 'a < b and [1]', '[ACT', 'a |<b> c', '|<ACTOR> hi', 'sort |<input.txt', 'x|<', '|<ACT', 'a | b |< c']) {
         for (const [a, b] of splitsOf(input)) {
           const result = await run([a, b])
           expect(result.literal, input).toBe(input)
@@ -196,6 +202,82 @@ describe('useLlmmarkerParser', () => {
         expect(result.specials).toEqual(['<|ACT 开心|>', '<|DELAY 2|>'])
         expect(result.literal).toBe('你好世界再见')
       }
+    })
+
+    it('recovers every swapped marker of a reply and speaks none of their pipes', async () => {
+      // A reply of granite4 in the live run of 2026-11-10, shortened.
+      const input = '|<ACT happy|>\n|<ACT {"emotion":"happy","intensity":"strong"}|>\n|<DELAY 1|>\nHey, good morning!'
+      for (const [a, b] of splitsOf(input)) {
+        const result = await run([a, b])
+        expect(result, `split at ${a.length}`).toMatchObject({
+          literal: '\n\n\nHey, good morning!',
+          specials: ['<|ACT happy|>', '<|ACT {"emotion":"happy","intensity":"strong"}|>', '<|DELAY 1|>'],
+          recovered: 3,
+        })
+      }
+      expect(await run([...input])).toMatchObject({ literal: '\n\n\nHey, good morning!', recovered: 3 })
+    })
+
+    it('keeps a pipe that does not touch the cue, and one before a well-formed marker', async () => {
+      for (const [input, literal, special] of [
+        ['yes | <ACT happy> ok', 'yes |  ok', '<|ACT happy|>'],
+        ['a|<|ACT happy|> b', 'a| b', '<|ACT happy|>'],
+        ['a ||<ACT happy|> b', 'a | b', '<|ACT happy|>'],
+        ['|[ACT happy] b', '| b', '<|ACT happy|>'],
+      ] as const) {
+        for (const [a, b] of splitsOf(input)) {
+          const result = await run([a, b])
+          expect(result.literal, `${input} split at ${a.length}`).toBe(literal)
+          expect(result.specials).toEqual([special])
+        }
+      }
+    })
+
+    it('speaks the leading pipe again when onSpecial rejects a swapped marker', async () => {
+      const input = 'Hi |<ACT happy|> there'
+      for (const [a, b] of splitsOf(input)) {
+        const result = await run([a, b], { recoverCueNames, acceptRecovered: false })
+        expect(result, `split at ${a.length}`).toMatchObject({ literal: input, specials: [], fullText: input, recovered: 0 })
+      }
+    })
+
+    it('drops a closer that ends a reply directly after its last word, at every chunk split', async () => {
+      // Replies of granite4 in a live run of 2026-11-10: the model closes its speech as if the marker wrapped it.
+      for (const [input, literal, special] of [
+        ['<|ACT happy|>Hey there! Good morning to you too!|>', 'Hey there! Good morning to you too!', '<|ACT happy|>'],
+        ['<|ACT think|>Hmm, let me think about this...|>\n', 'Hmm, let me think about this...', '<|ACT think|>'],
+        ['[ACT happy] Hi!|>   \n\n', ' Hi!', '<|ACT happy|>'],
+      ] as const) {
+        for (const chunks of [...splitsOf(input), [...input]]) {
+          const result = await run(chunks)
+          expect(result, `${input} in ${chunks.length} chunks, first ${chunks[0].length}`).toMatchObject({ literal, specials: [special], strayClosers: 1 })
+          // The closer still belongs to the text of the reply.
+          expect(result.fullText?.trimEnd().endsWith('|>')).toBe(true)
+        }
+      }
+    })
+
+    it('keeps a closer that is prose: after whitespace, before more text, or in a reply without a marker', async () => {
+      for (const input of [
+        '<|ACT happy|> The pipe operator is |>',
+        '<|ACT happy|> Write x |> f here',
+        '<|ACT happy|> Write x|> f here',
+        '<|ACT happy|> a|> ',
+        'Use a|>',
+        '|>',
+      ]) {
+        const marked = input.startsWith('<|ACT happy|>')
+        const literal = marked ? input.slice('<|ACT happy|>'.length) : input
+        // `a|> ` ends with the closer, so only this one is dropped.
+        const dropped = input === '<|ACT happy|> a|> '
+        for (const [a, b] of splitsOf(input)) {
+          const result = await run([a, b])
+          expect(result.literal, `${input} split at ${a.length}`).toBe(dropped ? ' a' : literal)
+          expect(result.strayClosers).toBe(dropped ? 1 : 0)
+        }
+      }
+      // Without the option the closer is ordinary text.
+      expect(await run(['<|ACT happy|>Hi!|>'], {})).toMatchObject({ literal: 'Hi!|>', strayClosers: 0 })
     })
 
     it('removes recovered markers from the full text passed to onEnd', async () => {
