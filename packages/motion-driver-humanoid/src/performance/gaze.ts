@@ -65,6 +65,8 @@ export class BodyGaze {
   }
 
   private sinceBlink = Infinity
+  /** The facing on the previous tick; null until the first tick, so a body created turned does not count as a turn. */
+  private facing: number | null = null
 
   constructor(seed: number) {
     this.random = createRandomStream(deriveSeed(seed, 16))
@@ -106,6 +108,16 @@ export class BodyGaze {
     this.lastYaw = goal.yaw
     this.lastPitch = goal.pitch
     this.advanceLine(goal.yaw, goal.pitch)
+    // Architecture 5.5: the body turns under a head that is already there. The head and neck responses keep their
+    // direction in space while the facing turns, as the vestibulo-collic reflex nulls a body rotation (Land 2004,
+    // Exp Brain Res 159:151), so only a change of the goal in space moves them. Their velocity is a velocity in space
+    // and is kept. The gaze trunk stays a share of the body and is not held.
+    const turned = this.facing === null ? 0 : wrap(input.facingYaw - this.facing)
+    this.facing = input.facingYaw
+    for (const response of [this.head[0], this.neck[0]]) {
+      response.y -= turned
+      response.x -= turned
+    }
     this.headLatency -= BODY_TICK
     this.trunkLatency -= BODY_TICK
     const relativeYaw = wrap(goal.yaw - input.facingYaw)

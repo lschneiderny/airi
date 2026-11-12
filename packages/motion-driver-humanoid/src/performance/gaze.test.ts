@@ -117,6 +117,23 @@ describe('gaze performance', () => {
     expect(movingSamples).toBeGreaterThan(60)
   })
 
+  it('holds the head in space while the feet turn the body under it', () => {
+    // Architecture 5.5: the body turns under a head that is already there. A free goal recruits no trunk, and the
+    // facing ramps at 56 degrees per second, the rate of a 22.5 degree turn step in 0.4 s.
+    const performer = createBodyPerformer({ traits, seed: 1 })
+    const input = quietInput()
+    const space: number[] = []
+    for (let i = 0; i < 600; i++) {
+      const facingYaw = Math.min(20, Math.max(0, i - 360) * 56 / 120) * DEG
+      const frame = performer.step({ ...input, gaze: { ...input.gaze, yaw: 40 * DEG, kind: 'free', saccadeSeq: 1 }, facingYaw })
+      const body = ['lowerYaw', 'midYaw', 'upperYaw', 'neckYaw', 'headYaw'] as const
+      space.push(facingYaw + body.reduce((sum, channel) => sum + frame.channels[c(channel)], 0))
+    }
+    const settled = space[359]
+    expect(settled).toBeGreaterThan(20 * DEG)
+    expect(Math.max(...space.slice(360).map(yaw => Math.abs(yaw - settled)))).toBeLessThan(0.01 * DEG)
+  })
+
   it('keeps one saccade when the goal arrives over several ticks or Natural saccades toward it again', () => {
     const shifts = (goal: (tick: number) => { yaw: number, seq: number }) => {
       const performer = createBodyPerformer({ traits, seed: 1 })
