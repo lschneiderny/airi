@@ -17,7 +17,7 @@ import { killTree, listLiveProcesses } from '../env/processes'
 import { failOnExit, launchStageTamagotchi } from '../t3/launch'
 import { closeBrowser } from '../t3/run-t3'
 import { teardownRun, trackTree } from '../t3/teardown'
-import { stageScenarioColumns } from './gates'
+import { stageMeasureColumns, stageScenarioColumns } from './gates'
 
 /**
  * The K6 measurement of todo 1, productised: it reads the MMD frame measurement through the motion diagnostics
@@ -47,6 +47,8 @@ interface Collected {
   driver: string | null
   measurement: { state: string, fps: number, frames: number, durationMs: number, stages: Record<string, StageTiming> } | null
   readbackMs: { max: number, mean: number, windows: number } | null
+  /** One row per snapshot in `stageMeasureColumns` order, `t` in ms since the measurement started. */
+  rows: unknown[][]
 }
 
 export interface LoadSample { t: number, load1: number, heavyweight: string | null }
@@ -76,6 +78,8 @@ export interface StageMeasureRecord {
   load: StageMeasureAttempt
   discarded: StageMeasureAttempt[]
   valid: boolean
+  /** The walk series of the measured span (`stageMeasureColumns`), which `stage-walk-skate` judges when it leaves idle. */
+  perFrameSeries: { columns: string[], rows: unknown[][] }
 }
 
 export interface StagePairsRecord {
@@ -139,9 +143,15 @@ function collectExpression(seconds: number): string {
   return `(async () => {
   const channel = new BroadcastChannel(${JSON.stringify(diagnosticsChannel)})
   const snapshots = []
+  const rows = []
+  const start = performance.now()
   channel.addEventListener('message', (event) => {
-    if (event.data?.type === 'snapshot')
-      snapshots.push({ measurement: event.data.snapshot.measurement, loadedModelKey: event.data.snapshot.loadedModelKey, driver: event.data.snapshot.driver })
+    if (event.data?.type !== 'snapshot')
+      return
+    const snapshot = event.data.snapshot
+    snapshots.push({ measurement: snapshot.measurement, loadedModelKey: snapshot.loadedModelKey, driver: snapshot.driver })
+    if (snapshot.locomotion)
+      rows.push([Math.round(performance.now() - start), snapshot.locomotion.mode, snapshot.locomotion.skate, snapshot.feet?.maxError ?? 0, snapshot.locomotion.skateContact])
   })
   channel.postMessage({ type: 'command', name: 'startMeasurement' })
   await new Promise(resolve => setTimeout(resolve, ${seconds * 1000}))
@@ -160,6 +170,7 @@ function collectExpression(seconds: number): string {
       mean: readbacks.reduce((sum, r) => sum + r.meanMs, 0) / readbacks.length,
       windows: readbacks.length,
     },
+    rows,
   }
 })()`
 }
@@ -335,6 +346,7 @@ async function measureStage(client: CdpClient, options: { mode: StageMode, targe
         load: attempt,
         discarded,
         valid: attempt.verdict === 'VALID',
+        perFrameSeries: { columns: [...stageMeasureColumns], rows: collected.rows },
       }
     }
     options.log(`qa-tools stage: attempt ${index} INVALID-CONCURRENT-LOAD (${attempt.heavyweightHits} sidecar hits), repeating`)

@@ -5,7 +5,7 @@ import { join } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
-import { formatGateResults, gateActionPreempt, gateArmPenetration, gateFrameBudget, gateGestureWalk, gateHandOff, gateWalkSkate, readStageEvidence, runStageGates, stageHandOffColumns, stageScenarioColumns } from './gates'
+import { formatGateResults, gateActionPreempt, gateArmPenetration, gateFrameBudget, gateGestureWalk, gateHandOff, gateWalkSkate, readStageEvidence, runStageGates, stageHandOffColumns, stageMeasureColumns, stageScenarioColumns } from './gates'
 
 // Minimal copies of the plan's real evidence (`.omo/evidence/fullscreen-stage-locomotion/`); each records its `source`.
 const fixtureDir = join(import.meta.dirname, '../../fixtures/stage')
@@ -48,6 +48,24 @@ describe('stage-walk-skate', () => {
 
     expect(check(sliding, 'toe-slide skate')).toMatchObject({ pass: false, detail: 'max locomotion.skateContact 0.08 over 1 frames (limit < 0.05)' })
     expect(check(rolling, 'roll skate')).toMatchObject({ pass: true, detail: 'max locomotion.skateContact 0 over 1 frames (limit < 0.05)' })
+  })
+
+  describe('on the record of qa:stage measure --mode (criterion C003)', () => {
+    const result = { mode: 'desktop', fps: 60, p95StageMs: 3, readbackMs: null, frames: 3600 }
+    const measured = (rows: unknown[][] | null) => ({ kind: 'stage-measure', result, ...rows ? { perFrameSeries: { columns: [...stageMeasureColumns], rows } } : {} })
+
+    it('reads no walk from a record without a series or whose series never leaves idle: NO INPUT, not a pass', () => {
+      expect(gateWalkSkate(readStageEvidence('old', measured(null))).verdict).toBe('NO INPUT')
+      expect(gateWalkSkate(readStageEvidence('standing', measured([[0, 'idle', 0, 0, 0], [16, 'idle', 0, 0, 0]]))).verdict).toBe('NO INPUT')
+    })
+
+    it('judges the walk it records on the contact point: a planted roll passes, a sliding contact fails', () => {
+      const rolling = gateWalkSkate(readStageEvidence('roll', measured([[0, 'walking', 0.3, 0.001, 0], [16, 'walking', 0.3, 0.001, 0.01]])))
+      const sliding = gateWalkSkate(readStageEvidence('slide', measured([[0, 'walking', 0, 0.001, 0.08]])))
+
+      expect(check(rolling, 'roll skate')).toMatchObject({ pass: true, detail: 'max locomotion.skateContact 0.01 over 2 frames (limit < 0.05)' })
+      expect(check(sliding, 'slide skate').pass).toBe(false)
+    })
   })
 
   it('fails a timeline without a walking frame', () => {
@@ -291,7 +309,7 @@ describe('stage-handoff', () => {
     const out = Array.from({ length: 60 }, (_, index) => ({ rootX: 11 + index, goalX: 70, originX: 11 + index < 46 ? 0 : 50 }))
     const back = Array.from({ length: 60 }, (_, index) => ({ rootX: 69 - index, goalX: 10, originX: 69 - index > 34 ? 50 : 0 }))
     const rows: unknown[][] = [...out, ...back].map((sample, index) =>
-      [index * 100, sample.rootX === sample.goalX ? 'idle' : 'walking', 0.0001, 0.0002, sample.rootX, sample.originX, sample.goalX, 100, 300])
+      [index * 100, sample.rootX === sample.goalX ? 'idle' : 'walking', 0.0001, 0.0002, sample.rootX, sample.originX, sample.goalX, 100, 300, 0.0001])
     return {
       kind: 'stage-handoff',
       refusal: null,
@@ -333,6 +351,17 @@ describe('stage-handoff', () => {
     expect(check(gateHandOff(readStageEvidence('teleported', teleported)), 'teleported root continuous').pass).toBe(false)
     expect(check(gateHandOff(readStageEvidence('stuck', stuck)), 'stuck arrived').detail).toContain('reached 0 of 2 goals')
     expect(check(gateHandOff(readStageEvidence('unseen', record({ final: { placementX: 1900 } }))), 'unseen seen').pass).toBe(false)
+  })
+
+  it('judges a hand-off walk on the contact point when the record carries skateContact, and an older record on the ankle', () => {
+    const rolled = record()
+    rolled.perFrameSeries = { columns: [...stageHandOffColumns], rows: rolled.perFrameSeries.rows.map(row => [...row.slice(0, 2), 0.3, ...row.slice(3, -1), 0.001]) }
+    const older = record()
+    older.perFrameSeries = { columns: stageHandOffColumns.slice(0, -1), rows: older.perFrameSeries.rows.map(row => row.slice(0, -1)) }
+
+    expect(check(gateWalkSkate(readStageEvidence('rolled', rolled)), 'rolled skate')).toMatchObject({ pass: true, detail: expect.stringContaining('max locomotion.skateContact 0.001 ') })
+    expect(check(gateWalkSkate(readStageEvidence('older', older)), 'older skate').detail).toContain('max locomotion.skate 0.0001 ')
+    expect(verdict(runStageGates(readStageEvidence('older', older)), 'stage-handoff')).toBe('PASS')
   })
 
   it('fails a run the scenario refused, with its reason', () => {

@@ -73,9 +73,17 @@ export interface ScenarioSample {
  * Column order of a `handoff` series, one row per diagnostics snapshot: `t` in ms since the first goal request, the
  * `locomotion` mode, `skate` and `feet.maxError`, her root x, the camera origin (`world.originX`, which changes when
  * the stage window has moved to another display), the goal she walks to, and the left edge and width of her placement
- * rectangle in window DIP (null before the scene has measured her).
+ * rectangle in window DIP (null before the scene has measured her), and the appended `locomotion.skateContact` (owner
+ * decision O6), which records before it lacked.
  */
-export const stageHandOffColumns = ['t', 'mode', 'skate', 'feetMaxError', 'rootX', 'originX', 'goalX', 'placementX', 'placementWidth'] as const
+export const stageHandOffColumns = ['t', 'mode', 'skate', 'feetMaxError', 'rootX', 'originX', 'goalX', 'placementX', 'placementWidth', 'skateContact'] as const
+
+/**
+ * Column order of the walk series a `measure --mode` record carries beside its frame timing (`perFrameSeries`), one row
+ * per diagnostics snapshot: `t` in ms since the measurement started, the `locomotion` mode, `skate`, `feet.maxError` and
+ * `skateContact`, so `stage-walk-skate` judges the rendered walk of criterion C003 on the contact point.
+ */
+export const stageMeasureColumns = ['t', 'mode', 'skate', 'feetMaxError', 'skateContact'] as const
 
 /** One `handoff` run: a walk to another display and back. */
 export interface HandOffRun {
@@ -258,8 +266,9 @@ function readScenario(source: string, json: Record<string, unknown>): StageEvide
 
 function readHandOff(source: string, json: Record<string, unknown>): StageEvidence {
   const series = json.perFrameSeries
-  if (!isRecord(series) || !Array.isArray(series.columns) || series.columns.join() !== stageHandOffColumns.join() || !Array.isArray(series.rows))
-    throw new Error(`${source}: perFrameSeries needs the columns ${stageHandOffColumns.join(', ')}`)
+  const columns = isRecord(series) && Array.isArray(series.columns) ? series.columns.join() : null
+  if (!isRecord(series) || (columns !== stageHandOffColumns.join() && columns !== stageHandOffColumns.slice(0, -1).join()) || !Array.isArray(series.rows))
+    throw new Error(`${source}: perFrameSeries needs the columns ${stageHandOffColumns.join(', ')} (skateContact optional)`)
   if (typeof json.timedOut !== 'boolean' || (json.refusal !== null && typeof json.refusal !== 'string'))
     throw new Error(`${source}: a hand-off record needs refusal and timedOut`)
   const [rootAt, originAt, goalAt] = [stageHandOffColumns.indexOf('rootX'), stageHandOffColumns.indexOf('originX'), stageHandOffColumns.indexOf('goalX')]
@@ -333,7 +342,10 @@ export function readStageEvidence(source: string, json: unknown): StageEvidence[
     const walk = readWalk(source, series)
     if (!walk)
       throw new Error(`${source}: perFrameSeries needs columns and rows`)
-    found.push(walk)
+    // A frame-budget measurement of a standing character is not a walk: its series gives stage-walk-skate no input.
+    const standing = json.kind === 'stage-measure' && walk.kind === 'walk' && walk.frames.every(frame => frame.mode === 'idle')
+    if (!standing)
+      found.push(walk)
   }
 
   if (isRecord(json.perFrame) && 'penL' in json.perFrame)
