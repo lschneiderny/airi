@@ -50,7 +50,7 @@ it('appends the contact-point skate to the per-frame series after the ankle skat
     lookAt: { target: null, yaw: 0, pitch: 0, turning: false, turns: 0 },
     arms: null,
     performance: null,
-    locomotion: { mode: 'walking', position: { x: 0, z: 0 }, yaw: 0, goalX: 1, reason: 'debug', pace: 'walk', speed: 1, phase: 0, weight: 1, skate: 0.3, leashClamps: 0, enabled: true, skateContact: 0.001 },
+    locomotion: { mode: 'walking', position: { x: 0, z: 0 }, yaw: 0, goalX: 1, reason: 'debug', pace: 'walk', speed: 1, phase: 0, weight: 1, skate: 0.3, leashClamps: 0, enabled: true, skateContact: 0.001, skateContactPeak: 0.001 },
   }, { root: 0, leftLegIk: 0, rightLegIk: 0, lowerBody: 0, leftArm: 0, rightArm: 0, leftFingers: 0, rightFingers: 0, upperBody: 0, head: 0 }, null)
   const { perFrameSeries } = measurement.finish({ model: 'stub-model', scenario: { id: 'walk', class: 'walk', seed: 1, seconds: 1 / 60, warmupSeconds: 0 }, provenance: {}, poseStages: [], wallMs: 1, simulatedSeconds: 1 / 60, collisions: { count: 0, last: null }, corrector: { capHits: 0, guardScans: 0, holds: 0 }, clipBones: null })
   expect(perFrameSeries).toEqual({ columns: ['t_ms', 'mode', 'skate', 'feetMaxError', 'skateContact'], rows: [[0, 'walking', 0.3, 0.002, 0.001]] })

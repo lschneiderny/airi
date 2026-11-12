@@ -84,6 +84,8 @@ export interface MMDMotionSnapshot {
     leashClamps: number
     enabled: boolean
     skateContact: number
+    /** The largest per-frame `skateContact` since the previous published snapshot, model units per frame. */
+    skateContactPeak: number
   } | null
   /**
    * The arm rest layer. `weight` is one minus the larger arm ownership, `owned` the clip ownership per group (0-1),

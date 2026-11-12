@@ -367,12 +367,22 @@ describe('mmd full-body stages', () => {
     let skate = 0
     let walked = false
     let maxError = 0
+    let windowMax = 0
     for (let frame = 0; frame < 1200 && (!walked || body.diagnostics.locomotion?.mode !== 'idle'); frame++) {
       pipeline.step(1 / 60)
       const locomotion = body.diagnostics.locomotion
       skate = Math.max(skate, locomotion?.skate ?? Infinity)
       // Without a pivot input every carried foot is flat, so the contact-point skate is the ankle skate bit for bit.
       expect(locomotion?.skateContact).toBe(locomotion?.skate)
+      // A snapshot every six frames carries at least the largest contact skate read in its window (the body ticks at 120 Hz, so it
+      // also sees ticks this loop never reads): no frame between snapshots is lost.
+      windowMax = Math.max(windowMax, locomotion?.skateContact ?? Infinity)
+      if (frame % 6 === 5) {
+        expect(locomotion?.skateContactPeak).toBeGreaterThanOrEqual(windowMax)
+        body.resetSkateContactPeak()
+        expect(body.diagnostics.locomotion?.skateContactPeak).toBe(0)
+        windowMax = 0
+      }
       maxError = Math.max(maxError, body.diagnostics.feet.maxError)
       walked ||= locomotion?.mode === 'walking'
       expect(mesh.position.x).toBe(locomotion?.position.x)

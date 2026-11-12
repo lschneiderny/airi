@@ -125,6 +125,8 @@ export class MMDBody {
   private support = 0
   private skate = 0
   private skateContact = 0
+  /** The largest per-frame contact skate since the last `resetSkateContactPeak()` (model units per frame). */
+  private skateContactPeak = 0
   private facing = 0
   private turns = 0
   private turning = false
@@ -221,6 +223,7 @@ export class MMDBody {
       this.feetSnapshot = feet
       this.skate = skate
       this.skateContact = skateContact
+      this.skateContactPeak = Math.max(this.skateContactPeak, skateContact)
       const performance = this.performer?.diagnostics
       this.armsSnapshot = this.arms.measure(this.owned, performance?.correctionDeg ?? { left: 0, right: 0 }, performance?.gestureActivation ?? { left: 0, right: 0 })
     } }
@@ -558,6 +561,11 @@ export class MMDBody {
     }
   }
 
+  /** Starts a new peak window for `skateContactPeak`; the scene calls it after each diagnostics snapshot it publishes. */
+  resetSkateContactPeak(): void {
+    this.skateContactPeak = 0
+  }
+
   get diagnostics() {
     const performer = this.performer
     return {
@@ -588,6 +596,7 @@ export class MMDBody {
             leashClamps: this.locomotion.leashClamps,
             enabled: this.gaitEnabled,
             skateContact: this.skateContact,
+            skateContactPeak: this.skateContactPeak,
           }
         : null,
     }

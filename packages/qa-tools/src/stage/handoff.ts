@@ -123,7 +123,7 @@ function legExpression(goalX: number, limitMs: number): string {
   const rows = []
   record = (s, now) => {
     if (s.locomotion && s.world)
-      rows.push([now, s.locomotion.mode, s.locomotion.skate, s.feet?.maxError ?? 0, s.locomotion.position.x, s.world.originX, goalX, s.characterPlacement?.x ?? null, s.characterPlacement?.width ?? null, s.locomotion.skateContact])
+      rows.push([now, s.locomotion.mode, s.locomotion.skate, s.feet?.maxError ?? 0, s.locomotion.position.x, s.world.originX, goalX, s.characterPlacement?.x ?? null, s.characterPlacement?.width ?? null, s.locomotion.skateContactPeak])
   }
   try {
     send('requestGoal', { x: goalX, pace: 'walk' })

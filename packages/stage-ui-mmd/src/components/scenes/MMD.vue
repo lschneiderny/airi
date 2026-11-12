@@ -763,6 +763,7 @@ function renderLoop(now = performance.now()) {
       ownership: motionDriver.value === 'natural' && body ? { ...body.ownership() } : null,
       performance: motionDriver.value === 'natural' ? body?.diagnostics.performance ?? null : null,
     })
+    body?.resetSkateContactPeak()
   }
 }
 
