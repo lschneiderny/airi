@@ -63,6 +63,14 @@ function followerInverse(j: number, tension: number): readonly [lead: number, cu
   return [2 * Math.max(0.3, Math.min(1, zeta)) / omega, 1 / omega ** 2]
 }
 
+/**
+ * The default emphasis form's shares (plan 3.1, lead's ruling that energy scales size and selects among forms): palm-up
+ * 0.25 as before; press, 4a's "large emphasis", 0.10 + 0.25 E with E the utterance's energy as Natural reports it
+ * (0.21 at 0.45, 0.31 at 0.85); beat the rest. The onset's voice level no longer selects a form: Natural's onsets fire
+ * at 0.31 to 0.46, so the old press condition (level 0.7) never held.
+ */
+const FORM_SHARE = { palmUp: 0.25, press: 0.1, pressEnergy: 0.25 } as const
+
 /** Plan 3.1 stroke admission: the gate's S2 voice-peak rule (`Q/gate/definition.ts`), read at the onset tick. */
 const VOICE = { peak: 0.3, prominence: 0.15, quiet: 0.05 } as const
 
@@ -570,7 +578,8 @@ class GesturePerformer {
     if (twoHand && this.unit.energy > 0.6 && r < 0.5)
       candidates.push('frame')
     const pick = this.random()
-    candidates.push(pick < 0.45 ? 'beat' : pick < 0.7 ? 'palm-up' : pick < 0.85 && input.voice.level >= 0.7 ? 'press' : 'beat')
+    const press = FORM_SHARE.press + FORM_SHARE.pressEnergy * this.unit.energy
+    candidates.push(pick < FORM_SHARE.palmUp ? 'palm-up' : pick < FORM_SHARE.palmUp + press ? 'press' : 'beat')
     return candidates.find(form => form === 'beat' || fresh(form)) ?? 'beat'
   }
 

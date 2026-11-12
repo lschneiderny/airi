@@ -253,16 +253,31 @@ describe('co-speech gestures', () => {
     }
   })
 
-  it('gestures past a real bust without the corrector', () => {
+  it('gestures past a real bust without a corrector kick', () => {
     // Natural reports mood tension 0 in speech without an emotion: the softest active arm followers.
     const correction = { left: 0, right: 0 }
     for (const [seed, energy] of [[1, 0.45], [2, 0.65], [3, 0.85]]) {
       const run = perform({ utterances: [utterance(0.4, energy, peaks(0.4))], tension: 0 }, 9, { traits: chisaTraits, seed, corrections: correction })
       expect(strokes(run)).toHaveLength(5)
     }
-    expect(correction.left).toBeLessThanOrEqual(0)
-    expect(correction.right).toBeLessThanOrEqual(0)
+    // A correction rising by r per tick adds r / tick of velocity at once; the pops report counts a 30 deg/s velocity
+    // step, so a graze is allowed only well under it (half).
+    expect(correction.left / BODY_TICK).toBeLessThanOrEqual(15 * DEG)
+    expect(correction.right / BODY_TICK).toBeLessThanOrEqual(15 * DEG)
   })
+
+  it('chooses press from the utterance\'s energy at the onset levels real speech has', () => {
+    // Natural's onset detector fires at voice levels of 0.31 to 0.46; every onset here sits at 0.45.
+    const presses: Record<number, number> = { 0.45: 0, 0.65: 0, 0.85: 0 }
+    for (let seed = 1; seed <= 200; seed++) {
+      for (const energy of [0.45, 0.65, 0.85]) {
+        const run = perform({ utterances: [utterance(0.3, energy, peaks(0.3))] }, 6.5, { seed })
+        presses[energy] += strokes(run).filter(stroke => stroke.form === 'press').length
+      }
+    }
+    expect(presses[0.45]).toBeGreaterThan(0)
+    expect(presses[0.85]).toBeGreaterThan(presses[0.45])
+  }, 120_000)
 
   it('shows five forms over 500 seeds of neutral speech, more with the dominant hand, larger at higher energy', () => {
     const forms = new Set<BodyGestureForm>()
