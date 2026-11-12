@@ -7,7 +7,7 @@ import { expect, it } from 'vitest'
 import { parseTrace } from '../read-trace'
 import { runMotion3dScenario } from './run'
 
-it.runIf(process.env.AIRI_QA_MMD_MODEL)('turns toward six gaze targets with increasing settled head yaw on each side', async () => {
+it.runIf(process.env.AIRI_QA_MMD_MODEL)('turns toward six gaze targets with increasing head yaw on each side and looks back at the camera after each look', async () => {
   const model = process.env.AIRI_QA_MMD_MODEL
   if (!model)
     throw new Error('AIRI_QA_MMD_MODEL is required')
@@ -59,14 +59,32 @@ it.runIf(process.env.AIRI_QA_MMD_MODEL)('turns toward six gaze targets with incr
         return { world, local }
       }
       const before = yaw(orientations(59).world[head]) * 180 / Math.PI
-      // Mean over the last second of the five-second hold, in trace world axes.
-      const settled = Array.from({ length: 60 }, (_, frame) => orientations(trace.frames - 60 + frame))
-      const headYawDegrees = meanDegrees(settled.map(frame => yaw(frame.world[head])))
-      const eyeYawDegrees = meanDegrees(settled.flatMap(frame => eyes.map(eye => yaw(frame.local[eye]))))
-      const eyeWorldYawDegrees = meanDegrees(settled.flatMap(frame => eyes.map(eye => yaw(frame.world[eye]))))
-      process.stdout.write(`GAZE_BASELINE ${JSON.stringify({ targetDegrees, headYawDegrees, eyeYawDegrees, eyeWorldYawDegrees, headBeforeDegrees: before })}\n`)
+      // The look runs from the first sustained gaze-shift marker after the cue to the next marker of another kind. The body
+      // aims at the cursor only while Natural fixates it, so the run's last second can fall after Natural released the cursor.
+      const shifts = trace.events.flatMap(event => event.kind === 'marker' && event.label.startsWith('gaze-shift:')
+        ? [{ t: event.t, kind: event.label.split(':')[3] }]
+        : [])
+      // Seed 1 engages Natural at all six targets, including the medium-distance 80-degree cursor it may also ignore.
+      const start = shifts.find(shift => shift.t >= 1 && shift.kind === 'sustained')
+      if (!start)
+        throw new Error(`no sustained look toward ${targetDegrees} degrees after the cue`)
+      // A look that never ends is the body staring at the cursor while Natural looks away.
+      const end = shifts.find(shift => shift.t > start.t && shift.kind !== 'sustained')
+      if (!end)
+        throw new Error(`the look toward ${targetDegrees} degrees never ends`)
+      const endFrame = Math.round(end.t * trace.hz)
+      const look = Array.from({ length: trace.hz / 4 }, (_, frame) => orientations(endFrame - trace.hz / 4 + frame))
+      const headYawDegrees = meanDegrees(look.map(frame => yaw(frame.world[head])))
+      const eyeYawDegrees = meanDegrees(look.flatMap(frame => eyes.map(eye => yaw(frame.local[eye]))))
+      const eyeWorldYawDegrees = meanDegrees(look.flatMap(frame => eyes.map(eye => yaw(frame.world[eye]))))
+      const gazeYawDegrees = (frame: number) => meanDegrees(eyes.map(eye => yaw(orientations(frame).world[eye])))
+      const backFrame = Array.from({ length: trace.hz }, (_, frame) => endFrame + 1 + frame)
+        .find(frame => frame < trace.frames && Math.abs(gazeYawDegrees(frame)) < 5)
+      process.stdout.write(`GAZE_BASELINE ${JSON.stringify({ targetDegrees, lookStart: start.t, lookEnd: end.t, headYawDegrees, eyeYawDegrees, eyeWorldYawDegrees, headBeforeDegrees: before, backSeconds: backFrame === undefined ? null : (backFrame - endFrame) / trace.hz })}\n`)
       expect(side * (headYawDegrees - before)).toBeGreaterThanOrEqual(3)
       expect(side * headYawDegrees).toBeGreaterThan(previous)
+      expect(Math.abs(eyeWorldYawDegrees - targetDegrees)).toBeLessThanOrEqual(5)
+      expect(backFrame, `gaze back within 5 degrees of the camera within 1 s after the look toward ${targetDegrees} degrees`).toBeDefined()
       previous = side * headYawDegrees
       const wall = MOTION_TRACE_CHANNELS.indexOf('wall')
       expect(decoded.channels[wall]).toBe(0)
