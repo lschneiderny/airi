@@ -32,7 +32,7 @@ const TIMING = {
   chopWindow: 3,
   /** Return from the post-stroke hold to the ready key, before tempo. */
   recovery: 0.3,
-  /** Exit ramp of the layer weight; it starts as a speech unit's retraction ends, and ends with an arm form's. */
+  /** Exit ramp of the layer weight; it starts as a retraction ends. */
   exit: 0.35,
   enter: 0.25,
   /**
@@ -169,7 +169,7 @@ class ArmTrack {
   state: TrackState = 'rest'
   weight = 0
   exitSeconds: number = TIMING.exit
-  /** When the weight request drops: as a speech unit's retraction ends, and an exit ramp before an arm form's does. */
+  /** When the weight request drops: as a retraction ends. */
   dropAt = Infinity
   phaseEnd = Infinity
   holdEnd = Infinity
@@ -209,7 +209,7 @@ class ArmTrack {
   preparedAt = Infinity
   /** A retraction still on its way back to the ready key, from where it goes home on the preparation's cleared path. */
   viaReady = false
-  /** A speech unit's arm on its way home: it comes to rest there before its weight ramps out (`retractTrack`). */
+  /** An arm on its way home: it comes to rest there before its weight ramps out (`retractTrack`). */
   settle = false
   /** A corrected transition's second submovement: its target, when it starts (Infinity while none waits) and its end. */
   readonly correctTo = pose()
@@ -798,13 +798,12 @@ class GesturePerformer {
    * cleared: an arm in a stroke or hold first goes back to the ready key along its stroke, over the recovery time, an
    * arm in its recovery finishes it, and either goes home from there.
    *
-   * A speech unit's arm comes to rest at home before its weight ramps out (`settle`). The ramp hands the arm to the
-   * hang, whose target the corrector holds out of the body on rigs whose arms rest against it; ramping while the arm
-   * still travelled carried it into that margin moving, and the corrector stopped it in one tick (a velocity step). An
-   * emotion arm form keeps its ramp over the way home.
+   * The arm, a speech unit's or an emotion arm form's, comes to rest at home before its weight ramps out (`settle`).
+   * The ramp hands the arm to the hang, whose target the corrector holds out of the body on rigs whose arms rest
+   * against it; ramping while the arm still travelled carried it into that margin moving, and the corrector stopped it
+   * in one tick (a velocity step).
    */
   private retractTrack(track: ArmTrack, now: number): void {
-    const settle = track.state !== 'form'
     if (track.state === 'stroke' || track.state === 'hold' || track.state === 'recovery') {
       // A recovery is already the way back to the ready key: it goes on. Restarted as a new segment of full recovery
       // time, the plan's velocity carried the arm past the key, off the path the key was cleared on.
@@ -818,13 +817,15 @@ class GesturePerformer {
       return
     }
     track.viaReady = false
-    track.settle = settle
+    track.settle = true
     const seconds = Math.max(TIMING.exit + BODY_TICK, TIMING.retractionScale * track.prepSeconds)
-    const duration = settle ? track.transit(track.home, now, seconds, this.tension, this.correct()) : track.move(track.home, now, seconds, this.tension)
+    // A speech unit's home leg may carry a corrective submovement (`transit`); an emotion arm form's way home stays one
+    // plain segment and draws nothing from the corrections' stream.
+    const duration = track.state === 'form' ? track.move(track.home, now, seconds, this.tension) : track.transit(track.home, now, seconds, this.tension, this.correct())
     track.state = 'retraction'
     track.pending = null
     track.phaseEnd = now + duration
-    track.dropAt = settle ? track.phaseEnd : track.phaseEnd - TIMING.exit
+    track.dropAt = track.phaseEnd
     track.exitSeconds = TIMING.exit
   }
 

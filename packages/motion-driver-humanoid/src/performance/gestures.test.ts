@@ -369,6 +369,25 @@ describe('co-speech gestures', () => {
     expect(exits).toBeGreaterThanOrEqual(12)
   })
 
+  it.each([['chisa', chisaTraits], ['ellen', ellenTraits]] as const)('hands an emotion arm form back to the hang only once the arm is home on %s\'s real rig', (_, rig) => {
+    // The same margin as a speech unit's exit: a form arm still travelling home when its weight starts to fall is
+    // stopped by the corrector in one tick.
+    for (const side of SIDES) {
+      for (const form of ['hand-to-chest', 'thinking-hand'] as const) {
+        const run = perform({ utterances: [], armForm: t => t > 0.5 && t < 4 ? { side, form } : null, tension: 0, still: true }, 7, { seed: 1, traits: rig })
+        const start = run.frames.findIndex(frame => frame.gesture.activation[side] > 0)
+        expect(start, `${form}, ${side}`).toBeGreaterThan(0)
+        const home = run.frames[start - 1].channels
+        const handBack = run.frames.findIndex((frame, i) => frame.time > 4 && frame.gesture.activation[side] < 1 && run.frames[i - 1].gesture.activation[side] === 1)
+        expect(handBack, `${form}, ${side}`).toBeGreaterThan(0)
+        for (let j = 2; j <= 5; j++) {
+          const c = ARM_START[side] + j
+          expect(Math.abs(run.frames[handBack].channels[c] - home[c]), `${form}, ${side} channel ${j}`).toBeLessThanOrEqual(3.5 * DEG)
+        }
+      }
+    }
+  })
+
   it('chooses press from the utterance\'s energy at the onset levels real speech has', () => {
     // Natural's onset detector fires at voice levels of 0.31 to 0.46; every onset here sits at 0.45.
     const presses: Record<number, number> = { 0.45: 0, 0.65: 0, 0.85: 0 }
