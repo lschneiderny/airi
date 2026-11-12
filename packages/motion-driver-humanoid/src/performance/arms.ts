@@ -52,6 +52,33 @@ function startOffset(j: number): number {
   return j < 5 ? 0 : j === 5 ? 0.03 : j === 6 ? 0.06 : j < 9 ? 0.09 : 0.13
 }
 
+/** Follower frequency (Hz) and damping of arm channel `j` at activation `used` and tension `tension` (3a). */
+export function armResponse(j: number, used: number, tension: number): readonly [number, number] {
+  const f0 = j < 9 ? relaxed[j] : 2.5
+  const f1 = j < 9 ? active[j] : 4
+  const z0 = j < 9 ? damping[j] : 0.6
+  const f = (f0 + (f1 - f0) * used) * (0.7 + 0.9 * tension)
+  const zeta = Math.min(1, (z0 + ((j === 2 || j === 3) ? 0.35 * used : 0)) * (0.8 + 0.5 * tension))
+  return [f, zeta]
+}
+
+/**
+ * Steady ramp lag `zeta / (pi f)` of arm channel `j`'s follower, seconds (3a with r = 0), at activation `used` and mood
+ * tension `tension` in [0, 1]. `j` indexes a side's arm block from `ClavElev`.
+ */
+export function armRampLag(j: number, used: number, tension: number): number {
+  const [f, zeta] = armResponse(j, used, Math.max(0, Math.min(1, tension)))
+  return Math.max(0.3, zeta) / (Math.PI * f)
+}
+
+/**
+ * The cascade link delay of arm channel `j`, seconds: its 4a start offset plus the upper arm's ramp lag beyond its own
+ * at the channels' activations `upperUsed` and `used`. Shared arm terms reach channel `j` this much later.
+ */
+export function armCascadeDelay(j: number, upperUsed: number, used: number, tension: number): number {
+  return startOffset(j) + Math.max(0, armRampLag(2, upperUsed, tension) - armRampLag(j, used, tension))
+}
+
 /** Independent arm identities feed shared secondary dynamics after layer blending. */
 export class BodyArms {
   readonly rest = new Float32Array(BODY_CHANNELS.length)
@@ -179,22 +206,6 @@ export class BodyArms {
     this.warm = true
   }
 
-  /** Follower frequency (Hz) and damping of arm channel `j` at activation `used` and the current tension (3a). */
-  private response(j: number, used: number): readonly [number, number] {
-    const f0 = j < 9 ? relaxed[j] : 2.5
-    const f1 = j < 9 ? active[j] : 4
-    const z0 = j < 9 ? damping[j] : 0.6
-    const f = (f0 + (f1 - f0) * used) * (0.7 + 0.9 * this.tension)
-    const zeta = Math.min(1, (z0 + ((j === 2 || j === 3) ? 0.35 * used : 0)) * (0.8 + 0.5 * this.tension))
-    return [f, zeta]
-  }
-
-  /** Steady ramp lag zeta / (pi f) of arm channel `j`'s follower, seconds (3a with r = 0). */
-  private rampLag(j: number, used: number): number {
-    const [f, zeta] = this.response(j, used)
-    return Math.max(0.3, zeta) / (Math.PI * f)
-  }
-
   /**
    * Passes a channel's shared target (everything but its own noise) through its cascade link, so a term several arm
    * joints receive at once (breath, weight, gait swing, a layer's key) reaches the followers in proximal-to-distal
@@ -204,25 +215,28 @@ export class BodyArms {
   private cascade(index: number, target: number, activation: Float64Array): number {
     const j = (index - ARM_START.left) % 28
     const upper = index - j + 2
-    const own = (1 - activation[index]) * this.noise[index]
-    const delay = startOffset(j) + Math.max(0, this.rampLag(2, activation[upper]) - this.rampLag(j, activation[index]))
+    // An override layer replaced `activation` of the noise along with the base; the joint keeps all of its own noise,
+    // so a held gesture pose stays a moving hold (4a: "the 3b noise keeps running under it").
+    const blended = (1 - activation[index]) * this.noise[index]
+    const own = this.noise[index]
+    const delay = armCascadeDelay(j, activation[upper], activation[index], this.tension)
     const link = this.links[index]
     if (delay === 0) {
-      link.y = link.x = target - own
+      link.y = link.x = target - blended
       link.v = 0
-      return target
+      return activation[index] === 0 ? target : target - blended + own
     }
     if (Math.abs(delay - this.linkDelays[index]) > 0.01 * delay) {
       this.linkCoefficients[index] = secondOrderCoefficients({ f: 1 / (Math.PI * delay), zeta: 1, r: 0 }, BODY_TICK)
       this.linkDelays[index] = delay
     }
-    advanceSecondOrder(link, target - own, this.linkCoefficients[index])
+    advanceSecondOrder(link, target - blended, this.linkCoefficients[index])
     return link.y + own
   }
 
   private advance(index: number, target: number, used: number): number {
     const j = (index - ARM_START.left) % 28
-    const [f, zeta] = this.response(j, used)
+    const [f, zeta] = armResponse(j, used, this.tension)
     if (Math.abs(f - this.frequencies[index]) > 0.01 * f || Math.abs(zeta - this.zetas[index]) > 0.01 * zeta) {
       this.coefficients[index] = secondOrderCoefficients({ f, zeta, r: 0 }, BODY_TICK)
       this.frequencies[index] = f
@@ -245,6 +259,10 @@ export class BodyArms {
         drag = clampDrag(-0.06 * this.states[start + 5].v, 25)
       else if (j >= 9 && j < 24)
         drag = clampDrag(-0.05 * this.states[start + 7].v, 12)
+      // An actively driven joint does not flop: like the upper arm's plumb line and pendulum, the passive trail yields
+      // to a layer's activation, and returns as the activation falls (4a: on retraction the wrist drags).
+      if (activation[index] > 0)
+        drag *= 1 - activation[index]
       targets[index] = this.advance(index, this.cascade(index, targets[index], activation) + drag, activation[index])
     }
   }

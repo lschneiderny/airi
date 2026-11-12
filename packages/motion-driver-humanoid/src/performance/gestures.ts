@@ -1,0 +1,684 @@
+import type { BodySide } from './channels'
+import type { BodyArmForm, BodyGestureHand, BodyGesturePhase, BodyGestureReport, BodyPerformanceInput, BodyRigTraits } from './contracts'
+import type { ArmPose, SpeechGestureForm } from './gesture-forms'
+import type { LayerOutput, PerformanceContext, PerformanceLayer } from './stack'
+
+import { minJerk } from '../dynamics'
+import { deriveSeed } from '../noise'
+import { createRandomStream } from '../random'
+import { armCascadeDelay, armResponse } from './arms'
+import { ARM_START, BODY_CHANNELS, BODY_TICK, DEG, SIDES } from './channels'
+import { ARM_FORMS, GESTURE_FORMS, gestureGain, GestureKeys, gestureTempo, writeHandShape } from './gesture-forms'
+
+type Mutable<T> = { -readonly [K in keyof T]: T[K] }
+
+/** Architecture 4a and plan 3.1 timing, in seconds unless named otherwise. */
+const TIMING = {
+  /** Minimum gap between two stroke starts (4a minor-beat gap). */
+  strokeGap: 0.45,
+  unitStrokes: 6,
+  unitSeconds: 9,
+  /** Retract after `voice.slow` stays under 0.05 this long, or this long after speaking ends. */
+  quiet: 0.8,
+  afterSpeech: 0.3,
+  retractionScale: 1.3,
+  /** Refractory after a retraction: base + span x (1 - E). */
+  refractoryBase: 2.5,
+  refractorySpan: 3,
+  /** The same non-beat form does not repeat within this window. */
+  formRepeat: 8,
+  /** A chop follows two accepted emphases inside this window. */
+  chopWindow: 3,
+  /** Return from the post-stroke hold to the ready key, before tempo. */
+  recovery: 0.3,
+  /** Exit ramp of the layer weight; the retraction ends with it. */
+  exit: 0.35,
+  enter: 0.25,
+  /**
+   * Exit ramp when a clip claims the arm. The app's upper-layer fade is a 0.25 s smoothstep, which passes ownership 0.5
+   * 0.125 s after the claim; the gesture's weight is gone 90 ms after the first owned tick, before that.
+   */
+  cancel: 0.09,
+  /** Non-dominant hand of a two-hand stroke (4a). */
+  lagRange: [0.04, 0.07],
+} as const
+
+/** Plan 3.1 stroke admission: the gate's S2 voice-peak rule (`Q/gate/definition.ts`), read at the onset tick. */
+const VOICE = { peak: 0.3, prominence: 0.15, quiet: 0.05 } as const
+
+/**
+ * Amplitudes (unit A `amplitude-sources.md`). Minor beats are plan D3's 0.6; the post-stroke drift is 4a's 1.5 % A,
+ * unscaled; the torso terms are plan 3.1's 1.2 and 0.8 degrees x gain, scaled 2.6 so a stroke's trunk turn clears the
+ * goal-2 speak runs' largest same-run placebo p95 (2.37 degrees) by 1.25 at the lowest speak energy.
+ */
+const AMPLITUDE = {
+  minor: 0.6,
+  walking: 0.6,
+  nonDominant: 0.85,
+  nonDominantSwivel: 6,
+  drift: 0.015,
+  torsoYaw: 1.2 * 2.6 * DEG,
+  torsoPitch: 0.8 * 2.6 * DEG,
+  torsoMidShare: 0.5,
+  torsoMidLag: 0.07,
+  torsoDecay: 0.5,
+} as const
+
+type TrackState = 'rest' | 'preparation' | 'ready' | 'stroke' | 'hold' | 'recovery' | 'retraction' | 'form'
+
+interface Segment {
+  readonly from: ArmPose
+  readonly velocity: ArmPose
+  readonly to: ArmPose
+  start: number
+  duration: number
+  warp: boolean
+}
+
+interface TorsoPulse {
+  readonly start: number
+  readonly hit: number
+  readonly yaw: number
+  readonly pitch: number
+}
+
+const pose = (): ArmPose => new Float64Array(26)
+
+/** One arm's performance: its targets, its weight request and its motion segment. */
+class ArmTrack {
+  readonly channels = new Float64Array(BODY_CHANNELS.length)
+  readonly additive = new Float64Array(BODY_CHANNELS.length)
+  readonly mask = new Float64Array(BODY_CHANNELS.length)
+  readonly pose = pose()
+  readonly previous = pose()
+  readonly home = pose()
+  readonly ready = pose()
+  readonly key = pose()
+  readonly segment: Segment = { from: pose(), velocity: pose(), to: pose(), start: 0, duration: 1, warp: false }
+  readonly pulses: TorsoPulse[] = []
+  state: TrackState = 'rest'
+  weight = 0
+  exitSeconds: number = TIMING.exit
+  /** When the weight request drops so the exit ramp ends with the retraction. */
+  dropAt = Infinity
+  phaseEnd = Infinity
+  holdEnd = Infinity
+  /** The current stroke's post-stroke hold length, seconds, and its drift key, 1.5 % A past the stroke key. */
+  holdSeconds = 0
+  readonly drift = pose()
+  /**
+   * The stroke being watched on the arm's actual output: its wrist speed peak and last sample, so the report marks the
+   * apex the motion shows (plan 2.1: timing comes from kinematics).
+   */
+  watch: { form: SpeechGestureForm, hand: BodyGestureHand, peak: number, speed: number, wrist: readonly [number, number, number] | null, until: number } | null = null
+  form: SpeechGestureForm | BodyArmForm | null = null
+  prepSeconds = 0.5
+  pending: { at: number, form: SpeechGestureForm, size: number } | null = null
+  warm = false
+
+  constructor(readonly side: BodySide) {
+    // Clavicles stay out: breath and the shoulder keep moving under a gesture.
+    for (let j = 2; j < 26; j++)
+      this.mask[ARM_START[side] + j] = 1
+  }
+
+  get active(): boolean {
+    return this.state !== 'rest'
+  }
+
+  /** Starts a motion to `to` from the current target, position and velocity continuous (quintic decay of `v0`). */
+  move(to: ArmPose, now: number, duration: number, warp: boolean): void {
+    const s = this.segment
+    s.from.set(this.pose)
+    for (let j = 0; j < 26; j++)
+      s.velocity[j] = this.warm ? (this.pose[j] - this.previous[j]) / BODY_TICK : 0
+    s.to.set(to)
+    s.start = now
+    s.duration = Math.max(BODY_TICK, duration)
+    s.warp = warp
+  }
+
+  advance(now: number, tension: number): void {
+    this.previous.set(this.pose)
+    const s = this.segment
+    for (let j = 0; j < 26; j++) {
+      const y = this.profile(j, now)
+      if (!s.warp || j < 2 || j > 5 || now >= s.start + s.duration) {
+        this.pose[j] = y
+        continue
+      }
+      // Flex, abduct, twist and elbow place the wrist: feed them forward through the follower's inverse,
+      // x = y + 2 zeta / omega y' + y'' / omega^2 (3a, r = 0), so the hit lands as planned. Distal channels follow softly.
+      const [f, zeta] = armResponse(j, 1, tension)
+      const omega = 2 * Math.PI * f
+      const before = this.profile(j, now - BODY_TICK)
+      const after = this.profile(j, now + BODY_TICK)
+      const rate = (after - before) / (2 * BODY_TICK)
+      const curvature = (after - 2 * y + before) / BODY_TICK ** 2
+      this.pose[j] = y + 2 * Math.min(1, zeta) / omega * rate + curvature / omega ** 2
+    }
+    this.warm = true
+  }
+
+  /** The planned position of channel `j` at `time` on the current segment. */
+  profile(j: number, time: number): number {
+    const s = this.segment
+    const u = Math.max(0, Math.min(1, (time - s.start) / s.duration))
+    const shape = minJerk(s.warp ? u ** 0.8 : u)
+    // h(u) = u - 6u^3 + 8u^4 - 3u^5: unit initial slope, zero value, slope and curvature at u = 1.
+    const decay = s.duration * (u - 6 * u ** 3 + 8 * u ** 4 - 3 * u ** 5)
+    return s.from[j] + (s.to[j] - s.from[j]) * shape + s.velocity[j] * decay
+  }
+
+  torso(now: number): void {
+    this.additive.fill(0)
+    for (let i = this.pulses.length - 1; i >= 0; i--) {
+      const pulse = this.pulses[i]
+      const upper = pulseShape(pulse, now)
+      const mid = AMPLITUDE.torsoMidShare * pulseShape(pulse, now - AMPLITUDE.torsoMidLag)
+      if (now > pulse.hit + AMPLITUDE.torsoDecay + AMPLITUDE.torsoMidLag) {
+        this.pulses.splice(i, 1)
+        continue
+      }
+      this.additive[12] += upper * pulse.yaw
+      this.additive[13] += upper * pulse.pitch
+      this.additive[9] += mid * pulse.yaw
+      this.additive[10] += mid * pulse.pitch
+    }
+  }
+
+  write(): void {
+    const start = ARM_START[this.side]
+    for (let j = 0; j < 26; j++)
+      this.channels[start + j] = this.pose[j]
+  }
+
+  reset(): void {
+    this.state = 'rest'
+    this.weight = 0
+    this.exitSeconds = TIMING.exit
+    this.dropAt = this.phaseEnd = this.holdEnd = Infinity
+    this.form = null
+    this.pending = null
+    this.pulses.length = 0
+    this.warm = false
+  }
+}
+
+/** Torso participation of one stroke: the stroke's own warped rise to its hit, then a minimum-jerk return. */
+function pulseShape(pulse: TorsoPulse, now: number): number {
+  if (now <= pulse.start)
+    return 0
+  if (now < pulse.hit)
+    return minJerk(((now - pulse.start) / (pulse.hit - pulse.start)) ** 0.8)
+  return 1 - minJerk((now - pulse.hit) / AMPLITUDE.torsoDecay)
+}
+
+/**
+ * Plans co-speech gesture units (architecture 4a with plan 3.1's changes, D3) and performs the emotion arm forms the
+ * merged plan requests. Shared by the two per-side layers, and advanced once per performer tick.
+ */
+class GesturePerformer {
+  readonly tracks: Record<BodySide, ArmTrack> = { left: new ArmTrack('left'), right: new ArmTrack('right') }
+  readonly report: Mutable<BodyGestureReport> = { unitSeq: 0, strokeSeq: 0, form: null, hand: null, phase: 'rest', plannedHit: null }
+  private random
+  private dominant: BodySide = 'right'
+  private keys: GestureKeys | null = null
+  private tick = -1
+  private unit = { active: false, sides: [] as BodySide[], twoHand: false, energy: 0.5, start: 0, strokes: 0, retracting: false }
+  private lastOnset = 0
+  private lastEmphasis = 0
+  private wasSpeaking = false
+  private speechEnded = -Infinity
+  private quiet = 0
+  private lastStroke = -Infinity
+  private refractoryEnd = -Infinity
+  private readonly majors: number[] = []
+  private readonly formTimes = new Map<SpeechGestureForm, number>()
+  private armForm: { side: BodySide, form: BodyArmForm } | null = null
+  private readonly scratch = pose()
+
+  constructor(private readonly traits: BodyRigTraits, private readonly seed: number) {
+    this.random = createRandomStream(deriveSeed(seed, 140))
+    this.reset()
+  }
+
+  reset(): void {
+    this.random = createRandomStream(deriveSeed(this.seed, 140))
+    this.dominant = this.random() < 0.85 ? 'right' : 'left'
+    this.keys = null
+    this.tick = -1
+    this.unit = { active: false, sides: [], twoHand: false, energy: 0.5, start: 0, strokes: 0, retracting: false }
+    this.lastOnset = this.lastEmphasis = 0
+    this.wasSpeaking = false
+    this.speechEnded = -Infinity
+    this.quiet = 0
+    this.lastStroke = this.refractoryEnd = -Infinity
+    this.majors.length = 0
+    this.formTimes.clear()
+    this.armForm = null
+    Object.assign(this.report, { unitSeq: 0, strokeSeq: 0, form: null, hand: null, phase: 'rest', plannedHit: null })
+    for (const side of SIDES)
+      this.tracks[side].reset()
+  }
+
+  update(context: PerformanceContext): void {
+    if (context.tick === this.tick)
+      return
+    this.tick = context.tick
+    this.keys ??= new GestureKeys(this.traits, context.rest)
+    const { input } = context
+    const now = context.time
+    const voice = input.voice
+    const onset = voice.onsetSeq !== this.lastOnset
+    const major = onset && voice.emphasis !== null && voice.emphasis.seq !== this.lastEmphasis
+    this.lastOnset = voice.onsetSeq
+    if (voice.emphasis)
+      this.lastEmphasis = voice.emphasis.seq
+    const speakingEdge = voice.speaking && !this.wasSpeaking
+    if (!voice.speaking && this.wasSpeaking)
+      this.speechEnded = now
+    this.wasSpeaking = voice.speaking
+    this.quiet = voice.slow < VOICE.quiet ? this.quiet + BODY_TICK : 0
+
+    for (const side of SIDES)
+      this.yieldOwned(side, input, now)
+    this.performArmForm(context, now)
+
+    const unit = this.unit
+    if (unit.active && !unit.retracting) {
+      const ended = !voice.speaking && now - this.speechEnded >= TIMING.afterSpeech
+      const capped = (unit.strokes >= TIMING.unitStrokes && now - this.lastStroke >= 0.6) || now - unit.start >= TIMING.unitSeconds
+      if (ended || this.quiet >= TIMING.quiet || capped || !this.performable(input))
+        this.retract(now)
+    }
+    if (!unit.active && (speakingEdge || (voice.speaking && onset)) && now >= this.refractoryEnd && this.performable(input))
+      this.startUnit(context, now)
+    if (unit.active && !unit.retracting && onset)
+      this.stroke(context, now, major)
+
+    for (const side of SIDES)
+      this.step(this.tracks[side], context, now)
+    if (unit.active && unit.sides.every(side => !this.tracks[side].active || this.tracks[side].state === 'form')) {
+      unit.active = false
+      this.refractoryEnd = now + TIMING.refractoryBase + TIMING.refractorySpan * (1 - unit.energy)
+    }
+    this.report.phase = this.phase()
+  }
+
+  /** Not while listening, sleepy, resting or asleep (4a), and only standing or sitting. */
+  private performable(input: BodyPerformanceInput): boolean {
+    const sleepy = input.held.emotion === 'sleepy' && input.held.level * input.held.strength > 0.5
+    return input.energy.mode !== 'listening' && !sleepy && input.directive.rest === 'none' && input.directive.stance !== 'sleep'
+  }
+
+  private free(side: BodySide, input: BodyPerformanceInput, context: PerformanceContext): boolean {
+    return context.capabilities.gestures[side]
+      && input.owned[side === 'left' ? 'leftArm' : 'rightArm'] === 0
+      && input.owned[side === 'left' ? 'leftFingers' : 'rightFingers'] === 0
+      && !this.tracks[side].active
+  }
+
+  /** A clip claiming a performing arm ends that arm's part at once, its weight gone before the claim reaches 0.5. */
+  private yieldOwned(side: BodySide, input: BodyPerformanceInput, now: number): void {
+    const track = this.tracks[side]
+    const owned = Math.max(input.owned[side === 'left' ? 'leftArm' : 'rightArm'], input.owned[side === 'left' ? 'leftFingers' : 'rightFingers'])
+    if (!track.active || owned === 0 || track.weight === 0)
+      return
+    track.exitSeconds = TIMING.cancel
+    track.weight = 0
+    track.dropAt = now
+    track.phaseEnd = now + TIMING.cancel
+    track.state = 'retraction'
+    track.pending = null
+    if (this.armForm?.side === side)
+      this.armForm = null
+  }
+
+  private performArmForm(context: PerformanceContext, now: number): void {
+    const request = context.plan.armForm
+    const held = this.armForm
+    if (held && (!request || request.side !== held.side || request.form !== held.form)) {
+      const track = this.tracks[held.side]
+      if (track.state === 'form')
+        this.retractTrack(track, now)
+      this.armForm = null
+    }
+    if (!request || this.armForm || !this.keys || !this.free(request.side, context.input, context))
+      return
+    const track = this.tracks[request.side]
+    this.captureHome(track, context)
+    track.key.set(track.home)
+    writeHandShape(ARM_FORMS[request.form].shape, track.key)
+    if (!this.keys.armForm(request.side, request.form, track.key))
+      return
+    const travel = this.travel(request.side, track.home, track.key)
+    track.prepSeconds = (0.25 + 0.35 * travel) / gestureTempo(context.input.energy.level)
+    this.begin(track, now)
+    track.move(track.key, now, track.prepSeconds, false)
+    track.state = 'form'
+    track.form = request.form
+    track.phaseEnd = Infinity
+    this.armForm = { side: request.side, form: request.form }
+  }
+
+  private startUnit(context: PerformanceContext, now: number): void {
+    const { input } = context
+    const energy = Math.max(0, Math.min(1, input.energy.level))
+    const walking = input.gait !== null && input.gait.mode !== 'idle'
+    const free = SIDES.filter(side => this.free(side, input, context))
+    if (!free.length || !this.keys)
+      return
+    const twoHand = !walking && free.length === 2 && this.random() < 0.15 + 0.25 * energy
+    const other: BodySide = this.dominant === 'left' ? 'right' : 'left'
+    const preferred = this.random() < 0.7 ? this.dominant : other
+    const sides = twoHand ? [...SIDES] : [free.includes(preferred) ? preferred : free[0]]
+    const started: BodySide[] = []
+    for (const side of sides) {
+      const track = this.tracks[side]
+      this.captureHome(track, context)
+      track.ready.set(track.home)
+      writeHandShape('relaxed', track.ready)
+      const swivel = twoHand && side !== this.dominant ? AMPLITUDE.nonDominantSwivel : 0
+      if (!this.keys.solve(side, this.keys.readyKey(energy, 0, swivel), track.ready))
+        continue
+      track.prepSeconds = (0.25 + 0.35 * this.travel(side, track.home, track.ready)) / gestureTempo(energy)
+      this.begin(track, now)
+      track.move(track.ready, now, track.prepSeconds, false)
+      track.state = 'preparation'
+      track.phaseEnd = now + track.prepSeconds
+      started.push(side)
+    }
+    if (!started.length)
+      return
+    this.unit = { active: true, sides: started, twoHand: started.length === 2, energy, start: now, strokes: 0, retracting: false }
+    // 4a's quiet rule reads the utterance, not the silence before it: Natural's slow envelope rises after the edge.
+    this.quiet = 0
+    this.report.unitSeq++
+    this.report.form = null
+    this.report.plannedHit = null
+    this.report.hand = started.length === 2 ? 'both' : started[0]
+  }
+
+  private stroke(context: PerformanceContext, now: number, major: boolean): void {
+    const { input } = context
+    const unit = this.unit
+    if (input.voice.level < VOICE.peak || input.voice.level - input.voice.slow < VOICE.prominence)
+      return
+    if (now - this.lastStroke < TIMING.strokeGap || unit.strokes >= TIMING.unitStrokes)
+      return
+    const energy = unit.energy
+    const tempo = gestureTempo(energy)
+    const lead = unit.twoHand ? this.dominant : unit.sides[0]
+    const leadTrack = this.tracks[lead]
+    const form = this.chooseForm(input, now, major, unit.twoHand)
+    const seconds = GESTURE_FORMS[form].strokeSeconds / tempo
+    if (!this.strokeReady(leadTrack, now, seconds))
+      return
+    const walking = input.gait !== null && input.gait.mode !== 'idle'
+    const amplitude = (major ? 1 : AMPLITUDE.minor) * (walking ? AMPLITUDE.walking : 1)
+    const size = gestureGain(energy) * GESTURE_FORMS[form].scale * amplitude
+    const both = unit.twoHand && GESTURE_FORMS[form].hands !== 'one'
+    const performed = this.strokeTrack(leadTrack, context, now, form, size)
+    if (!performed)
+      return
+    if (both) {
+      const lagging = this.tracks[lead === 'left' ? 'right' : 'left']
+      if (lagging.active && lagging.state !== 'retraction' && lagging.state !== 'form') {
+        const lag = TIMING.lagRange[0] + (TIMING.lagRange[1] - TIMING.lagRange[0]) * this.random()
+        lagging.pending = { at: now + lag, form: performed, size: size * AMPLITUDE.nonDominant }
+      }
+    }
+    const sign = lead === 'left' ? 1 : -1
+    const forward = GESTURE_FORMS[performed].stroke[2] > 0
+    const gain = gestureGain(energy) * amplitude
+    leadTrack.pulses.push({ start: now, hit: now + GESTURE_FORMS[performed].strokeSeconds / tempo, yaw: sign * AMPLITUDE.torsoYaw * gain, pitch: forward ? AMPLITUDE.torsoPitch * gain : 0 })
+    unit.strokes++
+    this.lastStroke = now
+    if (major)
+      this.majors.push(now)
+    this.formTimes.set(performed, now)
+    leadTrack.watch = { form: performed, hand: both ? 'both' : lead, peak: 0, speed: 0, wrist: null, until: now + seconds + 0.3 }
+  }
+
+  /** A stroke leaves from the ready key, a hold or a recovery; from a preparation only if it would end first. */
+  private strokeReady(track: ArmTrack, now: number, seconds: number): boolean {
+    if (track.state === 'ready' || track.state === 'hold' || track.state === 'recovery' || track.state === 'stroke')
+      return true
+    return track.state === 'preparation' && track.phaseEnd - now <= seconds
+  }
+
+  /** Solves and starts one arm's stroke; returns the form performed (a beat when the chosen form has no clear key). */
+  private strokeTrack(track: ArmTrack, context: PerformanceContext, now: number, form: SpeechGestureForm, size: number): SpeechGestureForm | null {
+    const keys = this.keys
+    if (!keys)
+      return null
+    const energy = this.unit.energy
+    const tempo = gestureTempo(energy)
+    const swivel = this.unit.twoHand && track.side !== this.dominant ? AMPLITUDE.nonDominantSwivel : 0
+    for (const candidate of form === 'beat' ? ['beat'] as const : [form, 'beat'] as const) {
+      const ready = keys.readyKey(energy, candidate === 'frame' ? 0.1 : 0, swivel)
+      const key = keys.strokeKey(ready, candidate, size, candidate === 'point' ? this.pointYaw(context.input, track.side) : 0)
+      track.key.set(track.ready)
+      writeHandShape(GESTURE_FORMS[candidate].shape, track.key)
+      if (!keys.solve(track.side, key, track.key, track.ready))
+        continue
+      const seconds = GESTURE_FORMS[candidate].strokeSeconds / tempo
+      const [low, high] = GESTURE_FORMS[candidate].hold
+      const hold = (low + (high - low) * this.random()) / tempo
+      // Post-stroke hold: the hand drifts 1.5 % A along the stroke, in angle space from the ready key.
+      track.drift.set(track.key)
+      const travel = Math.max(1e-6, this.travel(track.side, track.ready, track.key))
+      for (let j = 2; j < 9; j++)
+        track.drift[j] += (track.key[j] - track.ready[j]) * AMPLITUDE.drift / travel
+      // 4a: the visible hit lands at the stroke's duration. Feedforward removes the followers' own lag, so only the
+      // elbow's cascade delay remains between the planned profile's end and the wrist's landing.
+      const profile = Math.max(2 * BODY_TICK, seconds - armCascadeDelay(5, 1, 1, context.input.mood.tension))
+      track.move(track.key, now, profile, true)
+      track.state = 'stroke'
+      track.form = candidate
+      track.phaseEnd = now + profile
+      track.holdSeconds = hold
+      return candidate
+    }
+    return null
+  }
+
+  private chooseForm(input: BodyPerformanceInput, now: number, major: boolean, twoHand: boolean): SpeechGestureForm {
+    if (input.gait !== null && input.gait.mode !== 'idle')
+      return 'beat'
+    const fresh = (form: SpeechGestureForm) => now - (this.formTimes.get(form) ?? -Infinity) >= TIMING.formRepeat
+    while (this.majors.length && now - this.majors[0] > TIMING.chopWindow)
+      this.majors.shift()
+    const r = this.random()
+    const candidates: SpeechGestureForm[] = []
+    if (this.unit.strokes === 0 && r < 0.5)
+      candidates.push('palm-up')
+    if (major && this.majors.length >= 1)
+      candidates.push('chop')
+    if (input.gaze.kind === 'sustained')
+      candidates.push('point')
+    if (twoHand && this.unit.energy > 0.6 && r < 0.5)
+      candidates.push('frame')
+    const pick = this.random()
+    candidates.push(pick < 0.45 ? 'beat' : pick < 0.7 ? 'palm-up' : pick < 0.85 && input.voice.level >= 0.7 ? 'press' : 'beat')
+    return candidates.find(form => form === 'beat' || fresh(form)) ?? 'beat'
+  }
+
+  /** Point yaws toward the gaze goal, at most 30 degrees, measured from straight ahead of the body. */
+  private pointYaw(input: BodyPerformanceInput, side: BodySide): number {
+    const yaw = Math.max(-30 * DEG, Math.min(30 * DEG, input.gaze.yaw - input.facingYaw))
+    return side === 'left' ? yaw : -yaw
+  }
+
+  /**
+   * Watches the lead arm's stroke on its actual output, the previous frame, and reports the stroke at the first wrist
+   * speed minimum after the peak that is at most half of it: the gesture report's apex rule. A stroke that shows no
+   * apex in time is not reported.
+   */
+  private observe(track: ArmTrack, context: PerformanceContext, now: number): void {
+    const watch = track.watch
+    if (!watch || !this.keys)
+      return
+    const start = ARM_START[track.side]
+    for (let j = 0; j < 26; j++)
+      this.scratch[j] = context.previous.channels[start + j]
+    const wrist = this.keys.wrist(track.side, this.scratch)
+    const speed = watch.wrist ? Math.hypot(wrist[0] - watch.wrist[0], wrist[1] - watch.wrist[1], wrist[2] - watch.wrist[2]) : 0
+    watch.wrist = wrist
+    if (watch.peak > 0 && speed > watch.speed && watch.speed <= 0.5 * watch.peak) {
+      this.report.strokeSeq++
+      this.report.form = watch.form
+      this.report.hand = watch.hand
+      // The previous frame carried the slowest sample; it was produced one tick before this one.
+      this.report.plannedHit = now - 2 * BODY_TICK
+      track.watch = null
+      return
+    }
+    watch.peak = Math.max(watch.peak, speed)
+    watch.speed = speed
+    if (now > watch.until)
+      track.watch = null
+  }
+
+  private retract(now: number): void {
+    this.unit.retracting = true
+    for (const side of this.unit.sides) {
+      const track = this.tracks[side]
+      if (track.active && track.state !== 'retraction' && track.state !== 'form')
+        this.retractTrack(track, now)
+    }
+  }
+
+  /** Returns the arm to where it was before the unit, 1.3 x its preparation, while the weight ramps down with it. */
+  private retractTrack(track: ArmTrack, now: number): void {
+    const duration = Math.max(TIMING.exit + BODY_TICK, TIMING.retractionScale * track.prepSeconds)
+    track.move(track.home, now, duration, false)
+    track.state = 'retraction'
+    track.pending = null
+    track.phaseEnd = now + duration
+    track.dropAt = track.phaseEnd - TIMING.exit
+    track.exitSeconds = TIMING.exit
+  }
+
+  private step(track: ArmTrack, context: PerformanceContext, now: number): void {
+    if (track.pending && now >= track.pending.at) {
+      const { form, size } = track.pending
+      track.pending = null
+      this.strokeTrack(track, context, now, form, size)
+    }
+    if (track.state === 'stroke' && now >= track.phaseEnd) {
+      // The hit (4a): the planned profile has ended; the post-stroke hold drifts on from here.
+      track.move(track.drift, now, track.holdSeconds, false)
+      track.state = 'hold'
+      track.holdEnd = now + track.holdSeconds
+    }
+    this.observe(track, context, now)
+    if (track.state === 'hold' && now >= track.holdEnd) {
+      track.move(track.ready, now, TIMING.recovery / gestureTempo(this.unit.energy), false)
+      track.state = 'recovery'
+      track.phaseEnd = now + TIMING.recovery / gestureTempo(this.unit.energy)
+    }
+    else if ((track.state === 'recovery' || track.state === 'preparation') && now >= track.phaseEnd) {
+      track.state = 'ready'
+    }
+    if (track.state === 'retraction' && now >= track.dropAt)
+      track.weight = 0
+    if (track.state === 'retraction' && now >= track.phaseEnd) {
+      track.state = 'rest'
+      track.form = null
+      track.exitSeconds = TIMING.exit
+    }
+    if (track.active || track.weight > 0)
+      track.advance(now, context.input.mood.tension)
+    track.torso(now)
+    track.write()
+  }
+
+  private begin(track: ArmTrack, now: number): void {
+    track.pose.set(track.home)
+    track.previous.set(track.home)
+    track.warm = false
+    track.segment.start = now
+    track.weight = 1
+    track.exitSeconds = TIMING.exit
+    track.dropAt = Infinity
+  }
+
+  private captureHome(track: ArmTrack, context: PerformanceContext): void {
+    const start = ARM_START[track.side]
+    for (let j = 0; j < 26; j++)
+      track.home[j] = context.previous.channels[start + j]
+  }
+
+  private travel(side: BodySide, from: ArmPose, to: ArmPose): number {
+    const keys = this.keys
+    if (!keys)
+      return 0
+    const [ax, ay, az] = keys.wrist(side, from)
+    const [bx, by, bz] = keys.wrist(side, to)
+    return Math.hypot(bx - ax, by - ay, bz - az)
+  }
+
+  private phase(): BodyGesturePhase {
+    if (!this.unit.active)
+      return 'rest'
+    const lead = this.tracks[this.unit.twoHand ? this.dominant : this.unit.sides[0]]
+    switch (lead.state) {
+      case 'preparation':
+        return 'preparation'
+      case 'stroke':
+        return 'stroke'
+      case 'retraction':
+        return 'retraction'
+      case 'rest':
+        return 'rest'
+      default:
+        return 'hold'
+    }
+  }
+}
+
+export interface GestureLayerOptions {
+  readonly traits: BodyRigTraits
+  readonly seed: number
+}
+
+/**
+ * The co-speech gesture layer (architecture 4a, plan 3.1): one override layer per arm, sharing one planner, so each
+ * arm has its own weight ramp and activation. Register both, in this order. With no speech and no requested arm form
+ * both stay at weight 0 and the performer's output is bit-identical to having no layers.
+ *
+ * - A unit starts on every utterance (plan D3), on the speaking edge so the preparation ends before the first peak.
+ *   Every onset passing the gate's S2 voice-peak rule strokes, at least 0.45 s apart; accepted emphases are major.
+ * - The report's `strokeSeq` and `plannedHit` change when the lead arm's wrist reaches its apex on the arm's actual
+ *   output (the first speed minimum after the stroke's peak, at most half of it). `plannedHit` is that apex, a tick or
+ *   two in the past, so the marker's time is the motion's, never a claim (plan 2.1).
+ * - `plan.armForm` (hand to chest, thinking hand) is held on the requested arm. Whichever performance holds an arm
+ *   keeps it: a speech unit then uses the other hand, and a requested form waits for a unit to retract.
+ * - A clip claiming a performing arm takes it within 90 ms; no unit starts on an arm with any ownership.
+ */
+export function createGestureLayers(options: GestureLayerOptions): readonly [PerformanceLayer, PerformanceLayer] {
+  const performer = new GesturePerformer(options.traits, options.seed)
+  const layer = (side: BodySide): PerformanceLayer => {
+    const track = performer.tracks[side]
+    const output: Mutable<LayerOutput> = { channels: track.channels, additive: track.additive, weight: 0, sequence: 0, gesture: performer.report }
+    return {
+      id: `gesture-${side}`,
+      order: 'gesture',
+      mode: 'override',
+      mask: track.mask,
+      enterSeconds: TIMING.enter,
+      get exitSeconds() {
+        return track.exitSeconds
+      },
+      step: (context) => {
+        performer.update(context)
+        output.weight = track.weight
+        return output
+      },
+      reset: () => performer.reset(),
+    }
+  }
+  return [layer('left'), layer('right')]
+}

@@ -423,7 +423,8 @@ head cue to the cue layer. A step may also return its `gesture`, `cue`,
 of each kind, and `diagnostics.gesture.activation` is the weight the stack
 applied to each arm through gesture-order layers. Hosts turn report sequence
 changes into trace events. `HAND_SHAPES` holds architecture 4a's six hand
-shapes as data; the emotion layer blends the open and fist shapes. Layers implement clip admission/cancellation
+shapes as data; the emotion layer blends the open and fist shapes, and the
+gesture layer shapes each stroke and arm form from them. Layers implement clip admission/cancellation
 from `input.owned`; generators and followers keep integrating beneath clips.
 The adapter applies `1 - owned[group]` exactly once at bone writes.
 
@@ -483,6 +484,28 @@ weight cascade to its longest torso delay. Missing clavicles/fingers/toe bend
 drop those channels; missing twist limits pronation to 60 degrees. In this
 slice, adapters keep pronation on the hand and upper-arm twist on the arm;
 dedicated twist-bone writes belong to the later adapter work.
+
+`createGestureLayers({ traits, seed })` returns the co-speech gesture layer as
+two override layers, one per arm, sharing one planner (architecture 4a with
+plan 3.1). Register both. A unit starts on every utterance, on the speaking
+edge, outside a refractory of 2.5 s + 3 s x (1 - energy): the arm prepares to
+4a's ready key, strokes on every onset that passes the gate's S2 voice-peak
+rule (accepted emphases major, others 0.6), at least 0.45 s apart and at most
+six per unit, holds with a 1.5 % A drift, and retracts to where it came from at
+1.3 times its preparation while its weight ramps out. Energy scales size and
+tempo. The forms are 4a's beat, palm-up, press, point, chop and frame at unit
+A's amplitude scale (`GESTURE_FORMS`), keys solved per rig with
+`solveArmKey` and pushed along the proxy gradient until key and path clear.
+A stroke's wrist-placing channels (flex, abduct, twist, elbow) are fed forward
+through their followers' inverse, so it lands at 4a's duration. The report marks a stroke at the apex the lead wrist actually shows
+on the performer's output, so a marker's time is the motion's. The layers also
+hold `plan.armForm` (hand to chest, thinking hand) at contact anchors; an arm
+keeps whichever performance holds it, and speech uses the other hand. Any clip
+claim on a performing arm takes it within 90 ms. Without speech or an arm form
+the layers stay at weight 0 and the output is bit-identical to having none.
+While a layer drives an arm channel, that channel keeps its own idle noise (a
+moving hold) and its passive drag yields to the activation, as the plumb line
+and pendulum already do; the drag returns as the activation falls.
 
 Collision runs after dynamics and limits, using the same lower-half upper-arm
 and extended-forearm sample capsules as the MMD gate, with its clearance margin.
