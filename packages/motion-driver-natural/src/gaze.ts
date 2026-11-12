@@ -228,6 +228,11 @@ export class NaturalGazeLayer {
     return this.nextFixationAt
   }
 
+  /** Ends a glance hold early: the next autonomous fixation is drawn at `at`. A no-op once the hold has passed. */
+  endHold(at: number) {
+    this.nextFixationAt = Math.min(this.nextFixationAt, at)
+  }
+
   /** Advances by `dt` seconds and returns the gaze point before head compensation. */
   step(dt: number): GazePoint {
     const previousTime = this.time

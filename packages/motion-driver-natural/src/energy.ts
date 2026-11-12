@@ -92,6 +92,16 @@ export class NaturalPerformanceEnergy {
   /** Active time at which the reacting overlay ends; later reactions extend it and never stack. */
   private reactingUntil = Number.NEGATIVE_INFINITY
 
+  /** The mode last set, before any cross-fade. */
+  get currentMode(): PerformanceMode {
+    return this.mode
+  }
+
+  /** Whether the user has left the desktop, as last set. */
+  get userAway(): boolean {
+    return this.away
+  }
+
   /** Talking suppresses chat attention immediately, independently of the preset cross-fade. */
   get talking(): boolean {
     return this.mode === 'talking'

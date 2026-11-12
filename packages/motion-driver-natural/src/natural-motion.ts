@@ -7,6 +7,7 @@ import type { CueGestureKind } from './cue-gestures'
 import type { NaturalFaceOutput } from './face'
 import type { NaturalMotionEvent, NaturalMotionFrame, NaturalMotionObserver, NaturalMotionOptions, NaturalMotionVoice, NaturalRigTraits, NaturalTouchRegion } from './frame-types'
 import type { GazePoint } from './gaze'
+import type { IdleBehaviourKind, IdleCueKind, NaturalIdleDrive } from './idle-activities'
 import type { NaturalEpisode } from './mood'
 import type { PendingAction } from './pending-actions'
 import type { Vec3 } from './posture'
@@ -28,6 +29,7 @@ import { withHints } from './face-hints'
 import { NaturalAttentionShifts, NaturalGazeLayer } from './gaze'
 import { NaturalGestures } from './gestures'
 import { NaturalHoldLayer } from './hold'
+import { IdleBehaviourReports, NaturalIdleActivities } from './idle-activities'
 import { NaturalImpulses } from './impulses'
 import { clamp, lerp, lerpRecord } from './interpolation'
 import { NaturalMood } from './mood'
@@ -39,7 +41,7 @@ import { createRandomStream, deriveSeed } from './random'
 import { NaturalSpeechEmphasis, SpeechOnsetShifts } from './speech-emphasis'
 import { NaturalPetLayer } from './touch'
 
-export type { NaturalAttentionEvent, NaturalGestureEvent, NaturalGlanceEvent, NaturalHoldEvent, NaturalImpulseEvent, NaturalMotionEvent, NaturalMotionFrame, NaturalMotionObserver, NaturalMotionOptions, NaturalMotionPose, NaturalMotionVoice, NaturalPlacementEvent, NaturalTouchEvent } from './frame-types'
+export type { NaturalAttentionEvent, NaturalGestureEvent, NaturalGlanceEvent, NaturalHoldEvent, NaturalIdleEvent, NaturalImpulseEvent, NaturalMotionEvent, NaturalMotionFrame, NaturalMotionObserver, NaturalMotionOptions, NaturalMotionPose, NaturalMotionVoice, NaturalPlacementEvent, NaturalTouchEvent } from './frame-types'
 
 /** Chat timing and geometry only, never text. Target is an eye-anchored offset in head widths, Y up. */
 export interface NaturalChatInput {
@@ -52,7 +54,7 @@ export interface NaturalChatInput {
 
 // Layer stream indices for `deriveSeed`. Appending layers keeps existing sequences stable.
 // Index 4 belonged to the v1 fixation rule and now seeds the gaze layer that replaces it.
-const streamIndex = { drift: 0, continuous: 1, gain: 2, shift: 3, gaze: 4, attention: 5, body: 6, face: 7, blink: 8, breath: 9, emphasis: 10, impulses: 11, gestures: 12, cursorAttention: 13, chat: 14, cueGestures: 15, regime: 16 }
+const streamIndex = { drift: 0, continuous: 1, gain: 2, shift: 3, gaze: 4, attention: 5, body: 6, face: 7, blink: 8, breath: 9, emphasis: 10, impulses: 11, gestures: 12, cursorAttention: 13, chat: 14, cueGestures: 15, regime: 16, idle: 17 }
 
 // Fixed integration grid. Processes advance only in whole steps and the output is
 // interpolated between the two grid states around the current time, so frame
@@ -143,6 +145,11 @@ export class NaturalMotion {
   private readonly hold: NaturalHoldLayer
   private readonly gestures: NaturalGestures
   private readonly cueGestures: NaturalCueGestures
+  private readonly idle: NaturalIdleActivities
+  /** Whether the previous step wrote an idle breath scale, which the next step without one must undo. */
+  private idleBreathScaled = false
+  /** Follows the idle behaviour for the observer. */
+  private readonly idleReports = new IdleBehaviourReports()
   private emotionStrengths: Partial<Record<PerformanceEmotion, number>> = {}
   private performanceSettings = defaultExpressionPerformanceSettings
   private readonly emphasis: NaturalSpeechEmphasis
@@ -223,6 +230,7 @@ export class NaturalMotion {
     this.impulses = new NaturalImpulses(stream('impulses'), this.emotions)
     this.gestures = new NaturalGestures(stream('gestures'))
     this.cueGestures = new NaturalCueGestures(stream('cueGestures'), this.gaze)
+    this.idle = new NaturalIdleActivities(stream('idle'))
     this.previous = { head: [...home], compensationHead: [...home], body: this.body.pose, gaze: { x: 0, y: 0 }, face: NaturalFaceLayer.rest(), blinkFactor: 1, breath: this.breath.output }
     this.next = this.integrate()
   }
@@ -367,7 +375,8 @@ export class NaturalMotion {
    */
   setPerformance(state: PerformanceState, energy: number, nowSeconds: number) {
     this.advance(nowSeconds)
-    this.energy.setState(state, energy)
+    // The slow mood and the hour move the user's energy setting; without an idle drive the offset is exactly 0.
+    this.energy.setState(state, energy + this.idle.energyOffset)
     const seen = this.reactSeq
     this.reactSeq = state.reactSeq
     if (seen !== undefined && state.reactSeq !== seen && state.reactKind !== 'none')
@@ -380,6 +389,34 @@ export class NaturalMotion {
   impulse(episode: NaturalEpisode, nowSeconds: number) {
     this.advance(nowSeconds)
     this.pending.push({ kind: 'emotion', episode })
+  }
+
+  /**
+   * Switches self-directed idle behaviour on with `drive`, or off with `null`. Without a drive the controller
+   * performs none, draws nothing for it, and replays every earlier seeded run unchanged. The drive also moves the
+   * energy passed to `setPerformance` by `idleEnergyOffset`, from the next `setPerformance` call.
+   */
+  setIdleDrive(drive: NaturalIdleDrive | null, nowSeconds: number) {
+    this.advance(nowSeconds)
+    this.idle.setDrive(drive)
+  }
+
+  /**
+   * Requests the body language around a reach-out on the next grid step: `about-to-speak` holds a lifted look at the
+   * user until she talks, `let-go` answers it, or it times out; `let-go` shows that she decided not to say it.
+   * Ignored without an idle drive and while she is busy or asleep.
+   */
+  idleCue(kind: IdleCueKind, nowSeconds: number) {
+    this.advance(nowSeconds)
+    this.idle.cue(kind)
+  }
+
+  /**
+   * The idle behaviour of the latest grid step, and a counter that increments at every start, so a host that reads
+   * once per frame also sees a behaviour that started and ended between two reads.
+   */
+  get idleState(): { seq: number, behaviour: IdleBehaviourKind | null } {
+    return { seq: this.idle.seq, behaviour: this.idle.behaviour }
   }
 
   /** Starts an explicit cue on the next grid step, independently of held-emotion settings. */
@@ -495,6 +532,7 @@ export class NaturalMotion {
     if (permission === 'dismiss')
       this.petGlanceUntil = 0
     const attention = this.cursorAttention.step(step, stepStart, { cursor: this.cursor, permission })
+    const noticedCursor = attention.events.some(event => event.kind === 'notice')
     const mapped = this.mappedCursor
     const proximity = this.cursor !== null && permission === 'full'
       ? Math.max(0, Math.min(1, (approachFarDistance - mapped.distance) / (approachFarDistance - approachNearDistance)))
@@ -582,6 +620,24 @@ export class NaturalMotion {
       this.hold.step(step)
     if (this.observer)
       this.reportHold(stepStart)
+    const startedGesture = pending.some(action => action.kind === 'poke' || action.kind === 'emotion' || action.kind === 'gesture' || action.kind === 'react')
+    this.idle.step(stepStart, step, {
+      mode: this.energy.currentMode,
+      away: this.energy.userAway,
+      blocked: this.pet.active || this.petOverride || stepStart < this.petGlanceUntil || stepStart < this.chatGlanceUntil || this.chatGlance !== null
+        || this.gaze.onChat || this.onCursor > 0.5 || this.cueGestures.activeUntil() > stepStart
+        || (this.performanceSettings.heldEmotions && (this.gestures.activeUntil() > stepStart || this.hold.level > 0.3)),
+      interrupt: startedGesture || noticedCursor || this.pet.active,
+      rouse: this.pet.active || pending.some(action => action.kind === 'poke' || (action.kind === 'react' && action.reaction === 'wake')),
+      placement: this.placement.value,
+      screenPoint: this.gaze.screenPoint(),
+    }, this.gaze)
+    if (this.observer) {
+      for (const report of this.idleReports.read(this.idle))
+        this.notify({ kind: 'idle', at: stepStart, ...report })
+    }
+    // Read only while a behaviour contributes, so a controller without an idle drive composes exactly as before.
+    const idle = this.idle.contributing ? this.idle.output : null
     const moodScales = modulateByMood({
       amplitudeScale: this.energy.amplitudeScale * this.pet.postureAmplitudeScale * (1 - attentionCalm * cursorShare),
       shiftRateScale: this.energy.shiftRateScale,
@@ -608,6 +664,16 @@ export class NaturalMotion {
     }
     // Recomputed from the base every step; scaling the stored value would compound.
     this.blink.intervalScale = blinkInterval / (1 + baseline.blinkRateOffset)
+    if (idle) {
+      this.posture.amplitudeScale *= idle.amplitudeScale
+      this.posture.shiftRateScale *= idle.shiftRateScale
+      this.blink.intervalScale *= idle.blinkIntervalScale
+    }
+    // Outside held emotions the period scale rests at 1, so the idle scale is the whole value there.
+    if (idle || this.idleBreathScaled) {
+      this.breath.periodScale = (this.performanceSettings.heldEmotions ? this.hold.modulation().breathPeriod : 1) * (idle?.breathPeriodScale ?? 1)
+      this.idleBreathScaled = idle !== null
+    }
     // Speech onsets can lead a due posture shift, so detection runs before attention and posture see the shift time.
     const emphasis = this.emphasis.step(step, this.voice.level, emphasisAcceptance)
     this.onsetShifts.update(this.posture, this.emphasis, this.voice.speaking)
@@ -615,7 +681,7 @@ export class NaturalMotion {
     // Postpone only a due shift. Adding the remaining duration every step would accumulate minutes of idle delay.
     if (remaining > 0.5 && this.posture.secondsUntilShift <= step)
       this.posture.postponeShift(remaining)
-    if (stepStart >= this.petGlanceUntil && stepStart >= this.chatGlanceUntil && !this.cueGestures.eyesActive(stepStart))
+    if (stepStart >= this.petGlanceUntil && stepStart >= this.chatGlanceUntil && !this.cueGestures.eyesActive(stepStart) && !this.idle.eyesOwned(stepStart))
       this.attention.update(this.posture, this.gaze, stepStart, step)
     this.onCursor += (Number(this.gaze.onCursor) - this.onCursor) * (1 - Math.exp(-step / cursorFixationSmoothingSeconds))
     if (this.gaze.onChat || this.onChatLevel !== 0)
@@ -632,6 +698,8 @@ export class NaturalMotion {
     }
     this.follow(followTarget)
     this.posture.continuousScale = Math.min(this.performanceSettings.heldEmotions ? this.gestures.continuousScale(stepStart + step) : 1, this.cueGestures.continuousScale(stepStart + step))
+    if (idle)
+      this.posture.continuousScale = Math.min(this.posture.continuousScale, idle.continuousScale)
     this.yawBias = 0.10 * this.placement.value * (1 - this.onCursor)
     if (this.observer && Math.abs(this.yawBias - this.lastEmittedYawBias) >= 0.005) {
       this.lastEmittedYawBias = this.yawBias
@@ -656,6 +724,8 @@ export class NaturalMotion {
         total += gestureHead[axis]
       if (cueHead[axis] !== 0)
         total += cueHead[axis]
+      if (idle && idle.head[axis] !== 0)
+        total += idle.head[axis]
       return clamp(total, 1)
     }) as Vec3
     const head = compose(posture)
@@ -684,6 +754,8 @@ export class NaturalMotion {
     for (const axis of [0, 1, 2] as const) {
       if (cueBody[axis] !== 0)
         lean[axis] += cueBody[axis]
+      if (idle && idle.body[axis] !== 0)
+        lean[axis] += idle.body[axis]
     }
     if (this.performanceSettings.heldEmotions) {
       const gestureBody = this.gestures.bodyOffset(stepStart + step)
@@ -706,13 +778,25 @@ export class NaturalMotion {
         face.silentMouthOpen += laugh.mouthOpen
     }
     face.eyeOpenMultiplier *= (1 - approachEyeSoftening * this.approach) * (1 + baseline.eyeOpen)
+    if (idle) {
+      face.eyeOpenMultiplier *= idle.eyeOpen
+      face.eyeOpenHint += idle.eyeOpenHint
+      face.browLY += idle.browY
+      face.browRY += idle.browY
+      face.mouthForm += idle.mouthForm
+      face.eyeSmile += idle.eyeSmile
+      // A yawn is silent: the mouth stays with speech while it is active or recent.
+      if (!this.face.speechActiveOrRecent)
+        face.silentMouthOpen += idle.mouthOpen
+    }
     return {
       head,
       compensationHead,
       body: this.body.step(step, followerHead).map((value, axis) => clamp(value + lean[axis], 1)) as Vec3,
       gaze,
       face,
-      blinkFactor: this.blink.step(step),
+      // Closing lids ride on the blink factor, the one eye channel every adapter lets reach fully closed.
+      blinkFactor: idle ? this.blink.step(step) * (1 - idle.lidClose) : this.blink.step(step),
       breath: this.breath.step(step),
     }
   }

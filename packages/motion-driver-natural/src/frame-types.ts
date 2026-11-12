@@ -4,6 +4,7 @@ import type { NaturalBreathOutput } from './breath'
 import type { GestureKind, naturalEmotions } from './emotions'
 import type { NaturalFaceOutput } from './face'
 import type { GazePoint } from './gaze'
+import type { IdleBehaviourKind } from './idle-activities'
 import type { PostureHome } from './posture'
 import type { RandomStream } from './random'
 
@@ -46,7 +47,15 @@ export interface NaturalMotionOptions {
  * - `hold`: side 1 raises the left brow; `null` while nothing is held;
  * - `gesture`: the clip's sided axes; drawn even for clips without sided axes.
  */
-export type NaturalMotionEvent = NaturalImpulseEvent | NaturalHoldEvent | NaturalGestureEvent | NaturalAttentionEvent | NaturalTouchEvent | NaturalPlacementEvent | NaturalGlanceEvent
+export type NaturalMotionEvent = NaturalImpulseEvent | NaturalHoldEvent | NaturalGestureEvent | NaturalAttentionEvent | NaturalTouchEvent | NaturalPlacementEvent | NaturalGlanceEvent | NaturalIdleEvent
+
+/** A self-directed idle behaviour started, or the one that ran ended; `behaviour` names it in both cases. */
+export interface NaturalIdleEvent {
+  kind: 'idle'
+  at: number
+  phase: 'start' | 'end'
+  behaviour: IdleBehaviourKind
+}
 
 /** A chat fixation or screen-change glance actually started. Point is normalized eye space; hold is seconds. */
 export interface NaturalGlanceEvent {
