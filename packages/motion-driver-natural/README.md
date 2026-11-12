@@ -23,7 +23,8 @@ Times are monotonic seconds; seeded inputs preserve deterministic output.
 
 The layers are blink, breath, gaze, posture, body, face and face hints,
 impulses, hold, gestures, cue gestures, mood and mood modulation, energy,
-cursor attention, placement, speech emphasis, pending actions and touch. Each layer draws from
+cursor attention, placement, speech emphasis, pending actions, touch and idle
+activities. Each layer draws from
 its own seeded stream, so a change in one layer does not reshuffle another.
 The controller advances every layer on a fixed 120 Hz grid and interpolates
 between grid states, so the frame rate does not change the motion.
@@ -36,6 +37,33 @@ read Live2D parameters. The architecture is recorded in
 [the 3D character motion ADR](../../docs/ai/adr/2026-10-30-3d-character-motion.md),
 and what each renderer performs is in
 [the interaction portability ADR](../../docs/ai/adr/2026-11-04-interaction-portability.md).
+
+## Idle activities
+
+`./idle-activities` holds `NaturalIdleActivities`, the layer of self-directed
+idle behaviour: stretch, yawn, look-around, check-in, peer, zone-out, nod-off
+and sway, sleep while the user is away, and the two reach-out cues
+`about-to-speak` and `let-go`.
+
+```ts
+motion.setIdleDrive({ energy: 0, valence: 0, tension: 0, sleepiness: 0.8, solitude: 0.5, music: false, allowSleep: true, rate: 1 }, now)
+motion.idleCue('about-to-speak', now)
+const { seq, behaviour } = motion.idleState
+```
+
+- The layer is inert until `setIdleDrive` receives a drive. Without one the
+  controller draws nothing for it and composes exactly as before, so seeded
+  traces and gates that never set a drive are unchanged.
+- `idleActivityWeights`, `idleActivityRate` and `idleEnergyOffset` are the pure
+  rules that turn a drive into odds, pace and an energy offset.
+- An activity yields within 0.4 s to speech, thinking, listening, touch, an
+  emotion, a cue gesture and a noticed cursor.
+- `idleState.seq` increments at every start. `IdleBehaviourReports` turns
+  per-frame reads of it into start and end reports; both renderer adapters use
+  it. An attached observer also receives `idle` events.
+
+[The idle agency ADR](../../docs/ai/adr/2026-11-12-idle-agency.md) records the
+design, the pacing numbers and the open visual review.
 
 ## Checks
 
@@ -50,7 +78,8 @@ a change deliberately, never as part of a move or rename.
 ## When to use
 
 Use this package for autonomous posture, gaze, face, blink, breath, speech,
-emotion, cursor attention, placement, and touch behavior across renderers.
+emotion, cursor attention, placement, touch, and self-directed idle behavior
+across renderers.
 
 ## When not to use
 
