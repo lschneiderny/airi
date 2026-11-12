@@ -114,7 +114,9 @@ describe('emotion-table report (C002, plan 2.3)', () => {
   })
 })
 
-describe('cue-body report (C002, unit M2 R3)', () => {
+// Each cueBodyReport call spends about 2 s on its fixed 1000-draw nulls and split-half control, whatever the trace.
+// The two-call test measured 5.6 s under load and timed out at the 5 s default; 20 s leaves 3.5 times that.
+describe('cue-body report (C002, unit M2 R3)', { timeout: 20_000 }, () => {
   // 150 s of placebo, then six events of each cue kind 5 s apart. Every bone below the neck and the head sways with
   // seeded 0.3 degree noise; the cued bone adds a 3 degree, 4 Hz oscillation for the cue's duration.
   function cues(bone: MotionTraceBone | null, noise = 0.3 * DEG, onlyFirst?: number) {
