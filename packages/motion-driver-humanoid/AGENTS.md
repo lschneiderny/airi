@@ -10,6 +10,12 @@ packages.
   owns the 120 Hz clock, the bind-frame mapping and clip ownership. Read
   `docs/ai/adr/2026-11-11-whole-body-performer.md` before changing its
   contracts.
+- Hosts register the performance layers only through
+  `createPerformanceLayers`. A layer must stay at weight 0 without its input:
+  the headless idle and gaze-shift traces must stay byte-identical with every
+  layer registered. A new generator hook is fed by the performer from the
+  merged plan or the stack's `modulation`, never by a layer reaching into a
+  generator.
 - The director also performs clips: it accepts or refuses a `BodyActionRequest`
   in a fixed order and echoes the `clipId` in `BodyIntent.action`. It never
   starts, stops, or names a clip itself. A refusal still advances

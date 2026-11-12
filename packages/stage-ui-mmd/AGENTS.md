@@ -2,6 +2,7 @@
 
 Read `README.md` and `docs/ai/adr/2026-10-30-3d-character-motion.md` before changing frame order or motion layers.
 
+- `MMDBody` registers the performer's layers from `createPerformanceLayers`; do not construct or register layers anywhere else, so the headless runner and the scene perform the same body.
 - Every bone write happens in a pose stage registered on `MMDFramePipeline`, before `mmd.beforePhysics()`. A pose stage reads `context.clean` and writes absolute transforms from it; it never writes the snapshot. Surface effects (material, UV, vertex morphs, measurements) belong in surface stages after physics.
 - Pose stages skip bones that the rig profile reports as physics-owned. Do not read Ammo internals (`physics.bodies`, btRigidBody).
 - Morph writers set channels on their morph-runtime layer; never write `morphTargetInfluences` directly.
