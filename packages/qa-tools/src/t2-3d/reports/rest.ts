@@ -10,14 +10,14 @@ import { MOTION_TRACE_CHANNELS } from '@proj-airi/motion-driver-humanoid/motion-
 
 import { percentile } from '../gate/bands'
 import { prepareTrace, smoothMetrics } from '../metrics'
-import { DEG, HZ, mean, rotate } from '../metrics/math'
+import { conjugate, DEG, HZ, mean, multiply, rotate } from '../metrics/math'
 import { caseReport, formatCaseReport, judged, notExercised } from './case-report'
 import { restStates, TracePose } from './idle-acts'
 import { POP_CONSTANTS } from './kinematics'
 import { popEvents, upperBodyPopBones } from './pops'
 import { fixed, markers, ReportUsageError } from './report'
 
-export const REST_VERSION = 2
+export const REST_VERSION = 3
 
 const C = {
   share: 0.9,
@@ -28,10 +28,12 @@ const C = {
   returnTo: 10,
   band: [0.01, 0.99],
   wakeSeconds: 10,
+  gazeShiftDeg: 10,
+  gazeWindow: 0.5,
   restReason: 'rest-fallback',
   dozeReason: 'doze-fallback',
 } as const
-const DOZE_HEAD_STOPPED = 'no clean rule: idle gaze meets every scored head-pitch peak bar (rules.md revision 2, B2 doze-head); not judged until the lead decides'
+const DOZE_HEAD_STOPPED = 'no clean rule: the review\'s nod-off shape rule misses a 4f doze whose first sink lies under the entry ramp (rules.md revision 3, doze head); not judged until the lead decides'
 const ARMS = ['smooth.armL.spikeRate', 'smooth.armR.spikeRate'] as const
 
 export function restConstants(bands: MotionBandsFile): readonly ReportConstant[] {
@@ -47,6 +49,8 @@ export function restConstants(bands: MotionBandsFile): readonly ReportConstant[]
     { name: 'wake span', value: C.wakeSeconds, unit: 's after the listening cue', source: 'plan R3b' },
     ...Object.entries(POP_CONSTANTS).map(([name, c]) => ({ name: `pop ${name}`, ...c })),
     ...ARMS.map(id => ({ name: id, value: fixed(bands.classes.idle?.metrics[id]?.hi ?? null, 2), unit: 'per minute, at most, over the wake span', source: 'bands-v3 idle hi (plan R3b)' })),
+    { name: 'doze gaze shift', value: C.gazeShiftDeg, unit: 'deg: a gaze-shift marker or a head-from-chest yaw change this large inside the doze fails', source: 'the gaze-shift bar, gaze-order.ts CRITERION_DEG; lead decision "no gaze shift while dozing" (4f)' },
+    { name: 'doze gaze window', value: C.gazeWindow, unit: 's over which the head yaw change is taken', source: 'rules.md revision 3, doze head scoring' },
     { name: 'reasons', value: `${C.restReason}, ${C.dozeReason}`, unit: 'stance reasons', source: 'plan unit A (M/stance.ts)' },
   ]
 }
@@ -73,6 +77,7 @@ export interface RestDetail {
   readonly posture: { readonly head: number, readonly torso: number } | null
   readonly pelvisDrop: number | null
   readonly dozeHeadP90: number | null
+  readonly dozeGaze: { readonly markers: number, readonly yawStep: number } | null
   readonly returned: readonly { readonly signal: string, readonly value: number, readonly lo: number, readonly hi: number }[]
   readonly stateAtWake: BodyRest
   readonly pops: readonly { readonly t: number, readonly bone: string, readonly size: number }[]
@@ -145,6 +150,27 @@ export function restReport(run: LoadedRun, bands: MotionBandsFile): CaseReport<R
     : null
   const pelvisDrop = dozeFrames.length ? baseline('hips') - mean(dozeFrames.map(signals.hips)) : null
   const dozeHeadP90 = dozeFrames.length ? percentile(dozeFrames.map(f => signals.head(f) - baseline('head')), 0.9) : null
+  // The doze owns the head (lead decision on 4f): no gaze shift reported, and no head-from-chest yaw step, while dozing.
+  const chest = pose.index('chest') >= 0 ? pose.index('chest') : spine
+  const headYaw = (frame: number) => {
+    const [x, y, z, w] = multiply(conjugate(pose.world(frame, chest)), pose.world(frame, head))
+    return Math.atan2(2 * (x * z + w * y), 1 - 2 * (x * x + y * y)) * DEG
+  }
+  const dozeGaze = dozeFrames.length
+    ? {
+        markers: markers(run, 'gaze-shift:').filter(m => m.t >= pose.time(dozeFrames[0]) && m.t <= pose.time(dozeFrames[dozeFrames.length - 1]) && Number.parseFloat(m.parts[0]) >= C.gazeShiftDeg).length,
+        yawStep: dozeFrames.reduce((largest, frame, i) => {
+          let lo = headYaw(frame)
+          let hi = lo
+          for (let k = i + 1; k < dozeFrames.length && pose.time(dozeFrames[k]) - pose.time(frame) <= C.gazeWindow; k++) {
+            const yaw = headYaw(dozeFrames[k])
+            lo = Math.min(lo, yaw)
+            hi = Math.max(hi, yaw)
+          }
+          return Math.max(largest, hi - lo)
+        }, 0),
+      }
+    : null
 
   const before = p.times.flatMap((t, i) => t < wake ? [i] : []).at(-1)
   const stateAtWake = before === undefined ? 'none' : restAt(p.times[before])
@@ -172,6 +198,7 @@ export function restReport(run: LoadedRun, bands: MotionBandsFile): CaseReport<R
   const reasonsSeen = [...new Set(stance.map(m => m.parts.join(':')))]
   const restPostureRule = `over the rest frames, mean head pitch >= baseline + ${C.restHeadDeg} deg and mean torso-lower pitch >= baseline + ${C.restTorsoDeg} deg`
   const pelvisRule = `over the doze frames, mean hips height >= ${C.pelvisDrop} L below the baseline mean`
+  const gazeRule = `over the doze frames, no gaze-shift marker of ${C.gazeShiftDeg} deg or more and no head-from-chest yaw change of ${C.gazeShiftDeg} deg or more within ${C.gazeWindow} s`
   const requirements: CaseRequirement[] = [
     judged('fallback-active', `rest on >= ${C.share * 100} % of [onset, away) and doze on >= ${C.share * 100} % of [away, wake) (the director's report)`, `rest ${(restShare * 100).toFixed(1)} %, doze ${(dozeShare * 100).toFixed(1)} %`, restShare >= C.share && dozeShare >= C.share),
     posture === null
@@ -181,6 +208,9 @@ export function restReport(run: LoadedRun, bands: MotionBandsFile): CaseReport<R
       ? notExercised('doze-pelvis', pelvisRule, 'no doze frame')
       : judged('doze-pelvis', pelvisRule, `${pelvisDrop.toFixed(4)} L below the baseline`, pelvisDrop >= C.pelvisDrop),
     notExercised('doze-head', 'the doze head-pitch peak (architecture 4f: the head sinks to +18 deg)', `${DOZE_HEAD_STOPPED}; measured P90 ${dozeHeadP90 === null ? 'no doze frame' : `${dozeHeadP90.toFixed(2)} deg above the baseline`}`),
+    dozeGaze === null
+      ? notExercised('doze-no-gaze-shift', gazeRule, 'no doze frame')
+      : judged('doze-no-gaze-shift', gazeRule, `${dozeGaze.markers} gaze-shift markers of ${C.gazeShiftDeg} deg or more; largest head yaw change in ${C.gazeWindow} s ${dozeGaze.yawStep.toFixed(2)} deg`, dozeGaze.markers === 0 && dozeGaze.yawStep < C.gazeShiftDeg),
     !woke
       ? notExercised('returned', returnRule, 'rest state none at the listening cue: no return to standing')
       : judged('returned', returnRule, returned.map(r => `${r.signal} ${r.value.toFixed(r.signal === 'hips' ? 4 : 2)} in [${r.lo.toFixed(r.signal === 'hips' ? 4 : 2)}, ${r.hi.toFixed(r.signal === 'hips' ? 4 : 2)}]`).join(', '), stood),
@@ -196,6 +226,7 @@ export function restReport(run: LoadedRun, bands: MotionBandsFile): CaseReport<R
     posture,
     pelvisDrop,
     dozeHeadP90,
+    dozeGaze,
     returned,
     stateAtWake,
     pops: pops.map(pop => ({ t: pop.t, bone: pop.bone, size: pop.size })),

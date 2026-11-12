@@ -5,10 +5,11 @@ import { resolve } from 'node:path'
 import { beforeAll, describe, expect, it } from 'vitest'
 
 import { loadBands } from '../gate/load'
+import { multiply } from '../metrics/math'
 import { analyticTrace } from '../metrics/test-trace'
 import { ReportUsageError } from './report'
 import { restReport } from './rest'
-import { loadedRun, moves, rotX, TEST_BONES } from './test-runs'
+import { loadedRun, moves, rotX, rotY, TEST_BONES } from './test-runs'
 
 const repoRoot = resolve(import.meta.dirname, '../../../../..')
 let bands: Awaited<ReturnType<typeof loadBands>>
@@ -31,6 +32,10 @@ interface Sleepy {
   /** A one-frame head step at the listening cue, degrees. */
   readonly wakeStep?: number
   readonly stance?: boolean
+  /** Gaze shifts go on while dozing: a 12 deg head yaw step every 5 s, each in 0.3 s. */
+  readonly gaze?: boolean
+  /** A `gaze-shift` marker 10 s into the doze, with this amplitude in degrees. */
+  readonly shiftMarker?: number
   readonly cues?: { readonly idle: number, readonly away: number, readonly wake: number }
 }
 
@@ -50,6 +55,8 @@ function sleepy(options: Sleepy = {}) {
   const drop = moves([{ start: cues.away, duration: 1.5, by: options.drop ?? 0.012 }, { start: cues.wake, duration: 1.5, by: -(options.drop ?? 0.012) * back }])
   const sway = (t: number) => DEG * Math.sin(2 * Math.PI * 0.1 * t)
   const head = (t: number) => sway(t) + (posed ? rest(t) + sink(t) : 0) - (t >= cues.wake ? step * DEG : 0)
+  const steps = moves(Array.from({ length: 7 }, (_, k) => ({ start: cues.away + 5 + 5 * k, duration: 0.3, by: (k % 2 ? -12 : 12) * DEG })))
+  const yaw = (t: number) => options.gaze ? steps(t) : 0
   const modes: MotionTraceEvent[] = [
     { t: cues.idle, kind: 'mode', mode: 'idle' },
     { t: cues.away, kind: 'mode', mode: 'away' },
@@ -66,6 +73,7 @@ function sleepy(options: Sleepy = {}) {
     ...fallback
       ? ([[CUES.onset, 'rest'], [cues.away, 'doze'], [cues.wake, 'none']] as const).map(([t, state]): MotionTraceEvent => ({ t, kind: 'marker', label: `rest:${state}` }))
       : [],
+    ...options.shiftMarker === undefined ? [] : [{ t: cues.away + 10, kind: 'marker', label: `gaze-shift:${options.shiftMarker.toFixed(2)}:+0.00:free` } satisfies MotionTraceEvent],
   ].sort((a, b) => a.t - b.t)
   const input = analyticTrace({
     seconds: CUES.end,
@@ -74,7 +82,7 @@ function sleepy(options: Sleepy = {}) {
     events,
     position: t => [0, 0.001 * Math.sin(2 * Math.PI * 0.05 * t) - (posed ? drop(t) : 0), 0],
     world: (bone, t) => bone === 'head'
-      ? rotX(head(t))
+      ? multiply(rotY(yaw(t)), rotX(head(t)))
       : bone === 'spine'
         ? rotX(posed ? rest(t) : 0)
         : bone.endsWith('UpperArm') ? rotX(0.4 * Math.sin(2 * Math.PI * 0.4 * t)) : [0, 0, 0, 1],
@@ -89,8 +97,13 @@ const STOPPED = { 'doze-head': 'NOT-EXERCISED' } as const
 describe('rest report', () => {
   it('passes every judged requirement for the 4f rest, doze and return, and holds the doze head as not judged', () => {
     const report = restReport(sleepy(), bands)
-    expect(statuses(report)).toEqual({ 'fallback-active': 'PASS', 'rest-posture': 'PASS', 'doze-pelvis': 'PASS', ...STOPPED, 'returned': 'PASS', 'wake-smooth': 'PASS', 'reasons': 'PASS' })
+    expect(statuses(report)).toEqual({ 'fallback-active': 'PASS', 'rest-posture': 'PASS', 'doze-pelvis': 'PASS', ...STOPPED, 'doze-no-gaze-shift': 'PASS', 'returned': 'PASS', 'wake-smooth': 'PASS', 'reasons': 'PASS' })
     expect(report.verdict).toBe('FAIL')
+  })
+
+  it('fails gaze shifts while dozing, read from the head yaw or reported by a gaze-shift marker of 10 deg or more', () => {
+    const noGaze = (options: Sleepy) => statuses(restReport(sleepy(options), bands))['doze-no-gaze-shift']
+    expect([noGaze({ gaze: true }), noGaze({ shiftMarker: 12 }), noGaze({ shiftMarker: 5 })]).toEqual(['FAIL', 'FAIL', 'PASS'])
   })
 
   it('fails rest and doze markers over a standing body', () => {
@@ -113,7 +126,7 @@ describe('rest report', () => {
 
   it('fails a run without the fallback and reports what needs it as not exercised', () => {
     const report = restReport(sleepy({ fallback: false }), bands)
-    expect(statuses(report)).toEqual({ 'fallback-active': 'FAIL', 'rest-posture': 'NOT-EXERCISED', 'doze-pelvis': 'NOT-EXERCISED', ...STOPPED, 'returned': 'NOT-EXERCISED', 'wake-smooth': 'NOT-EXERCISED', 'reasons': 'FAIL' })
+    expect(statuses(report)).toEqual({ 'fallback-active': 'FAIL', 'rest-posture': 'NOT-EXERCISED', 'doze-pelvis': 'NOT-EXERCISED', ...STOPPED, 'doze-no-gaze-shift': 'NOT-EXERCISED', 'returned': 'NOT-EXERCISED', 'wake-smooth': 'NOT-EXERCISED', 'reasons': 'FAIL' })
   })
 
   it('refuses a trace without stance markers and one whose rest onset is not before the away cue', () => {
