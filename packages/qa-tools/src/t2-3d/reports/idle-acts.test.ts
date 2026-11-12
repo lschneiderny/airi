@@ -121,6 +121,8 @@ interface Body {
   readonly extra?: (bone: MotionTraceBone, t: number) => Quat | null
   /** Both runs' left shin sways 4 deg in roll at 0.3 Hz, so the foot tilts under any yaw it carries. */
   readonly shinSway?: boolean
+  /** The trace's length in s; 42 by default. */
+  readonly seconds?: number
 }
 
 /** A standing body with a slow trunk sway; each act's movement bends its key bones and returns, through the hierarchy. */
@@ -159,7 +161,7 @@ function trace(body: Body): DecodedMotionTrace {
     ]),
     ...(body.rest ?? []).map((change): MotionTraceEvent => ({ t: change.t, kind: 'marker', label: `rest:${change.state}` })),
   ].sort((a, b) => a.t - b.t)
-  const input = analyticTrace({ seconds: 42, bones: BONES, scenario: body.scenario ?? 'idle', events, world, yaw: body.yaw, position: body.hips })
+  const input = analyticTrace({ seconds: body.seconds ?? 42, bones: BONES, scenario: body.scenario ?? 'idle', events, world, yaw: body.yaw, position: body.hips })
   const detail: Record<string, string> = body.actsSwitch ? { acts: body.actsSwitch } : {}
   const source = { ...input.trace.source, gitSha: body.gitSha ?? 'abc123', detail }
   return { ...input, trace: { ...input.trace, source, rig: { ...input.trace.rig, restOffsets: BONES.map(restOffset) } } }
@@ -167,7 +169,7 @@ function trace(body: Body): DecodedMotionTrace {
 
 /** The run with its acts, and the acts-off companion of the same seed: the same body without any act. */
 function pair(body: Body, companion: Body = {}) {
-  return [loadedRun(trace(body), null, null), loadedRun(trace({ actsSwitch: 'off', rest: body.rest, ...companion }), null, null)] as const
+  return [loadedRun(trace(body), null, null), loadedRun(trace({ actsSwitch: 'off', rest: body.rest, seconds: body.seconds, ...companion }), null, null)] as const
 }
 const report = (body: Body, companion?: Body) => idleActsReport(...pair(body, companion))
 const status = (r: ReturnType<typeof idleActsReport>, id: string) => r.requirements.find(q => q.id === id)?.status
@@ -235,13 +237,15 @@ describe('idle-acts report', () => {
   })
 
   it('counts acts by their distinctive form at any drawn amplitude', () => {
+    // Acts 4 s apart: each span and its exit (3.35 s) end before the next act starts; the traces end after the last one.
+    const at = (k: number) => 1 + 4 * k
     const sizes = [1, 1.25, 1.5]
-    expect(report({ acts: SIX.map((act, k) => ({ ...act, scale: sizes[k % 3] })) }).requirements[0].value).toMatch(/^6 distinct/)
-    const pairs = (first: Act, second: Act) => status(report({ acts: [{ ...SIX[0], at: 4 }, first, second] }), 'no-repeat')
-    expect(pairs({ id: 'sigh', at: 16, scale: 1.4 }, { id: 'yawn', at: 22 })).toBe('PASS')
-    expect(pairs({ id: 'hand-inspect', at: 16 }, { id: 'wave', at: 22 })).toBe('PASS')
-    expect(pairs({ id: 'yawn', at: 16 }, { id: 'yawn', at: 22, scale: 1.5 })).toBe('FAIL')
-    const four = report({ acts: (['yawn', 'shoulder-roll', 'sigh', 'arm-swing', 'yawn', 'shoulder-roll'] as const).map((id, k) => ({ id, at: 4 + 6 * k, scale: [1, 1, 1, 1, 1.25, 1.5][k] })) })
+    expect(report({ seconds: 25, acts: SIX.map((act, k) => ({ ...act, at: at(k), scale: sizes[k % 3] })) }).requirements[0].value).toMatch(/^6 distinct/)
+    const pairs = (first: Act, second: Act) => status(report({ seconds: 13, acts: [{ ...SIX[0], at: at(0) }, first, second] }), 'no-repeat')
+    expect(pairs({ id: 'sigh', at: at(1), scale: 1.4 }, { id: 'yawn', at: at(2) })).toBe('PASS')
+    expect(pairs({ id: 'hand-inspect', at: at(1) }, { id: 'wave', at: at(2) })).toBe('PASS')
+    expect(pairs({ id: 'yawn', at: at(1) }, { id: 'yawn', at: at(2), scale: 1.5 })).toBe('FAIL')
+    const four = report({ seconds: 25, acts: (['yawn', 'shoulder-roll', 'sigh', 'arm-swing', 'yawn', 'shoulder-roll'] as const).map((id, k) => ({ id, at: at(k), scale: [1, 1, 1, 1, 1.25, 1.5][k] })) })
     expect(four.requirements[0].value).toMatch(/^4 distinct/)
   })
 
@@ -273,7 +277,8 @@ describe('idle-acts report', () => {
   })
 
   it('re-bases the pair only after a confirmed foot re-plant, on the stepped foot\'s yaw and the hips\' lateral shift alone', () => {
-    // A re-plant lifts the free foot (the thigh swings 15 deg over the act) and leaves it yawed.
+    // A re-plant lifts the free foot (the thigh swings 15 deg over the act) and leaves it yawed. Its widened span ends
+    // 5.55 s after it starts (act, exit and settling), so the traces end a few seconds after the last re-plant.
     const lift = (at: number) => (t: number) => 15 * hold((t - at) / ACT_SECONDS)
     const plant = (ats: readonly number[], deg: number, more: (bone: MotionTraceBone, t: number) => Quat | null = () => null, lifted = true) => (bone: MotionTraceBone, t: number): Quat | null => {
       if (bone === 'leftUpperLeg' && lifted)
@@ -283,19 +288,24 @@ describe('idle-acts report', () => {
       return more(bone, t)
     }
     const replants = (ats: readonly number[]): Act[] => ats.map(at => ({ id: 'foot-replant', at, moves: null }))
-    const acts = (ats: readonly number[]) => [...SIX, ...replants(ats)].sort((a, b) => a.at - b.at)
-    expect(report({ acts: acts([10]), extra: plant([10], 6) }).detail.acts.find(act => act.id === 'foot-replant')?.confirmed).toBe(true)
-    expect(report({ acts: acts([10]), extra: plant([10], 6) }).detail.pair.difference).toBeLessThan(0.25)
-    expect(report({ acts: replants([10, 20, 30]), extra: plant([10, 20, 30], 6) }).detail.pair.difference).toBeLessThan(0.25)
-    expect(report({ acts: replants([10, 20, 30]), extra: plant([10, 20, 30], 6), shinSway: true }, { shinSway: true }).detail.pair.difference).toBeLessThan(0.25)
-    expect(() => report({ acts: acts([10]), extra: plant([10], 6, (bone, t) => bone === 'head' && t > 20 ? axisAngle(1, 1) : null) })).toThrow(/outside the act spans/)
-    expect(() => report({ acts: acts([10]), extra: plant([10], 20) })).toThrow(/lasting result/)
-    expect(() => report({ acts: SIX, extra: plant([10], 6) })).toThrow(/outside the act spans/)
+    // Another act's marker over the same movement licenses nothing: an arm swing starts with the first re-plant.
+    const swing: Act = { id: 'arm-swing', at: 1 }
+    const acts = (ats: readonly number[]) => [swing, ...replants(ats)]
+    const one = (body: Body) => report({ seconds: 9, ...body })
+    const three = [1, 7, 13]
+    const single = one({ acts: acts([1]), extra: plant([1], 6) })
+    expect(single.detail.acts.find(act => act.id === 'foot-replant')?.confirmed).toBe(true)
+    expect(single.detail.pair.difference).toBeLessThan(0.25)
+    expect(report({ seconds: 22, acts: replants(three), extra: plant(three, 6) }).detail.pair.difference).toBeLessThan(0.25)
+    expect(report({ seconds: 22, acts: replants(three), extra: plant(three, 6), shinSway: true }, { shinSway: true }).detail.pair.difference).toBeLessThan(0.25)
+    expect(() => one({ acts: acts([1]), extra: plant([1], 6, (bone, t) => bone === 'head' && t > 7 ? axisAngle(1, 1) : null) })).toThrow(/outside the act spans/)
+    expect(() => one({ acts: acts([1]), extra: plant([1], 20) })).toThrow(/lasting result/)
+    expect(() => one({ acts: [swing], extra: plant([1], 6) })).toThrow(/outside the act spans/)
     // The review's P2: a marker with no lift behind it does not license the turned foot; P1: a pitched foot after a correct re-plant.
-    expect(() => report({ acts: acts([10]), extra: plant([10], 6, () => null, false) })).toThrow(/outside the act spans/)
-    expect(() => report({ acts: acts([10]), extra: plant([10], 6, (bone, t) => bone === 'leftFoot' && t > 20 ? axisAngle(0, 15) : null) })).toThrow(/outside the act spans/)
+    expect(() => one({ acts: acts([1]), extra: plant([1], 6, () => null, false) })).toThrow(/outside the act spans/)
+    expect(() => one({ acts: acts([1]), extra: plant([1], 6, (bone, t) => bone === 'leftFoot' && t > 7 ? axisAngle(0, 15) : null) })).toThrow(/outside the act spans/)
     // The review's P4: hips left up after a correct re-plant.
-    expect(() => report({ acts: acts([10]), extra: plant([10], 6), hips: t => [0, t > 14 ? 0.015 : 0, 0] })).toThrow(/hips/)
+    expect(() => one({ acts: acts([1]), extra: plant([1], 6), hips: t => [0, t > 5 ? 0.015 : 0, 0] })).toThrow(/hips/)
   })
 
   it('refuses a pair whose root yaw or hips position differs outside the act spans, and accepts hips movement inside one', () => {
@@ -306,10 +316,12 @@ describe('idle-acts report', () => {
   })
 
   it('refuses a pair that is not a run and its acts-off companion of the same commit', () => {
-    expect(() => report({ acts: SIX }, { actsSwitch: undefined })).toThrow(ReportUsageError)
-    expect(() => report({ acts: SIX, actsSwitch: 'off' })).toThrow(ReportUsageError)
-    expect(() => report({ acts: SIX }, { gitSha: 'def456' })).toThrow(ReportUsageError)
-    expect(() => report({ acts: SIX }, { acts: [{ id: 'sigh', at: 34, moves: null }] })).toThrow(ReportUsageError)
+    // The pair's source is refused before any frame is read, so one act in a short trace is enough.
+    const run: Body = { seconds: 5, acts: [{ id: 'sigh', at: 1 }] }
+    expect(() => report(run, { actsSwitch: undefined })).toThrow(ReportUsageError)
+    expect(() => report({ ...run, actsSwitch: 'off' })).toThrow(ReportUsageError)
+    expect(() => report(run, { gitSha: 'def456' })).toThrow(ReportUsageError)
+    expect(() => report(run, { acts: [{ id: 'sigh', at: 1, moves: null }] })).toThrow(ReportUsageError)
   })
 
   it('refuses a run that is not idle-class', () => {
