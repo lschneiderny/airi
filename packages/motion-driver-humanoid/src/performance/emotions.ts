@@ -77,6 +77,14 @@ export const BODY_EMOTIONS: Readonly<Record<PerformanceEmotion, BodyEmotionSpec>
 
 /** Arm forms engage above "slight", at a clear pulse and above (lead ruling R3). */
 const ARM_FORM_WEIGHT = 0.5
+/**
+ * A held emotion's weight rises with its command, which Natural's held level already eases in, and releases with
+ * Natural's held release time constant (`stage-shared` `held.releaseTau`; `motion-driver-natural` `hold.ts` `step`).
+ * Natural switches a hold's emotion at full level, so without this the old posture would drop off in one step.
+ */
+const HELD = defaultExpressionPerformanceSettings.held
+/** Below this the released held weight snaps to rest; the posture's own response filters the snap. */
+const HELD_REST = 1e-4
 /** Natural retires face hints this many release time constants after the hold (`impulses.ts` `impulseFaceLifetime`). */
 const RELEASE_LIFETIME = 15
 const REST = 1e-6
@@ -124,6 +132,9 @@ interface Track {
   readonly state: SecondOrderState
   readonly coefficients: SecondOrderCoefficients | null
   target: number
+  /** The command before the held crossfade: the held level times strength, or the episode envelope. */
+  commanded: number
+  held: number
   side: number
   episode: { start: number, amplitude: number, attack: number, hold: number, release: number } | null
 }
@@ -140,7 +151,7 @@ export function createEmotionLayer(): EmotionLayer {
   const report: BodyEmotionReport & { seq: number, emotion: PerformanceEmotion | null, phase: 'onset' | 'release' | null } = { seq: 0, emotion: null, phase: null }
   const tracks: Track[] = PERFORMANCE_EMOTIONS.map((emotion) => {
     const spec = BODY_EMOTIONS[emotion]
-    return { emotion, spec, state: { y: 0, v: 0, x: 0 }, coefficients: spec.response && secondOrderCoefficients(spec.response, BODY_TICK), target: 0, side: 1, episode: null }
+    return { emotion, spec, state: { y: 0, v: 0, x: 0 }, coefficients: spec.response && secondOrderCoefficients(spec.response, BODY_TICK), target: 0, commanded: 0, held: 0, side: 1, episode: null }
   })
   let impulseSeq: number | null = null
   let time = 0
@@ -160,7 +171,7 @@ export function createEmotionLayer(): EmotionLayer {
       const track = tracks.find(t => t.emotion === impulse.emotion)
       if (track?.coefficients && band.headTau) {
         track.episode = { start: time, amplitude: Math.max(0, Math.min(1, impulse.intensity)), attack: band.headTau, hold: Math.max(band.headTau, band.faceHold), release: band.faceReleaseTau }
-        if (track.target === 0)
+        if (track.commanded === 0)
           track.side = impulse.side
       }
     }
@@ -179,8 +190,11 @@ export function createEmotionLayer(): EmotionLayer {
         else
           episodeTarget = amplitude * episodeEnvelope(age, attack, hold, release)
       }
-      const target = Math.max(heldTarget, episodeTarget)
-      if (target > 0 && track.target === 0) {
+      track.held = heldTarget >= track.held || HELD.releaseTau === 0 ? heldTarget : heldTarget + (track.held - heldTarget) * Math.exp(-BODY_TICK / HELD.releaseTau)
+      if (heldTarget === 0 && track.held < HELD_REST)
+        track.held = 0
+      const commanded = Math.max(heldTarget, episodeTarget)
+      if (commanded > 0 && track.commanded === 0) {
         if (heldTarget > 0)
           track.side = held.side
         report.seq++
@@ -189,12 +203,13 @@ export function createEmotionLayer(): EmotionLayer {
         if (track.spec.sigh)
           modulation.sighSeq++
       }
-      else if (target === 0 && track.target > 0) {
+      else if (commanded === 0 && track.commanded > 0) {
         report.seq++
         report.emotion = track.emotion
         report.phase = 'release'
       }
-      track.target = target
+      track.commanded = commanded
+      track.target = Math.max(track.held, episodeTarget)
     }
   }
 
@@ -251,13 +266,13 @@ export function createEmotionLayer(): EmotionLayer {
       let armForm: PerformancePlan['armForm']
       let strongest = 0
       for (const track of tracks) {
-        if (track.spec.support && track.target > strongest && owned.lowerBody <= 0.5 && owned.upperBody <= 0.5) {
-          strongest = track.target
+        if (track.spec.support && track.commanded > strongest && owned.lowerBody <= 0.5 && owned.upperBody <= 0.5) {
+          strongest = track.commanded
           support = track.spec.support === 'centre' ? 0 : track.side
         }
         const form = track.spec.armForm
         const side = sideIndex(track.side)
-        if (form && track.target > ARM_FORM_WEIGHT && owned[`${side}Arm`] <= 0.5)
+        if (form && track.commanded > ARM_FORM_WEIGHT && owned[`${side}Arm`] <= 0.5)
           armForm = { side, form }
       }
       return { ...(support === undefined ? {} : { support }), ...(armForm === undefined ? {} : { armForm }) }
@@ -298,7 +313,7 @@ export function createEmotionLayer(): EmotionLayer {
     reset() {
       for (const track of tracks) {
         track.state.y = track.state.v = track.state.x = 0
-        track.target = 0
+        track.target = track.commanded = track.held = 0
         track.episode = null
       }
       Object.assign(modulation, { tempo: 1, amplitude: 1, tension: BODY_EMOTIONS.neutral.tension, breath: 1, sighSeq: 0 })

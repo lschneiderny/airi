@@ -424,7 +424,9 @@ its own second-order response (so happy sinks before it lifts and surprise rings
 An unheld pulse holds its body pose as long as Natural holds the face: it rises
 with Natural's impulse attack, holds for the band's `faceHold`, and releases with
 the band's `faceReleaseTau`, so face and body read as one reaction. A slight
-pulse moves no body. Each posture's `scale` is its size against architecture
+pulse moves no body. A held emotion releases with Natural's held `releaseTau`, so a
+hold that switches emotion at full level crossfades instead of dropping the old
+posture in one step. Each posture's `scale` is its size against architecture
 4c's table; the sources and the emotions that do not reach the separation bar
 are in the goal-3 evidence `g3/b/amplitude-sources.md`. Neutral writes nothing,
 nor does any emotion term reach a group owned above 0.5. Think requests the

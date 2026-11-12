@@ -73,6 +73,15 @@ describe('emotion posture layer', () => {
     expect(awkward[c('rightClavElev')][599]).toBeGreaterThan(awkward[c('leftClavElev')][599] + 2 * DEG)
   })
 
+  it('crossfades a hold that switches emotion at full level, releasing the old posture no faster than Natural\'s held release', () => {
+    const level = (t: number) => ramp(t, 0.5)
+    const switching: Script = t => ({ ...quietInput(t), held: { emotion: t < 3 ? 'curious' : 'love', strength: 0.9, level: level(t), side: 1 } })
+    const pitch = layerEffect(switching, 4)[c('lowerPitch')]
+    const atSwitch = pitch[3 * 120 - 1]
+    // Natural's held release time constant is 0.6 s (stage-shared held.releaseTau): 0.3 s later at least half remains.
+    expect(pitch[Math.round(3.3 * 120)]).toBeGreaterThan(0.5 * atSwitch)
+  })
+
   it('returns to rest after a held emotion releases', () => {
     const d = layerEffect(held('sad', t => ramp(t, 0.5) * (1 - ramp(t, 4))), 12)
     expect(largest(d, 599)).toBeGreaterThan(2 * DEG)
