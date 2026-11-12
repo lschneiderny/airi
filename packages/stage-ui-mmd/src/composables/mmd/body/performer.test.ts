@@ -2,7 +2,7 @@ import type { BodyGestureReport, BodyPerformanceInput, LayerOutput, PerformanceL
 
 import type { MMDBodyEvent } from './performer'
 
-import { BODY_CHANNELS, BODY_TICK, BodySkeleton, channelIndex } from '@proj-airi/motion-driver-humanoid/performance'
+import { BODY_CHANNELS, BODY_TICK, BodySkeleton, channelIndex, createPerformanceLayers } from '@proj-airi/motion-driver-humanoid/performance'
 import { Euler, Quaternion, Vector3 } from 'three'
 import { describe, expect, it } from 'vitest'
 
@@ -130,6 +130,45 @@ describe('mmd body performer adapter', () => {
       { tick: 6, event: { kind: 'gesture-stroke', form: 'beat', hand: 'right', unitSeq: 1 } },
       { tick: 8, event: { kind: 'gesture-unit', phase: 'end', unitSeq: 1 } },
     ])
+  })
+
+  it('takes a claimed arm from the gesture layers before the claim reaches half', () => {
+    const fixture = bodyFixture()
+    const { traits } = performerOf(fixture)
+    const performer = new MMDBodyPerformer(new MMDBodyPose(fixture.mmd, fixture.rig), traits, { seed: 1, layers: createPerformanceLayers({ traits, seed: 1 }), onEvent: () => {} })
+    // An utterance from 0.5 s with onsets at 1.5 and 2.6 s; the app's upper-layer fade (a 0.25 s smoothstep) claims both
+    // arms two ticks into the second stroke.
+    const onsets = [1.5, 2.6]
+    const claimAt = 2.6 + 2 * BODY_TICK
+    const claim = (time: number) => {
+      const u = Math.max(0, Math.min(1, (time - claimAt) / 0.25))
+      return u * u * (3 - 2 * u)
+    }
+    let slow = 0
+    let onsetSeq = 0
+    let performed = 0
+    let whileOwned = 0
+    for (let tick = 1; tick <= Math.round(3.5 / BODY_TICK); tick++) {
+      const time = tick * BODY_TICK
+      const onset = onsets.some(at => Math.abs(time - at) < BODY_TICK / 2)
+      onsetSeq += onset ? 1 : 0
+      const level = time >= 0.5 ? onset ? 0.45 : 0.1 : 0
+      slow = level + (slow - level) * Math.exp(-BODY_TICK / 0.25)
+      const owned = claim(time)
+      performer.step({
+        ...stillInput,
+        voice: { speaking: time >= 0.5, level, slow, onsetSeq, emphasis: null },
+        energy: { ...stillInput.energy, level: 0.85 },
+        owned: { ...stillInput.owned, leftArm: owned, rightArm: owned, leftFingers: owned, rightFingers: owned },
+      })
+      const { left, right } = performer.diagnostics.gestureActivation
+      if (time < claimAt)
+        performed = Math.max(performed, left, right)
+      else if (owned > 0.5)
+        whileOwned = Math.max(whileOwned, left, right)
+    }
+    expect(performed).toBe(1)
+    expect(whileOwned).toBe(0)
   })
 
   it('reports a write deviation of 0 for a fully owned group and the written angle for a free one', () => {

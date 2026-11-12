@@ -153,15 +153,22 @@ export class MMDBodyPerformer {
     this.core.reset()
   }
 
-  /** Layers the `setPerformanceLayer` command turned off report weight 0, so the stack eases them out. */
+  /**
+   * Layers the `setPerformanceLayer` command turned off report weight 0, so the stack eases them out. The ramp times
+   * are read through, not copied: a layer may report a shorter exit when it yields (a clip claiming a gesture arm).
+   */
   private switchable(layer: PerformanceLayer): PerformanceLayer {
     return {
       id: layer.id,
       order: layer.order,
       mode: layer.mode,
       mask: layer.mask,
-      enterSeconds: layer.enterSeconds,
-      exitSeconds: layer.exitSeconds,
+      get enterSeconds() {
+        return layer.enterSeconds
+      },
+      get exitSeconds() {
+        return layer.exitSeconds
+      },
       plan: layer.plan?.bind(layer),
       step: (context) => {
         const output = layer.step(context)
