@@ -44,7 +44,7 @@ These decisions were taken on 2026-11-02 for M3 and recorded in `.omo/drafts/mmd
 
 ## Idle agency (2026-11-12)
 
-Outside the milestone order, the [idle agency ADR](adr/2026-11-12-idle-agency.md) added self-directed behaviour to every Natural renderer: idle activities and sleep in `motion-driver-natural`, and for MMD unasked clips ("Idle may use"), visits toward the cursor, and lingering after a walk. The M4 window-rect sensor would replace the cursor as the target of a visit. The work is on `luke/feat/idle-agency` and is not visually reviewed.
+Outside the milestone order, the [idle agency ADR](adr/2026-11-12-idle-agency.md) added self-directed behaviour to every Natural renderer: idle activities and sleep in `motion-driver-natural`, and for MMD unasked clips ("Idle may use"), visits toward the cursor, and lingering after a walk. On Live2D she can use the rig's own expressions unasked: pastimes such as a game, and what she sleeps with. The M4 window-rect sensor would replace the cursor as the target of a visit. The work is on `luke/feat/idle-agency` and is not visually reviewed.
 
 ## Open across milestones
 

@@ -165,6 +165,12 @@ The stage sends the scene an idle drive once a second through `setIdleDrive`: he
 
 Closed eyes ride on the blink factor while auto-blink is on; while it is off the adapter applies the controller's `idleLidFactor` alone, so sleep, a stretch, a yawn and a nod-off still close the eyes. `idlePlay` plays one behaviour by name; the Natural devtools page (Idle behaviours) sends it from one button per behaviour, for review. The shapes were tuned on a rendered rig on 2026-11-12; how the motion looks in play and the pacing remain a visual review. The [idle agency ADR](../../docs/ai/adr/2026-11-12-idle-agency.md) records the design.
 
+### Her own expressions
+
+A catalog entry can carry `idleUse`: `activity` makes it a pastime she picks up for a few minutes while nobody needs her, such as a game or a snack, and `sleep` keeps it on while she sleeps, such as a pillow. The entry editor of the expression panel offers the choice as "On her own". The default is never.
+
+The expression store holds what she picked as claims of their own (`idleActive`, set with `setIdleClaims`). They outrank the user's switches and yield to slot leases, so an expression the model asks for still shows. Changing a switch by hand drops them. The stage's `useIdleProps` (`@proj-airi/stage-ui`) decides when a pastime starts and ends and tells the situation, so the model knows what she was busy with. It needs the Natural driver and the Idle activities setting.
+
 ### Screen-aware attention
 
 While enabled, missing head or screen measurements retain the last valid placement rather than resetting the eased turn.

@@ -913,6 +913,46 @@ describe('expression claims', () => {
     expect(targets()).toEqual([])
   })
 
+  it('holds what she picks up on her own above the user\'s switches and below a slot lease', () => {
+    const { store, targets, row } = fixture()
+    store.toggle('hairA')
+    expect(store.setIdleClaims(['hairB', 'prop'])).toEqual(['hairB', 'prop'])
+    // Her pick wins the choose-one group over the user's switch, which stays claimed underneath.
+    expect(targets()).toEqual([{ id: 'hairB', weight: 1 }, { id: 'prop', weight: 1 }])
+    expect(row('hairB')).toMatchObject({ active: true, effective: true })
+    expect(row('hairA')).toMatchObject({ active: true, effective: false, overriddenBy: 'hairB' })
+    expect(store.settingsSnapshot.supportsIdleUse).toBe(true)
+
+    // An expression the model asks for still shows on top of hers.
+    store.applySlots([command('combo:base')], 0)
+    expect(row('hairB').effective).toBe(false)
+    store.releaseSlot('face', 1)
+
+    store.setIdleClaims([])
+    expect(targets()).toEqual([{ id: 'hairA', weight: 1 }])
+    expect(store.manualActive).toEqual(['hairA'])
+  })
+
+  it('puts her own things away when the user changes her look by hand, and never claims what the user switched on', () => {
+    const { store, targets } = fixture()
+    store.setIdleClaims(['prop', 'blush'])
+    // The entry shows as on, so the switch takes it away instead of pinning it.
+    store.applySettingsCommand({ type: 'toggle', id: 'prop' })
+    expect(store.idleActive).toEqual([])
+    expect(store.manualActive).toEqual([])
+    expect(targets()).toEqual([])
+
+    store.setIdleClaims(['prop'])
+    store.applySettingsCommand({ type: 'set-active', id: 'blush', active: true })
+    expect(store.idleActive).toEqual([])
+    expect(store.manualActive).toEqual(['blush'])
+
+    expect(store.setIdleClaims(['blush', 'missing'])).toEqual([])
+    store.setIdleClaims(['prop'])
+    store.resetAll()
+    expect(store.idleActive).toEqual([])
+  })
+
   it('switching on an entry releases a masking slot combo before reconciliation', () => {
     const { store, row, setTargets } = fixture()
     store.applySlots([command('combo:conflicting'), command('combo:conflicting', 'effect')], 0)

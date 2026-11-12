@@ -30,6 +30,8 @@ export interface Live2DExpressionSettingsSnapshot {
   activeIds: string[]
   restIds: string[]
   freeParameters: FreeParameter[]
+  /** This renderer lets her use entries on her own, so the panel offers the choice. The store always sets it. */
+  supportsIdleUse?: true
 }
 
 export interface ExpressionClaim {
@@ -103,6 +105,10 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
   // Current non-transient targets, including rest entries until manually toggled off.
   const manualActive = ref<string[]>([])
   const manualSeq = ref<Record<string, number>>({})
+  // Entries she holds on her own: a pastime, and what she takes to sleep. They outrank the user's switches and yield
+  // to slot leases, so a reaction the model asks for still shows.
+  const idleActive = ref<string[]>([])
+  const idleSeq = ref<Record<string, number>>({})
   let claimSeq = 0
   const composer = markRaw(new ExpressionComposer())
   const derived = ref<CatalogEntry[]>([])
@@ -132,17 +138,19 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
     return {
       rest: restSet.value.includes(id) && manualActive.value.includes(id),
       manual: manualActive.value.includes(id),
+      idle: idleActive.value.includes(id),
       slot: slotNames.some(slot => leases.value[slot]?.expressionId === id),
     }
   }
 
   function isActive(id: string) {
     const owners = ownersOf(id)
-    return owners.rest || owners.manual || owners.slot
+    return owners.rest || owners.manual || owners.idle || owners.slot
   }
 
   const claims = computed<ExpressionClaim[]>(() => [
     ...manualActive.value.map(expressionId => ({ expressionId, layer: 0, seq: manualSeq.value[expressionId] })),
+    ...idleActive.value.map(expressionId => ({ expressionId, layer: 0.5, seq: idleSeq.value[expressionId] })),
     ...[...new Set(slotNames.flatMap(slot => leases.value[slot] ? [leases.value[slot]!.expressionId] : []))]
       .map(expressionId => ({ expressionId, layer: 1, seq: Math.max(...slotNames.flatMap(slot => leases.value[slot]?.expressionId === expressionId ? [leases.value[slot]!.claimSequence] : [])) })),
   ])
@@ -200,6 +208,7 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
         usesOverwrite: expandEntry(entry, catalog.value).some(member => definitions.value.find(def => def.id === member.expressionId)?.parameters.some(parameter => parameter.blend === 'Overwrite')),
       })),
       freeParameters: freeParameters.value.filter(parameter => !validCustoms.value.some(custom => custom.parameterId === parameter.id)).map(parameter => ({ ...parameter })),
+      supportsIdleUse: true,
     }
   })
 
@@ -225,6 +234,7 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
     manualActive.value = manualActive.value.filter(id => ids.has(id))
     manualSeq.value = Object.fromEntries(Object.entries(manualSeq.value).filter(([id]) => ids.has(id)))
     restSuppressed.value = restSuppressed.value.filter(id => ids.has(id))
+    idleActive.value = idleActive.value.filter(id => ids.has(id))
     for (const slot of slotNames) {
       if (leases.value[slot] && !ids.has(leases.value[slot]!.expressionId))
         leases.value[slot] = null
@@ -352,11 +362,35 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
     resetAll()
   }
 
+  /**
+   * Sets the entries she holds on her own, replacing the previous set, and returns what she holds now. Unknown
+   * entries are left out, and so are entries the user already switched on: those stay the user's.
+   */
+  function setIdleClaims(ids: readonly string[], now = performance.now() / 1000): string[] {
+    const wanted = [...new Set(ids.map(id => resolveAlias(id, catalog.value)))]
+      .filter(id => catalog.value.some(entry => entry.id === id) && !manualActive.value.includes(id))
+    if (wanted.length === idleActive.value.length && wanted.every(id => idleActive.value.includes(id)))
+      return idleActive.value
+    idleSeq.value = Object.fromEntries(wanted.map(id => [id, idleSeq.value[id] ?? ++claimSeq]))
+    idleActive.value = wanted
+    reconcile(now)
+    return wanted
+  }
+
+  /** The user changed her look by hand, so she puts her own things away; whoever set them sees the empty list. */
+  function dropIdleClaims() {
+    if (idleActive.value.length === 0)
+      return
+    idleActive.value = []
+    idleSeq.value = {}
+  }
+
   function activate(id: string, now = performance.now() / 1000) {
     id = resolveAlias(id, catalog.value)
     const entry = catalog.value.find(entry => entry.id === id)
     if (!entry)
       return
+    dropIdleClaims()
     if (entry.kind !== 'combo' && entry.group !== null) {
       for (const other of catalog.value) {
         if (other.id !== id && other.kind !== 'combo' && other.group === entry.group && manualActive.value.includes(other.id)) {
@@ -391,13 +425,15 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
   }
 
   function deactivate(id: string, now = performance.now() / 1000) {
+    dropIdleClaims()
     removeBaseClaim(resolveAlias(id, catalog.value))
     reconcile(now)
   }
 
   function toggle(id: string) {
     id = resolveAlias(id, catalog.value)
-    if (manualActive.value.includes(id))
+    // An entry she holds on her own shows as on, so toggling it takes it away.
+    if (manualActive.value.includes(id) || idleActive.value.includes(id))
       deactivate(id)
     else
       activate(id)
@@ -419,6 +455,7 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
 
   function resetAll() {
     restSuppressed.value = []
+    dropIdleClaims()
     manualActive.value = [...restSet.value]
     manualSeq.value = Object.fromEntries(restSet.value.map(id => [id, ++claimSeq]))
     leases.value = emptyLeases()
@@ -434,6 +471,8 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
     restSet.value = []
     manualActive.value = []
     manualSeq.value = {}
+    idleActive.value = []
+    idleSeq.value = {}
     claimSeq = 0
     restSuppressed.value = []
     leases.value = emptyLeases()
@@ -472,5 +511,5 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
     }
   }
 
-  return { definitions, modelId, restSet, restSuppressed, manualActive, manualSeq, leases, composer, derived, curated, catalog, llmEligibleEntries, autoEligibleEntries, settingsSnapshot, ownersOf, reconcile, registerDefinitions, rederive, activate, activateFromSlot, releaseSlot, applySlots, onSpeech, setMuted, setSlotSettings, tickLeases, deactivate, toggle, saveDefaults, resetAll, updateEntry, resetEntry, dispose, applySettingsCommand }
+  return { definitions, modelId, restSet, restSuppressed, manualActive, manualSeq, idleActive, setIdleClaims, leases, composer, derived, curated, catalog, llmEligibleEntries, autoEligibleEntries, settingsSnapshot, ownersOf, reconcile, registerDefinitions, rederive, activate, activateFromSlot, releaseSlot, applySlots, onSpeech, setMuted, setSlotSettings, tickLeases, deactivate, toggle, saveDefaults, resetAll, updateEntry, resetEntry, dispose, applySettingsCommand }
 })

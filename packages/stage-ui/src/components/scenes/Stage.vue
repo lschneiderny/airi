@@ -3,6 +3,7 @@ import type { ChatStreamEventContext, SpeechClip, SpeechClipEnd } from '@proj-ai
 import type { Live2DLipSync, Live2DLipSyncOptions } from '@proj-airi/model-driver-lipsync'
 import type { Profile } from '@proj-airi/model-driver-lipsync/shared/wlipsync'
 import type { NaturalTouchGesture } from '@proj-airi/motion-driver-natural/frame-types'
+import type { IdleBehaviourReport } from '@proj-airi/motion-driver-natural/idle-activities'
 import type { StreamingControlLook } from '@proj-airi/pipelines-audio'
 import type { CaptionChannelEvent, PresenceBubbleState } from '@proj-airi/stage-shared'
 import type { PerformanceCueAttention, PerformanceInputs, PerformanceState, ResolverMemory } from '@proj-airi/stage-shared/performance-state'
@@ -26,7 +27,7 @@ import { isMotionQaBridgeEnabled } from '@proj-airi/stage-shared/motion-scenario
 import { initialResolverMemory, resolvePerformanceState } from '@proj-airi/stage-shared/performance-state'
 import { TOUCH_TOPIC_KEY } from '@proj-airi/stage-shared/situation'
 import { useDesktopActivityStore } from '@proj-airi/stage-shared/stores/desktop-activity'
-import { defaultLive2DMotionControlDynamics, Live2DScene, useLive2DMotionControl, useLive2dParams, useSettingsLive2d } from '@proj-airi/stage-ui-live2d'
+import { defaultLive2DMotionControlDynamics, Live2DScene, useLive2DMotionControl, useLive2DNaturalSettings, useLive2dParams, useSettingsLive2d } from '@proj-airi/stage-ui-live2d'
 import { useMMD } from '@proj-airi/stage-ui-mmd/stores'
 import { SpineScene } from '@proj-airi/stage-ui-spine'
 import { TachieScene } from '@proj-airi/stage-ui-tachie'
@@ -42,6 +43,7 @@ import { computed, defineAsyncComponent, getCurrentScope, nextTick, onUnmounted,
 
 import StageRenderError from './stage-render-error.vue'
 
+import { useIdleProps } from '../../composables/performance/use-idle-props'
 import { useStagePerformanceConductor } from '../../composables/performance/use-stage-performance-conductor'
 // import { useDuckDb } from '../../composables/use-duck-db'
 import { Emotion, EMOTION_VRMExpressionName_value, EmotionThinkMotionName } from '../../constants/emotions'
@@ -603,6 +605,20 @@ function resolvePerformance(): PerformanceState {
   return resolution.state
 }
 
+// Pastimes and sleep props from the model's own expressions; only the Live2D expression store supports them.
+const live2dNaturalSettings = useLive2DNaturalSettings()
+const idleProps = useIdleProps({
+  backend: () => stageModelRenderer.value === 'live2d' ? live2dExpressionBackend : undefined,
+  enabled: () => live2dMotionDriver.value === 'natural' && live2dNaturalSettings.document.idleActivities && !props.paused,
+  performance: () => performance.value,
+  report: entry => stageSelf.report(entry),
+})
+/** A pastime ends before the sleep that follows it is reported, so the situation closes them in order. */
+function onLive2dIdle(report: IdleBehaviourReport) {
+  idleProps.onIdleBehaviour(report)
+  stageSelf.idle(report)
+}
+
 function updatePerformance() {
   const next = resolvePerformance()
   const current = performance.value
@@ -1074,7 +1090,7 @@ defineExpose({
         :live2d-render-scale="live2dRenderScale"
         @error="handleStageRenderError"
         @touch="onTouch"
-        @idle="stageSelf.idle"
+        @idle="onLive2dIdle"
       />
       <ThreeScene
         v-if="stageModelRenderer === 'vrm' && showStage"

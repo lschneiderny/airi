@@ -36,6 +36,8 @@ export interface ExpressionPanelSnapshot {
   restIds: string[]
   /** Present only when the renderer supports custom switches. */
   freeParameters?: ExpressionPanelFreeParameter[]
+  /** Set when the renderer lets the character use entries on her own; the entry editor then offers the choice. */
+  supportsIdleUse?: boolean
 }
 
 export type CreateComboInput = Pick<ComboDocument, 'label' | 'members'> & Partial<Pick<ComboDocument, 'mappings' | 'area'>> & { emotion?: ComboDocument['mappings'][number]['emotion'] }

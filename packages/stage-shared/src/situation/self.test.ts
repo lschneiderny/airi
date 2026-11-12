@@ -112,6 +112,21 @@ describe('selfLine', () => {
     expect(selfLine(state, T0 + 125 * MIN, 'Luke')).toBeNull()
   })
 
+  it('tells a pastime with its label and its length, and keeps it through a short activity', () => {
+    const playing = fold([
+      { kind: 'self', activity: 'prop', phase: 'start', label: 'game', atMs: T0 },
+      { kind: 'self', activity: 'yawn', phase: 'start', atMs: T0 + 2 * MIN },
+      { kind: 'self', activity: 'yawn', phase: 'end', atMs: T0 + 2 * MIN + 5 * SEC },
+    ])
+    expect(playing.self.current).toEqual({ activity: 'prop', label: 'game', sinceMs: T0 })
+    expect(selfLine(playing, T0 + 3 * MIN, 'Luke')).toBe('You are busy with your "game", for about 3 min now, and you yawned just now.')
+
+    const done = fold([{ kind: 'self', activity: 'prop', phase: 'end', label: 'game', atMs: T0 + 4 * MIN }], playing)
+    expect(done.self.current).toBeNull()
+    expect(selfLine(done, T0 + 20 * MIN, 'Luke')).toBe('You were busy with your "game" for about 4 min 16 min ago.')
+    expect(selfLine(fold([{ kind: 'self', activity: 'prop', phase: 'end', atMs: T0 }]), T0 + SEC, 'Luke')).toBe('You were busy with something of your own just now.')
+  })
+
   it('tells what came before the activity in progress', () => {
     const state = fold([
       { kind: 'self', activity: 'held-back', phase: 'end', atMs: T0 },

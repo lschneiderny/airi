@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ExpressionArea, ExpressionKind } from '@proj-airi/stage-shared/expression-performance'
+import type { ExpressionArea, ExpressionKind, IdleUse } from '@proj-airi/stage-shared/expression-performance'
 
 import type { ExpressionPanelCommand, ExpressionPanelCustomCommand, ExpressionPanelEntry } from './source'
 import type { DraftMapping } from './trigger-editor.vue'
@@ -20,6 +20,8 @@ const props = defineProps<{
   groups: { name: string, labels: string[] }[]
   /** Resolves another entry's label by id, for hidden duplicates and the overriding entry; defaults to the id. */
   labelOf?: (id: string) => string
+  /** The renderer lets the character use entries on her own, so the editor offers the choice. */
+  idleUse?: boolean
 }>()
 const emit = defineEmits<{
   (e: 'command', command: ExpressionPanelCommand | ExpressionPanelCustomCommand): void
@@ -30,6 +32,7 @@ const { t } = useI18n()
 const kinds: ExpressionKind[] = ['face', 'effect', 'outfit', 'prop', 'system']
 const llmKinds: ExpressionKind[] = ['face', 'effect', 'prop']
 const areas: ExpressionArea[] = ['whole-look', 'eyes', 'mouth', 'cheeks', 'effects', 'outfit-hair', 'props', 'hidden']
+const idleUses: IdleUse[] = ['never', 'activity', 'sleep']
 const noGroup = '__none__'
 const noArea = '__none__'
 
@@ -48,6 +51,10 @@ const groupOptions = computed(() => [
   { value: noGroup, label: t('settings.live2d.expressions.group-none') },
   ...props.groups.map(group => ({ value: group.name, label: groupDisplayName(group.labels) })),
 ])
+const idleUseOptions = computed(() => idleUses.map(use => ({ value: use, label: t(`settings.live2d.expressions.idle-use.options.${use}`) })))
+// A system entry is never hers to use, whatever was stored for it.
+const canUseIdle = computed(() => props.idleUse === true && props.entry.kind !== 'system' && props.entry.inverted !== true)
+const idleUseTag = computed(() => canUseIdle.value && (props.entry.idleUse === 'activity' || props.entry.idleUse === 'sleep') ? t(`settings.live2d.expressions.idle-use.tags.${props.entry.idleUse}`) : '')
 const mappedEmotions = computed(() => [...new Set(props.entry.mappings.map(mapping => mapping.emotion))]
   .map(emotion => t(`settings.emotions.${emotion}`))
   .join(', '))
@@ -65,6 +72,7 @@ const draftGroup = ref(noGroup)
 const draftArea = ref<string>(noArea)
 const initialArea = ref<string>(noArea)
 const draftInverted = ref(false)
+const draftIdleUse = ref<IdleUse>('never')
 const draftMappings = ref<DraftMapping[]>([])
 
 function loadDraft() {
@@ -74,6 +82,7 @@ function loadDraft() {
   draftArea.value = props.entry.area ?? noArea
   initialArea.value = draftArea.value
   draftInverted.value = props.entry.inverted ?? false
+  draftIdleUse.value = props.entry.idleUse ?? 'never'
   draftMappings.value = props.entry.mappings.map(mapping => ({ emotion: mapping.emotion, weight: mapping.weight, minBand: mapping.minBand }))
   baseline.value = JSON.stringify(props.entry)
 }
@@ -123,8 +132,10 @@ function apply() {
   const areaChanged = draftArea.value !== initialArea.value
   const area = areaChanged && draftArea.value !== noArea ? { area: draftArea.value as ExpressionArea } : {}
   const clearArea = areaChanged && draftArea.value === noArea ? { area: null } : {}
+  // Only a changed choice is sent, so saving never stores "never" for an entry that had no choice.
+  const idleUse = props.idleUse === true && draftIdleUse.value !== (props.entry.idleUse ?? 'never') ? { idleUse: draftIdleUse.value } : {}
   if (isCustom.value) {
-    emit('command', { type: 'update-custom', id: props.entry.id, patch: { label, kind: draftKind.value, mappings, ...area, ...clearArea } })
+    emit('command', { type: 'update-custom', id: props.entry.id, patch: { label, kind: draftKind.value, mappings, ...area, ...clearArea, ...idleUse } })
   }
   else {
     emit('command', {
@@ -139,6 +150,7 @@ function apply() {
         mappings,
         ...area,
         ...clearArea,
+        ...idleUse,
       },
     })
   }
@@ -176,6 +188,10 @@ function resetEntry() {
           v-if="mappedEmotions"
           :class="['break-words', 'text-xs text-neutral-500 dark:text-neutral-400']"
         >{{ mappedEmotions }}</span>
+        <span
+          v-if="idleUseTag"
+          :class="['break-words', 'text-xs text-neutral-500 dark:text-neutral-400']"
+        >{{ idleUseTag }}</span>
         <span
           v-if="entry.overriddenBy !== null"
           :class="['break-words', 'text-xs text-amber-700 dark:text-amber-300']"
@@ -276,6 +292,11 @@ function resetEntry() {
         <label :class="['flex flex-col gap-1', 'text-xs text-neutral-500 dark:text-neutral-400']">
           <span>{{ t('settings.live2d.expressions.fields.area') }}</span>
           <Select v-model="draftArea" :options="areaOptions" />
+        </label>
+        <label v-if="canUseIdle" :class="['flex flex-col gap-1', 'text-xs text-neutral-500 dark:text-neutral-400']">
+          <span>{{ t('settings.live2d.expressions.fields.idle-use') }}</span>
+          <Select v-model="draftIdleUse" :options="idleUseOptions" />
+          <span>{{ t('settings.live2d.expressions.fields.idle-use-description') }}</span>
         </label>
       </div>
 

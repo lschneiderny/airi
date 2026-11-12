@@ -90,6 +90,17 @@ Both cues cost no model call. They turn the most common outcome of the gate, a s
 - **Lingering.** After a wander or a visit she stays for 45 to 150 s before she strolls home. The earlier 20 s return read as mechanical.
 - **Body reports.** The scene reports sitting, sleeping, a wander, a visit, the walk home and an unasked clip as self observations, with the clip's label.
 
+### Her own expressions on Live2D (`stage-shared/expression-performance`, `stage-ui-live2d`, `stage-ui`)
+
+A Live2D rig cannot walk or play a clip, but most VTuber rigs ship switches for exactly the things a person does alone: a game controller, a snack, a pillow, a sleep bubble. She may now use them unasked, which is the Live2D counterpart of the unasked clips above.
+
+- **Curation.** A catalog entry gained `idleUse`: `never` (the default, also when absent), `activity`, or `sleep`. The entry editor of the expression panel offers it as "On her own" when the snapshot sets `supportsIdleUse`, which only the Live2D store does. Nothing is used until the user allows it, because a switch's meaning is rig specific. A reversed switch, a hidden duplicate and a system entry never qualify. Combos have no `idleUse` yet.
+- **Pastimes.** `decideIdleProp` (`idle-props.ts`) is a pure scheduler with the hazard design of the idle layer: a mean gap of 6 minutes of free time, a rest of 2 minutes after every pastime and after the stage opens, and a hold of 90 to 300 s. The same pastime is not picked twice in a row, nor within 15 minutes, while another is offered. She is free while the mode is `idle` or `watching`, the user is present and she is awake; a pastime ends the moment she is not, so she puts it away to talk and before she sleeps.
+- **Sleep entries.** Entries marked `sleep` come on 5 s after she starts to fall asleep, when her eyes are nearly shut, and go off the moment she wakes. They follow the sleep report of the idle layer, so a sleep played from the devtools page shows them too.
+- **A claim layer of her own.** The Live2D expression store holds her entries as claims at layer 0.5: above the user's switches at layer 0, so her pick wins a choose-one group for a while, and below the slot leases at layer 1, so an expression the model asks for still shows. `setIdleClaims` replaces the set and never claims an entry the user switched on. When the user changes her look by hand the store drops her claims; `useIdleProps` (`stage-ui`) sees the pastime gone and ends it. An entry she holds shows as on in the panel, and its switch takes it away.
+- **The model is told.** A pastime is reported as the self activity `prop` with the entry's label: "You are busy with your "game", for about 3 min now." It is long-lived like a sleep, so a yawn during it does not end it, and it stays worth telling for 30 minutes. What she sleeps with is part of the sleep and gets no line of its own.
+- **Conditions.** Both need the Natural driver and the Idle activities setting, like every other self-directed behaviour.
+
 ## Consequences
 
 - **The idle motion users see changes.** With the setting on, a liveliness measurement of the running app differs from the gate profile, which pins the setting off. Naturalness of each activity is unproven until Luke reviews it on screen. The shapes were tuned on one rendered Live2D rig from still frames and parameter traces (see Validation).
@@ -98,7 +109,9 @@ Both cues cost no model call. They turn the most common outcome of the gate, a s
 - **Two stages report twice.** When two windows render a stage, the leader folds both sets of reports and the newer one wins.
 - **Prompt size.** The block can be one line and 100 characters longer.
 - **Reach-out cues depend on the active session.** A turn in another session shows no cue.
-- **Stored curation gained a field.** `curationFor` reads a record saved before `idleMayUse` existed at its default, so no migration runs.
+- **Stored curation gained a field.** `curationFor` reads a record saved before `idleMayUse` existed at its default, so no migration runs. The expression catalog document gained the optional `idleUse`, and an absent value means `never`.
+- **A pastime can hide the user's switch for a few minutes.** Her pick outranks a manual switch of the same choose-one group until she puts it away. Toggling any switch ends it at once.
+- **The MMD expression panel offers no "On her own" choice.** Its store does not set `supportsIdleUse`; MMD has unasked clips instead.
 
 ## Alternatives
 
@@ -106,6 +119,8 @@ Both cues cost no model call. They turn the most common outcome of the gate, a s
 - **Make activities gate topics.** Speaking about her own yawn is idle chatter with extra steps. Activities inform a turn that something else started.
 - **Imported motion files for Live2D.** Motion groups differ per rig and most rigs ship none for idle. Procedural shapes on the Natural channels work on every rig and on MMD.
 - **A separate sleep mode in the performance resolver.** `away` already exists as an overlay. Sleep is one behaviour of the idle layer that reads it.
+- **Guessing pastimes from entry names.** A name such as "game" or "pillow" suggests a use, but a wrong guess would switch an outfit or a watermark on by itself. The user chooses per entry.
+- **Holding a pastime through a slot lease.** A lease expires on a hold cap and belongs to a turn. A pastime lasts minutes and belongs to nobody's turn, so it is a claim layer of its own.
 - **Arming the refractory for unasked clips.** The model would then be refused ("She can do that again in 60 s") for a dance it never asked for.
 
 ## Validation
@@ -117,11 +132,14 @@ Both cues cost no model call. They turn the most common outcome of the gate, a s
 - Rendered Live2D pass, 2026-11-12, bear Pajama rig on macOS: every behaviour was played through `idlePlay` in the running app and read from frame sheets at its peaks and from post-physics parameter traces. The first shapes for stretch, yawn, check-in, peer, zone-out, sway, about-to-speak and let-go were too small to tell apart from the base idle motion, and were enlarged until each reads in a still frame. Look-around was kept; sleep and nod-off were deepened. Frame sheets prove that a pose reads, not that the motion between poses looks natural. That stays Luke's visual call, as does the pacing.
 - Continuity, 2026-11-12: a per-step speed measurement through the full controller found that look-around and nod-off switched the posture amplitude in one step, which moved the head by up to 0.27 normalized units (about 8 degrees) in a single 120 Hz step at their start and end. Both now ease the calm in and out over 0.6 s. A test plays all eleven behaviours to their end and interrupted at 2 s, and fails when any head or body channel moves faster than 6 units per second; the fastest intended move, the head jerk of a nod-off, measures about 4.
 - Pacing, 2026-11-12, three simulated hours per condition through the full controller at a neutral mood: 59 behaviours per hour while the user is inactive and 44 while they work, with a behaviour in progress 7 to 13 % of the time and a longest quiet stretch of 4 to 7 minutes. At 1 am while the user works the mix moves to yawns, nod-offs and zoning out (41 per hour). These numbers describe the scheduler; whether the pace feels right on screen is Luke's call.
+- Her own expressions: `idle-props.test.ts` covers spacing, hold lengths, the rest, repeats, interruption, a withdrawn entry, a paused stage and replay. `use-idle-props.test.ts` covers the stage side: reports, being spoken to, a manual change, sleep entries and their delay, the off switch, and disposal. The Live2D store tests cover the claim layer against manual switches and slot leases. On the bear Pajama rig the game entry showed the controller in her hands, and with the user away from the machine she fell asleep on her own with the pillow and the sleep bubble on, which a played sleep cleared at its end. A full pastime cycle on the scheduler's own timing was not watched in the running app.
 - MMD shares the shapes and has had no rendered pass; it is tuned separately.
 
 ## Follow-ups
 
 - Visual review and tuning of every shape, the pacing, and the hold lengths.
+- `idleUse` for combos, so one pastime can switch several entries, and a gaze toward what she holds.
+- A pace that follows the drive for pastimes, as it does for activities.
 - A liveliness gate profile with idle activities on, once the shapes are accepted.
 - The M4 window-rect sensor as the target of a visit and of the peer activity, in place of the cursor and the fixed screen point.
 - A beat estimate for sway. Today its period is drawn between 1.7 and 2.3 s and ignores the music.

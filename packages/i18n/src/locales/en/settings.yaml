@@ -304,6 +304,14 @@ live2d:
     save-default: Save expression defaults
     reset: Reset all expressions
     llm-exposed: Let the AI use it
+    idle-use:
+      options:
+        never: Never
+        activity: As a pastime
+        sleep: While she sleeps
+      tags:
+        activity: She may pick this up on her own
+        sleep: On while she sleeps
     edit: Edit
     close-editor: Close
     apply: Apply
@@ -372,6 +380,8 @@ live2d:
       mappings: Emotion mappings
       inverted: Switch shows the opposite
       inverted-description: Use this when turning the expression on hides something, such as a coat.
+      idle-use: On her own
+      idle-use-description: A pastime is something she picks up for a few minutes while nobody needs her, such as a game or a snack, and puts away when you talk to her. A sleep entry stays on for as long as she sleeps. Both need the Natural motion driver with Idle activities on.
       emotion: Emotion
       weight: Weight
       min-band: Minimum strength
