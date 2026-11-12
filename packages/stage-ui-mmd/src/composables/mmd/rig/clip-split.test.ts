@@ -3,7 +3,10 @@ import type { ClipMaskBones } from '@proj-airi/motion-driver-humanoid/clip-mask'
 import { AnimationClip, NumberKeyframeTrack, QuaternionKeyframeTrack, VectorKeyframeTrack } from 'three'
 import { describe, expect, it } from 'vitest'
 
+import { mmdClipMaskBones } from './clip-mask'
 import { partitionClipByBones, splitClipByLayer } from './clip-split'
+import { readMMDRigProfile } from './rig-profile'
+import { carlottaRig, ellenRig, toPmxRigSource } from './rig-profile.fixtures'
 
 const bones: ClipMaskBones = {
   hips: 'センター',
@@ -54,6 +57,19 @@ describe('splitClipByLayer', () => {
     const { upper, lower } = splitClipByLayer(clip, bones, new Set(['左腕']))
     expect(names(upper)).toEqual(['.bones[左腕].quaternion'])
     expect(lower.tracks).toHaveLength(0)
+  })
+})
+
+describe('splitClipByLayer on audited spine chains', () => {
+  it.each([
+    ['上半身 → 上半身3 → 上半身2 → 首', carlottaRig, '上半身3'],
+    ['上半身 → 上半身1 → 上半身2 → 首', ellenRig, '上半身1'],
+  ] as const)('puts every trunk track of the chain %s in upper and keeps hip and leg tracks in lower', (_chain, fixture, middle) => {
+    const rig = readMMDRigProfile(toPmxRigSource(fixture))
+    const clip = new AnimationClip('trunk', 1, ['上半身', middle, '上半身2', 'センター', '下半身', '左足', '左ひざ', '左足首'].map(quat))
+    const { upper, lower } = splitClipByLayer(clip, mmdClipMaskBones(rig))
+    expect(names(upper)).toEqual(['上半身', middle, '上半身2'].map(bone => `.bones[${bone}].quaternion`))
+    expect(names(lower)).toEqual(['センター', '下半身', '左足', '左ひざ', '左足首'].map(bone => `.bones[${bone}].quaternion`))
   })
 })
 

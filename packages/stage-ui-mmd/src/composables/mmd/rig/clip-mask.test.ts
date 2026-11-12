@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 
 import { buildMMDClipMask, mmdClipTrackSummaries } from './clip-mask'
 import { readMMDRigProfile } from './rig-profile'
+import { carlottaRig, ellenRig, toPmxRigSource } from './rig-profile.fixtures'
 
 const bone = (name: string, parent: number, position: [number, number, number] = [0, 0, 0]) => ({ name, position, parentBoneIndex: parent })
 const rig = readMMDRigProfile({
@@ -51,5 +52,13 @@ describe('mmd clip ownership masks', () => {
     ]), rig)
     expect(Object.entries(mask.groups).filter(([, owned]) => owned).map(([group]) => group).sort())
       .toEqual(['leftArm', 'leftFingers', 'leftLegIk', 'root'])
+  })
+
+  it.each([
+    ['上半身 → 上半身3 → 上半身2 → 首', carlottaRig, '上半身3'],
+    ['上半身 → 上半身1 → 上半身2 → 首', ellenRig, '上半身1'],
+  ] as const)('gives a clip that moves only the unnamed middle link of the chain %s the upper body', (_chain, fixture, middle) => {
+    const mask = buildMMDClipMask(new AnimationClip('lean', 2, [rotationTrack(middle, [0, 1])]), readMMDRigProfile(toPmxRigSource(fixture)))
+    expect(Object.entries(mask.groups).filter(([, owned]) => owned).map(([group]) => group)).toEqual(['upperBody'])
   })
 })

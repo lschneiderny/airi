@@ -92,6 +92,12 @@ describe('buildClipBoneMask', () => {
     expect(head.groups.upperBody).toBe(false)
   })
 
+  it('counts caller-listed upper-body helpers toward upperBody', () => {
+    const chain = { ...bones, helpers: { ...bones.helpers, upperBody: ['上半身', '上半身1', '上半身2'] } }
+    expect(buildClipBoneMask([quat('上半身1', [0, 20])], chain).groups.upperBody).toBe(true)
+    expect(buildClipBoneMask([quat('上半身1', [0, 20])], bones).groups.upperBody).toBe(false)
+  })
+
   it('ignores tracks for bones outside the rig map', () => {
     const mask = buildClipBoneMask([quat('ボーン不明', [0, 90])], bones)
     expect(mask.groups.leftArm).toBe(false)

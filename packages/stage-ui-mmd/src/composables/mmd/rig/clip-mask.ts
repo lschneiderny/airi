@@ -9,12 +9,20 @@ import { MMD_LOWER_BODY_CANDIDATES } from './bone-map'
 
 const BONE_TRACK = /^\.bones\[(.+)\]\.(quaternion|position)$/
 
-/** The rig's bone names for the pure mask builder: humanoid and finger bones, plus the twist and shoulder helpers. */
-export function mmdClipMaskBones(rig: Pick<MMDRigProfile, 'bones' | 'fingerBones' | 'armHelpers'>): ClipMaskBones {
+/**
+ * The rig's bone names for the pure mask builder: humanoid and finger bones, the twist and shoulder helpers, and every
+ * `spineChain` link as upper body, so a trunk link is grouped by its place on the chain rather than by its name.
+ */
+export function mmdClipMaskBones(rig: Pick<MMDRigProfile, 'bones' | 'fingerBones' | 'armHelpers' | 'spineChain'>): ClipMaskBones {
   return {
     ...rig.bones,
     ...rig.fingerBones,
-    helpers: { leftArm: rig.armHelpers.left, rightArm: rig.armHelpers.right, lowerBody: MMD_LOWER_BODY_CANDIDATES },
+    helpers: {
+      leftArm: rig.armHelpers.left,
+      rightArm: rig.armHelpers.right,
+      lowerBody: MMD_LOWER_BODY_CANDIDATES,
+      upperBody: rig.spineChain.map(link => link.name),
+    },
   }
 }
 
@@ -30,6 +38,6 @@ export function mmdClipTrackSummaries(clip: Pick<AnimationClip, 'tracks'>): Clip
 }
 
 /** Builds the clip ownership mask once at clip load. Tracks that key only identity own nothing. */
-export function buildMMDClipMask(clip: Pick<AnimationClip, 'tracks'>, rig: Pick<MMDRigProfile, 'bones' | 'fingerBones' | 'armHelpers'>): ClipBoneMask {
+export function buildMMDClipMask(clip: Pick<AnimationClip, 'tracks'>, rig: Pick<MMDRigProfile, 'bones' | 'fingerBones' | 'armHelpers' | 'spineChain'>): ClipBoneMask {
   return buildClipBoneMask(mmdClipTrackSummaries(clip), mmdClipMaskBones(rig))
 }

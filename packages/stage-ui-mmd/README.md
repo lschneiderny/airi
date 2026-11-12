@@ -563,7 +563,9 @@ the chest. Carlotta and Chisa parent `上半身2` to `上半身3`, so their
 `上半身3` is a middle chain link like Ellen's and Vivian's `上半身1`, and
 `upperChest` is missing on all four. The trace and the QA reports then measure
 the neck and shoulders against `上半身2`, their true parent. Trunk motion reads
-`spineChain`, not these names.
+`spineChain`, not these names, and so do clip masks: `mmdClipMaskBones` lists
+every `spineChain` link as `upperBody`, so a clip track on a middle link such
+as `上半身1` or `上半身3` plays on the upper layer and owns the upper body.
 
 The profile also reports structural facts for body adapters:
 

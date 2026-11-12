@@ -20,9 +20,13 @@ export interface ClipBoneMask {
   readonly groups: Readonly<Record<ClipMaskGroup, boolean>>
 }
 
-/** Canonical bone to rig bone name map, plus extra rig bones (MMD twist and shoulder-P bones) per group. */
+/**
+ * Canonical bone to rig bone name map, plus extra rig bones per group: MMD twist and shoulder-P bones for the arms, FK
+ * deform legs for `lowerBody`, and the rig's whole parent-ordered spine chain for `upperBody`, so a trunk link without a
+ * humanoid name (an MMD 上半身1, or a 上半身3 below 上半身2) belongs to the upper body by its place on the chain.
+ */
 export type ClipMaskBones = Readonly<Partial<Record<HumanoidBoneName | HumanoidFingerBoneName, string>>> & {
-  readonly helpers?: Readonly<Partial<Record<'leftArm' | 'rightArm' | 'leftFingers' | 'rightFingers' | 'lowerBody', readonly string[]>>>
+  readonly helpers?: Readonly<Partial<Record<'leftArm' | 'rightArm' | 'leftFingers' | 'rightFingers' | 'lowerBody' | 'upperBody', readonly string[]>>>
 }
 
 const rootNames = new Set(['センター', 'グルーブ', '全ての親', 'center', 'groove', 'master'])
@@ -85,6 +89,8 @@ function groupNames(bones: ClipMaskBones) {
   }
   for (const bone of ['spine', 'chest', 'upperChest'] as const)
     add('upperBody', bones[bone])
+  for (const name of bones.helpers?.upperBody ?? [])
+    add('upperBody', name)
   for (const bone of ['neck', 'head'] as const)
     add('head', bones[bone])
   for (const bone of ['hips', 'leftUpperLeg', 'rightUpperLeg', 'leftLowerLeg', 'rightLowerLeg', 'leftFoot', 'rightFoot'] as const)
