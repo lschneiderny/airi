@@ -42,7 +42,7 @@ function trunkSway(degrees: number, count: number, spacing = 2) {
  * `earlyMove` adds an arm movement without a trunk turn whose apex lands 50 ms before each peak, nearer the peak than
  * the stroke's own apex.
  */
-function speaker(options: { apexOffset?: number, order?: 'proximal' | 'distal', markerOffset?: number, still?: boolean, torso?: boolean, silent?: number, idleSway?: number, strokeSeconds?: number, strokeSize?: number, silentTrunk?: number, silentSpacing?: number, earlyMove?: boolean } = {}) {
+function speaker(options: { apexOffset?: number, order?: 'proximal' | 'distal', markerOffset?: number, still?: boolean, torso?: boolean, silent?: number, idleSway?: number, strokeSeconds?: number, strokeSize?: number, silentTrunk?: number, silentSpacing?: number, earlyMove?: boolean, rightSway?: boolean, armLdlj?: readonly [number | null, number | null] } = {}) {
   const events: MotionTraceEvent[] = []
   const upper: { start: number, duration: number, by: number }[] = []
   const elbow: { start: number, duration: number, by: number }[] = []
@@ -89,10 +89,11 @@ function speaker(options: { apexOffset?: number, order?: 'proximal' | 'distal', 
     seconds: IDLE + 29,
     scenario: 'talk',
     events,
-    world: options.still ? undefined : withTrunk(armWorld({ upper: moves(upper), elbow: moves(elbow), twist: moves(twist) }, {}, (bone, t) => bone === 'upperChest' && options.torso !== false ? rotY(moves(torso)(t)) : null), trunkSway(options.silentTrunk ?? 0, Math.floor(40 / (options.silentSpacing ?? 2)), options.silentSpacing)),
+    world: options.still ? undefined : withTrunk(armWorld({ upper: moves(upper), elbow: moves(elbow), twist: moves(twist) }, options.rightSway ? { upper: t => 0.05 * Math.sin(2 * Math.PI * 0.25 * t) } : {}, (bone, t) => bone === 'upperChest' && options.torso !== false ? rotY(moves(torso)(t)) : null), trunkSway(options.silentTrunk ?? 0, Math.floor(40 / (options.silentSpacing ?? 2)), options.silentSpacing)),
   })
   const passing = Object.fromEntries(TALK_GATED.map(id => [id, { status: 'PASS' as const }]))
-  const reportOnly = Object.fromEntries(['bilateral.upperArm.peakCorr', 'coverage.arms', 'smooth.armL.ldlj', 'smooth.armR.ldlj'].map(id => [id, { status: 'REPORT' as const, value: id.includes('ldlj') ? -8 : 0.5, gated: false }]))
+  const armLdlj = options.armLdlj ?? [-8, -8]
+  const reportOnly = Object.fromEntries(['bilateral.upperArm.peakCorr', 'coverage.arms', 'smooth.armL.ldlj', 'smooth.armR.ldlj'].map(id => [id, { status: 'REPORT' as const, value: id === 'smooth.armL.ldlj' ? armLdlj[0] : id === 'smooth.armR.ldlj' ? armLdlj[1] : 0.5, gated: false }]))
   const gate = gateStub({ ...passing, ...reportOnly })
   return { input, gate }
 }
@@ -239,6 +240,27 @@ describe('gesture-timing report (C001, plan 2.2)', () => {
     const mirrored = { ...gate, metrics: gate.metrics.map(m => m.id.startsWith('bilateral.') ? { ...m, status: 'FAIL' as const, band: m.band && { ...m.band, status: 'GATED' as const } } : m) }
     const report = gestureTimingReport(loadedRun(input, summaryStub(input), mirrored), bands, calmIdle)
     expect(report.requirements.find(r => r.id === 'bilateral')?.pass).toBe(false)
+  })
+
+  const armLine = (options: Parameters<typeof speaker>[0]) => {
+    const { input, gate } = speaker(options)
+    return gestureTimingReport(loadedRun(input, summaryStub(input), gate), bands, calmIdle).requirements.find(r => r.id === 'arm-ldlj')?.pass
+  }
+
+  it('judges arm smoothness on the scored arm and skips an unscorable arm that moves (version 5)', () => {
+    expect(armLine({ rightSway: true, armLdlj: [-8, null] })).toBe(true)
+  })
+
+  it('fails an unscorable arm that is frozen (version 5)', () => {
+    expect(armLine({ armLdlj: [-8, null] })).toBe(false)
+  })
+
+  it('fails a run in which neither arm is scored, even when both move (version 5)', () => {
+    expect(armLine({ rightSway: true, armLdlj: [null, null] })).toBe(false)
+  })
+
+  it.each([[-8, true], [-3, false], [-14, false]] as const)('judges a scored arm reading %s by the band\'s two edges: %s', (value, pass) => {
+    expect(armLine({ armLdlj: [-8, value] })).toBe(pass)
   })
 
   it('counts forms as distinct only when a median apex feature differs by 10 degrees', () => {
