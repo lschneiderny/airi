@@ -25,7 +25,8 @@ let probeHz: number | undefined
 let recordingPass: number
 let noticeDismissed: boolean | 'absent'
 let sceneStages: { pose: string[], surface: string[] }
-const context = { repoRoot: join(import.meta.dirname, '../../../..'), cwd: '', selfPids: [] }
+// A quiet CPU slot broker, so the capture pre-flight never reads this machine's real leases.
+const context = { repoRoot: join(import.meta.dirname, '../../../..'), cwd: '', selfPids: [], readLeases: () => [] }
 
 beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'stage-capture-'))

@@ -4,6 +4,7 @@ import type { MMDMotionSnapshot } from '@proj-airi/stage-ui-mmd/stores'
 
 import type { Motion3dCue } from '../t2-3d/scenarios'
 import type { StageMode } from './gates'
+import type { CapturePreflight } from './preflight'
 
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -19,6 +20,7 @@ import { motion3dScenarios } from '../t2-3d/scenarios'
 import { desktopStageTargetPattern, stageTargetPattern } from '../t3/launch'
 import { assertStageAnimating, captureStagePng, planScreenshots, untilDeadline } from '../t3/screenshot'
 import { CaptureRefusal, captureSnapshot, dismissCaptureNotice, drainCaptureChunk, postCaptureCommand } from './capture-channel'
+import { frameGapFigures } from './frame-gap'
 import { writeCaptureStrip } from './strip'
 
 export interface CaptureOptions {
@@ -37,6 +39,8 @@ export interface CaptureOptions {
    * (plan 2.4), otherwise the scenario's class (idle for `attach`).
    */
   scenarioClass: 'idle' | 'talk' | null
+  /** The CPU slot broker pre-flight and lease of this capture, recorded in `capture.json`. */
+  preflight: (CapturePreflight & { lease: 'exclusive' | null }) | null
 }
 
 /** Requests a full V8 collection of the stage renderer and lets the frames after its pause settle for a second. */
@@ -127,7 +131,7 @@ async function drainRecordedTrace(client: CdpClient, frames: number) {
   const sorted = [...intervals].sort((a, b) => a - b)
   const median = (sorted[Math.floor((sorted.length - 1) / 2)] + sorted[Math.floor(sorted.length / 2)]) / 2
   trace.hz = 1 / median
-  return { trace, sorted, median, gapFraction: intervals.filter(interval => interval > 1 / 24).length / intervals.length }
+  return { trace, sorted, median, gapFraction: intervals.filter(interval => interval > 1 / 24).length / intervals.length, frameGap: frameGapFigures(decoded.channels, frames) }
 }
 
 /** Attaches to an existing app. Its launcher owns the live CPU lease and the isolated display. */
@@ -184,7 +188,7 @@ export async function captureStage(options: CaptureOptions) {
       await prepareReplay()
       measured = await record(false)
     }
-    const { trace, sorted, median, gapFraction } = measured
+    const { trace, sorted, median, gapFraction, frameGap } = measured
     trace.source = { ...trace.source, ...readGitStateFromRepo(options.repoRoot), detail: { ...trace.source.detail, seedPolicy: 'cue timeline only; mounted model retains its controller seed' } }
     writeFileSync(join(options.out, 'trace.json'), `${JSON.stringify(trace)}\n`)
     if (separateShots) {
@@ -204,6 +208,8 @@ export async function captureStage(options: CaptureOptions) {
       worstFrameIntervalMs: sorted[sorted.length - 1] * 1000,
       gapFraction,
       probeGapFraction,
+      frameGap,
+      preflight: options.preflight,
       noticeDismissed,
       collectBefore: options.collectBefore,
       shotsPass: separateShots ? 3 : 1,

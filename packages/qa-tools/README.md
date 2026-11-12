@@ -945,9 +945,25 @@ attaches to a running Electron MMD scene and records final humanoid bones after
 IK, grants and physics. On Linux, launch the app inside
 `pnpm qa:display run --name <name> -- <command>` with a temporary
 `APP_USER_DATA_PATH`. The launcher owns the live CPU lease; capture takes no
-additional lease. `--mode window|desktop` defaults to `window`, `--shots`
+additional lease unless `--exclusive` asks for one. `--mode window|desktop` defaults to `window`, `--shots`
 defaults to 12 and `--seed` to 1. Seconds must be greater than 0 and at most
 120; seed selects the cue timeline and does not reseed the mounted model.
+
+Before it attaches, capture reads the CPU slot broker. Every lease except the
+`live` lease of an app session started from this checkout (the app being
+captured) competes for CPU, and that load stalls frames until the motion3d
+gate refuses the trace with `frame-gap`. While such a lease is held, capture
+exits 2 and lists each holder's class, slots, pid, age, command and
+directory. `--wait-quiet <seconds>` (at most 3600) rereads the broker every
+2 s until the competing leases end, and exits 2 if they outlast the wait.
+`--allow-busy` skips the refusal, for a capture you will not gate, and records
+the holders. `--exclusive` holds the broker's exclusive lease during the
+capture. The broker grants an exclusive lease only when no lease is held, so
+it works only for an app started without a CPU lease. While this checkout's
+app session holds its live lease (`qa:app`, the `airi-qa` MCP server), capture
+refuses `--exclusive` with exit 2 instead of waiting for a grant that cannot
+come. `capture.json` records the result as `preflight` (`quiet`,
+`waitedSeconds`, `busy`, `ownApp`, `lease`).
 
 `--collect-before` is an optional measurement protocol, off by default. Before
 each recording it requests a full V8 collection of the stage renderer through
@@ -980,6 +996,10 @@ Output is `trace.json` (shared v1 contract, `source.level: 'rendered'`),
 `shots/NN-<time>s.png`, `capture.json` and `strip.png`. The recorder drains in
 600-frame chunks. `capture.json` includes the source URL, scenario, host mode,
 frame count, median FPS, median/worst wall-frame intervals, frame-gap fraction,
+`frameGap` (the worst motion-time interval, the share of intervals over 1/24 s
+and the wall drift, with the gate's limits and the list of limits exceeded;
+the stdout summary line repeats them, stderr names a coming `frame-gap`
+refusal, and the exit code does not change),
 `noticeDismissed` (`true`, `false` or `'absent'` for the optional close action
 on the host-capability notice before screenshots),
 requested and actual shot times, and `parity.stageOrder` with the recorded

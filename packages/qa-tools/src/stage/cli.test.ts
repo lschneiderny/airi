@@ -96,3 +96,16 @@ describe('qa:stage measure arguments', () => {
     expect(output.stderr()).toContain(message)
   })
 })
+
+describe('qa:stage capture pre-flight', () => {
+  it('exits 2 before attaching and lists the holders while another worktree holds a CPU lease', async () => {
+    const output = captureOutput()
+    const busy = { id: 'verify', class: 'typecheck' as const, slots: 6, exclusive: false, cwd: '/wt/other', command: 'verify typecheck', pid: 4242, startedAt: 0, createdAt: 0, workload: [], age: 90_000 }
+
+    const code = await runStageCli(['capture', '--port', '9', '--scenario', 'attach', '--seconds', '30', '--out', 'unused'], { ...context, readLeases: () => [busy] })
+
+    expect(code).toBe(2)
+    expect(output.stderr()).toContain('pid 4242')
+    expect(output.stderr()).toContain('verify typecheck')
+  })
+})
