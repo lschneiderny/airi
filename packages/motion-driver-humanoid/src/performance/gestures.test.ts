@@ -290,6 +290,32 @@ describe('co-speech gestures', () => {
     expect(correction.right / BODY_TICK).toBeLessThanOrEqual(15 * DEG)
   })
 
+  it('retracts a stroke cut by the unit\'s cap along its cleared path, without a corrector kick', () => {
+    // Six strokes; the sixth starts 50 ms before the 9 s cap, as on the clip scenario's second rig, seed 5.
+    const onsets = [1.0, 2.5, 4.0, 5.5, 7.0, 8.95].map((at, i) => ({ at: 0.5 + at, major: i % 2 === 0 }))
+    for (const energy of [0.45, 0.85]) {
+      for (const seed of [2, 3, 10]) {
+        const run = perform({ utterances: [{ start: 0.5, end: 12, energy, onsets }] }, 12, { seed, traits: ellenTraits })
+        const capped = run.frames.findIndex(frame => frame.time >= 9.5)
+        expect(run.frames[capped - 2].gesture.phase).toBe('stroke')
+        const side = run.frames[capped].gesture.hand === 'right' ? 'right' : 'left'
+        const retracting = run.frames.findIndex(frame => frame.time >= 9.5 && frame.gesture.phase === 'retraction')
+        let moved = 0
+        let kick = 0
+        for (let i = retracting; i < run.frames.length; i++) {
+          const frame = run.frames[i]
+          moved = Math.max(moved, frame.correction[side])
+          if (frame.gesture.activation[side] === 1)
+            kick = Math.max(kick, frame.correction[side] - run.frames[i - 1].correction[side])
+        }
+        // As for strokes past a real bust: the corrector does not move the retracting arm more than the unit's strokes
+        // need, nor faster than half the pops report's velocity step.
+        expect(moved).toBeLessThanOrEqual(6 * DEG)
+        expect(kick / BODY_TICK).toBeLessThanOrEqual(15 * DEG)
+      }
+    }
+  })
+
   it('chooses press from the utterance\'s energy at the onset levels real speech has', () => {
     // Natural's onset detector fires at voice levels of 0.31 to 0.46; every onset here sits at 0.45.
     const presses: Record<number, number> = { 0.45: 0, 0.65: 0, 0.85: 0 }

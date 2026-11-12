@@ -528,7 +528,10 @@ edge, outside a refractory of 2.5 s + 3 s x (1 - energy): the arm prepares to
 4a's ready key, strokes on every onset that passes the gate's S2 voice-peak
 rule (accepted emphases major, others 0.6), at least 0.45 s apart and at most
 six per unit, holds with a 1.5 % A drift, and retracts to where it came from at
-1.3 times its preparation while its weight ramps out. Energy scales size and
+1.3 times its preparation while its weight ramps out. Only paths through the
+ready key are cleared, so a retraction lets a stroke in flight land, and from a
+stroke, hold or recovery first goes back to the ready key along the stroke over
+the recovery time, then home on the preparation's path. Energy scales size and
 tempo, and selects among forms: the default emphasis form is palm-up at 0.25,
 press at 0.10 + 0.25 x the utterance's energy, and beat otherwise. The forms are 4a's beat, palm-up, press, point, chop and frame at unit
 A's amplitude scale (`GESTURE_FORMS`), keys solved per rig with

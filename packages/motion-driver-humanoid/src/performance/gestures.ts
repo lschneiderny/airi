@@ -176,6 +176,8 @@ class ArmTrack {
   fed = 0
   /** When the preparation ended (the ready key reached, or a stroke cut it), seconds. */
   preparedAt = Infinity
+  /** A retraction still on its way back to the ready key, from where it goes home on the preparation's cleared path. */
+  viaReady = false
 
   /**
    * Starts a motion to `to` from the current target, continuing the plan's velocity (quintic decay of `v0`), and
@@ -295,6 +297,7 @@ class ArmTrack {
     this.pending = null
     this.preparedAt = Infinity
     this.fed = 0
+    this.viaReady = false
     this.pulses.length = 0
     this.warm = false
   }
@@ -429,6 +432,7 @@ class GesturePerformer {
     track.phaseEnd = now + TIMING.cancel
     track.state = 'retraction'
     track.pending = null
+    track.viaReady = false
     if (this.armForm?.side === side)
       this.armForm = null
     // A two-handed unit goes on with the hand it still has: its lead and its phase follow that arm from here.
@@ -662,13 +666,27 @@ class GesturePerformer {
     this.unit.retracting = true
     for (const side of this.unit.sides) {
       const track = this.tracks[side]
-      if (track.active && track.state !== 'retraction' && track.state !== 'form')
+      if (track.active && track.state !== 'retraction' && track.state !== 'form' && track.state !== 'stroke')
         this.retractTrack(track, now)
     }
   }
 
-  /** Returns the arm to where it was before the unit, 1.3 x its preparation, while the weight ramps down with it. */
+  /**
+   * Returns the arm to where it was before the unit, 1.3 x its preparation, while the weight ramps down with it. Only
+   * the paths through the ready key were cleared: an arm in a stroke, hold or recovery first goes back to the ready key
+   * along its stroke, over the recovery time, and goes home from there.
+   */
   private retractTrack(track: ArmTrack, now: number): void {
+    if (track.state === 'stroke' || track.state === 'hold' || track.state === 'recovery') {
+      track.state = 'retraction'
+      track.pending = null
+      track.viaReady = true
+      track.phaseEnd = now + track.move(track.ready, now, TIMING.recovery / gestureTempo(this.unit.energy), this.tension)
+      track.dropAt = Infinity
+      track.exitSeconds = TIMING.exit
+      return
+    }
+    track.viaReady = false
     const duration = track.move(track.home, now, Math.max(TIMING.exit + BODY_TICK, TIMING.retractionScale * track.prepSeconds), this.tension)
     track.state = 'retraction'
     track.pending = null
@@ -687,6 +705,9 @@ class GesturePerformer {
       // The hit (4a): the planned profile has ended; the post-stroke hold drifts on from here.
       track.state = 'hold'
       track.holdEnd = now + track.move(track.drift, now, track.holdSeconds, this.tension)
+      // A unit that retracted during the stroke lets it land first, so the way back starts from rest on its path.
+      if (this.unit.retracting && this.unit.sides.includes(track.side))
+        this.retractTrack(track, now)
     }
     this.observe(track, context, now)
     if (track.state === 'hold' && now >= track.holdEnd) {
@@ -702,6 +723,10 @@ class GesturePerformer {
     else if (track.preparedAt === Infinity)
       track.preparedAt = now
     track.fed = prepared ? minJerk(Math.min(1, (now - track.preparedAt) / FED_RAMP)) : 0
+    if (track.state === 'retraction' && track.viaReady && now >= track.phaseEnd) {
+      track.state = 'ready'
+      this.retractTrack(track, now)
+    }
     if (track.state === 'retraction' && now >= track.dropAt)
       track.weight = 0
     if (track.state === 'retraction' && now >= track.phaseEnd) {
