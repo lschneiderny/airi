@@ -9,7 +9,7 @@ import { PERFORMANCE_EMOTIONS } from '@proj-airi/stage-shared/expression-perform
 
 export interface Motion3dScenario {
   /** Timeline version; a new version changes the cues, so traces of an older version are no longer its reference. */
-  version: 1 | 2
+  version: 1 | 2 | 3
   id: string
   class: MotionScenarioClass
   /** Simulated and discarded before scoring. */
@@ -164,13 +164,19 @@ export const motion3dScenarios: readonly Motion3dScenario[] = [
   },
   {
     /**
-     * Plan 2.5 (C004), 30 s, class talk. A synthetic clip claims the right arm and fingers mid-stroke at 3.0 s and
-     * releases them at 14.0 s, with the app's upper-layer fade (version 2: smoothstep, 0.25 s in and 0.3 s out; version
-     * 1 used three's linear 0.3 s fadeIn and fadeOut), while utterance B (8.5 s, 10 s, six peaks) runs on the
-     * left arm; a body poke lands 50 ms after the B peak nearest 12 s; utterance C (20 s, 7 s, four peaks) has both
-     * arms free. Utterance A starts at 0.5 s (8 s, five peaks) at energy 0.85.
+     * Plan 2.5 (C004), 30 s, class talk, with the app's upper-layer fade (smoothstep, 0.25 s in and 0.3 s out).
+     * Version 3 (ownership report version 2, E/g3/own2/rules-v2.md) derives every time from the timeline itself, by one
+     * rule for every seed:
+     * - utterance A at 0.5 s (8 s, five peaks) at energy 0.85;
+     * - the synthetic clip claims the right arm and fingers 50 ms after the A peak nearest 3 s, inside a stroke on it;
+     * - a body poke lands 50 ms after the A peak nearest 5 s, inside utterance A's gesture unit, with the arm owned;
+     * - utterance B at 8.5 s (10 s, six peaks): only the left arm may gesture;
+     * - the clip releases 1.5 s after B ends, when no gesture unit can run, so the free left arm is out of a unit at
+     *   release + 0.5 s;
+     * - utterance C 2 s after the release (7 s, four peaks), with both arms free.
+     * Version 2 claimed at 3.0 s, poked near 12 s and released at 14 s; the seeded peaks are unchanged.
      */
-    version: 2,
+    version: 3,
     id: 'gesture-under-clip',
     class: 'talk',
     warmupSeconds: 10,
@@ -180,15 +186,17 @@ export const motion3dScenarios: readonly Motion3dScenario[] = [
       const a = peaksFor(5, random)
       const b = peaksFor(6, random)
       const c = peaksFor(4, random)
-      const poke = b.reduce((best, peak) => Math.abs(8.5 + peak.at - 12) < Math.abs(8.5 + best.at - 12) ? peak : best)
+      const start = { a: 0.5, b: 8.5 }
+      const afterA = (t: number) => start.a + a.reduce((best, peak) => Math.abs(start.a + peak.at - t) < Math.abs(start.a + best.at - t) ? peak : best).at + 0.05
+      const release = start.b + 10 + 1.5
       const cues: Motion3dCue[] = [
-        { at: 0.5, kind: 'energy', level: 0.85 },
-        voiceCue(0.5, 8, a),
-        { at: 3, kind: 'clip-claim' },
-        voiceCue(8.5, 10, b),
-        { at: 8.5 + poke.at + 0.05, kind: 'touch', touch: 'poke', region: 'body', x: random() * 2 - 1, y: random() * 2 - 1 },
-        { at: 14, kind: 'clip-release' },
-        voiceCue(20, 7, c),
+        { at: start.a, kind: 'energy', level: 0.85 },
+        voiceCue(start.a, 8, a),
+        { at: afterA(3), kind: 'clip-claim' },
+        voiceCue(start.b, 10, b),
+        { at: afterA(5), kind: 'touch', touch: 'poke', region: 'body', x: random() * 2 - 1, y: random() * 2 - 1 },
+        { at: release, kind: 'clip-release' },
+        voiceCue(release + 2, 7, c),
       ]
       return cues.filter(cue => cue.at < Math.min(seconds, 120)).sort(byTime)
     },

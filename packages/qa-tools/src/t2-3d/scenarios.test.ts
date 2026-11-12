@@ -78,24 +78,33 @@ describe('motion3d scenario timelines', () => {
     expect(voices.filter(voice => voice.at > shown[0].at && voice.at - shown[0].at <= 0.5)).toHaveLength(1)
   })
 
-  it('holds the synthetic clip at full weight for at least 8 s over at least three labelled peaks and pokes after a peak', () => {
+  // Version 3 (E/g3/own2/rules-v2.md): every time follows from the timeline's own labelled peaks and utterances, by one
+  // rule for every seed. Seeds 1 to 6 are the criterion's pool.
+  it('claims and pokes 50 ms after the A peaks nearest 3 s and 5 s, and releases in the silence after B, for seeds 1 to 6', () => {
     const scenario = motion3dScenarios.find(scenario => scenario.id === 'gesture-under-clip')
     if (!scenario)
       throw new Error('Missing gesture-under-clip scenario')
+    expect(scenario.version).toBe(3)
     for (let seed = 1; seed <= 6; seed++) {
       const cues = scenario.timeline(seed, 30)
+      const [a, b, c] = cues.flatMap(cue => cue.kind === 'voice' ? [cue] : [])
       const claim = cues.find(cue => cue.kind === 'clip-claim')
       const release = cues.find(cue => cue.kind === 'clip-release')
-      if (claim?.kind !== 'clip-claim' || release?.kind !== 'clip-release')
-        throw new Error('Expected a claim and a release')
-      const full = { from: claim.at + LAYER_FADE_SECONDS.upperIn, to: release.at }
-      expect(full.to - full.from).toBeGreaterThanOrEqual(8)
-      const peaks = cues.flatMap(cue => cue.kind === 'voice' ? cue.emphasis.map(peak => cue.at + peak.at) : [])
-      expect(peaks.filter(t => t >= full.from && t <= full.to).length).toBeGreaterThanOrEqual(3)
       const poke = cues.find(cue => cue.kind === 'touch')
-      expect(peaks.some(t => Math.abs(poke!.at - t - 0.05) < 1e-9)).toBe(true)
-      expect(poke!.at).toBeGreaterThan(full.from)
-      expect(poke!.at).toBeLessThan(full.to)
+      if (claim?.kind !== 'clip-claim' || release?.kind !== 'clip-release' || poke?.kind !== 'touch')
+        throw new Error('Expected a claim, a poke and a release')
+      const nearestA = (t: number) => a.emphasis.map(peak => a.at + peak.at).reduce((best, peak) => Math.abs(peak - t) < Math.abs(best - t) ? peak : best)
+      expect(claim.at).toBeCloseTo(nearestA(3) + 0.05, 9)
+      expect(poke.at).toBeCloseTo(nearestA(5) + 0.05, 9)
+      const full = { from: claim.at + LAYER_FADE_SECONDS.upperIn, to: release.at }
+      expect(poke.at).toBeGreaterThan(full.from)
+      expect(poke.at).toBeLessThan(a.at + a.seconds)
+      expect(release.at).toBeCloseTo(b.at + b.seconds + 1.5, 9)
+      // The stale window and the rest instant close before C can start a unit.
+      expect(c.at).toBeGreaterThanOrEqual(release.at + 1 + LAYER_FADE_SECONDS.upperOut)
+      const peaks = [a, b].flatMap(voice => voice.emphasis.map(peak => voice.at + peak.at))
+      expect(full.to - full.from).toBeGreaterThanOrEqual(8)
+      expect(peaks.filter(t => t >= full.from && t <= full.to).length).toBeGreaterThanOrEqual(3)
     }
   })
 
