@@ -6,6 +6,7 @@ import type { KinematicStroke, Side } from './kinematics'
 import type { CriterionReport, LoadedRun, ReportConstant } from './report'
 
 import { percentile } from '../gate/bands'
+import { describeOutside } from '../gate/meaning'
 import { conjugate, DEG, HZ, median, multiply, norm, sub } from '../metrics/math'
 import { handPath, kinematicStrokes, SIDES, STROKE_CONSTANTS, traceParent } from './kinematics'
 import { popCount, upperBodyPopBones } from './pops'
@@ -399,7 +400,7 @@ export function gestureTimingReport(run: LoadedRun, bands: MotionBandsFile, idle
     requirement('pops', 'upper-body pop count (plan 2.6, unit M3) = 0', `${pops}`, pops === 0),
     requirement('corrector', 'capHits = guardScans = holds = 0 in summary.json', corrector ? `capHits ${corrector.capHits}, guardScans ${corrector.guardScans}, holds ${summary.collisions.count}` : 'summary has no corrector block', !!corrector && corrector.capHits === 0 && corrector.guardScans === 0 && summary.collisions.count === 0),
     requirement('gate-talk', 'gate.json judges the talk class and no gated metric FAILs, whatever gate version it names', `gate version ${gate.gate.version}, class ${gate.trace.class}; ${gated.map(m => `${m.id} ${m.status} ${fixed(m.value)}`).join(', ') || 'no gated metric'}`, gate.trace.class === 'talk' && gated.length > 0 && gated.every(m => m.status !== 'FAIL')),
-    requirement('arm-ldlj', 'smooth.armL/R.ldlj inside the printed pooled talk band', ldlj.map(x => `${x.id} ${fixed(x.value)} [${fixed(x.band.lo, 2)}, ${fixed(x.band.hi, 2)}]`).join(', '), ldlj.every(x => x.inside)),
+    requirement('arm-ldlj', 'smooth.armL/R.ldlj inside the printed pooled talk band', ldlj.map(x => `${x.id} ${fixed(x.value)} [${fixed(x.band.lo, 2)}, ${fixed(x.band.hi, 2)}]${describeOutside(x.id, x.value, bands.classes.talk?.metrics[x.id])}`).join(', '), ldlj.every(x => x.inside)),
   ]
   return criterionReport('gesture-timing', GESTURE_TIMING_VERSION, [run.dir], GESTURE_TIMING_CONSTANTS, requirements, {
     idle: { companions, pooled, speedBar, silentSeconds, silentApexes, candidates: candidates.length, counted: apexes.length },

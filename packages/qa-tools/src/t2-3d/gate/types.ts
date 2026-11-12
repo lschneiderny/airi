@@ -63,6 +63,8 @@ export interface VerdictMetric {
   readonly basis: 'fitted' | 'declared' | null
   readonly band: MetricBand | null
   readonly detail: string
+  /** Output only, set by the gate command when the value lies outside its band: the side, the crossed edge and its meaning. */
+  readonly outside?: { readonly side: 'below lower edge' | 'above upper edge', readonly edge: number, readonly meaning: string | null }
 }
 export interface MotionVerdict {
   readonly kind: 'mmd-motion-verdict'

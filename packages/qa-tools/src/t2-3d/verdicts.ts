@@ -7,6 +7,8 @@ import { writeFile } from 'node:fs/promises'
 
 import * as v from 'valibot'
 
+import { formatBandSide } from './gate/meaning'
+
 export const VERDICT_FILE_KIND = 'motion3d-verdict'
 export const VERDICT_FILE_VERSION = 1
 
@@ -94,7 +96,8 @@ export class VerdictRecorder {
     for (const m of verdict.metrics) {
       const band = m.band ? `[${m.band.lo ?? '-inf'}, ${m.band.hi ?? 'inf'}] ${m.band.transform} ${m.basis ?? ''} ${m.band.status}`.trim() : 'no band'
       const value = m.status === 'SKIPPED' ? 'skipped' : m.value === null ? 'undefined' : `${m.value} ${m.unit}`.trim()
-      this.lines.push({ run: dir, id: m.id, status: m.status, value, rule: band, ...(m.detail ? { note: m.detail } : {}) })
+      const note = [m.detail, m.outside && formatBandSide(m.outside)].filter(Boolean).join('; ')
+      this.lines.push({ run: dir, id: m.id, status: m.status, value, rule: band, ...(note ? { note } : {}) })
     }
     if (verdict.requirements)
       this.lines.push({ run: dir, id: 'required-metrics', status: verdict.requirements.passed ? 'PASS' : 'FAIL', value: verdict.requirements.metrics.join(', '), rule: 'every listed metric PASS (--require)' })

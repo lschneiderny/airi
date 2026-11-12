@@ -8,6 +8,7 @@ import { join, resolve } from 'node:path'
 
 import { judgeTrace, refusedVerdict, verdictExitCode } from '../gate/judge'
 import { loadBands, sha256 } from '../gate/load'
+import { bandSide, formatBandSide } from '../gate/meaning'
 import { checkTrace, GateRefusal } from '../gate/refusals'
 import { emotionMetrics, emotionTrials, prepareTrace } from '../metrics'
 import { MotionTraceRefusal, parseTrace } from '../read-trace'
@@ -190,6 +191,10 @@ export async function gateMotion3d(args: readonly string[], context: Motion3dCli
         throw error
       verdict = refusedVerdict(entry.path, error)
     }
+    verdict = { ...verdict, metrics: verdict.metrics.map((m) => {
+      const outside = bandSide(m.id, m.value, m.band)
+      return outside ? { ...m, outside } : m
+    }) }
     if (requirements.length) {
       const passed = requirements.every(id => verdict.metrics.some(metric => metric.id === id && metric.status === 'PASS'))
       verdict = { ...verdict, requirements: { metrics: requirements, passed } }
@@ -211,7 +216,7 @@ export async function gateMotion3d(args: readonly string[], context: Motion3dCli
       return 2
     }
     for (const m of verdict.metrics)
-      console.info(`  ${m.id} ${m.status} ${m.value ?? 'undefined'} ${m.unit} ${m.band ? `[${m.band.lo ?? '-inf'}, ${m.band.hi ?? 'inf'}] ${m.band.transform} ${m.basis}` : ''} ${m.detail}`)
+      console.info(`  ${m.id} ${m.status} ${m.status === 'SKIPPED' ? 'skipped' : m.value ?? 'undefined'} ${m.unit} ${m.band ? `[${m.band.lo ?? '-inf'}, ${m.band.hi ?? 'inf'}] ${m.band.transform} ${m.basis}` : ''} ${m.detail}${m.outside ? `; ${formatBandSide(m.outside)}` : ''}`)
   }
   return verdicts.some(verdict => verdict.requirements?.passed === false) ? 1 : verdictExitCode(verdicts)
 }
