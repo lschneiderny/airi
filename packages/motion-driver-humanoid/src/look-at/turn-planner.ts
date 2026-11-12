@@ -1,3 +1,5 @@
+import { minJerk } from '../dynamics'
+
 export interface TurnInput {
   readonly targetYaw: number
   readonly facingYaw: number
@@ -107,7 +109,9 @@ export class TurnPlanner {
       }
       const elapsed = Math.min(remaining, stepDuration - this.activeStep.elapsed)
       this.activeStep.elapsed += elapsed
-      this.advance(elapsed, this.activeStep.start + this.activeStep.yaw * this.activeStep.elapsed / stepDuration)
+      // A minimum-jerk step starts and ends at rest, so the facing never steps its velocity at a step boundary and a
+      // head held in space against it never counter-steps either.
+      this.advance(elapsed, this.activeStep.start + this.activeStep.yaw * minJerk(this.activeStep.elapsed / stepDuration))
       remaining -= elapsed
       if (this.activeStep.elapsed >= stepDuration - 1e-12) {
         this.activeStep = null

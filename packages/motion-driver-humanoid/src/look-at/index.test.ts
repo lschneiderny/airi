@@ -82,6 +82,15 @@ describe('body turns', () => {
     expect(planner.step({ targetYaw: 70 * rad, facingYaw: 0 }, 0.01).turnStarted).toBe(true)
   })
 
+  it('starts and ends every turn step at rest', () => {
+    const facing = simulate(120 * rad, 3).map(frame => frame.facingYaw)
+    // 120 degrees starts at once; each 0.4 s step covers 48 ticks at 120 Hz.
+    for (let start = 0; start < 4 * 48; start += 48) {
+      expect(Math.abs(facing[start] - (start === 0 ? 0 : facing[start - 1]))).toBeLessThan(0.01 * rad)
+      expect(Math.abs(facing[start + 47] - facing[start + 46])).toBeLessThan(0.01 * rad)
+    }
+  })
+
   it('agrees across frame rates during a body turn after two seconds', () => {
     const frame = simulate(120 * rad, 2, 60).at(-1)
     const reference = simulate(120 * rad, 2, 144).at(-1)

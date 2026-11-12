@@ -90,7 +90,8 @@ error above 90 degrees starts immediately. Turns finish planted steps, aim for
 15 degrees remaining, stop below 20 degrees, and wait 1.5 seconds before
 restarting. `turnSteps` contains events emitted once at step start, alternating
 left/right feet, each lasting 0.4 seconds with at most 22.5 degrees of signed yaw
-(45 degrees per pair). Event timestamps are elapsed seconds since controller
+(45 degrees per pair). The facing follows each step on a minimum-jerk profile,
+so it starts and ends every step at rest. Event timestamps are elapsed seconds since controller
 creation. A foot-contact adapter consumes the events; this module never moves
 feet or writes bones.
 
