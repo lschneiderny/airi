@@ -21,8 +21,11 @@ export async function gazeOrderMotion3d(args: readonly string[], context: Motion
     const gaze = (await loadBands(context.repoRoot)).classes.gaze
     if (!gaze)
       throw new GazeOrderRefusal('missing-floor', 'The frozen bands have no gaze class')
-    const report = gazeOrderReport(await readTrace(join(dir, 'trace.json')), gaze)
+    const input = await readTrace(join(dir, 'trace.json'))
+    const report = gazeOrderReport(input, gaze)
     await writeFile(join(dir, 'gaze-order.json'), `${JSON.stringify(report, null, 2)}\n`)
+    const { share } = report.criterion
+    context.verdicts?.line(report.kind, report.version, { run: dir, id: 'criterion-share', status: 'REPORT', value: `${share.ordered}/${share.total} = ${share.share?.toFixed(3) ?? '-'}`, rule: 'displacement order per gaze-shift of 10 deg or more; goal 2 needs 0.90; report only, judged by no exit code' }, input.trace)
     process.stdout.write(formatGazeOrderReport(report))
     return 0
   }
@@ -30,6 +33,7 @@ export async function gazeOrderMotion3d(args: readonly string[], context: Motion
     if (!(error instanceof GazeOrderRefusal) && !(error instanceof MotionTraceRefusal) && !(error instanceof GateRefusal))
       throw error
     console.error(`qa:motion3d gaze-order ${dir}: ${error.name}: ${error.detail}`)
+    context.verdicts?.refuse(`qa:motion3d gaze-order ${dir}: ${error.name}: ${error.detail}`)
     return 2
   }
 }

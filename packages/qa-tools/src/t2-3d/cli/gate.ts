@@ -195,6 +195,7 @@ export async function gateMotion3d(args: readonly string[], context: Motion3dCli
       verdict = { ...verdict, requirements: { metrics: requirements, passed } }
     }
     verdicts.push(verdict)
+    context.verdicts?.gate(entry.dir, verdict, entry.input?.trace ?? null)
     console.info(`mmd-motion-quality v${verdict.gate.version} ${entry.dir}: ${verdict.verdict}`)
     if (verdict.refusal)
       console.info(`  ${verdict.refusal.name}: ${verdict.refusal.detail}`)

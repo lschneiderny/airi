@@ -40,6 +40,7 @@ export async function runReportCommand(name: string, usage: string, args: readon
     const outputs = build(runs, bands)
     for (const output of outputs) {
       await writeReport(output.dir, name, output.report, output.text)
+      context.verdicts?.criterion(output.report, output.dir, runs)
       process.stdout.write(output.text)
     }
     return outputs.every(output => output.report.verdict === 'PASS') ? 0 : 1
@@ -48,6 +49,7 @@ export async function runReportCommand(name: string, usage: string, args: readon
     if (!(error instanceof ReportUsageError) && !(error instanceof MotionTraceRefusal) && !(error instanceof GateRefusal))
       throw error
     console.error(`qa:motion3d ${name}: ${error.message}`)
+    context.verdicts?.refuse(`qa:motion3d ${name}: ${error.message}`)
     return 2
   }
 }
