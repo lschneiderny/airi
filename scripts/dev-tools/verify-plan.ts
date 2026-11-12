@@ -7,7 +7,8 @@ import { classes } from '@proj-airi/cpu-slots'
 
 import { parseStatsArgs } from './verify-history'
 
-export const verifySteps = ['typecheck', 'lint', 'test'] as const
+/** Lint runs first: it is the cheapest step, and a lint failure stops verify before the slower steps start. */
+export const verifySteps = ['lint', 'typecheck', 'test'] as const
 export type VerifyStep = typeof verifySteps[number]
 
 export interface VerifiedTree {
@@ -185,26 +186,6 @@ export function planVerify(changed: ChangedFile[], packagePaths: string[], rootD
   }
 }
 
-const workerFlag = /^--(?:maxWorkers|concurrency)(?:=|$)/
-
-/**
- * Drops the CPU-budget flags (`--maxWorkers`, `--concurrency`) so the verify cache key does not depend on the
- * grant a run happened to receive. Both `--flag=N` and `--flag N` spellings are removed.
- */
-export function stripWorkerFlags(command: string[]): string[] {
-  const kept: string[] = []
-  for (let index = 0; index < command.length; index++) {
-    const token = command[index]
-    if (!workerFlag.test(token)) {
-      kept.push(token)
-      continue
-    }
-    if (!token.includes('='))
-      index++
-  }
-  return kept
-}
-
 export interface VerifyArgs {
   base: string
   steps: VerifyStep[]
@@ -216,7 +197,7 @@ export interface VerifyArgs {
 
 export type ParsedVerifyArgs = { ok: true, args: VerifyArgs } | { ok: false, message: string }
 
-export const verifyUsage = `Usage: pnpm verify [--gate] [--base <ref>] [--only typecheck,lint,test] [--force] [--dry-run]
+export const verifyUsage = `Usage: pnpm verify [--gate] [--base <ref>] [--only lint,typecheck,test] [--no-cache] [--dry-run]
        pnpm verify --stats [--since <duration>] [--json]
 
   --stats    summarize step history without running checks
@@ -225,7 +206,7 @@ export const verifyUsage = `Usage: pnpm verify [--gate] [--base <ref>] [--only t
   --gate     check the full branch instead of changes since each step's last pass
   --base     compare against the merge base with <ref> (default main)
   --only     run only these steps (default all)
-  --force    ignore cached passes for this working tree
+  --no-cache rerun every step instead of reusing a pass recorded at this tree (alias --force)
   --dry-run  print the plan and commands without running them
 Exit codes: 0 every step passed, 1 a step failed, 2 usage error.`
 
@@ -242,7 +223,7 @@ export function parseVerifyArgs(argv: string[]): ParsedVerifyArgs {
     if (flag === '--gate') {
       args.gate = true
     }
-    else if (flag === '--force') {
+    else if (flag === '--force' || flag === '--no-cache') {
       args.force = true
     }
     else if (flag === '--dry-run') {
@@ -267,4 +248,30 @@ export function parseVerifyArgs(argv: string[]): ParsedVerifyArgs {
     }
   }
   return { ok: true, args }
+}
+
+const ansi = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g')
+
+/**
+ * True when ESLint's summary says every reported problem can be fixed by `--fix`. Reads the stylish summary
+ * ("N problems (E errors, W warnings)" and "X errors and Y warnings potentially fixable"), summed over lint batches.
+ * Output without an ESLint summary (oxlint stopped first, or a crash) gives no hint.
+ */
+export function lintAllFixable(output: string): boolean {
+  const text = output.replace(ansi, '')
+  let errors = 0
+  let warnings = 0
+  let fixableErrors = 0
+  let fixableWarnings = 0
+  let summaries = 0
+  for (const match of text.matchAll(/\d+ problems? \((\d+) errors?, (\d+) warnings?\)/g)) {
+    summaries++
+    errors += Number(match[1])
+    warnings += Number(match[2])
+  }
+  for (const match of text.matchAll(/(\d+) errors? and (\d+) warnings? potentially fixable/g)) {
+    fixableErrors += Number(match[1])
+    fixableWarnings += Number(match[2])
+  }
+  return summaries > 0 && errors + warnings > 0 && fixableErrors === errors && fixableWarnings === warnings
 }

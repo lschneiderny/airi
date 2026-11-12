@@ -51,15 +51,15 @@ pnpm verify --gate               # full branch against the merge base with main
 pnpm verify --only lint,test     # some steps
 pnpm verify --base origin/main   # another base
 pnpm verify --dry-run            # print the plan and commands
-pnpm verify --force              # ignore cached passes
+pnpm verify --no-cache           # rerun every step instead of reusing a pass at this tree (alias --force)
 pnpm verify --stats              # summarize recorded step outcomes
 pnpm verify --stats --since 2d --json
 ```
 
-The steps:
+The steps, in the order they run:
 
+- **lint** runs `moeru-lint` (oxlint, then ESLint with its cache) on the changed files. It runs first because it is the cheapest step. When it fails, typecheck and test are reported `skipped (not run: lint failed)` and verify exits 1. When ESLint's summary says every problem is fixable with `--fix`, verify prints `hint: every lint problem above is auto-fixable: run pnpm lint:fix, then verify again`. Verify never fixes files itself.
 - **typecheck** runs `turbo run typecheck --filter=...{./<package-dir>}` for each changed package. Directory filters cover its dependents and accept scopes derived from Git trees. Turbo caches results in the main worktree's `.turbo/cache`, which all worktrees share. A change to a root file that every package reads (`tsconfig*.json`, `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `turbo.json`, a root `.d.ts`) typechecks every package.
-- **lint** runs `moeru-lint` (oxlint, then ESLint with its cache) on the changed files.
 - **test** runs `vitest related` on the changed code files with the root config. When a changed code file is inside a workspace package, it also runs each config that `pnpm test:run` adds whose package is that package or depends on it, according to `turbo ls --filter=...{<package>}`. A config in an unrelated package cannot import the changed code, so it is skipped.
 
 Each step acquires one CPU lease before its first command and releases it after its last command, including on failure. A failed command stops the remaining commands in that step. `--dry-run` prints one lease request per uncached, runnable step.
@@ -72,7 +72,23 @@ After a pass, including a cached pass, only that step's entry advances. Skipped 
 
 Use `pnpm verify --gate` before landing to check the full branch regardless of previous passes. If the branch touches app runtime paths (`apps/stage-tamagotchi/src/`, `packages/stage-ui*/src/`, `packages/stage-shared/src/`, `packages/stage-pages/src/`, or `packages/stage-layouts/src/`), the gate prints a reminder to run `pnpm qa:display run -- pnpm qa:smoke`.
 
-A passing step is recorded under `<git common dir>/airi-verify/`, keyed by the working tree hash, step, exact command, Node.js version, and platform. Entries also carry `scopeBase` and `mode`; those fields do not change the key. Every worktree reads the same store. An identical tree and command reports `cached` without running anything; an empty incremental scope reports `skipped`. Failures are never stored. A pass is not stored if files changed while the step ran. Pass-cache entries older than 30 days are pruned.
+### Pass cache shared by every worktree
+
+A step that passes on a committed tree is recorded under `<git common dir>/airi-verify/tree-passes/`, which every worktree of the clone reads. Committed means a clean status: no staged, unstaged, or untracked (not ignored) file, so the tree is `HEAD^{tree}`. A record holds the tree, step, Node.js version and platform, a hash of the `AIRI_QA_*` variables (they turn environment-gated tests on), the scope mode, the worktree, the time, and `covers`: the paths the pass vouches for. A branch-scope pass covers the files changed from the merge base. An incremental pass continues the per-branch record, so it covers the files changed from the record's merge base, the same trust the incremental scope already gives.
+
+A later verify in any worktree reuses a record when all of these hold, and prints `[<step>] cached: passed at <tree> in <worktree> at <time> (...)` for each reused step:
+
+- the working tree is clean and at the same tree, with the same Node.js version, platform, and `AIRI_QA_*` variables;
+- every file the requested scope would check is in `covers`, so a narrower or equal scope can reuse a wider pass but never the reverse (each step's plan grows with the set of changed files);
+- no failure of that step was recorded at that tree after the pass (a failed step writes a failure record, so a flaky failure is never hidden by an earlier pass);
+- `--gate` reuses only passes that ran branch scope themselves, never an incremental chain;
+- `--no-cache` (or `--force`) and `--dry-run` were not given.
+
+Otherwise the step runs and, when a record existed but could not be used, prints `[<step>] not reused: <reason>`. A dirty working tree never reuses and never records a pass. Skipped, cached, and dry-run steps, and passes during which files changed, write nothing. The store keeps at most 2,000 records and drops records older than 30 days on each write. A malformed record is ignored, which can only cause a rerun.
+
+The landing case this serves: a worker's verify passes at tree T in its worktree; the lead's check of the same commit in another worktree is at the same clean tree T with branch scope from the same merge base, so each step is reused instead of rerun.
+
+An empty scope reports `skipped`.
 
 Step history is separate from the pass cache. Each completed step appends a record to `<git common dir>/airi-verify/runs.jsonl`, including failures, cached passes, and skips. Records contain `ts` (epoch milliseconds), `worktree`, `branch` (null for detached HEAD), `head`, `tree`, `scopeBase`, `mode`, `step`, `status` (`pass`, `fail`, `cached`, or `skipped`), `durationMs`, `commands` (argument arrays), `files`, `waitMs`, and `grant`. Executed commands include the granted concurrency; cached steps list their planned commands. Steps without a lease record zero wait and a null grant. Duration includes waiting for the lease. Dry runs do not append history.
 
@@ -233,7 +249,7 @@ The backend imports its compositor scripts with Vite's `?raw` suffix, so the pro
 
 A waiting step prints `cpu-slots: waiting for N slot(s) ...`. Run `pnpm slots status` to see the holders.
 
-Passing steps are cached under `<git common dir>/airi-verify/`, keyed by the working tree hash, the command, the Node version, and the platform. `--force` ignores that cache and reruns every step. Verify strips `--concurrency` and `--maxWorkers` from each step's arguments before it caches the step (`stripWorkerFlags` in `scripts/dev-tools/verify-plan.ts:61`, applied at `scripts/dev-tools/verify.ts:107`), so worker counts do not change the cache key. Failures are never cached. A pass is not cached when files changed while its step ran.
+Passing steps are recorded per committed tree, as described under "Pass cache shared by every worktree" above. The record holds no command line, so the CPU grant a run received cannot change whether it is reused. `--no-cache` reruns every step. Failures are recorded so they outrank earlier passes. A pass is not recorded when files changed while its step ran.
 
 `pnpm dev:top` prints `cpu slots: held X/Y, N queued` in its header, with one line per lease and queued caller. If the store lock is held, it prints `cpu slots: busy (lock held), try again`. If the store cannot be read, it prints `cpu slots: unavailable (...)`. `pnpm dev:top kill <worktree>` is a dry run unless `--yes` is passed, and `--orphans` limits it to orphaned processes. Each kill re-reads the live command line first.
 

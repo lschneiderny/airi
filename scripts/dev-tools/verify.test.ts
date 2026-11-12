@@ -104,16 +104,31 @@ describe('verify step execution', () => {
     expect(readLastPass(cache, 'main')).toEqual(record)
   }, 20_000)
 
-  it('restores a missing last record from a cached pass without running commands', async () => {
-    await verify(['--gate', '--only', 'test'])
+  function commitFixture() {
+    execFileSync('git', ['add', '.'], { cwd: root })
+    execFileSync('git', ['-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', '-c', 'commit.gpgSign=false', '-c', `core.hooksPath=${join(root, '.git/hooks')}`, 'commit', '-m', 'fixture files'], { cwd: root, stdio: 'pipe' })
+    execFileSync('git', ['branch', 'base', 'HEAD~1'], { cwd: root })
+  }
+
+  it('reuses a pass at the same clean tree without running commands and restores a missing last record', async () => {
+    commitFixture()
+    await verify(['--gate', '--base', 'base', '--only', 'test'])
     const cache = join(root, '.git/airi-verify')
     const record = readLastPass(cache, 'main')
     const receipts = readFileSync(join(root, 'receipts.jsonl'), 'utf8')
     rmSync(join(cache, 'last/main.json'))
-    const result = await verify(['--gate', '--only', 'test'])
+    const result = await verify(['--gate', '--base', 'base', '--only', 'test'])
+    expect(result.stdout).toMatch(/\[test\] cached: passed at [0-9a-f]{12} in .+ at \d{4}-/)
     expect(result.stdout).toMatch(/test\s+cached/)
     expect(readLastPass(cache, 'main')?.steps.test?.tree).toBe(record?.steps.test?.tree)
     expect(readFileSync(join(root, 'receipts.jsonl'), 'utf8')).toBe(receipts)
+  }, 20_000)
+
+  it('never reuses a pass for a tree with untracked files', async () => {
+    await verify(['--gate', '--only', 'test'])
+    const result = await verify(['--gate', '--only', 'test'])
+    expect(result.stdout).toContain('not reused: working tree has uncommitted or untracked files')
+    expect(readFileSync(join(root, 'receipts.jsonl'), 'utf8').trim().split('\n')).toHaveLength(4)
   }, 20_000)
 
   it.each(['fail', 'mutate'])('never advances the record when a command does %s', async (action) => {
@@ -127,6 +142,17 @@ describe('verify step execution', () => {
       expect((await verify(['--only', 'test'], action)).stdout).toContain('not cached: files changed during the step')
     expect(readLastPass(cache, 'main')).toEqual(record)
     expect(readStatus({ root: join(root, 'slots') })).toMatchObject({ held: 0, leases: [], queue: [] })
+  }, 20_000)
+
+  it('runs lint first and stops on its failure, naming lint:fix when every problem is fixable', async () => {
+    const lint = join(root, 'node_modules/@moeru/eslint-config/src/moeru-lint.js')
+    mkdirSync(join(lint, '..'), { recursive: true })
+    writeFileSync(lint, `console.log('\\u2716 2 problems (2 errors, 0 warnings)\\n  2 errors and 0 warnings potentially fixable with the --fix option.')\nprocess.exit(1)\n`)
+    await expect(verify([])).rejects.toMatchObject({
+      code: 1,
+      stdout: expect.stringMatching(/hint: every lint problem above is auto-fixable: run pnpm lint:fix[\s\S]*typecheck skipped not run: lint failed[\s\S]*test\s+skipped not run: lint failed/),
+    })
+    expect(existsSync(join(root, 'receipts.jsonl'))).toBe(false)
   }, 20_000)
 
   it('uses branch coverage on detached HEAD without creating a last record', async () => {

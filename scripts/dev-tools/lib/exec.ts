@@ -1,3 +1,5 @@
+import type { Buffer } from 'node:buffer'
+
 import process from 'node:process'
 
 import { execFileSync, spawn } from 'node:child_process'
@@ -6,11 +8,25 @@ export function capture(command: string, args: string[], options: { cwd: string,
   return execFileSync(command, args, { cwd: options.cwd, env: options.env ?? process.env, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] }).trim()
 }
 
-/** `onSpawn` receives the child pid as soon as it exists, so callers can register it as budgeted work. */
-export function run(command: string, args: string[], options: { cwd: string, env?: NodeJS.ProcessEnv, onSpawn?: (pid: number) => void }): Promise<number> {
+/**
+ * `onSpawn` receives the child pid as soon as it exists, so callers can register it as budgeted work. With `onOutput`,
+ * stdout and stderr are piped, copied to this process's own streams as they arrive, and also handed to `onOutput`.
+ */
+export function run(command: string, args: string[], options: { cwd: string, env?: NodeJS.ProcessEnv, onSpawn?: (pid: number) => void, onOutput?: (text: string) => void }): Promise<number> {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { cwd: options.cwd, env: options.env ?? process.env, stdio: 'inherit', shell: false })
+    const onOutput = options.onOutput
+    const child = spawn(command, args, { cwd: options.cwd, env: options.env ?? process.env, stdio: onOutput ? ['inherit', 'pipe', 'pipe'] : 'inherit', shell: false })
     child.once('error', reject)
+    if (onOutput) {
+      child.stdout?.on('data', (chunk: Buffer) => {
+        process.stdout.write(chunk)
+        onOutput(chunk.toString('utf8'))
+      })
+      child.stderr?.on('data', (chunk: Buffer) => {
+        process.stderr.write(chunk)
+        onOutput(chunk.toString('utf8'))
+      })
+    }
     if (child.pid !== undefined)
       options.onSpawn?.(child.pid)
     child.once('close', code => resolve(code ?? 1))

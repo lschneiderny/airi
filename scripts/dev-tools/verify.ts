@@ -13,9 +13,9 @@ import { compileCacheEnv } from './lib/compile-cache'
 import { capture, chunkByLength, nodeCommandChunkLimits, run, shimCommandChunkLimits } from './lib/exec'
 import { gatedNotice, listGatedTestFiles } from './lib/gated-tests'
 import { changedFiles, git, gitCommonDir, repoRoot, workingTreeHash } from './lib/git'
-import { readLastPass, readPass, verifyCacheKey, writeLastPass, writePass } from './verify-cache'
+import { decideReuse, envKeyOf, readLastPass, readTreeRecords, toolchainOf, writeLastPass, writeTreeRecord } from './verify-cache'
 import { appendVerifyRun, formatVerifyStats, readVerifyStats } from './verify-history'
-import { advanceLastPass, parseVerifyArgs, planStepLease, planVerify, selectBrowserTestProjects, selectVerifyScope, stripWorkerFlags, testPrerequisiteTurboArgs, touchesAppRuntime, typecheckFilters, verifyUsage } from './verify-plan'
+import { advanceLastPass, lintAllFixable, parseVerifyArgs, planStepLease, planVerify, selectBrowserTestProjects, selectVerifyScope, testPrerequisiteTurboArgs, touchesAppRuntime, typecheckFilters, verifyUsage } from './verify-plan'
 
 interface Command {
   label: string
@@ -96,6 +96,7 @@ async function main(): Promise<number> {
   const { args } = parsed
   const root = repoRoot(process.cwd())
   const cacheDir = join(gitCommonDir(root), 'airi-verify')
+  const treePassDir = join(cacheDir, 'tree-passes')
   const historyDir = process.env.AIRI_VERIFY_HISTORY_DIR ?? cacheDir
   if (args.stats) {
     const stats = readVerifyStats(historyDir, args.stats.sinceMs ? Date.now() - args.stats.sinceMs : 0)
@@ -115,6 +116,10 @@ async function main(): Promise<number> {
   const branch = git(root, ['branch', '--show-current']) || null
   const head = git(root, ['rev-parse', 'HEAD'])
   const context = { branch, mergeBase: base, gate: args.gate }
+  const toolchain = toolchainOf(process.version, process.platform)
+  const envKey = envKeyOf(process.env)
+  // Shared passes are read and written only for a committed tree: HEAD's tree with nothing staged, unstaged or untracked.
+  const isClean = () => git(root, ['status', '--porcelain', '--untracked-files=normal']) === '' && git(root, ['rev-parse', 'HEAD^{tree}']) === tree
   const record = branch && !args.gate ? readLastPass(cacheDir, branch) : null
   const recordStep = (step: VerifyStep, status: 'passed' | 'cached') => {
     if (!branch)
@@ -155,7 +160,12 @@ async function main(): Promise<number> {
     }
   }
   let gatedTestNotice: string | null = null
+  let lintFailed = false
   for (const step of args.steps) {
+    if (lintFailed) {
+      finish({ step, status: 'skipped', detail: 'not run: lint failed', durationMs: 0 }, { scopeBase: base, mode: 'branch', commands: [], files: [], waitMs: 0, grant: null })
+      continue
+    }
     const entry = record?.steps[step]
     let treeExists = false
     if (entry && record?.mergeBase === base) {
@@ -193,14 +203,18 @@ async function main(): Promise<number> {
     }
     if (step === 'test')
       gatedTestNotice = gatedNotice(listGatedTestFiles(root), affected, changed.map(file => file.path), process.env)
-    const command = stripWorkerFlags(commands.flatMap(item => item.args))
-    const key = verifyCacheKey({ tree, step, command, node: process.version, platform: process.platform })
-    const cached = args.force ? null : readPass(cacheDir, key)
-    if (cached && !args.dryRun && workingTreeHash(root) === tree) {
+    const decision = args.dryRun
+      ? null
+      : decideReuse({ step, tree, toolchain, envKey, gate: args.gate, changed: changed.map(file => file.path), clean: isClean(), noCache: args.force }, readTreeRecords(treePassDir, tree))
+    if (decision?.kind === 'reuse' && workingTreeHash(root) === tree) {
+      const { pass } = decision
+      console.info(`[${step}] cached: passed at ${tree.slice(0, 12)} in ${pass.worktree} at ${pass.at} (${pass.mode} pass covering ${pass.covers.length} file(s) from ${pass.coverBase.slice(0, 9)}; this scope asks ${changed.length})`)
       recordStep(step, 'cached')
-      finish({ step, status: 'cached', detail: `passed ${cached.passedAt} on this tree`, durationMs: 0 }, { ...history, commands: commands.map(item => [process.execPath, ...item.args]) })
+      finish({ step, status: 'cached', detail: `passed at ${tree.slice(0, 12)} in ${pass.worktree} at ${pass.at}`, durationMs: 0 }, { ...history, commands: commands.map(item => [process.execPath, ...item.args]) })
       continue
     }
+    if (decision?.kind === 'run' && decision.reason !== 'no pass at this tree')
+      console.info(`[${step}] not reused: ${decision.reason}`)
     const affectedTypecheckCount = step === 'typecheck' && plan.typecheck.kind === 'affected'
       ? withDependents(root, plan.typecheckPackagePaths).length
       : 0
@@ -220,12 +234,16 @@ async function main(): Promise<number> {
     })
     const executed: string[][] = []
     const execution = { ...history, commands: executed, waitMs: lease.waitMs ?? 0, grant: lease.grant }
+    let output = ''
+    const keepLintOutput = (text: string) => {
+      output += text
+    }
     try {
       for (const item of commands) {
         console.info(`\n[${step}] ${item.label}`)
         const args = item.concurrency && lease.grant !== null ? [...item.args, `--concurrency=${lease.grant}`] : item.args
         executed.push([process.execPath, ...args])
-        const exitCode = await run(process.execPath, args, { cwd: root, env: { ...env, ...lease.env }, onSpawn: lease.addWorkload })
+        const exitCode = await run(process.execPath, args, { cwd: root, env: { ...env, ...lease.env }, onSpawn: lease.addWorkload, onOutput: step === 'lint' ? keepLintOutput : undefined })
         if (exitCode !== 0) {
           failed = `${item.label} exited ${exitCode}`
           break
@@ -241,7 +259,13 @@ async function main(): Promise<number> {
     }
     const durationMs = Date.now() - started
     if (failed) {
+      writeTreeRecord(treePassDir, { kind: 'failure', step, tree, toolchain, envKey, worktree: root, at: new Date().toISOString() })
       finish({ step, status: 'failed', detail: failed, durationMs }, execution)
+      if (step === 'lint') {
+        lintFailed = true
+        if (lintAllFixable(output))
+          console.info('\nhint: every lint problem above is auto-fixable: run pnpm lint:fix, then verify again')
+      }
       continue
     }
     const labels = commands.map(item => item.label).join('; ')
@@ -249,7 +273,12 @@ async function main(): Promise<number> {
       finish({ step, status: 'passed', detail: `${labels} (not cached: files changed during the step)`, durationMs }, execution)
       continue
     }
-    writePass(cacheDir, { key, step, tree, command, passedAt: new Date().toISOString(), durationMs, scopeBase: scope.base, mode: scope.mode })
+    if (isClean()) {
+      // An incremental pass continues the per-branch record, so it vouches for the whole range from the merge base.
+      const coverBase = scope.mode === 'incremental' ? base : scope.base
+      const covers = scope.mode === 'incremental' ? changedFiles(root, coverBase, tree).map(file => file.path) : changed.map(file => file.path)
+      writeTreeRecord(treePassDir, { kind: 'pass', step, tree, toolchain, envKey, mode: scope.mode, covers, coverBase, worktree: root, branch, at: new Date().toISOString(), durationMs })
+    }
     recordStep(step, 'passed')
     finish({ step, status: 'passed', detail: labels, durationMs }, execution)
   }

@@ -5,8 +5,7 @@ import { join } from 'node:path'
 import { acquire } from '@proj-airi/cpu-slots'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { verifyCacheKey } from './verify-cache'
-import { parseVerifyArgs, planStepLease, planVerify, selectExtraTestConfigs, stripWorkerFlags, testPrerequisiteTurboArgs, verifySteps } from './verify-plan'
+import { lintAllFixable, parseVerifyArgs, planStepLease, planVerify, selectExtraTestConfigs, testPrerequisiteTurboArgs, verifySteps } from './verify-plan'
 
 const packages = ['packages/stage-ui', 'apps/stage-tamagotchi']
 const file = (path: string, deleted = false) => ({ path, deleted })
@@ -95,7 +94,7 @@ describe('selectExtraTestConfigs', () => {
 
 describe('parseVerifyArgs', () => {
   it('defaults to every step against main', () => {
-    expect(parseVerifyArgs([])).toEqual({ ok: true, args: { base: 'main', steps: ['typecheck', 'lint', 'test'], force: false, dryRun: false, gate: false } })
+    expect(parseVerifyArgs([])).toEqual({ ok: true, args: { base: 'main', steps: ['lint', 'typecheck', 'test'], force: false, dryRun: false, gate: false } })
   })
 
   it('keeps step order canonical whatever order --only lists', () => {
@@ -110,28 +109,26 @@ describe('parseVerifyArgs', () => {
   })
 })
 
-describe('stripWorkerFlags', () => {
-  it('removes both worker flags in = and separate-value spelling and nothing else', () => {
-    expect(stripWorkerFlags(['turbo', 'run', 'typecheck', '--concurrency=4', '--maxWorkers', '2', '--output-logs=errors-only', '--maxWorkers=3', '--concurrency', '5', 'a.ts']))
-      .toEqual(['turbo', 'run', 'typecheck', '--output-logs=errors-only', 'a.ts'])
+describe('lintAllFixable', () => {
+  const summary = (problems: number, errors: number, warnings: number) => `\u001B[31m✖ ${problems} problems (${errors} errors, ${warnings} warnings)\u001B[39m\n`
+  const fixable = (errors: number, warnings: number) => `  ${errors} errors and ${warnings} warnings potentially fixable with the \`--fix\` option.\n`
+
+  it('is true only when every problem of every batch is fixable', () => {
+    expect(lintAllFixable(summary(3, 2, 1) + fixable(2, 1) + summary(2, 2, 0) + fixable(2, 0))).toBe(true)
+    expect(lintAllFixable(summary(3, 2, 1) + fixable(2, 1) + summary(2, 2, 0) + fixable(1, 0))).toBe(false)
+    expect(lintAllFixable(summary(1, 1, 0))).toBe(false)
   })
 
-  it('leaves similarly named flags alone', () => {
-    expect(stripWorkerFlags(['--concurrencyX=1', '--max-workers=2', '--config', 'c.ts'])).toEqual(['--concurrencyX=1', '--max-workers=2', '--config', 'c.ts'])
-  })
-
-  it('gives the same cache key for commands that differ only in those flags', () => {
-    const key = (command: string[]) => verifyCacheKey({ tree: 't', step: 'typecheck', command: stripWorkerFlags(command), node: 'v', platform: 'win32' })
-    expect(key(['turbo', 'run', '--concurrency=2'])).toBe(key(['turbo', 'run', '--concurrency=8', '--maxWorkers=1']))
-    expect(key(['turbo', 'run'])).not.toBe(key(['turbo', 'build']))
+  it('gives no hint without an ESLint summary', () => {
+    expect(lintAllFixable('Found 0 warnings and 2 errors.\n')).toBe(false)
   })
 })
 
 describe('planStepLease', () => {
   it('maps each step to its CPU class', () => {
     expect(verifySteps.map(step => planStepLease(step, { kind: 'affected' }, 3))).toEqual([
-      { class: 'typecheck', max: 3 },
       { class: 'lint' },
+      { class: 'typecheck', max: 3 },
       { class: 'test' },
     ])
   })
