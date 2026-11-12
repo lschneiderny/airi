@@ -2,7 +2,7 @@ import type { MotionTraceSource, MotionTraceV1 } from '@proj-airi/motion-driver-
 import type { NaturalChatInput } from '@proj-airi/motion-driver-natural/natural-motion'
 import type { MMDBodyPoints } from '@proj-airi/stage-ui-mmd/composables/mmd/body/attention'
 import type { LayerFade } from '@proj-airi/stage-ui-mmd/composables/mmd/layer-fade'
-import type { Vector3 } from 'three'
+import type { SkinnedMesh, Vector3 } from 'three'
 
 import type { RunGitState } from '../../evidence/run'
 import type { Motion3dScenario } from '../scenarios'
@@ -49,6 +49,8 @@ export interface Motion3dRunOptions {
   readonly warmupSeconds: number
   readonly git: RunGitState
   readonly signal: AbortSignal
+  /** Called after each pipeline step with the frame index and the posed mesh; read-only (`qa:motion3d frames` re-runs). */
+  readonly onFrame?: (frame: number, mesh: SkinnedMesh) => void
 }
 
 function dependencyVersions() {
@@ -270,6 +272,7 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
         }
       }
       pipeline.step(motion3dStep)
+      options.onFrame?.(frame, mmd.mesh)
       // Gait is evaluated inside the pose stages; channels must describe this frame.
       if (metrics.scored)
         metrics.sample(body.diagnostics, body.ownership(), claim && claimAction && claimAction.getEffectiveWeight() > 0 ? claim.expected(claimAction.time, traceBasis) : null)
