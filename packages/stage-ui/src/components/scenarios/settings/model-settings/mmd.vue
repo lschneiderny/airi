@@ -297,6 +297,8 @@ interface ClipRow {
   loopLocked: boolean
   label: string | null
   exposed: boolean
+  /** She may play the clip on her own while idle. */
+  idle: boolean
   exposeHint: string | null
 }
 
@@ -323,6 +325,7 @@ const clipRows = computed<ClipRow[]>(() => availableMotions.value.map(({ name })
     loopLocked: effectiveKind === 'dance',
     label: curation.label,
     exposed: curation.aiMayUse,
+    idle: curation.idleMayUse,
     exposeHint,
   }
 }))
@@ -353,7 +356,7 @@ function setClipLabel(name: string, value: string | undefined) {
   const { [key]: _, ...otherErrors } = labelErrors.value
   // An empty input removes the label; the store refuses an empty string, so clear it with `null`.
   if (draft === '') {
-    mmdStore.setCuration(stageModelSelected.value, name, { label: null, aiMayUse: false })
+    mmdStore.setCuration(stageModelSelected.value, name, { label: null, aiMayUse: false, idleMayUse: false })
     labelErrors.value = otherErrors
     return
   }
@@ -372,9 +375,11 @@ function setClipKind(name: string, value: string | undefined) {
   const kind = value === KIND_AUTO ? null : value as ClipKind
   const patch: Partial<MMDClipCuration> = { kind }
   const meta = availableClipMeta.value[name]
-  // A stance or unusable clip cannot stay exposed.
-  if ((kind ?? meta?.kind) === 'stance' || (kind ?? meta?.kind) === 'unusable')
+  // A stance or unusable clip cannot stay exposed, to the AI or to idle.
+  if ((kind ?? meta?.kind) === 'stance' || (kind ?? meta?.kind) === 'unusable') {
     patch.aiMayUse = false
+    patch.idleMayUse = false
+  }
   mmdStore.setCuration(stageModelSelected.value, name, patch)
 }
 
@@ -384,6 +389,10 @@ function setClipLoop(name: string, loop: boolean) {
 
 function setClipExposed(name: string, aiMayUse: boolean) {
   mmdStore.setCuration(stageModelSelected.value, name, { aiMayUse })
+}
+
+function setClipIdle(name: string, idleMayUse: boolean) {
+  mmdStore.setCuration(stageModelSelected.value, name, { idleMayUse })
 }
 
 function removeMotion(id: string) {
@@ -650,6 +659,14 @@ function removeMotion(id: string) {
     />
     <FieldCheckbox
       v-if="motionDriver === 'natural'"
+      :model-value="naturalSettings.document.idleActivities"
+      :label="t('settings.mmd.motion.natural-idle-activities.title')"
+      :description="t('settings.mmd.motion.natural-idle-activities.description')"
+      placement="right"
+      @update:model-value="updateNaturalSettings({ idleActivities: $event })"
+    />
+    <FieldCheckbox
+      v-if="motionDriver === 'natural'"
       :model-value="naturalSettings.document.touch"
       :label="t('settings.mmd.motion.natural-touch.title')"
       :description="t('settings.mmd.motion.natural-touch.description')"
@@ -739,7 +756,7 @@ function removeMotion(id: string) {
           <thead :class="['bg-neutral-100/80', 'dark:bg-neutral-800/80', 'text-neutral-500', 'dark:text-neutral-400']">
             <tr>
               <th
-                v-for="header in ['name', 'derived', 'label', 'kind', 'loop', 'ai-may-use']"
+                v-for="header in ['name', 'derived', 'label', 'kind', 'loop', 'ai-may-use', 'idle-may-use']"
                 :key="header"
                 scope="col"
                 :class="['px-1.5', 'py-1.5', 'font-medium', 'whitespace-nowrap']"
@@ -831,6 +848,14 @@ function removeMotion(id: string) {
                   :disabled="row.exposeHint !== null"
                   :aria-label="`${t('settings.mmd.animation.clips.headers.ai-may-use')}: ${row.name}`"
                   @update:model-value="value => setClipExposed(row.name, value)"
+                />
+              </td>
+              <td :class="['px-1.5', 'py-1.5']" :title="row.exposeHint ?? undefined">
+                <Checkbox
+                  :model-value="row.idle"
+                  :disabled="row.exposeHint !== null"
+                  :aria-label="`${t('settings.mmd.animation.clips.headers.idle-may-use')}: ${row.name}`"
+                  @update:model-value="value => setClipIdle(row.name, value)"
                 />
               </td>
             </tr>

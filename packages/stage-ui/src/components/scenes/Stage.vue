@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { SpeechClip, SpeechClipEnd } from '@proj-airi/core-agent'
+import type { ChatStreamEventContext, SpeechClip, SpeechClipEnd } from '@proj-airi/core-agent'
 import type { Live2DLipSync, Live2DLipSyncOptions } from '@proj-airi/model-driver-lipsync'
 import type { Profile } from '@proj-airi/model-driver-lipsync/shared/wlipsync'
 import type { NaturalTouchGesture } from '@proj-airi/motion-driver-natural/frame-types'
@@ -60,12 +60,14 @@ import { useAiriCardStore } from '../../stores/modules/airi-card'
 import { useSpeechStore } from '../../stores/modules/speech'
 import { useNaturalPerformanceOverride } from '../../stores/natural-performance-override'
 import { useSettingsPresenceBubble } from '../../stores/presence-bubble'
+import { useStageSelfStore } from '../../stores/self'
 import { useSettings } from '../../stores/settings'
 import { useSituationStore } from '../../stores/situation'
 import { useSpeechOutputControlStore } from '../../stores/speech-output-control'
 import { useStageTouchStore } from '../../stores/touch'
 import { useVoiceStore } from '../../stores/voice'
 import { chatActivityFrom } from './chat-activity'
+import { initialMusicMemory, resolveMusic } from './idle-music'
 
 const props = withDefaults(defineProps<{
   cursorPosition?: { x: number, y: number }
@@ -337,6 +339,20 @@ const performanceRenderer = computed(() => selectStagePerformanceRenderer(stageM
   driver: mmdMotionDriver.value === 'natural' ? 'natural' : 'basic',
   expressionBackend: mmdExpressionBackend,
 }))
+// Read once a second by the conductor for the idle drive; the stretch of audio lives in the memory between reads.
+let musicMemory = initialMusicMemory
+const desktopActivityStore = useDesktopActivityStore()
+const situationStore = useSituationStore()
+function musicPlaying() {
+  const resolved = resolveMusic({
+    nowMs: Date.now(),
+    systemAudioLevel: desktopActivityStore.snapshot?.systemAudioLevel ?? null,
+    category: situationStore.foregroundCategory,
+    speaking: nowSpeaking.value,
+  }, musicMemory)
+  musicMemory = resolved.memory
+  return resolved.music
+}
 const { conductor: performanceConductor, settings: performanceSettings } = useStagePerformanceConductor({
   renderer: () => stageModelRenderer.value,
   scene: () => performanceRenderer.value.scene,
@@ -351,6 +367,7 @@ const { conductor: performanceConductor, settings: performanceSettings } = useSt
   // Read only, never written from the stage. After a card switch the replicated reading still belongs to the previous
   // card until the leader publishes the new one, so it counts as no reading.
   characterReading: () => characterState.cardId === cards.activeCardId ? characterState.reading : null,
+  music: musicPlaying,
 })
 
 const stageTouch = useStageTouchStore()
@@ -359,6 +376,8 @@ const stageTouch = useStageTouchStore()
 function onTouch(event: NaturalTouchGesture) {
   stageTouch.touch(event, performanceConductor)
 }
+
+const stageSelf = useStageSelfStore()
 
 /**
  * The card performance profile of a performance signal: the character of the signal's turn
@@ -840,9 +859,14 @@ watch(speechMuted, (muted) => {
  */
 const deferredSurfaceResets = new Set<string>()
 
+/** Whether a turn's trigger message is the touch that started a reaction turn. */
+function isTouchReaction(message: ChatStreamEventContext['message']) {
+  return message.role === 'user' && message.trigger?.topicKey === TOUCH_TOPIC_KEY
+}
+
 chatHookCleanups.push(onBeforeMessageComposed(async (_message, context) => {
   // A touch reaction turn doses no mood from its own cues: the touch that started it already dosed mood.
-  if (context.message.role === 'user' && context.message.trigger?.topicKey === TOUCH_TOPIC_KEY)
+  if (isTouchReaction(context.message))
     performanceConductor.markMoodless(context.turnId)
   voice.startResponse(context)
   if (context.sessionId === chatSession.activeSessionId) {
@@ -859,6 +883,16 @@ chatHookCleanups.push(onBeforeSend(async (_message, context) => {
   // The model may still decline an unprompted turn, so the character does not look like she is answering.
   if (context.origin !== 'unprompted')
     currentMotion.value = { group: EmotionThinkMotionName }
+  // A reach-out shows before it is said: she looks up as if about to speak. A touch reaction answers a touch her body
+  // already reacted to, so it gets no look.
+  else if (context.sessionId === chatSession.activeSessionId && !isTouchReaction(context.message))
+    performanceConductor.idleCue('about-to-speak')
+}))
+
+// She decided against it: the look drops and the breath goes out, so the silence is visible too.
+chatHookCleanups.push(onStreamEnd(async (context) => {
+  if (context.origin === 'unprompted' && context.cueStats?.declined && context.sessionId === chatSession.activeSessionId && !isTouchReaction(context.message))
+    performanceConductor.idleCue('let-go')
 }))
 
 chatHookCleanups.push(onTokenLiteral(async (literal, context) => {
@@ -1039,6 +1073,7 @@ defineExpose({
         :live2d-render-scale="live2dRenderScale"
         @error="handleStageRenderError"
         @touch="onTouch"
+        @idle="stageSelf.idle"
       />
       <ThreeScene
         v-if="stageModelRenderer === 'vrm' && showStage"
@@ -1117,6 +1152,8 @@ defineExpose({
         :current-audio-source="currentAudioSource"
         @error="reportStageRenderError"
         @touch="onTouch"
+        @idle="stageSelf.idle"
+        @self="stageSelf.report"
         @placement="emit('placement', $event)"
         @root="emit('root', $event)"
       />

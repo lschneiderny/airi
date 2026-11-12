@@ -317,13 +317,14 @@ export function useMotionQaBridge(options: MotionQaBridgeOptions) {
         live2d.live2dMotionDriver = input.driver
       if (input.expressionEnabled !== undefined)
         live2d.live2dExpressionEnabled = input.expressionEnabled
-      if (input.cursorAttention !== undefined || input.screenAwareness !== undefined) {
+      if (input.cursorAttention !== undefined || input.screenAwareness !== undefined || input.idleActivities !== undefined) {
         const updated = await live2dNatural.update({
           ...(input.cursorAttention !== undefined && { cursorAttention: input.cursorAttention }),
           ...(input.screenAwareness !== undefined && { screenAwareness: input.screenAwareness }),
+          ...(input.idleActivities !== undefined && { idleActivities: input.idleActivities }),
         })
         if (!updated.success)
-          throw new Error('The Live2D Natural settings rejected "cursorAttention" or "screenAwareness"')
+          throw new Error('The Live2D Natural settings rejected "cursorAttention", "screenAwareness", or "idleActivities"')
       }
       if (input.heldEmotions !== undefined) {
         const updated = await performanceSettings.update({ heldEmotions: input.heldEmotions })

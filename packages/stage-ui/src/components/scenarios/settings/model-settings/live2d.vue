@@ -451,6 +451,14 @@ function handleMotionSelect(selectedMotionPath: string | number | undefined) {
     />
     <FieldCheckbox
       v-if="live2dMotionDriver === 'natural'"
+      :model-value="naturalSettings.document.idleActivities"
+      :label="t('settings.live2d.animation.natural-idle-activities.title')"
+      :description="t('settings.live2d.animation.natural-idle-activities.description')"
+      placement="right"
+      @update:model-value="updateNaturalSettings({ idleActivities: $event })"
+    />
+    <FieldCheckbox
+      v-if="live2dMotionDriver === 'natural'"
       :model-value="naturalSettings.document.touch"
       :label="t('settings.live2d.animation.natural-touch.title')"
       :description="t('settings.live2d.animation.natural-touch.description')"

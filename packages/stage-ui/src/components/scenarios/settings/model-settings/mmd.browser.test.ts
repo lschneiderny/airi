@@ -598,8 +598,23 @@ describe('mmd model settings clips', () => {
     await expect.element(exposed).not.toBeDisabled()
     await exposed.click()
     await nextTick()
-    expect(store.exposedActions(MODEL_ID)).toEqual([{ name: 'arms-wave', label: 'wave', kind: 'gesture', layer: 'upper', exposed: true }])
-    expect(JSON.parse(localStorage.getItem('settings/mmd/clip-curation') ?? 'null')[MODEL_ID]['arms-wave']).toEqual({ label: 'wave', kind: null, loop: null, aiMayUse: true })
+    expect(store.exposedActions(MODEL_ID)).toEqual([{ name: 'arms-wave', label: 'wave', kind: 'gesture', layer: 'upper', exposed: true, idle: false }])
+    expect(JSON.parse(localStorage.getItem('settings/mmd/clip-curation') ?? 'null')[MODEL_ID]['arms-wave']).toEqual({ label: 'wave', kind: null, loop: null, aiMayUse: true, idleMayUse: false })
+  })
+
+  it('lets her play a labeled clip on her own through the idle switch, without exposing it to the AI', async () => {
+    const { screen, store } = await renderClipTable()
+    const idleMayUse = (name: string) => `${t('settings.mmd.animation.clips.headers.idle-may-use')}: ${name}`
+    await expect.element(screen.getByRole('switch', { name: idleMayUse('arms-wave') })).toBeDisabled()
+    await screen.getByRole('textbox', { name: label('arms-wave') }).fill('wave')
+    await vi.waitFor(() => expect(store.curationFor(MODEL_ID, 'arms-wave').label).toBe('wave'))
+
+    const idle = screen.getByRole('switch', { name: idleMayUse('arms-wave') })
+    await expect.element(idle).not.toBeDisabled()
+    await idle.click()
+    await nextTick()
+    expect(store.labeledClips(MODEL_ID).find(clip => clip.name === 'arms-wave')).toMatchObject({ exposed: false, idle: true })
+    expect(store.exposedActions(MODEL_ID)).toEqual([])
   })
 
   it('disables the switch for an unlabeled or unusable clip and the loop toggle for a dance', async () => {

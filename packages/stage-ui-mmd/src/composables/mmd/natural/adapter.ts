@@ -2,6 +2,7 @@ import type { FaceBaseline } from '@proj-airi/motion-driver-natural/baseline'
 import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
 import type { NaturalEmotionStrengths } from '@proj-airi/motion-driver-natural/emotion-strengths'
 import type { NaturalTouchRegion } from '@proj-airi/motion-driver-natural/frame-types'
+import type { IdleBehaviourReport, IdleCueKind, NaturalIdleDrive } from '@proj-airi/motion-driver-natural/idle-activities'
 import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
 import type { NaturalChatInput, NaturalMotionFrame, NaturalMotionVoice } from '@proj-airi/motion-driver-natural/natural-motion'
 import type { ExpressionPerformanceSettings, HoldCommand, MoodDose, PerformanceEmotion } from '@proj-airi/stage-shared/expression-performance'
@@ -15,6 +16,7 @@ import type { MMDCleanPose } from '../frame-pipeline'
 import type { createMMDMorphRuntime } from '../morph-runtime'
 import type { MMDRigProfile } from '../rig'
 
+import { IdleBehaviourReports } from '@proj-airi/motion-driver-natural/idle-activities'
 import { NaturalMotion } from '@proj-airi/motion-driver-natural/natural-motion'
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { screenInwardness } from '@proj-airi/stage-shared/stage-placement'
@@ -77,6 +79,11 @@ export class MMDNaturalAdapter {
   private readonly pending: NaturalEpisode[] = []
   private readonly pendingGestures: { kind: CueGestureKind, count: number }[] = []
   private readonly pendingMoods: MoodDose[] = []
+  private readonly pendingIdleCues: IdleCueKind[] = []
+  private idleDrive: NaturalIdleDrive | null = null
+  private appliedIdleDrive: NaturalIdleDrive | null = null
+  private readonly idleReports = new IdleBehaviourReports()
+  private idleBehaviourReports: IdleBehaviourReport[] = []
   private hold: { emotion: PerformanceEmotion, strength: number, lease: SlotLease } | null = null
   private readonly activeSpeech = new Map<string, { lastClipEndAt: number | null }>()
   private muted = false
@@ -110,6 +117,13 @@ export class MMDNaturalAdapter {
       this.natural.gesture(kind, count, this.time)
     for (const dose of this.pendingMoods.splice(0))
       this.natural.addMood(dose, this.time)
+    for (const cue of this.pendingIdleCues.splice(0))
+      this.natural.idleCue(cue, this.time)
+    // Before the performance state, whose energy the drive moves. Forwarded on change only.
+    if (this.idleDrive !== this.appliedIdleDrive) {
+      this.appliedIdleDrive = this.idleDrive
+      this.natural.setIdleDrive(this.idleDrive, this.time)
+    }
     this.energy = input.energy
     this.natural.setVoice(input.voice)
     this.natural.setPerformance(input.performance, input.energy, this.time)
@@ -120,6 +134,27 @@ export class MMDNaturalAdapter {
       this.natural.setPlacement(input.placement, this.time)
     }
     this.frame = this.natural.advance(this.time)
+    this.idleBehaviourReports = this.idleReports.read(this.natural.idleState)
+  }
+
+  /** Sets the drive of self-directed idle behaviour from the next frame, or switches it off with `null`. */
+  setIdleDrive(drive: NaturalIdleDrive | null): void {
+    this.idleDrive = drive
+  }
+
+  /** Reach-out body language, played at the next frame like a cue gesture. */
+  idleCue(kind: IdleCueKind): void {
+    this.pendingIdleCues.push(kind)
+  }
+
+  /** The idle behaviours that started or ended in the latest frame. */
+  get idleBehaviours(): readonly IdleBehaviourReport[] {
+    return this.idleBehaviourReports
+  }
+
+  /** Ends the behaviour in progress for whoever follows the reports, when this adapter stops being advanced. */
+  endIdleReports(): readonly IdleBehaviourReport[] {
+    return this.idleReports.read({ seq: this.natural.idleState.seq, behaviour: null })
   }
 
   /** Touch coordinates are region-relative, X right and Y down. */

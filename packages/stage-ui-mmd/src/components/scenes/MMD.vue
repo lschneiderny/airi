@@ -11,14 +11,18 @@
 
 import type { ClipBoneMask, ClipMaskGroup } from '@proj-airi/motion-driver-humanoid/clip-mask'
 import type { BodyActionKind, BodyActionRequest } from '@proj-airi/motion-driver-humanoid/director'
+import type { IdleClipCandidate } from '@proj-airi/motion-driver-humanoid/idle-clips'
+import type { BodyIntent } from '@proj-airi/motion-driver-humanoid/types'
 import type { FaceBaseline } from '@proj-airi/motion-driver-natural/baseline'
 import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
 import type { NaturalEmotionStrengths } from '@proj-airi/motion-driver-natural/emotion-strengths'
 import type { NaturalTouchGesture } from '@proj-airi/motion-driver-natural/frame-types'
+import type { IdleBehaviourReport, IdleCueKind, NaturalIdleDrive } from '@proj-airi/motion-driver-natural/idle-activities'
 import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
 import type { NaturalChatInput } from '@proj-airi/motion-driver-natural/natural-motion'
 import type { ExpressionPerformanceSettings, HoldCommand, MoodDose, SlotCommand } from '@proj-airi/stage-shared/expression-performance'
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
+import type { SelfObservation } from '@proj-airi/stage-shared/situation'
 import type { PlacementRect } from '@proj-airi/stage-shared/stage-placement'
 import type { AnimationClip, SkinnedMesh, Texture } from 'three'
 
@@ -33,6 +37,7 @@ import type { ResolvedMMDModel } from '../../utils/mmd-loader'
 
 import { errorMessageFrom } from '@moeru/std'
 import { deriveClipMeta, effectiveLayer } from '@proj-airi/motion-driver-humanoid/clip-meta'
+import { decideIdleClip, initialIdleClipMemory } from '@proj-airi/motion-driver-humanoid/idle-clips'
 import { coverRect } from '@proj-airi/stage-shared'
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { screenInwardness } from '@proj-airi/stage-shared/stage-placement'
@@ -101,6 +106,9 @@ import {
   setMMDMaterialGlow,
 } from '../../utils/mmd-materials'
 
+/** Something her body does on its own, as the stage forwards it to the situation; the stage stamps the time. */
+type MMDSelfReport = Pick<SelfObservation, 'activity' | 'phase' | 'label'>
+
 const props = withDefaults(defineProps<{
   /** The context that owns `currentAudioSource`. */
   audioContext?: AudioContext
@@ -147,6 +155,10 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   (e: 'error', err: unknown): void
   (e: 'touch', event: NaturalTouchGesture): void
+  /** A self-directed idle behaviour of the Natural driver started or ended. */
+  (e: 'idle', report: IdleBehaviourReport): void
+  /** Something her body did on its own started or ended: sitting down, sleeping, a walk of her own, an unasked clip. */
+  (e: 'self', report: MMDSelfReport): void
   /** The character's projected rect in work-area DIP changed (stage mode only). */
   (e: 'placement', rect: PlacementRect): void
   /** The live root x in model units changed (stage mode only); walking moves it without the host's help. */
@@ -185,6 +197,15 @@ watch(() => props.chatActivity?.sentSeq, (next, previous) => {
   }
 })
 const bodyToolPort = new MMDBodyToolPort()
+// Self-directed idle behaviour. The stage sends the drive every second; this scene narrows it and adds unasked clips.
+let hostIdleDrive: NaturalIdleDrive | null = null
+let sceneIdleDrive: NaturalIdleDrive | null = null
+/** The stage drive `sceneIdleDrive` was built from. */
+let sceneIdleSource: NaturalIdleDrive | null = null
+let idleClipMemory = initialIdleClipMemory
+/** The request seq of the clip she plays unasked, so its performance can be told from an asked one. */
+let unaskedActionSeq: number | null = null
+let reportedBody: MMDSelfReport | null = null
 // Clip performance. The scene queues one request; the director accepts it; the animation manager plays the layer it
 // names. The director decides, this component only obeys.
 const FULL_BODY_GROUPS: readonly ClipMaskGroup[] = ['root', 'leftLegIk', 'rightLegIk']
@@ -278,6 +299,10 @@ let lastDiagnosticsTime = 0
 let loadedModelKey: string | null = null
 // The same key, reactive, so a reader of the clip library (`listActions`, the action port) follows a model load.
 const libraryModelKey = shallowRef<string | null>(null)
+/** The clips the user allowed her to play on her own while idle. */
+const idleClips = computed<IdleClipCandidate[]>(() => libraryModelKey.value
+  ? mmdStore.labeledClips(libraryModelKey.value).flatMap(clip => clip.idle && clip.kind !== 'stance' && clip.kind !== 'unusable' ? [{ clipId: clip.name, kind: clip.kind }] : [])
+  : [])
 // perform_action queues through `requestPerform` like every other clip, so the director reads one request queue.
 const actionPort = new MMDActionPort({
   clips: () => libraryModelKey.value ? mmdStore.labeledClips(libraryModelKey.value) : [],
@@ -675,6 +700,8 @@ function renderLoop(now = performance.now()) {
     obeyAction()
     // Outside the stage-world block: perform_action answers in the classic window too.
     actionPort.observe({ directorMs: clocks.directorMs, diagnostics: stance.diagnostics })
+    reportBody(stance.intent)
+    playUnasked(clocks.directorMs, loadedModelKey, stance.intent)
     if (props.stageWorld) {
       bodyToolPort.observe({
         rootX: stageRootX,
@@ -850,6 +877,12 @@ function disposeModel() {
   morphs = undefined
   emote = undefined
   morphRuntime = undefined
+  // The model goes away: whatever she was doing on her own ends for the situation too.
+  for (const report of natural?.endIdleReports() ?? [])
+    emit('idle', report)
+  reportBody(null)
+  unaskedActionSeq = null
+  idleClipMemory = initialIdleClipMemory
   natural = undefined
   body = undefined
   stance = undefined
@@ -934,6 +967,75 @@ async function syncMotions() {
       emit('error', err)
     }
   }
+}
+
+/** What her body is doing on its own in this frame, or `null`: an unasked clip first, then a walk, then a resting stance. */
+function bodyActivity(intent: BodyIntent | null): MMDSelfReport | null {
+  if (!intent || motionDriver.value !== 'natural')
+    return null
+  if (intent.action !== null && intent.action.seq === unaskedActionSeq && intent.action.phase === 'playing') {
+    const label = loadedModelKey ? mmdStore.curationFor(loadedModelKey, intent.action.clipId).label : null
+    return { activity: 'clip', phase: 'start', ...(label === null ? {} : { label }) }
+  }
+  const walk = { 'wander': 'wander', 'visit': 'visit', 'return-home': 'go-home' } as const
+  const reason = intent.locomotion.goalX === null ? undefined : walk[intent.locomotion.reason as keyof typeof walk]
+  if (reason)
+    return { activity: reason, phase: 'start' }
+  return intent.stance === 'stand' ? null : { activity: intent.stance, phase: 'start' }
+}
+
+/** Emits a `self` report when her body starts or stops doing something on its own. */
+function reportBody(intent: BodyIntent | null) {
+  const next = bodyActivity(intent)
+  if (next?.activity === reportedBody?.activity && next?.label === reportedBody?.label)
+    return
+  if (reportedBody)
+    emit('self', { ...reportedBody, phase: 'end' })
+  if (next)
+    emit('self', next)
+  reportedBody = next
+}
+
+/**
+ * Lets her play one of the clips the user allowed for idle, when the scheduler says so and her body is quiet. The
+ * director still decides: the request goes through `requestPerform` with the `idle` source.
+ */
+function playUnasked(directorMs: number, modelKey: string, intent: BodyIntent | null) {
+  const { mode, away } = props.performance
+  const quiet = naturalSettings.document.idleActivities
+    && motionDriver.value === 'natural'
+    && (mode === 'idle' || mode === 'watching')
+    && !away
+    && !props.nowSpeaking
+    && !dragging
+    && intent !== null
+    && intent.stance === 'stand'
+    && intent.action === null
+    && intent.locomotion.goalX === null
+    // One thing at a time: a stretch or a yawn finishes before a clip starts.
+    && natural?.natural.idleState.behaviour == null
+  const decision = decideIdleClip({ nowMs: directorMs, clips: idleClips.value, quiet, pace: hostIdleDrive?.rate ?? 0, seed: fnv1a32(modelKey) }, idleClipMemory)
+  idleClipMemory = decision.memory
+  if (decision.clipId !== null && requestPerform(decision.clipId, { source: 'idle' }))
+    unaskedActionSeq = performSeq
+}
+
+/**
+ * The drive this scene hands to Natural: the stage's drive, without sleep when the model has its own sleep clip, and
+ * without new activities while a clip plays. Rebuilt only when one of the three changes, so Natural sees a new drive
+ * only then.
+ */
+function resolveIdleDrive(): NaturalIdleDrive | null {
+  if (hostIdleDrive === null || !naturalSettings.document.idleActivities)
+    return sceneIdleDrive = null
+  const slots = loadedModelKey ? stanceSlots.value[loadedModelKey] : undefined
+  const allowSleep = !slots?.sleep || !registeredMotions.has(slots.sleep)
+  const rate = stance?.intent?.action ? 0 : hostIdleDrive.rate
+  if (sceneIdleDrive === null || sceneIdleSource !== hostIdleDrive || sceneIdleDrive.allowSleep !== allowSleep || sceneIdleDrive.rate !== rate) {
+    sceneIdleSource = hostIdleDrive
+    sceneIdleDrive = { ...hostIdleDrive, allowSleep, rate }
+  }
+  return sceneIdleDrive
 }
 
 /** Tells the body which groups a clip owns even where its tracks key none of them: a full-body action stops the gait. */
@@ -1182,6 +1284,7 @@ async function loadModel(src: string) {
             }
           : null
         natural.setPerformanceSettings(toRaw(props.performanceSettings))
+        natural.setIdleDrive(resolveIdleDrive())
         natural.advance(dt, {
           performance: props.performance,
           energy: props.naturalEnergy ?? naturalSettings.document.energy,
@@ -1197,6 +1300,8 @@ async function loadModel(src: string) {
               : mmdScreenInwardness(rect, headX),
           emotionStrengths: naturalSettings.document.emotionStrength[props.modelId ?? ''] ?? defaultEmotionStrengths,
         }, naturalSeconds)
+        for (const report of natural.idleBehaviours)
+          emit('idle', report)
         natural.applyPose(clean, true)
         // Channels must be prepared before bone-morph evaluation. Their surface
         // effects are applied after physics by the morph-runtime surface stage.
@@ -1526,6 +1631,9 @@ defineExpose({
   gesture: (kind: CueGestureKind, count: number) => natural?.gesture(kind, count),
   addMood: (dose: MoodDose) => natural?.addMood(dose),
   setFaceBaseline: (baseline: FaceBaseline) => natural?.setFaceBaseline(baseline),
+  /** The drive of self-directed idle behaviour; the stage sends it again every second. */
+  setIdleDrive: (drive: NaturalIdleDrive | null) => { hostIdleDrive = drive },
+  idleCue: (kind: IdleCueKind) => natural?.idleCue(kind),
   onSpeech: (event: SpeechEvent, turnId: string, now: number) => {
     expressions.onSpeech(event, turnId, now)
     natural?.onSpeech(event, turnId, now)

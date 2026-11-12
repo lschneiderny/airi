@@ -74,6 +74,7 @@ import { bridgeSituationToCharacter } from '../character-state/situation-bridge'
 import { useCharacterStateObservabilityStore } from '../devtools/character-state-observability'
 import { useMemoryObservabilityStore } from '../devtools/memory-observability'
 import { useSituationObservabilityStore } from '../devtools/situation-observability'
+import { situationSelfObservedEvent } from './self-bus'
 import { startConversationSensor } from './sensors/conversation'
 import { DESKTOP_SAMPLE_STALE_MS, startDesktopSensor } from './sensors/desktop'
 import { EXCHANGE_QUIET_MS, startExchangeSensor } from './sensors/exchange'
@@ -318,6 +319,7 @@ export const useSituationStore = defineStore('situation', () => {
   /** The reaction turn that was submitted and has no result yet. */
   let reacting: { turnId: string } | undefined
   let stopTouchListener: (() => void) | undefined
+  let stopSelfListener: (() => void) | undefined
   /** Feeds the character state from this leader's observations; see `bridgeSituationToCharacter`. */
   let characterBridge: SituationBridge | undefined
   const notifySpokenListeners = new Set<(spoken: { topicKey: string, text: string }) => void>()
@@ -1038,6 +1040,11 @@ export const useSituationStore = defineStore('situation', () => {
       if (body)
         ingest(body)
     })
+    // What she does on her own on every stage window, this one's included, arrives here.
+    stopSelfListener = getSpeechBusContext().on(situationSelfObservedEvent, ({ body }) => {
+      if (body)
+        ingest(body)
+    })
     stopForgetListener = getSpeechBusContext().on(situationForgetRequestedEvent, ({ body }) => {
       if (body)
         applyForget(body)
@@ -1061,6 +1068,8 @@ export const useSituationStore = defineStore('situation', () => {
     stopNotifyListener = undefined
     stopTouchListener?.()
     stopTouchListener = undefined
+    stopSelfListener?.()
+    stopSelfListener = undefined
     stopForgetListener?.()
     stopForgetListener = undefined
     characterBridge?.stop()

@@ -72,6 +72,7 @@ The controller and its pure layers live in `packages/motion-driver-natural`, sha
 - Touch reacts when the user pokes the model or pets its head with the cursor; see Touch below.
 - Energy scales posture amplitude, posture shift rate, and gaze target choice from the performance state and the user's Energy setting.
 - Screen-aware attention uses the horizontal center of the bottom layer of displays as its placement reference. It eases a small resting head turn toward that reference and fades the turn while cursor attention is engaged. Peripheral and aside glances favor the screen side near an edge. During screen attention and watching mode, desk fixations and screen-change glances use an inward screen point. The web host remains inert because its Live2D model instances provide no chat target; same-page speech-bus events can otherwise reach listeners in the shared Eventa context.
+- Idle activities make her do things on her own while nobody asks anything of her: stretch, yawn, look around, check on the user, lean in to watch the screen, zone out, nod off, and sway to music. While the user is away she falls asleep with closed eyes and wakes when they return. Two cues frame a reach-out: a lifted look before she may speak, and letting it go when she stays silent. See Idle activities below.
 - While the chat is visible, typing can draw periodic chat fixations with a partial head follow. A typed send triggers a delayed reading glance sized by word count, and opening the chat triggers a brief glance. When talking starts, active and pending chat attention ends at once, so replies keep gaze on the camera. The first chat input records send and unfold counters as a baseline, so its prior events don't trigger glances. Chat text is not sent to Natural.
 
 Screen-aware attention is controlled by the `screenAwareness` Natural setting, enabled by default. The setting appears only for Natural and gates both placement and chat attention. Turning it off restores the no-signal behavior. The screen point currently applies to both screen attention and watching mode; Luke may revisit that choice.
@@ -150,11 +151,19 @@ A wake (screen unlock or resume) lifts the head slightly and glances at the came
 
 Natural has an Energy setting, the `energy` field of the Natural settings document, from 0 (calm) to 1 (energetic). The default is 0.5.
 
-Every Natural setting of this renderer is a field of one settings document, held by `useLive2DNaturalSettings` (`src/composables/live2d/natural-settings.ts`) and stored as `settings/live2d/natural`: `energy`, `cursorAttention`, `screenAwareness`, `touch`, `touchPetRequiresHold`, `touchHeadScale`, and `emotionStrength`. The store is synced: every window reads `document`, and `update` and `reset` run on the leader, which is the only window that writes storage. Await `update`; never assign to `document`. A profile saved before the document kept one `settings/live2d/natural-*` key per setting; the store starts from those keys while no document is stored, and the first `update` or `reset` writes the document and deletes them.
+Every Natural setting of this renderer is a field of one settings document, held by `useLive2DNaturalSettings` (`src/composables/live2d/natural-settings.ts`) and stored as `settings/live2d/natural`: `energy`, `cursorAttention`, `screenAwareness`, `idleActivities`, `touch`, `touchPetRequiresHold`, `touchHeadScale`, and `emotionStrength`. The store is synced: every window reads `document`, and `update` and `reset` run on the leader, which is the only window that writes storage. Await `update`; never assign to `document`. A profile saved before the document kept one `settings/live2d/natural-*` key per setting; the store starts from those keys while no document is stored, and the first `update` or `reset` writes the document and deletes them.
 The settings page shows it as a slider only while Natural is selected.
 Energy `E` scales posture amplitude by `0.7 + 0.6E` and posture shift rate by `0.6 + 0.8E`. It also sets the probability that a speech onset becomes an emphasis to `0.15 + 0.2E`.
 At the default of 0.5, Energy leaves every layer at its unscaled behavior.
 Resetting Live2D settings restores the default Energy.
+
+### Idle activities
+
+The Idle activities setting is the `idleActivities` field of the Natural settings document and is enabled by default. It is available only while Natural is selected.
+
+The stage sends the scene an idle drive once a second through `setIdleDrive`: her slow mood relative to its resting value, sleepiness from the local hour, the time since the last interaction, and whether music plays. The scene hands it to the adapter, or `null` while the setting is off. `idleCue` plays the reach-out cues. The adapter reports each behaviour's start and end through `onIdleBehaviour`, and the scene emits them as `idle` events, which the stage forwards to the situation so the model knows what she was doing. A behaviour in progress is reported as ended when another driver takes over or the model unloads.
+
+Closed eyes ride on the blink factor, so sleep and a nod-off close the eyes only while the user's auto-blink setting is on. The shapes and the pacing are starting values that need a visual review. The [idle agency ADR](../../docs/ai/adr/2026-11-12-idle-agency.md) records the design.
 
 ### Screen-aware attention
 

@@ -10,6 +10,8 @@ import { boolean, finite, number, optional, pipe, transform, unknown } from 'val
 const mmdNaturalSettingsEntries = {
   /** Liveliness of Natural movement, from 0 (calm) to 1 (energetic), on the same scale as Live2D; out-of-range numbers are clamped. @default 0.5 */
   energy: optional(pipe(number(), finite(), transform(value => clamp(value, 0, 1))), 0.5),
+  /** Let Natural do things on its own while idle: stretch, yawn, look around, watch the screen, doze off. @default true */
+  idleActivities: optional(boolean(), true),
   /** Let the user poke the model and pet its head with the cursor while Natural drives it. @default true */
   touch: optional(boolean(), true),
   /** Count only strokes made with the primary button held as pets, so passing the cursor over the head never pets it. @default false */
@@ -23,12 +25,13 @@ const mmdNaturalSettingsEntries = {
 
 export type MMDNaturalSettings = SettingsDocument<typeof mmdNaturalSettingsEntries>
 
+/** The pre-document key of each setting; a setting added after the document has none. */
 const legacyKeys = {
   energy: 'settings/mmd/natural-energy',
   touch: 'settings/mmd/natural-touch',
   touchPetRequiresHold: 'settings/mmd/natural-touch-pet-requires-hold',
   emotionStrength: 'settings/mmd/natural-emotion-strength',
-} satisfies Record<keyof MMDNaturalSettings, string>
+} satisfies Partial<Record<keyof MMDNaturalSettings, string>>
 
 // NOTICE:
 // Profiles saved before the settings document keep each Natural setting under its own localStorage key.

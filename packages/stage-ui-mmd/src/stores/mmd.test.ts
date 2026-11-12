@@ -87,8 +87,8 @@ describe('mmd clip curation store', () => {
     await nextTick()
 
     const peer = freshStore()
-    expect(peer.curationFor(MODEL, 'wave')).toEqual({ label: 'wave', kind: null, loop: true, aiMayUse: true })
-    expect(peer.curationFor(MODEL, 'unknown')).toEqual({ label: null, kind: null, loop: null, aiMayUse: false })
+    expect(peer.curationFor(MODEL, 'wave')).toEqual({ label: 'wave', kind: null, loop: true, aiMayUse: true, idleMayUse: false })
+    expect(peer.curationFor(MODEL, 'unknown')).toEqual({ label: null, kind: null, loop: null, aiMayUse: false, idleMayUse: false })
 
     await store.addMotion(vmd('wave'))
     expect(store.curationFor(MODEL, 'wave').label).toBe('wave')
@@ -100,7 +100,7 @@ describe('mmd clip curation store', () => {
     await store.addMotion(vmd('bow'))
     expect(store.setCuration(MODEL, 'wave', { label: 'greet' })).toBe(true)
     expect(store.setCuration(MODEL, 'bow', { label: 'greet', aiMayUse: true })).toBe(false)
-    expect(store.curationFor(MODEL, 'bow')).toEqual({ label: null, kind: null, loop: null, aiMayUse: false })
+    expect(store.curationFor(MODEL, 'bow')).toEqual({ label: null, kind: null, loop: null, aiMayUse: false, idleMayUse: false })
     expect(store.setCuration(MODEL, 'wave', { label: 'greet', aiMayUse: true })).toBe(true)
     expect(store.setCuration('model-b', 'bow', { label: 'greet' })).toBe(true)
   })
@@ -135,8 +135,8 @@ describe('mmd clip curation store', () => {
 
     expect(store.labeledClips(MODEL).map(clip => clip.name)).toEqual(['wave', 'spin', 'hidden'])
     expect(store.exposedActions(MODEL)).toEqual([
-      { name: 'wave', label: 'wave', kind: 'gesture', layer: 'upper', exposed: true },
-      { name: 'spin', label: 'spin', kind: 'action', layer: 'full', exposed: true },
+      { name: 'wave', label: 'wave', kind: 'gesture', layer: 'upper', exposed: true, idle: false },
+      { name: 'spin', label: 'spin', kind: 'action', layer: 'full', exposed: true, idle: false },
     ])
     expect(store.exposedActions('model-b')).toEqual([])
   })
@@ -146,7 +146,7 @@ describe('mmd clip curation store', () => {
     await importWithMeta(store, 'long-wave', 'action', 'upper')
     store.setCuration(MODEL, 'long-wave', { label: 'long-wave', kind: 'gesture', aiMayUse: true })
     expect(store.exposedActions(MODEL)).toEqual([
-      { name: 'long-wave', label: 'long-wave', kind: 'gesture', layer: 'upper', exposed: true },
+      { name: 'long-wave', label: 'long-wave', kind: 'gesture', layer: 'upper', exposed: true, idle: false },
     ])
   })
 
@@ -160,10 +160,21 @@ describe('mmd clip curation store', () => {
 
     await store.removeMotion(id)
 
-    expect(store.curationFor(MODEL, 'wave')).toEqual({ label: null, kind: null, loop: null, aiMayUse: false })
+    expect(store.curationFor(MODEL, 'wave')).toEqual({ label: null, kind: null, loop: null, aiMayUse: false, idleMayUse: false })
     expect(store.availableClipMeta.wave).toBeUndefined()
     expect(store.curationFor(MODEL, 'bow').label).toBe('bow')
     expect(store.availableClipMeta.bow).toBeDefined()
+  })
+
+  it('lists a clip as allowed for idle, and reads a record saved before the field existed as not allowed', async () => {
+    storageMap.set('settings/mmd/clip-curation', JSON.stringify({ [MODEL]: { wave: { label: 'wave', kind: null, loop: null, aiMayUse: true } } }))
+    const store = freshStore()
+    await importWithMeta(store, 'wave', 'gesture', 'upper')
+    expect(store.curationFor(MODEL, 'wave')).toEqual({ label: 'wave', kind: null, loop: null, aiMayUse: true, idleMayUse: false })
+    expect(store.labeledClips(MODEL)).toEqual([{ name: 'wave', label: 'wave', kind: 'gesture', layer: 'upper', exposed: true, idle: false }])
+
+    expect(store.setCuration(MODEL, 'wave', { idleMayUse: true })).toBe(true)
+    expect(store.labeledClips(MODEL)[0]).toMatchObject({ exposed: true, idle: true })
   })
 
   it('delivers requestPerform to a second store instance over the BroadcastChannel', async () => {
@@ -188,7 +199,7 @@ describe('mmd clip curation store', () => {
     const reported = vi.spyOn(console, 'error').mockImplementation(() => {})
     const store = freshStore()
     expect(reported).toHaveBeenCalledTimes(1)
-    expect(store.curationFor(MODEL, 'wave')).toEqual({ label: null, kind: null, loop: null, aiMayUse: false })
+    expect(store.curationFor(MODEL, 'wave')).toEqual({ label: null, kind: null, loop: null, aiMayUse: false, idleMayUse: false })
     expect(store.setCuration(MODEL, 'wave', { label: 'wave' })).toBe(true)
     expect(store.curationFor(MODEL, 'wave').label).toBe('wave')
   })

@@ -4,6 +4,7 @@ import type { Filter } from '@pixi/core'
 import type { FaceBaseline } from '@proj-airi/motion-driver-natural/baseline'
 import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
 import type { NaturalMotionObserver, NaturalTouchGesture } from '@proj-airi/motion-driver-natural/frame-types'
+import type { IdleBehaviourReport, IdleCueKind, NaturalIdleDrive } from '@proj-airi/motion-driver-natural/idle-activities'
 import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
 import type { NaturalChatInput } from '@proj-airi/motion-driver-natural/natural-motion'
 import type { NaturalTouchSample } from '@proj-airi/motion-driver-natural/touch-gestures'
@@ -178,6 +179,8 @@ const emits = defineEmits<{
   (e: 'error', error: Error): void
   /** A poke or pet the Natural driver reacted to; nothing else consumes it yet. */
   (e: 'touch', event: NaturalTouchGesture): void
+  /** A self-directed idle behaviour of the Natural driver started or ended. */
+  (e: 'idle', report: IdleBehaviourReport): void
 }>()
 
 const componentState = defineModel<'pending' | 'loading' | 'mounted'>('state', { default: 'pending' })
@@ -192,6 +195,7 @@ const naturalSettings = useLive2DNaturalSettings()
 const live2dNaturalCursorAttention = computed(() => naturalSettings.document.cursorAttention)
 const live2dNaturalScreenAwareness = computed(() => naturalSettings.document.screenAwareness)
 const live2dNaturalTouch = computed(() => naturalSettings.document.touch)
+const live2dNaturalIdleActivities = computed(() => naturalSettings.document.idleActivities)
 const live2dNaturalTouchPetRequiresHold = computed(() => naturalSettings.document.touchPetRequiresHold)
 /** Size of the petting area relative to this model's measured head. A model without an entry uses 1. */
 const naturalTouchHeadScale = computed(() => naturalSettings.document.touchHeadScale[props.modelId ?? ''] ?? 1)
@@ -714,6 +718,7 @@ async function performModelLoad() {
     naturalMotion = naturalAdapter
     // QA reads the yaw bias of the step that just ran, not the one before it.
     naturalAdapter.onPlacementStep = naturalDiagnostics.reportPlacement
+    naturalAdapter.onIdleBehaviour = report => emits('idle', report)
     naturalAdapter.setPaused(paused.value)
     naturalAdapter.setPerformanceSettings(props.performanceSettings)
     rebuildNaturalMotion = () => {
@@ -722,6 +727,7 @@ async function performModelLoad() {
       naturalAdapter = createNaturalAdapter()
       naturalMotion = naturalAdapter
       naturalAdapter.onPlacementStep = naturalDiagnostics.reportPlacement
+      naturalAdapter.onIdleBehaviour = report => emits('idle', report)
       naturalAdapter.setPaused(paused.value)
       naturalAdapter.setPerformanceSettings(props.performanceSettings)
       naturalAdapter.natural.setObserver(naturalCaptureObserver)
@@ -1696,6 +1702,12 @@ defineExpose({
   addMood: (dose: MoodDose) => naturalMotion?.addMood(dose),
   /** The resting face target; a model that loads later receives it on the stage's next once-per-second update. */
   setFaceBaseline: (baseline: FaceBaseline) => naturalMotion?.setFaceBaseline(baseline),
+  /**
+   * The drive of self-directed idle behaviour; the stage sends it again every second, so a model that loads later
+   * and a changed setting both take effect then. The user's idle-activities setting turns it off here.
+   */
+  setIdleDrive: (drive: NaturalIdleDrive | null) => naturalMotion?.setIdleDrive(live2dNaturalIdleActivities.value ? drive : null),
+  idleCue: (kind: IdleCueKind) => naturalMotion?.idleCue(kind),
   /** Executes decider slot commands; lifetimes are owned by the expression store. */
   applySlots: (commands: SlotCommand[], now: number) => expressionStore.applySlots(commands, now),
   /** Natural only: the performer owns the lease and manual-preview fallback of the held emotion. */

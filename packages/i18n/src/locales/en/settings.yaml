@@ -236,6 +236,9 @@ live2d:
     natural-screen-awareness:
       title: Screen-aware attention
       description: Turn slightly toward the middle of your screens when the model sits off to one side, look into the screen, and glance at the chat while you type.
+    natural-idle-activities:
+      title: Idle activities
+      description: Do things on its own while nobody talks to it, such as stretching, yawning, looking around, watching your screen, and dozing off while you are away.
     natural-touch:
       title: Poke and pet
       description: React when you click the model or stroke its head with the cursor.
@@ -2773,6 +2776,9 @@ mmd:
     natural-energy:
       title: Energy
       description: How lively Natural movement is, from calm to energetic.
+    natural-idle-activities:
+      title: Idle activities
+      description: Do things on its own while nobody talks to it, such as stretching, yawning, looking around, watching your screen, and playing the clips you allow for idle.
     natural-touch:
       title: Poke and pet
       description: React when you click the model or stroke its head with the cursor.
@@ -2800,7 +2806,8 @@ mmd:
       description: >-
         Each imported clip gets a kind from the bones it moves and its length.
         Give a clip a short label and switch on "AI may use" to let the AI
-        play it by that label.
+        play it by that label. Switch on "Idle may use" to let the model play
+        it on its own now and then while nothing else is going on.
       headers:
         name: Clip
         derived: Derived
@@ -2808,6 +2815,7 @@ mmd:
         kind: Kind
         loop: Loop
         ai-may-use: AI may use
+        idle-may-use: Idle may use
       kinds:
         auto: Auto
         gesture: Gesture

@@ -1,5 +1,6 @@
 import type { FaceBaseline } from '@proj-airi/motion-driver-natural/baseline'
 import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
+import type { IdleCueKind, NaturalIdleDrive } from '@proj-airi/motion-driver-natural/idle-activities'
 import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
 import type { CharacterReading } from '@proj-airi/stage-shared/character-state'
 import type { AffectSignal, AffectTrace, CatalogEntry, DeciderContext, ExpressionPerformanceSettings, HoldCommand, MoodDose, PerformanceDecision, PerformanceProfile, SlotCommand, TimingEvent, TouchAffectInput } from '@proj-airi/stage-shared/expression-performance'
@@ -14,7 +15,7 @@ import type { ExpressionToolPort } from '../../tools/expression'
 
 import { errorMessageFrom } from '@moeru/std'
 import { SpeechOnsetDetector } from '@proj-airi/motion-driver-natural/speech-emphasis'
-import { faceBaselineOf } from '@proj-airi/stage-shared/character-state'
+import { faceBaselineOf, idleDriveOf } from '@proj-airi/stage-shared/character-state'
 import { applyMappingWeights, createDecider, isLlmEligible, resolveEffectiveSettings, withAffectTrace } from '@proj-airi/stage-shared/expression-performance'
 import { useNaturalMotionDiagnostics } from '@proj-airi/stage-ui-live2d/stores'
 import { useIntervalFn } from '@vueuse/core'
@@ -122,6 +123,13 @@ export interface StagePerformanceScene {
    * without it, such as a scenario sink, drops it.
    */
   setFaceBaseline?: (baseline: FaceBaseline) => void
+  /**
+   * Live2D and MMD Natural: sets what shapes her self-directed idle behaviour, or switches it off with `null`. A scene
+   * without it, such as a scenario sink, performs none.
+   */
+  setIdleDrive?: (drive: NaturalIdleDrive | null) => void
+  /** Live2D and MMD Natural: plays the body language around a reach-out. A scene without it drops the cue. */
+  idleCue?: (kind: IdleCueKind) => void
 }
 
 /**
@@ -344,6 +352,20 @@ export class StagePerformanceConductor {
   /** Sets the resting face of the mounted scene; the decider is not involved. */
   faceBaseline(baseline: FaceBaseline) {
     this.options.scene()?.setFaceBaseline?.(baseline)
+  }
+
+  /**
+   * Sets the idle drive of the mounted scene. Only the Natural driver performs idle behaviour, so every other driver
+   * receives `null`. The decider is not involved.
+   */
+  idleDrive(drive: NaturalIdleDrive | null) {
+    this.options.scene()?.setIdleDrive?.(this.options.driver() === 'natural' ? drive : null)
+  }
+
+  /** Plays reach-out body language under the Natural driver; other drivers ignore it. The decider is not involved. */
+  idleCue(kind: IdleCueKind) {
+    if (this.options.driver() === 'natural')
+      this.options.scene()?.idleCue?.(kind)
   }
 
   /**
@@ -802,7 +824,7 @@ export const FACE_BASELINE_SAMPLE_MS = 1000
  * the expression tool executors, and the only window that answers lab affect-trace requests.
  *
  * Every {@link FACE_BASELINE_SAMPLE_MS}, and once at creation, it reads `characterReading` and sends its face baseline
- * to the scene; no reading sends the neutral baseline.
+ * and its idle drive to the scene; no reading sends the neutral baseline and a drive that follows only the hour.
  */
 export function useStagePerformanceConductor(options: Pick<StagePerformanceConductorOptions, 'scene' | 'driver' | 'playMotion' | 'profile'> & {
   renderer: () => string | undefined
@@ -821,6 +843,11 @@ export function useStagePerformanceConductor(options: Pick<StagePerformanceCondu
    * @default () => null
    */
   characterReading?: () => CharacterReading | null
+  /**
+   * Whether other applications are playing audio she can sway to; part of the idle drive.
+   * @default () => false
+   */
+  music?: () => boolean
 }) {
   const performanceSettings = useExpressionPerformanceSettings()
   const expressions: StageExpressionBackend = {
@@ -869,6 +896,18 @@ export function useStagePerformanceConductor(options: Pick<StagePerformanceCondu
   }
   useIntervalFn(sendFaceBaseline, FACE_BASELINE_SAMPLE_MS)
   sendFaceBaseline()
+  function sendIdleDrive() {
+    const now = new Date()
+    conductor.idleDrive({
+      ...idleDriveOf(options.characterReading?.() ?? null, now.getTime(), now.getHours() + now.getMinutes() / 60),
+      music: options.music?.() ?? false,
+      // The scene narrows these: a renderer with its own sleep stance turns sleep off, and the user's setting turns the drive off.
+      allowSleep: true,
+      rate: 1,
+    })
+  }
+  useIntervalFn(sendIdleDrive, FACE_BASELINE_SAMPLE_MS)
+  sendIdleDrive()
 
   watch([exposed, exposedActions, active, mood], () => {
     runtimeState.publish({ exposed: exposed.value, exposedActions: exposedActions.value, active: active.value, mood: mood.value })

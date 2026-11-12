@@ -2,6 +2,7 @@
 import type { FaceBaseline } from '@proj-airi/motion-driver-natural/baseline'
 import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
 import type { NaturalTouchGesture } from '@proj-airi/motion-driver-natural/frame-types'
+import type { IdleBehaviourReport, IdleCueKind, NaturalIdleDrive } from '@proj-airi/motion-driver-natural/idle-activities'
 import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
 import type { PresenceBubbleState } from '@proj-airi/stage-shared'
 import type { ExpressionPerformanceSettings, HoldCommand, MoodDose, SlotCommand } from '@proj-airi/stage-shared/expression-performance'
@@ -74,6 +75,7 @@ const emit = defineEmits<{
   error: [error: Error]
   /** A poke or pet the Natural driver reacted to, for consumers such as a future chat reaction. */
   touch: [event: NaturalTouchGesture]
+  idle: [report: IdleBehaviourReport]
 }>()
 
 const componentState = defineModel<'pending' | 'loading' | 'mounted'>('state', { default: 'pending' })
@@ -175,6 +177,8 @@ defineExpose({
   gesture: (kind: CueGestureKind, count: number) => live2dModelRef.value?.gesture(kind, count),
   addMood: (dose: MoodDose) => live2dModelRef.value?.addMood(dose),
   setFaceBaseline: (baseline: FaceBaseline) => live2dModelRef.value?.setFaceBaseline(baseline),
+  setIdleDrive: (drive: NaturalIdleDrive | null) => live2dModelRef.value?.setIdleDrive(drive),
+  idleCue: (kind: IdleCueKind) => live2dModelRef.value?.idleCue(kind),
   applySlots: (commands: SlotCommand[], now: number) => live2dModelRef.value?.applySlots(commands, now),
   applyHolds: (commands: HoldCommand[], now: number) => live2dModelRef.value?.applyHolds(commands, now),
   onSpeech: (event: SpeechEvent, turnId: string, now: number) => live2dModelRef.value?.onSpeech(event, turnId, now),
@@ -235,6 +239,7 @@ defineExpose({
         :screen-ambient-light-squint="screenAmbientLightSquint"
         @error="emit('error', $event)"
         @touch="emit('touch', $event)"
+        @idle="emit('idle', $event)"
       />
       <Live2DPresenceBubble
         v-if="app"

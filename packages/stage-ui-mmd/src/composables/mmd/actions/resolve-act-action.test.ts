@@ -5,10 +5,10 @@ import { describe, expect, it } from 'vitest'
 import { resolveActAction } from './resolve-act-action'
 
 const clips: MMDLabeledClip[] = [
-  { name: 'arms-wave.vmd', label: 'wave', kind: 'gesture', layer: 'upper', exposed: true },
-  { name: 'bow.vmd', label: 'bow', kind: 'gesture', layer: 'upper', exposed: false },
-  { name: 'dance-long.vmd', label: 'moonwalk', kind: 'dance', layer: 'full', exposed: true },
-  { name: 'legs-step.vmd', label: 'step', kind: 'action', layer: 'full', exposed: true },
+  { name: 'arms-wave.vmd', label: 'wave', kind: 'gesture', layer: 'upper', exposed: true, idle: false },
+  { name: 'bow.vmd', label: 'bow', kind: 'gesture', layer: 'upper', exposed: false, idle: false },
+  { name: 'dance-long.vmd', label: 'moonwalk', kind: 'dance', layer: 'full', exposed: true, idle: false },
+  { name: 'legs-step.vmd', label: 'step', kind: 'action', layer: 'full', exposed: true, idle: false },
 ]
 
 describe('resolveActAction', () => {
@@ -43,9 +43,9 @@ describe('resolveActAction', () => {
 
   it('prefers an exposed gesture when several clips share a label', () => {
     const shared: MMDLabeledClip[] = [
-      { name: 'hidden.vmd', label: 'wave', kind: 'gesture', layer: 'upper', exposed: false },
-      { name: 'big.vmd', label: 'wave', kind: 'action', layer: 'full', exposed: true },
-      { name: 'small.vmd', label: 'wave', kind: 'gesture', layer: 'upper', exposed: true },
+      { name: 'hidden.vmd', label: 'wave', kind: 'gesture', layer: 'upper', exposed: false, idle: false },
+      { name: 'big.vmd', label: 'wave', kind: 'action', layer: 'full', exposed: true, idle: false },
+      { name: 'small.vmd', label: 'wave', kind: 'gesture', layer: 'upper', exposed: true, idle: false },
     ]
     expect(resolveActAction('wave', undefined, shared)).toEqual({ perform: 'small.vmd', drops: [] })
     expect(resolveActAction('wave', undefined, shared.slice(0, 2))).toEqual({ perform: null, drops: [{ reason: 'not-gesture', label: 'wave' }] })
