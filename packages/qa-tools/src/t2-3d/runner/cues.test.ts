@@ -121,10 +121,12 @@ it('refuses a clip cue without the runner clip', () => {
   expect(() => driver.apply({ at: 0, kind: 'clip-claim' }, 0)).toThrow(TypeError)
 })
 
-it('sets activity and away and records observation markers without adapter calls', () => {
+it('sets activity and away, records an away activity as mode away, and records observation markers without adapter calls', () => {
   const { driver, events } = boundary()
   driver.apply({ at: 0, kind: 'activity', mode: 'watching', away: true }, 0)
   driver.apply({ at: 1, kind: 'marker', label: 'observe' }, 1)
   expect(driver.performance).toMatchObject({ mode: 'watching', away: true })
-  expect(events).toEqual([{ t: 0, kind: 'mode', mode: 'watching' }, { t: 1, kind: 'marker', label: 'observe' }])
+  driver.apply({ at: 2, kind: 'activity', mode: 'listening' }, 2)
+  expect(driver.performance).toMatchObject({ mode: 'listening', away: false })
+  expect(events).toEqual([{ t: 0, kind: 'mode', mode: 'away' }, { t: 1, kind: 'marker', label: 'observe' }, { t: 2, kind: 'mode', mode: 'listening' }])
 })

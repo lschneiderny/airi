@@ -200,6 +200,7 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
     })
     const initializedMs = performance.now() - initializedAt
     let nextCue = 0
+    let stanceReason: string | null = null
     const started = performance.now()
     for (let frame = 0; frame < frames; frame++) {
       // Yield for interrupts and the CPU lease heartbeat without advancing pose clocks.
@@ -244,6 +245,10 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
           seed: options.seed,
         },
       })
+      if (options.scenario.recordStance && stance.diagnostics.stanceReason !== stanceReason) {
+        stanceReason = stance.diagnostics.stanceReason
+        sampler.recorder.event({ t: naturalSeconds, kind: 'marker', label: `stance:${stanceReason}` })
+      }
       body.setLocomotionGoal(stance.intent?.locomotion ?? null)
       motionTime = frame === 0 ? 0 : motionTime + motion3dStep
       sampler.inputs.wall = motionTime

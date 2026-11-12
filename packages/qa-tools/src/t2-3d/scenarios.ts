@@ -18,6 +18,11 @@ export interface Motion3dScenario {
   seconds: number
   /** Longest scored length the runner accepts; 120 s when omitted, 600 s for the idle-class scenarios (owner decision O1). */
   maxSeconds?: number
+  /**
+   * Records a `stance:<reason>` marker whenever the stance director's reason changes, from the first frame. Off unless
+   * set, so the traces of scenarios that predate the marker stay byte-identical.
+   */
+  recordStance?: boolean
   /** Pure timeline in seconds from scoring start; negative times are warm-up. */
   timeline: (seed: number, seconds: number) => Motion3dCue[]
 }
@@ -37,6 +42,7 @@ export type Motion3dCue
     | { at: number, kind: 'gesture', gesture: CueGestureKind, count?: number }
     | { at: number, kind: 'touch', touch: 'poke' | 'pet-start' | 'pet-end', region: 'head' | 'body', x: number, y: number }
     | { at: number, kind: 'goal', x: number | null, pace: 'stroll' | 'walk' }
+    /** Recorded as a `mode` event naming the mode, or `away` while the user is away. */
     | { at: number, kind: 'activity', mode: PerformanceMode, away?: boolean }
     | { at: number, kind: 'marker', label: string }
     /** User energy handed to Natural and the body, 0-1; the runner starts at 0.5. */
@@ -263,6 +269,26 @@ export const motion3dScenarios: readonly Motion3dScenario[] = [
       { at: createRandomStream(seed)() * Math.min(1, seconds), kind: 'marker', label: 'observe-walk' } satisfies Motion3dCue,
       ...WALK_GOALS.map(([at, x]): Motion3dCue => ({ at, kind: 'goal', x, pace: 'walk' })),
     ].filter(cue => cue.at < Math.min(seconds, 120)).sort(byTime),
+  },
+  {
+    /**
+     * Plan C004 (goal 4): no stance clip is ever assigned. The 100 s warm-up puts the director's idle-to-sit time (120 s
+     * after load) at 20 s of scenario time, so the clip-free rest fallback has 20 s of idle before the user goes away at
+     * 40 s; input returns as `listening` at 80 s. Only the seeded observation marker depends on the seed.
+     */
+    version: 1,
+    id: 'sleepy-no-clip',
+    class: 'idle',
+    warmupSeconds: 100,
+    seconds: 120,
+    maxSeconds: 600,
+    recordStance: true,
+    timeline: (seed, seconds) => ([
+      { at: 0, kind: 'activity', mode: 'idle' },
+      { at: createRandomStream(seed)() * Math.min(1, seconds), kind: 'marker', label: 'observe-sleepy' },
+      { at: 40, kind: 'activity', mode: 'idle', away: true },
+      { at: 80, kind: 'activity', mode: 'listening' },
+    ] satisfies Motion3dCue[]).filter(cue => cue.at < seconds).sort(byTime),
   },
   {
     version: 1,

@@ -25,9 +25,9 @@ it('resolves paths against the caller and applies scenario defaults', () => {
   expect([options.seed, options.seconds, options.warmupSeconds, options.verifyDeterminism]).toEqual([2, 60, 10, true])
 })
 
-it('accepts up to 600 s for the idle scenario (owner decision O1)', () => {
+it.each(['idle', 'sleepy-no-clip'])('accepts up to 600 s for the idle-class scenario %s (owner decision O1)', (scenario) => {
   const context = fixture()
-  expect(parseRunArguments(['--model', 'model.pmx', '--scenario', 'idle', '--seconds', '600', '--out', 'capture'], context.cwd).seconds).toBe(600)
+  expect(parseRunArguments(['--model', 'model.pmx', '--scenario', scenario, '--seconds', '600', '--out', 'capture'], context.cwd).seconds).toBe(600)
 })
 
 it.each([

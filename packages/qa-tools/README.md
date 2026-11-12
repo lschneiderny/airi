@@ -66,6 +66,15 @@ per 60 s, no return and no turn-around) is no longer selectable;
 `qa:stage capture --scenario walk` replays the same version 2 goals.
 Touch is reported only and has no human reference.
 
+`sleepy-no-clip` (C004 of goal 4, idle class) assigns no stance clip. Its
+100 s warm-up puts the director's idle-to-sit time, 120 s after load, at 20 s
+of scenario time; the user goes away at 40 s (an `activity` cue with `away`,
+recorded as `mode: away`) and input returns as `listening` at 80 s. It
+defaults to 120 s and is the only scenario that records `stance:<reason>`
+markers, one whenever the stance director's reason changes, from the first
+frame (`recordStance`); the other scenarios do not, so their traces are
+unchanged.
+
 `emotions` defaults to 120 s: six clear pulses and two placebos, spaced 12 s
 apart in the first 100 s, then all five cue gestures in seeded order in the last
 20 s. With `E = PERFORMANCE_EMOTIONS`, `k = (seed - 1) mod 6` and
@@ -1154,10 +1163,11 @@ needs no GPU. Models and textures remain outside the repository. The optional
 load and gaze integration tests use `AIRI_QA_MMD_MODEL` when set.
 
 `--model`, `--scenario` and `--out` are required. Scenarios are `idle`,
-`gaze-shift`, `speak`, `emotions`, `walk` and `touch`. Seed defaults to 1;
+`gaze-shift`, `speak`, `gesture-under-clip`, `emotions`, `walk`, `touch` and
+`sleepy-no-clip`. Seed defaults to 1;
 duration and warm-up default to the scenario's values (10 s warm-up).
-Scored duration is capped at 120 s, except for the idle-class `idle` scenario,
-which accepts up to 600 s (owner decision O1, goal 4: a ten-minute idle). A
+Scored duration is capped at 120 s, except for the idle-class `idle` and
+`sleepy-no-clip` scenarios, which accept up to 600 s (owner decision O1, goal 4: a ten-minute idle). A
 600 s run is about five times a 120 s run in wall time and output size.
 Relative paths resolve against `INIT_CWD`.
 An existing output directory is refused with exit 2 before a lease is taken.

@@ -7,6 +7,26 @@ import { expect, it } from 'vitest'
 import { parseTrace } from '../read-trace'
 import { runMotion3dScenario } from './run'
 
+it.runIf(process.env.AIRI_QA_MMD_MODEL)('records the stance reason on each change only in a scenario that asks for it', async () => {
+  const model = process.env.AIRI_QA_MMD_MODEL
+  if (!model)
+    throw new Error('AIRI_QA_MMD_MODEL is required')
+  const stanceMarkers = async (recordStance: boolean) => {
+    const { trace } = await runMotion3dScenario({
+      model,
+      seed: 1,
+      seconds: 1,
+      warmupSeconds: 0,
+      git: { gitSha: 'test', dirty: false },
+      signal: new AbortController().signal,
+      scenario: { version: 1, id: 'stance', class: 'idle', seconds: 1, warmupSeconds: 0, recordStance, timeline: () => [{ at: 0.5, kind: 'activity', mode: 'idle', away: true }] },
+    })
+    return trace.events.flatMap(event => event.kind === 'marker' && event.label.startsWith('stance:') ? [[Math.round(event.t * 60), event.label]] : [])
+  }
+  expect(await stanceMarkers(true)).toEqual([[0, 'stance:no-sit-slot'], [30, 'stance:no-sleep-slot']])
+  expect(await stanceMarkers(false)).toEqual([])
+}, 60_000)
+
 it.runIf(process.env.AIRI_QA_MMD_MODEL)('turns toward six gaze targets with increasing head yaw on each side and looks back at the camera after each look', async () => {
   const model = process.env.AIRI_QA_MMD_MODEL
   if (!model)

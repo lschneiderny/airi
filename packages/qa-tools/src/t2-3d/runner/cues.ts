@@ -106,7 +106,7 @@ export class Motion3dCueDriver {
       case 'activity':
         this.activity.mode = cue.mode
         this.activity.away = cue.away ?? false
-        this.event({ t, kind: 'mode', mode: cue.mode })
+        this.event({ t, kind: 'mode', mode: this.activity.away ? 'away' : cue.mode })
         return
       case 'marker':
         this.event({ t, kind: 'marker', label: cue.label })
