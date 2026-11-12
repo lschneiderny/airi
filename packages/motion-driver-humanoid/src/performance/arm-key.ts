@@ -3,7 +3,7 @@ import type { BodySide } from './channels'
 export interface ArmKey {
   /** Shoulder-relative hand target, in total arm lengths: outward, up, forward. */
   readonly hand: readonly [number, number, number]
-  /** Radians about the shoulder-hand ray; zero places the elbow as low as possible. */
+  /** Radians about the shoulder-hand ray; zero places the elbow as low as possible, positive swings it outward on either side. */
   readonly swivel: number
   readonly pron: number
   readonly wflex: number
@@ -54,8 +54,9 @@ export function solveArmKey(key: ArmKey, arm: ArmKeyRig): ArmAngles | null {
   rx /= radialLength
   ry /= radialLength
   rz /= radialLength
+  // The swivel turns about the shoulder-hand ray in the side's own sense, so equal keys mirror across the body.
   const cosine = Math.cos(key.swivel)
-  const sine = Math.sin(key.swivel)
+  const sine = sigma * Math.sin(key.swivel)
   const ex = dx * along + height * (rx * cosine + (dy * rz - dz * ry) * sine)
   const ey = dy * along + height * (ry * cosine + (dz * rx - dx * rz) * sine)
   const ez = dz * along + height * (rz * cosine + (dx * ry - dy * rx) * sine)

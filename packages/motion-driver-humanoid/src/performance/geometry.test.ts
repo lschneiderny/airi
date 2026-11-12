@@ -59,6 +59,21 @@ describe('canonical geometry', () => {
     expect(solveArmKey({ ...key, hand: [2, 0, 0] }, { side, upperLength, forearmLength })).toBeNull()
   })
 
+  it('solves a key to the same arm angles on both sides, so a swivel turns both elbows outward', () => {
+    const key = { hand: [-0.05, -0.5, 0.42] as const, swivel: 20 * DEG, pron: 0, wflex: 0, wdev: 0 }
+    const rig = (side: 'left' | 'right') => {
+      const arm = traits.arms[side]
+      return { side, upperLength: Math.hypot(arm.upperArm.x, arm.upperArm.y, arm.upperArm.z), forearmLength: Math.hypot(arm.forearm.x, arm.forearm.y, arm.forearm.z) }
+    }
+    const left = solveArmKey(key, rig('left'))
+    const right = solveArmKey(key, rig('right'))
+    expect(left).not.toBeNull()
+    expect(right).not.toBeNull()
+    for (const angle of ['flex', 'abduct', 'twist', 'elbow'] as const)
+      expect(right?.[angle]).toBeCloseTo(left?.[angle] ?? Number.NaN, 6)
+    expect(left?.abduct).toBeGreaterThan(solveArmKey({ ...key, swivel: 0 }, rig('left'))?.abduct ?? Infinity)
+  })
+
   it('uses surface distances and outward normals for sphere, capsule and box proxies', () => {
     const base = { bone: 'hips', centre: { x: 0, y: 0, z: 0 }, rotation: { yaw: 0, pitch: 0, roll: 0 } } as const
     const shapes: BodyCollider[] = [
