@@ -270,16 +270,29 @@ describe('idle-acts report', () => {
     expect(reversed.detail.acts.find(act => act.id === 'shoulder-roll')?.confirmed).toBe(false)
   })
 
-  it('accepts a foot re-plant that leaves its foot yawed, the act\'s declared lasting result, and refuses an undeclared or larger residual', () => {
-    const yawed = (deg: number, headDeg = 0) => (bone: MotionTraceBone, t: number): Quat | null =>
-      bone === 'leftFoot' && t > 10 ? axisAngle(1, deg * Math.min(1, (t - 10) / 1.2)) : bone === 'head' && t > 20 ? axisAngle(1, headDeg) : null
-    const replant = { id: 'foot-replant', at: 10, moves: null } as const
-    expect(report({ acts: [...SIX, replant].sort((a, b) => a.at - b.at), extra: yawed(6) }).detail.pair.difference).toBeLessThan(0.25)
-    expect(() => report({ acts: [...SIX, replant].sort((a, b) => a.at - b.at), extra: yawed(6, 1) })).toThrow(/outside the act spans/)
-    expect(() => report({ acts: [...SIX, replant].sort((a, b) => a.at - b.at), extra: yawed(20) })).toThrow(/lasting result/)
-    expect(() => report({ acts: SIX, extra: yawed(6) })).toThrow(/outside the act spans/)
-    const steps = (bone: MotionTraceBone, t: number): Quat | null => bone === 'leftFoot' ? axisAngle(1, [10, 20, 30].reduce((deg, at) => deg + 6 * Math.min(1, Math.max(0, t - at) / 1.2), 0)) : null
-    expect(report({ acts: [10, 20, 30].map(at => ({ id: 'foot-replant', at, moves: null })), extra: steps }).detail.pair.difference).toBeLessThan(0.25)
+  it('re-bases the pair only after a confirmed foot re-plant, on the stepped foot\'s yaw and the hips\' lateral shift alone', () => {
+    // A re-plant lifts the free foot (the thigh swings 15 deg over the act) and leaves it yawed.
+    const lift = (at: number) => (t: number) => 15 * hold((t - at) / ACT_SECONDS)
+    const plant = (ats: readonly number[], deg: number, more: (bone: MotionTraceBone, t: number) => Quat | null = () => null, lifted = true) => (bone: MotionTraceBone, t: number): Quat | null => {
+      if (bone === 'leftUpperLeg' && lifted)
+        return axisAngle(0, ats.reduce((sum, at) => sum + lift(at)(t), 0))
+      if (bone === 'leftFoot')
+        return multiply(axisAngle(1, ats.reduce((sum, at) => sum + deg * Math.min(1, Math.max(0, t - at - 1) / 1.2), 0)), more(bone, t) ?? [0, 0, 0, 1])
+      return more(bone, t)
+    }
+    const replants = (ats: readonly number[]): Act[] => ats.map(at => ({ id: 'foot-replant', at, moves: null }))
+    const acts = (ats: readonly number[]) => [...SIX, ...replants(ats)].sort((a, b) => a.at - b.at)
+    expect(report({ acts: acts([10]), extra: plant([10], 6) }).detail.acts.find(act => act.id === 'foot-replant')?.confirmed).toBe(true)
+    expect(report({ acts: acts([10]), extra: plant([10], 6) }).detail.pair.difference).toBeLessThan(0.25)
+    expect(report({ acts: replants([10, 20, 30]), extra: plant([10, 20, 30], 6) }).detail.pair.difference).toBeLessThan(0.25)
+    expect(() => report({ acts: acts([10]), extra: plant([10], 6, (bone, t) => bone === 'head' && t > 20 ? axisAngle(1, 1) : null) })).toThrow(/outside the act spans/)
+    expect(() => report({ acts: acts([10]), extra: plant([10], 20) })).toThrow(/lasting result/)
+    expect(() => report({ acts: SIX, extra: plant([10], 6) })).toThrow(/outside the act spans/)
+    // The review's P2: a marker with no lift behind it does not license the turned foot; P1: a pitched foot after a correct re-plant.
+    expect(() => report({ acts: acts([10]), extra: plant([10], 6, () => null, false) })).toThrow(/outside the act spans/)
+    expect(() => report({ acts: acts([10]), extra: plant([10], 6, (bone, t) => bone === 'leftFoot' && t > 20 ? axisAngle(0, 15) : null) })).toThrow(/outside the act spans/)
+    // The review's P4: hips left up after a correct re-plant.
+    expect(() => report({ acts: acts([10]), extra: plant([10], 6), hips: t => [0, t > 14 ? 0.015 : 0, 0] })).toThrow(/hips/)
   })
 
   it('refuses a pair whose root yaw or hips position differs outside the act spans, and accepts hips movement inside one', () => {

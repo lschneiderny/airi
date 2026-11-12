@@ -74,8 +74,6 @@ export const ACT_KEYS = {
   'wave': [eitherHand(18), { kind: 'hand', at: [0.25, 0.10, 0.30] }, { kind: 'oscillation', signal: 'forearm-twist', amplitude: 18, transitions: 3, during: 1 }],
 } as const satisfies Record<BodyActId, readonly ActKey[]>
 
-const LEG_CHAIN: readonly MotionTraceBone[] = ['leftUpperLeg', 'rightUpperLeg', 'leftLowerLeg', 'rightLowerLeg', 'leftFoot', 'rightFoot', 'leftToes', 'rightToes']
-
 /**
  * The state an act's design declares as its lasting result (switch contract item 2, rules.md revision 3, X3a): from the
  * end of its widened span the pair check compares these local rotations by the change of their difference's angle and
@@ -83,8 +81,8 @@ const LEG_CHAIN: readonly MotionTraceBone[] = ['leftUpperLeg', 'rightUpperLeg', 
  * free foot takes a step with a yaw of 4 to 8 deg (x1.5 at the amplitude top: 12) and the support returns to a half
  * shift; 0.02 L is the act's only translation, its swing height.
  */
-export const ACT_LASTING: Partial<Record<BodyActId, { readonly bones: readonly MotionTraceBone[], readonly footYawDeg: number, readonly hips: number }>> = {
-  'foot-replant': { bones: LEG_CHAIN, footYawDeg: 12, hips: 0.02 },
+export const ACT_LASTING: Partial<Record<BodyActId, { readonly footYawDeg: number, readonly lateralShare: number }>> = {
+  'foot-replant': { footYawDeg: 12, lateralShare: 0.5 },
 }
 
 /** The acts allowed while the rest state is `rest` (plan D3); data, so a restricted set is passed, not coded. */
@@ -290,7 +288,24 @@ function angleDifference(on: TracePose, off: TracePose, key: AngleKey, frame: nu
 }
 
 /** The pair's frame for the position keys: both poses, the leg length and the arm frame. */
-interface PairFrame { readonly on: TracePose, readonly off: TracePose, readonly legLength: number, readonly arm: number, readonly outSign: number }
+interface PairFrame { readonly on: TracePose, readonly off: TracePose, readonly legLength: number, readonly arm: number, readonly outSign: number, readonly bases: readonly Rebase[] }
+
+/** The declared lasting result of a confirmed foot re-plant from `frame` on: each foot's world yaw difference (deg) and the hips' lateral heading offset (model units). */
+interface Rebase { readonly frame: number, readonly footYaw: readonly [number, number], readonly lateral: number }
+
+const FEET = ['leftFoot', 'rightFoot'] as const
+const baseAt = (pf: PairFrame, frame: number): Rebase | null => pf.bases.filter(base => base.frame <= frame).at(-1) ?? null
+/** The hips' heading-frame offset between the pair at `frame`, less the declared lateral shift. */
+function hipsOffset(pf: PairFrame, frame: number): Vec3 {
+  const offset = heading(sub(pf.on.hips(frame), pf.off.hips(frame)), pf.on.yaw(frame))
+  return [offset[0] - (baseAt(pf, frame)?.lateral ?? 0), offset[1], offset[2]]
+}
+/** A foot's world rotation difference (deg, rotation vector), less the declared yaw. */
+function footDifference(pf: PairFrame, frame: number, side: 0 | 1): Vec3 {
+  const b = pf.on.index(FEET[side])
+  const v = scale(rotationVector(multiply(pf.on.world(frame, b), conjugate(pf.off.world(frame, b)))), DEG)
+  return [v[0], v[1] - (baseAt(pf, frame)?.footYaw[side] ?? 0), v[2]]
+}
 
 function handZone(pf: PairFrame, pose: TracePose, frame: number, side: 'left' | 'right', at: Vec3): boolean {
   const [hand, shoulder] = [pose.index(`${side}Hand`), pose.index(`${side}UpperArm`)]
@@ -320,9 +335,9 @@ function keyMet(pf: PairFrame, key: Exclude<ActKey, OscillationKey>, frame: numb
   const { on, off } = pf
   switch (key.kind) {
     case 'position':
-      return norm(sub(on.hips(frame), off.hips(frame))) / pf.legLength >= C.bar * key.amplitude
+      return norm(hipsOffset(pf, frame)) / pf.legLength >= C.bar * key.amplitude
     case 'hips': {
-      const v = heading(sub(on.hips(frame), off.hips(frame)), on.yaw(frame))[key.axis] / pf.legLength
+      const v = hipsOffset(pf, frame)[key.axis] / pf.legLength
       return (key.signed ? v : Math.abs(v)) >= C.bar * key.amplitude
     }
     case 'lift':
@@ -336,8 +351,16 @@ function keyMet(pf: PairFrame, key: Exclude<ActKey, OscillationKey>, frame: numb
       return SIDES.some(side => faceZone(on, frame, side, key.zone, pf.arm) && !faceZone(off, frame, side, key.zone, pf.arm))
     case 'together':
       return together(on, frame, pf.arm) && !together(off, frame, pf.arm)
-    default:
+    default: {
+      // Keys on a foot's world orientation read the difference less the declared yaw of a confirmed re-plant.
+      const side = key.kind === 'world' || (key.kind === 'component' && key.frame === 'world') ? FEET.findIndex(foot => key.bones.includes(foot)) : -1
+      if (side >= 0 && pf.bases.length) {
+        const sides = ([0, 1] as const).filter(k => key.bones.includes(FEET[k]) && on.index(FEET[k]) >= 0)
+        const value = Math.max(...sides.map(k => key.kind === 'component' ? Math.abs(footDifference(pf, frame, k)[key.axis]) : norm(footDifference(pf, frame, k))))
+        return value >= C.bar * key.amplitude
+      }
       return angleDifference(on, off, key, frame) >= C.bar * key.amplitude
+    }
   }
 }
 
@@ -417,12 +440,15 @@ function keyResults(pf: PairFrame, id: BodyActId, first: number, last: number): 
 }
 
 /** The run and its acts-off companion must be the same model, commit, seed and length, and differ only inside acts. */
-function checkPair(run: LoadedRun, pair: LoadedRun, spans: readonly RawSpan[]): IdleActsDetail['pair'] {
+function refusePair(run: LoadedRun, pair: LoadedRun, why: string): never {
+  throw new ReportUsageError(`${run.dir} and ${pair.dir}: not a run and its acts-off pair: ${why}`)
+}
+
+/** The run and its acts-off companion must be the same model, commit, seed and length. */
+function checkPairSource(run: LoadedRun, pair: LoadedRun): void {
   const a = run.input.trace
   const b = pair.input.trace
-  const refuse = (why: string) => {
-    throw new ReportUsageError(`${run.dir} and ${pair.dir}: not a run and its acts-off pair: ${why}`)
-  }
+  const refuse = (why: string) => refusePair(run, pair, why)
   if (a.source.scenario.id !== b.source.scenario.id || a.source.scenario.class !== b.source.scenario.class || a.source.scenario.seed !== b.source.scenario.seed)
     refuse('scenario or seed differs')
   if (a.frames !== b.frames || a.scoredFrom !== b.scoredFrom || a.hz !== b.hz)
@@ -437,14 +463,43 @@ function checkPair(run: LoadedRun, pair: LoadedRun, spans: readonly RawSpan[]): 
     refuse('the companion does not have acts switched off (qa:motion3d run --acts off)')
   if (markers(pair, 'act:').length)
     refuse('the acts-off companion has act markers')
-  const on = new TracePose(run.input)
-  const off = new TracePose(pair.input)
-  const widened = spans.map(span => ({ id: span.id, start: span.start, end: (span.end ?? Number.POSITIVE_INFINITY) + C.exitSeconds + C.settleSeconds }))
-  const declaring = widened.filter(span => ACT_LASTING[span.id] && Number.isFinite(span.end)).sort((x, y) => x.end - y.end)
-  const hipsOffset = (frame: number) => heading(sub(on.hips(frame), off.hips(frame)), on.yaw(frame))
-  const footYaws = (frame: number) => (['leftFoot', 'rightFoot'] as const).map(foot => on.index(foot)).filter(b => b >= 0).map(b => rotationVector(multiply(on.world(frame, b), conjugate(off.world(frame, b))))[1] * DEG)
-  let base: { readonly angles: ReadonlyMap<number, number>, readonly hips: Vec3, readonly footYaws: readonly number[] } | null = null
-  let next = 0
+}
+
+/**
+ * The declared lasting results (rules.md revision 4, Y3): after each CONFIRMED foot re-plant, at the first frame after its
+ * widened span, each foot's world yaw difference and the hips' lateral offset, each act adding at most its declared bound.
+ */
+function rebases(run: LoadedRun, pair: LoadedRun, spans: readonly RawSpan[], on: TracePose, off: TracePose): Rebase[] {
+  const bases: Rebase[] = []
+  const legLength = run.input.trace.rig.legLength
+  const pf: PairFrame = { on, off, legLength, ...armFrame(on), bases }
+  const first = Array.from({ length: on.frames }, (_, f) => f).find(f => on.time(f) >= run.input.trace.scoredFrom) ?? 0
+  const [left, right] = FEET.map(foot => on.index(foot))
+  const gain = left < 0 || right < 0 ? 0 : 0.38 * Math.abs(heading(sub(on.position(first, left), on.position(first, right)), on.yaw(first))[0]) / (2 * legLength)
+  const frameAt = (t: number) => Array.from({ length: on.frames }, (_, f) => f).find(f => on.time(f) > t) ?? on.frames - 1
+  for (const span of spans.filter(s => s.end !== null && ACT_LASTING[s.id]).sort((x, y) => (x.end ?? 0) - (y.end ?? 0))) {
+    const lasting = ACT_LASTING[span.id]!
+    if (!keyResults(pf, span.id, frameAt(span.start), frameAt(span.end! + C.exitSeconds)).confirmed)
+      continue
+    const frame = frameAt(span.end! + C.exitSeconds + C.settleSeconds)
+    const previous = bases.at(-1)
+    const footYaw = ([0, 1] as const).map(k => footDifference({ ...pf, bases: [] }, frame, k)[1]) as [number, number]
+    const lateral = heading(sub(on.hips(frame), off.hips(frame)), on.yaw(frame))[0]
+    const added = Math.max(...footYaw.map((y, k) => Math.abs(y - (previous?.footYaw[k] ?? 0))))
+    const shift = Math.abs(lateral - (previous?.lateral ?? 0)) / legLength
+    if (added > lasting.footYawDeg || shift > lasting.lateralShare * gain)
+      refusePair(run, pair, `the lasting result of ${span.id} at ${on.time(frame).toFixed(3)} s exceeds its declared bound: foot yaw ${added.toFixed(2)} deg (at most ${lasting.footYawDeg}), hips lateral ${shift.toFixed(4)} L (at most ${(lasting.lateralShare * gain).toFixed(4)})`)
+    bases.push({ frame, footYaw, lateral })
+  }
+  return bases
+}
+
+function checkPair(run: LoadedRun, pair: LoadedRun, spans: readonly RawSpan[], pf: PairFrame): IdleActsDetail['pair'] {
+  const a = run.input.trace
+  const refuse = (why: string) => refusePair(run, pair, why)
+  const { on, off } = pf
+  const widened = spans.map(span => ({ start: span.start, end: (span.end ?? Number.POSITIVE_INFINITY) + C.exitSeconds + C.settleSeconds }))
+  const feet = new Set(FEET.map(foot => on.index(foot)))
   let difference = 0
   let at: number | null = null
   let bone: string | null = null
@@ -452,24 +507,11 @@ function checkPair(run: LoadedRun, pair: LoadedRun, spans: readonly RawSpan[]): 
   let hips = 0
   for (let frame = 0; frame < on.frames; frame++) {
     const t = on.time(frame)
-    if (next < declaring.length && t > declaring[next].end) {
-      const lasting = ACT_LASTING[declaring[next].id]!
-      // Each act may add its own declared result, so the bound applies to the change since the previous re-base.
-      const yaws = footYaws(frame)
-      const footYaw = Math.max(0, ...yaws.map((y, k) => Math.abs(y - (base?.footYaws[k] ?? 0))))
-      const offset = hipsOffset(frame)
-      const shift = norm(base ? sub(offset, base.hips) : offset) / a.rig.legLength
-      if (footYaw > lasting.footYawDeg || shift > lasting.hips)
-        refuse(`the lasting result of ${declaring[next].id} at ${t.toFixed(3)} s exceeds its declared bound: foot yaw ${footYaw.toFixed(2)} deg (at most ${lasting.footYawDeg}), hips ${shift.toFixed(4)} L (at most ${lasting.hips})`)
-      base = { angles: new Map(lasting.bones.map(name => on.index(name)).filter(b => b >= 0).map(b => [b, angleBetween(on.local(frame, b), off.local(frame, b))])), hips: offset, footYaws: yaws }
-      next++
-    }
     if (t < a.scoredFrom || widened.some(span => t >= span.start && t <= span.end))
       continue
     a.rig.bones.forEach((name, b) => {
-      const raw = angleBetween(on.local(frame, b), off.local(frame, b))
-      const residual = base?.angles.get(b)
-      const d = residual === undefined ? raw : Math.abs(raw - residual)
+      // A foot is compared in the world, less the declared yaw of a confirmed re-plant; every other bone by its local rotation.
+      const d = feet.has(b) && pf.bases.length ? norm(footDifference(pf, frame, FEET.findIndex(foot => on.index(foot) === b) as 0 | 1)) : angleBetween(on.local(frame, b), off.local(frame, b))
       if (d > difference) {
         difference = d
         at = t
@@ -477,7 +519,7 @@ function checkPair(run: LoadedRun, pair: LoadedRun, spans: readonly RawSpan[]): 
       }
     })
     yaw = Math.max(yaw, Math.abs(on.yaw(frame) - off.yaw(frame)) * DEG)
-    hips = Math.max(hips, norm(base ? sub(hipsOffset(frame), base.hips) : hipsOffset(frame)) / a.rig.legLength)
+    hips = Math.max(hips, norm(hipsOffset(pf, frame)) / a.rig.legLength)
   }
   if (difference > C.epsilonDeg)
     refuse(`they differ outside the act spans by ${difference.toFixed(3)} deg (${bone} at ${at === null ? '-' : (at as number).toFixed(3)} s), more than ${C.epsilonDeg} deg`)
@@ -498,10 +540,11 @@ export function idleActsReport(run: LoadedRun, pair: LoadedRun, restSet: readonl
     throw new ReportUsageError(`${run.dir}: idle-acts judges an idle-class run, not ${input.trace.source.scenario.class}`)
   const restAt = restStates(run)
   const raw = actSpans(run, restAt)
-  const pairing = checkPair(run, pair, raw)
+  checkPairSource(run, pair)
   const on = new TracePose(input)
   const off = new TracePose(pair.input)
-  const pf: PairFrame = { on, off, legLength: input.trace.rig.legLength, ...armFrame(on) }
+  const pf: PairFrame = { on, off, legLength: input.trace.rig.legLength, ...armFrame(on), bases: rebases(run, pair, raw, on, off) }
+  const pairing = checkPair(run, pair, raw, pf)
   const frameAt = (t: number) => {
     let frame = 0
     while (frame < on.frames - 1 && on.time(frame) < t)
