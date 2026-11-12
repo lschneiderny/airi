@@ -8,11 +8,11 @@ import type { LoadedRun, ReportConstant } from './report'
 
 import { MOTION_TRACE_CHANNELS } from '@proj-airi/motion-driver-humanoid/motion-trace'
 
-import { conjugate, cv, DEG, heading, multiply, norm, rotationVector, sub } from '../metrics/math'
+import { add, conjugate, cv, DEG, heading, multiply, norm, rotate, rotationVector, scale, sub } from '../metrics/math'
 import { caseReport, formatCaseReport, judged, notExercised } from './case-report'
 import { fixed, gateStatus, markers, ReportUsageError } from './report'
 
-export const IDLE_ACTS_VERSION = 2
+export const IDLE_ACTS_VERSION = 3
 
 /**
  * One key of an act's form (architecture 4e): the difference between the paired runs that the act must produce, at
@@ -21,35 +21,57 @@ export const IDLE_ACTS_VERSION = 2
  * - `from`: the bone's world orientation relative to the world orientation of `from` at the same index;
  * - `world`: the bone's world orientation;
  * - `position`: the hips' world position.
+ * Distinctive keys (rules.md revision 3, X1), positions and joint relations the drawn amplitude does not scale away:
+ * - `component`: one rotation-vector component (0 pitch, 1 yaw, 2 roll) of a `local`, `world` or `from` difference;
+ * - `hips`: one heading-frame component of the hips-position difference, signed (up) or not, in L;
+ * - `lift`: the world height gained by either listed bone, in L;
+ * - `hand`: a hand within `handRadius` of `at` ([out, up, forward] arm lengths from its shoulder joint, architecture 4a),
+ *   where the companion's same hand is not;
+ * - `face`: a hand within `faceDistance` of the head joint, in front of the face or beside it (head frame), where the
+ *   companion's is not;
+ * - `together`: the two wrists within `claspDistance` of each other, where the companion's are not;
+ * - `oscillation`: a signal alternating beyond its median +- half the amplitude `transitions` times over the span (over
+ *   the frames on which key `during` holds, when given): `arm-swing` is half the left minus the right upper arm's pitch
+ *   difference, `forearm-twist` the twist of the forearm and hand about the forearm's long axis.
  * `after` lists the keys of the same act whose first qualifying run must start before this key's (the design's order).
  */
 type ActKeyShape
   = | { readonly kind: 'local' | 'world', readonly bones: readonly MotionTraceBone[], readonly amplitude: number }
     | { readonly kind: 'from', readonly bones: readonly MotionTraceBone[], readonly from: readonly MotionTraceBone[], readonly amplitude: number }
     | { readonly kind: 'position', readonly amplitude: number }
+    | { readonly kind: 'component', readonly frame: 'local' | 'world' | 'from', readonly bones: readonly MotionTraceBone[], readonly from?: readonly MotionTraceBone[], readonly axis: 0 | 1 | 2, readonly amplitude: number }
+    | { readonly kind: 'hips', readonly axis: 0 | 1 | 2, readonly signed: boolean, readonly amplitude: number }
+    | { readonly kind: 'lift', readonly bones: readonly MotionTraceBone[], readonly amplitude: number }
+    | { readonly kind: 'hand', readonly at: Vec3 }
+    | { readonly kind: 'face', readonly zone: 'front' | 'side' }
+    | { readonly kind: 'together' }
+    | { readonly kind: 'oscillation', readonly signal: 'arm-swing' | 'forearm-twist', readonly amplitude: number, readonly transitions: number, readonly during?: number }
 export type ActKey = ActKeyShape & { readonly after?: readonly number[] }
 
 const both = (bone: 'Shoulder' | 'UpperArm' | 'Foot', amplitude: number): ActKey[] => (['left', 'right'] as const).map(side => ({ kind: bone === 'Foot' ? 'world' : 'local', bones: [`${side}${bone}`], amplitude }))
 const eitherHand = (amplitude: number): ActKey => ({ kind: 'from', bones: ['leftHand', 'rightHand'], from: ['leftUpperArm', 'rightUpperArm'], amplitude })
 const trunk = (amplitude: number): ActKey => ({ kind: 'from', bones: ['chest'], from: ['hips'], amplitude })
 
+const clavicleRoll = (amplitude: number): ActKey[] => (['leftShoulder', 'rightShoulder'] as const).map(bone => ({ kind: 'component', frame: 'local', bones: [bone], axis: 2, amplitude }))
+
 /**
  * Every key an act's movement must carry, at its architecture 4e design amplitude (4b for the peek-at-chat lean; the low
- * end of a 4e range). An act is confirmed when the paired runs differ by half of each amplitude (rules.md revision 2, B1).
+ * end of a 4e range): revision 2's keys, then the keys of the act's distinctive phase (rules.md revision 3, X1). An act
+ * is confirmed when the paired runs differ by half of each amplitude, or meet each zone, somewhere in its span.
  */
 export const ACT_KEYS = {
-  'sigh': [trunk(4), ...both('Shoulder', 4)],
-  'shoulder-roll': [...both('Shoulder', 10), { kind: 'from', bones: ['head'], from: ['chest'], amplitude: 12, after: [0, 1] }],
-  'foot-replant': [{ kind: 'world', bones: ['leftFoot', 'rightFoot'], amplitude: 4 }],
-  'look-around': [{ kind: 'world', bones: ['head'], amplitude: 35 }],
-  'hand-inspect': [eitherHand(60)],
-  'clasp-rock': [{ kind: 'position', amplitude: 0.012 }],
-  'arm-swing': both('UpperArm', 8),
-  'hair-tuck': [{ kind: 'local', bones: ['head'], amplitude: 4 }],
-  'yawn': [{ kind: 'from', bones: ['head'], from: ['chest'], amplitude: 8 }, ...both('Shoulder', 5), trunk(3)],
-  'peek-chat': [trunk(5)],
-  'heel-raise': [{ kind: 'position', amplitude: 0.012 }, ...both('Foot', 14)],
-  'wave': [eitherHand(18)],
+  'sigh': [trunk(4), ...both('Shoulder', 4), { kind: 'component', frame: 'from', bones: ['chest'], from: ['hips'], axis: 0, amplitude: 4 }, ...clavicleRoll(4)],
+  'shoulder-roll': [...both('Shoulder', 10), { kind: 'from', bones: ['head'], from: ['chest'], amplitude: 12, after: [0, 1] }, { kind: 'component', frame: 'from', bones: ['head'], from: ['chest'], axis: 2, amplitude: 12, after: [0, 1] }],
+  'foot-replant': [{ kind: 'world', bones: ['leftFoot', 'rightFoot'], amplitude: 4 }, { kind: 'lift', bones: ['leftFoot', 'rightFoot'], amplitude: 0.02 }],
+  'look-around': [{ kind: 'world', bones: ['head'], amplitude: 35 }, { kind: 'component', frame: 'world', bones: ['head'], axis: 1, amplitude: 35 }],
+  'hand-inspect': [eitherHand(60), { kind: 'hand', at: [-0.10, -0.30, 0.45] }],
+  'clasp-rock': [{ kind: 'position', amplitude: 0.012 }, { kind: 'together' }, { kind: 'hips', axis: 2, signed: false, amplitude: 0.012 }],
+  'arm-swing': [...both('UpperArm', 8), { kind: 'oscillation', signal: 'arm-swing', amplitude: 8, transitions: 2 }],
+  'hair-tuck': [{ kind: 'local', bones: ['head'], amplitude: 4 }, { kind: 'face', zone: 'side' }],
+  'yawn': [{ kind: 'from', bones: ['head'], from: ['chest'], amplitude: 8 }, ...both('Shoulder', 5), trunk(3), { kind: 'face', zone: 'front' }],
+  'peek-chat': [trunk(5), { kind: 'component', frame: 'from', bones: ['chest'], from: ['hips'], axis: 2, amplitude: 5 }],
+  'heel-raise': [{ kind: 'position', amplitude: 0.012 }, ...both('Foot', 14), { kind: 'hips', axis: 1, signed: true, amplitude: 0.012 }],
+  'wave': [eitherHand(18), { kind: 'hand', at: [0.25, 0.10, 0.30] }, { kind: 'oscillation', signal: 'forearm-twist', amplitude: 18, transitions: 3, during: 1 }],
 } as const satisfies Record<BodyActId, readonly ActKey[]>
 
 const LEG_CHAIN: readonly MotionTraceBone[] = ['leftUpperLeg', 'rightUpperLeg', 'leftLowerLeg', 'rightLowerLeg', 'leftFoot', 'rightFoot', 'leftToes', 'rightToes']
@@ -75,6 +97,9 @@ const C = {
   epsilonDeg: 0.25,
   yawEpsilonDeg: 0.05,
   hipsEpsilon: 0.0005,
+  handRadius: 0.10,
+  faceDistance: 0.30,
+  claspDistance: 0.15,
   exitSeconds: 0.35,
   settleSeconds: 2.2,
 } as const
@@ -86,6 +111,9 @@ export const IDLE_ACTS_CONSTANTS: readonly ReportConstant[] = [
   { name: 'distinct acts', value: C.distinct, unit: 'counted, confirmed forms', source: 'C001' },
   { name: 'confirmation run', value: C.confirmFrames, unit: 'consecutive 60 Hz frames (0.3 s) on which each key reaches its bar, somewhere in the span, in the design order', source: 'plan R1; rules.md revision 3, X3b' },
   { name: 'confirmation bar', value: C.bar, unit: 'of each key\'s design amplitude (ACT_KEYS)', source: 'architecture 4e; review B1 step 5' },
+  { name: 'hand zone', value: C.handRadius, unit: 'arm lengths around a hand key\'s 4e point', source: 'rules.md revision 3, X1 scoring' },
+  { name: 'face zone', value: C.faceDistance, unit: 'arm lengths from the head joint (yawn: in front; hair tuck: beside)', source: 'rules.md revision 3, X1 scoring' },
+  { name: 'clasp', value: C.claspDistance, unit: 'arm lengths between the wrists', source: 'rules.md revision 3, X1 scoring' },
   { name: 'pair epsilon', value: C.epsilonDeg, unit: 'deg, largest local-rotation difference outside the widened act spans', source: 'rules.md revision 2, B1 scoring' },
   { name: 'pair root yaw', value: C.yawEpsilonDeg, unit: 'deg, largest root-yaw difference outside the widened act spans', source: 'rules.md revision 3, X2 scoring' },
   { name: 'pair hips', value: C.hipsEpsilon, unit: 'L, largest hips-position difference outside the widened act spans', source: 'rules.md revision 3, X2 scoring' },
@@ -166,15 +194,31 @@ function actSpans(run: LoadedRun, restAt: (t: number) => BodyRest): RawSpan[] {
   return spans
 }
 
-/** Frame-indexed access to a decoded trace's local rotations, world orientations and hips position, warm-up included. */
+/**
+ * Frame-indexed access to a decoded trace's local rotations, world orientations, joint positions (forward kinematics
+ * from the rig's rest offsets) and hips position, warm-up included.
+ */
 export class TracePose {
   private readonly bones: readonly MotionTraceBone[]
   private readonly parents: readonly number[]
+  private readonly positions = new Map<number, Vec3>()
   readonly frames: number
   constructor(readonly input: DecodedMotionTrace) {
     this.bones = input.trace.rig.bones
     this.parents = input.trace.rig.parents
     this.frames = input.trace.frames
+  }
+
+  /** The bone's joint position in model units: the hips at the root block, each child at its parent plus the rotated rest offset. */
+  position(frame: number, bone: number): Vec3 {
+    const key = frame * this.bones.length + bone
+    const cached = this.positions.get(key)
+    if (cached)
+      return cached
+    const parent = this.parents[bone]
+    const at = parent < 0 ? this.hips(frame) : add(this.position(frame, parent), rotate(this.world(frame, parent), this.input.trace.rig.restOffsets[bone]))
+    this.positions.set(key, at)
+    return at
   }
 
   time(frame: number): number {
@@ -215,22 +259,129 @@ function angleBetween(a: Quat, b: Quat): number {
   return 2 * Math.atan2(Math.hypot(d[0], d[1], d[2]), Math.abs(d[3])) * DEG
 }
 
-/** The difference of one key between the paired runs at one frame: degrees, or L for the hips position. */
-function keyDifference(on: TracePose, off: TracePose, key: ActKey, frame: number): number {
-  if (key.kind === 'position')
-    return norm(sub(on.hips(frame), off.hips(frame))) / on.input.trace.rig.legLength
+type AngleKey = Extract<ActKey, { kind: 'local' | 'world' | 'from' | 'component' }>
+type OscillationKey = Extract<ActKey, { kind: 'oscillation' }>
+const SIDES = ['left', 'right'] as const
+
+/** The rig's arm length A (upper arm plus forearm rest offsets) and the sign of `out` for the left hand in the heading frame. */
+function armFrame(pose: TracePose): { arm: number, outSign: number } {
+  const offsets = pose.input.trace.rig.restOffsets
+  const [lower, hand, left, right] = (['leftLowerArm', 'leftHand', 'leftUpperArm', 'rightUpperArm'] as const).map(bone => pose.index(bone))
+  if ([lower, hand, left, right].some(b => b < 0))
+    return { arm: Number.NaN, outSign: 1 }
+  const frame = Math.max(0, Array.from({ length: pose.frames }, (_, f) => f).find(f => pose.time(f) >= pose.input.trace.scoredFrom) ?? 0)
+  const across = heading(sub(pose.position(frame, left), pose.position(frame, right)), pose.yaw(frame))
+  return { arm: norm(offsets[lower]) + norm(offsets[hand]), outSign: across[0] < 0 ? -1 : 1 }
+}
+
+/** The difference of one angle key between the paired runs at one frame, degrees: the angle, or one rotation-vector component. */
+function angleDifference(on: TracePose, off: TracePose, key: AngleKey, frame: number): number {
+  const frameKind = key.kind === 'component' ? key.frame : key.kind
   return key.bones.reduce((best, bone, k) => {
     const b = on.index(bone)
-    if (b < 0)
+    const fromBones = 'from' in key ? key.from : undefined
+    const from = frameKind === 'from' ? on.index(fromBones?.[k] ?? bone) : -1
+    if (b < 0 || (frameKind === 'from' && from < 0))
       return best
-    if (key.kind !== 'from')
-      return Math.max(best, key.kind === 'local' ? angleBetween(on.local(frame, b), off.local(frame, b)) : angleBetween(on.world(frame, b), off.world(frame, b)))
-    const from = on.index(key.from[k])
-    if (from < 0)
-      return best
-    const relative = (pose: TracePose) => multiply(conjugate(pose.world(frame, from)), pose.world(frame, b))
-    return Math.max(best, angleBetween(relative(on), relative(off)))
+    const pick = (pose: TracePose) => frameKind === 'local' ? pose.local(frame, b) : frameKind === 'world' ? pose.world(frame, b) : multiply(conjugate(pose.world(frame, from)), pose.world(frame, b))
+    const [a, z] = [pick(on), pick(off)]
+    return Math.max(best, key.kind === 'component' ? Math.abs(rotationVector(multiply(a, conjugate(z)))[key.axis]) * DEG : angleBetween(a, z))
   }, 0)
+}
+
+/** The pair's frame for the position keys: both poses, the leg length and the arm frame. */
+interface PairFrame { readonly on: TracePose, readonly off: TracePose, readonly legLength: number, readonly arm: number, readonly outSign: number }
+
+function handZone(pf: PairFrame, pose: TracePose, frame: number, side: 'left' | 'right', at: Vec3): boolean {
+  const [hand, shoulder] = [pose.index(`${side}Hand`), pose.index(`${side}UpperArm`)]
+  if (hand < 0 || shoulder < 0)
+    return false
+  const v = scale(heading(sub(pose.position(frame, hand), pose.position(frame, shoulder)), pose.yaw(frame)), 1 / pf.arm)
+  return norm(sub([v[0] * pf.outSign * (side === 'left' ? 1 : -1), v[1], v[2]], at)) <= C.handRadius
+}
+
+function faceZone(pose: TracePose, frame: number, side: 'left' | 'right', zone: 'front' | 'side', arm: number): boolean {
+  const [hand, head] = [pose.index(`${side}Hand`), pose.index('head')]
+  if (hand < 0 || head < 0)
+    return false
+  const v = scale(rotate(conjugate(pose.world(frame, head)), sub(pose.position(frame, hand), pose.position(frame, head))), 1 / arm)
+  if (norm(v) > C.faceDistance)
+    return false
+  return zone === 'front' ? v[2] > 0 && v[2] > Math.abs(v[0]) : Math.abs(v[0]) >= v[2] && v[1] >= -C.faceDistance / 2
+}
+
+function together(pose: TracePose, frame: number, arm: number): boolean {
+  const [left, right] = [pose.index('leftHand'), pose.index('rightHand')]
+  return left >= 0 && right >= 0 && norm(sub(pose.position(frame, left), pose.position(frame, right))) / arm <= C.claspDistance
+}
+
+/** Whether a non-oscillation key holds at one frame: its difference at half its amplitude, or its zone reached by the act alone. */
+function keyMet(pf: PairFrame, key: Exclude<ActKey, OscillationKey>, frame: number): boolean {
+  const { on, off } = pf
+  switch (key.kind) {
+    case 'position':
+      return norm(sub(on.hips(frame), off.hips(frame))) / pf.legLength >= C.bar * key.amplitude
+    case 'hips': {
+      const v = heading(sub(on.hips(frame), off.hips(frame)), on.yaw(frame))[key.axis] / pf.legLength
+      return (key.signed ? v : Math.abs(v)) >= C.bar * key.amplitude
+    }
+    case 'lift':
+      return key.bones.some((bone) => {
+        const b = on.index(bone)
+        return b >= 0 && (on.position(frame, b)[1] - off.position(frame, b)[1]) / pf.legLength >= C.bar * key.amplitude
+      })
+    case 'hand':
+      return SIDES.some(side => handZone(pf, on, frame, side, key.at) && !handZone(pf, off, frame, side, key.at))
+    case 'face':
+      return SIDES.some(side => faceZone(on, frame, side, key.zone, pf.arm) && !faceZone(off, frame, side, key.zone, pf.arm))
+    case 'together':
+      return together(on, frame, pf.arm) && !together(off, frame, pf.arm)
+    default:
+      return angleDifference(on, off, key, frame) >= C.bar * key.amplitude
+  }
+}
+
+/** The oscillation signal at one frame, deg, one value per lane (both hands for the forearm twist). */
+function oscillation(pf: PairFrame, key: OscillationKey, frame: number): number[] {
+  const { on, off } = pf
+  if (key.signal === 'arm-swing') {
+    const pitch = (bone: MotionTraceBone) => {
+      const b = on.index(bone)
+      return b < 0 ? 0 : rotationVector(multiply(on.local(frame, b), conjugate(off.local(frame, b))))[0] * DEG
+    }
+    return [(pitch('leftUpperArm') - pitch('rightUpperArm')) / 2]
+  }
+  return SIDES.map((side) => {
+    const [lower, hand] = [on.index(`${side}LowerArm`), on.index(`${side}Hand`)]
+    if (lower < 0 || hand < 0)
+      return 0
+    const chain = (pose: TracePose) => multiply(pose.local(frame, lower), pose.local(frame, hand))
+    const d = multiply(conjugate(chain(off)), chain(on))
+    const axis = on.input.trace.rig.restOffsets[hand]
+    const along = (d[0] * axis[0] + d[1] * axis[1] + d[2] * axis[2]) / norm(axis)
+    return 2 * Math.atan2(along, d[3]) * DEG
+  })
+}
+
+/** Alternations of a series beyond its median +- half the amplitude, and the index of the first. */
+function alternations(values: readonly number[], amplitude: number): { count: number, first: number } {
+  const sorted = [...values].sort((a, b) => a - b)
+  const center = sorted[Math.floor(sorted.length / 2)]
+  let state = 0
+  let count = 0
+  let first = -1
+  values.forEach((value, i) => {
+    const s = value >= center + amplitude / 2 ? 1 : value <= center - amplitude / 2 ? -1 : 0
+    if (s !== 0 && s !== state) {
+      if (state !== 0) {
+        count++
+        if (first < 0)
+          first = i
+      }
+      state = s
+    }
+  })
+  return { count, first }
 }
 
 /**
@@ -238,14 +389,23 @@ function keyDifference(on: TracePose, off: TracePose, key: ActKey, frame: number
  * longest run. The act is confirmed when every key has a run and each key with `after` has one starting after the first
  * run of each key it follows (rules.md revision 3, X3b).
  */
-function keyResults(on: TracePose, off: TracePose, id: BodyActId, first: number, last: number): { confirmed: boolean, keys: { reached: boolean, longest: number }[] } {
+function keyResults(pf: PairFrame, id: BodyActId, first: number, last: number): { confirmed: boolean, keys: { reached: boolean, longest: number }[] } {
   const keys: readonly ActKey[] = ACT_KEYS[id]
   const results = keys.map((key) => {
     const starts: number[] = []
+    if (key.kind === 'oscillation') {
+      const window = key.during === undefined ? null : keys[key.during]
+      const frames = Array.from({ length: last - first + 1 }, (_, i) => first + i).filter(frame => !window || (window.kind !== 'oscillation' && keyMet(pf, window, frame)))
+      const series = frames.map(frame => oscillation(pf, key, frame))
+      const best = series.length === 0 ? { count: 0, first: -1 } : series[0].map((_, lane) => alternations(series.map(s => s[lane]), key.amplitude)).reduce((a, b) => b.count > a.count ? b : a)
+      if (best.count >= key.transitions)
+        starts.push(frames[best.first])
+      return { starts, longest: best.count }
+    }
     let run = 0
     let longest = 0
     for (let frame = first; frame <= last; frame++) {
-      run = keyDifference(on, off, key, frame) >= C.bar * key.amplitude ? run + 1 : 0
+      run = keyMet(pf, key, frame) ? run + 1 : 0
       longest = Math.max(longest, run)
       if (run === C.confirmFrames)
         starts.push(frame - C.confirmFrames + 1)
@@ -337,6 +497,7 @@ export function idleActsReport(run: LoadedRun, pair: LoadedRun, restSet: readonl
   const pairing = checkPair(run, pair, raw)
   const on = new TracePose(input)
   const off = new TracePose(pair.input)
+  const pf: PairFrame = { on, off, legLength: input.trace.rig.legLength, ...armFrame(on) }
   const frameAt = (t: number) => {
     let frame = 0
     while (frame < on.frames - 1 && on.time(frame) < t)
@@ -346,9 +507,9 @@ export function idleActsReport(run: LoadedRun, pair: LoadedRun, restSet: readonl
   const acts: ActSpan[] = raw.map((span, i) => {
     const first = frameAt(span.start)
     const last = span.end === null ? on.frames - 1 : frameAt(span.end + C.exitSeconds)
-    const form = (Object.keys(ACT_KEYS) as BodyActId[]).filter(id => keyResults(on, off, id, first, last).confirmed)
+    const form = (Object.keys(ACT_KEYS) as BodyActId[]).filter(id => keyResults(pf, id, first, last).confirmed)
     const overlaps = raw.slice(0, i).some(earlier => span.start < (earlier.end ?? Number.POSITIVE_INFINITY) && earlier.start < (span.end ?? Number.POSITIVE_INFINITY))
-    return { ...span, form, confirmed: form.includes(span.id), overlaps, keys: keyResults(on, off, span.id, first, last).keys }
+    return { ...span, form, confirmed: form.includes(span.id), overlaps, keys: keyResults(pf, span.id, first, last).keys }
   })
   const formKey = (act: ActSpan) => act.form.join('+')
   const counted = acts.filter(act => act.closedBy === 'finished')

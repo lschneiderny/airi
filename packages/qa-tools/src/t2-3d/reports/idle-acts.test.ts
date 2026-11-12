@@ -7,7 +7,7 @@ import type { DecodedMotionTrace } from '../read-trace'
 import { motionTraceParents } from '@proj-airi/motion-driver-humanoid/motion-trace'
 import { describe, expect, it } from 'vitest'
 
-import { multiply } from '../metrics/math'
+import { multiply, slerp } from '../metrics/math'
 import { analyticTrace } from '../metrics/test-trace'
 import { idleActsReport } from './idle-acts'
 import { ReportUsageError } from './report'
@@ -17,21 +17,75 @@ interface Act {
   readonly id: BodyActId
   readonly at: number
   readonly state?: 'finished' | 'cancelled'
-  /** The act whose movement plays under this marker; its own by default, none for a marker without motion. */
-  readonly moves?: BodyActId | null
+  /** The movement played under this marker: its own act's by default, another act's or a partial one, none for a marker without motion. */
+  readonly moves?: BodyActId | Movement | null
+  /** The drawn amplitude (4e: x1.0 to x1.5); it scales the angles, not the hand positions. */
   readonly scale?: number
 }
 
-const ACT_SECONDS = 3
-/** Local rotations (bone, axis, degrees, optional delay in s) at each act's 4e amplitude, on the bones its keys read. */
-const MOVEMENTS: Partial<Record<BodyActId, readonly (readonly [MotionTraceBone, 0 | 1 | 2, number, number?])[]>> = {
-  'sigh': [['chest', 0, 4], ['leftShoulder', 2, 4], ['rightShoulder', 2, -4]],
-  'arm-swing': [['leftUpperArm', 0, 8], ['rightUpperArm', 0, -8]],
-  'look-around': [['neck', 1, 14], ['head', 1, 21]],
-  'hand-inspect': [['rightLowerArm', 1, 60]],
-  'wave': [['leftLowerArm', 1, 18]],
-  'shoulder-roll': [['leftShoulder', 2, 10], ['rightShoulder', 2, -10], ['head', 2, 12, 0.5]],
+/**
+ * An act's movement: local rotations (bone, axis, degrees, delay in s, oscillation Hz) held over the act, and a hand
+ * placed at a point [out, up, forward] in arm lengths from its shoulder joint, with a forearm twist in degrees.
+ */
+interface Movement {
+  readonly parts?: readonly (readonly [MotionTraceBone, 0 | 1 | 2, number, number?, number?])[]
+  readonly reach?: { readonly side: 'left' | 'right', readonly at: Vec3, readonly twist?: (t: number) => number }
 }
+
+const ACT_SECONDS = 3
+/** Each act as architecture 4e draws it, on a rig whose arm length is 1 (REST). */
+const MOVEMENTS: Partial<Record<BodyActId, Movement>> = {
+  'sigh': { parts: [['chest', 0, 4], ['leftShoulder', 2, 4], ['rightShoulder', 2, -4]] },
+  'arm-swing': { parts: [['leftUpperArm', 0, 8, 0, 0.9], ['rightUpperArm', 0, -8, 0, 0.9]] },
+  'look-around': { parts: [['neck', 1, 14], ['head', 1, 21]] },
+  'hand-inspect': { reach: { side: 'right', at: [-0.10, -0.30, 0.45], twist: () => -60 } },
+  'wave': { reach: { side: 'left', at: [0.25, 0.10, 0.30], twist: t => 60 + 18 * Math.sin(2 * Math.PI * 3.2 * t) } },
+  'shoulder-roll': { parts: [['leftShoulder', 2, 10], ['rightShoulder', 2, -10], ['head', 2, 12, 0.5]] },
+  'yawn': { parts: [['head', 0, -8], ['chest', 0, -3], ['leftShoulder', 2, 5], ['rightShoulder', 2, -5]], reach: { side: 'right', at: [-0.2, 0.15, 0.15] } },
+}
+/** Rest offsets of the test rig (model units, L = 1, arm length 1), mirrored for the right side. */
+const REST: Partial<Record<MotionTraceBone, Vec3>> = {
+  spine: [0, 0.1, 0],
+  chest: [0, 0.2, 0],
+  upperChest: [0, 0.1, 0],
+  neck: [0, 0.15, 0],
+  head: [0, 0.1, 0],
+  leftShoulder: [0.05, 0.1, 0],
+  leftUpperArm: [0.15, 0, 0],
+  leftLowerArm: [0, -0.5, 0],
+  leftHand: [0, -0.5, 0],
+  leftUpperLeg: [0.1, -0.05, 0],
+  leftLowerLeg: [0, -0.45, 0],
+  leftFoot: [0, -0.45, 0],
+}
+function restOffset(bone: MotionTraceBone): [number, number, number] {
+  const left = REST[bone.replace(/^right/, 'left') as MotionTraceBone] ?? [0, 0, 0]
+  return [bone.startsWith('right') ? -left[0] : left[0], left[1], left[2]]
+}
+
+function fromTo(a: Vec3, b: Vec3): Quat {
+  const c: Vec3 = [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
+  const q: Quat = [c[0], c[1], c[2], Math.hypot(...a) * Math.hypot(...b) + a[0] * b[0] + a[1] * b[1] + a[2] * b[2]]
+  const n = Math.hypot(...q)
+  return [q[0] / n, q[1] / n, q[2] / n, q[3] / n]
+}
+
+/** World orientations of the upper arm and forearm (rest direction straight down) that put the hand at `at`. */
+function armTo(side: 'left' | 'right', at: Vec3): readonly [Quat, Quat] {
+  const s: Vec3 = [(side === 'left' ? 2 : -2) * at[0], 2 * at[1], 2 * at[2]]
+  const half = Math.hypot(...s) / 2
+  const along: Vec3 = [s[0] / (2 * half), s[1] / (2 * half), s[2] / (2 * half)]
+  const down = -along[1]
+  const n0: Vec3 = [-along[0] * down, -1 - along[1] * down, -along[2] * down]
+  const n: Vec3 = [n0[0] / Math.hypot(...n0), n0[1] / Math.hypot(...n0), n0[2] / Math.hypot(...n0)]
+  const h = Math.sqrt(1 - half * half)
+  const u: Vec3 = [s[0] / 2 + h * n[0], s[1] / 2 + h * n[1], s[2] / 2 + h * n[2]]
+  const v: Vec3 = [s[0] / 2 - h * n[0], s[1] / 2 - h * n[1], s[2] / 2 - h * n[2]]
+  return [fromTo([0, -1, 0], u), fromTo([0, -1, 0], v)]
+}
+
+const PARTIAL_HAIR_TUCK: Movement = { parts: [['head', 2, 4]] }
+const PARTIAL_HAND_INSPECT: Movement = { parts: [['rightLowerArm', 1, 60]] }
 const SIX: readonly Act[] = [
   { id: 'wave', at: 4 },
   { id: 'arm-swing', at: 10 },
@@ -54,7 +108,7 @@ function axisAngle(axis: 0 | 1 | 2, degrees: number): Quat {
 interface Body {
   readonly acts?: readonly Act[]
   /** Movements without a marker: [act, start time]. */
-  readonly unmarked?: readonly [BodyActId, number][]
+  readonly unmarked?: readonly [BodyActId | Movement, number][]
   readonly rest?: readonly { t: number, state: BodyRest }[]
   readonly scenario?: 'idle' | 'talk'
   readonly actsSwitch?: 'off'
@@ -72,17 +126,28 @@ function trace(body: Body): DecodedMotionTrace {
     ...(body.acts ?? []).flatMap(act => act.moves === null ? [] : [{ moves: act.moves ?? act.id, at: act.at, scale: act.scale ?? 1 }]),
     ...(body.unmarked ?? []).map(([moves, at]) => ({ moves, at, scale: 1 })),
   ]
+  const movement = (moves: BodyActId | Movement): Movement => typeof moves === 'string' ? MOVEMENTS[moves] ?? {} : moves
   const local = (bone: MotionTraceBone, t: number): Quat => {
-    const moved = plays.reduce<Quat>((q, play) => (MOVEMENTS[play.moves] ?? []).reduce<Quat>((r, [b, axis, deg, delay = 0]) => {
+    const moved = plays.reduce<Quat>((q, play) => (movement(play.moves).parts ?? []).reduce<Quat>((r, [b, axis, deg, delay = 0, hz]) => {
       const w = hold((t - play.at - delay) / ACT_SECONDS) * play.scale
-      return b === bone && w > 0 ? multiply(r, axisAngle(axis, deg * w)) : r
+      const angle = hz === undefined ? deg * w : deg * play.scale * Math.sin(2 * Math.PI * hz * (t - play.at)) * Math.min(1, Math.max(0, t - play.at) / 0.15, Math.max(0, play.at + ACT_SECONDS - t) / 0.15)
+      return b === bone && (w > 0 || (hz !== undefined && t > play.at && t < play.at + ACT_SECONDS)) ? multiply(r, axisAngle(axis, angle)) : r
     }, q), bone === 'spine' ? axisAngle(1, 1.2 * Math.sin(2 * Math.PI * 0.2 * t)) : [0, 0, 0, 1])
     const extra = body.extra?.(bone, t)
     return extra ? multiply(moved, extra) : moved
   }
   const world = (bone: MotionTraceBone, t: number): Quat => {
     const parent = PARENTS[BONES.indexOf(bone)]
-    return parent < 0 ? local(bone, t) : multiply(world(BONES[parent], t), local(bone, t))
+    const posed = parent < 0 ? local(bone, t) : multiply(world(BONES[parent], t), local(bone, t))
+    return plays.reduce<Quat>((q, play) => {
+      const reach = movement(play.moves).reach
+      const w = hold((t - play.at) / ACT_SECONDS) * Math.min(1, play.scale)
+      if (!reach || w <= 0 || (bone !== `${reach.side}UpperArm` && bone !== `${reach.side}LowerArm`))
+        return q
+      const [upper, lower] = armTo(reach.side, reach.at)
+      const placed = slerp(q, bone.endsWith('UpperArm') ? upper : lower, w)
+      return bone.endsWith('LowerArm') && reach.twist ? multiply(placed, axisAngle(1, reach.twist(t - play.at) * w)) : placed
+    }, posed)
   }
   const events: MotionTraceEvent[] = [
     ...(body.acts ?? []).flatMap((act): MotionTraceEvent[] => [
@@ -94,7 +159,7 @@ function trace(body: Body): DecodedMotionTrace {
   const input = analyticTrace({ seconds: 42, bones: BONES, scenario: body.scenario ?? 'idle', events, world, yaw: body.yaw, position: body.hips })
   const detail: Record<string, string> = body.actsSwitch ? { acts: body.actsSwitch } : {}
   const source = { ...input.trace.source, gitSha: body.gitSha ?? 'abc123', detail }
-  return { ...input, trace: { ...input.trace, source } }
+  return { ...input, trace: { ...input.trace, source, rig: { ...input.trace.rig, restOffsets: BONES.map(restOffset) } } }
 }
 
 /** The run with its acts, and the acts-off companion of the same seed: the same body without any act. */
@@ -157,6 +222,31 @@ describe('idle-acts report', () => {
 
   it('refuses a pair that differs outside the act spans', () => {
     expect(() => report({ acts: SIX, unmarked: [['arm-swing', 39]] })).toThrow(/outside the act spans/)
+  })
+
+  it('confirms an act only with its distinctive phase: a hair tuck that is a head tilt and a hand inspect that is a forearm twist are not', () => {
+    const tuck: Act = { id: 'hair-tuck', at: 38, moves: PARTIAL_HAIR_TUCK }
+    const r = report({ acts: [...SIX, tuck].map((act): Act => act.id === 'hand-inspect' ? { ...act, moves: PARTIAL_HAND_INSPECT } : act) })
+    expect(r.detail.acts.filter(act => !act.confirmed).map(act => act.id)).toEqual(['hand-inspect', 'hair-tuck'])
+  })
+
+  it('counts acts by their distinctive form at any drawn amplitude', () => {
+    const sizes = [1, 1.25, 1.5]
+    expect(report({ acts: SIX.map((act, k) => ({ ...act, scale: sizes[k % 3] })) }).requirements[0].value).toMatch(/^6 distinct/)
+    const pairs = (first: Act, second: Act) => status(report({ acts: [{ ...SIX[0], at: 4 }, first, second] }), 'no-repeat')
+    expect(pairs({ id: 'sigh', at: 16, scale: 1.4 }, { id: 'yawn', at: 22 })).toBe('PASS')
+    expect(pairs({ id: 'hand-inspect', at: 16 }, { id: 'wave', at: 22 })).toBe('PASS')
+    expect(pairs({ id: 'yawn', at: 16 }, { id: 'yawn', at: 22, scale: 1.5 })).toBe('FAIL')
+    const four = report({ acts: (['yawn', 'shoulder-roll', 'sigh', 'arm-swing', 'yawn', 'shoulder-roll'] as const).map((id, k) => ({ id, at: 4 + 6 * k, scale: [1, 1, 1, 1, 1.25, 1.5][k] })) })
+    expect(four.requirements[0].value).toMatch(/^4 distinct/)
+  })
+
+  it('counts once a confirmed act whose span starts inside an earlier act\'s movement, though its form differs', () => {
+    const r = report({ acts: [...SIX.slice(0, 4), { id: 'look-around', at: 28 }, { id: 'sigh', at: 30.8 }] })
+    const [first, second] = r.detail.acts.slice(4)
+    expect(second).toMatchObject({ confirmed: true, overlaps: true })
+    expect(second.form).not.toEqual(first.form)
+    expect(r.requirements[0].value).toMatch(/^5 distinct/)
   })
 
   it('confirms an act whose design phases come in sequence, in the design\'s order only', () => {
