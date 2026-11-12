@@ -12,7 +12,7 @@ import { criterionReport, fixed, labelledPeaks, markers, ReportUsageError, requi
 
 export const OWNERSHIP_VERSION = 2
 
-/** Plan 2.5's C004 constants, with the version 2 amendment, the lead's pool and revision B (E/g3/own2/rules-v2.md). */
+/** Plan 2.5's C004 constants, with the version 2 amendment, the lead's pool and revisions B to C2.1 (E/g3/own2/rules-v2.md). */
 const C = {
   deviationRad: 0.001,
   fullyOwned: 1 - 1e-6,
@@ -24,6 +24,7 @@ const C = {
   pokeWindow: [-0.2, 1] as const,
   resumeAfter: 1,
   staleSeconds: 1,
+  releaseFreeSeconds: 1,
   restCheckAfter: 0.5,
   restPercentile: 0.95,
   restRedrawSeconds: 70,
@@ -44,8 +45,9 @@ export const OWNERSHIP_CONSTANTS: readonly ReportConstant[] = [
   { name: 'poke pop window', value: C.pokeWindow.join('..'), unit: 's around the poke', source: 'C004; revision B drops the whole-run spike rate (B4)' },
   { name: 'resume', value: C.resumeAfter, unit: 's after the poke, first labelled peak, a stroke apex', source: 'plan 2.5 cancel and resume' },
   { name: 'stale window', value: C.staleSeconds, unit: 's after each release; right apexes in it are reported, not judged', source: 'plan 2.5 stale state; revision B second release (B3); revision C2' },
+  { name: 'release to owned 0', value: C.releaseFreeSeconds, unit: 's after each clip-release by which owned.rightArm reaches 0', source: 'revision C2.1: the upper layer\'s 0.3 s exit fade (stage-ui-mmd layer-fade.ts LAYER_FADE_SECONDS.upperOut, applied by runner/run.ts at the release) completes well inside the stale window\'s 1 s' },
   { name: 'rest check', value: C.restCheckAfter, unit: 's after the first release', source: 'plan 2.5' },
-  { name: 'rest report (not judged)', value: C.restPercentile, unit: 'percentile over the idle runs of |(R - restR) - (L - restL)| per joint, printed beside the same at release + 0.5 s', source: 'revision C2: no rule tested separates a held clip pose from idle asymmetry (E/g3/own2/candidates-revC2.md)' },
+  { name: 'performer arm channels report (not the posed arm; not judged)', value: C.restPercentile, unit: 'percentile over the idle runs of |(R - restR) - (L - restL)| per joint of the performer\'s arm channels, printed beside the same at release + 0.5 s', source: 'revision C2.1: summary.ownership.armDeg is the performer\'s channels before the clip blend, so a pose the clip or the adapter holds in the bones does not appear in it' },
   { name: 'idle run length', value: C.restRedrawSeconds, unit: 's of trace (warm-up included) at or beyond which an idle companion is refused: the performer\'s first rest redraw (H/performance/arms.ts redraw = 70), so its recorded rest would not hold throughout', source: 'revision C2' },
   { name: 'pool', value: C.poolRuns, unit: `${C.scenario} version ${C.scenarioVersion} runs of one commit, one model and distinct seeds (seeds 1 to 6)`, source: 'lead pooling decision A and C; distinct seeds added by the lead' },
   { name: 'exercised runs', value: C.poolExercised, unit: 'runs on which a requirement that needs a case is exercised', source: 'lead pooling decision C' },
@@ -91,7 +93,7 @@ export interface OwnershipRun {
   readonly second: { readonly release: number | null, readonly freeAt: number | null, readonly activeAt: readonly Side[], readonly activationBeforeFree: number }
   /** Report only, not judged: every right-hand apex in [release, release + 1] s after the first and second release. */
   readonly staleReport: readonly { readonly release: number, readonly t: number, readonly overBar: number | null, readonly travel: number, readonly displacement: readonly [number, number, number] | null }[]
-  /** Report only, not judged: (R - restR) - (L - restL) per joint at release + 0.5 s, degrees, beside the idle runs' 95th percentile. */
+  /** Report only, not judged: (R - restR) - (L - restL) per joint of the performer's arm channels (not the posed arm) at release + 0.5 s, degrees, beside the idle runs' 95th percentile. */
   readonly restReport: { readonly at: number | null, readonly idleFrames: number, readonly joints: readonly { readonly joint: number, readonly difference: number, readonly idleP95: number | null }[] }
   /** Why the idle speed bar was refused, or null. */
   readonly barRefusal: string | null
@@ -210,6 +212,9 @@ function judgeRun(run: LoadedRun, idleRuns: readonly LoadedRun[]): OwnershipRun 
   const secondExercised = secondActive.length > 0
   const activationBeforeFree = secondRelease === null ? 0 : Math.max(0, ...activation.right.slice(secondFree.from, secondFree.frame < 0 ? undefined : secondFree.frame))
   const staleHolds = release !== null && releaseActivation === 0 && activationBeforeFree === 0
+  // clip-releases (revision C2.1): after each release, owned.rightArm reaches 0 within 1 s; a clip that never lets go fails.
+  const releaseToFree = releases.map(t => ({ t, free: freeAfter(t).at }))
+  const releasesHold = releaseToFree.length > 0 && releaseToFree.every(r => r.free !== null && r.free - r.t <= C.releaseFreeSeconds + 1e-9)
   // Report only, not judged (revision C2 stated limit): every right-hand apex in [release, release + 1] s after each
   // release, with its peak speed as a multiple of the idle speed bar, its travel and its trunk-frame displacement.
   const rightHand = handPath(p, 'right')
@@ -220,7 +225,8 @@ function judgeRun(run: LoadedRun, idleRuns: readonly LoadedRun[]): OwnershipRun 
   }))
 
   // rest-band (revision C2): report only, not judged. Each arm's offset from its own recorded rest, compared across the
-  // arms at release + 0.5 s, beside the pooled 95th percentile of the same over the companion idle runs.
+  // arms at release + 0.5 s, beside the pooled 95th percentile of the same over the companion idle runs. Revision C2.1:
+  // these are the performer's arm channels before the clip blend, so a pose held in the bones does not appear in them.
   const restDifference = (s: { readonly ownership: { readonly armDeg: { readonly left: readonly (readonly number[])[], readonly right: readonly (readonly number[])[] }, readonly restArmDeg: { readonly left: readonly number[], readonly right: readonly number[] } } }, k: number) => {
     const { armDeg, restArmDeg } = s.ownership
     const right = armDeg.right[k]
@@ -255,6 +261,7 @@ function judgeRun(run: LoadedRun, idleRuns: readonly LoadedRun[]): OwnershipRun 
     line('poke-continuous', `a poke, and no arm or trunk pop in [poke - 0.2, poke + 1] s; exercised when a gesture unit is active on a free arm at the poke`, `${pokes.length} pokes, ${pokePops} pops; active at the poke: ${activeAtPoke.join(', ') || 'none'}`, caseStatus(pokeHolds, pokeExercised), pokeExercised ? null : notAtPoke, pokeExercised),
     line('resume-after-cancel', `with a gesture unit active at the poke, the first labelled peak >= ${C.resumeAfter} s after the poke has a stroke apex within ${C.hitSeconds * 1000} ms`, resumePeak === null ? 'no such peak' : `${resumePeak.toFixed(3)} s ${near(resumePeak) ? 'hit' : 'missed'}`, noBar ? 'REFUSED' : pokeExercised ? verdict(resumePeak !== null && near(resumePeak)) : 'NOT-EXERCISED', noBar ?? (pokeExercised ? null : notAtPoke), pokeExercised),
     line('no-stale-stroke', 'first release: right gesture activation 0 until the next unit start; second release: right gesture activation 0 until owned.rightArm = 0 (the earliest planned stroke start); exercised when a gesture unit is active on a free arm at the second release; the right apexes after each release are reported, not judged', release === null ? 'no release' : `first: activation ${fixed(releaseActivation, 3)}; second: ${secondRelease === null ? 'none' : `activation before owned 0 ${fixed(activationBeforeFree, 3)}, active at the release: ${secondActive.join(', ') || 'none'}`}`, release === null ? 'FAIL' : caseStatus(staleHolds, secondExercised), secondExercised ? null : secondRelease === null ? 'no second release' : 'no gesture unit active at the second release', secondExercised),
+    line('clip-releases', `after each clip-release, owned.rightArm reaches 0 within ${C.releaseFreeSeconds} s`, releaseToFree.length ? releaseToFree.map((r, i) => `release ${i + 1} at ${r.t.toFixed(3)} s: ${r.free === null ? 'owned never reaches 0' : `owned 0 after ${(r.free - r.t).toFixed(3)} s`}`).join('; ') : 'no release', verdict(releasesHold)),
     line('penetration', 'max(perFrame.penL, perFrame.penR) = 0', fixed(penetration, 6), verdict(penetration === 0)),
     line('pops', 'upper-body pop count over the run = 0 (plan 2.6, unit M3)', `${allPops}`, verdict(allPops === 0)),
     line('corrector', 'capHits = guardScans = holds = 0', `capHits ${corrector.capHits}, guardScans ${corrector.guardScans}, holds ${corrector.holds}`, verdict(corrector.capHits === 0 && corrector.guardScans === 0 && corrector.holds === 0)),
@@ -285,9 +292,9 @@ function judgeRun(run: LoadedRun, idleRuns: readonly LoadedRun[]): OwnershipRun 
 }
 
 /**
- * C004 ownership report version 2 (revision C2): every run of the pool judged per requirement against the companion idle
- * runs' stroke bar, then the pooled verdict; the release rest and the right apexes after each release are reported, not
- * judged. It also refuses an idle companion long enough for the performer to redraw its rest. It refuses a pool of fewer than six runs, runs of another scenario or
+ * C004 ownership report version 2 (revision C2.1): every run of the pool judged per requirement against the companion idle
+ * runs' stroke bar, then the pooled verdict; the performer's arm channels at the release and the right apexes after each
+ * release are reported, not judged. The yield is judged on the gesture layer's weight, not on the bones in the claim fade. It also refuses an idle companion long enough for the performer to redraw its rest. It refuses a pool of fewer than six runs, runs of another scenario or
  * version, of more than one commit or model, two runs of one seed (lead, after the rules flagged it), or a pool whose
  * idle speed bar is refused (no or too few idle apexes, or a companion of another model or commit). That the seeds are
  * 1 to 6 is the criterion's to name.
@@ -359,7 +366,7 @@ export function formatOwnership(report: CriterionReport<OwnershipDetail>): strin
       `  second release: ${fixed(run.second.release)}; owned 0 from: ${fixed(run.second.freeAt)}; unit active on: ${run.second.activeAt.join(', ') || 'none'}; right activation before owned 0: ${fixed(run.second.activationBeforeFree, 3)}`,
       '  right apexes after each release (report only, not judged): release, apex s, x idle speed bar, travel A, displacement start to apex (x, y, z) A',
       ...run.staleReport.map(a => `    ${a.release}\t${a.t.toFixed(3)}\t${fixed(a.overBar, 2)}\t${fixed(a.travel, 3)}\t${a.displacement ? a.displacement.map(v => v.toFixed(3)).join(', ') : '-'}`),
-      `  rest at release + 0.5 s (report only, not judged): joint, (R - restR) - (L - restL) deg, idle p${C.restPercentile * 100} abs deg over ${run.restReport.idleFrames} idle frames`,
+      `  performer arm channels at release + 0.5 s (not the posed arm; not judged): joint, (R - restR) - (L - restL) deg, idle p${C.restPercentile * 100} abs deg over ${run.restReport.idleFrames} idle frames`,
       ...run.restReport.joints.map(r => `    ${r.joint}\t${fixed(r.difference, 2)}\t${fixed(r.idleP95, 2)}`),
     ]),
   ].join('\n')}\n`

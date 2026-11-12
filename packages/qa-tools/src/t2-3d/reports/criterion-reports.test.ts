@@ -11,7 +11,7 @@ import { loadBands } from '../gate/load'
 import { emotionTrials, prepareTrace } from '../metrics'
 import { cueBodyReport } from './cue-body'
 import { C002_REQUIRED, emotionTableReport, separationTable } from './emotion-table'
-import { ownershipReport } from './ownership'
+import { formatOwnership, ownershipReport } from './ownership'
 import { popsReport, upperBodyPopBones } from './pops'
 import { overlayPostures } from './posture-scale'
 import { armWorld, gateStub, loadedRun, moves, rotX, rotY, summaryStub, trace } from './test-runs'
@@ -170,6 +170,8 @@ describe('ownership report (C004, plan 2.5; version 2 revision B, E/g3/own2/rule
     readonly rightAfterRelease?: 'none' | 'activation' | 'stroke-after-fade' | 'idle-sway'
     readonly rightAfterSecondRelease?: 'none' | 'joins-before-free' | 'unmatched-stroke' | 'joins-at-peak'
     readonly leftUnitAtRest?: boolean
+    /** The clip never lets go after the second release: the pose stays and owned.rightArm stays 1. */
+    readonly secondReleaseHeld?: boolean
     /** Arm angles in degrees from each side's rest; zero unless given. */
     readonly angles?: (side: 'left' | 'right', t: number) => readonly number[] | null
     /** The right arm's recorded rest, degrees; zero unless given (each side draws its own rest). */
@@ -222,7 +224,8 @@ describe('ownership report (C004, plan 2.5; version 2 revision B, E/g3/own2/rule
     const leftStrokes = strokes(leftPeaks)
     const leftBumps = bumps(options.leftBumps ?? [])
     const jitter = (t: number) => options.jitter && t >= POKE + 0.2 && t < POKE + 0.7 ? 2 * DEG * Math.sin(2 * Math.PI * 15 * (t - POKE - 0.2)) : 0
-    const clipPose = moves([{ start: 3, duration: 0.3, by: RAISED }, { start: 20, duration: 0.3, by: -RAISED }, { start: SECOND.claim, duration: 0.25, by: RAISED }, { start: SECOND.release, duration: 0.3, by: -RAISED }])
+    const held = options.secondReleaseHeld === true
+    const clipPose = moves([{ start: 3, duration: 0.3, by: RAISED }, { start: 20, duration: 0.3, by: -RAISED }, { start: SECOND.claim, duration: 0.25, by: RAISED }, ...(held ? [] : [{ start: SECOND.release, duration: 0.3, by: -RAISED }])])
     const after = options.rightAfterRelease
     const afterSecond = options.rightAfterSecondRelease
     const stale = after === 'stroke-after-fade' ? strokes([20.65]) : after === 'idle-sway' ? bumps([20.85]) : none
@@ -232,7 +235,7 @@ describe('ownership report (C004, plan 2.5; version 2 revision B, E/g3/own2/rule
     const sourced = { ...input, trace: { ...input.trace, source: { ...input.trace.source, scenario: { id: 'gesture-under-clip', class: 'talk' as const, seed }, gitSha: options.commit ?? 'test-commit', detail: { scenarioVersion: options.version ?? 3 } } } }
     const base = summaryStub(sourced)
     const time = base.perFrame.t_ms.map((_, k) => k / 60)
-    const owned = (t: number) => (t >= 3.3 && t < 20) || (t >= SECOND.claim + 0.25 && t < SECOND.release) ? 1 : (t >= 3 && t < 20.3) || (t >= SECOND.claim && t < SECOND.release + 0.3) ? 0.5 : 0
+    const owned = (t: number) => (t >= 3.3 && t < 20) || (t >= SECOND.claim + 0.25 && (held || t < SECOND.release)) ? 1 : (t >= 3 && t < 20.3) || (t >= SECOND.claim && t < SECOND.release + 0.3) ? 0.5 : 0
     const unitA = left === 'none' ? none : left === 'stalls-at-poke' ? between(0.5, POKE + 0.1) : options.pokeOutsideUnit ? between(8.5, 19.5) : between(0.5, options.leftUnitAtRest ? 21 : 19.5)
     const leftUnit = (t: number) => unitA(t) || (cUnit ? between(23, 29.5)(t) : 0)
     const claim = options.rightAtClaim ?? 'idle'
@@ -363,9 +366,20 @@ describe('ownership report (C004, plan 2.5; version 2 revision B, E/g3/own2/rule
     expect(line(held, 'rest-band')).toBeUndefined()
     expect(held.detail.runs[0].restReport.joints.map(j => j.difference)).toEqual([5, 0, 0, 40, 0, 60, 0, 10, 0])
     expect(held.detail.runs[0].restReport.idleFrames).toBeGreaterThan(0)
+    // Revision C2.1 (X2): the numbers are the performer's channels, not the posed arm, and the printed line says so.
+    expect(formatOwnership(held)).toContain('performer arm channels at release + 0.5 s (not the posed arm; not judged)')
     // Each side draws its own rest: a right arm that sits 6 deg more abducted at its own rest differs by nothing.
     const drawn = one({ angles: side => side === 'right' ? [0, 0, 0, 6, 0, 0, 0, 0, 0] : null, restRight: [0, 0, 0, 6, 0, 0, 0, 0, 0] })
     expect(drawn.detail.runs[0].restReport.joints.map(j => j.difference)).toEqual([0, 0, 0, 0, 0, 0, 0, 0, 0])
+  })
+
+  it('fails a run whose clip never lets go after a release, and passes releases that reach owned 0 within 1 s', () => {
+    expect(status(one(), 'clip-releases')).toBe('PASS')
+    const held = one({ secondReleaseHeld: true })
+    expect(held.detail.runs[0].requirements.filter(r => r.status === 'FAIL').map(r => r.id)).toEqual(['clip-releases'])
+    const pooledHeld = judge(pool(seed => seed === 2 ? { secondReleaseHeld: true } : {}))
+    expect(pooled(pooledHeld, 'clip-releases')).toBe(false)
+    expect(pooledHeld.detail.verdict).toBe('FAIL')
   })
 
   it('refuses an idle companion long enough for the performer to redraw its rest', () => {
