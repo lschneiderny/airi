@@ -41,3 +41,17 @@ it('keeps scored percentiles and exposes exactly one walk timeline and one arm r
   expect(inputs[0]).toMatchObject({ frames: [{ mode: 'idle', skate: 0, feetMaxError: 0 }] })
   expect(inputs[1]).toMatchObject({ model: 'stub-model', penetration: { left: 0, right: 0 } })
 })
+
+it('appends the contact-point skate to the per-frame series after the ankle skate and foot error', () => {
+  const measurement = new Motion3dMeasurement()
+  measurement.scored = true
+  measurement.sample({
+    feet: { maxError: 0.002, errorL: 0, errorR: 0, contact: 1 },
+    lookAt: { target: null, yaw: 0, pitch: 0, turning: false, turns: 0 },
+    arms: null,
+    performance: null,
+    locomotion: { mode: 'walking', position: { x: 0, z: 0 }, yaw: 0, goalX: 1, reason: 'debug', pace: 'walk', speed: 1, phase: 0, weight: 1, skate: 0.3, leashClamps: 0, enabled: true, skateContact: 0.001 },
+  }, { root: 0, leftLegIk: 0, rightLegIk: 0, lowerBody: 0, leftArm: 0, rightArm: 0, leftFingers: 0, rightFingers: 0, upperBody: 0, head: 0 }, null)
+  const { perFrameSeries } = measurement.finish({ model: 'stub-model', scenario: { id: 'walk', class: 'walk', seed: 1, seconds: 1 / 60, warmupSeconds: 0 }, provenance: {}, poseStages: [], wallMs: 1, simulatedSeconds: 1 / 60, collisions: { count: 0, last: null }, corrector: { capHits: 0, guardScans: 0, holds: 0 }, clipBones: null })
+  expect(perFrameSeries).toEqual({ columns: ['t_ms', 'mode', 'skate', 'feetMaxError', 'skateContact'], rows: [[0, 'walking', 0.3, 0.002, 0.001]] })
+})

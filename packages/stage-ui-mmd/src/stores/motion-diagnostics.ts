@@ -66,8 +66,9 @@ export interface MMDMotionSnapshot {
   measurement: FrameMeasurement | null
   /**
    * The gait, in world units on the ground line. `skate` is the largest per-frame horizontal world movement of a planted
-   * ankle (0 when feet stay planted), `leashClamps` counts ticks on which the reach leash shortened root travel, and
-   * `enabled` is false while a clip owns the body.
+   * ankle (0 when feet stay planted), `leashClamps` counts ticks on which the reach leash shortened root travel,
+   * `enabled` is false while a clip owns the body, and `skateContact` is `skate` measured at each planted foot's contact
+   * point (heel, ankle when flat, or ball), which equals `skate` while the feet stay flat.
    */
   locomotion: {
     mode: LocomotionFrame['mode']
@@ -82,6 +83,7 @@ export interface MMDMotionSnapshot {
     skate: number
     leashClamps: number
     enabled: boolean
+    skateContact: number
   } | null
   /**
    * The arm rest layer. `weight` is one minus the larger arm ownership, `owned` the clip ownership per group (0-1),

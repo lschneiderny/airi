@@ -7,7 +7,10 @@
  */
 
 export const stageGateThresholds = {
-  /** Largest per-frame horizontal world movement of a planted ankle, model units, exclusive. */
+  /**
+   * Largest per-frame horizontal world movement of a planted foot's contact point (`skateContact`, owner decision O6), or
+   * of its ankle (`skate`) in a timeline without that column, model units, exclusive.
+   */
   walkSkateMax: 0.05,
   /** Largest foot IK error during the walk, model units, exclusive. */
   walkFeetErrorMax: 0.05,
@@ -94,7 +97,8 @@ export interface StageFrameRun {
 
 export type StageEvidence
   = | { kind: 'frame', source: string, pair: number | null, run: StageFrameRun }
-    | { kind: 'walk', source: string, frames: { mode: string, skate: number, feetMaxError: number }[] }
+    /** `skateContact` is set on every frame when the timeline has that column, and on none otherwise. */
+    | { kind: 'walk', source: string, frames: { mode: string, skate: number, feetMaxError: number, skateContact?: number }[] }
     | { kind: 'arms', source: string, model: string, spanMs: number | null, penetration: { left: number, right: number }, clothContact: { left: number, right: number } | null }
     | { kind: 'scenario', source: string, scenario: StageScenario, clip: string, seconds: number, stopAtMs: number | null, p95StageMs: number | null, valid: boolean, samples: ScenarioSample[] }
     | { kind: 'handoff', source: string, run: HandOffRun }
@@ -150,13 +154,14 @@ function readWalk(source: string, value: unknown): StageEvidence | null {
     return null
   const columns: unknown[] = value.columns
   const column = (name: string) => columns.indexOf(name)
-  const [modeAt, skateAt, errorAt] = [column('mode'), column('skate'), column('feetMaxError')]
+  const [modeAt, skateAt, errorAt, contactAt] = [column('mode'), column('skate'), column('feetMaxError'), column('skateContact')]
   if (modeAt < 0 || skateAt < 0 || errorAt < 0)
     throw new Error(`${source}: perFrameSeries needs the columns mode, skate and feetMaxError`)
   const frames = value.rows.map((row: unknown, index: number) => {
-    if (!Array.isArray(row) || typeof row[modeAt] !== 'string' || !isFiniteNumber(row[skateAt]) || !isFiniteNumber(row[errorAt]))
+    if (!Array.isArray(row) || typeof row[modeAt] !== 'string' || !isFiniteNumber(row[skateAt]) || !isFiniteNumber(row[errorAt]) || (contactAt >= 0 && !isFiniteNumber(row[contactAt])))
       throw new Error(`${source}: perFrameSeries row ${index} is malformed`)
-    return { mode: row[modeAt] as string, skate: row[skateAt] as number, feetMaxError: row[errorAt] as number }
+    const frame = { mode: row[modeAt] as string, skate: row[skateAt] as number, feetMaxError: row[errorAt] as number }
+    return contactAt >= 0 ? { ...frame, skateContact: row[contactAt] as number } : frame
   })
   return { kind: 'walk', source, frames }
 }
@@ -359,7 +364,10 @@ function verdictOf(id: StageGateId, checks: GateCheck[]): GateResult {
   return { id, verdict: checks.every(check => check.pass) ? 'PASS' : 'FAIL', checks }
 }
 
-/** `stage-walk-skate`: every walk timeline, judged over its non-idle frames, must include walking and stay below both limits. */
+/**
+ * `stage-walk-skate`: every walk timeline, judged over its non-idle frames, must include walking and stay below both
+ * limits. The skate limit judges the contact-point skate when the timeline records it and the ankle skate otherwise.
+ */
 export function gateWalkSkate(evidence: readonly StageEvidence[]): GateResult {
   const checks: GateCheck[] = []
   for (const walk of evidence) {
@@ -370,12 +378,13 @@ export function gateWalkSkate(evidence: readonly StageEvidence[]): GateResult {
       checks.push({ name: `${walk.source} walk`, pass: false, detail: 'no frame in mode walking' })
       continue
     }
-    const skate = maxOf(moving.map(frame => frame.skate))
+    const field = moving.every(frame => frame.skateContact !== undefined) ? 'skateContact' : 'skate'
+    const skate = maxOf(moving.map(frame => field === 'skateContact' ? frame.skateContact ?? Number.POSITIVE_INFINITY : frame.skate))
     const error = maxOf(moving.map(frame => frame.feetMaxError))
     checks.push({
       name: `${walk.source} skate`,
       pass: skate < stageGateThresholds.walkSkateMax,
-      detail: `max locomotion.skate ${format(skate)} over ${moving.length} frames (limit < ${stageGateThresholds.walkSkateMax})`,
+      detail: `max locomotion.${field} ${format(skate)} over ${moving.length} frames (limit < ${stageGateThresholds.walkSkateMax})`,
     })
     checks.push({
       name: `${walk.source} feet`,

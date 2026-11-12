@@ -124,6 +124,7 @@ export class MMDBody {
   private readonly rootVelocity = { x: 0, y: 0, z: 0 }
   private support = 0
   private skate = 0
+  private skateContact = 0
   private facing = 0
   private turns = 0
   private turning = false
@@ -216,9 +217,10 @@ export class MMDBody {
     this.surfaceStage = { id: 'body-diagnostics', run: () => {
       if (!this.input?.enabled)
         return
-      const { skate, ...feet } = this.feet.measure()
+      const { skate, skateContact, ...feet } = this.feet.measure()
       this.feetSnapshot = feet
       this.skate = skate
+      this.skateContact = skateContact
       const performance = this.performer?.diagnostics
       this.armsSnapshot = this.arms.measure(this.owned, performance?.correctionDeg ?? { left: 0, right: 0 }, performance?.gestureActivation ?? { left: 0, right: 0 })
     } }
@@ -585,6 +587,7 @@ export class MMDBody {
             skate: this.skate,
             leashClamps: this.locomotion.leashClamps,
             enabled: this.gaitEnabled,
+            skateContact: this.skateContact,
           }
         : null,
     }

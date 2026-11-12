@@ -1,7 +1,7 @@
 import type { Foot, FootAnchor, LegGeometry } from '@proj-airi/motion-driver-humanoid/foot-contact'
 import type { LocomotionFoot } from '@proj-airi/motion-driver-humanoid/locomotion'
 import type { TurnStep } from '@proj-airi/motion-driver-humanoid/look-at'
-import type { AnimationClip } from 'three'
+import type { AnimationClip, Matrix4 } from 'three'
 
 import type { MMDFrameContext } from '../frame-pipeline'
 import type { MMDBodyPose } from './pose'
@@ -12,6 +12,12 @@ import { Euler, Quaternion, Vector3 } from 'three'
 import { toRigTraits } from '../rig'
 
 const sides = ['left', 'right'] as const
+
+/**
+ * The ground contact of a carried foot (owner decision O6): the solved ankle while the foot is flat, or a heel or ball
+ * point given in the ankle bone's local frame, model units, while the foot pivots about it.
+ */
+export type MMDFootPivot = { readonly kind: 'flat' } | { readonly kind: 'heel' | 'ball', readonly point: Readonly<{ x: number, y: number, z: number }> }
 
 /** The model root on the ground line: world x, and yaw about +Y. The root never leaves z = 0. */
 export interface MMDRootPose {
@@ -49,9 +55,9 @@ export class MMDFootContact {
   private readonly last: Record<Foot, Vector3>
   private plannedYaw = 0
   private root: MMDRootPose = { x: 0, yaw: 0 }
-  /** Feet that carry weight this frame, and their solved world ankles from the previous measurement. */
+  /** Feet that carry weight this frame, and their solved world ankles and ankle matrices from the previous measurement. */
   private readonly carrying: Record<Foot, boolean> = { left: false, right: false }
-  private readonly carried: Partial<Record<Foot, Vector3>> = {}
+  private readonly carried: Partial<Record<Foot, { position: Vector3, matrix: Matrix4 }>> = {}
 
   constructor(private readonly pose: MMDBodyPose) {
     this.legs = sides.flatMap((side) => {
@@ -259,19 +265,34 @@ export class MMDFootContact {
   /**
    * Read after the real IK, grants, and physics, never the commanded IK target. `skate` is the largest horizontal
    * world movement of a solved ankle that carried weight in both this frame and the previous one; it should be 0.
+   * `skateContact` is the same for each foot's contact point under this frame's `pivot` (flat when omitted), placed with
+   * this frame's and the previous frame's ankle matrix; a flat foot's contact point is its ankle, so it reads `skate`'s
+   * own distance.
    */
-  measure() {
+  measure(pivot: Partial<Record<Foot, MMDFootPivot>> = {}) {
     let errorL = 0
     let errorR = 0
     let contact = 0
     let skate = 0
+    let skateContact = 0
     for (const leg of this.legs) {
       const world = leg.ankle.getWorldPosition(new Vector3())
       const before = this.carried[leg.side]
       if (this.carrying[leg.side]) {
-        if (before)
-          skate = Math.max(skate, Math.hypot(world.x - before.x, world.z - before.z))
-        this.carried[leg.side] = world
+        if (before) {
+          const step = Math.hypot(world.x - before.position.x, world.z - before.position.z)
+          skate = Math.max(skate, step)
+          const foot = pivot[leg.side]
+          if (!foot || foot.kind === 'flat') {
+            skateContact = Math.max(skateContact, step)
+          }
+          else {
+            const now = new Vector3().copy(foot.point).applyMatrix4(leg.ankle.matrixWorld)
+            const then = new Vector3().copy(foot.point).applyMatrix4(before.matrix)
+            skateContact = Math.max(skateContact, Math.hypot(now.x - then.x, now.z - then.z))
+          }
+        }
+        this.carried[leg.side] = { position: world, matrix: leg.ankle.matrixWorld.clone() }
       }
       else {
         delete this.carried[leg.side]
@@ -286,6 +307,6 @@ export class MMDFootContact {
         errorR = error
       contact += this.result?.feet[leg.side].c ?? 0
     }
-    return { maxError: Math.max(errorL, errorR), errorL, errorR, contact: this.legs.length ? contact / this.legs.length : 0, skate }
+    return { maxError: Math.max(errorL, errorR), errorL, errorR, contact: this.legs.length ? contact / this.legs.length : 0, skate, skateContact }
   }
 }

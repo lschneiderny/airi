@@ -41,6 +41,15 @@ describe('stage-walk-skate', () => {
     expect(check(result, 'slide feet').pass).toBe(true)
   })
 
+  it('judges the contact-point skate when the series has it: a pinned ankle with a sliding toe fails, a correct roll passes', () => {
+    const columns = ['mode', 'skate', 'feetMaxError', 'skateContact']
+    const sliding = gateWalkSkate(readStageEvidence('toe-slide', { perFrameSeries: { columns, rows: [['walking', 0, 0.001, 0.08]] } }))
+    const rolling = gateWalkSkate(readStageEvidence('roll', { perFrameSeries: { columns, rows: [['walking', 0.3, 0.001, 0]] } }))
+
+    expect(check(sliding, 'toe-slide skate')).toMatchObject({ pass: false, detail: 'max locomotion.skateContact 0.08 over 1 frames (limit < 0.05)' })
+    expect(check(rolling, 'roll skate')).toMatchObject({ pass: true, detail: 'max locomotion.skateContact 0 over 1 frames (limit < 0.05)' })
+  })
+
   it('fails a timeline without a walking frame', () => {
     const result = gateWalkSkate(readStageEvidence('still', { perFrameSeries: { columns: ['mode', 'skate', 'feetMaxError'], rows: [['idle', 0, 0]] } }))
 

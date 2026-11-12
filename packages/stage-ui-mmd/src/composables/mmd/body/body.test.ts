@@ -371,6 +371,8 @@ describe('mmd full-body stages', () => {
       pipeline.step(1 / 60)
       const locomotion = body.diagnostics.locomotion
       skate = Math.max(skate, locomotion?.skate ?? Infinity)
+      // Without a pivot input every carried foot is flat, so the contact-point skate is the ankle skate bit for bit.
+      expect(locomotion?.skateContact).toBe(locomotion?.skate)
       maxError = Math.max(maxError, body.diagnostics.feet.maxError)
       walked ||= locomotion?.mode === 'walking'
       expect(mesh.position.x).toBe(locomotion?.position.x)

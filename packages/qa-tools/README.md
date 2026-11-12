@@ -1120,7 +1120,7 @@ Capture is measurement evidence; scoring and visual review are separate.
 
 | Gate id | Input | Passes when |
 | --- | --- | --- |
-| `stage-walk-skate` | A walk timeline: `perFrameSeries` (top level or under `walk`) with the columns `mode`, `skate`, and `feetMaxError`, one row per frame. | The non-idle frames include `walking`, max `locomotion.skate` < 0.05, and max `feet.maxError` < 0.05. |
+| `stage-walk-skate` | A walk timeline: `perFrameSeries` (top level or under `walk`) with the columns `mode`, `skate`, and `feetMaxError`, and optionally `skateContact`, one row per frame. | The non-idle frames include `walking`, max `locomotion.skateContact` < 0.05 when the timeline has that column (else max `locomotion.skate` < 0.05), and max `feet.maxError` < 0.05. The contact-point skate is judged because a foot that rolls heel to toe moves its ankle on purpose (owner decision O6, goal 4); with flat feet it equals `skate`. `qa:stage measure` does not record it yet, so rendered walk records are still judged on the ankle. |
 | `stage-arm-penetration` | A standing run per model: `model` plus `perFrame` with `t_ms`, `penL`, and `penR`, or a `models.<name>.penetration.left/right.max` summary. | Kinematic `arms.penetration` max is 0 over at least 30 s on every model. `clothContact` is printed for information only. |
 | `stage-frame-budget` | `measure` records (`result` with `mode`, `fps`, `p95StageMs`, `readbackMs`, `frames`), single files or one pairs file. | At least 3 window/desktop pairs; every desktop p95 AIRI stage sum <= 4 ms; median desktop/window FPS ratio >= 0.9; every desktop readback mean <= 1 ms; median per-pair (desktop readback max - window readback max) <= 1 ms. |
 | `stage-gesture-walk` | A `measure --scenario gesture-walk` record (`kind: 'stage-scenario'`) with the snapshot `series`. | Over the samples from the playClip post to the stopClip post: the clip plays on the upper layer during `walking` for at least the larger of the record's `seconds` (12 by default) and 10 s, so a record with a short `seconds` field cannot pass on a short walk; max `locomotion.skate` < 0.05 and max `feet.maxError` < 0.05 over the non-idle samples; `locomotion.enabled` is true on every sample; the clip is on the upper layer in at least 80 % of the samples; the run is valid. |
@@ -1180,7 +1180,9 @@ Each run takes the `gate` CPU lease and creates:
   revision, asset hash, stages, clock policy and omitted work.
 - `summary.json`: `motion3d-run-summary` v1 with provenance, scored per-stage
   mean/p50/p95/p99/max timings, pose and AIRI p95 sums, per-frame arm
-  penetration, cloth contact, foot skate and foot error, and `collisions`: the
+  penetration, cloth contact, foot skate, foot error and contact-point skate
+  (`perFrameSeries` columns `t_ms`, `mode`, `skate`, `feetMaxError` and the
+  appended `skateContact`), and `collisions`: the
   performer ticks, warm-up included, on which an arm had no clear pose and kept
   its previous one. A run with any such tick writes its outputs and exits 1.
   It also carries `corrector` (`capHits`, `guardScans` and `holds`: the arm
