@@ -119,6 +119,15 @@ export const IDLE_ACTS_CONSTANTS: readonly ReportConstant[] = [
   { name: 'settling', value: C.settleSeconds, unit: 's after the exit, outside the pair check', source: '2 % settling of the slowest arm follower, performance/arms.ts' },
 ]
 
+/** What a PASS proves and what it does not (fourth review of unit M); printed with every report. */
+const IDLE_ACTS_LIMITS: readonly string[] = [
+  'what a PASS proves in the bones: at least six finished, non-overlapping act spans whose own keys reach half their 4e amplitude, or their zone, for 18 frames against the same-seed acts-off run, in the design order where 4e gives one; outside the widened spans the run equals its companion within 0.25 deg local, 0.05 deg root yaw and 0.0005 L hips, except each confirmed re-plant\'s own foot yaw and lateral hips shift (at most 12 deg and half the support shift per act); motionless markers after re-plants are not confirmed.',
+  'proven only from the product\'s own state: the act ids (counting and repeats still rest on the act id the product reports), span times, which spans exist, and the rest state at an act\'s start.',
+  'a PASS alone is NOT accepted for the idle criterion (C001): read it with a visual review (both rigs, seeds 1 to 3, instants from the act timeline above) of every counted peek-chat and look-around span; the look-around against a large peek; every foot re-plant (the stepped foot\'s total toe-out over the run, the other foot, the foot being down); repeats under different act ids; and the count of six whenever it depends on those kinds.',
+  'measured false confirmations: a motionless peek-chat in 16 of 100 spans, a motionless look-around in 9 of 100, and a sigh in 2 of 100 in the contract-breach case (her own other idle inside the span).',
+  'no cumulative re-plant limit: five re-plants of +10 deg are accepted, and a 6 deg turn of the foot that did not step is accepted; the limit is a design statement the act work owes (the review recommends "the stepped foot ends within 12 deg of its standing yaw").',
+]
+
 export function isActId(id: string): id is BodyActId {
   return Object.hasOwn(ACT_KEYS, id)
 }
@@ -607,5 +616,6 @@ export function formatIdleActs(report: CaseReport<IdleActsDetail>): string {
       ? d.intermittency.map(m => `${m.id}: ${m.status} ${fixed(m.value)}${m.id === 'inter.speedCv' ? ' (gated)' : ' (REPORT, not judged)'}`)
       : ['intermittency: no gate.json; run qa:motion3d gate on this run to print inter.speedCv and the O2 values'],
     'inter.burstCv, inter.holdFraction and inter.movesPerMin: no long-idle human band exists (owner decision O2); they are printed, not judged.',
+    ...IDLE_ACTS_LIMITS,
   ])
 }
