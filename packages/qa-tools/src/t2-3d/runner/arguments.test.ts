@@ -25,6 +25,12 @@ it('resolves paths against the caller and applies scenario defaults', () => {
   expect([options.seed, options.seconds, options.warmupSeconds, options.verifyDeterminism]).toEqual([2, 60, 10, true])
 })
 
+it('takes the acts switch for the idle-acts pair, on by default', () => {
+  const context = fixture()
+  const parse = (extra: string[]) => parseRunArguments(['--model', 'model.pmx', '--scenario', 'idle', '--out', 'capture', ...extra], context.cwd).acts
+  expect([parse([]), parse(['--acts', 'off'])]).toEqual(['on', 'off'])
+})
+
 it.each(['idle', 'sleepy-no-clip'])('accepts up to 600 s for the idle-class scenario %s (owner decision O1)', (scenario) => {
   const context = fixture()
   expect(parseRunArguments(['--model', 'model.pmx', '--scenario', scenario, '--seconds', '600', '--out', 'capture'], context.cwd).seconds).toBe(600)
@@ -38,6 +44,7 @@ it.each([
   ['idle duration over its cap', ['--model', 'model.pmx', '--scenario', 'idle', '--seconds', '601', '--out', 'capture']],
   ['duration over the cap of a scenario that is not idle-class', ['--model', 'model.pmx', '--scenario', 'gaze-shift', '--seconds', '121', '--out', 'capture']],
   ['invalid seed', ['--model', 'model.pmx', '--scenario', 'idle', '--seed', 'NaN', '--out', 'capture']],
+  ['invalid acts switch', ['--model', 'model.pmx', '--scenario', 'idle', '--acts', 'maybe', '--out', 'capture']],
 ])('refuses %s with exit 2 before a run starts', async (_, args) => {
   expect(await runMotion3d(args, fixture())).toBe(2)
 })

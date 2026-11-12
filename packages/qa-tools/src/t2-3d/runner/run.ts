@@ -47,6 +47,12 @@ export interface Motion3dRunOptions {
   readonly seed: number
   readonly seconds: number
   readonly warmupSeconds: number
+  /**
+   * `off` asks the director for no idle act (the acts-off pair of `qa:motion3d idle-acts`) and is recorded in the trace
+   * source as `acts: 'off'`; `on` records nothing, so existing traces stay byte-identical. No act producer exists yet:
+   * unit A wires it, and with `off` must leave every other input of the run unchanged.
+   */
+  readonly acts: 'on' | 'off'
   readonly git: RunGitState
   readonly signal: AbortSignal
   /** Called after each pipeline step with the frame index and the posed mesh; read-only (`qa:motion3d frames` re-runs). */
@@ -178,6 +184,7 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
       rigidBodies: mmd.pmx.rigidBodies.length,
       joints: mmd.pmx.joints.length,
       ikChains: mmd.pmx.bones.filter(bone => bone.ik).length,
+      ...options.acts === 'off' ? { acts: 'off' } : {},
     }
     const source: MotionTraceSource = {
       level: 't2-3d',

@@ -17,6 +17,7 @@ it.runIf(process.env.AIRI_QA_MMD_MODEL)('records the stance reason on each chang
       seed: 1,
       seconds: 1,
       warmupSeconds: 0,
+      acts: 'on',
       git: { gitSha: 'test', dirty: false },
       signal: new AbortController().signal,
       scenario: { version: 1, id: 'stance', class: 'idle', seconds: 1, warmupSeconds: 0, recordStance, timeline: () => [{ at: 0.5, kind: 'activity', mode: 'idle', away: true }] },
@@ -48,6 +49,7 @@ it.runIf(process.env.AIRI_QA_MMD_MODEL)('turns toward six gaze targets with incr
         seed: 1,
         seconds: 6,
         warmupSeconds: 0,
+        acts: 'on',
         git: { gitSha: 'test', dirty: false },
         signal: new AbortController().signal,
         scenario: {

@@ -23,6 +23,7 @@ export function parseRunArguments(args: readonly string[], cwd: string) {
         'warmup': { type: 'string' },
         'out': { type: 'string' },
         'verify-determinism': { type: 'boolean', default: false },
+        'acts': { type: 'string', default: 'on' },
       },
       strict: true,
       allowPositionals: false,
@@ -51,7 +52,10 @@ export function parseRunArguments(args: readonly string[], cwd: string) {
       throw new Motion3dUsageError(`--seconds must be positive, at most ${maxSeconds} for ${scenario.id}, and include at least one 60 Hz frame`)
     if (!Number.isFinite(warmupSeconds) || warmupSeconds < 0 || warmupSeconds > 120)
       throw new Motion3dUsageError('--warmup must be between 0 and 120 seconds')
-    return { model, scenario, seed, seconds, warmupSeconds, out, verifyDeterminism: values['verify-determinism'] }
+    const acts = (['on', 'off'] as const).find(value => value === values.acts)
+    if (!acts)
+      throw new Motion3dUsageError('--acts must be on or off')
+    return { model, scenario, seed, seconds, warmupSeconds, out, verifyDeterminism: values['verify-determinism'], acts }
   }
   catch (error) {
     if (error instanceof Motion3dUsageError)
