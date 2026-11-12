@@ -247,6 +247,16 @@ per-event maximum over all below-neck bones regularly catches weight shifts and
 arm sway. Version 4 adds a leave-one-out guard, because one large event could
 carry the average, and uses the null's 99th percentile.
 
+### Run tools
+
+Commands that read stored run directories and judge nothing. Each replaces a
+check that reviewers wrote by hand during motion tuning and that went wrong at
+least once.
+
+| Command | Purpose | When to use | When not to use |
+| --- | --- | --- | --- |
+| `pnpm qa:motion3d diff <base run> <tip run> [<base run> <tip run>...] [--allow-mismatch scenario,seed,model,length]`, or `diff <base folder> <tip folder>` | Is the motion identical? Compares the traces block by block (`header`, `rig`, `detail`, `rot`, `root`, `channels`, `events`) and prints IDENTICAL or DIFFERENT per block. Where a frame block differs, it prints the first differing frame and its time, and the largest difference: for `rot`, the largest turn between the two rotations of one bone in degrees, with the bone and time. Only `source.gitSha` and `source.dirty` are ignored, because they name the commit. Two folders are matched by run directory name. A pair that differs in scenario (id, class or `scenarioVersion`), seed, model (`rig.assetSha256`, or `rig.id` without a hash) or scored length is REFUSED unless `--allow-mismatch` names the field. Exit 0 when every pair is identical, 1 when one differs, 2 on a refusal, a run present in one folder only, an unreadable trace or a usage error. | Proving that a change left a run's motion byte-identical, or finding where and how much it changed. | Judging whether a change is good: a difference is not a fault, and identity says nothing about quality. |
+
 ### Reference bands
 
 ```bash

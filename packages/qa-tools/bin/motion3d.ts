@@ -36,8 +36,9 @@ async function main(): Promise<number> {
     case 'ownership': return (await import('../src/t2-3d/cli/ownership')).ownershipMotion3d(args, context)
     case 'turn': return (await import('../src/t2-3d/cli/turn')).turnMotion3d(args, context)
     case 'pops': return (await import('../src/t2-3d/cli/pops')).popsMotion3d(args, context)
+    case 'diff': return (await import('../src/t2-3d/cli/diff')).diffMotion3d(args, context)
     default:
-      console.error('Usage: qa:motion3d <run|gate|reference|gaze-order|gesture-timing|emotion-table|cue-body|ownership|turn|pops> [arguments]')
+      console.error('Usage: qa:motion3d <run|gate|reference|gaze-order|gesture-timing|emotion-table|cue-body|ownership|turn|pops|diff> [arguments]')
       return 2
   }
 }
