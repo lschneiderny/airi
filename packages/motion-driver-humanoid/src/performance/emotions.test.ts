@@ -82,6 +82,31 @@ describe('emotion posture layer', () => {
     expect(pitch[Math.round(3.3 * 120)]).toBeGreaterThan(0.5 * atSwitch)
   })
 
+  // A slump curls through the thoracic spine while the lumbar spine flexes only mid-range and the pelvis rolls back
+  // (Nairn et al. 2013, Manual Therapy 18(6)); E/g3/b2/expectations.md sizes the split and the cap.
+  it('curls the sad, sleepy and curious slump through the mid and upper trunk and caps it at 20 degrees', () => {
+    const end = 12 * 120 - 1
+    for (const emotion of ['sad', 'sleepy', 'curious'] as const) {
+      const d = layerEffect(held(emotion, t => ramp(t, 0.5)), 12)
+      const [lower, mid, upper] = [d[c('lowerPitch')][end], d[c('midPitch')][end], d[c('upperPitch')][end]]
+      const total = lower + mid + upper
+      expect(lower / total, emotion).toBeLessThan(0.25)
+      expect(upper / total, emotion).toBeGreaterThan(0.15)
+      expect(mid, emotion).toBeGreaterThan(lower + upper)
+      expect(total, emotion).toBeLessThan(20 * DEG)
+    }
+  })
+
+  it('keeps the total trunk lean of a clear-weight slump', () => {
+    const end = 8 * 120 - 1
+    // Weight 0.6 times each scale times 4c's lower plus mid pitch: sad 2.1 x 9, sleepy 3.5 x 7, curious 3.6 x 5.5.
+    for (const [emotion, lean] of [['sad', 11.34], ['sleepy', 14.7], ['curious', 11.88]] as const) {
+      const d = layerEffect(t => ({ ...quietInput(t), held: { emotion, strength: 0.6, level: ramp(t, 0.5), side: 1 } }), 8)
+      const total = d[c('lowerPitch')][end] + d[c('midPitch')][end] + d[c('upperPitch')][end]
+      expect(total / DEG, emotion).toBeCloseTo(lean, 0)
+    }
+  })
+
   it('returns to rest after a held emotion releases', () => {
     const d = layerEffect(held('sad', t => ramp(t, 0.5) * (1 - ramp(t, 4))), 12)
     expect(largest(d, 599)).toBeGreaterThan(2 * DEG)

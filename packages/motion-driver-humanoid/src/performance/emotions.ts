@@ -8,7 +8,7 @@ import type { PerformanceContext, PerformanceLayer, PerformancePlan } from './st
 
 import { defaultExpressionPerformanceSettings, PERFORMANCE_EMOTIONS } from '@proj-airi/stage-shared/expression-performance'
 
-import { advanceSecondOrder, secondOrderCoefficients } from '../dynamics'
+import { advanceSecondOrder, secondOrderCoefficients, softLimit } from '../dynamics'
 import { ARM_START, BODY_CHANNELS, BODY_TICK, channelGroup, channelIndex, DEG, SIDES } from './channels'
 import { HAND_SHAPES } from './hand-shapes'
 
@@ -17,6 +17,8 @@ import { HAND_SHAPES } from './hand-shapes'
  * leans toward the emotion's side, `midYaw` turns away from it, and `sideClavElev` lifts only the side's shoulder.
  */
 export interface BodyEmotionPosture {
+  /** Total forward trunk pitch of a slump, spread over the three torso controls by `SLUMP_SHARES`. */
+  readonly slump?: number
   readonly lowerPitch?: number
   readonly midPitch?: number
   readonly lowerRoll?: number
@@ -58,7 +60,8 @@ export interface BodyEmotionSpec {
 /** Architecture 4c, the body half of each emotion; Natural keeps the head and face. A missing emotion fails to compile. */
 export const BODY_EMOTIONS: Readonly<Record<PerformanceEmotion, BodyEmotionSpec>> = {
   happy: { posture: { lowerPitch: -2, midPitch: -2.5, clavElev: 1.5, clavProt: -2, elbow: 6, abduct: 3 }, scale: 2.4, hands: { shape: 'open', amount: 1 }, response: { f: 1.4, zeta: 0.55, r: -0.3 }, heldShare: 1, support: null, armForm: null, tempo: 1.15, amplitude: 1.2, tension: 0.45, breath: 1.1, sigh: false },
-  sad: { posture: { lowerPitch: 5, midPitch: 4, clavElev: -2, clavProt: 4, elbow: -4, pelvisY: -0.004 }, scale: 2.1, hands: { curl: 1.25 }, response: { f: 0.45, zeta: 1, r: 0 }, heldShare: 1, support: null, armForm: 'hand-to-chest', tempo: 0.7, amplitude: 0.6, tension: 0.2, breath: 0.7, sigh: true },
+  // Sad, curious and sleepy carry 4c's lower plus mid pitch as one slump total: 5 + 4, 3.5 + 2 and 4 + 3.
+  sad: { posture: { slump: 9, clavElev: -2, clavProt: 4, elbow: -4, pelvisY: -0.004 }, scale: 2.1, hands: { curl: 1.25 }, response: { f: 0.45, zeta: 1, r: 0 }, heldShare: 1, support: null, armForm: 'hand-to-chest', tempo: 0.7, amplitude: 0.6, tension: 0.2, breath: 0.7, sigh: true },
   angry: { posture: { lowerPitch: 2, midPitch: -1, clavElev: 3, clavProt: 3, elbow: 10, abduct: 5 }, scale: 1.9, hands: { shape: 'fist', amount: 0.8 }, response: { f: 2.2, zeta: 0.7, r: -0.25 }, heldShare: 1, support: 'centre', armForm: null, tempo: 1.1, amplitude: 0.75, tension: 0.9, breath: 1.3, sigh: false },
   think: { posture: { lowerRoll: 2 }, scale: 4, hands: null, response: { f: 0.8, zeta: 0.9, r: 0 }, heldShare: 1, support: 'side', armForm: 'thinking-hand', tempo: 0.8, amplitude: 0.7, tension: 0.4, breath: 1, sigh: false },
   surprised: { posture: { lowerPitch: -4, midPitch: -3, clavElev: 6, elbow: 15, abduct: 8, pelvisZ: -0.006, pelvisY: 0.003 }, scale: 0.95, hands: { shape: 'open', amount: 1, spread: 1.3 }, response: { f: 4, zeta: 0.45, r: 0 }, heldShare: 0.35, support: null, armForm: null, tempo: 1.2, amplitude: 1.1, tension: 0.75, breath: 1.3, sigh: false },
@@ -68,12 +71,25 @@ export const BODY_EMOTIONS: Readonly<Record<PerformanceEmotion, BodyEmotionSpec>
   awkward: { posture: { sideClavElev: 2, clavElev: 2, midPitch: 1.5, lowerRoll: 1.5, elbow: 5 }, scale: 4, hands: null, response: { f: 1.2, zeta: 0.7, r: -0.2 }, heldShare: 1, support: null, armForm: null, tempo: 1.25, amplitude: 0.9, tension: 0.6, breath: 1, sigh: false },
   question: { posture: { lowerPitch: 2, clavElev: 1.5, sideClavElev: 1.5 }, scale: 4, hands: null, response: { f: 1.6, zeta: 0.65, r: -0.2 }, heldShare: 1, support: null, armForm: null, tempo: 1, amplitude: 1, tension: 0.5, breath: 1, sigh: false },
   // 4c's neck +4 and head -4 are left to Natural: the body never adds a second head posture (plan 3.2).
-  curious: { posture: { lowerPitch: 3.5, midPitch: 2, pelvisZ: 0.006 }, scale: 3.6, hands: null, response: { f: 1.3, zeta: 0.7, r: -0.3 }, heldShare: 1, support: null, armForm: null, tempo: 1.1, amplitude: 1, tension: 0.5, breath: 1, sigh: false },
+  curious: { posture: { slump: 5.5, pelvisZ: 0.006 }, scale: 3.6, hands: null, response: { f: 1.3, zeta: 0.7, r: -0.3 }, heldShare: 1, support: null, armForm: null, tempo: 1.1, amplitude: 1, tension: 0.5, breath: 1, sigh: false },
   neutral: { posture: {}, scale: 0, hands: null, response: null, heldShare: 0, support: null, armForm: null, tempo: 1, amplitude: 1, tension: 0.4, breath: 1, sigh: false },
   love: { posture: { lowerRoll: 2, clavElev: -1, clavProt: 2 }, scale: 4, hands: null, response: { f: 0.7, zeta: 0.85, r: -0.15 }, heldShare: 1, support: null, armForm: 'hand-to-chest', tempo: 0.85, amplitude: 0.9, tension: 0.25, breath: 1.1, sigh: false },
   flustered: { posture: { clavElev: 4, clavProt: 3, elbow: 12, midYaw: 3 }, scale: 1.7, hands: null, response: { f: 2, zeta: 0.5, r: -0.1 }, heldShare: 1, support: null, armForm: 'hand-to-chest', tempo: 1.4, amplitude: 1.05, tension: 0.7, breath: 1.2, sigh: false },
-  sleepy: { posture: { lowerPitch: 4, midPitch: 3, clavElev: -2, pelvisY: -0.006 }, scale: 3.5, hands: null, response: { f: 0.35, zeta: 1, r: 0 }, heldShare: 1, support: null, armForm: null, tempo: 0.55, amplitude: 0.6, tension: 0.1, breath: 1.4, sigh: false },
+  sleepy: { posture: { slump: 7, clavElev: -2, pelvisY: -0.006 }, scale: 3.5, hands: null, response: { f: 0.35, zeta: 1, r: 0 }, heldShare: 1, support: null, armForm: null, tempo: 0.55, amplitude: 0.6, tension: 0.1, breath: 1.4, sigh: false },
 }
+
+/**
+ * A person's slump curls through the thoracic spine: the lower and mid thoracic regions flex near their end range, the
+ * upper thoracic and lumbar regions mid-range, and the pelvis rolls back (Nairn et al. 2013, Manual Therapy 18(6):
+ * 498-505). Shares of the slump for the lower, mid and upper torso controls, derived in `E/g3/b2/expectations.md`. The
+ * neck and head keep Natural's head posture alone (plan 3.2).
+ */
+const SLUMP_SHARES = [0.2, 0.6, 0.2] as const
+/**
+ * Degrees. The summed slump passes the identity below 16 degrees, which holds every clear pulse, and saturates at 20 at
+ * weight 1, inside a standing person's slump and more than 2 degrees inside each control's limit.
+ */
+const SLUMP_CAP = 20
 
 /** Arm forms engage above "slight", at a clear pulse and above (lead ruling R3). */
 const ARM_FORM_WEIGHT = 0.5
@@ -156,6 +172,8 @@ export function createEmotionLayer(): EmotionLayer {
   let impulseSeq: number | null = null
   let time = 0
   let active = false
+  /** The tick's summed slump in radians, spread over the torso after every track has added its share. */
+  let slump = 0
 
   function ownership(input: BodyPerformanceInput) {
     for (let channel = 0; channel < channels.length; channel++)
@@ -218,6 +236,7 @@ export function createEmotionLayer(): EmotionLayer {
     const { posture: p, scale, hands } = track.spec
     const k = w * scale * DEG
     const s = track.side
+    slump += k * (p.slump ?? 0)
     channels[c('lowerPitch')] += k * (p.lowerPitch ?? 0)
     channels[c('midPitch')] += k * (p.midPitch ?? 0)
     channels[c('lowerRoll')] += k * s * (p.lowerRoll ?? 0)
@@ -281,6 +300,7 @@ export function createEmotionLayer(): EmotionLayer {
       time = context.time
       retarget(context.input)
       channels.fill(0)
+      slump = 0
       let anyTarget = false
       let moving = false
       modulation.tempo = modulation.amplitude = modulation.breath = 1
@@ -301,6 +321,12 @@ export function createEmotionLayer(): EmotionLayer {
         modulation.amplitude += blend * (track.spec.amplitude - 1)
         modulation.breath += blend * (track.spec.breath - 1)
         modulation.tension += blend * (track.spec.tension - BODY_EMOTIONS.neutral.tension)
+      }
+      if (slump !== 0) {
+        const capped = softLimit(slump, -SLUMP_CAP * DEG, SLUMP_CAP * DEG)
+        channels[c('lowerPitch')] += SLUMP_SHARES[0] * capped
+        channels[c('midPitch')] += SLUMP_SHARES[1] * capped
+        channels[c('upperPitch')] += SLUMP_SHARES[2] * capped
       }
       active = anyTarget || moving
       if (active) {
