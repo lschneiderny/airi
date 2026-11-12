@@ -352,7 +352,7 @@ information only: the centerline overlap with DYNAMIC (physics) bodies such as s
 simulation resolves. The test skips the first half of the upper arm, because the shoulder joint sits inside the chest
 bodies by construction. It ignores collision masks, because a rig's own torso, hip and leg bodies turn off collision
 with their group, and skips only a body wider than 0.65 of the shoulder span (a coat shell such as Chisa's radius-2
-body). While both arms are free and the gait is idle, a rig whose kinematic overlap persists for 5 frames after the
+body). While both arms are free, no gesture layer moves either arm, and the gait is idle, a rig whose kinematic overlap persists for 5 frames after the
 60-frame warm-up, at the default 78 degree hang gets a
 per-rig hang: the arm is lifted away from the body in 2 degree steps, down to 60, until the overlap is 0 (the hang is the
 angle below horizontal, so a larger one swings the arm into the hips). The lift reaches the performer as `armLift`, added

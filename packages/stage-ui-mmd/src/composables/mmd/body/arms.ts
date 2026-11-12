@@ -120,7 +120,10 @@ export class MMDArms {
 
   constructor(private readonly pose: MMDBodyPose, private readonly colliders: MMDArmTestColliders, private readonly head: readonly MMDTouchCollider[]) {}
 
-  /** The extra abduction per side in radians for this frame; solving runs only while both arms are free and not swinging. */
+  /**
+   * The extra abduction per side in radians for this frame; solving runs only while both arms are free and not swinging,
+   * and `measure` also holds it while a gesture layer moves either arm.
+   */
   lift(input: MMDArmLiftInput): Readonly<Record<Side, number>> {
     this.appliedHang = input.hangDeg ?? DEFAULT_HANG_DEG - this.liftDeg
     this.frames++
@@ -152,7 +155,13 @@ export class MMDArms {
     return positions
   }
 
-  measure(owned: MMDArmOwnership, correctionDeg: Readonly<Record<Side, number>>): MMDArmsMeasurement {
+  /**
+   * `gestureActivation` is the weight the performer's gesture layers applied to each arm on the latest tick. The hang
+   * is frozen while either is above 0 (architecture 3f): a lift step under a performed arm would move the pose the
+   * gesture retracts to.
+   */
+  measure(owned: MMDArmOwnership, correctionDeg: Readonly<Record<Side, number>>, gestureActivation: Readonly<Record<Side, number>>): MMDArmsMeasurement {
+    const solving = this.solving && gestureActivation.left === 0 && gestureActivation.right === 0
     const { mesh } = this.pose.mmd
     mesh.updateWorldMatrix(true, true)
     const toMesh = new Matrix4().copy(mesh.matrixWorld).invert()
@@ -179,14 +188,14 @@ export class MMDArms {
         Array.from({ length: SAMPLES_PER_CAPSULE }, (_, index) => ({ point: from.clone().lerp(to, index / (SAMPLES_PER_CAPSULE - 1)), radius, clearance: SOLVER_CLEARANCE_RATIO * from.distanceTo(to) })))
       penetration[side] = this.deepest(samples, this.colliders.kinematic, toMesh)
       headPenetration[side] = this.deepest(samples, this.head, toMesh)
-      if (this.solving)
+      if (solving)
         tight = Math.max(tight, this.deepest(samples.map(({ point, radius, clearance }) => ({ point, radius: radius + clearance })), this.colliders.kinematic, toMesh))
       clothContact[side] = this.deepest(samples.map(({ point }) => ({ point, radius: 0 })), this.colliders.dynamic, toMesh)
     }
     // The next frame poses with the lifted arm; the measurement above still reports this frame's overlap.
-    if (this.solving && tight > 0)
+    if (solving && tight > 0)
       this.overlapFrames++
-    else if (this.solving)
+    else if (solving)
       this.overlapFrames = 0
     if (this.overlapFrames >= SOLVE_PERSISTENCE_FRAMES) {
       this.overlapFrames = 0

@@ -216,7 +216,8 @@ export class MMDBody {
       const { skate, ...feet } = this.feet.measure()
       this.feetSnapshot = feet
       this.skate = skate
-      this.armsSnapshot = this.arms.measure(this.owned, this.performer?.diagnostics.correctionDeg ?? { left: 0, right: 0 })
+      const performance = this.performer?.diagnostics
+      this.armsSnapshot = this.arms.measure(this.owned, performance?.correctionDeg ?? { left: 0, right: 0 }, performance?.gestureActivation ?? { left: 0, right: 0 })
     } }
   }
 

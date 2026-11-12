@@ -37,11 +37,11 @@ function solver(extraBodies: ExtraBody[]) {
   const { mmd, rig } = fixture
   const { skeleton, bindMatrix } = mmd.mesh
   const arms = new MMDArms(new MMDBodyPose(mmd, rig), buildMMDArmTestColliders(mmd.pmx, skeleton.boneInverses, bindMatrix, rig), [])
-  return (hangDeg: number | null) => {
+  return (hangDeg: number | null, gesture = { left: 0, right: 0 }) => {
     const lift = arms.lift({ swingWeight: 0, owned, hangDeg })
     for (const [name, sigma] of [['左腕', 1], ['右腕', -1]] as const)
       fixture.bone(name).quaternion.setFromEuler(new Euler(0, 0, sigma * (bindHang * degrees - (78 * degrees - lift.left))))
-    return arms.measure(owned, { left: 0, right: 0 })
+    return arms.measure(owned, { left: 0, right: 0 }, gesture)
   }
 }
 
@@ -148,6 +148,18 @@ describe('mmd arm measurement and hang solver', () => {
     for (let frame = 0; frame < 400; frame++)
       hang = step(null).hangDeg
     expect(hang).toBe(60)
+  })
+
+  it('holds the hang while a gesture moves either arm, and solves again once both are at rest', () => {
+    const step = solver([{ name: 'post', bone: '上半身2', position: [2.2, 12, 0], radius: 0.3, collisionMask: 65535 }])
+    const hangs: number[] = []
+    for (let frame = 0; frame < 300; frame++)
+      hangs.push(step(null, { left: 0, right: frame === 0 ? 0 : 0.4 }).hangDeg)
+    expect(hangs.every(hang => hang === 78)).toBe(true)
+    let hang = 78
+    for (let frame = 0; frame < 300; frame++)
+      hang = step(null).hangDeg
+    expect(hang).toBeLessThan(78)
   })
 
   it('does not solve a hang while the debug override is set', () => {
