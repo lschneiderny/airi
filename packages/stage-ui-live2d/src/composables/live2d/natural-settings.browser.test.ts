@@ -12,6 +12,7 @@ const defaults = {
   energy: 0.5,
   cursorAttention: true,
   screenAwareness: true,
+  idleActivities: true,
   touch: true,
   touchPetRequiresHold: false,
   touchHeadScale: {},

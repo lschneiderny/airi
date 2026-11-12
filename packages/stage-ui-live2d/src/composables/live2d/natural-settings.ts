@@ -14,6 +14,8 @@ const live2dNaturalSettingsEntries = {
   cursorAttention: optional(boolean(), true),
   /** Let Natural lean toward the middle of the screens and glance at the chat. @default true */
   screenAwareness: optional(boolean(), true),
+  /** Let Natural do things on its own while idle: stretch, yawn, look around, watch the screen, doze off. @default true */
+  idleActivities: optional(boolean(), true),
   /** Let the user poke the model and pet its head with the cursor while Natural drives it. @default true */
   touch: optional(boolean(), true),
   /** Count only strokes made with the primary button held as pets, so passing the cursor over the head never pets it. @default false */
@@ -29,6 +31,7 @@ const live2dNaturalSettingsEntries = {
 
 export type Live2DNaturalSettings = SettingsDocument<typeof live2dNaturalSettingsEntries>
 
+/** The pre-document key of each setting; a setting added after the document has none. */
 const legacyKeys = {
   energy: 'settings/live2d/natural-energy',
   cursorAttention: 'settings/live2d/natural-cursor-attention',
@@ -37,7 +40,7 @@ const legacyKeys = {
   touchPetRequiresHold: 'settings/live2d/natural-touch-pet-requires-hold',
   touchHeadScale: 'settings/live2d/natural-touch-head-scale',
   emotionStrength: 'settings/live2d/natural-emotion-strength',
-} satisfies Record<keyof Live2DNaturalSettings, string>
+} satisfies Partial<Record<keyof Live2DNaturalSettings, string>>
 
 // NOTICE:
 // Profiles saved before the settings document keep each Natural setting under its own localStorage key.

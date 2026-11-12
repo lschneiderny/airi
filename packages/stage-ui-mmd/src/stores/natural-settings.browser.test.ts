@@ -10,6 +10,7 @@ import { useMMDNaturalSettings } from './natural-settings'
 const key = 'settings/mmd/natural'
 const defaults = {
   energy: 0.5,
+  idleActivities: true,
   touch: true,
   touchPetRequiresHold: false,
   emotionStrength: {},

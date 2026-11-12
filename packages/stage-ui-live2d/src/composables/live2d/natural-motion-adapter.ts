@@ -2,6 +2,7 @@ import type { FaceBaseline } from '@proj-airi/motion-driver-natural/baseline'
 import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
 import type { NaturalFaceOutput } from '@proj-airi/motion-driver-natural/face'
 import type { NaturalTouchRegion } from '@proj-airi/motion-driver-natural/frame-types'
+import type { IdleBehaviourReport, IdleCueKind, NaturalIdleDrive } from '@proj-airi/motion-driver-natural/idle-activities'
 import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
 import type { NaturalChatInput, NaturalMotionFrame, NaturalMotionOptions, NaturalMotionPose } from '@proj-airi/motion-driver-natural/natural-motion'
 import type { PostureHome } from '@proj-airi/motion-driver-natural/posture'
@@ -13,6 +14,7 @@ import type { Live2DMotionDriver } from './live2d'
 import type { PixiLive2DInternalModel } from './motion-manager'
 import type { Live2DRigProfile, NaturalChannel } from './natural-motion/rig-profile'
 
+import { IdleBehaviourReports } from '@proj-airi/motion-driver-natural/idle-activities'
 import { NaturalMotion } from '@proj-airi/motion-driver-natural/natural-motion'
 
 type Core = PixiLive2DInternalModel['coreModel']
@@ -191,6 +193,13 @@ export class Live2DNaturalMotionAdapter {
   private chat: NaturalChatInput | null = null
   private readonly pendingGestures: { kind: CueGestureKind, count: number }[] = []
   private readonly pendingMoods: MoodDose[] = []
+  private readonly pendingIdleCues: IdleCueKind[] = []
+  /** The drive the host last set, and the one the controller runs; they differ while Natural is inactive. */
+  private idleDrive: NaturalIdleDrive | null = null
+  private appliedIdleDrive: NaturalIdleDrive | null = null
+  private readonly idleReports = new IdleBehaviourReports()
+  /** Called after a composition in which a self-directed idle behaviour started or ended. */
+  onIdleBehaviour: ((report: IdleBehaviourReport) => void) | null = null
   private readonly visibilityChanged = () => {
     this.hidden = this.visibility?.hidden ?? false
     this.frameTime = undefined
@@ -295,6 +304,22 @@ export class Live2DNaturalMotionAdapter {
       this.controller.setFaceBaseline(baseline)
   }
 
+  /**
+   * Sets the drive of self-directed idle behaviour, or switches it off with `null`. Like the face baseline it is a
+   * continuous target kept under every driver; the controller runs it only while Natural drives the model.
+   */
+  setIdleDrive(drive: NaturalIdleDrive | null) {
+    if (!this.disposed)
+      this.idleDrive = drive
+  }
+
+  /** Reach-out body language, accepted like a cue gesture: only for the selected Natural driver. */
+  idleCue(kind: IdleCueKind) {
+    const { driver, exclusive } = this.attention()
+    if (!this.disposed && driver === 'natural' && !exclusive)
+      this.pendingIdleCues.push(kind)
+  }
+
   /** Forwards the expression-performance switches and tunables to the Natural controller. */
   setPerformanceSettings(settings: ExpressionPerformanceSettings) {
     this.controller.setPerformanceSettings(settings)
@@ -358,6 +383,12 @@ export class Live2DNaturalMotionAdapter {
     }
 
     const mouthAllowed = !voice.speaking && !voice.lipSyncOwnsMouth
+    // Before the performance state, whose energy the drive moves. Forwarded on change only.
+    const idleDrive = active ? this.idleDrive : null
+    if (idleDrive !== this.appliedIdleDrive) {
+      this.appliedIdleDrive = idleDrive
+      this.controller.setIdleDrive(idleDrive, this.time)
+    }
     this.controller.setPerformance(attention.performance, attention.energy, this.time)
     this.controller.setVoice({ speaking: voice.speaking, speechActiveOrRecent: !mouthAllowed, level: voice.level })
     for (const gesture of this.pendingGestures.splice(0)) {
@@ -367,6 +398,10 @@ export class Live2DNaturalMotionAdapter {
     for (const dose of this.pendingMoods.splice(0)) {
       if (active)
         this.controller.addMood(dose, this.time)
+    }
+    for (const cue of this.pendingIdleCues.splice(0)) {
+      if (active)
+        this.controller.idleCue(cue, this.time)
     }
     // Emotions queued while Natural is inactive are stale by the time it resumes.
     for (const emotion of attention.pendingEmotions.splice(0)) {
@@ -394,6 +429,11 @@ export class Live2DNaturalMotionAdapter {
     }
     const frame = this.controller.advance(this.time)
     this.onPlacementStep?.(this.placement, this.controller.placementYawBias)
+    // While Natural does not drive the model the controller is frozen and nothing shows, so a behaviour in progress
+    // counts as ended; it is reported again as started if Natural resumes with it.
+    const idleState = this.controller.idleState
+    for (const report of this.idleReports.read(active ? idleState : { seq: idleState.seq, behaviour: null }))
+      this.onIdleBehaviour?.(report)
     this.diagnosticFrames++
     this.weightSum += this.weight
     this.physicsOutputSkips += this.physicsOwnedChannels
@@ -453,6 +493,9 @@ export class Live2DNaturalMotionAdapter {
     if (this.disposed)
       return
     this.disposed = true
+    // The model goes away mid-behaviour: whoever follows the reports still gets its end.
+    for (const report of this.idleReports.read({ seq: this.controller.idleState.seq, behaviour: null }))
+      this.onIdleBehaviour?.(report)
     this.visibility?.removeEventListener('visibilitychange', this.visibilityChanged)
     this.model.updateFocus = this.originalFocus
   }

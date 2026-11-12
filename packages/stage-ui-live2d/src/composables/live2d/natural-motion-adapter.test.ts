@@ -966,3 +966,62 @@ describe('natural motion adapter', () => {
     }
   })
 })
+
+describe('natural motion adapter idle behaviour', () => {
+  const drive = { energy: 0, valence: 0, tension: 0, sleepiness: 0, solitude: 0, music: false, allowSleep: true, rate: 0 }
+
+  /** Runs frames at 30 fps from `from` to `to` seconds and returns the last one. */
+  function run(f: ReturnType<typeof fixture>, from: number, to: number) {
+    let last = f.frame(from)
+    for (let time = from + 1 / 30; time <= to; time += 1 / 30)
+      last = f.frame(time)
+    return last
+  }
+
+  it('closes the eyes while the user is away and reports the sleep, also across a driver change and disposal', () => {
+    const f = fixture()
+    const reports: string[] = []
+    f.adapter.onIdleBehaviour = report => reports.push(`${report.behaviour}:${report.phase}`)
+    f.state.driver = 'natural'
+    f.state.performance = { ...f.state.performance, away: true }
+    f.adapter.setIdleDrive(drive)
+
+    const asleep = run(f, 0, 45)
+    expect(reports).toEqual(['sleep:start'])
+    expect(asleep.commanded[f.at('ParamEyeLOpen')]).toBeCloseTo(0, 5)
+    expect(asleep.commanded[f.at('ParamEyeROpen')]).toBeCloseTo(0, 5)
+
+    // Another driver takes over: Natural shows nothing, so the sleep is reported as ended, and as started again when
+    // Natural resumes with her still asleep.
+    f.state.driver = 'universal'
+    f.frame(45.1)
+    expect(reports).toEqual(['sleep:start', 'sleep:end'])
+    f.state.driver = 'natural'
+    run(f, 45.2, 46)
+    expect(reports).toEqual(['sleep:start', 'sleep:end', 'sleep:start'])
+    f.adapter.dispose()
+    expect(reports).toEqual(['sleep:start', 'sleep:end', 'sleep:start', 'sleep:end'])
+  })
+
+  it('performs no idle behaviour without a drive, and drops a cue under another driver', () => {
+    const f = fixture()
+    const reports: string[] = []
+    f.adapter.onIdleBehaviour = report => reports.push(`${report.behaviour}:${report.phase}`)
+    f.state.driver = 'natural'
+    f.state.performance = { ...f.state.performance, away: true }
+    run(f, 0, 45)
+    expect(reports).toEqual([])
+
+    f.state.performance = { ...f.state.performance, away: false }
+    f.adapter.setIdleDrive(drive)
+    f.state.driver = 'universal'
+    f.adapter.idleCue('about-to-speak')
+    f.state.driver = 'natural'
+    run(f, 45.1, 47)
+    expect(reports).toEqual([])
+
+    f.adapter.idleCue('about-to-speak')
+    run(f, 47.1, 48)
+    expect(reports).toEqual(['about-to-speak:start'])
+  })
+})

@@ -463,6 +463,22 @@ describe('stage performance conductor', () => {
       expect(scene.setEmotion).not.toHaveBeenCalled()
     })
 
+    it('sends the idle drive and reach-out cues to a Natural scene, and switches idle off under a basic driver', () => {
+      const drive = { energy: 0.2, valence: 0, tension: 0, sleepiness: 0, solitude: 0.5, music: false, allowSleep: true, rate: 1 }
+      const sent = (['natural', 'basic'] as const).map((driver) => {
+        const scene = { ...fakeScene(), setIdleDrive: vi.fn<NonNullable<StagePerformanceScene['setIdleDrive']>>(), idleCue: vi.fn<NonNullable<StagePerformanceScene['idleCue']>>() }
+        const { conductor } = createConductor(driver, scene)
+        conductor.idleDrive(drive)
+        conductor.idleCue('about-to-speak')
+        return [driver, scene.setIdleDrive.mock.calls, scene.idleCue.mock.calls]
+      })
+
+      expect(sent).toEqual([
+        ['natural', [[drive]], [['about-to-speak']]],
+        ['basic', [[null]], []],
+      ])
+    })
+
     it('plays an ACT cue gesture on the scene under Natural and ignores it under a basic driver', () => {
       const played = (['natural', 'basic'] as const).map((driver) => {
         const scene = fakeScene()

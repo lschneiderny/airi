@@ -73,6 +73,10 @@ State on `main` after this change. "Branch" means `luke/feat/fullscreen-stage`.
 | Speech lip-sync | Yes | Yes | Yes | No | No |
 | Speech emphasis | Yes | Yes | No | No | No |
 | Sit and sleep stances | No | Yes | No | No | No |
+| Idle activities and sleep while away | Yes | Yes (head motion unverified) | No | No | No |
+| Reach-out body language | Yes | Yes | No | No | No |
+| Own activity told to the model | Yes | Yes | No | No | No |
+| Unasked clips, visits | No | Yes | No | No | No |
 | Locomotion and the desktop stage | No | Branch | No | No | No |
 | Feel QA gates | Yes | Manual | No | No | No |
 

@@ -17,6 +17,13 @@ reaching feature parity with the Live2D and VRM renderers:
   synced across windows), set one as the looping idle, play any through the
   body director, remove them, and map AIRI emotions to clips (Neutral and
   Sleepy map to no clip).
+- **Idle activities**: under Natural she stretches, yawns, looks around, watches
+  the screen and dozes on her own (`idleActivities` in the Natural settings,
+  on by default), and plays the clips the user marked "Idle may use" now and
+  then while her body is quiet. A model with a sleep clip sleeps through its
+  stance; a model without one uses the Natural sleep. The scene emits `idle`
+  and `self` events, which the stage forwards to the situation. See
+  [the idle agency ADR](../../docs/ai/adr/2026-11-12-idle-agency.md).
 - **Clip library**: every imported clip gets a derived kind and layer, and the
   user gives it a label and an "AI may use" switch per model. Gestures layer
   over idle, sitting and walking; full-body actions and dances pre-empt the
@@ -30,7 +37,9 @@ reaching feature parity with the Live2D and VRM renderers:
   also walks her to the chat after it unfolds, chases the cursor after a poke,
   pet, drag or sent message, returns home 20 s after the last reason and, with
   `roamMode` (`settings/mmd/roam-mode`, `'stay' | 'roam'`, default `'stay'`),
-  wanders. Goals wait while she speaks, and a goal held longer than 30 s is
+  wanders. A due wander walks over to where the cursor rests in 60 % of cases
+  (`visit`), and always while the user is active; she then stays 45 to 150 s
+  before she strolls home. Goals wait while she speaks, and a goal held longer than 30 s is
   dropped. `director` in the diagnostics snapshot reports `reason` (the
   locomotion reason), `goalX`, `pace`, `pendingGoal` and the tool refractories;
   `stanceReason` is the stance's reason. The `requestGoal` command is the

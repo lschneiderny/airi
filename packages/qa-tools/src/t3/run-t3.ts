@@ -174,7 +174,8 @@ export async function runT3(options: RunT3Options): Promise<RunT3Result> {
     log('qa-tools t3: bridge answered; importing the rig')
 
     bridgeLog.import = await abortable(failOnExit(launched, 'the rig import', importRig(stagePage, bridge, zipPath, bounds.importMs)))
-    bridgeLog.configured = await abortable(bridge.call('configure', { driver: 'natural', cursorAttention, expressionEnabled: true, screenAwareness: t3ScreenAwareness(scenario), heldEmotions: scenario.settings?.heldEmotions ?? true }, bounds.commandMs))
+    // Idle activities stay off: the gates score the base idle motion, which a stretch or a doze would skew.
+    bridgeLog.configured = await abortable(bridge.call('configure', { driver: 'natural', cursorAttention, expressionEnabled: true, screenAwareness: t3ScreenAwareness(scenario), idleActivities: false, heldEmotions: scenario.settings?.heldEmotions ?? true }, bounds.commandMs))
     bridgeLog.cursorAttention = cursorAttention
     bridgeLog.fadeOnHover = await abortable(stagePage.evaluate('JSON.parse(localStorage.getItem("controls-island/fade-on-hover-enabled") ?? "false")'))
     if (cursorAttention)

@@ -81,6 +81,8 @@ export interface MMDClipCuration {
   loop: boolean | null
   /** Whether the chat model may trigger the clip. */
   aiMayUse: boolean
+  /** Whether she may play the clip on her own while idle, without anyone asking. */
+  idleMayUse: boolean
 }
 
 export interface MMDLabeledClip {
@@ -89,6 +91,8 @@ export interface MMDLabeledClip {
   kind: ClipKind
   layer: ClipLayer
   exposed: boolean
+  /** She may play it on her own while idle. */
+  idle: boolean
 }
 
 /** Transient request to perform a clip (or stop with `name: null`), bumped per request. */
@@ -102,7 +106,7 @@ export interface MMDPerformRequest {
 const LIBRARY_KINDS: readonly ClipKind[] = ['gesture', 'action', 'dance']
 
 function defaultCuration(): MMDClipCuration {
-  return { label: null, kind: null, loop: null, aiMayUse: false }
+  return { label: null, kind: null, loop: null, aiMayUse: false, idleMayUse: false }
 }
 
 export const useMMD = defineStore('mmd', () => {
@@ -214,7 +218,8 @@ export const useMMD = defineStore('mmd', () => {
   const availableClipMeta = useLocalStorageManualReset<Record<string, DerivedClipMeta & { name: string }>>('settings/mmd/available-clip-meta', () => ({}))
 
   function curationFor(modelKey: string, name: string): MMDClipCuration {
-    return clipCuration.value[modelKey]?.[name] ?? defaultCuration()
+    // A record saved before a field existed reads that field at its default.
+    return { ...defaultCuration(), ...clipCuration.value[modelKey]?.[name] }
   }
 
   /**
@@ -246,7 +251,7 @@ export const useMMD = defineStore('mmd', () => {
       const kind = curation.kind ?? meta?.kind
       if (!meta || curation.label === null || kind === undefined || !LIBRARY_KINDS.includes(kind))
         continue
-      clips.push({ name, label: curation.label, kind, layer: effectiveLayer(meta, curation.kind), exposed: curation.aiMayUse })
+      clips.push({ name, label: curation.label, kind, layer: effectiveLayer(meta, curation.kind), exposed: curation.aiMayUse, idle: curation.idleMayUse })
     }
     return clips
   }
