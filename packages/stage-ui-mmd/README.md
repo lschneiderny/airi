@@ -556,6 +556,15 @@ the knee bend sign, leg length, foot baseline, eye bone source, physics-owned
 bones and the waist-cancel flag. `toRigTraits(profile)` converts it to the
 renderer-neutral `RigTraits`. Pose stages must not write physics-owned bones.
 
+Each humanoid bone takes the first name candidate in `bone-map.ts` that exists
+and is not physics-owned. `upperChest` (`上半身3`) must also lie after the
+`chest` bone (`上半身2`) on `spineChain`, because the upper chest is the child of
+the chest. Carlotta and Chisa parent `上半身2` to `上半身3`, so their
+`上半身3` is a middle chain link like Ellen's and Vivian's `上半身1`, and
+`upperChest` is missing on all four. The trace and the QA reports then measure
+the neck and shoulders against `上半身2`, their true parent. Trunk motion reads
+`spineChain`, not these names.
+
 The profile also reports structural facts for body adapters:
 
 - `spineChain` contains `{ name, position }` entries in root-to-tip hierarchy

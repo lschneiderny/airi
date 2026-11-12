@@ -49,13 +49,37 @@ describe('readMMDRigProfile on audited models', () => {
     expect(profileOf(carlottaRig).waistCancel).toBe(true)
   })
 
-  it('maps 上半身3 to upperChest on Carlotta so all 24 humanoid bones are present', () => {
+  it('leaves upperChest unset on Carlotta, whose 上半身3 is the parent of 上半身2 on the chain 上半身 → 上半身3 → 上半身2 → 首', () => {
     const profile = profileOf(carlottaRig)
 
-    expect(profile.presentBones).toEqual(ALL_HUMANOID_BONES)
-    expect(profile.presentBones).toHaveLength(24)
-    expect(profile.missingBones).toEqual([])
+    expect(profile.spineChain.map(bone => bone.name)).toEqual(['上半身', '上半身3', '上半身2'])
+    expect(profile.bones.chest).toBe('上半身2')
+    expect(profile.bones.upperChest).toBeUndefined()
+    expect(profile.presentBones).toEqual(ALL_BUT_UPPER_CHEST)
+    expect(profile.missingBones).toEqual(['upperChest'])
+    expect(profile.physicsOwnedHumanoid).toEqual([])
+  })
+
+  it('maps 上半身3 to upperChest when it lies above 上半身2 on the spine chain', () => {
+    // Carlotta with 上半身2 and 上半身3 exchanged in the hierarchy and in height: 上半身 → 上半身2 → 上半身3 → 首.
+    const position = (name: string) => carlottaRig.bones.find(bone => bone.name === name)!.position
+    const ordered: RigFixture = {
+      ...carlottaRig,
+      bones: carlottaRig.bones.map((bone) => {
+        if (bone.name === '上半身2')
+          return { ...bone, parent: '上半身', position: position('上半身3') }
+        if (bone.name === '上半身3')
+          return { ...bone, parent: '上半身2', position: position('上半身2') }
+        return bone.parent === '上半身2' ? { ...bone, parent: '上半身3' } : bone
+      }),
+    }
+    const profile = profileOf(ordered)
+
+    expect(profile.spineChain.map(bone => bone.name)).toEqual(['上半身', '上半身2', '上半身3'])
+    expect(profile.bones.chest).toBe('上半身2')
     expect(profile.bones.upperChest).toBe('上半身3')
+    expect(profile.presentBones).toEqual(ALL_HUMANOID_BONES)
+    expect(profile.missingBones).toEqual([])
   })
 
   it('reads both leg IK chains with their knee links and post-parse limits', () => {

@@ -205,16 +205,21 @@ export function readMMDRigProfile(pmx: MMDRigSource): MMDRigProfile {
   const presentBones: HumanoidBoneName[] = []
   const missingBones: HumanoidBoneName[] = []
   const physicsOwnedHumanoid: HumanoidBoneName[] = []
+  const chainIndexOf = (name: string | undefined) => spineChain.findIndex(link => link.name === name)
   for (const [humanoid, candidates] of Object.entries(HUMANOID_BONE_CANDIDATES) as [HumanoidBoneName, readonly string[]][]) {
     const existing = candidates.filter(name => indexByName.has(name))
     const writable = existing.find(name => !physicsOwnedIndices.has(indexByName.get(name)!))
-    if (writable) {
+    // The upper chest is the spine link above the chest. Some rigs name their middle link 上半身3 and parent 上半身2
+    // to it, so the name alone would put upperChest below chest. Such a link stays a plain `spineChain` link, as
+    // 上半身1 does on other rigs. `chest` is assigned first, because key order follows `HumanoidBoneName`.
+    const ordered = humanoid !== 'upperChest' || (chainIndexOf(bones.chest) >= 0 && chainIndexOf(writable) > chainIndexOf(bones.chest))
+    if (writable && ordered) {
       bones[humanoid] = writable
       presentBones.push(humanoid)
       continue
     }
     missingBones.push(humanoid)
-    if (existing.length > 0)
+    if (!writable && existing.length > 0)
       physicsOwnedHumanoid.push(humanoid)
   }
 

@@ -2,8 +2,10 @@ import type { HumanoidBoneName, HumanoidFingerBoneName } from '@proj-airi/motion
 
 /**
  * Ordered MMD bone-name candidates for each canonical humanoid bone. The rig profile maps
- * a humanoid bone to the first candidate that exists and is not physics-owned. Key order
- * follows `HumanoidBoneName`, so profile bone lists keep that order.
+ * a humanoid bone to the first candidate that exists and is not physics-owned. `upperChest`
+ * additionally needs its bone to lie after the `chest` bone on the parent-ordered spine chain;
+ * a 上半身3 that is the parent of 上半身2 leaves the slot unset. Key order follows
+ * `HumanoidBoneName`, so profile bone lists keep that order.
  *
  * `hips` is the 下半身 rotation bone only; hips translation is driven through the
  * センター and グルーブ control bones (see {@link MMD_CONTROL_BONE_CANDIDATES}).
