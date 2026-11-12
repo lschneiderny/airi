@@ -25,6 +25,7 @@ import { MotionTraceRefusal, parseTrace, readTrace } from '../read-trace'
 import { loadHeadlessMMD } from '../runner/loader'
 import { runMotion3dScenario } from '../runner/run'
 import { motion3dScenarios } from '../scenarios'
+import { RUN_LEASE_SLOTS } from './run'
 
 const usage = 'Usage: qa:motion3d frames <run directory> --model <pmx> (--at <t>[,<t>...] | --window <from>:<to> [--hz <n>] | --around <marker label prefix or event kind> --before <s> --after <s> [--hz <n>]) [--views front,side] [--channels <name>[,<name>...]] --out <directory>'
 /** A re-run must reproduce every stored rotation to this turn, else its untraced bones would not belong to the reviewed run. */
@@ -177,7 +178,7 @@ async function rerunRun(context: Motion3dCliContext, model: string, summary: Fra
     throw new FramesUsageError(`unknown scenario ${summary.scenario.id}`)
   const locals = new Map<number, LocalPose[]>()
   const worlds = new Map<number, Quat[]>()
-  const lease = await acquire({ class: 'gate', command: `qa:motion3d frames re-run --scenario ${scenario.id} --seed ${summary.scenario.seed}`, cwd: context.repoRoot, signal: context.signal })
+  const lease = await acquire({ class: 'gate', min: RUN_LEASE_SLOTS, max: RUN_LEASE_SLOTS, command: `qa:motion3d frames re-run --scenario ${scenario.id} --seed ${summary.scenario.seed}`, cwd: context.repoRoot, signal: context.signal })
   let result
   try {
     result = await runMotion3dScenario({

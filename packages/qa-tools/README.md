@@ -1265,7 +1265,7 @@ only inside act spans (for example an acts-off director that freezes the idle
 exactly where an act would play), which only that identity proof covers. No act
 producer exists yet, so today the switch changes no pose.
 An existing output directory is refused with exit 2 before a lease is taken.
-Each run takes the `gate` CPU lease and creates:
+Each run takes a one-slot `gate` CPU lease (`RUN_LEASE_SLOTS` in `src/t2-3d/cli/run.ts`; the `frames` re-run takes the same) instead of the class default of 4 to 10 slots, which is sized for the multi-worker Vitest motion gates. Measured on 2026-11-12 on both rigs and every scenario (two timings each), a run uses one core ((user + sys) / wall 1.01 to 1.10) and never reads its grant, so six seeds run side by side in six slots and unit tests keep the rest of the budget. Memory is not a slot: a run peaks at about 0.95 GB (first rig, 0.5 to 0.6 GB on the second) plus about 0.3 GB for its pnpm and tsx launchers, so a full 12-slot budget of runs needs about 15 GB free. Each run creates:
 
 - `trace.json`: shared trace v1, including warm-up, scenario events, source
   revision, asset hash, stages, clock policy and omitted work.

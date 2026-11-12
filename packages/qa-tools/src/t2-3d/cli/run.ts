@@ -11,6 +11,15 @@ import { createRun, readGitStateFromRepo } from '../../evidence/run'
 import { Motion3dUsageError, parseRunArguments } from '../runner/arguments'
 import { runMotion3dScenario } from '../runner/run'
 
+/**
+ * Slots one headless run leases from the `gate` class. Measured 2026-11-12 (tooling lane 3, measure/): a run uses one
+ * core, (user + sys) / wall 1.01 to 1.10 on both rigs and every scenario (two timings each); it never reads its grant.
+ * The class default (4 to 10) is sized for the multi-worker Vitest motion gates and gave one run up to 10 slots, so
+ * seeds ran one at a time and unit tests queued behind them. Memory is not a slot: a run peaks at about 0.95 GB (first
+ * rig) plus about 0.3 GB for its pnpm and tsx launchers, so a full 12-slot budget of runs needs about 15 GB free.
+ */
+export const RUN_LEASE_SLOTS = 1
+
 /** Owns preflight, the gate lease and the standard QA evidence lifecycle. */
 export async function runMotion3d(args: readonly string[], context: Motion3dCliContext): Promise<number> {
   let run: RunHandle | undefined
@@ -18,6 +27,8 @@ export async function runMotion3d(args: readonly string[], context: Motion3dCliC
     const options = parseRunArguments(args, context.cwd)
     const lease = await acquire({
       class: 'gate',
+      min: RUN_LEASE_SLOTS,
+      max: RUN_LEASE_SLOTS,
       command: `qa:motion3d run --scenario ${options.scenario.id} --seed ${options.seed}`,
       cwd: context.repoRoot,
       signal: AbortSignal.any([context.signal, AbortSignal.timeout(30 * 60_000)]),
