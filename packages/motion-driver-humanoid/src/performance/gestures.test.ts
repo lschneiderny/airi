@@ -586,6 +586,60 @@ describe('co-speech gestures', () => {
     expect(peak('Index0')).toBeGreaterThan(peak('Wflex'))
   })
 
+  it('corrects about 40 % of preparations and retractions with an overlapping second submovement, by seed', () => {
+    const script: Script = { utterances: [utterance(0.5, 0.65, [], { end: 2 })], still: true }
+    // Each transition's speed peaks on the arm's output (flex, abduction, twist, elbow), counted as the reference's
+    // were (sources.md): a peak counts once the speed has risen and then fallen by 10 % of the transition's top speed.
+    const transitions = (seed: number) => {
+      const run = perform(script, 5, { seed })
+      const side = run.frames.find(frame => frame.gesture.hand)?.gesture.hand === 'left' ? 'left' : 'right'
+      const fed = [2, 3, 4, 5].map(j => ARM_START[side] + j)
+      const speed = run.frames.map((frame, i) => i ? Math.hypot(...fed.map(c => frame.channels[c] - run.frames[i - 1].channels[c])) : 0)
+      return (['preparation', 'retraction'] as const).map((phase) => {
+        const start = run.frames.findIndex(frame => frame.gesture.phase === phase)
+        const end = run.frames.findIndex((frame, i) => i > start && frame.gesture.phase !== phase) + Math.round(0.15 / BODY_TICK)
+        const span = speed.slice(start, end)
+        const delta = 0.1 * Math.max(...span)
+        const peaks: number[] = []
+        let low = span[0]
+        let high = -Infinity
+        let at = -1
+        let rising = true
+        span.forEach((v, i) => {
+          if (rising && v > high) {
+            high = v
+            at = i
+          }
+          if (rising && high - low >= delta && high - v >= delta) {
+            peaks.push(at)
+            rising = false
+            low = v
+          }
+          else if (!rising) {
+            low = Math.min(low, v)
+            if (v - low >= delta) {
+              rising = true
+              high = v
+              at = i
+            }
+          }
+        })
+        return peaks.length < 2 ? null : { ratio: span[peaks[1]] / span[peaks[0]], trough: Math.min(...span.slice(peaks[0], peaks[1])) / span[peaks[0]] }
+      })
+    }
+    const all = Array.from({ length: 40 }, (_, k) => transitions(k + 1)).flat()
+    const corrected = all.filter(t => t !== null)
+    expect(corrected.length / all.length).toBeGreaterThan(0.25)
+    expect(corrected.length / all.length).toBeLessThan(0.55)
+    for (const { ratio, trough } of corrected) {
+      expect(ratio).toBeGreaterThan(0.5)
+      expect(ratio).toBeLessThan(1.2)
+      expect(trough).toBeGreaterThan(0.15)
+      expect(trough).toBeLessThan(0.6)
+    }
+    expect(transitions(7)).toEqual(all.slice(12, 14))
+  })
+
   it.each(fixtureRigs)('follows the planned preparation without overshooting the ready key on $name', ({ traits: rig }) => {
     const targets: Record<string, Float64Array> = {}
     const layers = createGestureLayers({ traits: rig, seed: 1 })

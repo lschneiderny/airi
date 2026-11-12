@@ -54,6 +54,18 @@ const SLOPE_SAMPLES = 64
 /** Minimum jerk's peak slope over its mean, `max s'(u)`. */
 const MIN_JERK_PEAK_SLOPE = 1.875
 /**
+ * A speech unit's transitions (its preparation, every recovery, both legs of its retraction) carry an overlapping
+ * corrective submovement with probability `share`. In the plain transition's time T, a minimum-jerk primary aims
+ * `landing` of the way over `primary` T; at `onset` T, while it still moves, a second minimum-jerk submovement continues
+ * the plan's velocity to the key and ends at T, as the plain transition does. Sources (E/g3/x2/sources.md,
+ * expectation.md): submovements in 40 % of young adults' movements (Fradet, Lee and Dounskaia 2008), as two or more speed
+ * peaks in 41 % of the stationary human talk reference's arm episodes; an undershooting primary (the minimisation model,
+ * Roberts, Burkitt and Elliott 2024); overlapping, near-symmetric submovements (Novak, Miller and Houk 2002). Landing,
+ * primary and onset reproduce the reference's first speed-peak pairs: the second 0.85 of the first, the trough between
+ * them 0.37, 0.17 s apart.
+ */
+const CORRECTION = { share: 0.4, landing: 0.72, primary: 0.8, onset: 0.65 } as const
+/**
  * Seconds over which a prepared arm's wrist-placing joints move from their cascade links to the fed target. The elbow's
  * link still lags a preparation's end by 1.3 to 1.9 degrees and by 0.24 to 0.35 degrees 50 ms later (30 to 90 degrees
  * over 0.35 to 0.5 s at tension 0); a 0.1 s ease takes up that remainder without a step.
@@ -171,7 +183,7 @@ class ArmTrack {
   watch: { form: SpeechGestureForm, hand: BodyGestureHand, peak: number, speed: number, wrist: readonly [number, number, number] | null, until: number } | null = null
   form: SpeechGestureForm | BodyArmForm | null = null
   prepSeconds = 0.5
-  pending: { at: number, form: SpeechGestureForm, size: number, hold: number } | null = null
+  pending: { at: number, form: SpeechGestureForm, size: number, hold: number, corrected: boolean } | null = null
   warm = false
 
   constructor(readonly side: BodySide) {
@@ -197,6 +209,14 @@ class ArmTrack {
   viaReady = false
   /** A speech unit's arm on its way home: it comes to rest there before its weight ramps out (`retractTrack`). */
   settle = false
+  /** A corrected transition's second submovement: its target, when it starts (Infinity while none waits) and its end. */
+  readonly correctTo = pose()
+  correctAt = Infinity
+  correctEnd = Infinity
+  /** Whether the recovery after this arm's stroke is corrected: drawn with the stroke, a second hand's taken from the first. */
+  recoveryCorrected = false
+  private readonly primaryTo = pose()
+  private readonly onsetPose = pose()
 
   /**
    * Starts a motion to `to` from the current target, continuing the plan's velocity (quintic decay of `v0`), and
@@ -206,6 +226,7 @@ class ArmTrack {
   move(to: ArmPose, now: number, duration: number, tension: number): number {
     const s = this.segment
     const fed = Math.max(BODY_TICK, duration, this.fedForwardFloor(to, tension))
+    this.correctAt = Infinity
     s.from.set(this.pose)
     for (let j = 0; j < 26; j++)
       s.velocity[j] = this.warm ? (this.planned[j] - this.plannedPrevious[j]) / BODY_TICK : 0
@@ -216,7 +237,45 @@ class ArmTrack {
     return fed
   }
 
+  /**
+   * Starts a speech unit's transition to `to` and returns its duration, `move`'s. With `corrected` it is a corrected
+   * transition (`CORRECTION`) when both submovements stay within the follower input slope in their share of that time;
+   * otherwise it is plain.
+   */
+  transit(to: ArmPose, now: number, duration: number, tension: number, corrected: boolean): number {
+    if (corrected) {
+      const total = Math.max(BODY_TICK, duration, this.fedForwardFloor(to, tension))
+      const reach = CORRECTION.landing * minJerk(CORRECTION.onset / CORRECTION.primary)
+      for (let j = 0; j < 26; j++) {
+        this.primaryTo[j] = this.pose[j] + CORRECTION.landing * (to[j] - this.pose[j])
+        this.onsetPose[j] = this.pose[j] + reach * (to[j] - this.pose[j])
+      }
+      if (this.fedForwardFloor(this.primaryTo, tension) <= CORRECTION.primary * total
+        && this.fedForwardFloor(to, tension, this.onsetPose) <= (1 - CORRECTION.onset) * total) {
+        this.move(this.primaryTo, now, CORRECTION.primary * total, tension)
+        this.correctTo.set(to)
+        this.correctAt = now + CORRECTION.onset * total
+        this.correctEnd = now + total
+        return total
+      }
+    }
+    return this.move(to, now, duration, tension)
+  }
+
+  /** Moves the current transition's end to `to`; a corrected transition's primary keeps aiming its share of the way. */
+  aim(to: ArmPose): void {
+    if (this.correctAt === Infinity) {
+      this.segment.to.set(to)
+      return
+    }
+    this.correctTo.set(to)
+    for (let j = 0; j < 26; j++)
+      this.segment.to[j] = this.segment.from[j] + CORRECTION.landing * (to[j] - this.segment.from[j])
+  }
+
   advance(now: number, tension: number): void {
+    if (now >= this.correctAt)
+      this.move(this.correctTo, now, this.correctEnd - now, tension)
     this.plannedPrevious.set(this.planned)
     const s = this.segment
     for (let j = 0; j < 26; j++) {
@@ -243,7 +302,7 @@ class ArmTrack {
    * within the follower input slope: their target's slope is `D (s' / T + lead s'' / T^2 + curvature s''' / T^3)` for
    * minimum jerk `s`. The other channels take their own durations (`move`).
    */
-  private fedForwardFloor(to: ArmPose, tension: number): number {
+  private fedForwardFloor(to: ArmPose, tension: number, from: ArmPose = this.pose): number {
     const inverses = [2, 3, 4, 5].map(j => followerInverse(j, tension))
     const slope = (duration: number) => {
       let worst = 0
@@ -254,7 +313,7 @@ class ArmTrack {
         const jerk = 60 * (1 - 6 * u + 6 * u ** 2) / duration ** 3
         for (let j = 2; j <= 5; j++) {
           const [lead, curvature] = inverses[j - 2]
-          worst = Math.max(worst, Math.abs((to[j] - this.pose[j]) * (rate + lead * acceleration + curvature * jerk)))
+          worst = Math.max(worst, Math.abs((to[j] - from[j]) * (rate + lead * acceleration + curvature * jerk)))
         }
       }
       return worst
@@ -322,6 +381,8 @@ class ArmTrack {
     this.fed = 0
     this.viaReady = false
     this.settle = false
+    this.correctAt = Infinity
+    this.recoveryCorrected = false
     this.accents.length = 0
     this.warm = false
   }
@@ -353,6 +414,8 @@ class GesturePerformer {
   readonly tracks: Record<BodySide, ArmTrack> = { left: new ArmTrack('left'), right: new ArmTrack('right') }
   readonly report: Mutable<BodyGestureReport> = { unitSeq: 0, strokeSeq: 0, form: null, hand: null, phase: 'rest', plannedHit: null }
   private random
+  /** The corrective submovements' own stream (`CORRECTION`), so the gesture stream's choices keep their order. */
+  private corrections
   private dominant: BodySide = 'right'
   private keys: GestureKeys | null = null
   private tick = -1
@@ -373,6 +436,7 @@ class GesturePerformer {
 
   constructor(private readonly traits: BodyRigTraits, private readonly seed: number) {
     this.random = createRandomStream(deriveSeed(seed, 140))
+    this.corrections = createRandomStream(deriveSeed(seed, 141))
     this.reset()
   }
 
@@ -383,6 +447,7 @@ class GesturePerformer {
 
   reset(): void {
     this.random = createRandomStream(deriveSeed(this.seed, 140))
+    this.corrections = createRandomStream(deriveSeed(this.seed, 141))
     this.dominant = this.random() < 0.85 ? 'right' : 'left'
     this.keys = null
     this.tick = -1
@@ -470,6 +535,7 @@ class GesturePerformer {
     track.phaseEnd = now + TIMING.cancel
     track.state = 'retraction'
     track.pending = null
+    track.correctAt = Infinity
     track.viaReady = false
     track.settle = false
     if (this.armForm?.side === side)
@@ -527,7 +593,7 @@ class GesturePerformer {
       if (!this.solveReady(track, this.keys.readyKey(energy, 0, swivel)))
         continue
       this.begin(track, now)
-      track.prepSeconds = track.move(track.ready, now, (0.25 + 0.35 * this.travel(side, track.home, track.ready)) / gestureTempo(energy), this.tension)
+      track.prepSeconds = track.transit(track.ready, now, (0.25 + 0.35 * this.travel(side, track.home, track.ready)) / gestureTempo(energy), this.tension, this.correct())
       track.state = 'preparation'
       track.phaseEnd = now + track.prepSeconds
       started.push(side)
@@ -586,7 +652,7 @@ class GesturePerformer {
         const lag = TIMING.lagRange[0] + (TIMING.lagRange[1] - TIMING.lagRange[0]) * this.random()
         // The second hand plays the same stroke (4a), hold included: with a hold of its own it would recover at another
         // time, and the next two-hand stroke would find one hand resting and the other still on its way back.
-        lagging.pending = { at: now + lag, form: performed, size: size * AMPLITUDE.nonDominant, hold: leadTrack.holdSeconds }
+        lagging.pending = { at: now + lag, form: performed, size: size * AMPLITUDE.nonDominant, hold: leadTrack.holdSeconds, corrected: leadTrack.recoveryCorrected }
       }
     }
     const sign = lead === 'left' ? 1 : -1
@@ -611,9 +677,10 @@ class GesturePerformer {
 
   /**
    * Solves and starts one arm's stroke; returns the form performed (a beat when the chosen form has no clear key). The
-   * post-stroke hold is drawn for the form, or `hold` when the stroke is a two-hand stroke's second hand.
+   * post-stroke hold and whether the recovery after it is corrected are drawn, or `hold` and `corrected` given when the
+   * stroke is a two-hand stroke's second hand.
    */
-  private strokeTrack(track: ArmTrack, context: PerformanceContext, now: number, form: SpeechGestureForm, size: number, hold?: number): SpeechGestureForm | null {
+  private strokeTrack(track: ArmTrack, context: PerformanceContext, now: number, form: SpeechGestureForm, size: number, hold?: number, corrected?: boolean): SpeechGestureForm | null {
     const keys = this.keys
     if (!keys)
       return null
@@ -646,6 +713,7 @@ class GesturePerformer {
       track.form = candidate
       track.phaseEnd = now + profile
       track.holdSeconds = holdSeconds
+      track.recoveryCorrected = corrected ?? this.correct()
       return candidate
     }
     return null
@@ -671,6 +739,11 @@ class GesturePerformer {
     const press = FORM_SHARE.press + FORM_SHARE.pressEnergy * this.unit.energy
     candidates.push(pick < FORM_SHARE.palmUp ? 'palm-up' : pick < FORM_SHARE.palmUp + press ? 'press' : 'beat')
     return candidates.find(form => form === 'beat' || fresh(form)) ?? 'beat'
+  }
+
+  /** One draw per transition from the corrections' own stream: whether it carries a corrective submovement. */
+  private correct(): boolean {
+    return this.corrections() < CORRECTION.share
   }
 
   /** Point yaws toward the gaze goal, at most 30 degrees, measured from straight ahead of the body. */
@@ -734,7 +807,7 @@ class GesturePerformer {
       // A recovery is already the way back to the ready key: it goes on. Restarted as a new segment of full recovery
       // time, the plan's velocity carried the arm past the key, off the path the key was cleared on.
       if (track.state !== 'recovery')
-        track.phaseEnd = now + track.move(track.ready, now, TIMING.recovery / gestureTempo(this.unit.energy), this.tension)
+        track.phaseEnd = now + track.transit(track.ready, now, TIMING.recovery / gestureTempo(this.unit.energy), this.tension, this.correct())
       track.state = 'retraction'
       track.pending = null
       track.viaReady = true
@@ -744,7 +817,8 @@ class GesturePerformer {
     }
     track.viaReady = false
     track.settle = settle
-    const duration = track.move(track.home, now, Math.max(TIMING.exit + BODY_TICK, TIMING.retractionScale * track.prepSeconds), this.tension)
+    const seconds = Math.max(TIMING.exit + BODY_TICK, TIMING.retractionScale * track.prepSeconds)
+    const duration = settle ? track.transit(track.home, now, seconds, this.tension, this.correct()) : track.move(track.home, now, seconds, this.tension)
     track.state = 'retraction'
     track.pending = null
     track.phaseEnd = now + duration
@@ -754,9 +828,9 @@ class GesturePerformer {
 
   private step(track: ArmTrack, context: PerformanceContext, now: number): void {
     if (track.pending && now >= track.pending.at) {
-      const { form, size, hold } = track.pending
+      const { form, size, hold, corrected } = track.pending
       track.pending = null
-      this.strokeTrack(track, context, now, form, size, hold)
+      this.strokeTrack(track, context, now, form, size, hold, corrected)
     }
     if (track.state === 'stroke' && now >= track.phaseEnd) {
       // The hit (4a): the planned profile has ended; the post-stroke hold drifts on from here.
@@ -769,7 +843,7 @@ class GesturePerformer {
     this.observe(track, context, now)
     if (track.state === 'hold' && now >= track.holdEnd) {
       track.state = 'recovery'
-      track.phaseEnd = now + track.move(track.ready, now, TIMING.recovery / gestureTempo(this.unit.energy), this.tension)
+      track.phaseEnd = now + track.transit(track.ready, now, TIMING.recovery / gestureTempo(this.unit.energy), this.tension, track.recoveryCorrected)
     }
     else if ((track.state === 'recovery' || track.state === 'preparation') && now >= track.phaseEnd) {
       track.state = 'ready'
@@ -794,8 +868,9 @@ class GesturePerformer {
     // Home is where the arm rested before the unit, cleared against the trunk as it was then; the trunk has moved since,
     // so the arm comes home to where the corrector would hold it against the body now.
     if (track.state === 'retraction' && track.settle && this.keys) {
-      track.segment.to.set(track.home)
-      this.keys.clearOfBody(track.side, track.segment.to, context.previous.channels)
+      this.scratch.set(track.home)
+      this.keys.clearOfBody(track.side, this.scratch, context.previous.channels)
+      track.aim(this.scratch)
     }
     if (track.active || track.weight > 0)
       track.advance(now, this.tension)

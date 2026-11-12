@@ -550,6 +550,16 @@ leaving the chop unperformed.
 A two-hand stroke's second hand plays the same stroke 40 to 70 ms later at
 0.85 amplitude and holds as long as the lead hand, so both hands recover
 together and every two-hand stroke of a unit keeps that lag.
+A unit's preparation, recoveries and retraction legs carry an overlapping
+corrective submovement 40 % of the time, as human arm movements do
+(`CORRECTION`): in the plain transition's time, the primary aims 0.72 of the
+way over 0.8 of it, and from 0.65 of it a second submovement carries on to the
+key, ending when the plain transition would. The draw comes from its own
+seeded stream (`deriveSeed(seed, 141)`), one per transition, and a two-hand
+stroke's second hand takes the first hand's, so forms, hands, lags and holds
+keep their draws. A transition whose submovements the followers could not
+take in their share of the time stays plain. Strokes and emotion arm forms
+keep one segment.
 Every segment's wrist-placing channels (flex, abduct, twist, elbow) are fed
 forward through their followers' inverse, so the arm moves along the path its
 keys were cleared on, without its followers' lag or overshoot. A prepared
