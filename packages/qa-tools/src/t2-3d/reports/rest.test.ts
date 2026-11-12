@@ -22,6 +22,12 @@ const CUES = { idle: 110, onset: 120, away: 140, wake: 180, end: 196 } as const
 
 interface Sleepy {
   readonly fallback?: boolean
+  /** The rest and doze markers without the posture: a standing body. */
+  readonly markersOnly?: boolean
+  /** Pelvis drop in doze, L. */
+  readonly drop?: number
+  /** She stays in the doze posture after the listening cue. */
+  readonly staysDown?: boolean
   /** A one-frame head step at the listening cue, degrees. */
   readonly wakeStep?: number
   readonly stance?: boolean
@@ -29,15 +35,21 @@ interface Sleepy {
 }
 
 /**
- * The sleepy-no-clip timeline. With the fallback: rest from the onset, doze from the away cue with the head sunk 18 degrees
- * and the pelvis 0.012 L lower, and a 1.5 s minimum-jerk return at the listening cue. The arms swing slowly throughout.
+ * The sleepy-no-clip timeline over a standing idle with a slow head and pelvis sway. With the fallback: the 4f rest
+ * posture from the onset (head and torso lower +3 deg over the 1.5 s ramp), the doze from the away cue (the head sinks to
+ * +18 deg over 4 s, the pelvis 0.012 L lower), and a 1.5 s minimum-jerk return to standing at the listening cue.
  */
 function sleepy(options: Sleepy = {}) {
   const fallback = options.fallback ?? true
+  const posed = fallback && !options.markersOnly
   const cues = options.cues ?? CUES
   const step = options.wakeStep ?? 0
-  const sink = moves([{ start: cues.away, duration: 4, by: 18 * DEG }, { start: cues.wake, duration: 1.5, by: -(18 - step) * DEG }])
-  const head = (t: number) => !fallback ? 0 : sink(t) - (t >= cues.wake ? step * DEG : 0)
+  const back = options.staysDown ? 0 : 1
+  const rest = moves([{ start: CUES.onset, duration: 1.5, by: 3 * DEG }, { start: cues.wake, duration: 1.5, by: -3 * DEG * back }])
+  const sink = moves([{ start: cues.away, duration: 4, by: 15 * DEG }, { start: cues.wake, duration: 1.5, by: -(15 - step) * DEG * back }])
+  const drop = moves([{ start: cues.away, duration: 1.5, by: options.drop ?? 0.012 }, { start: cues.wake, duration: 1.5, by: -(options.drop ?? 0.012) * back }])
+  const sway = (t: number) => DEG * Math.sin(2 * Math.PI * 0.1 * t)
+  const head = (t: number) => sway(t) + (posed ? rest(t) + sink(t) : 0) - (t >= cues.wake ? step * DEG : 0)
   const modes: MotionTraceEvent[] = [
     { t: cues.idle, kind: 'mode', mode: 'idle' },
     { t: cues.away, kind: 'mode', mode: 'away' },
@@ -60,30 +72,48 @@ function sleepy(options: Sleepy = {}) {
     bones: TEST_BONES,
     scenario: 'idle',
     events,
-    position: t => [0, fallback && t >= cues.away && t < cues.wake ? -0.012 : 0, 0],
+    position: t => [0, 0.001 * Math.sin(2 * Math.PI * 0.05 * t) - (posed ? drop(t) : 0), 0],
     world: (bone, t) => bone === 'head'
       ? rotX(head(t))
-      : bone.endsWith('UpperArm') ? rotX(0.4 * Math.sin(2 * Math.PI * 0.4 * t)) : [0, 0, 0, 1],
+      : bone === 'spine'
+        ? rotX(posed ? rest(t) : 0)
+        : bone.endsWith('UpperArm') ? rotX(0.4 * Math.sin(2 * Math.PI * 0.4 * t)) : [0, 0, 0, 1],
   })
   input.trace.scoredFrom = cues.idle
   return loadedRun(input, null, null)
 }
 
-const statuses = (report: ReturnType<typeof restReport>) => report.requirements.map(r => r.status)
+const statuses = (report: ReturnType<typeof restReport>) => Object.fromEntries(report.requirements.map(r => [r.id, r.status]))
+const STOPPED = { 'doze-head': 'NOT-EXERCISED' } as const
 
 describe('rest report', () => {
-  it('passes rest and doze fallbacks with a sunk head, a lower pelvis and a smooth return', () => {
-    expect(statuses(restReport(sleepy(), bands))).toEqual(['PASS', 'PASS', 'PASS'])
+  it('passes every judged requirement for the 4f rest, doze and return, and holds the doze head as not judged', () => {
+    const report = restReport(sleepy(), bands)
+    expect(statuses(report)).toEqual({ 'fallback-active': 'PASS', 'rest-posture': 'PASS', 'doze-pelvis': 'PASS', ...STOPPED, 'returned': 'PASS', 'wake-smooth': 'PASS', 'reasons': 'PASS' })
+    expect(report.verdict).toBe('FAIL')
+  })
+
+  it('fails rest and doze markers over a standing body', () => {
+    const s = statuses(restReport(sleepy({ markersOnly: true }), bands))
+    expect([s['fallback-active'], s['rest-posture'], s['doze-pelvis']]).toEqual(['PASS', 'FAIL', 'FAIL'])
+  })
+
+  it('fails a pelvis drop below half the 4f doze drop', () => {
+    expect(statuses(restReport(sleepy({ drop: 0.005 }), bands))['doze-pelvis']).toBe('FAIL')
+  })
+
+  it('fails a body that stays down after the listening cue, and does not judge its wake as smooth', () => {
+    const s = statuses(restReport(sleepy({ staysDown: true }), bands))
+    expect([s.returned, s['wake-smooth']]).toEqual(['FAIL', 'NOT-EXERCISED'])
   })
 
   it('fails a one-frame 5 degree head step at the listening cue', () => {
-    expect(statuses(restReport(sleepy({ wakeStep: 5 }), bands))).toEqual(['PASS', 'FAIL', 'PASS'])
+    expect(statuses(restReport(sleepy({ wakeStep: 5 }), bands))['wake-smooth']).toBe('FAIL')
   })
 
-  it('fails a run without the fallback and reports the return as not exercised', () => {
+  it('fails a run without the fallback and reports what needs it as not exercised', () => {
     const report = restReport(sleepy({ fallback: false }), bands)
-    expect(statuses(report)).toEqual(['FAIL', 'NOT-EXERCISED', 'FAIL'])
-    expect(report.verdict).toBe('FAIL')
+    expect(statuses(report)).toEqual({ 'fallback-active': 'FAIL', 'rest-posture': 'NOT-EXERCISED', 'doze-pelvis': 'NOT-EXERCISED', ...STOPPED, 'returned': 'NOT-EXERCISED', 'wake-smooth': 'NOT-EXERCISED', 'reasons': 'FAIL' })
   })
 
   it('refuses a trace without stance markers and one whose rest onset is not before the away cue', () => {

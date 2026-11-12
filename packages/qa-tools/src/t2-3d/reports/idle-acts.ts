@@ -147,8 +147,8 @@ function actSpans(run: LoadedRun, restAt: (t: number) => BodyRest): RawSpan[] {
   return spans
 }
 
-/** Frame-indexed access to a decoded trace's local rotations, world orientations and hips position. */
-class Pose {
+/** Frame-indexed access to a decoded trace's local rotations, world orientations and hips position, warm-up included. */
+export class TracePose {
   private readonly bones: readonly MotionTraceBone[]
   private readonly parents: readonly number[]
   readonly frames: number
@@ -193,7 +193,7 @@ function angleBetween(a: Quat, b: Quat): number {
 }
 
 /** The difference of one key between the paired runs at one frame: degrees, or L for the hips position. */
-function keyDifference(on: Pose, off: Pose, key: ActKey, frame: number): number {
+function keyDifference(on: TracePose, off: TracePose, key: ActKey, frame: number): number {
   if (key.kind === 'position')
     return norm(sub(on.hips(frame), off.hips(frame))) / on.input.trace.rig.legLength
   return key.bones.reduce((best, bone, k) => {
@@ -205,13 +205,13 @@ function keyDifference(on: Pose, off: Pose, key: ActKey, frame: number): number 
     const from = on.index(key.from[k])
     if (from < 0)
       return best
-    const relative = (pose: Pose) => multiply(conjugate(pose.world(frame, from)), pose.world(frame, b))
+    const relative = (pose: TracePose) => multiply(conjugate(pose.world(frame, from)), pose.world(frame, b))
     return Math.max(best, angleBetween(relative(on), relative(off)))
   }, 0)
 }
 
 /** The longest run of frames in [first, last] on which every key of `id` reaches half its amplitude. */
-function keyRun(on: Pose, off: Pose, id: BodyActId, first: number, last: number): number {
+function keyRun(on: TracePose, off: TracePose, id: BodyActId, first: number, last: number): number {
   let run = 0
   let longest = 0
   for (let frame = first; frame <= last; frame++) {
@@ -242,8 +242,8 @@ function checkPair(run: LoadedRun, pair: LoadedRun, spans: readonly RawSpan[]): 
     refuse('the companion does not have acts switched off (qa:motion3d run --acts off)')
   if (markers(pair, 'act:').length)
     refuse('the acts-off companion has act markers')
-  const on = new Pose(run.input)
-  const off = new Pose(pair.input)
+  const on = new TracePose(run.input)
+  const off = new TracePose(pair.input)
   const widened = spans.map(span => ({ start: span.start, end: (span.end ?? Number.POSITIVE_INFINITY) + C.exitSeconds + C.settleSeconds }))
   let difference = 0
   let at: number | null = null
@@ -277,8 +277,8 @@ export function idleActsReport(run: LoadedRun, pair: LoadedRun, restSet: readonl
   const restAt = restStates(run)
   const raw = actSpans(run, restAt)
   const pairing = checkPair(run, pair, raw)
-  const on = new Pose(input)
-  const off = new Pose(pair.input)
+  const on = new TracePose(input)
+  const off = new TracePose(pair.input)
   const frameAt = (t: number) => {
     let frame = 0
     while (frame < on.frames - 1 && on.time(frame) < t)
