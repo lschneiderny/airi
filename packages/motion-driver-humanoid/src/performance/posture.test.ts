@@ -76,6 +76,22 @@ describe('posture performance', () => {
     expect((neck.at(-1) ?? 0) / ((neck.at(-1) ?? 0) + (head.at(-1) ?? 0))).toBeCloseTo(0.35, 2)
   })
 
+  it('moves the trunk\'s share of the head intent without a step when the gaze kind changes', () => {
+    const share = { free: 1, sustained: 0.6 }
+    for (const [from, to] of [['free', 'sustained'], ['sustained', 'free']] as const) {
+      const performer = createBodyPerformer({ traits, seed: 1 })
+      const trace = channelTrace(performer, 6, (t) => {
+        const input = quietInput(t)
+        return { ...input, head: { ...input.head, slow: { ...input.head.slow, yaw: 9 * DEG } }, gaze: { ...input.gaze, kind: t < 3 ? from : to } }
+      })
+      const trunk = trace[c('lowerYaw')].map((v, i) => v + trace[c('midYaw')][i] + trace[c('upperYaw')][i])
+      const steps = trunk.slice(359).map((v, i, values) => i === 0 ? 0 : Math.abs(v - values[i - 1]))
+      expect(Math.max(...steps.slice(0, 4)), `${from} to ${to} starts from rest`).toBeLessThan(0.01 * DEG)
+      expect(Math.max(...steps), `${from} to ${to}`).toBeLessThan(0.05 * DEG)
+      expect((trunk.at(-1) ?? 0) / trunk[359]).toBeCloseTo(share[to] / share[from], 2)
+    }
+  })
+
   it('moves the pelvis toward the foot named by support after anticipating and settling', () => {
     for (const support of [-1, 1]) {
       const performer = createBodyPerformer({ traits, seed: 1 })

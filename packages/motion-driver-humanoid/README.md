@@ -363,7 +363,10 @@ also follows the head plan through its own, faster response. Underneath these,
 the neck and head counter-rotate part of the trunk's world rotation from
 posture and breath (0.5 of yaw, 0.6 of pitch and roll, 80 ms late), so the
 head stays near level while the body sways; the trunk's share of Natural's head
-yaw and the gaze trunk are intent and are not cancelled. At idle the head also
+yaw and the gaze trunk are intent and are not cancelled. The trunk carries 0.6
+of that share while the gaze holds a target or travels and all of it for a free
+gaze; a change of gaze kind moves the share through the same lag links as the
+head yaw it scales, so the trunk never steps on it. At idle the head also
 wanders slowly on the performer's own seeded streams (a gated drift, its
 velocity smoothed at 0.25 Hz), scaled by `posture.amplitude` and eased to 0.3
 while the gaze holds a sustained target or shifts.

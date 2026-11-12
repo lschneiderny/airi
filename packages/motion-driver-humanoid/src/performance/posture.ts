@@ -49,6 +49,11 @@ export class BodyPosture {
   amplitude = 1
   private readonly accentCoefficients = secondOrderCoefficients({ f: 5, zeta: 1, r: 0 }, BODY_TICK)
   private readonly slow = createLagChain([0.25, 0.15], BODY_TICK)
+  /**
+   * The share of the trunk's head intent a held or travelling gaze withholds (0 or 0.4), taken up through the slow
+   * chain's own links, so a change of gaze kind recruits or releases the trunk from rest instead of stepping it.
+   */
+  private readonly withheld = createLagChain([0.25, 0.15], BODY_TICK)
   private readonly gate
   private readonly drift
   private erect = 0
@@ -128,9 +133,10 @@ export class BodyPosture {
     const trunkUpper = 0.25 * slow[0]
     const trunkMid = 0.12 * slow[1]
     const headGain = input.gaze.kind === 'free' ? 1 : 0.6
-    out[12] += trunkUpper * headGain
-    out[9] += trunkMid * headGain
-    this.trunkIntentYaw = (trunkUpper + trunkMid) * headGain
+    const withheld = this.withheld.step(1 - headGain)
+    out[12] += trunkUpper * (1 - withheld[0])
+    out[9] += trunkMid * (1 - withheld[1])
+    this.trunkIntentYaw = trunkUpper * (1 - withheld[0]) + trunkMid * (1 - withheld[1])
     const calm = input.gaze.kind === 'sustained' || this.gazeShifting ? WANDER_CALM : 1
     this.wanderAttention = calm + (this.wanderAttention - calm) * Math.exp(-BODY_TICK / 0.8)
     const wanderGate = this.wanderGate.step(BODY_TICK) * input.posture.amplitude * this.wanderAttention
