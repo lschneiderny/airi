@@ -409,7 +409,9 @@ describe('co-speech gestures', () => {
       }
       return at
     }
-    expect(peak('Elbow')).toBeGreaterThan(peak('Flex', 'Abduct', 'Twist'))
+    // The gesture-timing report reads bone speeds at 60 Hz: the elbow's peak follows the upper arm's by two of its
+    // frames, as the elbow's cascade link made it follow before a fed elbow passed the link.
+    expect(peak('Elbow')).toBeGreaterThanOrEqual(peak('Flex', 'Abduct', 'Twist') + 2 * Math.round(1 / 60 / BODY_TICK))
     expect(peak('Wflex')).toBeGreaterThan(peak('Elbow'))
     expect(peak('Index0')).toBeGreaterThan(peak('Wflex'))
   })

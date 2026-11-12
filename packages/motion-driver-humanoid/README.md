@@ -407,10 +407,12 @@ clavicle and upper arm, 30 elbow, 60 pronation, 90 wrist, 130 fingers) plus
 the faster distal follower's head start in ramp lag. Shared motion therefore
 reaches the arm from shoulder to fingertip by construction; each joint's own
 noise and its drag bypass the link. The wrist-placing joints (flex, abduct,
-twist, elbow) an override layer holds take its target past the link, weighted
-by the activation to the fourth power, because the gesture layer feeds them
-forward through their followers' inverse and times them itself; while the
-activation ramps the link still filters the hand-over, and at activation 0 its
+twist, elbow) take a layer's target past the link where the layer feeds them
+forward (`LayerOutput.fed`, collected per channel as `PerformanceStack.fed`).
+The gesture layer does so once an arm is prepared, easing in over 0.1 s, and
+stops at the retraction; the preparation keeps the links and their order. The
+link's state follows what it passes on, so it takes the joint back without a
+step and filters the retraction and a clip's claim; with nothing fed its
 arithmetic is unchanged.
 Nonnegative channels use a C1 lower knee that preserves zero exactly; the
 generic tanh lower knee would bend an otherwise neutral toe. Their upper knee
@@ -533,9 +535,8 @@ A's amplitude scale (`GESTURE_FORMS`), keys solved per rig with
 `solveArmKey` and pushed along the proxy gradient until key and path clear.
 Every segment's wrist-placing channels (flex, abduct, twist, elbow) are fed
 forward through their followers' inverse, so the arm moves along the path its
-keys were cleared on, without its followers' lag or overshoot. Those joints
-take no cascade link while the layer holds them, so a preparation starts the
-elbow 4a's 30 ms after the upper arm itself, and a stroke lands at 4a's
+keys were cleared on, without its followers' lag or overshoot. A prepared
+arm's joints take no cascade link, so a stroke lands at 4a's
 duration, or later when the inverse would ask a follower for more than its
 20 rad/s input slope: a segment then lasts the shortest time the followers can
 take. The ready key is cleared along its path from the arm's

@@ -53,8 +53,12 @@ const FOLLOWER_INPUT_SLOPE = 20
 const SLOPE_SAMPLES = 64
 /** Minimum jerk's peak slope over its mean, `max s'(u)`. */
 const MIN_JERK_PEAK_SLOPE = 1.875
-/** Architecture 4a's elbow start offset in a preparation, seconds after the upper arm. */
-const ELBOW_START = 0.03
+/**
+ * Seconds over which a prepared arm's wrist-placing joints move from their cascade links to the fed target. The elbow's
+ * link still lags a preparation's end by 1.3 to 1.9 degrees and by 0.24 to 0.35 degrees 50 ms later (30 to 90 degrees
+ * over 0.35 to 0.5 s at tension 0); a 0.1 s ease takes up that remainder without a step.
+ */
+const FED_RAMP = 0.1
 
 /**
  * The coefficients of an active arm follower's inverse, `x = y + lead y' + curvature y''` (3a, r = 0), on channel `j`
@@ -102,8 +106,6 @@ interface Segment {
   readonly velocity: ArmPose
   readonly to: ArmPose
   start: number
-  /** Each channel's start after `start`, seconds: a preparation keeps 4a's joint order on the fed-forward elbow. */
-  readonly offsets: ArmPose
   /**
    * Each channel's duration: the segment's, or longer where a channel's change would ask its follower for more than
    * its input slope, so a large turn of the forearm, wrist or fingers arrives after the hit (4a: the hand shape last).
@@ -133,7 +135,7 @@ class ArmTrack {
   readonly home = pose()
   readonly ready = pose()
   readonly key = pose()
-  readonly segment: Segment = { from: pose(), velocity: pose(), to: pose(), start: 0, offsets: pose(), durations: pose().fill(1) }
+  readonly segment: Segment = { from: pose(), velocity: pose(), to: pose(), start: 0, durations: pose().fill(1) }
   readonly pulses: TorsoPulse[] = []
   state: TrackState = 'rest'
   weight = 0
@@ -168,13 +170,21 @@ class ArmTrack {
   }
 
   /**
+   * The share of the wrist-placing joints fed past their cascade links (`LayerOutput.fed`): 0 through the preparation,
+   * which keeps the links' proximal-to-distal order as before, then rising over `FED_RAMP` once the arm is prepared,
+   * while the links' lag on the preparation's end has settled to a fraction of a degree; back to 0 at the retraction.
+   * An emotion arm form keeps the links.
+   */
+  fed = 0
+  /** When the preparation ended (the ready key reached, or a stroke cut it), seconds. */
+  preparedAt = Infinity
+
+  /**
    * Starts a motion to `to` from the current target, continuing the plan's velocity (quintic decay of `v0`), and
    * returns its duration: `duration`, or longer when the followers could not take its fed-forward channels in that
-   * time. The target stays continuous: the inverse term is zero at both ends of every segment. An `ordered` segment (a
-   * preparation) starts the elbow 4a's 30 ms after the upper arm; the elbow takes no cascade link while fed forward,
-   * so the layer keeps that order itself.
+   * time. The target stays continuous: the inverse term is zero at both ends of every segment.
    */
-  move(to: ArmPose, now: number, duration: number, tension: number, ordered = false): number {
+  move(to: ArmPose, now: number, duration: number, tension: number): number {
     const s = this.segment
     const fed = Math.max(BODY_TICK, duration, this.fedForwardFloor(to, tension))
     s.from.set(this.pose)
@@ -182,9 +192,6 @@ class ArmTrack {
       s.velocity[j] = this.warm ? (this.planned[j] - this.plannedPrevious[j]) / BODY_TICK : 0
     s.to.set(to)
     s.start = now
-    s.offsets.fill(0)
-    if (ordered)
-      s.offsets[5] = ELBOW_START
     for (let j = 0; j < 26; j++)
       s.durations[j] = j >= 2 && j <= 5 ? fed : Math.max(fed, MIN_JERK_PEAK_SLOPE * Math.abs(to[j] - s.from[j]) / FOLLOWER_INPUT_SLOPE)
     return fed
@@ -198,8 +205,8 @@ class ArmTrack {
       this.planned[j] = y
       this.pose[j] = y
       const duration = s.durations[j]
-      const u = Math.max(0, Math.min(1, (now - s.start - s.offsets[j]) / duration))
-      if (j < 2 || j > 5 || u <= 0 || u >= 1)
+      const u = Math.max(0, Math.min(1, (now - s.start) / duration))
+      if (j < 2 || j > 5 || u >= 1)
         continue
       // Flex, abduct, twist and elbow place the wrist: the followers receive the inverse of every segment's planned
       // minimum-jerk part, analytic, so the arm moves along the path the keys were cleared on and lands as planned,
@@ -251,7 +258,7 @@ class ArmTrack {
   profile(j: number, time: number): number {
     const s = this.segment
     const duration = s.durations[j]
-    const u = Math.max(0, Math.min(1, (time - s.start - s.offsets[j]) / duration))
+    const u = Math.max(0, Math.min(1, (time - s.start) / duration))
     const shape = minJerk(u)
     // h(u) = u - 6u^3 + 8u^4 - 3u^5: unit initial slope, zero value, slope and curvature at u = 1.
     const decay = duration * (u - 6 * u ** 3 + 8 * u ** 4 - 3 * u ** 5)
@@ -288,6 +295,8 @@ class ArmTrack {
     this.dropAt = this.phaseEnd = this.holdEnd = Infinity
     this.form = null
     this.pending = null
+    this.preparedAt = Infinity
+    this.fed = 0
     this.pulses.length = 0
     this.warm = false
   }
@@ -445,7 +454,7 @@ class GesturePerformer {
       return
     const travel = this.travel(request.side, track.home, track.key)
     this.begin(track, now)
-    track.prepSeconds = track.move(track.key, now, (0.25 + 0.35 * travel) / gestureTempo(context.input.energy.level), this.tension, true)
+    track.prepSeconds = track.move(track.key, now, (0.25 + 0.35 * travel) / gestureTempo(context.input.energy.level), this.tension)
     track.state = 'form'
     track.form = request.form
     track.phaseEnd = Infinity
@@ -471,7 +480,7 @@ class GesturePerformer {
       if (!this.solveReady(track, this.keys.readyKey(energy, 0, swivel)))
         continue
       this.begin(track, now)
-      track.prepSeconds = track.move(track.ready, now, (0.25 + 0.35 * this.travel(side, track.home, track.ready)) / gestureTempo(energy), this.tension, true)
+      track.prepSeconds = track.move(track.ready, now, (0.25 + 0.35 * this.travel(side, track.home, track.ready)) / gestureTempo(energy), this.tension)
       track.state = 'preparation'
       track.phaseEnd = now + track.prepSeconds
       started.push(side)
@@ -685,6 +694,12 @@ class GesturePerformer {
     else if ((track.state === 'recovery' || track.state === 'preparation') && now >= track.phaseEnd) {
       track.state = 'ready'
     }
+    const prepared = track.state === 'stroke' || track.state === 'hold' || track.state === 'recovery' || track.state === 'ready'
+    if (!prepared)
+      track.preparedAt = Infinity
+    else if (track.preparedAt === Infinity)
+      track.preparedAt = now
+    track.fed = prepared ? minJerk(Math.min(1, (now - track.preparedAt) / FED_RAMP)) : 0
     if (track.state === 'retraction' && now >= track.dropAt)
       track.weight = 0
     if (track.state === 'retraction' && now >= track.phaseEnd) {
@@ -766,7 +781,7 @@ export function createGestureLayers(options: GestureLayerOptions): readonly [Per
   const performer = new GesturePerformer(options.traits, options.seed)
   const layer = (side: BodySide): PerformanceLayer => {
     const track = performer.tracks[side]
-    const output: Mutable<LayerOutput> = { channels: track.channels, additive: track.additive, weight: 0, sequence: 0, gesture: performer.report }
+    const output: Mutable<LayerOutput> = { channels: track.channels, additive: track.additive, weight: 0, fed: 0, sequence: 0, gesture: performer.report }
     return {
       id: `gesture-${side}`,
       order: 'gesture',
@@ -779,6 +794,7 @@ export function createGestureLayers(options: GestureLayerOptions): readonly [Per
       step: (context) => {
         performer.update(context)
         output.weight = track.weight
+        output.fed = track.fed
         return output
       },
       reset: () => performer.reset(),

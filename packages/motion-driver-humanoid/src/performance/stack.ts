@@ -46,6 +46,11 @@ export interface LayerOutput {
   readonly sequence: number
   /** Additional channels for mixed layers, e.g. override arms plus additive torso. */
   readonly additive?: ArrayLike<number>
+  /**
+   * The share of an override layer's arm channels it feeds forward through the arm followers' inverse; the followers'
+   * wrist-placing joints then take its target past their cascade links (`BodyArms.follow`). 0 when omitted.
+   */
+  readonly fed?: number
   readonly lidClose?: number
   readonly mouthOpen?: number
   readonly act?: BodyActFeedback | null
@@ -87,6 +92,8 @@ const emptySteps: readonly TurnStep[] = []
 /** Channels stay warm under ownership; admission decisions belong to each layer via context.input.owned. */
 export class PerformanceStack {
   readonly activation = new Float64Array(BODY_CHANNELS.length)
+  /** Per channel, the fed-forward share of the override that holds it (`LayerOutput.fed`). */
+  readonly fed = new Float64Array(BODY_CHANNELS.length)
   readonly plan: Mutable<MergedPerformancePlan> = { support: null, gaze: null, armForm: null, suppressHeadCue: false }
   readonly gesture: Mutable<BodyGestureReport> & { activation: Record<BodySide, number> } = { unitSeq: 0, strokeSeq: 0, form: null, hand: null, phase: 'rest', plannedHit: null, activation: { left: 0, right: 0 } }
   readonly cue: Mutable<BodyCueReport> = { seq: 0, kind: null }
@@ -141,6 +148,7 @@ export class PerformanceStack {
 
   step(channels: Float64Array, context: PerformanceContext): void {
     this.activation.fill(0)
+    this.fed.fill(0)
     this.targetVelocity.fill(0)
     this.cut.fill(0)
     this.lidClose = this.mouthOpen = 0
@@ -169,6 +177,8 @@ export class PerformanceStack {
         if (layer.mode === 'override') {
           channels[c] += w * (output.channels[c] - channels[c])
           this.activation[c] = Math.max(this.activation[c], w)
+          if (w > 0)
+            this.fed[c] = Math.max(this.fed[c], (output.fed ?? 0) * layer.mask[c])
           this.targetVelocity[c] += w * ((output.velocities?.[c] ?? 0) - this.targetVelocity[c])
         }
         else {

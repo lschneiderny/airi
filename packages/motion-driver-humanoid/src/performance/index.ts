@@ -210,7 +210,7 @@ class BodyPerformer {
       for (let c = 6; c < 15; c++)
         targets[c] *= 0.8
     }
-    state.arms.follow(effective, targets, stack.activation)
+    state.arms.follow(effective, targets, stack.activation, stack.fed)
     for (let c = 0; c < targets.length; c++)
       frame.channels[c] = limitChannel(c, targets[c])
     this.degrade(frame.channels)
