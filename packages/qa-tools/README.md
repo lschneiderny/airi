@@ -1147,7 +1147,10 @@ load and gaze integration tests use `AIRI_QA_MMD_MODEL` when set.
 `--model`, `--scenario` and `--out` are required. Scenarios are `idle`,
 `gaze-shift`, `speak`, `emotions`, `walk` and `touch`. Seed defaults to 1;
 duration and warm-up default to the scenario's values (10 s warm-up).
-Scored duration is capped at 120 s. Relative paths resolve against `INIT_CWD`.
+Scored duration is capped at 120 s, except for the idle-class `idle` scenario,
+which accepts up to 600 s (owner decision O1, goal 4: a ten-minute idle). A
+600 s run is about five times a 120 s run in wall time and output size.
+Relative paths resolve against `INIT_CWD`.
 An existing output directory is refused with exit 2 before a lease is taken.
 Each run takes the `gate` CPU lease and creates:
 
@@ -1205,8 +1208,9 @@ window integration or perceived naturalness. Exit codes are 0 completed,
 The shared type and codec are exported from
 `@proj-airi/motion-driver-humanoid/motion-trace`. A capture is one `trace.json`,
 written as `JSON.stringify(trace)` with a final newline. Its `kind` is
-`motion-trace` and its integer `version` is 1. Version 1 supports at most 120 s
-of scored time; longer captures need a new format version with chunk files.
+`motion-trace` and its integer `version` is 1. A capture is one file whatever
+its length; the headless runner writes up to 600 s of scored time for its
+idle-class scenarios, and nothing in the reader limits the length.
 
 `source` identifies the producer (`t2-3d`, `rendered` or `reference`), scenario
 id, class and seed, source revision and dirty state, ordered pose/surface stage

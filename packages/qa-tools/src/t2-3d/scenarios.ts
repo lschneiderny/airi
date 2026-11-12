@@ -14,8 +14,10 @@ export interface Motion3dScenario {
   class: MotionScenarioClass
   /** Simulated and discarded before scoring. */
   warmupSeconds: number
-  /** Default scored length; --seconds overrides it, within the v1 120 s cap. */
+  /** Default scored length; --seconds overrides it, up to `maxSeconds`. */
   seconds: number
+  /** Longest scored length the runner accepts; 120 s when omitted, 600 s for the idle-class scenarios (owner decision O1). */
+  maxSeconds?: number
   /** Pure timeline in seconds from scoring start; negative times are warm-up. */
   timeline: (seed: number, seconds: number) => Motion3dCue[]
 }
@@ -103,6 +105,7 @@ export const motion3dScenarios: readonly Motion3dScenario[] = [
     class: 'idle',
     warmupSeconds: 10,
     seconds: 60,
+    maxSeconds: 600,
     // A seeded observation marker carries no performer input: idle stays idle.
     timeline: (seed, seconds) => seconds > 0 ? [{ at: createRandomStream(seed)() * Math.min(1, seconds), kind: 'marker', label: 'observe-idle' }] : [],
   },

@@ -46,8 +46,9 @@ export function parseRunArguments(args: readonly string[], cwd: string) {
     const warmupSeconds = Number(values.warmup ?? scenario.warmupSeconds)
     if (!Number.isSafeInteger(seed))
       throw new Motion3dUsageError('--seed must be a safe integer')
-    if (!Number.isFinite(seconds) || seconds <= 0 || seconds > 120 || Math.round(seconds * 60) < 1)
-      throw new Motion3dUsageError('--seconds must be positive, at most 120, and include at least one 60 Hz frame')
+    const maxSeconds = scenario.maxSeconds ?? 120
+    if (!Number.isFinite(seconds) || seconds <= 0 || seconds > maxSeconds || Math.round(seconds * 60) < 1)
+      throw new Motion3dUsageError(`--seconds must be positive, at most ${maxSeconds} for ${scenario.id}, and include at least one 60 Hz frame`)
     if (!Number.isFinite(warmupSeconds) || warmupSeconds < 0 || warmupSeconds > 120)
       throw new Motion3dUsageError('--warmup must be between 0 and 120 seconds')
     return { model, scenario, seed, seconds, warmupSeconds, out, verifyDeterminism: values['verify-determinism'] }
