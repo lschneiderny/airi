@@ -171,7 +171,7 @@ class ArmTrack {
   watch: { form: SpeechGestureForm, hand: BodyGestureHand, peak: number, speed: number, wrist: readonly [number, number, number] | null, until: number } | null = null
   form: SpeechGestureForm | BodyArmForm | null = null
   prepSeconds = 0.5
-  pending: { at: number, form: SpeechGestureForm, size: number } | null = null
+  pending: { at: number, form: SpeechGestureForm, size: number, hold: number } | null = null
   warm = false
 
   constructor(readonly side: BodySide) {
@@ -584,7 +584,9 @@ class GesturePerformer {
       const lagging = this.tracks[lead === 'left' ? 'right' : 'left']
       if (lagging.active && lagging.state !== 'retraction' && lagging.state !== 'form') {
         const lag = TIMING.lagRange[0] + (TIMING.lagRange[1] - TIMING.lagRange[0]) * this.random()
-        lagging.pending = { at: now + lag, form: performed, size: size * AMPLITUDE.nonDominant }
+        // The second hand plays the same stroke (4a), hold included: with a hold of its own it would recover at another
+        // time, and the next two-hand stroke would find one hand resting and the other still on its way back.
+        lagging.pending = { at: now + lag, form: performed, size: size * AMPLITUDE.nonDominant, hold: leadTrack.holdSeconds }
       }
     }
     const sign = lead === 'left' ? 1 : -1
@@ -607,8 +609,11 @@ class GesturePerformer {
     return track.state === 'preparation' && track.phaseEnd - now <= seconds
   }
 
-  /** Solves and starts one arm's stroke; returns the form performed (a beat when the chosen form has no clear key). */
-  private strokeTrack(track: ArmTrack, context: PerformanceContext, now: number, form: SpeechGestureForm, size: number): SpeechGestureForm | null {
+  /**
+   * Solves and starts one arm's stroke; returns the form performed (a beat when the chosen form has no clear key). The
+   * post-stroke hold is drawn for the form, or `hold` when the stroke is a two-hand stroke's second hand.
+   */
+  private strokeTrack(track: ArmTrack, context: PerformanceContext, now: number, form: SpeechGestureForm, size: number, hold?: number): SpeechGestureForm | null {
     const keys = this.keys
     if (!keys)
       return null
@@ -630,7 +635,9 @@ class GesturePerformer {
         track.key[j] = track.ready[j] + (track.drift[j] - track.ready[j]) * size / (size + drift)
       const seconds = GESTURE_FORMS[candidate].strokeSeconds / tempo
       const [low, high] = GESTURE_FORMS[candidate].hold
-      const hold = (low + (high - low) * this.random()) / tempo
+      // A second hand draws as well, so the stream's later choices (forms, hands, lags) do not depend on its hold.
+      const drawn = (low + (high - low) * this.random()) / tempo
+      const holdSeconds = hold ?? drawn
       // 4a: the hit lands at the stroke's duration. Feedforward removes the followers' lag and the fed joints take no
       // cascade link, so the wrist lands as the profile ends. A stroke the followers cannot take that fast lasts longer
       // (`move`).
@@ -638,7 +645,7 @@ class GesturePerformer {
       track.state = 'stroke'
       track.form = candidate
       track.phaseEnd = now + profile
-      track.holdSeconds = hold
+      track.holdSeconds = holdSeconds
       return candidate
     }
     return null
@@ -747,9 +754,9 @@ class GesturePerformer {
 
   private step(track: ArmTrack, context: PerformanceContext, now: number): void {
     if (track.pending && now >= track.pending.at) {
-      const { form, size } = track.pending
+      const { form, size, hold } = track.pending
       track.pending = null
-      this.strokeTrack(track, context, now, form, size)
+      this.strokeTrack(track, context, now, form, size, hold)
     }
     if (track.state === 'stroke' && now >= track.phaseEnd) {
       // The hit (4a): the planned profile has ended; the post-stroke hold drifts on from here.

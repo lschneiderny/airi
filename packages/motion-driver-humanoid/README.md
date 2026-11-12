@@ -547,6 +547,9 @@ a contact on the upper arm swings the elbow out by 5 degrees instead (up to
 the arm forms' 80), since pushing the hand barely moves the upper arm off the
 trunk, so a downward chop's elbow flares past the body's side instead of
 leaving the chop unperformed.
+A two-hand stroke's second hand plays the same stroke 40 to 70 ms later at
+0.85 amplitude and holds as long as the lead hand, so both hands recover
+together and every two-hand stroke of a unit keeps that lag.
 Every segment's wrist-placing channels (flex, abduct, twist, elbow) are fed
 forward through their followers' inverse, so the arm moves along the path its
 keys were cleared on, without its followers' lag or overshoot. A prepared

@@ -422,6 +422,27 @@ describe('co-speech gestures', () => {
     throw new Error('No two-hand stroke in 200 seeds at energy 0.85')
   })
 
+  it('lands every two-hand stroke of a unit with the second hand 30 to 90 ms behind, its hold as long as the first hand\'s', () => {
+    // The gesture-timing rule: the nearest apex of each hand within 200 ms of the stroke's reported apex.
+    // The speak scenario's peaks: 0.8 to 1.25 s apart, so a stroke can meet one hand still recovering from its hold.
+    const speak = [0.8, 1.8, 3.03, 3.98, 5.17].map((at, i) => ({ at: 0.3 + at, major: i % 2 === 0 }))
+    let later = 0
+    for (let seed = 1; seed <= 60; seed++) {
+      const run = perform({ utterances: [utterance(0.3, 0.65, speak)] }, 6.5, { seed, traits: chisaTraits })
+      const both = strokes(run).filter(stroke => stroke.hand === 'both')
+      for (const stroke of both) {
+        const [left, right] = SIDES.map(side => nearest(apexes(run, side, chisaTraits), stroke.hit))
+        expect(Math.abs(left - stroke.hit), `seed ${seed} stroke ${stroke.hit.toFixed(3)}`).toBeLessThanOrEqual(0.2)
+        expect(Math.abs(right - stroke.hit), `seed ${seed} stroke ${stroke.hit.toFixed(3)}`).toBeLessThanOrEqual(0.2)
+        expect(Math.abs(left - right), `seed ${seed} stroke ${stroke.hit.toFixed(3)}`).toBeGreaterThanOrEqual(0.03 - 1e-9)
+        expect(Math.abs(left - right), `seed ${seed} stroke ${stroke.hit.toFixed(3)}`).toBeLessThanOrEqual(0.09 + 1e-9)
+      }
+      later += Math.max(0, both.length - 1)
+    }
+    // Strokes after a unit's first are the ones that leave a post-stroke hold.
+    expect(later).toBeGreaterThanOrEqual(5)
+  }, 120_000)
+
   it('never starts on an owned arm, and yields a claimed arm before the claim reaches half', () => {
     const owned = perform({ utterances: [utterance(0.5, 0.65, peaks(0.5))], owned: () => ({ leftArm: 1, rightArm: 1 }) }, 7)
     expect(owned.frames.at(-1)?.gesture.unitSeq).toBe(0)
