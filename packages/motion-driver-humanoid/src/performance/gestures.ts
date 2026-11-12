@@ -32,7 +32,7 @@ const TIMING = {
   chopWindow: 3,
   /** Return from the post-stroke hold to the ready key, before tempo. */
   recovery: 0.3,
-  /** Exit ramp of the layer weight; the retraction ends with it. */
+  /** Exit ramp of the layer weight; it starts as a speech unit's retraction ends, and ends with an arm form's. */
   exit: 0.35,
   enter: 0.25,
   /**
@@ -157,7 +157,7 @@ class ArmTrack {
   state: TrackState = 'rest'
   weight = 0
   exitSeconds: number = TIMING.exit
-  /** When the weight request drops so the exit ramp ends with the retraction. */
+  /** When the weight request drops: as a speech unit's retraction ends, and an exit ramp before an arm form's does. */
   dropAt = Infinity
   phaseEnd = Infinity
   holdEnd = Infinity
@@ -195,6 +195,8 @@ class ArmTrack {
   preparedAt = Infinity
   /** A retraction still on its way back to the ready key, from where it goes home on the preparation's cleared path. */
   viaReady = false
+  /** A speech unit's arm on its way home: it comes to rest there before its weight ramps out (`retractTrack`). */
+  settle = false
 
   /**
    * Starts a motion to `to` from the current target, continuing the plan's velocity (quintic decay of `v0`), and
@@ -319,6 +321,7 @@ class ArmTrack {
     this.preparedAt = Infinity
     this.fed = 0
     this.viaReady = false
+    this.settle = false
     this.accents.length = 0
     this.warm = false
   }
@@ -468,6 +471,7 @@ class GesturePerformer {
     track.state = 'retraction'
     track.pending = null
     track.viaReady = false
+    track.settle = false
     if (this.armForm?.side === side)
       this.armForm = null
     // A two-handed unit goes on with the hand it still has: its lead and its phase follow that arm from here.
@@ -708,11 +712,17 @@ class GesturePerformer {
   }
 
   /**
-   * Returns the arm to where it was before the unit, 1.3 x its preparation, while the weight ramps down with it. Only
-   * the paths through the ready key were cleared: an arm in a stroke, hold or recovery first goes back to the ready key
-   * along its stroke, over the recovery time, and goes home from there.
+   * Returns the arm to where it was before the unit, 1.3 x its preparation. Only the paths through the ready key were
+   * cleared: an arm in a stroke, hold or recovery first goes back to the ready key along its stroke, over the recovery
+   * time, and goes home from there.
+   *
+   * A speech unit's arm comes to rest at home before its weight ramps out (`settle`). The ramp hands the arm to the
+   * hang, whose target the corrector holds out of the body on rigs whose arms rest against it; ramping while the arm
+   * still travelled carried it into that margin moving, and the corrector stopped it in one tick (a velocity step). An
+   * emotion arm form keeps its ramp over the way home.
    */
   private retractTrack(track: ArmTrack, now: number): void {
+    const settle = track.state !== 'form'
     if (track.state === 'stroke' || track.state === 'hold' || track.state === 'recovery') {
       track.state = 'retraction'
       track.pending = null
@@ -723,11 +733,12 @@ class GesturePerformer {
       return
     }
     track.viaReady = false
+    track.settle = settle
     const duration = track.move(track.home, now, Math.max(TIMING.exit + BODY_TICK, TIMING.retractionScale * track.prepSeconds), this.tension)
     track.state = 'retraction'
     track.pending = null
     track.phaseEnd = now + duration
-    track.dropAt = track.phaseEnd - TIMING.exit
+    track.dropAt = settle ? track.phaseEnd : track.phaseEnd - TIMING.exit
     track.exitSeconds = TIMING.exit
   }
 
@@ -770,6 +781,12 @@ class GesturePerformer {
       track.form = null
       track.exitSeconds = TIMING.exit
     }
+    // Home is where the arm rested before the unit, cleared against the trunk as it was then; the trunk has moved since,
+    // so the arm comes home to where the corrector would hold it against the body now.
+    if (track.state === 'retraction' && track.settle && this.keys) {
+      track.segment.to.set(track.home)
+      this.keys.clearOfBody(track.side, track.segment.to, context.previous.channels)
+    }
     if (track.active || track.weight > 0)
       track.advance(now, this.tension)
     track.participate(now, Math.max(0, Math.min(1, 1 - 2 * context.input.owned.head)))
@@ -781,6 +798,7 @@ class GesturePerformer {
     track.planned.set(track.home)
     track.plannedPrevious.set(track.home)
     track.warm = false
+    track.settle = false
     track.segment.start = now
     track.weight = 1
     track.exitSeconds = TIMING.exit

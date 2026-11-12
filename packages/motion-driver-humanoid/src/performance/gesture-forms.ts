@@ -126,6 +126,9 @@ export class GestureKeys {
   private readonly scratch: Float32Array
   /** Each arm's rest pose, where an arm form's path starts. */
   private readonly restArms: Record<BodySide, ArmPose>
+  /** The corrector's proxies as the live body poses them, and its channels (`clearOfBody`). */
+  private readonly live: BodyCollision
+  private readonly liveChannels: Float32Array
 
   constructor(private readonly traits: BodyRigTraits, private readonly rest: Float32Array) {
     this.skeleton = new BodySkeleton(traits)
@@ -138,6 +141,8 @@ export class GestureKeys {
     this.lengths = { left: lengths('left'), right: lengths('right') }
     this.restArms = { left: Float64Array.from(rest.subarray(ARM_START.left, ARM_START.left + 26)), right: Float64Array.from(rest.subarray(ARM_START.right, ARM_START.right + 26)) }
     this.collision.prepare(rest)
+    this.live = new BodyCollision(traits, rest.slice())
+    this.liveChannels = rest.slice()
     this.skeleton.update(rest)
   }
 
@@ -236,6 +241,23 @@ export class GestureKeys {
       hand[2] += PUSH_STEP * contact.nz
     }
     return false
+  }
+
+  /**
+   * Moves `pose`'s arm (flex to elbow) out of the proxies of the body as `channels` pose it now, by the corrector's own
+   * projection (architecture 6.2): where the corrector would hold that arm this tick. Keys are cleared against the rest
+   * trunk; an arm coming home must clear the trunk it comes home to.
+   */
+  clearOfBody(side: BodySide, pose: ArmPose, channels: ArrayLike<number>): void {
+    const start = ARM_START[side]
+    for (let c = 0; c < this.liveChannels.length; c++)
+      this.liveChannels[c] = channels[c]
+    for (let j = 2; j < 26; j++)
+      this.liveChannels[start + j] = pose[j]
+    this.live.prepare(this.liveChannels)
+    this.live.project(side, this.liveChannels)
+    for (let j = 2; j <= 5; j++)
+      pose[j] = this.liveChannels[start + j]
   }
 
   /** Largest margin-inclusive proxy depth along the angle path from `from` to `to`, sampled at 11 points. */

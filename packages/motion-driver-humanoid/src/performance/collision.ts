@@ -214,35 +214,7 @@ export class BodyCollision {
         channels[index] += this.previous[index] * Math.exp(-BODY_TICK / 0.3)
         channels[index] = Math.max(JOINT_LIMITS[index][0], Math.min(JOINT_LIMITS[index][1], channels[index]))
       }
-      let capped = false
-      for (let attempt = 0; attempt < 3; attempt++) {
-        const d = this.measure(side, channels)
-        if (d.depth <= 0)
-          break
-        const crossX = d.y * d.nz - d.z * d.ny
-        const crossY = d.z * d.nx - d.x * d.nz
-        const crossZ = d.x * d.ny - d.y * d.nx
-        const chest = this.skeleton.frames[(['spine0', 'spine1', 'spine2', 'spine3'] as const)[this.traits.spineChain.length - 1]]
-        const gx = -(chest[0] * crossX + chest[3] * crossY + chest[6] * crossZ)
-        const gz = (side === 'left' ? 1 : -1) * (chest[2] * crossX + chest[5] * crossY + chest[8] * crossZ)
-        const norm = Math.hypot(gx, gz)
-        if (norm < 1e-9)
-          break
-        // Turning by `angle` about the controllable axis moves the contact along its normal by `angle * norm`, and
-        // norm (d x n on the chest X and Z axes) is at most |d|, so this is the smallest rotation that clears it. The
-        // 1e-6 lever skin lands the linear step just outside the margin, so a grazing contact clears continuously
-        // instead of falling through to the guard scan's one-sixteenth step.
-        const clearing = (d.depth + 1e-6 * Math.hypot(d.x, d.y, d.z)) / norm
-        capped ||= clearing > 6 * DEG
-        const angle = Math.min(6 * DEG, clearing)
-        channels[start + 2] += angle * gx / norm
-        channels[start + 3] += angle * gz / norm
-        if (d.forearm)
-          channels[start + 5] += 0.3 * angle * Math.sign(gx)
-        for (let j = 2; j <= 5; j++)
-          channels[start + j] = Math.max(JOINT_LIMITS[start + j][0], Math.min(JOINT_LIMITS[start + j][1], channels[start + j]))
-      }
-      if (capped)
+      if (this.project(side, channels))
         this.corrector.capHits++
       for (let j = 2; j <= 5; j++)
         this.previous[start + j] = channels[start + j] - this.original[start + j]
@@ -266,6 +238,44 @@ export class BodyCollision {
         correction += (channels[start + j] - this.original[start + j]) ** 2
       this.correction[side] = Math.sqrt(correction)
     }
+  }
+
+  /**
+   * Architecture 6.2's projection: up to three smallest rotations of the upper arm (and 0.3 of each on the elbow, for a
+   * forearm contact) that clear one arm of the proxies as last prepared. It keeps no state. True when the 6 degree cap
+   * bounded a step.
+   */
+  project(side: BodySide, channels: Float32Array): boolean {
+    const start = ARM_START[side]
+    let capped = false
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const d = this.measure(side, channels)
+      if (d.depth <= 0)
+        break
+      const crossX = d.y * d.nz - d.z * d.ny
+      const crossY = d.z * d.nx - d.x * d.nz
+      const crossZ = d.x * d.ny - d.y * d.nx
+      const chest = this.skeleton.frames[(['spine0', 'spine1', 'spine2', 'spine3'] as const)[this.traits.spineChain.length - 1]]
+      const gx = -(chest[0] * crossX + chest[3] * crossY + chest[6] * crossZ)
+      const gz = (side === 'left' ? 1 : -1) * (chest[2] * crossX + chest[5] * crossY + chest[8] * crossZ)
+      const norm = Math.hypot(gx, gz)
+      if (norm < 1e-9)
+        break
+      // Turning by `angle` about the controllable axis moves the contact along its normal by `angle * norm`, and
+      // norm (d x n on the chest X and Z axes) is at most |d|, so this is the smallest rotation that clears it. The
+      // 1e-6 lever skin lands the linear step just outside the margin, so a grazing contact clears continuously
+      // instead of falling through to the guard scan's one-sixteenth step.
+      const clearing = (d.depth + 1e-6 * Math.hypot(d.x, d.y, d.z)) / norm
+      capped ||= clearing > 6 * DEG
+      const angle = Math.min(6 * DEG, clearing)
+      channels[start + 2] += angle * gx / norm
+      channels[start + 3] += angle * gz / norm
+      if (d.forearm)
+        channels[start + 5] += 0.3 * angle * Math.sign(gx)
+      for (let j = 2; j <= 5; j++)
+        channels[start + j] = Math.max(JOINT_LIMITS[start + j][0], Math.min(JOINT_LIMITS[start + j][1], channels[start + j]))
+    }
+    return capped
   }
 
   /**

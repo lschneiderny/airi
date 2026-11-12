@@ -529,7 +529,12 @@ edge, outside a refractory of 2.5 s + 3 s x (1 - energy): the arm prepares to
 4a's ready key, strokes on every onset that passes the gate's S2 voice-peak
 rule (accepted emphases major, others 0.6), at least 0.45 s apart and at most
 six per unit, holds with a 1.5 % A drift, and retracts to where it came from at
-1.3 times its preparation while its weight ramps out. Only paths through the
+1.3 times its preparation; its weight ramps out once the arm is home, so the
+hang, which the corrector may hold out of the body, takes a resting arm (an
+emotion arm form still ramps out on its way home). On the way, home is cleared
+every tick against the body as it is posed then, by the corrector's own
+projection (`BodyCollision.project`), because the trunk moves during a unit.
+Only paths through the
 ready key are cleared, so a retraction lets a stroke in flight land, and from a
 stroke, hold or recovery first goes back to the ready key along the stroke over
 the recovery time, then home on the preparation's path. Energy scales size and

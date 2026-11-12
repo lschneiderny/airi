@@ -8,7 +8,7 @@ import { ARM_START, BODY_TICK, channelIndex, DEG, JOINT_LIMITS, SIDES } from './
 import { ARM_FORMS, GESTURE_FORMS, GestureKeys, writeHandShape } from './gesture-forms'
 import { createGestureLayers } from './gestures'
 import { BodySkeleton, createBodyPerformer } from './index'
-import { chisaTraits, ellenTraits, fixtureRigs, idleInput } from './performance.test-fixtures'
+import { chisaTraits, ellenTraits, fixtureRigs, idleInput, quietInput } from './performance.test-fixtures'
 
 const traits = fixtureRigs[0].traits
 
@@ -31,6 +31,8 @@ interface Script {
   readonly headEmphasis?: (time: number) => number
   /** The body's facing, radians; the feet turning under the gaze. */
   readonly facing?: (time: number) => number
+  /** No posture sway, breath or arm noise, so the trunk and the colliders hold still. */
+  readonly still?: boolean
 }
 
 /**
@@ -38,7 +40,7 @@ interface Script {
  * Natural's 250 ms slow envelope, and the onset and emphasis sequences.
  */
 function speechInput(script: Script, time: number, state: { onset: number, emphasis: number, slow: number }): BodyPerformanceInput {
-  const base = idleInput(time)
+  const base = script.still ? quietInput(time) : idleInput(time)
   const utterance = script.utterances.find(u => time >= u.start && time < u.end)
   let level = utterance ? 0.1 : 0
   for (const u of script.utterances) {
@@ -320,6 +322,33 @@ describe('co-speech gestures', () => {
         expect(kick / BODY_TICK).toBeLessThanOrEqual(15 * DEG)
       }
     }
+  })
+
+  it.each([['chisa', chisaTraits], ['ellen', ellenTraits]] as const)('hands a retracted arm back to the hang only once it is home on %s\'s real rig', (_, rig) => {
+    // At rest the corrector holds these rigs' hanging arms out of the body by a few degrees, so the hang's target lies
+    // inside its margin. An arm still travelling home when its weight starts to fall is carried into that margin moving,
+    // and the corrector stops it in one tick. The trunk holds still, so every contact here comes from the exit itself.
+    let exits = 0
+    for (const energy of [0.45, 0.85]) {
+      for (const seed of [1, 2, 3, 4, 5, 6]) {
+        const run = perform({ utterances: [{ start: 2, end: 6.5, energy, onsets: [{ at: 2.4, major: true }] }], tension: 0, still: true }, 9, { seed, traits: rig })
+        for (const side of SIDES) {
+          const start = run.frames.findIndex(frame => frame.gesture.activation[side] > 0)
+          if (start < 1)
+            continue
+          const home = run.frames[start - 1].channels
+          const handBack = run.frames.findIndex((frame, i) => frame.time > 6.5 && frame.gesture.activation[side] < 1 && run.frames[i - 1].gesture.activation[side] === 1)
+          expect(handBack, `seed ${seed}, energy ${energy}, ${side}`).toBeGreaterThan(0)
+          exits++
+          // KEY_HEADROOM's settle: 1.9 degrees past a fed-forward key plus the elbow's 1.2 degree moving-hold noise.
+          for (let j = 2; j <= 5; j++) {
+            const c = ARM_START[side] + j
+            expect(Math.abs(run.frames[handBack].channels[c] - home[c]), `seed ${seed}, energy ${energy}, ${side} channel ${j}`).toBeLessThanOrEqual(3.5 * DEG)
+          }
+        }
+      }
+    }
+    expect(exits).toBeGreaterThanOrEqual(12)
   })
 
   it('chooses press from the utterance\'s energy at the onset levels real speech has', () => {
