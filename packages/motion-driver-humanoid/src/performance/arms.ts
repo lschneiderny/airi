@@ -208,9 +208,18 @@ export class BodyArms {
 
   /**
    * Passes a channel's shared target (everything but its own noise) through its cascade link, so a term several arm
-   * joints receive at once (breath, weight, gait swing, a layer's key) reaches the followers in proximal-to-distal
-   * order by construction: link delay `s_j + max(0, tau_upper - tau_j)` cancels a faster distal follower's head start
-   * and adds the 4a start offset `s_j`. Plan 3.1; the faster distal followers made the lower arm lead (goal-2 finding).
+   * joints receive at once (breath, weight, gait swing) reaches the followers in proximal-to-distal order by
+   * construction: link delay `s_j + max(0, tau_upper - tau_j)` cancels a faster distal follower's head start and adds
+   * the 4a start offset `s_j`. Plan 3.1; the faster distal followers made the lower arm lead (goal-2 finding).
+   *
+   * The wrist-placing joints (flex, abduct, twist, elbow) an override layer holds take its target past the link: the
+   * gesture layer feeds them forward through their followers' inverse and times them itself (4a's elbow offset in a
+   * preparation), and a link left in front of an inverted follower is not a delay but a lag that rounds every fast
+   * segment's end into a slow approach (a stroke's elbow landed 100 to 150 ms late). The bypass is the activation to
+   * the fourth power, so it holds only near full activation (half at 0.84): while the activation ramps (a unit's entry
+   * and exit, a clip's claim) the link still filters the hand-over. The link's state follows what it passes on, so a
+   * falling activation hands the joint back to it without a step; at activation 0 the arithmetic is the link's
+   * exactly.
    */
   private cascade(index: number, target: number, activation: Float64Array): number {
     const j = (index - ARM_START.left) % 28
@@ -230,7 +239,15 @@ export class BodyArms {
       this.linkCoefficients[index] = secondOrderCoefficients({ f: 1 / (Math.PI * delay), zeta: 1, r: 0 }, BODY_TICK)
       this.linkDelays[index] = delay
     }
-    advanceSecondOrder(link, target - blended, this.linkCoefficients[index])
+    const input = target - blended
+    const previous = link.x
+    advanceSecondOrder(link, input, this.linkCoefficients[index])
+    // The link carries what it passes on, so a falling activation hands the joint back to it without a step.
+    const fed = j >= 2 && j <= 5 ? activation[index] ** 4 : 0
+    if (fed > 0) {
+      link.y += fed * (input - link.y)
+      link.v += fed * ((input - previous) / BODY_TICK - link.v)
+    }
     return link.y + own
   }
 

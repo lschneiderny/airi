@@ -7,7 +7,7 @@ import type { LayerOutput, PerformanceContext, PerformanceLayer } from './stack'
 import { minJerk } from '../dynamics'
 import { deriveSeed } from '../noise'
 import { createRandomStream } from '../random'
-import { armCascadeDelay, armResponse } from './arms'
+import { armResponse } from './arms'
 import { ARM_START, BODY_CHANNELS, BODY_TICK, DEG, SIDES } from './channels'
 import { ARM_FORMS, GESTURE_FORMS, gestureGain, GestureKeys, gestureTempo, KEY_HEADROOM, writeHandShape } from './gesture-forms'
 
@@ -53,6 +53,8 @@ const FOLLOWER_INPUT_SLOPE = 20
 const SLOPE_SAMPLES = 64
 /** Minimum jerk's peak slope over its mean, `max s'(u)`. */
 const MIN_JERK_PEAK_SLOPE = 1.875
+/** Architecture 4a's elbow start offset in a preparation, seconds after the upper arm. */
+const ELBOW_START = 0.03
 
 /**
  * The coefficients of an active arm follower's inverse, `x = y + lead y' + curvature y''` (3a, r = 0), on channel `j`
@@ -100,6 +102,8 @@ interface Segment {
   readonly velocity: ArmPose
   readonly to: ArmPose
   start: number
+  /** Each channel's start after `start`, seconds: a preparation keeps 4a's joint order on the fed-forward elbow. */
+  readonly offsets: ArmPose
   /**
    * Each channel's duration: the segment's, or longer where a channel's change would ask its follower for more than
    * its input slope, so a large turn of the forearm, wrist or fingers arrives after the hit (4a: the hand shape last).
@@ -129,7 +133,7 @@ class ArmTrack {
   readonly home = pose()
   readonly ready = pose()
   readonly key = pose()
-  readonly segment: Segment = { from: pose(), velocity: pose(), to: pose(), start: 0, durations: pose().fill(1) }
+  readonly segment: Segment = { from: pose(), velocity: pose(), to: pose(), start: 0, offsets: pose(), durations: pose().fill(1) }
   readonly pulses: TorsoPulse[] = []
   state: TrackState = 'rest'
   weight = 0
@@ -148,7 +152,7 @@ class ArmTrack {
   watch: { form: SpeechGestureForm, hand: BodyGestureHand, peak: number, speed: number, wrist: readonly [number, number, number] | null, until: number } | null = null
   form: SpeechGestureForm | BodyArmForm | null = null
   prepSeconds = 0.5
-  /** When the current stroke's wrist lands: its profile's end plus the elbow's cascade delay. */
+  /** When the current stroke's wrist lands: its profile's end. */
   landing = 0
   pending: { at: number, form: SpeechGestureForm, size: number } | null = null
   warm = false
@@ -166,9 +170,11 @@ class ArmTrack {
   /**
    * Starts a motion to `to` from the current target, continuing the plan's velocity (quintic decay of `v0`), and
    * returns its duration: `duration`, or longer when the followers could not take its fed-forward channels in that
-   * time. The target stays continuous: the inverse term is zero at both ends of every segment.
+   * time. The target stays continuous: the inverse term is zero at both ends of every segment. An `ordered` segment (a
+   * preparation) starts the elbow 4a's 30 ms after the upper arm; the elbow takes no cascade link while fed forward,
+   * so the layer keeps that order itself.
    */
-  move(to: ArmPose, now: number, duration: number, tension: number): number {
+  move(to: ArmPose, now: number, duration: number, tension: number, ordered = false): number {
     const s = this.segment
     const fed = Math.max(BODY_TICK, duration, this.fedForwardFloor(to, tension))
     s.from.set(this.pose)
@@ -176,6 +182,9 @@ class ArmTrack {
       s.velocity[j] = this.warm ? (this.planned[j] - this.plannedPrevious[j]) / BODY_TICK : 0
     s.to.set(to)
     s.start = now
+    s.offsets.fill(0)
+    if (ordered)
+      s.offsets[5] = ELBOW_START
     for (let j = 0; j < 26; j++)
       s.durations[j] = j >= 2 && j <= 5 ? fed : Math.max(fed, MIN_JERK_PEAK_SLOPE * Math.abs(to[j] - s.from[j]) / FOLLOWER_INPUT_SLOPE)
     return fed
@@ -189,8 +198,8 @@ class ArmTrack {
       this.planned[j] = y
       this.pose[j] = y
       const duration = s.durations[j]
-      const u = Math.max(0, Math.min(1, (now - s.start) / duration))
-      if (j < 2 || j > 5 || u >= 1)
+      const u = Math.max(0, Math.min(1, (now - s.start - s.offsets[j]) / duration))
+      if (j < 2 || j > 5 || u <= 0 || u >= 1)
         continue
       // Flex, abduct, twist and elbow place the wrist: the followers receive the inverse of every segment's planned
       // minimum-jerk part, analytic, so the arm moves along the path the keys were cleared on and lands as planned,
@@ -242,7 +251,7 @@ class ArmTrack {
   profile(j: number, time: number): number {
     const s = this.segment
     const duration = s.durations[j]
-    const u = Math.max(0, Math.min(1, (time - s.start) / duration))
+    const u = Math.max(0, Math.min(1, (time - s.start - s.offsets[j]) / duration))
     const shape = minJerk(u)
     // h(u) = u - 6u^3 + 8u^4 - 3u^5: unit initial slope, zero value, slope and curvature at u = 1.
     const decay = duration * (u - 6 * u ** 3 + 8 * u ** 4 - 3 * u ** 5)
@@ -436,7 +445,7 @@ class GesturePerformer {
       return
     const travel = this.travel(request.side, track.home, track.key)
     this.begin(track, now)
-    track.prepSeconds = track.move(track.key, now, (0.25 + 0.35 * travel) / gestureTempo(context.input.energy.level), this.tension)
+    track.prepSeconds = track.move(track.key, now, (0.25 + 0.35 * travel) / gestureTempo(context.input.energy.level), this.tension, true)
     track.state = 'form'
     track.form = request.form
     track.phaseEnd = Infinity
@@ -462,7 +471,7 @@ class GesturePerformer {
       if (!this.solveReady(track, this.keys.readyKey(energy, 0, swivel)))
         continue
       this.begin(track, now)
-      track.prepSeconds = track.move(track.ready, now, (0.25 + 0.35 * this.travel(side, track.home, track.ready)) / gestureTempo(energy), this.tension)
+      track.prepSeconds = track.move(track.ready, now, (0.25 + 0.35 * this.travel(side, track.home, track.ready)) / gestureTempo(energy), this.tension, true)
       track.state = 'preparation'
       track.phaseEnd = now + track.prepSeconds
       started.push(side)
@@ -566,11 +575,11 @@ class GesturePerformer {
       const seconds = GESTURE_FORMS[candidate].strokeSeconds / tempo
       const [low, high] = GESTURE_FORMS[candidate].hold
       const hold = (low + (high - low) * this.random()) / tempo
-      // 4a: the hit lands at the stroke's duration. Feedforward removes the followers' lag, leaving the elbow's cascade
-      // delay before the wrist lands. A stroke the followers cannot take that fast lasts longer (`move`).
-      const delay = armCascadeDelay(5, 1, 1, this.tension)
-      const profile = track.move(track.key, now, seconds - delay, this.tension)
-      track.landing = now + profile + delay
+      // 4a: the hit lands at the stroke's duration. Feedforward removes the followers' lag and the fed joints take no
+      // cascade link, so the wrist lands as the profile ends. A stroke the followers cannot take that fast lasts longer
+      // (`move`).
+      const profile = track.move(track.key, now, seconds, this.tension)
+      track.landing = now + profile
       track.state = 'stroke'
       track.form = candidate
       track.phaseEnd = now + profile

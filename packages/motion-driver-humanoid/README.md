@@ -406,7 +406,12 @@ layer's key) pass each joint's lag link before its follower, with delay
 clavicle and upper arm, 30 elbow, 60 pronation, 90 wrist, 130 fingers) plus
 the faster distal follower's head start in ramp lag. Shared motion therefore
 reaches the arm from shoulder to fingertip by construction; each joint's own
-noise and its drag bypass the link.
+noise and its drag bypass the link. The wrist-placing joints (flex, abduct,
+twist, elbow) an override layer holds take its target past the link, weighted
+by the activation to the fourth power, because the gesture layer feeds them
+forward through their followers' inverse and times them itself; while the
+activation ramps the link still filters the hand-over, and at activation 0 its
+arithmetic is unchanged.
 Nonnegative channels use a C1 lower knee that preserves zero exactly; the
 generic tanh lower knee would bend an otherwise neutral toe. Their upper knee
 and all signed channel limits use the shared `softLimit` primitive.
@@ -528,10 +533,12 @@ A's amplitude scale (`GESTURE_FORMS`), keys solved per rig with
 `solveArmKey` and pushed along the proxy gradient until key and path clear.
 Every segment's wrist-placing channels (flex, abduct, twist, elbow) are fed
 forward through their followers' inverse, so the arm moves along the path its
-keys were cleared on, without its followers' lag or overshoot, and a stroke
-lands at 4a's duration, or later when the inverse would ask a follower for more
-than its 20 rad/s input slope: a segment then lasts the shortest time the
-followers can take. The ready key is cleared along its path from the arm's
+keys were cleared on, without its followers' lag or overshoot. Those joints
+take no cascade link while the layer holds them, so a preparation starts the
+elbow 4a's 30 ms after the upper arm itself, and a stroke lands at 4a's
+duration, or later when the inverse would ask a follower for more than its
+20 rad/s input slope: a segment then lasts the shortest time the followers can
+take. The ready key is cleared along its path from the arm's
 starting pose, as stroke keys are along theirs from the ready key, and it keeps
 a headroom of 0.05 of each segment beyond the corrector's margin
 (`KEY_HEADROOM`), because the arm settles and holds there; where no reachable

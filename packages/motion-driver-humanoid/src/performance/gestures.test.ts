@@ -3,7 +3,7 @@ import type { PerformanceLayer } from './stack'
 
 import { describe, expect, it } from 'vitest'
 
-import { ARM_NOISE_DEGREES, armCascadeDelay } from './arms'
+import { ARM_NOISE_DEGREES } from './arms'
 import { ARM_START, BODY_TICK, channelIndex, DEG, JOINT_LIMITS, SIDES } from './channels'
 import { ARM_FORMS, GESTURE_FORMS, GestureKeys, writeHandShape } from './gesture-forms'
 import { createGestureLayers } from './gestures'
@@ -207,23 +207,30 @@ describe('co-speech gestures', () => {
   })
 
   it.each(fixtureRigs)('hits within the emphasis window and shows each hit kinematically on $name', ({ traits: rig }) => {
-    for (const energy of [0.45, 0.85]) {
-      const run = perform({ utterances: [utterance(0.4, energy, peaks(0.4))] }, 9, { traits: rig, seed: 3 })
-      const planned = strokes(run)
-      expect(planned).toHaveLength(5)
-      for (const stroke of planned) {
-        // The onset reaches the performer a frame and a tick after detection, 24.7 to 87.2 ms before the labelled peak
-        // (unit M `controls.md`). A beat hits within 200 ms of the peak for every lead; a larger form, which lasts as
-        // long as its followers need, for the median lead (62.9 ms).
-        if (stroke.form === 'beat')
-          expect(stroke.hit - stroke.onset).toBeLessThanOrEqual(0.2 + 0.0247 - 1 / 60 - BODY_TICK)
-        expect(stroke.hit - stroke.onset).toBeLessThanOrEqual(0.2 + 0.0629 - 1 / 60 - BODY_TICK)
-        expect(stroke.hit - stroke.onset).toBeGreaterThan(0.06)
-        const side = stroke.hand === 'both' ? 'right' : stroke.hand as 'left' | 'right'
-        expect(Math.abs(nearest(apexes(run, side, rig), stroke.hit) - stroke.hit)).toBeLessThanOrEqual(0.05)
+    // Natural reports mood tension 0 in speech without an emotion (the softest active followers); 0.4 is idle's.
+    for (const tension of [0, 0.4]) {
+      for (const energy of [0.45, 0.85]) {
+        const run = perform({ utterances: [utterance(0.4, energy, peaks(0.4))], tension }, 9, { traits: rig, seed: 3 })
+        const planned = strokes(run)
+        expect(planned).toHaveLength(5)
+        for (const stroke of planned) {
+          // The onset reaches the performer a frame and a tick after detection, 24.7 to 87.2 ms before the labelled
+          // peak (unit M `controls.md`): every form hits within 200 ms of the peak for the shortest lead. The hit is the
+          // speed minimum as the stroke's profile ends; only a profile the followers cannot take faster under their
+          // 20 rad/s input slope may end later (a chop at energy 0.85 and tension 0 turns the elbow 48 degrees).
+          const onset = Math.round(stroke.onset / BODY_TICK) - 1
+          const end = run.frames.findIndex((frame, i) => i > onset && frame.gesture.phase !== 'stroke')
+          const landed = run.frames[end].time - stroke.onset
+          const window = 0.2 + 0.0247 - 1 / 60 - BODY_TICK
+          expect(stroke.hit - stroke.onset, `${stroke.form} at tension ${tension}, energy ${energy}`).toBeLessThanOrEqual(Math.max(window, landed + 2 * BODY_TICK))
+          expect(landed, `${stroke.form} profile at tension ${tension}, energy ${energy}`).toBeLessThanOrEqual(stroke.form === 'chop' ? 0.2 : window - 2 * BODY_TICK)
+          expect(stroke.hit - stroke.onset).toBeGreaterThan(0.06)
+          const side = stroke.hand === 'both' ? 'right' : stroke.hand as 'left' | 'right'
+          expect(Math.abs(nearest(apexes(run, side, rig), stroke.hit) - stroke.hit)).toBeLessThanOrEqual(0.05)
+        }
+        expect(run.frames.at(-1)?.corrector).toEqual({ capHits: 0, guardScans: 0 })
+        expect(run.frames.at(-1)?.holds).toBe(0)
       }
-      expect(run.frames.at(-1)?.corrector).toEqual({ capHits: 0, guardScans: 0 })
-      expect(run.frames.at(-1)?.holds).toBe(0)
     }
   })
 
@@ -304,9 +311,9 @@ describe('co-speech gestures', () => {
           at = i
         }
       }
-      // The hit is the wrist's speed minimum; the wrist lands an elbow-link settle (twice its cascade delay) before it.
+      // The hit is the wrist's speed minimum, a tick or two after the stroke's profile ends and the wrist lands.
       expect(run.frames[at].time).toBeLessThanOrEqual(stroke.hit)
-      expect(stroke.hit - run.frames[at].time).toBeLessThanOrEqual(2 * armCascadeDelay(5, 1, 1, 0))
+      expect(stroke.hit - run.frames[at].time).toBeLessThanOrEqual(2 * BODY_TICK)
     }
   })
 
