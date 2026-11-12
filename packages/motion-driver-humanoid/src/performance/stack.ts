@@ -13,6 +13,7 @@ export interface MergedPerformancePlan {
   readonly gaze: BodyGazeGoal | null
   readonly armForm: { readonly side: BodySide, readonly form: BodyArmForm } | null
   readonly suppressHeadCue: boolean
+  readonly suppressHeadEmphasis: boolean
 }
 
 export interface PerformanceContext {
@@ -72,6 +73,8 @@ export interface PerformancePlan {
   readonly armForm?: MergedPerformancePlan['armForm']
   /** The cue layer plays the head cue itself, so the head posture drops Natural's cue term; any layer may set it. */
   readonly suppressHeadCue?: boolean
+  /** The gesture layers play the speech head beat, so the head posture drops Natural's emphasis term; any layer may set it. */
+  readonly suppressHeadEmphasis?: boolean
 }
 
 export interface PerformanceLayer {
@@ -94,7 +97,7 @@ export class PerformanceStack {
   readonly activation = new Float64Array(BODY_CHANNELS.length)
   /** Per channel, the fed-forward share of the override that holds it (`LayerOutput.fed`). */
   readonly fed = new Float64Array(BODY_CHANNELS.length)
-  readonly plan: Mutable<MergedPerformancePlan> = { support: null, gaze: null, armForm: null, suppressHeadCue: false }
+  readonly plan: Mutable<MergedPerformancePlan> = { support: null, gaze: null, armForm: null, suppressHeadCue: false, suppressHeadEmphasis: false }
   readonly gesture: Mutable<BodyGestureReport> & { activation: Record<BodySide, number> } = { unitSeq: 0, strokeSeq: 0, form: null, hand: null, phase: 'rest', plannedHit: null, activation: { left: 0, right: 0 } }
   readonly cue: Mutable<BodyCueReport> = { seq: 0, kind: null }
   readonly emotion: Mutable<BodyEmotionReport> = { seq: 0, emotion: null, phase: null }
@@ -133,6 +136,7 @@ export class PerformanceStack {
     this.plan.gaze = null
     this.plan.armForm = null
     this.plan.suppressHeadCue = false
+    this.plan.suppressHeadEmphasis = false
     for (const { layer } of this.entries) {
       const plan = layer.plan?.(context)
       if (plan?.support !== undefined)
@@ -143,6 +147,8 @@ export class PerformanceStack {
         this.plan.armForm = plan.armForm
       if (plan?.suppressHeadCue)
         this.plan.suppressHeadCue = true
+      if (plan?.suppressHeadEmphasis)
+        this.plan.suppressHeadEmphasis = true
     }
   }
 

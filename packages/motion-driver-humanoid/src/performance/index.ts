@@ -186,6 +186,7 @@ class BodyPerformer {
     // The cue layer plays the head cue itself (4b). The emotion modulation (4c) is the previous tick's: the stack runs
     // after the generators, so its tempo, sway, breath depth and sighs reach them one tick later.
     state.posture.suppressHeadCue = stack.plan.suppressHeadCue
+    state.posture.suppressHeadEmphasis = stack.plan.suppressHeadEmphasis
     state.posture.tempo = stack.modulation.tempo
     state.posture.amplitude = stack.modulation.amplitude
     state.breath.depth = stack.modulation.breath

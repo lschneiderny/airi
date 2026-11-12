@@ -440,8 +440,9 @@ Mixed override/additive output supports arm gestures with additive torso
 motion. The context exposes full intent, capabilities, initial rest, the
 previous frame, the merged plan, tick and time. Besides support and gaze, a
 plan may request an emotion arm form (`armForm`, hand to chest or the thinking
-hand, for the gesture layer to hold) and `suppressHeadCue`, which hands the
-head cue to the cue layer. A step may also return its `gesture`, `cue`,
+hand, for the gesture layer to hold), `suppressHeadCue`, which hands the
+head cue to the cue layer, and `suppressHeadEmphasis`, which hands the speech
+emphasis nod to the gesture layers' head beat. A step may also return its `gesture`, `cue`,
 `emotion` or `reaction` report; the frame's diagnostics carry the latest one
 of each kind, and `diagnostics.gesture.activation` is the weight the stack
 applied to each arm through gesture-order layers. Hosts turn report sequence
@@ -456,7 +457,7 @@ every layer below in one list, which the MMD body registers: the emotion layer,
 the gesture pair, the cue layer and the reaction layer. Without speech, emotion,
 cue, touch or arm-form input each stays at weight 0 and the output is
 bit-identical to a performer with no layers. Each tick the performer copies
-`plan.suppressHeadCue` to the posture, and feeds the stack's `modulation` (the
+`plan.suppressHeadCue` and `plan.suppressHeadEmphasis` to the posture, and feeds the stack's `modulation` (the
 emotion layer's tempo, amplitude and breath depth, blended by that layer's
 weight) to the posture's `tempo` and `amplitude` and the breath's `depth`; each
 sighing onset of a layer with weight calls `sigh()` once. The stack runs after
@@ -562,7 +563,18 @@ architecture 6.3 says: a hand point marches in from 1 A in front of the seed to
 the body's surface, and the key backs off from it while the elbow swings out,
 until the pose and its path from rest clear the proxies (the pose with the ready
 key's headroom) with every joint 2 degrees inside its limit; an arm
-keeps whichever performance holds it, and speech uses the other hand. Any clip
+keeps whichever performance holds it, and speech uses the other hand.
+Each lead stroke also nods the head (the speech head beat, MMD only): neck
+and head pitch down together by 3 degrees for a major stroke (Graf et al. 2002,
+about 3 to 5 degrees per accent nod), 0.6 of that for a minor stroke, 0.6 more
+while walking and at a gaze that is not free, split 0.35 neck (30 ms first) and
+0.65 head; it rises by minimum jerk over the stroke to its apex on the stroke's
+landing and returns over 0.25 s, and a clip owning the head scales it by
+`1 - 2 x owned.head`. While a unit runs the layers plan `suppressHeadEmphasis`,
+so `BodyPosture` leaves Natural's emphasis term out of the head accent and the
+head keeps one posture; outside a unit Natural's nod plays as before. The beat
+is pitch only and added after the generators, so it sums with the gaze head
+that is held in space while the feet turn. Any clip
 claim on a performing arm takes it within 90 ms; a two-handed unit then goes
 on one-handed with the arm it still has. Without speech or an arm form
 the layers stay at weight 0 and the output is bit-identical to having none.

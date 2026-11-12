@@ -27,6 +27,10 @@ interface Script {
   readonly armForm?: (time: number) => { side: 'left' | 'right', form: BodyArmForm } | null
   /** Natural's mood tension; its speak scenario reports 0. */
   readonly tension?: number
+  /** Natural's speech emphasis head pitch term, radians. */
+  readonly headEmphasis?: (time: number) => number
+  /** The body's facing, radians; the feet turning under the gaze. */
+  readonly facing?: (time: number) => number
 }
 
 /**
@@ -51,6 +55,8 @@ function speechInput(script: Script, time: number, state: { onset: number, empha
   const last = script.utterances.filter(u => u.start <= time).at(-1)
   return {
     ...base,
+    head: script.headEmphasis ? { ...base.head, terms: { ...base.head.terms, emphasis: { yaw: 0, pitch: script.headEmphasis(time), roll: 0 } } } : base.head,
+    facingYaw: script.facing?.(time) ?? base.facingYaw,
     voice: { speaking: utterance !== undefined, level, slow: state.slow, onsetSeq: state.onset, emphasis: state.emphasis ? { seq: state.emphasis, at: time, magnitude: 0.5, tau: 0.3, kind: 'nod', side: 1 } : null },
     energy: { ...base.energy, level: last?.energy ?? 0.5 },
     mood: { ...base.mood, tension: script.tension ?? base.mood.tension },
@@ -429,6 +435,59 @@ describe('co-speech gestures', () => {
       }
       expect(longest).toBeLessThanOrEqual(1.2)
     }
+  })
+
+  it('nods the head with each stroke, its apex on the hit, 3 degrees for a major stroke', () => {
+    const pitch = [channelIndex('neckPitch'), channelIndex('headPitch')]
+    const yawRoll = [channelIndex('neckYaw'), channelIndex('neckRoll'), channelIndex('headYaw'), channelIndex('headRoll')]
+    // A still facing, then the feet turning 40 degrees under the gaze during the utterance (the gaze head held in space).
+    const turning = (time: number) => 40 * DEG * Math.max(0, Math.min(1, (time - 2) / 3))
+    const added: number[][] = []
+    for (const facing of [undefined, turning]) {
+      const script: Script = { utterances: [utterance(0.5, 0.65, peaks(0.5))], facing }
+      const run = perform(script, 9)
+      const silent = perform(script, 9, { layers: false })
+      const nod = run.frames.map((frame, i) => pitch.reduce((sum, c) => sum + frame.channels[c] - silent.frames[i].channels[c], 0) / DEG)
+      added.push(nod)
+      for (let i = 0; i < run.frames.length; i++) {
+        for (const c of yawRoll)
+          expect(run.frames[i].channels[c]).toBe(silent.frames[i].channels[c])
+      }
+      const found = strokes(run)
+      expect(found.length).toBeGreaterThanOrEqual(4)
+      for (const stroke of found) {
+        const major = peaks(0.5).find(peak => Math.abs(peak.at - stroke.onset) < BODY_TICK / 2)?.major
+        let apex = 0
+        for (let i = 0; i < run.frames.length; i++) {
+          if (Math.abs(run.frames[i].time - stroke.hit) < 0.3 && nod[i] > nod[apex])
+            apex = i
+        }
+        expect(nod[apex]).toBeCloseTo(major ? 3 : 1.8, 1)
+        expect(run.frames[apex].time).toBeGreaterThanOrEqual(stroke.hit - 3 * BODY_TICK - 1e-9)
+        expect(run.frames[apex].time).toBeLessThanOrEqual(stroke.hit + BODY_TICK + 1e-9)
+      }
+    }
+    // The same beat on top of a different gaze pitch: equal to the frame's float32 resolution (about 4e-7 degrees here).
+    expect(Math.max(...added[0].map((v, i) => Math.abs(v - added[1][i])))).toBeLessThan(1e-5)
+  })
+
+  it('drops Natural\'s emphasis nod from the head while a gesture unit performs', () => {
+    const head = [15, 16, 17, 18, 19, 20]
+    const utterances = [utterance(0.5, 0.65, peaks(0.5))]
+    const headEmphasis = (time: number) => time >= 0.6 && time < 6.5 ? 1 * DEG : 0
+    const plain = perform({ utterances }, 9)
+    const emphasised = perform({ utterances, headEmphasis }, 9)
+    const performing = plain.frames.flatMap((frame, i) => frame.gesture.phase !== 'rest' ? [i] : [])
+    expect(performing.length * BODY_TICK).toBeGreaterThan(5)
+    for (const i of performing) {
+      for (const c of head)
+        expect(emphasised.frames[i].channels[c]).toBe(plain.frames[i].channels[c])
+    }
+    // Without the gesture layers the same term moves the head.
+    const alone = perform({ utterances }, 9, { layers: false })
+    const aloneEmphasised = perform({ utterances, headEmphasis }, 9, { layers: false })
+    const moved = Math.max(...alone.frames.map((frame, i) => Math.abs(aloneEmphasised.frames[i].channels[19] - frame.channels[19])))
+    expect(moved).toBeGreaterThan(0.5 * DEG)
   })
 
   it('prepares the upper arm, then the elbow, then the wrist, then the fingers', () => {

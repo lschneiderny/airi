@@ -92,7 +92,7 @@ describe('performance layer stack', () => {
       { id: 'cue', order: 'cue', mode: 'additive', mask, plan: () => ({ suppressHeadCue: true }), step: () => ({ channels, weight: 0, sequence: 0 }), reset() {} },
     ]
     createBodyPerformer({ traits, seed: 1, layers }).step(quietInput())
-    expect(seen).toEqual([{ support: null, gaze: null, armForm: { side: 'left', form: 'hand-to-chest' }, suppressHeadCue: true }])
+    expect(seen).toEqual([{ support: null, gaze: null, armForm: { side: 'left', form: 'hand-to-chest' }, suppressHeadCue: true, suppressHeadEmphasis: false }])
   })
 
   it('reports the latest layer report and the gesture weight it applied per arm', () => {

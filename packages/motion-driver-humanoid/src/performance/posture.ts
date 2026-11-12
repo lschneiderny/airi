@@ -44,6 +44,8 @@ export class BodyPosture {
   gazeShifting = false
   /** Set by the performer each tick from the merged plan: the cue layer plays the head cue, so the accent drops it. */
   suppressHeadCue = false
+  /** Set by the performer each tick from the merged plan: a gesture unit plays the speech head beat, so the accent drops Natural's emphasis term. */
+  suppressHeadEmphasis = false
   /** Set by the performer each tick from the emotion modulation (4c): weight-shift rate and sway size, 1 at baseline. */
   tempo = 1
   amplitude = 1
@@ -147,7 +149,7 @@ export class BodyPosture {
         target += input.head.terms[term][axes[axis]]
       let accent = 0
       for (const term of accentTerms) {
-        if (term !== 'cue' || !this.suppressHeadCue)
+        if ((term !== 'cue' || !this.suppressHeadCue) && (term !== 'emphasis' || !this.suppressHeadEmphasis))
           accent += input.head.terms[term][axes[axis]]
       }
       const attitude = (target - (axis === 0 ? trunkUpper + trunkMid : 0)) * headGain + this.wanderSmooth[axis].y

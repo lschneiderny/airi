@@ -99,6 +99,18 @@ const AMPLITUDE = {
   torsoDecay: 0.5,
 } as const
 
+/**
+ * The speech head beat (probe option (b), E/g3/speech-head-probe.md): a pitch-down nod of neck and head together, 3
+ * degrees peak to peak for a major stroke (Graf, Cosatto, Strom and Huang 2002, Visual prosody, figure 4a: about 3 to 5
+ * degrees per accent nod; the low end), split as the posture and the cue nod split the head, the neck 30 ms first. It
+ * rises by minimum jerk over the stroke to its apex on the stroke's landing and returns over 0.25 s, so the whole nod
+ * spans two to four phones. A gaze that is not free takes 0.6, as every head accent does (`posture.ts`).
+ */
+const HEAD_BEAT = { degrees: 3 * DEG, neckShare: 0.35, neckLead: 0.03, back: 0.25, heldGaze: 0.6 } as const
+
+const NECK_PITCH = 16
+const HEAD_PITCH = 19
+
 type TrackState = 'rest' | 'preparation' | 'ready' | 'stroke' | 'hold' | 'recovery' | 'retraction' | 'form'
 
 interface Segment {
@@ -113,11 +125,16 @@ interface Segment {
   readonly durations: ArmPose
 }
 
-interface TorsoPulse {
+/** One stroke's trunk and head participation: the torso pulse peaks at 4a's stroke time, the head beat at the landing. */
+interface StrokeAccent {
   readonly start: number
   readonly hit: number
   readonly yaw: number
   readonly pitch: number
+  /** The end of the stroke's fed-forward profile, where the wrist lands. */
+  readonly landing: number
+  /** Neck and head pitch together, radians. */
+  readonly nod: number
 }
 
 const pose = (): ArmPose => new Float64Array(26)
@@ -136,7 +153,7 @@ class ArmTrack {
   readonly ready = pose()
   readonly key = pose()
   readonly segment: Segment = { from: pose(), velocity: pose(), to: pose(), start: 0, durations: pose().fill(1) }
-  readonly pulses: TorsoPulse[] = []
+  readonly accents: StrokeAccent[] = []
   state: TrackState = 'rest'
   weight = 0
   exitSeconds: number = TIMING.exit
@@ -265,20 +282,24 @@ class ArmTrack {
     return s.from[j] + (s.to[j] - s.from[j]) * shape + s.velocity[j] * decay
   }
 
-  torso(now: number): void {
+  /** Adds every live stroke's torso pulse and head beat; `head` scales the beat (a clip owning the head takes it). */
+  participate(now: number, head: number): void {
     this.additive.fill(0)
-    for (let i = this.pulses.length - 1; i >= 0; i--) {
-      const pulse = this.pulses[i]
-      const upper = pulseShape(pulse, now)
-      const mid = AMPLITUDE.torsoMidShare * pulseShape(pulse, now - AMPLITUDE.torsoMidLag)
-      if (now > pulse.hit + AMPLITUDE.torsoDecay + AMPLITUDE.torsoMidLag) {
-        this.pulses.splice(i, 1)
+    for (let i = this.accents.length - 1; i >= 0; i--) {
+      const accent = this.accents[i]
+      if (now > Math.max(accent.hit + AMPLITUDE.torsoDecay + AMPLITUDE.torsoMidLag, accent.landing + HEAD_BEAT.back)) {
+        this.accents.splice(i, 1)
         continue
       }
-      this.additive[12] += upper * pulse.yaw
-      this.additive[13] += upper * pulse.pitch
-      this.additive[9] += mid * pulse.yaw
-      this.additive[10] += mid * pulse.pitch
+      const upper = pulseShape(accent, now)
+      const mid = AMPLITUDE.torsoMidShare * pulseShape(accent, now - AMPLITUDE.torsoMidLag)
+      this.additive[12] += upper * accent.yaw
+      this.additive[13] += upper * accent.pitch
+      this.additive[9] += mid * accent.yaw
+      this.additive[10] += mid * accent.pitch
+      const neckApex = Math.max(accent.start + BODY_TICK, accent.landing - HEAD_BEAT.neckLead)
+      this.additive[NECK_PITCH] += head * HEAD_BEAT.neckShare * accent.nod * beatShape(accent.start, neckApex, now)
+      this.additive[HEAD_PITCH] += head * (1 - HEAD_BEAT.neckShare) * accent.nod * beatShape(accent.start, accent.landing, now)
     }
   }
 
@@ -298,18 +319,27 @@ class ArmTrack {
     this.preparedAt = Infinity
     this.fed = 0
     this.viaReady = false
-    this.pulses.length = 0
+    this.accents.length = 0
     this.warm = false
   }
 }
 
 /** Torso participation of one stroke: the stroke's own warped rise to its hit, then a minimum-jerk return. */
-function pulseShape(pulse: TorsoPulse, now: number): number {
+function pulseShape(pulse: StrokeAccent, now: number): number {
   if (now <= pulse.start)
     return 0
   if (now < pulse.hit)
     return minJerk(((now - pulse.start) / (pulse.hit - pulse.start)) ** 0.8)
   return 1 - minJerk((now - pulse.hit) / AMPLITUDE.torsoDecay)
+}
+
+/** The head beat's course: minimum jerk from the stroke's start to its apex, then back over `HEAD_BEAT.back`. */
+function beatShape(start: number, apex: number, now: number): number {
+  if (now <= start)
+    return 0
+  if (now < apex)
+    return minJerk((now - start) / (apex - start))
+  return 1 - minJerk((now - apex) / HEAD_BEAT.back)
 }
 
 /**
@@ -341,6 +371,11 @@ class GesturePerformer {
   constructor(private readonly traits: BodyRigTraits, private readonly seed: number) {
     this.random = createRandomStream(deriveSeed(seed, 140))
     this.reset()
+  }
+
+  /** A unit is under way: its strokes carry the head beat, so Natural's emphasis nod leaves the head (one posture). */
+  get performing(): boolean {
+    return this.unit.active
   }
 
   reset(): void {
@@ -551,7 +586,8 @@ class GesturePerformer {
     const sign = lead === 'left' ? 1 : -1
     const forward = GESTURE_FORMS[performed].stroke[2] > 0
     const gain = gestureGain(energy) * amplitude
-    leadTrack.pulses.push({ start: now, hit: now + GESTURE_FORMS[performed].strokeSeconds / tempo, yaw: sign * AMPLITUDE.torsoYaw * gain, pitch: forward ? AMPLITUDE.torsoPitch * gain : 0 })
+    const nod = HEAD_BEAT.degrees * amplitude * (input.gaze.kind === 'free' ? 1 : HEAD_BEAT.heldGaze)
+    leadTrack.accents.push({ start: now, hit: now + GESTURE_FORMS[performed].strokeSeconds / tempo, yaw: sign * AMPLITUDE.torsoYaw * gain, pitch: forward ? AMPLITUDE.torsoPitch * gain : 0, landing: leadTrack.phaseEnd, nod })
     unit.strokes++
     this.lastStroke = now
     if (major)
@@ -736,7 +772,7 @@ class GesturePerformer {
     }
     if (track.active || track.weight > 0)
       track.advance(now, this.tension)
-    track.torso(now)
+    track.participate(now, Math.max(0, Math.min(1, 1 - 2 * context.input.owned.head)))
     track.write()
   }
 
@@ -818,6 +854,7 @@ export function createGestureLayers(options: GestureLayerOptions): readonly [Per
       get exitSeconds() {
         return track.exitSeconds
       },
+      plan: () => performer.performing ? { suppressHeadEmphasis: true } : {},
       step: (context) => {
         performer.update(context)
         output.weight = track.weight
