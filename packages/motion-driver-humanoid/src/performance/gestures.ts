@@ -1,3 +1,4 @@
+import type { ArmKey } from './arm-key'
 import type { BodySide } from './channels'
 import type { BodyArmForm, BodyGestureHand, BodyGesturePhase, BodyGestureReport, BodyPerformanceInput, BodyRigTraits } from './contracts'
 import type { ArmPose, SpeechGestureForm } from './gesture-forms'
@@ -457,10 +458,8 @@ class GesturePerformer {
     for (const side of sides) {
       const track = this.tracks[side]
       this.captureHome(track, context)
-      track.ready.set(track.home)
-      writeHandShape('relaxed', track.ready)
       const swivel = twoHand && side !== this.dominant ? AMPLITUDE.nonDominantSwivel : 0
-      if (!this.keys.solve(side, this.keys.readyKey(energy, 0, swivel), track.ready, track.home, KEY_HEADROOM))
+      if (!this.solveReady(track, this.keys.readyKey(energy, 0, swivel)))
         continue
       this.begin(track, now)
       track.prepSeconds = track.move(track.ready, now, (0.25 + 0.35 * this.travel(side, track.home, track.ready)) / gestureTempo(energy), this.tension)
@@ -477,6 +476,21 @@ class GesturePerformer {
     this.report.form = null
     this.report.plannedHit = null
     this.report.hand = started.length === 2 ? 'both' : started[0]
+  }
+
+  /**
+   * Solves the ready key from the arm's home with the headroom of a key the arm settles on. Where no reachable key
+   * clears it (Ellen's low ready keys sit between her skirt colliders below energy 0.85), the key that clears the
+   * margin is used, so the unit still starts.
+   */
+  private solveReady(track: ArmTrack, key: ArmKey): boolean {
+    for (const headroom of [KEY_HEADROOM, 0]) {
+      track.ready.set(track.home)
+      writeHandShape('relaxed', track.ready)
+      if (this.keys?.solve(track.side, key, track.ready, track.home, headroom))
+        return true
+    }
+    return false
   }
 
   private stroke(context: PerformanceContext, now: number, major: boolean): void {

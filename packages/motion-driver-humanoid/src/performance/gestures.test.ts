@@ -8,7 +8,7 @@ import { ARM_START, BODY_TICK, channelIndex, DEG, JOINT_LIMITS, SIDES } from './
 import { ARM_FORMS, GESTURE_FORMS, GestureKeys, writeHandShape } from './gesture-forms'
 import { createGestureLayers } from './gestures'
 import { BodySkeleton, createBodyPerformer } from './index'
-import { chisaTraits, fixtureRigs, idleInput } from './performance.test-fixtures'
+import { chisaTraits, ellenTraits, fixtureRigs, idleInput } from './performance.test-fixtures'
 
 const traits = fixtureRigs[0].traits
 
@@ -250,6 +250,13 @@ describe('co-speech gestures', () => {
             expect(speed(i)).toBeLessThanOrEqual(0.5 * peak)
         }
       }
+    }
+  })
+
+  it.each([['chisa', chisaTraits], ['ellen', ellenTraits]] as const)('starts a unit at every speak energy on %s\'s real rig', (_, rig) => {
+    for (const energy of [0.45, 0.65, 0.85]) {
+      const run = perform({ utterances: [utterance(0.4, energy, peaks(0.4))], tension: 0 }, 3, { traits: rig, seed: 1 })
+      expect(run.frames.at(-1)?.gesture.unitSeq, `energy ${energy}`).toBe(1)
     }
   })
 
