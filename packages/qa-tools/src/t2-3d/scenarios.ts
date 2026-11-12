@@ -80,6 +80,12 @@ function chatTarget(random: RandomStream): { x: number, y: number } {
 
 const byTime = (a: Motion3dCue, b: Motion3dCue) => a.at - b.at
 
+/**
+ * Walk version 2 goals: scenario seconds and x in leg lengths. Each leg but the second reaches idle and turns to the
+ * camera before the next goal (a stop takes about 2 s at walk pace); the last goal fires only in runs longer than 60 s.
+ */
+const WALK_GOALS = [[0.5, 19.5], [26.5, 8], [31.5, 19], [42.5, 16], [50.5, 19], [60, 16]] as const
+
 function shuffled<T>(values: readonly T[], random: RandomStream): T[] {
   const result = [...values]
   for (let i = result.length - 1; i > 0; i--) {
@@ -242,21 +248,21 @@ export const motion3dScenarios: readonly Motion3dScenario[] = [
     },
   },
   {
-    version: 1,
+    /**
+     * Version 2 (goal 4, plan D1 as unit M revised it): every goal at walk pace (owner decision O5). A long leg to the
+     * right (about 22 s of walking, so the gate places three 10 s windows), back to the left, a goal behind her while she
+     * walks left (the turn-around), then short legs, for at least 8 turns in 60 s. Goals are in leg lengths and at
+     * least the director's goal dwell apart; only the seeded observation marker depends on the seed.
+     */
+    version: 2,
     id: 'walk',
     class: 'walk',
     warmupSeconds: 10,
-    seconds: 120,
-    timeline(seed, seconds) {
-      const random = createRandomStream(seed)
-      const duration = Math.min(seconds, 120)
-      return Array.from({ length: Math.ceil(duration / 60) }, (_, i): Motion3dCue => ({
-        at: i * 60 + random() * Math.min(1, duration - i * 60),
-        kind: 'goal',
-        x: i % 2 === 0 ? 30 : 0,
-        pace: random() < 0.5 ? 'stroll' : 'walk',
-      }))
-    },
+    seconds: 60,
+    timeline: (seed, seconds) => [
+      { at: createRandomStream(seed)() * Math.min(1, seconds), kind: 'marker', label: 'observe-walk' } satisfies Motion3dCue,
+      ...WALK_GOALS.map(([at, x]): Motion3dCue => ({ at, kind: 'goal', x, pace: 'walk' })),
+    ].filter(cue => cue.at < Math.min(seconds, 120)).sort(byTime),
   },
   {
     version: 1,

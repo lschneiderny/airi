@@ -1,3 +1,4 @@
+import { GOAL_MIN_DWELL_MS } from '@proj-airi/motion-driver-humanoid/director'
 import { PERFORMANCE_EMOTIONS } from '@proj-airi/stage-shared/expression-performance'
 import { LAYER_FADE_SECONDS } from '@proj-airi/stage-ui-mmd/composables/mmd/layer-fade'
 import { describe, expect, it } from 'vitest'
@@ -6,7 +7,7 @@ import { motion3dScenarios } from './scenarios'
 
 describe('motion3d scenario timelines', () => {
   // Default seed-1 counts; gaze count varies with seeded hold/return durations.
-  const counts = { 'idle': 1, 'gaze-shift': 18, 'speak': 11, 'gesture-under-clip': 9, 'emotions': 13, 'walk': 2, 'touch': 10 } as const
+  const counts = { 'idle': 1, 'gaze-shift': 18, 'speak': 11, 'gesture-under-clip': 9, 'emotions': 13, 'walk': 6, 'touch': 10 } as const
   it.each(motion3dScenarios)('replays $id for equal seeds and varies for another seed', (scenario) => {
     const first = scenario.timeline(1, scenario.seconds)
     expect(scenario.timeline(1, scenario.seconds)).toEqual(first)
@@ -42,15 +43,16 @@ describe('motion3d scenario timelines', () => {
     })
   })
 
-  it('walks thirty leg lengths out and back in separate sixty second legs', () => {
+  it('walks version 2: right, back left, a turn-around and short legs, every goal at walk pace and at least the director dwell apart', () => {
     const scenario = motion3dScenarios.find(scenario => scenario.id === 'walk')
     if (!scenario)
       throw new Error('Missing walk scenario')
-    const cues = scenario.timeline(1, 120)
-    expect(cues.map(cue => cue.kind === 'goal' ? cue.x : null)).toEqual([30, 0])
-    expect(cues[0].at).toBeLessThan(1)
-    expect(cues[1].at).toBeGreaterThanOrEqual(60)
-    expect(cues[1].at).toBeLessThan(61)
+    expect([scenario.version, scenario.seconds]).toEqual([2, 60])
+    for (const seed of [1, 2]) {
+      const goals = scenario.timeline(seed, 120).flatMap(cue => cue.kind === 'goal' ? [cue] : [])
+      expect(goals.map(goal => [goal.at, goal.x, goal.pace])).toEqual([[0.5, 19.5, 'walk'], [26.5, 8, 'walk'], [31.5, 19, 'walk'], [42.5, 16, 'walk'], [50.5, 19, 'walk'], [60, 16, 'walk']])
+      goals.slice(1).forEach((goal, i) => expect(goal.at - goals[i].at).toBeGreaterThanOrEqual(GOAL_MIN_DWELL_MS / 1000))
+    }
   })
 
   it.each([1, 2, 3])('speaks version 2 for seed %i: fifteen peaks at least 0.9 s apart, three energies and one chat reply', (seed) => {

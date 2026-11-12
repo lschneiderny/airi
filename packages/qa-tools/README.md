@@ -53,8 +53,17 @@ While a cue holds a cursor, the runner circles it around the target by one
 degree of visual angle at 1 Hz, as a hand resting on the mouse does. Natural keeps its
 cursor attention only while the cursor moves, so a cursor held perfectly
 still would lose her gaze after about a second and a half, as it does in the app.
-`walk` defaults to 120 s with two alternating goals at thirty and zero leg
-lengths, 60 s apart, allowing each leg to reach steady walking.
+`walk` (version 2, goal 4) defaults to 60 s, every goal at walk pace: a leg to
++19.5 leg lengths at 0.5 s (about 22 s of walking, enough for three 10 s gate
+windows), back to the left toward +8 at 26.5 s, a goal behind her at +19 at
+31.5 s while she walks left (she brakes and turns around through 180 degrees),
+then short legs to +16 at 42.5 s and +19 at 50.5 s; a last goal to +16 at 60 s
+fires only in longer runs. Each leg but the interrupted one stops (about 2 s)
+and turns to the camera before the next goal, for 9 turns in 60 s (the gate's
+`gait.headLeadMs` needs 8 turn episodes). Only a seeded
+`observe-walk` marker depends on the seed. Version 1 (one seeded-pace goal
+per 60 s, no return and no turn-around) is no longer selectable;
+`qa:stage capture --scenario walk` replays the same version 2 goals.
 Touch is reported only and has no human reference.
 
 `emotions` defaults to 120 s: six clear pulses and two placebos, spaced 12 s
