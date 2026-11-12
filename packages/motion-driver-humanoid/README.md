@@ -449,6 +449,18 @@ degrees to the side while the upper torso follows the head's turn through a
 terms. Every term is additive and starts and ends at rest with zero slope;
 owned groups receive none.
 
+`createReactionLayer()` (`src/performance/reactions.ts`, not yet registered) adds
+architecture 4d's touch reactions. A body poke flinches the mid torso, pelvis and
+the poked side's shoulder and elbow away from the point (and bends the belly in
+on a low poke) through a 3.5 Hz, 0.45-damped step released after 0.25 s, which
+peaks at 0.16 s and rings once. A poke within Natural's 2 s dedupe window
+flinches at 0.6. A head poke lifts both shoulders and lets the upper torso
+follow 30 % of Natural's head pulse, 90 ms late. A pet drops the shoulders and
+bends the trunk with its level, rolls the trunk toward the hand, pulls the
+support to the hand's side above half level, eases the finger curl, and lets the
+trunk follow Natural's stroke rock (0.35 upper, 0.18 mid). Arm terms yield to an
+arm a gesture layer moves; owned groups receive none. Drag is not realised yet.
+
 `gait.channels` is already mapped to this table: pelvis, hips and feet override
 by gait weight, and torso/arm terms add. `armLift` is the existing hang solver's
 per-side abduction addition, in radians. No gait or clip contract changes here.
