@@ -198,6 +198,18 @@ export const CHARACTER_STATE_SETTINGS = deepFreeze({
     channelShare: 0.35,
     filterTauMs: 1_500,
   },
+  /** How the slower state shapes self-directed idle behaviour; see `idleDriveOf`. */
+  idle: {
+    /**
+     * Her night, in local hours: sleepiness rises from `fromHour` to 1 at `deepHour`, stays there until `untilHour`,
+     * and is gone by `clearHour`. It follows the late sign-off window of the reach-out rituals.
+     */
+    night: { fromHour: 22, deepHour: 1, untilHour: 5, clearHour: 7 },
+    /** Time without an interaction after which solitude is half-way to 1. */
+    solitudeHalfLifeMs: 30 * MINUTE_MS,
+    /** Solitude before any interaction: she neither just talked nor has been alone for long. */
+    solitudeUnknown: 0.5,
+  },
 })
 
 export type CharacterStateSettings = typeof CHARACTER_STATE_SETTINGS

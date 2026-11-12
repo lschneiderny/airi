@@ -114,6 +114,8 @@ export const MotionQaConfigureInputSchema = strictObject({
   expressionEnabled: optional(boolean()),
   heldEmotions: optional(boolean()),
   screenAwareness: optional(boolean()),
+  /** The persisted Natural idle-activities setting; a gate that scores the base idle motion pins it off. */
+  idleActivities: optional(boolean()),
 })
 
 export const MotionQaImportModelInputSchema = strictObject({ inputId: nonEmpty, kind: optional(picklist(['live2d', 'mmd', 'vrm'])) })

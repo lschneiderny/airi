@@ -171,7 +171,7 @@ describe('renderSituation', () => {
     expect(renderSituation(state, T0 + 3 * MIN).text.split('\n')[1]).toBe('- Now: Chrome (browser), for about 3 min')
   })
 
-  it('keeps 20 events and 6 long contexts within 6 lines and 500 chars', () => {
+  it('keeps 20 events and 6 long contexts within 7 lines and 600 chars', () => {
     const long = 'The screen shows a very long description of many things happening at once '.repeat(8)
     const state = stateWith({
       presence: fullState.presence,
@@ -183,8 +183,8 @@ describe('renderSituation', () => {
       events: Array.from({ length: 20 }, (_, i) => event({ id: `e${i}`, text: `event number ${i}`, atMs: T0 + i * SEC })),
     })
     const { text } = renderSituation(state, T0 + 20 * MIN)
-    expect(text.split('\n').length).toBeLessThanOrEqual(6)
-    expect(text.length).toBeLessThanOrEqual(500)
+    expect(text.split('\n').length).toBeLessThanOrEqual(7)
+    expect(text.length).toBeLessThanOrEqual(600)
     const wide = renderSituation(state, T0 + 20 * MIN, { maxLines: 40, maxChars: 5000 }).text.split('\n')
     for (const line of wide.filter(l => l.includes('The screen shows')))
       expect(line.length - 2).toBeLessThanOrEqual(120)

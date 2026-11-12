@@ -1,5 +1,6 @@
 export * from './cue'
 export * from './face'
+export * from './idle'
 export * from './migrate'
 export * from './mood'
 export * from './reading'

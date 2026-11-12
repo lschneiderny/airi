@@ -126,6 +126,41 @@ export interface TouchObservation {
   readonly durationMs?: number
 }
 
+/**
+ * Something the character does on her own on the stage, as a renderer reports it. The first group is the Natural
+ * driver's idle activities, `held-back` is a reach-out she decided against, and the last group needs a 3D body:
+ * sitting down, walking, and playing a clip from her library unasked.
+ */
+export type SelfActivity
+  = | 'stretch'
+    | 'yawn'
+    | 'look-around'
+    | 'check-in'
+    | 'peer'
+    | 'zone-out'
+    | 'nod-off'
+    | 'sway'
+    | 'sleep'
+    | 'held-back'
+    | 'sit'
+    | 'wander'
+    | 'visit'
+    | 'go-home'
+    | 'clip'
+
+/**
+ * The character started or ended a self-directed activity. A momentary one may report only its end. It never becomes
+ * an event, so the gate cannot pick it as a topic: it only tells the model what she was doing.
+ */
+export interface SelfObservation {
+  readonly kind: 'self'
+  readonly activity: SelfActivity
+  readonly phase: 'start' | 'end'
+  /** The user-given label of a `clip`; ignored for other activities. */
+  readonly label?: string
+  readonly atMs: number
+}
+
 /** One input to the situation reducer. Every variant is JSON-serializable. */
 export type Observation
   = | PresenceObservation
@@ -137,6 +172,7 @@ export type Observation
     | StageObservation
     | BusyObservation
     | TouchObservation
+    | SelfObservation
 
 /** Kinds of events the reducer derives from observations. */
 export type SituationEventKind
@@ -225,6 +261,29 @@ export interface SituationBusy {
   readonly atMs: number | null
 }
 
+/** A self-directed activity in progress. */
+export interface SituationSelfCurrent {
+  readonly activity: SelfActivity
+  /** The label of a `clip`, otherwise `null`. */
+  readonly label: string | null
+  readonly sinceMs: number
+}
+
+/** A self-directed activity that ended. `durationMs` is 0 when only its end was reported. */
+export interface SituationSelfPast {
+  readonly activity: SelfActivity
+  readonly label: string | null
+  readonly endedAtMs: number
+  readonly durationMs: number
+}
+
+/** What the character has been doing on her own. */
+export interface SituationSelf {
+  readonly current: SituationSelfCurrent | null
+  /** At most {@link SELF_RECENT_MAX} entries, newest first. */
+  readonly recent: readonly SituationSelfPast[]
+}
+
 /**
  * Bookkeeping the reducer needs between calls: settle, tier and burst progress,
  * and stale-observation guards. Plain JSON.
@@ -275,6 +334,8 @@ export interface SituationState {
   readonly contexts: Readonly<Record<string, SituationContext>>
   readonly stage: SituationStage | null
   readonly busy: SituationBusy
+  /** Her own activity on the stage; rendered for the model, never a gate topic. */
+  readonly self: SituationSelf
   /** Ring of at most {@link SITUATION_EVENTS_MAX} events, oldest first. */
   readonly events: readonly SituationEvent[]
   /** The largest `nowMs` seen, or `null` before the first update. Time never runs backwards. */
@@ -285,6 +346,13 @@ export interface SituationState {
 
 /** Length cap of {@link SituationState.recentActivities}. */
 export const RECENT_ACTIVITIES_MAX = 5
+/**
+ * Activities that last: a sleep or a sit goes on while short ones (a yawn, a look around) come and go inside it.
+ * Every other activity is momentary.
+ */
+export const SELF_LONG_LIVED: ReadonlySet<SelfActivity> = new Set<SelfActivity>(['sleep', 'sit'])
+/** Length cap of {@link SituationSelf.recent}. */
+export const SELF_RECENT_MAX = 3
 /** Length cap of {@link SituationState.events}. */
 export const SITUATION_EVENTS_MAX = 32
 
@@ -296,6 +364,7 @@ export const initialSituationState: SituationState = Object.freeze({
   contexts: Object.freeze({}),
   stage: null,
   busy: Object.freeze({ state: 'unknown', atMs: null }),
+  self: Object.freeze({ current: null, recent: Object.freeze([]) }),
   events: Object.freeze([]),
   nowMs: null,
   tracking: Object.freeze({

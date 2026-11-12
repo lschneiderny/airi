@@ -182,6 +182,7 @@ The `situation` entrypoint owns the pure core of situational presence: observati
 - `renderSituation` renders the bounded `[Situation HH:MM]` block and returns the ids of the events that it showed as new. Pass them to `markShown`, so the next block does not repeat them.
 - `evaluateUrgeGate` integrates a seeded urge against the current hazard, selects an eligible screen event or inner reason, and returns the next gate memory. `recordUrgeFireOutcome`, `recordUrgeUserTurn`, and `recordExternalSpeech` update social state. Only the urge gate exists; `hardReason` in `gate.ts` holds the hard contract that it checks first.
 - A `TouchObservation` (a finished pet or a poke) becomes one situation event under `TOUCH_TOPIC_KEY`, which each new touch replaces. Its `New:` line tells the model about the touch, and the urge gate never picks it as a topic.
+- A `SelfObservation` reports the start or the end of something the character does on her own (a yawn, a doze, a walk, an unasked clip). The reducer keeps it in `SituationState.self`, never as an event, so the urge gate cannot pick it. `selfLine` renders it as one line of the block, and `selfHint` anchors the own-day reason to it.
 - `reactionPolicy` decides whether a touch (a long enough pet, or a burst of pokes) gets a short line, and `settleReaction` records the outcome. It never goes through the urge gate: it has its own pacing, its own random checkpoint, and a subset of the hard suppressors that skips presence, stale signals, and busy states.
 - `normalizeWindowTitle`, `appIdFromExe`, `labelFromExe`, `categorizeApp`, and `isDenylisted` turn a foreground sample into an app id, label, category, and model-facing title.
 
@@ -237,6 +238,8 @@ World units are model units, right-handed with +Y up: x = `originX` is the work 
 ## Character state
 
 The `character-state` module holds the character's inner state on three clocks: mood (hours), temperament (days), and relationship (weeks to months). The moment layer stays in the Natural motion driver. The pure reducer takes explicit time and returns its memory, so the same events at the same times give the same state. `applyEvent` applies one event, `advance` moves the state to a time, `readCharacter` returns the reading the app uses, and `renderCharacterContext` returns the `system:character` text. The stage-ui character-state store is the app's entry point. Rendered text has no digits, and a resting state renders nothing.
+
+`idleDriveOf` derives what shapes her self-directed idle behaviour from a reading, the time, and the local hour: mood relative to the resting disposition, `sleepinessAt` the hour, and solitude since the last interaction. The stage sends it to the Natural driver; the [idle agency ADR](../../docs/ai/adr/2026-11-12-idle-agency.md) records the rules.
 
 The tuning constants live in `src/character-state/settings.ts`. The [layered character state ADR](../../docs/ai/adr/2026-11-03-layered-character-state.md) lists them with the rules that use them and the known gaps in the starting values.
 
