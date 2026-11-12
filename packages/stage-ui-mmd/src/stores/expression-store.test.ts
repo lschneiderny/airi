@@ -2,6 +2,7 @@ import type { ExpressionMorphSink } from './expression-store'
 
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { isReactive } from 'vue'
 
 import { chisaMorphs, ellenLikeMorphs, morphInfos } from '../utils/expression-catalog/pmx-morph-fixtures'
 import { useMMDExpressionStore } from './expression-store'
@@ -130,6 +131,20 @@ describe('mmd expression store', () => {
     expect(second.catalog.find(entry => entry.id === 'mmd:3:笑い')).toMatchObject({ kind: 'effect', exposedToLlm: false })
     expect(second.llmEligibleEntries.some(entry => entry.id === 'mmd:3:笑い')).toBe(false)
     expect(second.settingsSnapshot).toMatchObject({ modelId: 'display-model-a', activeIds: ['mmd:18:にこり'], restIds: ['mmd:18:にこり'] })
+  })
+
+  // Every speech event that touches a lease re-reads the catalog in the panel snapshot and the expression decision; on
+  // reactive entries each field read is tracked, which cost about 9 ms on Chisa's 176 entries at the end of a turn.
+  it('keeps catalog entries plain data while curation edits still replace the catalog', () => {
+    const store = useMMDExpressionStore()
+    store.registerMorphs('display-model-chisa', morphInfos(chisaMorphs))
+    store.applySettingsCommand({ type: 'update-entry', id: 'mmd:25:笑い', patch: { label: 'Grin' } })
+    store.applySettingsCommand({ type: 'create-combo', combo: { label: 'Bright', members: [{ expressionId: 'mmd:25:笑い', strength: 0.6 }, { expressionId: 'mmd:6:にこり', strength: 1 }] } })
+
+    expect(store.catalog.find(entry => entry.id === 'mmd:25:笑い')?.label).toBe('Grin')
+    expect(store.catalog.some(entry => entry.kind === 'combo' && entry.label === 'Bright')).toBe(true)
+    const reactive = store.catalog.filter(entry => isReactive(entry) || isReactive(entry.parameterIds) || isReactive(entry.mappings))
+    expect(reactive.map(entry => entry.id)).toEqual([])
   })
 
   it('discards corrupt stored documents through the schema and keeps working', () => {

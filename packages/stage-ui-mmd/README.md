@@ -639,7 +639,9 @@ loaded model. `applySlots`, `onSpeech` and `activate` take explicit times in
 seconds, and `update(now)` must run once per frame: it expires leases, advances
 the fades and writes the morph-runtime `expression` layer. A finished release
 clears its channel instead of holding a zero weight. The store ignores an
-unknown expression id and warns once per model.
+unknown expression id and warns once per model. The derived catalog and the
+curated document are replaced whole, never edited in place, so `catalog`
+entries are plain data: reading them on a lease change tracks no entry fields.
 
 ### Settings, expression panel, and Motion Lab
 

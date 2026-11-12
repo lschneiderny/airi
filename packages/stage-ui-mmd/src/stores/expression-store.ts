@@ -7,7 +7,7 @@ import type { SlotLeases, SlotLeaseSettings, SlotName, SpeechEvent } from './exp
 import { errorMessageFrom } from '@moeru/std'
 import { defaultExpressionPerformanceSettings, entrySlots, expandEntry, isAutoEligible, isLlmEligible, mergeCatalog, parseCuratedCatalogDocument, parseRestSet, resolveAlias, validateComboDocument } from '@proj-airi/stage-shared/expression-performance'
 import { defineStore } from 'pinia'
-import { computed, markRaw, ref } from 'vue'
+import { computed, markRaw, ref, shallowRef } from 'vue'
 
 import { deriveMMDCatalog } from '../utils/expression-catalog/derive'
 import { applySpeechEvent, createLease, emptyLeases, ExpressionFader, leaseReleaseAt, slotNames, speechEvents } from './expression-slots'
@@ -93,8 +93,10 @@ function resolveClaims(claims: readonly Claim[], catalog: readonly CatalogEntry[
 /** Local to the renderer that owns the MMD model; other windows use snapshots and commands. */
 export const useMMDExpressionStore = defineStore('mmd-expressions', () => {
   const modelId = ref('')
-  const derived = ref<CatalogEntry[]>([])
-  const curated = ref<CuratedCatalogDocument>({ version: 1, overrides: [] })
+  // Both documents are only ever replaced whole, so shallow refs keep their entries plain: the panel snapshot, the claim
+  // resolver and the conductor read every entry on each lease change, and deep proxies made each read a tracked access.
+  const derived = shallowRef<CatalogEntry[]>([])
+  const curated = shallowRef<CuratedCatalogDocument>({ version: 1, overrides: [] })
   const catalog = computed(() => mergeCatalog(derived.value, curated.value))
   const llmEligibleEntries = computed(() => catalog.value.filter(isLlmEligible))
   const autoEligibleEntries = computed(() => catalog.value.filter(isAutoEligible))
