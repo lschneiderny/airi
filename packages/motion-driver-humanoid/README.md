@@ -529,7 +529,11 @@ channel of a segment also stays within that slope, so a large forearm, wrist or
 finger turn arrives after the hit, and each new segment continues the planned
 motion's velocity, never the inverse's. The report marks a stroke at the apex the lead wrist actually shows
 on the performer's output, so a marker's time is the motion's. The layers also
-hold `plan.armForm` (hand to chest, thinking hand) at contact anchors; an arm
+hold `plan.armForm` (hand to chest, thinking hand) at contact anchors found as
+architecture 6.3 says: a hand point marches in from 1 A in front of the seed to
+the body's surface, and the key backs off from it while the elbow swings out,
+until the pose and its path from rest clear the proxies (the pose with the ready
+key's headroom) with every joint 2 degrees inside its limit; an arm
 keeps whichever performance holds it, and speech uses the other hand. Any clip
 claim on a performing arm takes it within 90 ms. Without speech or an arm form
 the layers stay at weight 0 and the output is bit-identical to having none.

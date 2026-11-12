@@ -187,6 +187,22 @@ export class BodyCollision {
     return d
   }
 
+  /** Signed distance, model units, from a point to the nearest collider as last prepared; Infinity with none. */
+  distance(x: number, y: number, z: number): number {
+    let nearest = Infinity
+    for (let i = 0; i < this.colliders.length; i++) {
+      const frame = this.posed[i]
+      const px = x - frame[9]
+      const py = y - frame[10]
+      const pz = z - frame[11]
+      this.point.x = frame[0] * px + frame[3] * py + frame[6] * pz
+      this.point.y = frame[1] * px + frame[4] * py + frame[7] * pz
+      this.point.z = frame[2] * px + frame[5] * py + frame[8] * pz
+      nearest = Math.min(nearest, colliderDistance(this.colliders[i], this.point, this.normal))
+    }
+    return nearest
+  }
+
   /** Clears each arm; an arm that no pose clears keeps its last valid pose while every other channel moves on. */
   correct(channels: Float32Array, tick: number): void {
     this.prepare(channels)

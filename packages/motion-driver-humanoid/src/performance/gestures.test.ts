@@ -4,8 +4,8 @@ import type { PerformanceLayer } from './stack'
 import { describe, expect, it } from 'vitest'
 
 import { ARM_NOISE_DEGREES } from './arms'
-import { ARM_START, BODY_TICK, channelIndex, DEG, SIDES } from './channels'
-import { GESTURE_FORMS, GestureKeys, writeHandShape } from './gesture-forms'
+import { ARM_START, BODY_TICK, channelIndex, DEG, JOINT_LIMITS, SIDES } from './channels'
+import { ARM_FORMS, GESTURE_FORMS, GestureKeys, writeHandShape } from './gesture-forms'
 import { createGestureLayers } from './gestures'
 import { BodySkeleton, createBodyPerformer } from './index'
 import { chisaTraits, fixtureRigs, idleInput } from './performance.test-fixtures'
@@ -439,6 +439,25 @@ describe('co-speech gestures', () => {
           const size = Math.max(0.5, Math.min(1.5, 0.55 + 0.9 * energy)) * GESTURE_FORMS[form].scale
           expect(keys.solve(side, keys.strokeKey(keys.readyKey(energy, outward), form, size), stroke, ready)).toBe(true)
           expect(keys.pathDepth(side, ready, stroke)).toBe(0)
+        }
+      }
+    }
+  })
+
+  it.each([...fixtureRigs, { name: 'chisa', traits: chisaTraits }])('reaches both emotion arm forms elbow out, clear from rest and 2 degrees inside every limit, on $name', ({ traits: rig }) => {
+    const rest = createBodyPerformer({ traits: rig, seed: 1 }).restChannels()
+    const keys = new GestureKeys(rig, rest)
+    for (const side of SIDES) {
+      const start = ARM_START[side]
+      const from = new Float64Array(rest.subarray(start, start + 26))
+      for (const form of ['hand-to-chest', 'thinking-hand'] as const) {
+        const pose = from.slice()
+        writeHandShape(ARM_FORMS[form].shape, pose)
+        expect(keys.armForm(side, form, pose), `${side} ${form}`).toBe(true)
+        expect(keys.pathDepth(side, from, pose)).toBe(0)
+        for (let j = 2; j <= 8; j++) {
+          const [min, max] = JOINT_LIMITS[start + j]
+          expect(Math.min(pose[j] - min, max - pose[j]) / DEG, `${side} ${form} joint ${j}`).toBeGreaterThanOrEqual(2)
         }
       }
     }

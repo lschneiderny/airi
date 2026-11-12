@@ -42,11 +42,12 @@ export const GESTURE_FORMS: Readonly<Record<SpeechGestureForm, GestureFormSpec>>
 
 /**
  * The emotion-requested arm forms (4a): hand shape, palm orientation and the contact anchor they reach for; the
- * thinking hand stops 0.04 A short of its chin anchor.
+ * thinking hand stops 0.04 A short of its chin anchor. `anchor` moves the seed toward the arm's own side and up, in
+ * arm lengths: the hand rests on the upper chest beside the sternum, and comes to the chin and jaw from the side.
  */
-export const ARM_FORMS: Readonly<Record<BodyArmForm, { readonly shape: HandShape, readonly pron: number, readonly wflex: number, readonly swivel: number, readonly short: number }>> = {
-  'hand-to-chest': { shape: 'relaxed', pron: 75 * DEG, wflex: -10 * DEG, swivel: 25 * DEG, short: 0 },
-  'thinking-hand': { shape: 'point', pron: 20 * DEG, wflex: -20 * DEG, swivel: 10 * DEG, short: 0.04 },
+export const ARM_FORMS: Readonly<Record<BodyArmForm, { readonly shape: HandShape, readonly pron: number, readonly wflex: number, readonly swivel: number, readonly short: number, readonly anchor: { readonly side: number, readonly up: number } }>> = {
+  'hand-to-chest': { shape: 'relaxed', pron: 75 * DEG, wflex: -10 * DEG, swivel: 25 * DEG, short: 0, anchor: { side: 0.05, up: 0.05 } },
+  'thinking-hand': { shape: 'point', pron: 20 * DEG, wflex: -20 * DEG, swivel: 10 * DEG, short: 0.04, anchor: { side: 0.1, up: 0 } },
 }
 
 /** Architecture 4a's energy gain on stroke size, energy in [0, 1]. */
@@ -76,7 +77,16 @@ export const KEY_HEADROOM = 0.05
 const PUSH_STEPS = 8
 const PUSH_STEP = 0.02
 const PATH_SAMPLES = 10
-const ANCHOR_STEPS = 30
+/**
+ * Architecture 6.3's anchor march, in arm lengths: the hand point starts this far in front of the seed, steps in, and
+ * stops this far beyond the hand capsule's radius from the nearest collider. A key then backs off from the anchor in
+ * steps, as far as `backOff`, while the elbow swings out from the form's swivel to `swivel`.
+ */
+const ANCHOR = { start: 1, step: 0.005, clearance: 0.01, backOffStep: 0.01, backOff: 0.2, swivelStep: 5 * DEG, swivel: 80 * DEG } as const
+/** No joint of an arm form sits within this of its limit. */
+const LIMIT_MARGIN = 2 * DEG
+/** The corrector's capsule radius as a share of its segment: the hand is the extended forearm's capsule. */
+const HAND_RADIUS = 0.15
 /**
  * A rig without forearm twist bones holds pronation inside 60 degrees (the performer clamps it there); keys stay 5
  * degrees inside, the active forearm follower's overshoot (zeta 0.7, about 5 % of a 90 degree turn).
@@ -114,6 +124,8 @@ export class GestureKeys {
   private readonly collision: BodyCollision
   private readonly lengths: Record<BodySide, { readonly upper: number, readonly forearm: number }>
   private readonly scratch: Float32Array
+  /** Each arm's rest pose, where an arm form's path starts. */
+  private readonly restArms: Record<BodySide, ArmPose>
 
   constructor(private readonly traits: BodyRigTraits, private readonly rest: Float32Array) {
     this.skeleton = new BodySkeleton(traits)
@@ -124,6 +136,7 @@ export class GestureKeys {
       return { upper: Math.hypot(arm.upperArm.x, arm.upperArm.y, arm.upperArm.z), forearm: Math.hypot(arm.forearm.x, arm.forearm.y, arm.forearm.z) }
     }
     this.lengths = { left: lengths('left'), right: lengths('right') }
+    this.restArms = { left: Float64Array.from(rest.subarray(ARM_START.left, ARM_START.left + 26)), right: Float64Array.from(rest.subarray(ARM_START.right, ARM_START.right + 26)) }
     this.collision.prepare(rest)
     this.skeleton.update(rest)
   }
@@ -144,9 +157,18 @@ export class GestureKeys {
   }
 
   /**
-   * Solves an emotion arm form into `pose` at its contact anchor (6.3): the hand target marches from 0.3 A in front of
-   * the seed toward it, and the closest clear key is kept. Chest seed: between the shoulder joints, 0.15 A lower. Chin
-   * seed: the head bone pushed forward and down by 0.6 of the neck-to-head length. False when no clear key exists.
+   * Solves an emotion arm form into `pose` the way a person reaches it (architecture 6.3, plan 3.1):
+   *
+   * - The anchor: a hand point marches from 1 A in front of the form's seed toward it until it is the hand capsule's
+   *   radius plus 0.01 A from the nearest collider, so the hand stops at the body's surface (with no collider near,
+   *   at the seed). Chest seed: between the shoulder joints, 0.15 A lower; chin seed: the head bone pushed forward and
+   *   down by 0.6 of the neck-to-head length; each moved by the form's `anchor` toward the arm's own side and up.
+   * - The key: from the anchor (the thinking hand `short` of it) the hand backs off along the approach in 0.01 A
+   *   steps, and at each step the elbow swings out from the form's swivel to 80 degrees. A key counts when every joint
+   *   is 2 degrees inside its limit and the pose and the angle path from the rest arm clear the proxies; the first
+   *   step with one wins, with the swivel that leaves the most limit margin.
+   *
+   * False when no step within 0.2 A of the anchor has such a key.
    */
   armForm(side: BodySide, form: BodyArmForm, pose: ArmPose): boolean {
     const spec = ARM_FORMS[form]
@@ -158,22 +180,33 @@ export class GestureKeys {
     const seed = form === 'hand-to-chest'
       ? { x: 0, y: (traits.arms.left.shoulder.y + traits.arms.right.shoulder.y) / 2 - 0.15 * length, z: (traits.arms.left.shoulder.z + traits.arms.right.shoulder.z) / 2 }
       : { x: 0, y: traits.head.y - 0.6 * neckToHead, z: traits.head.z + 0.6 * neckToHead }
-    const target = (fraction: number): [number, number, number] => [
-      sigma * (seed.x - shoulder.x) / length,
-      (seed.y - shoulder.y) / length,
-      (seed.z + 0.3 * length * (1 - fraction) - shoulder.z) / length,
-    ]
-    let found = -1
-    for (let step = 0; step <= ANCHOR_STEPS; step++) {
-      if (!this.solveOnce(side, { hand: target(step / ANCHOR_STEPS), swivel: spec.swivel, pron: spec.pron, wflex: spec.wflex, wdev: 0 }, pose) || !this.clear(side, pose, null))
+    seed.x += sigma * spec.anchor.side * length
+    seed.y += spec.anchor.up * length
+    const reach = HAND_RADIUS * this.lengths[side].forearm + ANCHOR.clearance * length
+    let surface = seed.z
+    for (let z = seed.z + ANCHOR.start * length; z > seed.z; z -= ANCHOR.step * length) {
+      if (this.collision.distance(seed.x, seed.y, z) <= reach) {
+        surface = z
         break
-      found = step
+      }
     }
-    if (found < 0)
-      return false
-    const hand = target(found / ANCHOR_STEPS)
-    hand[2] += spec.short
-    return this.solveOnce(side, { hand, swivel: spec.swivel, pron: spec.pron, wflex: spec.wflex, wdev: 0 }, pose) && this.clear(side, pose, null)
+    for (let back = spec.short; back <= spec.short + ANCHOR.backOff + 1e-9; back += ANCHOR.backOffStep) {
+      const hand: [number, number, number] = [sigma * (seed.x - shoulder.x) / length, (seed.y - shoulder.y) / length, (surface + back * length - shoulder.z) / length]
+      let margin = -1
+      let swivel = spec.swivel
+      for (let candidate = spec.swivel; candidate <= ANCHOR.swivel + 1e-9; candidate += ANCHOR.swivelStep) {
+        if (!this.solveOnce(side, { hand, swivel: candidate, pron: spec.pron, wflex: spec.wflex, wdev: 0 }, pose))
+          continue
+        const inside = this.limitMargin(side, pose)
+        if (inside >= LIMIT_MARGIN && inside > margin && this.deepest(side, pose, this.restArms[side], KEY_HEADROOM) === null) {
+          margin = inside
+          swivel = candidate
+        }
+      }
+      if (margin >= 0)
+        return this.solveOnce(side, { hand, swivel, pron: spec.pron, wflex: spec.wflex, wdev: 0 }, pose)
+    }
+    return false
   }
 
   /**
@@ -234,8 +267,14 @@ export class GestureKeys {
     return true
   }
 
-  private clear(side: BodySide, pose: ArmPose, from: ArmPose | null): boolean {
-    return this.deepest(side, pose, from) === null
+  /** The smallest distance, radians, of the arm joints (flex to wrist deviation) of `pose` from their limits. */
+  private limitMargin(side: BodySide, pose: ArmPose): number {
+    let margin = Infinity
+    for (let j = 2; j <= 8; j++) {
+      const [min, max] = JOINT_LIMITS[ARM_START[side] + j]
+      margin = Math.min(margin, pose[j] - min, max - pose[j])
+    }
+    return margin
   }
 
   /** The outward normal at the deepest contact of `pose` or of the path to it from `from`, or null when all is clear. */
