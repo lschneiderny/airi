@@ -38,6 +38,7 @@ const stillInput: BodyPerformanceInput = {
   directive: { stance: 'stand', rest: 'none', act: null },
   facingYaw: 0,
   allowTurn: false,
+  viewerYaw: 0,
   dragging: false,
   attention: { approach: 0, cursorShare: 0 },
   rootVelocity: { x: 0, y: 0, z: 0 },

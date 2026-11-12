@@ -88,7 +88,10 @@ applying these angles. Neither helper imports renderer math types.
 A continuous yaw error above 60 degrees starts a turn after 0.5 seconds; an
 error above 90 degrees starts immediately. Turns finish planted steps, aim for
 15 degrees remaining, stop below 20 degrees, and wait 1.5 seconds before
-restarting. `turnSteps` contains events emitted once at step start, alternating
+restarting. Pass `home: true` when the target is where the body rests facing,
+such as the viewer: a continuous error above 20 degrees then starts a turn after
+the same dwell, and the turn takes equal steps of at most 22.5 degrees that end
+on the target. `turnSteps` contains events emitted once at step start, alternating
 left/right feet, each lasting 0.4 seconds with at most 22.5 degrees of signed yaw
 (45 degrees per pair). The facing follows each step on a minimum-jerk profile,
 so it starts and ends every step at rest. Event timestamps are elapsed seconds since controller
@@ -353,8 +356,9 @@ and head sphere. Only kinematic obstacles belong here.
 `BodyPerformanceInput.head.attitude` is Natural's posture alone, converted to
 radians, and `head.terms` keeps the six other terms separate. `head.slow` is the
 slow posture component. The adapter reads `controller.bodyIntent()`, resolves
-the gaze goal, converts Natural units, and maps breath, voice, mood, energy,
-latest event records, directive, clip ownership and root velocity. Inputs are
+the gaze goal and the viewer's direction (`viewerYaw`, the camera before
+Natural's fixation deflects it), converts Natural units, and maps breath, voice,
+mood, energy, latest event records, directive, clip ownership and root velocity. Inputs are
 finite; amplitudes/rates are nonnegative, weights/tension/voice are [0,1],
 valence/arousal and forced support are [-1,1]. Event times are active seconds.
 Positive support names the RIGHT foot, so its pelvis displacement is negative X.
@@ -413,8 +417,11 @@ the rig's eye limits; `eyes` is the canonical FK residual for diagnostics.
 Large unreachable shifts saturate the eyes until head/body turning catches up.
 `lidClose` is closure [0,1], whereas Natural's `blinkFactor` is openness:
 the adapter combines `max(1 - blinkFactor, lidClose)`.
-`createTurnPlanner().step({ targetYaw, facingYaw, allowTurn }, dt)` plans
-the dwell, hysteresis, refractory and planted-step timing of body turns. Its frame and event array are borrowed until the next call.
+`createTurnPlanner().step({ targetYaw, facingYaw, allowTurn, home }, dt)` plans
+the dwell, hysteresis, refractory and planted-step timing of body turns. While
+the gaze is free the performer passes `viewerYaw` as a home target, so after a
+far look the feet step back to face the viewer and a free glance never turns
+them. Its frame and event array are borrowed until the next call.
 
 Optional `layers` are performer-owned instances, reset at creation and reset.
 Their order is emotion, act, gesture, cue, reaction after base, gaze and gait.

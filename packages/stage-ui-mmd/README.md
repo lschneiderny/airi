@@ -279,6 +279,8 @@ shares. The adapter has four parts:
   degrees per unit, as a free goal. The host passes the cursor, chat and
   camera points through `bodyGazePoints`; in camera mode the camera stands in
   for the cursor. Without points the free fixation is taken around the facing.
+  The undeflected camera direction (the facing without points) is passed as
+  `viewerYaw`, where the feet return while the gaze is free.
 - `MMDBodyPerformer` (`body/performer.ts`): writes the blended channels to
   bones from `context.clean`. `body-torso` writes the pelvis offset, the hips
   and the spine chain, spreading the three torso controls with

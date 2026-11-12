@@ -109,6 +109,7 @@ export function idleInput(time = 0): BodyPerformanceInput {
     directive: { stance: 'stand', rest: 'none', act: null },
     facingYaw: 0,
     allowTurn: false,
+    viewerYaw: 0,
     dragging: false,
     attention: { approach: 0, cursorShare: 0 },
     rootVelocity: v(0, 0, 0),

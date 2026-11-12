@@ -133,6 +133,8 @@ export class MMDBody {
   private readonly clips = new Map<string, AnimationClip>()
   private feetSnapshot = { maxError: 0, errorL: 0, errorR: 0, contact: 0 }
   private readonly gazeGoal = { yaw: 0, pitch: 0, kind: 'free' as BodyGazeGoal['kind'] }
+  /** The camera direction in the stance frame, before Natural's fixation deflects it; the facing without points. */
+  private viewerYaw = 0
   /** Mesh-local start and length of the gaze line; the eyes aim at its far end. */
   private readonly gazeOrigin = new Vector3()
   private gazeDistance = 0
@@ -386,6 +388,7 @@ export class MMDBody {
       frame: input.frame,
       dt,
       gaze: this.gazeGoal,
+      viewerYaw: this.viewerYaw,
       energy: input.energy ?? 0.5,
       stance: input.stance ?? 'stand',
       dragging: input.dragging,
@@ -511,6 +514,7 @@ export class MMDBody {
       this.gazeGoal.yaw = this.facing
       this.gazeGoal.pitch = 0
     }
+    this.viewerYaw = this.gazeGoal.yaw
     const { fixation } = input.frame
     this.gazeGoal.yaw += FIXATION_SPAN * fixation.x
     this.gazeGoal.pitch -= FIXATION_SPAN * fixation.y

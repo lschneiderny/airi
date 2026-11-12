@@ -134,6 +134,38 @@ describe('gaze performance', () => {
     expect(Math.max(...space.slice(360).map(yaw => Math.abs(yaw - settled)))).toBeLessThan(0.01 * DEG)
   })
 
+  it('turns the feet back to the viewer after a far look ends', () => {
+    const performer = createBodyPerformer({ traits, seed: 1 })
+    const input = quietInput()
+    const release = 220
+    let facingYaw = 0
+    let turned = 0
+    let backAt = -1
+    for (let i = 0; i < release + 6 * 120; i++) {
+      const look = i < release
+      const gaze = { ...input.gaze, yaw: look ? -70 * DEG : 0, kind: look ? 'sustained' as const : 'free' as const, saccadeSeq: look ? 1 : 2 }
+      facingYaw = performer.step({ ...input, gaze, facingYaw, allowTurn: true }).facingYaw
+      turned = Math.min(turned, facingYaw)
+      if (backAt < 0 && !look && Math.abs(facingYaw) < 1e-6)
+        backAt = i
+    }
+    expect(turned).toBeLessThan(-40 * DEG)
+    expect(backAt).toBeGreaterThan(release)
+    expect(backAt - release).toBeLessThan(4 * 120)
+    expect(Math.abs(facingYaw)).toBeLessThan(1e-6)
+  })
+
+  it('keeps the feet on the viewer through a free glance', () => {
+    const performer = createBodyPerformer({ traits, seed: 1 })
+    const input = quietInput()
+    let facingYaw = 0
+    for (let i = 0; i < 4 * 120; i++) {
+      const gaze = { ...input.gaze, yaw: 40 * DEG, kind: 'free' as const, saccadeSeq: 1 }
+      facingYaw = performer.step({ ...input, gaze, facingYaw, allowTurn: true }).facingYaw
+    }
+    expect(facingYaw).toBe(0)
+  })
+
   it('keeps one saccade when the goal arrives over several ticks or Natural saccades toward it again', () => {
     const shifts = (goal: (tick: number) => { yaw: number, seq: number }) => {
       const performer = createBodyPerformer({ traits, seed: 1 })

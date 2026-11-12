@@ -4,6 +4,11 @@ export interface TurnInput {
   readonly targetYaw: number
   readonly facingYaw: number
   readonly allowTurn?: boolean
+  /**
+   * The target is where the body rests facing, such as the viewer: a turn starts above `turnStop` instead of
+   * `turnStart` and ends on the target instead of leaving `turnRemainder` to the head and eyes.
+   */
+  readonly home?: boolean
 }
 
 export interface TurnStep {
@@ -40,6 +45,8 @@ export class TurnPlanner {
   private refractoryUntil = 0
   private nextFoot: TurnStep['foot'] = 'left'
   private activeStep: { start: number, yaw: number, elapsed: number } | null = null
+  /** Steps left in a home turn, planned at its first step as equal steps of at most `stepYawLimit`. */
+  private homeSteps = 0
   private readonly steps: TurnStep[] = []
   private readonly frame = { facingYaw: 0, turning: false, turnStarted: false, turnSteps: this.steps }
 
@@ -58,6 +65,7 @@ export class TurnPlanner {
     if (input.allowTurn === false) {
       this.frame.turning = false
       this.activeStep = null
+      this.homeSteps = 0
       this.dwell = 0
       this.dwellDirection = 0
       this.advance(remaining)
@@ -74,7 +82,7 @@ export class TurnPlanner {
           remaining -= elapsed
           continue
         }
-        if (magnitude <= turnStart) {
+        if (magnitude <= (input.home ? turnStop : turnStart)) {
           this.dwell = 0
           this.dwellDirection = 0
           this.advance(remaining)
@@ -96,13 +104,21 @@ export class TurnPlanner {
         this.frame.turnStarted = true
         this.dwell = 0
       }
-      if (!this.activeStep && magnitude < turnStop) {
+      if (!this.activeStep) {
+        if (!input.home)
+          this.homeSteps = 0
+        else if (this.homeSteps === 0)
+          this.homeSteps = Math.ceil(magnitude / stepYawLimit)
+      }
+      if (!this.activeStep && (input.home ? this.homeSteps === 0 : magnitude < turnStop)) {
         this.frame.turning = false
         this.refractoryUntil = this.time + refractoryDuration
         continue
       }
       if (!this.activeStep) {
-        const yaw = Math.sign(error) * Math.min(stepYawLimit, Math.max(0, magnitude - turnRemainder))
+        const yaw = input.home
+          ? error / this.homeSteps--
+          : Math.sign(error) * Math.min(stepYawLimit, Math.max(0, magnitude - turnRemainder))
         this.activeStep = { start: this.frame.facingYaw, yaw, elapsed: 0 }
         this.steps.push({ foot: this.nextFoot, startTime: this.time, duration: stepDuration, yaw })
         this.nextFoot = this.nextFoot === 'left' ? 'right' : 'left'
@@ -115,7 +131,7 @@ export class TurnPlanner {
       remaining -= elapsed
       if (this.activeStep.elapsed >= stepDuration - 1e-12) {
         this.activeStep = null
-        if (Math.abs(wrap(targetYaw - this.frame.facingYaw)) < turnStop) {
+        if (input.home ? this.homeSteps === 0 : Math.abs(wrap(targetYaw - this.frame.facingYaw)) < turnStop) {
           this.frame.turning = false
           this.refractoryUntil = this.time + refractoryDuration
         }

@@ -64,7 +64,7 @@ class BodyPerformer {
   private context: Mutable<PerformanceContext> | null = null
   private mapped: Mutable<BodyPerformanceInput> | null = null
   private readonly plannedPosture: Mutable<BodyPerformanceInput['posture']> = { amplitude: 0, shiftRate: 0, support: null }
-  private readonly turnInput = { targetYaw: 0, facingYaw: 0, allowTurn: false }
+  private readonly turnInput = { targetYaw: 0, facingYaw: 0, allowTurn: false, home: false }
 
   constructor(private readonly options: BodyPerformerOptions) {
     const { traits } = options
@@ -222,8 +222,13 @@ class BodyPerformer {
     frame.support = state.posture.support + (gait ? gait.weight * (gait.support - state.posture.support) : 0)
     frame.gaze.yaw = state.gaze.line.yaw + 0.3 * input.gaze.micro.yaw
     frame.gaze.pitch = state.gaze.line.pitch + 0.3 * input.gaze.micro.pitch
-    this.turnInput.targetYaw = effective.gaze.yaw
+    // A free goal is a fixation around the viewer (architecture 3e), and the viewer is the body's home: while the gaze
+    // is free the feet face the viewer, so after a far look they step back instead of staying torqued under a head that
+    // has returned, and a free glance never turns them.
+    const free = effective.gaze.kind === 'free'
+    this.turnInput.targetYaw = free ? input.viewerYaw : effective.gaze.yaw
     this.turnInput.facingYaw = input.facingYaw
+    this.turnInput.home = free
     this.turnInput.allowTurn = input.allowTurn && (!gait || gait.mode === 'idle')
     const turn = state.turns.step(this.turnInput, BODY_TICK)
     frame.facingYaw = turn.facingYaw

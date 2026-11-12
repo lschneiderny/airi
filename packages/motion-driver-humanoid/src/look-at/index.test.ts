@@ -101,6 +101,34 @@ describe('body turns', () => {
     expect(Math.abs(frame.facingYaw - reference.facingYaw)).toBeLessThan(1e-3)
   })
 
+  it('turns back to a home target beyond twenty degrees in equal steps that end on it', () => {
+    const planner = createTurnPlanner()
+    let facingYaw = -55 * rad
+    const steps: TurnStep[] = []
+    let started = 0
+    for (let i = 0; i < 4 * 120; i++) {
+      const frame = planner.step({ targetYaw: 0, facingYaw, home: true }, 1 / 120)
+      steps.push(...frame.turnSteps)
+      started += Number(frame.turnStarted)
+      facingYaw = frame.facingYaw
+    }
+    expect(started).toBe(1)
+    expect(steps[0]?.startTime).toBeCloseTo(0.5, 8)
+    expect(steps).toHaveLength(3)
+    for (const step of steps)
+      expect(step.yaw).toBeCloseTo(55 / 3 * rad, 12)
+    expect(facingYaw).toBeCloseTo(0, 12)
+  })
+
+  it('leaves a home target within twenty degrees to the head and eyes', () => {
+    const planner = createTurnPlanner()
+    for (let i = 0; i < 1200; i++) {
+      const frame = planner.step({ targetYaw: (10 + 9.9 * Math.sin(2 * Math.PI * i / 240)) * rad, facingYaw: 0, home: true }, 1 / 120)
+      expect(frame.turnStarted).toBe(false)
+      expect(frame.facingYaw).toBe(0)
+    }
+  })
+
   it('honors the 1.5 second refractory period even for an immediate reverse target', () => {
     const planner = createTurnPlanner()
     let facingYaw = 0

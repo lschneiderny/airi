@@ -157,6 +157,11 @@ export interface BodyPerformanceInput {
   /** Actual facing in the stance frame; feed back facingYaw when no external planner owns it. */
   readonly facingYaw: number
   readonly allowTurn: boolean
+  /**
+   * The viewer's direction (the camera) in the stance frame, before Natural's fixation deflects it: the body's home,
+   * which the feet return to face while the gaze is free. The facing when the body has no points.
+   */
+  readonly viewerYaw: number
   readonly dragging: boolean
   readonly attention: { readonly approach: number, readonly cursorShare: number }
   /** Root linear velocity in stance axes, model units/s; never integrated into root position. */

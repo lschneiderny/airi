@@ -20,6 +20,8 @@ export interface MMDBodyIntentFrame {
   readonly frame: NaturalMotionFrame
   readonly dt: number
   readonly gaze: BodyGazeGoal
+  /** The viewer's direction in the stance frame, before Natural's fixation deflects it. */
+  readonly viewerYaw: number
   readonly energy: number
   readonly stance: BodyPerformanceInput['directive']['stance']
   readonly dragging: boolean
@@ -75,6 +77,7 @@ export class MMDBodyIntent {
     directive: { stance: 'stand' as BodyPerformanceInput['directive']['stance'], rest: 'none' as const, act: null },
     facingYaw: 0,
     allowTurn: false,
+    viewerYaw: 0,
     dragging: false,
     attention: { approach: 0, cursorShare: 0 },
     rootVelocity: { x: 0, y: 0, z: 0 },
@@ -134,6 +137,7 @@ export class MMDBodyIntent {
     input.posture.amplitude = intent.posture.amplitude
     input.posture.shiftRate = intent.posture.shiftRate
     input.gaze.kind = gaze.kind
+    input.viewerYaw = source.viewerYaw
     input.gaze.saccadeSeq = intent.gaze.saccadeSeq
     input.gaze.blinkFactor = frame.blink.blinkFactor
     input.breath.period = intent.breath.period
