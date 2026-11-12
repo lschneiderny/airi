@@ -290,7 +290,7 @@ function angleDifference(on: TracePose, off: TracePose, key: AngleKey, frame: nu
 /** The pair's frame for the position keys: both poses, the leg length and the arm frame. */
 interface PairFrame { readonly on: TracePose, readonly off: TracePose, readonly legLength: number, readonly arm: number, readonly outSign: number, readonly bases: readonly Rebase[] }
 
-/** The declared lasting result of a confirmed foot re-plant from `frame` on: each foot's world yaw difference (deg) and the hips' lateral heading offset (model units). */
+/** The declared lasting result of a confirmed foot re-plant from `frame` on: each foot's yaw difference in its own frame (deg) and the hips' lateral heading offset (model units). */
 interface Rebase { readonly frame: number, readonly footYaw: readonly [number, number], readonly lateral: number }
 
 const FEET = ['leftFoot', 'rightFoot'] as const
@@ -300,10 +300,10 @@ function hipsOffset(pf: PairFrame, frame: number): Vec3 {
   const offset = heading(sub(pf.on.hips(frame), pf.off.hips(frame)), pf.on.yaw(frame))
   return [offset[0] - (baseAt(pf, frame)?.lateral ?? 0), offset[1], offset[2]]
 }
-/** A foot's world rotation difference (deg, rotation vector), less the declared yaw. */
+/** A foot's rotation difference in its own frame (deg, rotation vector; y is the foot's own yaw axis), less the declared yaw. */
 function footDifference(pf: PairFrame, frame: number, side: 0 | 1): Vec3 {
   const b = pf.on.index(FEET[side])
-  const v = scale(rotationVector(multiply(pf.on.world(frame, b), conjugate(pf.off.world(frame, b)))), DEG)
+  const v = scale(rotationVector(multiply(conjugate(pf.off.world(frame, b)), pf.on.world(frame, b))), DEG)
   return [v[0], v[1] - (baseAt(pf, frame)?.footYaw[side] ?? 0), v[2]]
 }
 
@@ -467,7 +467,7 @@ function checkPairSource(run: LoadedRun, pair: LoadedRun): void {
 
 /**
  * The declared lasting results (rules.md revision 4, Y3): after each CONFIRMED foot re-plant, at the first frame after its
- * widened span, each foot's world yaw difference and the hips' lateral offset, each act adding at most its declared bound.
+ * widened span, each foot's yaw difference in its own frame and the hips' lateral offset, each act adding at most its declared bound.
  */
 function rebases(run: LoadedRun, pair: LoadedRun, spans: readonly RawSpan[], on: TracePose, off: TracePose): Rebase[] {
   const bases: Rebase[] = []
@@ -510,7 +510,7 @@ function checkPair(run: LoadedRun, pair: LoadedRun, spans: readonly RawSpan[], p
     if (t < a.scoredFrom || widened.some(span => t >= span.start && t <= span.end))
       continue
     a.rig.bones.forEach((name, b) => {
-      // A foot is compared in the world, less the declared yaw of a confirmed re-plant; every other bone by its local rotation.
+      // A foot is compared in its own frame, less the declared yaw of a confirmed re-plant; every other bone by its local rotation.
       const d = feet.has(b) && pf.bases.length ? norm(footDifference(pf, frame, FEET.findIndex(foot => on.index(foot) === b) as 0 | 1)) : angleBetween(on.local(frame, b), off.local(frame, b))
       if (d > difference) {
         difference = d

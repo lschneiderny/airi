@@ -119,6 +119,8 @@ interface Body {
   readonly hips?: (t: number) => Vec3
   /** A rotation applied to a bone's local rotation at t, after every act movement; none by default. */
   readonly extra?: (bone: MotionTraceBone, t: number) => Quat | null
+  /** Both runs' left shin sways 4 deg in roll at 0.3 Hz, so the foot tilts under any yaw it carries. */
+  readonly shinSway?: boolean
 }
 
 /** A standing body with a slow trunk sway; each act's movement bends its key bones and returns, through the hierarchy. */
@@ -133,7 +135,7 @@ function trace(body: Body): DecodedMotionTrace {
       const w = hold((t - play.at - delay) / ACT_SECONDS) * play.scale
       const angle = hz === undefined ? deg * w : deg * play.scale * Math.sin(2 * Math.PI * hz * (t - play.at)) * Math.min(1, Math.max(0, t - play.at) / 0.15, Math.max(0, play.at + ACT_SECONDS - t) / 0.15)
       return b === bone && (w > 0 || (hz !== undefined && t > play.at && t < play.at + ACT_SECONDS)) ? multiply(r, axisAngle(axis, angle)) : r
-    }, q), bone === 'spine' ? axisAngle(1, 1.2 * Math.sin(2 * Math.PI * 0.2 * t)) : [0, 0, 0, 1])
+    }, q), bone === 'spine' ? axisAngle(1, 1.2 * Math.sin(2 * Math.PI * 0.2 * t)) : bone === 'leftLowerLeg' && body.shinSway ? axisAngle(2, 4 * Math.sin(2 * Math.PI * 0.3 * t)) : [0, 0, 0, 1])
     const extra = body.extra?.(bone, t)
     return extra ? multiply(moved, extra) : moved
   }
@@ -285,6 +287,7 @@ describe('idle-acts report', () => {
     expect(report({ acts: acts([10]), extra: plant([10], 6) }).detail.acts.find(act => act.id === 'foot-replant')?.confirmed).toBe(true)
     expect(report({ acts: acts([10]), extra: plant([10], 6) }).detail.pair.difference).toBeLessThan(0.25)
     expect(report({ acts: replants([10, 20, 30]), extra: plant([10, 20, 30], 6) }).detail.pair.difference).toBeLessThan(0.25)
+    expect(report({ acts: replants([10, 20, 30]), extra: plant([10, 20, 30], 6), shinSway: true }, { shinSway: true }).detail.pair.difference).toBeLessThan(0.25)
     expect(() => report({ acts: acts([10]), extra: plant([10], 6, (bone, t) => bone === 'head' && t > 20 ? axisAngle(1, 1) : null) })).toThrow(/outside the act spans/)
     expect(() => report({ acts: acts([10]), extra: plant([10], 20) })).toThrow(/lasting result/)
     expect(() => report({ acts: SIX, extra: plant([10], 6) })).toThrow(/outside the act spans/)
