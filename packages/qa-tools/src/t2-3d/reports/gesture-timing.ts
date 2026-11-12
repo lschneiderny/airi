@@ -30,6 +30,11 @@ const C = {
   strokeSeconds: 0.25,
   placeboPercentile: 0.95,
   minimumPlacebo: 20,
+  lockShare: 0.1,
+  peakClearance: 1,
+  idleScenario: 'idle',
+  idleSeeds: [1, 2, 3] as const,
+  idleScoredSeconds: 120,
   silentClearance: 1,
   idlePercentile: 0.95,
   minimumIdleApexes: 20,
@@ -51,7 +56,9 @@ export const GESTURE_TIMING_CONSTANTS: readonly ReportConstant[] = [
   { name: 'stroke window', value: `stroke apex - ${C.strokeSeconds} .. stroke apex`, unit: 's', source: 'architecture 4a: longest stroke 250 ms; the stroke apex is the apex within the hit window that confirms a stroke marker, else the peak is a miss (lane T ruling)' },
   { name: 'placebo window', value: `${C.strokeSeconds} s grid over the scored spans of the companion idle runs`, unit: 's', source: 'lane T ruling: the rig\'s idle trunk turns, as the idle speed bar; not the speak run\'s silent stretches' },
   { name: 'placebo band', value: C.placeboPercentile, unit: 'percentile of placebo upper-torso displacement', source: 'unit M2 R2 (b)' },
-  { name: 'minimum placebo windows', value: C.minimumPlacebo, unit: 'windows', source: 'unit M2 R2 (b): a 95th percentile needs at least 20 samples' },
+  { name: 'minimum placebo windows', value: C.minimumPlacebo, unit: 'windows, for the idle placebo and for the speak run\'s peak-free windows', source: 'unit M2 R2 (b): a 95th percentile needs at least 20 samples' },
+  { name: 'locking share', value: C.lockShare, unit: `at most, of the speak run's own ${C.strokeSeconds} s grid windows with no labelled peak within ${C.peakClearance} s whose upper-torso turn exceeds the idle placebo p95`, source: 'revision 2 (review T1): the only clean candidate of 0.05 to 0.30 on labelled cases fixed before scoring (lane T rules-rev2)' },
+  { name: 'idle companions', value: `${C.idleScenario} seeds ${C.idleSeeds.join(', ')}, one each, ${C.idleScoredSeconds} s scored`, unit: 'else the run is refused', source: 'revision 2: the companions version 4\'s bars were measured on (lead acceptance runs); the trunk bar moves with the idle seed and with the rest redraw at 70 s' },
   { name: 'idle speed bar', value: C.idlePercentile, unit: 'percentile of the candidate-apex peak hand speeds pooled over companion idle runs of the same model and commit', source: 'unit M3 item 1, lead ruling: detectability above the rig\'s idle noise' },
   { name: 'silent span', value: `no utterance within ${C.silentClearance} s`, unit: 's', source: 'unit M3 item 1' },
   { name: 'minimum idle apexes', value: C.minimumIdleApexes, unit: 'pooled apexes, else the run is refused as unjudgeable', source: 'unit M3 item 1' },
@@ -86,7 +93,7 @@ export interface GestureTimingDetail {
   readonly idle: { readonly companions: readonly { readonly dir: string, readonly gitSha: string | null, readonly seed: number | null, readonly apexes: number }[], readonly pooled: number, readonly speedBar: number, readonly silentSeconds: number, readonly silentApexes: number, readonly candidates: number, readonly counted: number }
   readonly peaks: readonly { readonly t: number, readonly hit: boolean, readonly nearestApexMs: number | null }[]
   readonly utterances: readonly { readonly start: number, readonly end: number, readonly apexes: number }[]
-  readonly trunk: { readonly torso: MotionTraceBone | null, readonly hits: readonly { readonly peak: number, readonly apex: number | null, readonly displacementDeg: number | null }[], readonly placeboWindows: number, readonly placeboP95Deg: number | null }
+  readonly trunk: { readonly torso: MotionTraceBone | null, readonly hits: readonly { readonly peak: number, readonly apex: number | null, readonly displacementDeg: number | null }[], readonly placeboWindows: number, readonly placeboP95Deg: number | null, readonly lock: { readonly windows: number, readonly above: number } }
   readonly gated: readonly { readonly id: string, readonly status: string, readonly value: number | null }[]
   readonly reportOnly: readonly { readonly id: string, readonly status: string, readonly value: number | null }[]
   readonly apexes: readonly { readonly side: Side, readonly t: number }[]
@@ -257,10 +264,27 @@ function torsoDisplacement(p: PreparedTrace, bone: MotionTraceBone | null, from:
   return 2 * Math.acos(Math.min(1, Math.abs(turn[3]))) * DEG
 }
 
+/**
+ * Revision 2: the trunk bar comes only from idle seeds 1, 2 and 3 of 120 s scored, one each; any other set is refused.
+ * `ownership` passes its own companions to `strokeApexes` and is not bound by this.
+ */
+function requireIdleContract(run: LoadedRun, idleRuns: readonly LoadedRun[]): void {
+  for (const idle of idleRuns) {
+    const { scenario } = idle.input.trace.source
+    const scored = idle.input.trace.frames / idle.input.trace.hz - idle.input.trace.scoredFrom
+    if (scenario.id !== C.idleScenario || Math.abs(scored - C.idleScoredSeconds) > 1 / idle.input.trace.hz + 1e-6)
+      throw new ReportUsageError(`${idle.dir}: companion ${scenario.id} run of ${fixed(scored, 2)} s scored; the trunk bar needs ${C.idleScenario} runs of ${C.idleScoredSeconds} s scored`)
+  }
+  const seeds = idleRuns.map(idle => idle.input.trace.source.scenario.seed).sort((a, b) => (a ?? 0) - (b ?? 0))
+  if (seeds.join(',') !== C.idleSeeds.join(','))
+    throw new ReportUsageError(`${run.dir}: companion idle seeds ${seeds.join(', ') || 'none'}; the trunk bar needs idle seeds ${C.idleSeeds.join(', ')}, one each`)
+}
+
 /** C001 criterion-level report (plan 2.2, unit M2 R2): every rule and constant fixed before any gesture code. */
 export function gestureTimingReport(run: LoadedRun, bands: MotionBandsFile, idleRuns: readonly LoadedRun[]): CriterionReport<GestureTimingDetail> {
   const summary = requireSummary(run)
   const gate = requireGate(run)
+  requireIdleContract(run, idleRuns)
   const { p } = run
   const { candidates, silentApexes, silentSeconds, companions, pooled, speedBar, apexes } = strokeApexes(run, idleRuns)
   const peaks = labelledPeaks(run).map((t) => {
@@ -303,6 +327,18 @@ export function gestureTimingReport(run: LoadedRun, bands: MotionBandsFile, idle
   })
   const placeboP95 = placebo.length >= C.minimumPlacebo ? percentile(placebo, C.placeboPercentile) : null
   const trunkAbove = placeboP95 === null ? 0 : trunkHits.filter(h => h.displacementDeg !== null && h.displacementDeg > placeboP95).length
+  // Revision 2 (review T1): the idle bar holds only if idle is this run's background, so the run's own peak-free
+  // windows (version 3's placebo set) may exceed it on at most the locking share.
+  const peakFree: number[] = []
+  for (let start = scoredFrom; start + C.strokeSeconds <= p.times[p.times.length - 1]; start += C.strokeSeconds) {
+    if (peaks.some(peak => peak.t >= start - C.peakClearance && peak.t <= start + C.strokeSeconds + C.peakClearance))
+      continue
+    const d = torsoDisplacement(p, torso, start, start + C.strokeSeconds)
+    if (d !== null)
+      peakFree.push(d)
+  }
+  const lockAbove = placeboP95 === null ? peakFree.length : peakFree.filter(d => d > placeboP95).length
+  const locked = peakFree.length >= C.minimumPlacebo && lockAbove / peakFree.length <= C.lockShare
   const byForm = new Map<string, FormFeatures[]>()
   for (const marker of confirmed) {
     const f = marker.confirmedBy ? features(run, marker.confirmedBy) : null
@@ -354,7 +390,7 @@ export function gestureTimingReport(run: LoadedRun, bands: MotionBandsFile, idle
     requirement('markers-confirmed', `stroke markers with an apex of their hand within ${C.confirmSeconds * 1000} ms >= ${C.confirmedShare}`, `${confirmed.length}/${strokeMarkers.length}`, strokeMarkers.length > 0 && confirmed.length / strokeMarkers.length >= C.confirmedShare),
     requirement('forms', `>= ${C.minimumForms} confirmed forms differing pairwise by >= ${C.formDegrees} deg in one apex feature`, `${distinct.length} (${distinct.join(', ') || 'none'}) of ${Object.keys(forms).length} confirmed forms`, distinct.length >= C.minimumForms),
     requirement('utterances', 'every utterance in the scored span contains a kinematic stroke apex', `${utterances.filter(u => u.apexes > 0).length}/${utterances.length}`, utterances.length > 0 && utterances.every(u => u.apexes > 0)),
-    requirement('trunk-participation', `upper-torso turn over [stroke apex - ${C.strokeSeconds} s, stroke apex] > p${C.placeboPercentile * 100} of the same turn over the companion idle runs on >= ${C.trunkShare} of hit peaks; the stroke apex confirms a stroke marker within ${C.hitSeconds * 1000} ms of the peak, else the peak is a miss`, `${trunkAbove}/${trunkHits.length}; ${torso ?? 'no torso bone'} against hips; idle placebo p95 ${fixed(placeboP95, 3)} deg over ${placebo.length} windows`, placeboP95 !== null && trunkHits.length > 0 && trunkAbove / trunkHits.length >= C.trunkShare),
+    requirement('trunk-participation', `upper-torso turn over [stroke apex - ${C.strokeSeconds} s, stroke apex] > p${C.placeboPercentile * 100} of the same turn over the companion idle runs on >= ${C.trunkShare} of hit peaks; the stroke apex confirms a stroke marker within ${C.hitSeconds * 1000} ms of the peak, else the peak is a miss; and <= ${C.lockShare} of the run's own ${C.strokeSeconds} s windows with no labelled peak within ${C.peakClearance} s turn above that p95`, `${trunkAbove}/${trunkHits.length}; ${torso ?? 'no torso bone'} against hips; idle placebo p95 ${fixed(placeboP95, 3)} deg over ${placebo.length} windows; peak-free windows above it ${lockAbove}/${peakFree.length} = ${fixed(peakFree.length ? lockAbove / peakFree.length : null)}`, placeboP95 !== null && trunkHits.length > 0 && trunkAbove / trunkHits.length >= C.trunkShare && locked),
     requirement('bilateral', 'every gated bilateral.*.peakCorr PASS in gate.json', bilateral.map(m => `${m.id} ${m.status}`).join(', ') || `none gated in gate version ${gate.gate.version} (report-only values listed below)`, bilateral.every(m => m.status === 'PASS')),
     requirement('one-hand', `one-hand stroke markers >= ${C.oneHandShare} of markers`, `${strokeMarkers.length - twoHand.length}/${strokeMarkers.length}`, strokeMarkers.length > 0 && (strokeMarkers.length - twoHand.length) / strokeMarkers.length >= C.oneHandShare),
     requirement('two-hand-lag', `every two-hand stroke's left and right apexes ${C.twoHandLag[0] * 1000}-${C.twoHandLag[1] * 1000} ms apart`, `${twoHand.length} two-hand strokes`, twoHandOk),
@@ -369,7 +405,7 @@ export function gestureTimingReport(run: LoadedRun, bands: MotionBandsFile, idle
     idle: { companions, pooled, speedBar, silentSeconds, silentApexes, candidates: candidates.length, counted: apexes.length },
     peaks,
     utterances,
-    trunk: { torso, hits: trunkHits, placeboWindows: placebo.length, placeboP95Deg: placeboP95 },
+    trunk: { torso, hits: trunkHits, placeboWindows: placebo.length, placeboP95Deg: placeboP95, lock: { windows: peakFree.length, above: lockAbove } },
     gated,
     reportOnly,
     apexes: apexes.map(a => ({ side: a.side, t: a.t })),
@@ -394,6 +430,7 @@ export function formatGestureTiming(report: CriterionReport<GestureTimingDetail>
     ...d.utterances.map(u => `  ${u.start.toFixed(3)}\t${u.end.toFixed(3)}\t${u.apexes}`),
     `upper-torso turn at hit peaks: peak s, stroke apex s, turn deg (${d.trunk.torso ?? '-'} against hips; companion idle placebo p95 ${fixed(d.trunk.placeboP95Deg, 3)} over ${d.trunk.placeboWindows} windows):`,
     ...d.trunk.hits.map(h => `  ${h.peak.toFixed(3)}\t${fixed(h.apex, 3)}\t${fixed(h.displacementDeg, 3)}`),
+    `locking: ${d.trunk.lock.above} of ${d.trunk.lock.windows} peak-free windows of this run (no labelled peak within ${C.peakClearance} s) turn above the idle placebo p95; at most ${C.lockShare} allowed`,
     `report-only gate values: ${d.reportOnly.map(m => `${m.id} ${m.status} ${fixed(m.value)}`).join(', ') || 'none'}`,
     `kinematic apexes: ${d.apexes.length} (left ${d.apexes.filter(a => a.side === 'left').length}, right ${d.apexes.filter(a => a.side === 'right').length}); unprompted (no peak within 400 ms): ${d.unpromptedApexes.length}`,
     'stroke markers: t s, form, hand, unit, confirmed by',
