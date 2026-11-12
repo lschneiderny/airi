@@ -57,7 +57,8 @@ describe('reference fitting integrity', () => {
 
   it('recomputes pooled episodes with the detector scales of the class being judged', () => {
     const times = Array.from({ length: 10 }, (_, i) => 2 + 4 * i)
-    const input = analyticTrace({ seconds: 42, bones: CORE, world: (bone, t) => angleX(bone === 'head' ? times.reduce((s, e) => s + 0.3 * Math.tanh((t - e) / 0.15), 0) : 0) })
+    const analytic = analyticTrace({ seconds: 42, bones: CORE, world: (bone, t) => angleX(bone === 'head' ? times.reduce((s, e) => s + 0.3 * Math.tanh((t - e) / 0.15), 0) : 0) })
+    const input = { ...analytic, trace: { ...analytic.trace, source: { ...analytic.trace.source, level: 'reference' as const } } }
     const params = detectors(CORE)
     const high = { ...params, moveSpeed: { body: 1000, head: 1000, trunk: 1000, armL: 1000, armR: 1000, legs: 1000 } }
     const c = referenceInput(clip(0, 'fit', 0).entry, input)

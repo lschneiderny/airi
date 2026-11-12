@@ -74,7 +74,9 @@ Gate `mmd-motion-quality` compares idle, speech, and walking with their own
 reference classes. Gaze and emotions use episode pools; touch is report only.
 Pass requires at least one passing gated metric and no failing metric.
 Undefined motion fails an applicable band; missing bones or insufficient
-episodes skip the metric. Refusals never count as passes or failures.
+episodes skip the metric. Since version 4, a smoothness region of a character
+trace with fewer than 8 episodes is skipped only when it is not frozen; a
+frozen one fails (see version 4 below). Refusals never count as passes or failures.
 Exit codes are 1 if any trace fails, otherwise 2 if any trace is refused or the
 arguments are invalid, otherwise 0; interruption exits 130.
 
@@ -138,9 +140,11 @@ use head episodes only.
 
 Version 0 retains explicitly marked analytic fixtures. Version 1 uses frozen
 human-reference bands fitted per body side. Version 2 fits mirrored body sides
-pooled. Version 3, the current gate, keeps version 2's bands, reports the talk
+pooled. Version 3 keeps version 2's bands, reports the talk
 bands fitted per clip from locomoting talk performers, and gates emotion
-separation from neutral instead of all pairs. Frozen band files
+separation from neutral instead of all pairs. Version 4, the current gate,
+keeps version 3's bands byte for byte and judges an unscorable smoothness
+region by a not-frozen check. Frozen band files
 are immutable. Changing a band, detector, formula, window, or gated list requires
 the next version, a new file and SHA-256, in an isolated freeze commit before
 judging runs. A hash mismatch refuses scoring. A failing run never authorizes
@@ -439,7 +443,52 @@ The threshold of 2 was a declared number, transferred from the Live2D emotion
 gate. It was not fitted from human data. `emotion.armShare` and the onset
 bands are unchanged.
 
-The counts below describe frozen version 3. `fixtures/motion3d/bands-v3.json`
+#### Version 4: unscorable smoothness, 2026-11-12
+
+The project owner decided on 2026-11-12: "an unscorable arm or head is
+skipped only when a separate check proves it is not frozen". Version 4
+carries that rule and nothing else. `bands-v4.json` differs from
+`bands-v3.json` only in `gate.version`; every band, floor and move speed is the
+same. A `smooth.<region>.ldlj` metric of a character trace with fewer than 8
+episodes, none included, is judged as follows:
+
+- **Not frozen.** The region's windowed range is the median, over the class
+  windows (talk 5 s, otherwise 10 s, half hop), of the p95 angle of the head
+  or lower arm against the chest from that window's mean pose. When it is at
+  least 0.3214 deg, the metric is SKIPPED with `insufficient-episodes; not
+  frozen: windowed range <deg> deg against 0.3214`.
+- **Frozen.** Below that, it is `undefined: no-motion; frozen: ...`, which a
+  gated band (the head in idle and talk) judges FAIL.
+- **Reference clips are unchanged.** The bands cannot move.
+
+Version 3 failed a head with no move segment and skipped one with 1 to 7.
+So a calm head that never crossed the talk threshold failed, and a head held
+still except for one turn passed. Both are now judged by the check.
+
+The threshold and the statistic come from 90 labelled cases built in the
+posed bones of real speak runs on two rigs (lane U, revision 2): frozen
+heads and arms, drift, an invisible tremor, one turn, a scaled alive head,
+and an idle arm. 0.3214 deg is the geometric mean of the worst frozen reading
+(0.068 deg, a drift) and the worst alive reading (1.516 deg, an idle arm), a
+margin of 22.2x. A whole-run range cannot tell one turn from an idle arm, and
+a speed-based check passes a 0.1 deg tremor.
+
+Limits of version 4:
+
+- The threshold sits between those frozen and alive cases. No human
+  reference sets it.
+- Sensitivity: it still fails a frozen head with an 8 Hz tremor of up to
+  0.2 deg, a drift of up to 6 deg over 60 s, or a single turn. It passes a
+  0.5 deg tremor and a 12 deg drift.
+- False failures: it judged 0 of 627 regions frozen on 209 stored correct
+  runs (278 of them unscorable). The closest correct region read 1.52 deg.
+- A skipped line proves nothing about smoothness: only that the region moves
+  and makes too few episodes to score.
+- A passing smoothness line does not prove human texture. The talk band
+  passes minimum-jerk turns with an 8 Hz jitter and fails them clean.
+
+The counts below describe frozen version 3 and hold for version 4.
+`fixtures/motion3d/bands-v3.json`
 records each metric, bound and report-only reason; `bands-v2.json` and
 `bands-v1.json` keep versions 2 and 1.
 

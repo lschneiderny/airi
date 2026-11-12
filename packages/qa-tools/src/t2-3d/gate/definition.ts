@@ -1,3 +1,4 @@
+import { NOT_FROZEN_DEG } from '../metrics/not-frozen'
 import { HOLDOUT_VALIDATION } from './holdouts'
 import { declaredBands, metricPolicies } from './policy'
 
@@ -6,13 +7,16 @@ export const LIMITATION = 'Scores compare motion statistics with bands derived f
 /**
  * Version 3 keeps version 2's pooled human-reference bands, reports the talk bands fitted per clip
  * from locomoting talk performers, and gates emotion separation from neutral instead of all pairs.
+ * Version 4 keeps version 3's bands byte for byte (only `gate.version` differs) and judges an unscorable smoothness
+ * region of a character trace (fewer than 8 episodes, none included) SKIPPED only when it is not frozen, else FAIL
+ * (lane U revision 2).
  */
 export const motionQualityGate = {
   id: 'mmd-motion-quality',
-  version: 3,
+  version: 4,
   limitation: LIMITATION,
-  bandsFile: 'packages/qa-tools/fixtures/motion3d/bands-v3.json',
-  bandsSha256: 'c7c03b8f7e8679e601a722f374635425b32781024314b2377bad45aff092b589',
+  bandsFile: 'packages/qa-tools/fixtures/motion3d/bands-v4.json',
+  bandsSha256: '536a59082997df78cd7ea26ffce818dd7e55272ee67bad833abe18fbe53284cc',
   refusals: [
     'trace-unreadable',
     'trace-kind',
@@ -157,6 +161,7 @@ export const motionQualityGate = {
     moveLow: 0.75,
     minimumSegmentSeconds: 0.15,
     minimumSmoothSeconds: 0.2,
+    notFrozenRangeDeg: NOT_FROZEN_DEG,
     minimumMovingSeconds: 3,
     spikeMadScale: 1.4826,
     spikeMadEpsilon: 1e-6,

@@ -1,9 +1,21 @@
+import type { MotionTraceBone } from '@proj-airi/motion-driver-humanoid/motion-trace'
+
 import type { DetectorParameters, MetricResult, PreparedTrace, Vec3 } from './types'
 
 import { filterVectors } from './filter'
 import { eligibleSegments } from './intermittency'
 import { finite, heading, HZ, median, norm, scale, sub, sum } from './math'
+import { NOT_FROZEN_DEG, windowedRangeDeg } from './not-frozen'
 import { episodeResult, result, skipped } from './result'
+
+/** Gate version 4: an unscorable character region is skipped only when it is not frozen; a frozen one is undefined (FAIL when gated). */
+function unscorable(p: PreparedTrace, metric: MetricResult, bone: MotionTraceBone): MetricResult {
+  const range = windowedRangeDeg(p, bone)
+  const reading = `windowed range ${range === null ? '-' : range.toFixed(3)} deg against ${NOT_FROZEN_DEG}`
+  return range !== null && range >= NOT_FROZEN_DEG
+    ? { ...metric, status: 'skipped: insufficient-episodes', detail: `insufficient-episodes; not frozen: ${reading}` }
+    : { ...metric, status: 'undefined: no-motion', detail: `undefined: no-motion; frozen: ${reading}` }
+}
 
 /** M5: g=H(w_target-w_chest), F15; LDLJ=-ln(integral |g''|^2 dt * D^3/peak^2), unitless. */
 export function smoothMetrics(p: PreparedTrace, params: DetectorParameters): MetricResult[] {
@@ -29,7 +41,8 @@ export function smoothMetrics(p: PreparedTrace, params: DetectorParameters): Met
       const ratio = finite(finite(j * ((s.end - s.start) / HZ) ** 3, 'jerk duration product') / finite(peak * peak, 'smoothness peak energy'), 'smoothness ratio')
       return ratio === 0 ? [] : [{ start: s.start, end: s.end, value: finite(-Math.log(ratio), 'log smoothness') }]
     })
-    const ldlj = moves.length ? episodeResult(p, `smooth.${region}.ldlj`, 'log-ratio', values) : result(`smooth.${region}.ldlj`, 'log-ratio', 'episode', null)
+    const measured = moves.length ? episodeResult(p, `smooth.${region}.ldlj`, 'log-ratio', values) : result(`smooth.${region}.ldlj`, 'log-ratio', 'episode', null)
+    const ldlj = measured.value === null && p.input.trace.source.level !== 'reference' ? unscorable(p, measured, bone) : measured
     // M5 / 10.4: count runs of |g'| > median + 10*(1.4826*MAD+1e-6), per minute MOVING.
     const acceleration = moves.flatMap(s => Array.from({ length: Math.max(0, s.end - s.start - 1) }, (_, i) => norm(sub(g[s.start + i + 1], g[s.start + i])) * HZ))
     const movingSamples = moves.reduce((n, s) => n + s.end - s.start, 0)
