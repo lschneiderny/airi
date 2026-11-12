@@ -105,25 +105,46 @@ const HELD_REST = 1e-4
 const RELEASE_LIFETIME = 15
 const REST = 1e-6
 
-/**
- * The body pose of an unheld pulse, as one reaction with the face (lead ruling R2b). It rises with Natural's impulse
- * attack `(t/tau)^2 e^{2(1 - t/tau)}` to its peak at the band's head tau (`impulses.ts` `impulseEnvelope`), holds for
- * the band's face hold, and releases with the face's release time constant as `(1 + a/tau) e^{-a/tau}`, which starts
- * with zero slope; Natural holds and releases the face hints the same way (`impulses.ts` `hintValue`). Every junction
- * is continuous in value and slope.
- */
-function episodeEnvelope(age: number, attack: number, hold: number, release: number): number {
-  if (age <= 0)
-    return 0
-  if (age < attack) {
-    const u = age / attack
-    return u * u * Math.exp(2 * (1 - u))
-  }
-  if (age < hold)
-    return 1
-  const a = (age - hold) / release
-  return (1 + a) * Math.exp(-a)
+/** One held part of an unheld pulse: a share of its intensity, held until `hold` seconds after it, then released. */
+interface EpisodePart {
+  readonly share: number
+  readonly hold: number
+  readonly release: number
 }
+
+interface Episode {
+  readonly start: number
+  /** The episode weight when it started; a pulse during another of the same emotion continues from it. */
+  readonly from: number
+  readonly amplitude: number
+  readonly attack: number
+  readonly parts: readonly EpisodePart[]
+}
+
+/**
+ * The body pose of an unheld pulse, as one reaction with the face (lead ruling R2b; owner decision of 2026-11-12, "Pose
+ * hold"). It rises from `from` with Natural's impulse attack `(t/tau)^2 e^{2(1 - t/tau)}` to its peak at the band's
+ * head tau (`impulses.ts` `impulseEnvelope`). From there it is the largest of its parts, each held at its share of the
+ * intensity and released as `(1 + a/tau) e^{-a/tau}`, which starts with zero slope. Every junction is continuous in
+ * value; the attack meets each part with zero slope.
+ */
+function episodeWeight(episode: Episode, age: number): number {
+  if (age <= 0)
+    return episode.from
+  if (age < episode.attack) {
+    const u = age / episode.attack
+    return episode.from + (episode.amplitude - episode.from) * u * u * Math.exp(2 * (1 - u))
+  }
+  let weight = 0
+  for (const part of episode.parts) {
+    const a = Math.max(0, age - part.hold) / part.release
+    weight = Math.max(weight, part.share * (1 + a) * Math.exp(-a))
+  }
+  return episode.amplitude * weight
+}
+
+const episodeEnd = (episode: Episode) => Math.max(...episode.parts.map(part => part.hold + RELEASE_LIFETIME * part.release))
+const episodeHolding = (episode: Episode, age: number) => episode.parts.some(part => age < part.hold)
 
 /** The emotion modulation of the generators (4c), each the baseline blended toward the active emotions by weight. */
 export interface BodyEmotionModulation {
@@ -152,7 +173,9 @@ interface Track {
   commanded: number
   held: number
   side: number
-  episode: { start: number, amplitude: number, attack: number, hold: number, release: number } | null
+  episode: Episode | null
+  /** The episode weight of the last tick. */
+  episodeLevel: number
 }
 
 /**
@@ -167,7 +190,7 @@ export function createEmotionLayer(): EmotionLayer {
   const report: BodyEmotionReport & { seq: number, emotion: PerformanceEmotion | null, phase: 'onset' | 'release' | null } = { seq: 0, emotion: null, phase: null }
   const tracks: Track[] = PERFORMANCE_EMOTIONS.map((emotion) => {
     const spec = BODY_EMOTIONS[emotion]
-    return { emotion, spec, state: { y: 0, v: 0, x: 0 }, coefficients: spec.response && secondOrderCoefficients(spec.response, BODY_TICK), target: 0, commanded: 0, held: 0, side: 1, episode: null }
+    return { emotion, spec, state: { y: 0, v: 0, x: 0 }, coefficients: spec.response && secondOrderCoefficients(spec.response, BODY_TICK), target: 0, commanded: 0, held: 0, side: 1, episode: null, episodeLevel: 0 }
   })
   let impulseSeq: number | null = null
   let time = 0
@@ -188,9 +211,27 @@ export function createEmotionLayer(): EmotionLayer {
       const band = defaultExpressionPerformanceSettings.naturalBands[impulse.band]
       const track = tracks.find(t => t.emotion === impulse.emotion)
       if (track?.coefficients && band.headTau) {
-        track.episode = { start: time, amplitude: Math.max(0, Math.min(1, impulse.intensity)), attack: band.headTau, hold: Math.max(band.headTau, band.faceHold), release: band.faceReleaseTau }
+        // The face hint holds for the band's face hold; the held face of the same episode holds as long as the
+        // expression system holds a turnless episode (stage-shared `emotionHold`) and releases with Natural's held
+        // release (`hold.ts`). The body keeps the emotion's held share of the pose for that time.
+        track.episode = {
+          start: time,
+          from: track.episodeLevel,
+          amplitude: Math.max(0, Math.min(1, impulse.intensity)),
+          attack: band.headTau,
+          parts: [
+            { share: 1, hold: Math.max(band.headTau, band.faceHold), release: band.faceReleaseTau },
+            { share: track.spec.heldShare, hold: Math.max(band.headTau, HELD.turnlessSeconds), release: HELD.releaseTau },
+          ],
+        }
         if (track.commanded === 0)
           track.side = impulse.side
+        // Natural's held face releases the previous emotion when the hold switches; the body lets go of it from where
+        // it stands, with the same release.
+        for (const other of tracks) {
+          if (other !== track && other.episode && episodeHolding(other.episode, time - other.episode.start))
+            other.episode = { start: time, from: other.episodeLevel, amplitude: other.episodeLevel, attack: 0, parts: [{ share: 1, hold: 0, release: HELD.releaseTau }] }
+        }
       }
     }
     impulseSeq = seq
@@ -201,13 +242,13 @@ export function createEmotionLayer(): EmotionLayer {
       const heldTarget = held.emotion === track.emotion ? held.level * held.strength * track.spec.heldShare : 0
       let episodeTarget = 0
       if (track.episode) {
-        const { start, amplitude, attack, hold, release } = track.episode
-        const age = time - start
-        if (age > hold + RELEASE_LIFETIME * release)
+        const age = time - track.episode.start
+        if (age > episodeEnd(track.episode))
           track.episode = null
         else
-          episodeTarget = amplitude * episodeEnvelope(age, attack, hold, release)
+          episodeTarget = episodeWeight(track.episode, age)
       }
+      track.episodeLevel = episodeTarget
       track.held = heldTarget >= track.held || HELD.releaseTau === 0 ? heldTarget : heldTarget + (track.held - heldTarget) * Math.exp(-BODY_TICK / HELD.releaseTau)
       if (heldTarget === 0 && track.held < HELD_REST)
         track.held = 0
@@ -339,7 +380,7 @@ export function createEmotionLayer(): EmotionLayer {
     reset() {
       for (const track of tracks) {
         track.state.y = track.state.v = track.state.x = 0
-        track.target = track.commanded = track.held = 0
+        track.target = track.commanded = track.held = track.episodeLevel = 0
         track.episode = null
       }
       Object.assign(modulation, { tempo: 1, amplitude: 1, tension: BODY_EMOTIONS.neutral.tension, breath: 1, sighSeq: 0 })

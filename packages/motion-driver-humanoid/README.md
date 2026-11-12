@@ -470,10 +470,16 @@ posture layer of architecture 4c. Each emotion
 in `BODY_EMOTIONS` adds a trunk, shoulder, elbow, pelvis and hand posture at the
 weight `held.level x held.strength`, or at an unheld pulse's intensity, through
 its own second-order response (so happy sinks before it lifts and surprise rings).
-An unheld pulse holds its body pose as long as Natural holds the face: it rises
-with Natural's impulse attack, holds for the band's `faceHold`, and releases with
-the band's `faceReleaseTau`, so face and body read as one reaction. A slight
-pulse moves no body. A held emotion releases with Natural's held `releaseTau`, so a
+An unheld pulse holds its body pose as long as the held face of the same
+episode: it rises with Natural's impulse attack, keeps its full intensity for
+the band's `faceHold` (the face hint), and keeps the emotion's `heldShare` of it
+for as long as the expression system holds a turnless episode's face
+(stage-shared `held.turnlessSeconds`, `emotionHold`), then releases with the held
+face's `held.releaseTau`. So the body holds the pose about 4 s, as the face does,
+and a startle settles to its held share. A pulse of the same emotion during the
+hold continues from the current pose; a pulse of another emotion releases the
+earlier one from where it stands, as the held face switches. A slight pulse
+moves no body. A held emotion releases with Natural's held `releaseTau`, so a
 hold that switches emotion at full level crossfades instead of dropping the old
 posture in one step. Each posture's `scale` is its size against architecture
 4c's table; the sources and the emotions that do not reach the separation bar

@@ -3,7 +3,7 @@ import type { PerformanceEmotion } from '@proj-airi/stage-shared/expression-perf
 import type { BodyPerformanceInput } from './contracts'
 import type { MergedPerformancePlan, PerformanceLayer } from './stack'
 
-import { PERFORMANCE_EMOTIONS } from '@proj-airi/stage-shared/expression-performance'
+import { defaultExpressionPerformanceSettings, PERFORMANCE_EMOTIONS } from '@proj-airi/stage-shared/expression-performance'
 import { describe, expect, it } from 'vitest'
 
 import { BODY_CHANNELS, channelGroup, channelIndex, DEG } from './channels'
@@ -26,6 +26,32 @@ function pulse(emotion: PerformanceEmotion, at: number, band: 'slight' | 'clear'
     const input = quietInput(t)
     return { ...input, events: { ...input.events, impulse: t < at ? null : { seq: 1, at, emotion, intensity: 0.6, band, side } } }
   }
+}
+
+/** Unheld clear pulses, each a new Natural impulse record from its time on. */
+function pulses(...list: { at: number, emotion: PerformanceEmotion }[]): Script {
+  return (t) => {
+    const input = quietInput(t)
+    const index = list.findLastIndex(p => p.at <= t)
+    return { ...input, events: { ...input.events, impulse: index < 0 ? null : { seq: index + 1, at: list[index].at, emotion: list[index].emotion, intensity: 0.6, band: 'clear', side: 1 } } }
+  }
+}
+
+function armForms(script: Script, seconds: number) {
+  const seen: MergedPerformancePlan['armForm'][] = []
+  const recorder: PerformanceLayer = {
+    id: 'recorder',
+    order: 'reaction',
+    mode: 'additive',
+    mask: new Float64Array(BODY_CHANNELS.length),
+    step: (context) => {
+      seen.push(context.plan.armForm)
+      return { channels: new Float64Array(BODY_CHANNELS.length), weight: 0, sequence: 0 }
+    },
+    reset() {},
+  }
+  channelTrace(createBodyPerformer({ traits, seed: 1, layers: [createEmotionLayer(), recorder] }), seconds, script)
+  return seen
 }
 
 function layerEffect(script: Script, seconds: number) {
@@ -113,19 +139,48 @@ describe('emotion posture layer', () => {
     expect(largest(d, 1439)).toBeLessThan(0.05 * DEG)
   })
 
-  it('holds an unheld clear pulse at its intensity for the face\'s hold, releases with the face, and ignores a slight pulse', () => {
+  it('holds an unheld clear pulse at its intensity as long as the held face, releases with it, and ignores a slight pulse', () => {
     const d = layerEffect(pulse('angry', 0.5), 10)
-    const heldAtIntensity = layerEffect(t => ({ ...quietInput(t), held: { emotion: 'angry', strength: 0.6, level: ramp(t, 0.5, 0.05), side: 1 } }), 3)
+    const heldAtIntensity = layerEffect(t => ({ ...quietInput(t), held: { emotion: 'angry', strength: 0.6, level: ramp(t, 0.5, 0.05), side: 1 } }), 6)
     const pitch = d[c('lowerPitch')]
-    // Clear band: head tau 0.38 s, face hold 1.2 s, face release tau 0.5 s (stage-shared naturalBands).
-    const inHold = Math.round((0.5 + 1.15) * 120)
-    expect(pitch[inHold] / heldAtIntensity[c('lowerPitch')][inHold]).toBeCloseTo(1, 1)
-    expect(largest(d, Math.round(8.5 * 120) - 1)).toBeLessThan(0.05 * DEG)
+    // The face of a turnless episode holds for held.turnlessSeconds (stage-shared emotionHold), 4 s by default.
+    const endOfHold = Math.round((0.5 + defaultExpressionPerformanceSettings.held.turnlessSeconds - 0.05) * 120)
+    expect(pitch[endOfHold] / heldAtIntensity[c('lowerPitch')][endOfHold]).toBeGreaterThan(0.9)
+    // The criterion's release window opens 8 s after the cue (emotion-table version 3): by then under 2 % of the hold.
+    expect(largest(d, Math.round(8.5 * 120) - 1)).toBeLessThan(0.02 * largest(d, endOfHold))
     // A value and slope continuous envelope through angry's 2.2 Hz response bends no faster than omega^2 times its size.
     const peak = Math.max(...pitch.map(Math.abs))
     const bend = Math.max(...pitch.slice(2).map((v, i) => Math.abs(v - 2 * pitch[i + 1] + pitch[i])))
     expect(bend).toBeLessThan(2 * peak * (2 * Math.PI * 2.2 / 120) ** 2)
     expect(largest(layerEffect(pulse('angry', 0.5, 'slight'), 3), 359)).toBe(0)
+  })
+
+  it('settles a pulsed startle to its held share for the rest of the hold', () => {
+    const d = layerEffect(pulse('surprised', 0.5), 5)
+    const heldAtIntensity = layerEffect(t => ({ ...quietInput(t), held: { emotion: 'surprised', strength: 0.6, level: ramp(t, 0.5, 0.05), side: 1 } }), 5)
+    const tick = Math.round(4.3 * 120)
+    expect(d[c('leftClavElev')][tick] / heldAtIntensity[c('leftClavElev')][tick]).toBeCloseTo(1, 1)
+  })
+
+  it('continues from the current pose when the same emotion pulses again during its hold', () => {
+    const pitch = layerEffect(pulses({ at: 0.5, emotion: 'angry' }, { at: 2.5, emotion: 'angry' }), 4)[c('lowerPitch')]
+    const atRetrigger = pitch[Math.round(2.5 * 120)]
+    const after = pitch.slice(Math.round(2.5 * 120), Math.round(3.5 * 120))
+    expect(Math.min(...after.map(v => v / atRetrigger))).toBeGreaterThan(0.95)
+  })
+
+  it('releases a held pulse when another emotion pulses, as the held face switches', () => {
+    // Flustered alone writes the mid-trunk yaw; happy writes none.
+    const yaw = layerEffect(pulses({ at: 0.5, emotion: 'flustered' }, { at: 3, emotion: 'happy' }), 6)[c('midYaw')]
+    const atSwitch = yaw[Math.round(3 * 120)]
+    expect(Math.abs(atSwitch)).toBeGreaterThan(2 * DEG)
+    expect(Math.abs(yaw[Math.round(5 * 120)] / atSwitch)).toBeLessThan(0.3)
+  })
+
+  it('keeps a pulse\'s arm form for the hold, and never on an arm a clip owns', () => {
+    const sad = (owned: number) => armForms(t => ({ ...pulse('sad', 0.5)(t), owned: { ...quietInput(t).owned, rightArm: t > 2 ? owned : 0 } }), 4)
+    expect(sad(0).at(-1)).toEqual({ side: 'right', form: 'hand-to-chest' })
+    expect(sad(1).at(-1)).toBeNull()
   })
 
   it('writes no term to an owned group', () => {
@@ -139,22 +194,7 @@ describe('emotion posture layer', () => {
   })
 
   it('requests the thinking hand and the hand to chest above weight 0.5, on the emotion\'s side', () => {
-    const forms = (emotion: PerformanceEmotion, strength: number, side: number) => {
-      const seen: MergedPerformancePlan['armForm'][] = []
-      const recorder: PerformanceLayer = {
-        id: 'recorder',
-        order: 'reaction',
-        mode: 'additive',
-        mask: new Float64Array(BODY_CHANNELS.length),
-        step: (context) => {
-          seen.push(context.plan.armForm)
-          return { channels: new Float64Array(BODY_CHANNELS.length), weight: 0, sequence: 0 }
-        },
-        reset() {},
-      }
-      channelTrace(createBodyPerformer({ traits, seed: 1, layers: [createEmotionLayer(), recorder] }), 5, t => ({ ...quietInput(t), held: { emotion, strength, level: ramp(t, 0.5), side } }))
-      return seen.at(-1)
-    }
+    const forms = (emotion: PerformanceEmotion, strength: number, side: number) => armForms(t => ({ ...quietInput(t), held: { emotion, strength, level: ramp(t, 0.5), side } }), 5).at(-1)
     expect(forms('think', 0.6, -1)).toEqual({ side: 'left', form: 'thinking-hand' })
     expect(forms('think', 0.4, -1)).toBeNull()
     expect(forms('love', 0.6, 1)).toEqual({ side: 'right', form: 'hand-to-chest' })
