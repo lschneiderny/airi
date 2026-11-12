@@ -8,6 +8,13 @@ import { bodyFixture } from './body/fixture'
 import { MMDBodyPose } from './body/pose'
 import { createMMDMotionTraceSampler, mmdBodyTraceEvent } from './motion-trace'
 
+it('labels act and rest body events as act:<id>:<state> and rest:<state> markers', () => {
+  expect([
+    mmdBodyTraceEvent({ kind: 'act', id: 'look-around', state: 'cancelled', seq: 2 }, 1.5),
+    mmdBodyTraceEvent({ kind: 'rest', rest: 'doze' }, 2),
+  ]).toEqual([{ t: 1.5, kind: 'marker', label: 'act:look-around:cancelled' }, { t: 2, kind: 'marker', label: 'rest:doze' }])
+})
+
 it('records bind rotations as identity and a world-axis rotation independently of the bind axes', () => {
   const { mmd, rig, bone, pipeline, mixer } = bodyFixture(0.7)
   const sampler = createMMDMotionTraceSampler(mmd, rig, new MMDBodyPose(mmd, rig))

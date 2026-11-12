@@ -17,7 +17,8 @@ import { HUMANOID_FINGER_CANDIDATES, MMD_CONTROL_BONE_CANDIDATES } from './rig/b
  * with two decimals and the yaw signed explicitly (positive toward the character's left), so a reader of the first
  * field still reads the amplitude; and the layer markers `gesture-stroke:<form>:<left|right|both>:<unitSeq>` at the
  * planned hit, `gesture-unit:<start|end>`, `cue:<kind>:<seq>`, `emotion-posture:<emotion>:<onset|release>` and
- * `reaction:<kind>`.
+ * `reaction:<kind>`, and `act:<id>:<playing|finished|cancelled>` and `rest:<none|rest|doze>` when the act feedback or the
+ * rest directive changes.
  */
 export function mmdBodyTraceEvent(event: MMDBodyEvent, t: number): MotionTraceEvent {
   // NOTICE:
@@ -40,6 +41,10 @@ export function mmdBodyTraceEvent(event: MMDBodyEvent, t: number): MotionTraceEv
       return { t, kind: 'marker', label: `emotion-posture:${event.emotion}:${event.phase}` }
     case 'reaction':
       return { t, kind: 'marker', label: `reaction:${event.reaction}` }
+    case 'act':
+      return { t, kind: 'marker', label: `act:${event.id}:${event.state}` }
+    case 'rest':
+      return { t, kind: 'marker', label: `rest:${event.rest}` }
     default: {
       const exhaustive: never = event
       return exhaustive

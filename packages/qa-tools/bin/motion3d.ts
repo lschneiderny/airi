@@ -46,11 +46,12 @@ async function dispatch(command: string | undefined, args: string[], context: Mo
     case 'ownership': return (await import('../src/t2-3d/cli/ownership')).ownershipMotion3d(args, context)
     case 'turn': return (await import('../src/t2-3d/cli/turn')).turnMotion3d(args, context)
     case 'pops': return (await import('../src/t2-3d/cli/pops')).popsMotion3d(args, context)
+    case 'idle-acts': return (await import('../src/t2-3d/cli/idle-acts')).idleActsMotion3d(args, context)
     case 'diff': return (await import('../src/t2-3d/cli/diff')).diffMotion3d(args, context)
     case 'verdicts': return (await import('../src/t2-3d/cli/verdicts')).verdictsMotion3d(args, context)
     case 'frames': return (await import('../src/t2-3d/cli/frames')).framesMotion3d(args, context)
     default:
-      console.error('Usage: qa:motion3d <run|gate|reference|gaze-order|gesture-timing|emotion-table|cue-body|ownership|turn|pops|diff|verdicts|frames> [arguments] [--json <verdict file>]')
+      console.error('Usage: qa:motion3d <run|gate|reference|gaze-order|gesture-timing|emotion-table|cue-body|ownership|turn|pops|idle-acts|diff|verdicts|frames> [arguments] [--json <verdict file>]')
       return 2
   }
 }

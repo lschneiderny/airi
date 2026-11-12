@@ -1,5 +1,5 @@
 import type { TurnStep } from '@proj-airi/motion-driver-humanoid/look-at'
-import type { BodyCapabilities, BodyCueKind, BodyEmotion, BodyGestureForm, BodyGestureHand, BodyPerformanceFrame, BodyPerformanceInput, BodyReactionKind, BodyRigTraits, BodySide, PerformanceLayer } from '@proj-airi/motion-driver-humanoid/performance'
+import type { BodyActFeedback, BodyActId, BodyCapabilities, BodyCueKind, BodyEmotion, BodyGestureForm, BodyGestureHand, BodyPerformanceFrame, BodyPerformanceInput, BodyReactionKind, BodyRest, BodyRigTraits, BodySide, PerformanceLayer } from '@proj-airi/motion-driver-humanoid/performance'
 import type { HumanoidFingerBoneName } from '@proj-airi/motion-driver-humanoid/types'
 import type { Bone } from 'three'
 
@@ -34,7 +34,9 @@ export type MMDBodyWriteGroup = Exclude<keyof MMDBodyWeights, 'pelvis'>
  * `gaze-shift`: the planned shift's amplitude, its signed yaw change (positive toward +X, the character's left) in
  * degrees, and the goal kind it moves to. The layer events come from the core's diagnostics reports: a
  * `gesture-stroke` is raised on the tick that reaches its planned hit, `gesture-unit` when a unit starts and when its
- * phase returns to rest, and `cue`, `emotion-posture` and `reaction` when their report sequence changes.
+ * phase returns to rest, and `cue`, `emotion-posture` and `reaction` when their report sequence changes. `act` is raised
+ * when the frame's act feedback changes its sequence or state, and `rest` when the input's rest directive changes; the
+ * initial state (no act, rest `none`) raises nothing, so neither appears without a producer.
  */
 export type MMDBodyEvent
   = | { readonly kind: 'blink', readonly source: 'body' | 'natural' }
@@ -44,6 +46,8 @@ export type MMDBodyEvent
     | { readonly kind: 'cue', readonly cue: BodyCueKind, readonly seq: number }
     | { readonly kind: 'emotion-posture', readonly emotion: BodyEmotion, readonly phase: 'onset' | 'release' }
     | { readonly kind: 'reaction', readonly reaction: BodyReactionKind }
+    | { readonly kind: 'act', readonly id: BodyActId, readonly state: BodyActFeedback['state'], readonly seq: number }
+    | { readonly kind: 'rest', readonly rest: BodyRest }
 
 interface Target {
   readonly bone: Bone
@@ -86,7 +90,7 @@ export class MMDBodyPerformer {
   private shifts = 0
   private blinks = 0
   private lastShiftDeg = 0
-  private readonly reported = { unitSeq: 0, strokeSeq: 0, inUnit: false, cue: 0, emotion: 0, reaction: 0, stroke: null as { form: BodyGestureForm, hand: BodyGestureHand, unitSeq: number, hit: number } | null }
+  private readonly reported = { unitSeq: 0, strokeSeq: 0, inUnit: false, cue: 0, emotion: 0, reaction: 0, stroke: null as { form: BodyGestureForm, hand: BodyGestureHand, unitSeq: number, hit: number } | null, act: null as { seq: number, state: BodyActFeedback['state'] } | null, rest: 'none' as BodyRest }
   /** The largest angle, radians, between a written local rotation and the clean pose, per group, since `beginFrame`. */
   readonly writeDeviation: Record<MMDBodyWriteGroup, number> = { hips: 0, torso: 0, head: 0, leftArm: 0, rightArm: 0, leftFingers: 0, rightFingers: 0 }
   private readonly disabledLayers = new Set<string>()
@@ -253,6 +257,11 @@ export class MMDBodyPerformer {
       if (reaction.kind)
         this.onEvent({ kind: 'reaction', reaction: reaction.kind })
     }
+    const act = frame.act
+    if (act && (act.seq !== r.act?.seq || act.state !== r.act.state)) {
+      r.act = { seq: act.seq, state: act.state }
+      this.onEvent({ kind: 'act', id: act.id, state: act.state, seq: act.seq })
+    }
   }
 
   /** Advances one tick. An arm without a clear pose keeps its last valid pose in the core; the first one is logged. */
@@ -282,6 +291,10 @@ export class MMDBodyPerformer {
     this.shifts = frame.diagnostics.gazeShifts
     this.blinks = frame.diagnostics.blinks
     this.report(frame)
+    if (input.directive.rest !== this.reported.rest) {
+      this.reported.rest = input.directive.rest
+      this.onEvent({ kind: 'rest', rest: input.directive.rest })
+    }
     this.line.yaw = frame.gaze.yaw - 0.3 * input.gaze.micro.yaw
     this.line.pitch = frame.gaze.pitch - 0.3 * input.gaze.micro.pitch
   }
@@ -450,7 +463,7 @@ export class MMDBodyPerformer {
     this.display.set(rest)
     this.latest = null
     this.ticks = this.shifts = this.blinks = 0
-    Object.assign(this.reported, { unitSeq: 0, strokeSeq: 0, inUnit: false, cue: 0, emotion: 0, reaction: 0, stroke: null })
+    Object.assign(this.reported, { unitSeq: 0, strokeSeq: 0, inUnit: false, cue: 0, emotion: 0, reaction: 0, stroke: null, act: null, rest: 'none' })
     this.lastShiftDeg = 0
     this.line.yaw = this.line.pitch = 0
     this.gaze.previous.yaw = this.gaze.previous.pitch = this.gaze.current.yaw = this.gaze.current.pitch = 0

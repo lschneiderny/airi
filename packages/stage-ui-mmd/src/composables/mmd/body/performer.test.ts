@@ -132,6 +132,31 @@ describe('mmd body performer adapter', () => {
     ])
   })
 
+  it('raises act and rest markers when the act feedback or the rest directive changes, and none without a producer', () => {
+    const fixture = bodyFixture()
+    const { traits } = performerOf(fixture)
+    const events: { tick: number, event: MMDBodyEvent }[] = []
+    let tick = 0
+    const empty = new Float64Array(BODY_CHANNELS.length)
+    // A sigh plays on ticks 3 to 5 and finishes on tick 6; the directive rests from tick 4 and dozes from tick 8.
+    const act = (t: number): LayerOutput['act'] => t >= 3 && t <= 5 ? { seq: 1, id: 'sigh', state: 'playing' } : t === 6 ? { seq: 1, id: 'sigh', state: 'finished' } : null
+    const layer: PerformanceLayer = { id: 'acts', order: 'act', mode: 'additive', mask: empty, step: context => ({ channels: empty, weight: 0, sequence: 0, act: act(context.tick) }), reset() {} }
+    const performer = new MMDBodyPerformer(new MMDBodyPose(fixture.mmd, fixture.rig), traits, { seed: 1, layers: [layer], onEvent: event => events.push({ tick, event }) })
+    for (tick = 1; tick <= 10; tick++)
+      performer.step({ ...stillInput, directive: { ...stillInput.directive, rest: tick >= 8 ? 'doze' : tick >= 4 ? 'rest' : 'none' } })
+    expect(events.filter(({ event }) => event.kind === 'act' || event.kind === 'rest')).toEqual([
+      { tick: 3, event: { kind: 'act', id: 'sigh', state: 'playing', seq: 1 } },
+      { tick: 4, event: { kind: 'rest', rest: 'rest' } },
+      { tick: 6, event: { kind: 'act', id: 'sigh', state: 'finished', seq: 1 } },
+      { tick: 8, event: { kind: 'rest', rest: 'doze' } },
+    ])
+    const silent: MMDBodyEvent[] = []
+    const idle = new MMDBodyPerformer(new MMDBodyPose(fixture.mmd, fixture.rig), traits, { seed: 1, layers: createPerformanceLayers({ traits, seed: 1 }), onEvent: event => silent.push(event) })
+    for (let t = 0; t < 10; t++)
+      idle.step(stillInput)
+    expect(silent.filter(event => event.kind === 'act' || event.kind === 'rest')).toEqual([])
+  })
+
   it('takes a claimed arm from the gesture layers before the claim reaches half', () => {
     const fixture = bodyFixture()
     const { traits } = performerOf(fixture)

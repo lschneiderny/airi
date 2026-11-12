@@ -306,7 +306,10 @@ The performer also turns the core's layer reports into markers:
 `gesture-stroke:<form>:<left|right|both>:<unitSeq>` on the tick that reaches the
 stroke's planned hit, `gesture-unit:start` and `gesture-unit:end`,
 `cue:<kind>:<seq>`, `emotion-posture:<emotion>:<onset|release>` and
-`reaction:<kind>`. No layer produces them yet. Every bone write also records the
+`reaction:<kind>`, and `act:<id>:<playing|finished|cancelled>` when the frame's act
+feedback changes its sequence or state and `rest:<none|rest|doze>` when the rest
+directive changes (neither is raised from the initial state, so no act or rest
+marker appears without a producer). Every bone write also records the
 largest angle between the written local rotation and the clean pose per written
 group (`performance.writeDeviationRad`), measured on the bone, so a fully owned
 group can be checked against the clip it should leave untouched.
