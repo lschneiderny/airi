@@ -7,7 +7,12 @@ deterministic motion algorithms for reusable character motion drivers.
 
 - `./clip-mask`: `buildClipBoneMask`, which reports which bone groups a clip animates.
 - `./clip-meta`: `deriveClipMeta`, `effectiveLayer` and `slugLabel`, which turn a clip bone mask, duration and name into a layer, kind, loop flag and label.
-- `./director` exports the pure stance and attention director.
+- `./director` exports the pure stance and attention director. It also issues
+  `visit` walks toward the cursor, keeps her where a wander or a visit took
+  her for 45 to 150 s, and accepts `idle` clip requests as the weakest source.
+- `./idle-clips`: `decideIdleClip`, a pure scheduler that picks one of the
+  clips the user allowed for idle after enough quiet time. The caller sends
+  the pick to the director as an `idle` request.
 - `./foot-contact`: planted foot anchors, eased contact, shared pelvis reach
   correction, signed knee pre-bend, and body-turn step arcs.
 - `./look-at`: `createLookAt`, look-at and turn-step contracts, and `aimEyes`.

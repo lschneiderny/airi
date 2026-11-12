@@ -117,3 +117,7 @@ The hit-test readback passes its gate with a thin margin. The frame rate on this
 - Landed: the second wander on arrival. A wander deadline that fell due while another goal was walking stayed due, so the wander fired in the frame the goal ended. `decideBody` now draws a new deadline from the arrival instead.
 - Landed: roaming at the default height. At 560 DIP on a 1440 DIP wide work area, three leg lengths of ground fit on neither side of home. When three legs do not fit, the minimum wander distance is now half the longer free side, but never less than one leg length.
 - Luke-run checks that agents could not perform on this host: a crossing between two real displays (KDE Wayland, KDE X11, and macOS), the two-display home switch, real OS clicks through the stage with another app frontmost, an OS-level screen capture, and the Windows re-measure of the spike and gates, including the 125 % and 150 % display scales.
+
+## Amendment (2026-11-12): visits and lingering
+
+A due wander now has a purpose in most cases. When the cursor rests on her stage and far enough away, 60 % of due wanders walk toward it and stop 1.5 leg lengths short (`visit`); while the user is active a due wander is always a visit, and without a place to visit it stays due. After a wander or a visit she stays for 45 to 150 s (`LINGER_MIN_MS`, `LINGER_MAX_MS`) before the return home, which replaces the 20 s return for these two reasons. See the [idle agency ADR](2026-11-12-idle-agency.md).
