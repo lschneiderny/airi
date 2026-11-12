@@ -108,6 +108,11 @@ interface Clip {
 
 /** Seconds a look-around head move takes; holds are longer, so each move completes. */
 const lookMoveSeconds = 0.7
+/**
+ * Seconds over which a behaviour without an envelope of its own calms the posture and gives it back. The posture
+ * amplitude scales her current offset directly, so a calm that switched on at once would snap the head.
+ */
+const calmEaseSeconds = 0.6
 /** Seconds the head snaps up after a nod-off droop, and the seconds it takes to settle afterwards. */
 const nodJerkSeconds = 0.28
 const nodSettleSeconds = 1.3
@@ -637,6 +642,7 @@ export class NaturalIdleActivities {
           break
         }
         case 'look-around': {
+          const ease = trapezoid(age, calmEaseSeconds, clip.end - clip.start - 2 * calmEaseSeconds, calmEaseSeconds)
           let x = 0
           let y = 0
           for (let i = 1; i < clip.keys.length; i++) {
@@ -650,7 +656,7 @@ export class NaturalIdleActivities {
           }
           head(x, y, 0)
           body(0.3 * x, 0, 0)
-          calm(0.5, 0.5, 0.3)
+          calm(0.5 * ease, 0.5 * ease, 0.3 * ease)
           break
         }
         case 'check-in': {
@@ -711,10 +717,11 @@ export class NaturalIdleActivities {
               hint = 0.12 * (1 - w)
             }
           }
+          const ease = trapezoid(age, calmEaseSeconds, clip.end - clip.start - 2 * calmEaseSeconds, calmEaseSeconds)
           head(0, pitch, s * 0.25 * -pitch)
           out.lidClose = Math.max(out.lidClose, gain * lid)
           out.eyeOpenHint += gain * hint
-          calm(0.5, 0.5, 0.4)
+          calm(0.5 * ease, 0.5 * ease, 0.4 * ease)
           break
         }
         case 'sway': {

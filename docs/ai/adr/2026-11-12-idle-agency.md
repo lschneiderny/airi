@@ -92,7 +92,7 @@ Both cues cost no model call. They turn the most common outcome of the gate, a s
 
 ## Consequences
 
-- **The idle motion users see changes.** With the setting on, a liveliness measurement of the running app differs from the gate profile, which pins the setting off. Naturalness of each activity is unproven until Luke reviews it on screen. The shapes were tuned by reading numbers, not by watching a rig.
+- **The idle motion users see changes.** With the setting on, a liveliness measurement of the running app differs from the gate profile, which pins the setting off. Naturalness of each activity is unproven until Luke reviews it on screen. The shapes were tuned on one rendered Live2D rig from still frames and parameter traces (see Validation).
 - **MMD head motion is unverified.** The MMD body look-at stage runs after the Natural pose and may reduce the head offsets of an activity. The face, the lids and the reports do not depend on it.
 - **Web hosts get activities and no sleep.** The drive is sent on every host. A host without desktop signals never reports the user as away, so she never sleeps there, and music is never detected.
 - **Two stages report twice.** When two windows render a stage, the leader folds both sets of reports and the newer one wins.
@@ -115,6 +115,8 @@ Both cues cost no model call. They turn the most common outcome of the gate, a s
 - `stage-shared`: `character-state/idle.test.ts` and `situation/self.test.ts` cover the drive, the reducer, the rendered line, the block position, and the own-day anchor.
 - `stage-ui`, `stage-ui-live2d`: tests cover the self store, the music resolver, the conductor's driver gate, and the Live2D adapter closing the eyes and reporting across a driver change and disposal.
 - Rendered Live2D pass, 2026-11-12, bear Pajama rig on macOS: every behaviour was played through `idlePlay` in the running app and read from frame sheets at its peaks and from post-physics parameter traces. The first shapes for stretch, yawn, check-in, peer, zone-out, sway, about-to-speak and let-go were too small to tell apart from the base idle motion, and were enlarged until each reads in a still frame. Look-around was kept; sleep and nod-off were deepened. Frame sheets prove that a pose reads, not that the motion between poses looks natural. That stays Luke's visual call, as does the pacing.
+- Continuity, 2026-11-12: a per-step speed measurement through the full controller found that look-around and nod-off switched the posture amplitude in one step, which moved the head by up to 0.27 normalized units (about 8 degrees) in a single 120 Hz step at their start and end. Both now ease the calm in and out over 0.6 s. A test plays all eleven behaviours to their end and interrupted at 2 s, and fails when any head or body channel moves faster than 6 units per second; the fastest intended move, the head jerk of a nod-off, measures about 4.
+- Pacing, 2026-11-12, three simulated hours per condition through the full controller at a neutral mood: 59 behaviours per hour while the user is inactive and 44 while they work, with a behaviour in progress 7 to 13 % of the time and a longest quiet stretch of 4 to 7 minutes. At 1 am while the user works the mix moves to yawns, nod-offs and zoning out (41 per hour). These numbers describe the scheduler; whether the pace feels right on screen is Luke's call.
 - MMD shares the shapes and has had no rendered pass; it is tuned separately.
 
 ## Follow-ups

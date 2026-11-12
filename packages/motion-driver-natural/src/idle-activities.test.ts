@@ -356,6 +356,36 @@ describe('idle activities in the controller', () => {
     expect(peakMouth(true)).toBe(0)
   })
 
+  it('never snaps the head or the body: every behaviour starts, ends and yields within a bounded speed', () => {
+    const kinds: IdleBehaviourKind[] = ['stretch', 'yawn', 'look-around', 'check-in', 'peer', 'zone-out', 'nod-off', 'sway', 'sleep', 'about-to-speak', 'let-go']
+    const channels = ['headX', 'headY', 'headZ', 'bodyX', 'bodyY', 'bodyZ'] as const
+    const hz = 120
+    // Normalized units per second. The fastest intended move is the head jerk of a nod-off, about 4; a posture
+    // amplitude that switched in one step measured 17 to 32.
+    const limit = 6
+    for (const kind of kinds) {
+      for (const interruptAt of [null, 2]) {
+        const motion = new NaturalMotion({ seed: 11 })
+        motion.setIdleDrive({ ...neutralDrive, rate: 0 }, 0)
+        motion.setPerformance(idleState, 0.5, 0)
+        let previous = motion.advance(0)
+        let fastest = 0
+        for (let step = 1; step <= 44 * hz; step++) {
+          const now = step / hz
+          if (step === 20 * hz)
+            motion.idlePlay(kind, now)
+          if (interruptAt !== null && step === (20 + interruptAt) * hz)
+            motion.setPerformance({ ...idleState, mode: 'talking' }, 0.5, now)
+          const frame = motion.advance(now)
+          for (const channel of channels)
+            fastest = Math.max(fastest, Math.abs((frame.pose[channel] ?? 0) - (previous.pose[channel] ?? 0)) * hz)
+          previous = frame
+        }
+        expect(fastest, `${kind}${interruptAt === null ? '' : ' interrupted'}`).toBeLessThan(limit)
+      }
+    }
+  })
+
   it('keeps every pose channel in range through half an hour of activities', () => {
     const motion = new NaturalMotion({ seed: 9 })
     motion.setIdleDrive({ ...neutralDrive, sleepiness: 0.8, music: true, energy: 0.4 }, 0)
