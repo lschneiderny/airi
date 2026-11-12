@@ -114,12 +114,15 @@ On Fedora, electron-builder's bundled `fpm` needs `libcrypt.so.1` to build the d
 pnpm wt ls                                  # name, branch, idle time, uncommitted files, merged into main, live processes
 pnpm wt new my-feature                      # <repo>-wt/my-feature on <prefix>/feat/my-feature, then pnpm install
 pnpm wt new my-feature --base main --branch luke/fix/x --no-install
+pnpm wt new my-feature --qa                 # also .env.qa, pnpm qa:setup cubism, install check, one ready line
 pnpm wt rm my-feature [--force] [--delete-branch]
 pnpm wt gc [--days 14]                      # dry run
 pnpm wt gc --yes
 ```
 
 - The branch prefix comes from `git config airi.branchPrefix`, or else the OS user name.
+- `new` refuses a worktree path inside the system temporary directory (`os.tmpdir()`). One install there takes about 144,000 inodes, and a tmpfs has a fixed inode table that every job on the machine shares.
+- `new --qa` prepares a worktree for model-gated QA. It takes `AIRI_QA_MMD_MODEL` from the environment, or else from the `.env.qa` of the checkout you run it in, and refuses before creating anything when neither sets it or the file does not exist. After the install it writes `AIRI_QA_MMD_MODEL` to the new worktree's `.env.qa`, runs `pnpm qa:setup cubism` there, checks `node_modules/.modules.yaml`, and prints one `wt: ready ...` line. `--qa` cannot be combined with `--no-install`.
 - `rm` refuses while any process still runs from the worktree. It also refuses for uncommitted files (`--force` overrides only this) and for a detached HEAD holding commits main does not contain. If `git worktree remove` fails on long `node_modules` paths, it deletes the directory with extended-length paths and prunes.
 - `gc` removes a worktree when it is merged into main, its directory is gone, or it is clean and has had no commit for `--days`. Removal deletes only the directory. Branches keep their commits.
 

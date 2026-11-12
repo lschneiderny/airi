@@ -1,8 +1,10 @@
 import type { WorktreeState } from './wt-plan'
 
+import { parseEnv } from 'node:util'
+
 import { describe, expect, it } from 'vitest'
 
-import { defaultBranch, gcDecision, rmBlocker, validName } from './wt-plan'
+import { defaultBranch, envQaLine, gcDecision, qaModelSource, rmBlocker, tempWorktreeRefusal, validName } from './wt-plan'
 
 const now = Date.UTC(2026, 9, 20)
 function daysAgo(days: number): number {
@@ -62,5 +64,30 @@ describe('naming', () => {
     expect(validName('dev-perf')).toBe(true)
     expect(validName('../escape')).toBe(false)
     expect(validName('a/b')).toBe(false)
+  })
+})
+
+describe('tempWorktreeRefusal', () => {
+  it('refuses a path inside the temporary directory and allows a sibling with the same prefix', () => {
+    expect(tempWorktreeRefusal('/tmp/repo-wt/probe', '/tmp')).toContain('inodes')
+    expect(tempWorktreeRefusal('/tmpfs-repo-wt/probe', '/tmp')).toBeNull()
+    expect(tempWorktreeRefusal('/mnt/dev/repo-wt/probe', '/tmp')).toBeNull()
+  })
+})
+
+describe('qaModelSource', () => {
+  it('prefers the environment, falls back to the source .env.qa, and names both when neither sets the model', () => {
+    const file = '/repo/.env.qa'
+    expect(qaModelSource({ AIRI_QA_MMD_MODEL: '/env.pmx' }, 'AIRI_QA_MMD_MODEL=/file.pmx\n', file)).toEqual({ model: '/env.pmx', from: 'the environment\'s AIRI_QA_MMD_MODEL' })
+    expect(qaModelSource({}, 'AIRI_QA_MMD_MODEL=/file.pmx\n', file)).toEqual({ model: '/file.pmx', from: file })
+    const missing = qaModelSource({}, undefined, file)
+    expect('error' in missing && missing.error).toContain(file)
+  })
+})
+
+describe('envQaLine', () => {
+  it('writes a line that parseEnv reads back unchanged', () => {
+    for (const model of ['/opt/random models/MMD/鸣潮_千咲1.02.pmx', 'C:\\models\\new #1\\a.pmx', '/models/it\'s.pmx'])
+      expect(parseEnv(envQaLine(model)).AIRI_QA_MMD_MODEL).toBe(model)
   })
 })

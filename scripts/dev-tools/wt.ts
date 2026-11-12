@@ -4,8 +4,8 @@ import type { WorktreeState } from './wt-plan'
 import process from 'node:process'
 
 import { execFileSync, spawn, spawnSync } from 'node:child_process'
-import { existsSync } from 'node:fs'
-import { userInfo } from 'node:os'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { tmpdir, userInfo } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 
 import { errorMessageFrom } from '@moeru/std'
@@ -14,16 +14,18 @@ import { acquire } from '@proj-airi/cpu-slots'
 import { compileCacheEnv } from './lib/compile-cache'
 import { git, listWorktrees, repoRoot } from './lib/git'
 import { attribute, normalizePath, snapshotProcesses } from './lib/processes'
-import { defaultBranch, gcDecision, rmBlocker, validName } from './wt-plan'
+import { defaultBranch, envQaLine, gcDecision, qaModelSource, rmBlocker, tempWorktreeRefusal, validName } from './wt-plan'
 
 const usage = `Usage: pnpm wt ls
-       pnpm wt new <name> [--base <ref>] [--branch <branch>] [--no-install]
+       pnpm wt new <name> [--base <ref>] [--branch <branch>] [--no-install | --qa]
        pnpm wt rm <name> [--force] [--delete-branch]
        pnpm wt gc [--days N] [--yes]
 
   ls    list worktrees with branch, idle time, uncommitted files, merge state, and live processes
   new   create <worktrees dir>/<name> on a new branch (default <prefix>/feat/<name>, prefix from
-        \`git config airi.branchPrefix\` or the OS user name) and install with the shared store
+        \`git config airi.branchPrefix\` or the OS user name) and install with the shared store;
+        --qa also writes .env.qa with AIRI_QA_MMD_MODEL (from the environment or this checkout's
+        .env.qa), runs pnpm qa:setup cubism, and checks the install
   rm    remove one worktree; refuses while processes run from it or files are uncommitted
   gc    list removable worktrees (merged, gone, or clean and idle for --days, default 14);
         --yes removes them. Removal keeps branches, so their commits stay reachable.`
@@ -98,6 +100,32 @@ async function install(path: string): Promise<number> {
   }
 }
 
+/** `pnpm qa:setup cubism` in the new worktree. */
+function setupCubism(path: string): Promise<number> {
+  return new Promise<number>((resolve, reject) => {
+    // pnpm is a .cmd/.ps1 shim on Windows, which only a shell can start.
+    const child = spawn('pnpm', ['qa:setup', 'cubism'], { cwd: path, env: { ...process.env, ...compileCacheEnv(process.env, path) }, stdio: 'inherit', shell: process.platform === 'win32' })
+    child.once('error', reject)
+    child.once('close', code => resolve(code ?? 1))
+  })
+}
+
+/** The steps every QA worktree needed by hand: `.env.qa`, Cubism Core, and a checked install. */
+async function prepareQa(path: string, model: { model: string, from: string }): Promise<number> {
+  // `wx` never replaces an existing file; a new worktree has none because `.env.qa` is ignored.
+  writeFileSync(join(path, '.env.qa'), envQaLine(model.model), { flag: 'wx' })
+  const cubism = await setupCubism(path)
+  if (cubism !== 0) {
+    console.error(`pnpm qa:setup cubism exited ${cubism} in ${path}`)
+    return 1
+  }
+  if (!existsSync(join(path, 'node_modules', '.modules.yaml'))) {
+    console.error(`${path}/node_modules/.modules.yaml is missing after the install`)
+    return 1
+  }
+  return 0
+}
+
 async function create(root: string, argv: string[]): Promise<number> {
   const name = argv[0]
   if (!name || !validName(name)) {
@@ -108,8 +136,28 @@ async function create(root: string, argv: string[]): Promise<number> {
     const index = argv.indexOf(flag)
     return index === -1 ? undefined : argv[index + 1]
   }
+  const qa = argv.includes('--qa')
+  if (qa && argv.includes('--no-install')) {
+    console.error(`--qa needs the install; drop --no-install.\n${usage}`)
+    return 2
+  }
   const mainRoot = listWorktrees(root)[0].path
   const path = join(dirname(mainRoot), `${basename(mainRoot)}-wt`, name)
+  const refusal = tempWorktreeRefusal(path, tmpdir())
+  if (refusal) {
+    console.error(refusal)
+    return 2
+  }
+  const envQaFile = join(root, '.env.qa')
+  const model = qa ? qaModelSource(process.env, existsSync(envQaFile) ? readFileSync(envQaFile, 'utf8') : undefined, envQaFile) : undefined
+  if (model && 'error' in model) {
+    console.error(model.error)
+    return 2
+  }
+  if (model && !existsSync(model.model)) {
+    console.error(`The MMD model ${model.model} (from ${model.from}) does not exist.`)
+    return 2
+  }
   if (existsSync(path)) {
     console.error(`${path} already exists`)
     return 1
@@ -125,7 +173,15 @@ async function create(root: string, argv: string[]): Promise<number> {
   const base = option('--base') ?? mainBranch(root)
   git(root, ['worktree', 'add', '-b', branch, path, base])
   console.info(`Created ${path} on ${branch} from ${base}`)
-  return argv.includes('--no-install') ? 0 : await install(path)
+  if (argv.includes('--no-install'))
+    return 0
+  const installed = await install(path)
+  if (installed !== 0 || !model)
+    return installed
+  const prepared = await prepareQa(path, model)
+  if (prepared === 0)
+    console.info(`wt: ready ${name} at ${path} on ${branch} (${git(path, ['rev-parse', '--short', 'HEAD'])}); .env.qa model from ${model.from}; Cubism Core set up; dependencies installed`)
+  return prepared
 }
 
 function removeDirectory(path: string): void {
