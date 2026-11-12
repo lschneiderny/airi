@@ -8,7 +8,7 @@ import { ARM_START, BODY_TICK, channelIndex, DEG, SIDES } from './channels'
 import { GESTURE_FORMS, GestureKeys, writeHandShape } from './gesture-forms'
 import { createGestureLayers } from './gestures'
 import { BodySkeleton, createBodyPerformer } from './index'
-import { fixtureRigs, idleInput } from './performance.test-fixtures'
+import { chisaTraits, fixtureRigs, idleInput } from './performance.test-fixtures'
 
 const traits = fixtureRigs[0].traits
 
@@ -78,7 +78,7 @@ function armFormPlanner(script: Script): PerformanceLayer {
 }
 
 interface Run {
-  readonly frames: { readonly time: number, readonly channels: Float32Array, readonly gesture: BodyPerformanceFrame['diagnostics']['gesture'], readonly corrector: BodyPerformanceFrame['diagnostics']['corrector'], readonly holds: number }[]
+  readonly frames: { readonly time: number, readonly channels: Float32Array, readonly gesture: BodyPerformanceFrame['diagnostics']['gesture'], readonly corrector: BodyPerformanceFrame['diagnostics']['corrector'], readonly correction: BodyPerformanceFrame['diagnostics']['correction'], readonly holds: number }[]
   readonly onsets: number[]
 }
 
@@ -106,7 +106,7 @@ function watchTargetSlope(layer: PerformanceLayer, slope: { worst: number }): Pe
   return layer
 }
 
-function perform(script: Script, seconds: number, options: { seed?: number, traits?: BodyRigTraits, layers?: boolean, slope?: { worst: number } } = {}): Run {
+function perform(script: Script, seconds: number, options: { seed?: number, traits?: BodyRigTraits, layers?: boolean, slope?: { worst: number }, corrections?: Record<'left' | 'right', number> } = {}): Run {
   const rig = options.traits ?? traits
   const seed = options.seed ?? 1
   const gestures = createGestureLayers({ traits: rig, seed }).map(layer => options.slope ? watchTargetSlope(layer, options.slope) : layer)
@@ -122,7 +122,14 @@ function perform(script: Script, seconds: number, options: { seed?: number, trai
     if (state.onset !== before)
       onsets.push(time)
     const g = frame.diagnostics.gesture
-    frames.push({ time, channels: frame.channels.slice(), gesture: { ...g, activation: { ...g.activation } }, corrector: { ...frame.diagnostics.corrector }, holds: frame.diagnostics.collisions.count })
+    for (const side of SIDES) {
+      // A new contact while the gesture layer holds the arm at full weight: the corrector's correction rising. (As the
+      // weight ramps out, the arm is handed back to the idle hang, which the corrector may already hold.)
+      const rise = frame.diagnostics.correction[side] - (frames.at(-1)?.correction[side] ?? frame.diagnostics.correction[side])
+      if (options.corrections && g.activation[side] === 1)
+        options.corrections[side] = Math.max(options.corrections[side], rise)
+    }
+    frames.push({ time, channels: frame.channels.slice(), gesture: { ...g, activation: { ...g.activation } }, corrector: { ...frame.diagnostics.corrector }, correction: { ...frame.diagnostics.correction }, holds: frame.diagnostics.collisions.count })
   }
   return { frames, onsets }
 }
@@ -205,10 +212,9 @@ describe('co-speech gestures', () => {
       const planned = strokes(run)
       expect(planned).toHaveLength(5)
       for (const stroke of planned) {
-        // The onset reaches the performer at most a display frame and a tick after detection, which precedes the
-        // labelled peak by at least 24.7 ms (unit M `onset-latency.txt`): the hit lands inside 200 ms less a frame.
-        // A beat, the default form, hits for every measured lead. The larger forms last as long as the followers need
-        // (their input slope), and hit for the median lead, 62.9 ms (unit M `controls.md`).
+        // The onset reaches the performer a frame and a tick after detection, 24.7 to 87.2 ms before the labelled peak
+        // (unit M `controls.md`). A beat hits within 200 ms of the peak for every lead; a larger form, which lasts as
+        // long as its followers need, for the median lead (62.9 ms).
         if (stroke.form === 'beat')
           expect(stroke.hit - stroke.onset).toBeLessThanOrEqual(0.2 + 0.0247 - 1 / 60 - BODY_TICK)
         expect(stroke.hit - stroke.onset).toBeLessThanOrEqual(0.2 + 0.0629 - 1 / 60 - BODY_TICK)
@@ -245,6 +251,17 @@ describe('co-speech gestures', () => {
         }
       }
     }
+  })
+
+  it('gestures past a real bust without the corrector', () => {
+    // Natural reports mood tension 0 in speech without an emotion: the softest active arm followers.
+    const correction = { left: 0, right: 0 }
+    for (const [seed, energy] of [[1, 0.45], [2, 0.65], [3, 0.85]]) {
+      const run = perform({ utterances: [utterance(0.4, energy, peaks(0.4))], tension: 0 }, 9, { traits: chisaTraits, seed, corrections: correction })
+      expect(strokes(run)).toHaveLength(5)
+    }
+    expect(correction.left).toBeLessThanOrEqual(0)
+    expect(correction.right).toBeLessThanOrEqual(0)
   })
 
   it('shows five forms over 500 seeds of neutral speech, more with the dominant hand, larger at higher energy', () => {

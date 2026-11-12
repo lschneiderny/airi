@@ -135,8 +135,11 @@ export class BodyCollision {
     }
   }
 
-  /** Margin-inclusive depth against torso AND head; borrowed result. Call prepare after trunk changes. */
-  measure(side: BodySide, channels: ArrayLike<number>) {
+  /**
+   * Margin-inclusive depth against torso AND head; borrowed result. Call prepare after trunk changes. `extra` grows
+   * each capsule's radius by that share of its segment length, for poses that need room beyond the margin.
+   */
+  measure(side: BodySide, channels: ArrayLike<number>, extra = 0) {
     const pose = this.skeleton.arm(side, channels)
     const d = this.deepest
     d.depth = d.head = 0
@@ -147,7 +150,9 @@ export class BodyCollision {
       const dx = to.x - from.x
       const dy = to.y - from.y
       const dz = to.z - from.z
-      const radius = 0.15 * Math.hypot(dx, dy, dz)
+      const span = Math.hypot(dx, dy, dz)
+      const radius = 0.15 * span
+      const reach = radius + extra * span
       for (let sample = 0; sample < 5; sample++) {
         const fraction = segment === 0 ? 0.5 + sample / 8 : 1.65 * sample / 4
         const x = from.x + dx * fraction
@@ -161,7 +166,7 @@ export class BodyCollision {
           this.point.x = frame[0] * px + frame[3] * py + frame[6] * pz
           this.point.y = frame[1] * px + frame[4] * py + frame[7] * pz
           this.point.z = frame[2] * px + frame[5] * py + frame[8] * pz
-          const depth = radius - colliderDistance(this.colliders[i], this.point, this.normal)
+          const depth = reach - colliderDistance(this.colliders[i], this.point, this.normal)
           if (this.colliders[i].bone === 'head' || this.colliders[i].bone === 'neck')
             d.head = Math.max(d.head, depth)
           // The margin is 0.03 of the segment and the radius 0.15 of it, so half the margin is a tenth of the radius.

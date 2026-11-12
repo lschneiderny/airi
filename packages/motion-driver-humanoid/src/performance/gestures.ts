@@ -8,7 +8,7 @@ import { deriveSeed } from '../noise'
 import { createRandomStream } from '../random'
 import { armCascadeDelay, armResponse } from './arms'
 import { ARM_START, BODY_CHANNELS, BODY_TICK, DEG, SIDES } from './channels'
-import { ARM_FORMS, GESTURE_FORMS, gestureGain, GestureKeys, gestureTempo, writeHandShape } from './gesture-forms'
+import { ARM_FORMS, GESTURE_FORMS, gestureGain, GestureKeys, gestureTempo, KEY_HEADROOM, writeHandShape } from './gesture-forms'
 
 type Mutable<T> = { -readonly [K in keyof T]: T[K] }
 
@@ -450,7 +450,7 @@ class GesturePerformer {
       track.ready.set(track.home)
       writeHandShape('relaxed', track.ready)
       const swivel = twoHand && side !== this.dominant ? AMPLITUDE.nonDominantSwivel : 0
-      if (!this.keys.solve(side, this.keys.readyKey(energy, 0, swivel), track.ready, track.home))
+      if (!this.keys.solve(side, this.keys.readyKey(energy, 0, swivel), track.ready, track.home, KEY_HEADROOM))
         continue
       this.begin(track, now)
       track.prepSeconds = track.move(track.ready, now, (0.25 + 0.35 * this.travel(side, track.home, track.ready)) / gestureTempo(energy), this.tension)
@@ -527,22 +527,22 @@ class GesturePerformer {
     const swivel = this.unit.twoHand && track.side !== this.dominant ? AMPLITUDE.nonDominantSwivel : 0
     for (const candidate of form === 'beat' ? ['beat'] as const : [form, 'beat'] as const) {
       const ready = keys.readyKey(energy, candidate === 'frame' ? 0.1 : 0, swivel)
-      const key = keys.strokeKey(ready, candidate, size, candidate === 'point' ? this.pointYaw(context.input, track.side) : 0)
-      track.key.set(track.ready)
-      writeHandShape(GESTURE_FORMS[candidate].shape, track.key)
-      if (!keys.solve(track.side, key, track.key, track.ready))
+      const yaw = candidate === 'point' ? this.pointYaw(context.input, track.side) : 0
+      // Post-stroke hold: the hand drifts 1.5 % A further along the stroke, so the stroke's end is where the arm ends up.
+      // That end is the pose cleared against the proxies; the key lies on the cleared path from the ready key, short of it.
+      const drift = AMPLITUDE.drift / Math.hypot(...GESTURE_FORMS[candidate].stroke)
+      track.drift.set(track.ready)
+      writeHandShape(GESTURE_FORMS[candidate].shape, track.drift)
+      if (!keys.solve(track.side, keys.strokeKey(ready, candidate, size + drift, yaw), track.drift, track.ready))
         continue
+      track.key.set(track.drift)
+      for (let j = 2; j <= 5; j++)
+        track.key[j] = track.ready[j] + (track.drift[j] - track.ready[j]) * size / (size + drift)
       const seconds = GESTURE_FORMS[candidate].strokeSeconds / tempo
       const [low, high] = GESTURE_FORMS[candidate].hold
       const hold = (low + (high - low) * this.random()) / tempo
-      // Post-stroke hold: the hand drifts 1.5 % A along the stroke, in angle space from the ready key.
-      track.drift.set(track.key)
-      const travel = Math.max(1e-6, this.travel(track.side, track.ready, track.key))
-      for (let j = 2; j < 9; j++)
-        track.drift[j] += (track.key[j] - track.ready[j]) * AMPLITUDE.drift / travel
-      // 4a: the visible hit lands at the stroke's duration. Feedforward removes the followers' own lag, so only the
-      // elbow's cascade delay remains between the planned profile's end and the wrist's landing. A stroke the followers
-      // cannot take in that time lasts longer (`move`); the apex is observed, so its report stays true.
+      // 4a: the hit lands at the stroke's duration. Feedforward removes the followers' lag, leaving the elbow's cascade
+      // delay before the wrist lands. A stroke the followers cannot take that fast lasts longer (`move`).
       const profile = track.move(track.key, now, seconds - armCascadeDelay(5, 1, 1, this.tension), this.tension)
       track.state = 'stroke'
       track.form = candidate

@@ -65,6 +65,14 @@ export type ArmPose = Float64Array
 /** The rest pose's thumb opposition, degrees (`BodyArms` rest). */
 const REST_OPPOSITION = 10
 const OPPOSED_THUMB = 40
+/**
+ * Room a key the arm settles on (the ready key it returns to between strokes) leaves around itself beyond the
+ * corrector's margin, as a share of each segment's length: 3.5 degrees of elbow at the middle of the forearm, the
+ * measured settle past a fed-forward preparation's key (1.9 degrees, Chisa) plus the elbow's moving-hold noise (1.2
+ * degrees, `ARM_NOISE_DEGREES`). Such a key clears it, so the arm does not touch the margin while it arrives and holds;
+ * paths and brief stroke keys clear the margin itself.
+ */
+export const KEY_HEADROOM = 0.05
 const PUSH_STEPS = 8
 const PUSH_STEP = 0.02
 const PATH_SAMPLES = 10
@@ -170,15 +178,16 @@ export class GestureKeys {
 
   /**
    * Solves `key` into `pose`'s arm angles (clavicle and fingers untouched), pushing the hand outward until the pose and
-   * the angle path from `from` clear the proxies. False when no clear, reachable, in-limit key exists.
+   * the angle path from `from` clear the proxies, the pose by `headroom` more (`KEY_HEADROOM` for a key the arm settles
+   * on). False when no clear, reachable, in-limit key exists.
    */
-  solve(side: BodySide, key: ArmKey, pose: ArmPose, from: ArmPose | null = null): boolean {
+  solve(side: BodySide, key: ArmKey, pose: ArmPose, from: ArmPose | null = null, headroom = 0): boolean {
     const hand: [number, number, number] = [key.hand[0], key.hand[1], key.hand[2]]
     const sigma = side === 'left' ? 1 : -1
     for (let step = 0; step <= PUSH_STEPS; step++) {
       if (!this.solveOnce(side, { ...key, hand }, pose))
         return false
-      const contact = this.deepest(side, pose, from)
+      const contact = this.deepest(side, pose, from, headroom)
       if (!contact)
         return true
       // 6.3: push the hand along the proxy's outward normal at the deepest sample, in the key's [out, up, forward].
@@ -230,11 +239,11 @@ export class GestureKeys {
   }
 
   /** The outward normal at the deepest contact of `pose` or of the path to it from `from`, or null when all is clear. */
-  private deepest(side: BodySide, pose: ArmPose, from: ArmPose | null): { nx: number, ny: number, nz: number } | null {
+  private deepest(side: BodySide, pose: ArmPose, from: ArmPose | null, headroom = 0): { nx: number, ny: number, nz: number } | null {
     let best: { depth: number, nx: number, ny: number, nz: number } | null = null
     for (let sample = from ? 0 : PATH_SAMPLES; sample <= PATH_SAMPLES; sample++) {
       this.load(side, from ?? pose, pose, sample / PATH_SAMPLES)
-      const d = this.collision.measure(side, this.scratch)
+      const d = this.collision.measure(side, this.scratch, sample === PATH_SAMPLES ? headroom : 0)
       if (d.depth > 0 && (!best || d.depth > best.depth))
         best = { depth: d.depth, nx: d.nx, ny: d.ny, nz: d.nz }
     }

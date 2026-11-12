@@ -520,7 +520,11 @@ keys were cleared on, without its followers' lag or overshoot, and a stroke
 lands at 4a's duration, or later when the inverse would ask a follower for more
 than its 20 rad/s input slope: a segment then lasts the shortest time the
 followers can take. The ready key is cleared along its path from the arm's
-starting pose, as stroke keys are along theirs from the ready key. Every other
+starting pose, as stroke keys are along theirs from the ready key, and it keeps
+a headroom of 0.05 of each segment beyond the corrector's margin
+(`KEY_HEADROOM`), because the arm settles and holds there. A stroke is cleared
+at its end, the post-stroke hold's 1.5 % A drift included, and its key lies
+on that cleared path. Every other
 channel of a segment also stays within that slope, so a large forearm, wrist or
 finger turn arrives after the hit, and each new segment continues the planned
 motion's velocity, never the inverse's. The report marks a stroke at the apex the lead wrist actually shows
