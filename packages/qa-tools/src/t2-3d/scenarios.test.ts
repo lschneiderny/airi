@@ -43,14 +43,14 @@ describe('motion3d scenario timelines', () => {
     })
   })
 
-  it('walks version 2: right, back left, a turn-around and short legs, every goal at walk pace and at least the director dwell apart', () => {
+  it('walks version 3: right, back left, a turn-around and short legs at walk pace, each cue at least 2 s after the previous leg ends', () => {
     const scenario = motion3dScenarios.find(scenario => scenario.id === 'walk')
     if (!scenario)
       throw new Error('Missing walk scenario')
-    expect([scenario.version, scenario.seconds]).toEqual([2, 60])
+    expect([scenario.version, scenario.seconds]).toEqual([3, 60])
     for (const seed of [1, 2]) {
       const goals = scenario.timeline(seed, 120).flatMap(cue => cue.kind === 'goal' ? [cue] : [])
-      expect(goals.map(goal => [goal.at, goal.x, goal.pace])).toEqual([[0.5, 19.5, 'walk'], [26.5, 8, 'walk'], [31.5, 19, 'walk'], [42.5, 16, 'walk'], [50.5, 19, 'walk'], [60, 16, 'walk']])
+      expect(goals.map(goal => [goal.at, goal.x, goal.pace])).toEqual([[0.5, 19.5, 'walk'], [28, 8, 'walk'], [33, 19, 'walk'], [45, 16, 'walk'], [54.5, 19, 'walk'], [64, 16, 'walk']])
       goals.slice(1).forEach((goal, i) => expect(goal.at - goals[i].at).toBeGreaterThanOrEqual(GOAL_MIN_DWELL_MS / 1000))
     }
   })

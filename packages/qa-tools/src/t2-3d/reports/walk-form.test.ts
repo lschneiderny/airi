@@ -14,8 +14,8 @@ const BONES: readonly MotionTraceBone[] = [...TEST_BONES, 'leftUpperLeg', 'leftL
 const LIMBS = /UpperArm|LowerArm|Hand|UpperLeg|LowerLeg|Foot/
 const DEG = Math.PI / 180
 const STRIDE_HZ = 0.9
-const WALK_SECONDS = 30
-const TURNS = [32, 36] as const
+/** Seven 90 degree turns in place, then the 180 degree turn-around: [start, degrees, seconds]. */
+const TURNS: readonly (readonly [number, number, number])[] = [[31, 90, 1], [34, -90, 1], [37, 90, 1], [40, -90, 1], [43, 90, 1], [46, -90, 1], [49, 90, 1], [52, 180, 2]]
 
 interface Walk {
   /** Heel-strike and toe-off pitch of each foot, degrees; a flat foot is 0. */
@@ -26,25 +26,32 @@ interface Walk {
   readonly headLead?: readonly number[]
   readonly skate?: { readonly ankle: number, readonly contact: number | null }
   readonly scenario?: 'walk' | 'talk'
+  readonly walkSeconds?: number
+  readonly turns?: readonly (readonly [number, number, number])[]
+  /** The product's mode channel reads `turning` during the turns; false leaves it at walking, as a mislabelled turn. */
+  readonly turnsInModeChannel?: boolean
 }
 
 /**
- * Thirty seconds of walking forward at 1 L/s with legs and arms swinging at 0.9 strides per second, then two 90 degree
- * turns in place. Limb rest offsets point down, so a segment's sagittal angle is its swing angle.
+ * Walking forward at 1 L/s with legs and arms swinging at 0.9 strides per second, then turns in place. Limb rest offsets
+ * point down, so a segment's sagittal angle is its swing angle.
  */
 function walk(options: Walk = {}) {
   const roll = options.roll ?? { left: [14, -32], right: [14, -32] }
-  const phase = (t: number) => 2 * Math.PI * STRIDE_HZ * Math.min(t, WALK_SECONDS)
-  const turnYaw = (t: number) => TURNS.reduce((sum, start) => sum + 90 * DEG * Math.min(1, Math.max(0, t - start)), 0)
-  const mode = (t: number) => t < WALK_SECONDS ? 3 : TURNS.some(start => t >= start && t < start + 1) ? 1 : 0
+  const walkSeconds = options.walkSeconds ?? 30
+  const turns = options.turns ?? TURNS
+  const phase = (t: number) => 2 * Math.PI * STRIDE_HZ * Math.min(t, walkSeconds)
+  const turnYaw = (t: number) => turns.reduce((sum, [start, degrees, seconds]) => sum + degrees * DEG * Math.min(1, Math.max(0, (t - start) / seconds)), 0)
+  const turning = (t: number) => turns.some(([start, , seconds]) => t >= start && t < start + seconds)
+  const mode = (t: number) => t < walkSeconds ? 3 : turning(t) ? ((options.turnsInModeChannel ?? true) ? 1 : 3) : 0
   const footPitch = (side: 'left' | 'right', t: number) => {
     const s = (side === 'left' ? 1 : -1) * Math.sin(phase(t))
     const [heel, toe] = roll[side]
-    return t < WALK_SECONDS ? (heel + toe) / 2 + (heel - toe) / 2 * s : 0
+    return t < walkSeconds ? (heel + toe) / 2 + (heel - toe) / 2 * s : 0
   }
   const leadAt = (t: number) => {
-    const turn = TURNS.findIndex(start => t >= start - 1 && t < start + 2.5)
-    return turn < 0 ? 0 : (options.headLead ?? [0.15, 0.15])[turn]
+    const turn = turns.findIndex(([start]) => t >= start - 0.5 && t < start + 1.5)
+    return turn < 0 ? 0 : (options.headLead ?? turns.map(() => 0.15))[turn]
   }
   const world = (bone: MotionTraceBone, t: number): Quat => {
     const yaw = rotY(turnYaw(t))
@@ -62,11 +69,11 @@ function walk(options: Walk = {}) {
     return yaw
   }
   const input = analyticTrace({
-    seconds: 42,
+    seconds: 58,
     bones: BONES,
     scenario: options.scenario ?? 'walk',
     world,
-    position: t => [0, 0, Math.min(t, WALK_SECONDS)],
+    position: t => [0, 0, Math.min(t, walkSeconds)],
     yaw: turnYaw,
     mode,
   })
@@ -82,25 +89,43 @@ function walk(options: Walk = {}) {
 }
 
 const statuses = (report: ReturnType<typeof walkFormReport>) => Object.fromEntries(report.requirements.map(r => [r.id, r.status]))
+const SCENARIO_PASS = { 'scenario-walking-span': 'PASS', 'scenario-strides': 'PASS', 'scenario-turns': 'PASS', 'scenario-turn-around': 'PASS' } as const
 
 describe('walk-form report', () => {
-  it('passes a walk that rolls on every step, trails the forearm by 60 ms and leads each turn with the head by 150 ms', () => {
+  it('passes a walk with its scenario cases that rolls on every step and trails the forearm by 60 ms, and prints each turn\'s head lead', () => {
     const report = walkFormReport(walk())
-    expect(statuses(report)).toEqual({ 'roll-every-step': 'PASS', 'skate': 'PASS', 'wrist-lags': 'PASS', 'head-leads-turns': 'PASS' })
+    expect(statuses(report)).toEqual({ ...SCENARIO_PASS, 'roll-every-step': 'PASS', 'skate': 'PASS', 'wrist-lags': 'PASS' })
+    expect(report.verdict).toBe('PASS')
+    expect(report.detail.turns.map(turn => Math.round(turn.rootDeg))).toEqual([90, -90, 90, -90, 90, -90, 90, 180])
+    expect(report.detail.turns.every(turn => (turn.leadMs ?? 0) > 100)).toBe(true)
   })
 
   it('fails a walk that rolls on alternate steps only', () => {
-    expect(statuses(walkFormReport(walk({ roll: { left: [14, -32], right: [0, 0] } })))).toMatchObject({ 'roll-every-step': 'FAIL', 'wrist-lags': 'PASS', 'head-leads-turns': 'PASS' })
+    expect(statuses(walkFormReport(walk({ roll: { left: [14, -32], right: [0, 0] } })))).toMatchObject({ 'roll-every-step': 'FAIL', 'wrist-lags': 'PASS' })
   })
 
   it('fails a forearm that leads the upper arm by 50 ms', () => {
-    expect(statuses(walkFormReport(walk({ forearmLag: -0.05 })))).toMatchObject({ 'roll-every-step': 'PASS', 'wrist-lags': 'FAIL', 'head-leads-turns': 'PASS' })
+    expect(statuses(walkFormReport(walk({ forearmLag: -0.05 })))).toMatchObject({ 'roll-every-step': 'PASS', 'wrist-lags': 'FAIL' })
   })
 
-  it('fails when one turn of two has the head 100 ms late', () => {
-    const report = walkFormReport(walk({ headLead: [0.15, -0.1] }))
-    expect(statuses(report)).toMatchObject({ 'roll-every-step': 'PASS', 'wrist-lags': 'PASS', 'head-leads-turns': 'FAIL' })
-    expect(report.detail.turns.map(turn => (turn.leadMs ?? 0) > 0)).toEqual([true, false])
+  it('reports a late head without judging it', () => {
+    const report = walkFormReport(walk({ headLead: TURNS.map((_, i) => i === 1 ? -0.1 : 0.15) }))
+    expect(report.verdict).toBe('PASS')
+    expect(report.detail.turns.map(turn => (turn.leadMs ?? 0) > 0)).toEqual([true, false, true, true, true, true, true, true])
+  })
+
+  it('reads the scenario as not exercised without a turn-around, with fewer than 8 turns, or with a walking span under 20 s', () => {
+    expect(statuses(walkFormReport(walk({ turns: TURNS.slice(0, 7) })))).toMatchObject({ 'scenario-turns': 'NOT-EXERCISED', 'scenario-turn-around': 'NOT-EXERCISED' })
+    expect(statuses(walkFormReport(walk({ turns: [...TURNS.slice(0, 7), [52, 120, 2]] })))).toMatchObject({ 'scenario-turns': 'PASS', 'scenario-turn-around': 'NOT-EXERCISED' })
+    const short = walkFormReport(walk({ walkSeconds: 18 }))
+    expect(statuses(short)['scenario-walking-span']).toBe('NOT-EXERCISED')
+    expect(short.verdict).toBe('FAIL')
+  })
+
+  it('finds the turns in the root yaw, also when the mode channel does not label them', () => {
+    const report = walkFormReport(walk({ turnsInModeChannel: false }))
+    expect(statuses(report)).toMatchObject(SCENARIO_PASS)
+    expect(report.detail.turns).toHaveLength(8)
   })
 
   it('judges the contact-point skate when the summary has it, and the ankle skate otherwise', () => {

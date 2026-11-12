@@ -87,10 +87,12 @@ function chatTarget(random: RandomStream): { x: number, y: number } {
 const byTime = (a: Motion3dCue, b: Motion3dCue) => a.at - b.at
 
 /**
- * Walk version 2 goals: scenario seconds and x in leg lengths. Each leg but the second reaches idle and turns to the
- * camera before the next goal (a stop takes about 2 s at walk pace); the last goal fires only in runs longer than 60 s.
+ * Walk version 3 goals: scenario seconds and x in leg lengths. Each cue but the turn-around comes at the first 0.5 s mark
+ * at least 2 s after the previous leg's arrival turn ends, as measured on version 2 (Chisa seed 1: legs of 25.48, 9.67,
+ * 7.15 and 7.15 s from cue to arrival turn), so slower starts and stops still leave each turn in place. The third goal
+ * comes 5 s after the second, behind her while she walks left (the turn-around); the last fires only in runs over 60 s.
  */
-const WALK_GOALS = [[0.5, 19.5], [26.5, 8], [31.5, 19], [42.5, 16], [50.5, 19], [60, 16]] as const
+const WALK_GOALS = [[0.5, 19.5], [28, 8], [33, 19], [45, 16], [54.5, 19], [64, 16]] as const
 
 function shuffled<T>(values: readonly T[], random: RandomStream): T[] {
   const result = [...values]
@@ -255,12 +257,12 @@ export const motion3dScenarios: readonly Motion3dScenario[] = [
   },
   {
     /**
-     * Version 2 (goal 4, plan D1 as unit M revised it): every goal at walk pace (owner decision O5). A long leg to the
-     * right (about 22 s of walking, so the gate places three 10 s windows), back to the left, a goal behind her while she
-     * walks left (the turn-around), then short legs, for at least 8 turns in 60 s. Goals are in leg lengths and at
-     * least the director's goal dwell apart; only the seeded observation marker depends on the seed.
+     * Version 3 (goal 4, plan D1 as unit M revised it, with 2 s of slack after each leg): every goal at walk pace (owner
+     * decision O5). A long leg to the right (about 22 s of walking, so the gate places three 10 s windows), back to the
+     * left, a goal behind her while she walks left (the turn-around), then short legs, for 8 turns in 60 s. Goals are in
+     * leg lengths and at least the director's goal dwell apart; only the seeded observation marker depends on the seed.
      */
-    version: 2,
+    version: 3,
     id: 'walk',
     class: 'walk',
     warmupSeconds: 10,
