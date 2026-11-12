@@ -6,7 +6,7 @@ import { motion3dScenarios } from './scenarios'
 
 describe('motion3d scenario timelines', () => {
   // Default seed-1 counts; gaze count varies with seeded hold/return durations.
-  const counts = { 'idle': 1, 'gaze-shift': 18, 'speak': 11, 'gesture-under-clip': 7, 'emotions': 13, 'walk': 2, 'touch': 10 } as const
+  const counts = { 'idle': 1, 'gaze-shift': 18, 'speak': 11, 'gesture-under-clip': 9, 'emotions': 13, 'walk': 2, 'touch': 10 } as const
   it.each(motion3dScenarios)('replays $id for equal seeds and varies for another seed', (scenario) => {
     const first = scenario.timeline(1, scenario.seconds)
     expect(scenario.timeline(1, scenario.seconds)).toEqual(first)
@@ -80,7 +80,7 @@ describe('motion3d scenario timelines', () => {
 
   // Version 3 (E/g3/own2/rules-v2.md): every time follows from the timeline's own labelled peaks and utterances, by one
   // rule for every seed. Seeds 1 to 6 are the criterion's pool.
-  it('claims and pokes 50 ms after the A peaks nearest 3 s and 5 s, and releases in the silence after B, for seeds 1 to 6', () => {
+  it('claims and pokes 50 ms after the A peaks nearest 3 s and 5 s, releases in the silence after B, and claims and releases again 50 ms after C\'s first and third peaks, for seeds 1 to 6', () => {
     const scenario = motion3dScenarios.find(scenario => scenario.id === 'gesture-under-clip')
     if (!scenario)
       throw new Error('Missing gesture-under-clip scenario')
@@ -88,11 +88,11 @@ describe('motion3d scenario timelines', () => {
     for (let seed = 1; seed <= 6; seed++) {
       const cues = scenario.timeline(seed, 30)
       const [a, b, c] = cues.flatMap(cue => cue.kind === 'voice' ? [cue] : [])
-      const claim = cues.find(cue => cue.kind === 'clip-claim')
-      const release = cues.find(cue => cue.kind === 'clip-release')
+      const [claim, second] = cues.filter(cue => cue.kind === 'clip-claim')
+      const [release, secondRelease] = cues.filter(cue => cue.kind === 'clip-release')
       const poke = cues.find(cue => cue.kind === 'touch')
-      if (claim?.kind !== 'clip-claim' || release?.kind !== 'clip-release' || poke?.kind !== 'touch')
-        throw new Error('Expected a claim, a poke and a release')
+      if (!claim || !second || !release || !secondRelease || poke?.kind !== 'touch')
+        throw new Error('Expected two claims, a poke and two releases')
       const nearestA = (t: number) => a.emphasis.map(peak => a.at + peak.at).reduce((best, peak) => Math.abs(peak - t) < Math.abs(best - t) ? peak : best)
       expect(claim.at).toBeCloseTo(nearestA(3) + 0.05, 9)
       expect(poke.at).toBeCloseTo(nearestA(5) + 0.05, 9)
@@ -105,6 +105,13 @@ describe('motion3d scenario timelines', () => {
       const peaks = [a, b].flatMap(voice => voice.emphasis.map(peak => voice.at + peak.at))
       expect(full.to - full.from).toBeGreaterThanOrEqual(8)
       expect(peaks.filter(t => t >= full.from && t <= full.to).length).toBeGreaterThanOrEqual(3)
+      // Revision B: the second claim and release follow C's labelled peaks, after the first release's stale window, and
+      // its own stale window closes inside the run.
+      const cPeaks = c.emphasis.map(peak => c.at + peak.at)
+      expect(second.at).toBeCloseTo(cPeaks[0] + 0.05, 9)
+      expect(secondRelease.at).toBeCloseTo(cPeaks[2] + 0.05, 9)
+      expect(second.at).toBeGreaterThan(release.at + 1 + LAYER_FADE_SECONDS.upperOut)
+      expect(secondRelease.at + 1 + LAYER_FADE_SECONDS.upperOut).toBeLessThan(30)
     }
   })
 

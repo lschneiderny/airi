@@ -173,7 +173,10 @@ export const motion3dScenarios: readonly Motion3dScenario[] = [
      * - utterance B at 8.5 s (10 s, six peaks): only the left arm may gesture;
      * - the clip releases 1.5 s after B ends, when no gesture unit can run, so the free left arm is out of a unit at
      *   release + 0.5 s;
-     * - utterance C 2 s after the release (7 s, four peaks), with both arms free.
+     * - utterance C 2 s after the release (7 s, four peaks), with both arms free;
+     * - revision B: the clip claims the right arm again 50 ms after C's first peak and releases it 50 ms after C's third,
+     *   while C's gesture unit runs, so a stroke is in progress at that release and C's fourth peak remains for the arm
+     *   to rejoin at.
      * Version 2 claimed at 3.0 s, poked near 12 s and released at 14 s; the seeded peaks are unchanged.
      */
     version: 3,
@@ -189,6 +192,7 @@ export const motion3dScenarios: readonly Motion3dScenario[] = [
       const start = { a: 0.5, b: 8.5 }
       const afterA = (t: number) => start.a + a.reduce((best, peak) => Math.abs(start.a + peak.at - t) < Math.abs(start.a + best.at - t) ? peak : best).at + 0.05
       const release = start.b + 10 + 1.5
+      const startC = release + 2
       const cues: Motion3dCue[] = [
         { at: start.a, kind: 'energy', level: 0.85 },
         voiceCue(start.a, 8, a),
@@ -196,7 +200,9 @@ export const motion3dScenarios: readonly Motion3dScenario[] = [
         voiceCue(start.b, 10, b),
         { at: afterA(5), kind: 'touch', touch: 'poke', region: 'body', x: random() * 2 - 1, y: random() * 2 - 1 },
         { at: release, kind: 'clip-release' },
-        voiceCue(release + 2, 7, c),
+        voiceCue(startC, 7, c),
+        { at: startC + c[0].at + 0.05, kind: 'clip-claim' },
+        { at: startC + c[2].at + 0.05, kind: 'clip-release' },
       ]
       return cues.filter(cue => cue.at < Math.min(seconds, 120)).sort(byTime)
     },

@@ -157,26 +157,46 @@ describe('cue-body report (C002, unit M2 R3)', { timeout: 20_000 }, () => {
   })
 })
 
-describe('ownership report (C004, plan 2.5; version 2, E/g3/own2/rules-v2.md)', () => {
-  // Version 3 layout: peaks every 1.5 s to 19 s, then C; the clip holds the right upper arm 0.6 rad, full 3.3 to
-  // 20 s; the poke at 4.05 s; the left arm strokes each peak inside one unit, 0.5 to 19.5 s.
+describe('ownership report (C004, plan 2.5; version 2 revision B, E/g3/own2/rules-v2.md)', () => {
+  // Version 3 layout: peaks every 1.5 s to 19 s, then C's four; the clip holds the right upper arm 0.6 rad, fully owned
+  // 3.3 to 20 s and again 23.3 to 26.05 s (claimed 50 ms after C's first peak, released 50 ms after its third); the poke
+  // at 4.05 s; the left arm strokes each peak inside unit A/B, 0.5 to 19.5 s, and unit C, 23 to 29.5 s.
   interface Clip {
     readonly seed?: number
     readonly left?: 'strokes' | 'none' | 'stalls-at-poke'
     readonly pokeOutsideUnit?: boolean
+    readonly cUnit?: boolean
     readonly rightAtClaim?: 'idle' | 'yields' | 'keeps-gesturing'
-    readonly rightAfterRelease?: 'none' | 'activation' | 'stroke-after-fade'
+    readonly rightAfterRelease?: 'none' | 'activation' | 'stroke-after-fade' | 'idle-sway'
+    readonly rightAfterSecondRelease?: 'none' | 'joins-before-free' | 'unmatched-stroke' | 'joins-at-peak'
     readonly leftUnitAtRest?: boolean
-    readonly rest?: { readonly left: readonly number[], readonly right: readonly number[] }
+    /** Arm angles in degrees from each side's rest; zero unless given. */
+    readonly angles?: (side: 'left' | 'right', t: number) => readonly number[] | null
+    /** Idle-sized left upper-arm bumps (0.02 rad over 0.4 s) whose apexes land at these times. */
+    readonly leftBumps?: readonly number[]
+    readonly jitter?: boolean
     readonly spikes?: { readonly left?: 'PASS' | 'SKIPPED', readonly right?: 'PASS' | 'SKIPPED' }
     readonly deviation?: number
     readonly commit?: string
     readonly version?: number
   }
-  const PEAKS = [...Array.from({ length: 13 }, (_, i) => 1 + 1.5 * i), 23, 24.5, 26]
+  const C_PEAKS = [23, 24.5, 26, 27.5]
+  const PEAKS = [...Array.from({ length: 13 }, (_, i) => 1 + 1.5 * i), ...C_PEAKS]
   const POKE = 4.05
   const RAISED = 0.6
+  const SECOND = { claim: C_PEAKS[0] + 0.05, release: C_PEAKS[2] + 0.05 }
   const between = (from: number, to: number) => (t: number) => t >= from && t < to ? 1 : 0
+  const strokes = (ends: readonly number[]) => moves(ends.flatMap(end => [{ start: end - 0.15, duration: 0.15, by: 0.1 }, { start: end, duration: 0.3, by: 0.002 }, { start: end + 0.4, duration: 0.3, by: -0.102 }]))
+  // Idle-sized: two thirds of the companion idle runs' 0.03 rad sway, so below their speed bar.
+  const bumps = (apexes: readonly number[]) => moves(apexes.map((t, i) => ({ start: t - 0.4, duration: 0.4, by: (i % 2 ? -1 : 1) * 0.02 })))
+  const none = () => 0
+
+  /** A companion idle run of the same synthetic rig and commit: 0.03 rad upper-arm swings 2 s apart, each with an apex. */
+  function idle(commit = 'test-commit') {
+    const sway = Array.from({ length: 25 }, (_, i) => ({ start: 2 + 2 * i, duration: 0.4, by: (i % 2 ? -1 : 1) * 0.03 }))
+    const input = trace({ seconds: 54, scenario: 'talk', world: armWorld({ upper: moves(sway) }, {}) })
+    return loadedRun({ ...input, trace: { ...input.trace, source: { ...input.trace.source, gitSha: commit } } }, null, null, 'idle-companion')
+  }
 
   function clip(options: Clip = {}) {
     const seed = options.seed ?? 1
@@ -187,21 +207,34 @@ describe('ownership report (C004, plan 2.5; version 2, E/g3/own2/rules-v2.md)', 
       { t: POKE, kind: 'touch', touch: 'poke', region: 'body' },
       { t: 20, kind: 'marker', label: 'clip-release' },
       { t: 23, kind: 'marker', label: 'gesture-unit:start' },
+      { t: SECOND.claim, kind: 'marker', label: 'clip-claim' },
+      { t: SECOND.release, kind: 'marker', label: 'clip-release' },
     ]
-    const strokes = (ends: readonly number[]) => moves(ends.flatMap(end => [{ start: end - 0.15, duration: 0.15, by: 0.1 }, { start: end, duration: 0.3, by: 0.002 }, { start: end + 0.4, duration: 0.3, by: -0.102 }]))
     const left = options.left ?? 'strokes'
-    const leftStrokes = left === 'none' ? undefined : strokes(PEAKS.filter(t => t <= 19 && (left === 'strokes' || t < POKE)))
-    const clipPose = moves([{ start: 3, duration: 0.3, by: RAISED }, { start: 20, duration: 0.3, by: -RAISED }])
-    const stale = options.rightAfterRelease === 'stroke-after-fade' ? strokes([20.65]) : () => 0
-    const input = trace({ seconds: 30, scenario: 'talk', events, world: armWorld({ upper: leftStrokes }, { upper: t => clipPose(t) + stale(t) }) })
+    const cUnit = left !== 'none' && options.cUnit !== false
+    const leftPeaks = left === 'none' ? [] : [...PEAKS.filter(t => t <= 19 && (left === 'strokes' || t < POKE)), ...(cUnit ? C_PEAKS : [])]
+    const leftStrokes = strokes(leftPeaks)
+    const leftBumps = bumps(options.leftBumps ?? [])
+    const jitter = (t: number) => options.jitter && t >= POKE + 0.2 && t < POKE + 0.7 ? 2 * DEG * Math.sin(2 * Math.PI * 15 * (t - POKE - 0.2)) : 0
+    const clipPose = moves([{ start: 3, duration: 0.3, by: RAISED }, { start: 20, duration: 0.3, by: -RAISED }, { start: SECOND.claim, duration: 0.25, by: RAISED }, { start: SECOND.release, duration: 0.3, by: -RAISED }])
+    const after = options.rightAfterRelease
+    const afterSecond = options.rightAfterSecondRelease
+    const stale = after === 'stroke-after-fade' ? strokes([20.65]) : after === 'idle-sway' ? bumps([20.85]) : none
+    const rejoin = afterSecond === 'unmatched-stroke' ? strokes([SECOND.release + 0.7]) : afterSecond === 'joins-at-peak' ? strokes([C_PEAKS[3]]) : none
+    const world = armWorld({ upper: t => leftStrokes(t) + leftBumps(t) + jitter(t) }, { upper: t => clipPose(t) + stale(t) + rejoin(t) })
+    const input = trace({ seconds: 30, scenario: 'talk', events, world })
     const sourced = { ...input, trace: { ...input.trace, source: { ...input.trace.source, scenario: { id: 'gesture-under-clip', class: 'talk' as const, seed }, gitSha: options.commit ?? 'test-commit', detail: { scenarioVersion: options.version ?? 3 } } } }
     const base = summaryStub(sourced)
     const time = base.perFrame.t_ms.map((_, k) => k / 60)
-    const owned = (t: number) => t >= 3.3 && t < 20 ? 1 : t >= 3 && t < 20.3 ? 0.5 : 0
-    const leftUnit = left === 'none' ? () => 0 : left === 'stalls-at-poke' ? between(0.5, POKE + 0.1) : options.pokeOutsideUnit ? between(8.5, 19.5) : between(0.5, options.leftUnitAtRest ? 21 : 19.5)
+    const owned = (t: number) => (t >= 3.3 && t < 20) || (t >= SECOND.claim + 0.25 && t < SECOND.release) ? 1 : (t >= 3 && t < 20.3) || (t >= SECOND.claim && t < SECOND.release + 0.3) ? 0.5 : 0
+    const unitA = left === 'none' ? none : left === 'stalls-at-poke' ? between(0.5, POKE + 0.1) : options.pokeOutsideUnit ? between(8.5, 19.5) : between(0.5, options.leftUnitAtRest ? 21 : 19.5)
+    const leftUnit = (t: number) => unitA(t) || (cUnit ? between(23, 29.5)(t) : 0)
     const claim = options.rightAtClaim ?? 'idle'
-    const rightUnit = (t: number) => (claim === 'yields' ? between(0.5, 3) : claim === 'keeps-gesturing' ? between(0.5, 20) : () => 0)(t) || (options.rightAfterRelease === 'activation' ? between(20.5, 21)(t) : 0)
-    const angles = (side: 'left' | 'right') => time.map(t => t >= 20 && options.rest ? [...options.rest[side]] : Array.from<number>({ length: 9 }).fill(0))
+    const claimUnit = claim === 'yields' ? between(0.5, 3) : claim === 'keeps-gesturing' ? between(0.5, 20) : none
+    const releaseUnit = after === 'activation' ? between(20.5, 21) : none
+    const secondUnit = afterSecond === 'joins-before-free' ? between(SECOND.release + 0.1, 29.5) : afterSecond === 'joins-at-peak' ? between(C_PEAKS[3] - 0.3, 29.5) : none
+    const rightUnit = (t: number) => claimUnit(t) || releaseUnit(t) || secondUnit(t)
+    const angles = (side: 'left' | 'right') => time.map(t => [...options.angles?.(side, t) ?? Array.from<number>({ length: 9 }).fill(0)])
     const summary = {
       ...base,
       owned: { ...base.owned, perFrame: base.owned.perFrame.map((row, k) => row.map((v, g) => base.owned.groups[g] === 'rightArm' || base.owned.groups[g] === 'rightFingers' ? owned(time[k]) : v)) },
@@ -219,16 +252,20 @@ describe('ownership report (C004, plan 2.5; version 2, E/g3/own2/rules-v2.md)', 
     return loadedRun(sourced, summary, gate, `clip-${seed}`)
   }
 
-  const status = (report: ReturnType<typeof ownershipReport>, id: string, run = 0) => report.detail.runs[run].requirements.find(r => r.id === id)?.status
+  const judge = (runs: ReturnType<typeof clip>[]) => ownershipReport(runs, [idle()])
+  const one = (options: Clip = {}) => judge([clip(options)])
+  const line = (report: ReturnType<typeof ownershipReport>, id: string, run = 0) => report.detail.runs[run].requirements.find(r => r.id === id)
+  const status = (report: ReturnType<typeof ownershipReport>, id: string, run = 0) => line(report, id, run)?.status
   const pooled = (report: ReturnType<typeof ownershipReport>, id: string) => report.requirements.find(r => r.id === id)?.pass
   // Seeds 1 to 3 keep the right arm idle at the claim; seeds 4 to 6 are gesturing with it and yield.
   const pool = (overrides: (seed: number) => Clip = () => ({})) => [1, 2, 3, 4, 5, 6].map(seed => clip({ seed, rightAtClaim: seed > 3 ? 'yields' : 'idle', ...overrides(seed) }))
 
   it('passes a pool of six runs built to satisfy every requirement, each case exercised at least twice', () => {
-    const report = ownershipReport(pool(), bands)
+    const report = judge(pool())
     expect(report.detail.verdict).toBe('PASS')
     expect(report.requirements.filter(r => !r.pass)).toEqual([])
-    expect(report.detail.runs.map(run => status(report, 'performer-yields', report.detail.runs.indexOf(run)))).toEqual(['NOT-EXERCISED', 'NOT-EXERCISED', 'NOT-EXERCISED', 'PASS', 'PASS', 'PASS'])
+    expect(report.detail.runs.map((_, i) => status(report, 'performer-yields', i))).toEqual(['NOT-EXERCISED', 'NOT-EXERCISED', 'NOT-EXERCISED', 'PASS', 'PASS', 'PASS'])
+    expect(report.detail.exercised['no-stale-stroke']).toBe(6)
   })
 
   it.each([
@@ -238,22 +275,37 @@ describe('ownership report (C004, plan 2.5; version 2, E/g3/own2/rules-v2.md)', 
     ['a run of scenario version 2', () => pool(seed => seed === 6 ? { version: 2 } : {})],
     ['two runs of one seed', () => pool(seed => seed === 6 ? { seed: 3 } : {})],
   ])('refuses a pool of %s and still prints every run', (_, runs) => {
-    const report = ownershipReport(runs(), bands)
+    const report = judge(runs())
     expect(report.detail.verdict).toBe('REFUSED')
     expect(report.verdict).toBe('FAIL')
     expect(report.detail.runs).toHaveLength(runs().length)
   })
 
+  it('refuses a pool judged without companion idle runs, and refuses each stroke clause on every run', () => {
+    const report = ownershipReport(pool(), [])
+    expect(report.detail.verdict).toBe('REFUSED')
+    expect(report.detail.refusals.join('; ')).toContain('idle speed bar')
+    for (const id of ['left-arm-gestures', 'resume-after-cancel', 'no-stale-stroke'])
+      expect(status(report, id)).toBe('REFUSED')
+    expect(status(report, 'owned-arm-untouched')).toBe('PASS')
+  })
+
   it.each([[0, false], [1, false], [2, true]] as const)('with %i runs exercising performer-yields, its pooled line passes: %s', (count, pass) => {
-    const report = ownershipReport(pool(seed => ({ rightAtClaim: seed <= count ? 'yields' : 'idle' })), bands)
+    const report = judge(pool(seed => ({ rightAtClaim: seed <= count ? 'yields' : 'idle' })))
     expect(pooled(report, 'performer-yields')).toBe(pass)
   })
 
+  it.each([[1, false], [2, true]] as const)('with %i runs holding a unit at the second release, the pooled no-stale-stroke line passes: %s', (count, pass) => {
+    const report = judge(pool(seed => ({ cUnit: seed <= count })))
+    expect(report.detail.exercised['no-stale-stroke']).toBe(count)
+    expect(pooled(report, 'no-stale-stroke')).toBe(pass)
+  })
+
   it('judges performer-yields only when the right arm gestures at the claim, and fails one that keeps gesturing while owned', () => {
-    expect(status(ownershipReport([clip({ rightAtClaim: 'idle' })], bands), 'performer-yields')).toBe('NOT-EXERCISED')
-    expect(status(ownershipReport([clip({ rightAtClaim: 'yields' })], bands), 'performer-yields')).toBe('PASS')
-    expect(status(ownershipReport([clip({ rightAtClaim: 'keeps-gesturing' })], bands), 'performer-yields')).toBe('FAIL')
-    const mixed = ownershipReport(pool(seed => seed === 4 ? { rightAtClaim: 'keeps-gesturing' } : {}), bands)
+    expect(status(one({ rightAtClaim: 'idle' }), 'performer-yields')).toBe('NOT-EXERCISED')
+    expect(status(one({ rightAtClaim: 'yields' }), 'performer-yields')).toBe('PASS')
+    expect(status(one({ rightAtClaim: 'keeps-gesturing' }), 'performer-yields')).toBe('FAIL')
+    const mixed = judge(pool(seed => seed === 4 ? { rightAtClaim: 'keeps-gesturing' } : {}))
     expect(mixed.detail.verdict).toBe('FAIL')
     expect(pooled(mixed, 'performer-yields')).toBe(false)
     // The run that keeps gesturing held the case and failed it: it counts as exercised.
@@ -261,39 +313,63 @@ describe('ownership report (C004, plan 2.5; version 2, E/g3/own2/rules-v2.md)', 
   })
 
   it('judges resume-after-cancel only for a poke inside a gesture unit, and fails a unit that stalls at the poke', () => {
-    const outside = ownershipReport([clip({ pokeOutsideUnit: true })], bands)
+    const outside = one({ pokeOutsideUnit: true })
     expect(status(outside, 'resume-after-cancel')).toBe('NOT-EXERCISED')
     expect(status(outside, 'poke-continuous')).toBe('NOT-EXERCISED')
-    expect(status(ownershipReport([clip()], bands), 'resume-after-cancel')).toBe('PASS')
-    const stalled = ownershipReport([clip({ left: 'stalls-at-poke' })], bands)
-    expect(stalled.detail.runs[0].requirements.find(r => r.id === 'resume-after-cancel')).toMatchObject({ status: 'FAIL', value: expect.stringContaining('missed') })
+    expect(status(one(), 'resume-after-cancel')).toBe('PASS')
+    expect(line(one({ left: 'stalls-at-poke' }), 'resume-after-cancel')).toMatchObject({ status: 'FAIL', value: expect.stringContaining('missed') })
   })
 
-  it('judges the spike rate only on arms free at the poke, and fails a skipped rate on a free arm', () => {
-    expect(status(ownershipReport([clip({ spikes: { right: 'SKIPPED' } })], bands), 'poke-continuous')).toBe('PASS')
-    expect(status(ownershipReport([clip({ spikes: { left: 'SKIPPED' } })], bands), 'poke-continuous')).toBe('FAIL')
+  it('does not take an idle-sized apex near the resume peak for a resumed stroke', () => {
+    // The first peak at least 1 s after the poke is 5.5 s; the bump's apex lands 50 ms after it.
+    expect(line(one({ left: 'stalls-at-poke', leftBumps: [5.55] }), 'resume-after-cancel')).toMatchObject({ status: 'FAIL', value: expect.stringContaining('missed') })
   })
 
-  it('does not count the clip\'s release fade from a raised pose as a stale stroke, and fails activation or a stroke after it', () => {
-    expect(status(ownershipReport([clip()], bands), 'no-stale-stroke')).toBe('PASS')
-    expect(status(ownershipReport([clip({ rightAfterRelease: 'activation' })], bands), 'no-stale-stroke')).toBe('FAIL')
-    expect(status(ownershipReport([clip({ rightAfterRelease: 'stroke-after-fade' })], bands), 'no-stale-stroke')).toBe('FAIL')
+  it('does not count idle-sized apexes on the owned peaks as left-arm gestures', () => {
+    expect(status(one({ left: 'none', leftBumps: [4.1, 5.6, 7.1] }), 'left-arm-gestures')).toBe('FAIL')
   })
 
-  it('takes the free left arm\'s posture into the rest band, fails a stroke pose and refuses while the left arm is in a unit', () => {
-    // The surprised posture both arms take after the poke (review section 4): clavicle +4.5, flexion -2.8, abduction +7, elbow +8.7 degrees.
+  it('judges the poke by pops alone: a skipped spike rate on a free arm passes, a sustained jitter fails', () => {
+    expect(status(one({ spikes: { left: 'SKIPPED' } }), 'poke-continuous')).toBe('PASS')
+    expect(line(one({ jitter: true }), 'poke-continuous')).toMatchObject({ status: 'FAIL', value: expect.not.stringContaining(' 0 pops') })
+  })
+
+  it('does not count the clip\'s release fade or an idle-sized apex after the first release as stale, and fails activation or a stroke after it', () => {
+    expect(status(one(), 'no-stale-stroke')).toBe('PASS')
+    expect(status(one({ rightAfterRelease: 'idle-sway' }), 'no-stale-stroke')).toBe('PASS')
+    expect(status(one({ rightAfterRelease: 'activation' }), 'no-stale-stroke')).toBe('FAIL')
+    expect(status(one({ rightAfterRelease: 'stroke-after-fade' }), 'no-stale-stroke')).toBe('FAIL')
+  })
+
+  it('judges the release inside a running unit: the right arm joins only at a planned stroke once ownership reaches 0', () => {
+    expect(status(one({ rightAfterSecondRelease: 'joins-at-peak' }), 'no-stale-stroke')).toBe('PASS')
+    expect(status(one({ rightAfterSecondRelease: 'joins-before-free' }), 'no-stale-stroke')).toBe('FAIL')
+    expect(status(one({ rightAfterSecondRelease: 'unmatched-stroke' }), 'no-stale-stroke')).toBe('FAIL')
+    const quiet = one({ cUnit: false })
+    expect(line(quiet, 'no-stale-stroke')).toMatchObject({ status: 'NOT-EXERCISED', exercised: false })
+    expect(status(one({ cUnit: false, rightAfterSecondRelease: 'joins-before-free' }), 'no-stale-stroke')).toBe('FAIL')
+  })
+
+  it('judges the released arm against the run\'s own rest envelope and refuses an instant at which the free left arm is outside it', () => {
+    const at = (from: number, to: number, pose: readonly number[]) => (_: 'left' | 'right', t: number) => t >= from && t < to ? pose : null
+    // The surprised posture both arms take after the poke (review section 4), held by both from the release on.
     const surprised = [4.5, 0, -2.8, 7, 0, 8.7, 0, 0, 0]
-    expect(status(ownershipReport([clip({ rest: { left: surprised, right: surprised } })], bands), 'rest-band')).toBe('PASS')
-    expect(status(ownershipReport([clip({ rest: { left: surprised, right: [0, 0, 0, 0, 0, 77, 0, 0, 0] } })], bands), 'rest-band')).toBe('FAIL')
-    expect(status(ownershipReport([clip({ leftUnitAtRest: true })], bands), 'rest-band')).toBe('REFUSED')
+    expect(status(one({ angles: at(20, 30, surprised) }), 'rest-band')).toBe('PASS')
+    // A correct right arm that drifts 6 deg in abduction, as it did before the claim, while the left arm stays at rest.
+    const drift = [0, 0, 0, 6, 0, 0, 0, 0, 0]
+    expect(status(one({ angles: (side, t) => side === 'right' && (t < 3 || t >= 20) ? drift : null }), 'rest-band')).toBe('PASS')
+    expect(status(one({ angles: (side, t) => t >= 20 ? (side === 'left' ? surprised : [0, 0, 0, 0, 0, 77, 0, 0, 0]) : null }), 'rest-band')).toBe('FAIL')
+    // Both arms at a stroke-like pose through [release, release + 1] s with activation 0 (reviewer's f5-both-stuck).
+    expect(line(one({ angles: at(20, 21, [3, 0, 20, 15, 0, 60, 0, 0, 0]) }), 'rest-band')).toMatchObject({ status: 'REFUSED', reason: expect.stringContaining('envelope') })
+    expect(status(one({ leftUnitAtRest: true }), 'rest-band')).toBe('REFUSED')
   })
 
   it('fails a write deviation of 0.002 rad on a fully owned arm', () => {
-    expect(status(ownershipReport([clip({ deviation: 0.002 })], bands), 'owned-arm-untouched')).toBe('FAIL')
+    expect(status(one({ deviation: 0.002 }), 'owned-arm-untouched')).toBe('FAIL')
   })
 
   it('fails the vacuous case in which no arm gestures', () => {
-    const report = ownershipReport([clip({ left: 'none' })], bands)
+    const report = one({ left: 'none' })
     expect(status(report, 'left-arm-gestures')).toBe('FAIL')
     expect(status(report, 'resume-after-cancel')).toBe('NOT-EXERCISED')
   })
