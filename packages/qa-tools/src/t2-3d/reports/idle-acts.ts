@@ -58,6 +58,8 @@ const C = {
   confirmFrames: 18,
   bar: 0.5,
   epsilonDeg: 0.25,
+  yawEpsilonDeg: 0.05,
+  hipsEpsilon: 0.0005,
   exitSeconds: 0.35,
   settleSeconds: 2.2,
 } as const
@@ -70,6 +72,8 @@ export const IDLE_ACTS_CONSTANTS: readonly ReportConstant[] = [
   { name: 'confirmation run', value: C.confirmFrames, unit: 'consecutive 60 Hz frames (0.3 s) with every key at its bar', source: 'plan R1' },
   { name: 'confirmation bar', value: C.bar, unit: 'of each key\'s design amplitude (ACT_KEYS)', source: 'architecture 4e; review B1 step 5' },
   { name: 'pair epsilon', value: C.epsilonDeg, unit: 'deg, largest local-rotation difference outside the widened act spans', source: 'rules.md revision 2, B1 scoring' },
+  { name: 'pair root yaw', value: C.yawEpsilonDeg, unit: 'deg, largest root-yaw difference outside the widened act spans', source: 'rules.md revision 3, X2 scoring' },
+  { name: 'pair hips', value: C.hipsEpsilon, unit: 'L, largest hips-position difference outside the widened act spans', source: 'rules.md revision 3, X2 scoring' },
   { name: 'act exit', value: C.exitSeconds, unit: 's after the closing marker', source: 'performance/stack.ts default exitSeconds' },
   { name: 'settling', value: C.settleSeconds, unit: 's after the exit, outside the pair check', source: '2 % settling of the slowest arm follower, performance/arms.ts' },
 ]
@@ -98,7 +102,7 @@ export interface ActSpan {
 export interface IdleActsDetail {
   readonly acts: readonly ActSpan[]
   readonly restSet: readonly BodyActId[]
-  readonly pair: { readonly dir: string, readonly difference: number, readonly at: number | null, readonly bone: string | null }
+  readonly pair: { readonly dir: string, readonly difference: number, readonly at: number | null, readonly bone: string | null, readonly yaw: number, readonly hips: number }
   readonly intervals: readonly number[]
   readonly intervalCv: number | null
   readonly restSeconds: Readonly<Record<BodyRest, number>>
@@ -180,6 +184,10 @@ export class TracePose {
     return multiply([0, Math.sin(yaw / 2), 0, Math.cos(yaw / 2)], q)
   }
 
+  yaw(frame: number): number {
+    return this.input.root[frame * 4 + 3]
+  }
+
   hips(frame: number): Vec3 {
     const r = this.input.root
     return [r[frame * 4], r[frame * 4 + 1], r[frame * 4 + 2]]
@@ -248,6 +256,8 @@ function checkPair(run: LoadedRun, pair: LoadedRun, spans: readonly RawSpan[]): 
   let difference = 0
   let at: number | null = null
   let bone: string | null = null
+  let yaw = 0
+  let hips = 0
   for (let frame = 0; frame < on.frames; frame++) {
     const t = on.time(frame)
     if (t < a.scoredFrom || widened.some(span => t >= span.start && t <= span.end))
@@ -260,10 +270,16 @@ function checkPair(run: LoadedRun, pair: LoadedRun, spans: readonly RawSpan[]): 
         bone = name
       }
     })
+    yaw = Math.max(yaw, Math.abs(on.yaw(frame) - off.yaw(frame)) * DEG)
+    hips = Math.max(hips, norm(sub(on.hips(frame), off.hips(frame))) / a.rig.legLength)
   }
   if (difference > C.epsilonDeg)
     refuse(`they differ outside the act spans by ${difference.toFixed(3)} deg (${bone} at ${at === null ? '-' : (at as number).toFixed(3)} s), more than ${C.epsilonDeg} deg`)
-  return { dir: pair.dir, difference, at, bone }
+  if (yaw > C.yawEpsilonDeg)
+    refuse(`their root yaw differs outside the act spans by ${yaw.toFixed(3)} deg, more than ${C.yawEpsilonDeg} deg`)
+  if (hips > C.hipsEpsilon)
+    refuse(`their hips position differs outside the act spans by ${hips.toFixed(5)} L, more than ${C.hipsEpsilon} L`)
+  return { dir: pair.dir, difference, at, bone, yaw, hips }
 }
 
 /**
@@ -330,7 +346,7 @@ export function idleActsReport(run: LoadedRun, pair: LoadedRun, restSet: readonl
 export function formatIdleActs(report: CaseReport<IdleActsDetail>): string {
   const d = report.detail
   return formatCaseReport(report, [
-    `pair: ${d.pair.dir}, largest difference outside the act spans ${d.pair.difference.toFixed(4)} deg${d.pair.bone ? ` (${d.pair.bone} at ${fixed(d.pair.at)} s)` : ''}`,
+    `pair: ${d.pair.dir}, largest difference outside the act spans ${d.pair.difference.toFixed(4)} deg${d.pair.bone ? ` (${d.pair.bone} at ${fixed(d.pair.at)} s)` : ''}, root yaw ${d.pair.yaw.toFixed(4)} deg, hips ${d.pair.hips.toFixed(5)} L`,
     `act timeline (${d.acts.length} started):`,
     ...d.acts.map(act => `  ${act.start.toFixed(3)}\t${act.id}\t${act.closedBy ?? 'unclosed'}${act.end === null ? '' : ` at ${act.end.toFixed(3)}`}\t${act.rest}\t${act.confirmed ? 'confirmed' : 'not confirmed'} (own keys at half amplitude for ${act.longestRun} frames)${act.overlaps ? '\toverlaps an earlier act' : ''}\tform {${act.form.join(', ')}}`),
     d.intervals.length ? `intervals between finished acts (s): ${d.intervals.map(v => v.toFixed(2)).join(', ')}; CV ${fixed(d.intervalCv)}` : 'intervals: fewer than 2 finished acts, no interval',

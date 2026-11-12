@@ -1,7 +1,7 @@
 import type { MotionTraceBone, MotionTraceEvent } from '@proj-airi/motion-driver-humanoid/motion-trace'
 import type { BodyActId, BodyRest } from '@proj-airi/motion-driver-humanoid/performance'
 
-import type { Quat } from '../metrics'
+import type { Quat, Vec3 } from '../metrics'
 import type { DecodedMotionTrace } from '../read-trace'
 
 import { motionTraceParents } from '@proj-airi/motion-driver-humanoid/motion-trace'
@@ -58,6 +58,9 @@ interface Body {
   readonly scenario?: 'idle' | 'talk'
   readonly actsSwitch?: 'off'
   readonly gitSha?: string
+  /** Root yaw (rad) and hips position (L) of the run; zero by default. */
+  readonly yaw?: (t: number) => number
+  readonly hips?: (t: number) => Vec3
 }
 
 /** A standing body with a slow trunk sway; each act's movement bends its key bones and returns, through the hierarchy. */
@@ -81,7 +84,7 @@ function trace(body: Body): DecodedMotionTrace {
     ]),
     ...(body.rest ?? []).map((change): MotionTraceEvent => ({ t: change.t, kind: 'marker', label: `rest:${change.state}` })),
   ].sort((a, b) => a.t - b.t)
-  const input = analyticTrace({ seconds: 42, bones: TEST_BONES, scenario: body.scenario ?? 'idle', events, world })
+  const input = analyticTrace({ seconds: 42, bones: TEST_BONES, scenario: body.scenario ?? 'idle', events, world, yaw: body.yaw, position: body.hips })
   const detail: Record<string, string> = body.actsSwitch ? { acts: body.actsSwitch } : {}
   const source = { ...input.trace.source, gitSha: body.gitSha ?? 'abc123', detail }
   return { ...input, trace: { ...input.trace, source } }
@@ -147,6 +150,13 @@ describe('idle-acts report', () => {
 
   it('refuses a pair that differs outside the act spans', () => {
     expect(() => report({ acts: SIX, unmarked: [['arm-swing', 39]] })).toThrow(/outside the act spans/)
+  })
+
+  it('refuses a pair whose root yaw or hips position differs outside the act spans, and accepts hips movement inside one', () => {
+    const after39 = (t: number) => Math.min(1, Math.max(0, t - 39))
+    expect(() => report({ acts: SIX, yaw: t => 0.1 * Math.PI / 180 * after39(t) })).toThrow(/root yaw/)
+    expect(() => report({ acts: SIX, hips: t => [0.001 * after39(t), 0, 0] })).toThrow(/hips/)
+    expect(report({ acts: SIX, hips: t => [0, t > 4 && t < 7 ? 0.012 * Math.sin(Math.PI * (t - 4) / 3) : 0, 0] }).detail.pair.hips).toBe(0)
   })
 
   it('refuses a pair that is not a run and its acts-off companion of the same commit', () => {
