@@ -412,6 +412,21 @@ export class NaturalMotion {
   }
 
   /**
+   * The part of the frame's `blinkFactor` that idle behaviour closes on purpose (sleep, a stretch, a yawn, a nod-off),
+   * at the latest grid step: 1 open, 0 closed. A renderer whose blinks are switched off applies it in place of the
+   * blink factor. It stays outside the frame so recorded frames keep their shape.
+   */
+  get idleLidFactor(): number {
+    return this.idle.contributing ? 1 - this.idle.output.lidClose : 1
+  }
+
+  /** Plays one idle behaviour by name on the next grid step, for previews and scripted QA runs. See `NaturalIdleActivities.play`. */
+  idlePlay(kind: IdleBehaviourKind, nowSeconds: number) {
+    this.advance(nowSeconds)
+    this.idle.play(kind)
+  }
+
+  /**
    * The idle behaviour of the latest grid step, and a counter that increments at every start, so a host that reads
    * once per frame also sees a behaviour that started and ended between two reads.
    */

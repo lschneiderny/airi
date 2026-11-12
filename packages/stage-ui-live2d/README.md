@@ -163,7 +163,7 @@ The Idle activities setting is the `idleActivities` field of the Natural setting
 
 The stage sends the scene an idle drive once a second through `setIdleDrive`: her slow mood relative to its resting value, sleepiness from the local hour, the time since the last interaction, and whether music plays. The scene hands it to the adapter, or `null` while the setting is off. `idleCue` plays the reach-out cues. The adapter reports each behaviour's start and end through `onIdleBehaviour`, and the scene emits them as `idle` events, which the stage forwards to the situation so the model knows what she was doing. A behaviour in progress is reported as ended when another driver takes over or the model unloads.
 
-Closed eyes ride on the blink factor, so sleep and a nod-off close the eyes only while the user's auto-blink setting is on. The shapes and the pacing are starting values that need a visual review. The [idle agency ADR](../../docs/ai/adr/2026-11-12-idle-agency.md) records the design.
+Closed eyes ride on the blink factor while auto-blink is on; while it is off the adapter applies the controller's `idleLidFactor` alone, so sleep, a stretch, a yawn and a nod-off still close the eyes. `idlePlay` plays one behaviour by name; the Natural devtools page (Idle behaviours) sends it from one button per behaviour, for review. The shapes were tuned on a rendered rig on 2026-11-12; how the motion looks in play and the pacing remain a visual review. The [idle agency ADR](../../docs/ai/adr/2026-11-12-idle-agency.md) records the design.
 
 ### Screen-aware attention
 

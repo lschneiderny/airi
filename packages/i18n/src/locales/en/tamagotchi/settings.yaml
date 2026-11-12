@@ -604,6 +604,22 @@ devtools:
           shrug: Shrug
           lean: Lean
           glance: Glance
+      idle-behaviours:
+        title: Idle behaviours
+        description: Play one self-directed idle behaviour on the character in the main window. It plays while Idle activities is on, she is idle or watching, and nothing else holds her head. A played sleep ends after 14 seconds.
+        requires-natural: Idle behaviours play only while the motion driver is Natural.
+        names:
+          stretch: Stretch
+          yawn: Yawn
+          look-around: Look around
+          check-in: Check in
+          peer: Watch the screen
+          zone-out: Zone out
+          nod-off: Nod off
+          sway: Sway
+          sleep: Sleep
+          about-to-speak: About to speak
+          let-go: Let it go
       affect-trace:
         title: Affect trace
         description: Record every signal that the performance decider receives in the main window, then export the trace to replay it. Start recording before you send emotions.

@@ -1,6 +1,6 @@
 import type { FaceBaseline } from '@proj-airi/motion-driver-natural/baseline'
 import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
-import type { IdleCueKind, NaturalIdleDrive } from '@proj-airi/motion-driver-natural/idle-activities'
+import type { IdleBehaviourKind, IdleCueKind, NaturalIdleDrive } from '@proj-airi/motion-driver-natural/idle-activities'
 import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
 import type { CharacterReading } from '@proj-airi/stage-shared/character-state'
 import type { AffectSignal, AffectTrace, CatalogEntry, DeciderContext, ExpressionPerformanceSettings, HoldCommand, MoodDose, PerformanceDecision, PerformanceProfile, SlotCommand, TimingEvent, TouchAffectInput } from '@proj-airi/stage-shared/expression-performance'
@@ -130,6 +130,8 @@ export interface StagePerformanceScene {
   setIdleDrive?: (drive: NaturalIdleDrive | null) => void
   /** Live2D and MMD Natural: plays the body language around a reach-out. A scene without it drops the cue. */
   idleCue?: (kind: IdleCueKind) => void
+  /** Live2D Natural: plays one idle behaviour by name, for the devtools lab and scripted QA runs. */
+  idlePlay?: (kind: IdleBehaviourKind) => void
 }
 
 /**
@@ -366,6 +368,12 @@ export class StagePerformanceConductor {
   idleCue(kind: IdleCueKind) {
     if (this.options.driver() === 'natural')
       this.options.scene()?.idleCue?.(kind)
+  }
+
+  /** Plays one idle behaviour by name under the Natural driver, for the devtools lab and scripted QA runs. */
+  idlePlay(kind: IdleBehaviourKind) {
+    if (this.options.driver() === 'natural')
+      this.options.scene()?.idlePlay?.(kind)
   }
 
   /**

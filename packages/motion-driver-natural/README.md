@@ -48,6 +48,7 @@ and sway, sleep while the user is away, and the two reach-out cues
 ```ts
 motion.setIdleDrive({ energy: 0, valence: 0, tension: 0, sleepiness: 0.8, solitude: 0.5, music: false, allowSleep: true, rate: 1 }, now)
 motion.idleCue('about-to-speak', now)
+motion.idlePlay('yawn', now) // previews and scripted QA
 const { seq, behaviour } = motion.idleState
 ```
 
@@ -58,12 +59,18 @@ const { seq, behaviour } = motion.idleState
   rules that turn a drive into odds, pace and an energy offset.
 - An activity yields within 0.4 s to speech, thinking, listening, touch, an
   emotion, a cue gesture and a noticed cursor.
+- `idlePlay` starts one behaviour by name at the next step, in place of the
+  running one, when a drawn activity could start too. A played sleep ends after
+  14 s.
+- `motion.idleLidFactor` is the part of the frame's `blinkFactor` that a
+  behaviour closes on purpose. A renderer whose blinks are switched off applies
+  it alone. It is not a frame field, so recorded frames keep their shape.
 - `idleState.seq` increments at every start. `IdleBehaviourReports` turns
   per-frame reads of it into start and end reports; both renderer adapters use
   it. An attached observer also receives `idle` events.
 
 [The idle agency ADR](../../docs/ai/adr/2026-11-12-idle-agency.md) records the
-design, the pacing numbers and the open visual review.
+design, the pacing numbers and the rendered Live2D pass.
 
 ## Checks
 

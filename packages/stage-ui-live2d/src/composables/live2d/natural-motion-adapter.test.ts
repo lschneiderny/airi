@@ -1003,6 +1003,27 @@ describe('natural motion adapter idle behaviour', () => {
     expect(reports).toEqual(['sleep:start', 'sleep:end', 'sleep:start', 'sleep:end'])
   })
 
+  it('plays a requested behaviour, and closes the eyes for a played sleep with auto-blink off', () => {
+    const f = fixture()
+    const reports: string[] = []
+    f.adapter.onIdleBehaviour = report => reports.push(`${report.behaviour}:${report.phase}`)
+    f.state.driver = 'natural'
+    f.state.autoBlink = false
+    f.adapter.setIdleDrive(drive)
+    run(f, 0, 1)
+    f.adapter.idlePlay('sleep')
+    const asleep = run(f, 1.1, 10)
+    expect(reports).toEqual(['sleep:start'])
+    expect(asleep.commanded[f.at('ParamEyeLOpen')]).toBeCloseTo(0, 5)
+
+    // Under another driver the request is dropped, like a cue.
+    f.state.driver = 'universal'
+    f.adapter.idlePlay('yawn')
+    f.state.driver = 'natural'
+    run(f, 10.1, 11)
+    expect(reports).not.toContain('yawn:start')
+  })
+
   it('performs no idle behaviour without a drive, and drops a cue under another driver', () => {
     const f = fixture()
     const reports: string[] = []

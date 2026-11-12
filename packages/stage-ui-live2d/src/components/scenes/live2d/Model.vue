@@ -4,7 +4,7 @@ import type { Filter } from '@pixi/core'
 import type { FaceBaseline } from '@proj-airi/motion-driver-natural/baseline'
 import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
 import type { NaturalMotionObserver, NaturalTouchGesture } from '@proj-airi/motion-driver-natural/frame-types'
-import type { IdleBehaviourReport, IdleCueKind, NaturalIdleDrive } from '@proj-airi/motion-driver-natural/idle-activities'
+import type { IdleBehaviourKind, IdleBehaviourReport, IdleCueKind, NaturalIdleDrive } from '@proj-airi/motion-driver-natural/idle-activities'
 import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
 import type { NaturalChatInput } from '@proj-airi/motion-driver-natural/natural-motion'
 import type { NaturalTouchSample } from '@proj-airi/motion-driver-natural/touch-gestures'
@@ -1708,6 +1708,7 @@ defineExpose({
    */
   setIdleDrive: (drive: NaturalIdleDrive | null) => naturalMotion?.setIdleDrive(live2dNaturalIdleActivities.value ? drive : null),
   idleCue: (kind: IdleCueKind) => naturalMotion?.idleCue(kind),
+  idlePlay: (kind: IdleBehaviourKind) => naturalMotion?.idlePlay(kind),
   /** Executes decider slot commands; lifetimes are owned by the expression store. */
   applySlots: (commands: SlotCommand[], now: number) => expressionStore.applySlots(commands, now),
   /** Natural only: the performer owns the lease and manual-preview fallback of the held emotion. */

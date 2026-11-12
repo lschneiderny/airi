@@ -2,7 +2,7 @@
 import type { FaceBaseline } from '@proj-airi/motion-driver-natural/baseline'
 import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
 import type { NaturalTouchGesture } from '@proj-airi/motion-driver-natural/frame-types'
-import type { IdleBehaviourReport, IdleCueKind, NaturalIdleDrive } from '@proj-airi/motion-driver-natural/idle-activities'
+import type { IdleBehaviourKind, IdleBehaviourReport, IdleCueKind, NaturalIdleDrive } from '@proj-airi/motion-driver-natural/idle-activities'
 import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
 import type { PresenceBubbleState } from '@proj-airi/stage-shared'
 import type { ExpressionPerformanceSettings, HoldCommand, MoodDose, SlotCommand } from '@proj-airi/stage-shared/expression-performance'
@@ -179,6 +179,7 @@ defineExpose({
   setFaceBaseline: (baseline: FaceBaseline) => live2dModelRef.value?.setFaceBaseline(baseline),
   setIdleDrive: (drive: NaturalIdleDrive | null) => live2dModelRef.value?.setIdleDrive(drive),
   idleCue: (kind: IdleCueKind) => live2dModelRef.value?.idleCue(kind),
+  idlePlay: (kind: IdleBehaviourKind) => live2dModelRef.value?.idlePlay(kind),
   applySlots: (commands: SlotCommand[], now: number) => live2dModelRef.value?.applySlots(commands, now),
   applyHolds: (commands: HoldCommand[], now: number) => live2dModelRef.value?.applyHolds(commands, now),
   onSpeech: (event: SpeechEvent, turnId: string, now: number) => live2dModelRef.value?.onSpeech(event, turnId, now),

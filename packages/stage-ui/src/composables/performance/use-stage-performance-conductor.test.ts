@@ -466,16 +466,17 @@ describe('stage performance conductor', () => {
     it('sends the idle drive and reach-out cues to a Natural scene, and switches idle off under a basic driver', () => {
       const drive = { energy: 0.2, valence: 0, tension: 0, sleepiness: 0, solitude: 0.5, music: false, allowSleep: true, rate: 1 }
       const sent = (['natural', 'basic'] as const).map((driver) => {
-        const scene = { ...fakeScene(), setIdleDrive: vi.fn<NonNullable<StagePerformanceScene['setIdleDrive']>>(), idleCue: vi.fn<NonNullable<StagePerformanceScene['idleCue']>>() }
+        const scene = { ...fakeScene(), setIdleDrive: vi.fn<NonNullable<StagePerformanceScene['setIdleDrive']>>(), idleCue: vi.fn<NonNullable<StagePerformanceScene['idleCue']>>(), idlePlay: vi.fn<NonNullable<StagePerformanceScene['idlePlay']>>() }
         const { conductor } = createConductor(driver, scene)
         conductor.idleDrive(drive)
         conductor.idleCue('about-to-speak')
-        return [driver, scene.setIdleDrive.mock.calls, scene.idleCue.mock.calls]
+        conductor.idlePlay('yawn')
+        return [driver, scene.setIdleDrive.mock.calls, scene.idleCue.mock.calls, scene.idlePlay.mock.calls]
       })
 
       expect(sent).toEqual([
-        ['natural', [[drive]], [['about-to-speak']]],
-        ['basic', [[null]], []],
+        ['natural', [[drive]], [['about-to-speak']], [['yawn']]],
+        ['basic', [[null]], [], []],
       ])
     })
 
