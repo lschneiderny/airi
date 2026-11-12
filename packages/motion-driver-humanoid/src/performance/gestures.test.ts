@@ -374,6 +374,37 @@ describe('co-speech gestures', () => {
     expect(jerk).toBeLessThanOrEqual(strokeJerk)
   })
 
+  it('keeps gesturing with the free hand when a clip claims one arm of a two-handed unit', () => {
+    const script: Script = { utterances: [utterance(0.5, 0.85, peaks(0.5))] }
+    // The app's upper-layer fade claims the right arm two ticks into the stroke on the 2.6 s onset.
+    const claimAt = 2.6 + 2 * BODY_TICK
+    const claim = (time: number) => {
+      const u = Math.max(0, Math.min(1, (time - claimAt) / 0.25))
+      return u * u * (3 - 2 * u)
+    }
+    // Seeds 4 and 7 draw a two-handed first unit led by the right hand.
+    for (const seed of [4, 7]) {
+      expect(strokes(perform(script, 8, { seed, traits: chisaTraits }))[0]?.hand).toBe('both')
+      const run = perform({ ...script, owned: time => ({ rightArm: claim(time), rightFingers: claim(time) }) }, 8, { seed, traits: chisaTraits })
+      expect(run.frames.find(frame => frame.time >= claimAt)?.gesture.activation.right).toBe(1)
+      const next = strokes(run).find(stroke => Math.abs(stroke.onset - 3.5) < BODY_TICK / 2)
+      expect(next?.hand).toBe('left')
+      const speed = (path: readonly (readonly number[])[]) => path.map((p, i) => i ? Math.hypot(p[0] - path[i - 1][0], p[1] - path[i - 1][1], p[2] - path[i - 1][2]) / BODY_TICK : 0)
+      const idle = Math.max(...speed(wristPath(perform({ utterances: [] }, 8, { seed, traits: chisaTraits }), 'left', chisaTraits)))
+      const stroke = speed(wristPath(run, 'left', chisaTraits)).filter((_, i) => run.frames[i].time >= 3.5 && run.frames[i].time <= (next?.hit ?? 0))
+      expect(Math.max(...stroke)).toBeGreaterThan(2 * idle)
+      // The free arm never waits at full weight for longer than one inter-peak interval without a planned motion.
+      let waiting = 0
+      let longest = 0
+      for (const frame of run.frames) {
+        const moving = frame.gesture.phase === 'preparation' || frame.gesture.phase === 'stroke' || frame.gesture.phase === 'retraction'
+        waiting = moving || frame.gesture.activation.left < 1 ? 0 : waiting + BODY_TICK
+        longest = Math.max(longest, waiting)
+      }
+      expect(longest).toBeLessThanOrEqual(1.2)
+    }
+  })
+
   it('prepares the upper arm, then the elbow, then the wrist, then the fingers', () => {
     const run = perform({ utterances: [utterance(0.5, 0.65, [])] }, 2)
     const silent = perform({ utterances: [] }, 2, { layers: false })

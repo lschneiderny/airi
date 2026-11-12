@@ -560,7 +560,8 @@ the body's surface, and the key backs off from it while the elbow swings out,
 until the pose and its path from rest clear the proxies (the pose with the ready
 key's headroom) with every joint 2 degrees inside its limit; an arm
 keeps whichever performance holds it, and speech uses the other hand. Any clip
-claim on a performing arm takes it within 90 ms. Without speech or an arm form
+claim on a performing arm takes it within 90 ms; a two-handed unit then goes
+on one-handed with the arm it still has. Without speech or an arm form
 the layers stay at weight 0 and the output is bit-identical to having none.
 While a layer drives an arm channel, that channel keeps its own idle noise (a
 moving hold) and its passive drag yields to the activation, as the plumb line

@@ -431,6 +431,12 @@ class GesturePerformer {
     track.pending = null
     if (this.armForm?.side === side)
       this.armForm = null
+    // A two-handed unit goes on with the hand it still has: its lead and its phase follow that arm from here.
+    const unit = this.unit
+    if (unit.active && unit.sides.length > 1 && unit.sides.includes(side)) {
+      unit.sides = unit.sides.filter(other => other !== side)
+      unit.twoHand = false
+    }
   }
 
   private performArmForm(context: PerformanceContext, now: number): void {
