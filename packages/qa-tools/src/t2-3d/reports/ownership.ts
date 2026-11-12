@@ -62,6 +62,8 @@ export interface OwnershipRunRequirement {
   readonly status: OwnershipStatus
   /** Why the requirement was not exercised or refused on this run. */
   readonly reason: string | null
+  /** Whether the run held the requirement's case, PASS or FAIL; null for a requirement that needs none. */
+  readonly exercised: boolean | null
 }
 
 export interface OwnershipRun {
@@ -88,10 +90,12 @@ export interface OwnershipRun {
 export interface OwnershipDetail {
   readonly verdict: 'PASS' | 'FAIL' | 'REFUSED'
   readonly refusals: readonly string[]
+  /** Per requirement that needs a case: the runs on which the case occurred (lead pooling decision C). */
+  readonly exercised: Readonly<Record<string, number>>
   readonly runs: readonly OwnershipRun[]
 }
 
-const line = (id: string, rule: string, value: string, status: OwnershipStatus, reason: string | null = null): OwnershipRunRequirement => ({ id, rule, value, status, reason })
+const line = (id: string, rule: string, value: string, status: OwnershipStatus, reason: string | null = null, exercised: boolean | null = null): OwnershipRunRequirement => ({ id, rule, value, status, reason, exercised })
 
 /** A requirement that needs a case: FAIL when a clause that applies to every run fails, else PASS only where the case occurred. */
 const caseStatus = (holds: boolean, exercised: boolean): OwnershipStatus => !holds ? 'FAIL' : exercised ? 'PASS' : 'NOT-EXERCISED'
@@ -198,10 +202,10 @@ function judgeRun(run: LoadedRun, bands: MotionBandsFile): OwnershipRun {
   const requirements: OwnershipRunRequirement[] = [
     line('owned-arm-untouched', `write deviation of the right arm and fingers <= ${C.deviationRad} rad on fully owned frames`, `rightArm ${fixed(maxDeviation('rightArm'), 6)}, rightFingers ${fixed(maxDeviation('rightFingers'), 6)} over ${full.length} frames`, verdict(full.length > 0 && maxDeviation('rightArm') <= C.deviationRad && maxDeviation('rightFingers') <= C.deviationRad)),
     line('trace-cross-check', `trace right upper arm, lower arm and hand within ${C.deviationRad} rad of the clip's analytic pose on fully owned frames`, Object.entries(traceDeviation).map(([b, v]) => `${b} ${fixed(v, 6)}`).join(', '), verdict(full.length > 0 && Object.values(traceDeviation).every(v => v <= C.deviationRad))),
-    line('performer-yields', `right-arm gesture activation = 0 on every frame with owned.rightArm > ${C.yieldOwned}; exercised when the right arm is gesturing at the claim`, `${fixed(yieldActivation, 6)} while owned; ${fixed(claimActivation, 3)} at the claim`, caseStatus(yieldActivation === 0, yieldsExercised), yieldsExercised ? null : 'right gesture activation 0 at the claim'),
+    line('performer-yields', `right-arm gesture activation = 0 on every frame with owned.rightArm > ${C.yieldOwned}; exercised when the right arm is gesturing at the claim`, `${fixed(yieldActivation, 6)} while owned; ${fixed(claimActivation, 3)} at the claim`, caseStatus(yieldActivation === 0, yieldsExercised), yieldsExercised ? null : 'right gesture activation 0 at the claim', yieldsExercised),
     line('left-arm-gestures', `fully owned span >= ${C.ownedSeconds} s with >= ${C.ownedPeaks} labelled peaks, >= ${C.leftApexes} of them hit by a left apex`, `${span ? fixed((span.to - span.from + 1) / 60, 2) : 0} s, ${ownedPeaks.length} peaks, ${leftHits} left hits`, verdict(!!span && (span.to - span.from + 1) / 60 >= C.ownedSeconds && ownedPeaks.length >= C.ownedPeaks && leftHits >= C.leftApexes)),
-    line('poke-continuous', `no arm or trunk pop in [poke - 0.2, poke + 1] s, and smooth.armX.spikeRate defined and <= ${fixed(spikeBand.hi, 1)}/min on each arm with owned < ${C.yieldOwned} at the poke; exercised when a gesture unit is active on a free arm at the poke`, `${pokes.length} pokes, ${pokePops} pops; ${spikes.map(s => `${s.id} ${fixed(s.value, 2)}`).join(', ') || 'no free arm'}; active at the poke: ${activeAtPoke.join(', ') || 'none'}`, caseStatus(pokeHolds, pokeExercised), pokeExercised ? null : notAtPoke),
-    line('resume-after-cancel', `with a gesture unit active at the poke, the first labelled peak >= ${C.resumeAfter} s after the poke has an apex within ${C.hitSeconds * 1000} ms`, resumePeak === null ? 'no such peak' : `${resumePeak.toFixed(3)} s ${near(resumePeak) ? 'hit' : 'missed'}`, pokeExercised ? verdict(resumePeak !== null && near(resumePeak)) : 'NOT-EXERCISED', pokeExercised ? null : notAtPoke),
+    line('poke-continuous', `no arm or trunk pop in [poke - 0.2, poke + 1] s, and smooth.armX.spikeRate defined and <= ${fixed(spikeBand.hi, 1)}/min on each arm with owned < ${C.yieldOwned} at the poke; exercised when a gesture unit is active on a free arm at the poke`, `${pokes.length} pokes, ${pokePops} pops; ${spikes.map(s => `${s.id} ${fixed(s.value, 2)}`).join(', ') || 'no free arm'}; active at the poke: ${activeAtPoke.join(', ') || 'none'}`, caseStatus(pokeHolds, pokeExercised), pokeExercised ? null : notAtPoke, pokeExercised),
+    line('resume-after-cancel', `with a gesture unit active at the poke, the first labelled peak >= ${C.resumeAfter} s after the poke has an apex within ${C.hitSeconds * 1000} ms`, resumePeak === null ? 'no such peak' : `${resumePeak.toFixed(3)} s ${near(resumePeak) ? 'hit' : 'missed'}`, pokeExercised ? verdict(resumePeak !== null && near(resumePeak)) : 'NOT-EXERCISED', pokeExercised ? null : notAtPoke, pokeExercised),
     line('no-stale-stroke', `right gesture activation 0 from release to the next unit start, and no unmatched right apex in [release, release + ${C.staleSeconds}] s whose stroke starts once owned.rightArm = 0`, release === null ? 'no release' : `activation ${fixed(releaseActivation, 3)}; ${staleApexes.length} stale apexes`, verdict(release !== null && freeAt !== null && releaseActivation === 0 && staleApexes.length === 0)),
     line('rest-band', `right arm angles within rest +/- (${C.restNoiseScale} x idle noise + the free left arm's offset from its rest) at release + ${C.restCheckAfter} s`, leftBusy ? 'left arm in a gesture unit or owned' : `${restCheck.filter(r => r.inside).length}/${restCheck.length} joints`, release === null ? 'FAIL' : leftBusy ? 'REFUSED' : verdict(restCheck.length === 9 && restCheck.every(r => r.inside)), leftBusy ? 'the left arm is inside a gesture unit or owned at release + 0.5 s' : null),
     line('penetration', 'max(perFrame.penL, perFrame.penR) = 0', fixed(penetration, 6), verdict(penetration === 0)),
@@ -254,14 +258,15 @@ export function ownershipReport(runs: readonly LoadedRun[], bands: MotionBandsFi
   const repeated = distinct(judged.map(run => `${run.seed}`).filter((seed, i, seeds) => seeds.indexOf(seed) !== i))
   if (repeated.length)
     refusals.push(`more than one run of seed ${repeated.join(', ')}`)
+  const exercised: Record<string, number> = Object.fromEntries(OWNERSHIP_CASE_REQUIREMENTS.map(id => [id, judged.filter(run => run.requirements.find(r => r.id === id)?.exercised).length]))
   const pooled = (judged[0]?.requirements ?? []).map((first, i) => {
     const lines = judged.map(run => run.requirements[i])
     const failing = judged.filter(run => run.requirements[i].status === 'FAIL' || run.requirements[i].status === 'REFUSED').map(run => `${run.dir} ${run.requirements[i].status}`)
     const failures = failing.length ? `; ${failing.join(', ')}` : ''
     if (OWNERSHIP_CASE_REQUIREMENTS.includes(first.id)) {
-      const exercised = lines.filter(l => l.status === 'PASS').length
-      const value = `exercised on ${exercised} of ${lines.length}${exercised < C.poolExercised ? ' (not exercised)' : ''}${failures}`
-      return requirement(first.id, `${first.rule}; PASS on every exercised run and exercised on >= ${C.poolExercised} runs`, value, !failing.length && exercised >= C.poolExercised)
+      const count = exercised[first.id]
+      const value = `exercised on ${count} of ${lines.length}${count < C.poolExercised ? ' (not exercised)' : ''}${failures}`
+      return requirement(first.id, `${first.rule}; PASS on every exercised run and exercised on >= ${C.poolExercised} runs`, value, !failing.length && count >= C.poolExercised)
     }
     return requirement(first.id, `${first.rule}; PASS on every run`, `PASS on ${lines.filter(l => l.status === 'PASS').length} of ${lines.length}${failures}`, !failing.length)
   })
@@ -270,7 +275,7 @@ export function ownershipReport(runs: readonly LoadedRun[], bands: MotionBandsFi
     ...pooled,
   ]
   const verdict = refusals.length ? 'REFUSED' : requirements.every(r => r.pass) ? 'PASS' : 'FAIL'
-  return criterionReport('ownership', OWNERSHIP_VERSION, runs.map(run => run.dir), OWNERSHIP_CONSTANTS, requirements, { verdict, refusals, runs: judged })
+  return criterionReport('ownership', OWNERSHIP_VERSION, runs.map(run => run.dir), OWNERSHIP_CONSTANTS, requirements, { verdict, refusals, exercised, runs: judged })
 }
 
 export function formatOwnership(report: CriterionReport<OwnershipDetail>): string {

@@ -256,6 +256,8 @@ describe('ownership report (C004, plan 2.5; version 2, E/g3/own2/rules-v2.md)', 
     const mixed = ownershipReport(pool(seed => seed === 4 ? { rightAtClaim: 'keeps-gesturing' } : {}), bands)
     expect(mixed.detail.verdict).toBe('FAIL')
     expect(pooled(mixed, 'performer-yields')).toBe(false)
+    // The run that keeps gesturing held the case and failed it: it counts as exercised.
+    expect(mixed.detail.exercised['performer-yields']).toBe(3)
   })
 
   it('judges resume-after-cancel only for a poke inside a gesture unit, and fails a unit that stalls at the poke', () => {
