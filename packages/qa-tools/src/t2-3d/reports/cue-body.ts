@@ -11,7 +11,7 @@ import { conjugate, DEG, HZ, mean, multiply, norm, rotationVector } from '../met
 import { traceParent } from './kinematics'
 import { criterionReport, fixed, formatReport, requirement } from './report'
 
-export const CUE_BODY_VERSION = 3
+export const CUE_BODY_VERSION = 4
 
 /** Natural's cue durations for one count (`cue-gestures.ts`, `start`; the glance holds 0.6 s). */
 export const CUE_SECONDS: Readonly<Record<CueGestureKind, number>> = { nod: 0.45, shake: 0.5, shrug: 1.1, lean: 2.6, glance: 0.6 }
@@ -19,14 +19,15 @@ const CUES = Object.keys(CUE_SECONDS) as CueGestureKind[]
 /** Bones below the neck; a rig without `upperChest` skips it. */
 export const CUE_BONES: readonly MotionTraceBone[] = ['hips', 'spine', 'chest', 'upperChest', 'leftShoulder', 'rightShoulder', 'leftUpperArm', 'rightUpperArm', 'leftLowerArm', 'rightLowerArm']
 
-const C = { tail: 0.5, clearance: 1, emotionOnset: 2, percentile: 0.95, events: 5, minimumWindows: 20, falsePositive: 0.1, minimumEvents: 6, draws: 1000, seed: 20261112, pseudoEvents: 100 }
+const C = { tail: 0.5, clearance: 1, emotionOnset: 2, percentile: 0.95, events: 5, minimumWindows: 20, falsePositive: 0.05, nullPercentile: 0.99, minimumEvents: 6, draws: 1000, seed: 20261112, pseudoEvents: 100 }
 
 export const CUE_BODY_CONSTANTS: readonly ReportConstant[] = [
   { name: 'cue window', value: `start .. start + duration + ${C.tail}`, unit: 's', source: 'plan 2.3' },
   { name: 'placebo window', value: `same length, ${C.clearance} s clear of every cue window and every emotion event's first ${C.emotionOnset} s`, unit: 's', source: 'unit M2 R3: placebo windows of the same runs; 2 s is the start of the gate emotionHoldSeconds' },
   { name: 'event threshold', value: C.percentile, unit: 'percentile of the placebo windows\' max over bones of turn / placebo SD', source: 'unit M2 R3: family-wise over the bones' },
   { name: 'time-locked average', value: `>= ${C.minimumEvents} events`, unit: 'per kind, averaged frame by frame from the cue marker', source: 'unit M3 item 6: averaging time-locked responses detects a small evoked response in noise' },
-  { name: 'null', value: `${C.draws} seeded draws (seed ${C.seed})`, unit: 'averages of as many placebo windows as events', source: 'unit M3 item 6: the same runs\' idle' },
+  { name: 'null', value: `p${C.nullPercentile * 100} of ${C.draws} seeded draws (seed ${C.seed})`, unit: 'averages of as many placebo windows as events', source: 'unit M3 items 6 and 7b: the same runs\' idle' },
+  { name: 'leave-one-out', value: 'every n - 1 average', unit: 'against the null of n - 1 placebo windows', source: 'unit M3 item 7a: no single event may carry a kind' },
   { name: 'per-event count', value: C.events, unit: 'of 6, report only', source: 'plan 2.3 (version 2 rule)' },
   { name: 'minimum placebo windows', value: C.minimumWindows, unit: 'per kind', source: 'unit M2 R3: a 95th percentile needs at least 20 samples' },
   { name: 'split-half false positives', value: C.falsePositive, unit: 'share of placebo windows', source: 'unit M2 R3 negative control (printed, not required)' },
@@ -102,7 +103,7 @@ function averagedStatistic(trajectories: readonly Trajectory[], sd: CueModel['sd
   return best
 }
 
-/** The null's 95th percentile: the averaged statistic over `draws` seeded draws of `size` distinct placebo windows. */
+/** The null's 99th percentile (unit M3 item 7b): the averaged statistic over `draws` seeded draws of `size` distinct placebo windows. */
 function nullThreshold(pool: readonly Trajectory[], size: number, sd: CueModel['sd'], random: () => number): number | null {
   if (size < 1 || pool.length < size)
     return null
@@ -114,7 +115,7 @@ function nullThreshold(pool: readonly Trajectory[], size: number, sd: CueModel['
     }
     return averagedStatistic(order.slice(0, size).map(i => pool[i]), sd)
   })
-  return percentile(stats, C.percentile)
+  return percentile(stats, C.nullPercentile)
 }
 
 function sample(p: PreparedTrace, start: number, seconds: number): Sample | null {
@@ -188,12 +189,24 @@ export interface CueEvent {
   readonly counted: boolean
 }
 
+/** Unit M3 item 7: the all-events average and every leave-one-out average against their nulls. */
+function judgeAverage(trajectories: readonly Trajectory[], pool: readonly Trajectory[], sd: CueModel['sd'], random: () => number) {
+  const n = trajectories.length
+  const statistic = averagedStatistic(trajectories, sd)
+  const nullAll = nullThreshold(pool, n, sd, random)
+  const nullLeaveOut = nullThreshold(pool, n - 1, sd, random)
+  const leaveOut = trajectories.map((_, k) => averagedStatistic(trajectories.filter((_, i) => i !== k), sd))
+  const weakest = leaveOut.length ? Math.min(...leaveOut) : 0
+  const pass = n >= C.minimumEvents && nullAll !== null && nullLeaveOut !== null && statistic > nullAll && weakest > nullLeaveOut
+  return { events: n, statistic, nullP99: nullAll, leaveOutMinimum: weakest, leaveOutNullP99: nullLeaveOut, pass, averagePass: nullAll !== null && statistic > nullAll }
+}
+
 export interface CueBodyDetail {
   readonly events: readonly CueEvent[]
   readonly models: Readonly<Record<CueGestureKind, CueModel>>
   /** Per-event counts (version 2 rule), report only. */
   readonly perKind: Readonly<Record<CueGestureKind, { readonly counted: number, readonly total: number }>>
-  readonly averaged: Readonly<Record<CueGestureKind, { readonly events: number, readonly statistic: number, readonly nullP95: number | null }>>
+  readonly averaged: Readonly<Record<CueGestureKind, ReturnType<typeof judgeAverage>>>
   readonly splitHalf: ReturnType<typeof cueFalsePositives>
 }
 
@@ -222,34 +235,38 @@ export function cueBodyReport(runs: readonly LoadedRun[]): CriterionReport<CueBo
   const averaged = Object.fromEntries(CUES.map((cue) => {
     const trajectories = traced.flatMap(x => x.cue === cue && x.trajectory ? [x.trajectory] : [])
     const sd = models[cue].sd
-    return [cue, { events: trajectories.length, statistic: averagedStatistic(trajectories, sd), nullP95: models[cue].windows >= C.minimumWindows ? nullThreshold(windows[cue].map(w => w.trajectory), trajectories.length, sd, random) : null }]
-  })) as Record<CueGestureKind, { events: number, statistic: number, nullP95: number | null }>
+    return [cue, judgeAverage(trajectories, models[cue].windows >= C.minimumWindows ? windows[cue].map(w => w.trajectory) : [], sd, random)]
+  })) as Record<CueGestureKind, ReturnType<typeof judgeAverage>>
   return criterionReport('cue-body', CUE_BODY_VERSION, runs.map(r => r.dir), CUE_BODY_CONSTANTS, CUES.map((cue) => {
     const a = averaged[cue]
     return requirement(
       `cue-${cue}`,
-      `the time-locked average of >= ${C.minimumEvents} ${cue} events: largest below-neck turn / placebo SD > p95 of ${C.draws} seeded placebo averages (>= ${C.minimumWindows} placebo windows)`,
-      `${fixed(a.statistic, 2)} against ${fixed(a.nullP95, 2)} over ${a.events} events and ${models[cue].windows} windows; per-event (report only) ${perKind[cue].counted}/${perKind[cue].total}`,
-      a.events >= C.minimumEvents && a.nullP95 !== null && a.statistic > a.nullP95,
+      `the time-locked average of >= ${C.minimumEvents} ${cue} events and every average with one event left out: largest below-neck turn / placebo SD > p${C.nullPercentile * 100} of ${C.draws} seeded placebo averages of as many windows (>= ${C.minimumWindows} placebo windows)`,
+      `${fixed(a.statistic, 2)} against ${fixed(a.nullP99, 2)} over ${a.events} events; weakest leave-one-out ${fixed(a.leaveOutMinimum, 2)} against ${fixed(a.leaveOutNullP99, 2)}; ${models[cue].windows} windows; per-event (report only) ${perKind[cue].counted}/${perKind[cue].total}`,
+      a.pass,
     )
   }), { events, models, perKind, averaged, splitHalf: cueFalsePositives(runs) })
 }
 
 /**
- * The item 6 negative control: placebo windows split in alternating halves. The null comes from one half; 100
- * pseudo-events of 6 windows drawn from the other half are scored against it, in both directions. Expected 5 %.
+ * The item 6 and 7 negative control: placebo windows split in alternating halves. The nulls come from one half; 100
+ * pseudo-events of 6 windows drawn from the other half are judged by the full rule, in both directions. Nominal 1 %.
+ * `averageOnly` counts the pseudo-events whose all-events average alone clears its null.
  */
-export function cueFalsePositives(runs: readonly LoadedRun[]): Readonly<Record<CueGestureKind, { readonly flagged: number, readonly total: number }>> {
+export function cueFalsePositives(runs: readonly LoadedRun[]): Readonly<Record<CueGestureKind, { readonly flagged: number, readonly averageOnly: number, readonly total: number }>> {
   const random = createRandomStream(C.seed + 1)
   return Object.fromEntries(CUES.map((cue) => {
     const windows = runs.flatMap(run => placeboWindows(run, CUE_SECONDS[cue]))
     const halves = [windows.filter((_, i) => i % 2 === 0), windows.filter((_, i) => i % 2 === 1)]
     let flagged = 0
+    let averageOnly = 0
     let total = 0
     for (const [fit, score] of [[halves[0], halves[1]], [halves[1], halves[0]]]) {
       const { sd } = fitCueModel(fit.map(w => w.sample))
-      const bar = nullThreshold(fit.map(w => w.trajectory), C.minimumEvents, sd, random)
-      if (bar === null || score.length < C.minimumEvents)
+      const pool = fit.map(w => w.trajectory)
+      const barAll = nullThreshold(pool, C.minimumEvents, sd, random)
+      const barLeaveOut = nullThreshold(pool, C.minimumEvents - 1, sd, random)
+      if (barAll === null || barLeaveOut === null || score.length < C.minimumEvents)
         continue
       for (let k = 0; k < C.pseudoEvents; k++) {
         const order = score.map((_, i) => i)
@@ -257,13 +274,17 @@ export function cueFalsePositives(runs: readonly LoadedRun[]): Readonly<Record<C
           const j = i + Math.floor(random() * (order.length - i))
           ;[order[i], order[j]] = [order[j], order[i]]
         }
+        const picked = order.slice(0, C.minimumEvents).map(i => score[i].trajectory)
         total++
-        if (averagedStatistic(order.slice(0, C.minimumEvents).map(i => score[i].trajectory), sd) > bar)
+        const all = averagedStatistic(picked, sd) > barAll
+        if (all)
+          averageOnly++
+        if (all && picked.every((_, out) => averagedStatistic(picked.filter((_, i) => i !== out), sd) > barLeaveOut))
           flagged++
       }
     }
-    return [cue, { flagged, total }]
-  })) as Record<CueGestureKind, { flagged: number, total: number }>
+    return [cue, { flagged, averageOnly, total }]
+  })) as Record<CueGestureKind, { flagged: number, averageOnly: number, total: number }>
 }
 
 export function formatCueBody(report: CriterionReport<CueBodyDetail>): string {
@@ -271,7 +292,7 @@ export function formatCueBody(report: CriterionReport<CueBodyDetail>): string {
   return formatReport(report, [
     'placebo model per kind: windows, p95 of the statistic, bone SD of the turn (deg)',
     ...CUES.map(cue => `  ${cue}\t${d.models[cue].windows}\t${fixed(d.models[cue].threshold, 2)}\t${Object.entries(d.models[cue].sd).map(([b, v]) => `${b} ${fixed(v ?? null, 3)}`).join(', ')}`),
-    `split-half false positives of the time-locked rule (expected 5 %): ${CUES.map(cue => `${cue} ${d.splitHalf[cue].flagged}/${d.splitHalf[cue].total}`).join(', ')}`,
+    `split-half false positives of the full rule (nominal 1 %; all-events average alone in brackets): ${CUES.map(cue => `${cue} ${d.splitHalf[cue].flagged}/${d.splitHalf[cue].total} (${d.splitHalf[cue].averageOnly})`).join(', ')}`,
     'cue events: run, cue, t s, statistic, largest bone, counted',
     ...d.events.map(e => `  ${e.run}\t${e.cue}\t${e.t.toFixed(3)}\t${fixed(e.statistic, 2)}\t${e.bone ?? '-'}\t${e.counted ? 'yes' : 'no'}`),
   ])
@@ -279,8 +300,8 @@ export function formatCueBody(report: CriterionReport<CueBodyDetail>): string {
 
 export function formatCueFalsePositives(shares: ReturnType<typeof cueFalsePositives>): string {
   return `${[
-    `cue-body split-half false positives of the time-locked rule (unit M3 item 6): pseudo-events of 6 placebo windows from one half against the null of the other, expected 5 %, at most ${C.falsePositive * 100} %`,
-    ...CUES.map(cue => `  ${cue}\t${shares[cue].flagged}/${shares[cue].total} = ${fixed(shares[cue].total ? shares[cue].flagged / shares[cue].total : null)}\t${shares[cue].total && shares[cue].flagged / shares[cue].total <= C.falsePositive ? 'within' : 'NOT within'}`),
+    `cue-body split-half false positives of the full rule (unit M3 item 7): pseudo-events of 6 placebo windows from one half against the p${C.nullPercentile * 100} nulls of the other, with leave-one-out, nominal 1 %, at most ${C.falsePositive * 100} %; all-events average alone in brackets`,
+    ...CUES.map(cue => `  ${cue}\t${shares[cue].flagged}/${shares[cue].total} = ${fixed(shares[cue].total ? shares[cue].flagged / shares[cue].total : null)} (${shares[cue].averageOnly})\t${shares[cue].total && shares[cue].flagged / shares[cue].total <= C.falsePositive ? 'within' : 'NOT within'}`),
   ].join('\n')}\n`
 }
 

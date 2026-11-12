@@ -143,11 +143,10 @@ describe('cue-body report (C002, unit M2 R3)', () => {
     expect(report.requirements.every(r => !r.pass)).toBe(true)
   })
 
-  // One moving event of six adds a sixth of its turn to the average: 0.5 degrees stays inside the null, while 3 degrees
-  // clears it alone, a property of averaging; the printed per-event counts stay at noise level (0 to 2 of 6).
-  it.each([[0.5, false], [3, true]] as const)('judges one moving event of six at %s degrees by its share of the average: pass %s', (degrees, pass) => {
+  // Unit M3 item 7: leaving the moving event out leaves five quiet ones, so no single event carries a kind, however large.
+  it.each([0.5, 3, 30])('does not pass a kind on one moving event of six at %s degrees', (degrees) => {
     const report = cueBodyReport([cues('chest', 0.3 * DEG, degrees * DEG)])
-    expect(report.requirements.every(r => r.pass === pass)).toBe(true)
+    expect(report.requirements.every(r => !r.pass)).toBe(true)
   })
 
   it('fails a body that never moves, with no placebo spread to beat', () => {
