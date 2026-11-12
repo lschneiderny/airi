@@ -1,5 +1,6 @@
-import type { MotionTraceEvent } from '@proj-airi/motion-driver-humanoid/motion-trace'
+import type { MotionTraceBone, MotionTraceEvent } from '@proj-airi/motion-driver-humanoid/motion-trace'
 
+import type { Quat } from '../metrics'
 import type { FormFeatures } from './gesture-timing'
 
 import { fileURLToPath } from 'node:url'
@@ -7,6 +8,7 @@ import { fileURLToPath } from 'node:url'
 import { beforeAll, describe, expect, it } from 'vitest'
 
 import { loadBands } from '../gate/load'
+import { multiply } from '../metrics/math'
 import { formsDiffer, gestureTimingReport, largestDistinctSet } from './gesture-timing'
 import { ReportUsageError } from './report'
 import { armWorld, gateStub, loadedRun, moves, rotY, summaryStub, trace } from './test-runs'
@@ -21,14 +23,23 @@ const FORMS = ['beat', 'palm-up', 'press', 'chop'] as const
 const IDLE = 50
 /** Talk metrics gate version 3 keeps gated; the bilateral metrics are report-only there. */
 const TALK_GATED = ['smooth.head.ldlj', 'onset.attackFraction', 'onset.easedOrAnticipated', 'gesture.strokeP', 'gesture.strokeLagMs', 'coverage.fingers', 'fingers.frozen'] as const
+/** Bones the upper torso carries in the synthetic rig. */
+const ABOVE_TORSO = new Set(['neck', 'head', 'leftShoulder', 'leftUpperArm', 'leftLowerArm', 'leftHand', 'rightShoulder', 'rightUpperArm', 'rightLowerArm', 'rightHand'])
+
+/** Every 2 s from 3 s, a 0.2 s upper-torso yaw of `degrees`, alternating in sign, that carries the arms. */
+function trunkSway(degrees: number, count: number) {
+  return moves(Array.from({ length: count }, (_, i) => ({ start: 3 + 2 * i, duration: 0.2, by: (i % 2 ? -1 : 1) * degrees * Math.PI / 180 })))
+}
 
 /**
  * A synthetic speaker on the left arm: three 8 s utterances, each one unit of four strokes, one stroke apex on each
  * labelled peak (shifted by `apexOffset`), each form at its own forearm twist, and preparations whose upper arm, elbow
  * and hand twist start 0, 60 and 120 ms apart (`order` reverses that). With each stroke the upper torso turns 2 deg
  * against the hips, as plan 3.1's torso participation (`torso: false` drops it); `silent` leaves one utterance's unit out.
+ * `silentTrunk` turns the upper torso by that many degrees in the silent lead; `earlyMove` adds an arm movement without a
+ * trunk turn whose apex lands 50 ms before each peak, nearer the peak than the stroke's own apex.
  */
-function speaker(options: { apexOffset?: number, order?: 'proximal' | 'distal', markerOffset?: number, still?: boolean, torso?: boolean, silent?: number, idleSway?: number, strokeSeconds?: number, strokeSize?: number } = {}) {
+function speaker(options: { apexOffset?: number, order?: 'proximal' | 'distal', markerOffset?: number, still?: boolean, torso?: boolean, silent?: number, idleSway?: number, strokeSeconds?: number, strokeSize?: number, silentTrunk?: number, earlyMove?: boolean } = {}) {
   const events: MotionTraceEvent[] = []
   const upper: { start: number, duration: number, by: number }[] = []
   const elbow: { start: number, duration: number, by: number }[] = []
@@ -60,6 +71,8 @@ function speaker(options: { apexOffset?: number, order?: 'proximal' | 'distal', 
       const stroke = options.strokeSeconds ?? 0.15
       const size = options.strokeSize ?? 0.1
       upper.push({ start: end - stroke, duration: stroke, by: size }, { start: end, duration: 0.3, by: 0.002 }, { start: end + 0.5, duration: 0.3, by: -size - 0.002 })
+      if (options.earlyMove)
+        upper.push({ start: peak - 0.15, duration: 0.1, by: 0.05 }, { start: end + 0.5, duration: 0.3, by: -0.05 })
       twist.push({ start: end - 0.15, duration: 0.15, by: target - twistNow })
       twistNow = target
       torso.push({ start: end - 0.15, duration: 0.15, by: 2 * Math.PI / 180 }, { start: end + 0.5, duration: 0.3, by: -2 * Math.PI / 180 })
@@ -73,7 +86,7 @@ function speaker(options: { apexOffset?: number, order?: 'proximal' | 'distal', 
     seconds: IDLE + 29,
     scenario: 'talk',
     events,
-    world: options.still ? undefined : armWorld({ upper: moves(upper), elbow: moves(elbow), twist: moves(twist) }, {}, (bone, t) => bone === 'upperChest' && options.torso !== false ? rotY(moves(torso)(t)) : null),
+    world: options.still ? undefined : withTrunk(armWorld({ upper: moves(upper), elbow: moves(elbow), twist: moves(twist) }, {}, (bone, t) => bone === 'upperChest' && options.torso !== false ? rotY(moves(torso)(t)) : null), trunkSway(options.silentTrunk ?? 0, 20)),
   })
   const passing = Object.fromEntries(TALK_GATED.map(id => [id, { status: 'PASS' as const }]))
   const reportOnly = Object.fromEntries(['bilateral.upperArm.peakCorr', 'coverage.arms', 'smooth.armL.ldlj', 'smooth.armR.ldlj'].map(id => [id, { status: 'REPORT' as const, value: id.includes('ldlj') ? -8 : 0.5, gated: false }]))
@@ -81,10 +94,18 @@ function speaker(options: { apexOffset?: number, order?: 'proximal' | 'distal', 
   return { input, gate }
 }
 
-/** A companion idle run of the same synthetic rig: slow 0.03 rad upper-arm swings 2 s apart, each with an apex. */
-function idleRun(swings = 25, change: { gitSha?: string, assetSha256?: string } = {}) {
+/** Adds an upper-torso yaw that carries the bones above it, so the hand path in the torso frame does not change. */
+function withTrunk(world: (bone: MotionTraceBone, t: number) => Quat, yaw: (t: number) => number) {
+  return (bone: MotionTraceBone, t: number): Quat => bone === 'upperChest' || ABOVE_TORSO.has(bone) ? multiply(rotY(yaw(t)), world(bone, t)) : world(bone, t)
+}
+
+/**
+ * A companion idle run of the same synthetic rig: slow 0.03 rad upper-arm swings 2 s apart, each with an apex, and
+ * `trunkDegrees` of upper-torso sway on most of them.
+ */
+function idleRun(swings = 25, change: { gitSha?: string, assetSha256?: string } = {}, trunkDegrees = 0) {
   const sway = Array.from({ length: swings }, (_, i) => ({ start: 2 + 2 * i, duration: 0.4, by: (i % 2 ? -1 : 1) * 0.03 }))
-  const input = trace({ seconds: 4 + 2 * swings, scenario: 'talk', world: armWorld({ upper: moves(sway) }, {}) })
+  const input = trace({ seconds: 4 + 2 * swings, scenario: 'talk', world: withTrunk(armWorld({ upper: moves(sway) }, {}), trunkSway(trunkDegrees, swings - 1)) })
   const { rig, source } = input.trace
   const changed = { ...input, trace: { ...input.trace, rig: { ...rig, assetSha256: change.assetSha256 ?? rig.assetSha256 }, source: { ...source, gitSha: change.gitSha ?? source.gitSha } } }
   return loadedRun(changed, null, null, 'idle-companion')
@@ -150,6 +171,28 @@ describe('gesture-timing report (C001, plan 2.2)', () => {
     const report = gestureTimingReport(loadedRun(input, summaryStub(input), gate), bands, [idleRun()])
     expect(report.requirements.find(r => r.id === 'trunk-participation')?.pass).toBe(false)
     expect(report.requirements.find(r => r.id === 'peaks-hit')?.pass).toBe(true)
+  })
+
+  it('sets the trunk bar from the companion idle runs\' trunk turns, not from the speak run\'s silent stretches (lane T)', () => {
+    const { input, gate } = speaker({ silentTrunk: 6 })
+    const run = loadedRun(input, summaryStub(input), gate)
+    const line = (idle: ReturnType<typeof idleRun>) => gestureTimingReport(run, bands, [idle]).requirements.filter(r => r.id === 'peaks-hit' || r.id === 'trunk-participation').map(r => r.pass)
+    expect(line(idleRun())).toEqual([true, true])
+    expect(line(idleRun(25, {}, 6))).toEqual([true, false])
+  })
+
+  it('judges the trunk over the stroke whose apex confirms its marker, not over a nearer apex (lane T)', () => {
+    const { input, gate } = speaker({ apexOffset: 0.15, earlyMove: true })
+    const report = gestureTimingReport(loadedRun(input, summaryStub(input), gate), bands, [idleRun()])
+    expect(report.requirements.find(r => r.id === 'peaks-hit')?.pass).toBe(true)
+    expect(report.requirements.find(r => r.id === 'trunk-participation')?.pass).toBe(true)
+  })
+
+  it('counts a hit peak whose stroke marker no apex confirms as a trunk miss (lane T)', () => {
+    const { input, gate } = speaker({ markerOffset: 0.1 })
+    const report = gestureTimingReport(loadedRun(input, summaryStub(input), gate), bands, [idleRun()])
+    expect(report.requirements.find(r => r.id === 'peaks-hit')?.pass).toBe(true)
+    expect(report.requirements.find(r => r.id === 'trunk-participation')).toMatchObject({ pass: false, value: expect.stringMatching(/^0\/12;/) })
   })
 
   it('fails a gated talk FAIL whatever its id, and ignores report-only values', () => {
