@@ -515,7 +515,12 @@ tempo. The forms are 4a's beat, palm-up, press, point, chop and frame at unit
 A's amplitude scale (`GESTURE_FORMS`), keys solved per rig with
 `solveArmKey` and pushed along the proxy gradient until key and path clear.
 A stroke's wrist-placing channels (flex, abduct, twist, elbow) are fed forward
-through their followers' inverse, so it lands at 4a's duration. The report marks a stroke at the apex the lead wrist actually shows
+through their followers' inverse, so it lands at 4a's duration, or later when
+the inverse would ask a follower for more than its 20 rad/s input slope: the
+stroke then lasts the shortest time the followers can take. Every other
+channel of a segment also stays within that slope, so a large forearm, wrist or
+finger turn arrives after the hit, and each new segment continues the planned
+motion's velocity, never the inverse's. The report marks a stroke at the apex the lead wrist actually shows
 on the performer's output, so a marker's time is the motion's. The layers also
 hold `plan.armForm` (hand to chest, thinking hand) at contact anchors; an arm
 keeps whichever performance holds it, and speech uses the other hand. Any clip

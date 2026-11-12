@@ -43,6 +43,26 @@ const TIMING = {
   lagRange: [0.04, 0.07],
 } as const
 
+/**
+ * A follower takes its target's slope up to 20 rad/s (`advanceSecondOrder`; architecture 3a: "a larger jump is a cut
+ * and goes through inertialisation, not through the filter"), and leaves a faster target unfollowed.
+ */
+const FOLLOWER_INPUT_SLOPE = 20
+/** Samples of a stroke's progress at which its target slope is checked against the follower input slope. */
+const SLOPE_SAMPLES = 64
+/** Minimum jerk's peak slope over its mean, `max s'(u)`. */
+const MIN_JERK_PEAK_SLOPE = 1.875
+
+/**
+ * The coefficients of an active arm follower's inverse, `x = y + lead y' + curvature y''` (3a, r = 0), on channel `j`
+ * at mood tension `tension`; damping is the follower's own clamp to [0.3, 1].
+ */
+function followerInverse(j: number, tension: number): readonly [lead: number, curvature: number] {
+  const [f, zeta] = armResponse(j, 1, tension)
+  const omega = 2 * Math.PI * f
+  return [2 * Math.max(0.3, Math.min(1, zeta)) / omega, 1 / omega ** 2]
+}
+
 /** Plan 3.1 stroke admission: the gate's S2 voice-peak rule (`Q/gate/definition.ts`), read at the onset tick. */
 const VOICE = { peak: 0.3, prominence: 0.15, quiet: 0.05 } as const
 
@@ -71,8 +91,13 @@ interface Segment {
   readonly velocity: ArmPose
   readonly to: ArmPose
   start: number
-  duration: number
-  warp: boolean
+  /**
+   * Each channel's duration: the segment's, or longer where a channel's change would ask its follower for more than
+   * its input slope, so a large turn of the forearm, wrist or fingers arrives after the hit (4a: the hand shape last).
+   */
+  readonly durations: ArmPose
+  /** A stroke: its wrist-placing channels (flex, abduct, twist, elbow) are fed forward through the followers' inverse. */
+  feedforward: boolean
 }
 
 interface TorsoPulse {
@@ -89,12 +114,15 @@ class ArmTrack {
   readonly channels = new Float64Array(BODY_CHANNELS.length)
   readonly additive = new Float64Array(BODY_CHANNELS.length)
   readonly mask = new Float64Array(BODY_CHANNELS.length)
+  /** The target the followers receive: the planned motion, fed forward during a stroke. */
   readonly pose = pose()
-  readonly previous = pose()
+  /** The planned motion and its previous tick; a new segment continues the plan's velocity, never the inverse's. */
+  readonly planned = pose()
+  readonly plannedPrevious = pose()
   readonly home = pose()
   readonly ready = pose()
   readonly key = pose()
-  readonly segment: Segment = { from: pose(), velocity: pose(), to: pose(), start: 0, duration: 1, warp: false }
+  readonly segment: Segment = { from: pose(), velocity: pose(), to: pose(), start: 0, durations: pose().fill(1), feedforward: false }
   readonly pulses: TorsoPulse[] = []
   state: TrackState = 'rest'
   weight = 0
@@ -126,47 +154,88 @@ class ArmTrack {
     return this.state !== 'rest'
   }
 
-  /** Starts a motion to `to` from the current target, position and velocity continuous (quintic decay of `v0`). */
-  move(to: ArmPose, now: number, duration: number, warp: boolean): void {
+  /**
+   * Starts a motion to `to` from the current target, continuing the plan's velocity (quintic decay of `v0`). The
+   * target stays continuous: a stroke's inverse term is zero at both ends of its segment.
+   */
+  move(to: ArmPose, now: number, duration: number, feedforward: boolean): void {
     const s = this.segment
     s.from.set(this.pose)
     for (let j = 0; j < 26; j++)
-      s.velocity[j] = this.warm ? (this.pose[j] - this.previous[j]) / BODY_TICK : 0
+      s.velocity[j] = this.warm ? (this.planned[j] - this.plannedPrevious[j]) / BODY_TICK : 0
     s.to.set(to)
     s.start = now
-    s.duration = Math.max(BODY_TICK, duration)
-    s.warp = warp
+    s.feedforward = feedforward
+    for (let j = 0; j < 26; j++) {
+      const fed = feedforward && j >= 2 && j <= 5
+      s.durations[j] = Math.max(BODY_TICK, duration, fed ? 0 : MIN_JERK_PEAK_SLOPE * Math.abs(to[j] - s.from[j]) / FOLLOWER_INPUT_SLOPE)
+    }
   }
 
   advance(now: number, tension: number): void {
-    this.previous.set(this.pose)
+    this.plannedPrevious.set(this.planned)
     const s = this.segment
     for (let j = 0; j < 26; j++) {
       const y = this.profile(j, now)
-      if (!s.warp || j < 2 || j > 5 || now >= s.start + s.duration) {
-        this.pose[j] = y
+      this.planned[j] = y
+      this.pose[j] = y
+      const duration = s.durations[j]
+      const u = Math.max(0, Math.min(1, (now - s.start) / duration))
+      if (!s.feedforward || j < 2 || j > 5 || u >= 1)
         continue
-      }
-      // Flex, abduct, twist and elbow place the wrist: feed them forward through the follower's inverse,
-      // x = y + 2 zeta / omega y' + y'' / omega^2 (3a, r = 0), so the hit lands as planned. Distal channels follow softly.
-      const [f, zeta] = armResponse(j, 1, tension)
-      const omega = 2 * Math.PI * f
-      const before = this.profile(j, now - BODY_TICK)
-      const after = this.profile(j, now + BODY_TICK)
-      const rate = (after - before) / (2 * BODY_TICK)
-      const curvature = (after - 2 * y + before) / BODY_TICK ** 2
-      this.pose[j] = y + 2 * Math.min(1, zeta) / omega * rate + curvature / omega ** 2
+      // Flex, abduct, twist and elbow place the wrist: the followers receive the inverse of the planned stroke's
+      // minimum-jerk part, analytic, so the wrist lands as planned. Distal channels follow softly.
+      const [lead, curvature] = followerInverse(j, tension)
+      const rate = 30 * u ** 2 * (1 - u) ** 2 / duration
+      const acceleration = 60 * u * (1 - u) * (1 - 2 * u) / duration ** 2
+      this.pose[j] += (s.to[j] - s.from[j]) * (lead * rate + curvature * acceleration)
     }
     this.warm = true
+  }
+
+  /**
+   * The shortest stroke from the current target to `to` whose fed-forward channels (flex, abduct, twist, elbow) stay
+   * within the follower input slope: their target's slope is `D (s' / T + lead s'' / T^2 + curvature s''' / T^3)` for
+   * minimum jerk `s`. The other channels take their own durations (`move`).
+   */
+  strokeFloor(to: ArmPose, tension: number): number {
+    const inverses = [2, 3, 4, 5].map(j => followerInverse(j, tension))
+    const slope = (duration: number) => {
+      let worst = 0
+      for (let k = 0; k <= SLOPE_SAMPLES; k++) {
+        const u = k / SLOPE_SAMPLES
+        const rate = 30 * u ** 2 * (1 - u) ** 2 / duration
+        const acceleration = 60 * u * (1 - u) * (1 - 2 * u) / duration ** 2
+        const jerk = 60 * (1 - 6 * u + 6 * u ** 2) / duration ** 3
+        for (let j = 2; j <= 5; j++) {
+          const [lead, curvature] = inverses[j - 2]
+          worst = Math.max(worst, Math.abs((to[j] - this.pose[j]) * (rate + lead * acceleration + curvature * jerk)))
+        }
+      }
+      return worst
+    }
+    let low = 2 * BODY_TICK
+    let high = 1
+    if (slope(low) <= FOLLOWER_INPUT_SLOPE)
+      return low
+    for (let step = 0; step < 24; step++) {
+      const middle = (low + high) / 2
+      if (slope(middle) > FOLLOWER_INPUT_SLOPE)
+        low = middle
+      else
+        high = middle
+    }
+    return high
   }
 
   /** The planned position of channel `j` at `time` on the current segment. */
   profile(j: number, time: number): number {
     const s = this.segment
-    const u = Math.max(0, Math.min(1, (time - s.start) / s.duration))
-    const shape = minJerk(s.warp ? u ** 0.8 : u)
+    const duration = s.durations[j]
+    const u = Math.max(0, Math.min(1, (time - s.start) / duration))
+    const shape = minJerk(u)
     // h(u) = u - 6u^3 + 8u^4 - 3u^5: unit initial slope, zero value, slope and curvature at u = 1.
-    const decay = s.duration * (u - 6 * u ** 3 + 8 * u ** 4 - 3 * u ** 5)
+    const decay = duration * (u - 6 * u ** 3 + 8 * u ** 4 - 3 * u ** 5)
     return s.from[j] + (s.to[j] - s.from[j]) * shape + s.velocity[j] * decay
   }
 
@@ -472,8 +541,10 @@ class GesturePerformer {
       for (let j = 2; j < 9; j++)
         track.drift[j] += (track.key[j] - track.ready[j]) * AMPLITUDE.drift / travel
       // 4a: the visible hit lands at the stroke's duration. Feedforward removes the followers' own lag, so only the
-      // elbow's cascade delay remains between the planned profile's end and the wrist's landing.
-      const profile = Math.max(2 * BODY_TICK, seconds - armCascadeDelay(5, 1, 1, context.input.mood.tension))
+      // elbow's cascade delay remains between the planned profile's end and the wrist's landing. A stroke the followers
+      // cannot take in that time lasts longer (`strokeFloor`); the apex is observed, so its report stays true.
+      const tension = context.input.mood.tension
+      const profile = Math.max(seconds - armCascadeDelay(5, 1, 1, tension), track.strokeFloor(track.key, tension))
       track.move(track.key, now, profile, true)
       track.state = 'stroke'
       track.form = candidate
@@ -597,7 +668,8 @@ class GesturePerformer {
 
   private begin(track: ArmTrack, now: number): void {
     track.pose.set(track.home)
-    track.previous.set(track.home)
+    track.planned.set(track.home)
+    track.plannedPrevious.set(track.home)
     track.warm = false
     track.segment.start = now
     track.weight = 1

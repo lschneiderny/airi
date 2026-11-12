@@ -24,6 +24,8 @@ interface Script {
   readonly utterances: readonly Utterance[]
   readonly owned?: (time: number) => Partial<BodyPerformanceInput['owned']>
   readonly armForm?: (time: number) => { side: 'left' | 'right', form: BodyArmForm } | null
+  /** Natural's mood tension; its speak scenario reports 0. */
+  readonly tension?: number
 }
 
 /**
@@ -50,6 +52,7 @@ function speechInput(script: Script, time: number, state: { onset: number, empha
     ...base,
     voice: { speaking: utterance !== undefined, level, slow: state.slow, onsetSeq: state.onset, emphasis: state.emphasis ? { seq: state.emphasis, at: time, magnitude: 0.5, tau: 0.3, kind: 'nod', side: 1 } : null },
     energy: { ...base.energy, level: last?.energy ?? 0.5 },
+    mood: { ...base.mood, tension: script.tension ?? base.mood.tension },
     gaze: { ...base.gaze, kind: utterance?.gaze ?? 'free' },
     owned: { ...base.owned, ...script.owned?.(time) },
   }
@@ -78,10 +81,35 @@ interface Run {
   readonly onsets: number[]
 }
 
-function perform(script: Script, seconds: number, options: { seed?: number, traits?: BodyRigTraits, layers?: boolean } = {}): Run {
+/**
+ * Records the largest rate, rad/s, at which a gesture layer's arm-joint targets (flex to wrist deviation) move while
+ * the layer requests weight on two consecutive ticks.
+ */
+function watchTargetSlope(layer: PerformanceLayer, slope: { worst: number }): PerformanceLayer {
+  const step = layer.step
+  const previous = new Float64Array(77)
+  let weighted = false
+  layer.step = (context) => {
+    const output = step(context)
+    for (const side of SIDES) {
+      for (let j = 2; j <= 8; j++) {
+        const c = ARM_START[side] + j
+        if (weighted && output.weight > 0)
+          slope.worst = Math.max(slope.worst, Math.abs(output.channels[c] - previous[c]) / BODY_TICK)
+        previous[c] = output.channels[c]
+      }
+    }
+    weighted = output.weight > 0
+    return output
+  }
+  return layer
+}
+
+function perform(script: Script, seconds: number, options: { seed?: number, traits?: BodyRigTraits, layers?: boolean, slope?: { worst: number } } = {}): Run {
   const rig = options.traits ?? traits
   const seed = options.seed ?? 1
-  const layers = options.layers === false ? [] : [...createGestureLayers({ traits: rig, seed }), ...(script.armForm ? [armFormPlanner(script)] : [])]
+  const gestures = createGestureLayers({ traits: rig, seed }).map(layer => options.slope ? watchTargetSlope(layer, options.slope) : layer)
+  const layers = options.layers === false ? [] : [...gestures, ...(script.armForm ? [armFormPlanner(script)] : [])]
   const performer = createBodyPerformer({ traits: rig, seed, layers })
   const state = { onset: 0, emphasis: 0, slow: 0 }
   const frames: Run['frames'][number][] = []
@@ -105,7 +133,8 @@ function strokes(run: Run) {
     const g = run.frames[i].gesture
     if (g.strokeSeq !== run.frames[i - 1].gesture.strokeSeq && g.form && g.hand && g.plannedHit !== null) {
       const hit = g.plannedHit
-      out.push({ index: i, hit, onset: run.onsets.filter(onset => onset <= hit).at(-1) ?? Number.NaN, form: g.form, hand: g.hand })
+      // A stroke lands at least 60 ms after its onset, so a later onset inside the stroke is not the one it answers.
+      out.push({ index: i, hit, onset: run.onsets.filter(onset => onset <= hit - 0.06).at(-1) ?? Number.NaN, form: g.form, hand: g.hand })
     }
   }
   return out
@@ -177,13 +206,43 @@ describe('co-speech gestures', () => {
       for (const stroke of planned) {
         // The onset reaches the performer at most a display frame and a tick after detection, which precedes the
         // labelled peak by at least 24.7 ms (unit M `onset-latency.txt`): the hit lands inside 200 ms less a frame.
-        expect(stroke.hit - stroke.onset).toBeLessThanOrEqual(0.2 - 1 / 60 + 0.0247 - 1 / 60 - BODY_TICK)
+        // A beat, the default form, hits for every measured lead. The larger forms last as long as the followers need
+        // (their input slope), and hit for the median lead, 62.9 ms (unit M `controls.md`).
+        if (stroke.form === 'beat')
+          expect(stroke.hit - stroke.onset).toBeLessThanOrEqual(0.2 + 0.0247 - 1 / 60 - BODY_TICK)
+        expect(stroke.hit - stroke.onset).toBeLessThanOrEqual(0.2 + 0.0629 - 1 / 60 - BODY_TICK)
         expect(stroke.hit - stroke.onset).toBeGreaterThan(0.06)
         const side = stroke.hand === 'both' ? 'right' : stroke.hand as 'left' | 'right'
         expect(Math.abs(nearest(apexes(run, side, rig), stroke.hit) - stroke.hit)).toBeLessThanOrEqual(0.05)
       }
       expect(run.frames.at(-1)?.corrector).toEqual({ capHits: 0, guardScans: 0 })
       expect(run.frames.at(-1)?.holds).toBe(0)
+    }
+  })
+
+  it.each(fixtureRigs)('drives each stroke within the followers\' input slope, so the hold does not swing again on $name', ({ traits: rig }) => {
+    // `advanceSecondOrder` limits a follower's target slope to 20 rad/s: a faster target is not followed.
+    const followerInputSlope = 20
+    for (const tension of [0, 0.4]) {
+      for (const energy of [0.45, 0.85]) {
+        const slope = { worst: 0 }
+        const run = perform({ utterances: [utterance(0.4, energy, peaks(0.4))], tension }, 8, { traits: rig, seed: 3, slope })
+        expect(slope.worst).toBeLessThanOrEqual(followerInputSlope)
+        const planned = strokes(run)
+        expect(planned).toHaveLength(5)
+        for (const stroke of planned) {
+          const path = wristPath(run, stroke.hand === 'left' ? 'left' : 'right', rig)
+          const speed = (i: number) => Math.hypot(path[i][0] - path[i - 1][0], path[i][1] - path[i - 1][1], path[i][2] - path[i - 1][2])
+          const onset = Math.round(stroke.onset / BODY_TICK) - 1
+          const hit = Math.round(stroke.hit / BODY_TICK) - 1
+          let peak = 0
+          for (let i = onset; i <= hit; i++)
+            peak = Math.max(peak, speed(i))
+          // The shortest post-stroke hold is 4a's beat hold, 0.1 s at tempo 1.105 (energy 0.85).
+          for (let i = hit + 1; i <= hit + Math.round(0.08 / BODY_TICK); i++)
+            expect(speed(i)).toBeLessThanOrEqual(0.5 * peak)
+        }
+      }
     }
   })
 
