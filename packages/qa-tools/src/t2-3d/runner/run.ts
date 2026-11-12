@@ -50,7 +50,9 @@ export interface Motion3dRunOptions {
   /**
    * `off` asks the director for no idle act (the acts-off pair of `qa:motion3d idle-acts`) and is recorded in the trace
    * source as `acts: 'off'`; `on` records nothing, so existing traces stay byte-identical. No act producer exists yet:
-   * unit A wires it, and with `off` must leave every other input of the run unchanged.
+   * unit A wires it under the switch contract (qa-tools README, `--acts off`): with `off` the director still makes every
+   * draw and keeps every act memory it would with acts on and only leaves the act intent null, and an act leaves no state
+   * behind after its span and settling margin except its declared lasting result (`ACT_LASTING`).
    */
   readonly acts: 'on' | 'off'
   readonly git: RunGitState

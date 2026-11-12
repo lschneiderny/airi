@@ -8,7 +8,7 @@ import type { LoadedRun, ReportConstant } from './report'
 
 import { MOTION_TRACE_CHANNELS } from '@proj-airi/motion-driver-humanoid/motion-trace'
 
-import { conjugate, cv, DEG, multiply, norm, sub } from '../metrics/math'
+import { conjugate, cv, DEG, heading, multiply, norm, rotationVector, sub } from '../metrics/math'
 import { caseReport, formatCaseReport, judged, notExercised } from './case-report'
 import { fixed, gateStatus, markers, ReportUsageError } from './report'
 
@@ -21,11 +21,13 @@ export const IDLE_ACTS_VERSION = 2
  * - `from`: the bone's world orientation relative to the world orientation of `from` at the same index;
  * - `world`: the bone's world orientation;
  * - `position`: the hips' world position.
+ * `after` lists the keys of the same act whose first qualifying run must start before this key's (the design's order).
  */
-export type ActKey
+type ActKeyShape
   = | { readonly kind: 'local' | 'world', readonly bones: readonly MotionTraceBone[], readonly amplitude: number }
     | { readonly kind: 'from', readonly bones: readonly MotionTraceBone[], readonly from: readonly MotionTraceBone[], readonly amplitude: number }
     | { readonly kind: 'position', readonly amplitude: number }
+export type ActKey = ActKeyShape & { readonly after?: readonly number[] }
 
 const both = (bone: 'Shoulder' | 'UpperArm' | 'Foot', amplitude: number): ActKey[] => (['left', 'right'] as const).map(side => ({ kind: bone === 'Foot' ? 'world' : 'local', bones: [`${side}${bone}`], amplitude }))
 const eitherHand = (amplitude: number): ActKey => ({ kind: 'from', bones: ['leftHand', 'rightHand'], from: ['leftUpperArm', 'rightUpperArm'], amplitude })
@@ -37,7 +39,7 @@ const trunk = (amplitude: number): ActKey => ({ kind: 'from', bones: ['chest'], 
  */
 export const ACT_KEYS = {
   'sigh': [trunk(4), ...both('Shoulder', 4)],
-  'shoulder-roll': [...both('Shoulder', 10), { kind: 'from', bones: ['head'], from: ['chest'], amplitude: 12 }],
+  'shoulder-roll': [...both('Shoulder', 10), { kind: 'from', bones: ['head'], from: ['chest'], amplitude: 12, after: [0, 1] }],
   'foot-replant': [{ kind: 'world', bones: ['leftFoot', 'rightFoot'], amplitude: 4 }],
   'look-around': [{ kind: 'world', bones: ['head'], amplitude: 35 }],
   'hand-inspect': [eitherHand(60)],
@@ -49,6 +51,19 @@ export const ACT_KEYS = {
   'heel-raise': [{ kind: 'position', amplitude: 0.012 }, ...both('Foot', 14)],
   'wave': [eitherHand(18)],
 } as const satisfies Record<BodyActId, readonly ActKey[]>
+
+const LEG_CHAIN: readonly MotionTraceBone[] = ['leftUpperLeg', 'rightUpperLeg', 'leftLowerLeg', 'rightLowerLeg', 'leftFoot', 'rightFoot', 'leftToes', 'rightToes']
+
+/**
+ * The state an act's design declares as its lasting result (switch contract item 2, rules.md revision 3, X3a): from the
+ * end of its widened span the pair check compares these local rotations by the change of their difference's angle and
+ * the hips by the change of their heading-frame offset, after bounding the residual itself. Architecture 4e act 3: the
+ * free foot takes a step with a yaw of 4 to 8 deg (x1.5 at the amplitude top: 12) and the support returns to a half
+ * shift; 0.02 L is the act's only translation, its swing height.
+ */
+export const ACT_LASTING: Partial<Record<BodyActId, { readonly bones: readonly MotionTraceBone[], readonly footYawDeg: number, readonly hips: number }>> = {
+  'foot-replant': { bones: LEG_CHAIN, footYawDeg: 12, hips: 0.02 },
+}
 
 /** The acts allowed while the rest state is `rest` (plan D3); data, so a restricted set is passed, not coded. */
 export const REST_ACT_SET: readonly BodyActId[] = ['sigh', 'yawn', 'foot-replant', 'look-around', 'shoulder-roll', 'hand-inspect']
@@ -69,7 +84,7 @@ const O2_METRICS = ['inter.burstCv', 'inter.holdFraction', 'inter.movesPerMin'] 
 
 export const IDLE_ACTS_CONSTANTS: readonly ReportConstant[] = [
   { name: 'distinct acts', value: C.distinct, unit: 'counted, confirmed forms', source: 'C001' },
-  { name: 'confirmation run', value: C.confirmFrames, unit: 'consecutive 60 Hz frames (0.3 s) with every key at its bar', source: 'plan R1' },
+  { name: 'confirmation run', value: C.confirmFrames, unit: 'consecutive 60 Hz frames (0.3 s) on which each key reaches its bar, somewhere in the span, in the design order', source: 'plan R1; rules.md revision 3, X3b' },
   { name: 'confirmation bar', value: C.bar, unit: 'of each key\'s design amplitude (ACT_KEYS)', source: 'architecture 4e; review B1 step 5' },
   { name: 'pair epsilon', value: C.epsilonDeg, unit: 'deg, largest local-rotation difference outside the widened act spans', source: 'rules.md revision 2, B1 scoring' },
   { name: 'pair root yaw', value: C.yawEpsilonDeg, unit: 'deg, largest root-yaw difference outside the widened act spans', source: 'rules.md revision 3, X2 scoring' },
@@ -95,8 +110,8 @@ export interface ActSpan {
   readonly confirmed: boolean
   /** The span overlaps an earlier act's span, so its movement is that act's. */
   readonly overlaps: boolean
-  /** The longest run of frames on which every own key reaches its bar. */
-  readonly longestRun: number
+  /** Per own key: whether a qualifying run exists in the span (in the design's order) and the longest run, frames. */
+  readonly keys: readonly { readonly reached: boolean, readonly longest: number }[]
 }
 
 export interface IdleActsDetail {
@@ -218,15 +233,27 @@ function keyDifference(on: TracePose, off: TracePose, key: ActKey, frame: number
   }, 0)
 }
 
-/** The longest run of frames in [first, last] on which every key of `id` reaches half its amplitude. */
-function keyRun(on: TracePose, off: TracePose, id: BodyActId, first: number, last: number): number {
-  let run = 0
-  let longest = 0
-  for (let frame = first; frame <= last; frame++) {
-    run = ACT_KEYS[id].every(key => keyDifference(on, off, key, frame) >= C.bar * key.amplitude) ? run + 1 : 0
-    longest = Math.max(longest, run)
-  }
-  return longest
+/**
+ * Each key of `id` over [first, last]: the starts of its runs of `confirmFrames` frames at half its amplitude, and its
+ * longest run. The act is confirmed when every key has a run and each key with `after` has one starting after the first
+ * run of each key it follows (rules.md revision 3, X3b).
+ */
+function keyResults(on: TracePose, off: TracePose, id: BodyActId, first: number, last: number): { confirmed: boolean, keys: { reached: boolean, longest: number }[] } {
+  const keys: readonly ActKey[] = ACT_KEYS[id]
+  const results = keys.map((key) => {
+    const starts: number[] = []
+    let run = 0
+    let longest = 0
+    for (let frame = first; frame <= last; frame++) {
+      run = keyDifference(on, off, key, frame) >= C.bar * key.amplitude ? run + 1 : 0
+      longest = Math.max(longest, run)
+      if (run === C.confirmFrames)
+        starts.push(frame - C.confirmFrames + 1)
+    }
+    return { starts, longest }
+  })
+  const reached = keys.map((key, k) => results[k].starts.length > 0 && (!key.after || results[k].starts.some(start => key.after!.every(j => results[j].starts.length > 0 && start > results[j].starts[0]))))
+  return { confirmed: reached.every(Boolean), keys: results.map((r, k) => ({ reached: reached[k], longest: r.longest })) }
 }
 
 /** The run and its acts-off companion must be the same model, commit, seed and length, and differ only inside acts. */
@@ -252,7 +279,11 @@ function checkPair(run: LoadedRun, pair: LoadedRun, spans: readonly RawSpan[]): 
     refuse('the acts-off companion has act markers')
   const on = new TracePose(run.input)
   const off = new TracePose(pair.input)
-  const widened = spans.map(span => ({ start: span.start, end: (span.end ?? Number.POSITIVE_INFINITY) + C.exitSeconds + C.settleSeconds }))
+  const widened = spans.map(span => ({ id: span.id, start: span.start, end: (span.end ?? Number.POSITIVE_INFINITY) + C.exitSeconds + C.settleSeconds }))
+  const declaring = widened.filter(span => ACT_LASTING[span.id] && Number.isFinite(span.end)).sort((x, y) => x.end - y.end)
+  const hipsOffset = (frame: number) => heading(sub(on.hips(frame), off.hips(frame)), on.yaw(frame))
+  let base: { readonly angles: ReadonlyMap<number, number>, readonly hips: Vec3 } | null = null
+  let next = 0
   let difference = 0
   let at: number | null = null
   let bone: string | null = null
@@ -260,10 +291,21 @@ function checkPair(run: LoadedRun, pair: LoadedRun, spans: readonly RawSpan[]): 
   let hips = 0
   for (let frame = 0; frame < on.frames; frame++) {
     const t = on.time(frame)
+    if (next < declaring.length && t > declaring[next].end) {
+      const lasting = ACT_LASTING[declaring[next].id]!
+      const footYaw = Math.max(...(['leftFoot', 'rightFoot'] as const).map(foot => on.index(foot)).filter(b => b >= 0).map(b => Math.abs(rotationVector(multiply(on.world(frame, b), conjugate(off.world(frame, b))))[1]) * DEG), 0)
+      const offset = hipsOffset(frame)
+      if (footYaw > lasting.footYawDeg || norm(offset) / a.rig.legLength > lasting.hips)
+        refuse(`the lasting result of ${declaring[next].id} at ${t.toFixed(3)} s exceeds its declared bound: foot yaw ${footYaw.toFixed(2)} deg (at most ${lasting.footYawDeg}), hips ${(norm(offset) / a.rig.legLength).toFixed(4)} L (at most ${lasting.hips})`)
+      base = { angles: new Map(lasting.bones.map(name => on.index(name)).filter(b => b >= 0).map(b => [b, angleBetween(on.local(frame, b), off.local(frame, b))])), hips: offset }
+      next++
+    }
     if (t < a.scoredFrom || widened.some(span => t >= span.start && t <= span.end))
       continue
     a.rig.bones.forEach((name, b) => {
-      const d = angleBetween(on.local(frame, b), off.local(frame, b))
+      const raw = angleBetween(on.local(frame, b), off.local(frame, b))
+      const residual = base?.angles.get(b)
+      const d = residual === undefined ? raw : Math.abs(raw - residual)
       if (d > difference) {
         difference = d
         at = t
@@ -271,7 +313,7 @@ function checkPair(run: LoadedRun, pair: LoadedRun, spans: readonly RawSpan[]): 
       }
     })
     yaw = Math.max(yaw, Math.abs(on.yaw(frame) - off.yaw(frame)) * DEG)
-    hips = Math.max(hips, norm(sub(on.hips(frame), off.hips(frame))) / a.rig.legLength)
+    hips = Math.max(hips, norm(base ? sub(hipsOffset(frame), base.hips) : hipsOffset(frame)) / a.rig.legLength)
   }
   if (difference > C.epsilonDeg)
     refuse(`they differ outside the act spans by ${difference.toFixed(3)} deg (${bone} at ${at === null ? '-' : (at as number).toFixed(3)} s), more than ${C.epsilonDeg} deg`)
@@ -304,9 +346,9 @@ export function idleActsReport(run: LoadedRun, pair: LoadedRun, restSet: readonl
   const acts: ActSpan[] = raw.map((span, i) => {
     const first = frameAt(span.start)
     const last = span.end === null ? on.frames - 1 : frameAt(span.end + C.exitSeconds)
-    const form = (Object.keys(ACT_KEYS) as BodyActId[]).filter(id => keyRun(on, off, id, first, last) >= C.confirmFrames)
+    const form = (Object.keys(ACT_KEYS) as BodyActId[]).filter(id => keyResults(on, off, id, first, last).confirmed)
     const overlaps = raw.slice(0, i).some(earlier => span.start < (earlier.end ?? Number.POSITIVE_INFINITY) && earlier.start < (span.end ?? Number.POSITIVE_INFINITY))
-    return { ...span, form, confirmed: form.includes(span.id), overlaps, longestRun: keyRun(on, off, span.id, first, last) }
+    return { ...span, form, confirmed: form.includes(span.id), overlaps, keys: keyResults(on, off, span.id, first, last).keys }
   })
   const formKey = (act: ActSpan) => act.form.join('+')
   const counted = acts.filter(act => act.closedBy === 'finished')
@@ -348,7 +390,7 @@ export function formatIdleActs(report: CaseReport<IdleActsDetail>): string {
   return formatCaseReport(report, [
     `pair: ${d.pair.dir}, largest difference outside the act spans ${d.pair.difference.toFixed(4)} deg${d.pair.bone ? ` (${d.pair.bone} at ${fixed(d.pair.at)} s)` : ''}, root yaw ${d.pair.yaw.toFixed(4)} deg, hips ${d.pair.hips.toFixed(5)} L`,
     `act timeline (${d.acts.length} started):`,
-    ...d.acts.map(act => `  ${act.start.toFixed(3)}\t${act.id}\t${act.closedBy ?? 'unclosed'}${act.end === null ? '' : ` at ${act.end.toFixed(3)}`}\t${act.rest}\t${act.confirmed ? 'confirmed' : 'not confirmed'} (own keys at half amplitude for ${act.longestRun} frames)${act.overlaps ? '\toverlaps an earlier act' : ''}\tform {${act.form.join(', ')}}`),
+    ...d.acts.map(act => `  ${act.start.toFixed(3)}\t${act.id}\t${act.closedBy ?? 'unclosed'}${act.end === null ? '' : ` at ${act.end.toFixed(3)}`}\t${act.rest}\t${act.confirmed ? 'confirmed' : 'not confirmed'} (own keys reached ${act.keys.filter(key => key.reached).length} of ${act.keys.length}; longest runs ${act.keys.map(key => key.longest).join('/')} frames)${act.overlaps ? '\toverlaps an earlier act' : ''}\tform {${act.form.join(', ')}}`),
     d.intervals.length ? `intervals between finished acts (s): ${d.intervals.map(v => v.toFixed(2)).join(', ')}; CV ${fixed(d.intervalCv)}` : 'intervals: fewer than 2 finished acts, no interval',
     `scored seconds by rest state: none ${d.restSeconds.none.toFixed(1)}, rest ${d.restSeconds.rest.toFixed(1)}, doze ${d.restSeconds.doze.toFixed(1)}`,
     ...d.intermittency

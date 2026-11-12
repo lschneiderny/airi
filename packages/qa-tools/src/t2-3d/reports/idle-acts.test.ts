@@ -23,14 +23,14 @@ interface Act {
 }
 
 const ACT_SECONDS = 3
-/** Local rotations (bone, axis, degrees) at each act's 4e amplitude, on the bones its keys read. */
-const MOVEMENTS: Partial<Record<BodyActId, readonly [MotionTraceBone, 0 | 1 | 2, number][]>> = {
+/** Local rotations (bone, axis, degrees, optional delay in s) at each act's 4e amplitude, on the bones its keys read. */
+const MOVEMENTS: Partial<Record<BodyActId, readonly (readonly [MotionTraceBone, 0 | 1 | 2, number, number?])[]>> = {
   'sigh': [['chest', 0, 4], ['leftShoulder', 2, 4], ['rightShoulder', 2, -4]],
   'arm-swing': [['leftUpperArm', 0, 8], ['rightUpperArm', 0, -8]],
   'look-around': [['neck', 1, 14], ['head', 1, 21]],
   'hand-inspect': [['rightLowerArm', 1, 60]],
   'wave': [['leftLowerArm', 1, 18]],
-  'shoulder-roll': [['leftShoulder', 2, 10], ['rightShoulder', 2, -10], ['head', 2, 12]],
+  'shoulder-roll': [['leftShoulder', 2, 10], ['rightShoulder', 2, -10], ['head', 2, 12, 0.5]],
 }
 const SIX: readonly Act[] = [
   { id: 'wave', at: 4 },
@@ -41,7 +41,8 @@ const SIX: readonly Act[] = [
   { id: 'sigh', at: 34 },
 ]
 const RESTING: readonly { t: number, state: BodyRest }[] = [{ t: 20, state: 'rest' }]
-const PARENTS = motionTraceParents([...TEST_BONES])
+const BONES: readonly MotionTraceBone[] = [...TEST_BONES, 'leftUpperLeg', 'leftLowerLeg', 'leftFoot', 'rightUpperLeg', 'rightLowerLeg', 'rightFoot']
+const PARENTS = motionTraceParents([...BONES])
 
 const minJerk = (u: number) => u <= 0 ? 0 : u >= 1 ? 1 : u * u * u * (10 - 15 * u + 6 * u * u)
 const hold = (u: number) => u <= 0 || u >= 1 ? 0 : u < 0.3 ? minJerk(u / 0.3) : u > 0.7 ? 1 - minJerk((u - 0.7) / 0.3) : 1
@@ -61,6 +62,8 @@ interface Body {
   /** Root yaw (rad) and hips position (L) of the run; zero by default. */
   readonly yaw?: (t: number) => number
   readonly hips?: (t: number) => Vec3
+  /** A rotation applied to a bone's local rotation at t, after every act movement; none by default. */
+  readonly extra?: (bone: MotionTraceBone, t: number) => Quat | null
 }
 
 /** A standing body with a slow trunk sway; each act's movement bends its key bones and returns, through the hierarchy. */
@@ -69,13 +72,17 @@ function trace(body: Body): DecodedMotionTrace {
     ...(body.acts ?? []).flatMap(act => act.moves === null ? [] : [{ moves: act.moves ?? act.id, at: act.at, scale: act.scale ?? 1 }]),
     ...(body.unmarked ?? []).map(([moves, at]) => ({ moves, at, scale: 1 })),
   ]
-  const local = (bone: MotionTraceBone, t: number): Quat => plays.reduce<Quat>((q, play) => {
-    const w = hold((t - play.at) / ACT_SECONDS) * play.scale
-    return (MOVEMENTS[play.moves] ?? []).reduce<Quat>((r, [b, axis, deg]) => b === bone && w > 0 ? multiply(r, axisAngle(axis, deg * w)) : r, q)
-  }, bone === 'spine' ? axisAngle(1, 1.2 * Math.sin(2 * Math.PI * 0.2 * t)) : [0, 0, 0, 1])
+  const local = (bone: MotionTraceBone, t: number): Quat => {
+    const moved = plays.reduce<Quat>((q, play) => (MOVEMENTS[play.moves] ?? []).reduce<Quat>((r, [b, axis, deg, delay = 0]) => {
+      const w = hold((t - play.at - delay) / ACT_SECONDS) * play.scale
+      return b === bone && w > 0 ? multiply(r, axisAngle(axis, deg * w)) : r
+    }, q), bone === 'spine' ? axisAngle(1, 1.2 * Math.sin(2 * Math.PI * 0.2 * t)) : [0, 0, 0, 1])
+    const extra = body.extra?.(bone, t)
+    return extra ? multiply(moved, extra) : moved
+  }
   const world = (bone: MotionTraceBone, t: number): Quat => {
-    const parent = PARENTS[TEST_BONES.indexOf(bone)]
-    return parent < 0 ? local(bone, t) : multiply(world(TEST_BONES[parent], t), local(bone, t))
+    const parent = PARENTS[BONES.indexOf(bone)]
+    return parent < 0 ? local(bone, t) : multiply(world(BONES[parent], t), local(bone, t))
   }
   const events: MotionTraceEvent[] = [
     ...(body.acts ?? []).flatMap((act): MotionTraceEvent[] => [
@@ -84,7 +91,7 @@ function trace(body: Body): DecodedMotionTrace {
     ]),
     ...(body.rest ?? []).map((change): MotionTraceEvent => ({ t: change.t, kind: 'marker', label: `rest:${change.state}` })),
   ].sort((a, b) => a.t - b.t)
-  const input = analyticTrace({ seconds: 42, bones: TEST_BONES, scenario: body.scenario ?? 'idle', events, world, yaw: body.yaw, position: body.hips })
+  const input = analyticTrace({ seconds: 42, bones: BONES, scenario: body.scenario ?? 'idle', events, world, yaw: body.yaw, position: body.hips })
   const detail: Record<string, string> = body.actsSwitch ? { acts: body.actsSwitch } : {}
   const source = { ...input.trace.source, gitSha: body.gitSha ?? 'abc123', detail }
   return { ...input, trace: { ...input.trace, source } }
@@ -150,6 +157,27 @@ describe('idle-acts report', () => {
 
   it('refuses a pair that differs outside the act spans', () => {
     expect(() => report({ acts: SIX, unmarked: [['arm-swing', 39]] })).toThrow(/outside the act spans/)
+  })
+
+  it('confirms an act whose design phases come in sequence, in the design\'s order only', () => {
+    const phase = (from: number, seconds: number) => (t: number) => hold((t - from) / seconds)
+    const roll = (clavicles: number, head: number) => (bone: MotionTraceBone, t: number): Quat | null =>
+      bone === 'leftShoulder' ? axisAngle(2, 10 * phase(clavicles, 1.4)(t)) : bone === 'rightShoulder' ? axisAngle(2, -10 * phase(clavicles + 0.12, 1.4)(t)) : bone === 'head' ? axisAngle(2, 12 * phase(head, 1.6)(t)) : null
+    const marker = { id: 'shoulder-roll', at: 22, moves: null } as const
+    const inOrder = report({ acts: [...SIX.filter(act => act.id !== 'shoulder-roll'), marker], extra: roll(22, 23.4) })
+    expect(inOrder.detail.acts.find(act => act.id === 'shoulder-roll')?.confirmed).toBe(true)
+    const reversed = report({ acts: [...SIX.filter(act => act.id !== 'shoulder-roll'), marker], extra: roll(23.6, 22) })
+    expect(reversed.detail.acts.find(act => act.id === 'shoulder-roll')?.confirmed).toBe(false)
+  })
+
+  it('accepts a foot re-plant that leaves its foot yawed, the act\'s declared lasting result, and refuses an undeclared or larger residual', () => {
+    const yawed = (deg: number, headDeg = 0) => (bone: MotionTraceBone, t: number): Quat | null =>
+      bone === 'leftFoot' && t > 10 ? axisAngle(1, deg * Math.min(1, (t - 10) / 1.2)) : bone === 'head' && t > 20 ? axisAngle(1, headDeg) : null
+    const replant = { id: 'foot-replant', at: 10, moves: null } as const
+    expect(report({ acts: [...SIX, replant].sort((a, b) => a.at - b.at), extra: yawed(6) }).detail.pair.difference).toBeLessThan(0.25)
+    expect(() => report({ acts: [...SIX, replant].sort((a, b) => a.at - b.at), extra: yawed(6, 1) })).toThrow(/outside the act spans/)
+    expect(() => report({ acts: [...SIX, replant].sort((a, b) => a.at - b.at), extra: yawed(20) })).toThrow(/lasting result/)
+    expect(() => report({ acts: SIX, extra: yawed(6) })).toThrow(/outside the act spans/)
   })
 
   it('refuses a pair whose root yaw or hips position differs outside the act spans, and accepts hips movement inside one', () => {
