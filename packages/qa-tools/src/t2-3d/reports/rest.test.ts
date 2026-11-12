@@ -34,6 +34,8 @@ interface Sleepy {
   readonly stance?: boolean
   /** Gaze shifts go on while dozing: a 12 deg head yaw step every 5 s, each in 0.3 s. */
   readonly gaze?: boolean
+  /** A slow head scan while dozing: 30 deg over 4 s and back, from 10 s into the doze. */
+  readonly scan?: boolean
   /** A `gaze-shift` marker 10 s into the doze, with this amplitude in degrees. */
   readonly shiftMarker?: number
   readonly cues?: { readonly idle: number, readonly away: number, readonly wake: number }
@@ -56,7 +58,8 @@ function sleepy(options: Sleepy = {}) {
   const sway = (t: number) => DEG * Math.sin(2 * Math.PI * 0.1 * t)
   const head = (t: number) => sway(t) + (posed ? rest(t) + sink(t) : 0) - (t >= cues.wake ? step * DEG : 0)
   const steps = moves(Array.from({ length: 7 }, (_, k) => ({ start: cues.away + 5 + 5 * k, duration: 0.3, by: (k % 2 ? -12 : 12) * DEG })))
-  const yaw = (t: number) => options.gaze ? steps(t) : 0
+  const scan = moves([{ start: cues.away + 10, duration: 4, by: 30 * DEG }, { start: cues.away + 14, duration: 4, by: -30 * DEG }])
+  const yaw = (t: number) => (options.gaze ? steps(t) : 0) + (options.scan ? scan(t) : 0)
   const modes: MotionTraceEvent[] = [
     { t: cues.idle, kind: 'mode', mode: 'idle' },
     { t: cues.away, kind: 'mode', mode: 'away' },
@@ -103,7 +106,7 @@ describe('rest report', () => {
 
   it('fails gaze shifts while dozing, read from the head yaw or reported by a gaze-shift marker of 10 deg or more', () => {
     const noGaze = (options: Sleepy) => statuses(restReport(sleepy(options), bands))['doze-no-gaze-shift']
-    expect([noGaze({ gaze: true }), noGaze({ shiftMarker: 12 }), noGaze({ shiftMarker: 5 })]).toEqual(['FAIL', 'FAIL', 'PASS'])
+    expect([noGaze({ gaze: true }), noGaze({ shiftMarker: 12 }), noGaze({ shiftMarker: 5 }), noGaze({ scan: true })]).toEqual(['FAIL', 'FAIL', 'PASS', 'FAIL'])
   })
 
   it('fails rest and doze markers over a standing body', () => {
