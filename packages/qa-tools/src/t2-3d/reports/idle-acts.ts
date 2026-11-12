@@ -515,17 +515,19 @@ export function idleActsReport(run: LoadedRun, pair: LoadedRun, restSet: readonl
     const overlaps = raw.slice(0, i).some(earlier => span.start < (earlier.end ?? Number.POSITIVE_INFINITY) && earlier.start < (span.end ?? Number.POSITIVE_INFINITY))
     return { ...span, form, confirmed: form.includes(span.id), overlaps, keys: keyResults(pf, span.id, first, last).keys }
   })
-  const formKey = (act: ActSpan) => act.form.join('+')
+  // Counting rule C (rules.md revision 3, counting follow-up): two confirmed acts are the same act when each one's
+  // form contains the other's id, so an act whose size moves another act's key across its bar still counts once.
+  const same = (a: ActSpan, b: ActSpan) => a.id === b.id || (a.confirmed && b.confirmed && a.form.includes(b.id) && b.form.includes(a.id))
   const counted = acts.filter(act => act.closedBy === 'finished')
   const confirmed = counted.filter(act => act.confirmed && !act.overlaps)
-  const distinct = new Set(confirmed.map(formKey))
-  const repeats = acts.slice(1).flatMap((act, i) => act.id === acts[i].id || (act.form.length > 0 && formKey(act) === formKey(acts[i])) ? [`${act.id} at ${act.start.toFixed(3)} s`] : [])
+  const distinct = confirmed.reduce<ActSpan[]>((classes, act) => classes.some(other => same(other, act)) ? classes : [...classes, act], [])
+  const repeats = acts.slice(1).flatMap((act, i) => same(act, acts[i]) ? [`${act.id} at ${act.start.toFixed(3)} s`] : [])
   const resting = acts.filter(act => act.rest !== 'none')
   const disallowed = resting.filter(act => act.rest === 'doze' || !restSet.includes(act.id))
   const restRule = `every act started while resting is in the rest set {${restSet.join(', ')}}, and none starts while dozing`
-  const repeatRule = 'no two consecutive started acts (cancelled included) share an id or the same movement form'
+  const repeatRule = 'no two consecutive started acts (cancelled included) share an id, or are both confirmed with each one\'s form containing the other\'s id'
   const requirements: CaseRequirement[] = [
-    judged('distinct-acts', `at least ${C.distinct} distinct forms among acts closed by finished, confirmed by the difference to the acts-off run and not overlapping an earlier act`, `${distinct.size} distinct (${confirmed.length} confirmed of ${counted.length} finished, ${acts.length} started)`, distinct.size >= C.distinct),
+    judged('distinct-acts', `at least ${C.distinct} distinct acts among acts closed by finished, confirmed by the difference to the acts-off run and not overlapping an earlier act; two acts are the same when each one's form contains the other's id`, `${distinct.length} distinct (${confirmed.length} confirmed of ${counted.length} finished, ${acts.length} started)`, distinct.length >= C.distinct),
     acts.length < 2
       ? notExercised('no-repeat', repeatRule, `${acts.length} act started: no consecutive pair`)
       : judged('no-repeat', repeatRule, repeats.length ? `repeated: ${repeats.join(', ')}` : `${acts.length - 1} consecutive pairs, none repeated`, repeats.length === 0),

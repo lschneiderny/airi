@@ -42,6 +42,7 @@ const MOVEMENTS: Partial<Record<BodyActId, Movement>> = {
   'wave': { reach: { side: 'left', at: [0.25, 0.10, 0.30], twist: t => 60 + 18 * Math.sin(2 * Math.PI * 3.2 * t) } },
   'shoulder-roll': { parts: [['leftShoulder', 2, 10], ['rightShoulder', 2, -10], ['head', 2, 12, 0.5]] },
   'yawn': { parts: [['head', 0, -8], ['chest', 0, -3], ['leftShoulder', 2, 5], ['rightShoulder', 2, -5]], reach: { side: 'right', at: [-0.2, 0.15, 0.15] } },
+  'peek-chat': { parts: [['spine', 2, 3], ['chest', 2, 2], ['spine', 0, 3], ['chest', 0, 2], ['head', 1, 15]] },
 }
 /** Rest offsets of the test rig (model units, L = 1, arm length 1), mirrored for the right side. */
 const REST: Partial<Record<MotionTraceBone, Vec3>> = {
@@ -193,8 +194,9 @@ describe('idle-acts report', () => {
     expect(r.detail.acts.filter(act => act.overlaps).map(act => act.id)).toEqual(['yawn', 'hair-tuck'])
   })
 
-  it('fails the same movement played twice in a row under two act ids', () => {
-    const r = report({ acts: [...SIX.slice(0, 4), { id: 'look-around', at: 28 }, { id: 'hair-tuck', at: 34, moves: 'look-around' }] })
+  it('fails the same movement played twice in a row under two act ids it confirms', () => {
+    const r = report({ acts: [...SIX.slice(0, 4), { id: 'sigh', at: 28, moves: 'yawn' }, { id: 'yawn', at: 34 }] })
+    expect(r.detail.acts.slice(4).map(act => act.confirmed)).toEqual([true, true])
     expect(status(r, 'no-repeat')).toBe('FAIL')
   })
 
@@ -239,6 +241,14 @@ describe('idle-acts report', () => {
     expect(pairs({ id: 'yawn', at: 16 }, { id: 'yawn', at: 22, scale: 1.5 })).toBe('FAIL')
     const four = report({ acts: (['yawn', 'shoulder-roll', 'sigh', 'arm-swing', 'yawn', 'shoulder-roll'] as const).map((id, k) => ({ id, at: 4 + 6 * k, scale: [1, 1, 1, 1, 1.25, 1.5][k] })) })
     expect(four.requirements[0].value).toMatch(/^4 distinct/)
+  })
+
+  it('counts an act once when its size moves another act\'s key across its bar: the peek at the chat at x1.0 and x1.25', () => {
+    const r = report({ acts: (['sigh', 'arm-swing', 'shoulder-roll', 'peek-chat', 'wave', 'peek-chat'] as const).map((id, k) => ({ id, at: 4 + 6 * k, scale: k === 5 ? 1.25 : 1 })) })
+    const [small, large] = r.detail.acts.filter(act => act.id === 'peek-chat')
+    expect(large.form).toContain('look-around')
+    expect(small.form).not.toContain('look-around')
+    expect(r.requirements[0].value).toMatch(/^5 distinct/)
   })
 
   it('counts once a confirmed act whose span starts inside an earlier act\'s movement, though its form differs', () => {
