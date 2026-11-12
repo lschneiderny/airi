@@ -243,6 +243,46 @@ describe('idle activity layer', () => {
     slow.run(11.5)
     expect(slow.idle.behaviour).toBe('let-go')
   })
+
+  it('plays a requested behaviour at once in place of the running one, and drops the request while she is busy', () => {
+    const { idle, run, now } = layer()
+    idle.play('zone-out')
+    run(0.1)
+    expect(idle.behaviour).toBe('zone-out')
+    idle.play('yawn')
+    run(now() + 0.1)
+    expect(idle.behaviour).toBe('yawn')
+    run(now() + 6)
+    expect(idle.behaviour).not.toBe('yawn')
+
+    const busy = layer()
+    busy.idle.play('yawn')
+    busy.run(0.1, { ...idleInput, mode: 'talking' })
+    expect(busy.idle.seq).toBe(0)
+    // The request does not wait for her to be free.
+    busy.run(0.2)
+    expect(busy.idle.behaviour).toBeNull()
+  })
+
+  it('plays sleep without the user away and wakes her after 14 s', () => {
+    const { idle, run } = layer()
+    idle.play('sleep')
+    run(8)
+    expect(idle.behaviour).toBe('sleep')
+    expect(idle.output.lidClose).toBeCloseTo(1, 2)
+    run(14.2)
+    expect(idle.behaviour).toBeNull()
+    run(17)
+    expect(idle.output.lidClose).toBe(0)
+  })
+
+  it('ignores a play request without a drive', () => {
+    const { idle, run } = layer(7, null)
+    idle.play('stretch')
+    run(1)
+    expect(idle.seq).toBe(0)
+    expect(idle.contributing).toBe(false)
+  })
 })
 
 describe('idle activities in the controller', () => {

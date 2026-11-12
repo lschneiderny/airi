@@ -665,6 +665,7 @@ onUnmounted(naturalPerformanceOverride.onEmotionPulse((pulse) => {
 
 // The lab's gesture buttons play through the conductor, which ignores them outside Natural.
 onUnmounted(naturalPerformanceOverride.onGestureRequest(request => performanceConductor.gesture(request.kind, request.count)))
+onUnmounted(naturalPerformanceOverride.onIdleRequest(kind => performanceConductor.idlePlay(kind)))
 
 // The dev-only motion QA bridge answers remote-debug commands through this stage's real input paths. The
 // flag exists only when the Electron main process enabled the bridge and the renderer set it before mounting;

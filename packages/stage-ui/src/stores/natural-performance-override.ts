@@ -1,5 +1,6 @@
 import type { BroadcastChannelEmitOptions } from '@moeru/eventa/adapters/broadcast-channel'
 import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
+import type { IdleBehaviourKind } from '@proj-airi/motion-driver-natural/idle-activities'
 import type { PerformanceMode, PerformanceOverride } from '@proj-airi/stage-shared/performance-state'
 
 import { createContext, defineEventa } from '@moeru/eventa'
@@ -25,6 +26,7 @@ export interface GestureRequest {
  */
 export const naturalLabEmotionPulseEvent = defineEventa<EmotionPulse>('eventa:event:natural-motion-lab:emotion-pulse')
 export const naturalLabGestureEvent = defineEventa<GestureRequest>('eventa:event:natural-motion-lab:gesture')
+export const naturalLabIdleEvent = defineEventa<{ kind: IdleBehaviourKind }>('eventa:event:natural-motion-lab:idle')
 
 /**
  * Developer control over the Natural motion driver's performance state.
@@ -34,8 +36,8 @@ export const naturalLabGestureEvent = defineEventa<GestureRequest>('eventa:event
  * only leave a test override on by surprise. The stage passes `performanceOverride` to the performance
  * resolver, which lets it replace the resolved mode.
  *
- * Emotion pulses and gesture requests are events. The stage subscribes with `onEmotionPulse` and
- * `onGestureRequest` and pushes them through the real emotion queue and conductor.
+ * Emotion pulses, gesture requests and idle behaviour requests are events. The stage subscribes with
+ * `onEmotionPulse`, `onGestureRequest` and `onIdleRequest` and pushes them through the real emotion queue and conductor.
  */
 export const useNaturalPerformanceOverride = defineStore('natural-performance-override', () => {
   const overrideEnabled = ref(false)
@@ -76,6 +78,18 @@ export const useNaturalPerformanceOverride = defineStore('natural-performance-ov
     void context.emit(naturalLabGestureEvent, { kind, count })
   }
 
+  function requestIdle(kind: IdleBehaviourKind) {
+    void context.emit(naturalLabIdleEvent, { kind })
+  }
+
+  /** Calls `handler` for each idle behaviour request from any window after this call; returns the unsubscribe. */
+  function onIdleRequest(handler: (kind: IdleBehaviourKind) => void): () => void {
+    return context.on(naturalLabIdleEvent, ({ body }) => {
+      if (body)
+        handler(body.kind)
+    })
+  }
+
   /** Calls `handler` for each pulse from any window after this call; returns the unsubscribe. */
   function onEmotionPulse(handler: (pulse: EmotionPulse) => void): () => void {
     return context.on(naturalLabEmotionPulseEvent, ({ body }) => {
@@ -107,6 +121,8 @@ export const useNaturalPerformanceOverride = defineStore('natural-performance-ov
     requestGesture,
     onEmotionPulse,
     onGestureRequest,
+    requestIdle,
+    onIdleRequest,
     resetState,
   }
 }, {

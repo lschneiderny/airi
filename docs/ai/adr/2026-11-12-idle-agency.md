@@ -1,7 +1,7 @@
 # Idle agency: self-directed behaviour on screen and in chat
 
 Date: 2026-11-12
-Status: accepted. Every number is a starting value; the motion shapes and the pacing need Luke's visual review.
+Status: accepted. The motion shapes were tuned on a rendered Live2D rig (see Validation); naturalness in motion and the pacing still need Luke's visual review, and MMD is tuned separately.
 
 ## Context
 
@@ -41,8 +41,10 @@ flowchart LR
 - **Activities are drawn by a hazard.** While she is free, `idleActivityRate` accumulates and an activity starts when the sum crosses an `Exp(1)` draw. The mean gap is 45 s in `idle` mode and 70 s in `watching` mode, plus a rest of 6 to 14 s after each activity. A simulated hour holds about 55 activities in `idle` mode and 37 in `watching` mode, and she is in one for about a tenth of the time.
 - **Eight activities are drawn**, each with its own cooldown, and never the same one twice in a row: stretch, yawn, look-around, check-in (a look at the user, with a small smile unless her mood is low), peer (a lean toward the screen with reading saccades), zone-out, nod-off, and sway.
 - **Sleep is a rule, not a draw.** While the user is away and the drive allows it, she falls asleep after 12 to 30 s: the lids close, the head drops, and breathing slows. She wakes when the user is back, with her eyes on the camera as the lids open. A sleep of at least 90 s is followed by a stretch or a yawn in 70 % of cases. A touch or a desktop wake rouses her at once; a busy screen does not.
+- **Any behaviour can be played by name.** `NaturalIdleActivities.play(kind)` starts one behaviour at the next step in place of the running one, under the same conditions as a drawn activity. It exists for review and scripted QA: the Natural devtools page has one button per behaviour, sent to the stage like the gesture buttons. A played sleep does not need the user away and ends after 14 s.
+- **Closed eyes do not depend on blinking.** The controller exposes `idleLidFactor`, the part of `blinkFactor` that a behaviour closes on purpose, outside the frame so recorded frame hashes are unchanged. The Live2D adapter applies it alone while the user's auto-blink is off, so she still closes her eyes to sleep.
 - **Everything else outranks it.** An activity ends within 0.4 s and releases the gaze when she starts to talk, think or listen, when she is poked or petted, when an emotion or a cue gesture starts, and when she notices the cursor. Nothing starts while another layer owns the head or the eyes.
-- **Eye closure rides on the blink factor.** The Live2D adapter keeps open lids above 0.2 for every multiplier and reaches fully closed only through the blink factor. Sleep and a nod-off therefore multiply the blink factor. A user who turned auto-blink off keeps open eyes during sleep; this is a known limit.
+- **Eye closure rides on the blink factor.** The Live2D adapter keeps open lids above 0.2 for every multiplier and reaches fully closed only through the blink factor. Sleep and a nod-off therefore multiply the blink factor.
 - **Posture calms through amplitude, not through the shift rate.** A hold drawn at a low shift rate would outlast the activity, so the shift-rate reduction is capped at 0.6 and the amplitude scale does the visible calming.
 
 The drive (`NaturalIdleDrive`) has eight fields: `energy`, `valence` and `tension` (slow mood relative to her resting disposition), `sleepiness`, `solitude`, `music`, `allowSleep` and `rate`. `idleActivityWeights` turns it into odds. Tiredness, which is the larger of sleepiness and negative energy, favours yawns, zoning out and nodding off, and nodding off is possible only above 0.45. A lively mood favours looking around and watching the screen. Solitude raises check-ins. Tension makes her restless. Sway is drawn only while music plays. `idleEnergyOffset` also moves the Natural energy by `0.3 * energy - 0.15 * sleepiness`, so a drained evening idles visibly slower.
@@ -112,7 +114,8 @@ Both cues cost no model call. They turn the most common outcome of the gate, a s
 - `motion-driver-humanoid`: director tests cover visits, the visit share over 200 seeds, lingering, and every rule of the `idle` source. `idle-clips/index.test.ts` covers spacing, repeat times, quiet-time accounting, a resumed stage, and replay.
 - `stage-shared`: `character-state/idle.test.ts` and `situation/self.test.ts` cover the drive, the reducer, the rendered line, the block position, and the own-day anchor.
 - `stage-ui`, `stage-ui-live2d`: tests cover the self store, the music resolver, the conductor's driver gate, and the Live2D adapter closing the eyes and reporting across a driver change and disposal.
-- No rendered run was made. `pnpm qa:smoke` and a visual pass on Live2D and MMD are open.
+- Rendered Live2D pass, 2026-11-12, bear Pajama rig on macOS: every behaviour was played through `idlePlay` in the running app and read from frame sheets at its peaks and from post-physics parameter traces. The first shapes for stretch, yawn, check-in, peer, zone-out, sway, about-to-speak and let-go were too small to tell apart from the base idle motion, and were enlarged until each reads in a still frame. Look-around was kept; sleep and nod-off were deepened. Frame sheets prove that a pose reads, not that the motion between poses looks natural. That stays Luke's visual call, as does the pacing.
+- MMD shares the shapes and has had no rendered pass; it is tuned separately.
 
 ## Follow-ups
 

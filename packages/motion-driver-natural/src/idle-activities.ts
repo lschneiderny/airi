@@ -95,6 +95,8 @@ interface Clip {
   releasedAt: number | null
   releaseSeconds: number
   side: -1 | 1
+  /** Started by `play`: a sleep that does not wait for the user to leave and ends on its own. */
+  requested: boolean
   /** Period of the sway, in seconds. */
   period: number
   /** Strength of the smile (check-in) or the sulk (let-go), 0..1. */
@@ -130,6 +132,8 @@ const meanGap = { idle: 45, watching: 70 }
 const sleepDelay = { min: 12, max: 30 }
 /** A sleep at least this long, in seconds, can be followed by a stretch or a yawn. */
 const longSleepSeconds = 90
+/** Seconds a sleep started by `play` lasts before she wakes on her own. */
+const playedSleepSeconds = 14
 /** Shortest seconds before the same activity is drawn again. */
 const cooldowns: Record<DrawnIdleActivityKind, number> = { 'stretch': 300, 'yawn': 75, 'look-around': 25, 'check-in': 30, 'peer': 25, 'zone-out': 40, 'nod-off': 100, 'sway': 30 }
 
@@ -263,6 +267,7 @@ export class NaturalIdleActivities {
   private sleepAfter = 0
   private followUp: { kind: 'stretch' | 'yawn', at: number } | null = null
   private pendingCue: IdleCueKind | null = null
+  private pendingPlay: IdleBehaviourKind | null = null
   /** Start time of the about-to-speak hold that a let-go already answered. */
   private answeredHold: number | null = null
   private eyesUntil = 0
@@ -294,6 +299,15 @@ export class NaturalIdleActivities {
     this.pendingCue = kind
   }
 
+  /**
+   * Requests one behaviour by name, for previews and scripted QA runs. It starts at the next step in place of the
+   * running one, under the same conditions as a drawn activity: a drive, an idle or watching mode, and a free head.
+   * A played `sleep` does not need the user away and wakes after 14 s.
+   */
+  play(kind: IdleBehaviourKind) {
+    this.pendingPlay = kind
+  }
+
   /** Whether this layer holds the gaze at `at`, so autonomous attention shifts must wait. */
   eyesOwned(at: number) {
     return at < this.eyesUntil
@@ -311,7 +325,7 @@ export class NaturalIdleActivities {
       const interrupted = current.kind === 'sleep' ? input.rouse : input.interrupt
       if (drive === null || claimed || interrupted)
         this.release(current, at, current.kind === 'sleep' && interrupted ? startledWakeSeconds : interruptSeconds, gaze)
-      else if (current.kind === 'sleep' && !input.away)
+      else if (current.kind === 'sleep' && (current.requested ? at >= current.end : !input.away))
         this.wake(current, at, gaze)
       else if (current.kind === 'about-to-speak' && at - current.start >= aboutToSpeakMaxSeconds)
         this.release(current, at, 0.6, gaze)
@@ -327,6 +341,7 @@ export class NaturalIdleActivities {
 
     if (drive === null) {
       this.pendingCue = null
+      this.pendingPlay = null
       this.followUp = null
       this.awaySince = null
       this.sample(at + dt)
@@ -351,6 +366,17 @@ export class NaturalIdleActivities {
         // One hold earns one let-go.
         this.answeredHold = held ?? null
       }
+    }
+
+    const play = this.pendingPlay
+    this.pendingPlay = null
+    if (play !== null && performing && !input.blocked) {
+      if (current)
+        this.release(current, at, interruptSeconds, gaze)
+      current = this.start(play, at, drive, input)
+      current.requested = true
+      if (play === 'sleep')
+        current.end = at + playedSleepSeconds
     }
 
     if (input.away && drive.allowSleep) {
@@ -457,13 +483,13 @@ export class NaturalIdleActivities {
     const between = (min: number, max: number) => min + (max - min) * random()
     const drawnSide: -1 | 1 = random() < 0.5 ? -1 : 1
     const inwardSide: -1 | 1 = Math.abs(input.placement) > 0.1 ? (input.placement > 0 ? 1 : -1) : drawnSide
-    const clip: Clip = { kind, start: at, end: at, releasedAt: null, releaseSeconds: 0, side: drawnSide, period: 2, tone: 0, keys: [], glances: [] }
+    const clip: Clip = { kind, start: at, end: at, releasedAt: null, releaseSeconds: 0, side: drawnSide, requested: false, period: 2, tone: 0, keys: [], glances: [] }
     switch (kind) {
       case 'stretch':
         clip.end = at + 5.2
         break
       case 'yawn':
-        clip.end = at + 4.2
+        clip.end = at + 5.4
         break
       case 'look-around': {
         const count = 2 + Math.floor(random() * 3)
@@ -584,24 +610,30 @@ export class NaturalIdleActivities {
       switch (clip.kind) {
         case 'stretch': {
           // Arch back and up, squeeze the eyes, then settle a little lower than before.
-          const e = trapezoid(age, 1.3, 1.5, 1.8)
-          const settle = raisedCosine((age - 4) / 1.2)
-          head(s * 0.06 * e, 0.34 * e - 0.06 * settle, s * 0.14 * e)
-          body(0, 0.45 * e - 0.08 * settle, s * 0.1 * e)
-          out.lidClose = Math.max(out.lidClose, gain * 0.9 * trapezoid(age - 0.5, 0.6, 1.4, 0.6))
-          out.browY += gain * 0.25 * e
-          out.mouthForm -= gain * 0.1 * e
-          calm(0.5 * e, 0.5 * e, 0.6 * e)
+          const e = trapezoid(age, 1.3, 1.6, 1.1)
+          // The breath she held goes out as she drops back, a little below where she started.
+          const settle = raisedCosine((age - 3.5) / 1.7)
+          head(s * 0.1 * e, 0.45 * e - 0.14 * settle, s * 0.3 * e)
+          body(s * 0.12 * e, 0.6 * e - 0.2 * settle, s * 0.3 * e)
+          out.lidClose = Math.max(out.lidClose, gain * 0.95 * trapezoid(age - 0.5, 0.6, 1.7, 0.7))
+          out.browY += gain * (0.3 * e - 0.1 * settle)
+          out.mouthForm -= gain * 0.25 * e
+          out.mouthOpen += gain * 0.12 * settle
+          calm(0.7 * e, 0.5 * e, 0.7 * e)
           break
         }
         case 'yawn': {
-          const e = trapezoid(age, 1.4, 0.9, 1.1)
-          head(0, 0.16 * e, s * 0.04 * e)
-          body(0, 0.22 * e, 0)
-          out.mouthOpen += gain * 0.8 * e
-          out.lidClose = Math.max(out.lidClose, gain * 0.85 * trapezoid(age - 0.7, 0.7, 0.9, 0.7))
-          out.browY += gain * 0.35 * e
-          calm(0.4 * e, 0.5 * e, 0.5 * e)
+          const e = trapezoid(age, 1.4, 1.1, 1.1)
+          // Heavy lids for a moment after the mouth has closed.
+          const after = trapezoid(age - 3.4, 0.4, 0.8, 0.8)
+          head(0, 0.3 * e - 0.05 * after, s * 0.12 * e)
+          body(0, 0.35 * e, s * 0.1 * e)
+          out.mouthOpen += gain * e
+          out.mouthForm -= gain * 0.3 * e
+          out.lidClose = Math.max(out.lidClose, gain * 0.9 * trapezoid(age - 0.7, 0.7, 1.1, 0.7))
+          out.eyeOpen *= 1 - gain * 0.25 * after
+          out.browY += gain * 0.4 * e
+          calm(0.6 * e, 0.5 * e, 0.6 * e)
           break
         }
         case 'look-around': {
@@ -623,28 +655,31 @@ export class NaturalIdleActivities {
         }
         case 'check-in': {
           const e = trapezoid(age, 0.5, clip.end - clip.start - 1.3, 0.8)
-          head(0, 0.03 * e, s * 0.07 * e)
-          out.eyeSmile += gain * 0.3 * clip.tone * e
-          out.mouthForm += gain * 0.2 * clip.tone * e
-          out.browY += gain * 0.1 * e
+          head(0, 0.06 * e, s * 0.2 * e)
+          body(0, 0, s * 0.15 * e)
+          out.eyeSmile += gain * 0.6 * clip.tone * e
+          out.mouthForm += gain * 0.45 * clip.tone * e
+          out.browY += gain * 0.22 * e
           // A calmer posture brings the head back toward the camera while she looks.
           calm(0.5 * e, 0.5 * e, 0.3 * e)
           break
         }
         case 'peer': {
           const e = trapezoid(age, 0.9, clip.end - clip.start - 2, 1.1)
-          head(s * 0.12 * e, -0.08 * e, s * 0.05 * e)
-          body(s * 0.1 * e, -0.22 * e, s * 0.08 * e)
-          out.eyeOpen *= 1 - gain * 0.08 * e
-          out.browY -= gain * 0.08 * e
+          head(s * 0.3 * e, -0.14 * e, s * 0.1 * e)
+          body(s * 0.35 * e, -0.4 * e, s * 0.2 * e)
+          out.eyeOpen *= 1 - gain * 0.15 * e
+          out.browY -= gain * 0.15 * e
           calm(0.4 * e, 0.5 * e, 0.3 * e)
           break
         }
         case 'zone-out': {
           const e = trapezoid(age, 1.5, clip.end - clip.start - 2.1, 0.6)
           // The head lifts a little as she comes back.
-          head(0, -0.07 * e + 0.05 * raisedCosine((age - (clip.end - clip.start - 0.9)) / 0.9), s * 0.04 * e)
-          out.eyeOpen *= 1 - gain * 0.12 * e
+          head(s * 0.08 * e, -0.14 * e + 0.08 * raisedCosine((age - (clip.end - clip.start - 0.9)) / 0.9), s * 0.14 * e)
+          body(0, -0.15 * e, s * 0.1 * e)
+          out.eyeOpen *= 1 - gain * 0.3 * e
+          out.mouthOpen += gain * 0.07 * e
           out.blinkIntervalScale *= 1 + gain * 0.8 * e
           out.breathPeriodScale *= 1 + gain * 0.15 * e
           calm(0.5 * e, 0.6 * e, 0.5 * e)
@@ -661,19 +696,19 @@ export class NaturalIdleActivities {
               continue
             if (local < droop) {
               const u = local / droop
-              pitch = -0.32 * u ** 1.5
+              pitch = -0.5 * u ** 1.5
               lid = 0.85 * minJerk(u)
             }
             else if (local < droop + nodJerkSeconds) {
               const v = minJerk((local - droop) / nodJerkSeconds)
-              pitch = -0.32 + 0.38 * v
+              pitch = -0.5 + 0.6 * v
               lid = 0.85 * (1 - v)
-              hint = 0.08 * v
+              hint = 0.12 * v
             }
             else {
               const w = minJerk((local - droop - nodJerkSeconds) / nodSettleSeconds)
-              pitch = 0.06 * (1 - w)
-              hint = 0.08 * (1 - w)
+              pitch = 0.1 * (1 - w)
+              hint = 0.12 * (1 - w)
             }
           }
           head(0, pitch, s * 0.25 * -pitch)
@@ -685,17 +720,20 @@ export class NaturalIdleActivities {
         case 'sway': {
           const e = trapezoid(age, 1.5, clip.end - clip.start - 3, 1.5)
           const phase = 2 * Math.PI * age / clip.period
-          head(0.03 * e * Math.sin(phase - Math.PI / 2), 0, 0.07 * e * Math.sin(phase))
-          body(0.1 * e * Math.sin(phase - 0.6), 0, 0.06 * e * Math.sin(phase - 0.6))
-          out.mouthForm += gain * 0.08 * clip.tone * e
+          // The head trails the body and bobs once per beat, twice per sway.
+          head(0.08 * e * Math.sin(phase - Math.PI / 2), 0.05 * e * Math.sin(2 * phase), 0.2 * e * Math.sin(phase))
+          body(0.3 * e * Math.sin(phase - 0.6), 0, 0.3 * e * Math.sin(phase - 0.6))
+          out.mouthForm += gain * 0.2 * clip.tone * e
+          out.eyeSmile += gain * 0.2 * clip.tone * e
           calm(0.3 * e, 0.5 * e, 0.2 * e)
           break
         }
         case 'sleep': {
           const e = minJerk(age / sleepSettleSeconds)
           // Deep, slow breathing shows on the dropped head.
-          head(s * 0.05 * e, -0.36 * e - 0.02 * e * Math.sin(2 * Math.PI * age / 6.5), s * 0.16 * e)
-          body(0, -0.15 * e, s * 0.05 * e)
+          head(s * 0.06 * e, -0.42 * e - 0.03 * e * Math.sin(2 * Math.PI * age / 6.5), s * 0.24 * e)
+          body(0, -0.3 * e - 0.05 * e * Math.sin(2 * Math.PI * age / 6.5), s * 0.15 * e)
+          out.mouthOpen += gain * 0.05 * e
           out.lidClose = Math.max(out.lidClose, gain * e)
           out.breathPeriodScale *= 1 + gain * 0.4 * e
           calm(0.65 * e, 0.6 * e, 0.7 * e)
@@ -704,20 +742,23 @@ export class NaturalIdleActivities {
         case 'about-to-speak': {
           // A small breath in and a lifted look, held while she decides.
           const e = minJerk(age / 0.5)
-          head(0, 0.05 * e, 0)
-          body(0, 0.12 * e, 0)
-          out.browY += gain * 0.14 * e
-          out.eyeOpenHint += gain * 0.05 * e
+          head(0, 0.12 * e, 0)
+          body(0, 0.28 * e, 0)
+          out.browY += gain * 0.3 * e
+          out.eyeOpenHint += gain * 0.12 * e
+          // Lips parted on the breath in.
+          out.mouthOpen += gain * 0.16 * e
           calm(0.4 * e, 0.5 * e, 0.3 * e)
           break
         }
         case 'let-go': {
           // The breath goes out and the look drops aside; a low mood shows it more.
           const e = trapezoid(age, 0.45, 1.2, 0.95)
-          head(s * 0.1 * e, -0.09 * e, s * 0.03 * e)
-          body(0, -0.1 * e, 0)
-          out.mouthForm -= gain * 0.1 * (1 + clip.tone) * e
-          out.browY -= gain * 0.05 * e
+          head(s * 0.22 * e, -0.16 * e, s * 0.08 * e)
+          body(0, -0.25 * e, 0)
+          out.mouthForm -= gain * 0.25 * (1 + clip.tone) * e
+          out.browY -= gain * 0.15 * e
+          out.eyeOpen *= 1 - gain * 0.15 * e
           calm(0.3 * e, 0.4 * e, 0.2 * e)
           break
         }

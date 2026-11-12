@@ -2,7 +2,7 @@ import type { FaceBaseline } from '@proj-airi/motion-driver-natural/baseline'
 import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
 import type { NaturalFaceOutput } from '@proj-airi/motion-driver-natural/face'
 import type { NaturalTouchRegion } from '@proj-airi/motion-driver-natural/frame-types'
-import type { IdleBehaviourReport, IdleCueKind, NaturalIdleDrive } from '@proj-airi/motion-driver-natural/idle-activities'
+import type { IdleBehaviourKind, IdleBehaviourReport, IdleCueKind, NaturalIdleDrive } from '@proj-airi/motion-driver-natural/idle-activities'
 import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
 import type { NaturalChatInput, NaturalMotionFrame, NaturalMotionOptions, NaturalMotionPose } from '@proj-airi/motion-driver-natural/natural-motion'
 import type { PostureHome } from '@proj-airi/motion-driver-natural/posture'
@@ -194,6 +194,7 @@ export class Live2DNaturalMotionAdapter {
   private readonly pendingGestures: { kind: CueGestureKind, count: number }[] = []
   private readonly pendingMoods: MoodDose[] = []
   private readonly pendingIdleCues: IdleCueKind[] = []
+  private readonly pendingIdlePlays: IdleBehaviourKind[] = []
   /** The drive the host last set, and the one the controller runs; they differ while Natural is inactive. */
   private idleDrive: NaturalIdleDrive | null = null
   private appliedIdleDrive: NaturalIdleDrive | null = null
@@ -320,6 +321,13 @@ export class Live2DNaturalMotionAdapter {
       this.pendingIdleCues.push(kind)
   }
 
+  /** Plays one idle behaviour by name, for previews and scripted QA runs; accepted like a cue. */
+  idlePlay(kind: IdleBehaviourKind) {
+    const { driver, exclusive } = this.attention()
+    if (!this.disposed && driver === 'natural' && !exclusive)
+      this.pendingIdlePlays.push(kind)
+  }
+
   /** Forwards the expression-performance switches and tunables to the Natural controller. */
   setPerformanceSettings(settings: ExpressionPerformanceSettings) {
     this.controller.setPerformanceSettings(settings)
@@ -403,6 +411,10 @@ export class Live2DNaturalMotionAdapter {
       if (active)
         this.controller.idleCue(cue, this.time)
     }
+    for (const kind of this.pendingIdlePlays.splice(0)) {
+      if (active)
+        this.controller.idlePlay(kind, this.time)
+    }
     // Emotions queued while Natural is inactive are stale by the time it resumes.
     for (const emotion of attention.pendingEmotions.splice(0)) {
       if (active)
@@ -472,7 +484,8 @@ export class Live2DNaturalMotionAdapter {
   private composeFace({ face, blink, breath }: NaturalMotionFrame, attention: Live2DNaturalMotionAttention, mouthAllowed: boolean) {
     const core = this.model.coreModel
     const free = (range: ChannelRange) => !attention.clipOwnedIds.has(range.id)
-    const blinkFactor = attention.autoBlink ? blink.blinkFactor : 1
+    // With auto-blink off she still closes her eyes to sleep, stretch and yawn.
+    const blinkFactor = attention.autoBlink ? blink.blinkFactor : this.controller.idleLidFactor
     for (const range of this.eyelids.filter(free)) {
       const base = core.getParameterValueByIndex(range.index)
       core.setParameterValueByIndex(range.index, composeEyelid(base, face.eyeOpenMultiplier, face.eyeOpenHint, blinkFactor))
