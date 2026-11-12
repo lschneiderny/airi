@@ -29,9 +29,11 @@ export type { GestureLayerOptions } from './gestures'
 export { createGestureLayers } from './gestures'
 export type { HandShape, HandShapeSpec } from './hand-shapes'
 export { HAND_SHAPES } from './hand-shapes'
+export type { PerformanceLayerOptions } from './layers'
+export { createPerformanceLayers } from './layers'
 export type { BodyTransform } from './skeleton'
 export { BodySkeleton, spineWeights } from './skeleton'
-export type { LayerOutput, MergedPerformancePlan, PerformanceContext, PerformanceLayer, PerformancePlan } from './stack'
+export type { LayerOutput, MergedPerformancePlan, PerformanceContext, PerformanceLayer, PerformanceModulation, PerformancePlan } from './stack'
 
 export interface BodyPerformerOptions {
   readonly traits: BodyRigTraits
@@ -136,6 +138,7 @@ class BodyPerformer {
       turns: createTurnPlanner(),
       targets: new Float64Array(BODY_CHANNELS.length),
       steady: [0, 1, 2].map(() => createLagChain([STEADY_LAG], BODY_TICK)),
+      sighs: 0,
     }
   }
 
@@ -180,6 +183,16 @@ class BodyPerformer {
     }
     targets.fill(0)
     state.posture.gazeShifting = state.gaze.shifting
+    // The cue layer plays the head cue itself (4b). The emotion modulation (4c) is the previous tick's: the stack runs
+    // after the generators, so its tempo, sway, breath depth and sighs reach them one tick later.
+    state.posture.suppressHeadCue = stack.plan.suppressHeadCue
+    state.posture.tempo = stack.modulation.tempo
+    state.posture.amplitude = stack.modulation.amplitude
+    state.breath.depth = stack.modulation.breath
+    if (stack.sighs !== state.sighs) {
+      state.sighs = stack.sighs
+      state.breath.sigh()
+    }
     state.posture.step(effective, targets)
     state.breath.step(effective, targets)
     this.steadyHead(targets)

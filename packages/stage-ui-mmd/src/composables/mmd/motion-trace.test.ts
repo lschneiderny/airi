@@ -1,10 +1,12 @@
+import type { MotionTraceEvent } from '@proj-airi/motion-driver-humanoid/motion-trace'
+
 import { decodeBlock } from '@proj-airi/motion-driver-humanoid/motion-trace'
 import { Quaternion, Vector3 } from 'three'
 import { expect, it } from 'vitest'
 
 import { bodyFixture } from './body/fixture'
 import { MMDBodyPose } from './body/pose'
-import { createMMDMotionTraceSampler } from './motion-trace'
+import { createMMDMotionTraceSampler, mmdBodyTraceEvent } from './motion-trace'
 
 it('records bind rotations as identity and a world-axis rotation independently of the bind axes', () => {
   const { mmd, rig, bone, pipeline, mixer } = bodyFixture(0.7)
@@ -88,5 +90,62 @@ it('stamps a body event with the time of the frame that raised it and drops one 
   sampler.stage.run(context)
   sampler.recorder.stop()
   expect(sampler.recorder.drain().events).toEqual([{ t: 1 / 60, kind: 'marker', label: 'gaze-shift:40.00:-38.50:sustained' }])
+  mmd.dispose()
+})
+
+const markerLabel = (event: MotionTraceEvent) => event.kind === 'marker' ? event.label : ''
+
+it('records the registered layers\' cue, emotion, reaction and gesture markers on the frame that raised them', () => {
+  const { mmd, rig, pipeline, body, input, setInput } = bodyFixture()
+  const sampler = createMMDMotionTraceSampler(mmd, rig, new MMDBodyPose(mmd, rig))
+  let frame = 0
+  const raised: { label: string, t: number }[] = []
+  body.onEvent((event) => {
+    if (event.kind !== 'blink' && event.kind !== 'gaze-shift')
+      raised.push({ label: markerLabel(mmdBodyTraceEvent(event, 0)), t: frame / 60 })
+    sampler.bodyEvent(event)
+  })
+  pipeline.surfaceStages.push(sampler.stage)
+  sampler.recorder.start({
+    kind: 'motion-trace',
+    version: 1,
+    source: { level: 't2-3d', scenario: { id: 'test', class: 'talk', seed: 1 }, gitSha: null, dirty: null, stages: { pose: [], surface: ['motion-trace'] }, omitted: [], detail: {} },
+    rig: { ...sampler.rig, id: 'fixture' },
+    hz: 60,
+    scoredFrom: 0,
+  })
+  const base = input.intent
+  let onsetSeq = 0
+  let slow = 0
+  for (frame = 0; frame < 300; frame++) {
+    const t = frame / 60
+    // One utterance from 0.5 s to 4 s whose voice rises over 50 ms into an onset every 0.8 s, a nod at 1 s, a held
+    // happy from 1.5 s and a body poke at 2 s.
+    const phase = (t - 0.7) % 0.8
+    const speaking = t >= 0.5 && t < 4
+    const rising = speaking && t >= 0.7 && phase >= 0 && phase < 0.05
+    if (speaking && t >= 0.7 && Math.abs(phase - 0.05) < 1 / 120)
+      onsetSeq++
+    const level = !speaking ? 0 : rising ? 0.1 + 0.35 * phase / 0.05 : phase < 0.15 ? 0.45 : 0.1
+    slow = level + (slow - level) * Math.exp(-1 / 60 / 0.25)
+    setInput({
+      intent: {
+        ...base,
+        voice: { ...base.voice, speaking, level, slow, onsetSeq },
+        cue: t < 1 ? null : { seq: 1, start: 1, end: 1.45, kind: 'nod', count: 1, side: 1 },
+        held: t < 1.5 ? base.held : { emotion: 'happy', strength: 1, level: 1, side: 1 },
+        touch: { ...base.touch, poke: t < 2 ? null : { seq: 1, at: 2, region: 'body', x: 0.3, y: 0 } },
+      },
+    })
+    sampler.inputs.wall = t
+    pipeline.step(1 / 60)
+  }
+  sampler.recorder.stop()
+  const markers = (sampler.recorder.drain().events ?? []).filter(event => event.kind === 'marker' && !/^(?:blink|gaze-shift):/.test(event.label))
+  const labels = markers.map(markerLabel)
+  expect(labels).toEqual(expect.arrayContaining(['cue:nod:1', 'emotion-posture:happy:onset', 'reaction:body-poke', 'gesture-unit:start']))
+  expect(labels.some(label => label.startsWith('gesture-stroke:'))).toBe(true)
+  expect(labels).toEqual(raised.map(event => event.label))
+  markers.forEach((event, index) => expect(event.t).toBeCloseTo(raised[index]?.t ?? Number.NaN, 9))
   mmd.dispose()
 })

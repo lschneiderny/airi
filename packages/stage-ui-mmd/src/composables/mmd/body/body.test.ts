@@ -278,6 +278,34 @@ describe('mmd full-body stages', () => {
     expect(bone('左目').quaternion.angleTo(new Quaternion())).toBeLessThan(1e-6)
   })
 
+  it('writes every owned group exactly as the clean pose while the performance layers receive speech, emotion, cue and touch', () => {
+    const { pipeline, mixer, body, setInput, input } = bodyFixture()
+    const events: MMDBodyEvent[] = []
+    body.onEvent(event => events.push(event))
+    // A clip the body never registered owns every group.
+    const clip = new AnimationClip('one-shot', 2, [new QuaternionKeyframeTrack('.bones[頭].quaternion', [0, 2], [0, 0, 0, 1, 0, 0, 0, 1])])
+    pipeline.registerClip(clip.name, clip)
+    pipeline.enqueue(() => mixer.clipAction(clip).play())
+    const base = input.intent
+    setInput({
+      intent: {
+        ...base,
+        voice: { ...base.voice, speaking: true, level: 0.45, slow: 0.2, onsetSeq: 1 },
+        cue: { seq: 1, start: 0, end: 1.1, kind: 'shrug', count: 1, side: 1 },
+        held: { emotion: 'sad', strength: 1, level: 1, side: 1 },
+        touch: { ...base.touch, poke: { seq: 1, at: 0, region: 'body', x: 0.3, y: 0 } },
+      },
+    })
+    let deviation = 0
+    for (let frame = 0; frame < 90; frame++) {
+      pipeline.step(1 / 30)
+      deviation = Math.max(deviation, ...Object.values(body.diagnostics.performance?.writeDeviationRad ?? {}))
+    }
+    // The emotion layer reports its onset under ownership; the cue and reaction layers refuse owned groups outright.
+    expect(events.map(event => event.kind)).toContain('emotion-posture')
+    expect(deviation).toBe(0)
+  })
+
   it('keeps half of the head look-at under a fully weighted stance clip while ducking the body', () => {
     const headAngle = (clipped: boolean, stanceClips: ReadonlySet<string>) => {
       const { pipeline, mixer, bone, setInput, input } = bodyFixture()

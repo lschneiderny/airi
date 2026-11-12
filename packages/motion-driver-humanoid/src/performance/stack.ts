@@ -27,6 +27,15 @@ export interface PerformanceContext {
   readonly dt: number
 }
 
+/** The generator modulation of an emotion layer (architecture 4c), each 1 at baseline. */
+export interface PerformanceModulation {
+  readonly tempo: number
+  readonly amplitude: number
+  readonly breath: number
+  /** Increments once per sighing onset. */
+  readonly sighSeq: number
+}
+
 export interface LayerOutput {
   /** BODY_CHANNELS-sized borrowed targets and analytic velocities, radians or L per second. */
   readonly channels: ArrayLike<number>
@@ -46,6 +55,8 @@ export interface LayerOutput {
   readonly cue?: BodyCueReport
   readonly emotion?: BodyEmotionReport
   readonly reaction?: BodyReactionReport
+  /** Weighted by the layer's ramped weight into `PerformanceStack.modulation`; a later layer in stack order wins. */
+  readonly modulation?: PerformanceModulation
 }
 
 /** Intent overrides are sampled before generators; targets still blend in stack order afterwards. */
@@ -81,6 +92,10 @@ export class PerformanceStack {
   readonly cue: Mutable<BodyCueReport> = { seq: 0, kind: null }
   readonly emotion: Mutable<BodyEmotionReport> = { seq: 0, emotion: null, phase: null }
   readonly reaction: Mutable<BodyReactionReport> = { seq: 0, kind: null }
+  /** This tick's generator modulation; the performer feeds it to the posture and breath hooks on the next tick. */
+  readonly modulation = { tempo: 1, amplitude: 1, breath: 1 }
+  /** Sighing onsets of layers with weight, counted from construction. */
+  sighs = 0
   lidClose = 0
   mouthOpen = 0
   act: BodyActFeedback | null = null
@@ -102,6 +117,7 @@ export class PerformanceStack {
       target: 0,
       elapsed: 0,
       duration: 0,
+      sighSeq: 0,
     }))
   }
 
@@ -130,6 +146,7 @@ export class PerformanceStack {
     this.lidClose = this.mouthOpen = 0
     this.act = null
     this.footSteps = emptySteps
+    this.modulation.tempo = this.modulation.amplitude = this.modulation.breath = 1
     this.gesture.activation.left = this.gesture.activation.right = 0
     for (const entry of this.entries) {
       const { layer } = entry
@@ -175,6 +192,15 @@ export class PerformanceStack {
         Object.assign(this.emotion, output.emotion)
       if (output.reaction)
         Object.assign(this.reaction, output.reaction)
+      if (output.modulation) {
+        const m = output.modulation
+        this.modulation.tempo = 1 + weight * (m.tempo - 1)
+        this.modulation.amplitude = 1 + weight * (m.amplitude - 1)
+        this.modulation.breath = 1 + weight * (m.breath - 1)
+        if (m.sighSeq !== entry.sighSeq && weight > 0)
+          this.sighs++
+        entry.sighSeq = m.sighSeq
+      }
       if (layer.order === 'gesture') {
         for (const side of SIDES) {
           for (let c = ARM_START[side]; c < ARM_START[side] + 26; c++)

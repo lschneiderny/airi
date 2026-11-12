@@ -13,7 +13,7 @@ import type { MMDBodyPoints } from './attention'
 import type { MMDBodyRoot, MMDLocomotionGoal } from './locomotion'
 import type { MMDBodyEvent, MMDBodyWeights } from './performer'
 
-import { BODY_CHANNELS, BODY_TICK, channelIndex } from '@proj-airi/motion-driver-humanoid/performance'
+import { BODY_CHANNELS, BODY_TICK, channelIndex, createPerformanceLayers } from '@proj-airi/motion-driver-humanoid/performance'
 import { Quaternion, Vector3 } from 'three'
 
 import { fnv1a32 } from '../natural/seed'
@@ -154,8 +154,9 @@ export class MMDBody {
     const head = buildMMDHeadColliders(mmd.pmx, skeleton.boneInverses, bindMatrix, rig)
     this.arms = new MMDArms(this.pose, colliders, head)
     this.traits = buildBodyRigTraits(mmd.pmx, rig, [...colliders.kinematic, ...head], { boneInverses: skeleton.boneInverses, bindMatrix })
+    const seed = fnv1a32(options.modelKey)
     this.performer = this.traits
-      ? new MMDBodyPerformer(this.pose, this.traits, { seed: fnv1a32(options.modelKey), onEvent: event => this.listeners.forEach(listener => listener(event)) })
+      ? new MMDBodyPerformer(this.pose, this.traits, { seed, layers: createPerformanceLayers({ traits: this.traits, seed }), onEvent: event => this.listeners.forEach(listener => listener(event)) })
       : null
     this.poseStages = [
       // Root motion lands before every bone write and before physics, so the pose and Ammo both see this frame's root.

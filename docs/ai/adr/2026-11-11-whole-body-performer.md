@@ -61,7 +61,7 @@ look-at joint springs were deleted in the same slice; the turn planner and `aimE
 | Why not | Arms cannot gesture, because a head pulse carries no gesture identity; weight cannot lead, because the body channel is a lagged copy of the head; lags stack on Natural's own lag. | - | Not deterministic per seed, cannot guarantee zero arm penetration or the frame budget, and depends on Ammo internals the package forbids. |
 
 B costs a larger tuning surface and a pure-core copy of the arm collision test. Per-layer switches
-(`setPerformanceLayer`) and tuning one layer at a time answer the first; the corrector uses the gate's own capsules and
+(`setPerformanceLayer`, one switch per registered layer id) and tuning one layer at a time answer the first; the corrector uses the gate's own capsules and
 clearance ratio, and the rendered `stage-arm-penetration` gate still measures the real pose after physics.
 
 ## Consequences
@@ -77,5 +77,24 @@ clearance ratio, and the rendered `stage-arm-penetration` gate still measures th
   reader accepts them as their own kinds.
 - The per-rig hang solver remains and feeds the performer's `armLift`, but the performer's own corrector already clears
   the same bodies, so the solver acts only where the corrector's model and the rendered pose differ.
-- Gesture, cue, emotion, reaction and act layers, twist-bone writes, foot roll and the rest states are later slices;
-  `setPerformanceLayer` has no layer to switch until they land.
+- Act layers, twist-bone writes, foot roll and the rest states are later slices.
+
+## Amendment 2026-11-11: performance layers registered
+
+The MMD body now registers `createPerformanceLayers({ traits, seed })` from the performer package, with the body's own
+seed: the emotion posture layer, the co-speech gesture pair (one override layer per arm), the cue gesture layer and the
+touch reaction layer, in stack order emotion, gesture, cue, reaction. `setPerformanceLayer` switches them by id.
+
+- With no speech, emotion, cue, touch, arm-form or clip input every layer stays at weight 0, and the headless idle and
+  gaze-shift traces are byte-identical to the traces before registration. Everything else under the Natural driver
+  changes on purpose and is judged by the goal-3 criterion reports.
+- The performer feeds the layers' hooks each tick: `plan.suppressHeadCue` to the posture, so the cue layer's head nod
+  or shake replaces Natural's head cue term instead of adding to it, and the emotion layer's modulation (tempo, sway
+  amplitude, breath depth, sighs) to the posture and breath, one tick after the stack produced it. The modulation's
+  tension feeds no generator; the arm followers keep Natural's mood tension.
+- An arm keeps whichever performance already holds it: a speech unit takes the other hand while an emotion form holds
+  one, and a requested form waits for the unit's retraction, so no performance cuts a moving arm.
+- The per-rig hang solver holds its lift while a gesture layer moves either arm, so the pose a gesture retracts to
+  does not move under it.
+- Not built and not registered: the shrug hand shape and its energy key, finger rub noise, the drag reaction and the
+  huff and shimmy reactions.

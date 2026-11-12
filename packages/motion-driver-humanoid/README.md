@@ -431,8 +431,21 @@ gesture layer shapes each stroke and arm form from them. Layers implement clip a
 from `input.owned`; generators and followers keep integrating beneath clips.
 The adapter applies `1 - owned[group]` exactly once at bone writes.
 
-`createEmotionLayer()` (`src/performance/emotions.ts`, not yet registered by the
-MMD body) is the additive emotion posture layer of architecture 4c. Each emotion
+`createPerformanceLayers({ traits, seed })` (`src/performance/layers.ts`) returns
+every layer below in one list, which the MMD body registers: the emotion layer,
+the gesture pair, the cue layer and the reaction layer. Without speech, emotion,
+cue, touch or arm-form input each stays at weight 0 and the output is
+bit-identical to a performer with no layers. Each tick the performer copies
+`plan.suppressHeadCue` to the posture, and feeds the stack's `modulation` (the
+emotion layer's tempo, amplitude and breath depth, blended by that layer's
+weight) to the posture's `tempo` and `amplitude` and the breath's `depth`; each
+sighing onset of a layer with weight calls `sigh()` once. The stack runs after
+the generators, so the modulation reaches them one tick (8 ms) later. The
+layer's `tension` is not fed to a generator; the arm followers keep reading
+Natural's mood tension.
+
+`createEmotionLayer()` (`src/performance/emotions.ts`) is the additive emotion
+posture layer of architecture 4c. Each emotion
 in `BODY_EMOTIONS` adds a trunk, shoulder, elbow, pelvis and hand posture at the
 weight `held.level x held.strength`, or at an unheld pulse's intensity, through
 its own second-order response (so happy sinks before it lifts and surprise rings).
@@ -453,20 +466,20 @@ posture's `tempo` and `amplitude` and the breath's `depth` and `sigh()` are the
 hooks the performer feeds from that modulation; each is exact at its neutral
 value.
 
-`createCueLayer()` (`src/performance/cues.ts`, not yet registered) realises
+`createCueLayer()` (`src/performance/cues.ts`) realises
 Natural's cue gestures on the whole body, after architecture 4b. It plays the nod
 (with a 1-degree lift first) and the shake (toward Natural's side, no
 anticipation) on the head itself, at Natural's period and amplitude, and sets
 `plan.suppressHeadCue` so `BodyPosture.suppressHeadCue` drops Natural's cue term
-from the head accent; the performer must copy that flag each tick, or the head
-nods twice. The shrug lifts both clavicles unequally with the far one 40 ms late,
+from the head accent; the performer copies that flag each tick, so the head
+nods once. The shrug lifts both clavicles unequally with the far one 40 ms late,
 the lean forces the support to the cue's side, and the glance plans the gaze 14
 degrees to the side while the upper torso follows the head's turn through a
 250 ms link. `CUE_SCALES` holds each cue's below-neck size as a multiple of 4b's
 terms. Every term is additive and starts and ends at rest with zero slope;
 owned groups receive none.
 
-`createReactionLayer()` (`src/performance/reactions.ts`, not yet registered) adds
+`createReactionLayer()` (`src/performance/reactions.ts`) adds
 architecture 4d's touch reactions. A body poke flinches the mid torso, pelvis and
 the poked side's shoulder and elbow away from the point (and bends the belly in
 on a low poke) through a 3.5 Hz, 0.45-damped step released after 0.25 s, which

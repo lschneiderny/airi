@@ -308,7 +308,7 @@ export function createEmotionLayer(): EmotionLayer {
         for (let channel = 0; channel < channels.length; channel++)
           channels[channel] *= ownedFactor[channel]
       }
-      return { channels, weight: active ? 1 : 0, sequence: 0, emotion: report }
+      return { channels, weight: active ? 1 : 0, sequence: 0, emotion: report, modulation }
     },
     reset() {
       for (const track of tracks) {
