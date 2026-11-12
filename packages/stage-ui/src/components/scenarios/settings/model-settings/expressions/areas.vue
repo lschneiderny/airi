@@ -183,6 +183,7 @@ const creating = ref(false)
             :members="row.members"
             :groups="expressionGroups"
             :label-of="labelOf"
+            :idle-use="snapshot.supportsIdleUse === true"
             @command="emit('command', $event)"
           />
           <ExpressionEntry
@@ -191,6 +192,7 @@ const creating = ref(false)
             :entry="row.entry"
             :groups="expressionGroups"
             :label-of="labelOf"
+            :idle-use="snapshot.supportsIdleUse === true"
             @command="emit('command', $event)"
           />
         </template>
@@ -223,6 +225,7 @@ const creating = ref(false)
           :entry="entry"
           :groups="expressionGroups"
           :label-of="labelOf"
+          :idle-use="snapshot.supportsIdleUse === true"
           @command="emit('command', $event)"
         />
       </div>

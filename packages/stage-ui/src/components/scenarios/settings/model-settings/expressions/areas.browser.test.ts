@@ -74,13 +74,13 @@ const freeParameters: FreeParameter[] = [
   { id: 'ParamHat', name: 'ParamHat', min: -1, max: 1, default: 0 },
 ]
 
-async function renderAreas(entries: ExpressionEntry[], options: { freeParameters?: FreeParameter[], showAll?: boolean } = {}) {
+async function renderAreas(entries: ExpressionEntry[], options: { freeParameters?: FreeParameter[], showAll?: boolean, supportsIdleUse?: boolean } = {}) {
   const { default: Areas } = await import('./areas.vue')
   await import('virtual:uno.css')
   const onCommand = vi.fn()
   const screen = await render(Areas, {
     props: {
-      snapshot: { entries, groups: [], activeIds: [], restIds: [], freeParameters: options.freeParameters ?? [] },
+      snapshot: { entries, groups: [], activeIds: [], restIds: [], freeParameters: options.freeParameters ?? [], ...options.supportsIdleUse ? { supportsIdleUse: true } : {} },
       search: '',
       showAll: options.showAll ?? false,
       onCommand,
@@ -214,6 +214,31 @@ describe('live2D expression areas', () => {
       type: 'update-entry',
       id: 'blush',
       patch: { label: 'Blush', kind: 'face', group: null, confirmed: true, inverted: false, mappings: [], area: 'eyes' },
+    })
+  })
+
+  it('offers the on-her-own choice only when the renderer supports it, and sends a changed choice', async () => {
+    const game = expressionEntry({ id: 'game', label: 'Game', kind: 'prop', area: 'props', active: true })
+    const plain = await renderAreas([game])
+    await plain.screen.getByRole('button', { name: t('settings.live2d.expressions.edit'), exact: true }).click()
+    await expect.element(plain.screen.getByText(t('settings.live2d.expressions.fields.area'), { exact: true })).toBeVisible()
+    expect(plain.screen.container.textContent).not.toContain(t('settings.live2d.expressions.fields.idle-use'))
+    cleanup()
+
+    const { screen, onCommand } = await renderAreas([game, expressionEntry({ id: 'pillow', label: 'Pillow', kind: 'prop', area: 'props', idleUse: 'sleep' })], { supportsIdleUse: true, showAll: true })
+    await expect.element(screen.getByText(t('settings.live2d.expressions.idle-use.tags.sleep'), { exact: true })).toBeVisible()
+    await screen.getByRole('button', { name: t('settings.live2d.expressions.edit'), exact: true }).first().click()
+    const field = screen.getByText(t('settings.live2d.expressions.fields.idle-use'), { exact: true }).element().parentElement
+    if (!field)
+      throw new Error('the on-her-own label has no field container')
+    await page.elementLocator(field).getByRole('combobox').click()
+    await page.getByRole('option', { name: t('settings.live2d.expressions.idle-use.options.activity'), exact: true }).click()
+    await screen.getByRole('button', { name: t('settings.live2d.expressions.apply'), exact: true }).click()
+    expect(onCommand).toHaveBeenCalledTimes(1)
+    expect(onCommand).toHaveBeenCalledWith({
+      type: 'update-entry',
+      id: 'game',
+      patch: { label: 'Game', kind: 'prop', group: null, confirmed: true, inverted: false, mappings: [], idleUse: 'activity' },
     })
   })
 

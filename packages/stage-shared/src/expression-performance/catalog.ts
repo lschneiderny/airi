@@ -14,6 +14,12 @@ export type ExpressionArea = InferOutput<typeof ExpressionAreaSchema>
 export const ComboMemberSchema = strictObject({ expressionId: string(), strength: pipe(number(), finite(), minValue(0), maxValue(1)) })
 export const SlotNameSchema = picklist(['face', 'effect', 'prop'])
 export type SlotName = InferOutput<typeof SlotNameSchema>
+/**
+ * How the character may use an entry on her own while nobody asks anything of her: `activity` is a pastime she picks
+ * up for a few minutes and puts away again, `sleep` is on for as long as she sleeps. Absent means `never`.
+ */
+export const IdleUseSchema = picklist(['never', 'activity', 'sleep'])
+export type IdleUse = InferOutput<typeof IdleUseSchema>
 
 /** Persisted mapping weights: any positive finite value. */
 export const mappingWeightRange: NumberRange = [Number.MIN_VALUE, Number.MAX_VALUE]
@@ -46,6 +52,7 @@ export function createCatalogEntrySchema(weights: NumberRange) {
     /** Persisted review marker set by the settings editor; eligibility ignores it. */
     confirmed: boolean(),
     exposedToLlm: boolean(),
+    idleUse: optional(IdleUseSchema),
     inverted: optional(boolean()),
     mappings: array(pendingMappingSchema(weights)),
     fileName: string(),
@@ -69,6 +76,7 @@ export const CuratedOverrideSchema = strictObject({
   /** Persisted review marker set by the settings editor; eligibility ignores it. */
   confirmed: optional(boolean()),
   exposedToLlm: optional(boolean()),
+  idleUse: optional(IdleUseSchema),
   inverted: optional(boolean()),
   mappings: optional(array(persistedPendingMappingSchema)),
   area: optional(ExpressionAreaSchema),
@@ -93,6 +101,7 @@ export const CustomExpressionDocumentSchema = strictObject({
   delta: pipe(number(), finite()),
   mappings: array(persistedPendingMappingSchema),
   exposedToLlm: boolean(),
+  idleUse: optional(IdleUseSchema),
 })
 export type CustomExpressionDocument = InferOutput<typeof CustomExpressionDocumentSchema>
 export const CuratedCatalogDocumentSchema = strictObject({
@@ -155,6 +164,7 @@ export function customEntryFromDocument(document: CustomExpressionDocument): Cat
     area: document.area,
     mappings: document.mappings,
     exposedToLlm: document.exposedToLlm,
+    idleUse: document.idleUse,
     fileName: '',
     parameterIds: [document.parameterId],
     group: null,

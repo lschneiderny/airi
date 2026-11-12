@@ -128,8 +128,9 @@ export interface TouchObservation {
 
 /**
  * Something the character does on her own on the stage, as a renderer reports it. The first group is the Natural
- * driver's idle activities, `held-back` is a reach-out she decided against, and the last group needs a 3D body:
- * sitting down, walking, and playing a clip from her library unasked.
+ * driver's idle activities, `held-back` is a reach-out she decided against, `prop` is a pastime she picked up from
+ * her own expressions (a game, a snack), and the last group needs a 3D body: sitting down, walking, and playing a
+ * clip from her library unasked.
  */
 export type SelfActivity
   = | 'stretch'
@@ -142,6 +143,7 @@ export type SelfActivity
     | 'sway'
     | 'sleep'
     | 'held-back'
+    | 'prop'
     | 'sit'
     | 'wander'
     | 'visit'
@@ -156,7 +158,7 @@ export interface SelfObservation {
   readonly kind: 'self'
   readonly activity: SelfActivity
   readonly phase: 'start' | 'end'
-  /** The user-given label of a `clip`; ignored for other activities. */
+  /** The user-given label of a `clip` or a `prop`; ignored for other activities. */
   readonly label?: string
   readonly atMs: number
 }
@@ -264,7 +266,7 @@ export interface SituationBusy {
 /** A self-directed activity in progress. */
 export interface SituationSelfCurrent {
   readonly activity: SelfActivity
-  /** The label of a `clip`, otherwise `null`. */
+  /** The label of a `clip` or a `prop`, otherwise `null`. */
   readonly label: string | null
   readonly sinceMs: number
 }
@@ -350,7 +352,7 @@ export const RECENT_ACTIVITIES_MAX = 5
  * Activities that last: a sleep or a sit goes on while short ones (a yawn, a look around) come and go inside it.
  * Every other activity is momentary.
  */
-export const SELF_LONG_LIVED: ReadonlySet<SelfActivity> = new Set<SelfActivity>(['sleep', 'sit'])
+export const SELF_LONG_LIVED: ReadonlySet<SelfActivity> = new Set<SelfActivity>(['sleep', 'sit', 'prop'])
 /** Length cap of {@link SituationSelf.recent}. */
 export const SELF_RECENT_MAX = 3
 /** Length cap of {@link SituationState.events}. */

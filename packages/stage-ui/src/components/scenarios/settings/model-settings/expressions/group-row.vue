@@ -19,6 +19,8 @@ const props = defineProps<{
   groups: { name: string, labels: string[] }[]
   /** Forwarded to each member's row for duplicate and overridden-by labels. */
   labelOf?: (id: string) => string
+  /** Forwarded to each member's editor: the renderer lets the character use entries on her own. */
+  idleUse?: boolean
 }>()
 const emit = defineEmits<{
   (e: 'command', command: ExpressionPanelCommand | ExpressionPanelCustomCommand): void
@@ -88,6 +90,7 @@ const membersOpen = ref(false)
         :entry="member"
         :groups="groups"
         :label-of="labelOf"
+        :idle-use="idleUse"
         @command="emit('command', $event)"
       />
     </div>
