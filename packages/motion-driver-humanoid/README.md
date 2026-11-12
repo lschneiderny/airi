@@ -486,21 +486,27 @@ dedicated twist-bone writes belong to the later adapter work.
 
 Collision runs after dynamics and limits, using the same lower-half upper-arm
 and extended-forearm sample capsules as the MMD gate, with its clearance margin.
-Corrections persist and decay. Gradient steps are followed by a discrete scan
-toward the guard pose; scanning, unlike bisection, does not assume clearance
-is monotone among multiple obstacles. `capabilities.gestures` checks each
+Corrections persist and decay. When gradient steps leave more than half the
+margin (0.015 of a segment), a continuous guard weight moves the arm toward
+the guard pose: it follows the smallest clearing weight (16 samples, because
+clearance need not be monotone among obstacles, then 10 bisection steps)
+through a critically damped response at 14 rad/s, and never falls below the
+weight that keeps the depth inside that budget. Until it catches up, proxy
+depth up to the budget is allowed, so `penetration` can be positive by that
+much. `capabilities.gestures` checks each
 guard at load. `headClearance` additionally solves and clears a reachable
 head-side anchor within joint limits; later acts still validate their own keys.
 If the guard is blocked, that arm loses gesture capability and correction
 returns toward its initial rest instead. Guard blending also resets twist,
 so the checked endpoint and the applied endpoint are the same pose.
-When no pose of an arm clears the proxies, that arm keeps its last valid arm,
+When no pose of an arm keeps the budget, that arm keeps its last valid arm,
 hand and finger channels while the rest of the body moves on, and
 `diagnostics.collisions` counts the tick with its side, remaining depth and
 tick; the performer never throws for it. `diagnostics.corrector` counts the arm
-ticks on which the two discontinuous fallbacks ran: `capHits` when the 6 degree
-step cap bounded a projection step, and `guardScans` when a contact survived
-projection and the guard scan began. The counters observe the corrector and
+ticks on which a fallback ran: `capHits` when the 6 degree step cap bounded a
+projection step, and `guardScans` when the guard weight was searched because a
+contact survived projection beyond the budget, or while the guard still eased
+out of one. The counters observe the corrector and
 never change a channel. Proxy clearance proves neither post-physics
 clearance nor interpolation safety on an imported asset; the adapter unit owns
 those rendered gates.

@@ -124,18 +124,60 @@ describe('canonical geometry', () => {
     expect(jerk / DEG).toBeLessThan(0.02)
   })
 
+  it.each(fixtureRigs)('moves an arm continuously through a forced deep forearm contact with no fallback on $name', ({ traits }) => {
+    const rest = createBodyPerformer({ traits, seed: 1 }).restChannels()
+    const collision = new BodyCollision(traits, rest)
+    const arm = [2, 3, 4, 5].map(j => ARM_START.left + j)
+    // The forearm folds across the chest from the side in 0.5 s, holds 0.5 s and unfolds: a hand-to-chest gone too deep.
+    const key = [0, -20 * DEG, 0, 140 * DEG]
+    const ease = (u: number) => u * u * u * (10 - 15 * u + 6 * u * u)
+    const input: number[][] = []
+    const output: number[][] = []
+    for (let tick = 0; tick < 180; tick++) {
+      const time = tick / 120
+      const s = ease(time < 0.5 ? time / 0.5 : time < 1 ? 1 : Math.max(0, 1.5 - time) / 0.5)
+      const channels = rest.slice()
+      arm.forEach((index, k) => channels[index] = rest[index] + (key[k] - rest[index]) * s)
+      input.push(arm.map(index => channels[index]))
+      collision.correct(channels, tick + 1)
+      output.push(arm.map(index => channels[index]))
+    }
+    let speed = 0
+    let jerk = 0
+    for (let t = 2; t < output.length; t++) {
+      for (let j = 0; j < arm.length; j++) {
+        speed = Math.max(speed, Math.abs(input[t][j] - input[t - 1][j]))
+        jerk = Math.max(jerk, Math.abs(output[t][j] - 2 * output[t - 1][j] + output[t - 2][j]))
+      }
+    }
+    expect(collision.corrector).toEqual({ capHits: 0, guardScans: 0 })
+    expect(collision.collisions.count).toBe(0)
+    // Stopping the incoming motion dead at the surface changes velocity by at most the input's own per-tick speed; the
+    // one-sixteenth guard step jumped by 5 to 8 degrees per tick squared here.
+    expect(jerk).toBeLessThan(speed)
+  })
+
   it('protects head proxies as well as torso proxies', () => {
     const head: BodyCollider = { bone: 'head', shape: 'sphere', radius: 1.1, centre: { x: 0, y: 0, z: 0 }, rotation: { yaw: 0, pitch: 0, roll: 0 } }
     const rig = { ...traits, colliders: [...proxyColliders(traits), head] }
-    const channels = createBodyPerformer({ traits: rig, seed: 1 }).restChannels()
-    const collision = new BodyCollision(rig, channels)
-    channels[channelIndex('leftAbduct')] = 0
-    channels[channelIndex('leftFlex')] = 150 * DEG
-    channels[channelIndex('leftElbow')] = 20 * DEG
-    collision.prepare(channels)
-    expect(collision.measure('left', channels).head).toBeGreaterThan(0)
-    collision.correct(channels, 1)
-    collision.prepare(channels)
-    expect(collision.measure('left', channels).head).toBe(0)
+    const rest = createBodyPerformer({ traits: rig, seed: 1 }).restChannels()
+    const collision = new BodyCollision(rig, rest)
+    const upper = traits.arms.left.upperArm
+    const budget = 0.015 * Math.hypot(upper.x, upper.y, upper.z)
+    const depths: number[] = []
+    for (let tick = 1; tick <= 2; tick++) {
+      const channels = rest.slice()
+      channels[channelIndex('leftAbduct')] = 0
+      channels[channelIndex('leftFlex')] = 150 * DEG
+      channels[channelIndex('leftElbow')] = 20 * DEG
+      collision.prepare(channels)
+      expect(collision.measure('left', channels).head).toBeGreaterThan(0)
+      collision.correct(channels, tick)
+      collision.prepare(channels)
+      depths.push(collision.measure('left', channels).head)
+    }
+    // A contact that appears at once may keep half the corrector margin while the guard weight eases in (plan 3.1).
+    expect(depths[0]).toBeLessThanOrEqual(budget)
+    expect(depths[1]).toBe(0)
   })
 })

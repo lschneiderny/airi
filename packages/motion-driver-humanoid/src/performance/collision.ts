@@ -8,6 +8,9 @@ import { BodySkeleton, composeTransform, identityTransform, setRotation } from '
 
 export { colliderDistance, proxyColliders } from './colliders'
 
+/** The guard weight's critically damped response, rad/s: the reaction layer's inertialisation rate (architecture 3g). */
+const GUARD_OMEGA = 14
+
 /** Owns scratch FK and persistent correction. The final sampled capsule test is authoritative. */
 export class BodyCollision {
   readonly capabilities: BodyCapabilities
@@ -17,10 +20,16 @@ export class BodyCollision {
   /** Arms held at their last valid pose because no pose cleared the proxies: count, and the latest side, depth and tick. */
   readonly collisions: { count: number, last: { side: BodySide, depth: number, tick: number } | null } = { count: 0, last: null }
   /**
-   * Arm ticks on which a discontinuous fallback ran: the 6 degree cap bounded a projection step, or the projection left
-   * a contact and the guard scan began. Counters only; they never change a channel.
+   * Arm ticks on which a fallback ran: the 6 degree cap bounded a projection step, or the projection left more than
+   * the depth budget and the guard weight was searched. Counters only; they never change a channel.
    */
   readonly corrector = { capHits: 0, guardScans: 0 }
+  /**
+   * Each side's continuous guard weight and its rate: a critically damped follower of the smallest weight that clears
+   * the arm, never below the smallest weight that keeps it inside the depth budget.
+   */
+  private readonly guardWeight = { left: { weight: 0, rate: 0 }, right: { weight: 0, rate: 0 } }
+  private readonly blendBase = new Float64Array(4)
   /** Each side's last arm, hand and finger channels that cleared every proxy. */
   private readonly valid = new Float64Array(BODY_CHANNELS.length)
   private readonly skeleton: BodySkeleton
@@ -33,7 +42,8 @@ export class BodyCollision {
   private readonly original = new Float64Array(BODY_CHANNELS.length)
   private readonly point = { x: 0, y: 0, z: 0 }
   private readonly normal = { x: 0, y: 0, z: 0 }
-  private readonly deepest = { depth: 0, head: 0, x: 0, y: 0, z: 0, nx: 0, ny: 0, nz: 0, forearm: false }
+  /** `over` is the deepest sample's depth beyond the depth budget, half the margin: 0.015 of its segment length. */
+  private readonly deepest = { depth: 0, head: 0, over: -Infinity, x: 0, y: 0, z: 0, nx: 0, ny: 0, nz: 0, forearm: false }
 
   constructor(private readonly traits: BodyRigTraits, rest: Float32Array) {
     this.skeleton = new BodySkeleton(traits)
@@ -65,6 +75,10 @@ export class BodyCollision {
     this.collisions.last = null
     this.corrector.capHits = 0
     this.corrector.guardScans = 0
+    for (const side of SIDES) {
+      this.guardWeight[side].weight = 0
+      this.guardWeight[side].rate = 0
+    }
   }
 
   private headProbe(side: BodySide, channels: Float32Array): boolean {
@@ -126,6 +140,7 @@ export class BodyCollision {
     const pose = this.skeleton.arm(side, channels)
     const d = this.deepest
     d.depth = d.head = 0
+    d.over = -Infinity
     for (let segment = 0; segment < 2; segment++) {
       const from = segment === 0 ? pose.shoulder : pose.elbow
       const to = segment === 0 ? pose.elbow : pose.wrist
@@ -149,6 +164,8 @@ export class BodyCollision {
           const depth = radius - colliderDistance(this.colliders[i], this.point, this.normal)
           if (this.colliders[i].bone === 'head' || this.colliders[i].bone === 'neck')
             d.head = Math.max(d.head, depth)
+          // The margin is 0.03 of the segment and the radius 0.15 of it, so half the margin is a tenth of the radius.
+          d.over = Math.max(d.over, depth - radius / 10)
           if (depth <= d.depth)
             continue
           d.depth = depth
@@ -206,24 +223,11 @@ export class BodyCollision {
       }
       if (capped)
         this.corrector.capHits++
-      if (this.measure(side, channels).depth > 0) {
-        this.corrector.guardScans++
-        const flex = channels[start + 2]
-        const abduct = channels[start + 3]
-        const twist = channels[start + 4]
-        const elbow = channels[start + 5]
-        // Scan the discrete weights: clearance is not monotone for multiple obstacles.
-        for (let k = 1; k <= 16; k++) {
-          channels[start + 2] = flex + (this.guard[start + 2] - flex) * k / 16
-          channels[start + 3] = abduct + (this.guard[start + 3] - abduct) * k / 16
-          channels[start + 4] = twist + (this.guard[start + 4] - twist) * k / 16
-          channels[start + 5] = elbow + (this.guard[start + 5] - elbow) * k / 16
-          if (this.measure(side, channels).depth <= 0)
-            break
-        }
-      }
+      for (let j = 2; j <= 5; j++)
+        this.previous[start + j] = channels[start + j] - this.original[start + j]
+      this.guardBlend(side, channels)
       let final = this.measure(side, channels)
-      if (final.depth > 0) {
+      if (final.over > 0) {
         this.collisions.count++
         this.collisions.last = { side, depth: final.depth, tick }
         for (let j = 0; j < 26; j++)
@@ -237,12 +241,82 @@ export class BodyCollision {
       this.penetration[side] = final.depth
       this.headPenetration[side] = final.head
       let correction = 0
-      for (let j = 2; j <= 5; j++) {
-        const index = start + j
-        this.previous[index] = channels[index] - this.original[index]
-        correction += this.previous[index] ** 2
-      }
+      for (let j = 2; j <= 5; j++)
+        correction += (channels[start + j] - this.original[start + j]) ** 2
       this.correction[side] = Math.sqrt(correction)
     }
+  }
+
+  /**
+   * Moves an arm the projection could not clear toward the guard pose by a continuous weight (plan 3.1).
+   *
+   * - The smallest clearing weight w* (16 samples, then 10 bisection steps; clearance need not be monotone among
+   *   several obstacles, so the scan comes first) is followed by a critically damped response at 14 rad/s, the
+   *   reaction layer's inertialisation rate (3g).
+   * - While the weight lags w*, proxy depth up to half the corrector margin is allowed. The weight never falls below the
+   *   smallest weight that keeps that budget, so the arm rides the budget's edge instead of freezing.
+   * - The blend is not part of the persistent correction: the projected pose stays the base, and the weight alone
+   *   carries the guard across ticks.
+   */
+  private guardBlend(side: BodySide, channels: Float32Array): void {
+    const start = ARM_START[side]
+    const guard = this.guardWeight[side]
+    const projected = this.measure(side, channels)
+    if (projected.over <= 0 && guard.weight === 0 && guard.rate === 0)
+      return
+    for (let k = 0; k < 4; k++)
+      this.blendBase[k] = channels[start + 2 + k]
+    let target = 0
+    let floor = 0
+    if (projected.depth > 0) {
+      const beyondBudget = projected.over > 0
+      this.corrector.guardScans++
+      target = this.smallestGuardWeight(side, channels, 'depth')
+      floor = beyondBudget ? this.smallestGuardWeight(side, channels, 'over') : 0
+    }
+    const previous = guard.weight
+    const decay = Math.exp(-GUARD_OMEGA * BODY_TICK)
+    const error = guard.weight - target
+    const impulse = guard.rate + GUARD_OMEGA * error
+    guard.weight = target + decay * (error + impulse * BODY_TICK)
+    guard.rate = decay * (guard.rate - GUARD_OMEGA * impulse * BODY_TICK)
+    if (guard.weight < floor) {
+      guard.rate = (floor - previous) / BODY_TICK
+      guard.weight = floor
+    }
+    if (target === 0 && Math.abs(guard.weight) < 1e-7 && Math.abs(guard.rate) < 1e-5)
+      guard.weight = guard.rate = 0
+    this.blendGuard(side, channels, Math.max(0, Math.min(1, guard.weight)))
+  }
+
+  private blendGuard(side: BodySide, channels: Float32Array, weight: number): void {
+    const start = ARM_START[side]
+    for (let k = 0; k < 4; k++)
+      channels[start + 2 + k] = this.blendBase[k] + (this.guard[start + 2 + k] - this.blendBase[k]) * weight
+  }
+
+  /** Smallest guard weight in (0, 1] at which the arm clears (`depth`) or stays inside the budget (`over`); 1 if none. */
+  private smallestGuardWeight(side: BodySide, channels: Float32Array, key: 'depth' | 'over'): number {
+    let low = 0
+    let high = -1
+    for (let k = 1; k <= 16; k++) {
+      this.blendGuard(side, channels, k / 16)
+      if (this.measure(side, channels)[key] <= 0) {
+        high = k / 16
+        low = (k - 1) / 16
+        break
+      }
+    }
+    if (high < 0)
+      return 1
+    for (let step = 0; step < 10; step++) {
+      const middle = (low + high) / 2
+      this.blendGuard(side, channels, middle)
+      if (this.measure(side, channels)[key] <= 0)
+        high = middle
+      else
+        low = middle
+    }
+    return high
   }
 }
