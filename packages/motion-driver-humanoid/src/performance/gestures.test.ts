@@ -443,6 +443,28 @@ describe('co-speech gestures', () => {
     expect(later).toBeGreaterThanOrEqual(5)
   }, 120_000)
 
+  it.each([['chisa', chisaTraits], ['ellen', ellenTraits]] as const)('marks every stroke where it lands, also when it starts while the arm still moves, on %s', (_, rig) => {
+    // The speak scenario's peaks come 0.8 to 1.25 s apart, so strokes start during recoveries, corrected ones among
+    // them. A marked apex ends its stroke: the hand does not speed up past half the stroke's peak within 0.15 s after it.
+    const speak = [0.8, 1.8, 3.03, 3.98, 5.17].map((at, i) => ({ at: 0.3 + at, major: i % 2 === 0 }))
+    const after = Math.round(0.15 / BODY_TICK)
+    for (let seed = 1; seed <= 40; seed++) {
+      const run = perform({ utterances: [utterance(0.3, 0.65, speak)] }, 6.5, { seed, traits: rig })
+      const paths = { left: wristPath(run, 'left', rig), right: wristPath(run, 'right', rig) }
+      const speed = (side: 'left' | 'right', i: number) => Math.hypot(...[0, 1, 2].map(k => paths[side][i][k] - paths[side][i - 1][k]))
+      for (const stroke of strokes(run)) {
+        // A two-hand stroke is marked on its first hand; the second lands 40 to 70 ms later.
+        const sides = stroke.hand === 'both' ? SIDES : [stroke.hand === 'left' ? 'left' as const : 'right' as const]
+        const at = run.frames.findIndex(frame => frame.time >= stroke.hit - 1e-9)
+        const ratio = Math.min(...sides.map((side) => {
+          const peak = Math.max(...Array.from({ length: Math.round(0.3 / BODY_TICK) }, (_, k) => speed(side, at - k)))
+          return Math.max(...Array.from({ length: after }, (_, k) => speed(side, at + 1 + k))) / peak
+        }))
+        expect(ratio, `seed ${seed} stroke ${stroke.hit.toFixed(3)}`).toBeLessThanOrEqual(0.5)
+      }
+    }
+  }, 120_000)
+
   it('never starts on an owned arm, and yields a claimed arm before the claim reaches half', () => {
     const owned = perform({ utterances: [utterance(0.5, 0.65, peaks(0.5))], owned: () => ({ leftArm: 1, rightArm: 1 }) }, 7)
     expect(owned.frames.at(-1)?.gesture.unitSeq).toBe(0)

@@ -178,9 +178,11 @@ class ArmTrack {
   readonly drift = pose()
   /**
    * The stroke being watched on the arm's actual output: its wrist speed peak and last sample, so the report marks the
-   * apex the motion shows (plan 2.1: timing comes from kinematics).
+   * apex the motion shows (plan 2.1: timing comes from kinematics). `after` is 0.75 of the stroke's planned time: a
+   * minimum-jerk stroke's speed first falls to half its peak at 0.77, so its landing cannot come earlier, while a stroke
+   * that starts with the arm still moving (a recovery's second submovement under way) dips before it.
    */
-  watch: { form: SpeechGestureForm, hand: BodyGestureHand, peak: number, speed: number, wrist: readonly [number, number, number] | null, until: number } | null = null
+  watch: { form: SpeechGestureForm, hand: BodyGestureHand, peak: number, speed: number, wrist: readonly [number, number, number] | null, until: number, after: number } | null = null
   form: SpeechGestureForm | BodyArmForm | null = null
   prepSeconds = 0.5
   pending: { at: number, form: SpeechGestureForm, size: number, hold: number, corrected: boolean } | null = null
@@ -665,7 +667,7 @@ class GesturePerformer {
     if (major)
       this.majors.push(now)
     this.formTimes.set(performed, now)
-    leadTrack.watch = { form: performed, hand: both ? 'both' : lead, peak: 0, speed: 0, wrist: null, until: now + seconds + 0.3 }
+    leadTrack.watch = { form: performed, hand: both ? 'both' : lead, peak: 0, speed: 0, wrist: null, until: now + seconds + 0.3, after: now + 0.75 * (leadTrack.phaseEnd - now) }
   }
 
   /** A stroke leaves from the ready key, a hold or a recovery; from a preparation only if it would end first. */
@@ -754,8 +756,8 @@ class GesturePerformer {
 
   /**
    * Watches the lead arm's stroke on its actual output, the previous frame, and reports the stroke at the first wrist
-   * speed minimum after the peak that is at most half of it: the gesture report's apex rule. A stroke that shows no
-   * apex in time is not reported.
+   * speed minimum after the stroke's own speed peak that is at most half of it: the gesture report's apex rule. A
+   * stroke that shows no apex in time is not reported.
    */
   private observe(track: ArmTrack, context: PerformanceContext, now: number): void {
     const watch = track.watch
@@ -767,7 +769,7 @@ class GesturePerformer {
     const wrist = this.keys.wrist(track.side, this.scratch)
     const speed = watch.wrist ? Math.hypot(wrist[0] - watch.wrist[0], wrist[1] - watch.wrist[1], wrist[2] - watch.wrist[2]) : 0
     watch.wrist = wrist
-    if (watch.peak > 0 && speed > watch.speed && watch.speed <= 0.5 * watch.peak) {
+    if (watch.peak > 0 && speed > watch.speed && watch.speed <= 0.5 * watch.peak && now >= watch.after) {
       this.report.strokeSeq++
       this.report.form = watch.form
       this.report.hand = watch.hand
