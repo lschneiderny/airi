@@ -3,6 +3,7 @@ import type { Reason, ReasonCategory, ReasonState } from './types'
 
 import { URGENT_SALIENCE } from '../gate'
 import { effectiveSalience } from '../reducer'
+import { selfHint } from '../self'
 import { DUE_BUMP_WINDOW_MS } from '../urge'
 import { openRituals, ritualHazardPerHour } from './rituals'
 import { eligibleThreads, threadRipeness } from './threads'
@@ -120,11 +121,13 @@ export function collectReasons(input: {
 
   // A backward clock jump counts as "just raised" rather than a negative weight.
   const sinceOwnDayMs = lastOwnDayAtMs === null ? null : Math.max(0, nowMs - lastOwnDayAtMs)
+  // What she was visibly doing anchors the thought, so it matches what the user saw on the stage.
+  const doing = selfHint(situation, nowMs)
   collected.push({
     key: 'own-day',
     kind: 'own-day',
     category: 'open',
-    text: REASON_TEXT['own-day'],
+    text: doing === null ? REASON_TEXT['own-day'] : `${REASON_TEXT['own-day']} (${doing})`,
     sourceEventId: null,
     ripeness: OWN_DAY_SALIENCE,
     weight: sinceOwnDayMs === null

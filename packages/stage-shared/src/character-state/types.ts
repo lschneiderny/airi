@@ -408,6 +408,24 @@ export interface FaceBaseline {
 }
 
 /**
+ * What shapes self-directed idle behaviour, derived from the slower state. Mirrors the first five fields of the Natural
+ * driver's idle drive structurally, because this package does not depend on the driver; the host adds the desktop
+ * fields (music, sleep ownership, pace).
+ */
+export interface IdleDrive {
+  /** Mood energy relative to the resting disposition, in [-1, 1]. */
+  readonly energy: number
+  /** Mood valence relative to the resting disposition, in [-1, 1]. */
+  readonly valence: number
+  /** Mood tension relative to the resting disposition, in [-1, 1]. */
+  readonly tension: number
+  /** 0 during her day, 1 deep in her night. */
+  readonly sleepiness: number
+  /** 0 right after an interaction, toward 1 after a long time without one. */
+  readonly solitude: number
+}
+
+/**
  * Time inputs of every pure call, so the core never reads a clock or a time zone. The logical day rolls over at
  * 04:00 in the host's chosen zone.
  */

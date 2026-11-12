@@ -1,6 +1,7 @@
 import type { SituationEvent, SituationState } from './types'
 
 import { effectiveSalience } from './reducer'
+import { selfLine } from './self'
 import { contextTopicKey } from './types'
 
 const MINUTE_MS = 60_000
@@ -15,9 +16,9 @@ const NEW_EVENTS_MAX = 2
 const ELLIPSIS = '...'
 
 /** Default line budget of the block, header line included. */
-export const SITUATION_MAX_LINES = 6
+export const SITUATION_MAX_LINES = 7
 /** Default character budget of the block, header and newlines included. */
-export const SITUATION_MAX_CHARS = 500
+export const SITUATION_MAX_CHARS = 600
 
 export interface RenderSituationOptions {
   /** Line budget including the header line. Default {@link SITUATION_MAX_LINES}. */
@@ -28,6 +29,8 @@ export interface RenderSituationOptions {
   readonly userName?: string
   /** Whether to render the stage line. Default true. */
   readonly includeStage?: boolean
+  /** Whether to render the line about what the character is doing on her own. Default true. */
+  readonly includeSelf?: boolean
 }
 
 export interface RenderedSituation {
@@ -190,8 +193,8 @@ function positiveOr(value: number | undefined, fallback: number): number {
 
 /**
  * Renders the state as a short flat-bullet block for the prompt. Bullets are
- * ordered by priority (presence, activity, new events, conversation, contexts,
- * stage) and the lowest-priority bullets are dropped whole until `maxLines`
+ * ordered by priority (presence, activity, her own activity, new events,
+ * conversation, contexts, stage) and the lowest-priority bullets are dropped whole until `maxLines`
  * (header included) and `maxChars` both hold. Pure: the same state and
  * `nowMs` give the same text. A non-finite `nowMs` renders the header only.
  */
@@ -213,6 +216,7 @@ export function renderSituation(
   const conversation = conversationBullet(state, nowMs)
   const contexts = contextBullets(state)
   const stage = options.includeStage === false ? null : stageBullet(state)
+  const self = options.includeSelf === false ? null : selfLine(state, nowMs, userName)
   const unshown = unshownEvents(state, nowMs)
 
   // A context event whose source has a context line is the same fact as that
@@ -232,6 +236,8 @@ export function renderSituation(
       entries.push({ text: presence, eventIds: [] })
     for (const text of activity)
       entries.push({ text, eventIds: [] })
+    if (self)
+      entries.push({ text: self, eventIds: [] })
     let newCount = 0
     for (const event of unshown) {
       if (newCount === NEW_EVENTS_MAX)

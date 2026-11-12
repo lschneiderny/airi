@@ -10,10 +10,13 @@ import type {
   PresenceReason,
   PresenceState,
   SalienceKey,
+  SelfActivity,
+  SelfObservation,
   SituationEvent,
   SituationEventKind,
   SituationPet,
   SituationRecentActivity,
+  SituationSelfCurrent,
   SituationState,
   SituationTracking,
   TouchGesture,
@@ -32,6 +35,8 @@ import {
   notifyTopicKey,
   PRESENCE_RETURN_TOPIC_KEY,
   RECENT_ACTIVITIES_MAX,
+  SELF_LONG_LIVED,
+  SELF_RECENT_MAX,
   SITUATION_EVENTS_MAX,
   TOUCH_TOPIC_KEY,
   WAKE_TOPIC_KEY,
@@ -109,6 +114,9 @@ const PRESENCE_REASONS: ReadonlySet<string> = new Set<PresenceReason>(['locked',
 const BUSY_STATES: ReadonlySet<string> = new Set<BusyState>(['accepts', 'busy', 'fullscreen', 'presentation', 'quiet', 'unknown'])
 const CATEGORIES: ReadonlySet<string> = new Set<AppCategory>(['game', 'browser', 'editor', 'media', 'chat', 'call', 'work', 'other'])
 const URGENCIES: ReadonlySet<string> = new Set(['immediate', 'soon', 'later'])
+const SELF_ACTIVITIES: ReadonlySet<string> = new Set<SelfActivity>(['stretch', 'yawn', 'look-around', 'check-in', 'peer', 'zone-out', 'nod-off', 'sway', 'sleep', 'held-back', 'sit', 'wander', 'visit', 'go-home', 'clip'])
+/** Longest clip label kept from a self observation; the stage caps its own labels at 32 characters. */
+const SELF_LABEL_MAX_CHARS = 32
 const TOUCH_GESTURES: ReadonlySet<string> = new Set<TouchGesture>(['pet', 'poke'])
 const TOUCH_REGIONS: ReadonlySet<string> = new Set<TouchRegion>(['head', 'body'])
 
@@ -416,6 +424,38 @@ function applyTouch(draft: Draft, o: TouchObservation, at: number): void {
   pushEvent(draft, makeEvent('touch', pet.durationMs >= TOUCH_PET_LONG_MS ? 'touch-pet-long' : 'touch-pet', TOUCH_TOPIC_KEY, text, at))
 }
 
+/**
+ * Folds one self observation. A start replaces the activity in progress, which then counts as ended at that moment;
+ * a momentary start never replaces a sleep or a sit, which goes on around it. An end closes the matching activity in
+ * progress; without one it records a momentary activity of length 0. An observation older than the activity it would
+ * replace or close is dropped.
+ */
+function applySelf(draft: Draft, o: SelfObservation, at: number): void {
+  if (!SELF_ACTIVITIES.has(o.activity) || (o.phase !== 'start' && o.phase !== 'end'))
+    return
+  const label = o.activity === 'clip' && typeof o.label === 'string' && o.label.trim() !== '' ? o.label.trim().slice(0, SELF_LABEL_MAX_CHARS) : null
+  const { current } = draft.self
+  const newest = draft.self.recent[0]
+  if ((current !== null && at < current.sinceMs) || (newest !== undefined && at < newest.endedAtMs))
+    return
+  const recent = [...draft.self.recent]
+  const close = (activity: SituationSelfCurrent) => recent.unshift({ activity: activity.activity, label: activity.label, endedAtMs: at, durationMs: at - activity.sinceMs })
+  if (o.phase === 'start') {
+    // A yawn while she sits does not end the sit; its own end report records it.
+    if (current !== null && SELF_LONG_LIVED.has(current.activity) && !SELF_LONG_LIVED.has(o.activity))
+      return
+    if (current !== null)
+      close(current)
+    draft.self = { current: { activity: o.activity, label, sinceMs: at }, recent: recent.slice(0, SELF_RECENT_MAX) }
+    return
+  }
+  if (current !== null && current.activity === o.activity)
+    close(current)
+  else
+    recent.unshift({ activity: o.activity, label, endedAtMs: at, durationMs: 0 })
+  draft.self = { current: current !== null && current.activity === o.activity ? null : current, recent: recent.slice(0, SELF_RECENT_MAX) }
+}
+
 function applyObservation(draft: Draft, observation: Observation, now: number, options: ReduceSituationOptions): void {
   const raw = observation as { kind?: unknown, atMs?: unknown } | null
   if (!raw || typeof raw !== 'object' || !isTime(raw.atMs))
@@ -459,6 +499,9 @@ function applyObservation(draft: Draft, observation: Observation, now: number, o
       break
     case 'touch':
       applyTouch(draft, observation, at)
+      break
+    case 'self':
+      applySelf(draft, observation, at)
       break
     case 'stage': {
       const stage = draft.stage

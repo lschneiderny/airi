@@ -250,3 +250,7 @@ Pre-existing gaps that this design does not fix:
 ## Amendment (2026-11-01): supplement composition
 
 The reaction supplement at line 150 (`appendSystemInstructions`) reaches the model as the `plugin` tail segment of the composed system prompt. It is capped at 2000 characters, truncated with a report flag, and attached once. The decision and the reaction flow are unchanged. See the [prompt composition ADR](2026-11-01-prompt-composition.md).
+
+## Amendment (2026-11-12): her own activity in the block
+
+The block gained one line about what the character is doing or just did on her own, such as `You dozed off for about 40 min just now.` It comes from `self` observations that the stage reports, sits after the app lines and before the `New:` events, and never becomes an event, so the gate cannot raise it. The block budget is now 7 lines and 600 characters, up from 6 and 500, so the line displaces nothing that fitted before. The own-day reason carries the same fact as a hint. The rule against idle chatter is unchanged. See the [idle agency ADR](2026-11-12-idle-agency.md).

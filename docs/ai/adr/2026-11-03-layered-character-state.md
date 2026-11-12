@@ -267,6 +267,14 @@ The stage and unlock sentences below supersede the wording in Appendix A6 of the
 | `face.channelRanges.browAngle` | 2 |
 | `face.channelShare` | 0.35 |
 | `face.filterTauMs` | 1500 |
+| `idle.night.fromHour` | 22 |
+| `idle.night.deepHour` | 1 |
+| `idle.night.untilHour` | 5 |
+| `idle.night.clearHour` | 7 |
+| `idle.solitudeHalfLifeMs` | 1800000 |
+| `idle.solitudeUnknown` | 0.5 |
+
+The `idle` rows were added on 2026-11-12. They shape self-directed idle behaviour through `idleDriveOf`; the [idle agency ADR](2026-11-12-idle-agency.md) records the rules.
 
 ## Known gaps
 
