@@ -20,7 +20,7 @@ export function cursorAt(intent: MMDBodyInput['intent'], point: Vector3): Pick<M
   return { intent: { ...intent, gaze: { ...intent.gaze, on: 'cursor' } }, points: { cursor: point, chat: null, camera: new Vector3(0, 21, 40) } }
 }
 
-export function bodyFixture(eyeBindYaw = 0, kneeMax = Math.PI, options: { hair?: boolean, arms?: boolean, bodies?: boolean, extraBodies?: ExtraBody[], spine?: 1 | 2 | 3 | 4 } = {}) {
+export function bodyFixture(eyeBindYaw = 0, kneeMax = Math.PI, options: { hair?: boolean, arms?: boolean, bodies?: boolean, extraBodies?: ExtraBody[], spine?: 1 | 2 | 3 | 4, toes?: boolean } = {}) {
   const mesh = new SkinnedMesh(new BufferGeometry(), new MeshBasicMaterial())
   const definitions: Array<{ name: string, parent: number, position: [number, number, number] }> = [
     { name: 'センター', parent: -1, position: [0, 10, 0] },
@@ -65,6 +65,11 @@ export function bodyFixture(eyeBindYaw = 0, kneeMax = Math.PI, options: { hair?:
       parent = definitions.length - 1
     }
     definitions[5] = { ...neck, parent, position: [0, 2 / (links + 1), 0] }
+  }
+  // `toes` appends the つま先 bones one unit below and 1.5 ahead of each ankle, after every indexed bone.
+  if (options.toes) {
+    for (const side of ['左', '右'])
+      definitions.push({ name: `${side}つま先`, parent: definitions.findIndex(definition => definition.name === `${side}足首`), position: [0, -1, 1.5] })
   }
   const bones = definitions.map(({ name, position }) => {
     const bone = new Bone()

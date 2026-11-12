@@ -51,9 +51,10 @@ export type StageScenario = 'gesture-walk' | 'action-preempt'
  * Column order of a `measure --scenario` series, one row per diagnostics snapshot: `t` in ms since the playClip post
  * (negative during the walk lead-in), the `locomotion` fields `mode`, `enabled`, `skate`, `feet.maxError`, the
  * `action.performing` name, layer and phase (null when nothing performs), whether `director.pendingGoal` is set, and
- * `director.goalX` (the issued goal, null when none).
+ * `director.goalX` (the issued goal, null when none), and the appended `locomotion.skateContact` (owner decision O6;
+ * records measured before it was recorded lack the column).
  */
-export const stageScenarioColumns = ['t', 'mode', 'enabled', 'skate', 'feetMaxError', 'performingName', 'performingLayer', 'performingPhase', 'pendingGoal', 'goalX'] as const
+export const stageScenarioColumns = ['t', 'mode', 'enabled', 'skate', 'feetMaxError', 'performingName', 'performingLayer', 'performingPhase', 'pendingGoal', 'goalX', 'skateContact'] as const
 
 export interface ScenarioSample {
   t: number
@@ -64,6 +65,8 @@ export interface ScenarioSample {
   performing: { name: string, layer: string, phase: string } | null
   pendingGoal: boolean
   goalX: number | null
+  /** The contact-point skate (owner decision O6); absent in records measured before `measure` recorded it. */
+  skateContact?: number
 }
 
 /**
@@ -199,11 +202,12 @@ function readArmSeries(source: string, json: Record<string, unknown>, perFrame: 
   }
 }
 
-function readScenarioSample(source: string, row: unknown, index: number): ScenarioSample {
+function readScenarioSample(source: string, row: unknown, index: number, contact: boolean): ScenarioSample {
   const at = (name: typeof stageScenarioColumns[number]) => stageScenarioColumns.indexOf(name)
   const nullableString = (value: unknown) => value === null || typeof value === 'string'
   if (
-    !Array.isArray(row) || row.length !== stageScenarioColumns.length
+    !Array.isArray(row) || row.length !== stageScenarioColumns.length - (contact ? 0 : 1)
+    || (contact && !isFiniteNumber(row[at('skateContact')]))
     || !isFiniteNumber(row[at('t')]) || typeof row[at('mode')] !== 'string' || typeof row[at('enabled')] !== 'boolean'
     || !isFiniteNumber(row[at('skate')]) || !isFiniteNumber(row[at('feetMaxError')])
     || !nullableString(row[at('performingName')]) || !nullableString(row[at('performingLayer')]) || !nullableString(row[at('performingPhase')])
@@ -221,18 +225,23 @@ function readScenarioSample(source: string, row: unknown, index: number): Scenar
     performing: name === null ? null : { name, layer: String(row[at('performingLayer')]), phase: String(row[at('performingPhase')]) },
     pendingGoal: row[at('pendingGoal')],
     goalX: row[at('goalX')],
+    ...contact ? { skateContact: row[at('skateContact')] } : {},
   }
 }
 
-/** A `measure --scenario` record (`kind: 'stage-scenario'`); its series columns must be `stageScenarioColumns`. */
+/**
+ * A `measure --scenario` record (`kind: 'stage-scenario'`); its series columns are `stageScenarioColumns`, or the same
+ * without the appended `skateContact` (records measured before it was recorded, judged on the ankle as O6 allows).
+ */
 function readScenario(source: string, json: Record<string, unknown>): StageEvidence {
   if (json.scenario !== 'gesture-walk' && json.scenario !== 'action-preempt')
     throw new Error(`${source}: scenario must be gesture-walk or action-preempt`)
   if (typeof json.clip !== 'string' || !isFiniteNumber(json.seconds) || typeof json.valid !== 'boolean')
     throw new Error(`${source}: a scenario record needs clip, seconds and valid`)
   const series = json.series
-  if (!isRecord(series) || !Array.isArray(series.columns) || series.columns.join() !== stageScenarioColumns.join() || !Array.isArray(series.rows))
-    throw new Error(`${source}: series needs the columns ${stageScenarioColumns.join(', ')}`)
+  const contact = isRecord(series) && Array.isArray(series.columns) && series.columns.join() === stageScenarioColumns.join()
+  if (!isRecord(series) || !Array.isArray(series.columns) || (!contact && series.columns.join() !== stageScenarioColumns.slice(0, -1).join()) || !Array.isArray(series.rows))
+    throw new Error(`${source}: series needs the columns ${stageScenarioColumns.join(', ')} (skateContact optional)`)
   const measurement = json.measurement
   return {
     kind: 'scenario',
@@ -243,7 +252,7 @@ function readScenario(source: string, json: Record<string, unknown>): StageEvide
     stopAtMs: isFiniteNumber(json.stopAtMs) ? json.stopAtMs : null,
     p95StageMs: isRecord(measurement) && isFiniteNumber(measurement.p95StageMs) ? measurement.p95StageMs : null,
     valid: json.valid,
-    samples: series.rows.map((row: unknown, index: number) => readScenarioSample(source, row, index)),
+    samples: series.rows.map((row: unknown, index: number) => readScenarioSample(source, row, index, contact)),
   }
 }
 
@@ -533,12 +542,13 @@ export function gateGestureWalk(evidence: readonly StageEvidence[]): GateResult 
       detail: `${format(spanMs / 1000)} s walking with ${clip} on the upper layer (required ${format(requiredMs / 1000)} s: scenario span ${record.seconds} s, floor ${limits.gestureWalkMinMs / 1000} s)`,
     })
     const moving = window.filter(row => samples[row].mode !== 'idle')
-    const skate = moving.length === 0 ? 0 : maxOf(moving.map(row => samples[row].skate))
+    const field = moving.length > 0 && moving.every(row => samples[row].skateContact !== undefined) ? 'skateContact' : 'skate'
+    const skate = moving.length === 0 ? 0 : maxOf(moving.map(row => field === 'skateContact' ? samples[row].skateContact ?? Number.POSITIVE_INFINITY : samples[row].skate))
     const error = moving.length === 0 ? 0 : maxOf(moving.map(row => samples[row].feetMaxError))
     checks.push({
       name: `${source} skate`,
       pass: moving.length > 0 && skate < limits.walkSkateMax,
-      detail: `max locomotion.skate ${format(skate)} over ${moving.length} non-idle samples (limit < ${limits.walkSkateMax})`,
+      detail: `max locomotion.${field} ${format(skate)} over ${moving.length} non-idle samples (limit < ${limits.walkSkateMax})`,
     })
     checks.push({
       name: `${source} feet`,

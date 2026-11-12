@@ -117,7 +117,7 @@ describe('stage-frame-budget', () => {
 
 type Row = [t: number, mode: string, enabled: boolean, skate: number, feetMaxError: number, performingName: string | null, performingLayer: string | null, performingPhase: string | null, pendingGoal: boolean, goalX: number | null]
 
-/** A synthetic `measure --scenario` record: one row per snapshot, `t` in ms since the playClip post. */
+/** A synthetic `measure --scenario` record: one row per snapshot, `t` in ms since the playClip post, flat feet (`skateContact` is `skate`). */
 function scenarioRecord(scenario: 'gesture-walk' | 'action-preempt', rows: readonly (readonly unknown[])[], extra: Record<string, unknown> = {}) {
   return {
     kind: 'stage-scenario',
@@ -125,10 +125,10 @@ function scenarioRecord(scenario: 'gesture-walk' | 'action-preempt', rows: reado
     scenario,
     clip: scenario === 'gesture-walk' ? 'arms-wave' : 'dance-long',
     seconds: 12,
-    stopAtMs: rows.at(-1)![0] as number,
+    stopAtMs: (rows.at(-1)?.[0] ?? 13_000) as number,
     measurement: { fps: 60, frames: 1200, p95StageMs: 2.1 },
     valid: true,
-    series: { columns: [...stageScenarioColumns], rows },
+    series: { columns: [...stageScenarioColumns], rows: rows.map(row => [...row, row[3]]) },
     ...extra,
   }
 }
@@ -160,6 +160,15 @@ const gestureWalk = (rows: Row[], extra?: Record<string, unknown>) => gateGestur
 const actionPreempt = (rows: Row[], extra?: Record<string, unknown>) => gateActionPreempt(readStageEvidence('ap', scenarioRecord('action-preempt', rows, extra)))
 
 describe('stage-gesture-walk', () => {
+  it('judges the contact-point skate of a record that has it, and the ankle skate of an older record without that column', () => {
+    const rolling = gestureRows().map(row => [...row, 0.001])
+    rolling.forEach(row => (row[3] = 0.3))
+    const contact = gateGestureWalk(readStageEvidence('roll', scenarioRecord('gesture-walk', [], { series: { columns: [...stageScenarioColumns], rows: rolling } })))
+    expect(check(contact, 'roll skate')).toMatchObject({ pass: true, detail: expect.stringContaining('locomotion.skateContact') })
+    const older = gateGestureWalk(readStageEvidence('old', scenarioRecord('gesture-walk', [], { series: { columns: stageScenarioColumns.slice(0, -1), rows: gestureRows() } })))
+    expect(check(older, 'old skate')).toMatchObject({ pass: true, detail: expect.stringContaining('locomotion.skate ') })
+  })
+
   it('passes an arm clip kept over a 13 s walk', () => {
     const result = gestureWalk(gestureRows())
 

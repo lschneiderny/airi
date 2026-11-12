@@ -53,7 +53,7 @@ describe('qa:stage gate on scenario records', () => {
   it('judges a gesture-walk and an action-preempt record and exits 1 for the gait-on playing frame', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'qa-stage-cli-'))
     try {
-      const record = (scenario: string, clip: string, rows: unknown[][], stopAtMs = 2_000) => ({ kind: 'stage-scenario', version: 1, scenario, clip, seconds: 1, stopAtMs, measurement: { fps: 60, frames: 120, p95StageMs: 1 }, valid: true, series: { columns: [...stageScenarioColumns], rows } })
+      const record = (scenario: string, clip: string, rows: unknown[][], stopAtMs = 2_000) => ({ kind: 'stage-scenario', version: 1, scenario, clip, seconds: 1, stopAtMs, measurement: { fps: 60, frames: 120, p95StageMs: 1 }, valid: true, series: { columns: [...stageScenarioColumns], rows: rows.map(row => [...row, row[3]]) } })
       const walk = join(dir, 'walk.json')
       const preempt = join(dir, 'preempt.json')
       writeFileSync(walk, JSON.stringify(record('gesture-walk', 'arms-wave', Array.from({ length: 120 }, (_, index) => [(index + 1) * 100, 'walking', true, 0.001, 0.001, 'arms-wave', 'upper', 'playing', false, 5]), 12_000)))

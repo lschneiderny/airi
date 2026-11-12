@@ -8,8 +8,8 @@ import { bodyFixture } from './fixture'
 import { MMDBodyPose } from './pose'
 
 /** The fixture's feet planted by the foot stage alone, so both carry weight and the next measure compares two frames. */
-function plantedFeet() {
-  const fixture = bodyFixture()
+function plantedFeet(toes = true) {
+  const fixture = bodyFixture(0, Math.PI, { toes })
   const feet = new MMDFootContact(new MMDBodyPose(fixture.mmd, fixture.rig))
   fixture.pipeline.poseStages.length = 0
   fixture.pipeline.surfaceStages.length = 0
@@ -27,42 +27,70 @@ function plantedFeet() {
   for (let frame = 0; frame < 60; frame++)
     fixture.pipeline.step(1 / 60)
   feet.measure()
-  return { feet, ankle: fixture.bone('左足首') }
+  const ankle = fixture.bone('左足首')
+  // The rig's points: the ball is the つま先 bone, the heel lies under the ankle at the toe bone's height.
+  const heel = () => new Vector3(0, -1, 0).applyMatrix4(ankle.matrixWorld)
+  const ball = () => new Vector3(0, -1, 1.5).applyMatrix4(ankle.matrixWorld)
+  return { feet, ankle, heel, ball }
 }
 
-/** Turns the ankle bone by `angle` about the world X axis through `pivot` (world), as a rolling foot does. */
-function rollAbout(ankle: Bone, pivot: Vector3, angle: number) {
-  const turn = new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), angle)
+/** Turns the ankle bone by `angle` about a world axis through `pivot` (world), as a rolling or spinning foot does. */
+function turnAbout(ankle: Bone, pivot: Vector3, angle: number, axis = new Vector3(1, 0, 0), slide = new Vector3()) {
+  const turn = new Quaternion().setFromAxisAngle(axis, angle)
   const parent = ankle.parent!
-  const world = ankle.getWorldPosition(new Vector3()).sub(pivot).applyQuaternion(turn).add(pivot)
+  const world = ankle.getWorldPosition(new Vector3()).sub(pivot).applyQuaternion(turn).add(pivot).add(slide)
   const rotation = turn.multiply(ankle.getWorldQuaternion(new Quaternion()))
   ankle.position.copy(parent.worldToLocal(world))
   ankle.quaternion.copy(parent.getWorldQuaternion(new Quaternion()).invert().multiply(rotation))
-  ankle.updateWorldMatrix(true, false)
+  ankle.updateWorldMatrix(true, true)
 }
 
-const heel = { kind: 'heel', point: { x: 0, y: -1, z: -1 } } as const
-
-it('measures a foot rolling about its heel as a moving ankle but a still contact point', () => {
-  const { feet, ankle } = plantedFeet()
-  rollAbout(ankle, new Vector3(0, -1, -1).applyMatrix4(ankle.matrixWorld), 0.3)
-  const measured = feet.measure({ left: heel })
-  expect(measured.skate).toBeGreaterThan(0.1)
-  expect(measured.skateContact).toBeLessThan(1e-6)
+it('reads a heel-to-toe roll about the rig\'s heel, then its ball, as a still contact point under a moving ankle', () => {
+  const { feet, ankle, heel, ball } = plantedFeet()
+  turnAbout(ankle, heel(), 0.3)
+  const strike = feet.measure({ left: 'heel' })
+  expect(strike.skate).toBeGreaterThan(0.1)
+  expect(strike.skateContact).toBeLessThan(1e-6)
+  turnAbout(ankle, ball(), -0.4)
+  const off = feet.measure({ left: 'ball' })
+  expect(off.skate).toBeGreaterThan(0.1)
+  expect(off.skateContact).toBeLessThan(1e-6)
 })
 
-it('measures a foot pitched about its ankle as a still ankle but a sliding heel, and a flat pivot as the ankle', () => {
-  const pitched = plantedFeet()
-  const before = new Vector3(0, -1, -1).applyMatrix4(pitched.ankle.matrixWorld)
-  rollAbout(pitched.ankle, pitched.ankle.getWorldPosition(new Vector3()), 0.3)
-  const after = new Vector3(0, -1, -1).applyMatrix4(pitched.ankle.matrixWorld)
-  const measured = pitched.feet.measure({ left: heel })
-  expect(measured.skate).toBeLessThan(1e-6)
-  expect(measured.skateContact).toBeCloseTo(Math.hypot(after.x - before.x, after.z - before.z), 9)
-  expect(measured.skateContact).toBeGreaterThan(0.1)
+it('reads the slide of a contact point that slides while the foot rolls about it', () => {
+  const { feet, ankle, heel } = plantedFeet()
+  turnAbout(ankle, heel(), 0.3, undefined, new Vector3(0.08, 0, 0))
+  expect(feet.measure({ left: 'heel' }).skateContact).toBeCloseTo(0.08, 9)
+})
 
-  const flat = plantedFeet()
-  rollAbout(flat.ankle, new Vector3(0, -1, -1).applyMatrix4(flat.ankle.matrixWorld), 0.3)
-  const ankle = flat.feet.measure({ left: { kind: 'flat' } })
-  expect(ankle.skateContact).toBe(ankle.skate)
+it('reads a flat foot\'s contact point as its ankle, bit for bit', () => {
+  const { feet, ankle } = plantedFeet()
+  turnAbout(ankle, ankle.getWorldPosition(new Vector3()).add(new Vector3(0, 0, -1)), 0.3)
+  const flat = feet.measure({ left: 'flat' })
+  expect(flat.skate).toBeGreaterThan(0.01)
+  expect(flat.skateContact).toBe(flat.skate)
+})
+
+it('reads a turn about a point that is not one of the rig\'s contact points under every kind', () => {
+  for (const kind of ['heel', 'ball'] as const) {
+    const { feet, ankle } = plantedFeet()
+    turnAbout(ankle, new Vector3(0, -1, 0.75).applyMatrix4(ankle.matrixWorld), 0.3)
+    expect(feet.measure({ left: kind }).skateContact).toBeGreaterThan(0.01)
+  }
+})
+
+it('reads a spin about the ball as still under the ball kind while the heel sweeps (stated limit)', () => {
+  const { feet, ankle, heel, ball } = plantedFeet()
+  const before = heel()
+  turnAbout(ankle, ball(), 0.03, new Vector3(0, 1, 0))
+  const after = heel()
+  expect(feet.measure({ left: 'ball' }).skateContact).toBeLessThan(1e-6)
+  expect(Math.hypot(after.x - before.x, after.z - before.z)).toBeGreaterThan(0.04)
+})
+
+it('reads the ankle for every kind on a foot without a toe bone', () => {
+  const { feet, ankle, heel } = plantedFeet(false)
+  turnAbout(ankle, heel(), 0.3)
+  const measured = feet.measure({ left: 'heel' })
+  expect(measured.skateContact).toBe(measured.skate)
 })

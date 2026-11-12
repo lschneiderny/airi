@@ -419,7 +419,7 @@ function scenarioExpression(scenario: StageScenario, clip: string, seconds: numb
     const now = performance.now()
     if (recording && snapshot.locomotion && snapshot.director) {
       const performing = snapshot.action?.performing ?? null
-      rows.push([now, snapshot.locomotion.mode, snapshot.locomotion.enabled, snapshot.locomotion.skate, snapshot.feet?.maxError ?? 0, performing?.name ?? null, performing?.layer ?? null, performing?.phase ?? null, snapshot.director.pendingGoal != null, snapshot.director.goalX ?? null])
+      rows.push([now, snapshot.locomotion.mode, snapshot.locomotion.enabled, snapshot.locomotion.skate, snapshot.feet?.maxError ?? 0, performing?.name ?? null, performing?.layer ?? null, performing?.phase ?? null, snapshot.director.pendingGoal != null, snapshot.director.goalX ?? null, snapshot.locomotion.skateContact])
     }
     onSnapshot?.(snapshot, now)
   })

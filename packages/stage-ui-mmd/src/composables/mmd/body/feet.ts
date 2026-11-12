@@ -1,7 +1,7 @@
 import type { Foot, FootAnchor, LegGeometry } from '@proj-airi/motion-driver-humanoid/foot-contact'
 import type { LocomotionFoot } from '@proj-airi/motion-driver-humanoid/locomotion'
 import type { TurnStep } from '@proj-airi/motion-driver-humanoid/look-at'
-import type { AnimationClip, Matrix4 } from 'three'
+import type { AnimationClip, Bone, Matrix4 } from 'three'
 
 import type { MMDFrameContext } from '../frame-pipeline'
 import type { MMDBodyPose } from './pose'
@@ -14,10 +14,28 @@ import { toRigTraits } from '../rig'
 const sides = ['left', 'right'] as const
 
 /**
- * The ground contact of a carried foot (owner decision O6): the solved ankle while the foot is flat, or a heel or ball
- * point given in the ankle bone's local frame, model units, while the foot pivots about it.
+ * Which ground contact a carried foot pivots about (owner decision O6): the solved ankle while flat, or the rig's heel or
+ * ball point. Only the kind is the performer's report; the points come from the rig (`MMDFootContact`).
  */
-export type MMDFootPivot = { readonly kind: 'flat' } | { readonly kind: 'heel' | 'ball', readonly point: Readonly<{ x: number, y: number, z: number }> }
+export type MMDFootPivot = 'flat' | 'heel' | 'ball'
+
+/**
+ * The rig's heel and ball points in the ankle bone's local frame, read from the bind skeleton: the ball is the toe bone
+ * (つま先, the rig traits' `feet[side].toe`), the heel lies under the ankle at the toe bone's height (PMX has no heel
+ * point; the rig traits' `heelBack` is 0). Null without a toe bone.
+ */
+function contactPoints(pose: MMDBodyPose, ankle: Bone, side: Foot): Record<'heel' | 'ball', Vector3> | null {
+  const toe = pose.bone(pose.rig.bones[`${side}Toes`])
+  if (!toe)
+    return null
+  ankle.updateWorldMatrix(true, false)
+  toe.updateWorldMatrix(false, false)
+  const local = ankle.matrixWorld.clone().invert()
+  const ball = toe.getWorldPosition(new Vector3())
+  const heel = ankle.getWorldPosition(new Vector3())
+  heel.y = ball.y
+  return { heel: heel.applyMatrix4(local), ball: ball.applyMatrix4(local) }
+}
 
 /** The model root on the ground line: world x, and yaw about +Y. The root never leaves z = 0. */
 export interface MMDRootPose {
@@ -73,7 +91,7 @@ export class MMDFootContact {
       const lower = new Vector3().copy(geometry.ankle).sub(geometry.knee)
       const axis = new Vector3(1, 0, 0).applyQuaternion(knee.getWorldQuaternion(new Quaternion())).applyQuaternion(pose.mmd.mesh.getWorldQuaternion(new Quaternion()).invert())
       const restBend = Math.atan2(upper.clone().cross(lower).dot(axis), upper.dot(lower))
-      return [{ side, chain, hip, knee, ankle, ik, geometry, upperLength: upper.length(), lowerLength: lower.length(), restBend, bindKnee: knee.quaternion.clone() }]
+      return [{ side, chain, hip, knee, ankle, ik, geometry, upperLength: upper.length(), lowerLength: lower.length(), restBend, bindKnee: knee.quaternion.clone(), contacts: contactPoints(pose, ankle, side) }]
     })
     const left = this.legs.find(leg => leg.side === 'left')?.geometry ?? this.legs[0]?.geometry
     const right = this.legs.find(leg => leg.side === 'right')?.geometry ?? left
@@ -265,9 +283,9 @@ export class MMDFootContact {
   /**
    * Read after the real IK, grants, and physics, never the commanded IK target. `skate` is the largest horizontal
    * world movement of a solved ankle that carried weight in both this frame and the previous one; it should be 0.
-   * `skateContact` is the same for each foot's contact point under this frame's `pivot` (flat when omitted), placed with
-   * this frame's and the previous frame's ankle matrix; a flat foot's contact point is its ankle, so it reads `skate`'s
-   * own distance.
+   * `skateContact` is the same for each foot's contact point under this frame's `pivot` kind (flat when omitted): the
+   * rig's heel or ball point, placed with this frame's and the previous frame's ankle matrix. A flat foot's contact point
+   * is its ankle, so it reads `skate`'s own distance; so does a foot whose rig has no toe bone, whatever the kind.
    */
   measure(pivot: Partial<Record<Foot, MMDFootPivot>> = {}) {
     let errorL = 0
@@ -282,13 +300,14 @@ export class MMDFootContact {
         if (before) {
           const step = Math.hypot(world.x - before.position.x, world.z - before.position.z)
           skate = Math.max(skate, step)
-          const foot = pivot[leg.side]
-          if (!foot || foot.kind === 'flat') {
+          const kind = pivot[leg.side] ?? 'flat'
+          const point = kind === 'flat' ? null : leg.contacts?.[kind]
+          if (!point) {
             skateContact = Math.max(skateContact, step)
           }
           else {
-            const now = new Vector3().copy(foot.point).applyMatrix4(leg.ankle.matrixWorld)
-            const then = new Vector3().copy(foot.point).applyMatrix4(before.matrix)
+            const now = point.clone().applyMatrix4(leg.ankle.matrixWorld)
+            const then = point.clone().applyMatrix4(before.matrix)
             skateContact = Math.max(skateContact, Math.hypot(now.x - then.x, now.z - then.z))
           }
         }
