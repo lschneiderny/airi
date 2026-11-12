@@ -11,6 +11,7 @@ import { acquire } from '@proj-airi/cpu-slots'
 
 import { compileCacheEnv } from './lib/compile-cache'
 import { capture, chunkByLength, nodeCommandChunkLimits, run, shimCommandChunkLimits } from './lib/exec'
+import { gatedNotice, listGatedTestFiles } from './lib/gated-tests'
 import { changedFiles, git, gitCommonDir, repoRoot, workingTreeHash } from './lib/git'
 import { readLastPass, readPass, verifyCacheKey, writeLastPass, writePass } from './verify-cache'
 import { appendVerifyRun, formatVerifyStats, readVerifyStats } from './verify-history'
@@ -153,6 +154,7 @@ async function main(): Promise<number> {
       })
     }
   }
+  let gatedTestNotice: string | null = null
   for (const step of args.steps) {
     const entry = record?.steps[step]
     let treeExists = false
@@ -182,12 +184,15 @@ async function main(): Promise<number> {
         console.info(`  ${file.deleted ? 'D' : 'M'} ${file.path}`)
     }
     const plan = planVerify(changed, workspaces.paths, workspaces.rootDependencyPaths)
-    const browserProjects = step === 'test' ? selectBrowserTestProjects(withDependents(root, plan.testPackagePaths)) : []
+    const affected = step === 'test' ? withDependents(root, plan.testPackagePaths) : []
+    const browserProjects = step === 'test' ? selectBrowserTestProjects(affected) : []
     const commands = commandsFor(step, root, plan, browserProjects)
     if (typeof commands === 'string') {
       finish({ step, status: 'skipped', detail: commands, durationMs: 0 }, history)
       continue
     }
+    if (step === 'test')
+      gatedTestNotice = gatedNotice(listGatedTestFiles(root), affected, changed.map(file => file.path), process.env)
     const command = stripWorkerFlags(commands.flatMap(item => item.args))
     const key = verifyCacheKey({ tree, step, command, node: process.version, platform: process.platform })
     const cached = args.force ? null : readPass(cacheDir, key)
@@ -252,6 +257,8 @@ async function main(): Promise<number> {
   console.info('\nverify summary')
   for (const result of results)
     console.info(`  ${result.step.padEnd(9)} ${result.status.padEnd(7)} ${result.durationMs ? `${(result.durationMs / 1000).toFixed(1)}s ` : ''}${result.detail}`)
+  if (gatedTestNotice)
+    console.info(gatedTestNotice)
   return results.some(result => result.status === 'failed') ? 1 : 0
 }
 

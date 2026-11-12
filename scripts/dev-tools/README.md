@@ -10,6 +10,7 @@ Root commands for working on this repository with many worktrees and parallel ag
 | `pnpm qa:display up \| down \| status \| env \| run \| shot` | Runs a headless, GPU-accelerated KWin session on Linux, so agents can run the Electron app and live QA without touching the user's desktop. |
 | `pnpm qa:kwin-probe [--seconds N] [--cursor] [--bus <address>]` | Loads the AIRI KWin bridge into a QA session's KWin, prints its messages as JSON lines, then unloads it and confirms KWin no longer has the scripts. |
 | `pnpm release <year>.<month>.<n> [--dry-run]` | Builds this machine's desktop installers for a fork release and uploads them to a draft GitHub release. See [`pnpm release`](#pnpm-release). |
+| `pnpm qa:test:model` | Runs every test file gated on an `AIRI_QA_*` variable, such as the MMD runner tests, with `.env.qa` loaded. `pnpm verify` skips these files and names this command. |
 | `pnpm check:bundle` | Builds the Electron app and fails if the main window loads three, three-mmd, three-vrm, or Tres at startup. |
 | `pnpm test:run` | Runs the root Vitest config and then each package suite (`test-stage-tamagotchi:run`, `test-stage-web:run`, `test-stage-pages:run`, `test-ui:run`, `test-stage-ui-live2d:run`, `test-model-driver-lipsync:run`, `test-stage-ui-three:run`, `test-stage-ui-mmd:run`). Every suite runs even after a failure. It prints a per-suite summary and exits 1 if any suite failed. |
 
@@ -25,6 +26,12 @@ Root commands for working on this repository with many worktrees and parallel ag
 
 - Use root `pnpm typecheck`, `pnpm lint`, or `pnpm test:run` for a release or a whole-repository sweep. `pnpm verify` only covers what changed since the base.
 - `pnpm verify` does not run QA gates or Electron builds.
+
+## Environment-gated tests
+
+Some tests run only when a variable is set, for example `it.runIf(process.env.AIRI_QA_MMD_MODEL)(...)` for tests that load a local MMD model. `pnpm verify` does not load `.env.qa`, so it skips them. When its test step skipped such files in a package the change affects (a changed package or one that depends on it), or a gated file that changed itself, it prints one `verify notice:` line after the summary. The notice names the files and the unset variables. It is not a failure.
+
+`pnpm qa:test:model` finds the gated files with `git grep` for `.runIf(process.env.X` and `.skipIf(!process.env.X` (also through `Boolean(...)`), so a new gated test needs no registration. It keeps the files whose gates are all `AIRI_QA_*` variables, the only keys `.env.qa` can set. It loads `.env.qa` without overriding shell values, then runs the files through the root Vitest config, which takes CPU slots like any test run. It exits 2 without running anything when a variable is unset or names an absolute path that does not exist. `pnpm wt new <name> --qa` writes `.env.qa` for a new worktree. Tests gated on other variables, such as the macOS foreground-window tests, still need their variables set by hand.
 
 ## Node compile cache
 

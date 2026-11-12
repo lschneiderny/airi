@@ -44,6 +44,7 @@
     "qa:smoke": "node --import tsx packages/qa-tools/bin/smoke.ts",
     "qa:stage": "pnpm -F @proj-airi/qa-tools run stage",
     "qa:test": "pnpm -F @proj-airi/qa-tools run test:qa",
+    "qa:test:model": "tsx scripts/dev-tools/qa-test-model.ts",
     "test": "vitest --coverage",
     "test:run": "tsx scripts/dev-tools/test-run.ts",
     "test-stage-pages:run": "pnpm -F @proj-airi/stage-pages test:run",
