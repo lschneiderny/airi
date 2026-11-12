@@ -219,7 +219,7 @@ the gate's own verdict is never changed by them.
 
 | Command | Judges |
 | --- | --- |
-| `pnpm qa:motion3d gesture-timing <speak run> --idle <idle run>...` | C001 (version 5): the companion idle runs must be the `idle` scenario's seeds 1, 2 and 3, one each, of 120 s scored, at the judged run's model and commit; any other set, or fewer than 20 pooled idle apexes, is refused (exit 2). A candidate apex counts as a stroke only if its peak hand speed exceeds the 95th percentile of the candidate apexes pooled over those companions. The judged run's own silent-span apexes are printed, report only. Labelled peaks hit by a counted stroke apex within 200 ms (at least 70 % of at least 10 peaks); every utterance holds a stroke apex; on at least 70 % of hit peaks the upper torso turns against the hips over [stroke apex - 250 ms, stroke apex] by more than the 95th percentile of the same turn over every 0.25 s window of the companion idle runs (at least 20 windows), where the stroke apex is the apex within 200 ms of the peak that confirms a `gesture-stroke` marker, and a hit peak without one counts as a miss (version 4: the speak run's own silent stretches set version 3's bar, and its nearest apex could be a recovery); and at most 10 % of the speak run's own 0.25 s windows with no labelled peak within 1 s turn above that bar (revision 2: without it, trunk sway livelier than idle passed as participation); `gesture-stroke` markers confirmed by an apex within 50 ms (90 %); at least four forms whose median apex pronation, wrist flexion, index curl or stroke direction differ by 10 degrees; one-hand share and two-hand apex lag; every gated `bilateral.*.peakCorr` PASS; upper arm before lower arm before hand in unit preparations (90 %); zero penetration, pops and corrector fallbacks; a talk-class `gate.json` with no gated FAIL, whatever gate version it names (report-only values are printed); and arm smoothness (version 5): every arm whose `smooth.armL/R.ldlj` has a value lies inside the printed talk band, and at least one arm has a value. An arm with too few episodes to score is skipped only when it is not frozen: its windowed range, the median over 5 s windows of the p95 angle of the lower arm against the chest, must be at least 0.3214 deg, the gate version 4 check. Below that it fails. A run in which neither arm is scored fails. A skipped arm proves nothing about its smoothness; the threshold comes from labelled cases (lane U revision 2), not from a human reference. |
+| `pnpm qa:motion3d gesture-timing <speak run> --idle <idle run>...` | C001 (version 5): the companion idle runs must be the `idle` scenario's seeds 1, 2 and 3, one each, of 120 s scored, at the judged run's model and commit; any other set, or fewer than 20 pooled idle apexes, is refused (exit 2). A candidate apex counts as a stroke only if its peak hand speed exceeds the 95th percentile of the candidate apexes pooled over those companions. The judged run's own silent-span apexes are printed, report only. Labelled peaks hit by a counted stroke apex within 200 ms (at least 70 % of at least 10 peaks); every utterance holds a stroke apex; on at least 70 % of hit peaks the upper torso turns against the hips over [stroke apex - 250 ms, stroke apex] by more than the 95th percentile of the same turn over every 0.25 s window of the companion idle runs (at least 20 windows), where the stroke apex is the apex within 200 ms of the peak that confirms a `gesture-stroke` marker, and a hit peak without one counts as a miss (version 4: the speak run's own silent stretches set version 3's bar, and its nearest apex could be a recovery); and at most 10 % of the speak run's own 0.25 s windows with no labelled peak within 1 s turn above that bar (revision 2: without it, trunk sway livelier than idle passed as participation); `gesture-stroke` markers confirmed by an apex within 50 ms (90 %); at least four forms whose median apex pronation, wrist flexion, index curl or stroke direction differ by 10 degrees; one-hand share and two-hand apex lag; every gated `bilateral.*.peakCorr` PASS; upper arm before lower arm before hand in unit preparations (90 %); zero penetration, pops and corrector fallbacks; a talk-class `gate.json` with no gated FAIL, whatever gate version it names (report-only values are printed); and arm smoothness (version 5): every arm whose `smooth.armL/R.ldlj` has a value lies inside the printed talk band, and at least one arm has a value. An arm with too few episodes to score is skipped only when it is not frozen: its windowed displacement, the median over 5 s windows of the p95 distance its wrist moves in the shoulder frame, must be at least 1.789 DIP at the default 560 DIP character height, the gate version 4 check. Below that it fails. A run in which neither arm is scored fails. A skipped arm proves nothing about its smoothness; the threshold comes from labelled cases (lane U revision 3) at a 1 DIP visibility edge, not from a human reference. |
 | `pnpm qa:motion3d emotion-table <emotions run>...` | C002 (version 3): on the gate's trial vectors and sigma, each non-neutral emotion at least 2 SD from neutral and from the placebo (the 22 pairs of `emotion.minSeparationFromNeutral`, whose value it prints); the full 13 by 13 table is report only. Every `gate.json` must come from `qa:motion3d gate <runs> --require emotion.minSeparationFromNeutral,emotion.armShare` and have passed it; `onset.attackFraction` and `onset.easedOrAnticipated` must PASS in every `gate.json`, each from at least the gate's 8 episodes per run (the counts are printed); the release window +8 to +11 s stays inside the placebo trials' p95, and the vacuity guards hold. It also prints, report only, the first scale of the architecture 4c posture table (0.25 to 8 in steps of 0.25) at which each emotion clears 2 SD from neutral and placebo on a designed overlay of the same runs (`src/t2-3d/reports/posture-scale.ts`). |
 | `pnpm qa:motion3d cue-body <emotions run>...` | C002 (version 4): per cue kind, the kind's events (at least 6) are aligned at the cue marker and their below-neck bone turns averaged frame by frame; the largest averaged turn over the cue and 0.5 s after it, in units of that bone's SD over same-length placebo windows of the same runs (1 s clear of every cue window and of each emotion event's first 2 s), must exceed the 99th percentile of the same statistic on 1000 seeded averages of as many placebo windows. Every average with one event left out must also exceed the 99th percentile of the null for one window fewer, so no single event carries a kind. The version 2 per-event counts (5 of 6) are printed, report only. `--calibrate <run>...` prints the split-half control: pseudo-events of 6 placebo windows from one half judged by the full rule against the nulls of the other, nominal 1 %, exit 1 above 5 %. |
 | `pnpm qa:motion3d ownership <gesture-under-clip run>... --idle <idle run>...` | C004, version 2 (revision C2.1): the gated `gesture-under-clip` version 3 runs of seeds 1 to 6, of one commit and one model, one run per seed, with six short companion `idle` runs (seeds 1 to 6, at most 60 s scored) of the same model and commit. They feed `gesture-timing`'s idle speed bar and the rest report. Fewer runs, another scenario version, commit or model, a repeated seed, a refused idle bar (including no `--idle`), or an idle run of 70 s or more (warm-up included; the performer redraws its rest at 70 s, so its recorded rest would not hold) is REFUSED with exit 2, after every run is printed. An apex counts as a stroke only above that bar. Per run, each requirement is PASS, FAIL, NOT-EXERCISED or REFUSED: the right arm and fingers written within 0.001 rad of the clip on fully owned frames, with a trace cross-check against the clip's analytic pose; no gesture activation on an owned arm, exercised when the right arm gestures at the claim; the left arm still stroking on owned peaks; no arm or trunk pop in [poke - 0.2, poke + 1] s and a stroke on the first peak 1 s after the poke, both exercised when a gesture unit runs on a free arm at the poke; no right gesture activation after the silent first release until the next unit, and after the second release (inside utterance C) none until ownership reaches 0, exercised when a unit runs at that release; after each release, `owned.rightArm` reaching 0 within 1 s (the upper layer's 0.3 s exit fade), so a clip that never lets go fails; plus penetration, pops and corrector at 0. Reported, not judged: every right-hand apex in [release, release + 1] s after each release (a stroke only in the bones, with activation 0, is not caught), and at release + 0.5 s the performer's arm channels, each arm's offset from its own rest compared across the arms beside the idle runs' 95th percentile. These are the performer's channels before the clip blend, not the posed arm: a pose held by the clip or the adapter in the bones does not appear in them, so a released arm held in the clip's pose is not caught. The yield is judged on the gesture layer's weight; motion of the claimed arm in the bones during the claim fade is not judged by this report. Pooled, a requirement that needs a case passes when no run fails it and at least 2 runs exercise it. |
@@ -452,11 +452,17 @@ carries that rule and nothing else. `bands-v4.json` differs from
 same. A `smooth.<region>.ldlj` metric of a character trace with fewer than 8
 episodes, none included, is judged as follows:
 
-- **Not frozen.** The region's windowed range is the median, over the class
-  windows (talk 5 s, otherwise 10 s, half hop), of the p95 angle of the head
-  or lower arm against the chest from that window's mean pose. When it is at
-  least 0.3214 deg, the metric is SKIPPED with `insufficient-episodes; not
-  frozen: windowed range <deg> deg against 0.3214`.
+- **Not frozen.** The region's windowed displacement is the median, over the
+  class windows (talk 5 s, otherwise 10 s, half hop), of the p95 distance in
+  DIP that its visible end moves from that window's mean position. The head's
+  end is the eyes' mid-point in the chest frame; the arm's is the wrist in the
+  shoulder frame. DIP are at the default 560 DIP character height
+  (`settings/mmd/stage-character-height`), where the stage camera draws d model
+  units as d x 560 / model height DIP. The model height is the rest height of
+  the rig's highest traced bone, the eyes on both rigs. When the reading is at
+  least 0.8375 DIP for the head or 1.789 DIP for an arm, the metric is SKIPPED
+  with `insufficient-episodes; not frozen: windowed displacement <dip> DIP
+  against <threshold>`.
 - **Frozen.** Below that, it is `undefined: no-motion; frozen: ...`, which a
   gated band (the head in idle and talk) judges FAIL.
 - **Reference clips are unchanged.** The bands cannot move.
@@ -465,27 +471,45 @@ Version 3 failed a head with no move segment and skipped one with 1 to 7.
 So a calm head that never crossed the talk threshold failed, and a head held
 still except for one turn passed. Both are now judged by the check.
 
-The threshold and the statistic come from 90 labelled cases built in the
-posed bones of real speak runs on two rigs (lane U, revision 2): frozen
-heads and arms, drift, an invisible tremor, one turn, a scaled alive head,
-and an idle arm. 0.3214 deg is the geometric mean of the worst frozen reading
-(0.068 deg, a drift) and the worst alive reading (1.516 deg, an idle arm), a
-margin of 22.2x. A whole-run range cannot tell one turn from an idle arm, and
-a speed-based check passes a 0.1 deg tremor.
+The rule comes from 156 labelled cases built in the posed bones of real speak
+runs on two rigs (lane U, revision 3).
+- **Must count as frozen:** frozen heads and arms; drift; one turn; a rigid
+  arm carried by its shoulder; and, at the edge, tremors at 0.5, 2, 8 and
+  12 Hz and drifts whose visible end moves under 1 DIP (one pixel at device
+  ratio 1) peak to peak, or within a 5 s window.
+- **Must count as alive:** a calm scaled head, and a real idle arm.
+
+Each threshold is the geometric mean of its region's worst frozen and worst
+alive reading: head 0.381 and 1.842 DIP, arm 0.550 and 5.823 DIP.
 
 Limits of version 4:
 
-- The threshold sits between those frozen and alive cases. No human
-  reference sets it.
-- Sensitivity: it still fails a frozen head with an 8 Hz tremor of up to
-  0.2 deg, a drift of up to 6 deg over 60 s, or a single turn. It passes a
-  0.5 deg tremor and a 12 deg drift.
+- The visibility edge is an assumption: 1 DIP at the default character
+  height, for a viewer of the default stage. A larger character, or a device
+  ratio of 2, shows smaller motion. Below 1 DIP, a motion can still show as
+  antialiasing shimmer.
+- The thresholds sit between those frozen and alive cases. No human
+  reference sets them.
+- Sensitivity, on both rigs:
+  - The head check still fails a frozen head with an 8 Hz tremor of up to 4 deg
+    (0.79 DIP at the face), a drift of up to 90 deg per minute, or a single
+    turn; it passes a 5 deg tremor and a 120 deg per minute drift.
+  - The arm check fails a frozen arm with a tremor of up to 0.7 deg (1.63 DIP at
+    the hand), a drift of up to 10 deg per minute, or a rigid arm moved only
+    by its shoulder; it passes a 0.9 deg tremor and a 20 deg per minute drift.
 - False failures: it judged 0 of 627 regions frozen on 209 stored correct
-  runs (278 of them unscorable). The closest correct region read 1.52 deg.
+  runs (278 of them unscorable). The closest correct region read 1.323 DIP
+  against 0.8375 (the head of an emotions run, 1.58x).
+- A region alive in at least half of the windows passes. A region that
+  freezes for the rest of the run is not caught by any line.
+- A rig without eye bones has no visible head end. Its unscorable head
+  fails.
 - A skipped line proves nothing about smoothness: only that the region moves
-  and makes too few episodes to score.
+  visibly and makes too few episodes to score.
 - A passing smoothness line does not prove human texture. The talk band
-  passes minimum-jerk turns with an 8 Hz jitter and fails them clean.
+  passes minimum-jerk turns with an 8 Hz jitter and fails them clean, and its
+  lower edge passes an arm made of six one-frame 20 deg jumps per gesture
+  (`pops` fails that arm).
 
 The counts below describe frozen version 3 and hold for version 4.
 `fixtures/motion3d/bands-v3.json`

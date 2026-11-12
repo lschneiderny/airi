@@ -11,7 +11,7 @@ import { loadBands } from '../gate/load'
 import { multiply } from '../metrics/math'
 import { formsDiffer, gestureTimingReport, largestDistinctSet } from './gesture-timing'
 import { ReportUsageError } from './report'
-import { armWorld, gateStub, loadedRun, moves, rotY, summaryStub, trace } from './test-runs'
+import { armWorld, gateStub, loadedRun, moves, rotX, rotY, summaryStub, trace } from './test-runs'
 
 const repoRoot = fileURLToPath(new URL('../../../../..', import.meta.url))
 let bands: Awaited<ReturnType<typeof loadBands>>
@@ -42,7 +42,7 @@ function trunkSway(degrees: number, count: number, spacing = 2) {
  * `earlyMove` adds an arm movement without a trunk turn whose apex lands 50 ms before each peak, nearer the peak than
  * the stroke's own apex.
  */
-function speaker(options: { apexOffset?: number, order?: 'proximal' | 'distal', markerOffset?: number, still?: boolean, torso?: boolean, silent?: number, idleSway?: number, strokeSeconds?: number, strokeSize?: number, silentTrunk?: number, silentSpacing?: number, earlyMove?: boolean, rightSway?: boolean, armLdlj?: readonly [number | null, number | null] } = {}) {
+function speaker(options: { apexOffset?: number, order?: 'proximal' | 'distal', markerOffset?: number, still?: boolean, torso?: boolean, silent?: number, idleSway?: number, strokeSeconds?: number, strokeSize?: number, silentTrunk?: number, silentSpacing?: number, earlyMove?: boolean, rightSway?: boolean, rightTremor?: number, rightShoulderOnly?: boolean, armLdlj?: readonly [number | null, number | null] } = {}) {
   const events: MotionTraceEvent[] = []
   const upper: { start: number, duration: number, by: number }[] = []
   const elbow: { start: number, duration: number, by: number }[] = []
@@ -89,7 +89,7 @@ function speaker(options: { apexOffset?: number, order?: 'proximal' | 'distal', 
     seconds: IDLE + 29,
     scenario: 'talk',
     events,
-    world: options.still ? undefined : withTrunk(armWorld({ upper: moves(upper), elbow: moves(elbow), twist: moves(twist) }, options.rightSway ? { upper: t => 0.05 * Math.sin(2 * Math.PI * 0.25 * t) } : {}, (bone, t) => bone === 'upperChest' && options.torso !== false ? rotY(moves(torso)(t)) : null), trunkSway(options.silentTrunk ?? 0, Math.floor(40 / (options.silentSpacing ?? 2)), options.silentSpacing)),
+    world: options.still ? undefined : withTrunk(armWorld({ upper: moves(upper), elbow: moves(elbow), twist: moves(twist) }, options.rightSway ? { upper: t => 0.05 * Math.sin(2 * Math.PI * 0.25 * t) } : options.rightTremor ? { upper: t => (options.rightTremor ?? 0) * Math.sin(2 * Math.PI * 8 * t) } : {}, (bone, t) => options.rightShoulderOnly && /^right(?:Shoulder|UpperArm|LowerArm|Hand)$/.test(bone) ? rotX(0.05 * Math.sin(2 * Math.PI * 0.25 * t)) : bone === 'upperChest' && options.torso !== false ? rotY(moves(torso)(t)) : null), trunkSway(options.silentTrunk ?? 0, Math.floor(40 / (options.silentSpacing ?? 2)), options.silentSpacing)),
   })
   const passing = Object.fromEntries(TALK_GATED.map(id => [id, { status: 'PASS' as const }]))
   const armLdlj = options.armLdlj ?? [-8, -8]
@@ -257,6 +257,18 @@ describe('gesture-timing report (C001, plan 2.2)', () => {
 
   it('fails a run in which neither arm is scored, even when both move (version 5)', () => {
     expect(armLine({ rightSway: true, armLdlj: [null, null] })).toBe(false)
+  })
+
+  it('does not let a skipped arm rescue a scored arm outside the band (version 5)', () => {
+    expect(armLine({ rightSway: true, armLdlj: [-3, null] })).toBe(false)
+  })
+
+  it('fails an unscorable arm rigid below a moving shoulder (lane U revision 3)', () => {
+    expect(armLine({ rightShoulderOnly: true, armLdlj: [-8, null] })).toBe(false)
+  })
+
+  it('fails an unscorable arm whose 8 Hz tremor of 0.5 degrees moves the hand less than 1.789 DIP (lane U revision 3)', () => {
+    expect(armLine({ rightTremor: 0.5 * Math.PI / 180, armLdlj: [-8, null] })).toBe(false)
   })
 
   it.each([[-8, true], [-3, false], [-14, false]] as const)('judges a scored arm reading %s by the band\'s two edges: %s', (value, pass) => {

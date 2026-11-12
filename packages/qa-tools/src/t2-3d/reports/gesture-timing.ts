@@ -8,7 +8,7 @@ import type { CriterionReport, LoadedRun, ReportConstant } from './report'
 import { percentile } from '../gate/bands'
 import { describeOutside } from '../gate/meaning'
 import { conjugate, DEG, HZ, median, multiply, norm, sub } from '../metrics/math'
-import { NOT_FROZEN_DEG, windowedRangeDeg } from '../metrics/not-frozen'
+import { NOT_FROZEN_DIP, notFrozen, STAGE_CHARACTER_HEIGHT_DIP } from '../metrics/not-frozen'
 import { handPath, kinematicStrokes, SIDES, STROKE_CONSTANTS, traceParent } from './kinematics'
 import { popCount, upperBodyPopBones } from './pops'
 import { criterionReport, fixed, formatReport, gateStatus, labelledPeaks, markers, printedBand, ReportUsageError, requireGate, requirement, requireSummary } from './report'
@@ -64,7 +64,7 @@ export const GESTURE_TIMING_CONSTANTS: readonly ReportConstant[] = [
   { name: 'idle speed bar', value: C.idlePercentile, unit: 'percentile of the candidate-apex peak hand speeds pooled over companion idle runs of the same model and commit', source: 'unit M3 item 1, lead ruling: detectability above the rig\'s idle noise' },
   { name: 'silent span', value: `no utterance within ${C.silentClearance} s`, unit: 's', source: 'unit M3 item 1' },
   { name: 'minimum idle apexes', value: C.minimumIdleApexes, unit: 'pooled apexes, else the run is refused as unjudgeable', source: 'unit M3 item 1' },
-  { name: 'not-frozen range', value: NOT_FROZEN_DEG, unit: 'deg: median over 5 s windows of the p95 angle of the lower arm against the chest; an arm too unscorable for arm-ldlj is frozen below it', source: 'gate version 4 (lane U revision 2, candidate D): geometric mean of the worst frozen (0.068 deg) and worst alive (1.516 deg) labelled readings, margin 22.2x; no human reference sets it' },
+  { name: 'not-frozen displacement', value: NOT_FROZEN_DIP.arm, unit: `DIP at the default ${STAGE_CHARACTER_HEIGHT_DIP} DIP character height: median over 5 s windows of the p95 displacement of the wrist in the shoulder frame; an arm too unscorable for arm-ldlj is frozen below it`, source: 'gate version 4 (lane U revision 3, candidate K5-r): geometric mean of the worst frozen (0.550 DIP, an 8 Hz tremor at the 1 DIP visibility edge) and worst alive (5.823 DIP, a real idle arm) labelled readings; it fails a frozen arm whose hand moves under about 1.8 DIP and a rigid arm carried by its shoulder; no human reference sets it' },
   { name: 'D_min', value: STROKE_CONSTANTS.minTravel.value, unit: STROKE_CONSTANTS.minTravel.unit, source: STROKE_CONSTANTS.minTravel.source },
   { name: 'apex window', value: STROKE_CONSTANTS.apexSeconds.value, unit: STROKE_CONSTANTS.apexSeconds.unit, source: STROKE_CONSTANTS.apexSeconds.source },
   { name: 'apex speed ratio', value: STROKE_CONSTANTS.apexRatio.value, unit: STROKE_CONSTANTS.apexRatio.unit, source: STROKE_CONSTANTS.apexRatio.source },
@@ -382,12 +382,12 @@ export function gestureTimingReport(run: LoadedRun, bands: MotionBandsFile, idle
   const bilateral = gate.metrics.filter(m => m.id.startsWith('bilateral.') && m.band?.status === 'GATED')
   const gated = gate.metrics.filter(m => m.band?.status === 'GATED').map(m => ({ id: m.id, status: m.status, value: m.value }))
   const reportOnly = gate.metrics.filter(m => m.band?.status !== 'GATED').map(m => ({ id: m.id, status: m.status, value: m.value }))
-  // Version 5 (lane U revision 2): an arm too unscorable to have a value is skipped only when it is not frozen.
-  const ldlj = ([['smooth.armL.ldlj', 'leftLowerArm'], ['smooth.armR.ldlj', 'rightLowerArm']] as const).map(([id, bone]) => {
+  // Version 5 (lane U revision 3): an arm too unscorable to have a value is skipped only when it is not frozen.
+  const ldlj = ([['smooth.armL.ldlj', 'armL'], ['smooth.armR.ldlj', 'armR']] as const).map(([id, region]) => {
     const band = printedBand(bands, 'talk', id)
     const { value } = gateStatus(gate, id)
-    const range = value === null ? windowedRangeDeg(p, bone) : null
-    return { id, value, band, range, notFrozen: range !== null && range >= NOT_FROZEN_DEG, inside: value !== null && band.lo !== null && band.hi !== null && value >= band.lo && value <= band.hi }
+    const reading = value === null ? notFrozen(p, region) : null
+    return { id, value, band, dip: reading?.dip ?? null, notFrozen: reading?.alive ?? false, inside: value !== null && band.lo !== null && band.hi !== null && value >= band.lo && value <= band.hi }
   })
   const armsPass = ldlj.some(x => x.value !== null) && ldlj.every(x => x.value !== null ? x.inside : x.notFrozen)
   const requirements = [
@@ -405,7 +405,7 @@ export function gestureTimingReport(run: LoadedRun, bands: MotionBandsFile, idle
     requirement('pops', 'upper-body pop count (plan 2.6, unit M3) = 0', `${pops}`, pops === 0),
     requirement('corrector', 'capHits = guardScans = holds = 0 in summary.json', corrector ? `capHits ${corrector.capHits}, guardScans ${corrector.guardScans}, holds ${summary.collisions.count}` : 'summary has no corrector block', !!corrector && corrector.capHits === 0 && corrector.guardScans === 0 && summary.collisions.count === 0),
     requirement('gate-talk', 'gate.json judges the talk class and no gated metric FAILs, whatever gate version it names', `gate version ${gate.gate.version}, class ${gate.trace.class}; ${gated.map(m => `${m.id} ${m.status} ${fixed(m.value)}`).join(', ') || 'no gated metric'}`, gate.trace.class === 'talk' && gated.length > 0 && gated.every(m => m.status !== 'FAIL')),
-    requirement('arm-ldlj', `every smooth.armL/R.ldlj with a value inside the printed pooled talk band, at least one arm with a value; an arm without one is skipped only when its windowed range is at least ${NOT_FROZEN_DEG} deg (not frozen), else it fails`, ldlj.map(x => x.value !== null ? `${x.id} ${fixed(x.value)} [${fixed(x.band.lo, 2)}, ${fixed(x.band.hi, 2)}]${describeOutside(x.id, x.value, bands.classes.talk?.metrics[x.id])}` : `${x.id} unscorable, ${x.notFrozen ? 'not frozen, skipped' : 'frozen'} (windowed range ${fixed(x.range)} deg)`).join(', '), armsPass),
+    requirement('arm-ldlj', `every smooth.armL/R.ldlj with a value inside the printed pooled talk band, at least one arm with a value; an arm without one is skipped only when its wrist moves at least ${NOT_FROZEN_DIP.arm} DIP in the shoulder frame (not frozen), else it fails`, ldlj.map(x => x.value !== null ? `${x.id} ${fixed(x.value)} [${fixed(x.band.lo, 2)}, ${fixed(x.band.hi, 2)}]${describeOutside(x.id, x.value, bands.classes.talk?.metrics[x.id])}` : `${x.id} unscorable, ${x.notFrozen ? 'not frozen, skipped' : 'frozen'} (windowed displacement ${fixed(x.dip)} DIP)`).join(', '), armsPass),
   ]
   return criterionReport('gesture-timing', GESTURE_TIMING_VERSION, [run.dir], GESTURE_TIMING_CONSTANTS, requirements, {
     idle: { companions, pooled, speedBar, silentSeconds, silentApexes, candidates: candidates.length, counted: apexes.length },

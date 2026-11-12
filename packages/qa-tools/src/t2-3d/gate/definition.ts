@@ -1,4 +1,4 @@
-import { NOT_FROZEN_DEG } from '../metrics/not-frozen'
+import { NOT_FROZEN_DIP, STAGE_CHARACTER_HEIGHT_DIP } from '../metrics/not-frozen'
 import { HOLDOUT_VALIDATION } from './holdouts'
 import { declaredBands, metricPolicies } from './policy'
 
@@ -9,7 +9,7 @@ export const LIMITATION = 'Scores compare motion statistics with bands derived f
  * from locomoting talk performers, and gates emotion separation from neutral instead of all pairs.
  * Version 4 keeps version 3's bands byte for byte (only `gate.version` differs) and judges an unscorable smoothness
  * region of a character trace (fewer than 8 episodes, none included) SKIPPED only when it is not frozen, else FAIL
- * (lane U revision 2).
+ * (lane U revision 3: the visible end's windowed displacement at the default stage scale).
  */
 export const motionQualityGate = {
   id: 'mmd-motion-quality',
@@ -161,7 +161,9 @@ export const motionQualityGate = {
     moveLow: 0.75,
     minimumSegmentSeconds: 0.15,
     minimumSmoothSeconds: 0.2,
-    notFrozenRangeDeg: NOT_FROZEN_DEG,
+    notFrozenHeadDip: NOT_FROZEN_DIP.head,
+    notFrozenArmDip: NOT_FROZEN_DIP.arm,
+    stageCharacterHeightDip: STAGE_CHARACTER_HEIGHT_DIP,
     minimumMovingSeconds: 3,
     spikeMadScale: 1.4826,
     spikeMadEpsilon: 1e-6,
