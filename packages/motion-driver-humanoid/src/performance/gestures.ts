@@ -154,8 +154,6 @@ class ArmTrack {
   watch: { form: SpeechGestureForm, hand: BodyGestureHand, peak: number, speed: number, wrist: readonly [number, number, number] | null, until: number } | null = null
   form: SpeechGestureForm | BodyArmForm | null = null
   prepSeconds = 0.5
-  /** When the current stroke's wrist lands: its profile's end. */
-  landing = 0
   pending: { at: number, form: SpeechGestureForm, size: number } | null = null
   warm = false
 
@@ -543,8 +541,7 @@ class GesturePerformer {
     const sign = lead === 'left' ? 1 : -1
     const forward = GESTURE_FORMS[performed].stroke[2] > 0
     const gain = gestureGain(energy) * amplitude
-    // Plan 3.1: at the stroke the upper torso turns toward the gesturing side; it peaks as the wrist lands.
-    leadTrack.pulses.push({ start: now, hit: leadTrack.landing, yaw: sign * AMPLITUDE.torsoYaw * gain, pitch: forward ? AMPLITUDE.torsoPitch * gain : 0 })
+    leadTrack.pulses.push({ start: now, hit: now + GESTURE_FORMS[performed].strokeSeconds / tempo, yaw: sign * AMPLITUDE.torsoYaw * gain, pitch: forward ? AMPLITUDE.torsoPitch * gain : 0 })
     unit.strokes++
     this.lastStroke = now
     if (major)
@@ -588,7 +585,6 @@ class GesturePerformer {
       // cascade link, so the wrist lands as the profile ends. A stroke the followers cannot take that fast lasts longer
       // (`move`).
       const profile = track.move(track.key, now, seconds, this.tension)
-      track.landing = now + profile
       track.state = 'stroke'
       track.form = candidate
       track.phaseEnd = now + profile

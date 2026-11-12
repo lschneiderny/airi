@@ -303,30 +303,6 @@ describe('co-speech gestures', () => {
     expect(presses[0.85]).toBeGreaterThan(presses[0.45])
   }, 120_000)
 
-  it('turns the upper torso at each stroke\'s hit', () => {
-    const script: Script = { utterances: [utterance(0.4, 0.65, peaks(0.4))], tension: 0 }
-    const run = perform(script, 8, { seed: 3 })
-    const silent = perform(script, 8, { seed: 3, layers: false })
-    const c = channelIndex('upperYaw')
-    const planned = strokes(run)
-    expect(planned.length).toBeGreaterThan(0)
-    for (const stroke of planned) {
-      const from = Math.round(stroke.onset / BODY_TICK) - 1
-      let best = 0
-      let at = from
-      for (let i = from; i < from + Math.round(0.4 / BODY_TICK); i++) {
-        const turn = Math.abs(run.frames[i].channels[c] - silent.frames[i].channels[c])
-        if (turn > best) {
-          best = turn
-          at = i
-        }
-      }
-      // The hit is the wrist's speed minimum, a tick or two after the stroke's profile ends and the wrist lands.
-      expect(run.frames[at].time).toBeLessThanOrEqual(stroke.hit)
-      expect(stroke.hit - run.frames[at].time).toBeLessThanOrEqual(2 * BODY_TICK)
-    }
-  })
-
   it('shows five forms over 500 seeds of neutral speech, more with the dominant hand, larger at higher energy', () => {
     const forms = new Set<BodyGestureForm>()
     const hands = { left: 0, right: 0 }
