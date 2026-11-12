@@ -167,7 +167,7 @@ export async function framesMotion3d(args: readonly string[], context: Motion3dC
 }
 
 /**
- * Re-runs the stored run's scenario, seed, length and warm-up through the product body at this checkout, keeps every
+ * Re-runs the stored run's scenario, seed, length, warm-up and acts switch through the product body at this checkout, keeps every
  * bone's local transform on the drawn frames, and refuses unless the re-run's trace reproduces the stored one and the
  * trace-posed bones match the re-run's own bones on those frames.
  */
@@ -186,6 +186,7 @@ async function rerunRun(context: Motion3dCliContext, model: string, summary: Fra
       seed: summary.scenario.seed,
       seconds: summary.scenario.seconds,
       warmupSeconds: summary.scenario.warmupSeconds,
+      acts: stored.trace.source.detail.acts === 'off' ? 'off' : 'on',
       git: readGitStateFromRepo(context.repoRoot),
       signal: context.signal,
       onFrame: (frame, mesh) => {
