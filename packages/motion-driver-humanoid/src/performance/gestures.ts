@@ -713,8 +713,8 @@ class GesturePerformer {
 
   /**
    * Returns the arm to where it was before the unit, 1.3 x its preparation. Only the paths through the ready key were
-   * cleared: an arm in a stroke, hold or recovery first goes back to the ready key along its stroke, over the recovery
-   * time, and goes home from there.
+   * cleared: an arm in a stroke or hold first goes back to the ready key along its stroke, over the recovery time, an
+   * arm in its recovery finishes it, and either goes home from there.
    *
    * A speech unit's arm comes to rest at home before its weight ramps out (`settle`). The ramp hands the arm to the
    * hang, whose target the corrector holds out of the body on rigs whose arms rest against it; ramping while the arm
@@ -724,10 +724,13 @@ class GesturePerformer {
   private retractTrack(track: ArmTrack, now: number): void {
     const settle = track.state !== 'form'
     if (track.state === 'stroke' || track.state === 'hold' || track.state === 'recovery') {
+      // A recovery is already the way back to the ready key: it goes on. Restarted as a new segment of full recovery
+      // time, the plan's velocity carried the arm past the key, off the path the key was cleared on.
+      if (track.state !== 'recovery')
+        track.phaseEnd = now + track.move(track.ready, now, TIMING.recovery / gestureTempo(this.unit.energy), this.tension)
       track.state = 'retraction'
       track.pending = null
       track.viaReady = true
-      track.phaseEnd = now + track.move(track.ready, now, TIMING.recovery / gestureTempo(this.unit.energy), this.tension)
       track.dropAt = Infinity
       track.exitSeconds = TIMING.exit
       return

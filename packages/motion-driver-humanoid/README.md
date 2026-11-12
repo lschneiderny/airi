@@ -536,8 +536,9 @@ every tick against the body as it is posed then, by the corrector's own
 projection (`BodyCollision.project`), because the trunk moves during a unit.
 Only paths through the
 ready key are cleared, so a retraction lets a stroke in flight land, and from a
-stroke, hold or recovery first goes back to the ready key along the stroke over
-the recovery time, then home on the preparation's path. Energy scales size and
+stroke or hold first goes back to the ready key along the stroke over the
+recovery time (an arm already recovering finishes its recovery), then home on
+the preparation's path. Energy scales size and
 tempo, and selects among forms: the default emphasis form is palm-up at 0.25,
 press at 0.10 + 0.25 x the utterance's energy, and beat otherwise. The forms are 4a's beat, palm-up, press, point, chop and frame at unit
 A's amplitude scale (`GESTURE_FORMS`), keys solved per rig with

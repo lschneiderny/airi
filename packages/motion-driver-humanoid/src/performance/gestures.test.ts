@@ -298,6 +298,24 @@ describe('co-speech gestures', () => {
     expect(correction.right / BODY_TICK).toBeLessThanOrEqual(15 * DEG)
   })
 
+  it('lets an arm recovering from its hold go on to the ready key when the unit retracts, without a corrector kick', () => {
+    // Speech ends at several times after the last stroke, so the retraction (0.3 s later) finds arms at every point of
+    // their recovery, the leg from the post-stroke hold back to the ready key.
+    const correction = { left: 0, right: 0 }
+    let recovering = 0
+    for (const seed of [1, 2, 3, 4, 5, 6]) {
+      for (const end of [5.9, 6.0, 6.1, 6.2, 6.3, 6.4]) {
+        const run = perform({ utterances: [{ ...utterance(0.4, 0.65, peaks(0.4)), end: 0.4 + end }], tension: 0 }, 8.5, { traits: chisaTraits, seed, corrections: correction })
+        const retraction = run.frames.findIndex(frame => frame.gesture.phase === 'retraction')
+        if (retraction > 0 && run.frames[retraction - 1].gesture.phase === 'hold')
+          recovering++
+      }
+    }
+    expect(recovering).toBeGreaterThanOrEqual(5)
+    expect(correction.left / BODY_TICK).toBeLessThanOrEqual(15 * DEG)
+    expect(correction.right / BODY_TICK).toBeLessThanOrEqual(15 * DEG)
+  }, 120_000)
+
   it('retracts a stroke cut by the unit\'s cap along its cleared path, without a corrector kick', () => {
     // Six strokes; the sixth starts 50 ms before the 9 s cap, as on the clip scenario's second rig, seed 5.
     const onsets = [1.0, 2.5, 4.0, 5.5, 7.0, 8.95].map((at, i) => ({ at: 0.5 + at, major: i % 2 === 0 }))
