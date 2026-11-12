@@ -84,7 +84,7 @@ export class VerdictRecorder {
     for (const run of runs.filter(run => report.inputs.includes(run.dir)))
       this.inputs.set(run.dir, inputOf(run.dir, run.input.trace))
     for (const r of report.requirements)
-      this.lines.push({ run: dir, id: r.id, status: r.pass ? 'PASS' : 'FAIL', value: r.value, rule: r.rule })
+      this.lines.push({ run: dir, id: r.id, status: r.status, value: r.value, rule: r.rule })
   }
 
   gate(dir: string, verdict: MotionVerdict, trace: MotionTraceV1 | null): void {

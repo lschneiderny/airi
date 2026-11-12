@@ -22,12 +22,16 @@ export interface ReportConstant {
   readonly source: string
 }
 
-/** One required rule of a criterion-level report: its id, the rule as written, the measured value and the verdict. */
+/**
+ * One required rule of a criterion-level report: its id, the rule as written, the measured value, the verdict, and the
+ * status the report prints for it (NOT-EXERCISED only from case reports; it never passes).
+ */
 export interface ReportRequirement {
   readonly id: string
   readonly rule: string
   readonly value: string
   readonly pass: boolean
+  readonly status: 'PASS' | 'FAIL' | 'NOT-EXERCISED'
 }
 
 export interface CriterionReport<Detail> {
@@ -45,7 +49,7 @@ export function criterionReport<Detail>(kind: string, version: number, inputs: r
 }
 
 export function requirement(id: string, rule: string, value: string, pass: boolean): ReportRequirement {
-  return { id, rule, value, pass }
+  return { id, rule, value, pass, status: pass ? 'PASS' : 'FAIL' }
 }
 
 /** Header, constants with their sources and every requirement; `body` adds the report's own tables. */
@@ -56,7 +60,7 @@ export function formatReport(report: CriterionReport<unknown>, body: readonly st
     'constants:',
     ...report.constants.map(c => `  ${c.name} = ${c.value} ${c.unit} (${c.source})`),
     'requirements:',
-    ...report.requirements.map(r => `  ${r.pass ? 'PASS' : 'FAIL'} ${r.id}: ${r.value}; rule: ${r.rule}`),
+    ...report.requirements.map(r => `  ${r.status} ${r.id}: ${r.value}; rule: ${r.rule}`),
     '',
     ...body,
   ].join('\n')}\n`

@@ -12,6 +12,7 @@ import * as v from 'valibot'
 import { popsMotion3d } from './cli/pops'
 import { verdictsMotion3d } from './cli/verdicts'
 import { analyticTrace } from './metrics/test-trace'
+import { caseReport, judged, notExercised } from './reports/case-report'
 import { criterionReport, formatReport, requirement } from './reports/report'
 import { gateStub, TEST_BONES } from './reports/test-runs'
 import { takeJsonOption, verdictFileSchema, VerdictRecorder } from './verdicts'
@@ -95,5 +96,16 @@ describe('verdict files', () => {
     expect(await verdictsMotion3d(['gate.verdict.json'], context())).toBe(0)
     expect(await verdictsMotion3d(['gate.verdict.json', '--fail-on', 'SKIPPED'], context())).toBe(1)
     expect(printed.at(-2)).toContain('period.head.loopPeak SKIPPED [idle-1]')
+  })
+
+  it('writes a NOT-EXERCISED line with the status the report prints, and lists it only when --fail-on names it', async () => {
+    const recorder = new VerdictRecorder('rest', join(root, 'rest.verdict.json'))
+    recorder.criterion(caseReport('rest', 3, [], [], [judged('rest-posture', 'pitch above baseline', '2.1 deg', true), notExercised('doze-head', 'a nod-off in the doze', 'no clean rule')], null), join(root, 'sleepy-1'), [])
+    expect(await recorder.finish(1)).toBe(1)
+    expect((await read(join(root, 'rest.verdict.json'))).lines.map(line => [line.id, line.status])).toEqual([['rest-posture', 'PASS'], ['doze-head', 'NOT-EXERCISED']])
+    await verdictsMotion3d(['rest.verdict.json'], context())
+    expect(printed.at(-2)).toContain('lines with FAIL/REFUSED: none')
+    expect(await verdictsMotion3d(['rest.verdict.json', '--fail-on', 'NOT-EXERCISED'], context())).toBe(1)
+    expect(printed.at(-2)).toContain('lines with NOT-EXERCISED: doze-head NOT-EXERCISED [sleepy-1]')
   })
 })
