@@ -1,13 +1,16 @@
 import type { KwinProbe } from '../t3/pointer-kwin'
 
 import { spawn } from 'node:child_process'
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, statfsSync, statSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { join, posix, resolve } from 'node:path'
+import { tmpdir } from 'node:os'
+import { dirname, join, posix, resolve } from 'node:path'
 import { execPath, platform, env as processEnv, version as processVersion } from 'node:process'
 
 import { errorMessageFrom } from '@moeru/std'
 
+import { defaultCompileCacheDir } from '../../../../scripts/dev-tools/lib/compile-cache'
+import { isPathInside } from '../../../../scripts/dev-tools/lib/paths'
 import { parseKwinProbe, runKwinHelper } from '../t3/pointer-kwin'
 import { resolvePnpm, resolveVitestEntry } from './pnpm'
 import { commandLineContainsPath, killOwnedTree, killTree, listLiveProcesses } from './processes'
@@ -38,6 +41,12 @@ export interface ProcessEntry {
   commandLine: string
 }
 
+/** One filesystem's use, from `statfs`. `inodes` is null where the filesystem has no fixed inode table (btrfs, Windows). */
+export interface DiskUsage {
+  inodes: { used: number, total: number } | null
+  space: { used: number, total: number }
+}
+
 /**
  * Everything the doctor reads from the outside world. Tests replace each probe; `createSystemProbes`
  * implements them against the real repository, filesystem and process table.
@@ -66,6 +75,12 @@ export interface DoctorProbes {
   kwinPointer: () => Promise<KwinProbe>
   /** The checkout the doctor checks; `stray-electron` reports only processes of this worktree. */
   repoRoot: string
+  /** The system temporary directory (`os.tmpdir()`). */
+  tempDir: () => string
+  /** Use of the filesystem holding `path`, or of its nearest existing ancestor. */
+  diskUsage: (path: string) => DiskUsage
+  /** The direct subdirectory of `dir` holding the most entries, counted recursively; unreadable ones are skipped. */
+  largestEntry: (dir: string) => { path: string, entries: number } | undefined
 }
 
 export interface DoctorCheck {
@@ -87,6 +102,23 @@ const rigEnvNames = ['AIRI_QA_RIG_FORBOOTH', 'AIRI_QA_RIG_BEAR'] as const
 
 function ok(detail: string): Omit<DoctorRow, 'id'> {
   return { status: 'ok', detail, fix: '' }
+}
+
+const diskWarnPercent = 80
+const diskFailPercent = 95
+
+function percent(part: { used: number, total: number }): number {
+  return part.total > 0 ? part.used / part.total * 100 : 0
+}
+
+/** The worse of inode and space use, with a readable summary. */
+function describeDisk(path: string, usage: DiskUsage): { worst: number, text: string } {
+  const space = percent(usage.space)
+  const inodes = usage.inodes ? percent(usage.inodes) : null
+  const inodeText = usage.inodes && inodes !== null
+    ? `inodes ${inodes.toFixed(0)}% (${usage.inodes.used}/${usage.inodes.total})`
+    : 'no inode limit'
+  return { worst: Math.max(space, inodes ?? 0), text: `${path}: ${inodeText}, space ${space.toFixed(0)}%` }
 }
 
 function majorMinor(version: string): string | undefined {
@@ -131,6 +163,39 @@ function createDoctorChecks(probes: DoctorProbes): DoctorCheck[] {
         catch (error) {
           return { status: 'fail', detail: errorMessageFrom(error) ?? 'resolvePnpm failed', fix: 'Install the pinned pnpm version named in package.json "packageManager".' }
         }
+      },
+    },
+    {
+      id: 'temp-space',
+      run: () => {
+        const tempDir = probes.tempDir()
+        const configured = probes.env.NODE_COMPILE_CACHE
+        const repoDefault = defaultCompileCacheDir(probes.repoRoot)
+        const temp = describeDisk(tempDir, probes.diskUsage(tempDir))
+        const largest = probes.largestEntry(tempDir)
+        const details = [temp.text, largest ? `most entries: ${largest.path} (${largest.entries})` : `no readable directory in ${tempDir}`]
+        let worst = temp.worst
+        // An empty value is a deliberate setting: Node keeps no compile cache, so there is no directory to measure.
+        const cacheDir = configured === undefined ? repoDefault : configured || undefined
+        const cacheInTemp = cacheDir !== undefined && isPathInside(tempDir, cacheDir)
+        if (configured === undefined)
+          details.push(`NODE_COMPILE_CACHE unset; repository entry points use ${repoDefault}`)
+        else if (configured === '')
+          details.push('NODE_COMPILE_CACHE is empty, so Node keeps no compile cache')
+        else
+          details.push(cacheInTemp ? `NODE_COMPILE_CACHE=${configured} is inside ${tempDir}` : `NODE_COMPILE_CACHE=${configured}`)
+        if (cacheDir !== undefined && !cacheInTemp) {
+          const cache = describeDisk(cacheDir, probes.diskUsage(cacheDir))
+          details.push(`compile cache ${cache.text}`)
+          worst = Math.max(worst, cache.worst)
+        }
+        const fixes: string[] = []
+        if (worst > diskWarnPercent)
+          fixes.push(`Free inodes or space${largest ? `; ${largest.path} holds the most entries` : ''}. Doctor deletes nothing.`)
+        if (cacheInTemp)
+          fixes.push(`Set NODE_COMPILE_CACHE off the temporary directory in your shell or agent environment, for example ${repoDefault}. Repository entry points apply that default only when the variable is unset.`)
+        const status = worst > diskFailPercent ? 'fail' : fixes.length > 0 ? 'warn' : 'ok'
+        return { status, detail: details.join('; '), fix: fixes.join(' ') }
       },
     },
     {
@@ -390,6 +455,37 @@ function newestMtimeIn(dir: string, suffix: string): number | undefined {
   return newest
 }
 
+function diskUsageOf(path: string): DiskUsage {
+  let existing = resolve(path)
+  while (!existsSync(existing) && dirname(existing) !== existing)
+    existing = dirname(existing)
+  const stats = statfsSync(existing)
+  return {
+    inodes: stats.files > 0 ? { used: stats.files - stats.ffree, total: stats.files } : null,
+    space: { used: (stats.blocks - stats.bfree) * stats.bsize, total: stats.blocks * stats.bsize },
+  }
+}
+
+function largestEntryIn(dir: string): { path: string, entries: number } | undefined {
+  let largest: { path: string, entries: number } | undefined
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (!entry.isDirectory())
+      continue
+    const path = join(dir, entry.name)
+    let entries: number
+    try {
+      entries = readdirSync(path, { recursive: true }).length
+    }
+    catch {
+      // Another user's private directory; it cannot be counted, and doctor does not need it to name the largest.
+      continue
+    }
+    if (!largest || entries > largest.entries)
+      largest = { path, entries }
+  }
+  return largest
+}
+
 function listRigModels(dir: string): RigListing {
   if (!existsSync(dir) || !statSync(dir).isDirectory())
     return { isDirectory: false, models: [] }
@@ -452,5 +548,8 @@ export function createSystemProbes(repoRoot: string, env: Record<string, string 
       }
     },
     repoRoot,
+    tempDir: tmpdir,
+    diskUsage: diskUsageOf,
+    largestEntry: largestEntryIn,
   }
 }

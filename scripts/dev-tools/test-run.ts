@@ -4,13 +4,14 @@ import { spawn } from 'node:child_process'
 
 import { errorMessageFrom } from '@moeru/std'
 
+import { compileCacheEnv } from './lib/compile-cache'
 import { repoRoot } from './lib/git'
 import { runSuites, summarizeSuites, testRunSuites } from './test-run-plan'
 
 // `pnpm` is a `.cmd` shim on Windows, so each fixed command line runs through the shell.
 function runCommand(command: string, cwd: string): Promise<number | null> {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, { cwd, stdio: 'inherit', shell: true })
+    const child = spawn(command, { cwd, env: { ...process.env, ...compileCacheEnv(process.env, cwd) }, stdio: 'inherit', shell: true })
     child.once('error', reject)
     child.once('close', code => resolve(code))
   })

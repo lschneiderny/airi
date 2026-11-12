@@ -11,6 +11,7 @@ import { basename, dirname, join } from 'node:path'
 import { errorMessageFrom } from '@moeru/std'
 import { acquire } from '@proj-airi/cpu-slots'
 
+import { compileCacheEnv } from './lib/compile-cache'
 import { git, listWorktrees, repoRoot } from './lib/git'
 import { attribute, normalizePath, snapshotProcesses } from './lib/processes'
 import { defaultBranch, gcDecision, rmBlocker, validName } from './wt-plan'
@@ -85,7 +86,7 @@ async function install(path: string): Promise<number> {
   try {
     return await new Promise<number>((resolve, reject) => {
       // pnpm is a .cmd/.ps1 shim on Windows, which only a shell can start.
-      const child = spawn('pnpm', ['install', '--frozen-lockfile', '--prefer-offline'], { cwd: path, env: { ...process.env, ...lease.env }, stdio: 'inherit', shell: process.platform === 'win32' })
+      const child = spawn('pnpm', ['install', '--frozen-lockfile', '--prefer-offline'], { cwd: path, env: { ...process.env, ...compileCacheEnv(process.env, path), ...lease.env }, stdio: 'inherit', shell: process.platform === 'win32' })
       child.once('error', reject)
       if (child.pid !== undefined)
         lease.addWorkload(child.pid)

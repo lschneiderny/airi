@@ -9,6 +9,7 @@ import { delimiter, join, relative } from 'node:path'
 import { errorMessageFrom } from '@moeru/std'
 import { acquire } from '@proj-airi/cpu-slots'
 
+import { compileCacheEnv } from './lib/compile-cache'
 import { capture, chunkByLength, nodeCommandChunkLimits, run, shimCommandChunkLimits } from './lib/exec'
 import { changedFiles, git, gitCommonDir, repoRoot, workingTreeHash } from './lib/git'
 import { readLastPass, readPass, verifyCacheKey, writeLastPass, writePass } from './verify-cache'
@@ -128,7 +129,7 @@ async function main(): Promise<number> {
   }
   // Windows spells the variable `Path`; a second `PATH` key would hide the system directories.
   const pathKey = Object.keys(process.env).find(key => key.toUpperCase() === 'PATH') ?? 'PATH'
-  const env = { ...process.env, [pathKey]: `${join(root, 'node_modules/.bin')}${delimiter}${process.env[pathKey] ?? ''}` }
+  const env = { ...process.env, ...compileCacheEnv(process.env, root), [pathKey]: `${join(root, 'node_modules/.bin')}${delimiter}${process.env[pathKey] ?? ''}` }
 
   const slotsEnabled = !process.env.CI && process.env.AIRI_CPU_SLOTS !== 'off'
   console.info(`verify: merge base with ${args.base} ${base.slice(0, 9)}, tree ${tree.slice(0, 9)}`)

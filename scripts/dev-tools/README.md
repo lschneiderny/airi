@@ -26,6 +26,12 @@ Root commands for working on this repository with many worktrees and parallel ag
 - Use root `pnpm typecheck`, `pnpm lint`, or `pnpm test:run` for a release or a whole-repository sweep. `pnpm verify` only covers what changed since the base.
 - `pnpm verify` does not run QA gates or Electron builds.
 
+## Node compile cache
+
+Node keeps a compile cache only when something enables it: `NODE_COMPILE_CACHE=<dir>`, or a parent process that calls `module.enableCompileCache()` without a directory and so writes under `os.tmpdir()/node-compile-cache`. Some agent harnesses do the latter and pass the directory on to every child through `NODE_COMPILE_CACHE`. On a tmpfs with a fixed inode table, those files filled every inode on 2026-11-12.
+
+The launcher (`scripts/dev.mjs`), `pnpm verify`, `pnpm test:run`, and the install of `pnpm wt new` set `NODE_COMPILE_CACHE=<checkout>/node_modules/.cache/node-compile-cache` for the processes they start, but only when the variable is unset. A value you set, including an empty one, is kept. The directory belongs to the checkout, so `pnpm wt rm` deletes it with the worktree. `compileCacheEnv` in `lib/compile-cache.ts` makes this decision. To move an inherited `/tmp` cache, set `NODE_COMPILE_CACHE` in your own shell or agent environment. `pnpm qa:doctor` reports the temporary directory's inode and space use and flags a cache directory inside it.
+
 ## Quiet dev output
 
 Use `AIRI_DEV_QUIET=1 pnpm dev` (or another `dev:*` command routed through `scripts/dev.mjs`) to keep full child output in `.temp/dev/<package>-<script>-<timestamp>.log`. Set `AIRI_DEV_LOG=<path>` to choose a file; relative paths start at the repository root. The console shows the log path, one `[dev] ready <url>` line, error-looking lines, and the exit status. Ctrl+C and SIGTERM still stop the child tree. Without quiet mode, output is unchanged.

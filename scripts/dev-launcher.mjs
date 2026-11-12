@@ -5,6 +5,9 @@ import { constants } from 'node:os'
 import { delimiter, join, resolve } from 'node:path'
 import { stripVTControlCharacters } from 'node:util'
 
+// eslint-disable-next-line no-restricted-syntax -- Plain Node.js ESM resolves a relative import only with its extension; Node strips the types.
+import { compileCacheEnv } from './dev-tools/lib/compile-cache.ts'
+
 /** An expected launcher failure. The entry point prints its message without a stack trace. */
 export class LauncherError extends Error {}
 
@@ -74,7 +77,10 @@ function addPackageFields(env, fields, prefix) {
   }
 }
 
-/** Builds the environment that pnpm gives a package script, starting from `baseEnv`. */
+/**
+ * Builds the environment that pnpm gives a package script, starting from `baseEnv`, plus the checkout's
+ * `NODE_COMPILE_CACHE` when `baseEnv` does not set one.
+ */
 export function createScriptEnv({ baseEnv, cwd, rootDir, packageDir, packageFile, manifest, scriptName, script, forwardedArgs }) {
   const env = Object.fromEntries(Object.entries(baseEnv).filter(([key]) =>
     !key.startsWith('npm_package_') && !/^(?:npm|pnpm)_config_(?:[/@_]|.*:_)/.test(key)))
@@ -89,6 +95,7 @@ export function createScriptEnv({ baseEnv, cwd, rootDir, packageDir, packageFile
     inheritedPath,
   ].filter(Boolean).join(delimiter)
 
+  Object.assign(env, compileCacheEnv(baseEnv, rootDir))
   env.INIT_CWD ??= cwd
   env.PWD = packageDir
   env.PNPM_SCRIPT_SRC_DIR = packageDir

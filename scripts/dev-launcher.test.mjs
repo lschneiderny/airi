@@ -172,6 +172,11 @@ describe('createScriptEnv', () => {
     expect(env.INIT_CWD).toBe(rootDir)
   })
 
+  it('keeps the Node compile cache in the checkout unless the inherited environment names one', () => {
+    expect(create().NODE_COMPILE_CACHE).toBe(join(rootDir, 'node_modules', '.cache', 'node-compile-cache'))
+    expect(create({ baseEnv: { ...rootScriptEnv, NODE_COMPILE_CACHE: '/srv/cache' } }).NODE_COMPILE_CACHE).toBe('/srv/cache')
+  })
+
   it('defaults INIT_CWD to the current directory when pnpm did not set it', () => {
     const env = create({ baseEnv: {} })
 

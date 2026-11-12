@@ -35,6 +35,9 @@ function healthyProbes(overrides: Partial<DoctorProbes> = {}): DoctorProbes {
       throw new Error('kwinPointer must not run outside a Linux QA display')
     },
     repoRoot: 'C:/repo',
+    tempDir: () => '/tmp',
+    diskUsage: () => ({ inodes: { used: 200, total: 1000 }, space: { used: 30, total: 100 } }),
+    largestEntry: () => ({ path: '/tmp/.pnpm-store', entries: 106_419 }),
     ...overrides,
   }
 }
@@ -50,8 +53,53 @@ describe('runDoctor', () => {
   it('reports every check in order and all ok for a healthy checkout', async () => {
     const rows = await runDoctor(healthyProbes())
 
-    expect(rows.map(row => row.id)).toEqual(['node-version', 'pnpm', 'install', 'built-packages', 'cubism-core', 'playwright', 'rigs', 'pointer-platform', 'stray-electron'])
-    expect(rows.map(row => row.status)).toEqual(Array.from({ length: 9 }).fill('ok'))
+    expect(rows.map(row => row.id)).toEqual(['node-version', 'pnpm', 'temp-space', 'install', 'built-packages', 'cubism-core', 'playwright', 'rigs', 'pointer-platform', 'stray-electron'])
+    expect(rows.map(row => row.status)).toEqual(Array.from({ length: 10 }).fill('ok'))
+  })
+
+  it('temp-space warns above 80 % and fails above 95 % of inodes or space, on the temporary and the cache filesystem', async () => {
+    const reading = (inodes: number | null, space: number) => ({ inodes: inodes === null ? null : { used: inodes, total: 100 }, space: { used: space, total: 100 } })
+    const status = async (temp: ReturnType<typeof reading>, cache = reading(10, 10)) =>
+      (await rowOf('temp-space', healthyProbes({ repoRoot: '/repo', diskUsage: path => path === '/tmp' ? temp : cache }))).status
+
+    expect(await status(reading(80, 10))).toBe('ok')
+    expect(await status(reading(81, 10))).toBe('warn')
+    expect(await status(reading(96, 10))).toBe('fail')
+    expect(await status(reading(10, 96))).toBe('fail')
+    // btrfs and Windows report no inode table; only space counts there.
+    expect(await status(reading(null, 50))).toBe('ok')
+    expect(await status(reading(10, 10), reading(null, 90))).toBe('warn')
+  })
+
+  it('temp-space names the fullest directory and the fix when it is over the limit', async () => {
+    const row = await rowOf('temp-space', healthyProbes({
+      repoRoot: '/repo',
+      diskUsage: () => ({ inodes: { used: 1_048_576, total: 1_048_576 }, space: { used: 75, total: 100 } }),
+      largestEntry: () => ({ path: '/tmp/node-compile-cache', entries: 682_234 }),
+    }))
+
+    expect(row.status).toBe('fail')
+    expect(row.detail).toContain('/tmp/node-compile-cache (682234)')
+    expect(row.fix).toContain('/tmp/node-compile-cache')
+  })
+
+  it('temp-space warns when NODE_COMPILE_CACHE points into the temporary directory and measures the checkout cache otherwise', async () => {
+    const measured: string[] = []
+    const diskUsage = (path: string) => {
+      measured.push(path)
+      return { inodes: { used: 1, total: 100 }, space: { used: 1, total: 100 } }
+    }
+    const inherited = await rowOf('temp-space', healthyProbes({ repoRoot: '/repo', diskUsage, env: { NODE_COMPILE_CACHE: '/tmp/node-compile-cache' } }))
+
+    expect(inherited.status).toBe('warn')
+    expect(inherited.fix).toContain(join('/repo', 'node_modules', '.cache', 'node-compile-cache'))
+    expect(measured).toEqual(['/tmp'])
+
+    measured.length = 0
+    const unset = await rowOf('temp-space', healthyProbes({ repoRoot: '/repo', diskUsage, env: {} }))
+
+    expect(unset.status).toBe('ok')
+    expect(measured).toEqual(['/tmp', join('/repo', 'node_modules', '.cache', 'node-compile-cache')])
   })
 
   it('node-version fails on a major.minor mismatch or a missing pin', async () => {
@@ -176,7 +224,7 @@ describe('runDoctor', () => {
     } }))
 
     expect(rows.find(row => row.id === 'built-packages')).toMatchObject({ status: 'fail', detail: 'probe threw: EACCES packages' })
-    expect(rows).toHaveLength(9)
+    expect(rows).toHaveLength(10)
   })
 
   it.each(['darwin', 'linux'])('pointer-platform warns about separate pointer limitations on %s', async (platform) => {

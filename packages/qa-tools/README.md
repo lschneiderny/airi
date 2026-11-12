@@ -490,7 +490,7 @@ Run `pnpm qa:doctor` first. It checks whether the current worktree can produce m
 | Command | Use |
 | --- | --- |
 | `pnpm qa:setup cubism [--force]` | Download Cubism Core for both apps without opening a window. Skip present copies; `--force` downloads again. |
-| `pnpm qa:doctor [--json] [--warm]` | Check Node, pinned pnpm, installation, built packages, Cubism Core, Chromium, rig paths, and conflicting Electron processes. `--warm` runs the stage-ui browser warm-up. |
+| `pnpm qa:doctor [--json] [--warm]` | Check Node, pinned pnpm, temporary directory and compile cache space (`temp-space`), installation, built packages, Cubism Core, Chromium, rig paths, and conflicting Electron processes. `--warm` runs the stage-ui browser warm-up. |
 | `pnpm qa:test --all` | Run the registered Vitest package and project set, then report new, known, fixed, and flaky-passed tests. |
 | `pnpm qa:test --package <name> [--package <name>...] [--project node\|browser] [--registry <file>] [--timeout <seconds>]` | Run selected test targets. |
 | `pnpm qa:motion gate emotion --level t1 [--emotions a,b] [--bands clear,strong] [--seeds N] [--workers N] [--timeout-minutes N]` | Score the deterministic controller simulation against committed emotion rules. |
@@ -563,6 +563,10 @@ Each entry of `report.json` `failures` is an object with a `code` and a `message
 For failure QA only, `pnpm qa:host smoke --xwayland --expect linux-wayland --expect-backend kwin` changes the expected host without changing the launched backend. It must exit 1 and name `systemIdleTime`. A KWin session run with `--expect-backend sway` must exit 1 with `backend-mismatch`.
 
 Windows live acceptance is [~] for Luke: `pnpm qa:host smoke`. macOS live acceptance is [~] for Luke: `pnpm qa:host smoke`. Use the smoke to verify host delivery; use the motion gates to score character motion.
+
+## Temporary directory space
+
+The `temp-space` doctor row reads `statfs` for the system temporary directory (`os.tmpdir()`) and for the Node compile cache directory: `NODE_COMPILE_CACHE` when set, otherwise the checkout's `node_modules/.cache/node-compile-cache`, which the repository's entry points use by default (see the [dev-tools README](../../scripts/dev-tools/README.md#node-compile-cache)). It warns above 80 % and fails above 95 % of inodes or space, whichever is worse. A filesystem without a fixed inode table, such as btrfs or NTFS, is judged on space only. The row names the temporary directory's subdirectory that holds the most entries, and it warns when `NODE_COMPILE_CACHE` points into the temporary directory: every Node process with that variable writes cache files there, which filled the inodes of a 1,048,576-inode tmpfs on 2026-11-12. Doctor deletes nothing.
 
 ## Fresh worktree Cubism setup
 
