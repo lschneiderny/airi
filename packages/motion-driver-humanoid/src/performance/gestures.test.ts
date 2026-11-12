@@ -3,7 +3,7 @@ import type { PerformanceLayer } from './stack'
 
 import { describe, expect, it } from 'vitest'
 
-import { ARM_NOISE_DEGREES } from './arms'
+import { ARM_NOISE_DEGREES, armCascadeDelay } from './arms'
 import { ARM_START, BODY_TICK, channelIndex, DEG, JOINT_LIMITS, SIDES } from './channels'
 import { ARM_FORMS, GESTURE_FORMS, GestureKeys, writeHandShape } from './gesture-forms'
 import { createGestureLayers } from './gestures'
@@ -278,6 +278,30 @@ describe('co-speech gestures', () => {
     expect(presses[0.45]).toBeGreaterThan(0)
     expect(presses[0.85]).toBeGreaterThan(presses[0.45])
   }, 120_000)
+
+  it('turns the upper torso at each stroke\'s hit', () => {
+    const script: Script = { utterances: [utterance(0.4, 0.65, peaks(0.4))], tension: 0 }
+    const run = perform(script, 8, { seed: 3 })
+    const silent = perform(script, 8, { seed: 3, layers: false })
+    const c = channelIndex('upperYaw')
+    const planned = strokes(run)
+    expect(planned.length).toBeGreaterThan(0)
+    for (const stroke of planned) {
+      const from = Math.round(stroke.onset / BODY_TICK) - 1
+      let best = 0
+      let at = from
+      for (let i = from; i < from + Math.round(0.4 / BODY_TICK); i++) {
+        const turn = Math.abs(run.frames[i].channels[c] - silent.frames[i].channels[c])
+        if (turn > best) {
+          best = turn
+          at = i
+        }
+      }
+      // The hit is the wrist's speed minimum; the wrist lands an elbow-link settle (twice its cascade delay) before it.
+      expect(run.frames[at].time).toBeLessThanOrEqual(stroke.hit)
+      expect(stroke.hit - run.frames[at].time).toBeLessThanOrEqual(2 * armCascadeDelay(5, 1, 1, 0))
+    }
+  })
 
   it('shows five forms over 500 seeds of neutral speech, more with the dominant hand, larger at higher energy', () => {
     const forms = new Set<BodyGestureForm>()

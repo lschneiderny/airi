@@ -147,6 +147,8 @@ class ArmTrack {
   watch: { form: SpeechGestureForm, hand: BodyGestureHand, peak: number, speed: number, wrist: readonly [number, number, number] | null, until: number } | null = null
   form: SpeechGestureForm | BodyArmForm | null = null
   prepSeconds = 0.5
+  /** When the current stroke's wrist lands: its profile's end plus the elbow's cascade delay. */
+  landing = 0
   pending: { at: number, form: SpeechGestureForm, size: number } | null = null
   warm = false
 
@@ -509,7 +511,8 @@ class GesturePerformer {
     const sign = lead === 'left' ? 1 : -1
     const forward = GESTURE_FORMS[performed].stroke[2] > 0
     const gain = gestureGain(energy) * amplitude
-    leadTrack.pulses.push({ start: now, hit: now + GESTURE_FORMS[performed].strokeSeconds / tempo, yaw: sign * AMPLITUDE.torsoYaw * gain, pitch: forward ? AMPLITUDE.torsoPitch * gain : 0 })
+    // Plan 3.1: at the stroke the upper torso turns toward the gesturing side; it peaks as the wrist lands.
+    leadTrack.pulses.push({ start: now, hit: leadTrack.landing, yaw: sign * AMPLITUDE.torsoYaw * gain, pitch: forward ? AMPLITUDE.torsoPitch * gain : 0 })
     unit.strokes++
     this.lastStroke = now
     if (major)
@@ -551,7 +554,9 @@ class GesturePerformer {
       const hold = (low + (high - low) * this.random()) / tempo
       // 4a: the hit lands at the stroke's duration. Feedforward removes the followers' lag, leaving the elbow's cascade
       // delay before the wrist lands. A stroke the followers cannot take that fast lasts longer (`move`).
-      const profile = track.move(track.key, now, seconds - armCascadeDelay(5, 1, 1, this.tension), this.tension)
+      const delay = armCascadeDelay(5, 1, 1, this.tension)
+      const profile = track.move(track.key, now, seconds - delay, this.tension)
+      track.landing = now + profile + delay
       track.state = 'stroke'
       track.form = candidate
       track.phaseEnd = now + profile
