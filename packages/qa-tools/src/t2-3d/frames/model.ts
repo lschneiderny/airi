@@ -5,6 +5,7 @@ import type { Object3D, SkinnedMesh } from 'three'
 import type { Quat, Vec3 } from '../metrics'
 import type { FrameRig, LocalPose } from './pose'
 
+import { PmxObject } from '@moeru/three-mmd'
 import { MOTION_TRACE_BONES } from '@proj-airi/motion-driver-humanoid/motion-trace'
 import { MMDBodyPose } from '@proj-airi/stage-ui-mmd/composables/mmd/body/pose'
 import { readMMDRigProfile } from '@proj-airi/stage-ui-mmd/composables/mmd/rig'
@@ -58,6 +59,7 @@ export function frameRigFromMMD(mmd: MMD): FrameRig {
         bindRotation: quat(rotation),
         bindPosition: vec(position),
         physics: physics.has(bone.name),
+        append: appendOf(mmd, index, bone.name),
       }
     }),
     positions: geometry.attributes.position.array,
@@ -65,6 +67,14 @@ export function frameRigFromMMD(mmd: MMD): FrameRig {
     skinWeights: geometry.attributes.skinWeight.array,
     triangles,
   }
+}
+
+/** The PMX append (grant) of rotation of skeleton bone `index`, read only when the PMX bone at that index has the same name. */
+function appendOf(mmd: MMD, index: number, name: string): { parent: number, ratio: number } | null {
+  const bone = mmd.pmx.bones[index]
+  if (bone?.name !== name || !bone.appendTransform || !(bone.flag & PmxObject.Bone.Flag.HasAppendRotate))
+    return null
+  return { parent: bone.appendTransform.parentIndex, ratio: bone.appendTransform.ratio }
 }
 
 /** Every bone's transform relative to its parent bone (its world transform for a root bone), read after a pipeline step. */

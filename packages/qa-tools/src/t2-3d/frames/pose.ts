@@ -15,6 +15,8 @@ export interface FrameRigBone {
   readonly bindPosition: Vec3
   /** Physics-owned bones (hair, cloth) keep their bind pose relative to their parent: frames show no physics. */
   readonly physics: boolean
+  /** A PMX append (grant) of rotation: this bone also turns by `ratio` times the local rotation of bone `parent`. */
+  readonly append?: { readonly parent: number, readonly ratio: number } | null
 }
 
 /**
@@ -53,9 +55,11 @@ export function boneOrder(bones: readonly FrameRigBone[]): number[] {
       return
     if (path.has(index))
       throw new FramePoseRefusal(`bone hierarchy has a cycle at ${bones[index].name}`)
-    const parent = bones[index].parent
-    if (parent >= 0)
-      visit(parent, new Set([...path, index]))
+    // An append child reads its append parent's pose, so that parent is placed first too.
+    for (const before of [bones[index].parent, bones[index].append?.parent ?? -1]) {
+      if (before >= 0)
+        visit(before, new Set([...path, index]))
+    }
     placed.add(index)
     order.push(index)
   }
@@ -71,6 +75,32 @@ export function neededBones(rig: FrameRig, traced: ReadonlySet<MotionTraceBone>)
       weighted.add(rig.skinIndices[i])
   }
   return [...weighted].filter(index => !rig.bones[index].physics && (!rig.bones[index].slot || !traced.has(rig.bones[index].slot))).sort((a, b) => a - b)
+}
+
+/**
+ * Needed bones that `trace` posing cannot pose: neither traced nor an append child of a bone it poses. They keep their
+ * bind pose relative to their parent in a trace-posed frame.
+ */
+export function unposedBones(rig: FrameRig, traced: ReadonlySet<MotionTraceBone>): number[] {
+  const posed = (index: number, seen: ReadonlySet<number>): boolean => {
+    const bone = rig.bones[index]
+    if (bone.slot && traced.has(bone.slot))
+      return true
+    const parent = bone.append?.parent
+    return parent !== undefined && parent >= 0 && !seen.has(parent) && posed(parent, new Set([...seen, index]))
+  }
+  return neededBones(rig, traced).filter(index => !posed(index, new Set()))
+}
+
+/** q raised to `ratio` (the turn scaled about the same axis): MMD's append of rotation, slerp(identity, q, ratio). */
+function scaleTurn(q: Quat, ratio: number): Quat {
+  const [x, y, z, w] = q[3] < 0 ? [-q[0], -q[1], -q[2], -q[3]] : q
+  const half = Math.acos(Math.min(1, w))
+  const sine = Math.sin(half)
+  if (sine < 1e-12)
+    return [0, 0, 0, 1]
+  const k = Math.sin(half * ratio) / sine
+  return [x * k, y * k, z * k, Math.cos(half * ratio)]
 }
 
 /** The trace's rest-normalised world rotation N of every traced bone on one frame: parent chain of the stored local rotations. */
@@ -91,12 +121,14 @@ function traceWorld(input: DecodedMotionTrace, frame: number): Map<MotionTraceBo
  * Poses every bone for one trace frame. Traced bones take the trace's rotation, mapped back to mesh world as
  * W = conj(basis) N basis W0 (the inverse of the sampler's N = basis W conj(W0) conj(basis)); the hips take the
  * trace's root position. Untraced bones take `rerun` (their transform relative to the parent in a re-run of the same
- * run), else their bind pose relative to the parent. A needed bone without `rerun` is refused.
+ * run), else their bind pose relative to the parent. A needed bone without `rerun` is refused, unless `rerun` is
+ * `'trace'`: then an untraced append child turns by its ratio of its append parent's local rotation, and every other
+ * untraced bone keeps its bind pose relative to its parent (see `unposedBones`).
  */
-export function poseFrame(rig: FrameRig, input: DecodedMotionTrace, frame: number, rerun?: (bone: number) => LocalPose | null): PosedBones {
+export function poseFrame(rig: FrameRig, input: DecodedMotionTrace, frame: number, rerun?: ((bone: number) => LocalPose | null) | 'trace'): PosedBones {
   const traced = new Set(input.trace.rig.bones)
   const needed = neededBones(rig, traced)
-  if (needed.length && !rerun)
+  if (needed.length && rerun === undefined)
     throw new FramePoseRefusal(`the trace lacks ${needed.length} skinned bone(s) and no re-run poses them: ${needed.map(index => rig.bones[index].name).join(', ')}`)
   const n = traceWorld(input, frame)
   const basisInverse = conjugate(rig.basis)
@@ -119,6 +151,20 @@ export function poseFrame(rig: FrameRig, input: DecodedMotionTrace, frame: numbe
       pose = {
         rotation: normalize(multiply(multiply(multiply(basisInverse, traceN), rig.basis), bone.bindRotation)),
         position: bone.slot === 'hips' ? rotate(basisInverse, rootPosition) : follow.position,
+      }
+    }
+    else if (rerun === 'trace') {
+      const follow = bindFollow()
+      const source = bone.append && !bone.physics ? rig.bones[bone.append.parent] : null
+      if (bone.append && source) {
+        // The append parent's local rotation relative to its own bind local rotation, as the PMX grant solver reads it.
+        const above = source.parent >= 0 ? rig.bones[source.parent] : null
+        const local = multiply(conjugate(above ? rotations[source.parent] : [0, 0, 0, 1]), rotations[bone.append.parent])
+        const bindLocal = multiply(conjugate(above ? above.bindRotation : [0, 0, 0, 1]), source.bindRotation)
+        pose = { rotation: normalize(multiply(follow.rotation, scaleTurn(normalize(multiply(conjugate(bindLocal), local)), bone.append.ratio))), position: follow.position }
+      }
+      else {
+        pose = follow
       }
     }
     else {

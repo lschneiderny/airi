@@ -10,10 +10,14 @@ import * as v from 'valibot'
 
 import { verdictFileSchema } from '../verdicts'
 
-const usage = 'Usage: qa:motion3d verdicts <verdict file or folder>... [--fail-on <status>[,<status>...]] (default FAIL,REFUSED; folders contribute their *.verdict.json files)'
+const usage = 'Usage: qa:motion3d verdicts <verdict file or folder>... [--fail-on <status>[,<status>...]] (default FAIL,REFUSED; folders contribute every *.json file directly inside them that is a verdict file)'
 const DEFAULT_FAIL_ON = ['FAIL', 'REFUSED']
 
-async function verdictFiles(path: string): Promise<{ files: string[], error?: string }> {
+/**
+ * A named file must be a verdict. A folder contributes every `*.json` directly inside it: a `*.verdict.json` must be
+ * a verdict, any other JSON (gate.json, summary.json) counts only when it parses as one and is skipped otherwise.
+ */
+async function verdictFiles(path: string): Promise<{ files: { path: string, required: boolean }[], error?: string }> {
   let info
   try {
     info = await stat(path)
@@ -22,9 +26,9 @@ async function verdictFiles(path: string): Promise<{ files: string[], error?: st
     return { files: [], error: errorMessageFrom(error) ?? 'cannot read' }
   }
   if (!info.isDirectory())
-    return { files: [path] }
-  const files = (await readdir(path)).filter(name => name.endsWith('.verdict.json')).sort().map(name => join(path, name))
-  return files.length ? { files } : { files: [], error: 'folder holds no *.verdict.json file' }
+    return { files: [{ path, required: true }] }
+  const files = (await readdir(path)).filter(name => name.endsWith('.json')).sort().map(name => ({ path: join(path, name), required: name.endsWith('.verdict.json') }))
+  return files.length ? { files } : { files: [], error: 'folder holds no JSON file' }
 }
 
 async function readVerdict(path: string): Promise<VerdictFile | string> {
@@ -64,20 +68,25 @@ export async function verdictsMotion3d(args: readonly string[], context: Motion3
   let errors = 0
   let matched = 0
   let files = 0
+  let skipped = 0
   for (const path of paths) {
     const found = await verdictFiles(path)
-    if (found.error) {
-      errors++
-      console.info(`ERROR ${path}: ${found.error}`)
-    }
-    for (const file of found.files) {
-      files++
+    let read = 0
+    for (const { path: file, required } of found.files) {
       const verdict = await readVerdict(file)
       if (typeof verdict === 'string') {
+        if (!required) {
+          skipped++
+          continue
+        }
+        files++
+        read++
         errors++
         console.info(`ERROR ${file}: ${verdict}`)
         continue
       }
+      files++
+      read++
       const hits = verdict.lines.filter(line => failOn.includes(line.status))
       const hit = failOn.includes(verdict.verdict) || hits.length > 0
       matched += hit ? 1 : 0
@@ -86,7 +95,11 @@ export async function verdictsMotion3d(args: readonly string[], context: Motion3
       const refusals = verdict.refusals.length ? `; refusals: ${verdict.refusals.join(' | ')}` : ''
       console.info(`${verdict.verdict} ${verdict.report} version ${verdict.reportVersion ?? '-'} exit ${verdict.exitCode} ${file}; runs: ${runs}; lines with ${failOn.join('/')}: ${lines}${refusals}`)
     }
+    if (found.error || !read) {
+      errors++
+      console.info(`ERROR ${path}: ${found.error ?? 'folder holds no verdict file'}`)
+    }
   }
-  console.info(`verdict files: ${files}; matching --fail-on ${failOn.join(',')}: ${matched}; errors: ${errors}`)
+  console.info(`verdict files: ${files}; other JSON skipped: ${skipped}; matching --fail-on ${failOn.join(',')}: ${matched}; errors: ${errors}`)
   return errors ? 2 : matched ? 1 : 0
 }

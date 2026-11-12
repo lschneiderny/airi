@@ -79,6 +79,13 @@ describe('verdict files', () => {
     expect(printed.find(line => line.startsWith('FAIL gesture-timing'))).toContain('lines with FAIL/REFUSED: pops FAIL [walk-1]')
   })
 
+  it('reads every verdict JSON in a folder whatever its name, and skips other JSON', async () => {
+    await new VerdictRecorder('run', join(root, 'run-1.json')).finish(2)
+    await writeFile(join(root, 'summary.json'), '{"frames": 3}')
+    expect(await verdictsMotion3d([root], context())).toBe(1)
+    expect(printed.at(-1)).toContain('verdict files: 1; other JSON skipped: 1')
+  })
+
   it('treats a missing, unparsable or foreign verdict file as an error, never a pass', async () => {
     await writeFile(join(root, 'cut.verdict.json'), '{"kind": "motion3d-verdict", "verdict": "PA')
     await writeFile(join(root, 'other.json'), JSON.stringify({ kind: 'motion3d-verdict', version: 1, report: 'pops' }))

@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 import { analyticTrace } from '../metrics/test-trace'
 import { drawText, GLYPH_HEIGHT, GLYPH_WIDTH } from './font'
 import { selectWindows } from './frames'
-import { FramePoseRefusal, poseFrame, skin } from './pose'
+import { FramePoseRefusal, poseFrame, skin, unposedBones } from './pose'
 import { framingFor, rasterize } from './render'
 
 const rotZ = (a: number): Quat => [0, 0, Math.sin(a / 2), Math.cos(a / 2)]
@@ -69,6 +69,18 @@ describe('frames', () => {
     expect(() => poseFrame(rig({ weighted: true }), input, 0)).toThrow(FramePoseRefusal)
     expect(() => poseFrame(rig({ weighted: true }), input, 0)).toThrow(/twist/)
     expect(() => poseFrame(rig({ weighted: true }), input, 0, () => ({ rotation: [0, 0, 0, 1], position: [0, 0.5, 0] }))).not.toThrow()
+  })
+
+  it('poses an untraced append child from the trace by its ratio of the append parent, and lists the bones it cannot pose', () => {
+    const input = analyticTrace({ seconds: 0.1, bones: ['hips', 'spine'], world: (bone): Quat => bone === 'spine' ? rotZ(Math.PI / 2) : [0, 0, 0, 1] })
+    const plain = rig({ weighted: true })
+    const appended = { ...plain, bones: plain.bones.map((bone, i) => i === 2 ? { ...bone, append: { parent: 1, ratio: 0.5 } } : bone) }
+    const twist = poseFrame(appended, input, 0, 'trace').rotations[2]
+    const expected = rotZ(3 * Math.PI / 4)
+    expect(Math.abs(twist[0] * expected[0] + twist[1] * expected[1] + twist[2] * expected[2] + twist[3] * expected[3])).toBeCloseTo(1, 9)
+    expect(poseFrame(plain, input, 0, 'trace').rotations[2]).toEqual(poseFrame(plain, input, 0, 'trace').rotations[1])
+    expect(unposedBones(appended, new Set(input.trace.rig.bones))).toEqual([])
+    expect(unposedBones(plain, new Set(input.trace.rig.bones))).toEqual([2])
   })
 
   it('opens one window per matching marker or touch event', () => {

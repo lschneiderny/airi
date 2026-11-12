@@ -50,7 +50,7 @@ export function frameAt(input: DecodedMotionTrace, t: number): number {
   return best
 }
 
-const eventLabel = (event: MotionTraceEvent): string => event.kind === 'marker' ? event.label : `${event.kind}${'emotion' in event ? `:${event.emotion}:${event.phase}` : 'touch' in event ? `:${event.touch}` : 'gesture' in event ? `:${event.gesture}` : ''}`
+export const eventLabel = (event: MotionTraceEvent): string => event.kind === 'marker' ? event.label : `${event.kind}${'emotion' in event ? `:${event.emotion}:${event.phase}` : 'touch' in event ? `:${event.touch}` : 'gesture' in event ? `:${event.gesture}` : ''}`
 
 export function selectWindows(input: DecodedMotionTrace, selection: FrameSelection): FrameWindow[] {
   const sampled = (from: number, to: number, hz: number) => Array.from({ length: Math.floor((to - from) * hz + 1e-6) + 1 }, (_, i) => from + i / hz)

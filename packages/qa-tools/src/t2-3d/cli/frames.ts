@@ -27,12 +27,15 @@ import { runMotion3dScenario } from '../runner/run'
 import { motion3dScenarios } from '../scenarios'
 import { RUN_LEASE_SLOTS } from './run'
 
-const usage = 'Usage: qa:motion3d frames <run directory> --model <pmx> (--at <t>[,<t>...] | --window <from>:<to> [--hz <n>] | --around <marker label prefix or event kind> --before <s> --after <s> [--hz <n>]) [--views front,side] [--channels <name>[,<name>...]] --out <directory>'
+const usage = 'Usage: qa:motion3d frames <run directory> --model <pmx> (--at <t>[,<t>...] | --window <from>:<to> [--hz <n>] | --around <marker label prefix or event kind> [--before <s>] [--after <s>] [--hz <n>]) [--views front,side] [--channels <name>[,<name>...]] --out <directory>'
 /** A re-run must reproduce every stored rotation to this turn, else its untraced bones would not belong to the reviewed run. */
 const RERUN_TOLERANCE_DEG = 0.001
 /** Largest turn between a traced bone posed from the trace and the same bone in the re-run, on the drawn frames. */
 const POSE_TOLERANCE_DEG = 0.01
 const DEFAULT_CHANNELS = ['speaking', 'owned.rightArm', 'activation.left', 'activation.right']
+/** Seconds drawn before and after an `--around` event when the command line names none: the lead-in and the movement. */
+export const DEFAULT_BEFORE_SECONDS = 2
+export const DEFAULT_AFTER_SECONDS = 4
 
 class FramesUsageError extends Error {
   override readonly name = 'FramesUsageError'
@@ -82,7 +85,7 @@ function parse(args: readonly string[], cwd: string) {
     selection = { kind: 'window', from, to, hz: number('hz', 30) }
   }
   else {
-    selection = { kind: 'around', marker: values.get('around') ?? '', before: number('before'), after: number('after'), hz: number('hz', 30) }
+    selection = { kind: 'around', marker: values.get('around') ?? '', before: number('before', DEFAULT_BEFORE_SECONDS), after: number('after', DEFAULT_AFTER_SECONDS), hz: number('hz', 30) }
   }
   if ('hz' in selection && (selection.hz <= 0 || selection.hz > 60))
     throw new FramesUsageError('--hz must be above 0 and at most 60')
@@ -172,7 +175,7 @@ export async function framesMotion3d(args: readonly string[], context: Motion3dC
  * bone's local transform on the drawn frames, and refuses unless the re-run's trace reproduces the stored one and the
  * trace-posed bones match the re-run's own bones on those frames.
  */
-async function rerunRun(context: Motion3dCliContext, model: string, summary: FramesSummary, frames: ReadonlySet<number>, stored: DecodedMotionTrace, rig: FrameRig) {
+export async function rerunRun(context: Motion3dCliContext, model: string, summary: FramesSummary, frames: ReadonlySet<number>, stored: DecodedMotionTrace, rig: FrameRig) {
   const scenario = motion3dScenarios.find(s => s.id === summary.scenario.id)
   if (!scenario)
     throw new FramesUsageError(`unknown scenario ${summary.scenario.id}`)
