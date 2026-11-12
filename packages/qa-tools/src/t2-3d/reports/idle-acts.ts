@@ -442,7 +442,8 @@ function checkPair(run: LoadedRun, pair: LoadedRun, spans: readonly RawSpan[]): 
   const widened = spans.map(span => ({ id: span.id, start: span.start, end: (span.end ?? Number.POSITIVE_INFINITY) + C.exitSeconds + C.settleSeconds }))
   const declaring = widened.filter(span => ACT_LASTING[span.id] && Number.isFinite(span.end)).sort((x, y) => x.end - y.end)
   const hipsOffset = (frame: number) => heading(sub(on.hips(frame), off.hips(frame)), on.yaw(frame))
-  let base: { readonly angles: ReadonlyMap<number, number>, readonly hips: Vec3 } | null = null
+  const footYaws = (frame: number) => (['leftFoot', 'rightFoot'] as const).map(foot => on.index(foot)).filter(b => b >= 0).map(b => rotationVector(multiply(on.world(frame, b), conjugate(off.world(frame, b))))[1] * DEG)
+  let base: { readonly angles: ReadonlyMap<number, number>, readonly hips: Vec3, readonly footYaws: readonly number[] } | null = null
   let next = 0
   let difference = 0
   let at: number | null = null
@@ -453,11 +454,14 @@ function checkPair(run: LoadedRun, pair: LoadedRun, spans: readonly RawSpan[]): 
     const t = on.time(frame)
     if (next < declaring.length && t > declaring[next].end) {
       const lasting = ACT_LASTING[declaring[next].id]!
-      const footYaw = Math.max(...(['leftFoot', 'rightFoot'] as const).map(foot => on.index(foot)).filter(b => b >= 0).map(b => Math.abs(rotationVector(multiply(on.world(frame, b), conjugate(off.world(frame, b))))[1]) * DEG), 0)
+      // Each act may add its own declared result, so the bound applies to the change since the previous re-base.
+      const yaws = footYaws(frame)
+      const footYaw = Math.max(0, ...yaws.map((y, k) => Math.abs(y - (base?.footYaws[k] ?? 0))))
       const offset = hipsOffset(frame)
-      if (footYaw > lasting.footYawDeg || norm(offset) / a.rig.legLength > lasting.hips)
-        refuse(`the lasting result of ${declaring[next].id} at ${t.toFixed(3)} s exceeds its declared bound: foot yaw ${footYaw.toFixed(2)} deg (at most ${lasting.footYawDeg}), hips ${(norm(offset) / a.rig.legLength).toFixed(4)} L (at most ${lasting.hips})`)
-      base = { angles: new Map(lasting.bones.map(name => on.index(name)).filter(b => b >= 0).map(b => [b, angleBetween(on.local(frame, b), off.local(frame, b))])), hips: offset }
+      const shift = norm(base ? sub(offset, base.hips) : offset) / a.rig.legLength
+      if (footYaw > lasting.footYawDeg || shift > lasting.hips)
+        refuse(`the lasting result of ${declaring[next].id} at ${t.toFixed(3)} s exceeds its declared bound: foot yaw ${footYaw.toFixed(2)} deg (at most ${lasting.footYawDeg}), hips ${shift.toFixed(4)} L (at most ${lasting.hips})`)
+      base = { angles: new Map(lasting.bones.map(name => on.index(name)).filter(b => b >= 0).map(b => [b, angleBetween(on.local(frame, b), off.local(frame, b))])), hips: offset, footYaws: yaws }
       next++
     }
     if (t < a.scoredFrom || widened.some(span => t >= span.start && t <= span.end))

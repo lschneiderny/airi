@@ -268,6 +268,8 @@ describe('idle-acts report', () => {
     expect(() => report({ acts: [...SIX, replant].sort((a, b) => a.at - b.at), extra: yawed(6, 1) })).toThrow(/outside the act spans/)
     expect(() => report({ acts: [...SIX, replant].sort((a, b) => a.at - b.at), extra: yawed(20) })).toThrow(/lasting result/)
     expect(() => report({ acts: SIX, extra: yawed(6) })).toThrow(/outside the act spans/)
+    const steps = (bone: MotionTraceBone, t: number): Quat | null => bone === 'leftFoot' ? axisAngle(1, [10, 20, 30].reduce((deg, at) => deg + 6 * Math.min(1, Math.max(0, t - at) / 1.2), 0)) : null
+    expect(report({ acts: [10, 20, 30].map(at => ({ id: 'foot-replant', at, moves: null })), extra: steps }).detail.pair.difference).toBeLessThan(0.25)
   })
 
   it('refuses a pair whose root yaw or hips position differs outside the act spans, and accepts hips movement inside one', () => {
