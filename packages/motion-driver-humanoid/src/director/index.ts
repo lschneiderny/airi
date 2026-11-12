@@ -25,6 +25,16 @@ export const WANDER_MIN_MS = 600_000
 /** Upper bound of the wander interval in milliseconds. */
 export const WANDER_MAX_MS = 1_200_000
 
+/** Share of due wanders that walk over to where the user is working, when the cursor shows where that is. */
+export const VISIT_SHARE = 0.6
+
+/** Distance, in leg lengths, at which a visit stops short of the cursor: near enough to watch, not on top of it. */
+export const VISIT_STOP_LEGS = 1.5
+
+/** Lower and upper bound, in milliseconds, of the time she stays where a wander or a visit took her. */
+export const LINGER_MIN_MS = 45_000
+export const LINGER_MAX_MS = 150_000
+
 /** Refractory in milliseconds shared by the come-here and go-home tools. */
 export const MOVE_TOOL_REFRACTORY_MS = 60_000
 
@@ -92,6 +102,11 @@ export type BodyActionRefusal = 'refractory' | 'busy' | 'asleep' | 'dragging'
 /**
  * An action request; a new `seq` marks a new request. An empty `clipId` from the `tool` or `debug` source stops the
  * running performance.
+ *
+ * The `idle` source is a clip she plays unasked while nothing else claims her. It is the weakest request: it is
+ * refused while anything performs, while she walks, and while she talks, listens or thinks; it arms no refractory and
+ * no gesture cooldown, so it never makes the model's own request wait; a request from any other source replaces it;
+ * and it ends when the user touches her, drags her, opens the chat, sends a message, or when she starts to talk.
  */
 export interface BodyActionRequest {
   seq: number
@@ -100,7 +115,7 @@ export interface BodyActionRequest {
   layer: BodyActionLayer
   loop: boolean
   durationMs: number
-  source: 'act' | 'tool' | 'debug'
+  source: 'act' | 'tool' | 'debug' | 'idle'
 }
 
 /** The adapter's report on the clip the director last accepted. */
@@ -231,6 +246,8 @@ export interface BodyDirectorMemory {
   readonly lastReasonMs: number | null
   /** Null until the first roaming frame schedules a wander. */
   readonly nextWanderAtMs: number | null
+  /** Until when she stays where a wander or a visit took her before walking home; 0 when no stay applies. */
+  readonly lingerUntilMs: number
   /** Mulberry32 seed advanced after every draw; null until seeded from the input. */
   readonly rngState: number | null
   readonly lookOverride: { target: BodyLookTarget, untilMs: number } | null
@@ -265,6 +282,7 @@ export const initialBodyDirectorMemory: BodyDirectorMemory = Object.freeze({
   lookRefractoryUntilMs: 0,
   lastReasonMs: null,
   nextWanderAtMs: null,
+  lingerUntilMs: 0,
   rngState: null,
   lookOverride: null,
 })
@@ -360,6 +378,7 @@ export function decideBody(
   let pending = previous.pendingGoal
   let lastReasonMs = previous.lastReasonMs ?? nowMs
   let nextWanderAtMs = previous.nextWanderAtMs
+  let lingerUntilMs = previous.lingerUntilMs
   let toolRefused = previous.toolRefused
   let toolRetryAfterMs = previous.toolRetryAfterMs
   let toolRefusalReason = previous.toolRefusalReason
@@ -372,6 +391,12 @@ export function decideBody(
   // A goal in progress ends once the body has settled on it.
   const arrived = goalX !== null && input.locomotionMode === 'idle' && Math.abs(input.rootX - goalX) <= ARRIVAL_TOLERANCE
   if (arrived) {
+    // A walk of her own choosing has a destination worth staying at: she does not turn around after 20 seconds.
+    if (reason === 'wander' || reason === 'visit') {
+      const draw = drawRandom(rngState)
+      rngState = draw.state
+      lingerUntilMs = nowMs + LINGER_MIN_MS * (LINGER_MAX_MS / LINGER_MIN_MS) ** draw.value
+    }
     goalX = null
     reason = 'stay'
   }
@@ -388,9 +413,12 @@ export function decideBody(
   const endPerformance = (armRefractory: boolean) => {
     if (performing === null)
       return
-    const { kind, layer } = performing.request
+    const { kind, layer, source } = performing.request
     if (layer === 'full')
       fullEnded = true
+    // A clip she played unasked never makes a requested one wait.
+    if (source === 'idle')
+      armRefractory = false
     if (armRefractory && kind === 'action')
       actionRefractoryUntilMs = { ...actionRefractoryUntilMs, action: nowMs + ACTION_REFRACTORY_MS }
     if (armRefractory && kind === 'dance')
@@ -414,13 +442,17 @@ export function decideBody(
   }
   if (performing !== null && performing.phase === 'playing' && !performing.request.loop && nowMs - performing.sinceMs >= performing.request.durationMs + PERFORM_WATCHDOG_MS)
     endPerformance(true)
+  const claimed = input.speaking || (input.performance.mode !== 'idle' && input.performance.mode !== 'watching')
   if (performing !== null) {
-    const broad = performing.request.layer === 'full' || performing.request.loop
+    const unasked = performing.request.source === 'idle'
+    const broad = performing.request.layer === 'full' || performing.request.loop || unasked
     if (input.performance.away)
       endPerformance(true)
     else if (broad && (input.dragging || input.interactionSeq > previous.lastInteractionSeq))
       endPerformance(true)
-    else if (performing.request.loop && (input.chatUnfoldSeq > previous.lastUnfoldSeq || input.chatSendSeq > previous.lastSendSeq))
+    else if ((performing.request.loop || unasked) && (input.chatUnfoldSeq > previous.lastUnfoldSeq || input.chatSendSeq > previous.lastSendSeq))
+      endPerformance(true)
+    else if (unasked && claimed)
       endPerformance(true)
   }
 
@@ -433,9 +465,17 @@ export function decideBody(
       actionRefusal = reason
       actionRetryAfterMs = retryAfterMs
     }
+    const unasked = requested.source === 'idle'
+    // Any other request replaces a clip she plays unasked, before the busy rule can refuse it.
+    if (!unasked && requested.clipId !== '' && performing?.request.source === 'idle')
+      endPerformance(false)
     if (requested.clipId === '') {
-      if (requested.source !== 'act')
+      if (requested.source !== 'act' && !unasked)
         endPerformance(true)
+    }
+    else if (unasked && (performing !== null || claimed || goalX !== null || pending !== null)) {
+      // Unasked clips wait for a quiet body: nothing performing, not walking, not talking, listening or thinking.
+      refuse('busy', null)
     }
     else if (input.performance.away || previous.stance === 'sleep') {
       refuse('asleep', null)
@@ -464,7 +504,8 @@ export function decideBody(
       actionRefusal = null
       actionRetryAfterMs = null
       if (isGesture) {
-        gestureCooldown = { clipId: requested.clipId, untilMs: nowMs + GESTURE_REPEAT_MS }
+        if (!unasked)
+          gestureCooldown = { clipId: requested.clipId, untilMs: nowMs + GESTURE_REPEAT_MS }
         performing = { request: requested, phase: 'playing', sinceMs: nowMs }
       }
       else {
@@ -649,6 +690,7 @@ export function decideBody(
     && canIssue()
     && !chasing
     && nowMs - lastReasonMs >= RETURN_HOME_DELAY_MS
+    && nowMs >= lingerUntilMs
     && !atHome
   ) {
     issue({ x: clampToZones(input.homeX, zones), pace: 'stroll', reason: 'return-home' })
@@ -667,31 +709,59 @@ export function decideBody(
   const dueOnArrival = arrived && nextWanderAtMs !== null && nowMs >= nextWanderAtMs
   if (ground !== null && input.roamMode === 'roam' && (nextWanderAtMs === null || dueOnArrival))
     scheduleWander()
+  const watching = input.performance.mode === 'watching'
   if (
     ground !== null
     && input.roamMode === 'roam'
-    && input.performance.mode === 'idle'
+    && (input.performance.mode === 'idle' || watching)
     && nextWanderAtMs !== null
     && nowMs >= nextWanderAtMs
     && goalX === null
     && canIssue()
   ) {
-    const longestSide = Math.max(input.rootX - ground.minX, ground.maxX - input.rootX)
-    const minDistance = longestSide > WANDER_MIN_LEGS * leg
-      ? WANDER_MIN_LEGS * leg
-      : Math.max(WANDER_FLOOR_LEGS * leg, longestSide / 2)
-    const leftLength = Math.max(0, input.rootX - minDistance - ground.minX)
-    const rightLength = Math.max(0, ground.maxX - (input.rootX + minDistance))
-    if (leftLength + rightLength > 0) {
-      const draw = drawRandom(rngState)
-      rngState = draw.state
-      const offset = draw.value * (leftLength + rightLength)
-      const x = offset < leftLength
-        ? ground.minX + offset
-        : input.rootX + minDistance + (offset - leftLength)
-      issue({ x, pace: 'stroll', reason: 'wander' })
+    // Where the user is working, as far as the cursor shows it. A visit stops short of it on her side and stays on
+    // the ground she stands on, like a wander.
+    const cursorVisitX = input.cursorOnStage && input.cursorX !== null
+      ? clampToGround(input.cursorX - Math.sign(input.cursorX - input.rootX) * VISIT_STOP_LEGS * leg, ground)
+      : null
+    const visitX = cursorVisitX !== null && Math.abs(cursorVisitX - input.rootX) >= WANDER_FLOOR_LEGS * leg ? cursorVisitX : null
+    if (watching) {
+      // While the user is active she only ever walks over to them; an aimless stroll would ignore them. Without a
+      // place to visit the wander stays due until they pause.
+      if (visitX !== null) {
+        issue({ x: visitX, pace: 'stroll', reason: 'visit' })
+        scheduleWander()
+      }
     }
-    scheduleWander()
+    else {
+      let visiting = false
+      if (visitX !== null) {
+        const draw = drawRandom(rngState)
+        rngState = draw.state
+        visiting = draw.value < VISIT_SHARE
+      }
+      if (visiting && visitX !== null) {
+        issue({ x: visitX, pace: 'stroll', reason: 'visit' })
+      }
+      else {
+        const longestSide = Math.max(input.rootX - ground.minX, ground.maxX - input.rootX)
+        const minDistance = longestSide > WANDER_MIN_LEGS * leg
+          ? WANDER_MIN_LEGS * leg
+          : Math.max(WANDER_FLOOR_LEGS * leg, longestSide / 2)
+        const leftLength = Math.max(0, input.rootX - minDistance - ground.minX)
+        const rightLength = Math.max(0, ground.maxX - (input.rootX + minDistance))
+        if (leftLength + rightLength > 0) {
+          const draw = drawRandom(rngState)
+          rngState = draw.state
+          const offset = draw.value * (leftLength + rightLength)
+          const x = offset < leftLength
+            ? ground.minX + offset
+            : input.rootX + minDistance + (offset - leftLength)
+          issue({ x, pace: 'stroll', reason: 'wander' })
+        }
+      }
+      scheduleWander()
+    }
   }
 
   if (goalX !== null || chasing || pending !== null)
@@ -741,6 +811,7 @@ export function decideBody(
       lookRefractoryUntilMs,
       lastReasonMs,
       nextWanderAtMs,
+      lingerUntilMs,
       rngState,
       lookOverride,
     },

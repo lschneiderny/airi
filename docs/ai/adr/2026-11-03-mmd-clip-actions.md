@@ -141,3 +141,7 @@ The window-rect question for M4 is still open: the code to answer it exists, the
 - Beat-matched playback: dances play at native rate today.
 - Map the ACT `gesture` kinds (nod, shake and the others) to clips or procedural motion on MMD; MMD ignores them today.
 - Props, the M4 sensor wire contract (an Eventa contract once the measurement picks a placement) and display hand-off.
+
+## Amendment (2026-11-12): unasked clips
+
+Curation gained `idleMayUse` ("Idle may use"), off by default. A clip with it may be played by the character on her own: `decideIdleClip` picks one after enough quiet time, and the scene sends it to the director with the new `idle` source. That source is the weakest request. It is refused while anything performs, while she walks, and while she talks, listens or thinks; it arms no refractory and no gesture cooldown; a request from any other source replaces it; and a touch, a drag, an opened chat, a sent message or her own speech ends it. The director still never names a clip. See the [idle agency ADR](2026-11-12-idle-agency.md).

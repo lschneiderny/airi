@@ -7,6 +7,7 @@
     "./clip-meta": "./src/clip-meta/index.ts",
     "./director": "./src/director/index.ts",
     "./foot-contact": "./src/foot-contact/index.ts",
+    "./idle-clips": "./src/idle-clips/index.ts",
     "./look-at": "./src/look-at/index.ts",
     "./locomotion": "./src/locomotion/index.ts",
     "./rest-pose": "./src/rest-pose/index.ts",

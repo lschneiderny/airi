@@ -11,6 +11,8 @@ import {
   decideBody,
   GOAL_MIN_DWELL_MS,
   initialBodyDirectorMemory,
+  LINGER_MAX_MS,
+  LINGER_MIN_MS,
   LOOK_OVERRIDE_MS,
   LOOK_TOOL_REFRACTORY_MS,
   MOVE_TOOL_REFRACTORY_MS,
@@ -18,6 +20,8 @@ import {
   PENDING_GOAL_TTL_MS,
   RETURN_HOME_DELAY_MS,
   STAND_SETTLE_MS,
+  VISIT_SHARE,
+  VISIT_STOP_LEGS,
   WANDER_MAX_MS,
   WANDER_MIN_MS,
 } from './index'
@@ -1059,5 +1063,117 @@ describe('body director reach zones', () => {
 
     expect(crossing.intent.locomotion).toMatchObject({ goalX: 49, reason: 'approach-cursor' })
     expect(single.intent.locomotion.goalX).toBeNull()
+  })
+})
+
+describe('body director visits and lingering', () => {
+  /** A roaming frame with the cursor resting on the stage at `cursorX`. */
+  const roaming = (overrides: Partial<DirectorInput> = {}) => world({ roamMode: 'roam', seed: 7, cursorOnStage: true, cursorX: 14, slots: { sit: false, sleep: false }, ...overrides })
+
+  it('walks over to where the user works while they are active, and stops short of the cursor', () => {
+    const started = decide(roaming())
+    const dueMs = started.memory.nextWanderAtMs as number
+    const due = decide(roaming({ nowMs: dueMs, performance: performance('watching') }), started.memory)
+
+    expect(due.intent.locomotion).toMatchObject({ goalX: 14 - VISIT_STOP_LEGS, pace: 'stroll', reason: 'visit' })
+    expect(due.memory.nextWanderAtMs).toBeGreaterThanOrEqual(dueMs + WANDER_MIN_MS)
+  })
+
+  it('stays put while the user is active and the cursor is already beside her', () => {
+    const started = decide(roaming({ cursorX: 1.6 }))
+    const dueMs = started.memory.nextWanderAtMs as number
+    const due = decide(roaming({ nowMs: dueMs, cursorX: 1.6, performance: performance('watching') }), started.memory)
+
+    expect(due.intent.locomotion.goalX).toBeNull()
+    expect(due.memory.nextWanderAtMs).toBe(dueMs)
+  })
+
+  it('visits in about the visit share of idle wanders and strolls anywhere in the rest', () => {
+    let visits = 0
+    const seeds = 200
+    for (let seed = 1; seed <= seeds; seed++) {
+      const started = decide(roaming({ seed }))
+      const dueMs = started.memory.nextWanderAtMs as number
+      const due = decide(roaming({ nowMs: dueMs, seed }), started.memory)
+      expect(['visit', 'wander']).toContain(due.intent.locomotion.reason)
+      if (due.intent.locomotion.reason === 'visit')
+        visits++
+    }
+    expect(visits / seeds).toBeGreaterThan(VISIT_SHARE - 0.12)
+    expect(visits / seeds).toBeLessThan(VISIT_SHARE + 0.12)
+  })
+
+  it('stays where a visit took her before walking home', () => {
+    const started = decide(roaming())
+    const dueMs = started.memory.nextWanderAtMs as number
+    const due = decide(roaming({ nowMs: dueMs, performance: performance('watching') }), started.memory)
+    const goalX = due.intent.locomotion.goalX as number
+    const arrived = decide(roaming({ nowMs: dueMs + 10_000, rootX: goalX }), due.memory)
+    const lingerMs = arrived.memory.lingerUntilMs - (dueMs + 10_000)
+
+    expect(arrived.intent.locomotion.reason).toBe('stay')
+    expect(lingerMs).toBeGreaterThanOrEqual(LINGER_MIN_MS)
+    expect(lingerMs).toBeLessThanOrEqual(LINGER_MAX_MS)
+    // Past the old 20 s return delay she is still there; after the stay she strolls home.
+    const staying = decide(roaming({ nowMs: dueMs + 10_000 + LINGER_MIN_MS - 1_000, rootX: goalX }), arrived.memory)
+    expect(staying.intent.locomotion.goalX).toBeNull()
+    const leaving = decide(roaming({ nowMs: arrived.memory.lingerUntilMs, rootX: goalX }), staying.memory)
+    expect(leaving.intent.locomotion).toMatchObject({ goalX: 0, pace: 'stroll', reason: 'return-home' })
+  })
+})
+
+describe('body director unasked clips', () => {
+  const idle = (seq: number, overrides: Partial<BodyActionRequest> = {}) => gesture(seq, { source: 'idle', ...overrides })
+
+  it('plays an unasked clip on a quiet body without arming a cooldown or a refractory', () => {
+    const playing = decide(world({ actionRequest: idle(1) }))
+    const ended = decide(world({ nowMs: 2_100, actionRequest: idle(1), actionFeedback: { seq: 1, state: 'finished' } }), playing.memory)
+    const full = decide(world({ nowMs: 3_000, actionRequest: action(2, { source: 'idle' }) }), ended.memory)
+    const fullEnded = decide(world({ nowMs: 20_000, actionRequest: action(2, { source: 'idle' }), actionFeedback: { seq: 2, state: 'finished' } }), full.memory)
+
+    expect(playing.intent.action).toMatchObject({ seq: 1, clipId: 'wave', phase: 'playing' })
+    expect(playing.memory.gestureCooldown).toBeNull()
+    expect(full.intent.action).toMatchObject({ seq: 2, layer: 'full' })
+    expect(fullEnded.memory.actionRefractoryUntilMs).toEqual({ action: 0, dance: 0 })
+  })
+
+  it('refuses an unasked clip while she talks, thinks, walks, or already performs', () => {
+    const talking = decide(world({ speaking: true, actionRequest: idle(1) }))
+    const thinking = decide(world({ performance: performance('thinking'), actionRequest: idle(1) }))
+    const goal = { seq: 1, x: 10, pace: 'walk' as const }
+    const walking = decide(world({ nowMs: 1_000, rootX: 2, locomotionMode: 'walking', debugGoal: goal, actionRequest: idle(1) }), decide(world({ debugGoal: goal })).memory)
+    const performing = decide(world({ actionRequest: gesture(1) }))
+    const second = decide(world({ nowMs: 500, actionRequest: idle(2, { clipId: 'nod' }) }), performing.memory)
+
+    for (const refused of [talking, thinking, walking, second])
+      expect(refused.memory.actionRefusal).toBe('busy')
+    expect(talking.intent.action).toBeNull()
+    expect(second.intent.action).toMatchObject({ seq: 1 })
+  })
+
+  it('gives way to any asked request', () => {
+    const unasked = decide(world({ actionRequest: action(1, { source: 'idle', durationMs: 30_000 }) }))
+    const playing = decide(world({ nowMs: 1_000, actionRequest: action(1, { source: 'idle', durationMs: 30_000 }) }), unasked.memory)
+    const asked = decide(world({ nowMs: 5_000, actionRequest: dance(2) }), playing.memory)
+
+    expect(asked.memory.actionRefusal).toBeNull()
+    expect(asked.intent.action).toMatchObject({ seq: 2, clipId: 'dance' })
+  })
+
+  it('ends an unasked clip when the user sends a message, touches her, or she starts to talk', () => {
+    const start = () => decide(world({ actionRequest: idle(1, { durationMs: 6_000 }) }))
+    const sent = decide(world({ nowMs: 1_000, chatSendSeq: 1, actionRequest: idle(1) }), start().memory)
+    const touched = decide(world({ nowMs: 1_000, interactionSeq: 1, actionRequest: idle(1) }), start().memory)
+    const talking = decide(world({ nowMs: 1_000, performance: performance('talking'), actionRequest: idle(1) }), start().memory)
+
+    for (const ended of [sent, touched, talking])
+      expect(ended.intent.action).toBeNull()
+  })
+
+  it('never stops a performance with an empty unasked request', () => {
+    const playing = decide(world({ actionRequest: dance(1) }))
+    const stop = decide(world({ nowMs: 1_000, actionRequest: action(2, { clipId: '', source: 'idle' }) }), playing.memory)
+
+    expect(stop.intent.action).toMatchObject({ seq: 1 })
   })
 })
