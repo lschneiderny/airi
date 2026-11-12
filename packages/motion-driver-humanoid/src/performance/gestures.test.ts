@@ -267,6 +267,16 @@ describe('co-speech gestures', () => {
     }
   })
 
+  it.each([['chisa', chisaTraits], ['ellen', ellenTraits]] as const)('performs a chop on %s\'s real rig when two accepted emphases fall within 3 s', (_, rig) => {
+    for (const energy of [0.45, 0.65, 0.85]) {
+      // Accepted emphases at 1.0, 2.1 and 3.0 s after the utterance starts: the second and third each follow a stroked one
+      // within 3 s, so 4a's chop is chosen; it must be performed, not replaced by a beat.
+      const onsets = [1.0, 2.1, 3.0].map(at => ({ at: 0.4 + at, major: true }))
+      const run = perform({ utterances: [utterance(0.4, energy, onsets)], tension: 0 }, 5, { traits: rig, seed: 1 })
+      expect(strokes(run).map(stroke => stroke.form), `energy ${energy}`).toContain('chop')
+    }
+  })
+
   it('gestures past a real bust without a corrector kick', () => {
     // Natural reports mood tension 0 in speech without an emotion: the softest active arm followers.
     const correction = { left: 0, right: 0 }

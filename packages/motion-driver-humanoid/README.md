@@ -532,7 +532,11 @@ six per unit, holds with a 1.5 % A drift, and retracts to where it came from at
 tempo, and selects among forms: the default emphasis form is palm-up at 0.25,
 press at 0.10 + 0.25 x the utterance's energy, and beat otherwise. The forms are 4a's beat, palm-up, press, point, chop and frame at unit
 A's amplitude scale (`GESTURE_FORMS`), keys solved per rig with
-`solveArmKey` and pushed along the proxy gradient until key and path clear.
+`solveArmKey` and pushed along the proxy gradient until key and path clear;
+a contact on the upper arm swings the elbow out by 5 degrees instead (up to
+the arm forms' 80), since pushing the hand barely moves the upper arm off the
+trunk, so a downward chop's elbow flares past the body's side instead of
+leaving the chop unperformed.
 Every segment's wrist-placing channels (flex, abduct, twist, elbow) are fed
 forward through their followers' inverse, so the arm moves along the path its
 keys were cleared on, without its followers' lag or overshoot. A prepared

@@ -210,19 +210,26 @@ export class GestureKeys {
   }
 
   /**
-   * Solves `key` into `pose`'s arm angles (clavicle and fingers untouched), pushing the hand outward until the pose and
-   * the angle path from `from` clear the proxies, the pose by `headroom` more (`KEY_HEADROOM` for a key the arm settles
-   * on). False when no clear, reachable, in-limit key exists.
+   * Solves `key` into `pose`'s arm angles (clavicle and fingers untouched), resolving contacts until the pose and the
+   * angle path from `from` clear the proxies, the pose by `headroom` more (`KEY_HEADROOM` for a key the arm settles
+   * on): a forearm or hand contact pushes the hand outward along the proxy's normal; an upper-arm contact swings the
+   * elbow out instead, as the arm forms reach past the body, because pushing the hand barely moves the upper arm off
+   * the trunk (a downward chop's elbow hangs into the side). False when no clear, reachable, in-limit key exists.
    */
   solve(side: BodySide, key: ArmKey, pose: ArmPose, from: ArmPose | null = null, headroom = 0): boolean {
     const hand: [number, number, number] = [key.hand[0], key.hand[1], key.hand[2]]
     const sigma = side === 'left' ? 1 : -1
+    let swivel = key.swivel
     for (let step = 0; step <= PUSH_STEPS; step++) {
-      if (!this.solveOnce(side, { ...key, hand }, pose))
+      if (!this.solveOnce(side, { ...key, hand, swivel }, pose))
         return false
       const contact = this.deepest(side, pose, from, headroom)
       if (!contact)
         return true
+      if (!contact.forearm && swivel + ANCHOR.swivelStep <= ANCHOR.swivel + 1e-9) {
+        swivel += ANCHOR.swivelStep
+        continue
+      }
       // 6.3: push the hand along the proxy's outward normal at the deepest sample, in the key's [out, up, forward].
       hand[0] += PUSH_STEP * sigma * contact.nx
       hand[1] += PUSH_STEP * contact.ny
@@ -277,14 +284,17 @@ export class GestureKeys {
     return margin
   }
 
-  /** The outward normal at the deepest contact of `pose` or of the path to it from `from`, or null when all is clear. */
-  private deepest(side: BodySide, pose: ArmPose, from: ArmPose | null, headroom = 0): { nx: number, ny: number, nz: number } | null {
-    let best: { depth: number, nx: number, ny: number, nz: number } | null = null
+  /**
+   * The outward normal at the deepest contact of `pose` or of the path to it from `from`, and whether that sample is on
+   * the forearm and hand, or null when all is clear.
+   */
+  private deepest(side: BodySide, pose: ArmPose, from: ArmPose | null, headroom = 0): { nx: number, ny: number, nz: number, forearm: boolean } | null {
+    let best: { depth: number, nx: number, ny: number, nz: number, forearm: boolean } | null = null
     for (let sample = from ? 0 : PATH_SAMPLES; sample <= PATH_SAMPLES; sample++) {
       this.load(side, from ?? pose, pose, sample / PATH_SAMPLES)
       const d = this.collision.measure(side, this.scratch, sample === PATH_SAMPLES ? headroom : 0)
       if (d.depth > 0 && (!best || d.depth > best.depth))
-        best = { depth: d.depth, nx: d.nx, ny: d.ny, nz: d.nz }
+        best = { depth: d.depth, nx: d.nx, ny: d.ny, nz: d.nz, forearm: d.forearm }
     }
     return best
   }
