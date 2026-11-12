@@ -3,6 +3,7 @@ import type { PerformanceLayer } from './stack'
 
 import { describe, expect, it } from 'vitest'
 
+import { ARM_NOISE_DEGREES } from './arms'
 import { ARM_START, BODY_TICK, channelIndex, DEG, SIDES } from './channels'
 import { GESTURE_FORMS, GestureKeys, writeHandShape } from './gesture-forms'
 import { createGestureLayers } from './gestures'
@@ -323,12 +324,14 @@ describe('co-speech gestures', () => {
     const start = run.frames.findIndex(frame => frame.gesture.unitSeq === 1)
     const hand = run.frames[start].gesture.hand
     const side = hand === 'left' ? 'left' : 'right'
-    const peak = (name: string) => {
-      const c = channelIndex(`${side}${name}` as Parameters<typeof channelIndex>[0])
+    // A bone's speed is that of all its channels together: the upper arm is flex, abduction and twist, as the gesture
+    // report measures the upper arm bone.
+    const peak = (...names: string[]) => {
+      const cs = names.map(name => channelIndex(`${side}${name}` as Parameters<typeof channelIndex>[0]))
       let best = 0
       let at = 0
       for (let i = start + 1; i < start + 120; i++) {
-        const speed = Math.abs(run.frames[i].channels[c] - silent.frames[i].channels[c] - run.frames[i - 1].channels[c] + silent.frames[i - 1].channels[c])
+        const speed = Math.hypot(...cs.map(c => run.frames[i].channels[c] - silent.frames[i].channels[c] - run.frames[i - 1].channels[c] + silent.frames[i - 1].channels[c]))
         if (speed > best) {
           best = speed
           at = i
@@ -336,9 +339,44 @@ describe('co-speech gestures', () => {
       }
       return at
     }
-    expect(peak('Elbow')).toBeGreaterThan(peak('Flex'))
+    expect(peak('Elbow')).toBeGreaterThan(peak('Flex', 'Abduct', 'Twist'))
     expect(peak('Wflex')).toBeGreaterThan(peak('Elbow'))
     expect(peak('Index0')).toBeGreaterThan(peak('Wflex'))
+  })
+
+  it.each(fixtureRigs)('follows the planned preparation without overshooting the ready key on $name', ({ traits: rig }) => {
+    const targets: Record<string, Float64Array> = {}
+    const layers = createGestureLayers({ traits: rig, seed: 1 })
+    for (const layer of layers) {
+      const step = layer.step
+      layer.step = (context) => {
+        const output = step(context)
+        targets[layer.id] = Float64Array.from(output.channels)
+        return output
+      }
+    }
+    const performer = createBodyPerformer({ traits: rig, seed: 1, layers })
+    const state = { onset: 0, emphasis: 0, slow: 0 }
+    // Natural reports mood tension 0 in speech without an emotion: the softest active arm followers.
+    const script: Script = { utterances: [utterance(0.5, 0.65, [])], tension: 0 }
+    const frames: { channels: Float32Array, unitSeq: number, hand: string | null }[] = []
+    for (let tick = 1; tick <= Math.round(2.5 / BODY_TICK); tick++) {
+      const frame = performer.step(speechInput(script, tick * BODY_TICK, state))
+      frames.push({ channels: frame.channels.slice(), unitSeq: frame.diagnostics.gesture.unitSeq, hand: frame.diagnostics.gesture.hand })
+    }
+    const start = frames.findIndex(frame => frame.unitSeq === 1)
+    const side = frames[start].hand === 'left' ? 'left' : 'right'
+    // By 2.5 s the layer's target has settled on the ready key; each arm angle stays between where it began and the
+    // key, within the channel's own moving-hold noise.
+    const key = targets[`gesture-${side}`]
+    ;(['Flex', 'Abduct', 'Twist', 'Elbow'] as const).forEach((name, k) => {
+      const c = channelIndex(`${side}${name}`)
+      const from = frames[start - 1].channels[c]
+      let beyond = 0
+      for (let i = start; i < frames.length; i++)
+        beyond = Math.max(beyond, frames[i].channels[c] - Math.max(from, key[c]), Math.min(from, key[c]) - frames[i].channels[c])
+      expect(beyond / DEG, name).toBeLessThanOrEqual(ARM_NOISE_DEGREES[2 + k] + 0.3)
+    })
   })
 
   it('retracts to the idle hang with no velocity step once speech ends', () => {

@@ -96,8 +96,6 @@ interface Segment {
    * its input slope, so a large turn of the forearm, wrist or fingers arrives after the hit (4a: the hand shape last).
    */
   readonly durations: ArmPose
-  /** A stroke: its wrist-placing channels (flex, abduct, twist, elbow) are fed forward through the followers' inverse. */
-  feedforward: boolean
 }
 
 interface TorsoPulse {
@@ -122,7 +120,7 @@ class ArmTrack {
   readonly home = pose()
   readonly ready = pose()
   readonly key = pose()
-  readonly segment: Segment = { from: pose(), velocity: pose(), to: pose(), start: 0, durations: pose().fill(1), feedforward: false }
+  readonly segment: Segment = { from: pose(), velocity: pose(), to: pose(), start: 0, durations: pose().fill(1) }
   readonly pulses: TorsoPulse[] = []
   state: TrackState = 'rest'
   weight = 0
@@ -155,21 +153,21 @@ class ArmTrack {
   }
 
   /**
-   * Starts a motion to `to` from the current target, continuing the plan's velocity (quintic decay of `v0`). The
-   * target stays continuous: a stroke's inverse term is zero at both ends of its segment.
+   * Starts a motion to `to` from the current target, continuing the plan's velocity (quintic decay of `v0`), and
+   * returns its duration: `duration`, or longer when the followers could not take its fed-forward channels in that
+   * time. The target stays continuous: the inverse term is zero at both ends of every segment.
    */
-  move(to: ArmPose, now: number, duration: number, feedforward: boolean): void {
+  move(to: ArmPose, now: number, duration: number, tension: number): number {
     const s = this.segment
+    const fed = Math.max(BODY_TICK, duration, this.fedForwardFloor(to, tension))
     s.from.set(this.pose)
     for (let j = 0; j < 26; j++)
       s.velocity[j] = this.warm ? (this.planned[j] - this.plannedPrevious[j]) / BODY_TICK : 0
     s.to.set(to)
     s.start = now
-    s.feedforward = feedforward
-    for (let j = 0; j < 26; j++) {
-      const fed = feedforward && j >= 2 && j <= 5
-      s.durations[j] = Math.max(BODY_TICK, duration, fed ? 0 : MIN_JERK_PEAK_SLOPE * Math.abs(to[j] - s.from[j]) / FOLLOWER_INPUT_SLOPE)
-    }
+    for (let j = 0; j < 26; j++)
+      s.durations[j] = j >= 2 && j <= 5 ? fed : Math.max(fed, MIN_JERK_PEAK_SLOPE * Math.abs(to[j] - s.from[j]) / FOLLOWER_INPUT_SLOPE)
+    return fed
   }
 
   advance(now: number, tension: number): void {
@@ -181,10 +179,11 @@ class ArmTrack {
       this.pose[j] = y
       const duration = s.durations[j]
       const u = Math.max(0, Math.min(1, (now - s.start) / duration))
-      if (!s.feedforward || j < 2 || j > 5 || u >= 1)
+      if (j < 2 || j > 5 || u >= 1)
         continue
-      // Flex, abduct, twist and elbow place the wrist: the followers receive the inverse of the planned stroke's
-      // minimum-jerk part, analytic, so the wrist lands as planned. Distal channels follow softly.
+      // Flex, abduct, twist and elbow place the wrist: the followers receive the inverse of every segment's planned
+      // minimum-jerk part, analytic, so the arm moves along the path the keys were cleared on and lands as planned,
+      // without its followers' lag or overshoot. Distal channels follow softly.
       const [lead, curvature] = followerInverse(j, tension)
       const rate = 30 * u ** 2 * (1 - u) ** 2 / duration
       const acceleration = 60 * u * (1 - u) * (1 - 2 * u) / duration ** 2
@@ -194,11 +193,11 @@ class ArmTrack {
   }
 
   /**
-   * The shortest stroke from the current target to `to` whose fed-forward channels (flex, abduct, twist, elbow) stay
+   * The shortest segment from the current target to `to` whose fed-forward channels (flex, abduct, twist, elbow) stay
    * within the follower input slope: their target's slope is `D (s' / T + lead s'' / T^2 + curvature s''' / T^3)` for
    * minimum jerk `s`. The other channels take their own durations (`move`).
    */
-  strokeFloor(to: ArmPose, tension: number): number {
+  private fedForwardFloor(to: ArmPose, tension: number): number {
     const inverses = [2, 3, 4, 5].map(j => followerInverse(j, tension))
     const slope = (duration: number) => {
       let worst = 0
@@ -305,6 +304,8 @@ class GesturePerformer {
   private readonly majors: number[] = []
   private readonly formTimes = new Map<SpeechGestureForm, number>()
   private armForm: { side: BodySide, form: BodyArmForm } | null = null
+  /** Natural's mood tension this tick: the arm followers' stiffness, which every segment's feedforward inverts. */
+  private tension = 0
   private readonly scratch = pose()
 
   constructor(private readonly traits: BodyRigTraits, private readonly seed: number) {
@@ -339,6 +340,7 @@ class GesturePerformer {
     const { input } = context
     const now = context.time
     const voice = input.voice
+    this.tension = input.mood.tension
     const onset = voice.onsetSeq !== this.lastOnset
     const major = onset && voice.emphasis !== null && voice.emphasis.seq !== this.lastEmphasis
     this.lastOnset = voice.onsetSeq
@@ -422,9 +424,8 @@ class GesturePerformer {
     if (!this.keys.armForm(request.side, request.form, track.key))
       return
     const travel = this.travel(request.side, track.home, track.key)
-    track.prepSeconds = (0.25 + 0.35 * travel) / gestureTempo(context.input.energy.level)
     this.begin(track, now)
-    track.move(track.key, now, track.prepSeconds, false)
+    track.prepSeconds = track.move(track.key, now, (0.25 + 0.35 * travel) / gestureTempo(context.input.energy.level), this.tension)
     track.state = 'form'
     track.form = request.form
     track.phaseEnd = Infinity
@@ -449,11 +450,10 @@ class GesturePerformer {
       track.ready.set(track.home)
       writeHandShape('relaxed', track.ready)
       const swivel = twoHand && side !== this.dominant ? AMPLITUDE.nonDominantSwivel : 0
-      if (!this.keys.solve(side, this.keys.readyKey(energy, 0, swivel), track.ready))
+      if (!this.keys.solve(side, this.keys.readyKey(energy, 0, swivel), track.ready, track.home))
         continue
-      track.prepSeconds = (0.25 + 0.35 * this.travel(side, track.home, track.ready)) / gestureTempo(energy)
       this.begin(track, now)
-      track.move(track.ready, now, track.prepSeconds, false)
+      track.prepSeconds = track.move(track.ready, now, (0.25 + 0.35 * this.travel(side, track.home, track.ready)) / gestureTempo(energy), this.tension)
       track.state = 'preparation'
       track.phaseEnd = now + track.prepSeconds
       started.push(side)
@@ -542,10 +542,8 @@ class GesturePerformer {
         track.drift[j] += (track.key[j] - track.ready[j]) * AMPLITUDE.drift / travel
       // 4a: the visible hit lands at the stroke's duration. Feedforward removes the followers' own lag, so only the
       // elbow's cascade delay remains between the planned profile's end and the wrist's landing. A stroke the followers
-      // cannot take in that time lasts longer (`strokeFloor`); the apex is observed, so its report stays true.
-      const tension = context.input.mood.tension
-      const profile = Math.max(seconds - armCascadeDelay(5, 1, 1, tension), track.strokeFloor(track.key, tension))
-      track.move(track.key, now, profile, true)
+      // cannot take in that time lasts longer (`move`); the apex is observed, so its report stays true.
+      const profile = track.move(track.key, now, seconds - armCascadeDelay(5, 1, 1, this.tension), this.tension)
       track.state = 'stroke'
       track.form = candidate
       track.phaseEnd = now + profile
@@ -623,8 +621,7 @@ class GesturePerformer {
 
   /** Returns the arm to where it was before the unit, 1.3 x its preparation, while the weight ramps down with it. */
   private retractTrack(track: ArmTrack, now: number): void {
-    const duration = Math.max(TIMING.exit + BODY_TICK, TIMING.retractionScale * track.prepSeconds)
-    track.move(track.home, now, duration, false)
+    const duration = track.move(track.home, now, Math.max(TIMING.exit + BODY_TICK, TIMING.retractionScale * track.prepSeconds), this.tension)
     track.state = 'retraction'
     track.pending = null
     track.phaseEnd = now + duration
@@ -640,15 +637,13 @@ class GesturePerformer {
     }
     if (track.state === 'stroke' && now >= track.phaseEnd) {
       // The hit (4a): the planned profile has ended; the post-stroke hold drifts on from here.
-      track.move(track.drift, now, track.holdSeconds, false)
       track.state = 'hold'
-      track.holdEnd = now + track.holdSeconds
+      track.holdEnd = now + track.move(track.drift, now, track.holdSeconds, this.tension)
     }
     this.observe(track, context, now)
     if (track.state === 'hold' && now >= track.holdEnd) {
-      track.move(track.ready, now, TIMING.recovery / gestureTempo(this.unit.energy), false)
       track.state = 'recovery'
-      track.phaseEnd = now + TIMING.recovery / gestureTempo(this.unit.energy)
+      track.phaseEnd = now + track.move(track.ready, now, TIMING.recovery / gestureTempo(this.unit.energy), this.tension)
     }
     else if ((track.state === 'recovery' || track.state === 'preparation') && now >= track.phaseEnd) {
       track.state = 'ready'
@@ -661,7 +656,7 @@ class GesturePerformer {
       track.exitSeconds = TIMING.exit
     }
     if (track.active || track.weight > 0)
-      track.advance(now, context.input.mood.tension)
+      track.advance(now, this.tension)
     track.torso(now)
     track.write()
   }

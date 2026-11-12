@@ -514,10 +514,13 @@ six per unit, holds with a 1.5 % A drift, and retracts to where it came from at
 tempo. The forms are 4a's beat, palm-up, press, point, chop and frame at unit
 A's amplitude scale (`GESTURE_FORMS`), keys solved per rig with
 `solveArmKey` and pushed along the proxy gradient until key and path clear.
-A stroke's wrist-placing channels (flex, abduct, twist, elbow) are fed forward
-through their followers' inverse, so it lands at 4a's duration, or later when
-the inverse would ask a follower for more than its 20 rad/s input slope: the
-stroke then lasts the shortest time the followers can take. Every other
+Every segment's wrist-placing channels (flex, abduct, twist, elbow) are fed
+forward through their followers' inverse, so the arm moves along the path its
+keys were cleared on, without its followers' lag or overshoot, and a stroke
+lands at 4a's duration, or later when the inverse would ask a follower for more
+than its 20 rad/s input slope: a segment then lasts the shortest time the
+followers can take. The ready key is cleared along its path from the arm's
+starting pose, as stroke keys are along theirs from the ready key. Every other
 channel of a segment also stays within that slope, so a large forearm, wrist or
 finger turn arrives after the hit, and each new segment continues the planned
 motion's velocity, never the inverse's. The report marks a stroke at the apex the lead wrist actually shows
