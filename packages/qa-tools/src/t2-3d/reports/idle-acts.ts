@@ -1,6 +1,7 @@
 import type { MotionTraceBone } from '@proj-airi/motion-driver-humanoid/motion-trace'
-import type { BodyActId, BodyRest } from '@proj-airi/motion-driver-humanoid/performance'
+import type { BodyRest } from '@proj-airi/motion-driver-humanoid/performance'
 
+import type { Motion3dIdleDrive } from '../idle-drive'
 import type { Quat, Vec3 } from '../metrics'
 import type { DecodedMotionTrace } from '../read-trace'
 import type { CaseReport, CaseRequirement } from './case-report'
@@ -8,155 +9,100 @@ import type { LoadedRun, ReportConstant } from './report'
 
 import { MOTION_TRACE_CHANNELS } from '@proj-airi/motion-driver-humanoid/motion-trace'
 
-import { add, conjugate, cv, DEG, heading, multiply, norm, rotate, rotationVector, scale, sub } from '../metrics/math'
+import { percentile } from '../gate/bands'
+import { IDLE_MARKER, idleDriveDetail, QA_DRIVE_PRESENT } from '../idle-drive'
+import { add, conjugate, DEG, median, multiply, norm, rotate, sub } from '../metrics/math'
 import { caseReport, formatCaseReport, judged, notExercised } from './case-report'
 import { fixed, gateStatus, markers, ReportUsageError } from './report'
 
-export const IDLE_ACTS_VERSION = 3
-
-/**
- * One key of an act's form (architecture 4e): the difference between the paired runs that the act must produce, at
- * `amplitude` (deg; L for `position`), on any one of `bones` (alternatives, such as either hand).
- * - `local`: the bone's rotation relative to its parent;
- * - `from`: the bone's world orientation relative to the world orientation of `from` at the same index;
- * - `world`: the bone's world orientation;
- * - `position`: the hips' world position.
- * Distinctive keys (rules.md revision 3, X1), positions and joint relations the drawn amplitude does not scale away:
- * - `component`: one rotation-vector component (0 pitch, 1 yaw, 2 roll) of a `local`, `world` or `from` difference;
- * - `hips`: one heading-frame component of the hips-position difference, signed (up) or not, in L;
- * - `lift`: the world height gained by either listed bone, in L;
- * - `hand`: a hand within `handRadius` of `at` ([out, up, forward] arm lengths from its shoulder joint, architecture 4a),
- *   where the companion's same hand is not;
- * - `face`: a hand within `faceDistance` of the head joint, in front of the face or beside it (head frame), where the
- *   companion's is not;
- * - `together`: the two wrists within `claspDistance` of each other, where the companion's are not;
- * - `oscillation`: a signal alternating beyond its median +- half the amplitude `transitions` times over the span (over
- *   the frames on which key `during` holds, when given): `arm-swing` is half the left minus the right upper arm's pitch
- *   difference, `forearm-twist` the twist of the forearm and hand about the forearm's long axis.
- * `after` lists the keys of the same act whose first qualifying run must start before this key's (the design's order).
- */
-type ActKeyShape
-  = | { readonly kind: 'local' | 'world', readonly bones: readonly MotionTraceBone[], readonly amplitude: number }
-    | { readonly kind: 'from', readonly bones: readonly MotionTraceBone[], readonly from: readonly MotionTraceBone[], readonly amplitude: number }
-    | { readonly kind: 'position', readonly amplitude: number }
-    | { readonly kind: 'component', readonly frame: 'local' | 'world' | 'from', readonly bones: readonly MotionTraceBone[], readonly from?: readonly MotionTraceBone[], readonly axis: 0 | 1 | 2, readonly amplitude: number }
-    | { readonly kind: 'hips', readonly axis: 0 | 1 | 2, readonly signed: boolean, readonly amplitude: number }
-    | { readonly kind: 'lift', readonly bones: readonly MotionTraceBone[], readonly amplitude: number }
-    | { readonly kind: 'hand', readonly at: Vec3 }
-    | { readonly kind: 'face', readonly zone: 'front' | 'side' }
-    | { readonly kind: 'together' }
-    | { readonly kind: 'oscillation', readonly signal: 'arm-swing' | 'forearm-twist', readonly amplitude: number, readonly transitions: number, readonly during?: number }
-export type ActKey = ActKeyShape & { readonly after?: readonly number[] }
-
-const both = (bone: 'Shoulder' | 'UpperArm' | 'Foot', amplitude: number): ActKey[] => (['left', 'right'] as const).map(side => ({ kind: bone === 'Foot' ? 'world' : 'local', bones: [`${side}${bone}`], amplitude }))
-const eitherHand = (amplitude: number): ActKey => ({ kind: 'from', bones: ['leftHand', 'rightHand'], from: ['leftUpperArm', 'rightUpperArm'], amplitude })
-const trunk = (amplitude: number): ActKey => ({ kind: 'from', bones: ['chest'], from: ['hips'], amplitude })
-
-const clavicleRoll = (amplitude: number): ActKey[] => (['leftShoulder', 'rightShoulder'] as const).map(bone => ({ kind: 'component', frame: 'local', bones: [bone], axis: 2, amplitude }))
-
-/**
- * Every key an act's movement must carry, at its architecture 4e design amplitude (4b for the peek-at-chat lean; the low
- * end of a 4e range): revision 2's keys, then the keys of the act's distinctive phase (rules.md revision 3, X1). An act
- * is confirmed when the paired runs differ by half of each amplitude, or meet each zone, somewhere in its span.
- */
-export const ACT_KEYS = {
-  'sigh': [trunk(4), ...both('Shoulder', 4), { kind: 'component', frame: 'from', bones: ['chest'], from: ['hips'], axis: 0, amplitude: 4 }, ...clavicleRoll(4)],
-  'shoulder-roll': [...both('Shoulder', 10), { kind: 'from', bones: ['head'], from: ['chest'], amplitude: 12, after: [0, 1] }, { kind: 'component', frame: 'from', bones: ['head'], from: ['chest'], axis: 2, amplitude: 12, after: [0, 1] }],
-  'foot-replant': [{ kind: 'world', bones: ['leftFoot', 'rightFoot'], amplitude: 4 }, { kind: 'lift', bones: ['leftFoot', 'rightFoot'], amplitude: 0.02 }],
-  'look-around': [{ kind: 'world', bones: ['head'], amplitude: 35 }, { kind: 'component', frame: 'world', bones: ['head'], axis: 1, amplitude: 35 }],
-  'hand-inspect': [eitherHand(60), { kind: 'hand', at: [-0.10, -0.30, 0.45] }],
-  'clasp-rock': [{ kind: 'position', amplitude: 0.012 }, { kind: 'together' }, { kind: 'hips', axis: 2, signed: false, amplitude: 0.012 }],
-  'arm-swing': [...both('UpperArm', 8), { kind: 'oscillation', signal: 'arm-swing', amplitude: 8, transitions: 2 }],
-  'hair-tuck': [{ kind: 'local', bones: ['head'], amplitude: 4 }, { kind: 'face', zone: 'side' }],
-  'yawn': [{ kind: 'from', bones: ['head'], from: ['chest'], amplitude: 8 }, ...both('Shoulder', 5), trunk(3), { kind: 'face', zone: 'front' }],
-  'peek-chat': [trunk(5), { kind: 'component', frame: 'from', bones: ['chest'], from: ['hips'], axis: 2, amplitude: 5 }],
-  'heel-raise': [{ kind: 'position', amplitude: 0.012 }, ...both('Foot', 14), { kind: 'hips', axis: 1, signed: true, amplitude: 0.012 }],
-  'wave': [eitherHand(18), { kind: 'hand', at: [0.25, 0.10, 0.30] }, { kind: 'oscillation', signal: 'forearm-twist', amplitude: 18, transitions: 3, during: 1 }],
-} as const satisfies Record<BodyActId, readonly ActKey[]>
-
-/**
- * The state an act's design declares as its lasting result (switch contract item 2, rules.md revision 3, X3a): from the
- * end of its widened span the pair check compares these local rotations by the change of their difference's angle and
- * the hips by the change of their heading-frame offset, after bounding the residual itself. Architecture 4e act 3: the
- * free foot takes a step with a yaw of 4 to 8 deg (x1.5 at the amplitude top: 12) and the support returns to a half
- * shift; 0.02 L is the act's only translation, its swing height.
- */
-export const ACT_LASTING: Partial<Record<BodyActId, { readonly footYawDeg: number, readonly lateralShare: number }>> = {
-  'foot-replant': { footYawDeg: 12, lateralShare: 0.5 },
-}
-
-/** The acts allowed while the rest state is `rest` (plan D3); data, so a restricted set is passed, not coded. */
-export const REST_ACT_SET: readonly BodyActId[] = ['sigh', 'yawn', 'foot-replant', 'look-around', 'shoulder-roll', 'hand-inspect']
+export const IDLE_ACTS_VERSION = 4
 
 const C = {
   distinct: 6,
-  confirmFrames: 18,
-  bar: 0.5,
+  exitSeconds: 1.6,
+  settleSeconds: 2.2,
+  movedPercentile: 0.95,
+  nullStep: 0.5,
+  nullMinimum: 20,
+  stillDeg: 0.01,
+  stillHips: 0.0001,
   epsilonDeg: 0.25,
   yawEpsilonDeg: 0.05,
   hipsEpsilon: 0.0005,
-  handRadius: 0.10,
-  faceDistance: 0.30,
-  claspDistance: 0.15,
-  exitSeconds: 0.35,
-  settleSeconds: 2.2,
 } as const
-const ACT_STATES: readonly string[] = ['playing', 'finished', 'cancelled']
+
+/** Behaviours the scheduler reports that are not drawn acts: sleep is entered on away, the two cues are the host's. */
+const NOT_ACTS: ReadonlySet<string> = new Set(['sleep', 'about-to-speak', 'let-go'])
+/**
+ * The bones the performer writes from its own posture and support (`performance/posture.ts`), free of Natural's breath
+ * (trunk pitch, clavicles, arms), slow head yaw (trunk yaw) and head and gaze streams (neck, head, eyes), which keep
+ * lasting state after an activity by design. With the root block they are the channels the pair compares.
+ */
+export const PERFORMER_BONES: readonly MotionTraceBone[] = ['hips', 'leftUpperLeg', 'leftLowerLeg', 'leftFoot', 'leftToes', 'rightUpperLeg', 'rightLowerLeg', 'rightFoot', 'rightToes']
+/** Bones whose movement shows that the body did something; the eyes and fingers are left out. */
+const BODY_BONES: ReadonlySet<string> = new Set(['hips', 'spine', 'chest', 'upperChest', 'neck', 'head', 'leftShoulder', 'rightShoulder', 'leftUpperArm', 'rightUpperArm', 'leftLowerArm', 'rightLowerArm', 'leftHand', 'rightHand', ...PERFORMER_BONES])
 const REST_STATES: readonly BodyRest[] = ['none', 'rest', 'doze']
 const O2_METRICS = ['inter.burstCv', 'inter.holdFraction', 'inter.movesPerMin'] as const
 
 export const IDLE_ACTS_CONSTANTS: readonly ReportConstant[] = [
-  { name: 'distinct acts', value: C.distinct, unit: 'counted, confirmed forms', source: 'C001' },
-  { name: 'confirmation run', value: C.confirmFrames, unit: 'consecutive 60 Hz frames (0.3 s) on which each key reaches its bar, somewhere in the span, in the design order', source: 'plan R1; rules.md revision 3, X3b' },
-  { name: 'confirmation bar', value: C.bar, unit: 'of each key\'s design amplitude (ACT_KEYS)', source: 'architecture 4e; review B1 step 5' },
-  { name: 'hand zone', value: C.handRadius, unit: 'arm lengths around a hand key\'s 4e point', source: 'rules.md revision 3, X1 scoring' },
-  { name: 'face zone', value: C.faceDistance, unit: 'arm lengths from the head joint (yawn: in front; hair tuck: beside)', source: 'rules.md revision 3, X1 scoring' },
-  { name: 'clasp', value: C.claspDistance, unit: 'arm lengths between the wrists', source: 'rules.md revision 3, X1 scoring' },
-  { name: 'pair epsilon', value: C.epsilonDeg, unit: 'deg, largest local-rotation difference outside the widened act spans', source: 'rules.md revision 2, B1 scoring' },
-  { name: 'pair root yaw', value: C.yawEpsilonDeg, unit: 'deg, largest root-yaw difference outside the widened act spans', source: 'rules.md revision 3, X2 scoring' },
-  { name: 'pair hips', value: C.hipsEpsilon, unit: 'L, largest hips-position difference outside the widened act spans', source: 'rules.md revision 3, X2 scoring' },
-  { name: 'act exit', value: C.exitSeconds, unit: 's after the closing marker', source: 'performance/stack.ts default exitSeconds' },
-  { name: 'settling', value: C.settleSeconds, unit: 's after the exit, outside the pair check', source: '2 % settling of the slowest arm follower, performance/arms.ts' },
+  { name: 'drive', value: QA_DRIVE_PRESENT.name, unit: idleDriveDetail(QA_DRIVE_PRESENT).idleDriveValues, source: 'C001 owner decision "Idle wording: Amend it"; unit M2 rules section 1' },
+  { name: 'distinct acts', value: C.distinct, unit: 'kinds among counted acts', source: 'C001' },
+  { name: 'exit', value: C.exitSeconds, unit: 's after an end report, inside the act', source: 'the longest release of a behaviour, wakeSeconds (idle-activities.ts)' },
+  { name: 'settling', value: C.settleSeconds, unit: 's after the exit, outside the pair check and the act-free windows', source: '2 % settling of the slowest arm follower, performance/arms.ts' },
+  { name: 'moved', value: C.movedPercentile, unit: 'percentile of the act-free windows\' scores that an act\'s score must exceed', source: 'one-sided 5 % bar, as the turn report\'s pseudo-placebos' },
+  { name: 'act-free windows', value: `${C.nullStep} s grid, at least ${C.nullMinimum}`, unit: 'windows of the act\'s length in the scored span, clear of every widened behaviour', source: 'unit M2 rules section 3' },
+  { name: 'still floor', value: `${C.stillDeg} deg, ${C.stillHips} L`, unit: 'least channel scale (median act-free excursion)', source: 'above float32 storage noise' },
+  { name: 'pair epsilon', value: C.epsilonDeg, unit: 'deg, largest local-rotation difference of the performer\'s bones outside the widened spans', source: 'rules.md revision 2, B1 scoring' },
+  { name: 'pair root yaw', value: C.yawEpsilonDeg, unit: 'deg, largest root-yaw difference outside the widened spans', source: 'rules.md revision 3, X2 scoring' },
+  { name: 'pair hips', value: C.hipsEpsilon, unit: 'L, largest hips-position difference outside the widened spans', source: 'rules.md revision 3, X2 scoring' },
 ]
 
-/** What a PASS proves and what it does not (fourth review of unit M); printed with every report. */
+/** What a PASS proves and what it does not; printed with every report. */
 const IDLE_ACTS_LIMITS: readonly string[] = [
-  'what a PASS proves in the bones: at least six finished, non-overlapping act spans whose own keys reach half their 4e amplitude, or their zone, for 18 frames against the same-seed acts-off run, in the design order where 4e gives one; outside the widened spans the run equals its companion within 0.25 deg local, 0.05 deg root yaw and 0.0005 L hips, except each confirmed re-plant\'s own foot yaw and lateral hips shift (at most 12 deg and half the support shift per act); motionless markers after re-plants are not confirmed.',
-  'proven only from the product\'s own state: the act ids (counting and repeats still rest on the act id the product reports), span times, which spans exist, and the rest state at an act\'s start.',
-  'a PASS alone is NOT accepted for the idle criterion (C001): read it with a visual review (both rigs, seeds 1 to 3, instants from the act timeline above) of every counted peek-chat and look-around span; the look-around against a large peek; every foot re-plant (the stepped foot\'s total toe-out over the run, the other foot, the foot being down); repeats under different act ids; and the count of six whenever it depends on those kinds.',
-  'measured false confirmations: a motionless peek-chat in 16 of 100 spans, a motionless look-around in 9 of 100, and a sigh in 2 of 100 in the contract-breach case (her own other idle inside the span).',
-  'no cumulative re-plant limit: five re-plants of +10 deg are accepted, and a 6 deg turn of the foot that did not step is accepted; the limit is a design statement the act work owes (the review recommends "the stepped foot ends within 12 deg of its standing yaw").',
+  'acts are the scheduler\'s own start and end reports (idle:<kind>:<start|end> markers); a movement the body plays without a report is never judged.',
+  'an act counts when the body moved more than in 95 % of her own act-free windows of the same length: this proves the body did something, not what; a motionless act is counted in about 5 % of its spans by construction, and a small real act within her idle\'s range may not be counted (or may be, when it adds to a channel\'s own sway).',
+  'the pair compares the performer\'s channels only (hips position, root yaw, hips and leg bones); Natural\'s breath, head and gaze streams keep lasting state after an activity by design and are printed, not judged.',
+  'a PASS alone is NOT accepted for C001: read it with the visual review the criterion names, from the act timeline and the review list above.',
 ]
 
-export function isActId(id: string): id is BodyActId {
-  return Object.hasOwn(ACT_KEYS, id)
-}
-
-export interface ActSpan {
-  readonly id: BodyActId
+/** One behaviour the scheduler reported: its kind, its start, and its end, or null while it runs at the end of the trace. */
+export interface IdleSpan {
+  readonly kind: string
   readonly start: number
-  /** The closing marker's time, or null while unclosed at the end of the trace. */
   readonly end: number | null
-  readonly closedBy: 'finished' | 'cancelled' | null
-  readonly rest: BodyRest
-  /** The acts whose every key the movement in this span meets (its form). */
-  readonly form: readonly BodyActId[]
-  /** The act's own keys are met: its form includes its id. */
-  readonly confirmed: boolean
-  /** The span overlaps an earlier act's span, so its movement is that act's. */
-  readonly overlaps: boolean
-  /** Per own key: whether a qualifying run exists in the span (in the design's order) and the longest run, frames. */
-  readonly keys: readonly { readonly reached: boolean, readonly longest: number }[]
 }
 
-export interface IdleActsDetail {
-  readonly acts: readonly ActSpan[]
-  readonly restSet: readonly BodyActId[]
-  readonly pair: { readonly dir: string, readonly difference: number, readonly at: number | null, readonly bone: string | null, readonly yaw: number, readonly hips: number }
-  readonly intervals: readonly number[]
-  readonly intervalCv: number | null
-  readonly restSeconds: Readonly<Record<BodyRest, number>>
-  readonly intermittency: readonly { readonly id: string, readonly status: string, readonly value: number | null }[] | null
+/** Every behaviour the scheduler reported, in start order; refuses markers that do not form one behaviour at a time. */
+export function idleSpans(run: LoadedRun): IdleSpan[] {
+  const spans: IdleSpan[] = []
+  let open: number | null = null
+  for (const { t, parts } of markers(run, IDLE_MARKER)) {
+    const [kind, phase] = parts
+    const malformed = (why: string) => new ReportUsageError(`${run.dir}: ${why} at ${t.toFixed(3)} s: ${IDLE_MARKER}${parts.join(':')}`)
+    if (parts.length !== 2 || !/^[a-z][a-z-]*$/.test(kind) || (phase !== 'start' && phase !== 'end'))
+      throw malformed('malformed idle marker')
+    if (phase === 'start') {
+      if (open !== null)
+        throw malformed(`a start while ${spans[open].kind} is open`)
+      open = spans.length
+      spans.push({ kind, start: t, end: null })
+    }
+    else {
+      if (open === null || spans[open].kind !== kind)
+        throw malformed('an end without its start')
+      spans[open] = { ...spans[open], end: t }
+      open = null
+    }
+  }
+  return spans
+}
+
+/** The `drive` line: the run's provenance names `drive` with exactly its values. */
+export function driveRequirement(run: LoadedRun, drive: Motion3dIdleDrive): CaseRequirement {
+  const { detail } = run.input.trace.source
+  const expected = idleDriveDetail(drive)
+  const named = detail.idleDrive === undefined ? 'no idle drive in the provenance' : `${String(detail.idleDrive)} ${String(detail.idleDriveValues)}`
+  return judged('drive', `the run's provenance names ${expected.idleDrive} with ${expected.idleDriveValues}`, named, detail.idleDrive === expected.idleDrive && detail.idleDriveValues === expected.idleDriveValues)
 }
 
 /** The rest state at `t`: the latest `rest:` marker at or before it, `none` before any. */
@@ -176,29 +122,6 @@ export function restStates(run: LoadedRun): (t: number) => BodyRest {
     }
     return state
   }
-}
-
-type RawSpan = Pick<ActSpan, 'id' | 'start' | 'end' | 'closedBy' | 'rest'>
-
-function actSpans(run: LoadedRun, restAt: (t: number) => BodyRest): RawSpan[] {
-  const spans: RawSpan[] = []
-  const open = new Map<BodyActId, number>()
-  for (const { t, parts } of markers(run, 'act:')) {
-    const [id, state] = parts
-    if (parts.length !== 2 || !isActId(id) || !ACT_STATES.includes(state))
-      throw new ReportUsageError(`${run.dir}: malformed act marker at ${t.toFixed(3)} s: act:${parts.join(':')}`)
-    if (state === 'playing') {
-      open.set(id, spans.length)
-      spans.push({ id, start: t, end: null, closedBy: null, rest: restAt(t) })
-      continue
-    }
-    const index = open.get(id)
-    if (index === undefined)
-      throw new ReportUsageError(`${run.dir}: act:${id}:${state} at ${t.toFixed(3)} s has no playing marker before it`)
-    spans[index] = { ...spans[index], end: t, closedBy: state === 'finished' ? 'finished' : 'cancelled' }
-    open.delete(id)
-  }
-  return spans
 }
 
 /**
@@ -266,194 +189,60 @@ function angleBetween(a: Quat, b: Quat): number {
   return 2 * Math.atan2(Math.hypot(d[0], d[1], d[2]), Math.abs(d[3])) * DEG
 }
 
-type AngleKey = Extract<ActKey, { kind: 'local' | 'world' | 'from' | 'component' }>
-type OscillationKey = Extract<ActKey, { kind: 'oscillation' }>
-const SIDES = ['left', 'right'] as const
+/** One measured channel: a body bone's local rotation (deg), the root yaw (deg) or the hips position (L). */
+type Channel = { readonly kind: 'bone', readonly bone: number, readonly name: string } | { readonly kind: 'yaw' | 'hips', readonly name: string }
 
-/** The rig's arm length A (upper arm plus forearm rest offsets) and the sign of `out` for the left hand in the heading frame. */
-function armFrame(pose: TracePose): { arm: number, outSign: number } {
-  const offsets = pose.input.trace.rig.restOffsets
-  const [lower, hand, left, right] = (['leftLowerArm', 'leftHand', 'leftUpperArm', 'rightUpperArm'] as const).map(bone => pose.index(bone))
-  if ([lower, hand, left, right].some(b => b < 0))
-    return { arm: Number.NaN, outSign: 1 }
-  const frame = Math.max(0, Array.from({ length: pose.frames }, (_, f) => f).find(f => pose.time(f) >= pose.input.trace.scoredFrom) ?? 0)
-  const across = heading(sub(pose.position(frame, left), pose.position(frame, right)), pose.yaw(frame))
-  return { arm: norm(offsets[lower]) + norm(offsets[hand]), outSign: across[0] < 0 ? -1 : 1 }
-}
-
-/** The difference of one angle key between the paired runs at one frame, degrees: the angle, or one rotation-vector component. */
-function angleDifference(on: TracePose, off: TracePose, key: AngleKey, frame: number): number {
-  const frameKind = key.kind === 'component' ? key.frame : key.kind
-  return key.bones.reduce((best, bone, k) => {
-    const b = on.index(bone)
-    const fromBones = 'from' in key ? key.from : undefined
-    const from = frameKind === 'from' ? on.index(fromBones?.[k] ?? bone) : -1
-    if (b < 0 || (frameKind === 'from' && from < 0))
-      return best
-    const pick = (pose: TracePose) => frameKind === 'local' ? pose.local(frame, b) : frameKind === 'world' ? pose.world(frame, b) : multiply(conjugate(pose.world(frame, from)), pose.world(frame, b))
-    const [a, z] = [pick(on), pick(off)]
-    return Math.max(best, key.kind === 'component' ? Math.abs(rotationVector(multiply(a, conjugate(z)))[key.axis]) * DEG : angleBetween(a, z))
-  }, 0)
-}
-
-/** The pair's frame for the position keys: both poses, the leg length and the arm frame. */
-interface PairFrame { readonly on: TracePose, readonly off: TracePose, readonly legLength: number, readonly arm: number, readonly outSign: number, readonly bases: readonly Rebase[] }
-
-/** The declared lasting result of a confirmed foot re-plant from `frame` on: each foot's yaw difference in its own frame (deg) and the hips' lateral heading offset (model units). */
-interface Rebase { readonly frame: number, readonly footYaw: readonly [number, number], readonly lateral: number }
-
-const FEET = ['leftFoot', 'rightFoot'] as const
-const baseAt = (pf: PairFrame, frame: number): Rebase | null => pf.bases.filter(base => base.frame <= frame).at(-1) ?? null
-/** The hips' heading-frame offset between the pair at `frame`, less the declared lateral shift. */
-function hipsOffset(pf: PairFrame, frame: number): Vec3 {
-  const offset = heading(sub(pf.on.hips(frame), pf.off.hips(frame)), pf.on.yaw(frame))
-  return [offset[0] - (baseAt(pf, frame)?.lateral ?? 0), offset[1], offset[2]]
-}
-/** A foot's rotation difference in its own frame (deg, rotation vector; y is the foot's own yaw axis), less the declared yaw. */
-function footDifference(pf: PairFrame, frame: number, side: 0 | 1): Vec3 {
-  const b = pf.on.index(FEET[side])
-  const v = scale(rotationVector(multiply(conjugate(pf.off.world(frame, b)), pf.on.world(frame, b))), DEG)
-  return [v[0], v[1] - (baseAt(pf, frame)?.footYaw[side] ?? 0), v[2]]
-}
-
-function handZone(pf: PairFrame, pose: TracePose, frame: number, side: 'left' | 'right', at: Vec3): boolean {
-  const [hand, shoulder] = [pose.index(`${side}Hand`), pose.index(`${side}UpperArm`)]
-  if (hand < 0 || shoulder < 0)
-    return false
-  const v = scale(heading(sub(pose.position(frame, hand), pose.position(frame, shoulder)), pose.yaw(frame)), 1 / pf.arm)
-  return norm(sub([v[0] * pf.outSign * (side === 'left' ? 1 : -1), v[1], v[2]], at)) <= C.handRadius
-}
-
-function faceZone(pose: TracePose, frame: number, side: 'left' | 'right', zone: 'front' | 'side', arm: number): boolean {
-  const [hand, head] = [pose.index(`${side}Hand`), pose.index('head')]
-  if (hand < 0 || head < 0)
-    return false
-  const v = scale(rotate(conjugate(pose.world(frame, head)), sub(pose.position(frame, hand), pose.position(frame, head))), 1 / arm)
-  if (norm(v) > C.faceDistance)
-    return false
-  return zone === 'front' ? v[2] > 0 && v[2] > Math.abs(v[0]) : Math.abs(v[0]) >= v[2] && v[1] >= -C.faceDistance / 2
-}
-
-function together(pose: TracePose, frame: number, arm: number): boolean {
-  const [left, right] = [pose.index('leftHand'), pose.index('rightHand')]
-  return left >= 0 && right >= 0 && norm(sub(pose.position(frame, left), pose.position(frame, right))) / arm <= C.claspDistance
-}
-
-/** Whether a non-oscillation key holds at one frame: its difference at half its amplitude, or its zone reached by the act alone. */
-function keyMet(pf: PairFrame, key: Exclude<ActKey, OscillationKey>, frame: number): boolean {
-  const { on, off } = pf
-  switch (key.kind) {
-    case 'position':
-      return norm(hipsOffset(pf, frame)) / pf.legLength >= C.bar * key.amplitude
-    case 'hips': {
-      const v = hipsOffset(pf, frame)[key.axis] / pf.legLength
-      return (key.signed ? v : Math.abs(v)) >= C.bar * key.amplitude
-    }
-    case 'lift':
-      return key.bones.some((bone) => {
-        const b = on.index(bone)
-        return b >= 0 && (on.position(frame, b)[1] - off.position(frame, b)[1]) / pf.legLength >= C.bar * key.amplitude
-      })
-    case 'hand':
-      return SIDES.some(side => handZone(pf, on, frame, side, key.at) && !handZone(pf, off, frame, side, key.at))
-    case 'face':
-      return SIDES.some(side => faceZone(on, frame, side, key.zone, pf.arm) && !faceZone(off, frame, side, key.zone, pf.arm))
-    case 'together':
-      return together(on, frame, pf.arm) && !together(off, frame, pf.arm)
-    default: {
-      // Keys on a foot's world orientation read the difference less the declared yaw of a confirmed re-plant.
-      const side = key.kind === 'world' || (key.kind === 'component' && key.frame === 'world') ? FEET.findIndex(foot => key.bones.includes(foot)) : -1
-      if (side >= 0 && pf.bases.length) {
-        const sides = ([0, 1] as const).filter(k => key.bones.includes(FEET[k]) && on.index(FEET[k]) >= 0)
-        const value = Math.max(...sides.map(k => key.kind === 'component' ? Math.abs(footDifference(pf, frame, k)[key.axis]) : norm(footDifference(pf, frame, k))))
-        return value >= C.bar * key.amplitude
-      }
-      return angleDifference(on, off, key, frame) >= C.bar * key.amplitude
-    }
+function channelChange(pose: TracePose, channel: Channel, from: number, frame: number, legLength: number): number {
+  switch (channel.kind) {
+    case 'bone': return angleBetween(pose.local(frame, channel.bone), pose.local(from, channel.bone))
+    case 'yaw': return Math.abs(pose.yaw(frame) - pose.yaw(from)) * DEG
+    case 'hips': return norm(sub(pose.hips(frame), pose.hips(from))) / legLength
   }
 }
 
-/** The oscillation signal at one frame, deg, one value per lane (both hands for the forearm twist). */
-function oscillation(pf: PairFrame, key: OscillationKey, frame: number): number[] {
-  const { on, off } = pf
-  if (key.signal === 'arm-swing') {
-    const pitch = (bone: MotionTraceBone) => {
-      const b = on.index(bone)
-      return b < 0 ? 0 : rotationVector(multiply(on.local(frame, b), conjugate(off.local(frame, b))))[0] * DEG
-    }
-    return [(pitch('leftUpperArm') - pitch('rightUpperArm')) / 2]
+/** Each channel's largest change from its value at frame `first` over frames [first, last]. */
+function excursions(pose: TracePose, channels: readonly Channel[], first: number, last: number, legLength: number): number[] {
+  return channels.map((channel) => {
+    let largest = 0
+    for (let frame = first + 1; frame <= last; frame++)
+      largest = Math.max(largest, channelChange(pose, channel, first, frame, legLength))
+    return largest
+  })
+}
+
+/** Whether an act moved the body more than her own act-free windows of the same length; null when too few windows exist. */
+export interface ActMovement {
+  readonly score: number
+  readonly bar: number
+  readonly windows: number
+  readonly channel: string
+  readonly moved: boolean
+}
+
+export interface IdleAct extends IdleSpan {
+  /** Started in the scored span, ended by a report, and a drawn kind: judged for movement. */
+  readonly countable: boolean
+  readonly movement: ActMovement | null
+}
+
+export interface IdleActsDetail {
+  readonly acts: readonly IdleAct[]
+  readonly sequence: readonly string[]
+  readonly repeatedBlocks: readonly string[]
+  readonly pair: {
+    readonly dir: string
+    readonly performer: { readonly difference: number, readonly at: number | null, readonly bone: string | null, readonly yaw: number, readonly hips: number }
+    readonly others: { readonly difference: number, readonly at: number | null, readonly bone: string | null }
   }
-  return SIDES.map((side) => {
-    const [lower, hand] = [on.index(`${side}LowerArm`), on.index(`${side}Hand`)]
-    if (lower < 0 || hand < 0)
-      return 0
-    const chain = (pose: TracePose) => multiply(pose.local(frame, lower), pose.local(frame, hand))
-    const d = multiply(conjugate(chain(off)), chain(on))
-    const axis = on.input.trace.rig.restOffsets[hand]
-    const along = (d[0] * axis[0] + d[1] * axis[1] + d[2] * axis[2]) / norm(axis)
-    return 2 * Math.atan2(along, d[3]) * DEG
-  })
+  readonly review: { readonly spans: readonly string[], readonly dependsOnThem: boolean, readonly consecutive: readonly string[] }
+  readonly intermittency: readonly { readonly id: string, readonly status: string, readonly value: number | null }[] | null
 }
 
-/** Alternations of a series beyond its median +- half the amplitude, and the index of the first. */
-function alternations(values: readonly number[], amplitude: number): { count: number, first: number } {
-  const sorted = [...values].sort((a, b) => a - b)
-  const center = sorted[Math.floor(sorted.length / 2)]
-  let state = 0
-  let count = 0
-  let first = -1
-  values.forEach((value, i) => {
-    const s = value >= center + amplitude / 2 ? 1 : value <= center - amplitude / 2 ? -1 : 0
-    if (s !== 0 && s !== state) {
-      if (state !== 0) {
-        count++
-        if (first < 0)
-          first = i
-      }
-      state = s
-    }
-  })
-  return { count, first }
-}
-
-/**
- * Each key of `id` over [first, last]: the starts of its runs of `confirmFrames` frames at half its amplitude, and its
- * longest run. The act is confirmed when every key has a run and each key with `after` has one starting after the first
- * run of each key it follows (rules.md revision 3, X3b).
- */
-function keyResults(pf: PairFrame, id: BodyActId, first: number, last: number): { confirmed: boolean, keys: { reached: boolean, longest: number }[] } {
-  const keys: readonly ActKey[] = ACT_KEYS[id]
-  const results = keys.map((key) => {
-    const starts: number[] = []
-    if (key.kind === 'oscillation') {
-      const window = key.during === undefined ? null : keys[key.during]
-      const frames = Array.from({ length: last - first + 1 }, (_, i) => first + i).filter(frame => !window || (window.kind !== 'oscillation' && keyMet(pf, window, frame)))
-      const series = frames.map(frame => oscillation(pf, key, frame))
-      const best = series.length === 0 ? { count: 0, first: -1 } : series[0].map((_, lane) => alternations(series.map(s => s[lane]), key.amplitude)).reduce((a, b) => b.count > a.count ? b : a)
-      if (best.count >= key.transitions)
-        starts.push(frames[best.first])
-      return { starts, longest: best.count }
-    }
-    let run = 0
-    let longest = 0
-    for (let frame = first; frame <= last; frame++) {
-      run = keyMet(pf, key, frame) ? run + 1 : 0
-      longest = Math.max(longest, run)
-      if (run === C.confirmFrames)
-        starts.push(frame - C.confirmFrames + 1)
-    }
-    return { starts, longest }
-  })
-  const reached = keys.map((key, k) => results[k].starts.length > 0 && (!key.after || results[k].starts.some(start => key.after!.every(j => results[j].starts.length > 0 && start > results[j].starts[0]))))
-  return { confirmed: reached.every(Boolean), keys: results.map((r, k) => ({ reached: reached[k], longest: r.longest })) }
-}
-
-/** The run and its acts-off companion must be the same model, commit, seed and length, and differ only inside acts. */
 function refusePair(run: LoadedRun, pair: LoadedRun, why: string): never {
   throw new ReportUsageError(`${run.dir} and ${pair.dir}: not a run and its acts-off pair: ${why}`)
 }
 
-/** The run and its acts-off companion must be the same model, commit, seed and length. */
+/** The run and its acts-off companion must be the same model, commit, scenario, seed and length; the companion sets no drive. */
 function checkPairSource(run: LoadedRun, pair: LoadedRun): void {
   const a = run.input.trace
   const b = pair.input.trace
@@ -470,152 +259,156 @@ function checkPairSource(run: LoadedRun, pair: LoadedRun): void {
     refuse('the run has acts switched off')
   if (b.source.detail.acts !== 'off')
     refuse('the companion does not have acts switched off (qa:motion3d run --acts off)')
-  if (markers(pair, 'act:').length)
-    refuse('the acts-off companion has act markers')
+  if (b.source.detail.idleDrive !== undefined || markers(pair, IDLE_MARKER).length)
+    refuse('the acts-off companion sets an idle drive or carries idle markers')
 }
 
 /**
- * The declared lasting results (rules.md revision 4, Y3): after each CONFIRMED foot re-plant, at the first frame after its
- * widened span, each foot's yaw difference in its own frame and the hips' lateral offset, each act adding at most its declared bound.
+ * Outside every behaviour widened by the exit and the settling, the largest difference between the run and its
+ * companion on the performer's channels (judged) and on every other traced bone (printed).
  */
-function rebases(run: LoadedRun, pair: LoadedRun, spans: readonly RawSpan[], on: TracePose, off: TracePose): Rebase[] {
-  const bases: Rebase[] = []
-  const legLength = run.input.trace.rig.legLength
-  const pf: PairFrame = { on, off, legLength, ...armFrame(on), bases }
-  const first = Array.from({ length: on.frames }, (_, f) => f).find(f => on.time(f) >= run.input.trace.scoredFrom) ?? 0
-  const [left, right] = FEET.map(foot => on.index(foot))
-  const gain = left < 0 || right < 0 ? 0 : 0.38 * Math.abs(heading(sub(on.position(first, left), on.position(first, right)), on.yaw(first))[0]) / (2 * legLength)
-  const frameAt = (t: number) => Array.from({ length: on.frames }, (_, f) => f).find(f => on.time(f) > t) ?? on.frames - 1
-  for (const span of spans.filter(s => s.end !== null && ACT_LASTING[s.id]).sort((x, y) => (x.end ?? 0) - (y.end ?? 0))) {
-    const lasting = ACT_LASTING[span.id]!
-    if (!keyResults(pf, span.id, frameAt(span.start), frameAt(span.end! + C.exitSeconds)).confirmed)
-      continue
-    const frame = frameAt(span.end! + C.exitSeconds + C.settleSeconds)
-    const previous = bases.at(-1)
-    const footYaw = ([0, 1] as const).map(k => footDifference({ ...pf, bases: [] }, frame, k)[1]) as [number, number]
-    const lateral = heading(sub(on.hips(frame), off.hips(frame)), on.yaw(frame))[0]
-    const added = Math.max(...footYaw.map((y, k) => Math.abs(y - (previous?.footYaw[k] ?? 0))))
-    const shift = Math.abs(lateral - (previous?.lateral ?? 0)) / legLength
-    if (added > lasting.footYawDeg || shift > lasting.lateralShare * gain)
-      refusePair(run, pair, `the lasting result of ${span.id} at ${on.time(frame).toFixed(3)} s exceeds its declared bound: foot yaw ${added.toFixed(2)} deg (at most ${lasting.footYawDeg}), hips lateral ${shift.toFixed(4)} L (at most ${(lasting.lateralShare * gain).toFixed(4)})`)
-    bases.push({ frame, footYaw, lateral })
-  }
-  return bases
-}
-
-function checkPair(run: LoadedRun, pair: LoadedRun, spans: readonly RawSpan[], pf: PairFrame): IdleActsDetail['pair'] {
-  const a = run.input.trace
-  const refuse = (why: string) => refusePair(run, pair, why)
-  const { on, off } = pf
+function comparePair(run: LoadedRun, pair: LoadedRun, spans: readonly IdleSpan[], on: TracePose, off: TracePose): IdleActsDetail['pair'] {
+  const { trace } = run.input
   const widened = spans.map(span => ({ start: span.start, end: (span.end ?? Number.POSITIVE_INFINITY) + C.exitSeconds + C.settleSeconds }))
-  const feet = new Set(FEET.map(foot => on.index(foot)))
-  let difference = 0
-  let at: number | null = null
-  let bone: string | null = null
-  let yaw = 0
-  let hips = 0
+  const performer = new Set(PERFORMER_BONES.map(bone => on.index(bone)).filter(b => b >= 0))
+  const own = { difference: 0, at: null as number | null, bone: null as string | null, yaw: 0, hips: 0 }
+  const others = { difference: 0, at: null as number | null, bone: null as string | null }
   for (let frame = 0; frame < on.frames; frame++) {
     const t = on.time(frame)
-    if (t < a.scoredFrom || widened.some(span => t >= span.start && t <= span.end))
+    if (t < trace.scoredFrom || widened.some(span => t >= span.start && t <= span.end))
       continue
-    a.rig.bones.forEach((name, b) => {
-      // A foot is compared in its own frame, less the declared yaw of a confirmed re-plant; every other bone by its local rotation.
-      const d = feet.has(b) && pf.bases.length ? norm(footDifference(pf, frame, FEET.findIndex(foot => on.index(foot) === b) as 0 | 1)) : angleBetween(on.local(frame, b), off.local(frame, b))
-      if (d > difference) {
-        difference = d
-        at = t
-        bone = name
+    trace.rig.bones.forEach((name, b) => {
+      const d = angleBetween(on.local(frame, b), off.local(frame, b))
+      const into = performer.has(b) ? own : others
+      if (d > into.difference) {
+        into.difference = d
+        into.at = t
+        into.bone = name
       }
     })
-    yaw = Math.max(yaw, Math.abs(on.yaw(frame) - off.yaw(frame)) * DEG)
-    hips = Math.max(hips, norm(hipsOffset(pf, frame)) / a.rig.legLength)
+    own.yaw = Math.max(own.yaw, Math.abs(on.yaw(frame) - off.yaw(frame)) * DEG)
+    own.hips = Math.max(own.hips, norm(sub(on.hips(frame), off.hips(frame))) / trace.rig.legLength)
   }
-  if (difference > C.epsilonDeg)
-    refuse(`they differ outside the act spans by ${difference.toFixed(3)} deg (${bone} at ${at === null ? '-' : (at as number).toFixed(3)} s), more than ${C.epsilonDeg} deg`)
-  if (yaw > C.yawEpsilonDeg)
-    refuse(`their root yaw differs outside the act spans by ${yaw.toFixed(3)} deg, more than ${C.yawEpsilonDeg} deg`)
-  if (hips > C.hipsEpsilon)
-    refuse(`their hips position differs outside the act spans by ${hips.toFixed(5)} L, more than ${C.hipsEpsilon} L`)
-  return { dir: pair.dir, difference, at, bone, yaw, hips }
+  return { dir: pair.dir, performer: own, others }
 }
 
 /**
- * C001 (plan R1, revision 2): distinct acts confirmed by the difference to the same-seed acts-off run, counted by form,
- * no immediate repeat, and only rest-set acts while resting.
+ * Whether each countable act moved the body more than her own act-free windows of the same length: per channel, its
+ * excursion over the act's window [start, end + exit] scaled by the median excursion over the act-free windows (floored),
+ * the largest scaled excursion against the 95th percentile of the same score over those windows.
  */
-export function idleActsReport(run: LoadedRun, pair: LoadedRun, restSet: readonly BodyActId[] = REST_ACT_SET): CaseReport<IdleActsDetail> {
-  const { p, input } = run
-  if (input.trace.source.scenario.class !== 'idle')
-    throw new ReportUsageError(`${run.dir}: idle-acts judges an idle-class run, not ${input.trace.source.scenario.class}`)
-  const restAt = restStates(run)
-  const raw = actSpans(run, restAt)
-  checkPairSource(run, pair)
-  const on = new TracePose(input)
-  const off = new TracePose(pair.input)
-  const pf: PairFrame = { on, off, legLength: input.trace.rig.legLength, ...armFrame(on), bases: rebases(run, pair, raw, on, off) }
-  const pairing = checkPair(run, pair, raw, pf)
+function movements(run: LoadedRun, pose: TracePose, acts: readonly IdleSpan[], spans: readonly IdleSpan[]): (ActMovement | null)[] {
+  const { trace } = run.input
+  const legLength = trace.rig.legLength
+  const channels: Channel[] = [
+    ...trace.rig.bones.flatMap((name, bone): Channel[] => BODY_BONES.has(name) ? [{ kind: 'bone', bone, name }] : []),
+    { kind: 'yaw', name: 'root yaw' },
+    { kind: 'hips', name: 'hips position' },
+  ]
+  const floors = channels.map(channel => channel.kind === 'hips' ? C.stillHips : C.stillDeg)
   const frameAt = (t: number) => {
     let frame = 0
-    while (frame < on.frames - 1 && on.time(frame) < t)
+    while (frame < pose.frames - 1 && pose.time(frame) < t - 1e-9)
       frame++
     return frame
   }
-  const acts: ActSpan[] = raw.map((span, i) => {
-    const first = frameAt(span.start)
-    const last = span.end === null ? on.frames - 1 : frameAt(span.end + C.exitSeconds)
-    const form = (Object.keys(ACT_KEYS) as BodyActId[]).filter(id => keyResults(pf, id, first, last).confirmed)
-    const overlaps = raw.slice(0, i).some(earlier => span.start < (earlier.end ?? Number.POSITIVE_INFINITY) && earlier.start < (span.end ?? Number.POSITIVE_INFINITY))
-    return { ...span, form, confirmed: form.includes(span.id), overlaps, keys: keyResults(pf, span.id, first, last).keys }
+  const scoredEnd = pose.time(pose.frames - 1)
+  const busy = spans.map(span => ({ start: span.start, end: (span.end ?? Number.POSITIVE_INFINITY) + C.exitSeconds + C.settleSeconds }))
+  return acts.map((act) => {
+    const length = act.end! + C.exitSeconds - act.start
+    const starts: number[] = []
+    for (let s = trace.scoredFrom; s + length <= scoredEnd + 1e-9; s += C.nullStep) {
+      if (!busy.some(span => s < span.end && s + length > span.start))
+        starts.push(s)
+    }
+    if (starts.length < C.nullMinimum)
+      return null
+    const nulls = starts.map(s => excursions(pose, channels, frameAt(s), frameAt(s + length), legLength))
+    const scales = channels.map((_, c) => Math.max(floors[c], median(nulls.map(n => n[c]))))
+    const score = (values: readonly number[]) => values.reduce((best, value, c) => Math.max(best, value / scales[c]), 0)
+    const bar = percentile(nulls.map(score), C.movedPercentile)
+    const own = excursions(pose, channels, frameAt(act.start), frameAt(act.start + length), legLength)
+    const top = own.reduce((best, value, c) => value / scales[c] > own[best] / scales[best] ? c : best, 0)
+    const value = score(own)
+    return { score: value, bar, windows: starts.length, channel: channels[top].name, moved: value > bar }
   })
-  // Counting rule C (rules.md revision 3, counting follow-up): two confirmed acts are the same act when each one's
-  // form contains the other's id, so an act whose size moves another act's key across its bar still counts once.
-  const same = (a: ActSpan, b: ActSpan) => a.id === b.id || (a.confirmed && b.confirmed && a.form.includes(b.id) && b.form.includes(a.id))
-  const counted = acts.filter(act => act.closedBy === 'finished')
-  const confirmed = counted.filter(act => act.confirmed && !act.overlaps)
-  const distinct = confirmed.reduce<ActSpan[]>((classes, act) => classes.some(other => same(other, act)) ? classes : [...classes, act], [])
-  const repeats = acts.slice(1).flatMap((act, i) => same(act, acts[i]) ? [`${act.id} at ${act.start.toFixed(3)} s`] : [])
-  const resting = acts.filter(act => act.rest !== 'none')
-  const disallowed = resting.filter(act => act.rest === 'doze' || !restSet.includes(act.id))
-  const restRule = `every act started while resting is in the rest set {${restSet.join(', ')}}, and none starts while dozing`
-  const repeatRule = 'no two consecutive started acts (cancelled included) share an id, or are both confirmed with each one\'s form containing the other\'s id'
+}
+
+/** Blocks of two or more kinds repeated at once (A B A B), for the visual review; a single repeat is the no-repeat line. */
+function repeatedBlocks(sequence: readonly string[]): string[] {
+  const found: string[] = []
+  for (let k = 2; 2 * k <= sequence.length; k++) {
+    for (let i = 0; i + 2 * k <= sequence.length; i++) {
+      const block = sequence.slice(i, i + k)
+      if (block.every((kind, j) => kind === sequence[i + k + j]))
+        found.push(`${block.join(' ')} twice from act ${i + 1}`)
+    }
+  }
+  return found
+}
+
+/**
+ * C001 under one idle scheduler (unit M2 rules section 3): the run names the fixed QA drive; at least 6 distinct kinds
+ * among the scheduler's acts that moved the body; no kind started twice in a row; and outside the acts the run equals
+ * its acts-off companion on the performer's channels.
+ */
+export function idleActsReport(run: LoadedRun, pair: LoadedRun): CaseReport<IdleActsDetail> {
+  const { input } = run
+  if (input.trace.source.scenario.class !== 'idle')
+    throw new ReportUsageError(`${run.dir}: idle-acts judges an idle-class run, not ${input.trace.source.scenario.class}`)
+  const spans = idleSpans(run)
+  checkPairSource(run, pair)
+  const on = new TracePose(input)
+  const off = new TracePose(pair.input)
+  const scoredFrom = input.trace.scoredFrom
+  const isCountable = (span: IdleSpan) => !NOT_ACTS.has(span.kind) && span.start >= scoredFrom && span.end !== null
+  const countable = spans.filter(isCountable)
+  const moved = movements(run, on, countable, spans)
+  const acts: IdleAct[] = spans.map(span => ({ ...span, countable: isCountable(span), movement: isCountable(span) ? moved[countable.indexOf(span)] : null }))
+  const counted = acts.filter(act => act.movement?.moved)
+  const kinds = new Set(counted.map(act => act.kind))
+  const sequence = spans.map(span => span.kind)
+  const repeats = sequence.slice(1).flatMap((kind, i) => kind === sequence[i] ? [`${kind} at ${spans[i + 1].start.toFixed(3)} s`] : [])
+  const pairing = comparePair(run, pair, spans, on, off)
+  const p = pairing.performer
+  const reviewed = counted.filter(act => act.kind === 'look-around' || act.kind === 'peer')
+  const others = new Set(counted.filter(act => act.kind !== 'look-around' && act.kind !== 'peer').map(act => act.kind))
+  const repeatRule = 'no two consecutive started behaviours (every reported kind, in start order) share a kind'
+  const pairRule = `outside every behaviour widened by ${C.exitSeconds} s exit and ${C.settleSeconds} s settling, the performer's bones (${PERFORMER_BONES.join(', ')}) differ from the acts-off run by at most ${C.epsilonDeg} deg, the root yaw by ${C.yawEpsilonDeg} deg and the hips position by ${C.hipsEpsilon} L`
   const requirements: CaseRequirement[] = [
-    judged('distinct-acts', `at least ${C.distinct} distinct acts among acts closed by finished, confirmed by the difference to the acts-off run and not overlapping an earlier act; two acts are the same when each one's form contains the other's id`, `${distinct.length} distinct (${confirmed.length} confirmed of ${counted.length} finished, ${acts.length} started)`, distinct.length >= C.distinct),
-    acts.length < 2
-      ? notExercised('no-repeat', repeatRule, `${acts.length} act started: no consecutive pair`)
-      : judged('no-repeat', repeatRule, repeats.length ? `repeated: ${repeats.join(', ')}` : `${acts.length - 1} consecutive pairs, none repeated`, repeats.length === 0),
-    resting.length === 0
-      ? notExercised('rest-set', restRule, 'no act started while resting or dozing')
-      : judged('rest-set', restRule, disallowed.length ? `not allowed: ${disallowed.map(act => `${act.id} in ${act.rest} at ${act.start.toFixed(3)} s`).join(', ')}` : `${resting.length} acts started while resting, all allowed`, disallowed.length === 0),
+    driveRequirement(run, QA_DRIVE_PRESENT),
+    judged('distinct-acts', `at least ${C.distinct} distinct kinds among the scheduler's acts that started in the scored span, ended, and moved the body more than the ${C.movedPercentile * 100}th percentile of her act-free windows`, `${kinds.size} distinct (${counted.length} moved of ${acts.filter(act => act.countable).length} judged, ${spans.length} behaviours started)`, kinds.size >= C.distinct),
+    spans.length < 2
+      ? notExercised('no-repeat', repeatRule, `${spans.length} behaviour started: no consecutive pair`)
+      : judged('no-repeat', repeatRule, repeats.length ? `repeated: ${repeats.join(', ')}` : `${spans.length - 1} consecutive pairs, none repeated`, repeats.length === 0),
+    judged('pair', pairRule, `bones ${p.difference.toFixed(4)} deg${p.bone ? ` (${p.bone} at ${fixed(p.at)} s)` : ''}, root yaw ${p.yaw.toFixed(4)} deg, hips ${p.hips.toFixed(5)} L`, p.difference <= C.epsilonDeg && p.yaw <= C.yawEpsilonDeg && p.hips <= C.hipsEpsilon),
   ]
-  const intervals = counted.slice(1).map((act, i) => act.start - counted[i].start)
-  const restSeconds = { none: 0, rest: 0, doze: 0 }
-  for (const t of p.times)
-    restSeconds[restAt(t)] += 1 / 60
   const gate = run.gate
-  const intermittency = gate ? ['inter.speedCv', ...O2_METRICS].map(id => ({ id, ...gateStatus(gate, id) })) : null
   return caseReport('idle-acts', IDLE_ACTS_VERSION, [run.dir, pair.dir], IDLE_ACTS_CONSTANTS, requirements, {
     acts,
-    restSet,
+    sequence,
+    repeatedBlocks: repeatedBlocks(sequence),
     pair: pairing,
-    intervals,
-    intervalCv: intervals.length >= 2 ? cv(intervals) : null,
-    restSeconds,
-    intermittency,
+    review: {
+      spans: reviewed.map(act => `${act.kind} ${act.start.toFixed(3)}-${act.end!.toFixed(3)} s`),
+      dependsOnThem: kinds.size >= C.distinct && others.size < C.distinct,
+      consecutive: counted.slice(1).map((act, i) => `${counted[i].kind} -> ${act.kind} at ${act.start.toFixed(3)} s`),
+    },
+    intermittency: gate ? ['inter.speedCv', ...O2_METRICS].map(id => ({ id, ...gateStatus(gate, id) })) : null,
   })
 }
 
 export function formatIdleActs(report: CaseReport<IdleActsDetail>): string {
   const d = report.detail
   return formatCaseReport(report, [
-    `pair: ${d.pair.dir}, largest difference outside the act spans ${d.pair.difference.toFixed(4)} deg${d.pair.bone ? ` (${d.pair.bone} at ${fixed(d.pair.at)} s)` : ''}, root yaw ${d.pair.yaw.toFixed(4)} deg, hips ${d.pair.hips.toFixed(5)} L`,
-    `act timeline (${d.acts.length} started):`,
-    ...d.acts.map(act => `  ${act.start.toFixed(3)}\t${act.id}\t${act.closedBy ?? 'unclosed'}${act.end === null ? '' : ` at ${act.end.toFixed(3)}`}\t${act.rest}\t${act.confirmed ? 'confirmed' : 'not confirmed'} (own keys reached ${act.keys.filter(key => key.reached).length} of ${act.keys.length}; longest runs ${act.keys.map(key => key.longest).join('/')} frames)${act.overlaps ? '\toverlaps an earlier act' : ''}\tform {${act.form.join(', ')}}`),
-    d.intervals.length ? `intervals between finished acts (s): ${d.intervals.map(v => v.toFixed(2)).join(', ')}; CV ${fixed(d.intervalCv)}` : 'intervals: fewer than 2 finished acts, no interval',
-    `scored seconds by rest state: none ${d.restSeconds.none.toFixed(1)}, rest ${d.restSeconds.rest.toFixed(1)}, doze ${d.restSeconds.doze.toFixed(1)}`,
+    `pair: ${d.pair.dir}; outside the widened acts, the performer's bones differ by at most ${d.pair.performer.difference.toFixed(4)} deg${d.pair.performer.bone ? ` (${d.pair.performer.bone} at ${fixed(d.pair.performer.at)} s)` : ''}, root yaw ${d.pair.performer.yaw.toFixed(4)} deg, hips ${d.pair.performer.hips.toFixed(5)} L; every other traced bone (Natural's breath, head and gaze; printed, not judged) ${d.pair.others.difference.toFixed(4)} deg${d.pair.others.bone ? ` (${d.pair.others.bone} at ${fixed(d.pair.others.at)} s)` : ''}`,
+    `behaviours the scheduler reported (${d.acts.length}):`,
+    ...d.acts.map(act => `  ${act.start.toFixed(3)}\t${act.kind}\t${act.end === null ? 'no end report' : `ended ${act.end.toFixed(3)}`}\t${!act.countable ? 'not judged (warm-up, no end, or not a drawn act)' : act.movement === null ? `not judged (fewer than ${C.nullMinimum} act-free windows)` : `${act.movement.moved ? 'moved' : 'did not move'}: score ${act.movement.score.toFixed(2)} against ${act.movement.bar.toFixed(2)} over ${act.movement.windows} windows, largest on ${act.movement.channel}`}`),
+    `repeated blocks of two or more (printed for the visual review): ${d.repeatedBlocks.join('; ') || 'none'}`,
+    `visual review list (C001): counted look-around and peer spans: ${d.review.spans.join(', ') || 'none'}; the count of ${C.distinct} ${d.review.dependsOnThem ? 'DEPENDS' : 'does not depend'} on them; consecutive counted acts: ${d.review.consecutive.join(', ') || 'none'}`,
     ...d.intermittency
       ? d.intermittency.map(m => `${m.id}: ${m.status} ${fixed(m.value)}${m.id === 'inter.speedCv' ? ' (gated)' : ' (REPORT, not judged)'}`)
       : ['intermittency: no gate.json; run qa:motion3d gate on this run to print inter.speedCv and the O2 values'],
-    'inter.burstCv, inter.holdFraction and inter.movesPerMin: no long-idle human band exists (owner decision O2); they are printed, not judged.',
     ...IDLE_ACTS_LIMITS,
   ])
 }
