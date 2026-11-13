@@ -147,6 +147,8 @@ function pair(body: Body, companion: Body = {}) {
 }
 const report = (body: Body, companion?: Body) => idleActsReport(...pair(body, companion))
 const statuses = (r: ReturnType<typeof idleActsReport>) => Object.fromEntries(r.requirements.map(q => [q.id, q.status]))
+/** Version 6's reading of the pair, printed and out of the verdict since version 7. */
+const reading = (r: ReturnType<typeof idleActsReport>) => r.detail.pair.reading
 const distinct = (r: ReturnType<typeof idleActsReport>) => Number.parseInt(r.requirements.find(q => q.id === 'distinct-acts')?.value ?? '', 10)
 const after = (from: number, bones: readonly MotionTraceBone[]) => (bone: MotionTraceBone, t: number): Quat | null => bones.includes(bone) && t >= from ? axisAngle(1, Math.min(1, t - from)) : null
 const ramp = (from: number) => (t: number) => Math.min(1, Math.max(0, t - from))
@@ -176,10 +178,11 @@ const actsBefore = (t: number) => SPACED.filter(b => b.at + ACT_SECONDS / 2 <= t
 /** V3: the reviewer's idle: no sway on the hips and legs, the hips rolled 3 deg by a weight shift every 23 s. */
 const SHIFTING: Pick<Body, 'still' | 'support'> = { still: LEGS, support: { at: [5, 28, 51, 74], to: [1, -1, 1, -1], gains: { x: 0, hips: 3, legs: 0 } } }
 
-describe('idle-acts report version 6', () => {
-  it('i1: passes six distinct kinds that each moved her body, the QA drive named and the companion equal outside the acts', () => {
+describe('idle-acts report version 7', () => {
+  it('i1: passes six distinct kinds that each moved her body and the QA drive named, and prints the companion equal outside the acts', () => {
     const r = report({ behaviours: SIX })
-    expect(statuses(r)).toEqual({ 'drive': 'PASS', 'distinct-acts': 'PASS', 'no-repeat': 'PASS', 'pair': 'PASS' })
+    expect(statuses(r)).toEqual({ 'drive': 'PASS', 'distinct-acts': 'PASS', 'no-repeat': 'PASS', 'pair': 'REPORT' })
+    expect(reading(r)).toBe('PASS')
     expect(r.detail.acts.map(act => act.movement?.moved)).toEqual([true, true, true, true, true, true])
     expect(r.verdict).toBe('PASS')
   })
@@ -239,7 +242,7 @@ describe('idle-acts report version 6', () => {
 
   it('p1: passes a run whose weight-shift schedule each act delays, and finds the delay that grows with every act', () => {
     const r = report(P1)
-    expect(statuses(r).pair).toBe('PASS')
+    expect(reading(r)).toBe('PASS')
     const delays = r.detail.pair.intervals.map(i => i.delay)
     expect(delays.every((d, k) => k === 0 || d >= delays[k - 1])).toBe(true)
     expect(delays.at(-1)).toBeCloseTo(SPACED.length * 0.5 * ACT_SECONDS, 1)
@@ -251,17 +254,17 @@ describe('idle-acts report version 6', () => {
     ['p5: the root yaw 1 deg off', { yaw: (t: number) => ramp(second)(t) * Math.PI / 180 }],
     ['p5: the hips position 0.015 L off', { hips: (t: number): Vec3 => [0.015 * ramp(second)(t), 0, 0] }],
   ] as const)('%s for good after the second act fails the pair: no delay explains it', (_, change: Body) => {
-    expect(statuses(report({ ...P1, ...change })).pair).toBe('FAIL')
+    expect(reading(report({ ...P1, ...change }))).toBe('FAIL')
   })
 
   it('p3: fails a delay that decreases after an act', () => {
     const decreasing: Support = { ...schedule(), delay: t => delayed(() => 0.5)(t) - (t >= SPACED[2].at + ACT_SECONDS ? 3.5 : 0) }
-    expect(statuses(report({ ...P1, support: decreasing })).pair).toBe('FAIL')
+    expect(reading(report({ ...P1, support: decreasing }))).toBe('FAIL')
   })
 
   it('p4: does not pass a delay that grows more than the acts can slow the schedule: its intervals sit at the bound and are not judged', () => {
     const r = report({ ...P1, support: schedule(k => k === 2 ? 12 / ACT_SECONDS : 0.5) })
-    expect(statuses(r).pair).toBe('NOT-EXERCISED')
+    expect(reading(r)).toBe('NOT-EXERCISED')
     expect(r.detail.pair.intervals.filter(i => !i.judged).length).toBeGreaterThan(0)
   })
 
@@ -271,40 +274,40 @@ describe('idle-acts report version 6', () => {
     const acts: Behaviour[] = [{ kind: 'stretch', at: 15 }, { kind: 'look-around', at: 35 }]
     const delay = (t: number) => acts.reduce((sum, b) => sum + 0.6 * Math.min(ACT_SECONDS, Math.max(0, t - b.at)), 0)
     const r = report({ seconds: 70, behaviours: acts, still: LEGS, support: { at: [6, 45, 58], to: [1, -1, 0.5], delay, gains: { x: 0.03, hips: 3, legs: 15 } } })
-    expect(statuses(r).pair).toBe('PASS')
+    expect(reading(r)).toBe('PASS')
     expect(r.detail.pair.intervals.at(-1)?.delay).toBeCloseTo(3.6, 1)
   })
 
   it('pa: fails a hips position held 0.02 L to one side and then the other, switching inside every act', () => {
     const r = report({ ...P1, hips: t => [t < SPACED[0].at + ACT_SECONDS / 2 ? 0 : actsBefore(t) % 2 === 0 ? -0.02 : 0.02, 0, 0] })
-    expect(statuses(r).pair).toBe('FAIL')
+    expect(reading(r)).toBe('FAIL')
   })
 
   it('pt: fails a leg held 1.5 deg off on one act-free interval only, whatever the other intervals hold', () => {
     const held = (bone: MotionTraceBone, t: number): Quat | null => bone === 'leftUpperLeg' && actsBefore(t) === 3 ? axisAngle(0, 1.5) : null
-    expect(statuses(report({ ...P1, extra: held })).pair).toBe('FAIL')
+    expect(reading(report({ ...P1, extra: held }))).toBe('FAIL')
   })
 
   it('p6: passes hips movement inside a widened act', () => {
     const inside = (t: number): Vec3 => [0, t > SPACED[1].at && t < SPACED[1].at + 3 ? 0.012 * Math.sin(Math.PI * (t - SPACED[1].at) / 3) : 0, 0]
-    expect(statuses(report({ ...P1, hips: inside })).pair).toBe('PASS')
+    expect(reading(report({ ...P1, hips: inside }))).toBe('PASS')
   })
 
   it('p7: fails a foot re-plant inside an act that leaves the foot and hips moved for good', () => {
     const replant = (bone: MotionTraceBone, t: number): Quat | null => bone === 'leftFoot' ? axisAngle(1, 6 * ramp(second)(t)) : null
-    expect(statuses(report({ ...P1, extra: replant, hips: t => [0.01 * ramp(second)(t), 0, 0] })).pair).toBe('FAIL')
+    expect(reading(report({ ...P1, extra: replant, hips: t => [0.01 * ramp(second)(t), 0, 0] }))).toBe('FAIL')
   })
 
   it('p8: passes a foot lifted inside an act and set back', () => {
     const lift = (bone: MotionTraceBone, t: number): Quat | null => bone === 'leftUpperLeg' ? axisAngle(0, 15 * hold((t - SPACED[1].at) / ACT_SECONDS)) : null
-    expect(statuses(report({ ...P1, extra: lift })).pair).toBe('PASS')
+    expect(reading(report({ ...P1, extra: lift }))).toBe('PASS')
   })
 
-  it('i8, i9: fails lasting state in the performer\'s channels after an act and prints, without judging, lasting state in Natural\'s', () => {
+  it('i8, i9: reads lasting state in the performer\'s channels after an act as a pair FAIL that stays out of the verdict, and prints Natural\'s', () => {
     const hips = report({ behaviours: SIX, extra: after(24, ['hips']) })
-    expect(statuses(hips).pair).toBe('FAIL')
+    expect([reading(hips), statuses(hips).pair, hips.verdict]).toEqual(['FAIL', 'REPORT', 'PASS'])
     const natural = report({ behaviours: SIX, extra: after(24, ['head', 'chest']) })
-    expect(statuses(natural).pair).toBe('PASS')
+    expect(reading(natural)).toBe('PASS')
     expect(natural.detail.pair.others.difference).toBeGreaterThanOrEqual(0.999)
   })
 

@@ -4,10 +4,11 @@ import { criterionReport } from './report'
 
 /**
  * A requirement whose case may not occur in a run. NOT-EXERCISED never passes: a rule that needs a case (an act played,
- * a turn made, a rest state reached) is not met by a run without it, so the report's verdict fails.
+ * a turn made, a rest state reached) is not met by a run without it, so the report's verdict fails. REPORT is a line kept
+ * printed but out of the verdict (`reportOnly`).
  */
 export interface CaseRequirement extends ReportRequirement {
-  readonly status: 'PASS' | 'FAIL' | 'NOT-EXERCISED'
+  readonly status: 'PASS' | 'FAIL' | 'NOT-EXERCISED' | 'REPORT'
 }
 
 export interface CaseReport<Detail> extends CriterionReport<Detail> {

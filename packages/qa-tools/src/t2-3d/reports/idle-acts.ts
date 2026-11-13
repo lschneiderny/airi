@@ -15,9 +15,9 @@ import { percentile } from '../gate/bands'
 import { IDLE_MARKER, idleDriveDetail, QA_DRIVE_PRESENT } from '../idle-drive'
 import { add, conjugate, DEG, multiply, rotate } from '../metrics/math'
 import { caseReport, formatCaseReport, judged, notExercised } from './case-report'
-import { fixed, gateStatus, markers, ReportUsageError } from './report'
+import { fixed, gateStatus, markers, reportOnly, ReportUsageError } from './report'
 
-export const IDLE_ACTS_VERSION = 6
+export const IDLE_ACTS_VERSION = 7
 
 const C = {
   distinct: 6,
@@ -77,7 +77,7 @@ const IDLE_ACTS_LIMITS: readonly string[] = [
   `an act counts when some channel changed within ${C.actSeconds} s by more than max(1, bar) times the larger of ${C.actDeg} deg (hips position ${hipsFor(C.actDeg).toFixed(4)} L) and that channel's own act-free 95th percentile; each act above prints the degrees its deciding channel needed. A head-led act must therefore exceed her own idle head range: a 12 deg nod reached in 1 s counted 2 of 13 acts on Chisa seed 1 and 0 of 11 on Ellen seed 2, a 20 deg nod in the product's zone-out envelope every act (second review). The ${C.actDeg} deg floor is a convention, the goal-2 gaze-order rule's event threshold (gaze-order.ts CRITERION_DEG), not a measured visibility threshold. A change made over more than about 3 s counts only the part made within ${C.actSeconds} s; a wider window was measured to count an 8 deg drift and to lose product-shaped nods on Ellen. This proves the body did something, not what; a motionless act is counted in at most about 5 % of its spans by construction.`,
   `under qa-neutral-day exactly six kinds are drawable (nod-off and sway weigh 0), so distinct-acts passes only if all six are drawn and counted; a yawn has 2.7 % of each draw. The scheduler alone (10,000 seeds, 610 s, amendment 7 A7.6) draws six distinct kinds that end in the scored span in 13.0 % of runs, and 39.6 % with the idle unit's whole-body kinds (body: true).`,
   'no-repeat judges only a kind started twice in a row (C001\'s bar); longer repeated blocks (A B A B) are printed above, and the visual review alone enforces "no repeated cycle". The scheduler never draws its last drawn kind again, so in the product the line fails only through a stretch or yawn follow-up after sleep or a host cue.',
-  'the pair compares, on each act-free interval, the companion delayed by the interval\'s fitted delay: the hips position (lateral, vertical, forward in the body frame), the hips rotation, the root yaw and every planted foot and toe joint. Its tolerances come from the performer\'s time-indexed drift (printed above), not from her runs. It sees a lasting hips or root change larger than its tolerance on one interval or pooled, whatever the other intervals hold; a foot or toe joint off its place by more than the resolution; a weight shift out of step with the companion\'s; a schedule further behind than the delay bound (not judged, so not PASS). It does not see a leg pose that reaches the same foot position (the leg bones are printed, not judged), a delay that grows faster than 0.6 s per s during one act while the total stays under the bound, a delay that decreases after an interval without a weight shift, or a lasting hips change under its tolerance, which grows as the interval shortens. Natural\'s breath, head and gaze streams keep lasting state after an activity by design and are printed, not judged.',
+  'the pair is printed, not judged (amendment 8): on her runs version 6\'s rule fails the unperturbed product run, because the trace\'s root yaw is the hips\' heading, which carries the weight shift and the drift that the rule leaves out, and its delay fit can lock on a short interval and carry the lock forward; the visual review is the check. As a printed reading it compares, on each act-free interval, the companion delayed by the interval\'s fitted delay: the hips position (lateral, vertical, forward in the body frame), the hips rotation, the root yaw and every planted foot and toe joint. Its tolerances come from the performer\'s time-indexed drift (printed above), not from her runs. It sees a lasting hips or root change larger than its tolerance on one interval or pooled, whatever the other intervals hold; a foot or toe joint off its place by more than the resolution; a weight shift out of step with the companion\'s; a schedule further behind than the delay bound (not judged, so not PASS). It does not see a leg pose that reaches the same foot position (the leg bones are printed, not judged), a delay that grows faster than 0.6 s per s during one act while the total stays under the bound, a delay that decreases after an interval without a weight shift, or a lasting hips change under its tolerance, which grows as the interval shortens. Natural\'s breath, head and gaze streams keep lasting state after an activity by design and are printed, not judged.',
   'a PASS alone is NOT accepted for C001: read it with the visual review the criterion names, from the act timeline and the review list above.',
 ]
 
@@ -355,6 +355,8 @@ export interface IdleActsDetail {
     readonly intervals: readonly PairInterval[]
     /** Per component, the mean signed difference over the judged intervals after the first behaviour; null without one. */
     readonly pooled: readonly PairRead[] | null
+    /** Version 6's reading of the pair, printed and kept out of the verdict since version 7 (amendment 8). */
+    readonly reading: 'PASS' | 'FAIL' | 'NOT-EXERCISED'
     readonly others: { readonly difference: number, readonly at: number | null, readonly bone: string | null }
   }
   readonly review: { readonly spans: readonly string[], readonly dependsOnThem: boolean, readonly consecutive: readonly string[] }
@@ -459,7 +461,7 @@ interface PairComponent {
  * the root yaw, and an interval whose d sits at that bound is not judged. Judged: no frame above its visible tolerance, no
  * interval mean above its tolerance, and no pooled mean above its tolerance, each from the performer's drift design.
  */
-function comparePair(run: LoadedRun, pair: LoadedRun, spans: readonly IdleSpan[], on: TracePose, off: TracePose): IdleActsDetail['pair'] {
+function comparePair(run: LoadedRun, pair: LoadedRun, spans: readonly IdleSpan[], on: TracePose, off: TracePose): Omit<IdleActsDetail['pair'], 'reading'> {
   const a = run.input
   const b = pair.input
   const { trace } = a
@@ -743,25 +745,24 @@ export function idleActsReport(run: LoadedRun, pair: LoadedRun): CaseReport<Idle
   const readText = (read: PairRead | null) => read ? `${read.component} ${sized(read.value, read.unit)} against ${sized(read.limit, read.unit)}${read.at === null ? '' : ` at ${read.at.toFixed(3)} s`}` : 'none'
   const delays = pairing.intervals.map(i => i.delay)
   const pairValue = `${pairing.intervals.length} intervals (${notJudged} not judged: fit at its delay bound), delays ${delays.length ? `${delays[0].toFixed(3)} to ${delays[delays.length - 1].toFixed(3)} s` : 'none'}; largest visible ${readText(worstVisible)}; largest interval mean ${readText(worstMean)}; largest pooled mean ${readText(worstPooled)}${shown.length ? `; above a tolerance in ${shown.length} intervals` : ''}${pooledOver.length ? `; pooled above in ${pooledOver.map(read => read.component).join(', ')}` : ''}`
-  const pairRequirement = shown.length || pooledOver.length
-    ? judged('pair', pairRule, pairValue, false)
-    : notJudged || pairing.pooled === null
-      ? notExercised('pair', pairRule, `${pairValue}; ${notJudged ? `${notJudged} intervals at their delay bound are not judged` : 'no judged act-free frame after the first behaviour'}`)
-      : judged('pair', pairRule, pairValue, true)
+  const pairReading: IdleActsDetail['pair']['reading'] = shown.length || pooledOver.length ? 'FAIL' : notJudged || pairing.pooled === null ? 'NOT-EXERCISED' : 'PASS'
+  const pairRequirement = pairReading === 'NOT-EXERCISED'
+    ? notExercised('pair', pairRule, `${pairValue}; ${notJudged ? `${notJudged} intervals at their delay bound are not judged` : 'no judged act-free frame after the first behaviour'}`)
+    : judged('pair', pairRule, pairValue, pairReading === 'PASS')
   const requirements: CaseRequirement[] = [
     driveRequirement(run, QA_DRIVE_PRESENT),
     judged('distinct-acts', `at least ${C.distinct} distinct kinds among the scheduler's acts that started in the scored span, ended, and changed some channel within ${C.actSeconds} s by more than ${C.actDeg} deg and more than the ${C.movedPercentile * 100}th percentile of her act-free windows`, `${kinds.size} distinct (${counted.length} moved of ${acts.filter(act => act.countable).length} judged, ${spans.length} behaviours started)`, kinds.size >= C.distinct),
     spans.length < 2
       ? notExercised('no-repeat', repeatRule, `${spans.length} behaviour started: no consecutive pair`)
       : judged('no-repeat', repeatRule, repeats.length ? `repeated: ${repeats.join(', ')}` : `${spans.length - 1} consecutive pairs, none repeated`, repeats.length === 0),
-    pairRequirement,
+    reportOnly(pairRequirement, 'not judged since version 7 (amendment 8): the trace\'s root yaw is the hips\' heading, which carries the weight shift and the drift that this rule leaves out, and the delay fit can lock on a short interval and carry the lock forward, so the rule fails a product run as designed; the visual review is the check'),
   ]
   const gate = run.gate
   return caseReport('idle-acts', IDLE_ACTS_VERSION, [run.dir, pair.dir], IDLE_ACTS_CONSTANTS, requirements, {
     acts,
     sequence,
     repeatedBlocks: repeatedBlocks(sequence),
-    pair: pairing,
+    pair: { ...pairing, reading: pairReading },
     review: {
       spans: reviewed.map(act => `${act.kind} ${act.start.toFixed(3)}-${act.end!.toFixed(3)} s`),
       dependsOnThem: kinds.size >= C.distinct && others.size < C.distinct,
@@ -774,7 +775,7 @@ export function idleActsReport(run: LoadedRun, pair: LoadedRun): CaseReport<Idle
 export function formatIdleActs(report: CaseReport<IdleActsDetail>): string {
   const d = report.detail
   return formatCaseReport(report, [
-    `pair: ${d.pair.dir}; lateralGain ${d.pair.lateralGain.toFixed(4)} (hips rotation drift ${d.pair.rotationAmplitude.toFixed(3)} deg); k visible ${d.pair.k.visible.toFixed(3)}, interval ${d.pair.k.interval.toFixed(3)}, pooled ${d.pair.k.pooled.toFixed(3)}; per act-free interval, the delay of her weight-shift schedule against its bound, the largest frame difference against its visible tolerance and the largest mean against its tolerance:`,
+    `pair (printed, not judged; version 6's reading ${d.pair.reading}): ${d.pair.dir}; lateralGain ${d.pair.lateralGain.toFixed(4)} (hips rotation drift ${d.pair.rotationAmplitude.toFixed(3)} deg); k visible ${d.pair.k.visible.toFixed(3)}, interval ${d.pair.k.interval.toFixed(3)}, pooled ${d.pair.k.pooled.toFixed(3)}; per act-free interval, the delay of her weight-shift schedule against its bound, the largest frame difference against its visible tolerance and the largest mean against its tolerance:`,
     ...d.pair.intervals.map(i => `  ${i.from.toFixed(3)}-${i.to.toFixed(3)} s\tdelay ${i.delay.toFixed(3)} s (bound ${i.bound.toFixed(3)} s)${i.judged ? '' : ' NOT JUDGED: fit at its delay bound'}\tvisible ${i.visible.component} ${sized(i.visible.value, i.visible.unit)} / ${sized(i.visible.limit, i.visible.unit)} at ${fixed(i.visible.at)} s\tmean ${i.mean.component} ${sized(i.mean.value, i.mean.unit)} / ${sized(i.mean.limit, i.mean.unit)}\tlegs (printed, not judged) ${i.legs ? `${i.legs.bone} ${i.legs.value.toFixed(3)} deg at ${i.legs.at.toFixed(3)} s` : 'none'}`),
     `pooled means over the judged intervals after the first behaviour: ${d.pair.pooled ? d.pair.pooled.map(read => `${read.component} ${sized(read.value, read.unit)} / ${sized(read.limit, read.unit)}`).join(', ') : 'none'}`,
     `every other traced bone, unaligned (Natural's breath, head and gaze; printed, not judged): ${d.pair.others.difference.toFixed(4)} deg${d.pair.others.bone ? ` (${d.pair.others.bone} at ${fixed(d.pair.others.at)} s)` : ''}`,
