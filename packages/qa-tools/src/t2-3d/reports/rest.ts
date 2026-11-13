@@ -18,7 +18,7 @@ import { POP_CONSTANTS } from './kinematics'
 import { popEvents, upperBodyPopBones } from './pops'
 import { fixed, markers, ReportUsageError } from './report'
 
-export const REST_VERSION = 4
+export const REST_VERSION = 5
 
 const C = {
   share: 0.9,
@@ -92,7 +92,7 @@ export interface RestDetail {
 }
 
 /**
- * C004 (plan R3; unit M2 rules section 4): the run names the sleepy QA drive; the scheduler's sleep onset comes within
+ * C004 (plan R3; unit M2 rules section 4, amendment 4 A4.5): the run names the sleepy QA drive; the scheduler's sleep onset comes within
  * the designed delay after the away cue; the body rests before the away cue and dozes from the onset without a break;
  * the bones show the 4f rest posture and doze pelvis drop; she returns to standing after the wake without a snap; and the
  * stance reasons name the fallback. The doze head clause has no clean rule yet and is not judged, so no run passes until
@@ -135,12 +135,17 @@ export function restReport(run: LoadedRun, bands: MotionBandsFile): CaseReport<R
   const restShare = share(idleFrames, 'rest')
   const dozeShare = sleep === null ? null : share(dozeSpan, 'doze')
   // A break: the scheduler ends that sleep or starts another before the wake cue, or the body leaves doze after entering it.
+  // The body clause is vacuous when the body never dozed, so without a scheduler break the line is then not exercised.
   const breaks: string[] = []
+  let schedulerBroke = false
+  let bodyDozed = false
   if (asleep && sleep !== null) {
     if (asleep.end !== null && asleep.end < wake)
       breaks.push(`the scheduler's sleep ended at ${asleep.end.toFixed(3)} s`)
     breaks.push(...sleeps.filter(span => span.start > sleep && span.start < wake).map(span => `the scheduler started another sleep at ${span.start.toFixed(3)} s`))
+    schedulerBroke = breaks.length > 0
     const dozed = dozeSpan.findIndex(i => restAt(p.times[i]) === 'doze')
+    bodyDozed = dozed >= 0
     const left = dozed < 0 ? undefined : dozeSpan.slice(dozed).find(i => restAt(p.times[i]) !== 'doze')
     if (left !== undefined)
       breaks.push(`the body left doze at ${p.times[left].toFixed(3)} s`)
@@ -229,7 +234,9 @@ export function restReport(run: LoadedRun, bands: MotionBandsFile): CaseReport<R
       : judged('doze-share', dozeShareRule, `doze ${(dozeShare * 100).toFixed(1)} %`, dozeShare >= C.share),
     sleep === null
       ? notExercised('doze-unbroken', unbrokenRule, noSleep)
-      : judged('doze-unbroken', unbrokenRule, breaks.join('; ') || 'no break', breaks.length === 0),
+      : !schedulerBroke && !bodyDozed
+          ? notExercised('doze-unbroken', unbrokenRule, 'the body never dozed; the scheduler clause alone held')
+          : judged('doze-unbroken', unbrokenRule, breaks.join('; ') || 'no break', breaks.length === 0),
     posture === null
       ? notExercised('rest-posture', restPostureRule, 'no rest frame')
       : judged('rest-posture', restPostureRule, `head ${posture.head.toFixed(2)} deg, torso lower ${posture.torso.toFixed(2)} deg above the baseline`, posture.head >= C.restHeadDeg && posture.torso >= C.restTorsoDeg),

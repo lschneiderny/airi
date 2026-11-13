@@ -52,6 +52,8 @@ interface Sleepy {
   readonly doze?: number
   /** The body leaves doze for rest at this trace s, before the wake cue; never by default. */
   readonly dozeLeaves?: number
+  /** The body rests but never dozes. */
+  readonly neverDozes?: boolean
 }
 
 /**
@@ -81,7 +83,7 @@ function sleepy(options: Sleepy = {}) {
     { t: cues.away, kind: 'mode', mode: 'away' },
     { t: cues.wake, kind: 'mode', mode: 'listening' },
   ]
-  const rests = [[CUES.onset, 'rest'], [doze, 'doze'], ...options.dozeLeaves === undefined ? [] : [[options.dozeLeaves, 'rest'] as const], [cues.wake, 'none']] as const
+  const rests = [[CUES.onset, 'rest'], ...options.neverDozes ? [] : [[doze, 'doze'] as const], ...options.dozeLeaves === undefined ? [] : [[options.dozeLeaves, 'rest'] as const], [cues.wake, 'none']] as const
   const events: MotionTraceEvent[] = [
     ...modes,
     ...(options.stance ?? true)
@@ -119,7 +121,7 @@ function sleepy(options: Sleepy = {}) {
 const statuses = (report: ReturnType<typeof restReport>) => Object.fromEntries(report.requirements.map(r => [r.id, r.status]))
 const DOZE_LINES = ['doze-share', 'doze-unbroken', 'doze-pelvis', 'doze-no-gaze-shift', 'reasons'] as const
 
-describe('rest report version 4', () => {
+describe('rest report version 5', () => {
   it('s1: passes every judged line for the drive, the rest, a sleep onset 15 s after away, an unbroken doze and the return, and holds the doze head as not judged', () => {
     const report = restReport(sleepy(), bands)
     expect(statuses(report)).toEqual({ 'drive': 'PASS', 'rest-share': 'PASS', 'sleep-onset': 'PASS', 'doze-share': 'PASS', 'doze-unbroken': 'PASS', 'rest-posture': 'PASS', 'doze-pelvis': 'PASS', 'doze-head': 'NOT-EXERCISED', 'doze-no-gaze-shift': 'PASS', 'returned': 'PASS', 'wake-smooth': 'PASS', 'reasons': 'PASS' })
@@ -144,6 +146,11 @@ describe('rest report version 4', () => {
   it('s6: fails a body that leaves the doze 2 s before the wake cue, though its doze share passes', () => {
     const s = statuses(restReport(sleepy({ dozeLeaves: CUES.wake - 2 }), bands))
     expect([s['doze-unbroken'], s['doze-share']]).toEqual(['FAIL', 'PASS'])
+  })
+
+  it('r1, r2: reads the doze as not exercised when the body never dozes under an unbroken sleep, and fails a sleep the scheduler breaks', () => {
+    const unbroken = (options: Sleepy) => statuses(restReport(sleepy({ neverDozes: true, ...options }), bands))['doze-unbroken']
+    expect([unbroken({}), unbroken({ sleepEnds: CUES.wake - 10 })]).toEqual(['NOT-EXERCISED', 'FAIL'])
   })
 
   it('s7: fails a body whose doze starts 5 s after the sleep onset, 80 % of the span', () => {
@@ -176,7 +183,7 @@ describe('rest report version 4', () => {
 
   it('s8: fails a run without the fallback and reports what needs a rest or doze frame as not exercised', () => {
     const s = statuses(restReport(sleepy({ fallback: false }), bands))
-    expect(s).toMatchObject({ 'rest-share': 'FAIL', 'doze-share': 'FAIL', 'rest-posture': 'NOT-EXERCISED', 'doze-pelvis': 'NOT-EXERCISED', 'doze-no-gaze-shift': 'NOT-EXERCISED', 'returned': 'NOT-EXERCISED', 'wake-smooth': 'NOT-EXERCISED', 'reasons': 'FAIL' })
+    expect(s).toEqual({ 'drive': 'PASS', 'rest-share': 'FAIL', 'sleep-onset': 'PASS', 'doze-share': 'FAIL', 'doze-unbroken': 'NOT-EXERCISED', 'rest-posture': 'NOT-EXERCISED', 'doze-pelvis': 'NOT-EXERCISED', 'doze-head': 'NOT-EXERCISED', 'doze-no-gaze-shift': 'NOT-EXERCISED', 'returned': 'NOT-EXERCISED', 'wake-smooth': 'NOT-EXERCISED', 'reasons': 'FAIL' })
   })
 
   it('refuses a trace without stance markers and one whose rest onset is not before the away cue', () => {
