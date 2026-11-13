@@ -116,8 +116,8 @@ const { seq, behaviour } = motion.idleState
   `clasp-hands`, `hair-touch` and `heel-rock` weigh 0 with `body` too, until
   their forms read on the MMD mesh: the rock needs the toe-down foot pitch the
   performer has no output for, the clasping hands need a two-hand contact, and
-  the hair touch needs a temple anchor solved per rig with the head-clearance
-  gate (its fitted anchor reads as a salute). While
+  the hair touch reads as a salute while 4e's temple sweep is out of reach of
+  both rigs' arms inside their joint limits. While
   she is settled in, nothing that needs her arms, her shoulders or a standing
   posture is drawn (`stretch`, `peer`, `shoulder-roll`, `arm-swing`,
   `shift-stance` and the three above), and a stretch that would follow a long sleep becomes a yawn. The

@@ -297,7 +297,8 @@ export function idleActivityWeights(drive: NaturalIdleDrive, context: { watching
     'sigh': body ? (finite(drive.valence) < -0.2 ? 2 : 1) : 0,
     'shoulder-roll': body ? 0.8 : 0,
     // 4e act 3: the body re-plants a foot. 4e weighs the next three 0.7, 0.5 and 0.8; each weighs 0 until it reads on
-    // the mesh: the clasp needs a two-hand contact, the hair touch a temple anchor solved per rig, the rock a toe pitch.
+    // the mesh: the clasp needs a two-hand contact, the rock a toe pitch, and the hair touch's temple sweep is out of
+    // reach inside the rigs' joint limits.
     'shift-stance': body ? 1.2 : 0,
     'clasp-hands': 0,
     'hair-touch': 0,

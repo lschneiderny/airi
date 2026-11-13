@@ -33,9 +33,11 @@ deterministic motion algorithms for reusable character motion drivers.
   toward and past its standing angle, so it stays within 8 degrees of it. The
   host's foot stage plays the step. A foot let go in the air lands before her
   weight goes back. Natural weighs `heel-rock`, `clasp-hands` and `hair-touch`
-  0, so their forms stay in the layer, unplayed: the hair touch reads as a salute
-  until it has a temple anchor solved per rig, its 0.10 A sweep back and the
-  head-clearance gate. A
+  0, so their forms stay in the layer, unplayed. The hair touch reads as a
+  salute, and architecture 4e's form is out of reach: 6.3's temple anchor,
+  marched from the side of the head, solves on Chisa only, and her arm sweeps
+  at most 0.04 A of the 0.10 A back inside its joint limits; Ellen's arms reach
+  the side of her head at no height. A
   stretch's elbows fold to bring each hand along the straight line from where
   it hangs to where it reaches (Morasso 1981), the far arm 120 ms behind, fed
   through the relaxed arm followers' inverse (`followerInverse` with `used` 0);

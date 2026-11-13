@@ -458,8 +458,9 @@ export function createActLayer(): PerformanceLayer {
         break
       }
       case 'hair-touch': {
-        // 4e act 8: the hand rises to the temple and the head tilts 4 deg toward it. Not built: the 0.10 A sweep back,
-        // the per-rig temple anchor and the head-clearance gate. It reads as a salute, so Natural weighs the kind 0.
+        // 4e act 8: hand to the temple, head tilted 4 deg toward it. Natural weighs it 0: it reads as a salute, and 6.3's
+        // side-marched temple anchor solves on Chisa only, whose arm sweeps 0.04 of 4e's 0.10 A inside her limits
+        // (E/g4/i/probe-temple-sweep.txt).
         if (age >= 0.1 && age < D - 0.9)
           reach('hair-touch', sideOf(s))
         head(0, 0, 4 * s * trapezoid(age, 0.6, D - 1.5, 0.9))

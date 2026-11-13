@@ -18,7 +18,7 @@ reaching feature parity with the Live2D and VRM renderers:
   body director, remove them, and map AIRI emotions to clips (Neutral and
   Sleepy map to no clip).
 - **Idle activities**: under Natural she stretches, yawns, looks around, watches
-  the screen, sighs, rolls her shoulders, touches her hair, swings her arms and
+  the screen, sighs, rolls her shoulders, shifts her stance, swings her arms and
   dozes on her own (`idleActivities` in the Natural settings,
   on by default), and plays the clips the user marked "Idle may use" now and
   then while her body is quiet. A model with a sleep clip sleeps through its
