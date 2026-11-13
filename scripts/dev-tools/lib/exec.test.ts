@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { chunkByLength, nodeCommandChunkLimits, shimCommandChunkLimits } from './exec'
+import { chunkByLength, nodeCommandChunkLimitsFor, shimCommandChunkLimits } from './exec'
 
 describe('chunkByLength', () => {
   it('splits by item count', () => {
@@ -33,6 +33,20 @@ describe('chunkByLength', () => {
     const items = Array.from({ length: 1500 }, (_, index) => `apps/stage-tamagotchi-kirie/src-web/src/renderer/widgets/extension-ui/composables/file-${index}.test.ts`)
     for (const files of chunkByLength(items, shimCommandChunkLimits))
       expect(files.reduce((sum, file) => sum + file.length + 3, 0)).toBeLessThan(8191 - 500)
-    expect(nodeCommandChunkLimits.maxLength).toBeLessThan(32767)
+    expect(nodeCommandChunkLimitsFor('win32').maxLength).toBeLessThan(32767)
+  })
+})
+
+describe('nodeCommandChunkLimitsFor', () => {
+  // 400 changed files with paths of about 100 characters: a branch-sized change set.
+  const files = Array.from({ length: 400 }, (_, index) => `/home/dev/projects/airi/packages/stage-ui/src/components/scenarios/settings/model-settings/file-${index}.ts`)
+
+  it('keeps a branch-sized file list in one command where the system has no short command-line limit', () => {
+    expect(chunkByLength(files, nodeCommandChunkLimitsFor('linux'))).toHaveLength(1)
+    expect(chunkByLength(files, nodeCommandChunkLimitsFor('darwin'))).toHaveLength(1)
+  })
+
+  it('still splits the same list under the CreateProcess limit on Windows', () => {
+    expect(chunkByLength(files, nodeCommandChunkLimitsFor('win32')).length).toBeGreaterThan(1)
   })
 })

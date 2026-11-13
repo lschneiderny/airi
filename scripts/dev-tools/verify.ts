@@ -10,7 +10,7 @@ import { errorMessageFrom } from '@moeru/std'
 import { acquire } from '@proj-airi/cpu-slots'
 
 import { compileCacheEnv } from './lib/compile-cache'
-import { capture, chunkByLength, nodeCommandChunkLimits, run, shimCommandChunkLimits } from './lib/exec'
+import { capture, chunkByLength, nodeCommandChunkLimitsFor, run, shimCommandChunkLimits } from './lib/exec'
 import { gatedNotice, listGatedTestFiles } from './lib/gated-tests'
 import { changedFiles, git, gitCommonDir, repoRoot, workingTreeHash } from './lib/git'
 import { decideReuse, envKeyOf, readLastPass, readTreeRecords, toolchainOf, writeLastPass, writeTreeRecord } from './verify-cache'
@@ -77,7 +77,7 @@ function commandsFor(step: VerifyStep, root: string, plan: ReturnType<typeof pla
     args: node('node_modules/turbo/bin/turbo', testPrerequisiteTurboArgs),
     concurrency: true,
   }
-  const related: Command[] = configs.flatMap(({ config, projects }) => chunkByLength(absoluteFiles, nodeCommandChunkLimits).map(files => ({
+  const related: Command[] = configs.flatMap(({ config, projects }) => chunkByLength(absoluteFiles, nodeCommandChunkLimitsFor(process.platform)).map(files => ({
     label: `tests related to changes (${config}${projects.length ? `, projects ${projects.join(', ')}` : ''})`,
     args: node('node_modules/vitest/vitest.mjs', ['related', '--run', '--passWithNoTests', '--config', config, ...projects.flatMap(project => ['--project', project]), ...files]),
   })))

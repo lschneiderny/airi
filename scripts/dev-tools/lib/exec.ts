@@ -42,8 +42,14 @@ export interface ChunkLimits {
   maxLength: number
 }
 
-/** A command that starts `node` or another executable directly is limited by CreateProcess to 32767 characters; 24000 leaves room for flags. */
-export const nodeCommandChunkLimits: ChunkLimits = { maxItems: 150, maxLength: 24_000 }
+/**
+ * Limits for a command that starts `node` or another executable directly. On Windows, CreateProcess rejects command
+ * lines over 32767 characters; 24000 leaves room for flags. Linux and macOS take at least 1 MB of arguments, so there a
+ * branch-sized file list stays in one command: every extra chunk starts each Vitest config once more.
+ */
+export function nodeCommandChunkLimitsFor(platform: NodeJS.Platform): ChunkLimits {
+  return platform === 'win32' ? { maxItems: 150, maxLength: 24_000 } : { maxItems: 5_000, maxLength: 500_000 }
+}
 
 /**
  * A command that starts a `node_modules/.bin` shim runs through cmd.exe, which rejects lines over 8191 characters.
