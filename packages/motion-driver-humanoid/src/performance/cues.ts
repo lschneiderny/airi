@@ -24,7 +24,7 @@ const c = channelIndex
 const raisedCosine = (u: number) => u <= 0 || u >= 1 ? 0 : 0.5 - 0.5 * Math.cos(2 * Math.PI * u)
 
 /** Piecewise minimum-jerk path through `[time, value]` knots, starting at 0; every knot has zero velocity. */
-function path(t: number, knots: readonly (readonly [number, number])[]): number {
+export function path(t: number, knots: readonly (readonly [number, number])[]): number {
   let from: readonly [number, number] = [0, 0]
   for (const knot of knots) {
     if (t < knot[0])

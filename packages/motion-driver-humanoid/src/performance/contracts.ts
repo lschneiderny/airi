@@ -14,7 +14,8 @@ export type BodyHeadTerm = 'emphasis' | 'impulse' | 'pet' | 'held' | 'gesture' |
 export type BodyCueKind = 'nod' | 'shake' | 'shrug' | 'lean' | 'glance'
 /** Architecture 4a gesture forms; `hand-to-chest` and `thinking-hand` are the emotion-requested arm forms. */
 export type BodyGestureForm = 'beat' | 'palm-up' | 'press' | 'point' | 'chop' | 'frame' | 'hand-to-chest' | 'thinking-hand'
-export type BodyArmForm = Extract<BodyGestureForm, 'hand-to-chest' | 'thinking-hand'>
+/** Held arm forms the gesture layer performs on a layer's request: an emotion's (4a) or an idle act's (4e). */
+export type BodyArmForm = Extract<BodyGestureForm, 'hand-to-chest' | 'thinking-hand'> | 'cover-mouth'
 export type BodyGestureHand = BodySide | 'both'
 export type BodyGesturePhase = 'rest' | 'preparation' | 'stroke' | 'hold' | 'retraction'
 export type BodyReactionKind = 'body-poke' | 'head-poke' | 'pet' | 'drag'
@@ -129,6 +130,33 @@ export interface BodyGazeGoal {
   readonly kind: 'free' | 'sustained' | 'travel'
 }
 
+/** Natural's idle behaviours, which the act layer gives a whole-body form. */
+export type BodyIdleKind = 'stretch' | 'yawn' | 'look-around' | 'check-in' | 'peer' | 'zone-out' | 'nod-off' | 'sway' | 'sleep' | 'about-to-speak' | 'let-go' | 'sigh' | 'shoulder-roll' | 'shift-stance' | 'clasp-hands' | 'hair-touch' | 'heel-rock' | 'arm-swing'
+
+/**
+ * The idle behaviour the one idle scheduler (Natural) started, as the adapter maps it. The act layer plays its own form
+ * of it from the tick it sees a new `seq`, and decides nothing. Times are seconds of the behaviour, not clock times.
+ */
+export interface BodyIdleAct {
+  readonly seq: number
+  readonly kind: BodyIdleKind
+  /** Planned seconds from start to end; Infinity for sleep and the about-to-speak hold. */
+  readonly duration: number
+  /** Seconds a behaviour let go before its planned end fades over; null while it runs and after it ran its course. */
+  readonly release: number | null
+  readonly side: -1 | 1
+  /** Sway period, seconds. */
+  readonly period: number
+  /** Repeats a body act fits into its duration: shoulder-roll sides, heel rocks, arm swings. */
+  readonly count: number
+  /** The clasp's place: 0 in front, 1 behind the back. */
+  readonly variant: 0 | 1
+  /** Nod-off droops: `t` seconds after the start, sinking for `x` seconds. */
+  readonly keys: readonly { readonly t: number, readonly x: number, readonly y: number }[]
+  /** Glances in Natural's eye space (x right of the viewer, y up), `at` seconds after the start, held `hold` seconds. */
+  readonly glances: readonly { readonly at: number, readonly x: number, readonly y: number, readonly hold: number }[]
+}
+
 /** Mapped intent; no Natural types cross this boundary. All times are active seconds. */
 export interface BodyPerformanceInput {
   readonly head: {
@@ -201,6 +229,8 @@ export interface BodyPerformanceInput {
   } | null
   /** Per-side standing hang clearance added to abduction, radians, from the adapter's hang solver. */
   readonly armLift: Readonly<Record<BodySide, number>>
+  /** The latest idle behaviour Natural started, kept after it ends; null before the first and without an idle drive. */
+  readonly idle: BodyIdleAct | null
 }
 
 export interface BodyCapabilities {

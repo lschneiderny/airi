@@ -57,6 +57,8 @@ type MutableFrame = Mutable<Omit<BodyPerformanceFrame, 'pelvis' | 'gaze' | 'eyes
 const STEADY_GAIN = [0.5, 0.6, 0.6] as const
 /** Vestibulo- and cervico-collic reflex latency, seconds. */
 const STEADY_LAG = 0.08
+/** A held gaze's eye residue. */
+const HELD_MICRO = Object.freeze({ yaw: 0, pitch: 0 })
 
 /** Pure state owner. Each step advances exactly one tick; the host owns accumulation/interpolation. */
 class BodyPerformer {
@@ -65,6 +67,8 @@ class BodyPerformer {
   private mapped: Mutable<BodyPerformanceInput> | null = null
   private readonly plannedPosture: Mutable<BodyPerformanceInput['posture']> = { amplitude: 0, shiftRate: 0, support: null }
   private readonly turnInput = { targetYaw: 0, facingYaw: 0, allowTurn: false, home: false }
+  /** The saccade count a held gaze keeps (`PerformancePlan.holdGaze`); null while the gaze is free to move. */
+  private heldSaccade: number | null = null
 
   constructor(private readonly options: BodyPerformerOptions) {
     const { traits } = options
@@ -162,7 +166,8 @@ class BodyPerformer {
     this.context.time = this.context.tick * BODY_TICK
     stack.prepare(this.context)
     let effective = input
-    if (stack.plan.support !== null || stack.plan.gaze !== null) {
+    this.heldSaccade = stack.plan.holdGaze ? this.heldSaccade ?? input.gaze.saccadeSeq : null
+    if (stack.plan.support !== null || stack.plan.gaze !== null || this.heldSaccade !== null) {
       this.mapped ??= { ...input, posture: { ...input.posture }, gaze: { ...input.gaze } }
       const posture = this.mapped.posture
       const gaze = this.mapped.gaze
@@ -176,6 +181,8 @@ class BodyPerformer {
       }
       if (stack.plan.gaze !== null)
         Object.assign(gaze, stack.plan.gaze)
+      if (this.heldSaccade !== null)
+        Object.assign(gaze, { saccadeSeq: this.heldSaccade, micro: HELD_MICRO })
       Object.assign(this.mapped, input)
       this.mapped.posture = posture
       this.mapped.gaze = gaze
@@ -221,8 +228,8 @@ class BodyPerformer {
     frame.pelvis.y = frame.channels[1] * traits.legLength
     frame.pelvis.z = frame.channels[2] * traits.legLength
     frame.support = state.posture.support + (gait ? gait.weight * (gait.support - state.posture.support) : 0)
-    frame.gaze.yaw = state.gaze.line.yaw + 0.3 * input.gaze.micro.yaw
-    frame.gaze.pitch = state.gaze.line.pitch + 0.3 * input.gaze.micro.pitch
+    frame.gaze.yaw = state.gaze.line.yaw + 0.3 * effective.gaze.micro.yaw
+    frame.gaze.pitch = state.gaze.line.pitch + 0.3 * effective.gaze.micro.pitch
     // A free goal is a fixation around the viewer (architecture 3e), and the viewer is the body's home: while the gaze
     // is free the feet face the viewer, so after a far look they step back instead of staying torqued under a head that
     // has returned, and a free glance never turns them.

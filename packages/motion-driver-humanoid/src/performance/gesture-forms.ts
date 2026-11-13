@@ -41,13 +41,17 @@ export const GESTURE_FORMS: Readonly<Record<SpeechGestureForm, GestureFormSpec>>
 }
 
 /**
- * The emotion-requested arm forms (4a): hand shape, palm orientation and the contact anchor they reach for; the
- * thinking hand stops 0.04 A short of its chin anchor. `anchor` moves the seed toward the arm's own side and up, in
- * arm lengths: the hand rests on the upper chest beside the sternum, and comes to the chin and jaw from the side.
+ * The held arm forms (4a, 4e): hand shape, palm orientation and the contact anchor they reach for; the thinking hand
+ * stops 0.04 A short of its chin anchor. `anchor` moves the seed toward the arm's own side and up, in arm lengths: the
+ * hand rests on the upper chest beside the sternum, and comes to the chin and jaw from the side. The yawn's hand covers
+ * the mouth 0.06 A in front of it (4e act 9), at the chin seed, palm toward the face as the thinking hand holds it; it
+ * comes 0.08 A to its own side, the nearest offset from the midline, in 0.02 A steps, at which Chisa's and Ellen's arms
+ * solve a key inside their limits (E/g4/a/scratch/probe-cover.ts).
  */
-export const ARM_FORMS: Readonly<Record<BodyArmForm, { readonly shape: HandShape, readonly pron: number, readonly wflex: number, readonly swivel: number, readonly short: number, readonly anchor: { readonly side: number, readonly up: number } }>> = {
-  'hand-to-chest': { shape: 'relaxed', pron: 75 * DEG, wflex: -10 * DEG, swivel: 25 * DEG, short: 0, anchor: { side: 0.05, up: 0.05 } },
-  'thinking-hand': { shape: 'point', pron: 20 * DEG, wflex: -20 * DEG, swivel: 10 * DEG, short: 0.04, anchor: { side: 0.1, up: 0 } },
+export const ARM_FORMS: Readonly<Record<BodyArmForm, { readonly shape: HandShape, readonly pron: number, readonly wflex: number, readonly swivel: number, readonly short: number, readonly seed: 'chest' | 'chin', readonly anchor: { readonly side: number, readonly up: number } }>> = {
+  'hand-to-chest': { shape: 'relaxed', pron: 75 * DEG, wflex: -10 * DEG, swivel: 25 * DEG, short: 0, seed: 'chest', anchor: { side: 0.05, up: 0.05 } },
+  'thinking-hand': { shape: 'point', pron: 20 * DEG, wflex: -20 * DEG, swivel: 10 * DEG, short: 0.04, seed: 'chin', anchor: { side: 0.1, up: 0 } },
+  'cover-mouth': { shape: 'relaxed', pron: 20 * DEG, wflex: -20 * DEG, swivel: 10 * DEG, short: 0.06, seed: 'chin', anchor: { side: 0.08, up: 0 } },
 }
 
 /** Architecture 4a's energy gain on stroke size, energy in [0, 1]. */
@@ -182,7 +186,7 @@ export class GestureKeys {
     const sigma = side === 'left' ? 1 : -1
     const { traits } = this
     const neckToHead = Math.hypot(traits.head.x - traits.neck.x, traits.head.y - traits.neck.y, traits.head.z - traits.neck.z)
-    const seed = form === 'hand-to-chest'
+    const seed = spec.seed === 'chest'
       ? { x: 0, y: (traits.arms.left.shoulder.y + traits.arms.right.shoulder.y) / 2 - 0.15 * length, z: (traits.arms.left.shoulder.z + traits.arms.right.shoulder.z) / 2 }
       : { x: 0, y: traits.head.y - 0.6 * neckToHead, z: traits.head.z + 0.6 * neckToHead }
     seed.x += sigma * spec.anchor.side * length

@@ -1,7 +1,8 @@
 import type { ClipMaskGroup } from '@proj-airi/motion-driver-humanoid/clip-mask'
-import type { BodyGazeGoal, BodyHeadTerm, BodyPerformanceInput } from '@proj-airi/motion-driver-humanoid/performance'
+import type { BodyGazeGoal, BodyHeadTerm, BodyIdleAct, BodyPerformanceInput } from '@proj-airi/motion-driver-humanoid/performance'
 import type { Vec3 } from '@proj-airi/motion-driver-humanoid/types'
 import type { NaturalBodyIntent, NaturalMotionFrame } from '@proj-airi/motion-driver-natural/frame-types'
+import type { IdleBehaviourRecord } from '@proj-airi/motion-driver-natural/idle-activities'
 
 /** One Natural head unit is 30 degrees, as the legacy MMD look-at mapped it. */
 const HEAD_SPAN = Math.PI / 6
@@ -42,6 +43,26 @@ export interface MMDBodyTick {
 const rotation = () => ({ yaw: 0, pitch: 0, roll: 0 })
 
 /**
+ * Natural's idle behaviour as the performer reads it: its own seconds instead of Natural's clock, and a release only
+ * for a behaviour let go before its planned end (one that ran its course is released at its end without a fade).
+ */
+export function bodyIdleAct(record: IdleBehaviourRecord): BodyIdleAct {
+  const early = record.releasedAt !== null && record.releasedAt < record.end
+  return {
+    seq: record.seq,
+    kind: record.kind,
+    duration: record.end - record.start,
+    release: early ? record.releaseSeconds : null,
+    side: record.side,
+    period: record.period,
+    count: record.count,
+    variant: record.variant,
+    keys: record.keys,
+    glances: record.glances,
+  }
+}
+
+/**
  * Maps `controller.bodyIntent()` and the body's own state into `BodyPerformanceInput`. Continuous signals are blended
  * linearly across the ticks of one display frame, so a moving target is not a different stair-step at each refresh rate;
  * sequence records are copied once. The returned input is one preallocated object, borrowed until the next `tick`.
@@ -53,6 +74,8 @@ export class MMDBodyIntent {
   private captured = false
   private lowX = 0
   private lowY = 0
+  /** The record `input.idle` was mapped from; a new record object is a start or a release. */
+  private idleRecord: IdleBehaviourRecord | null = null
   private readonly input = {
     head: {
       attitude: rotation(),
@@ -84,6 +107,7 @@ export class MMDBodyIntent {
     owned: { root: 0, leftLegIk: 0, rightLegIk: 0, lowerBody: 0, leftArm: 0, rightArm: 0, leftFingers: 0, rightFingers: 0, upperBody: 0, head: 0 } as Record<ClipMaskGroup, number>,
     gait: null as BodyPerformanceInput['gait'],
     armLift: { left: 0, right: 0 },
+    idle: null as BodyIdleAct | null,
   }
 
   /** Records a display frame's intent. Call once per frame before its ticks, also on frames that hold no tick. */
@@ -163,6 +187,11 @@ export class MMDBodyIntent {
     Object.assign(input.owned, source.owned)
     input.armLift.left = source.armLift.left
     input.armLift.right = source.armLift.right
+    const record = intent.idle.behaviour
+    if (record !== this.idleRecord) {
+      this.idleRecord = record
+      input.idle = record && bodyIdleAct(record)
+    }
   }
 
   tick(state: MMDBodyTick): BodyPerformanceInput {
@@ -209,5 +238,7 @@ export class MMDBodyIntent {
     this.captured = false
     this.lowX = 0
     this.lowY = 0
+    this.idleRecord = null
+    this.input.idle = null
   }
 }

@@ -204,6 +204,7 @@ export class MMDBodyPerformer {
       owned: { root: 0, leftLegIk: 0, rightLegIk: 0, lowerBody: 0, leftArm: 0, rightArm: 0, leftFingers: 0, rightFingers: 0, upperBody: 0, head: 0 },
       gait: null,
       armLift: { left: 0, right: 0 },
+      idle: null,
     }
   }
 

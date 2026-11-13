@@ -24,7 +24,9 @@ deterministic motion algorithms for reusable character motion drivers.
   motion, planted world foot anchors, body channels, and arm swing.
 - `./performance`: `createBodyPerformer`, a pure whole-body performer on a
   120 Hz grid, its rig/input/frame contracts, channels, FK, arm-key solver,
-  collision corrector, and extensible `PerformanceLayer` contract.
+  collision corrector, and extensible `PerformanceLayer` contract. Its act
+  layer plays the whole-body form of the idle behaviour Natural's idle layer
+  started (`BodyPerformanceInput.idle`); it schedules nothing itself.
 - `./motion-trace`: `MotionTraceV1`, little-endian float32 block codec, canonical
   humanoid parents, and `MotionTraceRecorder`. The recorder accepts plain vectors
   and rest-normalised world quaternions in +Y up, +Z forward axes, removes hips

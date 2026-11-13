@@ -389,8 +389,9 @@ from the 600-sample rolling FPS and timing readouts. `setDebugFlag`,
 body, director, and overlay consumers. `setPerformanceLayer` with
 `{ layer, enabled }` turns one performance layer of the body performer on or
 off for tuning; the stack eases it in or out. The body registers
-`createPerformanceLayers`, so `performance.layers` lists `emotion`,
-`gesture-left`, `gesture-right`, `cue` and `reaction`; no act layer exists yet. Windows that never publish mirror the
+`createPerformanceLayers`, so `performance.layers` lists `emotion`, `act`,
+`gesture-left`, `gesture-right`, `cue` and `reaction`. The act layer plays
+Natural's idle behaviour (`bodyIntent().idle`, mapped by `MMDBodyIntent`). Windows that never publish mirror the
 latest stage snapshot they receive, so the devtools lab reads the stage's
 state from the same store. Overlay toggles also travel as the Eventa event
 `mmdOverlaySetEvent` on the same channel, and the snapshot's `overlays` field
