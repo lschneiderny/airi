@@ -340,18 +340,23 @@ export function createActLayer(): PerformanceLayer {
       case 'clasp-hands': {
         // 4e act 6: both hands come together low (in front, or behind the back for the other variant), one hand lets go
         // first, and the pelvis rocks fore and aft by 0.012 L at 0.35 Hz while they are held. The hands are posed by
-        // joint targets, not solved to a contact anchor: the arm performer holds one arm form at a time.
+        // joint targets, not solved per rig to a contact anchor: the arm performer holds one arm form at a time. In
+        // front they are the arm key solver's angles for a hand 0.58 A below, 0.45 A in front of and 0.17 A inside the
+        // shoulder (E/g4/a/scratch/probe-clasp.ts): together in front of the belly, clear of it on Chisa and Ellen.
         const behind = a.record.variant === 1
-        const target = behind ? { flex: -25, abduct: 15, elbow: 50 } : { flex: 25, abduct: 8, elbow: 75 }
+        const target = behind ? { flex: -25, abduct: 15, twist: 0, elbow: 50 } : { flex: -1.3, abduct: 0.5, twist: 20.7, elbow: 82.2 }
         for (const arm of SIDES) {
           const start = ARM_START[arm]
-          const e = trapezoid(age, 0.8, D - 1.8 - (arm === sideOf(s) ? 0.25 : 0), 1.0)
+          // 4e sets no reach time. At 0.8 s the elbows changed speed by up to 0.32 deg per tick within a tick; at 1.2 s by
+          // 0.25 (Chisa) and 0.23 (Ellen), inside the act test's bound but at its edge (E/g4/a/scratch/form-measure.ts).
+          const e = trapezoid(age, 1.2, D - 2.2 - (arm === sideOf(s) ? 0.25 : 0), 1.0)
           add(BODY_CHANNELS[start + 2], e * (target.flex - context.rest[start + 2] / DEG))
           add(BODY_CHANNELS[start + 3], e * (target.abduct - context.rest[start + 3] / DEG))
+          add(BODY_CHANNELS[start + 4], e * (target.twist - context.rest[start + 4] / DEG))
           add(BODY_CHANNELS[start + 5], e * (target.elbow - context.rest[start + 5] / DEG))
         }
-        const held = trapezoid(age, 0.8, D - 1.8, 1.0)
-        channels[c('pelvisZ')] += w * 0.012 * held * Math.sin(2 * Math.PI * 0.35 * Math.max(0, age - 0.8))
+        const held = trapezoid(age, 1.2, D - 2.2, 1.0)
+        channels[c('pelvisZ')] += w * 0.012 * held * Math.sin(2 * Math.PI * 0.35 * Math.max(0, age - 1.2))
         break
       }
       case 'hair-touch': {
