@@ -2,7 +2,7 @@ import type { ProcessInfo } from './processes'
 
 import { describe, expect, it } from 'vitest'
 
-import { ancestry, attribute, classifyTool, cpuPercentFromRaw, descendants, isOrphan, normalizePath, rollup } from './processes'
+import { ancestry, attribute, classifyTool, cpuPercentFromRaw, descendants, isOrphan, normalizePath, rollup, withoutCommands } from './processes'
 
 const proc = (pid: number, ppid: number, name: string, command: string, memoryMb = 100, cpuPercent = 0): ProcessInfo => ({ pid, ppid, name, command, memoryMb, cpuPercent, startedAt: null })
 
@@ -116,5 +116,29 @@ describe('cpuPercentFromRaw', () => {
       [{ i: 0, c: 50, t: 10 }, { i: 20, c: 50, t: 10 }, { i: 21, c: 5, t: 10 }, { i: 22, c: 5, t: 10 }],
     )
     expect([...result.keys()]).toEqual([])
+  })
+})
+
+describe('withoutCommands', () => {
+  // A caller asks about t13 from a shell whose command line names it; `cut` is that shell's pipeline sibling.
+  const processes = [
+    proc(1, 0, 'init', ''),
+    proc(10, 1, 'bash', `bash -c "pnpm wt rm ${t13} | cut -c1-80"`),
+    proc(11, 10, 'node', 'node scripts/dev-tools/wt.ts rm'),
+    proc(12, 10, 'cut', 'cut -c1-80'),
+    proc(20, 1, 'node', `node ${t13}\\node_modules\\vitest\\vitest.mjs run`),
+  ]
+  const worktreeByPid = (list: ProcessInfo[]) => new Map(attribute(list, [main, t13], 'win32').map(info => [info.pid, info.worktree]))
+
+  it('stops the named processes matching a worktree or passing one down, and keeps real work counted', () => {
+    expect(worktreeByPid(processes).get(12)).toBe(normalizePath(t13))
+    const blanked = worktreeByPid(withoutCommands(processes, ancestry(processes, 11)))
+    expect([blanked.get(10), blanked.get(11), blanked.get(12)]).toEqual([null, null, null])
+    expect(blanked.get(20)).toBe(normalizePath(t13))
+  })
+
+  it('leaves the snapshot it was given unchanged', () => {
+    withoutCommands(processes, new Set([10]))
+    expect(processes[1].command).toContain('pnpm wt rm')
   })
 })

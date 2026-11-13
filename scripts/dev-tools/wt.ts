@@ -13,7 +13,7 @@ import { acquire } from '@proj-airi/cpu-slots'
 
 import { compileCacheEnv } from './lib/compile-cache'
 import { git, listWorktrees, repoRoot } from './lib/git'
-import { attribute, normalizePath, snapshotProcesses } from './lib/processes'
+import { ancestry, attribute, normalizePath, snapshotProcesses, withoutCommands } from './lib/processes'
 import { defaultBranch, envQaLine, gcDecision, qaModelSource, rmBlocker, tempWorktreeRefusal, validName } from './wt-plan'
 
 const usage = `Usage: pnpm wt ls
@@ -57,8 +57,9 @@ function collect(root: string): { states: WorktreeState[], main: string } {
   const main = mainBranch(root)
   const worktrees = listWorktrees(root)
   const live = new Map<string, number>()
-  for (const info of attribute(snapshotProcesses(), worktrees.map(worktree => worktree.path))) {
-    if (info.worktree && info.pid !== process.pid)
+  const snapshot = snapshotProcesses()
+  for (const info of attribute(withoutCommands(snapshot, ancestry(snapshot, process.pid)), worktrees.map(worktree => worktree.path))) {
+    if (info.worktree)
       live.set(info.worktree, (live.get(info.worktree) ?? 0) + 1)
   }
   return { states: worktrees.map((worktree, index) => stateOf(worktree, index, main, live)), main }

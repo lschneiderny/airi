@@ -144,6 +144,7 @@ pnpm wt gc --yes
 ```
 
 - The branch prefix comes from `git config airi.branchPrefix`, or else the OS user name.
+- The live process count leaves out the caller: the shell and `pnpm` that run `pnpm wt rm <path>` name that worktree on their command line, so they and the pipeline they started do not count as work running in it. A process whose own command line names the worktree still counts.
 - `new` refuses a worktree path inside the system temporary directory (`os.tmpdir()`). One install there takes about 144,000 inodes, and a tmpfs has a fixed inode table that every job on the machine shares.
 - `new --qa` prepares a worktree for model-gated QA. It takes `AIRI_QA_MMD_MODEL` from the environment, or else from the `.env.qa` of the checkout you run it in, and refuses before creating anything when neither sets it or the file does not exist. After the install it writes `AIRI_QA_MMD_MODEL` to the new worktree's `.env.qa`, runs `pnpm qa:setup cubism` there, checks `node_modules/.modules.yaml`, and prints one `wt: ready ...` line. `--qa` cannot be combined with `--no-install`.
 - `rm` refuses while any process still runs from the worktree. It also refuses for uncommitted files (`--force` overrides only this) and for a detached HEAD holding commits main does not contain. If `git worktree remove` fails on long `node_modules` paths, it deletes the directory with extended-length paths and prunes.

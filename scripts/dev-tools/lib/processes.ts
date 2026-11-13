@@ -226,6 +226,15 @@ export function descendants(processes: ProcessInfo[], pid: number): number[] {
   return order
 }
 
+/**
+ * A copy of the snapshot in which the processes in `pids` have no command line, so `attribute` neither matches them to
+ * a worktree nor passes one down to their children. A caller passes its own `ancestry`: the shell that runs
+ * `pnpm wt rm <path>` names that worktree, and neither it nor its pipeline siblings are work running there.
+ */
+export function withoutCommands(processes: ProcessInfo[], pids: ReadonlySet<number>): ProcessInfo[] {
+  return processes.map(info => pids.has(info.pid) ? { ...info, command: '' } : info)
+}
+
 /** PIDs of `pid` and every ancestor still alive, so a caller never kills the process tree it runs in. */
 export function ancestry(processes: ProcessInfo[], pid: number): Set<number> {
   const byPid = new Map(processes.map(info => [info.pid, info]))
