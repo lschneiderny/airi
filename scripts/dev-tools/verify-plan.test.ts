@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { acquire } from '@proj-airi/cpu-slots'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { lintAllFixable, parseVerifyArgs, planStepLease, planVerify, selectExtraTestConfigs, testPrerequisiteTurboArgs, verifySteps } from './verify-plan'
+import { lintAllFixable, parseVerifyArgs, planStepLease, planTestRuns, planVerify, selectExtraTestConfigs, testPrerequisiteTurboArgs, verifySteps } from './verify-plan'
 
 const packages = ['packages/stage-ui', 'apps/stage-tamagotchi']
 const file = (path: string, deleted = false) => ({ path, deleted })
@@ -89,6 +89,22 @@ describe('selectExtraTestConfigs', () => {
 
   it('does not match a package that only shares a name prefix', () => {
     expect(selectExtraTestConfigs(['packages/stage-ui-three-extra', 'packages/stage'])).toEqual([])
+  })
+})
+
+describe('planTestRuns', () => {
+  it('runs the root config alone when no browser project is affected', () => {
+    expect(planTestRuns([])).toEqual([{ config: 'vitest.config.ts', projects: [] }])
+  })
+
+  it('gives every browser project its own Vitest process, so no process holds two Vite roots', () => {
+    const runs = planTestRuns(['stage-ui:browser', 'stage-pages:browser', 'stage-web:browser'])
+    expect(runs).toEqual([
+      { config: 'vitest.config.ts', projects: [] },
+      { config: 'vitest.browser.config.ts', projects: ['stage-ui:browser'] },
+      { config: 'vitest.browser.config.ts', projects: ['stage-pages:browser'] },
+      { config: 'vitest.browser.config.ts', projects: ['stage-web:browser'] },
+    ])
   })
 })
 

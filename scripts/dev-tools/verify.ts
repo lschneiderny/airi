@@ -15,7 +15,7 @@ import { gatedNotice, listGatedTestFiles } from './lib/gated-tests'
 import { changedFiles, git, gitCommonDir, repoRoot, workingTreeHash } from './lib/git'
 import { decideReuse, envKeyOf, readLastPass, readTreeRecords, toolchainOf, writeLastPass, writeTreeRecord } from './verify-cache'
 import { appendVerifyRun, formatVerifyStats, readVerifyStats } from './verify-history'
-import { advanceLastPass, lintAllFixable, parseVerifyArgs, planStepLease, planVerify, selectBrowserTestProjects, selectVerifyScope, testPrerequisiteTurboArgs, touchesAppRuntime, typecheckFilters, verifyUsage } from './verify-plan'
+import { advanceLastPass, lintAllFixable, parseVerifyArgs, planStepLease, planTestRuns, planVerify, selectBrowserTestProjects, selectVerifyScope, testPrerequisiteTurboArgs, touchesAppRuntime, typecheckFilters, verifyUsage } from './verify-plan'
 
 interface Command {
   label: string
@@ -69,10 +69,7 @@ function commandsFor(step: VerifyStep, root: string, plan: ReturnType<typeof pla
   }
   if (!plan.testFiles.length)
     return 'no code file changed'
-  const configs: { config: string, projects: string[] }[] = [
-    { config: 'vitest.config.ts', projects: [] },
-    ...(browserProjects.length ? [{ config: 'vitest.browser.config.ts', projects: browserProjects }] : []),
-  ]
+  const configs = planTestRuns(browserProjects)
   // `vitest related` resolves relative paths against each project's package root.
   const absoluteFiles = plan.testFiles.map(file => join(root, file))
   const rebuild: Command = {

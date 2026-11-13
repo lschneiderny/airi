@@ -157,6 +157,24 @@ export function selectBrowserTestProjects(affectedPackagePaths: string[]): strin
   return packages.map(path => `${path.slice(path.lastIndexOf('/') + 1)}:browser`)
 }
 
+export interface TestRun {
+  config: string
+  projects: string[]
+}
+
+/** The Vitest processes of the test step: the root config, then one process per affected browser project. */
+export function planTestRuns(browserProjects: string[]): TestRun[] {
+  // NOTICE:
+  // One Vitest process per browser project: two Vite roots in one process make `@vitejs/plugin-vue` serve a scoped
+  // style under the other root's id (process-wide descriptor cache, root-relative ids).
+  // Source: `@vitejs/plugin-vue` 6.0.8 `createDescriptor`; `scripts/dev-tools/README.md`.
+  // Remove when the plugin keys that cache per server.
+  return [
+    { config: 'vitest.config.ts', projects: [] },
+    ...browserProjects.map(project => ({ config: 'vitest.browser.config.ts', projects: [project] })),
+  ]
+}
+
 /**
  * Decides what each step covers. `packagePaths` are workspace package directories relative to the root, using `/`.
  * `rootDependencyPaths` are the directories of the workspace packages the root `package.json` depends on. Turbo's
