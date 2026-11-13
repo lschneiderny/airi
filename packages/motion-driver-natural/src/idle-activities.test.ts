@@ -173,8 +173,14 @@ describe('idle activity layer', () => {
     expect(idle.settled).toBe(true)
     idle.step(now(), dt, { ...idleInput, mode: 'talking' }, gaze)
     expect(idle.settled).toBe(false)
-    run(now() + 60)
+    const talked = now()
+    run(talked + 60)
     expect(idle.settled).toBe(false)
+    // The count starts again after the interruption: she settles in two minutes after it, not before.
+    run(talked + 119)
+    expect(idle.settled).toBe(false)
+    run(talked + 121)
+    expect(idle.settled).toBe(true)
   })
 
   it('records the running behaviour with its timing and drawn parameters, and keeps it after it ends', () => {
