@@ -63,8 +63,8 @@ describe('idle activity odds', () => {
   })
 
   it('draws the whole-body kinds only for a host that performs a body', () => {
-    const bodyKinds = ['sigh', 'shoulder-roll', 'hair-touch', 'arm-swing'] as const
-    const unread = ['shift-stance', 'clasp-hands', 'heel-rock'] as const
+    const bodyKinds = ['sigh', 'shoulder-roll', 'arm-swing'] as const
+    const unread = ['shift-stance', 'clasp-hands', 'hair-touch', 'heel-rock'] as const
     const live2d = idleActivityWeights(neutralDrive, { watching: false })
     const mmd = idleActivityWeights({ ...neutralDrive, body: true }, { watching: false })
     for (const kind of [...bodyKinds, ...unread])
@@ -80,7 +80,7 @@ describe('idle activity odds', () => {
   it('starts nothing that needs her arms or a standing posture while she is settled in', () => {
     const settled = { watching: false, settled: true }
     const weights = idleActivityWeights({ ...neutralDrive, body: true, sleepiness: 0.5 }, settled)
-    for (const kind of ['stretch', 'peer', 'hair-touch', 'arm-swing'] as const)
+    for (const kind of ['stretch', 'peer', 'shoulder-roll', 'arm-swing'] as const)
       expect(weights[kind], kind).toBe(0)
     // Architecture 4f lets the sigh and the yawn play while she rests.
     expect(weights.sigh).toBeGreaterThan(0)
@@ -282,6 +282,22 @@ describe('idle activity layer', () => {
     expect(idle.behaviour).toBeNull()
     run(wokeAt + 1.7, { ...idleInput, blocked: true })
     expect(idle.output.lidClose).toBe(0)
+  })
+
+  it('follows a long sleep with a yawn and never a stretch while she is settled in', () => {
+    const seen = new Set<IdleBehaviourKind>()
+    for (let seed = 1; seed <= 30; seed++) {
+      const { idle, run, now } = layer(seed, { ...neutralDrive, body: true })
+      const away = { ...idleInput, away: true }
+      run(31, away, () => idle.behaviour === 'sleep')
+      run(now() + 130, away)
+      expect(idle.settled, `seed ${seed}`).toBe(true)
+      const wokeAt = run(now() + dt, idleInput)
+      run(wokeAt + 4, idleInput, () => idle.behaviour !== null)
+      if (idle.behaviour)
+        seen.add(idle.behaviour)
+    }
+    expect([...seen]).toEqual(['yawn'])
   })
 
   it('wakes with a start when she is touched', () => {

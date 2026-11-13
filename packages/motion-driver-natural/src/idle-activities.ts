@@ -252,8 +252,13 @@ export class IdleBehaviourReports {
 /** The output while nothing contributes; shared, so a quiet layer allocates nothing per step. Never written. */
 const idleRest: IdleOutput = Object.freeze(neutral())
 
-/** The drawn kinds that need her arms or a standing posture, which a settled character does not start. */
-const SETTLED_OUT = ['stretch', 'peer', 'shift-stance', 'clasp-hands', 'hair-touch', 'heel-rock', 'arm-swing'] as const satisfies readonly DrawnIdleActivityKind[]
+/**
+ * The drawn kinds that need her arms, her shoulders or a standing posture, which a settled character does not start.
+ * Architecture 4f lets only the sigh, the yawn and the foot re-plant play on the rest. The head and gaze kinds
+ * (look-around, check-in, zone-out, nod-off, sway) still play while she is settled: a recorded deviation from 4f's
+ * list, because they move nothing the rest posture holds.
+ */
+const SETTLED_OUT = ['stretch', 'peer', 'shoulder-roll', 'shift-stance', 'clasp-hands', 'hair-touch', 'heel-rock', 'arm-swing'] as const satisfies readonly DrawnIdleActivityKind[]
 
 /**
  * Relative odds of each drawn activity for a drive. Tiredness (night, or low mood energy) favours yawns, zoning out
@@ -262,8 +267,8 @@ const SETTLED_OUT = ['stretch', 'peer', 'shift-stance', 'clasp-hands', 'hair-tou
  * and drifts off less. Sway is drawn only while music plays. The whole-body kinds take architecture 4e's act weights,
  * mood energy standing in for its arousal, and weigh 0 unless the drive sets `body`, so a head-only host's single
  * draw sees the same pool as before they existed. While a body host's character is `settled` (resting, or sitting on
- * a clip), nothing that needs her arms or a standing posture is drawn (architecture 4f restricts the rest's acts);
- * `settled` is never true without `body`.
+ * a clip), nothing that needs her arms, her shoulders or a standing posture is drawn (architecture 4f restricts the
+ * rest's acts), and a stretch that would follow a long sleep becomes a yawn; `settled` is never true without `body`.
  */
 export function idleActivityWeights(drive: NaturalIdleDrive, context: { watching: boolean, settled?: boolean }): Record<DrawnIdleActivityKind, number> {
   const tired = clamp01(Math.max(drive.sleepiness, -finite(drive.energy)))
@@ -283,11 +288,11 @@ export function idleActivityWeights(drive: NaturalIdleDrive, context: { watching
     'sway': drive.music ? (0.8 + 0.6 * warm) * (1 - 0.6 * tense) : 0,
     'sigh': body ? (finite(drive.valence) < -0.2 ? 2 : 1) : 0,
     'shoulder-roll': body ? 0.8 : 0,
-    // 4e weighs the stance shift 1.2, the clasp 0.7 and the heel rock 0.8. Each weighs 0 until it reads on the mesh:
-    // the shift and the rock need a foot step and a toe-down foot pitch, the clasp a two-hand contact solve.
+    // 4e weighs these 1.2, 0.7, 0.5 and 0.8. Each weighs 0 until it reads on the mesh: the shift and the rock need a
+    // foot step, the clasp a two-hand contact, the hair touch a temple anchor solved per rig (it reads as a salute).
     'shift-stance': 0,
     'clasp-hands': 0,
-    'hair-touch': body ? 0.5 : 0,
+    'hair-touch': 0,
     'heel-rock': 0,
     'arm-swing': body ? (lively > 0.2 ? 0.9 : 0.6) : 0,
   }
@@ -487,7 +492,8 @@ export class NaturalIdleActivities {
 
     const free = !current && performing && !input.blocked && !input.away
     if (this.followUp && at >= this.followUp.at) {
-      const { kind } = this.followUp
+      // A settled character does not stretch (SETTLED_OUT), so the stretch after a long sleep becomes the yawn.
+      const kind = this.settled && this.followUp.kind === 'stretch' ? 'yawn' : this.followUp.kind
       this.followUp = null
       if (free)
         current = this.start(kind, at, drive, input)

@@ -180,7 +180,10 @@ sleeps when Natural sleeps, with the matching stance clip, or, when the slot is
 empty, sets `BodyIntent.rest` to `rest` or `doze` for the performer's
 clip-free rest layer. It refuses both while she must stand, and holds each
 stance for at least 3 seconds (`STANCE_MIN_DWELL_MS`). It has no timer of its
-own: with both `idle` flags false (no idle drive) she never sits or sleeps.
+own: with both `idle` flags false (no idle drive) she never sits or sleeps. The
+clip-free rest does not yet build three parts of its architecture 4f row: the
+pelvis lateral gain of 1.25, the clasped-or-hanging hands (her arms hang as
+they do standing) and the tension of 0.2.
 
 On a stage with a ground line, `decideBody` also owns where she goes:
 `BodyIntent.locomotion` carries the goal x, its reason (`approach-chat`,

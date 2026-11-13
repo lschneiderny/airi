@@ -16,6 +16,9 @@ const c = channelIndex
  * pelvis drops 0.012 L and the torso lower +3; the head sinks to +18 over 4 to 9 s, recovers in 0.35 s with a 3 deg
  * overshoot up, settles, then pauses 9 to 25 s (lognormal); breath depth 1.5, sway 1.5, tempo 0.5. 4b's nod shares
  * split the head (0.7) and neck (0.3), and the torso mid follows at 0.12.
+ *
+ * Not built from the 4f row: the rest's pelvis lateral gain of 1.25, its clasped-or-hanging hands (the arms hang as
+ * they do standing) and its tension of 0.2.
  */
 const REST = { ramp: 1.5, lower: 3, clavicle: -2, head: 3, breath: 1.3, sway: 1.4, tempo: 0.6 } as const
 const DOZE = { lower: 3, pelvis: 0.012, sink: [4, 9], head: 18, recovery: 0.35, overshoot: 3, settle: 1.3, pause: [9, 25], breath: 1.5, sway: 1.5, tempo: 0.5 } as const
