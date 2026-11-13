@@ -97,7 +97,7 @@ import { readMMDRigProfile } from '../../composables/mmd/rig'
 import { buildMMDClipMask, mmdClipMaskBones } from '../../composables/mmd/rig/clip-mask'
 import { composeMMDStages } from '../../composables/mmd/stage-composition'
 import { applyStageCamera, applyStageRoot, measureStageExtent, projectCharacterPlacement, rowInputs, stagePixelRatio } from '../../composables/mmd/stage-world'
-import { chatStandX, frameClocks, MMDStanceDirector } from '../../composables/mmd/stance'
+import { chatStandX, directorIdleStates, frameClocks, MMDStanceDirector } from '../../composables/mmd/stance'
 import { buildMMDTouchColliders, MMDTouch, mmdTouchRegionRoots } from '../../composables/mmd/touch'
 import { Emotion, EMOTION_VALUES } from '../../constants/emotions'
 import { useMMDExpressionStore } from '../../stores/expression-store'
@@ -1010,8 +1010,7 @@ function bodyActivity(intent: BodyIntent | null): MMDSelfReport | null {
 function naturalIdleStates(): { settled: boolean, asleep: boolean } | undefined {
   if (motionDriver.value !== 'natural' || !natural)
     return undefined
-  const { behaviour, settled } = natural.bodyFrame.intent.idle
-  return { settled, asleep: behaviour?.kind === 'sleep' && behaviour.releasedAt === null }
+  return directorIdleStates(natural.bodyFrame.intent.idle)
 }
 
 /** Emits a `self` report when her body starts or stops doing something on its own. */

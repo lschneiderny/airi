@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest'
 import { createMMDAnimationManager } from './animation-manager'
 import { MMDBody } from './body'
 import { bodyFixture } from './body/fixture'
-import { CHAT_STAND_GAP_LEGS, chatStandX, frameClocks, MMDStanceDirector, standingBaseMotion } from './stance'
+import { CHAT_STAND_GAP_LEGS, chatStandX, directorIdleStates, frameClocks, MMDStanceDirector, standingBaseMotion } from './stance'
 
 const idle: Pick<PerformanceState, 'mode' | 'attention' | 'away'> = { mode: 'idle', attention: 'camera', away: false }
 const away: Pick<PerformanceState, 'mode' | 'attention' | 'away'> = { mode: 'idle', attention: 'camera', away: true }
@@ -443,5 +443,15 @@ describe('mmd stance director with clip performances', () => {
     run(director, at + 100, { actionRequest: dance, interactionSeq: 1, interactionAtMs: EPOCH_MS + at + 100 })
     expect(director.intent?.action).toBeNull()
     expect(director.diagnostics.lastActionSeq).toBe(2)
+  })
+})
+
+describe('directorIdleStates', () => {
+  it('reports asleep only while a sleep is under way, and settled as Natural says', () => {
+    const sleep = { kind: 'sleep', releasedAt: null }
+    expect(directorIdleStates({ settled: false, behaviour: null })).toEqual({ settled: false, asleep: false })
+    expect(directorIdleStates({ settled: true, behaviour: { kind: 'yawn', releasedAt: null } })).toEqual({ settled: true, asleep: false })
+    expect(directorIdleStates({ settled: true, behaviour: sleep })).toEqual({ settled: true, asleep: true })
+    expect(directorIdleStates({ settled: false, behaviour: { ...sleep, releasedAt: 12 } })).toEqual({ settled: false, asleep: false })
   })
 })

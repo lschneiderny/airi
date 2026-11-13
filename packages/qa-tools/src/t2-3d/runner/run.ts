@@ -25,7 +25,7 @@ import { createMMDMotionTraceSampler } from '@proj-airi/stage-ui-mmd/composables
 import { MMDNaturalAdapter } from '@proj-airi/stage-ui-mmd/composables/mmd/natural/adapter'
 import { readMMDRigProfile } from '@proj-airi/stage-ui-mmd/composables/mmd/rig'
 import { composeMMDStages } from '@proj-airi/stage-ui-mmd/composables/mmd/stage-composition'
-import { MMDStanceDirector } from '@proj-airi/stage-ui-mmd/composables/mmd/stance'
+import { directorIdleStates, MMDStanceDirector } from '@proj-airi/stage-ui-mmd/composables/mmd/stance'
 import { AnimationMixer, LoopOnce, Matrix4, Quaternion } from 'three'
 
 import * as v from 'valibot'
@@ -129,6 +129,7 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
         intent: natural.bodyFrame.intent,
         energy: cues.energy,
         stance: stance.intent?.stance,
+        rest: stance.intent?.rest,
         points,
         disableFootContact: false,
         disableLookAt: false,
@@ -246,6 +247,7 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
         idleMotionName: '',
         isRegistered: () => false,
         points: points ?? undefined,
+        idle: directorIdleStates(natural.bodyFrame.intent.idle),
         interaction: { interactionSeq: 0, chatSendSeq: 0, interactionAtMs: null, actionRequest: null, actionFeedback: null, dragging: false },
         world: {
           ...NO_WORLD_BODY_INPUT,
