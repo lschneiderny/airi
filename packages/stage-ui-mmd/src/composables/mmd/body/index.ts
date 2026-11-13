@@ -2,7 +2,7 @@ import type { MMD } from '@moeru/three-mmd'
 import type { ClipBoneMask, ClipMaskGroup } from '@proj-airi/motion-driver-humanoid/clip-mask'
 import type { LocomotionFrame } from '@proj-airi/motion-driver-humanoid/locomotion'
 import type { BodyCapabilities, BodyGazeGoal, BodyPerformanceInput, BodyRigTraits } from '@proj-airi/motion-driver-humanoid/performance'
-import type { BodyIntent } from '@proj-airi/motion-driver-humanoid/types'
+import type { BodyIntent, Vec3 } from '@proj-airi/motion-driver-humanoid/types'
 import type { NaturalBodyIntent, NaturalMotionFrame } from '@proj-airi/motion-driver-natural/frame-types'
 import type { AnimationClip } from 'three'
 
@@ -22,7 +22,7 @@ import { buildMMDArmTestColliders, buildMMDHeadColliders } from '../touch/collid
 import { MMDArms } from './arms'
 import { MMDBodyClock } from './clock'
 import { MMDEyes } from './eyes'
-import { MMDFootContact } from './feet'
+import { meshAnkleTarget, MMDFootContact } from './feet'
 import { MMDBodyIntent } from './intent'
 import { MMDLocomotion, writeGaitChannels } from './locomotion'
 import { MMDBodyPerformer } from './performer'
@@ -116,7 +116,9 @@ export class MMDBody {
   private gait: LocomotionFrame | null = null
   private readonly gaitEvents: LocomotionFrame['events'][number][] = []
   private readonly gaitChannels = new Float64Array(BODY_CHANNELS.length)
-  private readonly gaitInput: { weight: number, support: number, mode: LocomotionFrame['mode'], channels: Float64Array } = { weight: 0, support: 0, mode: 'idle', channels: this.gaitChannels }
+  /** The leg IK's ankle targets of the latest gait tick, mesh-local: the performer's corrector poses the leg bodies from them. */
+  private readonly gaitAnkles = { left: { x: 0, y: 0, z: 0 }, right: { x: 0, y: 0, z: 0 } }
+  private readonly gaitInput: { weight: number, support: number, mode: LocomotionFrame['mode'], channels: Float64Array, ankles: Record<'left' | 'right', Vec3> | null } = { weight: 0, support: 0, mode: 'idle', channels: this.gaitChannels, ankles: null }
   private gaitEnabled = false
   private rootX = 0
   private rootYaw = 0
@@ -428,6 +430,12 @@ export class MMDBody {
         this.gaitInput.weight = frame.weight
         this.gaitInput.support = frame.support
         this.gaitInput.mode = frame.mode
+        // The foot stage reaches these same targets while the gait weight is above 0 (`feet.apply`, `meshAnkleTarget`).
+        this.gaitInput.ankles = this.performer?.traits.legs ? this.gaitAnkles : null
+        for (const side of ['left', 'right'] as const) {
+          const { position } = meshAnkleTarget(frame.feet[side].target, frame.feet[side].roll, { x: frame.root.position.x, yaw: frame.root.yaw })
+          Object.assign(this.gaitAnkles[side], position)
+        }
         gait = this.gaitInput
         this.gait = frame
       }

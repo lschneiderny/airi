@@ -209,7 +209,7 @@ describe('posture performance', () => {
       const input = quietInput(i / 120)
       const channels = new Float32Array(rest.length)
       channels[c('upperYaw')] = i >= 120 && i < 150 ? 0.25 : 0
-      const frame = performer.step({ ...input, gait: { mode: 'idle', weight: 1, support: 0, channels } })
+      const frame = performer.step({ ...input, gait: { mode: 'idle', weight: 1, support: 0, channels, ankles: null } })
       const reference = baseline.step(input)
       signal.push(frame.channels[c('leftFlex')] - reference.channels[c('leftFlex')])
     }

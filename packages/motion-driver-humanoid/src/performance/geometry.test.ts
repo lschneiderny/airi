@@ -172,6 +172,40 @@ describe('canonical geometry', () => {
     expect(jerk).toBeLessThan(speed)
   })
 
+  it.each(fixtureRigs)('carries leg bodies to where the leg IK puts the leg the gait carries on $name', ({ traits }) => {
+    const legs = traits.legs
+    if (!legs)
+      throw new TypeError('The fixture rigs have leg joints')
+    const { hip, knee, ankle } = legs.left
+    const at = (point: { x: number, y: number, z: number }) => ({ x: point.x - traits.hips.x, y: point.y - traits.hips.y, z: point.z - traits.hips.z })
+    const body = (centre: { x: number, y: number, z: number }, segment: 'thigh' | 'shin'): BodyCollider => ({ bone: 'hips', shape: 'sphere', radius: 0.5, centre: at(centre), rotation: { yaw: 0, pitch: 0, roll: 0 }, leg: { side: 'left', segment } })
+    const thighMiddle = { x: (hip.x + knee.x) / 2, y: (hip.y + knee.y) / 2, z: (hip.z + knee.z) / 2 }
+    const rig = { ...traits, colliders: [body(thighMiddle, 'thigh'), body(ankle, 'shin')] }
+    const channels = new Float32Array(BODY_CHANNELS.length)
+    const collision = new BodyCollision(rig, channels)
+    const reach = Math.hypot(ankle.x - hip.x, ankle.y - hip.y, ankle.z - hip.z)
+    const thigh = Math.hypot(knee.x - hip.x, knee.y - hip.y, knee.z - hip.z)
+    const along = (direction: { y: number, z: number }, length: number) => ({ x: hip.x, y: hip.y + direction.y * length, z: hip.z + direction.z * length })
+    const gait = (left: { x: number, y: number, z: number }, weight = 1) => ({ weight, support: 0, mode: 'walking' as const, channels, ankles: { left, right: legs.right.ankle } })
+
+    // The leg swings 30 degrees forward at its bind length: the thigh body leaves its bind place and goes with it. The
+    // bind knee is slightly bent, so the thigh lies within about 0.2 units of the hip-to-ankle line it is checked on.
+    const swing = { y: -Math.cos(30 * DEG), z: Math.sin(30 * DEG) }
+    collision.prepare(channels, gait(along(swing, reach)))
+    const swungMiddle = along(swing, thigh / 2)
+    expect(collision.distance(swungMiddle.x, swungMiddle.y, swungMiddle.z)).toBeLessThan(-0.25)
+    expect(collision.distance(thighMiddle.x, thighMiddle.y, thighMiddle.z)).toBeGreaterThan(0)
+
+    // A target nearer than the leg's reach bends the knee, and the shin carries an ankle body onto the target.
+    const below = along({ y: -1, z: 0 }, 0.85 * reach)
+    collision.prepare(channels, gait(below))
+    expect(collision.distance(below.x, below.y, below.z)).toBeLessThan(-0.45)
+
+    // Without the gait's weight the leg bodies stay where the hips hold them at bind.
+    collision.prepare(channels, gait(below, 0))
+    expect(collision.distance(ankle.x, ankle.y, ankle.z)).toBeLessThan(-0.45)
+  })
+
   it('protects head proxies as well as torso proxies', () => {
     const head: BodyCollider = { bone: 'head', shape: 'sphere', radius: 1.1, centre: { x: 0, y: 0, z: 0 }, rotation: { yaw: 0, pitch: 0, roll: 0 } }
     const rig = { ...traits, colliders: [...proxyColliders(traits), head] }

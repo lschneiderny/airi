@@ -54,6 +54,16 @@ function toMeshAnchor(anchor: FootAnchor, root: MMDRootPose): FootAnchor {
   return { position: { x: cos * dx - sin * dz, y: anchor.position.y, z: sin * dx + cos * dz }, yaw: anchor.yaw - root.yaw }
 }
 
+/**
+ * The leg IK's ankle target in the mesh-local frame: a ground anchor with the gait's roll applied, which moves the ankle
+ * about its pivot along the foot's forward axis.
+ */
+export function meshAnkleTarget(ground: FootAnchor, roll: LocomotionFoot['roll'] | undefined, root: MMDRootPose): FootAnchor {
+  return toMeshAnchor(roll
+    ? { position: { x: ground.position.x + Math.sin(ground.yaw) * roll.ankleOffset[0], y: ground.position.y + roll.ankleOffset[1], z: ground.position.z + Math.cos(ground.yaw) * roll.ankleOffset[0] }, yaw: ground.yaw }
+    : ground, root)
+}
+
 function toGroundAnchor(anchor: FootAnchor, root: MMDRootPose): FootAnchor {
   const { x, y, z } = anchor.position
   const cos = Math.cos(root.yaw)
@@ -244,10 +254,7 @@ export class MMDFootContact {
       }
       const roll = input.gait?.[side].roll
       const ground = this.planted[side] ?? toGroundAnchor(contact.anchor, root)
-      // The gait's roll moves the ankle about its pivot, along the foot's forward axis in the ground frame.
-      const anchor = toMeshAnchor(roll
-        ? { position: { x: ground.position.x + Math.sin(ground.yaw) * roll.ankleOffset[0], y: ground.position.y + roll.ankleOffset[1], z: ground.position.z + Math.cos(ground.yaw) * roll.ankleOffset[0] }, yaw: ground.yaw }
-        : ground, root)
+      const anchor = meshAnkleTarget(ground, roll, root)
       this.targets[side] = anchor
       this.carrying[side] = !input.disabled && contact.c >= 1 && (input.gait ? input.gait[side].planted : !this.steps[side])
       if (input.disabled) {

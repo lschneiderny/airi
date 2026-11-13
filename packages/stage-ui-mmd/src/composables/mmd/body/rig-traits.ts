@@ -1,14 +1,20 @@
-import type { BodyArmTraits, BodyBone, BodyCollider, BodyRigTraits } from '@proj-airi/motion-driver-humanoid/performance'
+import type { BodyArmTraits, BodyBone, BodyCollider, BodyLegFollow, BodyLegJoints, BodyRigTraits } from '@proj-airi/motion-driver-humanoid/performance'
 import type { HumanoidBoneName, HumanoidFingerBoneName, Vec3 } from '@proj-airi/motion-driver-humanoid/types'
 
 import type { MMDRigProfile, MMDRigSource } from '../rig'
 import type { MMDTouchCollider } from '../touch/colliders'
 
+import { PmxObject } from '@moeru/three-mmd'
 import { Euler, Matrix4, Quaternion, Vector3 } from 'three'
 
 import { toRigTraits } from '../rig'
 
 type Side = 'left' | 'right'
+
+/** The PMX bone fields the traits read: the rig source's, plus the append (grant) data that ties a D-bone to its leg bone. */
+type BodyRigBones = Pick<MMDRigSource, 'bones'> & {
+  readonly bones: readonly Partial<Pick<PmxObject.Bone, 'appendTransform' | 'flag'>>[]
+}
 
 const spineBones = ['spine0', 'spine1', 'spine2', 'spine3'] as const
 const fingerJoints = {
@@ -42,7 +48,7 @@ const sub = (a: Vec3, b: Vec3): Vec3 => ({ x: a.x - b.x, y: a.y - b.y, z: a.z - 
  * `colliders` are the kinematic bodies the arms must clear: the arm-test torso bodies plus the head and neck bodies.
  */
 export function buildBodyRigTraits(
-  pmx: Pick<MMDRigSource, 'bones'>,
+  pmx: BodyRigBones,
   rig: MMDRigProfile,
   colliders: readonly MMDTouchCollider[],
   bind: MMDBodyBind,
@@ -93,6 +99,25 @@ export function buildBodyRigTraits(
   if (!left || !right)
     return null
   const legIk = rig.legIk.left !== null && rig.legIk.right !== null
+  // The leg IK chains' joints, and which leg segment each chain bone carries: the knee and ankle ride on the shin.
+  const legBones = new Map<number, BodyLegFollow>()
+  const legJoints = (side: Side): BodyLegJoints | null => {
+    const chain = rig.legIk[side]
+    const hip = position(chain?.upperLeg)
+    const knee = position(chain?.knee)
+    const ankle = position(chain?.target)
+    if (!chain || !hip || !knee || !ankle)
+      return null
+    for (const [name, segment] of [[chain.upperLeg, 'thigh'], [chain.knee, 'shin'], [chain.target, 'shin']] as const) {
+      const index = name ? indexByName.get(name) : undefined
+      if (index !== undefined)
+        legBones.set(index, { side, segment })
+    }
+    return { hip, knee, ankle }
+  }
+  const leftLeg = legJoints('left')
+  const rightLeg = legJoints('right')
+  const legs = leftLeg && rightLeg ? { left: leftLeg, right: rightLeg } : null
   const foot = (side: Side) => {
     const ankle = bone(`${side}Foot`)
     return {
@@ -127,10 +152,25 @@ export function buildBodyRigTraits(
     arms: { left, right },
     feet: { left: foot('left'), right: foot('right') },
     legIk,
+    legs,
     eyeYawLimit: neutral.eyeYawLimit,
     eyePitchLimit: neutral.eyePitchLimit,
-    colliders: colliders.map(collider => toBodyCollider(collider, pmx, { anchors, fallback: hipsAnchor }, bind)),
+    colliders: colliders.map(collider => toBodyCollider(collider, pmx, { anchors, fallback: hipsAnchor, legBones: legs ? legBones : new Map() }, bind)),
   }
+}
+
+/**
+ * The leg segment a bone moves with: its own, or, for a deform (D) bone, the one of the leg bone whose rotation it copies
+ * in full through an append (grant) transform.
+ */
+function legSegmentOf(index: number, pmx: BodyRigBones, legBones: ReadonlyMap<number, BodyLegFollow>): BodyLegFollow | undefined {
+  const own = legBones.get(index)
+  if (own)
+    return own
+  const bone = pmx.bones[index]
+  const append = bone.appendTransform
+  const copiesRotation = ((bone.flag ?? 0) & PmxObject.Bone.Flag.HasAppendRotate) !== 0
+  return append && copiesRotation && append.ratio === 1 ? legBones.get(append.parentIndex) : undefined
 }
 
 /**
@@ -140,14 +180,16 @@ export function buildBodyRigTraits(
  */
 function toBodyCollider(
   collider: MMDTouchCollider,
-  pmx: Pick<MMDRigSource, 'bones'>,
-  frames: { anchors: ReadonlyMap<string, CanonicalAnchor>, fallback: CanonicalAnchor },
+  pmx: BodyRigBones,
+  frames: { anchors: ReadonlyMap<string, CanonicalAnchor>, fallback: CanonicalAnchor, legBones: ReadonlyMap<number, BodyLegFollow> },
   bind: MMDBodyBind,
 ): BodyCollider {
   let ancestor = frames.fallback
+  let leg: BodyLegFollow | undefined
   const visited = new Set<number>()
   for (let index = collider.boneIndex; index >= 0 && index < pmx.bones.length && !visited.has(index); index = pmx.bones[index].parentBoneIndex) {
     visited.add(index)
+    leg ??= legSegmentOf(index, pmx, frames.legBones)
     const found = frames.anchors.get(pmx.bones[index].name)
     if (found) {
       ancestor = found
@@ -159,10 +201,12 @@ function toBodyCollider(
   const rotation = new Quaternion()
   transform.decompose(centre, rotation, new Vector3())
   const euler = new Euler().setFromQuaternion(rotation, 'YXZ')
+  // A leg body keeps the hips as its anchor, where it sits at bind; the corrector turns it with its leg while she walks.
   const base = {
     bone: ancestor.bone,
     centre: { x: centre.x - ancestor.at.x, y: centre.y - ancestor.at.y, z: centre.z - ancestor.at.z },
     rotation: { yaw: euler.y, pitch: euler.x, roll: euler.z },
+    ...leg && ancestor.bone === 'hips' ? { leg } : {},
   }
   const [x, y, z] = collider.size
   switch (collider.shape) {

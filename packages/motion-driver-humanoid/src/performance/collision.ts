@@ -1,5 +1,7 @@
+import type { Vec3 } from '../types'
 import type { BodySide } from './channels'
-import type { BodyCapabilities, BodyCollider, BodyRigTraits } from './contracts'
+import type { BodyCapabilities, BodyCollider, BodyLegJoints, BodyPerformanceInput, BodyRigTraits } from './contracts'
+import type { BodyTransform } from './skeleton'
 
 import { solveArmKey } from './arm-key'
 import { ARM_START, BODY_CHANNELS, BODY_TICK, DEG, JOINT_LIMITS, SIDES } from './channels'
@@ -10,6 +12,29 @@ export { colliderDistance, proxyColliders } from './colliders'
 
 /** The guard weight's critically damped response, rad/s: the reaction layer's inertialisation rate (architecture 3g). */
 const GUARD_OMEGA = 14
+
+/** Writes the rotation by `angle` about the unit axis (x, y, z) into a transform's row-major 3x3, as `setRotation` does. */
+function setAxisAngle(out: BodyTransform, x: number, y: number, z: number, angle: number): void {
+  const c = Math.cos(angle)
+  const s = Math.sin(angle)
+  const t = 1 - c
+  out[0] = c + x * x * t
+  out[1] = x * y * t - z * s
+  out[2] = x * z * t + y * s
+  out[3] = y * x * t + z * s
+  out[4] = c + y * y * t
+  out[5] = y * z * t - x * s
+  out[6] = z * x * t - y * s
+  out[7] = z * y * t + x * s
+  out[8] = c + z * z * t
+}
+
+/** Makes `out` the rotation `out`'s 3x3 holds about the point `p`: x -> R (x - p) + p. */
+function pivotAbout(out: BodyTransform, p: Readonly<Vec3>): void {
+  out[9] = p.x - (out[0] * p.x + out[1] * p.y + out[2] * p.z)
+  out[10] = p.y - (out[3] * p.x + out[4] * p.y + out[5] * p.z)
+  out[11] = p.z - (out[6] * p.x + out[7] * p.y + out[8] * p.z)
+}
 
 /** Owns scratch FK and persistent correction. The final sampled capsule test is authoritative. */
 export class BodyCollision {
@@ -35,6 +60,13 @@ export class BodyCollision {
   private readonly skeleton: BodySkeleton
   private readonly colliders: readonly BodyCollider[]
   private readonly posed: ReturnType<typeof identityTransform>[]
+  /** Each leg's thigh and shin motion in the hips frame (about the hips bone), set by `prepare` while the gait carries the feet. */
+  private readonly legPose = {
+    left: { thigh: identityTransform(), shin: identityTransform() },
+    right: { thigh: identityTransform(), shin: identityTransform() },
+  }
+
+  private readonly legScratch = identityTransform()
   private readonly local = identityTransform()
   private readonly angles = new Float64Array(3)
   private readonly previous = new Float64Array(BODY_CHANNELS.length)
@@ -120,8 +152,19 @@ export class BodyCollision {
     return this.measure(side, channels).depth <= 0
   }
 
-  prepare(channels: ArrayLike<number>): void {
+  /**
+   * Poses the proxies for `channels`. While `gait` carries the feet (weight above 0, with ankle targets), each leg body
+   * also turns with its thigh or shin as the leg IK places it, by the gait's weight; otherwise leg bodies stay with the
+   * hips, as at bind.
+   */
+  prepare(channels: ArrayLike<number>, gait: BodyPerformanceInput['gait'] = null): void {
     this.skeleton.update(channels)
+    const legs = this.traits.legs
+    const ankles = gait && gait.weight > 0 ? gait.ankles : null
+    if (legs && ankles && gait) {
+      for (const side of SIDES)
+        this.poseLeg(side, legs[side], ankles[side], gait.weight)
+    }
     for (let i = 0; i < this.colliders.length; i++) {
       const collider = this.colliders[i]
       this.angles[0] = collider.rotation.yaw
@@ -131,8 +174,64 @@ export class BodyCollision {
       this.local[9] = collider.centre.x
       this.local[10] = collider.centre.y
       this.local[11] = collider.centre.z
-      composeTransform(this.posed[i], this.skeleton.frames[collider.bone], this.local)
+      if (legs && ankles && collider.leg) {
+        composeTransform(this.legScratch, this.legPose[collider.leg.side][collider.leg.segment], this.local)
+        composeTransform(this.posed[i], this.skeleton.frames[collider.bone], this.legScratch)
+      }
+      else {
+        composeTransform(this.posed[i], this.skeleton.frames[collider.bone], this.local)
+      }
     }
+  }
+
+  /**
+   * Solves one leg as the MMD foot stage seeds its IK (`stage-ui-mmd` `feet.ts`): the knee bends about the lateral axis
+   * until hip to ankle spans the target's distance, then the smallest rotation about the hip points the leg at the
+   * target. Both are scaled by `weight`. The result is in the hips frame, about the hips bone.
+   */
+  private poseLeg(side: BodySide, joints: BodyLegJoints, ankle: Readonly<Vec3>, weight: number): void {
+    const hips = this.skeleton.frames.hips
+    const origin = this.traits.hips
+    const hip = { x: joints.hip.x - origin.x, y: joints.hip.y - origin.y, z: joints.hip.z - origin.z }
+    const knee = { x: joints.knee.x - origin.x, y: joints.knee.y - origin.y, z: joints.knee.z - origin.z }
+    const ux = joints.knee.x - joints.hip.x
+    const uy = joints.knee.y - joints.hip.y
+    const uz = joints.knee.z - joints.hip.z
+    const vx = joints.ankle.x - joints.knee.x
+    const vy = joints.ankle.y - joints.knee.y
+    const vz = joints.ankle.z - joints.knee.z
+    // The target in the hips frame, from the hip joint: the transpose of the hips rotation undoes it.
+    const dx = ankle.x - hips[9]
+    const dy = ankle.y - hips[10]
+    const dz = ankle.z - hips[11]
+    const tx = hips[0] * dx + hips[3] * dy + hips[6] * dz - hip.x
+    const ty = hips[1] * dx + hips[4] * dy + hips[7] * dz - hip.y
+    const tz = hips[2] * dx + hips[5] * dy + hips[8] * dz - hip.z
+    // |u + Rx(b) v|^2 = |t|^2 with u . Rx(b) v = ux vx + a cos b - s sin b: the bend b that spans the target, less the
+    // rest bend, never past straight. A positive turn about +X swings the shin back, as a knee bends.
+    const a = uy * vy + uz * vz
+    const s = uy * vz - uz * vy
+    const span = ((tx * tx + ty * ty + tz * tz) - (ux * ux + uy * uy + uz * uz) - (vx * vx + vy * vy + vz * vz)) / 2 - ux * vx
+    const rest = Math.atan2(s, a)
+    const bend = Math.max(0, Math.acos(Math.max(-1, Math.min(1, span / Math.hypot(a, s)))) - rest)
+    const cos = Math.cos(bend)
+    const sin = Math.sin(bend)
+    const fx = ux + vx
+    const fy = uy + cos * vy - sin * vz
+    const fz = uz + sin * vy + cos * vz
+    const ax = fy * tz - fz * ty
+    const ay = fz * tx - fx * tz
+    const az = fx * ty - fy * tx
+    const axis = Math.hypot(ax, ay, az)
+    const pose = this.legPose[side]
+    if (axis > 1e-12)
+      setAxisAngle(pose.thigh, ax / axis, ay / axis, az / axis, weight * Math.atan2(axis, fx * tx + fy * ty + fz * tz))
+    else
+      setAxisAngle(pose.thigh, 1, 0, 0, 0)
+    pivotAbout(pose.thigh, hip)
+    setAxisAngle(this.legScratch, 1, 0, 0, weight * bend)
+    pivotAbout(this.legScratch, knee)
+    composeTransform(pose.shin, pose.thigh, this.legScratch)
   }
 
   /**
@@ -204,8 +303,8 @@ export class BodyCollision {
   }
 
   /** Clears each arm; an arm that no pose clears keeps its last valid pose while every other channel moves on. */
-  correct(channels: Float32Array, tick: number): void {
-    this.prepare(channels)
+  correct(channels: Float32Array, tick: number, gait: BodyPerformanceInput['gait'] = null): void {
+    this.prepare(channels, gait)
     this.original.set(channels)
     for (const side of SIDES) {
       const start = ARM_START[side]

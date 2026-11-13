@@ -56,11 +56,29 @@ export class BodyRigError extends Error {
   }
 }
 
+/** A leg segment a body rides on: the thigh turns about the hip joint, and the shin also bends at the knee. */
+export interface BodyLegFollow {
+  readonly side: BodySide
+  readonly segment: 'thigh' | 'shin'
+}
+
+/** Absolute bind positions of one leg's IK joints, in the axes and units of `BodyArmTraits`. */
+export interface BodyLegJoints {
+  readonly hip: Readonly<Vec3>
+  readonly knee: Readonly<Vec3>
+  readonly ankle: Readonly<Vec3>
+}
+
 /** Kinematic obstacle, expressed in the rest-aligned axes of its canonical ancestor. */
 export type BodyCollider = {
   readonly bone: BodyBone
   readonly centre: Readonly<Vec3>
   readonly rotation: Readonly<RestRelativeRotation>
+  /**
+   * A body on a leg bone keeps the hips as `bone`, where it sits at bind, and turns with this leg segment while the gait
+   * carries the feet (`BodyPerformanceInput.gait.ankles`).
+   */
+  readonly leg?: BodyLegFollow
 } & (
   | { readonly shape: 'sphere', readonly radius: number }
   | { readonly shape: 'capsule', readonly radius: number, readonly length: number }
@@ -97,6 +115,8 @@ export interface BodyRigTraits {
     readonly toeIk: boolean
   }>>
   readonly legIk: boolean
+  /** The leg IK chains' joints; null when either leg lacks one, and then leg bodies stay with the hips. */
+  readonly legs: Readonly<Record<BodySide, BodyLegJoints>> | null
   readonly eyeYawLimit: number
   readonly eyePitchLimit: number
   /** Empty means use proportional torso and head proxies. Dynamic bodies never enter this list. */
@@ -173,6 +193,11 @@ export interface BodyPerformanceInput {
     readonly support: number
     readonly mode: 'idle' | 'turning' | 'starting' | 'walking' | 'stopping'
     readonly channels: ArrayLike<number>
+    /**
+     * The ankle targets the leg IK reaches this tick (the gait's foot targets with their roll), in the stance frame and
+     * model units; null without leg IK. The collision corrector poses the leg bodies from them.
+     */
+    readonly ankles: Readonly<Record<BodySide, Readonly<Vec3>>> | null
   } | null
   /** Per-side standing hang clearance added to abduction, radians, from the adapter's hang solver. */
   readonly armLift: Readonly<Record<BodySide, number>>

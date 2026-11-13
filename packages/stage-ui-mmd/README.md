@@ -364,7 +364,10 @@ per-rig hang: the arm is lifted away from the body in 2 degree steps, down to 60
 angle below horizontal, so a larger one swings the arm into the hips). The lift reaches the performer as `armLift`, added
 to its rest abduction; the default hang restates that abduction (12 degrees from vertical). The performer's own
 collision corrector already keeps the arms clear of the same bodies, so the solver acts only where its model and the
-rendered pose differ. `hangDeg` reports the value in effect. `headPenetration` measures the same capsules against the
+rendered pose differ. `buildBodyRigTraits` gives the corrector the leg IK chains' joints and tags each body on a leg bone,
+or on a deform (D) bone that copies a leg bone's whole rotation through an append transform, with its thigh or shin;
+while the gait carries the feet the body passes the same ankle targets the foot stage reaches (`meshAnkleTarget`), so
+the corrector sees the thighs swing instead of holding them where they hang at bind. `hangDeg` reports the value in effect. `headPenetration` measures the same capsules against the
 kinematic head and neck bodies, and `correctionDeg` is the performer's arm collision correction in effect.
 `setDebugFlag` with `{ flag: 'armRestHangDeg', value }` (0-90, `null` restores the default) overrides the hang for QA
 and switches the solver off. The desktop stage measures its placement rect from the REST-POSED hands and fingertips

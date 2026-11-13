@@ -372,7 +372,15 @@ through `spine3`, `neck` or `head`. Its centre and intrinsic YXZ rotation are in
 that ancestor's rest-aligned frame. Sizes are model units; capsule length
 excludes the caps and box sizes are half-extents. Ancestors must exist in the
 supplied chain. An empty collider list requests a proportional torso capsule
-and head sphere. Only kinematic obstacles belong here.
+and head sphere. Only kinematic obstacles belong here. A body on a leg bone
+keeps `hips` as its ancestor and names its `leg` segment (side, `thigh` or
+`shin`). With `BodyRigTraits.legs` (the leg IK chains' hip, knee and ankle bind
+joints) and a gait input that carries the feet (weight above 0, `ankles` set to
+the ankle targets the leg IK reaches that tick), the corrector turns those
+bodies with the leg as the MMD foot stage seeds its IK: the knee bends until hip
+to ankle spans the target, the hip turns the leg onto it, both scaled by the
+gait weight. Without the gait they stay with the hips, as at bind, so a still
+body is corrected exactly as before.
 
 `BodyPerformanceInput.head.attitude` is Natural's posture alone, converted to
 radians, and `head.terms` keeps the six other terms separate. `head.slow` is the

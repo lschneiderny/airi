@@ -215,7 +215,7 @@ class BodyPerformer {
     for (let c = 0; c < targets.length; c++)
       frame.channels[c] = limitChannel(c, targets[c])
     this.degrade(frame.channels)
-    state.collision.correct(frame.channels, frame.tick + 1)
+    state.collision.correct(frame.channels, frame.tick + 1, gait)
     frame.tick++
     frame.pelvis.x = frame.channels[0] * traits.legLength
     frame.pelvis.y = frame.channels[1] * traits.legLength
