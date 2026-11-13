@@ -73,11 +73,12 @@ const CORRECTION = { share: 0.4, landing: 0.72, primary: 0.8, onset: 0.65 } as c
 const FED_RAMP = 0.1
 
 /**
- * The coefficients of an active arm follower's inverse, `x = y + lead y' + curvature y''` (3a, r = 0), on channel `j`
- * at mood tension `tension`; damping is the follower's own clamp to [0.3, 1].
+ * The coefficients of an arm follower's inverse, `x = y + lead y' + curvature y''` (3a, r = 0), on channel `j` at
+ * mood tension `tension` and activation `used` (1, an override layer's active follower; 0, the relaxed follower
+ * under additive layers); damping is the follower's own clamp to [0.3, 1].
  */
-function followerInverse(j: number, tension: number): readonly [lead: number, curvature: number] {
-  const [f, zeta] = armResponse(j, 1, tension)
+export function followerInverse(j: number, tension: number, used = 1): readonly [lead: number, curvature: number] {
+  const [f, zeta] = armResponse(j, used, tension)
   const omega = 2 * Math.PI * f
   return [2 * Math.max(0.3, Math.min(1, zeta)) / omega, 1 / omega ** 2]
 }

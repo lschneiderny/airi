@@ -2,6 +2,7 @@ import type { BodyIdleAct, BodyIdleKind, BodyPerformanceInput, BodyRigTraits } f
 
 import { describe, expect, it } from 'vitest'
 
+import { armResponse } from './arms'
 import { BODY_CHANNELS, BODY_TICK, channelIndex, DEG } from './channels'
 import { createBodyPerformer } from './index'
 import { createPerformanceLayers } from './layers'
@@ -112,7 +113,7 @@ describe('the act layer', () => {
   // 4e: an act's exit can start from any tick. Each arm behaviour is let go every 0.2 s, and every 0.05 s where a yawn
   // and a hair touch used to finish their reach and spring back.
   it.each(rigs)('lets every arm behaviour go from wherever it is on $name\'s body, eased, at any tick', (rig) => {
-    const arms = behaviours.filter(entry => ['yawn', 'clasp-hands', 'hair-touch', 'arm-swing', 'shoulder-roll'].includes(entry.act.kind))
+    const arms = behaviours.filter(entry => ['stretch', 'yawn', 'clasp-hands', 'hair-touch', 'arm-swing', 'shoulder-roll'].includes(entry.act.kind))
     for (const entry of arms) {
       const instants = Array.from({ length: Math.floor(entry.act.duration / 0.2) }, (_, k) => 0.1 + 0.2 * k)
       if (entry.act.kind === 'yawn')
@@ -136,6 +137,32 @@ describe('the act layer', () => {
       }
     }
   }, 120_000)
+
+  // The old path swung straight arms through a mirrored T. A straight elbow reads below about 20 degrees of flexion.
+  it.each(rigs)('raises and lowers $name\'s arms through shoulder height with bent elbows, one arm after the other', (rig) => {
+    const acted = run(rig.traits, playing(record('stretch', 5.2)), START + 5.2)
+    const level = (side: 'left' | 'right') => acted.channels.map(frame => frame[c(`${side}Flex`)] / DEG >= 90)
+    for (const side of ['left', 'right'] as const) {
+      const up = level(side).indexOf(true)
+      const down = level(side).lastIndexOf(true)
+      expect(up, side).toBeGreaterThan(0)
+      expect(acted.channels[up][c(`${side}Elbow`)] / DEG, `${side} rising`).toBeGreaterThan(45)
+      expect(acted.channels[down][c(`${side}Elbow`)] / DEG, `${side} falling`).toBeGreaterThan(45)
+    }
+    // A mirrored pair reaches shoulder height on the same tick.
+    expect(Math.abs(level('left').indexOf(true) - level('right').indexOf(true)) * BODY_TICK).toBeGreaterThan(0.1)
+  })
+
+  it('swings her arms at their own pendulum period, the relaxed upper-arm follower\'s (3f)', () => {
+    const entry = record('arm-swing', 3, { count: 2 })
+    const still = run(chisaTraits, quietInput, START + 4)
+    const acted = run(chisaTraits, playing(entry), START + 4)
+    const swing = acted.channels.map((frame, tick) => (frame[c('leftFlex')] - still.channels[tick][c('leftFlex')]) / DEG)
+    const peaks = swing.flatMap((value, tick) => tick > 0 && tick < swing.length - 1 && value > 2 && value >= swing[tick - 1] && value > swing[tick + 1] ? [tick * BODY_TICK] : [])
+    const period = 1 / armResponse(2, 0, quietInput(0).mood.tension)[0]
+    expect(peaks.length).toBeGreaterThanOrEqual(2)
+    expect(Math.abs(peaks[1] - peaks[0] - period)).toBeLessThan(0.15)
+  })
 
   it('turns her head and trunk to architecture 4e\'s 35 degrees for a look-around\'s widest glance', () => {
     const entry = behaviours.find(b => b.act.kind === 'look-around')!

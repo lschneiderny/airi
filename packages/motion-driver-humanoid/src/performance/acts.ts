@@ -3,8 +3,11 @@ import type { BodyArmForm, BodyGazeGoal, BodyIdleAct, BodyIdleKind } from './con
 import type { LayerOutput, PerformanceContext, PerformanceLayer, PerformancePlan } from './stack'
 
 import { minJerk } from '../dynamics'
-import { ARM_START, BODY_CHANNELS, channelGroup, channelIndex, DEG, SIDES } from './channels'
+import { armResponse } from './arms'
+import { ARM_START, BODY_CHANNELS, BODY_TICK, channelGroup, channelIndex, DEG, SIDES } from './channels'
 import { path } from './cues'
+import { GestureKeys } from './gesture-forms'
+import { followerInverse } from './gestures'
 
 type Mutable<T> = { -readonly [K in keyof T]: T[K] }
 
@@ -44,6 +47,50 @@ function trapezoid(age: number, attack: number, hold: number, release: number): 
 
 const raisedCosine = (u: number) => u <= 0 || u >= 1 ? 0 : 0.5 - 0.5 * Math.cos(2 * Math.PI * u)
 
+/** Architecture 4e act 2: the two sides of a bilateral act are 120 ms apart. */
+const BILATERAL = 0.12
+/** The channels a stretch moves in a side's arm block: clavicle elevation, flexion, abduction, elbow. */
+const STRETCH_CHANNELS = [0, 2, 3, 5] as const
+/**
+ * A stretch's arms, degrees: at the top 120 of flexion, the soft limit's identity edge (3g: 80 % of the 150 deg limit),
+ * 20 out and nearly straight (10), the clavicles up half of the 4b shrug peak (14); on the way up and down the arm passes
+ * out at the corrector's guard abduction (6.2: 45, clear of the body on every rig).
+ */
+const STRETCH = { clavicle: 7, flex: 120, abduct: 20, elbow: 10, guard: 45 } as const
+
+/** One arm's stretch on this rig: its rest, degrees in `STRETCH_CHANNELS` order, and the elbow it folds to on the way. */
+interface StretchArm {
+  readonly rest: readonly number[]
+  readonly fold: number
+}
+
+/**
+ * A reaching hand travels a nearly straight line (Morasso 1981, Exp Brain Res 42(2):223-227,
+ * https://link.springer.com/article/10.1007/BF00236911). On the line from where a stretching hand hangs to where it
+ * reaches, the point nearest the shoulder is where the arm is most folded; the elbow there (law of cosines on the rig's
+ * segments) is the one the arm bends to halfway up and halfway down, so the elbows lead instead of the arms swinging
+ * straight through a T.
+ */
+function stretchArm(context: PerformanceContext, side: BodySide): StretchArm {
+  const keys = new GestureKeys(context.traits, context.rest)
+  const start = ARM_START[side]
+  const hanging = Float64Array.from(context.rest.subarray(start, start + 26))
+  const raised = hanging.slice()
+  raised[2] = STRETCH.flex * DEG
+  raised[3] = STRETCH.abduct * DEG
+  raised[5] = STRETCH.elbow * DEG
+  const from = keys.wrist(side, hanging)
+  const to = keys.wrist(side, raised)
+  const way = [0, 1, 2].map(k => to[k] - from[k])
+  const along = Math.max(0, Math.min(1, -(from[0] * way[0] + from[1] * way[1] + from[2] * way[2]) / (way[0] ** 2 + way[1] ** 2 + way[2] ** 2)))
+  const arm = context.traits.arms[side]
+  const upper = Math.hypot(arm.upperArm.x, arm.upperArm.y, arm.upperArm.z)
+  const forearm = Math.hypot(arm.forearm.x, arm.forearm.y, arm.forearm.z)
+  const near = Math.hypot(...[0, 1, 2].map(k => from[k] + along * way[k])) * (upper + forearm)
+  const cosine = Math.max(-1, Math.min(1, (upper ** 2 + forearm ** 2 - near ** 2) / (2 * upper * forearm)))
+  return { rest: STRETCH_CHANNELS.map(k => hanging[k] / DEG), fold: 180 - Math.acos(cosine) / DEG }
+}
+
 /** One behaviour the layer plays; times are performer seconds. */
 interface Act {
   readonly record: BodyIdleAct
@@ -53,6 +100,8 @@ interface Act {
   /** The gaze goal and the viewer when it started: a look-around aims around the viewer, sleep holds the goal. */
   readonly gaze: BodyGazeGoal
   readonly viewerYaw: number
+  /** Natural's mood tension when it started, which sets the arm pendulum's period. */
+  readonly tension: number
 }
 
 /**
@@ -76,6 +125,8 @@ export function createActLayer(): PerformanceLayer {
   let act: Act | null = null
   /** The latest behaviour played; a finished one stays in the input and must not replay. */
   let playedSeq: number | null = null
+  /** Each arm's stretch on this rig (`stretchArm`), found at the first stretch. */
+  let arms: Record<BodySide, StretchArm> | null = null
   let tick = -1
 
   function update(context: PerformanceContext): void {
@@ -93,6 +144,7 @@ export function createActLayer(): PerformanceLayer {
         releaseSeconds: 0,
         gaze: { yaw: input.gaze.yaw, pitch: input.gaze.pitch, kind: input.gaze.kind },
         viewerYaw: input.viewerYaw,
+        tension: Math.max(0, Math.min(1, input.mood.tension)),
       }
     }
     if (act && record?.seq === act.record.seq && record.release !== null && act.releaseAt === null) {
@@ -151,36 +203,54 @@ export function createActLayer(): PerformanceLayer {
     switch (a.record.kind) {
       case 'stretch': {
         // Bertolucci 2011 (J Bodyw Mov Ther 15(3):268-280, https://pubmed.ncbi.nlm.nih.gov/21665102/): pandiculation
-        // extends the limbs and the trunk, often with a yawn. Timing is Natural's (rise 1.3 s, hold 1.6 s, fall 1.1 s,
-        // then a settle a little lower). The trunk extends to half of each control's extension limit (6.4), the arms
-        // rise to 120 deg of flexion, the soft limit's identity edge (3g: 80 % of the 150 deg limit), 20 deg out and
-        // nearly straight, and the clavicles lift half of the 4b shrug peak (14 deg).
+        // extends the limbs and the trunk. Natural's timing: rise 1.3 s, hold 1.6 s, fall 1.1 s, a lower settle. The
+        // trunk extends half of each control's limit (6.4); the arms follow `stretchArm`.
         const e = trapezoid(age, 1.3, 1.6, 1.1)
         const settle = raisedCosine((age - 3.5) / 1.7)
-        // The arms go up and come down out to the side, through the corrector's guard abduction (6.2: 45 deg, clear on
-        // every rig), not past the front of the chest, and glide back in over the settle. Let go early, they come down
-        // over the fall and settle (1.6 s), out to the side within its first third.
-        const aside = released ? path(Math.min(1, (time - (a.releaseAt ?? time)) / a.releaseSeconds), [[0.35, 1], [1, 0]]) : 0
         add('lowerPitch', -6 * e)
         add('midPitch', -5 * e + NATURAL.body * 0.2 * settle)
         add('upperPitch', -3 * e)
         naturalHead(s * 0.1 * e, 0.45 * e - 0.14 * settle, s * 0.3 * e)
-        clavicles(7 * e)
+        arms ??= { left: stretchArm(context, 'left'), right: stretchArm(context, 'right') }
+        const tension = Math.max(0, Math.min(1, input.mood.tension))
         for (const side of SIDES) {
-          const start = ARM_START[side]
-          add(BODY_CHANNELS[start + 2], e * (120 - context.rest[start + 2] / DEG))
-          const rest = context.rest[start + 3] / DEG
-          const abduct = path(age, [[0.65, 45 - rest], [1.3, 20 - rest], [2.9, 20 - rest], [3.6, 45 - rest], [D, 0]])
-          channels[start + 3] += (w * abduct + (1 - walking) * aside * (45 - rest - abduct)) * DEG
-          add(BODY_CHANNELS[start + 5], e * (10 - context.rest[start + 5] / DEG))
+          const { rest, fold } = arms[side]
+          // The arm away from `s` follows 120 ms later, the two sides' offset of 4e act 2.
+          const lag = side === sideOf(s) ? 0 : BILATERAL
+          const pose = (at: number) => {
+            const t = at - a.start - lag
+            const raise = trapezoid(t, 1.3, 1.6, 1.1)
+            const out = t <= 0 ? 0 : path(t, [[0.65, STRETCH.guard - rest[2]], [1.3, STRETCH.abduct - rest[2]], [2.9, STRETCH.abduct - rest[2]], [3.6, STRETCH.guard - rest[2]], [D, 0]])
+            const elbow = t <= 0 ? 0 : path(t, [[0.65, fold - rest[3]], [1.3, STRETCH.elbow - rest[3]], [2.9, STRETCH.elbow - rest[3]], [3.45, fold - rest[3]], [4, 0]])
+            if (a.releaseAt === null || at < a.releaseAt)
+              return [STRETCH.clavicle * raise, raise * (STRETCH.flex - rest[1]), out, elbow]
+            // Let go early, the arm leaves its course over 3g's exit ramp and comes down over the release, out at the
+            // guard abduction in its first third, as on its own fall, then in.
+            const since = at - a.releaseAt
+            const kept = 1 - minJerk(since / a.releaseSeconds)
+            const leave = minJerk(since / EXIT)
+            const up = raise + (trapezoid(a.releaseAt - a.start - lag, 1.3, 1.6, 1.1) * kept - raise) * leave
+            const aside = path(since / a.releaseSeconds, [[0.35, STRETCH.guard - rest[2]], [1, 0]])
+            return [STRETCH.clavicle * up, up * (STRETCH.flex - rest[1]), out + (aside - out) * leave, elbow * kept]
+          }
+          const before = pose(time - BODY_TICK)
+          const now = pose(time)
+          const after = pose(time + BODY_TICK)
+          for (let i = 0; i < STRETCH_CHANNELS.length; i++) {
+            // Under an additive layer the arm's followers are relaxed (3a) and swing past a moving target; the arm gets
+            // its offsets through their inverse, as the gesture layer feeds its held forms, so it keeps to its course.
+            const [lead, curvature] = i === 0 ? [0, 0] : followerInverse(STRETCH_CHANNELS[i], tension, 0)
+            const slope = (after[i] - before[i]) / (2 * BODY_TICK)
+            const curve = (after[i] - 2 * now[i] + before[i]) / BODY_TICK ** 2
+            channels[ARM_START[side] + STRETCH_CHANNELS[i]] += (1 - walking) * (now[i] + lead * slope + curvature * curve) * DEG
+          }
         }
         break
       }
       case 'yawn': {
-        // Architecture 4e act 9: head pitch -8, torso mid -3, clavicles +5 over the opening, then an exhale and slump
-        // (4f rest's torso lower +3); the hand covers the mouth (`cover-mouth`) while it is open. Timing is Natural's
-        // (open 1.4 s, hold 1.1 s, close 1.1 s, heavy lids after), which matches Provine 1986 (Ethology 72(2):109-122):
-        // a yawn lasts about 6 s.
+        // Architecture 4e act 9: head pitch -8, torso mid -3, clavicles +5 while it opens, then 4f's slump (torso lower
+        // +3); the hand covers the open mouth (`cover-mouth`). Natural's timing (open 1.4 s, hold 1.1 s, close 1.1 s)
+        // matches Provine 1986 (Ethology 72(2):109-122): about 6 s.
         const e = trapezoid(age, 1.4, 1.1, 1.1)
         const after = trapezoid(age - 3.4, 0.4, 0.8, 0.8)
         head(0, -8 * e, -NATURAL.head * s * 0.12 * e)
@@ -236,9 +306,9 @@ export function createActLayer(): PerformanceLayer {
         break
       }
       case 'nod-off': {
-        // Natural's droops (each sinks u^1.5 over its drawn time, catches in 0.28 s, settles in 1.3 s) at architecture
-        // 4f's depth: the head to +18 deg, a 3 deg overshoot up on the catch; head and neck and the trunk share as 4b
-        // nods (head 0.7, neck 0.3, torso mid 0.12), the torso lower to +3 with the sink (4f).
+        // Natural's droops (sink u^1.5 over the drawn time, catch in 0.28 s, settle in 1.3 s) at 4f's depth: head to
+        // +18 deg, 3 deg overshoot up on the catch, shared as 4b nods (head 0.7, neck 0.3, torso mid 0.12), torso lower
+        // to +3 with the sink.
         let pitch = 0
         for (const droop of a.record.keys) {
           const local = age - droop.t
@@ -289,10 +359,9 @@ export function createActLayer(): PerformanceLayer {
         break
       }
       case 'sleep': {
-        // The doze body is the rest layer's (`directive.rest`) or the sleep clip's. While she sleeps her gaze holds
-        // still: the goal stays where it was when she fell asleep, so no gaze shift moves the eyes under closed lids.
-        // Waking (architecture 4f): the head lifts past where it rests by 15 % of the doze's drop before it settles,
-        // and the shoulders rise 4 deg for 0.4 s.
+        // The doze body is the rest layer's or the sleep clip's. Asleep, the gaze goal holds, so no shift moves the
+        // eyes under closed lids. Waking (4f): the head overshoots its rest by 15 % of the drop, the shoulders rise
+        // 4 deg for 0.4 s.
         if (!released) {
           plan.gaze = a.gaze
           plan.holdGaze = true
@@ -331,18 +400,16 @@ export function createActLayer(): PerformanceLayer {
         break
       }
       case 'shift-stance': {
-        // 4e act 3: the support goes fully to one side, then returns to a half shift. The free foot's in-place step
-        // (planFootSteps) is not performed yet: the performer has no foot-step output for an act.
+        // 4e act 3: the support goes fully to one side, then returns to a half shift. The free foot's in-place step is
+        // not performed (no foot-step output for an act), so it does not read; Natural weighs it 0 and only `play` starts it.
         if (free(['lowerBody', 'upperBody']))
           plan.support = age < D - 0.3 ? s : 0.5 * s
         break
       }
       case 'clasp-hands': {
-        // 4e act 6: both hands come together low (in front, or behind the back for the other variant), one hand lets go
-        // first, and the pelvis rocks fore and aft by 0.012 L at 0.35 Hz while they are held. The hands are posed by
-        // joint targets, not solved per rig to a contact anchor: the arm performer holds one arm form at a time. In
-        // front they are the arm key solver's angles for a hand 0.58 A below, 0.45 A in front of and 0.17 A inside the
-        // shoulder (E/g4/a/scratch/probe-clasp.ts): together in front of the belly, clear of it on Chisa and Ellen.
+        // 4e act 6: both hands meet low, one lets go first, the pelvis rocks 0.012 L at 0.35 Hz meanwhile. Joint
+        // targets fitted on two rigs pose it (no solved contact anchor; the behind target has no source), the hands
+        // stay apart on the mesh, and Natural weighs it 0.
         const behind = a.record.variant === 1
         const target = behind ? { flex: -25, abduct: 15, twist: 0, elbow: 50 } : { flex: -1.3, abduct: 0.5, twist: 20.7, elbow: 82.2 }
         for (const arm of SIDES) {
@@ -368,8 +435,8 @@ export function createActLayer(): PerformanceLayer {
         break
       }
       case 'heel-rock': {
-        // 4e act 11: two or three raises, pelvis up 0.012 L, 0.45 s up and down each, clavicles +2 at each top. The
-        // feet's 14 deg toe-down pitch is left to foot contact.
+        // 4e act 11: two or three raises, pelvis up 0.012 L, 0.45 s up and down each, clavicles +2 at each top. Without
+        // the feet's 14 deg toe-down pitch it does not read; Natural weighs it 0 and only `play` starts it.
         const period = Math.min(0.9, D / a.record.count)
         const index = Math.min(a.record.count - 1, Math.floor(age / period))
         const bump = raisedCosine((age - index * period) / period)
@@ -378,9 +445,12 @@ export function createActLayer(): PerformanceLayer {
         break
       }
       case 'arm-swing': {
-        // 4e act 7: an 8 deg push into each arm pendulum, opposite signs, two or three times at the arms' own swing.
-        const period = D / a.record.count
-        const u = (age % period) / period
+        // 4e act 7: an 8 deg push into each arm pendulum, opposite signs, two or three times at the pendulum's own
+        // period: the relaxed upper-arm follower's at her tension when the swing began (3f, `armResponse`), as many as
+        // fit the behaviour. No finger flick at the forward peaks.
+        const period = 1 / armResponse(2, 0, a.tension)[0]
+        const pushes = Math.max(1, Math.min(a.record.count, Math.floor(D / period)))
+        const u = age < pushes * period ? (age % period) / period : 0
         const swing = 8 * Math.sin(2 * Math.PI * u) * Math.sin(Math.PI * u)
         add('leftFlex', swing)
         add('rightFlex', -swing)
@@ -413,6 +483,7 @@ export function createActLayer(): PerformanceLayer {
     reset() {
       act = null
       playedSeq = null
+      arms = null
       tick = -1
       plan = {}
       channels.fill(0)
