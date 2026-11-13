@@ -316,16 +316,16 @@ judged. `no-repeat` judges only a kind started twice in a row; longer repeated
 blocks (A B A B) are printed, and the visual review alone enforces "no
 repeated cycle".
 
-Under `qa-neutral-day` exactly six kinds are drawable (nod-off and sway weigh
-0: look-around, check-in, zone-out, peer, stretch and yawn), so
-`distinct-acts` passes only if all six are drawn and counted. A yawn has 2.7 %
-of each draw. The scheduler alone, under the QA drive for 610 s on 10,000
-seeds, draws six distinct kinds that start in the scored span and end in 13.0
-% of runs (a yawn in 29.1 %); with the idle unit's whole-body kinds (`body:
-true`, ten drawable kinds) in 39.6 % at b40742af1 (unit M2 rules amendment 7
-A7.6) and in 19.9 % at 89b7f4838, where four kinds weigh 0 and five are
-drawable once she settles (third review). Most correct runs therefore fail the
-line by the draw alone.
+Under `qa-neutral-day` (`body: true` since rules amendment 9) nine kinds are
+drawable while she stands (look-around, check-in, peer, zone-out, stretch,
+yawn, sigh, shoulder-roll, arm-swing) and five once she has settled after 120
+s (look-around, check-in, zone-out, yawn, sigh). Nod-off and sway weigh 0, and
+so do shift-stance, heel-rock, clasp-hands and hair-touch. The scheduler
+alone, under the QA drive for 610 s on 10,000 seeds, draws six distinct kinds
+that start in the scored span and end in 19.9 % of runs (third review, at
+89b7f4838); a head-only drive read 13.0 %, and the idle unit before four kinds
+were switched off read 39.6 % (unit M2 rules amendment 7 A7.6). Most correct
+runs therefore fail the line by the draw alone.
 
 No line judges lasting state after an act (the arm hang, a foot left turned,
 the stance) since `pair` left the verdict. The visual review must check that
@@ -1349,7 +1349,9 @@ runner hands it to the Natural adapter before the first frame, as the app's scen
 does, and records its name and values in the trace source detail as `idleDrive` and
 `idleDriveValues` (and so in `summary.json` provenance). Two scenarios set one,
 both with the product's documented neutral drive (all mood fields 0, sleepiness 0,
-solitude 0, no music, sleep allowed, rate 1): `idle-drive` (`qa-neutral-day`, the
+solitude 0, no music, sleep allowed, rate 1) and the whole-body capability the MMD
+scene declares (`body: true`, rules amendment 9; without it she never settles,
+rests, dozes or draws a whole-body kind): `idle-drive` (`qa-neutral-day`, the
 user present; C001) and `sleepy-no-clip` version 2 (`qa-neutral-day-away`, the user
 away at its 40 s cue; C004). Every other scenario sets none and its trace is
 byte-identical to before. `--acts off` (default `on`) sets no idle drive, so the

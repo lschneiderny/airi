@@ -9,9 +9,10 @@ export interface Motion3dIdleDrive {
 /**
  * The product's documented neutral drive (`NaturalIdleDrive`: "all zero, no music: a rested daytime character who
  * talked a moment ago") as the app's conductor and an MMD scene without a sleep clip or a playing clip send it: sleep
- * allowed, rate 1. Neutral mood, daytime, user present (goal 4 unit M2 rules, section 1).
+ * allowed, rate 1, and the whole-body capability the MMD scene declares. Neutral mood, daytime, user present (goal 4
+ * unit M2 rules, section 1 and amendment 9).
  */
-export const QA_IDLE_DRIVE: Readonly<NaturalIdleDrive> = { energy: 0, valence: 0, tension: 0, sleepiness: 0, solitude: 0, music: false, allowSleep: true, rate: 1 }
+export const QA_IDLE_DRIVE: Readonly<NaturalIdleDrive> = { energy: 0, valence: 0, tension: 0, sleepiness: 0, solitude: 0, music: false, allowSleep: true, rate: 1, body: true }
 
 /** C001's fixed drive: the user present and inactive for the whole run. */
 export const QA_DRIVE_PRESENT: Motion3dIdleDrive = { name: 'qa-neutral-day', drive: QA_IDLE_DRIVE }

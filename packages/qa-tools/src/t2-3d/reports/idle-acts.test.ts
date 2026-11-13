@@ -199,6 +199,12 @@ describe('idle-acts report version 7', () => {
     expect([drive(reversed(QA_IDLE_DRIVE)), drive(reversed({ ...QA_IDLE_DRIVE, energy: 0.2 })), drive('not json')]).toEqual(['PASS', 'FAIL', 'FAIL'])
   })
 
+  it('d3: fails a run recorded with the head-only drive the runner sent before amendment 9', () => {
+    const headOnly = JSON.stringify({ energy: 0, valence: 0, tension: 0, sleepiness: 0, solitude: 0, music: false, allowSleep: true, rate: 1 })
+    expect(statuses(report({ seconds: 5, behaviours: [{ kind: 'peer', at: 1 }], driveValues: headOnly })).drive).toBe('FAIL')
+    expect(QA_IDLE_DRIVE.body).toBe(true)
+  })
+
   it('i4: counts no act whose reports have no body motion of their own, so markers alone cannot pass', () => {
     const r = report({ behaviours: SIX.map(b => ({ ...b, moves: null })) })
     expect(statuses(r)['distinct-acts']).toBe('FAIL')
