@@ -128,6 +128,13 @@ type TrackState = 'rest' | 'preparation' | 'ready' | 'stroke' | 'hold' | 'recove
 interface Segment {
   readonly from: ArmPose
   readonly velocity: ArmPose
+  /** A let-go arm form's start carries the plan's acceleration too (`ArmTrack.release`); zero on every other segment. */
+  readonly acceleration: ArmPose
+  /**
+   * The followers receive the inverse of the carried velocity and acceleration as well as of the minimum-jerk part, so
+   * their target goes on without a step where the segment cut a moving one. Only a let-go arm form's start sets it.
+   */
+  carried: boolean
   readonly to: ArmPose
   start: number
   /**
@@ -151,6 +158,13 @@ interface StrokeAccent {
 
 const pose = (): ArmPose => new Float64Array(26)
 
+/** Slope and curvature (per unit progress) of a segment's carried-velocity term, h(u) = u - 6u^3 + 8u^4 - 3u^5. */
+const decaySlope = (u: number) => 1 - 18 * u ** 2 + 32 * u ** 3 - 15 * u ** 4
+const decayCurve = (u: number) => -36 * u + 96 * u ** 2 - 60 * u ** 3
+/** Slope and curvature of a let-go form's carried-acceleration term, g(u) (`ArmTrack.profile`). */
+const carrySlope = (u: number) => u - 4.5 * u ** 2 + 6 * u ** 3 - 2.5 * u ** 4
+const carryCurve = (u: number) => 1 - 9 * u + 18 * u ** 2 - 10 * u ** 3
+
 /** One arm's performance: its targets, its weight request and its motion segment. */
 class ArmTrack {
   readonly channels = new Float64Array(BODY_CHANNELS.length)
@@ -164,7 +178,7 @@ class ArmTrack {
   readonly home = pose()
   readonly ready = pose()
   readonly key = pose()
-  readonly segment: Segment = { from: pose(), velocity: pose(), to: pose(), start: 0, durations: pose().fill(1) }
+  readonly segment: Segment = { from: pose(), velocity: pose(), acceleration: pose(), carried: false, to: pose(), start: 0, durations: pose().fill(1) }
   readonly accents: StrokeAccent[] = []
   state: TrackState = 'rest'
   weight = 0
@@ -219,6 +233,9 @@ class ArmTrack {
   recoveryCorrected = false
   private readonly primaryTo = pose()
   private readonly onsetPose = pose()
+  private readonly releaseFrom = pose()
+  private readonly releaseVelocity = pose()
+  private readonly releaseAcceleration = pose()
 
   /**
    * Starts a motion to `to` from the current target, continuing the plan's velocity (quintic decay of `v0`), and
@@ -234,9 +251,54 @@ class ArmTrack {
       s.velocity[j] = this.warm ? (this.planned[j] - this.plannedPrevious[j]) / BODY_TICK : 0
     s.to.set(to)
     s.start = now
+    s.carried = false
     for (let j = 0; j < 26; j++)
       s.durations[j] = j >= 2 && j <= 5 ? fed : Math.max(fed, MIN_JERK_PEAK_SLOPE * Math.abs(to[j] - s.from[j]) / FOLLOWER_INPUT_SLOPE)
     return fed
+  }
+
+  /**
+   * Starts a let-go arm form's way to `to` (architecture 4e: "its exit can start from any tick") from where the plan is
+   * at `now`, with the plan's velocity and acceleration there, and returns its duration, `move`'s. The followers
+   * receive the inverse of the whole new profile, carried terms included, so the target the old segment's inverse held
+   * goes on without a step. `move` from a reach under way restarted the followers' target without the reach's lead and
+   * curvature terms, and the arm sprang off the face (a yawn let go 1.1 s in: 1.35 deg per tick within a tick).
+   */
+  release(to: ArmPose, now: number, duration: number, tension: number): number {
+    let carried = false
+    for (let j = 0; j < 26; j++) {
+      this.planAt(j, now)
+      carried ||= this.releaseVelocity[j] !== 0 || this.releaseAcceleration[j] !== 0
+    }
+    const s = this.segment
+    const fed = Math.max(BODY_TICK, duration, this.fedForwardFloor(to, tension, this.releaseFrom))
+    this.correctAt = Infinity
+    s.from.set(this.releaseFrom)
+    s.velocity.set(this.releaseVelocity)
+    s.acceleration.set(this.releaseAcceleration)
+    s.to.set(to)
+    s.start = now
+    s.carried = carried
+    for (let j = 0; j < 26; j++)
+      s.durations[j] = j >= 2 && j <= 5 ? fed : Math.max(fed, MIN_JERK_PEAK_SLOPE * Math.abs(to[j] - s.from[j]) / FOLLOWER_INPUT_SLOPE)
+    return fed
+  }
+
+  /** Writes the plan of channel `j` at `time` on the current segment, and its velocity and acceleration, into the release scratch. */
+  private planAt(j: number, time: number): void {
+    const s = this.segment
+    const duration = s.durations[j]
+    const u = Math.max(0, Math.min(1, (time - s.start) / duration))
+    this.releaseFrom[j] = this.profile(j, time)
+    if (u >= 1) {
+      this.releaseVelocity[j] = this.releaseAcceleration[j] = 0
+      return
+    }
+    const delta = s.to[j] - s.from[j]
+    const v0 = s.velocity[j]
+    const a0 = s.carried ? s.acceleration[j] : 0
+    this.releaseVelocity[j] = delta * 30 * u ** 2 * (1 - u) ** 2 / duration + v0 * decaySlope(u) + a0 * duration * carrySlope(u)
+    this.releaseAcceleration[j] = delta * 60 * u * (1 - u) * (1 - 2 * u) / duration ** 2 + v0 * decayCurve(u) / duration + a0 * carryCurve(u)
   }
 
   /**
@@ -295,6 +357,11 @@ class ArmTrack {
       const rate = 30 * u ** 2 * (1 - u) ** 2 / duration
       const acceleration = 60 * u * (1 - u) * (1 - 2 * u) / duration ** 2
       this.pose[j] += (s.to[j] - s.from[j]) * (lead * rate + curvature * acceleration)
+      if (s.carried) {
+        const v0 = s.velocity[j]
+        const a0 = s.acceleration[j]
+        this.pose[j] += lead * (v0 * decaySlope(u) + a0 * duration * carrySlope(u)) + curvature * (v0 * decayCurve(u) / duration + a0 * carryCurve(u))
+      }
     }
     this.warm = true
   }
@@ -342,7 +409,9 @@ class ArmTrack {
     const shape = minJerk(u)
     // h(u) = u - 6u^3 + 8u^4 - 3u^5: unit initial slope, zero value, slope and curvature at u = 1.
     const decay = duration * (u - 6 * u ** 3 + 8 * u ** 4 - 3 * u ** 5)
-    return s.from[j] + (s.to[j] - s.from[j]) * shape + s.velocity[j] * decay
+    const planned = s.from[j] + (s.to[j] - s.from[j]) * shape + s.velocity[j] * decay
+    // g(u) = u^2/2 - 3u^3/2 + 3u^4/2 - u^5/2: unit initial curvature, zero value and slope at 0, all three zero at 1.
+    return s.carried ? planned + s.acceleration[j] * duration ** 2 * (u ** 2 / 2 - 1.5 * u ** 3 + 1.5 * u ** 4 - u ** 5 / 2) : planned
   }
 
   /** Adds every live stroke's torso pulse and head beat; `head` scales the beat (a clip owning the head takes it). */
@@ -821,7 +890,7 @@ class GesturePerformer {
     const seconds = Math.max(TIMING.exit + BODY_TICK, TIMING.retractionScale * track.prepSeconds)
     // A speech unit's home leg may carry a corrective submovement (`transit`); an emotion arm form's way home stays one
     // plain segment and draws nothing from the corrections' stream.
-    const duration = track.state === 'form' ? track.move(track.home, now, seconds, this.tension) : track.transit(track.home, now, seconds, this.tension, this.correct())
+    const duration = track.state === 'form' ? track.release(track.home, now, seconds, this.tension) : track.transit(track.home, now, seconds, this.tension, this.correct())
     track.state = 'retraction'
     track.pending = null
     track.phaseEnd = now + duration

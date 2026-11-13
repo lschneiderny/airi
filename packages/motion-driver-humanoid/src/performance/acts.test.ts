@@ -109,6 +109,34 @@ describe('the act layer', () => {
     }
   }, 30_000)
 
+  // 4e: an act's exit can start from any tick. Each arm behaviour is let go every 0.2 s, and every 0.05 s where a yawn
+  // and a hair touch used to finish their reach and spring back.
+  it.each(rigs)('lets every arm behaviour go from wherever it is on $name\'s body, eased, at any tick', (rig) => {
+    const arms = behaviours.filter(entry => ['yawn', 'clasp-hands', 'hair-touch', 'arm-swing', 'shoulder-roll'].includes(entry.act.kind))
+    for (const entry of arms) {
+      const instants = Array.from({ length: Math.floor(entry.act.duration / 0.2) }, (_, k) => 0.1 + 0.2 * k)
+      if (entry.act.kind === 'yawn')
+        instants.push(0.95, 1, 1.05, 1.1, 1.15, 1.2)
+      if (entry.act.kind === 'hair-touch')
+        instants.push(0.5, 0.55, 0.6, 0.65, 0.7, 0.75)
+      const seconds = START + entry.act.duration + 3
+      const still = run(rig.traits, quietInput, seconds)
+      for (const at of instants.filter(at => at < entry.act.duration)) {
+        const label = `${rig.name} ${entry.act.kind} ${entry.act.variant} let go ${at.toFixed(2)} s in`
+        const acted = run(rig.traits, playing(entry.act, START + at), Math.min(seconds, START + at + 3))
+        const diff = (tick: number, channel: number) => (acted.channels[tick][channel] - still.channels[tick][channel]) / DEG
+        let second = 0
+        for (let tick = 2; tick < acted.channels.length; tick++) {
+          for (let channel = 3; channel < BODY_CHANNELS.length; channel++)
+            second = Math.max(second, Math.abs(diff(tick, channel) - 2 * diff(tick - 1, channel) + diff(tick - 2, channel)))
+        }
+        expect(second, label).toBeLessThan(0.25)
+        expect(acted.penetration, label).toBeLessThan(1e-5)
+        expect(acted.collisions, label).toBe(0)
+      }
+    }
+  }, 120_000)
+
   it('turns her head and trunk to architecture 4e\'s 35 degrees for a look-around\'s widest glance', () => {
     const entry = behaviours.find(b => b.act.kind === 'look-around')!
     const acted = run(chisaTraits, playing(entry.act), START + 2)
