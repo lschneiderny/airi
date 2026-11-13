@@ -36,8 +36,10 @@ export interface BodyEmotionSpec {
   readonly posture: BodyEmotionPosture
   /**
    * Multiple of the posture row, from `E/g3/b/amplitude-sources.md`: the size at which the pose held at a clear pulse's
-   * weight (0.6) clears neutral and placebo by 2.4 SD on the FK proxy, capped at 4. Awkward, question, love and think
-   * need more than 4 and ship at the cap without reaching that bar.
+   * weight (0.6) clears neutral and placebo by 2.4 SD on the FK proxy, capped at 4. Awkward, love and think need more
+   * than 4 and ship at the cap without reaching that bar. Question (6, 1.5 times its capped 4) and surprised (1.52, 1.6
+   * times its 0.95) are enlarged past that source by the owner's decision of 2026-11-12 ("Small poses: Enlarge both"),
+   * sized in `E/g3/e/notes.md`.
    */
   readonly scale: number
   /** A hand shape blended in at the emotion's weight (never scaled), or a finger-curl factor. */
@@ -64,12 +66,12 @@ export const BODY_EMOTIONS: Readonly<Record<PerformanceEmotion, BodyEmotionSpec>
   sad: { posture: { slump: 9, clavElev: -2, clavProt: 4, elbow: -4, pelvisY: -0.004 }, scale: 2.1, hands: { curl: 1.25 }, response: { f: 0.45, zeta: 1, r: 0 }, heldShare: 1, support: null, armForm: 'hand-to-chest', tempo: 0.7, amplitude: 0.6, tension: 0.2, breath: 0.7, sigh: true },
   angry: { posture: { lowerPitch: 2, midPitch: -1, clavElev: 3, clavProt: 3, elbow: 10, abduct: 5 }, scale: 1.9, hands: { shape: 'fist', amount: 0.8 }, response: { f: 2.2, zeta: 0.7, r: -0.25 }, heldShare: 1, support: 'centre', armForm: null, tempo: 1.1, amplitude: 0.75, tension: 0.9, breath: 1.3, sigh: false },
   think: { posture: { lowerRoll: 2 }, scale: 4, hands: null, response: { f: 0.8, zeta: 0.9, r: 0 }, heldShare: 1, support: 'side', armForm: 'thinking-hand', tempo: 0.8, amplitude: 0.7, tension: 0.4, breath: 1, sigh: false },
-  surprised: { posture: { lowerPitch: -4, midPitch: -3, clavElev: 6, elbow: 15, abduct: 8, pelvisZ: -0.006, pelvisY: 0.003 }, scale: 0.95, hands: { shape: 'open', amount: 1, spread: 1.3 }, response: { f: 4, zeta: 0.45, r: 0 }, heldShare: 0.35, support: null, armForm: null, tempo: 1.2, amplitude: 1.1, tension: 0.75, breath: 1.3, sigh: false },
+  surprised: { posture: { lowerPitch: -4, midPitch: -3, clavElev: 6, elbow: 15, abduct: 8, pelvisZ: -0.006, pelvisY: 0.003 }, scale: 1.52, hands: { shape: 'open', amount: 1, spread: 1.3 }, response: { f: 4, zeta: 0.45, r: 0 }, heldShare: 0.35, support: null, armForm: null, tempo: 1.2, amplitude: 1.1, tension: 0.75, breath: 1.3, sigh: false },
   // Awkward and question add a bilateral signature to 4c's one-sided shoulder: a random side cancels in the mean, a
   // person still shows them on both sides (awkward hunches, question gives the small shrug of uncertainty), at the
   // note's own shoulder magnitude.
   awkward: { posture: { sideClavElev: 2, clavElev: 2, midPitch: 1.5, lowerRoll: 1.5, elbow: 5 }, scale: 4, hands: null, response: { f: 1.2, zeta: 0.7, r: -0.2 }, heldShare: 1, support: null, armForm: null, tempo: 1.25, amplitude: 0.9, tension: 0.6, breath: 1, sigh: false },
-  question: { posture: { lowerPitch: 2, clavElev: 1.5, sideClavElev: 1.5 }, scale: 4, hands: null, response: { f: 1.6, zeta: 0.65, r: -0.2 }, heldShare: 1, support: null, armForm: null, tempo: 1, amplitude: 1, tension: 0.5, breath: 1, sigh: false },
+  question: { posture: { lowerPitch: 2, clavElev: 1.5, sideClavElev: 1.5 }, scale: 6, hands: null, response: { f: 1.6, zeta: 0.65, r: -0.2 }, heldShare: 1, support: null, armForm: null, tempo: 1, amplitude: 1, tension: 0.5, breath: 1, sigh: false },
   // 4c's neck +4 and head -4 are left to Natural: the body never adds a second head posture (plan 3.2).
   curious: { posture: { slump: 5.5, pelvisZ: 0.006 }, scale: 3.6, hands: null, response: { f: 1.3, zeta: 0.7, r: -0.3 }, heldShare: 1, support: null, armForm: null, tempo: 1.1, amplitude: 1, tension: 0.5, breath: 1, sigh: false },
   neutral: { posture: {}, scale: 0, hands: null, response: null, heldShare: 0, support: null, armForm: null, tempo: 1, amplitude: 1, tension: 0.4, breath: 1, sigh: false },

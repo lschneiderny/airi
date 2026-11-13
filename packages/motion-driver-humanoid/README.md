@@ -483,7 +483,10 @@ moves no body. A held emotion releases with Natural's held `releaseTau`, so a
 hold that switches emotion at full level crossfades instead of dropping the old
 posture in one step. Each posture's `scale` is its size against architecture
 4c's table; the sources and the emotions that do not reach the separation bar
-are in the goal-3 evidence `g3/b/amplitude-sources.md`. Neutral writes nothing,
+are in the goal-3 evidence `g3/b/amplitude-sources.md`. Question (1.5 times its
+sourced size) and surprised (1.6 times) are larger than that source, by the
+owner's decision for expressive held poses; surprised keeps its held share, so
+its startle settles as before. Neutral writes nothing,
 nor does any emotion term reach a group owned above 0.5. Think requests the
 thinking hand, and sad, love and flustered the hand to chest, through
 `plan.armForm` while their weight exceeds 0.5; angry and think force the

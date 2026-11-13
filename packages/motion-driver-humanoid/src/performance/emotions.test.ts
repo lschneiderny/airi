@@ -162,6 +162,19 @@ describe('emotion posture layer', () => {
     expect(d[c('leftClavElev')][tick] / heldAtIntensity[c('leftClavElev')][tick]).toBeCloseTo(1, 1)
   })
 
+  // Owner decision of 2026-11-12 ("Small poses: Enlarge both"): question's posture at 6 times 4c's row, surprised's at
+  // 1.52 times with its startle still settling to its held share of 0.35 (E/g3/e/notes.md).
+  it('holds a clear question pulse at its enlarged size to the end of the hold', () => {
+    const endOfHold = Math.round((0.5 + defaultExpressionPerformanceSettings.held.turnlessSeconds - 0.05) * 120)
+    const question = layerEffect(pulse('question', 0.5), 5)
+    expect(question[c('lowerPitch')][endOfHold] / DEG).toBeCloseTo(0.6 * 6 * 2, 1)
+  })
+
+  it('settles a clear surprised startle to its held share of the enlarged pose', () => {
+    const surprised = layerEffect(pulse('surprised', 0.5), 5)
+    expect(surprised[c('leftElbow')][Math.round(4.3 * 120)] / DEG).toBeCloseTo(0.6 * 0.35 * 1.52 * 15, 1)
+  })
+
   it('continues from the current pose when the same emotion pulses again during its hold', () => {
     const pitch = layerEffect(pulses({ at: 0.5, emotion: 'angry' }, { at: 2.5, emotion: 'angry' }), 4)[c('lowerPitch')]
     const atRetrigger = pitch[Math.round(2.5 * 120)]
