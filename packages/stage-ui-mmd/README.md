@@ -18,11 +18,13 @@ reaching feature parity with the Live2D and VRM renderers:
   body director, remove them, and map AIRI emotions to clips (Neutral and
   Sleepy map to no clip).
 - **Idle activities**: under Natural she stretches, yawns, looks around, watches
-  the screen, sighs, rolls her shoulders, shifts her weight, clasps her hands,
-  touches her hair, rocks on her heels, swings her arms and dozes on her own (`idleActivities` in the Natural settings,
+  the screen, sighs, rolls her shoulders, touches her hair, swings her arms and
+  dozes on her own (`idleActivities` in the Natural settings,
   on by default), and plays the clips the user marked "Idle may use" now and
   then while her body is quiet. A model with a sleep clip sleeps through its
-  stance; a model without one dozes on her feet (the performer's rest layer). The scene emits `idle`
+  stance; a model without one dozes on her feet (the performer's rest layer).
+  The stance shift, the hand clasp and the heel rock weigh 0 until their forms
+  read on the mesh (no foot step, no two-hand contact). The scene emits `idle`
   and `self` events, which the stage forwards to the situation. See
   [the idle agency ADR](../../docs/ai/adr/2026-11-12-idle-agency.md).
 - **Clip library**: every imported clip gets a derived kind and layer, and the

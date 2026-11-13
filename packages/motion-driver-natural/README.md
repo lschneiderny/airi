@@ -111,7 +111,13 @@ const { seq, behaviour } = motion.idleState
   whole-body kinds (`sigh`, `shoulder-roll`, `shift-stance`, `clasp-hands`,
   `hair-touch`, `heel-rock`, `arm-swing`) and settling in after 120 s of
   continuous `idle` mode. Without `body` those kinds weigh 0 before the single
-  draw, so a Live2D drive draws exactly as before they existed.
+  draw, so a Live2D drive draws exactly as before they existed. `shift-stance`,
+  `clasp-hands` and `heel-rock` weigh 0 with `body` too, until their forms read
+  on the MMD mesh: the shift and the rock need a foot step and the toe-down foot
+  pitch the performer has no output for, and the clasping hands need a two-hand
+  contact. While she is settled in, nothing that needs her arms or a standing
+  posture is drawn (`stretch`, `peer`, `hair-touch`, `arm-swing` and the three
+  above); the sigh and the yawn still are (architecture 4f).
 - `bodyIntent().idle` carries the latest behaviour as an
   `IdleBehaviourRecord` (its timing, side and drawn parameters, kept after it
   ends) and `settled`, so a body host plays its own form of each behaviour. The

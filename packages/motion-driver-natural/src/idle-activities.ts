@@ -252,22 +252,27 @@ export class IdleBehaviourReports {
 /** The output while nothing contributes; shared, so a quiet layer allocates nothing per step. Never written. */
 const idleRest: IdleOutput = Object.freeze(neutral())
 
+/** The drawn kinds that need her arms or a standing posture, which a settled character does not start. */
+const SETTLED_OUT = ['stretch', 'peer', 'shift-stance', 'clasp-hands', 'hair-touch', 'heel-rock', 'arm-swing'] as const satisfies readonly DrawnIdleActivityKind[]
+
 /**
  * Relative odds of each drawn activity for a drive. Tiredness (night, or low mood energy) favours yawns, zoning out
  * and nodding off; a lively mood favours looking around and watching the screen; time without an exchange makes her
  * check on the user more; tension makes her restless. While the user is active (`watching`) she watches along more
  * and drifts off less. Sway is drawn only while music plays. The whole-body kinds take architecture 4e's act weights,
  * mood energy standing in for its arousal, and weigh 0 unless the drive sets `body`, so a head-only host's single
- * draw sees the same pool as before they existed.
+ * draw sees the same pool as before they existed. While a body host's character is `settled` (resting, or sitting on
+ * a clip), nothing that needs her arms or a standing posture is drawn (architecture 4f restricts the rest's acts);
+ * `settled` is never true without `body`.
  */
-export function idleActivityWeights(drive: NaturalIdleDrive, context: { watching: boolean }): Record<DrawnIdleActivityKind, number> {
+export function idleActivityWeights(drive: NaturalIdleDrive, context: { watching: boolean, settled?: boolean }): Record<DrawnIdleActivityKind, number> {
   const tired = clamp01(Math.max(drive.sleepiness, -finite(drive.energy)))
   const lively = clamp01(finite(drive.energy))
   const warm = clamp01(0.5 + finite(drive.valence))
   const tense = clamp01(finite(drive.tension))
   const solitude = clamp01(drive.solitude)
   const body = drive.body === true
-  return {
+  const weights: Record<DrawnIdleActivityKind, number> = {
     'look-around': (1 + 0.5 * lively + 0.6 * tense) * (1 - 0.5 * tired),
     'check-in': (0.45 + 0.6 * warm) * (1 + 0.8 * solitude) * (context.watching ? 1.2 : 1),
     'peer': (context.watching ? 1.6 : 0.35) * (1 + 0.4 * lively) * (1 - 0.5 * tired),
@@ -278,12 +283,19 @@ export function idleActivityWeights(drive: NaturalIdleDrive, context: { watching
     'sway': drive.music ? (0.8 + 0.6 * warm) * (1 - 0.6 * tense) : 0,
     'sigh': body ? (finite(drive.valence) < -0.2 ? 2 : 1) : 0,
     'shoulder-roll': body ? 0.8 : 0,
-    'shift-stance': body ? 1.2 : 0,
-    'clasp-hands': body ? 0.7 : 0,
+    // 4e weighs the stance shift 1.2, the clasp 0.7 and the heel rock 0.8. Each weighs 0 until it reads on the mesh:
+    // the shift and the rock need a foot step and a toe-down foot pitch, the clasp a two-hand contact solve.
+    'shift-stance': 0,
+    'clasp-hands': 0,
     'hair-touch': body ? 0.5 : 0,
-    'heel-rock': body && finite(drive.valence) > 0.3 ? 0.8 : 0,
+    'heel-rock': 0,
     'arm-swing': body ? (lively > 0.2 ? 0.9 : 0.6) : 0,
   }
+  if (context.settled) {
+    for (const kind of SETTLED_OUT)
+      weights[kind] = 0
+  }
+  return weights
 }
 
 /**
@@ -550,7 +562,7 @@ export class NaturalIdleActivities {
   }
 
   private pick(drive: NaturalIdleDrive, input: IdleStepInput, at: number): DrawnIdleActivityKind | null {
-    const weights = idleActivityWeights(drive, { watching: input.mode === 'watching' })
+    const weights = idleActivityWeights(drive, { watching: input.mode === 'watching', settled: this.settled })
     const eligible = drawnKinds.filter((kind) => {
       const last = this.lastStart[kind]
       return weights[kind] > 0 && (last === undefined || at - last >= cooldowns[kind])

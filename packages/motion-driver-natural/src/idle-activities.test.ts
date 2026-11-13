@@ -63,16 +63,28 @@ describe('idle activity odds', () => {
   })
 
   it('draws the whole-body kinds only for a host that performs a body', () => {
-    const bodyKinds = ['sigh', 'shoulder-roll', 'shift-stance', 'clasp-hands', 'hair-touch', 'arm-swing'] as const
+    const bodyKinds = ['sigh', 'shoulder-roll', 'hair-touch', 'arm-swing'] as const
+    const unread = ['shift-stance', 'clasp-hands', 'heel-rock'] as const
     const live2d = idleActivityWeights(neutralDrive, { watching: false })
     const mmd = idleActivityWeights({ ...neutralDrive, body: true }, { watching: false })
-    for (const kind of [...bodyKinds, 'heel-rock'] as const)
+    for (const kind of [...bodyKinds, ...unread])
       expect(live2d[kind], kind).toBe(0)
     for (const kind of bodyKinds)
       expect(mmd[kind], kind).toBeGreaterThan(0)
-    // Heel rocks are a bright mood's (architecture 4e act 11).
-    expect(mmd['heel-rock']).toBe(0)
-    expect(idleActivityWeights({ ...neutralDrive, body: true, valence: 0.5 }, { watching: false })['heel-rock']).toBeGreaterThan(0)
+    // Their forms do not read on the mesh yet, so they weigh 0 on a body host too, in any mood.
+    const bright = idleActivityWeights({ ...neutralDrive, body: true, valence: 0.5 }, { watching: false })
+    for (const kind of unread)
+      expect([mmd[kind], bright[kind]], kind).toEqual([0, 0])
+  })
+
+  it('starts nothing that needs her arms or a standing posture while she is settled in', () => {
+    const settled = { watching: false, settled: true }
+    const weights = idleActivityWeights({ ...neutralDrive, body: true, sleepiness: 0.5 }, settled)
+    for (const kind of ['stretch', 'peer', 'hair-touch', 'arm-swing'] as const)
+      expect(weights[kind], kind).toBe(0)
+    // Architecture 4f lets the sigh and the yawn play while she rests.
+    expect(weights.sigh).toBeGreaterThan(0)
+    expect(weights.yawn).toBeGreaterThan(0)
   })
 
   it('sways only while music plays', () => {
