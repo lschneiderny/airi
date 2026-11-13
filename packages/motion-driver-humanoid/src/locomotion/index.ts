@@ -152,6 +152,20 @@ function cycloid(progress: number) {
   return progress - Math.sin(2 * Math.PI * progress) / (2 * Math.PI)
 }
 
+/**
+ * Share of a turn step's yaw covered at step progress `u`. The turn leaves and reaches its facing at rest, as the gaze
+ * turn planner's steps do (goal 3), so neither end steps the yaw rate; the first step eases in with `2u^2 - u^3`, the
+ * last eases out with its mirror, and the steps between stay linear. Every step still ends on its planned facing and the
+ * yaw rate is continuous at every step boundary, so the body turns as one movement instead of stopping at each step.
+ */
+function turnProgress(u: number, index: number, count: number) {
+  if (index === 0)
+    return u * u * (2 - u)
+  if (index === count - 1)
+    return 1 - (1 - u) * (1 - u) * (1 + u)
+  return u
+}
+
 interface Spring {
   value: number
   velocity: number
@@ -496,7 +510,7 @@ class Locomotion {
       events.push({ kind: 'liftOff', foot: step.foot, time: now })
     }
     turn.elapsed = Math.min(step.duration, turn.elapsed + dt)
-    this.yaw = from + (to - from) * turn.elapsed / step.duration
+    this.yaw = from + (to - from) * turnProgress(turn.elapsed / step.duration, turn.index, turn.steps.length)
     if (turn.elapsed >= step.duration - epsilon) {
       this.feet[step.foot] = step.sample(step.duration)
       this.spans[step.foot] = 0

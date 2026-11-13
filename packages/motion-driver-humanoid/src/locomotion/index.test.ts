@@ -354,6 +354,21 @@ describe('procedural gait', () => {
     }
   })
 
+  it('turn easing: a turn leaves and reaches its facing at rest and never stops between its steps', () => {
+    const run = createRun({ x: 0, yaw: 0 })
+    run.advance(2, () => ({ goalX: 0, arriveFacing: Math.PI / 2 }))
+    const turning = run.frames.filter(frame => frame.mode === 'turning')
+    const rates = turning.map((frame, tick) => Math.abs(frame.root.yaw - (turning[tick - 1]?.root.yaw ?? 0)))
+    // Two steps of 54 ticks from yaw 0; a linear step moves pi/4 / 54 per tick.
+    const linear = Math.PI / 4 / 54
+    expect(rates[0]).toBeLessThan(0.05 * linear)
+    expect(rates[107]).toBeLessThan(0.05 * linear)
+    expect(Math.abs((rates[54] ?? 0) - (rates[53] ?? 0))).toBeLessThan(0.05 * linear)
+    expect(Math.min(...rates.slice(20, 88))).toBeGreaterThan(0.9 * linear)
+    expect(turning[53]?.root.yaw).toBeCloseTo(Math.PI / 4, 12)
+    expect(turning.at(-1)?.root.yaw).toBeCloseTo(Math.PI / 2, 12)
+  })
+
   it('continuity: start, stop and turn blends change no channel faster than steady walking does', () => {
     // The adapter blends the gait over the idle pose by the gait weight.
     const channels: Array<[string, (frame: LocomotionFrame) => number, number]> = [

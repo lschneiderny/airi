@@ -123,7 +123,8 @@ the ground line (y = 0, travel along x). Yaw 0 faces the camera, and walking fac
 second; `pace` (`LocomotionPace` from `./types`) scales it by 0.6 or 1.0. Speed ramps at `v_ref` per second and
 stops exactly at `goalX`. A goal that needs a new heading first turns in place
 through `planFootSteps` about the root: at most 45 degrees per 0.45 second step,
-so 90 degrees takes two steps. After arrival the gait closes the stance, turns to
+so 90 degrees takes two steps. The turn leaves and reaches its facing at rest: the first step eases in, the last eases
+out, and the steps between are linear, so every step still ends on its facing and the yaw rate never steps. After arrival the gait closes the stance, turns to
 `arriveFacing`, and returns to `idle` after both feet have been planted for 0.25
 seconds.
 
