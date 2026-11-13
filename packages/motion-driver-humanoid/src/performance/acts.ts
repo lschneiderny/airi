@@ -6,7 +6,7 @@ import { minJerk } from '../dynamics'
 import { deriveSeed } from '../noise'
 import { createRandomStream } from '../random'
 import { armResponse } from './arms'
-import { ARM_START, BODY_CHANNELS, BODY_TICK, channelGroup, channelIndex, DEG, SIDES } from './channels'
+import { ARM_START, BODY_CHANNELS, BODY_TICK, CHANNEL_GROUPS, channelIndex, DEG, SIDES } from './channels'
 import { path } from './cues'
 import { GestureKeys } from './gesture-forms'
 import { followerInverse } from './gestures'
@@ -503,7 +503,7 @@ export function createActLayer(): PerformanceLayer {
     }
     // A clip that owns a group takes it whole; the act gives it up the way the cue layer does.
     for (let channel = 0; channel < channels.length; channel++)
-      channels[channel] *= Math.max(0, Math.min(1, 1 - 2 * input.owned[channelGroup(BODY_CHANNELS[channel])]))
+      channels[channel] *= Math.max(0, Math.min(1, 1 - 2 * input.owned[CHANNEL_GROUPS[channel]]))
   }
 
   return {

@@ -4,7 +4,7 @@ import type { BodyReactionKind, BodyReactionReport } from './contracts'
 import type { PerformanceContext, PerformanceLayer, PerformancePlan } from './stack'
 
 import { advanceSecondOrder, createLagChain, minJerk, secondOrderCoefficients } from '../dynamics'
-import { ARM_START, BODY_CHANNELS, BODY_TICK, channelGroup, channelIndex, DEG, SIDES } from './channels'
+import { ARM_START, BODY_CHANNELS, BODY_TICK, CHANNEL_GROUPS, channelIndex, DEG, SIDES } from './channels'
 
 /** 4d flinch: a step through the 3a response at 3.5 Hz and damping 0.45, released after 0.25 s; it peaks near 80 ms and rings once. */
 const FLINCH = { response: secondOrderCoefficients({ f: 3.5, zeta: 0.45, r: 0 }, BODY_TICK), release: 0.25 }
@@ -184,7 +184,7 @@ export function createReactionLayer(): PerformanceLayer {
       const active = flinches.length > 0 || following || petted
       if (active) {
         for (let channel = 0; channel < channels.length; channel++)
-          channels[channel] *= Math.max(0, Math.min(1, 1 - 2 * context.input.owned[channelGroup(BODY_CHANNELS[channel])]))
+          channels[channel] *= Math.max(0, Math.min(1, 1 - 2 * context.input.owned[CHANNEL_GROUPS[channel]]))
       }
       return { channels, weight: active ? 1 : 0, sequence: 0, reaction: report }
     },

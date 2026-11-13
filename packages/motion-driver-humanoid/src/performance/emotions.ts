@@ -9,7 +9,7 @@ import type { PerformanceContext, PerformanceLayer, PerformancePlan } from './st
 import { defaultExpressionPerformanceSettings, PERFORMANCE_EMOTIONS } from '@proj-airi/stage-shared/expression-performance'
 
 import { advanceSecondOrder, secondOrderCoefficients, softLimit } from '../dynamics'
-import { ARM_START, BODY_CHANNELS, BODY_TICK, channelGroup, channelIndex, DEG, SIDES } from './channels'
+import { ARM_START, BODY_CHANNELS, BODY_TICK, CHANNEL_GROUPS, channelIndex, DEG, SIDES } from './channels'
 import { HAND_SHAPES } from './hand-shapes'
 
 /**
@@ -201,7 +201,7 @@ export function createEmotionLayer(): EmotionLayer {
 
   function ownership(input: BodyPerformanceInput) {
     for (let channel = 0; channel < channels.length; channel++)
-      ownedFactor[channel] = Math.max(0, Math.min(1, 1 - 2 * input.owned[channelGroup(BODY_CHANNELS[channel])]))
+      ownedFactor[channel] = Math.max(0, Math.min(1, 1 - 2 * input.owned[CHANNEL_GROUPS[channel]]))
   }
 
   function retarget(input: BodyPerformanceInput) {

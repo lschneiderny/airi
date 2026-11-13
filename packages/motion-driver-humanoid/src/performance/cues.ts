@@ -2,7 +2,7 @@ import type { BodyCueKind, BodyCueReport } from './contracts'
 import type { PerformanceContext, PerformanceLayer, PerformancePlan } from './stack'
 
 import { createLagChain, minJerk } from '../dynamics'
-import { ARM_START, BODY_CHANNELS, BODY_TICK, channelGroup, channelIndex, DEG, SIDES } from './channels'
+import { ARM_START, BODY_CHANNELS, BODY_TICK, CHANNEL_GROUPS, channelIndex, DEG, SIDES } from './channels'
 
 /**
  * Multiples of architecture 4b's below-neck terms; head terms keep Natural's amplitude. Nod and shake are head
@@ -21,7 +21,6 @@ const SHAKE = { count: 0.5, hz: 2, degrees: 7.5 }
 const GLANCE_LINK = { share: 0.25, delay: 0.25 }
 
 const c = channelIndex
-const groups = BODY_CHANNELS.map(channelGroup)
 const raisedCosine = (u: number) => u <= 0 || u >= 1 ? 0 : 0.5 - 0.5 * Math.cos(2 * Math.PI * u)
 
 /** Piecewise minimum-jerk path through `[time, value]` knots, starting at 0; every knot has zero velocity. */
@@ -205,7 +204,7 @@ export function createCueLayer(): PerformanceLayer {
         play(clip, context)
       if (clips.length) {
         for (let channel = 0; channel < channels.length; channel++)
-          channels[channel] *= Math.max(0, Math.min(1, 1 - 2 * context.input.owned[groups[channel]]))
+          channels[channel] *= Math.max(0, Math.min(1, 1 - 2 * context.input.owned[CHANNEL_GROUPS[channel]]))
       }
       return { channels, weight: clips.length ? 1 : 0, sequence: 0, cue: report }
     },

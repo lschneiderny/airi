@@ -110,6 +110,9 @@ export function channelGroup(channel: BodyChannel): ClipMaskGroup {
   return 'upperBody'
 }
 
+/** Each channel's clip-mask group, in `BODY_CHANNELS` order, so a tick never rescans the channel names. */
+export const CHANNEL_GROUPS: readonly ClipMaskGroup[] = BODY_CHANNELS.map(channelGroup)
+
 const torsoLimits = [
   [-12, 12],
   [-10, 15],
