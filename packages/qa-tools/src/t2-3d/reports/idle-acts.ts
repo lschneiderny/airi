@@ -75,9 +75,11 @@ export const IDLE_ACTS_CONSTANTS: readonly ReportConstant[] = [
 const IDLE_ACTS_LIMITS: readonly string[] = [
   'acts are the scheduler\'s own start and end reports (idle:<kind>:<start|end> markers); a movement the body plays without a report is never judged.',
   `an act counts when some channel changed within ${C.actSeconds} s by more than max(1, bar) times the larger of ${C.actDeg} deg (hips position ${hipsFor(C.actDeg).toFixed(4)} L) and that channel's own act-free 95th percentile; each act above prints the degrees its deciding channel needed. A head-led act must therefore exceed her own idle head range: a 12 deg nod reached in 1 s counted 2 of 13 acts on Chisa seed 1 and 0 of 11 on Ellen seed 2, a 20 deg nod in the product's zone-out envelope every act (second review). The ${C.actDeg} deg floor is a convention, the goal-2 gaze-order rule's event threshold (gaze-order.ts CRITERION_DEG), not a measured visibility threshold. A change made over more than about 3 s counts only the part made within ${C.actSeconds} s; a wider window was measured to count an 8 deg drift and to lose product-shaped nods on Ellen. This proves the body did something, not what; a motionless act is counted in at most about 5 % of its spans by construction.`,
-  `under qa-neutral-day exactly six kinds are drawable (nod-off and sway weigh 0), so distinct-acts passes only if all six are drawn and counted; a yawn has 2.7 % of each draw. The scheduler alone (10,000 seeds, 610 s, amendment 7 A7.6) draws six distinct kinds that end in the scored span in 13.0 % of runs, and 39.6 % with the idle unit's whole-body kinds (body: true).`,
+  `under qa-neutral-day exactly six kinds are drawable (nod-off and sway weigh 0), so distinct-acts passes only if all six are drawn and counted; a yawn has 2.7 % of each draw. The scheduler alone (10,000 seeds, 610 s, amendment 7 A7.6) draws six distinct kinds that end in the scored span in 13.0 % of runs; with the idle unit's whole-body kinds (body: true) in 39.6 % at b40742af1 and 19.9 % at 89b7f4838, where four kinds weigh 0 and five are drawable once she settles (third review).`,
   'no-repeat judges only a kind started twice in a row (C001\'s bar); longer repeated blocks (A B A B) are printed above, and the visual review alone enforces "no repeated cycle". The scheduler never draws its last drawn kind again, so in the product the line fails only through a stretch or yawn follow-up after sleep or a host cue.',
   'the pair is printed, not judged (amendment 8): on her runs version 6\'s rule fails the unperturbed product run, because the trace\'s root yaw is the hips\' heading, which carries the weight shift and the drift that the rule leaves out, and its delay fit can lock on a short interval and carry the lock forward; the visual review is the check. As a printed reading it compares, on each act-free interval, the companion delayed by the interval\'s fitted delay: the hips position (lateral, vertical, forward in the body frame), the hips rotation, the root yaw and every planted foot and toe joint. Its tolerances come from the performer\'s time-indexed drift (printed above), not from her runs. It sees a lasting hips or root change larger than its tolerance on one interval or pooled, whatever the other intervals hold; a foot or toe joint off its place by more than the resolution; a weight shift out of step with the companion\'s; a schedule further behind than the delay bound (not judged, so not PASS). It does not see a leg pose that reaches the same foot position (the leg bones are printed, not judged), a delay that grows faster than 0.6 s per s during one act while the total stays under the bound, a delay that decreases after an interval without a weight shift, or a lasting hips change under its tolerance, which grows as the interval shortens. Natural\'s breath, head and gaze streams keep lasting state after an activity by design and are printed, not judged.',
+  'lasting state after an act (the arm hang, a foot left turned, the stance) is judged by no line since the pair left the verdict: the visual review must check that she returns after each act, on the interval that follows it in the review list.',
+  'the pair reading assumes the qa-neutral-day drive: under other drives the idle energy offset is a second path to the shift rate.',
   'a PASS alone is NOT accepted for C001: read it with the visual review the criterion names, from the act timeline and the review list above.',
 ]
 
@@ -359,7 +361,7 @@ export interface IdleActsDetail {
     readonly reading: 'PASS' | 'FAIL' | 'NOT-EXERCISED'
     readonly others: { readonly difference: number, readonly at: number | null, readonly bone: string | null }
   }
-  readonly review: { readonly spans: readonly string[], readonly dependsOnThem: boolean, readonly consecutive: readonly string[] }
+  readonly review: { readonly spans: readonly string[], readonly dependsOnThem: boolean, readonly consecutive: readonly string[], readonly following: readonly string[] }
   readonly intermittency: readonly { readonly id: string, readonly status: string, readonly value: number | null }[] | null
 }
 
@@ -751,7 +753,7 @@ export function idleActsReport(run: LoadedRun, pair: LoadedRun): CaseReport<Idle
     : judged('pair', pairRule, pairValue, pairReading === 'PASS')
   const requirements: CaseRequirement[] = [
     driveRequirement(run, QA_DRIVE_PRESENT),
-    judged('distinct-acts', `at least ${C.distinct} distinct kinds among the scheduler's acts that started in the scored span, ended, and changed some channel within ${C.actSeconds} s by more than ${C.actDeg} deg and more than the ${C.movedPercentile * 100}th percentile of her act-free windows`, `${kinds.size} distinct (${counted.length} moved of ${acts.filter(act => act.countable).length} judged, ${spans.length} behaviours started)`, kinds.size >= C.distinct),
+    judged('distinct-acts', `at least ${C.distinct} distinct kinds among the scheduler's acts that started in the scored span, ended, and changed some channel within ${C.actSeconds} s by more than max(1, bar) times the larger of ${C.actDeg} deg (hips position ${hipsFor(C.actDeg).toFixed(4)} L) and that channel's own act-free ${C.movedPercentile * 100}th percentile`, `${kinds.size} distinct (${counted.length} moved of ${acts.filter(act => act.countable).length} countable, ${spans.length} behaviours started)`, kinds.size >= C.distinct),
     spans.length < 2
       ? notExercised('no-repeat', repeatRule, `${spans.length} behaviour started: no consecutive pair`)
       : judged('no-repeat', repeatRule, repeats.length ? `repeated: ${repeats.join(', ')}` : `${spans.length - 1} consecutive pairs, none repeated`, repeats.length === 0),
@@ -767,6 +769,10 @@ export function idleActsReport(run: LoadedRun, pair: LoadedRun): CaseReport<Idle
       spans: reviewed.map(act => `${act.kind} ${act.start.toFixed(3)}-${act.end!.toFixed(3)} s`),
       dependsOnThem: kinds.size >= C.distinct && others.size < C.distinct,
       consecutive: counted.slice(1).map((act, i) => `${counted[i].kind} -> ${act.kind} at ${act.start.toFixed(3)} s`),
+      following: counted.map((act) => {
+        const next = spans.find(span => span.start > act.start)
+        return `${act.kind} ${act.end!.toFixed(3)}-${next ? `${next.start.toFixed(3)} s` : 'end of run'}`
+      }),
     },
     intermittency: gate ? ['inter.speedCv', ...O2_METRICS].map(id => ({ id, ...gateStatus(gate, id) })) : null,
   })
@@ -782,7 +788,7 @@ export function formatIdleActs(report: CaseReport<IdleActsDetail>): string {
     `behaviours the scheduler reported (${d.acts.length}):`,
     ...d.acts.map(act => `  ${act.start.toFixed(3)}\t${act.kind}\t${act.end === null ? 'no end report' : `ended ${act.end.toFixed(3)}`}\t${!act.countable ? 'not judged (warm-up, no end, or not a drawn act)' : act.movement === null ? `not judged (fewer than ${C.nullMinimum} act-free windows)` : `${act.movement.moved ? 'moved' : 'did not move'}: score ${act.movement.score.toFixed(2)} against max(1, ${act.movement.bar.toFixed(2)}) over ${act.movement.windows} windows, largest on ${act.movement.channel}, which needed ${sized(act.movement.needed, unitOf(act.movement.channel))} (scale ${sized(act.movement.scale, unitOf(act.movement.channel))})`}`),
     `repeated blocks of two or more (printed for the visual review): ${d.repeatedBlocks.join('; ') || 'none'}`,
-    `visual review list (C001): counted look-around and peer spans: ${d.review.spans.join(', ') || 'none'}; the count of ${C.distinct} ${d.review.dependsOnThem ? 'DEPENDS' : 'does not depend'} on them; consecutive counted acts: ${d.review.consecutive.join(', ') || 'none'}`,
+    `visual review list (C001): counted look-around and peer spans: ${d.review.spans.join(', ') || 'none'}; the count of ${C.distinct} ${d.review.dependsOnThem ? 'DEPENDS' : 'does not depend'} on them; consecutive counted acts: ${d.review.consecutive.join(', ') || 'none'}; check that she returns after each counted act on: ${d.review.following.join(', ') || 'none'}`,
     ...d.intermittency
       ? d.intermittency.map(m => `${m.id}: ${m.status} ${fixed(m.value)}${m.id === 'inter.speedCv' ? ' (gated)' : ' (REPORT, not judged)'}`)
       : ['intermittency: no gate.json; run qa:motion3d gate on this run to print inter.speedCv and the O2 values'],
