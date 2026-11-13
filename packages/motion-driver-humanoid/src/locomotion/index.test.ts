@@ -275,11 +275,11 @@ describe('procedural gait', () => {
     expect(Math.abs(window.reduce((sum, frame) => sum + frame.support, 0) / window.length)).toBeLessThan(1e-3)
 
     // The arms swing in antiphase from one cosine; the forward swing (16) is larger than the back swing (12), so the two
-    // arms' offsets from 2 degrees sum to a seventh of their difference.
+    // arms' offsets from 2 degrees, the right one taken at the left's size, sum to a seventh of their difference.
     for (const name of allScenarios) {
       for (const frame of scenario(name).frames) {
         const left = frame.armSwing.left.flexion - 2 * rad
-        const right = frame.armSwing.right.flexion - 2 * rad
+        const right = (frame.armSwing.right.flexion - 2 * rad) / (1 - 0.219)
         expect(left + right - Math.abs(left - right) / 7).toBeCloseTo(0, 12)
       }
     }
@@ -454,6 +454,16 @@ describe('procedural gait', () => {
       expect(Math.sign(swing.clavProt)).toBe(Math.sign(swing.flexion - 2 * rad))
       expect(swing.abduct).toBeLessThanOrEqual(0)
     }
+  })
+
+  it('arm swing: the right arm swings 0.781 of the left, the mean overground asymmetry', () => {
+    const { frames } = scenario('cruise')
+    const steady = frames.filter((frame, tick) => tick * dt >= 3 && frame.mode === 'walking')
+    const range = (side: 'left' | 'right') => {
+      const flexion = steady.map(frame => frame.armSwing[side].flexion)
+      return Math.max(...flexion) - Math.min(...flexion)
+    }
+    expect(range('right') / range('left')).toBeCloseTo(1 - 0.219, 3)
   })
 
   it('start and stop: the root waits 0.22 s while the weight moves, and the lean overshoots once after arrival', () => {

@@ -189,6 +189,12 @@ const headCounterLag = 0.08
  * reference's own (cos 65 deg = 0.42 against p50 0.44).
  */
 const elbowLag = 0.2
+/**
+ * The right arm's swing as a share of the left's, a fixed trait: adults walking overground at a comfortable pace swing
+ * the left arm more, mean directional arm swing asymmetry index 21.9 (Killeen et al. 2018, Scientific Reports, n = 334,
+ * doi:10.1038/s41598-018-31151-9, https://www.nature.com/articles/s41598-018-31151-9).
+ */
+const rightSwingShare = 1 - 0.219
 const sides = ['left', 'right'] as const
 /** Lateral sign: left = -1, right = +1, matching `support`. */
 const footSign: Record<Foot, 1 | -1> = { left: -1, right: 1 }
@@ -895,11 +901,12 @@ class Locomotion {
       const late = footSign[side] * this.lead(this.phase - 0.05 - elbowPhase)
       const forward = Math.max(0, -swing)
       const back = Math.max(0, swing)
+      const scale = swingScale * (side === 'right' ? rightSwingShare : 1)
       return {
-        flexion: 2 * radians + swingScale * (16 * radians * forward - 12 * radians * back),
-        elbowFlex: 12 * radians + swingScale * (16 * radians * Math.max(0, -late) - 6 * radians * Math.max(0, late)),
-        abduct: -3 * radians * swingScale * forward,
-        clavProt: 3 * radians * swingScale * (forward - back),
+        flexion: 2 * radians + scale * (16 * radians * forward - 12 * radians * back),
+        elbowFlex: 12 * radians + scale * (16 * radians * Math.max(0, -late) - 6 * radians * Math.max(0, late)),
+        abduct: -3 * radians * scale * forward,
+        clavProt: 3 * radians * scale * (forward - back),
       }
     }
     return {
