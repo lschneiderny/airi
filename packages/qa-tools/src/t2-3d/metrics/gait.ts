@@ -4,7 +4,7 @@ import type { MetricResult, PreparedTrace, Vec3 } from './types'
 
 import { butterworth } from './filter'
 import { jointOnset } from './gaze'
-import { add, DEG, heading, HZ, laggedCorrelation, mean, median, norm, rotate, sub } from './math'
+import { add, DEG, heading, HZ, laggedCorrelation, mean, median, norm, rotate, sub, unwrap } from './math'
 import { episodeResult, result, skipped } from './result'
 import { episode, peaks, runs } from './segments'
 
@@ -24,17 +24,6 @@ export function jointPositions(p: PreparedTrace): Readonly<Partial<Record<Motion
     })
   }
   return positions
-}
-
-function unwrap(x: readonly number[]): number[] {
-  let offset = 0
-  return x.map((v, i) => {
-    if (i > 0) {
-      const delta = v - x[i - 1]
-      offset -= Math.round(delta / (2 * Math.PI)) * 2 * Math.PI
-    }
-    return v + offset
-  })
 }
 
 /** S5 specified P95/P5 use linear interpolation of sorted samples, no fitted percentile choice. */

@@ -127,3 +127,13 @@ export function laggedCorrelation(a: readonly number[], b: readonly number[], li
   const offset = best > 0 && best < values.length - 1 && Math.abs(curvature) > 1e-18 ? 0.5 * (l - r) / curvature : 0
   return { zero: values[limit], peak: values[best], lag: best - limit + offset }
 }
+
+/** Removes 2 pi jumps between consecutive angles so a turning yaw stays continuous. */
+export function unwrap(x: readonly number[]): number[] {
+  let offset = 0
+  return x.map((v, i) => {
+    if (i > 0)
+      offset -= Math.round((v - x[i - 1]) / (2 * Math.PI)) * 2 * Math.PI
+    return v + offset
+  })
+}

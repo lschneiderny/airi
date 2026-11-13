@@ -7,7 +7,7 @@ import type { LoadedRun, ReportConstant } from './report'
 import { stageGateThresholds } from '../../stage/gates'
 import { butterworth } from '../metrics/filter'
 import { jointPositions } from '../metrics/gait'
-import { DEG, heading, HZ, median, norm, rotate, sub } from '../metrics/math'
+import { DEG, heading, HZ, median, norm, rotate, sub, unwrap } from '../metrics/math'
 import { peaks, runs } from '../metrics/segments'
 import { caseReport, formatCaseReport, judged, notExercised } from './case-report'
 import { fixed, ReportUsageError, requireSummary } from './report'
@@ -68,15 +68,6 @@ function pearson(a: readonly number[], b: readonly number[]): number | null {
     bb += (b[i] - mb) ** 2
   }
   return aa > 0 && bb > 0 ? ab / Math.sqrt(aa * bb) : null
-}
-
-function unwrap(x: readonly number[]): number[] {
-  let offset = 0
-  return x.map((v, i) => {
-    if (i > 0)
-      offset -= Math.round((v - x[i - 1]) / (2 * Math.PI)) * 2 * Math.PI
-    return v + offset
-  })
 }
 
 /** Yaw of a world orientation's forward axis about +Y, radians, as `metrics/gait.ts` measures twist. */
