@@ -9,18 +9,21 @@ import { IDLE_TO_SIT_MS } from '@proj-airi/motion-driver-humanoid/director'
 import { MOTION_TRACE_CHANNELS } from '@proj-airi/motion-driver-humanoid/motion-trace'
 
 import { percentile } from '../gate/bands'
+import { QA_DRIVE_AWAY } from '../idle-drive'
 import { prepareTrace, smoothMetrics } from '../metrics'
 import { conjugate, DEG, HZ, mean, multiply, rotate } from '../metrics/math'
 import { caseReport, formatCaseReport, judged, notExercised } from './case-report'
-import { restStates, TracePose } from './idle-acts'
+import { driveRequirement, idleSpans, restStates, TracePose } from './idle-acts'
 import { POP_CONSTANTS } from './kinematics'
 import { popEvents, upperBodyPopBones } from './pops'
 import { fixed, markers, ReportUsageError } from './report'
 
-export const REST_VERSION = 3
+export const REST_VERSION = 4
 
 const C = {
   share: 0.9,
+  settleSeconds: 30,
+  settleSlack: 1 / 30,
   restHeadDeg: 1.5,
   restTorsoDeg: 1.5,
   pelvisDrop: 0.006,
@@ -39,7 +42,9 @@ const ARMS = ['smooth.armL.spikeRate', 'smooth.armR.spikeRate'] as const
 export function restConstants(bands: MotionBandsFile): readonly ReportConstant[] {
   return [
     { name: 'rest onset', value: IDLE_TO_SIT_MS / 1000, unit: 's after the trace start', source: 'director IDLE_TO_SIT_MS' },
-    { name: 'state share', value: C.share, unit: 'of the idle span after the onset (rest) and of the away span (doze)', source: 'plan R3a' },
+    { name: 'drive', value: QA_DRIVE_AWAY.name, unit: 'the QA drive, the user away at the scenario\'s away cue', source: 'C004; unit M2 rules section 1' },
+    { name: 'state share', value: C.share, unit: 'of the idle span after the rest onset (rest) and of [sleep onset, wake) (doze)', source: 'plan R3a; owner decision "Rest measure: From sleep onset"' },
+    { name: 'settle bound', value: `${C.settleSeconds} + ${C.settleSlack.toFixed(4)}`, unit: 's from the away cue to the scheduler\'s sleep onset, at most', source: 'sleepDelay.max (idle-activities.ts); two 60 Hz frames for the 120 Hz grid and the per-frame report' },
     { name: 'baseline', value: IDLE_TO_SIT_MS / 1000, unit: 's: every frame before the rest onset, warm-up included', source: 'rules.md revision 2, B2 scoring' },
     { name: 'rest head pitch', value: C.restHeadDeg, unit: 'deg nose-down above the baseline mean, rest mean, at least', source: 'half of architecture 4f rest head pitch +3' },
     { name: 'rest torso-lower pitch', value: C.restTorsoDeg, unit: 'deg nose-down above the baseline mean, rest mean, at least', source: 'half of architecture 4f rest torso lower +3' },
@@ -50,7 +55,7 @@ export function restConstants(bands: MotionBandsFile): readonly ReportConstant[]
     ...Object.entries(POP_CONSTANTS).map(([name, c]) => ({ name: `pop ${name}`, ...c })),
     ...ARMS.map(id => ({ name: id, value: fixed(bands.classes.idle?.metrics[id]?.hi ?? null, 2), unit: 'per minute, at most, over the wake span', source: 'bands-v3 idle hi (plan R3b)' })),
     { name: 'doze gaze shift', value: C.gazeShiftDeg, unit: 'deg: a gaze-shift marker or a head-from-chest yaw change this large inside the doze fails', source: 'the gaze-shift bar, gaze-order.ts CRITERION_DEG; lead decision "no gaze shift while dozing" (4f)' },
-    { name: 'doze gaze start', value: C.gazeRamp, unit: 's after the away cue (the 4f entry ramp) from which the head yaw range is taken', source: 'rules.md revision 4, Y4 (the third review\'s scored rule)' },
+    { name: 'doze gaze start', value: C.gazeRamp, unit: 's after the sleep onset (the 4f entry ramp) from which the head yaw range is taken', source: 'rules.md revision 4, Y4, anchored at the onset (unit M2 rules section 4)' },
     { name: 'reasons', value: `${C.restReason}, ${C.dozeReason}`, unit: 'stance reasons', source: 'plan unit A (M/stance.ts)' },
   ]
 }
@@ -71,9 +76,10 @@ function span(input: DecodedMotionTrace, from: number, to: number): DecodedMotio
 }
 
 export interface RestDetail {
-  readonly cues: { readonly idle: number, readonly away: number, readonly wake: number, readonly onset: number }
+  readonly cues: { readonly idle: number, readonly away: number, readonly wake: number, readonly onset: number, readonly sleep: number | null }
   readonly restShare: number
-  readonly dozeShare: number
+  readonly dozeShare: number | null
+  readonly breaks: readonly string[]
   readonly posture: { readonly head: number, readonly torso: number } | null
   readonly pelvisDrop: number | null
   readonly dozeHeadP90: number | null
@@ -86,9 +92,11 @@ export interface RestDetail {
 }
 
 /**
- * C004 (plan R3, revision 2): the director reports the fallback, the bones show the 4f rest posture and doze pelvis drop,
- * she returns to standing after the wake without a snap, and the stance reasons name the fallback. The doze head clause
- * has no clean rule yet and is not judged, so no run passes until it has one.
+ * C004 (plan R3; unit M2 rules section 4): the run names the sleepy QA drive; the scheduler's sleep onset comes within
+ * the designed delay after the away cue; the body rests before the away cue and dozes from the onset without a break;
+ * the bones show the 4f rest posture and doze pelvis drop; she returns to standing after the wake without a snap; and the
+ * stance reasons name the fallback. The doze head clause has no clean rule yet and is not judged, so no run passes until
+ * it has one.
  */
 export function restReport(run: LoadedRun, bands: MotionBandsFile): CaseReport<RestDetail> {
   const { p, input } = run
@@ -116,13 +124,27 @@ export function restReport(run: LoadedRun, bands: MotionBandsFile): CaseReport<R
     throw new ReportUsageError(`${run.dir}: no scored frame before the rest onset to set the baseline`)
 
   const restAt = restStates(run)
+  const sleeps = idleSpans(run).filter(span => span.kind === 'sleep')
+  const asleep = sleeps.find(span => span.start >= away)
+  const sleep = asleep?.start ?? null
   const reasonAt = (t: number) => stance.filter(m => m.t <= t).at(-1)?.parts.join(':') ?? null
   const frames = (from: number, to: number) => p.times.flatMap((t, i) => t >= from && t < to ? [i] : [])
   const idleFrames = frames(onset, away)
-  const awayFrames = frames(away, wake)
+  const dozeSpan = sleep === null ? [] : frames(sleep, wake)
   const share = (list: readonly number[], state: BodyRest) => list.length ? list.filter(i => restAt(p.times[i]) === state).length / list.length : 0
   const restShare = share(idleFrames, 'rest')
-  const dozeShare = share(awayFrames, 'doze')
+  const dozeShare = sleep === null ? null : share(dozeSpan, 'doze')
+  // A break: the scheduler ends that sleep or starts another before the wake cue, or the body leaves doze after entering it.
+  const breaks: string[] = []
+  if (asleep && sleep !== null) {
+    if (asleep.end !== null && asleep.end < wake)
+      breaks.push(`the scheduler's sleep ended at ${asleep.end.toFixed(3)} s`)
+    breaks.push(...sleeps.filter(span => span.start > sleep && span.start < wake).map(span => `the scheduler started another sleep at ${span.start.toFixed(3)} s`))
+    const dozed = dozeSpan.findIndex(i => restAt(p.times[i]) === 'doze')
+    const left = dozed < 0 ? undefined : dozeSpan.slice(dozed).find(i => restAt(p.times[i]) !== 'doze')
+    if (left !== undefined)
+      breaks.push(`the body left doze at ${p.times[left].toFixed(3)} s`)
+  }
 
   // Posture on every raw frame, warm-up included: nose-down pitch of the head and the lowest torso link, hips height in L.
   const pose = new TracePose(input)
@@ -144,7 +166,7 @@ export function restReport(run: LoadedRun, bands: MotionBandsFile): CaseReport<R
   const baselines = { head: mean(baselineFrames.map(signals.head)), torso: mean(baselineFrames.map(signals.torso)), hips: mean(baselineFrames.map(signals.hips)) }
   const baseline = (signal: keyof typeof signals) => baselines[signal]
   const restFrames = raw(onset, away, 'rest')
-  const dozeFrames = raw(away, wake, 'doze')
+  const dozeFrames = sleep === null ? [] : raw(sleep, wake, 'doze')
   const posture = restFrames.length
     ? { head: mean(restFrames.map(signals.head)) - baseline('head'), torso: mean(restFrames.map(signals.torso)) - baseline('torso') }
     : null
@@ -160,7 +182,7 @@ export function restReport(run: LoadedRun, bands: MotionBandsFile): CaseReport<R
     ? {
         markers: markers(run, 'gaze-shift:').filter(m => m.t >= pose.time(dozeFrames[0]) && m.t <= pose.time(dozeFrames[dozeFrames.length - 1]) && Number.parseFloat(m.parts[0]) >= C.gazeShiftDeg).length,
         yawRange: (() => {
-          const yaws = dozeFrames.filter(frame => pose.time(frame) >= away + C.gazeRamp).map(headYaw)
+          const yaws = dozeFrames.filter(frame => pose.time(frame) >= (sleep ?? away) + C.gazeRamp).map(headYaw)
           return yaws.length ? Math.max(...yaws) - Math.min(...yaws) : 0
         })(),
       }
@@ -192,9 +214,22 @@ export function restReport(run: LoadedRun, bands: MotionBandsFile): CaseReport<R
   const reasonsSeen = [...new Set(stance.map(m => m.parts.join(':')))]
   const restPostureRule = `over the rest frames, mean head pitch >= baseline + ${C.restHeadDeg} deg and mean torso-lower pitch >= baseline + ${C.restTorsoDeg} deg`
   const pelvisRule = `over the doze frames, mean hips height >= ${C.pelvisDrop} L below the baseline mean`
-  const gazeRule = `over the doze frames, no gaze-shift marker of ${C.gazeShiftDeg} deg or more and a head-from-chest yaw range under ${C.gazeShiftDeg} deg from ${C.gazeRamp} s after the away cue`
+  const gazeRule = `over the doze frames from the sleep onset, no gaze-shift marker of ${C.gazeShiftDeg} deg or more and a head-from-chest yaw range under ${C.gazeShiftDeg} deg from ${C.gazeRamp} s after the onset`
+  const onsetRule = `the scheduler's first sleep start at or after the away cue comes no later than ${C.settleSeconds} s (+ ${C.settleSlack.toFixed(4)} s) after it`
+  const dozeShareRule = `the body's rest state is doze on >= ${C.share * 100} % of [sleep onset, wake)`
+  const unbrokenRule = 'over [sleep onset, wake): the scheduler neither ends that sleep nor starts another before the wake cue, and the body\'s rest state, once doze, does not leave doze'
+  const reasonsRule = `stance reason ${C.restReason} in [onset, away) and ${C.dozeReason} in [sleep onset, wake)`
+  const noSleep = 'no sleep onset after the away cue'
   const requirements: CaseRequirement[] = [
-    judged('fallback-active', `rest on >= ${C.share * 100} % of [onset, away) and doze on >= ${C.share * 100} % of [away, wake) (the director's report)`, `rest ${(restShare * 100).toFixed(1)} %, doze ${(dozeShare * 100).toFixed(1)} %`, restShare >= C.share && dozeShare >= C.share),
+    driveRequirement(run, QA_DRIVE_AWAY),
+    judged('rest-share', `rest on >= ${C.share * 100} % of [onset, away) (the director's report)`, `rest ${(restShare * 100).toFixed(1)} %`, restShare >= C.share),
+    judged('sleep-onset', onsetRule, sleep === null ? noSleep : `${(sleep - away).toFixed(3)} s after the away cue`, sleep !== null && sleep - away <= C.settleSeconds + C.settleSlack),
+    dozeShare === null
+      ? notExercised('doze-share', dozeShareRule, noSleep)
+      : judged('doze-share', dozeShareRule, `doze ${(dozeShare * 100).toFixed(1)} %`, dozeShare >= C.share),
+    sleep === null
+      ? notExercised('doze-unbroken', unbrokenRule, noSleep)
+      : judged('doze-unbroken', unbrokenRule, breaks.join('; ') || 'no break', breaks.length === 0),
     posture === null
       ? notExercised('rest-posture', restPostureRule, 'no rest frame')
       : judged('rest-posture', restPostureRule, `head ${posture.head.toFixed(2)} deg, torso lower ${posture.torso.toFixed(2)} deg above the baseline`, posture.head >= C.restHeadDeg && posture.torso >= C.restTorsoDeg),
@@ -211,12 +246,15 @@ export function restReport(run: LoadedRun, bands: MotionBandsFile): CaseReport<R
     !woke || !stood
       ? notExercised('wake-smooth', wakeRule, !woke ? 'rest state none at the listening cue: no return to standing' : 'she did not return to standing')
       : judged('wake-smooth', wakeRule, `${pops.length} pops; ${spikeRates.map(r => `${r.id} ${r.status === 'ok' ? fixed(r.value, 2) : `not measured (${r.status})`}`).join(', ')}`, pops.length === 0 && smoothArms),
-    judged('reasons', `stance reason ${C.restReason} in [onset, away) and ${C.dozeReason} in [away, wake)`, `reasons seen: ${reasonsSeen.join(', ')}`, reasonIn(idleFrames, C.restReason) && reasonIn(awayFrames, C.dozeReason)),
+    sleep === null
+      ? notExercised('reasons', reasonsRule, noSleep)
+      : judged('reasons', reasonsRule, `reasons seen: ${reasonsSeen.join(', ')}`, reasonIn(idleFrames, C.restReason) && reasonIn(dozeSpan, C.dozeReason)),
   ]
   return caseReport('rest', REST_VERSION, [run.dir], restConstants(bands), requirements, {
-    cues: { idle, away, wake, onset },
+    cues: { idle, away, wake, onset, sleep },
     restShare,
     dozeShare,
+    breaks,
     posture,
     pelvisDrop,
     dozeHeadP90,
@@ -225,19 +263,20 @@ export function restReport(run: LoadedRun, bands: MotionBandsFile): CaseReport<R
     stateAtWake,
     pops: pops.map(pop => ({ t: pop.t, bone: pop.bone, size: pop.size })),
     spikeRates: spikeRates.map(({ id, status, value }) => ({ id, status, value })),
-    markers: trace.events.flatMap(e => e.kind === 'marker' && (e.label.startsWith('stance:') || e.label.startsWith('rest:')) ? [`${e.t.toFixed(3)} ${e.label}`] : []),
+    markers: trace.events.flatMap(e => e.kind === 'marker' && (e.label.startsWith('stance:') || e.label.startsWith('rest:') || e.label.startsWith('idle:')) ? [`${e.t.toFixed(3)} ${e.label}`] : []),
   })
 }
 
 export function formatRest(report: CaseReport<RestDetail>): string {
   const d = report.detail
   return formatCaseReport(report, [
-    `cues (trace s): idle ${d.cues.idle.toFixed(3)}, rest onset ${d.cues.onset.toFixed(3)}, away ${d.cues.away.toFixed(3)}, listening ${d.cues.wake.toFixed(3)}`,
+    `cues (trace s): idle ${d.cues.idle.toFixed(3)}, rest onset ${d.cues.onset.toFixed(3)}, away ${d.cues.away.toFixed(3)}, sleep onset ${fixed(d.cues.sleep)}, listening ${d.cues.wake.toFixed(3)}`,
+    `doze breaks: ${d.breaks.join('; ') || 'none'}`,
     `rest posture above the baseline (deg): ${d.posture ? `head ${d.posture.head.toFixed(2)}, torso lower ${d.posture.torso.toFixed(2)}` : 'no rest frame'}; doze pelvis drop ${fixed(d.pelvisDrop, 4)} L; doze head P90 ${fixed(d.dozeHeadP90, 2)} deg (printed, not judged)`,
     `after the cue (wake + ${C.returnFrom}..${C.returnTo} s): ${d.returned.map(x => `${x.signal} ${x.value.toFixed(4)} in [${x.lo.toFixed(4)}, ${x.hi.toFixed(4)}]`).join(', ')}`,
     `rest state at the listening cue: ${d.stateAtWake}`,
     `wake pops: ${d.pops.map(pop => `${pop.t.toFixed(3)} ${pop.bone} ${pop.size.toFixed(1)} deg/s`).join(', ') || 'none'}`,
-    'stance and rest markers:',
+    'stance, rest and idle markers:',
     ...d.markers.map(line => `  ${line}`),
   ])
 }
