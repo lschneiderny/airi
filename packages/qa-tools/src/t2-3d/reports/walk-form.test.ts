@@ -30,6 +30,8 @@ interface Walk {
   readonly turns?: readonly (readonly [number, number, number])[]
   /** The product's mode channel reads `turning` during the turns; false leaves it at walking, as a mislabelled turn. */
   readonly turnsInModeChannel?: boolean
+  /** The pelvis twists this many degrees each way at the stride frequency while walking, carried into the trace's root yaw. */
+  readonly twistDeg?: number
 }
 
 /**
@@ -49,6 +51,7 @@ function walk(options: Walk = {}) {
     const [heel, toe] = roll[side]
     return t < walkSeconds ? (heel + toe) / 2 + (heel - toe) / 2 * s : 0
   }
+  const twist = (t: number) => t < walkSeconds ? (options.twistDeg ?? 0) * DEG * Math.sin(phase(t)) : 0
   const leadAt = (t: number) => {
     const turn = turns.findIndex(([start]) => t >= start - 0.5 && t < start + 1.5)
     return turn < 0 ? 0 : (options.headLead ?? turns.map(() => 0.15))[turn]
@@ -56,6 +59,8 @@ function walk(options: Walk = {}) {
   const world = (bone: MotionTraceBone, t: number): Quat => {
     const yaw = rotY(turnYaw(t))
     const side = bone.startsWith('left') ? 1 : -1
+    if (bone === 'hips')
+      return rotY(turnYaw(t) + twist(t))
     if (bone === 'head')
       return rotY(turnYaw(t + leadAt(t)))
     if (bone.endsWith('UpperLeg') || bone.endsWith('LowerLeg'))
@@ -74,7 +79,7 @@ function walk(options: Walk = {}) {
     scenario: options.scenario ?? 'walk',
     world,
     position: t => [0, 0, Math.min(t, walkSeconds)],
-    yaw: turnYaw,
+    yaw: t => turnYaw(t) + twist(t),
     mode,
   })
   input.trace.rig.restOffsets = input.trace.rig.bones.map(bone => LIMBS.test(bone) ? [0, -0.1, 0] : [0, 0.1, 0])
@@ -96,7 +101,7 @@ describe('walk-form report', () => {
     const report = walkFormReport(walk())
     expect(statuses(report)).toEqual({ ...SCENARIO_PASS, 'roll-every-step': 'PASS', 'skate': 'PASS', 'wrist-lags': 'PASS' })
     expect(report.verdict).toBe('PASS')
-    expect(report.detail.turns.map(turn => Math.round(turn.rootDeg))).toEqual([90, -90, 90, -90, 90, -90, 90, 180])
+    expect(report.detail.turns.map(turn => Math.round(turn.rootDeg / 90))).toEqual([1, -1, 1, -1, 1, -1, 1, 2])
     expect(report.detail.turns.every(turn => (turn.leadMs ?? 0) > 100)).toBe(true)
   })
 
@@ -126,6 +131,20 @@ describe('walk-form report', () => {
     const report = walkFormReport(walk({ turnsInModeChannel: false }))
     expect(statuses(report)).toMatchObject(SCENARIO_PASS)
     expect(report.detail.turns).toHaveLength(8)
+  })
+
+  it('t1, t3: finds the eight turns in the travel heading under a 6 or 16 degree pelvis twist per stride', () => {
+    for (const twistDeg of [6, 16]) {
+      const report = walkFormReport(walk({ twistDeg }))
+      expect(statuses(report)).toMatchObject(SCENARIO_PASS)
+      expect(report.detail.turns.map(turn => Math.round(turn.rootDeg / 90))).toEqual([1, -1, 1, -1, 1, -1, 1, 2])
+    }
+  })
+
+  it('t2: reads seven turns under a 6 degree pelvis twist as not exercised: the twist adds no turn', () => {
+    const report = walkFormReport(walk({ twistDeg: 6, turns: TURNS.slice(0, 7) }))
+    expect(statuses(report)).toMatchObject({ 'scenario-turns': 'NOT-EXERCISED', 'scenario-turn-around': 'NOT-EXERCISED' })
+    expect(report.detail.turns).toHaveLength(7)
   })
 
   it('judges the contact-point skate when the summary has it, and the ankle skate otherwise', () => {

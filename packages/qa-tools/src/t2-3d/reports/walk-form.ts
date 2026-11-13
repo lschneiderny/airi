@@ -4,8 +4,6 @@ import type { Vec3 } from '../metrics'
 import type { CaseReport, CaseRequirement } from './case-report'
 import type { LoadedRun, ReportConstant } from './report'
 
-import { MOTION_TRACE_CHANNELS } from '@proj-airi/motion-driver-humanoid/motion-trace'
-
 import { stageGateThresholds } from '../../stage/gates'
 import { butterworth } from '../metrics/filter'
 import { jointPositions } from '../metrics/gait'
@@ -14,7 +12,7 @@ import { peaks, runs } from '../metrics/segments'
 import { caseReport, formatCaseReport, judged, notExercised } from './case-report'
 import { fixed, ReportUsageError, requireSummary } from './report'
 
-export const WALK_FORM_VERSION = 2
+export const WALK_FORM_VERSION = 3
 
 const C = {
   walkingSpeed: 0.2,
@@ -47,10 +45,10 @@ export const WALK_FORM_CONSTANTS: readonly ReportConstant[] = [
   { name: 'windows', value: C.minWindows, unit: 'walk windows, at least', source: 'gate character window minimum, metrics/result.ts' },
   { name: 'turn window', value: `-${C.turnBefore}..+${C.turnAfter}`, unit: 's around each turning span', source: 'plan R2d' },
   { name: 'head lead', value: C.minLeadMs, unit: 'ms, printed per turn, not judged: inside the noise of a product with no designed lead', source: 'plan R2d; rules.md revision 2, B3' },
-  { name: 'turn', value: C.turnRate, unit: 'rad/s, root yaw rate above which a frame turns', source: 'gate turn peaks, metrics/gait.ts; rules.md revision 2, B3 scoring' },
+  { name: 'turn', value: C.turnRate, unit: 'rad/s, travel heading rate above which a frame turns; the travel heading is the root yaw low-passed at 0.5 Hz, without the pelvis twist of each stride', source: 'gate turn peaks on the same series, metrics/gait.ts; goal 4 unit M2 rules section 5' },
   { name: 'walking span', value: C.walkingSpan, unit: 's of continuous walking, at least (W1)', source: 'three 10 s gate windows, metrics/prepare.ts' },
-  { name: 'turns', value: C.minTurns, unit: 'turns in the root yaw, at least (W3)', source: 'gait.headLeadMs episode minimum (O5)' },
-  { name: 'turn-around', value: C.turnAround, unit: 'deg of root yaw in one turn, more than (W4)', source: 'C002 "a turn-around"' },
+  { name: 'turns', value: C.minTurns, unit: 'turns in the travel heading, at least (W3)', source: 'gait.headLeadMs episode minimum (O5)' },
+  { name: 'turn-around', value: C.turnAround, unit: 'deg of travel heading in one turn, more than (W4)', source: 'C002 "a turn-around"' },
 ]
 
 const SIDES = ['left', 'right'] as const
@@ -87,22 +85,6 @@ function forwardYaw(q: readonly [number, number, number, number]): number {
   return Math.atan2(f[0], f[2])
 }
 
-/** The unfiltered root yaw at each prepared sample, interpolated on the trace's time channel as prepareTrace does. */
-function rawRootYaw(run: LoadedRun): number[] {
-  const { input, p } = run
-  const stride = MOTION_TRACE_CHANNELS.length
-  const times = Array.from({ length: input.trace.frames }, (_, i) => input.channels[i * stride])
-  const yaw = unwrap(Array.from({ length: input.trace.frames }, (_, i) => input.root[i * 4 + 3]))
-  let left = 0
-  return p.times.map((t) => {
-    while (left + 1 < times.length - 1 && times[left + 1] <= t)
-      left++
-    const right = Math.min(left + 1, times.length - 1)
-    const u = right === left || times[right] === times[left] ? 0 : Math.min(1, Math.max(0, (t - times[left]) / (times[right] - times[left])))
-    return yaw[left] + (yaw[right] - yaw[left]) * u
-  })
-}
-
 /** The first sample in [from, to] at which `y` has covered half its change over that span; null without a change. */
 function halfway(y: readonly number[], from: number, to: number): number | null {
   const change = y[to] - y[from]
@@ -129,8 +111,9 @@ export interface WalkFormDetail {
 
 /**
  * C002 and C003 (plan R2, revision 2): the scenario's walking span, strides, turns and turn-around (W1 to W4, read as not
- * exercised when missing), roll on every step, contact skate and forearm lag; turns come from the root yaw, and each
- * turn's head lead is printed, not judged.
+ * exercised when missing), roll on every step, contact skate and forearm lag; turns come from the travel heading (the root
+ * yaw low-passed at 0.5 Hz, so the pelvis twist of each stride is not a turn), and each turn's head lead is printed, not
+ * judged.
  */
 export function walkFormReport(run: LoadedRun): CaseReport<WalkFormDetail> {
   const { p, input } = run
@@ -212,20 +195,20 @@ export function walkFormReport(run: LoadedRun): CaseReport<WalkFormDetail> {
   const sideResults = SIDES.map(side => ({ side, value: sideLine(side) }))
   const lagRule = `per side, median over walk windows of the forearm swing lag behind the upper arm >= ${C.minLagMs} ms at the lag of maximum signed r, median r >= ${C.minR}`
 
-  // (d) Turns from the root yaw itself (not the product's mode channel); the head lead is printed for each.
-  const rootYaw = rawRootYaw(run)
+  // (d) Turns from the travel heading (not the product's mode channel); the head lead is printed for each.
+  const travel = p.yaw
   const headYaw = unwrap(need('head').q.map(forwardYaw))
-  const turning = runs(rootYaw.map((yaw, i) => i > 0 && Math.abs(yaw - rootYaw[i - 1]) * HZ > C.turnRate))
+  const turning = runs(travel.map((yaw, i) => i > 0 && Math.abs(yaw - travel[i - 1]) * HZ > C.turnRate))
   const last = p.times.length - 1
   const turns = turning.map((span) => {
     const from = Math.max(0, span.start - Math.round(C.turnBefore * HZ))
     const to = Math.min(last, span.end - 1 + Math.round(C.turnAfter * HZ))
-    const root = halfway(rootYaw, from, to)
+    const root = halfway(travel, from, to)
     const head = halfway(headYaw, from, to)
     return {
       start: p.times[span.start],
       end: p.times[span.end - 1],
-      rootDeg: (rootYaw[span.end - 1] - rootYaw[Math.max(0, span.start - 1)]) * DEG,
+      rootDeg: (travel[span.end - 1] - travel[Math.max(0, span.start - 1)]) * DEG,
       headDeg: (headYaw[to] - headYaw[from]) * DEG,
       leadMs: root === null || head === null ? null : (root - head) * 1000 / HZ,
     }
@@ -244,7 +227,7 @@ export function walkFormReport(run: LoadedRun): CaseReport<WalkFormDetail> {
   const requirements: CaseRequirement[] = [
     scenario('scenario-walking-span', `one continuous walking span of at least ${C.walkingSpan} s (W1)`, `longest ${longestWalk.toFixed(2)} s`, longestWalk >= C.walkingSpan),
     scenario('scenario-strides', `at least ${C.minStrides} strides on each foot inside walking spans (W2)`, `${strideCounts.join(' and ')} strides`, fewestStrides >= C.minStrides),
-    scenario('scenario-turns', `at least ${C.minTurns} turns in the root yaw (W3)`, `${turns.length} turns`, turns.length >= C.minTurns),
+    scenario('scenario-turns', `at least ${C.minTurns} turns in the travel heading (W3)`, `${turns.length} turns`, turns.length >= C.minTurns),
     scenario('scenario-turn-around', `one turn of more than ${C.turnAround} deg (W4)`, `largest ${turns.length ? Math.max(...turns.map(turn => Math.abs(turn.rootDeg))).toFixed(1) : '-'} deg`, turnAround),
     strides < C.minStrides
       ? notExercised('roll-every-step', rollRule, `${strides} strides on the busier foot, fewer than ${C.minStrides}`)
@@ -277,7 +260,7 @@ export function formatWalkForm(report: CaseReport<WalkFormDetail>): string {
     `heel-strike pitch: ${range(d.heel)}`,
     `toe-off pitch: ${range(d.toe)}`,
     ...(['left', 'right'] as const).map(side => `${side} forearm lag per window: ${d.lags[side].map(l => `${l.start.toFixed(1)} s ${l.lagMs.toFixed(1)} ms r ${l.r.toFixed(3)}`).join('; ') || 'none'}`),
-    `turns in the root yaw (${d.turns.length}); head lead printed, not judged (a ${C.minLeadMs} ms bar sits inside the 0 to 100 ms noise of a product with no designed lead): ${d.turns.filter(turn => turn.leadMs !== null && turn.leadMs >= C.minLeadMs).length} of ${d.turns.length} at least ${C.minLeadMs} ms`,
+    `turns in the travel heading (${d.turns.length}); head lead printed, not judged (a ${C.minLeadMs} ms bar sits inside the 0 to 100 ms noise of a product with no designed lead): ${d.turns.filter(turn => turn.leadMs !== null && turn.leadMs >= C.minLeadMs).length} of ${d.turns.length} at least ${C.minLeadMs} ms`,
     ...d.turns.map(turn => `  ${turn.start.toFixed(3)}-${turn.end.toFixed(3)} s\troot ${turn.rootDeg.toFixed(1)} deg\thead ${turn.headDeg.toFixed(1)} deg\tlead ${turn.leadMs === null ? 'no head turn' : `${turn.leadMs.toFixed(1)} ms`}`),
     `counter-rotation (informative, expected <= -0.3): corr(pelvis twist, chest-on-pelvis yaw) ${fixed(d.counterCorrelation)}`,
   ])
