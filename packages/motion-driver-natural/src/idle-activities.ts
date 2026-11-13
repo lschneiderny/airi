@@ -196,6 +196,12 @@ const cooldowns: Record<DrawnIdleActivityKind, number> = { 'stretch': 300, 'yawn
 
 const drawnKinds = Object.keys(cooldowns) as DrawnIdleActivityKind[]
 
+/**
+ * Seconds over which a kind a body host's character showed regains its full odds, linearly: about 60 s per act (45 s
+ * mean gap, 10 s mean rest, a 5 s act) times the five other kinds of her settled pool, so each can come first.
+ */
+const recoverySeconds = 300
+
 function clamp01(value: number) {
   return Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0))
 }
@@ -269,8 +275,10 @@ const SETTLED_OUT = ['stretch', 'peer', 'shoulder-roll', 'shift-stance', 'clasp-
  * draw sees the same pool as before they existed. While a body host's character is `settled` (resting, or sitting on
  * a clip), nothing that needs her arms, her shoulders or a standing posture is drawn (architecture 4f restricts the
  * rest's acts), and a stretch that would follow a long sleep becomes a yawn; `settled` is never true without `body`.
+ * With `body`, a kind started `since` seconds ago weighs `since / 300` of its odds until 300 s have passed, so she shows
+ * most of what she can do before she repeats herself; a head-only host ignores `since`.
  */
-export function idleActivityWeights(drive: NaturalIdleDrive, context: { watching: boolean, settled?: boolean }): Record<DrawnIdleActivityKind, number> {
+export function idleActivityWeights(drive: NaturalIdleDrive, context: { watching: boolean, settled?: boolean, since?: Partial<Record<DrawnIdleActivityKind, number>> }): Record<DrawnIdleActivityKind, number> {
   const tired = clamp01(Math.max(drive.sleepiness, -finite(drive.energy)))
   const lively = clamp01(finite(drive.energy))
   const warm = clamp01(0.5 + finite(drive.valence))
@@ -299,6 +307,13 @@ export function idleActivityWeights(drive: NaturalIdleDrive, context: { watching
   if (context.settled) {
     for (const kind of SETTLED_OUT)
       weights[kind] = 0
+  }
+  if (body && context.since) {
+    for (const kind of drawnKinds) {
+      const seconds = context.since[kind]
+      if (seconds !== undefined)
+        weights[kind] *= Math.min(1, Math.max(0, seconds) / recoverySeconds)
+    }
   }
   return weights
 }
@@ -568,7 +583,13 @@ export class NaturalIdleActivities {
   }
 
   private pick(drive: NaturalIdleDrive, input: IdleStepInput, at: number): DrawnIdleActivityKind | null {
-    const weights = idleActivityWeights(drive, { watching: input.mode === 'watching', settled: this.settled })
+    const since: Partial<Record<DrawnIdleActivityKind, number>> = {}
+    for (const kind of drawnKinds) {
+      const last = this.lastStart[kind]
+      if (last !== undefined)
+        since[kind] = at - last
+    }
+    const weights = idleActivityWeights(drive, { watching: input.mode === 'watching', settled: this.settled, since })
     const eligible = drawnKinds.filter((kind) => {
       const last = this.lastStart[kind]
       return weights[kind] > 0 && (last === undefined || at - last >= cooldowns[kind])

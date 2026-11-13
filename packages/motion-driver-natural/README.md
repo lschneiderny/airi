@@ -123,6 +123,11 @@ const { seq, behaviour } = motion.idleState
   sigh and the yawn still play, as architecture 4f allows; so do the head and
   gaze kinds (`look-around`, `check-in`, `zone-out`, `nod-off`, `sway`), a
   recorded deviation from 4f's list.
+- With `body`, the draw prefers kinds she has not shown recently: a kind
+  started `t` seconds ago weighs `t / 300` of its odds until 300 s have
+  passed. 300 s is about five acts of 60 s each, so each of the other kinds
+  of her settled pool can come first. A ten-minute idle then shows more of
+  what she can do. Without `body` the odds are unchanged.
 - `bodyIntent().idle` carries the latest behaviour as an
   `IdleBehaviourRecord` (its timing, side and drawn parameters, kept after it
   ends) and `settled`, so a body host plays its own form of each behaviour. The

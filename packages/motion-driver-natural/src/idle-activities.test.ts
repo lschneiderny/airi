@@ -87,6 +87,17 @@ describe('idle activity odds', () => {
     expect(weights.yawn).toBeGreaterThan(0)
   })
 
+  it('weighs a kind she showed recently less on a body host, back to its full weight after 300 s', () => {
+    const body = { ...neutralDrive, body: true }
+    const fresh = idleActivityWeights(body, { watching: false })
+    const recent = idleActivityWeights(body, { watching: false, since: { 'look-around': 60 } })
+    expect(recent['look-around']).toBeCloseTo(fresh['look-around'] / 5)
+    expect(recent['check-in']).toBe(fresh['check-in'])
+    expect(idleActivityWeights(body, { watching: false, since: { 'look-around': 300 } })['look-around']).toBe(fresh['look-around'])
+    // A head-only host draws as it did before.
+    expect(idleActivityWeights(neutralDrive, { watching: false, since: { 'look-around': 60 } })).toEqual(idleActivityWeights(neutralDrive, { watching: false }))
+  })
+
   it('sways only while music plays', () => {
     expect(idleActivityWeights(neutralDrive, { watching: false }).sway).toBe(0)
     expect(idleActivityWeights({ ...neutralDrive, music: true }, { watching: false }).sway).toBeGreaterThan(0)
@@ -171,6 +182,52 @@ describe('idle activity layer', () => {
       }
       expect(seen, `seed ${seed}`).toEqual(base[seed])
     }
+  })
+
+  it('draws as before without a body for seeds recorded at the base of the recency rule', () => {
+    // Recorded at cd101c9fe with this loop (E/g4/i/scratch/base-sequence.ts): every start in 900 s.
+    const base: Record<number, string[]> = {
+      3: ['stretch@57.317', 'check-in@133.908', 'look-around@180.900', 'check-in@209.433', 'zone-out@247.192', 'look-around@275.983', 'check-in@299.975', 'look-around@347.658', 'zone-out@410.558', 'look-around@517.550', 'yawn@573.017', 'check-in@632.767', 'look-around@654.908', 'stretch@720.850', 'check-in@756.775', 'look-around@772.483', 'check-in@809.283', 'look-around@824.708'],
+      23: ['stretch@4.375', 'look-around@35.642', 'check-in@121.942', 'zone-out@266.450', 'look-around@306.275', 'stretch@340.208', 'look-around@399.983', 'check-in@429.875', 'look-around@495.242', 'peer@672.658', 'look-around@798.275'],
+      42: ['look-around@41.350', 'peer@63.425', 'stretch@104.950', 'look-around@161.467', 'peer@229.142', 'check-in@251.333', 'look-around@274.808', 'check-in@307.917', 'look-around@424.942', 'yawn@598.600', 'look-around@626.967', 'zone-out@738.108', 'check-in@813.550', 'look-around@826.475', 'peer@871.892'],
+      101: ['peer@6.558', 'stretch@44.958', 'look-around@76.492', 'check-in@96.108', 'look-around@115.542', 'peer@182.250', 'zone-out@256.125', 'look-around@320.558', 'zone-out@342.400', 'look-around@391.175', 'zone-out@513.800', 'look-around@548.917', 'check-in@589.850', 'look-around@619.742', 'yawn@667.717', 'look-around@759.175', 'check-in@802.692', 'look-around@845.500', 'check-in@882.450'],
+    }
+    for (const seed of [3, 23, 42, 101]) {
+      const idle = new NaturalIdleActivities(createRandomStream(seed))
+      const gaze = new NaturalGazeLayer(createRandomStream(4))
+      idle.setDrive(neutralDrive)
+      const seen: string[] = []
+      let seq = 0
+      for (let at = 0; at < 900; at += dt) {
+        idle.step(at, dt, idleInput, gaze)
+        gaze.step(dt)
+        if (idle.seq !== seq) {
+          seq = idle.seq
+          seen.push(`${idle.behaviour}@${at.toFixed(3)}`)
+        }
+      }
+      expect(seen, `seed ${seed}`).toEqual(base[seed])
+    }
+  })
+
+  it('on a body host draws a kind she has just shown far less often than its weight alone gives', () => {
+    // The same seeds twice: she shows a check-in, or a peer in its place, then a zone-out; the next drawn kind counts.
+    const nextAfter = (shown: IdleBehaviourKind) => {
+      let checkIns = 0
+      for (let seed = 1; seed <= 300; seed++) {
+        const { idle, gaze, run, now } = layer(seed, { ...neutralDrive, body: true })
+        idle.play(shown)
+        idle.step(now(), dt, idleInput, gaze)
+        idle.play('zone-out')
+        run(now() + 2 * dt)
+        const zoned = idle.seq
+        run(now() + 600, idleInput, () => idle.seq > zoned)
+        if (idle.behaviour === 'check-in')
+          checkIns++
+      }
+      return checkIns
+    }
+    expect(nextAfter('check-in')).toBeLessThan(0.5 * nextAfter('peer'))
   })
 
   it('settles in after two minutes of idle only when the host performs a body, and gets up when the mode changes', () => {
