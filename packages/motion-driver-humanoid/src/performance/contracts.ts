@@ -244,6 +244,19 @@ export interface BodyActFeedback {
   readonly state: 'playing' | 'finished' | 'cancelled'
 }
 
+/**
+ * An in-place re-plant of one foot (architecture 4e act 3), issued on the tick it starts: the foot lifts `lift` model
+ * units at mid-step and lands `yaw` radians from its standing angle, the facing the turn steps keep. `startTime` is
+ * performer seconds, the turn steps' clock.
+ */
+export interface BodyFootStep {
+  readonly foot: BodySide
+  readonly startTime: number
+  readonly duration: number
+  readonly yaw: number
+  readonly lift: number
+}
+
 /** Borrowed until the next step/reset; copy channels for display interpolation. */
 export interface BodyPerformanceFrame {
   readonly tick: number
@@ -259,7 +272,7 @@ export interface BodyPerformanceFrame {
   readonly turning: boolean
   readonly turnStarted: boolean
   readonly turnSteps: readonly TurnStep[]
-  readonly footSteps: readonly TurnStep[]
+  readonly footSteps: readonly BodyFootStep[]
   readonly lidClose: number
   readonly mouthOpen: number
   readonly act: BodyActFeedback | null

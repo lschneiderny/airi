@@ -1,3 +1,4 @@
+import type { BodyFootStep } from '@proj-airi/motion-driver-humanoid/performance'
 import type { Bone } from 'three'
 
 import { Quaternion, Vector3 } from 'three'
@@ -19,6 +20,7 @@ function plantedFeet(toes = true) {
     contactDuck: 1,
     disabled: false,
     turnSteps: [],
+    footSteps: [],
     now: 0,
     clips: new Map(),
     root: { x: 0, yaw: 0 },
@@ -44,6 +46,39 @@ function turnAbout(ankle: Bone, pivot: Vector3, angle: number, axis = new Vector
   ankle.quaternion.copy(parent.getWorldQuaternion(new Quaternion()).invert().multiply(rotation))
   ankle.updateWorldMatrix(true, true)
 }
+
+it('lifts a re-planted foot by its lift and lands it at its yaw from the standing angle, while the other foot stays put', () => {
+  const fixture = bodyFixture(0, Math.PI, { toes: true })
+  const feet = new MMDFootContact(new MMDBodyPose(fixture.mmd, fixture.rig))
+  fixture.pipeline.poseStages.length = 0
+  fixture.pipeline.surfaceStages.length = 0
+  const dt = 1 / 60
+  let now = 0
+  let footSteps: BodyFootStep[] = []
+  fixture.pipeline.poseStages.push({ id: 'foot-contact', run: context => feet.apply(context, { offset: new Vector3(), duck: 1, contactDuck: 1, disabled: false, turnSteps: [], footSteps, now, clips: new Map(), root: { x: 0, yaw: 0 }, gait: null }) })
+  const frames = (count: number) => {
+    for (let frame = 0; frame < count; frame++) {
+      fixture.pipeline.step(dt)
+      footSteps = []
+      now += dt
+    }
+  }
+  frames(60)
+  const before = feet.anchors()
+  const yaw = 6 * Math.PI / 180
+  footSteps = [{ foot: 'left', startTime: now, duration: 0.4, yaw, lift: 0.2 }]
+  frames(12)
+  // Halfway through the 0.4 s step the foot is at the top of its arc.
+  expect(feet.anchors().left.position.y - before.left.position.y).toBeCloseTo(0.2, 2)
+  frames(30)
+  const after = feet.anchors()
+  expect(after.left.yaw).toBeCloseTo(yaw, 9)
+  expect(after.left.position.y).toBeCloseTo(before.left.position.y, 9)
+  // It turns about the root, as a turn step does: the ankle moves 2 d sin(yaw / 2).
+  const d = Math.hypot(before.left.position.x, before.left.position.z)
+  expect(Math.hypot(after.left.position.x - before.left.position.x, after.left.position.z - before.left.position.z)).toBeCloseTo(2 * d * Math.sin(yaw / 2), 6)
+  expect(after.right).toEqual(before.right)
+})
 
 it('reads a heel-to-toe roll about the rig\'s heel, then its ball, as a still contact point under a moving ankle', () => {
   const { feet, ankle, heel, ball } = plantedFeet()

@@ -1,5 +1,5 @@
 import type { TurnStep } from '@proj-airi/motion-driver-humanoid/look-at'
-import type { BodyActFeedback, BodyActId, BodyCapabilities, BodyCueKind, BodyEmotion, BodyGestureForm, BodyGestureHand, BodyPerformanceFrame, BodyPerformanceInput, BodyReactionKind, BodyRest, BodyRigTraits, BodySide, PerformanceLayer } from '@proj-airi/motion-driver-humanoid/performance'
+import type { BodyActFeedback, BodyActId, BodyCapabilities, BodyCueKind, BodyEmotion, BodyFootStep, BodyGestureForm, BodyGestureHand, BodyPerformanceFrame, BodyPerformanceInput, BodyReactionKind, BodyRest, BodyRigTraits, BodySide, PerformanceLayer } from '@proj-airi/motion-driver-humanoid/performance'
 import type { HumanoidFingerBoneName } from '@proj-airi/motion-driver-humanoid/types'
 import type { Bone } from 'three'
 
@@ -77,6 +77,8 @@ export class MMDBodyPerformer {
   readonly capabilities: BodyCapabilities
   /** Turn steps the performer issued since `beginFrame`, for the foot stage. */
   readonly turnSteps: TurnStep[] = []
+  /** Foot re-plants the performer issued since `beginFrame`, for the foot stage. */
+  readonly footSteps: BodyFootStep[] = []
   private readonly core
   private readonly previous = new Float32Array(BODY_CHANNELS.length)
   private readonly current = new Float32Array(BODY_CHANNELS.length)
@@ -217,6 +219,7 @@ export class MMDBodyPerformer {
 
   beginFrame(): void {
     this.turnSteps.length = 0
+    this.footSteps.length = 0
     for (const group of Object.keys(this.writeDeviation) as MMDBodyWriteGroup[])
       this.writeDeviation[group] = 0
   }
@@ -284,6 +287,8 @@ export class MMDBodyPerformer {
     this.lid.current = frame.lidClose
     for (const step of frame.turnSteps)
       this.turnSteps.push(step)
+    for (const step of frame.footSteps)
+      this.footSteps.push(step)
     if (frame.diagnostics.gazeShifts > this.shifts) {
       // The core measures a shift from its gaze line before the tick to the new goal; the line excludes eye residue.
       this.lastShiftDeg = Math.hypot(wrap(input.gaze.yaw - this.line.yaw), input.gaze.pitch - this.line.pitch) * DEG
@@ -470,5 +475,6 @@ export class MMDBodyPerformer {
     this.gaze.previous.yaw = this.gaze.previous.pitch = this.gaze.current.yaw = this.gaze.current.pitch = 0
     this.lid.previous = this.lid.current = this.lid.value = 0
     this.turnSteps.length = 0
+    this.footSteps.length = 0
   }
 }

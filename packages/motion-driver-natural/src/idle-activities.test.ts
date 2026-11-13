@@ -63,14 +63,16 @@ describe('idle activity odds', () => {
   })
 
   it('draws the whole-body kinds only for a host that performs a body', () => {
-    const bodyKinds = ['sigh', 'shoulder-roll', 'arm-swing'] as const
-    const unread = ['shift-stance', 'clasp-hands', 'hair-touch', 'heel-rock'] as const
+    const bodyKinds = ['sigh', 'shoulder-roll', 'arm-swing', 'shift-stance'] as const
+    const unread = ['clasp-hands', 'hair-touch', 'heel-rock'] as const
     const live2d = idleActivityWeights(neutralDrive, { watching: false })
     const mmd = idleActivityWeights({ ...neutralDrive, body: true }, { watching: false })
     for (const kind of [...bodyKinds, ...unread])
       expect(live2d[kind], kind).toBe(0)
     for (const kind of bodyKinds)
       expect(mmd[kind], kind).toBeGreaterThan(0)
+    // The stance shift re-plants a foot (4e act 3) and takes its act weight.
+    expect(mmd['shift-stance']).toBe(1.2)
     // Their forms do not read on the mesh yet, so they weigh 0 on a body host too, in any mood.
     const bright = idleActivityWeights({ ...neutralDrive, body: true, valence: 0.5 }, { watching: false })
     for (const kind of unread)

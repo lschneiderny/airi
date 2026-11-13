@@ -1,4 +1,4 @@
-import type { BodyIdleAct, BodyIdleKind, BodyPerformanceInput, BodyRigTraits } from './contracts'
+import type { BodyFootStep, BodyIdleAct, BodyIdleKind, BodyPerformanceInput, BodyRigTraits } from './contracts'
 
 import { describe, expect, it } from 'vitest'
 
@@ -151,6 +151,66 @@ describe('the act layer', () => {
     }
     // A mirrored pair reaches shoulder height on the same tick.
     expect(Math.abs(level('left').indexOf(true) - level('right').indexOf(true)) * BODY_TICK).toBeGreaterThan(0.1)
+  })
+
+  /** Plays `acts` one after another from `START`, 2.5 s apart; returns each foot step with the support of the tick before it. */
+  function replants(traits: BodyRigTraits, acts: readonly BodyIdleAct[], releaseAfterLift?: number) {
+    const performer = createBodyPerformer({ traits, seed: 5, layers: createPerformanceLayers({ traits, seed: 5 }) })
+    const steps: { step: BodyFootStep, support: number }[] = []
+    const supports: { at: number, support: number }[] = []
+    let support = 0
+    for (let tick = 0; tick < (START + 2.5 * acts.length) / BODY_TICK; tick++) {
+      const t = tick * BODY_TICK
+      const index = Math.floor((t - START) / 2.5)
+      const lifted = steps.at(-1)?.step.startTime
+      const input = quietInput(t)
+      const act = t >= START ? acts[index] : undefined
+      const released = act && releaseAfterLift !== undefined && lifted !== undefined && t >= lifted + releaseAfterLift
+      const frame = performer.step(act ? { ...input, idle: released ? { ...act, release: 0.4 } : act } : input)
+      for (const step of frame.footSteps)
+        steps.push({ step: { ...step }, support })
+      support = frame.support
+      supports.push({ at: t, support })
+    }
+    return { steps, supports }
+  }
+
+  it.each(rigs)('re-plants the foot she takes her weight off on $name\'s body: one 0.4 s step lifting 0.02 L, 4 to 8 degrees, landed by the end (4e act 3)', (rig) => {
+    const { steps } = replants(rig.traits, [record('shift-stance', 1.5, { side: 1 })])
+    expect(steps).toHaveLength(1)
+    const [{ step, support }] = steps
+    // Positive support: the right foot carries, so the left steps once its load is down to 5 %.
+    expect(step.foot).toBe('left')
+    expect(support).toBeGreaterThanOrEqual(0.9)
+    expect(step.duration).toBe(0.4)
+    expect(step.lift).toBeCloseTo(0.02 * rig.traits.legLength, 9)
+    expect(Math.abs(step.yaw) / DEG).toBeGreaterThanOrEqual(4)
+    expect(Math.abs(step.yaw) / DEG).toBeLessThanOrEqual(8)
+    expect(step.startTime + step.duration).toBeLessThanOrEqual(START + 1.5 + 2 * BODY_TICK)
+  })
+
+  it('turns each re-planted foot back toward where it stood, so its steps never add up past 12 degrees', () => {
+    const acts = Array.from({ length: 8 }, (_, k) => record('shift-stance', 1.6, { seq: k + 1, side: 1 }))
+    const { steps } = replants(chisaTraits, acts)
+    expect(steps).toHaveLength(8)
+    let last = 0
+    for (const { step } of steps) {
+      const turn = step.yaw - last
+      expect(Math.abs(turn) / DEG).toBeGreaterThanOrEqual(4 - 1e-9)
+      expect(Math.abs(turn) / DEG).toBeLessThanOrEqual(8 + 1e-9)
+      expect(turn * last).toBeLessThanOrEqual(0)
+      expect(Math.abs(step.yaw) / DEG).toBeLessThanOrEqual(12)
+      last = step.yaw
+    }
+  })
+
+  it('keeps her weight on the stance foot until a step let go in the air has landed', () => {
+    const { steps, supports } = replants(chisaTraits, [record('shift-stance', 1.5, { side: 1 })], 0.1)
+    expect(steps).toHaveLength(1)
+    const { startTime, duration } = steps[0].step
+    const airborne = supports.filter(entry => entry.at > startTime + 0.1 && entry.at < startTime + duration)
+    expect(airborne.length).toBeGreaterThan(0)
+    expect(Math.min(...airborne.map(entry => entry.support))).toBeGreaterThanOrEqual(0.85)
   })
 
   it('swings her arms at their own pendulum period, the relaxed upper-arm follower\'s (3f)', () => {

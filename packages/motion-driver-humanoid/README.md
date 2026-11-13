@@ -26,9 +26,14 @@ deterministic motion algorithms for reusable character motion drivers.
   120 Hz grid, its rig/input/frame contracts, channels, FK, arm-key solver,
   collision corrector, and extensible `PerformanceLayer` contract. Its act
   layer plays the whole-body form of the idle behaviour Natural's idle layer
-  started (`BodyPerformanceInput.idle`); it schedules nothing itself. Natural
-  weighs `shift-stance`, `heel-rock`, `clasp-hands` and `hair-touch` 0, so
-  their forms stay in the layer, unplayed: the hair touch reads as a salute
+  started (`BodyPerformanceInput.idle`); it schedules nothing itself. A stance
+  shift moves her weight fully onto one foot and, once the other carries 5 % of
+  it (support 0.9), re-plants that foot: one `BodyFootStep` in
+  `frame.footSteps`, 0.4 s, lifting 0.02 L and turning it 4 to 8 degrees
+  toward and past its standing angle, so it stays within 8 degrees of it. The
+  host's foot stage plays the step. A foot let go in the air lands before her
+  weight goes back. Natural weighs `heel-rock`, `clasp-hands` and `hair-touch`
+  0, so their forms stay in the layer, unplayed: the hair touch reads as a salute
   until it has a temple anchor solved per rig, its 0.10 A sweep back and the
   head-clearance gate. A
   stretch's elbows fold to bring each hand along the straight line from where

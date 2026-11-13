@@ -111,15 +111,16 @@ const { seq, behaviour } = motion.idleState
   whole-body kinds (`sigh`, `shoulder-roll`, `shift-stance`, `clasp-hands`,
   `hair-touch`, `heel-rock`, `arm-swing`) and settling in after 120 s of
   continuous `idle` mode. Without `body` those kinds weigh 0 before the single
-  draw, so a Live2D drive draws exactly as before they existed. `shift-stance`,
+  draw, so a Live2D drive draws exactly as before they existed. `shift-stance`
+  takes architecture 4e's weight 1.2: the MMD body re-plants a foot.
   `clasp-hands`, `hair-touch` and `heel-rock` weigh 0 with `body` too, until
-  their forms read on the MMD mesh: the shift and the rock need a foot step and
-  the toe-down foot pitch the performer has no output for, the clasping hands
-  need a two-hand contact, and the hair touch needs a temple anchor solved per
-  rig with the head-clearance gate (its fitted anchor reads as a salute). While
+  their forms read on the MMD mesh: the rock needs the toe-down foot pitch the
+  performer has no output for, the clasping hands need a two-hand contact, and
+  the hair touch needs a temple anchor solved per rig with the head-clearance
+  gate (its fitted anchor reads as a salute). While
   she is settled in, nothing that needs her arms, her shoulders or a standing
-  posture is drawn (`stretch`, `peer`, `shoulder-roll`, `arm-swing` and the
-  four above), and a stretch that would follow a long sleep becomes a yawn. The
+  posture is drawn (`stretch`, `peer`, `shoulder-roll`, `arm-swing`,
+  `shift-stance` and the three above), and a stretch that would follow a long sleep becomes a yawn. The
   sigh and the yawn still play, as architecture 4f allows; so do the head and
   gaze kinds (`look-around`, `check-in`, `zone-out`, `nod-off`, `sway`), a
   recorded deviation from 4f's list.

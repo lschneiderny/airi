@@ -296,9 +296,9 @@ export function idleActivityWeights(drive: NaturalIdleDrive, context: { watching
     'sway': drive.music ? (0.8 + 0.6 * warm) * (1 - 0.6 * tense) : 0,
     'sigh': body ? (finite(drive.valence) < -0.2 ? 2 : 1) : 0,
     'shoulder-roll': body ? 0.8 : 0,
-    // 4e weighs these 1.2, 0.7, 0.5 and 0.8. Each weighs 0 until it reads on the mesh: the shift and the rock need a
-    // foot step, the clasp a two-hand contact, the hair touch a temple anchor solved per rig (it reads as a salute).
-    'shift-stance': 0,
+    // 4e act 3: the body re-plants a foot. 4e weighs the next three 0.7, 0.5 and 0.8; each weighs 0 until it reads on
+    // the mesh: the clasp needs a two-hand contact, the hair touch a temple anchor solved per rig, the rock a toe pitch.
+    'shift-stance': body ? 1.2 : 0,
     'clasp-hands': 0,
     'hair-touch': 0,
     'heel-rock': 0,

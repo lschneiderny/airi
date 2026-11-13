@@ -1,6 +1,5 @@
-import type { TurnStep } from '../look-at'
 import type { BodySide } from './channels'
-import type { BodyActFeedback, BodyArmForm, BodyCapabilities, BodyCueReport, BodyEmotionReport, BodyGazeGoal, BodyGestureReport, BodyPerformanceFrame, BodyPerformanceInput, BodyReactionReport, BodyRigTraits } from './contracts'
+import type { BodyActFeedback, BodyArmForm, BodyCapabilities, BodyCueReport, BodyEmotionReport, BodyFootStep, BodyGazeGoal, BodyGestureReport, BodyPerformanceFrame, BodyPerformanceInput, BodyReactionReport, BodyRigTraits } from './contracts'
 
 import { createInertializer, minJerk } from '../dynamics'
 import { ARM_START, BODY_CHANNELS, BODY_TICK, SIDES } from './channels'
@@ -56,7 +55,7 @@ export interface LayerOutput {
   readonly lidClose?: number
   readonly mouthOpen?: number
   readonly act?: BodyActFeedback | null
-  readonly footSteps?: readonly TurnStep[]
+  readonly footSteps?: readonly BodyFootStep[]
   /** Reports that replace the stack's latest report of that kind; later layers in stack order win. */
   readonly gesture?: BodyGestureReport
   readonly cue?: BodyCueReport
@@ -96,7 +95,7 @@ export interface PerformanceLayer {
 }
 
 const order = { emotion: 0, act: 1, gesture: 2, cue: 3, reaction: 4 } as const
-const emptySteps: readonly TurnStep[] = []
+const emptySteps: readonly BodyFootStep[] = []
 
 /** Channels stay warm under ownership; admission decisions belong to each layer via context.input.owned. */
 export class PerformanceStack {
@@ -117,7 +116,7 @@ export class PerformanceStack {
   lidClose = 0
   mouthOpen = 0
   act: BodyActFeedback | null = null
-  footSteps: readonly TurnStep[] = emptySteps
+  footSteps: readonly BodyFootStep[] = emptySteps
   private readonly entries
   private readonly inertia = createInertializer(BODY_CHANNELS.length, BODY_TICK)
   private readonly previous = new Float64Array(BODY_CHANNELS.length)

@@ -1,6 +1,7 @@
 import type { Foot, FootAnchor, LegGeometry } from '@proj-airi/motion-driver-humanoid/foot-contact'
 import type { FootGeometry, LocomotionFoot } from '@proj-airi/motion-driver-humanoid/locomotion'
 import type { TurnStep } from '@proj-airi/motion-driver-humanoid/look-at'
+import type { BodyFootStep } from '@proj-airi/motion-driver-humanoid/performance'
 import type { AnimationClip, Bone, Matrix4 } from 'three'
 
 import type { MMDFrameContext } from '../frame-pipeline'
@@ -174,6 +175,8 @@ export class MMDFootContact {
     disabled: boolean
     /** The performer's turn steps issued during this frame's ticks; `startTime` is on the same clock as `now`. */
     turnSteps: readonly TurnStep[]
+    /** The performer's foot re-plants issued during this frame's ticks, on the same clock. */
+    footSteps: readonly BodyFootStep[]
     now: number
     clips: ReadonlyMap<string, AnimationClip>
     root: MMDRootPose
@@ -239,6 +242,15 @@ export class MMDFootContact {
       const right = this.planted.right ?? toGroundAnchor(this.result.feet.right.anchor, root)
       const anchor = step.foot === 'left' ? left : right
       const [arc] = planFootSteps([{ foot: step.foot, yawDelta: root.yaw + this.plannedYaw - anchor.yaw, duration: step.duration }], { left, right }, { x: root.x, y: 0, z: 0 })
+      this.steps[step.foot] = { start: step.startTime, arc }
+    }
+    // A re-plant turns the foot about the root like a turn step, to `yaw` from the standing angle, and leaves the
+    // facing the turn steps keep (`plannedYaw`) as it is.
+    for (const step of input.footSteps) {
+      const left = this.planted.left ?? toGroundAnchor(this.result.feet.left.anchor, root)
+      const right = this.planted.right ?? toGroundAnchor(this.result.feet.right.anchor, root)
+      const anchor = step.foot === 'left' ? left : right
+      const [arc] = planFootSteps([{ foot: step.foot, yawDelta: root.yaw + this.plannedYaw + step.yaw - anchor.yaw, duration: step.duration }], { left, right }, { x: root.x, y: 0, z: 0 }, step.lift)
       this.steps[step.foot] = { start: step.startTime, arc }
     }
     const offset = new Vector3().copy(input.offset).lerp(this.result.pelvisOffset, input.duck)

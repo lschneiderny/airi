@@ -23,8 +23,11 @@ reaching feature parity with the Live2D and VRM renderers:
   on by default), and plays the clips the user marked "Idle may use" now and
   then while her body is quiet. A model with a sleep clip sleeps through its
   stance; a model without one dozes on her feet (the performer's rest layer).
-  The stance shift, the hand clasp and the heel rock weigh 0 until their forms
-  read on the mesh (no foot step, no two-hand contact). The scene emits `idle`
+  A stance shift re-plants a foot: the foot stage plays the performer's
+  `footSteps` like its turn steps, turning the foot about the root to its yaw
+  from the standing angle, without changing the facing. The hand clasp and the
+  heel rock weigh 0 until their forms read on the mesh (no two-hand contact, no
+  toe-down foot pitch). The scene emits `idle`
   and `self` events, which the stage forwards to the situation. See
   [the idle agency ADR](../../docs/ai/adr/2026-11-12-idle-agency.md).
 - **Clip library**: every imported clip gets a derived kind and layer, and the

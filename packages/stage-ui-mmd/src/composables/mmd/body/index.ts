@@ -194,6 +194,7 @@ export class MMDBody {
           contactDuck: this.contactDuck,
           disabled: this.input.disableFootContact,
           turnSteps: this.performer?.turnSteps ?? [],
+          footSteps: this.performer?.footSteps ?? [],
           now: this.clock.time,
           clips: this.clips,
           root: { x: this.rootX, yaw: this.rootYaw },

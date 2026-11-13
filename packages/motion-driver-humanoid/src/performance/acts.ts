@@ -1,8 +1,10 @@
 import type { BodyChannel, BodySide } from './channels'
-import type { BodyArmForm, BodyGazeGoal, BodyIdleAct, BodyIdleKind } from './contracts'
+import type { BodyArmForm, BodyFootStep, BodyGazeGoal, BodyIdleAct, BodyIdleKind } from './contracts'
 import type { LayerOutput, PerformanceContext, PerformanceLayer, PerformancePlan } from './stack'
 
 import { minJerk } from '../dynamics'
+import { deriveSeed } from '../noise'
+import { createRandomStream } from '../random'
 import { armResponse } from './arms'
 import { ARM_START, BODY_CHANNELS, BODY_TICK, channelGroup, channelIndex, DEG, SIDES } from './channels'
 import { path } from './cues'
@@ -46,6 +48,13 @@ function trapezoid(age: number, attack: number, hold: number, release: number): 
 }
 
 const raisedCosine = (u: number) => u <= 0 || u >= 1 ? 0 : 0.5 - 0.5 * Math.cos(2 * Math.PI * u)
+
+/**
+ * Architecture 4e act 3's re-plant: the free foot lifts once it carries 5 % of her weight (support 0.9), for the turn
+ * planner's 0.4 s in-place step, `0.02 L` high, and turns 4 to 8 degrees.
+ */
+const REPLANT = { unloaded: 0.9, seconds: 0.4, lift: 0.02, yaw: [4, 8] } as const
+const NO_STEPS: readonly BodyFootStep[] = []
 
 /** Architecture 4e act 2: the two sides of a bilateral act are 120 ms apart. */
 const BILATERAL = 0.12
@@ -102,6 +111,8 @@ interface Act {
   readonly viewerYaw: number
   /** Natural's mood tension when it started, which sets the arm pendulum's period. */
   readonly tension: number
+  /** When a stance shift's foot lifted; null before. */
+  lift: number | null
 }
 
 /**
@@ -114,7 +125,8 @@ interface Act {
  * - The head of an act is the performer's: Natural's head offsets reach only the frame Live2D draws. A form that keeps
  *   one of main's shapes converts it at the units the MMD body used before (`NATURAL`).
  * - Arms that reach a place go through `plan.armForm`, so the gesture layer solves, clears and retracts them as it does
- *   an emotion's hand; a weight shift goes through `plan.support`; a look goes through `plan.gaze`.
+ *   an emotion's hand; a weight shift goes through `plan.support`; a look goes through `plan.gaze`; a foot re-plant
+ *   goes out as a `footSteps` entry the host's foot stage plays.
  * - Owned groups receive no term and plan nothing, and a walking gait takes the act away.
  * - Variation inside a form (the doze's nod-off times) comes from a stream seeded by the behaviour's `seq`.
  */
@@ -127,12 +139,16 @@ export function createActLayer(): PerformanceLayer {
   let playedSeq: number | null = null
   /** Each arm's stretch on this rig (`stretchArm`), found at the first stretch. */
   let arms: Record<BodySide, StretchArm> | null = null
+  /** The yaw, radians from its standing angle, each foot was last re-planted to. */
+  const planted: Record<BodySide, number> = { left: 0, right: 0 }
+  let steps = NO_STEPS
   let tick = -1
 
   function update(context: PerformanceContext): void {
     if (context.tick === tick)
       return
     tick = context.tick
+    steps = NO_STEPS
     const { input, time } = context
     const record = input.idle
     if (record && record.seq !== playedSeq && record.release === null) {
@@ -145,12 +161,16 @@ export function createActLayer(): PerformanceLayer {
         gaze: { yaw: input.gaze.yaw, pitch: input.gaze.pitch, kind: input.gaze.kind },
         viewerYaw: input.viewerYaw,
         tension: Math.max(0, Math.min(1, input.mood.tension)),
+        lift: null,
       }
     }
     if (act && record?.seq === act.record.seq && record.release !== null && act.releaseAt === null) {
       act.releaseAt = time
       // Waking keeps the act until the shoulders' wake rise has settled.
       act.releaseSeconds = Math.max(EXIT, record.release, OWN_RELEASE[act.record.kind] ?? 0)
+      // A foot in the air lands before the act lets her weight go.
+      if (act.lift !== null)
+        act.releaseSeconds = Math.max(act.releaseSeconds, act.lift + REPLANT.seconds - time)
     }
     if (act && (act.releaseAt === null ? time - act.start >= act.record.duration : time - act.releaseAt >= act.releaseSeconds))
       act = null
@@ -400,10 +420,21 @@ export function createActLayer(): PerformanceLayer {
         break
       }
       case 'shift-stance': {
-        // 4e act 3: the support goes fully to one side, then returns to a half shift. The free foot's in-place step is
-        // not performed (no foot-step output for an act), so it does not read; Natural weighs it 0 and only `play` starts it.
-        if (free(['lowerBody', 'upperBody']))
-          plan.support = age < D - 0.3 ? s : 0.5 * s
+        // 4e act 3: the support goes fully to `s`. Unloaded, the other foot re-plants (`REPLANT`), turning toward and past
+        // its standing angle, so it stays within 8 degrees of it; it lifts only if it lands by the end. Then a half shift.
+        const foot = sideOf(-s)
+        const unloaded = context.previous.support * s >= REPLANT.unloaded
+        if (a.lift === null && unloaded && context.traits.legIk && free(['lowerBody', 'upperBody']) && age + REPLANT.seconds <= D) {
+          const random = createRandomStream(deriveSeed(a.record.seq, 3))
+          const turn = (REPLANT.yaw[0] + (REPLANT.yaw[1] - REPLANT.yaw[0]) * random()) * DEG
+          const last = planted[foot]
+          planted[foot] = last - (last !== 0 ? Math.sign(last) : random() < 0.5 ? -1 : 1) * turn
+          a.lift = time
+          steps = [{ foot, startTime: time, duration: REPLANT.seconds, yaw: planted[foot], lift: REPLANT.lift * context.traits.legLength }]
+        }
+        const airborne = a.lift !== null && time < a.lift + REPLANT.seconds
+        if (airborne || free(['lowerBody', 'upperBody']))
+          plan.support = a.lift !== null && !airborne ? 0.5 * s : s
         break
       }
       case 'clasp-hands': {
@@ -478,12 +509,15 @@ export function createActLayer(): PerformanceLayer {
       update(context)
       output.weight = act ? 1 : 0
       output.sequence = act?.record.seq ?? 0
+      output.footSteps = steps
       return output
     },
     reset() {
       act = null
       playedSeq = null
       arms = null
+      planted.left = planted.right = 0
+      steps = NO_STEPS
       tick = -1
       plan = {}
       channels.fill(0)
