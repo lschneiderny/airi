@@ -7,6 +7,14 @@ export function matchExpectations(events: readonly MotionQaEvent[], expected: re
   return expected.filter(kind => !events.some(event => event.seq > sinceSeq && event.kind === kind && (kind !== 'turn' || event.payload.phase === 'end')))
 }
 
+/**
+ * Whether a run that threw counts as failed. An interrupt is how a `--keep-open` run is meant to end, and by then every
+ * expectation has been checked, so only that case is not a failure.
+ */
+export function runFailed(end: { keepingOpen: boolean, interrupted: boolean }): boolean {
+  return !end.keepingOpen || !end.interrupted
+}
+
 export interface SummaryInput {
   runDir: string
   model: string

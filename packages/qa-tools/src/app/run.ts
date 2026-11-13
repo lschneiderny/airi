@@ -20,7 +20,7 @@ import { importRig, zipRig } from '../t3/import-rig'
 import { captureStagePng } from '../t3/screenshot'
 import { buildPlan, buildSeedEntries } from './plan'
 import { sendMessage } from './send'
-import { buildSummary, matchExpectations } from './summary'
+import { buildSummary, matchExpectations, runFailed } from './summary'
 
 /** One disposable experience session. The CLI owns the live CPU lease and interrupt signal. */
 export async function runApp(options: AppOptions, repoRoot: string, signal: AbortSignal, lease: Lease) {
@@ -40,6 +40,7 @@ export async function runApp(options: AppOptions, repoRoot: string, signal: Abor
   let server: ReplayServer | undefined
   let screenshot: string | null = null
   let failed = false
+  let keepingOpen = false
   let exitCode = 1
   const bounded = <T>(work: Promise<T>): Promise<T> => session.bounded(work)
   const json = (name: string, value: unknown) => writeFileSync(run.path(name), `${JSON.stringify(value, null, 2)}\n`)
@@ -113,6 +114,7 @@ export async function runApp(options: AppOptions, repoRoot: string, signal: Abor
     screenshot = run.path('stage.png')
     exitCode = 0
     if (options.keepOpen) {
+      keepingOpen = true
       process.stderr.write('qa:app: keeping the app open; interrupt to tear down\n')
       await bounded(app.exited.then(() => {
         throw new Error('App closed during --keep-open')
@@ -120,9 +122,12 @@ export async function runApp(options: AppOptions, repoRoot: string, signal: Abor
     }
   }
   catch (error) {
-    failed = true
+    failed = runFailed({ keepingOpen, interrupted: signal.aborted })
     exitCode = signal.aborted ? 130 : 1
-    details.error = errorMessageFrom(error) ?? 'unknown run failure'
+    if (failed)
+      details.error = errorMessageFrom(error) ?? 'unknown run failure'
+    else
+      details.ended = 'interrupted while keeping the app open'
     // Failure evidence is best effort; neither diagnostics nor screenshots may prevent teardown.
     const stage = session.stage
     if (stage && !signal.aborted) {

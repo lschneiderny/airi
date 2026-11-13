@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 
 import { parseAppArgs } from './args'
 import { buildPlan, buildSeedEntries } from './plan'
-import { buildSummary, matchExpectations } from './summary'
+import { buildSummary, matchExpectations, runFailed } from './summary'
 
 describe('app session planning', () => {
   it('plans a nonexistent model without reading it and preserves repeated messages', () => {
@@ -65,5 +65,17 @@ describe('app expectations', () => {
       durationMs: 42,
       pageErrors: 2,
     })
+  })
+})
+
+describe('runFailed', () => {
+  it('does not fail a run that is interrupted while it keeps the app open', () => {
+    expect(runFailed({ keepingOpen: true, interrupted: true })).toBe(false)
+  })
+
+  it('fails an interrupt before the expectations were checked, and any other error', () => {
+    expect(runFailed({ keepingOpen: false, interrupted: true })).toBe(true)
+    expect(runFailed({ keepingOpen: true, interrupted: false })).toBe(true)
+    expect(runFailed({ keepingOpen: false, interrupted: false })).toBe(true)
   })
 })
