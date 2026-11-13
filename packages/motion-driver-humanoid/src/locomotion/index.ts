@@ -116,6 +116,11 @@ export interface LocomotionFrame {
     readonly abduct: number
     readonly clavProt: number
   }>
+  /**
+   * Where she is about to face, a world yaw: the final facing of the turn in progress, otherwise the walk heading or the
+   * root yaw. `lookAhead - root.yaw` is the signed turn still to come, never wrapped across a turn (architecture 5.5).
+   */
+  readonly lookAhead: number
   /** Blend factor: lower-body channels override the idle pose by it, torso and arm channels add. */
   readonly weight: number
   readonly events: readonly GaitEvent[]
@@ -895,6 +900,7 @@ class Locomotion {
         twist: { lower, mid, upper, head: -(late[0] + late[1] + late[2]) },
       },
       armSwing: { left: arm('left'), right: arm('right') },
+      lookAhead: this.turn ? (this.turn.facings.at(-1) ?? this.yaw) : this.walk ? this.yaw + wrap(this.walk.heading - this.yaw) : this.yaw,
       weight: smoothstep(this.blend),
       events,
     }

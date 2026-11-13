@@ -506,8 +506,12 @@ export class MMDBody {
     const on = input.intent.gaze.on
     this.gazeTarget = (on === 'cursor' ? points?.cursor : on === 'chat' ? points?.chat : null) ?? null
     const moving = this.gait !== null && this.gait.mode !== 'idle' && this.gait.mode !== 'stopping'
-    if (moving) {
-      this.gazeGoal.yaw = 0
+    if (this.gait && moving) {
+      // Architecture 5.5: while she turns, the eyes and head go to the facing still to come, and the body turns under
+      // them; on a straight walk nothing is left to turn and the gaze runs along the travel line. The root turns the
+      // stance frame about up, so that direction is the stance forward turned by the remaining yaw.
+      const ahead = this.scratch.copy(this.pose.forward).applyAxisAngle(this.pose.up, this.gait.lookAhead - this.gait.root.yaw)
+      this.gazeGoal.yaw = Math.atan2(ahead.dot(this.pose.right), ahead.dot(this.pose.forward))
       this.gazeGoal.pitch = TRAVEL_PITCH
       this.gazeGoal.kind = 'travel'
       this.gazeDistance = far

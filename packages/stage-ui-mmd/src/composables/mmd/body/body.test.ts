@@ -406,6 +406,33 @@ describe('mmd full-body stages', () => {
     expect(body.diagnostics.locomotion?.position.x).toBe(3)
   })
 
+  it('leads a walking turn with the head: it reaches half its turn at least 33 ms before the root does', () => {
+    const { pipeline, body, mesh, bone, setInput } = bodyFixture()
+    setInput({ rootMotion: true })
+    for (let frame = 0; frame < 30; frame++)
+      pipeline.step(1 / 60)
+    body.setLocomotionGoal({ goalX: 10, pace: 'walk', arriveFacing: 0, reason: 'debug' })
+    const head = () => {
+      const forward = new Vector3(0, 0, 1).applyQuaternion(bone('頭').getWorldQuaternion(new Quaternion()))
+      return Math.atan2(forward.x, forward.z)
+    }
+    const samples: Array<{ root: number, head: number }> = []
+    for (let frame = 0; frame < 90; frame++) {
+      pipeline.step(1 / 60)
+      samples.push({ root: mesh.rotation.y, head: head() })
+    }
+    const half = (read: (sample: { root: number, head: number }) => number) => {
+      const from = read(samples[0] ?? { root: 0, head: 0 })
+      const to = Math.PI / 2
+      return samples.findIndex(sample => Math.abs(read(sample) - from) >= Math.abs(to - from) / 2)
+    }
+    const rootHalf = half(sample => sample.root)
+    const headHalf = half(sample => sample.head)
+    expect(rootHalf).toBeGreaterThan(0)
+    expect(headHalf).toBeGreaterThanOrEqual(0)
+    expect(rootHalf - headHalf).toBeGreaterThanOrEqual(2)
+  })
+
   it('keeps a drag: a pending goal never pulls the root back and both feet re-plant beside it', () => {
     const { pipeline, body, mesh, bone, setInput, setRootX } = bodyFixture()
     setInput({ rootMotion: true })

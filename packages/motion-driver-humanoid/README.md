@@ -152,6 +152,9 @@ line (architecture 5.2). `chestCounterYaw` keeps its old meaning for other reade
 reference's median elbow lag), the forward hand moving 3 degrees toward the midline (`abduct`), and the clavicle
 protracting 3 degrees with the forward swing (`clavProt`) (architecture 5.3). The wrist and fingers come from the
 performer's followers.
+`frame.lookAhead` is the world yaw she is about to face: the final facing of a turn in progress, otherwise the walk
+heading. `lookAhead - root.yaw` is the turn still to come, so a host can aim the gaze there and let the head lead the turn
+(architecture 5.5).
 With `traits.foot` (each foot's ankle height and heel and ball distances) every foot also carries
 `roll` (architecture 5.1): it strikes on the heel at `14 deg * min(1, strideScale)`, is flat from 12 % of the stance,
 rises onto the ball from 62 % to `-32 deg * min(1, strideScale)` at lift-off, and swings back through flat to the next

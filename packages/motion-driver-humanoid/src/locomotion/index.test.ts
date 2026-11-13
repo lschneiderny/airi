@@ -475,6 +475,21 @@ describe('procedural gait', () => {
     expect(Math.abs(after.at(-1) ?? 1)).toBeLessThan(0.05 * rad)
   })
 
+  it('look ahead: a turn and a walk name the facing still to come, and it is reached when the turn ends', () => {
+    const run = createRun({ x: 0, yaw: 0 })
+    run.advance(3, () => ({ goalX: -25, arriveFacing: 0 }))
+    const turning = run.frames.filter(frame => frame.mode === 'turning')
+    expect(turning.length).toBeGreaterThan(50)
+    // Turning from 0 to face -x (-90 degrees): the whole turn is ahead at its start and none of it at its end.
+    expect((turning[0]?.lookAhead ?? 0) - (turning[0]?.root.yaw ?? 0)).toBeCloseTo(-Math.PI / 2, 2)
+    for (const frame of turning)
+      expect(frame.lookAhead).toBeCloseTo(-Math.PI / 2, 12)
+    const walking = run.frames.filter(frame => frame.mode === 'walking')
+    expect(walking.length).toBeGreaterThan(50)
+    for (const frame of walking)
+      expect(frame.lookAhead - frame.root.yaw).toBeCloseTo(0, 12)
+  })
+
   it('turn easing: a turn leaves and reaches its facing at rest and never stops between its steps', () => {
     const run = createRun({ x: 0, yaw: 0 })
     run.advance(2, () => ({ goalX: 0, arriveFacing: Math.PI / 2 }))

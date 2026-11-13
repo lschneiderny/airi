@@ -273,7 +273,8 @@ shares. The adapter has four parts:
   the director's stance, the gait and clip ownership into
   `BodyPerformanceInput`. Natural head terms are 30 degrees per unit. The gaze
   goal follows Natural's gaze target (`intent.gaze.on`), first match wins: the
-  travel direction while walking; the cursor point, as a sustained goal, while
+  facing still to come while walking or turning (the gait's `lookAhead`, so the
+  head leads a turn and runs along the travel line on a straight walk); the cursor point, as a sustained goal, while
   Natural fixates the cursor; the chat point while Natural looks at the chat;
   otherwise the camera direction deflected by Natural's free fixation at 20
   degrees per unit, as a free goal. The host passes the cursor, chat and
