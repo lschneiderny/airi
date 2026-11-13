@@ -32,8 +32,7 @@ export function stylePosture(p: PreparedTrace): StylePosture {
 export function emotionContext(styles: ReadonlyMap<string, StylePosture>): { readonly sharedSkeleton: boolean, readonly armShares: Readonly<Record<string, number>>, readonly pairDistances: Readonly<Record<string, number>>, readonly lower: number | null } {
   const neutral = styles.get('Neutral')
   const names = ['Angry', 'Depressed', 'Elated', 'Proud']
-  const sharedSkeleton = !!neutral && names.every(name => styles.get(name)?.skeleton === neutral.skeleton)
-  if (!sharedSkeleton || !neutral)
+  if (!neutral || !names.every(name => styles.get(name)?.skeleton === neutral.skeleton))
     return { sharedSkeleton: false, armShares: {}, pairDistances: {}, lower: null }
   const vectors = new Map<string, readonly number[]>()
   const armShares: Record<string, number> = {}
@@ -46,7 +45,7 @@ export function emotionContext(styles: ReadonlyMap<string, StylePosture>): { rea
     const energy = v.map(r => r.reduce((s, x) => s + x * x, 0))
     const total = energy.reduce((s, x) => s + x, 0)
     if (total <= 1e-18)
-      return { sharedSkeleton, armShares, pairDistances: {}, lower: null }
+      return { sharedSkeleton: true, armShares, pairDistances: {}, lower: null }
     armShares[name] = energy.reduce((s, x, i) => s + (armBones.includes(style.bones[i]) ? x : 0), 0) / total
     vectors.set(name, v.flat())
   }
@@ -58,7 +57,7 @@ export function emotionContext(styles: ReadonlyMap<string, StylePosture>): { rea
       pairDistances[`${names[i]}-${names[j]}`] = Math.sqrt(a.reduce((s, x, k) => s + (x - b[k]) ** 2, 0))
     }
   }
-  return { sharedSkeleton, armShares, pairDistances, lower: 0.5 * Math.min(...Object.values(armShares)) }
+  return { sharedSkeleton: true, armShares, pairDistances, lower: 0.5 * Math.min(...Object.values(armShares)) }
 }
 
 /** Context only: the short-span loop statistic is never a fitted band. */

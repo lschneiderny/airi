@@ -17,8 +17,9 @@ export function checkKinematics(input: DecodedMotionTrace, minimumSeconds?: numb
   const stride = MOTION_TRACE_CHANNELS.length
   const times = Array.from({ length: trace.frames }, (_, i) => channels[i * stride])
   const intervals = times.slice(1).map((t, i) => t - times[i])
-  if (intervals.length && median(intervals) > 1 / 30 + 1e-6)
-    throw new GateRefusal('rate-too-low', `Median interval ${median(intervals)} s is above 1/30 s`)
+  const medianInterval = median(intervals)
+  if (medianInterval > 1 / 30 + 1e-6)
+    throw new GateRefusal('rate-too-low', `Median interval ${medianInterval} s is above 1/30 s`)
   const walls = times.map((t, i) => channels[i * stride + 1] - t).filter(Number.isFinite)
   if (intervals.some(dt => dt >= 1 / 20 - 1e-6)
     || intervals.filter(dt => dt > 1 / 24 + 1e-6).length > intervals.length * 0.005
@@ -48,7 +49,7 @@ export function checkKinematics(input: DecodedMotionTrace, minimumSeconds?: numb
   }
   if (nonUpright > scored * 0.01)
     throw new GateRefusal('non-upright', `${nonUpright}/${scored} scored frames have horizontal hips forward length < 0.5`)
-  return { scoredSeconds, hz: intervals.length ? 1 / median(intervals) : trace.hz }
+  return { scoredSeconds, hz: intervals.length ? 1 / medianInterval : trace.hz }
 }
 
 export function checkTrace(input: DecodedMotionTrace, bands: MotionBandsFile): { scoredSeconds: number, hz: number } {

@@ -31,8 +31,8 @@ export function metricPolicies(scenario: MotionScenarioClass): MetricPolicy[] {
   for (const joint of ['shoulder', 'upperArm', 'lowerArm', 'hand'])
     add(`bilateral.${joint}.peakCorr`, 'upper', [0, 1], 'clip', coreReason)
   for (const region of ['head', 'armL', 'armR']) {
-    const reason = region === 'head' ? !['idle', 'talk'].includes(scenario) : scenario !== 'talk'
-    add(`smooth.${region}.ldlj`, 'two', [null, null], 'episode', reason ? 'head pool uses idle and talk; arm pools use talk' : '')
+    const unfit = region === 'head' ? !['idle', 'talk'].includes(scenario) : scenario !== 'talk'
+    add(`smooth.${region}.ldlj`, 'two', [null, null], 'episode', unfit ? 'head pool uses idle and talk; arm pools use talk' : '')
     add(`smooth.${region}.spikeRate`, 'upper', [0, null], 'clip', coreReason)
   }
   for (const key of ['speedCv', 'holdFraction', 'movesPerMin'])

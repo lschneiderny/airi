@@ -4,23 +4,18 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import { gateMotion3d } from '../cli/gate'
-import { context, emotionInput, emotionTrace, encoded, happyAndPlaceboTrials, runnerTrace, withTraces } from './pool-fixture'
+import { context, emotionInput, emotionTrace, encoded, happyAndPlaceboTrials, readVerdicts, runnerTrace, withTraces } from './pool-fixture'
 
 describe('emotion pool admission', () => {
   it('refuses three copied directories rather than multiplying insufficient evidence', async () => {
     const trace = emotionTrace(1)
     await withTraces([trace, trace, trace], async (dirs) => {
       expect(await gateMotion3d([dirs[0]], context)).toBe(2)
-      const single = JSON.parse(await readFile(join(dirs[0], 'gate.json'), 'utf8'))
+      const [single] = await readVerdicts([dirs[0]])
       expect(single).toMatchObject({ verdict: 'REFUSED', refusal: { name: 'no-gated-metrics' } })
       expect(await gateMotion3d(dirs, context)).toBe(2)
-      for (const dir of dirs) {
-        expect(JSON.parse(await readFile(join(dir, 'gate.json'), 'utf8'))).toMatchObject({
-          verdict: 'REFUSED',
-          refusal: { name: 'pool-duplicate' },
-          metrics: [],
-        })
-      }
+      for (const verdict of await readVerdicts(dirs))
+        expect(verdict).toMatchObject({ verdict: 'REFUSED', refusal: { name: 'pool-duplicate' }, metrics: [] })
     })
   })
 
@@ -32,8 +27,8 @@ describe('emotion pool admission', () => {
     }))
     await withTraces(copies, async (dirs) => {
       expect(await gateMotion3d(dirs, context)).toBe(2)
-      for (const dir of dirs)
-        expect(JSON.parse(await readFile(join(dir, 'gate.json'), 'utf8'))).toMatchObject({ verdict: 'REFUSED', refusal: { name: 'pool-duplicate' }, metrics: [] })
+      for (const verdict of await readVerdicts(dirs))
+        expect(verdict).toMatchObject({ verdict: 'REFUSED', refusal: { name: 'pool-duplicate' }, metrics: [] })
     })
   })
 
@@ -54,24 +49,23 @@ describe('emotion pool admission', () => {
     }
     await withTraces([first, other], async (dirs) => {
       expect(await gateMotion3d(dirs, context)).toBe(2)
-      for (const dir of dirs)
-        expect(JSON.parse(await readFile(join(dir, 'gate.json'), 'utf8'))).toMatchObject({ verdict: 'REFUSED', refusal: { name: 'pool-mismatch' }, metrics: [] })
+      for (const verdict of await readVerdicts(dirs))
+        expect(verdict).toMatchObject({ verdict: 'REFUSED', refusal: { name: 'pool-mismatch' }, metrics: [] })
     })
   })
 
   it('refuses repeated trial ids even when the traces have different digests', async () => {
     await withTraces([emotionTrace(1), emotionTrace(2, 'seed-1')], async (dirs) => {
       expect(await gateMotion3d(dirs, context)).toBe(2)
-      for (const dir of dirs)
-        expect(JSON.parse(await readFile(join(dir, 'gate.json'), 'utf8'))).toMatchObject({ verdict: 'REFUSED', refusal: { name: 'pool-duplicate' }, metrics: [] })
+      for (const verdict of await readVerdicts(dirs))
+        expect(verdict).toMatchObject({ verdict: 'REFUSED', refusal: { name: 'pool-duplicate' }, metrics: [] })
     })
   })
 
   it('scores distinct seeds and records digest provenance and condition counts', async () => {
     await withTraces([emotionTrace(1), emotionTrace(2), emotionTrace(3)], async (dirs) => {
       expect(await gateMotion3d(dirs, context)).toBe(0)
-      for (const dir of dirs) {
-        const verdict = JSON.parse(await readFile(join(dir, 'gate.json'), 'utf8'))
+      for (const verdict of await readVerdicts(dirs)) {
         expect(verdict).toMatchObject({ verdict: 'PASS', pooledFrom: { trialCounts: { happy: 6, neutral: 3, placebo: 6 } } })
         expect(verdict.pooledFrom.traces).toEqual(dirs.map(directory => ({
           directory,
@@ -92,8 +86,7 @@ describe('runner seed cohorts', () => {
       traces[0].rig.assetSha256 = null
     await withTraces(traces, async (dirs) => {
       expect(await gateMotion3d(dirs, context)).toBe(0)
-      for (const dir of dirs) {
-        const verdict = JSON.parse(await readFile(join(dir, 'gate.json'), 'utf8'))
+      for (const verdict of await readVerdicts(dirs)) {
         expect(verdict).toMatchObject({ verdict: 'PASS', pooledFrom: { trialCounts: { happy: 6, neutral: 3, placebo: 6 } } })
         expect(verdict.metrics).toContainEqual(expect.objectContaining({ id: 'emotion.minSeparationFromNeutral', status: 'PASS' }))
       }
@@ -108,8 +101,8 @@ describe('runner seed cohorts', () => {
       traces[2].rig.restOffsets[0][0] += 0.01
     await withTraces(traces, async (dirs) => {
       expect(await gateMotion3d(dirs, context)).toBe(2)
-      for (const dir of dirs)
-        expect(JSON.parse(await readFile(join(dir, 'gate.json'), 'utf8'))).toMatchObject({ verdict: 'REFUSED', refusal: { name: 'pool-mismatch' }, metrics: [] })
+      for (const verdict of await readVerdicts(dirs))
+        expect(verdict).toMatchObject({ verdict: 'REFUSED', refusal: { name: 'pool-mismatch' }, metrics: [] })
     })
   })
 
@@ -121,8 +114,8 @@ describe('runner seed cohorts', () => {
       traces[2].rig.legLength *= 2
     await withTraces(traces, async (dirs) => {
       expect(await gateMotion3d(dirs, context)).toBe(2)
-      for (const dir of dirs)
-        expect(JSON.parse(await readFile(join(dir, 'gate.json'), 'utf8'))).toMatchObject({ verdict: 'REFUSED', refusal: { name: 'pool-mismatch' }, metrics: [] })
+      for (const verdict of await readVerdicts(dirs))
+        expect(verdict).toMatchObject({ verdict: 'REFUSED', refusal: { name: 'pool-mismatch' }, metrics: [] })
     })
   })
 
@@ -132,8 +125,8 @@ describe('runner seed cohorts', () => {
     traces[2].rig.assetSha256 = 'b'.repeat(64)
     await withTraces(traces, async (dirs) => {
       expect(await gateMotion3d(dirs, context)).toBe(2)
-      for (const dir of dirs)
-        expect(JSON.parse(await readFile(join(dir, 'gate.json'), 'utf8'))).toMatchObject({ verdict: 'REFUSED', refusal: { name: 'pool-mismatch' }, metrics: [] })
+      for (const verdict of await readVerdicts(dirs))
+        expect(verdict).toMatchObject({ verdict: 'REFUSED', refusal: { name: 'pool-mismatch' }, metrics: [] })
     })
   })
 })
@@ -149,10 +142,8 @@ describe('required gate metrics', () => {
   ])('requires PASS rather than skipped, reported or absent: $ids', async ({ ids, passed, code }) => {
     await withTraces([emotionTrace(1), emotionTrace(2), emotionTrace(3)], async (dirs) => {
       expect(await gateMotion3d([...dirs, '--require', ids], context)).toBe(code)
-      for (const dir of dirs) {
-        const verdict = JSON.parse(await readFile(join(dir, 'gate.json'), 'utf8'))
+      for (const verdict of await readVerdicts(dirs))
         expect(verdict).toMatchObject({ verdict: 'PASS', requirements: { metrics: ids.split(','), passed } })
-      }
     })
   })
 
@@ -160,8 +151,7 @@ describe('required gate metrics', () => {
     const traces = [1, 2, 3].map(seed => encoded(emotionInput(seed, { trials: happyAndPlaceboTrials })))
     await withTraces(traces, async (dirs) => {
       expect(await gateMotion3d([...dirs, '--require', 'emotion.minSeparationFromNeutral,emotion.armShare'], context)).toBe(1)
-      for (const dir of dirs) {
-        const verdict = JSON.parse(await readFile(join(dir, 'gate.json'), 'utf8'))
+      for (const verdict of await readVerdicts(dirs)) {
         expect(verdict).toMatchObject({ verdict: 'FAIL', pooledFrom: { trialCounts: { happy: 6, placebo: 6 } }, requirements: { passed: false } })
         expect(verdict.metrics).toContainEqual(expect.objectContaining({ id: 'emotion.minSeparationFromNeutral', status: 'FAIL', value: null, detail: 'no-neutral-condition' }))
         expect(verdict.metrics).toContainEqual(expect.objectContaining({ id: 'emotion.armShare', status: 'PASS' }))

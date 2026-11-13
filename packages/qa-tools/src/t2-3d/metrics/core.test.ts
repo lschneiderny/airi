@@ -36,7 +36,10 @@ describe('motion trace core metrics', () => {
     const metrics = coreMetrics(prepareTrace(chain()), parameters)
     for (const m of metrics.filter(m => m.id.startsWith('chain.'))) {
       expect(m.status, m.id).toBe('ok')
-      expect(m.value, m.id)[m.id.endsWith('zeroLagCorr') ? 'toBeGreaterThanOrEqual' : 'toBeLessThan'](m.id.endsWith('zeroLagCorr') ? 0.999 : 1)
+      if (m.id.endsWith('zeroLagCorr'))
+        expect(m.value, m.id).toBeGreaterThanOrEqual(0.999)
+      else
+        expect(m.value, m.id).toBeLessThan(1)
     }
     expect(metrics.find(m => m.id === 'dim.upper')?.value).toBeLessThanOrEqual(1.05)
     expect(metrics.find(m => m.id === 'dim.core')?.value).toBeLessThanOrEqual(1.05)
@@ -48,7 +51,6 @@ describe('motion trace core metrics', () => {
     const p = prepareTrace(analyticTrace({ seconds: 30, bones: ['hips', 'neck', 'head'], world: (b, t) => angleX(b === 'hips' ? 0 : 0.2 * Math.sin(2 * Math.PI * 0.7 * t) + (b === 'head' ? 0.15 * Math.sin(2 * Math.PI * 0.7 * (t - 0.1)) : 0)) }))
     const m = coreMetrics(p, detectors(p.input.trace.rig.bones)).find(m => m.id === 'chain.neck-head.lagMs')
     expect(m?.value).toBeCloseTo(100, -1)
-    expect(m?.detail).toContain('signed lag')
     expect(Number(m?.detail.match(/signed lag ([\d.-]+)/)?.[1])).toBeGreaterThan(90)
   })
 

@@ -27,11 +27,12 @@ export function intermittencyMetrics(p: PreparedTrace, moveSpeed: number) {
   })
   metrics.push(burst.length ? result('inter.burstCv', 'ratio', 'trace', median(burst.map(s => s.value)), 'ok', 'report-only', burst) : skipped('inter.burstCv', 'ratio', 'trace', 'insufficient-duration'))
   // M6: CV of whole move durations, >=5 moves; unit ratio, report only.
-  metrics.push(moves.length === 0
-    ? result('inter.moveDurationCv', 'ratio', 'trace', null)
-    : moves.length < 5
-      ? skipped('inter.moveDurationCv', 'ratio', 'trace', 'insufficient-moves')
-      : result('inter.moveDurationCv', 'ratio', 'trace', cv(moves.map(s => (s.end - s.start) / HZ))))
+  if (moves.length === 0)
+    metrics.push(result('inter.moveDurationCv', 'ratio', 'trace', null))
+  else if (moves.length < 5)
+    metrics.push(skipped('inter.moveDurationCv', 'ratio', 'trace', 'insufficient-moves'))
+  else
+    metrics.push(result('inter.moveDurationCv', 'ratio', 'trace', cv(moves.map(s => (s.end - s.start) / HZ))))
   return metrics
 }
 

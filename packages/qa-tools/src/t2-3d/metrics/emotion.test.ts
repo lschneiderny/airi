@@ -23,9 +23,9 @@ function separations(trials: readonly EmotionTrial[]) {
   return { all: m.find(m => m.id === 'emotion.minSeparation')?.value, fromNeutral: m.find(m => m.id === 'emotion.minSeparationFromNeutral')?.value }
 }
 
-// Since gate version 5 the separations read chords of each turn (2 sin(angle / 2)), and a centre of rotation matrices
-// differs from one of rotation vectors at second order: a copy of the placebo with three trials instead of the placebo's
-// five reads 0.006 SD from it, and a pool built at 1.99 or 2.01 SD in rotation vectors reads 5e-5 SD off.
+// Since gate version 5 separations read turn chords (2 sin(angle / 2)). A rotation-matrix centre differs from a
+// rotation-vector one at second order: a three-trial copy of the five-trial placebo reads 0.006 SD from it, and a
+// pool at 1.99 or 2.01 SD in rotation vectors reads 5e-5 SD off.
 describe('pooled emotion postures', () => {
   it('scores an emotion that copies neutral or the placebo at zero separation from neutral', () => {
     expect(separations(headPool({ neutral: 0, placebo: 1, copy: 0, other: -1 })).fromNeutral).toBeCloseTo(0, 12)

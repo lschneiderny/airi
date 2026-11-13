@@ -95,14 +95,15 @@ export function emotionTrials(p: PreparedTrace): EmotionTrial[] {
  */
 export function emotionMetrics(trials: readonly EmotionTrial[]): MetricResult[] {
   const ids = ['emotion.minSeparation', 'emotion.medianSeparation', 'emotion.armShare', 'emotion.minSeparationFromNeutral'] as const
+  const unit = (id: typeof ids[number]) => id.endsWith('armShare') ? 'fraction' : 'standard-deviations'
   const conditions = [...new Set(trials.map(t => t.condition))].sort()
   const placebo = conditions.find(c => trials.some(t => t.condition === c && t.placebo))
   const groups = new Map(conditions.map(c => [c, trials.filter(t => t.condition === c)]))
   if (!placebo || conditions.length < 2 || conditions.some(c => (groups.get(c)?.length ?? 0) < (c === placebo ? 5 : 3)))
-    return ids.map(id => skipped(id, id.endsWith('armShare') ? 'fraction' : 'standard-deviations', 'trace', 'insufficient-trials'))
+    return ids.map(id => skipped(id, unit(id), 'trace', 'insufficient-trials'))
   const bones = UPPER.filter(b => trials.every(t => t.posture[b]))
   if (!bones.length)
-    return ids.map(id => skipped(id, id.endsWith('armShare') ? 'fraction' : 'standard-deviations', 'trace', 'bones-absent'))
+    return ids.map(id => skipped(id, unit(id), 'trace', 'bones-absent'))
   const vector = (t: EmotionTrial) => bones.flatMap(b => t.posture[b] ?? [])
   const features = new Map(trials.map(t => [t, postureFeatures(vector(t), bones)]))
   const centresOf = (rows: (t: EmotionTrial) => readonly number[]) => new Map(conditions.map((c) => {
@@ -115,9 +116,9 @@ export function emotionMetrics(trials: readonly EmotionTrial[]): MetricResult[] 
   const sigma = Math.sqrt(mean(trials.map(t => squaredDistance(features.get(t) ?? [], featureCentres.get(t.condition) ?? []))))
   const separation = (a: string, b: string) => finite(Math.sqrt(squaredDistance(featureCentres.get(a) ?? [], featureCentres.get(b) ?? [])) / sigma, 'emotion separation')
   const pairs: number[] = []
-  for (let i = 0; i < conditions.length; i++) {
-    for (let j = i + 1; j < conditions.length; j++) {
-      if (sigma > 1e-18)
+  if (sigma > 1e-18) {
+    for (let i = 0; i < conditions.length; i++) {
+      for (let j = i + 1; j < conditions.length; j++)
         pairs.push(separation(conditions[i], conditions[j]))
     }
   }

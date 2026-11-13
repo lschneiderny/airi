@@ -81,13 +81,14 @@ export function gestureMetrics(p: PreparedTrace, params: DetectorParameters): Me
     ['gesture.strokeGain', 'fraction', arm.gain],
     ['gesture.headGain', 'fraction', nod.gain],
   ] as const) {
-    metrics.push(emphasis.length < 10
-      ? skipped(id, unit, 'trace', 'insufficient-emphasis')
-      : id === 'gesture.headGain' && !p.o6.head && !p.o6.neck
-        ? skipped(id, unit, 'trace', 'head-bones-absent')
-        : !hasArms && id !== 'gesture.headGain'
-            ? skipped(id, unit, 'trace', 'arm-bones-absent')
-            : result(id, unit, 'trace', value))
+    if (emphasis.length < 10)
+      metrics.push(skipped(id, unit, 'trace', 'insufficient-emphasis'))
+    else if (id === 'gesture.headGain' && !p.o6.head && !p.o6.neck)
+      metrics.push(skipped(id, unit, 'trace', 'head-bones-absent'))
+    else if (!hasArms && id !== 'gesture.headGain')
+      metrics.push(skipped(id, unit, 'trace', 'arm-bones-absent'))
+    else
+      metrics.push(result(id, unit, 'trace', value))
   }
   return metrics
 }

@@ -69,12 +69,13 @@ export function gaitMetrics(p: PreparedTrace): MetricResult[] {
   const strides = intervals.flat()
   const count = Math.max(...intervals.map(s => s.length))
   const ids = ['pelvisTwistDeg', 'chestCounter', 'armSwingLagMs', 'heelStrikePitchDeg', 'toeOffPitchDeg'] as const
+  const unit = (k: typeof ids[number]) => k.endsWith('Deg') ? 'deg' : k.endsWith('Ms') ? 'ms' : 'correlation'
   const metrics: MetricResult[] = []
   if (!positions.leftFoot && !positions.rightFoot) {
-    metrics.push(...ids.map(k => skipped(`gait.${k}`, k.endsWith('Deg') ? 'deg' : k.endsWith('Ms') ? 'ms' : 'correlation', 'trace', 'foot-bones-absent')))
+    metrics.push(...ids.map(k => skipped(`gait.${k}`, unit(k), 'trace', 'foot-bones-absent')))
   }
   else if (count < 10) {
-    metrics.push(...ids.map(k => skipped(`gait.${k}`, k.endsWith('Deg') ? 'deg' : k.endsWith('Ms') ? 'ms' : 'correlation', 'trace', 'insufficient-strides')))
+    metrics.push(...ids.map(k => skipped(`gait.${k}`, unit(k), 'trace', 'insufficient-strides')))
   }
   else {
     const fs = 1 / mean(strides)

@@ -14,7 +14,7 @@ import { prepareTrace } from './prepare'
 import { smoothMetrics } from './smooth'
 import { spectralMetrics } from './spectral'
 
-export { activity, coreMetrics } from './core'
+export { coreMetrics } from './core'
 export { emotionMetrics, emotionTrials } from './emotion'
 export type { EmotionTrial } from './emotion'
 export { gaitMetrics } from './gait'

@@ -1,6 +1,6 @@
 import type { MotionScenarioClass } from '@proj-airi/motion-driver-humanoid/motion-trace'
 
-import type { DetectorParameters, MetricResult } from '../metrics'
+import type { DetectorParameters } from '../metrics'
 import type { MetricPolicy } from './policy'
 import type { MeasuredReference } from './reference-measure'
 import type { ClassBands, HoldoutVerdict, MetricBand } from './types'
@@ -10,10 +10,6 @@ import { fitBand, fitEpisodeBand, passesBand } from './bands'
 import { applyHoldoutRule } from './holdouts'
 import { judgeMetrics } from './judge'
 import { declaredBands, metricPolicies, reportBand, sideGroup } from './policy'
-
-function poolMeasurements(clip: MeasuredReference, scenario: MotionScenarioClass, id: string): readonly MetricResult[] {
-  return (clip.pools[scenario] ?? []).filter(m => m.id === id)
-}
 
 function inPool(clip: MeasuredReference, policy: MetricPolicy): boolean {
   if (policy.id.startsWith('gaze.') || policy.id.startsWith('onset.') || policy.id === 'smooth.head.ldlj')
@@ -27,6 +23,7 @@ export function fitClass(clips: readonly MeasuredReference[], scenario: MotionSc
   const metrics: Record<string, MetricBand> = {}
   const holdout: HoldoutVerdict[] = []
   const policies = metricPolicies(scenario)
+  const ownFit = clips.filter(c => c.entry.class === scenario && c.entry.split === 'fit' && c.entry.role === 'window')
   for (const policy of policies) {
     // A sided metric was already fitted together with its mirror.
     if (policy.id in metrics)
@@ -37,8 +34,7 @@ export function fitClass(clips: readonly MeasuredReference[], scenario: MotionSc
     }
     const ids = sideGroup(policy, policies)
     if (policy.unit === 'clip') {
-      const fit = clips.filter(c => c.entry.class === scenario && c.entry.split === 'fit' && c.entry.role === 'window')
-      const values = fit.flatMap(c => c.metrics.filter(m => ids.includes(m.id) && m.status === 'ok' && m.value !== null).flatMap(m => m.value === null ? [] : [m.value]))
+      const values = ownFit.flatMap(c => c.metrics.flatMap(m => ids.includes(m.id) && m.status === 'ok' && m.value !== null ? [m.value] : []))
       const band = fitBand(values, policy)
       for (const id of ids)
         metrics[id] = band
@@ -49,7 +45,7 @@ export function fitClass(clips: readonly MeasuredReference[], scenario: MotionSc
     // Manifest order, and within a clip the left side's episodes before the right side's.
     for (const clip of clips.filter(c => inPool(c, policy))) {
       for (const id of ids) {
-        const samples = poolMeasurements(clip, scenario, id).find(m => m.id === id)?.samples ?? []
+        const samples = (clip.pools[scenario] ?? []).find(m => m.id === id)?.samples ?? []
         const values = [...samples].sort((a, b) => a.start - b.start || a.end - b.end).map(s => s.value)
         pools[clip.entry.split].push(...values)
         if (clip.entry.split === 'fit')
@@ -71,7 +67,6 @@ export function fitClass(clips: readonly MeasuredReference[], scenario: MotionSc
     }
   }
   Object.assign(metrics, declaredBands(scenario, emotionLower))
-  const ownFit = clips.filter(c => c.entry.class === scenario && c.entry.split === 'fit' && c.entry.role === 'window')
   const window = { seconds: scenario === 'talk' ? 5 : 10, hopSeconds: scenario === 'talk' ? 2.5 : 5 }
   const classBands: ClassBands = {
     ...parameters,
