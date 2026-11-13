@@ -46,8 +46,8 @@ function bindFeet(pose: Pose): Record<Foot, FootAnchor> {
 }
 
 // Closed loop: each frame's foot targets come back as the next frame's planted anchors.
-function createRun(start: Pose, seed = 7) {
-  const locomotion = createLocomotion({ traits, seed })
+function createRun(start: Pose, seed = 7, gaitTraits: GaitTraits = traits) {
+  const locomotion = createLocomotion({ traits: gaitTraits, seed })
   locomotion.rebase(start)
   const frames: LocomotionFrame[] = []
   let planted = bindFeet(start)
@@ -352,6 +352,52 @@ describe('procedural gait', () => {
       expect(Math.abs(wrap(last.feet[side].target.yaw - last.root.yaw))).toBeLessThan(1e-9)
       expect(distance(last.feet[side].target.position, aligned[side].position)).toBeLessThan(1e-9)
     }
+  })
+
+  it('roll contract: without a foot trait every foot stays flat', () => {
+    for (const name of allScenarios) {
+      for (const frame of scenario(name).frames) {
+        for (const side of sides) {
+          const { roll, planted } = frame.feet[side]
+          expect(roll, `${name} ${side}`).toEqual({ pitch: 0, ankleOffset: [0, 0], pivot: planted ? 'flat' : 'air' })
+        }
+      }
+    }
+  })
+
+  it('roll: heel strike pitches up, mid-stance is flat, lift-off pitches down, and the pivot point holds still', () => {
+    const foot = { ankleHeight: 1, ballForward: 1.5, heelBack: 0 }
+    const run = createRun({ x: 0, yaw: Math.PI / 2 }, 7, { ...traits, foot: { left: foot, right: foot } })
+    run.advance(10, () => ({ goalX: 500, arriveFacing: Math.PI / 2 }))
+    const { frames } = run
+    const steady = (tick: number) => tick * dt >= 3
+    const strikes = eventsOf(frames, 'heelStrike').filter(event => steady(event.tick))
+    const lifts = eventsOf(frames, 'liftOff').filter(event => steady(event.tick))
+    expect(strikes.length).toBeGreaterThan(8)
+    for (const strike of strikes)
+      expect(strike.frame.feet[strike.foot].roll.pitch).toBeGreaterThan(0.95 * 14 * rad)
+    for (const lift of lifts)
+      expect(lift.frame.feet[lift.foot].roll.pitch).toBeLessThan(-0.95 * 32 * rad)
+    let flat = 0
+    for (const [tick, frame] of frames.entries()) {
+      for (const side of sides) {
+        const { roll, planted } = frame.feet[side]
+        if (!planted || !steady(tick))
+          continue
+        if (roll.pivot === 'flat') {
+          flat++
+          expect(roll.pitch).toBe(0)
+          continue
+        }
+        // The ankle sits at `a` from the pivot when flat, and at a rotated by the pitch now: pivot = ankle - R(pitch) a.
+        const a = roll.pivot === 'heel' ? [foot.heelBack, foot.ankleHeight] : [-foot.ballForward, foot.ankleHeight]
+        const cos = Math.cos(roll.pitch)
+        const sin = Math.sin(roll.pitch)
+        expect(roll.ankleOffset[0] - (a[0] * cos - a[1] * sin) + a[0]).toBeCloseTo(0, 12)
+        expect(roll.ankleOffset[1] - (a[0] * sin + a[1] * cos) + a[1]).toBeCloseTo(0, 12)
+      }
+    }
+    expect(flat).toBeGreaterThan(100)
   })
 
   it('turn easing: a turn leaves and reaches its facing at rest and never stops between its steps', () => {

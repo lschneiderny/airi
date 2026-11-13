@@ -150,7 +150,7 @@ export class MMDBody {
     this.eyes = new MMDEyes(this.pose)
     this.feet = new MMDFootContact(this.pose)
     const legs = this.feet.bindLegs
-    this.locomotion = legs ? new MMDLocomotion(legs, toRigTraits(rig), fnv1a32(`${options.modelKey}:locomotion`)) : null
+    this.locomotion = legs ? new MMDLocomotion(legs, toRigTraits(rig), fnv1a32(`${options.modelKey}:locomotion`), this.feet.rollGeometry) : null
     if (this.locomotion)
       this.rootPosition.copy(this.locomotion.frame.root.position)
     this.root = options.root
@@ -219,7 +219,13 @@ export class MMDBody {
     this.surfaceStage = { id: 'body-diagnostics', run: () => {
       if (!this.input?.enabled)
         return
-      const { skate, skateContact, ...feet } = this.feet.measure()
+      // A rolling foot's contact point is its pivot (owner decision O6); without the gait every carried foot is flat.
+      const gaitFeet = this.gait && this.gait.weight > 0 ? this.gait.feet : null
+      const pivot = (side: 'left' | 'right') => {
+        const kind = gaitFeet?.[side].roll.pivot ?? 'flat'
+        return kind === 'air' ? 'flat' : kind
+      }
+      const { skate, skateContact, ...feet } = this.feet.measure({ left: pivot('left'), right: pivot('right') })
       this.feetSnapshot = feet
       this.skate = skate
       this.skateContact = skateContact

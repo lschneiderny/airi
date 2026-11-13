@@ -1,14 +1,27 @@
 import type { Foot, FootAnchor, TurnStep } from '../foot-contact'
 import type { LocomotionPace, RigTraits, Vec3 } from '../types'
 
+import { minJerk } from '../dynamics'
 import { planFootSteps } from '../foot-contact'
 import { createRandomStream } from '../random'
+
+/**
+ * The ground contacts a foot rolls over, in model units in the foot's own frame: the heel `heelBack` behind and the ball
+ * `ballForward` ahead of the ankle, both `ankleHeight` below it.
+ */
+export interface FootGeometry {
+  readonly ankleHeight: number
+  readonly ballForward: number
+  readonly heelBack: number
+}
 
 export interface GaitTraits extends Pick<RigTraits, 'legLength' | 'footBaselineY'> {
   /** Bind hip-to-ankle vertical distance in model units. */
   readonly hipToAnkleY: number
   /** Bind ankle positions in mesh-local model units; each hip sits hipToAnkleY above its ankle. */
   readonly bindAnkles: Record<Foot, Vec3>
+  /** Without it the feet stay flat: every roll is 0 and its pivot 'flat' or 'air'. */
+  readonly foot?: Record<Foot, FootGeometry>
 }
 
 export interface LocomotionInput {
@@ -43,6 +56,16 @@ export interface GaitBodyChannels {
   chestPitch: number
 }
 
+/** Heel-to-toe roll of one foot (architecture 5.1). `target` stays the planning ankle; the roll is applied on top of it. */
+export interface FootRoll {
+  /** Foot pitch in radians about its lateral axis; positive lifts the toes. */
+  readonly pitch: number
+  /** Ankle displacement from `target` in the foot's frame, [forward, up], model units: the ankle rotated about `pivot`. */
+  readonly ankleOffset: readonly [number, number]
+  /** The ground point that holds still: the heel after a strike, the whole sole, the ball before lift-off, or none. */
+  readonly pivot: 'heel' | 'flat' | 'ball' | 'air'
+}
+
 export interface LocomotionFoot {
   /** World target for the ankle. */
   readonly target: FootAnchor
@@ -50,6 +73,7 @@ export interface LocomotionFoot {
   readonly planted: boolean
   /** Swing progress 0..1, or null while planted. */
   readonly swing: number | null
+  readonly roll: FootRoll
 }
 
 export interface GaitEvent {
@@ -119,6 +143,12 @@ const settleDuration = 0.25
 const blendDuration = 0.3
 const leanOmega = 4
 const paceSpeeds: Record<LocomotionPace, number> = { stroll: 0.6, walk: 1 }
+/** Architecture 5.1: heel-strike and toe-off pitch at a full stride, scaled by min(1, strideScale). */
+const heelStrikePitch = 14 * radians
+const toeOffPitch = 32 * radians
+/** Stance shares: the foot is flat from 12 % and its heel rises from 62 %. */
+const footFlatAt = 0.12
+const heelOffAt = 0.62
 const sides = ['left', 'right'] as const
 /** Lateral sign: left = -1, right = +1, matching `support`. */
 const footSign: Record<Foot, 1 | -1> = { left: -1, right: 1 }
@@ -164,6 +194,17 @@ function turnProgress(u: number, index: number, count: number) {
   if (index === count - 1)
     return 1 - (1 - u) * (1 - u) * (1 + u)
   return u
+}
+
+/** Displacement of an ankle at [forward, up] from a pivot when the foot pitches by `pitch` about that pivot. */
+function pivotOffset(forward: number, up: number, pitch: number): [number, number] {
+  const cos = Math.cos(pitch)
+  const sin = Math.sin(pitch)
+  return [forward * cos - up * sin - forward, forward * sin + up * cos - up]
+}
+
+function scaleOffset(offset: readonly [number, number], share: number): [number, number] {
+  return [offset[0] * share, offset[1] * share]
 }
 
 interface Spring {
@@ -242,6 +283,8 @@ class Locomotion {
   private walk: Walk | null = null
   private turn: Turn | null = null
   private lastTurnFoot: Foot | null = null
+  /** Phase of each foot's last heel strike in this walk: its stance progress, and so its roll, counts from it. */
+  private strikes: Record<Foot, number> = { left: 0, right: 0 }
   private mode: LocomotionFrame['mode'] = 'idle'
   private rebased = false
   private blend = 0
@@ -540,6 +583,8 @@ class Locomotion {
     this.lastTurnFoot = null
     this.leadSign = footSign[firstFoot]
     this.phase = 0.1
+    // As if the walk had been running: the first swing foot lifts at phase delta, the other foot a step later.
+    this.strikes = { [firstFoot]: doubleSupport - (1 + doubleSupport), [opposite(firstFoot)]: 0 } as Record<Foot, number>
     this.speed = 0
     this.walk = { direction, heading, firstFoot, step: 0, starting: true, arrived: false, settle: null }
   }
@@ -625,6 +670,7 @@ class Locomotion {
       if (this.swing) {
         this.feet[this.swing.foot] = copyAnchor(this.swing.land)
         this.spans[this.swing.foot] = this.swing.reach
+        this.strikes[this.swing.foot] = index
         events.push({ kind: 'heelStrike', foot: this.swing.foot, time: now })
         this.swing = null
       }
@@ -709,13 +755,50 @@ class Locomotion {
     this.speed = 0
   }
 
-  private footFrame(side: Foot): LocomotionFoot {
+  private footFrame(side: Foot, strideScale: number): LocomotionFoot {
     if (this.swing?.foot === side)
-      return { target: this.sampleSwing(this.swing), planted: false, swing: this.swing.progress }
+      return { target: this.sampleSwing(this.swing), planted: false, swing: this.swing.progress, roll: this.roll(side, strideScale) }
     const step = this.turn?.steps[this.turn.index]
     if (this.turn && step?.foot === side && this.turn.elapsed > 0)
-      return { target: step.sample(this.turn.elapsed), planted: false, swing: this.turn.elapsed / step.duration }
-    return { target: copyAnchor(this.feet[side]), planted: true, swing: null }
+      return { target: step.sample(this.turn.elapsed), planted: false, swing: this.turn.elapsed / step.duration, roll: { pitch: 0, ankleOffset: [0, 0], pivot: 'air' } }
+    return { target: copyAnchor(this.feet[side]), planted: true, swing: null, roll: this.roll(side, strideScale) }
+  }
+
+  /**
+   * Architecture 5.1. Stance progress g runs from a heel strike (0) to lift-off (1, after 1 + delta steps): the heel pivot
+   * lowers the toes to flat by g = 0.12, the sole holds, and from g = 0.62 the ball pivot lifts the heel. The swing releases
+   * the toe-off pitch by w = 0.45 and raises the toes from w = 0.55 for the next strike; the ankle offset leaves the ground
+   * with the toe-off and arrives with the strike. Both pitches scale with min(1, strideScale), so a walk starts and stops
+   * flat-footed. Turn steps and an idle gait keep the feet flat.
+   */
+  private roll(side: Foot, strideScale: number): FootRoll {
+    const foot = this.traits.foot?.[side]
+    const swing = this.swing?.foot === side ? this.swing : null
+    if (!foot || !this.walk)
+      return { pitch: 0, ankleOffset: [0, 0], pivot: swing ? 'air' : 'flat' }
+    const scale = Math.min(1, strideScale)
+    const strike = heelStrikePitch * scale
+    const toeOff = toeOffPitch * scale
+    const heel = (pitch: number) => pivotOffset(foot.heelBack, foot.ankleHeight, pitch)
+    const ball = (pitch: number) => pivotOffset(-foot.ballForward, foot.ankleHeight, pitch)
+    if (swing) {
+      const w = swing.progress
+      if (w < 0.55) {
+        const pitch = w < 0.45 ? -toeOff * (1 - minJerk(w / 0.45)) : 0
+        return { pitch, ankleOffset: scaleOffset(ball(pitch), 1 - minJerk(w / 0.35)), pivot: 'air' }
+      }
+      const pitch = strike * minJerk((w - 0.55) / 0.45)
+      return { pitch, ankleOffset: scaleOffset(heel(pitch), minJerk((w - 0.7) / 0.3)), pivot: 'air' }
+    }
+    const g = clamp((this.phase - this.strikes[side]) / (1 + doubleSupport), 0, 1)
+    if (g < footFlatAt) {
+      const pitch = strike * (1 - minJerk(g / footFlatAt))
+      return { pitch, ankleOffset: heel(pitch), pivot: 'heel' }
+    }
+    if (g < heelOffAt)
+      return { pitch: 0, ankleOffset: [0, 0], pivot: 'flat' }
+    const pitch = -toeOff * minJerk((g - heelOffAt) / (1 - heelOffAt))
+    return { pitch, ankleOffset: ball(pitch), pivot: 'ball' }
   }
 
   private frame(mode: LocomotionFrame['mode'], events: readonly GaitEvent[], pelvis: ReturnType<Locomotion['pelvis']>): LocomotionFrame {
@@ -732,7 +815,7 @@ class Locomotion {
       root: { position: { x: this.x, y: 0, z: this.z }, yaw: this.yaw },
       speed: this.speed,
       phase: this.phase,
-      feet: { left: this.footFrame('left'), right: this.footFrame('right') },
+      feet: { left: this.footFrame('left', strideScale), right: this.footFrame('right', strideScale) },
       support,
       body: {
         pelvisLateral: pelvis.lateral,

@@ -140,6 +140,11 @@ performer's `gait.channels`, which blends them by `frame.weight`. While `frame.w
 targets: seed it with the contact planner's planted anchors (converted to world),
 and hand `frame.feet` back through `setAnchors` when it returns to idle. Pass
 `frame.root.yaw` to the turn planner as `facingYaw` with `allowTurn: false` while moving.
+With `traits.foot` (each foot's ankle height and heel and ball distances) every foot also carries
+`roll` (architecture 5.1): it strikes on the heel at `14 deg * min(1, strideScale)`, is flat from 12 % of the stance,
+rises onto the ball from 62 % to `-32 deg * min(1, strideScale)` at lift-off, and swings back through flat to the next
+strike. `roll.ankleOffset` is the ankle's displacement from `target` as the foot rotates about `roll.pivot`, so that
+point holds still; `target` keeps its meaning. Without `traits.foot`, and in turns, every roll is 0.
 `rebase` teleports the root, re-plants both feet at the bind ankle offsets, and
 makes the next frame `idle`; use it for drag and teleports. The seed only breaks
 first-foot ties.

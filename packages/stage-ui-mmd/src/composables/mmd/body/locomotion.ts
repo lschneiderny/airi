@@ -1,5 +1,5 @@
 import type { Foot, LegGeometry } from '@proj-airi/motion-driver-humanoid/foot-contact'
-import type { LocomotionFrame, LocomotionInput } from '@proj-airi/motion-driver-humanoid/locomotion'
+import type { FootGeometry, LocomotionFrame, LocomotionInput } from '@proj-airi/motion-driver-humanoid/locomotion'
 import type { BodyLocomotionIntent, RigTraits } from '@proj-airi/motion-driver-humanoid/types'
 
 import { createLocomotion } from '@proj-airi/motion-driver-humanoid/locomotion'
@@ -52,7 +52,8 @@ export class MMDLocomotion {
   private readonly gait
   private current: LocomotionFrame
 
-  constructor(legs: Record<Foot, LegGeometry>, traits: Pick<RigTraits, 'legLength' | 'footBaselineY'>, seed: number) {
+  /** `foot` is the rig's roll geometry (`MMDFootContact.rollGeometry`); without it the feet stay flat. */
+  constructor(legs: Record<Foot, LegGeometry>, traits: Pick<RigTraits, 'legLength' | 'footBaselineY'>, seed: number, foot: Record<Foot, FootGeometry> | null = null) {
     const anchor = (leg: LegGeometry) => ({ position: { x: leg.ankle.x, y: traits.footBaselineY, z: leg.ankle.z }, yaw: 0 })
     this.gait = createLocomotion({
       traits: {
@@ -60,6 +61,7 @@ export class MMDLocomotion {
         footBaselineY: traits.footBaselineY,
         hipToAnkleY: (legs.left.hip.y - legs.left.ankle.y + legs.right.hip.y - legs.right.ankle.y) / 2,
         bindAnkles: { left: { ...legs.left.ankle }, right: { ...legs.right.ankle } },
+        ...foot ? { foot } : {},
       },
       seed,
     })

@@ -1,5 +1,5 @@
 import type { Foot, FootAnchor, LegGeometry } from '@proj-airi/motion-driver-humanoid/foot-contact'
-import type { LocomotionFoot } from '@proj-airi/motion-driver-humanoid/locomotion'
+import type { FootGeometry, LocomotionFoot } from '@proj-airi/motion-driver-humanoid/locomotion'
 import type { TurnStep } from '@proj-airi/motion-driver-humanoid/look-at'
 import type { AnimationClip, Bone, Matrix4 } from 'three'
 
@@ -12,6 +12,8 @@ import { Euler, Quaternion, Vector3 } from 'three'
 import { toRigTraits } from '../rig'
 
 const sides = ['left', 'right'] as const
+/** The axis that turns the gait foot frame's forward (+Z) toward up (+Y). */
+const FOOT_LATERAL = new Vector3(-1, 0, 0)
 
 /**
  * Which ground contact a carried foot pivots about (owner decision O6): the solved ankle while flat, or the rig's heel or
@@ -107,6 +109,22 @@ export class MMDFootContact {
     const left = this.legs.find(leg => leg.side === 'left')?.geometry
     const right = this.legs.find(leg => leg.side === 'right')?.geometry
     return left && right ? { left, right } : null
+  }
+
+  /**
+   * The heel and ball the gait rolls a foot over, from the same contact points `measure` reads under each pivot, so a
+   * rolling foot pivots about exactly the point its contact skate is measured at. Null unless both feet have a toe bone
+   * and a toe IK bone: the leg IK bone's pitch reaches the ankle only through the toe IK child.
+   */
+  get rollGeometry(): Record<Foot, FootGeometry> | null {
+    const geometry: Partial<Record<Foot, FootGeometry>> = {}
+    for (const leg of this.legs) {
+      if (!leg.contacts || this.pose.rig.toeIk[leg.side] === null)
+        return null
+      // Ankle-local axes are the mesh axes at bind; the gait's foot frame is forward +Z, up +Y (as `toMeshAnchor`).
+      geometry[leg.side] = { ankleHeight: -leg.contacts.ball.y, ballForward: leg.contacts.ball.z, heelBack: -leg.contacts.heel.z }
+    }
+    return geometry.left && geometry.right ? { left: geometry.left, right: geometry.right } : null
   }
 
   /** Planted anchors in the ground frame, falling back to the bind ankles beside the root. */
@@ -224,7 +242,12 @@ export class MMDFootContact {
         if (input.now - step.start >= step.arc.duration)
           delete this.steps[side]
       }
-      const anchor = toMeshAnchor(this.planted[side] ?? toGroundAnchor(contact.anchor, root), root)
+      const roll = input.gait?.[side].roll
+      const ground = this.planted[side] ?? toGroundAnchor(contact.anchor, root)
+      // The gait's roll moves the ankle about its pivot, along the foot's forward axis in the ground frame.
+      const anchor = toMeshAnchor(roll
+        ? { position: { x: ground.position.x + Math.sin(ground.yaw) * roll.ankleOffset[0], y: ground.position.y + roll.ankleOffset[1], z: ground.position.z + Math.cos(ground.yaw) * roll.ankleOffset[0] }, yaw: ground.yaw }
+        : ground, root)
       this.targets[side] = anchor
       this.carrying[side] = !input.disabled && contact.c >= 1 && (input.gait ? input.gait[side].planted : !this.steps[side])
       if (input.disabled) {
@@ -275,6 +298,9 @@ export class MMDFootContact {
       const parent = ik.parent?.getWorldQuaternion(new Quaternion()) ?? new Quaternion()
       const worldYaw = mmd.mesh.getWorldQuaternion(new Quaternion())
         .multiply(new Quaternion().setFromAxisAngle(this.pose.up, anchor.yaw))
+      // Pitch about the foot's lateral axis after its yaw; positive lifts the toes (+Z forward toward +Y up).
+      if (roll && roll.pitch !== 0)
+        worldYaw.multiply(new Quaternion().setFromAxisAngle(FOOT_LATERAL, roll.pitch))
       ik.quaternion.copy(clean.quaternions[chain.ikBoneIndex]).slerp(parent.invert().multiply(worldYaw), contact.c)
       ik.updateWorldMatrix(false, true)
     }
