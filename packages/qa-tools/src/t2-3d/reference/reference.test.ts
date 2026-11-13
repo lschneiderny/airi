@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest'
 import { parseTrace } from '../read-trace'
 import { parseBvh, readBvh } from './bvh'
 import { convertBvh, ingestClip } from './ingest'
-import { listClips, parseManifest, readManifest } from './manifest'
+import { parseManifest, readManifest } from './manifest'
 import { resolveSkeleton } from './skeletons'
 import { inspectSource } from './test-helpers'
 
@@ -165,12 +165,12 @@ describe('reference ingestion', () => {
     }
   })
 
-  it('requires a split and lists clips by class and split', () => {
+  it('requires a split on every clip and keeps each clip\'s split', () => {
     const clip = { file: 'test.bvh', dataset: 'cmu', class: 'talk', profile: 'cmu', subject: '18', role: 'window' }
     const datasets = [{ id: 'cmu', licence: 'test', url: 'https://example.com' }]
     expect(() => parseManifest({ datasets, clips: [clip] })).toThrow(expect.objectContaining({ name: 'reference-manifest' }))
     const manifest = parseManifest({ datasets, clips: [{ ...clip, split: 'fit' }, { ...clip, file: 'hold.bvh', split: 'holdout' }] })
-    expect(listClips(manifest, 'talk', 'fit').map(c => c.file)).toEqual(['test.bvh'])
+    expect(manifest.clips.map(c => c.split)).toEqual(['fit', 'holdout'])
   })
 })
 

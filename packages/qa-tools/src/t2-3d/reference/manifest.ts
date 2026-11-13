@@ -1,5 +1,3 @@
-import type { MotionScenarioClass } from '@proj-airi/motion-driver-humanoid/motion-trace'
-
 import { readFile } from 'node:fs/promises'
 import { isAbsolute } from 'node:path'
 
@@ -42,8 +40,4 @@ export function parseManifest(input: unknown): ReferenceManifest {
 
 export async function readManifest(path: string): Promise<ReferenceManifest> {
   return parseManifest(JSON.parse(await readFile(path, 'utf8')))
-}
-
-export function listClips(manifest: ReferenceManifest, scenarioClass: MotionScenarioClass, split: ReferenceClip['split']): ReferenceClip[] {
-  return manifest.clips.filter(clip => clip.class === scenarioClass && clip.split === split)
 }

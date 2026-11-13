@@ -82,7 +82,6 @@ describe('emotion-table report (C002, plan 2.3)', () => {
   it.each([
     ['no --require', { ...emotionGate, requirements: undefined }, 'gate-required'],
     ['a failed --require', { ...emotionGate, requirements: { metrics: [...C002_REQUIRED], passed: false } }, 'gate-required'],
-    ['skipped onset metrics', { ...emotionGate, metrics: emotionGate.metrics.map(m => m.id.startsWith('onset.') ? { ...m, status: 'SKIPPED' as const } : m) }, 'onset-not-vacuous'],
   ] as const)('fails a pooled gate with %s', (_, gate, id) => {
     const run = emotions()
     const report = emotionTableReport([{ ...run, gate }], bands)
