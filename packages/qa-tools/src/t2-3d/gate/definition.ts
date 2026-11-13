@@ -10,13 +10,15 @@ export const LIMITATION = 'Scores compare motion statistics with bands derived f
  * Version 4 keeps version 3's bands byte for byte (only `gate.version` differs) and judges an unscorable smoothness
  * region of a character trace (fewer than 8 episodes, none included) SKIPPED only when it is not frozen, else FAIL
  * (lane U revision 3: the visible end's windowed displacement at the default stage scale).
+ * Version 5 keeps version 4's bands byte for byte (only `gate.version` differs) and computes the emotion separations on
+ * side-invariant posture features continuous through 180 degrees (`postureFeatures`; E/g3/s/rules.md 12.5).
  */
 export const motionQualityGate = {
   id: 'mmd-motion-quality',
-  version: 4,
+  version: 5,
   limitation: LIMITATION,
-  bandsFile: 'packages/qa-tools/fixtures/motion3d/bands-v4.json',
-  bandsSha256: '536a59082997df78cd7ea26ffce818dd7e55272ee67bad833abe18fbe53284cc',
+  bandsFile: 'packages/qa-tools/fixtures/motion3d/bands-v5.json',
+  bandsSha256: 'c8c3933880df13122f69c8626fdd3920196bbfa851ffb98887c541d057793ffd',
   refusals: [
     'trace-unreadable',
     'trace-kind',

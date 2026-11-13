@@ -6,6 +6,7 @@ import { MOTION_TRACE_CHANNELS } from '@proj-airi/motion-driver-humanoid/motion-
 
 import { ARMS, UPPER } from './bones'
 import { conjugate, finite, heading, mean, median, multiply, normalize, rotationVector } from './math'
+import { postureFeatures } from './mirror'
 import { result, skipped } from './result'
 
 export interface EmotionTrial {
@@ -89,6 +90,8 @@ export function emotionTrials(p: PreparedTrace): EmotionTrial[] {
  * A pool with no `neutral` condition cannot show that any emotion is clear of neutral, so the
  * value is undefined (a gated FAIL) with detail `no-neutral-condition`, never a skip.
  * Trials may originate in multiple traces; the shared present bone intersection aligns their vectors.
+ * Since gate version 5 the three separations read `postureFeatures` (side-invariant, continuous through 180 degrees),
+ * because an emotion's sided pose goes to a random side; armShare keeps the signed vectors its band was fitted on.
  */
 export function emotionMetrics(trials: readonly EmotionTrial[]): MetricResult[] {
   const ids = ['emotion.minSeparation', 'emotion.medianSeparation', 'emotion.armShare', 'emotion.minSeparationFromNeutral'] as const
@@ -101,13 +104,16 @@ export function emotionMetrics(trials: readonly EmotionTrial[]): MetricResult[] 
   if (!bones.length)
     return ids.map(id => skipped(id, id.endsWith('armShare') ? 'fraction' : 'standard-deviations', 'trace', 'bones-absent'))
   const vector = (t: EmotionTrial) => bones.flatMap(b => t.posture[b] ?? [])
-  const centres = new Map(conditions.map((c) => {
-    const vectors = (groups.get(c) ?? []).map(vector)
+  const features = new Map(trials.map(t => [t, postureFeatures(vector(t), bones)]))
+  const centresOf = (rows: (t: EmotionTrial) => readonly number[]) => new Map(conditions.map((c) => {
+    const vectors = (groups.get(c) ?? []).map(rows)
     return [c, vectors[0].map((_, i) => mean(vectors.map(p => p[i])))]
   }))
+  const centres = centresOf(vector)
+  const featureCentres = centresOf(t => features.get(t) ?? [])
   const squaredDistance = (a: readonly number[], b: readonly number[]) => finite(a.reduce((s, v, i) => s + (v - b[i]) ** 2, 0), 'posture squared distance')
-  const sigma = Math.sqrt(mean(trials.map(t => squaredDistance(vector(t), centres.get(t.condition) ?? []))))
-  const separation = (a: string, b: string) => finite(Math.sqrt(squaredDistance(centres.get(a) ?? [], centres.get(b) ?? [])) / sigma, 'emotion separation')
+  const sigma = Math.sqrt(mean(trials.map(t => squaredDistance(features.get(t) ?? [], featureCentres.get(t.condition) ?? []))))
+  const separation = (a: string, b: string) => finite(Math.sqrt(squaredDistance(featureCentres.get(a) ?? [], featureCentres.get(b) ?? [])) / sigma, 'emotion separation')
   const pairs: number[] = []
   for (let i = 0; i < conditions.length; i++) {
     for (let j = i + 1; j < conditions.length; j++) {

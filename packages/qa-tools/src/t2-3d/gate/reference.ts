@@ -81,7 +81,7 @@ export async function buildReference(options: ReferenceBuild): Promise<MotionBan
     console.error(missing.join('\n'))
   return {
     kind: 'mmd-motion-bands',
-    gate: { id: 'mmd-motion-quality', version: 4 },
+    gate: { id: 'mmd-motion-quality', version: 5 },
     fixture: false,
     builtAt: new Date().toISOString(),
     tool: { gitSha: options.gitSha, rule: 'P5-P50-P95-one-tail-margin' },

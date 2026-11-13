@@ -160,9 +160,11 @@ Version 0 retains explicitly marked analytic fixtures. Version 1 uses frozen
 human-reference bands fitted per body side. Version 2 fits mirrored body sides
 pooled. Version 3 keeps version 2's bands, reports the talk
 bands fitted per clip from locomoting talk performers, and gates emotion
-separation from neutral instead of all pairs. Version 4, the current gate,
-keeps version 3's bands byte for byte and judges an unscorable smoothness
-region by a not-frozen check. Frozen band files
+separation from neutral instead of all pairs. Version 4 keeps version 3's
+bands byte for byte and judges an unscorable smoothness region by a
+not-frozen check. Version 5, the current gate, keeps version 4's bands byte for
+byte and computes the emotion separations on side-invariant posture features
+that stay continuous through 180 degrees. Frozen band files
 are immutable. Changing a band, detector, formula, window, or gated list requires
 the next version, a new file and SHA-256, in an isolated freeze commit before
 judging runs. A hash mismatch refuses scoring. A failing run never authorizes
@@ -238,7 +240,7 @@ the gate's own verdict is never changed by them.
 | Command | Judges |
 | --- | --- |
 | `pnpm qa:motion3d gesture-timing <speak run> --idle <idle run>...` | C001 (version 5): the companion idle runs must be the `idle` scenario's seeds 1, 2 and 3, one each, of 120 s scored, at the judged run's model and commit; any other set, or fewer than 20 pooled idle apexes, is refused (exit 2). A candidate apex counts as a stroke only if its peak hand speed exceeds the 95th percentile of the candidate apexes pooled over those companions. The judged run's own silent-span apexes are printed, report only. Labelled peaks hit by a counted stroke apex within 200 ms (at least 70 % of at least 10 peaks); every utterance holds a stroke apex; on at least 70 % of hit peaks the upper torso turns against the hips over [stroke apex - 250 ms, stroke apex] by more than the 95th percentile of the same turn over every 0.25 s window of the companion idle runs (at least 20 windows), where the stroke apex is the apex within 200 ms of the peak that confirms a `gesture-stroke` marker, and a hit peak without one counts as a miss (version 4: the speak run's own silent stretches set version 3's bar, and its nearest apex could be a recovery); and at most 10 % of the speak run's own 0.25 s windows with no labelled peak within 1 s turn above that bar (revision 2: without it, trunk sway livelier than idle passed as participation); `gesture-stroke` markers confirmed by an apex within 50 ms (90 %); at least four forms whose median apex pronation, wrist flexion, index curl or stroke direction differ by 10 degrees; one-hand share and two-hand apex lag; every gated `bilateral.*.peakCorr` PASS; upper arm before lower arm before hand in unit preparations (90 %); zero penetration, pops and corrector fallbacks; a talk-class `gate.json` with no gated FAIL, whatever gate version it names (report-only values are printed); and arm smoothness (version 5): every arm whose `smooth.armL/R.ldlj` has a value lies inside the printed talk band, and at least one arm has a value. An arm with too few episodes to score is skipped only when it is not frozen: its windowed displacement, the median over 5 s windows of the p95 distance its wrist moves in the shoulder frame, must be at least 1.789 DIP at the default 560 DIP character height, the gate version 4 check. Below that it fails. A run in which neither arm is scored fails. A skipped arm proves nothing about its smoothness; the threshold comes from labelled cases (lane U revision 3) at a 1 DIP visibility edge, not from a human reference. |
-| `pnpm qa:motion3d emotion-table <emotions run>...` | C002 (version 3): on the gate's trial vectors and sigma, each non-neutral emotion at least 2 SD from neutral and from the placebo (the 22 pairs of `emotion.minSeparationFromNeutral`, whose value it prints); the full 13 by 13 table is report only. Every `gate.json` must come from `qa:motion3d gate <runs> --require emotion.minSeparationFromNeutral,emotion.armShare` and have passed it; `onset.attackFraction` and `onset.easedOrAnticipated` must PASS in every `gate.json`, each from at least the gate's 8 episodes per run (the counts are printed); the release window +8 to +11 s stays inside the placebo trials' p95, and the vacuity guards hold. It also prints, report only, the first scale of the architecture 4c posture table (0.25 to 8 in steps of 0.25) at which each emotion clears 2 SD from neutral and placebo on a designed overlay of the same runs (`src/t2-3d/reports/posture-scale.ts`). |
+| `pnpm qa:motion3d emotion-table <emotions run>...` | C002 (version 4): on the gate's posture features and sigma (gate version 5: side-invariant, continuous through 180 degrees; the not-vacuous and release lines keep the signed trial vectors), each non-neutral emotion at least 2 SD from neutral and from the placebo (the 22 pairs of `emotion.minSeparationFromNeutral`, whose value it prints); the full 13 by 13 table is report only. Every `gate.json` must come from `qa:motion3d gate <runs> --require emotion.minSeparationFromNeutral,emotion.armShare` and have passed it; `onset.attackFraction` and `onset.easedOrAnticipated` must PASS in every `gate.json`, each from at least the gate's 8 episodes per run (the counts are printed); the release window +8 to +11 s stays inside the placebo trials' p95, and the vacuity guards hold. It also prints, report only, the first scale of the architecture 4c posture table (0.25 to 8 in steps of 0.25) at which each emotion clears 2 SD from neutral and placebo on a designed overlay of the same runs (`src/t2-3d/reports/posture-scale.ts`). |
 | `pnpm qa:motion3d cue-body <emotions run>...` | C002 (version 4): per cue kind, the kind's events (at least 6) are aligned at the cue marker and their below-neck bone turns averaged frame by frame; the largest averaged turn over the cue and 0.5 s after it, in units of that bone's SD over same-length placebo windows of the same runs (1 s clear of every cue window and of each emotion event's first 2 s), must exceed the 99th percentile of the same statistic on 1000 seeded averages of as many placebo windows. Every average with one event left out must also exceed the 99th percentile of the null for one window fewer, so no single event carries a kind. The version 2 per-event counts (5 of 6) are printed, report only. `--calibrate <run>...` prints the split-half control: pseudo-events of 6 placebo windows from one half judged by the full rule against the nulls of the other, nominal 1 %, exit 1 above 5 %. |
 | `pnpm qa:motion3d ownership <gesture-under-clip run>... --idle <idle run>...` | C004, version 2 (revision C2.1): the gated `gesture-under-clip` version 3 runs of seeds 1 to 6, of one commit and one model, one run per seed, with six short companion `idle` runs (seeds 1 to 6, at most 60 s scored) of the same model and commit. They feed `gesture-timing`'s idle speed bar and the rest report. Fewer runs, another scenario version, commit or model, a repeated seed, a refused idle bar (including no `--idle`), or an idle run of 70 s or more (warm-up included; the performer redraws its rest at 70 s, so its recorded rest would not hold) is REFUSED with exit 2, after every run is printed. An apex counts as a stroke only above that bar. Per run, each requirement is PASS, FAIL, NOT-EXERCISED or REFUSED: the right arm and fingers written within 0.001 rad of the clip on fully owned frames, with a trace cross-check against the clip's analytic pose; no gesture activation on an owned arm, exercised when the right arm gestures at the claim; the left arm still stroking on owned peaks; no arm or trunk pop in [poke - 0.2, poke + 1] s and a stroke on the first peak 1 s after the poke, both exercised when a gesture unit runs on a free arm at the poke; no right gesture activation after the silent first release until the next unit, and after the second release (inside utterance C) none until ownership reaches 0, exercised when a unit runs at that release; after each release, `owned.rightArm` reaching 0 within 1 s (the upper layer's 0.3 s exit fade), so a clip that never lets go fails; plus penetration, pops and corrector at 0. Reported, not judged: every right-hand apex in [release, release + 1] s after each release (a stroke only in the bones, with activation 0, is not caught), and at release + 0.5 s the performer's arm channels, each arm's offset from its own rest compared across the arms beside the idle runs' 95th percentile. These are the performer's channels before the clip blend, not the posed arm: a pose held by the clip or the adapter in the bones does not appear in them, so a released arm held in the clip's pose is not caught. The yield is judged on the gesture layer's weight; motion of the claimed arm in the bones during the claim fade is not judged by this report. Pooled, a requirement that needs a case passes when no run fails it and at least 2 runs exercise it. |
 | `pnpm qa:motion3d turn <capture>` | C003: a kinematic stroke apex inside speech, a trunk, neck, head and shoulder posture change after the ACT emotion cue above 20 pseudo-placebo times before it, and the gate verdict. |
@@ -603,7 +605,38 @@ Limits of version 4:
   lower edge passes an arm made of six one-frame 20 deg jumps per gesture
   (`pops` fails that arm).
 
-The counts below describe frozen version 3 and hold for version 4.
+#### Version 5: side-invariant emotion separation, 2026-11-12
+
+The project owner decided on 2026-11-12: "Emotion gate: Reviewed rule change",
+a new gate version with side-invariant features that also fixes a flip when a
+bone turns past 180 degrees. Version 5 carries that rule and nothing else.
+`bands-v5.json` differs from `bands-v4.json` only in `gate.version`.
+
+- **Features.** `emotion.minSeparation`, `emotion.medianSeparation` and
+  `emotion.minSeparationFromNeutral` read `postureFeatures`
+  (`src/t2-3d/metrics/mirror.ts`) instead of the signed posture vector. Each
+  bone's turn becomes (R - I) / sqrt(2), which is continuous through 180
+  degrees: a hand turned 179 degrees and one turned 181 degrees lie 2 degrees
+  apart. The features are the mirror-symmetric part of those numbers and, per
+  bone, the length of the antisymmetric part, so a pose and its mirror image
+  read the same. Centres, the pooled SD, the bar of 2 and the required pairs
+  are unchanged. `emotion.armShare` keeps the signed vectors that its band was
+  fitted on.
+- **Why.** The design puts an emotion's sided pose (an arm form, a lean, one
+  shoulder) on a random side. Version 4 read the same full-size poses at 0.65
+  SD on random sides and 3.04 SD on one side. Every arm-form hand turns 162 to
+  180 degrees, where the rotation vector flips.
+- **Labelled cases.** On both rigs, built in the posed bones of idle runs
+  (E/g3/s/rules.md sections 11.5 and 12.5), the correct sets read 3.82 to 4.03,
+  with the form hands at 175 to 185 degrees, at 179 or at 181 degrees, and on
+  either side. The fault sets read at most 1.39: a quarter-size pose, a 0.5 s
+  pulse, its edge, and no pose. Two emotions that differ only by side read
+  1.14 to 1.20 apart.
+- **Limits.** The smallest design-shaped pose that clears 2 is about 0.46 of
+  the design. Making every sided pose go to one side no longer raises the
+  reading (0.99 times the random-side reading).
+
+The counts below describe frozen version 3 and hold for versions 4 and 5.
 `fixtures/motion3d/bands-v3.json`
 records each metric, bound and report-only reason; `bands-v2.json` and
 `bands-v1.json` keep versions 2 and 1.

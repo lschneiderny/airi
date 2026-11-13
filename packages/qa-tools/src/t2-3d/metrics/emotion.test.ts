@@ -23,10 +23,13 @@ function separations(trials: readonly EmotionTrial[]) {
   return { all: m.find(m => m.id === 'emotion.minSeparation')?.value, fromNeutral: m.find(m => m.id === 'emotion.minSeparationFromNeutral')?.value }
 }
 
+// Since gate version 5 the separations read chords of each turn (2 sin(angle / 2)), and a centre of rotation matrices
+// differs from one of rotation vectors at second order: a copy of the placebo with three trials instead of the placebo's
+// five reads 0.006 SD from it, and a pool built at 1.99 or 2.01 SD in rotation vectors reads 5e-5 SD off.
 describe('pooled emotion postures', () => {
   it('scores an emotion that copies neutral or the placebo at zero separation from neutral', () => {
     expect(separations(headPool({ neutral: 0, placebo: 1, copy: 0, other: -1 })).fromNeutral).toBeCloseTo(0, 12)
-    expect(separations(headPool({ neutral: 0, placebo: 1, copy: 1, other: -1 })).fromNeutral).toBeCloseTo(0, 12)
+    expect(separations(headPool({ neutral: 0, placebo: 1, copy: 1, other: -1 })).fromNeutral).toBeLessThan(0.01)
   })
 
   it('leaves neutral against placebo out of the separation from neutral', () => {
@@ -41,7 +44,7 @@ describe('pooled emotion postures', () => {
       ...[-0.02, -0.01, 0, 0.01, 0.02].map(noise => ({ condition: 'placebo', placebo: true, t: 0, frames: [], posture: { head: [noise, 0, 0] as const, leftUpperArm: [0, 0, 0] as const } })),
     ]
     const m = emotionMetrics(trials)
-    expect(m.find(m => m.id === 'emotion.minSeparation')?.value).toBeCloseTo(0, 12)
+    expect(m.find(m => m.id === 'emotion.minSeparation')?.value).toBeLessThan(0.01)
     expect(m.find(m => m.id === 'emotion.medianSeparation')?.value).toBeGreaterThan(50)
     expect(m.find(m => m.id === 'emotion.armShare')?.value).toBeCloseTo(1 / 1.64, 10)
   })
@@ -53,8 +56,55 @@ describe('pooled emotion postures', () => {
     const pool = headPool({ neutral: 0, placebo: 1, a: separation * sigma })
     const bands = await loadBands(fileURLToPath(new URL('../../../../..', import.meta.url)))
     const judged = judgeMetrics(emotionMetrics(pool), bands.classes.emotion).find(m => m.id === 'emotion.minSeparationFromNeutral')
-    expect(judged?.value).toBeCloseTo(separation, 9)
+    expect(judged?.value).toBeCloseTo(separation, 3)
     expect(judged?.status).toBe(status)
+  })
+
+  // Version 5 (E/g3/s/rules.md 12.5): an arm form on either arm is one emotion, as the design puts it on a random side.
+  // Signed vectors read a, posed L, R, L, and b, posed R, L, R, at 1.71 SD from neutral.
+  it('reads a pose and its mirror image as one emotion', () => {
+    const arm = (side: 'L' | 'R', noise: number) => ({ head: [noise, 0, 0] as const, leftUpperArm: [0, 0, side === 'L' ? 1 : 0] as const, rightUpperArm: [0, 0, side === 'R' ? -1 : 0] as const })
+    const trials: EmotionTrial[] = [
+      ...(['L', 'R', 'L'] as const).map((side, i) => ({ condition: 'a', placebo: false, t: 0, frames: [], posture: arm(side, 0.01 * (i - 1)) })),
+      ...(['R', 'L', 'R'] as const).map((side, i) => ({ condition: 'b', placebo: false, t: 0, frames: [], posture: { ...arm(side, 0.01 * (i - 1)), head: [0.5 + 0.01 * (i - 1), 0, 0] as const } })),
+      ...[-0.01, 0, 0.01].map(noise => ({ condition: 'neutral', placebo: false, t: 0, frames: [], posture: { head: [noise, 0, 0] as const, leftUpperArm: [0, 0, 0] as const, rightUpperArm: [0, 0, 0] as const } })),
+      ...[-0.02, -0.01, 0, 0.01, 0.02].map(noise => ({ condition: 'placebo', placebo: true, t: 0, frames: [], posture: { head: [1 + noise, 0, 0] as const, leftUpperArm: [0, 0, 0] as const, rightUpperArm: [0, 0, 0] as const } })),
+    ]
+    expect(separations(trials).fromNeutral).toBeGreaterThan(20)
+  })
+
+  // A lean toward a random side is all antisymmetric: its mirror-symmetric part is second order in the angle.
+  it('keeps a lean toward a random side clear of neutral', () => {
+    const roll = (condition: string, z: number, noise: number, placebo = false): EmotionTrial => ({ condition, placebo, t: 0, frames: [], posture: { head: [noise, 0, 0] as const, spine: [0, 0, z] as const } })
+    const trials: EmotionTrial[] = [
+      ...[0.3, -0.3, 0.3].map((z, i) => roll('a', z, 0.01 * (i - 1))),
+      ...[-0.01, 0, 0.01].map(noise => roll('neutral', 0, noise)),
+      ...[-0.02, -0.01, 0, 0.01, 0.02].map(noise => roll('placebo', 0, noise, true)),
+    ]
+    expect(separations(trials).fromNeutral).toBeGreaterThan(10)
+  })
+
+  // Two emotions whose poses differ only by side are one pose: the all-pairs minimum is their pair.
+  it('does not separate two emotions that differ only by side', () => {
+    const pool = (condition: string, side: 1 | -1): EmotionTrial[] => [-0.01, 0, 0.01].map(noise => ({ condition, placebo: false, t: 0, frames: [], posture: { head: [noise, 0, 0] as const, leftUpperArm: [0, 0, side > 0 ? 1 : 0] as const, rightUpperArm: [0, 0, side < 0 ? -1 : 0] as const } }))
+    const trials: EmotionTrial[] = [
+      ...pool('a', 1),
+      ...pool('b', -1),
+      ...[-0.01, 0, 0.01].map(noise => ({ condition: 'neutral', placebo: false, t: 0, frames: [], posture: { head: [noise, 0, 0] as const, leftUpperArm: [0, 0, 0] as const, rightUpperArm: [0, 0, 0] as const } })),
+      ...[-0.02, -0.01, 0, 0.01, 0.02].map(noise => ({ condition: 'placebo', placebo: true, t: 0, frames: [], posture: { head: [1 + noise, 0, 0] as const, leftUpperArm: [0, 0, 0] as const, rightUpperArm: [0, 0, 0] as const } })),
+    ]
+    expect(separations(trials).all).toBeLessThan(0.01)
+  })
+
+  // A hand turned 179 deg and one turned 181 deg are 2 deg apart; their rotation vectors point in opposite directions.
+  it('reads a bone turned past 180 degrees next to one just short of it', () => {
+    const turn = (degrees: number) => [((degrees + 180) % 360 - 180) * Math.PI / 180, 0, 0] as const
+    const trials: EmotionTrial[] = [
+      ...[179, 181, 179].map((degrees, i) => ({ condition: 'a', placebo: false, t: 0, frames: [], posture: { head: [0.01 * (i - 1), 0, 0] as const, leftHand: turn(degrees), rightHand: [0, 0, 0] as const } })),
+      ...[-0.01, 0, 0.01].map(noise => ({ condition: 'neutral', placebo: false, t: 0, frames: [], posture: { head: [noise, 0, 0] as const, leftHand: [0, 0, 0] as const, rightHand: [0, 0, 0] as const } })),
+      ...[-0.02, -0.01, 0, 0.01, 0.02].map(noise => ({ condition: 'placebo', placebo: true, t: 0, frames: [], posture: { head: [noise, 0, 0] as const, leftHand: [0, 0, 0] as const, rightHand: [0, 0, 0] as const } })),
+    ]
+    expect(separations(trials).fromNeutral).toBeGreaterThan(20)
   })
 
   it('extracts a baseline-relative quaternion posture once for a labelled held trial', () => {

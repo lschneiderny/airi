@@ -9,10 +9,11 @@ import { motionQualityGate } from '../gate/definition'
 import { emotionMetrics, emotionTrials, onsetMetrics } from '../metrics'
 import { UPPER } from '../metrics/bones'
 import { conjugate, DEG, heading, mean, multiply, normalize, rotationVector } from '../metrics/math'
+import { postureFeatures } from '../metrics/mirror'
 import { postureClearingScales } from './posture-scale'
 import { criterionReport, fixed, formatReport, gateStatus, requireGate, requirement } from './report'
 
-export const EMOTION_TABLE_VERSION = 3
+export const EMOTION_TABLE_VERSION = 4
 
 /** Plan 2.3's C002 constants: the gate's own windows and threshold, and the placebo band. */
 const C = {
@@ -31,7 +32,7 @@ export const C002_REQUIRED = ['emotion.minSeparationFromNeutral', 'emotion.armSh
 const ONSET_IDS = ['onset.attackFraction', 'onset.easedOrAnticipated'] as const
 
 export const EMOTION_TABLE_CONSTANTS: readonly ReportConstant[] = [
-  { name: 'pair separation', value: C.separation, unit: 'SD, each non-neutral emotion against neutral and against placebo', source: 'gate emotionSeparationMinimum; emotion.minSeparationFromNeutral (gate version 3)' },
+  { name: 'pair separation', value: C.separation, unit: 'SD, each non-neutral emotion against neutral and against placebo', source: 'gate emotionSeparationMinimum; emotion.minSeparationFromNeutral on postureFeatures (gate version 5)' },
   { name: 'gate requirement', value: C002_REQUIRED.join(','), unit: '--require ids', source: 'criterion C002' },
   { name: 'onset episodes', value: C.episodes, unit: 'per run, each onset metric', source: 'gate episodeMinimum' },
   { name: 'baseline window', value: C.baseline.join('..'), unit: 's after the cue', source: 'gate emotionBaselineSeconds' },
@@ -87,19 +88,21 @@ export interface EmotionTableDetail {
 }
 
 /**
- * The gate's S3 separation over pooled trials: condition centres on the trial vectors over the UPPER bones every trial
- * carries, the pooled within-condition sigma, and every pair's centre distance in sigma units, keyed `a|b` with a < b.
+ * The gate's S3 separation over pooled trials: condition centres on the gate's posture features (version 5,
+ * `postureFeatures`) of the trial vectors over the UPPER bones every trial carries, the pooled within-condition sigma,
+ * and every pair's centre distance in sigma units, keyed `a|b` with a < b. `vector` stays the signed trial vector.
  */
 export function separationTable(trials: readonly EmotionTrial[]) {
   const conditions = [...new Set(trials.map(t => t.condition))].sort()
   const bones = UPPER.filter(b => trials.every(t => t.posture[b]))
   const vector = (t: EmotionTrial) => bones.flatMap(b => t.posture[b] ?? [])
+  const features = new Map(trials.map(t => [t, postureFeatures(vector(t), bones)]))
   const centres = new Map(conditions.map((c) => {
-    const vectors = trials.filter(t => t.condition === c).map(vector)
+    const vectors = trials.filter(t => t.condition === c).map(t => features.get(t) ?? [])
     return [c, vectors[0].map((_, i) => mean(vectors.map(v => v[i])))]
   }))
   const distance = (a: readonly number[], b: readonly number[]) => Math.sqrt(a.reduce((s, v, i) => s + (v - b[i]) ** 2, 0))
-  const sigma = Math.sqrt(mean(trials.map(t => distance(vector(t), centres.get(t.condition) ?? []) ** 2)))
+  const sigma = Math.sqrt(mean(trials.map(t => distance(features.get(t) ?? [], centres.get(t.condition) ?? []) ** 2)))
   const separation: Record<string, number> = {}
   for (let i = 0; i < conditions.length; i++) {
     for (let j = i + 1; j < conditions.length; j++)
@@ -109,9 +112,9 @@ export function separationTable(trials: readonly EmotionTrial[]) {
 }
 
 /**
- * C002 emotion table, version 2 (unit M2 R4) over the pooled emotion runs: the gate's trial vectors and sigma; each
- * non-neutral emotion against neutral and against placebo required at 2 SD, as `emotion.minSeparationFromNeutral`;
- * every other pair printed as report only. The pooled verdict comes from the gate run with `--require` C002's ids.
+ * C002 emotion table, version 4 (unit M2 R4) over the pooled emotion runs: the gate's posture features and sigma
+ * (gate version 5); each non-neutral emotion against neutral and against placebo required at 2 SD, as
+ * `emotion.minSeparationFromNeutral`; every other pair printed as report only. The pooled verdict comes from the gate run with `--require` C002's ids.
  */
 export function emotionTableReport(runs: readonly LoadedRun[], bands: MotionBandsFile): CriterionReport<EmotionTableDetail> {
   const emotion = bands.classes.emotion
