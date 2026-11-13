@@ -13,10 +13,10 @@ export { colliderDistance, proxyColliders } from './colliders'
 /** The guard weight's critically damped response, rad/s: the reaction layer's inertialisation rate (architecture 3g). */
 const GUARD_OMEGA = 14
 /**
- * The soft skin outside the margin of a leg body while the gait swings the legs, as a share of the segment length: the
- * margin's own thickness. An arm entering it is pushed back by a smooth function of its depth there, so a thigh that
- * swings into the arm slows it over several ticks instead of stopping it dead at the margin, and the arm never passes
- * the margin.
+ * The soft skin outside the margin of every proxy while the gait carries the body, as a share of the segment length at
+ * a gait weight of 1: the margin's own thickness. An arm entering it is pushed back by a smooth function of its depth
+ * there, so a thigh that swings into the arm, or a trunk the walk twists into it, slows it over several ticks instead of
+ * stopping it dead at the margin, and the arm never passes the margin.
  */
 const SKIN = 0.03
 
@@ -74,8 +74,11 @@ export class BodyCollision {
   }
 
   private readonly legScratch = identityTransform()
-  /** The latest `prepare` posed the leg bodies from the gait. */
-  private legsPosed = false
+  /**
+   * The gait weight of the latest `prepare`, 0 without a gait. The skin grows with it, so it closes in on an arm that
+   * already rests near a proxy over the gait's blend instead of pushing it out on the first walking tick.
+   */
+  private gaitWeight = 0
   /** Each side's skin thickness in model units: `SKIN` of the shorter arm segment, so it is never thicker than a sample's own. */
   private readonly skin: Record<BodySide, number>
   private readonly local = identityTransform()
@@ -177,7 +180,7 @@ export class BodyCollision {
     this.skeleton.update(channels)
     const legs = this.traits.legs
     const ankles = gait && gait.weight > 0 ? gait.ankles : null
-    this.legsPosed = legs !== null && ankles !== null
+    this.gaitWeight = gait ? gait.weight : 0
     if (legs && ankles && gait) {
       for (const side of SIDES)
         this.poseLeg(side, legs[side], ankles[side], gait.weight)
@@ -253,10 +256,9 @@ export class BodyCollision {
 
   /**
    * Margin-inclusive depth against torso AND head; borrowed result. Call prepare after trunk changes. `extra` grows
-   * each capsule's radius by that share of its segment length, for poses that need room beyond the margin. `legsOnly`
-   * measures against the leg bodies alone.
+   * each capsule's radius by that share of its segment length, for poses that need room beyond the margin.
    */
-  measure(side: BodySide, channels: ArrayLike<number>, extra = 0, legsOnly = false) {
+  measure(side: BodySide, channels: ArrayLike<number>, extra = 0) {
     const pose = this.skeleton.arm(side, channels)
     const d = this.deepest
     d.depth = d.head = 0
@@ -276,8 +278,6 @@ export class BodyCollision {
         const y = from.y + dy * fraction
         const z = from.z + dz * fraction
         for (let i = 0; i < this.colliders.length; i++) {
-          if (legsOnly && !this.colliders[i].leg)
-            continue
           const frame = this.posed[i]
           const px = x - frame[9]
           const py = y - frame[10]
@@ -333,7 +333,7 @@ export class BodyCollision {
         channels[index] += this.previous[index] * Math.exp(-BODY_TICK / 0.3)
         channels[index] = Math.max(JOINT_LIMITS[index][0], Math.min(JOINT_LIMITS[index][1], channels[index]))
       }
-      if (this.legsPosed && this.project(side, channels, true))
+      if (this.gaitWeight > 0 && this.project(side, channels, this.gaitWeight))
         this.corrector.capHits++
       if (this.project(side, channels))
         this.corrector.capHits++
@@ -366,19 +366,19 @@ export class BodyCollision {
    * forearm contact) that move one arm out of the proxies as last prepared. It keeps no state. True when the 6 degree cap
    * bounded a step.
    *
-   * With `legSkin`, only the leg bodies count and the arm is measured with the skin added to its radius. With `x` its
+   * With a `skinWeight` above 0, the arm is measured with that share of the skin added to its radius. With `x` its
    * depth into the skin of thickness `s`, it is pushed back by `x^2 / 4s` until `x = 2s` and by `x - s` beyond: the push
    * and its slope are 0 at the skin's edge and the arm keeps at most the skin's depth, so it ends clear of the margin. A
-   * thigh that swings into the arm slows it while it crosses the skin instead of stopping it in one tick.
+   * body that moves into the arm slows it while it crosses the skin instead of stopping it in one tick.
    */
-  project(side: BodySide, channels: Float32Array, legSkin = false): boolean {
+  project(side: BodySide, channels: Float32Array, skinWeight = 0): boolean {
     const start = ARM_START[side]
-    const skin = this.skin[side]
+    const skin = this.skin[side] * skinWeight
     let capped = false
     let keep = 0
     for (let attempt = 0; attempt < 3; attempt++) {
-      const d = legSkin ? this.measure(side, channels, SKIN, true) : this.measure(side, channels)
-      if (legSkin && attempt === 0)
+      const d = this.measure(side, channels, SKIN * skinWeight)
+      if (skinWeight > 0 && attempt === 0)
         keep = d.depth < 2 * skin ? d.depth - d.depth * d.depth / (4 * skin) : skin
       if (d.depth <= keep)
         break

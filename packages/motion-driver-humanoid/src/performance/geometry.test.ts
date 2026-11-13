@@ -172,7 +172,7 @@ describe('canonical geometry', () => {
     expect(jerk).toBeLessThan(speed)
   })
 
-  it.each(fixtureRigs)('slows an arm that meets a walking leg over several ticks instead of stopping it in one on $name', ({ traits }) => {
+  it.each(fixtureRigs.flatMap(rig => (['leg', 'trunk'] as const).map(body => ({ ...rig, body }))))('slows an arm that meets a $body body while she walks over several ticks instead of stopping it in one on $name', ({ traits, body }) => {
     const legs = traits.legs
     if (!legs)
       throw new TypeError('The fixture rigs have leg joints')
@@ -184,17 +184,17 @@ describe('canonical geometry', () => {
       channels[channelIndex('leftAbduct')] = abduct
       return channels
     }
-    // A thigh body where the wrist hangs at -8 degrees of abduction; the gait carries the legs with the ankles at bind,
-    // so the leg holds still and the body stays there.
+    // A body where the wrist hangs at -8 degrees of abduction, either a thigh or a trunk proxy that does not turn with the
+    // legs; the gait carries the legs with the ankles at bind, so the leg holds still and either body stays there.
     const skeleton = new BodySkeleton(traits)
     skeleton.update(rest)
     const wrist = skeleton.arm('left', pose(-8 * DEG)).wrist
-    const thigh: BodyCollider = { bone: 'hips', shape: 'sphere', radius: 0.5, centre: { x: wrist.x - traits.hips.x, y: wrist.y - traits.hips.y, z: wrist.z - traits.hips.z }, rotation: { yaw: 0, pitch: 0, roll: 0 }, leg: { side: 'left', segment: 'thigh' } }
+    const thigh: BodyCollider = { bone: 'hips', shape: 'sphere', radius: 0.5, centre: { x: wrist.x - traits.hips.x, y: wrist.y - traits.hips.y, z: wrist.z - traits.hips.z }, rotation: { yaw: 0, pitch: 0, roll: 0 }, ...(body === 'leg' ? { leg: { side: 'left', segment: 'thigh' } as const } : {}) }
     const rig = { ...traits, colliders: [...proxyColliders(traits), thigh] }
     const collision = new BodyCollision(rig, rest)
     const gait = { weight: 1, support: 0, mode: 'walking' as const, channels: rest, ankles: { left: legs.left.ankle, right: legs.right.ankle } }
     const arm = [2, 3, 4, 5].map(j => ARM_START.left + j)
-    // A walking swing speed, 60 deg/s, carries the hanging arm inward from 10 degrees of abduction into the thigh.
+    // A walking swing speed, 60 deg/s, carries the hanging arm inward from 10 degrees of abduction into the body.
     const speed = 0.5 * DEG
     const output: number[][] = []
     for (let tick = 0; tick < 60; tick++) {
