@@ -30,6 +30,7 @@ import { AnimationMixer, LoopOnce, Matrix4, Quaternion } from 'three'
 
 import * as v from 'valibot'
 
+import { idleDriveDetail, idleMarkerLabel } from '../idle-drive'
 import { CLAIM_CLIP_NAME, CLAIM_TRACE_BONES, Motion3dClaimClip } from './claim-clip'
 import { Motion3dCueDriver } from './cues'
 import { loadHeadlessMMD } from './loader'
@@ -48,11 +49,9 @@ export interface Motion3dRunOptions {
   readonly seconds: number
   readonly warmupSeconds: number
   /**
-   * `off` asks the director for no idle act (the acts-off pair of `qa:motion3d idle-acts`) and is recorded in the trace
-   * source as `acts: 'off'`; `on` records nothing, so existing traces stay byte-identical. No act producer exists yet:
-   * unit A wires it under the switch contract (qa-tools README, `--acts off`): with `off` the director still makes every
-   * draw and keeps every act memory it would with acts on and only leaves the act intent null, and an act leaves no state
-   * behind after its span and settling margin except its declared lasting result (`ACT_LASTING`).
+   * `off` sets no idle drive, so Natural's idle scheduler stays inert (the acts-off pair of `qa:motion3d idle-acts`), and
+   * is recorded in the trace source as `acts: 'off'`; `on` records nothing, so existing traces stay byte-identical. On a
+   * scenario without an idle drive the switch changes nothing but that record.
    */
   readonly acts: 'on' | 'off'
   readonly git: RunGitState
@@ -87,6 +86,10 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
     const rig = readMMDRigProfile(mmd.pmx)
     const pose = new MMDBodyPose(mmd, rig)
     const natural = new MMDNaturalAdapter(modelKey)
+    // Set before the first frame, as the app's scene sets it before advancing; the adapter forwards it at that advance.
+    const idleDrive = options.acts === 'on' ? options.scenario.idleDrive ?? null : null
+    if (idleDrive)
+      natural.setIdleDrive({ ...idleDrive.drive })
     const stance = new MMDStanceDirector()
     const sampler = createMMDMotionTraceSampler(mmd, rig, pose)
     sampler.rig.id = modelKey
@@ -157,6 +160,8 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
             placement: null,
             emotionStrengths: {},
           }, naturalSeconds)
+          for (const report of natural.idleBehaviours)
+            sampler.recorder.event({ t: naturalSeconds, kind: 'marker', label: idleMarkerLabel(report) })
         },
         'motion-trace': (context) => {
           const gait = body.locomotionFrame
@@ -187,6 +192,7 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
       joints: mmd.pmx.joints.length,
       ikChains: mmd.pmx.bones.filter(bone => bone.ik).length,
       ...options.acts === 'off' ? { acts: 'off' } : {},
+      ...idleDrive ? idleDriveDetail(idleDrive) : {},
     }
     const source: MotionTraceSource = {
       level: 't2-3d',

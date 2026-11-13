@@ -4,8 +4,12 @@ import type { RandomStream } from '@proj-airi/motion-driver-natural/random'
 import type { Band, PerformanceEmotion } from '@proj-airi/stage-shared/expression-performance'
 import type { PerformanceMode } from '@proj-airi/stage-shared/performance-state'
 
+import type { Motion3dIdleDrive } from './idle-drive'
+
 import { createRandomStream } from '@proj-airi/motion-driver-natural/random'
 import { PERFORMANCE_EMOTIONS } from '@proj-airi/stage-shared/expression-performance'
+
+import { QA_DRIVE_AWAY, QA_DRIVE_PRESENT } from './idle-drive'
 
 export interface Motion3dScenario {
   /** Timeline version; a new version changes the cues, so traces of an older version are no longer its reference. */
@@ -23,6 +27,12 @@ export interface Motion3dScenario {
    * set, so the traces of scenarios that predate the marker stay byte-identical.
    */
   recordStance?: boolean
+  /**
+   * Natural's idle drive for the whole run, set before the first frame, so the idle scheduler runs and its start and
+   * end reports are recorded as `idle:<kind>:<start|end>` markers. Unset leaves the scheduler inert, so the traces of
+   * scenarios without a drive stay byte-identical. `--acts off` sets no drive.
+   */
+  idleDrive?: Motion3dIdleDrive
   /** Pure timeline in seconds from scoring start; negative times are warm-up. */
   timeline: (seed: number, seconds: number) => Motion3dCue[]
 }
@@ -121,6 +131,21 @@ export const motion3dScenarios: readonly Motion3dScenario[] = [
     seconds: 60,
     maxSeconds: 600,
     // A seeded observation marker carries no performer input: idle stays idle.
+    timeline: (seed, seconds) => seconds > 0 ? [{ at: createRandomStream(seed)() * Math.min(1, seconds), kind: 'marker', label: 'observe-idle' }] : [],
+  },
+  {
+    /**
+     * C001 (goal 4, owner decision "Idle wording: Amend it"): the `idle` timeline with the fixed QA idle drive (neutral
+     * mood, daytime, the user present and inactive), so the idle scheduler decides her idle acts. Its `--acts off`
+     * companion sets no drive.
+     */
+    version: 1,
+    id: 'idle-drive',
+    class: 'idle',
+    warmupSeconds: 10,
+    seconds: 60,
+    maxSeconds: 600,
+    idleDrive: QA_DRIVE_PRESENT,
     timeline: (seed, seconds) => seconds > 0 ? [{ at: createRandomStream(seed)() * Math.min(1, seconds), kind: 'marker', label: 'observe-idle' }] : [],
   },
   {
@@ -276,15 +301,17 @@ export const motion3dScenarios: readonly Motion3dScenario[] = [
     /**
      * Plan C004 (goal 4): no stance clip is ever assigned. The 100 s warm-up puts the director's idle-to-sit time (120 s
      * after load) at 20 s of scenario time, so the clip-free rest fallback has 20 s of idle before the user goes away at
-     * 40 s; input returns as `listening` at 80 s. Only the seeded observation marker depends on the seed.
+     * 40 s; input returns as `listening` at 80 s. Only the seeded observation marker depends on the seed. Version 2 sets
+     * the QA idle drive with the user away from 40 s, so the idle scheduler falls asleep 12 to 30 s after the away cue.
      */
-    version: 1,
+    version: 2,
     id: 'sleepy-no-clip',
     class: 'idle',
     warmupSeconds: 100,
     seconds: 120,
     maxSeconds: 600,
     recordStance: true,
+    idleDrive: QA_DRIVE_AWAY,
     timeline: (seed, seconds) => ([
       { at: 0, kind: 'activity', mode: 'idle' },
       { at: createRandomStream(seed)() * Math.min(1, seconds), kind: 'marker', label: 'observe-sleepy' },

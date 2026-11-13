@@ -73,7 +73,14 @@ recorded as `mode: away`) and input returns as `listening` at 80 s. It
 defaults to 120 s and is the only scenario that records `stance:<reason>`
 markers, one whenever the stance director's reason changes, from the first
 frame (`recordStance`); the other scenarios do not, so their traces are
-unchanged.
+unchanged. Version 2 sets the QA idle drive `qa-neutral-day-away`, so the idle
+scheduler falls asleep 12 to 30 s after the away cue and reports it.
+
+`idle-drive` (C001 of goal 4, idle class, version 1) is the `idle` timeline with
+the QA idle drive `qa-neutral-day` (neutral mood, daytime, the user present and
+inactive), so the idle scheduler decides her idle acts over the run; it defaults to
+60 s and accepts up to 600 s. `idle` itself sets no drive and stays the base idle
+that `gesture-timing`, `ownership` and the gate's idle class score.
 
 `emotions` defaults to 120 s: six clear pulses and two placebos, spaced 12 s
 apart in the first 100 s, then all five cue gestures in seeded order in the last
@@ -1267,38 +1274,35 @@ blinks and planned gaze shifts are recorded as `marker` events labelled
 yaw is signed explicitly, positive toward the character's left), because the trace v1 reader accepts no
 other new event kind. The performer's act feedback and rest directive are
 recorded the same way, as `act:<id>:<playing|finished|cancelled>` and
-`rest:<none|rest|doze>` on each change; neither appears without a producer. It opens no window and
+`rest:<none|rest|doze>` on each change; neither appears without a producer. A
+scenario with an idle drive also records the idle scheduler's own reports (Natural's
+`NaturalIdleActivities`, read from the adapter after each frame's advance) as
+`idle:<kind>:<start|end>`, one start and one end per behaviour; a run without a
+drive has none. It opens no window and
 needs no GPU. Models and textures remain outside the repository. The optional
 load and gaze integration tests use `AIRI_QA_MMD_MODEL` when set.
 
 `--model`, `--scenario` and `--out` are required. Scenarios are `idle`,
-`gaze-shift`, `speak`, `gesture-under-clip`, `emotions`, `walk`, `touch` and
-`sleepy-no-clip`. Seed defaults to 1;
+`idle-drive`, `gaze-shift`, `speak`, `gesture-under-clip`, `emotions`, `walk`,
+`touch` and `sleepy-no-clip`. Seed defaults to 1;
 duration and warm-up default to the scenario's values (10 s warm-up).
-Scored duration is capped at 120 s, except for the idle-class `idle` and
+Scored duration is capped at 120 s, except for the idle-class `idle`, `idle-drive` and
 `sleepy-no-clip` scenarios, which accept up to 600 s (owner decision O1, goal 4: a ten-minute idle). A
 600 s run is about five times a 120 s run in wall time and output size.
 Relative paths resolve against `INIT_CWD`.
-`--acts off` (default `on`) runs the scenario with no idle act, as the companion
-that `qa:motion3d idle-acts --pair` compares against; it is recorded as
-`acts: 'off'` in the trace source detail, and `on` records nothing, so other traces
-are unchanged. Contract for the act producer (goal 4 unit A): with `--acts off` the
-director issues no act (`BodyIntent.act` stays null), the act layer stays at
-weight 0, and no `act:` marker is written, while the director still makes every
-draw it would make with acts on (the act choice and the 4e interval draw from its
-seeded state) and keeps every act memory (`nextActAtMs`, the last two ids, the
-refractories) and every other decision exactly as with acts on. An act leaves no
-state behind once its span plus the settling margin (0.35 s exit and 2.2 s
-settling) has passed, except the state its design declares as its lasting result
-(`ACT_LASTING` in `reports/idle-acts.ts`), and it does not suppress, delay or alter
-any other idle behaviour outside its span. The act unit proves this with
-byte-identical acts-off traces against its own base (idle 600 s, seeds 1 to 3,
-both rigs, and the existing scenarios). `idle-acts` detects any breach that shows
-outside the widened act spans, in the local rotations or the root block, and a
-lasting result beyond its declared bound; it cannot detect a companion that differs
-only inside act spans (for example an acts-off director that freezes the idle
-exactly where an act would play), which only that identity proof covers. No act
-producer exists yet, so today the switch changes no pose.
+A scenario may set an idle drive (`idleDrive`, `src/t2-3d/idle-drive.ts`): the
+runner hands it to the Natural adapter before the first frame, as the app's scene
+does, and records its name and values in the trace source detail as `idleDrive` and
+`idleDriveValues` (and so in `summary.json` provenance). Two scenarios set one,
+both with the product's documented neutral drive (all mood fields 0, sleepiness 0,
+solitude 0, no music, sleep allowed, rate 1): `idle-drive` (`qa-neutral-day`, the
+user present; C001) and `sleepy-no-clip` version 2 (`qa-neutral-day-away`, the user
+away at its 40 s cue; C004). Every other scenario sets none and its trace is
+byte-identical to before. `--acts off` (default `on`) sets no idle drive, so the
+idle scheduler stays inert, as the companion that `qa:motion3d idle-acts --pair`
+compares against; it is recorded as `acts: 'off'` in the trace source detail, and
+`on` records nothing. On a scenario without a drive the switch changes nothing but
+that record.
 An existing output directory is refused with exit 2 before a lease is taken.
 Each run takes a one-slot `gate` CPU lease (`RUN_LEASE_SLOTS` in `src/t2-3d/cli/run.ts`; the `frames` re-run takes the same) instead of the class default of 4 to 10 slots, which is sized for the multi-worker Vitest motion gates. Measured on 2026-11-12 on both rigs and every scenario (two timings each), a run uses one core ((user + sys) / wall 1.01 to 1.10) and never reads its grant, so six seeds run side by side in six slots and unit tests keep the rest of the budget. Memory is not a slot: a run peaks at about 0.95 GB (first rig, 0.5 to 0.6 GB on the second) plus about 0.3 GB for its pnpm and tsx launchers, so a full 12-slot budget of runs needs about 15 GB free. Each run creates:
 

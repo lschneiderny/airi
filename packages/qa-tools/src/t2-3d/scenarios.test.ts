@@ -7,7 +7,7 @@ import { motion3dScenarios } from './scenarios'
 
 describe('motion3d scenario timelines', () => {
   // Default seed-1 counts; gaze count varies with seeded hold/return durations.
-  const counts = { 'idle': 1, 'gaze-shift': 18, 'speak': 11, 'gesture-under-clip': 9, 'emotions': 13, 'walk': 6, 'touch': 10, 'sleepy-no-clip': 4 } as const
+  const counts = { 'idle': 1, 'idle-drive': 1, 'gaze-shift': 18, 'speak': 11, 'gesture-under-clip': 9, 'emotions': 13, 'walk': 6, 'touch': 10, 'sleepy-no-clip': 4 } as const
   it.each(motion3dScenarios)('replays $id for equal seeds and varies for another seed', (scenario) => {
     const first = scenario.timeline(1, scenario.seconds)
     expect(scenario.timeline(1, scenario.seconds)).toEqual(first)
@@ -59,10 +59,16 @@ describe('motion3d scenario timelines', () => {
     const scenario = motion3dScenarios.find(scenario => scenario.id === 'sleepy-no-clip')
     if (!scenario)
       throw new Error('Missing sleepy-no-clip scenario')
-    expect([scenario.version, scenario.class, scenario.warmupSeconds, scenario.seconds, scenario.maxSeconds, scenario.recordStance]).toEqual([1, 'idle', 100, 120, 600, true])
+    expect([scenario.version, scenario.class, scenario.warmupSeconds, scenario.seconds, scenario.maxSeconds, scenario.recordStance]).toEqual([2, 'idle', 100, 120, 600, true])
     const activity = scenario.timeline(1, 120).flatMap(cue => cue.kind === 'activity' ? [[cue.at, cue.mode, cue.away ?? false]] : [])
     expect(activity).toEqual([[0, 'idle', false], [40, 'idle', true], [80, 'listening', false]])
     expect(motion3dScenarios.filter(scenario => scenario.recordStance).map(scenario => scenario.id)).toEqual(['sleepy-no-clip'])
+  })
+
+  it('sets an idle drive only in the two scenarios that judge the idle scheduler, and replays idle\'s timeline in idle-drive', () => {
+    expect(motion3dScenarios.filter(scenario => scenario.idleDrive).map(scenario => [scenario.id, scenario.idleDrive?.name])).toEqual([['idle-drive', 'qa-neutral-day'], ['sleepy-no-clip', 'qa-neutral-day-away']])
+    const timeline = (id: string) => motion3dScenarios.find(scenario => scenario.id === id)?.timeline(3, 600)
+    expect(timeline('idle-drive')).toEqual(timeline('idle'))
   })
 
   it.each([1, 2, 3])('speaks version 2 for seed %i: fifteen peaks at least 0.9 s apart, three energies and one chat reply', (seed) => {

@@ -4,6 +4,7 @@ import { MOTION_TRACE_CHANNELS } from '@proj-airi/motion-driver-humanoid/motion-
 import { Quaternion, Vector3 } from 'three'
 import { expect, it } from 'vitest'
 
+import { QA_IDLE_DRIVE } from '../idle-drive'
 import { parseTrace } from '../read-trace'
 import { runMotion3dScenario } from './run'
 
@@ -27,6 +28,36 @@ it.runIf(process.env.AIRI_QA_MMD_MODEL)('records the stance reason on each chang
   expect(await stanceMarkers(true)).toEqual([[0, 'stance:no-sit-slot'], [30, 'stance:no-sleep-slot']])
   expect(await stanceMarkers(false)).toEqual([])
 }, 60_000)
+
+it.runIf(process.env.AIRI_QA_MMD_MODEL)('sets a scenario\'s idle drive, names it in the provenance and records the scheduler\'s reports, and sets none with acts off', async () => {
+  const model = process.env.AIRI_QA_MMD_MODEL
+  if (!model)
+    throw new Error('AIRI_QA_MMD_MODEL is required')
+  const run = async (acts: 'on' | 'off') => {
+    const { trace } = await runMotion3dScenario({
+      model,
+      seed: 1,
+      seconds: 31,
+      warmupSeconds: 0,
+      acts,
+      git: { gitSha: 'test', dirty: false },
+      signal: new AbortController().signal,
+      scenario: { version: 1, id: 'drive', class: 'idle', seconds: 31, warmupSeconds: 0, idleDrive: { name: 'test-drive', drive: QA_IDLE_DRIVE }, timeline: () => [{ at: 0.5, kind: 'activity', mode: 'idle', away: true }] },
+    })
+    return { detail: trace.source.detail, idle: trace.events.flatMap(event => event.kind === 'marker' && event.label.startsWith('idle:') ? [[event.t, event.label] as const] : []) }
+  }
+  const on = await run('on')
+  expect(on.detail.idleDrive).toBe('test-drive')
+  expect(JSON.parse(String(on.detail.idleDriveValues))).toEqual(QA_IDLE_DRIVE)
+  // Away from 0.5 s, she falls asleep 12 to 30 s later (the scheduler's sleep delay) and is still asleep at the end.
+  expect(on.idle.map(([, label]) => label)).toEqual(['idle:sleep:start'])
+  expect(on.idle[0][0] - 0.5).toBeGreaterThanOrEqual(12 - 1 / 60)
+  expect(on.idle[0][0] - 0.5).toBeLessThanOrEqual(30 + 1 / 30)
+  const off = await run('off')
+  expect(off.idle).toEqual([])
+  expect(['idleDrive', 'idleDriveValues'].filter(key => key in off.detail)).toEqual([])
+  expect(off.detail.acts).toBe('off')
+}, 90_000)
 
 it.runIf(process.env.AIRI_QA_MMD_MODEL)('turns toward six gaze targets with increasing head yaw on each side and looks back at the camera after each look', async () => {
   const model = process.env.AIRI_QA_MMD_MODEL
