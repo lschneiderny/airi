@@ -274,9 +274,14 @@ describe('procedural gait', () => {
     expect(window.length).toBeGreaterThan(200)
     expect(Math.abs(window.reduce((sum, frame) => sum + frame.support, 0) / window.length)).toBeLessThan(1e-3)
 
+    // The arms swing in antiphase from one cosine; the forward swing (16) is larger than the back swing (12), so the two
+    // arms' offsets from 2 degrees sum to a seventh of their difference.
     for (const name of allScenarios) {
-      for (const frame of scenario(name).frames)
-        expect(Math.abs(frame.armSwing.left.flexion - 2 * rad + frame.armSwing.right.flexion - 2 * rad)).toBeLessThanOrEqual(1e-12)
+      for (const frame of scenario(name).frames) {
+        const left = frame.armSwing.left.flexion - 2 * rad
+        const right = frame.armSwing.right.flexion - 2 * rad
+        expect(left + right - Math.abs(left - right) / 7).toBeCloseTo(0, 12)
+      }
     }
   })
 
@@ -424,6 +429,30 @@ describe('procedural gait', () => {
       const earlier = earlierTorso(index)
       if (earlier !== null)
         expect(frame.body.twist.head + earlier).toBeCloseTo(0, 4)
+    }
+  })
+
+  it('arm swing: the forward swing is larger, the elbow follows the shoulder 200 ms late, and the clavicle protracts', () => {
+    const { frames } = scenario('cruise')
+    const steady = frames.filter((frame, tick) => tick * dt >= 3 && frame.mode === 'walking')
+    const flexion = steady.map(frame => frame.armSwing.left.flexion)
+    expect(Math.max(...flexion)).toBeCloseTo(2 * rad + 16 * rad, 3)
+    expect(Math.min(...flexion)).toBeCloseTo(2 * rad - 12 * rad, 3)
+    // The elbow's forward bend peaks when the shoulder's forward swing peaked 0.2 s (24 ticks) earlier.
+    const peaks = (values: readonly number[]) => values.flatMap((value, index) => index > 0 && index < values.length - 1 && value > (values[index - 1] ?? 0) && value >= (values[index + 1] ?? 0) ? [index] : [])
+    const shoulder = peaks(flexion)
+    const elbow = peaks(steady.map(frame => frame.armSwing.left.elbowFlex))
+    expect(shoulder.length).toBeGreaterThan(4)
+    for (const peak of shoulder) {
+      const next = elbow.find(index => index >= peak)
+      if (next !== undefined)
+        expect(Math.abs(next - peak - 24)).toBeLessThanOrEqual(1)
+    }
+    for (const frame of steady) {
+      const swing = frame.armSwing.left
+      // Forward of 2 degrees the hand moves toward the midline and the clavicle protracts; behind it, it retracts.
+      expect(Math.sign(swing.clavProt)).toBe(Math.sign(swing.flexion - 2 * rad))
+      expect(swing.abduct).toBeLessThanOrEqual(0)
     }
   })
 

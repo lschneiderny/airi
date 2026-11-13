@@ -17,8 +17,8 @@ export interface MMDBodyRoot {
 }
 
 const swingChannels = {
-  left: { flex: channelIndex('leftFlex'), elbow: channelIndex('leftElbow') },
-  right: { flex: channelIndex('rightFlex'), elbow: channelIndex('rightElbow') },
+  left: { flex: channelIndex('leftFlex'), elbow: channelIndex('leftElbow'), abduct: channelIndex('leftAbduct'), clavProt: channelIndex('leftClavProt') },
+  right: { flex: channelIndex('rightFlex'), elbow: channelIndex('rightElbow'), abduct: channelIndex('rightAbduct'), clavProt: channelIndex('rightClavProt') },
 } as const
 
 /**
@@ -49,6 +49,8 @@ export function writeGaitChannels(frame: LocomotionFrame, legLength: number, out
   for (const side of ['left', 'right'] as const) {
     out[swingChannels[side].flex] = armSwing[side].flexion
     out[swingChannels[side].elbow] = armSwing[side].elbowFlex
+    out[swingChannels[side].abduct] = armSwing[side].abduct
+    out[swingChannels[side].clavProt] = armSwing[side].clavProt
   }
 }
 

@@ -109,9 +109,12 @@ export interface LocomotionFrame {
   /** Same sign as WeightShiftOutput.s. */
   readonly support: number
   readonly body: GaitBodyChannels & { readonly chestCounterYaw: number, readonly twist: GaitTwist }
+  /** Architecture 5.3, radians: shoulder flexion and abduction, elbow flexion and clavicle protraction per arm. */
   readonly armSwing: Record<Foot, {
     readonly flexion: number
     readonly elbowFlex: number
+    readonly abduct: number
+    readonly clavProt: number
   }>
   /** Blend factor: lower-body channels override the idle pose by it, torso and arm channels add. */
   readonly weight: number
@@ -167,6 +170,12 @@ const pelvisTwist = 6 * radians
 const torsoTwist = [[-0.25, 0.03], [-0.55, 0.06], [-0.35, 0.09]] as const
 /** The performer's head-stabilisation latency (`STEADY_LAG` in `performance/index.ts`), seconds. */
 const headCounterLag = 0.08
+/**
+ * The elbow's swing lags the shoulder's by the human walk reference's median, 200.9 ms (bands-v5 walk
+ * `chain.upperArm-lowerArm.lagMs` p50, 100STYLE forward walks): at a 1.1 s stride its zero-lag correlation is the
+ * reference's own (cos 65 deg = 0.42 against p50 0.44).
+ */
+const elbowLag = 0.2
 const sides = ['left', 'right'] as const
 /** Lateral sign: left = -1, right = +1, matching `support`. */
 const footSign: Record<Foot, 1 | -1> = { left: -1, right: 1 }
@@ -827,9 +836,20 @@ class Locomotion {
     const [lower, mid, upper] = torso(0)
     const late = torso(headCounterLag * this.stepRate(this.speed))
     const swingScale = Math.min(1.3, this.speed / this.referenceSpeed)
+    // Architecture 5.3: the arm swings further forward (16 degrees) than back (12), the forward hand moves toward the
+    // midline, and the clavicle protracts with the forward swing.
+    const elbowPhase = elbowLag * this.stepRate(this.speed)
     const arm = (side: Foot) => {
-      const flexion = 2 * radians - 12 * radians * swingScale * footSign[side] * this.lead(this.phase - 0.05)
-      return { flexion, elbowFlex: 12 * radians + 0.5 * Math.max(0, flexion) }
+      const swing = footSign[side] * this.lead(this.phase - 0.05)
+      const late = footSign[side] * this.lead(this.phase - 0.05 - elbowPhase)
+      const forward = Math.max(0, -swing)
+      const back = Math.max(0, swing)
+      return {
+        flexion: 2 * radians + swingScale * (16 * radians * forward - 12 * radians * back),
+        elbowFlex: 12 * radians + swingScale * (16 * radians * Math.max(0, -late) - 6 * radians * Math.max(0, late)),
+        abduct: -3 * radians * swingScale * forward,
+        clavProt: 3 * radians * swingScale * (forward - back),
+      }
     }
     return {
       mode,

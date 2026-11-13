@@ -144,6 +144,11 @@ and hand `frame.feet` back through `setAnchors` when it returns to idle. Pass
 carries it up the spine as a counter-rotation (lower, mid and upper torso at -0.25, -0.55 and -0.35 of it, 0.03, 0.06
 and 0.09 steps late) with a head counter of minus the torso's yaw 80 ms earlier, so the head stays near the travel
 line (architecture 5.2). `chestCounterYaw` keeps its old meaning for other readers.
+`frame.armSwing` swings each arm from one cosine in antiphase with its leg: flexion `2 deg + s (16 deg forward -
+12 deg back)` with `s = min(1.3, speed / v_ref)`, an elbow that follows the shoulder's swing 200 ms late (the human walk
+reference's median elbow lag), the forward hand moving 3 degrees toward the midline (`abduct`), and the clavicle
+protracting 3 degrees with the forward swing (`clavProt`) (architecture 5.3). The wrist and fingers come from the
+performer's followers.
 With `traits.foot` (each foot's ankle height and heel and ball distances) every foot also carries
 `roll` (architecture 5.1): it strikes on the heel at `14 deg * min(1, strideScale)`, is flat from 12 % of the stance,
 rises onto the ball from 62 % to `-32 deg * min(1, strideScale)` at lift-off, and swings back through flat to the next
