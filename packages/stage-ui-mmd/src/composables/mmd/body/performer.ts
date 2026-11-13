@@ -343,9 +343,9 @@ export class MMDBodyPerformer {
     this.blend.identity().slerp(delta, 1 - owned)
     const source = clean.quaternions[target.index]
     const written = target.bone.quaternion.copy(source).multiply(this.blend)
-    // Measured on the written bone, not derived from the blend, so the deviation is the actual write. The angle of
-    // conj(clean) * written does not depend on the clean quaternion's norm, which a mixer's interpolation leaves
-    // slightly off 1; an acos of their dot product would read that as a rotation of up to about 1e-3 rad.
+    // Measured on the written bone, so the deviation is the actual write. The angle of conj(clean) * written ignores the
+    // clean quaternion's norm, which mixer interpolation leaves slightly off 1; an acos of their dot would read that as
+    // up to about 1e-3 rad of rotation.
     const relative = this.measured.copy(source).conjugate().multiply(written)
     const angle = 2 * Math.atan2(Math.hypot(relative.x, relative.y, relative.z), Math.abs(relative.w))
     this.writeDeviation[group] = Math.max(this.writeDeviation[group], angle)

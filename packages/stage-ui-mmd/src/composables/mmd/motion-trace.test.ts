@@ -8,6 +8,19 @@ import { bodyFixture } from './body/fixture'
 import { MMDBodyPose } from './body/pose'
 import { createMMDMotionTraceSampler, mmdBodyTraceEvent } from './motion-trace'
 
+type Sampler = ReturnType<typeof createMMDMotionTraceSampler>
+
+function startRecording(sampler: Sampler, scenarioClass: 'idle' | 'talk' | 'gaze') {
+  sampler.recorder.start({
+    kind: 'motion-trace',
+    version: 1,
+    source: { level: 't2-3d', scenario: { id: 'test', class: scenarioClass, seed: 1 }, gitSha: null, dirty: null, stages: { pose: [], surface: ['motion-trace'] }, omitted: [], detail: {} },
+    rig: { ...sampler.rig, id: 'fixture' },
+    hz: 60,
+    scoredFrom: 0,
+  })
+}
+
 it('labels act and rest body events as act:<id>:<state> and rest:<state> markers', () => {
   expect([
     mmdBodyTraceEvent({ kind: 'act', id: 'look-around', state: 'cancelled', seq: 2 }, 1.5),
@@ -18,14 +31,7 @@ it('labels act and rest body events as act:<id>:<state> and rest:<state> markers
 it('records bind rotations as identity and a world-axis rotation independently of the bind axes', () => {
   const { mmd, rig, bone, pipeline, mixer } = bodyFixture(0.7)
   const sampler = createMMDMotionTraceSampler(mmd, rig, new MMDBodyPose(mmd, rig))
-  sampler.recorder.start({
-    kind: 'motion-trace',
-    version: 1,
-    source: { level: 't2-3d', scenario: { id: 'test', class: 'idle', seed: 1 }, gitSha: null, dirty: null, stages: { pose: [], surface: ['motion-trace'] }, omitted: [], detail: {} },
-    rig: { ...sampler.rig, id: 'fixture' },
-    hz: 60,
-    scoredFrom: 0,
-  })
+  startRecording(sampler, 'idle')
   const context = { dt: 1 / 60, mmd, mixer, clean: pipeline.clean }
   sampler.inputs.wall = 0
   sampler.stage.run(context)
@@ -48,14 +54,7 @@ it('records bind rotations as identity and a world-axis rotation independently o
 it('keeps root translations in model units and rotations unchanged under uniform world scale', () => {
   const { mmd, rig, bone, pipeline, mixer, mesh } = bodyFixture()
   const sampler = createMMDMotionTraceSampler(mmd, rig, new MMDBodyPose(mmd, rig))
-  sampler.recorder.start({
-    kind: 'motion-trace',
-    version: 1,
-    source: { level: 't2-3d', scenario: { id: 'test', class: 'idle', seed: 1 }, gitSha: null, dirty: null, stages: { pose: [], surface: ['motion-trace'] }, omitted: [], detail: {} },
-    rig: { ...sampler.rig, id: 'fixture' },
-    hz: 60,
-    scoredFrom: 0,
-  })
+  startRecording(sampler, 'idle')
   const context = { dt: 1 / 60, mmd, mixer, clean: pipeline.clean }
   bone('頭').quaternion.setFromAxisAngle(new Vector3(1, 0, 0), 0.4)
   sampler.inputs.wall = 0
@@ -81,14 +80,7 @@ it('stamps a body event with the time of the frame that raised it and drops one 
   const sampler = createMMDMotionTraceSampler(mmd, rig, new MMDBodyPose(mmd, rig))
   const context = { dt: 1 / 60, mmd, mixer, clean: pipeline.clean }
   sampler.bodyEvent({ kind: 'blink', source: 'body' })
-  sampler.recorder.start({
-    kind: 'motion-trace',
-    version: 1,
-    source: { level: 't2-3d', scenario: { id: 'test', class: 'gaze', seed: 1 }, gitSha: null, dirty: null, stages: { pose: [], surface: ['motion-trace'] }, omitted: [], detail: {} },
-    rig: { ...sampler.rig, id: 'fixture' },
-    hz: 60,
-    scoredFrom: 0,
-  })
+  startRecording(sampler, 'gaze')
   sampler.inputs.wall = 0
   sampler.stage.run(context)
   // Body events fire in the `locomotion` pose stage, before this frame's `motion-trace` sample.
@@ -113,14 +105,7 @@ it('records the registered layers\' cue, emotion, reaction and gesture markers o
     sampler.bodyEvent(event)
   })
   pipeline.surfaceStages.push(sampler.stage)
-  sampler.recorder.start({
-    kind: 'motion-trace',
-    version: 1,
-    source: { level: 't2-3d', scenario: { id: 'test', class: 'talk', seed: 1 }, gitSha: null, dirty: null, stages: { pose: [], surface: ['motion-trace'] }, omitted: [], detail: {} },
-    rig: { ...sampler.rig, id: 'fixture' },
-    hz: 60,
-    scoredFrom: 0,
-  })
+  startRecording(sampler, 'talk')
   const base = input.intent
   let onsetSeq = 0
   let slow = 0

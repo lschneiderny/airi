@@ -137,11 +137,7 @@ export function createMMDMotionTraceSampler(mmd: MMD, profile: MMDRigProfile, po
         // N = W * conj(W0), then conjugate into the fixed trace basis.
         entry.n.multiply(entry.inverseRest).premultiply(basis).multiply(basisInverse).normalize()
       }
-      const hips = bySlot.get('hips')
-      if (hips)
-        position.setFromMatrixPosition(hips.bone.matrixWorld).applyQuaternion(basis)
-      else
-        position.setFromMatrixPosition(mesh.matrixWorld).applyQuaternion(basis)
+      position.setFromMatrixPosition((bySlot.get('hips')?.bone ?? mesh).matrixWorld).applyQuaternion(basis)
       // Bind offsets and leg length use model units, independent of the user's mesh scale.
       worldScale.setFromMatrixScale(mesh.matrixWorld)
       position.divideScalar(worldScale.x)
