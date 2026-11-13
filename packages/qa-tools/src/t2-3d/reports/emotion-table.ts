@@ -11,9 +11,16 @@ import { UPPER } from '../metrics/bones'
 import { conjugate, DEG, heading, mean, multiply, normalize, rotationVector } from '../metrics/math'
 import { postureFeatures } from '../metrics/mirror'
 import { postureClearingScales } from './posture-scale'
-import { criterionReport, fixed, formatReport, gateStatus, requireGate, requirement } from './report'
+import { criterionReport, fixed, formatReport, gateStatus, reportOnly, requireGate, requirement } from './report'
 
-export const EMOTION_TABLE_VERSION = 4
+export const EMOTION_TABLE_VERSION = 5
+
+/** Lines printed but left out of the verdict (owner decision 2026-11-12, E/g3/s/rules.md 14), with the reason. */
+const REPORT_ONLY = {
+  'release': 'idle motion already reaches as far as the smallest stuck poses, so no per-trial bar separates them',
+  'onset-not-vacuous': 'the detector cannot register a head pulse of the designed size',
+  'not-vacuous': 'its bar is beyond the designed poses; head-only emotions are checked by visual review until the next gate version',
+}
 
 /** Plan 2.3's C002 constants: the gate's own windows and threshold, and the placebo band. */
 const C = {
@@ -112,9 +119,10 @@ export function separationTable(trials: readonly EmotionTrial[]) {
 }
 
 /**
- * C002 emotion table, version 4 (unit M2 R4) over the pooled emotion runs: the gate's posture features and sigma
+ * C002 emotion table, version 5 (unit M2 R4) over the pooled emotion runs: the gate's posture features and sigma
  * (gate version 5); each non-neutral emotion against neutral and against placebo required at 2 SD, as
  * `emotion.minSeparationFromNeutral`; every other pair printed as report only. The pooled verdict comes from the gate run with `--require` C002's ids.
+ * Version 5: the release, onset-not-vacuous and not-vacuous lines are printed but left out of the verdict (`REPORT_ONLY`).
  */
 export function emotionTableReport(runs: readonly LoadedRun[], bands: MotionBandsFile): CriterionReport<EmotionTableDetail> {
   const emotion = bands.classes.emotion
@@ -162,10 +170,10 @@ export function emotionTableReport(runs: readonly LoadedRun[], bands: MotionBand
   const requirements = [
     requirement('pairs-from-neutral', `each non-neutral emotion >= ${C.separation} SD from neutral and from placebo (emotion.minSeparationFromNeutral); other pairs report only`, `${required.length - failing.length}/${required.length}; emotion.minSeparationFromNeutral ${fixed(fromNeutral)}; all-pairs emotion.minSeparation ${fixed(pooled[0].value)} (report only)`, required.length > 0 && failing.length === 0 && fromNeutral !== null && fromNeutral >= C.separation),
     requirement('gate-required', `every gate.json carries --require ${C002_REQUIRED.join(',')} and passed it`, required2.map(r => r ? `${r.metrics.join(',')} ${r.passed ? 'PASS' : 'FAIL'}` : 'no --require').join('; '), gateRequired),
-    requirement('onset-not-vacuous', `${ONSET_IDS.join(' and ')} PASS in every gate.json, each from >= ${C.episodes} episodes per run`, `${onsetLine}; episodes per run (attack/eased): ${episodes.map(e => `${e.attack}/${e.eased}`).join(', ')}`, ONSET_IDS.every(id => gates.every(g => gateStatus(g, id).status === 'PASS')) && episodes.every(e => e.attack >= C.episodes && e.eased >= C.episodes)),
+    reportOnly(requirement('onset-not-vacuous', `${ONSET_IDS.join(' and ')} PASS in every gate.json, each from >= ${C.episodes} episodes per run`, `${onsetLine}; episodes per run (attack/eased): ${episodes.map(e => `${e.attack}/${e.eased}`).join(', ')}`, ONSET_IDS.every(id => gates.every(g => gateStatus(g, id).status === 'PASS')) && episodes.every(e => e.attack >= C.episodes && e.eased >= C.episodes)), REPORT_ONLY['onset-not-vacuous']),
     requirement('placebo-trials', `placebo trials >= ${C.placeboTrials}`, `${placebo.length}`, placebo.length >= C.placeboTrials),
-    requirement('not-vacuous', `each non-neutral emotion's mean hold |p| >= ${C.vacuity} x placebo p95`, nonNeutral.map(c => `${c} ${fixed(meanHold[c], 2)}`).join(', '), !vacuous),
-    requirement('release', 'every trial |r_release| <= placebo p95 of hold |p|', `${releases.filter(r => r.inBand).length}/${releases.length} in band (p95 ${fixed(placeboP95 === null ? null : placeboP95 * DEG, 2)} deg)`, releases.length > 0 && releases.every(r => r.inBand)),
+    reportOnly(requirement('not-vacuous', `each non-neutral emotion's mean hold |p| >= ${C.vacuity} x placebo p95`, nonNeutral.map(c => `${c} ${fixed(meanHold[c], 2)}`).join(', '), !vacuous), REPORT_ONLY['not-vacuous']),
+    reportOnly(requirement('release', 'every trial |r_release| <= placebo p95 of hold |p|', `${releases.filter(r => r.inBand).length}/${releases.length} in band (p95 ${fixed(placeboP95 === null ? null : placeboP95 * DEG, 2)} deg)`, releases.length > 0 && releases.every(r => r.inBand)), REPORT_ONLY.release),
   ]
   return criterionReport('emotion-table', EMOTION_TABLE_VERSION, runs.map(r => r.dir), EMOTION_TABLE_CONSTANTS, requirements, {
     conditions,
