@@ -144,3 +144,12 @@ A Live2D rig cannot walk or play a clip, but most VTuber rigs ship switches for 
 - The M4 window-rect sensor as the target of a visit and of the peer activity, in place of the cursor and the fixed screen point.
 - A beat estimate for sway. Today its period is drawn between 1.7 and 2.3 s and ignores the music.
 - VRM joins through the M5 adapter, which consumes the same controller.
+
+## Amendment 2026-11-13: one idle scheduler for a whole body
+
+Main's idle layer decides well and showed almost nothing on the MMD body: its head and body offsets reach only the frame Live2D draws, and the MMD performer poses every bone from `bodyIntent()`. The owner asked for the design that best serves a VTuber who lives in the computer, so the layer becomes the one idle scheduler for both renderers, and the MMD body plays its own form of each behaviour.
+
+- **One scheduler.** `NaturalIdleActivities` decides which behaviour, when, and when she settles in and sleeps. The humanoid director gets no act scheduler; it realises or refuses.
+- **The body intent carries the decision.** `bodyIntent().idle` holds the latest behaviour as an `IdleBehaviourRecord` (kind, start, end, release, side and what the layer drew: glance points, nod-off droops, sway period, repeats, the clasp's place) and `settled`. It is an addition: the frame Live2D draws and every random stream stay as they were.
+- **Whole-body kinds.** `sigh`, `shoulder-roll`, `shift-stance`, `clasp-hands`, `hair-touch`, `heel-rock` and `arm-swing` join the vocabulary with the weights and refractories of their act in the 3D motion architecture (4e), and weigh 0 unless the drive sets `body`. The pick drops zero weights before its single draw, so a Live2D drive draws exactly as before; a test pins the seed-7 sequence recorded before the change.
+- **Settling in.** With `body`, 120 s of continuous `idle` mode settles her in, the director's former idle-to-sit time. Leaving `idle` mode or anything she must answer stands her up.

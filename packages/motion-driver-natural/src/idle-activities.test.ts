@@ -62,6 +62,19 @@ describe('idle activity odds', () => {
       .toBeGreaterThan(1.5 * idleActivityWeights(neutralDrive, { watching: false })['check-in'])
   })
 
+  it('draws the whole-body kinds only for a host that performs a body', () => {
+    const bodyKinds = ['sigh', 'shoulder-roll', 'shift-stance', 'clasp-hands', 'hair-touch', 'arm-swing'] as const
+    const live2d = idleActivityWeights(neutralDrive, { watching: false })
+    const mmd = idleActivityWeights({ ...neutralDrive, body: true }, { watching: false })
+    for (const kind of [...bodyKinds, 'heel-rock'] as const)
+      expect(live2d[kind], kind).toBe(0)
+    for (const kind of bodyKinds)
+      expect(mmd[kind], kind).toBeGreaterThan(0)
+    // Heel rocks are a bright mood's (architecture 4e act 11).
+    expect(mmd['heel-rock']).toBe(0)
+    expect(idleActivityWeights({ ...neutralDrive, body: true, valence: 0.5 }, { watching: false })['heel-rock']).toBeGreaterThan(0)
+  })
+
   it('sways only while music plays', () => {
     expect(idleActivityWeights(neutralDrive, { watching: false }).sway).toBe(0)
     expect(idleActivityWeights({ ...neutralDrive, music: true }, { watching: false }).sway).toBeGreaterThan(0)
@@ -124,6 +137,64 @@ describe('idle activity layer', () => {
     expect(seen).not.toContain('nod-off')
     expect(seen).not.toContain('sway')
     expect(seen).not.toContain('sleep')
+  })
+
+  it('draws exactly the activities it drew before the whole-body kinds existed when the host performs no body', () => {
+    // Seed 7 at a neutral drive, recorded at 101fc9543 (E/g4/a/scratch/base-sequence.out): Live2D keeps every draw.
+    const { idle, run } = layer(7)
+    const seen: string[] = []
+    let seq = 0
+    run(600, idleInput, () => {
+      if (idle.seq !== seq) {
+        seq = idle.seq
+        seen.push(idle.behaviour!)
+      }
+      return false
+    })
+    expect(seen).toEqual(['stretch', 'check-in', 'look-around', 'peer', 'look-around', 'peer', 'check-in', 'peer', 'stretch'])
+  })
+
+  it('settles in after two minutes of idle only when the host performs a body, and gets up when the mode changes', () => {
+    const live2d = layer(7, neutralDrive)
+    live2d.run(300)
+    expect(live2d.idle.settled).toBe(false)
+
+    const { idle, gaze, run, now } = layer(7, { ...neutralDrive, body: true, rate: 0 })
+    run(119)
+    expect(idle.settled).toBe(false)
+    run(121)
+    expect(idle.settled).toBe(true)
+    idle.step(now(), dt, { ...idleInput, mode: 'talking' }, gaze)
+    expect(idle.settled).toBe(false)
+    run(now() + 60)
+    expect(idle.settled).toBe(false)
+  })
+
+  it('records the running behaviour with its timing and drawn parameters, and keeps it after it ends', () => {
+    const { idle, run, now } = layer(7, { ...neutralDrive, rate: 0 })
+    expect(idle.record).toBeNull()
+    idle.play('look-around')
+    run(0.1)
+    const record = idle.record!
+    expect(record).toMatchObject({ seq: 1, kind: 'look-around', releasedAt: null })
+    expect(record.end).toBeGreaterThan(record.start)
+    expect(record.glances.length).toBeGreaterThanOrEqual(2)
+    expect(record.glances[0].at).toBe(0)
+    run(30, idleInput, () => idle.behaviour === null)
+    // A finished behaviour ends on its planned end, released without a fade.
+    expect(idle.record).toMatchObject({ seq: 1, kind: 'look-around', releaseSeconds: 0 })
+    expect(idle.record!.releasedAt).toBeCloseTo(record.end, 1)
+    expect(now()).toBeLessThan(30)
+  })
+
+  it('marks an interrupted behaviour as released before its end, with its fade', () => {
+    const { idle, gaze, run, now } = layer(7, { ...neutralDrive, rate: 0, body: true })
+    idle.play('clasp-hands')
+    run(1)
+    expect(idle.record).toMatchObject({ kind: 'clasp-hands', releasedAt: null })
+    expect(idle.record!.end - idle.record!.start).toBeGreaterThanOrEqual(4)
+    idle.step(now(), dt, { ...idleInput, interrupt: true }, gaze)
+    expect(idle.record).toMatchObject({ kind: 'clasp-hands', releasedAt: now(), releaseSeconds: 0.4 })
   })
 
   it('replays the same activities for the same seed', () => {
@@ -299,6 +370,21 @@ describe('idle activities in the controller', () => {
       expect(off.advance(frame / 60)).toEqual(expected)
       expect(quiet.advance(frame / 60)).toEqual(expected)
     }
+  })
+
+  it('hands the latest behaviour and the settled state to the body intent', () => {
+    const motion = new NaturalMotion({ seed: 41 })
+    motion.setPerformance(idleState, 0.5, 0)
+    motion.advance(0)
+    expect(motion.bodyIntent().idle).toEqual({ behaviour: null, settled: false })
+    motion.setIdleDrive({ ...neutralDrive, rate: 0, body: true }, 0)
+    motion.idlePlay('shoulder-roll', 1)
+    motion.advance(1.1)
+    expect(motion.bodyIntent().idle.behaviour).toMatchObject({ seq: 1, kind: 'shoulder-roll', releasedAt: null })
+    for (let frame = 1; frame <= 125 * 60; frame++)
+      motion.advance(1.1 + frame / 60)
+    expect(motion.bodyIntent().idle.behaviour?.releasedAt).not.toBeNull()
+    expect(motion.bodyIntent().idle.settled).toBe(true)
   })
 
   it('reports each activity once as a start and an end, in order', () => {

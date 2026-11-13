@@ -2,6 +2,7 @@ import type { IdleBehaviourReport } from '@proj-airi/motion-driver-natural/idle-
 import type { SelfActivity, SelfObservation } from '@proj-airi/stage-shared/situation'
 
 import { errorMessageFrom } from '@moeru/std'
+import { isIdleBodyKind } from '@proj-airi/motion-driver-natural/idle-activities'
 import { defineStore } from 'pinia'
 
 import { getSpeechBusContext } from '../services/speech/bus'
@@ -13,10 +14,11 @@ export type StageSelfReport = Pick<SelfObservation, 'activity' | 'phase' | 'labe
 /**
  * The situation's name for an idle behaviour of the Natural driver, or `null` for one the model is not told about.
  * Waiting to speak is not an activity of her own: the turn it belongs to says more than a line about it could. Letting
- * the thought go is told as one finished moment, when it starts.
+ * the thought go is told as one finished moment, when it starts. The small acts only a whole body shows (a sigh, a
+ * shift of stance) are not told: they are posture, not something she did.
  */
 export function selfReportOf(report: IdleBehaviourReport): StageSelfReport | null {
-  if (report.behaviour === 'about-to-speak')
+  if (report.behaviour === 'about-to-speak' || isIdleBodyKind(report.behaviour))
     return null
   if (report.behaviour === 'let-go')
     return report.phase === 'start' ? { activity: 'held-back', phase: 'end' } : null

@@ -6,7 +6,7 @@ import type { CueGestureKind } from './cue-gestures'
 import type { GestureKind, naturalEmotions } from './emotions'
 import type { NaturalFaceOutput } from './face'
 import type { GazePoint } from './gaze'
-import type { IdleBehaviourKind } from './idle-activities'
+import type { IdleBehaviourKind, IdleBehaviourRecord } from './idle-activities'
 import type { PostureHome, Vec3 } from './posture'
 import type { RandomStream } from './random'
 
@@ -273,6 +273,14 @@ export interface NaturalBodyIntent {
   readonly attention: {
     readonly approach: number
     readonly cursorShare: number
+  }
+  /**
+   * Self-directed idle life for a host that performs its own body: the latest behaviour (kept after it ends, null
+   * before the first) and whether she has settled in. Without a drive the behaviour stays null and `settled` false.
+   */
+  readonly idle: {
+    readonly behaviour: IdleBehaviourRecord | null
+    readonly settled: boolean
   }
 }
 

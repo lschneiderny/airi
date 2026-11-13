@@ -4,8 +4,19 @@ import type { RandomStream } from './random'
 
 import { minJerk } from './processes'
 
+/**
+ * Acts only a whole body can show (architecture 4e acts 1, 2, 3, 6, 7, 8 and 11). They have no face or head shape here;
+ * a host that performs a body plays them, and they are drawn only when its drive sets `body`.
+ */
+export const IDLE_BODY_KINDS = ['sigh', 'shoulder-roll', 'shift-stance', 'clasp-hands', 'hair-touch', 'heel-rock', 'arm-swing'] as const
+export type IdleBodyKind = typeof IDLE_BODY_KINDS[number]
+
+export function isIdleBodyKind(kind: IdleBehaviourKind): kind is IdleBodyKind {
+  return (IDLE_BODY_KINDS as readonly IdleBehaviourKind[]).includes(kind)
+}
+
 /** Something she does on her own while nobody asks anything of her. `sleep` lasts as long as the user is away. */
-export type IdleActivityKind = 'stretch' | 'yawn' | 'look-around' | 'check-in' | 'peer' | 'zone-out' | 'nod-off' | 'sway' | 'sleep'
+export type IdleActivityKind = 'stretch' | 'yawn' | 'look-around' | 'check-in' | 'peer' | 'zone-out' | 'nod-off' | 'sway' | 'sleep' | IdleBodyKind
 
 /** Body language the host requests around a reach-out: the moment before she may speak, and letting the thought go. */
 export type IdleCueKind = 'about-to-speak' | 'let-go'
@@ -39,6 +50,39 @@ export interface NaturalIdleDrive {
   allowSleep: boolean
   /** Multiplies how often activities start; 1 is the default pace, 0 leaves only sleep and cues. */
   rate: number
+  /**
+   * The host performs a whole body (MMD): the whole-body kinds can be drawn and she settles in after a long idle.
+   * Absent on a host that shows a head and face only (Live2D), which then draws exactly as it did before they existed.
+   */
+  body?: boolean
+}
+
+/**
+ * The latest behaviour the layer started, kept after it ends, for a host that performs its own form of it. `start`,
+ * `end` and `releasedAt` are active seconds; glance `at` is seconds after `start`. A behaviour that ran its course is
+ * released at its end with `releaseSeconds` 0; one released earlier (an interruption, a wake) fades over
+ * `releaseSeconds`.
+ */
+export interface IdleBehaviourRecord {
+  readonly seq: number
+  readonly kind: IdleBehaviourKind
+  readonly start: number
+  /** `Infinity` for a behaviour that lasts until it is released. */
+  readonly end: number
+  readonly releasedAt: number | null
+  readonly releaseSeconds: number
+  readonly side: -1 | 1
+  /** Sway period, seconds. */
+  readonly period: number
+  /** Smile (check-in) or sulk (let-go) strength, 0..1. */
+  readonly tone: number
+  /** Repeats a body act fits into its time: shoulder-roll sides, heel rocks, arm swings. */
+  readonly count: number
+  /** The clasp's place: 0 in front, 1 behind the back. */
+  readonly variant: 0 | 1
+  /** Look-around head keys, or nod-off droops as `t` (start) and `x` (sink seconds). */
+  readonly keys: readonly { readonly t: number, readonly x: number, readonly y: number }[]
+  readonly glances: readonly { readonly at: number, readonly x: number, readonly y: number, readonly hold: number }[]
 }
 
 /** The per-step facts the controller already knows; this layer reads no other state. */
@@ -88,6 +132,7 @@ interface Glance {
 }
 
 interface Clip {
+  seq: number
   kind: IdleBehaviourKind
   start: number
   /** Planned end; `Infinity` for a behaviour that lasts until it is released. */
@@ -104,6 +149,8 @@ interface Clip {
   /** Head keyframes of a look-around, or the droop lengths of a nod-off as `t`. */
   keys: { t: number, x: number, y: number }[]
   glances: Glance[]
+  count: number
+  variant: 0 | 1
 }
 
 /** Seconds a look-around head move takes; holds are longer, so each move completes. */
@@ -139,8 +186,13 @@ const sleepDelay = { min: 12, max: 30 }
 const longSleepSeconds = 90
 /** Seconds a sleep started by `play` lasts before she wakes on her own. */
 const playedSleepSeconds = 14
-/** Shortest seconds before the same activity is drawn again. */
-const cooldowns: Record<DrawnIdleActivityKind, number> = { 'stretch': 300, 'yawn': 75, 'look-around': 25, 'check-in': 30, 'peer': 25, 'zone-out': 40, 'nod-off': 100, 'sway': 30 }
+/** Seconds of continuous `idle` mode after which a body host's character settles in: the director's idle-to-sit time (architecture 4f). */
+const settleSeconds = 120
+/**
+ * Shortest seconds before the same activity is drawn again. The whole-body kinds, appended so the draw order of the
+ * others stays, take architecture 4e's refractory of their act.
+ */
+const cooldowns: Record<DrawnIdleActivityKind, number> = { 'stretch': 300, 'yawn': 75, 'look-around': 25, 'check-in': 30, 'peer': 25, 'zone-out': 40, 'nod-off': 100, 'sway': 30, 'sigh': 90, 'shoulder-roll': 240, 'shift-stance': 60, 'clasp-hands': 240, 'hair-touch': 300, 'heel-rock': 240, 'arm-swing': 180 }
 
 const drawnKinds = Object.keys(cooldowns) as DrawnIdleActivityKind[]
 
@@ -204,7 +256,9 @@ const idleRest: IdleOutput = Object.freeze(neutral())
  * Relative odds of each drawn activity for a drive. Tiredness (night, or low mood energy) favours yawns, zoning out
  * and nodding off; a lively mood favours looking around and watching the screen; time without an exchange makes her
  * check on the user more; tension makes her restless. While the user is active (`watching`) she watches along more
- * and drifts off less. Sway is drawn only while music plays.
+ * and drifts off less. Sway is drawn only while music plays. The whole-body kinds take architecture 4e's act weights,
+ * mood energy standing in for its arousal, and weigh 0 unless the drive sets `body`, so a head-only host's single
+ * draw sees the same pool as before they existed.
  */
 export function idleActivityWeights(drive: NaturalIdleDrive, context: { watching: boolean }): Record<DrawnIdleActivityKind, number> {
   const tired = clamp01(Math.max(drive.sleepiness, -finite(drive.energy)))
@@ -212,6 +266,7 @@ export function idleActivityWeights(drive: NaturalIdleDrive, context: { watching
   const warm = clamp01(0.5 + finite(drive.valence))
   const tense = clamp01(finite(drive.tension))
   const solitude = clamp01(drive.solitude)
+  const body = drive.body === true
   return {
     'look-around': (1 + 0.5 * lively + 0.6 * tense) * (1 - 0.5 * tired),
     'check-in': (0.45 + 0.6 * warm) * (1 + 0.8 * solitude) * (context.watching ? 1.2 : 1),
@@ -221,6 +276,13 @@ export function idleActivityWeights(drive: NaturalIdleDrive, context: { watching
     'yawn': 0.08 + 1.3 * tired,
     'nod-off': tired > 0.45 ? 1.4 * (tired - 0.45) / 0.55 * (context.watching ? 0.6 : 1) : 0,
     'sway': drive.music ? (0.8 + 0.6 * warm) * (1 - 0.6 * tense) : 0,
+    'sigh': body ? (finite(drive.valence) < -0.2 ? 2 : 1) : 0,
+    'shoulder-roll': body ? 0.8 : 0,
+    'shift-stance': body ? 1.2 : 0,
+    'clasp-hands': body ? 0.7 : 0,
+    'hair-touch': body ? 0.5 : 0,
+    'heel-rock': body && finite(drive.valence) > 0.3 ? 0.8 : 0,
+    'arm-swing': body ? (lively > 0.2 ? 0.9 : 0.6) : 0,
   }
 }
 
@@ -260,6 +322,10 @@ export class NaturalIdleActivities {
   output: IdleOutput = idleRest
   /** Increments each time a behaviour starts, so a host that samples per frame never misses a short one. */
   seq = 0
+  /** The latest behaviour started, kept after it ends; null before the first. */
+  record: IdleBehaviourRecord | null = null
+  /** A body host's character has been idle long enough to settle in; always false without `body`. */
+  settled = false
 
   private drive: NaturalIdleDrive | null = null
   private readonly clips: Clip[] = []
@@ -276,6 +342,8 @@ export class NaturalIdleActivities {
   /** Start time of the about-to-speak hold that a let-go already answered. */
   private answeredHold: number | null = null
   private eyesUntil = 0
+  /** Start of the continuous `idle` mode that settling counts from; null outside it or without `body`. */
+  private idleSince: number | null = null
 
   constructor(private readonly random: RandomStream) {}
 
@@ -349,9 +417,18 @@ export class NaturalIdleActivities {
       this.pendingPlay = null
       this.followUp = null
       this.awaySince = null
+      this.idleSince = null
+      this.settled = false
       this.sample(at + dt)
       return
     }
+
+    // Like the director's idle clock: anything that takes her out of `idle` mode, or must be answered, stands her up.
+    if (drive.body === true && input.mode === 'idle' && !input.interrupt)
+      this.idleSince ??= at
+    else
+      this.idleSince = null
+    this.settled = this.idleSince !== null && at - this.idleSince >= settleSeconds
 
     const cue = this.pendingCue
     this.pendingCue = null
@@ -430,9 +507,16 @@ export class NaturalIdleActivities {
     return this.clips.find(clip => clip.releasedAt === null)
   }
 
+  /** Marks the record of `clip` released, if it is still the latest behaviour. */
+  private released(clip: Clip) {
+    if (this.record?.seq === clip.seq)
+      this.record = { ...this.record, releasedAt: clip.releasedAt, releaseSeconds: clip.releaseSeconds }
+  }
+
   private release(clip: Clip, at: number, seconds: number, gaze: NaturalGazeLayer) {
     clip.releasedAt = at
     clip.releaseSeconds = seconds
+    this.released(clip)
     clip.glances.length = 0
     // Woken before the user is back, she takes a fresh while to fall asleep again.
     if (clip.kind === 'sleep')
@@ -449,6 +533,7 @@ export class NaturalIdleActivities {
     // The shape has already returned to zero, so the clip retires without a fade.
     clip.releasedAt = at
     clip.releaseSeconds = 0
+    this.released(clip)
     this.restUntil = at + rest.min + (rest.max - rest.min) * this.random()
   }
 
@@ -456,6 +541,7 @@ export class NaturalIdleActivities {
     const slept = at - clip.start
     clip.releasedAt = at
     clip.releaseSeconds = wakeSeconds
+    this.released(clip)
     // The eyes are already on the user when the lids open.
     this.eyesUntil = Math.max(this.eyesUntil, gaze.glance({ x: 0, y: 0 }, wakeSeconds + 0.6, at))
     this.restUntil = at + rest.min
@@ -488,7 +574,7 @@ export class NaturalIdleActivities {
     const between = (min: number, max: number) => min + (max - min) * random()
     const drawnSide: -1 | 1 = random() < 0.5 ? -1 : 1
     const inwardSide: -1 | 1 = Math.abs(input.placement) > 0.1 ? (input.placement > 0 ? 1 : -1) : drawnSide
-    const clip: Clip = { kind, start: at, end: at, releasedAt: null, releaseSeconds: 0, side: drawnSide, requested: false, period: 2, tone: 0, keys: [], glances: [] }
+    const clip: Clip = { seq: this.seq + 1, kind, start: at, end: at, releasedAt: null, releaseSeconds: 0, side: drawnSide, requested: false, period: 2, tone: 0, keys: [], glances: [], count: 1, variant: 0 }
     switch (kind) {
       case 'stretch':
         clip.end = at + 5.2
@@ -573,6 +659,48 @@ export class NaturalIdleActivities {
         clip.tone = clamp01(-finite(drive.valence))
         clip.glances.push({ at: at + 0.1, point: { x: drawnSide * 0.42, y: -0.2 }, hold: 1.5 })
         break
+      // The whole-body kinds take their duration ranges and repeats from architecture 4e; the host plays their form.
+      case 'sigh':
+        clip.end = at + between(2.8, 4)
+        break
+      case 'shoulder-roll':
+        clip.end = at + between(3, 4.5)
+        // Half of the time the neck stretch repeats on the other side.
+        clip.count = random() < 0.5 ? 2 : 1
+        break
+      case 'shift-stance':
+        clip.end = at + between(1.2, 1.8)
+        break
+      case 'clasp-hands':
+        clip.end = at + between(4, 9)
+        clip.variant = random() < 0.5 ? 0 : 1
+        break
+      case 'hair-touch':
+        clip.end = at + between(2.2, 3)
+        break
+      case 'heel-rock':
+        clip.end = at + between(1.5, 2.5)
+        clip.count = random() < 0.5 ? 2 : 3
+        break
+      case 'arm-swing':
+        clip.end = at + between(2, 4)
+        clip.count = random() < 0.5 ? 2 : 3
+        break
+    }
+    this.record = {
+      seq: clip.seq,
+      kind,
+      start: at,
+      end: clip.end,
+      releasedAt: null,
+      releaseSeconds: 0,
+      side: clip.side,
+      period: clip.period,
+      tone: clip.tone,
+      count: clip.count,
+      variant: clip.variant,
+      keys: clip.keys.map(key => ({ ...key })),
+      glances: clip.glances.map(glance => ({ at: glance.at - at, x: glance.point.x, y: glance.point.y, hold: glance.hold })),
     }
     this.clips.push(clip)
     this.lastStart[kind] = at

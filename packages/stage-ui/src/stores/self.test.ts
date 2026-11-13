@@ -36,6 +36,11 @@ describe('selfReportOf', () => {
     expect(selfReportOf({ behaviour: 'sleep', phase: 'end' })).toEqual({ activity: 'sleep', phase: 'end' })
   })
 
+  it('does not tell the small acts only a whole body shows', () => {
+    expect(selfReportOf({ behaviour: 'sigh', phase: 'start' })).toBeNull()
+    expect(selfReportOf({ behaviour: 'shift-stance', phase: 'end' })).toBeNull()
+  })
+
   it('tells a reach-out she decided against once, as a finished moment, and never the wait before it', () => {
     expect(selfReportOf({ behaviour: 'about-to-speak', phase: 'start' })).toBeNull()
     expect(selfReportOf({ behaviour: 'about-to-speak', phase: 'end' })).toBeNull()

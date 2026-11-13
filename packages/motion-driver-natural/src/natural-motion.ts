@@ -288,6 +288,7 @@ export class NaturalMotion {
       touch: { poke: this.latestPoke && { ...this.latestPoke }, pet: { level: this.pet.level, active: this.pet.active, ...this.pet.easedHand } },
       react: this.latestReact && { ...this.latestReact },
       attention: { approach: this.approach, cursorShare: this.cursorShare },
+      idle: { behaviour: this.idle.record, settled: this.idle.settled },
     }
     const weight = clamp((this.activeTime - (this.stepIndex - 1) * step) / step, 1)
     const { previous: a, next: b } = this

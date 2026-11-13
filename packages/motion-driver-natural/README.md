@@ -106,6 +106,16 @@ const { seq, behaviour } = motion.idleState
 - `idleState.seq` increments at every start. `IdleBehaviourReports` turns
   per-frame reads of it into start and end reports; both renderer adapters use
   it. An attached observer also receives `idle` events.
+- The layer is the one idle scheduler for both renderers. A host that performs
+  a whole body (MMD) sets `body: true` in the drive. That unlocks the
+  whole-body kinds (`sigh`, `shoulder-roll`, `shift-stance`, `clasp-hands`,
+  `hair-touch`, `heel-rock`, `arm-swing`) and settling in after 120 s of
+  continuous `idle` mode. Without `body` those kinds weigh 0 before the single
+  draw, so a Live2D drive draws exactly as before they existed.
+- `bodyIntent().idle` carries the latest behaviour as an
+  `IdleBehaviourRecord` (its timing, side and drawn parameters, kept after it
+  ends) and `settled`, so a body host plays its own form of each behaviour. The
+  frame Live2D draws does not change.
 
 [The idle agency ADR](../../docs/ai/adr/2026-11-12-idle-agency.md) records the
 design, the pacing numbers and the rendered Live2D pass.
