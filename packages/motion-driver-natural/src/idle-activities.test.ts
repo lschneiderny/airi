@@ -300,6 +300,23 @@ describe('idle activity layer', () => {
     expect([...seen]).toEqual(['yawn'])
   })
 
+  it('can still stretch after a long sleep when the return stands her up', () => {
+    const seen = new Set<IdleBehaviourKind>()
+    for (let seed = 1; seed <= 30; seed++) {
+      const { idle, run, now } = layer(seed, { ...neutralDrive, body: true })
+      const away = { ...idleInput, away: true }
+      run(31, away, () => idle.behaviour === 'sleep')
+      run(now() + 130, away)
+      const watching = { ...idleInput, mode: 'watching' as const }
+      const wokeAt = run(now() + dt, watching)
+      expect(idle.settled, `seed ${seed}`).toBe(false)
+      run(wokeAt + 4, watching, () => idle.behaviour !== null)
+      if (idle.behaviour)
+        seen.add(idle.behaviour)
+    }
+    expect(seen.has('stretch')).toBe(true)
+  })
+
   it('wakes with a start when she is touched', () => {
     const { idle, gaze, run, now } = layer()
     const away = { ...idleInput, away: true }

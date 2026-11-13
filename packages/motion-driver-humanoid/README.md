@@ -26,7 +26,11 @@ deterministic motion algorithms for reusable character motion drivers.
   120 Hz grid, its rig/input/frame contracts, channels, FK, arm-key solver,
   collision corrector, and extensible `PerformanceLayer` contract. Its act
   layer plays the whole-body form of the idle behaviour Natural's idle layer
-  started (`BodyPerformanceInput.idle`); it schedules nothing itself. A
+  started (`BodyPerformanceInput.idle`); it schedules nothing itself. Natural
+  weighs `shift-stance`, `heel-rock`, `clasp-hands` and `hair-touch` 0, so
+  their forms stay in the layer, unplayed: the hair touch reads as a salute
+  until it has a temple anchor solved per rig, its 0.10 A sweep back and the
+  head-clearance gate. A
   stretch's elbows fold to bring each hand along the straight line from where
   it hangs to where it reaches (Morasso 1981), the far arm 120 ms behind, fed
   through the relaxed arm followers' inverse (`followerInverse` with `used` 0);
