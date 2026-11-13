@@ -7,9 +7,11 @@ import { ARM_START, BODY_CHANNELS, BODY_TICK, channelGroup, channelIndex, DEG, S
 /**
  * Multiples of architecture 4b's below-neck terms; head terms keep Natural's amplitude. Nod and shake are head
  * gestures with a trunk echo, the glance's trunk follows its head at three times 3a's head-attitude share, and the
- * shrug and lean are 4b as written (lead ruling R5; sizes in `E/g3/b/amplitude-sources.md`).
+ * shrug and lean are 4b as written (lead ruling R5; sizes in `E/g3/b/amplitude-sources.md`). The shake's trunk turns
+ * 0.62 of the head's shake (7.75 x 4b's 0.08, peak about 3 degrees), larger than R5's 4 so the cue reads in her body
+ * (`E/g3/emotion-measure-review.md`, Rulings 7; `E/g3/e/notes.md`).
  */
-export const CUE_SCALES: Readonly<Record<BodyCueKind, number>> = { nod: 4, shake: 4, glance: 3, shrug: 1, lean: 1 }
+export const CUE_SCALES: Readonly<Record<BodyCueKind, number>> = { nod: 4, shake: 7.75, glance: 3, shrug: 1, lean: 1 }
 
 /** One Natural nod dip (`cue-gestures.ts`): 0.45 s, 6.6 deg (0.22 x 30), 0.8 of the previous dip. */
 const NOD = { dip: 0.45, degrees: 6.6, decay: 0.8 }

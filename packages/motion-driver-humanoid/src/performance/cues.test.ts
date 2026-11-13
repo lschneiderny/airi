@@ -88,6 +88,14 @@ describe('cue gesture layer', () => {
     expect(changes).toBe(3)
   })
 
+  // Owner comparison of 2026-11-12 ("Shake size: Show me both"): the larger trunk follow, 0.62 of the head's shake
+  // (E/g3/emotion-measure-review.md, Rulings 7; E/g3/e/notes.md).
+  it('turns the upper torso against a shake by 0.62 of the head\'s turn', () => {
+    const d = layerEffect(cue('shake', 1), 2)
+    const head = sum(d[c('neckYaw')], d[c('headYaw')])
+    expect(Math.abs(peak(d[c('upperYaw')]) / peak(head))).toBeCloseTo(0.62, 1)
+  })
+
   it('lifts the two shoulders of a shrug unequally, the far one later', () => {
     const d = layerEffect(cue('shrug', -1), 3)
     const near = d[c('leftClavElev')]

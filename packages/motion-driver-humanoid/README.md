@@ -506,7 +506,8 @@ nods once. The shrug lifts both clavicles unequally with the far one 40 ms late,
 the lean forces the support to the cue's side, and the glance plans the gaze 14
 degrees to the side while the upper torso follows the head's turn through a
 250 ms link. `CUE_SCALES` holds each cue's below-neck size as a multiple of 4b's
-terms. Every term is additive and starts and ends at rest with zero slope;
+terms; during a shake the upper torso turns against the head by 0.62 of the
+head's shake, 90 ms late. Every term is additive and starts and ends at rest with zero slope;
 owned groups receive none.
 
 `createReactionLayer()` (`src/performance/reactions.ts`) adds
