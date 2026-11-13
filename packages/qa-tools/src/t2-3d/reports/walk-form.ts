@@ -263,5 +263,6 @@ export function formatWalkForm(report: CaseReport<WalkFormDetail>): string {
     `turns in the travel heading (${d.turns.length}); head lead printed, not judged (a ${C.minLeadMs} ms bar sits inside the 0 to 100 ms noise of a product with no designed lead): ${d.turns.filter(turn => turn.leadMs !== null && turn.leadMs >= C.minLeadMs).length} of ${d.turns.length} at least ${C.minLeadMs} ms`,
     ...d.turns.map(turn => `  ${turn.start.toFixed(3)}-${turn.end.toFixed(3)} s\troot ${turn.rootDeg.toFixed(1)} deg\thead ${turn.headDeg.toFixed(1)} deg\tlead ${turn.leadMs === null ? 'no head turn' : `${turn.leadMs.toFixed(1)} ms`}`),
     `counter-rotation (informative, expected <= -0.3): corr(pelvis twist, chest-on-pelvis yaw) ${fixed(d.counterCorrelation)}`,
+    'limit (measured by the unit M2 review): the travel heading reads a turn 7 to 9 % small (90 deg reads about 82, 180 about 174), so a 140 deg turn-around reads about 133, under the 135 deg turn-around bar; a turn slower than 0.5 rad/s of travel heading is not a turn.',
   ])
 }
