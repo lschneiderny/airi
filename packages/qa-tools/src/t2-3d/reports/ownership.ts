@@ -1,5 +1,6 @@
 import type { MotionTraceBone } from '@proj-airi/motion-driver-humanoid/motion-trace'
 
+import type { Motion3dRunSummary } from '../runner/measurement'
 import type { Apex } from './gesture-timing'
 import type { Side } from './kinematics'
 import type { CriterionReport, LoadedRun, ReportConstant } from './report'
@@ -227,7 +228,7 @@ function judgeRun(run: LoadedRun, idleRuns: readonly LoadedRun[]): OwnershipRun 
   // rest-band (revision C2): report only, not judged. Each arm's offset from its own recorded rest, compared across the
   // arms at release + 0.5 s, beside the pooled 95th percentile of the same over the companion idle runs. Revision C2.1:
   // these are the performer's arm channels before the clip blend, so a pose held in the bones does not appear in them.
-  const restDifference = (s: { readonly ownership: { readonly armDeg: { readonly left: readonly (readonly number[])[], readonly right: readonly (readonly number[])[] }, readonly restArmDeg: { readonly left: readonly number[], readonly right: readonly number[] } } }, k: number) => {
+  const restDifference = (s: Motion3dRunSummary, k: number) => {
     const { armDeg, restArmDeg } = s.ownership
     const right = armDeg.right[k]
     const left = armDeg.left[k]

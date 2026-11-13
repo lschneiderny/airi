@@ -2,7 +2,7 @@ import type { MotionTraceSource, MotionTraceV1 } from '@proj-airi/motion-driver-
 import type { NaturalChatInput } from '@proj-airi/motion-driver-natural/natural-motion'
 import type { MMDBodyPoints } from '@proj-airi/stage-ui-mmd/composables/mmd/body/attention'
 import type { LayerFade } from '@proj-airi/stage-ui-mmd/composables/mmd/layer-fade'
-import type { SkinnedMesh, Vector3 } from 'three'
+import type { SkinnedMesh } from 'three'
 
 import type { RunGitState } from '../../evidence/run'
 import type { Motion3dScenario } from '../scenarios'
@@ -147,7 +147,6 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
     if (claim)
       body.registerClip(CLAIM_CLIP_NAME, claim.clip)
     let chat: NaturalChatInput | null = null
-    let chatPoint: Vector3 | null = null
     const stages = composeMMDStages({
       body,
       host: {
@@ -233,8 +232,7 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
       // The chat panel resolves like a held cursor: Natural takes its head-width point, the body its world point.
       const panel = cues.chat?.target ? look.resolve(cues.chat.target) : null
       chat = cues.chat && panel ? { ...cues.chat, target: panel.cursor } : cues.chat
-      chatPoint = panel?.target ?? null
-      points = camera ? { cursor: target?.target ?? null, chat: chatPoint, camera } : null
+      points = camera ? { cursor: target?.target ?? null, chat: panel?.target ?? null, camera } : null
       cursor = target?.cursor ?? null
       if (cues.goalCancelled) {
         stance.clearGoal()

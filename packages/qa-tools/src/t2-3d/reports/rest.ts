@@ -169,14 +169,13 @@ export function restReport(run: LoadedRun, bands: MotionBandsFile): CaseReport<R
   })
   const baselineFrames = raw(Number.NEGATIVE_INFINITY, onset)
   const baselines = { head: mean(baselineFrames.map(signals.head)), torso: mean(baselineFrames.map(signals.torso)), hips: mean(baselineFrames.map(signals.hips)) }
-  const baseline = (signal: keyof typeof signals) => baselines[signal]
   const restFrames = raw(onset, away, 'rest')
   const dozeFrames = sleep === null ? [] : raw(sleep, wake, 'doze')
   const posture = restFrames.length
-    ? { head: mean(restFrames.map(signals.head)) - baseline('head'), torso: mean(restFrames.map(signals.torso)) - baseline('torso') }
+    ? { head: mean(restFrames.map(signals.head)) - baselines.head, torso: mean(restFrames.map(signals.torso)) - baselines.torso }
     : null
-  const pelvisDrop = dozeFrames.length ? baseline('hips') - mean(dozeFrames.map(signals.hips)) : null
-  const dozeHeadP90 = dozeFrames.length ? percentile(dozeFrames.map(f => signals.head(f) - baseline('head')), 0.9) : null
+  const pelvisDrop = dozeFrames.length ? baselines.hips - mean(dozeFrames.map(signals.hips)) : null
+  const dozeHeadP90 = dozeFrames.length ? percentile(dozeFrames.map(f => signals.head(f) - baselines.head), 0.9) : null
   // The doze owns the head (lead decision on 4f): no gaze shift reported, and no head-from-chest yaw step, while dozing.
   const chest = pose.index('chest') >= 0 ? pose.index('chest') : spine
   const headYaw = (frame: number) => {

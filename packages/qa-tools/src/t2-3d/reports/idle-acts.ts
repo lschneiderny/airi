@@ -198,7 +198,7 @@ export class TracePose {
     let q = this.local(frame, bone)
     for (let parent = this.parents[bone]; parent >= 0; parent = this.parents[parent])
       q = multiply(this.local(frame, parent), q)
-    const yaw = this.input.root[frame * 4 + 3]
+    const yaw = this.yaw(frame)
     return multiply([0, Math.sin(yaw / 2), 0, Math.cos(yaw / 2)], q)
   }
 
@@ -365,15 +365,13 @@ export interface IdleActsDetail {
   readonly intermittency: readonly { readonly id: string, readonly status: string, readonly value: number | null }[] | null
 }
 
-function refusePair(run: LoadedRun, pair: LoadedRun, why: string): never {
-  throw new ReportUsageError(`${run.dir} and ${pair.dir}: not a run and its acts-off pair: ${why}`)
-}
-
 /** The run and its acts-off companion must be the same model, commit, scenario, seed and length; the companion sets no drive. */
 function checkPairSource(run: LoadedRun, pair: LoadedRun): void {
   const a = run.input.trace
   const b = pair.input.trace
-  const refuse = (why: string) => refusePair(run, pair, why)
+  const refuse = (why: string): never => {
+    throw new ReportUsageError(`${run.dir} and ${pair.dir}: not a run and its acts-off pair: ${why}`)
+  }
   if (a.source.scenario.id !== b.source.scenario.id || a.source.scenario.class !== b.source.scenario.class || a.source.scenario.seed !== b.source.scenario.seed)
     refuse('scenario or seed differs')
   if (a.frames !== b.frames || a.scoredFrom !== b.scoredFrom || a.hz !== b.hz)

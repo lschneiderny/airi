@@ -75,7 +75,7 @@ describe('emotion-table report (C002, plan 2.3)', () => {
   it('reports the gate value it would require and agrees with emotion.minSeparationFromNeutral', () => {
     const report = emotionTableReport([emotions()], bands)
     const required = report.detail.requiredPairs.map(pair => report.detail.separation[pair])
-    expect(report.detail.requiredPairs).toHaveLength(4)
+    expect(report.detail.requiredPairs).toEqual(['happy|neutral', 'happy|placebo', 'neutral|sad', 'placebo|sad'])
     expect(Math.min(...required)).toBeCloseTo(report.detail.minSeparationFromNeutral ?? Number.NaN, 9)
   })
 

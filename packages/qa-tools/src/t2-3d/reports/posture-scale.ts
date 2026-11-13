@@ -3,6 +3,9 @@ import type { MotionTraceBone } from '@proj-airi/motion-driver-humanoid/motion-t
 import type { EmotionTrial, Quat } from '../metrics'
 import type { DecodedMotionTrace } from '../read-trace'
 
+import { minJerk } from '@proj-airi/motion-driver-humanoid/dynamics'
+import { MOTION_TRACE_CHANNELS } from '@proj-airi/motion-driver-humanoid/motion-trace'
+
 import { emotionTrials, prepareTrace } from '../metrics'
 import { multiply, normalize } from '../metrics/math'
 
@@ -31,7 +34,6 @@ export const POSTURE_TABLE: Readonly<Record<string, Readonly<Partial<Record<'TL'
 export const POSTURE_SCALES: readonly number[] = Array.from({ length: 32 }, (_, i) => (i + 1) * 0.25)
 
 const RAD = Math.PI / 180
-const minJerk = (u: number) => u <= 0 ? 0 : u >= 1 ? 1 : u * u * u * (10 - 15 * u + 6 * u * u)
 function axis(x: number, y: number, z: number, degrees: number): Quat {
   const s = Math.sin(degrees * RAD / 2)
   return [x * s, y * s, z * s, Math.cos(degrees * RAD / 2)]
@@ -60,7 +62,7 @@ export function overlayPostures(input: DecodedMotionTrace, scale: number): Decod
     ['head', (p, w) => axis(1, 0, 0, w * (p.head ?? 0))],
   ]
   for (let f = 0; f < trace.frames; f++) {
-    const t = input.channels[f * 9]
+    const t = input.channels[f * MOTION_TRACE_CHANNELS.length]
     const pulse = pulses.find(x => t >= x.t && t <= x.t + 8)
     if (!pulse)
       continue

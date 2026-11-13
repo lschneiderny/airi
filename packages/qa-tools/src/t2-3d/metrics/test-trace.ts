@@ -32,13 +32,13 @@ export function analyticTrace(options: AnalyticTraceOptions): DecodedMotionTrace
   for (let i = 0; i < frames; i++) {
     const t = i / hz
     const poses = bones.map(b => options.world?.(b, t) ?? [0, 0, 0, 1] satisfies Quat)
+    const yaw = options.yaw?.(t) ?? 0
     for (let b = 0; b < bones.length; b++) {
-      const yaw = options.yaw?.(t) ?? 0
       const parent: Quat = parents[b] < 0 ? [0, Math.sin(yaw / 2), 0, Math.cos(yaw / 2)] : poses[parents[b]]
       rot.set(multiply(conjugate(parent), poses[b]), (i * bones.length + b) * 4)
     }
     const p = options.position?.(t) ?? [0, 0, 0]
-    root.set([p[0], p[1], p[2], options.yaw?.(t) ?? 0], i * 4)
+    root.set([p[0], p[1], p[2], yaw], i * 4)
     channels.set([t, t, 0, options.speaking?.(t) ?? 0, Number.NaN, Number.NaN, Number.NaN, options.mode?.(t) ?? 0, 0], i * 9)
   }
   return {

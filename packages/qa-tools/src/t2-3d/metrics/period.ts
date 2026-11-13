@@ -99,7 +99,8 @@ export function projection(v: readonly Vec3[]): number[] | null {
 
 export function periodMetrics(p: PreparedTrace): MetricResult[] {
   const metrics: MetricResult[] = []
-  for (const [name, signal] of scalarSignals(p)) {
+  const signals = scalarSignals(p)
+  for (const [name, signal] of signals) {
     metrics.push(p.windowSeconds < 10
       ? skipped(`period.${name}.acfPeak`, 'correlation', 'window', 'insufficient-period-window')
       : windowResult(p, `period.${name}.acfPeak`, 'correlation', (s) => {
@@ -113,7 +114,6 @@ export function periodMetrics(p: PreparedTrace): MetricResult[] {
   }
   const idleSpans = runs(p.bodySpeed.map((_, i) => p.channels[7][i] === 0 && p.channels[3][i] === 0))
   const span = idleSpans.sort((a, b) => (b.end - b.start) - (a.end - a.start))[0]
-  const signals = scalarSignals(p)
   const head = headSignal(p)
   for (const name of ['rootLateral', 'rootForeAft', 'head']) {
     const signal = name === 'head' ? head : signals.get(name)

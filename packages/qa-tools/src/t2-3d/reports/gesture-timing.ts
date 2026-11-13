@@ -260,7 +260,8 @@ export function strokeApexes(run: LoadedRun, idleRuns: readonly LoadedRun[]) {
     if (idle.input.trace.source.gitSha !== source.gitSha)
       throw new ReportUsageError(`${idle.dir}: companion idle run at another commit (${idle.input.trace.source.gitSha} against ${source.gitSha})`)
   }
-  const pooled = idleRuns.flatMap(idle => candidateApexes(idle).filter(a => a.t >= idle.input.trace.scoredFrom))
+  const idleApexes = idleRuns.map(idle => candidateApexes(idle).filter(a => a.t >= idle.input.trace.scoredFrom))
+  const pooled = idleApexes.flat()
   if (pooled.length < C.minimumIdleApexes)
     throw new ReportUsageError(`${run.dir}: unjudgeable, ${pooled.length} idle apexes pooled over ${idleRuns.length} companion idle runs; the idle speed bar needs ${C.minimumIdleApexes}, run more idle seeds`)
   const speedBar = percentile(pooled.map(a => a.stroke.peakSpeed), C.idlePercentile)
@@ -277,7 +278,7 @@ export function strokeApexes(run: LoadedRun, idleRuns: readonly LoadedRun[]) {
     candidates,
     silentApexes: candidates.filter(a => silent(a.t)).length,
     silentSeconds: p.times.filter(silent).length / HZ,
-    companions: idleRuns.map(idle => ({ dir: idle.dir, gitSha: idle.input.trace.source.gitSha, seed: idle.input.trace.source.scenario.seed, apexes: candidateApexes(idle).filter(a => a.t >= idle.input.trace.scoredFrom).length })),
+    companions: idleRuns.map((idle, i) => ({ dir: idle.dir, gitSha: idle.input.trace.source.gitSha, seed: idle.input.trace.source.scenario.seed, apexes: idleApexes[i].length })),
     pooled: pooled.length,
     speedBar,
     apexes: candidates.filter(a => a.stroke.peakSpeed > speedBar),

@@ -6,14 +6,14 @@ import type { DecodedMotionTrace } from '../read-trace'
 import type { Motion3dRunSummary } from '../runner/measurement'
 import type { LoadedRun } from './report'
 
+import { minJerk } from '@proj-airi/motion-driver-humanoid/dynamics'
+
 import { prepareTrace } from '../metrics'
 import { multiply } from '../metrics/math'
 import { analyticTrace } from '../metrics/test-trace'
 
 /** Analytic test input only: no asset, clip or captured trace. */
 export const TEST_BONES: readonly MotionTraceBone[] = ['hips', 'spine', 'chest', 'upperChest', 'neck', 'head', 'leftShoulder', 'leftUpperArm', 'leftLowerArm', 'leftHand', 'rightShoulder', 'rightUpperArm', 'rightLowerArm', 'rightHand']
-
-const minJerk = (u: number) => u <= 0 ? 0 : u >= 1 ? 1 : u * u * u * (10 - 15 * u + 6 * u * u)
 
 /** A sum of minimum-jerk moves on warped time `u^0.8` (architecture 4a), each from `start` over `duration` by `by`. */
 export function moves(list: readonly { readonly start: number, readonly duration: number, readonly by: number }[]): (t: number) => number {

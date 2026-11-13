@@ -143,10 +143,9 @@ export function emotionTableReport(runs: readonly LoadedRun[], bands: MotionBand
     const releaseDeg = r ? length(r) * DEG : null
     return { trial: trial.trialId ?? `${run.dir}@${trial.t.toFixed(3)}`, condition: trial.condition, releaseDeg, inBand: releaseDeg !== null && placeboP95 !== null && releaseDeg <= placeboP95 * DEG }
   }))
-  const onsets = runs.flatMap((run) => {
-    if (!emotion)
-      return []
-    const attack = onsetMetrics(run.p, emotion).find(m => m.id === 'onset.attackFraction')?.samples ?? []
+  const onsetByRun = runs.map(run => emotion ? onsetMetrics(run.p, emotion) : [])
+  const onsets = runs.flatMap((run, r) => {
+    const attack = onsetByRun[r].find(m => m.id === 'onset.attackFraction')?.samples ?? []
     const pulses = run.input.trace.events.flatMap(e => e.kind === 'emotion' && e.phase !== 'placebo' ? [e] : [])
     return attack.map((s) => {
       const t = run.p.times[s.start]
@@ -156,10 +155,10 @@ export function emotionTableReport(runs: readonly LoadedRun[], bands: MotionBand
     })
   })
   const gates = runs.map(requireGate)
-  const required2 = gates.map(g => g.requirements)
-  const gateRequired = required2.every(r => r && C002_REQUIRED.every(id => r.metrics.includes(id)) && r.passed)
-  const episodes = runs.map((run) => {
-    const count = (id: string) => (emotion ? onsetMetrics(run.p, emotion).find(m => m.id === id)?.samples?.length : 0) ?? 0
+  const gateRequirements = gates.map(g => g.requirements)
+  const gateRequired = gateRequirements.every(r => r && C002_REQUIRED.every(id => r.metrics.includes(id)) && r.passed)
+  const episodes = runs.map((run, r) => {
+    const count = (id: string) => onsetByRun[r].find(m => m.id === id)?.samples?.length ?? 0
     return { run: run.dir, attack: count(ONSET_IDS[0]), eased: count(ONSET_IDS[1]) }
   })
   const onsetLine = ONSET_IDS.map(id => `${id} ${[...new Set(gates.map(g => gateStatus(g, id).status))].join('/')}`).join(', ')
@@ -169,7 +168,7 @@ export function emotionTableReport(runs: readonly LoadedRun[], bands: MotionBand
   const fromNeutral = pooled.find(m => m.id === 'emotion.minSeparationFromNeutral')?.value ?? null
   const requirements = [
     requirement('pairs-from-neutral', `each non-neutral emotion >= ${C.separation} SD from neutral and from placebo (emotion.minSeparationFromNeutral); other pairs report only`, `${required.length - failing.length}/${required.length}; emotion.minSeparationFromNeutral ${fixed(fromNeutral)}; all-pairs emotion.minSeparation ${fixed(pooled[0].value)} (report only)`, required.length > 0 && failing.length === 0 && fromNeutral !== null && fromNeutral >= C.separation),
-    requirement('gate-required', `every gate.json carries --require ${C002_REQUIRED.join(',')} and passed it`, required2.map(r => r ? `${r.metrics.join(',')} ${r.passed ? 'PASS' : 'FAIL'}` : 'no --require').join('; '), gateRequired),
+    requirement('gate-required', `every gate.json carries --require ${C002_REQUIRED.join(',')} and passed it`, gateRequirements.map(r => r ? `${r.metrics.join(',')} ${r.passed ? 'PASS' : 'FAIL'}` : 'no --require').join('; '), gateRequired),
     reportOnly(requirement('onset-not-vacuous', `${ONSET_IDS.join(' and ')} PASS in every gate.json, each from >= ${C.episodes} episodes per run`, `${onsetLine}; episodes per run (attack/eased): ${episodes.map(e => `${e.attack}/${e.eased}`).join(', ')}`, ONSET_IDS.every(id => gates.every(g => gateStatus(g, id).status === 'PASS')) && episodes.every(e => e.attack >= C.episodes && e.eased >= C.episodes)), REPORT_ONLY['onset-not-vacuous']),
     requirement('placebo-trials', `placebo trials >= ${C.placeboTrials}`, `${placebo.length}`, placebo.length >= C.placeboTrials),
     reportOnly(requirement('not-vacuous', `each non-neutral emotion's mean hold |p| >= ${C.vacuity} x placebo p95`, nonNeutral.map(c => `${c} ${fixed(meanHold[c], 2)}`).join(', '), !vacuous), REPORT_ONLY['not-vacuous']),

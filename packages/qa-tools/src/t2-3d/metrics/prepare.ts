@@ -38,8 +38,8 @@ export function prepareTrace(input: DecodedMotionTrace): PreparedTrace {
   const channels = Array.from({ length: stride }, (_, i) => lerp(rawChannels, stride, i))
   const rootAxes = [0, 1, 2].map(i => lerp(root, 4, i))
   const rootPosition: Vec3[] = times.map((_, i) => [rootAxes[0][i], rootAxes[1][i], rootAxes[2][i]])
-  const yaw = butterworth(lerp(root, 4, 3), 0.5)
   const rawYaw = lerp(root, 4, 3)
+  const yaw = butterworth(rawYaw, 0.5)
   const yawRate = yaw.slice(1).map((v, i) => (v - yaw[i]) * HZ)
   const orientations: Partial<Record<MotionTraceBone, Quat[]>> = {}
   const worldVelocity: Partial<Record<MotionTraceBone, Vec3[]>> = {}
