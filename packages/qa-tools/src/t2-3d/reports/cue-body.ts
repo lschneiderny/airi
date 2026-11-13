@@ -8,10 +8,12 @@ import { createRandomStream } from '@proj-airi/motion-driver-natural/random'
 
 import { percentile } from '../gate/bands'
 import { conjugate, DEG, HZ, mean, multiply, norm, rotationVector } from '../metrics/math'
+import { mirrorBone, mirrorRotation } from '../metrics/mirror'
 import { traceParent } from './kinematics'
-import { criterionReport, fixed, formatReport, requirement } from './report'
+import { consensusSides, dot } from './mirror'
+import { criterionReport, fixed, formatReport, reportOnly, requirement } from './report'
 
-export const CUE_BODY_VERSION = 4
+export const CUE_BODY_VERSION = 5
 
 /** Natural's cue durations for one count (`cue-gestures.ts`, `start`; the glance holds 0.6 s). */
 export const CUE_SECONDS: Readonly<Record<CueGestureKind, number>> = { nod: 0.45, shake: 0.5, shrug: 1.1, lean: 2.6, glance: 0.6 }
@@ -19,18 +21,28 @@ const CUES = Object.keys(CUE_SECONDS) as CueGestureKind[]
 /** Bones below the neck; a rig without `upperChest` skips it. */
 export const CUE_BONES: readonly MotionTraceBone[] = ['hips', 'spine', 'chest', 'upperChest', 'leftShoulder', 'rightShoulder', 'leftUpperArm', 'rightUpperArm', 'leftLowerArm', 'rightLowerArm']
 
+/** Cue kinds printed but left out of the verdict (owner decision 2026-11-12, E/g3/s/rules.md 14), with the reason. */
+const REPORT_ONLY: Partial<Record<CueGestureKind, string>> = {
+  lean: 'the null of the bone-normalised maximum is set by idle drift of a near-still shoulder; a FAIL means not shown above idle, not a motion fault; judged by visual review',
+}
+
 const C = { tail: 0.5, clearance: 1, emotionOnset: 2, percentile: 0.95, events: 5, minimumWindows: 20, falsePositive: 0.05, nullPercentile: 0.99, minimumEvents: 6, draws: 1000, seed: 20261112, pseudoEvents: 100 }
 
 export const CUE_BODY_CONSTANTS: readonly ReportConstant[] = [
   { name: 'cue window', value: `start .. start + duration + ${C.tail}`, unit: 's', source: 'plan 2.3' },
-  { name: 'placebo window', value: `same length, ${C.clearance} s clear of every cue window and every emotion event's first ${C.emotionOnset} s`, unit: 's', source: 'unit M2 R3: placebo windows of the same runs; 2 s is the start of the gate emotionHoldSeconds' },
+  { name: 'placebo window', value: `same length, ${C.clearance} s clear of every cue window, every neutral or placebo event's first ${C.emotionOnset} s, and every posed emotion up to the next trial's or cue's event`, unit: 's', source: 'unit M2 R3: placebo windows of the same runs; 2 s is the start of the gate emotionHoldSeconds; E/g3/s/rules.md 12.2 (version 5): a posed hold or release in the pool, mirrored, raised the null' },
   { name: 'event threshold', value: C.percentile, unit: 'percentile of the placebo windows\' max over bones of turn / placebo SD', source: 'unit M2 R3: family-wise over the bones' },
   { name: 'time-locked average', value: `>= ${C.minimumEvents} events`, unit: 'per kind, averaged frame by frame from the cue marker', source: 'unit M3 item 6: averaging time-locked responses detects a small evoked response in noise' },
   { name: 'null', value: `p${C.nullPercentile * 100} of ${C.draws} seeded draws (seed ${C.seed})`, unit: 'averages of as many placebo windows as events', source: 'unit M3 items 6 and 7b: the same runs\' idle' },
   { name: 'leave-one-out', value: 'every n - 1 average', unit: 'against the null of n - 1 placebo windows', source: 'unit M3 item 7a: no single event may carry a kind' },
+  { name: 'side', value: 'consensus mirroring', unit: 'before every average (events, leave-one-out sets and null draws alike)', source: 'E/g3/s/rules.md 6.4: Natural cues go to a random side; a response and its mirror image are one response' },
   { name: 'per-event count', value: C.events, unit: 'of 6, report only', source: 'plan 2.3 (version 2 rule)' },
   { name: 'minimum placebo windows', value: C.minimumWindows, unit: 'per kind', source: 'unit M2 R3: a 95th percentile needs at least 20 samples' },
   { name: 'split-half false positives', value: C.falsePositive, unit: 'share of placebo windows', source: 'unit M2 R3 negative control (printed, not required)' },
+  { name: 'report-only line', value: 'cue-lean', unit: `printed, left out of the verdict: ${REPORT_ONLY.lean}; a per-bone null is owed in a later version`, source: 'owner decision 2026-11-12; E/g3/emotion-measure-review-2.md blocker 1' },
+  { name: 'limit', value: 'shrug, glance', unit: 'their no-response averages already clear the null on pure idle; only the leave-one-out keeps the false positives within 5 %', source: 'E/g3/emotion-measure-review-2.md limit 8' },
+  { name: 'limit', value: 'shake', unit: 'the design shake at 0.32 of the head turn reads like no response; the smallest passing shake is 0.48', source: 'E/g3/emotion-measure-review-2.md limit 9' },
+  { name: 'limit', value: 'every kind', unit: 'a response that cannot be told from mirrored idle reads FAIL', source: 'E/g3/emotion-measure-review-2.md limit 11' },
   ...CUES.map(cue => ({ name: `${cue} duration`, value: CUE_SECONDS[cue], unit: 's', source: 'motion-driver-natural cue-gestures.ts start' })),
 ]
 
@@ -78,8 +90,64 @@ function trajectory(p: PreparedTrace, start: number, seconds: number): Trajector
   return Object.fromEntries(entries)
 }
 
-/** The per-event statistic on the frame-by-frame average of `trajectories`. */
-function averagedStatistic(trajectories: readonly Trajectory[], sd: CueModel['sd']): number {
+// The 1000-draw nulls reuse each placebo window many times; its mirror image, antisymmetric part and their dot
+// products are computed once per trajectory.
+const mirrors = new WeakMap<Trajectory, Trajectory>()
+const antisymmetricParts = new WeakMap<Trajectory, number[]>()
+const antisymmetricDots = new WeakMap<Trajectory, Map<Trajectory, number>>()
+
+/** A trajectory's left-right mirror image: left and right bones swap and every rotation vector mirrors. */
+function mirrored(x: Trajectory): Trajectory {
+  const cached = mirrors.get(x)
+  if (cached)
+    return cached
+  const image: Trajectory = Object.fromEntries(Object.entries(x).flatMap(([bone, series]) => {
+    const other = mirrorBone(bone as MotionTraceBone)
+    return other in x ? [[other, (series ?? []).map(mirrorRotation)]] : []
+  }))
+  mirrors.set(x, image)
+  return image
+}
+
+function antisymmetricDot(a: Trajectory, b: Trajectory): number {
+  const known = antisymmetricDots.get(a)?.get(b)
+  if (known !== undefined)
+    return known
+  const value = dot(antisymmetric(a), antisymmetric(b))
+  for (const [x, y] of [[a, b], [b, a]]) {
+    const row = antisymmetricDots.get(x) ?? new Map<Trajectory, number>()
+    row.set(y, value)
+    antisymmetricDots.set(x, row)
+  }
+  return value
+}
+
+/** The trajectory's antisymmetric part, flattened over the bones that have their mirror bone. */
+function antisymmetric(x: Trajectory): number[] {
+  const cached = antisymmetricParts.get(x)
+  if (cached)
+    return cached
+  const part = CUE_BONES.flatMap((bone) => {
+    const own = x[bone]
+    const other = x[mirrorBone(bone)]
+    if (!own || !other)
+      return []
+    return own.flatMap((v, k) => {
+      const m = mirrorRotation(other[k])
+      return [(v[0] - m[0]) / 2, (v[1] - m[1]) / 2, (v[2] - m[2]) / 2]
+    })
+  })
+  antisymmetricParts.set(x, part)
+  return part
+}
+
+/**
+ * The per-event statistic on the frame-by-frame average of `trajectories`, each first mirrored to the set's consensus
+ * side (version 5), so a response toward the left and the same response toward the right add up instead of cancelling.
+ */
+function averagedStatistic(input: readonly Trajectory[], sd: CueModel['sd']): number {
+  const sides = consensusSides(input.map(a => input.map(b => antisymmetricDot(a, b))))
+  const trajectories = input.map((x, i) => sides[i] < 0 ? mirrored(x) : x)
   let best = 0
   for (const bone of CUE_BONES) {
     const series = trajectories.flatMap(x => x[bone] ? [x[bone]] : [])
@@ -126,14 +194,24 @@ function sample(p: PreparedTrace, start: number, seconds: number): Sample | null
   return entries.length > 0 ? Object.fromEntries(entries) : null
 }
 
-/** Same-length windows of one run on a grid from the scored start, clear of every cue window and emotion onset. */
+/**
+ * Same-length windows of one run on a grid from the scored start, clear of every cue window, of each neutral or placebo
+ * trial's first 2 s, and (version 5, E/g3/s/rules.md 12.2) of each posed emotion from its event to the next trial's or
+ * cue's event, so that no window holds a posed emotion's hold or release.
+ */
 function placeboWindows(run: LoadedRun, seconds: number): { sample: Sample, trajectory: Trajectory }[] {
   const { p } = run
   const { scoredFrom, events } = run.input.trace
-  const busy = events.flatMap((e) => {
+  const timed = events.filter(e => e.kind === 'gesture' || e.kind === 'emotion').sort((a, b) => a.t - b.t)
+  const busy = timed.flatMap((e) => {
     if (e.kind === 'gesture')
       return [[e.t, e.t + (CUE_SECONDS[e.gesture as CueGestureKind] ?? 0) + C.tail]]
-    return e.kind === 'emotion' ? [[e.t, e.t + C.emotionOnset]] : []
+    if (e.kind !== 'emotion')
+      return []
+    if (e.phase === 'placebo' || e.emotion === 'neutral')
+      return [[e.t, e.t + C.emotionOnset]]
+    const next = timed.find(x => x.t > e.t && (x.kind !== 'emotion' || x.trialId === undefined || x.trialId !== e.trialId))
+    return [[e.t, next?.t ?? Number.POSITIVE_INFINITY]]
   })
   const length = seconds + C.tail
   const windows: { sample: Sample, trajectory: Trajectory }[] = []
@@ -211,10 +289,13 @@ export interface CueBodyDetail {
 }
 
 /**
- * C002 cue-body report, version 3 (unit M3 item 6): per cue kind, the kind's events are aligned at the cue marker and
- * their below-neck trajectories averaged; the largest averaged bone turn, in units of that bone's SD over same-length
- * placebo windows, must exceed the 95th percentile of the same statistic on 1000 seeded averages of as many placebo
- * windows. At least 6 events and 20 placebo windows per kind. Per-event counts (version 2) are printed only.
+ * C002 cue-body report, version 5 (unit M3 items 6 and 7; E/g3/s/rules.md 6.4 and 12.2): per cue kind, the kind's events are
+ * aligned at the cue marker, mirrored to their consensus side and their below-neck trajectories averaged; the largest
+ * averaged bone turn, in units of that bone's SD over same-length placebo windows, must exceed the 99th percentile of
+ * the same statistic on 1000 seeded averages of as many placebo windows, mirrored the same way, and so must every
+ * average with one event left out. The placebo windows lie clear of every posed emotion's hold and release. At least 6
+ * events and 20 placebo windows per kind. Per-event counts (version 2) are printed only. cue-lean is printed with its
+ * reading and bar but left out of the verdict (`REPORT_ONLY`); nod, shake, shrug and glance decide it.
  */
 export function cueBodyReport(runs: readonly LoadedRun[]): CriterionReport<CueBodyDetail> {
   const windows = Object.fromEntries(CUES.map(cue => [cue, runs.flatMap(run => placeboWindows(run, CUE_SECONDS[cue]))])) as Record<CueGestureKind, { sample: Sample, trajectory: Trajectory }[]>
@@ -239,12 +320,14 @@ export function cueBodyReport(runs: readonly LoadedRun[]): CriterionReport<CueBo
   })) as Record<CueGestureKind, ReturnType<typeof judgeAverage>>
   return criterionReport('cue-body', CUE_BODY_VERSION, runs.map(r => r.dir), CUE_BODY_CONSTANTS, CUES.map((cue) => {
     const a = averaged[cue]
-    return requirement(
+    const line = requirement(
       `cue-${cue}`,
       `the time-locked average of >= ${C.minimumEvents} ${cue} events and every average with one event left out: largest below-neck turn / placebo SD > p${C.nullPercentile * 100} of ${C.draws} seeded placebo averages of as many windows (>= ${C.minimumWindows} placebo windows)`,
       `${fixed(a.statistic, 2)} against ${fixed(a.nullP99, 2)} over ${a.events} events; weakest leave-one-out ${fixed(a.leaveOutMinimum, 2)} against ${fixed(a.leaveOutNullP99, 2)}; ${models[cue].windows} windows; per-event (report only) ${perKind[cue].counted}/${perKind[cue].total}`,
       a.pass,
     )
+    const reason = REPORT_ONLY[cue]
+    return reason ? reportOnly(line, reason) : line
   }), { events, models, perKind, averaged, splitHalf: cueFalsePositives(runs) })
 }
 

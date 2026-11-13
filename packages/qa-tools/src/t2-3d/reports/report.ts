@@ -24,14 +24,15 @@ export interface ReportConstant {
 
 /**
  * One required rule of a criterion-level report: its id, the rule as written, the measured value, the verdict, and the
- * status the report prints for it (NOT-EXERCISED only from case reports; it never passes).
+ * status the report prints for it (NOT-EXERCISED only from case reports; it never passes). REPORT marks a report-only
+ * line: printed with its reading and bar, `pass` saying whether the reading meets the bar, and left out of the verdict.
  */
 export interface ReportRequirement {
   readonly id: string
   readonly rule: string
   readonly value: string
   readonly pass: boolean
-  readonly status: 'PASS' | 'FAIL' | 'NOT-EXERCISED'
+  readonly status: 'PASS' | 'FAIL' | 'NOT-EXERCISED' | 'REPORT'
 }
 
 export interface CriterionReport<Detail> {
@@ -45,11 +46,16 @@ export interface CriterionReport<Detail> {
 }
 
 export function criterionReport<Detail>(kind: string, version: number, inputs: readonly string[], constants: readonly ReportConstant[], requirements: readonly ReportRequirement[], detail: Detail): CriterionReport<Detail> {
-  return { kind, version, inputs, constants, requirements, verdict: requirements.every(r => r.pass) ? 'PASS' : 'FAIL', detail }
+  return { kind, version, inputs, constants, requirements, verdict: requirements.every(r => r.status === 'REPORT' || r.pass) ? 'PASS' : 'FAIL', detail }
 }
 
 export function requirement(id: string, rule: string, value: string, pass: boolean): ReportRequirement {
   return { id, rule, value, pass, status: pass ? 'PASS' : 'FAIL' }
+}
+
+/** A requirement kept printed with its reading and bar but left out of the verdict, with the reason in its rule. */
+export function reportOnly(line: ReportRequirement, reason: string): ReportRequirement {
+  return { ...line, rule: `${line.rule}; report only (the reading ${line.pass ? 'meets' : 'misses'} the bar): ${reason}`, status: 'REPORT' }
 }
 
 /** Header, constants with their sources and every requirement; `body` adds the report's own tables. */

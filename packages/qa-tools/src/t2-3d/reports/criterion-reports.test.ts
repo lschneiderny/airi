@@ -9,7 +9,8 @@ import { beforeAll, describe, expect, it } from 'vitest'
 
 import { loadBands } from '../gate/load'
 import { emotionTrials, prepareTrace } from '../metrics'
-import { cueBodyReport } from './cue-body'
+import { multiply } from '../metrics/math'
+import { cueBodyReport, cueFalsePositives, formatCueBody } from './cue-body'
 import { C002_REQUIRED, emotionTableReport, separationTable } from './emotion-table'
 import { formatOwnership, ownershipReport } from './ownership'
 import { popsReport, upperBodyPopBones } from './pops'
@@ -25,6 +26,7 @@ beforeAll(async () => {
 
 const DEG = Math.PI / 180
 const minJerk = (u: number) => u <= 0 ? 0 : u >= 1 ? 1 : u * u * u * (10 - 15 * u + 6 * u * u)
+const rotZ = (a: number): Quat => [0, 0, Math.sin(a / 2), Math.cos(a / 2)]
 const emotionGate = { ...gateStub({ 'onset.attackFraction': { status: 'PASS' }, 'onset.easedOrAnticipated': { status: 'PASS' }, 'emotion.armShare': { status: 'PASS' }, 'emotion.minSeparationFromNeutral': { status: 'PASS' } }), requirements: { metrics: [...C002_REQUIRED], passed: true } }
 
 describe('emotion-table report (C002, plan 2.3)', () => {
@@ -118,25 +120,74 @@ describe('emotion-table report (C002, plan 2.3)', () => {
 // The two-call test measured 5.6 s under load and timed out at the 5 s default; 20 s leaves 3.5 times that.
 describe('cue-body report (C002, unit M2 R3)', { timeout: 20_000 }, () => {
   // 150 s of placebo, then six events of each cue kind 5 s apart. Every bone below the neck and the head sways with
-  // seeded 0.3 degree noise; the cued bone adds a 3 degree, 4 Hz oscillation for the cue's duration.
-  function cues(bone: MotionTraceBone | null, noise = 0.3 * DEG, onlyFirst?: number) {
+  // seeded 0.3 degree noise; the cued bone adds a 3 degree, 4 Hz oscillation for the cue's duration. `sided` turns the
+  // cued bone about its vertical axis toward alternating sides, as Natural's shake goes to a random side, and keeps only
+  // the chest's sway, moved to that axis, where mirroring flips it. `posed` adds emotion trials 24 s apart, each followed
+  // 12 s later by a placebo trial; every posed trial turns the chest toward alternating sides by `posed`, held 5 s, then
+  // released over 1 s, as a sided arm form is. The kinds in `quiet` carry no cue motion.
+  function cues(bone: MotionTraceBone | null, noise = 0.3 * DEG, onlyFirst?: number, sided = false, posed = 0, quiet: readonly string[] = []) {
     const kinds = ['nod', 'shake', 'shrug', 'lean', 'glance'] as const
     const seconds = { nod: 0.45, shake: 0.5, shrug: 1.1, lean: 2.6, glance: 0.6 }
     const list = kinds.flatMap((kind, k) => Array.from({ length: 6 }, (_, i) => ({ kind, t: 152 + 5 * (k * 6 + i) })))
-    const events: MotionTraceEvent[] = list.map(cue => ({ t: cue.t, kind: 'gesture', gesture: cue.kind }))
+    const trials = posed ? Array.from({ length: 6 }, (_, i) => 2 + 24 * i) : []
+    const events: MotionTraceEvent[] = [
+      ...trials.flatMap((t, i): MotionTraceEvent[] => [
+        { t, kind: 'emotion', emotion: 'sad', band: 'clear', phase: 'pulse', trialId: `e${i}` },
+        { t: t + 12, kind: 'emotion', emotion: 'neutral', band: 'clear', phase: 'placebo', trialId: `p${i}` },
+      ]),
+      ...list.map((cue): MotionTraceEvent => ({ t: cue.t, kind: 'gesture', gesture: cue.kind })),
+    ]
+    const pose = (t: number) => trials.reduce((sum, start, i) => sum + (i % 2 ? -1 : 1) * posed * minJerk((t - start) / 0.5) * (1 - minJerk(t - start - 5)), 0)
     const random = createRandomStream(5)
     const phases = new Map(['hips', 'spine', 'chest', 'upperChest', 'neck', 'head', 'leftShoulder', 'rightShoulder', 'leftUpperArm', 'rightUpperArm', 'leftLowerArm', 'rightLowerArm'].map(b => [b, [0, 1, 2].map(() => [2 * Math.PI * random(), 0.3 + 0.7 * random()])]))
     const world = (b: MotionTraceBone, t: number): Quat => {
       const sway = (phases.get(b) ?? []).reduce((sum, [phase, hz]) => sum + noise / 3 * Math.sin(2 * Math.PI * hz * t + phase), 0)
       const cue = list.find(x => t >= x.t && t < x.t + seconds[x.kind])
       const amplitude = onlyFirst === undefined ? 3 * DEG : list.indexOf(cue ?? list[0]) % 6 === 0 ? onlyFirst : 0
-      return rotX(sway + (cue && b === bone ? amplitude * Math.sin(2 * Math.PI * 4 * (t - cue.t)) : 0))
+      const turn = cue && b === bone && !quiet.includes(cue.kind) ? amplitude * Math.sin(2 * Math.PI * 4 * (t - cue.t)) : 0
+      if (sided)
+        return b === 'chest' ? rotY(sway + (cue && list.indexOf(cue) % 2 === 1 ? -turn : turn)) : [0, 0, 0, 1]
+      return b === 'chest' && posed ? multiply(rotX(sway + turn), rotZ(pose(t))) : rotX(sway + turn)
     }
     return loadedRun(trace({ seconds: 154 + 5 * list.length, scenario: 'emotion', events, world }), null, null)
   }
 
   it('passes cues that move the chest', () => {
     expect(cueBodyReport([cues('chest')]).verdict).toBe('PASS')
+  })
+
+  // Version 5 (E/g3/s/rules.md 6.4): a response toward the left and the same response toward the right are one response.
+  it('passes cues that turn the chest toward alternating sides', () => {
+    expect(cueBodyReport([cues('chest', 0.3 * DEG, undefined, true)]).verdict).toBe('PASS')
+  })
+
+  // The nulls are mirrored like the events: mirroring only the events aligns their noise, and the all-events average
+  // alone then clears its null on 8 to 37 % of the pseudo-events of this fixture instead of 1 to 2.5 %.
+  it('keeps the split-half false positives within 5 % on a body that sways about its vertical axis', () => {
+    for (const share of Object.values(cueFalsePositives([cues(null, 0.3 * DEG, undefined, true)]))) {
+      expect(share.flagged / share.total).toBeLessThanOrEqual(0.05)
+      expect(share.averageOnly / share.total).toBeLessThanOrEqual(0.05)
+    }
+  })
+
+  // Version 5 (E/g3/s/rules.md 12.2): placebo windows are drawn clear of every posed emotion's hold and release, which
+  // consensus mirroring would otherwise align into the null.
+  it('passes cues whose placebo span holds posed emotions released toward alternating sides', () => {
+    expect(cueBodyReport([cues('chest', 0.3 * DEG, undefined, false, 30 * DEG)]).requirements.find(r => r.id === 'cue-nod')?.pass).toBe(true)
+  })
+
+  // Owner decision 2026-11-12 (E/g3/s/rules.md 14): cue-lean is printed with its reading but left out of the verdict.
+  it('passes cues whose lean alone shows no response, printing the lean line as report only', () => {
+    const report = cueBodyReport([cues('chest', 0.3 * DEG, undefined, false, 0, ['lean'])])
+    expect(report.verdict).toBe('PASS')
+    expect(report.requirements.find(r => r.id === 'cue-lean')).toMatchObject({ status: 'REPORT', pass: false })
+    expect(formatCueBody(report)).toMatch(/^ {2}REPORT cue-lean: /m)
+  })
+
+  it('still fails when another cue shows no response beside a quiet lean', () => {
+    const report = cueBodyReport([cues('chest', 0.3 * DEG, undefined, false, 0, ['lean', 'nod'])])
+    expect(report.verdict).toBe('FAIL')
+    expect(report.requirements.find(r => r.id === 'cue-nod')).toMatchObject({ status: 'FAIL', pass: false })
   })
 
   it.each([['head-only', 'head'], ['no cue motion', null]] as const)('fails %s cues against the placebo windows', (_, bone) => {
