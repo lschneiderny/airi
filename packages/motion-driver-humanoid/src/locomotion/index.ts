@@ -1,7 +1,7 @@
 import type { Foot, FootAnchor, TurnStep } from '../foot-contact'
 import type { LocomotionPace, RigTraits, Vec3 } from '../types'
 
-import { minJerk } from '../dynamics'
+import { advanceSecondOrder, minJerk, secondOrderCoefficients } from '../dynamics'
 import { planFootSteps } from '../foot-contact'
 import { createRandomStream } from '../random'
 
@@ -155,9 +155,16 @@ const turnStepYaw = 45 * radians
 const turnStepDuration = 0.45
 const turnTolerance = radians
 const turnSwingShare = 0.03
-const settleDuration = 0.25
+/** Architecture 5.4: the settle hold after the last plant, long enough for the stop dip and one lean overshoot. */
+const settleDuration = 0.45
 const blendDuration = 0.3
-const leanOmega = 4
+/** Architecture 5.4: an under-damped lean, one overshoot of about 13 % gone in 0.6 s (omega 5 rad/s, zeta 0.55). */
+const leanResponse = { f: 5 / (2 * Math.PI), zeta: 0.55, r: 0 } as const
+/** Architecture 5.4: the preparation before the first walk step, its draw-back lean and drop, and the stop dip. */
+const preparationDuration = 0.22
+const drawBackLean = -1.5 * radians
+const preparationDropShare = 0.008
+const stopDipShare = 0.006
 const paceSpeeds: Record<LocomotionPace, number> = { stroll: 0.6, walk: 1 }
 /** Architecture 5.1: heel-strike and toe-off pitch at a full stride, scaled by min(1, strideScale). */
 const heelStrikePitch = 14 * radians
@@ -234,20 +241,6 @@ function scaleOffset(offset: readonly [number, number], share: number): [number,
   return [offset[0] * share, offset[1] * share]
 }
 
-interface Spring {
-  value: number
-  velocity: number
-}
-
-/** Exact critically damped response to a target held constant over dt. */
-function advanceSpring(spring: Spring, target: number, omega: number, dt: number) {
-  const offset = spring.value - target
-  const impulse = spring.velocity + omega * offset
-  const decay = Math.exp(-omega * dt)
-  spring.value = target + (offset + impulse * dt) * decay
-  spring.velocity = (spring.velocity - omega * impulse * dt) * decay
-}
-
 interface Swing {
   readonly foot: Foot
   readonly lift: FootAnchor
@@ -263,6 +256,8 @@ interface Swing {
 }
 
 interface Walk {
+  /** Seconds into the preparation; the walk's first step starts at preparationDuration. */
+  preparation: number
   readonly direction: 1 | -1
   readonly heading: number
   readonly firstFoot: Foot
@@ -315,7 +310,10 @@ class Locomotion {
   private mode: LocomotionFrame['mode'] = 'idle'
   private rebased = false
   private blend = 0
-  private readonly lean: Spring = { value: 0, velocity: 0 }
+  private readonly lean = { y: 0, v: 0, x: 0 }
+  private leanCoefficients = secondOrderCoefficients(leanResponse, 0)
+  /** This tick's preparation lean, added to the lean target while a walk prepares. */
+  private leanBias = 0
   /** This tick's pelvis, shared by the leash and the frame so both see the same drop. */
   private posture: ReturnType<Locomotion['pelvis']> | null = null
   private clamps = 0
@@ -354,8 +352,7 @@ class Locomotion {
     this.mode = 'idle'
     this.rebased = true
     this.blend = 0
-    this.lean.value = 0
-    this.lean.velocity = 0
+    this.lean.y = this.lean.v = this.lean.x = 0
   }
 
   step(input: LocomotionInput, dt: number): LocomotionFrame {
@@ -382,8 +379,11 @@ class Locomotion {
     const owned = mode === 'turning' || (this.walk !== null && this.walk.settle === null)
     this.blend = clamp(this.blend + (owned ? dt : -dt) / blendDuration, 0, 1)
     const acceleration = dt > 0 ? (this.speed - previousSpeed) / dt : 0
-    const leanTarget = 2 * radians * this.speed / this.referenceSpeed + 3 * radians * acceleration / this.maxAcceleration
-    advanceSpring(this.lean, leanTarget, leanOmega, dt)
+    const leanTarget = 2 * radians * this.speed / this.referenceSpeed + 3 * radians * acceleration / this.maxAcceleration + this.leanBias
+    this.leanBias = 0
+    if (dt !== this.leanCoefficients.dt)
+      this.leanCoefficients = secondOrderCoefficients(leanResponse, dt)
+    advanceSecondOrder(this.lean, leanTarget, this.leanCoefficients)
     const frame = this.frame(mode, events, this.posture ?? this.pelvis(this.speed, this.x))
     this.posture = null
     return frame
@@ -613,13 +613,17 @@ class Locomotion {
     // As if the walk had been running: the first swing foot lifts at phase delta, the other foot a step later.
     this.strikes = { [firstFoot]: doubleSupport - (1 + doubleSupport), [opposite(firstFoot)]: 0 } as Record<Foot, number>
     this.speed = 0
-    this.walk = { direction, heading, firstFoot, step: 0, starting: true, arrived: false, settle: null }
+    this.walk = { preparation: 0, direction, heading, firstFoot, step: 0, starting: true, arrived: false, settle: null }
   }
 
   private advanceWalk(input: LocomotionInput, dt: number, events: GaitEvent[]): LocomotionFrame['mode'] {
     const walk = this.walk
     if (!walk)
       return 'idle'
+    if (walk.preparation < preparationDuration) {
+      this.prepare(walk, dt)
+      return 'starting'
+    }
     const command = paceSpeeds[input.pace] * this.referenceSpeed
     const goal = input.goalX !== null && Number.isFinite(input.goalX) ? input.goalX : null
     const ahead = goal === null ? 0 : (goal - this.x) * walk.direction
@@ -641,6 +645,9 @@ class Locomotion {
 
     let advance = braking ? speed * dt : Math.min(speed * dt, ahead)
     this.posture = this.pelvis(speed, this.x + walk.direction * advance)
+    // The knees give as the weight arrives on the final plant, and recover over the settle.
+    if (walk.settle)
+      this.posture.drop += stopDipShare * this.traits.legLength * Math.sin(Math.PI * Math.min(1, walk.settle.elapsed / settleDuration))
     advance = this.leash(advance, walk.direction, this.posture)
     this.x += walk.direction * advance
     if (goal !== null && !braking && ahead - advance <= epsilon)
@@ -665,6 +672,22 @@ class Locomotion {
       return 'starting'
     walk.starting = false
     return 'walking'
+  }
+
+  /**
+   * Architecture 5.4: before the first step the root holds still for 0.22 s while the weight moves onto the stance foot,
+   * the pelvis dips and the trunk draws back. The weight moves by the walk's own support law: the phase runs from 0.1 to
+   * the lift-off at delta, as a^k with k chosen so it reaches the slowest step rate just as the first foot lifts.
+   */
+  private prepare(walk: Walk, dt: number) {
+    walk.preparation = Math.min(preparationDuration, walk.preparation + dt)
+    const a = walk.preparation / preparationDuration
+    const power = minRate * preparationDuration / (doubleSupport - 0.1) - 1
+    this.phase = 0.1 + (doubleSupport - 0.1) * a ** power
+    this.speed = 0
+    this.leanBias = drawBackLean * Math.sin(Math.PI * a)
+    this.posture = this.pelvis(0, this.x)
+    this.posture.drop += preparationDropShare * this.traits.legLength * Math.sin(Math.PI * a)
   }
 
   /** Shortens root travel so no planted ankle ends farther than r_hard from its hip. */
@@ -866,8 +889,8 @@ class Locomotion {
         lowerBodyYaw,
         upperBodyRoll: 1.5 * radians * strideScale * support,
         chestCounterRoll: 0,
-        spinePitch: 0.6 * this.lean.value,
-        chestPitch: 0.4 * this.lean.value,
+        spinePitch: 0.6 * this.lean.y,
+        chestPitch: 0.4 * this.lean.y,
         chestCounterYaw: -0.5 * lowerBodyYaw,
         twist: { lower, mid, upper, head: -(late[0] + late[1] + late[2]) },
       },

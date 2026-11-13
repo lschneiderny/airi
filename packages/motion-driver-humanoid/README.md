@@ -125,8 +125,11 @@ stops exactly at `goalX`. A goal that needs a new heading first turns in place
 through `planFootSteps` about the root: at most 45 degrees per 0.45 second step,
 so 90 degrees takes two steps. The turn leaves and reaches its facing at rest: the first step eases in, the last eases
 out, and the steps between are linear, so every step still ends on its facing and the yaw rate never steps. After arrival the gait closes the stance, turns to
-`arriveFacing`, and returns to `idle` after both feet have been planted for 0.25
-seconds.
+`arriveFacing`, and returns to `idle` after both feet have been planted for 0.45
+seconds. A walk starts with a 0.22 second preparation (architecture 5.4): the root holds while the phase carries the
+weight onto the stance foot, the pelvis dips 0.008 L and the trunk draws back 1.5 degrees; the first foot lifts as it
+ends. The trunk's lean follows an under-damped response (omega 5 rad/s, zeta 0.55), so it overshoots once as she stops,
+and the pelvis dips 0.006 L over the settle.
 
 Planted foot targets are frozen world anchors. Landing targets are re-planned until
 75% of the swing, so the stance stays symmetric about the hip while the speed

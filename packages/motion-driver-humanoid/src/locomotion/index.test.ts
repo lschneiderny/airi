@@ -456,6 +456,25 @@ describe('procedural gait', () => {
     }
   })
 
+  it('start and stop: the root waits 0.22 s while the weight moves, and the lean overshoots once after arrival', () => {
+    const { frames } = scenario('arrive')
+    // The first frame after the rebase is idle; then 0.22 s of 'starting' before the root first moves.
+    const moved = frames.findIndex(frame => frame.root.position.x !== 0)
+    expect((moved - 1) * dt).toBeGreaterThanOrEqual(0.22)
+    expect((moved - 1) * dt).toBeLessThan(0.22 + 2 * dt)
+    const preparation = frames.slice(1, moved)
+    expect(preparation.every(frame => frame.mode === 'starting' && frame.speed === 0)).toBe(true)
+    expect(Math.abs(preparation.at(-1)?.support ?? 0)).toBeGreaterThan(0.25)
+    expect(Math.min(...preparation.map(frame => frame.body.spinePitch))).toBeLessThan(0)
+    expect(eventsOf(preparation, 'liftOff')).toHaveLength(0)
+    // After the speed reaches 0 the trunk swings past upright once (the deceleration leans it back) and returns.
+    const stopped = frames.findIndex((frame, tick) => tick > moved && frame.speed === 0)
+    const after = frames.slice(stopped).map(frame => frame.body.spinePitch)
+    const crossings = after.slice(1).filter((value, index) => Math.sign(value) !== Math.sign(after[index] ?? 0) && value !== 0)
+    expect(crossings.length).toBeGreaterThanOrEqual(1)
+    expect(Math.abs(after.at(-1) ?? 1)).toBeLessThan(0.05 * rad)
+  })
+
   it('turn easing: a turn leaves and reaches its facing at rest and never stops between its steps', () => {
     const run = createRun({ x: 0, yaw: 0 })
     run.advance(2, () => ({ goalX: 0, arriveFacing: Math.PI / 2 }))
