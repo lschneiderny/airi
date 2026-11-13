@@ -119,9 +119,10 @@ const { seq, behaviour } = motion.idleState
   the hair touch reads as a salute while 4e's temple sweep is out of reach of
   both rigs' arms inside their joint limits. While
   she is settled in, nothing that needs her arms, her shoulders or a standing
-  posture is drawn (`stretch`, `peer`, `shoulder-roll`, `arm-swing`,
-  `shift-stance` and the three above), and a stretch that would follow a long sleep becomes a yawn. The
-  sigh and the yawn still play, as architecture 4f allows; so do the head and
+  posture is drawn (`stretch`, `peer`, `shoulder-roll`, `arm-swing` and the
+  three above), and a stretch that would follow a long sleep becomes a yawn. The
+  sigh, the yawn and the foot re-plant (`shift-stance`) still play, as
+  architecture 4f allows; so do the head and
   gaze kinds (`look-around`, `check-in`, `zone-out`, `nod-off`, `sway`), a
   recorded deviation from 4f's list.
 - With `body`, the draw prefers kinds she has not shown recently: a kind

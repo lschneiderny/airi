@@ -84,7 +84,8 @@ describe('idle activity odds', () => {
     const weights = idleActivityWeights({ ...neutralDrive, body: true, sleepiness: 0.5 }, settled)
     for (const kind of ['stretch', 'peer', 'shoulder-roll', 'arm-swing'] as const)
       expect(weights[kind], kind).toBe(0)
-    // Architecture 4f lets the sigh and the yawn play while she rests.
+    // Architecture 4f lets the sigh, the yawn and the foot re-plant play while she rests.
+    expect(weights['shift-stance']).toBeGreaterThan(0)
     expect(weights.sigh).toBeGreaterThan(0)
     expect(weights.yawn).toBeGreaterThan(0)
   })

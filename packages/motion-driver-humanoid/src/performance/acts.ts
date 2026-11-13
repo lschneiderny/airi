@@ -113,6 +113,9 @@ interface Act {
   readonly tension: number
   /** When a stance shift's foot lifted; null before. */
   lift: number | null
+  /** A stance shift's support side; resting (4f), the stance foot she already stands on, whatever side Natural drew. */
+  readonly stance: -1 | 1
+  readonly resting: boolean
 }
 
 /**
@@ -142,6 +145,8 @@ export function createActLayer(): PerformanceLayer {
   /** The yaw, radians from its standing angle, each foot was last re-planted to. */
   const planted: Record<BodySide, number> = { left: 0, right: 0 }
   let steps = NO_STEPS
+  /** Deep breaths started: a sigh (4e act 1) and a yawn's long inspiration (Provine 1986) take 4c's sigh inhale. */
+  let deepBreaths = 0
   let tick = -1
 
   function update(context: PerformanceContext): void {
@@ -153,6 +158,9 @@ export function createActLayer(): PerformanceLayer {
     const record = input.idle
     if (record && record.seq !== playedSeq && record.release === null) {
       playedSeq = record.seq
+      const resting = input.directive.rest === 'rest' && Math.abs(context.previous.support) > 0.5
+      if (record.kind === 'sigh' || record.kind === 'yawn')
+        deepBreaths++
       act = {
         record,
         start: time,
@@ -162,6 +170,8 @@ export function createActLayer(): PerformanceLayer {
         viewerYaw: input.viewerYaw,
         tension: Math.max(0, Math.min(1, input.mood.tension)),
         lift: null,
+        stance: resting ? (context.previous.support > 0 ? 1 : -1) : record.side,
+        resting,
       }
     }
     if (act && record?.seq === act.record.seq && record.release !== null && act.releaseAt === null) {
@@ -420,10 +430,12 @@ export function createActLayer(): PerformanceLayer {
         break
       }
       case 'shift-stance': {
-        // 4e act 3: the support goes fully to `s`. Unloaded, the other foot re-plants (`REPLANT`), turning toward and past
-        // its standing angle, so it stays within 8 degrees of it; it lifts only if it lands by the end. Then a half shift.
-        const foot = sideOf(-s)
-        const unloaded = context.previous.support * s >= REPLANT.unloaded
+        // 4e act 3: the support goes fully to a side. Unloaded, the other foot re-plants (`REPLANT`), turning toward and
+        // past its standing angle, so it stays within 8 degrees of it; it lifts only if it lands by the end. Then a half
+        // shift, or resting (4f) her full weight back on the stance foot.
+        const stance = a.stance
+        const foot = sideOf(-stance)
+        const unloaded = context.previous.support * stance >= REPLANT.unloaded
         if (a.lift === null && unloaded && context.traits.legIk && free(['lowerBody', 'upperBody']) && age + REPLANT.seconds <= D) {
           const random = createRandomStream(deriveSeed(a.record.seq, 3))
           const turn = (REPLANT.yaw[0] + (REPLANT.yaw[1] - REPLANT.yaw[0]) * random()) * DEG
@@ -434,7 +446,7 @@ export function createActLayer(): PerformanceLayer {
         }
         const airborne = a.lift !== null && time < a.lift + REPLANT.seconds
         if (airborne || free(['lowerBody', 'upperBody']))
-          plan.support = a.lift !== null && !airborne ? 0.5 * s : s
+          plan.support = a.lift !== null && !airborne && !a.resting ? 0.5 * stance : stance
         break
       }
       case 'clasp-hands': {
@@ -511,6 +523,7 @@ export function createActLayer(): PerformanceLayer {
       output.weight = act ? 1 : 0
       output.sequence = act?.record.seq ?? 0
       output.footSteps = steps
+      output.deepBreaths = deepBreaths
       return output
     },
     reset() {
@@ -519,6 +532,7 @@ export function createActLayer(): PerformanceLayer {
       arms = null
       planted.left = planted.right = 0
       steps = NO_STEPS
+      deepBreaths = 0
       tick = -1
       plan = {}
       channels.fill(0)

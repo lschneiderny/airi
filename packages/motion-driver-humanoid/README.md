@@ -192,9 +192,12 @@ empty, sets `BodyIntent.rest` to `rest` or `doze` for the performer's
 clip-free rest layer. It refuses both while she must stand, and holds each
 stance for at least 3 seconds (`STANCE_MIN_DWELL_MS`). It has no timer of its
 own: with both `idle` flags false (no idle drive) she never sits or sleeps. The
-clip-free rest does not yet build three parts of its architecture 4f row: the
-pelvis lateral gain of 1.25, the clasped-or-hanging hands (her arms hang as
-they do standing) and the tension of 0.2.
+clip-free rest takes its architecture 4f pelvis lateral gain of 1.25: the
+pelvis goes a quarter further over the stance foot than the posture takes it.
+A stance shift while she rests re-plants the free foot and keeps her full
+weight on the stance foot. Two parts of the row are not built: the clasped
+hands (no two-hand contact; her arms hang as they do standing) and the tension
+of 0.2, which is above a neutral mood's 0 and would stiffen her arms.
 
 On a stage with a ground line, `decideBody` also owns where she goes:
 `BodyIntent.locomotion` carries the goal x, its reason (`approach-chat`,
@@ -525,7 +528,9 @@ bit-identical to a performer with no layers. Each tick the performer copies
 `plan.suppressHeadCue` and `plan.suppressHeadEmphasis` to the posture, and feeds the stack's `modulation` (the
 emotion layer's tempo, amplitude and breath depth, blended by that layer's
 weight) to the posture's `tempo` and `amplitude` and the breath's `depth`; each
-sighing onset of a layer with weight calls `sigh()` once. The stack runs after
+sighing onset of a layer with weight calls `sigh()` once, and so does each new
+`deepBreaths` count (the act layer's sigh and yawn, which take 4c's sigh
+inhale). The stack runs after
 the generators, so the modulation reaches them one tick (8 ms) later. The
 layer's `tension` is not fed to a generator; the arm followers keep reading
 Natural's mood tension.

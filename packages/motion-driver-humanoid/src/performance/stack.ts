@@ -56,6 +56,8 @@ export interface LayerOutput {
   readonly mouthOpen?: number
   readonly act?: BodyActFeedback | null
   readonly footSteps?: readonly BodyFootStep[]
+  /** Increments once per deep breath the layer starts: the breath takes 4c's sigh inhale, as an emotion's `sighSeq`. */
+  readonly deepBreaths?: number
   /** Reports that replace the stack's latest report of that kind; later layers in stack order win. */
   readonly gesture?: BodyGestureReport
   readonly cue?: BodyCueReport
@@ -135,6 +137,7 @@ export class PerformanceStack {
       elapsed: 0,
       duration: 0,
       sighSeq: 0,
+      deepBreaths: 0,
     }))
   }
 
@@ -211,6 +214,11 @@ export class PerformanceStack {
         this.act = output.act
       if (output.footSteps?.length)
         this.footSteps = output.footSteps
+      if (output.deepBreaths !== undefined) {
+        if (output.deepBreaths !== entry.deepBreaths && weight > 0)
+          this.sighs++
+        entry.deepBreaths = output.deepBreaths
+      }
       if (output.gesture)
         Object.assign(this.gesture, output.gesture)
       if (output.cue)

@@ -213,6 +213,19 @@ describe('the act layer', () => {
     expect(Math.min(...airborne.map(entry => entry.support))).toBeGreaterThanOrEqual(0.85)
   })
 
+  it.each(['sigh', 'yawn'] as const)('takes one deep breath in a %s (4c\'s sigh inhale)', (kind) => {
+    const performer = createBodyPerformer({ traits: chisaTraits, seed: 5, layers: createPerformanceLayers({ traits: chisaTraits, seed: 5 }) })
+    const still = createBodyPerformer({ traits: chisaTraits, seed: 5, layers: createPerformanceLayers({ traits: chisaTraits, seed: 5 }) })
+    const script = playing(record(kind, kind === 'sigh' ? 3.4 : 5.4))
+    let acted = 0
+    let quiet = 0
+    for (let tick = 0; tick < (START + 6) / BODY_TICK; tick++) {
+      acted = performer.step(script(tick * BODY_TICK)).diagnostics.inhales
+      quiet = still.step(quietInput(tick * BODY_TICK)).diagnostics.inhales
+    }
+    expect(acted - quiet).toBe(1)
+  })
+
   it('swings her arms at their own pendulum period, the relaxed upper-arm follower\'s (3f)', () => {
     const entry = record('arm-swing', 3, { count: 2 })
     const still = run(chisaTraits, quietInput, START + 4)

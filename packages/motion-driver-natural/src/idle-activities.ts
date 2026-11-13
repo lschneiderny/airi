@@ -264,7 +264,7 @@ const idleRest: IdleOutput = Object.freeze(neutral())
  * (look-around, check-in, zone-out, nod-off, sway) still play while she is settled: a recorded deviation from 4f's
  * list, because they move nothing the rest posture holds.
  */
-const SETTLED_OUT = ['stretch', 'peer', 'shoulder-roll', 'shift-stance', 'clasp-hands', 'hair-touch', 'heel-rock', 'arm-swing'] as const satisfies readonly DrawnIdleActivityKind[]
+const SETTLED_OUT = ['stretch', 'peer', 'shoulder-roll', 'clasp-hands', 'hair-touch', 'heel-rock', 'arm-swing'] as const satisfies readonly DrawnIdleActivityKind[]
 
 /**
  * Relative odds of each drawn activity for a drive. Tiredness (night, or low mood energy) favours yawns, zoning out

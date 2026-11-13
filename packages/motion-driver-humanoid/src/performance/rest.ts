@@ -15,12 +15,13 @@ const c = channelIndex
  * side, the torso lower +3, the clavicles -2 and the head +3 deg; breath depth 1.3, sway 1.4, tempo 0.6. Doze: the
  * pelvis drops 0.012 L and the torso lower +3; the head sinks to +18 over 4 to 9 s, recovers in 0.35 s with a 3 deg
  * overshoot up, settles, then pauses 9 to 25 s (lognormal); breath depth 1.5, sway 1.5, tempo 0.5. 4b's nod shares
- * split the head (0.7) and neck (0.3), and the torso mid follows at 0.12.
+ * split the head (0.7) and neck (0.3), and the torso mid follows at 0.12. The rest's pelvis lateral gain is 1.25: the
+ * pelvis goes a quarter further over the stance foot than the posture takes it for the support it carries.
  *
- * Not built from the 4f row: the rest's pelvis lateral gain of 1.25, its clasped-or-hanging hands (the arms hang as
- * they do standing) and its tension of 0.2.
+ * Not built from the 4f row: the clasped hands (no two-hand contact; the arms hang as they do standing) and the tension
+ * of 0.2, which is above a neutral mood's 0 and would stiffen her arms at rest.
  */
-const REST = { ramp: 1.5, lower: 3, clavicle: -2, head: 3, breath: 1.3, sway: 1.4, tempo: 0.6 } as const
+const REST = { ramp: 1.5, lower: 3, clavicle: -2, head: 3, breath: 1.3, sway: 1.4, tempo: 0.6, lateralGain: 1.25 } as const
 const DOZE = { lower: 3, pelvis: 0.012, sink: [4, 9], head: 18, recovery: 0.35, overshoot: 3, settle: 1.3, pause: [9, 25], breath: 1.5, sway: 1.5, tempo: 0.5 } as const
 const NOD = { head: 0.7, neck: 0.3, mid: 0.12 } as const
 
@@ -84,6 +85,10 @@ export function createRestLayer(options: RestLayerOptions): PerformanceLayer {
       channels[c('neckPitch')] = 0.35 * REST.head * DEG
       for (const arm of SIDES)
         channels[ARM_START[arm]] = REST.clavicle * DEG
+      // The posture's lateral gain (`posture.ts`), scaled to 4f's 1.25 by the remaining quarter.
+      const { feet, legIk, legLength } = context.traits
+      if (legIk)
+        channels[c('pelvisX')] = -(REST.lateralGain - 1) * 0.38 * Math.abs(feet.left.ankle.x - feet.right.ankle.x) / (2 * legLength) * context.previous.support
       if (state === 'rest' && free('lowerBody') && free('upperBody'))
         plan.support = side
       modulation.tempo = REST.tempo
