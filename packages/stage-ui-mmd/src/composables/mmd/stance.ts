@@ -17,7 +17,7 @@ export type MMDStance = BodyIntent['stance']
 export type MMDStanceInteraction = Pick<BodyDirectorInput, 'interactionSeq' | 'chatSendSeq' | 'interactionAtMs' | 'actionRequest' | 'actionFeedback' | 'dragging'>
 
 /** The world half of the director input; `NO_WORLD_BODY_INPUT` is its inert value. */
-export type MMDStanceWorld = Omit<BodyDirectorInput, 'nowMs' | 'performance' | 'cursorPoint' | 'chatPoint' | 'cameraPoint' | 'slots' | keyof MMDStanceInteraction>
+export type MMDStanceWorld = Omit<BodyDirectorInput, 'nowMs' | 'performance' | 'cursorPoint' | 'chatPoint' | 'cameraPoint' | 'slots' | 'idle' | keyof MMDStanceInteraction>
 
 export interface MMDStanceDiagnostics {
   stance: MMDStance
@@ -133,6 +133,8 @@ export class MMDStanceDirector {
     world?: MMDStanceWorld
     /** Pokes, drags and clip requests; classic mode has them too. */
     interaction: MMDStanceInteraction
+    /** Natural's long idle states (`bodyIntent().idle`); absent without an idle drive, when she neither settles nor sleeps. */
+    idle?: BodyDirectorInput['idle']
   }): { motion: string | null, changed: boolean } {
     const ready = (name: string | undefined) => name !== undefined && name !== '' && input.isRegistered(name)
     const available = { sit: ready(input.slots.sit), sleep: ready(input.slots.sleep) }
@@ -158,6 +160,7 @@ export class MMDStanceDirector {
       slots: available,
       ...world,
       ...input.interaction,
+      idle: input.idle ?? { settled: false, asleep: false },
     }, this.memory)
     this.memory = memory
     this.lastIntent = intent
@@ -176,6 +179,10 @@ export class MMDStanceDirector {
       this.reason = 'idle-timeout'
     else if (intent.stance === 'sleep')
       this.reason = 'away'
+    else if (intent.rest === 'rest')
+      this.reason = 'rest-fallback'
+    else if (intent.rest === 'doze')
+      this.reason = 'doze-fallback'
     else if (input.performance.away)
       this.reason = available.sleep ? 'dwell' : 'no-sleep-slot'
     else if (input.performance.mode === 'idle')

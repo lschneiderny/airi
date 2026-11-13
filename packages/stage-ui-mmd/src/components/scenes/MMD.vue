@@ -703,6 +703,7 @@ function renderLoop(now = performance.now()) {
       world: props.stageWorld ? directorWorld(props.stageWorld, loadedModelKey) : undefined,
       // Pokes and drags exist in the classic window too, so the interaction inputs ride outside the world.
       baseEligible: isBaseEligible,
+      idle: naturalIdleStates(),
       interaction: { interactionSeq, chatSendSeq, interactionAtMs, actionRequest: pendingAction, actionFeedback, dragging },
     })
     if (base.changed)
@@ -998,7 +999,19 @@ function bodyActivity(intent: BodyIntent | null): MMDSelfReport | null {
   const reason = intent.locomotion.goalX === null ? undefined : walk[intent.locomotion.reason as keyof typeof walk]
   if (reason)
     return { activity: reason, phase: 'start' }
-  return intent.stance === 'stand' ? null : { activity: intent.stance, phase: 'start' }
+  // Natural reports her sleep itself (`idle`), so the sleep stance that realises it is not reported again.
+  return intent.stance === 'sit' ? { activity: 'sit', phase: 'start' } : null
+}
+
+/**
+ * Natural's long idle states for the director, which realises them (idle agency ADR, amendment of 2026-11-13); absent
+ * while another driver runs, when she neither settles nor sleeps.
+ */
+function naturalIdleStates(): { settled: boolean, asleep: boolean } | undefined {
+  if (motionDriver.value !== 'natural' || !natural)
+    return undefined
+  const { behaviour, settled } = natural.bodyFrame.intent.idle
+  return { settled, asleep: behaviour?.kind === 'sleep' && behaviour.releasedAt === null }
 }
 
 /** Emits a `self` report when her body starts or stops doing something on its own. */
@@ -1038,19 +1051,18 @@ function playUnasked(directorMs: number, modelKey: string, intent: BodyIntent | 
 }
 
 /**
- * The drive this scene hands to Natural: the stage's drive, without sleep when the model has its own sleep clip, and
- * without new activities while a clip plays. Rebuilt only when one of the three changes, so Natural sees a new drive
- * only then.
+ * The drive this scene hands to Natural: the stage's drive for a host that performs a whole body (`body`), so she
+ * settles in and draws the whole-body kinds, and without new activities while a clip plays. Natural decides when she
+ * sleeps; the director plays the model's sleep clip for it, or the procedural doze. Rebuilt only when the stage's drive
+ * or the rate changes, so Natural sees a new drive only then.
  */
 function resolveIdleDrive(): NaturalIdleDrive | null {
   if (hostIdleDrive === null || !naturalSettings.document.idleActivities)
     return sceneIdleDrive = null
-  const slots = loadedModelKey ? stanceSlots.value[loadedModelKey] : undefined
-  const allowSleep = !slots?.sleep || !registeredMotions.has(slots.sleep)
   const rate = stance?.intent?.action ? 0 : hostIdleDrive.rate
-  if (sceneIdleDrive === null || sceneIdleSource !== hostIdleDrive || sceneIdleDrive.allowSleep !== allowSleep || sceneIdleDrive.rate !== rate) {
+  if (sceneIdleDrive === null || sceneIdleSource !== hostIdleDrive || sceneIdleDrive.rate !== rate) {
     sceneIdleSource = hostIdleDrive
-    sceneIdleDrive = { ...hostIdleDrive, allowSleep, rate }
+    sceneIdleDrive = { ...hostIdleDrive, rate, body: true }
   }
   return sceneIdleDrive
 }
@@ -1261,6 +1273,7 @@ async function loadModel(src: string) {
           intent: natural.bodyFrame.intent,
           energy: props.naturalEnergy ?? naturalSettings.document.energy,
           stance: activeStance.intent?.stance,
+          rest: activeStance.intent?.rest,
           points: bodyGazePoints(bodyPoints, gazeMode.value),
           ...diagnostics.debugFlags,
           stanceClips: activeStance.baseClips,

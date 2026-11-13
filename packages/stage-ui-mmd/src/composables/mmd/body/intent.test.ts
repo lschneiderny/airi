@@ -11,7 +11,7 @@ function mapper() {
   const natural = new NaturalMotion({ seed: 1 })
   const frame = natural.advance(0)
   const intent = new MMDBodyIntent()
-  const capture = (gaze: BodyGazeGoal) => intent.capture({ intent: natural.bodyIntent(), frame, dt: 1 / 60, gaze, viewerYaw: 0, energy: 0.5, stance: 'stand', dragging: false, owned, armLift: { left: 0, right: 0 }, eyeLimits: { yaw: 0.35, pitch: 0.25 } })
+  const capture = (gaze: BodyGazeGoal) => intent.capture({ intent: natural.bodyIntent(), frame, dt: 1 / 60, gaze, viewerYaw: 0, energy: 0.5, stance: 'stand', rest: 'none', dragging: false, owned, armLift: { left: 0, right: 0 }, eyeLimits: { yaw: 0.35, pitch: 0.25 } })
   const tick = (alpha: number) => intent.tick({ alpha, facingYaw: 0, allowTurn: false, rootVelocity: { x: 0, y: 0, z: 0 }, gait: null }).gaze
   return { capture, tick }
 }

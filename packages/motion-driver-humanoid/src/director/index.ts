@@ -4,7 +4,10 @@ import type { BodyIntent, BodyLocomotionReason, LocomotionPace, Vec3 } from '../
 
 import { createRandomStream } from '../random'
 
-/** Continuous idle time in milliseconds required before requesting a sit. */
+/**
+ * Continuous idle time in milliseconds after which she settles in: Natural's idle layer times it (`settleSeconds`),
+ * and the director realises the settle it reports (`BodyDirectorInput.idle`). Reports read it as the rest onset.
+ */
 export const IDLE_TO_SIT_MS = 120_000
 
 /** Minimum time in milliseconds between stance changes. */
@@ -181,6 +184,13 @@ export interface BodyDirectorInput {
   /** Leg length in model units; every distance rule scales by it. */
   legLength: number
   seed: number
+  /**
+   * Natural's long idle states, which the one idle scheduler decides (idle agency ADR, amendment of 2026-11-13): she has
+   * settled in after a long idle, or she is asleep. The director realises them, as a stance clip when the model has
+   * one for it and as a procedural rest or doze (`BodyIntent.rest`) when it has none, or refuses them while she must
+   * stand. Both false while no idle drive runs: she then neither settles nor sleeps.
+   */
+  idle: { settled: boolean, asleep: boolean }
 }
 
 /**
@@ -188,7 +198,7 @@ export interface BodyDirectorInput {
  * Spread it under the six legacy fields; every goal rule stays inert. Clips, pokes and drags exist without a world, so
  * every host supplies the interaction and action inputs itself.
  */
-export const NO_WORLD_BODY_INPUT: Omit<BodyDirectorInput, 'nowMs' | 'performance' | 'cursorPoint' | 'chatPoint' | 'cameraPoint' | 'slots' | 'interactionSeq' | 'chatSendSeq' | 'interactionAtMs' | 'actionRequest' | 'actionFeedback' | 'dragging'> = Object.freeze({
+export const NO_WORLD_BODY_INPUT: Omit<BodyDirectorInput, 'nowMs' | 'performance' | 'cursorPoint' | 'chatPoint' | 'cameraPoint' | 'slots' | 'interactionSeq' | 'chatSendSeq' | 'interactionAtMs' | 'actionRequest' | 'actionFeedback' | 'dragging' | 'idle'> = Object.freeze({
   ground: null,
   rootX: 0,
   homeX: 0,
@@ -557,23 +567,24 @@ export function decideBody(
       )
     )
 
+  // Natural decides that she settles in or sleeps; the director realises it with the stance clip, or with the
+  // procedural rest or doze when the slot is empty, and refuses it while a performance, a goal or a walk needs her up.
   let desiredStance: BodyIntent['stance'] = 'stand'
+  let rest: BodyIntent['rest'] = 'none'
   if (forceStand) {
     // A performance stands her up and holds the stand.
   }
-  else if (input.performance.away) {
-    if (input.slots.sleep && mayRest)
+  else if (input.idle.asleep) {
+    if (mayRest && input.slots.sleep)
       desiredStance = 'sleep'
+    else if (mayRest)
+      rest = 'doze'
   }
-  else if (
-    !wakeForGoal
-    && mayRest
-    && input.performance.mode === 'idle'
-    && input.slots.sit
-    && idleSinceMs !== null
-    && nowMs - idleSinceMs >= IDLE_TO_SIT_MS
-  ) {
-    desiredStance = 'sit'
+  else if (input.idle.settled && !wakeForGoal && mayRest && input.performance.mode === 'idle') {
+    if (input.slots.sit)
+      desiredStance = 'sit'
+    else
+      rest = 'rest'
   }
 
   let stance = previous.stance
@@ -774,6 +785,7 @@ export function decideBody(
   return {
     intent: {
       stance,
+      rest,
       attention: lookOverride !== null ? lookIntent(input, lookOverride.target) : attentionIntent(input),
       facingYaw: 0,
       locomotion: ground === null

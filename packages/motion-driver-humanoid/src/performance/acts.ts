@@ -1,10 +1,8 @@
 import type { BodyChannel, BodySide } from './channels'
 import type { BodyArmForm, BodyGazeGoal, BodyIdleAct, BodyIdleKind } from './contracts'
-import type { LayerOutput, PerformanceContext, PerformanceLayer, PerformanceModulation, PerformancePlan } from './stack'
+import type { LayerOutput, PerformanceContext, PerformanceLayer, PerformancePlan } from './stack'
 
 import { minJerk } from '../dynamics'
-import { deriveSeed, gaussian } from '../noise'
-import { createRandomStream } from '../random'
 import { ARM_START, BODY_CHANNELS, channelGroup, channelIndex, DEG, SIDES } from './channels'
 import { path } from './cues'
 
@@ -26,12 +24,8 @@ const LOOK = { yaw: 35 * DEG / 0.7, pitch: 20 * DEG / 0.22 } as const
 const ROLL_SHARES = [2.4 / 3.8, 0.9 / 3.8, 0.5 / 3.8] as const
 /** Architecture 4b nod: head 0.7 and neck 0.3 of the pitch, torso mid 0.12 of it. */
 const NOD = { head: 0.7, neck: 0.3, mid: 0.12 } as const
-/**
- * Architecture 4f standing doze: the head sinks to +18 deg over 4 to 9 s with the torso lower to +3, recovers in 0.35 s
- * with a 3 deg overshoot upward, then pauses 9 to 25 s (lognormal); the pelvis drops 0.012 L; breath depth 1.5, sway
- * 1.5, tempo 0.5. Natural sinks into sleep over 6 s (`idle-activities.ts` `sleepSettleSeconds`).
- */
-const DOZE = { sink: [4, 9], head: 18, lower: 3, recovery: 0.35, overshoot: 3, pause: [9, 25], pelvis: 0.012, settle: 6, breath: 1.5, sway: 1.5, tempo: 0.5 } as const
+/** Architecture 4f standing doze, as a nod-off and waking reach it: the head to +18 deg, the torso lower to +3, a 3 deg overshoot up. */
+const DOZE = { head: 18, lower: 3, overshoot: 3 } as const
 /** Architecture 4f waking: the head lifts with a 15 % overshoot and the clavicles rise 4 deg for 0.4 s. */
 const WAKE = { overshoot: 0.15, clavicle: 4, clavicleSeconds: 0.4 } as const
 /**
@@ -59,12 +53,6 @@ interface Act {
   /** The gaze goal and the viewer when it started: a look-around aims around the viewer, sleep holds the goal. */
   readonly gaze: BodyGazeGoal
   readonly viewerYaw: number
-  /** Doze nod-off cycles, seconds after the start: when each sinks and for how long. */
-  readonly nods: { readonly at: number, readonly sink: number }[]
-}
-
-export interface ActLayerOptions {
-  readonly seed: number
 }
 
 /**
@@ -81,10 +69,9 @@ export interface ActLayerOptions {
  * - Owned groups receive no term and plan nothing, and a walking gait takes the act away.
  * - Variation inside a form (the doze's nod-off times) comes from a stream seeded by the behaviour's `seq`.
  */
-export function createActLayer(options: ActLayerOptions): PerformanceLayer {
+export function createActLayer(): PerformanceLayer {
   const channels = new Float64Array(BODY_CHANNELS.length)
   const output: Mutable<LayerOutput> = { channels, weight: 0, sequence: 0 }
-  const modulation: Mutable<PerformanceModulation> = { tempo: 1, amplitude: 1, breath: 1, sighSeq: 0 }
   let plan: Mutable<PerformancePlan> = {}
   let act: Act | null = null
   /** The latest behaviour played; a finished one stays in the input and must not replay. */
@@ -106,7 +93,6 @@ export function createActLayer(options: ActLayerOptions): PerformanceLayer {
         releaseSeconds: 0,
         gaze: { yaw: input.gaze.yaw, pitch: input.gaze.pitch, kind: input.gaze.kind },
         viewerYaw: input.viewerYaw,
-        nods: record.kind === 'sleep' ? planNods(options.seed, record.seq) : [],
       }
     }
     if (act && record?.seq === act.record.seq && record.release !== null && act.releaseAt === null) {
@@ -303,43 +289,18 @@ export function createActLayer(options: ActLayerOptions): PerformanceLayer {
         break
       }
       case 'sleep': {
-        // Architecture 4f's standing doze as her sleeping body; Natural closes the lids. Her gaze holds still while she
-        // sleeps: the goal stays where it was when she fell asleep, so no gaze shift moves the eyes under closed lids.
-        // A sleep stance clip owns her body instead.
-        if (input.directive.stance === 'sleep')
-          break
-        let pitch = 0
-        for (const nod of a.nods) {
-          const local = age - nod.at
-          if (local < 0 || local >= nod.sink + DOZE.recovery + 1.3)
-            continue
-          if (local < nod.sink)
-            pitch = DOZE.head * minJerk(local / nod.sink)
-          else if (local < nod.sink + DOZE.recovery)
-            pitch = DOZE.head + (-DOZE.overshoot - DOZE.head) * minJerk((local - nod.sink) / DOZE.recovery)
-          else
-            pitch = -DOZE.overshoot * (1 - minJerk((local - nod.sink - DOZE.recovery) / 1.3))
-        }
-        // Waking undoes the doze over the release (`fade`); the head lifts past where it started by 15 % of its drop
-        // before it settles, and the shoulders rise 4 deg for 0.4 s.
-        const wake = released ? time - (a.releaseAt ?? time) : 0
-        const e = minJerk(Math.min(1, age / DOZE.settle)) * (released ? 1 - minJerk(wake / a.releaseSeconds) : 1)
-        const lift = released ? path(wake, [[0.6 * a.releaseSeconds, -WAKE.overshoot], [a.releaseSeconds, 0]]) * DOZE.head : 0
-        head(0, e * pitch + lift, 0, NOD.neck)
-        add('midPitch', NOD.mid * e * pitch)
-        add('lowerPitch', DOZE.lower * e)
-        channels[c('pelvisY')] -= w * DOZE.pelvis * e
-        if (released) {
-          clavicles(path(wake, [[0.15, WAKE.clavicle], [WAKE.clavicleSeconds, WAKE.clavicle], [WAKE.clavicleSeconds + 0.3, 0]]))
-        }
-        else {
+        // The doze body is the rest layer's (`directive.rest`) or the sleep clip's. While she sleeps her gaze holds
+        // still: the goal stays where it was when she fell asleep, so no gaze shift moves the eyes under closed lids.
+        // Waking (architecture 4f): the head lifts past where it rests by 15 % of the doze's drop before it settles,
+        // and the shoulders rise 4 deg for 0.4 s.
+        if (!released) {
           plan.gaze = a.gaze
           plan.holdGaze = true
-          modulation.tempo = DOZE.tempo
-          modulation.amplitude = DOZE.sway
-          modulation.breath = DOZE.breath
-          output.modulation = modulation
+          break
         }
+        const wake = time - (a.releaseAt ?? time)
+        head(0, path(wake, [[0.6 * a.releaseSeconds, -WAKE.overshoot], [a.releaseSeconds, 0]]) * DOZE.head, 0, NOD.neck)
+        clavicles(path(wake, [[0.15, WAKE.clavicle], [WAKE.clavicleSeconds, WAKE.clavicle], [WAKE.clavicleSeconds + 0.3, 0]]))
         break
       }
     }
@@ -375,21 +336,4 @@ export function createActLayer(options: ActLayerOptions): PerformanceLayer {
       output.modulation = undefined
     },
   }
-}
-
-/** The doze's nod-off cycles over an hour (architecture 4f), drawn from a stream of the behaviour's own `seq`. */
-function planNods(seed: number, seq: number): { at: number, sink: number }[] {
-  const random = createRandomStream(deriveSeed(seed, 150 + seq))
-  const nods: { at: number, sink: number }[] = []
-  // The first sink starts after she has settled in.
-  let at = DOZE.settle
-  while (at < 3600) {
-    const sink = DOZE.sink[0] + (DOZE.sink[1] - DOZE.sink[0]) * random()
-    nods.push({ at, sink })
-    // Lognormal pause inside 4f's 9 to 25 s: the geometric middle (15 s) as median and a quarter of the range's log
-    // width (0.26) as its spread, so the range is two spreads either side; clamped to it.
-    const pause = Math.max(DOZE.pause[0], Math.min(DOZE.pause[1], Math.exp(Math.log(Math.sqrt(DOZE.pause[0] * DOZE.pause[1])) + Math.log(DOZE.pause[1] / DOZE.pause[0]) / 4 * gaussian(random))))
-    at += sink + DOZE.recovery + 1.3 + pause
-  }
-  return nods
 }

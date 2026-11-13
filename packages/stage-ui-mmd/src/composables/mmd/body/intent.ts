@@ -25,6 +25,7 @@ export interface MMDBodyIntentFrame {
   readonly viewerYaw: number
   readonly energy: number
   readonly stance: BodyPerformanceInput['directive']['stance']
+  readonly rest: BodyPerformanceInput['directive']['rest']
   readonly dragging: boolean
   readonly owned: Readonly<Record<ClipMaskGroup, number>>
   readonly armLift: Readonly<Record<'left' | 'right', number>>
@@ -97,7 +98,7 @@ export class MMDBodyIntent {
       pet: { level: 0, active: false, x: 0, y: 0 },
       react: null as BodyPerformanceInput['events']['react'],
     },
-    directive: { stance: 'stand' as BodyPerformanceInput['directive']['stance'], rest: 'none' as const, act: null },
+    directive: { stance: 'stand' as BodyPerformanceInput['directive']['stance'], rest: 'none' as BodyPerformanceInput['directive']['rest'], act: null },
     facingYaw: 0,
     allowTurn: false,
     viewerYaw: 0,
@@ -183,6 +184,7 @@ export class MMDBodyIntent {
     input.events.pet.active = intent.touch.pet.active
     input.events.react = intent.react
     input.directive.stance = source.stance
+    input.directive.rest = source.rest
     input.dragging = source.dragging
     Object.assign(input.owned, source.owned)
     input.armLift.left = source.armLift.left

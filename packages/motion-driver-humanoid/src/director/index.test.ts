@@ -31,6 +31,9 @@ type DirectorInput = Parameters<typeof decideBody>[0]
 const cameraPoint = { x: 0, y: 1, z: 2 }
 const cursorPoint = { x: 3, y: 4, z: 5 }
 const chatPoint = { x: 6, y: 7, z: 8 }
+/** Natural's long idle states: settled in after a long idle, asleep while the user is away. */
+const SETTLED = { settled: true, asleep: false }
+const ASLEEP = { settled: false, asleep: true }
 
 function input(overrides: Partial<DirectorInput> = {}): DirectorInput {
   return {
@@ -65,6 +68,7 @@ function input(overrides: Partial<DirectorInput> = {}): DirectorInput {
     debugGoal: null,
     legLength: 1,
     seed: 1,
+    idle: { settled: false, asleep: false },
     ...overrides,
   }
 }
@@ -86,29 +90,39 @@ function decide(
 }
 
 describe('body director', () => {
-  it('sits after 120 seconds of continuous idle', () => {
+  it('sits when Natural has settled her in, however long the idle, and stands when she is no longer settled', () => {
     const started = decide(input({ nowMs: 0 }))
-    const beforeThreshold = decide(input({ nowMs: 119_000 }), started.memory)
-    const atThreshold = decide(input({ nowMs: 120_000 }), beforeThreshold.memory)
+    const longIdle = decide(input({ nowMs: 300_000 }), started.memory)
+    const settled = decide(input({ nowMs: 300_001, idle: SETTLED }), longIdle.memory)
+    const up = decide(input({ nowMs: 304_000 }), settled.memory)
 
-    expect(beforeThreshold.intent.stance).toBe('stand')
-    expect(atThreshold.intent.stance).toBe('sit')
+    expect(longIdle.intent.stance).toBe('stand')
+    expect(settled.intent).toMatchObject({ stance: 'sit', rest: 'none' })
+    expect(up.intent.stance).toBe('stand')
   })
 
-  it('restarts the idle timer after talking interrupts idle', () => {
-    const started = decide(input({ nowMs: 0 }))
-    const idleAfter100Seconds = decide(input({ nowMs: 100_000 }), started.memory)
-    const talking = decide(input({
-      nowMs: 100_000,
-      performance: performance('talking'),
-    }), idleAfter100Seconds.memory)
-    const idleResumed = decide(input({ nowMs: 100_001 }), talking.memory)
-    const idleAfter100SecondsAgain = decide(input({ nowMs: 200_001 }), idleResumed.memory)
-    const idleAfter120SecondsAgain = decide(input({ nowMs: 220_001 }), idleAfter100SecondsAgain.memory)
+  it('rests and dozes procedurally when Natural settles her in or she sleeps and the model has no clip for it', () => {
+    const noClips = { slots: { sit: false, sleep: false } }
+    const resting = decide(input({ nowMs: 0, idle: SETTLED, ...noClips }))
+    const dozing = decide(input({ nowMs: 4_000, idle: ASLEEP, performance: performance('idle', 'camera', true), ...noClips }), resting.memory)
+    const awake = decide(input({ nowMs: 8_000, ...noClips }), dozing.memory)
 
-    expect(idleResumed.intent.stance).toBe('stand')
-    expect(idleAfter100SecondsAgain.intent.stance).toBe('stand')
-    expect(idleAfter120SecondsAgain.intent.stance).toBe('sit')
+    expect(resting.intent).toMatchObject({ stance: 'stand', rest: 'rest' })
+    expect(dozing.intent).toMatchObject({ stance: 'stand', rest: 'doze' })
+    expect(awake.intent).toMatchObject({ stance: 'stand', rest: 'none' })
+  })
+
+  it('neither rests nor dozes while she talks, walks, is away from home or performs a full clip', () => {
+    const rest = (overrides: Partial<DirectorInput>) => decide(world({ slots: { sit: false, sleep: false }, idle: SETTLED, ...overrides })).intent.rest
+    const doze = (overrides: Partial<DirectorInput>) => decide(world({ slots: { sit: false, sleep: false }, idle: ASLEEP, ...overrides })).intent.rest
+
+    expect(rest({})).toBe('rest')
+    expect(rest({ performance: performance('talking') })).toBe('none')
+    expect(rest({ locomotionMode: 'walking' })).toBe('none')
+    expect(rest({ rootX: 5 })).toBe('none')
+    expect(rest({ actionRequest: { seq: 1, clipId: 'dance', kind: 'dance', layer: 'full', loop: false, durationMs: 30_000, source: 'tool' } })).toBe('none')
+    expect(doze({})).toBe('doze')
+    expect(doze({ rootX: 5 })).toBe('none')
   })
 
   it('stands on every talking frame', () => {
@@ -117,39 +131,27 @@ describe('body director', () => {
     expect(result.intent.stance).toBe('stand')
   })
 
-  it('sleeps while away when the sleep slot is present', () => {
+  it('sleeps when Natural is asleep and the sleep slot is present, and not merely because the user is away', () => {
     const prior = decide(input({ nowMs: 0 }))
-    const result = decide(input({
-      nowMs: 3_000,
-      performance: performance('idle', 'camera', true),
-    }), prior.memory)
+    const away = decide(input({ nowMs: 3_000, performance: performance('idle', 'camera', true) }), prior.memory)
+    const asleep = decide(input({ nowMs: 3_000, performance: performance('idle', 'camera', true), idle: ASLEEP }), prior.memory)
 
-    expect(result.intent.stance).toBe('sleep')
-  })
-
-  it('stands when the requested stance slot is missing', () => {
-    const started = decide(input({ nowMs: 0, slots: { sit: false, sleep: true } }))
-    const idle = decide(input({ nowMs: 120_000, slots: { sit: false, sleep: true } }), started.memory)
-    const away = decide(input({
-      nowMs: 123_000,
-      performance: performance('idle', 'camera', true),
-      slots: { sit: true, sleep: false },
-    }), idle.memory)
-
-    expect(idle.intent.stance).toBe('stand')
     expect(away.intent.stance).toBe('stand')
+    expect(asleep.intent).toMatchObject({ stance: 'sleep', rest: 'none' })
   })
 
   it('enforces the minimum dwell between stance changes', () => {
     const started = decide(input({ nowMs: 0 }))
-    const sitting = decide(input({ nowMs: 120_000 }), started.memory)
+    const sitting = decide(input({ nowMs: 120_000, idle: SETTLED }), started.memory)
     const beforeDwell = decide(input({
       nowMs: 122_999,
       performance: performance('idle', 'camera', true),
+      idle: ASLEEP,
     }), sitting.memory)
     const afterDwell = decide(input({
       nowMs: 123_000,
       performance: performance('idle', 'camera', true),
+      idle: ASLEEP,
     }), beforeDwell.memory)
 
     expect(sitting.intent.stance).toBe('sit')
@@ -159,7 +161,7 @@ describe('body director', () => {
 
   it('returns to standing when talking starts after stance dwell', () => {
     const started = decide(input({ nowMs: 0 }))
-    const sitting = decide(input({ nowMs: 120_000 }), started.memory)
+    const sitting = decide(input({ nowMs: 120_000, idle: SETTLED }), started.memory)
     const talking = decide(input({
       nowMs: 123_000,
       performance: performance('talking'),
@@ -171,8 +173,8 @@ describe('body director', () => {
 
   it('clamps a backwards clock to the latest observed time', () => {
     const started = decide(input({ nowMs: 0 }))
-    const sitting = decide(input({ nowMs: 120_000 }), started.memory)
-    const backwards = decide(input({ nowMs: 119_000 }), sitting.memory)
+    const sitting = decide(input({ nowMs: 120_000, idle: SETTLED }), started.memory)
+    const backwards = decide(input({ nowMs: 119_000, idle: SETTLED }), sitting.memory)
 
     expect(backwards.memory.nowMs).toBe(120_000)
     expect(backwards.intent.stance).toBe('sit')
@@ -224,7 +226,7 @@ describe('body director home, goals, roam and tools', () => {
   it('reports a stay intent and keeps the stance logic when there is no world', () => {
     const stay = decide(input({ homeX: 2, chatUnfoldSeq: 1, chatX: 6 }))
     const started = decide(input({ nowMs: 0, rootX: 9 }))
-    const sitting = decide(input({ nowMs: 120_000, rootX: 9 }), started.memory)
+    const sitting = decide(input({ nowMs: 120_000, rootX: 9, idle: SETTLED }), started.memory)
 
     expect(stay.intent.locomotion).toEqual({ homeX: 2, goalX: null, pace: 'walk', arriveFacing: 0, reason: 'stay' })
     expect(sitting.intent.stance).toBe('sit')
@@ -236,7 +238,7 @@ describe('body director home, goals, roam and tools', () => {
     ['talking mode', { performance: performance('talking') }],
   ]
   it('keeps the legacy six-field input on the old stance behaviour when spread with the no-world constant', () => {
-    const legacy = (nowMs: number, mode: PerformanceMode = 'idle', away = false): DirectorInput => ({
+    const legacy = (nowMs: number, mode: PerformanceMode = 'idle', away = false, idle = { settled: false, asleep: false }): DirectorInput => ({
       nowMs,
       performance: performance(mode, 'camera', away),
       cursorPoint,
@@ -250,10 +252,11 @@ describe('body director home, goals, roam and tools', () => {
       actionRequest: null,
       actionFeedback: null,
       dragging: false,
+      idle,
     })
     const started = decide(legacy(0))
-    const sitting = decide(legacy(120_000), started.memory)
-    const sleeping = decide(legacy(123_000, 'idle', true), sitting.memory)
+    const sitting = decide(legacy(120_000, 'idle', false, SETTLED), started.memory)
+    const sleeping = decide(legacy(123_000, 'idle', true, ASLEEP), sitting.memory)
     const talking = decide(legacy(126_000, 'talking'), sleeping.memory)
 
     expect([started, sitting, sleeping, talking].map(result => result.intent.stance)).toEqual(['stand', 'sit', 'sleep', 'stand'])
@@ -486,11 +489,11 @@ describe('body director home, goals, roam and tools', () => {
   it('allows sit and sleep only when idle at home', () => {
     const sit = (overrides: Partial<DirectorInput>) => {
       const started = decide(world({ nowMs: 0, ...overrides }))
-      return decide(world({ nowMs: 120_000, ...overrides }), started.memory).intent.stance
+      return decide(world({ nowMs: 120_000, idle: SETTLED, ...overrides }), started.memory).intent.stance
     }
     const sleep = (overrides: Partial<DirectorInput>) => {
       const started = decide(world({ nowMs: 0, ...overrides }))
-      return decide(world({ nowMs: 3_000, performance: performance('idle', 'camera', true), ...overrides }), started.memory).intent.stance
+      return decide(world({ nowMs: 3_000, performance: performance('idle', 'camera', true), idle: ASLEEP, ...overrides }), started.memory).intent.stance
     }
 
     expect(sit({ rootX: 5 })).toBe('stand')
@@ -502,9 +505,9 @@ describe('body director home, goals, roam and tools', () => {
 
   it('stands a sitting character up to take a pending goal', () => {
     const started = decide(world({ nowMs: 0 }))
-    const sitting = decide(world({ nowMs: 120_000 }), started.memory)
-    const requested = decide(world({ nowMs: 123_000, debugGoal: { seq: 1, x: 4, pace: 'walk' } }), sitting.memory)
-    const standing = decide(world({ nowMs: 124_000, debugGoal: { seq: 1, x: 4, pace: 'walk' } }), requested.memory)
+    const sitting = decide(world({ nowMs: 120_000, idle: SETTLED }), started.memory)
+    const requested = decide(world({ nowMs: 123_000, idle: SETTLED, debugGoal: { seq: 1, x: 4, pace: 'walk' } }), sitting.memory)
+    const standing = decide(world({ nowMs: 124_000, idle: SETTLED, debugGoal: { seq: 1, x: 4, pace: 'walk' } }), requested.memory)
 
     expect(requested.intent.stance).toBe('sit')
     expect(requested.intent.locomotion.goalX).toBeNull()
@@ -636,13 +639,13 @@ describe('body director actions', () => {
 
   it('(c) stands a sitting character up for a full action and keeps the sit under an upper gesture', () => {
     const started = decide(world({ nowMs: 0 }))
-    const sitting = decide(world({ nowMs: 120_000 }), started.memory)
+    const sitting = decide(world({ nowMs: 120_000, idle: SETTLED }), started.memory)
     // 1 s after the sit, inside the stance dwell: a performance is not held back by it.
-    const requested = decide(world({ nowMs: 121_000, actionRequest: action(1) }), sitting.memory)
-    const early = decide(world({ nowMs: 121_000 + STAND_SETTLE_MS - 1, actionRequest: action(1) }), requested.memory)
-    const settled = decide(world({ nowMs: 121_000 + STAND_SETTLE_MS, actionRequest: action(1) }), early.memory)
-    const waving = decide(world({ nowMs: 121_000, actionRequest: gesture(1) }), sitting.memory)
-    const later = decide(world({ nowMs: 122_000, actionRequest: gesture(1) }), waving.memory)
+    const requested = decide(world({ nowMs: 121_000, idle: SETTLED, actionRequest: action(1) }), sitting.memory)
+    const early = decide(world({ nowMs: 121_000 + STAND_SETTLE_MS - 1, idle: SETTLED, actionRequest: action(1) }), requested.memory)
+    const settled = decide(world({ nowMs: 121_000 + STAND_SETTLE_MS, idle: SETTLED, actionRequest: action(1) }), early.memory)
+    const waving = decide(world({ nowMs: 121_000, idle: SETTLED, actionRequest: gesture(1) }), sitting.memory)
+    const later = decide(world({ nowMs: 122_000, idle: SETTLED, actionRequest: gesture(1) }), waving.memory)
 
     expect(sitting.intent.stance).toBe('sit')
     expect(requested.intent.stance).toBe('stand')
@@ -893,7 +896,7 @@ describe('body director actions', () => {
   })
 
   it('works without a world: the classic window still performs and ends on a poke', () => {
-    const quiet = { ...NO_WORLD_BODY_INPUT, interactionSeq: 0, chatSendSeq: 0, interactionAtMs: null, actionRequest: null, actionFeedback: null, dragging: false }
+    const quiet = { ...NO_WORLD_BODY_INPUT, interactionSeq: 0, chatSendSeq: 0, interactionAtMs: null, actionRequest: null, actionFeedback: null, dragging: false, idle: { settled: false, asleep: false } }
     const frame = (nowMs: number, patch: Partial<DirectorInput> = {}): DirectorInput => ({
       nowMs,
       performance: performance(),

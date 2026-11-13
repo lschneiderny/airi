@@ -20,6 +20,7 @@ function frame(onChat: boolean) {
 function intent(point: BodyIntent['attention']['point']): BodyIntent {
   return {
     stance: 'stand',
+    rest: 'none',
     attention: { kind: 'cursor', point },
     facingYaw: 0,
     locomotion: { homeX: 0, goalX: null, pace: 'walk', arriveFacing: 0, reason: 'stay' },

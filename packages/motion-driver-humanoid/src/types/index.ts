@@ -96,6 +96,11 @@ export interface BodyActionIntent {
 /** A renderer-neutral intent for body stance, attention, and facing. */
 export interface BodyIntent {
   stance: 'stand' | 'sit' | 'sleep'
+  /**
+   * The procedural long state that stands in for a missing stance clip (architecture 4f): `rest` where she would sit,
+   * `doze` where she would sleep; `none` otherwise, also while a clip realises the stance.
+   */
+  rest: 'none' | 'rest' | 'doze'
   attention: {
     kind: 'camera' | 'cursor' | 'chat' | 'screen' | 'aside'
     point: Vec3 | null

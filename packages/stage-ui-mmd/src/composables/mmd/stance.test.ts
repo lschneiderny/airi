@@ -62,7 +62,7 @@ describe('mmd stance director', () => {
     for (const offset of [0, 60_000, 120_000]) {
       const clocks = frameClocks(nowMs, offset)
       naturalTimes.push(clocks.naturalSeconds)
-      director.update({ interaction: quiet, nowMs: clocks.directorMs, performance: idle, slots, idleMotionName: '', isRegistered: registered })
+      director.update({ interaction: quiet, nowMs: clocks.directorMs, performance: idle, slots, idleMotionName: '', isRegistered: registered, idle: { settled: offset === 120_000, asleep: false } })
     }
     expect(new Set(naturalTimes).size).toBe(1)
     expect(director.diagnostics).toMatchObject({ stance: 'sit', sinceMs: nowMs + 120_000, stanceReason: 'idle-timeout' })
@@ -78,22 +78,28 @@ describe('mmd stance director', () => {
     expect(second).toMatchObject({ nowMs: EPOCH_MS + 2_500, sinceMs: EPOCH_MS })
   })
 
-  it('keeps standing while away without a sleep slot, and sleeps with one', () => {
+  it('stands while away until Natural sleeps, dozes without a sleep slot, and sleeps with one', () => {
     const director = new MMDStanceDirector()
+    const asleep = { settled: false, asleep: true }
     for (let second = 0; second <= 300; second += 10)
       director.update({ interaction: quiet, nowMs: EPOCH_MS + second * 1000, performance: away, slots: { sit: 'sit-vmd' }, idleMotionName: '', isRegistered: registered })
     expect(director.diagnostics).toMatchObject({ stance: 'stand', stanceReason: 'no-sleep-slot' })
+    director.update({ interaction: quiet, nowMs: EPOCH_MS + 305_000, performance: away, slots: { sit: 'sit-vmd' }, idleMotionName: '', isRegistered: registered, idle: asleep })
+    expect(director.intent?.rest).toBe('doze')
+    expect(director.diagnostics).toMatchObject({ stance: 'stand', stanceReason: 'doze-fallback' })
 
-    const result = director.update({ interaction: quiet, nowMs: EPOCH_MS + 310_000, performance: away, slots: { sleep: 'sleep-vmd' }, idleMotionName: '', isRegistered: registered })
+    const result = director.update({ interaction: quiet, nowMs: EPOCH_MS + 310_000, performance: away, slots: { sleep: 'sleep-vmd' }, idleMotionName: '', isRegistered: registered, idle: asleep })
     expect(director.diagnostics.stance).toBe('sleep')
     expect(result).toEqual({ motion: 'sleep-vmd', changed: true })
   })
 
-  it('ignores a stance slot whose motion is not registered on this model', () => {
+  it('ignores a stance slot whose motion is not registered on this model and rests without a clip instead', () => {
     const director = new MMDStanceDirector()
     director.update({ interaction: quiet, nowMs: EPOCH_MS, performance: idle, slots: { sit: 'missing' }, idleMotionName: '', isRegistered: () => false })
     director.update({ interaction: quiet, nowMs: EPOCH_MS + 200_000, performance: idle, slots: { sit: 'missing' }, idleMotionName: '', isRegistered: () => false })
     expect(director.diagnostics).toMatchObject({ stance: 'stand', stanceReason: 'no-sit-slot' })
+    director.update({ interaction: quiet, nowMs: EPOCH_MS + 201_000, performance: idle, slots: { sit: 'missing' }, idleMotionName: '', isRegistered: () => false, idle: { settled: true, asleep: false } })
+    expect(director.diagnostics).toMatchObject({ stance: 'stand', stanceReason: 'rest-fallback' })
   })
 
   it('cross-fades a stance switch on the base layer without pose pops', async () => {
@@ -120,7 +126,8 @@ describe('mmd stance director', () => {
       if (frame === 120)
         offset += 120_000
       const clocks = frameClocks(EPOCH_MS + frame * 1000 / 60, offset)
-      const base = director.update({ interaction: quiet, nowMs: clocks.directorMs, performance: idle, slots, idleMotionName: 'sit', isRegistered: name => animation.availableClips().includes(name) })
+      // Natural settles her in from the skip on, as it would after two minutes of idle.
+      const base = director.update({ interaction: quiet, nowMs: clocks.directorMs, performance: idle, slots, idleMotionName: 'sit', isRegistered: name => animation.availableClips().includes(name), idle: { settled: frame >= 120, asleep: false } })
       if (base.changed)
         animation.setBaseMotion(base.motion)
       animation.update(1 / 60)

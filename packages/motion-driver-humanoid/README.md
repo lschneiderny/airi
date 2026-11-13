@@ -170,10 +170,12 @@ makes the next frame `idle`; use it for drag and teleports. The seed only breaks
 first-foot ties.
 
 `decideBody(input, memory)` from `./director` returns a `BodyIntent` and the
-next memory. It sits after 120 seconds of continuous idle mode
-(`IDLE_TO_SIT_MS`) and sleeps while the user is away, only when the matching
-slot is available, and holds each stance for at least 3 seconds
-(`STANCE_MIN_DWELL_MS`).
+next memory. It realises Natural's long idle states (`input.idle`): it sits
+when Natural has settled her in (after 120 s of idle, `IDLE_TO_SIT_MS`) and
+sleeps when Natural sleeps, with the matching stance clip, or, when the slot is
+empty, sets `BodyIntent.rest` to `rest` or `doze` for the performer's
+clip-free rest layer. It refuses both while she must stand, and holds each
+stance for at least 3 seconds (`STANCE_MIN_DWELL_MS`).
 
 On a stage with a ground line, `decideBody` also owns where she goes:
 `BodyIntent.locomotion` carries the goal x, its reason (`approach-chat`,

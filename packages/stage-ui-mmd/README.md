@@ -21,7 +21,7 @@ reaching feature parity with the Live2D and VRM renderers:
   the screen and dozes on her own (`idleActivities` in the Natural settings,
   on by default), and plays the clips the user marked "Idle may use" now and
   then while her body is quiet. A model with a sleep clip sleeps through its
-  stance; a model without one uses the Natural sleep. The scene emits `idle`
+  stance; a model without one dozes on her feet (the performer's rest layer). The scene emits `idle`
   and `self` events, which the stage forwards to the situation. See
   [the idle agency ADR](../../docs/ai/adr/2026-11-12-idle-agency.md).
 - **Clip library**: every imported clip gets a derived kind and layer, and the
@@ -29,10 +29,11 @@ reaching feature parity with the Live2D and VRM renderers:
   over idle, sitting and walking; full-body actions and dances pre-empt the
   walk through the director. See [Clip library and actions](#clip-library-and-actions).
 - **Stance slots**: assign imported motions to a model's `idle`, `sit` and
-  `sleep` slots (`stanceSlots` in the `mmd` store). The body director sits
-  the model after two minutes idle and sleeps it while the user is away, with
-  a 0.6 s eased cross-fade on the base layer; a sit or sleep clip never plays
-  as the standing idle.
+  `sleep` slots (`stanceSlots` in the `mmd` store). Natural settles her in
+  after two minutes idle and sleeps while the user is away; the body director
+  plays the sit or sleep clip for it with a 0.6 s eased cross-fade on the base
+  layer, or rests or dozes her without a clip when the slot is empty. A sit or
+  sleep clip never plays as the standing idle.
 - **Stage locomotion** (desktop stage only, `stageWorld` set): the body director
   also walks her to the chat after it unfolds, chases the cursor after a poke,
   pet, drag or sent message, returns home 20 s after the last reason and, with
@@ -442,8 +443,8 @@ The `director` block carries `MMDStanceDiagnostics` plus `clockOffsetMs` (the
 units): `stance`, `sinceMs` (director-clock time at which the stance began; it
 moves only on a stance change), `nowMs` (director-clock time of the last frame
 the director decided; it advances every frame), `stanceReason` (why the stance
-holds: `idle-timeout`, `away`, `dwell`, `no-sleep-slot`, `idle`, `no-sit-slot`
-or `active`), `reason` (the locomotion reason: `approach-chat`,
+holds: `idle-timeout`, `away`, `rest-fallback`, `doze-fallback`, `dwell`,
+`no-sleep-slot`, `idle`, `no-sit-slot` or `active`), `reason` (the locomotion reason: `approach-chat`,
 `approach-cursor`, `return-home`, `wander`, `tool`, `debug`, `enter-stage` or
 `stay`),
 `goalX`, `pace`, `pendingGoal { x, reason }` (a goal held while she speaks),

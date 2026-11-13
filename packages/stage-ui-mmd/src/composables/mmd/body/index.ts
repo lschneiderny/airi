@@ -43,6 +43,8 @@ export interface MMDBodyInput {
   readonly energy?: number
   /** The director's stance; standing when absent. */
   readonly stance?: BodyIntent['stance']
+  /** The director's clip-free rest or doze. */
+  readonly rest?: BodyIntent['rest']
   /** The world-space points the gaze goal chooses from by `intent.gaze.on`; null when the host tracks no gaze. */
   readonly points: MMDBodyPoints | null
   readonly disableFootContact: boolean
@@ -404,6 +406,7 @@ export class MMDBody {
       viewerYaw: this.viewerYaw,
       energy: input.energy ?? 0.5,
       stance: input.stance ?? 'stand',
+      rest: input.rest ?? 'none',
       dragging: input.dragging,
       owned: this.owned,
       armLift: lift,
