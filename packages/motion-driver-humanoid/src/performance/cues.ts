@@ -2,7 +2,7 @@ import type { BodyCueKind, BodyCueReport } from './contracts'
 import type { PerformanceContext, PerformanceLayer, PerformancePlan } from './stack'
 
 import { createLagChain, minJerk } from '../dynamics'
-import { ARM_START, BODY_CHANNELS, BODY_TICK, CHANNEL_GROUPS, channelIndex, DEG, SIDES } from './channels'
+import { ARM_START, BODY_CHANNELS, BODY_TICK, CHANNEL_GROUPS, channelIndex, DEG, freeShare, SIDES } from './channels'
 
 /**
  * Multiples of architecture 4b's below-neck terms; head terms keep Natural's amplitude. Nod and shake are head
@@ -204,7 +204,7 @@ export function createCueLayer(): PerformanceLayer {
         play(clip, context)
       if (clips.length) {
         for (let channel = 0; channel < channels.length; channel++)
-          channels[channel] *= Math.max(0, Math.min(1, 1 - 2 * context.input.owned[CHANNEL_GROUPS[channel]]))
+          channels[channel] *= freeShare(context.input.owned[CHANNEL_GROUPS[channel]])
       }
       return { channels, weight: clips.length ? 1 : 0, sequence: 0, cue: report }
     },

@@ -150,17 +150,19 @@ export class PerformanceStack {
     this.plan.holdGaze = false
     for (const { layer } of this.entries) {
       const plan = layer.plan?.(context)
-      if (plan?.support !== undefined)
+      if (!plan)
+        continue
+      if (plan.support !== undefined)
         this.plan.support = plan.support
-      if (plan?.gaze !== undefined)
+      if (plan.gaze !== undefined)
         this.plan.gaze = plan.gaze
-      if (plan?.armForm !== undefined)
+      if (plan.armForm !== undefined)
         this.plan.armForm = plan.armForm
-      if (plan?.suppressHeadCue)
+      if (plan.suppressHeadCue)
         this.plan.suppressHeadCue = true
-      if (plan?.suppressHeadEmphasis)
+      if (plan.suppressHeadEmphasis)
         this.plan.suppressHeadEmphasis = true
-      if (plan?.holdGaze)
+      if (plan.holdGaze)
         this.plan.holdGaze = true
     }
   }

@@ -4,7 +4,7 @@ import type { LayerOutput, PerformanceContext, PerformanceLayer, PerformanceModu
 import { minJerk } from '../dynamics'
 import { deriveSeed, gaussian } from '../noise'
 import { createRandomStream } from '../random'
-import { ARM_START, BODY_CHANNELS, CHANNEL_GROUPS, channelIndex, DEG, SIDES } from './channels'
+import { ARM_START, BODY_CHANNELS, CHANNEL_GROUPS, channelIndex, DEG, freeShare, SIDES } from './channels'
 
 type Mutable<T> = { -readonly [K in keyof T]: T[K] }
 
@@ -120,7 +120,7 @@ export function createRestLayer(options: RestLayerOptions): PerformanceLayer {
     }
     output.modulation = modulation
     for (let channel = 0; channel < channels.length; channel++)
-      channels[channel] *= Math.max(0, Math.min(1, 1 - 2 * input.owned[CHANNEL_GROUPS[channel]]))
+      channels[channel] *= freeShare(input.owned[CHANNEL_GROUPS[channel]])
   }
 
   return {

@@ -8,7 +8,7 @@ import { minJerk } from '../dynamics'
 import { deriveSeed } from '../noise'
 import { createRandomStream } from '../random'
 import { armResponse } from './arms'
-import { ARM_START, BODY_CHANNELS, BODY_TICK, DEG, SIDES } from './channels'
+import { ARM_START, BODY_CHANNELS, BODY_TICK, DEG, freeShare, SIDES } from './channels'
 import { ARM_FORMS, GESTURE_FORMS, gestureGain, GestureKeys, gestureTempo, KEY_HEADROOM, writeHandShape } from './gesture-forms'
 
 type Mutable<T> = { -readonly [K in keyof T]: T[K] }
@@ -947,7 +947,7 @@ class GesturePerformer {
     }
     if (track.active || track.weight > 0)
       track.advance(now, this.tension)
-    track.participate(now, Math.max(0, Math.min(1, 1 - 2 * context.input.owned.head)))
+    track.participate(now, freeShare(context.input.owned.head))
     track.write()
   }
 

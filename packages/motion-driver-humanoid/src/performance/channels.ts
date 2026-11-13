@@ -113,6 +113,11 @@ export function channelGroup(channel: BodyChannel): ClipMaskGroup {
 /** Each channel's clip-mask group, in `BODY_CHANNELS` order, so a tick never rescans the channel names. */
 export const CHANNEL_GROUPS: readonly ClipMaskGroup[] = BODY_CHANNELS.map(channelGroup)
 
+/** The share of a group a layer keeps while a clip owns it by `owned` (0-1): all when free, none from half ownership on. */
+export function freeShare(owned: number): number {
+  return Math.max(0, Math.min(1, 1 - 2 * owned))
+}
+
 const torsoLimits = [
   [-12, 12],
   [-10, 15],
