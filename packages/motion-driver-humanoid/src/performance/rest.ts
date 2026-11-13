@@ -19,7 +19,8 @@ const c = channelIndex
  * pelvis goes a quarter further over the stance foot than the posture takes it for the support it carries.
  *
  * Not built from the 4f row: the clasped hands (no two-hand contact; the arms hang as they do standing) and the tension
- * of 0.2, which is above a neutral mood's 0 and would stiffen her arms at rest.
+ * of 0.2. It is on 4c's K scale (neutral 0.40), so it would loosen her arms, but the arm followers read Natural's mood
+ * tension, not the stack's K.
  */
 const REST = { ramp: 1.5, lower: 3, clavicle: -2, head: 3, breath: 1.3, sway: 1.4, tempo: 0.6, lateralGain: 1.25 } as const
 const DOZE = { lower: 3, pelvis: 0.012, sink: [4, 9], head: 18, recovery: 0.35, overshoot: 3, settle: 1.3, pause: [9, 25], breath: 1.5, sway: 1.5, tempo: 0.5 } as const

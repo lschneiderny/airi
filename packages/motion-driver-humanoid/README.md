@@ -197,7 +197,9 @@ pelvis goes a quarter further over the stance foot than the posture takes it.
 A stance shift while she rests re-plants the free foot and keeps her full
 weight on the stance foot. Two parts of the row are not built: the clasped
 hands (no two-hand contact; her arms hang as they do standing) and the tension
-of 0.2, which is above a neutral mood's 0 and would stiffen her arms.
+of 0.2. That value is on 4c's K scale (neutral 0.40), so it would loosen her
+arms; the arm followers read Natural's mood tension, not the stack's K, so
+there is nothing for it to reach until they take K + 0.4 x mood tension (4c).
 
 On a stage with a ground line, `decideBody` also owns where she goes:
 `BodyIntent.locomotion` carries the goal x, its reason (`approach-chat`,
