@@ -475,19 +475,37 @@ describe('procedural gait', () => {
     expect(Math.abs(after.at(-1) ?? 1)).toBeLessThan(0.05 * rad)
   })
 
-  it('look ahead: a turn and a walk name the facing still to come, and it is reached when the turn ends', () => {
+  it('look ahead: a turn eases to the facing still to come within its first step, and a walk names its heading', () => {
     const run = createRun({ x: 0, yaw: 0 })
     run.advance(3, () => ({ goalX: -25, arriveFacing: 0 }))
     const turning = run.frames.filter(frame => frame.mode === 'turning')
-    expect(turning.length).toBeGreaterThan(50)
-    // Turning from 0 to face -x (-90 degrees): the whole turn is ahead at its start and none of it at its end.
-    expect((turning[0]?.lookAhead ?? 0) - (turning[0]?.root.yaw ?? 0)).toBeCloseTo(-Math.PI / 2, 2)
-    for (const frame of turning)
+    expect(turning.length).toBe(108)
+    // Turning from 0 to face -x (-90 degrees) in two steps of 54 ticks: the look-ahead leaves the facing she has at
+    // rest, never moves faster than a minimum-jerk move over one step, and names the final facing from that step's end.
+    expect(Math.abs(turning[0]?.lookAhead ?? 1)).toBeLessThan(1e-3)
+    const rates = turning.slice(1).map((frame, tick) => Math.abs(frame.lookAhead - (turning[tick]?.lookAhead ?? 0)))
+    expect(Math.max(...rates)).toBeLessThan(1.01 * 1.875 * (Math.PI / 2) / 54)
+    for (const frame of turning.slice(53))
       expect(frame.lookAhead).toBeCloseTo(-Math.PI / 2, 12)
+    expect((turning[26]?.lookAhead ?? 0) - (turning[26]?.root.yaw ?? 0)).toBeLessThan(-0.25 * Math.PI / 2)
     const walking = run.frames.filter(frame => frame.mode === 'walking')
     expect(walking.length).toBeGreaterThan(50)
     for (const frame of walking)
       expect(frame.lookAhead - frame.root.yaw).toBeCloseTo(0, 12)
+  })
+
+  it('look ahead: a turn-around sweeps to its final facing over every step but the last', () => {
+    const run = createRun({ x: 0, yaw: 0 })
+    run.advance(3, () => ({ goalX: 0, arriveFacing: Math.PI }))
+    const turning = run.frames.filter(frame => frame.mode === 'turning')
+    // Four steps of 54 ticks: the look-ahead leaves the facing at rest, moves no faster than a minimum-jerk move over
+    // three steps, and names the final facing as the last step starts, one step ahead of the body.
+    expect(turning.length).toBe(216)
+    expect(Math.abs(turning[0]?.lookAhead ?? 1)).toBeLessThan(1e-3)
+    const rates = turning.slice(1).map((frame, tick) => Math.abs(frame.lookAhead - (turning[tick]?.lookAhead ?? 0)))
+    expect(Math.max(...rates)).toBeLessThan(1.01 * 1.875 * Math.PI / 162)
+    for (const frame of turning.slice(161))
+      expect(Math.abs(frame.lookAhead)).toBeCloseTo(Math.PI, 12)
   })
 
   it('turn easing: a turn leaves and reaches its facing at rest and never stops between its steps', () => {

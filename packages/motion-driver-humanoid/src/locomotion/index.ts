@@ -117,8 +117,9 @@ export interface LocomotionFrame {
     readonly clavProt: number
   }>
   /**
-   * Where she is about to face, a world yaw: the final facing of the turn in progress, otherwise the walk heading or the
-   * root yaw. `lookAhead - root.yaw` is the signed turn still to come, never wrapped across a turn (architecture 5.5).
+   * Where she is about to face, a world yaw: during a turn, a minimum-jerk sweep from the facing the turn starts at to its
+   * final facing, reached as the last step starts; otherwise the walk heading or the root yaw. `lookAhead - root.yaw` is
+   * the signed turn the gaze leads by, never wrapped across a turn (architecture 5.5).
    */
   readonly lookAhead: number
   /** Blend factor: lower-body channels override the idle pose by it, torso and arm channels add. */
@@ -810,6 +811,28 @@ class Locomotion {
     this.speed = 0
   }
 
+  /**
+   * Architecture 5.5's look-ahead during a turn: it leaves the facing the turn starts from at rest and reaches the final
+   * facing as the last step starts, as a minimum-jerk move over every step but the last. The eyes and head so lead the
+   * body by one step, as each foot lands at the facing one step ahead (`startTurn`): a quarter turn is led within its
+   * first step, and a turn-around sweeps the gaze over three steps instead of one. A goal that stepped to the whole turn
+   * at once made the gaze answer with a head jolt.
+   */
+  private turnLookAhead(turn: Turn): number {
+    const from = turn.facings[0] ?? this.yaw
+    const to = turn.facings.at(-1) ?? this.yaw
+    let span = 0
+    let elapsed = turn.elapsed
+    turn.steps.forEach((step, index) => {
+      if (index < turn.steps.length - 1)
+        span += step.duration
+      if (index < turn.index)
+        elapsed += step.duration
+    })
+    const progress = span > 0 ? minJerk(Math.min(1, elapsed / span)) : 1
+    return from + (to - from) * progress
+  }
+
   private footFrame(side: Foot, strideScale: number): LocomotionFoot {
     if (this.swing?.foot === side)
       return { target: this.sampleSwing(this.swing), planted: false, swing: this.swing.progress, roll: this.roll(side, strideScale) }
@@ -900,7 +923,7 @@ class Locomotion {
         twist: { lower, mid, upper, head: -(late[0] + late[1] + late[2]) },
       },
       armSwing: { left: arm('left'), right: arm('right') },
-      lookAhead: this.turn ? (this.turn.facings.at(-1) ?? this.yaw) : this.walk ? this.yaw + wrap(this.walk.heading - this.yaw) : this.yaw,
+      lookAhead: this.turn ? this.turnLookAhead(this.turn) : this.walk ? this.yaw + wrap(this.walk.heading - this.yaw) : this.yaw,
       weight: smoothstep(this.blend),
       events,
     }
