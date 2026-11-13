@@ -95,6 +95,8 @@ touch reaction layer, in stack order emotion, gesture, cue, reaction. `setPerfor
 - An arm keeps whichever performance already holds it: a speech unit takes the other hand while an emotion form holds
   one, and a requested form waits for the unit's retraction, so no performance cuts a moving arm.
 - The per-rig hang solver holds its lift while a gesture layer moves either arm, so the pose a gesture retracts to
-  does not move under it.
+  does not move under it. It also holds while an act-order layer (an idle behaviour's form or the clip-free rest) has
+  weight on either arm (`diagnostics.actActivation`): a lift learnt from an arm that a clasp brings to the belly held
+  her arms out for the rest of the session.
 - Not built and not registered: the shrug hand shape and its energy key, finger rub noise, the drag reaction and the
   huff and shimmy reactions.

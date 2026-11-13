@@ -235,7 +235,7 @@ export class MMDBody {
       this.skateContact = skateContact
       this.skateContactPeak = Math.max(this.skateContactPeak, skateContact)
       const performance = this.performer?.diagnostics
-      this.armsSnapshot = this.arms.measure(this.owned, performance?.correctionDeg ?? { left: 0, right: 0 }, performance?.gestureActivation ?? { left: 0, right: 0 })
+      this.armsSnapshot = this.arms.measure(this.owned, performance?.correctionDeg ?? { left: 0, right: 0 }, performance?.gestureActivation ?? { left: 0, right: 0 }, this.performer?.frame?.diagnostics.actActivation ?? { left: 0, right: 0 })
     } }
   }
 

@@ -1,3 +1,5 @@
+import type { IdleBehaviourKind, IdleBehaviourRecord } from '@proj-airi/motion-driver-natural/idle-activities'
+
 import type { ExtraBody } from './fixture'
 
 import { AnimationClip, Euler, Quaternion, QuaternionKeyframeTrack, VectorKeyframeTrack } from 'three'
@@ -41,7 +43,7 @@ function solver(extraBodies: ExtraBody[]) {
     const lift = arms.lift({ swingWeight: 0, owned, hangDeg })
     for (const [name, sigma] of [['左腕', 1], ['右腕', -1]] as const)
       fixture.bone(name).quaternion.setFromEuler(new Euler(0, 0, sigma * (bindHang * degrees - (78 * degrees - lift.left))))
-    return arms.measure(owned, { left: 0, right: 0 }, gesture)
+    return arms.measure(owned, { left: 0, right: 0 }, gesture, { left: 0, right: 0 })
   }
 }
 
@@ -160,6 +162,43 @@ describe('mmd arm measurement and hang solver', () => {
     for (let frame = 0; frame < 300; frame++)
       hang = step(null).hangDeg
     expect(hang).toBeLessThan(78)
+  })
+
+  // Every behaviour that moves an arm, and the clip-free rest, which drops the clavicles.
+  it.each([
+    { kind: 'stretch', seconds: 5.2, variant: 0 },
+    { kind: 'yawn', seconds: 5.4, variant: 0 },
+    { kind: 'clasp-hands', seconds: 6, variant: 0 },
+    { kind: 'clasp-hands', seconds: 6, variant: 1 },
+    { kind: 'hair-touch', seconds: 2.6, variant: 0 },
+    { kind: 'arm-swing', seconds: 3, variant: 0 },
+    { kind: 'shoulder-roll', seconds: 4.5, variant: 0 },
+  ] as const)('keeps the standing hang it had before a $kind (variant $variant) once the behaviour has ended', ({ kind, seconds, variant }) => {
+    const fixture = bodyFixture(0, Math.PI, { arms: true, bodies: true })
+    // The fixture's standing arm solves its own hang within its first 6 s; 10 s leaves it settled.
+    for (let frame = 0; frame < 600; frame++)
+      fixture.pipeline.step(1 / 60)
+    const before = fixture.body.diagnostics.arms?.hangDeg
+    const record: IdleBehaviourRecord = { seq: 1, kind: kind as IdleBehaviourKind, start: 0, end: seconds, releasedAt: null, releaseSeconds: 0, side: 1, period: 2, tone: 0, count: 2, variant, keys: [], glances: [] }
+    fixture.setInput({ intent: { ...fixture.input.intent, idle: { behaviour: record, settled: false } } })
+    for (let frame = 0; frame < (seconds + 3) * 60; frame++)
+      fixture.pipeline.step(1 / 60)
+    expect(fixture.body.diagnostics.arms?.hangDeg).toBe(before)
+  })
+
+  it('keeps the standing hang it had before the clip-free rest once she stands again', () => {
+    const fixture = bodyFixture(0, Math.PI, { arms: true, bodies: true })
+    // The fixture's standing arm solves its own hang within its first 6 s; 10 s leaves it settled.
+    for (let frame = 0; frame < 600; frame++)
+      fixture.pipeline.step(1 / 60)
+    const before = fixture.body.diagnostics.arms?.hangDeg
+    fixture.setInput({ rest: 'rest' })
+    for (let frame = 0; frame < 20 * 60; frame++)
+      fixture.pipeline.step(1 / 60)
+    fixture.setInput({ rest: 'none' })
+    for (let frame = 0; frame < 3 * 60; frame++)
+      fixture.pipeline.step(1 / 60)
+    expect(fixture.body.diagnostics.arms?.hangDeg).toBe(before)
   })
 
   it('does not solve a hang while the debug override is set', () => {

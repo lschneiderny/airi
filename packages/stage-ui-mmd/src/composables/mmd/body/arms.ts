@@ -156,12 +156,14 @@ export class MMDArms {
   }
 
   /**
-   * `gestureActivation` is the weight the performer's gesture layers applied to each arm on the latest tick. The hang
-   * is frozen while either is above 0 (architecture 3f): a lift step under a performed arm would move the pose the
-   * gesture retracts to.
+   * `gestureActivation` and `actActivation` are the weights the performer's gesture layers and its act-order layers (an
+   * idle behaviour's form, the clip-free rest) applied to each arm on the latest tick. The hang is frozen while any is
+   * above 0 (architecture 3f): a lift step under a performed arm would move the pose the gesture retracts to, and an
+   * arm an act brings to the body (a clasp, a stretch on its way down) is not a standing arm against the hips, so a
+   * lift learnt from it would hold her arms out for the rest of the session.
    */
-  measure(owned: MMDArmOwnership, correctionDeg: Readonly<Record<Side, number>>, gestureActivation: Readonly<Record<Side, number>>): MMDArmsMeasurement {
-    const solving = this.solving && gestureActivation.left === 0 && gestureActivation.right === 0
+  measure(owned: MMDArmOwnership, correctionDeg: Readonly<Record<Side, number>>, gestureActivation: Readonly<Record<Side, number>>, actActivation: Readonly<Record<Side, number>>): MMDArmsMeasurement {
+    const solving = this.solving && gestureActivation.left === 0 && gestureActivation.right === 0 && actActivation.left === 0 && actActivation.right === 0
     const { mesh } = this.pose.mmd
     mesh.updateWorldMatrix(true, true)
     const toMesh = new Matrix4().copy(mesh.matrixWorld).invert()

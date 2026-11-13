@@ -293,5 +293,11 @@ export interface BodyPerformanceFrame {
     readonly cue: BodyCueReport
     readonly emotion: BodyEmotionReport
     readonly reaction: BodyReactionReport
+    /**
+     * The largest weight an act-order layer (an idle behaviour's form or the clip-free rest) applied this tick to a
+     * channel of each side's arm, measured by the stack. A host's standing-hang solver holds while it is above 0, so it
+     * never learns a lift from a pose such a layer imposes (architecture 3f).
+     */
+    readonly actActivation: Readonly<Record<BodySide, number>>
   }
 }

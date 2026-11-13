@@ -105,6 +105,8 @@ export class PerformanceStack {
   readonly fed = new Float64Array(BODY_CHANNELS.length)
   readonly plan: Mutable<MergedPerformancePlan> = { support: null, gaze: null, armForm: null, suppressHeadCue: false, suppressHeadEmphasis: false, holdGaze: false }
   readonly gesture: Mutable<BodyGestureReport> & { activation: Record<BodySide, number> } = { unitSeq: 0, strokeSeq: 0, form: null, hand: null, phase: 'rest', plannedHit: null, activation: { left: 0, right: 0 } }
+  /** The largest weight an act-order layer (an idle behaviour's form, the clip-free rest) applied this tick to each side's arm. */
+  readonly actActivation: Record<BodySide, number> = { left: 0, right: 0 }
   readonly cue: Mutable<BodyCueReport> = { seq: 0, kind: null }
   readonly emotion: Mutable<BodyEmotionReport> = { seq: 0, emotion: null, phase: null }
   readonly reaction: Mutable<BodyReactionReport> = { seq: 0, kind: null }
@@ -171,6 +173,7 @@ export class PerformanceStack {
     this.footSteps = emptySteps
     this.modulation.tempo = this.modulation.amplitude = this.modulation.breath = 1
     this.gesture.activation.left = this.gesture.activation.right = 0
+    this.actActivation.left = this.actActivation.right = 0
     for (const entry of this.entries) {
       const { layer } = entry
       const output = layer.step(context)
@@ -226,10 +229,11 @@ export class PerformanceStack {
           this.sighs++
         entry.sighSeq = m.sighSeq
       }
-      if (layer.order === 'gesture') {
+      if (layer.order === 'gesture' || layer.order === 'act') {
+        const activation = layer.order === 'gesture' ? this.gesture.activation : this.actActivation
         for (const side of SIDES) {
           for (let c = ARM_START[side]; c < ARM_START[side] + 26; c++)
-            this.gesture.activation[side] = Math.max(this.gesture.activation[side], weight * layer.mask[c])
+            activation[side] = Math.max(activation[side], weight * layer.mask[c])
         }
       }
     }
