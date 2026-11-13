@@ -1,4 +1,4 @@
-import type { BodyCueKind, BodyCueReport, BodyPerformanceInput } from './contracts'
+import type { BodyCueKind, BodyCueReport } from './contracts'
 import type { PerformanceContext, PerformanceLayer, PerformancePlan } from './stack'
 
 import { createLagChain, minJerk } from '../dynamics'
@@ -21,6 +21,7 @@ const SHAKE = { count: 0.5, hz: 2, degrees: 7.5 }
 const GLANCE_LINK = { share: 0.25, delay: 0.25 }
 
 const c = channelIndex
+const groups = BODY_CHANNELS.map(channelGroup)
 const raisedCosine = (u: number) => u <= 0 || u >= 1 ? 0 : 0.5 - 0.5 * Math.cos(2 * Math.PI * u)
 
 /** Piecewise minimum-jerk path through `[time, value]` knots, starting at 0; every knot has zero velocity. */
@@ -176,10 +177,6 @@ export function createCueLayer(): PerformanceLayer {
     }
   }
 
-  function free(input: BodyPerformanceInput, groups: readonly ('lowerBody' | 'upperBody')[]) {
-    return groups.every(group => input.owned[group] <= 0.5)
-  }
-
   return {
     id: 'cue',
     order: 'cue',
@@ -193,7 +190,7 @@ export function createCueLayer(): PerformanceLayer {
         const age = context.time - clip.start
         if ((clip.kind === 'nod' && age < NOD.dip * clip.count) || (clip.kind === 'shake' && age < SHAKE.count * clip.count))
           plan.suppressHeadCue = true
-        if (clip.kind === 'lean' && age < clip.duration && free(context.input, ['lowerBody', 'upperBody']))
+        if (clip.kind === 'lean' && age < clip.duration && context.input.owned.lowerBody <= 0.5 && context.input.owned.upperBody <= 0.5)
           plan.support = clip.side
         if (clip.kind === 'glance' && age < clip.duration)
           plan.gaze = { yaw: clip.gaze.yaw + clip.side * 14 * DEG, pitch: clip.gaze.pitch - 1 * DEG, kind: 'sustained' }
@@ -208,7 +205,7 @@ export function createCueLayer(): PerformanceLayer {
         play(clip, context)
       if (clips.length) {
         for (let channel = 0; channel < channels.length; channel++)
-          channels[channel] *= Math.max(0, Math.min(1, 1 - 2 * context.input.owned[channelGroup(BODY_CHANNELS[channel])]))
+          channels[channel] *= Math.max(0, Math.min(1, 1 - 2 * context.input.owned[groups[channel]]))
       }
       return { channels, weight: clips.length ? 1 : 0, sequence: 0, cue: report }
     },

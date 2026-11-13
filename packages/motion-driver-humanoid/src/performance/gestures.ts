@@ -590,15 +590,15 @@ class GesturePerformer {
 
   private free(side: BodySide, input: BodyPerformanceInput, context: PerformanceContext): boolean {
     return context.capabilities.gestures[side]
-      && input.owned[side === 'left' ? 'leftArm' : 'rightArm'] === 0
-      && input.owned[side === 'left' ? 'leftFingers' : 'rightFingers'] === 0
+      && input.owned[`${side}Arm`] === 0
+      && input.owned[`${side}Fingers`] === 0
       && !this.tracks[side].active
   }
 
   /** A clip claiming a performing arm ends that arm's part at once, its weight gone before the claim reaches 0.5. */
   private yieldOwned(side: BodySide, input: BodyPerformanceInput, now: number): void {
     const track = this.tracks[side]
-    const owned = Math.max(input.owned[side === 'left' ? 'leftArm' : 'rightArm'], input.owned[side === 'left' ? 'leftFingers' : 'rightFingers'])
+    const owned = Math.max(input.owned[`${side}Arm`], input.owned[`${side}Fingers`])
     if (!track.active || owned === 0 || track.weight === 0)
       return
     track.exitSeconds = TIMING.cancel

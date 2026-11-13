@@ -109,13 +109,11 @@ export class TurnPlanner {
           this.homeSteps = 0
         else if (this.homeSteps === 0)
           this.homeSteps = Math.ceil(magnitude / stepYawLimit)
-      }
-      if (!this.activeStep && (input.home ? this.homeSteps === 0 : magnitude < turnStop)) {
-        this.frame.turning = false
-        this.refractoryUntil = this.time + refractoryDuration
-        continue
-      }
-      if (!this.activeStep) {
+        if (input.home ? this.homeSteps === 0 : magnitude < turnStop) {
+          this.frame.turning = false
+          this.refractoryUntil = this.time + refractoryDuration
+          continue
+        }
         const yaw = input.home
           ? error / this.homeSteps--
           : Math.sign(error) * Math.min(stepYawLimit, Math.max(0, magnitude - turnRemainder))

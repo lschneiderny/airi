@@ -422,7 +422,7 @@ export function createActLayer(): PerformanceLayer {
         const local = age - index * cycle
         const side = index % 2 === 0 ? s : -s
         for (const arm of SIDES) {
-          const t = local - (arm === sideOf(side) ? 0 : 0.12)
+          const t = local - (arm === sideOf(side) ? 0 : BILATERAL)
           channels[ARM_START[arm]] += w * path(t, [[0.35, 10], [0.7, 5], [1.05, -3], [1.4, 0]]) * DEG
           channels[ARM_START[arm] + 1] += w * path(t, [[0.35, 0], [0.7, -8], [1.05, -3], [1.4, 0]]) * DEG
         }

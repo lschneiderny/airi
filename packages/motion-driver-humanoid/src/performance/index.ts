@@ -310,8 +310,9 @@ class BodyPerformer {
     const localX = head[0] * x + head[3] * y + head[6] * z
     const localY = head[1] * x + head[4] * y + head[7] * z
     const localZ = head[2] * x + head[5] * y + head[8] * z
-    frame.eyes.yaw = Math.max(-this.options.traits.eyeYawLimit, Math.min(this.options.traits.eyeYawLimit, Math.atan2(localX, localZ)))
-    frame.eyes.pitch = Math.max(-this.options.traits.eyePitchLimit, Math.min(this.options.traits.eyePitchLimit, Math.atan2(-localY, Math.hypot(localX, localZ))))
+    const { eyeYawLimit, eyePitchLimit } = this.options.traits
+    frame.eyes.yaw = Math.max(-eyeYawLimit, Math.min(eyeYawLimit, Math.atan2(localX, localZ)))
+    frame.eyes.pitch = Math.max(-eyePitchLimit, Math.min(eyePitchLimit, Math.atan2(-localY, Math.hypot(localX, localZ))))
   }
 
   /** Owned snapshot of the seed's collision-cleared reference, independent of live buffers. */

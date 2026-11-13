@@ -53,11 +53,11 @@ function speaking(onsets: readonly number[], start: number, end: number) {
 
 function frames(script: (t: number) => BodyPerformanceInput, seconds: number) {
   const performer = layered()
-  const out: { channels: Float32Array, activation: { left: number, right: number }, hand: string | null, phase: string, inhales: number }[] = []
+  const out: { channels: Float32Array, activation: { left: number, right: number }, hand: string | null, inhales: number }[] = []
   for (let tick = 0; tick < seconds / BODY_TICK; tick++) {
     const frame = performer.step(script(tick * BODY_TICK))
     const g = frame.diagnostics.gesture
-    out.push({ channels: frame.channels.slice(), activation: { ...g.activation }, hand: g.hand, phase: g.phase, inhales: frame.diagnostics.inhales })
+    out.push({ channels: frame.channels.slice(), activation: { ...g.activation }, hand: g.hand, inhales: frame.diagnostics.inhales })
   }
   return out
 }

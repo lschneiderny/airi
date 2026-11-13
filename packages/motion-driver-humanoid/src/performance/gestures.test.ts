@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 
 import { ARM_NOISE_DEGREES } from './arms'
 import { ARM_START, BODY_TICK, channelIndex, DEG, JOINT_LIMITS, SIDES } from './channels'
-import { ARM_FORMS, GESTURE_FORMS, GestureKeys, writeHandShape } from './gesture-forms'
+import { ARM_FORMS, GESTURE_FORMS, gestureGain, GestureKeys, writeHandShape } from './gesture-forms'
 import { createGestureLayers } from './gestures'
 import { BodySkeleton, createBodyPerformer } from './index'
 import { chisaTraits, ellenTraits, fixtureRigs, idleInput, quietInput } from './performance.test-fixtures'
@@ -401,7 +401,7 @@ describe('co-speech gestures', () => {
     expect(presses[0.85]).toBeGreaterThan(presses[0.45])
   }, 120_000)
 
-  it('shows five forms over 500 seeds of neutral speech, more with the dominant hand, larger at higher energy', () => {
+  it('shows every form over 500 seeds of neutral speech, more with the dominant hand, larger at higher energy', () => {
     const forms = new Set<BodyGestureForm>()
     const hands = { left: 0, right: 0 }
     const travel = { low: [] as number[], high: [] as number[] }
@@ -421,7 +421,7 @@ describe('co-speech gestures', () => {
         }
       }
     }
-    expect(forms.size).toBeGreaterThanOrEqual(5)
+    expect([...forms].sort()).toEqual(Object.keys(GESTURE_FORMS).sort())
     expect(hands.right).toBeGreaterThan(hands.left)
     const mean = (values: number[]) => values.reduce((s, v) => s + v, 0) / values.length
     expect(mean(travel.high)).toBeGreaterThan(mean(travel.low))
@@ -756,7 +756,7 @@ describe('co-speech gestures', () => {
           expect(keys.solve(side, keys.readyKey(energy, outward), ready)).toBe(true)
           const stroke = ready.slice()
           writeHandShape(GESTURE_FORMS[form].shape, stroke)
-          const size = Math.max(0.5, Math.min(1.5, 0.55 + 0.9 * energy)) * GESTURE_FORMS[form].scale
+          const size = gestureGain(energy) * GESTURE_FORMS[form].scale
           expect(keys.solve(side, keys.strokeKey(keys.readyKey(energy, outward), form, size), stroke, ready)).toBe(true)
           expect(keys.pathDepth(side, ready, stroke)).toBe(0)
         }

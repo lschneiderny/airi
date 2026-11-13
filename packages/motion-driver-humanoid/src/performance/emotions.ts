@@ -196,7 +196,6 @@ export function createEmotionLayer(): EmotionLayer {
   })
   let impulseSeq: number | null = null
   let time = 0
-  let active = false
   /** The tick's summed slump in radians, spread over the torso after every track has added its share. */
   let slump = 0
 
@@ -371,7 +370,7 @@ export function createEmotionLayer(): EmotionLayer {
         channels[c('midPitch')] += SLUMP_SHARES[1] * capped
         channels[c('upperPitch')] += SLUMP_SHARES[2] * capped
       }
-      active = anyTarget || moving
+      const active = anyTarget || moving
       if (active) {
         ownership(context.input)
         for (let channel = 0; channel < channels.length; channel++)
@@ -389,7 +388,6 @@ export function createEmotionLayer(): EmotionLayer {
       Object.assign(report, { seq: 0, emotion: null, phase: null })
       impulseSeq = null
       time = 0
-      active = false
     },
   }
 }

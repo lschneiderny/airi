@@ -51,8 +51,9 @@ describe('cue gesture layer', () => {
 
   it('plays the nod on the head once, at Natural\'s 6.6 degrees, while asking the posture to drop Natural\'s head cue', () => {
     const d = layerEffect(cue('nod'), 2)
-    expect(Math.max(...sum(d[c('neckPitch')], d[c('headPitch')])) / DEG).toBeGreaterThan(6.6 * 0.95)
-    expect(Math.max(...sum(d[c('neckPitch')], d[c('headPitch')])) / DEG).toBeLessThan(6.6 * 1.05)
+    const nodPeak = Math.max(...sum(d[c('neckPitch')], d[c('headPitch')])) / DEG
+    expect(nodPeak).toBeGreaterThan(6.6 * 0.95)
+    expect(nodPeak).toBeLessThan(6.6 * 1.05)
     const plans: boolean[] = []
     const recorder: PerformanceLayer = {
       id: 'recorder',

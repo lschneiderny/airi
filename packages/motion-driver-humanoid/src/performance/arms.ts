@@ -49,7 +49,13 @@ const ELBOW_WEIGHT_LAG = damping[2] / (Math.PI * relaxed[2])
  * 60 ms, wrist 90 ms, fingers (with spread and opposition) 130 ms.
  */
 function startOffset(j: number): number {
-  return j < 5 ? 0 : j === 5 ? 0.03 : j === 6 ? 0.06 : j < 9 ? 0.09 : 0.13
+  if (j < 5)
+    return 0
+  if (j === 5)
+    return 0.03
+  if (j === 6)
+    return 0.06
+  return j < 9 ? 0.09 : 0.13
 }
 
 /** Follower frequency (Hz) and damping of arm channel `j` at activation `used` and tension `tension` (3a). */
@@ -186,12 +192,12 @@ export class BodyArms {
     const roll = targets[8] + targets[11] + targets[14]
     this.trunkPitchRate = this.warm ? (pitch - this.trunkPitch) / BODY_TICK : 0
     this.trunkPitch = pitch
+    const tau = Math.exp(-BODY_TICK / 0.03)
     for (const side of SIDES) {
       const start = ARM_START[side]
       const sigma = side === 'left' ? 1 : -1
       const position = this.skeleton.arm(side, targets).shoulder
       const previous = this.shoulder[side]
-      const tau = Math.exp(-BODY_TICK / 0.03)
       const arm = this.traits.arms[side]
       const length = (Math.hypot(arm.upperArm.x, arm.upperArm.y, arm.upperArm.z) + Math.hypot(arm.forearm.x, arm.forearm.y, arm.forearm.z)) / 2
       const vx = this.warm ? (position.x - previous.x) / BODY_TICK + input.rootVelocity.x : 0
