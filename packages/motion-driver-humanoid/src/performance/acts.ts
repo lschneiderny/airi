@@ -220,7 +220,7 @@ export function createActLayer(): PerformanceLayer {
           const pose = (at: number) => {
             const t = at - a.start - lag
             const raise = trapezoid(t, 1.3, 1.6, 1.1)
-            const out = t <= 0 ? 0 : path(t, [[0.65, STRETCH.guard - rest[2]], [1.3, STRETCH.abduct - rest[2]], [2.9, STRETCH.abduct - rest[2]], [3.6, STRETCH.guard - rest[2]], [D, 0]])
+            const out = t <= 0 ? 0 : path(t, [[0.65, STRETCH.guard - rest[2]], [1.3, STRETCH.abduct - rest[2]], [2.9, STRETCH.abduct - rest[2]], [3.6, STRETCH.guard - rest[2]], [D - lag, 0]])
             const elbow = t <= 0 ? 0 : path(t, [[0.65, fold - rest[3]], [1.3, STRETCH.elbow - rest[3]], [2.9, STRETCH.elbow - rest[3]], [3.45, fold - rest[3]], [4, 0]])
             if (a.releaseAt === null || at < a.releaseAt)
               return [STRETCH.clavicle * raise, raise * (STRETCH.flex - rest[1]), out, elbow]
