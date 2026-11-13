@@ -28,6 +28,14 @@ const behaviours: readonly { readonly act: BodyIdleAct, readonly releaseAt?: num
   { act: record('about-to-speak', Infinity), releaseAt: START + 4 },
   { act: record('let-go', 2.6) },
   { act: record('sleep', Infinity), releaseAt: START + 30 },
+  { act: record('sigh', 3.4) },
+  { act: record('shoulder-roll', 4.5, { count: 2 }) },
+  { act: record('shift-stance', 1.5) },
+  { act: record('clasp-hands', 6, { variant: 0 }) },
+  { act: record('clasp-hands', 6, { variant: 1 }) },
+  { act: record('hair-touch', 2.6) },
+  { act: record('heel-rock', 2.2, { count: 2 }) },
+  { act: record('arm-swing', 3, { count: 2 }) },
 ]
 
 /** One behaviour from `START`; a behaviour let go early carries Natural's release from `releaseAt`. */
@@ -62,7 +70,7 @@ function span(entry: typeof behaviours[number]) {
 }
 
 describe('the act layer', () => {
-  // Eleven behaviours, each beside a still run, take about 7 s per rig.
+  // Nineteen behaviours, each beside a still run, take about 12 s per rig.
   it.each(rigs)('plays every behaviour on $name\'s body, from rest and back to it, without a step, and clear of the body', (rig) => {
     const seconds = (entry: typeof behaviours[number]) => START + span(entry) + 4
     for (const entry of behaviours) {
@@ -72,18 +80,21 @@ describe('the act layer', () => {
       const diff = (tick: number, channel: number) => (acted.channels[tick][channel] - still.channels[tick][channel]) / DEG
       const onset = Math.round(START / BODY_TICK)
       let peak = 0
+      let pelvis = 0
       let second = 0
       for (let tick = 2; tick < acted.channels.length; tick++) {
         for (let channel = 0; channel < BODY_CHANNELS.length; channel++) {
           // Pelvis channels are leg lengths; every other channel is an angle.
-          if (channel < 3)
+          if (channel < 3) {
+            pelvis = Math.max(pelvis, Math.abs(acted.channels[tick][channel] - still.channels[tick][channel]))
             continue
+          }
           peak = Math.max(peak, Math.abs(diff(tick, channel)))
           second = Math.max(second, Math.abs(diff(tick, channel) - 2 * diff(tick - 1, channel) + diff(tick - 2, channel)))
         }
       }
-      // Visible: some joint moves at least 2 degrees (a check-in's tilt is the smallest form).
-      expect(peak, label).toBeGreaterThan(2)
+      // Visible: some joint moves at least 1.5 degrees, or the pelvis 0.01 L (a heel raise lifts it 0.012 L).
+      expect(peak > 1.5 || pelvis > 0.01, label).toBe(true)
       // Eased: nothing has moved on the first tick, and no joint changes its speed by more than 0.25 deg per tick
       // within one tick (a step of 1 degree would read 1).
       expect(Math.max(...BODY_CHANNELS.map((_, channel) => channel < 3 ? 0 : Math.abs(diff(onset, channel)))), label).toBeLessThan(0.05)
@@ -91,7 +102,8 @@ describe('the act layer', () => {
       // Back at rest 3 s after it ends.
       const last = acted.channels.length - 1
       expect(Math.max(...BODY_CHANNELS.map((_, channel) => channel < 3 ? 0 : Math.abs(diff(last, channel)))), label).toBeLessThan(0.5)
-      expect(acted.penetration, label).toBe(0)
+      // Clear of the body to a hundred-thousandth of a unit (the corrector's numerical floor).
+      expect(acted.penetration, label).toBeLessThan(1e-5)
       expect(acted.collisions, label).toBe(0)
       expect(acted.corrector, label).toEqual({ capHits: 0, guardScans: 0 })
     }

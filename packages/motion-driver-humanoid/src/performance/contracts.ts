@@ -15,7 +15,7 @@ export type BodyCueKind = 'nod' | 'shake' | 'shrug' | 'lean' | 'glance'
 /** Architecture 4a gesture forms; `hand-to-chest` and `thinking-hand` are the emotion-requested arm forms. */
 export type BodyGestureForm = 'beat' | 'palm-up' | 'press' | 'point' | 'chop' | 'frame' | 'hand-to-chest' | 'thinking-hand'
 /** Held arm forms the gesture layer performs on a layer's request: an emotion's (4a) or an idle act's (4e). */
-export type BodyArmForm = Extract<BodyGestureForm, 'hand-to-chest' | 'thinking-hand'> | 'cover-mouth'
+export type BodyArmForm = Extract<BodyGestureForm, 'hand-to-chest' | 'thinking-hand'> | 'cover-mouth' | 'hair-touch'
 export type BodyGestureHand = BodySide | 'both'
 export type BodyGesturePhase = 'rest' | 'preparation' | 'stroke' | 'hold' | 'retraction'
 export type BodyReactionKind = 'body-poke' | 'head-poke' | 'pet' | 'drag'

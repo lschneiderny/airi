@@ -52,6 +52,9 @@ export const ARM_FORMS: Readonly<Record<BodyArmForm, { readonly shape: HandShape
   'hand-to-chest': { shape: 'relaxed', pron: 75 * DEG, wflex: -10 * DEG, swivel: 25 * DEG, short: 0, seed: 'chest', anchor: { side: 0.05, up: 0.05 } },
   'thinking-hand': { shape: 'point', pron: 20 * DEG, wflex: -20 * DEG, swivel: 10 * DEG, short: 0.04, seed: 'chin', anchor: { side: 0.1, up: 0 } },
   'cover-mouth': { shape: 'relaxed', pron: 20 * DEG, wflex: -20 * DEG, swivel: 10 * DEG, short: 0.06, seed: 'chin', anchor: { side: 0.08, up: 0 } },
+  // 4e act 8's temple anchor: 0.25 A above the chin seed (eye height on an adult head, an estimate), 0.14 A to the
+  // side, the narrowest offset in 0.04 A steps at which Chisa's and Ellen's arms solve it (E/g4/a/scratch/probe-hair.ts).
+  'hair-touch': { shape: 'relaxed', pron: 20 * DEG, wflex: -20 * DEG, swivel: 10 * DEG, short: 0.04, seed: 'chin', anchor: { side: 0.14, up: 0.25 } },
 }
 
 /** Architecture 4a's energy gain on stroke size, energy in [0, 1]. */

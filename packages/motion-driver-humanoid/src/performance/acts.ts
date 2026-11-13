@@ -303,6 +303,84 @@ export function createActLayer(): PerformanceLayer {
         clavicles(path(wake, [[0.15, WAKE.clavicle], [WAKE.clavicleSeconds, WAKE.clavicle], [WAKE.clavicleSeconds + 0.3, 0]]))
         break
       }
+      // The whole-body kinds (A4) take their sizes and timing from the 3D motion architecture's act table (4e, the
+      // row named in each case). A form that does not fit the record's duration is compressed so that it ends by it.
+      case 'sigh': {
+        // 4e act 1: inhale 1.0 s (torso mid -4, clavicles +4, head -3), hold 0.3 s, exhale 1.6 s (torso lower +3,
+        // clavicles -2 with overshoot), then recover.
+        const k = Math.min(1, (D - 0.4) / 2.9)
+        add('midPitch', path(age, [[1.0 * k, -4], [1.3 * k, -4], [2.9 * k, 0]]))
+        add('lowerPitch', path(age, [[1.3 * k, 0], [2.9 * k, 3], [D, 0]]))
+        clavicles(path(age, [[1.0 * k, 4], [1.3 * k, 4], [2.4 * k, -2], [2.9 * k, -1], [D, 0]]))
+        head(0, path(age, [[1.0 * k, -3], [1.3 * k, -3], [2.9 * k, 1], [D, 0]]), 0)
+        break
+      }
+      case 'shoulder-roll': {
+        // 4e act 2: the clavicles circle once (up 10, back 8, down 3) over 1.4 s, the two sides 120 ms apart; the head
+        // rolls 12 deg to one side, holds 0.6 s and returns; a second roll goes to the other side.
+        const cycle = D / a.record.count
+        const index = Math.min(a.record.count - 1, Math.floor(age / cycle))
+        const local = age - index * cycle
+        const side = index % 2 === 0 ? s : -s
+        for (const arm of SIDES) {
+          const t = local - (arm === sideOf(side) ? 0 : 0.12)
+          channels[ARM_START[arm]] += w * path(t, [[0.35, 10], [0.7, 5], [1.05, -3], [1.4, 0]]) * DEG
+          channels[ARM_START[arm] + 1] += w * path(t, [[0.35, 0], [0.7, -8], [1.05, -3], [1.4, 0]]) * DEG
+        }
+        head(0, 0, side * path(local, [[0.5, 12], [1.1, 12], [cycle, 0]]))
+        break
+      }
+      case 'shift-stance': {
+        // 4e act 3: the support goes fully to one side, then returns to a half shift. The free foot's in-place step
+        // (planFootSteps) is not performed yet: the performer has no foot-step output for an act.
+        if (free(['lowerBody', 'upperBody']))
+          plan.support = age < D - 0.3 ? s : 0.5 * s
+        break
+      }
+      case 'clasp-hands': {
+        // 4e act 6: both hands come together low (in front, or behind the back for the other variant), one hand lets go
+        // first, and the pelvis rocks fore and aft by 0.012 L at 0.35 Hz while they are held. The hands are posed by
+        // joint targets, not solved to a contact anchor: the arm performer holds one arm form at a time.
+        const behind = a.record.variant === 1
+        const target = behind ? { flex: -25, abduct: 15, elbow: 50 } : { flex: 25, abduct: 8, elbow: 75 }
+        for (const arm of SIDES) {
+          const start = ARM_START[arm]
+          const e = trapezoid(age, 0.8, D - 1.8 - (arm === sideOf(s) ? 0.25 : 0), 1.0)
+          add(BODY_CHANNELS[start + 2], e * (target.flex - context.rest[start + 2] / DEG))
+          add(BODY_CHANNELS[start + 3], e * (target.abduct - context.rest[start + 3] / DEG))
+          add(BODY_CHANNELS[start + 5], e * (target.elbow - context.rest[start + 5] / DEG))
+        }
+        const held = trapezoid(age, 0.8, D - 1.8, 1.0)
+        channels[c('pelvisZ')] += w * 0.012 * held * Math.sin(2 * Math.PI * 0.35 * Math.max(0, age - 0.8))
+        break
+      }
+      case 'hair-touch': {
+        // 4e act 8: the hand on the side rises to the temple (the held `hair-touch` form) and returns; the head tilts
+        // 4 deg toward it. The 0.10 A sweep back is not performed: a held form has no path after it lands.
+        if (age >= 0.1 && age < D - 0.9)
+          reach('hair-touch', sideOf(s))
+        head(0, 0, 4 * s * trapezoid(age, 0.6, D - 1.5, 0.9))
+        break
+      }
+      case 'heel-rock': {
+        // 4e act 11: two or three raises, pelvis up 0.012 L, 0.45 s up and down each, clavicles +2 at each top. The
+        // feet's 14 deg toe-down pitch is left to foot contact.
+        const period = Math.min(0.9, D / a.record.count)
+        const index = Math.min(a.record.count - 1, Math.floor(age / period))
+        const bump = raisedCosine((age - index * period) / period)
+        channels[c('pelvisY')] += w * 0.012 * bump
+        clavicles(2 * bump)
+        break
+      }
+      case 'arm-swing': {
+        // 4e act 7: an 8 deg push into each arm pendulum, opposite signs, two or three times at the arms' own swing.
+        const period = D / a.record.count
+        const u = (age % period) / period
+        const swing = 8 * Math.sin(2 * Math.PI * u) * Math.sin(Math.PI * u)
+        add('leftFlex', swing)
+        add('rightFlex', -swing)
+        break
+      }
     }
     // A clip that owns a group takes it whole; the act gives it up the way the cue layer does.
     for (let channel = 0; channel < channels.length; channel++)
