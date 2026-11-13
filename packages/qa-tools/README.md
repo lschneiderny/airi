@@ -316,15 +316,15 @@ judged. `no-repeat` judges only a kind started twice in a row; longer repeated
 blocks (A B A B) are printed, and the visual review alone enforces "no
 repeated cycle".
 
-Under `qa-neutral-day` (`body: true` since rules amendment 9) nine kinds are
+Under `qa-neutral-day` (`body: true` since rules amendment 9) ten kinds are
 drawable while she stands (look-around, check-in, peer, zone-out, stretch,
-yawn, sigh, shoulder-roll, arm-swing) and five once she has settled after 120
-s (look-around, check-in, zone-out, yawn, sigh). Nod-off and sway weigh 0, and
-so do shift-stance, heel-rock, clasp-hands and hair-touch. The scheduler
-alone, under the QA drive for 610 s on 10,000 seeds, draws six distinct kinds
-that start in the scored span and end in 19.9 % of runs (third review, at
-89b7f4838); a head-only drive read 13.0 %, and the idle unit before four kinds
-were switched off read 39.6 % (unit M2 rules amendment 7 A7.6). Most correct
+yawn, sigh, shoulder-roll, arm-swing, shift-stance) and six once she has
+settled after 120 s (look-around, check-in, zone-out, yawn, sigh,
+shift-stance). Nod-off and sway weigh 0, and so do heel-rock, clasp-hands and
+hair-touch. On a body host the draw prefers kinds not started in the last 300
+s. The scheduler alone, under the QA drive for 610 s on 10,000 seeds, draws six
+distinct kinds that start in the scored span and end in 48.2 % of runs (idle
+unit I and its review); a head-only drive read 13.0 %. About half of correct
 runs therefore fail the line by the draw alone.
 
 No line judges lasting state after an act (the arm hang, a foot left turned,
