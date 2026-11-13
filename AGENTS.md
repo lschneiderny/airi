@@ -91,6 +91,9 @@ pnpm slots history                            # Summarize CPU lease history
 pnpm qa:display run -- <command>              # Linux: run app windows in a headless KWin session, off the user's desktop
 pnpm qa:smoke [--model <path>]                # Fresh-profile start; fails on any renderer or main-process error
 pnpm qa:app run --model <path> --say <text>   # Replayed chat turn in the real app: ACT, expression, speech events
+pnpm qa:motion3d run --model <pmx> --scenario <id> --seed <n> --out <dir>   # Headless MMD body motion in Node, deterministic per seed
+pnpm qa:motion3d gate | diff | frames | clip <run dir> ...                 # Motion-quality gate, run identity, stills and clips
+pnpm qa:test:model                            # Model-gated tests; needs AIRI_QA_MMD_MODEL in .env.qa
 ```
 On Linux, start every agent command that opens app windows (T3 runs, agent-browser on Electron, Vishot) through `pnpm qa:display run --`, so the user's desktop, focus, and cursor stay undisturbed. Use `--name <name>` for parallel sessions and stop yours with `pnpm qa:display down --name <name>`.
 The `airi-qa` MCP server in `.mcp.json` (`pnpm qa:mcp`) offers the same app session as tools: `airi_start`, `airi_send`, `airi_screenshot`, `airi_errors`, `airi_eval`, and `airi_stop`. Always call `airi_stop` when done, because the session holds a `live` CPU lease.
@@ -131,6 +134,7 @@ Read the listed file before starting. Skill paths below are under `.agents/skill
 | Screenshots and visual evidence | [use-vishot](.agents/skills/use-vishot/SKILL.md). Load only the matching runtime and scenario references. |
 | Live2D, VRM, MMD import/rendering in web and desktop | [use-agent-browser-for-airi](.agents/skills/use-agent-browser-for-airi/SKILL.md) |
 | Motion QA, emotion/idle gates, rendered motion runs | [motion-qa](.agents/skills/motion-qa/SKILL.md) |
+| Headless MMD body motion: runs, `mmd-motion-quality` gate, topic reports, clips | [motion-qa](.agents/skills/motion-qa/SKILL.md), [qa-tools README](packages/qa-tools/README.md) (`pnpm qa:motion3d`) |
 | Checking a change in the running app: clean start, chat turn, screenshot, errors | [qa-tools README](packages/qa-tools/README.md#clean-start-smoke): `qa:smoke`, `qa:app`, and the `airi-qa` MCP server |
 | Live QA on Linux: anything that opens app windows | [`pnpm qa:display`](scripts/dev-tools/README.md#pnpm-qadisplay) |
 
