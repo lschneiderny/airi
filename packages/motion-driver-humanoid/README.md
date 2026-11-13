@@ -140,6 +140,10 @@ performer's `gait.channels`, which blends them by `frame.weight`. While `frame.w
 targets: seed it with the contact planner's planted anchors (converted to world),
 and hand `frame.feet` back through `setAnchors` when it returns to idle. Pass
 `frame.root.yaw` to the turn planner as `facingYaw` with `allowTurn: false` while moving.
+`frame.body.lowerBodyYaw` turns the pelvis by `6 deg * strideScale` with the leading leg, and `frame.body.twist`
+carries it up the spine as a counter-rotation (lower, mid and upper torso at -0.25, -0.55 and -0.35 of it, 0.03, 0.06
+and 0.09 steps late) with a head counter of minus the torso's yaw 80 ms earlier, so the head stays near the travel
+line (architecture 5.2). `chestCounterYaw` keeps its old meaning for other readers.
 With `traits.foot` (each foot's ankle height and heel and ball distances) every foot also carries
 `roll` (architecture 5.1): it strikes on the heel at `14 deg * min(1, strideScale)`, is flat from 12 % of the stance,
 rises onto the ball from 62 % to `-32 deg * min(1, strideScale)` at lift-off, and swings back through flat to the next

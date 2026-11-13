@@ -37,8 +37,13 @@ export function writeGaitChannels(frame: LocomotionFrame, legLength: number, out
   out[5] = body.lowerBodyRoll
   out[7] = body.spinePitch
   out[8] = body.upperBodyRoll
-  // The legacy chest bone is the top of the chain, which the upper torso control reaches on every chain length.
-  out[12] = body.chestCounterYaw
+  // The twist runs up the torso chain's three controls; the upper one reaches the top bone on every chain length.
+  out[6] = body.twist.lower
+  out[9] = body.twist.mid
+  out[12] = body.twist.upper
+  // The head counter is split between neck and head as the performer splits its own stabilising counter (steadyHead).
+  out[15] = 0.35 * body.twist.head
+  out[18] = 0.65 * body.twist.head
   out[13] = body.chestPitch
   out[14] = body.chestCounterRoll
   for (const side of ['left', 'right'] as const) {

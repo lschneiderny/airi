@@ -66,6 +66,19 @@ export interface FootRoll {
   readonly pivot: 'heel' | 'flat' | 'ball' | 'air'
 }
 
+/**
+ * Architecture 5.2: the pelvis yaw travels up the spine as a counter-rotation, each torso segment at its own lag, and the
+ * head turns back against the torso so it stays on the travel line. Yaws in radians, for a torso chain that does not
+ * inherit the pelvis yaw.
+ */
+export interface GaitTwist {
+  readonly lower: number
+  readonly mid: number
+  readonly upper: number
+  /** Minus the three torso yaws as they were 80 ms earlier, the reflex latency of head stabilisation. */
+  readonly head: number
+}
+
 export interface LocomotionFoot {
   /** World target for the ankle. */
   readonly target: FootAnchor
@@ -95,7 +108,7 @@ export interface LocomotionFrame {
   readonly feet: Record<Foot, LocomotionFoot>
   /** Same sign as WeightShiftOutput.s. */
   readonly support: number
-  readonly body: GaitBodyChannels & { readonly chestCounterYaw: number }
+  readonly body: GaitBodyChannels & { readonly chestCounterYaw: number, readonly twist: GaitTwist }
   readonly armSwing: Record<Foot, {
     readonly flexion: number
     readonly elbowFlex: number
@@ -149,6 +162,11 @@ const toeOffPitch = 32 * radians
 /** Stance shares: the foot is flat from 12 % and its heel rises from 62 %. */
 const footFlatAt = 0.12
 const heelOffAt = 0.62
+/** Architecture 5.2: pelvis yaw at a full stride, and each torso segment's share of it (negative: a counter) and lag in steps. */
+const pelvisTwist = 6 * radians
+const torsoTwist = [[-0.25, 0.03], [-0.55, 0.06], [-0.35, 0.09]] as const
+/** The performer's head-stabilisation latency (`STEADY_LAG` in `performance/index.ts`), seconds. */
+const headCounterLag = 0.08
 const sides = ['left', 'right'] as const
 /** Lateral sign: left = -1, right = +1, matching `support`. */
 const footSign: Record<Foot, 1 | -1> = { left: -1, right: 1 }
@@ -804,7 +822,10 @@ class Locomotion {
   private frame(mode: LocomotionFrame['mode'], events: readonly GaitEvent[], pelvis: ReturnType<Locomotion['pelvis']>): LocomotionFrame {
     const strideScale = pelvis.length / this.referenceLength
     const support = this.support(this.phase)
-    const lowerBodyYaw = 4 * radians * strideScale * this.lead(this.phase)
+    const lowerBodyYaw = pelvisTwist * strideScale * this.lead(this.phase)
+    const torso = (lag: number) => torsoTwist.map(([share, segmentLag]) => share * pelvisTwist * strideScale * this.lead(this.phase - segmentLag - lag))
+    const [lower, mid, upper] = torso(0)
+    const late = torso(headCounterLag * this.stepRate(this.speed))
     const swingScale = Math.min(1.3, this.speed / this.referenceSpeed)
     const arm = (side: Foot) => {
       const flexion = 2 * radians - 12 * radians * swingScale * footSign[side] * this.lead(this.phase - 0.05)
@@ -828,6 +849,7 @@ class Locomotion {
         spinePitch: 0.6 * this.lean.value,
         chestPitch: 0.4 * this.lean.value,
         chestCounterYaw: -0.5 * lowerBodyYaw,
+        twist: { lower, mid, upper, head: -(late[0] + late[1] + late[2]) },
       },
       armSwing: { left: arm('left'), right: arm('right') },
       weight: smoothstep(this.blend),

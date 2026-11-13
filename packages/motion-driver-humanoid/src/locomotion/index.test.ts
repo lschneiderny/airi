@@ -400,6 +400,33 @@ describe('procedural gait', () => {
     expect(flat).toBeGreaterThan(100)
   })
 
+  it('twist: the torso counter-rotates the pelvis up the spine, and the head counters the torso 80 ms late', () => {
+    const { frames } = scenario('cruise')
+    const steady = frames.filter((frame, tick) => tick * dt >= 3 && frame.mode === 'walking')
+    expect(steady.length).toBeGreaterThan(600)
+    const peak = Math.max(...steady.map(frame => Math.abs(frame.body.lowerBodyYaw)))
+    // A full stride at v_ref: 6 degrees of pelvis yaw (architecture 5.2).
+    expect(peak).toBeCloseTo(6 * rad, 3)
+    const torso = (frame: LocomotionFrame) => frame.body.twist.lower + frame.body.twist.mid + frame.body.twist.upper
+    // 0.08 s is 9.6 ticks: interpolate the torso between the frames 9 and 10 ticks earlier.
+    const earlierTorso = (index: number) => {
+      const near = steady[index - 9]
+      const far = steady[index - 10]
+      return near && far ? 0.4 * torso(near) + 0.6 * torso(far) : null
+    }
+    for (const [index, frame] of steady.entries()) {
+      // Each torso segment turns against the pelvis; the upper one, whose lag is 0.09 steps, still turns with it at
+      // a sign change, so the products are checked on the larger part of the stride only.
+      if (Math.abs(frame.body.lowerBodyYaw) > 0.5 * peak) {
+        expect(frame.body.twist.upper * frame.body.lowerBodyYaw).toBeLessThan(0)
+        expect(frame.body.twist.mid * frame.body.lowerBodyYaw).toBeLessThan(0)
+      }
+      const earlier = earlierTorso(index)
+      if (earlier !== null)
+        expect(frame.body.twist.head + earlier).toBeCloseTo(0, 4)
+    }
+  })
+
   it('turn easing: a turn leaves and reaches its facing at rest and never stops between its steps', () => {
     const run = createRun({ x: 0, yaw: 0 })
     run.advance(2, () => ({ goalX: 0, arriveFacing: Math.PI / 2 }))
