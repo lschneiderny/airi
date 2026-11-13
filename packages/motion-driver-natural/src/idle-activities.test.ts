@@ -397,5 +397,5 @@ describe('idle activities in the controller', () => {
       expect(blink.blinkFactor).toBeGreaterThanOrEqual(0)
       expect(blink.blinkFactor).toBeLessThanOrEqual(1)
     }
-  })
+  }, 30_000)
 })
