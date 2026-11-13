@@ -34,7 +34,14 @@ reaching feature parity with the Live2D and VRM renderers:
   after two minutes idle and sleeps while the user is away; the body director
   plays the sit or sleep clip for it with a 0.6 s eased cross-fade on the base
   layer, or rests or dozes her without a clip when the slot is empty. A sit or
-  sleep clip never plays as the standing idle.
+  sleep clip never plays as the standing idle. The sit starts after 120 s of
+  continuous idle mode as before, but anything Natural must answer (a touch, a
+  noticed cursor) also restarts the count; the sleep starts when Natural falls
+  asleep, 12 to 31 s after the user leaves, not as soon as the stance dwell
+  allows. **Without an idle drive she never sits or sleeps**: with Idle
+  activities off, under the classic motion driver, or in a host that sets no
+  drive, the director no longer sits her after two minutes idle or sleeps her
+  while the user is away, whatever clips are assigned (changed 2026-11-13).
 - **Stage locomotion** (desktop stage only, `stageWorld` set): the body director
   also walks her to the chat after it unfolds, chases the cursor after a poke,
   pet, drag or sent message, returns home 20 s after the last reason and, with
