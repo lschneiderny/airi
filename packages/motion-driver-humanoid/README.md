@@ -380,7 +380,14 @@ the ankle targets the leg IK reaches that tick), the corrector turns those
 bodies with the leg as the MMD foot stage seeds its IK: the knee bends until hip
 to ankle spans the target, the hip turns the leg onto it, both scaled by the
 gait weight. Without the gait they stay with the hips, as at bind, so a still
-body is corrected exactly as before.
+body is corrected exactly as before. While the legs are posed, a moving leg
+body also has a soft skin one margin thick (0.03 of the shorter arm segment)
+outside its margin: an arm `x` deep in the skin of thickness `s` is pushed back
+by `x^2 / 4s` up to `x = 2s` and by `x - s` beyond, before the hard projection
+runs. The push starts with zero slope and never leaves the arm inside the
+margin, so a thigh swinging into the hand slows it over several ticks instead of
+stopping it in one. Torso and head proxies keep the hard projection: gesture
+paths are planned to graze their margin.
 
 `BodyPerformanceInput.head.attitude` is Natural's posture alone, converted to
 radians, and `head.terms` keeps the six other terms separate. `head.slow` is the

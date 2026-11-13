@@ -12,6 +12,13 @@ export { colliderDistance, proxyColliders } from './colliders'
 
 /** The guard weight's critically damped response, rad/s: the reaction layer's inertialisation rate (architecture 3g). */
 const GUARD_OMEGA = 14
+/**
+ * The soft skin outside the margin of a leg body while the gait swings the legs, as a share of the segment length: the
+ * margin's own thickness. An arm entering it is pushed back by a smooth function of its depth there, so a thigh that
+ * swings into the arm slows it over several ticks instead of stopping it dead at the margin, and the arm never passes
+ * the margin.
+ */
+const SKIN = 0.03
 
 /** Writes the rotation by `angle` about the unit axis (x, y, z) into a transform's row-major 3x3, as `setRotation` does. */
 function setAxisAngle(out: BodyTransform, x: number, y: number, z: number, angle: number): void {
@@ -67,6 +74,10 @@ export class BodyCollision {
   }
 
   private readonly legScratch = identityTransform()
+  /** The latest `prepare` posed the leg bodies from the gait. */
+  private legsPosed = false
+  /** Each side's skin thickness in model units: `SKIN` of the shorter arm segment, so it is never thicker than a sample's own. */
+  private readonly skin: Record<BodySide, number>
   private readonly local = identityTransform()
   private readonly angles = new Float64Array(3)
   private readonly previous = new Float64Array(BODY_CHANNELS.length)
@@ -79,6 +90,11 @@ export class BodyCollision {
 
   constructor(private readonly traits: BodyRigTraits, rest: Float32Array) {
     this.skeleton = new BodySkeleton(traits)
+    const skin = (side: BodySide) => {
+      const { upperArm, forearm } = traits.arms[side]
+      return SKIN * Math.min(Math.hypot(upperArm.x, upperArm.y, upperArm.z), Math.hypot(forearm.x, forearm.y, forearm.z))
+    }
+    this.skin = { left: skin('left'), right: skin('right') }
     this.colliders = traits.colliders.length ? traits.colliders : proxyColliders(traits)
     this.posed = this.colliders.map(() => identityTransform())
     this.prepare(rest)
@@ -161,6 +177,7 @@ export class BodyCollision {
     this.skeleton.update(channels)
     const legs = this.traits.legs
     const ankles = gait && gait.weight > 0 ? gait.ankles : null
+    this.legsPosed = legs !== null && ankles !== null
     if (legs && ankles && gait) {
       for (const side of SIDES)
         this.poseLeg(side, legs[side], ankles[side], gait.weight)
@@ -236,9 +253,10 @@ export class BodyCollision {
 
   /**
    * Margin-inclusive depth against torso AND head; borrowed result. Call prepare after trunk changes. `extra` grows
-   * each capsule's radius by that share of its segment length, for poses that need room beyond the margin.
+   * each capsule's radius by that share of its segment length, for poses that need room beyond the margin. `legsOnly`
+   * measures against the leg bodies alone.
    */
-  measure(side: BodySide, channels: ArrayLike<number>, extra = 0) {
+  measure(side: BodySide, channels: ArrayLike<number>, extra = 0, legsOnly = false) {
     const pose = this.skeleton.arm(side, channels)
     const d = this.deepest
     d.depth = d.head = 0
@@ -258,6 +276,8 @@ export class BodyCollision {
         const y = from.y + dy * fraction
         const z = from.z + dz * fraction
         for (let i = 0; i < this.colliders.length; i++) {
+          if (legsOnly && !this.colliders[i].leg)
+            continue
           const frame = this.posed[i]
           const px = x - frame[9]
           const py = y - frame[10]
@@ -313,6 +333,8 @@ export class BodyCollision {
         channels[index] += this.previous[index] * Math.exp(-BODY_TICK / 0.3)
         channels[index] = Math.max(JOINT_LIMITS[index][0], Math.min(JOINT_LIMITS[index][1], channels[index]))
       }
+      if (this.legsPosed && this.project(side, channels, true))
+        this.corrector.capHits++
       if (this.project(side, channels))
         this.corrector.capHits++
       for (let j = 2; j <= 5; j++)
@@ -341,15 +363,24 @@ export class BodyCollision {
 
   /**
    * Architecture 6.2's projection: up to three smallest rotations of the upper arm (and 0.3 of each on the elbow, for a
-   * forearm contact) that clear one arm of the proxies as last prepared. It keeps no state. True when the 6 degree cap
+   * forearm contact) that move one arm out of the proxies as last prepared. It keeps no state. True when the 6 degree cap
    * bounded a step.
+   *
+   * With `legSkin`, only the leg bodies count and the arm is measured with the skin added to its radius. With `x` its
+   * depth into the skin of thickness `s`, it is pushed back by `x^2 / 4s` until `x = 2s` and by `x - s` beyond: the push
+   * and its slope are 0 at the skin's edge and the arm keeps at most the skin's depth, so it ends clear of the margin. A
+   * thigh that swings into the arm slows it while it crosses the skin instead of stopping it in one tick.
    */
-  project(side: BodySide, channels: Float32Array): boolean {
+  project(side: BodySide, channels: Float32Array, legSkin = false): boolean {
     const start = ARM_START[side]
+    const skin = this.skin[side]
     let capped = false
+    let keep = 0
     for (let attempt = 0; attempt < 3; attempt++) {
-      const d = this.measure(side, channels)
-      if (d.depth <= 0)
+      const d = legSkin ? this.measure(side, channels, SKIN, true) : this.measure(side, channels)
+      if (legSkin && attempt === 0)
+        keep = d.depth < 2 * skin ? d.depth - d.depth * d.depth / (4 * skin) : skin
+      if (d.depth <= keep)
         break
       const crossX = d.y * d.nz - d.z * d.ny
       const crossY = d.z * d.nx - d.x * d.nz
@@ -364,7 +395,7 @@ export class BodyCollision {
       // norm (d x n on the chest X and Z axes) is at most |d|, so this is the smallest rotation that clears it. The
       // 1e-6 lever skin lands the linear step just outside the margin, so a grazing contact clears continuously
       // instead of falling through to the guard scan's one-sixteenth step.
-      const clearing = (d.depth + 1e-6 * Math.hypot(d.x, d.y, d.z)) / norm
+      const clearing = (d.depth - keep + 1e-6 * Math.hypot(d.x, d.y, d.z)) / norm
       capped ||= clearing > 6 * DEG
       const angle = Math.min(6 * DEG, clearing)
       channels[start + 2] += angle * gx / norm
