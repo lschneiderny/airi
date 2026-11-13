@@ -101,6 +101,8 @@ export interface WalkFormDetail {
   readonly strides: number
   readonly heel: readonly number[]
   readonly toe: readonly number[]
+  /** Every heel strike and toe-off that fails the roll rule, in time order; printed, so the review can find each step. */
+  readonly flatSteps: readonly { readonly t: number, readonly foot: 'left' | 'right', readonly event: 'heel-strike' | 'toe-off', readonly pitch: number }[]
   readonly skateField: 'skateContact' | 'skate'
   readonly skate: number | null
   readonly feetError: number | null
@@ -136,6 +138,7 @@ export function walkFormReport(run: LoadedRun): CaseReport<WalkFormDetail> {
   // (a) Steps as metrics/gait.ts detects them: peaks of the foot's fore-aft displacement from the root.
   const heel: number[] = []
   const toe: number[] = []
+  const flatSteps: { t: number, foot: 'left' | 'right', event: 'heel-strike' | 'toe-off', pitch: number }[] = []
   const strideCounts = SIDES.map((side) => {
     const { series, q } = need(`${side}Foot`)
     const d = butterworth(series.slice(0, walking.length).map((v, i) => heading(sub(v, p.rootPosition[i]), p.yaw[i])[2] / legLength), 6)
@@ -143,6 +146,10 @@ export function walkFormReport(run: LoadedRun): CaseReport<WalkFormDetail> {
     const toes = peaks(d.map(v => -v), Number.NEGATIVE_INFINITY).filter(i => walking[i])
     heel.push(...heels.map(i => pitch(q, i)))
     toe.push(...toes.map(i => pitch(q, i)))
+    flatSteps.push(
+      ...heels.filter(i => pitch(q, i) < C.heelPitchDeg).map(i => ({ t: p.times[i], foot: side, event: 'heel-strike' as const, pitch: pitch(q, i) })),
+      ...toes.filter(i => pitch(q, i) > C.toePitchDeg).map(i => ({ t: p.times[i], foot: side, event: 'toe-off' as const, pitch: pitch(q, i) })),
+    )
     return walkingSpans.reduce((n, span) => n + Math.max(0, heels.filter(i => i >= span.start && i < span.end).length - 1), 0)
   })
   const strides = Math.max(...strideCounts)
@@ -243,6 +250,7 @@ export function walkFormReport(run: LoadedRun): CaseReport<WalkFormDetail> {
     strides,
     heel,
     toe,
+    flatSteps: flatSteps.sort((x, y) => x.t - y.t),
     skateField,
     skate,
     feetError,
@@ -259,6 +267,7 @@ export function formatWalkForm(report: CaseReport<WalkFormDetail>): string {
     `strides on the busier foot: ${d.strides}`,
     `heel-strike pitch: ${range(d.heel)}`,
     `toe-off pitch: ${range(d.toe)}`,
+    `steps that fail the roll rule (${d.flatSteps.length}): ${d.flatSteps.map(step => `${step.t.toFixed(3)} s ${step.foot} ${step.event} ${step.pitch.toFixed(2)} deg`).join('; ') || 'none'}`,
     ...(['left', 'right'] as const).map(side => `${side} forearm lag per window: ${d.lags[side].map(l => `${l.start.toFixed(1)} s ${l.lagMs.toFixed(1)} ms r ${l.r.toFixed(3)}`).join('; ') || 'none'}`),
     `turns in the travel heading (${d.turns.length}); head lead printed, not judged (a ${C.minLeadMs} ms bar sits inside the 0 to 100 ms noise of a product with no designed lead): ${d.turns.filter(turn => turn.leadMs !== null && turn.leadMs >= C.minLeadMs).length} of ${d.turns.length} at least ${C.minLeadMs} ms`,
     ...d.turns.map(turn => `  ${turn.start.toFixed(3)}-${turn.end.toFixed(3)} s\troot ${turn.rootDeg.toFixed(1)} deg\thead ${turn.headDeg.toFixed(1)} deg\tlead ${turn.leadMs === null ? 'no head turn' : `${turn.leadMs.toFixed(1)} ms`}`),

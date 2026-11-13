@@ -109,6 +109,15 @@ describe('walk-form report', () => {
     expect(statuses(walkFormReport(walk({ roll: { left: [14, -32], right: [0, 0] } })))).toMatchObject({ 'roll-every-step': 'FAIL', 'wrist-lags': 'PASS' })
   })
 
+  it('lists every heel strike and toe-off that fails the roll rule with its time and foot, and none on a walk that rolls', () => {
+    const flat = walkFormReport(walk({ roll: { left: [14, -32], right: [0, 0] } })).detail.flatSteps
+    expect(flat.length).toBeGreaterThan(0)
+    expect(new Set(flat.map(step => step.foot))).toEqual(new Set(['right']))
+    expect(new Set(flat.map(step => step.event))).toEqual(new Set(['heel-strike', 'toe-off']))
+    expect(flat.every((step, i) => i === 0 || step.t >= flat[i - 1].t)).toBe(true)
+    expect(walkFormReport(walk()).detail.flatSteps).toEqual([])
+  })
+
   it('fails a forearm that leads the upper arm by 50 ms', () => {
     expect(statuses(walkFormReport(walk({ forearmLag: -0.05 })))).toMatchObject({ 'roll-every-step': 'PASS', 'wrist-lags': 'FAIL' })
   })
