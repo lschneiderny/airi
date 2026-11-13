@@ -6,7 +6,7 @@ import { runReportCommand } from './report-cli'
 const USAGE = 'qa:motion3d idle-acts <idle run directory> --pair <the same run with --acts off>'
 
 /**
- * `qa:motion3d idle-acts <run> --pair <acts-off run>`: the C001 act report (version 5, goal 4 unit M2); `--pair` names
+ * `qa:motion3d idle-acts <run> --pair <acts-off run>`: the C001 act report (version 6, goal 4 unit M2); `--pair` names
  * the same model, commit, scenario, seed and length run with acts switched off (no idle drive).
  */
 export async function idleActsMotion3d(args: readonly string[], context: Motion3dCliContext): Promise<number> {

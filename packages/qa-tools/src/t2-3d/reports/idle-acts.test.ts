@@ -168,12 +168,15 @@ const SHIFT_TO = [1, -0.5, 0, -1, 0.5, -1, 1, 0, -0.5, 1, -1, 0.5, 0, 1, -0.5, -
 /** The delay each act adds while it runs: `rate` s per s of the act (the product's calm allows at most 0.6). */
 const delayed = (rate: (k: number) => number) => (t: number) => SPACED.reduce((sum, b, k) => sum + rate(k) * Math.min(ACT_SECONDS, Math.max(0, t - b.at)), 0)
 const schedule = (rate: (k: number) => number = () => 0.5): Support => ({ at: SHIFT_AT, to: SHIFT_TO, delay: delayed(rate), gains: { x: 0.03, hips: 3, legs: 15 } })
-const P1: Body = { seconds: 140, behaviours: SPACED, support: schedule() }
-/** V3: the reviewer's idle: no sway on the hips and legs, the hips rolled 3 deg by a weight shift every 23 s. */
+/** The hips and legs without her every-bone sway: as in the product, the lower body carries only the weight shift. */
 const LEGS: readonly MotionTraceBone[] = ['hips', 'leftUpperLeg', 'leftLowerLeg', 'leftFoot', 'leftToes', 'rightUpperLeg', 'rightLowerLeg', 'rightFoot', 'rightToes']
+const P1: Body = { seconds: 140, behaviours: SPACED, support: schedule(), still: LEGS }
+/** Which act, counted from 0, the time `t` falls after: the sign of an offset switches in the middle of each act. */
+const actsBefore = (t: number) => SPACED.filter(b => b.at + ACT_SECONDS / 2 <= t).length
+/** V3: the reviewer's idle: no sway on the hips and legs, the hips rolled 3 deg by a weight shift every 23 s. */
 const SHIFTING: Pick<Body, 'still' | 'support'> = { still: LEGS, support: { at: [5, 28, 51, 74], to: [1, -1, 1, -1], gains: { x: 0, hips: 3, legs: 0 } } }
 
-describe('idle-acts report version 5', () => {
+describe('idle-acts report version 6', () => {
   it('i1: passes six distinct kinds that each moved her body, the QA drive named and the companion equal outside the acts', () => {
     const r = report({ behaviours: SIX })
     expect(statuses(r)).toEqual({ 'drive': 'PASS', 'distinct-acts': 'PASS', 'no-repeat': 'PASS', 'pair': 'PASS' })
@@ -215,6 +218,13 @@ describe('idle-acts report version 5', () => {
     expect(distinct(report({ ...SHIFTING, behaviours: SIX.map(b => ({ ...b, moves: null })), extra: twitch(SIX, 'leftToes', 0.25) }))).toBe(0)
   })
 
+  it('t1: reports the scale and the change the deciding channel needed, the larger of its floor and its own idle times max(1, bar)', () => {
+    const r = report({ behaviours: SIX.map(b => ({ ...b, moves: 'toe' })), still: ['leftToes'] })
+    const moved = r.detail.acts.map(act => act.movement!)
+    expect(moved.map(m => [m.channel, m.scale])).toEqual(SIX.map(() => ['leftToes', 10]))
+    expect(moved.map(m => m.needed)).toEqual(moved.map(m => m.scale * Math.max(1, m.bar)))
+  })
+
   it('v5: does not count acts whose largest rotation is 6 deg, so that with her sway no bone changes 10 deg within 1.5 s', () => {
     const r = report({ behaviours: SIX.map(b => ({ ...b, scale: 6 / Math.max(...MOVES[b.kind].map(([, , deg]) => Math.abs(deg))) })) })
     expect(distinct(r)).toBe(0)
@@ -249,8 +259,30 @@ describe('idle-acts report version 5', () => {
     expect(statuses(report({ ...P1, support: decreasing })).pair).toBe('FAIL')
   })
 
-  it('p4: fails a delay that grows more than an act can slow the schedule', () => {
-    expect(statuses(report({ ...P1, support: schedule(k => k === 2 ? 5 / ACT_SECONDS : 0.5) })).pair).toBe('FAIL')
+  it('p4: does not pass a delay that grows more than the acts can slow the schedule: its intervals sit at the bound and are not judged', () => {
+    const r = report({ ...P1, support: schedule(k => k === 2 ? 12 / ACT_SECONDS : 0.5) })
+    expect(statuses(r).pair).toBe('NOT-EXERCISED')
+    expect(r.detail.pair.intervals.filter(i => !i.judged).length).toBeGreaterThan(0)
+  })
+
+  it('pb: passes a delay that a still interval cannot show, once a weight shift after the next act shows it', () => {
+    // The first act's delay falls in an interval without a weight shift, where every delay fits; the shift after the
+    // second act needs both acts' delay (3.6 s), more than the second act alone could add.
+    const acts: Behaviour[] = [{ kind: 'stretch', at: 15 }, { kind: 'look-around', at: 35 }]
+    const delay = (t: number) => acts.reduce((sum, b) => sum + 0.6 * Math.min(ACT_SECONDS, Math.max(0, t - b.at)), 0)
+    const r = report({ seconds: 70, behaviours: acts, still: LEGS, support: { at: [6, 45, 58], to: [1, -1, 0.5], delay, gains: { x: 0.03, hips: 3, legs: 15 } } })
+    expect(statuses(r).pair).toBe('PASS')
+    expect(r.detail.pair.intervals.at(-1)?.delay).toBeCloseTo(3.6, 1)
+  })
+
+  it('pa: fails a hips position held 0.02 L to one side and then the other, switching inside every act', () => {
+    const r = report({ ...P1, hips: t => [t < SPACED[0].at + ACT_SECONDS / 2 ? 0 : actsBefore(t) % 2 === 0 ? -0.02 : 0.02, 0, 0] })
+    expect(statuses(r).pair).toBe('FAIL')
+  })
+
+  it('pt: fails a leg held 1.5 deg off on one act-free interval only, whatever the other intervals hold', () => {
+    const held = (bone: MotionTraceBone, t: number): Quat | null => bone === 'leftUpperLeg' && actsBefore(t) === 3 ? axisAngle(0, 1.5) : null
+    expect(statuses(report({ ...P1, extra: held })).pair).toBe('FAIL')
   })
 
   it('p6: passes hips movement inside a widened act', () => {
