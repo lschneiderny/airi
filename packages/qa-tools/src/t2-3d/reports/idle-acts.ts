@@ -8,14 +8,15 @@ import type { CaseReport, CaseRequirement } from './case-report'
 import type { LoadedRun, ReportConstant } from './report'
 
 import { MOTION_TRACE_CHANNELS } from '@proj-airi/motion-driver-humanoid/motion-trace'
+import { boolean, number, parseJson, pipe, record, safeParse, string, union } from 'valibot'
 
 import { percentile } from '../gate/bands'
 import { IDLE_MARKER, idleDriveDetail, QA_DRIVE_PRESENT } from '../idle-drive'
-import { add, conjugate, DEG, median, multiply, norm, rotate, sub } from '../metrics/math'
+import { add, conjugate, DEG, multiply, rotate } from '../metrics/math'
 import { caseReport, formatCaseReport, judged, notExercised } from './case-report'
 import { fixed, gateStatus, markers, ReportUsageError } from './report'
 
-export const IDLE_ACTS_VERSION = 4
+export const IDLE_ACTS_VERSION = 5
 
 const C = {
   distinct: 6,
@@ -24,12 +25,13 @@ const C = {
   movedPercentile: 0.95,
   nullStep: 0.5,
   nullMinimum: 20,
-  stillDeg: 0.01,
-  stillHips: 0.0001,
-  epsilonDeg: 0.25,
-  yawEpsilonDeg: 0.05,
-  hipsEpsilon: 0.0005,
+  actDeg: 10,
+  actSeconds: 1.5,
+  maxShiftCalm: 0.6,
+  lastingDeg: 0.25,
 } as const
+/** The hips displacement, in L, that a rotation of the leg about the planted ankle by `deg` makes. */
+const hipsFor = (deg: number) => Math.sin(deg * Math.PI / 180)
 
 /** Behaviours the scheduler reports that are not drawn acts: sleep is entered on away, the two cues are the host's. */
 const NOT_ACTS: ReadonlySet<string> = new Set(['sleep', 'about-to-speak', 'let-go'])
@@ -45,23 +47,24 @@ const REST_STATES: readonly BodyRest[] = ['none', 'rest', 'doze']
 const O2_METRICS = ['inter.burstCv', 'inter.holdFraction', 'inter.movesPerMin'] as const
 
 export const IDLE_ACTS_CONSTANTS: readonly ReportConstant[] = [
-  { name: 'drive', value: QA_DRIVE_PRESENT.name, unit: idleDriveDetail(QA_DRIVE_PRESENT).idleDriveValues, source: 'C001 owner decision "Idle wording: Amend it"; unit M2 rules section 1' },
+  { name: 'drive', value: QA_DRIVE_PRESENT.name, unit: `${idleDriveDetail(QA_DRIVE_PRESENT).idleDriveValues}, compared by value`, source: 'C001 owner decision "Idle wording: Amend it"; unit M2 rules section 1, amendment 4 A4.4' },
   { name: 'distinct acts', value: C.distinct, unit: 'kinds among counted acts', source: 'C001' },
   { name: 'exit', value: C.exitSeconds, unit: 's after an end report, inside the act', source: 'the longest release of a behaviour, wakeSeconds (idle-activities.ts)' },
   { name: 'settling', value: C.settleSeconds, unit: 's after the exit, outside the pair check and the act-free windows', source: '2 % settling of the slowest arm follower, performance/arms.ts' },
-  { name: 'moved', value: C.movedPercentile, unit: 'percentile of the act-free windows\' scores that an act\'s score must exceed', source: 'one-sided 5 % bar, as the turn report\'s pseudo-placebos' },
-  { name: 'act-free windows', value: `${C.nullStep} s grid, at least ${C.nullMinimum}`, unit: 'windows of the act\'s length in the scored span, clear of every widened behaviour', source: 'unit M2 rules section 3' },
-  { name: 'still floor', value: `${C.stillDeg} deg, ${C.stillHips} L`, unit: 'least channel scale (median act-free excursion)', source: 'above float32 storage noise' },
-  { name: 'pair epsilon', value: C.epsilonDeg, unit: 'deg, largest local-rotation difference of the performer\'s bones outside the widened spans', source: 'rules.md revision 2, B1 scoring' },
-  { name: 'pair root yaw', value: C.yawEpsilonDeg, unit: 'deg, largest root-yaw difference outside the widened spans', source: 'rules.md revision 3, X2 scoring' },
-  { name: 'pair hips', value: C.hipsEpsilon, unit: 'L, largest hips-position difference outside the widened spans', source: 'rules.md revision 3, X2 scoring' },
+  { name: 'act floor', value: `${C.actDeg} deg within ${C.actSeconds} s`, unit: `the least change a channel must make to count (bones and root yaw; hips position ${hipsFor(C.actDeg).toFixed(4)} L, the hips displacement of a ${C.actDeg} deg leg rotation about the ankle)`, source: 'the goal-2 gaze-shift criterion, gaze-order.ts CRITERION_DEG and CRITERION_WINDOW_SECONDS; amendment 4 A4.1' },
+  { name: 'moved', value: C.movedPercentile, unit: 'percentile: each channel is scaled by the larger of its floor and its own act-free 95th percentile, and an act\'s largest scaled change must exceed both 1 and the 95th percentile of the act-free windows\' largest', source: 'the review\'s named fix (E/g4/m2-review.md blocker 1); one-sided 5 % bar, as the turn report\'s pseudo-placebos' },
+  { name: 'act-free windows', value: `${C.nullStep} s grid, at least ${C.nullMinimum}`, unit: `windows of the act's length in the scored span, clear with their ${C.actSeconds} s lead of every widened behaviour`, source: 'unit M2 rules section 3, amendment 4 A4.1' },
+  { name: 'delay growth', value: C.maxShiftCalm, unit: 's per s that behaviours run [start, end + exit], at most: the pair\'s delay never decreases and never grows faster', source: 'maxShiftCalm (idle-activities.ts): an activity slows the weight-shift countdown by at most 60 %; amendment 4 A4.2' },
+  { name: 'pair visible', value: C.actDeg, unit: `deg, largest aligned difference of the performer's bones and the root yaw on any interval (hips position ${hipsFor(C.actDeg).toFixed(4)} L)`, source: 'the act floor above; amendment 4 A4.2 (b1)' },
+  { name: 'pair lasting', value: C.lastingDeg, unit: `deg, mean signed aligned difference per performer bone and the root yaw over the intervals after the first behaviour (hips position ${hipsFor(C.lastingDeg).toFixed(5)} L)`, source: 'rules.md revision 2, B1 scoring; amendment 4 A4.2 (b2)' },
 ]
 
 /** What a PASS proves and what it does not; printed with every report. */
 const IDLE_ACTS_LIMITS: readonly string[] = [
   'acts are the scheduler\'s own start and end reports (idle:<kind>:<start|end> markers); a movement the body plays without a report is never judged.',
-  'an act counts when the body moved more than in 95 % of her own act-free windows of the same length: this proves the body did something, not what; a motionless act is counted in about 5 % of its spans by construction, and a small real act within her idle\'s range may not be counted (or may be, when it adds to a channel\'s own sway).',
-  'the pair compares the performer\'s channels only (hips position, root yaw, hips and leg bones); Natural\'s breath, head and gaze streams keep lasting state after an activity by design and are printed, not judged.',
+  `an act counts when some channel changed within ${C.actSeconds} s by more than ${C.actDeg} deg and more than her own act-free windows of the same length do: this proves the body did something, not what. A motionless act is counted in at most about 5 % of its spans by construction. An act that changes every channel by less than ${C.actDeg} deg within ${C.actSeconds} s is not counted (a 6 deg sway, a 5 to 8 deg nod, a 10 deg wrist turn), and a slow drift that changes a channel by more than ${C.actDeg} deg within ${C.actSeconds} s is. The README lists the measured detection of labelled injections into her runs.`,
+  'no-repeat judges only a kind started twice in a row (C001\'s bar); longer repeated blocks (A B A B) are printed above, and the visual review alone enforces "no repeated cycle". The scheduler never draws its last drawn kind again, so in the product the line fails only through a stretch or yawn follow-up after sleep or a host cue.',
+  `the pair compares the performer's channels only (hips position, root yaw, hips and leg bones), each act-free interval against the companion delayed by the interval's delay: an activity postpones her weight-shift schedule by design. A lasting change that appears only after the last act is diluted in the mean over all intervals; a misaligned weight shift under ${C.actDeg} deg is caught only through the mean. Natural's breath, head and gaze streams keep lasting state after an activity by design and are printed, not judged.`,
   'a PASS alone is NOT accepted for C001: read it with the visual review the criterion names, from the act timeline and the review list above.',
 ]
 
@@ -97,12 +100,23 @@ export function idleSpans(run: LoadedRun): IdleSpan[] {
   return spans
 }
 
-/** The `drive` line: the run's provenance names `drive` with exactly its values. */
+/** The stored drive values: JSON of the drive's fields, numbers and booleans. */
+const DriveValues = pipe(string(), parseJson(), record(string(), union([number(), boolean()])))
+
+/** The `drive` line: the run's provenance names `drive` with exactly its values, compared by value whatever their order. */
 export function driveRequirement(run: LoadedRun, drive: Motion3dIdleDrive): CaseRequirement {
   const { detail } = run.input.trace.source
   const expected = idleDriveDetail(drive)
-  const named = detail.idleDrive === undefined ? 'no idle drive in the provenance' : `${String(detail.idleDrive)} ${String(detail.idleDriveValues)}`
-  return judged('drive', `the run's provenance names ${expected.idleDrive} with ${expected.idleDriveValues}`, named, detail.idleDrive === expected.idleDrive && detail.idleDriveValues === expected.idleDriveValues)
+  const rule = `the run's provenance names ${expected.idleDrive} with the values ${expected.idleDriveValues}, compared by value`
+  if (detail.idleDrive === undefined)
+    return judged('drive', rule, 'no idle drive in the provenance', false)
+  const named = `${String(detail.idleDrive)} ${String(detail.idleDriveValues)}`
+  const parsed = safeParse(DriveValues, detail.idleDriveValues)
+  if (!parsed.success)
+    return judged('drive', rule, `${named}: the values are not the drive's JSON (${parsed.issues[0].message})`, false)
+  const want = Object.entries(drive.drive)
+  const same = Object.keys(parsed.output).length === want.length && want.every(([key, value]) => parsed.output[key] === value)
+  return judged('drive', rule, named, detail.idleDrive === expected.idleDrive && same)
 }
 
 /** The rest state at `t`: the latest `rest:` marker at or before it, `none` before any. */
@@ -189,24 +203,107 @@ function angleBetween(a: Quat, b: Quat): number {
   return 2 * Math.atan2(Math.hypot(d[0], d[1], d[2]), Math.abs(d[3])) * DEG
 }
 
+/**
+ * The rotation vector, degrees, of `a[i] * conj(b[j])` for two quaternions stored in float blocks, without allocating
+ * the quaternions: the hot loops below call it tens of millions of times.
+ */
+function rotationVector(a: Float32Array, i: number, b: Float32Array, j: number, out: Float64Array): void {
+  const ax = a[i]
+  const ay = a[i + 1]
+  const az = a[i + 2]
+  const aw = a[i + 3]
+  const bx = -b[j]
+  const by = -b[j + 1]
+  const bz = -b[j + 2]
+  const bw = b[j + 3]
+  const x = aw * bx + ax * bw + ay * bz - az * by
+  const y = aw * by - ax * bz + ay * bw + az * bx
+  const z = aw * bz + ax * by - ay * bx + az * bw
+  const w = aw * bw - ax * bx - ay * by - az * bz
+  const length = Math.hypot(x, y, z)
+  // The shorter way round: q and -q are one rotation.
+  const scale = length < 1e-12 ? 0 : 2 * Math.atan2(length, Math.abs(w)) * DEG / length * (w < 0 ? -1 : 1)
+  out[0] = x * scale
+  out[1] = y * scale
+  out[2] = z * scale
+}
+
 /** One measured channel: a body bone's local rotation (deg), the root yaw (deg) or the hips position (L). */
 type Channel = { readonly kind: 'bone', readonly bone: number, readonly name: string } | { readonly kind: 'yaw' | 'hips', readonly name: string }
 
-function channelChange(pose: TracePose, channel: Channel, from: number, frame: number, legLength: number): number {
+/**
+ * The signed difference of `channel` between frame `f` of `a` and frame `g` of `b`, written to `out`: a bone's rotation
+ * vector (deg), the root yaw (deg, in out[0]) or the hips position (L). Returns its size.
+ */
+function difference(a: DecodedMotionTrace, f: number, b: DecodedMotionTrace, g: number, channel: Channel, out: Float64Array): number {
+  const bones = a.trace.rig.bones.length
   switch (channel.kind) {
-    case 'bone': return angleBetween(pose.local(frame, channel.bone), pose.local(from, channel.bone))
-    case 'yaw': return Math.abs(pose.yaw(frame) - pose.yaw(from)) * DEG
-    case 'hips': return norm(sub(pose.hips(frame), pose.hips(from))) / legLength
+    case 'bone':
+      rotationVector(a.rot, (f * bones + channel.bone) * 4, b.rot, (g * bones + channel.bone) * 4, out)
+      return Math.hypot(out[0], out[1], out[2])
+    case 'yaw':
+      out[0] = (a.root[f * 4 + 3] - b.root[g * 4 + 3]) * DEG
+      out[1] = 0
+      out[2] = 0
+      return Math.abs(out[0])
+    case 'hips': {
+      const legLength = a.trace.rig.legLength
+      out[0] = (a.root[f * 4] - b.root[g * 4]) / legLength
+      out[1] = (a.root[f * 4 + 1] - b.root[g * 4 + 1]) / legLength
+      out[2] = (a.root[f * 4 + 2] - b.root[g * 4 + 2]) / legLength
+      return Math.hypot(out[0], out[1], out[2])
+    }
   }
 }
 
-/** Each channel's largest change from its value at frame `first` over frames [first, last]. */
-function excursions(pose: TracePose, channels: readonly Channel[], first: number, last: number, legLength: number): number[] {
+/**
+ * The angle, degrees, of `channel` between frame `f` of `a` and frame `g` of `b`, from the quaternions' dot product: cheap
+ * for the hot loops, and within about 0.05 deg of the exact angle for float32 rotations, far below the 10 deg act floor.
+ */
+function quickAngle(a: DecodedMotionTrace, f: number, b: DecodedMotionTrace, g: number, channel: Channel): number {
+  switch (channel.kind) {
+    case 'bone': {
+      const bones = a.trace.rig.bones.length
+      const i = (f * bones + channel.bone) * 4
+      const j = (g * bones + channel.bone) * 4
+      const dot = Math.abs(a.rot[i] * b.rot[j] + a.rot[i + 1] * b.rot[j + 1] + a.rot[i + 2] * b.rot[j + 2] + a.rot[i + 3] * b.rot[j + 3])
+      return 2 * Math.acos(Math.min(1, dot)) * DEG
+    }
+    case 'yaw':
+      return Math.abs(a.root[f * 4 + 3] - b.root[g * 4 + 3]) * DEG
+    case 'hips':
+      return Math.hypot(a.root[f * 4] - b.root[g * 4], a.root[f * 4 + 1] - b.root[g * 4 + 1], a.root[f * 4 + 2] - b.root[g * 4 + 2]) / a.trace.rig.legLength
+  }
+}
+
+function frameAt(pose: TracePose, t: number): number {
+  let lo = 0
+  let hi = pose.frames - 1
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1
+    if (pose.time(mid) < t - 1e-9)
+      lo = mid + 1
+    else
+      hi = mid
+  }
+  return lo
+}
+
+/**
+ * Per channel, the largest change between each frame and any frame at most `lag` frames before it (amendment 4 A4.1):
+ * a window's excursion is the largest of these over its frames, so a slow change counts only the part it makes within
+ * the lag, and the earlier frame may lie up to the lag before the window.
+ */
+function lagChanges(input: DecodedMotionTrace, channels: readonly Channel[], lag: number): Float64Array[] {
   return channels.map((channel) => {
-    let largest = 0
-    for (let frame = first + 1; frame <= last; frame++)
-      largest = Math.max(largest, channelChange(pose, channel, first, frame, legLength))
-    return largest
+    const out = new Float64Array(input.trace.frames)
+    for (let f = 1; f < input.trace.frames; f++) {
+      let largest = 0
+      for (let g = Math.max(0, f - lag); g < f; g++)
+        largest = Math.max(largest, quickAngle(input, f, input, g, channel))
+      out[f] = largest
+    }
+    return out
   })
 }
 
@@ -225,13 +322,23 @@ export interface IdleAct extends IdleSpan {
   readonly movement: ActMovement | null
 }
 
+/** One act-free interval: the companion is compared at t - delay; `largest` is the largest aligned difference against its floor. */
+export interface PairInterval {
+  readonly from: number
+  readonly to: number
+  readonly delay: number
+  readonly largest: { readonly channel: string, readonly value: number, readonly limit: number, readonly at: number }
+}
+
 export interface IdleActsDetail {
   readonly acts: readonly IdleAct[]
   readonly sequence: readonly string[]
   readonly repeatedBlocks: readonly string[]
   readonly pair: {
     readonly dir: string
-    readonly performer: { readonly difference: number, readonly at: number | null, readonly bone: string | null, readonly yaw: number, readonly hips: number }
+    readonly intervals: readonly PairInterval[]
+    /** Per performer channel, the mean signed aligned difference over the intervals after the first behaviour; null without one. */
+    readonly lasting: readonly { readonly channel: string, readonly offset: number, readonly limit: number }[] | null
     readonly others: { readonly difference: number, readonly at: number | null, readonly bone: string | null }
   }
   readonly review: { readonly spans: readonly string[], readonly dependsOnThem: boolean, readonly consecutive: readonly string[] }
@@ -263,74 +370,166 @@ function checkPairSource(run: LoadedRun, pair: LoadedRun): void {
     refuse('the acts-off companion sets an idle drive or carries idle markers')
 }
 
-/**
- * Outside every behaviour widened by the exit and the settling, the largest difference between the run and its
- * companion on the performer's channels (judged) and on every other traced bone (printed).
- */
-function comparePair(run: LoadedRun, pair: LoadedRun, spans: readonly IdleSpan[], on: TracePose, off: TracePose): IdleActsDetail['pair'] {
-  const { trace } = run.input
-  const widened = spans.map(span => ({ start: span.start, end: (span.end ?? Number.POSITIVE_INFINITY) + C.exitSeconds + C.settleSeconds }))
-  const performer = new Set(PERFORMER_BONES.map(bone => on.index(bone)).filter(b => b >= 0))
-  const own = { difference: 0, at: null as number | null, bone: null as string | null, yaw: 0, hips: 0 }
-  const others = { difference: 0, at: null as number | null, bone: null as string | null }
-  for (let frame = 0; frame < on.frames; frame++) {
-    const t = on.time(frame)
-    if (t < trace.scoredFrom || widened.some(span => t >= span.start && t <= span.end))
-      continue
-    trace.rig.bones.forEach((name, b) => {
-      const d = angleBetween(on.local(frame, b), off.local(frame, b))
-      const into = performer.has(b) ? own : others
-      if (d > into.difference) {
-        into.difference = d
-        into.at = t
-        into.bone = name
-      }
-    })
-    own.yaw = Math.max(own.yaw, Math.abs(on.yaw(frame) - off.yaw(frame)) * DEG)
-    own.hips = Math.max(own.hips, norm(sub(on.hips(frame), off.hips(frame))) / trace.rig.legLength)
+/** Seconds of [from, to] covered by the union of `spans`. */
+function covered(spans: readonly { readonly start: number, readonly end: number }[], from: number, to: number): number {
+  let total = 0
+  let reached = from
+  for (const span of [...spans].sort((x, y) => x.start - y.start)) {
+    const start = Math.max(span.start, reached)
+    const end = Math.min(span.end, to)
+    if (end > start) {
+      total += end - start
+      reached = end
+    }
   }
-  return { dir: pair.dir, performer: own, others }
+  return total
 }
 
 /**
- * Whether each countable act moved the body more than her own act-free windows of the same length: per channel, its
- * excursion over the act's window [start, end + exit] scaled by the median excursion over the act-free windows (floored),
- * the largest scaled excursion against the 95th percentile of the same score over those windows.
+ * The pair under one scheduler (amendment 4 A4.2): each act-free interval is compared with the companion at t - d, where
+ * d never decreases and grows by at most `maxShiftCalm` of the time behaviours ran since the last interval, because an
+ * activity only slows the performer's weight-shift countdown. d is the least-squares delay in that range. Judged: no
+ * aligned difference above the act floor (a visible change no delay explains), and a mean signed aligned difference per
+ * channel, over the intervals after the first behaviour, at most the lasting tolerance. Every other traced bone's
+ * largest unaligned difference is printed.
+ */
+function comparePair(run: LoadedRun, pair: LoadedRun, spans: readonly IdleSpan[], on: TracePose, off: TracePose): IdleActsDetail['pair'] {
+  const a = run.input
+  const b = pair.input
+  const { trace } = a
+  const performer = new Set(PERFORMER_BONES.map(bone => on.index(bone)).filter(bone => bone >= 0))
+  const channels: Channel[] = [
+    ...trace.rig.bones.flatMap((name, bone): Channel[] => performer.has(bone) ? [{ kind: 'bone', bone, name }] : []),
+    { kind: 'yaw', name: 'root yaw' },
+    { kind: 'hips', name: 'hips position' },
+  ]
+  const visible = channels.map(channel => channel.kind === 'hips' ? hipsFor(C.actDeg) : C.actDeg)
+  const lasting = channels.map(channel => channel.kind === 'hips' ? hipsFor(C.lastingDeg) : C.lastingDeg)
+  const end = on.time(on.frames - 1)
+  const widened = spans.map(span => ({ start: span.start, end: (span.end ?? Number.POSITIVE_INFINITY) + C.exitSeconds + C.settleSeconds }))
+  const running = spans.map(span => ({ start: span.start, end: Math.min(end, (span.end ?? Number.POSITIVE_INFINITY) + C.exitSeconds) }))
+  const free = (frame: number) => on.time(frame) >= trace.scoredFrom && !widened.some(span => on.time(frame) >= span.start && on.time(frame) <= span.end)
+  const runs: [number, number][] = []
+  for (let frame = 0; frame < on.frames; frame++) {
+    if (!free(frame))
+      continue
+    const last = runs.at(-1)
+    if (last && last[1] === frame - 1)
+      last[1] = frame
+    else
+      runs.push([frame, frame])
+  }
+
+  const scratch = new Float64Array(3)
+  const firstStart = spans.length ? spans[0].start : null
+  const sums = channels.map(() => new Float64Array(3))
+  let lastingFrames = 0
+  let delay = 0
+  let previousEnd = on.time(0)
+  const intervals: PairInterval[] = runs.map(([first, last]) => {
+    const grown = Math.ceil(C.maxShiftCalm * covered(running, previousEnd, on.time(first)) * trace.hz) + 1
+    const highest = Math.min(delay + grown, first)
+    let best = { d: delay, cost: Number.POSITIVE_INFINITY }
+    for (let d = delay; d <= highest; d++) {
+      let cost = 0
+      for (let frame = first; frame <= last && cost < best.cost; frame++) {
+        for (let c = 0; c < channels.length; c++)
+          cost += (quickAngle(a, frame, b, frame - d, channels[c]) / lasting[c]) ** 2
+      }
+      if (cost < best.cost)
+        best = { d, cost }
+    }
+    delay = best.d
+    previousEnd = on.time(last)
+    const counts = firstStart !== null && on.time(first) >= firstStart
+    let largest = { channel: channels[0].name, value: 0, limit: visible[0], at: on.time(first), ratio: 0 }
+    for (let frame = first; frame <= last; frame++) {
+      channels.forEach((channel, c) => {
+        const size = difference(a, frame, b, frame - delay, channel, scratch)
+        if (size / visible[c] > largest.ratio)
+          largest = { channel: channel.name, value: size, limit: visible[c], at: on.time(frame), ratio: size / visible[c] }
+        if (counts) {
+          for (let k = 0; k < 3; k++)
+            sums[c][k] += scratch[k]
+        }
+      })
+      if (counts)
+        lastingFrames++
+    }
+    return { from: on.time(first), to: on.time(last), delay: delay / trace.hz, largest: { channel: largest.channel, value: largest.value, limit: largest.limit, at: largest.at } }
+  })
+
+  const others = { difference: 0, at: null as number | null, bone: null as string | null }
+  for (const [first, last] of runs) {
+    for (let frame = first; frame <= last; frame++) {
+      trace.rig.bones.forEach((name, bone) => {
+        if (performer.has(bone))
+          return
+        const d = angleBetween(on.local(frame, bone), off.local(frame, bone))
+        if (d > others.difference) {
+          others.difference = d
+          others.at = on.time(frame)
+          others.bone = name
+        }
+      })
+    }
+  }
+  return {
+    dir: pair.dir,
+    intervals,
+    lasting: lastingFrames ? channels.map((channel, c) => ({ channel: channel.name, offset: Math.hypot(...sums[c]) / lastingFrames, limit: lasting[c] })) : null,
+    others,
+  }
+}
+
+/**
+ * Whether each countable act moved the body (amendment 4 A4.1): per channel, its largest change within the act floor's
+ * lag over the act's window [start, end + exit], scaled by the larger of the channel's floor and its own 95th percentile
+ * over the act-free windows of the same length; the act moved when its largest scaled change exceeds 1 and the 95th
+ * percentile of the same score over those windows.
  */
 function movements(run: LoadedRun, pose: TracePose, acts: readonly IdleSpan[], spans: readonly IdleSpan[]): (ActMovement | null)[] {
   const { trace } = run.input
-  const legLength = trace.rig.legLength
   const channels: Channel[] = [
     ...trace.rig.bones.flatMap((name, bone): Channel[] => BODY_BONES.has(name) ? [{ kind: 'bone', bone, name }] : []),
     { kind: 'yaw', name: 'root yaw' },
     { kind: 'hips', name: 'hips position' },
   ]
-  const floors = channels.map(channel => channel.kind === 'hips' ? C.stillHips : C.stillDeg)
-  const frameAt = (t: number) => {
-    let frame = 0
-    while (frame < pose.frames - 1 && pose.time(frame) < t - 1e-9)
-      frame++
-    return frame
+  if (!acts.length)
+    return []
+  const floors = channels.map(channel => channel.kind === 'hips' ? hipsFor(C.actDeg) : C.actDeg)
+  const changes = lagChanges(run.input, channels, Math.round(C.actSeconds * trace.hz))
+  const excursions = (from: number, to: number) => {
+    const first = frameAt(pose, from)
+    const last = frameAt(pose, to)
+    return changes.map((change) => {
+      let largest = 0
+      for (let frame = first; frame <= last; frame++)
+        largest = Math.max(largest, change[frame])
+      return largest
+    })
   }
+  const traceStart = pose.time(0)
   const scoredEnd = pose.time(pose.frames - 1)
   const busy = spans.map(span => ({ start: span.start, end: (span.end ?? Number.POSITIVE_INFINITY) + C.exitSeconds + C.settleSeconds }))
   return acts.map((act) => {
     const length = act.end! + C.exitSeconds - act.start
     const starts: number[] = []
     for (let s = trace.scoredFrom; s + length <= scoredEnd + 1e-9; s += C.nullStep) {
-      if (!busy.some(span => s < span.end && s + length > span.start))
+      const lead = s - C.actSeconds
+      if (lead >= traceStart - 1e-9 && !busy.some(span => lead < span.end && s + length > span.start))
         starts.push(s)
     }
     if (starts.length < C.nullMinimum)
       return null
-    const nulls = starts.map(s => excursions(pose, channels, frameAt(s), frameAt(s + length), legLength))
-    const scales = channels.map((_, c) => Math.max(floors[c], median(nulls.map(n => n[c]))))
+    const nulls = starts.map(s => excursions(s, s + length))
+    const scales = channels.map((_, c) => Math.max(floors[c], percentile(nulls.map(n => n[c]), C.movedPercentile)))
     const score = (values: readonly number[]) => values.reduce((best, value, c) => Math.max(best, value / scales[c]), 0)
     const bar = percentile(nulls.map(score), C.movedPercentile)
-    const own = excursions(pose, channels, frameAt(act.start), frameAt(act.start + length), legLength)
+    const own = excursions(act.start, act.start + length)
     const top = own.reduce((best, value, c) => value / scales[c] > own[best] / scales[best] ? c : best, 0)
     const value = score(own)
-    return { score: value, bar, windows: starts.length, channel: channels[top].name, moved: value > bar }
+    return { score: value, bar, windows: starts.length, channel: channels[top].name, moved: value > Math.max(1, bar) }
   })
 }
 
@@ -347,10 +546,14 @@ function repeatedBlocks(sequence: readonly string[]): string[] {
   return found
 }
 
+const unitOf = (channel: string) => channel === 'hips position' ? 'L' : 'deg'
+const sized = (value: number, channel: string) => `${value.toFixed(channel === 'hips position' ? 5 : 3)} ${unitOf(channel)}`
+
 /**
- * C001 under one idle scheduler (unit M2 rules section 3): the run names the fixed QA drive; at least 6 distinct kinds
- * among the scheduler's acts that moved the body; no kind started twice in a row; and outside the acts the run equals
- * its acts-off companion on the performer's channels.
+ * C001 under one idle scheduler (unit M2 rules section 3, amendment 4): the run names the fixed QA drive; at least 6
+ * distinct kinds among the scheduler's acts that moved the body; no kind started twice in a row; and outside the acts the
+ * run equals its acts-off companion on the performer's channels once the companion is delayed as the acts slowed her
+ * weight-shift schedule.
  */
 export function idleActsReport(run: LoadedRun, pair: LoadedRun): CaseReport<IdleActsDetail> {
   const { input } = run
@@ -370,18 +573,25 @@ export function idleActsReport(run: LoadedRun, pair: LoadedRun): CaseReport<Idle
   const sequence = spans.map(span => span.kind)
   const repeats = sequence.slice(1).flatMap((kind, i) => kind === sequence[i] ? [`${kind} at ${spans[i + 1].start.toFixed(3)} s`] : [])
   const pairing = comparePair(run, pair, spans, on, off)
-  const p = pairing.performer
   const reviewed = counted.filter(act => act.kind === 'look-around' || act.kind === 'peer')
   const others = new Set(counted.filter(act => act.kind !== 'look-around' && act.kind !== 'peer').map(act => act.kind))
   const repeatRule = 'no two consecutive started behaviours (every reported kind, in start order) share a kind'
-  const pairRule = `outside every behaviour widened by ${C.exitSeconds} s exit and ${C.settleSeconds} s settling, the performer's bones (${PERFORMER_BONES.join(', ')}) differ from the acts-off run by at most ${C.epsilonDeg} deg, the root yaw by ${C.yawEpsilonDeg} deg and the hips position by ${C.hipsEpsilon} L`
+  const pairRule = `each act-free interval against the acts-off run delayed by a delay that never decreases and grows by at most ${C.maxShiftCalm} s per s of behaviour: on the performer's bones (${PERFORMER_BONES.join(', ')}), the root yaw and the hips position, no aligned difference above ${C.actDeg} deg (hips ${hipsFor(C.actDeg).toFixed(4)} L), and over the intervals after the first behaviour a mean signed aligned difference of at most ${C.lastingDeg} deg (hips ${hipsFor(C.lastingDeg).toFixed(5)} L) per channel`
+  const shown = pairing.intervals.filter(i => i.largest.value > i.largest.limit)
+  const worst = pairing.intervals.reduce<PairInterval | null>((best, i) => !best || i.largest.value / i.largest.limit > best.largest.value / best.largest.limit ? i : best, null)
+  const offsets = pairing.lasting ?? []
+  const worstOffset = offsets.reduce<(typeof offsets)[number] | null>((best, o) => !best || o.offset / o.limit > best.offset / best.limit ? o : best, null)
+  const delays = pairing.intervals.map(i => i.delay)
+  const pairValue = `${pairing.intervals.length} intervals, delays ${delays.length ? `${delays[0].toFixed(3)} to ${delays[delays.length - 1].toFixed(3)} s` : 'none'}; largest aligned difference ${worst ? `${sized(worst.largest.value, worst.largest.channel)} (${worst.largest.channel} at ${worst.largest.at.toFixed(3)} s)` : 'none'}${shown.length ? `, above the floor in ${shown.length} intervals` : ''}; largest lasting offset ${worstOffset ? `${sized(worstOffset.offset, worstOffset.channel)} (${worstOffset.channel})` : 'none'}`
   const requirements: CaseRequirement[] = [
     driveRequirement(run, QA_DRIVE_PRESENT),
-    judged('distinct-acts', `at least ${C.distinct} distinct kinds among the scheduler's acts that started in the scored span, ended, and moved the body more than the ${C.movedPercentile * 100}th percentile of her act-free windows`, `${kinds.size} distinct (${counted.length} moved of ${acts.filter(act => act.countable).length} judged, ${spans.length} behaviours started)`, kinds.size >= C.distinct),
+    judged('distinct-acts', `at least ${C.distinct} distinct kinds among the scheduler's acts that started in the scored span, ended, and changed some channel within ${C.actSeconds} s by more than ${C.actDeg} deg and more than the ${C.movedPercentile * 100}th percentile of her act-free windows`, `${kinds.size} distinct (${counted.length} moved of ${acts.filter(act => act.countable).length} judged, ${spans.length} behaviours started)`, kinds.size >= C.distinct),
     spans.length < 2
       ? notExercised('no-repeat', repeatRule, `${spans.length} behaviour started: no consecutive pair`)
       : judged('no-repeat', repeatRule, repeats.length ? `repeated: ${repeats.join(', ')}` : `${spans.length - 1} consecutive pairs, none repeated`, repeats.length === 0),
-    judged('pair', pairRule, `bones ${p.difference.toFixed(4)} deg${p.bone ? ` (${p.bone} at ${fixed(p.at)} s)` : ''}, root yaw ${p.yaw.toFixed(4)} deg, hips ${p.hips.toFixed(5)} L`, p.difference <= C.epsilonDeg && p.yaw <= C.yawEpsilonDeg && p.hips <= C.hipsEpsilon),
+    pairing.lasting === null
+      ? notExercised('pair', pairRule, 'no act-free frame after the first behaviour')
+      : judged('pair', pairRule, pairValue, shown.length === 0 && offsets.every(o => o.offset <= o.limit)),
   ]
   const gate = run.gate
   return caseReport('idle-acts', IDLE_ACTS_VERSION, [run.dir, pair.dir], IDLE_ACTS_CONSTANTS, requirements, {
@@ -401,9 +611,12 @@ export function idleActsReport(run: LoadedRun, pair: LoadedRun): CaseReport<Idle
 export function formatIdleActs(report: CaseReport<IdleActsDetail>): string {
   const d = report.detail
   return formatCaseReport(report, [
-    `pair: ${d.pair.dir}; outside the widened acts, the performer's bones differ by at most ${d.pair.performer.difference.toFixed(4)} deg${d.pair.performer.bone ? ` (${d.pair.performer.bone} at ${fixed(d.pair.performer.at)} s)` : ''}, root yaw ${d.pair.performer.yaw.toFixed(4)} deg, hips ${d.pair.performer.hips.toFixed(5)} L; every other traced bone (Natural's breath, head and gaze; printed, not judged) ${d.pair.others.difference.toFixed(4)} deg${d.pair.others.bone ? ` (${d.pair.others.bone} at ${fixed(d.pair.others.at)} s)` : ''}`,
+    `pair: ${d.pair.dir}; per act-free interval, the delay of her weight-shift schedule and the largest aligned difference on the performer's channels against its floor:`,
+    ...d.pair.intervals.map(i => `  ${i.from.toFixed(3)}-${i.to.toFixed(3)} s\tdelay ${i.delay.toFixed(3)} s\t${sized(i.largest.value, i.largest.channel)} on ${i.largest.channel} at ${i.largest.at.toFixed(3)} s (floor ${sized(i.largest.limit, i.largest.channel)})`),
+    `lasting offsets after the first behaviour (mean signed aligned difference against ${C.lastingDeg} deg): ${d.pair.lasting ? d.pair.lasting.map(o => `${o.channel} ${sized(o.offset, o.channel)}`).join(', ') : 'none'}`,
+    `every other traced bone, unaligned (Natural's breath, head and gaze; printed, not judged): ${d.pair.others.difference.toFixed(4)} deg${d.pair.others.bone ? ` (${d.pair.others.bone} at ${fixed(d.pair.others.at)} s)` : ''}`,
     `behaviours the scheduler reported (${d.acts.length}):`,
-    ...d.acts.map(act => `  ${act.start.toFixed(3)}\t${act.kind}\t${act.end === null ? 'no end report' : `ended ${act.end.toFixed(3)}`}\t${!act.countable ? 'not judged (warm-up, no end, or not a drawn act)' : act.movement === null ? `not judged (fewer than ${C.nullMinimum} act-free windows)` : `${act.movement.moved ? 'moved' : 'did not move'}: score ${act.movement.score.toFixed(2)} against ${act.movement.bar.toFixed(2)} over ${act.movement.windows} windows, largest on ${act.movement.channel}`}`),
+    ...d.acts.map(act => `  ${act.start.toFixed(3)}\t${act.kind}\t${act.end === null ? 'no end report' : `ended ${act.end.toFixed(3)}`}\t${!act.countable ? 'not judged (warm-up, no end, or not a drawn act)' : act.movement === null ? `not judged (fewer than ${C.nullMinimum} act-free windows)` : `${act.movement.moved ? 'moved' : 'did not move'}: score ${act.movement.score.toFixed(2)} against max(1, ${act.movement.bar.toFixed(2)}) over ${act.movement.windows} windows, largest on ${act.movement.channel}`}`),
     `repeated blocks of two or more (printed for the visual review): ${d.repeatedBlocks.join('; ') || 'none'}`,
     `visual review list (C001): counted look-around and peer spans: ${d.review.spans.join(', ') || 'none'}; the count of ${C.distinct} ${d.review.dependsOnThem ? 'DEPENDS' : 'does not depend'} on them; consecutive counted acts: ${d.review.consecutive.join(', ') || 'none'}`,
     ...d.intermittency
