@@ -32,17 +32,16 @@ export function frameGapFigures(channels: ArrayLike<number>, frames: number): Fr
   const times = Array.from({ length: frames }, (_, index) => channels[index * stride])
   const intervals = times.slice(1).map((time, index) => time - times[index])
   const walls = times.map((time, index) => channels[index * stride + 1] - time).filter(Number.isFinite)
-  const limits = frameGapLimits
   // The gate compares seconds with a 1e-6 s tolerance; in milliseconds that is 1e-3.
   const maxInterval = intervals.length ? Math.max(...intervals) : 0
-  const longIntervals = intervals.filter(interval => interval * 1000 > limits.longIntervalMs + 1e-3).length
+  const longIntervals = intervals.filter(interval => interval * 1000 > frameGapLimits.longIntervalMs + 1e-3).length
   const wallDrift = walls.length ? Math.max(...walls) - Math.min(...walls) : 0
   const exceeded: FrameGapLimit[] = []
-  if (maxInterval * 1000 >= limits.maxIntervalMs - 1e-3)
+  if (maxInterval * 1000 >= frameGapLimits.maxIntervalMs - 1e-3)
     exceeded.push('max-interval')
-  if (longIntervals > intervals.length * limits.longFraction)
+  if (longIntervals > intervals.length * frameGapLimits.longFraction)
     exceeded.push('long-intervals')
-  if (wallDrift * 1000 > limits.wallDriftMs + 1e-3)
+  if (wallDrift * 1000 > frameGapLimits.wallDriftMs + 1e-3)
     exceeded.push('wall-drift')
   return {
     maxIntervalMs: maxInterval * 1000,

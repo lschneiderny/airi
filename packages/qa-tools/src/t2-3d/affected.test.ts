@@ -84,12 +84,14 @@ describe('decideAffected', () => {
     expect(result.hits).toContain('packages/qa/src/helper.ts')
   })
 
+  const computed = { ...base, 'packages/qa/src/helper.ts': 'export const helper = (name: string) => import(name)' }
+  const unresolvable = { ...base, 'packages/qa/src/side-effect.ts': 'import \'@x/body/missing/deep\'' }
   it.each([
-    ['a computed import()', { ...base, 'packages/qa/src/helper.ts': 'export const helper = (name: string) => import(name)' }, ['packages/qa/README.md']],
-    ['an unresolvable workspace import', { ...base, 'packages/qa/src/side-effect.ts': 'import \'@x/body/missing/deep\'' }, ['packages/qa/README.md']],
-    ['a lockfile change', { ...base, 'pnpm-lock.yaml': 'lockfileVersion: 9' }, ['pnpm-lock.yaml']],
-  ])('cannot tell with %s and no changed closure file', (_, tip, changed) => {
-    const result = changed[0] === 'pnpm-lock.yaml' ? answer(tip, changed) : answer(tip, changed, tip)
+    ['a computed import()', computed, computed, ['packages/qa/README.md']],
+    ['an unresolvable workspace import', unresolvable, unresolvable, ['packages/qa/README.md']],
+    ['a lockfile change', base, { ...base, 'pnpm-lock.yaml': 'lockfileVersion: 9' }, ['pnpm-lock.yaml']],
+  ])('cannot tell with %s and no changed closure file', (_, baseFiles, tip, changed) => {
+    const result = answer(tip, changed, baseFiles)
     expect(result.verdict).toBe('cannot-tell')
     expect(result.reasons.length).toBeGreaterThan(0)
   })

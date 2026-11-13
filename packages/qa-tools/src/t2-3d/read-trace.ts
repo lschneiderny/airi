@@ -87,7 +87,7 @@ export function parseTrace(input: unknown): DecodedMotionTrace {
   const canonicalParents = motionTraceParents(bones)
   if (parents.length !== bones.length || parents.some((parent, index) => parent !== canonicalParents[index]))
     throw new MotionTraceRefusal('trace-shape', 'rig.parents must use the canonical nearest-present-ancestor mapping')
-  if (parents.length !== bones.length || restOffsets.length !== bones.length
+  if (restOffsets.length !== bones.length
     || parents.some((parent, index) => parent < -1 || parent >= index)
     || new Set(bones).size !== bones.length || bones.some(bone => physicsOwned.includes(bone))
     || trace.events.some((event, index) => index > 0 && event.t < trace.events[index - 1].t)) {
@@ -121,8 +121,6 @@ export function parseTrace(input: unknown): DecodedMotionTrace {
   }
   for (let i = 0; i < trace.frames; i++) {
     const t = channels[i * MOTION_TRACE_CHANNELS.length]
-    if (!Number.isFinite(t))
-      throw new MotionTraceRefusal('trace-nonfinite', `Nonfinite time at frame ${i}`)
     if (i > 0 && t <= channels[(i - 1) * MOTION_TRACE_CHANNELS.length])
       throw new MotionTraceRefusal('time-nonmonotonic', `Time did not increase at frame ${i}`)
   }

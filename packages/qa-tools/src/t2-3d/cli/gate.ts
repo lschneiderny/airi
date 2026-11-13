@@ -13,6 +13,8 @@ import { checkTrace, GateRefusal } from '../gate/refusals'
 import { emotionMetrics, emotionTrials, prepareTrace } from '../metrics'
 import { MotionTraceRefusal, parseTrace } from '../read-trace'
 
+const usage = 'Usage: qa:motion3d gate <run directory>... [--require <metric id>[,<metric id>...]]'
+
 /**
  * Frame-content identity: the frame's raw float32 rotations for every bone. Each
  * quaternion is sign-normalised and -0 becomes 0, because q and -q are one measured pose.
@@ -36,7 +38,7 @@ export async function gateMotion3d(args: readonly string[], context: Motion3dCli
       required.push(...args[++i].split(',').map(id => id.trim()))
     }
     else if (arg.startsWith('-')) {
-      console.error('Usage: qa:motion3d gate <run directory>... [--require <metric id>[,<metric id>...]]')
+      console.error(usage)
       return 2
     }
     else {
@@ -44,7 +46,7 @@ export async function gateMotion3d(args: readonly string[], context: Motion3dCli
     }
   }
   if (!directories.length || required.some(id => !id)) {
-    console.error('Usage: qa:motion3d gate <run directory>... [--require <metric id>[,<metric id>...]]')
+    console.error(usage)
     return 2
   }
   if (context.signal.aborted)

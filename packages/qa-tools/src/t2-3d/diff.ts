@@ -62,7 +62,7 @@ export function pairMismatches(base: DecodedMotionTrace, tip: DecodedMotionTrace
     out.push({ field: 'scenario', base: scenario(a), tip: scenario(b) })
   if (a.source.scenario.seed !== b.source.scenario.seed)
     out.push({ field: 'seed', base: `${a.source.scenario.seed}`, tip: `${b.source.scenario.seed}` })
-  if (model(a.rig) !== model(b.rig) || ((a.rig.assetSha256 === null || b.rig.assetSha256 === null) && a.rig.id !== b.rig.id))
+  if (model(a.rig) !== model(b.rig))
     out.push({ field: 'model', base: model(a.rig), tip: model(b.rig) })
   const length = [scoredSeconds(base), scoredSeconds(tip)]
   if (Math.abs(length[0] - length[1]) > LENGTH_TOLERANCE_SECONDS)

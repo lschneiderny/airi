@@ -140,10 +140,10 @@ function criterion(p: PreparedTrace, events: readonly { t: number, label: string
     const start = index(event.t)
     const end = index(Math.min(parsed[k + 1]?.t ?? Number.POSITIVE_INFINITY, event.t + CRITERION_WINDOW_SECONDS))
     const sign = Math.sign(event.yawDeg) || 1
-    const track = (signal: readonly number[], share: number) => {
+    const track = (signal: readonly number[], reach: number) => {
       const displacement = signal.slice(start, end).map(v => sign * (v - signal[start]) * DEG)
       const excursion = Math.max(0, ...displacement)
-      const reached = displacement.findIndex(d => excursion > 0 && d >= share * excursion)
+      const reached = displacement.findIndex(d => excursion > 0 && d >= reach * excursion)
       return { excursion, ms: reached < 0 ? null : (p.times[start + reached] - event.t) * 1000 }
     }
     const g = track(gaze, GAZE_REACH)

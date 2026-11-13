@@ -32,8 +32,9 @@ export async function gazeOrderMotion3d(args: readonly string[], context: Motion
   catch (error) {
     if (!(error instanceof GazeOrderRefusal) && !(error instanceof MotionTraceRefusal) && !(error instanceof GateRefusal))
       throw error
-    console.error(`qa:motion3d gaze-order ${dir}: ${error.name}: ${error.detail}`)
-    context.verdicts?.refuse(`qa:motion3d gaze-order ${dir}: ${error.name}: ${error.detail}`)
+    const message = `qa:motion3d gaze-order ${dir}: ${error.name}: ${error.detail}`
+    console.error(message)
+    context.verdicts?.refuse(message)
     return 2
   }
 }

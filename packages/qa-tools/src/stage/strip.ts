@@ -2,16 +2,19 @@ import { readFile, writeFile } from 'node:fs/promises'
 
 import { Transformer } from '@napi-rs/image'
 
+const COLUMNS = 6
+const CELL_WIDTH = 320
+
 /** Six fixed-width cells per row; differing shot aspect ratios retain all their pixels. */
 export function stripLayout(sizes: readonly { width: number, height: number }[]) {
   if (sizes.length === 0 || sizes.some(size => size.width <= 0 || size.height <= 0))
     throw new RangeError('A strip needs at least one nonempty image')
-  const heights = sizes.map(size => Math.max(1, Math.round(size.height * 320 / size.width)))
+  const heights = sizes.map(size => Math.max(1, Math.round(size.height * CELL_WIDTH / size.width)))
   const cellHeight = Math.max(...heights)
   return {
-    width: 6 * 320,
-    height: Math.ceil(sizes.length / 6) * cellHeight,
-    cells: heights.map((height, index) => ({ x: index % 6 * 320, y: Math.floor(index / 6) * cellHeight, width: 320, height })),
+    width: COLUMNS * CELL_WIDTH,
+    height: Math.ceil(sizes.length / COLUMNS) * cellHeight,
+    cells: heights.map((height, index) => ({ x: index % COLUMNS * CELL_WIDTH, y: Math.floor(index / COLUMNS) * cellHeight, width: CELL_WIDTH, height })),
   }
 }
 

@@ -96,6 +96,9 @@ function chatTarget(random: RandomStream): { x: number, y: number } {
 
 const byTime = (a: Motion3dCue, b: Motion3dCue) => a.at - b.at
 
+// A seeded observation marker carries no performer input: idle stays idle.
+const idleTimeline: Motion3dScenario['timeline'] = (seed, seconds) => seconds > 0 ? [{ at: createRandomStream(seed)() * Math.min(1, seconds), kind: 'marker', label: 'observe-idle' }] : []
+
 /**
  * Walk version 3 goals: scenario seconds and x in leg lengths. Each cue but the turn-around comes at the first 0.5 s mark
  * at least 2 s after the previous leg's arrival turn ends, as measured on version 2 (Chisa seed 1: legs of 25.48, 9.67,
@@ -130,8 +133,7 @@ export const motion3dScenarios: readonly Motion3dScenario[] = [
     warmupSeconds: 10,
     seconds: 60,
     maxSeconds: 600,
-    // A seeded observation marker carries no performer input: idle stays idle.
-    timeline: (seed, seconds) => seconds > 0 ? [{ at: createRandomStream(seed)() * Math.min(1, seconds), kind: 'marker', label: 'observe-idle' }] : [],
+    timeline: idleTimeline,
   },
   {
     /**
@@ -146,7 +148,7 @@ export const motion3dScenarios: readonly Motion3dScenario[] = [
     seconds: 60,
     maxSeconds: 600,
     idleDrive: QA_DRIVE_PRESENT,
-    timeline: (seed, seconds) => seconds > 0 ? [{ at: createRandomStream(seed)() * Math.min(1, seconds), kind: 'marker', label: 'observe-idle' }] : [],
+    timeline: idleTimeline,
   },
   {
     version: 1,

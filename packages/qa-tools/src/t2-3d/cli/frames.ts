@@ -113,10 +113,11 @@ export async function framesMotion3d(args: readonly string[], context: Motion3dC
     if (parsedSummary && !parsedSummary.success)
       throw new FramesUsageError(`${summaryPath} is not a motion3d run summary: ${v.summarize(parsedSummary.issues)}`)
     const summary = parsedSummary?.output ?? null
-    const channels = options.channels ?? DEFAULT_CHANNELS.filter(name => availableChannels(summary).includes(name))
-    const unknown = channels.filter(name => !availableChannels(summary).includes(name))
+    const available = availableChannels(summary)
+    const channels = options.channels ?? DEFAULT_CHANNELS.filter(name => available.includes(name))
+    const unknown = channels.filter(name => !available.includes(name))
     if (unknown.length)
-      throw new FramesUsageError(`unknown channel ${unknown.join(', ')}; available: ${availableChannels(summary).join(', ')}`)
+      throw new FramesUsageError(`unknown channel ${unknown.join(', ')}; available: ${available.join(', ')}`)
     const windows = selectWindows(input, options.selection)
     if (!windows.length || windows.every(window => !window.times.length))
       throw new FramesUsageError('the selection matches no time in this run')
@@ -137,7 +138,7 @@ export async function framesMotion3d(args: readonly string[], context: Motion3dC
         rerun = await rerunRun(context, options.model, summary, frames, input, rig)
       }
       await mkdir(options.out, { recursive: true })
-      const index = await drawFrames({ input, summary, rig, windows, views: options.views, channels, out: options.out, rerun: rerun ? frame => rerun?.local(frame) : undefined })
+      const index = await drawFrames({ input, summary, rig, windows, views: options.views, channels, out: options.out, rerun: rerun?.local })
       const commit = input.trace.source.gitSha
       await writeFile(join(options.out, 'index.json'), `${JSON.stringify({
         kind: 'motion3d-frames',

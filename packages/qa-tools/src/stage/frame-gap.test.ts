@@ -1,5 +1,6 @@
 import type { DecodedMotionTrace } from '../t2-3d/read-trace'
 
+import { MOTION_TRACE_CHANNELS } from '@proj-airi/motion-driver-humanoid/motion-trace'
 import { describe, expect, it } from 'vitest'
 
 import { checkKinematics, GateRefusal } from '../t2-3d/gate/refusals'
@@ -7,7 +8,7 @@ import { CORE } from '../t2-3d/metrics/bones'
 import { analyticTrace } from '../t2-3d/metrics/test-trace'
 import { frameGapFigures } from './frame-gap'
 
-const stride = 9
+const stride = MOTION_TRACE_CHANNELS.length
 
 /** Delays every frame from `frame` on by `seconds`, in motion and wall time alike, as a stalled renderer does. */
 function stall(input: DecodedMotionTrace, frame: number, seconds: number): DecodedMotionTrace {
