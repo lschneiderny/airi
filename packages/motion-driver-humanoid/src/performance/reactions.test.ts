@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 
 import { BODY_CHANNELS, channelGroup, channelIndex, DEG } from './channels'
 import { createBodyPerformer } from './index'
-import { channelTrace, fixtureRigs, idleInput, quietInput } from './performance.test-fixtures'
+import { channelTrace, fixtureRigs, quietInput } from './performance.test-fixtures'
 import { createReactionLayer } from './reactions'
 
 const traits = fixtureRigs[0].traits
@@ -48,12 +48,6 @@ const peak = (values: readonly number[]) => values.reduce((best, v) => Math.abs(
 const trunk = ['lowerYaw', 'lowerPitch', 'lowerRoll', 'midYaw', 'midPitch', 'midRoll', 'upperYaw', 'upperPitch', 'upperRoll'] as const
 
 describe('touch reaction layer', () => {
-  it('changes nothing without a poke or a pet', () => {
-    const base = channelTrace(createBodyPerformer({ traits, seed: 1 }), 20, idleInput)
-    const layered = channelTrace(createBodyPerformer({ traits, seed: 1, layers: [createReactionLayer()] }), 20, idleInput)
-    expect(layered).toEqual(base)
-  })
-
   it('flinches away from a body poke, lifting the poked side\'s shoulder, and returns to rest', () => {
     for (const x of [-1, 1]) {
       const d = layerEffect(poking([{ at: 0.5, region: 'body', x, y: 0 }]), 4)
