@@ -83,6 +83,17 @@ describe('frames', () => {
     expect(unposedBones(plain, new Set(input.trace.rig.bones))).toEqual([2])
   })
 
+  it('carries an untraced root bone with the trace\'s hips in trace posing, so a spine that hangs from it follows her root', () => {
+    const bones: FrameRigBone[] = [
+      { name: 'center', parent: -1, slot: null, bindRotation: [0, 0, 0, 1], bindPosition: [0, 0.5, 0], physics: false },
+      { name: 'hips', parent: 0, slot: 'hips', bindRotation: [0, 0, 0, 1], bindPosition: [0, 0.5, 0], physics: false },
+      { name: 'spine', parent: 0, slot: 'spine', bindRotation: [0, 0, 0, 1], bindPosition: [0, 1, 0], physics: false },
+    ]
+    const input = analyticTrace({ seconds: 0.1, bones: ['hips', 'spine'], position: () => [5, 0.5, 0] })
+    const posed = poseFrame({ ...rig(), bones }, input, 0, 'trace')
+    expect([posed.positions[1][0], posed.positions[2][0]]).toEqual([5, 5])
+  })
+
   it('opens one window per matching marker or touch event', () => {
     const input = analyticTrace({ seconds: 4, bones: ['hips'], events: [{ t: 1, kind: 'marker', label: 'clip-claim' }, { t: 2, kind: 'touch', touch: 'poke', region: 'body' }, { t: 3, kind: 'marker', label: 'clip-release' }] })
     const around = (marker: string) => selectWindows(input, { kind: 'around', marker, before: 0.2, after: 0.5, hz: 10 })

@@ -122,8 +122,10 @@ function traceWorld(input: DecodedMotionTrace, frame: number): Map<MotionTraceBo
  * W = conj(basis) N basis W0 (the inverse of the sampler's N = basis W conj(W0) conj(basis)); the hips take the
  * trace's root position. Untraced bones take `rerun` (their transform relative to the parent in a re-run of the same
  * run), else their bind pose relative to the parent. A needed bone without `rerun` is refused, unless `rerun` is
- * `'trace'`: then an untraced append child turns by its ratio of its append parent's local rotation, and every other
- * untraced bone keeps its bind pose relative to its parent (see `unposedBones`).
+ * `'trace'`: then an untraced append child turns by its ratio of its append parent's local rotation, every other
+ * untraced bone keeps its bind pose relative to its parent (see `unposedBones`), and an untraced root-level bone (MMD's
+ * 全ての親 or センター) moves by the translation the hips took from their bind position to the trace's root position, so the
+ * bones that hang from it, the upper body among them, follow her root.
  */
 export function poseFrame(rig: FrameRig, input: DecodedMotionTrace, frame: number, rerun?: ((bone: number) => LocalPose | null) | 'trace'): PosedBones {
   const traced = new Set(input.trace.rig.bones)
@@ -132,6 +134,9 @@ export function poseFrame(rig: FrameRig, input: DecodedMotionTrace, frame: numbe
     throw new FramePoseRefusal(`the trace lacks ${needed.length} skinned bone(s) and no re-run poses them: ${needed.map(index => rig.bones[index].name).join(', ')}`)
   const n = traceWorld(input, frame)
   const basisInverse = conjugate(rig.basis)
+  const rootPosition: Vec3 = rotate(basisInverse, [input.root[frame * 4], input.root[frame * 4 + 1], input.root[frame * 4 + 2]])
+  const hips = rig.bones.find(bone => bone.slot === 'hips' && traced.has('hips'))
+  const carried: Vec3 = rerun === 'trace' && hips ? sub(rootPosition, hips.bindPosition) : [0, 0, 0]
   const rotations: Quat[] = Array.from({ length: rig.bones.length }, () => [0, 0, 0, 1])
   const positions: Vec3[] = Array.from({ length: rig.bones.length }, () => [0, 0, 0])
   for (const index of boneOrder(rig.bones)) {
@@ -147,14 +152,14 @@ export function poseFrame(rig: FrameRig, input: DecodedMotionTrace, frame: numbe
     let pose: LocalPose
     if (traceN) {
       const follow = bindFollow()
-      const rootPosition: Vec3 = [input.root[frame * 4], input.root[frame * 4 + 1], input.root[frame * 4 + 2]]
       pose = {
         rotation: normalize(multiply(multiply(multiply(basisInverse, traceN), rig.basis), bone.bindRotation)),
-        position: bone.slot === 'hips' ? rotate(basisInverse, rootPosition) : follow.position,
+        position: bone.slot === 'hips' ? rootPosition : follow.position,
       }
     }
     else if (rerun === 'trace') {
-      const follow = bindFollow()
+      const bound = bindFollow()
+      const follow = parent ? bound : { ...bound, position: add(bound.position, carried) }
       const source = bone.append && !bone.physics ? rig.bones[bone.append.parent] : null
       if (bone.append && source) {
         // The append parent's local rotation relative to its own bind local rotation, as the PMX grant solver reads it.
