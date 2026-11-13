@@ -139,19 +139,26 @@ describe('idle activity layer', () => {
     expect(seen).not.toContain('sleep')
   })
 
-  it('draws exactly the activities it drew before the whole-body kinds existed when the host performs no body', () => {
-    // Seed 7 at a neutral drive, recorded at 101fc9543 (E/g4/a/scratch/base-sequence.out): Live2D keeps every draw.
-    const { idle, run } = layer(7)
-    const seen: string[] = []
-    let seq = 0
-    run(600, idleInput, () => {
-      if (idle.seq !== seq) {
-        seq = idle.seq
-        seen.push(idle.behaviour!)
+  it('draws exactly the activities, at exactly the times, it drew before the whole-body kinds existed when the host performs no body', () => {
+    // Recorded at 101fc9543, before the kinds existed (E/g4/a/scratch/base-sequence.ts), with this loop: every start
+    // in 900 s for two seeds. The same kinds at the same ticks means the pick consumed no extra draw.
+    const base: Record<number, string[]> = { 7: ['stretch@0.525', 'check-in@50.483', 'look-around@122.633', 'peer@181.400', 'look-around@219.833', 'peer@313.675', 'check-in@487.067', 'peer@517.500', 'stretch@583.008', 'zone-out@655.758', 'look-around@764.392', 'peer@793.367', 'look-around@816.892', 'check-in@864.492'], 11: ['check-in@32.242', 'stretch@83.267', 'check-in@126.258', 'look-around@192.267', 'check-in@275.425', 'zone-out@345.508', 'check-in@404.083', 'stretch@442.433', 'check-in@491.317', 'peer@510.683', 'look-around@562.283', 'zone-out@602.725', 'look-around@716.825', 'peer@776.575', 'stretch@843.350', 'check-in@890.383'] }
+    for (const seed of [7, 11]) {
+      const idle = new NaturalIdleActivities(createRandomStream(seed))
+      const gaze = new NaturalGazeLayer(createRandomStream(4))
+      idle.setDrive(neutralDrive)
+      const seen: string[] = []
+      let seq = 0
+      for (let at = 0; at < 900; at += dt) {
+        idle.step(at, dt, idleInput, gaze)
+        gaze.step(dt)
+        if (idle.seq !== seq) {
+          seq = idle.seq
+          seen.push(`${idle.behaviour}@${at.toFixed(3)}`)
+        }
       }
-      return false
-    })
-    expect(seen).toEqual(['stretch', 'check-in', 'look-around', 'peer', 'look-around', 'peer', 'check-in', 'peer', 'stretch'])
+      expect(seen, `seed ${seed}`).toEqual(base[seed])
+    }
   })
 
   it('settles in after two minutes of idle only when the host performs a body, and gets up when the mode changes', () => {
