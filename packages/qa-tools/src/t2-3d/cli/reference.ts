@@ -22,10 +22,9 @@ export async function referenceMotion3d(args: readonly string[], context: Motion
     const { stdout } = await promisify(execFile)('git', ['rev-parse', 'HEAD'], { cwd: context.repoRoot, signal: context.signal })
     const bands = await buildReference({ directory, manifest, gitSha: stdout.trim(), signal: context.signal })
     const bytes = `${JSON.stringify(bands, null, 2)}\n`
-    const path = out
-    await mkdir(dirname(path), { recursive: true })
-    await writeFile(path, bytes, { flag: 'wx' })
-    console.info(`BANDS ${path} sha256=${sha256(bytes)}`)
+    await mkdir(dirname(out), { recursive: true })
+    await writeFile(out, bytes, { flag: 'wx' })
+    console.info(`BANDS ${out} sha256=${sha256(bytes)}`)
     for (const [scenario, c] of Object.entries(bands.classes)) {
       for (const h of c.holdout) {
         console.info(`HOLDOUT ${scenario} ${h.clipSha256 ?? `${h.metric}/group-${h.group}`} ${h.verdict} value=${h.value ?? 'clip'} failed=${h.failed.join(',') || '-'}`)

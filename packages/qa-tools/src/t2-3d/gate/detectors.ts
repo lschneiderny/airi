@@ -21,10 +21,11 @@ export function fitDetectors(clips: readonly DetectorQuantities[]): DetectorPara
   const activities = (bone: MotionTraceBone) => clips.flatMap(clip => clip.activity[bone] === undefined ? [] : [clip.activity[bone]])
   const floors: Partial<Record<MotionTraceBone, number>> = {}
   for (const bone of MOTION_TRACE_BONES) {
-    if (!activities(bone).length)
+    const own = activities(bone)
+    if (!own.length)
       continue
     const mirror = MOTION_TRACE_BONES.find(other => other === mirroredName(bone))
-    const values = [...activities(bone), ...(mirror ? activities(mirror) : [])]
+    const values = [...own, ...(mirror ? activities(mirror) : [])]
     if (!isFinger(bone) || values.length >= 10)
       floors[bone] = 0.5 * percentile(values, 0.1)
   }

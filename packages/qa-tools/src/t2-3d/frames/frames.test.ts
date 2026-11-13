@@ -104,10 +104,17 @@ describe('frames', () => {
 
   it('draws a glyph for every character of a caption', () => {
     const text = 'abcdefghijklmnopqrstuvwxyz0123456789.,:;-+=/_()[]<>%#*?\''
-    for (const char of text) {
+    const draw = (char: string) => {
       const rgb = new Uint8Array(GLYPH_WIDTH * GLYPH_HEIGHT * 3).fill(255)
       drawText(rgb, GLYPH_WIDTH, GLYPH_HEIGHT, 0, 0, char)
+      return rgb
+    }
+    // '@' has no glyph, so it draws the fallback box; a caption character must draw its own glyph instead.
+    const box = draw('@')
+    for (const char of text) {
+      const rgb = draw(char)
       expect(rgb.some(v => v !== 255), char).toBe(true)
+      expect(rgb, char).not.toEqual(box)
     }
   })
 })

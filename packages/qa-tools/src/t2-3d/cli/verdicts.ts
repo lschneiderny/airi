@@ -74,19 +74,17 @@ export async function verdictsMotion3d(args: readonly string[], context: Motion3
     let read = 0
     for (const { path: file, required } of found.files) {
       const verdict = await readVerdict(file)
-      if (typeof verdict === 'string') {
-        if (!required) {
-          skipped++
-          continue
-        }
-        files++
-        read++
-        errors++
-        console.info(`ERROR ${file}: ${verdict}`)
+      if (typeof verdict === 'string' && !required) {
+        skipped++
         continue
       }
       files++
       read++
+      if (typeof verdict === 'string') {
+        errors++
+        console.info(`ERROR ${file}: ${verdict}`)
+        continue
+      }
       const hits = verdict.lines.filter(line => failOn.includes(line.status))
       const hit = failOn.includes(verdict.verdict) || hits.length > 0
       matched += hit ? 1 : 0

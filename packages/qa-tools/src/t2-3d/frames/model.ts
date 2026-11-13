@@ -80,16 +80,16 @@ function appendOf(mmd: MMD, index: number, name: string): { parent: number, rati
 /** Every bone's transform relative to its parent bone (its world transform for a root bone), read after a pipeline step. */
 export function localPoses(mesh: SkinnedMesh): LocalPose[] {
   const bones = mesh.skeleton.bones
+  const boneSet = new Set<Object3D>(bones)
   const parentInverse = new Matrix4()
   const local = new Matrix4()
   const position = new Vector3()
   const rotation = new Quaternion()
   const scale = new Vector3()
   return bones.map((bone) => {
-    const parent = bones.find(other => other === bone.parent)
     local.copy(bone.matrixWorld)
-    if (parent)
-      local.premultiply(parentInverse.copy(parent.matrixWorld).invert())
+    if (bone.parent && boneSet.has(bone.parent))
+      local.premultiply(parentInverse.copy(bone.parent.matrixWorld).invert())
     local.decompose(position, rotation, scale)
     return { rotation: quat(rotation), position: vec(position) }
   })

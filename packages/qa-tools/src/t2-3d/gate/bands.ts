@@ -19,13 +19,13 @@ export function fitBand(values: readonly number[], rule: BandRule): MetricBand {
   const empty: MetricBand = { side, domain, transform, unit, basis: 'fitted', status: 'REPORT', detail: 'fewer than 10 fitting clips', n: values.length, p5: null, p50: null, p95: null, lo: null, hi: null }
   if (values.length < 10)
     return empty
-  const transformed = values.map(value => transformValue(value, rule.transform))
+  const transformed = values.map(value => transformValue(value, transform))
   const p5 = percentile(transformed, 0.05)
   const p50 = percentile(transformed, 0.5)
   const p95 = percentile(transformed, 0.95)
-  const lo = rule.side === 'upper' ? null : 2 * p5 - p50
-  const hi = rule.side === 'lower' ? null : 2 * p95 - p50
-  const [min, max] = rule.domain.map(value => value === null ? null : transformValue(value, rule.transform))
+  const lo = side === 'upper' ? null : 2 * p5 - p50
+  const hi = side === 'lower' ? null : 2 * p95 - p50
+  const [min, max] = domain.map(value => value === null ? null : transformValue(value, transform))
   // A two-sided band is reported if either required side is vacuous; never silently re-rule it.
   const vacuous = (lo !== null && min !== null && lo <= min) || (hi !== null && max !== null && hi >= max)
   return { ...empty, p5, p50, p95, lo, hi, status: vacuous ? 'REPORT' : 'GATED', detail: vacuous ? 'vacuous band' : '' }

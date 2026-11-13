@@ -18,7 +18,7 @@ export function clipCodec(out: string): { encoder: string, args: string[] } | nu
   }
 }
 
-/** The first `ffmpeg` executable on PATH, or null. `isFile` is injected so the lookup is testable without this machine's PATH. */
+/** The first `binary` executable on `path`, or null. `isFile` is injected so the lookup is testable without this machine's PATH. */
 export function findOnPath(binary: string, path: string | undefined, isFile: (candidate: string) => boolean): string | null {
   for (const dir of (path ?? '').split(delimiter).filter(Boolean)) {
     const candidate = join(dir, binary)
@@ -50,6 +50,8 @@ export interface ClipBlock {
 }
 
 const SEPARATOR = 6
+const HEADER_LINES = 5
+const SCALE = 2
 
 function wrapWords(line: string, columns: number): string[] {
   const lines: string[] = []
@@ -65,8 +67,6 @@ function wrapWords(line: string, columns: number): string[] {
   }
   return current ? [...lines, current] : lines
 }
-const HEADER_LINES = 5
-const SCALE = 2
 
 /**
  * One clip frame: run blocks left to right (before, then after), each a header over its view panels, and the footer
