@@ -18,7 +18,7 @@ let bands: Awaited<ReturnType<typeof loadBands>>
 let calmIdle: ReturnType<typeof companions>
 beforeAll(async () => {
   bands = await loadBands(repoRoot)
-  calmIdle = companions()
+  calmIdle = companions({ trunkDegrees: 1 })
 })
 
 const FORMS = ['beat', 'palm-up', 'press', 'chop'] as const
@@ -36,13 +36,18 @@ function trunkSway(degrees: number, count: number, spacing = 2) {
 /**
  * A synthetic speaker on the left arm: three 8 s utterances, each one unit of four strokes, one stroke apex on each
  * labelled peak (shifted by `apexOffset`), each form at its own forearm twist, and preparations whose upper arm, elbow
- * and hand twist start 0, 60 and 120 ms apart (`order` reverses that). With each stroke the upper torso turns 2 deg
- * against the hips, as plan 3.1's torso participation (`torso: false` drops it); `silent` leaves one utterance's unit out.
- * `silentTrunk` turns the upper torso by that many degrees in the silent lead, every `silentSpacing` s from 3 s to 43 s;
- * `earlyMove` adds an arm movement without a trunk turn whose apex lands 50 ms before each peak, nearer the peak than
- * the stroke's own apex.
+ * and hand twist start 0, 60 and 120 ms apart (`order` reverses that). With each stroke the upper torso turns against
+ * the hips by `trunkDegrees` (2 unless stated), alternating in sign and held until the next stroke, as plan 3.1's torso
+ * participation (`torso: false` drops it); `silent` leaves one utterance's unit out. `speechSway` adds an upper-torso
+ * yaw of that many degrees at `speechSwayHz` (1 unless stated) through the first `swayUnits` utterances (all three
+ * unless stated), locked to no stroke; the stroke apexes sit on a 0.25 s grid, so a 2 Hz sway turns by nothing over each
+ * stroke window and over each k x 0.25 s shift of it. `silentTrunk` turns the upper torso by
+ * that many degrees in the silent lead, every `silentSpacing` s from 3 s to 43 s; `earlyMove` adds an arm movement
+ * without a trunk turn whose apex lands 50 ms before each peak, nearer the peak than the stroke's own apex. The
+ * shoulders sit 0.1 units either side of the upper torso, so its shoulder line moves 1.22 DIP per degree of yaw at the
+ * default stage scale (the rig's highest bone, the hand, at 0.8 units).
  */
-function speaker(options: { apexOffset?: number, order?: 'proximal' | 'distal', markerOffset?: number, still?: boolean, torso?: boolean, silent?: number, idleSway?: number, strokeSeconds?: number, strokeSize?: number, silentTrunk?: number, silentSpacing?: number, earlyMove?: boolean, rightSway?: boolean, rightTremor?: number, rightShoulderOnly?: boolean, armLdlj?: readonly [number | null, number | null] } = {}) {
+function speaker(options: { apexOffset?: number, order?: 'proximal' | 'distal', markerOffset?: number, still?: boolean, torso?: boolean, trunkDegrees?: number, speechSway?: number, speechSwayHz?: number, swayUnits?: number, silent?: number, idleSway?: number, strokeSeconds?: number, strokeSize?: number, silentTrunk?: number, silentSpacing?: number, earlyMove?: boolean, rightSway?: boolean, rightTremor?: number, rightShoulderOnly?: boolean, armLdlj?: readonly [number | null, number | null] } = {}) {
   const events: MotionTraceEvent[] = []
   const upper: { start: number, duration: number, by: number }[] = []
   const elbow: { start: number, duration: number, by: number }[] = []
@@ -78,19 +83,25 @@ function speaker(options: { apexOffset?: number, order?: 'proximal' | 'distal', 
         upper.push({ start: peak - 0.15, duration: 0.1, by: 0.05 }, { start: end + 0.5, duration: 0.3, by: -0.05 })
       twist.push({ start: end - 0.15, duration: 0.15, by: target - twistNow })
       twistNow = target
-      torso.push({ start: end - 0.15, duration: 0.15, by: 2 * Math.PI / 180 }, { start: end + 0.5, duration: 0.3, by: -2 * Math.PI / 180 })
+      torso.push({ start: end - 0.15, duration: 0.15, by: (k % 2 ? -1 : 1) * (options.trunkDegrees ?? 2) * Math.PI / 180 })
       events.push({ t: peak, kind: 'emphasis', strength: 0.8, source: 'scenario' })
       events.push({ t: end + (options.markerOffset ?? 0), kind: 'marker', label: `gesture-stroke:${FORMS[form]}:left:${unit + 1}` })
       form = (form + 1) % FORMS.length
     }
     events.push({ t: begin + 8, kind: 'marker', label: 'gesture-unit:end' })
   }
-  const input = trace({
+  const silentTrunk = trunkSway(options.silentTrunk ?? 0, Math.floor(40 / (options.silentSpacing ?? 2)), options.silentSpacing)
+  const swaying = (t: number) => [0, 1, 2].slice(0, options.swayUnits ?? 3).some(unit => t >= IDLE + 1 + unit * 9 && t <= IDLE + 9 + unit * 9)
+  const speechSway = (t: number) => swaying(t) ? (options.speechSway ?? 0) * Math.PI / 180 * Math.sin(2 * Math.PI * (options.speechSwayHz ?? 1) * t) : 0
+  const analytic = trace({
     seconds: IDLE + 29,
     scenario: 'talk',
     events,
-    world: options.still ? undefined : withTrunk(armWorld({ upper: moves(upper), elbow: moves(elbow), twist: moves(twist) }, options.rightSway ? { upper: t => 0.05 * Math.sin(2 * Math.PI * 0.25 * t) } : options.rightTremor ? { upper: t => (options.rightTremor ?? 0) * Math.sin(2 * Math.PI * 8 * t) } : {}, (bone, t) => options.rightShoulderOnly && /^right(?:Shoulder|UpperArm|LowerArm|Hand)$/.test(bone) ? rotX(0.05 * Math.sin(2 * Math.PI * 0.25 * t)) : bone === 'upperChest' && options.torso !== false ? rotY(moves(torso)(t)) : null), trunkSway(options.silentTrunk ?? 0, Math.floor(40 / (options.silentSpacing ?? 2)), options.silentSpacing)),
+    world: options.still ? undefined : withTrunk(armWorld({ upper: moves(upper), elbow: moves(elbow), twist: moves(twist) }, options.rightSway ? { upper: t => 0.05 * Math.sin(2 * Math.PI * 0.25 * t) } : options.rightTremor ? { upper: t => (options.rightTremor ?? 0) * Math.sin(2 * Math.PI * 8 * t) } : {}, (bone, t) => options.rightShoulderOnly && /^right(?:Shoulder|UpperArm|LowerArm|Hand)$/.test(bone) ? rotX(0.05 * Math.sin(2 * Math.PI * 0.25 * t)) : bone === 'upperChest' && options.torso !== false ? rotY(moves(torso)(t)) : null), t => silentTrunk(t) + speechSway(t)),
   })
+  const { rig } = analytic.trace
+  const restOffsets = rig.restOffsets.map((offset, b): [number, number, number] => rig.bones[b] === 'leftShoulder' ? [0.1, 0.1, 0] : rig.bones[b] === 'rightShoulder' ? [-0.1, 0.1, 0] : offset)
+  const input = { ...analytic, trace: { ...analytic.trace, rig: { ...rig, restOffsets } } }
   const passing = Object.fromEntries(TALK_GATED.map(id => [id, { status: 'PASS' as const }]))
   const armLdlj = options.armLdlj ?? [-8, -8]
   const reportOnly = Object.fromEntries(['bilateral.upperArm.peakCorr', 'coverage.arms', 'smooth.armL.ldlj', 'smooth.armR.ldlj'].map(id => [id, { status: 'REPORT' as const, value: id === 'smooth.armL.ldlj' ? armLdlj[0] : id === 'smooth.armR.ldlj' ? armLdlj[1] : 0.5, gated: false }]))
@@ -123,36 +134,52 @@ function companions(options: IdleOptions = {}, last: IdleOptions = {}) {
   return [idleRun(1, options), idleRun(2, options), idleRun(3, { ...options, ...last })]
 }
 
+/** The speaker as speak scenario seed `seed`, in a run directory of its own. */
+function speakRun({ input, gate }: ReturnType<typeof speaker>, seed: number, gitSha?: string) {
+  const { source } = input.trace
+  const changed = { ...input, trace: { ...input.trace, source: { ...source, scenario: { id: 'speak', class: 'talk' as const, seed }, gitSha: gitSha ?? source.gitSha } } }
+  return loadedRun(changed, summaryStub(changed), gate, `speak-seed${seed}`)
+}
+
+/** Version 6: the report of the speaker's seed 1, its trunk pooled over speak seeds 1, 2 and 3 of the same motion. */
+function judge(speech: ReturnType<typeof speaker>, idle = calmIdle) {
+  const runs = [1, 2, 3].map(seed => speakRun(speech, seed))
+  return gestureTimingReport(runs[0], bands, idle, runs)
+}
+
+/** Version 6: the report of speak seed `judged` when seeds 1, 2 and 3 move as `speeches` (one bad seed beside good ones). */
+function judgeSeeds(speeches: readonly ReturnType<typeof speaker>[], judged: number) {
+  const runs = speeches.map((speech, k) => speakRun(speech, k + 1))
+  return gestureTimingReport(runs[judged - 1], bands, calmIdle, runs)
+}
+
+const trunkLines = (report: ReturnType<typeof judge>) => ['trunk-participation', 'trunk-locking', 'trunk-seed-locking', 'trunk-size'].map(id => report.requirements.find(r => r.id === id)?.pass)
+
 describe('gesture-timing report (C001, plan 2.2)', () => {
   it('passes a speaker whose apexes hit the peaks with four forms, ordered preparations and clean summaries', () => {
-    const { input, gate } = speaker()
-    const report = gestureTimingReport(loadedRun(input, summaryStub(input), gate), bands, calmIdle)
+    const report = judge(speaker())
     expect(report.requirements.filter(r => !r.pass)).toEqual([])
     expect(report.verdict).toBe('PASS')
   })
 
   it('fails the vacuous case in which nothing moves', () => {
-    const { input, gate } = speaker({ still: true })
-    const report = gestureTimingReport(loadedRun(input, summaryStub(input), gate), bands, calmIdle)
+    const report = judge(speaker({ still: true }))
     expect(report.verdict).toBe('FAIL')
     expect(report.requirements.find(r => r.id === 'peaks-hit')?.pass).toBe(false)
   })
 
   it.each([[0.19, true], [-0.19, true], [0.25, false]] as const)('counts an apex %s s from its peak as a hit: %s', (offset, hit) => {
-    const { input, gate } = speaker({ apexOffset: offset })
-    const report = gestureTimingReport(loadedRun(input, summaryStub(input), gate), bands, calmIdle)
+    const report = judge(speaker({ apexOffset: offset }))
     expect(report.requirements.find(r => r.id === 'peaks-hit')?.pass).toBe(hit)
   })
 
   it('fails markers that no kinematic apex confirms within 50 ms', () => {
-    const { input, gate } = speaker({ markerOffset: 0.1 })
-    const report = gestureTimingReport(loadedRun(input, summaryStub(input), gate), bands, calmIdle)
+    const report = judge(speaker({ markerOffset: 0.1 }))
     expect(report.requirements.find(r => r.id === 'markers-confirmed')?.pass).toBe(false)
   })
 
   it('fails reversed preparation order', () => {
-    const { input, gate } = speaker({ order: 'distal' })
-    const report = gestureTimingReport(loadedRun(input, summaryStub(input), gate), bands, calmIdle)
+    const report = judge(speaker({ order: 'distal' }))
     expect(report.requirements.find(r => r.id === 'preparation-order')?.pass).toBe(false)
   })
 
@@ -161,8 +188,7 @@ describe('gesture-timing report (C001, plan 2.2)', () => {
     ['a companion of another model', () => companions({}, { assetSha256: 'other-model' })],
     ['a companion at another commit', () => companions({}, { gitSha: 'f'.repeat(40) })],
   ] as const)('refuses %s', (_, idle) => {
-    const { input, gate } = speaker()
-    expect(() => gestureTimingReport(loadedRun(input, summaryStub(input), gate), bands, idle())).toThrow(ReportUsageError)
+    expect(() => judge(speaker(), idle())).toThrow(ReportUsageError)
   })
 
   it.each([
@@ -171,58 +197,76 @@ describe('gesture-timing report (C001, plan 2.2)', () => {
     ['idle runs of 60 s scored', () => companions({ seconds: 60 })],
     ['a companion of another scenario', () => companions({}, { scenario: 'speak' })],
   ] as const)('refuses a trunk bar from %s: only idle seeds 1, 2 and 3 of 120 s scored (revision 2)', (_, idle) => {
-    const { input, gate } = speaker()
-    expect(() => gestureTimingReport(loadedRun(input, summaryStub(input), gate), bands, idle())).toThrow(ReportUsageError)
+    expect(() => judge(speaker(), idle())).toThrow(ReportUsageError)
+  })
+
+  it.each([
+    ['the judged run alone', (s: ReturnType<typeof speaker>) => [speakRun(s, 1)]],
+    ['speak seeds 1 and 2 only', (s: ReturnType<typeof speaker>) => [speakRun(s, 1), speakRun(s, 2)]],
+    ['speak seed 1 twice', (s: ReturnType<typeof speaker>) => [speakRun(s, 1), speakRun(s, 1), speakRun(s, 3)]],
+    ['a speak seed at another commit', (s: ReturnType<typeof speaker>) => [speakRun(s, 1), speakRun(s, 2), speakRun(s, 3, 'f'.repeat(40))]],
+    ['speak seeds that leave out the judged run', (s: ReturnType<typeof speaker>) => [{ ...speakRun(s, 1), dir: 'another-speak-seed1' }, speakRun(s, 2), speakRun(s, 3)]],
+  ] as const)('refuses %s: the trunk is pooled over speak seeds 1, 2 and 3 of the judged run\'s model and commit (version 6)', (_, runs) => {
+    const speech = speaker()
+    expect(() => gestureTimingReport(speakRun(speech, 1), bands, calmIdle, runs(speech))).toThrow(ReportUsageError)
   })
 
   it('does not count strokes slower than the run\'s own idle sway (unit M3 item 1)', () => {
-    const { input, gate } = speaker({ strokeSeconds: 0.4, strokeSize: 0.02, torso: false })
-    const report = gestureTimingReport(loadedRun(input, summaryStub(input), gate), bands, calmIdle)
+    const report = judge(speaker({ strokeSeconds: 0.4, strokeSize: 0.02, torso: false }))
     expect(report.requirements.find(r => r.id === 'peaks-hit')?.value).toMatch(/^0\/12/)
     expect(report.requirements.find(r => r.id === 'utterances')?.pass).toBe(false)
   })
 
   it('fails an utterance without a stroke (R2 a)', () => {
-    const { input, gate } = speaker({ silent: 1 })
-    const report = gestureTimingReport(loadedRun(input, summaryStub(input), gate), bands, calmIdle)
+    const report = judge(speaker({ silent: 1 }))
     expect(report.requirements.find(r => r.id === 'utterances')).toMatchObject({ pass: false, value: '2/3' })
   })
 
   it('fails strokes without upper-torso participation against the placebo windows (R2 b)', () => {
-    const { input, gate } = speaker({ torso: false })
-    const report = gestureTimingReport(loadedRun(input, summaryStub(input), gate), bands, calmIdle)
+    const report = judge(speaker({ torso: false }))
     expect(report.requirements.find(r => r.id === 'trunk-participation')?.pass).toBe(false)
     expect(report.requirements.find(r => r.id === 'peaks-hit')?.pass).toBe(true)
   })
 
   it('sets the trunk bar from the companion idle runs\' trunk turns, not from the speak run\'s silent stretches (lane T)', () => {
-    const { input, gate } = speaker({ silentTrunk: 6 })
-    const run = loadedRun(input, summaryStub(input), gate)
-    const line = (idle: ReturnType<typeof companions>) => gestureTimingReport(run, bands, idle).requirements.filter(r => r.id === 'peaks-hit' || r.id === 'trunk-participation').map(r => r.pass)
+    const speech = speaker({ silentTrunk: 6 })
+    const line = (idle: ReturnType<typeof companions>) => judge(speech, idle).requirements.filter(r => r.id === 'peaks-hit' || r.id === 'trunk-participation').map(r => r.pass)
     expect(line(calmIdle)).toEqual([true, true])
     expect(line(companions({ trunkDegrees: 6 }))).toEqual([true, false])
   })
 
-  it('fails a run whose own peak-free trunk turns exceed the idle bar on more than the locking share (revision 2)', () => {
-    const line = (silentSpacing: number) => {
-      const { input, gate } = speaker({ silentTrunk: 6, silentSpacing })
-      const report = gestureTimingReport(loadedRun(input, summaryStub(input), gate), bands, calmIdle)
-      return report.requirements.filter(r => r.id === 'peaks-hit' || r.id === 'trunk-participation').map(r => r.pass)
-    }
-    expect(line(2)).toEqual([true, true])
-    expect(line(0.5)).toEqual([true, false])
+  it('reports the run\'s own peak-free trunk turns without judging them, the locking share being report only (version 6)', () => {
+    const report = judge(speaker({ silentTrunk: 6, silentSpacing: 0.5 }))
+    expect(report.detail.trunk.lock.above / report.detail.trunk.lock.windows).toBeGreaterThan(0.1)
+    expect(trunkLines(report)).toEqual([true, true, true, true])
+  })
+
+  it('fails a trunk that sways through every utterance with no stroke-locked turn, though the sway passes the count line (version 6)', () => {
+    expect(trunkLines(judge(speaker({ torso: false, speechSway: 8 })))).toEqual([true, false, false, true])
+  })
+
+  it('fails a 2 Hz speech-time sway on stroke-locked turns, which every shift by k x 0.25 s would see unchanged (version 6, lane T6 revision 4)', () => {
+    expect(trunkLines(judge(speaker({ speechSway: 2, speechSwayHz: 2 })))).toEqual([true, false, false, true])
+  })
+
+  it.each([[2, true], [3, false]] as const)('pools one seed swaying at 2 Hz through %s of its utterances with two locked seeds, and holds that seed alone to the per-seed floor: %s (version 6, lane T6 revision 4)', (swayUnits, pass) => {
+    const seeds = [speaker({ speechSway: 2, speechSwayHz: 2, swayUnits }), speaker(), speaker()]
+    expect(trunkLines(judgeSeeds(seeds, 1))).toEqual([true, true, pass, true])
+    expect(trunkLines(judgeSeeds(seeds, 2))).toEqual([true, true, true, true])
+  })
+
+  it.each([[1.4, false], [1.7, true]] as const)('judges stroke-locked trunk turns of %s degrees, 1.22 DIP of shoulder line per degree, by their pooled median against 1.882 DIP: %s (version 6)', (trunkDegrees, pass) => {
+    expect(trunkLines(judge(speaker({ trunkDegrees })))).toEqual([true, true, true, pass])
   })
 
   it('judges the trunk over the stroke whose apex confirms its marker, not over a nearer apex (lane T)', () => {
-    const { input, gate } = speaker({ apexOffset: 0.15, earlyMove: true })
-    const report = gestureTimingReport(loadedRun(input, summaryStub(input), gate), bands, calmIdle)
+    const report = judge(speaker({ apexOffset: 0.15, earlyMove: true }))
     expect(report.requirements.find(r => r.id === 'peaks-hit')?.pass).toBe(true)
     expect(report.requirements.find(r => r.id === 'trunk-participation')?.pass).toBe(true)
   })
 
   it('counts a hit peak whose stroke marker no apex confirms as a trunk miss (lane T)', () => {
-    const { input, gate } = speaker({ markerOffset: 0.1 })
-    const report = gestureTimingReport(loadedRun(input, summaryStub(input), gate), bands, calmIdle)
+    const report = judge(speaker({ markerOffset: 0.1 }))
     expect(report.requirements.find(r => r.id === 'peaks-hit')?.pass).toBe(true)
     expect(report.requirements.find(r => r.id === 'trunk-participation')).toMatchObject({ pass: false, value: expect.stringMatching(/^0\/12;/) })
   })
@@ -230,22 +274,19 @@ describe('gesture-timing report (C001, plan 2.2)', () => {
   it('fails a gated talk FAIL whatever its id, and ignores report-only values', () => {
     const { input, gate } = speaker()
     const failing = { ...gate, metrics: gate.metrics.map(m => m.id === 'coverage.fingers' ? { ...m, status: 'FAIL' as const } : m.id === 'coverage.arms' ? { ...m, status: 'FAIL' as const } : m) }
-    expect(gestureTimingReport(loadedRun(input, summaryStub(input), failing), bands, calmIdle).requirements.find(r => r.id === 'gate-talk')?.pass).toBe(false)
+    expect(judge({ input, gate: failing }).requirements.find(r => r.id === 'gate-talk')?.pass).toBe(false)
     const reportOnlyFail = { ...gate, metrics: gate.metrics.map(m => m.id === 'coverage.arms' ? { ...m, status: 'FAIL' as const } : m) }
-    expect(gestureTimingReport(loadedRun(input, summaryStub(input), reportOnlyFail), bands, calmIdle).requirements.find(r => r.id === 'gate-talk')?.pass).toBe(true)
+    expect(judge({ input, gate: reportOnlyFail }).requirements.find(r => r.id === 'gate-talk')?.pass).toBe(true)
   })
 
   it('fails mirrored arms through the gated bilateral metrics', () => {
     const { input, gate } = speaker()
     const mirrored = { ...gate, metrics: gate.metrics.map(m => m.id.startsWith('bilateral.') ? { ...m, status: 'FAIL' as const, band: m.band && { ...m.band, status: 'GATED' as const } } : m) }
-    const report = gestureTimingReport(loadedRun(input, summaryStub(input), mirrored), bands, calmIdle)
+    const report = judge({ input, gate: mirrored })
     expect(report.requirements.find(r => r.id === 'bilateral')?.pass).toBe(false)
   })
 
-  const armLine = (options: Parameters<typeof speaker>[0]) => {
-    const { input, gate } = speaker(options)
-    return gestureTimingReport(loadedRun(input, summaryStub(input), gate), bands, calmIdle).requirements.find(r => r.id === 'arm-ldlj')?.pass
-  }
+  const armLine = (options: Parameters<typeof speaker>[0]) => judge(speaker(options)).requirements.find(r => r.id === 'arm-ldlj')?.pass
 
   it('judges arm smoothness on the scored arm and skips an unscorable arm that moves (version 5)', () => {
     expect(armLine({ rightSway: true, armLdlj: [-8, null] })).toBe(true)

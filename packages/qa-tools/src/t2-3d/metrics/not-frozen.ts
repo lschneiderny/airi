@@ -43,16 +43,23 @@ function percentile(values: readonly number[], p: number): number {
   return sorted[lower] + (sorted[Math.ceil(rank)] - sorted[lower]) * (rank - lower)
 }
 
+/** DIP per model unit at the default stage scale: 560 DIP over the rest height of the rig's highest traced bone; 0 without a positive height. */
+export function stageDipPerUnit(rig: PreparedTrace['input']['trace']['rig']): number {
+  const { bones, parents, restOffsets } = rig
+  const restHeight = (b: number): number => b < 0 ? 0 : restOffsets[b][1] + restHeight(parents[b])
+  const modelHeight = Math.max(...bones.map((_, b) => restHeight(b)))
+  return modelHeight > 0 ? STAGE_CHARACTER_HEIGHT_DIP / modelHeight : 0
+}
+
 /**
  * Median, over the class windows of the eligible spans, of the p95 displacement in DIP (default stage scale) of the
- * region's visible end from its window mean, in the region's frame. The model height is the rest height of the rig's
- * highest traced bone. Null without the bones, a positive model height or a window.
+ * region's visible end from its window mean, in the region's frame. Null without the bones, a positive model height or
+ * a window.
  */
 export function windowedDisplacementDip(p: PreparedTrace, region: FrozenRegion): number | null {
   const { bones, parents, restOffsets } = p.input.trace.rig
   const { frame, points } = ENDS[region]
-  const restHeight = (b: number): number => b < 0 ? 0 : restOffsets[b][1] + restHeight(parents[b])
-  const modelHeight = Math.max(...bones.map((_, b) => restHeight(b)))
+  const dipPerUnit = stageDipPerUnit(p.input.trace.rig)
   const frameIndex = bones.indexOf(frame)
   const chains = points.map((point) => {
     const chain: number[] = []
@@ -62,7 +69,7 @@ export function windowedDisplacementDip(p: PreparedTrace, region: FrozenRegion):
   })
   const windows = placeWindows(p.eligibleSpans, p.windowSeconds)
   const frameOrientation = p.orientations[frame]
-  if (modelHeight <= 0 || frameIndex < 0 || !frameOrientation || !windows.length || chains.some(c => !c.length || parents[c[c.length - 1]] !== frameIndex))
+  if (dipPerUnit <= 0 || frameIndex < 0 || !frameOrientation || !windows.length || chains.some(c => !c.length || parents[c[c.length - 1]] !== frameIndex))
     return null
   const end = (i: number): Vec3 => {
     const toFrame = conjugate(frameOrientation[i])
@@ -77,7 +84,6 @@ export function windowedDisplacementDip(p: PreparedTrace, region: FrozenRegion):
     }
     return [sum[0], sum[1], sum[2]]
   }
-  const dipPerUnit = STAGE_CHARACTER_HEIGHT_DIP / modelHeight
   return median(windows.map(({ start, end: stop }) => {
     const positions: Vec3[] = []
     for (let i = start; i < stop; i++)
