@@ -1,0 +1,26 @@
+{
+  "kind": "motion3d-inject-labels",
+  "version": 1,
+  "cases": [
+    {
+      "id": "upper-arm-step",
+      "note": "A one-frame 2.3 deg step of the right upper arm, the corrector size of the rendered pops review, must make the upper-body pops line FAIL; the unedited speak run passes it.",
+      "source": "speak-1",
+      "operations": [
+        { "op": "position-step", "bone": "rightUpperArm", "axis": [1, 0, 0], "deg": 2.3, "at": 20 }
+      ],
+      "report": { "command": "pops" },
+      "expect": { "verdict": "FAIL", "lines": { "upper-body-pops": "FAIL" } }
+    },
+    {
+      "id": "index-finger-step",
+      "note": "The same step on a finger: fingers are reported only, so the upper-body pops line must read exactly as on the unedited run.",
+      "source": "speak-1",
+      "operations": [
+        { "op": "position-step", "bone": "rightIndexProximal", "axis": [1, 0, 0], "deg": 2.3, "at": 20 }
+      ],
+      "report": { "command": "pops" },
+      "expect": { "lines": { "upper-body-pops": "unchanged" } }
+    }
+  ]
+}

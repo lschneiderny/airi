@@ -31,7 +31,8 @@ async function verdictFiles(path: string): Promise<{ files: { path: string, requ
   return files.length ? { files } : { files: [], error: 'folder holds no JSON file' }
 }
 
-async function readVerdict(path: string): Promise<VerdictFile | string> {
+/** The verdict file at `path`, or why it cannot be read as one. */
+export async function readVerdict(path: string): Promise<VerdictFile | string> {
   let json: unknown
   try {
     json = JSON.parse(await readFile(path, 'utf8'))
