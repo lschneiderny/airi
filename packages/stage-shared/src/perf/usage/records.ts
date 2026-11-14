@@ -7,6 +7,7 @@ import {
   boolean,
   check,
   finite,
+  length,
   literal,
   maxValue,
   minLength,
@@ -27,6 +28,8 @@ import {
   variant,
 } from 'valibot'
 
+import { FRAME_BINS_V1, STAGE_BINS_V1 } from './bins'
+
 /** The record format version every line carries. Readers skip and count lines of any other version. */
 export const PERF_RECORD_VERSION = 1
 
@@ -34,11 +37,18 @@ const epochMs = pipe(number(), safeInteger(), minValue(0))
 const count = pipe(number(), safeInteger(), minValue(0))
 const amount = pipe(number(), finite(), minValue(0))
 const share = pipe(number(), finite(), minValue(0), maxValue(1))
+/** Frame bin counts followed by the overflow bin; a wrong length would make `FixedHistogram.mergeFrom` throw. */
+const frameHist = pipe(array(count), length(FRAME_BINS_V1.edges.length + 1))
+const stageBinIndex = pipe(count, maxValue(STAGE_BINS_V1.edges.length))
 const label = pipe(string(), minLength(1))
 const scalar = union([string(), pipe(number(), finite()), boolean(), null_()])
 
 export const USAGE_RENDERERS = ['live2d', 'mmd', 'vrm', 'spine', 'tachie', 'godot', 'none'] as const
 export const USAGE_ACTIVITIES = ['idle', 'watching', 'listening', 'thinking', 'talking', 'unknown'] as const satisfies readonly (PerformanceMode | 'unknown')[]
+
+// Fails typecheck with the missing mode named in the error when `PerformanceMode` gains a mode that the picklist above lacks.
+type MissingActivities<Missing extends never = Exclude<PerformanceMode, (typeof USAGE_ACTIVITIES)[number]>> = Missing
+export type UsageActivitiesCoverPerformanceModes = MissingActivities
 export const USAGE_EVENT_NAMES = [
   'model-load',
   'feature-change',
@@ -86,7 +96,7 @@ const StagesSchema = record(string(), object({
   n: count,
   sumMs: amount,
   maxMs: amount,
-  hist: array(tuple([count, count])),
+  hist: array(tuple([stageBinIndex, count])),
 }))
 
 const QuartilesSchema = object({ q1: pipe(number(), finite()), median: pipe(number(), finite()), q3: pipe(number(), finite()) })
@@ -171,8 +181,7 @@ const WindowRollupSchema = object({
     diagnosticsTracing: boolean(),
   }),
   frames: count,
-  /** Frame bin counts followed by the overflow bin. */
-  frameHist: array(count),
+  frameHist,
   frameSumMs: amount,
   frameMaxMs: amount,
   longTasks: object({ count, maxMs: amount, sumMs: amount }),
@@ -218,7 +227,7 @@ const SegmentCellSchema = object({
   refreshHz: amount,
   windows: count,
   frames: count,
-  frameHist: array(count),
+  frameHist,
   /** Quartiles over the cell's windows of each window's headline value; CPU and memory are `null` without a joined sample. */
   quartiles: object({
     p50FrameMs: QuartilesSchema,
