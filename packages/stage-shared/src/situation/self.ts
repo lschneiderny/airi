@@ -4,7 +4,7 @@ import { SELF_LONG_LIVED } from './types'
 
 const MINUTE_MS = 60_000
 
-/** A finished activity is worth telling for this long; a sleep or a sit stays worth telling for longer. */
+/** A finished activity is worth telling for this long; a sleep, a sit or a rest stays worth telling for longer. */
 const SELF_RECENT_MS = 10 * MINUTE_MS
 const SELF_RECENT_LONG_MS = 30 * MINUTE_MS
 /** An activity that is not long-lived cannot be in progress for longer than this; its end report was lost. */
@@ -26,6 +26,7 @@ const ONGOING: Record<SelfActivity, (user: string, label: string | null) => stri
   'held-back': () => 'holding back something you almost said',
   'prop': (_user, label) => label === null ? 'busy with something of your own' : `busy with your "${label}"`,
   'sit': () => 'sitting down',
+  'rest': () => 'standing at ease on one leg',
   'wander': () => 'wandering across the desktop',
   'visit': user => `walking over to see what ${user} is doing`,
   'go-home': () => 'walking back to your spot',
@@ -46,6 +47,7 @@ const PAST: Record<SelfActivity, (user: string, label: string | null) => string>
   'held-back': () => 'almost said something and let it go',
   'prop': (_user, label) => label === null ? 'were busy with something of your own' : `were busy with your "${label}"`,
   'sit': () => 'sat down',
+  'rest': () => 'stood at ease on one leg',
   'wander': () => 'wandered across the desktop',
   'visit': user => `walked over to see what ${user} was doing`,
   'go-home': () => 'walked back to your spot',

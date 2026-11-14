@@ -987,7 +987,10 @@ async function syncMotions() {
   }
 }
 
-/** What her body is doing on its own in this frame, or `null`: an unasked clip first, then a walk, then a resting stance. */
+/**
+ * What her body is doing on its own in this frame, or `null`: an unasked clip first, then a walk, then a sit or the
+ * clip-free rest.
+ */
 function bodyActivity(intent: BodyIntent | null): MMDSelfReport | null {
   if (!intent || motionDriver.value !== 'natural')
     return null
@@ -999,8 +1002,11 @@ function bodyActivity(intent: BodyIntent | null): MMDSelfReport | null {
   const reason = intent.locomotion.goalX === null ? undefined : walk[intent.locomotion.reason as keyof typeof walk]
   if (reason)
     return { activity: reason, phase: 'start' }
-  // Natural reports her sleep itself (`idle`), so the sleep stance that realises it is not reported again.
-  return intent.stance === 'sit' ? { activity: 'sit', phase: 'start' } : null
+  // Natural reports her sleep itself (`idle`), so the sleep stance and the doze that realise it are not reported again.
+  // The clip-free rest stands in for a sit (architecture 4f) and is reported as its own activity.
+  if (intent.stance === 'sit')
+    return { activity: 'sit', phase: 'start' }
+  return intent.rest === 'rest' ? { activity: 'rest', phase: 'start' } : null
 }
 
 /**

@@ -127,6 +127,22 @@ describe('selfLine', () => {
     expect(selfLine(fold([{ kind: 'self', activity: 'prop', phase: 'end', atMs: T0 }]), T0 + SEC, 'Luke')).toBe('You were busy with something of your own just now.')
   })
 
+  it('reports a clip-free rest as it reports a sit: long-lived, kept through a short activity, told with its length', () => {
+    const resting = fold([
+      { kind: 'self', activity: 'rest', phase: 'start', atMs: T0 },
+      { kind: 'self', activity: 'yawn', phase: 'start', atMs: T0 + 2 * MIN },
+      { kind: 'self', activity: 'yawn', phase: 'end', atMs: T0 + 2 * MIN + 5 * SEC },
+    ])
+    expect(resting.self.current).toEqual({ activity: 'rest', label: null, sinceMs: T0 })
+    // A sleep, a sit and a rest last: still in progress after the 2 minutes a short activity is believed.
+    expect(selfLine(resting, T0 + 10 * MIN, 'Luke')).not.toBeNull()
+    const done = fold([{ kind: 'self', activity: 'rest', phase: 'end', atMs: T0 + 6 * MIN }], resting)
+    expect(done.self.current).toBeNull()
+    expect(done.self.recent[0]).toMatchObject({ activity: 'rest', durationMs: 6 * MIN })
+    // Worth telling for half an hour, like a sit.
+    expect(selfLine(done, T0 + 30 * MIN, 'Luke')).not.toBeNull()
+  })
+
   it('tells what came before the activity in progress', () => {
     const state = fold([
       { kind: 'self', activity: 'held-back', phase: 'end', atMs: T0 },

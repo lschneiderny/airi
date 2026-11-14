@@ -114,7 +114,7 @@ const PRESENCE_REASONS: ReadonlySet<string> = new Set<PresenceReason>(['locked',
 const BUSY_STATES: ReadonlySet<string> = new Set<BusyState>(['accepts', 'busy', 'fullscreen', 'presentation', 'quiet', 'unknown'])
 const CATEGORIES: ReadonlySet<string> = new Set<AppCategory>(['game', 'browser', 'editor', 'media', 'chat', 'call', 'work', 'other'])
 const URGENCIES: ReadonlySet<string> = new Set(['immediate', 'soon', 'later'])
-const SELF_ACTIVITIES: ReadonlySet<string> = new Set<SelfActivity>(['stretch', 'yawn', 'look-around', 'check-in', 'peer', 'zone-out', 'nod-off', 'sway', 'sleep', 'held-back', 'prop', 'sit', 'wander', 'visit', 'go-home', 'clip'])
+const SELF_ACTIVITIES: ReadonlySet<string> = new Set<SelfActivity>(['stretch', 'yawn', 'look-around', 'check-in', 'peer', 'zone-out', 'nod-off', 'sway', 'sleep', 'held-back', 'prop', 'sit', 'rest', 'wander', 'visit', 'go-home', 'clip'])
 /** Longest clip or prop label kept from a self observation; the stage caps its own labels at 32 characters. */
 const SELF_LABEL_MAX_CHARS = 32
 const TOUCH_GESTURES: ReadonlySet<string> = new Set<TouchGesture>(['pet', 'poke'])
