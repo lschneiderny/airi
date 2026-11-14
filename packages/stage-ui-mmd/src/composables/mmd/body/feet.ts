@@ -8,6 +8,7 @@ import type { MMDFrameContext } from '../frame-pipeline'
 import type { MMDBodyPose } from './pose'
 
 import { createFootContact, planFootSteps } from '@proj-airi/motion-driver-humanoid/foot-contact'
+import { ballRoll } from '@proj-airi/motion-driver-humanoid/locomotion'
 import { Euler, Quaternion, Vector3 } from 'three'
 
 import { toRigTraits } from '../rig'
@@ -89,6 +90,7 @@ export class MMDFootContact {
   /** Feet that carry weight this frame, and their solved world ankles and ankle matrices from the previous measurement. */
   private readonly carrying: Record<Foot, boolean> = { left: false, right: false }
   private readonly carried: Partial<Record<Foot, { position: Vector3, matrix: Matrix4 }>> = {}
+  private readonly pivots: Record<Foot, MMDFootPivot> = { left: 'flat', right: 'flat' }
 
   constructor(private readonly pose: MMDBodyPose) {
     this.legs = sides.flatMap((side) => {
@@ -182,6 +184,12 @@ export class MMDFootContact {
     root: MMDRootPose
     /** Gait foot targets in the ground frame; they own both feet while the gait weight is above 0. */
     gait: Record<Foot, LocomotionFoot> | null
+    /**
+     * The performer's foot pitch per foot, radians (its `FootPitch` channels); a negative pitch turns a standing foot
+     * toe-down about its ball (architecture 5.1), as a heel raise does. Read while the gait does not own the feet and
+     * the rig has roll geometry; a pitch of 0 or above leaves the foot flat. Omitted, every foot stays flat.
+     */
+    footPitch?: Readonly<Record<Foot, number>>
   }): void {
     if (!this.planner)
       return
@@ -264,7 +272,8 @@ export class MMDFootContact {
         if (input.now - step.start >= step.arc.duration)
           delete this.steps[side]
       }
-      const roll = input.gait?.[side].roll
+      const roll = input.gait ? input.gait[side].roll : this.standingRoll(side, input.footPitch)
+      this.pivots[side] = !input.gait && roll?.pivot === 'ball' ? 'ball' : 'flat'
       const ground = this.planted[side] ?? toGroundAnchor(contact.anchor, root)
       const anchor = meshAnkleTarget(ground, roll, root)
       this.targets[side] = anchor
@@ -323,6 +332,18 @@ export class MMDFootContact {
       ik.quaternion.copy(clean.quaternions[chain.ikBoneIndex]).slerp(parent.invert().multiply(worldYaw), contact.c)
       ik.updateWorldMatrix(false, true)
     }
+  }
+
+  /** A standing foot's roll about its ball for the performer's toe-down pitch; undefined while the foot stays flat. */
+  private standingRoll(side: Foot, pitches: Readonly<Record<Foot, number>> | undefined): LocomotionFoot['roll'] | undefined {
+    const pitch = pitches?.[side] ?? 0
+    const geometry = pitch < 0 ? this.rollGeometry : null
+    return geometry ? ballRoll(geometry[side], pitch) : undefined
+  }
+
+  /** The pivot of each standing foot's last applied roll: `ball` while the performer pitches it, `flat` otherwise. */
+  get standingPivots(): Readonly<Record<Foot, MMDFootPivot>> {
+    return this.pivots
   }
 
   /**

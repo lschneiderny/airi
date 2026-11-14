@@ -180,6 +180,8 @@ With `traits.foot` (each foot's ankle height and heel and ball distances) every 
 rises onto the ball from 62 % to `-32 deg * min(1, strideScale)` at lift-off, and swings back through flat to the next
 strike. `roll.ankleOffset` is the ankle's displacement from `target` as the foot rotates about `roll.pivot`, so that
 point holds still; `target` keeps its meaning. Without `traits.foot`, and in turns, every roll is 0.
+`ballRoll(foot, pitch)` is the same ball-pivot roll for a standing foot the gait does not carry, such as the
+performer's heel raise: a host turns the foot toe-down about its ball by the performer's negative `FootPitch` channel.
 `rebase` teleports the root, re-plants both feet at the bind ankle offsets, and
 makes the next frame `idle`; use it for drag and teleports. The seed only breaks
 first-foot ties.

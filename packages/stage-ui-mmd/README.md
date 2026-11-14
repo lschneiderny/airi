@@ -25,9 +25,12 @@ reaching feature parity with the Live2D and VRM renderers:
   stance; a model without one dozes on her feet (the performer's rest layer).
   A stance shift re-plants a foot: the foot stage plays the performer's
   `footSteps` like its turn steps, turning the foot about the root to its yaw
-  from the standing angle, without changing the facing. The hand clasp and the
-  heel rock weigh 0 until their forms read on the mesh (no two-hand contact, no
-  toe-down foot pitch). The scene emits `idle`
+  from the standing angle, without changing the facing. While the gait does
+  not carry the feet, the foot stage also turns a standing foot toe-down about
+  its ball for the performer's negative `FootPitch` channel (architecture
+  5.1's ball pivot, through the gait roll's own ankle offset, before physics);
+  diagnostics then measure that foot's contact at its ball. The hand clasp and
+  the heel rock weigh 0 until their forms read on the mesh. The scene emits `idle`
   and `self` events, which the stage forwards to the situation. See
   [the idle agency ADR](../../docs/ai/adr/2026-11-12-idle-agency.md).
 - **Clip library**: every imported clip gets a derived kind and layer, and the

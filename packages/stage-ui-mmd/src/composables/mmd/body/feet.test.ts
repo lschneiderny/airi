@@ -80,6 +80,42 @@ it('lifts a re-planted foot by its lift and lands it at its yaw from the standin
   expect(after.right).toEqual(before.right)
 })
 
+it('turns a standing foot toe-down about its ball for the performer\'s foot pitch, and leaves the other foot flat', () => {
+  const fixture = bodyFixture(0, Math.PI, { toes: true })
+  // Roll geometry needs a toe IK bone on each foot, which the fixture does not name.
+  const feet = new MMDFootContact(new MMDBodyPose(fixture.mmd, { ...fixture.rig, toeIk: { left: '左つま先ＩＫ', right: '右つま先ＩＫ' } }))
+  fixture.pipeline.poseStages.length = 0
+  fixture.pipeline.surfaceStages.length = 0
+  let footPitch = { left: 0, right: 0 }
+  fixture.pipeline.poseStages.push({ id: 'foot-contact', run: context => feet.apply(context, { offset: new Vector3(), duck: 1, contactDuck: 1, disabled: false, turnSteps: [], footSteps: [], now: 0, clips: new Map(), root: { x: 0, yaw: 0 }, gait: null, footPitch }) })
+  const frames = (count: number) => {
+    for (let frame = 0; frame < count; frame++)
+      fixture.pipeline.step(1 / 60)
+  }
+  frames(60)
+  const ik = (side: '左' | '右') => {
+    const bone = fixture.bone(`${side}足ＩＫ`)
+    return { position: bone.getWorldPosition(new Vector3()), quaternion: bone.getWorldQuaternion(new Quaternion()) }
+  }
+  const flat = { left: ik('左'), right: ik('右') }
+  const pitch = -14 * Math.PI / 180
+  footPitch = { left: pitch, right: 0 }
+  frames(2)
+  const raised = { left: ik('左'), right: ik('右') }
+  // The fixture's ball lies 1.5 ahead of the ankle and 1 below it: the ankle turns about it, up and a little forward.
+  const geometry = { forward: -1.5, up: 1 }
+  const offset = [geometry.forward * Math.cos(pitch) - geometry.up * Math.sin(pitch) - geometry.forward, geometry.forward * Math.sin(pitch) + geometry.up * Math.cos(pitch) - geometry.up]
+  expect(raised.left.position.x - flat.left.position.x).toBeCloseTo(0, 6)
+  expect(raised.left.position.y - flat.left.position.y).toBeCloseTo(offset[1], 6)
+  expect(raised.left.position.z - flat.left.position.z).toBeCloseTo(offset[0], 6)
+  expect(raised.left.quaternion.angleTo(flat.left.quaternion)).toBeCloseTo(-pitch, 6)
+  expect(raised.right.position.distanceTo(flat.right.position)).toBeLessThan(1e-9)
+  expect(feet.standingPivots).toEqual({ left: 'ball', right: 'flat' })
+  footPitch = { left: 0, right: 0 }
+  frames(2)
+  expect(ik('左').position.distanceTo(flat.left.position)).toBeLessThan(1e-9)
+})
+
 it('reads a heel-to-toe roll about the rig\'s heel, then its ball, as a still contact point under a moving ankle', () => {
   const { feet, ankle, heel, ball } = plantedFeet()
   turnAbout(ankle, heel(), 0.3)

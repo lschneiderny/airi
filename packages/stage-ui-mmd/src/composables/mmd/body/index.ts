@@ -199,6 +199,7 @@ export class MMDBody {
           clips: this.clips,
           root: { x: this.rootX, yaw: this.rootYaw },
           gait: this.gait && this.gait.weight > 0 ? this.gait.feet : null,
+          footPitch: this.performer?.footPitch,
         })
         if (center && before) {
           center.quaternion.copy(before)
@@ -224,10 +225,11 @@ export class MMDBody {
     this.surfaceStage = { id: 'body-diagnostics', run: () => {
       if (!this.input?.enabled)
         return
-      // A rolling foot's contact point is its pivot (owner decision O6); without the gait every carried foot is flat.
+      // A rolling foot's contact point is its pivot (owner decision O6); without the gait a carried foot is flat, or on
+      // its ball while the performer pitches it toe-down.
       const gaitFeet = this.gait && this.gait.weight > 0 ? this.gait.feet : null
       const pivot = (side: 'left' | 'right') => {
-        const kind = gaitFeet?.[side].roll.pivot ?? 'flat'
+        const kind = gaitFeet ? gaitFeet[side].roll.pivot : this.feet.standingPivots[side]
         return kind === 'air' ? 'flat' : kind
       }
       const { skate, skateContact, ...feet } = this.feet.measure({ left: pivot('left'), right: pivot('right') })

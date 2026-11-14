@@ -249,6 +249,15 @@ function pivotOffset(forward: number, up: number, pitch: number): [number, numbe
   return [forward * cos - up * sin - forward, forward * sin + up * cos - up]
 }
 
+/**
+ * A standing foot pitched toe-down by `pitch` (negative radians) about its ball (architecture 5.1's ball pivot): the
+ * heel rises and the ankle moves on its arc about the ball, which holds still. For a foot the gait does not carry, such
+ * as the performer's heel raise.
+ */
+export function ballRoll(foot: FootGeometry, pitch: number): FootRoll {
+  return { pitch, ankleOffset: pivotOffset(-foot.ballForward, foot.ankleHeight, pitch), pivot: 'ball' }
+}
+
 function scaleOffset(offset: readonly [number, number], share: number): [number, number] {
   return [offset[0] * share, offset[1] * share]
 }

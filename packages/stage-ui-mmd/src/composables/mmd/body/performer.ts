@@ -14,6 +14,7 @@ const sides = ['left', 'right'] as const
 const fingers = ['Thumb', 'Index', 'Middle', 'Ring', 'Little'] as const
 const joints = { Thumb: ['Metacarpal', 'Proximal', 'Distal'], other: ['Proximal', 'Intermediate', 'Distal'] } as const
 const wrap = (angle: number) => Math.atan2(Math.sin(angle), Math.cos(angle))
+const FOOT_PITCH = { left: channelIndex('leftFootPitch'), right: channelIndex('rightFootPitch') } as const
 
 /** Clip ownership of each written bone group, 0 performer to 1 clip; the adapter applies it exactly once. */
 export interface MMDBodyWeights {
@@ -80,6 +81,7 @@ export class MMDBodyPerformer {
   /** Foot re-plants the performer issued since `beginFrame`, for the foot stage. */
   readonly footSteps: BodyFootStep[] = []
   private readonly core
+  private readonly pitches: Record<BodySide, number> = { left: 0, right: 0 }
   private readonly previous = new Float32Array(BODY_CHANNELS.length)
   private readonly current = new Float32Array(BODY_CHANNELS.length)
   private readonly display = new Float32Array(BODY_CHANNELS.length)
@@ -327,6 +329,13 @@ export class MMDBodyPerformer {
   /** The displayed channel value, in `BODY_CHANNELS` units. */
   channel(index: number): number {
     return this.display[index]
+  }
+
+  /** Each foot's displayed pitch, radians (positive lifts the toes), for the foot stage (architecture 5.1). */
+  get footPitch(): Readonly<Record<BodySide, number>> {
+    this.pitches.left = this.display[FOOT_PITCH.left]
+    this.pitches.right = this.display[FOOT_PITCH.right]
+    return this.pitches
   }
 
   get frame(): BodyPerformanceFrame | null {
