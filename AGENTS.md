@@ -133,8 +133,7 @@ Read the listed file before starting. Skill paths below are under `.agents/skill
 | Local file upload via browser/Electron chooser or input | [Upload reference](.agents/skills/use-agent-browser-for-airi/references/input-file.md), [agent-browser](.agents/skills/agent-browser/SKILL.md). For Electron, also [agent-browser-electron](.agents/skills/agent-browser-electron/SKILL.md). |
 | Screenshots and visual evidence | [use-vishot](.agents/skills/use-vishot/SKILL.md). Load only the matching runtime and scenario references. |
 | Live2D, VRM, MMD import/rendering in web and desktop | [use-agent-browser-for-airi](.agents/skills/use-agent-browser-for-airi/SKILL.md) |
-| Motion QA, emotion/idle gates, rendered motion runs | [motion-qa](.agents/skills/motion-qa/SKILL.md) |
-| Headless MMD body motion: runs, `mmd-motion-quality` gate, topic reports, clips | [motion-qa](.agents/skills/motion-qa/SKILL.md), [qa-tools README](packages/qa-tools/README.md) (`pnpm qa:motion3d`) |
+| Motion QA, emotion/idle gates, rendered motion runs, headless MMD body motion (`pnpm qa:motion3d`) | [motion-qa](.agents/skills/motion-qa/SKILL.md); for `qa:motion3d`, also the [qa-tools README](packages/qa-tools/README.md) |
 | Checking a change in the running app: clean start, chat turn, screenshot, errors | [qa-tools README](packages/qa-tools/README.md#clean-start-smoke): `qa:smoke`, `qa:app`, and the `airi-qa` MCP server |
 | Live QA on Linux: anything that opens app windows | [`pnpm qa:display`](scripts/dev-tools/README.md#pnpm-qadisplay) |
 

@@ -35,6 +35,6 @@ packages.
 
 Read `README.md`, `docs/ai/adr/2026-10-30-3d-character-motion.md`,
 `docs/ai/adr/2026-10-31-fullscreen-stage-and-locomotion.md`,
-`docs/ai/adr/2026-11-03-mmd-clip-actions.md`, and
-`docs/ai/adr/2026-11-11-whole-body-performer.md` and
+`docs/ai/adr/2026-11-03-mmd-clip-actions.md`,
+`docs/ai/adr/2026-11-11-whole-body-performer.md`, and
 `docs/ai/adr/2026-11-12-idle-agency.md` before changing a contract.
