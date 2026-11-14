@@ -158,6 +158,34 @@ const { seq, behaviour } = motion.idleState
 [The idle agency ADR](../../docs/ai/adr/2026-11-12-idle-agency.md) records the
 design, the pacing numbers and the rendered Live2D pass.
 
+## Motion review
+
+`./review` holds the seam a reviewer uses to find the idle layer that looks
+wrong on a running model.
+
+```ts
+motion.setReviewGains({ shifts: 0, shiftRate: 1, drift: 1, wobble: 1, eyes: 1, body: 1 })
+const { head, eyes, act, owner } = motion.reviewState()
+```
+
+- `setReviewGains` scales what a layer contributes to the frame: the size of
+  posture shifts, the drift of the rest pose, the continuous wobble, how far
+  the eyes leave the camera, and how far the body follows the head.
+  `shiftRate` changes how often posture shifts start.
+- Every gain is 1 by default, and a gain of 1 leaves every frame
+  bit-identical, so seeded traces and gates are unchanged.
+- A gain never stops a layer's random process. The other layers and every later
+  draw stay as they were, and the same motion returns when the gain goes back
+  to 1. `shiftRate` is the exception: it moves the shift schedule.
+- A changed gain eases in over 0.25 s.
+- `reviewState` names what drives the head and the eyes at the latest grid
+  step: the posture shift in progress with its size, the gaze target
+  (`GazeTargetKind` in `./gaze`), the idle behaviour and errand in progress,
+  and any owner outside idle life (a pet, the cursor, a gesture, an emotion).
+  It draws nothing.
+- The idle acts have no gain. A host withholds the idle drive to switch them
+  off.
+
 ## Checks
 
 ```bash

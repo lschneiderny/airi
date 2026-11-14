@@ -52,6 +52,13 @@ const motionStillGap = 0.03
 
 type Target = GazePoint | 'cursor'
 
+/**
+ * What the eyes are aimed at, for a reviewer's readout. `desk`, `side` and `side-up` are the autonomous fixation
+ * points; `screen` is the desk fixation moved toward the screen content; `glance` is a held look another layer asked
+ * for (an idle act, an emotion, a chat read); `override` is a target the controller forces, such as the petting hand.
+ */
+export type GazeTargetKind = 'camera' | 'desk' | 'screen' | 'side' | 'side-up' | 'cursor' | 'chat' | 'aside' | 'glance' | 'override'
+
 // Share of posture shifts that are attention shifts: the gaze moves first and the
 // posture shift starts 30-80 ms later. Other shifts keep the current fixation.
 const attentionShare = 0.3
@@ -83,6 +90,8 @@ export class NaturalGazeLayer {
   saccadeSize = 0
   /** The current autonomous fixation was selected from the typing chat branch. */
   onChat = false
+  /** What the latest saccade aimed at. It draws nothing and no layer reads it. */
+  targetKind: GazeTargetKind = 'camera'
 
   private time = 0
   private from: GazePoint = { x: 0, y: 0 }
@@ -201,11 +210,13 @@ export class NaturalGazeLayer {
         this.asideSide = this.random() < 0.5 - 0.15 * this.inward ? -1 : 1
       this.aside = { x: this.asideSide * targets.aside.x, y: targets.aside.y }
       this.saccadeTo(this.jittered(this.aside), at)
+      this.targetKind = 'aside'
       return
     }
     this.aside = null
     this.asideReleasedAt = at
     this.saccadeTo(this.jittered(targets.camera), at)
+    this.targetKind = 'camera'
   }
 
   /**
@@ -225,6 +236,7 @@ export class NaturalGazeLayer {
   glance(point: GazePoint, hold: number, at: number, source?: 'chat') {
     this.saccadeTo(point, at, hold)
     this.chatRead = source === 'chat'
+    this.targetKind = source === 'chat' ? 'chat' : 'glance'
     return this.nextFixationAt
   }
 
@@ -343,6 +355,8 @@ export class NaturalGazeLayer {
   private saccadeTo(target: Target, at: number, hold?: number, catchUp = false) {
     this.onChat = false
     this.chatRead = false
+    if (target === 'cursor')
+      this.targetKind = 'cursor'
     const from = this.gazeAt(at)
     const to = catchUp ? this.catchUpTarget(from) : this.resolve(target)
     // Amplitude in approximate degrees: 20 per normalized eye unit.
@@ -362,31 +376,40 @@ export class NaturalGazeLayer {
 
   private drawTarget(): Target {
     this.onChat = false
-    if (this.override)
+    if (this.override) {
+      this.targetKind = 'override'
       return this.jittered(this.override)
+    }
     // Aside attention outranks the camera-fixation probability, so a hold that raises it cannot pull the gaze back.
-    if (this.aside)
+    if (this.aside) {
+      this.targetKind = 'aside'
       return this.jittered(this.aside)
+    }
     if (this.chatPoint && this.chatTyping && this.chatRandom() < 0.35) {
       this.onChat = true
+      this.targetKind = 'chat'
       return this.jitteredWith(this.chatPoint, this.chatRandom)
     }
     if (this.cursor && this.weight > 0 && this.random() < cursorWeight * this.weight)
       return 'cursor'
     const choice = this.random()
-    if (choice < this.cameraFixationProbability)
+    if (choice < this.cameraFixationProbability) {
+      this.targetKind = 'camera'
       return this.jittered(targets.camera)
+    }
     // The remainder splits by weight between desk and randomly sided peripheral targets.
     // With the default weights (1, 1, 0) the thresholds equal the even desk/peripheral split.
     const { desk, peripheral, peripheralUp } = this.targetWeights
     const rest = 1 - this.cameraFixationProbability
     const total = desk + peripheral + peripheralUp
-    if (choice < this.cameraFixationProbability + rest * desk / total)
+    if (choice < this.cameraFixationProbability + rest * desk / total) {
+      this.targetKind = this.screenPointActive ? 'screen' : 'desk'
       return this.jittered(this.screenPointActive ? this.screenPoint() : targets.desk)
+    }
     const side = this.random() < 0.5 - 0.15 * this.inward ? -1 : 1
-    const sideTarget = peripheralUp > 0 && choice >= this.cameraFixationProbability + rest * (desk + peripheral) / total
-      ? targets.peripheralUp
-      : targets.peripheral
+    const up = peripheralUp > 0 && choice >= this.cameraFixationProbability + rest * (desk + peripheral) / total
+    const sideTarget = up ? targets.peripheralUp : targets.peripheral
+    this.targetKind = up ? 'side-up' : 'side'
     return this.jittered({ x: side * sideTarget.x, y: sideTarget.y })
   }
 
@@ -425,6 +448,8 @@ function saccadeSeconds(amplitude: number) {
  */
 export class NaturalAttentionShifts {
   private decidedFor = -1
+  /** `shiftCount` of the latest posture shift that the gaze led, or -1 before the first. */
+  ledShift = -1
 
   constructor(private readonly random: RandomStream) {}
 
@@ -437,6 +462,7 @@ export class NaturalAttentionShifts {
     if (this.random() >= attentionShare)
       return
     gaze.beginAttentionShift(stepStart + untilShift)
+    this.ledShift = posture.shiftCount + 1
     posture.postponeShift(attentionLead.min + (attentionLead.max - attentionLead.min) * this.random())
   }
 }

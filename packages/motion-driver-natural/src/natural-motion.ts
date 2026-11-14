@@ -13,6 +13,7 @@ import type { NaturalEpisode } from './mood'
 import type { PendingAction } from './pending-actions'
 import type { Vec3 } from './posture'
 import type { RandomStream } from './random'
+import type { NaturalReviewGains, NaturalReviewState } from './review'
 
 import { errorMessageFrom } from '@moeru/std'
 import { defaultExpressionPerformanceSettings, PERFORMANCE_EMOTIONS } from '@proj-airi/stage-shared/expression-performance'
@@ -39,6 +40,7 @@ import { startPending } from './pending-actions'
 import { NaturalPlacement } from './placement'
 import { NaturalPostureLayers, postureHomes } from './posture'
 import { createRandomStream, deriveSeed } from './random'
+import { neutralReviewGains } from './review'
 import { NaturalSpeechEmphasis, SpeechOnsetShifts } from './speech-emphasis'
 import { NaturalPetLayer } from './touch'
 
@@ -61,6 +63,9 @@ const streamIndex = { drift: 0, continuous: 1, gain: 2, shift: 3, gaze: 4, atten
 // interpolated between the two grid states around the current time, so frame
 // partition never changes the sampled path and draws stay deterministic per seed.
 const step = 1 / 120
+
+// Seconds over which a changed review gain eases in, so a mute never snaps the head.
+const reviewEaseSeconds = 0.25
 
 // Critically damped follower time constants (seconds): the head trails eye pursuit.
 const followers = {
@@ -151,6 +156,9 @@ export class NaturalMotion {
   private idleBreathScaled = false
   /** Follows the idle behaviour for the observer. */
   private readonly idleReports = new IdleBehaviourReports()
+  /** The review gains asked for, and the eased values the grid applies; both rest at exactly 1. */
+  private reviewTarget: NaturalReviewGains = { ...neutralReviewGains }
+  private readonly review: NaturalReviewGains = { ...neutralReviewGains }
   private emotionStrengths: Partial<Record<PerformanceEmotion, number>> = {}
   private performanceSettings = defaultExpressionPerformanceSettings
   private readonly emphasis: NaturalSpeechEmphasis
@@ -497,6 +505,49 @@ export class NaturalMotion {
     this.idle.answerErrand(seq, outcome)
   }
 
+  /**
+   * Sets the review gains from the next grid step; see {@link NaturalReviewGains}. Each gain is clamped to 0..2
+   * (`shiftRate` to 0.1..2, because a rate of 0 would never start another shift) and a value that is not finite
+   * counts as 1.
+   */
+  setReviewGains(gains: Readonly<NaturalReviewGains>) {
+    const bounded = (value: number, min: number) => Number.isFinite(value) ? Math.max(min, Math.min(2, value)) : 1
+    this.reviewTarget = {
+      shifts: bounded(gains.shifts, 0),
+      shiftRate: bounded(gains.shiftRate, 0.1),
+      drift: bounded(gains.drift, 0),
+      wobble: bounded(gains.wobble, 0),
+      eyes: bounded(gains.eyes, 0),
+      body: bounded(gains.body, 0),
+    }
+  }
+
+  /** What drives the head and the eyes at the latest grid step. It draws nothing and changes no state. */
+  reviewState(): NaturalReviewState {
+    const now = this.stepIndex * step
+    const errand = this.idle.errand
+    return {
+      time: this.activeTime,
+      mode: this.energy.currentMode,
+      head: {
+        seq: this.posture.shiftCount,
+        moving: this.posture.shiftMoving,
+        size: this.posture.shiftDistance * this.posture.amplitudeScale * this.review.shifts,
+        withGlance: this.attention.ledShift === this.posture.shiftCount,
+      },
+      eyes: { seq: this.gaze.saccadeCount, target: this.petOverride ? 'pet' : this.gaze.targetKind },
+      act: this.idle.behaviour,
+      errand: errand !== null && errand.endedAt === null ? errand.kind : null,
+      owner: this.pet.active
+        ? 'pet'
+        : this.onCursor > 0.5
+          ? 'cursor'
+          : Math.max(this.gestures.activeUntil(), this.cueGestures.activeUntil()) > now
+            ? 'gesture'
+            : this.hold.emotion !== null ? 'emotion' : null,
+    }
+  }
+
   /** Starts an explicit cue on the next grid step, independently of held-emotion settings. */
   gesture(kind: CueGestureKind, count: number, nowSeconds: number) {
     this.advance(nowSeconds)
@@ -752,6 +803,16 @@ export class NaturalMotion {
       this.posture.shiftRateScale *= idle.shiftRateScale
       this.blink.intervalScale *= idle.blinkIntervalScale
     }
+    // A gain at its target moves by exactly 0, so the neutral gains multiply every term by exactly 1.
+    const reviewEase = 1 - Math.exp(-step / reviewEaseSeconds)
+    for (const layer of ['shifts', 'drift', 'wobble', 'eyes', 'body'] as const)
+      this.review[layer] += (this.reviewTarget[layer] - this.review[layer]) * reviewEase
+    // The rate changes only when the next hold is drawn, so it needs no ease.
+    this.review.shiftRate = this.reviewTarget.shiftRate
+    this.posture.shiftRateScale *= this.review.shiftRate
+    this.posture.layerGains.shift = this.review.shifts
+    this.posture.layerGains.drift = this.review.drift
+    this.posture.layerGains.continuous = this.review.wobble
     // Outside held emotions the period scale rests at 1, so the idle scale is the whole value there.
     if (idle || this.idleBreathScaled) {
       this.breath.periodScale = (this.performanceSettings.heldEmotions ? this.hold.modulation().breathPeriod : 1) * (idle?.breathPeriodScale ?? 1)
@@ -876,8 +937,8 @@ export class NaturalMotion {
     return {
       head,
       compensationHead,
-      body: this.body.step(step, followerHead).map((value, axis) => clamp(value + lean[axis], 1)) as Vec3,
-      gaze,
+      body: this.body.step(step, followerHead).map((value, axis) => clamp(this.review.body * value + lean[axis], 1)) as Vec3,
+      gaze: this.review.eyes === 1 ? gaze : { x: this.review.eyes * gaze.x, y: this.review.eyes * gaze.y },
       face,
       // Closing lids ride on the blink factor, the one eye channel every adapter lets reach fully closed.
       blinkFactor: idle ? this.blink.step(step) * (1 - idle.lidClose) : this.blink.step(step),
