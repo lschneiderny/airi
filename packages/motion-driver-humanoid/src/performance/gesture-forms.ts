@@ -55,11 +55,18 @@ export const GESTURE_FORMS: Readonly<Record<SpeechGestureForm, GestureFormSpec>>
  * turn halfway toward the body (pronation 45 between the hang's 0 and the hand to chest's 75), the wrist straight, the
  * elbows a little out (the hand to chest's 25 less its 10 for the arm in front of the body).
  *
- * At the hips' own height (`anchor.up` 0, 6.3's seed) neither Chisa's nor Ellen's arms have a key clear of their
- * skirt and belly proxies inside the limits, out to 0.6 A in front of the anchor: the hand capsule, which goes on
- * along the forearm, enters them. A clear key exists from 0.10 A above the hips on Chisa and 0.05 A on Ellen
- * (E/fc/u1/scratch/probe-clasp-space.txt). Raising the anchor would be an offset chosen because it solves, so it stays
- * at the seed, and as 6.3 states, a rig that cannot reach the anchor does not clasp: its hands hang.
+ * The clasp's height is "hands clasped just below waist" (Stanford Oral Communication Program, delivery), measured on
+ * ANSUR II's women (Gordon et al. 2014, NATICK/TR-15/007, summary statistics, female means): waist height (omphalion,
+ * the navel) 98.01 cm (p. 223), trochanterion height 84.54 cm (p. 209), lateral malleolus height 6.27 cm (p. 161),
+ * hand breadth 7.82 cm (p. 127); stature 162.85 cm (p. 193). On the rig the trochanterion, the top of the greater trochanter, stands for the hip
+ * joint, which is the top of the leg IK chains (`BodyRigTraits.legs`, the height of their two `hip` joints), and the
+ * lateral malleolus for the ankle joint, so the hip-to-ankle span 84.54 - 6.27 = 78.27 cm is the rig's `legLength`
+ * (thigh plus shin). Leg length scales the proportions rather than stature, because the rig has no top-of-head
+ * landmark and its legs are the span the band sits on. The waist is (98.01 - 84.54) / 78.27 = 0.172 L above the hip
+ * joints. "Just below" the waist puts the top of the clasped hands at the waist line, and the wrists, which the
+ * anchor places, one hand breadth below the top of the hands: 7.82 / 78.27 = 0.100 L under the waist, so
+ * (98.01 - 84.54 - 7.82) / 78.27 = 0.072 L above the hip joints (`FRONT_LOW_HEIGHT`). The seed keeps the hips' midline and depth, and a rig without leg joints has no clasp height, so it does
+ * not clasp. As 6.3 states, a rig that cannot reach the anchor does not clasp: its hands hang.
  */
 export const ARM_FORMS: Readonly<Record<BodyArmForm, { readonly shape: HandShape, readonly pron: number, readonly wflex: number, readonly swivel: number, readonly short: number, readonly seed: 'chest' | 'chin' | 'front-low', readonly anchor: { readonly side: number, readonly up: number }, readonly hands: 'one' | 'both' }>> = {
   'hand-to-chest': { shape: 'relaxed', pron: 75 * DEG, wflex: -10 * DEG, swivel: 25 * DEG, short: 0, seed: 'chest', anchor: { side: 0.05, up: 0.05 }, hands: 'one' },
@@ -104,6 +111,12 @@ const PATH_SAMPLES = 10
  * steps, as far as `backOff`, while the elbow swings out from the form's swivel to `swivel`.
  */
 const ANCHOR = { start: 1, step: 0.005, clearance: 0.01, backOffStep: 0.01, backOff: 0.2, swivelStep: 5 * DEG, swivel: 80 * DEG } as const
+/**
+ * The front-low anchor's height above the hip joints, in leg lengths: one hand breadth under the waist on ANSUR II's
+ * women, waist (omphalion) minus trochanterion minus hand breadth over trochanterion minus lateral malleolus height
+ * (`ARM_FORMS`).
+ */
+const FRONT_LOW_HEIGHT = (98.01 - 84.54 - 7.82) / (84.54 - 6.27)
 /** No joint of an arm form sits within this of its limit. */
 const LIMIT_MARGIN = 2 * DEG
 /** The corrector's capsule radius as a share of its segment: the hand is the extended forearm's capsule. */
@@ -193,7 +206,8 @@ export class GestureKeys {
    * - The anchor: a hand point marches from 1 A in front of the form's seed toward it until it is the hand capsule's
    *   radius plus 0.01 A from the nearest collider, so the hand stops at the body's surface (with no collider near,
    *   at the seed). Chest seed: between the shoulder joints, 0.15 A lower; chin seed: the head bone pushed forward and
-   *   down by 0.6 of the neck-to-head length; front-low seed: the hips; each moved by the form's `anchor` toward the
+   *   down by 0.6 of the neck-to-head length; front-low seed: the hips' midline and depth at `FRONT_LOW_HEIGHT` above
+   *   the hip joints (none without leg joints); each moved by the form's `anchor` toward the
    *   arm's own side and up, and a two-hand form's wrist half a hand length further to its own side.
    * - The key: from the anchor (the thinking hand `short` of it) the hand backs off along the approach in 0.01 A
    *   steps, and at each step the elbow swings out from the form's swivel to 80 degrees. A key counts when every joint
@@ -211,11 +225,16 @@ export class GestureKeys {
     const sigma = side === 'left' ? 1 : -1
     const { traits } = this
     const neckToHead = Math.hypot(traits.head.x - traits.neck.x, traits.head.y - traits.neck.y, traits.head.z - traits.neck.z)
+    const legs = traits.legs
     const seed = spec.seed === 'chest'
       ? { x: 0, y: (traits.arms.left.shoulder.y + traits.arms.right.shoulder.y) / 2 - 0.15 * length, z: (traits.arms.left.shoulder.z + traits.arms.right.shoulder.z) / 2 }
       : spec.seed === 'chin'
         ? { x: 0, y: traits.head.y - 0.6 * neckToHead, z: traits.head.z + 0.6 * neckToHead }
-        : { x: traits.hips.x, y: traits.hips.y, z: traits.hips.z }
+        : legs ? { x: traits.hips.x, y: (legs.left.hip.y + legs.right.hip.y) / 2 + FRONT_LOW_HEIGHT * traits.legLength, z: traits.hips.z } : null
+    if (!seed) {
+      this.unreachable.add(`${side}:${form}`)
+      return false
+    }
     seed.x += sigma * (spec.anchor.side * length + (spec.hands === 'both' ? 0.5 * traits.arms[side].handLength : 0))
     seed.y += spec.anchor.up * length
     const reach = HAND_RADIUS * this.lengths[side].forearm + ANCHOR.clearance * length

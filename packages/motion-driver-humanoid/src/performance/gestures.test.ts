@@ -806,18 +806,25 @@ describe('co-speech gestures', () => {
     const right = { ...skeleton.arm('right', channels).wrist }
     const arm = rig.arms.left
     const length = Math.hypot(arm.upperArm.x, arm.upperArm.y, arm.upperArm.z) + Math.hypot(arm.forearm.x, arm.forearm.y, arm.forearm.z)
-    // The wrists one hand length apart across the hips' midline, at the hips' height, side by side.
+    // Just below the waist: the wrists one hand breadth under ANSUR II's female waist (omphalion) height, in the rig's
+    // leg lengths by the women's waist, trochanterion and lateral malleolus heights and hand breadth (Gordon et al. 2014).
+    const legs = rig.legs
+    if (!legs)
+      throw new Error('a fixture rig has leg joints')
+    const hipJoint = (legs.left.hip.y + legs.right.hip.y) / 2
+    const height = hipJoint + (98.01 - 84.54 - 7.82) / (84.54 - 6.27) * rig.legLength
+    // The wrists one hand length apart across the hips' midline, at that height, side by side.
     expect(Math.abs(left.x - right.x - arm.handLength) / arm.handLength).toBeLessThan(0.05)
     expect(Math.abs((left.x + right.x) / 2 - rig.hips.x) / length).toBeLessThan(0.02)
-    expect(Math.abs(left.y - rig.hips.y) / length).toBeLessThan(0.02)
-    expect(Math.abs(right.y - rig.hips.y) / length).toBeLessThan(0.02)
+    expect(Math.abs(left.y - height) / length).toBeLessThan(0.02)
+    expect(Math.abs(right.y - height) / length).toBeLessThan(0.02)
     expect(Math.abs(left.z - right.z) / length).toBeLessThan(0.02)
     expect(Math.min(left.z, right.z)).toBeGreaterThan(rig.hips.z)
   })
 
   it('reports the clasp capability on a rig whose arms reach the front-low anchor, and not on one whose arms cannot', () => {
     expect(createBodyPerformer({ traits: fixtureRigs[0].traits, seed: 1 }).step(quietInput(0)).capabilities.clasp).toBe(true)
-    // Chisa's skirt and belly proxies leave no clear key at the hips' height (E/fc/u1/scratch/probe-clasp-names.txt).
+    // Chisa's body proxies leave no clear key at the clasp's height (E/fc/u1/clasp-height/probe-clasp-height.txt).
     expect(createBodyPerformer({ traits: chisaTraits, seed: 1 }).step(quietInput(0)).capabilities.clasp).toBe(false)
   })
 

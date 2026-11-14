@@ -685,14 +685,22 @@ the body's surface, and the key backs off from it while the elbow swings out,
 until the pose and its path from rest clear the proxies (the pose with the ready
 key's headroom) with every joint 2 degrees inside its limit; an arm
 keeps whichever performance holds it, and speech uses the other hand.
-The two-hand contact `clasp` (6.3's front-low anchor, the hips pushed
+The two-hand contact `clasp` (6.3's front-low anchor, the hips' midline pushed
 forward; 4e act 6 and 4f's rest) is requested for `both` hands: it starts
 only when both arms are free and both keys solve, each wrist half a hand
 length to its own side of the anchor, and both arms travel for the longer
 preparation so the hands meet together. A request for one side of a held
-clasp lets the other hand go first. A rig that cannot reach the anchor does
-not clasp, as 6.3 states; on Chisa and Ellen no key at the hips' height clears
-the skirt and belly proxies inside the limits, so their hands hang. The
+clasp lets the other hand go first. The anchor's height is "hands clasped
+just below waist" on ANSUR II's women (Gordon et al. 2014, TR-15/007, female
+means): the top of the hands at the waist (omphalion, 98.01 cm), the wrists one
+hand breadth (7.82 cm) below it, over the trochanterion (84.54 cm), which
+stands for the hip joint, the leg IK chains' `hip` joints; the lateral
+malleolus (6.27 cm) stands for the ankle, so the hip-to-ankle span 78.27 cm
+is the rig's `legLength`. The wrists sit (98.01 - 84.54 - 7.82) / 78.27 =
+0.072 L above the hip joints (`FRONT_LOW_HEIGHT`); a rig without leg joints
+does not clasp. A rig that cannot reach the anchor does not clasp, as 6.3
+states: Vivian's arms reach it; on Chisa and Ellen no key at that height
+clears their body proxies inside the limits, so their hands hang. The
 proportional proxies of the fixture rigs reach it. A refused form is not
 searched again.
 Each lead stroke also nods the head (the speech head beat, MMD only): neck
