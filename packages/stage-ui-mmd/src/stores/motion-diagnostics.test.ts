@@ -5,6 +5,7 @@ import { createPinia, disposePinia } from 'pinia'
 import { describe, expect, it, vi } from 'vitest'
 import { watch } from 'vue'
 
+import { MMDFrameMetrics, MMDFrameRing, MMDUsageTotals } from '../composables/mmd/frame-metrics'
 import { mmdOverlaysOff } from '../composables/mmd/overlay-flags'
 import { mmdOverlaySetEvent, useMMDMotionDiagnostics } from './motion-diagnostics'
 
@@ -397,6 +398,47 @@ describe('mmd motion diagnostics channel', () => {
     }
     finally {
       warning.mockRestore()
+      disposePinia(pinia)
+    }
+  })
+
+  it('keeps frames recorded before a metrics swap in the next usage drain, and drains zeros afterwards', () => {
+    const pinia = createPinia()
+    const store = useMMDMotionDiagnostics(pinia)
+    try {
+      store.recordFrame(0.016)
+      store.recordFrame(0.016)
+      store.setMetrics(new MMDFrameMetrics())
+      store.recordFrame(0.03)
+
+      const usage = new MMDUsageTotals()
+      expect(store.drainUsage(usage)).toBe(true)
+      expect(usage.frames).toBe(3)
+      expect(usage.frameMaxMs).toBeCloseTo(30)
+
+      expect(store.drainUsage(usage)).toBe(false)
+      expect(usage.frames).toBe(0)
+      expect(usage.frameHist.count).toBe(0)
+    }
+    finally {
+      disposePinia(pinia)
+    }
+  })
+
+  it('copies the frame ring of the current metrics', () => {
+    const pinia = createPinia()
+    const store = useMMDMotionDiagnostics(pinia)
+    try {
+      const ring = new MMDFrameRing()
+      expect(store.copyFrameRing(ring)).toBe(false)
+      const metrics = new MMDFrameMetrics()
+      store.setMetrics(metrics)
+      store.recordFrame(0.02)
+      expect(store.copyFrameRing(ring)).toBe(true)
+      expect(ring.count).toBe(1)
+      expect(ring.intervalsMs[0]).toBeCloseTo(20)
+    }
+    finally {
       disposePinia(pinia)
     }
   })

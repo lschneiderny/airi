@@ -6,7 +6,7 @@ import type { BodyCapabilities } from '@proj-airi/motion-driver-humanoid/perform
 import type { BodyLocomotionReason, LocomotionPace } from '@proj-airi/motion-driver-humanoid/types'
 import type { PlacementRect } from '@proj-airi/stage-shared/stage-placement'
 
-import type { FrameMeasurement, StageTiming } from '../composables/mmd/frame-metrics'
+import type { FrameMeasurement, MMDFrameRing, StageTiming } from '../composables/mmd/frame-metrics'
 import type { MMDOverlayFlags } from '../composables/mmd/overlay-flags'
 import type { MMDRigProfile } from '../composables/mmd/rig'
 import type { MMDStanceDiagnostics } from '../composables/mmd/stance'
@@ -18,7 +18,7 @@ import { createContext as createBroadcastChannelContext } from '@moeru/eventa/ad
 import { defineStore } from 'pinia'
 import { onScopeDispose, ref, shallowRef } from 'vue'
 
-import { MMDFrameMetrics } from '../composables/mmd/frame-metrics'
+import { MMDFrameMetrics, MMDUsageTotals } from '../composables/mmd/frame-metrics'
 import { isMMDOverlayFlags, mmdOverlayFlagNames, mmdOverlaysOff } from '../composables/mmd/overlay-flags'
 import { MMDMotionTrace } from './motion-trace'
 
@@ -183,6 +183,8 @@ export const useMMDMotionDiagnostics = defineStore('mmd-motion-diagnostics', () 
     ? undefined
     : new BroadcastChannel('airi-stores-stage-ui-mmd-motion-diagnostics')
   let metrics = new MMDFrameMetrics()
+  /** Usage a replaced metrics instance recorded since the last drain; the next `drainUsage` carries it. */
+  const pendingUsage = new MMDUsageTotals()
   const trace = new MMDMotionTrace(message => channel?.postMessage(message))
   let warned = false
   /** `armRestHangDeg` is the rest upper-arm angle below horizontal for QA, 0-90; null keeps the default. */
@@ -426,7 +428,23 @@ export const useMMDMotionDiagnostics = defineStore('mmd-motion-diagnostics', () 
     publish,
     command,
     setOverlays,
-    setMetrics: (next: MMDFrameMetrics) => { metrics = next },
+    setMetrics: (next: MMDFrameMetrics) => {
+      metrics.drainUsage(pendingUsage)
+      metrics = next
+    },
+    /**
+     * Replaces `target`'s totals with the frame and stage usage since the previous drain, including frames recorded
+     * before a metrics swap, and resets them. Returns whether the window held a frame, that is, whether an MMD scene ran.
+     */
+    drainUsage: (target: MMDUsageTotals): boolean => {
+      target.reset()
+      target.addFrom(pendingUsage)
+      pendingUsage.reset()
+      metrics.drainUsage(target)
+      return target.frames > 0
+    },
+    /** Copies the current metrics' per-frame ring; frames from before a metrics swap are not kept. */
+    copyFrameRing: (target: MMDFrameRing): boolean => metrics.copyFrameRing(target),
     setTraceSource: (source: MMDMotionTraceSource | null) => trace.setSource(source),
     recordFrame: (delta: number) => metrics.recordFrame(delta),
     measure: (id: string, run: () => void) => metrics.measure(id, run),
