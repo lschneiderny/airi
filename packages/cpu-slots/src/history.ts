@@ -176,11 +176,8 @@ function distribution(values: number[]): { median: number, p90: number } {
   }
 }
 
-export function readHistory(since = 0): {
-  malformed: number
-  classes: Partial<Record<CpuClass, { count: number, waitMs: ReturnType<typeof distribution>, heldMs: ReturnType<typeof distribution> }>>
-  topWaits: HistoryEvent[]
-} {
+/** Valid events at or after `since` from the rotated and the current file, oldest file first. */
+export function readHistoryEvents(since = 0): { events: HistoryEvent[], malformed: number } {
   const events: HistoryEvent[] = []
   let malformed = 0
   for (const name of ['events.1.jsonl', 'events.jsonl']) {
@@ -208,6 +205,15 @@ export function readHistory(since = 0): {
         events.push(value)
     }
   }
+  return { events, malformed }
+}
+
+export function readHistory(since = 0): {
+  malformed: number
+  classes: Partial<Record<CpuClass, { count: number, waitMs: ReturnType<typeof distribution>, heldMs: ReturnType<typeof distribution> }>>
+  topWaits: HistoryEvent[]
+} {
+  const { events, malformed } = readHistoryEvents(since)
   const summary: ReturnType<typeof readHistory> = { malformed, classes: {}, topWaits: [] }
   for (const cpuClass of Object.keys(classes) as CpuClass[]) {
     const grants = events.filter(event => event.class === cpuClass && event.event === 'grant')
