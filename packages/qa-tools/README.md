@@ -1136,6 +1136,26 @@ Live acceptance so far covers one configuration: on 2026-11-09, on Linux in `qa:
 pnpm -F @proj-airi/qa-tools exec vitest run --project node src/app
 ```
 
+## Perf reports
+
+`pnpm perf` reads the desktop app's perf recording directories and never writes into them. Without `--dir` it reads the defaults for `pnpm dev` and packaged builds: `<config>/@proj-airi/stage-tamagotchi/perf` and `<config>/ai.moeru.airi/perf` (Electron names userData after the package name, which electron-builder sets to `ai.moeru.airi` for packaged builds), where `<config>` is `$XDG_CONFIG_HOME` (default `~/.config`) on Linux, `~/Library/Application Support` on macOS, and `%APPDATA%` on Windows. `--dir <path>` repeats and replaces the defaults; use it for `qa:app --perf-dir` runs and for apps started with `APP_USER_DATA_PATH` or `AIRI_PERF_DIR`.
+
+```bash
+pnpm perf sessions [--since 7d] [--json] [--dir <path>]...
+pnpm perf incident --list [--json] [--dir <path>]...
+pnpm perf incident <id> [--json] [--dir <path>]...
+```
+
+`sessions` prints one row per session with its segments merged: start (UTC), duration, short sha (`*` when any identity epoch was dirty, `~n` when the session saw n epochs), host, renderer and model, fps, the share of frames at or above 36 ms and 100 ms, the window-weighted median stage-window CPU (percent of one core), the largest stage-window working set, incidents, and the `live`, `recovered`, and `failed:n` flags. `--since` takes `<n>m`, `<n>h`, or `<n>d` and keeps sessions that started within that window. `--json` prints an array of the same rows with `null` where no segment holds a value. `fps` is exact over the counted windows: their frames divided by the number of counted windows times 5 s. Counted windows are the stage-window rollups that the reducer includes, after settling and visibility exclusions. `medianFpsLowerBound` is 1000 divided by the median frame interval's bin upper edge, so it snaps to a few values and is a lower bound; a steady 60 fps session reads about 55.6.
+
+A segment's row in `sessions.jsonl` wins; a raw segment without a row (a live session, or one that retention has not rolled up yet) is reduced in memory with the same `SegmentRollupReducer` that retention uses. A session is `live` while its `raw/<sessionId>.live` names a running process, and an un-rolled session counts as `recovered` when it has no `recording-stop`, no later segment, and no running recorder. Liveness checks the `.live` pid on the local machine only: for a directory copied from another host, an unrelated local process with the same pid makes a dead session read as `live` and not `recovered`. The same raw segment in several `--dir` copies counts once. Rolled-up rows carry no model name or maximum working set, so `modelName` and `maxWorkingSetKb` are `null` for sessions whose segments are all rolled up; the text table falls back to the model id. Malformed and unknown-version lines are skipped and reported per file on stderr.
+
+`incident --list` lists `incidents/*.json` files across the directories; `incident <id>` prints one, and `--json` prints the file with its path. Exit codes: 0 for success, including when there is no perf data; 2 for invalid arguments or an unknown incident id; 1 when reading fails.
+
+```bash
+pnpm -F @proj-airi/qa-tools exec vitest run --project node src/perf
+```
+
 ## Agent MCP server
 
 `pnpm qa:mcp` serves the `airi-qa` MCP server over stdio. It drives one disposable app session with the same launch, seed, onboarding, import, send, screenshot, and teardown helpers as `qa:app`, and the error collector of `qa:smoke`. The repository's `.mcp.json` registers it for Claude Code. For another client, register the command `pnpm --silent qa:mcp` with the repository as its working directory; for example, `codex mcp add airi-qa -- pnpm --silent --dir <repo> qa:mcp`.

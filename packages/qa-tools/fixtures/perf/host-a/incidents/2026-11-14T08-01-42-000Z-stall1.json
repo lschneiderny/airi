@@ -1,0 +1,32 @@
+{
+  "incident": {
+    "v": 1,
+    "t": 1794643302000,
+    "sessionId": "2026-11-14T08-00-00-000Z-z1y2bb",
+    "kind": "incident",
+    "id": "2026-11-14T08-01-42-000Z-stall1",
+    "trigger": "frame-stall",
+    "window": "stage-main",
+    "peak": {
+      "frameMaxMs": 712
+    },
+    "hostContended": false,
+    "file": "incidents/2026-11-14T08-01-42-000Z-stall1.json"
+  },
+  "recent": [
+    "{\"v\":1,\"t\":1794643270000,\"sessionId\":\"2026-11-14T08-00-00-000Z-z1y2bb\",\"kind\":\"sample\",\"epoch\":0,\"intervalMs\":5000,\"processes\":[{\"pid\":4242,\"creationTime\":1,\"role\":\"browser\",\"label\":\"browser\",\"cpuPctOfCore\":10,\"workingSetKb\":200000,\"peakWorkingSetKb\":210000},{\"pid\":4300,\"creationTime\":2,\"role\":\"window:stage-main\",\"label\":\"stage-main\",\"cpuPctOfCore\":25,\"workingSetKb\":251400,\"peakWorkingSetKb\":252400}],\"machine\":{\"load1\":1,\"cores\":16,\"externalCpuPct\":3,\"psiCpuSomeAvg10\":null},\"hostContended\":false,\"chromiumTrace\":false,\"recorderMs\":0.4,\"bytesWritten\":2048}",
+    "{\"v\":1,\"t\":1794643270000,\"sessionId\":\"2026-11-14T08-00-00-000Z-z1y2bb\",\"kind\":\"window-rollup\",\"epoch\":0,\"window\":\"stage-main\",\"visible\":true,\"paused\":false,\"tags\":{\"renderer\":\"live2d\",\"modelId\":\"live2d-hiyori\",\"modelName\":\"Hiyori\",\"features\":{\"speechMuted\":false,\"mmdPhysics\":true,\"naturalMotion\":true,\"mmdRoam\":\"off\",\"wakeWord\":false,\"hearing\":null},\"featureHash\":\"f1\",\"activity\":\"idle\",\"chatGenerating\":false,\"stageHost\":\"window\",\"devtoolsOpen\":false,\"display\":{\"width\":2560,\"height\":1440,\"scale\":1,\"refreshHz\":144},\"diagnosticsTracing\":false},\"frames\":300,\"frameHist\":[0,0,0,0,0,0,0,287,0,0,0,0,10,0,0,0,3,0,0,0,0,0],\"frameSumMs\":4800,\"frameMaxMs\":40,\"longTasks\":{\"count\":0,\"maxMs\":0,\"sumMs\":0},\"stages\":null,\"recorderUs\":80}",
+    "{\"v\":1,\"t\":1794643275000,\"sessionId\":\"2026-11-14T08-00-00-000Z-z1y2bb\",\"kind\":\"sample\",\"epoch\":0,\"intervalMs\":5000,\"processes\":[{\"pid\":4242,\"creationTime\":1,\"role\":\"browser\",\"label\":\"browser\",\"cpuPctOfCore\":10,\"workingSetKb\":200000,\"peakWorkingSetKb\":210000},{\"pid\":4300,\"creationTime\":2,\"role\":\"window:stage-main\",\"label\":\"stage-main\",\"cpuPctOfCore\":25,\"workingSetKb\":251500,\"peakWorkingSetKb\":252500}],\"machine\":{\"load1\":1,\"cores\":16,\"externalCpuPct\":3,\"psiCpuSomeAvg10\":null},\"hostContended\":false,\"chromiumTrace\":false,\"recorderMs\":0.4,\"bytesWritten\":2048}",
+    "{\"v\":1,\"t\":1794643275000,\"sessionId\":\"2026-11-14T08-00-00-000Z-z1y2bb\",\"kind\":\"window-rollup\",\"epoch\":0,\"window\":\"stage-main\",\"visible\":true,\"paused\":false,\"tags\":{\"renderer\":\"live2d\",\"modelId\":\"live2d-hiyori\",\"modelName\":\"Hiyori\",\"features\":{\"speechMuted\":false,\"mmdPhysics\":true,\"naturalMotion\":true,\"mmdRoam\":\"off\",\"wakeWord\":false,\"hearing\":null},\"featureHash\":\"f1\",\"activity\":\"idle\",\"chatGenerating\":false,\"stageHost\":\"window\",\"devtoolsOpen\":false,\"display\":{\"width\":2560,\"height\":1440,\"scale\":1,\"refreshHz\":144},\"diagnosticsTracing\":false},\"frames\":300,\"frameHist\":[0,0,0,0,0,0,0,287,0,0,0,0,10,0,0,0,3,0,0,0,0,0],\"frameSumMs\":4800,\"frameMaxMs\":40,\"longTasks\":{\"count\":0,\"maxMs\":0,\"sumMs\":0},\"stages\":null,\"recorderUs\":80}",
+    "{\"v\":1,\"t\":1794643280000,\"sessionId\":\"2026-11-14T08-00-00-000Z-z1y2bb\",\"kind\":\"sample\",\"epoch\":0,\"intervalMs\":5000,\"processes\":[{\"pid\":4242,\"creationTime\":1,\"role\":\"browser\",\"label\":\"browser\",\"cpuPctOfCore\":10,\"workingSetKb\":200000,\"peakWorkingSetKb\":210000},{\"pid\":4300,\"creationTime\":2,\"role\":\"window:stage-main\",\"label\":\"stage-main\",\"cpuPctOfCore\":25,\"workingSetKb\":251600,\"peakWorkingSetKb\":252600}],\"machine\":{\"load1\":1,\"cores\":16,\"externalCpuPct\":3,\"psiCpuSomeAvg10\":null},\"hostContended\":false,\"chromiumTrace\":false,\"recorderMs\":0.4,\"bytesWritten\":2048}",
+    "{\"v\":1,\"t\":1794643280000,\"sessionId\":\"2026-11-14T08-00-00-000Z-z1y2bb\",\"kind\":\"window-rollup\",\"epoch\":0,\"window\":\"stage-main\",\"visible\":true,\"paused\":false,\"tags\":{\"renderer\":\"live2d\",\"modelId\":\"live2d-hiyori\",\"modelName\":\"Hiyori\",\"features\":{\"speechMuted\":false,\"mmdPhysics\":true,\"naturalMotion\":true,\"mmdRoam\":\"off\",\"wakeWord\":false,\"hearing\":null},\"featureHash\":\"f1\",\"activity\":\"idle\",\"chatGenerating\":false,\"stageHost\":\"window\",\"devtoolsOpen\":false,\"display\":{\"width\":2560,\"height\":1440,\"scale\":1,\"refreshHz\":144},\"diagnosticsTracing\":false},\"frames\":300,\"frameHist\":[0,0,0,0,0,0,0,287,0,0,0,0,10,0,0,0,3,0,0,0,0,0],\"frameSumMs\":4800,\"frameMaxMs\":40,\"longTasks\":{\"count\":0,\"maxMs\":0,\"sumMs\":0},\"stages\":null,\"recorderUs\":80}"
+  ],
+  "frameRing": {
+    "intervalsMs": [
+      16.7,
+      712,
+      16.7
+    ]
+  },
+  "ringMissing": false
+}
