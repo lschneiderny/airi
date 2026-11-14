@@ -28,6 +28,7 @@ describe('registerPerfRecording', () => {
       setEnabled: vi.fn(),
       onStateChange: vi.fn(() => () => {}),
       rendererReloaded: vi.fn(),
+      trace: { capture: vi.fn(), onStateChange: vi.fn(() => () => {}) },
     }
     const windows = [await openWindow('http://localhost:5173/#/'), await openWindow('http://localhost:5173/#/stage')]
     windows.forEach(({ window }) => registerPerfRecording(createWindowContext(window).context, window, service))

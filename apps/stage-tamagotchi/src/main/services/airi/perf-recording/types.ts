@@ -4,6 +4,7 @@ import type { PerfFrameRing, PerfWindowRollup } from '../../../../shared/eventa'
 import type { PerfIdentity } from './identity'
 import type { PerfMachineReading, PerfProcessMetric, PerfRendererOwner } from './sample'
 import type { PerfRecordingFs } from './segment-file'
+import type { PerfTraceCaptureOptions } from './trace'
 import type { PerfWindowLabel } from './window-label'
 
 /** Schedules a callback and returns the function that cancels it. */
@@ -38,4 +39,5 @@ export interface PerfRecordingServiceOptions {
   getStoredEnabled: () => boolean | undefined
   setStoredEnabled: (enabled: boolean) => void
   fs: PerfRecordingFs
+  contentTracing: PerfTraceCaptureOptions['contentTracing']
 }

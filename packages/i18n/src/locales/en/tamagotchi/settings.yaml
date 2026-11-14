@@ -1258,6 +1258,13 @@ devtools:
       description: Saves CPU, memory and frame timing every 5 seconds for pnpm perf. On by default in development builds.
       env-controlled: Controlled by AIRI_PERF_RECORD for this session
       directory: 'Saved to {directory} ({buildMode} build)'
+    perf-trace:
+      title: Chromium trace
+      description: 'Local only: traces can contain URLs. Open in Perfetto or chrome://tracing.'
+      button: Capture Chromium trace (10 s)
+      capturing: Capturing a Chromium trace...
+      last-file: 'Last trace: {path}'
+      failed: 'No trace was captured: {error}'
     widgets-calling:
       title: Widget Calling
 

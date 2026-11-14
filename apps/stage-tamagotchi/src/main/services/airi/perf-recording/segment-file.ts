@@ -9,6 +9,7 @@ export interface PerfRecordingFs {
   mkdir: (path: string, options: { recursive: true, mode: number }) => Promise<unknown>
   appendFile: (path: string, data: string, options: { mode: number }) => Promise<void>
   writeFile: (path: string, data: string, options: { mode: number }) => Promise<void>
+  readdir: (path: string) => Promise<string[]>
   rm: (path: string, options: { force: true }) => Promise<void>
 }
 
