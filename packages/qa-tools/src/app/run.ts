@@ -18,7 +18,7 @@ import { ReplayServer } from '../llm/server'
 import { AppSessionCore, refuseIfWorktreeBusy } from '../session/app-session'
 import { importRig, zipRig } from '../t3/import-rig'
 import { captureStagePng } from '../t3/screenshot'
-import { buildPlan, buildSeedEntries } from './plan'
+import { appLaunchEnv, buildPlan, buildSeedEntries } from './plan'
 import { sendMessage } from './send'
 import { buildSummary, matchExpectations, runFailed } from './summary'
 
@@ -50,7 +50,7 @@ export async function runApp(options: AppOptions, repoRoot: string, signal: Abor
     const baseURL = await server.listen()
     details.replay = { baseURL, source: script.source, entries: script.entries.length }
     const started = await session.start({
-      launch: { logFile: run.path('app.log'), env: { AIRI_STAGE_HOST: 'window' }, lease },
+      launch: { logFile: run.path('app.log'), env: appLaunchEnv(options), lease },
       onLaunched: launched => run.recordProcess({ rootPid: launched.root.pid, created: launched.root.created, commandLine: launched.root.commandLine }),
       collectPageErrors: true,
       beforeOnboarding: async ({ stage, app, targetUrl }) => {

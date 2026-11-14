@@ -34,8 +34,13 @@ export function buildSeedEntries(baseURL: string, redact = false): Record<string
 }
 
 /** Pure, inspectable launch plan. Port and replay URL placeholders are resolved only during a live run. */
+/** The launch options env of an app session: the window stage host, plus perf recording when `--perf-dir` asks for it. It overrides `t3LaunchEnv`. */
+export function appLaunchEnv(options: Pick<AppOptions, 'perfDir'>): Record<string, string> {
+  return { AIRI_STAGE_HOST: 'window', ...(options.perfDir ? { AIRI_PERF_RECORD: '1', AIRI_PERF_DIR: options.perfDir } : {}) }
+}
+
 export function buildPlan(options: AppOptions, runDir: string) {
-  const env: Record<string, string> = { ...t3LaunchEnv(join(runDir, 'profile'), 0), APP_REMOTE_DEBUG_PORT: '<allocated at launch>', AIRI_STAGE_HOST: 'window' }
+  const env: Record<string, string> = { ...t3LaunchEnv(join(runDir, 'profile'), 0), APP_REMOTE_DEBUG_PORT: '<allocated at launch>', ...appLaunchEnv(options) }
   return {
     dryRun: options.dryRun,
     runDir,

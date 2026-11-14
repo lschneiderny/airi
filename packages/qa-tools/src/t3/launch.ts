@@ -17,7 +17,7 @@ export const stageTargetPattern = /synced-leader=true[^#]*#\/$/
 /** The leader page of the full-screen desktop stage (`#/stage`). */
 export const desktopStageTargetPattern = /synced-leader=true[^#]*#\/stage$/
 
-/** The environment of a rendered run: fresh profile, CDP on a free port without the system browser, and the bridge gate. */
+/** The environment of a rendered run: fresh profile, CDP on a free port without the system browser, and the bridge gate. Perf recording stays off unless the caller's options env turns it on. */
 export function t3LaunchEnv(profileDir: string, port: number): Record<string, string> {
   return {
     APP_USER_DATA_PATH: profileDir,
@@ -25,6 +25,7 @@ export function t3LaunchEnv(profileDir: string, port: number): Record<string, st
     APP_REMOTE_DEBUG_PORT: String(port),
     APP_REMOTE_DEBUG_NO_OPEN: 'true',
     APP_MOTION_QA_BRIDGE: 'true',
+    AIRI_PERF_RECORD: '0',
   }
 }
 
