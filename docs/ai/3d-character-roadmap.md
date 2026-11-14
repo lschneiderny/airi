@@ -55,7 +55,20 @@ Outside the milestone order, PR 32 (`luke/feat/natural-mmd-motion`) replaced the
 
 The idle acts include a two-hand clasp, a heel raise on a toe-down foot pitch, an arm-swing finger flick, and a hair tuck sized from ANSUR II. A capability gate keeps Natural from drawing an act that a rig cannot perform. On the test rigs the clasp plays only on Vivian, and the hair tuck only on Chisa.
 
-Headless QA runs the real MMD adapter in Node (`pnpm qa:motion3d`): seeded runs, the [body motion quality gate](adr/2026-11-11-body-motion-quality-gate.md), topic reports, run diffs, clips, a run matrix, and sealed fault injection. Status: feature-complete; motion feel is not tuned yet. The PR body lists the criteria that are not met.
+Headless QA runs the real MMD adapter in Node (`pnpm qa:motion3d`): seeded runs, the [body motion quality gate](adr/2026-11-11-body-motion-quality-gate.md), topic reports, run diffs, clips, a run matrix, and sealed fault injection. Status: feature-complete; motion feel is not tuned yet. The decisions taken during the work are recorded in the amendments of the idle agency and whole-body performer ADRs.
+
+### Not met yet
+
+Scores prove direction, size relative to the recipe, release, and detectability above the rig's idle noise. They do not prove naturalness, which stays a visual review. Visual verdicts so far come from independent reviewers looking at the posed grey mesh (no face, hair or cloth physics), not from Luke. Some measures are printed but left out of verdicts and are checked by visual review instead: pause sway, the lean cue, release and onset of emotions, head-only emotions, and lasting state after an idle act (the idle report's `pair` line).
+
+| Area | State |
+| --- | --- |
+| Rendered chat turn | Not met. Posture after a cue during speech misses one clause of its bar. Arm pops fall on missed frame intervals; a report change that read them as 0 was rejected, because it could not see real velocity steps at missed frames, so whether they are real is open. The app misses about 18 % of frames in a talk capture; the physics runtime is suspected, not confirmed, and replacing it is a dependency choice that has not been made. |
+| Idle life | Tuning. The distinct-acts count has not been re-measured against its bar of 6 kinds in ten minutes. The clasp plays only on Vivian, because Chisa's and Ellen's body collision proxies block its ANSUR II height; the follow-up is to let a contact pose rest on the body proxies. The hair tuck plays only on Chisa, because Ellen and Vivian lack the head clearance 4e requires. In the tuck, the sweep starts before the hand reaches the touch key. |
+| Walk | Tuning. With the lag sized from Mirelman 2015 and the stride CVs from Beauchet 2005, the shoulder and upper-arm mirror lines barely move (0.995 to 0.997), and the gate's walk lines still fail. `scenario-turns` stays NOT-EXERCISED because the turn finder detects 7 turns, a known tooling fault. The rendered walk has not been run. |
+| Rest and doze | Tuning. In the doze her hips sink 0.0021 to 0.0051 leg lengths, against a bar of 0.006, and on one seed her head turns too far. |
+| Known bugs | The stance half-shift in `performance/acts.ts`, an 18 degree glance foot, and arm pops on seed 5. |
+| Acceptance | `qa:motion3d gate` exits 0 on `gaze-shift` and `speak` only. It refuses `emotions` by design, idle fails one head-smoothness line, and the clip scenario fails one stroke line. Whether the emotion-table and pooled ownership reports may stand in, and whether the accepted head-smoothness gap extends to idle, are Luke's rulings and are still open. There is no rendered-app acceptance run. |
 
 ## Open across milestones
 
