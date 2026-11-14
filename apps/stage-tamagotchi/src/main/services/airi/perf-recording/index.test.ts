@@ -1,7 +1,7 @@
 import type { PerfRecord } from '@proj-airi/stage-shared/perf/usage'
 
 import type { PerfRecordingFs, PerfRecordingServiceOptions, PerfWindowSource } from '.'
-import type { PerfWindowPull, PerfWindowPullRequest } from '../../../../shared/eventa'
+import type { PerfFrameRing, PerfWindowPull, PerfWindowPullRequest } from '../../../../shared/eventa'
 import type { PerfIdentityValue } from './identity'
 import type { PerfProcessMetric } from './sample'
 
@@ -27,6 +27,7 @@ class MemoryFs implements PerfRecordingFs {
   appends = 0
   failingAppends = 0
   private appendWaiters: (() => void)[] = []
+  private renameWaiters: (() => void)[] = []
 
   async mkdir(path: string) {
     this.directories.add(path)
@@ -46,6 +47,12 @@ class MemoryFs implements PerfRecordingFs {
     this.files.set(path, [data])
   }
 
+  async rename(from: string, to: string) {
+    this.files.set(to, this.files.get(from) ?? [])
+    this.files.delete(from)
+    this.renameWaiters.splice(0).forEach(resolve => resolve())
+  }
+
   async readdir(path: string) {
     return [...this.files.keys()].filter(file => dirname(file) === path).map(file => basename(file))
   }
@@ -60,6 +67,10 @@ class MemoryFs implements PerfRecordingFs {
 
   nextAppend(): Promise<void> {
     return new Promise(resolve => this.appendWaiters.push(resolve))
+  }
+
+  nextRename(): Promise<void> {
+    return new Promise(resolve => this.renameWaiters.push(resolve))
   }
 
   records(path: string): PerfRecord[] {
@@ -337,6 +348,8 @@ describe('perfRecordingService', () => {
     expect(fs.records(segment()).slice(3)).toMatchObject([
       { kind: 'sample' },
       { kind: 'event', name: 'rollup-missing', window: 'stage-main', detail: { reason: 'timeout' } },
+      // A missing rollup is a frame stall, which the first 60 s of a session suppress.
+      { kind: 'event', name: 'incident-suppressed', window: 'stage-main', detail: { trigger: 'frame-stall', reason: 'settling' } },
     ])
     expect(pullSignal?.aborted).toBe(true)
   })
@@ -425,7 +438,7 @@ describe('perfRecordingService', () => {
     const appendsAfterDispose = fs.appends
     await vi.advanceTimersByTimeAsync(30_000)
 
-    expect(fs.records(path).slice(3).map(record => record.kind === 'event' ? record.name : record.kind)).toEqual(['sample', 'rollup-missing', 'recording-stop'])
+    expect(fs.records(path).slice(3).map(record => record.kind === 'event' ? record.name : record.kind)).toEqual(['sample', 'rollup-missing', 'incident-suppressed', 'recording-stop'])
     expect(fs.files.has(`${RAW}/${sessionId}.live`)).toBe(false)
     expect(fs.appends).toBe(appendsAfterDispose)
     expect(vi.getTimerCount()).toBe(0)
@@ -505,6 +518,33 @@ describe('perfRecordingService', () => {
     await nextTick(fs)
 
     expect(fs.records(segment()).slice(3).map(record => record.kind === 'event' ? record.name : record.kind)).toEqual(['model-load', 'sample', 'window-rollup'])
+  })
+
+  it('writes an incident line and its file for a stalled rollup after settling, then adds the window\'s frame ring', async () => {
+    let frameMaxMs = 20
+    let answerRing: (ring: PerfFrameRing) => void = () => {}
+    const { service, fs, state, segment } = createRecorder()
+    state.windows = [stageWindow({
+      pullRollup: async () => ({ ...rollup(), frameMaxMs }),
+      pullFrameRing: () => new Promise((resolve) => {
+        answerRing = resolve
+      }),
+    })]
+    await service.setEnabled(true)
+    for (let tick = 0; tick < 12; tick++)
+      await nextTick(fs)
+
+    frameMaxMs = 700
+    await nextTick(fs)
+
+    const incident = fs.records(segment()).find(record => record.kind === 'incident')
+    expect(incident).toMatchObject({ kind: 'incident', trigger: 'frame-stall', window: 'stage-main', pid: 200 })
+    const path = `/perf/${incident?.kind === 'incident' ? incident.file : ''}`
+    expect(JSON.parse(fs.files.get(path)?.join('') ?? '{}')).toMatchObject({ incident, frameRing: null, ringMissing: true })
+    const rewritten = fs.nextRename()
+    answerRing({ intervalsMs: [16, 700], stageMs: [], slowestStage: [] })
+    await rewritten
+    expect(JSON.parse(fs.files.get(path)?.join('') ?? '{}')).toMatchObject({ frameRing: { window: 'stage-main', intervalsMs: [16, 700] }, ringMissing: false })
   })
 
   it('keeps one interval when recording is turned off and on again during a tick', async () => {

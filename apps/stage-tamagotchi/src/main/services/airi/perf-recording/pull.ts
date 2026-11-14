@@ -1,6 +1,6 @@
 import type { PerfRecord } from '@proj-airi/stage-shared/perf/usage'
 
-import type { PerfWindowPull, PerfWindowPullRequest } from '../../../../shared/eventa'
+import type { PerfFrameRing, PerfWindowPull, PerfWindowPullRequest } from '../../../../shared/eventa'
 import type { PerfRecordingTimers, PerfWindowSource } from './types'
 
 import { PERF_RECORD_VERSION, PerfRecordSchema } from '@proj-airi/stage-shared/perf/usage'
@@ -9,6 +9,8 @@ import { array, boolean, finite, null_, number, object, picklist, pipe, record, 
 import { usageEvent } from './records'
 
 const PULL_TIMEOUT_MS = 1_000
+/** A ring pull runs after the tick that wrote the incident, so it can wait longer than a rollup pull. */
+const RING_PULL_TIMEOUT_MS = 3_000
 
 export type PerfPullResult = { rollup: PerfWindowPull } | { missing: 'timeout' | 'error' | 'not-sampling' }
 
@@ -18,27 +20,59 @@ const WindowEventsSchema = array(object({
   detail: record(string(), union([string(), pipe(number(), finite()), boolean(), null_()])),
 }))
 
-/** Pulls one stage window's rollup. A pull that has not answered after 1 s is aborted and reported as missing. */
-export async function pullWindowRollup(window: PerfWindowSource, request: PerfWindowPullRequest, timers: PerfRecordingTimers): Promise<PerfPullResult> {
+const FrameRingSchema = object({
+  intervalsMs: array(pipe(number(), finite())),
+  stageMs: array(pipe(number(), finite())),
+  slowestStage: array(string()),
+})
+
+/** Races a window pull against a timeout; a pull that has not answered in time is aborted. */
+async function pullWithin<Answer>(timeoutMs: number, timers: PerfRecordingTimers, pull: (signal: AbortSignal) => Promise<Answer>): Promise<{ answer: Answer } | 'timeout'> {
   const controller = new AbortController()
   let cancelTimeout = () => {}
   const timedOut = new Promise<'timeout'>((resolve) => {
-    cancelTimeout = timers.setTimeout(() => resolve('timeout'), PULL_TIMEOUT_MS)
+    cancelTimeout = timers.setTimeout(() => resolve('timeout'), timeoutMs)
   })
   try {
-    const answer = await Promise.race([window.pullRollup(request, controller.signal), timedOut])
-    if (answer === 'timeout') {
+    const result = await Promise.race([pull(controller.signal).then(answer => ({ answer })), timedOut])
+    if (result === 'timeout')
       controller.abort()
+    return result
+  }
+  finally {
+    cancelTimeout()
+  }
+}
+
+/** Pulls one stage window's rollup. A pull that has not answered after 1 s is aborted and reported as missing. */
+export async function pullWindowRollup(window: PerfWindowSource, request: PerfWindowPullRequest, timers: PerfRecordingTimers): Promise<PerfPullResult> {
+  try {
+    const result = await pullWithin(PULL_TIMEOUT_MS, timers, signal => window.pullRollup(request, signal))
+    if (result === 'timeout')
       return { missing: 'timeout' }
-    }
-    return answer === null ? { missing: 'not-sampling' } : { rollup: answer }
+    return result.answer === null ? { missing: 'not-sampling' } : { rollup: result.answer }
   }
   catch {
     // The failure itself is the record: the tick writes `rollup-missing` with reason `error`.
     return { missing: 'error' }
   }
-  finally {
-    cancelTimeout()
+}
+
+/**
+ * Pulls one stage window's frame ring for an incident, parsed because the renderer is outside main's trust boundary.
+ * `null` when the window is not sampling, answers an invalid ring, fails, or has not answered after 3 s.
+ */
+export async function pullFrameRing(window: PerfWindowSource, timers: PerfRecordingTimers): Promise<PerfFrameRing | null> {
+  try {
+    const result = await pullWithin(RING_PULL_TIMEOUT_MS, timers, signal => window.pullFrameRing(signal))
+    if (result === 'timeout' || result.answer === null)
+      return null
+    const parsed = safeParse(FrameRingSchema, result.answer)
+    return parsed.success ? parsed.output : null
+  }
+  catch {
+    // The failure itself is the record: the incident file keeps `ringMissing: true`.
+    return null
   }
 }
 
