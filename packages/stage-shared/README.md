@@ -57,7 +57,9 @@ The `perf/usage` entrypoint owns the contract for local performance recordings a
 - `FixedHistogram`, a histogram over one preallocated `Uint32Array` whose `add` allocates nothing, with exact `shareAtLeast` for bin edges and `approxQuantile` over serialized counts;
 - `CpuDeltaTracker`, which turns `cumulativeCPUUsage` readings keyed by `pid` and `creationTime` into CPU percentages of one core (`null` on first sighting, missing data, or a backwards delta), and `machineExternalCpuPct`, which subtracts the app's share from two `os.cpus()` readings. AIRI child processes outside `app.getAppMetrics()`, such as MCP servers, count as external;
 - `decideHostContended` with its named thresholds, `parsePsiCpu` for `/proc/pressure/cpu`, and `processRole`, which names an Electron `ProcessMetric` (`browser`, `gpu`, `window:<label>`, `utility:<service>`, and so on);
-- `sanitizeModelName`, which reduces a model path to a short label, and `containsForbiddenText`, which flags path-, URL-, or key-like text in a serialized line.
+- `sanitizeModelName`, which reduces a model path to a short label, and `containsForbiddenText`, which flags path-, URL-, or key-like text in a serialized line;
+- `SegmentRollupReducer`, which streams one raw segment's records and returns its `segment-rollup` row (or a `rollup-failed` row without a usable `session-start`). It joins each stage window rollup to the sample within 7.5 s and to its epoch's `identity`, groups windows into cells, and excludes and counts hidden, paused, frameless, and settling windows (the first 60 s of a segment, 20 s after a model load, resume, renderer reload, or new identity epoch) and windows spanning a suspend..resume gap. Contended windows get their own cells. Records it cannot use count as malformed lines; it never throws on data, only on use after `finish`;
+- `decideFrameStall`, `decideMemoryGrowth`, and `decidePegged`, pure incident deciders that take explicit time and return the memory for the next call, and `IncidentBudget`, which caps written incidents at 6 per rolling hour and 20 per rolling day.
 
 ```ts
 import { FixedHistogram, FRAME_BINS_V1, parsePerfLine } from '@proj-airi/stage-shared/perf/usage'
@@ -72,7 +74,7 @@ if (parsed.ok && parsed.record.kind === 'window-rollup')
 ```
 
 Use this entrypoint to write, read, or summarize perf records in the app, the `pnpm perf` CLI, and the bench.
-Do not sample processes, frames, or the clock here, and do not read or write files: the Electron recorder and the CLI own sampling and IO. Records never carry a personal file path; pass model names through `sanitizeModelName`.
+Do not sample processes, frames, or the clock here, and do not read or write files: the Electron recorder and the CLI own sampling and IO, and they pass lines and times into the reducer and the deciders. Records never carry a personal file path; pass model names through `sanitizeModelName`.
 
 ### Desktop activity store
 
