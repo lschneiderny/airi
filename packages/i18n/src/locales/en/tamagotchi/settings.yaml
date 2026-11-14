@@ -620,6 +620,50 @@ devtools:
           sleep: Sleep
           about-to-speak: About to speak
           let-go: Let it go
+      review:
+        title: Motion review
+        description: Find the idle motion that looks wrong on the character in the main window. Show one layer alone, change how strong it is, compare with the current motion, and flag a moment to record what caused it.
+        requires-natural: The motion review works only while the motion driver is Natural.
+        variant:
+          title: Compare
+          description: Current is the motion as it ships. Tuned applies the settings below. Both run on the same model without a restart.
+          options:
+            current: Current
+            tuned: Tuned
+        caption:
+          title: Show the cause on the stage
+          description: Draw a caption in the main window that names what moves the head and the eyes at this moment.
+        solo:
+          title: Show one layer alone
+          reset: Reset all
+        layers:
+          shifts:
+            title: Posture shifts
+            description: The size of the moves from one held head pose to the next.
+          shiftRate:
+            title: Posture shift rate
+            description: How often the head moves to a new pose.
+          drift:
+            title: Drift
+            description: The slow wander of the rest pose over minutes.
+          wobble:
+            title: Wobble
+            description: The small continuous head motion between shifts.
+          eyes:
+            title: Eyes
+            description: How far the eyes leave the camera for any target.
+          body:
+            title: Body follow
+            description: How far the body follows the head.
+          acts:
+            title: Idle acts
+            description: Stretches, yawns, looks, sleep, and pastimes. Off leaves the base motion alone.
+        flags:
+          title: Flagged moments
+          description: Flag a moment that looks wrong. The main window records what moved her during the 10 seconds before it.
+          flag: Flag this moment
+          save: Download flags
+          clear: Clear
       affect-trace:
         title: Affect trace
         description: Record every signal that the performance decider receives in the main window, then export the trace to replay it. Start recording before you send emotions.

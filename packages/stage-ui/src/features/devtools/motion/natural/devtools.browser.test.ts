@@ -5,6 +5,7 @@ import type { EmotionPulse, GestureRequest } from '../../../../stores/natural-pe
 
 import en from '@proj-airi/i18n/locales/en'
 
+import { neutralReviewGains } from '@proj-airi/motion-driver-natural/review'
 import { defaultExpressionPerformanceSettings, parseAffectTrace } from '@proj-airi/stage-shared/expression-performance'
 import { useSettingsLive2d } from '@proj-airi/stage-ui-live2d/composables/live2d'
 import { setAffectTraceSink, setNaturalTraceSink, useNaturalMotionDiagnostics } from '@proj-airi/stage-ui-live2d/stores'
@@ -113,6 +114,63 @@ describe('natural motion lab', () => {
     cleanup()
     localStorage.removeItem('settings/expression-performance')
     localStorage.removeItem('settings/live2d/motion-driver')
+  })
+
+  it('sends a solo to the stage, and the shipped motion under the current variant', async () => {
+    const { screen, diagnostics } = await renderLab()
+    useSettingsLive2d().live2dMotionDriver = 'natural'
+    // Opening the lab arms the stage before anything is changed.
+    await until(() => diagnostics.reviewArmed).toBe(true, { timeout: 5000, throwOnTimeout: true })
+    expect(diagnostics.reviewSettings).toEqual({ gains: neutralReviewGains, acts: true, caption: false })
+
+    const solo = screen.getByRole('button', { name: /review\.layers\.eyes\.title/ })
+    await expect.element(solo).toBeEnabled()
+    await solo.click()
+    await until(() => diagnostics.reviewSettings.gains.shifts).toBe(0, { timeout: 5000, throwOnTimeout: true })
+    expect(diagnostics.reviewSettings).toEqual({
+      gains: { shifts: 0, shiftRate: 1, drift: 0, wobble: 0, eyes: 1, body: 0 },
+      acts: false,
+      caption: false,
+    })
+
+    diagnostics.setReviewVariant('current')
+    await until(() => diagnostics.reviewSettings.gains.shifts).toBe(1, { timeout: 5000, throwOnTimeout: true })
+    expect(diagnostics.reviewSettings).toEqual({ gains: neutralReviewGains, acts: true, caption: false })
+    // The tuned settings wait for the switch back.
+    expect(diagnostics.reviewTuned.gains.eyes).toBe(1)
+    expect(diagnostics.reviewTuned.gains.shifts).toBe(0)
+  })
+
+  it('lists the moment a stage recorded for a flag', async () => {
+    const { screen, diagnostics } = await renderLab()
+    useSettingsLive2d().live2dMotionDriver = 'natural'
+    onTestFinished(diagnostics.onReviewFlagRequest(request => diagnostics.publishReviewFlag({
+      id: request.id,
+      flaggedAt: '2026-11-14T12:00:00.000Z',
+      modelId: 'fixture',
+      variant: request.variant,
+      settings: { gains: { ...neutralReviewGains }, acts: true, caption: false },
+      state: { time: 12, mode: 'idle', head: { seq: 3, moving: true, size: 0.2, withGlance: false }, eyes: { seq: 5, target: 'desk' }, act: null, errand: null, owner: null },
+      caption: ['head shift 6.0 deg alone', 'eyes desk'],
+      recent: [{ at: 11.6, text: 'head shift 6.0 deg alone' }],
+    })))
+    const flag = screen.getByTestId('natural-review-flag')
+    await expect.element(flag).toBeEnabled()
+    await expect.element(screen.getByTestId('natural-review-save')).toBeDisabled()
+
+    await flag.click()
+    await expect.element(screen.getByTestId('natural-review-flags')).toHaveTextContent('head shift 6.0 deg alone | eyes desk')
+    expect(diagnostics.reviewFlags.map(entry => entry.variant)).toEqual(['tuned'])
+
+    await screen.getByTestId('natural-review-clear').click()
+    await expect.element(screen.getByTestId('natural-review-flags')).not.toBeInTheDocument()
+  })
+
+  it.each(['magic', 'universal'] as const)('disables the review under %s', async (driver) => {
+    const { screen } = await renderLab()
+    useSettingsLive2d().live2dMotionDriver = driver
+    await expect.element(screen.getByTestId('natural-review-flag')).toBeDisabled()
+    await expect.element(screen.getByRole('button', { name: /review\.layers\.eyes\.title/ })).toBeDisabled()
   })
 
   it('plays a gesture with the chosen count while the driver is Natural', async () => {
