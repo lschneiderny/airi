@@ -22,6 +22,9 @@ const WANTED_CATEGORIES = [
 ]
 const TRACE_BUFFER_KB = 64 * 1024
 const TRACES_KEPT = 5
+const DEFAULT_SECONDS = 10
+const MIN_SECONDS = 1
+const MAX_SECONDS = 30
 
 const log = useLogg('main/perf-recording/trace').useGlobalConfig()
 
@@ -63,7 +66,8 @@ export class PerfTraceCapture {
     return () => this.listeners.delete(listener)
   }
 
-  async capture(seconds = 10): Promise<PerfTraceResult> {
+  /** `seconds` comes from a renderer, so it is bounded to 1 to 30 here; a value that is not a number means the default. */
+  async capture(seconds = DEFAULT_SECONDS): Promise<PerfTraceResult> {
     if (this.state.capturing)
       return { error: 'A Chromium trace is already being captured.' }
     this.setState({ ...this.state, capturing: true })
@@ -81,9 +85,10 @@ export class PerfTraceCapture {
       })
       tracing = true
       this.options.onTracingChange(true)
-      await new Promise<void>(resolve => this.options.setTimeout(resolve, seconds * 1000))
+      const boundedSeconds = Number.isFinite(seconds) ? Math.min(MAX_SECONDS, Math.max(MIN_SECONDS, seconds)) : DEFAULT_SECONDS
+      await new Promise<void>(resolve => this.options.setTimeout(resolve, boundedSeconds * 1000))
       // Tracing ends only once every process flushed its buffer, so the flag stays on until the file is written.
-      await contentTracing.stopRecording(file)
+      await this.stopRecording(file)
     }
     catch (error) {
       log.withError(error).error('Failed to capture a Chromium trace')
@@ -98,6 +103,17 @@ export class PerfTraceCapture {
     this.setState({ ...this.state, lastFile: file })
     await this.removeOldTraces()
     return { file }
+  }
+
+  /** A failed stop leaves Chromium tracing, so it is tried once more before the failure is reported. */
+  private async stopRecording(file: string): Promise<void> {
+    try {
+      await this.options.contentTracing.stopRecording(file)
+    }
+    catch (error) {
+      log.withError(error).warn('Stopping the Chromium trace failed; retrying once')
+      await this.options.contentTracing.stopRecording(file)
+    }
   }
 
   private async removeOldTraces(): Promise<void> {

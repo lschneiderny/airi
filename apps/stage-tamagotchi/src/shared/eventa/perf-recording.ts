@@ -67,4 +67,6 @@ export const perfRecordingRendererReload = defineEventa<void>('eventa:event:elec
 
 /** Starts a Chromium trace of the given length. The result names the written file, or says why none was written. */
 export const perfTraceCapture = defineInvokeEventa<PerfTraceResult, { seconds: number }>('eventa:invoke:electron:perf-recording:trace-capture')
+/** The current trace state, for a window that opens while a trace runs or after one finished. */
+export const perfTraceGet = defineInvokeEventa<PerfTraceState>('eventa:invoke:electron:perf-recording:trace-get')
 export const perfTraceState = defineEventa<PerfTraceState>('eventa:event:electron:perf-recording:trace-state')

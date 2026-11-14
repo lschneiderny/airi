@@ -15,6 +15,7 @@ import Developer from './developer.vue'
 const invokeMocks = vi.hoisted(() => ({
   perfRecordingGet: vi.fn(),
   perfRecordingSetEnabled: vi.fn(),
+  perfTraceGet: vi.fn(),
   other: vi.fn(async () => undefined),
 }))
 
@@ -26,6 +27,8 @@ vi.mock('@proj-airi/electron-vueuse', async importOriginal => ({
       return invokeMocks.perfRecordingGet
     if (event?.receiveEvent?.id === 'eventa:invoke:electron:perf-recording:set-enabled-receive')
       return invokeMocks.perfRecordingSetEnabled
+    if (event?.receiveEvent?.id === 'eventa:invoke:electron:perf-recording:trace-get-receive')
+      return invokeMocks.perfTraceGet
     return invokeMocks.other
   },
 }))
@@ -60,6 +63,8 @@ async function renderPage() {
 beforeEach(() => {
   invokeMocks.perfRecordingGet.mockReset()
   invokeMocks.perfRecordingSetEnabled.mockReset()
+  invokeMocks.perfTraceGet.mockReset()
+  invokeMocks.perfTraceGet.mockResolvedValue({ capturing: false, lastFile: null })
 })
 
 describe('developer settings page: record performance', () => {
@@ -77,6 +82,17 @@ describe('developer settings page: record performance', () => {
 
     expect(invokeMocks.perfRecordingSetEnabled.mock.calls).toEqual([[{ enabled: false }]])
     await expect.element(toggle).not.toBeChecked()
+  })
+
+  it.each([
+    ['a capture is running', { capturing: true, lastFile: null }, 'capturing'],
+    ['a capture finished earlier', { capturing: false, lastFile: '/tmp/airi-perf/traces/a.json' }, 'last-file'],
+  ])('shows the trace state on open when %s', async (_, traceState, key) => {
+    invokeMocks.perfRecordingGet.mockResolvedValue(recording)
+    invokeMocks.perfTraceGet.mockResolvedValue(traceState)
+    const screen = await renderPage()
+
+    await expect.element(screen.getByTestId('perf-trace-status')).toHaveTextContent(i18n.global.t(`tamagotchi.settings.devtools.pages.perf-trace.${key}`, { path: traceState.lastFile }))
   })
 
   it('locks the toggle and explains the override while AIRI_PERF_RECORD controls recording', async () => {
