@@ -215,6 +215,33 @@ export function parseProcStatParent(stat: string): number | null {
 }
 
 /**
+ * Linux: every process in `/proc`, zombies included, that is in process group `rootPid` or still names it as parent.
+ * The CPU slot broker counts such processes as the workload of a lease whose root was `rootPid`, even after the root
+ * exited and while they only wait to be reaped. Empty where `/proc` does not exist.
+ */
+export function runGroupMembers(rootPid: number): { pid: number, state: string }[] {
+  let entries: string[]
+  try {
+    entries = readdirSync('/proc')
+  }
+  catch {
+    return []
+  }
+  return entries.filter(name => /^\d+$/.test(name)).flatMap((name) => {
+    let stat: string
+    try {
+      stat = readFileSync(`/proc/${name}/stat`, 'utf8')
+    }
+    catch {
+      // The process was reaped between the listing and the read.
+      return []
+    }
+    const [state, parentPid, group] = stat.slice(stat.lastIndexOf(')') + 2).split(' ')
+    return Number(group) === rootPid || Number(parentPid) === rootPid ? [{ pid: Number(name), state: state ?? '?' }] : []
+  })
+}
+
+/**
  * The live processes of the `pnpm qa:display` session named by `AIRI_QA_DISPLAY_SESSION`, on Linux: every process in
  * the session unit's cgroup and its run scopes (child cgroups included), plus the descendants of `selfPid` found
  * through `/proc/<pid>/task/<tid>/children`. It never lists other processes of the host, and refuses without a session.

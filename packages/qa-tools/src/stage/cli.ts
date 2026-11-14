@@ -3,7 +3,8 @@ import type { Status } from '@proj-airi/cpu-slots'
 import type { StageMode, StageScenario } from './gates'
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
+import { platform } from 'node:process'
 import { parseArgs } from 'node:util'
 
 import { errorMessageFrom } from '@moeru/std'
@@ -14,18 +15,22 @@ import { CaptureRefusal } from './capture-channel'
 import { formatGateResults, readStageEvidence, runStageGates } from './gates'
 import { runHandOff } from './handoff'
 import { measureAttached, measurePairs, measureScenario } from './measure'
+import { measurePerfAb } from './perf-ab'
 import { exclusiveRefusal, formatHolders, waitForQuiet } from './preflight'
 
 export const stageUsage = `Usage:
   stage capture --port <cdp port> --scenario <idle|walk|attach> --seconds <s> --out <dir> [--mode window|desktop] [--shots 12] [--seed 1] [--collect-before] [--class idle|talk] [--wait-quiet <s> | --allow-busy] [--exclusive]
   stage measure --mode <window|desktop> --port <cdp port> [--seconds 60] [--attempts 3] --out <json>
   stage measure --pairs <n> --profile <profile dir> [--seconds 60] [--settle 10] [--attempts 3] --out <json>
+  stage measure --perf-ab|--perf-ab-control --profile <profile dir> [--pairs 3] [--seconds 60] [--settle 10] [--attempts 3] --out <json>
   stage measure --mode <window|desktop> --port <cdp port> --scenario <gesture-walk|action-preempt> --clip <clip name> [--seconds 12] [--attempts 3] --out <json>
   stage handoff --model <MMD model> [--seconds 120] --out <json>
   stage gate <json> [<json>...]
 
 measure --port attaches to a running app started with APP_REMOTE_DEBUG=true and an MMD model mounted.
 measure --pairs launches the app per run (window, desktop, window, ...) on a copy of the profile.
+measure --perf-ab launches the window stage per run with perf recording off, then on, and adds the app tree's CPU
+from /proc (Linux only); --perf-ab-control records in both arms. The recorder writes to <out dir>/perf/pair-<n>-<arm>.
 measure --scenario walks her 600 DIP and plays the imported clip over the walk (gesture-walk, looped) or into it
 (action-preempt, with a second goal and a stop after --seconds of playing).
 handoff launches the desktop stage on a fresh profile, imports the model, and walks her to another display. It needs
@@ -206,16 +211,18 @@ export async function runStageCli(argv: readonly string[], context: { repoRoot: 
     const { values } = parse(() => parseArgs({
       args: [...rest],
       options: {
-        mode: { type: 'string' },
-        port: { type: 'string' },
-        pairs: { type: 'string' },
-        profile: { type: 'string' },
-        seconds: { type: 'string' },
-        settle: { type: 'string' },
-        attempts: { type: 'string' },
-        scenario: { type: 'string' },
-        clip: { type: 'string' },
-        out: { type: 'string' },
+        'mode': { type: 'string' },
+        'port': { type: 'string' },
+        'pairs': { type: 'string' },
+        'profile': { type: 'string' },
+        'seconds': { type: 'string' },
+        'settle': { type: 'string' },
+        'attempts': { type: 'string' },
+        'scenario': { type: 'string' },
+        'clip': { type: 'string' },
+        'out': { type: 'string' },
+        'perf-ab': { type: 'boolean' },
+        'perf-ab-control': { type: 'boolean' },
       },
       strict: true,
     }))
@@ -234,6 +241,32 @@ export async function runStageCli(argv: readonly string[], context: { repoRoot: 
     // A scenario's seconds are the walk span with the gesture or the playing time before the stop, not a frame window.
     const seconds = positiveInteger('seconds', values.seconds, scenario === undefined ? 60 : 12)
     const attempts = positiveInteger('attempts', values.attempts, 3)
+
+    if (values['perf-ab'] || values['perf-ab-control']) {
+      if (values.mode || values.port || scenario !== undefined)
+        throw new UsageError('--perf-ab launches the window stage itself; drop --mode, --port and --scenario')
+      if (!values.profile)
+        throw new UsageError('--perf-ab needs --profile <profile dir> with onboarding done and an MMD model selected')
+      if (platform !== 'linux') {
+        log(`qa-tools stage: --perf-ab is unsupported on ${platform}; it reads app CPU from /proc`)
+        return 2
+      }
+      const record = await measurePerfAb({
+        repoRoot: context.repoRoot,
+        profile: resolve(context.cwd, values.profile),
+        pairs: positiveInteger('pairs', values.pairs, 3),
+        seconds,
+        settleSeconds: positiveInteger('settle', values.settle, 10),
+        attempts,
+        control: values['perf-ab-control'] === true,
+        perfRoot: join(dirname(out), 'perf'),
+        selfPids: context.selfPids,
+        log,
+        onRun: partial => writeJson(out, partial),
+      })
+      console.info(JSON.stringify({ out, valid: record.valid, failures: record.failures.length, completePairs: record.summary.completePairs, verdict: record.summary.verdict, medianDelta: { fps: record.summary.fps.medianDelta, p95StageMs: record.summary.p95StageMs.medianDelta, cpuPctOfCore: record.summary.cpuPctOfCore.medianDelta } }))
+      return record.valid && record.summary.verdict?.pass === true ? 0 : 1
+    }
 
     if (values.pairs !== undefined) {
       if (values.mode || values.port)

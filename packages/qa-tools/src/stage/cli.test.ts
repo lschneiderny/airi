@@ -87,6 +87,8 @@ describe('qa:stage measure arguments', () => {
     [['measure', '--mode', 'desktop', '--port', '9222', '--scenario', 'gesture-walk', '--out', 'x.json'], '--scenario needs --clip <clip name>'],
     [['measure', '--mode', 'desktop', '--port', '9222', '--clip', 'arms-wave', '--out', 'x.json'], '--clip needs --scenario'],
     [['measure', '--pairs', '3', '--profile', 'p', '--scenario', 'gesture-walk', '--clip', 'a', '--out', 'x.json'], '--scenario attaches to a running app; drop --pairs'],
+    [['measure', '--perf-ab', '--out', 'x.json'], '--perf-ab needs --profile'],
+    [['measure', '--perf-ab-control', '--mode', 'window', '--profile', 'p', '--out', 'x.json'], 'drop --mode, --port and --scenario'],
     [['measure', '--bogus'], 'Unknown option'],
     [['launch'], 'unknown command launch'],
   ])('refuses %j before touching the app', async (argv, message) => {
