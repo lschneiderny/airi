@@ -101,11 +101,16 @@ touch reaction layer, in stack order emotion, gesture, cue, reaction. `setPerfor
 - Not built and not registered: the shrug hand shape and its energy key, finger rub noise, the drag reaction and the
   huff and shimmy reactions.
 
-## Amendment 2026-11-14: the walk varies from stride to stride
+## Amendment 2026-11-14: the walk's structure and its stride variation
 
-The gait's strides are no longer equal (owner decision 18: variation only from new seeded streams, sized and structured
-from published human gait, no white jitter).
+The walk's segments answer each other through dynamics instead of sampling one phase, and its strides are no longer
+equal (owner decision 18: body structure first; variation only from new seeded streams, sized and structured from
+published human gait, no white jitter).
 
+- The pelvis twist climbs the spine through architecture 3a's lag chain: the lower, mid and upper torso each follow the
+  segment below through a critically damped link of their 5.2 lag, and the head counters the torso through an 80 ms
+  link. A change of stride, a start or a stop now reaches each segment with its own dynamics, and a cut drive no longer
+  drops the torso and head in one tick.
 - Stride time and stride length drift independently on two new streams of the gait seed (`deriveSeed(seed, 0)` and
   `deriveSeed(seed, 1)`) through the package's 1/f source stepped in strides, so neighbouring strides are alike and the
   walk drifts slowly. The seed's own stream still only breaks first-foot ties, and every performer stream is unchanged,

@@ -183,8 +183,10 @@ and hand `frame.feet` back through `setAnchors` when it returns to idle. Pass
 `frame.root.yaw` to the turn planner as `facingYaw` with `allowTurn: false` while moving.
 `frame.body.lowerBodyYaw` turns the pelvis by `6 deg * strideScale` with the leading leg, and `frame.body.twist`
 carries it up the spine as a counter-rotation (lower, mid and upper torso at -0.25, -0.55 and -0.35 of it, 0.03, 0.06
-and 0.09 steps late) with a head counter of minus the torso's yaw 80 ms earlier, so the head stays near the travel
-line (architecture 5.2). `chestCounterYaw` keeps its old meaning for other readers.
+and 0.09 steps late) with a head counter of minus the torso's yaw 80 ms later, so the head stays near the travel
+line (architecture 5.2). Each lag is a link of architecture 3a's lag chain, a critically damped response to the
+segment below (`f = 1 / (pi lag)`), so the segments are not samples of one phase: each answers a change of stride, a
+start or a stop with its own dynamics. `chestCounterYaw` keeps its old meaning for other readers.
 `frame.armSwing` swings each arm from one cosine in antiphase with its leg: flexion `2 deg + s (16 deg forward -
 12 deg back)` with `s = min(1.3, speed / v_ref)`, an elbow that follows the shoulder's swing 200 ms late (the human walk
 reference's median elbow lag), the forward hand moving 3 degrees toward the midline (`abduct`), and the clavicle

@@ -1,3 +1,4 @@
+import type { SecondOrderCoefficients, SecondOrderState } from '../dynamics'
 import type { Foot, FootAnchor, TurnStep } from '../foot-contact'
 import type { LocomotionPace, RigTraits, Vec3 } from '../types'
 
@@ -83,14 +84,15 @@ export interface FootRoll {
 
 /**
  * Architecture 5.2: the pelvis yaw travels up the spine as a counter-rotation, each torso segment at its own lag, and the
- * head turns back against the torso so it stays on the travel line. Yaws in radians, for a torso chain that does not
- * inherit the pelvis yaw.
+ * head turns back against the torso so it stays on the travel line. Each lag is a link of architecture 3a's lag chain, a
+ * critically damped response to the segment below, so every segment answers a change of stride with its own dynamics.
+ * Yaws in radians, for a torso chain that does not inherit the pelvis yaw.
  */
 export interface GaitTwist {
   readonly lower: number
   readonly mid: number
   readonly upper: number
-  /** Minus the three torso yaws as they were 80 ms earlier, the reflex latency of head stabilisation. */
+  /** Minus the three torso yaws through a link of 80 ms lag, the reflex latency of head stabilisation. */
   readonly head: number
 }
 
@@ -322,6 +324,17 @@ interface Walk {
   settle: { readonly phase: number, elapsed: number } | null
 }
 
+/** One link of the twist's lag chain (architecture 3a): critically damped, `f = 1 / (pi delay)`, steady lag `delay`. */
+interface TwistLink {
+  readonly state: SecondOrderState
+  coefficients: SecondOrderCoefficients | null
+  delay: number
+}
+
+function twistLink(): TwistLink {
+  return { state: { y: 0, v: 0, x: 0 }, coefficients: null, delay: 0 }
+}
+
 interface Turn {
   readonly steps: ReturnType<typeof planFootSteps>
   /** Facing at the start of each step, followed by the final facing. */
@@ -371,6 +384,8 @@ class Locomotion {
   private rebased = false
   private blend = 0
   private readonly lean = { y: 0, v: 0, x: 0 }
+  /** Lower, mid and upper torso, each following the one below from the pelvis yaw, then the head counter. */
+  private readonly twistLinks: readonly [TwistLink, TwistLink, TwistLink, TwistLink] = [twistLink(), twistLink(), twistLink(), twistLink()]
   private leanCoefficients = secondOrderCoefficients(leanResponse, 0)
   /** This tick's preparation lean, added to the lean target while a walk prepares. */
   private leanBias = 0
@@ -415,6 +430,8 @@ class Locomotion {
     this.rebased = true
     this.blend = 0
     this.lean.y = this.lean.v = this.lean.x = 0
+    for (const link of this.twistLinks)
+      link.state.y = link.state.v = link.state.x = 0
   }
 
   step(input: LocomotionInput, dt: number): LocomotionFrame {
@@ -446,7 +463,7 @@ class Locomotion {
     if (dt !== this.leanCoefficients.dt)
       this.leanCoefficients = secondOrderCoefficients(leanResponse, dt)
     advanceSecondOrder(this.lean, leanTarget, this.leanCoefficients)
-    const frame = this.frame(mode, events, this.posture ?? this.pelvis(this.speed, this.x))
+    const frame = this.frame(mode, events, this.posture ?? this.pelvis(this.speed, this.x), dt)
     this.posture = null
     return frame
   }
@@ -949,13 +966,34 @@ class Locomotion {
     return { pitch, ankleOffset: ball(pitch), pivot: 'ball' }
   }
 
-  private frame(mode: LocomotionFrame['mode'], events: readonly GaitEvent[], pelvis: ReturnType<Locomotion['pelvis']>): LocomotionFrame {
+  /** Advances one twist link toward `input` by `dt` (none on a zero tick) and returns its output. */
+  private followTwist(link: TwistLink, input: number, delay: number, dt: number): number {
+    if (dt > 0) {
+      if (!link.coefficients || link.coefficients.dt !== dt || Math.abs(delay - link.delay) > 1e-3 * delay) {
+        link.coefficients = secondOrderCoefficients({ f: 1 / (Math.PI * delay), zeta: 1, r: 0 }, dt)
+        link.delay = delay
+      }
+      advanceSecondOrder(link.state, input, link.coefficients)
+    }
+    return link.state.y
+  }
+
+  private frame(mode: LocomotionFrame['mode'], events: readonly GaitEvent[], pelvis: ReturnType<Locomotion['pelvis']>, dt: number): LocomotionFrame {
     const strideScale = pelvis.length / this.referenceLength
     const support = this.support(this.phase)
     const lowerBodyYaw = pelvisTwist * strideScale * this.lead(this.phase)
-    const torso = (lag: number) => torsoTwist.map(([share, segmentLag]) => share * pelvisTwist * strideScale * this.lead(this.phase - segmentLag - lag))
-    const [lower, mid, upper] = torso(0)
-    const late = torso(headCounterLag * this.stepRate(this.speed))
+    // Architecture 5.2's lags, in steps at the current rate, as links of 3a's lag chain: each torso segment follows the
+    // one below it, and the head counters the torso 80 ms late.
+    const rate = this.stepRate(this.speed)
+    const [lowerLink, midLink, upperLink, headLink] = this.twistLinks
+    const [[lowerShare, lowerLag], [midShare, midLag], [upperShare, upperLag]] = torsoTwist
+    const lowerYaw = this.followTwist(lowerLink, lowerBodyYaw, lowerLag / rate, dt)
+    const midYaw = this.followTwist(midLink, lowerYaw, (midLag - lowerLag) / rate, dt)
+    const upperYaw = this.followTwist(upperLink, midYaw, (upperLag - midLag) / rate, dt)
+    const lower = lowerShare * lowerYaw
+    const mid = midShare * midYaw
+    const upper = upperShare * upperYaw
+    const head = this.followTwist(headLink, -(lower + mid + upper), headCounterLag, dt)
     const swingScale = Math.min(1.3, this.speed / this.referenceSpeed)
     // Architecture 5.3: the arm swings further forward (16 degrees) than back (12), the forward hand moves toward the
     // midline, and the clavicle protracts with the forward swing.
@@ -991,7 +1029,7 @@ class Locomotion {
         spinePitch: 0.6 * this.lean.y,
         chestPitch: 0.4 * this.lean.y,
         chestCounterYaw: -0.5 * lowerBodyYaw,
-        twist: { lower, mid, upper, head: -(late[0] + late[1] + late[2]) },
+        twist: { lower, mid, upper, head },
       },
       armSwing: { left: arm('left'), right: arm('right') },
       lookAhead: this.turn ? this.turnLookAhead(this.turn) : this.walk ? this.yaw + wrap(this.walk.heading - this.yaw) : this.yaw,

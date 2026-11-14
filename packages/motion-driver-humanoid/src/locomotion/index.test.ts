@@ -463,16 +463,56 @@ describe('procedural gait', () => {
       const far = steady[index - 10]
       return near && far ? 0.4 * torso(near) + 0.6 * torso(far) : null
     }
-    for (const [index, frame] of steady.entries()) {
+    // The head counter is a critically damped link of 80 ms lag fed with minus the torso (architecture 3a): at the
+    // stride frequency it follows minus the torso of 80 ms earlier, a little smaller (0.95 at 0.9 Hz).
+    const pairs = steady.flatMap((frame, index) => {
+      const earlier = earlierTorso(index)
+      return earlier === null ? [] : [[frame.body.twist.head, -earlier] as const]
+    })
+    const mean = (values: readonly number[]) => values.reduce((sum, value) => sum + value, 0) / values.length
+    const heads = pairs.map(([head]) => head)
+    const counters = pairs.map(([, counter]) => counter)
+    const [mh, mc] = [mean(heads), mean(counters)]
+    const covariance = mean(pairs.map(([head, counter]) => (head - mh) * (counter - mc)))
+    const spread = (values: readonly number[], m: number) => Math.sqrt(mean(values.map(value => (value - m) ** 2)))
+    expect(covariance / (spread(heads, mh) * spread(counters, mc))).toBeGreaterThan(0.99)
+    expect(spread(heads, mh) / spread(counters, mc)).toBeGreaterThan(0.9)
+    expect(spread(heads, mh) / spread(counters, mc)).toBeLessThanOrEqual(1)
+    for (const frame of steady) {
       // Each torso segment turns against the pelvis; the upper one, whose lag is 0.09 steps, still turns with it at
       // a sign change, so the products are checked on the larger part of the stride only.
       if (Math.abs(frame.body.lowerBodyYaw) > 0.5 * peak) {
         expect(frame.body.twist.upper * frame.body.lowerBodyYaw).toBeLessThan(0)
         expect(frame.body.twist.mid * frame.body.lowerBodyYaw).toBeLessThan(0)
       }
-      const earlier = earlierTorso(index)
-      if (earlier !== null)
-        expect(frame.body.twist.head + earlier).toBeCloseTo(0, 4)
+    }
+  })
+
+  it('twist chain: each torso segment and the head answer the segment below, so stopping the drive at once does not snap them', () => {
+    // Architecture 3a: a lag is a critically damped link. Halting the gait near the pelvis yaw's peak stops the drive in
+    // one tick; each segment keeps most of its yaw on that tick and settles, where a sample of the phase drops to zero.
+    const run = createRun({ x: 0, yaw: Math.PI / 2 })
+    let stopAt = Number.POSITIVE_INFINITY
+    run.advance(6, (now) => {
+      const last = run.frames.at(-1)
+      if (stopAt === Number.POSITIVE_INFINITY && now > 4 && last && Math.abs(last.body.lowerBodyYaw) > 0.8 * 6 * rad)
+        stopAt = now
+      return { goalX: 500, arriveFacing: Math.PI / 2, enabled: now < stopAt }
+    })
+    const { frames } = run
+    const halt = frames.findIndex((frame, tick) => tick > 120 && frame.mode === 'idle')
+    expect(halt).toBeGreaterThan(4 * 120)
+    const reads = [
+      (frame: LocomotionFrame) => frame.body.twist.lower,
+      (frame: LocomotionFrame) => frame.body.twist.mid,
+      (frame: LocomotionFrame) => frame.body.twist.upper,
+      (frame: LocomotionFrame) => frame.body.twist.head,
+    ]
+    for (const read of reads) {
+      const before = read(frames[halt - 1] as LocomotionFrame)
+      expect(Math.abs(before)).toBeGreaterThan(0.5 * rad)
+      expect(Math.abs(read(frames[halt] as LocomotionFrame))).toBeGreaterThan(0.5 * Math.abs(before))
+      expect(Math.abs(read(frames.at(-1) as LocomotionFrame))).toBeLessThan(1e-3 * rad)
     }
   })
 
