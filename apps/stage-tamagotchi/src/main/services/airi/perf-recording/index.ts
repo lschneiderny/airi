@@ -18,6 +18,7 @@ import { pulledRecords, pullWindowRollup } from './pull'
 import { identityRecord, sessionStartRecord, usageEvent } from './records'
 import { cpuReadings, cpuUsageMs, describeProcesses, measureMachine } from './sample'
 import { createPerfSessionId, PERF_FILE_MODE, PerfSegmentFile } from './segment-file'
+import { PerfTraceCapture } from './trace'
 import { STAGE_WINDOW_LABELS } from './window-label'
 
 export type { PerfRecordingFs } from './segment-file'
@@ -60,9 +61,22 @@ export class PerfRecordingService {
   private writeFailing = false
   private readonly reloadedWindows = new Set<string>()
   private cancelReload: (() => void) | null = null
+  private chromiumTracing = false
+  /** Whether a Chromium trace started or stopped since the last sample, so a trace shorter than a tick still marks it. */
+  private chromiumTraceChangedSinceSample = false
+  /** Manual Chromium traces into `<directory>/traces`; samples taken while one runs carry `chromiumTrace: true`. */
+  readonly trace: PerfTraceCapture
 
   constructor(private readonly options: PerfRecordingServiceOptions) {
     this.resolution = resolvePerfRecording({ ...options.mode, stored: options.getStoredEnabled() })
+    this.trace = new PerfTraceCapture({
+      contentTracing: options.contentTracing,
+      directory: join(options.directory, 'traces'),
+      now: options.now,
+      setTimeout: options.timers.setTimeout,
+      fs: options.fs,
+      onTracingChange: tracing => this.chromiumTraceChanged(tracing),
+    })
   }
 
   getState(): PerfRecordingState {
@@ -122,6 +136,12 @@ export class PerfRecordingService {
 
   powerChanged(name: 'suspend' | 'resume'): void {
     this.session?.pending.push(this.event(this.session, { name, detail: {} }))
+  }
+
+  private chromiumTraceChanged(tracing: boolean): void {
+    this.chromiumTracing = tracing
+    this.chromiumTraceChangedSinceSample = true
+    this.session?.pending.push(this.event(this.session, { name: tracing ? 'trace-start' : 'trace-stop', detail: {} }))
   }
 
   /** Stops the session for an app quit without changing the stored toggle. */
@@ -235,7 +255,8 @@ export class PerfRecordingService {
       session.file.rotate(t)
       records.push(...this.headerRecords(session, t))
     }
-    records.push(...session.pending.splice(0))
+    const events = session.pending.splice(0)
+    records.push(...events)
     const sample: SampleRecord = {
       v: PERF_RECORD_VERSION,
       t,
@@ -246,11 +267,12 @@ export class PerfRecordingService {
       processes,
       machine,
       hostContended,
-      chromiumTrace: false,
+      chromiumTrace: this.chromiumTracing || this.chromiumTraceChangedSinceSample,
       recorderMs: 0,
       bytesWritten: session.file.sessionBytes,
     }
     session.lastTickAt = at
+    this.chromiumTraceChangedSinceSample = false
     records.push(sample)
 
     records.push(...pulledRecords(pulls, stageWindows, { t, sessionId: session.sessionId, epoch: session.epoch }))
@@ -266,6 +288,8 @@ export class PerfRecordingService {
       if (!this.writeFailing)
         log.withError(error).error('Failed to write perf records')
       this.writeFailing = true
+      // Samples are lost with the tick, but events such as `trace-start` mark what the next samples mean.
+      session.pending.unshift(...events)
     }
   }
 

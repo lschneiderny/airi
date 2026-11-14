@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { IOTraceHubState, IOTraceRecordingState } from '@proj-airi/stage-shared/types/io-trace'
 
-import type { PerfRecordingState } from '../../../../shared/eventa'
+import type { PerfRecordingState, PerfTraceState } from '../../../../shared/eventa'
 
 import { useElectronEventaContext, useElectronEventaInvoke } from '@proj-airi/electron-vueuse'
 import { ButtonBar, CheckBar, IconItem } from '@proj-airi/stage-ui/components'
@@ -10,7 +10,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 
-import { electronOpenDevtoolsWindow, electronOpenEditor, electronOpenMainDevtools, ioTraceHubGet, ioTraceHubSetCollecting, ioTraceRecordingChanged, ioTraceRecordingGet, ioTraceRecordingSetEnabled, perfRecordingChanged, perfRecordingGet, perfRecordingSetEnabled } from '../../../../shared/eventa'
+import { electronOpenDevtoolsWindow, electronOpenEditor, electronOpenMainDevtools, ioTraceHubGet, ioTraceHubSetCollecting, ioTraceRecordingChanged, ioTraceRecordingGet, ioTraceRecordingSetEnabled, perfRecordingChanged, perfRecordingGet, perfRecordingSetEnabled, perfTraceCapture, perfTraceState } from '../../../../shared/eventa'
 
 const { t } = useI18n()
 const settings = useSettings()
@@ -75,6 +75,19 @@ async function updatePerfRecording(enabled: boolean | undefined) {
   finally {
     perfRecordingBusy.value = false
   }
+}
+
+const capturePerfTrace = useElectronEventaInvoke(perfTraceCapture)
+const perfTrace = ref<PerfTraceState>()
+const perfTraceError = ref<string | null>(null)
+const stopPerfTraceListener = eventaContext.value.on(perfTraceState, (event) => {
+  perfTrace.value = event.body
+})
+onUnmounted(stopPerfTraceListener)
+
+async function captureChromiumTrace() {
+  const result = await capturePerfTrace({ seconds: 10 })
+  perfTraceError.value = 'error' in result ? result.error : null
 }
 
 const menu = computed(() => [
@@ -299,6 +312,30 @@ const openEditor = useElectronEventaInvoke(electronOpenEditor)
   >
     {{ t('tamagotchi.settings.devtools.pages.performance-recording.directory', { directory: perfRecording.directory, buildMode: perfRecording.buildMode }) }}
   </div>
+  <ButtonBar
+    :class="['mb-2']"
+    icon="i-solar:videocamera-record-bold-duotone"
+    text="tamagotchi.settings.devtools.pages.perf-trace.title"
+    description="tamagotchi.settings.devtools.pages.perf-trace.description"
+    @click="captureChromiumTrace"
+  >
+    {{ t('tamagotchi.settings.devtools.pages.perf-trace.button') }}
+  </ButtonBar>
+  <p
+    v-if="perfTraceError || perfTrace?.capturing || perfTrace?.lastFile"
+    :class="['mb-2 px-4 text-sm break-all', perfTraceError ? 'text-red-500' : 'text-neutral-500']"
+    data-testid="perf-trace-status"
+  >
+    <template v-if="perfTraceError">
+      {{ t('tamagotchi.settings.devtools.pages.perf-trace.failed', { error: perfTraceError }) }}
+    </template>
+    <template v-else-if="perfTrace?.capturing">
+      {{ t('tamagotchi.settings.devtools.pages.perf-trace.capturing') }}
+    </template>
+    <template v-else>
+      {{ t('tamagotchi.settings.devtools.pages.perf-trace.last-file', { path: perfTrace?.lastFile }) }}
+    </template>
+  </p>
   <ButtonBar
     :class="['mb-2', 'transition-all duration-250 ease-in-out']"
     icon="i-solar:chart-square-bold-duotone"

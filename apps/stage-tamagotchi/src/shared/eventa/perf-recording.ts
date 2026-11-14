@@ -32,6 +32,9 @@ export interface PerfTraceState {
   lastFile: string | null
 }
 
+/** The written trace file, or why none was written. */
+export type PerfTraceResult = { file: string } | { error: string }
+
 export const perfRecordingGet = defineInvokeEventa<PerfRecordingState>('eventa:invoke:electron:perf-recording:get')
 export const perfRecordingSetEnabled = defineInvokeEventa<PerfRecordingState, { enabled: boolean }>('eventa:invoke:electron:perf-recording:set-enabled')
 export const perfRecordingChanged = defineEventa<PerfRecordingState>('eventa:event:electron:perf-recording:changed')
@@ -45,5 +48,5 @@ export const perfRecordingPullFrameRing = defineInvokeEventa<PerfFrameRing | nul
 export const perfRecordingRendererReload = defineEventa<void>('eventa:event:electron:perf-recording:renderer-reload')
 
 /** Starts a Chromium trace of the given length. The result names the written file, or says why none was written. */
-export const perfTraceCapture = defineInvokeEventa<{ file: string } | { error: string }, { seconds: number }>('eventa:invoke:electron:perf-recording:trace-capture')
+export const perfTraceCapture = defineInvokeEventa<PerfTraceResult, { seconds: number }>('eventa:invoke:electron:perf-recording:trace-capture')
 export const perfTraceState = defineEventa<PerfTraceState>('eventa:event:electron:perf-recording:trace-state')

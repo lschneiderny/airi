@@ -8,6 +8,7 @@ import type { PerfProcessMetric } from './sample'
 import process from 'node:process'
 
 import { Buffer } from 'node:buffer'
+import { basename, dirname } from 'node:path'
 
 import { FRAME_BINS_V1, parsePerfLine } from '@proj-airi/stage-shared/perf/usage'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -24,6 +25,7 @@ class MemoryFs implements PerfRecordingFs {
   readonly files = new Map<string, string[]>()
   readonly directories = new Set<string>()
   appends = 0
+  failingAppends = 0
   private appendWaiters: (() => void)[] = []
 
   async mkdir(path: string) {
@@ -31,6 +33,10 @@ class MemoryFs implements PerfRecordingFs {
   }
 
   async appendFile(path: string, data: string) {
+    if (this.failingAppends > 0) {
+      this.failingAppends -= 1
+      throw new Error('disk full')
+    }
     this.files.set(path, [...(this.files.get(path) ?? []), data])
     this.appends += 1
     this.appendWaiters.splice(0).forEach(resolve => resolve())
@@ -38,6 +44,10 @@ class MemoryFs implements PerfRecordingFs {
 
   async writeFile(path: string, data: string) {
     this.files.set(path, [data])
+  }
+
+  async readdir(path: string) {
+    return [...this.files.keys()].filter(file => dirname(file) === path).map(file => basename(file))
   }
 
   async rm(path: string) {
@@ -146,6 +156,14 @@ function createRecorder(overrides: Partial<PerfRecordingServiceOptions> = {}) {
     getStoredEnabled: () => undefined,
     setStoredEnabled: () => {},
     fs,
+    contentTracing: {
+      getCategories: async () => ['v8'],
+      startRecording: async () => {},
+      stopRecording: async (path = '') => {
+        fs.files.set(path, ['{"traceEvents":[]}'])
+        return path
+      },
+    },
     ...overrides,
   }
   const service = new PerfRecordingService(options)
@@ -337,6 +355,33 @@ describe('perfRecordingService', () => {
     expect(fs.files.has(`${RAW}/${sessionId}.live`)).toBe(false)
     expect(fs.appends).toBe(appendsAfterDispose)
     expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('marks the samples that a Chromium trace overlaps and records its start and stop', async () => {
+    const { service, fs, segment } = createRecorder()
+    await service.setEnabled(true)
+
+    const captured = service.trace.capture(10)
+    for (let tick = 0; tick < 4; tick++)
+      await nextTick(fs)
+
+    expect(await captured).toEqual({ file: expect.stringMatching(/^\/perf\/traces\/[^/]+\.json$/) })
+    const tick = fs.records(segment()).slice(3)
+    // The stop lands after the 10 s sample, so the 15 s sample still overlaps the trace.
+    expect(tick.flatMap(record => record.kind === 'sample' ? [record.chromiumTrace] : [])).toEqual([true, true, true, false])
+    expect(tick.flatMap(record => record.kind === 'event' ? [record.name] : [])).toEqual(['trace-start', 'trace-stop'])
+  })
+
+  it('writes the events of a tick whose append failed with the next tick', async () => {
+    const { service, fs, segment } = createRecorder()
+    await service.setEnabled(true)
+
+    service.powerChanged('resume')
+    fs.failingAppends = 1
+    await vi.advanceTimersByTimeAsync(5_000)
+    await nextTick(fs)
+
+    expect(fs.records(segment()).slice(3).map(record => record.kind === 'event' ? record.name : record.kind)).toEqual(['resume', 'sample', 'window-rollup'])
   })
 
   it('keeps one interval when recording is turned off and on again during a tick', async () => {

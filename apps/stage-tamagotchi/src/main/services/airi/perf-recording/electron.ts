@@ -5,7 +5,7 @@ import type { PerfMachineReading } from './sample'
 import process, { env } from 'node:process'
 
 import { execFile } from 'node:child_process'
-import { access, appendFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { access, appendFile, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { arch, cpus, loadavg, platform, totalmem } from 'node:os'
 import { join } from 'node:path'
 import { performance } from 'node:perf_hooks'
@@ -14,7 +14,7 @@ import { promisify } from 'node:util'
 import { useLogg } from '@guiiai/logg'
 import { defineInvoke } from '@moeru/eventa'
 import { abbreviatedSha, branch, sha } from '~build/git'
-import { app, BrowserWindow, powerMonitor } from 'electron'
+import { app, BrowserWindow, contentTracing, powerMonitor } from 'electron'
 import { array, boolean, number, object, optional, safeParse } from 'valibot'
 
 import { PerfRecordingService } from '.'
@@ -132,7 +132,8 @@ export function createElectronPerfRecording(stored: Pick<PerfRecordingServiceOpt
     }),
     mode: { dev, packaged: app.isPackaged, env },
     ...stored,
-    fs: { mkdir, appendFile, writeFile, rm },
+    fs: { mkdir, appendFile, writeFile, readdir: path => readdir(path), rm },
+    contentTracing,
   })
 }
 
