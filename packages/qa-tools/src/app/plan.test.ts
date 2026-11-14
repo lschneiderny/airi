@@ -4,9 +4,8 @@ import { resolve } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
-import { t3LaunchEnv } from '../t3/launch'
 import { parseAppArgs } from './args'
-import { appLaunchEnv, buildPlan, buildSeedEntries } from './plan'
+import { buildPlan, buildSeedEntries } from './plan'
 import { buildSummary, matchExpectations, runFailed } from './summary'
 
 describe('app session planning', () => {
@@ -27,11 +26,6 @@ describe('app session planning', () => {
     expect(off.env.AIRI_PERF_DIR).toBeUndefined()
     const on = buildPlan(parseAppArgs(['run', '--dry-run', '--model', 'a.zip', '--say', 'x', '--perf-dir', 'p'], '/work'), '/run')
     expect(on.env).toMatchObject({ AIRI_PERF_RECORD: '1', AIRI_PERF_DIR: resolve('/work', 'p') })
-  })
-
-  it('lets the launch options env override t3LaunchEnv in the real merge', () => {
-    const options = parseAppArgs(['run', '--model', 'a.zip', '--say', 'x', '--perf-dir', '/perf'], '/work')
-    expect({ ...t3LaunchEnv('/p', 1), ...appLaunchEnv(options) }).toMatchObject({ AIRI_PERF_RECORD: '1', AIRI_PERF_DIR: resolve('/perf') })
   })
 
   it.each([

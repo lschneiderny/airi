@@ -229,6 +229,8 @@ function startStage(debugPort: number, heartbeatLines: string[]): ChildProcessWi
       APP_USER_DATA_PATH: userDataDir,
       AIRI_DESKTOP_OVERLAY: '1',
       AIRI_DESKTOP_OVERLAY_POLL_HEARTBEAT: '1',
+      // Smoke runs stay out of the user's perf recordings.
+      AIRI_PERF_RECORD: '0',
     },
     stdio: 'pipe',
   })
