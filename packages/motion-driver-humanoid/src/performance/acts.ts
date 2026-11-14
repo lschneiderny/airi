@@ -490,12 +490,14 @@ export function createActLayer(): PerformanceLayer {
         break
       }
       case 'heel-rock': {
-        // 4e act 11: two or three raises, pelvis up 0.012 L, 0.45 s up and down each, clavicles +2 at each top. Without
-        // the feet's 14 deg toe-down pitch it does not read; Natural weighs it 0 and only `play` starts it.
+        // 4e act 11: two or three raises, pelvis up 0.012 L, both feet toe-down 14 deg about the ball (5.1; the foot
+        // stage turns them about it), 0.45 s up and down each, clavicles +2 at each top.
         const period = Math.min(0.9, D / a.record.count)
         const index = Math.min(a.record.count - 1, Math.floor(age / period))
         const bump = raisedCosine((age - index * period) / period)
         channels[c('pelvisY')] += w * 0.012 * bump
+        add('leftFootPitch', -14 * bump)
+        add('rightFootPitch', -14 * bump)
         clavicles(2 * bump)
         break
       }

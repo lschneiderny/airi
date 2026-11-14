@@ -31,8 +31,8 @@ reaching feature parity with the Live2D and VRM renderers:
   5.1's ball pivot, through the gait roll's own ankle offset, before physics);
   diagnostics then measure that foot's contact at its ball. She clasps her
   hands and rocks now and then; a rig whose arms cannot reach the front-low
-  anchor (Chisa and Ellen) rocks with hanging hands. The heel rock weighs 0 until its form reads on
-  the mesh. The scene emits `idle`
+  anchor (Chisa and Ellen) rocks with hanging hands. In a bright mood she rises
+  onto the balls of her feet (the heel rock). The scene emits `idle`
   and `self` events, which the stage forwards to the situation. See
   [the idle agency ADR](../../docs/ai/adr/2026-11-12-idle-agency.md).
 - **Clip library**: every imported clip gets a derived kind and layer, and the

@@ -71,12 +71,13 @@ describe('idle activity odds', () => {
       expect([live2d[kind], idleActivityWeights({ ...neutralDrive, valence: 0.5 }, { watching: false })[kind]], kind).toEqual([0, 0])
     for (const kind of bodyKinds)
       expect(mmd[kind], kind).toBeGreaterThan(0)
-    // Each takes its 4e act weight: the stance shift 1.2 (act 3) and the clasp 0.7 (act 6).
+    // Each takes its 4e act weight: the stance shift 1.2 (act 3), the clasp 0.7 (act 6), and the heel raise 0 unless
+    // valence is above 0.3, then 0.8 (act 11).
     expect(mmd['shift-stance']).toBe(1.2)
     expect(mmd['clasp-hands']).toBe(0.7)
-    // The heel raise's and the hair touch's forms do not read on the mesh, so they weigh 0 on a body host too, in any mood.
-    for (const kind of ['hair-touch', 'heel-rock'] as const)
-      expect([mmd[kind], bright[kind]], kind).toEqual([0, 0])
+    expect([mmd['heel-rock'], bright['heel-rock']]).toEqual([0, 0.8])
+    // The hair touch's form does not read on the mesh, so it weighs 0 on a body host too, in any mood.
+    expect([mmd['hair-touch'], bright['hair-touch']]).toEqual([0, 0])
   })
 
   it('starts nothing that needs her arms or a standing posture while she is settled in', () => {

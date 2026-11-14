@@ -278,6 +278,19 @@ describe('the act layer', () => {
     expect(Math.max(...BODY_CHANNELS.map((_, channel) => channel < 3 ? 0 : Math.abs(last.acted[channel] - last.still[channel]) / DEG))).toBeLessThan(0.5)
   })
 
+  it.each(rigs)('raises $name onto the balls of both feet two or three times: toes down 14 degrees, pelvis up 0.012 L, shoulders up 2 at each top (4e act 11)', (rig) => {
+    const still = run(rig.traits, quietInput, START + 3)
+    const acted = run(rig.traits, playing(record('heel-rock', 2.2, { count: 2 })), START + 3)
+    const diff = (channel: number) => acted.channels.map((frame, tick) => frame[channel] - still.channels[tick][channel])
+    for (const side of ['left', 'right'] as const) {
+      const feet = diff(c(`${side}FootPitch`))
+      const tops = feet.filter((value, i) => i > 0 && i < feet.length - 1 && value < -7 * DEG && value <= feet[i - 1] && value < feet[i + 1])
+      expect(tops.length, side).toBe(2)
+      expect(Math.min(...feet) / DEG, side).toBeCloseTo(-14, 1)
+    }
+    expect(Math.max(...diff(c('pelvisY')))).toBeCloseTo(0.012, 4)
+  })
+
   it('turns her head and trunk to architecture 4e\'s 35 degrees for a look-around\'s widest glance', () => {
     const entry = behaviours.find(b => b.act.kind === 'look-around')!
     const acted = run(chisaTraits, playing(entry.act), START + 2)

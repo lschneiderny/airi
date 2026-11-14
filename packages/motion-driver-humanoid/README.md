@@ -37,8 +37,10 @@ deterministic motion algorithms for reusable character motion drivers.
   side go first, and rocks the pelvis fore and aft by 0.012 L, two to four
   rocks below 0.35 Hz, with both feet turning onto their balls by the lean of
   the legs while it goes forward; a rig that cannot reach the anchor rocks with
-  hanging hands. Natural weighs `heel-rock` and `hair-touch` 0, so their forms
-  stay in the layer, unplayed. The hair touch reads as a
+  hanging hands. A heel raise (4e act 11) lifts the pelvis 0.012 L and turns
+  both feet toe-down 14 degrees through their `FootPitch` channels, which the
+  host's foot stage turns about each ball, two or three times. Natural weighs
+  `hair-touch` 0, so its form stays in the layer, unplayed. The hair touch reads as a
   salute, and architecture 4e's form is out of reach: 6.3's temple anchor,
   marched from the side of the head, solves on Chisa only, and her arm sweeps
   at most 0.04 A of the 0.10 A back inside its joint limits; Ellen's arms reach
