@@ -48,6 +48,7 @@ import { DropShadowFilter } from 'pixi-filters'
 import { Live2DFactory, Live2DModel, MotionPriority } from 'pixi-live2d-display/cubism4'
 import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef, toRef, watch } from 'vue'
 
+import ReviewCaption from './review-caption.vue'
 import TouchDebugOverlay from './touch-debug-overlay.vue'
 
 import {
@@ -77,6 +78,7 @@ import { live2DCanvasRectToViewport } from '../../../composables/live2d/head-anc
 import { createUnfoldCounter, naturalChatInput } from '../../../composables/live2d/natural-chat-input'
 import { Live2DNaturalMotionAdapter } from '../../../composables/live2d/natural-motion-adapter'
 import { scoreLiveliness } from '../../../composables/live2d/natural-motion/liveliness'
+import { NaturalReviewLog } from '../../../composables/live2d/natural-motion/review'
 import { manualControlParameterIds, readLive2DRigProfile } from '../../../composables/live2d/natural-motion/rig-profile'
 import { NaturalTraceRecorder } from '../../../composables/live2d/natural-motion/trace'
 import { chatTargetOffset, headScreenX, ScreenPlacement } from '../../../composables/live2d/screen-placement'
@@ -725,6 +727,7 @@ async function performModelLoad() {
     naturalAdapter.onIdleErrand = report => emits('errand', report)
     naturalAdapter.setPaused(paused.value)
     naturalAdapter.setPerformanceSettings(props.performanceSettings)
+    naturalAdapter.setReview(naturalDiagnostics.reviewSettings)
     rebuildNaturalMotion = () => {
       naturalAdapter.natural.setObserver(null)
       naturalAdapter.dispose()
@@ -735,6 +738,7 @@ async function performModelLoad() {
       naturalAdapter.onIdleErrand = report => emits('errand', report)
       naturalAdapter.setPaused(paused.value)
       naturalAdapter.setPerformanceSettings(props.performanceSettings)
+      naturalAdapter.setReview(naturalDiagnostics.reviewSettings)
       naturalAdapter.natural.setObserver(naturalCaptureObserver)
     }
     // Physics normally loads inside setupLive2DModel; a late load must still hand its outputs back to physics.
@@ -745,6 +749,7 @@ async function performModelLoad() {
         handleTouchEvents(touchGestures.update(performance.now()))
       naturalAdapter.frame(ctx.now)
       naturalDiagnostics.reportChat(composedChat)
+      followReview(naturalAdapter, performance.now())
     }, 'final')
 
     const hookedUpdate = motionManager.update as (model: PixiLive2DInternalModel['coreModel'], now: number) => boolean
@@ -1423,6 +1428,53 @@ watch(touchOverlayEnabled, (enabled) => {
   touchOverlay.value = null
 }, { immediate: true })
 
+/** What drove the motion in the last 10 s; followed only once a lab has sent review settings. */
+const reviewLog = new NaturalReviewLog()
+/** The caption the stage draws, or `null` while it is off or Natural does not drive the model. */
+const reviewCaption = shallowRef<ReturnType<NaturalReviewLog['caption']> | null>(null)
+/** The caption text refreshes at this interval; the log itself samples every composed frame. */
+const reviewCaptionIntervalMs = 100
+let reviewCaptionAtMs = Number.NEGATIVE_INFINITY
+
+function naturalDrives() {
+  return naturalMotion !== undefined && live2dMotionDriver.value === 'natural' && !paused.value
+}
+
+/** Samples the review state after a composed frame. Costs nothing until a lab arms the review. */
+function followReview(adapter: Live2DNaturalMotionAdapter, nowMs: number) {
+  if (!naturalDiagnostics.reviewArmed || !naturalDrives())
+    return
+  reviewLog.sample(adapter.natural.reviewState())
+  if (naturalDiagnostics.reviewSettings.caption && nowMs - reviewCaptionAtMs >= reviewCaptionIntervalMs) {
+    reviewCaptionAtMs = nowMs
+    reviewCaption.value = reviewLog.caption()
+  }
+}
+
+watch(() => naturalDiagnostics.reviewSettings, settings => naturalMotion?.setReview(settings))
+watch([() => naturalDiagnostics.reviewSettings.caption, live2dMotionDriver, paused, model], () => {
+  if (!naturalDiagnostics.reviewSettings.caption || !naturalDrives())
+    reviewCaption.value = null
+})
+
+// Without a model that Natural drives there is no moment to record, so the request goes unanswered.
+onUnmounted(naturalDiagnostics.onReviewFlagRequest((request) => {
+  if (!naturalMotion || !naturalDrives())
+    return
+  // The store hands out a read-only proxy, which a BroadcastChannel cannot clone.
+  const { gains, acts, caption } = naturalDiagnostics.reviewSettings
+  naturalDiagnostics.publishReviewFlag({
+    id: request.id,
+    flaggedAt: new Date().toISOString(),
+    modelId: props.modelId ?? null,
+    variant: request.variant,
+    settings: { gains: { ...gains }, acts, caption },
+    state: naturalMotion.natural.reviewState(),
+    caption: reviewLog.caption().map(line => `${line.label} ${line.text}`),
+    recent: reviewLog.recent(),
+  })
+}))
+
 watch(naturalCaptureRequest, (request, previous) => {
   if (request && request.id !== previous?.id)
     startNaturalCapture(request)
@@ -1748,5 +1800,6 @@ import.meta.hot?.dispose(() => {
 <template>
   <div ref="dropShadowColorComputer" hidden bg="primary-400 dark:primary-500" />
   <TouchDebugOverlay v-if="touchOverlay" :overlay="touchOverlay" />
+  <ReviewCaption v-if="reviewCaption" :lines="reviewCaption" />
   <slot />
 </template>

@@ -383,6 +383,7 @@ The lab provides these controls:
 - Energy: the energy override and its 0 to 1 slider are disabled while "Override the performance state" is off, because only the state override carries the energy to the stage. While they are off or disabled, Natural uses the user's Energy setting.
 - Emotions: choose `slight`, `clear`, or `strong`, and each emotion button sends that emotion at the band's default intensity through the same stage emotion queue that chat replies use. Lab pulses belong to no speech turn, so their expressions follow the hold rule.
 - Affect trace: "Start recording" starts an affect recording in the stage's performance conductor, and "Export affect trace" downloads the recording as `AffectTrace` JSON for `scripts/replay-affect-trace.ts`.
+- Motion review: finds the idle motion that looks wrong. See [Motion review](#motion-review).
 - Trace capture: buttons start a 60, 300, or 600 s capture, and a cancel button stops it.
 
 The override and emotion pulses live in the `natural-performance-override` store in `@proj-airi/stage-ui`. That store is replicated across windows and not persisted.
@@ -416,6 +417,19 @@ Keep these caveats in mind:
 - Keep the main stage window visible during a capture. The stage samples only frames that it renders, and a gap longer than 200 ms splits the trace.
 - In the Electron app, Download trace may show a native save dialog.
 - Captured traces are private evidence. Keep them under `.omo/evidence/` and never commit them.
+
+### Motion review
+
+The Motion review section of the lab answers "which idle motion looks wrong?" on the rendered model, without restarting it.
+
+- **Layer gains.** Sliders from 0 to 200 % scale posture shifts, drift, wobble, the eyes, and body follow, and one slider sets the posture shift rate. A switch turns the idle acts off. "Show one layer alone" sets every other layer to 0. The gains are the controller's review gains (`@proj-airi/motion-driver-natural/review`): a layer's random process keeps running under any gain, so the same motion returns at 100 %.
+- **Compare.** "Current" runs the motion as it ships and "Tuned" runs the slider settings. Both run on the same model and the same random streams.
+- **Caption.** "Show the cause on the stage" draws four lines in the top-left corner of the main window: the head (the shift in progress with its size in degrees and whether a glance came with it, or how long the pose has been held), the eye target, the idle act, and the mode. The text is a developer readout built from controller identifiers and is not translated.
+- **Flags.** "Flag this moment" asks the stage to record the moment. The stage answers with a `NaturalReviewFlag`: the variant, the settings in effect, the review state, the caption, and every change of the 10 s before the flag (`NaturalReviewLog`). The lab lists the flags and downloads them as `natural-review-flags-<ISO>.json`. Flags stay in memory only.
+
+The settings travel on the `useNaturalMotionDiagnostics` channel as Eventa events (`reviewSettingsEvent`, `reviewFlagRequestEvent`, `reviewFlagEvent`). They are not persisted: a stage that reloads runs the shipped motion until the lab sends settings again, which it does when the page opens and on every change. The stage follows the review state only after it has received settings once, so a stage without a lab pays nothing. The review reaches Live2D Natural only. Under another driver the controls are disabled and a flag request gets no answer.
+
+Changed gains move every liveliness statistic. Run a capture or a gate only under "Current".
 
 ## When to use
 

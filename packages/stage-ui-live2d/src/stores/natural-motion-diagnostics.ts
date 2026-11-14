@@ -6,6 +6,7 @@ import type { ScenarioEvent } from '@proj-airi/stage-shared/motion-scenario'
 
 import type { EmotionHold } from '../composables/live2d/expression/hold'
 import type { LivelinessReport } from '../composables/live2d/natural-motion/liveliness'
+import type { NaturalReviewFlag, NaturalReviewSettings, NaturalReviewVariant } from '../composables/live2d/natural-motion/review'
 import type { NaturalTrace } from '../composables/live2d/natural-motion/trace'
 import type { Live2DTouchDebugSnapshot } from '../composables/live2d/touch-debug'
 
@@ -15,6 +16,7 @@ import { affectTraceCompletedEvent, affectTraceFailedEvent, affectTraceRequested
 import { defineStore } from 'pinia'
 import { onScopeDispose, readonly, shallowRef } from 'vue'
 
+import { neutralReviewSettings } from '../composables/live2d/natural-motion/review'
 import { naturalTraceFileName } from '../composables/live2d/natural-motion/trace'
 
 /** A lab request for one post-physics capture. `id` correlates the request with its result. */
@@ -82,6 +84,13 @@ export const touchOverlaySetEvent = defineEventa<{ enabled: boolean }>('eventa:e
 /** The stage reports its touch regions and pet measurements about ten times a second while the overlay is on. */
 export const touchOverlaySnapshotEvent = defineEventa<Live2DTouchDebugSnapshot>('eventa:event:live2d:natural-motion-diagnostics:touch-overlay:snapshot')
 
+/** The lab sets what the stage runs for a motion review. Not persisted: a reloaded stage starts at the shipped motion. */
+export const reviewSettingsEvent = defineEventa<NaturalReviewSettings>('eventa:event:live2d:natural-motion-diagnostics:review:settings')
+/** The lab asks the stage to record this moment. `id` correlates the request with the flag that answers it. */
+export const reviewFlagRequestEvent = defineEventa<{ id: string, variant: NaturalReviewVariant }>('eventa:event:live2d:natural-motion-diagnostics:review:flag-request')
+/** The stage answers a flag request with the moment it recorded. No stage with a Natural model, no answer. */
+export const reviewFlagEvent = defineEventa<NaturalReviewFlag>('eventa:event:live2d:natural-motion-diagnostics:review:flag')
+
 /** The lab offers 60, 300, and 600 s; the model refuses anything outside 1-600 s. */
 const maxCaptureSeconds = 600
 
@@ -136,6 +145,11 @@ export function affectTraceFileName(exportedAt: Date) {
  * saves the exported trace through the affect-trace sink when the result arrives. Failures are
  * {@link AffectTraceFailureCode} values, which the lab translates.
  *
+ * A motion review uses three more. The lab sends `reviewSettings` (layer gains, idle acts, the caption) to every
+ * window; the stage's Model applies them and, once any have arrived, follows what drives the motion. A flag request
+ * from the lab is answered by the stage with a `NaturalReviewFlag`, which every window appends to `reviewFlags`.
+ * The lab's own `reviewTuned` and `reviewVariant` stay in its window: the stage only sees the settings in effect.
+ *
  * The touch-region overlay uses two more Eventa events on the channel. The lab sets
  * `touchOverlayEnabled` for every window; the stage draws the overlay while it is on and
  * publishes `touchOverlaySnapshot`. Snapshots arriving while this window has the overlay off
@@ -176,6 +190,15 @@ export const useNaturalMotionDiagnostics = defineStore('live2d-natural-motion-di
   const affectTraceFailure = shallowRef<AffectTraceFailureCode | null>(null)
   const touchOverlayEnabled = shallowRef(false)
   const touchOverlaySnapshot = shallowRef<Live2DTouchDebugSnapshot | null>(null)
+  /** The review settings in effect, as last sent by the lab; the shipped motion until then. */
+  const reviewSettings = shallowRef<NaturalReviewSettings>(neutralReviewSettings)
+  /** Whether a lab has sent review settings since this window loaded. The stage follows the motion only then. */
+  const reviewArmed = shallowRef(false)
+  /** Moments flagged in this session, oldest first. Kept in memory only. */
+  const reviewFlags = shallowRef<NaturalReviewFlag[]>([])
+  /** The reviewer's tuned settings and which variant runs. In-window lab state, not broadcast. */
+  const reviewTuned = shallowRef<NaturalReviewSettings>(neutralReviewSettings)
+  const reviewVariant = shallowRef<NaturalReviewVariant>('tuned')
   /** Export requests this window sent; only this window saves their traces. */
   const ownExports = new Set<string>()
   /** Set by the stage's model while its capture runs; never shared with other windows. */
@@ -293,6 +316,69 @@ export const useNaturalMotionDiagnostics = defineStore('live2d-natural-motion-di
       return
     touchOverlaySnapshot.value = body
   })
+
+  context.on(reviewSettingsEvent, ({ body }) => {
+    if (!body)
+      return
+    reviewSettings.value = body
+    reviewArmed.value = true
+  })
+
+  context.on(reviewFlagEvent, ({ body }) => {
+    // Two stages can answer one request; the first answer is the flag.
+    if (body && !reviewFlags.value.some(flag => flag.id === body.id))
+      reviewFlags.value = [...reviewFlags.value, body]
+  })
+
+  /**
+   * Sends the settings in effect to every window: the tuned ones, or under the `current` variant the shipped motion
+   * with the tuned caption choice, so switching variants never hides the caption.
+   */
+  function applyReview() {
+    const tuned = reviewTuned.value
+    void context.emit(reviewSettingsEvent, reviewVariant.value === 'tuned' ? tuned : { ...neutralReviewSettings, caption: tuned.caption })
+  }
+
+  /** The lab changes the tuned settings; they take effect at once under the `tuned` variant. */
+  function setReviewTuned(settings: NaturalReviewSettings) {
+    reviewTuned.value = settings
+    applyReview()
+  }
+
+  /** The lab switches between the shipped motion and the tuned settings, on the same running model. */
+  function setReviewVariant(variant: NaturalReviewVariant) {
+    reviewVariant.value = variant
+    applyReview()
+  }
+
+  /** The lab asks the stage to record this moment under the variant that runs. */
+  function requestReviewFlag() {
+    void context.emit(reviewFlagRequestEvent, { id: crypto.randomUUID(), variant: reviewVariant.value })
+  }
+
+  /** Calls `handler` for each flag request from any window after this call; returns the unsubscribe. */
+  function onReviewFlagRequest(handler: (request: { id: string, variant: NaturalReviewVariant }) => void): () => void {
+    return context.on(reviewFlagRequestEvent, ({ body }) => {
+      if (body)
+        handler(body)
+    })
+  }
+
+  /** The stage answers a flag request. */
+  function publishReviewFlag(flag: NaturalReviewFlag) {
+    void context.emit(reviewFlagEvent, flag)
+  }
+
+  /** Forgets this window's flags; other windows keep theirs. */
+  function clearReviewFlags() {
+    reviewFlags.value = []
+  }
+
+  /** Downloads this window's flags as JSON and returns the file name, or `null` when there are none. */
+  function saveReviewFlags() {
+    const flags = reviewFlags.value
+    return flags.length ? downloadJson(flags, `natural-review-flags-${flags[flags.length - 1].flaggedAt.replaceAll(':', '-')}.json`) : null
+  }
 
   /** Turns the stage's touch-region overlay on or off in every window. */
   function setTouchOverlay(enabled: boolean) {
@@ -465,5 +551,18 @@ export const useNaturalMotionDiagnostics = defineStore('live2d-natural-motion-di
     touchOverlaySnapshot,
     setTouchOverlay,
     publishTouchOverlaySnapshot,
+    reviewSettings: readonly(reviewSettings),
+    reviewArmed: readonly(reviewArmed),
+    reviewFlags: readonly(reviewFlags),
+    reviewTuned: readonly(reviewTuned),
+    reviewVariant: readonly(reviewVariant),
+    applyReview,
+    setReviewTuned,
+    setReviewVariant,
+    requestReviewFlag,
+    onReviewFlagRequest,
+    publishReviewFlag,
+    clearReviewFlags,
+    saveReviewFlags,
   }
 })

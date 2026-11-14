@@ -7,6 +7,7 @@ import type { IdleErrandReport } from '@proj-airi/motion-driver-natural/idle-err
 import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
 import type { NaturalChatInput, NaturalMotionFrame, NaturalMotionOptions, NaturalMotionPose } from '@proj-airi/motion-driver-natural/natural-motion'
 import type { PostureHome } from '@proj-airi/motion-driver-natural/posture'
+import type { NaturalReviewGains } from '@proj-airi/motion-driver-natural/review'
 import type { ExpressionPerformanceSettings, MoodDose, PerformanceEmotion } from '@proj-airi/stage-shared/expression-performance'
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
 
@@ -200,6 +201,8 @@ export class Live2DNaturalMotionAdapter {
   /** The drive the host last set, and the one the controller runs; they differ while Natural is inactive. */
   private idleDrive: NaturalIdleDrive | null = null
   private appliedIdleDrive: NaturalIdleDrive | null = null
+  /** A reviewer can withhold the idle drive to watch the base motion alone. */
+  private reviewActs = true
   private readonly idleReports = new IdleBehaviourReports()
   /** Called after a composition in which a self-directed idle behaviour started or ended. */
   onIdleBehaviour: ((report: IdleBehaviourReport) => void) | null = null
@@ -320,6 +323,17 @@ export class Live2DNaturalMotionAdapter {
       this.idleDrive = drive
   }
 
+  /**
+   * Applies a reviewer's settings: the controller's review gains, and whether self-directed idle behaviour runs.
+   * With `acts` off the idle drive is withheld from the next composition, as if the host had set none.
+   */
+  setReview(review: { gains: Readonly<NaturalReviewGains>, acts: boolean }) {
+    if (this.disposed)
+      return
+    this.controller.setReviewGains(review.gains)
+    this.reviewActs = review.acts
+  }
+
   /** Reach-out body language, accepted like a cue gesture: only for the selected Natural driver. */
   idleCue(kind: IdleCueKind) {
     const { driver, exclusive } = this.attention()
@@ -404,7 +418,7 @@ export class Live2DNaturalMotionAdapter {
 
     const mouthAllowed = !voice.speaking && !voice.lipSyncOwnsMouth
     // Before the performance state, whose energy the drive moves. Forwarded on change only.
-    const idleDrive = active ? this.idleDrive : null
+    const idleDrive = active && this.reviewActs ? this.idleDrive : null
     if (idleDrive !== this.appliedIdleDrive) {
       this.appliedIdleDrive = idleDrive
       this.controller.setIdleDrive(idleDrive, this.time)
