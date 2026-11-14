@@ -41,4 +41,5 @@ These files exceed 500 lines. Read the owning module before editing them: `godot
 - Do not remove main-owned shortcuts during renderer shortcut resets.
 - Floating chat uses the default pin level to preserve input-method candidate visibility.
 - `UPDATE_SERVER_URL` is development-only. It must not control production update routing.
+- Do not read `percentCPUUsage` from `app.getAppMetrics()`; other callers share its interval. The perf recorder diffs `cumulativeCPUUsage`.
 - Do not call the Eventa main adapter's `createContext`, `ipcMain.on`, `window.on('closed')`, or `setMaxListeners` in `src/main`. See the [IPC and window listener ADR](../../docs/ai/adr/2026-11-10-electron-main-ipc-listeners.md).
