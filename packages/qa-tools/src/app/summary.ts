@@ -2,9 +2,12 @@ import type { MotionQaEvent } from '@proj-airi/stage-shared/motion-scenario'
 
 export type SendPath = 'composer' | 'chatSend'
 
-/** A kind counts only after this message's cursor. Turn expectations require a completed assistant turn. */
+/**
+ * A kind counts only after this message's cursor. Turn expectations require a completed assistant turn, and speech
+ * expectations a reply whose speech has finished playing.
+ */
 export function matchExpectations(events: readonly MotionQaEvent[], expected: readonly MotionQaEvent['kind'][], sinceSeq: number): MotionQaEvent['kind'][] {
-  return expected.filter(kind => !events.some(event => event.seq > sinceSeq && event.kind === kind && (kind !== 'turn' || event.payload.phase === 'end')))
+  return expected.filter(kind => !events.some(event => event.seq > sinceSeq && event.kind === kind && ((kind !== 'turn' && kind !== 'tts') || event.payload.phase === 'end')))
 }
 
 /**

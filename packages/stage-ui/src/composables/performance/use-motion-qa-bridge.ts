@@ -47,7 +47,8 @@ export interface MotionQaBridgeOptions {
   chat: MotionQaChatHooks
   /** Must call useChatStore().send, preserving the elected leader's ownership of the turn. */
   sendChat: (text: string) => Promise<void>
-  speaking: () => boolean
+  /** True from a reply's first speech clip until its playback drains; unlike playback, it stays on between sentences. */
+  voicing: () => boolean
   /** Shared scene lifecycle: true after the selected renderer reports mounted. */
   modelLoaded?: () => boolean
   prepareModelImport?: () => void

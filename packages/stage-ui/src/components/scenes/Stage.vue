@@ -698,7 +698,7 @@ if (import.meta.env.DEV && isMotionQaBridgeEnabled()) {
             const sessionId = await useChatSessionStore().ensureCurrentSession()
             await useChatStore().send({ sessionId, text })
           },
-          speaking: () => nowSpeaking.value,
+          voicing: () => speechVoicing.value,
           modelLoaded: () => componentState.value === 'mounted',
           prepareModelImport: () => { componentState.value = 'pending' },
           emotionsQueue,
