@@ -1,21 +1,5 @@
 # Spine Guide
 
-## OVERVIEW
-
-Versioned Spine WebGL scenes, archives, animations, and preview rendering. Score: 12. Distinct licensed renderer boundary.
-Follow the [root guide](../../AGENTS.md) for shared rules and task skills.
-
-## WHERE TO LOOK
-
-| Task | Location | Notes |
-| --- | --- | --- |
-| Model lifecycle | `src/components/scenes/spine/Model.vue` | Runtime loading and GPU cleanup |
-| Scene API | `src/components/scenes/Spine.vue` | Capture, emotions, animations, skins |
-| Animation control | `src/composables/spine/animation-manager.ts` | Idle and one-shot tracks |
-| Runtime state | `src/stores/spine.ts` | Transient model state and requests |
-| Archives and preview | `src/utils/` | Versions, variants, asset disposal |
-| License boundaries | `LICENSE.md` | Original code and Spine runtime terms |
-
 ## CONVENTIONS
 
 - Runtime loading supports Spine 4.0, 4.1, and 4.2 through lazy WebGL modules.
@@ -37,5 +21,4 @@ Follow the [root guide](../../AGENTS.md) for shared rules and task skills.
 
 ## CHECKS
 
-- Typecheck: `pnpm -F @proj-airi/stage-ui-spine typecheck`.
 - Check archive loading, version selection, replacement, and disposal in the consuming app after renderer changes.

@@ -1,21 +1,5 @@
 # Audio Adapters
 
-## OVERVIEW
-Browser audio resources and format conversion. Score: 8, with separate browser and encoding export boundaries.
-
-Parent guidance: [root AGENTS.md](../../AGENTS.md).
-
-## WHERE TO LOOK
-| Task | Location |
-| --- | --- |
-| Microphone and borrowed streams | `src/browser/sources.ts` |
-| PCM-to-MediaStream conversion | `src/browser/media-stream.ts` |
-| Web Audio playback | `src/browser/playback.ts` |
-| AudioWorklet capture | `src/browser/capture.worklet.ts` |
-| WAV encoding and file decoding | `src/encoding/media-file.ts` |
-| PCM conversion and WAV headers | `src/encoding/wav.ts` |
-| Incremental resampling | `src/encoding/pcm-stream.ts` |
-
 ## CONVENTIONS
 - Pipelines-audio owns capture intervals, observation windows, and playback groups.
 - Share live sources through `AudioInput`. File consumers open independent decode streams.
@@ -35,7 +19,5 @@ Parent guidance: [root AGENTS.md](../../AGENTS.md).
 - Preserve cancellation cleanup for readers, converters, graph nodes, and worklet ports.
 
 ## CHECKS
-- `pnpm -F @proj-airi/audio typecheck`
 - `pnpm -F @proj-airi/audio test:run`
-- `pnpm -F @proj-airi/audio build`
 - Node tests cover encoding. Chromium tests cover browser resource ownership.

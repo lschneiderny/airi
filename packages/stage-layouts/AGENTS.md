@@ -1,22 +1,5 @@
 # Stage Layouts Guide
 
-## OVERVIEW
-
-Shared stage shells, chat widgets, backgrounds, and adaptive browser input. Score: 12. Distinct layout boundary.
-Follow the [root guide](../../AGENTS.md) for UI, UnoCSS, TypeScript, and translation skill routing.
-
-## WHERE TO LOOK
-
-| Task | Location | Notes |
-| --- | --- | --- |
-| Web settings navigation | `src/layouts/settings.vue` | Route links and icons |
-| Keyboard geometry | `src/browser/` | EventTarget controller and pure calculations |
-| Adaptive input components | `src/components/AdaptiveInput/` | Reka context and scope cleanup |
-| Mobile stage interaction | `src/components/Layouts/MobileInteractiveArea.vue` | Focus, chat, attachments, audio |
-| Chat composition | `src/components/Widgets/ChatArea.vue` | Controller, IME, pending voice |
-| Background lifecycle | `src/components/Backgrounds/`, `src/stores/background.ts` | Blobs, object URLs, mounted slots |
-| Response interruption | `src/composables/` | Visible session and output ownership |
-
 ## CONVENTIONS
 
 - Import explicit manifest subpaths. The root entry only emits a warning.
@@ -37,6 +20,4 @@ Follow the [root guide](../../AGENTS.md) for UI, UnoCSS, TypeScript, and transla
 
 ## CHECKS
 
-- Typecheck: `pnpm -F @proj-airi/stage-layouts typecheck`.
-- Tests: `pnpm -F @proj-airi/stage-layouts exec vitest run`.
 - The test configuration uses jsdom and resolves `~build/*` through `unplugin-info/vite`.

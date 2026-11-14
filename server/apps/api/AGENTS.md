@@ -1,35 +1,6 @@
 # API Server Guide
 
-## Overview
-Hono resource API for billing, chat, generation forwarding, and observability. Score: 12. Separate composition and persistence ownership justify this guide.
-
 Follow the [server guide](../../AGENTS.md) for validation and ADR rules.
-
-## Structure
-- `src/routes/`: HTTP and WebSocket boundaries.
-- `src/services/domain/`: business logic and transactions.
-- `src/services/adapters/`: providers, storage, configuration, external integrations.
-- `src/schemas/`: Drizzle tables. `drizzle/` contains startup migrations and historical metadata.
-- `src/libs/`: environment, database, authentication, test infrastructure.
-- `src/otel/`: metric bundles and collection callbacks.
-- `src/utils/`: encryption, errors, Redis keys, origins, broadcast contracts.
-
-## Where to look
-| Task | Location under `src/` | Notes |
-| --- | --- | --- |
-| Startup and DI | `main.ts`, `server.ts`, `app.ts` | `runApiServer` calls `createApp`, which wires `buildApp` |
-| Wallet writes | `services/domain/billing/` | Atomic balance, usage, ledger, capacitor settlement |
-| Wallet display | `services/domain/flux.ts`, `flux-cache.ts` | Validated 60-second snapshots, not admission authority |
-| Provider dispatch | `services/domain/llm-router/` | Retries, encrypted keys, attempts, distributed capacity |
-| Protocol serialization | `services/adapters/llm/` | Chat Completions and Responses wire adapters |
-| Speech | `services/adapters/tts/`, `services/domain/openai-speech/` | Azure, DashScope, StepFun, Volcengine through unspeech |
-| OpenAI surface | `routes/openai/v1/` | Keep AIRI voice/model extensions under `/api/v1/audio` |
-| Chat transport | `routes/chat-ws/` | Local connection registry and Redis fanout |
-| Field revisions | `services/domain/field-sync/`, `character-cards.ts` | Shared algorithm, feature-owned schemas and limits |
-| Payments | `services/domain/payment/`, `routes/{stripe,apple-iap,revenuecat}/` | Signed receipts, idempotent grants, entitlements |
-| Diagnostics | `services/domain/request-log.ts`, `request-content.ts` | Strips inline media, caps content at 8 MiB, five-second error-body deadline |
-| Product analytics | `services/domain/product-events.ts` | Best-effort writer; capture errors never change business flow; no PII or raw prompts |
-| Account cleanup | `services/domain/user-deletion/`, `routes/internal-auth.ts` | Idempotent handlers and private Auth calls |
 
 ## Conventions
 - Design for multiple Railway replicas sharing PostgreSQL and Redis.
@@ -37,9 +8,17 @@ Follow the [server guide](../../AGENTS.md) for validation and ADR rules.
 - Keep routes thin: validation, guards, error mapping. Services own business logic and transactions.
 - Billing owns wallet mutations and matching ledger writes in one PostgreSQL transaction, never `flux.ts`.
 - `postFluxUsage` owns debits. One Flux equals 1,000,000 micro-Flux. Preserve usage-source idempotency.
+- Wallet display (`flux.ts`, `flux-cache.ts`) uses validated 60-second snapshots, not admission authority.
 - Admission reads PostgreSQL. Missing provider cost stays pending, without token-price fallback.
 - Persist dispatch attempts before upstream calls. Persistence failure stops dispatch rather than triggering fallback.
 - Wipe decrypted key buffers after use. Never skip a key decryption failure.
+- Keep AIRI voice/model extensions under `/api/v1/audio`, not the `routes/openai/v1/` surface.
+- Field revisions use a shared algorithm with feature-owned schemas and limits.
+- Payments use signed receipts, idempotent grants, and entitlements.
+- Diagnostics (`request-log.ts`, `request-content.ts`) strip inline media, cap content at 8 MiB, and use a five-second error-body deadline.
+- Product analytics (`product-events.ts`) is a best-effort writer; capture errors never change business flow; no PII or raw prompts.
+- Account cleanup uses idempotent handlers and private Auth calls.
+- `drizzle/` contains startup migrations and historical metadata.
 - Initialize telemetry through `instrumentation.ts` before application modules.
 - Register WebSockets and live transcription before session/body-limit middleware.
 - Default bodies allow 1 MiB. Authenticated Responses requests have a separate 40 MiB allowance.
@@ -65,10 +44,6 @@ Follow the [server guide](../../AGENTS.md) for validation and ADR rules.
 
 ## Commands
 ```sh
-pnpm -F @proj-airi/api-server dev
-pnpm -F @proj-airi/api-server typecheck
-pnpm -F @proj-airi/api-server exec vitest run
-pnpm -F @proj-airi/api-server build
 pnpm -F @proj-airi/api-server db:generate
 pnpm -F @proj-airi/api-server db:push
 ```

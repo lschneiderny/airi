@@ -4,10 +4,7 @@ This package owns renderer-neutral humanoid motion contracts and algorithms.
 Keep its source independent of Three.js, Vue, Pinia, three-mmd, and stage UI
 packages.
 
-- Subpaths: `./types`, `./look-at`, `./foot-contact`, `./weight-shift`,
-  `./director`, `./locomotion`, `./rest-pose`, `./clip-mask`, `./clip-meta`,
-  and `./idle-clips`. Register a new subpath in `package.json` exports and the
-  README.
+- Register a new subpath in `package.json` exports and the README.
 - The director also performs clips: it accepts or refuses a `BodyActionRequest`
   in a fixed order and echoes the `clipId` in `BodyIntent.action`. It never
   starts, stops, or names a clip itself. A refusal still advances

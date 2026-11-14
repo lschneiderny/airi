@@ -1,60 +1,15 @@
-# PROJECT KNOWLEDGE BASE - AIRI
+# AIRI
 
-**Generated:** 2026-10-25T21:49:57Z | **Commit:** fc620aaf6fa71c5aa4b2abcc69e80d1975911cbf | **Branch:** main
+This is a personal fork of the `moeru-ai/airi` pnpm monorepo. It documents account-free clients. Internal hosted/auth adapters do not prove that hosted services or client routes are enabled.
 
-## OVERVIEW
-AIRI is the `moeru-ai/airi` pnpm monorepo for character interaction across web and Electron hosts, with a Godot VRM sidecar for Electron.
-This personal fork documents account-free clients. Internal hosted/auth adapters do not prove that hosted services or client routes are enabled.
-The Vue apps use Vue 3, Vite, TypeScript, Pinia, VueUse, UnoCSS, Vitest, and ESLint.
-
-## STRUCTURE
-```text
-apps/          Web, Electron, and standalone auth UI
-engines/       Godot VRM rendering sidecar that Electron launches
-packages/      Shared UI, orchestration, models, audio, providers, and channel contracts
-server/        Hosted API, independent identity, backend-only packages, local edge and stack
-services/      Computer-use execution and orchestration
-integrations/  Minecraft, messaging bots, X browser automation, and VS Code
-plugins/       AIRI plugins and browser context extension
-scripts/       Root dev launcher and dev-tools CLIs behind dev*, verify, wt, dev:top, test:run
-.github/       Developer guide, Copilot instructions, and the locale check script
-```
-
-## WHERE TO LOOK
-Before working in a directory, read its nested `AGENTS.md`. Read the matching task routing entry before starting.
-| Task | Location | Notes |
-| --- | --- | --- |
-| Host apps | `apps/stage-{web,tamagotchi}/AGENTS.md` | Web pages: `src/pages`. Electron pages/devtools: `src/renderer/pages`. Electron desktop stage host: `src/main/windows/stage/` (`selectHostMode`; the off-by-default Experimental 3D stage setting gates it, and `AIRI_STAGE_HOST=window\|desktop` overrides the saved mode in development builds only, for QA). |
-| Godot engine / auth UI | [Godot](engines/stage-tamagotchi-godot/AGENTS.md), [auth UI](apps/ui-server-auth/AGENTS.md) | The Godot engine is the VRM stage sidecar of the Electron app. |
-| Routing / settings | `apps/stage-web/vite.config.ts`, `apps/stage-tamagotchi/electron.vite.config.ts` | Layouts: `packages/stage-layouts/src/layouts/settings.vue` and Electron `src/renderer/layouts/settings.vue`. |
-| Shared business UI | [stage-ui](packages/stage-ui/AGENTS.md) | Definitions: `src/libs/providers/providers/`. Provider records/instances: `src/stores/providers/`. Orchestration: `src/stores/modules/`. |
-| UI composition | `packages/stage-ui/src/{composables,components}` | Single-use business UI: `components/scenarios/`. Stories: `packages/stage-ui/stories`, `histoire.config.ts`, `src/components/misc/Button.story.vue`. |
-| Shared boundaries | [core-agent](packages/core-agent/AGENTS.md), [providers](packages/provider-inference/AGENTS.md), [shared](packages/stage-shared/AGENTS.md), [pages](packages/stage-pages/AGENTS.md), [layouts](packages/stage-layouts/AGENTS.md), [primitives](packages/ui/AGENTS.md) | Pure orchestration stays outside Vue/store integration. |
-| Host capabilities | `packages/stage-shared/src/host-capabilities`, [host capability contract ADR](docs/ai/adr/2026-11-08-host-capability-contract.md) | Shared capability resolver, signal status contract, and host parity matrix. |
-| Host adapters | [electron-vueuse](packages/electron-vueuse/AGENTS.md), [Electron scenarios](packages/scenarios-stage-tamagotchi-electron/AGENTS.md) | Electron composables and Vishot flows. |
-| Models / capture | [Three/VRM](packages/stage-ui-three/AGENTS.md), [Live2D](packages/stage-ui-live2d/AGENTS.md), [MMD](packages/stage-ui-mmd/AGENTS.md), [Spine](packages/stage-ui-spine/AGENTS.md), [MediaPipe](packages/model-driver-mediapipe/AGENTS.md), [MAGIC](packages/motion-driver-magic/AGENTS.md) | Read renderer and capture guidance before visual acceptance. |
-| Motion drivers | [Natural](packages/motion-driver-natural/AGENTS.md), [humanoid](packages/motion-driver-humanoid/AGENTS.md) | Renderer-neutral Natural behaviour and humanoid body math shared by Live2D and MMD, including humanoid `locomotion`, `rest-pose`, `clip-mask`, and `clip-meta` (clip kind, layer, and label derivation; the director also performs clips). The stage world camera and ground contract lives in `packages/stage-shared/src/stage-world/`. No `three`, `vue`, `pinia`, three-mmd, or `@proj-airi/stage-ui*` imports in any of them. Architecture: `docs/ai/adr/2026-10-30-3d-character-motion.md`, `docs/ai/adr/2026-10-31-fullscreen-stage-and-locomotion.md`, `docs/ai/adr/2026-11-03-mmd-clip-actions.md` (clip library, ACT `action`, `perform_action`). Milestones M0-M5: `docs/ai/3d-character-roadmap.md`. |
-| Audio / extensions | [pipelines-audio](packages/pipelines-audio/AGENTS.md), [audio](packages/audio/AGENTS.md), [testing-audio](packages/testing-audio/AGENTS.md), [plugin-sdk](packages/plugin-sdk/AGENTS.md), [plugin-protocol](packages/plugin-protocol/src/AGENTS.md), [better-ws](packages/better-ws/AGENTS.md) | Wire contracts live in `@proj-airi/plugin-protocol/types`. |
-| Hosted backend | [server](server/AGENTS.md), [API](server/apps/api/AGENTS.md), [identity](server/apps/auth/AGENTS.md) | API owns migrations. Local stack: `server/docker-compose.yaml`. Edge: `server/dev/caddy/Caddyfile`. |
-| Server channel | [runtime](packages/server-runtime/AGENTS.md), `packages/server-sdk`, `packages/server-shared` | Separate from hosted `server/packages`. Public plugin types: `@proj-airi/plugin-protocol/types`. |
-| Computer use | [service](services/computer-use-mcp/AGENTS.md), [runtime](services/computer-use-mcp/src/AGENTS.md) | AIRI owns planning/providers/chat/approval UX. Service owns execution. Start terminal work at `terminal-lane-status.md`. |
-| Integrations | [Minecraft](integrations/minecraft/AGENTS.md), [Satori](integrations/satori-bot/AGENTS.md), [Telegram](integrations/telegram-bot/AGENTS.md), [X](integrations/twitter-services/AGENTS.md), [web extension](plugins/airi-plugin-web-extension/AGENTS.md) | Telegram, X, and the extension test through root Vitest projects. |
-| Tooling / QA | [scripts](scripts/AGENTS.md), [qa-tools](packages/qa-tools/AGENTS.md), [cpu-slots](packages/cpu-slots/AGENTS.md) | Command reference: `scripts/dev-tools/README.md`. Product packages must not depend on `@proj-airi/qa-tools`. |
-| Automation / styles | [.github](.github/AGENTS.md), `uno.config.ts`, `eslint.config.ts` | Existing animations: `apps/stage-web/src/styles`. |
-
-## CODE MAP
-Refs are selected LSP counts including the declaration. Repository-wide centrality is unmeasured.
-| Symbol | Type | Location | Refs | Role |
-| --- | --- | --- | --- | --- |
-| `createChatOrchestratorRuntime` | Function | `packages/core-agent/src/runtime/chat-orchestrator-runtime.ts` | 3 | Pure chat coordination |
-| `useChatStore` | Store factory | `packages/stage-ui/src/stores/chat.ts` | unmeasured | Vue chat integration |
-| `useLLM`, `useChatSessionStore` | Stores | `packages/stage-ui/src/stores/ai/chat-llm/llm.ts`, `src/stores/chat/session-store.ts` | 50, 45 | LLM calls, chat sessions |
-| `createApp`, `buildApp` | Functions | `server/apps/api/src/app.ts` | unmeasured | Dependency composition and resolved app construction |
-| `createAuth` | Function | `server/apps/auth/src/auth.ts` | unmeasured | Better Auth/OIDC ownership |
-| `setupApp`, `createServer` | Functions | `packages/server-runtime/src/index.ts`, `src/server/index.ts` | unmeasured | Authenticated WebSocket channel |
-| `registerComputerUseTools`, `evaluateActionPolicy` | Functions | `services/computer-use-mcp/src/server/register-tools.ts`, `src/policy.ts` | 14, 15 | MCP tool registration, action policy |
-| `acquire`, `withCpuSlots` | Functions | `packages/cpu-slots/src/index.ts`, `src/vitest.ts` | 10, unmeasured | CPU slot leases, Vitest wrapper |
-| `Brain` | Class | `integrations/minecraft/src/cognitive/conscious/brain.ts` | 41 | Minecraft cognition |
+## AGENTS.md POLICY
+Agent guidance holds only what an agent cannot learn from the code, `package.json`, or a README. Repository overviews cost tokens without improving task success ([Gloaguen et al., 2026](https://arxiv.org/abs/2602.11988)).
+- Write conventions, prohibitions, ownership boundaries, non-standard commands, flags, and environment variables, gotchas, and required reading before a specific task.
+- Do not write overviews, directory trees, "where to look" tables, code maps, symbol or reference counts, or generated headers. They go stale and the agent can read the code.
+- Do not list commands that follow the standard `pnpm -F <package> typecheck | build | test` shape. List only commands with special flags, projects, or ordering.
+- Edit guidance by hand. Do not regenerate it with init-deep, `/init`, or another generator. Add a rule after an agent gets something wrong, and remove rules that stop applying.
+- Put a rule in the nested file closest to the code it governs. Put it here only when it applies across packages.
+- Keep each nested `AGENTS.md` short. When one has no package-specific rules left, delete it and its `CLAUDE.md`.
 
 ## CONVENTIONS
 - Keep changes in scope. Correct rule violations in touched functions/components/tests, not unrelated code. Refactor small changes step by step.
@@ -65,7 +20,13 @@ Refs are selected LSP counts including the declaration. Repository-wide centrali
 - Use `injeca` dependency injection only at external boundaries: databases, model runtimes, queues, caches, filesystems, networks, clocks, environments, feature gates. Do not add dependency objects for internal sibling calls or parameter forwarding.
 - Prefer classes for runtime/browser APIs and substantial stateful business modules with lifecycle or domain ownership. Prefer functions for pure transformations/local helpers.
 - Use Valibot schemas near consumers. Use `errorMessageFrom(error)` from `@moeru/std`, with `?? 'fallback'` when needed. Prefer other `@moeru/std` error patterns.
-- Settings/devtools pages need `<route lang="yaml"> meta: layout: settings </route>`. Register routes and icons in the settings layout.
+- Settings/devtools pages need `<route lang="yaml"> meta: layout: settings </route>`. Register routes and icons in the settings layout: `packages/stage-layouts/src/layouts/settings.vue` for web, `apps/stage-tamagotchi/src/renderer/layouts/settings.vue` for Electron.
+- Keep pure orchestration outside Vue/store integration.
+- Reuse existing animations in `apps/stage-web/src/styles` before adding new ones.
+- Before changing host capabilities, read the [host capability contract ADR](docs/ai/adr/2026-11-08-host-capability-contract.md).
+- The Electron desktop stage host is gated by the off-by-default Experimental 3D stage setting. `AIRI_STAGE_HOST=window|desktop` overrides the saved mode in development builds only, for QA.
+- The server channel (`packages/server-runtime`, `packages/server-sdk`, `packages/server-shared`) is separate from hosted `server/packages`.
+- For 3D character motion work, track milestones in `docs/ai/3d-character-roadmap.md`.
 - Electron main/renderer examples: `src/main/services/electron`. DI example: `apps/stage-tamagotchi/src/main/index.ts`.
 - Preserve the public `@proj-airi/stage-ui/stores` forwarding barrel. Shared component API edits also update `docs/assets/ai/context/ui-components.md` and stories.
 - Put project/client ADRs in `docs/ai/adr/`, hosted backend ADRs in `server/docs/ai/adr/`. Follow [server ADR rules](server/AGENTS.md).
@@ -85,7 +46,7 @@ Refs are selected LSP counts including the declaration. Repository-wide centrali
 - Do not add backward-compatibility guards. For extended old caller/data support, document the target refactor. Start another Codex/Claude shell session for it.
 - Temporary compatibility fallbacks require `// NOTICE:` and removal conditions. Document permanent fallbacks as supported policy, not legacy.
 - Nested guidance can override the compatibility rule for public contracts only by naming the overridden root rule.
-- Explicit contract exceptions exist in [API](server/apps/api/AGENTS.md), [auth UI](apps/ui-server-auth/AGENTS.md), [CCv3](packages/ccc/AGENTS.md), and [MediaPipe](packages/model-driver-mediapipe/AGENTS.md).
+- Explicit contract exceptions exist in [API](server/apps/api/AGENTS.md), [CCv3](packages/ccc/AGENTS.md), and [MediaPipe](packages/model-driver-mediapipe/AGENTS.md).
 - Mark every workaround with this comment format:
 ```ts
 // NOTICE:
@@ -178,4 +139,4 @@ Nested guides own local exceptions and package-specific checks. Historical ADRs/
 The fork removed the Kirie Godot/CEF desktop host on 2026-10-31. `docs/ai/upstream-watch.md` records when to port it back.
 The fork retired the Pocket native mobile host on 2026-11-04. The same watch list records its port-back condition; mobile browser layouts remain part of the web host.
 Root `pnpm dev*` scripts run through `node scripts/dev.mjs`, which bypasses Windows `.cmd` shims and supports only `&&` chains of plain words.
-Nested `AGENTS.md` and `CLAUDE.md` files are committed, so an agent on any machine gets the same guidance from a fresh clone. Do not add them to `.git/info/exclude`. If you rerun init-deep, choose its committed mode, not local mode.
+Nested `AGENTS.md` and `CLAUDE.md` files are committed, so an agent on any machine gets the same guidance from a fresh clone. Do not add them to `.git/info/exclude`.

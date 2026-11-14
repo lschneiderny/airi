@@ -1,36 +1,5 @@
 # Stage UI Guidance
 
-## OVERVIEW
-
-Shared stage business UI and runtime adapters. Score: 15, a distinct package boundary with 48 source exports, dedicated test configuration, and widely referenced stores.
-Follow the [root guide](../../AGENTS.md) and its task-routing skills before changing code.
-
-## WHERE TO LOOK
-
-Paths below are relative to this package.
-
-| Task | Location |
-| --- | --- |
-| Package exports and scripts | `package.json` |
-| Chat requests, retries, tool authorization | `src/stores/chat.ts`, `src/stores/ai/chat-llm/` |
-| Sessions, persistence, account transitions | `src/stores/chat/`, `src/database/repos/`, `src/libs/chat-sync/` |
-| Composer, history, replies, voice controls | `src/components/scenarios/chat/` |
-| Provider definitions and runtime registration | `src/libs/providers/providers/` |
-| Provider records, instances, discovery | `src/stores/providers/config.ts`, `src/stores/providers/provider.ts` |
-| Character defaults and module inheritance | `src/stores/modules/airi-card.ts`, `src/services/airi-card-modules.ts` |
-| Voice host and Eventa contracts | `src/stores/voice.ts`, `src/services/speech/bus.ts` |
-| Capture, VAD, wake words, synthesis | `src/composables/audio/`, `src/libs/audio/`, `src/libs/voice/`, `src/libs/speech/` |
-| Model loading, GPU bookkeeping, workers | `src/libs/inference/`, `src/workers/` |
-| Model settings and renderer capture | `src/components/scenarios/settings/model-settings/`, `src/components/scenes/Stage.vue` |
-| Synced store setup and leadership | `src/libs/pinia/setup-synced.ts`, `src/stores/situation/` |
-| Mod channel and context bridge | `src/stores/mods/api/context-bridge.ts` |
-| MCP and web-search tools | `src/tools/`, `src/stores/mcp-tool-bridge.ts` |
-| Long-term memory | `src/stores/memory.ts`, `src/tools/memory.ts`, `src/database/repos/memory.repo.ts` |
-| Live2D motion runtime and workbench | `src/features/motions/live2d/`, `src/features/devtools/motion/live2d/` |
-| Small-document synchronization | `src/libs/document-sync/README.md`, `src/libs/character-card-sync/` |
-| Home Assistant access policy and tools | `src/libs/home-assistant/`, `src/tools/home-assistant.ts` |
-| Product events and tracing | `src/libs/product-signals/`, `src/composables/use-analytics.ts`, `src/composables/use-io-tracer.ts` |
-
 ## CONVENTIONS
 
 - This fork uses local data and direct or local inference providers. Read the account-free policy in `README.md`.
@@ -52,7 +21,6 @@ Paths below are relative to this package.
 Run from the repository root. Select the project that matches the test file.
 
 ```sh
-pnpm -F @proj-airi/stage-ui typecheck
 pnpm -F @proj-airi/stage-ui exec vitest run --project node src/libs/document-sync/reconcile.test.ts
 pnpm -F @proj-airi/stage-ui exec vitest run --project browser src/components/scenarios/chat/components/history.browser.test.ts
 pnpm -F @proj-airi/stage-ui test:run

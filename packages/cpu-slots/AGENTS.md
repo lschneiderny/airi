@@ -1,23 +1,4 @@
-# CPU Slots Guide
-
-## OVERVIEW
-
-Machine-wide broker that queues CPU-heavy developer processes from every worktree behind one slot budget. Score: 10. Distinct cross-worktree coordination domain used by root configs and QA tools.
-Follow the [root guide](../../AGENTS.md) for shared rules. `README.md` documents classes, environment variables, and troubleshooting.
-
-## WHERE TO LOOK
-
-| Task | Location | Notes |
-| --- | --- | --- |
-| Public API | `src/index.ts` | `acquire`, `decide`, `readStatus`, `Store`, errors, classes |
-| Lease acquisition and inheritance | `src/acquire.ts` | `AIRI_CPU_LEASE` reuse, `assertShareable` |
-| Pure grant rule | `src/grant.ts` | FIFO by ticket sequence with one wait reason |
-| Store transactions and reclamation | `src/store.ts` | Directory lock, adopt, withdraw, snapshots |
-| Process lookup | `src/processes.ts`, `src/liveness.ts` | PowerShell snapshots with timeouts |
-| Class bounds and budget | `src/classes.ts`, `src/budget.ts` | Default budget 12 |
-| CLI and status | `src/cli.ts`, `src/status.ts`, `src/win32-command.ts` | Root `pnpm slots` runs `src/cli.ts` |
-| Vitest wrapper | `src/vitest.ts`, `src/stale-build.ts`, `tsdown.config.ts` | Built `/vitest` subpath with source hash |
-| Tests | `test/` | Store, acquire, CLI, wrapper, file replacement |
+# CPU Slots
 
 ## CONVENTIONS
 
@@ -41,7 +22,5 @@ Follow the [root guide](../../AGENTS.md) for shared rules. `README.md` documents
 
 ## CHECKS
 
-- Typecheck: `pnpm -F @proj-airi/cpu-slots typecheck`.
 - Tests run as a project of the root Vitest config: `pnpm exec vitest run packages/cpu-slots`.
 - Build after changing `src/vitest.ts` or its imports: `pnpm -F @proj-airi/cpu-slots build`.
-- Inspect live state: `pnpm slots status`.

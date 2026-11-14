@@ -1,35 +1,5 @@
 # GODOT STAGE ENGINE KNOWLEDGE BASE
 
-## OVERVIEW
-Desktop Godot C# sidecar with VRM import and stage-owned rendering. Score: 8, distinct engine project boundary.
-
-Parent guidance: [root AGENTS.md](../../AGENTS.md). Its task-routing skills also apply here.
-
-## STRUCTURE
-```text
-scenes/    Stage root and local editor preview
-scripts/   Lifecycle, scene, transport, view, visuals, and VRM runtime
-addons/    Vendored VRM and MToon integrations
-assets/    Local engine assets and ignored research fixtures
-docs/      Engine architecture and visual acceptance requirements
-tests/     Executable C# checks and Godot verification scenes
-tools/     Visible-window capture and render-stage export
-```
-
-## WHERE TO LOOK
-| Task | Location | Notes |
-| --- | --- | --- |
-| C# architecture | `docs/csharp-development-method.md` | Scene, runtime, transport, discovery, tooling layers |
-| C# formatting | `docs/csharp-style.md`, `.editorconfig` | Engine-local conventions |
-| Runtime root | `scripts/StageRoot.cs`, `scenes/stage-root.tscn` | Host messages and controller lifecycle |
-| Model import | `scripts/vrm/`, `scripts/scene/` | Detached import and atomic avatar replacement |
-| View state | `scripts/view/` | Process-lifetime camera state |
-| Render ownership | `scripts/visuals/StageRenderEffectsRuntime.cs` | Overlay and compositor owners |
-| Visual evidence | `docs/technical-art-workflow.md` | Same-scene reference and intermediate-stage evidence |
-| Import and vendor policy | `docs/vrm-runtime-import.md`, `docs/vendor-patches.md` | VRM 0.x boundary, patches, removal conditions |
-| Live host debugging | `docs/live-debugging.md`, `README.md` | Electron-owned launch and remote debugger |
-| Verification scenes | `docs/verification-scenes.md`, `tests/` | Reproducible fixture and frame gates |
-
 ## CONVENTIONS
 - The engine uses .NET 10 and explicit C# usings.
 - C# uses four spaces, Allman braces, PascalCase members, and `_camelCase` private fields.
@@ -42,9 +12,6 @@ tools/     Visible-window capture and render-stage export
 
 ## COMMANDS
 ```sh
-pnpm -F @proj-airi/stage-tamagotchi-godot build
-pnpm -F @proj-airi/stage-tamagotchi-godot typecheck
-pnpm -F @proj-airi/stage-tamagotchi-godot test
 pnpm -F @proj-airi/stage-tamagotchi-godot dump:render-stages
 pnpm -F @proj-airi/stage-tamagotchi-godot dump:render-stages:upper-body
 ```
