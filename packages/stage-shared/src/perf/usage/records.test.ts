@@ -2,6 +2,7 @@ import type { PerfRecord, WindowRollupRecord } from './records'
 
 import { describe, expect, it } from 'vitest'
 
+import { FRAME_BINS_V1, STAGE_BINS_V1 } from './bins'
 import { parsePerfLine } from './records'
 
 const T = 1_794_000_000_000
@@ -183,5 +184,42 @@ describe('parsePerfLine', () => {
     ['an incident file outside the perf dir', JSON.stringify({ ...records[5], file: '../secrets.json' })],
   ])('reports schema for %s', (_name, line) => {
     expect(parsePerfLine(line)).toEqual({ ok: false, reason: 'schema' })
+  })
+
+  describe('histogram lengths', () => {
+    const frameBinCount = FRAME_BINS_V1.edges.length + 1
+    const stageBinCount = STAGE_BINS_V1.edges.length + 1
+    const windowRollup = records.find(record => record.kind === 'window-rollup')!
+    const segmentRollup = records.find(record => record.kind === 'segment-rollup')!
+
+    function withWindowHist(frameHist: number[], stageHist?: [number, number][]): string {
+      return JSON.stringify({
+        ...windowRollup,
+        frameHist,
+        stages: stageHist ? { 'mmd.physics': { n: 1, sumMs: 1, maxMs: 1, hist: stageHist } } : windowRollup.stages,
+      })
+    }
+
+    function withCell(patch: Record<string, unknown>): string {
+      return JSON.stringify({ ...segmentRollup, cells: [{ ...segmentRollup.cells[0], ...patch }] })
+    }
+
+    it.each([
+      ['a short window frameHist', withWindowHist(Array.from<number>({ length: frameBinCount - 1 }).fill(0))],
+      ['a long window frameHist', withWindowHist(Array.from<number>({ length: frameBinCount + 1 }).fill(0))],
+      ['an empty window frameHist', withWindowHist([])],
+      ['a short segment cell frameHist', withCell({ frameHist: Array.from<number>({ length: frameBinCount - 1 }).fill(0) })],
+      ['a long segment cell frameHist', withCell({ frameHist: Array.from<number>({ length: frameBinCount + 1 }).fill(0) })],
+      ['a window stage bin past overflow', withWindowHist(Array.from<number>({ length: frameBinCount }).fill(0), [[stageBinCount, 1]])],
+      ['a segment cell stage bin past overflow', withCell({ stages: { 'mmd.physics': { n: 1, sumMs: 1, maxMs: 1, hist: [[stageBinCount, 1]] } } })],
+    ])('reports schema for %s', (_name, line) => {
+      expect(parsePerfLine(line)).toEqual({ ok: false, reason: 'schema' })
+    })
+
+    it('accepts the overflow bin of both histograms', () => {
+      const hist: [number, number][] = [[stageBinCount - 1, 1]]
+      const line = withWindowHist(Array.from<number>({ length: frameBinCount }).fill(0), hist)
+      expect(parsePerfLine(line).ok).toBe(true)
+    })
   })
 })
