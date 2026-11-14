@@ -10,7 +10,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 
-import { electronOpenDevtoolsWindow, electronOpenEditor, electronOpenMainDevtools, ioTraceHubGet, ioTraceHubSetCollecting, ioTraceRecordingChanged, ioTraceRecordingGet, ioTraceRecordingSetEnabled, perfRecordingChanged, perfRecordingGet, perfRecordingSetEnabled, perfTraceCapture, perfTraceState } from '../../../../shared/eventa'
+import { electronOpenDevtoolsWindow, electronOpenEditor, electronOpenMainDevtools, ioTraceHubGet, ioTraceHubSetCollecting, ioTraceRecordingChanged, ioTraceRecordingGet, ioTraceRecordingSetEnabled, perfRecordingChanged, perfRecordingGet, perfRecordingSetEnabled, perfTraceCapture, perfTraceGet, perfTraceState } from '../../../../shared/eventa'
 
 const { t } = useI18n()
 const settings = useSettings()
@@ -78,10 +78,15 @@ async function updatePerfRecording(enabled: boolean | undefined) {
 }
 
 const capturePerfTrace = useElectronEventaInvoke(perfTraceCapture)
+const getPerfTrace = useElectronEventaInvoke(perfTraceGet)
 const perfTrace = ref<PerfTraceState>()
 const perfTraceError = ref<string | null>(null)
 const stopPerfTraceListener = eventaContext.value.on(perfTraceState, (event) => {
   perfTrace.value = event.body
+})
+// A window that opens during or after a capture asks for the state instead of waiting for the next change.
+onMounted(async () => {
+  perfTrace.value = await getPerfTrace()
 })
 onUnmounted(stopPerfTraceListener)
 
@@ -293,49 +298,57 @@ const openEditor = useElectronEventaInvoke(electronOpenEditor)
     transition="all ease-in-out duration-250"
     @update:model-value="updateIOTraceRecording"
   />
-  <CheckBar
-    :model-value="perfRecording?.enabled ?? false"
-    :disabled="perfRecording === undefined || perfRecordingBusy || perfRecordingEnvControlled"
-    icon-on="i-solar:graph-up-bold-duotone"
-    icon-off="i-solar:graph-up-line-duotone"
-    text="tamagotchi.settings.devtools.pages.performance-recording.title"
-    :description="perfRecordingEnvControlled
-      ? 'tamagotchi.settings.devtools.pages.performance-recording.env-controlled'
-      : 'tamagotchi.settings.devtools.pages.performance-recording.description'"
-    transition="all ease-in-out duration-250"
-    @update:model-value="updatePerfRecording"
-  />
-  <div
-    v-if="perfRecording"
-    data-testid="perf-recording-directory"
-    :class="['mb-2 px-4', 'break-words text-xs', 'text-neutral-500 dark:text-neutral-400']"
+  <section
+    :class="['mb-2 p-2', 'rounded-xl', 'bg-neutral-100/60 dark:bg-neutral-800/40']"
+    data-testid="perf-section"
   >
-    {{ t('tamagotchi.settings.devtools.pages.performance-recording.directory', { directory: perfRecording.directory, buildMode: perfRecording.buildMode }) }}
-  </div>
-  <ButtonBar
-    :class="['mb-2']"
-    icon="i-solar:videocamera-record-bold-duotone"
-    text="tamagotchi.settings.devtools.pages.perf-trace.title"
-    description="tamagotchi.settings.devtools.pages.perf-trace.description"
-    @click="captureChromiumTrace"
-  >
-    {{ t('tamagotchi.settings.devtools.pages.perf-trace.button') }}
-  </ButtonBar>
-  <p
-    v-if="perfTraceError || perfTrace?.capturing || perfTrace?.lastFile"
-    :class="['mb-2 px-4 text-sm break-all', perfTraceError ? 'text-red-500' : 'text-neutral-500']"
-    data-testid="perf-trace-status"
-  >
-    <template v-if="perfTraceError">
-      {{ t('tamagotchi.settings.devtools.pages.perf-trace.failed', { error: perfTraceError }) }}
-    </template>
-    <template v-else-if="perfTrace?.capturing">
-      {{ t('tamagotchi.settings.devtools.pages.perf-trace.capturing') }}
-    </template>
-    <template v-else>
-      {{ t('tamagotchi.settings.devtools.pages.perf-trace.last-file', { path: perfTrace?.lastFile }) }}
-    </template>
-  </p>
+    <h2 :class="['mb-2 px-2', 'text-sm font-medium', 'text-neutral-600 dark:text-neutral-300']">
+      {{ t('tamagotchi.settings.devtools.pages.performance-recording.section') }}
+    </h2>
+    <CheckBar
+      :model-value="perfRecording?.enabled ?? false"
+      :disabled="perfRecording === undefined || perfRecordingBusy || perfRecordingEnvControlled"
+      icon-on="i-solar:graph-up-bold-duotone"
+      icon-off="i-solar:graph-up-line-duotone"
+      text="tamagotchi.settings.devtools.pages.performance-recording.title"
+      :description="perfRecordingEnvControlled
+        ? 'tamagotchi.settings.devtools.pages.performance-recording.env-controlled'
+        : 'tamagotchi.settings.devtools.pages.performance-recording.description'"
+      transition="all ease-in-out duration-250"
+      @update:model-value="updatePerfRecording"
+    />
+    <div
+      v-if="perfRecording"
+      data-testid="perf-recording-directory"
+      :class="['mb-2 px-4', 'break-words text-xs', 'text-neutral-500 dark:text-neutral-400']"
+    >
+      {{ t('tamagotchi.settings.devtools.pages.performance-recording.directory', { directory: perfRecording.directory, buildMode: perfRecording.buildMode }) }}
+    </div>
+    <ButtonBar
+      :class="['mb-2']"
+      icon="i-solar:videocamera-record-bold-duotone"
+      text="tamagotchi.settings.devtools.pages.perf-trace.title"
+      description="tamagotchi.settings.devtools.pages.perf-trace.description"
+      @click="captureChromiumTrace"
+    >
+      {{ t('tamagotchi.settings.devtools.pages.perf-trace.button') }}
+    </ButtonBar>
+    <p
+      v-if="perfTraceError || perfTrace?.capturing || perfTrace?.lastFile"
+      :class="['mb-2 px-4 text-sm break-all', perfTraceError ? 'text-red-500' : 'text-neutral-500']"
+      data-testid="perf-trace-status"
+    >
+      <template v-if="perfTraceError">
+        {{ t('tamagotchi.settings.devtools.pages.perf-trace.failed', { error: perfTraceError }) }}
+      </template>
+      <template v-else-if="perfTrace?.capturing">
+        {{ t('tamagotchi.settings.devtools.pages.perf-trace.capturing') }}
+      </template>
+      <template v-else>
+        {{ t('tamagotchi.settings.devtools.pages.perf-trace.last-file', { path: perfTrace?.lastFile }) }}
+      </template>
+    </p>
+  </section>
   <ButtonBar
     :class="['mb-2', 'transition-all duration-250 ease-in-out']"
     icon="i-solar:chart-square-bold-duotone"

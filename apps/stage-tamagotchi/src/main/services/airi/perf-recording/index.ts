@@ -142,8 +142,10 @@ export class PerfRecordingService {
 
   private chromiumTraceChanged(tracing: boolean): void {
     this.chromiumTracing = tracing
+    if (!this.session)
+      return
     this.chromiumTraceChangedSinceSample = true
-    this.session?.pending.push(this.event(this.session, { name: tracing ? 'trace-start' : 'trace-stop', detail: {} }))
+    this.session.pending.push(this.event(this.session, { name: tracing ? 'trace-start' : 'trace-stop', detail: {} }))
   }
 
   /** Stops the session for an app quit without changing the stored toggle. */
@@ -200,6 +202,8 @@ export class PerfRecordingService {
     if (!session)
       return
     this.session = null
+    // A trace change this session never sampled must not mark the next session's first sample.
+    this.chromiumTraceChangedSinceSample = false
     session.cancelInterval()
     this.cancelReload?.()
     this.cancelReload = null

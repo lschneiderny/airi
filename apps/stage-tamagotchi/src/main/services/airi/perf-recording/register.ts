@@ -12,6 +12,7 @@ import {
   perfRecordingRendererReload,
   perfRecordingSetEnabled,
   perfTraceCapture,
+  perfTraceGet,
   perfTraceState,
 } from '../../../../shared/eventa'
 import { windowLabelFromUrl } from './window-label'
@@ -25,7 +26,7 @@ import { windowLabelFromUrl } from './window-label'
 export function registerPerfRecording(
   context: ReturnType<typeof createWindowContext>['context'],
   window: BrowserWindow,
-  service: Pick<PerfRecordingService, 'getState' | 'setEnabled' | 'onStateChange' | 'rendererReloaded'> & { trace: Pick<PerfTraceCapture, 'capture' | 'onStateChange'> },
+  service: Pick<PerfRecordingService, 'getState' | 'setEnabled' | 'onStateChange' | 'rendererReloaded'> & { trace: Pick<PerfTraceCapture, 'capture' | 'getState' | 'onStateChange'> },
 ): () => void {
   const disposers = [
     defineInvokeHandler(context, perfRecordingGet, () => service.getState()),
@@ -34,6 +35,7 @@ export function registerPerfRecording(
       void context.emit(perfRecordingChanged, state)
     }),
     defineInvokeHandler(context, perfTraceCapture, ({ seconds }) => service.trace.capture(seconds)),
+    defineInvokeHandler(context, perfTraceGet, () => service.trace.getState()),
     service.trace.onStateChange((state) => {
       void context.emit(perfTraceState, state)
     }),

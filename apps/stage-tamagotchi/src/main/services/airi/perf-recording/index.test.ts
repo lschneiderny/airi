@@ -442,6 +442,36 @@ describe('perfRecordingService', () => {
     expect(tick.flatMap(record => record.kind === 'event' ? [record.name] : [])).toEqual(['trace-start', 'trace-stop'])
   })
 
+  it('does not mark the first sample of a session with a trace that ended before the session started', async () => {
+    const { service, fs, segment } = createRecorder()
+    const captured = service.trace.capture(10)
+    await vi.advanceTimersByTimeAsync(10_000)
+    await captured
+
+    await service.setEnabled(true)
+    await nextTick(fs)
+
+    const records = fs.records(segment()).slice(3)
+    expect(records.flatMap(record => record.kind === 'sample' ? [record.chromiumTrace] : [])).toEqual([false])
+    expect(records.some(record => record.kind === 'event' && record.name.startsWith('trace-'))).toBe(false)
+  })
+
+  it('does not carry a trace change that no sample saw into the next session', async () => {
+    const { service, fs, segment } = createRecorder()
+    await service.setEnabled(true)
+    const captured = service.trace.capture(10)
+    // The trace stops just after the 10 s sample, so its stop is still unsampled when the session ends.
+    await vi.advanceTimersByTimeAsync(10_000)
+    await captured
+
+    await service.setEnabled(false)
+    await service.setEnabled(true)
+    await nextTick(fs)
+
+    const records = fs.records(segment()).slice(3)
+    expect(records.flatMap(record => record.kind === 'sample' ? [record.chromiumTrace] : [])).toEqual([false])
+  })
+
   it('writes the events of a tick whose append failed with the next tick', async () => {
     const { service, fs, segment } = createRecorder()
     await service.setEnabled(true)
