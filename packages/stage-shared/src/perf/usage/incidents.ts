@@ -1,6 +1,7 @@
 import type { WindowRollupRecord } from './records'
 
 import { FRAME_BINS_V1 } from './bins'
+import { median } from './compare-stats'
 
 /** Why a detected incident was not written. Deciders return all but `budget`, which {@link IncidentBudget} returns. */
 export type IncidentSuppressedReason = 'host-contended' | 'chromium-trace' | 'settling' | 'hidden' | 'suspended' | 'budget' | 'cooldown'
@@ -124,6 +125,10 @@ export const PEGGED_SAMPLES = 6
 export const PEGGED_CLEAR_CPU_PCT = 60
 export const PEGGED_CLEAR_SAMPLES = 3
 export const PEGGED_COOLDOWN_MS = 10 * 60_000
+/** A hot sample is also at least this many points over the process's settled baseline. */
+export const PEGGED_BASELINE_RISE_PCT = 25
+export const PEGGED_BASELINE_FROM_MS = 2 * 60_000
+export const PEGGED_BASELINE_TO_MS = 5 * 60_000
 
 /** Per process. */
 export interface PeggedMemory extends ConditionReport {
@@ -139,16 +144,19 @@ export const INITIAL_PEGGED_MEMORY: PeggedMemory = Object.freeze({ active: false
 export interface PeggedInput {
   /** `null` when the CPU share is unknown; it breaks both streaks. */
   readonly cpuPctOfCore: number | null
+  /** From {@link trackCpuBaseline}; `null` until the process has one, and then no sample is hot. */
+  readonly baselinePct: number | null
   readonly nowMs: number
   readonly conditions: IncidentConditions
 }
 
 /**
- * Detects a process at or above 90 % of a core for 6 consecutive samples. An episode ends after 3 consecutive
+ * Detects a process at or above 90 % of a core and at least 25 points over its settled baseline for 6 consecutive
+ * samples, so a stage renderer that always runs near one core is not pegged. An episode ends after 3 consecutive
  * samples below 60 %; a new one within 10 min of the last fire is suppressed as `cooldown`.
  */
 export function decidePegged(memory: PeggedMemory, input: PeggedInput): IncidentDecision<PeggedMemory> {
-  const { cpuPctOfCore, nowMs } = input
+  const { cpuPctOfCore, baselinePct, nowMs } = input
   const condition = conditionOf(input.conditions)
   const conditionReported = condition !== null && memory.conditionReported
   if (memory.active) {
@@ -156,7 +164,8 @@ export function decidePegged(memory: PeggedMemory, input: PeggedInput): Incident
     const cleared = coolSamples >= PEGGED_CLEAR_SAMPLES
     return { fire: false, memory: { active: !cleared, hotSamples: 0, coolSamples: cleared ? 0 : coolSamples, lastFireMs: memory.lastFireMs, conditionReported } }
   }
-  const hotSamples = cpuPctOfCore !== null && cpuPctOfCore >= PEGGED_CPU_PCT ? memory.hotSamples + 1 : 0
+  const hot = cpuPctOfCore !== null && baselinePct !== null && cpuPctOfCore >= PEGGED_CPU_PCT && cpuPctOfCore >= baselinePct + PEGGED_BASELINE_RISE_PCT
+  const hotSamples = hot ? memory.hotSamples + 1 : 0
   if (hotSamples < PEGGED_SAMPLES)
     return { fire: false, memory: { ...memory, hotSamples, conditionReported } }
   if (condition !== null)
@@ -164,6 +173,36 @@ export function decidePegged(memory: PeggedMemory, input: PeggedInput): Incident
   if (inCooldown(memory.lastFireMs, PEGGED_COOLDOWN_MS, nowMs))
     return { fire: false, suppressedReason: 'cooldown', memory: { active: true, hotSamples: 0, coolSamples: 0, lastFireMs: memory.lastFireMs, conditionReported: false } }
   return { fire: true, memory: { active: true, hotSamples: 0, coolSamples: 0, lastFireMs: nowMs, conditionReported: false } }
+}
+
+/** Per process. */
+export interface CpuBaselineMemory {
+  /** Start of the baseline: the window's last model load, or the process's first sample when no load was seen. */
+  readonly anchorMs: number
+  readonly modelLoadMs: number | null
+  /** Known CPU shares taken 2-5 min after the anchor. */
+  readonly samples: readonly number[]
+}
+
+export interface CpuBaselineInput {
+  readonly cpuPctOfCore: number | null
+  readonly nowMs: number
+  /** The process's window's last `model-load` time; `null` for a process without a window or before any load. */
+  readonly modelLoadMs: number | null
+}
+
+/**
+ * Adds one sample to a process's settled CPU baseline for {@link decidePegged}: the median of its samples 2-5 min
+ * after the anchor, `null` until that span has passed. A new model load restarts it.
+ */
+export function trackCpuBaseline(memory: CpuBaselineMemory | null, input: CpuBaselineInput): { baselinePct: number | null, memory: CpuBaselineMemory } {
+  const { cpuPctOfCore, nowMs, modelLoadMs } = input
+  const base = memory === null || memory.modelLoadMs !== modelLoadMs ? { anchorMs: modelLoadMs ?? nowMs, modelLoadMs, samples: [] } : memory
+  const sinceAnchor = nowMs - base.anchorMs
+  const next = cpuPctOfCore !== null && sinceAnchor >= PEGGED_BASELINE_FROM_MS && sinceAnchor <= PEGGED_BASELINE_TO_MS
+    ? { ...base, samples: [...base.samples, cpuPctOfCore] }
+    : base
+  return { baselinePct: sinceAnchor > PEGGED_BASELINE_TO_MS && next.samples.length > 0 ? median(next.samples) : null, memory: next }
 }
 
 const MIB_KB = 1024
@@ -212,12 +251,6 @@ export interface MemoryGrowthInput {
   /** The window's last `model-load` time, or `null` when none was seen this session. */
   readonly modelLoadMs: number | null
   readonly conditions: IncidentConditions
-}
-
-function median(values: readonly number[]): number {
-  const sorted = values.toSorted((left, right) => left - right)
-  const middle = sorted.length >> 1
-  return sorted.length % 2 === 1 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2
 }
 
 /** Least-squares slope in MiB per minute, or `null` while the samples span less than {@link MEMORY_GROWTH_MIN_FIT_MS}. */
