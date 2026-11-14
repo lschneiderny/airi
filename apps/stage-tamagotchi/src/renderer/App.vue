@@ -2,6 +2,7 @@
 import type { ArtistrySyncPayload } from '@proj-airi/stage-shared'
 
 import { defineInvokeHandler } from '@moeru/eventa'
+import { errorMessageFrom } from '@moeru/std'
 import { useElectronEventaContext, useElectronEventaInvoke } from '@proj-airi/electron-vueuse'
 import { themeColorFromValue, useThemeColor } from '@proj-airi/stage-layouts/composables/theme-color'
 import { artistrySyncConfig } from '@proj-airi/stage-shared'
@@ -78,7 +79,7 @@ import {
   useTamagotchiMcpToolsStore,
   useTamagotchiPluginToolsStore,
 } from './stores/tools'
-import { resolveInitialRendererRoutePath, resolveRendererWindowContext } from './window-context'
+import { resolveInitialRendererRoutePath, resolvePerfStageWindow, resolveRendererWindowContext } from './window-context'
 
 const { isDark: dark } = useTheme()
 const settingsStore = useSettings()
@@ -203,6 +204,18 @@ function createFullStageRuntime() {
 
   usePerfTracerBridgeStore()
   initializeStageThreeRuntimeTraceBridge()
+  // The bridge reads the Live2D and MMD stores, so only stage windows load it.
+  const perfStageWindow = resolvePerfStageWindow(initialRoutePath)
+  let stopPerfRecordingBridge: (() => void) | undefined
+  let disposed = false
+  if (perfStageWindow) {
+    import('./bridges/perf-recording')
+      .then(({ initializePerfRecordingBridge }) => {
+        if (!disposed)
+          stopPerfRecordingBridge = initializePerfRecordingBridge(context.value, perfStageWindow)
+      })
+      .catch(error => console.warn('[App] Failed to load the perf recording bridge:', errorMessageFrom(error)))
+  }
   void stageWindowLifecycleStore.initializeWindowLifecycleBridge()
   // Same rule as the desktop activity producer: a minimized stage is hidden even when the platform reports it visible.
   watch(
@@ -325,6 +338,8 @@ function createFullStageRuntime() {
       inferencePreload.triggerPreload()
     },
     dispose() {
+      disposed = true
+      stopPerfRecordingBridge?.()
       contextBridgeStore.dispose()
     },
   }

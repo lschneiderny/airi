@@ -586,6 +586,8 @@ const foregroundCategory = computed(() => situation.foregroundCategory)
 let performanceMemory: ResolverMemory = initialResolverMemory
 let performanceInputs: PerformanceInputs
 const performance = shallowRef<PerformanceState>(resolvePerformance())
+watch(() => performance.value.mode, mode => stageSelf.setPerformanceMode(mode), { immediate: true })
+onUnmounted(() => stageSelf.setPerformanceMode(null))
 
 function resolvePerformance(): PerformanceState {
   performanceInputs = {

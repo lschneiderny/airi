@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { resolveInitialRendererRoutePath, resolveRendererWindowContext } from './window-context'
+import { resolveInitialRendererRoutePath, resolvePerfStageWindow, resolveRendererWindowContext } from './window-context'
 
 describe('resolveInitialRendererRoutePath', () => {
   // ROOT CAUSE:
@@ -17,6 +17,15 @@ describe('resolveInitialRendererRoutePath', () => {
 
   it('uses the router path when no hash route exists', () => {
     expect(resolveInitialRendererRoutePath('/settings/data', '')).toBe('/settings/data')
+  })
+})
+
+describe('resolvePerfStageWindow', () => {
+  it('samples only the main stage and the desktop stage window', () => {
+    expect(resolvePerfStageWindow('/')).toBe('stage-main')
+    expect(resolvePerfStageWindow('/stage')).toBe('stage')
+    for (const route of ['/settings', '/settings/models', '/devtools/performance-visualizer', '/chat', '/widgets', '/desktop-overlay'])
+      expect(resolvePerfStageWindow(route)).toBeNull()
   })
 })
 
