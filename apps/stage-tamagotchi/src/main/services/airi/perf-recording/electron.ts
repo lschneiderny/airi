@@ -22,6 +22,8 @@ import { perfRecordingPullFrameRing, perfRecordingPullRollup } from '../../../..
 import { createWindowContext } from '../../../libs/electron/window-context'
 import { PerfIdentity } from './identity'
 import { resolvePerfDirectoryOverride } from './mode'
+import { PerfRetention } from './retention'
+import { nodePerfRetentionFs } from './retention-fs'
 import { windowLabelFromUrl } from './window-label'
 
 const execFileAsync = promisify(execFile)
@@ -135,6 +137,31 @@ export function createElectronPerfRecording(stored: Pick<PerfRecordingServiceOpt
     ...stored,
     fs: { mkdir, appendFile, writeFile, readdir: path => readdir(path), rm },
     contentTracing,
+  })
+}
+
+function isPidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  }
+  catch (error) {
+    // `EPERM` means the process exists but belongs to another user; only `ESRCH` means it is gone.
+    return error instanceof Error && 'code' in error && error.code === 'EPERM'
+  }
+}
+
+/** Rolls up and prunes the recorder's directory; runs whether recording is on or not. */
+export function createElectronPerfRetention(directory: string): PerfRetention {
+  return new PerfRetention({
+    directory,
+    now: () => Date.now(),
+    fs: nodePerfRetentionFs,
+    isPidAlive,
+    setTimer: (callback, ms) => {
+      const handle = setTimeout(callback, ms)
+      return () => clearTimeout(handle)
+    },
   })
 }
 

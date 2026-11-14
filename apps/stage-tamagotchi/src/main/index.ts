@@ -49,7 +49,7 @@ import { registerIOTraceHub } from './services/airi/io-trace-hub/register'
 import { IOTraceRecordingService } from './services/airi/io-trace-recording'
 import { setupMcpManager } from './services/airi/mcp-servers'
 import { createGoNetworkService } from './services/airi/opencode-go'
-import { createElectronPerfRecording, watchPerfPower } from './services/airi/perf-recording/electron'
+import { createElectronPerfRecording, createElectronPerfRetention, watchPerfPower } from './services/airi/perf-recording/electron'
 import { setupExtensionHost } from './services/airi/plugins'
 import { setupArtistryBridge } from './services/airi/widgets/artistry-bridge'
 import { setupAutoUpdater } from './services/electron/auto-updater'
@@ -379,7 +379,9 @@ app.whenReady().then(async () => {
         setStoredEnabled: enabled => dependsOn.config.update({ enabled }),
       })
       const stopWatchingPower = watchPerfPower(service)
+      const retention = createElectronPerfRetention(service.getState().directory)
       dependsOn.lifecycle.appHooks.onStart(async () => {
+        retention.start()
         try {
           await service.restore()
         }
@@ -389,7 +391,7 @@ app.whenReady().then(async () => {
       })
       dependsOn.lifecycle.appHooks.onStop(async () => {
         stopWatchingPower()
-        await service.dispose()
+        await Promise.all([service.dispose(), retention.dispose()])
       })
       return service
     },
