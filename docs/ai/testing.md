@@ -36,6 +36,7 @@ for what each motion level proves.
 | MMD body motion (`motion-driver-humanoid` performance or locomotion, `stage-ui-mmd` body) | Branch gate checks and `pnpm qa:test:model`. Run each affected scenario with `pnpm qa:motion3d run`; for every scenario the change must not move, run it at the base and the tip and require `pnpm qa:motion3d diff` to print `IDENTICAL`. Judge with `qa:motion3d gate` or the topic report, and review `qa:motion3d clip` output by eye. |
 | A `qa:motion3d` report rule (`packages/qa-tools/src/t2-3d/reports`) | Labelled cases in a `qa:motion3d inject` labels file, sealed before any scoring, including injected faults that must fail the changed line; the report's version bump in its own commit; every other line of the report unchanged on the identity runs, read from `--json` verdicts or a `qa:motion3d matrix` receipt. |
 | Documentation-only change | `pnpm verify`; run documentation-specific checks named by the touched package when applicable. |
+| Performance-sensitive runtime change (frame loop, stage rendering, host CPU sampling, perf recording) | `pnpm verify --gate`. Optionally, run `pnpm qa:display run -- pnpm qa:bench` on the base and on the tip, then read the result with `pnpm perf compare --bench <base> <tip>`. Recorder overhead changes can also run `pnpm qa:stage measure --perf-ab`. Start a bench only when no other CPU-sensitive check is running. |
 | CPU broker scheduling or pressure policy | The package tests and QA scenarios for the changed rule, using private broker and history stores and pressure fixtures. |
 
 The final branch check is mandatory even when every commit-loop check passed.
@@ -123,7 +124,8 @@ into a pass by adding arbitrary sleeps or weakening assertions.
 Use the [dev-tools README](../../scripts/dev-tools/README.md) for verify,
 history, and `qa:display` command mechanics. Use the [CPU slots README](../../packages/cpu-slots/README.md)
 for broker details and the [QA tools README](../../packages/qa-tools/README.md)
-for smoke, app sessions, motion gates, evidence, and CLI mechanics. Tool
+for smoke, app sessions, motion gates, evidence, and CLI mechanics. For perf recording, `pnpm perf`, and `qa:bench`, use the
+[perf reports section](../../packages/qa-tools/README.md#perf-reports) and the [usage performance recording ADR](adr/2026-11-14-usage-performance-recording.md). Tool
 specific motion and browser procedures live in the
 [motion QA skill](../../.agents/skills/motion-qa/SKILL.md),
 [Vishot skill](../../.agents/skills/use-vishot/SKILL.md), and

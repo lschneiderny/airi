@@ -77,6 +77,18 @@ The architecture and the removal condition for the classic window mode are recor
 - Only an MMD model can stand on the desktop stage. The stage pages record the stage model's renderer in the stage config (`activeRenderer`). When it is not MMD while the saved mode is `desktop`, the settings page writes the mode back to `window` and shows "Desktop stage supports MMD models; the classic window is used". `selectHostMode` enforces the same rule at launch. A running desktop stage is never torn down: when its page reports a renderer that is not MMD, the stage stays until the next launch, and the main process shows a native notice that offers **Relaunch into the classic window** (`src/main/windows/stage/leave-mmd-notice.ts`).
 - The desktop stage page shows the Controls Island only. The hearing and resource status islands stay hidden there: the stage is a transparent, click-through window over the whole work area, so each island would need its own rect gate to keep desktop clicks working, and the same information is reachable from the Controls Island and the settings window. Revisit this if a desktop-stage user cannot tell that the microphone is live.
 
+## Performance recording
+
+The desktop app writes local performance records that `pnpm perf` reads. The **Record performance** setting controls the recorder. It is on by default in development builds and off in preview and packaged builds.
+
+- In development builds, `AIRI_PERF_RECORD=1` or `0` overrides the setting, and `AIRI_PERF_DIR=<absolute dir>` names another data directory. Packaged builds ignore both variables.
+- The data directory is `perf` under the Electron user data directory: `@proj-airi/stage-tamagotchi` in development and `ai.moeru.airi` in packaged builds.
+- `raw/<sessionId>.<segment>.jsonl` holds raw records, with segments capped at 64 MiB. `raw/<sessionId>.live` names the recorder's pid while a session runs. `sessions.jsonl` holds one rollup row per segment and is append-only. `incidents/` holds JSON files for frame stalls, memory growth, and pegged CPU. `traces/` holds gzipped Chromium traces.
+- Raw segments are removed after 14 days, and the raw total is capped at 1 GiB. Rollup rows are kept. Incidents older than 14 days are removed.
+- **Capture Chromium trace (10 s)** writes `traces/<ISO start>.json.gz` and keeps the newest 5. A 10 s capture measured 87 to 192 MB before gzip. One 92 MB capture gzipped to 7.9 MB, so expect the size after gzip to vary. Traces can contain URLs, so keep them local.
+
+Read the data with `pnpm perf`, described in the [qa-tools perf reports](../../packages/qa-tools/README.md#perf-reports). The design is in the [usage performance recording ADR](../../docs/ai/adr/2026-11-14-usage-performance-recording.md).
+
 ## Foreground window sensor
 
 Situational presence runs in the Electron desktop app on Windows, macOS, and the Linux desktop-bridge backends whose foreground signal is live. The character reaches out a few times a day for her own reasons, with long quiet stretches between messages. She stays quiet during calls, games, presentations, and full-screen apps. Eligible long sessions, returns, and notifications can also prompt a turn; app switches alone cannot.
