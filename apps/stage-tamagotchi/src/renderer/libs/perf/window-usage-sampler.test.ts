@@ -137,7 +137,7 @@ describe('windowUsageSampler', () => {
     expect(rollup?.frameHist).toHaveLength(FRAME_BINS_V1.edges.length + 1)
     expect(rollup?.frameSumMs).toBeCloseTo(300 * 16.7, 6)
     expect(rollup?.frameMaxMs).toBeCloseTo(16.7, 6)
-    expect(rollup?.tags).toEqual({ ...tags, display: { ...tags.display, refreshHz: 60 } })
+    expect(rollup?.tags).toEqual({ ...tags, display: { ...tags.display, refreshHz: 0 } })
     expect(sampler.pull()).toMatchObject({ frames: 0, frameSumMs: 0, frameMaxMs: 0 })
   })
 
@@ -174,7 +174,6 @@ describe('windowUsageSampler', () => {
     expect(frames.requests).toBe(0)
     expect(rollup).toMatchObject({ frames: 300, stages: { physics: { n: 300 } } })
     expect(rollup?.frameHist[bin15To18Ms]).toBe(300)
-    expect(rollup?.tags.display.refreshHz).toBe(60)
     const ring = sampler.frameRing()
     expect(ring?.intervalsMs).toHaveLength(310)
     expect(ring?.slowestStage.at(-1)).toBe('physics')

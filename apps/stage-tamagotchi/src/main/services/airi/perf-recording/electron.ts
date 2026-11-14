@@ -14,7 +14,7 @@ import { promisify } from 'node:util'
 import { useLogg } from '@guiiai/logg'
 import { defineInvoke } from '@moeru/eventa'
 import { abbreviatedSha, branch, sha } from '~build/git'
-import { app, BrowserWindow, contentTracing, powerMonitor } from 'electron'
+import { app, BrowserWindow, contentTracing, powerMonitor, screen } from 'electron'
 import { array, boolean, number, object, optional, safeParse } from 'valibot'
 
 import { PerfRecordingService } from '.'
@@ -43,6 +43,7 @@ function readWindows(): PerfWindowSource[] {
         label: windowLabelFromUrl(contents.getURL()),
         osPid: contents.getOSProcessId(),
         visible: window.isVisible() && !window.isMinimized(),
+        refreshHz: screen.getDisplayMatching(window.getBounds()).displayFrequency,
         devtoolsOsPid: devtools && !devtools.isDestroyed() ? devtools.getOSProcessId() : null,
         // The context is resolved per pull, so only pulled windows get one, and a window closed since then rejects.
         pullRollup: (request, signal) => defineInvoke(createWindowContext(window).context, perfRecordingPullRollup)(request, { signal }),

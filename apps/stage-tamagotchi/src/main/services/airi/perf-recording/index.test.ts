@@ -1,7 +1,7 @@
 import type { PerfRecord } from '@proj-airi/stage-shared/perf/usage'
 
 import type { PerfRecordingFs, PerfRecordingServiceOptions, PerfWindowSource } from '.'
-import type { PerfWindowRollup } from '../../../../shared/eventa'
+import type { PerfWindowPull, PerfWindowPullRequest } from '../../../../shared/eventa'
 import type { PerfIdentityValue } from './identity'
 import type { PerfProcessMetric } from './sample'
 
@@ -68,7 +68,7 @@ class MemoryFs implements PerfRecordingFs {
   }
 }
 
-function rollup(modelName: string | null = null): PerfWindowRollup {
+function rollup(modelName: string | null = null): PerfWindowPull {
   return {
     v: 1,
     kind: 'window-rollup',
@@ -94,6 +94,7 @@ function rollup(modelName: string | null = null): PerfWindowRollup {
     longTasks: { count: 0, maxMs: 0, sumMs: 0 },
     stages: null,
     recorderUs: 40,
+    events: [],
   }
 }
 
@@ -107,6 +108,7 @@ function stageWindow(overrides: Partial<PerfWindowSource> = {}): PerfWindowSourc
     osPid: 200,
     visible: true,
     devtoolsOsPid: 300,
+    refreshHz: 60,
     pullRollup: async () => rollup(),
     pullFrameRing: async () => null,
     ...overrides,
@@ -211,6 +213,74 @@ describe('perfRecordingService', () => {
       expect.objectContaining({ pid: 300, role: 'devtools:stage-main', cpuPctOfCore: 0 }),
     ]))
     expect(windowRollup).toMatchObject({ kind: 'window-rollup', sessionId, epoch: 0, window: 'stage-main', visible: true, frames: 300 })
+  })
+
+  it('writes a window\'s pulled events under its label after the rollups, in the same append', async () => {
+    const { service, fs, state, segment } = createRecorder()
+    state.windows = [stageWindow({
+      pullRollup: async (): Promise<PerfWindowPull> => ({
+        ...rollup(),
+        events: [
+          { name: 'model-load', detail: { renderer: 'mmd', modelId: 'model-1', modelName: 'chisa' } },
+          { name: 'feature-change', detail: { previousFeatureHash: 'abc', featureHash: 'def', speechMuted: true } },
+        ],
+      }),
+    })]
+    await service.setEnabled(true)
+    const appendsBefore = fs.appends
+
+    await nextTick(fs)
+
+    expect(fs.appends).toBe(appendsBefore + 1)
+    const tick = fs.records(segment()).slice(3)
+    expect(tick).toMatchObject([
+      { kind: 'sample' },
+      { kind: 'window-rollup', window: 'stage-main' },
+      { kind: 'event', name: 'model-load', window: 'stage-main', detail: { renderer: 'mmd', modelId: 'model-1', modelName: 'chisa' } },
+      { kind: 'event', name: 'feature-change', window: 'stage-main', detail: { featureHash: 'def', speechMuted: true } },
+    ])
+    expect(tick[1]).not.toHaveProperty('events')
+  })
+
+  it('tells each window the last tick whose answer arrived in time, so it resends events from a dropped answer', async () => {
+    const requests: PerfWindowPullRequest[] = []
+    let answer = true
+    const { service, fs, state } = createRecorder()
+    state.windows = [stageWindow({
+      pullRollup: (request) => {
+        requests.push(request)
+        return answer ? Promise.resolve(rollup()) : new Promise(() => {})
+      },
+    })]
+    await service.setEnabled(true)
+
+    await nextTick(fs)
+    answer = false
+    await nextTick(fs, 6_000)
+    answer = true
+    await nextTick(fs, 4_000)
+    await nextTick(fs)
+
+    expect(requests).toEqual([
+      { tick: 1, acceptedTick: null },
+      { tick: 2, acceptedTick: 1 },
+      { tick: 3, acceptedTick: 1 },
+      { tick: 4, acceptedTick: 3 },
+    ])
+  })
+
+  it.each([
+    ['a reported rate', 59.96, 60],
+    ['an unreported rate (Electron on native Wayland)', 0, 0],
+  ])('records the window display\'s rate in whole Hz for %s, not the rate the renderer measured', async (_, displayHz, recordedHz) => {
+    const { service, fs, state, segment } = createRecorder()
+    state.windows = [stageWindow({ refreshHz: displayHz })]
+    await service.setEnabled(true)
+
+    await nextTick(fs)
+
+    const windowRollup = fs.records(segment()).find(record => record.kind === 'window-rollup')
+    expect(windowRollup?.kind === 'window-rollup' && windowRollup.tags.display).toEqual({ width: 1920, height: 1080, scale: 1, refreshHz: recordedHz })
   })
 
   it('removes the live file and stops scheduling when recording is turned off', async () => {
@@ -382,6 +452,25 @@ describe('perfRecordingService', () => {
     await nextTick(fs)
 
     expect(fs.records(segment()).slice(3).map(record => record.kind === 'event' ? record.name : record.kind)).toEqual(['resume', 'sample', 'window-rollup'])
+  })
+
+  it('writes a window\'s pulled events with the next tick when the append that carried them failed', async () => {
+    const { service, fs, state, segment } = createRecorder()
+    let events: PerfWindowPull['events'] = [{ name: 'model-load', detail: { renderer: 'mmd', modelId: 'model-1', modelName: 'chisa' } }]
+    state.windows = [stageWindow({
+      pullRollup: async () => {
+        const pull = { ...rollup(), events }
+        events = []
+        return pull
+      },
+    })]
+    await service.setEnabled(true)
+
+    fs.failingAppends = 1
+    await vi.advanceTimersByTimeAsync(5_000)
+    await nextTick(fs)
+
+    expect(fs.records(segment()).slice(3).map(record => record.kind === 'event' ? record.name : record.kind)).toEqual(['model-load', 'sample', 'window-rollup'])
   })
 
   it('keeps one interval when recording is turned off and on again during a tick', async () => {

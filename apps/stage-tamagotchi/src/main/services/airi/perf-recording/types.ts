@@ -1,6 +1,6 @@
 import type { SessionStartRecord } from '@proj-airi/stage-shared/perf/usage'
 
-import type { PerfFrameRing, PerfWindowRollup } from '../../../../shared/eventa'
+import type { PerfFrameRing, PerfWindowPull, PerfWindowPullRequest } from '../../../../shared/eventa'
 import type { PerfIdentity } from './identity'
 import type { PerfMachineReading, PerfProcessMetric, PerfRendererOwner } from './sample'
 import type { PerfRecordingFs } from './segment-file'
@@ -17,7 +17,12 @@ export interface PerfRecordingTimers {
 export interface PerfWindowSource extends PerfRendererOwner {
   label: PerfWindowLabel
   visible: boolean
-  pullRollup: (request: { tick: number }, signal: AbortSignal) => Promise<PerfWindowRollup | null>
+  /**
+   * The refresh rate of the display the window is on, or 0 where the platform does not report it (Electron on native
+   * Wayland). Records carry it instead of the achieved rate, so a slow window keeps its cell.
+   */
+  refreshHz: number
+  pullRollup: (request: PerfWindowPullRequest, signal: AbortSignal) => Promise<PerfWindowPull | null>
   pullFrameRing: (signal: AbortSignal) => Promise<PerfFrameRing | null>
 }
 
