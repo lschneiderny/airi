@@ -8,7 +8,7 @@ import { createRandomStream } from '../random'
 import { armResponse } from './arms'
 import { ARM_START, BODY_CHANNELS, BODY_TICK, CHANNEL_GROUPS, channelIndex, DEG, freeShare, SIDES } from './channels'
 import { path } from './cues'
-import { GestureKeys } from './gesture-forms'
+import { GestureKeys, writeHandShape } from './gesture-forms'
 import { followerInverse } from './gestures'
 
 type Mutable<T> = { -readonly [K in keyof T]: T[K] }
@@ -63,6 +63,17 @@ const NO_STEPS: readonly BodyFootStep[] = []
  * reach and release times are the layer's.
  */
 const CLASP = { reach: 0.1, firstOff: 1.5, lastOff: 1.1, rock: 0.012, rocks: [2, 4], band: 0.35, ease: 0.6 } as const
+/** Architecture 4e act 7's finger flick: `open` for 0.15 s at each forward peak of the swing. */
+const FLICK = 0.15
+const SWING_PEAK = Math.atan(Math.SQRT2) / Math.PI
+
+/** A side's arm block with 4a's `open` hand shape in its finger channels (9 to 25). */
+function openHand(): Float64Array {
+  const pose = new Float64Array(26)
+  writeHandShape('open', pose)
+  return pose
+}
+
 /** Architecture 4e act 2: the two sides of a bilateral act are 120 ms apart. */
 const BILATERAL = 0.12
 /** The channels a stretch moves in a side's arm block: clavicle elevation, flexion, abduction, elbow. */
@@ -151,6 +162,8 @@ export function createActLayer(): PerformanceLayer {
   let playedSeq: number | null = null
   /** Each arm's stretch on this rig (`stretchArm`), found at the first stretch. */
   let arms: Record<BodySide, StretchArm> | null = null
+  /** The open hand an arm swing flicks to (`openHand`), built at the first swing. */
+  let flicks: Float64Array | null = null
   /** The yaw, radians from its standing angle, each foot was last re-planted to. */
   const planted: Record<BodySide, number> = { left: 0, right: 0 }
   let steps = NO_STEPS
@@ -504,13 +517,24 @@ export function createActLayer(): PerformanceLayer {
       case 'arm-swing': {
         // 4e act 7: an 8 deg push into each arm pendulum, opposite signs, two or three times at the pendulum's own
         // period: the relaxed upper-arm follower's at her tension when the swing began (3f, `armResponse`), as many as
-        // fit the behaviour. No finger flick at the forward peaks.
+        // fit the behaviour. At each forward peak the hand flicks open (`open` for 0.15 s, centred on the peak).
         const period = 1 / armResponse(2, 0, a.tension)[0]
         const pushes = Math.max(1, Math.min(a.record.count, Math.floor(D / period)))
         const u = age < pushes * period ? (age % period) / period : 0
         const swing = 8 * Math.sin(2 * Math.PI * u) * Math.sin(Math.PI * u)
         add('leftFlex', swing)
         add('rightFlex', -swing)
+        flicks ??= openHand()
+        for (const side of SIDES) {
+          // The push `sin(2 pi u) sin(pi u)` peaks forward at u = atan(sqrt 2) / pi; the right arm's opposite push at 1 - u.
+          const peak = side === 'left' ? SWING_PEAK : 1 - SWING_PEAK
+          let flick = 0
+          for (let push = 0; push < pushes; push++)
+            flick += raisedCosine((age - (push + peak) * period) / FLICK + 0.5)
+          const start = ARM_START[side]
+          for (let j = 9; j < 26; j++)
+            channels[start + j] += w * flick * (flicks[j] - context.rest[start + j])
+        }
         break
       }
     }

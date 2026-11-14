@@ -291,6 +291,24 @@ describe('the act layer', () => {
     expect(Math.max(...diff(c('pelvisY')))).toBeCloseTo(0.012, 4)
   })
 
+  it('flicks each hand open at its arm\'s forward peaks of an arm swing (4e act 7)', () => {
+    const entry = record('arm-swing', 3, { count: 2 })
+    const still = run(chisaTraits, quietInput, START + 4)
+    const acted = run(chisaTraits, playing(entry), START + 4)
+    for (const side of ['left', 'right'] as const) {
+      // Flexion is forward on both sides: each arm's forward peak is its own flexion peak.
+      const swing = acted.channels.map((frame, tick) => (frame[c(`${side}Flex`)] - still.channels[tick][c(`${side}Flex`)]) / DEG)
+      // Opening uncurls the fingers: the index's middle joint curls less than at rest.
+      const open = acted.channels.map((frame, tick) => (still.channels[tick][c(`${side}Index1`)] - frame[c(`${side}Index1`)]) / DEG)
+      const forward = swing.flatMap((value, tick) => tick > 0 && tick < swing.length - 1 && value > 2 && value >= swing[tick - 1] && value > swing[tick + 1] ? [tick] : [])
+      const flicks = open.flatMap((value, tick) => tick > 0 && tick < open.length - 1 && value > 2 && value >= open[tick - 1] && value > open[tick + 1] ? [tick] : [])
+      expect(forward.length, side).toBeGreaterThanOrEqual(2)
+      expect(flicks.length, side).toBe(forward.length)
+      // Each flick peaks within 0.15 s of its forward peak (the finger followers' lag included).
+      flicks.forEach((tick, k) => expect(Math.abs(tick - forward[k]) * BODY_TICK, `${side} ${k}`).toBeLessThan(0.15))
+    }
+  })
+
   it('turns her head and trunk to architecture 4e\'s 35 degrees for a look-around\'s widest glance', () => {
     const entry = behaviours.find(b => b.act.kind === 'look-around')!
     const acted = run(chisaTraits, playing(entry.act), START + 2)
