@@ -18,15 +18,16 @@ export function parseAppArgs(argv: readonly string[], cwd: string) {
       'expect': { type: 'string', default: 'turn' },
       'timeout': { type: 'string', default: '60' },
       'out': { type: 'string' },
+      'perf-dir': { type: 'string' },
       'keep-open': { type: 'boolean', default: false },
       'dry-run': { type: 'boolean', default: false },
     },
   })
   if (positionals.length !== 1 || positionals[0] !== 'run' || !values.model?.trim() || !values.say?.length)
-    throw new AppUsageError('Usage: pnpm qa:app run --model <path> --say <text> [--say <text>] [--kind live2d|mmd|vrm] [--script file|--set id] [--expect act,tts] [--timeout seconds] [--out dir] [--keep-open] [--dry-run]')
+    throw new AppUsageError('Usage: pnpm qa:app run --model <path> --say <text> [--say <text>] [--kind live2d|mmd|vrm] [--script file|--set id] [--expect act,tts] [--timeout seconds] [--out dir] [--perf-dir dir] [--keep-open] [--dry-run]')
   if (values.script !== undefined && values.set !== undefined)
     throw new AppUsageError('--script and --set are mutually exclusive')
-  for (const value of [...values.say, values.script, values.set, values.out]) {
+  for (const value of [...values.say, values.script, values.set, values.out, values['perf-dir']]) {
     if (value !== undefined && !value.trim())
       throw new AppUsageError('Text and paths must not be empty')
   }
@@ -46,6 +47,7 @@ export function parseAppArgs(argv: readonly string[], cwd: string) {
     expect,
     timeoutMs: timeout * 1000,
     out: values.out ? resolve(cwd, values.out) : undefined,
+    perfDir: values['perf-dir'] ? resolve(cwd, values['perf-dir']) : undefined,
     keepOpen: values['keep-open'],
     dryRun: values['dry-run'],
   }

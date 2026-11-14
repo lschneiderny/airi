@@ -30,6 +30,7 @@ describe('t3LaunchEnv', () => {
       APP_REMOTE_DEBUG_PORT: '9333',
       APP_REMOTE_DEBUG_NO_OPEN: 'true',
       APP_MOTION_QA_BRIDGE: 'true',
+      AIRI_PERF_RECORD: '0',
     })
   })
 })

@@ -1,9 +1,12 @@
 import type { MotionQaEvent } from '@proj-airi/stage-shared/motion-scenario'
 
+import { resolve } from 'node:path'
+
 import { describe, expect, it } from 'vitest'
 
+import { t3LaunchEnv } from '../t3/launch'
 import { parseAppArgs } from './args'
-import { buildPlan, buildSeedEntries } from './plan'
+import { appLaunchEnv, buildPlan, buildSeedEntries } from './plan'
 import { buildSummary, matchExpectations, runFailed } from './summary'
 
 describe('app session planning', () => {
@@ -18,7 +21,23 @@ describe('app session planning', () => {
     expect(plan.steps).toContain('teardown owned processes and remove temporary profile')
   })
 
+  it('keeps perf recording off by default and turns it on with an absolute --perf-dir', () => {
+    const off = buildPlan(parseAppArgs(['run', '--dry-run', '--model', 'a.zip', '--say', 'x'], '/work'), '/run')
+    expect(off.env.AIRI_PERF_RECORD).toBe('0')
+    expect(off.env.AIRI_PERF_DIR).toBeUndefined()
+    const on = buildPlan(parseAppArgs(['run', '--dry-run', '--model', 'a.zip', '--say', 'x', '--perf-dir', 'p'], '/work'), '/run')
+    expect(on.env).toMatchObject({ AIRI_PERF_RECORD: '1', AIRI_PERF_DIR: resolve('/work', 'p') })
+  })
+
+  it('lets the launch options env override t3LaunchEnv in the real merge', () => {
+    const options = parseAppArgs(['run', '--model', 'a.zip', '--say', 'x', '--perf-dir', '/perf'], '/work')
+    expect({ ...t3LaunchEnv('/p', 1), ...appLaunchEnv(options) }).toMatchObject({ AIRI_PERF_RECORD: '1', AIRI_PERF_DIR: resolve('/perf') })
+  })
+
   it.each([
+    ['run', '--model', 'a.zip', '--say', 'x', '--perf-dir', ''],
+    ['run', '--model', 'a.zip', '--say', 'x', '--perf-dir', '  '],
+    ['run', '--model', 'a.zip', '--say', 'x', '--perf-dir'],
     ['run', '--model', 'a.zip', '--say', 'x', '--script', 'a', '--set', 'b'],
     ['run', '--model', 'a.zip', '--say', 'x', '--timeout', 'NaN'],
     ['run', '--model', 'a.zip', '--say', 'x', '--expect', 'oops'],
