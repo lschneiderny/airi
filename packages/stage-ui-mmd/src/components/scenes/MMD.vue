@@ -11,7 +11,7 @@
 
 import type { ClipBoneMask, ClipMaskGroup } from '@proj-airi/motion-driver-humanoid/clip-mask'
 import type { BodyActionKind, BodyActionRequest } from '@proj-airi/motion-driver-humanoid/director'
-import type { IdleClipCandidate } from '@proj-airi/motion-driver-humanoid/idle-clips'
+import type { IdleClipCandidate, IdleClipHistory } from '@proj-airi/motion-driver-humanoid/idle-clips'
 import type { MotionTraceEvent } from '@proj-airi/motion-driver-humanoid/motion-trace'
 import type { BodyIntent } from '@proj-airi/motion-driver-humanoid/types'
 import type { FaceBaseline } from '@proj-airi/motion-driver-natural/baseline'
@@ -19,6 +19,7 @@ import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestur
 import type { NaturalEmotionStrengths } from '@proj-airi/motion-driver-natural/emotion-strengths'
 import type { NaturalTouchGesture } from '@proj-airi/motion-driver-natural/frame-types'
 import type { IdleBehaviourReport, IdleCueKind, NaturalIdleDrive } from '@proj-airi/motion-driver-natural/idle-activities'
+import type { IdleErrandKind } from '@proj-airi/motion-driver-natural/idle-errands'
 import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
 import type { NaturalChatInput } from '@proj-airi/motion-driver-natural/natural-motion'
 import type { ExpressionPerformanceSettings, HoldCommand, MoodDose, SlotCommand } from '@proj-airi/stage-shared/expression-performance'
@@ -40,7 +41,7 @@ import type { ResolvedMMDModel } from '../../utils/mmd-loader'
 
 import { errorMessageFrom } from '@moeru/std'
 import { deriveClipMeta, effectiveLayer } from '@proj-airi/motion-driver-humanoid/clip-meta'
-import { decideIdleClip, initialIdleClipMemory } from '@proj-airi/motion-driver-humanoid/idle-clips'
+import { initialIdleClipHistory, pickIdleClip } from '@proj-airi/motion-driver-humanoid/idle-clips'
 import { coverRect } from '@proj-airi/stage-shared'
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { screenInwardness } from '@proj-airi/stage-shared/stage-placement'
@@ -203,14 +204,19 @@ watch(() => props.chatActivity?.sentSeq, (next, previous) => {
   }
 })
 const bodyToolPort = new MMDBodyToolPort()
-// Self-directed idle behaviour. The stage sends the drive every second; this scene narrows it and adds unasked clips.
+// Self-directed idle behaviour. The stage sends the drive every second; this scene narrows it, lists the errands it can
+// realise (unasked clips, wanders), and realises the ones Natural starts.
 let hostIdleDrive: NaturalIdleDrive | null = null
 let sceneIdleDrive: NaturalIdleDrive | null = null
 /** The stage drive `sceneIdleDrive` was built from. */
 let sceneIdleSource: NaturalIdleDrive | null = null
 /** The body capabilities `sceneIdleDrive` was built from: a new model changes what she can reach. */
 let sceneIdleCapabilities: MMDBody['capabilities'] = null
-let idleClipMemory = initialIdleClipMemory
+let idleClipHistory: IdleClipHistory = initialIdleClipHistory
+/** Natural's unasked-clip errand the scene asked the director for, and the request seq that carries it. */
+let clipErrand: { seq: number, performSeq: number } | null = null
+/** The latest errand the scene answered, so each one is answered once. */
+let answeredErrandSeq = 0
 /** The request seq of the clip she plays unasked, so its performance can be told from an asked one. */
 let unaskedActionSeq: number | null = null
 let reportedBody: MMDSelfReport | null = null
@@ -714,7 +720,7 @@ function renderLoop(now = performance.now()) {
     // Outside the stage-world block: perform_action answers in the classic window too.
     actionPort.observe({ directorMs: clocks.directorMs, diagnostics: stance.diagnostics })
     reportBody(stance.intent)
-    playUnasked(clocks.directorMs, loadedModelKey, stance.intent)
+    realiseErrands(clocks.directorMs, stance.intent)
     if (props.stageWorld) {
       bodyToolPort.observe({
         rootX: stageRootX,
@@ -844,6 +850,7 @@ function directorWorld(world: MMDStageWorld, modelKey: string): MMDStanceWorld {
     debugGoal: diagnostics.goalRequest,
     legLength,
     seed: fnv1a32(modelKey),
+    wander: naturalWander(),
   }
 }
 
@@ -902,7 +909,9 @@ function disposeModel() {
     emit('idle', report)
   reportBody(null)
   unaskedActionSeq = null
-  idleClipMemory = initialIdleClipMemory
+  idleClipHistory = initialIdleClipHistory
+  clipErrand = null
+  answeredErrandSeq = 0
   natural = undefined
   body = undefined
   stance = undefined
@@ -1033,46 +1042,74 @@ function reportBody(intent: BodyIntent | null) {
   reportedBody = next
 }
 
+/** Natural's wander errand while it waits for the director's answer, for `world.wander`; null otherwise. */
+function naturalWander(): { seq: number } | null {
+  const errand = motionDriver.value === 'natural' ? natural?.idleErrand : null
+  return errand?.kind === 'wander' && errand.endedAt === null ? { seq: errand.seq } : null
+}
+
 /**
- * Lets her play one of the clips the user allowed for idle, when the scheduler says so and her body is quiet. The
- * director still decides: the request goes through `requestPerform` with the `idle` source.
+ * Realises the unasked clips and wanders Natural's idle draw starts, and answers each once (idle agency ADR, amendment
+ * of 2026-11-14). An unasked clip goes through `requestPerform` with the `idle` source, so the director still decides;
+ * a wander reaches the director as `world.wander`, and its answer comes back in the director's diagnostics.
  */
-function playUnasked(directorMs: number, modelKey: string, intent: BodyIntent | null) {
-  const { mode, away } = props.performance
-  const quiet = naturalSettings.document.idleActivities
-    && motionDriver.value === 'natural'
-    && (mode === 'idle' || mode === 'watching')
-    && !away
-    && !props.nowSpeaking
-    && !dragging
-    && intent !== null
-    && intent.stance === 'stand'
-    && intent.action === null
-    && intent.locomotion.goalX === null
-    // One thing at a time: a stretch or a yawn finishes before a clip starts.
-    && natural?.natural.idleState.behaviour == null
-  const decision = decideIdleClip({ nowMs: directorMs, clips: idleClips.value, quiet, pace: hostIdleDrive?.rate ?? 0, seed: fnv1a32(modelKey) }, idleClipMemory)
-  idleClipMemory = decision.memory
-  if (decision.clipId !== null && requestPerform(decision.clipId, { source: 'idle' }))
-    unaskedActionSeq = performSeq
+function realiseErrands(directorMs: number, intent: BodyIntent | null) {
+  const errand = motionDriver.value === 'natural' ? natural?.idleErrand ?? null : null
+  if (!natural || !stance || errand === null || errand.endedAt !== null || errand.seq <= answeredErrandSeq)
+    return
+  const adapter = natural
+  const answer = (outcome: 'done' | 'refused') => {
+    answeredErrandSeq = errand.seq
+    clipErrand = null
+    adapter.answerIdleErrand(errand.seq, outcome)
+  }
+  const diagnostics = stance.diagnostics
+  if (errand.kind === 'wander') {
+    if (diagnostics.wanderAnswer?.seq === errand.seq)
+      answer(diagnostics.wanderAnswer.accepted ? 'done' : 'refused')
+    return
+  }
+  if (errand.kind !== 'idle-clip')
+    return
+  if (clipErrand?.seq === errand.seq) {
+    // The director answers a request on the frame it reads it; a request that replaced this one also counts as a no.
+    if (diagnostics.lastActionSeq >= clipErrand.performSeq)
+      answer(diagnostics.performing?.seq === clipErrand.performSeq ? 'done' : 'refused')
+    return
+  }
+  // She plays an unasked clip standing, as the quiet body did; the director refuses one while she is busy.
+  const clip = intent?.stance === 'stand' ? pickIdleClip(idleClips.value, idleClipHistory, { nowMs: directorMs, pick: errand.pick }) : null
+  if (clip === null || !requestPerform(clip.clipId, { source: 'idle' })) {
+    answer('refused')
+    return
+  }
+  idleClipHistory = { lastClipId: clip.clipId, playedAtMs: { ...idleClipHistory.playedAtMs, [clip.clipId]: directorMs } }
+  unaskedActionSeq = performSeq
+  clipErrand = { seq: errand.seq, performSeq }
 }
 
 /**
  * The drive this scene hands to Natural: the stage's drive for a host that performs a whole body (`body`), so she
  * settles in and draws the whole-body kinds, and without new activities while a clip plays. Natural decides when she
- * sleeps; the director plays the model's sleep clip for it, or the procedural doze. Rebuilt only when the stage's drive
- * or the rate changes, so Natural sees a new drive only then.
+ * sleeps; the director plays the model's sleep clip for it, or the procedural doze. `errands` lists unasked clips
+ * while the user allowed one and wanders in roam mode on the desktop stage. Rebuilt only when the stage's drive, the
+ * rate, the body or the errands change, so Natural sees a new drive only then.
  */
 function resolveIdleDrive(): NaturalIdleDrive | null {
   if (hostIdleDrive === null || !naturalSettings.document.idleActivities)
     return sceneIdleDrive = null
   const rate = stance?.intent?.action ? 0 : hostIdleDrive.rate
   const capabilities = body?.capabilities ?? null
-  if (sceneIdleDrive === null || sceneIdleSource !== hostIdleDrive || sceneIdleDrive.rate !== rate || sceneIdleCapabilities !== capabilities) {
+  const errands: IdleErrandKind[] = [
+    ...idleClips.value.length > 0 ? ['idle-clip' as const] : [],
+    ...props.stageWorld && roamMode.value === 'roam' ? ['wander' as const] : [],
+  ]
+  if (sceneIdleDrive === null || sceneIdleSource !== hostIdleDrive || sceneIdleDrive.rate !== rate || sceneIdleCapabilities !== capabilities
+    || (sceneIdleDrive.errands ?? []).join() !== errands.join()) {
     sceneIdleSource = hostIdleDrive
     sceneIdleCapabilities = capabilities
     // Kinds the rig cannot perform weigh 0, so she does not draw an act that would show nothing.
-    sceneIdleDrive = { ...hostIdleDrive, rate, body: true, unreachable: idleKindsOutOfReach(capabilities) }
+    sceneIdleDrive = { ...hostIdleDrive, rate, body: true, unreachable: idleKindsOutOfReach(capabilities), errands }
   }
   return sceneIdleDrive
 }

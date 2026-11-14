@@ -3,6 +3,7 @@ import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestur
 import type { NaturalEmotionStrengths } from '@proj-airi/motion-driver-natural/emotion-strengths'
 import type { NaturalMotionObserver, NaturalTouchRegion } from '@proj-airi/motion-driver-natural/frame-types'
 import type { IdleBehaviourReport, IdleCueKind, NaturalIdleDrive } from '@proj-airi/motion-driver-natural/idle-activities'
+import type { IdleErrandRecord } from '@proj-airi/motion-driver-natural/idle-errands'
 import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
 import type { NaturalChatInput, NaturalMotionFrame, NaturalMotionVoice } from '@proj-airi/motion-driver-natural/natural-motion'
 import type { ExpressionPerformanceSettings, HoldCommand, MoodDose, PerformanceEmotion } from '@proj-airi/stage-shared/expression-performance'
@@ -141,6 +142,16 @@ export class MMDNaturalAdapter {
   /** Sets the drive of self-directed idle behaviour from the next frame, or switches it off with `null`. */
   setIdleDrive(drive: NaturalIdleDrive | null): void {
     this.idleDrive = drive
+  }
+
+  /** The latest errand Natural's idle draw started (an unasked clip, a wander), kept after it ends. */
+  get idleErrand(): IdleErrandRecord | null {
+    return this.natural.idleErrand
+  }
+
+  /** The realiser's answer to errand `seq`, applied at the next frame. */
+  answerIdleErrand(seq: number, outcome: 'done' | 'refused'): void {
+    this.natural.answerIdleErrand(seq, outcome, this.time)
   }
 
   /** Reach-out body language, played at the next frame like a cue gesture. */

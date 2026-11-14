@@ -42,10 +42,10 @@ function setHome() {
     diagnostics.command({ type: 'command', name: 'setHome', value: { x: locomotion.position.x } })
 }
 
-// Until the lab sets a mode, the director's wander schedule is the only sign of roam mode in the snapshot.
+// Until the lab sets a mode, the director's roam mode in the snapshot shows it.
 const roamsSet = ref<boolean | null>(null)
 const roams = computed({
-  get: () => roamsSet.value ?? (snapshot.value.director?.nextWanderAtMs ?? null) !== null,
+  get: () => roamsSet.value ?? snapshot.value.director?.roamMode === 'roam',
   set: (enabled: boolean) => {
     roamsSet.value = enabled
     diagnostics.command({ type: 'command', name: 'setRoamMode', value: { mode: enabled ? 'roam' : 'stay' } })

@@ -3,7 +3,7 @@ import type { PerformanceState } from '@proj-airi/stage-shared/performance-state
 
 import type { MMDStanceInteraction, MMDStanceSlots, MMDStanceWorld } from './stance'
 
-import { NO_WORLD_BODY_INPUT, WANDER_MIN_MS } from '@proj-airi/motion-driver-humanoid/director'
+import { NO_WORLD_BODY_INPUT } from '@proj-airi/motion-driver-humanoid/director'
 import { AnimationClip, Euler, Quaternion, QuaternionKeyframeTrack, Vector3, VectorKeyframeTrack } from 'three'
 import { describe, expect, it } from 'vitest'
 
@@ -280,39 +280,34 @@ describe('mmd stance director in the stage world', () => {
     expect(director.diagnostics).toMatchObject({ goalX: 0, reason: 'return-home', pace: 'stroll' })
   })
 
-  it('wanders after the debug clock skips ahead only in roam mode', () => {
+  it('wanders when Natural asks only in roam mode, and reports its answer', () => {
     const wander = (roamMode: 'stay' | 'roam') => {
       const director = new MMDStanceDirector()
       frame(director, 0, world({ roamMode, seed: 7 }))
-      frame(director, 1_000, world({ roamMode, seed: 7 }), idle, 1_200_000)
+      frame(director, 1_000, world({ roamMode, seed: 7, wander: { seq: 1 } }))
       return director.diagnostics
     }
-    expect(wander('roam')).toMatchObject({ reason: 'wander' })
+    expect(wander('roam')).toMatchObject({ reason: 'wander', roamMode: 'roam', wanderAnswer: { seq: 1, accepted: true } })
     expect(wander('roam').goalX).not.toBeNull()
-    expect(wander('stay')).toMatchObject({ goalX: null, reason: 'stay', nextWanderAtMs: null })
+    expect(wander('stay')).toMatchObject({ goalX: null, reason: 'stay', roamMode: 'stay', wanderAnswer: { seq: 1, accepted: false } })
   })
 
-  it('does not wander again on arrival when the next wander came due during the walk', () => {
+  it('does not wander again on arrival when Natural asked for the next wander during the walk', () => {
     const director = new MMDStanceDirector()
     const roam = (patch: Partial<MMDStanceWorld> = {}) => world({ roamMode: 'roam', seed: 7, ...patch })
     frame(director, 0, roam())
-    let offsetMs = director.diagnostics.nextWanderAtMs! - EPOCH_MS + 1_000
-    frame(director, 100, roam(), idle, offsetMs)
+    frame(director, 100, roam({ wander: { seq: 1 } }))
     const first = director.diagnostics
     expect(first.reason).toBe('wander')
     const goalX = first.goalX!
 
-    // The debug clock skips past the rescheduled wander while she is still walking to the first one.
-    offsetMs += first.nextWanderAtMs! - (EPOCH_MS + 2_000 + offsetMs) + 1_000
-    frame(director, 2_000, roam({ rootX: goalX / 2, locomotionMode: 'walking' }), idle, offsetMs)
-    expect(director.diagnostics).toMatchObject({ reason: 'wander', goalX })
+    frame(director, 2_000, roam({ rootX: goalX / 2, locomotionMode: 'walking', wander: { seq: 2 } }))
+    expect(director.diagnostics).toMatchObject({ reason: 'wander', goalX, pendingWander: { seq: 2 } })
 
-    frame(director, 4_000, roam({ rootX: goalX, locomotionMode: 'idle' }), idle, offsetMs)
-    const arrivedAtMs = director.diagnostics.nowMs
-    expect(director.diagnostics).toMatchObject({ goalX: null, reason: 'stay' })
-    expect(director.diagnostics.nextWanderAtMs).toBeGreaterThanOrEqual(arrivedAtMs + WANDER_MIN_MS)
+    frame(director, 4_000, roam({ rootX: goalX, locomotionMode: 'idle', wander: { seq: 2 } }))
+    expect(director.diagnostics).toMatchObject({ goalX: null, reason: 'stay', pendingWander: null, wanderAnswer: { seq: 2, accepted: false } })
 
-    frame(director, 4_100, roam({ rootX: goalX, locomotionMode: 'idle' }), idle, offsetMs)
+    frame(director, 4_100, roam({ rootX: goalX, locomotionMode: 'idle', wander: { seq: 2 } }))
     expect(director.diagnostics.goalX).toBeNull()
   })
 

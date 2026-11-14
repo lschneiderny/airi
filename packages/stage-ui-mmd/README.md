@@ -21,7 +21,10 @@ reaching feature parity with the Live2D and VRM renderers:
   the screen, sighs, rolls her shoulders, shifts her stance, swings her arms and
   dozes on her own (`idleActivities` in the Natural settings,
   on by default), and plays the clips the user marked "Idle may use" now and
-  then while her body is quiet. A model with a sleep clip sleeps through its
+  then while her body is quiet: Natural's idle draw decides when (the
+  `idle-clip` errand, listed in the drive while a clip is allowed), the scene
+  picks the clip with `pickIdleClip` and asks the director, and the
+  director's answer goes back to Natural. A model with a sleep clip sleeps through its
   stance; a model without one dozes on her feet (the performer's rest layer).
   A stance shift re-plants a foot: the foot stage plays the performer's
   `footSteps` like its turn steps, turning the foot about the root to its yaw
@@ -56,9 +59,11 @@ reaching feature parity with the Live2D and VRM renderers:
   also walks her to the chat after it unfolds, chases the cursor after a poke,
   pet, drag or sent message, returns home 20 s after the last reason and, with
   `roamMode` (`settings/mmd/roam-mode`, `'stay' | 'roam'`, default `'stay'`),
-  wanders. A due wander walks over to where the cursor rests in 60 % of cases
-  (`visit`), and always while the user is active; she then stays 45 to 150 s
-  before she strolls home. Goals wait while she speaks, and a goal held longer than 30 s is
+  wanders when Natural's idle draw asks for it (the `wander` errand, listed in
+  the drive in roam mode on the desktop stage), so only under the Natural driver
+  with Idle activities on (changed 2026-11-14). A wander walks over to where the
+  cursor rests in 60 % of cases (`visit`), and always while the user is active;
+  she then stays 45 to 150 s before she strolls home. Goals wait while she speaks, and a goal held longer than 30 s is
   dropped. `director` in the diagnostics snapshot reports `reason` (the
   locomotion reason), `goalX`, `pace`, `pendingGoal` and the tool refractories;
   `stanceReason` is the stance's reason. The `requestGoal` command is the
@@ -467,11 +472,14 @@ holds: `idle-timeout`, `away`, `rest-fallback`, `doze-fallback`, `dwell`,
 `approach-cursor`, `return-home`, `wander`, `tool`, `debug`, `enter-stage` or
 `stay`),
 `goalX`, `pace`, `pendingGoal { x, reason }` (a goal held while she speaks),
-`nextWanderAtMs` (`null` outside roam mode), `moveRefractoryUntilMs` and
+`moveRefractoryUntilMs` and
 `lookRefractoryUntilMs` (director-clock times until which `come_here` and
 `go_home`, or `look_at`, are refused), `lastToolSeq`, `toolRefused` (whether the
 last tool request was refused) and `toolRetryAfterMs` (how long the refused
-request must wait, `null` when it was accepted).
+request must wait, `null` when it was accepted), and, appended, `roamMode`,
+`pendingWander { seq, sinceMs }` (a wander Natural asked for and the director
+holds) and `wanderAnswer { seq, accepted }`. `nextWanderAtMs` was removed on
+2026-11-14 with the wander interval it reported.
 
 #### Commands
 

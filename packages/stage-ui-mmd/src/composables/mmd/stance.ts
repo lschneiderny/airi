@@ -32,7 +32,6 @@ export interface MMDStanceDiagnostics {
   goalX: number | null
   pace: BodyIntent['locomotion']['pace']
   pendingGoal: { x: number, reason: string } | null
-  nextWanderAtMs: number | null
   moveRefractoryUntilMs: number
   lookRefractoryUntilMs: number
   lastToolSeq: number
@@ -47,6 +46,12 @@ export interface MMDStanceDiagnostics {
   actionRefusal: BodyDirectorMemory['actionRefusal']
   actionRetryAfterMs: number | null
   toolRefusalReason: BodyDirectorMemory['toolRefusalReason']
+  /** The roam mode of the latest frame; `stay` without a stage world. */
+  roamMode: BodyDirectorInput['roamMode']
+  /** A wander Natural asked for that the director holds until she may walk it. */
+  pendingWander: BodyDirectorMemory['pendingWander']
+  /** The director's answer to the latest wander Natural asked for. */
+  wanderAnswer: BodyDirectorMemory['wanderAnswer']
 }
 
 /**
@@ -122,6 +127,7 @@ export class MMDStanceDirector {
   private reason = 'initial'
   private candidates = new Set<string>()
   private lastIntent: BodyIntent | null = null
+  private roamMode: BodyDirectorInput['roamMode'] = 'stay'
 
   /**
    * @returns The base motion for this frame (`null` for the rest pose) and
@@ -172,6 +178,7 @@ export class MMDStanceDirector {
     }, this.memory)
     this.memory = memory
     this.lastIntent = intent
+    this.roamMode = world.roamMode
     this.startMs ??= memory.nowMs
 
     const standing = standingBaseMotion(input.idleMotionName, input.slots, input.baseEligible)
@@ -238,7 +245,6 @@ export class MMDStanceDirector {
       goalX: this.memory.goalX,
       pace: this.memory.goalPace,
       pendingGoal: this.memory.pendingGoal && { x: this.memory.pendingGoal.x, reason: this.memory.pendingGoal.reason },
-      nextWanderAtMs: this.memory.nextWanderAtMs,
       moveRefractoryUntilMs: this.memory.moveRefractoryUntilMs,
       lookRefractoryUntilMs: this.memory.lookRefractoryUntilMs,
       lastToolSeq: this.memory.lastToolSeq,
@@ -257,6 +263,9 @@ export class MMDStanceDirector {
       actionRefusal: this.memory.actionRefusal,
       actionRetryAfterMs: this.memory.actionRetryAfterMs,
       toolRefusalReason: this.memory.toolRefusalReason,
+      roamMode: this.roamMode,
+      pendingWander: this.memory.pendingWander,
+      wanderAnswer: this.memory.wanderAnswer,
     }
   }
 }

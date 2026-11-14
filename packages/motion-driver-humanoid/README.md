@@ -10,9 +10,11 @@ deterministic motion algorithms for reusable character motion drivers.
 - `./director` exports the pure stance and attention director. It also issues
   `visit` walks toward the cursor, keeps her where a wander or a visit took
   her for 45 to 150 s, and accepts `idle` clip requests as the weakest source.
-- `./idle-clips`: `decideIdleClip`, a pure scheduler that picks one of the
-  clips the user allowed for idle after enough quiet time. The caller sends
-  the pick to the director as an `idle` request.
+- `./idle-clips`: `pickIdleClip`, which picks the clip the user allowed for
+  idle that she plays when Natural's idle draw starts an unasked clip: each
+  clip rests for its kind's repeat time and the last one is not picked again
+  while another rests. Natural decides when; the caller sends the pick to the
+  director as an `idle` request.
 - `./dynamics`: `secondOrderCoefficients`, `advanceSecondOrder`, `createLagChain`,
   `createInertializer`, `softLimit` and `minJerk`, for scalar secondary motion.
 - `./noise`: `deriveSeed`, `gaussian`, `createDriftNoise` and
@@ -242,11 +244,15 @@ On a stage with a ground line, `decideBody` also owns where she goes:
 `approach-cursor`, `return-home`, `wander`, `tool`, `debug`, `enter-stage` or
 `stay`) and the pace. She approaches the chat when it unfolds, chases the cursor for
 `CHASE_WINDOW_MS` after a poke, pet, drag or sent message, returns home
-`RETURN_HOME_DELAY_MS` after the last reason, and wanders between
-`WANDER_MIN_MS` and `WANDER_MAX_MS` apart in roam mode only. A wander goes at
-least three leg lengths, or, where three legs fit on neither side, half the
-longer free side but never less than one leg length. A wander that falls due
-while another goal is walking is rescheduled from the arrival. A goal waits while
+`RETURN_HOME_DELAY_MS` after the last reason, and wanders in roam mode only,
+when Natural's idle draw asks for one (`input.wander`, a new `seq` per wander).
+A wander goes at least three leg lengths, or, where three legs fit on neither
+side, half the longer free side but never less than one leg length. The
+director holds an asked wander while she cannot walk yet and refuses it without
+ground, outside roam mode, on arrival from another goal, without room to wander,
+or after `PENDING_GOAL_TTL_MS`; `memory.wanderAnswer` reports the answer, which
+the host passes back to Natural. Without an idle drive nothing asks, so she
+never wanders. A goal waits while
 she speaks and is dropped after `PENDING_GOAL_TTL_MS`. Tool requests share
 `MOVE_TOOL_REFRACTORY_MS` for movement and use `LOOK_TOOL_REFRACTORY_MS` for a
 glance. The boundary is fixed: the director chooses goals and never moves the

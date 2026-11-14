@@ -2924,7 +2924,7 @@ mmd:
           description: She returns to her home spot and waits there.
         roam:
           title: Roams
-          description: She wanders along the ground and comes back home.
+          description: She wanders along the ground and comes back home. She wanders only with the Natural motion driver and Idle activities on.
     non-mmd-notice: Desktop stage supports MMD models; the classic window is used.
 tachie:
   title: Tachie Settings

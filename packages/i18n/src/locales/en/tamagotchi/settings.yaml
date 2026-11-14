@@ -795,7 +795,7 @@ devtools:
         set-home: Set home here
         roam:
           title: Roams
-          description: Posts setRoamMode. In roam mode the director wanders the ground line.
+          description: Posts setRoamMode. In roam mode the director walks the wanders Natural's idle draw asks for.
       arms:
         title: Arms
         empty: Available while the Natural driver runs.

@@ -22,8 +22,6 @@ import {
   STAND_SETTLE_MS,
   VISIT_SHARE,
   VISIT_STOP_LEGS,
-  WANDER_MAX_MS,
-  WANDER_MIN_MS,
 } from './index'
 
 type DirectorInput = Parameters<typeof decideBody>[0]
@@ -69,6 +67,7 @@ function input(overrides: Partial<DirectorInput> = {}): DirectorInput {
     legLength: 1,
     seed: 1,
     idle: { settled: false, asleep: false },
+    wander: null,
     ...overrides,
   }
 }
@@ -380,26 +379,22 @@ describe('body director home, goals, roam and tools', () => {
     expect(home.intent.locomotion.goalX).toBeNull()
   })
 
-  it('schedules and issues a seeded wander at least three legs away when roaming', () => {
+  it('walks a seeded wander at least three legs away when Natural asks for one in roam mode, and answers it', () => {
     const frames = (seed: number) => {
-      const started = decide(world({ roamMode: 'roam', seed, slots: { sit: false, sleep: false } }))
-      const dueMs = started.memory.nextWanderAtMs as number
-      const before = decide(world({ nowMs: dueMs - 1, roamMode: 'roam', seed, slots: { sit: false, sleep: false } }), started.memory)
-      const due = decide(world({ nowMs: dueMs, roamMode: 'roam', seed, slots: { sit: false, sleep: false } }), before.memory)
-      return { started, before, due, dueMs }
+      const roaming = { roamMode: 'roam' as const, seed, slots: { sit: false, sleep: false } }
+      const before = decide(world({ ...roaming, nowMs: 2_000_000 }))
+      const due = decide(world({ ...roaming, nowMs: 2_001_000, wander: { seq: 1 } }), before.memory)
+      return { before, due }
     }
     const a = frames(7)
     const b = frames(7)
     const goalX = a.due.intent.locomotion.goalX as number
 
-    expect(a.dueMs).toBeGreaterThanOrEqual(WANDER_MIN_MS)
-    expect(a.dueMs).toBeLessThanOrEqual(WANDER_MAX_MS)
     expect(a.before.intent.locomotion.goalX).toBeNull()
     expect(a.due.intent.locomotion).toMatchObject({ pace: 'stroll', reason: 'wander', arriveFacing: 0 })
     expect(Math.abs(goalX)).toBeGreaterThanOrEqual(3)
     expect(Math.abs(goalX)).toBeLessThanOrEqual(20)
-    expect(a.due.memory.nextWanderAtMs).toBeGreaterThanOrEqual(a.dueMs + WANDER_MIN_MS)
-    expect(a.due.memory.nextWanderAtMs).toBeLessThanOrEqual(a.dueMs + WANDER_MAX_MS)
+    expect(a.due.memory).toMatchObject({ pendingWander: null, wanderAnswer: { seq: 1, accepted: true } })
     expect(b.due).toEqual(a.due)
   })
 
@@ -410,37 +405,37 @@ describe('body director home, goals, roam and tools', () => {
     const legLength = 9.7
     const frame = (nowMs: number) => world({ nowMs, ground, rootX: homeX, homeX, legLength, roamMode: 'roam', seed: 7, slots: { sit: false, sleep: false } })
     const started = decide(frame(0))
-    const dueMs = started.memory.nextWanderAtMs as number
-    const due = decide(frame(dueMs), started.memory)
+    const due = decide({ ...frame(1_000), wander: { seq: 1 } }, started.memory)
     const goalX = due.intent.locomotion.goalX as number
 
     expect(due.intent.locomotion).toMatchObject({ pace: 'stroll', reason: 'wander' })
     expect(goalX).toBeGreaterThanOrEqual(ground.minX)
     expect(goalX).toBeLessThanOrEqual(ground.maxX)
     expect(Math.abs(goalX - homeX)).toBeGreaterThanOrEqual(legLength)
-    expect(due.memory.nextWanderAtMs).toBeGreaterThanOrEqual(dueMs + WANDER_MIN_MS)
   })
 
-  it('does not wander when neither side of her has one leg length of ground', () => {
+  it('refuses an asked wander when neither side of her has one leg length of ground', () => {
     const frame = (nowMs: number) => world({ nowMs, ground: { minX: 0, maxX: 15 }, rootX: 7.5, homeX: 7.5, legLength: 9.7, roamMode: 'roam', seed: 7, slots: { sit: false, sleep: false } })
     const started = decide(frame(0))
-    const dueMs = started.memory.nextWanderAtMs as number
-    const due = decide(frame(dueMs), started.memory)
+    const due = decide({ ...frame(1_000), wander: { seq: 1 } }, started.memory)
 
     expect(due.intent.locomotion.goalX).toBeNull()
-    expect(due.memory.nextWanderAtMs).toBeGreaterThanOrEqual(dueMs + WANDER_MIN_MS)
+    expect(due.memory).toMatchObject({ pendingWander: null, wanderAnswer: { seq: 1, accepted: false } })
   })
 
-  it('does not wander in stay mode, and waits for idle mode when roaming', () => {
-    const stay = run([world({ seed: 7 }), world({ nowMs: 2_000_000, seed: 7 })])
-    const started = decide(world({ roamMode: 'roam', seed: 7 }))
-    const dueMs = started.memory.nextWanderAtMs as number
-    const busy = decide(world({ nowMs: dueMs, roamMode: 'roam', seed: 7, performance: performance('watching') }), started.memory)
+  it('refuses an asked wander in stay mode, holds one until she may walk, and spends it after the pending time', () => {
+    const stay = run([world({ seed: 7 }), world({ nowMs: 2_000_000, seed: 7, wander: { seq: 1 } })])
+    const roaming = { roamMode: 'roam' as const, seed: 7, wander: { seq: 1 } }
+    const thinking = decide(world({ ...roaming, performance: performance('thinking') }))
+    const free = decide(world({ ...roaming, nowMs: 5_000 }), thinking.memory)
+    const spent = decide(world({ ...roaming, nowMs: PENDING_GOAL_TTL_MS, performance: performance('thinking') }), thinking.memory)
 
     expect(stay.intent.locomotion.goalX).toBeNull()
-    expect(stay.memory.nextWanderAtMs).toBeNull()
-    expect(busy.intent.locomotion.goalX).toBeNull()
-    expect(busy.memory.nextWanderAtMs).toBe(dueMs)
+    expect(stay.memory.wanderAnswer).toEqual({ seq: 1, accepted: false })
+    expect(thinking.intent.locomotion.goalX).toBeNull()
+    expect(thinking.memory.pendingWander).toEqual({ seq: 1, sinceMs: 0 })
+    expect(free.intent.locomotion.reason).toBe('wander')
+    expect(spent.memory).toMatchObject({ pendingWander: null, wanderAnswer: { seq: 1, accepted: false } })
   })
 
   it('accepts come-here toward the chat and go-home toward home', () => {
@@ -549,6 +544,8 @@ describe('body director twenty minute scenario', () => {
         interactionAtMs: nowMs >= 60_000 ? 60_000 : null,
         cursorOnStage: nowMs >= 60_000 && nowMs < 75_000,
         cursorX: 13,
+        // Natural asks for a wander ten minutes in, the earliest the old interval allowed.
+        wander: nowMs >= 600_000 ? { seq: 1 } : null,
       }), memory)
       memory = out.memory
 
@@ -581,7 +578,7 @@ describe('body director twenty minute scenario', () => {
     expect(home).toBeGreaterThan(cursor)
     expect(wander).toBeGreaterThan(home)
     expect(timeline.filter(entry => entry.atMs >= 70_000 && entry.atMs < 80_000)).toEqual([])
-    expect(timeline[wander].atMs).toBeGreaterThanOrEqual(WANDER_MIN_MS)
+    expect(timeline[wander].atMs).toBeGreaterThanOrEqual(600_000)
   })
 })
 
@@ -1028,7 +1025,7 @@ describe('body director reach zones', () => {
       // She lives at the edge next to the other zone, so a wander that used the zones could cross.
       const roaming = { reach, rootX: 18, homeX: 18, roamMode: 'roam' as const, seed, slots: { sit: false, sleep: false } }
       const started = decide(world(roaming))
-      const due = decide(world({ ...roaming, nowMs: started.memory.nextWanderAtMs as number }), started.memory)
+      const due = decide(world({ ...roaming, nowMs: 1_000, wander: { seq: 1 } }), started.memory)
 
       expect(due.intent.locomotion.reason).toBe('wander')
       expect(due.intent.locomotion.goalX).toBeGreaterThanOrEqual(left.minX)
@@ -1075,20 +1072,18 @@ describe('body director visits and lingering', () => {
 
   it('walks over to where the user works while they are active, and stops short of the cursor', () => {
     const started = decide(roaming())
-    const dueMs = started.memory.nextWanderAtMs as number
-    const due = decide(roaming({ nowMs: dueMs, performance: performance('watching') }), started.memory)
+    const due = decide(roaming({ nowMs: 1_000, performance: performance('watching'), wander: { seq: 1 } }), started.memory)
 
     expect(due.intent.locomotion).toMatchObject({ goalX: 14 - VISIT_STOP_LEGS, pace: 'stroll', reason: 'visit' })
-    expect(due.memory.nextWanderAtMs).toBeGreaterThanOrEqual(dueMs + WANDER_MIN_MS)
+    expect(due.memory.wanderAnswer).toEqual({ seq: 1, accepted: true })
   })
 
   it('stays put while the user is active and the cursor is already beside her', () => {
     const started = decide(roaming({ cursorX: 1.6 }))
-    const dueMs = started.memory.nextWanderAtMs as number
-    const due = decide(roaming({ nowMs: dueMs, cursorX: 1.6, performance: performance('watching') }), started.memory)
+    const due = decide(roaming({ nowMs: 1_000, cursorX: 1.6, performance: performance('watching'), wander: { seq: 1 } }), started.memory)
 
     expect(due.intent.locomotion.goalX).toBeNull()
-    expect(due.memory.nextWanderAtMs).toBe(dueMs)
+    expect(due.memory.pendingWander).toEqual({ seq: 1, sinceMs: 1_000 })
   })
 
   it('visits in about the visit share of idle wanders and strolls anywhere in the rest', () => {
@@ -1096,8 +1091,7 @@ describe('body director visits and lingering', () => {
     const seeds = 200
     for (let seed = 1; seed <= seeds; seed++) {
       const started = decide(roaming({ seed }))
-      const dueMs = started.memory.nextWanderAtMs as number
-      const due = decide(roaming({ nowMs: dueMs, seed }), started.memory)
+      const due = decide(roaming({ nowMs: 1_000, seed, wander: { seq: 1 } }), started.memory)
       expect(['visit', 'wander']).toContain(due.intent.locomotion.reason)
       if (due.intent.locomotion.reason === 'visit')
         visits++
@@ -1108,8 +1102,8 @@ describe('body director visits and lingering', () => {
 
   it('stays where a visit took her before walking home', () => {
     const started = decide(roaming())
-    const dueMs = started.memory.nextWanderAtMs as number
-    const due = decide(roaming({ nowMs: dueMs, performance: performance('watching') }), started.memory)
+    const dueMs = 1_000
+    const due = decide(roaming({ nowMs: dueMs, performance: performance('watching'), wander: { seq: 1 } }), started.memory)
     const goalX = due.intent.locomotion.goalX as number
     const arrived = decide(roaming({ nowMs: dueMs + 10_000, rootX: goalX }), due.memory)
     const lingerMs = arrived.memory.lingerUntilMs - (dueMs + 10_000)

@@ -22,12 +22,6 @@ export const CHASE_STOP_LEGS = 1.0
 /** Milliseconds with no goal reason before the character walks home. */
 export const RETURN_HOME_DELAY_MS = 20_000
 
-/** Lower bound of the wander interval in milliseconds. */
-export const WANDER_MIN_MS = 600_000
-
-/** Upper bound of the wander interval in milliseconds. */
-export const WANDER_MAX_MS = 1_200_000
-
 /** Share of due wanders that walk over to where the user is working, when the cursor shows where that is. */
 export const VISIT_SHARE = 0.6
 
@@ -191,6 +185,13 @@ export interface BodyDirectorInput {
    * stand. Both false while no idle drive runs: she then neither settles nor sleeps.
    */
   idle: { settled: boolean, asleep: boolean }
+  /**
+   * A wander Natural's idle draw started (its errand `seq`; idle agency ADR, amendment of 2026-11-14), or null. A new
+   * `seq` is a new request. The director walks it in roam mode as a wander or a visit, holds it while she cannot walk
+   * yet, and refuses it without ground, outside roam mode, on arrival from another goal, without room to wander, or
+   * when it could not be walked within `PENDING_GOAL_TTL_MS`. `BodyDirectorMemory.wanderAnswer` carries the answer.
+   */
+  wander: { seq: number } | null
 }
 
 /**
@@ -214,6 +215,7 @@ export const NO_WORLD_BODY_INPUT: Omit<BodyDirectorInput, 'nowMs' | 'performance
   debugGoal: null,
   legLength: 1,
   seed: 0,
+  wander: null,
 })
 
 /** Hysteresis state supplied to the next director call. */
@@ -254,8 +256,12 @@ export interface BodyDirectorMemory {
   readonly lookRefractoryUntilMs: number
   /** Latest time a goal reason held, used for the return-home delay. */
   readonly lastReasonMs: number | null
-  /** Null until the first roaming frame schedules a wander. */
-  readonly nextWanderAtMs: number | null
+  /** The latest wander request read; a request with a higher `seq` is new. */
+  readonly lastWanderSeq: number
+  /** A wander asked for and not walked yet, and since when. */
+  readonly pendingWander: { seq: number, sinceMs: number } | null
+  /** The answer to the latest wander request: walked (`accepted`) or refused; null before the first. */
+  readonly wanderAnswer: { seq: number, accepted: boolean } | null
   /** Until when she stays where a wander or a visit took her before walking home; 0 when no stay applies. */
   readonly lingerUntilMs: number
   /** Mulberry32 seed advanced after every draw; null until seeded from the input. */
@@ -291,7 +297,9 @@ export const initialBodyDirectorMemory: BodyDirectorMemory = Object.freeze({
   moveRefractoryUntilMs: 0,
   lookRefractoryUntilMs: 0,
   lastReasonMs: null,
-  nextWanderAtMs: null,
+  lastWanderSeq: 0,
+  pendingWander: null,
+  wanderAnswer: null,
   lingerUntilMs: 0,
   rngState: null,
   lookOverride: null,
@@ -387,7 +395,14 @@ export function decideBody(
   let reason = ground === null ? 'stay' : previous.reason
   let pending = previous.pendingGoal
   let lastReasonMs = previous.lastReasonMs ?? nowMs
-  let nextWanderAtMs = previous.nextWanderAtMs
+  let pendingWander = previous.pendingWander
+  let wanderAnswer = previous.wanderAnswer
+  let lastWanderSeq = previous.lastWanderSeq
+  const refuseWander = () => {
+    if (pendingWander !== null)
+      wanderAnswer = { seq: pendingWander.seq, accepted: false }
+    pendingWander = null
+  }
   let lingerUntilMs = previous.lingerUntilMs
   let toolRefused = previous.toolRefused
   let toolRetryAfterMs = previous.toolRetryAfterMs
@@ -410,6 +425,15 @@ export function decideBody(
     goalX = null
     reason = 'stay'
   }
+
+  // A wander Natural asks for waits until she can walk it; she never sets off again the moment another walk arrives.
+  if (input.wander !== null && input.wander.seq > lastWanderSeq) {
+    lastWanderSeq = input.wander.seq
+    refuseWander()
+    pendingWander = { seq: input.wander.seq, sinceMs: nowMs }
+  }
+  if (ground === null || input.roamMode !== 'roam' || arrived)
+    refuseWander()
 
   // Performance bookkeeping. The director never starts or names clips: it accepts a request, echoes its `clipId` and
   // ends the performance on feedback, a watchdog, or a user intent.
@@ -554,18 +578,10 @@ export function decideBody(
       : null
 
   const mayRest = ground === null || (input.locomotionMode === 'idle' && atHome)
-  // A held goal or a due wander stands the character up so the goal can be issued.
+  // A held goal or an asked wander stands the character up so the goal can be issued.
   const wakeForGoal = ground !== null
     && !input.performance.away
-    && (
-      previous.pendingGoal !== null
-      || (
-        input.roamMode === 'roam'
-        && input.performance.mode === 'idle'
-        && previous.nextWanderAtMs !== null
-        && nowMs >= previous.nextWanderAtMs
-      )
-    )
+    && (previous.pendingGoal !== null || (pendingWander !== null && input.performance.mode === 'idle'))
 
   // Natural decides that she settles in or sleeps; the director realises it with the stance clip, or with the
   // procedural rest or doze when the slot is empty, and refuses it while a performance, a goal or a walk needs her up.
@@ -711,25 +727,15 @@ export function decideBody(
   if (inWing && input.reach !== undefined && pending === null && goalX === null && input.locomotionMode === 'idle' && canIssue())
     issue({ x: clampToZones(input.rootX, input.reach), pace: 'walk', reason: 'enter-stage' })
 
-  const scheduleWander = () => {
-    const draw = drawRandom(rngState)
-    rngState = draw.state
-    nextWanderAtMs = nowMs + WANDER_MIN_MS * (WANDER_MAX_MS / WANDER_MIN_MS) ** draw.value
-  }
-  // A wander that fell due while a goal was walking is drawn again from the arrival, so she never wanders on arrival.
-  const dueOnArrival = arrived && nextWanderAtMs !== null && nowMs >= nextWanderAtMs
-  if (ground !== null && input.roamMode === 'roam' && (nextWanderAtMs === null || dueOnArrival))
-    scheduleWander()
   const watching = input.performance.mode === 'watching'
   if (
     ground !== null
-    && input.roamMode === 'roam'
+    && pendingWander !== null
     && (input.performance.mode === 'idle' || watching)
-    && nextWanderAtMs !== null
-    && nowMs >= nextWanderAtMs
     && goalX === null
     && canIssue()
   ) {
+    const asked = pendingWander
     // Where the user is working, as far as the cursor shows it. A visit stops short of it on her side and stays on
     // the ground she stands on, like a wander.
     const cursorVisitX = input.cursorOnStage && input.cursorX !== null
@@ -738,11 +744,9 @@ export function decideBody(
     const visitX = cursorVisitX !== null && Math.abs(cursorVisitX - input.rootX) >= WANDER_FLOOR_LEGS * leg ? cursorVisitX : null
     if (watching) {
       // While the user is active she only ever walks over to them; an aimless stroll would ignore them. Without a
-      // place to visit the wander stays due until they pause.
-      if (visitX !== null) {
+      // place to visit the wander waits until they pause.
+      if (visitX !== null)
         issue({ x: visitX, pace: 'stroll', reason: 'visit' })
-        scheduleWander()
-      }
     }
     else {
       let visiting = false
@@ -771,9 +775,17 @@ export function decideBody(
           issue({ x, pace: 'stroll', reason: 'wander' })
         }
       }
-      scheduleWander()
+      // Without room to wander, the request is spent like a refused act.
+      if (!issued)
+        refuseWander()
+    }
+    if (issued) {
+      wanderAnswer = { seq: asked.seq, accepted: true }
+      pendingWander = null
     }
   }
+  if (pendingWander !== null && nowMs - pendingWander.sinceMs >= PENDING_GOAL_TTL_MS)
+    refuseWander()
 
   if (goalX !== null || chasing || pending !== null)
     lastReasonMs = nowMs
@@ -822,7 +834,9 @@ export function decideBody(
       moveRefractoryUntilMs,
       lookRefractoryUntilMs,
       lastReasonMs,
-      nextWanderAtMs,
+      lastWanderSeq,
+      pendingWander,
+      wanderAnswer,
       lingerUntilMs,
       rngState,
       lookOverride,
