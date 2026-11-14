@@ -1,11 +1,15 @@
-import type { FeatureMetric, UsageFeatureKey } from '@proj-airi/stage-shared/perf/usage'
+import type { BenchMetric, FeatureMetric, UsageFeatureKey } from '@proj-airi/stage-shared/perf/usage'
 import type { GenericSchema, InferOutput } from 'valibot'
+
+import type { BenchRef } from './bench'
 
 import { resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 
-import { FEATURE_METRICS, USAGE_FEATURE_KEYS } from '@proj-airi/stage-shared/perf/usage'
+import { BENCH_METRICS, FEATURE_METRICS, USAGE_FEATURE_KEYS } from '@proj-airi/stage-shared/perf/usage'
 import { check, picklist, pipe, regex, safeParse, string } from 'valibot'
+
+import { parseBenchRef } from './bench'
 
 export class PerfUsageError extends Error {}
 
@@ -14,6 +18,9 @@ export const PERF_USAGE = [
   '       pnpm perf incident (--list | <id>) [--json] [--dir <path>]...',
   `       pnpm perf features [--feature ${USAGE_FEATURE_KEYS.join('|')}] [--metric ${FEATURE_METRICS.join('|')}] [--seed <n>] [--json] [--dir <path>]...`,
   '       pnpm perf compare <shaA> <shaB> [--include-dirty] [--json] [--dir <path>]...',
+  '       pnpm perf bench [--scenario <id>] [--since <n>m|h|d] [--json]',
+  `       pnpm perf compare --bench <refA> <refB> [--scenario <id>] [--metric ${BENCH_METRICS.join('|')}] [--json]`,
+  'A bench ref is a sha (at least 4 hex digits), HEAD, or worktree.',
 ].join('\n')
 
 export const PERF_HELP = [
@@ -34,6 +41,8 @@ export type PerfCommand
     | { readonly kind: 'incident', readonly id: string, readonly dirs: readonly string[] | null, readonly json: boolean }
     | { readonly kind: 'features', readonly dirs: readonly string[] | null, readonly feature: UsageFeatureKey | null, readonly metric: FeatureMetric, readonly seed: number, readonly json: boolean }
     | { readonly kind: 'compare', readonly dirs: readonly string[] | null, readonly shaA: string, readonly shaB: string, readonly includeDirty: boolean, readonly json: boolean }
+    | { readonly kind: 'bench', readonly scenario: string | null, readonly sinceMs: number | null, readonly json: boolean }
+    | { readonly kind: 'compare-bench', readonly a: BenchRef, readonly b: BenchRef, readonly scenario: string | null, readonly metric: BenchMetric | null, readonly json: boolean }
     | { readonly kind: 'help' }
 
 /** An incident id names `incidents/<id>.json`, so it must stay a plain file name inside that directory. */
@@ -41,6 +50,7 @@ const IncidentIdSchema = pipe(string(), regex(/^[\w.-]+$/), check(id => id !== '
 
 const FeatureSchema = picklist(USAGE_FEATURE_KEYS)
 const MetricSchema = picklist(FEATURE_METRICS)
+const BenchMetricSchema = picklist(BENCH_METRICS)
 const SeedSchema = pipe(string(), regex(/^\d{1,9}$/))
 const ShaPrefixSchema = pipe(string(), regex(/^[0-9a-f]{4,40}$/i))
 
@@ -85,6 +95,8 @@ export function parsePerfArgs(argv: readonly string[], cwd: string): PerfCommand
         'metric': { type: 'string' },
         'seed': { type: 'string' },
         'include-dirty': { type: 'boolean', default: false },
+        'bench': { type: 'boolean', default: false },
+        'scenario': { type: 'string' },
         'help': { type: 'boolean', short: 'h', default: false },
       },
     })
@@ -102,13 +114,44 @@ export function parsePerfArgs(argv: readonly string[], cwd: string): PerfCommand
     throw new PerfUsageError('--dir must not be empty')
   const dirs = values.dir?.map(dir => resolve(cwd, dir)) ?? null
   const [command, ...rest] = positionals
+  const benchOnly = values.bench || values.scenario !== undefined || values.metric !== undefined
+  if (values.scenario !== undefined && !values.scenario.trim())
+    throw new PerfUsageError('--scenario must not be empty')
+  const scenario = values.scenario ?? null
   switch (command) {
+    case 'bench':
+      if (rest.length > 0 || values.list || dirs !== null || values.bench || featureOptions || values['include-dirty'])
+        throw new PerfUsageError(PERF_USAGE)
+      return { kind: 'bench', scenario, sinceMs: values.since === undefined ? null : parseSince(values.since), json: values.json }
+    case 'compare': {
+      if (!values.bench) {
+        if (rest.length !== 2 || values.list || values.since !== undefined || featureOptions || values.scenario !== undefined)
+          throw new PerfUsageError(PERF_USAGE)
+        return {
+          kind: 'compare',
+          dirs,
+          shaA: parseOption(ShaPrefixSchema, 'sha prefix', rest[0]),
+          shaB: parseOption(ShaPrefixSchema, 'sha prefix', rest[1]),
+          includeDirty: values['include-dirty'],
+          json: values.json,
+        }
+      }
+      if (rest.length !== 2 || values.list || dirs !== null || values.since !== undefined || values.feature !== undefined || values.seed !== undefined || values['include-dirty'])
+        throw new PerfUsageError(PERF_USAGE)
+      const [a, b] = rest.map(parseBenchRef)
+      if (a === null || b === null)
+        throw new PerfUsageError(`Invalid bench ref in "${rest.join(' ')}"\n${PERF_USAGE}`)
+      const metric = values.metric === undefined ? null : safeParse(BenchMetricSchema, values.metric)
+      if (metric !== null && !metric.success)
+        throw new PerfUsageError(`--metric must be one of ${BENCH_METRICS.join(', ')}, received "${values.metric}"`)
+      return { kind: 'compare-bench', a, b, scenario, metric: metric?.output ?? null, json: values.json }
+    }
     case 'sessions':
-      if (rest.length > 0 || values.list || featureOptions || values['include-dirty'])
+      if (rest.length > 0 || values.list || featureOptions || values['include-dirty'] || benchOnly)
         throw new PerfUsageError(PERF_USAGE)
       return { kind: 'sessions', dirs, sinceMs: values.since === undefined ? null : parseSince(values.since), json: values.json }
     case 'incident': {
-      if (values.since !== undefined || rest.length > 1 || values.list === (rest.length === 1) || featureOptions || values['include-dirty'])
+      if (values.since !== undefined || benchOnly || rest.length > 1 || values.list === (rest.length === 1) || featureOptions || values['include-dirty'])
         throw new PerfUsageError(PERF_USAGE)
       if (values.list)
         return { kind: 'incident-list', dirs, json: values.json }
@@ -118,7 +161,7 @@ export function parsePerfArgs(argv: readonly string[], cwd: string): PerfCommand
       return { kind: 'incident', id: id.output, dirs, json: values.json }
     }
     case 'features':
-      if (rest.length > 0 || values.list || values.since !== undefined || values['include-dirty'])
+      if (rest.length > 0 || values.list || values.since !== undefined || values['include-dirty'] || values.bench || values.scenario !== undefined)
         throw new PerfUsageError(PERF_USAGE)
       return {
         kind: 'features',
@@ -126,17 +169,6 @@ export function parsePerfArgs(argv: readonly string[], cwd: string): PerfCommand
         feature: values.feature === undefined ? null : parseOption(FeatureSchema, '--feature', values.feature),
         metric: values.metric === undefined ? 'p50FrameMs' : parseOption(MetricSchema, '--metric', values.metric),
         seed: values.seed === undefined ? 1 : Number(parseOption(SeedSchema, '--seed', values.seed)),
-        json: values.json,
-      }
-    case 'compare':
-      if (rest.length !== 2 || values.list || values.since !== undefined || featureOptions)
-        throw new PerfUsageError(PERF_USAGE)
-      return {
-        kind: 'compare',
-        dirs,
-        shaA: parseOption(ShaPrefixSchema, 'sha prefix', rest[0]),
-        shaB: parseOption(ShaPrefixSchema, 'sha prefix', rest[1]),
-        includeDirty: values['include-dirty'],
         json: values.json,
       }
     default:

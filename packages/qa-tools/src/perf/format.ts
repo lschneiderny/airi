@@ -1,3 +1,4 @@
+import type { BenchCodeState, BenchGroupRow, BenchScenarioComparison, BenchSide } from './bench'
 import type { IncidentEntry, IncidentFile } from './incident'
 import type { PerfFileCounts } from './read'
 import type { SessionSummary } from './sessions'
@@ -76,6 +77,53 @@ export function formatIncident(path: string, file: IncidentFile): string {
     `recent lines: ${file.recent.length}`,
     `file: ${path}`,
   ].join('\n')
+}
+
+/** `<9-digit sha>`, then `*<diff hash prefix>` for a dirty tree. */
+const formatCodeState = (state: BenchCodeState) => `${state.sha.slice(0, 9)}${state.diffHash === null ? '' : `*${state.diffHash.slice(0, 8)}`}`
+
+export function formatBenchGroups(rows: readonly BenchGroupRow[]): string {
+  return table(
+    ['SCENARIO', 'SHA', 'VALID/RUNS', 'LAST (UTC)', 'FPS', 'P95 MS', 'CPU%', 'CPU MS/FRAME', 'WS MB'],
+    rows.map(row => [
+      row.scenario,
+      formatCodeState(row),
+      `${row.validRuns}/${row.runs}`,
+      formatTime(row.lastT),
+      formatNumber(row.medians.fps, 1),
+      formatNumber(row.medians.p95FrameMsApprox, 2),
+      formatNumber(row.medians.stageWindowCpuPct, 1),
+      formatNumber(row.medians.stageWindowCpuMsPerFrame, 2),
+      formatNumber(row.medians.stageWindowWorkingSetKb === null ? null : row.medians.stageWindowWorkingSetKb / 1024, 0),
+    ]),
+  )
+}
+
+const formatSide = (side: BenchSide) => `${side.ref} (${formatCodeState(side.group)})`
+const formatValues = (values: readonly { readonly run: number, readonly value: number }[]) => values.map(entry => `${entry.run}=${entry.value.toFixed(2)}`).join(' ')
+
+/** Every run value, the medians, sigma, practical floor, agreement, verdict, confidence and staleness, or the refusals. */
+export function formatBenchCompare(scenarios: readonly BenchScenarioComparison[]): string {
+  return scenarios.flatMap((scenario) => {
+    const lines = [`${scenario.scenario}: A ${formatSide(scenario.a)} vs B ${formatSide(scenario.b)}`]
+    for (const [label, side] of [['A', scenario.a], ['B', scenario.b]] as const) {
+      if (side.excluded.length > 0)
+        lines.push(`  ${label} excluded invalid runs: ${side.excluded.map(entry => `${entry.run} (${entry.invalidReason})`).join(', ')}`)
+    }
+    if (scenario.status === 'refused')
+      return [...lines, '  refused:', ...scenario.refusals.map(refusal => `    ${refusal.reason}: ${refusal.detail}`)]
+    for (const result of scenario.comparisons) {
+      lines.push(
+        `  ${result.metric}: ${result.verdict}`,
+        `    A runs: ${formatValues(result.valuesA)}`,
+        `    B runs: ${formatValues(result.valuesB)}`,
+        `    median A ${result.medianA.toFixed(2)}, B ${result.medianB.toFixed(2)}, difference ${result.difference >= 0 ? '+' : ''}${result.difference.toFixed(2)}`,
+        `    sigma ${result.sigma.toFixed(3)} (${result.noise}, ${result.historyCommits} history commits), floor ${result.practicalFloor}, agreement ${result.agreement.count} of ${result.agreement.of} (needs ${result.agreement.required})`,
+        `    lowConfidence ${result.lowConfidence}, stale ${result.stale}`,
+      )
+    }
+    return lines
+  }).join('\n')
 }
 
 /** One line per file with rejected lines, or `null` when every line parsed. */

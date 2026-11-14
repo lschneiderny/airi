@@ -1,10 +1,10 @@
-import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { appendBenchLine, benchHistoryPath } from './history'
+import { appendBenchLine, benchHistoryPath, readBenchHistory } from './history'
 
 describe('bench history location', () => {
   it.each([
@@ -40,5 +40,25 @@ describe('bench history file', () => {
 
     expect(readFileSync(path, 'utf8')).toBe('{"run":1}\n{"run":2}\n')
     expect(statSync(path).mode & 0o777).toBe(0o600)
+  })
+
+  it('reads bench-run records and counts malformed, other-kind and unknown-version lines', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'qa-bench-history-'))
+    const path = join(dir, 'bench.jsonl')
+    const record = readFileSync(join(import.meta.dirname, '../../fixtures/perf/bench-run.jsonl'), 'utf8').trim()
+    const other = JSON.stringify({ v: 1, t: 1, sessionId: 's', kind: 'rollup-failed', segment: 0, reason: 'x' })
+    writeFileSync(path, [record, '{', other, record.replace('"v":1', '"v":2'), '', record].join('\n'))
+
+    const history = await readBenchHistory(path)
+
+    expect(history.runs.map(entry => entry.kind)).toEqual(['bench-run', 'bench-run'])
+    expect(history.counts).toEqual({ path, malformed: 2, unknownVersion: 1 })
+  })
+
+  it('reads a missing history as empty', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'qa-bench-history-'))
+    const path = join(dir, 'bench.jsonl')
+
+    expect(await readBenchHistory(path)).toEqual({ runs: [], counts: { path, malformed: 0, unknownVersion: 0 }, found: false })
   })
 })
