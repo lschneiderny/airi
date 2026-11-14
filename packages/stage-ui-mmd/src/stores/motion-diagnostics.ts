@@ -30,7 +30,7 @@ export interface MMDMotionSnapshot {
   driver: 'natural' | 'classic'
   fps: { last: number, mean60s: number }
   timings: Record<string, StageTiming>
-  /** The rig profile; `capabilities` is the body performer's load-time gesture and head-clearance result, null without a performer. */
+  /** The rig profile; `capabilities` is the body performer's load-time gesture, head-clearance and clasp result, null without a performer. */
   rig: (MMDRigProfile & { capabilities: BodyCapabilities | null }) | null
   natural: { events: number, energy: number, headYaw: number } | null
   feet: { maxError: number, errorL: number, errorR: number, contact: number } | null

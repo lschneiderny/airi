@@ -81,7 +81,7 @@ import {
 } from '../../composables/mmd'
 import { MMDActionPort } from '../../composables/mmd/action-port'
 import { resolveActAction } from '../../composables/mmd/actions/resolve-act-action'
-import { MMDBody } from '../../composables/mmd/body'
+import { idleKindsOutOfReach, MMDBody } from '../../composables/mmd/body'
 import { MMDBodyToolPort } from '../../composables/mmd/body-tool-port'
 import { bodyGazePoints, resolveBodyPoints } from '../../composables/mmd/body/attention'
 import { MMDBodyPose } from '../../composables/mmd/body/pose'
@@ -208,6 +208,8 @@ let hostIdleDrive: NaturalIdleDrive | null = null
 let sceneIdleDrive: NaturalIdleDrive | null = null
 /** The stage drive `sceneIdleDrive` was built from. */
 let sceneIdleSource: NaturalIdleDrive | null = null
+/** The body capabilities `sceneIdleDrive` was built from: a new model changes what she can reach. */
+let sceneIdleCapabilities: MMDBody['capabilities'] = null
 let idleClipMemory = initialIdleClipMemory
 /** The request seq of the clip she plays unasked, so its performance can be told from an asked one. */
 let unaskedActionSeq: number | null = null
@@ -1065,9 +1067,12 @@ function resolveIdleDrive(): NaturalIdleDrive | null {
   if (hostIdleDrive === null || !naturalSettings.document.idleActivities)
     return sceneIdleDrive = null
   const rate = stance?.intent?.action ? 0 : hostIdleDrive.rate
-  if (sceneIdleDrive === null || sceneIdleSource !== hostIdleDrive || sceneIdleDrive.rate !== rate) {
+  const capabilities = body?.capabilities ?? null
+  if (sceneIdleDrive === null || sceneIdleSource !== hostIdleDrive || sceneIdleDrive.rate !== rate || sceneIdleCapabilities !== capabilities) {
     sceneIdleSource = hostIdleDrive
-    sceneIdleDrive = { ...hostIdleDrive, rate, body: true }
+    sceneIdleCapabilities = capabilities
+    // Kinds the rig cannot perform weigh 0, so she does not draw an act that would show nothing.
+    sceneIdleDrive = { ...hostIdleDrive, rate, body: true, unreachable: idleKindsOutOfReach(capabilities) }
   }
   return sceneIdleDrive
 }

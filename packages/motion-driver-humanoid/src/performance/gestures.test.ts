@@ -815,6 +815,12 @@ describe('co-speech gestures', () => {
     expect(Math.min(left.z, right.z)).toBeGreaterThan(rig.hips.z)
   })
 
+  it('reports the clasp capability on a rig whose arms reach the front-low anchor, and not on one whose arms cannot', () => {
+    expect(createBodyPerformer({ traits: fixtureRigs[0].traits, seed: 1 }).step(quietInput(0)).capabilities.clasp).toBe(true)
+    // Chisa's skirt and belly proxies leave no clear key at the hips' height (E/fc/u1/scratch/probe-clasp-names.txt).
+    expect(createBodyPerformer({ traits: chisaTraits, seed: 1 }).step(quietInput(0)).capabilities.clasp).toBe(false)
+  })
+
   it('holds a two-hand clasp on both arms, lets one hand go first, then the other', () => {
     const script: Script = { utterances: [], armForm: time => time > 0.2 && time < 4 ? { side: 'both', form: 'clasp' } : time >= 4 && time < 5 ? { side: 'right', form: 'clasp' } : null }
     const run = perform(script, 8)

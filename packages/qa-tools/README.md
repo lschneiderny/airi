@@ -316,10 +316,11 @@ judged. `no-repeat` judges only a kind started twice in a row; longer repeated
 blocks (A B A B) are printed, and the visual review alone enforces "no
 repeated cycle".
 
-Under `qa-neutral-day` (`body: true` since rules amendment 9) eleven kinds are
+Under `qa-neutral-day` (`body: true` since rules amendment 9) ten kinds are
 drawable while she stands (look-around, check-in, peer, zone-out, stretch,
-yawn, sigh, shoulder-roll, arm-swing, shift-stance, clasp-hands) and six once
-she has settled after 120 s (look-around, check-in, zone-out, yawn, sigh,
+yawn, sigh, shoulder-roll, arm-swing, shift-stance; clasp-hands as an eleventh
+on a rig whose arms reach its anchor, which Chisa's and Ellen's do not) and six
+once she has settled after 120 s (look-around, check-in, zone-out, yawn, sigh,
 shift-stance). Nod-off and sway weigh 0, and so do hair-touch and, at its
 valence of 0, heel-rock. On a body host the draw prefers kinds not started in
 the last 300 s. The scheduler alone, under the QA drive for 610 s on 10,000
@@ -1348,7 +1349,9 @@ Relative paths resolve against `INIT_CWD`.
 A scenario may set an idle drive (`idleDrive`, `src/t2-3d/idle-drive.ts`): the
 runner hands it to the Natural adapter before the first frame, as the app's scene
 does, and records its name and values in the trace source detail as `idleDrive` and
-`idleDriveValues` (and so in `summary.json` provenance). Two scenarios set one,
+`idleDriveValues` (and so in `summary.json` provenance). Like the scene, it adds
+the whole-body kinds the loaded rig cannot perform as `unreachable`
+(`idleKindsOutOfReach`); the recorded values stay the scenario's. Two scenarios set one,
 both with the product's documented neutral drive (all mood fields 0, sleepiness 0,
 solitude 0, no music, sleep allowed, rate 1) and the whole-body capability the MMD
 scene declares (`body: true`, rules amendment 9; without it she never settles,

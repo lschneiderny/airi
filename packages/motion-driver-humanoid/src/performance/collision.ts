@@ -45,7 +45,8 @@ function pivotAbout(out: BodyTransform, p: Readonly<Vec3>): void {
 
 /** Owns scratch FK and persistent correction. The final sampled capsule test is authoritative. */
 export class BodyCollision {
-  readonly capabilities: BodyCapabilities
+  /** The arm capabilities the proxies decide; the performer adds the clasp, which needs the gesture keys. */
+  readonly capabilities: Omit<BodyCapabilities, 'clasp'>
   readonly correction = { left: 0, right: 0 }
   readonly penetration = { left: 0, right: 0 }
   readonly headPenetration = { left: 0, right: 0 }

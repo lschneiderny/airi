@@ -10,6 +10,7 @@ import { ARM_START, BODY_CHANNELS, BODY_TICK, DEG, limitChannel, SIDES } from '.
 import { BodyCollision } from './collision'
 import { BodyRigError } from './contracts'
 import { BodyGaze } from './gaze'
+import { GestureKeys } from './gesture-forms'
 import { BodyPosture } from './posture'
 import { BodySkeleton } from './skeleton'
 import { PerformanceStack } from './stack'
@@ -92,6 +93,9 @@ class BodyPerformer {
       rest[c] = limitChannel(c, rest[c])
     this.degrade(rest)
     const collision = new BodyCollision(traits, rest)
+    const keys = new GestureKeys(traits, rest)
+    const clasp = SIDES.every(side => keys.armForm(side, 'clasp', Float64Array.from(rest.subarray(ARM_START[side], ARM_START[side] + 26))))
+    const capabilities = { ...collision.capabilities, clasp }
     const stack = new PerformanceStack(this.options.layers ?? [])
     const frame: MutableFrame = {
       tick: 0,
@@ -108,7 +112,7 @@ class BodyPerformer {
       lidClose: 0,
       mouthOpen: 0,
       act: null,
-      capabilities: collision.capabilities,
+      capabilities,
       diagnostics: {
         shiftTarget: 0,
         dwell: 0,

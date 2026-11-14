@@ -4,6 +4,7 @@ import type { LocomotionFrame } from '@proj-airi/motion-driver-humanoid/locomoti
 import type { BodyCapabilities, BodyGazeGoal, BodyPerformanceInput, BodyRigTraits } from '@proj-airi/motion-driver-humanoid/performance'
 import type { BodyIntent, Vec3 } from '@proj-airi/motion-driver-humanoid/types'
 import type { NaturalBodyIntent, NaturalMotionFrame } from '@proj-airi/motion-driver-natural/frame-types'
+import type { IdleBodyKind } from '@proj-airi/motion-driver-natural/idle-activities'
 import type { AnimationClip } from 'three'
 
 import type { MMDCleanPose, MMDFrameContext, MMDFrameStage } from '../frame-pipeline'
@@ -31,6 +32,22 @@ import { buildBodyRigTraits } from './rig-traits'
 
 export type { MMDBodyRoot, MMDLocomotionGoal } from './locomotion'
 export type { MMDBodyEvent } from './performer'
+
+/**
+ * The whole-body idle kinds this rig cannot perform, for `NaturalIdleDrive.unreachable`: the clasp without the `clasp`
+ * capability, and the hair touch without head clearance on either side (4e act 8's precondition). The scene and the
+ * headless runner hand Natural the same list, so neither draws an act that would show nothing.
+ */
+export function idleKindsOutOfReach(capabilities: BodyCapabilities | null): readonly IdleBodyKind[] {
+  if (!capabilities)
+    return []
+  const kinds: IdleBodyKind[] = []
+  if (!capabilities.clasp)
+    kinds.push('clasp-hands')
+  if (!capabilities.headClearance.left && !capabilities.headClearance.right)
+    kinds.push('hair-touch')
+  return kinds
+}
 
 export interface MMDBodyInput {
   readonly enabled: boolean

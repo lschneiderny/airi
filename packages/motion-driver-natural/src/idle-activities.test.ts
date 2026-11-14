@@ -80,6 +80,15 @@ describe('idle activity odds', () => {
     expect([mmd['hair-touch'], bright['hair-touch']]).toEqual([0, 0])
   })
 
+  it('never draws a whole-body kind the host\'s body cannot perform, and leaves the others as they were', () => {
+    const body = { ...neutralDrive, body: true }
+    const all = idleActivityWeights(body, { watching: false })
+    const limited = idleActivityWeights({ ...body, unreachable: ['clasp-hands'] }, { watching: false })
+    expect(all['clasp-hands']).toBeGreaterThan(0)
+    expect(limited['clasp-hands']).toBe(0)
+    expect({ ...limited, 'clasp-hands': all['clasp-hands'] }).toEqual(all)
+  })
+
   it('starts nothing that needs her arms or a standing posture while she is settled in', () => {
     const settled = { watching: false, settled: true }
     const weights = idleActivityWeights({ ...neutralDrive, body: true, sleepiness: 0.5 }, settled)

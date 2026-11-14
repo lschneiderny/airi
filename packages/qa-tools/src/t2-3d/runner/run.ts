@@ -16,7 +16,7 @@ import { setImmediate } from 'node:timers/promises'
 
 import { NO_WORLD_BODY_INPUT } from '@proj-airi/motion-driver-humanoid/director'
 import { MOTION_TRACE_KIND, MOTION_TRACE_VERSION } from '@proj-airi/motion-driver-humanoid/motion-trace'
-import { MMDBody } from '@proj-airi/stage-ui-mmd/composables/mmd/body'
+import { idleKindsOutOfReach, MMDBody } from '@proj-airi/stage-ui-mmd/composables/mmd/body'
 import { resolveBodyTarget } from '@proj-airi/stage-ui-mmd/composables/mmd/body/attention'
 import { MMDBodyPose } from '@proj-airi/stage-ui-mmd/composables/mmd/body/pose'
 import { MMDFramePipeline } from '@proj-airi/stage-ui-mmd/composables/mmd/frame-pipeline'
@@ -86,10 +86,7 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
     const rig = readMMDRigProfile(mmd.pmx)
     const pose = new MMDBodyPose(mmd, rig)
     const natural = new MMDNaturalAdapter(modelKey)
-    // Set before the first frame, as the app's scene sets it before advancing; the adapter forwards it at that advance.
     const idleDrive = options.acts === 'on' ? options.scenario.idleDrive ?? null : null
-    if (idleDrive)
-      natural.setIdleDrive({ ...idleDrive.drive })
     const stance = new MMDStanceDirector()
     const sampler = createMMDMotionTraceSampler(mmd, rig, pose)
     sampler.rig.id = modelKey
@@ -142,6 +139,10 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
         mmd.mesh.updateMatrixWorld(true)
       } },
     })
+    // Set before the first frame, as the app's scene sets it before advancing; the adapter forwards it at that advance.
+    // Like the scene, it names the whole-body kinds this rig cannot perform, so both draw the same pool.
+    if (idleDrive)
+      natural.setIdleDrive({ ...idleDrive.drive, unreachable: idleKindsOutOfReach(body.capabilities) })
     let motionTime = 0
     body.onEvent(event => sampler.bodyEvent(event))
     if (claim)

@@ -239,6 +239,11 @@ export interface BodyPerformanceInput {
 export interface BodyCapabilities {
   readonly gestures: Readonly<Record<BodySide, boolean>>
   readonly headClearance: Readonly<Record<BodySide, boolean>>
+  /**
+   * Both arms reach the two-hand `clasp` at 6.3's front-low anchor, clear of the proxies inside the limits. Without it
+   * the rig does not clasp (6.3), and a host tells its idle scheduler so that it does not draw the clasp.
+   */
+  readonly clasp: boolean
 }
 
 export interface BodyActFeedback {

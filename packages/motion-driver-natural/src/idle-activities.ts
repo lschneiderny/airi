@@ -55,6 +55,11 @@ export interface NaturalIdleDrive {
    * Absent on a host that shows a head and face only (Live2D), which then draws exactly as it did before they existed.
    */
   body?: boolean
+  /**
+   * Whole-body kinds this host's body cannot perform, such as a clasp whose anchor the rig's arms cannot reach. They
+   * weigh 0, so she never draws an act that would show nothing. Absent, every whole-body kind keeps its weight.
+   */
+  unreachable?: readonly IdleBodyKind[]
 }
 
 /**
@@ -309,6 +314,8 @@ export function idleActivityWeights(drive: NaturalIdleDrive, context: { watching
     for (const kind of SETTLED_OUT)
       weights[kind] = 0
   }
+  for (const kind of drive.unreachable ?? [])
+    weights[kind] = 0
   if (body && context.since) {
     for (const kind of drawnKinds) {
       const seconds = context.since[kind]
