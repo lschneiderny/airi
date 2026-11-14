@@ -8,6 +8,7 @@ import type { NaturalFaceOutput } from './face'
 import type { NaturalBodyIntent, NaturalMotionEvent, NaturalMotionFrame, NaturalMotionObserver, NaturalMotionOptions, NaturalMotionVoice, NaturalRigTraits, NaturalTouchRegion } from './frame-types'
 import type { GazePoint } from './gaze'
 import type { IdleBehaviourKind, IdleCueKind, NaturalIdleDrive } from './idle-activities'
+import type { IdleErrandRecord } from './idle-errands'
 import type { NaturalEpisode } from './mood'
 import type { PendingAction } from './pending-actions'
 import type { Vec3 } from './posture'
@@ -288,7 +289,7 @@ export class NaturalMotion {
       touch: { poke: this.latestPoke && { ...this.latestPoke }, pet: { level: this.pet.level, active: this.pet.active, ...this.pet.easedHand } },
       react: this.latestReact && { ...this.latestReact },
       attention: { approach: this.approach, cursorShare: this.cursorShare },
-      idle: { behaviour: this.idle.record, settled: this.idle.settled },
+      idle: { behaviour: this.idle.record, settled: this.idle.settled, errand: this.idle.errand },
     }
     const weight = clamp((this.activeTime - (this.stepIndex - 1) * step) / step, 1)
     const { previous: a, next: b } = this
@@ -483,6 +484,17 @@ export class NaturalMotion {
    */
   get idleState(): { seq: number, behaviour: IdleBehaviourKind | null } {
     return { seq: this.idle.seq, behaviour: this.idle.behaviour }
+  }
+
+  /** The latest errand the idle draw started for the host to realise, kept after it ends; null before the first. */
+  get idleErrand(): IdleErrandRecord | null {
+    return this.idle.errand
+  }
+
+  /** The realiser's answer to errand `seq`, applied at the next grid step. See `NaturalIdleActivities.answerErrand`. */
+  answerIdleErrand(seq: number, outcome: 'done' | 'refused', nowSeconds: number) {
+    this.advance(nowSeconds)
+    this.idle.answerErrand(seq, outcome)
   }
 
   /** Starts an explicit cue on the next grid step, independently of held-emotion settings. */

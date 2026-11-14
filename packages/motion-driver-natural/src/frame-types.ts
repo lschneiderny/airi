@@ -7,6 +7,7 @@ import type { GestureKind, naturalEmotions } from './emotions'
 import type { NaturalFaceOutput } from './face'
 import type { GazePoint } from './gaze'
 import type { IdleBehaviourKind, IdleBehaviourRecord } from './idle-activities'
+import type { IdleErrandRecord } from './idle-errands'
 import type { PostureHome, Vec3 } from './posture'
 import type { RandomStream } from './random'
 
@@ -277,10 +278,13 @@ export interface NaturalBodyIntent {
   /**
    * Self-directed idle life for a host that performs its own body: the latest behaviour (kept after it ends, null
    * before the first) and whether she has settled in. Without a drive the behaviour stays null and `settled` false.
+   * `errand` is the latest errand the draw started for a realiser of the host (an unasked clip, a wander), kept after
+   * it ends; null without a drive that lists errands.
    */
   readonly idle: {
     readonly behaviour: IdleBehaviourRecord | null
     readonly settled: boolean
+    readonly errand: IdleErrandRecord | null
   }
 }
 

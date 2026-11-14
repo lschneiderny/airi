@@ -504,7 +504,7 @@ describe('idle activities in the controller', () => {
     const motion = new NaturalMotion({ seed: 41 })
     motion.setPerformance(idleState, 0.5, 0)
     motion.advance(0)
-    expect(motion.bodyIntent().idle).toEqual({ behaviour: null, settled: false })
+    expect(motion.bodyIntent().idle).toEqual({ behaviour: null, settled: false, errand: null })
     motion.setIdleDrive({ ...neutralDrive, rate: 0, body: true }, 0)
     motion.idlePlay('shoulder-roll', 1)
     motion.advance(1.1)

@@ -1,7 +1,9 @@
 import type { GazePoint, NaturalGazeLayer } from './gaze'
+import type { IdleErrandKind, IdleErrandRecord } from './idle-errands'
 import type { Vec3 } from './posture'
 import type { RandomStream } from './random'
 
+import { IDLE_ERRAND_KINDS, IDLE_ERRAND_PACING, PASTIME_HOLD_SECONDS } from './idle-errands'
 import { minJerk } from './processes'
 
 /**
@@ -60,6 +62,11 @@ export interface NaturalIdleDrive {
    * weigh 0, so she never draws an act that would show nothing. Absent, every whole-body kind keeps its weight.
    */
   unreachable?: readonly IdleBodyKind[]
+  /**
+   * The errands this host can realise now: `pastime` where she has props of her own (Live2D), `idle-clip` where the
+   * user allowed clips for idle and `wander` in roam mode (MMD). Absent, none is drawn and the draw is as before.
+   */
+  errands?: readonly IdleErrandKind[]
 }
 
 /**
@@ -384,6 +391,14 @@ export class NaturalIdleActivities {
   private eyesUntil = 0
   /** Start of the continuous `idle` mode that settling counts from; null outside it or without `body`. */
   private idleSince: number | null = null
+  /** The latest errand drawn, kept after it ends; null before the first. */
+  errand: IdleErrandRecord | null = null
+  private errandSeq = 0
+  private readonly errandStarts: Partial<Record<IdleErrandKind, number>> = {}
+  private readonly errandEnds: Partial<Record<IdleErrandKind, number>> = {}
+  private readonly errandAnswers: { seq: number, outcome: 'done' | 'refused' }[] = []
+  /** When the host started listing each errand, which its first refractory counts from where its timer's did. */
+  private readonly errandListedSince: Partial<Record<IdleErrandKind, number>> = {}
 
   constructor(private readonly random: RandomStream) {}
 
@@ -421,6 +436,15 @@ export class NaturalIdleActivities {
     this.pendingPlay = kind
   }
 
+  /**
+   * The realiser's answer to errand `seq`, applied at the next step: `refused` when it could not take it, `done` when
+   * it took it (an unasked clip or a wander the director accepted) or finished it early (a pastime the user put away).
+   * An answer to an errand that already ended is ignored.
+   */
+  answerErrand(seq: number, outcome: 'done' | 'refused') {
+    this.errandAnswers.push({ seq, outcome })
+  }
+
   /** Whether this layer holds the gaze at `at`, so autonomous attention shifts must wait. */
   eyesOwned(at: number) {
     return at < this.eyesUntil
@@ -452,6 +476,7 @@ export class NaturalIdleActivities {
         this.clips.splice(i, 1)
     }
 
+    this.updateErrand(at, drive, input, current)
     if (drive === null) {
       this.pendingCue = null
       this.pendingPlay = null
@@ -514,6 +539,8 @@ export class NaturalIdleActivities {
     }
 
     const free = !current && performing && !input.blocked && !input.away
+    const errands = this.errandHazards(at, drive, input, current)
+    const actsOpen = free && at >= this.restUntil
     if (this.followUp && at >= this.followUp.at) {
       // A settled character does not stretch (SETTLED_OUT), so the stretch after a long sleep becomes the yawn.
       const kind = this.settled && this.followUp.kind === 'stretch' ? 'yawn' : this.followUp.kind
@@ -521,15 +548,24 @@ export class NaturalIdleActivities {
       if (free)
         current = this.start(kind, at, drive, input)
     }
-    else if (free && at >= this.restUntil) {
+    else if (actsOpen || errands.length > 0) {
+      // One hazard for everything she may start: the acts' rate while an act may start, plus each eligible errand's.
       this.threshold ??= -Math.log(1 - this.random())
-      this.urge += idleActivityRate(drive, { watching: input.mode === 'watching' }) * dt
+      const actRate = actsOpen ? idleActivityRate(drive, { watching: input.mode === 'watching' }) : 0
+      this.urge += (actRate + errands.reduce((sum, errand) => sum + errand.rate, 0)) * dt
       if (this.urge >= this.threshold) {
         this.urge = 0
         this.threshold = null
-        const kind = this.pick(drive, input, at)
-        if (kind)
-          current = this.start(kind, at, drive, input)
+        // Without an eligible errand the draw is exactly the acts' draw as before; with one, a share by rate first.
+        const errand = errands.length > 0 ? this.chooseErrand(errands, actRate) : null
+        if (errand) {
+          this.startErrand(errand, at)
+        }
+        else if (actsOpen) {
+          const kind = this.pick(drive, input, at)
+          if (kind)
+            current = this.start(kind, at, drive, input)
+        }
       }
     }
 
@@ -542,6 +578,78 @@ export class NaturalIdleActivities {
       }
     }
     this.sample(at + dt)
+  }
+
+  /** Applies the realisers' answers and ends an errand she is no longer free for. */
+  private updateErrand(at: number, drive: NaturalIdleDrive | null, input: IdleStepInput, current: Clip | undefined) {
+    for (const kind of IDLE_ERRAND_KINDS) {
+      if (drive?.errands?.includes(kind))
+        this.errandListedSince[kind] ??= at
+      else
+        delete this.errandListedSince[kind]
+    }
+    const errand = this.errand
+    const answers = this.errandAnswers.splice(0)
+    if (errand === null || errand.endedAt !== null)
+      return
+    const answer = answers.find(candidate => candidate.seq === errand.seq)
+    const performing = input.mode === 'idle' || input.mode === 'watching'
+    // A pastime is put away to talk, while the user is away and before she sleeps, as `decideIdleProp`'s `free` had it.
+    const unfree = drive === null || !(drive.errands ?? []).includes(errand.kind)
+      || (errand.kind === 'pastime' && (!performing || input.away || current?.kind === 'sleep'))
+    const outcome = answer?.outcome ?? (unfree ? 'interrupted' : at >= errand.end ? 'done' : null)
+    if (outcome === null)
+      return
+    this.errand = { ...errand, endedAt: at, outcome }
+    this.errandEnds[errand.kind] = at
+  }
+
+  /** The errands that may start now, each with its start rate per second. */
+  private errandHazards(at: number, drive: NaturalIdleDrive, input: IdleStepInput, current: Clip | undefined): { kind: IdleErrandKind, rate: number }[] {
+    if (drive.errands === undefined || drive.errands.length === 0 || (this.errand !== null && this.errand.endedAt === null))
+      return []
+    const performing = input.mode === 'idle' || input.mode === 'watching'
+    if (!performing || input.away)
+      return []
+    const rate = Math.max(0, Number.isFinite(drive.rate) ? drive.rate : 1)
+    const hazards: { kind: IdleErrandKind, rate: number }[] = []
+    for (const kind of IDLE_ERRAND_KINDS) {
+      if (!drive.errands.includes(kind))
+        continue
+      const pacing = IDLE_ERRAND_PACING[kind]
+      const last = pacing.from === 'start' ? this.errandStarts[kind] : this.errandEnds[kind]
+      const since = last ?? (pacing.firstAfterListing ? this.errandListedSince[kind] : undefined)
+      if (since !== undefined && at - since < pacing.refractory)
+        continue
+      // An unasked clip waits for her act to finish, as `decideIdleClip`'s quiet body did; whether she stands for it is
+      // the realiser's to answer. A wander and a pastime go on beside her acts, as their timers did.
+      if (kind === 'idle-clip' && (current !== undefined || input.blocked))
+        continue
+      if (kind === 'pastime' && current?.kind === 'sleep')
+        continue
+      hazards.push({ kind, rate: rate / pacing.meanGap })
+    }
+    return rate > 0 ? hazards : []
+  }
+
+  /** One draw shares the start between the acts and each errand by rate; null picks an act. */
+  private chooseErrand(errands: readonly { kind: IdleErrandKind, rate: number }[], actRate: number): IdleErrandKind | null {
+    let draw = this.random() * (actRate + errands.reduce((sum, errand) => sum + errand.rate, 0)) - actRate
+    if (draw < 0)
+      return null
+    for (const errand of errands) {
+      draw -= errand.rate
+      if (draw < 0)
+        return errand.kind
+    }
+    return errands[errands.length - 1].kind
+  }
+
+  private startErrand(kind: IdleErrandKind, at: number) {
+    const pick = this.random()
+    const end = kind === 'pastime' ? at + PASTIME_HOLD_SECONDS.min + (PASTIME_HOLD_SECONDS.max - PASTIME_HOLD_SECONDS.min) * this.random() : Number.POSITIVE_INFINITY
+    this.errand = { seq: ++this.errandSeq, kind, start: at, end, pick, endedAt: null, outcome: null }
+    this.errandStarts[kind] = at
   }
 
   private get active(): Clip | undefined {

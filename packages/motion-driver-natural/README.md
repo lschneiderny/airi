@@ -138,6 +138,21 @@ const { seq, behaviour } = motion.idleState
   `IdleBehaviourRecord` (its timing, side and drawn parameters, kept after it
   ends) and `settled`, so a body host plays its own form of each behaviour. The
   frame Live2D draws does not change.
+- The same draw decides the long behaviours a host realises in full, the
+  errands of `./idle-errands`: a `pastime` with one of her own props (Live2D),
+  an `idle-clip` the user allowed for idle and a `wander` in roam mode (MMD). A
+  host lists the errands it can realise now in the drive's `errands`; absent,
+  none is drawn and the draw is exactly as before. Each errand adds its rate
+  (`IDLE_ERRAND_PACING`, the constants of the timer it replaced) to the one
+  hazard while it is eligible, and a crossing shares the start between the acts
+  and the errands by rate, so the acts keep their pace and each errand keeps
+  its old long-run rate. `idleErrand` and `bodyIntent().idle.errand` hold the
+  latest `IdleErrandRecord` (kind, start, a pastime's drawn end, and `pick`, a
+  uniform for the realiser's choice of prop or clip). The realiser answers
+  with `answerIdleErrand(seq, 'done' | 'refused')`; a refused errand is spent
+  and keeps its refractory. Natural ends a pastime when she is spoken to, the
+  user leaves or she sleeps. `IdleErrandReports` turns per-frame reads of the
+  record into start and end reports.
 
 [The idle agency ADR](../../docs/ai/adr/2026-11-12-idle-agency.md) records the
 design, the pacing numbers and the rendered Live2D pass.
