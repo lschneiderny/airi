@@ -37,6 +37,26 @@ export function quantile(values: readonly number[], q: number): number {
   return quantileOfSorted(values.toSorted((left, right) => left - right), q)
 }
 
+export interface WeightedValue {
+  readonly value: number
+  readonly weight: number
+}
+
+/** The lower weighted median: the value at which the cumulative weight first reaches half of the total; `null` for no values. */
+export function weightedMedian(entries: readonly [WeightedValue, ...WeightedValue[]]): number
+export function weightedMedian(entries: readonly WeightedValue[]): number | null
+export function weightedMedian(entries: readonly WeightedValue[]): number | null {
+  const sorted = entries.toSorted((left, right) => left.value - right.value)
+  const total = sorted.reduce((sum, entry) => sum + entry.weight, 0)
+  let seen = 0
+  for (const entry of sorted) {
+    seen += entry.weight
+    if (seen * 2 >= total)
+      return entry.value
+  }
+  return null
+}
+
 export function median(values: readonly number[]): number {
   return quantile(values, 0.5)
 }

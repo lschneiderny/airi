@@ -1,9 +1,9 @@
-import type { PerfRecord, WindowRollupRecord } from './records'
+import type { PerfRecord, SegmentRollupRecord, WindowRollupRecord } from './records'
 
 import { describe, expect, it } from 'vitest'
 
 import { FRAME_BINS_V1, STAGE_BINS_V1 } from './bins'
-import { parsePerfLine } from './records'
+import { parsePerfLine, SEGMENT_ROLLUP_VERSION } from './records'
 
 const T = 1_794_000_000_000
 const base = { v: 1, t: T, sessionId: 'session-1' } as const
@@ -15,6 +15,49 @@ const features = { speechMuted: false, mmdPhysics: true, naturalMotion: true, mm
 const quartiles = { q1: 16.4, median: 16.7, q3: 17.1 }
 
 const stages: WindowRollupRecord['stages'] = { 'mmd.physics': { n: 300, sumMs: 120.5, maxMs: 3.2, hist: [[3, 120], [4, 180]] } }
+
+const cellKey = {
+  epoch: 0,
+  sha: 'a'.repeat(40),
+  dirty: true,
+  diffHash: 'd1',
+  window: 'stage',
+  renderer: 'mmd',
+  modelId: 'model-1',
+  featureHash: 'f1',
+  features,
+  activity: 'talking',
+  hostContended: false,
+  stageHost: 'desktop',
+  devtoolsOpen: false,
+  refreshHz: 144,
+} as const
+
+const cellTotals = {
+  windows: 24,
+  frames: 7200,
+  frameHist: Array.from<number>({ length: 22 }).fill(1),
+  quartiles: { p50FrameMs: quartiles, share21: quartiles, share36: quartiles, share100: quartiles, cpuPct: null, workingSetKb: quartiles },
+  stages,
+  incidents: 0,
+}
+
+const segmentRollup: SegmentRollupRecord = {
+  ...base,
+  v: SEGMENT_ROLLUP_VERSION,
+  kind: 'segment-rollup',
+  segment: 0,
+  startedAt: T,
+  endedAt: T + 600_000,
+  recovered: false,
+  malformedLines: 1,
+  excludedWindows: 12,
+  cells: [{ ...cellKey, buckets: [{ startMs: T + 60_000, endMs: T + 300_000, ...cellTotals }, { startMs: T + 300_000, endMs: T + 600_000, ...cellTotals, incidents: 2 }] }],
+  recorderMs: 12.5,
+  rawBytes: 40_960,
+  host,
+  buildMode: 'packaged',
+}
 
 const records: PerfRecord[] = [
   {
@@ -73,42 +116,7 @@ const records: PerfRecord[] = [
   },
   { ...base, kind: 'event', name: 'model-load', window: 'stage', detail: { renderer: 'mmd', ms: 812, cached: false, reason: null } },
   { ...base, kind: 'incident', id: 'inc-1', trigger: 'frame-stall', window: 'stage', pid: 42, peak: { frameMaxMs: 640 }, hostContended: false, file: 'incidents/inc-1.json' },
-  {
-    ...base,
-    kind: 'segment-rollup',
-    segment: 0,
-    startedAt: T,
-    endedAt: T + 60_000,
-    recovered: false,
-    malformedLines: 1,
-    excludedWindows: 12,
-    cells: [{
-      epoch: 0,
-      sha: 'a'.repeat(40),
-      dirty: true,
-      diffHash: 'd1',
-      window: 'stage',
-      renderer: 'mmd',
-      modelId: 'model-1',
-      featureHash: 'f1',
-      features,
-      activity: 'talking',
-      hostContended: false,
-      stageHost: 'desktop',
-      devtoolsOpen: false,
-      refreshHz: 144,
-      windows: 24,
-      frames: 7200,
-      frameHist: Array.from<number>({ length: 22 }).fill(1),
-      quartiles: { p50FrameMs: quartiles, share21: quartiles, share36: quartiles, share100: quartiles, cpuPct: null, workingSetKb: quartiles },
-      stages,
-      incidents: 0,
-    }],
-    recorderMs: 12.5,
-    rawBytes: 40_960,
-    host,
-    buildMode: 'packaged',
-  },
+  segmentRollup,
   { ...base, kind: 'rollup-failed', segment: 1, reason: 'raw file missing' },
   {
     ...base,
@@ -166,6 +174,7 @@ describe('parsePerfLine', () => {
   it.each([
     ['a future version', sampleLine({ v: 2 })],
     ['a string version', sampleLine({ v: '1' })],
+    ['a segment rollup of a future version', JSON.stringify({ ...segmentRollup, v: SEGMENT_ROLLUP_VERSION + 1 })],
   ])('reports version for %s', (_name, line) => {
     expect(parsePerfLine(line)).toEqual({ ok: false, reason: 'version' })
   })
@@ -183,15 +192,32 @@ describe('parsePerfLine', () => {
     ['an unknown event name', JSON.stringify({ ...records[4], name: 'crash' })],
     ['an absolute incident file', JSON.stringify({ ...records[5], file: '/home/user/perf/incidents/inc-1.json' })],
     ['an incident file outside the perf dir', JSON.stringify({ ...records[5], file: '../secrets.json' })],
+    ['a segment cell without buckets', JSON.stringify({ ...segmentRollup, cells: [{ ...cellKey, buckets: [] }] })],
+    ['a version 2 segment cell with version 1 totals', JSON.stringify({ ...segmentRollup, cells: [{ ...cellKey, ...cellTotals }] })],
+    ['a version 1 segment cell with buckets', JSON.stringify({ ...segmentRollup, v: 1 })],
   ])('reports schema for %s', (_name, line) => {
     expect(parsePerfLine(line)).toEqual({ ok: false, reason: 'schema' })
+  })
+
+  it('reads a version 1 segment rollup as version 2, each cell one bucket spanning the segment', () => {
+    const v1 = { ...segmentRollup, v: 1, cells: [{ ...cellKey, ...cellTotals }, { ...cellKey, activity: 'idle', ...cellTotals, windows: 30 }] }
+
+    expect(parsePerfLine(JSON.stringify(v1))).toEqual({
+      ok: true,
+      record: {
+        ...segmentRollup,
+        cells: [
+          { ...cellKey, buckets: [{ startMs: T, endMs: T + 600_000, ...cellTotals }] },
+          { ...cellKey, activity: 'idle', buckets: [{ startMs: T, endMs: T + 600_000, ...cellTotals, windows: 30 }] },
+        ],
+      },
+    })
   })
 
   describe('histogram lengths', () => {
     const frameBinCount = FRAME_BINS_V1.edges.length + 1
     const stageBinCount = STAGE_BINS_V1.edges.length + 1
     const windowRollup = records.find(record => record.kind === 'window-rollup')!
-    const segmentRollup = records.find(record => record.kind === 'segment-rollup')!
 
     function withWindowHist(frameHist: number[], stageHist?: [number, number][]): string {
       return JSON.stringify({
@@ -201,18 +227,19 @@ describe('parsePerfLine', () => {
       })
     }
 
-    function withCell(patch: Record<string, unknown>): string {
-      return JSON.stringify({ ...segmentRollup, cells: [{ ...segmentRollup.cells[0], ...patch }] })
+    function withBucket(patch: Record<string, unknown>): string {
+      const [cell] = segmentRollup.cells
+      return JSON.stringify({ ...segmentRollup, cells: [{ ...cell, buckets: [{ ...cell.buckets[0], ...patch }] }] })
     }
 
     it.each([
       ['a short window frameHist', withWindowHist(Array.from<number>({ length: frameBinCount - 1 }).fill(0))],
       ['a long window frameHist', withWindowHist(Array.from<number>({ length: frameBinCount + 1 }).fill(0))],
       ['an empty window frameHist', withWindowHist([])],
-      ['a short segment cell frameHist', withCell({ frameHist: Array.from<number>({ length: frameBinCount - 1 }).fill(0) })],
-      ['a long segment cell frameHist', withCell({ frameHist: Array.from<number>({ length: frameBinCount + 1 }).fill(0) })],
+      ['a short segment bucket frameHist', withBucket({ frameHist: Array.from<number>({ length: frameBinCount - 1 }).fill(0) })],
+      ['a long segment bucket frameHist', withBucket({ frameHist: Array.from<number>({ length: frameBinCount + 1 }).fill(0) })],
       ['a window stage bin past overflow', withWindowHist(Array.from<number>({ length: frameBinCount }).fill(0), [[stageBinCount, 1]])],
-      ['a segment cell stage bin past overflow', withCell({ stages: { 'mmd.physics': { n: 1, sumMs: 1, maxMs: 1, hist: [[stageBinCount, 1]] } } })],
+      ['a segment bucket stage bin past overflow', withBucket({ stages: { 'mmd.physics': { n: 1, sumMs: 1, maxMs: 1, hist: [[stageBinCount, 1]] } } })],
     ])('reports schema for %s', (_name, line) => {
       expect(parsePerfLine(line)).toEqual({ ok: false, reason: 'schema' })
     })

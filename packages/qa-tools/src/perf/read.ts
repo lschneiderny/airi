@@ -29,7 +29,7 @@ export interface PerfSegment {
   readonly identities: readonly SegmentIdentity[]
   /** From raw window-rollup tags; `null` for a rolled-up segment, whose cells carry no model name. */
   readonly modelName: string | null
-  /** Largest stage-window working set in raw samples; `null` for a rolled-up segment, whose cells hold quartiles only. */
+  /** Largest stage-window working set in raw samples; `null` for a rolled-up segment, whose buckets hold quartiles only. */
   readonly maxWorkingSetKb: number | null
   /** Incident ids from raw `incident` lines; empty for a rolled-up segment. */
   readonly incidentIds: readonly string[]

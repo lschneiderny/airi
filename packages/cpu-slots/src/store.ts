@@ -1,6 +1,7 @@
 import type { CpuClass } from './classes'
 import type { StoreFs } from './fs-adapter'
 import type { BrokerState, LeaseRecord, TicketRecord } from './grant'
+import type { HistoryEvent } from './history'
 import type { ProcessIdentity, WorkloadOwner } from './liveness'
 import type { CpuPressure, PressureThresholds } from './pressure'
 import type { ProcessSnapshot } from './processes'
@@ -14,6 +15,7 @@ import { performance } from 'node:perf_hooks'
 import { classes } from './classes'
 import { nodeFs } from './fs-adapter'
 import { decide, sharedCeiling } from './grant'
+import { appendHistory, reapEvent } from './history'
 import { isAlive, isSameProcess, workloadAlive } from './liveness'
 import { processStartedAt, snapshotProcesses } from './processes'
 
@@ -203,6 +205,8 @@ export class Store {
   private observations = 0
   /** First observation of each lease's owner death, so a later capture can judge its workload. */
   private readonly deaths = new Map<string, number>()
+  /** Reaps of dead holders' leases made under the lock; transact appends them to the history after the lock. */
+  private reaped: HistoryEvent[] = []
 
   constructor(options: StoreOptions) {
     this.root = options.root
@@ -247,6 +251,10 @@ export class Store {
     finally {
       this.token = undefined
       this.leave(token)
+      const reaped = this.reaped
+      this.reaped = []
+      for (const event of reaped)
+        appendHistory(event)
       this.captureFailure = this.takeWantedCapture()
     }
   }
@@ -512,6 +520,7 @@ export class Store {
         if (processes && !workloadAlive(value, processes)) {
           this.deaths.delete(value.id)
           this.remove(path)
+          this.reaped.push(reapEvent(value, this.budget, now))
           return false
         }
         // Kept until a capture shows its workload gone; transact takes the next one after the lock.

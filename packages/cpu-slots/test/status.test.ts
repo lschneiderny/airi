@@ -18,6 +18,8 @@ beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'airi-cpu-status-'))
   vi.stubEnv('AIRI_CPU_BUDGET', '8')
   vi.stubEnv('AIRI_CPU_PRESSURE_FILE', join(root, 'missing.psi'))
+  // Pruning a dead owner's lease appends a reap event; keep it out of the real history.
+  vi.stubEnv('AIRI_CPU_SLOTS_HISTORY_DIR', join(root, 'history'))
 })
 
 afterEach(() => {

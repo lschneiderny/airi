@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { nodeFs } from '../src/fs-adapter'
 import { decide } from '../src/grant'
+import { readHistoryEvents } from '../src/history'
 import { snapshotProcesses } from '../src/processes'
 import { Store, StoreBusyError } from '../src/store'
 
@@ -96,9 +97,12 @@ beforeEach(() => {
   reused = new Set()
   processes = { platform: 'win32', processes: [] }
   snapshot = vi.fn(observe)
+  // Reaps append to the lease history; keep them out of the real one.
+  vi.stubEnv('AIRI_CPU_SLOTS_HISTORY_DIR', join(root, 'history'))
 })
 
 afterEach(() => {
+  vi.unstubAllEnvs()
   nodeFs.remove(root)
 })
 
@@ -783,6 +787,17 @@ describe('tickets, leases, and heartbeat', () => {
     takeLease(createStore(20))
     live.delete(20)
     expect(createStore().snapshot().leases).toEqual([])
+  })
+
+  it('writes one reap event with the dead holder\'s lease, pid, cwd and held time when it reclaims the lease', () => {
+    const lease = takeLease(createStore(20))
+    clock += 7_000
+    live.delete(20)
+    const observer = createStore()
+    observer.snapshot()
+    observer.snapshot()
+
+    expect(readHistoryEvents().events).toEqual([expect.objectContaining({ ts: clock, event: 'reap', id: lease.id, pid: 20, cwd: '/worktree', class: 'test', slots: lease.slots, heldMs: 7_000 })])
   })
 
   it('checks lease identity only once the heartbeat becomes stale, from the batched snapshot', () => {
