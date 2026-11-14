@@ -48,6 +48,30 @@ function resolve(inputs: PerformanceInputs) {
 Use this entrypoint when a stage needs to tell a renderer what the character is doing.
 Do not use it to read desktop or voice signals. The caller collects them, and a `null` signal means that the host cannot measure it, so it never counts as activity.
 
+### Usage performance records
+
+The `perf/usage` entrypoint owns the contract for local performance recordings and the pure math around it:
+
+- `PerfRecordSchema` and `parsePerfLine`, the Valibot schemas and parser for every JSONL record kind (`session-start`, `identity`, `sample`, `window-rollup`, `event`, `incident`, `segment-rollup`, `rollup-failed`, `bench-run`). Every line carries `v: 1`, `kind`, `t` (epoch milliseconds), and `sessionId`. `parsePerfLine` never throws: it returns `{ ok: false, reason }` with `json` for unparseable text, `version` for any other `v` (readers skip and count those lines, never migrate them), and `schema` for anything else invalid;
+- `FRAME_BINS_V1` and `STAGE_BINS_V1`, the versioned bin edges that records name by id;
+- `FixedHistogram`, a histogram over one preallocated `Uint32Array` whose `add` allocates nothing, with exact `shareAtLeast` for bin edges and `approxQuantile` over serialized counts;
+- `sanitizeModelName`, which reduces a model path to a short label, and `containsForbiddenText`, which flags path-, URL-, or key-like text in a serialized line.
+
+```ts
+import { FixedHistogram, FRAME_BINS_V1, parsePerfLine } from '@proj-airi/stage-shared/perf/usage'
+
+const frames = new FixedHistogram(FRAME_BINS_V1)
+frames.add(16.7)
+const slowShare = frames.shareAtLeast(36)
+
+const parsed = parsePerfLine(line)
+if (parsed.ok && parsed.record.kind === 'window-rollup')
+  console.info(parsed.record.frames)
+```
+
+Use this entrypoint to write, read, or summarize perf records in the app, the `pnpm perf` CLI, and the bench.
+Do not sample processes, frames, or the clock here, and do not read or write files: the Electron recorder and the CLI own sampling and IO. Records never carry a personal file path; pass model names through `sanitizeModelName`.
+
 ### Desktop activity store
 
 The `stores/desktop-activity` entrypoint owns `useDesktopActivityStore`, which holds the latest `DesktopActivitySnapshot` for the performance resolver.
