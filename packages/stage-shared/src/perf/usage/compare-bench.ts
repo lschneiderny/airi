@@ -2,20 +2,32 @@ import type { BenchRunRecord } from './records'
 
 import { madSigma, median } from './compare-stats'
 
+/** The bench-run metrics that comparisons judge. */
+export const BENCH_METRICS = [
+  'p95FrameMsApprox',
+  'fps',
+  'stageWindowCpuPct',
+  'stageWindowCpuMsPerFrame',
+  'stageWindowWorkingSetKb',
+] as const satisfies readonly (keyof BenchRunRecord['metrics'])[]
+export type BenchMetric = (typeof BENCH_METRICS)[number]
+
 /** The smallest difference worth reporting per metric, whatever the measured noise. */
-export const BENCH_PRACTICAL_FLOORS = {
+export const BENCH_PRACTICAL_FLOORS: Readonly<Record<BenchMetric, number>> = {
   p95FrameMsApprox: 0.5,
   fps: 1,
   stageWindowCpuPct: 2,
+  // The CPU floor at 60 fps: 2 % of one core is 20 ms per second, about 0.33 ms per frame.
+  stageWindowCpuMsPerFrame: 0.3,
   stageWindowWorkingSetKb: 20_000,
-} as const satisfies Partial<Record<keyof BenchRunRecord['metrics'], number>>
-export type BenchMetric = keyof typeof BENCH_PRACTICAL_FLOORS
+}
 
 /** Only a higher fps is better; higher frame time, CPU, and memory are worse. */
 const HIGHER_IS_BETTER: Readonly<Record<BenchMetric, boolean>> = {
   p95FrameMsApprox: false,
   fps: true,
   stageWindowCpuPct: false,
+  stageWindowCpuMsPerFrame: false,
   stageWindowWorkingSetKb: false,
 }
 

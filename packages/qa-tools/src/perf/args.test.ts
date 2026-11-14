@@ -29,6 +29,19 @@ describe('parsePerfArgs', () => {
     expect(parsePerfArgs(['--help'], cwd)).toEqual({ kind: 'help' })
   })
 
+  it('parses bench listings and bench comparisons', () => {
+    expect(parsePerfArgs(['bench', '--scenario', 'mmd-idle', '--since', '7d', '--json'], cwd)).toEqual({ kind: 'bench', scenario: 'mmd-idle', sinceMs: 7 * 86_400_000, json: true })
+    expect(parsePerfArgs(['compare', '--bench', 'HEAD', 'worktree', '--metric', 'fps'], cwd)).toEqual({
+      kind: 'compare-bench',
+      a: { kind: 'head', text: 'HEAD' },
+      b: { kind: 'worktree', text: 'worktree' },
+      scenario: null,
+      metric: 'fps',
+      json: false,
+    })
+    expect(parsePerfArgs(['compare', '--bench', '8997DCD24', 'HEAD'], cwd)).toMatchObject({ a: { kind: 'sha', prefix: '8997dcd24' } })
+  })
+
   it.each([
     [['--bogus']],
     [['features', 'extra']],
@@ -40,6 +53,15 @@ describe('parsePerfArgs', () => {
     [['compare', 'abc1234', 'not-a-sha']],
     [['compare', 'abc1234', 'def5678', '--feature', 'mmdPhysics']],
     [['sessions', '--seed', '2']],
+    [['bench', 'extra']],
+    [['bench', '--dir', 'a']],
+    [['bench', '--metric', 'fps']],
+    [['sessions', '--scenario', 'mmd-idle']],
+    [['compare', 'HEAD', 'HEAD']],
+    [['compare', '--bench', 'HEAD']],
+    [['compare', '--bench', 'HEAD', 'main']],
+    [['compare', '--bench', 'HEAD', 'HEAD', '--metric', 'share21']],
+    [['compare', '--bench', 'HEAD', 'HEAD', '--since', '1d']],
     [[]],
     [['report']],
     [['sessions', 'extra']],

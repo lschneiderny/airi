@@ -1147,6 +1147,8 @@ pnpm perf incident --list [--json] [--dir <path>]...
 pnpm perf incident <id> [--json] [--dir <path>]...
 pnpm perf features [--feature <key>] [--metric p50FrameMs|share21|share36|share100|cpuPct|workingSetKb] [--seed 1] [--json] [--dir <path>]...
 pnpm perf compare <shaA> <shaB> [--include-dirty] [--json] [--dir <path>]...
+pnpm perf bench [--scenario <id>] [--since 7d] [--json]
+pnpm perf compare --bench <refA> <refB> [--scenario <id>] [--metric <metric>] [--json]
 pnpm perf --help
 ```
 
@@ -1163,6 +1165,8 @@ A segment's row in `sessions.jsonl` wins; a raw segment without a row (a live se
 Both commands are observational and label their output so. Before the analysis, each cell gets `leaseContended` from the cpu-slots lease history (`readHistoryEvents`): `true` when a known lease taken from another worktree overlaps the cell's segment; otherwise `null` when the segment starts before the oldest history event (the history rotates at 5 MB) or after the grant of a lease that never ended and whose holder pid is gone, because that lease's end is unknown; otherwise `false`. Every release or abort ends its lease, including one that carries no held time, and a lease released in the millisecond it was granted covers no time. A grant that never ended counts as held while its pid runs on this machine. Leases of the worktree that runs `pnpm perf` do not count, so run it from the worktree that recorded the sessions: from another worktree, a QA session's own `live` lease reads as foreign. Host-contended and lease-contended cells are dropped and counted; cells carry no time of their own, so the whole segment span stands for every cell in it.
 
 Exit codes: 0 for success, including when there is no perf data or the data is insufficient; 2 for invalid arguments, an unknown incident id, or a sha prefix matching several commits; 1 when reading fails.
+
+`bench` and `compare --bench` read the `qa:bench` history, `bench.jsonl` in the per-machine state directory (`AIRI_PERF_BENCH_DIR` names another directory that holds it), and ignore `--dir`. `bench` lists runs grouped by scenario and code state (sha, plus `*<diff hash>` for a dirty tree) with valid/total runs and the medians of the valid runs. `compare --bench` compares two refs with the shared `compareBench` statistics: a ref is a sha of at least 4 hex digits (a clean commit in the history; an ambiguous prefix is refused), `HEAD` (the checked-out commit, clean), or `worktree` (the checked-out commit and the current diff hash, hashed like the recorder's identity, untracked file contents included). Without `--scenario` it compares every scenario either ref has; without `--metric`, every judged metric (`p95FrameMsApprox`, `fps`, `stageWindowCpuPct`, `stageWindowCpuMsPerFrame`, `stageWindowWorkingSetKb`). Each side holds the valid runs of its code state; invalid runs are listed with their reasons and left out. It prints every run value, both medians, the difference, sigma and its noise source, the practical floor, the agreement count, the verdict (`regression`, `improvement`, or `within-noise`), `lowConfidence` (fewer than 10 comparable clean history commits), and `stale` (newest runs more than 7 days apart), or the refusals with their reasons. `--json` prints the same as an array of scenarios. Exit codes: 0 when every scenario was compared, whatever the verdict; 2 for invalid arguments, a ref without runs (`no bench runs for <ref>`), or a refused comparison; 1 when reading the history or git fails.
 
 ```bash
 pnpm -F @proj-airi/qa-tools exec vitest run --project node src/perf
