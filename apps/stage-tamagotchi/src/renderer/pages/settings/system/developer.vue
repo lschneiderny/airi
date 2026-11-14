@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import type { IOTraceHubState, IOTraceRecordingState } from '@proj-airi/stage-shared/types/io-trace'
 
+import type { PerfRecordingState } from '../../../../shared/eventa'
+
 import { useElectronEventaContext, useElectronEventaInvoke } from '@proj-airi/electron-vueuse'
 import { ButtonBar, CheckBar, IconItem } from '@proj-airi/stage-ui/components'
 import { useSettings } from '@proj-airi/stage-ui/stores/settings'
@@ -8,7 +10,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 
-import { electronOpenDevtoolsWindow, electronOpenEditor, electronOpenMainDevtools, ioTraceHubGet, ioTraceHubSetCollecting, ioTraceRecordingChanged, ioTraceRecordingGet, ioTraceRecordingSetEnabled } from '../../../../shared/eventa'
+import { electronOpenDevtoolsWindow, electronOpenEditor, electronOpenMainDevtools, ioTraceHubGet, ioTraceHubSetCollecting, ioTraceRecordingChanged, ioTraceRecordingGet, ioTraceRecordingSetEnabled, perfRecordingChanged, perfRecordingGet, perfRecordingSetEnabled } from '../../../../shared/eventa'
 
 const { t } = useI18n()
 const settings = useSettings()
@@ -22,15 +24,28 @@ const getIOTraceHub = useElectronEventaInvoke(ioTraceHubGet)
 const setIOTraceHubCollecting = useElectronEventaInvoke(ioTraceHubSetCollecting)
 const ioTraceHub = ref<IOTraceHubState>()
 const ioTraceHubBusy = ref(false)
+const getPerfRecording = useElectronEventaInvoke(perfRecordingGet)
+const setPerfRecordingEnabled = useElectronEventaInvoke(perfRecordingSetEnabled)
+const perfRecording = ref<PerfRecordingState>()
+const perfRecordingBusy = ref(false)
+// While AIRI_PERF_RECORD overrides, the toggle stores the choice for the next launch but cannot change this session.
+const perfRecordingEnvControlled = computed(() => perfRecording.value?.source === 'env')
 
 const stopIOTraceRecordingListener = eventaContext.value.on(ioTraceRecordingChanged, (event) => {
   ioTraceRecording.value = event.body
 })
+const stopPerfRecordingListener = eventaContext.value.on(perfRecordingChanged, (event) => {
+  perfRecording.value = event.body
+})
 onMounted(async () => {
   ioTraceRecording.value = await getIOTraceRecording()
   ioTraceHub.value = await getIOTraceHub()
+  perfRecording.value = await getPerfRecording()
 })
-onUnmounted(stopIOTraceRecordingListener)
+onUnmounted(() => {
+  stopIOTraceRecordingListener()
+  stopPerfRecordingListener()
+})
 
 async function updateIOTraceHubCollecting(collecting: boolean | undefined) {
   ioTraceHubBusy.value = true
@@ -49,6 +64,16 @@ async function updateIOTraceRecording(enabled: boolean | undefined) {
   }
   finally {
     ioTraceRecordingBusy.value = false
+  }
+}
+
+async function updatePerfRecording(enabled: boolean | undefined) {
+  perfRecordingBusy.value = true
+  try {
+    perfRecording.value = await setPerfRecordingEnabled({ enabled: enabled === true })
+  }
+  finally {
+    perfRecordingBusy.value = false
   }
 }
 
@@ -255,6 +280,25 @@ const openEditor = useElectronEventaInvoke(electronOpenEditor)
     transition="all ease-in-out duration-250"
     @update:model-value="updateIOTraceRecording"
   />
+  <CheckBar
+    :model-value="perfRecording?.enabled ?? false"
+    :disabled="perfRecording === undefined || perfRecordingBusy || perfRecordingEnvControlled"
+    icon-on="i-solar:graph-up-bold-duotone"
+    icon-off="i-solar:graph-up-line-duotone"
+    text="tamagotchi.settings.devtools.pages.performance-recording.title"
+    :description="perfRecordingEnvControlled
+      ? 'tamagotchi.settings.devtools.pages.performance-recording.env-controlled'
+      : 'tamagotchi.settings.devtools.pages.performance-recording.description'"
+    transition="all ease-in-out duration-250"
+    @update:model-value="updatePerfRecording"
+  />
+  <div
+    v-if="perfRecording"
+    data-testid="perf-recording-directory"
+    :class="['mb-2 px-4', 'break-words text-xs', 'text-neutral-500 dark:text-neutral-400']"
+  >
+    {{ t('tamagotchi.settings.devtools.pages.performance-recording.directory', { directory: perfRecording.directory, buildMode: perfRecording.buildMode }) }}
+  </div>
   <ButtonBar
     :class="['mb-2', 'transition-all duration-250 ease-in-out']"
     icon="i-solar:chart-square-bold-duotone"

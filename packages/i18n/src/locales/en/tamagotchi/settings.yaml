@@ -1253,6 +1253,11 @@ devtools:
       recording:
         title: Record IO traces automatically
         description: Save ended IO spans as JSON Lines in the app data folder so coding agents can analyze them. Files older than seven days are removed.
+    performance-recording:
+      title: Record performance
+      description: Saves CPU, memory and frame timing every 5 seconds for pnpm perf. On by default in development builds.
+      env-controlled: Controlled by AIRI_PERF_RECORD for this session
+      directory: 'Saved to {directory} ({buildMode} build)'
     widgets-calling:
       title: Widget Calling
 

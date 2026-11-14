@@ -210,6 +210,21 @@ describe('perfRecordingService', () => {
     expect(vi.getTimerCount()).toBe(0)
   })
 
+  it('stores a toggle under AIRI_PERF_RECORD but keeps recording as the environment says', async () => {
+    const stored: Array<boolean> = []
+    const { service, fs } = createRecorder({ mode: { dev: true, packaged: false, env: { AIRI_PERF_RECORD: '1' } }, setStoredEnabled: enabled => stored.push(enabled) })
+    await service.restore()
+    const sessionId = service.getState().sessionId
+    const appendsBefore = fs.appends
+
+    const state = await service.setEnabled(false)
+
+    expect(state).toMatchObject({ enabled: true, active: true, sessionId, source: 'env' })
+    expect(stored).toEqual([false])
+    await nextTick(fs)
+    expect(fs.appends).toBe(appendsBefore + 1)
+  })
+
   it('records a pull that never answers as rollup-missing after 1 s and aborts it', async () => {
     let pullSignal: AbortSignal | undefined
     const { service, fs, state, segment } = createRecorder()

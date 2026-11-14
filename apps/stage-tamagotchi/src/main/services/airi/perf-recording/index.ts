@@ -81,16 +81,24 @@ export class PerfRecordingService {
       await this.setEnabled(true, false)
   }
 
-  /** `persist` marks a user toggle: it is stored, and a session it starts records `startedBy: 'toggle'`. */
+  /**
+   * `persist` marks a user toggle: it is stored, and a session it starts records `startedBy: 'toggle'`.
+   *
+   * The stored choice is always written, but the launch precedence still decides what runs: while `AIRI_PERF_RECORD`
+   * overrides, recording follows the environment and the state keeps `source: 'env'`, so the toggle applies at the next
+   * launch without the override.
+   */
   async setEnabled(enabled: boolean, persist = true): Promise<PerfRecordingState> {
     return await this.mutex.runExclusive(async () => {
-      const source = persist ? 'toggle' : this.resolution.source
-      if (enabled)
-        await this.start(source)
+      const resolution = persist
+        ? resolvePerfRecording({ ...this.options.mode, stored: enabled })
+        : { ...this.resolution, enabled }
+      if (resolution.enabled)
+        await this.start(resolution.source)
       else
         await this.stop()
 
-      this.resolution = { ...this.resolution, enabled, source }
+      this.resolution = resolution
       if (persist)
         this.options.setStoredEnabled(enabled)
       const state = this.getState()
