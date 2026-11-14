@@ -3,6 +3,7 @@ import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestur
 import type { NaturalFaceOutput } from '@proj-airi/motion-driver-natural/face'
 import type { NaturalTouchRegion } from '@proj-airi/motion-driver-natural/frame-types'
 import type { IdleBehaviourKind, IdleBehaviourReport, IdleCueKind, NaturalIdleDrive } from '@proj-airi/motion-driver-natural/idle-activities'
+import type { IdleErrandReport } from '@proj-airi/motion-driver-natural/idle-errands'
 import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
 import type { NaturalChatInput, NaturalMotionFrame, NaturalMotionOptions, NaturalMotionPose } from '@proj-airi/motion-driver-natural/natural-motion'
 import type { PostureHome } from '@proj-airi/motion-driver-natural/posture'
@@ -15,6 +16,7 @@ import type { PixiLive2DInternalModel } from './motion-manager'
 import type { Live2DRigProfile, NaturalChannel } from './natural-motion/rig-profile'
 
 import { IdleBehaviourReports } from '@proj-airi/motion-driver-natural/idle-activities'
+import { IdleErrandReports } from '@proj-airi/motion-driver-natural/idle-errands'
 import { NaturalMotion } from '@proj-airi/motion-driver-natural/natural-motion'
 
 type Core = PixiLive2DInternalModel['coreModel']
@@ -201,6 +203,10 @@ export class Live2DNaturalMotionAdapter {
   private readonly idleReports = new IdleBehaviourReports()
   /** Called after a composition in which a self-directed idle behaviour started or ended. */
   onIdleBehaviour: ((report: IdleBehaviourReport) => void) | null = null
+  private readonly errandReports = new IdleErrandReports()
+  private readonly pendingErrandAnswers: { seq: number, outcome: 'done' | 'refused' }[] = []
+  /** Reports each errand Natural's idle draw starts and ends (a pastime), for the host's realiser. */
+  onIdleErrand: ((report: IdleErrandReport) => void) | null = null
   private readonly visibilityChanged = () => {
     this.hidden = this.visibility?.hidden ?? false
     this.frameTime = undefined
@@ -321,6 +327,12 @@ export class Live2DNaturalMotionAdapter {
       this.pendingIdleCues.push(kind)
   }
 
+  /** The realiser's answer to errand `seq`, applied at the next composition while Natural drives the model. */
+  answerIdleErrand(seq: number, outcome: 'done' | 'refused') {
+    if (!this.disposed)
+      this.pendingErrandAnswers.push({ seq, outcome })
+  }
+
   /** Plays one idle behaviour by name, for previews and scripted QA runs; accepted like a cue. */
   idlePlay(kind: IdleBehaviourKind) {
     const { driver, exclusive } = this.attention()
@@ -415,6 +427,10 @@ export class Live2DNaturalMotionAdapter {
       if (active)
         this.controller.idlePlay(kind, this.time)
     }
+    for (const { seq, outcome } of this.pendingErrandAnswers.splice(0)) {
+      if (active)
+        this.controller.answerIdleErrand(seq, outcome, this.time)
+    }
     // Emotions queued while Natural is inactive are stale by the time it resumes.
     for (const emotion of attention.pendingEmotions.splice(0)) {
       if (active)
@@ -446,6 +462,9 @@ export class Live2DNaturalMotionAdapter {
     const idleState = this.controller.idleState
     for (const report of this.idleReports.read(active ? idleState : { seq: idleState.seq, behaviour: null }))
       this.onIdleBehaviour?.(report)
+    // Like a behaviour, an errand in progress counts as ended while Natural does not drive the model.
+    for (const report of active ? this.errandReports.read(this.controller.idleErrand) : this.errandReports.close(this.time))
+      this.onIdleErrand?.(report)
     this.diagnosticFrames++
     this.weightSum += this.weight
     this.physicsOutputSkips += this.physicsOwnedChannels
@@ -509,6 +528,8 @@ export class Live2DNaturalMotionAdapter {
     // The model goes away mid-behaviour: whoever follows the reports still gets its end.
     for (const report of this.idleReports.read({ seq: this.controller.idleState.seq, behaviour: null }))
       this.onIdleBehaviour?.(report)
+    for (const report of this.errandReports.close(this.time))
+      this.onIdleErrand?.(report)
     this.visibility?.removeEventListener('visibilitychange', this.visibilityChanged)
     this.model.updateFocus = this.originalFocus
   }

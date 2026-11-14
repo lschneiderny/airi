@@ -60,11 +60,13 @@ export interface IdleErrandReport {
 export class IdleErrandReports {
   private seq = 0
   private ended = true
+  private latest: IdleErrandRecord | null = null
 
   read(record: IdleErrandRecord | null): IdleErrandReport[] {
     const reports: IdleErrandReport[] = []
     if (record === null)
       return reports
+    this.latest = record
     if (record.seq !== this.seq) {
       this.seq = record.seq
       this.ended = false
@@ -75,5 +77,16 @@ export class IdleErrandReports {
       reports.push({ phase: 'end', errand: record })
     }
     return reports
+  }
+
+  /**
+   * Ends the errand in progress at `at` (`interrupted`) for whoever follows the reports, when the controller stops
+   * driving the model or goes away; the controller's own record is left as it is.
+   */
+  close(at: number): IdleErrandReport[] {
+    if (this.ended || this.latest === null)
+      return []
+    this.ended = true
+    return [{ phase: 'end', errand: { ...this.latest, endedAt: at, outcome: 'interrupted' } }]
   }
 }

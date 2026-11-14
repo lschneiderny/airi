@@ -152,7 +152,8 @@ const { seq, behaviour } = motion.idleState
   with `answerIdleErrand(seq, 'done' | 'refused')`; a refused errand is spent
   and keeps its refractory. Natural ends a pastime when she is spoken to, the
   user leaves or she sleeps. `IdleErrandReports` turns per-frame reads of the
-  record into start and end reports.
+  record into start and end reports, and its `close` ends the errand in
+  progress for the reader when the controller stops driving the model.
 
 [The idle agency ADR](../../docs/ai/adr/2026-11-12-idle-agency.md) records the
 design, the pacing numbers and the rendered Live2D pass.

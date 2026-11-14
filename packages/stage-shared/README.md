@@ -101,7 +101,7 @@ The `expression-performance` entrypoint owns the pure decision layer for charact
 - the settings document schema `ExpressionPerformanceSettingsSchema`, its defaults, and `parseExpressionPerformanceSettings`;
 - reaction strength with bands, habituation, and escalation (`acceptReaction`);
 - the picker and planner deciders, selected by `createDecider`, and the timing-slot scheduler;
-- `decideIdleProp`, the scheduler that lets the character pick up an entry the user marked `idleUse: 'activity'` as a pastime and put it away again, with `idleActivityEntries` and `idleSleepEntryIds` to read the catalog;
+- `choosePastime`, which picks the entry the user marked `idleUse: 'activity'` that she holds when Natural's idle draw starts a pastime (Natural decides when and for how long), with `idleActivityEntries` and `idleSleepEntryIds` to read the catalog;
 - affect traces and their replay (`withAffectTrace`, `parseAffectTrace`, `replayAffectTrace`);
 - character performance profiles (`resolveEffectiveSettings`, `applyMappingWeights`);
 - touch affect (`touchAffect`, `initialTouchAffectMemory`, `MoodDose`), which turns one classified pet or poke into at most one mood dose with cooldowns and habituation. A `touch` affect signal returns its dose in the decision's `moods`, and every other signal returns an empty list. Touch never creates an emotion episode.

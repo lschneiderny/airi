@@ -5,6 +5,7 @@ import type { FaceBaseline } from '@proj-airi/motion-driver-natural/baseline'
 import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
 import type { NaturalMotionObserver, NaturalTouchGesture } from '@proj-airi/motion-driver-natural/frame-types'
 import type { IdleBehaviourKind, IdleBehaviourReport, IdleCueKind, NaturalIdleDrive } from '@proj-airi/motion-driver-natural/idle-activities'
+import type { IdleErrandReport } from '@proj-airi/motion-driver-natural/idle-errands'
 import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
 import type { NaturalChatInput } from '@proj-airi/motion-driver-natural/natural-motion'
 import type { NaturalTouchSample } from '@proj-airi/motion-driver-natural/touch-gestures'
@@ -34,7 +35,7 @@ import { errorMessageFrom } from '@moeru/std'
 import { Point } from '@pixi/math'
 import { NaturalTouchGestures } from '@proj-airi/motion-driver-natural/touch-gestures'
 import { listenBeatSyncBeatSignal } from '@proj-airi/stage-shared/beat-sync'
-import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
+import { defaultExpressionPerformanceSettings, idleActivityEntries } from '@proj-airi/stage-shared/expression-performance'
 import { ambientLightDefaults, ambientLightNeutralEnvironment, ambientLightPerceptualLevel, wholeWindowRectangle } from '@proj-airi/stage-shared/screen-ambient-light'
 import { screenInwardness } from '@proj-airi/stage-shared/stage-placement'
 import { useTheme } from '@proj-airi/ui'
@@ -181,6 +182,8 @@ const emits = defineEmits<{
   (e: 'touch', event: NaturalTouchGesture): void
   /** A self-directed idle behaviour of the Natural driver started or ended. */
   (e: 'idle', report: IdleBehaviourReport): void
+  /** An errand of the Natural driver's idle draw (a pastime) started or ended, for the stage's realiser. */
+  (e: 'errand', report: IdleErrandReport): void
 }>()
 
 const componentState = defineModel<'pending' | 'loading' | 'mounted'>('state', { default: 'pending' })
@@ -719,6 +722,7 @@ async function performModelLoad() {
     // QA reads the yaw bias of the step that just ran, not the one before it.
     naturalAdapter.onPlacementStep = naturalDiagnostics.reportPlacement
     naturalAdapter.onIdleBehaviour = report => emits('idle', report)
+    naturalAdapter.onIdleErrand = report => emits('errand', report)
     naturalAdapter.setPaused(paused.value)
     naturalAdapter.setPerformanceSettings(props.performanceSettings)
     rebuildNaturalMotion = () => {
@@ -728,6 +732,7 @@ async function performModelLoad() {
       naturalMotion = naturalAdapter
       naturalAdapter.onPlacementStep = naturalDiagnostics.reportPlacement
       naturalAdapter.onIdleBehaviour = report => emits('idle', report)
+      naturalAdapter.onIdleErrand = report => emits('errand', report)
       naturalAdapter.setPaused(paused.value)
       naturalAdapter.setPerformanceSettings(props.performanceSettings)
       naturalAdapter.natural.setObserver(naturalCaptureObserver)
@@ -1689,6 +1694,12 @@ function headAnchor() {
   )
 }
 
+/** The drive with pastimes listed while the model offers one; Natural then draws them and the stage shows them. */
+function withPastimes(drive: NaturalIdleDrive): NaturalIdleDrive {
+  const offered = idleActivityEntries(expressionStore.catalog).some(entry => !expressionStore.manualActive.includes(entry.id))
+  return offered ? { ...drive, errands: ['pastime'] } : drive
+}
+
 defineExpose({
   setMotion,
   listMotionGroups,
@@ -1704,9 +1715,12 @@ defineExpose({
   setFaceBaseline: (baseline: FaceBaseline) => naturalMotion?.setFaceBaseline(baseline),
   /**
    * The drive of self-directed idle behaviour; the stage sends it again every second, so a model that loads later
-   * and a changed setting both take effect then. The user's idle-activities setting turns it off here.
+   * and a changed setting both take effect then. The user's idle-activities setting turns it off here. While the model
+   * has an entry the user marked as a pastime and has not switched on, Natural may draw pastimes (`errands`).
    */
-  setIdleDrive: (drive: NaturalIdleDrive | null) => naturalMotion?.setIdleDrive(live2dNaturalIdleActivities.value ? drive : null),
+  setIdleDrive: (drive: NaturalIdleDrive | null) => naturalMotion?.setIdleDrive(live2dNaturalIdleActivities.value && drive ? withPastimes(drive) : null),
+  /** The stage's answer to a pastime Natural started: shown (`done` when put away early) or `refused`. */
+  answerIdleErrand: (seq: number, outcome: 'done' | 'refused') => naturalMotion?.answerIdleErrand(seq, outcome),
   idleCue: (kind: IdleCueKind) => naturalMotion?.idleCue(kind),
   idlePlay: (kind: IdleBehaviourKind) => naturalMotion?.idlePlay(kind),
   /** Executes decider slot commands; lifetimes are owned by the expression store. */

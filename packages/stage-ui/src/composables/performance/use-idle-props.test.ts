@@ -1,9 +1,9 @@
+import type { IdleErrandRecord } from '@proj-airi/motion-driver-natural/idle-errands'
 import type { CatalogEntry } from '@proj-airi/stage-shared/expression-performance'
 
 import type { StageExpressionBackend } from '../../features/performance/expression-backend'
 import type { StageSelfReport } from '../../stores/self'
 
-import { IDLE_PROP_HOLD_MS } from '@proj-airi/stage-shared/expression-performance'
 import { afterEach, describe, expect, it } from 'vitest'
 import { effectScope } from 'vue'
 
@@ -13,13 +13,18 @@ function entry(id: string, patch: Partial<CatalogEntry> = {}): CatalogEntry {
   return { id, label: id, kind: 'prop', group: null, confirmed: true, exposedToLlm: false, mappings: [], fileName: `${id}.exp3.json`, parameterIds: [], ...patch }
 }
 
+function pastime(seq: number, pick = 0): IdleErrandRecord {
+  return { seq, kind: 'pastime', start: seq, end: seq + 120, pick, endedAt: null, outcome: null }
+}
+
 describe('useIdleProps', () => {
   let scope: ReturnType<typeof effectScope> | undefined
   afterEach(() => scope?.stop())
 
   function setup(catalog: CatalogEntry[], withClaims = true) {
-    const state = { nowMs: 0, enabled: true, mode: 'idle' as 'idle' | 'talking', away: false }
+    const state = { nowMs: 0, enabled: true }
     const reports: string[] = []
+    const answers: string[] = []
     const backend: StageExpressionBackend & { idleActive: string[], manualActive: string[] } = {
       catalog,
       modelId: 'model',
@@ -38,53 +43,58 @@ describe('useIdleProps', () => {
     const props = scope.run(() => useIdleProps({
       backend: () => backend,
       enabled: () => state.enabled,
-      performance: () => ({ mode: state.mode, away: state.away }),
       report: (report: StageSelfReport) => reports.push(`${report.activity}:${report.phase}:${report.label}`),
+      answer: (seq, outcome) => answers.push(`${seq}:${outcome}`),
       now: () => state.nowMs,
-      seed: 7,
     }))!
-    /** Ticks once a second until `until` holds or `seconds` passed. */
-    const run = (seconds: number, until: () => boolean = () => false) => {
-      for (let second = 0; second < seconds && !until(); second++) {
+    /** Ticks once a second for `seconds`. */
+    const run = (seconds: number) => {
+      for (let second = 0; second < seconds; second++) {
         state.nowMs += 1000
         props.tick()
       }
     }
-    return { state, backend, reports, props, run }
+    const start = (errand: IdleErrandRecord) => props.onErrand({ phase: 'start', errand })
+    const end = (errand: IdleErrandRecord) => props.onErrand({ phase: 'end', errand: { ...errand, endedAt: errand.end, outcome: 'done' } })
+    return { state, backend, reports, answers, props, run, start, end }
   }
 
-  it('picks a pastime up, tells the situation, and puts it away when its time is up', () => {
-    const { backend, reports, run } = setup([entry('game', { idleUse: 'activity', label: 'handheld' }), entry('glasses')])
-    run(3600, () => backend.idleActive.length > 0)
+  it('holds the pastime Natural starts, tells the situation, and puts it away when Natural ends it', () => {
+    const { backend, reports, answers, run, start, end } = setup([entry('game', { idleUse: 'activity', label: 'handheld' }), entry('glasses')])
+    start(pastime(1))
+    run(30)
     expect(backend.idleActive).toEqual(['game'])
-    expect(reports).toEqual(['prop:start:handheld'])
-    run(IDLE_PROP_HOLD_MS.max / 1000 + 2, () => backend.idleActive.length === 0)
+    end(pastime(1))
     expect(backend.idleActive).toEqual([])
     expect(reports).toEqual(['prop:start:handheld', 'prop:end:handheld'])
+    expect(answers).toEqual([])
   })
 
-  it('puts the pastime away when she is spoken to, and when the user changes her look by hand', () => {
-    const spoken = setup([entry('game', { idleUse: 'activity' })])
-    spoken.run(3600, () => spoken.backend.idleActive.length > 0)
-    spoken.state.mode = 'talking'
-    spoken.run(1)
-    expect(spoken.backend.idleActive).toEqual([])
-    expect(spoken.reports).toEqual(['prop:start:game', 'prop:end:game'])
-    scope?.stop()
+  it('picks a different pastime from the last one while another is offered', () => {
+    const { reports, start, end } = setup([entry('game', { idleUse: 'activity' }), entry('snack', { idleUse: 'activity' })])
+    start(pastime(1, 0))
+    end(pastime(1, 0))
+    start(pastime(2, 0))
+    expect(reports).toEqual(['prop:start:game', 'prop:end:game', 'prop:start:snack'])
+  })
 
-    const changed = setup([entry('game', { idleUse: 'activity' })])
-    changed.run(3600, () => changed.backend.idleActive.length > 0)
+  it('puts the pastime away and answers done when the user changes her look by hand', () => {
+    const { backend, reports, answers, run, start } = setup([entry('game', { idleUse: 'activity' })])
+    start(pastime(1))
     // What the Live2D store does when the user toggles a switch.
-    changed.backend.idleActive = []
-    changed.run(1)
-    expect(changed.reports).toEqual(['prop:start:game', 'prop:end:game'])
-    expect(changed.backend.idleActive).toEqual([])
+    backend.idleActive = []
+    run(1)
+    expect(reports).toEqual(['prop:start:game', 'prop:end:game'])
+    expect(answers).toEqual(['1:done'])
+    expect(backend.idleActive).toEqual([])
   })
 
-  it('takes her sleep entries to bed and puts them away when she wakes', () => {
-    const { backend, reports, props, state, run } = setup([entry('pillow', { idleUse: 'sleep' }), entry('bubble', { idleUse: 'sleep', kind: 'effect' }), entry('game', { idleUse: 'activity' })])
-    state.away = true
+  it('takes her sleep entries to bed, puts the pastime away first, and puts them away when she wakes', () => {
+    const { backend, reports, answers, props, run, start } = setup([entry('pillow', { idleUse: 'sleep' }), entry('bubble', { idleUse: 'sleep', kind: 'effect' }), entry('game', { idleUse: 'activity' })])
+    start(pastime(1))
     props.onIdleBehaviour({ behaviour: 'sleep', phase: 'start' })
+    expect(reports).toEqual(['prop:start:game', 'prop:end:game'])
+    expect(answers).toEqual(['1:done'])
     // Her eyes are still closing.
     run(4)
     expect(backend.idleActive).toEqual([])
@@ -95,35 +105,37 @@ describe('useIdleProps', () => {
     props.onIdleBehaviour({ behaviour: 'sleep', phase: 'end' })
     expect(backend.idleActive).toEqual([])
     // What she sleeps with is part of the sleep the Natural driver already reports.
-    expect(reports).toEqual([])
+    expect(reports).toEqual(['prop:start:game', 'prop:end:game'])
   })
 
-  it('does nothing while idle activities are off, for an entry the user switched on, or on a store without claims', () => {
+  it('refuses the pastime while idle activities are off, for an entry the user switched on, or on a store without claims', () => {
     const off = setup([entry('game', { idleUse: 'activity' }), entry('pillow', { idleUse: 'sleep' })])
     off.state.enabled = false
     off.props.onIdleBehaviour({ behaviour: 'sleep', phase: 'start' })
     off.run(10)
     expect(off.backend.idleActive).toEqual([])
-    off.props.onIdleBehaviour({ behaviour: 'sleep', phase: 'end' })
-    off.run(3600)
-    expect(off.backend.idleActive).toEqual([])
+    off.start(pastime(1))
+    expect(off.answers).toEqual(['1:refused'])
     expect(off.reports).toEqual([])
     scope?.stop()
 
     const manual = setup([entry('game', { idleUse: 'activity' })])
     manual.backend.manualActive = ['game']
-    manual.run(3600)
+    manual.start(pastime(1))
+    expect(manual.answers).toEqual(['1:refused'])
     expect(manual.reports).toEqual([])
     scope?.stop()
 
     const plain = setup([entry('game', { idleUse: 'activity' })], false)
-    plain.run(3600)
+    plain.start(pastime(1))
+    expect(plain.answers).toEqual(['1:refused'])
     expect(plain.reports).toEqual([])
   })
 
   it('clears her claims when the stage goes away', () => {
-    const { backend, run } = setup([entry('game', { idleUse: 'activity' })])
-    run(3600, () => backend.idleActive.length > 0)
+    const { backend, start } = setup([entry('game', { idleUse: 'activity' })])
+    start(pastime(1))
+    expect(backend.idleActive).toEqual(['game'])
     scope?.stop()
     scope = undefined
     expect(backend.idleActive).toEqual([])

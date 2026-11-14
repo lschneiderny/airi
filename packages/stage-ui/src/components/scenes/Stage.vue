@@ -610,8 +610,8 @@ const live2dNaturalSettings = useLive2DNaturalSettings()
 const idleProps = useIdleProps({
   backend: () => stageModelRenderer.value === 'live2d' ? live2dExpressionBackend : undefined,
   enabled: () => live2dMotionDriver.value === 'natural' && live2dNaturalSettings.document.idleActivities && !props.paused,
-  performance: () => performance.value,
   report: entry => stageSelf.report(entry),
+  answer: (seq, outcome) => live2dSceneRef.value?.answerIdleErrand(seq, outcome),
 })
 /** A pastime ends before the sleep that follows it is reported, so the situation closes them in order. */
 function onLive2dIdle(report: IdleBehaviourReport) {
@@ -1091,6 +1091,7 @@ defineExpose({
         @error="handleStageRenderError"
         @touch="onTouch"
         @idle="onLive2dIdle"
+        @errand="idleProps.onErrand"
       />
       <ThreeScene
         v-if="stageModelRenderer === 'vrm' && showStage"

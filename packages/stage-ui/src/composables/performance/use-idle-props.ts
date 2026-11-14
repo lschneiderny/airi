@@ -1,15 +1,15 @@
 import type { IdleBehaviourReport } from '@proj-airi/motion-driver-natural/idle-activities'
-import type { IdlePropMemory } from '@proj-airi/stage-shared/expression-performance'
-import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
+import type { IdleErrandReport } from '@proj-airi/motion-driver-natural/idle-errands'
+import type { IdlePropCandidate, PastimeHistory } from '@proj-airi/stage-shared/expression-performance'
 
 import type { StageExpressionBackend } from '../../features/performance/expression-backend'
 import type { StageSelfReport } from '../../stores/self'
 
-import { decideIdleProp, idleActivityEntries, idleSleepEntryIds, initialIdlePropMemory } from '@proj-airi/stage-shared/expression-performance'
+import { choosePastime, idleActivityEntries, idleSleepEntryIds } from '@proj-airi/stage-shared/expression-performance'
 import { useIntervalFn } from '@vueuse/core'
 import { onScopeDispose } from 'vue'
 
-/** How often the stage asks whether she picks something up or puts it away. */
+/** How often the stage checks that what she holds is still shown and her sleep entries are due. */
 const IDLE_PROPS_TICK_MS = 1000
 /** Her eyes take about 6 s to close; what she sleeps with appears once they are nearly shut. */
 const SLEEP_ENTRIES_DELAY_MS = 5000
@@ -19,65 +19,96 @@ export interface IdlePropsOptions {
   backend: () => StageExpressionBackend | undefined
   /** She may do things on her own: the Natural driver draws her and the user's Idle activities setting is on. */
   enabled: () => boolean
-  performance: () => Pick<PerformanceState, 'mode' | 'away'>
   /** Tells the situation what she picked up and put away. */
   report: (entry: StageSelfReport) => void
+  /** Answers Natural's pastime: `refused` when nothing could be shown, `done` when she put it away before its end. */
+  answer: (seq: number, outcome: 'done' | 'refused') => void
   now?: () => number
-  seed?: number
 }
 
 /**
- * Lets the character use her own expressions unasked, on a model whose store supports it (Live2D).
+ * Realises the pastimes Natural's idle draw starts, with her own expressions, on a model whose store supports it
+ * (Live2D). Natural decides when a pastime starts and ends; this picks which entry she holds and shows it.
  *
- * - An entry the user marked as a pastime is picked up for a few minutes while she is idle or watching, and put away
- *   when its time is up, when she is spoken to, and before she sleeps. `decideIdleProp` owns the timing.
+ * - A pastime start (`onErrand`) shows one entry the user marked as a pastime, chosen by `choosePastime` from
+ *   Natural's `pick`. When nothing can be shown it answers `refused`, and Natural treats the pastime as spent.
+ * - A pastime end puts the entry away. When the user changes her look by hand the store drops her claims; the tick
+ *   sees the entry gone, puts it away and answers `done`. She also puts it away when she starts to sleep.
  * - Entries marked for sleep come on 5 s after she starts to fall asleep, when her eyes are nearly shut, and go off
  *   the moment she wakes.
  * - Both are claims below the slot leases, so an expression the model asks for still shows on top, and above the
- *   user's switches. When the user changes her look by hand the store drops the claims, and the pastime ends here.
- * - Each pastime is reported to the situation as a `prop` activity with the entry's label, so the model is told.
+ *   user's switches. Each pastime is reported to the situation as a `prop` activity with the entry's label.
  *
- * Call `onIdleBehaviour` with each idle behaviour report of the scene; `tick` runs once a second on its own.
+ * Call `onErrand` with each idle errand report of the scene and `onIdleBehaviour` with each behaviour report.
  */
 export function useIdleProps(options: IdlePropsOptions) {
   const now = options.now ?? Date.now
-  const seed = options.seed ?? Math.floor(Math.random() * 0x1_0000_0000)
-  let memory: IdlePropMemory = initialIdlePropMemory
+  let history: PastimeHistory = { lastId: null, heldAtMs: {} }
+  let held: (IdlePropCandidate & { seq: number }) | null = null
   /** When she started to fall asleep, or `null` while she is awake. */
   let asleepSinceMs: number | null = null
 
-  function tick() {
+  function claimable() {
     const backend = options.backend()
-    const enabled = backend?.setIdleClaims !== undefined && options.enabled()
-    const catalog = backend?.catalog ?? []
-    const switchedOn = backend?.manualActive ?? []
-    const held = memory.current
-    // The store drops her claims when the user changes her look by hand; the pastime she held is then over.
-    const revoked = held !== null && !(backend?.idleActive ?? []).includes(held.id)
-    const activities = enabled ? idleActivityEntries(catalog).filter(candidate => !switchedOn.includes(candidate.id) && (!revoked || candidate.id !== held.id)) : []
-    const { mode, away } = options.performance()
-    const nowMs = now()
-    const decision = decideIdleProp(memory, {
-      nowMs,
-      activities,
-      free: enabled && (mode === 'idle' || mode === 'watching') && !away && asleepSinceMs === null,
-      pace: 1,
-      seed,
-    })
-    memory = decision.memory
-    if (decision.ended)
-      options.report({ activity: 'prop', phase: 'end', label: decision.ended.label })
+    return backend?.setIdleClaims !== undefined && options.enabled() ? backend : undefined
+  }
 
-    if (backend?.setIdleClaims) {
-      const pastime = memory.current
-      const applied = backend.setIdleClaims([
-        ...pastime ? [pastime.id] : [],
-        ...enabled && asleepSinceMs !== null && nowMs - asleepSinceMs >= SLEEP_ENTRIES_DELAY_MS ? idleSleepEntryIds(catalog).filter(id => !switchedOn.includes(id)) : [],
-      ])
-      // An entry the store refused is not shown, so it is not told either; the next tick ends it as revoked.
-      if (decision.started && applied.includes(decision.started.id))
-        options.report({ activity: 'prop', phase: 'start', label: decision.started.label })
+  /** Shows what she holds and what she sleeps with, and returns what the store applied. */
+  function applyClaims(): readonly string[] {
+    const backend = options.backend()
+    if (!backend?.setIdleClaims)
+      return []
+    const enabled = options.enabled()
+    const switchedOn = backend.manualActive ?? []
+    const sleeping = enabled && asleepSinceMs !== null && now() - asleepSinceMs >= SLEEP_ENTRIES_DELAY_MS
+    return backend.setIdleClaims([
+      ...held ? [held.id] : [],
+      ...sleeping ? idleSleepEntryIds(backend.catalog).filter(id => !switchedOn.includes(id)) : [],
+    ])
+  }
+
+  function putAway(answer: boolean) {
+    if (!held)
+      return
+    options.report({ activity: 'prop', phase: 'end', label: held.label })
+    if (answer)
+      options.answer(held.seq, 'done')
+    held = null
+  }
+
+  function tick() {
+    // The store drops her claims when the user changes her look by hand; the pastime she held is then over.
+    if (held && !(claimable()?.idleActive ?? []).includes(held.id))
+      putAway(true)
+    applyClaims()
+  }
+
+  /** Follows Natural's pastimes: shows one when it starts, puts it away when it ends. */
+  function onErrand(report: IdleErrandReport) {
+    const { errand } = report
+    if (errand.kind !== 'pastime')
+      return
+    if (report.phase === 'end') {
+      if (held?.seq === errand.seq) {
+        putAway(false)
+        applyClaims()
+      }
+      return
     }
+    const backend = claimable()
+    const switchedOn = backend?.manualActive ?? []
+    const offered = backend ? idleActivityEntries(backend.catalog).filter(candidate => !switchedOn.includes(candidate.id)) : []
+    const nowMs = now()
+    const picked = choosePastime(offered, history, { nowMs, pick: errand.pick })
+    held = picked && { ...picked, seq: errand.seq }
+    // An entry the store refused is not shown, so it is not told either; Natural counts the pastime as spent.
+    if (!picked || !applyClaims().includes(picked.id)) {
+      held = null
+      options.answer(errand.seq, 'refused')
+      return
+    }
+    history = { lastId: picked.id, heldAtMs: { ...history.heldAtMs, [picked.id]: nowMs } }
+    options.report({ activity: 'prop', phase: 'start', label: picked.label })
   }
 
   /** Follows her sleep, so what she takes to bed is on while she sleeps and a pastime ends before it. */
@@ -85,6 +116,9 @@ export function useIdleProps(options: IdlePropsOptions) {
     if (report.behaviour !== 'sleep')
       return
     asleepSinceMs = report.phase === 'start' ? now() : null
+    // The pastime ends before the sleep is reported, so the situation closes them in order.
+    if (report.phase === 'start')
+      putAway(true)
     tick()
   }
 
@@ -93,5 +127,5 @@ export function useIdleProps(options: IdlePropsOptions) {
     options.backend()?.setIdleClaims?.([])
   })
 
-  return { tick, onIdleBehaviour }
+  return { tick, onErrand, onIdleBehaviour }
 }

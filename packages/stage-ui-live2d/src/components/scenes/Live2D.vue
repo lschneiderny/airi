@@ -3,6 +3,7 @@ import type { FaceBaseline } from '@proj-airi/motion-driver-natural/baseline'
 import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
 import type { NaturalTouchGesture } from '@proj-airi/motion-driver-natural/frame-types'
 import type { IdleBehaviourKind, IdleBehaviourReport, IdleCueKind, NaturalIdleDrive } from '@proj-airi/motion-driver-natural/idle-activities'
+import type { IdleErrandReport } from '@proj-airi/motion-driver-natural/idle-errands'
 import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
 import type { PresenceBubbleState } from '@proj-airi/stage-shared'
 import type { ExpressionPerformanceSettings, HoldCommand, MoodDose, SlotCommand } from '@proj-airi/stage-shared/expression-performance'
@@ -76,6 +77,7 @@ const emit = defineEmits<{
   /** A poke or pet the Natural driver reacted to, for consumers such as a future chat reaction. */
   touch: [event: NaturalTouchGesture]
   idle: [report: IdleBehaviourReport]
+  errand: [report: IdleErrandReport]
 }>()
 
 const componentState = defineModel<'pending' | 'loading' | 'mounted'>('state', { default: 'pending' })
@@ -180,6 +182,7 @@ defineExpose({
   setIdleDrive: (drive: NaturalIdleDrive | null) => live2dModelRef.value?.setIdleDrive(drive),
   idleCue: (kind: IdleCueKind) => live2dModelRef.value?.idleCue(kind),
   idlePlay: (kind: IdleBehaviourKind) => live2dModelRef.value?.idlePlay(kind),
+  answerIdleErrand: (seq: number, outcome: 'done' | 'refused') => live2dModelRef.value?.answerIdleErrand(seq, outcome),
   applySlots: (commands: SlotCommand[], now: number) => live2dModelRef.value?.applySlots(commands, now),
   applyHolds: (commands: HoldCommand[], now: number) => live2dModelRef.value?.applyHolds(commands, now),
   onSpeech: (event: SpeechEvent, turnId: string, now: number) => live2dModelRef.value?.onSpeech(event, turnId, now),
@@ -241,6 +244,7 @@ defineExpose({
         @error="emit('error', $event)"
         @touch="emit('touch', $event)"
         @idle="emit('idle', $event)"
+        @errand="emit('errand', $event)"
       />
       <Live2DPresenceBubble
         v-if="app"

@@ -169,7 +169,7 @@ Closed eyes ride on the blink factor while auto-blink is on; while it is off the
 
 A catalog entry can carry `idleUse`: `activity` makes it a pastime she picks up for a few minutes while nobody needs her, such as a game or a snack, and `sleep` keeps it on while she sleeps, such as a pillow. The entry editor of the expression panel offers the choice as "On her own". The default is never.
 
-The expression store holds what she picked as claims of their own (`idleActive`, set with `setIdleClaims`). They outrank the user's switches and yield to slot leases, so an expression the model asks for still shows. Changing a switch by hand drops them. The stage's `useIdleProps` (`@proj-airi/stage-ui`) decides when a pastime starts and ends and tells the situation, so the model knows what she was busy with. It needs the Natural driver and the Idle activities setting.
+The expression store holds what she picked as claims of their own (`idleActive`, set with `setIdleClaims`). They outrank the user's switches and yield to slot leases, so an expression the model asks for still shows. Changing a switch by hand drops them. Natural's idle draw decides when a pastime starts and ends: while the model has an entry marked as a pastime that the user has not switched on, the scene lists `pastime` in the drive's `errands`, the adapter reports each pastime through `onIdleErrand`, and the scene emits it as an `errand` event. The stage's `useIdleProps` (`@proj-airi/stage-ui`) shows the entry, answers through the scene's `answerIdleErrand` when it cannot show one or puts it away early, and tells the situation, so the model knows what she was busy with. It needs the Natural driver and the Idle activities setting.
 
 ### Screen-aware attention
 
