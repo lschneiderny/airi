@@ -9,6 +9,7 @@ The original roadmap lived in an out-of-repository design draft. That draft was 
 - [3D character motion for MMD models](adr/2026-10-30-3d-character-motion.md) (M0 and M1)
 - [Full-screen desktop stage and locomotion](adr/2026-10-31-fullscreen-stage-and-locomotion.md) (M2)
 - [Clip actions for MMD models](adr/2026-11-03-mmd-clip-actions.md) (M3)
+- [Whole-body performer](adr/2026-11-11-whole-body-performer.md) and [body motion quality gate](adr/2026-11-11-body-motion-quality-gate.md) (whole-body performance, below)
 - The motion plans and their drafts: `.omo/plans/mmd-natural-full-body.md`, `.omo/plans/fullscreen-stage-locomotion.md`, `.omo/plans/mmd-actions-library.md`, and `.omo/drafts/mmd-actions-library.md` (the decision list D1 to D10)
 
 The draft's three 3D-only tiers are not recorded in any of these sources, so they are not reproduced here. Luke should reconcile this page with the draft and add the tiers.
@@ -45,6 +46,16 @@ These decisions were taken on 2026-11-02 for M3 and recorded in `.omo/drafts/mmd
 ## Idle agency (2026-11-12)
 
 Outside the milestone order, the [idle agency ADR](adr/2026-11-12-idle-agency.md) added self-directed behaviour to every Natural renderer: idle activities and sleep in `motion-driver-natural`, and for MMD unasked clips ("Idle may use"), visits toward the cursor, and lingering after a walk. On Live2D she can use the rig's own expressions unasked: pastimes such as a game, and what she sleeps with. The M4 window-rect sensor would replace the cursor as the target of a visit. The work is on `luke/feat/idle-agency` and is not visually reviewed.
+
+Since PR 32, Natural's idle draw is the only idle scheduler. It also starts the Live2D pastimes, the MMD unasked clips, and the roam-mode wander, which had their own timers before. Each kept its old rate. The idle agency ADR records what replaced each timer.
+
+## Whole-body performance (2026-11-11 to 2026-11-14)
+
+Outside the milestone order, PR 32 (`luke/feat/natural-mmd-motion`) replaced the MMD body's separate rest pose and weight shift with the [whole-body performer](adr/2026-11-11-whole-body-performer.md) in `motion-driver-humanoid/performance`. One layer stack poses the body for speech gestures, emotions, cues, reactions, idle acts, and the clip-free rest and doze. The walk drives the arms from the trunk's twist, each arm with its own drifting lag, and varies each stride by a sourced amount.
+
+The idle acts include a two-hand clasp, a heel raise on a toe-down foot pitch, an arm-swing finger flick, and a hair tuck sized from ANSUR II. A capability gate keeps Natural from drawing an act that a rig cannot perform. On the test rigs the clasp plays only on Vivian, and the hair tuck only on Chisa.
+
+Headless QA runs the real MMD adapter in Node (`pnpm qa:motion3d`): seeded runs, the [body motion quality gate](adr/2026-11-11-body-motion-quality-gate.md), topic reports, run diffs, clips, a run matrix, and sealed fault injection. Status: feature-complete; motion feel is not tuned yet. The PR body lists the criteria that are not met.
 
 ## Open across milestones
 
