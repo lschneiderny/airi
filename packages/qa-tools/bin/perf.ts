@@ -3,11 +3,15 @@ import process from 'node:process'
 import { homedir } from 'node:os'
 
 import { errorMessageFrom } from '@moeru/std'
+import { readHistoryEvents } from '@proj-airi/cpu-slots'
 
-import { parsePerfArgs, PerfUsageError } from '../src/perf/args'
+import { parsePerfArgs, PERF_HELP, PerfUsageError } from '../src/perf/args'
+import { compareCommits, formatCommitComparison } from '../src/perf/compare'
 import { defaultPerfDirs } from '../src/perf/dirs'
+import { featureReports, formatFeatureReports, usageRollups } from '../src/perf/features'
 import { formatIncident, formatIncidentList, formatSessions, formatSkipped } from '../src/perf/format'
 import { listIncidents, readIncident } from '../src/perf/incident'
+import { markLeaseContention } from '../src/perf/lease'
 import { readPerfData } from '../src/perf/read'
 import { summarizeSessions } from '../src/perf/sessions'
 
@@ -25,8 +29,25 @@ function isPidAlive(pid: number): boolean {
 const print = (text: string) => process.stdout.write(`${text}\n`)
 const note = (text: string | null) => text !== null && process.stderr.write(text.split('\n').map(line => `perf: ${line}\n`).join(''))
 
+/**
+ * Usage rollups of the directories with `leaseContended` set from the cpu-slots history. pnpm runs the root
+ * script from the worktree root, so `process.cwd()` names the worktree whose own leases do not count.
+ */
+async function contendedRollups(dirs: readonly string[]) {
+  const data = await readPerfData(dirs, { isPidAlive })
+  note(formatSkipped(data.files))
+  const history = readHistoryEvents()
+  if (history.malformed > 0)
+    note(`skipped ${history.malformed} malformed cpu-slots history lines`)
+  return markLeaseContention(usageRollups(data), { events: history.events, worktreeRoot: process.cwd(), isPidAlive })
+}
+
 async function main(): Promise<number> {
   const command = parsePerfArgs(process.argv.slice(2), process.env.INIT_CWD ?? process.cwd())
+  if (command.kind === 'help') {
+    print(PERF_HELP)
+    return 0
+  }
   const dirs = command.dirs ?? defaultPerfDirs({ platform: process.platform, env: process.env, homedir: homedir() })
   switch (command.kind) {
     case 'sessions': {
@@ -55,6 +76,18 @@ async function main(): Promise<number> {
         return 2
       }
       print(command.json ? JSON.stringify({ path: found.path, ...found.file }, null, 2) : formatIncident(found.path, found.file))
+      return 0
+    }
+    case 'features': {
+      const lease = await contendedRollups(dirs)
+      const reports = featureReports(lease.rollups, command)
+      print(command.json ? JSON.stringify({ label: 'observational', leaseCells: lease.cells, reports }, null, 2) : formatFeatureReports(reports, lease.cells))
+      return 0
+    }
+    case 'compare': {
+      const lease = await contendedRollups(dirs)
+      const report = compareCommits(lease.rollups, command)
+      print(command.json ? JSON.stringify({ ...report, leaseCells: lease.cells }, null, 2) : formatCommitComparison(report, { a: command.shaA, b: command.shaB }))
       return 0
     }
     default: {
