@@ -1,14 +1,15 @@
-import type { FeatureCompareRollup, FeatureComparison, FeatureComparisonReport, FeatureMetric, FeatureSide, UsageFeatureKey } from '@proj-airi/stage-shared/perf/usage'
+import type { FeatureCompareRollup, FeatureComparison, FeatureComparisonReport, FeatureMetric, FeatureSide, SegmentCell, UsageFeatureKey, UsageHost } from '@proj-airi/stage-shared/perf/usage'
 
 import type { LeaseContention } from './lease'
 import type { PerfData } from './read'
 
 import { compareFeature, FEATURE_MIN_BLOCKS, FEATURE_MIN_DECISIVE_PAIRED_SESSIONS, FEATURE_MIN_PAIRED_SESSIONS, FEATURE_MIN_SESSIONS, FEATURE_MIN_WINDOWS, USAGE_FEATURE_KEYS } from '@proj-airi/stage-shared/perf/usage'
 
-/** One rolled-up segment with its time span, which the lease history join needs. */
-export interface UsageRollup extends FeatureCompareRollup {
-  readonly startedAt: number
-  readonly endedAt: number
+/** One rolled-up segment; its cells' buckets carry the time spans the lease history join needs. */
+export interface UsageRollup {
+  readonly sessionId: string
+  readonly host: UsageHost
+  readonly cells: readonly SegmentCell[]
 }
 
 export interface FeatureOptions {
@@ -33,11 +34,11 @@ export interface FeatureReport extends FeatureComparisonReport {
 /** Every segment with a rollup row; a failed rollup holds no cells. */
 export function usageRollups(data: PerfData): UsageRollup[] {
   return data.segments.flatMap(({ row }) => (row.kind === 'segment-rollup'
-    ? [{ sessionId: row.sessionId, host: row.host, startedAt: row.startedAt, endedAt: row.endedAt, cells: row.cells }]
+    ? [{ sessionId: row.sessionId, host: row.host, cells: row.cells }]
     : []))
 }
 
-function valueCounts(rollups: readonly UsageRollup[], feature: UsageFeatureKey): FeatureValueCount[] {
+function valueCounts(rollups: readonly FeatureCompareRollup[], feature: UsageFeatureKey): FeatureValueCount[] {
   const counts = new Map<string, { value: FeatureSide['value'], cells: number, sessions: Set<string>, windows: number }>()
   for (const rollup of rollups) {
     for (const cell of rollup.cells) {
@@ -55,13 +56,19 @@ function valueCounts(rollups: readonly UsageRollup[], feature: UsageFeatureKey):
   return [...counts.values()].map(count => ({ value: count.value, cells: count.cells, sessions: count.sessions.size, windows: count.windows }))
 }
 
-/** Runs `compareFeature` per requested feature over rollups whose cells already carry `leaseContended`. */
-export function featureReports(rollups: readonly UsageRollup[], options: FeatureOptions): FeatureReport[] {
+/** Runs `compareFeature` per requested feature over rollups whose cells already carry `leaseContended` (`markLeaseContention`). */
+export function featureReports(rollups: readonly FeatureCompareRollup[], options: FeatureOptions): FeatureReport[] {
   const features = options.feature === null ? USAGE_FEATURE_KEYS : [options.feature]
   return features.map(feature => ({
     ...compareFeature({ rollups, feature, metric: options.metric, seed: options.seed }),
     values: valueCounts(rollups, feature),
   }))
+}
+
+/** The lease-history line `features` and `compare` print. */
+export function formatLeaseBuckets(lease: Pick<LeaseContention, 'buckets' | 'keptWindowShare'>): string {
+  const kept = lease.keptWindowShare === null ? 'no windows' : `${Number((lease.keptWindowShare * 100).toFixed(1))}% of windows kept`
+  return `lease history: ${lease.buckets.contended} 5-minute buckets contended, ${lease.buckets.clear} clear, ${lease.buckets.uncovered} not covered; ${kept}`
 }
 
 const number = (value: number | null) => (value === null ? '-' : Number(value.toFixed(3)).toString())
@@ -100,7 +107,7 @@ function formatComparison(report: FeatureReport, comparison: FeatureComparison):
   return lines
 }
 
-export function formatFeatureReports(reports: readonly FeatureReport[], lease: LeaseContention['cells']): string {
+export function formatFeatureReports(reports: readonly FeatureReport[], lease: Pick<LeaseContention, 'buckets' | 'keptWindowShare'>): string {
   const sections = reports.map((report) => {
     const header = `${report.feature} ${report.metric} (observational)`
     const dropped = `  dropped cells: ${report.droppedCells.hostContended} host contended, ${report.droppedCells.leaseContended} lease contended`
@@ -112,7 +119,7 @@ export function formatFeatureReports(reports: readonly FeatureReport[], lease: L
   })
   return [
     ...sections,
-    `lease history: ${lease.contended} cells contended, ${lease.clear} clear, ${lease.uncovered} not covered`,
+    formatLeaseBuckets(lease),
     'Observational: usage sessions are not controlled experiments. The 90% intervals are percentile bootstraps, which under-cover at small sample sizes.',
   ].join('\n\n')
 }

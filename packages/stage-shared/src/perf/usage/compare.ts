@@ -1,5 +1,5 @@
 import type { Interval } from './compare-stats'
-import type { SegmentCell, UsageFeatures, UsageHost } from './records'
+import type { SegmentCell, SegmentCellKey, SegmentCellTotals, UsageFeatures, UsageHost } from './records'
 
 import { aaNoiseFloor, bootstrapMedian, bootstrapMedianDifference, cliffsDelta, excludesZero, median, mulberry32, quantile, signFlipNoiseFloor } from './compare-stats'
 import { USAGE_FEATURE_KEYS } from './records'
@@ -9,7 +9,7 @@ export type FeatureMetric = (typeof FEATURE_METRICS)[number]
 export type UsageFeatureKey = (typeof USAGE_FEATURE_KEYS)[number]
 type FeatureValue = UsageFeatures[UsageFeatureKey]
 
-/** A block is one segment cell with at least this many included windows; its value is the cell's median. */
+/** A block is one segment cell with at least this many included (kept) windows; its value is the cell's median. */
 export const FEATURE_BLOCK_MIN_WINDOWS = 24
 /** Each side needs this many blocks, sessions, and windows before it is compared. */
 export const FEATURE_MIN_BLOCKS = 5
@@ -29,8 +29,11 @@ export const FEATURE_MIN_PAIRED_SESSIONS = 3
  */
 export const FEATURE_MIN_DECISIVE_PAIRED_SESSIONS = 8
 
-/** A segment cell, with `leaseContended` set by readers that know the CPU lease history (`null` when it does not cover the cell). */
-export type FeatureCompareCell = SegmentCell & { readonly leaseContended?: boolean | null }
+/**
+ * A segment cell's totals over the buckets a reader kept (`bucketTotals`), with `leaseContended` set by readers that
+ * know the CPU lease history (`null` when it does not cover every kept bucket).
+ */
+export type FeatureCompareCell = SegmentCellKey & SegmentCellTotals & { readonly leaseContended?: boolean | null }
 
 export interface FeatureCompareRollup {
   readonly sessionId: string
@@ -121,7 +124,7 @@ interface Stratum {
   readonly sides: Map<string, { readonly value: FeatureValue, readonly blocks: Block[] }>
 }
 
-function stratumOf(host: UsageHost, cell: SegmentCell, feature: UsageFeatureKey): FeatureStratum {
+function stratumOf(host: UsageHost, cell: SegmentCellKey, feature: UsageFeatureKey): FeatureStratum {
   const otherFeatures = Object.fromEntries(USAGE_FEATURE_KEYS.filter(key => key !== feature).map(key => [key, cell.features[key]]))
   return {
     platform: host.platform,

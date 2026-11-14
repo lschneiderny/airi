@@ -10,7 +10,7 @@ import { parsePerfArgs, PERF_HELP, PerfUsageError } from '../src/perf/args'
 import { compareBenchRefs, listBenchGroups } from '../src/perf/bench'
 import { compareCommits, formatCommitComparison } from '../src/perf/compare'
 import { defaultPerfDirs } from '../src/perf/dirs'
-import { featureReports, formatFeatureReports, usageRollups } from '../src/perf/features'
+import { featureReports, formatFeatureReports, formatLeaseBuckets, usageRollups } from '../src/perf/features'
 import { formatBenchCompare, formatBenchGroups, formatIncident, formatIncidentList, formatSessions, formatSkipped } from '../src/perf/format'
 import { listIncidents, readIncident } from '../src/perf/incident'
 import { markLeaseContention } from '../src/perf/lease'
@@ -33,7 +33,7 @@ const print = (text: string) => process.stdout.write(`${text}\n`)
 const note = (text: string | null) => text !== null && process.stderr.write(text.split('\n').map(line => `perf: ${line}\n`).join(''))
 
 /**
- * Usage rollups of the directories with `leaseContended` set from the cpu-slots history. pnpm runs the root
+ * Usage rollups of the directories with lease-contended buckets dropped by the cpu-slots history. pnpm runs the root
  * script from the worktree root, so `process.cwd()` names the worktree whose own leases do not count.
  */
 async function contendedRollups(dirs: readonly string[]) {
@@ -114,13 +114,13 @@ async function main(): Promise<number> {
     case 'features': {
       const lease = await contendedRollups(perfDirs(command.dirs))
       const reports = featureReports(lease.rollups, command)
-      print(command.json ? JSON.stringify({ label: 'observational', leaseCells: lease.cells, reports }, null, 2) : formatFeatureReports(reports, lease.cells))
+      print(command.json ? JSON.stringify({ label: 'observational', leaseBuckets: lease.buckets, keptWindowShare: lease.keptWindowShare, reports }, null, 2) : formatFeatureReports(reports, lease))
       return 0
     }
     case 'compare': {
       const lease = await contendedRollups(perfDirs(command.dirs))
       const report = compareCommits(lease.rollups, command)
-      print(command.json ? JSON.stringify({ ...report, leaseCells: lease.cells }, null, 2) : formatCommitComparison(report, { a: command.shaA, b: command.shaB }))
+      print(command.json ? JSON.stringify({ ...report, leaseBuckets: lease.buckets, keptWindowShare: lease.keptWindowShare }, null, 2) : `${formatCommitComparison(report, { a: command.shaA, b: command.shaB })}\n${formatLeaseBuckets(lease)}`)
       return 0
     }
     default: {

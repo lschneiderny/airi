@@ -141,9 +141,9 @@ export function summarizeBenchRun(raw: RawRun, context: BenchRunContext): BenchR
   const histogram = new FixedHistogram(FRAME_BINS_V1)
   let stageSumMs = 0
   let timedStages = false
-  for (const cell of row.cells) {
-    histogram.mergeFrom(cell.frameHist)
-    for (const stage of Object.values(cell.stages ?? {})) {
+  for (const bucket of row.cells.flatMap(cell => cell.buckets)) {
+    histogram.mergeFrom(bucket.frameHist)
+    for (const stage of Object.values(bucket.stages ?? {})) {
       stageSumMs += stage.sumMs
       timedStages = true
     }

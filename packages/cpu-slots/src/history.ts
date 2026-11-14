@@ -1,7 +1,7 @@
 import type { CpuClass } from './classes'
 import type { Decision } from './grant'
 import type { CpuPressure } from './pressure'
-import type { StoreRequest } from './store'
+import type { StoredLease, StoreRequest } from './store'
 
 import process from 'node:process'
 
@@ -13,9 +13,14 @@ import { classes } from './classes'
 
 type WaitReason = Extract<Decision, { kind: 'wait' }>['reason'] | 'queue-ahead' | 'lock-busy' | 'lock-lost' | 'entry-busy' | 'snapshot-failed'
 
+/**
+ * One history line. A `reap` is written by whichever store reclaims a dead holder's lease: its `id`, `class`,
+ * `slots`, `cwd`, `command`, and `pid` are the lease's and its holder's, `heldMs` runs from the grant to the reap, and
+ * `min` and `max` repeat `slots`, because a lease does not keep the range it was requested with.
+ */
 export interface HistoryEvent {
   ts: number
-  event: 'ticket' | 'wait' | 'grant' | 'release' | 'abort' | 'unreadable'
+  event: 'ticket' | 'wait' | 'grant' | 'release' | 'abort' | 'unreadable' | 'reap'
   id: string
   seq: number | null
   class: CpuClass
@@ -64,6 +69,29 @@ export function appendHistory(event: HistoryEvent): void {
   }
   catch (error) {
     console.error(`cpu-slots: history write failed (${String(error)})`)
+  }
+}
+
+/** The `reap` event of a dead holder's lease that a store reclaimed at `ts`. */
+export function reapEvent(lease: StoredLease, budget: number, ts: number): HistoryEvent {
+  return {
+    ts,
+    event: 'reap',
+    id: lease.id,
+    seq: null,
+    class: lease.class,
+    min: lease.slots,
+    max: lease.slots,
+    slots: lease.slots,
+    budget,
+    heldBefore: null,
+    queueAhead: null,
+    waitMs: 0,
+    heldMs: ts - lease.createdAt,
+    lastWaitReason: null,
+    pid: lease.pid,
+    cwd: lease.cwd,
+    command: lease.command,
   }
 }
 
@@ -156,7 +184,7 @@ function isEvent(value: unknown): value is HistoryEvent {
   if (typeof value !== 'object' || value === null)
     return false
   const row = value as Record<string, unknown>
-  return ['ticket', 'wait', 'grant', 'release', 'abort', 'unreadable'].includes(String(row.event))
+  return ['ticket', 'wait', 'grant', 'release', 'abort', 'unreadable', 'reap'].includes(String(row.event))
     && typeof row.class === 'string' && Object.hasOwn(classes, row.class)
     && ['id', 'cwd', 'command'].every(key => typeof row[key] === 'string')
     && ['ts', 'min', 'max', 'slots', 'budget', 'waitMs', 'heldMs', 'pid'].every(key => typeof row[key] === 'number' && Number.isFinite(row[key]))

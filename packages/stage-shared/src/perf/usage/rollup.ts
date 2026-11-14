@@ -1,12 +1,13 @@
-import type { IdentityRecord, PerfRecord, RollupFailedRecord, SampleRecord, SegmentRollupRecord, SessionStartRecord, WindowRollupRecord } from './records'
-import type { SegmentCellKey } from './rollup-cell'
+import type { IdentityRecord, PerfRecord, RollupFailedRecord, SampleRecord, SegmentCellKey, SegmentRollupRecord, SessionStartRecord, WindowRollupRecord } from './records'
+import type { SegmentBucketAccumulator } from './rollup-cell'
 
 import { FRAME_BINS_V1, STAGE_BINS_V1 } from './bins'
 import { FixedHistogram } from './histogram'
-import { PERF_RECORD_VERSION, USAGE_FEATURE_KEYS } from './records'
+import { PERF_RECORD_VERSION, SEGMENT_ROLLUP_VERSION, USAGE_FEATURE_KEYS } from './records'
 import { SegmentCellAccumulator } from './rollup-cell'
 import { RollupExclusions } from './rollup-exclusions'
 
+export { bucketTotals, SEGMENT_BUCKET_MS } from './rollup-cell'
 export { ROLLUP_EVENT_SETTLING_MS, ROLLUP_SESSION_SETTLING_MS } from './rollup-exclusions'
 
 /** A window rollup takes CPU, memory, and contention from the latest sample at most this far from it. */
@@ -40,8 +41,8 @@ interface WindowEntry {
   /** Unknown contention (no sample to join) counts as contended, so it never reaches calm comparisons. */
   readonly hostContended: boolean
   incidents: number
-  /** `undefined` while undecided, then the window's cell, or `null` when excluded or unusable. */
-  cell: SegmentCellAccumulator | null | undefined
+  /** `undefined` while undecided, then the bucket of the window's cell, or `null` when excluded or unusable. */
+  bucket: SegmentBucketAccumulator | null | undefined
 }
 
 function isWellFormed(record: WindowRollupRecord): boolean {
@@ -62,7 +63,8 @@ function isWellFormed(record: WindowRollupRecord): boolean {
  * Excluded windows are counted in `excludedWindows`: hidden, paused, frameless, overlapping the first 60 s after
  * `session-start`, overlapping 20 s from a model load, resume, renderer reload, or new identity epoch, or spanning
  * a suspend..resume gap. A segment after the first starts with its own `session-start`, so its first 60 s are
- * excluded too.
+ * excluded too. Each cell splits its included windows into wall-clock 5-minute buckets by window end
+ * (`SEGMENT_BUCKET_MS`), so readers can drop the buckets another worktree's CPU lease overlapped.
  */
 export class SegmentRollupReducer {
   readonly #sessionId: string
@@ -140,14 +142,15 @@ export class SegmentRollupReducer {
     if (this.#finished)
       throw new SegmentRollupFinishedError()
     this.#finished = true
-    const header = { v: PERF_RECORD_VERSION, t: params.endedAt, sessionId: this.#sessionId } as const
+    const header = { t: params.endedAt, sessionId: this.#sessionId } as const
     const sessionStart = this.#sessionStart
     if (sessionStart === null)
-      return { ...header, kind: 'rollup-failed', segment: this.#segment, reason: 'missing-session-start' }
+      return { v: PERF_RECORD_VERSION, ...header, kind: 'rollup-failed', segment: this.#segment, reason: 'missing-session-start' }
     if (sessionStart.frameBins !== FRAME_BINS_V1.id || sessionStart.stageBins !== STAGE_BINS_V1.id)
-      return { ...header, kind: 'rollup-failed', segment: this.#segment, reason: 'unsupported-bins' }
+      return { v: PERF_RECORD_VERSION, ...header, kind: 'rollup-failed', segment: this.#segment, reason: 'unsupported-bins' }
     this.#decidePending(sessionStart)
     return {
+      v: SEGMENT_ROLLUP_VERSION,
       ...header,
       kind: 'segment-rollup',
       segment: this.#segment,
@@ -192,13 +195,13 @@ export class SegmentRollupReducer {
       workingSetKb: process?.workingSetKb ?? null,
       hostContended: sample?.hostContended ?? true,
       incidents: 0,
-      cell: undefined,
+      bucket: undefined,
     }
     this.#latestEntry.set(record.window, entry)
     this.#pending.push(entry)
   }
 
-  /** Counts an incident toward the cell of its window's latest rollup; incidents of other windows count nowhere. */
+  /** Counts an incident toward the bucket of its window's latest rollup; incidents of other windows count nowhere. */
   #pushIncident(id: string, window: string | undefined): void {
     if (this.#incidentIds.has(id)) {
       this.#unusable += 1
@@ -206,13 +209,13 @@ export class SegmentRollupReducer {
     }
     this.#incidentIds.add(id)
     const entry = window === undefined ? undefined : this.#latestEntry.get(window)
-    if (entry?.cell === undefined) {
+    if (entry?.bucket === undefined) {
       if (entry !== undefined)
         entry.incidents += 1
       return
     }
-    if (entry.cell !== null)
-      entry.cell.incidents += 1
+    if (entry.bucket !== null)
+      entry.bucket.incidents += 1
   }
 
   #decidePending(sessionStart: SessionStartRecord): void {
@@ -223,7 +226,7 @@ export class SegmentRollupReducer {
 
   #decide(entry: WindowEntry, sessionStart: SessionStartRecord): void {
     const { record } = entry
-    entry.cell = null
+    entry.bucket = null
     const identity = this.#identities.get(record.epoch)
     if (identity === undefined) {
       this.#unusable += 1
@@ -238,8 +241,9 @@ export class SegmentRollupReducer {
     const cell = this.#cellFor(entry, identity)
     this.#shares.reset()
     this.#shares.mergeFrom(record.frameHist)
-    cell.add({
+    entry.bucket = cell.add({
       record,
+      startMs: entry.startMs,
       p50FrameMs,
       share21: this.#shares.shareAtLeast(21),
       share36: this.#shares.shareAtLeast(36),
@@ -248,7 +252,6 @@ export class SegmentRollupReducer {
       workingSetKb: entry.workingSetKb,
       incidents: entry.incidents,
     })
-    entry.cell = cell
   }
 
   #cellFor(entry: WindowEntry, identity: IdentityRecord): SegmentCellAccumulator {

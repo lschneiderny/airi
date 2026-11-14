@@ -1,6 +1,4 @@
-import type { FeatureCompareCell, FeatureMetric, FeatureStratum, UsageFeatures } from '@proj-airi/stage-shared/perf/usage'
-
-import type { UsageRollup } from './features'
+import type { FeatureCompareCell, FeatureCompareRollup, FeatureMetric, FeatureStratum, UsageFeatures } from '@proj-airi/stage-shared/perf/usage'
 
 import { FEATURE_METRICS, median } from '@proj-airi/stage-shared/perf/usage'
 
@@ -39,7 +37,7 @@ interface SideCells {
   readonly cells: FeatureCompareCell[]
 }
 
-function resolveSha(rollups: readonly UsageRollup[], prefix: string): string[] {
+function resolveSha(rollups: readonly FeatureCompareRollup[], prefix: string): string[] {
   const lower = prefix.toLowerCase()
   const shas = [...new Set(rollups.flatMap(rollup => rollup.cells.map(cell => cell.sha)))].filter(sha => sha.toLowerCase().startsWith(lower)).sort()
   if (shas.length > 1)
@@ -79,7 +77,7 @@ function sideOf(side: SideCells | undefined): CommitSide {
  * host, devtools, refresh rate and every feature value, and are never pooled. Dirty cells are excluded unless
  * `includeDirty`; host- and lease-contended cells are always excluded.
  */
-export function compareCommits(rollups: readonly UsageRollup[], options: CommitCompareOptions): CommitComparisonReport {
+export function compareCommits(rollups: readonly FeatureCompareRollup[], options: CommitCompareOptions): CommitComparisonReport {
   const resolved = { a: resolveSha(rollups, options.shaA), b: resolveSha(rollups, options.shaB) }
   const excluded = { dirty: 0, hostContended: 0, leaseContended: 0 }
   const strata = new Map<string, { stratum: CommitStratum, a?: SideCells, b?: SideCells }>()

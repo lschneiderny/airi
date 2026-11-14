@@ -24,14 +24,21 @@ import {
   safeParse,
   string,
   tuple,
+  tupleWithRest,
   union,
   variant,
 } from 'valibot'
 
 import { FRAME_BINS_V1, STAGE_BINS_V1 } from './bins'
 
-/** The record format version every line carries. Readers skip and count lines of any other version. */
+/** The format version of every record kind except `segment-rollup`. Readers skip and count lines of any other version. */
 export const PERF_RECORD_VERSION = 1
+/**
+ * The `segment-rollup` format version. Version 2 splits each cell into 5-minute buckets. `parsePerfLine` also reads
+ * a version 1 row, as version 2 with each cell's totals in one bucket spanning the segment: `sessions.jsonl` is
+ * append-only and never rewrites its old rows, so reading them is supported policy, not a temporary fallback.
+ */
+export const SEGMENT_ROLLUP_VERSION = 2
 
 const epochMs = pipe(number(), safeInteger(), minValue(0))
 const count = pipe(number(), safeInteger(), minValue(0))
@@ -209,8 +216,8 @@ const IncidentSchema = object({
   file: relativePerfPath,
 })
 
-/** One group of comparable stage-window rollups in a segment; the fields before `windows` are the group key. */
-const SegmentCellSchema = object({
+/** The fields that group a segment's stage-window rollups into one cell. */
+const cellKey = {
   epoch: count,
   sha: label,
   dirty: nullable(boolean()),
@@ -225,10 +232,14 @@ const SegmentCellSchema = object({
   stageHost: picklist(STAGE_HOSTS),
   devtoolsOpen: boolean(),
   refreshHz: amount,
+}
+
+/** What a cell's included windows add up to. */
+const cellTotals = {
   windows: count,
   frames: count,
   frameHist,
-  /** Quartiles over the cell's windows of each window's headline value; CPU and memory are `null` without a joined sample. */
+  /** Quartiles over the windows of each window's headline value; CPU and memory are `null` without a joined sample. */
   quartiles: object({
     p50FrameMs: QuartilesSchema,
     share21: QuartilesSchema,
@@ -239,11 +250,21 @@ const SegmentCellSchema = object({
   }),
   stages: nullable(StagesSchema),
   incidents: count,
-})
+}
 
-/** Written only to `sessions.jsonl`. */
-const SegmentRollupSchema = object({
-  ...header,
+/**
+ * The windows of a cell that end in one wall-clock 5-minute span (`SEGMENT_BUCKET_MS`). Every window covers
+ * `(start, end]`, and the bucket's `(startMs, endMs]` covers all of its windows, so a window that spans a bucket
+ * boundary stretches its bucket's start back before that boundary.
+ */
+const SegmentBucketSchema = object({ startMs: epochMs, endMs: epochMs, ...cellTotals })
+
+/** One group of comparable stage-window rollups in a segment, with its windows in time order of their buckets. */
+const SegmentCellSchema = object({ ...cellKey, buckets: tupleWithRest([SegmentBucketSchema], SegmentBucketSchema) })
+
+const segmentRollupFields = {
+  t: epochMs,
+  sessionId: label,
   kind: literal('segment-rollup'),
   segment: count,
   startedAt: epochMs,
@@ -251,12 +272,17 @@ const SegmentRollupSchema = object({
   recovered: boolean(),
   malformedLines: count,
   excludedWindows: count,
-  cells: array(SegmentCellSchema),
   recorderMs: amount,
   rawBytes: count,
   host: HostSchema,
   buildMode: picklist(BUILD_MODES),
-})
+}
+
+/** Written only to `sessions.jsonl`. */
+const SegmentRollupSchema = object({ v: literal(SEGMENT_ROLLUP_VERSION), ...segmentRollupFields, cells: array(SegmentCellSchema) })
+
+/** A version 1 row, whose cells carry their totals over the whole segment and no buckets. */
+const SegmentRollupV1Schema = object({ v: literal(1), ...segmentRollupFields, cells: array(object({ ...cellKey, ...cellTotals })) })
 
 /** Written only to `sessions.jsonl`. */
 const RollupFailedSchema = object({
@@ -323,6 +349,11 @@ export type WindowRollupRecord = InferOutput<typeof WindowRollupSchema>
 export type UsageEventRecord = InferOutput<typeof EventSchema>
 export type IncidentRecord = InferOutput<typeof IncidentSchema>
 export type SegmentCell = InferOutput<typeof SegmentCellSchema>
+export type SegmentBucket = InferOutput<typeof SegmentBucketSchema>
+/** The fields that group windows into one cell. */
+export type SegmentCellKey = Omit<SegmentCell, 'buckets'>
+/** What a cell's windows add up to, over one bucket or several (`bucketTotals`). */
+export type SegmentCellTotals = Omit<SegmentBucket, 'startMs' | 'endMs'>
 export type SegmentRollupRecord = InferOutput<typeof SegmentRollupSchema>
 export type RollupFailedRecord = InferOutput<typeof RollupFailedSchema>
 export type BenchRunRecord = InferOutput<typeof BenchRunSchema>
@@ -333,9 +364,22 @@ export type PerfLineParseResult
   = | { ok: true, record: PerfRecord }
     | { ok: false, reason: 'json' | 'schema' | 'version' }
 
+function liftSegmentRollupV1(row: InferOutput<typeof SegmentRollupV1Schema>): SegmentRollupRecord {
+  return {
+    ...row,
+    v: SEGMENT_ROLLUP_VERSION,
+    cells: row.cells.map(({ windows, frames, frameHist, quartiles, stages, incidents, ...key }) => ({
+      ...key,
+      buckets: [{ startMs: row.startedAt, endMs: row.endedAt, windows, frames, frameHist, quartiles, stages, incidents }],
+    })),
+  }
+}
+
 /**
- * Parses one JSONL line. It never throws: unparseable JSON is `json`, a `v` other than
- * {@link PERF_RECORD_VERSION} is `version` (skipped, never migrated), and anything else invalid is `schema`.
+ * Parses one JSONL line. It never throws: unparseable JSON is `json`, a `v` other than its kind's version
+ * ({@link SEGMENT_ROLLUP_VERSION} for `segment-rollup`, {@link PERF_RECORD_VERSION} otherwise) is `version`
+ * (skipped, never migrated), and anything else invalid is `schema`. A version 1 `segment-rollup` row is read as
+ * version 2, each cell one bucket spanning the segment.
  */
 export function parsePerfLine(line: string): PerfLineParseResult {
   let value: unknown
@@ -347,8 +391,15 @@ export function parsePerfLine(line: string): PerfLineParseResult {
       return { ok: false, reason: 'json' }
     throw error
   }
-  if (typeof value === 'object' && value !== null && 'v' in value && value.v !== PERF_RECORD_VERSION)
-    return { ok: false, reason: 'version' }
+  if (typeof value === 'object' && value !== null && 'v' in value) {
+    const isSegmentRollup = 'kind' in value && value.kind === 'segment-rollup'
+    if (isSegmentRollup && value.v === 1) {
+      const legacy = safeParse(SegmentRollupV1Schema, value)
+      return legacy.success ? { ok: true, record: liftSegmentRollupV1(legacy.output) } : { ok: false, reason: 'schema' }
+    }
+    if (value.v !== (isSegmentRollup ? SEGMENT_ROLLUP_VERSION : PERF_RECORD_VERSION))
+      return { ok: false, reason: 'version' }
+  }
   const result = safeParse(PerfRecordSchema, value)
   return result.success ? { ok: true, record: result.output } : { ok: false, reason: 'schema' }
 }
