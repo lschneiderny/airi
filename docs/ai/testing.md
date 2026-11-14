@@ -33,6 +33,7 @@ for what each motion level proves.
 | Any code change before landing | `pnpm verify --gate`. |
 | App runtime code in the paths above | `pnpm verify --gate` and `pnpm qa:display run -- pnpm qa:smoke`. |
 | Visible motion behavior | Branch gate checks, plus the relevant `qa:motion` T3 gate or `qa:app` run, screenshots, and visual inspection. |
+| MMD body motion (`motion-driver-humanoid` performance or locomotion, `stage-ui-mmd` body) | Branch gate checks and `pnpm qa:test:model`. Run each affected scenario with `pnpm qa:motion3d run`; for every scenario the change must not move, run it at the base and the tip and require `pnpm qa:motion3d diff` to print `IDENTICAL`. Judge with `qa:motion3d gate` or the topic report, and review `qa:motion3d clip` output by eye. |
 | Documentation-only change | `pnpm verify`; run documentation-specific checks named by the touched package when applicable. |
 | CPU broker scheduling or pressure policy | The package tests and QA scenarios for the changed rule, using private broker and history stores and pressure fixtures. |
 
