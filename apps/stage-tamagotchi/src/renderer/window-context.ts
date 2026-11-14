@@ -27,6 +27,21 @@ export function resolveInitialRendererRoutePath(routePath: string, hash = global
   return normalizeRoutePath(hashPath || routePath)
 }
 
+/** A window that renders a stage and is sampled for perf recording, by its record label. */
+export type PerfStageWindow = 'stage-main' | 'stage'
+
+/**
+ * The sampled stage window of a renderer's initial route, or null. Settings, devtools and other windows also run the
+ * full Stage runtime, but they render no stage, so they are never sampled.
+ */
+export function resolvePerfStageWindow(routePath: string): PerfStageWindow | null {
+  if (routePath === '/')
+    return 'stage-main'
+  if (routePath === '/stage')
+    return 'stage'
+  return null
+}
+
 /**
  * Resolves renderer ownership from the query that the main process supplies.
  *
