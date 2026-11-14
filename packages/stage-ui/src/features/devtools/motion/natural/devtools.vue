@@ -6,6 +6,7 @@ import EmotionPulses from './components/emotion-pulses.vue'
 import Gestures from './components/gestures.vue'
 import IdleBehaviours from './components/idle-behaviours.vue'
 import PerformanceControls from './components/performance-controls.vue'
+import Review from './components/review.vue'
 import TouchRegions from './components/touch-regions.vue'
 import TraceCapture from './components/trace-capture.vue'
 
@@ -18,6 +19,7 @@ const { t } = useI18n()
       {{ t('tamagotchi.settings.devtools.pages.live2d-natural-motion.main-window-note') }}
     </div>
     <PerformanceControls />
+    <Review />
     <EmotionPulses />
     <Gestures />
     <IdleBehaviours />
