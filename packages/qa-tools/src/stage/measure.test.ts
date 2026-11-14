@@ -154,6 +154,32 @@ describe('measurePairs lease lifecycle', () => {
     expect(readdirSync(join(scratch, 'broker', 'tickets'))).toEqual([])
   })
 
+  it('holds each lease until the run\'s process group has exited, so a dying process cannot pin a released lease', async () => {
+    const calls = new Map<number, number>()
+    const leasesWhileExiting: number[] = []
+    vi.spyOn(processes, 'runGroupMembers').mockImplementation((rootPid) => {
+      const seen = (calls.get(rootPid) ?? 0) + 1
+      calls.set(rootPid, seen)
+      leasesWhileExiting.push(store.snapshot().leases.length)
+      return seen < 3 ? [{ pid: rootPid + 1, state: 'Z' }] : []
+    })
+
+    await measurePairs({
+      repoRoot: scratch,
+      profile: join(scratch, 'profile'),
+      pairs: 1,
+      seconds: 1,
+      settleSeconds: 0,
+      attempts: 1,
+      selfPids: [process.pid],
+      log: () => {},
+      onRun: () => expect(store.snapshot().leases).toEqual([]),
+    })
+
+    expect([...calls.values()]).toEqual([3, 3])
+    expect(leasesWhileExiting).toEqual([1, 1, 1, 1, 1, 1])
+  })
+
   it('balances retained launcher references so the outer gate release removes its lease file', async () => {
     outer = await acquire({ class: 'exclusive', command: 'gate --level t3', cwd: scratch })
     const leaseFile = `${outer.id}.json`
