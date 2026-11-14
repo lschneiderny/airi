@@ -153,7 +153,7 @@ function createRecorder(overrides: Partial<PerfRecordingServiceOptions> = {}) {
     },
     getAppMetrics: () => state.metrics,
     getWindows: () => state.windows,
-    readMachine: async () => ({ load1: 0.5, cores: 8, cpuTimes: [{ user: 1, nice: 0, sys: 1, idle: 8, irq: 0 }], psiText: 'some avg10=1.50 avg60=0.00 avg300=0.00 total=1\n' }),
+    readMachine: async () => ({ load1: 0.5, cores: 8, cpuTimes: [{ user: 1, nice: 0, sys: 1, idle: 8, iowait: 0, irq: 0, softirq: 0, steal: 0 }], psiText: 'some avg10=1.50 avg60=0.00 avg300=0.00 total=1\n' }),
     describeHost: async () => ({
       host: { platform: 'linux', arch: 'x64', cpuModel: 'Test CPU', cores: 8, totalMemKb: 16_000_000, gpu: '10de:2206' },
       appVersion: '0.0.0',

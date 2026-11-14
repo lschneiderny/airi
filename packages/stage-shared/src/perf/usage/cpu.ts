@@ -49,28 +49,51 @@ export class CpuDeltaTracker {
   }
 }
 
-/** The `times` of one `os.cpus()` entry, in milliseconds. */
+/**
+ * Cumulative CPU time counters of one CPU or of the whole machine. On Linux they come from the aggregate `cpu` line
+ * of `/proc/stat` in clock ticks; elsewhere from `os.cpus()` times in milliseconds, which have no `iowait`, `softirq`
+ * or `steal`, so those are 0. Only ratios of deltas are used, so the unit does not matter, but both readings of one
+ * delta must come from the same source.
+ */
 export interface CpuTimes {
   readonly user: number
   readonly nice: number
   readonly sys: number
   readonly idle: number
+  /** Idle time spent waiting on I/O; it counts as idle. */
+  readonly iowait: number
   readonly irq: number
+  readonly softirq: number
+  /** Time a hypervisor gave to another guest; it counts as busy. */
+  readonly steal: number
 }
 
 function sumTimes(times: readonly CpuTimes[]): { busy: number, total: number } {
   let busy = 0
   let idle = 0
   for (const time of times) {
-    busy += time.user + time.nice + time.sys + time.irq
-    idle += time.idle
+    busy += time.user + time.nice + time.sys + time.irq + time.softirq + time.steal
+    idle += time.idle + time.iowait
   }
   return { busy, total: busy + idle }
 }
 
 /**
+ * Reads the aggregate `cpu` line of `/proc/stat`; `null` when it is missing or has fewer than eight numeric counters.
+ * `guest` and `guest_nice` are left out because the kernel already counts them in `user` and `nice`.
+ */
+export function parseProcStatCpu(text: string): CpuTimes | null {
+  const match = /^cpu (.*)$/m.exec(text)
+  const counters = match ? match[1].trim().split(/\s+/).map(Number) : []
+  if (counters.length < 8 || !counters.slice(0, 8).every(Number.isFinite))
+    return null
+  const [user, nice, sys, idle, iowait, irq, softirq, steal] = counters
+  return { user, nice, sys, idle, iowait, irq, softirq, steal }
+}
+
+/**
  * Percentage of the whole machine's CPU (0 to 100) that something other than the app used between two
- * `os.cpus()` readings. `appCpuPctOfCoreSum` is the sum of the app's per-process percentages of one core.
+ * {@link CpuTimes} readings. `appCpuPctOfCoreSum` is the sum of the app's per-process percentages of one core.
  *
  * Only processes in `app.getAppMetrics()` count as the app, so AIRI's own child processes outside it,
  * such as MCP servers and the computer-use daemon, count as external. Returns 0 when the counters did not advance.

@@ -1,3 +1,7 @@
+import type { CpuInfo } from 'node:os'
+
+import type { CpuTimes } from '@proj-airi/stage-shared/perf/usage'
+
 import type { PerfHostDescription, PerfRecordingServiceOptions, PerfWindowSource } from '.'
 import type { PerfExec } from './identity'
 import type { PerfMachineReading } from './sample'
@@ -13,6 +17,7 @@ import { promisify } from 'node:util'
 
 import { useLogg } from '@guiiai/logg'
 import { defineInvoke } from '@moeru/eventa'
+import { parseProcStatCpu } from '@proj-airi/stage-shared/perf/usage'
 import { abbreviatedSha, branch, sha } from '~build/git'
 import { app, BrowserWindow, contentTracing, powerMonitor, screen } from 'electron'
 import { array, boolean, number, object, optional, safeParse } from 'valibot'
@@ -64,14 +69,23 @@ async function readPsi(): Promise<string | null> {
   }
 }
 
+/**
+ * On Linux the aggregate `/proc/stat` line, because `os.cpus()` leaves iowait out of its times there and so
+ * overstates how busy an I/O-bound machine is. Elsewhere the `os.cpus()` times.
+ */
+async function readCpuTimes(cores: readonly CpuInfo[]): Promise<CpuTimes[]> {
+  if (platform() !== 'linux')
+    return cores.map(core => ({ ...core.times, iowait: 0, softirq: 0, steal: 0 }))
+  const times = parseProcStatCpu(await readFile('/proc/stat', 'utf8'))
+  if (!times)
+    throw new Error('/proc/stat has no aggregate cpu line')
+  return [times]
+}
+
 async function readMachine(): Promise<PerfMachineReading> {
   const cores = cpus()
-  return {
-    load1: loadavg()[0],
-    cores: cores.length,
-    cpuTimes: cores.map(core => core.times),
-    psiText: platform() === 'linux' ? await readPsi() : null,
-  }
+  const [cpuTimes, psiText] = await Promise.all([readCpuTimes(cores), platform() === 'linux' ? readPsi() : null])
+  return { load1: loadavg()[0], cores: cores.length, cpuTimes, psiText }
 }
 
 const GpuInfoSchema = object({

@@ -9,6 +9,7 @@ import {
   HOST_CONTENDED_LOAD_PER_CORE,
   HOST_CONTENDED_PSI_SOME_AVG10,
   machineExternalCpuPct,
+  parseProcStatCpu,
   parsePsiCpu,
   processRole,
 } from './cpu'
@@ -69,8 +70,28 @@ describe('cpuDeltaTracker', () => {
 })
 
 function cpus(count: number, busyMs: number, idleMs: number): CpuTimes[] {
-  return Array.from({ length: count }, () => ({ user: busyMs, nice: 0, sys: 0, idle: idleMs, irq: 0 }))
+  return Array.from({ length: count }, () => ({ ...times({}), user: busyMs, idle: idleMs }))
 }
+
+function times(overrides: Partial<CpuTimes>): CpuTimes {
+  return { user: 0, nice: 0, sys: 0, idle: 0, iowait: 0, irq: 0, softirq: 0, steal: 0, ...overrides }
+}
+
+describe('parseProcStatCpu', () => {
+  it('reads the aggregate cpu line rather than a per-core line', () => {
+    const text = 'cpu0 2000 50 600 8000 300 20 30 4 0 0\ncpu  4705 150 1120 16250 520 30 45 7 11 0\nintr 12 0\n'
+
+    expect(parseProcStatCpu(text)).toEqual({ user: 4705, nice: 150, sys: 1120, idle: 16250, iowait: 520, irq: 30, softirq: 45, steal: 7 })
+  })
+
+  it.each([
+    ['no aggregate line', 'cpu0 1 2 3 4 5 6 7 8\nintr 1\n'],
+    ['fewer than eight counters', 'cpu  1 2 3 4 5 6 7\n'],
+    ['a non-numeric counter', 'cpu  1 2 x 4 5 6 7 8\n'],
+  ])('returns null for %s', (_name, text) => {
+    expect(parseProcStatCpu(text)).toBeNull()
+  })
+})
 
 describe('machineExternalCpuPct', () => {
   it('subtracts the app share of the machine from machine busy time', () => {
@@ -78,6 +99,16 @@ describe('machineExternalCpuPct', () => {
     const external = machineExternalCpuPct({ prevTimes: cpus(4, 0, 0), nowTimes: cpus(4, 500, 500), appCpuPctOfCoreSum: 80, cores: 4 })
 
     expect(external).toBe(30)
+  })
+
+  it.each([
+    // 10% busy while the cores waited on I/O for half of the window: iowait is idle time.
+    ['an iowait-heavy delta', times({ user: 60, sys: 40, idle: 400, iowait: 500 }), 10],
+    // Softirq and steal are time the cores were not available to anything else.
+    ['softirq and steal', times({ user: 200, softirq: 100, steal: 100, idle: 600 }), 40],
+    ['a busy delta', times({ user: 700, nice: 50, sys: 100, irq: 20, softirq: 30, idle: 80, iowait: 20 }), 90],
+  ])('counts machine busy time correctly for %s', (_name, now, expected) => {
+    expect(machineExternalCpuPct({ prevTimes: [times({})], nowTimes: [now], appCpuPctOfCoreSum: 0, cores: 1 })).toBeCloseTo(expected, 10)
   })
 
   it('clamps to 0 when the app accounts for more than the machine measured', () => {
