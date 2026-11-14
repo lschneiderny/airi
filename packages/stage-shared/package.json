@@ -29,6 +29,7 @@
     "./motion-scenario": "./src/motion-scenario/index.ts",
     "./motion-scenario/flag": "./src/motion-scenario/flag.ts",
     "./perf/io-trace": "./src/perf/io-trace.ts",
+    "./perf/usage": "./src/perf/usage/index.ts",
     "./performance-state": "./src/performance-state/index.ts",
     "./host-capabilities": "./src/host-capabilities/index.ts",
     "./plugin-host": "./src/plugin-host.ts",
