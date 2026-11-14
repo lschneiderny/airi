@@ -1,4 +1,7 @@
 export * from './bins'
+export * from './compare'
+export * from './compare-bench'
+export * from './compare-stats'
 export * from './cpu'
 export * from './histogram'
 export * from './incidents'
