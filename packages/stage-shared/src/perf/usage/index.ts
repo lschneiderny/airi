@@ -1,5 +1,7 @@
 export * from './bins'
 export * from './cpu'
 export * from './histogram'
+export * from './incidents'
 export * from './privacy'
 export * from './records'
+export * from './rollup'
