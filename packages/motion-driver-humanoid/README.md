@@ -39,12 +39,12 @@ deterministic motion algorithms for reusable character motion drivers.
   the legs while it goes forward; a rig that cannot reach the anchor rocks with
   hanging hands. A heel raise (4e act 11) lifts the pelvis 0.012 L and turns
   both feet toe-down 14 degrees through their `FootPitch` channels, which the
-  host's foot stage turns about each ball, two or three times. Natural weighs
-  `hair-touch` 0, so its form stays in the layer, unplayed. The hair touch reads as a
-  salute, and architecture 4e's form is out of reach: 6.3's temple anchor,
-  marched from the side of the head, solves on Chisa only, and her arm sweeps
-  at most 0.04 A of the 0.10 A back inside its joint limits; Ellen's arms reach
-  the side of her head at no height. A
+  host's foot stage turns about each ball, two or three times. A hair tuck
+  (4e act 8) asks the gesture layer for `hair-touch` from 0.1 s, the cupped
+  fingertips at the side of the head at the tragion, then for `hair-sweep` from
+  0.8 s, one ear breadth further back, which the arm reaches from the held touch
+  without going home, and lets go 0.9 s before the end; the head tilts 4 degrees
+  toward the hand. A
   stretch's elbows fold to bring each hand along the straight line from where
   it hangs to where it reaches (Morasso 1981), the far arm 120 ms behind, fed
   through the relaxed arm followers' inverse (`followerInverse` with `used` 0);
@@ -703,6 +703,22 @@ states: Vivian's arms reach it; on Chisa and Ellen no key at that height
 clears their body proxies inside the limits, so their hands hang. The
 proportional proxies of the fixture rigs reach it. A refused form is not
 searched again.
+The hair tuck's two keys (4e act 8) put the fingertips, not the wrist, on the
+side of the head: the hand's end, a hand length from the wrist along the hand
+as the wrist bends it, the palm toward the head (Moore 1985: "running her palm
+along the surface of her hair"). The anchor is 6.3's temple seed, the head bone
+pushed sideways and marched in, at the tragion's height; the sweep goes one ear
+breadth back. ANSUR II's women give the sizes, scaled by the widest span of the
+head proxies across the head bone against the head breadth (14.78 cm): the
+tragion 12.65 cm under the top of the head, the ear 3.32 cm broad. Each key
+tries the wrist a hand length from the fingertips in 600 directions, solves the
+arm to it, and turns pronation and palmar flexion so the hand ends at the
+fingertips; the first back-off step with a key clear of the proxies inside the
+limits wins, the touch by limit margin and the sweep by the smallest joint
+change from the touch. `capabilities.hairTouch` holds when both sides have head
+clearance, 4e's precondition, and both arms reach both keys; without head
+clearance the keys are not searched. On the real rigs all three arms reach
+both keys; Chisa has head clearance and tucks, Ellen and Vivian do not.
 Each lead stroke also nods the head (the speech head beat, MMD only): neck
 and head pitch down together by 3 degrees for a major stroke (Graf et al. 2002,
 about 3 to 5 degrees per accent nod), 0.6 of that for a minor stroke, 0.6 more

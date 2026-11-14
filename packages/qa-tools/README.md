@@ -318,11 +318,12 @@ repeated cycle".
 
 Under `qa-neutral-day` (`body: true` since rules amendment 9) ten kinds are
 drawable while she stands (look-around, check-in, peer, zone-out, stretch,
-yawn, sigh, shoulder-roll, arm-swing, shift-stance; clasp-hands as an eleventh
-on a rig whose arms reach its anchor, which Chisa's and Ellen's do not) and six
-once she has settled after 120 s (look-around, check-in, zone-out, yawn, sigh,
-shift-stance). Nod-off and sway weigh 0, and so do hair-touch and, at its
-valence of 0, heel-rock. On a body host the draw prefers kinds not started in
+yawn, sigh, shoulder-roll, arm-swing, shift-stance; clasp-hands on a rig whose
+arms reach its anchor, which Chisa's and Ellen's do not, and hair-touch on a rig
+with the `hairTouch` capability, which Chisa has and Ellen and Vivian do not)
+and six once she has settled after 120 s (look-around, check-in, zone-out,
+yawn, sigh, shift-stance). Nod-off and sway weigh 0, and so does heel-rock at
+its valence of 0. On a body host the draw prefers kinds not started in
 the last 300 s. The scheduler alone, under the QA drive for 610 s on 10,000
 seeds, drew six distinct kinds that start in the scored span and end in 48.2 %
 of runs (idle unit I and its review, before clasp-hands was drawn); a

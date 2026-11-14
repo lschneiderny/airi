@@ -63,6 +63,13 @@ const NO_STEPS: readonly BodyFootStep[] = []
  * reach and release times are the layer's.
  */
 const CLASP = { reach: 0.1, firstOff: 1.5, lastOff: 1.1, rock: 0.012, rocks: [2, 4], band: 0.35, ease: 0.6 } as const
+/**
+ * Architecture 4e act 8, the hair tuck: the hand reaches the tuck's anchor from 0.1 s (`hair-touch`), sweeps back from
+ * 0.8 s (`hair-sweep`) and lets go 0.9 s before the end, as the temple reach did. 0.7 s is the longest rise the
+ * gesture layer plans, (0.25 + 0.35) / 0.85 s for a hand travelling one arm length at the slowest tempo, so the sweep
+ * starts from the anchor. 4e sets the anchor, the sweep and the tilt; the times are the layer's.
+ */
+const TUCK = { reach: 0.1, sweep: 0.8, off: 0.9 } as const
 /** Architecture 4e act 7's finger flick: `open` for 0.15 s at each forward peak of the swing. */
 const FLICK = 0.15
 const SWING_PEAK = Math.atan(Math.SQRT2) / Math.PI
@@ -496,11 +503,12 @@ export function createActLayer(): PerformanceLayer {
         break
       }
       case 'hair-touch': {
-        // 4e act 8: hand to the temple, head tilted 4 deg toward it. Natural weighs it 0: it reads as a salute, and 6.3's
-        // side-marched temple anchor solves on Chisa only, whose arm sweeps 0.04 of 4e's 0.10 A inside her limits
-        // (E/g4/i/probe-temple-sweep.txt).
-        if (age >= 0.1 && age < D - 0.9)
+        // 4e act 8: the hand rises to the side of the head with the fingers at `cup`, sweeps back and returns (`TUCK`),
+        // the head tilted 4 deg toward it. A rig whose arm cannot reach the anchor keeps its hand hanging (6.3).
+        if (age >= TUCK.reach && age < TUCK.sweep)
           reach('hair-touch', sideOf(s))
+        else if (age >= TUCK.sweep && age < D - TUCK.off)
+          reach('hair-sweep', sideOf(s))
         head(0, 0, 4 * s * trapezoid(age, 0.6, D - 1.5, 0.9))
         break
       }

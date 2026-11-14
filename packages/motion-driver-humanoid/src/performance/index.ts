@@ -1,5 +1,5 @@
 import type { Vec3 } from '../types'
-import type { BodyPerformanceFrame, BodyPerformanceInput, BodyRigTraits } from './contracts'
+import type { BodyArmForm, BodyPerformanceFrame, BodyPerformanceInput, BodyRigTraits } from './contracts'
 import type { PerformanceContext, PerformanceLayer } from './stack'
 
 import { createLagChain } from '../dynamics'
@@ -94,8 +94,11 @@ class BodyPerformer {
     this.degrade(rest)
     const collision = new BodyCollision(traits, rest)
     const keys = new GestureKeys(traits, rest)
-    const clasp = SIDES.every(side => keys.armForm(side, 'clasp', Float64Array.from(rest.subarray(ARM_START[side], ARM_START[side] + 26))))
-    const capabilities = { ...collision.capabilities, clasp }
+    const reaches = (form: BodyArmForm) => SIDES.every(side => keys.armForm(side, form, Float64Array.from(rest.subarray(ARM_START[side], ARM_START[side] + 26))))
+    const clasp = reaches('clasp')
+    // 4e act 8 requires head clearance; a rig without it on both sides does not tuck, so its keys are not searched.
+    const hairTouch = SIDES.every(side => collision.capabilities.headClearance[side]) && reaches('hair-sweep')
+    const capabilities = { ...collision.capabilities, clasp, hairTouch }
     const stack = new PerformanceStack(this.options.layers ?? [])
     const frame: MutableFrame = {
       tick: 0,

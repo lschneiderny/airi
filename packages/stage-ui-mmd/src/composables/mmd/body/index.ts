@@ -35,8 +35,9 @@ export type { MMDBodyEvent } from './performer'
 
 /**
  * The whole-body idle kinds this rig cannot perform, for `NaturalIdleDrive.unreachable`: the clasp without the `clasp`
- * capability, and the hair touch without head clearance on either side (4e act 8's precondition). The scene and the
- * headless runner hand Natural the same list, so neither draws an act that would show nothing.
+ * capability, and the hair touch without `hairTouch` (head clearance on both sides, 4e act 8's precondition, and the
+ * tuck's keys in reach). The scene and the headless runner hand Natural the same list, so neither draws an act that
+ * would show nothing.
  */
 export function idleKindsOutOfReach(capabilities: BodyCapabilities | null): readonly IdleBodyKind[] {
   if (!capabilities)
@@ -44,7 +45,7 @@ export function idleKindsOutOfReach(capabilities: BodyCapabilities | null): read
   const kinds: IdleBodyKind[] = []
   if (!capabilities.clasp)
     kinds.push('clasp-hands')
-  if (!capabilities.headClearance.left && !capabilities.headClearance.right)
+  if (!capabilities.hairTouch)
     kinds.push('hair-touch')
   return kinds
 }

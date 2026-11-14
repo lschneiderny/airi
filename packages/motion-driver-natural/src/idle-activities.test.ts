@@ -71,22 +71,22 @@ describe('idle activity odds', () => {
       expect([live2d[kind], idleActivityWeights({ ...neutralDrive, valence: 0.5 }, { watching: false })[kind]], kind).toEqual([0, 0])
     for (const kind of bodyKinds)
       expect(mmd[kind], kind).toBeGreaterThan(0)
-    // Each takes its 4e act weight: the stance shift 1.2 (act 3), the clasp 0.7 (act 6), and the heel raise 0 unless
-    // valence is above 0.3, then 0.8 (act 11).
+    // Each takes its 4e act weight: the stance shift 1.2 (act 3), the clasp 0.7 (act 6), the hair tuck 0.5 (act 8), and
+    // the heel raise 0 unless valence is above 0.3, then 0.8 (act 11).
     expect(mmd['shift-stance']).toBe(1.2)
     expect(mmd['clasp-hands']).toBe(0.7)
+    expect([mmd['hair-touch'], bright['hair-touch']]).toEqual([0.5, 0.5])
     expect([mmd['heel-rock'], bright['heel-rock']]).toEqual([0, 0.8])
-    // The hair touch's form does not read on the mesh, so it weighs 0 on a body host too, in any mood.
-    expect([mmd['hair-touch'], bright['hair-touch']]).toEqual([0, 0])
   })
 
   it('never draws a whole-body kind the host\'s body cannot perform, and leaves the others as they were', () => {
     const body = { ...neutralDrive, body: true }
     const all = idleActivityWeights(body, { watching: false })
-    const limited = idleActivityWeights({ ...body, unreachable: ['clasp-hands'] }, { watching: false })
+    const limited = idleActivityWeights({ ...body, unreachable: ['clasp-hands', 'hair-touch'] }, { watching: false })
     expect(all['clasp-hands']).toBeGreaterThan(0)
-    expect(limited['clasp-hands']).toBe(0)
-    expect({ ...limited, 'clasp-hands': all['clasp-hands'] }).toEqual(all)
+    expect(all['hair-touch']).toBeGreaterThan(0)
+    expect([limited['clasp-hands'], limited['hair-touch']]).toEqual([0, 0])
+    expect({ ...limited, 'clasp-hands': all['clasp-hands'], 'hair-touch': all['hair-touch'] }).toEqual(all)
   })
 
   it('starts nothing that needs her arms or a standing posture while she is settled in', () => {

@@ -116,11 +116,12 @@ const { seq, behaviour } = motion.idleState
   `clasp-hands` takes 4e's weight 0.7: the MMD body clasps both hands at the
   front-low anchor and rocks. A host lists the whole-body kinds its body cannot
   perform in the drive's `unreachable` (the MMD scene: the clasp on a rig whose
-  arms cannot reach that anchor), and those weigh 0. `heel-rock` takes 4e's weight: 0 unless valence is
+  arms cannot reach that anchor, the hair tuck on a rig without the tuck), and
+  those weigh 0. `heel-rock` takes 4e's weight: 0 unless valence is
   above 0.3, then 0.8; the MMD body rises onto the balls of its feet.
-  `hair-touch` weighs 0 with `body` too, until its form reads on the MMD mesh:
-  it reads as a salute while 4e's temple sweep is out of reach of both rigs'
-  arms inside their joint limits. While
+  `hair-touch` takes 4e's weight 0.5 (refractory 300 s): the MMD body tucks
+  its hair on a rig with head clearance whose arms reach the tuck (the MMD scene
+  lists it in `unreachable` elsewhere). While
   she is settled in, nothing that needs her arms, her shoulders or a standing
   posture is drawn (`stretch`, `peer`, `shoulder-roll`, `arm-swing` and the
   three above), and a stretch that would follow a long sleep becomes a yawn. The

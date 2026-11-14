@@ -627,6 +627,8 @@ class GesturePerformer {
    * Holds the requested arm form. A two-hand form (`both`) starts only when both arms are free and both keys solve,
    * and both arms travel for the longer of their two preparations, so the hands meet together. A request for one side
    * of a held two-hand form lets the other hand go and keeps that one where it is (4e act 6: one hand releases first).
+   * A form that follows another (`after`: the hair tuck's sweep) is reached from that form's held key without going
+   * home, and never starts on its own.
    */
   private performArmForm(context: PerformanceContext, now: number): void {
     const request = context.plan.armForm
@@ -638,6 +640,9 @@ class GesturePerformer {
         this.retractTrack(other, now)
       this.armForm = { side: request.side, form: request.form }
     }
+    else if (held && request && held.side !== 'both' && request.side === held.side && ARM_FORMS[request.form].after === held.form && this.followOn(held.side, request.form, context, now)) {
+      this.armForm = { side: request.side, form: request.form }
+    }
     else if (held && (!request || request.side !== held.side || request.form !== held.form)) {
       for (const side of sidesOf(held.side)) {
         const track = this.tracks[side]
@@ -646,7 +651,7 @@ class GesturePerformer {
       }
       this.armForm = null
     }
-    if (!request || this.armForm || !this.keys)
+    if (!request || this.armForm || !this.keys || ARM_FORMS[request.form].after)
       return
     const sides = sidesOf(request.side)
     if (!sides.every(side => this.free(side, context.input, context)))
@@ -669,6 +674,22 @@ class GesturePerformer {
       track.phaseEnd = Infinity
     }
     this.armForm = { side: request.side, form: request.form }
+  }
+
+  /** Moves a held form's arm on to `form`'s key from wherever its plan is; false when the arm is not holding or the key does not solve. */
+  private followOn(side: BodySide, form: BodyArmForm, context: PerformanceContext, now: number): boolean {
+    const track = this.tracks[side]
+    if (track.state !== 'form' || !this.keys)
+      return false
+    const key = track.key.slice()
+    writeHandShape(ARM_FORMS[form].shape, key)
+    if (!this.keys.armForm(side, form, key))
+      return false
+    const travel = this.travel(side, track.key, key)
+    track.key.set(key)
+    track.release(track.key, now, (0.25 + 0.35 * travel) / gestureTempo(context.input.energy.level), this.tension)
+    track.form = form
+    return true
   }
 
   private startUnit(context: PerformanceContext, now: number): void {

@@ -1,3 +1,4 @@
+import type { Vec3 } from '../types'
 import type { ArmKey } from './arm-key'
 import type { BodySide } from './channels'
 import type { BodyArmForm, BodyGestureForm, BodyRigTraits } from './contracts'
@@ -67,14 +68,22 @@ export const GESTURE_FORMS: Readonly<Record<SpeechGestureForm, GestureFormSpec>>
  * anchor places, one hand breadth below the top of the hands: 7.82 / 78.27 = 0.100 L under the waist, so
  * (98.01 - 84.54 - 7.82) / 78.27 = 0.072 L above the hip joints (`FRONT_LOW_HEIGHT`). The seed keeps the hips' midline and depth, and a rig without leg joints has no clasp height, so it does
  * not clasp. As 6.3 states, a rig that cannot reach the anchor does not clasp: its hands hang.
+ *
+ * The hair tuck (4e act 8) is two keys on one arm: `hair-touch`, the cupped fingertips at the side of the head at the
+ * tragion, and `hair-sweep`, the same height one ear breadth further back, which the gesture layer reaches from the
+ * held `hair-touch` without going home (`after`). Moore 1985 (Ethology and Sociobiology 6(4):237-247) observed the
+ * gesture as "raising one hand and pushing her fingers through her hair or running her palm along the surface of her
+ * hair"; the row puts the hand where the tuck lays the hair behind the ear, the side of the head behind the brow line.
+ * The contact is the fingertips (`TUCK`), not the wrist the other forms place, and the solve turns and bends the hand
+ * at the wrist so that they reach it with the palm toward the head (`bentHand`), in place of the forms' fixed
+ * pronation and flexion.
  */
-export const ARM_FORMS: Readonly<Record<BodyArmForm, { readonly shape: HandShape, readonly pron: number, readonly wflex: number, readonly swivel: number, readonly short: number, readonly seed: 'chest' | 'chin' | 'front-low', readonly anchor: { readonly side: number, readonly up: number }, readonly hands: 'one' | 'both' }>> = {
+export const ARM_FORMS: Readonly<Record<BodyArmForm, { readonly shape: HandShape, readonly pron: number, readonly wflex: number, readonly swivel: number, readonly short: number, readonly seed: 'chest' | 'chin' | 'front-low' | 'tragion', readonly anchor: { readonly side: number, readonly up: number }, readonly hands: 'one' | 'both', readonly sweep?: number, readonly after?: BodyArmForm }>> = {
   'hand-to-chest': { shape: 'relaxed', pron: 75 * DEG, wflex: -10 * DEG, swivel: 25 * DEG, short: 0, seed: 'chest', anchor: { side: 0.05, up: 0.05 }, hands: 'one' },
   'thinking-hand': { shape: 'point', pron: 20 * DEG, wflex: -20 * DEG, swivel: 10 * DEG, short: 0.04, seed: 'chin', anchor: { side: 0.1, up: 0 }, hands: 'one' },
   'cover-mouth': { shape: 'relaxed', pron: 20 * DEG, wflex: -20 * DEG, swivel: 10 * DEG, short: 0.06, seed: 'chin', anchor: { side: 0.08, up: 0 }, hands: 'one' },
-  // 4e act 8's temple anchor: 0.25 A above the chin seed (eye height on an adult head, an estimate), 0.14 A to the
-  // side, the narrowest offset in 0.04 A steps at which Chisa's and Ellen's arms solve it (E/g4/a/scratch/probe-hair.ts).
-  'hair-touch': { shape: 'relaxed', pron: 20 * DEG, wflex: -20 * DEG, swivel: 10 * DEG, short: 0.04, seed: 'chin', anchor: { side: 0.14, up: 0.25 }, hands: 'one' },
+  'hair-touch': { shape: 'cup', pron: 20 * DEG, wflex: 0, swivel: 10 * DEG, short: 0, seed: 'tragion', anchor: { side: 0, up: 0 }, hands: 'one' },
+  'hair-sweep': { shape: 'cup', pron: 20 * DEG, wflex: 0, swivel: 10 * DEG, short: 0, seed: 'tragion', anchor: { side: 0, up: 0 }, hands: 'one', sweep: 1, after: 'hair-touch' },
   'clasp': { shape: 'relaxed', pron: 45 * DEG, wflex: 0, swivel: 15 * DEG, short: 0, seed: 'front-low', anchor: { side: 0, up: 0 }, hands: 'both' },
 }
 
@@ -117,6 +126,17 @@ const ANCHOR = { start: 1, step: 0.005, clearance: 0.01, backOffStep: 0.01, back
  * (`ARM_FORMS`).
  */
 const FRONT_LOW_HEIGHT = (98.01 - 84.54 - 7.82) / (84.54 - 6.27)
+/**
+ * The hair tuck's anchor on ANSUR II's women (Gordon et al. 2014, NATICK/TR-15/007, female means, cm): head breadth
+ * 14.78 (p. 134), the widest span of the head above the ears; tragion to top of head 12.65 (p. 208); ear breadth 3.32
+ * (p. 104). The rig's head breadth is the widest span of its head proxies across the head bone, which scales the other
+ * two: the tragion stands that far under the top of the proxies over the head bone, and the sweep carries the
+ * fingertips that far back, from the front of the ear to behind it. The depth is 6.3's temple seed's, the head bone's.
+ * The fingertips are the end of the hand, a hand length from the wrist along the hand as the wrist bends it.
+ */
+const TUCK = { headBreadth: 14.78, tragionTop: 12.65, earBreadth: 3.32 } as const
+/** Directions from the fingertips in which the tuck tries the wrist. */
+const WRIST_DIRECTIONS = 600
 /** No joint of an arm form sits within this of its limit. */
 const LIMIT_MARGIN = 2 * DEG
 /** The corrector's capsule radius as a share of its segment: the hand is the extended forearm's capsule. */
@@ -168,6 +188,10 @@ export class GestureKeys {
    * refused form is not searched again while a layer keeps requesting it (the rest requests its clasp for minutes).
    */
   private readonly unreachable = new Set<`${BodySide}:${BodyArmForm}`>()
+  /** The head proxies' top over the head bone and their widest span across it, measured at the first hair tuck. */
+  private headSize: { readonly top: number, readonly breadth: number } | null | undefined
+  /** The hair tuck's solved keys (arm joints flex to wrist deviation), which depend only on the rig and its rest trunk. */
+  private readonly tucked = new Map<`${BodySide}:${BodyArmForm}`, Float64Array>()
 
   constructor(private readonly traits: BodyRigTraits, private readonly rest: Float32Array) {
     this.skeleton = new BodySkeleton(traits)
@@ -220,6 +244,12 @@ export class GestureKeys {
     if (this.unreachable.has(`${side}:${form}`))
       return false
     const spec = ARM_FORMS[form]
+    if (spec.seed === 'tragion') {
+      if (this.tuck(side, form, pose))
+        return true
+      this.unreachable.add(`${side}:${form}`)
+      return false
+    }
     const length = this.lengths[side].upper + this.lengths[side].forearm
     const shoulder = this.skeleton.arm(side, this.rest).shoulder
     const sigma = side === 'left' ? 1 : -1
@@ -263,6 +293,183 @@ export class GestureKeys {
     }
     this.unreachable.add(`${side}:${form}`)
     return false
+  }
+
+  /**
+   * The hair tuck's keys (`TUCK`), solved as a pair so that the sweep goes on from the touch. For each key, 6.3's march
+   * turned to the side: the fingertip point starts 1 A out from the head bone at the tragion's height and the key's
+   * depth and steps in until it is the hand capsule's radius plus 0.01 A from the nearest collider; from there it backs
+   * off outward in 0.01 A steps, as far as 0.2 A, and the first step with candidates gives them (`tuckCandidates`). Of
+   * all touch and sweep candidates, the pair whose largest joint change from touch to sweep is least, with the angle
+   * path between them clear of the proxies, gives both keys.
+   */
+  private tuck(side: BodySide, form: BodyArmForm, pose: ArmPose): boolean {
+    const known = this.tucked.get(`${side}:${form}`)
+    if (known) {
+      pose.set(known, 2)
+      return true
+    }
+    this.headSize ??= this.measureHead()
+    if (!this.headSize)
+      return false
+    const touches = this.tuckCandidates(side, 'hair-touch', pose, this.headSize)
+    const sweeps = touches.length ? this.tuckCandidates(side, 'hair-sweep', pose, this.headSize) : []
+    const pairs: { readonly touch: ArmPose, readonly sweep: ArmPose, readonly change: number }[] = []
+    for (const touch of touches) {
+      for (const sweep of sweeps) {
+        let change = 0
+        for (let j = 2; j <= 8; j++)
+          change = Math.max(change, Math.abs(sweep[j] - touch[j]))
+        pairs.push({ touch, sweep, change })
+      }
+    }
+    pairs.sort((a, b) => a.change - b.change)
+    for (const { touch, sweep } of pairs) {
+      if (this.deepest(side, sweep, touch, KEY_HEADROOM) !== null)
+        continue
+      this.tucked.set(`${side}:hair-touch`, touch.slice(2, 9))
+      this.tucked.set(`${side}:hair-sweep`, sweep.slice(2, 9))
+      pose.set((form === 'hair-sweep' ? sweep : touch).subarray(2, 9), 2)
+      return true
+    }
+    return false
+  }
+
+  /**
+   * The candidate keys of one tuck key at the first back-off step that has any: at each step the wrist goes a hand
+   * length from the fingertips in each of `WRIST_DIRECTIONS` directions, and the elbow swings out from the form's
+   * swivel to 80 degrees (`bentHand`). A candidate has every joint 2 degrees inside its limit, the hand from wrist to
+   * fingertips clear of the proxies by its capsule's radius, and the pose clear of them with the settling headroom, the
+   * touch's angle path from the rest arm too; each wrist direction gives its swivel with the most limit margin.
+   */
+  private tuckCandidates(side: BodySide, form: BodyArmForm, pose: ArmPose, head: { readonly top: number, readonly breadth: number }): ArmPose[] {
+    const spec = ARM_FORMS[form]
+    const { traits } = this
+    const length = this.lengths[side].upper + this.lengths[side].forearm
+    const sigma = side === 'left' ? 1 : -1
+    const scale = head.breadth / TUCK.headBreadth
+    const y = head.top - TUCK.tragionTop * scale
+    const z = traits.head.z - (spec.sweep ?? 0) * TUCK.earBreadth * scale
+    const radius = HAND_RADIUS * this.lengths[side].forearm
+    const reach = radius + ANCHOR.clearance * length
+    let surface: number | null = null
+    for (let x = traits.head.x + sigma * ANCHOR.start * length; sigma * (x - traits.head.x) > 0; x -= sigma * ANCHOR.step * length) {
+      if (this.collision.distance(x, y, z) <= reach) {
+        surface = x
+        break
+      }
+    }
+    if (surface === null)
+      return []
+    const from = spec.after ? null : this.restArms[side]
+    const hand = traits.arms[side].handLength
+    for (let out = 0; out <= ANCHOR.backOff + 1e-9; out += ANCHOR.backOffStep) {
+      const tip = { x: surface + sigma * out * length, y, z }
+      const candidates: ArmPose[] = []
+      for (let i = 0; i < WRIST_DIRECTIONS; i++) {
+        // A Fibonacci sphere: evenly spread directions from the fingertips to the wrist.
+        const up = 1 - 2 * (i + 0.5) / WRIST_DIRECTIONS
+        const around = Math.sqrt(1 - up * up)
+        const turn = i * Math.PI * (3 - Math.sqrt(5))
+        const wrist = { x: tip.x + sigma * hand * around * Math.cos(turn), y: tip.y + hand * up, z: tip.z + hand * around * Math.sin(turn) }
+        let clear = true
+        for (let k = 0; k < 4 && clear; k++)
+          clear = this.collision.distance(wrist.x + (tip.x - wrist.x) * k / 4, wrist.y + (tip.y - wrist.y) * k / 4, wrist.z + (tip.z - wrist.z) * k / 4) >= radius
+        if (!clear)
+          continue
+        let best: ArmPose | null = null
+        let margin = LIMIT_MARGIN
+        for (let swivel = spec.swivel; swivel <= ANCHOR.swivel + 1e-9; swivel += ANCHOR.swivelStep) {
+          if (!this.bentHand(side, { wrist, tip, swivel }, pose))
+            continue
+          const inside = this.limitMargin(side, pose)
+          if (inside >= margin && this.deepest(side, pose, from, KEY_HEADROOM) === null) {
+            margin = inside
+            best = pose.slice()
+          }
+        }
+        if (best)
+          candidates.push(best)
+      }
+      if (candidates.length)
+        return candidates
+    }
+    return []
+  }
+
+  /**
+   * Solves the arm to `wrist` with the elbow at `swivel`, and turns the hand at the wrist so that a hand length along it
+   * ends at `tip` with the palm toward the head (Moore 1985: the palm runs along the hair): pronation turns the wrist's
+   * flexion plane onto the fingertips and flexion (3f's positive `wflex` is palmar) bends the hand into it, of the two
+   * ways the one whose palm faces the head bone's midline; no deviation. False outside the limits.
+   */
+  private bentHand(side: BodySide, target: { readonly wrist: Readonly<Vec3>, readonly tip: Readonly<Vec3>, readonly swivel: number }, pose: ArmPose): boolean {
+    const { wrist, tip, swivel } = target
+    const length = this.lengths[side].upper + this.lengths[side].forearm
+    const sigma = side === 'left' ? 1 : -1
+    const shoulder = this.skeleton.arm(side, this.rest).shoulder
+    const key: ArmKey = { hand: [sigma * (wrist.x - shoulder.x) / length, (wrist.y - shoulder.y) / length, (wrist.z - shoulder.z) / length], swivel, pron: 0, wflex: 0, wdev: 0 }
+    if (!this.solveOnce(side, key, pose))
+      return false
+    this.load(side, pose, pose, 0)
+    // The hand's direction in the unpronated forearm frame (row-major rotation, so the frame's axes are its columns;
+    // the forearm points along -y), then `Ry(-sigma pron) Rz(-sigma wflex)` of the skeleton's hand frame applied to -y
+    // solved for the two angles.
+    const f = this.skeleton.arm(side, this.scratch).forearm
+    const span = Math.hypot(tip.x - wrist.x, tip.y - wrist.y, tip.z - wrist.z)
+    const [hx, hy, hz] = [(tip.x - wrist.x) / span, (tip.y - wrist.y) / span, (tip.z - wrist.z) / span]
+    const lx = f[0] * hx + f[3] * hy + f[6] * hz
+    const ly = f[1] * hx + f[4] * hy + f[7] * hz
+    const lz = f[2] * hx + f[5] * hy + f[8] * hz
+    const bend = Math.acos(Math.max(-1, Math.min(1, -ly)))
+    const turn = Math.atan2(-lz, lx)
+    const start = ARM_START[side]
+    const pronLimit = this.traits.arms[side].twist ? JOINT_LIMITS[start + 6] : [-UNTWISTED_PRONATION, UNTWISTED_PRONATION] as const
+    const reached = this.traits.arms[side].handLength
+    for (const [a, b] of [[turn, bend], [turn > 0 ? turn - Math.PI : turn + Math.PI, -bend]] as const) {
+      const pron = -sigma * a
+      const wflex = -sigma * b
+      if (pron < pronLimit[0] || pron > pronLimit[1] || wflex < JOINT_LIMITS[start + 7][0] || wflex > JOINT_LIMITS[start + 7][1])
+        continue
+      pose[6] = pron
+      pose[7] = wflex
+      pose[8] = 0
+      this.load(side, pose, pose, 0)
+      const h = this.skeleton.arm(side, this.scratch).hand
+      // Palmar flexion turns the fingers toward the palm, which faces the hand frame's -sigma x.
+      const palm = -sigma * h[0] * (this.traits.head.x - tip.x)
+      const miss = Math.hypot(h[9] - reached * h[1] - tip.x, h[10] - reached * h[4] - tip.y, h[11] - reached * h[7] - tip.z)
+      if (palm > 0 && miss <= ANCHOR.clearance * length)
+        return true
+    }
+    return false
+  }
+
+  /** The head proxies' top over the head bone and their widest span across it at the head bone's depth; null without one. */
+  private measureHead(): { readonly top: number, readonly breadth: number } | null {
+    const { head } = this.traits
+    const length = this.lengths.left.upper + this.lengths.left.forearm
+    let top: number | null = null
+    for (let y = head.y + length; y > head.y; y -= 0.002 * length) {
+      if (this.collision.distance(head.x, y, head.z) <= 0) {
+        top = y
+        break
+      }
+    }
+    if (top === null)
+      return null
+    let breadth = 0
+    for (let y = head.y; y < top; y += 0.01 * length) {
+      for (const sigma of [1, -1]) {
+        for (let x = head.x + sigma * length; sigma * (x - head.x) > 0; x -= sigma * ANCHOR.step * length) {
+          if (this.collision.distance(x, y, head.z) <= 0) {
+            breadth = Math.max(breadth, 2 * Math.abs(x - head.x))
+            break
+          }
+        }
+      }
+    }
+    return breadth > 0 ? { top, breadth } : null
   }
 
   /**

@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 
 import { ARM_NOISE_DEGREES } from './arms'
 import { ARM_START, BODY_TICK, channelIndex, DEG, JOINT_LIMITS, SIDES } from './channels'
+import { BodyCollision } from './collision'
 import { ARM_FORMS, GESTURE_FORMS, gestureGain, GestureKeys, writeHandShape } from './gesture-forms'
 import { createGestureLayers } from './gestures'
 import { BodySkeleton, createBodyPerformer } from './index'
@@ -826,6 +827,89 @@ describe('co-speech gestures', () => {
     expect(createBodyPerformer({ traits: fixtureRigs[0].traits, seed: 1 }).step(quietInput(0)).capabilities.clasp).toBe(true)
     // Chisa's body proxies leave no clear key at the clasp's height (E/fc/u1/clasp-height/probe-clasp-height.txt).
     expect(createBodyPerformer({ traits: chisaTraits, seed: 1 }).step(quietInput(0)).capabilities.clasp).toBe(false)
+  })
+
+  it('puts the cupped fingertips on the side of the head at the tragion, then one ear breadth back, clear and 2 degrees inside every limit, on Chisa', () => {
+    const rig = chisaTraits
+    const rest = createBodyPerformer({ traits: rig, seed: 1 }).restChannels()
+    const keys = new GestureKeys(rig, rest)
+    const skeleton = new BodySkeleton(rig)
+    const collision = new BodyCollision(rig, rest)
+    const arm = rig.arms.left
+    const length = Math.hypot(arm.upperArm.x, arm.upperArm.y, arm.upperArm.z) + Math.hypot(arm.forearm.x, arm.forearm.y, arm.forearm.z)
+    // ANSUR II's women (Gordon et al. 2014): the tragion 12.65 cm under the top of a head 14.78 cm broad, the ear 3.32 cm
+    // broad, scaled by the widest span of the head proxies across the head bone.
+    let top = rig.head.y + length
+    while (collision.distance(rig.head.x, top, rig.head.z) > 0)
+      top -= 0.002 * length
+    let breadth = 0
+    for (let y = rig.head.y; y < top; y += 0.01 * length) {
+      let x = rig.head.x + length
+      while (x > rig.head.x && collision.distance(x, y, rig.head.z) > 0)
+        x -= 0.005 * length
+      breadth = Math.max(breadth, 2 * (x - rig.head.x))
+    }
+    const tragion = top - 12.65 / 14.78 * breadth
+    const back = 3.32 / 14.78 * breadth
+    for (const side of SIDES) {
+      const start = ARM_START[side]
+      const from = new Float64Array(rest.subarray(start, start + 26))
+      const touch = from.slice()
+      writeHandShape(ARM_FORMS['hair-touch'].shape, touch)
+      expect(keys.armForm(side, 'hair-touch', touch), side).toBe(true)
+      const sweep = touch.slice()
+      expect(keys.armForm(side, 'hair-sweep', sweep), side).toBe(true)
+      expect(keys.pathDepth(side, from, touch), side).toBe(0)
+      expect(keys.pathDepth(side, touch, sweep), side).toBe(0)
+      const tips = [touch, sweep].map((pose) => {
+        for (let j = 2; j <= 8; j++) {
+          const [min, max] = JOINT_LIMITS[start + j]
+          expect(Math.min(pose[j] - min, max - pose[j]) / DEG, `${side} joint ${j}`).toBeGreaterThanOrEqual(2)
+        }
+        const channels = rest.slice()
+        channels.set(pose, start)
+        skeleton.update(channels)
+        const hand = skeleton.arm(side, channels).hand
+        return { x: hand[9] - arm.handLength * hand[1], y: hand[10] - arm.handLength * hand[4], z: hand[11] - arm.handLength * hand[7] }
+      })
+      const sigma = side === 'left' ? 1 : -1
+      for (const [tip, depth] of [[tips[0], rig.head.z], [tips[1], rig.head.z - back]] as const) {
+        // At the side of the head, at the tragion's height and the anchor's depth, where 6.3's march stops: the hand
+        // capsule's radius plus 0.01 A off the proxies.
+        expect(sigma * (tip.x - rig.head.x) / length, side).toBeGreaterThan(0.15)
+        expect(Math.abs(tip.y - tragion) / length, side).toBeLessThan(0.01)
+        expect(Math.abs(tip.z - depth) / length, side).toBeLessThan(0.01)
+        const reach = 0.15 * Math.hypot(arm.forearm.x, arm.forearm.y, arm.forearm.z) + 0.01 * length
+        expect(Math.abs(collision.distance(tip.x, tip.y, tip.z) - reach) / length, side).toBeLessThan(0.01)
+      }
+    }
+  })
+
+  it('refuses the hair tuck on a rig whose arms cannot reach its anchor, and reports the capability only where both arms reach it with head clearance', () => {
+    // The fixture Ellen's proportional head proxy is small, so its tragion sits low beside the neck, out of reach.
+    const rig = fixtureRigs[0].traits
+    const rest = createBodyPerformer({ traits: rig, seed: 1 }).restChannels()
+    const keys = new GestureKeys(rig, rest)
+    for (const side of SIDES) {
+      const pose = new Float64Array(rest.subarray(ARM_START[side], ARM_START[side] + 26))
+      expect(keys.armForm(side, 'hair-touch', pose), side).toBe(false)
+      expect(keys.armForm(side, 'hair-sweep', pose), side).toBe(false)
+    }
+    const capability = (traits: BodyRigTraits) => createBodyPerformer({ traits, seed: 1 }).step(quietInput(0)).capabilities
+    expect(capability(chisaTraits).hairTouch).toBe(true)
+    // Ellen's arms reach the tuck, but her probe reports no head clearance, which 4e act 8 requires.
+    expect(capability(ellenTraits).headClearance).toEqual({ left: false, right: false })
+    expect(capability(ellenTraits).hairTouch).toBe(false)
+  })
+
+  it('sweeps a held hair touch on to the sweep without going home, and never starts the sweep on its own', () => {
+    const held = perform({ utterances: [], armForm: time => time > 0.2 && time < 2 ? { side: 'right', form: 'hair-touch' } : time >= 2 && time < 4 ? { side: 'right', form: 'hair-sweep' } : null }, 6, { traits: chisaTraits })
+    const at = (run: typeof held, time: number) => run.frames[Math.round(time / BODY_TICK) - 1].gesture.activation.right
+    for (const time of [1, 2, 2.5, 3.9])
+      expect(at(held, time), `${time} s`).toBe(1)
+    expect(at(held, 6)).toBe(0)
+    const alone = perform({ utterances: [], armForm: time => time > 0.2 && time < 4 ? { side: 'right', form: 'hair-sweep' } : null }, 4, { traits: chisaTraits })
+    expect(alone.frames.every(frame => frame.gesture.activation.right === 0)).toBe(true)
   })
 
   it('holds a two-hand clasp on both arms, lets one hand go first, then the other', () => {

@@ -301,12 +301,12 @@ export function idleActivityWeights(drive: NaturalIdleDrive, context: { watching
     'sway': drive.music ? (0.8 + 0.6 * warm) * (1 - 0.6 * tense) : 0,
     'sigh': body ? (finite(drive.valence) < -0.2 ? 2 : 1) : 0,
     'shoulder-roll': body ? 0.8 : 0,
-    // 4e act 3: the body re-plants a foot. 4e act 6 clasps the hands (0.7) and act 11 raises the heels (0 unless
-    // valence > 0.3, then 0.8). The hair touch (4e 0.5) weighs 0: its temple sweep is out of reach inside the rigs'
-    // joint limits.
+    // 4e act 3: the body re-plants a foot. 4e act 6 clasps the hands (0.7), act 8 tucks the hair (0.5; a host whose rig
+    // lacks head clearance or the tuck's reach lists it in `unreachable`) and act 11 raises the heels (0 unless
+    // valence > 0.3, then 0.8).
     'shift-stance': body ? 1.2 : 0,
     'clasp-hands': body ? 0.7 : 0,
-    'hair-touch': 0,
+    'hair-touch': body ? 0.5 : 0,
     'heel-rock': body && finite(drive.valence) > 0.3 ? 0.8 : 0,
     'arm-swing': body ? (lively > 0.2 ? 0.9 : 0.6) : 0,
   }

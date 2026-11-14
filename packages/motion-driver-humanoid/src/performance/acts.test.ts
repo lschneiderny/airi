@@ -3,8 +3,9 @@ import type { BodyFootStep, BodyIdleAct, BodyIdleKind, BodyPerformanceInput, Bod
 import { describe, expect, it } from 'vitest'
 
 import { armResponse } from './arms'
-import { BODY_CHANNELS, BODY_TICK, channelIndex, DEG } from './channels'
-import { createBodyPerformer } from './index'
+import { ARM_START, BODY_CHANNELS, BODY_TICK, channelIndex, DEG } from './channels'
+import { GestureKeys } from './gesture-forms'
+import { BodySkeleton, createBodyPerformer } from './index'
 import { createPerformanceLayers } from './layers'
 import { chisaTraits, ellenTraits, fixtureRigs, quietInput } from './performance.test-fixtures'
 
@@ -276,6 +277,50 @@ describe('the act layer', () => {
     expect(Math.min(...pitch)).toBeLessThan(-0.5 * DEG)
     expect(pitch.every((value, i) => rock[i] > 0 || value > -1e-6)).toBe(true)
     expect(Math.max(...BODY_CHANNELS.map((_, channel) => channel < 3 ? 0 : Math.abs(last.acted[channel] - last.still[channel]) / DEG))).toBeLessThan(0.5)
+  })
+
+  it('tucks her hair on Chisa: the fingertips rise to the tuck\'s anchor, sweep back to its second key and come home, the head tilted 4 degrees toward the hand (4e act 8)', () => {
+    const traits = chisaTraits
+    const D = 2.6
+    const rest = createBodyPerformer({ traits, seed: 5 }).restChannels()
+    const keys = new GestureKeys(traits, rest)
+    const skeleton = new BodySkeleton(traits)
+    const arm = traits.arms.right
+    const length = Math.hypot(arm.upperArm.x, arm.upperArm.y, arm.upperArm.z) + Math.hypot(arm.forearm.x, arm.forearm.y, arm.forearm.z)
+    const tip = (channels: Float32Array) => {
+      skeleton.update(channels)
+      const hand = skeleton.arm('right', channels).hand
+      return { x: hand[9] - arm.handLength * hand[1], y: hand[10] - arm.handLength * hand[4], z: hand[11] - arm.handLength * hand[7] }
+    }
+    const start = ARM_START.right
+    const touch = Float64Array.from(rest.subarray(start, start + 26))
+    expect(keys.armForm('right', 'hair-touch', touch)).toBe(true)
+    const sweep = touch.slice()
+    expect(keys.armForm('right', 'hair-sweep', sweep)).toBe(true)
+    const keyTip = (pose: Float64Array) => {
+      const channels = rest.slice()
+      channels.set(pose, start)
+      return tip(channels)
+    }
+    const [touched, swept] = [keyTip(touch), keyTip(sweep)]
+    const still = run(traits, quietInput, START + D + 3)
+    const acted = run(traits, playing(record('hair-touch', D, { side: 1 })), START + D + 3)
+    const nearest = (to: { x: number, y: number, z: number }, from: number, until: number) => {
+      let best = Infinity
+      for (let tick = Math.round((START + from) / BODY_TICK); tick < Math.round((START + until) / BODY_TICK); tick++) {
+        const at = tip(acted.channels[tick - 1])
+        best = Math.min(best, Math.hypot(at.x - to.x, at.y - to.y, at.z - to.z) / length)
+      }
+      return best
+    }
+    // Natural's side 1 is her right hand: it reaches the anchor before the sweep starts, then the swept key, which lies
+    // one ear breadth behind it.
+    expect(nearest(touched, 0.1, 0.8)).toBeLessThan(0.05)
+    expect(nearest(swept, 0.8, D - 0.9)).toBeLessThan(0.05)
+    expect(swept.z).toBeLessThan(touched.z - 0.05 * length)
+    // The head rolls toward the hand: 4 deg shared 0.35 to the neck and 0.65 to the head.
+    const roll = (acted.channels[Math.round((START + 1.3) / BODY_TICK) - 1][c('headRoll')] - still.channels[Math.round((START + 1.3) / BODY_TICK) - 1][c('headRoll')]) / DEG
+    expect(roll).toBeCloseTo(0.65 * 4, 1)
   })
 
   it.each(rigs)('raises $name onto the balls of both feet two or three times: toes down 14 degrees, pelvis up 0.012 L, shoulders up 2 at each top (4e act 11)', (rig) => {

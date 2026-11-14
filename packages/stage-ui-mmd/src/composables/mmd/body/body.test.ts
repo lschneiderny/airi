@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest'
 import { createMMDAnimationManager } from '../animation-manager'
 import { mmdClipMaskBones } from '../rig/clip-mask'
 import { bodyFixture, cursorAt } from './fixture'
-import { MMDBody } from './index'
+import { idleKindsOutOfReach, MMDBody } from './index'
 
 const FULL_BODY: readonly ClipMaskGroup[] = ['root', 'leftLegIk', 'rightLegIk']
 
@@ -623,5 +623,14 @@ describe('mmd full-body stages', () => {
       const ray = new Vector3(0, 0, 1).applyQuaternion(eye.getWorldQuaternion(new Quaternion()))
       expect(ray.angleTo(target.clone().sub(eye.getWorldPosition(new Vector3())))).toBeLessThan(Math.PI / 360)
     }
+  })
+})
+
+describe('idleKindsOutOfReach', () => {
+  it('keeps the hair tuck and the clasp off a rig without their capabilities, and draws them where the rig has them', () => {
+    const able = { gestures: { left: true, right: true }, headClearance: { left: true, right: true }, clasp: true, hairTouch: true }
+    expect(idleKindsOutOfReach(able)).toEqual([])
+    expect(idleKindsOutOfReach({ ...able, hairTouch: false })).toEqual(['hair-touch'])
+    expect(idleKindsOutOfReach({ ...able, clasp: false, hairTouch: false })).toEqual(['clasp-hands', 'hair-touch'])
   })
 })

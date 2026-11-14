@@ -16,9 +16,10 @@ export type BodyCueKind = 'nod' | 'shake' | 'shrug' | 'lean' | 'glance'
 export type BodyGestureForm = 'beat' | 'palm-up' | 'press' | 'point' | 'chop' | 'frame' | 'hand-to-chest' | 'thinking-hand'
 /**
  * Held arm forms the gesture layer performs on a layer's request: an emotion's (4a) or an idle act's (4e). `clasp` is
- * the two-hand contact at 6.3's front-low anchor, requested for `both` hands.
+ * the two-hand contact at 6.3's front-low anchor, requested for `both` hands. `hair-sweep` is the hair tuck's second
+ * key, which the arm reaches from a held `hair-touch` without going home.
  */
-export type BodyArmForm = Extract<BodyGestureForm, 'hand-to-chest' | 'thinking-hand'> | 'cover-mouth' | 'hair-touch' | 'clasp'
+export type BodyArmForm = Extract<BodyGestureForm, 'hand-to-chest' | 'thinking-hand'> | 'cover-mouth' | 'hair-touch' | 'hair-sweep' | 'clasp'
 export type BodyGestureHand = BodySide | 'both'
 export type BodyGesturePhase = 'rest' | 'preparation' | 'stroke' | 'hold' | 'retraction'
 export type BodyReactionKind = 'body-poke' | 'head-poke' | 'pet' | 'drag'
@@ -244,6 +245,12 @@ export interface BodyCapabilities {
    * the rig does not clasp (6.3), and a host tells its idle scheduler so that it does not draw the clasp.
    */
   readonly clasp: boolean
+  /**
+   * The rig performs the hair tuck (4e act 8): `headClearance` on both sides, the act's precondition, and both arms
+   * reach its two keys (`hair-touch`, then `hair-sweep` from it), clear of the proxies inside the limits. Without it a
+   * host tells its idle scheduler not to draw the tuck.
+   */
+  readonly hairTouch: boolean
 }
 
 export interface BodyActFeedback {
