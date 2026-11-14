@@ -30,6 +30,7 @@ import { createArtistryConfig } from './configs/artistry'
 import { createGlobalAppConfig } from './configs/global'
 import { createIOTraceHubConfig } from './configs/io-trace-hub'
 import { createIOTraceRecordingConfig } from './configs/io-trace-recording'
+import { createPerfRecordingConfig } from './configs/perf-recording'
 import { emitAppBeforeQuit, emitAppWindowAllClosed, onAppBeforeQuit } from './libs/bootkit/lifecycle'
 import { getElectronMainDirname, setElectronMainDirname } from './libs/electron/location'
 import { onWindowClosed } from './libs/electron/on-window-closed'
@@ -47,6 +48,7 @@ import { registerIOTraceHub } from './services/airi/io-trace-hub/register'
 import { IOTraceRecordingService } from './services/airi/io-trace-recording'
 import { setupMcpManager } from './services/airi/mcp-servers'
 import { createGoNetworkService } from './services/airi/opencode-go'
+import { createElectronPerfRecording, watchPerfPower } from './services/airi/perf-recording/electron'
 import { setupExtensionHost } from './services/airi/plugins'
 import { setupArtistryBridge } from './services/airi/widgets/artistry-bridge'
 import { setupAutoUpdater } from './services/electron/auto-updater'
@@ -245,6 +247,7 @@ app.whenReady().then(async () => {
   const artistryConfig = injeca.provide('configs:artistry', () => createArtistryConfig())
   const ioTraceRecordingConfig = injeca.provide('configs:io-trace-recording', () => createIOTraceRecordingConfig())
   const ioTraceHubConfig = injeca.provide('configs:io-trace-hub', () => createIOTraceHubConfig())
+  const perfRecordingConfig = injeca.provide('configs:perf-recording', () => createPerfRecordingConfig())
   const electronApp = injeca.provide('host:electron:app', () => app)
   const autoUpdater = injeca.provide('services:auto-updater', {
     dependsOn: { appConfig },
@@ -338,6 +341,30 @@ app.whenReady().then(async () => {
     },
   })
 
+  const perfRecording = injeca.provide('services:perf-recording', {
+    dependsOn: { config: perfRecordingConfig, lifecycle },
+    build: ({ dependsOn }) => {
+      const service = createElectronPerfRecording({
+        getStoredEnabled: () => dependsOn.config.get()?.enabled,
+        setStoredEnabled: enabled => dependsOn.config.update({ enabled }),
+      })
+      const stopWatchingPower = watchPerfPower(service)
+      dependsOn.lifecycle.appHooks.onStart(async () => {
+        try {
+          await service.restore()
+        }
+        catch (error) {
+          log.withError(error).error('Failed to restore perf recording')
+        }
+      })
+      dependsOn.lifecycle.appHooks.onStop(async () => {
+        stopWatchingPower()
+        await service.dispose()
+      })
+      return service
+    },
+  })
+
   const widgetsManager = injeca.provide('windows:widgets', {
     dependsOn: { serverChannel, i18n },
     build: ({ dependsOn }) => setupWidgetsWindowManager(dependsOn),
@@ -412,7 +439,7 @@ app.whenReady().then(async () => {
   log.log(`Building the ${hostMode === 'desktop' ? 'desktop stage' : 'classic window'} host${isLinux ? ` (Linux desktop stage eligible: ${linuxStageEligible})` : ''}`)
 
   const settingsWindow = injeca.provide('windows:settings', {
-    dependsOn: { widgetsManager, beatSync, autoUpdater, devtoolsWindow: devtoolsMarkdownStressWindow, serverChannel, godotStageManager, mcpManager, i18n, globalShortcut, spotlightWindow, ioTraceRecording, goNetwork },
+    dependsOn: { widgetsManager, beatSync, autoUpdater, devtoolsWindow: devtoolsMarkdownStressWindow, serverChannel, godotStageManager, mcpManager, i18n, globalShortcut, spotlightWindow, ioTraceRecording, perfRecording, goNetwork },
     build: async ({ dependsOn }) => {
       settingsWindowManager = setupSettingsWindowReusableFunc({
         ...dependsOn,
@@ -433,7 +460,7 @@ app.whenReady().then(async () => {
     },
   })
 
-  const userFacingWindowDependencies = { editorWindow, settingsWindow, chatWindow, widgetsManager, noticeWindow, beatSync, autoUpdater, serverChannel, godotStageManager, mcpManager, i18n, onboardingWindowManager, inlayWindow, appleSpeechTranscription, appleVision, ioTraceRecording, globalShortcut, goNetwork }
+  const userFacingWindowDependencies = { editorWindow, settingsWindow, chatWindow, widgetsManager, noticeWindow, beatSync, autoUpdater, serverChannel, godotStageManager, mcpManager, i18n, onboardingWindowManager, inlayWindow, appleSpeechTranscription, appleVision, ioTraceRecording, perfRecording, globalShortcut, goNetwork }
   const onUserFacingWindowCreated = (network: { bindWindow: (window: BrowserWindow) => void }) => (window: BrowserWindow) => {
     network.bindWindow(window)
     userFacingMainWindow = window

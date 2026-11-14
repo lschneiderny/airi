@@ -162,6 +162,7 @@ export async function setupStageWindow(
     i18n: params.i18n,
     onboardingWindowManager: params.onboardingWindowManager,
     ioTraceRecording: params.ioTraceRecording,
+    perfRecording: params.perfRecording,
     inlayWindow: params.inlayWindow,
     globalShortcut: params.globalShortcut,
   })

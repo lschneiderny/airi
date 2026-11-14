@@ -48,6 +48,21 @@ export function perfIdentityChanged(previous: PerfIdentityValue, next: PerfIdent
 }
 
 /**
+ * Reads the identity again and returns it when the running code changed since `current`, else `null`.
+ *
+ * A read that differs is confirmed by a second read, and a switch from runtime git to build info is never a change:
+ * in a development build it only means that one git read failed, for example when an untracked file disappeared
+ * between `ls-files` and `hash-object`.
+ */
+export async function readIdentityChange(identity: Pick<PerfIdentity, 'read'>, current: PerfIdentityValue): Promise<PerfIdentityValue | null> {
+  const isGitFailure = (value: PerfIdentityValue) => current.source === 'runtime-git' && value.source === 'build-info'
+  let next = await identity.read()
+  if (isGitFailure(next) || perfIdentityChanged(current, next))
+    next = await identity.read()
+  return !isGitFailure(next) && perfIdentityChanged(current, next) ? next : null
+}
+
+/**
  * Reads which code is running: git at runtime in a development build, build info everywhere else, and
  * as the fallback when git cannot answer. It never throws and never stores diff content, file names or
  * file contents: the diff plus the name and blob hash of every untracked file go into one sha256, and

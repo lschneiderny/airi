@@ -5,6 +5,7 @@ import type { ServerChannel } from '../../services/airi/channel-server'
 import type { GodotStageManager } from '../../services/airi/godot-stage'
 import type { IOTraceRecordingService } from '../../services/airi/io-trace-recording'
 import type { McpManager } from '../../services/airi/mcp-servers'
+import type { PerfRecordingService } from '../../services/airi/perf-recording'
 import type { AutoUpdater } from '../../services/electron/auto-updater'
 import type { GlobalShortcutService } from '../../services/electron/global-shortcut'
 import type { ChatWindowManager } from '../chat'
@@ -66,6 +67,7 @@ export async function setupMainWindow(params: {
   i18n: I18n
   onboardingWindowManager: OnboardingWindowManager
   ioTraceRecording: IOTraceRecordingService
+  perfRecording: PerfRecordingService
   globalShortcut: GlobalShortcutService
   inlayWindow: () => Promise<BrowserWindow>
 }) {
@@ -185,6 +187,7 @@ export async function setupMainWindow(params: {
     i18n: params.i18n,
     onboardingWindowManager: params.onboardingWindowManager,
     ioTraceRecording: params.ioTraceRecording,
+    perfRecording: params.perfRecording,
     inlayWindow: params.inlayWindow,
     globalShortcut: params.globalShortcut,
   })
