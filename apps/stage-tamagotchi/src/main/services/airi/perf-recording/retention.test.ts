@@ -239,8 +239,36 @@ describe('perfRetention prune', () => {
     expect(await readdir(raw)).toEqual([])
   })
 
+  it('prunes a segment started more than 14 days ago and keeps one started exactly 14 days ago or less', async () => {
+    for (const [sessionId, ageMs] of [['over', 14 * DAY + 1], ['exact', 14 * DAY], ['under', 14 * DAY - 1]] as const) {
+      await writeSegment(sessionId, segmentRecords(sessionId, { startedAt: NOW - ageMs, stopped: true }))
+      await writeRow(rolledUpRow(sessionId, NOW - ageMs))
+    }
+
+    await retention().run()
+
+    expect((await readdir(raw)).toSorted()).toEqual(['exact.0.jsonl', 'under.0.jsonl'])
+  })
+
+  it('ages a segment with no readable line by its file modification time, so it is pruned on the 14-day schedule', async () => {
+    for (const [sessionId, ageMs] of [['torn-old', 16 * DAY], ['torn-fresh', DAY]] as const) {
+      const path = await writeSegment(sessionId, ['{torn'])
+      await utimes(path, (NOW - ageMs) / 1000, (NOW - ageMs) / 1000)
+    }
+
+    await retention().run()
+    await retention().run()
+
+    expect((await rows()).map(row => ({ kind: row.kind, sessionId: row.sessionId, t: row.t })).toSorted((left, right) => left.sessionId.localeCompare(right.sessionId))).toEqual([
+      { kind: 'rollup-failed', sessionId: 'torn-fresh', t: NOW - DAY },
+      { kind: 'rollup-failed', sessionId: 'torn-old', t: NOW - 16 * DAY },
+    ])
+    expect(await readdir(raw)).toEqual(['torn-fresh.0.jsonl'])
+  })
+
   it('deletes the oldest rolled-up segments while raw/ exceeds 1 GiB, never an un-rolled or live one', async () => {
-    const sessions = ['oldest', 'older', 'newer', 'unrolled', 'live']
+    // The live session's segment is the oldest rolled-up one, so the cap reaches it first.
+    const sessions = ['live', 'oldest', 'older', 'newer', 'unrolled']
     for (const [index, sessionId] of sessions.entries()) {
       await writeSegment(sessionId, segmentRecords(sessionId, { startedAt: NOW - (5 - index) * DAY, stopped: sessionId !== 'live' }))
       if (sessionId !== 'unrolled')
@@ -275,11 +303,11 @@ describe('perfRetention prune', () => {
 describe('perfRetention schedule', () => {
   it('runs a pass when its timer fires, schedules the next, and cancels it on dispose', async () => {
     await writeSegment('stopped', segmentRecords('stopped', { startedAt: NOW - DAY, stopped: true }))
-    const timers: { callback: () => void, cancel: ReturnType<typeof vi.fn> }[] = []
+    const timers: { callback: () => void, ms: number, cancel: ReturnType<typeof vi.fn> }[] = []
     let onTimer: () => void = () => {}
-    const setTimer = (callback: () => void) => {
+    const setTimer = (callback: () => void, ms: number) => {
       const cancel = vi.fn()
-      timers.push({ callback, cancel })
+      timers.push({ callback, ms, cancel })
       onTimer()
       return cancel
     }
@@ -294,7 +322,7 @@ describe('perfRetention schedule', () => {
     await nextScheduled
 
     expect(await rows()).toMatchObject([{ sessionId: 'stopped' }])
-    expect(timers).toHaveLength(2)
+    expect(timers.map(timer => timer.ms)).toEqual([30_000, 60 * 60 * 1000])
     await service.dispose()
     expect(timers[1].cancel).toHaveBeenCalledOnce()
   })

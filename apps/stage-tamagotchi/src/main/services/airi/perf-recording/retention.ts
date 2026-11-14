@@ -190,7 +190,9 @@ export class PerfRetention {
       if ((await this.#readRows()).has(segmentKey(segment.sessionId, segment.segment)))
         return
       const row = await rollUpRawSegment(this.options.fs, segment, followed)
-      await this.options.fs.appendFile(join(this.options.directory, 'sessions.jsonl'), `${JSON.stringify(row)}\n`, { mode: PERF_FILE_MODE })
+      // A segment without a readable line has no record time; age its row by the file, not by 0, so the 14-day rule holds.
+      const aged = row.kind === 'rollup-failed' && row.t === 0 ? { ...row, t: Math.floor((await this.options.fs.stat(segment.path)).mtimeMs) } : row
+      await this.options.fs.appendFile(join(this.options.directory, 'sessions.jsonl'), `${JSON.stringify(aged)}\n`, { mode: PERF_FILE_MODE })
     }
     finally {
       await this.options.fs.rm(lockPath, { force: true })

@@ -23,7 +23,7 @@ import { createWindowContext } from '../../../libs/electron/window-context'
 import { PerfIdentity } from './identity'
 import { resolvePerfDirectoryOverride } from './mode'
 import { PerfRetention } from './retention'
-import { nodePerfRetentionFs } from './retention-fs'
+import { hasErrorCode, nodePerfRetentionFs } from './retention-fs'
 import { windowLabelFromUrl } from './window-label'
 
 const execFileAsync = promisify(execFile)
@@ -147,7 +147,7 @@ function isPidAlive(pid: number): boolean {
   }
   catch (error) {
     // `EPERM` means the process exists but belongs to another user; only `ESRCH` means it is gone.
-    return error instanceof Error && 'code' in error && error.code === 'EPERM'
+    return hasErrorCode(error, 'EPERM')
   }
 }
 
