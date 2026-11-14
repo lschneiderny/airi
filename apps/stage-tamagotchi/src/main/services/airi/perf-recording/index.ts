@@ -9,10 +9,11 @@ import process from 'node:process'
 import { join } from 'node:path'
 
 import { useLogg } from '@guiiai/logg'
-import { CpuDeltaTracker, PERF_RECORD_VERSION } from '@proj-airi/stage-shared/perf/usage'
+import { CpuDeltaTracker, IncidentBudget, PERF_RECORD_VERSION } from '@proj-airi/stage-shared/perf/usage'
 import { Mutex } from 'async-mutex'
 
 import { perfIdentityChanged, readIdentityChange } from './identity'
+import { PerfIncidentCapture } from './incident-capture'
 import { resolvePerfRecording } from './mode'
 import { pulledRecords, pullWindowRollup } from './pull'
 import { identityRecord, sessionStartRecord, usageEvent } from './records'
@@ -44,6 +45,7 @@ interface ActiveSession {
   pending: PerfRecord[]
   /** Per window label, the last tick whose pull answered in time; the next pull names it so the window drops what main has. */
   acceptedTicks: Map<string, number>
+  incidents: PerfIncidentCapture
   cancelInterval: () => void
 }
 
@@ -66,6 +68,7 @@ export class PerfRecordingService {
   private chromiumTracing = false
   /** Whether a Chromium trace started or stopped since the last sample, so a trace shorter than a tick still marks it. */
   private chromiumTraceChangedSinceSample = false
+  private readonly incidentBudget = new IncidentBudget()
   /** Manual Chromium traces into `<directory>/traces`; samples taken while one runs carry `chromiumTrace: true`. */
   readonly trace: PerfTraceCapture
 
@@ -184,6 +187,7 @@ export class PerfRecordingService {
         cpu,
         pending: [],
         acceptedTicks: new Map(),
+        incidents: new PerfIncidentCapture({ directory: this.options.directory, sessionId, startedAt, fs, timers: this.options.timers, budget: this.incidentBudget }),
         cancelInterval: () => {},
       }
       await file.append([...this.headerRecords(session, startedAt), this.event(session, { name: 'recording-start', detail: { source: startedBy } })])
@@ -288,8 +292,13 @@ export class PerfRecordingService {
 
     const pulled = pulledRecords(pulls, stageWindows, { t, sessionId: session.sessionId, epoch: session.epoch })
     records.push(...pulled.rollups, ...pulled.events)
+    const decided = session.incidents.decide({ t, sample, records, windows: stageWindows })
+    records.push(...decided.suppressed)
     recorderMs += cpuUsageMs(process.cpuUsage(buildStart))
     sample.recorderMs = recorderMs
+    // After the recorder time, which the incident files' recent lines carry; the ring pulls run in the background.
+    const incidents = await session.incidents.write(decided.incidents, stageWindows)
+    records.push(...incidents)
 
     try {
       await session.file.append(records)
@@ -302,7 +311,8 @@ export class PerfRecordingService {
       this.writeFailing = true
       // Samples are lost with the tick, but events such as `trace-start` mark what the next samples mean.
       // The windows already dropped their events for this accepted tick, so main keeps them too.
-      session.pending.unshift(...events, ...pulled.events)
+      // Incident lines go with them: their files are already written.
+      session.pending.unshift(...events, ...pulled.events, ...decided.suppressed, ...incidents)
     }
   }
 
