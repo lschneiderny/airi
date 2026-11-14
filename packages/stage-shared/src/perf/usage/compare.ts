@@ -18,14 +18,14 @@ export const FEATURE_MIN_WINDOWS = 120
 /** The paired estimate is reported once this many sessions hold both states. */
 export const FEATURE_MIN_PAIRED_SESSIONS = 3
 /**
- * The paired estimate decides the verdict only from this many sessions, the smallest count at which its sign-flip
- * floor can fall below the paired difference at all. The strongest paired evidence is n per-session differences of
- * one sign with distinct magnitudes. A flip pattern keeps `|median|` at or above the observed median only when the
- * floor(n/2) + 1 largest differences share a sign, which happens in 2 of every 2^(floor(n/2) + 1) of the 2^n
- * patterns, a share of 2^-floor(n/2). The 90th-percentile floor can drop below the observed median only when that
- * share is at most 10%: first at n = 8 (16 of 256); n = 7 gives 16 of 128. Equal magnitudes never get there.
- * Below this count the paired estimate cannot reject, so it is reported with `decisive: false` and the unpaired
- * verdict decides.
+ * The paired estimate decides the verdict only from this many sessions, the smallest count at which its exact
+ * sign-flip floor (all 2^n patterns, up to 14 sessions) may fall below the paired difference. For any n per-session
+ * differences, every pattern that leaves the floor(n/2) + 1 differences at or beyond the observed median unflipped,
+ * or flips all of them, keeps `|median|` at or above the observed one: at least 2^-floor(n/2) of the patterns. While
+ * that share exceeds 10% the 90th-percentile floor stays at or above the observed difference, so through n = 7 (at
+ * least 16 of 128) the paired estimate cannot reject. At n = 8 the share can be 16 of 256: n differences of one sign
+ * with distinct magnitudes then always reject, whatever the seed. Equal magnitudes never get there. Below this count
+ * the paired estimate is reported with `decisive: false` and the unpaired verdict decides.
  */
 export const FEATURE_MIN_DECISIVE_PAIRED_SESSIONS = 8
 

@@ -142,12 +142,20 @@ describe('compareFeature', () => {
     expect(comparison.unpaired?.verdict).toBe('within-noise')
   })
 
-  it('lets the paired estimate decide from eight sessions, the first count its sign-flip floor can reject at', () => {
+  it('lets the paired estimate decide from eight sessions, the first count whose exact sign-flip floor can fall below the paired difference', () => {
     const [seven] = compareFeature({ rollups: pairedSessions(2, 7), feature: 'mmdPhysics', metric: 'p50FrameMs', seed: 1 }).comparisons
     const [eight] = compareFeature({ rollups: pairedSessions(2, 8), feature: 'mmdPhysics', metric: 'p50FrameMs', seed: 1 }).comparisons
 
     expect(seven).toMatchObject({ basis: 'unpaired', paired: { sessions: 7, decisive: false } })
     expect(eight).toMatchObject({ basis: 'paired', paired: { sessions: 8, decisive: true } })
+  })
+
+  it('decides a consistent 4 ms shift over eight sessions by the paired estimate for every seed', () => {
+    for (let seed = 1; seed <= 20; seed++) {
+      const [comparison] = compareFeature({ rollups: pairedSessions(4, 8), feature: 'mmdPhysics', metric: 'p50FrameMs', seed }).comparisons
+
+      expect(comparison, `seed ${seed}`).toMatchObject({ verdict: 'difference', basis: 'paired', paired: { verdict: 'difference', decisive: true } })
+    }
   })
 
   it('lets a strong unpaired result decide when too few sessions hold both states for pairing to reject', () => {
