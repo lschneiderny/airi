@@ -100,3 +100,17 @@ touch reaction layer, in stack order emotion, gesture, cue, reaction. `setPerfor
   her arms out for the rest of the session.
 - Not built and not registered: the shrug hand shape and its energy key, finger rub noise, the drag reaction and the
   huff and shimmy reactions.
+
+## Amendment 2026-11-14: the walk varies from stride to stride
+
+The gait's strides are no longer equal (owner decision 18: variation only from new seeded streams, sized and structured
+from published human gait, no white jitter).
+
+- Stride time and stride length drift independently on two new streams of the gait seed (`deriveSeed(seed, 0)` and
+  `deriveSeed(seed, 1)`) through the package's 1/f source stepped in strides, so neighbouring strides are alike and the
+  walk drifts slowly. The seed's own stream still only breaks first-foot ties, and every performer stream is unchanged,
+  so scenarios without a walk keep byte-identical traces.
+- The size is Beauchet et al. 2005's young adults, stride time CV 1.8 % and stride length CV 3.9 %, read as the study
+  read them: each subject's SD over 15 m of steady walking, about 11 strides. The process's own SD is therefore the
+  source CV divided by 0.6163, its expected SD over 11 strides; the first version set the process's SD to the source
+  CV, which showed about 0.62 of it in any 11-stride window.

@@ -161,7 +161,10 @@ time and stride length independently by healthy young adults' coefficients of va
 al. 2005, J NeuroEng Rehabil 2:26, n = 49; independent draws reproduce their 4.3 % speed CV), through the package's
 1/f source (`createDriftNoise`) stepped in strides with time constants of 1, 4 and 16 strides, because stride
 fluctuations are long-range correlated, not white (Hausdorff et al. 1995 and 1996, J Appl Physiol; Terrier, Turner &
-Schutz 2005, Hum Mov Sci 24:97). The streams are `deriveSeed(seed, 0)` and `deriveSeed(seed, 1)`; the seed's own stream
+Schutz 2005, Hum Mov Sci 24:97). The study's CVs are each subject's SD over its 15 m of steady walking, about 11
+strides; inside so short a window the slow terms barely move, so the process's own SD is the source CV divided by
+0.6163, the expected 11-stride SD of the stride-averaged process (2.92 % and 6.33 %), and an 11-stride window of her walk
+shows the source's 1.8 % and 3.9 %. The streams are `deriveSeed(seed, 0)` and `deriveSeed(seed, 1)`; the seed's own stream
 still only breaks first-foot ties. A stride's time scales the step rate and its length the speed command, with the
 cadence law evaluated at the unvaried speed so the two stay independent; the goal is still reached exactly. Pass
 `{ strideTime: 0, strideLength: 0 }` for a periodic walk (the structural tests do).

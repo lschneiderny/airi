@@ -34,7 +34,8 @@ export interface GaitVariability {
 /**
  * Healthy young adults at a self-selected speed: stride time CV 1.8 %, stride length CV 3.9 % (Beauchet, Dubost, Herrmann
  * & Kressig 2005, J NeuroEng Rehabil 2:26, n = 49). Drawn independently, they reproduce that study's stride velocity CV
- * of 4.3 %.
+ * of 4.3 %. Each is a subject's SD over the study's 15 m of steady walking, about 11 strides, not the stationary SD of a
+ * long walk (`elevenStrideShare`).
  */
 export const youngAdultStrideVariability: GaitVariability = { strideTime: 0.018, strideLength: 0.039 }
 
@@ -216,6 +217,14 @@ const rightSwingShare = 1 - 0.219
  * ratio, so the step rate never steps.
  */
 const strideNoise = { taus: [1, 4, 16], filterTau: 1 / 6 } as const
+/**
+ * Expected SD over 11 consecutive strides of `strideNoise` averaged per stride, in units of its stationary SD: 0.6163.
+ * Beauchet et al. 2005 measured over a 20 m walkway less 2.5 m at each end, 15 m at their mean stride of 137.4 cm, so
+ * 10.9 strides; the slow components barely move inside that window, so a CV read there is 0.62 of the process's own.
+ * Computed from the process's covariance (three equal OU terms, their first-order output filter, one-stride averages,
+ * sample SD with n - 1); the walk divides the source CVs by it.
+ */
+const elevenStrideShare = 0.6163
 /** `deriveSeed` indices of the gait seed's stride streams; the seed's own stream stays the first-foot tie-break. */
 const strideTimeStream = 0
 const strideLengthStream = 1
@@ -468,11 +477,12 @@ class Locomotion {
 
   /**
    * Advances the stride processes by `strides` and sets the multipliers: stride time ~ exp(sigma_T n_T) and stride
-   * length ~ exp(sigma_L n_L) at a steady speed, independent, so the speed varies by both.
+   * length ~ exp(sigma_L n_L) at a steady speed, independent, so the speed varies by both. Each sigma is the source's
+   * 11-stride CV over `elevenStrideShare`.
    */
   private vary(strides: number) {
-    const time = this.variability.strideTime * this.strideTime.step(strides)
-    const length = this.variability.strideLength * this.strideLength.step(strides)
+    const time = this.variability.strideTime / elevenStrideShare * this.strideTime.step(strides)
+    const length = this.variability.strideLength / elevenStrideShare * this.strideLength.step(strides)
     this.cadenceFactor = Math.exp(-time)
     this.speedFactor = Math.exp(length - time)
   }

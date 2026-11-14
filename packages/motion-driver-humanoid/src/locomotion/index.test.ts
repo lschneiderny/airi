@@ -233,11 +233,12 @@ describe('procedural gait', () => {
     console.info(`locomotion reach: max hip-to-ankle ${(max / legLength).toFixed(6)} L`)
   })
 
-  it('stride variability: stride time and length vary like a young adult\'s, persist from stride to stride, and vary independently', () => {
-    // Beauchet et al. 2005: stride time CV 1.8 %, stride length CV 3.9 %; Hausdorff et al. 1995-1997 and Terrier et al.
-    // 2005: long-range correlated, not white. A 4 minute straight walk at the product's default.
+  it('stride variability: over Beauchet\'s 11-stride window stride time and length vary by 1.8 % and 3.9 %, persist from stride to stride, and vary independently', () => {
+    // Beauchet et al. 2005: CVs 1.8 % and 3.9 %, each over about 11 strides; Hausdorff and Terrier: long-range correlated.
+    // A 20 minute walk cut into 11-stride windows. The 120 Hz strike grid adds about 0.3 % to the time CV; bounds allow
+    // 15 % of the source.
     const run = createRun({ x: 0, yaw: Math.PI / 2 }, 7, traits, {})
-    run.advance(240, () => ({ goalX: 5000, arriveFacing: Math.PI / 2 }))
+    run.advance(1200, () => ({ goalX: 100000, arriveFacing: Math.PI / 2 }))
     const strikes = eventsOf(run.frames, 'heelStrike').filter(strike => strike.foot === 'left' && strike.tick * dt >= 5)
     const times = strikes.slice(1).map((strike, index) => (strike.tick - (strikes[index]?.tick ?? 0)) * dt)
     const lengths = strikes.slice(1).map((strike, index) => {
@@ -245,7 +246,7 @@ describe('procedural gait', () => {
       const landed = strike.frame.feet.left.target.position
       return Math.hypot(landed.x - before.x, landed.z - before.z)
     })
-    expect(times.length).toBeGreaterThan(150)
+    expect(times.length).toBeGreaterThan(1000)
     const mean = (values: readonly number[]) => values.reduce((sum, value) => sum + value, 0) / values.length
     const correlation = (a: readonly number[], b: readonly number[]) => {
       const [ma, mb] = [mean(a), mean(b)]
@@ -253,11 +254,19 @@ describe('procedural gait', () => {
       return cov / Math.sqrt(mean(a.map(value => (value - ma) ** 2)) * mean(b.map(value => (value - mb) ** 2)))
     }
     const cv = (values: readonly number[]) => Math.sqrt(mean(values.map(value => (value - mean(values)) ** 2))) / mean(values)
-    console.info(`locomotion stride variability: time CV ${(100 * cv(times)).toFixed(2)} %, length CV ${(100 * cv(lengths)).toFixed(2)} %, lag-1 r ${correlation(times.slice(1), times.slice(0, -1)).toFixed(2)} / ${correlation(lengths.slice(1), lengths.slice(0, -1)).toFixed(2)}, time-length r ${correlation(times, lengths).toFixed(2)}`)
-    expect(cv(times)).toBeGreaterThan(0.012)
-    expect(cv(times)).toBeLessThan(0.024)
-    expect(cv(lengths)).toBeGreaterThan(0.026)
-    expect(cv(lengths)).toBeLessThan(0.052)
+    // A window's CV with the sample SD (n - 1), averaged over the windows as the study averages its subjects.
+    const windowCv = (values: readonly number[]) => {
+      const windows = Array.from({ length: Math.floor(values.length / 11) }, (_, index) => values.slice(11 * index, 11 * index + 11))
+      return mean(windows.map((window) => {
+        const m = mean(window)
+        return Math.sqrt(window.reduce((sum, value) => sum + (value - m) ** 2, 0) / (window.length - 1)) / m
+      }))
+    }
+    console.info(`locomotion stride variability: 11-stride CV time ${(100 * windowCv(times)).toFixed(2)} %, length ${(100 * windowCv(lengths)).toFixed(2)} %; whole walk ${(100 * cv(times)).toFixed(2)} % / ${(100 * cv(lengths)).toFixed(2)} %, lag-1 r ${correlation(times.slice(1), times.slice(0, -1)).toFixed(2)} / ${correlation(lengths.slice(1), lengths.slice(0, -1)).toFixed(2)}, time-length r ${correlation(times, lengths).toFixed(2)}`)
+    expect(windowCv(times)).toBeGreaterThan(0.85 * 0.018)
+    expect(windowCv(times)).toBeLessThan(1.15 * 0.018)
+    expect(windowCv(lengths)).toBeGreaterThan(0.85 * 0.039)
+    expect(windowCv(lengths)).toBeLessThan(1.15 * 0.039)
     // White noise has a lag-1 correlation near 0; a persistent (long-range correlated) series stays well above it.
     expect(correlation(times.slice(1), times.slice(0, -1))).toBeGreaterThan(0.3)
     expect(correlation(lengths.slice(1), lengths.slice(0, -1))).toBeGreaterThan(0.3)
