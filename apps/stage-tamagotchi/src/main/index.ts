@@ -22,6 +22,7 @@ import devIcon from '../../resources/icon-dev.png?asset'
 
 import { openDebugger, setupDebugger } from './app/debugger'
 import { DESKTOP_FILE_NAME, installDevelopmentDesktopEntry, resolveDataHome } from './app/desktop-entry'
+import { AppExit } from './app/exit'
 import { nullFileLoggerHandle, setupFileLogger } from './app/file-logger'
 import { resolveIsWayland } from './app/ozone'
 import { installSingleInstanceGuard } from './app/single-instance'
@@ -178,7 +179,36 @@ if (shouldStartMainProcess) {
 
 let fileLogger: FileLoggerHandle = nullFileLoggerHandle
 let skipFileLogging = false
-let appExiting = false
+
+// Short enough to end before QA teardown force-kills the app (`Browser.close`, then 10 s for the root to exit).
+const APP_EXIT_TIMEOUT_MS = 5_000
+
+const appExit = new AppExit({
+  shutdown: shutdownApp,
+  finish: (outcome) => {
+    switch (outcome) {
+      case 'clean':
+        app.quit()
+        return
+      case 'failed':
+        app.exit(1)
+        return
+      case 'timed-out':
+        log.error(`[app-exit] Shutdown did not finish within ${APP_EXIT_TIMEOUT_MS} ms; exiting anyway`)
+        app.exit(1)
+        return
+      default: {
+        const unreachable: never = outcome
+        throw new Error(`Unknown app exit outcome: ${String(unreachable)}`)
+      }
+    }
+  },
+  timeoutMs: APP_EXIT_TIMEOUT_MS,
+  setTimeout: (callback, ms) => {
+    const handle = setTimeout(callback, ms)
+    return () => clearTimeout(handle)
+  },
+})
 
 app.whenReady().then(async () => {
   if (!shouldStartMainProcess) {
@@ -224,7 +254,7 @@ app.whenReady().then(async () => {
       tempDir: env.XDG_RUNTIME_DIR ?? app.getPath('temp'),
     }))
     const { bridge } = await injeca.resolve({ bridge: linuxDesktop })
-    if (appExiting) {
+    if (appExit.exiting) {
       await bridge.stop()
       return
     }
@@ -234,7 +264,7 @@ app.whenReady().then(async () => {
     shortcutPortal = { openBus: () => bridge.openSessionBus() }
     // The bridge bounds startup, including bus connection and Hello, to 2 s.
     await bridge.start()
-    if (appExiting)
+    if (appExit.exiting)
       return
   }
 
@@ -470,7 +500,7 @@ app.whenReady().then(async () => {
     ? injeca.provide('windows:stage', {
         dependsOn: userFacingWindowDependencies,
         build: async ({ dependsOn }) => {
-          const stage = await setupStageWindow({ ...dependsOn, config: stageConfig, broadcast: stageStateBroadcast, onWindowCreated: onUserFacingWindowCreated(dependsOn.goNetwork), isQuitting: () => appExiting })
+          const stage = await setupStageWindow({ ...dependsOn, config: stageConfig, broadcast: stageStateBroadcast, onWindowCreated: onUserFacingWindowCreated(dependsOn.goNetwork), isQuitting: () => appExit.exiting })
           stageHost = stage
           return stage.window
         },
@@ -552,13 +582,8 @@ app.on('window-all-closed', () => {
   }
 })
 
-// Clean up server and intervals when app quits
-async function handleAppExit() {
-  if (appExiting)
-    return
-
-  appExiting = true
-
+// Clean up server and intervals when app quits. Resolves whether every step succeeded.
+async function shutdownApp(): Promise<boolean> {
   let exitedNormally = true
 
   /**
@@ -589,20 +614,15 @@ async function handleAppExit() {
   skipFileLogging = true
   await logIfError('flush file logs', () => fileLogger.close()) // Ensure all logs are flushed
 
-  if (!exitedNormally) {
-    app.exit(1)
-  }
-  else {
-    app.quit()
-  }
+  return exitedNormally
 }
 
-process.on('SIGINT', () => handleAppExit())
+// The server channel's srvx server adds its own SIGINT and SIGTERM listeners, which only close that server. Once Node
+// has a listener for a signal, the signal no longer quits Electron, so both signals start the app's shutdown here.
+for (const signal of ['SIGINT', 'SIGTERM'] as const)
+  process.on(signal, () => appExit.request())
 
 app.on('before-quit', (event) => {
-  if (appExiting)
-    return
-
-  event.preventDefault()
-  handleAppExit()
+  if (!appExit.beforeQuit())
+    event.preventDefault()
 })
