@@ -1,4 +1,4 @@
-import type { BodyArmForm, BodyGestureForm, BodyPerformanceFrame, BodyPerformanceInput, BodyRigTraits } from './contracts'
+import type { BodyArmForm, BodyGestureForm, BodyGestureHand, BodyPerformanceFrame, BodyPerformanceInput, BodyRigTraits } from './contracts'
 import type { PerformanceLayer } from './stack'
 
 import { describe, expect, it } from 'vitest'
@@ -24,7 +24,7 @@ interface Utterance {
 interface Script {
   readonly utterances: readonly Utterance[]
   readonly owned?: (time: number) => Partial<BodyPerformanceInput['owned']>
-  readonly armForm?: (time: number) => { side: 'left' | 'right', form: BodyArmForm } | null
+  readonly armForm?: (time: number) => { side: BodyGestureHand, form: BodyArmForm } | null
   /** Natural's mood tension; its speak scenario reports 0. */
   readonly tension?: number
   /** Natural's speech emphasis head pitch term, radians. */
@@ -781,6 +781,48 @@ describe('co-speech gestures', () => {
         }
       }
     }
+  })
+
+  it.each(fixtureRigs)('meets both hands at the front-low anchor, clear and 2 degrees inside every limit, on $name', ({ traits: rig }) => {
+    const rest = createBodyPerformer({ traits: rig, seed: 1 }).restChannels()
+    const keys = new GestureKeys(rig, rest)
+    const channels = rest.slice()
+    for (const side of SIDES) {
+      const start = ARM_START[side]
+      const from = new Float64Array(rest.subarray(start, start + 26))
+      const pose = from.slice()
+      writeHandShape(ARM_FORMS.clasp.shape, pose)
+      expect(keys.armForm(side, 'clasp', pose), side).toBe(true)
+      expect(keys.pathDepth(side, from, pose), side).toBe(0)
+      for (let j = 2; j <= 8; j++) {
+        const [min, max] = JOINT_LIMITS[start + j]
+        expect(Math.min(pose[j] - min, max - pose[j]) / DEG, `${side} joint ${j}`).toBeGreaterThanOrEqual(2)
+      }
+      channels.set(pose, start)
+    }
+    const skeleton = new BodySkeleton(rig)
+    skeleton.update(channels)
+    const left = { ...skeleton.arm('left', channels).wrist }
+    const right = { ...skeleton.arm('right', channels).wrist }
+    const arm = rig.arms.left
+    const length = Math.hypot(arm.upperArm.x, arm.upperArm.y, arm.upperArm.z) + Math.hypot(arm.forearm.x, arm.forearm.y, arm.forearm.z)
+    // The wrists one hand length apart across the hips' midline, at the hips' height, side by side.
+    expect(Math.abs(left.x - right.x - arm.handLength) / arm.handLength).toBeLessThan(0.05)
+    expect(Math.abs((left.x + right.x) / 2 - rig.hips.x) / length).toBeLessThan(0.02)
+    expect(Math.abs(left.y - rig.hips.y) / length).toBeLessThan(0.02)
+    expect(Math.abs(right.y - rig.hips.y) / length).toBeLessThan(0.02)
+    expect(Math.abs(left.z - right.z) / length).toBeLessThan(0.02)
+    expect(Math.min(left.z, right.z)).toBeGreaterThan(rig.hips.z)
+  })
+
+  it('holds a two-hand clasp on both arms, lets one hand go first, then the other', () => {
+    const script: Script = { utterances: [], armForm: time => time > 0.2 && time < 4 ? { side: 'both', form: 'clasp' } : time >= 4 && time < 5 ? { side: 'right', form: 'clasp' } : null }
+    const run = perform(script, 8)
+    const at = (time: number) => run.frames[Math.round(time / BODY_TICK) - 1].gesture.activation
+    expect(at(3)).toEqual({ left: 1, right: 1 })
+    expect(at(4.9)).toEqual({ left: 0, right: 1 })
+    expect(at(8)).toEqual({ left: 0, right: 0 })
+    expect(run.frames.at(-1)?.holds).toBe(0)
   })
 
   it('holds a requested emotion arm form, and lets speech take the other hand', () => {

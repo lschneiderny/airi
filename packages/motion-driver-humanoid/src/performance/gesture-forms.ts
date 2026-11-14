@@ -47,14 +47,28 @@ export const GESTURE_FORMS: Readonly<Record<SpeechGestureForm, GestureFormSpec>>
  * the mouth 0.06 A in front of it (4e act 9), at the chin seed, palm toward the face as the thinking hand holds it; it
  * comes 0.08 A to its own side, the nearest offset from the midline, in 0.02 A steps, at which Chisa's and Ellen's arms
  * solve a key inside their limits (E/g4/a/scratch/probe-cover.ts).
+ *
+ * The clasp is a two-hand contact (6.3, used by 4e act 6 and 4f's rest): both hands go to the front-low anchor, the
+ * hips pushed forward, each wrist half a hand length to its own side of it, so the wrists are one hand length apart and
+ * the hands, which point on along the forearms, overlap across the midline. 6.3 keeps two-hand wrists 0.9 of a hand
+ * length apart unless the pose defines a contact; this one does. Neither row sets the hand's orientation: the palms
+ * turn halfway toward the body (pronation 45 between the hang's 0 and the hand to chest's 75), the wrist straight, the
+ * elbows a little out (the hand to chest's 25 less its 10 for the arm in front of the body).
+ *
+ * At the hips' own height (`anchor.up` 0, 6.3's seed) neither Chisa's nor Ellen's arms have a key clear of their
+ * skirt and belly proxies inside the limits, out to 0.6 A in front of the anchor: the hand capsule, which goes on
+ * along the forearm, enters them. A clear key exists from 0.10 A above the hips on Chisa and 0.05 A on Ellen
+ * (E/fc/u1/scratch/probe-clasp-space.txt). Raising the anchor would be an offset chosen because it solves, so it stays
+ * at the seed, and as 6.3 states, a rig that cannot reach the anchor does not clasp: its hands hang.
  */
-export const ARM_FORMS: Readonly<Record<BodyArmForm, { readonly shape: HandShape, readonly pron: number, readonly wflex: number, readonly swivel: number, readonly short: number, readonly seed: 'chest' | 'chin', readonly anchor: { readonly side: number, readonly up: number } }>> = {
-  'hand-to-chest': { shape: 'relaxed', pron: 75 * DEG, wflex: -10 * DEG, swivel: 25 * DEG, short: 0, seed: 'chest', anchor: { side: 0.05, up: 0.05 } },
-  'thinking-hand': { shape: 'point', pron: 20 * DEG, wflex: -20 * DEG, swivel: 10 * DEG, short: 0.04, seed: 'chin', anchor: { side: 0.1, up: 0 } },
-  'cover-mouth': { shape: 'relaxed', pron: 20 * DEG, wflex: -20 * DEG, swivel: 10 * DEG, short: 0.06, seed: 'chin', anchor: { side: 0.08, up: 0 } },
+export const ARM_FORMS: Readonly<Record<BodyArmForm, { readonly shape: HandShape, readonly pron: number, readonly wflex: number, readonly swivel: number, readonly short: number, readonly seed: 'chest' | 'chin' | 'front-low', readonly anchor: { readonly side: number, readonly up: number }, readonly hands: 'one' | 'both' }>> = {
+  'hand-to-chest': { shape: 'relaxed', pron: 75 * DEG, wflex: -10 * DEG, swivel: 25 * DEG, short: 0, seed: 'chest', anchor: { side: 0.05, up: 0.05 }, hands: 'one' },
+  'thinking-hand': { shape: 'point', pron: 20 * DEG, wflex: -20 * DEG, swivel: 10 * DEG, short: 0.04, seed: 'chin', anchor: { side: 0.1, up: 0 }, hands: 'one' },
+  'cover-mouth': { shape: 'relaxed', pron: 20 * DEG, wflex: -20 * DEG, swivel: 10 * DEG, short: 0.06, seed: 'chin', anchor: { side: 0.08, up: 0 }, hands: 'one' },
   // 4e act 8's temple anchor: 0.25 A above the chin seed (eye height on an adult head, an estimate), 0.14 A to the
   // side, the narrowest offset in 0.04 A steps at which Chisa's and Ellen's arms solve it (E/g4/a/scratch/probe-hair.ts).
-  'hair-touch': { shape: 'relaxed', pron: 20 * DEG, wflex: -20 * DEG, swivel: 10 * DEG, short: 0.04, seed: 'chin', anchor: { side: 0.14, up: 0.25 } },
+  'hair-touch': { shape: 'relaxed', pron: 20 * DEG, wflex: -20 * DEG, swivel: 10 * DEG, short: 0.04, seed: 'chin', anchor: { side: 0.14, up: 0.25 }, hands: 'one' },
+  'clasp': { shape: 'relaxed', pron: 45 * DEG, wflex: 0, swivel: 15 * DEG, short: 0, seed: 'front-low', anchor: { side: 0, up: 0 }, hands: 'both' },
 }
 
 /** Architecture 4a's energy gain on stroke size, energy in [0, 1]. */
@@ -136,6 +150,11 @@ export class GestureKeys {
   /** The corrector's proxies as the live body poses them, and its channels (`clearOfBody`). */
   private readonly live: BodyCollision
   private readonly liveChannels: Float32Array
+  /**
+   * Arm forms this rig cannot reach (`armForm` false). The answer depends only on the rig and its rest trunk, so a
+   * refused form is not searched again while a layer keeps requesting it (the rest requests its clasp for minutes).
+   */
+  private readonly unreachable = new Set<`${BodySide}:${BodyArmForm}`>()
 
   constructor(private readonly traits: BodyRigTraits, private readonly rest: Float32Array) {
     this.skeleton = new BodySkeleton(traits)
@@ -174,7 +193,8 @@ export class GestureKeys {
    * - The anchor: a hand point marches from 1 A in front of the form's seed toward it until it is the hand capsule's
    *   radius plus 0.01 A from the nearest collider, so the hand stops at the body's surface (with no collider near,
    *   at the seed). Chest seed: between the shoulder joints, 0.15 A lower; chin seed: the head bone pushed forward and
-   *   down by 0.6 of the neck-to-head length; each moved by the form's `anchor` toward the arm's own side and up.
+   *   down by 0.6 of the neck-to-head length; front-low seed: the hips; each moved by the form's `anchor` toward the
+   *   arm's own side and up, and a two-hand form's wrist half a hand length further to its own side.
    * - The key: from the anchor (the thinking hand `short` of it) the hand backs off along the approach in 0.01 A
    *   steps, and at each step the elbow swings out from the form's swivel to 80 degrees. A key counts when every joint
    *   is 2 degrees inside its limit and the pose and the angle path from the rest arm clear the proxies; the first
@@ -183,6 +203,8 @@ export class GestureKeys {
    * False when no step within 0.2 A of the anchor has such a key.
    */
   armForm(side: BodySide, form: BodyArmForm, pose: ArmPose): boolean {
+    if (this.unreachable.has(`${side}:${form}`))
+      return false
     const spec = ARM_FORMS[form]
     const length = this.lengths[side].upper + this.lengths[side].forearm
     const shoulder = this.skeleton.arm(side, this.rest).shoulder
@@ -191,8 +213,10 @@ export class GestureKeys {
     const neckToHead = Math.hypot(traits.head.x - traits.neck.x, traits.head.y - traits.neck.y, traits.head.z - traits.neck.z)
     const seed = spec.seed === 'chest'
       ? { x: 0, y: (traits.arms.left.shoulder.y + traits.arms.right.shoulder.y) / 2 - 0.15 * length, z: (traits.arms.left.shoulder.z + traits.arms.right.shoulder.z) / 2 }
-      : { x: 0, y: traits.head.y - 0.6 * neckToHead, z: traits.head.z + 0.6 * neckToHead }
-    seed.x += sigma * spec.anchor.side * length
+      : spec.seed === 'chin'
+        ? { x: 0, y: traits.head.y - 0.6 * neckToHead, z: traits.head.z + 0.6 * neckToHead }
+        : { x: traits.hips.x, y: traits.hips.y, z: traits.hips.z }
+    seed.x += sigma * (spec.anchor.side * length + (spec.hands === 'both' ? 0.5 * traits.arms[side].handLength : 0))
     seed.y += spec.anchor.up * length
     const reach = HAND_RADIUS * this.lengths[side].forearm + ANCHOR.clearance * length
     let surface = seed.z
@@ -218,6 +242,7 @@ export class GestureKeys {
       if (margin >= 0)
         return this.solveOnce(side, { hand, swivel, pron: spec.pron, wflex: spec.wflex, wdev: 0 }, pose)
     }
+    this.unreachable.add(`${side}:${form}`)
     return false
   }
 

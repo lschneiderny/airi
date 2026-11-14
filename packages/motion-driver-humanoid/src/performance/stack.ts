@@ -1,5 +1,5 @@
 import type { BodySide } from './channels'
-import type { BodyActFeedback, BodyArmForm, BodyCapabilities, BodyCueReport, BodyEmotionReport, BodyFootStep, BodyGazeGoal, BodyGestureReport, BodyPerformanceFrame, BodyPerformanceInput, BodyReactionReport, BodyRigTraits } from './contracts'
+import type { BodyActFeedback, BodyArmForm, BodyCapabilities, BodyCueReport, BodyEmotionReport, BodyFootStep, BodyGazeGoal, BodyGestureHand, BodyGestureReport, BodyPerformanceFrame, BodyPerformanceInput, BodyReactionReport, BodyRigTraits } from './contracts'
 
 import { createInertializer, minJerk } from '../dynamics'
 import { ARM_START, BODY_CHANNELS, BODY_TICK, SIDES } from './channels'
@@ -10,7 +10,8 @@ type Mutable<T> = { -readonly [K in keyof T]: T[K] }
 export interface MergedPerformancePlan {
   readonly support: number | null
   readonly gaze: BodyGazeGoal | null
-  readonly armForm: { readonly side: BodySide, readonly form: BodyArmForm } | null
+  /** `both` holds a two-hand form on both arms; a request for one side of a held two-hand form lets the other hand go. */
+  readonly armForm: { readonly side: BodyGestureHand, readonly form: BodyArmForm } | null
   readonly suppressHeadCue: boolean
   readonly suppressHeadEmphasis: boolean
   readonly holdGaze: boolean

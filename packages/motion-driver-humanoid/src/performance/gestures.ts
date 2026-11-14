@@ -501,7 +501,7 @@ class GesturePerformer {
   private refractoryEnd = -Infinity
   private readonly majors: number[] = []
   private readonly formTimes = new Map<SpeechGestureForm, number>()
-  private armForm: { side: BodySide, form: BodyArmForm } | null = null
+  private armForm: { side: BodyGestureHand, form: BodyArmForm } | null = null
   /** Natural's mood tension this tick: the arm followers' stiffness, which every segment's feedforward inverts. */
   private tension = 0
   private readonly scratch = pose()
@@ -610,7 +610,10 @@ class GesturePerformer {
     track.correctAt = Infinity
     track.viaReady = false
     track.settle = false
-    if (this.armForm?.side === side)
+    // A clip taking one hand of a held two-hand form leaves the other holding it.
+    if (this.armForm?.side === 'both')
+      this.armForm = { side: side === 'left' ? 'right' : 'left', form: this.armForm.form }
+    else if (this.armForm?.side === side)
       this.armForm = null
     // A two-handed unit goes on with the hand it still has: its lead and its phase follow that arm from here.
     const unit = this.unit
@@ -620,29 +623,51 @@ class GesturePerformer {
     }
   }
 
+  /**
+   * Holds the requested arm form. A two-hand form (`both`) starts only when both arms are free and both keys solve,
+   * and both arms travel for the longer of their two preparations, so the hands meet together. A request for one side
+   * of a held two-hand form lets the other hand go and keeps that one where it is (4e act 6: one hand releases first).
+   */
   private performArmForm(context: PerformanceContext, now: number): void {
     const request = context.plan.armForm
     const held = this.armForm
-    if (held && (!request || request.side !== held.side || request.form !== held.form)) {
-      const track = this.tracks[held.side]
-      if (track.state === 'form')
-        this.retractTrack(track, now)
+    const sidesOf = (hand: BodyGestureHand): readonly BodySide[] => hand === 'both' ? SIDES : [hand]
+    if (held && request && held.side === 'both' && request.side !== 'both' && request.form === held.form) {
+      const other = this.tracks[request.side === 'left' ? 'right' : 'left']
+      if (other.state === 'form')
+        this.retractTrack(other, now)
+      this.armForm = { side: request.side, form: request.form }
+    }
+    else if (held && (!request || request.side !== held.side || request.form !== held.form)) {
+      for (const side of sidesOf(held.side)) {
+        const track = this.tracks[side]
+        if (track.state === 'form')
+          this.retractTrack(track, now)
+      }
       this.armForm = null
     }
-    if (!request || this.armForm || !this.keys || !this.free(request.side, context.input, context))
+    if (!request || this.armForm || !this.keys)
       return
-    const track = this.tracks[request.side]
-    this.captureHome(track, context)
-    track.key.set(track.home)
-    writeHandShape(ARM_FORMS[request.form].shape, track.key)
-    if (!this.keys.armForm(request.side, request.form, track.key))
+    const sides = sidesOf(request.side)
+    if (!sides.every(side => this.free(side, context.input, context)))
       return
-    const travel = this.travel(request.side, track.home, track.key)
-    this.begin(track, now)
-    track.prepSeconds = track.move(track.key, now, (0.25 + 0.35 * travel) / gestureTempo(context.input.energy.level), this.tension)
-    track.state = 'form'
-    track.form = request.form
-    track.phaseEnd = Infinity
+    for (const side of sides) {
+      const track = this.tracks[side]
+      this.captureHome(track, context)
+      track.key.set(track.home)
+      writeHandShape(ARM_FORMS[request.form].shape, track.key)
+      if (!this.keys.armForm(side, request.form, track.key))
+        return
+    }
+    const travel = Math.max(...sides.map(side => this.travel(side, this.tracks[side].home, this.tracks[side].key)))
+    for (const side of sides) {
+      const track = this.tracks[side]
+      this.begin(track, now)
+      track.prepSeconds = track.move(track.key, now, (0.25 + 0.35 * travel) / gestureTempo(context.input.energy.level), this.tension)
+      track.state = 'form'
+      track.form = request.form
+      track.phaseEnd = Infinity
+    }
     this.armForm = { side: request.side, form: request.form }
   }
 
