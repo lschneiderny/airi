@@ -42,6 +42,8 @@ interface ActiveSession {
   cpu: CpuDeltaTracker
   /** Events waiting for the next tick's append. */
   pending: PerfRecord[]
+  /** Per window label, the last tick whose pull answered in time; the next pull names it so the window drops what main has. */
+  acceptedTicks: Map<string, number>
   cancelInterval: () => void
 }
 
@@ -179,6 +181,7 @@ export class PerfRecordingService {
         previousCpuTimes: machine.cpuTimes,
         cpu,
         pending: [],
+        acceptedTicks: new Map(),
         cancelInterval: () => {},
       }
       await file.append([...this.headerRecords(session, startedAt), this.event(session, { name: 'recording-start', detail: { source: startedBy } })])
@@ -244,8 +247,12 @@ export class PerfRecordingService {
     const stageWindows = windows.filter(window => STAGE_WINDOW_LABELS.has(window.label))
     const [reading, pulls] = await Promise.all([
       this.options.readMachine(),
-      Promise.all(stageWindows.map(window => pullWindowRollup(window, session.tick, this.options.timers))),
+      Promise.all(stageWindows.map(window => pullWindowRollup(window, { tick: session.tick, acceptedTick: session.acceptedTicks.get(window.label) ?? null }, this.options.timers))),
     ])
+    pulls.forEach((pull, index) => {
+      if ('rollup' in pull)
+        session.acceptedTicks.set(stageWindows[index].label, session.tick)
+    })
 
     const buildStart = process.cpuUsage()
     const { machine, hostContended } = measureMachine({ reading, previousCpuTimes: session.previousCpuTimes, processes })
@@ -275,7 +282,8 @@ export class PerfRecordingService {
     this.chromiumTraceChangedSinceSample = false
     records.push(sample)
 
-    records.push(...pulledRecords(pulls, stageWindows, { t, sessionId: session.sessionId, epoch: session.epoch }))
+    const pulled = pulledRecords(pulls, stageWindows, { t, sessionId: session.sessionId, epoch: session.epoch })
+    records.push(...pulled.rollups, ...pulled.events)
     recorderMs += cpuUsageMs(process.cpuUsage(buildStart))
     sample.recorderMs = recorderMs
 
@@ -289,7 +297,8 @@ export class PerfRecordingService {
         log.withError(error).error('Failed to write perf records')
       this.writeFailing = true
       // Samples are lost with the tick, but events such as `trace-start` mark what the next samples mean.
-      session.pending.unshift(...events)
+      // The windows already dropped their events for this accepted tick, so main keeps them too.
+      session.pending.unshift(...events, ...pulled.events)
     }
   }
 

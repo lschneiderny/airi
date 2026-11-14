@@ -1,4 +1,4 @@
-import type { SessionStartRecord, WindowRollupRecord } from '@proj-airi/stage-shared/perf/usage'
+import type { SessionStartRecord, UsageEventRecord, WindowRollupRecord } from '@proj-airi/stage-shared/perf/usage'
 
 import { defineEventa, defineInvokeEventa } from '@moeru/eventa'
 
@@ -20,6 +20,15 @@ export interface PerfRecordingState {
  */
 export type PerfWindowRollup = Omit<WindowRollupRecord, 'sessionId' | 't' | 'epoch' | 'visible'>
 
+/** An event a stage window saw since its last pull. `detail` holds no free text; a model name is always sanitized. */
+export interface PerfWindowEvent {
+  name: Extract<UsageEventRecord['name'], 'model-load' | 'feature-change'>
+  detail: UsageEventRecord['detail']
+}
+
+/** A pulled rollup with the window's queued events. Main writes each event after the tick's rollups, under the window's label. */
+export type PerfWindowPull = PerfWindowRollup & { events: PerfWindowEvent[] }
+
 /** The recent frame intervals and per-stage times of one stage window, for an incident capture. */
 export interface PerfFrameRing {
   intervalsMs: number[]
@@ -39,12 +48,21 @@ export const perfRecordingGet = defineInvokeEventa<PerfRecordingState>('eventa:i
 export const perfRecordingSetEnabled = defineInvokeEventa<PerfRecordingState, { enabled: boolean }>('eventa:invoke:electron:perf-recording:set-enabled')
 export const perfRecordingChanged = defineEventa<PerfRecordingState>('eventa:event:electron:perf-recording:changed')
 
-/** Main asks a stage window for its rollup. The window answers null when it is not sampling. */
-export const perfRecordingPullRollup = defineInvokeEventa<PerfWindowRollup | null, { tick: number }>('eventa:invoke:electron:perf-recording:pull-rollup')
+/**
+ * A pull of tick `tick`. `acceptedTick` is the last tick whose answer from this window reached main in time, or null
+ * when none did this session. A window resends every event it carried in a later tick, because main dropped that answer.
+ */
+export interface PerfWindowPullRequest {
+  tick: number
+  acceptedTick: number | null
+}
+
+/** Main asks a stage window for its rollup and queued events. The window answers null when it is not sampling. */
+export const perfRecordingPullRollup = defineInvokeEventa<PerfWindowPull | null, PerfWindowPullRequest>('eventa:invoke:electron:perf-recording:pull-rollup')
 /** Main asks a stage window for its frame ring. The window answers null when it is not sampling. */
 export const perfRecordingPullFrameRing = defineInvokeEventa<PerfFrameRing | null>('eventa:invoke:electron:perf-recording:pull-frame-ring')
 
-/** A stage window tells main that it reloaded: on page load, and 2 s after the last Vite `vite:afterUpdate`. */
+/** A stage window tells main that it reloaded: on page load and on every Vite `vite:afterUpdate`. Main debounces it. */
 export const perfRecordingRendererReload = defineEventa<void>('eventa:event:electron:perf-recording:renderer-reload')
 
 /** Starts a Chromium trace of the given length. The result names the written file, or says why none was written. */

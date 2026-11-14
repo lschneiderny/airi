@@ -6,7 +6,7 @@ import type { PerfStageWindow } from '../window-context'
 
 import { useLogg } from '@guiiai/logg'
 import { defineInvoke, defineInvokeHandler } from '@moeru/eventa'
-import { useSettingsLive2d } from '@proj-airi/stage-ui-live2d'
+import { useNaturalMotionDiagnostics, useSettingsLive2d } from '@proj-airi/stage-ui-live2d'
 import { useMMD, useMMDMotionDiagnostics } from '@proj-airi/stage-ui-mmd/stores'
 import { useChatStore } from '@proj-airi/stage-ui/stores/chat'
 import { useHearingStore } from '@proj-airi/stage-ui/stores/modules/hearing'
@@ -15,6 +15,7 @@ import { useSettings } from '@proj-airi/stage-ui/stores/settings'
 import { useSpeechOutputControlStore } from '@proj-airi/stage-ui/stores/speech-output-control'
 import { useWakeWordDetectionStore } from '@proj-airi/stage-ui/stores/wake-word-detection'
 import { getActivePinia } from 'pinia'
+import { watch } from 'vue'
 
 import {
   perfRecordingChanged,
@@ -23,6 +24,7 @@ import {
   perfRecordingPullRollup,
   perfRecordingRendererReload,
 } from '../../shared/eventa/perf-recording'
+import { WindowPerfEvents } from '../libs/perf/window-events'
 import { resolveWindowTags } from '../libs/perf/window-tags'
 import { WindowUsageSampler } from '../libs/perf/window-usage-sampler'
 import { useStageThreeRuntimeDiagnosticsStore } from '../stores/stage-three-runtime-diagnostics'
@@ -30,16 +32,14 @@ import { useStageWindowLifecycleStore } from '../stores/stage-window-lifecycle'
 
 const log = useLogg('electron:perf-recording').useGlobalConfig()
 
-/** Main reads identity again only after Vite has stopped updating for this long. */
-const RELOAD_DEBOUNCE_MS = 2000
-
 /**
  * Samples this stage window for the main-process perf recorder while recording is active.
  *
  * Main owns the recording state and the 5 s cadence: it pulls the window's rollup and, for an incident, its frame ring.
  * The sampler runs only between an active state and the next inactive one. While recording is active, the window tells
- * main when it loaded and, in development, 2 s after the last Vite update, so main can read the running code's identity
- * again. Tags come from settings and state stores; no chat text, model path or other personal text is read.
+ * main when it loaded and, in development, on every Vite update, so main can read the running code's identity again;
+ * main debounces the updates. Each pull also carries the window's `model-load` and `feature-change` events since the
+ * previous pull. Tags come from settings and state stores; no chat text, model path or other personal text is read.
  */
 export function initializePerfRecordingBridge(context: ReturnType<typeof getElectronEventaContext>, window: PerfStageWindow): () => void {
   const lifecycle = useStageWindowLifecycleStore()
@@ -52,6 +52,8 @@ export function initializePerfRecordingBridge(context: ReturnType<typeof getElec
   const chat = useChatStore()
   const stageSelf = useStageSelfStore()
   const motionDiagnostics = useMMDMotionDiagnostics()
+  const live2dDiagnostics = useNaturalMotionDiagnostics()
+  const events = new WindowPerfEvents()
 
   function readTags(): WindowTagSnapshot {
     const model = settings.stageModelSelectedDisplayModel
@@ -88,15 +90,36 @@ export function initializePerfRecordingBridge(context: ReturnType<typeof getElec
   const getState = defineInvoke(context, perfRecordingGet)
   let active = false
   let changedBeforeRead = false
-  let reloadTimer: ReturnType<typeof setTimeout> | undefined
 
   function apply(state: PerfRecordingState) {
     active = state.active
-    if (active)
+    if (active) {
       sampler.start()
-    else
+    }
+    else {
       sampler.stop()
+      events.clear()
+    }
   }
+
+  /** Whether the stage's model has committed its load. MMD and Live2D scenes report it in their stores; other renderers do not. */
+  function modelLoaded(): boolean {
+    switch (settings.stageModelRenderer) {
+      case 'mmd':
+        return mmd.isModelLoaded
+      case 'live2d':
+        return live2dDiagnostics.loadedModelId !== null
+      default:
+        return false
+    }
+  }
+
+  // Both scenes clear their flag before they load, so a reload of the same model is a new rising edge.
+  // A sync watcher sees each edge even when the clear and the load land in one tick.
+  const stopModelLoad = watch(modelLoaded, (loaded, wasLoaded) => {
+    if (active && loaded && !wasLoaded)
+      events.modelLoaded(readTags())
+  }, { flush: 'sync' })
 
   function reportReload() {
     if (active)
@@ -109,7 +132,10 @@ export function initializePerfRecordingBridge(context: ReturnType<typeof getElec
     changedBeforeRead = true
     apply(event.body)
   })
-  const stopPullRollup = defineInvokeHandler(context, perfRecordingPullRollup, () => sampler.pull())
+  const stopPullRollup = defineInvokeHandler(context, perfRecordingPullRollup, (request) => {
+    const rollup = sampler.pull()
+    return rollup && events.attach(rollup, request)
+  })
   const stopPullFrameRing = defineInvokeHandler(context, perfRecordingPullFrameRing, () => sampler.frameRing())
 
   void getState().then((state) => {
@@ -119,18 +145,11 @@ export function initializePerfRecordingBridge(context: ReturnType<typeof getElec
     reportReload()
   }).catch(error => log.withError(error).warn('Failed to read the perf recording state'))
 
-  function onViteUpdate() {
-    clearTimeout(reloadTimer)
-    reloadTimer = setTimeout(() => {
-      reloadTimer = undefined
-      reportReload()
-    }, RELOAD_DEBOUNCE_MS)
-  }
-  import.meta.hot?.on('vite:afterUpdate', onViteUpdate)
+  import.meta.hot?.on('vite:afterUpdate', reportReload)
 
   return () => {
-    import.meta.hot?.off('vite:afterUpdate', onViteUpdate)
-    clearTimeout(reloadTimer)
+    import.meta.hot?.off('vite:afterUpdate', reportReload)
+    stopModelLoad()
     stopChanged()
     stopPullRollup()
     stopPullFrameRing()

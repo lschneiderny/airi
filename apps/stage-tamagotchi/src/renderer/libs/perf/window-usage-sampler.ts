@@ -34,7 +34,8 @@ export interface WindowUsageSamplerOptions {
  *
  * While an MMD scene draws, its own frame metrics are the source and the sampler schedules no animation frame; otherwise
  * one animation-frame loop records the intervals. The frame callback allocates nothing: it writes into the preallocated
- * histogram and ring. `pull` builds the rollup once per recorder tick and starts the next window.
+ * histogram and ring. `pull` builds the rollup once per recorder tick and starts the next window. The rollup's
+ * `display.refreshHz` is 0: the main process overwrites it from the display's frequency when it accepts the rollup.
  */
 export class WindowUsageSampler {
   /** Frame intervals of the own loop in the current window. */
@@ -44,7 +45,6 @@ export class WindowUsageSampler {
   private readonly options: WindowUsageSamplerOptions
   private readonly mmdTotals = new MMDUsageTotals()
   private readonly mmdRingCopy = new MMDFrameRing()
-  private readonly medianScratch = new Float32Array(MMD_FRAME_RING_SIZE)
   private running = false
   private mmdSource = false
   private rafHandle: number | null = null
@@ -129,7 +129,7 @@ export class WindowUsageSampler {
       kind: 'window-rollup',
       window: this.options.window,
       paused: this.options.paused(),
-      tags: { ...tags, display: { ...tags.display, refreshHz: this.refreshHz(fromMmd, frames) } },
+      tags: { ...tags, display: { ...tags.display, refreshHz: 0 } },
       frames,
       frameHist: fromMmd ? this.mmdTotals.frameHist.toArray() : this.frameHistogram.toArray(),
       frameSumMs: fromMmd ? this.mmdTotals.frameSumMs : this.frameSumMs,
@@ -206,30 +206,6 @@ export class WindowUsageSampler {
       }
     }
     return stages
-  }
-
-  /**
-   * The display rate implied by the median interval of this window's frames, in whole hertz; 0 without frames.
-   * A window that cannot keep up reports its achieved rate, which is what its frames were measured against.
-   */
-  private refreshHz(fromMmd: boolean, frames: number): number {
-    let count: number
-    if (fromMmd) {
-      if (!this.options.mmdRing?.(this.mmdRingCopy))
-        return 0
-      count = Math.min(frames, this.mmdRingCopy.count)
-      this.medianScratch.set(this.mmdRingCopy.intervalsMs.subarray(this.mmdRingCopy.count - count, this.mmdRingCopy.count))
-    }
-    else {
-      count = Math.min(frames, this.ringCount)
-      for (let offset = 0; offset < count; offset++)
-        this.medianScratch[offset] = this.intervalRing[(this.ringCursor - 1 - offset + MMD_FRAME_RING_SIZE) % MMD_FRAME_RING_SIZE]
-    }
-    if (count === 0)
-      return 0
-    const sorted = this.medianScratch.subarray(0, count).sort()
-    const median = sorted[count >> 1]
-    return median > 0 ? Math.round(1000 / median) : 0
   }
 
   private resetWindow(): void {
