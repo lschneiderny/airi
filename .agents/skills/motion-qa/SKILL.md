@@ -67,6 +67,10 @@ Liveliness gates accept `--host <id>` for `windows`, `macos`, `linux-x11`, `linu
 
 Run `pnpm qa:host smoke` to compare a temporary Electron app's capability snapshot with the runner and observe host signals for 180 seconds. On native Wayland, pass `--expect-idle verified` or `--expect-idle unverified`, according to the machine's idle probe. Pass `--xwayland` to launch the XWayland backend; that flag requires a Linux Wayland session. The command tears down its app and temporary profile when it finishes.
 
+## Finding the motion that looks wrong
+
+Scores do not say which idle motion a reviewer dislikes. For that, use the Motion review section of the Natural motion lab ([stage-ui-live2d README](../../../packages/stage-ui-live2d/README.md#motion-review)): it mutes or solos each idle layer on the running model, captions what drives the head and the eyes, and records flagged moments with the 10 s that led up to them. Ask the user for the downloaded `natural-review-flags-*.json` before proposing a change to idle motion. Never run a capture or a gate with the review gains changed.
+
 ## Required limitations wording
 
 Every motion QA report and verdict must state:
