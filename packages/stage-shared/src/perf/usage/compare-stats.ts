@@ -26,7 +26,7 @@ export function mulberry32(seed: number): Random {
   }
 }
 
-function quantileOfSorted(sorted: readonly number[], q: number): number {
+function quantileOfSorted(sorted: ArrayLike<number>, q: number): number {
   const position = (sorted.length - 1) * q
   const lower = Math.floor(position)
   return sorted[lower] + (sorted[Math.ceil(position)] - sorted[lower]) * (position - lower)
@@ -77,14 +77,34 @@ export function aaNoiseFloor(values: readonly number[], random: Random): number 
   return quantile(differences, 0.9)
 }
 
+/** Up to this many differences the sign-flip floor enumerates all 2^n patterns (16384 at 14) instead of sampling. */
+const SIGN_FLIP_EXACT_MAX = 14
+
 /**
  * The paired analogue of {@link aaNoiseFloor}: with no shift, each per-session difference is as likely negative as
- * positive, so it is the 90th percentile of `|median|` over {@link AA_SPLITS} draws that flip each sign at random.
- * Unlike a floor from within-session spread, it does not fall to 0 when a session holds one block per side.
+ * positive, so it is the 90th percentile of `|median|` over sign flips of the differences. Up to 14 differences it
+ * takes every one of the 2^n flip patterns, so the floor is exact and does not depend on `random`. Above that it
+ * samples {@link AA_SPLITS} seeded patterns. Unlike a floor from within-session spread, it does not fall to 0 when a
+ * session holds one block per side.
  */
 export function signFlipNoiseFloor(differences: readonly number[], random: Random): number {
-  const medians = Array.from({ length: AA_SPLITS }, () => Math.abs(median(differences.map(difference => (random() < 0.5 ? -difference : difference)))))
-  return quantile(medians, 0.9)
+  const count = differences.length
+  if (count > SIGN_FLIP_EXACT_MAX) {
+    const medians = Array.from({ length: AA_SPLITS }, () => Math.abs(median(differences.map(difference => (random() < 0.5 ? -difference : difference)))))
+    return quantile(medians, 0.9)
+  }
+
+  const medians = new Float64Array(2 ** count)
+  const flipped = new Float64Array(count)
+  for (let pattern = 0; pattern < medians.length; pattern++) {
+    for (let index = 0; index < count; index++)
+      flipped[index] = (pattern >>> index) & 1 ? -differences[index] : differences[index]
+    // Typed arrays sort numerically.
+    flipped.sort()
+    medians[pattern] = Math.abs(quantileOfSorted(flipped, 0.5))
+  }
+  medians.sort()
+  return quantileOfSorted(medians, 0.9)
 }
 
 export function excludesZero(interval: Interval): boolean {
