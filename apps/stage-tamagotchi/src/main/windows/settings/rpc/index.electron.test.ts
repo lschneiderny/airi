@@ -56,6 +56,9 @@ vi.mock('../../../services/electron', () => ({ createAutoUpdaterService: vi.fn()
 vi.mock('../../../services/airi/io-trace-recording/register', () => ({
   registerIOTraceRecording: vi.fn(() => vi.fn()),
 }))
+vi.mock('../../../services/airi/perf-recording/register', () => ({
+  registerPerfRecording: vi.fn(() => vi.fn()),
+}))
 
 async function setup(window: BrowserWindow, getMainWindow?: () => BrowserWindow | undefined, openDevtoolsWindow = vi.fn(async () => new BrowserWindow())) {
   type Params = Parameters<typeof setupSettingsWindowInvokes>[0]
@@ -76,6 +79,7 @@ async function setup(window: BrowserWindow, getMainWindow?: () => BrowserWindow 
     i18n: {} as Params['i18n'],
     spotlightWindow: {} as Params['spotlightWindow'],
     ioTraceRecording: {} as Params['ioTraceRecording'],
+    perfRecording: {} as Params['perfRecording'],
   })
 }
 

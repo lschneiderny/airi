@@ -59,6 +59,9 @@ vi.mock('../../../services/electron', () => ({ createAutoUpdaterService: vi.fn()
 vi.mock('../../../services/airi/io-trace-recording/register', () => ({
   registerIOTraceRecording: vi.fn(() => vi.fn()),
 }))
+vi.mock('../../../services/airi/perf-recording/register', () => ({
+  registerPerfRecording: vi.fn(() => vi.fn()),
+}))
 
 async function setup(window: BrowserWindow) {
   type Params = Parameters<typeof setupMainWindowElectronInvokes>[0]
@@ -83,6 +86,7 @@ async function setup(window: BrowserWindow) {
     i18n: {} as Params['i18n'],
     onboardingWindowManager: {} as Params['onboardingWindowManager'],
     ioTraceRecording: {} as Params['ioTraceRecording'],
+    perfRecording: {} as Params['perfRecording'],
     inlayWindow: vi.fn(),
     globalShortcut: { registerWindow: vi.fn(), registerMainShortcut: vi.fn(), dispose: vi.fn() },
   })

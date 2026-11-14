@@ -3,6 +3,7 @@ import type { ServerChannel } from '../../services/airi/channel-server'
 import type { GodotStageManager } from '../../services/airi/godot-stage'
 import type { IOTraceRecordingService } from '../../services/airi/io-trace-recording'
 import type { McpManager } from '../../services/airi/mcp-servers'
+import type { PerfRecordingService } from '../../services/airi/perf-recording'
 import type { AutoUpdater } from '../../services/electron/auto-updater'
 import type { GlobalShortcutService } from '../../services/electron/global-shortcut'
 import type { DevtoolsWindowManager } from '../devtools'
@@ -44,6 +45,7 @@ export function setupSettingsWindowReusableFunc(params: {
   globalShortcut: GlobalShortcutService
   spotlightWindow: SpotlightWindowManager
   ioTraceRecording: IOTraceRecordingService
+  perfRecording: PerfRecordingService
   /** The stage config and the host this launch built, so the settings page can edit the mode and the home display. */
   stage: Omit<Parameters<typeof setupWindowStageInvokes>[0], 'window'>
 }): SettingsWindowManager {
@@ -85,6 +87,7 @@ export function setupSettingsWindowReusableFunc(params: {
       globalShortcut: params.globalShortcut,
       spotlightWindow: params.spotlightWindow,
       ioTraceRecording: params.ioTraceRecording,
+      perfRecording: params.perfRecording,
     })
     setupWindowStageInvokes({ window, ...params.stage })
 

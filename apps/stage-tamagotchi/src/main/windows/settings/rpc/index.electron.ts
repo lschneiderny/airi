@@ -5,6 +5,7 @@ import type { ServerChannel } from '../../../services/airi/channel-server'
 import type { GodotStageManager } from '../../../services/airi/godot-stage'
 import type { IOTraceRecordingService } from '../../../services/airi/io-trace-recording'
 import type { McpManager } from '../../../services/airi/mcp-servers'
+import type { PerfRecordingService } from '../../../services/airi/perf-recording'
 import type { AutoUpdater } from '../../../services/electron/auto-updater'
 import type { GlobalShortcutService } from '../../../services/electron/global-shortcut'
 import type { DevtoolsWindowManager } from '../../devtools'
@@ -26,6 +27,7 @@ import { createWindowContext } from '../../../libs/electron/window-context'
 import { createGodotStageService } from '../../../services/airi/godot-stage'
 import { registerIOTraceRecording } from '../../../services/airi/io-trace-recording/register'
 import { createMcpServersService } from '../../../services/airi/mcp-servers'
+import { registerPerfRecording } from '../../../services/airi/perf-recording/register'
 import { createWidgetsService } from '../../../services/airi/widgets'
 import { createAutoUpdaterService } from '../../../services/electron'
 import { setupBaseWindowElectronInvokes } from '../../shared/window'
@@ -44,6 +46,7 @@ export async function setupSettingsWindowInvokes(params: {
   globalShortcut: GlobalShortcutService
   spotlightWindow: SpotlightWindowManager
   ioTraceRecording: IOTraceRecordingService
+  perfRecording: PerfRecordingService
 }) {
   // Keep Settings IPC isolated and dispose its handlers when the window closes.
   const { context } = createWindowContext(params.settingsWindow)
@@ -56,6 +59,8 @@ export async function setupSettingsWindowInvokes(params: {
   createGodotStageService({ context, manager: params.godotStageManager, window: params.settingsWindow })
   const stopIOTraceRecording = registerIOTraceRecording(context, params.ioTraceRecording)
   onWindowClosed(params.settingsWindow, stopIOTraceRecording)
+  const stopPerfRecording = registerPerfRecording(context, params.settingsWindow, params.perfRecording)
+  onWindowClosed(params.settingsWindow, stopPerfRecording)
 
   // Register the global shortcut service for the settings window.
   params.globalShortcut.registerWindow({ context, window: params.settingsWindow })
