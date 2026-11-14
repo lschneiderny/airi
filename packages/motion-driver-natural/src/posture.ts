@@ -74,6 +74,11 @@ export class NaturalPostureLayers {
   continuousScale = 1
   /** Increments when a posture shift begins, so coordinated layers can react. */
   shiftCount = 0
+  /**
+   * Review gains on the three terms: `drift` scales `b`, `continuous` scales `n` and `shift` scales `r`. Every process
+   * keeps stepping whatever the gain, and a gain of 1 leaves the pose bit-identical. @default 1 each
+   */
+  layerGains = { drift: 1, continuous: 1, shift: 1 }
 
   private readonly drift: FilteredOu[]
   private readonly continuous: FilteredOu[]
@@ -140,6 +145,16 @@ export class NaturalPostureLayers {
     return this.gain
   }
 
+  /** Whether the latest shift is still moving; false while its pose is held. */
+  get shiftMoving() {
+    return this.shiftDuration > 0 && this.time < this.shiftStart + this.shiftDuration
+  }
+
+  /** Length of the latest shift in normalized units, before `amplitudeScale` and the review gain. */
+  get shiftDistance() {
+    return Math.hypot(...this.shiftTo.map((value, axis) => value - this.shiftFrom[axis]))
+  }
+
   /** Active seconds until the next posture shift begins. */
   get secondsUntilShift() {
     return this.nextShiftAt - this.time
@@ -183,10 +198,11 @@ export class NaturalPostureLayers {
     const shift = this.shiftAt(this.time)
     const slow: Vec3 = [0, 0, 0]
     const pose = [0, 1, 2].map((axis) => {
-      const drift = this.drift[axis].step(dt)
-      const continuous = this.continuous[axis].step(dt)
-      slow[axis] = softLimit(this.home[axis] + drift + this.amplitudeScale * shift[axis] + bias[axis])
-      return softLimit(this.home[axis] + drift + this.amplitudeScale * (this.continuousScale * gain * continuous + shift[axis]) + bias[axis])
+      const drift = this.layerGains.drift * this.drift[axis].step(dt)
+      const continuous = this.layerGains.continuous * this.continuous[axis].step(dt)
+      const shifted = this.layerGains.shift * shift[axis]
+      slow[axis] = softLimit(this.home[axis] + drift + this.amplitudeScale * shifted + bias[axis])
+      return softLimit(this.home[axis] + drift + this.amplitudeScale * (this.continuousScale * gain * continuous + shifted) + bias[axis])
     }) as Vec3
     this.slow = slow
     return pose
