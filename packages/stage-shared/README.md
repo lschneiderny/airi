@@ -55,6 +55,8 @@ The `perf/usage` entrypoint owns the contract for local performance recordings a
 - `PerfRecordSchema` and `parsePerfLine`, the Valibot schemas and parser for every JSONL record kind (`session-start`, `identity`, `sample`, `window-rollup`, `event`, `incident`, `segment-rollup`, `rollup-failed`, `bench-run`). Every line carries `v: 1`, `kind`, `t` (epoch milliseconds), and `sessionId`. `parsePerfLine` never throws: it returns `{ ok: false, reason }` with `json` for unparseable text, `version` for any other `v` (readers skip and count those lines, never migrate them), and `schema` for anything else invalid;
 - `FRAME_BINS_V1` and `STAGE_BINS_V1`, the versioned bin edges that records name by id;
 - `FixedHistogram`, a histogram over one preallocated `Uint32Array` whose `add` allocates nothing, with exact `shareAtLeast` for bin edges and `approxQuantile` over serialized counts;
+- `CpuDeltaTracker`, which turns `cumulativeCPUUsage` readings keyed by `pid` and `creationTime` into CPU percentages of one core (`null` on first sighting, missing data, or a backwards delta), and `machineExternalCpuPct`, which subtracts the app's share from two `os.cpus()` readings. AIRI child processes outside `app.getAppMetrics()`, such as MCP servers, count as external;
+- `decideHostContended` with its named thresholds, `parsePsiCpu` for `/proc/pressure/cpu`, and `processRole`, which names an Electron `ProcessMetric` (`browser`, `gpu`, `window:<label>`, `utility:<service>`, and so on);
 - `sanitizeModelName`, which reduces a model path to a short label, and `containsForbiddenText`, which flags path-, URL-, or key-like text in a serialized line.
 
 ```ts
