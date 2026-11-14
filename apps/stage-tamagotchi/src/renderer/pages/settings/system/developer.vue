@@ -81,12 +81,17 @@ const capturePerfTrace = useElectronEventaInvoke(perfTraceCapture)
 const getPerfTrace = useElectronEventaInvoke(perfTraceGet)
 const perfTrace = ref<PerfTraceState>()
 const perfTraceError = ref<string | null>(null)
+let perfTraceEventArrived = false
 const stopPerfTraceListener = eventaContext.value.on(perfTraceState, (event) => {
+  perfTraceEventArrived = true
   perfTrace.value = event.body
 })
 // A window that opens during or after a capture asks for the state instead of waiting for the next change.
+// An event that arrives while the answer is in flight is newer than the answer, so the answer is dropped.
 onMounted(async () => {
-  perfTrace.value = await getPerfTrace()
+  const state = await getPerfTrace()
+  if (!perfTraceEventArrived)
+    perfTrace.value = state
 })
 onUnmounted(stopPerfTraceListener)
 

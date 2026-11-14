@@ -42,6 +42,9 @@ function createCapture(categories = ['v8', 'cc']) {
   const files = new Map<string, string>()
   const tracing = new FakeTracing(files, categories)
   const changes: boolean[] = []
+  /** Every gzip and remove in order, to check that a plain file goes only after its gzip finished. */
+  const operations: string[] = []
+  const gzipFailures = { remaining: 0 }
   const delaysMs: number[] = []
   const pending: Array<() => void> = []
   let scheduled: () => void = () => {}
@@ -60,12 +63,23 @@ function createCapture(categories = ['v8', 'cc']) {
       mkdir: async () => {},
       readdir: async path => [...files.keys()].filter(file => dirname(file) === path).map(file => basename(file)),
       rm: async (path) => {
+        operations.push(`rm ${basename(path)}`)
         files.delete(path)
+      },
+      gzip: async (from, to) => {
+        operations.push(`gzip ${basename(from)}`)
+        if (gzipFailures.remaining > 0) {
+          gzipFailures.remaining -= 1
+          // A real stream leaves a partial output behind.
+          files.set(to, 'partial')
+          throw new Error('gzip failed')
+        }
+        files.set(to, `gz(${files.get(from)})`)
       },
     },
     onTracingChange: tracing => changes.push(tracing),
   })
-  return { capture, files, tracing, changes, delaysMs, waits, elapse: () => pending.splice(0).forEach(callback => callback()) }
+  return { capture, files, tracing, changes, operations, gzipFailures, delaysMs, waits, elapse: () => pending.splice(0).forEach(callback => callback()) }
 }
 
 /** Resolves once the capture waits for its trace. A capture that settles first fails here instead of timing the test out. */
@@ -82,7 +96,7 @@ describe('perfTraceCapture', () => {
     await untilWaiting(waits, result)
     elapse()
 
-    expect(await result).toEqual({ file: `${DIRECTORY}/2026-11-14T12-00-00-000Z.json` })
+    expect(await result).toEqual({ file: `${DIRECTORY}/2026-11-14T12-00-00-000Z.json.gz` })
     expect(tracing.configs).toEqual([{
       included_categories: ['disabled-by-default-devtools.timeline', 'cc', 'v8', 'electron'],
       recording_mode: 'record-until-full',
@@ -102,12 +116,12 @@ describe('perfTraceCapture', () => {
     expect(second).toEqual({ error: expect.stringContaining('already') })
     expect(await first).toHaveProperty('file')
     expect(files.size).toBe(1)
-    expect(capture.getState()).toEqual({ capturing: false, lastFile: `${DIRECTORY}/2026-11-14T12-00-00-000Z.json` })
+    expect(capture.getState()).toEqual({ capturing: false, lastFile: `${DIRECTORY}/2026-11-14T12-00-00-000Z.json.gz` })
   })
 
-  it('keeps the newest five traces and leaves other files alone', async () => {
+  it('keeps the newest five gzipped traces and leaves other files alone', async () => {
     const { capture, files, waits, elapse } = createCapture()
-    const older = [1, 2, 3, 4, 5].map(day => `${DIRECTORY}/2026-11-0${day}T08-00-00-000Z.json`)
+    const older = [1, 2, 3, 4, 5].map(day => `${DIRECTORY}/2026-11-0${day}T08-00-00-000Z.json.gz`)
     for (const path of [...older, `${DIRECTORY}/notes.txt`])
       files.set(path, '{}')
 
@@ -116,7 +130,48 @@ describe('perfTraceCapture', () => {
     elapse()
     await result
 
-    expect([...files.keys()].sort()).toEqual([...older.slice(1), `${DIRECTORY}/2026-11-14T12-00-00-000Z.json`, `${DIRECTORY}/notes.txt`])
+    expect([...files.keys()].sort()).toEqual([...older.slice(1), `${DIRECTORY}/2026-11-14T12-00-00-000Z.json.gz`, `${DIRECTORY}/notes.txt`])
+  })
+
+  it('removes the plain trace only after its gzip finished', async () => {
+    const { capture, files, operations, waits, elapse } = createCapture()
+
+    const result = capture.capture(10)
+    await untilWaiting(waits, result)
+    elapse()
+    await result
+
+    expect(operations).toEqual(['gzip 2026-11-14T12-00-00-000Z.json', 'rm 2026-11-14T12-00-00-000Z.json'])
+    expect(files.get(`${DIRECTORY}/2026-11-14T12-00-00-000Z.json.gz`)).toBe('gz({"traceEvents":[]})')
+  })
+
+  it('keeps the plain trace, drops the partial gzip and reports the failure when gzip fails', async () => {
+    const { capture, files, gzipFailures, waits, elapse } = createCapture()
+    gzipFailures.remaining = 1
+
+    const result = capture.capture(10)
+    await untilWaiting(waits, result)
+    elapse()
+    const settled = await result
+
+    expect(settled).toEqual({ error: expect.stringContaining('gzip failed') })
+    expect([...files.keys()]).toEqual([`${DIRECTORY}/2026-11-14T12-00-00-000Z.json`])
+    expect(capture.getState()).toEqual({ capturing: false, lastFile: null })
+  })
+
+  it('compresses a plain trace left by a crash on the next capture and keeps only five', async () => {
+    const { capture, files, waits, elapse } = createCapture()
+    const older = [1, 2, 3, 4, 5].map(day => `${DIRECTORY}/2026-11-0${day}T08-00-00-000Z.json.gz`)
+    for (const path of older)
+      files.set(path, '{}')
+    files.set(`${DIRECTORY}/2026-11-06T08-00-00-000Z.json`, '{"traceEvents":[]}')
+
+    const result = capture.capture(10)
+    await untilWaiting(waits, result)
+    elapse()
+    await result
+
+    expect([...files.keys()].sort()).toEqual([...older.slice(2), `${DIRECTORY}/2026-11-06T08-00-00-000Z.json.gz`, `${DIRECTORY}/2026-11-14T12-00-00-000Z.json.gz`])
   })
 
   it.each([

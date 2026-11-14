@@ -1305,7 +1305,7 @@ devtools:
       section: Performance recording
     perf-trace:
       title: Chromium trace
-      description: 'Local only: traces can contain URLs. Open in Perfetto or chrome://tracing.'
+      description: 'Local only: traces can contain URLs. Saved as .json.gz; open it in Perfetto, or gunzip it for chrome://tracing.'
       button: Capture Chromium trace (10 s)
       capturing: Capturing a Chromium trace...
       last-file: 'Last trace: {path}'
