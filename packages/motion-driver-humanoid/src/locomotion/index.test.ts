@@ -47,7 +47,7 @@ function bindFeet(pose: Pose): Record<Foot, FootAnchor> {
 
 // The structural tests below pin a periodic walk (equal steps, mirrored sides), so they turn the stride variability off;
 // `{}` keeps the product's default.
-const periodic: { variability?: GaitVariability } = { variability: { strideTime: 0, strideLength: 0 } }
+const periodic: { variability?: GaitVariability } = { variability: { strideTime: 0, strideLength: 0, armLag: 0 } }
 
 // Closed loop: each frame's foot targets come back as the next frame's planted anchors.
 function createRun(start: Pose, seed = 7, gaitTraits: GaitTraits = traits, options = periodic) {
@@ -318,7 +318,7 @@ describe('procedural gait', () => {
     expect(window.length).toBeGreaterThan(200)
     expect(Math.abs(window.reduce((sum, frame) => sum + frame.support, 0) / window.length)).toBeLessThan(1e-3)
 
-    // The arms swing in antiphase from one cosine; the forward swing (16) is larger than the back swing (12), so the two
+    // The arms swing in antiphase from one trunk drive; the forward swing (16) is larger than the back swing (12), so the two
     // arms' offsets from 2 degrees, the right one taken at the left's size, sum to a seventh of their difference.
     for (const name of allScenarios) {
       for (const frame of scenario(name).frames) {
@@ -520,8 +520,11 @@ describe('procedural gait', () => {
     const { frames } = scenario('cruise')
     const steady = frames.filter((frame, tick) => tick * dt >= 3 && frame.mode === 'walking')
     const flexion = steady.map(frame => frame.armSwing.left.flexion)
-    expect(Math.max(...flexion)).toBeCloseTo(2 * rad + 16 * rad, 3)
-    expect(Math.min(...flexion)).toBeCloseTo(2 * rad - 12 * rad, 3)
+    // The trunk's three lag links pass the stride frequency at 0.99 of its size.
+    expect(Math.max(...flexion)).toBeLessThanOrEqual(2 * rad + 16 * rad)
+    expect(Math.max(...flexion)).toBeGreaterThan(2 * rad + 0.98 * 16 * rad)
+    expect(Math.min(...flexion)).toBeGreaterThanOrEqual(2 * rad - 12 * rad)
+    expect(Math.min(...flexion)).toBeLessThan(2 * rad - 0.98 * 12 * rad)
     // The elbow's forward bend peaks when the shoulder's forward swing peaked 0.2 s (24 ticks) earlier.
     const peaks = (values: readonly number[]) => values.flatMap((value, index) => index > 0 && index < values.length - 1 && value > (values[index - 1] ?? 0) && value >= (values[index + 1] ?? 0) ? [index] : [])
     const shoulder = peaks(flexion)
@@ -534,8 +537,10 @@ describe('procedural gait', () => {
     }
     for (const frame of steady) {
       const swing = frame.armSwing.left
-      // Forward of 2 degrees the hand moves toward the midline and the clavicle protracts; behind it, it retracts.
-      expect(Math.sign(swing.clavProt)).toBe(Math.sign(swing.flexion - 2 * rad))
+      // Forward of 2 degrees the hand moves toward the midline and the clavicle protracts; behind it, it retracts. The
+      // clavicle leads the arm by 26 ms, over which the arm moves under 3 degrees, so the signs are compared beyond that.
+      if (Math.abs(swing.flexion - 2 * rad) > 3 * rad)
+        expect(Math.sign(swing.clavProt)).toBe(Math.sign(swing.flexion - 2 * rad))
       expect(swing.abduct).toBeLessThanOrEqual(0)
     }
   })
@@ -548,6 +553,82 @@ describe('procedural gait', () => {
       return Math.max(...flexion) - Math.min(...flexion)
     }
     expect(range('right') / range('left')).toBeCloseTo(1 - 0.219, 3)
+  })
+
+  it('arm pendulums: each arm follows the shoulder girdle 25.9 ms late on its own drifting lag, so the arms leave antiphase by Mirelman\'s arm PCI', () => {
+    // bands-v5 walk `chain.shoulder-upperArm.lagMs` p50 25.9 ms; Mirelman et al. 2015, ages 30 to 40: arm PCI 1.68 % over
+    // one-minute walks (about 60 strides). A 20 minute walk at the product's default.
+    const run = createRun({ x: 0, yaw: Math.PI / 2 }, 7, traits, {})
+    run.advance(1200, () => ({ goalX: 100000, arriveFacing: Math.PI / 2 }))
+    // Upward zero crossings of a forward swing, interpolated between ticks, while walking after 5 s.
+    const crossings = (read: (frame: LocomotionFrame) => number) => run.frames.flatMap((frame, tick) => {
+      const previous = run.frames[tick - 1]
+      if (!previous || tick * dt < 5 || frame.mode !== 'walking' || previous.mode !== 'walking')
+        return []
+      const [a, b] = [read(previous), read(frame)]
+      return a < 0 && b >= 0 ? [(tick - 1 + a / (a - b)) * dt] : []
+    })
+    const arm = { left: crossings(frame => frame.armSwing.left.flexion - 2 * rad), right: crossings(frame => frame.armSwing.right.flexion - 2 * rad) }
+    const clavicle = crossings(frame => frame.armSwing.left.clavProt)
+    const lags = arm.left.flatMap(time => clavicle.filter(clav => clav <= time).slice(-1).map(clav => time - clav))
+    const mean = (values: readonly number[]) => values.reduce((sum, value) => sum + value, 0) / values.length
+    // phi: where the right arm's crossing falls in the left arm's cycle, degrees; 180 is exact antiphase.
+    const phases = arm.left.slice(1).flatMap((time, index) => {
+      const from = arm.left[index] ?? time
+      return arm.right.filter(right => right >= from && right < time).slice(0, 1).map(right => 360 * (right - from) / (time - from))
+    })
+    const windows = Array.from({ length: Math.floor(phases.length / 60) }, (_, index) => phases.slice(60 * index, 60 * index + 60))
+    const pci = mean(windows.map((window) => {
+      const m = mean(window)
+      const sd = Math.sqrt(window.reduce((sum, value) => sum + (value - m) ** 2, 0) / (window.length - 1))
+      return 100 * sd / m + 100 * mean(window.map(value => Math.abs(value - 180))) / 180
+    }))
+    console.info(`locomotion arm pendulums: lag behind the girdle ${(1000 * mean(lags)).toFixed(2)} ms over ${lags.length} swings, arm PCI ${pci.toFixed(2)} % over ${windows.length} one-minute windows`)
+    expect(windows.length).toBeGreaterThan(15)
+    expect(Math.abs(mean(lags) - 0.0259)).toBeLessThan(0.002)
+    expect(pci).toBeGreaterThan(0.75 * 1.68)
+    expect(pci).toBeLessThan(1.25 * 1.68)
+  })
+
+  it('arm pendulums: a halt leaves each arm on the swing it had and lets the trunk\'s links carry it to rest', () => {
+    // Stopping the drive at once near the left arm's forward peak: the arm keeps its swing on that tick and settles, where
+    // a swing sampled from the leg phase drops to rest in one tick.
+    const run = createRun({ x: 0, yaw: Math.PI / 2 })
+    let stopAt = Number.POSITIVE_INFINITY
+    run.advance(6, (now) => {
+      const last = run.frames.at(-1)
+      if (stopAt === Number.POSITIVE_INFINITY && now > 4 && last && last.armSwing.left.flexion - 2 * rad > 0.8 * 16 * rad)
+        stopAt = now
+      return { goalX: 500, arriveFacing: Math.PI / 2, enabled: now < stopAt }
+    })
+    const { frames } = run
+    const halt = frames.findIndex((frame, tick) => tick > 120 && frame.mode === 'idle')
+    expect(halt).toBeGreaterThan(4 * 120)
+    const swing = (frame: LocomotionFrame | undefined) => (frame?.armSwing.left.flexion ?? 0) - 2 * rad
+    expect(swing(frames[halt - 1])).toBeGreaterThan(0.8 * 16 * rad)
+    expect(swing(frames[halt])).toBeGreaterThan(0.5 * swing(frames[halt - 1]))
+    expect(Math.abs(swing(frames.at(-1)))).toBeLessThan(1e-3 * rad)
+  })
+
+  it('variation streams: the strides and each arm\'s lag draw from their own seeded streams, and the first-foot draw is unchanged', () => {
+    const walks = (variability: GaitVariability | undefined, seed = 7) => {
+      const run = createRun({ x: 0, yaw: Math.PI / 2 }, seed, traits, variability ? { variability } : {})
+      // Six walks onward, each departing from a centred stance with no turn, so the seed's own stream picks the first foot.
+      run.advance(60, now => ({ goalX: 60 * (1 + Math.floor(now / 10)), arriveFacing: Math.PI / 2 }))
+      const strikes = eventsOf(run.frames, 'heelStrike')
+      const firstFeet = run.frames.flatMap((frame, tick) => frame.mode === 'starting' && run.frames[tick - 1]?.mode !== 'starting' ? [eventsOf(run.frames.slice(tick), 'liftOff')[0]?.foot] : [])
+      return { strikes: strikes.map(strike => strike.tick).join(), firstFeet: firstFeet.join(), arms: run.frames.map(frame => frame.armSwing.left.flexion.toFixed(9)).join() }
+    }
+    const product = walks(undefined)
+    const periodicWalk = walks({ strideTime: 0, strideLength: 0, armLag: 0 })
+    const stridesOnly = walks({ strideTime: 0.018, strideLength: 0.039, armLag: 0 })
+    expect(product.firstFeet.split(',').length).toBeGreaterThanOrEqual(6)
+    expect(product.firstFeet).toBe(periodicWalk.firstFeet)
+    expect(product.strikes).not.toBe(periodicWalk.strikes)
+    expect(walks(undefined, 8).strikes).not.toBe(product.strikes)
+    // The arms' lag streams move no stride.
+    expect(stridesOnly.strikes).toBe(product.strikes)
+    expect(stridesOnly.arms).not.toBe(product.arms)
   })
 
   it('start and stop: the root waits 0.22 s while the weight moves, and the lean overshoots once after arrival', () => {

@@ -164,10 +164,10 @@ fluctuations are long-range correlated, not white (Hausdorff et al. 1995 and 199
 Schutz 2005, Hum Mov Sci 24:97). The study's CVs are each subject's SD over its 15 m of steady walking, about 11
 strides; inside so short a window the slow terms barely move, so the process's own SD is the source CV divided by
 0.6163, the expected 11-stride SD of the stride-averaged process (2.92 % and 6.33 %), and an 11-stride window of her walk
-shows the source's 1.8 % and 3.9 %. The streams are `deriveSeed(seed, 0)` and `deriveSeed(seed, 1)`; the seed's own stream
-still only breaks first-foot ties. A stride's time scales the step rate and its length the speed command, with the
+shows the source's 1.8 % and 3.9 %. The streams are `deriveSeed(seed, 0)` and `deriveSeed(seed, 1)`, and each arm's lag drift has its own (`2` left, `3`
+right); the seed's own stream still only breaks first-foot ties. A stride's time scales the step rate and its length the speed command, with the
 cadence law evaluated at the unvaried speed so the two stay independent; the goal is still reached exactly. Pass
-`{ strideTime: 0, strideLength: 0 }` for a periodic walk (the structural tests do).
+`{ strideTime: 0, strideLength: 0, armLag: 0 }` for a periodic walk (the structural tests do).
 
 Planted foot targets are frozen world anchors. Landing targets are re-planned until
 75% of the swing, so the stance stays symmetric about the hip while the speed
@@ -187,13 +187,22 @@ and 0.09 steps late) with a head counter of minus the torso's yaw 80 ms later, s
 line (architecture 5.2). Each lag is a link of architecture 3a's lag chain, a critically damped response to the
 segment below (`f = 1 / (pi lag)`), so the segments are not samples of one phase: each answers a change of stride, a
 start or a stop with its own dynamics. `chestCounterYaw` keeps its old meaning for other readers.
-`frame.armSwing` swings each arm from one cosine in antiphase with its leg: flexion `2 deg + s (16 deg forward -
-12 deg back)` with `s = min(1.3, speed / v_ref)`, an elbow that follows the shoulder's swing 200 ms late (the human walk
-reference's median elbow lag), the forward hand moving 3 degrees toward the midline (`abduct`), and the clavicle
-protracting 3 degrees with the forward swing (`clavProt`) (architecture 5.3). The right arm swings 0.781 of the left (`s`
-times 0.781 on every swing term), the mean left-dominant asymmetry of adults walking overground (directional arm swing
-asymmetry index 21.9, Killeen et al. 2018, https://www.nature.com/articles/s41598-018-31151-9). The wrist and fingers
-come from the performer's followers.
+`frame.armSwing` swings the arms as pendulums the trunk drives (Pontzer et al. 2009, J Exp Biol 212:523; Meyns, Bruijn
+& Duysens 2013, Gait Posture 38:555), not as copies of the leg phase: the drive is the shoulder girdle's counter-rotation
+(the upper torso's twist link over the full pelvis twist, times the step rate over the reference rate, so its size is
+`speed / v_ref` at a steady walk). The clavicle takes it at once and protracts 3 degrees with the forward swing
+(`clavProt`); each upper arm takes it 25.9 ms later, the reference walks' median shoulder-to-upper-arm lag (bands-v5
+walk `chain.shoulder-upperArm.lagMs` p50), with flexion `2 deg + (16 deg forward - 12 deg back)` and the forward hand
+moving 3 degrees toward the midline (`abduct`); the elbow takes it 200 ms after its upper arm (the reference's median
+elbow lag) (architecture 5.3 as the drive's target). Each arm's lag drifts on its own stream, so the two arms are not
+mirror copies of one phase and they leave exact antiphase by Mirelman et al. 2015's arm phase coordination index, 1.68 %
+over a one-minute walk (PLoS One 10:e0136043, ages 30 to 40): `variability.armLag` 0.002784 strides per unit of drift,
+solved together with the 1.08 % the stride drift alone gives through unequal half strides. A start, a stop or a halt
+reaches the arms through the trunk's links, so a halted walk leaves each arm on its swing and lets it settle instead of
+dropping it in a tick; the performer's followers (architecture 3a) are the pendulum that finishes the motion. The right
+arm swings 0.781 of the left (every swing term times 0.781), the mean left-dominant asymmetry of adults walking
+overground (directional arm swing asymmetry index 21.9, Killeen et al. 2018,
+https://www.nature.com/articles/s41598-018-31151-9). The wrist and fingers come from the performer's followers.
 `frame.lookAhead` is the world yaw she is about to face: during a turn it sweeps from the facing the turn starts at to the
 final facing as a minimum-jerk move over every step but the last, so it never steps and leads the body by one step;
 otherwise it is the walk heading. `lookAhead - root.yaw` is the turn the gaze leads by, so a host can aim the gaze there

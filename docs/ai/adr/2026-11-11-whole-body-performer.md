@@ -111,6 +111,12 @@ published human gait, no white jitter).
   segment below through a critically damped link of their 5.2 lag, and the head counters the torso through an 80 ms
   link. A change of stride, a start or a stop now reaches each segment with its own dynamics, and a cut drive no longer
   drops the torso and head in one tick.
+- The arms are pendulums the trunk drives, not copies of the leg phase: the shoulder girdle's counter-rotation (the upper
+  torso link) drives the clavicles at once and each upper arm 25.9 ms later (the reference walks' median), with 5.3's
+  shape as the target, and the performer's followers stay the pendulum. Each arm's lag drifts on its own new stream
+  (`deriveSeed(seed, 2)` and `3`), sized so the arms' relative phase shows Mirelman et al. 2015's arm phase
+  coordination index of 1.68 %, so the two arms no longer mirror one phase. A halt reaches the arms through the trunk's
+  links instead of dropping their swing in a tick.
 - Stride time and stride length drift independently on two new streams of the gait seed (`deriveSeed(seed, 0)` and
   `deriveSeed(seed, 1)`) through the package's 1/f source stepped in strides, so neighbouring strides are alike and the
   walk drifts slowly. The seed's own stream still only breaks first-foot ties, and every performer stream is unchanged,

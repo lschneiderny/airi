@@ -30,6 +30,8 @@ export interface GaitTraits extends Pick<RigTraits, 'legLength' | 'footBaselineY
 export interface GaitVariability {
   readonly strideTime: number
   readonly strideLength: number
+  /** Size of each arm's own lag drift behind the shoulder girdle, in strides per unit of its drift process. */
+  readonly armLag: number
 }
 
 /**
@@ -37,8 +39,13 @@ export interface GaitVariability {
  * & Kressig 2005, J NeuroEng Rehabil 2:26, n = 49). Drawn independently, they reproduce that study's stride velocity CV
  * of 4.3 %. Each is a subject's SD over the study's 15 m of steady walking, about 11 strides, not the stationary SD of a
  * long walk (`elevenStrideShare`).
+ *
+ * `armLag` 0.002784 strides gives the left and right arms' relative phase Mirelman et al. 2015's arm phase coordination
+ * index, 1.68 % over a one-minute walk (PLoS One 10:e0136043, Table 2, ages 30 to 40, usual walking; 60 strides at their
+ * 1.43 m/s and 70.6 cm steps), together with the 1.08 % the stride drift alone gives it through unequal half strides.
+ * Solved from the drift processes' own statistics; an arm-only term would be 0.003637.
  */
-export const youngAdultStrideVariability: GaitVariability = { strideTime: 0.018, strideLength: 0.039 }
+export const youngAdultStrideVariability: GaitVariability = { strideTime: 0.018, strideLength: 0.039, armLag: 0.002784 }
 
 export interface LocomotionInput {
   /** Seconds on the fixed 120 Hz grid; only stamps events. */
@@ -213,6 +220,13 @@ const elbowLag = 0.2
  */
 const rightSwingShare = 1 - 0.219
 /**
+ * The upper arm swings behind the shoulder girdle by the human walk reference's median, 25.9 ms (bands-v5 walk
+ * `chain.shoulder-upperArm.lagMs` p50, n = 24, 100STYLE forward walks). Each arm's lag drifts about it on its own stream.
+ */
+const upperArmLag = 0.0259
+/** Seconds of shoulder-girdle history kept for the arms: the upper arm's lag, the elbow's after it, and drift room. */
+const girdleHistory = 0.5
+/**
  * The stride fluctuations are long-range correlated, not white (Hausdorff et al. 1995, 1996; Terrier, Turner & Schutz
  * 2005): the package's 1/f source (`createDriftNoise`, architecture 3b) stepped in strides, its time constants log-spaced
  * from one stride to 16 (about the longest walking span) and its output low-passed over a sixth of the shortest, 3b's
@@ -230,6 +244,8 @@ const elevenStrideShare = 0.6163
 /** `deriveSeed` indices of the gait seed's stride streams; the seed's own stream stays the first-foot tie-break. */
 const strideTimeStream = 0
 const strideLengthStream = 1
+/** `deriveSeed` indices of each arm's lag drift. */
+const armLagStreams: Record<Foot, number> = { left: 2, right: 3 }
 const sides = ['left', 'right'] as const
 /** Lateral sign: left = -1, right = +1, matching `support`. */
 const footSign: Record<Foot, 1 | -1> = { left: -1, right: 1 }
@@ -357,6 +373,16 @@ class Locomotion {
   /** This stride's speed and cadence multipliers: stride time scales by 1 / cadence, stride length by speed / cadence. */
   private speedFactor = 1
   private cadenceFactor = 1
+  private readonly armLagNoise: Record<Foot, ReturnType<typeof createDriftNoise>>
+  /** Each arm's lag drift, in strides. */
+  private readonly armDrift: Record<Foot, number> = { left: 0, right: 0 }
+  /**
+   * The shoulder girdle's swing drive (the upper torso's twist over the full pelvis twist, times the step rate over the
+   * reference rate) on this gait's own clock: each arm samples it at its lag, so both arms answer the trunk.
+   */
+  private readonly girdle = { times: [] as number[], values: [] as number[], clock: 0 }
+  /** The step rate the swing was last scaled by; a halt keeps it, so the swing dies out with the trunk, not in a tick. */
+  private swingRate = referenceRate
   private readonly referenceLength: number
   private readonly referenceSpeed: number
   private readonly maxAcceleration: number
@@ -397,6 +423,10 @@ class Locomotion {
     this.random = createRandomStream(seed)
     this.strideTime = createDriftNoise({ seed: deriveSeed(seed, strideTimeStream), ...strideNoise })
     this.strideLength = createDriftNoise({ seed: deriveSeed(seed, strideLengthStream), ...strideNoise })
+    this.armLagNoise = {
+      left: createDriftNoise({ seed: deriveSeed(seed, armLagStreams.left), ...strideNoise }),
+      right: createDriftNoise({ seed: deriveSeed(seed, armLagStreams.right), ...strideNoise }),
+    }
     this.referenceLength = referenceLengthShare * traits.legLength
     this.referenceSpeed = this.referenceLength * referenceRate
     this.maxAcceleration = this.referenceSpeed
@@ -432,6 +462,7 @@ class Locomotion {
     this.lean.y = this.lean.v = this.lean.x = 0
     for (const link of this.twistLinks)
       link.state.y = link.state.v = link.state.x = 0
+    this.girdle.times.length = this.girdle.values.length = 0
   }
 
   step(input: LocomotionInput, dt: number): LocomotionFrame {
@@ -495,13 +526,48 @@ class Locomotion {
   /**
    * Advances the stride processes by `strides` and sets the multipliers: stride time ~ exp(sigma_T n_T) and stride
    * length ~ exp(sigma_L n_L) at a steady speed, independent, so the speed varies by both. Each sigma is the source's
-   * 11-stride CV over `elevenStrideShare`.
+   * 11-stride CV over `elevenStrideShare`. Each arm's lag drifts on its own stream at the same pace.
    */
   private vary(strides: number) {
     const time = this.variability.strideTime / elevenStrideShare * this.strideTime.step(strides)
     const length = this.variability.strideLength / elevenStrideShare * this.strideLength.step(strides)
     this.cadenceFactor = Math.exp(-time)
     this.speedFactor = Math.exp(length - time)
+    for (const side of sides)
+      this.armDrift[side] = this.variability.armLag * this.armLagNoise[side].step(strides)
+  }
+
+  /** Appends this tick's shoulder-girdle drive; a zero tick replaces the latest sample instead of adding time. */
+  private recordGirdle(value: number, dt: number) {
+    const girdle = this.girdle
+    if (dt > 0 || girdle.times.length === 0) {
+      girdle.clock += dt
+      girdle.times.push(girdle.clock)
+      girdle.values.push(value)
+    }
+    else {
+      girdle.values[girdle.values.length - 1] = value
+    }
+    while (girdle.times.length > 2 && (girdle.times[1] ?? 0) <= girdle.clock - girdleHistory) {
+      girdle.times.shift()
+      girdle.values.shift()
+    }
+  }
+
+  /** The shoulder-girdle drive `lag` seconds ago, linear between ticks; before the history starts, its first sample. */
+  private girdleAt(lag: number) {
+    const { times, values, clock } = this.girdle
+    const at = clock - lag
+    for (let index = times.length - 1; index > 0; index--) {
+      const from = times[index - 1] ?? at
+      if (from <= at) {
+        const to = times[index] ?? at
+        const a = values[index - 1] ?? 0
+        const b = values[index] ?? 0
+        return to > from ? a + (b - a) * Math.min(1, (at - from) / (to - from)) : b
+      }
+    }
+    return values[0] ?? 0
   }
 
   /**
@@ -994,21 +1060,25 @@ class Locomotion {
     const mid = midShare * midYaw
     const upper = upperShare * upperYaw
     const head = this.followTwist(headLink, -(lower + mid + upper), headCounterLag, dt)
-    const swingScale = Math.min(1.3, this.speed / this.referenceSpeed)
-    // Architecture 5.3: the arm swings further forward (16 degrees) than back (12), the forward hand moves toward the
-    // midline, and the clavicle protracts with the forward swing.
-    const elbowPhase = elbowLag * this.stepRate(this.speed)
+    // The trunk swings the arms (Pontzer et al. 2009): the shoulder girdle's twist drives the clavicle at once and each arm
+    // at its own drifting lag; the performer's followers are the pendulum. The step-rate ratio keeps the size at
+    // speed / v_ref, and architecture 5.3's shape is the target.
+    if (mode !== 'idle')
+      this.swingRate = rate
+    this.recordGirdle(this.swingRate / referenceRate * upperYaw / pelvisTwist, dt)
     const arm = (side: Foot) => {
-      const swing = footSign[side] * this.lead(this.phase - 0.05)
-      const late = footSign[side] * this.lead(this.phase - 0.05 - elbowPhase)
+      const lag = Math.max(0, upperArmLag + 2 * this.armDrift[side] / this.swingRate)
+      const girdle = footSign[side] * this.girdleAt(0)
+      const swing = footSign[side] * this.girdleAt(lag)
+      const late = footSign[side] * this.girdleAt(lag + elbowLag)
       const forward = Math.max(0, -swing)
       const back = Math.max(0, swing)
-      const scale = swingScale * (side === 'right' ? rightSwingShare : 1)
+      const share = side === 'right' ? rightSwingShare : 1
       return {
-        flexion: 2 * radians + scale * (16 * radians * forward - 12 * radians * back),
-        elbowFlex: 12 * radians + scale * (16 * radians * Math.max(0, -late) - 6 * radians * Math.max(0, late)),
-        abduct: -3 * radians * scale * forward,
-        clavProt: 3 * radians * scale * (forward - back),
+        flexion: 2 * radians + share * (16 * radians * forward - 12 * radians * back),
+        elbowFlex: 12 * radians + share * (16 * radians * Math.max(0, -late) - 6 * radians * Math.max(0, late)),
+        abduct: -3 * radians * share * forward,
+        clavProt: -3 * radians * share * girdle,
       }
     }
     return {
