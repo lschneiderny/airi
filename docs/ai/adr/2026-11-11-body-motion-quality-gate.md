@@ -313,4 +313,22 @@ ids are usage errors. An idle request of 60 s yields about 59.98 scored seconds,
 so acceptance uses 90 s and requires the declared loop-peak ids rather than
 accepting their skipped status.
 
+
+## Criterion report notes
+
+walk-form version 4, 2026-11-14 (goal 6 unit U4). The `roll-every-step` line
+of version 3 failed every headless walk on two kinds of real step. The step
+finder (peaks of the foot's fore-aft displacement, as the gate's gait metrics
+find steps) samples some steps 67 to 133 ms before heel contact, and closing
+steps into a stop and planted feet are set down near flat with almost no
+reach (gait review 3, ruling 5). Version 4 reads each step at its most rolled
+frame within 8 frames (133 ms) of the finder's frame and does not judge a
+step whose reach is under 0.25 of the foot's median reach for that event. The
+bars stay 5.48 and -7.79 deg; read at the most rolled frame they are looser
+than at the displacement peak where the reference was measured. The rule was
+fixed by labelled cases written and sealed with `qa:motion3d inject` before
+any scoring: three unedited base walks that must pass and six injected
+missing-roll faults that must fail. No other walk-form line and no gate band
+changed.
+
 Scores compare motion statistics with bands derived from human capture. They do not prove naturalness or appeal, which stay a visual review.

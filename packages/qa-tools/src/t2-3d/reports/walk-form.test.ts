@@ -32,6 +32,10 @@ interface Walk {
   readonly turnsInModeChannel?: boolean
   /** The pelvis twists this many degrees each way at the stride frequency while walking, carried into the trace's root yaw. */
   readonly twistDeg?: number
+  /** The foot's roll runs this many seconds behind the leg swing, so it peaks after the step's displacement peak. */
+  readonly rollDelay?: number
+  /** The last seconds of walking close up: the legs swing a tenth as far and the feet stay flat. */
+  readonly closing?: number
 }
 
 /**
@@ -46,11 +50,13 @@ function walk(options: Walk = {}) {
   const turnYaw = (t: number) => turns.reduce((sum, [start, degrees, seconds]) => sum + degrees * DEG * Math.min(1, Math.max(0, (t - start) / seconds)), 0)
   const turning = (t: number) => turns.some(([start, , seconds]) => t >= start && t < start + seconds)
   const mode = (t: number) => t < walkSeconds ? 3 : turning(t) ? ((options.turnsInModeChannel ?? true) ? 1 : 3) : 0
+  const closing = (t: number) => t >= walkSeconds - (options.closing ?? 0) && t < walkSeconds
   const footPitch = (side: 'left' | 'right', t: number) => {
-    const s = (side === 'left' ? 1 : -1) * Math.sin(phase(t))
+    const s = (side === 'left' ? 1 : -1) * Math.sin(phase(t - (options.rollDelay ?? 0)))
     const [heel, toe] = roll[side]
-    return t < walkSeconds ? (heel + toe) / 2 + (heel - toe) / 2 * s : 0
+    return t < walkSeconds && !closing(t) ? (heel + toe) / 2 + (heel - toe) / 2 * s : 0
   }
+  const swing = (t: number) => closing(t) ? 0.1 : 1
   const twist = (t: number) => t < walkSeconds ? (options.twistDeg ?? 0) * DEG * Math.sin(phase(t)) : 0
   const leadAt = (t: number) => {
     const turn = turns.findIndex(([start]) => t >= start - 0.5 && t < start + 1.5)
@@ -64,7 +70,7 @@ function walk(options: Walk = {}) {
     if (bone === 'head')
       return rotY(turnYaw(t + leadAt(t)))
     if (bone.endsWith('UpperLeg') || bone.endsWith('LowerLeg'))
-      return multiply(yaw, rotX(-0.4 * side * Math.sin(phase(t))))
+      return multiply(yaw, rotX(-0.4 * side * swing(t) * Math.sin(phase(t))))
     if (bone.endsWith('Foot'))
       return multiply(yaw, rotX(-footPitch(bone.startsWith('left') ? 'left' : 'right', t) * DEG))
     if (bone.endsWith('UpperArm'))
@@ -116,6 +122,20 @@ describe('walk-form report', () => {
     expect(new Set(flat.map(step => step.event))).toEqual(new Set(['heel-strike', 'toe-off']))
     expect(flat.every((step, i) => i === 0 || step.t >= flat[i - 1].t)).toBe(true)
     expect(walkFormReport(walk()).detail.flatSteps).toEqual([])
+  })
+
+  it('reads each step at its most rolled frame within 133 ms: a roll 100 ms behind the swing passes, one 300 ms behind fails', () => {
+    const late = (rollDelay: number) => statuses(walkFormReport(walk({ roll: { left: [6.5, -10], right: [6.5, -10] }, rollDelay })))['roll-every-step']
+    expect(late(0.1)).toBe('PASS')
+    expect(late(0.3)).toBe('FAIL')
+  })
+
+  it('does not judge the short, flat closing steps of a walk and lists them, while a full step held flat still fails', () => {
+    const report = walkFormReport(walk({ closing: 1.5 }))
+    expect(statuses(report)['roll-every-step']).toBe('PASS')
+    expect(report.detail.shortSteps.length).toBeGreaterThan(0)
+    expect(report.detail.shortSteps.every(step => step.t >= 28.4 && step.t < 30)).toBe(true)
+    expect(statuses(walkFormReport(walk({ closing: 1.5, roll: { left: [14, -32], right: [0, 0] } })))['roll-every-step']).toBe('FAIL')
   })
 
   it('fails a forearm that leads the upper arm by 50 ms', () => {
