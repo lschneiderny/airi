@@ -1,0 +1,308 @@
+{
+  "kind": "motion3d-matrix",
+  "version": 1,
+  "note": "Goal 3 acceptance (E/g3/acceptance/ledger.jsonl, 87 rows): every qa:motion3d run and report of the ledger. Not expressed: the five vitest suites (c5-*), the qa:stage gate on stage fixtures (stage-gate-task16-fixtures) and the verdicts summary (verdicts-all), which the receipt replaces. Set AIRI_QA_MMD_MODEL to the Chisa PMX and AIRI_QA_MMD_MODEL_ELLEN to the Ellen PMX.",
+  "rigs": {
+    "chisa": {
+      "env": "AIRI_QA_MMD_MODEL"
+    },
+    "ellen": {
+      "env": "AIRI_QA_MMD_MODEL_ELLEN"
+    }
+  },
+  "runs": [
+    {
+      "id": "chisa-speak",
+      "rig": "chisa",
+      "scenario": "speak",
+      "seeds": [1, 2, 3],
+      "seconds": 60,
+      "criterion": "C001"
+    },
+    {
+      "id": "chisa-idle120",
+      "rig": "chisa",
+      "scenario": "idle",
+      "seeds": [1, 2, 3],
+      "seconds": 120,
+      "criterion": "C001"
+    },
+    {
+      "id": "ellen-speak",
+      "rig": "ellen",
+      "scenario": "speak",
+      "seeds": [1, 2, 3],
+      "seconds": 60,
+      "criterion": "C001"
+    },
+    {
+      "id": "ellen-idle120",
+      "rig": "ellen",
+      "scenario": "idle",
+      "seeds": [1, 2, 3],
+      "seconds": 120,
+      "criterion": "C001"
+    },
+    {
+      "id": "chisa-emotions",
+      "rig": "chisa",
+      "scenario": "emotions",
+      "seeds": [1, 2, 3, 4, 5, 6],
+      "seconds": 120,
+      "criterion": "C002"
+    },
+    {
+      "id": "ellen-emotions",
+      "rig": "ellen",
+      "scenario": "emotions",
+      "seeds": [1, 2, 3, 4, 5, 6],
+      "seconds": 120,
+      "criterion": "C002-extra"
+    },
+    {
+      "id": "chisa-clip",
+      "rig": "chisa",
+      "scenario": "gesture-under-clip",
+      "seeds": [1, 2, 3, 4, 5, 6],
+      "seconds": 30,
+      "criterion": "C004"
+    },
+    {
+      "id": "chisa-idle55",
+      "rig": "chisa",
+      "scenario": "idle",
+      "seeds": [1, 2, 3, 4, 5, 6],
+      "seconds": 55,
+      "criterion": "C004"
+    },
+    {
+      "id": "ellen-clip",
+      "rig": "ellen",
+      "scenario": "gesture-under-clip",
+      "seeds": [1, 2, 3, 4, 5, 6],
+      "seconds": 30,
+      "criterion": "C004"
+    },
+    {
+      "id": "ellen-idle55",
+      "rig": "ellen",
+      "scenario": "idle",
+      "seeds": [1, 2, 3, 4, 5, 6],
+      "seconds": 55,
+      "criterion": "C004"
+    },
+    {
+      "id": "chisa-c5-idle",
+      "rig": "chisa",
+      "scenario": "idle",
+      "seeds": [1],
+      "seconds": 60,
+      "criterion": "C005"
+    }
+  ],
+  "reports": [
+    {
+      "id": "gate-chisa-speak-seed1",
+      "command": "gate",
+      "runs": ["chisa-speak-s1"],
+      "criterion": "C001"
+    },
+    {
+      "id": "gate-chisa-speak-seed2",
+      "command": "gate",
+      "runs": ["chisa-speak-s2"],
+      "criterion": "C001"
+    },
+    {
+      "id": "gate-chisa-speak-seed3",
+      "command": "gate",
+      "runs": ["chisa-speak-s3"],
+      "criterion": "C001"
+    },
+    {
+      "id": "gesture-timing-chisa",
+      "command": "gesture-timing",
+      "runs": ["chisa-speak"],
+      "options": {
+        "--idle": ["chisa-idle120"]
+      },
+      "criterion": "C001"
+    },
+    {
+      "id": "gate-ellen-speak-seed1",
+      "command": "gate",
+      "runs": ["ellen-speak-s1"],
+      "criterion": "C001"
+    },
+    {
+      "id": "gate-ellen-speak-seed2",
+      "command": "gate",
+      "runs": ["ellen-speak-s2"],
+      "criterion": "C001"
+    },
+    {
+      "id": "gate-ellen-speak-seed3",
+      "command": "gate",
+      "runs": ["ellen-speak-s3"],
+      "criterion": "C001"
+    },
+    {
+      "id": "gesture-timing-ellen",
+      "command": "gesture-timing",
+      "runs": ["ellen-speak"],
+      "options": {
+        "--idle": ["ellen-idle120"]
+      },
+      "criterion": "C001"
+    },
+    {
+      "id": "gate-chisa-emotions-pooled",
+      "command": "gate",
+      "runs": ["chisa-emotions"],
+      "flags": ["--require", "emotion.minSeparationFromNeutral,emotion.armShare"],
+      "criterion": "C002"
+    },
+    {
+      "id": "emotion-table-chisa",
+      "command": "emotion-table",
+      "runs": ["chisa-emotions"],
+      "criterion": "C002"
+    },
+    {
+      "id": "cue-body-chisa",
+      "command": "cue-body",
+      "runs": ["chisa-emotions"],
+      "criterion": "C002"
+    },
+    {
+      "id": "gate-ellen-not-required-emotions-pooled",
+      "command": "gate",
+      "runs": ["ellen-emotions"],
+      "flags": ["--require", "emotion.minSeparationFromNeutral,emotion.armShare"],
+      "criterion": "C002-extra"
+    },
+    {
+      "id": "emotion-table-ellen-not-required",
+      "command": "emotion-table",
+      "runs": ["ellen-emotions"],
+      "criterion": "C002-extra"
+    },
+    {
+      "id": "cue-body-ellen-not-required",
+      "command": "cue-body",
+      "runs": ["ellen-emotions"],
+      "criterion": "C002-extra"
+    },
+    {
+      "id": "gate-chisa-clip-seed1",
+      "command": "gate",
+      "runs": ["chisa-clip-s1"],
+      "criterion": "C004"
+    },
+    {
+      "id": "gate-chisa-clip-seed2",
+      "command": "gate",
+      "runs": ["chisa-clip-s2"],
+      "criterion": "C004"
+    },
+    {
+      "id": "gate-chisa-clip-seed3",
+      "command": "gate",
+      "runs": ["chisa-clip-s3"],
+      "criterion": "C004"
+    },
+    {
+      "id": "gate-chisa-clip-seed4",
+      "command": "gate",
+      "runs": ["chisa-clip-s4"],
+      "criterion": "C004"
+    },
+    {
+      "id": "gate-chisa-clip-seed5",
+      "command": "gate",
+      "runs": ["chisa-clip-s5"],
+      "criterion": "C004"
+    },
+    {
+      "id": "gate-chisa-clip-seed6",
+      "command": "gate",
+      "runs": ["chisa-clip-s6"],
+      "criterion": "C004"
+    },
+    {
+      "id": "ownership-chisa",
+      "command": "ownership",
+      "runs": ["chisa-clip"],
+      "options": {
+        "--idle": ["chisa-idle55"]
+      },
+      "criterion": "C004"
+    },
+    {
+      "id": "gate-ellen-clip-seed1",
+      "command": "gate",
+      "runs": ["ellen-clip-s1"],
+      "criterion": "C004"
+    },
+    {
+      "id": "gate-ellen-clip-seed2",
+      "command": "gate",
+      "runs": ["ellen-clip-s2"],
+      "criterion": "C004"
+    },
+    {
+      "id": "gate-ellen-clip-seed3",
+      "command": "gate",
+      "runs": ["ellen-clip-s3"],
+      "criterion": "C004"
+    },
+    {
+      "id": "gate-ellen-clip-seed4",
+      "command": "gate",
+      "runs": ["ellen-clip-s4"],
+      "criterion": "C004"
+    },
+    {
+      "id": "gate-ellen-clip-seed5",
+      "command": "gate",
+      "runs": ["ellen-clip-s5"],
+      "criterion": "C004"
+    },
+    {
+      "id": "gate-ellen-clip-seed6",
+      "command": "gate",
+      "runs": ["ellen-clip-s6"],
+      "criterion": "C004"
+    },
+    {
+      "id": "ownership-ellen",
+      "command": "ownership",
+      "runs": ["ellen-clip"],
+      "options": {
+        "--idle": ["ellen-idle55"]
+      },
+      "criterion": "C004"
+    },
+    {
+      "id": "gate-goal2-idle-chisa-seed1",
+      "command": "gate",
+      "runs": ["chisa-idle120-s1"],
+      "flags": ["--require", "period.rootForeAft.loopPeak,period.rootLateral.loopPeak,period.head.loopPeak,coverage.arms,coverage.core,fingers.frozen"],
+      "criterion": "C005"
+    },
+    {
+      "id": "gate-goal2-idle-chisa-seed2",
+      "command": "gate",
+      "runs": ["chisa-idle120-s2"],
+      "flags": ["--require", "period.rootForeAft.loopPeak,period.rootLateral.loopPeak,period.head.loopPeak,coverage.arms,coverage.core,fingers.frozen"],
+      "criterion": "C005"
+    },
+    {
+      "id": "gate-goal2-idle-chisa-seed3",
+      "command": "gate",
+      "runs": ["chisa-idle120-s3"],
+      "flags": ["--require", "period.rootForeAft.loopPeak,period.rootLateral.loopPeak,period.head.loopPeak,coverage.arms,coverage.core,fingers.frozen"],
+      "criterion": "C005"
+    }
+  ]
+}

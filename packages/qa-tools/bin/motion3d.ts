@@ -55,8 +55,9 @@ async function dispatch(command: string | undefined, args: string[], context: Mo
     case 'affected': return (await import('../src/t2-3d/cli/affected')).affectedMotion3d(args, context)
     case 'clip': return (await import('../src/t2-3d/cli/clip')).clipMotion3d(args, context)
     case 'inject': return (await import('../src/t2-3d/cli/inject')).injectMotion3d(args, context)
+    case 'matrix': return (await import('../src/t2-3d/cli/matrix')).matrixMotion3d(args, context)
     default:
-      console.error('Usage: qa:motion3d <run|gate|reference|gaze-order|gesture-timing|emotion-table|cue-body|ownership|turn|pops|idle-acts|walk-form|rest|diff|verdicts|frames|affected|clip|inject> [arguments] [--json <verdict file>]')
+      console.error('Usage: qa:motion3d <run|gate|reference|gaze-order|gesture-timing|emotion-table|cue-body|ownership|turn|pops|idle-acts|walk-form|rest|diff|verdicts|frames|affected|clip|inject|matrix> [arguments] [--json <verdict file>]')
       return 2
   }
 }
