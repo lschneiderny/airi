@@ -1172,6 +1172,16 @@ Exit codes: 0 for success, including when there is no perf data or the data is i
 pnpm -F @proj-airi/qa-tools exec vitest run --project node src/perf
 ```
 
+`pnpm qa:bench` runs the bench-v1 matrix on the Electron app and appends one `bench-run` record per launch to `bench.jsonl`. Run it through the display guard:
+
+```bash
+pnpm qa:display run -- pnpm qa:bench [--scenario <id>] [--runs <n>] [--out <dir>]
+```
+
+`--runs` defaults to 5 and must be at least 3. Each launch takes its own exclusive CPU lease, starts the window stage on a fresh profile with perf recording on, and imports the model named in `.env.qa` (`AIRI_QA_MMD_MODEL`, `AIRI_QA_RIG_FORBOOTH`). Exit codes: 0 every run is valid, 1 a run broke or is invalid, 2 invalid arguments or refused setup, 3 no CPU lease or no mounted model in time, 130 interrupted. Bench one commit, bench the other, then compare the two with `pnpm perf compare --bench`. Start a bench only when no other CPU-sensitive check is running, because its exclusive leases wait for them to end.
+
+The recorder overhead A/B is `pnpm qa:stage measure --perf-ab` (see Stage gates). `--perf-ab-control` records in both arms to show arm-order bias. `measure` has no `--help` flag: an unknown option prints its usage and exits 2.
+
 ## Agent MCP server
 
 `pnpm qa:mcp` serves the `airi-qa` MCP server over stdio. It drives one disposable app session with the same launch, seed, onboarding, import, send, screenshot, and teardown helpers as `qa:app`, and the error collector of `qa:smoke`. The repository's `.mcp.json` registers it for Claude Code. For another client, register the command `pnpm --silent qa:mcp` with the repository as its working directory; for example, `codex mcp add airi-qa -- pnpm --silent --dir <repo> qa:mcp`.
