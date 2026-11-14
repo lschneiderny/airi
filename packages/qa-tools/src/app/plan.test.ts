@@ -48,9 +48,13 @@ describe('app expectations', () => {
     { seq: 1, time: 1, kind: 'act' as const, payload: { emotion: 'happy' } },
     { seq: 2, time: 2, kind: 'turn' as const, payload: { phase: 'end', text: 'hello' } },
     { seq: 3, time: 3, kind: 'tts' as const, payload: { phase: 'start' } },
+    { seq: 4, time: 4, kind: 'tts' as const, payload: { phase: 'end' } },
   ]
   it('ignores prior-turn events when matching a new send', () => {
     expect(matchExpectations(events, ['act', 'tts'], 1)).toEqual(['act'])
+  })
+  it('keeps waiting for speech until it has finished playing', () => {
+    expect(matchExpectations(events.slice(0, 3), ['tts', 'turn'], 0)).toEqual(['tts'])
   })
   it('builds one failure summary with kind counts and missing expectations', () => {
     expect(buildSummary({ runDir: '/run', model: '/rig.zip', sendPaths: ['composer', 'chatSend'], events, missing: ['clip'], screenshot: '/run/stage.png', diagnostics: '/run/diagnostics.json', durationMs: 42, failed: false, pageErrors: 2 })).toEqual({
@@ -58,7 +62,7 @@ describe('app expectations', () => {
       runDir: '/run',
       model: '/rig.zip',
       sendPath: 'mixed',
-      events: { act: 1, turn: 1, tts: 1 },
+      events: { act: 1, turn: 1, tts: 2 },
       missing: ['clip'],
       screenshot: '/run/stage.png',
       diagnostics: '/run/diagnostics.json',

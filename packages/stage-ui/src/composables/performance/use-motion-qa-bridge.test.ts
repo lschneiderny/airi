@@ -83,7 +83,7 @@ describe('useMotionQaBridge', () => {
   let clock: ReturnType<typeof controlledFrames>
   let dispatch: (command: unknown) => Promise<{ ok: boolean, result?: unknown, error?: string, issues?: { path: string }[] }>
   let chat: ReturnType<typeof createChatHooks>
-  const speaking = ref(false)
+  const voicing = ref(false)
   const mode = ref<PerformanceMode>('idle')
   let performanceInputs: PerformanceInputs
 
@@ -99,7 +99,7 @@ describe('useMotionQaBridge', () => {
     log = []
     clock = controlledFrames()
     chat = createChatHooks()
-    speaking.value = false
+    voicing.value = false
     mode.value = 'idle'
     performanceInputs = { nowMs: 0, speaking: false, userSpeaking: false, generating: false, cursorMovedAtMs: null, desktop: null, visible: true, override: null, cueAttention: null, foregroundCategory: null }
     const streaming = useLlmStreamingControlStore()
@@ -116,7 +116,7 @@ describe('useMotionQaBridge', () => {
       useMotionQaBridge({
         chat,
         sendChat: async (text) => { log.push(`send:${text}`) },
-        speaking: () => speaking.value,
+        voicing: () => voicing.value,
         emotionsQueue: { enqueue: cue => log.push(`queue:${cue.emotion.name}:${cue.source}:${cue.emotion.intensity}`) },
         dispatchAct: marker => streaming.dispatchWith(marker),
         renderError: () => undefined,
@@ -147,8 +147,8 @@ describe('useMotionQaBridge', () => {
     await useLlmStreamingControlStore().dispatchWith('<|ACT {"emotion":"happy","gesture":"nod"}|>')
     const runtime = usePerformanceRuntimeState()
     runtime.publish({ exposed: [], exposedActions: [], active: [{ slot: 'face', label: 'smile' }], mood: null })
-    speaking.value = true
-    speaking.value = false
+    voicing.value = true
+    voicing.value = false
     expect(await dispatch({ name: 'events', input: {} })).toMatchObject({
       ok: true,
       result: { lastSeq: 4, dropped: 0, events: [
@@ -163,12 +163,12 @@ describe('useMotionQaBridge', () => {
 
   it('evicts old records from its bounded window and removes subscriptions on disposal', async () => {
     for (let index = 0; index < 514; index++)
-      speaking.value = !speaking.value
+      voicing.value = !voicing.value
     const reply = await dispatch({ name: 'events', input: {} })
     expect(reply).toMatchObject({ result: { lastSeq: 514, dropped: 2, events: expect.arrayContaining([{ seq: 3, time: expect.any(Number), kind: 'tts', payload: { phase: 'start' } }]) } })
     expect((reply.result as { events: unknown[] }).events).toHaveLength(512)
     scope.stop()
-    speaking.value = !speaking.value
+    voicing.value = !voicing.value
     expect(await dispatch({ name: 'events', input: {} })).toMatchObject({ ok: false })
   })
 

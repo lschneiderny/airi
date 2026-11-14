@@ -11,7 +11,7 @@ import { useLlmStreamingControlStore } from '../../stores/ai/chat-llm/streaming-
 export type MotionQaChatHooks = Pick<ReturnType<typeof useChatStore>, 'onBeforeMessageComposed' | 'onChatTurnComplete'>
 
 /** Window-local, dev-only recorder. Its subscriptions never dispatch or modify performance state. */
-export function useMotionQaEvents(options: { chat: MotionQaChatHooks, speaking: () => boolean }) {
+export function useMotionQaEvents(options: { chat: MotionQaChatHooks, voicing: () => boolean }) {
   const events: MotionQaEvent[] = []
   let seq = 0
   let dropped = 0
@@ -55,7 +55,7 @@ export function useMotionQaEvents(options: { chat: MotionQaChatHooks, speaking: 
         record('expression', { phase: 'start', slot: item.slot, label: item.label.slice(0, 500) })
     }
   }, { flush: 'sync' })
-  watch(options.speaking, speaking => record('tts', { phase: speaking ? 'start' : 'end' }), { flush: 'sync' })
+  watch(options.voicing, voicing => record('tts', { phase: voicing ? 'start' : 'end' }), { flush: 'sync' })
   onScopeDispose(() => disposers.forEach(dispose => dispose()))
 
   return {
