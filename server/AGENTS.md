@@ -1,22 +1,8 @@
 # Server Guide
 
-## Overview
-Hosted Node services and backend contracts. Score: 9. This domain owns trust boundaries and server architecture decisions.
-
-Follow the [root guide](../AGENTS.md) and its task skills.
-
-## Where to look
-| Task | Location | Notes |
-| --- | --- | --- |
-| Resource API | `apps/api/` | Read its `AGENTS.md` before changing business services |
-| Identity and OIDC | `apps/auth/` | Read its `AGENTS.md` before changing account lifecycle |
-| Shared authentication | `packages/auth-shared/src/` | Schema, principal shape, ban policy, no app composition |
-| Chat wire contracts | `packages/server-sdk-shared/src/` | Eventa events and Valibot parsers |
-| Local backend | `docker-compose.yaml`, `dev/caddy/Caddyfile` | PostgreSQL, Redis, both apps, private-route blocking |
-| Architecture decisions | `docs/ai/adr/` | Server ADRs, separate from client ADRs |
-| API images | `apps/api/Dockerfile`, `apps/api/production/railway/Dockerfile` | Read `README.md` before deployment operations |
-
 ## Conventions
+- Read `apps/api/AGENTS.md` before changing business services.
+- Read `apps/auth/AGENTS.md` before changing account lifecycle.
 - Use Valibot for HTTP data, Pub/Sub messages, queue jobs, WebSocket events, database JSON, and provider responses.
 - Define each schema beside the contract owner.
 - Use `parse` when the caller converts invalid data into an error.
@@ -45,7 +31,5 @@ Follow the [root guide](../AGENTS.md) and its task skills.
 ## Commands and operations
 - Local stack: `pnpm dev:backend`.
 - Auth schema generation: `pnpm -F @proj-airi/auth-server auth:generate`.
-- Shared checks: `pnpm -F @proj-airi/auth-shared typecheck` and `pnpm -F @proj-airi/server-sdk-shared typecheck`.
-- Build chat contracts: `pnpm -F @proj-airi/server-sdk-shared build`.
 - Follow app guides for package-scoped tests and typechecks.
 - Shared development database resets destroy development writes and leave Redis intact. Read `README.md` before deployment operations.

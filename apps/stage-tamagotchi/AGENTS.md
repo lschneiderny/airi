@@ -1,31 +1,5 @@
 # STAGE TAMAGOTCHI KNOWLEDGE BASE
 
-## OVERVIEW
-Electron desktop host for Stage, native services, and extension runtimes. Score: 12, distinct process and packaging boundary.
-
-Parent guidance: [root AGENTS.md](../../AGENTS.md). Its task-routing skills also apply here.
-
-## WHERE TO LOOK
-| Task | Location | Notes |
-| --- | --- | --- |
-| Dependency graph | `src/main/index.ts` | injeca composition, windows, services, platform flags |
-| Host capability snapshot | `src/main/services/electron/host-capabilities.ts` | Main-process host facts, per-window capability delivery, and runtime status updates |
-| Linux desktop bridge | `src/main/services/linux-desktop/AGENTS.md` | Backend selection, private bus transport, compositor scripts, session sources and runtime verification |
-| Electron integration | `src/main/services/electron/` | Permissions, shortcuts, updater, assets, screens |
-| AIRI services | `src/main/services/airi/` | Channel, MCP, plugins, widgets, authentication |
-| Native windows | `src/main/windows/` | Managers, geometry, navigation, RPC adapters |
-| Renderer startup | `src/renderer/main.ts`, `src/renderer/App.vue` | Leadership and full/minimal runtime |
-| Desktop UI | `src/renderer/pages/`, `src/renderer/layouts/` | Local settings layout and window routes |
-| IPC contracts | `src/shared/eventa/` | Domain contracts and plugin subdomains |
-| Godot process | `src/main/services/airi/godot-stage/` | Sidecar lifecycle, model materialization, loopback transport |
-| Extension host | `src/main/services/airi/plugins/host/` | Activation, asset sessions, `directory-import.ts` review/commit |
-| MCP and computer use | `src/main/services/airi/mcp-servers/`, `src/main/services/airi/computer-use/` | Server manager; one lazy private daemon with serialized desktop operations |
-| Loopback HTTP | `src/main/services/airi/http-server/` | Static asset sessions and the authentication loopback callback |
-| IO traces | `src/main/services/airi/io-trace-recording/` | JSONL recording; `register.ts` filters spans by sender window |
-| Renderer tool stores | `src/renderer/stores/tools/index.ts` | Built-in, Home Assistant, MCP, plugin, and selection stores |
-| Build and install | `electron.vite.config.ts`, `electron-builder.config.ts` | Native dependencies, model assets, sidecar exports |
-| Releases and updates | `src/shared/release-repository.ts`, root `pnpm release`, `scripts/update-test/` | Fork release repository, installer upload, updater fixtures; macOS builds are ad-hoc signed and do not self-update |
-
 ## CONVENTIONS
 - Main owns native processes, extension sessions, credentials, and cleanup. Renderers use typed Eventa operations.
 - Main supplies `synced-leader=true` or `false` before Pinia initialization.
@@ -37,14 +11,12 @@ Parent guidance: [root AGENTS.md](../../AGENTS.md). Its task-routing skills also
 - Home Assistant transport and secrets stay in main. Renderers receive only token presence and masked previews.
 - Extension directory import separates prepare/review from serialized commit.
 - Managed extension sessions retain ownership until runtime and asset cleanup finish.
+- Computer use runs one lazy private daemon with serialized desktop operations.
+- macOS builds are ad-hoc signed and do not self-update.
 - The desktop build and typecheck are separate scripts.
 
 ## COMMANDS
 ```sh
-pnpm -F @proj-airi/stage-tamagotchi dev
-pnpm -F @proj-airi/stage-tamagotchi typecheck
-pnpm -F @proj-airi/stage-tamagotchi exec vitest run
-pnpm -F @proj-airi/stage-tamagotchi build
 pnpm -F @proj-airi/stage-tamagotchi build:unpack
 ```
 `vitest.config.ts` separates node and Chromium browser coverage. Browser setup loads the shipped Cubism core.

@@ -1,27 +1,11 @@
 # Computer-use MCP
 
-## OVERVIEW
-AIRI's deterministic execution substrate. Score: 15. Follow the [root guide](../../AGENTS.md) and [runtime guide](src/AGENTS.md).
-
-## WHERE TO LOOK
-| Task | Location |
-| --- | --- |
-| Public API and stdio startup | `src/index.ts`, `src/server.ts`, `src/bin/run.ts` |
-| Execution, policy, approvals | `src/server/`, `src/policy.ts`, `src/session.ts` |
-| Workflow state and recovery | `src/workflows/`, `src/state.ts`, `src/strategy.ts` |
-| Remote Linux execution | `src/runner/`, `src/remote/`, `src/bin/bootstrap-remote.ts` |
-| Terminal handoff | `terminal-lane-status.md` |
-| Planning and memory boundaries | `planning-orchestration-contract.md`, `coding-plast-mem-bridge-contract.md` |
-| CLI and experiment boundaries | `airi-cli-architecture.md`, `mimic-baseline-training-boundary.md` |
-| Observation extension | `chrome-extension/README.md` |
-
 ## CONVENTIONS
 - AIRI owns planning, chat UX, approval UX, provider integration, and MCP attachment.
 - This service owns execution primitives, workflow orchestration, terminal/browser/desktop surfaces, trace, audit, and safety checks.
 - Keep provider-specific behavior in AIRI or `packages/stage-ui`.
 - Treat terminal, browser, editor, and desktop operations as one task system.
 - Read `terminal-lane-status.md` before terminal work. Update it with terminal behavior changes.
-- Use `pnpm -F @proj-airi/computer-use-mcp test`, `typecheck`, or `build` for package checks.
 - Release gates live in `src/support-matrix.ts`. Only `product-supported` entries establish external support claims.
 - `strictReleaseGateCommands` lists the strict gates: `e2e:developer-workflow`, `e2e:terminal-exec`, `e2e:terminal-pty`, `e2e:terminal-self-acquire`, and `e2e:airi-chat-terminal-self-acquire`. Other `e2e:*` and `smoke:*` scripts are probes, not gates.
 

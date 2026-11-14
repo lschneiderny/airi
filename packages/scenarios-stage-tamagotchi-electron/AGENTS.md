@@ -1,20 +1,5 @@
 # Electron Capture Scenarios Guide
 
-## OVERVIEW
-
-Product-specific Vishot flows and raw screenshots for the desktop app. Score: 10. Distinct automation boundary.
-Follow the [root guide](../../AGENTS.md) for TypeScript and test skill routing.
-
-## WHERE TO LOOK
-
-| Task | Location | Notes |
-| --- | --- | --- |
-| Public scenario API | `src/index.ts` | Scenarios, model input, gesture types |
-| Scenario context | `src/runtime/` | Selectors, windows, settings, overlays, gestures |
-| Product flows | `src/scenarios/` | Widgets, plugins, models, capture sequences |
-| Manual walkthrough | `src/scenarios/demo-controls-settings-chat-websocket/` | Sections and capture manifest |
-| File model import | `src/scenarios/display-model-from-file.ts` | Upload, selection, state restoration |
-
 ## CONVENTIONS
 
 - Generic scenario loading and capture belong to `@vishot/source-electron`.
@@ -37,5 +22,4 @@ Follow the [root guide](../../AGENTS.md) for TypeScript and test skill routing.
 ## CHECKS
 
 - Unit tests: `pnpm -F @proj-airi/scenarios-stage-tamagotchi-electron test:run`.
-- Typecheck: `pnpm -F @proj-airi/scenarios-stage-tamagotchi-electron typecheck`.
 - Build the desktop app before capture. See `README.md` for Vishot entrypoint and output arguments.
