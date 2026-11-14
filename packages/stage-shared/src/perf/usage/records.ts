@@ -292,6 +292,8 @@ const BenchRunSchema = object({
     share36: share,
     share100: share,
     stageWindowCpuPct: amount,
+    /** Stage-window CPU per rendered frame; CPU tracks the frame rate, so this separates cheaper frames from fewer. */
+    stageWindowCpuMsPerFrame: amount,
     gpuCpuPct: amount,
     browserCpuPct: amount,
     stageWindowWorkingSetKb: amount,

@@ -17,7 +17,7 @@ import { CdpClient, findDebugTarget, sleep, waitForRemoteDebug } from '@proj-air
 import { killTree, listLiveProcesses, runGroupMembers } from '../env/processes'
 import { failOnExit, launchStageTamagotchi } from '../t3/launch'
 import { closeBrowser } from '../t3/run-t3'
-import { teardownRun, trackTree } from '../t3/teardown'
+import { teardownRun, trackTree, waitForRunGroupExit } from '../t3/teardown'
 import { AppTreeCpu } from './app-cpu'
 import { stageMeasureColumns, stageScenarioColumns } from './gates'
 
@@ -661,23 +661,6 @@ export async function measurePairs(options: {
 }
 
 /**
- * Waits up to 30 s until no process of the launch's group is left, zombies included. Teardown on Linux cannot see a
- * dying process (its command line is empty), but the CPU slot broker still counts it as the lease's workload and, when
- * a release finds the workload alive, keeps the lease until this process exits, so the next launch would wait forever.
- */
-async function waitForRunGroupExit(rootPid: number, label: string, options: { n: number, log: (line: string) => void }): Promise<void> {
-  const started = Date.now()
-  let members = runGroupMembers(rootPid)
-  if (members.length === 0)
-    return
-  while (members.length > 0 && Date.now() - started < 30_000) {
-    await sleep(250)
-    members = runGroupMembers(rootPid)
-  }
-  options.log(`qa-tools stage: ${label} pair ${options.n}: waited ${Date.now() - started} ms for the run's process group to exit before releasing the lease${members.length ? `; still present: ${members.map(member => `${member.pid} (${member.state})`).join(', ')}` : ''}`)
-}
-
-/**
  * One measured launch of a fresh copy of `profile` under its own exclusive lease, torn down like T3. `label` (default:
  * the mode) names the run's scratch files and lease; `env` is added to the launch environment; `measureAppCpu` adds
  * the app tree's CPU over the measured window (Linux `/proc`).
@@ -725,7 +708,9 @@ export async function launchAndMeasure(options: { repoRoot: string, profile: str
         sleep,
       },
     ).finally(async () => {
-      await waitForRunGroupExit(app.root.pid, label, options)
+      const waited = await waitForRunGroupExit(app.root.pid, { members: runGroupMembers, sleep })
+      if (waited)
+        options.log(`qa-tools stage: ${label} pair ${options.n}: waited ${waited.waitedMs} ms for the run's process group to exit before releasing the lease${waited.remaining.length ? `; still present: ${waited.remaining.map(member => `${member.pid} (${member.state})`).join(', ')}` : ''}`)
       app.releaseLease()
     })
     if (!report.ok)

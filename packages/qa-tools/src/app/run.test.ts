@@ -53,6 +53,7 @@ describe('runApp launch env', () => {
       createErrorCollector: () => { throw new Error('not reached') },
       completeOnboarding: async () => {},
       closeBrowser: async () => {},
+      groupMembers: () => [],
     }))
     const options = parseAppArgs(['run', '--model', 'a.zip', '--say', 'x', '--out', join(outDir, 'run'), ...extra], repoRoot)
     await runApp(options, repoRoot, new AbortController().signal, lease)

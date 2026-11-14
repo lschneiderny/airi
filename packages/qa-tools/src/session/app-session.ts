@@ -4,20 +4,20 @@ import type { MotionQaState } from '@proj-airi/stage-shared/motion-scenario'
 import type { OwnedProcess, ProcessLister, TreeKiller } from '../env/processes'
 import type { RendererEvaluator } from '../t3/bridge-client'
 import type { LaunchedApp } from '../t3/launch'
-import type { TeardownReport } from '../t3/teardown'
+import type { RunGroupExit, TeardownReport } from '../t3/teardown'
 
 import process from 'node:process'
 
 import { rmSync } from 'node:fs'
 import { setTimeout } from 'node:timers/promises'
 
-import { killTree, listLiveProcesses } from '../env/processes'
+import { killTree, listLiveProcesses, runGroupMembers } from '../env/processes'
 import { PageErrorCollector } from '../smoke/page-errors'
 import { MotionQaBridgeClient } from '../t3/bridge-client'
 import { connectStage, failOnExit, launchStageTamagotchi, stageTargetPattern } from '../t3/launch'
 import { completeOnboarding } from '../t3/onboarding'
 import { closeBrowser } from '../t3/run-t3'
-import { findWorktreeAppProcesses, teardownRun, trackTree } from '../t3/teardown'
+import { findWorktreeAppProcesses, teardownRun, trackTree, waitForRunGroupExit } from '../t3/teardown'
 
 /** Throws when this worktree already runs an Electron or stage-tamagotchi process; commands call it before creating a run. */
 export async function refuseIfWorktreeBusy(repoRoot: string, list: ProcessLister = listLiveProcesses, selfPids: readonly number[] = [process.pid, process.ppid]): Promise<void> {
@@ -43,6 +43,13 @@ export interface AppSessionDeps<Stage extends SessionStage> {
   createErrorCollector: (port: number) => PageErrorCollector
   completeOnboarding: (stage: Stage) => Promise<void>
   closeBrowser: (browserUrl: string) => Promise<void>
+  /** The processes of the launch's process group, zombies included; `runGroupMembers` reads `/proc` on Linux. */
+  groupMembers: (rootPid: number) => { pid: number, state: string }[]
+}
+
+export interface AppSessionTeardownReport extends TeardownReport {
+  /** How long the lease waited for the launch's process group to exit; `null` when nothing of it was left. */
+  runGroupExit: RunGroupExit | null
 }
 
 export interface AppSessionContext {
@@ -138,6 +145,7 @@ export class AppSessionCore<Stage extends SessionStage> {
       createErrorCollector: port => new PageErrorCollector(port),
       completeOnboarding: stage => completeOnboarding(stage),
       closeBrowser,
+      groupMembers: runGroupMembers,
     })
   }
 
@@ -209,16 +217,19 @@ export class AppSessionCore<Stage extends SessionStage> {
 
   /**
    * Stops the page-error collector, closes the browser over CDP, kills the owned process tree, and removes the profile
-   * and `extraPaths` only when nothing of the run is left. The launch's lease reference is released and the stage
-   * connection closed even when the teardown throws. The report's `ok` is the caller's to judge.
+   * and `extraPaths` only when nothing of the run is left. The launch's lease reference is released, once its process
+   * group has exited or 30 s have passed, and the stage connection closed even when the teardown throws. A command
+   * that launches several times under fresh leases relies on that wait. The report's `ok` is the caller's to judge.
    */
-  async teardown(options: { extraPaths?: readonly string[], removeDir?: (path: string) => void } = {}): Promise<TeardownReport> {
+  async teardown(options: { extraPaths?: readonly string[], removeDir?: (path: string) => void } = {}): Promise<AppSessionTeardownReport> {
     this.context.signal?.removeEventListener('abort', this.onAbort)
     await this.errorCollector?.stop()
     const app = this.launched
     const browserUrl = this.connected?.browserUrl
+    let report: TeardownReport
+    let runGroupExit: RunGroupExit | null = null
     try {
-      return await teardownRun({ repoRoot: this.context.repoRoot, profileDir: this.context.profileDir, root: app?.root, tracked: this.ownedTree, selfPids: this.selfPids }, {
+      report = await teardownRun({ repoRoot: this.context.repoRoot, profileDir: this.context.profileDir, root: app?.root, tracked: this.ownedTree, selfPids: this.selfPids }, {
         list: this.deps.list,
         kill: this.deps.kill,
         closeBrowser: browserUrl ? () => this.deps.closeBrowser(browserUrl) : undefined,
@@ -228,8 +239,11 @@ export class AppSessionCore<Stage extends SessionStage> {
       }, options.extraPaths)
     }
     finally {
+      if (app)
+        runGroupExit = await waitForRunGroupExit(app.root.pid, { members: this.deps.groupMembers, sleep: this.deps.sleep })
       app?.releaseLease()
       this.connected?.stage.close()
     }
+    return { ...report, runGroupExit }
   }
 }
