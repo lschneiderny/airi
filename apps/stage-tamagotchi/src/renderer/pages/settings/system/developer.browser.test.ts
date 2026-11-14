@@ -6,22 +6,30 @@ import { MotionPlugin } from '@vueuse/motion'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { render } from 'vitest-browser-vue'
-import { defineComponent, ref } from 'vue'
+import { defineComponent, nextTick, ref } from 'vue'
 import { createI18n } from 'vue-i18n'
 import { createMemoryHistory, createRouter } from 'vue-router'
 
 import Developer from './developer.vue'
+
+import { perfTraceState } from '../../../../shared/eventa'
 
 const invokeMocks = vi.hoisted(() => ({
   perfRecordingGet: vi.fn(),
   perfRecordingSetEnabled: vi.fn(),
   perfTraceGet: vi.fn(),
   other: vi.fn(async () => undefined),
+  listeners: [] as Array<{ event: unknown, handler: (event: { body: unknown }) => void }>,
 }))
 
 vi.mock('@proj-airi/electron-vueuse', async importOriginal => ({
   ...await importOriginal<typeof import('@proj-airi/electron-vueuse')>(),
-  useElectronEventaContext: () => ref({ on: () => () => {} }),
+  useElectronEventaContext: () => ref({
+    on: (event: unknown, handler: (event: { body: unknown }) => void) => {
+      invokeMocks.listeners.push({ event, handler })
+      return () => {}
+    },
+  }),
   useElectronEventaInvoke: (event: { receiveEvent?: { id?: string } }) => {
     if (event?.receiveEvent?.id === 'eventa:invoke:electron:perf-recording:get-receive')
       return invokeMocks.perfRecordingGet
@@ -65,6 +73,7 @@ beforeEach(() => {
   invokeMocks.perfRecordingSetEnabled.mockReset()
   invokeMocks.perfTraceGet.mockReset()
   invokeMocks.perfTraceGet.mockResolvedValue({ capturing: false, lastFile: null })
+  invokeMocks.listeners.length = 0
 })
 
 describe('developer settings page: record performance', () => {
@@ -93,6 +102,22 @@ describe('developer settings page: record performance', () => {
     const screen = await renderPage()
 
     await expect.element(screen.getByTestId('perf-trace-status')).toHaveTextContent(i18n.global.t(`tamagotchi.settings.devtools.pages.perf-trace.${key}`, { path: traceState.lastFile }))
+  })
+
+  it('keeps a trace state event that arrives before the on-open answer', async () => {
+    invokeMocks.perfRecordingGet.mockResolvedValue(recording)
+    let answer: (state: { capturing: boolean, lastFile: string | null }) => void = () => {}
+    invokeMocks.perfTraceGet.mockReturnValue(new Promise((resolve) => {
+      answer = resolve
+    }))
+    const screen = await renderPage()
+
+    for (const listener of invokeMocks.listeners.filter(({ event }) => event === perfTraceState))
+      listener.handler({ body: { capturing: true, lastFile: null } })
+    answer({ capturing: false, lastFile: '/tmp/airi-perf/traces/old.json.gz' })
+    await nextTick()
+
+    await expect.element(screen.getByTestId('perf-trace-status')).toHaveTextContent(i18n.global.t('tamagotchi.settings.devtools.pages.perf-trace.capturing'))
   })
 
   it('locks the toggle and explains the override while AIRI_PERF_RECORD controls recording', async () => {

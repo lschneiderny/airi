@@ -54,6 +54,10 @@ class MemoryFs implements PerfRecordingFs {
     this.files.delete(path)
   }
 
+  async gzip(from: string, to: string) {
+    this.files.set(to, this.files.get(from) ?? [])
+  }
+
   nextAppend(): Promise<void> {
     return new Promise(resolve => this.appendWaiters.push(resolve))
   }
@@ -435,7 +439,7 @@ describe('perfRecordingService', () => {
     for (let tick = 0; tick < 4; tick++)
       await nextTick(fs)
 
-    expect(await captured).toEqual({ file: expect.stringMatching(/^\/perf\/traces\/[^/]+\.json$/) })
+    expect(await captured).toEqual({ file: expect.stringMatching(/^\/perf\/traces\/[^/]+\.json\.gz$/) })
     const tick = fs.records(segment()).slice(3)
     // The stop lands after the 10 s sample, so the 15 s sample still overlaps the trace.
     expect(tick.flatMap(record => record.kind === 'sample' ? [record.chromiumTrace] : [])).toEqual([true, true, true, false])
