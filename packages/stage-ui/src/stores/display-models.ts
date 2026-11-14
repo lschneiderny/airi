@@ -115,6 +115,8 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
   const loadMMDModelPreview = (file: File) => generateMMDPreview(file)
 
   async function addDisplayModel(format: DisplayModelFormat, file: File) {
+    // The preview generators exist only after initialize(); an import right after launch must wait for it.
+    await initialize()
     await until(displayModelsFromIndexedDBLoading).toBe(false)
     const newDisplayModel: DisplayModelFile = { id: `display-model-${nanoid()}`, format, type: 'file', file, name: file.name, importedAt: Date.now() }
 
@@ -205,7 +207,15 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
     displayModels.value = [...displayModelsPresets].sort((a, b) => b.importedAt - a.importedAt)
   }
 
-  async function initialize() {
+  let initialization: Promise<void> | undefined
+
+  /** Loads the preview modules once; every caller, including an early import, awaits the same load. */
+  function initialize() {
+    initialization ??= loadPreviewModules()
+    return initialization
+  }
+
+  async function loadPreviewModules() {
     await import('@proj-airi/stage-ui-live2d/utils/live2d-zip-loader')
     await import('@proj-airi/stage-ui-live2d/utils/live2d-opfs-registration')
 

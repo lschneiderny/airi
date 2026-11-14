@@ -11,6 +11,13 @@ vi.mock('localforage', () => ({
     setItem: vi.fn(async (_key: string, value: unknown) => value),
   },
 }))
+vi.mock('@proj-airi/stage-ui-live2d/utils/live2d-zip-loader', () => ({}))
+vi.mock('@proj-airi/stage-ui-live2d/utils/live2d-opfs-registration', () => ({}))
+vi.mock('@proj-airi/stage-ui-live2d/utils/live2d-preview', () => ({ loadLive2DModelPreview: async () => 'live2d-preview' }))
+vi.mock('@proj-airi/stage-ui-three/utils/vrm-preview', () => ({ loadVrmModelPreview: async () => 'vrm-preview' }))
+vi.mock('@proj-airi/stage-ui-spine/utils/spine-preview', () => ({ loadSpineModelPreview: async () => 'spine-preview' }))
+vi.mock('@proj-airi/stage-ui-tachie/utils/tachie-preview', () => ({ loadTachieModelPreview: async () => 'tachie-preview' }))
+vi.mock('@proj-airi/stage-ui-mmd/utils/mmd-preview', () => ({ loadMMDModelPreview: async () => 'mmd-preview' }))
 
 /**
  * @example
@@ -41,5 +48,13 @@ describe('display models store', () => {
     const resolved = await store.getDisplayModel(model.id)
 
     expect(resolved).toEqual(model)
+  })
+
+  it('waits for the preview modules when a model is imported before startup finished initializing them', async () => {
+    const store = useDisplayModelsStore()
+
+    const model = await store.addDisplayModel(DisplayModelFormat.Live2dZip, new File(['model'], 'model.zip'))
+
+    expect(model.previewImage).toBe('live2d-preview')
   })
 })
