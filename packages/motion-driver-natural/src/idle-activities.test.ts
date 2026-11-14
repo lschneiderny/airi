@@ -63,19 +63,19 @@ describe('idle activity odds', () => {
   })
 
   it('draws the whole-body kinds only for a host that performs a body', () => {
-    const bodyKinds = ['sigh', 'shoulder-roll', 'arm-swing', 'shift-stance'] as const
-    const unread = ['clasp-hands', 'hair-touch', 'heel-rock'] as const
+    const bodyKinds = ['sigh', 'shoulder-roll', 'arm-swing', 'shift-stance', 'clasp-hands'] as const
     const live2d = idleActivityWeights(neutralDrive, { watching: false })
     const mmd = idleActivityWeights({ ...neutralDrive, body: true }, { watching: false })
-    for (const kind of [...bodyKinds, ...unread])
-      expect(live2d[kind], kind).toBe(0)
+    const bright = idleActivityWeights({ ...neutralDrive, body: true, valence: 0.5 }, { watching: false })
+    for (const kind of [...bodyKinds, 'hair-touch', 'heel-rock'] as const)
+      expect([live2d[kind], idleActivityWeights({ ...neutralDrive, valence: 0.5 }, { watching: false })[kind]], kind).toEqual([0, 0])
     for (const kind of bodyKinds)
       expect(mmd[kind], kind).toBeGreaterThan(0)
-    // The stance shift re-plants a foot (4e act 3) and takes its act weight.
+    // Each takes its 4e act weight: the stance shift 1.2 (act 3) and the clasp 0.7 (act 6).
     expect(mmd['shift-stance']).toBe(1.2)
-    // Their forms do not read on the mesh yet, so they weigh 0 on a body host too, in any mood.
-    const bright = idleActivityWeights({ ...neutralDrive, body: true, valence: 0.5 }, { watching: false })
-    for (const kind of unread)
+    expect(mmd['clasp-hands']).toBe(0.7)
+    // The heel raise's and the hair touch's forms do not read on the mesh, so they weigh 0 on a body host too, in any mood.
+    for (const kind of ['hair-touch', 'heel-rock'] as const)
       expect([mmd[kind], bright[kind]], kind).toEqual([0, 0])
   })
 

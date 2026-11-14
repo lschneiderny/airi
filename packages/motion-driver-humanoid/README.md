@@ -32,8 +32,13 @@ deterministic motion algorithms for reusable character motion drivers.
   `frame.footSteps`, 0.4 s, lifting 0.02 L and turning it 4 to 8 degrees
   toward and past its standing angle, so it stays within 8 degrees of it. The
   host's foot stage plays the step. A foot let go in the air lands before her
-  weight goes back. Natural weighs `heel-rock`, `clasp-hands` and `hair-touch`
-  0, so their forms stay in the layer, unplayed. The hair touch reads as a
+  weight goes back. A hand clasp (4e act 6) asks the gesture layer for the
+  two-hand `clasp` at the front-low anchor, lets the hand away from Natural's
+  side go first, and rocks the pelvis fore and aft by 0.012 L, two to four
+  rocks below 0.35 Hz, with both feet turning onto their balls by the lean of
+  the legs while it goes forward; a rig that cannot reach the anchor rocks with
+  hanging hands. Natural weighs `heel-rock` and `hair-touch` 0, so their forms
+  stay in the layer, unplayed. The hair touch reads as a
   salute, and architecture 4e's form is out of reach: 6.3's temple anchor,
   marched from the side of the head, solves on Chisa only, and her arm sweeps
   at most 0.04 A of the 0.10 A back inside its joint limits; Ellen's arms reach

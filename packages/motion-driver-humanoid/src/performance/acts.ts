@@ -1,5 +1,5 @@
 import type { BodyChannel, BodySide } from './channels'
-import type { BodyArmForm, BodyFootStep, BodyGazeGoal, BodyIdleAct, BodyIdleKind } from './contracts'
+import type { BodyArmForm, BodyFootStep, BodyGazeGoal, BodyGestureHand, BodyIdleAct, BodyIdleKind } from './contracts'
 import type { LayerOutput, PerformanceContext, PerformanceLayer, PerformancePlan } from './stack'
 
 import { minJerk } from '../dynamics'
@@ -56,6 +56,13 @@ const raisedCosine = (u: number) => u <= 0 || u >= 1 ? 0 : 0.5 - 0.5 * Math.cos(
 const REPLANT = { unloaded: 0.9, seconds: 0.4, lift: 0.02, yaw: [4, 8] } as const
 const NO_STEPS: readonly BodyFootStep[] = []
 
+/**
+ * Architecture 4e act 6, clasp and rock: the hands reach from 0.1 s; the first hand lets go 1.5 s and the second 1.1 s
+ * before the end, so each is home by it (a held form's way home is 1.3 times its 0.4 to 0.6 s preparation). The rocks:
+ * 0.012 L, two to four, below 0.35 Hz, eased in and out over 0.6 s. 4e sets the anchor, the rock and the band; the
+ * reach and release times are the layer's.
+ */
+const CLASP = { reach: 0.1, firstOff: 1.5, lastOff: 1.1, rock: 0.012, rocks: [2, 4], band: 0.35, ease: 0.6 } as const
 /** Architecture 4e act 2: the two sides of a bilateral act are 120 ms apart. */
 const BILATERAL = 0.12
 /** The channels a stretch moves in a side's arm block: clavicle elevation, flexion, abduction, elbow. */
@@ -116,6 +123,8 @@ interface Act {
   /** A stance shift's support side; resting (4f), the stance foot she already stands on, whatever side Natural drew. */
   readonly stance: -1 | 1
   readonly resting: boolean
+  /** A clasp's rock count, drawn at its first tick. */
+  rocks?: number
 }
 
 /**
@@ -226,7 +235,7 @@ export function createActLayer(): PerformanceLayer {
       add('upperRoll', ROLL_SHARES[2] * degrees)
     }
     const free = (groups: readonly ('lowerBody' | 'upperBody')[]) => !released && walking === 0 && groups.every(group => input.owned[group] <= 0.5)
-    const reach = (form: BodyArmForm, side: BodySide) => {
+    const reach = (form: BodyArmForm, side: BodyGestureHand) => {
       if (!released && walking === 0)
         plan.armForm = { side, form }
     }
@@ -450,23 +459,25 @@ export function createActLayer(): PerformanceLayer {
         break
       }
       case 'clasp-hands': {
-        // 4e act 6: both hands meet low, one lets go first, the pelvis rocks 0.012 L at 0.35 Hz meanwhile. Joint
-        // targets fitted on two rigs pose it (no solved contact anchor; the behind target has no source), the hands
-        // stay apart on the mesh, and Natural weighs it 0.
-        const behind = a.record.variant === 1
-        const target = behind ? { flex: -25, abduct: 15, twist: 0, elbow: 50 } : { flex: -1.3, abduct: 0.5, twist: 20.7, elbow: 82.2 }
-        for (const arm of SIDES) {
-          const start = ARM_START[arm]
-          // 4e sets no reach time. At 0.8 s the elbows changed speed by up to 0.32 deg per tick within a tick; at 1.2 s by
-          // 0.25 (Chisa) and 0.23 (Ellen), inside the act test's bound but at its edge (E/g4/a/scratch/form-measure.ts).
-          const e = trapezoid(age, 1.2, D - 2.2 - (arm === sideOf(s) ? 0.25 : 0), 1.0)
-          add(BODY_CHANNELS[start + 2], e * (target.flex - context.rest[start + 2] / DEG))
-          add(BODY_CHANNELS[start + 3], e * (target.abduct - context.rest[start + 3] / DEG))
-          add(BODY_CHANNELS[start + 4], e * (target.twist - context.rest[start + 4] / DEG))
-          add(BODY_CHANNELS[start + 5], e * (target.elbow - context.rest[start + 5] / DEG))
-        }
-        const held = trapezoid(age, 1.2, D - 2.2, 1.0)
-        channels[c('pelvisZ')] += w * 0.012 * held * Math.sin(2 * Math.PI * 0.35 * Math.max(0, age - 1.2))
+        // 4e act 6: both hands meet at 6.3's front-low contact anchor (the gesture layer's two-hand `clasp`), and the
+        // hand away from `s` lets go first (`CLASP`). Behind the back has no sourced target, so both of Natural's
+        // variants clasp in front. A rig whose arms cannot reach the anchor keeps its hands hanging (6.3).
+        if (age >= CLASP.reach && age < D - CLASP.firstOff)
+          reach('clasp', 'both')
+        else if (age >= D - CLASP.firstOff && age < D - CLASP.lastOff)
+          reach('clasp', sideOf(s))
+        // The pelvis rocks fore and aft by 0.012 L, two to four rocks (drawn from the behaviour's own stream), each rock
+        // half a cycle of one component at no more than 0.35 Hz, so the rocks spread over the whole act; the act's
+        // ease in and out takes them from and back to zero.
+        a.rocks ??= Math.min(CLASP.rocks[0] + Math.floor(createRandomStream(deriveSeed(a.record.seq, 6))() * (CLASP.rocks[1] - CLASP.rocks[0] + 1)), Math.floor(2 * CLASP.band * D))
+        const forward = CLASP.rock * trapezoid(age, CLASP.ease, D - 2 * CLASP.ease, CLASP.ease) * Math.sin(Math.PI * a.rocks * age / D)
+        channels[c('pelvisZ')] += w * forward
+        // 5.1: the feet follow onto their balls as the pelvis goes forward over them, by the lean of a leg of length
+        // L that carries the pelvis `forward` leg lengths ahead (asin(0.012), 0.7 deg at the peak); going back the
+        // soles stay flat, because the performer's foot pitch output turns a foot about its ball only.
+        const pitch = -Math.asin(Math.max(0, forward))
+        channels[c('leftFootPitch')] += w * pitch
+        channels[c('rightFootPitch')] += w * pitch
         break
       }
       case 'hair-touch': {

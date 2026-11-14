@@ -6,7 +6,7 @@ import { armResponse } from './arms'
 import { BODY_CHANNELS, BODY_TICK, channelIndex, DEG } from './channels'
 import { createBodyPerformer } from './index'
 import { createPerformanceLayers } from './layers'
-import { chisaTraits, ellenTraits, quietInput } from './performance.test-fixtures'
+import { chisaTraits, ellenTraits, fixtureRigs, quietInput } from './performance.test-fixtures'
 
 const c = channelIndex
 const START = 1
@@ -235,6 +235,47 @@ describe('the act layer', () => {
     const period = 1 / armResponse(2, 0, quietInput(0).mood.tension)[0]
     expect(peaks.length).toBeGreaterThanOrEqual(2)
     expect(Math.abs(peaks[1] - peaks[0] - period)).toBeLessThan(0.15)
+  })
+
+  it('clasps both hands, rocks her pelvis two to four times with the feet following onto their balls, and lets the far hand go first (4e act 6)', () => {
+    const traits = fixtureRigs[0].traits
+    const D = 6
+    const performer = createBodyPerformer({ traits, seed: 5, layers: createPerformanceLayers({ traits, seed: 5 }) })
+    const still = createBodyPerformer({ traits, seed: 5, layers: createPerformanceLayers({ traits, seed: 5 }) })
+    const script = playing(record('clasp-hands', D, { side: 1 }))
+    const both: number[] = []
+    const free = { left: Infinity, right: Infinity }
+    const rock: number[] = []
+    const pitch: number[] = []
+    let last = { acted: new Float32Array(0), still: new Float32Array(0) }
+    for (let tick = 1; tick < (START + D + 2) / BODY_TICK; tick++) {
+      const t = tick * BODY_TICK
+      const frame = performer.step(script(t))
+      const base = still.step(quietInput(t))
+      const { activation } = frame.diagnostics.gesture
+      if (t > START + 1 && t < START + D - 1.5)
+        both.push(Math.min(activation.left, activation.right))
+      for (const side of ['left', 'right'] as const) {
+        if (t > START + 1 && activation[side] === 0)
+          free[side] = Math.min(free[side], t)
+      }
+      rock.push(frame.channels[c('pelvisZ')] - base.channels[c('pelvisZ')])
+      pitch.push(frame.channels[c('leftFootPitch')] - base.channels[c('leftFootPitch')])
+      last = { acted: frame.channels.slice(), still: base.channels.slice() }
+    }
+    expect(Math.min(...both)).toBe(1)
+    // Natural's side 1 is her right: the left hand lets go first.
+    expect(free.left).toBeLessThan(free.right)
+    expect(free.right).toBeLessThanOrEqual(START + D)
+    const peaks = rock.filter((value, i) => i > 0 && i < rock.length - 1 && Math.abs(value) > 0.006 && Math.abs(value) >= Math.abs(rock[i - 1]) && Math.abs(value) > Math.abs(rock[i + 1]))
+    expect(peaks.length).toBeGreaterThanOrEqual(2)
+    expect(peaks.length).toBeLessThanOrEqual(4)
+    expect(Math.max(...rock.map(Math.abs))).toBeLessThanOrEqual(0.012 + 1e-6)
+    expect(Math.max(...rock.map(Math.abs))).toBeGreaterThan(0.01)
+    // The heels lift as the pelvis goes forward over the feet, and only then.
+    expect(Math.min(...pitch)).toBeLessThan(-0.5 * DEG)
+    expect(pitch.every((value, i) => rock[i] > 0 || value > -1e-6)).toBe(true)
+    expect(Math.max(...BODY_CHANNELS.map((_, channel) => channel < 3 ? 0 : Math.abs(last.acted[channel] - last.still[channel]) / DEG))).toBeLessThan(0.5)
   })
 
   it('turns her head and trunk to architecture 4e\'s 35 degrees for a look-around\'s widest glance', () => {

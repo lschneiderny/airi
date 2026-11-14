@@ -113,11 +113,11 @@ const { seq, behaviour } = motion.idleState
   continuous `idle` mode. Without `body` those kinds weigh 0 before the single
   draw, so a Live2D drive draws exactly as before they existed. `shift-stance`
   takes architecture 4e's weight 1.2: the MMD body re-plants a foot.
-  `clasp-hands`, `hair-touch` and `heel-rock` weigh 0 with `body` too, until
-  their forms read on the MMD mesh: the rock needs the toe-down foot pitch the
-  performer has no output for, the clasping hands need a two-hand contact, and
-  the hair touch reads as a salute while 4e's temple sweep is out of reach of
-  both rigs' arms inside their joint limits. While
+  `clasp-hands` takes 4e's weight 0.7: the MMD body clasps both hands at the
+  front-low anchor and rocks. `hair-touch` and `heel-rock` weigh 0 with `body`
+  too, until their forms read on the MMD mesh: the rock needs a toe-down foot
+  pitch, and the hair touch reads as a salute while 4e's temple sweep is out of
+  reach of both rigs' arms inside their joint limits. While
   she is settled in, nothing that needs her arms, her shoulders or a standing
   posture is drawn (`stretch`, `peer`, `shoulder-roll`, `arm-swing` and the
   three above), and a stretch that would follow a long sleep becomes a yawn. The
