@@ -205,11 +205,13 @@ own: with both `idle` flags false (no idle drive) she never sits or sleeps. The
 clip-free rest takes its architecture 4f pelvis lateral gain of 1.25: the
 pelvis goes a quarter further over the stance foot than the posture takes it.
 A stance shift while she rests re-plants the free foot and keeps her full
-weight on the stance foot. Two parts of the row are not built: the clasped
-hands (no two-hand contact; her arms hang as they do standing) and the tension
-of 0.2. That value is on 4c's K scale (neutral 0.40), so it would loosen her
-arms; the arm followers read Natural's mood tension, not the stack's K, so
-there is nothing for it to reach until they take K + 0.4 x mood tension (4c).
+weight on the stance foot. Her hands are clasped low in front (the two-hand
+`clasp` at the front-low anchor) or hang, chosen per rest by the seed, one in
+two; a rig that cannot reach the anchor keeps them hanging. One part of the
+row is not built: the tension of 0.2. That value is on 4c's K scale (neutral
+0.40), so it would loosen her arms; the arm followers read Natural's mood
+tension, not the stack's K, and K + 0.4 x mood tension (4c) at the neutral K
+does not reproduce the tension they read today, so it is not wired.
 
 On a stage with a ground line, `decideBody` also owns where she goes:
 `BodyIntent.locomotion` carries the goal x, its reason (`approach-chat`,

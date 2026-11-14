@@ -1,11 +1,11 @@
-import type { BodyFootStep, BodyIdleAct, BodyPerformanceInput, BodyRest } from './contracts'
+import type { BodyFootStep, BodyIdleAct, BodyPerformanceInput, BodyRest, BodyRigTraits } from './contracts'
 
 import { describe, expect, it } from 'vitest'
 
 import { BODY_TICK, channelIndex, DEG } from './channels'
 import { createBodyPerformer } from './index'
 import { createPerformanceLayers } from './layers'
-import { chisaTraits, idleInput, quietInput } from './performance.test-fixtures'
+import { chisaTraits, fixtureRigs, idleInput, quietInput } from './performance.test-fixtures'
 
 const c = channelIndex
 
@@ -17,12 +17,15 @@ function resting(rest: BodyRest, from: number, to: number, base = idleInput) {
   }
 }
 
-function run(script: (t: number) => BodyPerformanceInput, seconds: number) {
-  const performer = createBodyPerformer({ traits: chisaTraits, seed: 5, layers: createPerformanceLayers({ traits: chisaTraits, seed: 5 }) })
-  const frames: { channels: Float32Array, support: number, steps: BodyFootStep[] }[] = []
+function run(script: (t: number) => BodyPerformanceInput, seconds: number, options: { traits?: BodyRigTraits, seed?: number } = {}) {
+  const traits = options.traits ?? chisaTraits
+  const seed = options.seed ?? 5
+  const performer = createBodyPerformer({ traits, seed, layers: createPerformanceLayers({ traits, seed }) })
+  const frames: { channels: Float32Array, support: number, steps: BodyFootStep[], hands: number }[] = []
   for (let tick = 0; tick < seconds / BODY_TICK; tick++) {
     const frame = performer.step(script(tick * BODY_TICK))
-    frames.push({ channels: frame.channels.slice(), support: frame.support, steps: frame.footSteps.map(step => ({ ...step })) })
+    const { activation } = frame.diagnostics.gesture
+    frames.push({ channels: frame.channels.slice(), support: frame.support, steps: frame.footSteps.map(step => ({ ...step })), hands: Math.min(activation.left, activation.right) })
   }
   return frames
 }
@@ -65,6 +68,17 @@ describe('the rest layer', () => {
     expect(steps).toHaveLength(1)
     expect(steps[0].foot).toBe(stance > 0 ? 'left' : 'right')
     expect(Math.min(...frames.slice(at(10), at(14)).map(frame => stance * frame.support))).toBeGreaterThan(0.9)
+  })
+
+  it('rests with her hands clasped low in front or hanging, chosen by the seed (4f)', () => {
+    const rig = fixtureRigs[0].traits
+    const clasped = (seed: number) => run(resting('rest', 2, 30, quietInput), 12, { traits: rig, seed })[at(10)].hands === 1
+    const choices = Array.from({ length: 8 }, (_, seed) => clasped(seed + 1))
+    expect(choices).toContain(true)
+    expect(choices).toContain(false)
+    expect(clasped(choices.indexOf(true) + 1)).toBe(true)
+    // Hanging hands are the standing hang: no gesture layer holds them.
+    expect(run(resting('rest', 2, 30, quietInput), 12, { traits: rig, seed: choices.indexOf(false) + 1 })[at(10)].hands).toBe(0)
   })
 
   it('dozes with the pelvis dropped and the head sinking in nod-offs that recover', () => {

@@ -18,11 +18,14 @@ const c = channelIndex
  * split the head (0.7) and neck (0.3), and the torso mid follows at 0.12. The rest's pelvis lateral gain is 1.25: the
  * pelvis goes a quarter further over the stance foot than the posture takes it for the support it carries.
  *
- * Not built from the 4f row: the clasped hands (no two-hand contact; the arms hang as they do standing) and the tension
- * of 0.2. It is on 4c's K scale (neutral 0.40), so it would loosen her arms, but the arm followers read Natural's mood
- * tension, not the stack's K.
+ * The hands are clasped low in front (the gesture layer's two-hand `clasp` at 6.3's front-low anchor, act 6's) or
+ * hang, chosen per rest by the seed, one in two; a rig whose arms cannot reach the anchor keeps them hanging (6.3).
+ *
+ * Not built from the 4f row: the tension of 0.2. It is on 4c's K scale (neutral 0.40), so it would loosen her arms,
+ * but the arm followers read Natural's mood tension, not the stack's K, and K + 0.4 x mood tension at the neutral K
+ * does not reproduce the tension they read today.
  */
-const REST = { ramp: 1.5, lower: 3, clavicle: -2, head: 3, breath: 1.3, sway: 1.4, tempo: 0.6, lateralGain: 1.25 } as const
+const REST = { ramp: 1.5, lower: 3, clavicle: -2, head: 3, breath: 1.3, sway: 1.4, tempo: 0.6, lateralGain: 1.25, clasped: 0.5 } as const
 const DOZE = { lower: 3, pelvis: 0.012, sink: [4, 9], head: 18, recovery: 0.35, overshoot: 3, settle: 1.3, pause: [9, 25], breath: 1.5, sway: 1.5, tempo: 0.5 } as const
 const NOD = { head: 0.7, neck: 0.3, mid: 0.12 } as const
 
@@ -48,6 +51,7 @@ export function createRestLayer(options: RestLayerOptions): PerformanceLayer {
   let endedAt = 0
   let episodes = 0
   let side = 1
+  let clasped = false
   let nods: { at: number, sink: number }[] = []
   let tick = -1
 
@@ -68,6 +72,8 @@ export function createRestLayer(options: RestLayerOptions): PerformanceLayer {
         since = time
         side = random() < 0.5 ? -1 : 1
         nods = rest === 'doze' ? planNods(random) : []
+        // The hands come from a stream of their own, so the side and nod draws keep their order.
+        clasped = rest === 'rest' && createRandomStream(deriveSeed(options.seed, 400 + episodes))() < REST.clasped
       }
     }
     channels.fill(0)
@@ -92,6 +98,8 @@ export function createRestLayer(options: RestLayerOptions): PerformanceLayer {
         channels[c('pelvisX')] = -(REST.lateralGain - 1) * 0.38 * Math.abs(feet.left.ankle.x - feet.right.ankle.x) / (2 * legLength) * context.previous.support
       if (state === 'rest' && free('lowerBody') && free('upperBody'))
         plan.support = side
+      if (state === 'rest' && clasped)
+        plan.armForm = { side: 'both', form: 'clasp' }
       modulation.tempo = REST.tempo
       modulation.amplitude = REST.sway
       modulation.breath = REST.breath
@@ -144,6 +152,7 @@ export function createRestLayer(options: RestLayerOptions): PerformanceLayer {
       state = 'none'
       shown = null
       episodes = 0
+      clasped = false
       nods = []
       tick = -1
       plan = {}
