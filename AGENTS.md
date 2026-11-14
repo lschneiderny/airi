@@ -94,6 +94,8 @@ pnpm qa:app run --model <path> --say <text>   # Replayed chat turn in the real a
 pnpm qa:motion3d run --model <pmx> --scenario <id> --seed <n> --out <dir>   # Headless MMD body motion in Node, deterministic per seed
 pnpm qa:motion3d gate | diff | frames | clip <run dir> ...                 # Motion-quality gate, run identity, stills and clips
 pnpm qa:test:model                            # Model-gated tests; needs AIRI_QA_MMD_MODEL in .env.qa
+pnpm perf sessions | features | compare | incident    # Usage performance records and bench comparisons
+pnpm qa:display run -- pnpm qa:bench [--scenario <id>] [--runs <n>]   # Recorder-measured scenario matrix, exclusive lease per launch
 ```
 On Linux, start every agent command that opens app windows (T3 runs, agent-browser on Electron, Vishot) through `pnpm qa:display run --`, so the user's desktop, focus, and cursor stay undisturbed. Use `--name <name>` for parallel sessions and stop yours with `pnpm qa:display down --name <name>`.
 The `airi-qa` MCP server in `.mcp.json` (`pnpm qa:mcp`) offers the same app session as tools: `airi_start`, `airi_send`, `airi_screenshot`, `airi_errors`, `airi_eval`, and `airi_stop`. Always call `airi_stop` when done, because the session holds a `live` CPU lease.
@@ -136,6 +138,7 @@ Read the listed file before starting. Skill paths below are under `.agents/skill
 | Motion QA, emotion/idle gates, rendered motion runs, headless MMD body motion (`pnpm qa:motion3d`) | [motion-qa](.agents/skills/motion-qa/SKILL.md); for `qa:motion3d`, also the [qa-tools README](packages/qa-tools/README.md) |
 | Checking a change in the running app: clean start, chat turn, screenshot, errors | [qa-tools README](packages/qa-tools/README.md#clean-start-smoke): `qa:smoke`, `qa:app`, and the `airi-qa` MCP server |
 | Live QA on Linux: anything that opens app windows | [`pnpm qa:display`](scripts/dev-tools/README.md#pnpm-qadisplay) |
+| Performance history, heavy features, incidents, perf regressions between commits | [qa-tools README](packages/qa-tools/README.md#perf-reports) |
 
 ## NOTES
 Nested guides own local exceptions and package-specific checks. Historical ADRs/audits and scanner observations are not current runtime acceptance.
