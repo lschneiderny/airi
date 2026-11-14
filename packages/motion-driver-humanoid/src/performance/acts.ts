@@ -131,7 +131,7 @@ interface Act {
   readonly tension: number
   /** When a stance shift's foot lifted; null before. */
   lift: number | null
-  /** A stance shift's support side; resting (4f), the stance foot she already stands on, whatever side Natural drew. */
+  /** A stance shift's support side; resting (4f), the leg she does not stand on, whatever side Natural drew. */
   readonly stance: -1 | 1
   readonly resting: boolean
   /** A clasp's rock count, drawn at its first tick. */
@@ -192,7 +192,7 @@ export function createActLayer(): PerformanceLayer {
         viewerYaw: input.viewerYaw,
         tension: Math.max(0, Math.min(1, input.mood.tension)),
         lift: null,
-        stance: resting ? (context.previous.support > 0 ? 1 : -1) : record.side,
+        stance: resting ? (context.previous.support > 0 ? -1 : 1) : record.side,
         resting,
       }
     }
@@ -454,7 +454,9 @@ export function createActLayer(): PerformanceLayer {
       case 'shift-stance': {
         // 4e act 3: the support goes fully to a side. Unloaded, the other foot re-plants (`REPLANT`), turning toward and
         // past its standing angle, so it stays within 8 degrees of it; it lifts only if it lands by the end. Then a half
-        // shift, or resting (4f) her full weight back on the stance foot.
+        // shift. Resting (4f), the support goes to the leg she did not stand on and stays there: she changes legs, the
+        // foot she leaves re-plants, and the rest layer takes the new leg as its own (g4 review, "let the rest change
+        // legs").
         const stance = a.stance
         const foot = sideOf(-stance)
         const unloaded = context.previous.support * stance >= REPLANT.unloaded

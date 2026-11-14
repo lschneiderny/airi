@@ -54,20 +54,21 @@ describe('the rest layer', () => {
     expect(Math.abs(pelvis(at(28)))).toBeLessThan(0.001)
   })
 
-  it('re-plants the free foot while she rests and stays on her stance leg (4f)', () => {
+  it('changes legs through a foot re-plant while she rests, and rests on the new leg after it (4f, 4e act 3)', () => {
     const before = run(resting('rest', 2, 30, quietInput), 10)
     const stance = Math.sign(before[at(9)].support)
-    // Natural draws the act's side; the rest keeps her weight where it is whichever side it drew.
-    const act: BodyIdleAct = { seq: 1, kind: 'shift-stance', duration: 1.5, release: null, side: stance > 0 ? -1 : 1, period: 2, count: 1, variant: 0, keys: [], glances: [] }
+    // Natural draws the act's side; resting, the act takes her weight to the other leg whichever side it drew.
+    const act: BodyIdleAct = { seq: 1, kind: 'shift-stance', duration: 1.5, release: null, side: stance > 0 ? 1 : -1, period: 2, count: 1, variant: 0, keys: [], glances: [] }
     const script = (t: number) => {
       const input = resting('rest', 2, 30, quietInput)(t)
       return t >= 10 ? { ...input, idle: act } : input
     }
-    const frames = run(script, 14)
+    const frames = run(script, 20)
     const steps = frames.flatMap(frame => frame.steps)
+    // The foot she stood on, once unloaded, re-plants.
     expect(steps).toHaveLength(1)
-    expect(steps[0].foot).toBe(stance > 0 ? 'left' : 'right')
-    expect(Math.min(...frames.slice(at(10), at(14)).map(frame => stance * frame.support))).toBeGreaterThan(0.9)
+    expect(steps[0].foot).toBe(stance > 0 ? 'right' : 'left')
+    expect(Math.min(...frames.slice(at(13), at(20)).map(frame => -stance * frame.support))).toBeGreaterThan(0.9)
   })
 
   it('rests with her hands clasped low in front or hanging, chosen by the seed (4f)', () => {

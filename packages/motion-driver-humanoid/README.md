@@ -204,8 +204,9 @@ stance for at least 3 seconds (`STANCE_MIN_DWELL_MS`). It has no timer of its
 own: with both `idle` flags false (no idle drive) she never sits or sleeps. The
 clip-free rest takes its architecture 4f pelvis lateral gain of 1.25: the
 pelvis goes a quarter further over the stance foot than the posture takes it.
-A stance shift while she rests re-plants the free foot and keeps her full
-weight on the stance foot. Her hands are clasped low in front (the two-hand
+A stance shift while she rests changes her legs: the act takes her full weight
+to the leg she did not stand on, re-plants the foot she leaves, and the rest
+layer keeps her on the new leg, so over a long rest she stands on each in turn. Her hands are clasped low in front (the two-hand
 `clasp` at the front-low anchor) or hang, chosen per rest by the seed, one in
 two; a rig that cannot reach the anchor keeps them hanging. One part of the
 row is not built: the tension of 0.2. That value is on 4c's K scale (neutral

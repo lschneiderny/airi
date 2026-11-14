@@ -19,7 +19,9 @@ const c = channelIndex
  * pelvis goes a quarter further over the stance foot than the posture takes it for the support it carries.
  *
  * The hands are clasped low in front (the gesture layer's two-hand `clasp` at 6.3's front-low anchor, act 6's) or
- * hang, chosen per rest by the seed, one in two; a rig whose arms cannot reach the anchor keeps them hanging (6.3).
+ * hang, chosen per rest by the seed, one in two; a rig whose arms cannot reach the anchor keeps them hanging (6.3). A
+ * foot re-plant while she rests moves her to the other leg (`side` follows the full-weight support another act-order
+ * layer plans), so over a long rest she changes legs.
  *
  * Not built from the 4f row: the tension of 0.2. It is on 4c's K scale (neutral 0.40), so it would loosen her arms,
  * but the arm followers read Natural's mood tension, not the stack's K, and K + 0.4 x mood tension at the neutral K
@@ -144,6 +146,11 @@ export function createRestLayer(options: RestLayerOptions): PerformanceLayer {
     },
     step(context: PerformanceContext) {
       update(context)
+      // A later act-order layer that plans her full weight onto a foot (the act layer's re-plant while she rests) moves
+      // the rest to that leg; the merged plan is complete by the time layers step.
+      const planned = context.plan.support
+      if (state === 'rest' && (planned === 1 || planned === -1))
+        side = planned
       output.weight = state === 'none' ? 0 : 1
       output.sequence = episodes
       return output
