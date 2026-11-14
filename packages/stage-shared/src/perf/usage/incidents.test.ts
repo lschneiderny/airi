@@ -1,4 +1,4 @@
-import type { FrameStallInput, FrameStallMemory, IncidentConditions, IncidentDecision, MemoryGrowthMemory, PeggedMemory } from './incidents'
+import type { CpuBaselineMemory, FrameStallInput, FrameStallMemory, IncidentConditions, IncidentDecision, MemoryGrowthMemory, PeggedMemory } from './incidents'
 
 import { describe, expect, it } from 'vitest'
 
@@ -11,6 +11,7 @@ import {
   INITIAL_FRAME_STALL_MEMORY,
   INITIAL_MEMORY_GROWTH_MEMORY,
   INITIAL_PEGGED_MEMORY,
+  trackCpuBaseline,
 } from './incidents'
 
 const MINUTE = 60_000
@@ -125,11 +126,11 @@ describe('decideFrameStall', () => {
 })
 
 describe('decidePegged', () => {
-  function feed(memory: PeggedMemory, values: (number | null)[], startMs = 0): IncidentDecision<PeggedMemory>[] {
+  function feed(memory: PeggedMemory, values: (number | null)[], startMs = 0, baselinePct: number | null = 0): IncidentDecision<PeggedMemory>[] {
     const decisions: IncidentDecision<PeggedMemory>[] = []
     let current = memory
     values.forEach((cpuPctOfCore, index) => {
-      const decision = decidePegged(current, { cpuPctOfCore, nowMs: startMs + index * 5000, conditions: INCIDENT_CALM })
+      const decision = decidePegged(current, { cpuPctOfCore, baselinePct, nowMs: startMs + index * 5000, conditions: INCIDENT_CALM })
       decisions.push(decision)
       current = decision.memory
     })
@@ -141,6 +142,16 @@ describe('decidePegged', () => {
     const decisions = feed(INITIAL_PEGGED_MEMORY, [90, 90, 90, 90, 90, 90])
 
     expect(decisions.map(decision => decision.fire)).toEqual([false, false, false, false, false, true])
+  })
+
+  it.each([
+    ['a steady 101 % over a 100 % baseline', false, 100, 101],
+    ['a jump to 95 % over a 40 % baseline', true, 40, 95],
+    ['90 %, exactly 25 points over a 65 % baseline', true, 65, 90],
+    ['90 %, 24.9 points over a 65.1 % baseline', false, 65.1, 90],
+    ['95 % before the process has a baseline', false, null, 95],
+  ])('decides %s for 6 samples -> fire %s', (_name, fire, baselinePct, value) => {
+    expect(feed(INITIAL_PEGGED_MEMORY, Array.from<number>({ length: 6 }).fill(value), 0, baselinePct).at(-1)?.fire).toBe(fire)
   })
 
   it.each([
@@ -175,7 +186,7 @@ describe('decidePegged', () => {
     const decisions: IncidentDecision<PeggedMemory>[] = []
     let memory = INITIAL_PEGGED_MEMORY
     for (let nowMs = 5000; nowMs <= 2 * MINUTE; nowMs += 5000) {
-      const decision = decidePegged(memory, { cpuPctOfCore: 100, nowMs, conditions: { ...INCIDENT_CALM, settling: nowMs < 50_000 } })
+      const decision = decidePegged(memory, { cpuPctOfCore: 100, baselinePct: 0, nowMs, conditions: { ...INCIDENT_CALM, settling: nowMs < 50_000 } })
       decisions.push(decision)
       memory = decision.memory
     }
@@ -196,7 +207,7 @@ describe('decidePegged', () => {
     ]
     let memory = INITIAL_PEGGED_MEMORY
     const decisions = steps.map(([cpuPctOfCore, conditions], index) => {
-      const decision = decidePegged(memory, { cpuPctOfCore, nowMs: index * 5000, conditions })
+      const decision = decidePegged(memory, { cpuPctOfCore, baselinePct: 0, nowMs: index * 5000, conditions })
       memory = decision.memory
       return decision
     })
@@ -209,11 +220,41 @@ describe('decidePegged', () => {
     let memory = INITIAL_PEGGED_MEMORY
     let decision: IncidentDecision<PeggedMemory> | undefined
     for (let index = 0; index < 6; index++) {
-      decision = decidePegged(memory, { cpuPctOfCore: 99, nowMs: index * 5000, conditions: { ...INCIDENT_CALM, chromiumTrace: true } })
+      decision = decidePegged(memory, { cpuPctOfCore: 99, baselinePct: 0, nowMs: index * 5000, conditions: { ...INCIDENT_CALM, chromiumTrace: true } })
       memory = decision.memory
     }
 
     expect(decision).toMatchObject({ fire: false, suppressedReason: 'chromium-trace' })
+  })
+})
+
+describe('trackCpuBaseline', () => {
+  /** Feeds one sample every 5 s from `fromMs` to `toMs` and returns the last baseline and memory. */
+  function feed(memory: CpuBaselineMemory | null, fromMs: number, toMs: number, cpuAt: (atMs: number) => number | null, modelLoadMs: number | null = null) {
+    let current = memory
+    let baselinePct: number | null = null
+    for (let nowMs = fromMs; nowMs <= toMs; nowMs += 5000) {
+      const tracked = trackCpuBaseline(current, { cpuPctOfCore: cpuAt(nowMs), nowMs, modelLoadMs })
+      current = tracked.memory
+      baselinePct = tracked.baselinePct
+    }
+    return { baselinePct, memory: current }
+  }
+
+  it('settles on the median of minutes 2-5 after the first sample and has none until then', () => {
+    // A load spike in the first 2 min and an unknown reading must not count.
+    const cpuAt = (atMs: number) => atMs < 2 * MINUTE ? 180 : atMs === 3 * MINUTE ? null : (atMs / 5000) % 2 === 0 ? 40 : 50
+
+    expect(feed(null, 0, 5 * MINUTE, cpuAt).baselinePct).toBeNull()
+    expect(feed(null, 0, 5 * MINUTE + 5000, cpuAt).baselinePct).toBe(45)
+  })
+
+  it('restarts at the window\'s model load', () => {
+    const settled = feed(null, 0, 6 * MINUTE, () => 30).memory
+    const reload = 10 * MINUTE
+
+    expect(feed(settled, reload, reload + 5 * MINUTE, atMs => atMs < reload + 2 * MINUTE ? 30 : 100, reload).baselinePct).toBeNull()
+    expect(feed(settled, reload, reload + 5 * MINUTE + 5000, atMs => atMs < reload + 2 * MINUTE ? 30 : 100, reload).baselinePct).toBe(100)
   })
 })
 

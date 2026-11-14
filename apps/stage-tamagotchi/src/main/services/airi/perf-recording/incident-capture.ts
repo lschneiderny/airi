@@ -1,4 +1,5 @@
 import type {
+  CpuBaselineMemory,
   FrameStallInput,
   FrameStallMemory,
   IncidentBudget,
@@ -28,6 +29,7 @@ import {
   PERF_RECORD_VERSION,
   ROLLUP_EVENT_SETTLING_MS,
   ROLLUP_SESSION_SETTLING_MS,
+  trackCpuBaseline,
 } from '@proj-airi/stage-shared/perf/usage'
 
 import { pullFrameRing } from './pull'
@@ -98,9 +100,12 @@ function pulledWindow(record: PerfRecord, windows: readonly PerfWindowSource[]):
 export class PerfIncidentCapture {
   /** The records of the last ticks; lines are serialized only for an incident, after the tick set its recorder time. */
   readonly #recent: (readonly PerfRecord[])[] = []
+  /** Every record ever kept as recent: a failed append re-queues a tick's lines into the next tick's records. */
+  readonly #kept = new WeakSet<PerfRecord>()
   readonly #frameStall = new Map<string, FrameStallMemory>()
   /** Keyed `${pid}:${creationTime}`; rebuilt each tick, so exited processes drop out. */
   #pegged = new Map<string, PeggedMemory>()
+  #cpuBaseline = new Map<string, CpuBaselineMemory>()
   #memoryGrowth = new Map<string, MemoryGrowthMemory>()
   readonly #modelLoadMs = new Map<string, number>()
   readonly #windowSettlingUntilMs = new Map<string, number>()
@@ -144,7 +149,10 @@ export class PerfIncidentCapture {
         suppressed.push(usageEvent(tick.t, this.options.sessionId, { name: 'incident-suppressed', ...(window === undefined ? {} : { window }), detail: { trigger, reason, pid: pid ?? null } }))
     }
 
-    this.#recent.push([...tick.records, ...suppressed])
+    const fresh = [...tick.records, ...suppressed].filter(record => !this.#kept.has(record))
+    for (const record of fresh)
+      this.#kept.add(record)
+    this.#recent.push(fresh)
     if (this.#recent.length > RECENT_TICKS)
       this.#recent.shift()
     return { suppressed, incidents }
@@ -220,14 +228,19 @@ export class PerfIncidentCapture {
     }
 
     const pegged = new Map<string, PeggedMemory>()
+    const cpuBaseline = new Map<string, CpuBaselineMemory>()
     const memoryGrowth = new Map<string, MemoryGrowthMemory>()
     for (const entry of sample.processes) {
       const key = `${entry.pid}:${entry.creationTime}`
       const window = entry.role.startsWith('window:') ? entry.label : undefined
+      const modelLoadMs = window === undefined ? null : this.#modelLoadMs.get(window) ?? null
+      const { baselinePct, memory: baselineMemory } = trackCpuBaseline(this.#cpuBaseline.get(key) ?? null, { cpuPctOfCore: entry.cpuPctOfCore, nowMs: t, modelLoadMs })
+      cpuBaseline.set(key, baselineMemory)
       // A model load or reload in any window loads the GPU and browser processes too.
-      const peggedDecision = decidePegged(this.#pegged.get(key) ?? INITIAL_PEGGED_MEMORY, { cpuPctOfCore: entry.cpuPctOfCore, nowMs: t, conditions: conditions(null, false) })
+      const peggedDecision = decidePegged(this.#pegged.get(key) ?? INITIAL_PEGGED_MEMORY, { cpuPctOfCore: entry.cpuPctOfCore, baselinePct, nowMs: t, conditions: conditions(null, false) })
       pegged.set(key, peggedDecision.memory)
-      detections.push({ trigger: 'pegged', decision: peggedDecision, window, pid: entry.pid, peak: { cpuPctOfCore: entry.cpuPctOfCore ?? 0 } })
+      const peak = { cpuPctOfCore: entry.cpuPctOfCore ?? 0, ...(baselinePct === null ? {} : { baselinePct }) }
+      detections.push({ trigger: 'pegged', decision: peggedDecision, window, pid: entry.pid, peak })
       if (window === undefined)
         continue
       const growthDecision = decideMemoryGrowth(this.#memoryGrowth.get(key) ?? INITIAL_MEMORY_GROWTH_MEMORY, {
@@ -240,6 +253,7 @@ export class PerfIncidentCapture {
       detections.push({ trigger: 'memory-growth', decision: growthDecision, window, pid: entry.pid, peak: { workingSetKb: entry.workingSetKb } })
     }
     this.#pegged = pegged
+    this.#cpuBaseline = cpuBaseline
     this.#memoryGrowth = memoryGrowth
     return detections
   }

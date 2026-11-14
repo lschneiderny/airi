@@ -116,6 +116,8 @@ interface TickInput {
   rollup?: Partial<WindowRollupRecord> | null
   sample?: Partial<SampleRecord>
   events?: UsageEventRecord['name'][]
+  /** Records the service re-queued after a failed append, ahead of the tick's own. */
+  requeued?: PerfRecord[]
 }
 
 function setup(window: Partial<PerfWindowSource> = {}) {
@@ -154,6 +156,7 @@ function setup(window: Partial<PerfWindowSource> = {}) {
     t += TICK_MS
     const sample = sampleAt(t, input.sample)
     const records: PerfRecord[] = [
+      ...(input.requeued ?? []),
       ...(input.events ?? []).map(name => eventAt(t, name, name === 'model-load' || name === 'renderer-reload' ? 'stage-main' : undefined)),
       sample,
       input.rollup === null ? eventAt(t, 'rollup-missing', 'stage-main') : rollupAt(t, input.rollup),
@@ -293,12 +296,42 @@ describe('perfIncidentCapture', () => {
     expect(fs.renames.get(`/perf/${incident.file}`)).toBe(1)
   })
 
-  it('fires pegged for a non-window process after 6 hot samples and attaches the stage window\'s ring', async () => {
+  it('keeps lines re-queued after a failed append once in the next incident\'s recent lines', async () => {
+    const { fs, tick, settle, now } = setup()
+    await settle()
+    const traceStart = eventAt(now() + TICK_MS, 'trace-start')
+    await tick({ requeued: [traceStart] })
+
+    const incident = incidentOf(await tick({ requeued: [traceStart], rollup: STALL }))
+
+    const recent: string[] = fs.json(`/perf/${incident.file}`).recent
+    expect(recent.filter(line => line === JSON.stringify(traceStart))).toHaveLength(1)
+  })
+
+  it('does not fire pegged for a stage renderer that runs near one core after a model load', async () => {
+    const { tick, now } = setup()
+    const steady = { processes: sampleAt(0).processes.map(entry => entry.pid === 200 ? { ...entry, cpuPctOfCore: 101 } : entry) }
+    // The renderer settles at 20 % before its model loads at 6 min; the load restarts its baseline.
+    while (now() < STARTED_AT + 6 * 60_000)
+      await tick()
+    await tick({ events: ['model-load'], sample: steady })
+
+    const added: PerfRecord[] = []
+    while (now() < STARTED_AT + 20 * 60_000)
+      added.push(...await tick({ sample: steady }))
+
+    expect(added.filter(record => record.kind === 'incident')).toEqual([])
+  })
+
+  it('fires pegged for a non-window process 25 points over its settled baseline and attaches the stage window\'s ring', async () => {
     let answer: (ring: PerfFrameRing) => void = () => {}
-    const { fs, tick, settle } = setup({ pullFrameRing: () => new Promise((resolve) => {
+    const { fs, tick, settle, now } = setup({ pullFrameRing: () => new Promise((resolve) => {
       answer = resolve
     }) })
     await settle()
+    // The GPU process settles at 10 % in minutes 2-5 after its first sample.
+    while (now() <= STARTED_AT + TICK_MS + 5 * 60_000)
+      await tick()
     const hot = { processes: sampleAt(0).processes.map(entry => entry.role === 'gpu' ? { ...entry, cpuPctOfCore: 95 } : entry) }
     for (let sample = 0; sample < 5; sample++)
       expect(await tick({ sample: hot })).toEqual([])
@@ -306,7 +339,7 @@ describe('perfIncidentCapture', () => {
     const added = await tick({ sample: hot })
 
     const incident = incidentOf(added)
-    expect(incident).toMatchObject({ trigger: 'pegged', pid: 150, peak: { cpuPctOfCore: 95 } })
+    expect(incident).toMatchObject({ trigger: 'pegged', pid: 150, peak: { cpuPctOfCore: 95, baselinePct: 10 } })
     expect(incident.window).toBeUndefined()
     const path = `/perf/${incident.file}`
     const rewritten = fs.nextRename(path)
