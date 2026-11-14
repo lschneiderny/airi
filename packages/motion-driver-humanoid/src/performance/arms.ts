@@ -112,6 +112,8 @@ export class BodyArms {
   private warm = false
   private redraw = 70
   private tension = 0
+  /** The stack's K less its neutral 0.40 (`PerformanceContext.tension`), added to the mood tension before the clamp. */
+  tensionOffset = 0
   private trunkPitch = 0
   /** Rate of the trunk pitch the arms hang from, rad/s; the upper arm's swing in the world is flex rate minus it. */
   private trunkPitchRate = 0
@@ -180,7 +182,7 @@ export class BodyArms {
    * followers' inverse (`LayerOutput.fed`), which passes the wrist-placing joints' cascade links.
    */
   follow(input: BodyPerformanceInput, targets: Float64Array, activation: Float64Array, fed: Float64Array): void {
-    this.tension = Math.max(0, Math.min(1, input.mood.tension))
+    this.tension = Math.max(0, Math.min(1, input.mood.tension + this.tensionOffset))
     for (const side of SIDES) {
       const start = ARM_START[side]
       for (let j = 0; j < 2; j++)

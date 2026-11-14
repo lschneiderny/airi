@@ -95,6 +95,31 @@ describe('performance layer stack', () => {
     expect(seen).toEqual([{ support: null, gaze: null, armForm: { side: 'left', form: 'hand-to-chest' }, suppressHeadCue: true, suppressHeadEmphasis: false, holdGaze: false }])
   })
 
+  it('gives the arm followers Natural\'s mood tension at the neutral K and moves it by a layer\'s K from 0.40', () => {
+    const mask = new Float64Array(BODY_CHANNELS.length)
+    const channels = new Float64Array(BODY_CHANNELS.length)
+    const followerTension = (followerK: number | null) => {
+      const seen: number[] = []
+      const layers: PerformanceLayer[] = [
+        { id: 'rest', order: 'act', mode: 'additive', mask, enterSeconds: 0, step: () => ({ channels, weight: 1, sequence: 0, modulation: { tempo: 1, amplitude: 1, breath: 1, sighSeq: 0, ...(followerK === null ? {} : { followerK }) } }), reset() {} },
+        { id: 'recorder', order: 'cue', mode: 'additive', mask, step: (context) => {
+          seen.push(context.tension)
+          return { channels, weight: 0, sequence: 0 }
+        }, reset() {} },
+      ]
+      const performer = createBodyPerformer({ traits, seed: 1, layers })
+      for (let tick = 0; tick < 3; tick++)
+        performer.step(quietInput())
+      return seen.at(-1)
+    }
+    // quietInput's mood tension is 0.4: a layer without a K, and one at the neutral 0.40, leave it exactly as it is.
+    expect(followerTension(null)).toBe(0.4)
+    expect(followerTension(0.4)).toBe(0.4)
+    // 4f's rest (K 0.2) and doze (K 0.1) loosen the arms by their K's distance from the neutral.
+    expect(followerTension(0.2)).toBeCloseTo(0.2, 12)
+    expect(followerTension(0.1)).toBeCloseTo(0.1, 12)
+  })
+
   it('reports the latest layer report and the gesture weight it applied per arm', () => {
     const mask = new Float64Array(BODY_CHANNELS.length)
     mask[channelIndex('rightElbow')] = 0.5

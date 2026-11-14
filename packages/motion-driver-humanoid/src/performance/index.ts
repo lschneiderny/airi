@@ -13,7 +13,7 @@ import { BodyGaze } from './gaze'
 import { GestureKeys } from './gesture-forms'
 import { BodyPosture } from './posture'
 import { BodySkeleton } from './skeleton'
-import { PerformanceStack } from './stack'
+import { NEUTRAL_K, PerformanceStack } from './stack'
 
 export type { ArmAngles, ArmKey, ArmKeyRig } from './arm-key'
 export { solveArmKey } from './arm-key'
@@ -165,10 +165,15 @@ class BodyPerformer {
       tick: 0,
       time: 0,
       dt: BODY_TICK,
+      tension: 0,
     }
     this.context.input = input
     this.context.tick = frame.tick + 1
     this.context.time = this.context.tick * BODY_TICK
+    // 4c's K as an offset from its neutral (the lead's reading): exactly Natural's mood tension at the neutral K.
+    const offset = stack.modulation.followerK - NEUTRAL_K
+    this.context.tension = input.mood.tension + offset
+    state.arms.tensionOffset = offset
     stack.prepare(this.context)
     let effective = input
     this.heldSaccade = stack.plan.holdGaze ? this.heldSaccade ?? input.gaze.saccadeSeq : null

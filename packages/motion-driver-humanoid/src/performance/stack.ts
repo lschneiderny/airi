@@ -27,7 +27,19 @@ export interface PerformanceContext {
   readonly tick: number
   readonly time: number
   readonly dt: number
+  /**
+   * The arm followers' tension before their clamp to [0, 1]: Natural's mood tension moved by the stack's K from its
+   * neutral (`NEUTRAL_K`), the previous tick's, like the other modulation. Every layer that inverts the followers reads
+   * this, so at the neutral K it is Natural's mood tension exactly.
+   */
+  readonly tension: number
 }
+
+/**
+ * Architecture 4c's neutral tension K. The lead's reading of 4c (idle agency ADR, idle body unit): the followers read
+ * `mood tension + (K - NEUTRAL_K)`, so a layer's K acts as an offset and a neutral K leaves today's tension unchanged.
+ */
+export const NEUTRAL_K = 0.4
 
 /** The generator modulation of an emotion layer (architecture 4c), each 1 at baseline. */
 export interface PerformanceModulation {
@@ -36,6 +48,11 @@ export interface PerformanceModulation {
   readonly breath: number
   /** Increments once per sighing onset. */
   readonly sighSeq: number
+  /**
+   * 4c's tension K for the arm followers (`PerformanceContext.tension`), `NEUTRAL_K` at baseline. Only the clip-free
+   * rest and doze set it (4f: 0.2 and 0.1); an emotion's own K is not wired to the followers.
+   */
+  readonly followerK?: number
 }
 
 export interface LayerOutput {
@@ -113,7 +130,7 @@ export class PerformanceStack {
   readonly emotion: Mutable<BodyEmotionReport> = { seq: 0, emotion: null, phase: null }
   readonly reaction: Mutable<BodyReactionReport> = { seq: 0, kind: null }
   /** This tick's generator modulation; the performer feeds it to the posture and breath hooks on the next tick. */
-  readonly modulation = { tempo: 1, amplitude: 1, breath: 1 }
+  readonly modulation = { tempo: 1, amplitude: 1, breath: 1, followerK: NEUTRAL_K }
   /** Sighing onsets of layers with weight, counted from construction. */
   sighs = 0
   lidClose = 0
@@ -177,6 +194,7 @@ export class PerformanceStack {
     this.act = null
     this.footSteps = emptySteps
     this.modulation.tempo = this.modulation.amplitude = this.modulation.breath = 1
+    this.modulation.followerK = NEUTRAL_K
     this.gesture.activation.left = this.gesture.activation.right = 0
     this.actActivation.left = this.actActivation.right = 0
     for (const entry of this.entries) {
@@ -235,6 +253,8 @@ export class PerformanceStack {
         this.modulation.tempo = 1 + weight * (m.tempo - 1)
         this.modulation.amplitude = 1 + weight * (m.amplitude - 1)
         this.modulation.breath = 1 + weight * (m.breath - 1)
+        if (m.followerK !== undefined)
+          this.modulation.followerK = NEUTRAL_K + weight * (m.followerK - NEUTRAL_K)
         if (m.sighSeq !== entry.sighSeq && weight > 0)
           this.sighs++
         entry.sighSeq = m.sighSeq

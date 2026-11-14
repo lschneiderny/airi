@@ -502,7 +502,7 @@ class GesturePerformer {
   private readonly majors: number[] = []
   private readonly formTimes = new Map<SpeechGestureForm, number>()
   private armForm: { side: BodyGestureHand, form: BodyArmForm } | null = null
-  /** Natural's mood tension this tick: the arm followers' stiffness, which every segment's feedforward inverts. */
+  /** The arm followers' tension this tick (`PerformanceContext.tension`), which every segment's feedforward inverts. */
   private tension = 0
   private readonly scratch = pose()
 
@@ -545,7 +545,7 @@ class GesturePerformer {
     const { input } = context
     const now = context.time
     const voice = input.voice
-    this.tension = input.mood.tension
+    this.tension = context.tension
     const onset = voice.onsetSeq !== this.lastOnset
     const major = onset && voice.emphasis !== null && voice.emphasis.seq !== this.lastEmphasis
     this.lastOnset = voice.onsetSeq

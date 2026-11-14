@@ -208,11 +208,10 @@ A stance shift while she rests changes her legs: the act takes her full weight
 to the leg she did not stand on, re-plants the foot she leaves, and the rest
 layer keeps her on the new leg, so over a long rest she stands on each in turn. Her hands are clasped low in front (the two-hand
 `clasp` at the front-low anchor) or hang, chosen per rest by the seed, one in
-two; a rig that cannot reach the anchor keeps them hanging. One part of the
-row is not built: the tension of 0.2. That value is on 4c's K scale (neutral
-0.40), so it would loosen her arms; the arm followers read Natural's mood
-tension, not the stack's K, and K + 0.4 x mood tension (4c) at the neutral K
-does not reproduce the tension they read today, so it is not wired.
+two; a rig that cannot reach the anchor keeps them hanging. The rest's
+tension is 4f's 0.2 and the doze's 0.1 on 4c's K scale, read as an offset from
+its neutral 0.40 (`followerK`, below), so her arms hang looser while she rests
+and looser still while she dozes.
 
 On a stage with a ground line, `decideBody` also owns where she goes:
 `BodyIntent.locomotion` carries the goal x, its reason (`approach-chat`,
@@ -547,8 +546,12 @@ sighing onset of a layer with weight calls `sigh()` once, and so does each new
 `deepBreaths` count (the act layer's sigh and yawn, which take 4c's sigh
 inhale). The stack runs after
 the generators, so the modulation reaches them one tick (8 ms) later. The
-layer's `tension` is not fed to a generator; the arm followers keep reading
-Natural's mood tension.
+layer's `tension` is not fed to a generator. A layer's `followerK` is 4c's K
+for the arm followers, read as an offset from its neutral `NEUTRAL_K` (0.40):
+the followers, and every layer that inverts them, take
+`clamp(mood tension + (followerK - 0.40), 0, 1)` (`PerformanceContext.tension`),
+so at the neutral K they read Natural's mood tension exactly. Only the
+clip-free rest (0.2) and doze (0.1) set it.
 
 `createEmotionLayer()` (`src/performance/emotions.ts`) is the additive emotion
 posture layer of architecture 4c. Each emotion

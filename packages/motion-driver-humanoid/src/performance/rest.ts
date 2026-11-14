@@ -23,12 +23,11 @@ const c = channelIndex
  * foot re-plant while she rests moves her to the other leg (`side` follows the full-weight support another act-order
  * layer plans), so over a long rest she changes legs.
  *
- * Not built from the 4f row: the tension of 0.2. It is on 4c's K scale (neutral 0.40), so it would loosen her arms,
- * but the arm followers read Natural's mood tension, not the stack's K, and K + 0.4 x mood tension at the neutral K
- * does not reproduce the tension they read today.
+ * The rest's tension is 0.2 and the doze's 0.1 on 4c's K scale (`followerK`), which the arm followers read as an
+ * offset from the neutral 0.40, so her arms hang looser while she rests and looser still while she dozes.
  */
-const REST = { ramp: 1.5, lower: 3, clavicle: -2, head: 3, breath: 1.3, sway: 1.4, tempo: 0.6, lateralGain: 1.25, clasped: 0.5 } as const
-const DOZE = { lower: 3, pelvis: 0.012, sink: [4, 9], head: 18, recovery: 0.35, overshoot: 3, settle: 1.3, pause: [9, 25], breath: 1.5, sway: 1.5, tempo: 0.5 } as const
+const REST = { ramp: 1.5, lower: 3, clavicle: -2, head: 3, breath: 1.3, sway: 1.4, tempo: 0.6, lateralGain: 1.25, clasped: 0.5, tension: 0.2 } as const
+const DOZE = { lower: 3, pelvis: 0.012, sink: [4, 9], head: 18, recovery: 0.35, overshoot: 3, settle: 1.3, pause: [9, 25], breath: 1.5, sway: 1.5, tempo: 0.5, tension: 0.1 } as const
 const NOD = { head: 0.7, neck: 0.3, mid: 0.12 } as const
 
 export interface RestLayerOptions {
@@ -105,6 +104,7 @@ export function createRestLayer(options: RestLayerOptions): PerformanceLayer {
       modulation.tempo = REST.tempo
       modulation.amplitude = REST.sway
       modulation.breath = REST.breath
+      modulation.followerK = REST.tension
     }
     else {
       let pitch = 0
@@ -127,6 +127,7 @@ export function createRestLayer(options: RestLayerOptions): PerformanceLayer {
       modulation.tempo = DOZE.tempo
       modulation.amplitude = DOZE.sway
       modulation.breath = DOZE.breath
+      modulation.followerK = DOZE.tension
     }
     output.modulation = modulation
     for (let channel = 0; channel < channels.length; channel++)

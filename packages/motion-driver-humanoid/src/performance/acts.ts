@@ -127,7 +127,7 @@ interface Act {
   /** The gaze goal and the viewer when it started: a look-around aims around the viewer, sleep holds the goal. */
   readonly gaze: BodyGazeGoal
   readonly viewerYaw: number
-  /** Natural's mood tension when it started, which sets the arm pendulum's period. */
+  /** The arm followers' tension when it started (`PerformanceContext.tension`), which sets the pendulum's period. */
   readonly tension: number
   /** When a stance shift's foot lifted; null before. */
   lift: number | null
@@ -190,7 +190,7 @@ export function createActLayer(): PerformanceLayer {
         releaseSeconds: 0,
         gaze: { yaw: input.gaze.yaw, pitch: input.gaze.pitch, kind: input.gaze.kind },
         viewerYaw: input.viewerYaw,
-        tension: Math.max(0, Math.min(1, input.mood.tension)),
+        tension: Math.max(0, Math.min(1, context.tension)),
         lift: null,
         stance: resting ? (context.previous.support > 0 ? -1 : 1) : record.side,
         resting,
@@ -264,7 +264,7 @@ export function createActLayer(): PerformanceLayer {
         add('upperPitch', -3 * e)
         naturalHead(s * 0.1 * e, 0.45 * e - 0.14 * settle, s * 0.3 * e)
         arms ??= { left: stretchArm(context, 'left'), right: stretchArm(context, 'right') }
-        const tension = Math.max(0, Math.min(1, input.mood.tension))
+        const tension = Math.max(0, Math.min(1, context.tension))
         for (const side of SIDES) {
           const { rest, fold } = arms[side]
           // The arm away from `s` follows 120 ms later, the two sides' offset of 4e act 2.
