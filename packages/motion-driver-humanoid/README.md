@@ -156,6 +156,16 @@ weight onto the stance foot, the pelvis dips 0.008 L and the trunk draws back 1.
 ends. The trunk's lean follows an under-damped response (omega 5 rad/s, zeta 0.55), so it overshoots once as she stops,
 and the pelvis dips 0.006 L over the settle.
 
+No two strides are the same. `createLocomotion({ variability })` (default `youngAdultStrideVariability`) varies stride
+time and stride length independently by healthy young adults' coefficients of variation, 1.8 % and 3.9 % (Beauchet et
+al. 2005, J NeuroEng Rehabil 2:26, n = 49; independent draws reproduce their 4.3 % speed CV), through the package's
+1/f source (`createDriftNoise`) stepped in strides with time constants of 1, 4 and 16 strides, because stride
+fluctuations are long-range correlated, not white (Hausdorff et al. 1995 and 1996, J Appl Physiol; Terrier, Turner &
+Schutz 2005, Hum Mov Sci 24:97). The streams are `deriveSeed(seed, 0)` and `deriveSeed(seed, 1)`; the seed's own stream
+still only breaks first-foot ties. A stride's time scales the step rate and its length the speed command, with the
+cadence law evaluated at the unvaried speed so the two stay independent; the goal is still reached exactly. Pass
+`{ strideTime: 0, strideLength: 0 }` for a periodic walk (the structural tests do).
+
 Planted foot targets are frozen world anchors. Landing targets are re-planned until
 75% of the swing, so the stance stays symmetric about the hip while the speed
 changes. The pelvis drop is the design bob, sized from the planned stance spans, plus

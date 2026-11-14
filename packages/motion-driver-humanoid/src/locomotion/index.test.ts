@@ -1,6 +1,6 @@
 import type { Foot, FootAnchor } from '../foot-contact'
 import type { Vec3 } from '../types'
-import type { GaitTraits, LocomotionFrame, LocomotionInput } from './index'
+import type { GaitTraits, GaitVariability, LocomotionFrame, LocomotionInput } from './index'
 
 import { describe, expect, it } from 'vitest'
 
@@ -45,9 +45,13 @@ function bindFeet(pose: Pose): Record<Foot, FootAnchor> {
   return { left: place(traits.bindAnkles.left), right: place(traits.bindAnkles.right) }
 }
 
+// The structural tests below pin a periodic walk (equal steps, mirrored sides), so they turn the stride variability off;
+// `{}` keeps the product's default.
+const periodic: { variability?: GaitVariability } = { variability: { strideTime: 0, strideLength: 0 } }
+
 // Closed loop: each frame's foot targets come back as the next frame's planted anchors.
-function createRun(start: Pose, seed = 7, gaitTraits: GaitTraits = traits) {
-  const locomotion = createLocomotion({ traits: gaitTraits, seed })
+function createRun(start: Pose, seed = 7, gaitTraits: GaitTraits = traits, options = periodic) {
+  const locomotion = createLocomotion({ traits: gaitTraits, seed, ...options })
   locomotion.rebase(start)
   const frames: LocomotionFrame[] = []
   let planted = bindFeet(start)
@@ -227,6 +231,37 @@ describe('procedural gait', () => {
       expect(reach, name).toBeLessThanOrEqual(0.985 * legLength + 1e-9)
     }
     console.info(`locomotion reach: max hip-to-ankle ${(max / legLength).toFixed(6)} L`)
+  })
+
+  it('stride variability: stride time and length vary like a young adult\'s, persist from stride to stride, and vary independently', () => {
+    // Beauchet et al. 2005: stride time CV 1.8 %, stride length CV 3.9 %; Hausdorff et al. 1995-1997 and Terrier et al.
+    // 2005: long-range correlated, not white. A 4 minute straight walk at the product's default.
+    const run = createRun({ x: 0, yaw: Math.PI / 2 }, 7, traits, {})
+    run.advance(240, () => ({ goalX: 5000, arriveFacing: Math.PI / 2 }))
+    const strikes = eventsOf(run.frames, 'heelStrike').filter(strike => strike.foot === 'left' && strike.tick * dt >= 5)
+    const times = strikes.slice(1).map((strike, index) => (strike.tick - (strikes[index]?.tick ?? 0)) * dt)
+    const lengths = strikes.slice(1).map((strike, index) => {
+      const before = strikes[index]?.frame.feet.left.target.position ?? strike.frame.feet.left.target.position
+      const landed = strike.frame.feet.left.target.position
+      return Math.hypot(landed.x - before.x, landed.z - before.z)
+    })
+    expect(times.length).toBeGreaterThan(150)
+    const mean = (values: readonly number[]) => values.reduce((sum, value) => sum + value, 0) / values.length
+    const correlation = (a: readonly number[], b: readonly number[]) => {
+      const [ma, mb] = [mean(a), mean(b)]
+      const cov = mean(a.map((value, index) => (value - ma) * ((b[index] ?? mb) - mb)))
+      return cov / Math.sqrt(mean(a.map(value => (value - ma) ** 2)) * mean(b.map(value => (value - mb) ** 2)))
+    }
+    const cv = (values: readonly number[]) => Math.sqrt(mean(values.map(value => (value - mean(values)) ** 2))) / mean(values)
+    console.info(`locomotion stride variability: time CV ${(100 * cv(times)).toFixed(2)} %, length CV ${(100 * cv(lengths)).toFixed(2)} %, lag-1 r ${correlation(times.slice(1), times.slice(0, -1)).toFixed(2)} / ${correlation(lengths.slice(1), lengths.slice(0, -1)).toFixed(2)}, time-length r ${correlation(times, lengths).toFixed(2)}`)
+    expect(cv(times)).toBeGreaterThan(0.012)
+    expect(cv(times)).toBeLessThan(0.024)
+    expect(cv(lengths)).toBeGreaterThan(0.026)
+    expect(cv(lengths)).toBeLessThan(0.052)
+    // White noise has a lag-1 correlation near 0; a persistent (long-range correlated) series stays well above it.
+    expect(correlation(times.slice(1), times.slice(0, -1))).toBeGreaterThan(0.3)
+    expect(correlation(lengths.slice(1), lengths.slice(0, -1))).toBeGreaterThan(0.3)
+    expect(Math.abs(correlation(times, lengths))).toBeLessThan(0.3)
   })
 
   it('step period: steady heel strikes at v_ref are 66 or 67 ticks apart', () => {

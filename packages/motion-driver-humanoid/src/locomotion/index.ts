@@ -3,6 +3,7 @@ import type { LocomotionPace, RigTraits, Vec3 } from '../types'
 
 import { advanceSecondOrder, minJerk, secondOrderCoefficients } from '../dynamics'
 import { planFootSteps } from '../foot-contact'
+import { createDriftNoise, deriveSeed } from '../noise'
 import { createRandomStream } from '../random'
 
 /**
@@ -23,6 +24,19 @@ export interface GaitTraits extends Pick<RigTraits, 'legLength' | 'footBaselineY
   /** Without it the feet stay flat: every roll is 0 and its pivot 'flat' or 'air'. */
   readonly foot?: Record<Foot, FootGeometry>
 }
+
+/** Stride-to-stride variability: coefficients of variation (sd / mean) of stride time and stride length. */
+export interface GaitVariability {
+  readonly strideTime: number
+  readonly strideLength: number
+}
+
+/**
+ * Healthy young adults at a self-selected speed: stride time CV 1.8 %, stride length CV 3.9 % (Beauchet, Dubost, Herrmann
+ * & Kressig 2005, J NeuroEng Rehabil 2:26, n = 49). Drawn independently, they reproduce that study's stride velocity CV
+ * of 4.3 %.
+ */
+export const youngAdultStrideVariability: GaitVariability = { strideTime: 0.018, strideLength: 0.039 }
 
 export interface LocomotionInput {
   /** Seconds on the fixed 120 Hz grid; only stamps events. */
@@ -195,6 +209,16 @@ const elbowLag = 0.2
  * doi:10.1038/s41598-018-31151-9, https://www.nature.com/articles/s41598-018-31151-9).
  */
 const rightSwingShare = 1 - 0.219
+/**
+ * The stride fluctuations are long-range correlated, not white (Hausdorff et al. 1995, 1996; Terrier, Turner & Schutz
+ * 2005): the package's 1/f source (`createDriftNoise`, architecture 3b) stepped in strides, its time constants log-spaced
+ * from one stride to 16 (about the longest walking span) and its output low-passed over a sixth of the shortest, 3b's
+ * ratio, so the step rate never steps.
+ */
+const strideNoise = { taus: [1, 4, 16], filterTau: 1 / 6 } as const
+/** `deriveSeed` indices of the gait seed's stride streams; the seed's own stream stays the first-foot tie-break. */
+const strideTimeStream = 0
+const strideLengthStream = 1
 const sides = ['left', 'right'] as const
 /** Lateral sign: left = -1, right = +1, matching `support`. */
 const footSign: Record<Foot, 1 | -1> = { left: -1, right: 1 }
@@ -301,10 +325,16 @@ interface Turn {
 
 /**
  * Owns the root position, gait phase and world foot anchors for one character.
- * Time comes only from step's dt; the seeded stream only breaks first-foot ties.
+ * Time comes only from step's dt. The seed's own stream breaks first-foot ties; two streams derived from it vary each
+ * stride's time and length.
  */
 class Locomotion {
   private readonly random: () => number
+  private readonly strideTime: ReturnType<typeof createDriftNoise>
+  private readonly strideLength: ReturnType<typeof createDriftNoise>
+  /** This stride's speed and cadence multipliers: stride time scales by 1 / cadence, stride length by speed / cadence. */
+  private speedFactor = 1
+  private cadenceFactor = 1
   private readonly referenceLength: number
   private readonly referenceSpeed: number
   private readonly maxAcceleration: number
@@ -339,8 +369,10 @@ class Locomotion {
   private posture: ReturnType<Locomotion['pelvis']> | null = null
   private clamps = 0
 
-  constructor(private readonly traits: GaitTraits, seed: number) {
+  constructor(private readonly traits: GaitTraits, seed: number, private readonly variability: GaitVariability) {
     this.random = createRandomStream(seed)
+    this.strideTime = createDriftNoise({ seed: deriveSeed(seed, strideTimeStream), ...strideNoise })
+    this.strideLength = createDriftNoise({ seed: deriveSeed(seed, strideLengthStream), ...strideNoise })
     this.referenceLength = referenceLengthShare * traits.legLength
     this.referenceSpeed = this.referenceLength * referenceRate
     this.maxAcceleration = this.referenceSpeed
@@ -429,8 +461,20 @@ class Locomotion {
     return (point.x - this.x) * Math.sin(this.yaw) + (point.z - this.z) * Math.cos(this.yaw)
   }
 
+  /** The cadence law at the speed without this stride's variation, times this stride's cadence. */
   private stepRate(speed: number) {
-    return clamp(Math.sqrt(speed * this.referenceSpeed) / this.referenceLength, minRate, maxRate)
+    return clamp(Math.sqrt(speed / this.speedFactor * this.referenceSpeed) / this.referenceLength, minRate, maxRate) * this.cadenceFactor
+  }
+
+  /**
+   * Advances the stride processes by `strides` and sets the multipliers: stride time ~ exp(sigma_T n_T) and stride
+   * length ~ exp(sigma_L n_L) at a steady speed, independent, so the speed varies by both.
+   */
+  private vary(strides: number) {
+    const time = this.variability.strideTime * this.strideTime.step(strides)
+    const length = this.variability.strideLength * this.strideLength.step(strides)
+    this.cadenceFactor = Math.exp(-time)
+    this.speedFactor = Math.exp(length - time)
   }
 
   /**
@@ -645,7 +689,7 @@ class Locomotion {
       this.prepare(walk, dt)
       return 'starting'
     }
-    const command = paceSpeeds[input.pace] * this.referenceSpeed
+    const command = paceSpeeds[input.pace] * this.referenceSpeed * this.speedFactor
     const goal = input.goalX !== null && Number.isFinite(input.goalX) ? input.goalX : null
     const ahead = goal === null ? 0 : (goal - this.x) * walk.direction
     // Without a goal ahead, brake as hard as allowed and stop wherever that lands.
@@ -662,6 +706,7 @@ class Locomotion {
     }
     else {
       this.phase += rate * dt
+      this.vary(rate * dt / 2)
     }
 
     let advance = braking ? speed * dt : Math.min(speed * dt, ahead)
@@ -951,6 +996,6 @@ class Locomotion {
  * construction; landing targets are re-planned until 75% of the swing; root travel
  * follows a speed ramp of a_max = v_ref per second and stops exactly at the goal.
  */
-export function createLocomotion({ traits, seed }: { traits: GaitTraits, seed: number }) {
-  return new Locomotion(traits, seed)
+export function createLocomotion({ traits, seed, variability = youngAdultStrideVariability }: { traits: GaitTraits, seed: number, variability?: GaitVariability }) {
+  return new Locomotion(traits, seed, variability)
 }
