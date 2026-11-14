@@ -135,6 +135,7 @@ const records: PerfRecord[] = [
       share36: 0,
       share100: 0,
       stageWindowCpuPct: 31.5,
+      stageWindowCpuMsPerFrame: 5.26,
       gpuCpuPct: 12,
       browserCpuPct: 3,
       stageWindowWorkingSetKb: 400_000,

@@ -41,6 +41,7 @@ function run(p95FrameMsApprox: number, options: RunOptions = {}, overrides: Part
       share36: 0,
       share100: 0,
       stageWindowCpuPct: 40,
+      stageWindowCpuMsPerFrame: 4,
       gpuCpuPct: 10,
       browserCpuPct: 5,
       stageWindowWorkingSetKb: 300_000,

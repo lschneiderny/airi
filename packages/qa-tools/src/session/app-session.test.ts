@@ -52,7 +52,7 @@ class FakeCollector extends PageErrorCollector {
 }
 
 /** A launched app with a controllable exit and a fake process table that loses the root once it is killed. */
-function fakeWorld(options: { bridgeReady?: Promise<void>, onboarding?: () => Promise<void>, connecting?: () => Promise<void> } = {}) {
+function fakeWorld(options: { bridgeReady?: Promise<void>, onboarding?: () => Promise<void>, connecting?: () => Promise<void>, dyingGroupReads?: number } = {}) {
   const steps: string[] = []
   let listing: LiveProcess[] = []
   let exit: (code: number) => void = () => {}
@@ -74,6 +74,7 @@ function fakeWorld(options: { bridgeReady?: Promise<void>, onboarding?: () => Pr
   }
   const stage = new FakeStage(steps, options.bridgeReady ?? Promise.resolve())
   const removed: string[] = []
+  let groupReads = 0
   const deps: AppSessionDeps<FakeStage> = {
     list: async () => [...listing],
     kill: async (pid) => {
@@ -99,6 +100,12 @@ function fakeWorld(options: { bridgeReady?: Promise<void>, onboarding?: () => Pr
     },
     closeBrowser: async () => {
       steps.push('browser:close')
+    },
+    groupMembers: (rootPid) => {
+      groupReads += 1
+      const dying = groupReads <= (options.dyingGroupReads ?? 0)
+      steps.push(`group:${dying ? 'dying' : 'gone'}`)
+      return dying ? [{ pid: rootPid + 1, state: 'Z' }] : []
     },
   }
   return { steps, app, stage, deps, removed, exit, releaseLease, removeDir: (path: string) => void removed.push(path) }
@@ -152,8 +159,19 @@ describe('appSessionCore', () => {
     expect(report.ok).toBe(true)
     expect(report.leftovers).toEqual([])
     expect(world.removed).toEqual([profileDir, '/wt/tqr-t8/.temp/qa/run-1/model.zip'])
-    expect(world.steps.slice(-4)).toEqual(['collector:stop', 'browser:close', `kill:${root.pid}`, 'lease:release'])
+    expect(world.steps.slice(-5)).toEqual(['collector:stop', 'browser:close', `kill:${root.pid}`, 'group:gone', 'lease:release'])
     expect(world.stage.closed).toBe(true)
+  })
+
+  it('keeps the lease until the run\'s process group has exited, so a dying process cannot pin a released lease', async () => {
+    const world = fakeWorld({ dyingGroupReads: 2 })
+    const session = new AppSessionCore({ repoRoot, profileDir }, world.deps)
+    await session.start({ launch: { logFile: '/dev/null', lease } })
+
+    const report = await session.teardown({ removeDir: world.removeDir })
+
+    expect(world.steps.slice(-4)).toEqual(['group:dying', 'group:dying', 'group:gone', 'lease:release'])
+    expect(report.runGroupExit).toEqual({ waitedMs: expect.any(Number), remaining: [] })
   })
 
   it('stops at the current step on abort and tears the partial session down', async () => {
@@ -177,7 +195,7 @@ describe('appSessionCore', () => {
     const report = await session.teardown({ removeDir: world.removeDir })
     expect(report.ok).toBe(true)
     expect(world.releaseLease).toHaveBeenCalledOnce()
-    expect(world.steps.slice(-3)).toEqual(['browser:close', `kill:${root.pid}`, 'lease:release'])
+    expect(world.steps.slice(-4)).toEqual(['browser:close', `kill:${root.pid}`, 'group:gone', 'lease:release'])
   })
 
   it('does not launch when the signal is already aborted', async () => {
@@ -228,7 +246,7 @@ describe('appSessionCore', () => {
       expect(world.steps).not.toContain('onboarding')
       const report = await session.teardown({ removeDir: world.removeDir })
       expect(report.browserClose).toEqual({ attempted: true, ok: true, detail: 'Browser.close sent' })
-      expect(world.steps.slice(-3)).toEqual(['browser:close', `kill:${root.pid}`, 'lease:release'])
+      expect(world.steps.slice(-4)).toEqual(['browser:close', `kill:${root.pid}`, 'group:gone', 'lease:release'])
     })
 
     it('race rejects at once and leaves no browser to close, as smoke and app always did', async () => {
