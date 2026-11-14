@@ -7,6 +7,7 @@ import type { Live2DRigProfile, PhysicsRigLike } from './natural-motion/rig-prof
 import { mapCursor } from '@proj-airi/motion-driver-natural/cursor-attention'
 import { NaturalMotion } from '@proj-airi/motion-driver-natural/natural-motion'
 import { withPostureShiftsHeld } from '@proj-airi/motion-driver-natural/posture-shift-hold'
+import { neutralReviewGains } from '@proj-airi/motion-driver-natural/review'
 import { createPinia, setActivePinia } from 'pinia'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -1022,6 +1023,25 @@ describe('natural motion adapter idle behaviour', () => {
     f.state.driver = 'natural'
     run(f, 10.1, 11)
     expect(reports).not.toContain('yawn:start')
+  })
+
+  it('withholds idle behaviour while a review switches acts off, and gives it back', () => {
+    const f = fixture()
+    const reports: string[] = []
+    f.adapter.onIdleBehaviour = report => reports.push(`${report.behaviour}:${report.phase}`)
+    f.state.driver = 'natural'
+    f.adapter.setIdleDrive(drive)
+    f.adapter.setReview({ gains: neutralReviewGains, acts: false })
+    run(f, 0, 1)
+    f.adapter.idlePlay('yawn')
+    run(f, 1.1, 3)
+    expect(reports).toEqual([])
+
+    f.adapter.setReview({ gains: neutralReviewGains, acts: true })
+    run(f, 3.1, 4)
+    f.adapter.idlePlay('yawn')
+    run(f, 4.1, 5)
+    expect(reports).toEqual(['yawn:start'])
   })
 
   it('performs no idle behaviour without a drive, and drops a cue under another driver', () => {
