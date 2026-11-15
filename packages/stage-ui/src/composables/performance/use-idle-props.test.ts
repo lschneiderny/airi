@@ -1,5 +1,5 @@
 import type { IdleErrandRecord } from '@proj-airi/motion-driver-natural/idle-errands'
-import type { CatalogEntry } from '@proj-airi/stage-shared/expression-performance'
+import type { CatalogEntry, Occasion } from '@proj-airi/stage-shared/expression-performance'
 
 import type { StageExpressionBackend } from '../../features/performance/expression-backend'
 import type { StageSelfReport } from '../../stores/self'
@@ -22,7 +22,7 @@ describe('useIdleProps', () => {
   afterEach(() => scope?.stop())
 
   function setup(catalog: CatalogEntry[], withClaims = true) {
-    const state = { nowMs: 0, enabled: true }
+    const state: { nowMs: number, enabled: boolean, occasions: Occasion[], random: number } = { nowMs: 0, enabled: true, occasions: [], random: 0 }
     const reports: string[] = []
     const answers: string[] = []
     const backend: StageExpressionBackend & { idleActive: string[], manualActive: string[] } = {
@@ -45,6 +45,8 @@ describe('useIdleProps', () => {
       enabled: () => state.enabled,
       report: (report: StageSelfReport) => reports.push(`${report.activity}:${report.phase}:${report.label}`),
       answer: (seq, outcome) => answers.push(`${seq}:${outcome}`),
+      occasions: () => state.occasions,
+      random: () => state.random,
       now: () => state.nowMs,
     }))!
     /** Ticks once a second for `seconds`. */
@@ -76,6 +78,85 @@ describe('useIdleProps', () => {
     end(pastime(1, 0))
     start(pastime(2, 0))
     expect(reports).toEqual(['prop:start:game', 'prop:end:game', 'prop:start:snack'])
+  })
+
+  it('shows a pastime tagged with occasions only during one of them, and first then', () => {
+    const { state, reports, answers, start, end } = setup([entry('game', { idleUse: 'activity' }), entry('bread', { idleUse: 'activity', occasions: ['morning'] })])
+    // Outside the morning the draw that would land on the bread takes the game.
+    start(pastime(1, 0.99))
+    end(pastime(1, 0.99))
+    state.occasions = ['morning']
+    start(pastime(2, 0))
+    expect(reports).toEqual(['prop:start:game', 'prop:end:game', 'prop:start:bread'])
+    expect(answers).toEqual([])
+  })
+
+  it('refuses a pastime when every entry waits for an occasion that does not hold', () => {
+    const { backend, reports, answers, start } = setup([entry('bread', { idleUse: 'activity', occasions: ['morning'] })])
+    start(pastime(1))
+    expect(backend.idleActive).toEqual([])
+    expect(reports).toEqual([])
+    expect(answers).toEqual(['1:refused'])
+  })
+
+  it('marks an act that is a moment with a tagged entry until the act ends', () => {
+    const { backend, reports, props, run } = setup([entry('wink', { kind: 'face', moments: ['check-in'] }), entry('tongue', { kind: 'face', moments: ['peering'] })])
+    props.onIdleBehaviour({ behaviour: 'check-in', phase: 'start' })
+    expect(backend.idleActive).toEqual(['wink'])
+    run(3)
+    expect(backend.idleActive).toEqual(['wink'])
+    props.onIdleBehaviour({ behaviour: 'check-in', phase: 'end' })
+    expect(backend.idleActive).toEqual([])
+    // A moment is seconds long and is not told to the situation.
+    expect(reports).toEqual([])
+    expect(props.state().moment).toBeNull()
+  })
+
+  it('keeps the expression of a passing moment for its hold, one moment at a time, and lets some moments pass', () => {
+    const { state, backend, props, run } = setup([entry('puff', { kind: 'face', moments: ['poked'] }), entry('blush', { kind: 'effect', moments: ['petted'] })])
+    props.onMoment('poked')
+    props.onMoment('petted')
+    expect(backend.idleActive).toEqual(['puff'])
+    expect(props.state().moment).toEqual({ moment: 'poked', label: 'puff' })
+    run(3)
+    expect(backend.idleActive).toEqual([])
+    // The draw decides whether she marks a moment at all.
+    state.random = 0.9
+    props.onMoment('petted')
+    expect(backend.idleActive).toEqual([])
+    // A forced moment is the lab's preview: it shows whatever the draw says.
+    props.onMoment('petted', { force: true })
+    expect(backend.idleActive).toEqual(['blush'])
+  })
+
+  it('marks waking up and holding something back, and marks nothing while the setting is off', () => {
+    const { state, backend, props, run } = setup([entry('sleepy', { kind: 'face', moments: ['waking'] }), entry('pout', { kind: 'face', moments: ['held-back'] })])
+    props.onIdleBehaviour({ behaviour: 'sleep', phase: 'start' })
+    run(10)
+    props.onIdleBehaviour({ behaviour: 'sleep', phase: 'end' })
+    expect(backend.idleActive).toEqual(['sleepy'])
+    run(6)
+    expect(backend.idleActive).toEqual([])
+    props.onIdleBehaviour({ behaviour: 'let-go', phase: 'start' })
+    expect(backend.idleActive).toEqual(['pout'])
+    run(4)
+    state.enabled = false
+    props.onMoment('held-back', { force: true })
+    expect(backend.idleActive).toEqual([])
+  })
+
+  it('starts a pastime by hand through the same pick and report, without an answer to Natural, and ends it after 30 s', () => {
+    const { state, backend, reports, answers, props, run } = setup([entry('game', { idleUse: 'activity' }), entry('bread', { idleUse: 'activity', occasions: ['morning'] })])
+    state.occasions = ['morning']
+    props.playPastime()
+    expect(backend.idleActive).toEqual(['bread'])
+    expect(props.state()).toEqual({ occasions: ['morning'], pastime: 'bread', moment: null })
+    run(29)
+    expect(backend.idleActive).toEqual(['bread'])
+    run(1)
+    expect(backend.idleActive).toEqual([])
+    expect(reports).toEqual(['prop:start:bread', 'prop:end:bread'])
+    expect(answers).toEqual([])
   })
 
   it('puts the pastime away and answers done when the user changes her look by hand', () => {

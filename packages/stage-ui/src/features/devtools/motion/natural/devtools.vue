@@ -5,6 +5,7 @@ import AffectTrace from './components/affect-trace.vue'
 import EmotionPulses from './components/emotion-pulses.vue'
 import Gestures from './components/gestures.vue'
 import IdleBehaviours from './components/idle-behaviours.vue'
+import OwnExpressions from './components/own-expressions.vue'
 import PerformanceControls from './components/performance-controls.vue'
 import Review from './components/review.vue'
 import TouchRegions from './components/touch-regions.vue'
@@ -23,6 +24,7 @@ const { t } = useI18n()
     <EmotionPulses />
     <Gestures />
     <IdleBehaviours />
+    <OwnExpressions />
     <AffectTrace />
     <TraceCapture />
     <TouchRegions />

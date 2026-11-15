@@ -243,3 +243,63 @@ The 2026-11-13 amendment made Natural the one scheduler for idle acts and settli
 - **Wanders keep their realiser.** A `wander` errand reaches the director as `BodyDirectorInput.wander`. The director walks it through its goal path as before: a visit toward the cursor in 60 % of idle wanders and in every wander while the user is active, otherwise a stroll at least three legs away on the ground she stands on, then the stay of 45 to 150 s. It holds the request while she cannot walk yet, and stands her up from a sit for it, as it did for a due wander. It refuses the request without ground, outside roam mode, on arrival from another goal (she still never sets off again the moment she arrives), without room to wander, and when the request could not be walked within `PENDING_GOAL_TTL_MS` (30 s, the time a held goal lives). The answer is `BodyDirectorMemory.wanderAnswer`, which the scene passes to Natural. Before this change a due wander waited for as long as the user stayed active without a place to visit; now it waits 30 s and is spent.
 - **Behaviour change: wanders need the idle drive.** Before this change roam mode wandered under every motion driver and with Idle activities off. Now she wanders only under the Natural driver with Idle activities on, like every other self-directed behaviour, and not while the user is away. The roam setting says so.
 - **Diagnostics.** The director diagnostics lost `nextWanderAtMs`, which described the deleted timer: a deliberate exception to the append-only rule for diagnostics fields, because no interval exists to report any more. They gained `roamMode`, `pendingWander` and `wanderAnswer`. The motion lab's roam switch reads `roamMode`.
+
+## Amendment 2026-11-14: occasions for pastimes
+
+A pastime was picked by the draw alone, so a slice of bread was as likely at midnight as at breakfast. The owner asked for expressions that fit the moment, built as a tool for any rig and not wired to one.
+
+- **Occasions are a fixed list that knows no rig** (`stage-shared/expression-performance/occasions.ts`): `morning`, `lunchtime`, `late-night`, `gaming`, `music`, `media`, `working`, `call`, `lonely`, `cheerful` and `gloomy`. `resolveOccasions` names the ones that hold from signals the stage already has: the local hour, the foreground app's category, the music detection and the idle drive. No sensor was added.
+- **The user tags entries.** A catalog entry, an override and a custom switch gained the optional `occasions`. It applies to `idleUse: 'activity'` only. Absent or empty means any time, so stored catalogs behave as before and no migration runs. The entry editor offers the occasions once "As a pastime" is chosen, and the panel lists which occasions the model's pastimes cover and which have nothing yet. Nothing is tagged by guessing from a name, for the reason the main decision gives for `idleUse`.
+- **The pick changes, the schedule does not.** `choosePastime` offers a tagged entry only while one of its occasions holds, and picks among the entries whose occasion holds before any other. The repeat rule stands inside an occasion: not twice in a row, nor within 15 minutes, while another pastime is offered. Natural still decides when a pastime starts and how long she keeps it, and the pick still uses Natural's `pick`, so no timer and no random draw was added.
+- **The morning belongs to the user's day.** `morning` lasts 45 minutes from the user's first presence of her day, when that falls between 05:00 and 11:00. Her day starts at 05:00, so the hours after midnight belong to the day before. A pastime starts about 8 minutes into free time on average (the 120 s rest and the 360 s mean gap), so a 45 minute morning almost always holds one. The stage keeps the day in memory only: a restart during the morning starts another one.
+- **A refusal covers the gap.** The Live2D scene still lists the `pastime` errand while any pastime entry is not switched on, whether or not its occasion holds. When every entry waits for another occasion the realiser answers `refused`, and Natural rests 120 s as for any refused pastime.
+
+Not built, and why:
+
+- **The model is not told the occasion.** The situation line still reads "You are busy with your "bread"". The time of day is already in the prompt.
+- **Sleep entries take no occasions.** They follow her sleep.
+
+Validation: `occasions.test.ts` covers the morning window, the day boundary and each signal; `idle-props.test.ts` covers the offer, the preference, the repeat rule and the coverage; `use-idle-props.test.ts` covers the stage side and the refusal; `areas.browser.test.ts` covers the tag, the coverage list and the sent patch. No tagged pastime was watched in the running app.
+
+(The first version of this amendment also listed moments, a pastime started by hand and suggested tags as not built. The amendment of 2026-11-15 builds them.)
+
+## Amendment 2026-11-15: moments, a lab for her own expressions, and suggested tags
+
+Occasions gave pastimes a reason. Three gaps were left: a short moment had no expression, a tagged entry could be watched only on the draw's timing, and every tag was set by hand.
+
+### Moments (`stage-shared/expression-performance/moments.ts`, `stage-ui`)
+
+- **A moment is something the app already marks, and it lasts seconds.** The list is fixed and knows no rig: `welcome-back`, `check-in`, `held-back`, `waking`, `petted`, `poked`, `yawning`, `zoning-out` and `peering`. No sensor and no timer was added: four are idle acts of Natural (`check-in`, `yawn`, `zone-out`, `peer`), two come from its reports (the `let-go` cue and the end of a sleep), two from the touch gestures, and one from the `away` overlay ending.
+- **The user tags entries**, as for occasions. A catalog entry, an override and a custom switch gained the optional `moments`. Tagging a moment is the permission to use the entry for it, so it does not depend on `idleUse`. A reversed switch, a hidden duplicate and a system entry never qualify.
+- **She marks some of them.** `chooseMomentEntry` marks a moment in 60 % of cases with one entry tagged for it, picked uniformly, and rests an entry for 60 s after it marked a moment. A wink that followed every look would read as a reflex.
+- **The expression lasts as long as the moment.** For a moment that is an act it is on from the act's start to its end, at most 20 s. The others are over as they happen, so it lingers for 3 to 6 s (`MOMENT_HOLD_MS`). One moment is marked at a time; a second one passes.
+- **It is a claim on her own layer**, held by `useIdleProps` next to the pastime and the sleep entries: above the user's switches, below the slot leases, so an emotion the model asks for still shows on top of it. A touch therefore keeps its emotion reaction, and the moment's entry shows under it and after it.
+- **A moment is not told to the situation.** It is seconds long, and the act it belongs to is already told.
+- **Its draws are not on Natural's stream.** A touch and the user's return do not come from Natural, so the realiser draws the chance and the pick itself (`Math.random` by default, injectable). This is the one part of idle life whose draws a seed does not replay.
+
+### A lab for her own expressions (`stage-ui` devtools, `natural-performance-override` store)
+
+The Natural motion lab gained the section "Pastimes and moments":
+
+- **Choose the occasions.** `occasionOverride` replaces what `resolveOccasions` detects on the stage, so a pastime tagged for the morning can be watched in the afternoon. It is replicated and not persisted, like the mode override.
+- **Start a pastime.** `useIdleProps.playPastime` runs the realiser's own start with a draw of its own: the same pick under the same occasions, the same claim and the same situation report, kept for 30 s. It bypasses only Natural's timing. Natural gets no answer for it, and a pastime Natural starts replaces it. A play request inside the seeded scheduler was rejected: it would add a path to the one draw for a preview.
+- **Play a moment.** One button per moment. A played moment skips the chance and the entry's rest, and replaces a moment in progress.
+- **A readout.** The stage publishes the occasions that hold, the pastime she holds and the moment she marks once a second, as an event.
+
+### Suggested tags (`stage-shared/expression-performance/tag-suggestions.ts`, `stage-ui`)
+
+The owner's rule: a language model must not change a user's setup unless the user wants it. The model therefore suggests and never writes.
+
+- **The user starts it.** The expression panel offers "Suggest tags". Nothing is asked when a model loads, when the panel opens, or on any timer.
+- **One request outside the chat.** `requestExpressionTagSuggestions` sends each entry's label, kind, file name and first six parameter ids to the user's chat model, without tools and without the chat history, and adds nothing to the conversation. The panel says what is sent.
+- **The reply is a list of proposals.** Each shows the entry, the proposed use, occasions and moments, and the model's reason. Nothing is stored. Pressing Apply sends the proposals left on as ordinary `update-entry` and `update-custom` edits that write `idleUse`, `occasions` and `moments` and nothing else. Dismissing sends nothing.
+- **A choice the user made is kept by default.** A proposal for an entry that already carries a use, an occasion or a moment is marked as replacing it and starts off.
+- **The parser bounds the model** (`parseTagSuggestions`). An outfit, a system entry, a combo, a reversed switch and a hidden duplicate are never sent and can never be named: entries are numbered, and a number that names none is dropped. A tag outside the fixed lists is dropped. A face cannot become a pastime, and occasions without a pastime are dropped. A reply that is not the JSON shape fails as a whole.
+- **Labels only.** A rig whose entries are named `expression12` gets no suggestion for them; the prompt tells the model to leave out what it cannot tell. Reading an entry from a rendered frame needs a vision model and is not built.
+
+Rejected: tagging automatically at setup, as the emotion lexicon does. A wrong emotion mapping shows a wrong face for a second; a wrong pastime switches an outfit or a watermark on for minutes with nobody asking.
+
+### Validation
+
+`moments.test.ts` covers the chance, the rest, a forced moment and the coverage. `use-idle-props.test.ts` covers act moments, passing moments, waking and holding back, the off switch, and a pastime started by hand. `tag-suggestions.test.ts` covers the prompt and every rule of the parser; `expression-tag-suggestions.test.ts` covers the request with the stores mocked. `areas.browser.test.ts` covers tagging, the coverage lists, and the review, apply, dismiss and failure paths. `devtools.browser.test.ts` covers the lab section. No moment, played pastime or suggestion was watched in the running app, and no request was sent to a real chat provider.
+

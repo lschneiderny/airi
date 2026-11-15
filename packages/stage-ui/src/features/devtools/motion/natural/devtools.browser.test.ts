@@ -221,6 +221,37 @@ describe('natural motion lab', () => {
     await energy
   })
 
+  it('starts a pastime and a moment on the stage, names the occasions, and shows what the stage reports', async () => {
+    const { screen, override } = await renderLab()
+    const requests = shallowRef<string[]>([])
+    onTestFinished(override.onPastimeRequest(() => {
+      requests.value = [...requests.value, 'pastime']
+    }))
+    onTestFinished(override.onMomentRequest((moment) => {
+      requests.value = [...requests.value, moment]
+    }))
+    useSettingsLive2d().live2dMotionDriver = 'natural'
+    const start = screen.getByTestId('natural-own-pastime')
+    await expect.element(start).toBeEnabled()
+
+    // Until a stage reports, the readout says so.
+    await expect.element(screen.getByTestId('natural-own-now')).toHaveTextContent(/own-expressions\.now\.waiting/)
+    override.publishIdleLife({ occasions: ['morning'], pastime: 'Bread', moment: { moment: 'check-in', label: 'Wink' } })
+    await expect.element(screen.getByTestId('natural-own-now')).toHaveTextContent(/occasions\.options\.morning.*Bread.*moments\.options\.check-in: Wink/)
+
+    expect(override.occasionOverride).toBeNull()
+    await screen.getByTestId('natural-own-choose-occasions').getByRole('switch').click()
+    await until(() => JSON.stringify(override.occasionOverride)).toBe('[]', { timeout: 5000, throwOnTimeout: true })
+    await screen.getByTestId('natural-own-occasions').getByRole('button', { name: /occasions\.options\.gaming/ }).click()
+    await until(() => JSON.stringify(override.occasionOverride)).toBe('["gaming"]', { timeout: 5000, throwOnTimeout: true })
+
+    const asked = until(() => requests.value.length).toBe(2, { timeout: 5000, throwOnTimeout: true })
+    await start.click()
+    await screen.getByRole('button', { name: /moments\.options\.poked/ }).click()
+    await asked
+    expect(requests.value).toEqual(['pastime', 'poked'])
+  })
+
   it('disables the energy override while the state override is off', async () => {
     const { screen, override } = await renderLab()
     const stateSwitch = screen.getByRole('switch').nth(0)

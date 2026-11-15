@@ -169,6 +169,12 @@ Closed eyes ride on the blink factor while auto-blink is on; while it is off the
 
 A catalog entry can carry `idleUse`: `activity` makes it a pastime she picks up for a few minutes while nobody needs her, such as a game or a snack, and `sleep` keeps it on while she sleeps, such as a pillow. The entry editor of the expression panel offers the choice as "On her own". The default is never.
 
+A pastime can also carry `occasions`, such as `morning` for a slice of bread or `gaming` for a controller. She then picks it up only during one of them, and before a pastime that suits any time. The editor offers the occasions once "As a pastime" is chosen, and the panel lists which occasions the model's pastimes cover. The list of occasions is fixed and knows no rig; see `resolveOccasions` in `@proj-airi/stage-shared/expression-performance`.
+
+An entry can carry `moments`, such as `check-in` for a wink or `poked` for puffed cheeks. She then shows it for a few seconds at some of those moments. It needs no `idleUse`: tagging a moment is the permission.
+
+The panel's "Suggest tags" asks the user's chat model for all three and shows its answer as proposals. Nothing is written until the user applies them. The Natural motion lab's "Pastimes and moments" section starts a pastime or a moment by hand and can name the occasions itself.
+
 The expression store holds what she picked as claims of their own (`idleActive`, set with `setIdleClaims`). They outrank the user's switches and yield to slot leases, so an expression the model asks for still shows. Changing a switch by hand drops them. Natural's idle draw decides when a pastime starts and ends: while the model has an entry marked as a pastime that the user has not switched on, the scene lists `pastime` in the drive's `errands`, the adapter reports each pastime through `onIdleErrand`, and the scene emits it as an `errand` event. The stage's `useIdleProps` (`@proj-airi/stage-ui`) shows the entry, answers through the scene's `answerIdleErrand` when it cannot show one or puts it away early, and tells the situation, so the model knows what she was busy with. It needs the Natural driver and the Idle activities setting.
 
 ### Screen-aware attention
