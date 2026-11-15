@@ -12,6 +12,8 @@ import { createI18n } from 'vue-i18n'
 
 import MMDMotionDevtools from './devtools.vue'
 
+import { useNaturalPerformanceOverride } from '../../../../stores/natural-performance-override'
+
 import '@proj-airi/ui/main.css'
 
 function createTestI18n() {
@@ -153,6 +155,22 @@ describe('mmd motion lab', () => {
     await expect.element(screen.getByTestId('mmd-timings-model')).toHaveTextContent('vivian-fixture')
     await expect.element(screen.getByTestId('mmd-timings-driver')).toHaveTextContent('natural')
     await expect.element(screen.getByTestId('mmd-timings')).toHaveTextContent('pose:natural')
+  })
+
+  it('requests a whole-body idle act from the stage, only under the Natural driver', async () => {
+    const { screen, diagnostics } = await renderLab()
+    const { t } = createTestI18n().global
+    const requested: string[] = []
+    const stop = useNaturalPerformanceOverride().onIdleRequest(kind => requested.push(kind))
+    const sigh = screen.getByRole('button', { name: t(`${prefix}.idle-acts.names.sigh`) })
+
+    // Before a snapshot arrives the driver reads as classic, which runs no idle scheduler.
+    await expect.element(sigh).toBeDisabled()
+    diagnostics.publish(fixture)
+    await expect.element(sigh).toBeEnabled()
+    await sigh.click()
+    await expect.poll(() => requested).toEqual(['sigh'])
+    stop()
   })
 
   it('sends overlay toggles to the stage over the eventa contract and turns them back off', async () => {

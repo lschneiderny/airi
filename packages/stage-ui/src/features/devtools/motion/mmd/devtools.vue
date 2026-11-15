@@ -5,6 +5,7 @@ import ArmsPanel from './components/arms-panel.vue'
 import BodyReadouts from './components/body-readouts.vue'
 import ClipsPanel from './components/clips-panel.vue'
 import DirectorPanel from './components/director-panel.vue'
+import IdleActsPanel from './components/idle-acts-panel.vue'
 import LocomotionPanel from './components/locomotion-panel.vue'
 import OverlayControls from './components/overlay-controls.vue'
 import RigReport from './components/rig-report.vue'
@@ -23,6 +24,7 @@ const { t } = useI18n()
     <WorldPanel />
     <LocomotionPanel />
     <DirectorPanel />
+    <IdleActsPanel />
     <ArmsPanel />
     <ClipsPanel />
     <BodyReadouts />

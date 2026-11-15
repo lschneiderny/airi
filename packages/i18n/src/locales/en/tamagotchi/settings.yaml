@@ -911,6 +911,18 @@ devtools:
             fingers: Fingers
             upperBody: Upper body
             head: Head
+      idle-acts:
+        title: Whole-body idle acts
+        description: Play one idle act that only a body performs on the character in the main window. It plays while Idle activities is on, she is idle or watching, and nothing else holds her. The Natural motion lab plays the acts she shares with Live2D.
+        requires-natural: Idle acts play only while the MMD motion driver is Natural.
+        names:
+          sigh: Sigh
+          shoulder-roll: Shoulder roll
+          shift-stance: Shift stance
+          clasp-hands: Clasp hands
+          hair-touch: Hair tuck
+          heel-rock: Heel raise
+          arm-swing: Arm swing
       director:
         title: Body director
         empty: No director is running. Load an MMD model in the main window.
