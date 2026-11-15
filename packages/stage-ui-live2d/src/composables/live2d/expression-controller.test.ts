@@ -54,6 +54,53 @@ describe('useExpressionController', () => {
     { name: 'eat', fileName: 'model/eat.exp3.json', data: { FadeInTime: 0, FadeOutTime: 0, Parameters: [{ Id: 'Param2', Value: 0, Blend: 'Add' }, { Id: 'Param4', Value: 1, Blend: 'Add' }] } },
   ]
 
+  /** A rig with one watermark drawable, shown while `opacity(Param129)` is positive. */
+  function watermarkRig(opacity: (value: number) => number) {
+    const values = new Map<string, number>()
+    let drawn = opacity(0)
+    const core = {
+      getParameterValueById: (id: string) => values.get(id) ?? 0,
+      setParameterValueById: (id: string, value: number) => values.set(id, value),
+      getParameterIndex: () => 0,
+      getParameterMinimumValue: () => -10,
+      getParameterMaximumValue: () => 10,
+      getDrawableCount: () => 1,
+      getDrawableOpacity: () => drawn,
+      update: () => {
+        drawn = opacity(values.get('Param129') ?? 0)
+      },
+    }
+    const modelFixture: unknown = { coreModel: core }
+    const controller = useExpressionController({ internalModel: shallowRef(modelFixture as PixiLive2DInternalModel) })
+    const files = [
+      { name: 'watermark', fileName: 'model/watermark.exp3.json', data: { Parameters: [{ Id: 'Param129', Value: 1, Blend: 'Add' }] } },
+      ...archive,
+    ]
+    return { load: () => controller.initialise('model', [], async () => '', files), values, store: useExpressionStore() }
+  }
+
+  it('starts with a watermark switched off when the rig\'s switch hides it, until a resting look is saved', async () => {
+    const hiding = watermarkRig(value => 1 - value)
+    await hiding.load()
+    expect(hiding.store.restSet).toEqual(['model/watermark.exp3.json'])
+    expect(hiding.store.manualActive).toEqual(['model/watermark.exp3.json'])
+    // The measurement leaves the parameter where the model had it.
+    expect(hiding.values.get('Param129')).toBe(0)
+
+    // The user switches the watermark back on and saves that as the resting look: the saved look wins from then on.
+    hiding.store.deactivate('model/watermark.exp3.json')
+    hiding.store.saveDefaults()
+    await hiding.load()
+    expect(hiding.store.restSet).toEqual([])
+  })
+
+  it('leaves a watermark switch off when it draws the watermark', async () => {
+    const drawing = watermarkRig(value => value)
+    await drawing.load()
+    expect(drawing.store.restSet).toEqual([])
+    expect(drawing.store.manualActive).toEqual([])
+  })
+
   it('forwards display names to derivation', async () => {
     const { controller, store } = rig()
     await controller.initialise('model', [], async () => '', [{

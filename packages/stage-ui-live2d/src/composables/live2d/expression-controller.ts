@@ -8,6 +8,7 @@ import { errorMessageFrom } from '@moeru/std'
 import { parseExp3Expression } from '@proj-airi/stage-shared/expression-performance'
 
 import { useExpressionStore } from '../../stores/expression-store'
+import { expressionOnlyHidesArt } from '../../utils/expression-catalog/hides-art'
 
 export interface Model3ExpressionRef {
   Name: string
@@ -78,7 +79,7 @@ export function useExpressionController(options: ExpressionControllerOptions) {
     // A completed load owns registration; a detached model must not publish stale state.
     if (loadedModel && options.internalModel.value === loadedModel && loadGeneration === generation) {
       const writtenIds = new Set(definitions.flatMap(definition => definition.parameters.map(parameter => parameter.id)))
-      store.registerDefinitions(modelId ?? 'unknown', definitions, expressionRefs.map(ref => ({ ...ref, File: resolvePath(ref.File) })), vtube, displayInfo, parameters, freeParameters.filter(parameter => !writtenIds.has(parameter.id)))
+      store.registerDefinitions(modelId ?? 'unknown', definitions, expressionRefs.map(ref => ({ ...ref, File: resolvePath(ref.File) })), vtube, displayInfo, parameters, freeParameters.filter(parameter => !writtenIds.has(parameter.id)), definition => expressionOnlyHidesArt(loadedModel.coreModel, definition.parameters))
     }
   }
 
