@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { CORE } from './bones'
-import { coreMetrics } from './core'
+import { coreMetrics, DOZE_FLOOR_SCALE } from './core'
 import { multiply, yawQuat } from './math'
 import { prepareTrace } from './prepare'
 import { analyticTrace, angleX, detectors } from './test-trace'
@@ -52,6 +52,20 @@ describe('motion trace core metrics', () => {
     const m = coreMetrics(p, detectors(p.input.trace.rig.bones)).find(m => m.id === 'chain.neck-head.lagMs')
     expect(m?.value).toBeCloseTo(100, -1)
     expect(Number(m?.detail.match(/signed lag ([\d.-]+)/)?.[1])).toBeGreaterThan(90)
+  })
+
+  it('measures a window she sleeps through against the doze share of the floors, and her waking against the floors', () => {
+    // The fixture floors are 0.001 rad/s. Every bone turns at 0.0007 rad/s: under the floor, over its doze share.
+    const quiet = { seconds: 25, bones: CORE, world: (_: unknown, t: number) => angleX(0.0007 * t) } as const
+    const awake = coreMetrics(prepareTrace(analyticTrace(quiet)), parameters)
+    const asleep = coreMetrics(prepareTrace(analyticTrace({ ...quiet, events: [{ t: 0, kind: 'marker', label: 'idle:sleep:start' }] })), parameters)
+    expect(DOZE_FLOOR_SCALE).toBe(0.5)
+    expect(awake.find(v => v.id === 'coverage.core')?.value).toBe(0)
+    expect(asleep.find(v => v.id === 'coverage.core')?.value).toBeGreaterThan(0)
+    // A body that does not move fails asleep as it does awake.
+    const statue = coreMetrics(prepareTrace(analyticTrace({ seconds: 25, bones: CORE, events: [{ t: 0, kind: 'marker', label: 'idle:sleep:start' }] })), parameters)
+    expect(statue.find(v => v.id === 'coverage.core')?.value).toBe(0)
+    expect(statue.filter(v => v.id.startsWith('chain.')).every(v => v.status === 'undefined: no-motion')).toBe(true)
   })
 
   it('returns zero coverage and undefined chain metrics for frozen motion', () => {

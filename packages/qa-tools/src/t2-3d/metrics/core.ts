@@ -1,10 +1,23 @@
 import type { MotionTraceBone } from '@proj-airi/motion-driver-humanoid/motion-trace'
 
-import type { DetectorParameters, MetricResult, PreparedTrace, Span } from './types'
+import type { BoneFloors, DetectorParameters, MetricResult, PreparedTrace, Span } from './types'
 
 import { ARMS, CHAIN_PAIRS, CORE, isFinger, UPPER } from './bones'
 import { add, dot, laggedCorrelation, mean, median, principalAxis, rms } from './math'
 import { result, skipped, windowResult } from './result'
+
+/**
+ * Gate version 6: the share of each activity floor that a window she sleeps through is measured against. The floors
+ * are fitted on people standing awake, and a dozing body breathes and nods but holds its forearms and legs still.
+ * Declared, not fitted: no reference clip shows a person dozing upright.
+ */
+export const DOZE_FLOOR_SCALE = 0.5
+
+/** The activity floors of a window: the class floors, or their doze share in a window she sleeps through. */
+function floorsBySpan(p: PreparedTrace, params: DetectorParameters): (span: Span) => BoneFloors {
+  const doze: BoneFloors = Object.fromEntries(Object.entries(params.floors).map(([bone, floor]) => [bone, floor * DOZE_FLOOR_SCALE]))
+  return span => p.dozeSpans.some(s => s.start <= span.start && span.end <= s.end) ? doze : params.floors
+}
 
 /** P10: a_b = sqrt(mean_t |O6_b|^2), rad/s, over the supplied window. */
 export function activity(p: PreparedTrace, span: Span): Partial<Record<MotionTraceBone, number>> {
@@ -13,6 +26,7 @@ export function activity(p: PreparedTrace, span: Span): Partial<Record<MotionTra
 
 /** M1: |r(0)| and |subframe argmax |r(k)|| * 1000/60, on the shared principal axis. */
 function chainMetrics(p: PreparedTrace, params: DetectorParameters): MetricResult[] {
+  const floorsIn = floorsBySpan(p, params)
   return CHAIN_PAIRS.flatMap(([a, b]) => {
     const prefix = `chain.${a}-${b}`
     const signed: number[] = []
@@ -22,7 +36,8 @@ function chainMetrics(p: PreparedTrace, params: DetectorParameters): MetricResul
         return correlations.get(s) ?? null
       const aa = (p.o6[a] ?? []).slice(s.start, s.end)
       const bb = (p.o6[b] ?? []).slice(s.start, s.end)
-      if (rms(aa) < (params.floors[a] ?? Infinity) || rms(bb) < (params.floors[b] ?? Infinity))
+      const floors = floorsIn(s)
+      if (rms(aa) < (floors[a] ?? Infinity) || rms(bb) < (floors[b] ?? Infinity))
         return null
       const axis = principalAxis(aa.map((v, i) => add(v, bb[i])))
       const c = axis ? laggedCorrelation(aa.map(v => dot(v, axis)), bb.map(v => dot(v, axis)), 30) : null
@@ -49,6 +64,7 @@ function chainMetrics(p: PreparedTrace, params: DetectorParameters): MetricResul
 
 /** M3 / 10.4: active present bones / present bones; activity is recomputed within each window. */
 function coverageMetrics(p: PreparedTrace, params: DetectorParameters): MetricResult[] {
+  const floorsIn = floorsBySpan(p, params)
   const metrics = ([
     ['core', CORE],
     ['arms', ARMS],
@@ -59,7 +75,10 @@ function coverageMetrics(p: PreparedTrace, params: DetectorParameters): MetricRe
       return skipped(id, 'fraction', 'window', 'bones-absent')
     if (bones.some(b => params.floors[b] === undefined))
       return skipped(id, 'fraction', 'window', 'missing-floor')
-    return windowResult(p, id, 'fraction', s => mean(bones.map(b => rms((p.o6[b] ?? []).slice(s.start, s.end)) >= (params.floors[b] ?? Infinity) ? 1 : 0)))
+    return windowResult(p, id, 'fraction', (s) => {
+      const floors = floorsIn(s)
+      return mean(bones.map(b => rms((p.o6[b] ?? []).slice(s.start, s.end)) >= (floors[b] ?? Infinity) ? 1 : 0))
+    })
   })
   const fingers = p.input.trace.rig.bones.filter(isFinger)
   if (!fingers.length) {
@@ -74,7 +93,7 @@ function coverageMetrics(p: PreparedTrace, params: DetectorParameters): MetricRe
       const wrist = `${side}Hand` as const
       const sideFingers = fingers.filter(b => b.startsWith(side))
       const hand = a[wrist]
-      const floor = params.floors[wrist]
+      const floor = floorsIn(s)[wrist]
       if (sideFingers.length && hand !== undefined && floor !== undefined && hand >= floor)
         values.push({ ...s, value: mean(sideFingers.map(b => (a[b] ?? 0) >= 0.1 * hand ? 1 : 0)) })
     }
@@ -94,6 +113,7 @@ function coverageMetrics(p: PreparedTrace, params: DetectorParameters): MetricRe
 
 /** M4: max_|k|<=30 |r(k)|, own principal axes for left and right; unit correlation. */
 function bilateralMetrics(p: PreparedTrace, params: DetectorParameters): MetricResult[] {
+  const floorsIn = floorsBySpan(p, params)
   return (['Shoulder', 'UpperArm', 'LowerArm', 'Hand'] as const).map((joint) => {
     const a = `left${joint}` as const
     const b = `right${joint}` as const
@@ -105,7 +125,8 @@ function bilateralMetrics(p: PreparedTrace, params: DetectorParameters): MetricR
     return windowResult(p, id, 'correlation', (s) => {
       const aa = (p.o6[a] ?? []).slice(s.start, s.end)
       const bb = (p.o6[b] ?? []).slice(s.start, s.end)
-      if (rms(aa) < (params.floors[a] ?? Infinity) || rms(bb) < (params.floors[b] ?? Infinity))
+      const floors = floorsIn(s)
+      if (rms(aa) < (floors[a] ?? Infinity) || rms(bb) < (floors[b] ?? Infinity))
         return null
       const ua = principalAxis(aa)
       const ub = principalAxis(bb)
@@ -116,10 +137,12 @@ function bilateralMetrics(p: PreparedTrace, params: DetectorParameters): MetricR
 
 /** M7: trace(C)^2 / sum_ij C_ij^2 of columns O6_b/max(a_b,floor_b); unit dimensions. */
 function dimension(p: PreparedTrace, params: DetectorParameters, set: readonly MotionTraceBone[]): (span: Span) => number | null {
+  const floorsIn = floorsBySpan(p, params)
   return (s) => {
+    const floors = floorsIn(s)
     const columns = set.filter(b => p.o6[b]).flatMap((b) => {
       const v = (p.o6[b] ?? []).slice(s.start, s.end)
-      const d = Math.max(rms(v), params.floors[b] ?? 0)
+      const d = Math.max(rms(v), floors[b] ?? 0)
       return [0, 1, 2].map((axis) => {
         const x = v.map(v => d > 0 ? v[axis] / d : 0)
         const m = mean(x)

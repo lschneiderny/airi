@@ -44,6 +44,8 @@ export interface PreparedTrace {
   readonly bodySpeed: readonly number[]
   readonly regionSpeed: Readonly<Record<Region, readonly number[]>>
   readonly eligibleSpans: readonly Span[]
+  /** Spans she sleeps through, between the idle scheduler's `idle:sleep:` markers. No window straddles their ends. */
+  readonly dozeSpans: readonly Span[]
   readonly windows: readonly Span[]
   readonly windowSeconds: number
 }
