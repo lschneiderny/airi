@@ -79,6 +79,20 @@ describe('mmd Natural adapter', () => {
     expect(largest).toBeGreaterThan(0.05)
   })
 
+  it('plays an idle behaviour by name: it is reported and reaches the body intent', () => {
+    const { adapter } = fixture()
+    adapter.setIdleDrive({ energy: 0, valence: 0, tension: 0, sleepiness: 0, solitude: 0, music: false, allowSleep: true, rate: 0, body: true })
+    adapter.advance(2 / 120, input, 100)
+    adapter.idlePlay('shoulder-roll')
+    const started: string[] = []
+    for (let step = 1; step <= 4; step++) {
+      adapter.advance(2 / 120, input, 100 + step * 2 / 120)
+      started.push(...adapter.idleBehaviours.filter(report => report.phase === 'start').map(report => report.behaviour))
+    }
+    expect(started).toEqual(['shoulder-roll'])
+    expect(adapter.bodyFrame.intent.idle.behaviour?.kind).toBe('shoulder-roll')
+  })
+
   it('queues episodes until settings reach the next frame and exposes the resulting mood', () => {
     const { adapter } = fixture()
     adapter.setPerformanceSettings({ ...defaultExpressionPerformanceSettings, moodDynamics: { ...defaultExpressionPerformanceSettings.moodDynamics, clearGain: 0 } })
