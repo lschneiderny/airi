@@ -603,6 +603,8 @@ describe('live2D model settings', () => {
     const pinia = createPinia()
     const settings = useSettingsLive2d(pinia)
     settings.resetState()
+    // The page opens on a stored Universal choice; the default driver is Natural.
+    settings.live2dMotionDriver = 'universal'
     const natural = useLive2DNaturalSettings(pinia)
     settings.live2dEyeTracking = false
     localStorage.setItem('selected-runtime-motion', 'idle.motion3.json')
@@ -658,7 +660,7 @@ describe('live2D model settings', () => {
     settings.resetState()
     await natural.reset()
     await nextTick()
-    await expect.element(screen.getByRole('radio', { name: 'Universal', exact: true })).toBeChecked()
+    await expect.element(screen.getByRole('radio', { name: 'Natural', exact: true })).toBeChecked()
     expect(natural.document.cursorAttention).toBe(true)
     expect(settings.live2dEyeTracking).toBe(true)
   })
@@ -673,6 +675,8 @@ describe('live2D model settings', () => {
     const pinia = createPinia()
     const settings = useSettingsLive2d(pinia)
     settings.resetState()
+    // The page opens on a stored Universal choice; the default driver is Natural.
+    settings.live2dMotionDriver = 'universal'
     const natural = useLive2DNaturalSettings(pinia)
     const screen = await render(Live2DSettings, {
       props: {
@@ -709,8 +713,8 @@ describe('live2D model settings', () => {
     await nextTick()
     expect(natural.document.screenAwareness).toBe(true)
     expect(JSON.parse(localStorage.getItem('settings/live2d/natural')!).screenAwareness).toBe(true)
-    await expect.element(screen.getByRole('radio', { name: 'Universal', exact: true })).toBeChecked()
-    await expect.element(screen.getByRole('switch', { name })).not.toBeInTheDocument()
+    await expect.element(screen.getByRole('radio', { name: 'Natural', exact: true })).toBeChecked()
+    await expect.element(screen.getByRole('switch', { name })).toBeChecked()
   })
 
   it('hides eye tracking under Natural whether touch is on or off', async () => {
@@ -723,6 +727,8 @@ describe('live2D model settings', () => {
     const pinia = createPinia()
     const settings = useSettingsLive2d(pinia)
     settings.resetState()
+    // The page opens on a stored Universal choice; the default driver is Natural.
+    settings.live2dMotionDriver = 'universal'
     const natural = useLive2DNaturalSettings(pinia)
     await natural.update({ touch: true })
     const screen = await render(Live2DSettings, {
@@ -765,6 +771,8 @@ describe('live2D model settings', () => {
     const pinia = createPinia()
     const settings = useSettingsLive2d(pinia)
     settings.resetState()
+    // The page opens on a stored Universal choice; the default driver is Natural.
+    settings.live2dMotionDriver = 'universal'
     const natural = useLive2DNaturalSettings(pinia)
     const screen = await render(Live2DSettings, {
       props: {
@@ -804,15 +812,13 @@ describe('live2D model settings', () => {
     await expect.element(screen.getByText('100%', { exact: true })).toBeVisible()
     expect(natural.document.energy).toBe(1)
 
-    // Reset also restores the Universal driver, which hides the slider.
+    // Reset keeps her on the Natural driver, the default, so the slider stays and shows the default energy.
     settings.resetState()
     await natural.reset()
     await nextTick()
-    await expect.element(energy).not.toBeInTheDocument()
+    await expect.element(screen.getByText('50%', { exact: true })).toBeVisible()
     expect(natural.document.energy).toBe(0.5)
     expect(JSON.parse(localStorage.getItem('settings/live2d/natural')!).energy).toBe(0.5)
-    await screen.getByRole('radio', { name: 'Natural', exact: true }).click()
-    await expect.element(screen.getByText('50%', { exact: true })).toBeVisible()
 
     await screen.getByRole('radio', { name: 'Universal', exact: true }).click()
     await expect.element(energy).not.toBeInTheDocument()
