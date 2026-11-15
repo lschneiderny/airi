@@ -128,7 +128,7 @@ describe('natural motion lab', () => {
     await solo.click()
     await until(() => diagnostics.reviewSettings.gains.shifts).toBe(0, { timeout: 5000, throwOnTimeout: true })
     expect(diagnostics.reviewSettings).toEqual({
-      gains: { shifts: 0, shiftRate: 1, drift: 0, wobble: 0, eyes: 1, body: 0 },
+      gains: { shifts: 0, shiftRate: 1, drift: 0, wobble: 0, eyes: 1, body: 0, follow: 0 },
       acts: false,
       caption: false,
     })

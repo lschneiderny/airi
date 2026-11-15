@@ -8,7 +8,7 @@ import type { IdleErrandKind } from './idle-errands'
  * Review gains: how much of each always-on idle layer reaches the frame. They exist so a reviewer can mute, solo or
  * resize one layer on a running model and name the one that looks wrong.
  *
- * - Every gain is 1 by default, and a gain of 1 leaves every frame bit-identical.
+ * - Every gain is 1 by default (`follow` is 0), and the default leaves every frame bit-identical.
  * - A gain scales what a layer contributes, never its random process: the layer keeps stepping and drawing, so the
  *   other layers and every later draw stay as they were, and a gain set back to 1 returns to the same motion.
  *   `shiftRate` is the exception: it changes when shifts start, so the shift schedule differs from then on.
@@ -27,9 +27,15 @@ export interface NaturalReviewGains {
   eyes: number
   /** How far the body follows the head. Offsets that an act or an emotion adds to the body are not scaled. */
   body: number
+  /**
+   * Candidate motion, not a layer: the share of each posture shift that aims the head where the eyes look instead of
+   * in a random direction. 0 is the motion as it ships and its default; the controller clamps it to 0..1. It changes
+   * where shifts land, so the pose differs from then on, but it draws nothing extra.
+   */
+  follow: number
 }
 
-export const neutralReviewGains: Readonly<NaturalReviewGains> = Object.freeze({ shifts: 1, shiftRate: 1, drift: 1, wobble: 1, eyes: 1, body: 1 })
+export const neutralReviewGains: Readonly<NaturalReviewGains> = Object.freeze({ shifts: 1, shiftRate: 1, drift: 1, wobble: 1, eyes: 1, body: 1, follow: 0 })
 
 /** What drives the head and the eyes at the latest grid step, for a reviewer's readout. */
 export interface NaturalReviewState {
