@@ -85,6 +85,14 @@ async function main() {
   rmSync(godotOutDir, { recursive: true, force: true })
   mkdirSync(godotOutDir, { recursive: true })
   await step('Godot sidecar export', godot, ['--headless', '--path', engineDir, '--export-release', target.godotPreset, join(godotOutDir, target.godotFile)], { cwd: engineDir })
+  // NOTICE:
+  // The export rewrites the csproj to `Sdk="Godot.NET.Sdk/<version>"` and leaves a `.csproj.old` backup.
+  // The repository pins the SDK version in global.json instead, so the rewrite would leave main dirty.
+  // Observed with Godot 4.7.2 .NET on 2026-11-11.
+  // Remove when a Godot export leaves an unversioned Sdk attribute unchanged.
+  const csproj = join(engineDir, 'stage-tamagotchi-godot.csproj')
+  git(root, ['restore', '--', csproj])
+  rmSync(`${csproj}.old`, { force: true })
 
   rmSync(distDir, { recursive: true, force: true })
   await step('app build', 'pnpm', ['slots', 'run', '--class', 'build', '--', 'pnpm', '-F', '@proj-airi/stage-tamagotchi', 'run', 'build'], { cwd: root })
