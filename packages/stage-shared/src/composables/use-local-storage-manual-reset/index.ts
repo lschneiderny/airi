@@ -28,7 +28,11 @@ export function useLocalStorageManualReset<T>(
     resetToStoredValue()
   }
 
-  const { resume, pause } = watch(state, newValue => localStorageState.value = newValue, options)
+  // Both copies are synchronous, so the state and the storage ref never differ across a tick. A copy that waited for
+  // the tick let `reset()`'s default overwrite a value assigned right after the reset, and let the storage ref's own
+  // write, which pauses its watcher until the next tick, drop the newer value.
+  const sync = { ...options, flush: 'sync' } as const
+  const { resume, pause } = watch(state, newValue => localStorageState.value = newValue, sync)
   if (options?.listenToStorageChanges !== false) {
     watch(localStorageState, (newValue) => {
       // Writing state to useStorage updates this ref with the same value. A
@@ -41,7 +45,7 @@ export function useLocalStorageManualReset<T>(
       pause()
       state.value = newValue
       resume()
-    }, options)
+    }, sync)
   }
 
   return state

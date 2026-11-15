@@ -117,6 +117,30 @@ describe('useLocalStorageManualReset', () => {
     stop()
   })
 
+  // ROOT CAUSE:
+  //
+  // `reset()` writes the default to the storage ref. The watchers that copy
+  // between the storage ref and the state ran after the tick, so the queued
+  // copy of that default replaced a value the caller had assigned since.
+  //
+  // state.reset()
+  // state.value = 'chosen' // lost: the queued watcher wrote 'default' back
+  //
+  // We fixed this by making both copies synchronous, so neither side holds a
+  // value older than the other when the tick ends.
+  it('keeps a value assigned in the same tick as a reset', async () => {
+    const state = useLocalStorageManualReset('provider', 'default')
+    state.value = 'changed'
+    await nextTick()
+
+    state.reset()
+    state.value = 'chosen'
+    await nextTick()
+
+    expect(state.value).toBe('chosen')
+    expect(localStorage.getItem('provider')).toBe('chosen')
+  })
+
   it('stores Map writes made after a reset', async () => {
     const state = useLocalStorageManualReset('cards', new Map<string, string>(), {
       listenToStorageChanges: false,
