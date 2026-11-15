@@ -5,7 +5,7 @@ import type { Decider, DeciderContext, PerformanceDecision } from './types'
 
 import { entrySlots } from './combos'
 import { acceptReaction, createReactionState } from './reaction-strength'
-import { applySlotOccupants, autoPicks, clearCommands, drawEpisodeTickets, emotionHold, explicitExpressionCommand, explicitExpressionReaction, neutralCommands, releaseHold } from './selection'
+import { applySlotOccupants, autoPicks, clearCommands, drawEpisodeTickets, emotionHold, explicitExpressionCommand, explicitExpressionReaction, neutralCommands, releaseHold, slotHoldSeconds } from './selection'
 import { initialTouchAffectMemory, touchAffect } from './touch-affect'
 
 /** Episode tickets and occupants survive checkpoints so escalations cannot reroll a pick. */
@@ -79,8 +79,10 @@ export function createPickerDecider(): Decider<PickerState> {
         next = { ...next, ...drawEpisodeTickets(state.streams), occupants: { face: null, effect: null } }
       if (!ctx.settings.autoExpressions)
         return { decision, state: next }
-      for (const { expressionId } of autoPicks(episode, ctx, next.tickets!, next.occupants, next.recency, signal.at)) {
-        const commands = entrySlots(ctx.catalog.find(entry => entry.id === expressionId)!, ctx.catalog).map(slot => ({ slot, expressionId, holdSeconds: ctx.settings.naturalBands[episode.band].faceHold, until: 'speech' as const, turnId: signal.turnId }))
+      for (const { slot: picked, expressionId } of autoPicks(episode, ctx, next.tickets!, next.occupants, next.recency, signal.at)) {
+        // Every slot a combo spans shares the hold of the slot it was picked for: one lease owns them all.
+        const holdSeconds = slotHoldSeconds(picked, episode.emotion, ctx.settings.slots)
+        const commands = entrySlots(ctx.catalog.find(entry => entry.id === expressionId)!, ctx.catalog).map(slot => ({ slot, expressionId, holdSeconds, until: 'speech' as const, turnId: signal.turnId }))
         decision.slots.push(...commands)
         next = { ...next, occupants: applySlotOccupants(next.occupants, commands, ctx.catalog), recency: { ...next.recency, [expressionId]: signal.at } }
       }

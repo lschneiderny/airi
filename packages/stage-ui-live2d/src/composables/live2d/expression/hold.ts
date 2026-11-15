@@ -81,7 +81,7 @@ export class EmotionHoldPerformer {
   }
 
   setSlotSettings(settings: SlotLeaseSettings): void {
-    this.settings = { speechGrace: settings.speechGrace, unstartedExpiry: settings.unstartedExpiry, holdCap: settings.holdCap }
+    this.settings = { afterSpeechShare: settings.afterSpeechShare, unstartedExpiry: settings.unstartedExpiry, holdCap: settings.holdCap }
   }
 
   setManual(hold: EmotionHold | null): void {

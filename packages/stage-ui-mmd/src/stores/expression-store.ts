@@ -107,7 +107,8 @@ export const useMMDExpressionStore = defineStore('mmd-expressions', () => {
   const muted = ref(false)
   const slotSettings = ref<SlotLeaseSettings>({ ...defaultExpressionPerformanceSettings.slots })
   const fader = markRaw(new ExpressionFader())
-  fader.fadeSeconds = defaultExpressionPerformanceSettings.slots.defaultFadeSeconds
+  fader.fadeInSeconds = defaultExpressionPerformanceSettings.slots.fadeInSeconds
+  fader.fadeOutSeconds = defaultExpressionPerformanceSettings.slots.fadeOutSeconds
   let sink: ExpressionMorphSink | null = null
   const written = new Map<string, number>()
   const warnedUnknown = new Set<string>()
@@ -230,9 +231,10 @@ export const useMMDExpressionStore = defineStore('mmd-expressions', () => {
     muted.value = value
   }
 
-  function setSlotSettings(settings: SlotLeaseSettings & { defaultFadeSeconds: number }) {
-    slotSettings.value = { speechGrace: settings.speechGrace, unstartedExpiry: settings.unstartedExpiry, holdCap: settings.holdCap }
-    fader.fadeSeconds = settings.defaultFadeSeconds
+  function setSlotSettings(settings: SlotLeaseSettings & { fadeInSeconds: number, fadeOutSeconds: number }) {
+    slotSettings.value = { afterSpeechShare: settings.afterSpeechShare, unstartedExpiry: settings.unstartedExpiry, holdCap: settings.holdCap }
+    fader.fadeInSeconds = settings.fadeInSeconds
+    fader.fadeOutSeconds = settings.fadeOutSeconds
   }
 
   function tickLeases(now: number) {

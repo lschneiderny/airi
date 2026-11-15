@@ -8,7 +8,7 @@ import { entrySlots } from './combos'
 import { createPickerDecider } from './picker'
 import { acceptReaction } from './reaction-strength'
 import { cancelTurn, createSchedulerState, earliestExpiry, expire, schedule, take } from './scheduler'
-import { applySlotOccupants, autoPicks, clearCommands, drawEpisodeTickets, emotionHold, explicitExpressionCommand, explicitExpressionReaction, neutralCommands, releaseHold } from './selection'
+import { applySlotOccupants, autoPicks, clearCommands, drawEpisodeTickets, emotionHold, explicitExpressionCommand, explicitExpressionReaction, neutralCommands, releaseHold, slotHoldSeconds } from './selection'
 import { touchAffect } from './touch-affect'
 import { bandRank } from './types'
 
@@ -190,9 +190,8 @@ export function createPlannerDecider(): Decider<PlannerState> {
 
       const turnId = signal.turnId
       const immediate = episode.band === 'strong' || episode.escalation
-      const holdSeconds = ctx.settings.naturalBands[episode.band].faceHold
       for (const { slot, expressionId } of autoPicks(episode, ctx, next.tickets!, next.occupants, next.recency, signal.at)) {
-        const pick = { slot, expressionId, holdSeconds }
+        const pick = { slot, expressionId, holdSeconds: slotHoldSeconds(slot, episode.emotion, ctx.settings.slots) }
         // Without a turn no timing event can ever take the plan, so devtools pulses emit at once.
         if (immediate || turnId === undefined) {
           emitAuto(pick, turnId)

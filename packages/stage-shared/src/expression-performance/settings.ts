@@ -127,10 +127,21 @@ const pickerSchema = settingsObject({
   effectGateTo: optional(unit(), 0.8),
 })
 const slotsSchema = settingsObject({
-  /** Fade seconds; 0 switches immediately. @default 1 */
-  defaultFadeSeconds: optional(seconds(), 1),
-  /** Speech release grace seconds; 0 adds no grace. @default 0.25 */
-  speechGrace: optional(seconds(), 0.25),
+  /** Fade-in seconds of an expression without a file fade; 0 switches immediately. @default 1.5 */
+  fadeInSeconds: optional(seconds(), 1.5),
+  /** Fade-out seconds of an expression without a file fade; 0 switches immediately. @default 2.5 */
+  fadeOutSeconds: optional(seconds(), 2.5),
+  /**
+   * Seconds an expression or a turn's emotion stays from its start when it carries no hold of its own; 0 leaves only
+   * the speech lifetime. `effectHoldScale` and `lingerScale` multiply it. @default 4
+   */
+  holdSeconds: optional(seconds(), 4),
+  /** Hold multiplier of the effect slot, so a blush or tears outlast the face shape; 1 holds both alike. @default 1.5 */
+  effectHoldScale: optional(seconds(), 1.5),
+  /** Hold multiplier of the lingering emotions (`lingeringEmotions`); 1 holds every emotion alike. @default 2 */
+  lingerScale: optional(seconds(), 2),
+  /** Share of its hold that a speech lease stays after the speech ends; 0 releases with the speech. @default 0.5 */
+  afterSpeechShare: optional(unit(), 0.5),
   /** Unstarted lease lifetime seconds; 0 expires immediately. @default 10 */
   unstartedExpiry: optional(seconds(), 10),
   /** Maximum hold seconds; 0 prevents holding. @default 15 */

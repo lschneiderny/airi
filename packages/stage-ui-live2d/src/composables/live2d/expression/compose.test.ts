@@ -230,20 +230,20 @@ describe('expression composer', () => {
     expect(model.read('x')).toBe(3)
   })
 
-  it.each([undefined, -1, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])('defaults invalid fade %s to one second in both directions', (fade) => {
+  it.each([undefined, -1, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])('defaults invalid fade %s to 1.5 s in and 2.5 s out', (fade) => {
     const composer = new ExpressionComposer()
     composer.define([{ id: 'a', parameters: [], fadeIn: fade, fadeOut: fade }])
     composer.activate('a', 0)
-    expect(composer.weightOf('a', 0.5)).toBeCloseTo(0.5)
-    composer.deactivate('a', 1)
-    expect(composer.weightOf('a', 1.5)).toBeCloseTo(0.5)
-    expect(composer.weightOf('a', 2)).toBe(0)
+    expect(composer.weightOf('a', 0.75)).toBeCloseTo(0.5)
+    composer.deactivate('a', 1.5)
+    expect(composer.weightOf('a', 2.75)).toBeCloseTo(0.5)
+    expect(composer.weightOf('a', 4)).toBe(0)
     expect(composer.activeIds()).toEqual([])
   })
 
-  it('uses the configured default fade only for missing or invalid file fades', () => {
+  it('uses the configured default fades only for missing or invalid file fades', () => {
     const composer = new ExpressionComposer()
-    composer.setDefaultFadeSeconds(2)
+    composer.setDefaultFades(2, 2)
     composer.define([{ id: 'unset', parameters: [], fadeOut: -1 }, definition('explicit', [], 0.5, 0)])
     composer.setTargets(['unset', 'explicit'].map(id => ({ id, weight: 1 })), 0)
     expect(composer.weightOf('unset', 1)).toBeCloseTo(0.5)

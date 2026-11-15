@@ -156,9 +156,9 @@ export function createSlotLeases(context: SlotLeaseContext) {
     muted.value = value
   }
 
-  function setSlotSettings(settings: SlotLeaseSettings & { defaultFadeSeconds: number }) {
-    slotSettings.value = { speechGrace: settings.speechGrace, unstartedExpiry: settings.unstartedExpiry, holdCap: settings.holdCap }
-    composer.setDefaultFadeSeconds(settings.defaultFadeSeconds)
+  function setSlotSettings(settings: SlotLeaseSettings & { fadeInSeconds: number, fadeOutSeconds: number }) {
+    slotSettings.value = { afterSpeechShare: settings.afterSpeechShare, unstartedExpiry: settings.unstartedExpiry, holdCap: settings.holdCap }
+    composer.setDefaultFades(settings.fadeInSeconds, settings.fadeOutSeconds)
   }
 
   return { activateFromSlot, releaseSlot, applySlots, tickLeases, onSpeech, setMuted, setSlotSettings }

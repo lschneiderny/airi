@@ -31,9 +31,16 @@ function expression(expressionId: string, at: number, turnId?: string, holdSecon
 function holdsSuite<S>(name: 'picker' | 'planner', decider: Decider<S>) {
   const withKind = { ...decider, kind: name }
   describe(`${name} emotion holds`, () => {
+    it('holds a lingering emotion and the expression mapped to it twice as long', () => {
+      const sad = decider.decide(emotion('sad', 0.6, 0, 'A'), ctx, decider.initial(17)).decision
+      expect(sad.holds).toMatchObject([{ emotion: 'sad', holdSeconds: 8, until: 'speech' }])
+      const tied = decider.decide(expression('tied', 0, 'A'), ctx, decider.initial(17)).decision
+      expect(tied.slots).toMatchObject([{ expressionId: 'tied', holdSeconds: 8, until: 'speech' }])
+    })
+
     it('holds a turn-bound emotion at the episode strength until speech ends', () => {
       const { decision } = decider.decide(emotion('happy', 0.6, 0, 'A'), ctx, decider.initial(17))
-      expect(decision.holds).toEqual([{ emotion: 'happy', strength: decision.episodes[0].intensity, holdSeconds: settings.naturalBands.clear.faceHold, until: 'speech', turnId: 'A' }])
+      expect(decision.holds).toEqual([{ emotion: 'happy', strength: decision.episodes[0].intensity, holdSeconds: 4, until: 'speech', turnId: 'A' }])
       expect(decision.holds[0].strength).toBe(0.6)
     })
 
@@ -113,7 +120,7 @@ function holdsSuite<S>(name: 'picker' | 'planner', decider: Decider<S>) {
     it('derives the heaviest mapping as an episode and mirrors the slot lifetime in the hold', () => {
       const { decision, state } = decider.decide(expression('glare', 0, 'A'), ctx, decider.initial(17))
       expect(decision.episodes).toMatchObject([{ emotion: 'angry', band: 'strong', intensity: 0.9, escalation: false }])
-      expect(decision.slots).toEqual([{ slot: 'face', expressionId: 'glare', holdSeconds: settings.naturalBands.clear.faceHold, until: 'speech', turnId: 'A' }])
+      expect(decision.slots).toEqual([{ slot: 'face', expressionId: 'glare', holdSeconds: 4, until: 'speech', turnId: 'A' }])
       expect(decision.holds).toEqual([{ emotion: 'angry', strength: 0.9, holdSeconds: decision.slots[0].holdSeconds, until: 'speech', turnId: 'A' }])
       expect(JSON.parse(JSON.stringify(state))).toMatchObject({ occupants: { face: 'glare', effect: null } })
       const timed = decider.decide(expression('glare', 0, 'A', 5), ctx, decider.initial(17)).decision

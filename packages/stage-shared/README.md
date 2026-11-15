@@ -143,7 +143,8 @@ A decider never reads a clock, global randomness, or a store. Pass every time in
 A `HoldCommand` tells the Natural driver which emotion to hold and for how long. It has an `emotion`, or `null` to release the hold, a `strength`, and the same `holdSeconds`, `until`, and `turnId` lifetime fields as a slot command.
 Every decision carries `holds`:
 
-- An accepted emotion episode holds its emotion at the episode intensity. A speech turn's hold uses the band's `faceHold` with `until: 'speech'`; a hold without a turn lasts `held.turnlessSeconds` with `until: 'hold'`.
+- An accepted emotion episode holds its emotion at the episode intensity. A speech turn's hold lasts `slotHoldSeconds('face', emotion)` with `until: 'speech'`, the same as a face expression of that emotion; a hold without a turn lasts `held.turnlessSeconds` with `until: 'hold'`.
+- `slotHoldSeconds` is `slots.holdSeconds` (4 s), times `slots.effectHoldScale` (1.5) for the effect slot and `slots.lingerScale` (2) for the `lingeringEmotions` (sad, sleepy, love, flustered, think). Automatic picks and explicit expressions without a hold of their own use it. A speech lease stays `slots.afterSpeechShare` (0.5) of its hold after its speech ends.
 - A neutral that resets the reaction state, and a clear that names no slot, release the hold.
 - An explicit expression whose catalog entry has emotion mappings accepts its heaviest mapping like an emotion signal, which can start or escalate an episode, and always holds that emotion for the expression's own slot lifetime.
 - With `heldEmotions` off, explicit expressions keep their slot-only behavior.

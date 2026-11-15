@@ -153,7 +153,7 @@ describe('picker', () => {
     const enabled = decider.decide(emotion(), ctx, decider.initial(1))
     expect(disabled.state.streams).toEqual(enabled.state.streams)
     expect(disabled.state.reaction.random).toBe(drawRandom(1).random)
-    expect(enabled.decision.slots.every(slot => slot.holdSeconds === settings.naturalBands.strong.faceHold && slot.until === 'speech' && slot.turnId === 'turn')).toBe(true)
+    expect(enabled.decision.slots.every(slot => slot.holdSeconds === (slot.slot === 'effect' ? 6 : 4) && slot.until === 'speech' && slot.turnId === 'turn')).toBe(true)
     const bandsOff = decider.decide(emotion(), { ...ctx, settings: { ...settings, bands: false } }, decider.initial(1))
     expect(bandsOff.decision.episodes[0].nominal).toBe(0.6)
     const strongOnly = { ...entry('strong'), mappings: [{ emotion: 'happy' as const, minBand: 'strong' as const, weight: 1 }] }
@@ -163,7 +163,7 @@ describe('picker', () => {
   it('emits explicit face, effect, and prop commands with correct lifetimes', () => {
     for (const kind of ['face', 'effect', 'prop'] as const) {
       for (const [holdSeconds, expectedHoldSeconds, until] of [
-        [undefined, settings.naturalBands.clear.faceHold, 'speech'],
+        [undefined, kind === 'effect' ? 6 : 4, 'speech'],
         [0, 0, 'speech'],
         [5, 5, 'hold'],
       ] as const) {

@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { EmotionHoldPerformer, selectManualHold } from './hold'
 
-const settings: SlotLeaseSettings = { speechGrace: 0.25, unstartedExpiry: 10, holdCap: 15 }
+const settings: SlotLeaseSettings = { afterSpeechShare: 0.5, unstartedExpiry: 10, holdCap: 15 }
 
 function hold(overrides: Partial<HoldCommand> = {}): HoldCommand {
   return { emotion: 'happy', strength: 0.6, holdSeconds: 1.2, until: 'speech', turnId: 'A', ...overrides }
@@ -22,14 +22,14 @@ function performer() {
 afterEach(() => vi.restoreAllMocks())
 
 describe('emotion hold performer', () => {
-  it('keeps a speech hold through clips until turn end plus grace', () => {
+  it('keeps a speech hold through clips until its speech ends, plus half of its hold', () => {
     const subject = performer()
     subject.applyHolds([hold()], 0)
     subject.onSpeech('clip-start', 'A', 0.1)
     subject.onSpeech('clip-end', 'A', 10)
     subject.onSpeech('turn-end', 'A', 10)
-    expect(subject.current(10.24)).toEqual({ emotion: 'happy', strength: 0.6 })
-    expect(subject.current(10.25)).toBeNull()
+    expect(subject.current(10.59)).toEqual({ emotion: 'happy', strength: 0.6 })
+    expect(subject.current(10.61)).toBeNull()
   })
 
   it('releases a speech hold when its clip is stopped', () => {
@@ -108,8 +108,8 @@ describe('emotion hold performer', () => {
     expect(subject.current(11)?.emotion).toBe('happy')
     subject.onSpeech('clip-end', 'A', 12)
     subject.onSpeech('turn-end', 'A', 12)
-    expect(subject.current(12.24)?.emotion).toBe('happy')
-    expect(subject.current(12.25)).toBeNull()
+    expect(subject.current(12.49)?.emotion).toBe('happy')
+    expect(subject.current(12.51)).toBeNull()
   })
 
   it('lets a replacement hold adopt the active clip', () => {

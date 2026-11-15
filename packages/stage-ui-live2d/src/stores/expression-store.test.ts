@@ -60,7 +60,7 @@ describe('curated expression catalog', () => {
 
   it('fades expressions without a valid file fade over the slot default fade', () => {
     const store = useExpressionStore()
-    store.setSlotSettings({ ...defaultExpressionPerformanceSettings.slots, defaultFadeSeconds: 2 })
+    store.setSlotSettings({ ...defaultExpressionPerformanceSettings.slots, fadeInSeconds: 2, fadeOutSeconds: 2 })
     store.registerDefinitions('a', [{ id: 'plain', name: 'plain', fadeOut: Number.NaN, parameters: [{ id: 'switch', value: 1, blend: 'Add' }] }])
     store.activate('plain')
     expect(store.composer.weightOf('plain', 1)).toBeCloseTo(0.5)
@@ -201,7 +201,7 @@ describe('curated expression catalog', () => {
     expect(JSON.parse(storage.get('expression-catalog:a')!).customs[0]).toMatchObject({ delta: 1.5, mappings: [{ emotion: 'happy', weight: 0.5 }] })
     store.activate(custom.id, 0)
     let value = 0
-    store.composer.compose(1, () => 0.5, (_, next) => {
+    store.composer.compose(1.5, () => 0.5, (_, next) => {
       value = next
     }, () => [-1, 2])
     expect(value).toBe(2)
@@ -260,7 +260,7 @@ describe('curated expression catalog', () => {
     expect(store.catalog.some(entry => entry.id === 'custom:missing')).toBe(false)
     store.activate('custom:driven', 0)
     let value = 0
-    store.composer.compose(1, () => 0, (_, next) => {
+    store.composer.compose(1.5, () => 0, (_, next) => {
       value = next
     }, () => [-1, 1])
     expect(value).toBe(0.7)
@@ -462,7 +462,7 @@ describe('speech-bound expression slots', () => {
   const face = (expressionId: string | null, turnId?: string, until: 'speech' | 'hold' = 'speech', holdSeconds = 1.2) =>
     ({ slot: 'face' as const, expressionId, holdSeconds, until, turnId })
 
-  it('keeps a speech face through the turn and releases it after turn end plus grace', () => {
+  it('keeps a speech face through the turn and releases it half of its hold after the speech ends', () => {
     const store = slotStore()
     store.applySlots([face('smile', 'A')], 0)
     store.onSpeech('clip-start', 'A', 0.1)
@@ -470,11 +470,11 @@ describe('speech-bound expression slots', () => {
     expect(Object.values(store.leases).flatMap(lease => lease ? [lease.expressionId] : [])).toEqual(['smile'])
     store.onSpeech('clip-end', 'A', 9.8)
     store.onSpeech('turn-end', 'A', 10)
-    store.tickLeases(10.04)
+    store.tickLeases(10.39)
     expect(Object.values(store.leases).flatMap(lease => lease ? [lease.expressionId] : [])).toEqual(['smile'])
-    store.tickLeases(10.05 + 0.001)
+    store.tickLeases(10.41)
     expect(Object.values(store.leases).flatMap(lease => lease ? [lease.expressionId] : [])).toEqual([])
-    expect(store.composer.weightOf('smile', 12)).toBe(0)
+    expect(store.composer.weightOf('smile', 13)).toBe(0)
   })
 
   it('releases a muted lease after the hold and ignores speech while muted', () => {
@@ -497,7 +497,7 @@ describe('speech-bound expression slots', () => {
     store.onSpeech('turn-end', 'A', 3.1)
     store.onSpeech('turn-end', 'A', 3.2)
     expect(store.leases.face?.turnEndedAt).toBe(3)
-    store.tickLeases(3.26)
+    store.tickLeases(3.61)
     expect(Object.values(store.leases).flatMap(lease => lease ? [lease.expressionId] : [])).toEqual([])
   })
 

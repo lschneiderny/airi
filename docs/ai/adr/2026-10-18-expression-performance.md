@@ -425,6 +425,17 @@ Sections:
 
 The Live2D settings page exposes the five switches and no numeric tunables. Catalog data and card profiles are stored elsewhere, never in this document.
 
+### Amendment 2026-11-15: longer holds and softer fades
+
+A visual review found that rig expressions vanished too soon and changed too fast. A strong lab pulse faded an expression in over 1 s, held it for 0.8 s, and faded it out over 1 s. The `slots` section therefore changed:
+
+- `defaultFadeSeconds` became `fadeInSeconds` (1.5) and `fadeOutSeconds` (2.5). The fade curve is unchanged.
+- `speechGrace` became `afterSpeechShare` (0.5): after its speech ends, a speech lease stays that share of its own hold.
+- `holdSeconds` (4) replaces the band's `faceHold` as the hold of an automatic pick, of an explicit expression without a hold, and of an emotion hold in a turn. `effectHoldScale` (1.5) multiplies it for the effect slot, and `lingerScale` (2) for sad, sleepy, love, flustered and think. `naturalBands.<band>.faceHold` now times only Natural's face impulse.
+- A turnless emotion hold keeps `held.turnlessSeconds` (4 s) for every emotion, because the emotion gates and the MMD body's pulse are timed on it. A turnless lingering expression can therefore outlast the held face; changing that needs a gate version.
+
+The settings store deletes the two removed keys from a stored document on read.
+
 ## Shared audio context at 48 kHz
 
 The shared stage `AudioContext` is created with `sampleRate: 48000`, because the WASM `set_input(sampleRate)` in wlipsync 1.3.1 fails at 192 kHz, which broke lipsync and Natural speech emphasis on 192 kHz output devices.

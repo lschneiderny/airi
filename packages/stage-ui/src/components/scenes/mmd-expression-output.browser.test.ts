@@ -327,7 +327,7 @@ it('loads, advances and detaches expression channels through the MMD scene frame
         'onUpdate:state': (value: typeof phase.value) => phase.value = value,
         'performanceSettings': {
           ...defaultExpressionPerformanceSettings,
-          slots: { ...defaultExpressionPerformanceSettings.slots, defaultFadeSeconds: 0.1 },
+          slots: { ...defaultExpressionPerformanceSettings.slots, fadeInSeconds: 0.1, fadeOutSeconds: 0.1 },
         },
       })
     },

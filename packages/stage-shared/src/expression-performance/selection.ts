@@ -1,7 +1,7 @@
 import type { CatalogEntry } from './catalog'
 import type { ReactionState } from './reaction-strength'
 import type { ExpressionPerformanceSettings } from './settings'
-import type { AffectSignal, DeciderContext, HoldCommand, ReactionEpisode, SlotCommand } from './types'
+import type { AffectSignal, DeciderContext, HoldCommand, PerformanceEmotion, ReactionEpisode, SlotCommand } from './types'
 
 import { isAutoEligible } from './catalog'
 import { entrySlots } from './combos'
@@ -19,6 +19,17 @@ export interface Tickets { gate: number, pick: number }
 interface Candidate { id: string, weight: number }
 type ExpressionSignal = Extract<AffectSignal, { kind: 'expression' }>
 type ClearSignal = Extract<AffectSignal, { kind: 'clear' }>
+
+/** Moods that settle in instead of flashing by; their expressions and held face stay `slots.lingerScale` times longer. */
+export const lingeringEmotions: ReadonlySet<PerformanceEmotion> = new Set(['sad', 'sleepy', 'love', 'flustered', 'think'])
+
+/**
+ * Seconds a slot's expression stays from its start: `slots.holdSeconds`, longer for the effect slot and for a
+ * lingering emotion. A speech lease also stays `slots.afterSpeechShare` of this after its speech ends.
+ */
+export function slotHoldSeconds(slot: SlotCommand['slot'], emotion: PerformanceEmotion | null, settings: ExpressionPerformanceSettings['slots']): number {
+  return settings.holdSeconds * (slot === 'effect' ? settings.effectHoldScale : 1) * (emotion && lingeringEmotions.has(emotion) ? settings.lingerScale : 1)
+}
 
 /** A clear without a slot releases every slot an LLM can fill. */
 const clearedSlots = ['face', 'effect', 'prop'] as const satisfies readonly SlotCommand['slot'][]
@@ -117,7 +128,9 @@ export function explicitExpressionCommand(signal: ExpressionSignal, ctx: Decider
   const slots = entry ? entrySlots(entry, ctx.catalog) : []
   if (!entry || slots.length === 0)
     return null
-  return slots.map(slot => ({ slot, expressionId: entry.id, holdSeconds: signal.holdSeconds ?? ctx.settings.naturalBands.clear.faceHold, until: signal.holdSeconds ? 'hold' : 'speech', turnId: signal.turnId }))
+  // Every spanned slot shares the first slot's hold: one lease owns them all.
+  const holdSeconds = signal.holdSeconds ?? slotHoldSeconds(slots[0], primaryMapping(entry)?.emotion ?? null, ctx.settings.slots)
+  return slots.map(slot => ({ slot, expressionId: entry.id, holdSeconds, until: signal.holdSeconds ? 'hold' : 'speech', turnId: signal.turnId }))
 }
 
 /** Vacate whole owners before installing a batch, so commands for one combo stay together. */
@@ -151,15 +164,16 @@ export function neutralCommands(turnId: string | undefined): SlotCommand[] {
 }
 
 /**
- * The hold for an accepted episode. A turn's hold ends with its speech, so it uses the band's face
- * hold; a turnless one has no speech to wait for and lasts `held.turnlessSeconds`.
+ * The hold for an accepted episode. A turn's hold lasts as long as a face expression of its emotion, so both linger
+ * alike after its speech. A turnless one has no speech to wait for and lasts `held.turnlessSeconds` for every emotion:
+ * the emotion gates and the MMD body's pulse are timed on that length.
  */
 export function emotionHold(episode: ReactionEpisode, turnId: string | undefined, settings: ExpressionPerformanceSettings): HoldCommand {
   const turnless = turnId === undefined
   return {
     emotion: episode.emotion,
     strength: episode.intensity,
-    holdSeconds: turnless ? settings.held.turnlessSeconds : settings.naturalBands[episode.band].faceHold,
+    holdSeconds: turnless ? settings.held.turnlessSeconds : slotHoldSeconds('face', episode.emotion, settings.slots),
     until: turnless ? 'hold' : 'speech',
     turnId,
   }
@@ -168,6 +182,11 @@ export function emotionHold(episode: ReactionEpisode, turnId: string | undefined
 /** Releases the held emotion; used when neutral resets reaction state or a clear names no slot. */
 export function releaseHold(turnId: string | undefined): HoldCommand {
   return { emotion: null, strength: 0, holdSeconds: 0, until: 'hold', turnId }
+}
+
+/** The heaviest emotion mapping of an entry, earliest on ties, or null without mappings. */
+export function primaryMapping(entry: CatalogEntry | undefined): CatalogEntry['mappings'][number] | null {
+  return entry?.mappings.reduce<CatalogEntry['mappings'][number] | null>((best, mapping) => best && best.weight >= mapping.weight ? best : mapping, null) ?? null
 }
 
 /** The decider state an explicit expression's derived reaction reads and updates. */
@@ -192,7 +211,7 @@ interface ExpressionReactionState {
  */
 export function explicitExpressionReaction<S extends ExpressionReactionState>(command: SlotCommand & { expressionId: string }, signal: ExpressionSignal, ctx: DeciderContext, state: S): { episodes: ReactionEpisode[], holds: HoldCommand[], state: S } {
   const primary = ctx.settings.heldEmotions
-    ? ctx.catalog.find(entry => entry.id === command.expressionId)?.mappings.reduce<CatalogEntry['mappings'][number] | null>((best, mapping) => best && best.weight >= mapping.weight ? best : mapping, null)
+    ? primaryMapping(ctx.catalog.find(entry => entry.id === command.expressionId))
     : null
   if (!primary)
     return { episodes: [], holds: [], state }

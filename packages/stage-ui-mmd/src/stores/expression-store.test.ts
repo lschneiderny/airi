@@ -43,6 +43,7 @@ describe('mmd expression store', () => {
     const { sink, calls } = fakeRuntime()
     const store = useMMDExpressionStore()
     store.registerMorphs('display-model-ellen', morphInfos(ellenLikeMorphs), sink, 0)
+    store.setSlotSettings({ afterSpeechShare: 0.5, unstartedExpiry: 10, holdCap: 15, fadeInSeconds: 1, fadeOutSeconds: 1 })
     store.applySlots([{ slot: 'face', expressionId: 'mmd:3:笑い', holdSeconds: 2, until: 'hold' }], 0)
 
     const trace: [number, SinkCall[]][] = []
@@ -70,7 +71,7 @@ describe('mmd expression store', () => {
     const { sink, calls } = fakeRuntime()
     const store = useMMDExpressionStore()
     store.registerMorphs('display-model-chisa', morphInfos(chisaMorphs), sink, 0)
-    store.setSlotSettings({ speechGrace: 0.25, unstartedExpiry: 10, holdCap: 15, defaultFadeSeconds: 0.5 })
+    store.setSlotSettings({ afterSpeechShare: 0.5, unstartedExpiry: 10, holdCap: 15, fadeInSeconds: 0.5, fadeOutSeconds: 0.5 })
     expect(store.catalog).toHaveLength(176)
 
     store.applySlots([{ slot: 'effect', expressionId: 'mmd:112:eye off', holdSeconds: 5, until: 'hold' }], 0)

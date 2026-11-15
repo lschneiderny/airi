@@ -1,4 +1,4 @@
-/** Parsed expression values; fade times are seconds and fall back to the composer's default fade when invalid. */
+/** Parsed expression values; fade times are seconds and fall back to the composer's default fades when invalid. */
 export interface ExpressionDefinition {
   id: string
   parameters: { id: string, value: number, blend: 'Add' | 'Multiply' | 'Overwrite' }[]
@@ -26,15 +26,15 @@ export class ExpressionComposer {
   private instances = new Map<string, ExpressionInstance>()
   private capturedBase = new Map<string, number>()
   private sequence = 0
-  private defaultFadeSeconds = 1
+  private defaultFade = { in: 1.5, out: 2.5 }
 
-  /** Sets the fade for definitions without a valid file fade (`slots.defaultFadeSeconds`); running fades keep their duration. */
-  setDefaultFadeSeconds(seconds: number): void {
-    this.defaultFadeSeconds = seconds
+  /** Sets the fades for definitions without a valid file fade (`slots.fadeInSeconds`, `slots.fadeOutSeconds`); running fades keep their duration. */
+  setDefaultFades(fadeInSeconds: number, fadeOutSeconds: number): void {
+    this.defaultFade = { in: fadeInSeconds, out: fadeOutSeconds }
   }
 
-  private fadeDuration(value: number | undefined): number {
-    return value !== undefined && Number.isFinite(value) && value >= 0 ? value : this.defaultFadeSeconds
+  private fadeDuration(value: number | undefined, fallback: number): number {
+    return value !== undefined && Number.isFinite(value) && value >= 0 ? value : fallback
   }
 
   /** Replaces definitions and activations; pending bases remain for the next restore. */
@@ -70,7 +70,7 @@ export class ExpressionComposer {
       fromWeight,
       targetWeight: target,
       transitionAt: now,
-      duration: this.fadeDuration(target > fromWeight ? definition.fadeIn : definition.fadeOut),
+      duration: target > fromWeight ? this.fadeDuration(definition.fadeIn, this.defaultFade.in) : this.fadeDuration(definition.fadeOut, this.defaultFade.out),
     })
     this.weightOf(id, now)
   }
