@@ -13,7 +13,7 @@ export interface MMDModelVariant {
 }
 
 export interface MMDLoadedAssets {
-  /** Primary model variant (first discovered). */
+  /** Primary model variant: the largest model file, see {@link primaryMMDVariant}. */
   variant: MMDModelVariant
   /** All model files found in the archive. */
   variants: MMDModelVariant[]
@@ -70,6 +70,16 @@ export function detectMMDVariants(paths: string[]): MMDModelVariant[] {
 }
 
 /**
+ * Picks the model an archive is distributed for: its largest model file, and the first of equals. Archives often
+ * ship accessories (a weapon, an umbrella, a skill effect) as model files of their own beside the character, in no
+ * particular order, and the character is by far the largest.
+ */
+export function primaryMMDVariant(variants: readonly MMDModelVariant[], byteSize: (modelPath: string) => number): MMDModelVariant | undefined {
+  return variants.reduce<MMDModelVariant | undefined>((best, variant) =>
+    best === undefined || byteSize(variant.modelPath) > byteSize(best.modelPath) ? variant : best, undefined)
+}
+
+/**
  * Builds a basename-keyed resolver from the archive's blob URLs.
  *
  * PMX texture references can include subdirectories and backslashes; we
@@ -116,19 +126,21 @@ export async function loadMMDZip(file: File | Blob | ArrayBuffer): Promise<MMDLo
 
   const paths = Object.keys(archive.files).filter(name => !archive.files[name].dir)
   const variants = detectMMDVariants(paths)
-  if (variants.length === 0)
-    throw new Error('MMD ZIP must contain a .pmx or .pmd model file')
 
   const blobUrls: Record<string, string> = {}
+  const byteSizes = new Map<string, number>()
   await Promise.all(paths.map(async (path) => {
     const entry = archive.files[path]
     if (!entry)
       return
     const blob = await entry.async('blob')
+    byteSizes.set(path, blob.size)
     blobUrls[path] = URL.createObjectURL(blob)
   }))
 
-  const variant = variants[0]
+  const variant = primaryMMDVariant(variants, path => byteSizes.get(path) ?? 0)
+  if (variant === undefined)
+    throw new Error('MMD ZIP must contain a .pmx or .pmd model file')
   const modelBlobUrl = blobUrls[variant.modelPath]
 
   return {

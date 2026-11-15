@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { detectMMDVariants } from './mmd-zip-loader'
+import { detectMMDVariants, primaryMMDVariant } from './mmd-zip-loader'
 
 describe('detectMMDVariants', () => {
   it('detects a PMX model and derives its display name', () => {
@@ -31,5 +31,20 @@ describe('detectMMDVariants', () => {
     const variants = detectMMDVariants(['Model.PMX'])
     expect(variants).toHaveLength(1)
     expect(variants[0].format).toBe('pmx')
+  })
+})
+
+describe('primaryMMDVariant', () => {
+  it('picks the character over an accessory listed before it', () => {
+    // The Ellen archive: the weapon sorts first and is a tenth of the character's size.
+    const sizes: Record<string, number> = { 'Ellen/武器.pmx': 393_853, 'Ellen/艾莲.pmx': 3_677_010 }
+    const variants = detectMMDVariants(Object.keys(sizes))
+    expect(primaryMMDVariant(variants, path => sizes[path])?.name).toBe('艾莲')
+  })
+
+  it('keeps the first of equally large models and has none for an archive without a model', () => {
+    const variants = detectMMDVariants(['a/a.pmx', 'b/b.pmx'])
+    expect(primaryMMDVariant(variants, () => 1)?.name).toBe('a')
+    expect(primaryMMDVariant([], () => 1)).toBeUndefined()
   })
 })
