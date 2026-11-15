@@ -205,11 +205,9 @@ The `love`, `flustered`, and `sleepy` emotions play the Happy, Awkward, and Idle
 
 ### Cue gestures and mood doses
 
-The scene's `gesture(kind, count)` plays an explicit conversation cue under Natural: `nod` and `shake` (count 1-3), `shrug`, `lean`, or `glance`. `NaturalCueGestures` in `@proj-airi/motion-driver-natural/cue-gestures` owns these clips. Its `CueGestureKind` is separate from the emotion recipe's gesture kinds, and the `heldEmotions` switch does not gate it.
+The scene's `gesture(kind, count)` plays an explicit conversation cue under Natural: `nod` and `shake` (count 1-3), or `glance`. It drops `shrug` and `lean`: a Live2D head and bust barely show them, so only the MMD body performs them. `NaturalCueGestures` in `@proj-airi/motion-driver-natural/cue-gestures` owns these clips. Its `CueGestureKind` is separate from the emotion recipe's gesture kinds, and the `heldEmotions` switch does not gate it.
 
 - A nod dips the head pitch 0.22 per 0.45 s dip, each dip 0.8x the previous one. A shake yaws the head at 2 Hz with amplitude 0.25 for 0.5 s per count, and the body yaw follows at 0.25x.
-- A shrug lasts 1.1 s. It lifts the body pitch by 0.15, tilts the head by 0.06 roll and 0.04 pitch, raises the brows by 0.3, and lowers mouth form by 0.15.
-- A lean lasts 2.6 s toward the inward placement side, or a random side near the center: body roll 0.12, body yaw 0.08, head roll 0.05.
 - A glance moves only the eyes, 0.35 to one side, for a 0.6 s hold.
 
 Cues occupy head, body, and eye channels. Cues on disjoint channels run together. Repeating a cue that is still active does nothing. A conflicting cue waits in a one-slot queue: it starts when its channels free up within 1.5 s and is dropped otherwise, and a newer conflicting cue replaces the waiting one. While a cue owns the head, an emotion episode plays no recipe gesture.

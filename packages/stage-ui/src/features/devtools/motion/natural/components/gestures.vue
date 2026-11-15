@@ -11,7 +11,8 @@ import { Section } from '../../../../../components/layouts'
 import { useNaturalPerformanceOverride } from '../../../../../stores/natural-performance-override'
 
 const prefix = 'tamagotchi.settings.devtools.pages.live2d-natural-motion.gestures'
-const gestures: CueGestureKind[] = ['nod', 'shake', 'shrug', 'lean', 'glance']
+// Live2D drops the shrug and the lean (`Live2DNaturalMotionAdapter.gesture`), so the lab offers neither.
+const gestures: CueGestureKind[] = ['nod', 'shake', 'glance']
 const counts = [1, 2, 3]
 
 const { t } = useI18n()

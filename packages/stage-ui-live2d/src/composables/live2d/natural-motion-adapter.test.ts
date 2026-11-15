@@ -173,7 +173,7 @@ describe('natural motion adapter', () => {
       f.state.driver = driver
       f.frame(0)
     }
-    actual.adapter.gesture('shrug', 1)
+    actual.adapter.gesture('nod', 1)
     actual.adapter.addMood({ id: 'inactive', valence: 0.4, arousal: 0.2, tension: 0.1 })
     for (const time of [0.1, 0.3, 1]) {
       const a = actual.frame(time)
@@ -199,15 +199,30 @@ describe('natural motion adapter', () => {
       f.frame(0)
       f.frame(1)
     }
-    actual.adapter.gesture('shrug', 1)
+    actual.adapter.gesture('nod', 1)
     actual.adapter.addMood({ id: 'active', valence: 0.2, arousal: 0, tension: 0 })
     actual.frame(1.01)
     control.frame(1.01)
-    const a = actual.frame(1.4)
-    const b = control.frame(1.4)
-    expect(a.commanded[actual.at('ParamBodyAngleY')] - b.commanded[control.at('ParamBodyAngleY')]).toBeGreaterThan(2)
-    expect(a.commanded[actual.at('ParamBrowLY')] - b.commanded[control.at('ParamBrowLY')]).toBeGreaterThan(0.28)
+    // The middle of the 0.45 s dip.
+    const a = actual.frame(1.235)
+    const b = control.frame(1.235)
+    expect(a.commanded[actual.at('ParamAngleY')] - b.commanded[control.at('ParamAngleY')]).toBeLessThan(-1.5)
     expect(actual.adapter.mood.valence).toBeGreaterThan(0)
+    actual.adapter.dispose()
+    control.adapter.dispose()
+  }))
+
+  it.each(['shrug', 'lean'] as const)('drops a %s cue, which only the MMD body performs', kind => withPostureShiftsHeld(() => {
+    const actual = fixture()
+    const control = fixture()
+    for (const f of [actual, control]) {
+      f.state.driver = 'natural'
+      f.frame(0)
+      f.frame(1)
+    }
+    actual.adapter.gesture(kind, 1)
+    for (const time of [1.01, 1.4, 2])
+      expect(actual.frame(time).commanded).toEqual(control.frame(time).commanded)
     actual.adapter.dispose()
     control.adapter.dispose()
   }))

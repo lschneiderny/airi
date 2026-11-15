@@ -189,16 +189,16 @@ describe('natural motion lab', () => {
     await nodded
     expect(requests.value).toEqual([{ kind: 'nod', count: 2 }])
 
-    const shrugged = until(() => requests.value.length).toBe(2, { timeout: 5000, throwOnTimeout: true })
-    await screen.getByRole('button', { name: /gestures\.names\.shrug/ }).click()
-    await shrugged
-    expect(requests.value).toEqual([{ kind: 'nod', count: 2 }, { kind: 'shrug', count: 1 }])
+    const glanced = until(() => requests.value.length).toBe(2, { timeout: 5000, throwOnTimeout: true })
+    await screen.getByRole('button', { name: /gestures\.names\.glance/ }).click()
+    await glanced
+    expect(requests.value).toEqual([{ kind: 'nod', count: 2 }, { kind: 'glance', count: 1 }])
   })
 
   it.each(['magic', 'universal'] as const)('disables the gesture buttons under %s', async (driver) => {
     const { screen } = await renderLab()
     useSettingsLive2d().live2dMotionDriver = driver
-    for (const kind of ['nod', 'shake', 'shrug', 'lean', 'glance'])
+    for (const kind of ['nod', 'shake', 'glance'])
       await expect.element(screen.getByRole('button', { name: new RegExp(`gestures\\.names\\.${kind}`) })).toBeDisabled()
   })
 

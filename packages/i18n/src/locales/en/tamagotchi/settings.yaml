@@ -601,8 +601,6 @@ devtools:
         names:
           nod: Nod
           shake: Shake
-          shrug: Shrug
-          lean: Lean
           glance: Glance
       own-expressions:
         title: Pastimes and moments

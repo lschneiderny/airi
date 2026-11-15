@@ -292,8 +292,13 @@ export class Live2DNaturalMotionAdapter {
     return this.controller.moodState
   }
 
-  /** Scene cues are accepted only for the selected Natural driver and drained at composition. */
+  /**
+   * Scene cues are accepted only for the selected Natural driver and drained at composition. A shrug or a lean is
+   * dropped: a Live2D head and bust barely show them (visual review, 2026-11-15), so only the MMD body performs them.
+   */
   gesture(kind: CueGestureKind, count: number) {
+    if (kind === 'shrug' || kind === 'lean')
+      return
     const { driver, exclusive } = this.attention()
     if (!this.disposed && driver === 'natural' && !exclusive)
       this.pendingGestures.push({ kind, count })
