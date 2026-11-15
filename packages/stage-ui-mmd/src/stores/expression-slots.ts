@@ -11,7 +11,7 @@ export const speechEvents: readonly SpeechEvent[] = ['clip-start', 'clip-end', '
 
 /** The `settings.slots` members that bound a lease lifetime, in seconds. */
 export interface SlotLeaseSettings {
-  speechGrace: number
+  afterSpeechShare: number
   unstartedExpiry: number
   holdCap: number
 }
@@ -59,7 +59,8 @@ export function leaseReleaseAt(lease: SlotLease, muted: boolean, settings: SlotL
   else if (lease.turnEndedAt === null)
     at = Number.POSITIVE_INFINITY
   else
-    at = Math.max(holdAt, (lease.lastClipEndAt ?? lease.turnEndedAt) + settings.speechGrace)
+    // After its speech a lease stays a share of its own hold, so a longer hold also lingers longer.
+    at = Math.max(holdAt, (lease.lastClipEndAt ?? lease.turnEndedAt) + settings.afterSpeechShare * lease.holdSeconds)
   return Math.min(at, lease.activatedAt + settings.holdCap)
 }
 
@@ -88,7 +89,8 @@ interface Transition {
 /** Cosine-eased weights per catalog entry on an explicit clock; a release is retired once it reaches zero. */
 export class ExpressionFader {
   private transitions = new Map<string, Transition>()
-  fadeSeconds = 1
+  fadeInSeconds = 1.5
+  fadeOutSeconds = 2.5
 
   setTargets(targets: readonly { id: string, weight: number }[], now: number): void {
     const desired = new Map(targets.map(target => [target.id, target.weight]))
@@ -105,7 +107,8 @@ export class ExpressionFader {
     const previous = this.transitions.get(id)
     if (previous?.targetWeight === target || (!previous && target === 0))
       return
-    this.transitions.set(id, { fromWeight: this.weightOf(id, now), targetWeight: target, transitionAt: now, duration: this.fadeSeconds })
+    const fromWeight = this.weightOf(id, now)
+    this.transitions.set(id, { fromWeight, targetWeight: target, transitionAt: now, duration: target > fromWeight ? this.fadeInSeconds : this.fadeOutSeconds })
   }
 
   weightOf(id: string, now: number): number {

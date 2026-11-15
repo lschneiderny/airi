@@ -21,7 +21,7 @@ describe('performance settings', () => {
       },
       moodDynamics: { valenceTau: 45, arousalTau: 20, tensionTau: 30, slightGain: 0.15, clearGain: 0.25, strongGain: 0.4, amplitude: 0.2, shiftRate: 0.3, cameraValence: 0.1, cameraTension: 0.15, emphasis: 0.1, mouthForm: 0.08 },
       picker: { recencyDepth: 0.8, recencyTau: 8, effectGateFrom: 0.5, effectGateTo: 0.8 },
-      slots: { defaultFadeSeconds: 1, speechGrace: 0.25, unstartedExpiry: 10, holdCap: 15 },
+      slots: { fadeInSeconds: 1.5, fadeOutSeconds: 2.5, holdSeconds: 4, effectHoldScale: 1.5, lingerScale: 2, afterSpeechShare: 0.5, unstartedExpiry: 10, holdCap: 15 },
       timing: { pauseSeconds: 0.18, emphasisRefractory: 1.2 },
       held: { turnlessSeconds: 4, onsetTau: 0.25, releaseTau: 0.6, accentScale: 0.5, postureTau: 0.6 },
       planner: { minGap: 0.8, window: 5, windowMax: 3, scheduleExpiry: 6 },

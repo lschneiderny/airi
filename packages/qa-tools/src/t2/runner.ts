@@ -208,7 +208,7 @@ export function runT2(input: MotionScenario, runtime: T2Runtime, options: RunT2O
       let claimSeq = 0
       const leases = ref<SlotLeases>(emptyLeases())
       const muted = ref(false)
-      const slotSettings = ref({ speechGrace: settings.slots.speechGrace, unstartedExpiry: settings.slots.unstartedExpiry, holdCap: settings.slots.holdCap })
+      const slotSettings = ref({ afterSpeechShare: settings.slots.afterSpeechShare, unstartedExpiry: settings.slots.unstartedExpiry, holdCap: settings.slots.holdCap })
       const slots = createSlotLeases({
         catalog: computed(() => catalog),
         manualActive: ref<string[]>([]),

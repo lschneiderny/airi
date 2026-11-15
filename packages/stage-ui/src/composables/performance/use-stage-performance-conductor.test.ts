@@ -254,7 +254,7 @@ describe('stage performance conductor', () => {
     expect(playMotion.mock.calls).toEqual([['Happy'], ['Happy'], ['Idle']])
     expect(scene.setEmotion).not.toHaveBeenCalled()
     expect(scene.applySlots.mock.calls.map(([commands]) => commands)).toEqual([
-      [{ slot: 'face', expressionId: 'joy', holdSeconds: defaultExpressionPerformanceSettings.naturalBands.clear.faceHold, until: 'speech', turnId: 'turn-a' }],
+      [{ slot: 'face', expressionId: 'joy', holdSeconds: 4, until: 'speech', turnId: 'turn-a' }],
       [
         { slot: 'face', expressionId: null, holdSeconds: 0, until: 'speech', turnId: 'turn-a' },
         { slot: 'effect', expressionId: null, holdSeconds: 0, until: 'speech', turnId: 'turn-a' },
@@ -397,7 +397,8 @@ describe('stage performance conductor', () => {
     conductor.clipEnd('turn-a', 'clip-a', 'ended')
     conductor.syncActiveTurns(['turn-b'])
     advance(1)
-    store.tickLeases(15.9)
+    // Turn A's face stays half of its 4 s hold after its speech ended at 15 s.
+    store.tickLeases(17.1)
 
     expect(scene.onSpeech.mock.calls.filter(([event]) => event === 'turn-end').map(([, turnId]) => turnId)).toEqual(['turn-a'])
     expect(store.leases.face).toBeNull()

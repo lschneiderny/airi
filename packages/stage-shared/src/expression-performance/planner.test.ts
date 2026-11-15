@@ -128,7 +128,7 @@ describe('planner', () => {
 
     expect(decisions[0].episodes.map(episode => episode.band)).toEqual(['clear'])
     expect(decisions[0].slots).toEqual([])
-    expect(decisions[1].slots).toEqual([{ slot: 'face', expressionId: 'smile', holdSeconds: settings.naturalBands.clear.faceHold, until: 'speech', turnId: 'A' }])
+    expect(decisions[1].slots).toEqual([{ slot: 'face', expressionId: 'smile', holdSeconds: 4, until: 'speech', turnId: 'A' }])
     expect(changes(decisions).slice(2)).toEqual([[['effect', 'sparkle']]])
   })
 
@@ -136,7 +136,7 @@ describe('planner', () => {
     const { decisions, state } = run([emotion(0.9, 0)], effectCtx)
 
     expect(changes(decisions)).toEqual([[['face', 'smile'], ['effect', 'sparkle']]])
-    expect(decisions[0].slots.every(command => command.holdSeconds === settings.naturalBands.strong.faceHold)).toBe(true)
+    expect(decisions[0].slots.map(command => command.holdSeconds)).toEqual([4, 6])
     expect(planner.nextDeadline(state)).toBeNull()
   })
 

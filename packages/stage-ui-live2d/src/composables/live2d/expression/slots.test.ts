@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 
 import { applySpeechEvent, createLease, isLeaseExpired, leaseReleaseAt } from './slots'
 
-const settings: SlotLeaseSettings = { speechGrace: 0.25, unstartedExpiry: 10, holdCap: 15 }
+const settings: SlotLeaseSettings = { afterSpeechShare: 0.5, unstartedExpiry: 10, holdCap: 15 }
 
 function speechLease(holdSeconds = 1.2, turnId = 'A'): SlotLease {
   return createLease('smile', { turnId, holdSeconds, until: 'speech' }, 0)
@@ -15,7 +15,7 @@ function apply(lease: SlotLease | null, event: Parameters<typeof applySpeechEven
 }
 
 describe('slot lease lifetimes', () => {
-  it('keeps a long speech lease until turn end plus grace', () => {
+  it('keeps a long speech lease until its speech ends, plus half of its hold', () => {
     let lease = apply(speechLease(), 'clip-start', 0.1)
     lease = apply(lease, 'clip-end', 5)
     lease = apply(lease, 'clip-start', 5.1)
@@ -23,9 +23,9 @@ describe('slot lease lifetimes', () => {
     lease = apply(lease, 'clip-end', 9.8)
     expect(isLeaseExpired(lease!, 9.9, false, settings)).toBe(false)
     lease = apply(lease, 'turn-end', 10)
-    expect(leaseReleaseAt(lease!, false, settings)).toBeCloseTo(10.05)
-    expect(isLeaseExpired(lease!, 10.04, false, settings)).toBe(false)
-    expect(isLeaseExpired(lease!, 10.05, false, settings)).toBe(true)
+    expect(leaseReleaseAt(lease!, false, settings)).toBeCloseTo(10.4)
+    expect(isLeaseExpired(lease!, 10.39, false, settings)).toBe(false)
+    expect(isLeaseExpired(lease!, 10.41, false, settings)).toBe(true)
   })
 
   it('respects the minimum hold for short speech', () => {
@@ -61,7 +61,7 @@ describe('slot lease lifetimes', () => {
     const first = apply(lease, 'turn-end', 4.1)
     const second = apply(first, 'turn-end', 4.2)
     expect(second).toBe(first)
-    expect(leaseReleaseAt(second!, false, settings)).toBeCloseTo(4.25)
+    expect(leaseReleaseAt(second!, false, settings)).toBeCloseTo(4.6)
   })
 
   it('releases immediately on clip-stopped', () => {

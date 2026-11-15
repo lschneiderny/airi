@@ -36,6 +36,15 @@ export const useExpressionPerformanceSettings = defineStore('expression-performa
               delete stored.naturalBands.energyRate
               delete stored.naturalBands.energySeconds
             }
+            // NOTICE:
+            // Stored documents still carry the slot keys that the hold and fade settings replaced.
+            // Root cause: the same strict schema and whole-document persistence as above.
+            // Source: packages/stage-shared/src/expression-performance/settings.ts (`slots`).
+            // Removal condition: one release after stored documents are rewritten without the keys.
+            if (isPlainObject(stored) && isPlainObject(stored.slots)) {
+              delete stored.slots.defaultFadeSeconds
+              delete stored.slots.speechGrace
+            }
             const result = parseExpressionPerformanceSettings(stored)
             if (!result.success)
               throw new ValiError(result.issues)

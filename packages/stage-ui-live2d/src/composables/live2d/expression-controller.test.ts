@@ -195,14 +195,14 @@ describe('useExpressionController', () => {
     expect(core.getParameterValueById('Param2')).toBe(1)
   })
 
-  it('uses a one-second fade when FadeInTime is missing', async () => {
+  it('uses the default 1.5 s fade-in when FadeInTime is missing', async () => {
     const { controller, store, core, frame } = rig()
     await controller.initialise('model', [], async () => '', [{
       ...archive[0],
       data: { Parameters: [{ Id: 'Param2', Value: 1, Blend: 'Add' }] },
     }])
     store.activate(archive[0].fileName)
-    now = 0.5
+    now = 0.75
     frame()
     expect(core.getParameterValueById('Param2')).toBeCloseTo(0.5)
   })

@@ -7,7 +7,7 @@ export const slotNames: readonly SlotName[] = ['face', 'effect', 'prop']
 
 /** The `settings.slots` members that bound a lease lifetime, in seconds. */
 export interface SlotLeaseSettings {
-  speechGrace: number
+  afterSpeechShare: number
   unstartedExpiry: number
   holdCap: number
 }
@@ -53,7 +53,8 @@ export function leaseReleaseAt(lease: SlotLease, muted: boolean, settings: SlotL
   else if (lease.turnEndedAt === null)
     at = Number.POSITIVE_INFINITY
   else
-    at = Math.max(holdAt, (lease.lastClipEndAt ?? lease.turnEndedAt) + settings.speechGrace)
+    // After its speech a lease stays a share of its own hold, so a longer hold also lingers longer.
+    at = Math.max(holdAt, (lease.lastClipEndAt ?? lease.turnEndedAt) + settings.afterSpeechShare * lease.holdSeconds)
   return Math.min(at, lease.activatedAt + settings.holdCap)
 }
 
