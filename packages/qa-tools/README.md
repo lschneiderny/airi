@@ -169,9 +169,14 @@ pooled. Version 3 keeps version 2's bands, reports the talk
 bands fitted per clip from locomoting talk performers, and gates emotion
 separation from neutral instead of all pairs. Version 4 keeps version 3's
 bands byte for byte and judges an unscorable smoothness region by a
-not-frozen check. Version 5, the current gate, keeps version 4's bands byte for
+not-frozen check. Version 5 keeps version 4's bands byte for
 byte and computes the emotion separations on side-invariant posture features
-that stay continuous through 180 degrees. Frozen band files
+that stay continuous through 180 degrees. Version 6, the current gate, keeps
+version 5's bands byte for byte and measures her sleep apart from her waking:
+no window lies across an `idle:sleep:` marker, and a window she sleeps through
+is measured against half of each activity floor (`DOZE_FLOOR_SCALE`, declared;
+user decision, 2026-11-15: the doze gets its own floors, because the floors are
+fitted on people standing awake). Frozen band files
 are immutable. Changing a band, detector, formula, window, or gated list requires
 the next version, a new file and SHA-256, in an isolated freeze commit before
 judging runs. A hash mismatch refuses scoring. A failing run never authorizes

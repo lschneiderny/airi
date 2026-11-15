@@ -9,7 +9,7 @@ import { MotionTraceRefusal } from '../read-trace'
 import { CORE, REGIONS } from './bones'
 import { butterworth, filterVectors } from './filter'
 import { conjugate, dot, heading, HZ, mean, multiply, norm, normalize, rotationVector, scale, slerp, sub, yawQuat } from './math'
-import { placeWindows, runs } from './segments'
+import { placeWindows, runs, splitSpans } from './segments'
 
 /** P13, rad/s: sqrt(mean_b |O_b|^2), over present bones only. */
 export function regionSpeed(series: BoneSeries<Vec3>, bones: readonly MotionTraceBone[], length: number): number[] {
@@ -108,8 +108,17 @@ export function prepareTrace(input: DecodedMotionTrace): PreparedTrace {
     return true
   })
   const eligibleSpans = runs(eligible)
+  // Gate version 6: her sleep is measured apart from her waking, so a window lies wholly in one or the other.
+  let asleep = false
+  let event = 0
+  const sleepEvents = trace.events.flatMap(e => e.kind === 'marker' && (e.label === 'idle:sleep:start' || e.label === 'idle:sleep:end') ? [{ t: e.t, start: e.label === 'idle:sleep:start' }] : [])
+  const dozeSpans = runs(times.map((t) => {
+    for (; event < sleepEvents.length && sleepEvents[event].t <= t; event++)
+      asleep = sleepEvents[event].start
+    return asleep
+  }))
   const windowSeconds = scenario === 'talk' ? 5 : 10
-  const windows = placeWindows(eligibleSpans, windowSeconds).filter(s =>
+  const windows = placeWindows(splitSpans(eligibleSpans, dozeSpans), windowSeconds).filter(s =>
     scenario !== 'talk' || reference || mean(channels[3].slice(s.start, s.end).map(v => v === 1 ? 1 : 0)) >= 0.8)
-  return { input, times, orientations, worldVelocity, o6, o15, rootPosition, rootVelocity, yaw, yawRate, channels, bodySpeed, regionSpeed: speeds, eligibleSpans, windows, windowSeconds }
+  return { input, times, orientations, worldVelocity, o6, o15, rootPosition, rootVelocity, yaw, yawRate, channels, bodySpeed, regionSpeed: speeds, eligibleSpans, dozeSpans, windows, windowSeconds }
 }

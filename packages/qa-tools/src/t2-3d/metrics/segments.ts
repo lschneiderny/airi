@@ -16,6 +16,15 @@ export function runs(mask: readonly boolean[]): Span[] {
   return spans
 }
 
+/** Cuts each span at every boundary of `cuts` that falls inside it, so no piece lies partly inside a cut. */
+export function splitSpans(spans: readonly Span[], cuts: readonly Span[]): Span[] {
+  const edges = cuts.flatMap(cut => [cut.start, cut.end])
+  return spans.flatMap(({ start, end }) => {
+    const inner = [...new Set(edges.filter(edge => edge > start && edge < end))].sort((a, b) => a - b)
+    return [start, ...inner].map((from, i) => ({ start: from, end: inner[i] ?? end }))
+  })
+}
+
 /** Section 10.2: centre k windows in each eligible span, hop W/2. */
 export function placeWindows(spans: readonly Span[], seconds: number): Span[] {
   const width = Math.round(seconds * HZ)

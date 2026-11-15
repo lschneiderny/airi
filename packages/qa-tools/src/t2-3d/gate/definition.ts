@@ -1,3 +1,4 @@
+import { DOZE_FLOOR_SCALE } from '../metrics/core'
 import { NOT_FROZEN_DIP, STAGE_CHARACTER_HEIGHT_DIP } from '../metrics/not-frozen'
 import { HOLDOUT_VALIDATION } from './holdouts'
 import { declaredBands, metricPolicies } from './policy'
@@ -12,13 +13,16 @@ export const LIMITATION = 'Scores compare motion statistics with bands derived f
  * (lane U revision 3: the visible end's windowed displacement at the default stage scale).
  * Version 5 keeps version 4's bands byte for byte (only `gate.version` differs) and computes the emotion separations on
  * side-invariant posture features continuous through 180 degrees (`postureFeatures`; E/g3/s/rules.md 12.5).
+ * Version 6 keeps version 5's bands byte for byte (only `gate.version` differs) and measures her sleep apart from her
+ * waking: no window lies across an `idle:sleep:` marker, and a window she sleeps through is measured against
+ * `dozeFloorScale` of each activity floor (`DOZE_FLOOR_SCALE`). The floors are fitted on people standing awake.
  */
 export const motionQualityGate = {
   id: 'mmd-motion-quality',
-  version: 5,
+  version: 6,
   limitation: LIMITATION,
-  bandsFile: 'packages/qa-tools/fixtures/motion3d/bands-v5.json',
-  bandsSha256: 'c8c3933880df13122f69c8626fdd3920196bbfa851ffb98887c541d057793ffd',
+  bandsFile: 'packages/qa-tools/fixtures/motion3d/bands-v6.json',
+  bandsSha256: 'dc331d8cbcb8c7f88caf9cb978b751f6ef9880480026db6b9d9926f21b23bdc9',
   refusals: [
     'trace-unreadable',
     'trace-kind',
@@ -159,6 +163,7 @@ export const motionQualityGate = {
     speakingShare: 0.8,
     activityFloorScale: 0.5,
     activityFloorPercentile: 0.1,
+    dozeFloorScale: DOZE_FLOOR_SCALE,
     moveHigh: 1.5,
     moveLow: 0.75,
     minimumSegmentSeconds: 0.15,

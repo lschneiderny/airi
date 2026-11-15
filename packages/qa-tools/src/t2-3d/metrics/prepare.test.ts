@@ -24,6 +24,15 @@ describe('analysis windows and segmentation', () => {
     expect(p.windows.length).toBe(3)
   })
 
+  it('places no window across the start or the end of her sleep', () => {
+    const events = [{ t: 12, kind: 'marker', label: 'idle:sleep:start' }, { t: 34, kind: 'marker', label: 'idle:sleep:end' }] as const
+    const p = prepareTrace(analyticTrace({ seconds: 50, bones: ['hips'], events: [...events] }))
+    expect(p.eligibleSpans).toEqual([{ start: 0, end: 3000 }])
+    expect(p.dozeSpans).toEqual([{ start: 720, end: 2040 }])
+    // 12 s awake, 22 s asleep, 16 s awake: one window, three at a 5 s hop, two.
+    expect(p.windows).toEqual([{ start: 60, end: 660 }, { start: 780, end: 1380 }, { start: 1080, end: 1680 }, { start: 1380, end: 1980 }, { start: 2070, end: 2670 }, { start: 2370, end: 2970 }])
+  })
+
   it('requires at least eighty percent speaking in a character talk window', () => {
     const p = prepareTrace(analyticTrace({ seconds: 20, bones: ['hips'], scenario: 'talk', speaking: t => t < 4 ? 1 : 0 }))
     expect(p.windows).toEqual([{ start: 0, end: 300 }])
