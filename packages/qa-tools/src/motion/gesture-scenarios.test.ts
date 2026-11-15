@@ -94,25 +94,6 @@ describe('t1 gesture scenarios', () => {
     expect(peak(within(frames, 1, 1.4).map(f => f.head[0]))).toBeLessThan(1e-8)
   })
 
-  it('shrugs with a held body lift, raised brows, and a negative mouth form, then settles at 1.1 s', () => {
-    const frames = capture([gesture(at, 'shrug')], 2.5)
-    const held = within(frames, 0.25, 0.65)
-    expect(Math.max(...held.map(f => f.body[1]))).toBeGreaterThanOrEqual(0.1425)
-    expect(Math.max(...held.map(f => f.brow))).toBeGreaterThanOrEqual(0.28)
-    expect(Math.min(...held.map(f => f.mouth))).toBeLessThanOrEqual(-0.14)
-    for (const frame of within(frames, 1.1, 1.4))
-      expect(peak([...frame.head, ...frame.body, frame.brow, frame.mouth])).toBeLessThan(1e-8)
-  })
-
-  // A head or body cue postpones Natural's idle posture shifts (`activeUntil`), so after about 0.85 s the idle twin
-  // drifts away by a few thousandths. The facade test pins the exact 2%; T1 allows 5% and checks the roll axis only.
-  it.each([-1, 1])('leans toward the inward placement side %i and releases by 2.6 s', (inward) => {
-    const frames = capture([{ kind: 'placement', at: 0, inward }, gesture(at, 'lean')], 4)
-    for (const frame of within(frames, 0.3, 2.3))
-      expect(Math.abs(frame.body[2] - inward * 0.12)).toBeLessThanOrEqual(0.05 * 0.12)
-    expect(peak(within(frames, 2.6, 2.9).map(f => f.body[2]))).toBeLessThan(0.005)
-  })
-
   it('glances with the eyes only and returns after the hold', () => {
     const frames = capture([gesture(at, 'glance')], 2.5)
     const landed = within(frames, 0.1, 0.2)
@@ -126,20 +107,6 @@ describe('t1 gesture scenarios', () => {
     const frames = capture([gesture(at, 'nod', 2), gesture(at + 0.3, 'shake', 2)], 3.5)
     expect(peak(within(frames, 0, 0.9).map(f => f.head[0]))).toBeLessThan(0.01)
     expect(peak(within(frames, 0.9, 1.9).map(f => f.head[0]))).toBeGreaterThanOrEqual(0.18)
-  })
-
-  it('replaces the queued shake with a newer conflicting shrug', () => {
-    const frames = capture([gesture(at, 'nod', 2), gesture(at + 0.3, 'shake', 2), gesture(at + 0.5, 'shrug')], 3.5)
-    expect(peak(frames.map(f => f.head[0]))).toBeLessThan(0.01)
-    expect(peak(within(frames, 0, 0.89).map(f => f.body[1]))).toBeLessThan(1e-8)
-    expect(Math.max(...within(frames, 1.15, 1.55).map(f => f.body[1]))).toBeGreaterThanOrEqual(0.1425)
-  })
-
-  it('drops a gesture that would wait longer than 1.5 s', () => {
-    const frames = capture([gesture(at, 'lean'), gesture(at + 0.2, 'shrug')], 4.5)
-    // The shrug would wait until the lean ends at 2.6 s, so it never plays: the run equals the lean alone.
-    expect(frames).toEqual(capture([gesture(at, 'lean')], 4.5))
-    expect(peak(frames.map(f => f.brow))).toBe(0)
   })
 
   it('runs disjoint channels together: a nod with a glance', () => {

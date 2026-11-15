@@ -601,8 +601,6 @@ devtools:
         names:
           nod: Nod
           shake: Shake
-          shrug: Shrug
-          lean: Lean
           glance: Glance
       idle-behaviours:
         title: Idle behaviours
