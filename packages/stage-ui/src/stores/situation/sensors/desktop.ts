@@ -1,7 +1,7 @@
 import type { DesktopActivitySnapshot } from '@proj-airi/stage-shared/performance-state'
 import type { Observation, PresenceReason, PresenceState, WakeObservation } from '@proj-airi/stage-shared/situation'
 
-import { AWAY_INPUT_IDLE_SECONDS } from '@proj-airi/stage-shared/performance-state'
+import { AWAY_INPUT_IDLE_SECONDS, userIdleSeconds } from '@proj-airi/stage-shared/performance-state'
 import { useDesktopActivityStore } from '@proj-airi/stage-shared/stores/desktop-activity'
 import { effectScope, watch } from 'vue'
 
@@ -35,9 +35,10 @@ function timeOrNull(value: number | null | undefined): number | null {
 
 /**
  * Maps one sample to presence. An unknown idle time (`null`, negative, NaN) is not treated as activity: an
- * unlocked desktop whose idle time cannot be measured reads as `unknown`, like the performance resolver.
+ * unlocked desktop whose idle time cannot be measured reads as `unknown`, like the performance resolver. A turn of
+ * the user's own counts as input like a key press, as it does there, so a user who only talks is not away.
  */
-function presenceOf(snapshot: DesktopActivitySnapshot | null, nowMs: number): Presence {
+function presenceOf(snapshot: DesktopActivitySnapshot | null, nowMs: number, userTurnAtMs: number | null): Presence {
   if (!snapshot)
     return UNKNOWN
   const sampledAtMs = timeOrNull(snapshot.sampledAtMs)
@@ -49,7 +50,7 @@ function presenceOf(snapshot: DesktopActivitySnapshot | null, nowMs: number): Pr
   const resumedAtMs = timeOrNull(snapshot.resumedAtMs)
   if (suspendedAtMs !== null && (resumedAtMs === null || suspendedAtMs > resumedAtMs))
     return { state: 'away', reason: 'suspended' }
-  const idleSeconds = timeOrNull(snapshot.idleSeconds)
+  const idleSeconds = userIdleSeconds(timeOrNull(snapshot.idleSeconds), userTurnAtMs, nowMs)
   if (idleSeconds === null)
     return UNKNOWN
   if (idleSeconds > AWAY_INPUT_IDLE_SECONDS)
@@ -72,9 +73,10 @@ export interface DesktopSensor {
  * `resumedAtMs` advances past the last known value; the first sample is only a baseline, because its times can be
  * hours old. Equal or older times are not wakes. The caller owns the clock: it calls {@link DesktopSensor.check}
  * from its own ticker, so the sensor adds no timer. Hosts without a producer keep a `null` snapshot, which reads
- * as `unknown`.
+ * as `unknown`. `userTurnAtMs` returns when the user last sent a turn of their own; the caller calls `check` after
+ * one, because no sample changes then.
  */
-export function startDesktopSensor(ingest: (observation: Observation) => void): DesktopSensor {
+export function startDesktopSensor(ingest: (observation: Observation) => void, userTurnAtMs: () => number | null = () => null): DesktopSensor {
   const desktopActivity = useDesktopActivityStore()
   let presence: Presence = UNKNOWN
   let baselined = false
@@ -82,7 +84,7 @@ export function startDesktopSensor(ingest: (observation: Observation) => void): 
   let resumedAtMs: number | null = null
 
   function reportPresence(nowMs: number) {
-    const next = presenceOf(desktopActivity.snapshot, nowMs)
+    const next = presenceOf(desktopActivity.snapshot, nowMs, userTurnAtMs())
     if (next.state === presence.state && next.reason === presence.reason)
       return
     presence = next

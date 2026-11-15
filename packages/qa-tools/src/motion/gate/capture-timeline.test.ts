@@ -80,6 +80,7 @@ describe('liveliness capture timeline', () => {
         const resolved = resolvePerformanceState({
           nowMs: now * 1000,
           desktop,
+          userTurnAtMs: null,
           cursorMovedAtMs: null,
           speaking: false,
           userSpeaking: false,

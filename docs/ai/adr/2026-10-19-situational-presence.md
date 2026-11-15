@@ -77,7 +77,7 @@ Every context source became a sensor adapter. No `[Context]` passthrough remains
 
 | Sensor | Source | Observations |
 | --- | --- | --- |
-| Desktop | `useDesktopActivityStore` snapshot | `presence` (here, idle after 60 s, away after 300 s or when locked or suspended, unknown when the sample is older than 5 s or missing) and `wake` |
+| Desktop | `useDesktopActivityStore` snapshot | `presence` (here, idle after 60 s, away after 300 s or when locked or suspended, unknown when the sample is older than 5 s or missing) and `wake`. Since 2026-11-15 the idle time counts from the later of the last desktop input and the user's last turn, so a user who only talks is not away. |
 | Foreground | `useForegroundWindowStore` sample | `activity` and `busy` |
 | Conversation | chat hooks | `conversation`, counting user turns only for user-origin sends |
 | Stage | live expression and mood state | `stage` |

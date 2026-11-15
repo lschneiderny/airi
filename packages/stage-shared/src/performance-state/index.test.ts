@@ -30,6 +30,7 @@ function inputsAt(nowMs: number, overrides: Partial<PerformanceInputs> = {}): Pe
     generating: false,
     cursorMovedAtMs: null,
     desktop: quietDesktop(),
+    userTurnAtMs: null,
     visible: true,
     override: null,
     cueAttention: null,
@@ -187,6 +188,22 @@ describe('resolvePerformanceState', () => {
     expect(run([inputsAt(T0, { desktop: quietDesktop({ idleSeconds: 301 }) })])[0].state.away).toBe(true)
     expect(run([inputsAt(T0, { desktop: quietDesktop({ locked: true }) })])[0].state.away).toBe(true)
     expect(run([inputsAt(T0, { desktop: quietDesktop({ suspendedAtMs: T0 - 10 }) })])[0].state.away).toBe(true)
+  })
+
+  it('counts a turn of the user as input, so a user who only talks is not away', () => {
+    const idle = quietDesktop({ idleSeconds: 900 })
+    const at = (userTurnAtMs: number | null, desktop = idle) => run([inputsAt(T0, { desktop, userTurnAtMs })])[0].state.away
+    expect(at(null)).toBe(true)
+    expect(at(T0 - 300_000)).toBe(false)
+    expect(at(T0 - 301_000)).toBe(true)
+    // A locked desktop is away whatever was said, and a turn does not make an unmeasured desktop known.
+    expect(at(T0, quietDesktop({ locked: true }))).toBe(true)
+    expect(at(T0, quietDesktop({ idleSeconds: null }))).toBe(false)
+  })
+
+  it('does not let a turn of the user select watching', () => {
+    const [result] = run([inputsAt(T0, { desktop: quietDesktop({ idleSeconds: 900 }), userTurnAtMs: T0 })])
+    expect(result.state).toMatchObject({ mode: 'idle', away: false })
   })
 
   it('does not watch screen activity while the user is away', () => {

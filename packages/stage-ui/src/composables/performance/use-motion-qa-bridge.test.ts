@@ -101,7 +101,7 @@ describe('useMotionQaBridge', () => {
     chat = createChatHooks()
     voicing.value = false
     mode.value = 'idle'
-    performanceInputs = { nowMs: 0, speaking: false, userSpeaking: false, generating: false, cursorMovedAtMs: null, desktop: null, visible: true, override: null, cueAttention: null, foregroundCategory: null }
+    performanceInputs = { nowMs: 0, speaking: false, userSpeaking: false, generating: false, cursorMovedAtMs: null, desktop: null, userTurnAtMs: null, visible: true, override: null, cueAttention: null, foregroundCategory: null }
     const streaming = useLlmStreamingControlStore()
     const dispatcher = createMotionQaDispatcher()
     dispatch = async command => JSON.parse(await dispatcher(JSON.stringify(command)))
