@@ -1,13 +1,15 @@
 <script setup lang="ts">
-import type { ExpressionArea, ExpressionKind, IdleUse } from '@proj-airi/stage-shared/expression-performance'
+import type { ExpressionArea, ExpressionKind, IdleUse, Moment, Occasion } from '@proj-airi/stage-shared/expression-performance'
 
 import type { ExpressionPanelCommand, ExpressionPanelCustomCommand, ExpressionPanelEntry } from './source'
 import type { DraftMapping } from './trigger-editor.vue'
 
+import { MOMENTS, OCCASIONS } from '@proj-airi/stage-shared/expression-performance'
 import { Button, Checkbox, Input, Select } from '@proj-airi/ui'
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
+import TagPicker from './tag-picker.vue'
 import ExpressionTriggerEditor from './trigger-editor.vue'
 
 import { groupDisplayName } from './group-name'
@@ -54,7 +56,19 @@ const groupOptions = computed(() => [
 const idleUseOptions = computed(() => idleUses.map(use => ({ value: use, label: t(`settings.live2d.expressions.idle-use.options.${use}`) })))
 // A system entry is never hers to use, whatever was stored for it.
 const canUseIdle = computed(() => props.idleUse === true && props.entry.kind !== 'system' && props.entry.inverted !== true)
-const idleUseTag = computed(() => canUseIdle.value && (props.entry.idleUse === 'activity' || props.entry.idleUse === 'sleep') ? t(`settings.live2d.expressions.idle-use.tags.${props.entry.idleUse}`) : '')
+const occasionOptions = computed(() => OCCASIONS.map(value => ({ value, label: t(`settings.live2d.expressions.occasions.options.${value}`) })))
+const momentOptions = computed(() => MOMENTS.map(value => ({ value, label: t(`settings.live2d.expressions.moments.options.${value}`) })))
+const momentsTag = computed(() => {
+  const moments = canUseIdle.value ? props.entry.moments ?? [] : []
+  return moments.length === 0 ? '' : t('settings.live2d.expressions.moments.tag', { moments: moments.map(moment => t(`settings.live2d.expressions.moments.options.${moment}`)).join(', ') })
+})
+const idleUseTag = computed(() => {
+  if (!canUseIdle.value || (props.entry.idleUse !== 'activity' && props.entry.idleUse !== 'sleep'))
+    return ''
+  const tag = t(`settings.live2d.expressions.idle-use.tags.${props.entry.idleUse}`)
+  const occasions = props.entry.idleUse === 'activity' ? props.entry.occasions ?? [] : []
+  return occasions.length === 0 ? tag : `${tag}: ${occasions.map(occasion => t(`settings.live2d.expressions.occasions.options.${occasion}`)).join(', ')}`
+})
 const mappedEmotions = computed(() => [...new Set(props.entry.mappings.map(mapping => mapping.emotion))]
   .map(emotion => t(`settings.emotions.${emotion}`))
   .join(', '))
@@ -73,6 +87,8 @@ const draftArea = ref<string>(noArea)
 const initialArea = ref<string>(noArea)
 const draftInverted = ref(false)
 const draftIdleUse = ref<IdleUse>('never')
+const draftOccasions = ref<Occasion[]>([])
+const draftMoments = ref<Moment[]>([])
 const draftMappings = ref<DraftMapping[]>([])
 
 function loadDraft() {
@@ -83,6 +99,8 @@ function loadDraft() {
   initialArea.value = draftArea.value
   draftInverted.value = props.entry.inverted ?? false
   draftIdleUse.value = props.entry.idleUse ?? 'never'
+  draftOccasions.value = [...props.entry.occasions ?? []]
+  draftMoments.value = [...props.entry.moments ?? []]
   draftMappings.value = props.entry.mappings.map(mapping => ({ emotion: mapping.emotion, weight: mapping.weight, minBand: mapping.minBand }))
   baseline.value = JSON.stringify(props.entry)
 }
@@ -134,8 +152,12 @@ function apply() {
   const clearArea = areaChanged && draftArea.value === noArea ? { area: null } : {}
   // Only a changed choice is sent, so saving never stores "never" for an entry that had no choice.
   const idleUse = props.idleUse === true && draftIdleUse.value !== (props.entry.idleUse ?? 'never') ? { idleUse: draftIdleUse.value } : {}
+  // Occasions belong to a pastime; an empty list means any time and clears a stored choice.
+  const occasions = props.idleUse === true && draftIdleUse.value === 'activity' && JSON.stringify(draftOccasions.value) !== JSON.stringify(props.entry.occasions ?? []) ? { occasions: draftOccasions.value } : {}
+  // Tagging a moment is the permission to use the entry for it; an empty list takes it back.
+  const moments = props.idleUse === true && JSON.stringify(draftMoments.value) !== JSON.stringify(props.entry.moments ?? []) ? { moments: draftMoments.value } : {}
   if (isCustom.value) {
-    emit('command', { type: 'update-custom', id: props.entry.id, patch: { label, kind: draftKind.value, mappings, ...area, ...clearArea, ...idleUse } })
+    emit('command', { type: 'update-custom', id: props.entry.id, patch: { label, kind: draftKind.value, mappings, ...area, ...clearArea, ...idleUse, ...occasions, ...moments } })
   }
   else {
     emit('command', {
@@ -151,6 +173,8 @@ function apply() {
         ...area,
         ...clearArea,
         ...idleUse,
+        ...occasions,
+        ...moments,
       },
     })
   }
@@ -192,6 +216,10 @@ function resetEntry() {
           v-if="idleUseTag"
           :class="['break-words', 'text-xs text-neutral-500 dark:text-neutral-400']"
         >{{ idleUseTag }}</span>
+        <span
+          v-if="momentsTag"
+          :class="['break-words', 'text-xs text-neutral-500 dark:text-neutral-400']"
+        >{{ momentsTag }}</span>
         <span
           v-if="entry.overriddenBy !== null"
           :class="['break-words', 'text-xs text-amber-700 dark:text-amber-300']"
@@ -298,6 +326,28 @@ function resetEntry() {
           <Select v-model="draftIdleUse" :options="idleUseOptions" />
           <span>{{ t('settings.live2d.expressions.fields.idle-use-description') }}</span>
         </label>
+      </div>
+      <div
+        v-if="canUseIdle && draftIdleUse === 'activity'"
+        data-testid="expression-occasions"
+        role="group"
+        :aria-label="t('settings.live2d.expressions.occasions.title')"
+        :class="['flex flex-col gap-1', 'text-xs text-neutral-500 dark:text-neutral-400']"
+      >
+        <span>{{ t('settings.live2d.expressions.occasions.title') }}</span>
+        <TagPicker v-model="draftOccasions" :options="occasionOptions" />
+        <span>{{ t('settings.live2d.expressions.occasions.description') }}</span>
+      </div>
+      <div
+        v-if="canUseIdle"
+        data-testid="expression-moments"
+        role="group"
+        :aria-label="t('settings.live2d.expressions.moments.title')"
+        :class="['flex flex-col gap-1', 'text-xs text-neutral-500 dark:text-neutral-400']"
+      >
+        <span>{{ t('settings.live2d.expressions.moments.title') }}</span>
+        <TagPicker v-model="draftMoments" :options="momentOptions" />
+        <span>{{ t('settings.live2d.expressions.moments.description') }}</span>
       </div>
 
       <label v-if="!isCustom" :class="['flex items-center justify-between gap-2', 'text-sm text-neutral-700 dark:text-neutral-300']">
