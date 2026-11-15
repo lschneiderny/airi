@@ -196,6 +196,11 @@ export class NaturalGazeLayer {
     return this.target === 'cursor'
   }
 
+  /** Where the current fixation rests, or where the saccade in flight will land. */
+  get fixationPoint(): Readonly<GazePoint> {
+    return this.onCursor ? this.pursuit : this.endpoint
+  }
+
   /**
    * Turns aside attention on or off at `at`. Turning it on draws a side and saccades
    * off camera; autonomous fixations then stay near that point, so glances return to it.

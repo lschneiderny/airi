@@ -33,6 +33,8 @@ export interface PostureStreams {
 const shiftAxisGain: Vec3 = [1.05, 0.7, 0.3]
 /** Largest normalized `|home + shift target|` per axis; drift and continuous motion still add on top. */
 const shiftTargetLimit = 0.75
+/** Share of a shift's random offset that an aimed shift keeps around its aim. */
+const aimScatter = 0.2
 /** Regime samples kept for nominal-time reads: 20 s at the facade's 120 Hz grid. */
 const regimeHistory = 2400
 
@@ -79,6 +81,13 @@ export class NaturalPostureLayers {
    * keeps stepping whatever the gain, and a gain of 1 leaves the pose bit-identical. @default 1 each
    */
   layerGains = { drift: 1, continuous: 1, shift: 1 }
+  /**
+   * Review candidate: the share of each new shift that lands near `aim` instead of at the random target. At 0 the
+   * shift is the random one, bit for bit; the draws are the same at every share. @default 0
+   */
+  aimShare = 0
+  /** Where the eyes look, as head yaw and pitch relative to the home. Read when a shift begins. */
+  aim: readonly [number, number] = [0, 0]
 
   private readonly drift: FilteredOu[]
   private readonly continuous: FilteredOu[]
@@ -235,7 +244,13 @@ export class NaturalPostureLayers {
     const direction = unitVector3(this.shiftRandom)
     // The heavier tail would push the desk-home pitch into the head limit (above 1% near-limit), so each
     // target is clamped to within shiftTargetLimit of center, inside the softLimit knee.
-    const to = from.map((value, axis) => Math.min(shiftTargetLimit - this.home[axis], Math.max(-shiftTargetLimit - this.home[axis], 0.7 * value + amplitude * shiftAxisGain[axis] * direction[axis]))) as Vec3
+    const aimed = [this.aim[0], this.aim[1], 0]
+    const to = from.map((value, axis) => {
+      const random = 0.7 * value + amplitude * shiftAxisGain[axis] * direction[axis]
+      // The aimed target keeps a part of the random offset, so two looks at one place do not land on one pose.
+      const target = this.aimShare === 0 ? random : random + this.aimShare * (aimed[axis] + aimScatter * amplitude * shiftAxisGain[axis] * direction[axis] - random)
+      return Math.min(shiftTargetLimit - this.home[axis], Math.max(-shiftTargetLimit - this.home[axis], target))
+    }) as Vec3
     // Larger moves take longer. Tuned from 0.22 + 0.4 sqrt on rendered rigs: the flatter curve keeps
     // peak speed nearer linear in distance, which restores the speed-peak tail (Bear measured 0.79
     // log asymmetry against the 1.05 floor), and the longer floor trims shift-driven jitter outliers.

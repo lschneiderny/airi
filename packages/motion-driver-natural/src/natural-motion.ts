@@ -66,6 +66,9 @@ const step = 1 / 120
 
 // Seconds over which a changed review gain eases in, so a mute never snaps the head.
 const reviewEaseSeconds = 0.25
+// Review candidate: head units of yaw and pitch per eye unit of gaze when a posture shift follows the eyes.
+const headAimShare = { x: 1, y: 0.8 }
+const headAimLeadSeconds = 0.05
 
 // Critically damped follower time constants (seconds): the head trails eye pursuit.
 const followers = {
@@ -519,6 +522,7 @@ export class NaturalMotion {
       wobble: bounded(gains.wobble, 0),
       eyes: bounded(gains.eyes, 0),
       body: bounded(gains.body, 0),
+      follow: Number.isFinite(gains.follow) ? Math.max(0, Math.min(1, gains.follow)) : 0,
     }
   }
 
@@ -813,6 +817,7 @@ export class NaturalMotion {
     this.posture.layerGains.shift = this.review.shifts
     this.posture.layerGains.drift = this.review.drift
     this.posture.layerGains.continuous = this.review.wobble
+    this.posture.aimShare = this.reviewTarget.follow
     // Outside held emotions the period scale rests at 1, so the idle scale is the whole value there.
     if (idle || this.idleBreathScaled) {
       this.breath.periodScale = (this.performanceSettings.heldEmotions ? this.hold.modulation().breathPeriod : 1) * (idle?.breathPeriodScale ?? 1)
@@ -848,6 +853,11 @@ export class NaturalMotion {
     if (this.observer && Math.abs(this.yawBias - this.lastEmittedYawBias) >= 0.005) {
       this.lastEmittedYawBias = this.yawBias
       this.notify({ kind: 'placement', at: stepStart, inward: this.placement.value, yawBias: this.yawBias })
+    }
+    if (this.posture.aimShare !== 0) {
+      // The cursor already turns the head through the follow bias, so a shift during pursuit aims at the home.
+      const looking = this.gaze.onCursor ? { x: 0, y: 0 } : this.gaze.fixationPoint
+      this.posture.aim = [headAimShare.x * looking.x, headAimShare.y * looking.y]
     }
     const posture = this.posture.step(step, this.yawBias !== 0
       ? [this.x.cursorX + this.yawBias, this.x.cursorY, 0]
@@ -892,6 +902,10 @@ export class NaturalMotion {
     if (this.gaze.saccadeCount !== this.saccadeCount) {
       this.saccadeCount = this.gaze.saccadeCount
       this.blink.onGazeShift(this.gaze.saccadeSize)
+      // Review candidate: the head answers a new fixation 50 ms after the eyes leave, unless it is still moving.
+      // The advanced time returns through the next hold, so the shift rate is unchanged.
+      if (this.posture.aimShare !== 0 && !this.posture.shiftMoving && !this.gaze.onCursor)
+        this.posture.advanceShift(this.posture.secondsUntilShift - headAimLeadSeconds)
       this.face.onGazeShift(this.gaze.saccadeSize)
     }
     const lean = this.impulses.bodyOffset(stepStart + step)

@@ -186,6 +186,10 @@ const { head, eyes, act, owner } = motion.reviewState()
 - The idle acts have no gain. A host withholds the idle drive to switch them
   off.
 
+### Follow candidate
+
+`follow` in the review gains is a candidate motion, not a layer. At 0, its default, a posture shift goes in a random direction, as it ships. At 1, each shift lands near where the eyes look (`headAimShare` head units per eye unit, with a fifth of the random offset kept), and a new fixation starts the next shift 50 ms after the eyes leave. It adds no random draws and no shifts. Do not make it the default without an ADR: it moves the liveliness statistics.
+
 ## Checks
 
 ```bash
