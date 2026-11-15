@@ -2,7 +2,7 @@ import type { CatalogEntry } from './catalog'
 
 import { describe, expect, it } from 'vitest'
 
-import { choosePastime, IDLE_PROP_REPEAT_MS, idleActivityEntries, idleSleepEntryIds } from './idle-props'
+import { choosePastime, IDLE_PROP_REPEAT_MS, idleActivityEntries, idleSleepEntryIds, occasionCoverage } from './idle-props'
 
 const game = { id: 'game', label: 'game' }
 const snack = { id: 'eat', label: 'snack' }
@@ -23,6 +23,29 @@ describe('choosePastime', () => {
     expect(choosePastime([game, snack], fresh, { nowMs: 0, pick: 0.7 })).toEqual(snack)
     expect(choosePastime([], fresh, { nowMs: 0, pick: 0 })).toBeNull()
   })
+
+  const bread = { id: 'bread', label: 'bread', occasions: ['morning'] as const }
+  const pad = { id: 'pad', label: 'controller', occasions: ['gaming', 'media'] as const }
+
+  it('offers a tagged pastime only during one of its occasions, and picks it first then', () => {
+    const fresh = { lastId: null, heldAtMs: {} }
+    for (const pick of [0, 0.5, 0.99]) {
+      expect(choosePastime([game, bread, snack], fresh, { nowMs: 0, pick, occasions: ['morning', 'music'] })).toEqual(bread)
+      expect(choosePastime([game, bread, snack], fresh, { nowMs: 0, pick, occasions: ['gaming'] })).not.toEqual(bread)
+      expect(choosePastime([game, bread, pad], fresh, { nowMs: 0, pick, occasions: ['media'] })).toEqual(pad)
+    }
+    expect(choosePastime([bread, pad], fresh, { nowMs: 0, pick: 0 })).toBeNull()
+    expect(choosePastime([bread], fresh, { nowMs: 0, pick: 0, occasions: ['lunchtime'] })).toBeNull()
+  })
+
+  it('keeps the repeat rule during an occasion: something else comes between two breakfasts', () => {
+    const justHad = { lastId: 'bread', heldAtMs: { bread: 0 } }
+    expect(choosePastime([game, bread], justHad, { nowMs: 60_000, pick: 0.9, occasions: ['morning'] })).toEqual(game)
+    const later = { lastId: 'game', heldAtMs: { bread: 0, game: 400_000 } }
+    expect(choosePastime([game, bread], later, { nowMs: IDLE_PROP_REPEAT_MS, pick: 0, occasions: ['morning'] })).toEqual(bread)
+    // With nothing else to do during the occasion she keeps to it.
+    expect(choosePastime([bread], justHad, { nowMs: 60_000, pick: 0, occasions: ['morning'] })).toEqual(bread)
+  })
 })
 
 describe('idle catalog entries', () => {
@@ -41,5 +64,19 @@ describe('idle catalog entries', () => {
     ]
     expect(idleActivityEntries(catalog)).toEqual([{ id: 'game', label: 'handheld' }])
     expect(idleSleepEntryIds(catalog)).toEqual(['pillow', 'bubble'])
+  })
+
+  it('carries the occasions of a pastime, and lists which pastimes cover each occasion', () => {
+    const catalog = [
+      entry('bread', { idleUse: 'activity', occasions: ['morning', 'lunchtime'] }),
+      entry('game', { idleUse: 'activity', occasions: [] }),
+      entry('pillow', { idleUse: 'sleep', occasions: ['late-night'] }),
+    ]
+    expect(idleActivityEntries(catalog)).toEqual([{ id: 'bread', label: 'bread', occasions: ['morning', 'lunchtime'] }, { id: 'game', label: 'game' }])
+    const coverage = occasionCoverage(catalog)
+    expect(coverage.morning).toEqual(['bread'])
+    expect(coverage.lunchtime).toEqual(['bread'])
+    // Occasions gate pastimes only, so what she sleeps with covers none.
+    expect(coverage['late-night']).toEqual([])
   })
 })

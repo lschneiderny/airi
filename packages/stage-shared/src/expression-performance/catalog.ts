@@ -5,6 +5,8 @@ import type { NumberRange } from './settings'
 import { array, boolean, check, finite, literal, maxValue, minLength, minValue, nullable, number, optional, parse, picklist, pipe, safeParse, startsWith, strictObject, string, transform } from 'valibot'
 
 import { entrySlots, usableMembers } from './combos'
+import { MomentSchema } from './moments'
+import { OccasionSchema } from './occasions'
 
 export const ExpressionKindSchema = picklist(['face', 'effect', 'outfit', 'prop', 'system', 'unsorted', 'combo'])
 export type ExpressionKind = InferOutput<typeof ExpressionKindSchema>
@@ -20,6 +22,16 @@ export type SlotName = InferOutput<typeof SlotNameSchema>
  */
 export const IdleUseSchema = picklist(['never', 'activity', 'sleep'])
 export type IdleUse = InferOutput<typeof IdleUseSchema>
+/**
+ * The occasions a pastime entry suits. She picks a tagged entry up only during one of them, and prefers it then.
+ * Absent or empty means any time. It applies to `idleUse: 'activity'` only.
+ */
+const occasionsField = optional(array(OccasionSchema))
+/**
+ * The moments she may mark with this entry for a few seconds, such as a wink when she looks over. Tagging a moment is
+ * the user's permission; absent or empty means never. It does not depend on `idleUse`.
+ */
+const momentsField = optional(array(MomentSchema))
 
 /** Persisted mapping weights: any positive finite value. */
 export const mappingWeightRange: NumberRange = [Number.MIN_VALUE, Number.MAX_VALUE]
@@ -53,6 +65,8 @@ export function createCatalogEntrySchema(weights: NumberRange) {
     confirmed: boolean(),
     exposedToLlm: boolean(),
     idleUse: optional(IdleUseSchema),
+    occasions: occasionsField,
+    moments: momentsField,
     inverted: optional(boolean()),
     mappings: array(pendingMappingSchema(weights)),
     fileName: string(),
@@ -77,6 +91,8 @@ export const CuratedOverrideSchema = strictObject({
   confirmed: optional(boolean()),
   exposedToLlm: optional(boolean()),
   idleUse: optional(IdleUseSchema),
+  occasions: occasionsField,
+  moments: momentsField,
   inverted: optional(boolean()),
   mappings: optional(array(persistedPendingMappingSchema)),
   area: optional(ExpressionAreaSchema),
@@ -102,6 +118,8 @@ export const CustomExpressionDocumentSchema = strictObject({
   mappings: array(persistedPendingMappingSchema),
   exposedToLlm: boolean(),
   idleUse: optional(IdleUseSchema),
+  occasions: occasionsField,
+  moments: momentsField,
 })
 export type CustomExpressionDocument = InferOutput<typeof CustomExpressionDocumentSchema>
 export const CuratedCatalogDocumentSchema = strictObject({
@@ -165,6 +183,8 @@ export function customEntryFromDocument(document: CustomExpressionDocument): Cat
     mappings: document.mappings,
     exposedToLlm: document.exposedToLlm,
     idleUse: document.idleUse,
+    occasions: document.occasions,
+    moments: document.moments,
     fileName: '',
     parameterIds: [document.parameterId],
     group: null,

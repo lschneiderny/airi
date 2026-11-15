@@ -134,6 +134,9 @@ The `expression-performance` entrypoint owns the pure decision layer for charact
 - reaction strength with bands, habituation, and escalation (`acceptReaction`);
 - the picker and planner deciders, selected by `createDecider`, and the timing-slot scheduler;
 - `choosePastime`, which picks the entry the user marked `idleUse: 'activity'` that she holds when Natural's idle draw starts a pastime (Natural decides when and for how long), with `idleActivityEntries` and `idleSleepEntryIds` to read the catalog;
+- `resolveOccasions`, which names the occasions that hold now (`morning`, `gaming`, `music`, `lonely` and the rest of `OCCASIONS`) from the hour, the foreground app, the music and the idle drive. A pastime entry tagged with `occasions` is offered only during one of them and picked first then; `occasionCoverage` lists which pastimes cover each occasion;
+- `chooseMomentEntry`, which picks the entry tagged with `moments` that she shows for a few seconds at a short moment (`check-in`, `poked`, `waking` and the rest of `MOMENTS`), with `momentEntries` and `momentCoverage` to read the catalog;
+- `buildTagSuggestionPrompt` and `parseTagSuggestions`, the two ends of a request that asks a language model to suggest `idleUse`, `occasions` and `moments` for a catalog. The parser drops everything the model may not decide; a suggestion is applied only by the user;
 - affect traces and their replay (`withAffectTrace`, `parseAffectTrace`, `replayAffectTrace`);
 - character performance profiles (`resolveEffectiveSettings`, `applyMappingWeights`);
 - touch affect (`touchAffect`, `initialTouchAffectMemory`, `MoodDose`), which turns one classified pet or poke into at most one mood dose with cooldowns and habituation. A `touch` affect signal returns its dose in the decision's `moods`, and every other signal returns an empty list. Touch never creates an emotion episode.
