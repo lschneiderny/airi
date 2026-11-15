@@ -118,7 +118,7 @@ Versions are calendar versions, `<year>.<month>.<n>`, tagged `v<version>`. They 
 Before it builds, the command refuses to continue unless:
 
 - you are on `main`, with no tracked changes, and `HEAD` matches `origin/main`;
-- `GODOT4` names the Godot .NET editor that exports the stage sidecar (see the engine README, "Exporting");
+- `GODOT4` names the Godot .NET editor (the `mono` build, at the version `global.json` pins as `Godot.NET.Sdk`), and its .NET export templates are installed under `~/.local/share/godot/export_templates/<version>.stable.mono/`;
 - `gh` is signed in;
 - no published release has this tag, and an existing draft targets the same commit as `HEAD`.
 
