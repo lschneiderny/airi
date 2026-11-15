@@ -324,7 +324,7 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
     derived.value = deriveCatalog(defs, model3Refs, vtube, displayInfo, keepSeparate)
   }
 
-  function registerDefinitions(id: string, defs: NamedExpressionDefinition[], model3Refs: { File: string, Name?: unknown }[] = [], vtube?: unknown, displayInfo?: unknown, modelParameters: Omit<FreeParameter, 'name'>[] = [], modelFreeParameters: FreeParameter[] = []) {
+  function registerDefinitions(id: string, defs: NamedExpressionDefinition[], model3Refs: { File: string, Name?: unknown }[] = [], vtube?: unknown, displayInfo?: unknown, modelParameters: Omit<FreeParameter, 'name'>[] = [], modelFreeParameters: FreeParameter[] = [], hidesArt?: (definition: NamedExpressionDefinition) => boolean) {
     modelId.value = id
     parameters.value = modelParameters.map(parameter => ({ ...parameter }))
     freeParameters.value = modelFreeParameters.map(parameter => ({ ...parameter }))
@@ -346,9 +346,11 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
     rederive()
     restSet.value = []
     defineExpressions()
+    let restSaved = false
     try {
       const raw = localStorage.getItem(`expression-rest:${id}`)
       if (raw !== null) {
+        restSaved = true
         const parsed = parseRestSet(JSON.parse(raw))
         if (parsed.success)
           restSet.value = [...new Set(parsed.value.active.map(activeId => resolveAlias(activeId, catalog.value)))].filter(activeId => catalog.value.some(entry => entry.id === activeId))
@@ -358,6 +360,13 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
     }
     catch (error) {
       console.warn('[expression-store] Failed to load rest set:', errorMessageFrom(error))
+    }
+    // Until the user saves a resting look, a watermark the rig can switch off starts switched off. Only a switch
+    // measured to hide art counts, so a rig whose switch draws its watermark keeps it off.
+    if (!restSaved && hidesArt) {
+      restSet.value = defs
+        .filter(def => catalog.value.some(entry => entry.id === def.id && entry.kind === 'system' && entry.duplicateOf === undefined) && hidesArt(def))
+        .map(def => def.id)
     }
     resetAll()
   }
