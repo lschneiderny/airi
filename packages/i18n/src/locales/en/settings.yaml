@@ -312,6 +312,52 @@ live2d:
       tags:
         activity: She may pick this up on her own
         sleep: On while she sleeps
+    occasions:
+      title: Occasions
+      description: With none chosen she may pick this up at any time. With some chosen she picks it up only then, and before anything else she could do.
+      coverage: Pastimes by occasion
+      uncovered: 'Nothing yet for: {tags}'
+      options:
+        morning: In the morning
+        lunchtime: At lunchtime
+        late-night: Late at night
+        gaming: While you play a game
+        music: While music plays
+        media: While you watch something
+        working: While you work
+        call: While you are on a call
+        lonely: Left alone for an hour
+        cheerful: In a good mood
+        gloomy: In a low mood
+    suggestions:
+      description: Ask your chat model which expressions she could use on her own, and when. It receives the names of this model's expressions. Nothing changes until you apply a suggestion.
+      ask: Suggest tags
+      asking: Asking your chat model.
+      cancel: Cancel
+      no-model: Choose a chat model in the Consciousness settings first.
+      failed: 'The request failed: {error}'
+      none: Your chat model suggested nothing new.
+      review: Review the suggestions. Only the ones you leave on are applied.
+      accept: 'Apply the suggestion for {label}'
+      replaces: This replaces a choice you made, so it is off until you turn it on.
+      apply: 'Apply {count} selected'
+      dismiss: Dismiss
+    moments:
+      title: Moments
+      description: She may show this for a few seconds at the moments you choose, some of the times they happen. With none chosen she never does.
+      tag: 'For a moment: {moments}'
+      coverage: Expressions by moment
+      uncovered: 'Nothing yet for: {tags}'
+      options:
+        welcome-back: When you come back
+        check-in: When she looks over at you
+        held-back: When she holds something back
+        waking: When she wakes up
+        petted: After you pet her
+        poked: When you poke her
+        yawning: While she yawns
+        zoning-out: While she zones out
+        peering: While she reads the screen
     edit: Edit
     close-editor: Close
     apply: Apply

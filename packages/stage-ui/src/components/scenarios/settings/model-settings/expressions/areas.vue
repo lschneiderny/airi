@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import type { ExpressionArea } from '@proj-airi/stage-shared/expression-performance'
+import type { CatalogEntry, ExpressionArea, TagSuggestion } from '@proj-airi/stage-shared/expression-performance'
 
 import type { ExpressionPanelCommand, ExpressionPanelCustomCommand, ExpressionPanelEntry, ExpressionPanelSnapshot } from './source'
 
+import { idleActivityEntries, momentCoverage, momentEntries, MOMENTS, occasionCoverage, OCCASIONS } from '@proj-airi/stage-shared/expression-performance'
 import { Button, Collapsible, Input } from '@proj-airi/ui'
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -10,6 +11,7 @@ import { useI18n } from 'vue-i18n'
 import ExpressionCustomCreator from './custom-creator.vue'
 import ExpressionEntry from './entry.vue'
 import ExpressionGroupRow from './group-row.vue'
+import ExpressionTagSuggestions from './tag-suggestions.vue'
 
 import { groupDisplayName } from './group-name'
 
@@ -20,6 +22,8 @@ type ExpressionRow
 
 const props = defineProps<{
   snapshot: ExpressionPanelSnapshot
+  /** Replaces the tag suggestion request to the chat model, for tests and stories. */
+  suggest?: (entries: readonly CatalogEntry[], signal: AbortSignal) => Promise<TagSuggestion[]>
 }>()
 const emit = defineEmits<{
   (e: 'command', command: ExpressionPanelCommand | ExpressionPanelCustomCommand): void
@@ -111,6 +115,24 @@ const sections = computed(() => areas
 const visibleUnsorted = computed(() => searchActive.value ? unsortedEntries.value.filter(entry => matcher.value(entry.label)) : unsortedEntries.value)
 
 const creating = ref(false)
+
+/** The tags of one list that have an entry, with the entries' labels, and the tags that have none. */
+function coverageRows<T extends string>(tags: readonly T[], coverage: Record<T, string[]>, key: 'occasions' | 'moments') {
+  const name = (tag: T) => t(`settings.live2d.expressions.${key}.options.${tag}`)
+  return {
+    key,
+    covered: tags.filter(tag => coverage[tag].length > 0).map(tag => ({ tag, text: `${name(tag)}: ${coverage[tag].join(', ')}` })),
+    uncovered: tags.filter(tag => coverage[tag].length === 0).map(name).join(', '),
+  }
+}
+
+// Which occasions and moments this model's entries cover, shown once she has a pastime or a moment at all.
+const coverage = computed(() => {
+  const entries = props.snapshot.entries
+  if (props.snapshot.supportsIdleUse !== true || (idleActivityEntries(entries).length === 0 && momentEntries(entries).length === 0))
+    return []
+  return [coverageRows(OCCASIONS, occasionCoverage(entries), 'occasions'), coverageRows(MOMENTS, momentCoverage(entries), 'moments')]
+})
 </script>
 
 <template>
@@ -136,6 +158,26 @@ const creating = ref(false)
         @command="emit('command', $event)"
         @close="creating = false"
       />
+    </div>
+
+    <ExpressionTagSuggestions
+      v-if="snapshot.supportsIdleUse === true"
+      :entries="snapshot.entries"
+      :request="suggest"
+      @command="emit('command', $event)"
+    />
+
+    <div
+      v-for="list in coverage"
+      :key="list.key"
+      :data-testid="`expression-${list.key}-coverage`"
+      :class="['flex flex-col gap-0.5', 'text-xs text-neutral-500 dark:text-neutral-400']"
+    >
+      <span :class="['font-medium']">{{ t(`settings.live2d.expressions.${list.key}.coverage`) }}</span>
+      <span v-for="row in list.covered" :key="row.tag" :class="['break-words']">{{ row.text }}</span>
+      <span v-if="list.uncovered" :class="['break-words']">
+        {{ t(`settings.live2d.expressions.${list.key}.uncovered`, { tags: list.uncovered }) }}
+      </span>
     </div>
 
     <Input

@@ -1,3 +1,5 @@
+import type { CatalogEntry, TagSuggestion } from '@proj-airi/stage-shared/expression-performance'
+
 import type { ExpressionPanelEntry, ExpressionPanelFreeParameter } from './source'
 
 import en from '@proj-airi/i18n/locales/en'
@@ -74,7 +76,7 @@ const freeParameters: FreeParameter[] = [
   { id: 'ParamHat', name: 'ParamHat', min: -1, max: 1, default: 0 },
 ]
 
-async function renderAreas(entries: ExpressionEntry[], options: { freeParameters?: FreeParameter[], showAll?: boolean, supportsIdleUse?: boolean } = {}) {
+async function renderAreas(entries: ExpressionEntry[], options: { freeParameters?: FreeParameter[], showAll?: boolean, supportsIdleUse?: boolean, suggest?: (entries: readonly CatalogEntry[], signal: AbortSignal) => Promise<TagSuggestion[]> } = {}) {
   const { default: Areas } = await import('./areas.vue')
   await import('virtual:uno.css')
   const onCommand = vi.fn()
@@ -83,6 +85,7 @@ async function renderAreas(entries: ExpressionEntry[], options: { freeParameters
       snapshot: { entries, groups: [], activeIds: [], restIds: [], freeParameters: options.freeParameters ?? [], ...options.supportsIdleUse ? { supportsIdleUse: true } : {} },
       search: '',
       showAll: options.showAll ?? false,
+      suggest: options.suggest,
       onCommand,
     },
     global: { plugins: [createPinia(), createTestI18n()] },
@@ -240,6 +243,93 @@ describe('live2D expression areas', () => {
       id: 'game',
       patch: { label: 'Game', kind: 'prop', group: null, confirmed: true, inverted: false, mappings: [], idleUse: 'activity' },
     })
+  })
+
+  it('shows a pastime\'s occasions and which occasions the model covers, and sends a changed choice', async () => {
+    const bread = expressionEntry({ id: 'bread', label: 'Bread', kind: 'prop', area: 'props', idleUse: 'activity', occasions: ['morning'] })
+    const { screen, onCommand } = await renderAreas([bread], { supportsIdleUse: true, showAll: true })
+    const occasion = (name: string) => t(`settings.live2d.expressions.occasions.options.${name}`)
+    await expect.element(screen.getByText(`${t('settings.live2d.expressions.idle-use.tags.activity')}: ${occasion('morning')}`, { exact: true })).toBeVisible()
+    const coverage = screen.getByTestId('expression-occasions-coverage')
+    await expect.element(coverage).toHaveTextContent(`${occasion('morning')}: Bread`)
+    await expect.element(coverage).toHaveTextContent(occasion('gaming'))
+
+    await screen.getByRole('button', { name: t('settings.live2d.expressions.edit'), exact: true }).click()
+    const occasions = screen.getByTestId('expression-occasions')
+    await expect.element(occasions.getByRole('button', { name: occasion('morning'), exact: true })).toHaveAttribute('aria-pressed', 'true')
+    await occasions.getByRole('button', { name: occasion('gaming'), exact: true }).click()
+    await screen.getByRole('button', { name: t('settings.live2d.expressions.apply'), exact: true }).click()
+    expect(onCommand).toHaveBeenCalledTimes(1)
+    expect(onCommand).toHaveBeenCalledWith({
+      type: 'update-entry',
+      id: 'bread',
+      patch: { label: 'Bread', kind: 'prop', group: null, confirmed: true, inverted: false, mappings: [], occasions: ['morning', 'gaming'] },
+    })
+  })
+
+  it('tags an entry with moments whatever its on-her-own choice, and lists the moments the model covers', async () => {
+    const wink = expressionEntry({ id: 'wink', label: 'Wink', area: 'eyes', moments: ['check-in'] })
+    const { screen, onCommand } = await renderAreas([wink], { supportsIdleUse: true, showAll: true })
+    const moment = (name: string) => t(`settings.live2d.expressions.moments.options.${name}`)
+    await expect.element(screen.getByText(t('settings.live2d.expressions.moments.tag', { moments: moment('check-in') }), { exact: true })).toBeVisible()
+    await expect.element(screen.getByTestId('expression-moments-coverage')).toHaveTextContent(`${moment('check-in')}: Wink`)
+
+    await screen.getByRole('button', { name: t('settings.live2d.expressions.edit'), exact: true }).click()
+    // Occasions belong to a pastime, which this entry is not.
+    expect(screen.container.querySelector('[data-testid="expression-occasions"]')).toBeNull()
+    await screen.getByTestId('expression-moments').getByRole('button', { name: moment('poked'), exact: true }).click()
+    await screen.getByRole('button', { name: t('settings.live2d.expressions.apply'), exact: true }).click()
+    expect(onCommand).toHaveBeenCalledWith({
+      type: 'update-entry',
+      id: 'wink',
+      patch: { label: 'Wink', kind: 'face', group: null, confirmed: true, inverted: false, mappings: [], moments: ['check-in', 'poked'] },
+    })
+  })
+
+  it('shows the chat model\'s tag suggestions for review and applies only the ones left on', async () => {
+    const bread = expressionEntry({ id: 'bread', label: 'Bread', kind: 'prop', area: 'props' })
+    const game = expressionEntry({ id: 'game', label: 'Game', kind: 'prop', area: 'props', idleUse: 'activity' })
+    const tail = expressionEntry({ id: 'custom:ParamTail', label: 'Tail', kind: 'prop', area: 'props' })
+    const suggest = vi.fn(async (): Promise<TagSuggestion[]> => [
+      { id: 'bread', label: 'Bread', idleUse: 'activity', occasions: ['morning'], moments: [], reason: 'a slice of bread', replaces: false },
+      { id: 'game', label: 'Game', idleUse: 'activity', occasions: ['gaming'], moments: [], reason: '', replaces: true },
+      { id: 'custom:ParamTail', label: 'Tail', idleUse: 'never', occasions: [], moments: ['petted'], reason: '', replaces: false },
+    ])
+    const { screen, onCommand } = await renderAreas([bread, game, tail], { supportsIdleUse: true, showAll: true, suggest })
+    const s = (key: string, values: Record<string, unknown> = {}) => t(`settings.live2d.expressions.suggestions.${key}`, values)
+    // Nothing is asked until the user asks.
+    expect(suggest).not.toHaveBeenCalled()
+    await screen.getByRole('button', { name: s('ask'), exact: true }).click()
+    const panel = screen.getByTestId('expression-tag-suggestions')
+    await expect.element(panel).toHaveTextContent('a slice of bread')
+    expect(suggest).toHaveBeenCalledTimes(1)
+    // A suggestion is only a proposal until it is applied.
+    expect(onCommand).not.toHaveBeenCalled()
+    await expect.element(panel.getByRole('switch', { name: s('accept', { label: 'Bread' }), exact: true })).toBeChecked()
+    // The game already carries the user's choice, so its suggestion starts off.
+    await expect.element(panel.getByRole('switch', { name: s('accept', { label: 'Game' }), exact: true })).not.toBeChecked()
+    await expect.element(panel).toHaveTextContent(s('replaces'))
+
+    await panel.getByRole('button', { name: s('apply', { count: 2 }), exact: true }).click()
+    expect(onCommand.mock.calls.map(call => call[0])).toEqual([
+      { type: 'update-entry', id: 'bread', patch: { idleUse: 'activity', occasions: ['morning'], moments: [] } },
+      { type: 'update-custom', id: 'custom:ParamTail', patch: { idleUse: 'never', occasions: [], moments: ['petted'] } },
+    ])
+    await expect.element(screen.getByRole('button', { name: s('ask'), exact: true })).toBeVisible()
+  })
+
+  it('changes nothing when the suggestions are dismissed or the request fails', async () => {
+    const bread = expressionEntry({ id: 'bread', label: 'Bread', kind: 'prop', area: 'props' })
+    const suggest = vi.fn<(entries: readonly CatalogEntry[], signal: AbortSignal) => Promise<TagSuggestion[]>>()
+    suggest.mockResolvedValueOnce([{ id: 'bread', label: 'Bread', idleUse: 'activity', occasions: [], moments: [], reason: '', replaces: false }])
+    suggest.mockRejectedValueOnce(new Error('rate limited'))
+    const { screen, onCommand } = await renderAreas([bread], { supportsIdleUse: true, showAll: true, suggest })
+    const s = (key: string, values: Record<string, unknown> = {}) => t(`settings.live2d.expressions.suggestions.${key}`, values)
+    await screen.getByRole('button', { name: s('ask'), exact: true }).click()
+    await screen.getByRole('button', { name: s('dismiss'), exact: true }).click()
+    await screen.getByRole('button', { name: s('ask'), exact: true }).click()
+    await expect.element(screen.getByRole('alert')).toHaveTextContent(s('failed', { error: 'rate limited' }))
+    expect(onCommand).not.toHaveBeenCalled()
   })
 
   it('routes a custom entry through update-custom and offers delete-custom', async () => {
