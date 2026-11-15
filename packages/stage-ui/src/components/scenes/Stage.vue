@@ -22,7 +22,8 @@ import { createLive2DLipSync } from '@proj-airi/model-driver-lipsync'
 import { wlipsyncProfile } from '@proj-airi/model-driver-lipsync/shared/wlipsync'
 import { normalizeActPayload, Playback } from '@proj-airi/pipelines-audio'
 import { presenceBubbleIdle, presenceBubbleThinking } from '@proj-airi/stage-shared'
-import { MOOD_CUE_MARKER } from '@proj-airi/stage-shared/character-state'
+import { idleDriveOf, MOOD_CUE_MARKER } from '@proj-airi/stage-shared/character-state'
+import { initialOccasionMemory, resolveOccasions } from '@proj-airi/stage-shared/expression-performance'
 import { isMotionQaBridgeEnabled } from '@proj-airi/stage-shared/motion-scenario/flag'
 import { initialResolverMemory, resolvePerformanceState } from '@proj-airi/stage-shared/performance-state'
 import { TOUCH_TOPIC_KEY } from '@proj-airi/stage-shared/situation'
@@ -343,6 +344,7 @@ const performanceRenderer = computed(() => selectStagePerformanceRenderer(stageM
 }))
 // Read once a second by the conductor for the idle drive; the stretch of audio lives in the memory between reads.
 let musicMemory = initialMusicMemory
+let musicNow = false
 const desktopActivityStore = useDesktopActivityStore()
 const situationStore = useSituationStore()
 function musicPlaying() {
@@ -353,7 +355,13 @@ function musicPlaying() {
     speaking: nowSpeaking.value,
   }, musicMemory)
   musicMemory = resolved.memory
+  musicNow = resolved.music
   return resolved.music
+}
+// Read only, never written from the stage. After a card switch the replicated reading still belongs to the previous
+// card until the leader publishes the new one, so it counts as no reading.
+function characterReading() {
+  return characterState.cardId === cards.activeCardId ? characterState.reading : null
 }
 const { conductor: performanceConductor, settings: performanceSettings } = useStagePerformanceConductor({
   renderer: () => stageModelRenderer.value,
@@ -366,18 +374,11 @@ const { conductor: performanceConductor, settings: performanceSettings } = useSt
   playMotion: (group) => { currentMotion.value = { group } },
   mood: () => stageModelRenderer.value === 'mmd' ? mmdSceneRef.value?.getMood() ?? null : live2dSceneRef.value?.getMood() ?? null,
   profile: performanceProfileOf,
-  // Read only, never written from the stage. After a card switch the replicated reading still belongs to the previous
-  // card until the leader publishes the new one, so it counts as no reading.
-  characterReading: () => characterState.cardId === cards.activeCardId ? characterState.reading : null,
+  characterReading,
   music: musicPlaying,
 })
 
 const stageTouch = useStageTouchStore()
-
-/** A pet or poke on the Live2D or MMD scene; each scene classifies touches only under its Natural driver. */
-function onTouch(event: NaturalTouchGesture) {
-  stageTouch.touch(event, performanceConductor)
-}
 
 const stageSelf = useStageSelfStore()
 
@@ -607,6 +608,31 @@ function resolvePerformance(): PerformanceState {
   return resolution.state
 }
 
+// What holds now that a tagged pastime can fit: the hour, the foreground app, the music and her mood. The music is
+// the conductor's latest reading, so the 8 s of audio it needs are counted once.
+let occasionMemory = initialOccasionMemory
+function activeOccasions() {
+  // The lab can name the occasions itself, so a pastime tagged for the morning can be watched at any hour.
+  if (naturalPerformanceOverride.occasionOverride !== null)
+    return naturalPerformanceOverride.occasionOverride
+  const now = new Date()
+  const localHour = now.getHours() + now.getMinutes() / 60
+  const drive = idleDriveOf(characterReading(), now.getTime(), localHour)
+  const resolved = resolveOccasions({
+    nowMs: now.getTime(),
+    localHour,
+    localDay: Math.floor((now.getTime() - now.getTimezoneOffset() * 60_000) / 86_400_000),
+    present: !performance.value.away,
+    sleepiness: drive.sleepiness,
+    solitude: drive.solitude,
+    valence: drive.valence,
+    music: musicNow,
+    category: foregroundCategory.value,
+  }, occasionMemory)
+  occasionMemory = resolved.memory
+  return resolved.occasions
+}
+
 // Pastimes and sleep props from the model's own expressions; only the Live2D expression store supports them.
 const live2dNaturalSettings = useLive2DNaturalSettings()
 const idleProps = useIdleProps({
@@ -614,11 +640,22 @@ const idleProps = useIdleProps({
   enabled: () => live2dMotionDriver.value === 'natural' && live2dNaturalSettings.document.idleActivities && !props.paused,
   report: entry => stageSelf.report(entry),
   answer: (seq, outcome) => live2dSceneRef.value?.answerIdleErrand(seq, outcome),
+  occasions: activeOccasions,
 })
 /** A pastime ends before the sleep that follows it is reported, so the situation closes them in order. */
 function onLive2dIdle(report: IdleBehaviourReport) {
   idleProps.onIdleBehaviour(report)
   stageSelf.idle(report)
+}
+
+/** A pet or poke on the Live2D or MMD scene; each scene classifies touches only under its Natural driver. */
+function onTouch(event: NaturalTouchGesture) {
+  stageTouch.touch(event, performanceConductor)
+  // A touch is also a moment she may mark with one of her own expressions.
+  if (event.kind === 'poke')
+    idleProps.onMoment('poked')
+  else if (event.kind === 'pet-end')
+    idleProps.onMoment('petted')
 }
 
 function updatePerformance() {
@@ -684,6 +721,15 @@ onUnmounted(naturalPerformanceOverride.onEmotionPulse((pulse) => {
 // The lab's gesture buttons play through the conductor, which ignores them outside Natural.
 onUnmounted(naturalPerformanceOverride.onGestureRequest(request => performanceConductor.gesture(request.kind, request.count)))
 onUnmounted(naturalPerformanceOverride.onIdleRequest(kind => performanceConductor.idlePlay(kind)))
+// The lab's pastime and moment buttons go through the stage's own realiser, which ignores them outside Natural.
+onUnmounted(naturalPerformanceOverride.onPastimeRequest(() => idleProps.playPastime()))
+onUnmounted(naturalPerformanceOverride.onMomentRequest(moment => idleProps.onMoment(moment, { force: true })))
+useIntervalFn(() => naturalPerformanceOverride.publishIdleLife(idleProps.state()), 1000)
+// The user is back at the machine: a moment she may mark.
+watch(() => performance.value.away, (away, wasAway) => {
+  if (wasAway && !away)
+    idleProps.onMoment('welcome-back')
+})
 
 // The dev-only motion QA bridge answers remote-debug commands through this stage's real input paths. The
 // flag exists only when the Electron main process enabled the bridge and the renderer set it before mounting;

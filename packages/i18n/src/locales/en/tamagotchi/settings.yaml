@@ -604,6 +604,26 @@ devtools:
           shrug: Shrug
           lean: Lean
           glance: Glance
+      own-expressions:
+        title: Pastimes and moments
+        description: Watch the expressions she uses on her own, on the character in the main window, without waiting for the hour or the idle draw. Tag the entries in the model's expression settings first.
+        requires-natural: Pastimes and moments are hers only while the motion driver is Natural.
+        now:
+          occasions: Occasions now
+          pastime: Pastime
+          moment: Moment
+          none: none
+          waiting: No main window has reported yet.
+        occasions:
+          title: Choose the occasions myself
+          description: Replace the occasions the main window detects with the ones chosen here. Off uses the real hour, app, music and mood.
+        pastime:
+          title: Pastime
+          description: Start a pastime now, picked as the idle draw would pick it under the occasions above. It stays for 30 seconds.
+          start: Start a pastime
+        moments:
+          title: Moments
+          description: Play a moment now. She shows an expression tagged for it, or nothing when the model has none.
       idle-behaviours:
         title: Idle behaviours
         description: Play one self-directed idle behaviour on the character in the main window. It plays while Idle activities is on, she is idle or watching, and nothing else holds her head. A played sleep ends after 14 seconds.

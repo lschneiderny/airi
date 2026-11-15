@@ -1,6 +1,7 @@
 import type { BroadcastChannelEmitOptions } from '@moeru/eventa/adapters/broadcast-channel'
 import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
 import type { IdleBehaviourKind } from '@proj-airi/motion-driver-natural/idle-activities'
+import type { Moment, Occasion } from '@proj-airi/stage-shared/expression-performance'
 import type { PerformanceMode, PerformanceOverride } from '@proj-airi/stage-shared/performance-state'
 
 import { createContext, defineEventa } from '@moeru/eventa'
@@ -20,6 +21,16 @@ export interface GestureRequest {
   count: number
 }
 
+/** What the character shows on her own right now, published by the stage for the lab's readout. */
+export interface NaturalLabIdleLife {
+  /** The occasions that hold, after the lab's override. */
+  occasions: Occasion[]
+  /** Label of the pastime she holds, or `null`. */
+  pastime: string | null
+  /** The moment she is marking and the label of the entry she marks it with, or `null`. */
+  moment: { moment: Moment, label: string } | null
+}
+
 /**
  * The lab's one-shot commands travel as events, not as replicated state, so a stage window that opens or
  * reloads after a pulse never replays it. `emit` reaches listeners in this window and in every other one.
@@ -27,6 +38,10 @@ export interface GestureRequest {
 export const naturalLabEmotionPulseEvent = defineEventa<EmotionPulse>('eventa:event:natural-motion-lab:emotion-pulse')
 export const naturalLabGestureEvent = defineEventa<GestureRequest>('eventa:event:natural-motion-lab:gesture')
 export const naturalLabIdleEvent = defineEventa<{ kind: IdleBehaviourKind }>('eventa:event:natural-motion-lab:idle')
+export const naturalLabPastimeEvent = defineEventa<Record<string, never>>('eventa:event:natural-motion-lab:pastime')
+export const naturalLabMomentEvent = defineEventa<{ moment: Moment }>('eventa:event:natural-motion-lab:moment')
+/** Stage to lab, once a second while a stage runs. An event, so no window owns a replicated copy of it. */
+export const naturalLabIdleLifeEvent = defineEventa<NaturalLabIdleLife>('eventa:event:natural-motion-lab:idle-life')
 
 /**
  * Developer control over the Natural motion driver's performance state.
@@ -38,12 +53,18 @@ export const naturalLabIdleEvent = defineEventa<{ kind: IdleBehaviourKind }>('ev
  *
  * Emotion pulses, gesture requests and idle behaviour requests are events. The stage subscribes with
  * `onEmotionPulse`, `onGestureRequest` and `onIdleRequest` and pushes them through the real emotion queue and conductor.
+ *
+ * `occasionOverride` replaces the occasions the stage detects, so a pastime tagged for the morning can be watched in
+ * the afternoon. `requestPastime` and `requestMoment` reach the stage's own realiser, and the stage answers with
+ * `publishIdleLife` once a second.
  */
 export const useNaturalPerformanceOverride = defineStore('natural-performance-override', () => {
   const overrideEnabled = ref(false)
   const overrideMode = ref<PerformanceMode | null>('idle')
   /** Energy forced on the Natural driver, 0..1, or `null` to keep the user's Energy setting. */
   const overrideEnergy = ref<number | null>(null)
+  /** The occasions the stage should take as holding, or `null` to detect them from the real signals. */
+  const occasionOverride = ref<Occasion[] | null>(null)
 
   const channel = typeof BroadcastChannel === 'undefined'
     ? undefined
@@ -82,6 +103,39 @@ export const useNaturalPerformanceOverride = defineStore('natural-performance-ov
     void context.emit(naturalLabIdleEvent, { kind })
   }
 
+  function requestPastime() {
+    void context.emit(naturalLabPastimeEvent, {})
+  }
+
+  /** Calls `handler` for each pastime request from any window after this call; returns the unsubscribe. */
+  function onPastimeRequest(handler: () => void): () => void {
+    return context.on(naturalLabPastimeEvent, () => handler())
+  }
+
+  function requestMoment(moment: Moment) {
+    void context.emit(naturalLabMomentEvent, { moment })
+  }
+
+  /** Calls `handler` for each moment request from any window after this call; returns the unsubscribe. */
+  function onMomentRequest(handler: (moment: Moment) => void): () => void {
+    return context.on(naturalLabMomentEvent, ({ body }) => {
+      if (body)
+        handler(body.moment)
+    })
+  }
+
+  function publishIdleLife(state: NaturalLabIdleLife) {
+    void context.emit(naturalLabIdleLifeEvent, state)
+  }
+
+  /** Calls `handler` for each readout a stage publishes after this call; returns the unsubscribe. */
+  function onIdleLife(handler: (state: NaturalLabIdleLife) => void): () => void {
+    return context.on(naturalLabIdleLifeEvent, ({ body }) => {
+      if (body)
+        handler(body)
+    })
+  }
+
   /** Calls `handler` for each idle behaviour request from any window after this call; returns the unsubscribe. */
   function onIdleRequest(handler: (kind: IdleBehaviourKind) => void): () => void {
     return context.on(naturalLabIdleEvent, ({ body }) => {
@@ -110,6 +164,7 @@ export const useNaturalPerformanceOverride = defineStore('natural-performance-ov
     overrideEnabled.value = false
     overrideMode.value = 'idle'
     overrideEnergy.value = null
+    occasionOverride.value = null
   }
 
   return {
@@ -123,6 +178,13 @@ export const useNaturalPerformanceOverride = defineStore('natural-performance-ov
     onGestureRequest,
     requestIdle,
     onIdleRequest,
+    occasionOverride,
+    requestPastime,
+    onPastimeRequest,
+    requestMoment,
+    onMomentRequest,
+    publishIdleLife,
+    onIdleLife,
     resetState,
   }
 }, {
