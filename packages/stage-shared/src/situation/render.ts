@@ -178,7 +178,8 @@ function stageBullet(state: SituationState): string | null {
   if (!stage)
     return null
   const parts = [
-    ['on stage', stage.exposed],
+    // The expressions she can ask for, not the ones showing: `active` names those.
+    ['can show', stage.exposed],
     ['active', stage.active],
   ]
     .map(([name, value]) => [name, oneLine(value)])
@@ -205,7 +206,8 @@ export function renderSituation(
 ): RenderedSituation {
   const maxLines = positiveOr(options.maxLines, SITUATION_MAX_LINES)
   const maxChars = positiveOr(options.maxChars, SITUATION_MAX_CHARS)
-  const userName = oneLine(options.userName ?? '') || 'The user'
+  const givenName = oneLine(options.userName ?? '')
+  const userName = givenName || 'The user'
   const header = `[Situation ${clockText(nowMs)}]`
 
   if (!Number.isFinite(nowMs))
@@ -216,7 +218,7 @@ export function renderSituation(
   const conversation = conversationBullet(state, nowMs)
   const contexts = contextBullets(state)
   const stage = options.includeStage === false ? null : stageBullet(state)
-  const self = options.includeSelf === false ? null : selfLine(state, nowMs, userName)
+  const self = options.includeSelf === false ? null : selfLine(state, nowMs, givenName || 'the user')
   const unshown = unshownEvents(state, nowMs)
 
   // A context event whose source has a context line is the same fact as that

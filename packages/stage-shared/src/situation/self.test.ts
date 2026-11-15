@@ -151,6 +151,20 @@ describe('selfLine', () => {
     expect(selfLine(state, T0 + 2 * MIN, 'Luke')).toBe('You are zoning out; before that you almost said something and let it go 2 min ago.')
   })
 
+  it('does not tell an earlier run of the activity in progress', () => {
+    const state = fold([
+      { kind: 'self', activity: 'yawn', phase: 'end', atMs: T0 },
+      { kind: 'self', activity: 'sleep', phase: 'start', atMs: T0 + MIN },
+      { kind: 'self', activity: 'sleep', phase: 'start', atMs: T0 + 2 * MIN },
+    ])
+    expect(selfLine(state, T0 + 2 * MIN + 5 * SEC, 'Luke')).toBe('You are dozing; before that you yawned 2 min ago.')
+  })
+
+  it('names a user without a name in lower case inside the sentence', () => {
+    const state = fold([{ kind: 'self', activity: 'check-in', phase: 'end', atMs: T0 }])
+    expect(renderSituation(state, T0 + 5 * SEC).text).toContain('- You glanced over at the user just now.')
+  })
+
   it('renders in the situation block after the app lines, and can be left out', () => {
     const state = fold([
       { kind: 'presence', state: 'here', atMs: T0 },
