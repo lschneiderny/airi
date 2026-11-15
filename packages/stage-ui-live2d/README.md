@@ -7,9 +7,9 @@ This package provides AIRI's shared Live2D renderer, model controls, expressions
 ## Usage
 
 Use the shared model settings to select a motion driver.
-Universal remains the default and uses model motions, idle eyes, and mouse tracking.
+Natural is the default. It generates continuous autonomous motion from layered random processes and reacts to what the character and the user are doing. Idle activities, sleep, pastimes, moments, and reach-out cues run only under it.
+Universal uses model motions, idle eyes, and mouse tracking.
 MAGIC retains its dataset-based motion controls.
-Natural generates continuous autonomous motion from layered random processes and reacts to what the character and the user are doing.
 
 ### Expressions
 

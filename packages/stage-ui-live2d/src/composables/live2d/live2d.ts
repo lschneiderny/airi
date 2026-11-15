@@ -4,7 +4,9 @@ import { computed } from 'vue'
 
 export type Live2DMotionDriver = 'magic' | 'natural' | 'universal'
 
-const live2dMotionDriver = useLocalStorageManualReset<Live2DMotionDriver>('settings/live2d/motion-driver', 'universal')
+// Natural by default, as on MMD: every self-directed behaviour (idle acts, sleep, pastimes, moments, reach-out cues)
+// runs only under it, so another default shows a new user none of them.
+const live2dMotionDriver = useLocalStorageManualReset<Live2DMotionDriver>('settings/live2d/motion-driver', 'natural')
 const live2dEyeTracking = useLocalStorageManualReset<boolean>('settings/live2d/eye-tracking', true)
 /** Offset from model center to the eyes of the model, in percentages of full model width/height */
 const live2dModelEyeOffset = useLocalStorageManualReset('settings/live2d/model-eye-offset', { x: 0, y: 0 })
