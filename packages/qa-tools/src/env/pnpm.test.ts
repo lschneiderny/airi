@@ -1,6 +1,6 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { delimiter, dirname, join } from 'node:path'
 import { execPath } from 'node:process'
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -111,6 +111,11 @@ describe('resolvePnpm', () => {
     const nodeGyp = (installEntry: string) => join(installEntry, '..', 'node_modules', 'node-gyp', 'bin', 'node-gyp.js')
     expect(resolvePnpm({ repoRoot: root, env: { PNPM_HOME: home, npm_execpath: 'pnpm', npm_config_node_gyp: nodeGyp(same.entry) } }).entry).toBe(same.entry)
     expect(() => resolvePnpm({ repoRoot: root, env: { PNPM_HOME: home, npm_execpath: 'pnpm', npm_config_node_gyp: nodeGyp(other.entry) } })).toThrow(/Expected entry/)
+
+    // `pnpm exec` sets neither variable; the executable is still on PATH, behind directories that hold no pnpm.
+    const path = (...binaries: string[]) => [join(root, 'no-pnpm-here'), ...binaries.map(binary => dirname(binary))].join(delimiter)
+    expect(resolvePnpm({ repoRoot: root, env: { PNPM_HOME: home, PATH: path(other.binary, same.binary) } }).entry).toBe(same.entry)
+    expect(() => resolvePnpm({ repoRoot: root, env: { PNPM_HOME: home, PATH: path(other.binary) } })).toThrow(/Expected entry/)
   })
 })
 

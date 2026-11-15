@@ -1,7 +1,7 @@
 import { execFileSync, spawn } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { dirname, isAbsolute, join, resolve } from 'node:path'
+import { delimiter, dirname, isAbsolute, join, resolve } from 'node:path'
 import { cwd, execPath, platform, env as processEnv, stderr } from 'node:process'
 import { fileURLToPath } from 'node:url'
 
@@ -54,7 +54,8 @@ function pnpmVersionOfEntry(entry: string): string | undefined {
 /**
  * Finds the JS entry of a standalone pnpm executable (the layout mise installs): `<install>/pnpm` with `<install>/dist/pnpm.mjs` and no package.json.
  * The dist directory comes from an absolute `npm_execpath`, or, in a nested `pnpm` call where `npm_execpath` is the bare word `pnpm`,
- * from `npm_config_node_gyp` (`<dist>/node_modules/node-gyp/bin/node-gyp.js`), which pnpm sets for every script.
+ * from `npm_config_node_gyp` (`<dist>/node_modules/node-gyp/bin/node-gyp.js`), which pnpm sets for every script, or from a
+ * `pnpm` executable in a `PATH` directory, for a process started by `pnpm exec`, which sets neither.
  * The version is asked from the entry itself; an entry that cannot answer is not a match.
  */
 function standalonePnpmEntry(env: Record<string, string | undefined>, version: string): string | undefined {
@@ -65,6 +66,11 @@ function standalonePnpmEntry(env: Record<string, string | undefined>, version: s
   const nodeGyp = env.npm_config_node_gyp
   if (nodeGyp && isAbsolute(nodeGyp))
     distDirs.push(dirname(dirname(dirname(dirname(nodeGyp)))))
+  // `pnpm exec` sets neither variable, so a script started through it finds the executable on PATH instead.
+  for (const dir of (env.PATH ?? '').split(delimiter)) {
+    if (dir && isAbsolute(dir) && existsSync(join(dir, 'pnpm')))
+      distDirs.push(join(dir, 'dist'))
+  }
 
   for (const distDir of distDirs) {
     const entry = join(distDir, 'pnpm.mjs')
