@@ -99,7 +99,7 @@ const { seq, behaviour } = motion.idleState
   emotion, a cue gesture and a noticed cursor.
 - `idlePlay` starts one behaviour by name at the next step, in place of the
   running one, when a drawn activity could start too. A played sleep ends after
-  14 s.
+  24 s.
 - `motion.idleLidFactor` is the part of the frame's `blinkFactor` that a
   behaviour closes on purpose. A renderer whose blinks are switched off applies
   it alone. It is not a frame field, so recorded frames keep their shape.

@@ -463,16 +463,32 @@ describe('idle activity layer', () => {
     expect(busy.idle.behaviour).toBeNull()
   })
 
-  it('plays sleep without the user away and wakes her after 14 s', () => {
+  it('plays sleep without the user away and wakes her after 24 s', () => {
     const { idle, run } = layer()
     idle.play('sleep')
     run(8)
     expect(idle.behaviour).toBe('sleep')
     expect(idle.output.lidClose).toBeCloseTo(1, 2)
-    run(14.2)
+    run(24.2)
     expect(idle.behaviour).toBeNull()
-    run(17)
+    run(27)
     expect(idle.output.lidClose).toBe(0)
+  })
+
+  it('nods slowly in her sleep, and leaves the nod to the doze of a body host', () => {
+    const pitchAt = (seconds: number, drive: NaturalIdleDrive) => {
+      const { idle, run } = layer(7, drive)
+      idle.play('sleep')
+      run(seconds)
+      return idle.output.head[1]
+    }
+    // Sampled at multiples of half the 6.5 s breath, where the breath adds nothing. She has settled by 6.5 s, the
+    // first nod is most of the way down at 9.75 s, and her head is back by 19.5 s.
+    for (const [drive, nods] of [[neutralDrive, true], [{ ...neutralDrive, body: true }, false]] as const) {
+      const settled = pitchAt(6.5, drive)
+      expect(settled - pitchAt(9.75, drive) > 0.08).toBe(nods)
+      expect(pitchAt(19.5, drive)).toBeCloseTo(settled, 2)
+    }
   })
 
   it('ignores a play request without a drive', () => {
