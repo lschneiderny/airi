@@ -577,6 +577,8 @@ watch(() => props.cursorPosition, (position) => {
   if (position !== undefined)
     cursorMovedAtMs.value = Date.now()
 })
+/** Epoch milliseconds of the user's last own turn, typed or spoken, or `null` before the first one. */
+const userTurnAtMs = shallowRef<number | null>(null)
 const { snapshot: desktopActivity } = storeToRefs(useDesktopActivityStore())
 const visibility = useDocumentVisibility()
 const naturalPerformanceOverride = useNaturalPerformanceOverride()
@@ -598,6 +600,7 @@ function resolvePerformance(): PerformanceState {
     generating: chatSending.value,
     cursorMovedAtMs: cursorMovedAtMs.value,
     desktop: desktopActivity.value,
+    userTurnAtMs: userTurnAtMs.value,
     visible: visibility.value === 'visible',
     override: performanceOverride.value,
     cueAttention: cueLook.value?.attention ?? null,
@@ -709,7 +712,7 @@ useIntervalFn(() => {
   updatePerformance()
   updateChatActivity()
 }, 250)
-watch([nowSpeaking, userSpeaking, chatSending, cursorMovedAtMs, desktopActivity, visibility, performanceOverride, cueLook, foregroundCategory], updatePerformance)
+watch([nowSpeaking, userSpeaking, chatSending, cursorMovedAtMs, desktopActivity, userTurnAtMs, visibility, performanceOverride, cueLook, foregroundCategory], updatePerformance)
 
 // The devtools Natural lab fires emotions through the same queue the chat uses.
 onUnmounted(naturalPerformanceOverride.onEmotionPulse((pulse) => {
@@ -946,12 +949,16 @@ chatHookCleanups.push(onBeforeMessageComposed(async (_message, context) => {
 
 chatHookCleanups.push(onBeforeSend(async (_message, context) => {
   // The model may still decline an unprompted turn, so the character does not look like she is answering.
-  if (context.origin !== 'unprompted')
+  if (context.origin !== 'unprompted') {
     currentMotion.value = { group: EmotionThinkMotionName }
+    // A turn of the user's own proves they are here, in any session: a spoken one moves no pointer.
+    userTurnAtMs.value = Date.now()
+  }
   // A reach-out shows before it is said: she looks up as if about to speak. A touch reaction answers a touch her body
   // already reacted to, so it gets no look.
-  else if (context.sessionId === chatSession.activeSessionId && !isTouchReaction(context.message))
+  else if (context.sessionId === chatSession.activeSessionId && !isTouchReaction(context.message)) {
     performanceConductor.idleCue('about-to-speak')
+  }
 }))
 
 // She decided against it: the look drops and the breath goes out, so the silence is visible too.

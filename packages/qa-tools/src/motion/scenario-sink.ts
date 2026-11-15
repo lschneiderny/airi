@@ -359,6 +359,7 @@ export function runScenarioSink(input: MotionScenario, options: ScenarioSinkOpti
                   sampledAtMs: nowMs,
                 }
               : null,
+            userTurnAtMs: null,
             speaking: false,
             userSpeaking: false,
             generating: false,

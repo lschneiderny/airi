@@ -361,7 +361,7 @@ export const useSituationStore = defineStore('situation', () => {
   }
 
   function startSensors(): RunningSensors {
-    const desktop = startDesktopSensor(ingest)
+    const desktop = startDesktopSensor(ingest, () => current.value.conversation.lastUserAtMs)
     const foreground = startForegroundSensor(ingest, {
       stageVisible: () => stageVisible.value,
       onCategory: (category) => { foregroundCategory.value = category },
@@ -393,6 +393,8 @@ export const useSituationStore = defineStore('situation', () => {
       ingest(observation)
       // The sensor reports user turns only for user-origin sends, so the character's own turns earn no engagement.
       if (observation.kind === 'conversation' && observation.who === 'user' && observation.origin === 'user') {
+        // Speaking to her is being here: presence follows the turn at once, so this turn's own prompt says so.
+        sensors?.check(observation.atMs)
         observability.recordUserTurn(observation.atMs)
         setGateMemory(recordUrgeUserTurn(gateMemory, observation.atMs))
       }

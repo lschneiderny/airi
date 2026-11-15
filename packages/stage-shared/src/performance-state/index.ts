@@ -95,6 +95,11 @@ export interface PerformanceInputs {
   cursorMovedAtMs: number | null
   desktop: DesktopActivitySnapshot | null
   /**
+   * When the user last sent a turn of their own, typed or spoken, or `null` before the first one. It counts as input
+   * for `away`: a user who only talks to her moves no pointer and presses no key.
+   */
+  userTurnAtMs: number | null
+  /**
    * Whether the stage is visible (`document.visibilityState`). A hidden stage
    * cannot be watching the user, so desktop activity does not select `watching`.
    */
@@ -211,6 +216,17 @@ function idleSecondsOf(desktop: DesktopActivitySnapshot | null): number | null {
 }
 
 /**
+ * Seconds since the user last did anything the app can see: desktop input, or a turn of their own. Desktop idle time
+ * alone would call a user who only talks to her absent. An unknown desktop idle time stays unknown, because a turn
+ * says nothing about a desktop the host cannot measure.
+ */
+export function userIdleSeconds(desktopIdleSeconds: number | null, userTurnAtMs: number | null, nowMs: number): number | null {
+  if (desktopIdleSeconds === null || userTurnAtMs === null || !Number.isFinite(userTurnAtMs))
+    return desktopIdleSeconds
+  return Math.min(desktopIdleSeconds, Math.max(0, nowMs - userTurnAtMs) / 1000)
+}
+
+/**
  * Resolves the performance state for one frame.
  *
  * Pure: time comes only from `inputs.nowMs`, and all hysteresis lives in the
@@ -226,6 +242,9 @@ function idleSecondsOf(desktop: DesktopActivitySnapshot | null): number | null {
  *
  * `away` is an overlay on the mode, not a mode: the character can still talk
  * while the user is away. While away, desktop activity cannot select `watching`.
+ * Input idle time counts toward `away` from the later of the last desktop input
+ * and the user's last turn ({@link userIdleSeconds}); a locked or suspended
+ * desktop is away whatever was said.
  *
  * Attention is `cursor` or `screen` while watching (`screen` while a `game` or `media` app has been in front for
  * {@link FOREGROUND_CATEGORY_SETTLE_MS}, whatever the cursor does), the ACT cue's attention while
@@ -247,7 +266,9 @@ export function resolvePerformanceState(inputs: PerformanceInputs, previous: Res
   const suspendedAtMs = finiteOrNull(desktop?.suspendedAtMs ?? null)
   const resumedAtMs = finiteOrNull(desktop?.resumedAtMs ?? null)
   const suspended = suspendedAtMs !== null && (resumedAtMs === null || suspendedAtMs > resumedAtMs)
-  const away = desktop !== null && (desktop.locked || suspended || (idleSeconds !== null && idleSeconds > AWAY_INPUT_IDLE_SECONDS))
+  // The user's turn is input for presence only: `watching` still follows what the desktop itself shows.
+  const presentIdleSeconds = userIdleSeconds(idleSeconds, inputs.userTurnAtMs, nowMs)
+  const away = desktop !== null && (desktop.locked || suspended || (presentIdleSeconds !== null && presentIdleSeconds > AWAY_INPUT_IDLE_SECONDS))
 
   // Anchor the release on the falling edge, not on the last true sample, so
   // the sampling interval cannot shorten it.

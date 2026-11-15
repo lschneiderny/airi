@@ -27,9 +27,9 @@ function sample(overrides: Partial<DesktopActivitySnapshot> = {}): DesktopActivi
 }
 
 /** Starts a sensor on the real desktop activity store and records what it ingests. */
-function run() {
+function run(userTurnAtMs: () => number | null = () => null) {
   const observations: Observation[] = []
-  const sensor = startDesktopSensor(observation => observations.push(observation))
+  const sensor = startDesktopSensor(observation => observations.push(observation), userTurnAtMs)
   const desktop = useDesktopActivityStore()
   return {
     observations,
@@ -83,6 +83,26 @@ describe('desktop situation sensor', () => {
       // The first resume after the baseline is also a wake.
       { kind: 'wake', cause: 'resume', atMs: T0 + 8_000 },
       { kind: 'presence', state: 'here', atMs: T0 + 8_000 },
+    ])
+  })
+
+  it('counts a turn of the user as input: here at once, idle and away again as the turn ages', () => {
+    let userTurnAtMs: number | null = null
+    const { observations, sensor, publish } = run(() => userTurnAtMs)
+    const idleSeconds = AWAY_INPUT_IDLE_SECONDS + 600
+
+    publish(T0, { idleSeconds })
+    // She is spoken to with no key pressed: no sample changes, so the caller checks.
+    userTurnAtMs = T0 + 1_000
+    sensor.check(T0 + 1_000)
+    publish(T0 + 1_000 + (IDLE_INPUT_IDLE_SECONDS + 1) * 1_000, { idleSeconds })
+    publish(T0 + 1_000 + (AWAY_INPUT_IDLE_SECONDS + 1) * 1_000, { idleSeconds })
+
+    expect(observations.map(observation => observation.kind === 'presence' ? [observation.state, observation.reason] : null)).toEqual([
+      ['away', 'idle'],
+      ['here', undefined],
+      ['idle', 'idle'],
+      ['away', 'idle'],
     ])
   })
 
