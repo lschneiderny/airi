@@ -1705,7 +1705,7 @@ The report is a review aid. It does not change a gate verdict or make a naturaln
 
 `qa:smoke`, `qa:app`, `qa:host smoke`, and the `qa:mcp` session drive the real app through one shared lifecycle, `AppSessionCore` in `src/session/app-session.ts`. One `start` call runs the same ordered steps for every command:
 
-1. Launch `stage-tamagotchi dev` on the run's fresh profile (`launchStageTamagotchi`) and record its root process.
+1. Launch `stage-tamagotchi dev` on the run's fresh profile (`launchStageTamagotchi`) and record its root process. The launcher does not pass `ELECTRON_RUN_AS_NODE` on, because a shell started by an Electron app sets it and Electron would then start as plain Node.
 2. Connect to the stage window over CDP (`connectStage`) and record the process tree (`trackTree`).
 3. Optionally start a `PageErrorCollector` over every window.
 4. Run the command's own preparation, such as seeding the replay provider or waiting for the dispatcher.

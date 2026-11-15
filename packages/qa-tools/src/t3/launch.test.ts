@@ -80,7 +80,7 @@ describe('launchStageTamagotchi', () => {
   })
 
   /** Launches with a fake pnpm child, a fake lease and a fixed port, and returns the pnpm arguments it spawned. */
-  async function spawnedArgs(options: { script?: 'dev' | 'dev:xwayland', electronArgs?: readonly string[] }): Promise<readonly string[]> {
+  async function spawnedArgs(options: { script?: 'dev' | 'dev:xwayland', electronArgs?: readonly string[], baseEnv?: NodeJS.ProcessEnv }): Promise<readonly string[]> {
     const lease: Lease = { id: 'test', grant: null, exclusive: true, inherited: false, env: {}, addWorkload: vi.fn(), release: vi.fn() }
     vi.mocked(acquire).mockResolvedValue(lease)
     vi.spyOn(remoteDebug, 'findAvailablePort').mockResolvedValue(9333)
@@ -99,6 +99,13 @@ describe('launchStageTamagotchi', () => {
       .toEqual(['--dir', '/repo', '-F', '@proj-airi/stage-tamagotchi', 'dev', '--', '--use-gl=angle', '--use-angle=swiftshader'])
     expect(await spawnedArgs({ script: 'dev:xwayland', electronArgs: ['--ignore-gpu-blocklist'] }))
       .toEqual(['--dir', '/repo', '-F', '@proj-airi/stage-tamagotchi', 'dev:xwayland', '--ignore-gpu-blocklist'])
+  })
+
+  it('does not pass ELECTRON_RUN_AS_NODE on from a shell an Electron app started', async () => {
+    const spawn = vi.spyOn(pnpm, 'spawnPnpm')
+    await spawnedArgs({ baseEnv: { ELECTRON_RUN_AS_NODE: '1', DISPLAY: ':1' } })
+    expect(spawn.mock.lastCall?.[1]?.env).toMatchObject({ DISPLAY: ':1', APP_MOTION_QA_BRIDGE: 'true' })
+    expect(spawn.mock.lastCall?.[1]?.env).not.toHaveProperty('ELECTRON_RUN_AS_NODE')
   })
 
   it('spawns the bare dev script without Electron switches', async () => {

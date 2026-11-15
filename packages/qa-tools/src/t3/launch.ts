@@ -63,16 +63,20 @@ export const fatalStartupPattern = /App threw an error during load[^\n]*\n?[^\n]
 /**
  * Starts `pnpm --dir <repoRoot> -F @proj-airi/stage-tamagotchi dev` with the T3 environment. `--dir` puts the
  * worktree path into the root's command line, so teardown can prove ownership from the live process table.
- * `baseEnv` replaces the inherited environment, for example with a QA display session's environment.
+ * `baseEnv` replaces the inherited environment, for example with a QA display session's environment. Either way
+ * `ELECTRON_RUN_AS_NODE` is not passed on, so the app always starts as an app.
  */
 export async function launchStageTamagotchi(options: { repoRoot: string, profileDir: string, logFile: string, list: ProcessLister, lease: Lease, env?: Record<string, string>, script?: DevScript, electronArgs?: readonly string[], baseEnv?: NodeJS.ProcessEnv }): Promise<LaunchedApp> {
   const port = await findAvailablePort()
   const env = { ...t3LaunchEnv(options.profileDir, port), ...options.env }
   // The command owns acquisition and failure cleanup; a multi-session gate keeps the same handle until its last run.
   const { lease } = options
+  // A shell started by an Electron app (an editor's agent terminal) exports ELECTRON_RUN_AS_NODE=1. Inherited, it
+  // starts the app's Electron as plain Node, which fails on its first `electron` import.
+  const { ELECTRON_RUN_AS_NODE: _runAsNode, ...inherited } = options.baseEnv ?? processEnv
   const child = spawnPnpm(['--dir', options.repoRoot, '-F', '@proj-airi/stage-tamagotchi', ...devScriptArgs(options.script ?? 'dev', options.electronArgs ?? [])], {
     repoRoot: options.repoRoot,
-    env: { ...(options.baseEnv ?? processEnv), ...env, ...lease.env },
+    env: { ...inherited, ...env, ...lease.env },
     stdio: 'pipe',
     detached: platform !== 'win32',
   })
