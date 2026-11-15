@@ -154,7 +154,7 @@ interface Clip {
   side: -1 | 1
   /** Started by `play`: a sleep that does not wait for the user to leave and ends on its own. */
   requested: boolean
-  /** Period of the sway, in seconds. */
+  /** Period of the sway or of a sleep's slow nod, in seconds; a sleep without a nod has 0. */
   period: number
   /** Strength of the smile (check-in) or the sulk (let-go), 0..1. */
   tone: number
@@ -177,6 +177,11 @@ const nodJerkSeconds = 0.28
 const nodSettleSeconds = 1.3
 /** Seconds the lids and head take to sink into sleep. */
 const sleepSettleSeconds = 6
+/**
+ * The slow nod of a sleeping head-and-face character: seconds her head sinks further, floats back, and lies still
+ * before the next nod. A body host nods in its own doze instead.
+ */
+const sleepNod = { sink: 5, rise: 3.5, pause: 5.5 }
 /** Seconds an ordinary wake takes, and a wake by touch. */
 const wakeSeconds = 1.6
 const startledWakeSeconds = 0.35
@@ -196,8 +201,8 @@ const meanGap = { idle: 45, watching: 70 }
 const sleepDelay = { min: 12, max: 30 }
 /** A sleep at least this long, in seconds, can be followed by a stretch or a yawn. */
 const longSleepSeconds = 90
-/** Seconds a sleep started by `play` lasts before she wakes on her own. */
-const playedSleepSeconds = 14
+/** Seconds a sleep started by `play` lasts before she wakes on her own: the settle and one slow nod, into the next. */
+const playedSleepSeconds = 24
 /** Seconds of continuous `idle` mode after which a body host's character settles in: the director's idle-to-sit time (architecture 4f). */
 const settleSeconds = 120
 /**
@@ -804,6 +809,7 @@ export class NaturalIdleActivities {
         break
       case 'sleep':
         clip.end = Number.POSITIVE_INFINITY
+        clip.period = drive.body ? 0 : sleepNod.sink + sleepNod.rise + sleepNod.pause
         break
       case 'about-to-speak':
         clip.end = Number.POSITIVE_INFINITY
@@ -1020,9 +1026,19 @@ export class NaturalIdleActivities {
         }
         case 'sleep': {
           const e = minJerk(age / sleepSettleSeconds)
-          // Deep, slow breathing shows on the dropped head.
-          head(s * 0.06 * e, -0.42 * e - 0.03 * e * Math.sin(2 * Math.PI * age / 6.5), s * 0.24 * e)
-          body(0, -0.3 * e - 0.05 * e * Math.sin(2 * Math.PI * age / 6.5), s * 0.15 * e)
+          const nodding = clip.period > 0
+          // Deep, slow breathing shows on the dropped head; it is all a head-and-face character has to breathe with.
+          const breath = e * Math.sin(2 * Math.PI * age / 6.5)
+          // Once settled her head keeps sinking and floating back, each nod to a different depth, and never jerks awake.
+          let nod = 0
+          if (nodding && age > sleepSettleSeconds) {
+            const index = Math.floor((age - sleepSettleSeconds) / clip.period)
+            const local = age - sleepSettleSeconds - index * clip.period
+            const depth = 0.55 + 0.45 * ((index * 0.618) % 1)
+            nod = depth * (local < sleepNod.sink ? minJerk(local / sleepNod.sink) : 1 - minJerk((local - sleepNod.sink) / sleepNod.rise))
+          }
+          head(s * 0.06 * e, -0.42 * e - (nodding ? 0.05 : 0.03) * breath - 0.2 * nod, s * (0.24 * e + 0.07 * nod))
+          body(0, -0.3 * e - (nodding ? 0.09 : 0.05) * breath - 0.08 * nod, s * 0.15 * e)
           out.mouthOpen += gain * 0.05 * e
           out.lidClose = Math.max(out.lidClose, gain * e)
           out.breathPeriodScale *= 1 + gain * 0.4 * e

@@ -606,7 +606,7 @@ devtools:
           glance: Glance
       idle-behaviours:
         title: Idle behaviours
-        description: Play one self-directed idle behaviour on the character in the main window. It plays while Idle activities is on, she is idle or watching, and nothing else holds her head. A played sleep ends after 14 seconds.
+        description: Play one self-directed idle behaviour on the character in the main window. It plays while Idle activities is on, she is idle or watching, and nothing else holds her head. A played sleep ends after 24 seconds.
         requires-natural: Idle behaviours play only while the motion driver is Natural.
         names:
           stretch: Stretch
