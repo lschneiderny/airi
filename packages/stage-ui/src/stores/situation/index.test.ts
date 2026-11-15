@@ -400,7 +400,7 @@ describe('situation store', () => {
 
     expect(store.state.presence).toEqual({ state: 'here', reason: null, sinceMs: T0 })
     expect(store.state.conversation).toMatchObject({ lastUserAtMs: T0, lastCharacterAtMs: T0, lastUnpromptedAtMs: null })
-    expect(store.renderForRequest(T0)).toMatch(/^\[Situation \d\d:\d\d\]\n- The user is at the desk, active for less than a minute\n- You two last talked just now\.\n- Stage - on stage: face: smile$/)
+    expect(store.renderForRequest(T0)).toMatch(/^\[Situation \d\d:\d\d\]\n- The user is at the desk, active for less than a minute\n- You two last talked just now\.\n- Stage - can show: face: smile$/)
   })
 
   it('reports a wake from an unlocked sample after a 6 min lock, next to the unchanged presence and came-back lines', () => {

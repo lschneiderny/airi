@@ -66,7 +66,7 @@ describe('renderSituation', () => {
       '- New: switched to game (1 min ago)',
       '- You two last talked 9 min ago. You last spoke up on your own 15 min ago, about the boss fight.',
       '- A text editor with TypeScript open',
-      '- Stage - on stage: smile, wave; active: idle',
+      '- Stage - can show: smile, wave; active: idle',
     ])
     expect(shownEventIds).toEqual(['e1'])
   })

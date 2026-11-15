@@ -95,7 +95,7 @@ function freshPast(state: SituationState, nowMs: number): SituationSelfPast[] {
 /**
  * One sentence about what the character is doing or just did on her own, addressed to her, or `null` when there is
  * nothing recent. The activity in progress comes first, then the newest finished one, which happened before it or,
- * inside a sleep or a sit, during it; without one in progress, up to two finished ones are named. `userName` replaces "the user" in the activities that involve them.
+ * inside a sleep or a sit, during it; without one in progress, up to two finished ones are named. `userName` names the user in the activities that involve them, mid-sentence, so a caller without a name passes "the user".
  */
 export function selfLine(state: SituationState, nowMs: number, userName: string): string | null {
   if (!Number.isFinite(nowMs))
@@ -105,11 +105,14 @@ export function selfLine(state: SituationState, nowMs: number, userName: string)
   if (current !== null) {
     const elapsed = nowMs - current.sinceMs
     const ongoing = `You are ${ONGOING[current.activity](userName, current.label)}${SELF_LONG_LIVED.has(current.activity) && elapsed >= SELF_DURATION_MIN_MS ? `, for ${minutesText(elapsed)} now` : ''}`
-    if (past.length === 0)
+    // An earlier run of what she is doing again says nothing new: a sleep restarted from the lab, or reported by a
+    // second stage window, would read "You are dozing, and you dozed off just now."
+    const before = past.find(entry => entry.activity !== current.activity || entry.label !== current.label)
+    if (before === undefined)
       return `${ongoing}.`
     // A short activity inside a sleep or a sit happened during it, not before it.
-    const joiner = past[0].endedAtMs >= current.sinceMs ? ', and you ' : '; before that you '
-    return `${ongoing}${joiner}${pastText(past[0], nowMs, userName)}.`
+    const joiner = before.endedAtMs >= current.sinceMs ? ', and you ' : '; before that you '
+    return `${ongoing}${joiner}${pastText(before, nowMs, userName)}.`
   }
   if (past.length === 0)
     return null

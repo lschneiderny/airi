@@ -2162,7 +2162,7 @@ describe('chat store contract', () => {
     expect(ingestContextMessageMock).toHaveBeenCalledOnce()
     expect(ingestContextMessageMock).toHaveBeenCalledWith(expect.objectContaining({
       contextId: 'system:situation',
-      text: expect.stringMatching(/^\[Situation \d\d:\d\d\]\n- Stage - on stage: face: smile$/),
+      text: expect.stringMatching(/^\[Situation \d\d:\d\d\]\n- Stage - can show: face: smile$/),
     }))
     const composed = useContextObservabilityStore().lastPromptProjection?.composedMessage ?? []
     const system = systemPrompts[0]
@@ -2293,8 +2293,8 @@ describe('chat store contract', () => {
     await store.send({ sessionId: 'session-1', text: 'second turn' })
 
     expect(firstContext).toMatch(/^\[Situation \d\d:\d\d\]/)
-    expect(firstContext).toContain('- Stage - on stage: face: smile')
-    expect(ingestContextMessageMock.mock.lastCall?.[0]?.text).toMatch(/- Stage - on stage: face: smile; active: face smile$/)
+    expect(firstContext).toContain('- Stage - can show: face: smile')
+    expect(ingestContextMessageMock.mock.lastCall?.[0]?.text).toMatch(/- Stage - can show: face: smile; active: face smile$/)
     expect(systemMessages).toHaveLength(2)
     expect(systemMessages[0]).toContain('base.prompt.emotion')
     expect(systemMessages[0]).toContain('base.prompt.register-talking')
@@ -2374,7 +2374,7 @@ describe('chat store contract', () => {
       throw new Error('Expected user turn')
     expect(composedMessages[1].content[1]).toEqual({
       type: 'runtime-context',
-      entries: [{ source: 'system:situation', text: expect.stringMatching(/^\[Situation \d\d:\d\d\]\n- Stage - on stage: face: smile$/) }],
+      entries: [{ source: 'system:situation', text: expect.stringMatching(/^\[Situation \d\d:\d\d\]\n- Stage - can show: face: smile$/) }],
     })
   })
 
@@ -2664,7 +2664,7 @@ describe('chat store contract', () => {
       // Both entries reach the request: the character entry has its own registry bucket.
       expect(requests[1]).toContain('[Situation ')
       const situation = ingestContextMessageMock.mock.calls.map(([message]) => message).filter(message => message.contextId === 'system:situation')
-      expect(situation.at(-1)?.text).toMatch(/- Stage - on stage: face: smile; active: face smile$/)
+      expect(situation.at(-1)?.text).toMatch(/- Stage - can show: face: smile; active: face smile$/)
       for (const text of [...requests, ...ingestContextMessageMock.mock.calls.map(([message]) => message.text)]) {
         expect(text).not.toContain('mood:')
         expect(text).not.toMatch(/valence \d/)
