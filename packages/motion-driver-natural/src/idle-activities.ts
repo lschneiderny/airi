@@ -363,7 +363,7 @@ export function idleEnergyOffset(drive: NaturalIdleDrive | null): number {
  *   the next can start, and each kind has its own cooldown.
  * - An activity yields at once to anything she must answer: speech, thinking, listening, a poke, a pet, an emotion,
  *   a cue gesture, a cursor she noticed. It fades out over 0.4 s and releases the gaze.
- * - While the user is away and the drive allows it, she falls asleep after 12 to 30 s and wakes when the user is
+ * - While the user is away and the drive allows it, she falls asleep after 12 to 30 s of quiet and wakes when the user is
  *   back; a long sleep is often followed by a stretch or a yawn.
  * - Every random draw happens when a behaviour starts or ends, on this layer's own stream.
  *
@@ -531,12 +531,14 @@ export class NaturalIdleActivities {
         current.end = at + playedSleepSeconds
     }
 
-    if (input.away && drive.allowSleep) {
+    // The wait counts quiet time only. While she talks, thinks or listens it starts over, so she does not shut her
+    // eyes the moment she has answered someone the desktop still calls away.
+    if (input.away && drive.allowSleep && performing) {
       if (this.awaySince === null) {
         this.awaySince = at
         this.sleepAfter = sleepDelay.min + (sleepDelay.max - sleepDelay.min) * this.random()
       }
-      if (!current && performing && !input.blocked && at - this.awaySince >= this.sleepAfter)
+      if (!current && !input.blocked && at - this.awaySince >= this.sleepAfter)
         current = this.start('sleep', at, drive, input)
     }
     else {

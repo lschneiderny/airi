@@ -354,6 +354,18 @@ describe('idle activity layer', () => {
     expect(idle.output.lidClose).toBe(0)
   })
 
+  it('takes a fresh while to fall asleep after she talked to someone the desktop calls away', () => {
+    const { idle, run, now } = layer()
+    const away = { ...idleInput, away: true }
+    run(31, away, () => idle.behaviour === 'sleep')
+    // A reply longer than the longest wait: the wait must not run out while she speaks.
+    const spokeUntil = run(now() + 40, { ...away, mode: 'talking' })
+    expect(idle.behaviour).toBeNull()
+    run(spokeUntil + 31, away, () => idle.behaviour === 'sleep')
+    expect(idle.behaviour).toBe('sleep')
+    expect(now() - spokeUntil).toBeGreaterThan(12)
+  })
+
   it('follows a long sleep with a yawn and never a stretch while she is settled in', () => {
     const seen = new Set<IdleBehaviourKind>()
     for (let seed = 1; seed <= 30; seed++) {
