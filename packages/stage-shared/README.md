@@ -83,7 +83,7 @@ Do not sample processes, frames, or the clock here, and do not read or write fil
 ### Desktop activity store
 
 The `stores/desktop-activity` entrypoint owns `useDesktopActivityStore`, which holds the latest `DesktopActivitySnapshot` for the performance resolver.
-A host writes it with `setSnapshot` and clears it with `reset`. The Electron host writes it from the main process power monitor and idle time. The web host never writes it, so `snapshot` stays `null`.
+A host writes it with `setSnapshot` and clears it with `reset`. The Electron host writes it from the main process power monitor and idle time.
 
 ```ts
 import { useDesktopActivityStore } from '@proj-airi/stage-shared/stores/desktop-activity'

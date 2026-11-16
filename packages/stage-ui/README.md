@@ -13,7 +13,7 @@ The local-only provider cleanup removes retired hosted records and resets their 
 `createOpenCodeGoDesktopProvider` in `libs/providers/providers/opencode-go/index` creates the desktop definition.
 The host supplies credential availability and a restricted fetch transport. The definition contains no Electron imports.
 The Electron app installs this definition before provider stores start. Main owns encrypted keys, request routing, and cancellation.
-Web clients keep the portable definition. Desktop setup and verification are described in `docs/ai/adr/2026-10-15-opencode-go-desktop-network.md`.
+Desktop setup and verification are described in `docs/ai/adr/2026-10-15-opencode-go-desktop-network.md`.
 
 ## Optional modules
 
@@ -53,7 +53,7 @@ Chat bursts, wordless replies, and unprompted turns stay in local history.
 The apps register the complete resource list before work starts. Their startup flows report each module's result through the store.
 The app roots reset the store before registration. This also stops an old load from updating a new registration after hot reload.
 `StartupOverlay` reads the store and shows splash, progress, or an error with a retry action.
-`useStartupResourceTimeout` fails a resource that stays loading past its deadline. Web applies it to character model loading.
+`useStartupResourceTimeout` fails a resource that stays loading past its deadline.
 The optional Mods server connects outside the tracked startup work. Its connection does not block onboarding.
 Each app's HTML shows the first splash before Vue mounts. CSS hides it when Vue renders into `#app`.
 The home page reports when its character model is ready or fails. A failed model keeps the overlay visible.
@@ -69,7 +69,7 @@ Consumers subscribe to the microphone input with their own abort signal. The las
 - `useVoiceStore` owns application routing, drafts, responses, and host command registration.
 - `useVoiceController` binds public controller state to Vue and moves the controller to the input of the selected device.
 - `useVoiceInput` maps hold and release controls to host commands.
-- `VoiceInputButton` is the voice control of desktop and web composers. Click it to start, and click again to stop. Hover or right-click it for the mode, Auto send, the microphone, and continuous listening. Its status bar shows the waveform and time, and keeps a voice message that waits to be sent. Dictation writes its live transcript into the composer text and creates no voice draft.
+- `VoiceInputButton` is the voice control of the chat composers. Click it to start, and click again to stop. Hover or right-click it for the mode, Auto send, the microphone, and continuous listening. Its status bar shows the waveform and time, and keeps a voice message that waits to be sent. Dictation writes its live transcript into the composer text and creates no voice draft.
 - `VoiceComposer` is the touch voice control of mobile composers. Hold it to record, slide left to cancel, and slide up to lock. A voice message is sent on release.
 - `useVoiceMessagesStore` owns voice message recordings and their attachment submission.
 - Hearing selects providers and converts captured PCM to each provider's upload format. It does not open the microphone.
@@ -122,7 +122,6 @@ The mode does not fall back to `always-on`, because that opens the microphone al
 | Host | Trigger |
 | --- | --- |
 | stage-tamagotchi | Yes. All windows share one app, so the settings window offers the mode too. |
-| stage-web | Only with a fine pointer, `(any-pointer: fine)`. Space is the only trigger, and no Web API reports a hardware keyboard. |
 
 ### Wake words
 
@@ -164,7 +163,7 @@ per-request overrides still take precedence over these settings.
 
 ## Chat images
 
-Web and Electron composers share image drafts and previews. They accept PNG,
+The chat composers share image drafts and previews. They accept PNG,
 JPEG, WebP, and GIF files up to 20 MB each, through file selection or paste.
 Previews own their Object URLs. Session changes discard pending image reads.
 Failed sends restore the draft through the shared composer.
@@ -223,7 +222,7 @@ Tool and content-array compatibility failures belong to the model of the failing
 Session resets and autonomous artistry hooks also use the session character.
 Each concurrent turn owns its IO trace. `activeTurnSpan` points to the most recently started turn that is still running.
 
-A tracer view reads spans from the source that `setIOTraceSource` sets. Without a source, as in stage-web, it reads
+A tracer view reads spans from the source that `setIOTraceSource` sets. Without a source, it reads
 the spans of its own window and the spans that other windows broadcast.
 
 Tamagotchi sets the IO trace hub of the main process as the source. Each window sends its ended spans to the hub.
@@ -474,7 +473,7 @@ An invalid field falls back to its default. The leader routes `update` and `rese
 
 Use these settings to control the mean rate of unprompted turns and which foreground details the model may see.
 Turning `shareForegroundWindow` off also stops unprompted speech, because the gate needs a fresh foreground sample. Replies to the user still work.
-Turning `shareBrowserActivity` off removes the web extension's page and video titles, links, subtitles, and video notifications from the situation. It does not affect foreground sharing or the gate. Web has no control for it, so the extension always reaches the situation there.
+Turning `shareBrowserActivity` off removes the web extension's page and video titles, links, subtitles, and video notifications from the situation. It does not affect foreground sharing or the gate.
 Do not read them in the Electron main process.
 
 ### Conversation settings
