@@ -43,7 +43,7 @@ export function overlayUnit(kind: OverlayKind, cls: ChannelClass): SeriesUnit | 
 }
 
 /** Whether the row carries data for an overlay at all. */
-export function overlayPresent(kind: OverlayKind, row: ChannelRow): boolean {
+function overlayPresent(kind: OverlayKind, row: ChannelRow): boolean {
   const { result } = row
   switch (kind) {
     case 'effect': return typeof result.E === 'number'

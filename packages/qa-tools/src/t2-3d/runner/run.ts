@@ -37,7 +37,7 @@ import { loadHeadlessMMD } from './loader'
 import { Motion3dLookTarget } from './look-target'
 import { Motion3dMeasurement } from './measurement'
 
-export const motion3dStep = 1 / 60
+const motion3dStep = 1 / 60
 /** Production work this level does not run; their stages keep their slots in the shared composition and do nothing. */
 const omitted = ['classic-gaze', 'classic-face', 'lip-sync', 'bone-morphs', 'morphs', 'natural-face', 'touch-colliders', 'overlays', 'clip-layers', 'images', 'render']
 const modes = { idle: 0, turning: 1, starting: 2, walking: 3, stopping: 4 } as const

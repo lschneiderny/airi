@@ -55,7 +55,7 @@ interface Live {
 }
 
 /** The QA display this server uses on Linux when it was not itself started inside one. */
-export const mcpDisplayName = 'mcp'
+const mcpDisplayName = 'mcp'
 
 /**
  * One live app for an agent: a fresh profile seeded with the replay LLM, onboarding completed, and the bridge

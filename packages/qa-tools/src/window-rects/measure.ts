@@ -114,7 +114,7 @@ async function runMatrix(client: CdpClient, values: Record<string, string | unde
 }
 
 /** Entry point; exit codes 0 done, 1 a run broke, 2 usage error. */
-export async function runWindowRectsCli(argv: readonly string[], root: string = windowRectsRepoRoot): Promise<number> {
+async function runWindowRectsCli(argv: readonly string[], root: string = windowRectsRepoRoot): Promise<number> {
   const [command, ...rest] = argv
   const log = (line: string) => console.error(line)
   let client: CdpClient | undefined

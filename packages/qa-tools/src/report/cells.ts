@@ -229,7 +229,7 @@ export const visualRangeShare = 0.05
  * toward that limit from the baseline. A parameter resting at its limit (cheek or eye smile at 0) that barely moves
  * is not a clipped face; one driven onto the limit is.
  */
-export function nearRangeLimit(levels: readonly ResultLevel[] | null): ResultLevel[] {
+function nearRangeLimit(levels: readonly ResultLevel[] | null): ResultLevel[] {
   return (levels ?? []).filter((level) => {
     const span = level.max - level.min
     if (!(span > 0))

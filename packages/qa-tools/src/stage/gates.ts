@@ -43,7 +43,6 @@ export const stageGateThresholds = {
 
 export type StageMode = 'window' | 'desktop'
 export type StageGateId = 'stage-walk-skate' | 'stage-arm-penetration' | 'stage-frame-budget' | 'stage-gesture-walk' | 'stage-action-preempt' | 'stage-handoff'
-export const stageGateIds: readonly StageGateId[] = ['stage-walk-skate', 'stage-arm-penetration', 'stage-frame-budget', 'stage-gesture-walk', 'stage-action-preempt', 'stage-handoff']
 
 export type StageScenario = 'gesture-walk' | 'action-preempt'
 

@@ -9,7 +9,7 @@ import { MotionScenarioSchema } from '@proj-airi/stage-shared/motion-scenario'
 import { safeParse } from 'valibot'
 
 /** Rigs the T3 harness knows, and the environment variable that points at each. */
-export const t3Rigs = { forbooth: 'AIRI_QA_RIG_FORBOOTH' } as const
+const t3Rigs = { forbooth: 'AIRI_QA_RIG_FORBOOTH' } as const
 export type T3RigName = keyof typeof t3Rigs
 
 /** The expression catalog fixture of each rig in `packages/qa-tools/fixtures/`; T1 and T3 resolve scenario expression ids against it. */

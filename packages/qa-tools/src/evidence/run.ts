@@ -113,7 +113,7 @@ export function readGitStateFromRepo(repoRoot: string): RunGitState {
   }
 }
 
-export function pickRunEnv(env: NodeJS.ProcessEnv): Record<string, string> {
+function pickRunEnv(env: NodeJS.ProcessEnv): Record<string, string> {
   const picked: Record<string, string> = {}
   for (const key of Object.keys(env).sort()) {
     const value = env[key]

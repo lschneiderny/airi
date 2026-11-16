@@ -1,5 +1,5 @@
 /** The kinds a clip can be exposed as: gestures ride on the ACT `action` field, actions and dances on `perform_action`. */
-export const EXPOSED_ACTION_KINDS = ['gesture', 'action', 'dance'] as const
+const EXPOSED_ACTION_KINDS = ['gesture', 'action', 'dance'] as const
 
 export type ExposedActionKind = typeof EXPOSED_ACTION_KINDS[number]
 

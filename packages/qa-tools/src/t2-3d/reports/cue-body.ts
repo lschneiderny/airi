@@ -13,13 +13,13 @@ import { traceParent } from './kinematics'
 import { consensusSides, dot } from './mirror'
 import { criterionReport, fixed, formatReport, reportOnly, requirement } from './report'
 
-export const CUE_BODY_VERSION = 5
+const CUE_BODY_VERSION = 5
 
 /** Natural's cue durations for one count (`cue-gestures.ts`, `start`; the glance holds 0.6 s). */
-export const CUE_SECONDS: Readonly<Record<CueGestureKind, number>> = { nod: 0.45, shake: 0.5, shrug: 1.1, lean: 2.6, glance: 0.6 }
+const CUE_SECONDS: Readonly<Record<CueGestureKind, number>> = { nod: 0.45, shake: 0.5, shrug: 1.1, lean: 2.6, glance: 0.6 }
 const CUES = Object.keys(CUE_SECONDS) as CueGestureKind[]
 /** Bones below the neck; a rig without `upperChest` skips it. */
-export const CUE_BONES: readonly MotionTraceBone[] = ['hips', 'spine', 'chest', 'upperChest', 'leftShoulder', 'rightShoulder', 'leftUpperArm', 'rightUpperArm', 'leftLowerArm', 'rightLowerArm']
+const CUE_BONES: readonly MotionTraceBone[] = ['hips', 'spine', 'chest', 'upperChest', 'leftShoulder', 'rightShoulder', 'leftUpperArm', 'rightUpperArm', 'leftLowerArm', 'rightLowerArm']
 
 /** Cue kinds printed but left out of the verdict (owner decision 2026-11-12, E/g3/s/rules.md 14), with the reason. */
 const REPORT_ONLY: Partial<Record<CueGestureKind, string>> = {
@@ -28,7 +28,7 @@ const REPORT_ONLY: Partial<Record<CueGestureKind, string>> = {
 
 const C = { tail: 0.5, clearance: 1, emotionOnset: 2, percentile: 0.95, events: 5, minimumWindows: 20, falsePositive: 0.05, nullPercentile: 0.99, minimumEvents: 6, draws: 1000, seed: 20261112, pseudoEvents: 100 }
 
-export const CUE_BODY_CONSTANTS: readonly ReportConstant[] = [
+const CUE_BODY_CONSTANTS: readonly ReportConstant[] = [
   { name: 'cue window', value: `start .. start + duration + ${C.tail}`, unit: 's', source: 'plan 2.3' },
   { name: 'placebo window', value: `same length, ${C.clearance} s clear of every cue window, every neutral or placebo event's first ${C.emotionOnset} s, and every posed emotion up to the next trial's or cue's event`, unit: 's', source: 'unit M2 R3: placebo windows of the same runs; 2 s is the start of the gate emotionHoldSeconds; E/g3/s/rules.md 12.2 (version 5): a posed hold or release in the pool, mirrored, raised the null' },
   { name: 'event threshold', value: C.percentile, unit: 'percentile of the placebo windows\' max over bones of turn / placebo SD', source: 'unit M2 R3: family-wise over the bones' },
@@ -249,7 +249,7 @@ function statistic(s: Sample, sd: CueModel['sd']): { value: number, bone: Motion
   return best
 }
 
-export function fitCueModel(samples: readonly Sample[]): CueModel {
+function fitCueModel(samples: readonly Sample[]): CueModel {
   const sd = Object.fromEntries(CUE_BONES.flatMap((bone) => {
     const values = samples.flatMap(s => s[bone] === undefined ? [] : [s[bone]])
     return values.length > 1 ? [[bone, standardDeviation(values)]] : []

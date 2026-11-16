@@ -18,7 +18,7 @@ import { POP_CONSTANTS } from './kinematics'
 import { popEvents, upperBodyPopBones } from './pops'
 import { fixed, markers, ReportUsageError } from './report'
 
-export const REST_VERSION = 5
+const REST_VERSION = 5
 
 const C = {
   share: 0.9,
@@ -39,7 +39,7 @@ const C = {
 const DOZE_HEAD_STOPPED = 'no clean rule: the review\'s nod-off shape rule misses a 4f doze whose first sink lies under the entry ramp (rules.md revision 3, doze head); not judged until the lead decides'
 const ARMS = ['smooth.armL.spikeRate', 'smooth.armR.spikeRate'] as const
 
-export function restConstants(bands: MotionBandsFile): readonly ReportConstant[] {
+function restConstants(bands: MotionBandsFile): readonly ReportConstant[] {
   return [
     { name: 'rest onset', value: IDLE_TO_SIT_MS / 1000, unit: 's after the trace start', source: 'director IDLE_TO_SIT_MS' },
     { name: 'drive', value: QA_DRIVE_AWAY.name, unit: 'the QA drive, the user away at the scenario\'s away cue', source: 'C004; unit M2 rules section 1' },

@@ -54,7 +54,7 @@ export function t3ScenarioSettings(gate: EmotionGate) {
 }
 
 /** Seconds between a pulse and the next one for a band; see the module comment. */
-export function t3PulseSpacing(t3: EmotionT3Gate, gate: EmotionGate, settings: ExpressionPerformanceSettings, band: Band): { lifetime: number, spacing: number } {
+function t3PulseSpacing(t3: EmotionT3Gate, gate: EmotionGate, settings: ExpressionPerformanceSettings, band: Band): { lifetime: number, spacing: number } {
   const lifetime = naturalEmotionLifetime(settings, band)
   const placeboSpan = gate.windows.face[1] - gate.windows.baseline[0]
   const spacing = Math.max(t3.minSpacingSeconds, lifetime + t3.lifetimeMarginSeconds, Math.ceil(lifetime + placeboSpan + maxEventLagSeconds))
@@ -161,7 +161,7 @@ export function buildT3EmotionPlan(t3: EmotionT3Gate, gate: EmotionGate, setting
 }
 
 /** A layout invariant of the live planner that an archived scenario set breaks; `invariant` names the rule. */
-export class T3ArchiveError extends Error {
+class T3ArchiveError extends Error {
   constructor(readonly invariant: string, detail: string) {
     super(`archive invariant "${invariant}": ${detail}`)
   }

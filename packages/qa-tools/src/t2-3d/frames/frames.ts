@@ -97,7 +97,7 @@ export function availableChannels(summary: FramesSummary | null): string[] {
 }
 
 /** A channel's value on a frame; summary series hold scored frames only, so a warm-up frame has none. */
-export function channelValue(input: DecodedMotionTrace, summary: FramesSummary | null, name: string, frame: number): number | null {
+function channelValue(input: DecodedMotionTrace, summary: FramesSummary | null, name: string, frame: number): number | null {
   const traced = CHANNELS.indexOf(name)
   if (traced >= 0) {
     const value = input.channels[frame * CHANNELS.length + traced]

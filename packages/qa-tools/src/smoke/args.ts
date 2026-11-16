@@ -5,7 +5,7 @@ import { parse, picklist } from 'valibot'
 
 export class SmokeUsageError extends Error {}
 
-export const smokeUsage = 'Usage: pnpm qa:smoke [--model <path>] [--kind live2d|mmd|vrm] [--stage-host window|desktop] [--expect-host window|desktop] [--xwayland] [--electron-arg=<switch>...] [--settle <seconds>] [--allow <json>] [--out <dir>]'
+const smokeUsage = 'Usage: pnpm qa:smoke [--model <path>] [--kind live2d|mmd|vrm] [--stage-host window|desktop] [--expect-host window|desktop] [--xwayland] [--electron-arg=<switch>...] [--settle <seconds>] [--allow <json>] [--out <dir>]'
 
 export function parseSmokeArgs(argv: readonly string[], cwd: string) {
   const { values, positionals } = parseArgs({

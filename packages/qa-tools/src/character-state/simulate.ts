@@ -30,7 +30,7 @@ const { headroom, modelCue } = CHARACTER_STATE_SETTINGS.mood
  * A10 model-only raw bound: the burst peak of the rolling cue budget. A full budget spent at the start of every window
  * sums to `budget / (1 - 2^(-window / halfLife))` = 0.6486 per axis, rounded up to 0.65.
  */
-export const MODEL_ONLY_RAW_BOUND = Math.ceil(modelCue.budgetPerAxis / (1 - 2 ** (-modelCue.budgetWindowMs / modelCue.halfLifeMs)) * 100) / 100
+const MODEL_ONLY_RAW_BOUND = Math.ceil(modelCue.budgetPerAxis / (1 - 2 ** (-modelCue.budgetWindowMs / modelCue.halfLifeMs)) * 100) / 100
 
 /**
  * The IS-11 valence ceiling while only model cues have ever moved her mood: model cues never move temperament, so it
@@ -112,7 +112,7 @@ function stageIndex(stages: RelationshipStages): Record<typeof DIMENSIONS[number
 }
 
 /** Drives the pure character-state core through a scenario and checks the Appendix A10 invariants. */
-export class CharacterSimulation {
+class CharacterSimulation {
   private state: CharacterStateRecordV1
   private reading: CharacterReading | null = null
   private readonly profile: CharacterProfile

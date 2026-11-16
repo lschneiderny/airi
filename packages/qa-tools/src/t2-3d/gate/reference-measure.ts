@@ -37,7 +37,7 @@ export function referenceDetectors(inputs: readonly ReferenceInput[], classes: r
   return fitDetectors(inputs.filter(c => c.entry.split === 'fit' && c.entry.role === 'window' && classes.includes(c.entry.class)).map(c => c.quantities))
 }
 
-export function headAmplitudes(p: PreparedTrace): number[] {
+function headAmplitudes(p: PreparedTrace): number[] {
   const head = headSignal(p)
   return head
     ? episodes(head.map(norm), 0.5).flatMap((e) => {

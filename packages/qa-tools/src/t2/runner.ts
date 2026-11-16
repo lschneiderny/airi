@@ -29,7 +29,7 @@ import { T2SetupError } from './errors'
 import { readRig } from './rig'
 
 /** Fixed SDK step in seconds: T2 simulates at 60 Hz whatever the render rate would be. */
-export const t2Step = 1 / 60
+const t2Step = 1 / 60
 const t2Hz = 60
 
 /** `LogLevel_Off` in the Cubism framework; the enum is not exported by pixi-live2d-display. */

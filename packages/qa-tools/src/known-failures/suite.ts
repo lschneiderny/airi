@@ -16,7 +16,7 @@ export interface SuiteTarget {
 
 // Packages the runner knows, with the Vitest projects each config declares (`default` = no projects).
 // qa-tools runs only `node`: its `gate` project runs only through the gate CLI.
-export const suitePackages: ReadonlyArray<{ package: string, dir: string, projects: readonly KnownFailureProject[] }> = [
+const suitePackages: ReadonlyArray<{ package: string, dir: string, projects: readonly KnownFailureProject[] }> = [
   { package: '@proj-airi/stage-shared', dir: 'packages/stage-shared', projects: ['default'] },
   { package: '@proj-airi/stage-ui-live2d', dir: 'packages/stage-ui-live2d', projects: ['node', 'browser'] },
   { package: '@proj-airi/stage-ui', dir: 'packages/stage-ui', projects: ['node', 'browser'] },

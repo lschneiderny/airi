@@ -11,7 +11,7 @@ import JSZip from 'jszip'
 import { sha256Buffer } from '../evidence/run'
 
 /** The hidden file input the harness creates in the stage page. */
-export const rigInputId = 'qa-rig'
+const rigInputId = 'qa-rig'
 
 function filesUnder(dir: string): string[] {
   return readdirSync(dir, { recursive: true, withFileTypes: true })

@@ -16,7 +16,7 @@ import { captureStagePng } from '../t3/screenshot'
 import { checkHostMode } from './host-mode'
 import { parseAllowedErrors, scanMainLog, triageErrors } from './triage'
 
-export const defaultAllowListPath = 'packages/qa-tools/fixtures/smoke/allowed-errors.json'
+const defaultAllowListPath = 'packages/qa-tools/fixtures/smoke/allowed-errors.json'
 
 /**
  * One clean start: a fresh profile, onboarding completed, the bridge ready, an optional model import, and a quiet

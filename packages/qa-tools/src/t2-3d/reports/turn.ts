@@ -11,14 +11,14 @@ import { conjugate, DEG, heading, median, multiply, normalize, rotationVector } 
 import { apexTimes } from './kinematics'
 import { criterionReport, fixed, formatReport, requireGate, requirement } from './report'
 
-export const TURN_VERSION = 1
+const TURN_VERSION = 1
 
 /** Plan 2.4: trunk, neck, head and shoulder bones only, so speech gestures cannot satisfy the posture rule. */
-export const TURN_POSTURE_BONES: readonly MotionTraceBone[] = ['hips', 'spine', 'chest', 'upperChest', 'neck', 'head', 'leftShoulder', 'rightShoulder']
+const TURN_POSTURE_BONES: readonly MotionTraceBone[] = ['hips', 'spine', 'chest', 'upperChest', 'neck', 'head', 'leftShoulder', 'rightShoulder']
 
 const C = { baseline: [-1, 0] as const, hold: [2, 4] as const, placebos: 20, percentile: 0.95, medianScale: 2 }
 
-export const TURN_CONSTANTS: readonly ReportConstant[] = [
+const TURN_CONSTANTS: readonly ReportConstant[] = [
   { name: 'baseline window', value: C.baseline.join('..'), unit: 's around the cue', source: 'gate emotionBaselineSeconds' },
   { name: 'hold window', value: C.hold.join('..'), unit: 's after the cue', source: 'gate emotionHoldSeconds' },
   { name: 'pseudo-placebo times', value: C.placebos, unit: 'seeded times before the cue', source: 'plan 2.4' },

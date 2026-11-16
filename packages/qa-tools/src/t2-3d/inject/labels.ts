@@ -5,7 +5,7 @@ import * as v from 'valibot'
 import { operationSchema } from './operations'
 
 /** Single-run commands that read only `trace.json` and `summary.json`, so an edited copy needs no other report first. */
-export const INJECT_COMMANDS = ['gate', 'pops', 'walk-form', 'gaze-order', 'rest'] as const
+const INJECT_COMMANDS = ['gate', 'pops', 'walk-form', 'gaze-order', 'rest'] as const
 
 const sha256 = v.pipe(v.string(), v.regex(/^[a-f0-9]{64}$/))
 const caseId = v.pipe(v.string(), v.regex(/^[\w.-]+$/))

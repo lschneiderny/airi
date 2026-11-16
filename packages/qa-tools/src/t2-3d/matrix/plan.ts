@@ -1,6 +1,6 @@
 import * as v from 'valibot'
 
-export const MATRIX_REPORT_COMMANDS = ['gate', 'gaze-order', 'gesture-timing', 'emotion-table', 'cue-body', 'ownership', 'turn', 'pops', 'idle-acts', 'walk-form', 'rest'] as const
+const MATRIX_REPORT_COMMANDS = ['gate', 'gaze-order', 'gesture-timing', 'emotion-table', 'cue-body', 'ownership', 'turn', 'pops', 'idle-acts', 'walk-form', 'rest'] as const
 
 const name = v.pipe(v.string(), v.regex(/^[\w.-]+$/, 'use letters, digits, ".", "_" and "-"'))
 const positive = v.pipe(v.number(), v.finite(), v.minValue(Number.MIN_VALUE))

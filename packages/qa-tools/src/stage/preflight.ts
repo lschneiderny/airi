@@ -31,7 +31,7 @@ function holder(lease: BrokerLease): CaptureHolder {
  * Splits the broker's leases into the capture's competitors and this checkout's own app sessions. An app session from
  * another worktree renders too, so it competes.
  */
-export function captureHolders(leases: readonly BrokerLease[], repoRoot: string): Pick<CapturePreflight, 'busy' | 'ownApp'> {
+function captureHolders(leases: readonly BrokerLease[], repoRoot: string): Pick<CapturePreflight, 'busy' | 'ownApp'> {
   const own = (lease: BrokerLease) => lease.class === 'live' && isPathInside(repoRoot, lease.cwd)
   return { busy: leases.filter(lease => !own(lease)).map(holder), ownApp: leases.filter(own).map(holder) }
 }

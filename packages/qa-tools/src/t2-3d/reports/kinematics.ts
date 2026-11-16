@@ -132,7 +132,7 @@ export function traceParent(p: PreparedTrace, bone: MotionTraceBone): MotionTrac
 }
 
 /** Unfiltered angular velocity of a bone relative to its trace parent (the root's yaw rate at the root), deg/s. */
-export function relativeVelocity(p: PreparedTrace, bone: MotionTraceBone): Vec3[] | null {
+function relativeVelocity(p: PreparedTrace, bone: MotionTraceBone): Vec3[] | null {
   const own = p.worldVelocity[bone]
   if (!own)
     return null

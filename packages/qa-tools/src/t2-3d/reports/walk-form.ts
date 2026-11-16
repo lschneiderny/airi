@@ -12,7 +12,7 @@ import { peaks, runs } from '../metrics/segments'
 import { caseReport, formatCaseReport, judged, notExercised } from './case-report'
 import { fixed, ReportUsageError, requireSummary } from './report'
 
-export const WALK_FORM_VERSION = 4
+const WALK_FORM_VERSION = 4
 
 const C = {
   walkingSpeed: 0.2,
@@ -34,7 +34,7 @@ const C = {
   turnAround: 135,
 } as const
 
-export const WALK_FORM_CONSTANTS: readonly ReportConstant[] = [
+const WALK_FORM_CONSTANTS: readonly ReportConstant[] = [
   { name: 'walking', value: C.walkingSpeed, unit: 'L/s root speed', source: 'gate walk eligibility, metrics/prepare.ts' },
   { name: 'strides', value: C.minStrides, unit: 'per foot (max over feet)', source: 'gate gait stride minimum, metrics/gait.ts' },
   { name: 'heel-strike pitch', value: C.heelPitchDeg, unit: 'deg, at least, every heel strike', source: 'plan R2a: 0.5 x bands-v3 walk gait.heelStrikePitchDeg p5 10.95' },

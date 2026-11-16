@@ -13,7 +13,7 @@ import { aaSetCount, mutationSeedSet, unmutatedSetCount } from './plan'
 import { recordsPartialName, scorePartialName } from './units'
 
 /** Thresholds of qa-tooling todo 13 (protocol 1) and motion-gate-redesign (protocol 2), fixed before any protocol-2 run. */
-export const validationThresholds = {
+const validationThresholds = {
   aa: { maxSetsWithAnyPass: 1, placeboHitRate: 0.1, placeboHitRateTolerance: 0.03, ksPAbove: 0.01 },
   zero: { maxPassingChecks: 0 },
   mutations: {
@@ -84,7 +84,7 @@ interface Outcomes {
   release: Outcome
 }
 
-export function criterionOutcomes(result: CheckResult, alpha: number): Outcomes {
+function criterionOutcomes(result: CheckResult, alpha: number): Outcomes {
   return {
     significance: result.pHolm === null ? null : result.pHolm <= alpha,
     sign: result.failed.includes('sign') ? false : result.E === null ? null : result.E > 0,

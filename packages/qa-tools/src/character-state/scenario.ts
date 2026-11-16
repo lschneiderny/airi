@@ -68,7 +68,7 @@ const DaySelectorSchema = strictObject({
   only: optional(array(positiveInteger)),
 })
 
-export const ScenarioSchema = strictObject({
+const ScenarioSchema = strictObject({
   name: pipe(string(), minLength(1)),
   description: string(),
   /** Default `--days`. */

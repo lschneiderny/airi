@@ -13,7 +13,7 @@ import { parseBenchRef } from './bench'
 
 export class PerfUsageError extends Error {}
 
-export const PERF_USAGE = [
+const PERF_USAGE = [
   'Usage: pnpm perf sessions [--since <n>m|h|d] [--json] [--dir <path>]...',
   '       pnpm perf incident (--list | <id>) [--json] [--dir <path>]...',
   `       pnpm perf features [--feature ${USAGE_FEATURE_KEYS.join('|')}] [--metric ${FEATURE_METRICS.join('|')}] [--seed <n>] [--json] [--dir <path>]...`,

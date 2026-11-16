@@ -56,7 +56,7 @@ export function stageDipPerUnit(rig: PreparedTrace['input']['trace']['rig']): nu
  * region's visible end from its window mean, in the region's frame. Null without the bones, a positive model height or
  * a window.
  */
-export function windowedDisplacementDip(p: PreparedTrace, region: FrozenRegion): number | null {
+function windowedDisplacementDip(p: PreparedTrace, region: FrozenRegion): number | null {
   const { bones, parents, restOffsets } = p.input.trace.rig
   const { frame, points } = ENDS[region]
   const dipPerUnit = stageDipPerUnit(p.input.trace.rig)

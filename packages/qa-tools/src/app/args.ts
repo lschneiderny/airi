@@ -3,7 +3,7 @@ import { parseArgs } from 'node:util'
 
 import { parse, picklist } from 'valibot'
 
-export class AppUsageError extends Error {}
+class AppUsageError extends Error {}
 
 export function parseAppArgs(argv: readonly string[], cwd: string) {
   const { values, positionals } = parseArgs({

@@ -5,11 +5,11 @@ import * as v from 'valibot'
 const isoDatePattern = /^\d{4}-\d{2}-\d{2}$/
 
 /** `default` is a package whose Vitest config declares no projects, so the runner passes no `--project`. */
-export const knownFailureProjectSchema = v.picklist(['node', 'browser', 'default'])
+const knownFailureProjectSchema = v.picklist(['node', 'browser', 'default'])
 
 const requiredText = (field: string) => v.pipe(v.string(), v.trim(), v.nonEmpty(`${field} must not be empty`))
 
-export const knownFailureEntrySchema = v.strictObject({
+const knownFailureEntrySchema = v.strictObject({
   package: requiredText('package'),
   project: knownFailureProjectSchema,
   /** Test file path relative to the package directory, with forward slashes. */
@@ -23,7 +23,7 @@ export const knownFailureEntrySchema = v.strictObject({
   flaky: v.optional(v.literal(true)),
 })
 
-export const knownFailureRegistrySchema = v.strictObject({
+const knownFailureRegistrySchema = v.strictObject({
   version: v.literal(1),
   entries: v.array(knownFailureEntrySchema),
 })

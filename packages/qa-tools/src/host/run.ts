@@ -24,7 +24,7 @@ import { failOnExit } from '../t3/launch'
 import { findWorktreeAppProcesses } from '../t3/teardown'
 import { evaluateHostSmoke, expectedHostFacts, focusRoundTrip, hostSmokeExpectation, LINUX_VERIFIED_FACTS, linuxDriveSteps, observeHost, parseLinuxDesktopExpectation } from './smoke'
 
-export const hostUsage = `Usage: pnpm qa:host smoke [--xwayland] [--expect-idle verified|unverified] [--expect-backend ${LINUX_DESKTOP_BACKENDS.join('|')}] [--expect-verified <${LINUX_VERIFIED_FACTS.join(',')}>] [--expect <host> (test-only)]`
+const hostUsage = `Usage: pnpm qa:host smoke [--xwayland] [--expect-idle verified|unverified] [--expect-backend ${LINUX_DESKTOP_BACKENDS.join('|')}] [--expect-verified <${LINUX_VERIFIED_FACTS.join(',')}>] [--expect <host> (test-only)]`
 
 /** A report failure: an evaluator failure, or a refused, broken or untidy run. Tooling branches on `code`. */
 export type HostReportFailure = SmokeFailure | { readonly code: 'refused' | 'run-failed' | 'teardown-failed', readonly message: string }

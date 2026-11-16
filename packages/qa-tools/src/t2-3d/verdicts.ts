@@ -9,8 +9,8 @@ import * as v from 'valibot'
 
 import { formatBandSide } from './gate/meaning'
 
-export const VERDICT_FILE_KIND = 'motion3d-verdict'
-export const VERDICT_FILE_VERSION = 1
+const VERDICT_FILE_KIND = 'motion3d-verdict'
+const VERDICT_FILE_VERSION = 1
 
 const verdictInputSchema = v.object({
   run: v.string(),

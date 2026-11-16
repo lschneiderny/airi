@@ -11,7 +11,7 @@ import { apexTimes, handPath, SIDES } from './kinematics'
 import { popEvents, upperBodyPopBones } from './pops'
 import { criterionReport, fixed, labelledPeaks, markers, ReportUsageError, requireGate, requirement, requireSummary } from './report'
 
-export const OWNERSHIP_VERSION = 2
+const OWNERSHIP_VERSION = 2
 
 /** Plan 2.5's C004 constants, with the version 2 amendment, the lead's pool and revisions B to C2.1 (E/g3/own2/rules-v2.md). */
 const C = {
@@ -35,7 +35,7 @@ const C = {
   poolExercised: 2,
 }
 
-export const OWNERSHIP_CONSTANTS: readonly ReportConstant[] = [
+const OWNERSHIP_CONSTANTS: readonly ReportConstant[] = [
   { name: 'owned deviation', value: C.deviationRad, unit: 'rad', source: 'C004' },
   { name: 'fully owned', value: C.fullyOwned, unit: 'owned.rightArm', source: 'plan 2.5' },
   { name: 'yield threshold', value: C.yieldOwned, unit: 'owned', source: 'architecture 3g admission rule; also the free-arm bound of an active unit' },
@@ -59,7 +59,7 @@ const TRUNK: readonly MotionTraceBone[] = ['hips', 'spine', 'chest', 'upperChest
 export type OwnershipStatus = 'PASS' | 'FAIL' | 'NOT-EXERCISED' | 'REFUSED'
 
 /** The requirements that need a case to occur in the run (lead pooling decision B). */
-export const OWNERSHIP_CASE_REQUIREMENTS: readonly string[] = ['performer-yields', 'poke-continuous', 'resume-after-cancel', 'no-stale-stroke']
+const OWNERSHIP_CASE_REQUIREMENTS: readonly string[] = ['performer-yields', 'poke-continuous', 'resume-after-cancel', 'no-stale-stroke']
 
 export interface OwnershipRunRequirement {
   readonly id: string

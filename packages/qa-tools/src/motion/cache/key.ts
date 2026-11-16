@@ -34,7 +34,7 @@ export function sha256Bytes(data: Uint8Array): string {
 }
 
 /** `QA_RUN_DIR` differs on every run by design, so it never enters the key. Names are upper-cased: Windows env names are case-insensitive. */
-export function pickKeyEnv(env: NodeJS.ProcessEnv): Record<string, string> {
+function pickKeyEnv(env: NodeJS.ProcessEnv): Record<string, string> {
   const picked: Record<string, string> = {}
   for (const name of Object.keys(env).sort()) {
     const value = env[name]
@@ -62,7 +62,7 @@ function listFiles(dir: string, prefix: string): string[] {
 }
 
 /** Raw-byte hashes of the install-level inputs: lockfile, workspace file, root manifest, and every patch. */
-export function hashInstallInputs(repoRoot: string): Record<string, string> {
+function hashInstallInputs(repoRoot: string): Record<string, string> {
   const hashes: Record<string, string> = {}
   for (const file of rootFiles)
     hashes[file] = hashFileOrAbsent(join(repoRoot, file))
@@ -71,7 +71,7 @@ export function hashInstallInputs(repoRoot: string): Record<string, string> {
   return hashes
 }
 
-export function currentRuntimeIdentity(): RuntimeIdentity {
+function currentRuntimeIdentity(): RuntimeIdentity {
   const manifestFile = fileURLToPath(import.meta.resolve('vitest/package.json'))
   const bytes = readFileSync(manifestFile)
   const manifest = JSON.parse(bytes.toString('utf8')) as { version?: unknown }

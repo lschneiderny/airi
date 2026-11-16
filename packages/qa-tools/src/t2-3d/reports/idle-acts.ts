@@ -17,7 +17,7 @@ import { add, conjugate, DEG, multiply, rotate } from '../metrics/math'
 import { caseReport, formatCaseReport, judged, notExercised } from './case-report'
 import { fixed, gateStatus, markers, reportOnly, ReportUsageError } from './report'
 
-export const IDLE_ACTS_VERSION = 7
+const IDLE_ACTS_VERSION = 7
 
 const C = {
   distinct: 6,
@@ -50,13 +50,13 @@ const NOT_ACTS: ReadonlySet<string> = new Set(['sleep', 'about-to-speak', 'let-g
  * lasting state after an activity by design. The pair judges the hips bone, the root block and the leg chain's foot and toe
  * joints; the leg bones' own rotations are printed (amendment 7 A7.2).
  */
-export const PERFORMER_BONES: readonly MotionTraceBone[] = ['hips', 'leftUpperLeg', 'leftLowerLeg', 'leftFoot', 'leftToes', 'rightUpperLeg', 'rightLowerLeg', 'rightFoot', 'rightToes']
+const PERFORMER_BONES: readonly MotionTraceBone[] = ['hips', 'leftUpperLeg', 'leftLowerLeg', 'leftFoot', 'leftToes', 'rightUpperLeg', 'rightLowerLeg', 'rightFoot', 'rightToes']
 /** Bones whose movement shows that the body did something; the eyes and fingers are left out. */
 const BODY_BONES: ReadonlySet<string> = new Set(['hips', 'spine', 'chest', 'upperChest', 'neck', 'head', 'leftShoulder', 'rightShoulder', 'leftUpperArm', 'rightUpperArm', 'leftLowerArm', 'rightLowerArm', 'leftHand', 'rightHand', ...PERFORMER_BONES])
 const REST_STATES: readonly BodyRest[] = ['none', 'rest', 'doze']
 const O2_METRICS = ['inter.burstCv', 'inter.holdFraction', 'inter.movesPerMin'] as const
 
-export const IDLE_ACTS_CONSTANTS: readonly ReportConstant[] = [
+const IDLE_ACTS_CONSTANTS: readonly ReportConstant[] = [
   { name: 'drive', value: QA_DRIVE_PRESENT.name, unit: `${idleDriveDetail(QA_DRIVE_PRESENT).idleDriveValues}, compared by value`, source: 'C001 owner decision "Idle wording: Amend it"; unit M2 rules section 1, amendment 4 A4.4' },
   { name: 'distinct acts', value: C.distinct, unit: 'kinds among counted acts', source: 'C001' },
   { name: 'exit', value: C.exitSeconds, unit: 's after an end report, inside the act', source: 'the longest release of a behaviour, wakeSeconds (idle-activities.ts)' },

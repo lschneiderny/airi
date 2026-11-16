@@ -10,7 +10,7 @@ export function percentile(values: readonly number[], p: number): number {
   return sorted[lower] + (sorted[Math.ceil(rank)] - sorted[lower]) * (rank - lower)
 }
 
-export function transformValue(value: number, transform: Transform): number {
+function transformValue(value: number, transform: Transform): number {
   return transform === 'fisher-z' ? Math.atanh(Math.max(-0.9999, Math.min(0.9999, value))) : value
 }
 

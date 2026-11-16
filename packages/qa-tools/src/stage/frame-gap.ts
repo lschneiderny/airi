@@ -4,7 +4,7 @@ import { MOTION_TRACE_CHANNELS } from '@proj-airi/motion-driver-humanoid/motion-
  * The `frame-gap` limits of the motion3d gate, as `checkKinematics` in `../t2-3d/gate/refusals.ts` states them inline.
  * `frame-gap.test.ts` runs both on the same traces, so a change on either side fails a test instead of drifting.
  */
-export const frameGapLimits = {
+const frameGapLimits = {
   /** No motion-time interval may reach this. */
   maxIntervalMs: 1000 / 20,
   /** At most `longFraction` of the intervals may exceed this. */

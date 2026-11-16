@@ -38,7 +38,7 @@ export class EvidenceConflictError extends Error {
 
 const PLAN_PATTERN = /^\w[\w.-]*$/
 
-export function assertPlanSlug(plan: string): void {
+function assertPlanSlug(plan: string): void {
   if (!PLAN_PATTERN.test(plan) || plan.includes('..'))
     throw new Error(`Invalid plan slug ${JSON.stringify(plan)}: use letters, digits, '.', '_' and '-' only.`)
 }
@@ -77,7 +77,7 @@ function writeFileAtomic(target: string, data: Uint8Array | string): void {
   renameSync(tmp, target)
 }
 
-export function buildManifest(plan: string, dir: string): EvidenceManifest {
+function buildManifest(plan: string, dir: string): EvidenceManifest {
   const files = listFiles(dir)
     .filter(path => path !== 'manifest.json')
     .map((path): ManifestFile => {

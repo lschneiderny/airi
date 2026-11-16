@@ -76,7 +76,7 @@ function exportLeaves(value: ExportsValue): string[] {
 }
 
 /** Targets of `subpath` (`.` or `./x`) in a package's `exports`; null when the map does not export it. */
-export function exportTargets(exports: ExportsValue, subpath: string): string[] | null {
+function exportTargets(exports: ExportsValue, subpath: string): string[] | null {
   if (typeof exports === 'string' || Array.isArray(exports))
     return subpath === '.' ? exportLeaves(exports) : null
   if (exports === null || typeof exports !== 'object')

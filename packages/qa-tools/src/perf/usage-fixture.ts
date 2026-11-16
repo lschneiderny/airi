@@ -3,7 +3,7 @@ import type { FeatureCompareCell, FeatureCompareRollup, UsageHost } from '@proj-
 import type { UsageRollup } from './features'
 
 /** Synthetic segment cells and rollups for the `features` and `compare` tests. */
-export const fixtureHost: UsageHost = { platform: 'linux', arch: 'x64', cpuModel: 'AMD Ryzen 7 5800X3D', cores: 16, totalMemKb: 32_000_000, gpu: null }
+const fixtureHost: UsageHost = { platform: 'linux', arch: 'x64', cpuModel: 'AMD Ryzen 7 5800X3D', cores: 16, totalMemKb: 32_000_000, gpu: null }
 
 const quartiles = (median: number) => ({ q1: median - 0.5, median, q3: median + 0.5 })
 

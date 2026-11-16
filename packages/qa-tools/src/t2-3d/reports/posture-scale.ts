@@ -15,7 +15,7 @@ import { multiply, normalize } from '../metrics/math'
  * CEside elevates one clavicle, EL flexes the elbows, AB abducts the upper arms. The thinking hand and hand to chest
  * are acts, not angles, and are left out.
  */
-export const POSTURE_TABLE: Readonly<Record<string, Readonly<Partial<Record<'TL' | 'TM' | 'TLroll' | 'TMyaw' | 'CE' | 'CP' | 'CEside' | 'EL' | 'AB' | 'neck' | 'head', number>>>>> = {
+const POSTURE_TABLE: Readonly<Record<string, Readonly<Partial<Record<'TL' | 'TM' | 'TLroll' | 'TMyaw' | 'CE' | 'CP' | 'CEside' | 'EL' | 'AB' | 'neck' | 'head', number>>>>> = {
   happy: { TL: -2, TM: -2.5, CE: 1.5, CP: -2, EL: 6, AB: 3 },
   sad: { TL: 5, TM: 4, CE: -2, CP: 4, EL: -4 },
   angry: { TL: 2, TM: -1, CE: 3, CP: 3, EL: 10, AB: 5 },
@@ -31,7 +31,7 @@ export const POSTURE_TABLE: Readonly<Record<string, Readonly<Partial<Record<'TL'
 }
 
 /** The scales of the 4c table the report tries, in order: 0.25 to 8 in steps of 0.25. */
-export const POSTURE_SCALES: readonly number[] = Array.from({ length: 32 }, (_, i) => (i + 1) * 0.25)
+const POSTURE_SCALES: readonly number[] = Array.from({ length: 32 }, (_, i) => (i + 1) * 0.25)
 
 const RAD = Math.PI / 180
 function axis(x: number, y: number, z: number, degrees: number): Quat {

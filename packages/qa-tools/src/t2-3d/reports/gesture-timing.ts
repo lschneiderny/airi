@@ -13,7 +13,7 @@ import { handPath, kinematicStrokes, SIDES, STROKE_CONSTANTS, traceParent } from
 import { popCount, upperBodyPopBones } from './pops'
 import { criterionReport, fixed, formatReport, gateStatus, labelledPeaks, markers, printedBand, ReportUsageError, requireGate, requirement, requireSummary } from './report'
 
-export const GESTURE_TIMING_VERSION = 6
+const GESTURE_TIMING_VERSION = 6
 
 /** Plan 2.2's C001 constants, fixed before any gesture code. */
 const C = {
@@ -52,7 +52,7 @@ const C = {
   minimumIdleApexes: 20,
 }
 
-export const GESTURE_TIMING_CONSTANTS: readonly ReportConstant[] = [
+const GESTURE_TIMING_CONSTANTS: readonly ReportConstant[] = [
   { name: 'hit share', value: C.hitShare, unit: 'of labelled peaks', source: 'C001' },
   { name: 'hit window', value: C.hitSeconds, unit: 's either side', source: 'C001' },
   { name: 'minimum labelled peaks', value: C.minimumPeaks, unit: 'peaks', source: 'plan 2.2 guard 1 (gate emphasisMinimum)' },

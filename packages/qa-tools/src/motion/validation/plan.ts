@@ -15,7 +15,7 @@ import { gateBands, gateEmotions, longHoldBands, seedRange, variantsFor } from '
 export const validationSections = ['aa', 'zero', 'mutations', 'unmutated', 'determinism'] as const
 export type ValidationSection = typeof validationSections[number]
 
-export const mutationIds = ['x0', 'sign-flip', 'ignore-side', 'ignore-side-neg', 'x0.5', 'x2', 'release-tau-x3', 'blink-interval-1'] as const
+const mutationIds = ['x0', 'sign-flip', 'ignore-side', 'ignore-side-neg', 'x0.5', 'x2', 'release-tau-x3', 'blink-interval-1'] as const
 export type MutationId = typeof mutationIds[number]
 export type TableId = 'natural' | 'zero' | Exclude<MutationId, 'release-tau-x3'>
 

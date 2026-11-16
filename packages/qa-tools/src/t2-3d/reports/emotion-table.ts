@@ -13,7 +13,7 @@ import { postureFeatures } from '../metrics/mirror'
 import { postureClearingScales } from './posture-scale'
 import { criterionReport, fixed, formatReport, gateStatus, reportOnly, requireGate, requirement } from './report'
 
-export const EMOTION_TABLE_VERSION = 5
+const EMOTION_TABLE_VERSION = 5
 
 /** Lines printed but left out of the verdict (owner decision 2026-11-12, E/g3/s/rules.md 14), with the reason. */
 const REPORT_ONLY = {
@@ -38,7 +38,7 @@ const C = {
 export const C002_REQUIRED = ['emotion.minSeparationFromNeutral', 'emotion.armShare'] as const
 const ONSET_IDS = ['onset.attackFraction', 'onset.easedOrAnticipated'] as const
 
-export const EMOTION_TABLE_CONSTANTS: readonly ReportConstant[] = [
+const EMOTION_TABLE_CONSTANTS: readonly ReportConstant[] = [
   { name: 'pair separation', value: C.separation, unit: 'SD, each non-neutral emotion against neutral and against placebo', source: 'gate emotionSeparationMinimum; emotion.minSeparationFromNeutral on postureFeatures (gate version 5)' },
   { name: 'gate requirement', value: C002_REQUIRED.join(','), unit: '--require ids', source: 'criterion C002' },
   { name: 'onset episodes', value: C.episodes, unit: 'per run, each onset metric', source: 'gate episodeMinimum' },

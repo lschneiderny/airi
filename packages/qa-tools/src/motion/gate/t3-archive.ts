@@ -16,7 +16,7 @@ import { sha256Buffer } from '../../evidence/run'
  */
 
 /** A refusal: the archive does not match the digests recorded at capture time. */
-export class ArchiveDigestError extends Error {
+class ArchiveDigestError extends Error {
   constructor(detail: string) {
     super(`archive invariant "artifact-digest": ${detail}`)
   }
@@ -32,7 +32,7 @@ const ArchivedRunSchema = v.looseObject({
 })
 
 /** The files a traced session contributes to scoring and to the session-header and trace-identity checks. */
-export const t3SessionArtifacts = ['scenario.json', 'trace.json', 'bridge.json', 'verification.json'] as const
+const t3SessionArtifacts = ['scenario.json', 'trace.json', 'bridge.json', 'verification.json'] as const
 
 /** Scoring must use the posture home requested by the scenario, including its default. */
 export function assertT3TraceHome(scenario: Pick<MotionScenario, 'id' | 'home'>, trace: Pick<NaturalTrace, 'meta'>): void {
@@ -55,7 +55,7 @@ function recordedArtifacts(dir: string): Map<string, string> {
  * Checks each of `files` (paths relative to `dir`) against the digest `dir/run.json` recorded for it, and returns the
  * verified paths. Throws `ArchiveDigestError` naming the file for a missing file, a missing digest, or a mismatch.
  */
-export function verifyRecordedArtifacts(dir: string, files: readonly string[]): string[] {
+function verifyRecordedArtifacts(dir: string, files: readonly string[]): string[] {
   const recorded = recordedArtifacts(dir)
   return files.map((file) => {
     const path = join(dir, file)

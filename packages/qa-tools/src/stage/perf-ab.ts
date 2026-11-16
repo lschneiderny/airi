@@ -17,7 +17,7 @@ import { launchAndMeasure } from './measure'
  */
 
 /** IS-2: recording may add at most this much app CPU, in percent of one core. */
-export const PERF_AB_MAX_ADDED_CPU_PCT = 1
+const PERF_AB_MAX_ADDED_CPU_PCT = 1
 
 export type PerfAbArm = 'a' | 'b'
 
@@ -113,7 +113,7 @@ export function summarizePerfAb(pairs: readonly PerfAbPairValues[]): PerfAbSumma
 }
 
 /** Counts the records under `<dir>/raw/*.jsonl` through the record contract's parser. */
-export function countPerfRecords(dir: string): PerfRecordCount {
+function countPerfRecords(dir: string): PerfRecordCount {
   const rawDir = join(dir, 'raw')
   const files = readdirSync(rawDir).filter(name => name.endsWith('.jsonl'))
   const count: PerfRecordCount = { dir, files: files.length, records: 0, windowRollups: 0, rejectedLines: 0 }

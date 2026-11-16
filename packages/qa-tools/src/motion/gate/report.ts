@@ -11,7 +11,7 @@ import { array, boolean, literal, looseObject, nullable, number, optional, parse
 export const currentReportSchema = 2
 
 /** Paired mean trajectory of one emotion check, direction-folded like `E`, with a seeded bootstrap 95% band. */
-export const ResultTrajectorySchema = looseObject({
+const ResultTrajectorySchema = looseObject({
   /** Seconds after the pulse of the first point, and the step between points. */
   start: number(),
   step: number(),
@@ -24,7 +24,7 @@ export const ResultTrajectorySchema = looseObject({
 export type ResultTrajectory = InferOutput<typeof ResultTrajectorySchema>
 
 /** Absolute levels of one Cubism parameter across the trials of a check, in the rig's raw units. */
-export const ResultLevelSchema = looseObject({
+const ResultLevelSchema = looseObject({
   id: string(),
   /** Mean baseline-window level. */
   baseline: number(),
@@ -38,7 +38,7 @@ export const ResultLevelSchema = looseObject({
 export type ResultLevel = InferOutput<typeof ResultLevelSchema>
 
 /** Report shape shared by the emotion and liveliness gates; later tools read `report.json` through this schema. */
-export const GateReportSchema = looseObject({
+const GateReportSchema = looseObject({
   gateId: string(),
   /** The gate's integer version. `run.json` stores it as a string. */
   version: number(),

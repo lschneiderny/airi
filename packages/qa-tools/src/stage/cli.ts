@@ -18,7 +18,7 @@ import { measureAttached, measurePairs, measureScenario } from './measure'
 import { measurePerfAb } from './perf-ab'
 import { exclusiveRefusal, formatHolders, waitForQuiet } from './preflight'
 
-export const stageUsage = `Usage:
+const stageUsage = `Usage:
   stage capture --port <cdp port> --scenario <idle|walk|attach> --seconds <s> --out <dir> [--mode window|desktop] [--shots 12] [--seed 1] [--collect-before] [--class idle|talk] [--wait-quiet <s> | --allow-busy] [--exclusive]
   stage measure --mode <window|desktop> --port <cdp port> [--seconds 60] [--attempts 3] --out <json>
   stage measure --pairs <n> --profile <profile dir> [--seconds 60] [--settle 10] [--attempts 3] --out <json>

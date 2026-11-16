@@ -47,7 +47,7 @@ export class FramePoseRefusal extends Error {
 }
 
 /** Parents before children, whatever order the model lists its bones in. */
-export function boneOrder(bones: readonly FrameRigBone[]): number[] {
+function boneOrder(bones: readonly FrameRigBone[]): number[] {
   const order: number[] = []
   const placed = new Set<number>()
   const visit = (index: number, path: Set<number>) => {
