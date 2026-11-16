@@ -64,7 +64,7 @@ The upstream review of 2026-10-26 created this list. Commits that the fork took 
 - **What it adds:** A context that mounts a Stage claims a speech-player role, and every chat action runs in a speech player. Without one, the leader runs them silently.
 - **Why it matters here:** In upstream's web app with several tabs, a tab without a Stage can win the leader election. Replies then generate in that tab, and nothing speaks them. The desktop app is not affected: only the main window mounts a Stage, and it is the only window that can lead.
 - **Fork conflicts (2026-10-26):** 2 files, `Stage.vue` and `chat.ts`. The change also moves chat actions away from the leader, while the fork's presence turns rely on the leader running them.
-- **Revisit when:** The desktop app mounts a Stage in more than one window, or upstream settles which Stage tab speaks. Upstream's own review note says that with several Stage tabs, an arbitrary one speaks and a cancel can miss its turn.
+- **Revisit when:** A desktop window without a Stage can become the leader, more than one window mounts a Stage, or upstream settles which Stage tab speaks. Upstream's own review note says that with several Stage tabs, an arbitrary one speaks and a cancel can miss its turn.
 - **Search terms:** `speech player`, `syncedRoles`, `pinia-plugin-synced`, `Stage tab`.
 
 ## Speech text transformation

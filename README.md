@@ -106,10 +106,10 @@ After the app starts, configure a chat provider in Settings > Providers, then ch
 
 | Directory | Contents |
 | --- | --- |
-| `apps/` | Host apps for desktop and web |
+| `apps/` | The desktop app and upstream's component-calling demo |
 | `packages/` | Shared UI, chat orchestration, Live2D/VRM/MMD renderers, audio, providers, and i18n |
 | `engines/` | Godot rendering sidecar |
-| `integrations/` | Discord, Telegram, Minecraft, and VS Code integrations inherited from upstream |
+| `integrations/` | Discord, Minecraft, and VS Code integrations inherited from upstream |
 | `plugins/`, `services/` | AIRI plugins and the computer-use service |
 | `server/` | Hosted backend inherited from upstream; the clients do not use it |
 | `docs/ai/adr/` | Design decisions for this fork |
