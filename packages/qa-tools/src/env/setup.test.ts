@@ -13,7 +13,7 @@ afterEach(() => {
 })
 
 describe('setupCubism', () => {
-  it('downloads both missing app copies, skips present copies, and replaces them with force', async () => {
+  it('downloads a missing app copy, skips a present copy, and replaces them with force', async () => {
     const root = mkdtempSync(join(tmpdir(), 'qa-setup-'))
     roots.push(root)
     const downloads: string[] = []
@@ -30,20 +30,16 @@ describe('setupCubism', () => {
 
     expect(await setupCubism(root, false, download)).toEqual([
       'downloaded apps/stage-tamagotchi',
-      'downloaded apps/stage-web',
     ])
-    expect(existsSync(join(root, 'apps/stage-web/public/assets/js/CubismSdkForWeb-5-r.3/Core/live2dcubismcore.min.js'))).toBe(true)
+    expect(existsSync(join(root, 'apps/stage-tamagotchi/public/assets/js/CubismSdkForWeb-5-r.3/Core/live2dcubismcore.min.js'))).toBe(true)
     expect(await setupCubism(root, false, download)).toEqual([
       'skip apps/stage-tamagotchi: Cubism Core already exists',
-      'skip apps/stage-web: Cubism Core already exists',
     ])
-    expect(downloads).toHaveLength(2)
+    expect(downloads).toHaveLength(1)
     await setupCubism(root, true, download)
     expect(downloads).toEqual([
       join(root, 'apps/stage-tamagotchi'),
-      join(root, 'apps/stage-web'),
       join(root, 'apps/stage-tamagotchi'),
-      join(root, 'apps/stage-web'),
     ])
   })
 })

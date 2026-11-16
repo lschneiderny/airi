@@ -90,7 +90,6 @@ export const extraTestConfigs: ExtraTestConfig[] = [
   { config: 'packages/stage-ui-three/vitest.config.ts', project: 'browser' },
   { config: 'packages/stage-ui-mmd/vitest.config.ts', project: 'browser' },
   { config: 'packages/stage-pages/vitest.config.ts' },
-  { config: 'apps/stage-web/vitest.config.ts', project: 'browser' },
   { config: 'packages/audio/vitest.config.ts', project: 'browser' },
 ]
 

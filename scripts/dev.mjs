@@ -4,7 +4,7 @@
 // Every `.cmd` layer makes `cmd.exe` ask "Terminate batch job (Y/N)?" after Ctrl+C.
 //
 // Usage: node scripts/dev.mjs <package-dir> <script> [args...]
-// Example: node scripts/dev.mjs apps/stage-web dev --port 3000
+// Example: node scripts/dev.mjs apps/stage-tamagotchi dev --port 3000
 
 import process from 'node:process'
 

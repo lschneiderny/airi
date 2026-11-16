@@ -4,8 +4,6 @@ import { defineConfig } from 'vitest/config'
 // eslint-disable-next-line no-restricted-syntax -- Vite's native config loader, its planned default, resolves a relative import only with its extension.
 import { stageTamagotchiBrowserProject } from './apps/stage-tamagotchi/vitest.browser-project.ts'
 // eslint-disable-next-line no-restricted-syntax -- Vite's native config loader, its planned default, resolves a relative import only with its extension.
-import { stageWebBrowserProject } from './apps/stage-web/vitest.browser-project.ts'
-// eslint-disable-next-line no-restricted-syntax -- Vite's native config loader, its planned default, resolves a relative import only with its extension.
 import { audioBrowserProject } from './packages/audio/vitest.browser-project.ts'
 // eslint-disable-next-line no-restricted-syntax -- Vite's native config loader, its planned default, resolves a relative import only with its extension.
 import { modelDriverLipsyncBrowserProject } from './packages/model-driver-lipsync/vitest.browser-project.ts'
@@ -34,7 +32,6 @@ export default withCpuSlots(defineConfig({
       { project: stageTamagotchiBrowserProject, name: 'stage-tamagotchi:browser' },
       { project: providerInferenceBrowserProject, name: 'provider-inference:browser' },
       { project: stagePagesBrowserProject, name: 'stage-pages:browser' },
-      { project: stageWebBrowserProject, name: 'stage-web:browser' },
     ].map(({ project, name }) => ({ ...project, test: { ...project.test, name } })),
   },
 }))

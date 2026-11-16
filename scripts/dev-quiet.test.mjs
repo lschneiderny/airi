@@ -42,11 +42,11 @@ describe('quiet dev output', () => {
   it('plans a filename safe on Windows under the repository root', () => {
     const path = planDevLogPath({
       rootDir,
-      packageName: '@proj-airi/stage-web',
-      scriptName: 'dev:https',
+      packageName: '@proj-airi/stage-tamagotchi',
+      scriptName: 'dev:xwayland',
       timestamp: '2026-11-07T23:00:00.123Z',
     })
-    expect(path).toBe(join(rootDir, '.temp/dev/proj-airi-stage-web-dev-https-2026-11-07T23-00-00.123Z.log'))
+    expect(path).toBe(join(rootDir, '.temp/dev/proj-airi-stage-tamagotchi-dev-xwayland-2026-11-07T23-00-00.123Z.log'))
   })
 
   it('resolves an override from the repository root', () => {

@@ -26,7 +26,6 @@ describe('testRunSuites', () => {
       'pnpm exec vitest run',
       'pnpm exec vitest run --config vitest.browser.config.ts --project provider-inference:browser',
       'pnpm run test-stage-tamagotchi:run',
-      'pnpm run test-stage-web:run',
       'pnpm run test-stage-pages:run',
       'pnpm run test-ui:run',
       'pnpm run test-stage-ui-live2d:run',

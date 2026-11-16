@@ -1,7 +1,7 @@
 # Stage Tamagotchi
 
 The Electron desktop app runs AIRI characters, chat, voice, and desktop tools.
-Shared character behavior belongs in `packages/stage-ui`. Use `stage-web` for browser-only features.
+Shared character behavior belongs in `packages/stage-ui`.
 
 ## Development
 

@@ -66,8 +66,8 @@ describe('verify gate and typecheck planning', () => {
   })
 
   it('uses package directories for affected typechecks including dependents', () => {
-    expect(typecheckFilters({ kind: 'affected' }, ['packages/audio', 'apps/stage-web']))
-      .toEqual(['--filter=...{./packages/audio}', '--filter=...{./apps/stage-web}'])
+    expect(typecheckFilters({ kind: 'affected' }, ['packages/audio', 'apps/stage-tamagotchi']))
+      .toEqual(['--filter=...{./packages/audio}', '--filter=...{./apps/stage-tamagotchi}'])
     expect(typecheckFilters({ kind: 'none' }, [])).toEqual([])
     expect(typecheckFilters({ kind: 'all', reason: 'root config' }, []))
       .toEqual(['-F=./packages/*', '-F=./apps/*', '-F=./server/**', '-F=./services/*'])
@@ -82,7 +82,7 @@ describe('verify gate and typecheck planning', () => {
     ['packages/stage-layouts/src/index.ts', true],
     ['scripts/dev-tools/verify.ts', false],
     ['packages/stage-shared/README.md', false],
-    ['apps/stage-web/src/main.ts', false],
+    ['apps/component-calling/src/main.ts', false],
   ])('classifies gate smoke coverage for %s', (path, expected) => {
     expect(touchesAppRuntime([{ path, deleted: true }])).toBe(expected)
   })

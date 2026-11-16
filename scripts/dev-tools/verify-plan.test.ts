@@ -98,12 +98,12 @@ describe('planTestRuns', () => {
   })
 
   it('gives every browser project its own Vitest process, so no process holds two Vite roots', () => {
-    const runs = planTestRuns(['stage-ui:browser', 'stage-pages:browser', 'stage-web:browser'])
+    const runs = planTestRuns(['stage-ui:browser', 'stage-pages:browser', 'stage-tamagotchi:browser'])
     expect(runs).toEqual([
       { config: 'vitest.config.ts', projects: [] },
       { config: 'vitest.browser.config.ts', projects: ['stage-ui:browser'] },
       { config: 'vitest.browser.config.ts', projects: ['stage-pages:browser'] },
-      { config: 'vitest.browser.config.ts', projects: ['stage-web:browser'] },
+      { config: 'vitest.browser.config.ts', projects: ['stage-tamagotchi:browser'] },
     ])
   })
 })

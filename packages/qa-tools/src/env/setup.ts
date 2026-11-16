@@ -5,14 +5,14 @@ import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-/** Downloads through the same SDK implementation as both app Vite plugins, without starting Vite. */
+/** Downloads through the same SDK implementation as the app Vite plugin, without starting Vite. */
 export async function setupCubism(
   repoRoot: string,
   force: boolean,
   download?: (appRoot: string) => Promise<void>,
 ): Promise<string[]> {
   const messages: string[] = []
-  for (const app of ['stage-tamagotchi', 'stage-web']) {
+  for (const app of ['stage-tamagotchi']) {
     const appRoot = join(repoRoot, 'apps', app)
     const core = join(appRoot, 'public/assets/js/CubismSdkForWeb-5-r.3/Core/live2dcubismcore.min.js')
     if (!force && existsSync(core)) {

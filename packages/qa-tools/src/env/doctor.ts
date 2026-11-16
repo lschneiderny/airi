@@ -95,7 +95,6 @@ export interface RunDoctorOptions {
 
 const cubismCorePaths = [
   'apps/stage-tamagotchi/public/assets/js/CubismSdkForWeb-5-r.3/Core/live2dcubismcore.min.js',
-  'apps/stage-web/public/assets/js/CubismSdkForWeb-5-r.3/Core/live2dcubismcore.min.js',
 ] as const
 
 const rigEnvNames = ['AIRI_QA_RIG_FORBOOTH', 'AIRI_QA_RIG_BEAR'] as const
@@ -233,7 +232,7 @@ function createDoctorChecks(probes: DoctorProbes): DoctorCheck[] {
       run: () => {
         const missing = cubismCorePaths.filter(path => !probes.exists(path))
         if (missing.length === 0)
-          return ok('Cubism core exists for stage-tamagotchi and stage-web')
+          return ok('Cubism core exists for stage-tamagotchi')
         return {
           status: 'fail',
           detail: `missing ${missing.join(', ')}`,

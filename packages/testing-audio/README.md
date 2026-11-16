@@ -130,7 +130,7 @@ Run the cases on both hosts:
 pnpm -F @proj-airi/testing-audio test:run cases/wake-word
 ```
 
-For one host, build its app and select `--project audio-web` or `--project audio-electron`.
+The desktop app is the only host: build it and select `--project audio-electron`.
 
 ## Provider environment
 
@@ -181,13 +181,12 @@ Use existing builds:
 pnpm -F @proj-airi/testing-audio test:existing-builds
 ```
 
-Run one runtime project:
+Run the runtime project:
 
 ```bash
-pnpm -F @proj-airi/testing-audio exec vitest run --project audio-web
 pnpm -F @proj-airi/testing-audio exec vitest run --project audio-electron
 ```
 
-Use `*.audio.web.test.ts` for Web-only cases. Use `*.audio.electron.test.ts` for Electron-only cases. The `*.audio.test.ts` pattern runs in both projects.
+Name cases `*.audio.test.ts` or `*.audio.electron.test.ts`; both run in the `audio-electron` project.
 
 Do not use Vitest Browser Mode for these cases. Each task needs a case-specific Chromium fake-microphone process argument.

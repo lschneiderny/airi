@@ -10,7 +10,6 @@ import { createSystemProbes, runDoctor, runWarm } from './doctor'
 
 const cubismPaths = [
   'apps/stage-tamagotchi/public/assets/js/CubismSdkForWeb-5-r.3/Core/live2dcubismcore.min.js',
-  'apps/stage-web/public/assets/js/CubismSdkForWeb-5-r.3/Core/live2dcubismcore.min.js',
 ]
 
 function healthyProbes(overrides: Partial<DoctorProbes> = {}): DoctorProbes {
