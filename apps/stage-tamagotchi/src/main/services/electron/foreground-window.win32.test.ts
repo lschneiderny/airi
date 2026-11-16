@@ -20,7 +20,8 @@ describe.runIf(process.platform === 'win32')('createForegroundWindowService with
     // A test process has no guaranteed foreground window (CI, a locked desktop), so null is valid.
     const context = createContext()
     createForegroundWindowService({ context: context as never, window: { once: vi.fn() } as never })
-    const read = defineInvoke(context, electron.foregroundWindow.sample)
+    const sample = defineInvoke(context, electron.foregroundWindow.sample)
+    const read = () => sample({ blockedApps: [] })
 
     for (let i = 0; i < 50; i++) {
       const sample = await read()

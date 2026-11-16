@@ -56,7 +56,7 @@ describe('createLinuxSampler', () => {
     const bridge = createBridge()
     bridge.active = konsole
 
-    expect(createLinuxSampler(bridge, () => false)()).toEqual({
+    expect(createLinuxSampler(bridge, () => false)()?.sample).toEqual({
       title: 'luke@host:~',
       pid: 4321,
       exePath: '/usr/bin/konsole',
@@ -66,6 +66,15 @@ describe('createLinuxSampler', () => {
       sampledAtMs: expect.any(Number),
     })
     expect(fsMock.readlinkSync).toHaveBeenCalledExactlyOnceWith('/proc/4321/exe')
+  })
+
+  it('lists the executable, the window class and the desktop file name for the block list', () => {
+    const bridge = createBridge()
+    // An Electron app started through the shared runtime: only the class and desktop file name identify it.
+    bridge.active = { caption: 'Vault', resourceClass: 'Bitwarden', desktopFileName: 'bitwarden', pid: 4321, fullScreen: false }
+    fsMock.links.set('/proc/4321/exe', '/usr/lib/electron/electron')
+
+    expect(createLinuxSampler(bridge, () => false)()?.appNames).toEqual(['electron', 'Bitwarden', 'bitwarden'])
   })
 
   it('returns null when no window is active', () => {
@@ -87,14 +96,14 @@ describe('createLinuxSampler', () => {
     const bridge = createBridge()
     bridge.active = { ...konsole, pid: 77 }
 
-    expect(createLinuxSampler(bridge, () => false)()).toMatchObject({ pid: 77, exePath: null, exeName: 'org.kde.konsole' })
+    expect(createLinuxSampler(bridge, () => false)()?.sample).toMatchObject({ pid: 77, exePath: null, exeName: 'org.kde.konsole' })
   })
 
   it('reports a null exeName when neither the link nor the resource class is known', () => {
     const bridge = createBridge()
     bridge.active = { ...konsole, pid: 77, resourceClass: '' }
 
-    expect(createLinuxSampler(bridge, () => false)()).toMatchObject({ exePath: null, exeName: null })
+    expect(createLinuxSampler(bridge, () => false)()?.sample).toMatchObject({ exePath: null, exeName: null })
   })
 
   it('never reads the command line or environment of the window process', () => {
@@ -112,7 +121,7 @@ describe('createLinuxSampler', () => {
     bridge.active = konsole
     const isOwnProcess = vi.fn((pid: number) => pid === 4321)
 
-    expect(createLinuxSampler(bridge, isOwnProcess)()).toMatchObject({ ownProcess: true })
+    expect(createLinuxSampler(bridge, isOwnProcess)()?.sample).toMatchObject({ ownProcess: true })
     expect(isOwnProcess).toHaveBeenCalledWith(4321)
   })
 
@@ -127,7 +136,7 @@ describe('createLinuxSampler', () => {
     bridge.active = { ...konsole, fullScreen }
     bridge.busy = hint
 
-    expect(createLinuxSampler(bridge, () => false)()).toMatchObject({ busy: expected })
+    expect(createLinuxSampler(bridge, () => false)()?.sample).toMatchObject({ busy: expected })
   })
 })
 

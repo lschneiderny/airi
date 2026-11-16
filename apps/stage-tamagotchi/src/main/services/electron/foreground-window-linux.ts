@@ -34,22 +34,29 @@ function readExePath(pid: number): string | null {
  * Returns:
  * - A synchronous read of the last pushed reading; it never queries the compositor.
  *   The title is untrusted and raw; presence consumers normalize and cap it and nothing here logs it.
+ * - `appNames` lists every name the block list may match: the executable, the window class, and the desktop
+ *   file name. Apps that share one `electron` or `python` executable differ only in the last two.
+ *   These names stay in the main process; only `sample` crosses IPC.
  */
 export function createLinuxSampler(bridge: Pick<LinuxDesktopBridge, 'activeWindow' | 'busyHint'>, isOwnProcess: (pid: number) => boolean) {
-  return function sample(): ForegroundWindowSample | null {
+  return function read(): { sample: ForegroundWindowSample, appNames: readonly (string | null)[] } | null {
     const active = bridge.activeWindow()
     if (!active)
       return null
 
     const exePath = readExePath(active.pid)
+    const exeName = exePath != null ? posix.basename(exePath) : active.resourceClass || null
     return {
-      exePath,
-      exeName: exePath != null ? posix.basename(exePath) : active.resourceClass || null,
-      title: active.caption,
-      pid: active.pid,
-      ownProcess: isOwnProcess(active.pid),
-      busy: active.fullScreen ? 'fullscreen' : bridge.busyHint() ?? 'accepts',
-      sampledAtMs: Date.now(),
+      sample: {
+        exePath,
+        exeName,
+        title: active.caption,
+        pid: active.pid,
+        ownProcess: isOwnProcess(active.pid),
+        busy: active.fullScreen ? 'fullscreen' : bridge.busyHint() ?? 'accepts',
+        sampledAtMs: Date.now(),
+      },
+      appNames: [exeName, active.resourceClass, active.desktopFileName],
     }
   }
 }

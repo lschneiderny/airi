@@ -696,6 +696,25 @@ describe('situation store', () => {
     expect(store.renderForRequest(Date.now())).toContain('- Now: Notepad (other): notes.txt')
   })
 
+  it('forgets the foreground app when the block list changes, and reads an allowed app again', async () => {
+    const leadership = createLeadership(true)
+    const store = useSituationStore()
+    store.initialize(leadership.runtime)
+    store.setStageVisible(true)
+    const foreground = useForegroundWindowStore()
+    foreground.setSample(foregroundSample({ title: 'secret plans.txt - Notepad' }))
+    expect(store.state.activity).toMatchObject({ appId: 'notepad' })
+
+    // The host answers nothing for a blocked app, so no later reading would replace what the state holds.
+    await useSituationSettings().update({ blockedApps: ['notepad.exe'] })
+
+    expect(store.state.activity).toBeNull()
+    expect(JSON.stringify({ block: store.renderForRequest(Date.now()), state: store.state })).not.toMatch(/notepad|secret/iu)
+
+    foreground.setSample(foregroundSample({ exePath: 'C:\\Apps\\Code.exe', exeName: 'Code.exe', title: 'main.ts' }))
+    expect(store.state.activity).toMatchObject({ appId: 'code', title: 'main.ts' })
+  })
+
   it('ignores the web extension while browser sharing is off, and forgets what it already shared', async () => {
     const leadership = createLeadership(true)
     const store = useSituationStore()

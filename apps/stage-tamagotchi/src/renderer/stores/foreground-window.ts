@@ -6,6 +6,7 @@ import { errorMessageFrom } from '@moeru/std'
 import { electron } from '@proj-airi/electron-eventa'
 import { getElectronEventaContext } from '@proj-airi/electron-vueuse'
 import { useForegroundWindowStore } from '@proj-airi/stage-shared/stores/foreground-window'
+import { useSituationSettings } from '@proj-airi/stage-ui/features/situation/settings'
 import { defineStore } from 'pinia'
 import { computed, effectScope, shallowRef, watch } from 'vue'
 
@@ -31,6 +32,10 @@ export const HIDDEN_SAMPLE_INTERVAL_MS = 5000
  *   renderer polls the main process
  * - The window lifecycle bridge is initialized, so visibility is known
  *
+ * - Each read carries the `blockedApps` setting, and the main process answers `null` for a blocked app or a
+ *   private browser window, so neither is written to the shared store. The caller restarts the producer when
+ *   the list changes, which drops a reply requested under the previous list
+ *
  * Returns:
  * - `start`/`stop`, both idempotent, and `polling` for diagnostics
  *
@@ -42,6 +47,7 @@ export const HIDDEN_SAMPLE_INTERVAL_MS = 5000
 export const useForegroundWindowProducerStore = defineStore('foreground-window-producer', () => {
   const foregroundWindow = useForegroundWindowStore()
   const windowLifecycle = useStageWindowLifecycleStore()
+  const situationSettings = useSituationSettings()
 
   /** Whether the foreground poll is running, at either cadence. */
   const polling = shallowRef(false)
@@ -99,7 +105,8 @@ export const useForegroundWindowProducerStore = defineStore('foreground-window-p
     if (scope)
       return
 
-    const readForegroundWindow = defineInvoke(getElectronEventaContext(), electron.foregroundWindow.sample)
+    const invokeSample = defineInvoke(getElectronEventaContext(), electron.foregroundWindow.sample)
+    const readForegroundWindow = () => invokeSample({ blockedApps: [...situationSettings.document.blockedApps] })
     polling.value = true
     void sample(readForegroundWindow)
     schedule(readForegroundWindow, stageVisible.value)

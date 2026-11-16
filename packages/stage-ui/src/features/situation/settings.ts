@@ -9,16 +9,29 @@ import { defineStore } from 'pinia'
 import { array, boolean, check, number, optional, parse, pipe, safeParse, strictObject, string, transform, unknown } from 'valibot'
 import { shallowRef, toRaw } from 'vue'
 
-/** Trims exe-name glob entries and drops blank or repeated ones, so a newline-separated draft stores only usable patterns. */
-function exePatterns(defaults: readonly string[]) {
+/**
+ * Trims app-name glob entries and drops blank or repeated ones, so a newline-separated draft stores only usable
+ * patterns. `defaultsFor` picks the default entries of the host platform; it never changes a user list.
+ */
+function appPatterns(defaultsFor: (platform: string | undefined) => readonly string[]) {
   return optional(
     pipe(array(string()), transform(entries => uniq(entries.map(entry => entry.trim()).filter(entry => entry !== '')))),
-    () => {
-      const platform = typeof window !== 'undefined' && isElectronWindow(window) ? window.platform : undefined
-      // Defaults have explicit suffixes. Keep only host-supported entries, without changing user lists.
-      return defaults.filter(pattern => withoutAppExtension(pattern, platform) !== pattern)
-    },
+    () => [...defaultsFor(typeof window !== 'undefined' && isElectronWindow(window) ? window.platform : undefined)],
   )
+}
+
+/** Quiet-app defaults have explicit suffixes; a host keeps the entries whose suffix it strips. */
+const QUIET_APP_DEFAULTS = ['zoom.exe', 'ms-teams.exe', 'teams.exe', 'webex*.exe', 'zoom.us.app', 'Microsoft Teams.app', 'FaceTime.app', 'Webex*.app']
+
+/**
+ * Password managers and keyrings, per host. Linux entries are wildcards because the block list is matched against
+ * the executable, the window class, and the desktop file name, which spell one app differently
+ * (`keepassxc`, `org.keepassxc.KeePassXC`). A host without a foreground reader has no defaults.
+ */
+const BLOCKED_APP_DEFAULTS: Record<string, readonly string[]> = {
+  win32: ['1password*.exe', 'keepass*.exe', 'bitwarden.exe', 'keepassxc.exe'],
+  darwin: ['1Password*.app', 'Bitwarden.app', 'KeePassXC.app', 'Passwords.app', 'Keychain Access.app'],
+  linux: ['*1password*', '*keepass*', '*bitwarden*', '*kwallet*', '*seahorse*', 'org.gnome.World.Secrets', '*proton*pass*', '*enpass*'],
 }
 
 const situationSettingsEntries = {
@@ -41,9 +54,14 @@ const situationSettingsEntries = {
    */
   shareBrowserActivity: optional(boolean(), true),
   /** Foreground app-name globs (Windows `.exe`, macOS `.app`) during which the character stays quiet. */
-  quietApps: exePatterns(['zoom.exe', 'ms-teams.exe', 'teams.exe', 'webex*.exe', 'zoom.us.app', 'Microsoft Teams.app', 'FaceTime.app', 'Webex*.app']),
-  /** Foreground app-name globs (Windows `.exe`, macOS `.app`) whose window titles are never recorded. */
-  titleDenylist: exePatterns(['1password*.exe', 'keepass*.exe', 'bitwarden.exe', 'keepassxc.exe', '1Password*.app', 'Bitwarden.app', 'KeePassXC.app', 'Passwords.app', 'Keychain Access.app']),
+  quietApps: appPatterns(platform => QUIET_APP_DEFAULTS.filter(pattern => withoutAppExtension(pattern, platform) !== pattern)),
+  /**
+   * App-name globs the character never sees. The Electron main process drops a foreground reading of these apps
+   * before it reaches a renderer, so their name, category, and window title appear in no situation, prompt, or log.
+   * An entry matches the executable or bundle name with or without `.exe`/`.app`, and on Linux also the window
+   * class and the desktop file name.
+   */
+  blockedApps: appPatterns(platform => BLOCKED_APP_DEFAULTS[platform ?? ''] ?? []),
   /** False hides the chat cue that marks an unprompted turn. @default true */
   showUnpromptedCue: optional(boolean(), true),
   /** False keeps the character quiet while a game is in the foreground, except for urgent notifications. @default true */

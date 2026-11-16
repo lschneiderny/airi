@@ -10,6 +10,7 @@ export {
 } from './electron/index'
 export type {
   BackgroundMaterialType,
+  ForegroundWindowRequest,
   ForegroundWindowSample,
   ResizeDirection,
   VibrancyType,

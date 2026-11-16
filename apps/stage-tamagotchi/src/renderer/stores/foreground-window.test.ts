@@ -1,8 +1,9 @@
-import type { ForegroundWindowSample } from '@proj-airi/electron-eventa'
+import type { ForegroundWindowRequest, ForegroundWindowSample } from '@proj-airi/electron-eventa'
 
 import { createContext, defineInvokeHandler } from '@moeru/eventa'
 import { electron } from '@proj-airi/electron-eventa'
 import { useForegroundWindowStore } from '@proj-airi/stage-shared/stores/foreground-window'
+import { useSituationSettings } from '@proj-airi/stage-ui/features/situation/settings'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
@@ -46,6 +47,7 @@ describe('useForegroundWindowProducerStore', async () => {
 
   let pinia: ReturnType<typeof createPinia>
   let reads: number
+  let requests: ForegroundWindowRequest[]
   let reply: SampleReply
 
   beforeEach(() => {
@@ -56,9 +58,11 @@ describe('useForegroundWindowProducerStore', async () => {
     const context = createContext<unknown, { raw?: unknown }>()
     boundary.context = context
     reads = 0
+    requests = []
     reply = async () => windowSample('Notepad.exe')
-    defineInvokeHandler(context, electron.foregroundWindow.sample, () => {
+    defineInvokeHandler(context, electron.foregroundWindow.sample, (request) => {
       reads += 1
+      requests.push(request)
       return reply()
     })
   })
@@ -86,6 +90,19 @@ describe('useForegroundWindowProducerStore', async () => {
 
     await vi.advanceTimersByTimeAsync(3000)
     expect(reads).toBe(5)
+  })
+
+  it('sends the current block list with every read', async () => {
+    const producer = useForegroundWindowProducerStore()
+    const settings = useSituationSettings()
+    await settings.update({ blockedApps: ['keepassxc'] })
+
+    producer.start()
+    await vi.advanceTimersByTimeAsync(0)
+    await settings.update({ blockedApps: ['keepassxc', '*bitwarden*'] })
+    await vi.advanceTimersByTimeAsync(1000)
+
+    expect(requests).toEqual([{ blockedApps: ['keepassxc'] }, { blockedApps: ['keepassxc', '*bitwarden*'] }])
   })
 
   it('keeps polling at the slower hidden cadence while the stage is minimized or hidden', async () => {

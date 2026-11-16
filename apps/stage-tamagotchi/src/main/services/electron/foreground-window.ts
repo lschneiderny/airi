@@ -9,6 +9,7 @@ import process from 'node:process'
 import { useLogg } from '@guiiai/logg'
 import { defineInvokeHandler } from '@moeru/eventa'
 import { errorMessageFrom } from '@moeru/std'
+import { isBlockedApp, isPrivateWindowTitle } from '@proj-airi/stage-shared/situation'
 import { app } from 'electron'
 import { isLinux, isMacOS, isWindows } from 'std-env'
 
@@ -36,6 +37,31 @@ function linuxVerifierFor(bridge: LinuxDesktopBridge) {
   return verifier
 }
 
+/** A sample and every name the block list may match for its app. Only the sample crosses IPC. */
+interface ForegroundReading {
+  sample: ForegroundWindowSample
+  appNames: readonly (string | null)[]
+}
+
+/** Windows and macOS know an app by its executable or bundle only. */
+function withExeNames(read: () => ForegroundWindowSample | null) {
+  return (): ForegroundReading | null => {
+    const sample = read()
+    return sample && { sample, appNames: [sample.exeName, sample.exePath] }
+  }
+}
+
+/**
+ * Whether a reading must stay in the main process: its app is on the user's block list, or its title marks a
+ * private browser window. AIRI's own windows always pass, because the renderer needs them to learn AIRI's own app
+ * id and to read busy.
+ */
+function isHiddenFromPresence(reading: ForegroundReading, blockedApps: readonly string[]): boolean {
+  if (reading.sample.ownProcess)
+    return false
+  return isPrivateWindowTitle(reading.sample.title) || isBlockedApp(reading.appNames, blockedApps, process.platform)
+}
+
 /**
  * Answers the renderer's foreground window reads through native calls over koffi.
  *
@@ -49,10 +75,12 @@ function linuxVerifierFor(bridge: LinuxDesktopBridge) {
  * - `bridge` is the Linux desktop bridge on Linux. Its active-window reading backs the sampler,
  *   and this window's focus events verify that reading against AIRI's own pids
  * - koffi loads lazily on the first read, once per window, and never at module load
+ * - Each read carries the user's block list. The service holds no copy of it, so a change applies to the next read
  *
  * Returns:
  * - Nothing; the handler goes with the window, or with the app if it quits first.
  *   Reads resolve `null` off Windows/macOS and after a failed koffi load, instead of rejecting.
+ *   They also resolve `null` for a blocked app and for a private browser window, so neither reaches a renderer.
  */
 export function createForegroundWindowService(params: {
   context: ReturnType<typeof createContext>['context']
@@ -64,7 +92,7 @@ export function createForegroundWindowService(params: {
 
   // One load attempt per window. Concurrent first reads share it, and a failed load stays
   // failed so a 1 Hz poll cannot retry it every second.
-  let sampler: Promise<(() => ForegroundWindowSample | null) | null> | undefined
+  let sampler: Promise<(() => ForegroundReading | null) | null> | undefined
 
   function isOwnProcess(pid: number): boolean {
     // `app.getAppMetrics()` lists only Electron processes, so the Godot stage sidecar comes from
@@ -77,9 +105,9 @@ export function createForegroundWindowService(params: {
   function getSampler() {
     // On Linux the snapshot gate below keeps reads off until the bridge is ready and verified.
     sampler ??= (isWindows
-      ? loadWin32Binding().then(binding => createWin32Sampler(binding, isOwnProcess))
+      ? loadWin32Binding().then(binding => withExeNames(createWin32Sampler(binding, isOwnProcess)))
       : isMacOS
-        ? loadDarwinBinding().then(binding => createDarwinSampler(binding, isOwnProcess))
+        ? loadDarwinBinding().then(binding => withExeNames(createDarwinSampler(binding, isOwnProcess)))
         : Promise.resolve(linuxBridge ? createLinuxSampler(linuxBridge, isOwnProcess) : null)).catch((error) => {
       reportForegroundBindingFailed()
       log.withError(error).warn(`foreground window sampling is unavailable: ${errorMessageFrom(error) ?? 'koffi failed to load'}`)
@@ -88,12 +116,13 @@ export function createForegroundWindowService(params: {
     return sampler
   }
 
-  const offSample = defineInvokeHandler(params.context, electron.foregroundWindow.sample, async () => {
+  const offSample = defineInvokeHandler(params.context, electron.foregroundWindow.sample, async ({ blockedApps }) => {
     // A degraded snapshot (untrusted macOS window titles) still samples; an unavailable one never does.
     if (getCurrentHostCapabilities().signals.foregroundWindow.kind === 'unavailable')
       return null
-    const sample = await getSampler()
-    return sample?.() ?? null
+    const read = await getSampler()
+    const reading = read?.() ?? null
+    return reading && !isHiddenFromPresence(reading, blockedApps) ? reading.sample : null
   })
 
   const onFocus = linuxBridge ? () => linuxVerifierFor(linuxBridge).focused(isOwnProcess) : undefined

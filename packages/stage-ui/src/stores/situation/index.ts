@@ -335,8 +335,10 @@ export const useSituationStore = defineStore('situation', () => {
   // The foreground sensor stops reporting by itself; what it reported earlier must leave the state too, so the next
   // prompt carries no app or title. Followers hold the initial state, and the situation is neither synced nor
   // persisted, so this watcher writes no replicated state.
-  watch(() => settings.document.shareForegroundWindow, (sharing) => {
-    if (!sharing && leading.value)
+  // A changed block list does the same: the state may hold an app that is blocked now, and no later reading
+  // would replace it, because the host stays silent about a blocked app. An app that is still allowed is read again.
+  watch([() => settings.document.shareForegroundWindow, () => settings.document.blockedApps.join('\n')], ([sharing, blockedApps], [, previousBlockedApps]) => {
+    if ((!sharing || blockedApps !== previousBlockedApps) && leading.value)
       current.value = forgetForeground(current.value)
   }, { flush: 'sync' })
 

@@ -37,4 +37,4 @@ The stage adds them to the character's situation, which goes to the chat provide
 
 Use it when the character should know what you read or watch in the browser.
 
-Do not use it on pages whose title or link must stay private, unless browser sharing is off. AIRI applies no denylist to the extension.
+Do not use it on pages whose title or link must stay private, unless browser sharing is off. AIRI applies no block list to the extension.

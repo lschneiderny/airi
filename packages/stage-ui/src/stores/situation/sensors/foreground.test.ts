@@ -130,59 +130,29 @@ describe('foreground situation sensor', () => {
     ])
   })
 
-  it('reports a denylisted exe with its app and category but a null title', async () => {
-    const { activities, publish } = run()
-    const settings = useSituationSettings()
-
-    publish(T0, { exePath: 'C:\\Program Files\\1Password\\1Password.exe', exeName: '1Password.exe', title: 'Vault - secret-bank-login' })
-    await settings.update({ titleDenylist: ['notepad.exe'] })
-    publish(T0 + 1_000)
-    publish(T0 + 2_000, { title: 'other secret - Notepad' })
-
-    expect(activities()).toEqual([
-      { kind: 'activity', appId: '1password', label: '1Password', category: 'other', title: null, atMs: T0 },
-      { kind: 'activity', appId: 'notepad', label: 'Notepad', category: 'other', title: null, atMs: T0 + 1_000 },
-    ])
-    expect(JSON.stringify(activities())).not.toMatch(/secret/u)
-  })
-
-  it('drops the title of an app that is denylisted while it stays in front', async () => {
+  it('forgets what it reported when the block list changes, and reports the next sample again', async () => {
     const { activities, publish } = run()
     const settings = useSituationSettings()
 
     publish(T0)
-    await settings.update({ titleDenylist: ['NOTEPAD.EXE'] })
+    // The held sample was read under the previous list, so it reports nothing now.
+    await settings.update({ blockedApps: ['wordpad.exe'] })
+    expect(activities()).toHaveLength(1)
+
     publish(T0 + 1_000)
 
-    expect(activities().map(observation => observation.kind === 'activity' && observation.title)).toEqual(['notes.txt', null])
+    expect(activities().map(observation => observation.kind === 'activity' && observation.atMs)).toEqual([T0, T0 + 1_000])
   })
 
-  it('reports a default-denylisted macOS bundle with its app id and category but a null title', () => {
-    vi.stubEnv('RUNTIME_ENVIRONMENT', 'electron')
-    vi.stubGlobal('window', { electron: {}, platform: 'darwin' })
-    const { activities, publish } = run()
-
-    publish(T0, { exePath: '/Applications/1Password 7.app', exeName: '1Password 7.app', title: 'Vault - secret-bank-login' })
-
-    expect(activities()).toEqual([
-      { kind: 'activity', appId: '1password 7', label: '1Password 7', category: 'other', title: null, atMs: T0 },
-    ])
-    expect(JSON.stringify(activities())).not.toMatch(/secret/u)
-  })
-
-  it('drops the title of a macOS bundle whose denylist entry differs only in case', async () => {
-    vi.stubEnv('RUNTIME_ENVIRONMENT', 'electron')
-    vi.stubGlobal('window', { electron: {}, platform: 'darwin' })
+  it('keeps what it reported when a settings update leaves the block list unchanged', async () => {
     const { activities, publish } = run()
     const settings = useSituationSettings()
-    const macSample = { exePath: '/Applications/Notes.app', exeName: 'Notes.app', title: 'Groceries' }
 
-    publish(T0, macSample)
-    await settings.update({ titleDenylist: ['NOTES.APP'] })
-    publish(T0 + 1_000, macSample)
+    publish(T0)
+    await settings.update({ chattiness: 0.9 })
+    publish(T0 + 1_000)
 
-    expect(activities().map(observation => observation.kind === 'activity' && observation.title)).toEqual(['Groceries', null])
-    expect(activities().map(observation => observation.kind === 'activity' && observation.appId)).toEqual(['notes', 'notes'])
+    expect(activities()).toHaveLength(1)
   })
 
   it.each([
