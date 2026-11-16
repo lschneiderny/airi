@@ -92,7 +92,6 @@ export default withCpuSlots(defineConfig({
           include: ['packages/testing-audio/src/**/*.test.ts'],
         },
       },
-      // Packages without a Vitest config of their own.
       // Root development scripts, such as the `pnpm dev:*` launcher. They belong to no package.
       {
         test: {
