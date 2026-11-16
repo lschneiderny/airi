@@ -95,13 +95,6 @@ export default withCpuSlots(defineConfig({
       // Packages without a Vitest config of their own.
       {
         test: {
-          name: 'telegram-bot',
-          include: ['integrations/telegram-bot/**/*.test.ts'],
-          exclude: ['**/node_modules/**'],
-        },
-      },
-      {
-        test: {
           name: 'twitter-services',
           include: ['integrations/twitter-services/src/**/*.test.ts'],
         },
