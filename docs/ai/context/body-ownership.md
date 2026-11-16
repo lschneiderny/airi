@@ -1,78 +1,183 @@
-# Live2D parameter ownership
+# Body ownership
 
-This is a living document. It records which writer owns each Live2D parameter channel, in what order the writers run, and the rules that decide ownership. The ADRs link here instead of repeating the rule.
+Verified against the code on 2026-11-16 (commit `fac2513b0`). These rules win over ADRs; ADRs record why.
 
-Verified against the code on 2026-11-01 (commit `95e7808d5`). Line numbers are for that tree and drift as code changes. `ADP` is `packages/stage-ui-live2d/src/composables/live2d/natural-motion-adapter.ts`, `MM` is `motion-manager.ts` in the same directory, `MV` is `packages/stage-ui-live2d/src/components/scenes/live2d/Model.vue`, `EC` is `expression-controller.ts`, and `RIG` is `natural-motion/rig-profile.ts`.
+This document states which writer owns each channel of the character's body in each renderer, the order in which the writers run each frame, and how ownership passes from one writer to another. Code is cited by repository path and symbol, never by line number. Terms follow the [domain glossary](glossary.md).
 
-Drivers are Natural, Universal, and MAGIC. Under Universal and MAGIC, Natural is inactive, so its posture weight eases to zero (ADP:317-327) and its face writes stop (ADP:372-373). Those drivers play motion-group curves through the Live2D parameter store.
+Update this document in the same commit as any code change that moves an owner, changes an order, or changes a rule. A new decision still gets an ADR; the rule it sets lands here.
 
-## (a) Channel ownership
+## Live2D
 
-| Channel | Parameters | Natural | Universal and MAGIC | Composition | Sources |
+Live2D has three motion drivers: Natural, Universal, and MAGIC (`packages/stage-ui-live2d/src/composables/live2d/live2d.ts` `Live2DMotionDriver`). The scene passes driver-dependent switches to the model in `packages/stage-ui-live2d/src/components/scenes/Live2D.vue`: idle motions, idle eye animation, and eye tracking reach the model only under Universal, and the auto-blink plugin is switched off under Natural, which blinks on its own. Natural always runs the expression system (`useSettingsLive2d` `live2dExpressionActive`); the user's expression switch applies only to Universal and MAGIC.
+
+Under Universal and MAGIC, Natural is inactive. The adapter eases its posture weight to zero, suspends the controller, and stops its face, blink, and breath writes (`Live2DNaturalMotionAdapter` `compose` in `packages/stage-ui-live2d/src/composables/live2d/natural-motion-adapter.ts`). Every adapter write happens inside the SDK `updateFocus` wrap, which the SDK brackets with `saveParameters` and `loadParameters`, so each write is a stateless overlay on that frame's values.
+
+### Channel ownership
+
+| Channel | Parameters | Natural | Universal and MAGIC | Composition | Code |
 | --- | --- | --- | --- | --- | --- |
-| Eyelids | `ParamEyeLOpen`, `ParamEyeROpen` | Writes each open lid from its current value, with the Natural eyelid factor and blink factor. Skipped when a clip owns the parameter. Only while active. | Motion curves, then expression, then auto blink and light squint, then manual control. Manual control multiplies the open value by `1 - eyeSquint` (MM:725-727). | Natural: function of the current value (not absolute). Manual control: multiply. | ADP:402-405, MM:713-737 |
-| Blink | `ParamEyeLOpen`, `ParamEyeROpen` | Natural blinks feed the eyelid write through `blinkFactor`, only when `autoBlink` is on (ADP:401, 404). | AutoEyeBlink runs in the final stage after expression (MV:607-608). It reports handled through `markHandled()` (MM:393). | Blink factor, applied inside the eyelid write. | ADP:401, MM:294-486, MV:607-608 |
-| Light squint | `ParamEyeLOpen`, `ParamEyeROpen` | Not written by Natural. | Runs in the final stage after blink (MV:613-619). | Narrows the value that blink returns to. | MM:515, MV:613-619 |
-| Brows | `ParamBrowLY`, `ParamBrowRY`, `ParamBrowLAngle`, `ParamBrowRAngle`, `ParamBrowLForm`, `ParamBrowRForm` | Additive offsets on `ParamBrowLY`, `ParamBrowRY`, `ParamBrowLAngle`, and `ParamBrowRAngle` (ADP:94-97, 406-409). Natural does not write the form channels. | Motion curves and expression. Model.vue sets the brows from settings at load and on change (MV:773-780, 1101-1150). | Additive offset under Natural. Absolute from settings elsewhere. | ADP:94-97, 406-409, MV:773-780, MV:1101-1150 |
-| Mouth open | `ParamMouthOpenY` | Adds `silentMouthOpen` to the current value only when neither speech nor the lipsync window is active (ADP:334, 410-413). | Motion curves and expression. Lipsync writes it while speech is active, during release, and during the handoff hold (MM:782, 795, 807). | Lipsync: absolute while speaking, blended during release (MM:801-807), zero during hold (MM:795). Natural: additive, masked. | MM:757-810, ADP:334, 410-413, MV:621-623, MV:631 |
-| Mouth form and cheek | `ParamMouthForm`, `ParamCheek` | Additive face offset from the current value, clamped to the range (ADP:406-409). | Motion curves and expression. Manual control writes `ParamMouthForm` absolutely (MM:734). | Additive offset. | ADP:406-409, MM:734 |
-| Smile | `ParamEyeLSmile`, `ParamEyeRSmile` | Additive face offset (ADP:406-409). | Motion curves and expression. | Additive offset. | ADP:406-409 |
-| Gaze (eyeball) | `ParamEyeBallX`, `ParamEyeBallY` | Natural does not write these directly. At full weight, Natural skips the SDK focus call (ADP:366-369). | SDK focus adds to these values when `updateFocus` runs. Manual control writes them absolutely (MM:723-724). IdleDisable and IdleFocus manage the idle curves (MM:257-292). | SDK focus is additive (SDK:5439-5440). Manual control is absolute. | ADP:366-369, MM:723-724, SDK:5439-5440 |
-| Head angles | `ParamAngleX`, `ParamAngleY`, `ParamAngleZ` | Posture. At weight 1, the command overwrites the parameter. Below 1, it eases from the current value. Clip-owned channels keep `clipResidual` (0.1) of the offset, scaled by weight (ADP:385-391). | Motion curves. Manual control writes absolutely (MM:728-730). SDK focus adds `x * 30` and `y * 30` (SDK:5441-5443) when weight is below 1. | Absolute overwrite at full weight (`written = natural`, ADP:391). Eased blend below full weight. | ADP:376-396, MM:728-730, SDK:5441-5443 |
-| Body angles | `ParamBodyAngleX`, `ParamBodyAngleY`, `ParamBodyAngleZ` | Posture, same rule as head. A `null` command skips the write because physics derives that axis (ADP:381-384). | Motion curves. Manual control writes absolutely (MM:731-733). SDK focus adds `x * 10` to `ParamBodyAngleX` (SDK:5444). | Absolute overwrite at full weight, as for head. | ADP:376-396, MM:731-733, SDK:5444 |
-| Breath | `ParamBreath` | Absolute write from the Natural breath value, skipped while manual breath control is active (ADP:414-415). | Motion curves. Breath control writes the manual curve only while active (MM:79-99). The SDK breath pass is deleted for every driver (MM:69-71, MV:529). | Absolute. | ADP:414-415, MM:69-99, MV:529, MV:787 |
-| Expression parameters | Any parameter in an `.exp3.json` file | Not written by Natural. | Expression composes in the final stage (MM:698-705, EC:89-101). Each parameter uses its blend mode: Multiply, Overwrite, or Add (EC:70). | Add, multiply, or overwrite per parameter, on the value the motion writers left this frame (`expression/compose.ts:113-140`). | EC:70, EC:85-101, MM:698-705, MV:599 |
-| Physics outputs | Destinations of physics outputs with non-zero weight | Never written. Natural drops these channels from its channel list (ADP:221-226, skipped count at ADP:365). | Physics writes them after the SDK focus step (SDK:5432). | Not composed by Natural. | RIG:126-131, ADP:221-226, ADP:365, SDK:5432 |
-| Clip-owned parameters | Parameters a gesture clip animates | Posture uses the 0.1 residual (ADP:388-389). Face writes skip clip-owned channels (ADP:400, 402-415). | Motion curves only. | Residual for posture, skip for face. | ADP:388-389, ADP:400-415, MV:689 |
+| Eyelids | `ParamEyeLOpen`, `ParamEyeROpen` | On idle frames the idle-disable plugin writes the saved open values and stops motions. Expression, light squint, and manual control then act on the result. The adapter writes last: it reads the current value and applies the micro multiplier, the emotion hint, and the blink factor. Clip-owned lids are skipped. | Motion curves, then expression, the auto-blink plugin, light squint, and manual control. With the expression system off, the SDK eye blink runs on frames without a motion update. | Natural: a function of the current value. Expression-closed lids (at or below 0.15) keep their value, and open lids stay at or above 0.2 outside a blink. Manual control multiplies by `1 - eyeSquint`. | `packages/stage-ui-live2d/src/composables/live2d/natural-motion-adapter.ts` `composeEyelid`, `Live2DNaturalMotionAdapter` `composeFace`; `packages/stage-ui-live2d/src/composables/live2d/motion-manager.ts` `useMotionUpdatePluginIdleDisable`, `useMotionUpdatePluginManualControl` |
+| Blink | `ParamEyeLOpen`, `ParamEyeROpen` | Natural's `blinkFactor` closes the lids when the user's auto-blink setting is on. With auto-blink off, only `idleLidFactor` closes them, for sleep, a yawn, a stretch, or a nod-off. The auto-blink plugin does not blink, because the scene passes it auto-blink off. | The auto-blink plugin, in the final stage after expression. With the expression system on, it blinks on idle motion by multiplying the post-expression values. With it off, it writes absolute values and marks the frame handled. | Multiply on the lid value. | `packages/stage-ui-live2d/src/composables/live2d/natural-motion-adapter.ts` `Live2DNaturalMotionAdapter` `composeFace`; `packages/motion-driver-natural/src/natural-motion.ts` `NaturalMotion` `idleLidFactor`; `packages/stage-ui-live2d/src/composables/live2d/motion-manager.ts` `useMotionUpdatePluginAutoEyeBlink` |
+| Light squint | `ParamEyeLOpen`, `ParamEyeROpen` | Runs under every driver in the final stage, after blink and before Natural. | Same. | Multiplies, with a floor of 0.2, and hands back its own write when it stops. | `packages/stage-ui-live2d/src/composables/live2d/motion-manager.ts` `useMotionUpdatePluginLightSquint` |
+| Brows | `ParamBrowLY`, `ParamBrowRY`, `ParamBrowLAngle`, `ParamBrowRAngle`, `ParamBrowLForm`, `ParamBrowRForm` | Additive offsets on the Y and angle channels. Natural does not write the form channels. | Motion curves and expression. | Additive offset under Natural. The saved model parameters are written once at load and again when the user changes them. | `packages/stage-ui-live2d/src/composables/live2d/natural-motion-adapter.ts` `faceOffsets`; `packages/stage-ui-live2d/src/components/scenes/live2d/Model.vue` |
+| Mouth open | `ParamMouthOpenY` | Adds `silentMouthOpen` to the current value, but only when there is no speech and lipsync did not own the mouth this frame. | Motion curves and expression. Manual control writes the parameter absolutely. Lipsync writes it during speech, the release, and the handoff hold. | Lipsync: absolute while speaking, a smoothstep blend back to the motion value during the 200 ms release, and 0 during the 500 ms hold. Natural: additive and masked. | `packages/stage-ui-live2d/src/composables/live2d/motion-manager.ts` `useMotionUpdatePluginLipSync`; `packages/stage-ui-live2d/src/composables/live2d/lipsync-handoff.ts` `lipSyncReleaseMs`, `lipSyncHandoffHoldMs`; `packages/stage-ui-live2d/src/composables/live2d/natural-motion-adapter.ts` `Live2DNaturalMotionAttention` |
+| Mouth form and cheek | `ParamMouthForm`, the resolved cheek parameter | Additive offsets, clamped to the range. Blush grows toward the farther end of a one-sided range. | Motion curves and expression. Manual control writes `ParamMouthForm` absolutely. | Additive offset. | `packages/stage-ui-live2d/src/composables/live2d/natural-motion-adapter.ts` `faceOffsets`, `offsetSign`; `packages/stage-ui-live2d/src/composables/live2d/natural-motion/rig-profile.ts` `resolveCheekParameterId` |
+| Eye smile | `ParamEyeLSmile`, `ParamEyeRSmile` | Additive offset from `eyeSmile`. A rig that has only `ParamEyeSmile` gets no Natural eye smile. | Motion curves and expression. | Additive offset. | `packages/stage-ui-live2d/src/composables/live2d/natural-motion-adapter.ts` `faceOffsets`; `packages/stage-ui-live2d/src/composables/live2d/natural-motion/rig-profile.ts` `readLive2DRigProfile` |
+| Gaze | `ParamEyeBallX`, `ParamEyeBallY` | Posture axes `eyeX` and `eyeY`, under the posture rule below. At full weight the adapter skips the SDK focus call. | SDK focus adds the focus offset. Manual control writes these absolutely. The idle eye-focus plugins run only when idle eye animation is on. | Same as head angles. At load, the scene renames idle-group eyeball curves for every driver, so idle motions never move the eyes. | `packages/stage-ui-live2d/src/composables/live2d/natural-motion-adapter.ts` `postureAxes`, `Live2DNaturalMotionAdapter` `composePosture`; `packages/stage-ui-live2d/src/composables/live2d/motion-manager.ts` `useMotionUpdatePluginIdleFocus`; `packages/stage-ui-live2d/src/components/scenes/live2d/Model.vue` |
+| Head angles | `ParamAngleX`, `ParamAngleY`, `ParamAngleZ` | Posture. At weight 1 the command overwrites the parameter. Below 1 it eases from the current value. A clip-owned channel keeps `clipResidual` (0.1) of the Natural offset, scaled by weight. | Motion curves. Beat sync springs the head in the pre stage. Manual control writes absolutely. SDK focus adds `x * 30` and `y * 30`. | Absolute overwrite at full weight, which erases beat sync and expression writes on these channels. Eased blend below full weight. | `packages/stage-ui-live2d/src/composables/live2d/natural-motion-adapter.ts` `Live2DNaturalMotionAdapter` `composePosture`, `clipResidual`; `packages/stage-ui-live2d/src/composables/live2d/motion-manager.ts` `useMotionUpdatePluginBeatSync` |
+| Body angles | `ParamBodyAngleX`, `ParamBodyAngleY`, `ParamBodyAngleZ` | Posture, under the same rule as the head. A `null` command skips the write, because rig physics derives that axis from the head. | Motion curves. Manual control writes absolutely. SDK focus adds `x * 10` to `ParamBodyAngleX`. | Same as head angles. | `packages/stage-ui-live2d/src/composables/live2d/natural-motion-adapter.ts` `Live2DNaturalMotionAdapter` `composePosture`; `packages/stage-ui-live2d/src/composables/live2d/natural-motion/rig-profile.ts` `Live2DRigProfile` (`bodyFromHeadPhysics`) |
+| Breath | `ParamBreath` | Absolute write of the Natural breath value. Skipped while manual breath control is active and on a clip-owned channel. | Motion curves. Manual breath control writes its curve while active and restores the saved value once when it releases. | Absolute. The SDK breath pass is deleted at load for every driver. | `packages/stage-ui-live2d/src/composables/live2d/natural-motion-adapter.ts` `Live2DNaturalMotionAdapter` `composeFace`; `packages/stage-ui-live2d/src/composables/live2d/motion-manager.ts` `useMotionUpdatePluginBreathControl`, `disableLive2DSdkBreath` |
+| Expression parameters | Any parameter in an `.exp3.json` file or a custom expression | Not written by Natural, apart from the overlaps listed in the rows above. | The first final plugin composes expressions on whatever value the motion writers left this frame. Her own idle pastime entries are claims at layer 0.5: above the user's switches and below slot leases. | Add, Multiply, or Overwrite per parameter. A pre plugin restores last frame's expression output first. | `packages/stage-ui-live2d/src/composables/live2d/expression-controller.ts` `useExpressionController` (`restoreExpressionBases`, `applyExpressions`); `packages/stage-ui-live2d/src/composables/live2d/motion-manager.ts` `useMotionUpdatePluginExpression`; `packages/stage-ui-live2d/src/stores/expression-store.ts` `useExpressionStore` |
+| Physics outputs | Destinations of physics outputs with non-zero weight | Never written. The adapter drops these channels from every write list. | Physics writes them after SDK focus. | None. | `packages/stage-ui-live2d/src/composables/live2d/natural-motion/rig-profile.ts` `readLive2DRigProfile`; `packages/stage-ui-live2d/src/composables/live2d/natural-motion-adapter.ts` `Live2DNaturalMotionAdapter` `setRigProfile` |
+| Clip-owned parameters | Parameters animated by the playing motion | Posture keeps the 0.1 residual. Face, eyelid, mouth, and breath writes skip these channels. | Motion curves only. | Residual for posture, skip for the face. | `packages/stage-ui-live2d/src/composables/live2d/motion-manager.ts` `useLive2DMotionManagerUpdate` (`getClipOwnedIds`) |
 
 ### Per state
 
-| State | Effect | Sources |
+| State | Effect | Code |
 | --- | --- | --- |
-| Expression system on | The SDK expression manager and SDK eye blink are removed. Expression writes go through the controller in the final stage. | MV:797-810 |
-| Expression system off | The SDK expression manager and eye blink stay. The expression runtime does not initialize. | MV:797, expression ADR:196 |
-| Speaking | Natural mouth write is masked. Lipsync owns `ParamMouthOpenY`. | ADP:334, 410, MM:778-785 |
-| Lipsync release and hold | Natural mouth write stays masked for the 200 ms release and 500 ms hold. The adapter keeps no timer. | MM:787-808, `lipsync-handoff.ts:7,10`, ADP:35-38 |
-| Clip playing | Posture uses the clip residual. Face writes skip clip-owned channels. Natural keeps running. | ADP:316, 388-389, 400-415 |
-| Manual control active | Posture eases out (`eligible` is false). Face keeps composing. | ADP:317-318, 324-327, 368-373 |
-| Spring active | Same as manual control. | ADP:318 |
-| Manual breath active | Natural breath write is skipped. Breath control writes the manual curve. | ADP:414-415, MM:79-99 |
-| Exclusive owner holds the model | Natural is inactive. Posture eases out, and face, blink, and breath composition stops. | ADP:317, 372-373 |
+| Natural driver | The expression system runs and the SDK expression manager and SDK eye blink are removed. Idle motions, idle eye animation, eye tracking, and the auto-blink plugin are off. Idle frames are handled by the idle-disable plugin, so the SDK motion update does not run on them. | `packages/stage-ui-live2d/src/composables/live2d/live2d.ts` `useSettingsLive2d`; `packages/stage-ui-live2d/src/components/scenes/Live2D.vue`; `packages/stage-ui-live2d/src/components/scenes/live2d/Model.vue`; `packages/stage-ui-live2d/src/composables/live2d/motion-manager.ts` `useMotionUpdatePluginIdleDisable` |
+| Universal or MAGIC driver | Natural is inactive. Posture eases out over at most 0.20 s, and the controller is suspended. Face, blink, and breath writes stop, and queued emotions, gestures, cues, and pokes are dropped. Idle motions and idle eye animation reach the model only under Universal. | `packages/stage-ui-live2d/src/composables/live2d/natural-motion-adapter.ts` `Live2DNaturalMotionAdapter` `compose`, `updateSuspension`; `packages/stage-ui-live2d/src/components/scenes/Live2D.vue` |
+| Expression system off (Universal or MAGIC only) | The SDK expression manager and SDK eye blink stay, and the expression runtime does not initialize. | `packages/stage-ui-live2d/src/components/scenes/live2d/Model.vue` |
+| Speaking | Lipsync owns `ParamMouthOpenY`, and the Natural mouth write is masked. | `packages/stage-ui-live2d/src/composables/live2d/motion-manager.ts` `useMotionUpdatePluginLipSync`; `packages/stage-ui-live2d/src/composables/live2d/natural-motion-adapter.ts` `Live2DNaturalMotionAttention` |
+| Lipsync release and hold | The Natural mouth write stays masked for the 200 ms release and the 500 ms hold. Lipsync reports ownership every frame, and the adapter keeps no timer. | `packages/stage-ui-live2d/src/composables/live2d/lipsync-handoff.ts` `lipSyncReleaseMs`, `lipSyncHandoffHoldMs`; `packages/stage-ui-live2d/src/components/scenes/live2d/Model.vue` |
+| Clip playing | Posture keeps the clip residual, face writes skip clip-owned channels, and Natural keeps running. An empty SDK `currentGroup` releases clip ownership even without a `motionFinish` event. | `packages/stage-ui-live2d/src/composables/live2d/motion-manager.ts` `useLive2DMotionManagerUpdate` |
+| Manual control or spring active | Posture eases out (nominal 0.20 s), and the face keeps composing. When control ends, posture eases back in (nominal 0.45 s). | `packages/stage-ui-live2d/src/composables/live2d/natural-motion-adapter.ts` `Live2DNaturalMotionAdapter` `compose`, `blend` |
+| Manual breath active | The Natural breath write is skipped, and breath control writes its curve. | `packages/stage-ui-live2d/src/composables/live2d/natural-motion-adapter.ts` `Live2DNaturalMotionAdapter` `composeFace`; `packages/stage-ui-live2d/src/composables/live2d/motion-manager.ts` `useMotionUpdatePluginBreathControl` |
+| Auto-blink off under Natural | Natural applies `idleLidFactor` in place of the blink factor, so she closes her eyes only on purpose. | `packages/stage-ui-live2d/src/composables/live2d/natural-motion-adapter.ts` `Live2DNaturalMotionAdapter` `composeFace` |
+| Exclusive owner holds the model | Natural is inactive, exactly as under another driver. | `packages/stage-ui-live2d/src/composables/live2d/natural-motion-adapter.ts` `Live2DNaturalMotionAdapter` `compose` |
+| Paused or hidden | The Natural clock freezes and the controller is suspended. | `packages/stage-ui-live2d/src/composables/live2d/natural-motion-adapter.ts` `Live2DNaturalMotionAdapter` `setPaused`, `updateSuspension` |
 
-## (b) Per-frame order
+### Per-frame order
 
-1. SDK `Cubism4InternalModel.update` starts (SDK:5416).
-2. SDK `motionManager.update`, which is replaced by the AIRI hook (MV:731-732), calls `hookUpdate` (MM:136-181).
-3. Pre plugins run in registration order, and the loop stops when a plugin marks the frame handled (MM:128-134, MM:164):
-   - `restoreExpressionBases` (MV:599) restores the frame base for every parameter expressions wrote last frame (EC:85-87).
-   - BeatSync (MV:600).
-   - IdleDisable (MV:601).
-4. If no plugin marked the frame handled, the SDK motion update runs (MM:166-170). Post plugins run next, and IdleFocus (MV:602) is the only post plugin.
-5. Final plugins always run, even when the frame is handled (MM:174-177), in this order:
-   - Expression (MV:607, `applyExpressions`, EC:89-101). This is the first final plugin.
-   - AutoEyeBlink (MV:608).
-   - LightSquint (MV:613-619).
-   - ManualControl (MV:620).
-   - LipSync (MV:621-623).
-   - BreathControl (MV:624).
-   - Natural frame step (MV:723-729). It advances Natural time through `frame()` (ADP:283-289) and does not compose.
-6. SDK `saveParameters` captures the frame base (SDK:5425).
-7. SDK expression manager update (SDK:5426). This is absent when the expression system is on (MV:801-803).
-8. SDK eye blink fallback, when no motion ran (SDK:5427-5429). This is absent when the expression system is on (MV:808-810).
-9. SDK `updateFocus`, which the Natural adapter wraps (SDK:5430, ADP:215). The wrapper calls `compose()` (ADP:310-374), which sets posture (ADP:376-396) and face (ADP:398-416). It calls the SDK focus only when weight is below 1 (ADP:368-369).
-10. SDK `updateNaturalMovements`, which holds the SDK breath pass (SDK:5431, 5446-5449). Breath is deleted for every driver, so this step does nothing (MM:69-71).
-11. SDK physics evaluate (SDK:5432). Physics runs after Natural, so it sees Natural's writes.
-12. SDK pose update (SDK:5433), then `model.update` and `loadParameters` (SDK:5435-5436).
+1. The pixi-live2d-display SDK method `Cubism4InternalModel.update` starts and calls `motionManager.update`. The scene has replaced that call with `hookUpdate` (`packages/stage-ui-live2d/src/composables/live2d/motion-manager.ts` `useLive2DMotionManagerUpdate`).
+2. Pre plugins run in registration order, and the loop stops at a plugin that marks the frame handled:
+   - `restoreExpressionBases`;
+   - beat sync (`useMotionUpdatePluginBeatSync`);
+   - idle disable (`useMotionUpdatePluginIdleDisable`).
+3. If no plugin handled the frame, the SDK motion update runs. Post plugins run next, and idle focus (`useMotionUpdatePluginIdleFocus`) is the only post plugin.
+4. Final plugins always run, even on a handled frame, in this order:
+   - expression (`useMotionUpdatePluginExpression`);
+   - auto blink (`useMotionUpdatePluginAutoEyeBlink`);
+   - light squint (`useMotionUpdatePluginLightSquint`);
+   - manual control (`useMotionUpdatePluginManualControl`);
+   - lipsync (`useMotionUpdatePluginLipSync`);
+   - breath control (`useMotionUpdatePluginBreathControl`);
+   - the Natural frame step (`Live2DNaturalMotionAdapter` `frame`). This step advances the Natural clock and does not compose.
+5. The SDK calls `saveParameters`. With the expression system off, the SDK expression manager and, on frames without a motion update, the SDK eye blink run here.
+6. The SDK calls `updateFocus`, which the adapter wraps. `Live2DNaturalMotionAdapter` `compose` feeds the controller and advances it. It calls the original SDK focus only while the posture weight is below 1, then writes posture (`composePosture`) and the face (`composeFace`).
+7. The SDK calls `updateNaturalMovements`, which does nothing, because the breath pass is deleted.
+8. SDK physics evaluates, so physics sees Natural's writes. Pose, `model.update`, and `loadParameters` follow.
 
-## (c) Rules
+### Rules
 
-- **R8: Natural owns posture absolutely while it drives.** At full weight, `composePosture` overwrites each posture channel with the Natural value (ADP:391). Expression tilts and beat-sync bob that land on those channels are overwritten on the same frame. This is the intended rule. Clip-owned channels keep the residual (ADP:388-389). BeatSync writes head angles only (reads MM:200-202, writes MM:251-253). The only `ParamBody*` writes in `motion-manager.ts` are at MM:731-733, in the manual control plugin.
-- **R9: Lipsync owns the mouth window.** `lipsync-handoff.ts` sets the 200 ms release (line 7) and the 500 ms hold (line 10). The lipsync plugin (MM:757-810) writes `ParamMouthOpenY` and reports ownership every frame through `lipSyncOwnsMouth`. Natural reads that flag from `MV:686` and masks its mouth write (ADP:334, 410-413). The adapter keeps no timer (ADP:35-38). The 0.7 s window in the v2 ADR is the sum of the two constants and is still correct.
-- **R10: SDK breath stays disabled for every driver.** `disableLive2DSdkBreath` deletes the SDK breath pass (MM:69-71) and is called from `MV:529`. Natural's breath write (ADP:414-415) and the manual breath curve (MM:79-99) are the only breath writers. The exception is recorded in the Natural v2 ADR's Non-goals section (line 183), dated 2026-11-01.
-- **Cancellation releases clip ownership (2026-11-07).** `useLive2DMotionManagerUpdate` tracks the clip parameter ids and supplies them to Natural through `getClipOwnedIds`. An empty SDK `state.currentGroup` releases the mask even without `motionFinish`: `stopAllMotions` resets that state synchronously, but only a later SDK `update` emits the finish event. AIRI's disabled-idle plugin can handle every following frame and skip that update. Starting another clip reacquires its channels through `motionStart`.
+- **Natural owns posture absolutely while it drives.** At full weight, `composePosture` overwrites each head, body, and eyeball channel with the Natural value. Expression tilts and the beat-sync head spring that land on those channels are overwritten on the same frame. Clip-owned channels keep the residual.
+- **Lipsync owns the speech mouth window.** `packages/stage-ui-live2d/src/composables/live2d/lipsync-handoff.ts` defines the release and the hold. `useMotionUpdatePluginLipSync` is the only writer that times them, and it reports ownership every frame through its `onMouthOwnership` callback. The scene forwards that flag as `voice.lipSyncOwnsMouth`, and the adapter masks its mouth write while the flag or `speaking` is set.
+- **The SDK breath pass is off for every driver.** `disableLive2DSdkBreath` runs at model load for every driver. The Natural breath write and the manual breath curve are the only breath writers besides motion curves. The Natural v2 ADR records this as a dated exception to its non-goals.
+- **Cancellation releases clip ownership.** `getClipOwnedIds` clears the clip mask when the SDK's `currentGroup` is empty. `stopAllMotions` resets that state at once, but only a later SDK update emits `motionFinish`, and the idle-disable plugin can skip every later update.
 
-## (d) How to change this
+## MMD
 
-- Accepted ADRs are not edited in place. A new decision gets a new ADR, or a dated `Amendment (YYYY-MM-DD)` note under the affected section.
-- Update this document in the same commit as any code change that moves an owner, changes an order, or changes a rule.
-- Re-check every `file:line` here when the code moves. The line numbers were verified on 2026-11-01.
+MMD has two motion drivers: Natural and classic (`packages/stage-ui-mmd/src/stores/mmd.ts` `MMDMotionDriver`). Under Natural, `MMDNaturalAdapter` (`packages/stage-ui-mmd/src/composables/mmd/natural/adapter.ts`) advances the controller and writes only the face. The body is posed by `MMDBody` (`packages/stage-ui-mmd/src/composables/mmd/body/index.ts`), whose performer turns Natural's `bodyIntent()` into bone channels. The body runs only while the driver is Natural (its input's `enabled`). Under classic, the body stages do nothing. Clips, classic gaze, the classic emote, and the classic blink move her instead.
+
+The body director (`decideBody`, wrapped by `MMDStanceDirector` in `packages/stage-ui-mmd/src/composables/mmd/stance.ts`) decides the stance, the rest, locomotion goals, and which clip action plays. It never starts a clip itself. The scene obeys its intent: it sets the base clip with `setBaseMotion` and plays or stops a clip action through `obeyAction` (`packages/stage-ui-mmd/src/components/scenes/MMD.vue`). Every clip request goes through the scene's `requestPerform`, including requests from `MMDActionPort` (`packages/stage-ui-mmd/src/composables/mmd/action-port.ts`). Body tool requests go through `MMDBodyToolPort` (`packages/stage-ui-mmd/src/composables/mmd/body-tool-port.ts`). Each port reads the director's answer back and decides nothing.
+
+### Clip ownership weights
+
+Each frame, `MMDBody` `updateOwnership` sums the captured weight of each playing clip into bone groups through the clip's mask (`buildMMDClipMask` in `packages/stage-ui-mmd/src/composables/mmd/rig/`), capped at 1. A playing clip that was never registered with the body owns every group. Looping stance clips count separately as the stance weight. The performer then blends every write toward the clean clip pose by these weights (`MMDBodyPerformer` `write`: performer rotation scaled by `1 - owned`).
+
+| Weight | Value | Applies to |
+| --- | --- | --- |
+| `pelvis` | max(stance, owned `root`, owned `lowerBody`) | Pelvis translation in `applyTorso`; foot contact is also scaled by `1 - pelvis` |
+| `hips` | max(stance, owned `lowerBody`) | Hips rotation |
+| `torso` | max(stance, owned `upperBody`) | The spine chain |
+| `head` | min(1, one-shot `head` + stance x (1 - `STANCE_HEAD_ATTENTION`)) | Neck and head; the eyes take `1 - head` |
+| `leftArm`, `rightArm`, `leftFingers`, `rightFingers` | Owned share of each group | Clavicles, arms, hands, and fingers |
+| Contact duck | 1 - max(one-shot `root`, `leftLegIk`, `rightLegIk`, `lowerBody`) | Foot-contact planner; stance clips reduce contact through their own foot-IK tracks instead |
+
+### Bone ownership
+
+| Channel | Bones | Natural driver | Classic driver | Composition | Code |
+| --- | --- | --- | --- | --- | --- |
+| Clip pose | Every bone a clip keys | The mixer writes the clean pose. The base clip comes from the director's stance through `setBaseMotion`, and clip actions arrive as layers through `playLayer`. | Same. | Every pose stage reads `context.clean` and writes absolute transforms derived from it. No stage writes the snapshot. | `packages/stage-ui-mmd/src/composables/mmd/frame-pipeline.ts` `MMDFramePipeline`, `MMDCleanPose`; `packages/stage-ui-mmd/src/composables/mmd/animation-manager.ts` `createMMDAnimationManager` |
+| Root | The model group's ground `x` and yaw | Locomotion moves the root through `MMDBodyRoot.setPose`. The director's intent is the only source of goals, and the scene sends it every frame. The gait is disabled while a clip owns `root` or either leg IK, while a full layer plays, and without root motion, as in the window host. | Not moved. | Absolute. Drags and teleports call `rebase`, and only a teleport resets physics. | `packages/stage-ui-mmd/src/composables/mmd/body/index.ts` `MMDBody` (`setLocomotionGoal`, `rebase`); `packages/stage-ui-mmd/src/composables/mmd/body/locomotion.ts` `MMDLocomotion`, `MMDBodyRoot` |
+| Pelvis, hips, spine | Center translation, hips, and the spine chain | The performer (`applyTorso`), weighted by `pelvis`, `hips`, and `torso`. | The clip pose only. | Rotation composed on the clean pose and blended by ownership. | `packages/stage-ui-mmd/src/composables/mmd/body/performer.ts` `MMDBodyPerformer` |
+| Facing | Center yaw | `MMDBody` `applyFacing` turns the center toward the facing. The foot stage reads the final facing and restores the center, and the head stage owns the visible yaw. | The clip pose only. | Facing weight is max(stance, owned `root`). | `packages/stage-ui-mmd/src/composables/mmd/body/index.ts` `MMDBody` |
+| Legs and feet | Leg IK targets and foot pitch | Foot contact plants the feet or follows the gait's feet, ducked by ownership. Turn steps, foot re-plants, and toe-down pitch come from the performer. | The clip pose only. | Absolute IK targets before physics. | `packages/stage-ui-mmd/src/composables/mmd/body/feet.ts` `MMDFootContact` |
+| Neck and head | Neck and head | The performer (`applyHead`), weighted by `head`, after facing. The `disableLookAt` QA switch keeps the clip pose. | Classic gaze adds a damped share of the eye aim to the head. | Rotation on the clean pose. | `packages/stage-ui-mmd/src/composables/mmd/body/performer.ts` `MMDBodyPerformer`; `packages/stage-ui-mmd/src/composables/mmd/gaze.ts` `createGazeController` |
+| Arms and fingers | Clavicles, arms, hands, and fingers | The performer (`applyArms`), weighted per group. Twist helper bones are not written. | The clip pose only. | Rotation on the clean pose. | `packages/stage-ui-mmd/src/composables/mmd/body/performer.ts` `MMDBodyPerformer`; `packages/stage-ui-mmd/src/composables/mmd/body/arms.ts` `MMDArms` |
+| Eyes | Each eye bone, or the both-eyes bone as a fallback | `MMDEyes` aims at the gaze point. The gaze goal follows Natural's gaze target: the cursor, the chat, or the camera deflected by free fixation. | Classic gaze rotates the eyes toward the cursor offset or idle saccades. | Weighted by `1 - head` under Natural. | `packages/stage-ui-mmd/src/composables/mmd/body/eyes.ts` `MMDEyes`; `packages/stage-ui-mmd/src/composables/mmd/body/attention.ts` `resolveBodyPoints`, `bodyGazePoints`; `packages/stage-ui-mmd/src/composables/mmd/gaze.ts` `createGazeController` |
+| Bone morphs | Bones that bone morphs move | The bone-morph stage composes bone morphs on the procedural pose. | Same. | After every pose writer and before physics. | `packages/stage-ui-mmd/src/composables/mmd/morph-runtime/index.ts` `createMMDMorphRuntime` (`applyBoneStage`) |
+| Physics-owned bones | Bones the rig profile reports as physics-owned | Never written by a pose stage. Ammo simulates them after the pose. | Same. | None. | `packages/stage-ui-mmd/src/composables/mmd/body/pose.ts` `MMDBodyPose` (`bone`); `packages/stage-ui-mmd/src/composables/mmd/rig/rig-profile.ts` |
+
+### Morph ownership
+
+Morphs are persistent per-layer channels that `combineMorphChannels` (`packages/stage-ui-mmd/src/composables/mmd/morph-runtime/combine.ts`) folds each frame, from lowest to highest priority: `naturalFace`, `clip`, `expression`, `blink`, `lipSync`, `devtools`. Each layer moves the value toward its largest absolute weight by its alpha, and additive channels are summed on top. Each morph has a role (`vowel`, `mouth`, `eye`, or `other`), which decides where `lipSync` and `blink` apply.
+
+| Layer | Writer under Natural | Writer under classic | Special rule | Code |
+| --- | --- | --- | --- | --- |
+| `naturalFace` | `applyNaturalFace`, through `MMDNaturalAdapter` `applySurface` in the `natural` stage | None | Lowest priority. | `packages/stage-ui-mmd/src/composables/mmd/natural/face.ts` `applyNaturalFace`; `packages/stage-ui-mmd/src/composables/mmd/natural/adapter.ts` `MMDNaturalAdapter` |
+| `clip` | The morph influences that the mixer captured | Same | Added at evaluation when no explicit clip channel exists. | `packages/stage-ui-mmd/src/composables/mmd/morph-runtime/index.ts` `createMMDMorphRuntime` |
+| `expression` | The expression store's slot leases and holds, sent by the conductor | The classic emote, through its morph controller, in the `classic-face` stage | On mouth morphs that lipsync does not own, the weight is reduced by `0.7 x speakEnv`. | `packages/stage-ui-mmd/src/stores/expression-store.ts` `useMMDExpressionStore`; `packages/stage-ui-mmd/src/composables/mmd/expression.ts` `useMMDEmote` |
+| `blink` | `applyNaturalFace`, with the blink factor min(Natural `blinkFactor`, `1 - lidClose`), where `lidClose` is the performer's body lid closure | `useMMDBlink`, in the `classic-face` stage | Eye-role morphs only. A non-additive expression closure floors the value, so a blink never reopens closed eyes. | `packages/stage-ui-mmd/src/composables/mmd/natural/adapter.ts` `MMDNaturalAdapter` (`applySurface`); `packages/stage-ui-mmd/src/composables/mmd/body/index.ts` `MMDBody` (`lidClose`); `packages/stage-ui-mmd/src/composables/mmd/blink.ts` `useMMDBlink` |
+| `lipSync` | `useMMDLipSync`, in the `lip-sync` stage under both drivers | Same | Vowel and mouth morphs only, with alpha scaled by `speakEnv`, which is 1 while an audio source exists. Lipsync stays above expression, so expressions cannot lock the vowels. | `packages/stage-ui-mmd/src/composables/mmd/lip-sync.ts` `useMMDLipSync` |
+| `devtools` | No writer at this commit | No writer | Highest priority. | `packages/stage-ui-mmd/src/composables/mmd/morph-runtime/combine.ts` `MorphLayer` |
+
+Slot names resolve to model morph names through `createMorphController` (`packages/stage-ui-mmd/src/composables/mmd/morph.ts`). Vertex and group influences, material morphs, and UV morphs reach the mesh in the `morphs` surface stage (`applySurfaceStage`), after physics.
+
+### Per state
+
+| State | Effect | Code |
+| --- | --- | --- |
+| Natural driver | The body stages pose the whole body, Natural writes `naturalFace` and `blink`, and classic gaze and the classic face stages do nothing. | `packages/stage-ui-mmd/src/components/scenes/MMD.vue`; `packages/stage-ui-mmd/src/composables/mmd/stage-composition.ts` `composeMMDStages` |
+| Classic driver | The body stages and the `natural` stage do nothing. Clips, classic gaze, the classic emote, and the classic blink drive her, and the director still decides stances and clips. | `packages/stage-ui-mmd/src/components/scenes/MMD.vue` |
+| Driver switch | The scene clears the `naturalFace`, `blink`, `expression`, and `lipSync` channels, starts a fresh `MMDNaturalAdapter`, and rewinds the performer. | `packages/stage-ui-mmd/src/components/scenes/MMD.vue`; `packages/stage-ui-mmd/src/composables/mmd/body/index.ts` `MMDBody` (`resetPerformance`) |
+| Looping stance clip (sit, sleep, or idle base) | The clip ducks the whole body, and the head keeps half of its gaze (`STANCE_HEAD_ATTENTION`). | `packages/stage-ui-mmd/src/composables/mmd/body/index.ts` `MMDBody` (`updateOwnership`) |
+| Upper-layer clip (a gesture or upper action) | The layer takes only the bones its upper partition keys. Breath, sway, planted feet, and the walk continue. | `packages/stage-ui-mmd/src/composables/mmd/animation-manager.ts` `createMMDAnimationManager` (`playLayer`); `packages/stage-ui-mmd/src/composables/mmd/body/index.ts` `MMDBody` |
+| Full-layer clip or dance | The clip owns every bone it keys. The gait stops from the `playing` phase on, and the director holds pending goals until it ends. | `packages/stage-ui-mmd/src/composables/mmd/body/index.ts` `MMDBodyInput` (`fullLayerPlaying`); `packages/motion-driver-humanoid/src/director/index.ts` `decideBody` |
+| Clip-free rest or doze | The performer's rest layer poses the body from `BodyIntent.rest`, without a clip. | `packages/stage-ui-mmd/src/composables/mmd/body/index.ts` `MMDBodyInput` (`rest`) |
+| Walking | The gait drives the root, pelvis, and feet, and the performer layers its channels on the gait frame. | `packages/stage-ui-mmd/src/composables/mmd/body/locomotion.ts` `MMDLocomotion`, `writeGaitChannels` |
+| Window host (no stage world) | The root never moves, so the gait never leaves idle. | `packages/stage-ui-mmd/src/composables/mmd/body/index.ts` `MMDBodyInput` (`rootMotion`) |
+| QA flags | `disableLookAt` keeps the clip's head, neck, and eyes. `disableFootContact` turns the foot planner off. | `packages/stage-ui-mmd/src/composables/mmd/body/index.ts` `MMDBodyInput` |
+
+### Per-frame order
+
+1. The render loop (`packages/stage-ui-mmd/src/components/scenes/MMD.vue` `renderLoop`) updates the director (`MMDStanceDirector` `update`), applies a base-clip change with `setBaseMotion`, plays or stops the accepted clip action (`obeyAction`), lets the action and body tool ports read the director's answers, and sends the locomotion goal to `MMDBody` `setLocomotionGoal`.
+2. The animation manager's `update` advances base fades (`advanceBaseFades`) and layer fades (`advanceLayers`), then calls `MMDFramePipeline` `step`, with `dt` clamped to 1/20 s.
+3. `step` runs `beforeUpdate`, then `restore`, which returns bones and morphs to the last clean pose.
+4. `commands` runs playback commands deferred to this clean frame, including layer teardown.
+5. `mixer.update` and `updateAnimation` run, then `capture` stores the clean pose, the morph influences, and each clip's effective weight. A weight in `clipWeightOverrides` wins, so ownership reads a clip's nominal weight rather than its partitions.
+6. The pose stages run in `MMD_POSE_STAGE_IDS` order (`packages/stage-ui-mmd/src/composables/mmd/stage-composition.ts`):
+   - `natural`;
+   - `locomotion`, which reads ownership and runs the gait and performer ticks;
+   - `body-torso`;
+   - `foot-contact`;
+   - `body-head`;
+   - `body-arms`;
+   - `eyes`;
+   - `classic-gaze`;
+   - `classic-face`;
+   - `lip-sync`;
+   - `bone-morphs`.
+7. `beforePhysics` (IK and grants) runs. Next come a physics reset, when a loop wrap or a request asks for one, and `physics.update`, capped at `MMD_PHYSICS_MAX_STEPS_PER_FRAME` steps of `MMD_PHYSICS_FIXED_STEP`. `afterPhysics` follows.
+8. The surface stages run in `MMD_SURFACE_STAGE_IDS` order: `body-diagnostics`, then `morphs`, then the read-only `motion-trace`.
+
+`composeMMDStages` is the only owner of this order. The scene and the headless runner both register it, and `qa:stage capture` refuses a scene that reports a different list.
+
+### How layers fade
+
+- **Clip layers.** `stepLayerFade` (`packages/stage-ui-mmd/src/composables/mmd/layer-fade.ts`) moves a layer's weight along a smoothstep, so a takeover starts and ends with zero weight velocity. `LAYER_FADE_SECONDS` sets an upper layer to 0.25 s in and 0.3 s out, a full layer to 0.4 s in, and a dance to 0.6 s in. A full layer or a dance eases out over its own fade-in time. A caller's `crossfade` replaces the fade-in.
+- **Layer replacement.** A new layer starts while the previous one eases out. A finished or stopped layer is torn down on the next clean frame.
+- **Base under an upper layer.** The running base is split by the bones the upper partition keys. Those base cells ease out on the same smoothstep (`ease` in `createMMDAnimationManager`), and every other base track keeps full weight. The base recombines when the layer ends.
+- **Base clips.** A stance or idle change cross-fades the base with three.js `fadeIn` and `fadeOut` over `BASE_CROSSFADE` (0.6 s).
+- **Body yield.** Ownership reads the layer's nominal weight each frame, so the performer yields a group in step with the clip's fade. The performer's own layers ease in and out on their own ramps, and `setPerformanceLayer` turns one on or off.
+
+## Known gaps
+
+Each entry names a rule that an ADR states and the code does not follow. This section only describes the gaps; it does not decide how to close them.
+
+- **Live2D skips shrug and lean cue gestures.** The [interaction portability ADR](../adr/2026-11-04-interaction-portability.md) ("Shared vocabulary") says every Natural renderer plays the ACT `gesture` vocabulary, including shrug and lean. `Live2DNaturalMotionAdapter` `gesture` in `packages/stage-ui-live2d/src/composables/live2d/natural-motion-adapter.ts` drops `shrug` and `lean` on Live2D. Only the MMD body performs them.
+- **The 3D motion ADR still lists the old MMD stages and writers.** The [3D character motion ADR](../adr/2026-10-30-3d-character-motion.md) lists the pose stages `natural`, `weight-shift`, `foot-contact`, `look-at`, `eyes`, and so on, and two surface stages. It also says `MMDNaturalAdapter` writes the neck, head, spine, and chest. In the code, the stage order is `MMD_POSE_STAGE_IDS` and `MMD_SURFACE_STAGE_IDS` in `packages/stage-ui-mmd/src/composables/mmd/stage-composition.ts`, which add `motion-trace`. `MMDNaturalAdapter` writes no bones; `MMDBodyPerformer` writes them. The [whole-body performer ADR](../adr/2026-11-11-whole-body-performer.md) records the change, but the 3D motion ADR carries no amendment.
+- **The 3D motion ADR still says every non-stance clip ducks the whole body and head.** The [3D character motion ADR](../adr/2026-10-30-3d-character-motion.md) ("Rig profile and body layers") says other clips duck the body and the head fully. `MMDBody` `updateOwnership` in `packages/stage-ui-mmd/src/composables/mmd/body/index.ts` ducks each group by the clip's mask, so a clip that does not key the head leaves the gaze alone.
+- **The clip actions ADR names different ducking groups.** The [clip actions ADR](../adr/2026-11-03-mmd-clip-actions.md) ("Layered playback and the base partition") says breath, sway, and weight shift duck by the larger of the stance weight and the owned share of `root` and `upperBody`. `MMDBody` `updateOwnership` uses separate weights: pelvis is max(stance, `root`, `lowerBody`), hips is max(stance, `lowerBody`), and torso is max(stance, `upperBody`).
+- **The idle agency ADR's original sections contradict its amendments.** The [idle agency ADR](../adr/2026-11-12-idle-agency.md) says an MMD model with a registered sleep clip turns `allowSleep` off, and that an MMD look-at stage runs after the Natural pose. Its 2026-11-13 amendment replaced both statements, but the original text still stands. The scene no longer withholds sleep, and no look-at stage exists: `MMD_POSE_STAGE_IDS` has `body-head` and `eyes`.
+- **No ADR records the Live2D posture overwrite.** Revision R8 of the [architecture audit](../audits/2026-10-31-architecture-boundaries.md) asked for a written decision on Natural's precedence over expressions and beat sync on the posture channels. No ADR records one. `Live2DNaturalMotionAdapter` `composePosture` still overwrites at full weight, and this document's Live2D rules state that behavior as the current rule.
