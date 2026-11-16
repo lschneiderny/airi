@@ -7,7 +7,7 @@ This package provides loading screens for AIRI apps. [View the playground](https
 Import `StartupScreen` from `@proj-airi/ui-loading-screens/startup-screen`. Give it the phase, progress, logo URL, and translated labels.
 
 ```vue
-<StartupScreen phase="loading" :progress="50" logo-src="/favicon.svg" :label="t('stage.operations.load-models-status.loading')" :error-title="t('stage.startup.failed')" :error-hint="t('stage.startup.recover')" :error-details-label="t('stage.startup.details')" :error-details-close-label="t('stage.startup.close-details')" :retry-label="t('stage.startup.retry')" />
+<StartupScreen phase="loading" :progress="50" logo-src="/favicon.svg" :label="t('loading')" :error-title="t('startup-failed')" :error-hint="t('startup-recover')" :error-details-label="t('details')" :error-details-close-label="t('close-details')" :retry-label="t('retry')" />
 ```
 
 The `splash` phase shows the logo. The `loading` phase shows progress near the lower edge.
@@ -18,7 +18,6 @@ The small details button opens a desktop tooltip or a mobile bottom drawer. The 
 
 The screen uses Comfortaa for the brand and content.
 The progress bar uses `Progress` from `@proj-airi/ui`.
-`StartupOverlay` reads the resource state and supplies the error text.
 The optional `alternative-label` adds a second action for a recoverable failure.
 
 ## When to use it

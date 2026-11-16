@@ -176,26 +176,6 @@ render-error:
     {renderer} failed to render the selected model.
     Model ID: {modelId}
     Error: {error}
-startup:
-  failed: Startup failed
-  failed-resource: Could not load {resource}
-  recover: Try again. If it fails again, open the details below.
-  recover-model: Try again, or continue without a character. You can select another model later.
-  details: What happened?
-  close-details: Close details
-  retry: Retry
-  continue-without-model: Continue Anyway
-  resources:
-    auth: account settings
-    modelIndex: model list
-    card: character settings
-    chat: chat history
-    services: app services
-    modelData: saved models
-    modelSelection: model settings
-    audio: audio settings
-    route: page
-    model: character model
 message: Say something...
 theme:
   title: Theme
@@ -215,9 +195,6 @@ speech-output:
   unmute: Unmute voice
 operations:
   load-models: Load Models
-  load-models-status:
-    loading: Loading
-    ready: Ready
 select-a-audio-input: Select a Audio Input
 select-a-model: Select a model
 select-a-voice: Choose a voice

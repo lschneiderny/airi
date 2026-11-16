@@ -3360,9 +3360,6 @@ importers:
       '@proj-airi/ui':
         specifier: workspace:^
         version: link:../ui
-      '@proj-airi/ui-loading-screens':
-        specifier: workspace:^
-        version: link:../ui-loading-screens
       '@proj-airi/vite-plugin-sherpaw':
         specifier: workspace:^
         version: link:../vite-plugin-sherpaw

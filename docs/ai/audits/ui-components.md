@@ -147,7 +147,7 @@ The following table contains every stage-ui component without direct coverage. C
 | [scenarios/settings/model-settings/spine.vue](../../../packages/stage-ui/src/components/scenarios/settings/model-settings/spine.vue) | Needs a dedicated scenario and fixture |
 | [scenarios/settings/model-settings/tachie.vue](../../../packages/stage-ui/src/components/scenarios/settings/model-settings/tachie.vue) | Needs a dedicated scenario and fixture |
 | [scenarios/settings/model-settings/vrm.vue](../../../packages/stage-ui/src/components/scenarios/settings/model-settings/vrm.vue) | Needs a dedicated scenario and fixture |
-| [scenarios/startup/startup-overlay.vue](../../../packages/stage-ui/src/components/scenarios/startup/startup-overlay.vue) | Needs a dedicated scenario and fixture |
+| `scenarios/startup/startup-overlay.vue` | Needs a dedicated scenario and fixture |
 | [scenarios/status/hearing-status.vue](../../../packages/stage-ui/src/components/scenarios/status/hearing-status.vue) | Needs a dedicated scenario and fixture |
 | [scenes/Stage.vue](../../../packages/stage-ui/src/components/scenes/Stage.vue) | Needs a dedicated scenario and fixture |
 | [scenes/ViewControlSlider.vue](../../../packages/stage-ui/src/components/scenes/ViewControlSlider.vue) | Needs a dedicated scenario and fixture |

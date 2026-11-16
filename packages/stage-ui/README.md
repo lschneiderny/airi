@@ -47,18 +47,6 @@ A wordless or silent reply (an assistant message with `wordless`) renders as a s
 
 Chat bursts, wordless replies, and unprompted turns stay in local history.
 
-## Startup progress
-
-`useStartupResourcesStore` records each resource as queued, loading, ready, failed, or skipped.
-The apps register the complete resource list before work starts. Their startup flows report each module's result through the store.
-The app roots reset the store before registration. This also stops an old load from updating a new registration after hot reload.
-`StartupOverlay` reads the store and shows splash, progress, or an error with a retry action.
-The optional Mods server connects outside the tracked startup work. Its connection does not block onboarding.
-Each app's HTML shows the first splash before Vue mounts. CSS hides it when Vue renders into `#app`.
-The home page reports when its character model is ready or fails. A failed model keeps the overlay visible.
-If the model fails, the user can retry the app or continue without a character.
-The overlay emits `finished` when all resources are ready. Apps open onboarding at that point.
-
 ## Voice integration
 
 The audio host owns one VoiceController and one shared microphone input.
