@@ -551,9 +551,9 @@ app.whenReady().then(async () => {
     dependsOn: { mainWindow, tray, serverChannel, airiHttpServer, godotStageManager, pluginHost, mcpManager, onboardingWindow: onboardingWindowManager, widgetsWindow: widgetsManager, spotlightWindow, artistryConfig },
     callback: async (deps) => {
       const { context } = createAppContext()
-      setupComputerUse(context)
+      const computerUse = setupComputerUse(context)
       setupHomeAssistant(context)
-      setupStoredData(context, { fileLogger: () => fileLogger })
+      setupStoredData(context, { fileLogger: () => fileLogger, clearComputerUseStore: computerUse.clearStore })
       await setupArtistryBridge({
         widgetsManager: deps.widgetsWindow,
         context,

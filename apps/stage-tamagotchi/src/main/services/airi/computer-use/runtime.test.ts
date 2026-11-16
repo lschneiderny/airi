@@ -1,7 +1,7 @@
 import process from 'node:process'
 
 import { Buffer } from 'node:buffer'
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -47,6 +47,17 @@ describe('computer use runtime', () => {
     const text = join(directory, 'store', 'text.png')
     await writeFile(text, 'not an image')
     await expect(runtime.readImage({ path: text })).rejects.toThrow('PNG or JPEG')
+  })
+
+  it('clears the store after the operations queued before it', async () => {
+    const path = join(directory, 'store', 'capture.png')
+    await writeFile(path, Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
+
+    const read = runtime.readImage({ path })
+    await runtime.clearStore()
+
+    await expect(read).resolves.toMatch(/^data:image\/png;base64,/)
+    expect(await readdir(directory)).toEqual([])
   })
 
   it('rejects queued and future work after disposal', async () => {
