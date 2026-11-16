@@ -38,7 +38,7 @@ const refractoryDuration = 1.5
 const finite = (value: number) => Number.isFinite(value) ? value : 0
 const wrap = (value: number) => Math.atan2(Math.sin(value), Math.cos(value))
 
-export class TurnPlanner {
+class TurnPlanner {
   private time = 0
   private dwell = 0
   private dwellDirection = 0

@@ -72,7 +72,7 @@ export function armResponse(j: number, used: number, tension: number): readonly 
  * Steady ramp lag `zeta / (pi f)` of arm channel `j`'s follower, seconds (3a with r = 0), at activation `used` and mood
  * tension `tension` in [0, 1]. `j` indexes a side's arm block from `ClavElev`.
  */
-export function armRampLag(j: number, used: number, tension: number): number {
+function armRampLag(j: number, used: number, tension: number): number {
   const [f, zeta] = armResponse(j, used, Math.max(0, Math.min(1, tension)))
   return Math.max(0.3, zeta) / (Math.PI * f)
 }
@@ -81,7 +81,7 @@ export function armRampLag(j: number, used: number, tension: number): number {
  * The cascade link delay of arm channel `j`, seconds: its 4a start offset plus the upper arm's ramp lag beyond its own
  * at the channels' activations `upperUsed` and `used`. Shared arm terms reach channel `j` this much later.
  */
-export function armCascadeDelay(j: number, upperUsed: number, used: number, tension: number): number {
+function armCascadeDelay(j: number, upperUsed: number, used: number, tension: number): number {
   return startOffset(j) + Math.max(0, armRampLag(2, upperUsed, tension) - armRampLag(j, used, tension))
 }
 

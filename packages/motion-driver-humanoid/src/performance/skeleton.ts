@@ -43,7 +43,7 @@ export function composeTransform(out: BodyTransform, parent: BodyTransform, loca
   }
 }
 
-export function transformPoint(out: Vec3, frame: BodyTransform, point: Readonly<Vec3>): void {
+function transformPoint(out: Vec3, frame: BodyTransform, point: Readonly<Vec3>): void {
   const { x, y, z } = point
   out.x = frame[0] * x + frame[1] * y + frame[2] * z + frame[9]
   out.y = frame[3] * x + frame[4] * y + frame[5] * z + frame[10]
