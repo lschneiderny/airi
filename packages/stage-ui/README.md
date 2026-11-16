@@ -110,7 +110,7 @@ To add a mode, extend `HearingInputMode`, `listensContinuously`, `startsInputOnS
 `useVoicePushToTalk` connects a hold to `voice.beginManual`. The press captures the active session, so a session switch during the hold does not move the speech.
 `useVoiceHold` owns the hold lifecycle: it ignores key repeats, cancels a tap shorter than 300 ms, and cancels on disable or disposal.
 `useVoiceHoldKey` drives a hold with an in-page key, Space by default. It ignores text fields, controls, and modified keys, and cancels when the page loses focus.
-The web stage uses Space. The desktop stage uses a configurable global shortcut.
+The desktop stage uses a configurable global shortcut.
 
 Each host app declares whether it has a Push to Talk trigger. It provides `pushToTalkTriggerKey` from `composables/push-to-talk-trigger` at the app level.
 Without a provider, the host has no trigger. The input mode selector of `HearingConfig` then disables the Push to Talk option.
@@ -347,7 +347,7 @@ Name the file `*.visual.browser.test.ts`. Render through `renderVisualBaseline(c
 
 Select **Sherpaw** in Hearing settings. Choose a language to see models that support it, then choose a model.
 For a new Sherpaw configuration, the interface language sets the filter and selects a compatible model.
-Chinese and English start with X-ASR on desktop and Paraformer on mobile Web.
+Chinese and English start with X-ASR.
 An existing model selection stays in place. Choosing a language switches to a compatible model when needed.
 The model detects one of its supported languages. Changing the model saves
 the Provider configuration and replaces its runtime.
@@ -357,7 +357,7 @@ Hosts must enable `@proj-airi/vite-plugin-sherpaw` to expose model assets.
 `provider-inference` owns recognition and Worker cleanup. `stage-ui` supplies model URLs, local asset fetching, the Worker URL, and the Hearing view.
 The Provider is unavailable when the host does not include models.
 Use this Provider for local streaming recognition without API credentials.
-It requires Workers and WebAssembly. Web stores selected remote models in OPFS.
+It requires Workers and WebAssembly.
 Desktop development stores selected models in the app user data directory.
 Desktop releases bundle X-ASR and store other models in the user data directory.
 Sherpaw settings show download state and let users install or remove remote models.
@@ -468,7 +468,7 @@ Do not send ambient context to the model in any other way: the situation block i
 
 `useSituationSettings` in `features/situation/settings` stores one document at `settings/situation`: `unpromptedEnabled`, `chattiness` (0 to 1, default 0.5), `dontDisturb`, `shareForegroundWindow` (default true), `shareWindowTitles` (default true), `shareBrowserActivity` (default true), `quietApps`, `blockedApps`, `showUnpromptedCue`, and `speakDuringGames`.
 An invalid field falls back to its default. The leader routes `update` and `reset`.
-**Settings > Presence** edits it in the Electron app. Web excludes the page, because it runs no unprompted turns.
+**Settings > Presence** edits it in the Electron app.
 
 Use these settings to control the mean rate of unprompted turns and which foreground details the model may see.
 Turning `shareForegroundWindow` off also stops unprompted speech, because the gate needs a fresh foreground sample. Replies to the user still work.
@@ -542,7 +542,7 @@ Do not use it as a user-facing settings page.
 
 ## Character state
 
-The character-state store in `stores/character-state/` holds the active character's mood, temperament, and relationship. The web and desktop shells create it at startup.
+The character-state store in `stores/character-state/` holds the active character's mood, temperament, and relationship. The desktop app creates it at startup.
 
 Each chat request sends the worded mood and the relationship stage as a per-request runtime context message with the id `system:character`, beside `system:situation`. It is never part of the system prompt, and the model never receives the numeric mood. A MOOD cue in a reply is applied as a bounded contribution that fades within a few hours, so the model cannot push its own mood far in one turn.
 

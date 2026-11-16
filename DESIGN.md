@@ -153,7 +153,7 @@ These values come from `BasicButton` and `Button`. They are not new tokens. Pixe
 - `OverlayButton` has no custom outline. Source inspection alone does not establish keyboard acceptance.
 - Keep `outline` enabled unless an equivalent visible focus treatment exists.
 
-Padding and text sizes do not guarantee touch target dimensions. Check the final interactive area on mobile.
+Padding and text sizes do not guarantee touch target dimensions. Check the final interactive area in the rendered UI.
 
 ### Forms
 

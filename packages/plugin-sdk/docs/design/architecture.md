@@ -35,7 +35,7 @@ AIRI is a multi-node system where plugins, bridges, and viewers communicate over
 
 ## Background
 
-AIRI needs to run across desktop, web, and mobile while keeping one clean API surface. Plugins must be able to register UI, declare capabilities, and exchange data with device-specific bridges. To keep the system scalable, high-rate streams must be separated from lifecycle and configuration traffic.
+AIRI needs to run plugins in the Electron, Node, and web runtimes while keeping one clean API surface. Plugins must be able to register UI, declare capabilities, and exchange data with device-specific bridges. To keep the system scalable, high-rate streams must be separated from lifecycle and configuration traffic.
 
 Runtime dependency orchestration is intentionally split into a dedicated design document to keep this architecture document focused on platform shape and planes.
 
@@ -108,8 +108,6 @@ The Plugin Host is a Node process that:
 Viewers render UI and character output. Examples:
 
 - Electron Stage with Configurator features.
-- Web Configurator client.
-- Pocket Stage client.
 
 ### Plugin Lifecycle Overview
 
@@ -162,7 +160,6 @@ Example capabilities:
 - ui.widget
 - vision.capture
 - vision.stream
-- device.mobile.sensors
 
 ### Deployment Modes
 
@@ -197,7 +194,7 @@ Example:
 - Plugins can be loaded by the host and register UI and capabilities.
 - Bridges can connect and be discovered by the control plane.
 - Data plane streams stay isolated from control plane traffic.
-- The same plugin API surface works across desktop, web, and mobile.
+- The same plugin API surface works across the Electron, Node, and web runtimes.
 
 ### Test & QA
 

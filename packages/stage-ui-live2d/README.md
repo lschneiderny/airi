@@ -379,7 +379,7 @@ node --expose-gc --import tsx scripts/bench-natural.ts
 
 The Natural motion lab is a devtools page for tuning Natural on the rendered model.
 In the Electron app, open it from Settings > System > Developer > Natural Motion Lab (route `/devtools/live2d-natural-motion`).
-The lab UI is `NaturalMotionDevtools` from `@proj-airi/stage-ui/features/devtools/motion/natural`. No web page mounts it.
+The lab UI is `NaturalMotionDevtools` from `@proj-airi/stage-ui/features/devtools/motion/natural`.
 The lab runs in the devtools window, and every control and capture applies to the character in the main stage window.
 
 The lab provides these controls:

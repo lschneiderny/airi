@@ -23,7 +23,7 @@
 
 ## Summary
 
-Define a capability-oriented orchestration model for AIRI plugins and modules where dependency resolution is runtime-driven instead of static metadata-driven. Plugin Host coordinates module lifecycle using a stateful capability registry and readiness gates, enabling multi-runtime deployments (Electron, Web, Pocket) without hardcoding stage-first boot order.
+Define a capability-oriented orchestration model for AIRI plugins and modules where dependency resolution is runtime-driven instead of static metadata-driven. Plugin Host coordinates module lifecycle using a stateful capability registry and readiness gates, enabling multi-runtime deployments (Electron, Node, web) without hardcoding stage-first boot order.
 
 ## Background
 
@@ -33,7 +33,7 @@ Current plugin lifecycle in `PluginHost` is phase-based but does not yet enforce
 
 The AIRI ecosystem is moving toward:
 
-- Multiple plugin hosts (Electron now, Pocket and Web later).
+- Multiple plugin hosts across the Electron, Node, and web runtimes.
 - Multiple stage instances per host/runtime.
 - Platform-specific extension APIs that should be discoverable through one control-plane model.
 - Plugin modules that may provide capabilities required by other modules and by stage/configurator flows.
@@ -70,7 +70,7 @@ Readiness and availability are stateful in registry snapshots, with event notifi
 
 AIRI plugin orchestration should behave like an extensible runtime kernel:
 
-- Hosts are runtime adapters (Electron, Pocket, Web), not policy exceptions.
+- Hosts are runtime adapters (Electron, Node, web), not policy exceptions.
 - Stages are normal modules that publish and consume capabilities.
 - Modules compose through capability contracts, not hardcoded start order.
 - Adding new platform APIs means registering new capabilities, not rewriting lifecycle code.
@@ -122,7 +122,7 @@ interface CapabilityRecord {
   providerModuleId: string
   hostId: string
   instanceId?: string
-  runtime: 'electron' | 'web' | 'pocket' | 'node'
+  runtime: 'electron' | 'node' | 'web'
   state: 'announced' | 'ready' | 'degraded' | 'withdrawn'
   version?: string
   health?: 'ok' | 'degraded' | 'unknown'
@@ -153,11 +153,7 @@ interface CapabilityRequirement {
    - Module requests capability in same `instanceId` scope.
    - Host binds consumer to correct stage-local capability.
 
-3. Pocket runtime API extension
-   - Pocket runtime module registers `mobile.sensor` capability.
-   - Plugins targeting mobile predicates can activate on pocket host without Electron-specific assumptions.
-
-4. Late readiness and replay safety
+3. Late readiness and replay safety
    - Capability became ready before module started waiting.
    - Module receives snapshot-based resolution immediately and skips unnecessary wait.
 

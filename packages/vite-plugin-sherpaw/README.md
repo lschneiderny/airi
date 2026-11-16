@@ -109,4 +109,4 @@ Vite converts the generated URL imports into local development URLs. Files outsi
 
 All AIRI hosts keep the transcription presets remote in development. The host model asset service installs them when recognition needs them.
 Desktop release workflows bundle X-ASR. Ordinary CI builds keep all transcription presets remote.
-Electron always bundles the keyword spotting pack. Web keeps it remote. The renderer model asset repository installs it in OPFS when wake word detection first prepares.
+Electron always bundles the keyword spotting pack.
