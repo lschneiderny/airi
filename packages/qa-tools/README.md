@@ -758,7 +758,7 @@ Run `pnpm qa:doctor` first. It checks whether the current worktree can produce m
 
 | Command | Use |
 | --- | --- |
-| `pnpm qa:setup cubism [--force]` | Download Cubism Core for both apps without opening a window. Skip present copies; `--force` downloads again. |
+| `pnpm qa:setup cubism [--force]` | Download Cubism Core for the desktop app without opening a window. Skip present copies; `--force` downloads again. |
 | `pnpm qa:doctor [--json] [--warm]` | Check Node, pinned pnpm, temporary directory and compile cache space (`temp-space`), installation, built packages, Cubism Core, Chromium, rig paths, and conflicting Electron processes. `--warm` runs the stage-ui browser warm-up. |
 | `pnpm qa:test --all` | Run the registered Vitest package and project set, then report new, known, fixed, and flaky-passed tests. |
 | `pnpm qa:test --package <name> [--package <name>...] [--project node\|browser] [--registry <file>] [--timeout <seconds>]` | Run selected test targets. |
