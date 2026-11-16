@@ -23,9 +23,7 @@ export interface ReleaseArgs {
 }
 
 /** Calendar versions such as `2026.11.0`: year, month without a leading zero, and a release counter. */
-function isReleaseVersion(version: string): boolean {
-  return /^20\d{2}\.(?:[1-9]|1[0-2])\.(?:0|[1-9]\d*)$/.test(version)
-}
+const releaseVersionPattern = /^20\d{2}\.(?:[1-9]|1[0-2])\.(?:0|[1-9]\d*)$/
 
 export function releaseTag(version: string): string {
   return `v${version}`
@@ -40,7 +38,7 @@ export function parseReleaseArgs(argv: string[]): ReleaseArgs | { error: string 
   if (positional.length !== 1)
     return { error: 'expected exactly one version, for example `pnpm release 2026.11.0`' }
   const [version] = positional
-  if (!isReleaseVersion(version))
+  if (!releaseVersionPattern.test(version))
     return { error: `${version} is not a release version; use <year>.<month>.<n>, for example 2026.11.0` }
   return { version, dryRun }
 }
