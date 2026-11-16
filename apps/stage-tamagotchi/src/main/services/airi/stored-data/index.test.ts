@@ -19,15 +19,13 @@ describe('deleteActivityFiles', () => {
     await rm(userData, { recursive: true, force: true })
   })
 
-  it('removes earlier logs, IO traces, and computer-use captures, and keeps the open log and the settings files', async () => {
+  it('removes earlier logs and IO traces, and keeps the open log and the settings files', async () => {
     const openLog = join(userData, 'logs', 'airi-tamagotchi-2.log')
     await mkdir(join(userData, 'logs'))
     await mkdir(join(userData, 'io-traces'))
-    await mkdir(join(userData, 'computer-use', 'captures'), { recursive: true })
     await writeFile(join(userData, 'logs', 'airi-tamagotchi-1.log'), 'earlier session')
     await writeFile(openLog, 'this session')
     await writeFile(join(userData, 'io-traces', '2026-11-15.jsonl'), '{}')
-    await writeFile(join(userData, 'computer-use', 'captures', 'screen.png'), 'png')
     await writeFile(join(userData, 'window-state.json'), '{}')
 
     await deleteActivityFiles(userData, openLog)
@@ -37,7 +35,9 @@ describe('deleteActivityFiles', () => {
     expect((await readdir(userData)).sort()).toEqual(['io-traces', 'logs', 'window-state.json'])
   })
 
-  it('succeeds on a profile that never wrote any of them', async () => {
-    await expect(deleteActivityFiles(userData, null)).resolves.toBeUndefined()
+  it('creates no directory on a profile that never wrote any of them, so each writer sets its own mode', async () => {
+    await deleteActivityFiles(userData, null)
+
+    expect(await readdir(userData)).toEqual([])
   })
 })

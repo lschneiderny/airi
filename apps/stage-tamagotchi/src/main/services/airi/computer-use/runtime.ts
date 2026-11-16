@@ -153,6 +153,24 @@ export function createComputerUseRuntime(options: { binaryPath: string, storeRoo
     })
   }
 
+  /**
+   * Stops the daemon and removes every stored artifact, in turn with desktop operations, so nothing writes into the
+   * store while it goes. The next command starts a fresh daemon over an empty store.
+   */
+  function clearStore(): Promise<void> {
+    return enqueue(async () => {
+      const running = daemon
+      daemon = undefined
+      try {
+        await running?.stop()
+      }
+      finally {
+        await cleanupSocket()
+      }
+      await rm(options.storeRoot, { recursive: true, force: true })
+    })
+  }
+
   /** Rejects queued calls, aborts active work, and waits for the owned daemon to exit. */
   async function dispose() {
     disposed = true
@@ -166,5 +184,5 @@ export function createComputerUseRuntime(options: { binaryPath: string, storeRoo
     }
   }
 
-  return { run, readImage, dispose }
+  return { run, readImage, clearStore, dispose }
 }
