@@ -68,6 +68,7 @@ Agent guidance holds only what an agent cannot learn from the code, `package.jso
 - Commit small, self-contained changes directly to `main` after `pnpm verify` passes.
 - Put plan-sized or multi-commit work, such as a `.omo/plans` execution, on a branch. Open a pull request against `lschneiderny/airi`, never against upstream `moeru-ai/airi`. The fork allows only rebase merges, so keep each commit atomic and passing.
 - Work in the main checkout by default. Create a worktree with `pnpm wt new <name>` only for parallel or long-running work, and remove it with `pnpm wt rm <name>`.
+- `/tmp` is RAM-backed. Never export, clone, or install the repository under `/tmp`. To build or test another revision, use `pnpm wt new <name>` and remove it with `pnpm wt rm <name>`; to read an old file, use `git show <rev>:<path>`.
 - `main` rejects force pushes and deletion. Never rewrite pushed history on `main`; if a push is rejected, run `git pull --rebase` and push again.
 - Sync upstream only when asked: merge `upstream/main` into a `username/chore/upstream-sync` branch, resolve conflicts there, and run `pnpm verify`. Land it locally with `git switch main && git merge --ff-only <branch> && git push`, not through a GitHub pull request: the fork's rebase-only merge would re-create upstream commits under new hashes and break later syncs. Do not rebase the fork onto upstream.
 
