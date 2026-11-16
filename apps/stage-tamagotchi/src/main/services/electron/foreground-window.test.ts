@@ -179,7 +179,7 @@ describe('createForegroundWindowService', () => {
     const context = createContext()
     createForegroundWindowService({ context: context as never, window: window as never, getSidecarPid, bridge: bridge as never })
     const sample = defineInvoke(context, electron.foregroundWindow.sample)
-    return (blockedApps: readonly string[] = []) => sample({ blockedApps })
+    return (blockedApps: readonly string[] = [], includeTitle = true) => sample({ blockedApps, includeTitle })
   }
 
   describe('on Linux', () => {
@@ -236,6 +236,13 @@ describe('createForegroundWindowService', () => {
 
       await expect(createReader(undefined, createBridge('kwin', firefox))()).resolves.toBeNull()
       await expect(createReader(undefined, createBridge('kwin', { ...firefox, caption: 'Online Banking \u2014 Mozilla Firefox' }))()).resolves.toMatchObject({ exeName: 'firefox' })
+    })
+
+    it('leaves the title out unless the read asks for it, and still hides a private window', async () => {
+      const firefox = { ...konsole, caption: 'Online Banking \u2014 Mozilla Firefox Private Browsing', resourceClass: 'firefox', desktopFileName: 'firefox' }
+
+      await expect(createReader(undefined, createBridge('kwin', konsole))([], false)).resolves.toMatchObject({ exeName: 'org.kde.konsole', title: '' })
+      await expect(createReader(undefined, createBridge('kwin', firefox))([], false)).resolves.toBeNull()
     })
 
     it('keeps an own window even when the block list matches everything', async () => {

@@ -894,8 +894,11 @@ pages:
       title: Show unprompted cue
       description: Mark messages the character sent on its own in the chat.
     share-foreground-window:
-      title: Share the foreground app and window titles
-      description: Let the character see which app is in front and its window title. When off, AIRI stops reading them, and the character stops speaking up on its own until you turn this back on. It still answers when you talk to it.
+      title: Share the foreground app
+      description: Let the character see which app is in front. AIRI passes the app name to your chat provider, which can be a cloud service. When off, AIRI stops reading it, and the character stops speaking up on its own until you turn this back on. It still answers when you talk to it.
+    share-window-titles:
+      title: Share window titles
+      description: Also let the character see the title of the window in front, such as a document name or a page title. AIRI passes it to your chat provider, which can be a cloud service. This needs foreground app sharing.
     share-browser-activity:
       title: Share browser activity
       description: Let the character see the page titles, links, video details, and subtitles that the AIRI browser extension sends. AIRI passes them to your chat provider, which can be a cloud service. When off, AIRI ignores the extension and forgets what it already sent.

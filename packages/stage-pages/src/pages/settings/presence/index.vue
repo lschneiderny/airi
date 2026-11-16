@@ -95,6 +95,14 @@ function formatChattiness(value: number) {
       @update:model-value="updateSettings({ shareForegroundWindow: $event })"
     />
     <FieldCheckbox
+      :model-value="settings.document.shareWindowTitles"
+      :label="t('settings.pages.presence.share-window-titles.title')"
+      :description="t('settings.pages.presence.share-window-titles.description')"
+      :disabled="!settings.document.shareForegroundWindow"
+      placement="right"
+      @update:model-value="updateSettings({ shareWindowTitles: $event })"
+    />
+    <FieldCheckbox
       :model-value="settings.document.shareBrowserActivity"
       :label="t('settings.pages.presence.share-browser-activity.title')"
       :description="t('settings.pages.presence.share-browser-activity.description')"

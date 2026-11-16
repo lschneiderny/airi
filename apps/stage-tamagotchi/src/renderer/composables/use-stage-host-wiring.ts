@@ -13,7 +13,7 @@ import {
 } from '@proj-airi/electron-vueuse'
 import { useHostCapabilitiesStore } from '@proj-airi/stage-shared/stores/host-capabilities'
 import { useVoiceListening } from '@proj-airi/stage-ui/composables/voice-input-mode'
-import { useSituationSettings } from '@proj-airi/stage-ui/features/situation/settings'
+import { foregroundReadPolicy, useSituationSettings } from '@proj-airi/stage-ui/features/situation/settings'
 import { useOnboardingStore } from '@proj-airi/stage-ui/stores/onboarding'
 import { useVoiceStore } from '@proj-airi/stage-ui/stores/voice'
 import { computed, onMounted, onScopeDispose, shallowRef, watch } from 'vue'
@@ -70,12 +70,11 @@ export function useStageHostWiring(page: 'index' | 'stage'): StageHostWiring {
   const desktopActivityProducer = useDesktopActivityProducerStore()
   desktopActivityProducer.start()
   onScopeDispose(() => desktopActivityProducer.stop())
-  // Only the character host samples the foreground app, so follower windows never poll the main process. It samples
-  // only while the user shares the foreground app; stopping also clears the last sample. A changed block list
-  // restarts it, so a sample or a pending reply read under the previous list is dropped and the app is read again.
+  // Only the character host samples the foreground app, and only while the user shares it; stopping also clears the
+  // last sample. A changed read policy restarts it, which drops a sample or pending reply read under the old policy.
   const foregroundWindowProducer = useForegroundWindowProducerStore()
   const situationSettings = useSituationSettings()
-  watch([() => situationSettings.document.shareForegroundWindow, () => situationSettings.document.blockedApps.join('\n')], ([sharing]) => {
+  watch([() => situationSettings.document.shareForegroundWindow, () => JSON.stringify(foregroundReadPolicy(situationSettings.document))], ([sharing]) => {
     foregroundWindowProducer.stop()
     if (sharing)
       foregroundWindowProducer.start()

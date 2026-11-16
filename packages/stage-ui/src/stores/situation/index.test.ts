@@ -715,6 +715,24 @@ describe('situation store', () => {
     expect(store.state.activity).toMatchObject({ appId: 'code', title: 'main.ts' })
   })
 
+  it('forgets a title it holds when window titles stop being shared', async () => {
+    const leadership = createLeadership(true)
+    const store = useSituationStore()
+    store.initialize(leadership.runtime)
+    store.setStageVisible(true)
+    const settings = useSituationSettings()
+    const foreground = useForegroundWindowStore()
+    foreground.setSample(foregroundSample({ title: 'secret plans.txt - Notepad' }))
+    expect(store.state.activity).toMatchObject({ title: 'secret plans.txt' })
+
+    await settings.update({ shareWindowTitles: false })
+
+    expect(JSON.stringify({ block: store.renderForRequest(Date.now()), state: store.state })).not.toMatch(/secret/iu)
+    // The host answers the next read without a title.
+    foreground.setSample(foregroundSample({ title: '' }))
+    expect(store.state.activity).toMatchObject({ appId: 'notepad', title: null })
+  })
+
   it('ignores the web extension while browser sharing is off, and forgets what it already shared', async () => {
     const leadership = createLeadership(true)
     const store = useSituationStore()

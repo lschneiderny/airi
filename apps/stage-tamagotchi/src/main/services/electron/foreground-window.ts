@@ -75,12 +75,14 @@ function isHiddenFromPresence(reading: ForegroundReading, blockedApps: readonly 
  * - `bridge` is the Linux desktop bridge on Linux. Its active-window reading backs the sampler,
  *   and this window's focus events verify that reading against AIRI's own pids
  * - koffi loads lazily on the first read, once per window, and never at module load
- * - Each read carries the user's block list. The service holds no copy of it, so a change applies to the next read
+ * - Each read carries the user's block list and whether titles are shared. The service holds no copy of either,
+ *   so a change applies to the next read
  *
  * Returns:
  * - Nothing; the handler goes with the window, or with the app if it quits first.
  *   Reads resolve `null` off Windows/macOS and after a failed koffi load, instead of rejecting.
  *   They also resolve `null` for a blocked app and for a private browser window, so neither reaches a renderer.
+ *   The title is empty unless the read asks for it; the private-window check still reads it here.
  */
 export function createForegroundWindowService(params: {
   context: ReturnType<typeof createContext>['context']
@@ -116,13 +118,15 @@ export function createForegroundWindowService(params: {
     return sampler
   }
 
-  const offSample = defineInvokeHandler(params.context, electron.foregroundWindow.sample, async ({ blockedApps }) => {
+  const offSample = defineInvokeHandler(params.context, electron.foregroundWindow.sample, async ({ blockedApps, includeTitle }) => {
     // A degraded snapshot (untrusted macOS window titles) still samples; an unavailable one never does.
     if (getCurrentHostCapabilities().signals.foregroundWindow.kind === 'unavailable')
       return null
     const read = await getSampler()
     const reading = read?.() ?? null
-    return reading && !isHiddenFromPresence(reading, blockedApps) ? reading.sample : null
+    if (!reading || isHiddenFromPresence(reading, blockedApps))
+      return null
+    return includeTitle ? reading.sample : { ...reading.sample, title: '' }
   })
 
   const onFocus = linuxBridge ? () => linuxVerifierFor(linuxBridge).focused(isOwnProcess) : undefined

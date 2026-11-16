@@ -21,7 +21,7 @@ describe.runIf(process.platform === 'win32')('createForegroundWindowService with
     const context = createContext()
     createForegroundWindowService({ context: context as never, window: { once: vi.fn() } as never })
     const sample = defineInvoke(context, electron.foregroundWindow.sample)
-    const read = () => sample({ blockedApps: [] })
+    const read = () => sample({ blockedApps: [], includeTitle: true })
 
     for (let i = 0; i < 50; i++) {
       const sample = await read()

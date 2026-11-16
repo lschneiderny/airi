@@ -48,6 +48,13 @@ const situationSettingsEntries = {
    */
   shareForegroundWindow: optional(boolean(), true),
   /**
+   * True adds the window title to each foreground reading. While false, the Electron main process answers with an
+   * empty title, so the situation and the prompt carry the app name and category only. The opportunity gate reads
+   * the category, never the title, so it decides the same either way. Has no effect while `shareForegroundWindow`
+   * is false. @default true
+   */
+  shareWindowTitles: optional(boolean(), true),
+  /**
    * False ignores everything the AIRI web extension sends (page and video titles, links, subtitles, and video
    * notifications), and the leader's situation forgets what it already sent. Independent of
    * `shareForegroundWindow`. @default true
@@ -75,6 +82,15 @@ export type SituationSettings = InferOutput<typeof SituationSettingsSchema>
 
 export function defaultSituationSettings(): SituationSettings {
   return parse(SituationSettingsSchema, {})
+}
+
+/**
+ * What a host's foreground read may return under these settings; the Electron producer sends it with every read.
+ * A reader that holds an earlier reading compares the serialized policy and drops the reading when it changes,
+ * because that reading may name an app that is blocked now or carry a title that is no longer shared.
+ */
+export function foregroundReadPolicy(settings: Pick<SituationSettings, 'blockedApps' | 'shareWindowTitles'>) {
+  return { blockedApps: [...settings.blockedApps], includeTitle: settings.shareWindowTitles }
 }
 
 /**

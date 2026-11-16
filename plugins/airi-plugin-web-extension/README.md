@@ -31,7 +31,7 @@ The stage adds them to the character's situation, which goes to the chat provide
 
 - **Turn off parts in the popup.** The **Capture Controls** in the popup turn off each kind.
 - **Turn it all off in AIRI.** In the desktop app, turn off **Share browser activity** in **Settings > Presence**. AIRI then ignores everything the extension sends, whatever the popup says, and forgets what it already sent.
-- **The foreground switch does not cover it.** **Share the foreground app and window titles** is a separate switch.
+- **The foreground switch does not cover it.** **Share the foreground app** is a separate switch.
 
 ## When to use it
 
