@@ -20,7 +20,7 @@ import { join } from 'node:path'
 
 export type QaDisplayCommand = 'up' | 'down' | 'status' | 'env' | 'run' | 'shot' | 'pointer'
 
-export const qaCompositors = ['kwin', 'x11', 'sway'] as const
+const qaCompositors = ['kwin', 'x11', 'sway'] as const
 export type QaCompositor = (typeof qaCompositors)[number]
 
 /**
@@ -28,11 +28,11 @@ export type QaCompositor = (typeof qaCompositors)[number]
  * - `private`: a PipeWire stack of its own inside the private runtime directory, with the null sink `airi_qa` as default.
  * - `host`: the user's PipeWire and Pulse sockets linked in. A person's opt-in; agents never use it.
  */
-export const qaAudioModes = ['none', 'private', 'host'] as const
+const qaAudioModes = ['none', 'private', 'host'] as const
 export type QaAudioMode = (typeof qaAudioModes)[number]
 
 /** The null sink a `--private-audio` session makes its default. */
-export const qaPrivateSink = 'airi_qa'
+const qaPrivateSink = 'airi_qa'
 
 const sessionIdentity: Record<QaCompositor, { XDG_CURRENT_DESKTOP: string, XDG_SESSION_TYPE: string }> = {
   kwin: { XDG_CURRENT_DESKTOP: 'KDE', XDG_SESSION_TYPE: 'wayland' },
@@ -352,7 +352,7 @@ export function locateGlobalAccelDaemon(rpmFiles: string): { kind: 'executable' 
  * QA runs a development build, so `appId` is the development app id from `resolveLinuxAppId` in stage-tamagotchi's
  * `src/main/app/desktop-entry.ts`.
  */
-export const qaPushToTalkShortcut = { appId: 'ai.moeru.airi.dev', id: 'voice-push-to-talk', trigger: 'Ctrl+Shift+Space', description: 'Push to Talk' } as const
+const qaPushToTalkShortcut = { appId: 'ai.moeru.airi.dev', id: 'voice-push-to-talk', trigger: 'Ctrl+Shift+Space', description: 'Push to Talk' } as const
 
 /** `kglobalshortcutsrc` with the app's group pre-filled, so a portal bind may skip KDE's confirmation dialog. */
 export function kglobalShortcutsSeed(): string {
@@ -592,7 +592,7 @@ const hostAudioKeys = ['PULSE_SERVER', 'PIPEWIRE_REMOTE', 'PIPEWIRE_RUNTIME_DIR'
  * `AIRI_QA_HOST_RUNTIME_DIR`, so `pnpm qa:display` still finds the user's systemd and sessions from inside a session.
  * Host audio overrides are deleted everywhere, so a client finds audio only in the private runtime directory.
  */
-export const sessionKeys: Record<QaCompositor, { sets: readonly string[], deletes: readonly string[] }> = {
+const sessionKeys: Record<QaCompositor, { sets: readonly string[], deletes: readonly string[] }> = {
   kwin: {
     sets: ['XDG_CURRENT_DESKTOP', 'XDG_SESSION_TYPE', 'WAYLAND_DISPLAY', 'DISPLAY', 'DBUS_SESSION_BUS_ADDRESS', 'DBUS_SYSTEM_BUS_ADDRESS', 'XDG_RUNTIME_DIR', 'AIRI_QA_HOST_RUNTIME_DIR'],
     deletes: ['SWAYSOCK', 'HYPRLAND_INSTANCE_SIGNATURE', 'XAUTHORITY', ...hostAudioKeys],
@@ -676,7 +676,7 @@ export function sessionMountTargets(mountinfo: string, sessionDir: string): stri
     .sort((a, b) => b.length - a.length)
 }
 
-export const allowHostSessionFlag = '--allow-host-session'
+const allowHostSessionFlag = '--allow-host-session'
 
 /** Removes every `--allow-host-session` from a command's arguments and reports whether one was there. */
 export function takeAllowHostSession(argv: readonly string[]): { argv: string[], allowHostSession: boolean } {

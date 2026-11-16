@@ -82,7 +82,7 @@ export interface ExtraTestConfig {
 }
 
 /** Vitest configs that `pnpm test:run` runs besides the root config, with the project it selects. */
-export const extraTestConfigs: ExtraTestConfig[] = [
+const extraTestConfigs: ExtraTestConfig[] = [
   { config: 'apps/stage-tamagotchi/vitest.config.ts', project: 'browser' },
   { config: 'packages/stage-ui/vitest.config.ts' },
   { config: 'packages/stage-ui-live2d/vitest.config.ts', project: 'browser' },

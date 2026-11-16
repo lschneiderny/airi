@@ -75,7 +75,7 @@ export function tempWorktreeRefusal(path: string, tempDir: string): string | nul
   return `${path} is inside the temporary directory ${tempDir}. One install there takes about 144,000 inodes, and a tmpfs has a fixed inode table that the whole machine shares, so every job then fails with ENOSPC. Keep the main checkout, and so its -wt directory, off ${tempDir}.`
 }
 
-export const qaModelVariable = 'AIRI_QA_MMD_MODEL'
+const qaModelVariable = 'AIRI_QA_MMD_MODEL'
 
 /**
  * The MMD model path `wt new --qa` writes to the new worktree's `.env.qa`: the environment's value first, then the

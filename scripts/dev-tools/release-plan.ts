@@ -23,7 +23,7 @@ export interface ReleaseArgs {
 }
 
 /** Calendar versions such as `2026.11.0`: year, month without a leading zero, and a release counter. */
-export function isReleaseVersion(version: string): boolean {
+function isReleaseVersion(version: string): boolean {
   return /^20\d{2}\.(?:[1-9]|1[0-2])\.(?:0|[1-9]\d*)$/.test(version)
 }
 

@@ -5,7 +5,7 @@ import { posix } from 'node:path'
  * three-mmd, three-vrm, and Tres all import three, so a chunk that brings any of them in at
  * startup also brings this marker into the startup chunks.
  */
-export const threeMarker = '__THREE__'
+const threeMarker = '__THREE__'
 
 export interface BundleCheckResult {
   /** Chunks the window loads before any dynamic import, relative to the output directory. */
