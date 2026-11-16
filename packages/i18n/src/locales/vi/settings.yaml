@@ -93,15 +93,10 @@ controls-island:
 analytics:
   notice:
     title: Phân tích dữ liệu sử dụng
-    description: >-
-      AIRI thu thập dữ liệu sử dụng một cách ẩn danh để giúp chúng tôi hiểu cách ứng dụng được dùng và cải thiện sự ổn định. Không có dữ liệu cá nhân nào được thu thập.
     privacyPrefix: Đọc
     privacyLink: chính sách quyền riêng tư
-    onboardingHint: Bạn có thể tắt phân tích ở Cài đặt > Hệ thống > Chung.
-    settingsHint: Bạn có thể tắt phân tích bất cứ lúc nào.
   toggle:
     title: Bật phân tích dữ liệu sử dụng
-    description: Tắt để từ chối việc thu thập phân tích dữ liệu.
   disabled:
     title: Phân tích dữ liệu bị vô hiệu hóa đối với bản dành cho nhà phát triển này
 model-select:

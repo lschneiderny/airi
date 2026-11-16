@@ -93,15 +93,10 @@ controls-island:
 analytics:
   notice:
     title: 利用状況の分析
-    description: >-
-      AIRI はアプリの使用状況を理解し安定性を向上させるため、匿名で利用状況データを収集します。個人データは一切収集されません。
     privacyPrefix: 閲覧
     privacyLink: プライバシーポリシー
-    onboardingHint: 分析機能は 設定 > システム > 一般 でいつでもオフにできます。
-    settingsHint: 分析機能はいつでもオフにできます。
   toggle:
     title: 利用状況分析を有効化
-    description: オフにするとデータ収集を無効にします。
   disabled:
     title: この開発者用ビルドでは分析が無効化されています
 model-select:

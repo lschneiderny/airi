@@ -94,15 +94,10 @@ controls-island:
 analytics:
   notice:
     title: Análisis de uso
-    description: >-
-      AIRI recopila análisis de uso anónimo para ayudarnos a entender cómo se utiliza la aplicación y mejorar la estabilidad. No se recogen datos personales.
     privacyPrefix: Leer el
     privacyLink: Política de privacidad
-    onboardingHint: Puedes desactivar las analíticas más tarde en Configuración > Sistema > General.
-    settingsHint: Puedes desactivar los análisis en cualquier momento.
   toggle:
     title: Activar análisis de uso
-    description: Desactiva esta opción para desactivar la colección de análisis.
   disabled:
     title: Analíticas desactivadas para esta versión de desarrollo
 model-select:

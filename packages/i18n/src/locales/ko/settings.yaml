@@ -94,15 +94,10 @@ controls-island:
 analytics:
   notice:
     title: 사용량 분석
-    description: >-
-      AIRI는 앱 사용 방식을 파악하고 안정성을 개선하기 위해 익명 사용 통계를 수집합니다. 개인 정보는 수집하지 않습니다.
     privacyPrefix: 읽으세요
     privacyLink: 개인 정보 정책
-    onboardingHint: 설정 > 시스템 > 일반에서 분석을 끌 수 있어요.
-    settingsHint: 분석은 언제나 끌 수 있어요.
   toggle:
     title: 사용 분석 켜기
-    description: 분석 수집을 거부하려면 꺼주세요................
   disabled:
     title: 이 개발 빌드에서는 사용 통계가 비활성화되어 있습니다
 model-select:
