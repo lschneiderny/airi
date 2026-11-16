@@ -1,6 +1,6 @@
 # Body ownership
 
-Verified against the code on 2026-11-16 (commit `1976c952b`). These rules win over ADRs; ADRs record why.
+Verified against the code on 2026-11-16 (commit `1976c952b`). These rules win over the ADRs in `docs/ai/adr/`; the ADRs record the history behind them.
 
 This document states which writer owns each channel of the character's body in each renderer, the order in which the writers run each frame, and how ownership passes from one writer to another. Code is cited by repository path and symbol, never by line number. Terms follow the [domain glossary](glossary.md).
 

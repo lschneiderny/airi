@@ -1,6 +1,6 @@
 # State persistence
 
-Verified against the code on 2026-11-16 (commit `1976c952b`). These rules state where client state lives today and how to place new state. They win over the ADRs, which record why each rule was chosen.
+Verified against the code on 2026-11-16 (commit `1976c952b`). These rules state where client state lives and how to place new state. These rules win over the ADRs in `docs/ai/adr/`; the ADRs record the history behind them.
 
 Terms follow the [domain glossary](glossary.md), in particular [Leader and follower windows](glossary.md#leader-and-follower-windows) and [Synced settings document](glossary.md#synced-settings-document). Code is cited by repository path and exported symbol.
 
@@ -26,7 +26,7 @@ A store that fits no tier needs an amendment to this document before it lands.
 
 ## Members
 
-The table lists every persisting store and component found in the `src` directories of the workspace packages and in `apps/stage-tamagotchi/src` on this commit.
+The table lists every persisting store and component found in the `src` directories of the workspace packages and in `apps/stage-tamagotchi/src` as of the commit named above.
 
 Column meanings:
 
@@ -176,8 +176,6 @@ These are observations, not fixes. Each needs either a registration, a move to t
 - The stage-layouts `useBackgroundStore` (`packages/stage-layouts/src/stores/background.ts`) shares the default localforage database with `useDisplayModelsStore`, the stage-ui `useBackgroundStore`, and `useMMD`, and separates its records only by key prefix. The desktop app does not render the stage-layouts background components that use it.
 - The unstorage `outbox` mount (IndexedDB `airi-sync-queue`) in `storage` has no reader or writer in the client.
 - `useLanguage` and `useSettingsGeneral` both own `settings/language`.
-
-**Inventory coverage:** the search in [Members](#members) misses `useLocalStorage<T>(` calls with a type argument, `useVersionedLocalStorageManualReset`, and direct `localStorage.setItem` calls. The rows for those members were found by a second search for `useLocalStorage<`, `useVersionedLocalStorageManualReset`, and `localStorage.setItem`.
 
 ## References
 

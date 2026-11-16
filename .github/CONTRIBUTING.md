@@ -96,15 +96,9 @@ pnpm dev:tamagotchi
 > [!NOTE]
 > The `dev` and `start` scripts run `install-electron` before `electron-vite`. Electron 42 downloads its binary on first use of its `bin` entry, but `electron-vite` reads `node_modules/electron/path.txt` directly and never triggers that download. Without this step, a fresh install fails with `Error: Electron uninstall`.
 
-### Web (Stage Web)
-
-```shell
-pnpm dev
-```
-
 ### Integrations
 
-The Discord, Telegram, Minecraft, and other integrations in `integrations/` are inherited from upstream. Their setup is in each directory's `README.md`.
+The Discord, Minecraft, and other integrations in `integrations/` are inherited from upstream. Their setup is in each directory's `README.md`.
 
 ## Check your changes
 

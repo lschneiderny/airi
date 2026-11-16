@@ -62,9 +62,9 @@ Group controls by the decision they support. Keep descriptions next to their fie
 - On small screens, preserve reading order and reachable actions when content becomes a single column.
 - Keep fixed controls clear of scrollable content, safe areas, and the software keyboard.
 
-The [web settings layout](./packages/stage-layouts/src/layouts/settings.vue) owns web page padding, safe areas, the header, and the settings scroll container.
+The [shared settings layout](./packages/stage-layouts/src/layouts/settings.vue) owns page padding, safe areas, the header, and the settings scroll container for the pages that use it.
 
-Electron uses its own [settings layout](./apps/stage-tamagotchi/src/renderer/layouts/settings.vue). Apply settings changes to the layout that owns the target application.
+The desktop app has its own [settings layout](./apps/stage-tamagotchi/src/renderer/layouts/settings.vue). Apply settings changes to the layout that owns the target page.
 
 ### Existing spacing references
 

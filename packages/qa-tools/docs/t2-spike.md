@@ -65,7 +65,7 @@ Not installed: AIRI's final motion-manager plugins (expression, auto blink, ligh
 
 ## Step 6: parity
 
-`spikes/t2/vitest.browser.config.ts` runs `parity.browser.test.ts` in headless Chromium (HeadlessChrome 151.0.7922.34) through the Playwright provider. The core is served from its own folder as Vite's public directory and loaded with a script tag, like `apps/stage-web/src/test/setup-live2d.browser.ts`. The rig bytes reach the page through a Vitest browser command. The page then runs the same `runT2Loop` with the full update. `spikes/t2/parity.ts` compares every parameter of every frame.
+`spikes/t2/vitest.browser.config.ts` runs `parity.browser.test.ts` in headless Chromium (HeadlessChrome 151.0.7922.34) through the Playwright provider. The core is served from its own folder as Vite's public directory and loaded with a script tag, like the Live2D browser test setup in the retired web app. The rig bytes reach the page through a Vitest browser command. The page then runs the same `runT2Loop` with the full update. `spikes/t2/parity.ts` compares every parameter of every frame.
 
 | Comparison | Round 1 max abs | Round 2 max abs |
 | --- | --- | --- |

@@ -33,7 +33,7 @@ Wayland and XWayland.
 
 ## Support scope
 
-The fork targets one platform: the Electron desktop app on Linux, macOS, and Windows. Every path in the repository falls into one of three groups.
+The fork targets one platform: the Electron desktop app on Linux, macOS, and Windows. Every workspace project falls into one of three groups.
 
 ### Supported
 
