@@ -27,7 +27,7 @@ const PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
  * Longest title read, in UTF-16 code units. Consumers cut titles far shorter before a
  * prompt; the cap only bounds the read buffer against windows with unbounded titles.
  */
-const TITLE_MAX_UNITS = 1024
+export const TITLE_MAX_UNITS = 1024
 
 /** Longest Win32 path (`\\?\` long path form), in UTF-16 code units. */
 const PATH_MAX_UNITS = 32767
