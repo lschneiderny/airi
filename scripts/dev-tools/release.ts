@@ -96,10 +96,21 @@ async function main() {
 
   rmSync(distDir, { recursive: true, force: true })
   await step('app build', 'pnpm', ['slots', 'run', '--class', 'build', '--', 'pnpm', '-F', '@proj-airi/stage-tamagotchi', 'run', 'build'], { cwd: root })
+  // The rpm step stages the unpacked app twice, about 4 GB, under the temporary directory. On Linux that is usually a
+  // RAM-backed tmpfs with a per-user quota, and an interrupted run leaves its copies there, so the next run fails with
+  // `Disk quota exceeded`. Packaging gets a directory on disk instead, emptied before and after.
+  const packagingTmpDir = join(root, 'node_modules', '.cache', 'release-tmp')
+  const packagingEnv: NodeJS.ProcessEnv = { ...process.env, AIRI_REQUIRE_GODOT_STAGE: 'true' }
+  if (process.platform === 'linux') {
+    rmSync(packagingTmpDir, { recursive: true, force: true })
+    mkdirSync(packagingTmpDir, { recursive: true })
+    packagingEnv.TMPDIR = packagingTmpDir
+  }
   await step('installer packaging', 'pnpm', ['slots', 'run', '--class', 'build', '--', 'pnpm', '-F', '@proj-airi/stage-tamagotchi', 'exec', 'electron-builder', target.builderFlag, '--publish', 'never', `-c.extraMetadata.version=${args.version}`], {
     cwd: root,
-    env: { ...process.env, AIRI_REQUIRE_GODOT_STAGE: 'true' },
+    env: packagingEnv,
   })
+  rmSync(packagingTmpDir, { recursive: true, force: true })
 
   const artifacts = readdirSync(distDir).filter(isReleaseArtifact).map(file => join(distDir, file))
   if (!artifacts.length)

@@ -131,6 +131,8 @@ The smoke starts the development build, not the installer. Before you publish th
 
 Then publish with `gh release edit v<version> --repo lschneiderny/airi --draft=false`. Installed Linux builds see the release through the updater. macOS builds cannot install unsigned updates, so their About page points to GitHub Releases instead.
 
+On Linux, the packaging step sets `TMPDIR` to `node_modules/.cache/release-tmp` in the checkout and empties it before and after. The rpm step stages the unpacked app twice there, about 4 GB, which a RAM-backed `/tmp` with a user quota cannot always hold: on 2026-11-15 it failed with `Disk quota exceeded - copy_file_range` after an interrupted run left its copies in `/tmp`.
+
 On Fedora, electron-builder's bundled `fpm` needs `libcrypt.so.1` to build the deb. Install `libxcrypt-compat` once if the deb step fails with `ruby: error while loading shared libraries: libcrypt.so.1`.
 
 ## `pnpm wt`
