@@ -27,14 +27,14 @@ Apply these rules to every affected UI file in AIRI.
 ## Reuse Project Styling Infrastructure
 
 - Use or extend shortcuts and rules in `uno.config.ts` when styles should be standardized or reused.
-- Search `apps/stage-web/src/styles` for existing animations before adding one. Reuse or extend an existing animation when it fits.
-- Consult `apps/stage-web/tsconfig.json` and `uno.config.ts` when configuration context is needed.
+- Search `apps/stage-tamagotchi/src/renderer/styles` for existing animations before adding one. Reuse or extend an existing animation when it fits.
+- Consult `apps/stage-tamagotchi/tsconfig.json`, `apps/stage-tamagotchi/uno.config.ts`, and the root `uno.config.ts` when configuration context is needed.
 - Keep animations intuitive, lively, and readable.
 
 ## Build on Shared UI Primitives
 
 - Build primitives on `@proj-airi/ui`, which is based on reka-ui, instead of raw DOM controls.
-- Read `docs/ai/context/ui-components.md` for the component API and `packages/ui/src/components/Form` for implementation patterns.
+- Read `docs/ai/context/ui-components.md` for the component API and `packages/ui/src/components/form` for implementation patterns.
 - When adding or updating a component in `packages/ui`, update `docs/ai/context/ui-components.md` with its description, props, slots, and emits.
 - Use Iconify icon sets instead of bespoke SVGs.
 

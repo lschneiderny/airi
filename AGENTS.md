@@ -12,6 +12,8 @@ Agent guidance holds only what an agent cannot learn from the code, `package.jso
 - Keep each nested `AGENTS.md` short. When one has no package-specific rules left, delete it and its `CLAUDE.md`.
 
 ## CONVENTIONS
+- Change only Supported projects for fork work. Carried projects stay as upstream ships them; fix them only to keep the workspace building. See [Support scope](README.md#support-scope).
+- The policy docs in `docs/ai/context/` are the current rules. When a change alters a rule they state, update the doc in the same commit. ADRs are history; do not edit their bodies.
 - Keep changes in scope. Correct rule violations in touched functions/components/tests, not unrelated code. Refactor small changes step by step.
 - Do not add one-off patterns. Before adding utilities, search internal implementations. If logic can become shared, propose that approach to the user. Put shared logic in `packages/`. Keep module boundaries clear.
 - Use kebab-case filenames. Do not use `any`. Prefer generics. Use `as unknown as <Type>` only when safe type fixes fail.
@@ -20,16 +22,16 @@ Agent guidance holds only what an agent cannot learn from the code, `package.jso
 - Use `injeca` dependency injection only at external boundaries: databases, model runtimes, queues, caches, filesystems, networks, clocks, environments, feature gates. Do not add dependency objects for internal sibling calls or parameter forwarding.
 - Prefer classes for runtime/browser APIs and substantial stateful business modules with lifecycle or domain ownership. Prefer functions for pure transformations/local helpers.
 - Use Valibot schemas near consumers. Use `errorMessageFrom(error)` from `@moeru/std`, with `?? 'fallback'` when needed. Prefer other `@moeru/std` error patterns.
-- Settings/devtools pages need `<route lang="yaml"> meta: layout: settings </route>`. Register routes and icons in the settings layout: `packages/stage-layouts/src/layouts/settings.vue` for web, `apps/stage-tamagotchi/src/renderer/layouts/settings.vue` for Electron.
+- Settings/devtools pages need `<route lang="yaml"> meta: layout: settings </route>`. Register routes and icons in both settings layouts: `packages/stage-layouts/src/layouts/settings.vue` and `apps/stage-tamagotchi/src/renderer/layouts/settings.vue`.
 - Keep pure orchestration outside Vue/store integration.
-- Reuse existing animations in `apps/stage-web/src/styles` before adding new ones.
+- Reuse existing animations in `apps/stage-tamagotchi/src/renderer/styles` before adding new ones.
 - Before changing host capabilities, read the [host capability contract ADR](docs/ai/adr/2026-11-08-host-capability-contract.md).
 - The Electron desktop stage host is gated by the off-by-default Experimental 3D stage setting. `AIRI_STAGE_HOST=window|desktop` overrides the saved mode in development builds only, for QA.
 - The server channel (`packages/server-runtime`, `packages/server-sdk`, `packages/server-shared`) is separate from hosted `server/packages`.
 - For 3D character motion work, track milestones in `docs/ai/context/3d-character-roadmap.md`.
 - Electron main/renderer examples: `src/main/services/electron`. DI example: `apps/stage-tamagotchi/src/main/index.ts`.
 - Preserve the public `@proj-airi/stage-ui/stores` forwarding barrel. Shared component API edits also update `docs/ai/context/ui-components.md` and stories.
-- Put project/client ADRs in `docs/ai/adr/`, hosted backend ADRs in `server/docs/ai/adr/`. Follow [server ADR rules](server/AGENTS.md).
+- Put project/client ADRs in `docs/ai/adr/`, hosted backend ADRs in `server/docs/ai/adr/`, and current reference and policy docs in `docs/ai/context/`. Follow [server ADR rules](server/AGENTS.md).
 - Keep documentation with its code in the same commit/PR. Keep agent configuration changes in a separate commit/PR.
 - Keep structured `README.md` files in each `packages/` and `apps/` entry: purpose, usage, when to use, and when not to use.
 - Put translations in `packages/i18n`. Edit only English source and your own locale unless asked. The other locales are frozen copies of upstream's Crowdin exports; this fork does not sync them. Add only implemented locales. Do not insert English placeholders into other locales.
@@ -46,7 +48,7 @@ Agent guidance holds only what an agent cannot learn from the code, `package.jso
 - Do not add backward-compatibility guards. For extended old caller/data support, document the target refactor. Start another Codex/Claude shell session for it.
 - Temporary compatibility fallbacks require `// NOTICE:` and removal conditions. Document permanent fallbacks as supported policy, not legacy.
 - Nested guidance can override the compatibility rule for public contracts only by naming the overridden root rule.
-- Explicit contract exceptions exist in [API](server/apps/api/AGENTS.md), [CCv3](packages/ccc/AGENTS.md), and [MediaPipe](packages/model-driver-mediapipe/AGENTS.md).
+- Explicit contract exceptions exist in [API](server/apps/api/AGENTS.md) and [CCv3](packages/ccc/AGENTS.md).
 - Mark every workaround with this comment format:
 ```ts
 // NOTICE:
@@ -75,7 +77,7 @@ Agent guidance holds only what an agent cannot learn from the code, `package.jso
 ## COMMANDS
 Use workspace `package.json` names with pnpm filters, for example `@proj-airi/stage-tamagotchi`.
 ```bash
-pnpm dev | dev:tamagotchi | dev:ui            # Web, Electron, UI development
+pnpm dev | dev:ui                             # Electron desktop app, UI stories
 pnpm dev:backend                              # Local backend stack (server/docker-compose.yaml)
 pnpm -F <package-name> typecheck | build | exec vitest run
 pnpm exec vitest run <path>; pnpm test:run
@@ -112,7 +114,7 @@ After each task, run `pnpm verify` before finishing. It typechecks the changed p
 Use `pnpm lint` or root `pnpm typecheck` only when a task needs the whole repository checked. Report only executed checks, their commands/results, changes, and follow-up work.
 When `pnpm run` or `pnpm exec` fails because dependencies are out of date, run `pnpm install` once explicitly. The workspace sets `verifyDepsBeforeRun: error` so installs never start silently.
 Create and remove worktrees with `pnpm wt new <name>` and `pnpm wt rm <name>`. Stop a worktree's processes with `pnpm dev:top kill <name> --yes`, never by PID alone.
-Root `vitest.config.ts` also owns the `dev-tools`, `root-scripts`, `github-scripts`, `web-extension`, `telegram-bot`, and `twitter-services` projects: `pnpm exec vitest run --project <name> <path>`.
+Root `vitest.config.ts` also owns the `dev-tools`, `root-scripts`, `github-scripts`, and `web-extension` projects: `pnpm exec vitest run --project <name> <path>`.
 The `pnpm verify` typecheck covers Turbo workspace packages (`packages/*`, `apps/*`, `server/**`, `services/*`) only. Root scripts get lint and tests only. Engines use `pnpm typecheck:engines` and `pnpm build:engines`.
 If Vitest finds no tests, inspect `vitest.config.ts` includes. Source-only packages can lack build scripts. Use their nested guidance.
 Electron build runs `electron-vite build`, not typecheck. Its typecheck runs `vue-tsc --noEmit`. Stage UI uses `test:run` and has no compilation build.
@@ -130,12 +132,17 @@ Read the listed file before starting. Skill paths below are under `.agents/skill
 | UnoCSS, Vue styles, components, animation, icons, color mode | [enforce-rules-for-unocss](.agents/skills/enforce-rules-for-unocss/SKILL.md) |
 | Adding `synced` or changing synced Pinia stores | [enforce-rules-for-pinia-synced](.agents/skills/enforce-rules-for-pinia-synced/SKILL.md) |
 | User-visible strings or glossary terms | [i18n guidance](packages/i18n/AGENTS.md) |
+| Domain terms in code, docs, or prompts | [Glossary](docs/ai/context/glossary.md) |
+| Body or motion ownership: which layer drives a bone, parameter, or expression | [Body ownership](docs/ai/context/body-ownership.md) |
+| Anything the character does unasked | [Autonomous behavior](docs/ai/context/autonomous-behavior.md) |
+| Prompt or other LLM-facing text | [LLM prompt](docs/ai/context/llm-prompt.md) |
+| New persisted state or settings store | [State persistence](docs/ai/context/state-persistence.md) |
 | Server work | [server](server/AGENTS.md), plus [API](server/apps/api/AGENTS.md) or [Auth](server/apps/auth/AGENTS.md) for those apps |
 | Documentation, comments, and commit text | Follow the prose rules under Unique Styles above. |
 | Slow/failed chat, speech, audio using saved IO traces | [analyze-io-traces](.agents/skills/analyze-io-traces/SKILL.md) |
 | Local file upload via browser/Electron chooser or input | [Upload reference](.agents/skills/use-agent-browser-for-airi/references/input-file.md), [agent-browser](.agents/skills/agent-browser/SKILL.md). For Electron, also [agent-browser-electron](.agents/skills/agent-browser-electron/SKILL.md). |
 | Screenshots and visual evidence | [use-vishot](.agents/skills/use-vishot/SKILL.md). Load only the matching runtime and scenario references. |
-| Live2D, VRM, MMD import/rendering in web and desktop | [use-agent-browser-for-airi](.agents/skills/use-agent-browser-for-airi/SKILL.md) |
+| Live2D, VRM, MMD import/rendering in the desktop app | [use-agent-browser-for-airi](.agents/skills/use-agent-browser-for-airi/SKILL.md) |
 | Motion QA, emotion/idle gates, rendered motion runs, headless MMD body motion (`pnpm qa:motion3d`) | [motion-qa](.agents/skills/motion-qa/SKILL.md); for `qa:motion3d`, also the [qa-tools README](packages/qa-tools/README.md) |
 | Checking a change in the running app: clean start, chat turn, screenshot, errors | [qa-tools README](packages/qa-tools/README.md#clean-start-smoke): `qa:smoke`, `qa:app`, and the `airi-qa` MCP server |
 | Live QA on Linux: anything that opens app windows | [`pnpm qa:display`](scripts/dev-tools/README.md#pnpm-qadisplay) |
@@ -144,6 +151,6 @@ Read the listed file before starting. Skill paths below are under `.agents/skill
 ## NOTES
 Nested guides own local exceptions and package-specific checks. Historical ADRs/audits and scanner observations are not current runtime acceptance.
 The fork removed the Kirie Godot/CEF desktop host on 2026-10-31. `docs/ai/context/upstream-watch.md` records when to port it back.
-The fork retired the Pocket native mobile host on 2026-11-04. The same watch list records its port-back condition; mobile browser layouts remain part of the web host.
+The fork retired the Pocket native mobile host on 2026-11-04. The same watch list records its port-back condition.
 Root `pnpm dev*` scripts run through `node scripts/dev.mjs`, which bypasses Windows `.cmd` shims and supports only `&&` chains of plain words.
 Nested `AGENTS.md` and `CLAUDE.md` files are committed, so an agent on any machine gets the same guidance from a fresh clone. Do not add them to `.git/info/exclude`.

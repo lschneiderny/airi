@@ -1,6 +1,6 @@
 ---
 name: use-agent-browser-for-airi
-description: Test AIRI display-model imports with agent-browser across stage-tamagotchi Electron and stage-web, including mobile browser layouts. Use when uploading and verifying contributor-supplied Live2D ZIP, VRM, or MMD ZIP/PMX/PMD files through AIRI's model selector, including onboarding bypass, format-specific import behavior, and renderer verification.
+description: Test AIRI display-model imports with agent-browser in the stage-tamagotchi Electron app. Use when uploading and verifying contributor-supplied Live2D ZIP, VRM, or MMD ZIP/PMX/PMD files through AIRI's model selector, including onboarding bypass, format-specific import behavior, and renderer verification.
 ---
 
 # Use Agent Browser for AIRI
@@ -9,11 +9,7 @@ For required checks by change type, see the [testing guide](../../../docs/ai/con
 
 Invoke `$agent-browser` and read [input files](references/input-file.md). That reference covers file-input discovery, temporary instrumentation, upload commands, and generic post-upload verification. Run `agent-browser skills get core --full` before browser commands. For Electron, also invoke `$agent-browser-electron` and run `agent-browser skills get electron --full`.
 
-Select the runtime guide:
-
-- Electron stage-tamagotchi: read [references/electron.md](references/electron.md).
-- stage-web: read [references/web.md](references/web.md).
-- Mobile browser coverage: read [references/mobile.md](references/mobile.md).
+Read the runtime guide: [references/electron.md](references/electron.md).
 
 ## Model import contract
 
