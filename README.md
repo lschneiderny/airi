@@ -21,7 +21,7 @@ The design records for these features are in [`docs/ai/adr/`](./docs/ai/adr/).
 | App | Path | Status in this fork |
 | --- | --- | --- |
 | Desktop (Stage Tamagotchi, Electron) | [`apps/stage-tamagotchi`](./apps/stage-tamagotchi) | Main target |
-| Web (Stage Web) | [`apps/stage-web`](./apps/stage-web) | Works without desktop-only features such as foreground-window sampling |
+| Web (Stage Web) | apps/stage-web | Retired on 2026-11-16; see [Support scope](#support-scope) |
 
 ## Platform support
 
@@ -30,6 +30,61 @@ Windows and macOS retain their documented desktop capability contract.
 On Linux, support depends on the desktop backend. On the tested Plasma 6.8.2
 host, KDE had the broadest verified set, including the desktop stage on native
 Wayland and XWayland.
+
+## Support scope
+
+The fork targets one platform: the Electron desktop app on Linux, macOS, and Windows. Every path in the repository falls into one of three groups.
+
+### Supported
+
+Fork features land here, and bugs here are fixed.
+
+| Path | Status | Meaning |
+| --- | --- | --- |
+| `apps/stage-tamagotchi` | Supported | The desktop app |
+| `engines/stage-tamagotchi-godot` | Supported | The VRM stage |
+| `integrations/minecraft` | Supported | The Minecraft bot, module, and situation sensor |
+| `plugins/airi-plugin-web-extension` | Supported | Presence browser activity |
+| `packages/*` | Supported | Every package not listed in the other tables |
+| `scripts/` | Supported | Repository tooling |
+
+### Kept from upstream
+
+The fork does not develop these. It changes them only to keep the workspace building, and upstream syncs bring in upstream's changes.
+
+| Path | Status | Meaning |
+| --- | --- | --- |
+| `server` | Kept | The hosted backend; the clients do not use it |
+| `integrations/discord-bot` | Kept | The Discord bot |
+| `integrations/vscode` | Kept | The VS Code integration |
+| `plugins/airi-plugin-claude-code` | Kept | The Claude Code plugin |
+| `services/computer-use-mcp` | Kept | The computer-use service |
+| `apps/component-calling` | Kept | The component-calling demo app |
+| `packages/memory-pgvector` | Kept | The pgvector memory package |
+| `packages/input-playstation-dualsense-5` | Kept | The DualSense controller input |
+| `packages/stage-pages/src/pages/v2` | Kept | The upstream v2 pages |
+| `packages/stage-ui/src/stores/modules/home-assistant.ts` | Kept | The in-app Home Assistant module, woven into shared code |
+| `packages/stage-ui/src/stores/modules/artistry.ts` | Kept | The in-app Artistry module, woven into shared code |
+
+### Retired
+
+These paths were removed. Upstream changes to them are dropped on sync.
+
+| Path | Status | Meaning |
+| --- | --- | --- |
+| apps/stage-tamagotchi-kirie | Retired 2026-10-31 | The Godot/CEF desktop host |
+| apps/stage-pocket | Retired 2026-11-04 | The native mobile host |
+| packages/cap-vite | Retired 2026-11-04 | The Capacitor Vite helper for the mobile host |
+| apps/ui-server-auth | Retired 2026-11-04 | The hosted sign-in UI |
+| apps/stage-web | Retired 2026-11-16 | The web app |
+| packages/model-driver-mediapipe | Retired 2026-11-16 | The MediaPipe model driver |
+| integrations/telegram-bot | Retired 2026-11-16 | The Telegram bot |
+| integrations/twitter-services | Retired 2026-11-16 | The Twitter services |
+| integrations/satori-bot | Retired 2026-11-16 | The Satori bot |
+| plugins/airi-plugin-bilibili-laplace | Retired 2026-11-16 | The Bilibili LAPLACE plugin |
+| packages/stage-ui/src/components/modules/X.vue | Retired 2026-11-16 | The stage-ui X module (with packages/stage-ui/src/stores/modules/twitter.ts) |
+
+The Retired table is the path list the upstream sync uses to resolve delete-versus-modify conflicts: a retired path stays deleted. The port-back conditions for Kirie and Pocket are in [`docs/ai/context/upstream-watch.md`](./docs/ai/context/upstream-watch.md).
 
 ## Getting started
 
@@ -40,8 +95,7 @@ git clone https://github.com/lschneiderny/airi.git
 cd airi
 mise install
 pnpm install
-pnpm dev:tamagotchi   # desktop app
-pnpm dev              # web app
+pnpm dev   # desktop app
 ```
 
 After the app starts, configure a chat provider in Settings > Providers, then choose or import a Live2D model in Settings > Models.
