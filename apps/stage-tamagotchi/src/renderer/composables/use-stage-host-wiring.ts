@@ -71,14 +71,14 @@ export function useStageHostWiring(page: 'index' | 'stage'): StageHostWiring {
   desktopActivityProducer.start()
   onScopeDispose(() => desktopActivityProducer.stop())
   // Only the character host samples the foreground app, so follower windows never poll the main process. It samples
-  // only while the user shares the foreground app; stopping also clears the last sample.
+  // only while the user shares the foreground app; stopping also clears the last sample. A changed block list
+  // restarts it, so a sample or a pending reply read under the previous list is dropped and the app is read again.
   const foregroundWindowProducer = useForegroundWindowProducerStore()
   const situationSettings = useSituationSettings()
-  watch(() => situationSettings.document.shareForegroundWindow, (sharing) => {
+  watch([() => situationSettings.document.shareForegroundWindow, () => situationSettings.document.blockedApps.join('\n')], ([sharing]) => {
+    foregroundWindowProducer.stop()
     if (sharing)
       foregroundWindowProducer.start()
-    else
-      foregroundWindowProducer.stop()
   }, { immediate: true })
   onScopeDispose(() => foregroundWindowProducer.stop())
 

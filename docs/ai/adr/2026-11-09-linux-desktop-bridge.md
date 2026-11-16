@@ -272,6 +272,11 @@ at 32, own pids at 256 and each JSON message at 65,536 characters.
 Activation, captionChanged and fullScreenChanged update that reading.
 App-side presence rules govern what reaches consumers: the sharing toggle,
 denylist and 120-character title limit apply, and titles are never logged.
+Amendment (2026-11-15): the denylist became the block list, which the
+foreground service applies in the main process. `createLinuxSampler` also
+returns the window class and the desktop file name for that match; they stay
+in the main process. See the amendment in
+[situational presence](2026-10-19-situational-presence.md).
 `createLinuxSampler` maps that reading to a foreground sample and reads only
 `/proc/<pid>/exe` beyond it, never the process command line or environment.
 

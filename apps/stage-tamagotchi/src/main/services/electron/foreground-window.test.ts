@@ -178,7 +178,8 @@ describe('createForegroundWindowService', () => {
   function createReader(getSidecarPid?: () => number | null, bridge?: ReturnType<typeof createBridge>, window: object = { once: vi.fn(), on: vi.fn(), off: vi.fn() }) {
     const context = createContext()
     createForegroundWindowService({ context: context as never, window: window as never, getSidecarPid, bridge: bridge as never })
-    return defineInvoke(context, electron.foregroundWindow.sample)
+    const sample = defineInvoke(context, electron.foregroundWindow.sample)
+    return (blockedApps: readonly string[] = []) => sample({ blockedApps })
   }
 
   describe('on Linux', () => {
@@ -220,6 +221,27 @@ describe('createForegroundWindowService', () => {
       await expect(createReader(undefined, createBridge('kwin', konsole))()).resolves.toBeNull()
     })
 
+    it.each([
+      ['its window class', ['*bitwarden*']],
+      ['its desktop file name', ['com.bitwarden.desktop']],
+    ])('resolves null for an app blocked by %s', async (_name, blockedApps) => {
+      const vault = { caption: 'Vault - secret-bank-login', resourceClass: 'Bitwarden', desktopFileName: 'com.bitwarden.desktop', pid: MISSING_PID, fullScreen: false }
+
+      await expect(createReader(undefined, createBridge('kwin', vault))(blockedApps)).resolves.toBeNull()
+      await expect(createReader(undefined, createBridge('kwin', vault))(['*keepass*'])).resolves.toMatchObject({ title: 'Vault - secret-bank-login' })
+    })
+
+    it('resolves null for a private browser window without a block list entry', async () => {
+      const firefox = { ...konsole, caption: 'Online Banking \u2014 Mozilla Firefox Private Browsing', resourceClass: 'firefox', desktopFileName: 'firefox' }
+
+      await expect(createReader(undefined, createBridge('kwin', firefox))()).resolves.toBeNull()
+      await expect(createReader(undefined, createBridge('kwin', { ...firefox, caption: 'Online Banking \u2014 Mozilla Firefox' }))()).resolves.toMatchObject({ exeName: 'firefox' })
+    })
+
+    it('keeps an own window even when the block list matches everything', async () => {
+      await expect(createReader(undefined, createBridge('kwin', { ...konsole, pid: process.pid }))(['*'])).resolves.toMatchObject({ ownProcess: true })
+    })
+
     it('verifies the foreground reading when an AIRI window gains focus and is active', () => {
       const listeners = new Map<string, () => void>()
       const window = {
@@ -258,6 +280,11 @@ describe('createForegroundWindowService', () => {
     })
     expect(win32.OpenProcess).toHaveBeenCalledWith(0x1000, 0, 4321)
     expect(win32.CloseHandle).toHaveBeenCalledExactlyOnceWith(9n)
+  })
+
+  it.each(['notepad.exe', 'NOTEPAD', 'note*'])('resolves null for an app blocked as %s', async (pattern) => {
+    await expect(createReader()([pattern])).resolves.toBeNull()
+    await expect(createReader()(['wordpad.exe'])).resolves.toMatchObject({ exeName: 'Notepad.exe' })
   })
 
   it('decodes non-ASCII titles intact', async () => {

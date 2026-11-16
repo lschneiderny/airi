@@ -42,7 +42,8 @@ describe.runIf(process.platform === 'darwin')('createForegroundWindowService wit
     const context = createContext()
     const window = new EventEmitter()
     createForegroundWindowService({ context: context as never, window: window as never })
-    return { read: defineInvoke(context, electron.foregroundWindow.sample), close: () => window.emit('closed') }
+    const sample = defineInvoke(context, electron.foregroundWindow.sample)
+    return { read: () => sample({ blockedApps: [] }), close: () => window.emit('closed') }
   }
 
   it('validates 50 responsive service samples and records informational percentiles', async () => {

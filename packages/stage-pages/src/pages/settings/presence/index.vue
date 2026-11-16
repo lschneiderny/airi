@@ -6,7 +6,7 @@ import { FieldCheckbox, FieldRange, Textarea } from '@proj-airi/ui'
 import { computed, reactive, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-type AppListField = 'quietApps' | 'titleDenylist'
+type AppListField = 'quietApps' | 'blockedApps'
 
 const { t } = useI18n()
 const settings = useSituationSettings()
@@ -18,8 +18,8 @@ async function updateSettings(patch: Partial<SituationSettings>) {
 
 // Drafts keep the raw text while the user types; a list is committed when its field loses focus
 // (`change`), and the store trims entries and drops blank lines.
-const drafts = reactive<Record<AppListField, string>>({ quietApps: '', titleDenylist: '' })
-for (const field of ['quietApps', 'titleDenylist'] as const) {
+const drafts = reactive<Record<AppListField, string>>({ quietApps: '', blockedApps: '' })
+for (const field of ['quietApps', 'blockedApps'] as const) {
   watch(() => settings.document[field].join('\n'), (text) => {
     drafts[field] = text
   }, { immediate: true })
@@ -36,9 +36,9 @@ const appLists = computed(() => [
     description: t('settings.pages.presence.quiet-apps.description'),
   },
   {
-    field: 'titleDenylist' as const,
-    title: t('settings.pages.presence.title-denylist.title'),
-    description: t('settings.pages.presence.title-denylist.description'),
+    field: 'blockedApps' as const,
+    title: t('settings.pages.presence.blocked-apps.title'),
+    description: t('settings.pages.presence.blocked-apps.description'),
   },
 ])
 

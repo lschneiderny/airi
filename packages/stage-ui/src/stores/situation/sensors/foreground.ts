@@ -5,7 +5,6 @@ import { isElectronWindow } from '@proj-airi/stage-shared'
 import {
   appIdFromExe,
   categorizeApp,
-  isDenylisted,
   labelFromExe,
   normalizeWindowTitle,
 } from '@proj-airi/stage-shared/situation'
@@ -78,8 +77,8 @@ export interface ForegroundSensor {
  *
  * Samples of AIRI's own windows (`ownProcess`, including the Godot stage sidecar) never become activity; the
  * first one only records AIRI's app id for {@link ForegroundSensor.selfAppIds}. Activity is reported when the
- * app id or the normalized title changes. An executable on the `titleDenylist` setting still reports its app,
- * label and category, but its title is dropped here and reaches no observation, log, or prompt.
+ * app id or the normalized title changes. An app on the `blockedApps` setting, and a private browser window, never
+ * arrive here: the host drops their readings before it writes a sample.
  *
  * Busy comes from the host's reading of whether a remark fits now, so own samples count for it too.
  * It is reported only when it changes. A sample older than
@@ -90,6 +89,9 @@ export interface ForegroundSensor {
  * While the `shareForegroundWindow` setting is false, the sensor treats every sample as missing: it reports no busy
  * state, activity, or category, and clears a reported category. It forgets what it reported, so turning the setting
  * back on reports the current sample again, even for the same app.
+ *
+ * When the `blockedApps` setting changes, the sensor forgets what it reported and reports no activity from the
+ * sample it holds, because the host read that sample under the previous list. The next sample is reported again.
  */
 export function startForegroundSensor(ingest: (observation: Observation) => void, options: ForegroundSensorOptions): ForegroundSensor {
   const foreground = useForegroundWindowStore()
@@ -147,7 +149,7 @@ export function startForegroundSensor(ingest: (observation: Observation) => void
 
     const exeName = nonEmptyString(sample.exeName) ?? exe
     const label = labelFromExe(exeName, platform)
-    const title = isDenylisted(exeName, settings.document.titleDenylist) ? null : normalizeWindowTitle(sample.title, label)
+    const title = normalizeWindowTitle(sample.title, label)
     if (appId === lastAppId && title === lastTitle)
       return
     lastAppId = appId
@@ -166,13 +168,16 @@ export function startForegroundSensor(ingest: (observation: Observation) => void
 
   const scope = effectScope(true)
   scope.run(() => {
-    watch([() => foreground.sample, () => settings.document.shareForegroundWindow], ([, sharing]) => {
-      if (!sharing)
+    // The list is compared by content: every settings update replaces the array, also when another field changed.
+    watch([() => foreground.sample, () => settings.document.shareForegroundWindow, () => settings.document.blockedApps.join('\n')], ([, sharing, blockedApps], previous) => {
+      // The immediate first run has no previous values.
+      const blockListChanged = previous[2] !== undefined && previous[2] !== blockedApps
+      if (!sharing || blockListChanged)
         forgetReported()
       const nowMs = Date.now()
       reportBusy(nowMs)
       const sample = sharedSample()
-      if (sample && isFresh(sample, nowMs, options.stageVisible()))
+      if (!blockListChanged && sample && isFresh(sample, nowMs, options.stageVisible()))
         reportActivity(sample)
       reportCategory(nowMs)
     }, { immediate: true, flush: 'sync' })

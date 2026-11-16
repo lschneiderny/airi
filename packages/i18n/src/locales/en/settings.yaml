@@ -902,9 +902,9 @@ pages:
     quiet-apps:
       title: Quiet apps
       description: The character stays quiet while one of these apps is in the foreground. Enter one app file name per line, such as zoom.exe or zoom.us.app. Use * to match any characters.
-    title-denylist:
-      title: Private window titles
-      description: The character never reads window titles from these apps. Enter one app file name per line, such as bitwarden.exe or 1Password 7.app. Use * to match any characters.
+    blocked-apps:
+      title: Blocked apps
+      description: The character never sees these apps. AIRI drops their name and window title before anything else reads them, and the character stays quiet on its own while one is in front. Private browser windows that say so in their title are always blocked. Enter one app name per line, such as bitwarden or 1Password 7.app. Use * to match any characters.
   conversation:
     title: Conversation
     description: Decide how the character writes its replies

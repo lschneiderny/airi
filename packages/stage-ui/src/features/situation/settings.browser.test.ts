@@ -1,6 +1,6 @@
 import type { LeadershipMode, SyncedPiniaRuntime } from 'pinia-plugin-synced'
 
-import { isDenylisted, withoutAppExtension } from '@proj-airi/stage-shared/situation'
+import { isBlockedApp, isDenylisted, withoutAppExtension } from '@proj-airi/stage-shared/situation'
 import { createPinia, disposePinia } from 'pinia'
 import { createSyncedPiniaPlugin } from 'pinia-plugin-synced'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -67,7 +67,7 @@ describe('situation settings', () => {
       shareForegroundWindow: true,
       shareBrowserActivity: true,
       quietApps: ['zoom.exe', 'ms-teams.exe', 'teams.exe', 'webex*.exe', 'zoom.us.app', 'Microsoft Teams.app', 'FaceTime.app', 'Webex*.app'],
-      titleDenylist: ['1password*.exe', 'keepass*.exe', 'bitwarden.exe', 'keepassxc.exe', '1Password*.app', 'Bitwarden.app', 'KeePassXC.app', 'Passwords.app', 'Keychain Access.app'],
+      blockedApps: ['1Password*.app', 'Bitwarden.app', 'KeePassXC.app', 'Passwords.app', 'Keychain Access.app'],
       showUnpromptedCue: true,
       speakDuringGames: true,
     })
@@ -93,27 +93,51 @@ describe('situation settings', () => {
     expect(isDenylisted(appId, stripped)).toBe(true)
   })
 
-  it.each(['1Password 7.app', '1password 7.APP', 'Bitwarden.app', 'KeePassXC.app', '/System/Applications/Passwords.app', '/System/Applications/Utilities/Keychain Access.app', '/Applications/1Password 7.app'])('denylists the macOS title of %s by default', (name) => {
-    expect(isDenylisted(name, defaultSituationSettings().titleDenylist)).toBe(true)
+  it.each(['1Password 7.app', '1password 7.APP', 'Bitwarden.app', 'KeePassXC.app', '/System/Applications/Passwords.app', '/System/Applications/Utilities/Keychain Access.app', '/Applications/1Password 7.app'])('blocks %s on macOS by default', (name) => {
+    expect(isBlockedApp([name], defaultSituationSettings().blockedApps, 'darwin')).toBe(true)
+  })
+
+  it.each([
+    [['keepassxc', 'org.keepassxc.KeePassXC', 'org.keepassxc.KeePassXC']],
+    [['1password', '1Password', '1password']],
+    // Started through a shared Electron or Python runtime: only the window class and desktop file name tell.
+    [['electron', 'Bitwarden', 'bitwarden']],
+    [['python3.13', 'org.gnome.World.Secrets', 'org.gnome.World.Secrets']],
+    [['kwalletmanager5', 'org.kde.kwalletmanager', 'org.kde.kwalletmanager']],
+    [['seahorse', 'org.gnome.seahorse.Application', 'org.gnome.seahorse.Application']],
+    [['proton-pass', 'Proton Pass', 'proton-pass']],
+    [['Enpass', 'Enpass', 'enpass']],
+  ])('blocks %j on Linux by default', (names) => {
+    vi.stubGlobal('platform', 'linux')
+    expect(isBlockedApp(names, defaultSituationSettings().blockedApps, 'linux')).toBe(true)
+  })
+
+  it.each([
+    [['firefox', 'firefox', 'firefox']],
+    [['konsole', 'org.kde.konsole', 'org.kde.konsole']],
+    [['electron', 'Signal', 'signal-desktop']],
+  ])('leaves %j unblocked on Linux by default', (names) => {
+    vi.stubGlobal('platform', 'linux')
+    expect(isBlockedApp(names, defaultSituationSettings().blockedApps, 'linux')).toBe(false)
   })
 
   it('keeps a stored quiet list untouched by the macOS defaults', () => {
     localStorage.setItem(key, JSON.stringify({ quietApps: ['only-mine.exe'] }))
     const { store } = createContext()
     expect(store.document.quietApps).toEqual(['only-mine.exe'])
-    expect(store.document.titleDenylist).toEqual(defaultSituationSettings().titleDenylist)
+    expect(store.document.blockedApps).toEqual(defaultSituationSettings().blockedApps)
   })
 
-  it('retains the exact Windows quiet and title defaults without rewriting custom .app globs', () => {
+  it('retains the exact Windows quiet and blocked defaults without rewriting custom .app globs', () => {
     vi.stubGlobal('platform', 'win32')
     expect(defaultSituationSettings().quietApps).toEqual(['zoom.exe', 'ms-teams.exe', 'teams.exe', 'webex*.exe'])
-    expect(defaultSituationSettings().titleDenylist).toEqual(['1password*.exe', 'keepass*.exe', 'bitwarden.exe', 'keepassxc.exe'])
-    localStorage.setItem(key, JSON.stringify({ quietApps: ['zed.app', 'z*.APP'], titleDenylist: ['custom.app'] }))
+    expect(defaultSituationSettings().blockedApps).toEqual(['1password*.exe', 'keepass*.exe', 'bitwarden.exe', 'keepassxc.exe'])
+    localStorage.setItem(key, JSON.stringify({ quietApps: ['zed.app', 'z*.APP'], blockedApps: ['custom.app'] }))
 
     const { store } = createContext()
 
     expect(store.document.quietApps).toEqual(['zed.app', 'z*.APP'])
-    expect(store.document.titleDenylist).toEqual(['custom.app'])
+    expect(store.document.blockedApps).toEqual(['custom.app'])
   })
 
   it('falls back per field when a stored field is invalid', () => {
@@ -143,16 +167,16 @@ describe('situation settings', () => {
   })
 
   it('drops unknown fields, blank and repeated app entries from storage', () => {
-    localStorage.setItem(key, JSON.stringify({ extra: true, quietApps: ['  notepad.exe ', '', '   ', 'notepad.exe', 'zoom.exe'], titleDenylist: [] }))
+    localStorage.setItem(key, JSON.stringify({ extra: true, quietApps: ['  notepad.exe ', '', '   ', 'notepad.exe', 'zoom.exe'], blockedApps: [] }))
     const { store } = createContext()
-    expect(store.document).toEqual({ ...defaultSituationSettings(), quietApps: ['notepad.exe', 'zoom.exe'], titleDenylist: [] })
+    expect(store.document).toEqual({ ...defaultSituationSettings(), quietApps: ['notepad.exe', 'zoom.exe'], blockedApps: [] })
   })
 
   it('clamps and normalizes valid patches', async () => {
     const { store } = createContext()
-    expect(await store.update({ chattiness: 2, titleDenylist: [' keepass*.exe', '', 'keepass*.exe'] })).toEqual({ success: true })
+    expect(await store.update({ chattiness: 2, blockedApps: [' keepass*.exe', '', 'keepass*.exe'] })).toEqual({ success: true })
     expect(store.document.chattiness).toBe(1)
-    expect(store.document.titleDenylist).toEqual(['keepass*.exe'])
+    expect(store.document.blockedApps).toEqual(['keepass*.exe'])
     expect(JSON.parse(localStorage.getItem(key)!)).toEqual(store.document)
   })
 

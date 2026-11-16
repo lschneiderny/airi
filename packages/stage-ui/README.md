@@ -459,7 +459,7 @@ The answer is untrusted: Valibot accepts at most 3 threads with a known kind, a 
 `stores/situation/sensors/` turns host signals into observations: desktop presence and wakes, the foreground app and busy state, conversation turns and the end of each exchange, the stage expression and mood, plugin and vision context, Minecraft context, and `spark:notify` events.
 Only the leader runs them. Context messages from the context bridge reach the situation through `ingestContextMessage`, and notifications through `notifyObservationFrom`.
 A follower window forwards its notify observations to the leader over the speech bus with `situationNotifyObservedEvent`.
-The foreground sensor skips AIRI's own windows, drops titles of apps on the title denylist, and treats a sample older than 5 seconds (20 seconds while the stage is hidden) as stale.
+The foreground sensor skips AIRI's own windows and treats a sample older than 5 seconds (20 seconds while the stage is hidden) as stale. Apps on `blockedApps` and private browser windows never reach it, because the host drops their readings. When `blockedApps` changes, the sensor forgets what it reported and the situation forgets the foreground app.
 While `shareForegroundWindow` is false, it reports nothing, and the store drops every app, title, and app category from the situation with `forgetForeground`. The gate then holds with `stale-signal`.
 While `shareBrowserActivity` is false, `ingest` drops every context and notify whose source key belongs to the web extension (`WEB_EXTENSION_SOURCE`, `proj-airi:plugin-web-extension`), and the store removes what the extension already sent with `forgetSource`. The character orchestrator also runs no spark agent for such a notify. `sharesSource(sourceKey)` answers whether a source is shared.
 
@@ -468,7 +468,7 @@ Do not send ambient context to the model in any other way: the situation block i
 
 ### Presence settings
 
-`useSituationSettings` in `features/situation/settings` stores one document at `settings/situation`: `unpromptedEnabled`, `chattiness` (0 to 1, default 0.5), `dontDisturb`, `shareForegroundWindow` (default true), `shareBrowserActivity` (default true), `quietApps`, `titleDenylist`, `showUnpromptedCue`, and `speakDuringGames`.
+`useSituationSettings` in `features/situation/settings` stores one document at `settings/situation`: `unpromptedEnabled`, `chattiness` (0 to 1, default 0.5), `dontDisturb`, `shareForegroundWindow` (default true), `shareBrowserActivity` (default true), `quietApps`, `blockedApps`, `showUnpromptedCue`, and `speakDuringGames`.
 An invalid field falls back to its default. The leader routes `update` and `reset`.
 **Settings > Presence** edits it in the Electron app. Web excludes the page, because it runs no unprompted turns.
 

@@ -221,7 +221,7 @@ The `situation` entrypoint owns the pure core of situational presence: observati
 - A `TouchObservation` (a finished pet or a poke) becomes one situation event under `TOUCH_TOPIC_KEY`, which each new touch replaces. Its `New:` line tells the model about the touch, and the urge gate never picks it as a topic.
 - A `SelfObservation` reports the start or the end of something the character does on her own (a yawn, a doze, a walk, a sit or a clip-free rest, an unasked clip). The reducer keeps it in `SituationState.self`, never as an event, so the urge gate cannot pick it. `selfLine` renders it as one line of the block, and `selfHint` anchors the own-day reason to it.
 - `reactionPolicy` decides whether a touch (a long enough pet, or a burst of pokes) gets a short line, and `settleReaction` records the outcome. It never goes through the urge gate: it has its own pacing, its own random checkpoint, and a subset of the hard suppressors that skips presence, stale signals, and busy states.
-- `normalizeWindowTitle`, `appIdFromExe`, `labelFromExe`, `categorizeApp`, and `isDenylisted` turn a foreground sample into an app id, label, category, and model-facing title.
+- `normalizeWindowTitle`, `appIdFromExe`, `labelFromExe`, `categorizeApp`, and `isDenylisted` turn a foreground sample into an app id, label, category, and model-facing title. `isBlockedApp` and `isPrivateWindowTitle` decide whether a host must hide a reading before it leaves the main process.
 
 The pure rules read no clock, store, or global randomness. Pass explicit time and retain returned state and memory for the next call; the urge gate and the reaction policy each checkpoint their random state in their own memory.
 

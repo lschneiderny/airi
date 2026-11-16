@@ -118,7 +118,7 @@ vi.mock('@proj-airi/stage-ui/stores/voice', () => ({
 vi.mock('@proj-airi/stage-ui/stores/onboarding', () => ({ useOnboardingStore: () => ({ needsOnboarding: false }) }))
 vi.mock('@proj-airi/stage-ui/composables/voice-input-mode', () => ({ useVoiceListening: () => {} }))
 vi.mock('@proj-airi/stage-ui/features/situation/settings', () => ({
-  useSituationSettings: () => ({ document: { shareForegroundWindow: false } }),
+  useSituationSettings: () => ({ document: { shareForegroundWindow: false, blockedApps: [] } }),
 }))
 vi.mock('../stores/desktop-activity', () => ({ useDesktopActivityProducerStore: () => ({ start: () => {}, stop: () => {} }) }))
 vi.mock('../stores/foreground-window', () => ({ useForegroundWindowProducerStore: () => ({ start: () => {}, stop: () => {} }) }))

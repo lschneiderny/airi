@@ -4,7 +4,8 @@ import { defineInvokeEventa } from '@moeru/eventa'
  * One reading of the desktop window that has keyboard focus.
  *
  * The title is raw (up to the main process read cap). Consumers own normalization
- * and the title denylist before a title reaches a prompt, and must not persist it.
+ * before a title reaches a prompt, and must not persist it. The main process never
+ * returns a reading of a blocked app or of a private browser window.
  */
 export interface ForegroundWindowSample {
   /** Full image path of the owning process, or `null` when the host cannot read it. */
@@ -25,12 +26,21 @@ export interface ForegroundWindowSample {
   sampledAtMs: number
 }
 
+export interface ForegroundWindowRequest {
+  /**
+   * App-name globs of the user's block list (the `blockedApps` presence setting). The main process applies them
+   * before it replies, so a blocked app's name, title, and pid never cross IPC. AIRI's own windows are exempt.
+   */
+  blockedApps: readonly string[]
+}
+
 /**
  * Reads the foreground window once. The main process never samples on its own; the caller sets the rate.
  * Resolves `null` when no window has focus (lock screen, desktop switch), the window closed during the read,
- * or the host cannot sample (no sampler for this host, or its binding failed to load).
+ * the host cannot sample (no sampler for this host, or its binding failed to load), or the window in front is
+ * hidden from presence: its app is on `blockedApps`, or its title marks a private browser window.
  */
-const sample = defineInvokeEventa<ForegroundWindowSample | null>('eventa:invoke:electron:foreground-window:sample')
+const sample = defineInvokeEventa<ForegroundWindowSample | null, ForegroundWindowRequest>('eventa:invoke:electron:foreground-window:sample')
 
 export const foregroundWindow = {
   sample,

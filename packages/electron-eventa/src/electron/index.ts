@@ -6,7 +6,7 @@ import { screen } from './screen'
 import { systemPreferences } from './system-preferences'
 import { window } from './window'
 
-export type { ForegroundWindowSample } from './foreground-window'
+export type { ForegroundWindowRequest, ForegroundWindowSample } from './foreground-window'
 export { getHostCapabilities, hostCapabilitiesChanged, reportPointerSample, reportSystemAudioHeard } from './host-capabilities'
 export { cursorScreenPoint, startLoopGetCursorScreenPoint } from './screen'
 export { bounds, startLoopGetBounds } from './window'

@@ -114,9 +114,10 @@ function globToRegExp(pattern: string): RegExp {
 }
 
 /**
- * Whether an executable is on the title denylist. Matching is case-insensitive
+ * Whether a file name matches one of the app-name globs of a settings list. Matching is case-insensitive
  * against the file name (a full path is reduced to its file name), and `*` in a
  * pattern matches any run of characters, so `1password*.exe` matches `1Password.exe`.
+ * Extensions are compared as written; {@link isBlockedApp} and the quiet-app gate strip them first.
  */
 export function isDenylisted(exeName: string, denylist: readonly string[]): boolean {
   const fileName = basenameOf(exeName)
@@ -126,6 +127,35 @@ export function isDenylisted(exeName: string, denylist: readonly string[]): bool
     const trimmed = pattern.trim()
     return trimmed !== '' && globToRegExp(trimmed).test(fileName)
   })
+}
+
+/**
+ * Whether an app is on the block list, judged by every name the host has for it.
+ *
+ * A host passes the executable or bundle file name, and on Linux also the window class and the desktop file name:
+ * several apps there run under one shared `electron` or `python` executable, so the executable alone cannot tell
+ * them apart. Names and patterns are compared without `.exe` (and without `.app` on Darwin), case-insensitively,
+ * and `*` matches any run of characters, so `keepassxc.exe` matches the Linux executable `keepassxc`.
+ */
+export function isBlockedApp(names: readonly (string | null | undefined)[], patterns: readonly string[], platform?: string): boolean {
+  const stripped = patterns.map(pattern => withoutAppExtension(pattern.trim(), platform))
+  return names.some(name => typeof name === 'string' && isDenylisted(appIdFromExe(name, platform), stripped))
+}
+
+/**
+ * Title markers of a private browser window: Firefox and its forks end the title with `Private Browsing`, Edge
+ * inserts `[InPrivate]`, and a Chromium browser that names the mode ends with `(Incognito)`.
+ */
+const PRIVATE_WINDOW_TITLE = /(?:\bPrivate Browsing|\(Incognito\))$|\[InPrivate\]/u
+
+/**
+ * Whether a raw window title marks a private browser window.
+ *
+ * The markers are the English ones. A browser with another interface language, or one that puts no marker in the
+ * title, is not recognized; the block list covers those.
+ */
+export function isPrivateWindowTitle(title: string): boolean {
+  return PRIVATE_WINDOW_TITLE.test(title.replace(INVISIBLE_CHARS, '').trim())
 }
 
 /**

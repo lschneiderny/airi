@@ -43,8 +43,9 @@ describe.runIf(enabled)('trusted Darwin foreground memory plateau', () => {
     const window = new EventEmitter()
     if (path === 'service')
       createForegroundWindowService({ context: context as never, window: window as never })
+    const invokeSample = defineInvoke(context, electron.foregroundWindow.sample)
     const read = path === 'service'
-      ? defineInvoke(context, electron.foregroundWindow.sample)
+      ? () => invokeSample({ blockedApps: [] })
       : createDarwinSampler(binding, pid => pid === process.pid)
     const rows: { readonly rss: number, readonly heapUsed: number, readonly external: number }[] = []
     const growth: number[] = []

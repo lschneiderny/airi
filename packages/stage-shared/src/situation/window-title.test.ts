@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { appIdFromExe, categorizeApp, isDenylisted, labelFromExe, normalizeWindowTitle, WINDOW_TITLE_MAX_CHARS, withoutAppExtension } from '.'
+import { appIdFromExe, categorizeApp, isBlockedApp, isDenylisted, isPrivateWindowTitle, labelFromExe, normalizeWindowTitle, WINDOW_TITLE_MAX_CHARS, withoutAppExtension } from '.'
 
 describe('normalizeWindowTitle', () => {
   it.each([
@@ -119,6 +119,44 @@ describe('isDenylisted', () => {
     ['', ['*'], false],
   ])('%s against %j => %s', (exeName, denylist, expected) => {
     expect(isDenylisted(exeName, denylist)).toBe(expected)
+  })
+})
+
+describe('isBlockedApp', () => {
+  it.each([
+    // Linux executables have no extension, and patterns written with one still match them.
+    [['keepassxc'], ['keepassxc.exe'], 'linux', true],
+    [['1password'], ['1password*.exe'], 'linux', true],
+    // A shared Electron or Python executable is told apart by its window class or desktop file name.
+    [['electron', 'Bitwarden', 'bitwarden'], ['*bitwarden*'], 'linux', true],
+    [['python3.13', 'org.gnome.World.Secrets', 'org.gnome.World.Secrets'], ['org.gnome.World.Secrets'], 'linux', true],
+    [['electron', 'Signal', 'signal-desktop'], ['*bitwarden*'], 'linux', false],
+    [['firefox', null, undefined, ''], ['*keepass*'], 'linux', false],
+    [['1Password 7.app'], ['1Password*.app'], 'darwin', true],
+    // Off Darwin a `.app` pattern keeps its extension, so it does not match a bare executable name.
+    [['1password'], ['1Password*.app'], 'linux', false],
+    [['C:\\Program Files\\1Password\\app\\8\\1Password.exe'], ['1password*.exe'], 'win32', true],
+    [['KeePassXC.exe'], ['  keepassxc  '], 'win32', true],
+    [['notepad.exe'], [], 'win32', false],
+    [[], ['*'], 'linux', false],
+  ] as const)('%j against %j on %s => %s', (names, patterns, platform, expected) => {
+    expect(isBlockedApp(names, patterns, platform)).toBe(expected)
+  })
+})
+
+describe('isPrivateWindowTitle', () => {
+  it.each([
+    ['Online Banking \u2014 Mozilla Firefox Private Browsing', true],
+    ['Mozilla Firefox Private Browsing', true],
+    ['Search - LibreWolf Private Browsing  ', true],
+    ['New tab - [InPrivate] - Microsoft\u200B Edge', true],
+    ['New Tab - Google Chrome (Incognito)', true],
+    ['Online Banking \u2014 Mozilla Firefox', false],
+    ['How Private Browsing works \u2014 Mozilla Firefox', false],
+    ['New Tab - Google Chrome', false],
+    ['', false],
+  ])('%s => %s', (title, expected) => {
+    expect(isPrivateWindowTitle(title)).toBe(expected)
   })
 })
 
