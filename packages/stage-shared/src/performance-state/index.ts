@@ -50,7 +50,7 @@ export interface PerformanceState {
 
 /**
  * The latest desktop activity sample, written by the host (Electron main through
- * the renderer store). Web hosts never write one, so the resolver receives `null`.
+ * the renderer store). Before the first sample, the resolver receives `null`.
  *
  * A `null` field means the host cannot measure that signal, for example idle
  * time under XWayland and cursor position under Wayland. The resolver never treats an unknown

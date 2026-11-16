@@ -673,7 +673,7 @@ function updatePerformance() {
 
 // --- Chat activity for the Natural motion driver: typing timing and typed-send counters, never text.
 
-// Same-page composers also reach this listener. Web stays inert because it passes no `chatTarget`,
+// Same-page composers also reach this listener. A stage that passes no `chatTarget` stays inert,
 // so Natural's chat input is null there.
 
 /** Latest report per composer that holds a draft; a composer that reports no draft is dropped. */

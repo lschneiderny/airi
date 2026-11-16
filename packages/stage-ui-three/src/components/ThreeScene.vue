@@ -80,15 +80,9 @@ const props = withDefaults(defineProps<{
   /**
    * Enables user-driven OrbitControls camera rotation and zoom.
    *
-   * This is controlled by the app shell because orbit gestures conflict with
-   * mobile view-control overlays, while desktop/tamagotchi stages still expect
-   * direct scene manipulation.
-   *
-   * | Surface | Expected value | Reason |
-   * | --- | --- | --- |
-   * | stage-web desktop | `true` | Mouse orbit is the primary camera control. |
-   * | stage-web mobile | `false` | Touch input is reserved for mobile view controls and chat UI. |
-   * | stage-tamagotchi | `true` | The transparent desktop stage has no mobile view-control overlay. |
+   * The app shell controls this, because orbit gestures conflict with any
+   * touch view-control overlay. The stage-tamagotchi desktop stage passes
+   * `true`: it has no such overlay and expects direct scene manipulation.
    */
   enableOrbitControls?: boolean
   showAxes?: boolean

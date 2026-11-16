@@ -19,7 +19,7 @@ export type PresenceReason = 'locked' | 'suspended' | 'idle' | 'stale'
 
 /**
  * Whether the user accepts an unprompted remark right now, as reported by the host.
- * `unknown` means the host cannot measure it (web hosts, unsupported platforms).
+ * `unknown` means the host cannot measure it (no host sample yet, unsupported platforms).
  */
 export type BusyState = 'accepts' | 'busy' | 'fullscreen' | 'presentation' | 'quiet' | 'unknown'
 

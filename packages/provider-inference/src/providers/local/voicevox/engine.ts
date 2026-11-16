@@ -2,8 +2,8 @@
  * The HTTP contract of a VOICEVOX-family speech engine.
  *
  * The renderer calls the engine directly. An engine accepts a request that
- * carries no `Origin` header, which is what both the web page and the packaged
- * desktop renderer send to a local address.
+ * carries no `Origin` header, which is what the packaged desktop renderer sends
+ * to a local address.
  */
 
 /** The four endpoints this provider uses. A caller composes no path of its own. */

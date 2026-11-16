@@ -29,9 +29,9 @@ export interface ForegroundWindowSample {
 /**
  * Holds the latest foreground window sample for the situation sensors.
  *
- * The host writes it: Electron's stage window polls the main process, and the
- * web host never writes one, so `sample` stays `null` and the sensors treat the
- * foreground app as unknown. A failed or empty reading leaves the previous
+ * The host writes it: Electron's stage window polls the main process. Until the
+ * first sample, or in a renderer without a host such as a browser test or story,
+ * `sample` stays `null` and the sensors treat the foreground app as unknown. A failed or empty reading leaves the previous
  * sample in place with its old `sampledAtMs`, so consumers judge freshness from
  * that timestamp. Runtime state only; it is neither persisted nor replicated,
  * because the sample carries a raw window title.

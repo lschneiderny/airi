@@ -18,8 +18,8 @@ export const initialMusicMemory: MusicMemory = Object.freeze({ sinceMs: null })
  * Whether other applications are playing audio the character can sway to: system audio above the level for
  * {@link MUSIC_SETTLE_MS}, outside games, calls and chat apps, and while she is not speaking herself.
  *
- * Pure: time comes from `nowMs` and the stretch of audio lives in the returned memory. An unknown level (`null`, as on
- * web hosts) never counts as audio, and her own speech pauses the answer without ending the stretch.
+ * Pure: time comes from `nowMs` and the stretch of audio lives in the returned memory. An unknown level (`null`, before
+ * the host's first sample) never counts as audio, and her own speech pauses the answer without ending the stretch.
  */
 export function resolveMusic(input: { nowMs: number, systemAudioLevel: number | null, category: AppCategory | null, speaking: boolean }, memory: MusicMemory): { music: boolean, memory: MusicMemory } {
   const playing = input.systemAudioLevel !== null && Number.isFinite(input.systemAudioLevel) && input.systemAudioLevel > MUSIC_LEVEL

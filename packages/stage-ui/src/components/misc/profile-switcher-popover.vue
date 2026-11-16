@@ -208,7 +208,7 @@ function toggleOpen() {
 
 <template>
   <div ref="containerRef" :class="['relative inline-flex flex-col items-end gap-2']">
-    <!-- Electron -->
+    <!-- Custom trigger from the default slot -->
     <div
       v-if="$slots.default"
       :class="['profile-switcher-select-overlay', 'relative inline-flex']"
@@ -270,7 +270,7 @@ function toggleOpen() {
       </Select>
     </div>
 
-    <!-- Web -->
+    <!-- Built-in select trigger -->
     <Select
       v-else
       v-model="selectedProfile"
