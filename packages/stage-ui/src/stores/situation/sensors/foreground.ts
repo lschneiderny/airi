@@ -11,7 +11,7 @@ import {
 import { useForegroundWindowStore } from '@proj-airi/stage-shared/stores/foreground-window'
 import { effectScope, watch } from 'vue'
 
-import { foregroundReadPolicy, useSituationSettings } from '../../../features/situation/settings'
+import { foregroundReadPolicyKey, useSituationSettings } from '../../../features/situation/settings'
 
 /**
  * While the stage window is visible, a foreground sample further than this from now is too old to describe the
@@ -169,8 +169,7 @@ export function startForegroundSensor(ingest: (observation: Observation) => void
 
   const scope = effectScope(true)
   scope.run(() => {
-    // The policy is compared by content: every settings update replaces the document, also when another field changed.
-    watch([() => foreground.sample, () => settings.document.shareForegroundWindow, () => JSON.stringify(foregroundReadPolicy(settings.document))], ([, sharing, policy], previous) => {
+    watch([() => foreground.sample, () => settings.document.shareForegroundWindow, () => foregroundReadPolicyKey(settings.document)], ([, sharing, policy], previous) => {
       // The immediate first run has no previous values.
       const policyChanged = previous[2] !== undefined && previous[2] !== policy
       if (!sharing || policyChanged)

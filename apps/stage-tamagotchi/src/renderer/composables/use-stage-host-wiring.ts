@@ -13,7 +13,7 @@ import {
 } from '@proj-airi/electron-vueuse'
 import { useHostCapabilitiesStore } from '@proj-airi/stage-shared/stores/host-capabilities'
 import { useVoiceListening } from '@proj-airi/stage-ui/composables/voice-input-mode'
-import { foregroundReadPolicy, useSituationSettings } from '@proj-airi/stage-ui/features/situation/settings'
+import { foregroundReadPolicyKey, useSituationSettings } from '@proj-airi/stage-ui/features/situation/settings'
 import { useOnboardingStore } from '@proj-airi/stage-ui/stores/onboarding'
 import { useVoiceStore } from '@proj-airi/stage-ui/stores/voice'
 import { computed, onMounted, onScopeDispose, shallowRef, watch } from 'vue'
@@ -74,7 +74,7 @@ export function useStageHostWiring(page: 'index' | 'stage'): StageHostWiring {
   // last sample. A changed read policy restarts it, which drops a sample or pending reply read under the old policy.
   const foregroundWindowProducer = useForegroundWindowProducerStore()
   const situationSettings = useSituationSettings()
-  watch([() => situationSettings.document.shareForegroundWindow, () => JSON.stringify(foregroundReadPolicy(situationSettings.document))], ([sharing]) => {
+  watch([() => situationSettings.document.shareForegroundWindow, () => foregroundReadPolicyKey(situationSettings.document)], ([sharing]) => {
     foregroundWindowProducer.stop()
     if (sharing)
       foregroundWindowProducer.start()

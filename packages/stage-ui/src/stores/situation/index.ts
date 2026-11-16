@@ -67,7 +67,7 @@ import { defineStore } from 'pinia'
 import { computed, shallowRef, watch } from 'vue'
 
 import { localLogicalDayKey, useSituationInnerState } from '../../features/situation/inner-state'
-import { foregroundReadPolicy, useSituationSettings } from '../../features/situation/settings'
+import { foregroundReadPolicyKey, useSituationSettings } from '../../features/situation/settings'
 import { createThreadExtractor } from '../../features/situation/thread-extraction'
 import { chatComposerActivityChangedEvent, getSpeechBusContext, situationForgetRequestedEvent, situationNotifyObservedEvent, speechInputUserSpeakingChangedEvent, voiceRequestSnapshot, voiceRequestTurns, voiceSnapshotChanged, voiceTurnsChanged, watchVoiceHostEnd } from '../../services/speech/bus'
 import { bridgeSituationToCharacter } from '../character-state/situation-bridge'
@@ -332,10 +332,10 @@ export const useSituationStore = defineStore('situation', () => {
     characterStateObservability.setLeading(isLeading)
   }, { flush: 'sync', immediate: true })
 
-  // The sensor stops reporting by itself, but what it reported must leave the state too, so the next prompt carries
-  // no app or title. A changed read policy does the same: the host stays silent about an app that is blocked now,
-  // so no later reading would replace it. Only the leader holds a situation, so this writes no replicated state.
-  watch([() => settings.document.shareForegroundWindow, () => JSON.stringify(foregroundReadPolicy(settings.document))], ([sharing, policy], [, previousPolicy]) => {
+  // What the sensor reported must leave the state too, so the next prompt carries no app or title. A changed read
+  // policy does the same: the host stays silent about a newly blocked app, so no later reading would replace it.
+  // Leader only; the situation is not replicated.
+  watch([() => settings.document.shareForegroundWindow, () => foregroundReadPolicyKey(settings.document)], ([sharing, policy], [, previousPolicy]) => {
     if ((!sharing || policy !== previousPolicy) && leading.value)
       current.value = forgetForeground(current.value)
   }, { flush: 'sync' })
