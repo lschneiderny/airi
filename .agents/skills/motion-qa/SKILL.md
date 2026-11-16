@@ -7,7 +7,7 @@ description: Run motion, emotion, or idle QA, including deterministic gates, hea
 
 For required checks by change type, see the [testing guide](../../../docs/ai/context/testing.md).
 
-Run `pnpm qa:doctor` first. Resolve reported failures before starting a check. Doctor reports setup problems and never fixes them. In a fresh worktree, run `pnpm qa:setup cubism` first: it downloads Cubism Core into both apps without launching them.
+Run `pnpm qa:doctor` first. Resolve reported failures before starting a check. Doctor reports setup problems and never fixes them. In a fresh worktree, run `pnpm qa:setup cubism` first: it downloads Cubism Core into the desktop app without launching it.
 
 Check doctor's `pointer-platform` row before rendered pointer QA. Run stage hit-test readback acceptance on Windows. Run real-pointer touch on Windows, or on Linux inside `pnpm qa:display run --`, where the QA tools inject input through the session KWin's EIS (run doctor inside the session to check its prerequisites). Elsewhere, touch scenarios refuse with `pointer-platform-unsupported`. T3 runs without pointer events use cursor attention off instead of a parked cursor (a different condition), except on Windows, and CDP pointer moves do not measure the stage hit-test readback. On Linux Wayland the app uses the classic window with click-through disabled, and the polled cursor can stick stale (#2521). Do not present these degraded conditions as Windows pointer acceptance.
 
