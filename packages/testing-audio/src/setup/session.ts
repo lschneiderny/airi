@@ -106,8 +106,8 @@ export function createSession(options: {
       catch (error) {
         // REVIEW:
         // On the retired Web host, about 1 of 4 Mandarin wake word runs timed out with the model `ready`.
-        // Reruns of the same fixture pass. The cause is unknown.
-        // The wake word preparation tells if the timeout came from the model, or from detection after the model was ready.
+        // Reruns of the same fixture pass; the cause is unknown.
+        // The wake word preparation shows whether the model or post-ready detection caused the timeout.
         const wakeWordPreparation = await options.page.evaluate(() => window.__airiAudioInputE2E?.wakeWordPreparation)
         throw new Error(`Timed out waiting for a voice input. Wake word preparation: ${wakeWordPreparation ?? 'not published'}`, { cause: error })
       }
