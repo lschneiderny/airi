@@ -7,14 +7,27 @@ import DownloadedModelsSection from '@proj-airi/stage-pages/pages/settings/data/
 import ModelsModulesSection from '@proj-airi/stage-pages/pages/settings/data/components/models-modules-section.vue'
 import StatusBanner from '@proj-airi/stage-pages/pages/settings/data/components/status-banner.vue'
 
+import { useElectronEventaInvoke } from '@proj-airi/electron-vueuse'
 import { createDataSettingsStatusState } from '@proj-airi/stage-pages/pages/settings/data/status'
 import { useChatSessionStore } from '@proj-airi/stage-ui/stores/chat/session-store'
 
 import DesktopFolderSection from './components/desktop-folder-section.vue'
 import DesktopResetSection from './components/desktop-reset-section.vue'
 
+import { homeAssistantSetConfig } from '../../../../shared/eventa/home-assistant'
+import { storedDataDeleteActivity } from '../../../../shared/eventa/stored-data'
+
 const { statusMessage, statusTone, handleStatus } = createDataSettingsStatusState()
 const chatSession = useChatSessionStore()
+const setHomeAssistantConfig = useElectronEventaInvoke(homeAssistantSetConfig)
+const deleteActivityRecords = useElectronEventaInvoke(storedDataDeleteActivity)
+
+/** The main process owns these: the Home Assistant address and token, session logs, IO traces, computer-use captures. */
+async function deleteMainProcessData() {
+  // An empty address clears the stored token with it.
+  await setHomeAssistantConfig({ baseUrl: '' })
+  await deleteActivityRecords()
+}
 
 async function syncImportedChats(payload: ChatSessionsExport) {
   await chatSession.importSessions(payload)
@@ -29,7 +42,7 @@ async function syncImportedChats(payload: ChatSessionsExport) {
     <DownloadedModelsSection @status="handleStatus" />
     <ModelsModulesSection @status="handleStatus" />
     <DesktopResetSection @status="handleStatus" />
-    <DangerSection @status="handleStatus" />
+    <DangerSection :delete-host-data="deleteMainProcessData" @status="handleStatus" />
   </div>
 </template>
 

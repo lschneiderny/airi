@@ -8,6 +8,13 @@ import { useI18n } from 'vue-i18n'
 
 import { createDataSettingsStatusHelpers } from '../status'
 
+const props = defineProps<{
+  /**
+   * Deletes what the host keeps outside the renderer's storage, such as files its main process wrote.
+   * Runs after the renderer's own data is gone, as part of "Delete all data".
+   */
+  deleteHostData?: () => Promise<void>
+}>()
 const emit = defineEmits<DataSettingsStatusEmits>()
 const { t } = useI18n()
 const { trackDataAction } = useAnalytics()
@@ -28,6 +35,7 @@ async function resetProviders() {
 async function deleteAll() {
   try {
     await deleteAllData()
+    await props.deleteHostData?.()
     trackDataAction({ action: 'app_data_cleared' })
     emitStatus(t('settings.pages.data.status.all_deleted'))
   }

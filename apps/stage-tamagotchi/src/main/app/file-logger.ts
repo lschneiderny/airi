@@ -22,7 +22,7 @@
  * ```
  */
 
-import { mkdir, open, stat } from 'node:fs/promises'
+import { mkdir, open, readdir, rm, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 
 import { errorMessageFrom } from '@moeru/std'
@@ -33,6 +33,9 @@ import { app } from 'electron'
 // ============================================================================
 
 const LOG_FILE_PREFIX = 'airi-tamagotchi'
+
+/** How long a session log stays on disk. Each start removes older ones. Tuning: the perf records keep 14 days too. */
+export const LOG_RETENTION_MS = 14 * 24 * 60 * 60 * 1000
 
 // ============================================================================
 // Public Types
@@ -52,6 +55,10 @@ export interface FileLoggerHandle {
    */
   appendLog: (content: string) => Promise<void>
   /**
+   * Empties the current session's log file. Later entries are appended to the emptied file.
+   */
+  clear: () => Promise<void>
+  /**
    * Closes the log file and releases resources.
    */
   close: () => Promise<void>
@@ -61,6 +68,7 @@ export const nullFileLoggerHandle: FileLoggerHandle = {
   logFilePath: null,
   logFileFd: null,
   appendLog: async () => {},
+  clear: async () => {},
   close: async () => {},
 }
 
@@ -90,6 +98,27 @@ async function ensureLogsDirectory(): Promise<string | null> {
     const message = errorMessageFrom(error)
     console.error(`[FileLogger] Failed to create logs directory: ${message}`)
     return null
+  }
+}
+
+/**
+ * Removes the session logs in `logsDir` that were last written more than {@link LOG_RETENTION_MS} before `nowMs`.
+ * Files that are not session logs stay. A file that cannot be read or removed is skipped, so a failure here never
+ * keeps the app from starting.
+ */
+export async function pruneExpiredLogs(logsDir: string, nowMs: number): Promise<void> {
+  const cutoff = nowMs - LOG_RETENTION_MS
+  for (const name of await readdir(logsDir)) {
+    if (!name.startsWith(`${LOG_FILE_PREFIX}-`) || !name.endsWith('.log'))
+      continue
+    const path = join(logsDir, name)
+    try {
+      if ((await stat(path)).mtimeMs < cutoff)
+        await rm(path)
+    }
+    catch (error) {
+      console.error(`[FileLogger] Failed to prune ${name}: ${errorMessageFrom(error)}`)
+    }
   }
 }
 
@@ -133,6 +162,7 @@ export async function setupFileLogger(): Promise<FileLoggerHandle> {
   const logFilePath = createLogFilePath(logsDir, timestamp)
 
   try {
+    await pruneExpiredLogs(logsDir, timestamp)
     const fileHandle = await open(logFilePath, 'a')
     const logFileFd = fileHandle.fd
     let isFileClosed = false
@@ -159,6 +189,15 @@ export async function setupFileLogger(): Promise<FileLoggerHandle> {
       }
     }
 
+    async function clear() {
+      if (isFileClosed) {
+        return
+      }
+
+      // The handle is open for appending, so the next entry lands at the start of the emptied file.
+      await fileHandle.truncate(0)
+    }
+
     async function close() {
       if (isFileClosed) {
         return
@@ -181,7 +220,7 @@ export async function setupFileLogger(): Promise<FileLoggerHandle> {
       console.info(`[FileLogger] Session log file: ${logFilePath}${sizeInfo}`)
     }
 
-    return { logFilePath, logFileFd, appendLog, close }
+    return { logFilePath, logFileFd, appendLog, clear, close }
   }
   catch (error) {
     const message = errorMessageFrom(error)

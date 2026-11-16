@@ -51,6 +51,7 @@ import { setupMcpManager } from './services/airi/mcp-servers'
 import { createGoNetworkService } from './services/airi/opencode-go'
 import { createElectronPerfRecording, createElectronPerfRetention, watchPerfPower } from './services/airi/perf-recording/electron'
 import { setupExtensionHost } from './services/airi/plugins'
+import { setupStoredData } from './services/airi/stored-data'
 import { setupArtistryBridge } from './services/airi/widgets/artistry-bridge'
 import { setupAutoUpdater } from './services/electron/auto-updater'
 import { setupSherpawModelAssetsProtocol } from './services/electron/bundled-sherpaw-assets'
@@ -552,6 +553,7 @@ app.whenReady().then(async () => {
       const { context } = createAppContext()
       setupComputerUse(context)
       setupHomeAssistant(context)
+      setupStoredData(context, { fileLogger: () => fileLogger })
       await setupArtistryBridge({
         widgetsManager: deps.widgetsWindow,
         context,
