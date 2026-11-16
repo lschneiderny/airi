@@ -13,7 +13,7 @@ The local-only provider cleanup removes retired hosted records and resets their 
 `createOpenCodeGoDesktopProvider` in `libs/providers/providers/opencode-go/index` creates the desktop definition.
 The host supplies credential availability and a restricted fetch transport. The definition contains no Electron imports.
 The Electron app installs this definition before provider stores start. Main owns encrypted keys, request routing, and cancellation.
-Web clients keep the portable definition. Desktop setup and verification are described in `docs/assets/ai/adr/2026-10-15-opencode-go-desktop-network.md`.
+Web clients keep the portable definition. Desktop setup and verification are described in `docs/ai/adr/2026-10-15-opencode-go-desktop-network.md`.
 
 ## Optional modules
 

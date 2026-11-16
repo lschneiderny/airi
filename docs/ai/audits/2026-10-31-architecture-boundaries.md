@@ -4,7 +4,7 @@ Scope: the architectural decisions and ownership models of every system the fork
 
 Method: seven lenses, each run as stated rule (ADR or package guide) -> code evidence (file:line) -> verdict -> decision candidate. Lenses 1 and 6 were run by the orchestrator with scripted scans. Lenses 2, 3, 4, 5, and 7 were run read-only by independent auditors; the orchestrator re-verified the five findings marked **(re-verified)** against the source. Per-lens evidence with every citation lives in `.omo/evidence/arch-audit-2026-10-31/` (git-ignored). Line numbers in this document refer to `main` at audit time.
 
-Status update (2026-10-31, after the audit): the owner retired Kirie (H4) in `5c850be74` and `9f020c5b8`. `docs/ai/upstream-watch.md` records when to port it back. Lens 4 still shows Kirie as it stood at `b82a863dc`.
+Status update (2026-10-31, after the audit): the owner retired Kirie (H4) in `5c850be74` and `9f020c5b8`. `docs/ai/context/upstream-watch.md` records when to port it back. Lens 4 still shows Kirie as it stood at `b82a863dc`.
 
 Verdict vocabulary: **holds** means the code implements the stated rule; **drifted** means the code differs from it; **undocumented** means the code has a rule no ADR states; **stale-doc** means an ADR states a rule the code no longer has; **never stated** means no rule exists where one is needed.
 

@@ -96,7 +96,7 @@ lanes while reducing queueing and pressure.
   changing pass-cache decisions. Their command formats and storage details
   are documented in their respective READMEs.
 - Detailed testing tiers and check selection live in
-  [`docs/ai/testing.md`](../testing.md). Verify and QA command mechanics live
+  [`docs/ai/context/testing.md`](../context/testing.md). Verify and QA command mechanics live
   in the dev-tools, cpu-slots, and qa-tools READMEs; motion, browser, and
   screenshot procedures remain in their skills.
 

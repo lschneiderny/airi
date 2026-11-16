@@ -108,7 +108,7 @@ The Discord, Telegram, Minecraft, and other integrations in `integrations/` are 
 
 ## Check your changes
 
-Use the [testing and QA guide](../docs/ai/testing.md) to choose checks for your change. It defines the inner loop, incremental commit loop, full branch gate, live acceptance, and checks required for each change type.
+Use the [testing and QA guide](../docs/ai/context/testing.md) to choose checks for your change. It defines the inner loop, incremental commit loop, full branch gate, live acceptance, and checks required for each change type.
 
 The [dev-tools README](../scripts/dev-tools/README.md) documents verify,
 branch-gate, and QA display command mechanics. Package READMEs document

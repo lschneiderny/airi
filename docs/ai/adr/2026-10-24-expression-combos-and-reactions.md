@@ -3,7 +3,7 @@
 Date: 2026-10-24
 Status: accepted
 
-Channel ownership is defined in the [living parameter-ownership document](../live2d-parameter-ownership.md).
+Channel ownership is defined in the [living parameter-ownership document](../context/body-ownership.md).
 
 ## Context
 

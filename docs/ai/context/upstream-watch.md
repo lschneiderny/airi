@@ -54,7 +54,7 @@ The upstream review of 2026-10-26 created this list. Commits that the fork took 
 ## Pocket mobile host
 
 - **Upstream:** `apps/stage-pocket`, the Capacitor Android and iOS host, and its `packages/cap-vite` development wrapper.
-- **Fork decision (2026-11-04):** Retired under H2 in the [architecture boundaries audit](audits/2026-10-31-architecture-boundaries.md). Neither package serves the desktop companion. Their native builds, scripts, and shared host branches imposed maintenance on every routing change.
+- **Fork decision (2026-11-04):** Retired under H2 in the [architecture boundaries audit](../audits/2026-10-31-architecture-boundaries.md). Neither package serves the desktop companion. Their native builds, scripts, and shared host branches imposed maintenance on every routing change.
 - **Revisit when:** The owner chooses to support a native mobile host again, with maintained Android and iOS build and device validation. Port the host and its adapters together against the current shared contracts; do not restore the old routing exclusions blindly. Mobile browser layouts remain supported by the web host.
 - **Search terms:** `stage-pocket`, `cap-vite`, `capacitor`, `android`, `ios`.
 

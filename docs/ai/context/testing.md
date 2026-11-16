@@ -21,7 +21,7 @@ these paths; run smoke inside `qa:display` on Linux.
 Live acceptance is limited to visible motion changes. Other app runtime
 changes need the clean-start smoke in the branch gate, not a `qa:app` session.
 When motion behavior is rendered, use the motion tools and inspect their
-artifacts. See the [motion QA levels ADR](adr/2026-10-20-motion-qa-levels.md)
+artifacts. See the [motion QA levels ADR](../adr/2026-10-20-motion-qa-levels.md)
 for what each motion level proves.
 
 ## Checks by change type
@@ -48,7 +48,7 @@ against the branch base.
 Use `pnpm verify` as the incremental commit loop, then run
 `pnpm verify --gate` before landing to check the full branch. If a step fails,
 fix the cause and rerun the required checks. See the
-[dev-tools README's verify section](../../scripts/dev-tools/README.md#pnpm-verify)
+[dev-tools README's verify section](../../../scripts/dev-tools/README.md#pnpm-verify)
 for scope selection, pass caching, leases, and command behavior.
 
 `pnpm verify --stats` reads the append-only step history without running
@@ -121,12 +121,12 @@ A flaky test is a bug. Record the failure, then fix it or quarantine it with
 an owner and a clear removal condition. Do not convert intermittent success
 into a pass by adding arbitrary sleeps or weakening assertions.
 
-Use the [dev-tools README](../../scripts/dev-tools/README.md) for verify,
-history, and `qa:display` command mechanics. Use the [CPU slots README](../../packages/cpu-slots/README.md)
-for broker details and the [QA tools README](../../packages/qa-tools/README.md)
+Use the [dev-tools README](../../../scripts/dev-tools/README.md) for verify,
+history, and `qa:display` command mechanics. Use the [CPU slots README](../../../packages/cpu-slots/README.md)
+for broker details and the [QA tools README](../../../packages/qa-tools/README.md)
 for smoke, app sessions, motion gates, evidence, and CLI mechanics. For perf recording, `pnpm perf`, and `qa:bench`, use the
-[perf reports section](../../packages/qa-tools/README.md#perf-reports) and the [usage performance recording ADR](adr/2026-11-14-usage-performance-recording.md). Tool
+[perf reports section](../../../packages/qa-tools/README.md#perf-reports) and the [usage performance recording ADR](../adr/2026-11-14-usage-performance-recording.md). Tool
 specific motion and browser procedures live in the
-[motion QA skill](../../.agents/skills/motion-qa/SKILL.md),
-[Vishot skill](../../.agents/skills/use-vishot/SKILL.md), and
-[browser skills](../../.agents/skills/use-agent-browser-for-airi/SKILL.md).
+[motion QA skill](../../../.agents/skills/motion-qa/SKILL.md),
+[Vishot skill](../../../.agents/skills/use-vishot/SKILL.md), and
+[browser skills](../../../.agents/skills/use-agent-browser-for-airi/SKILL.md).

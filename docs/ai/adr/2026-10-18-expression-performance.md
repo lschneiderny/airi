@@ -3,7 +3,7 @@
 Date: 2026-10-18
 Status: accepted
 
-Channel ownership is defined in the [living parameter-ownership document](../live2d-parameter-ownership.md).
+Channel ownership is defined in the [living parameter-ownership document](../context/body-ownership.md).
 
 ## Decision and scope
 
@@ -185,7 +185,7 @@ Frame-base ownership rule: the SDK saves parameters after the motion update and 
 `restoreExpressionBases` runs as the first pre plugin. It writes the captured clean base back to every parameter that expressions wrote in the previous frame, before motion, blink, or Natural writes. A parameter that is no longer owned is restored once and then forgotten.
 `applyExpressions` runs as the final motion-manager plugin. For each owned parameter it captures the current value as the base, composes, and writes.
 No equality comparison decides ownership.
-Amendment (2026-11-01): `applyExpressions` is the first of six final-stage plugins, not the final one; blink, light squint, manual control, lipsync, and breath control run after it. The [parameter-ownership document](../live2d-parameter-ownership.md), section (b), holds the current order.
+Amendment (2026-11-01): `applyExpressions` is the first of six final-stage plugins, not the final one; blink, light squint, manual control, lipsync, and breath control run after it. The [parameter-ownership document](../context/body-ownership.md), section (b), holds the current order.
 
 ## Discovery
 
