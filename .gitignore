@@ -114,9 +114,6 @@ web-ext.config.ts
 
 # Data
 .postgres
-twitter-session.json
-
-# MediaPipe task assets
 
 # Plugins
 plugins/local
