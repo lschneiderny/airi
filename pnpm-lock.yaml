@@ -2072,30 +2072,6 @@ importers:
         specifier: 'catalog:'
         version: 8.18.1
 
-  integrations/twitter-services:
-    dependencies:
-      '@guiiai/logg':
-        specifier: 'catalog:'
-        version: 1.2.12
-      '@modelcontextprotocol/sdk':
-        specifier: 'catalog:'
-        version: 1.30.0(supports-color@10.2.2)(zod@4.4.3)
-      '@moeru/std':
-        specifier: 'catalog:'
-        version: 0.1.0-beta.17
-      '@proj-airi/server-sdk':
-        specifier: workspace:*
-        version: link:../../packages/server-sdk
-      h3:
-        specifier: 'catalog:'
-        version: 2.0.1-rc.29(crossws@0.4.12(srvx@0.12.7))
-      playwright:
-        specifier: 'catalog:'
-        version: 1.62.1
-      zod:
-        specifier: 'catalog:'
-        version: 4.4.3
-
   integrations/vscode/airi-plugin-vscode:
     devDependencies:
       '@proj-airi/plugin-sdk':

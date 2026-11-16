@@ -93,12 +93,6 @@ export default withCpuSlots(defineConfig({
         },
       },
       // Packages without a Vitest config of their own.
-      {
-        test: {
-          name: 'twitter-services',
-          include: ['integrations/twitter-services/src/**/*.test.ts'],
-        },
-      },
       // Root development scripts, such as the `pnpm dev:*` launcher. They belong to no package.
       {
         test: {

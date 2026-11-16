@@ -29,7 +29,6 @@ import { useMinecraftStore } from '../stores/modules/gaming-minecraft'
 import { useHearingStore } from '../stores/modules/hearing'
 import { useHomeAssistantStore } from '../stores/modules/home-assistant'
 import { useSpeechStore } from '../stores/modules/speech'
-import { useTwitterStore } from '../stores/modules/twitter'
 import { useVisionStore } from '../stores/modules/vision'
 import { useWebSearchStore } from '../stores/modules/web-search'
 import { useProviderConfigStore } from '../stores/providers/config'
@@ -292,7 +291,6 @@ it.each(['resetSettings', 'resetState'])('continues independent module resets wh
     homeAssistant,
     useSpeechStore(pinia),
     useConsciousnessStore(pinia),
-    useTwitterStore(pinia),
     useWebSearchStore(pinia),
     useDiscordStore(pinia),
     useFactorioStore(pinia),

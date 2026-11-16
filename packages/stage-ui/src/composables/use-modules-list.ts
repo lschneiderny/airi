@@ -15,7 +15,6 @@ import { useHearingStore } from '../stores/modules/hearing'
 import { useHomeAssistantStore } from '../stores/modules/home-assistant'
 import { useSpeechStore } from '../stores/modules/speech'
 import { useStickersStore } from '../stores/modules/stickers'
-import { useTwitterStore } from '../stores/modules/twitter'
 import { useVisionStore } from '../stores/modules/vision'
 import { useWebSearchStore } from '../stores/modules/web-search'
 
@@ -41,7 +40,6 @@ export function useModulesList() {
   const hearingStore = useHearingStore()
   const visionStore = useVisionStore()
   const discordStore = useDiscordStore()
-  const twitterStore = useTwitterStore()
   const webSearchStore = useWebSearchStore()
   const minecraftStore = useMinecraftStore()
   const factorioStore = useFactorioStore()
@@ -141,15 +139,6 @@ export function useModulesList() {
       icon: 'i-simple-icons:discord',
       to: '/settings/modules/messaging-discord',
       configured: discordStore.configured,
-      category: 'messaging',
-    },
-    {
-      id: 'x',
-      name: t('settings.pages.modules.x.title'),
-      description: t('settings.pages.modules.x.description'),
-      icon: 'i-simple-icons:x',
-      to: '/settings/modules/x',
-      configured: twitterStore.configured,
       category: 'messaging',
     },
     {

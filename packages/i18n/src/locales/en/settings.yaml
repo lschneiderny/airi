@@ -1361,24 +1361,6 @@ pages:
         thinking:
           label: Thinking (Ollama)
           description: 'When on, vision requests through Ollama include `think: true`. When off, they include `think: false`.'
-    x:
-      description: X / Twitter browsing and usage
-      title: X / Twitter
-      enable: Enable X / Twitter Integration
-      enable-description: Allow AIRI to interact with X / Twitter
-      api-key: API Key
-      api-key-description: Your X / Twitter API key
-      api-key-placeholder: Enter your X / Twitter API key
-      api-secret: API Secret
-      api-secret-description: Your X / Twitter API secret
-      api-secret-placeholder: Enter your X / Twitter API secret
-      access-token: Access Token
-      access-token-description: Your X / Twitter access token
-      access-token-placeholder: Enter your X / Twitter access token
-      access-token-secret: Access Token Secret
-      access-token-secret-description: Your X / Twitter access token secret
-      access-token-secret-placeholder: Enter your X / Twitter access token secret
-      configured: X / Twitter is properly configured!
     stickers:
       frequency: Sticker frequency
       frequency-description: Allow stickers in this percentage of replies. The character still decides whether a sticker fits.
