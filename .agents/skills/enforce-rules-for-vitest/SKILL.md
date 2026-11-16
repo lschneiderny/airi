@@ -5,7 +5,7 @@ description: Apply AIRI test-scope, regression, async, and runtime-boundary rule
 
 # AIRI Tests
 
-For check selection, see the [testing guide](../../../docs/ai/testing.md).
+For check selection, see the [testing guide](../../../docs/ai/context/testing.md).
 
 Do not add tests for pure prose or assertions that only restate setup and constants.
 

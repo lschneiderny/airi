@@ -23,14 +23,14 @@
 - Never skip, delete, or weaken a test to clear a failure. Add a registry entry only with a concrete cause, date, and removal condition.
 - Never tune a gate, scorer constant, or Natural recipe to make a failing run pass. Failures and missed validation thresholds are findings.
 - A cached T1 run is never T3 acceptance evidence.
-- A `qa:motion t3` capture takes the `live` lease by default and may run beside verify, tests, and other checks. A T3 timing run (the `qa:motion` T3 gate, or `qa:motion t3 --lease exclusive`) keeps the `exclusive` lease: do not start it during heavyweight checks, because its lease waits until every other lease ends. Check selection follows `docs/ai/testing.md`.
+- A `qa:motion t3` capture takes the `live` lease by default and may run beside verify, tests, and other checks. A T3 timing run (the `qa:motion` T3 gate, or `qa:motion t3 --lease exclusive`) keeps the `exclusive` lease: do not start it during heavyweight checks, because its lease waits until every other lease ends. Check selection follows `docs/ai/context/testing.md`.
 - Keep the desktop, focus, and app window undisturbed until a T3 run ends. On Linux, start it through `pnpm qa:display run --` so it runs in a headless KWin session instead of the user's desktop.
 - Do not kill leftover processes by PID alone. Confirm that their command lines contain your worktree path first.
 - Statistical gates do not prove naturalness. Naturalness remains Luke's visual review.
 
 ## CHECKS
 
-- Choose required tiers from the [testing guide](../../docs/ai/testing.md); this section lists command mechanics only.
+- Choose required tiers from the [testing guide](../../docs/ai/context/testing.md); this section lists command mechanics only.
 - Node tests: `pnpm -F @proj-airi/qa-tools exec vitest run --project node`.
 - Doc path audit: `pnpm -F @proj-airi/qa-tools exec tsx scripts/check-doc-paths.ts`. It checks paths named in the motion QA ADR and skill.
 - Bridge leak scan after a desktop build: `pnpm -F @proj-airi/qa-tools exec tsx bin/check-prod-bundle.ts`.

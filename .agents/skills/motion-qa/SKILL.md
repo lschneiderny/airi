@@ -5,7 +5,7 @@ description: Run motion, emotion, or idle QA, including deterministic gates, hea
 
 # Motion QA
 
-For required checks by change type, see the [testing guide](../../../docs/ai/testing.md).
+For required checks by change type, see the [testing guide](../../../docs/ai/context/testing.md).
 
 Run `pnpm qa:doctor` first. Resolve reported failures before starting a check. Doctor reports setup problems and never fixes them. In a fresh worktree, run `pnpm qa:setup cubism` first: it downloads Cubism Core into both apps without launching them.
 

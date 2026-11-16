@@ -28,7 +28,7 @@ Tracked notes carry `status` (`inbox`, `open`, `next`, `doing`, `fixed`, `done`,
 4. If the baseline equals HEAD, skip to step 2 and only re-check open items.
 5. Otherwise collect, for `<baseline>..<HEAD>`:
    - `git log --oneline` and `git diff --stat`.
-   - New or changed files in `docs/ai/adr/`, `docs/ai/audits/`, and `docs/ai/upstream-watch.md`. Read their open items, consequences and follow-up sections.
+   - New or changed files in `docs/ai/adr/`, `docs/ai/audits/`, and `docs/ai/context/upstream-watch.md`. Read their open items, consequences and follow-up sections.
    - `.omo/plans/` and `.omo/boulder.json`, including untracked plans. A plan is work, not behavior: confirm in code before treating anything as built.
    - Workaround and debt markers added or removed: `git diff -U0 <baseline>..<HEAD> -- . ':!**/node_modules/**' | grep -E '^[+-].*(NOTICE:|TODO|FIXME)'`.
    - Branches that landed: `git cherry <HEAD> <branch>` for branches named in follow-ups.

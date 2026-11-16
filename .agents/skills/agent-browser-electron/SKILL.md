@@ -5,7 +5,7 @@ description: Use when Codex needs to inspect, debug, or automate an Electron app
 
 # Agent Browser Electron
 
-For required checks by change type, see the [testing guide](../../../docs/ai/testing.md).
+For required checks by change type, see the [testing guide](../../../docs/ai/context/testing.md).
 
 ## Overview
 

@@ -26,9 +26,9 @@ Agent guidance holds only what an agent cannot learn from the code, `package.jso
 - Before changing host capabilities, read the [host capability contract ADR](docs/ai/adr/2026-11-08-host-capability-contract.md).
 - The Electron desktop stage host is gated by the off-by-default Experimental 3D stage setting. `AIRI_STAGE_HOST=window|desktop` overrides the saved mode in development builds only, for QA.
 - The server channel (`packages/server-runtime`, `packages/server-sdk`, `packages/server-shared`) is separate from hosted `server/packages`.
-- For 3D character motion work, track milestones in `docs/ai/3d-character-roadmap.md`.
+- For 3D character motion work, track milestones in `docs/ai/context/3d-character-roadmap.md`.
 - Electron main/renderer examples: `src/main/services/electron`. DI example: `apps/stage-tamagotchi/src/main/index.ts`.
-- Preserve the public `@proj-airi/stage-ui/stores` forwarding barrel. Shared component API edits also update `docs/assets/ai/context/ui-components.md` and stories.
+- Preserve the public `@proj-airi/stage-ui/stores` forwarding barrel. Shared component API edits also update `docs/ai/context/ui-components.md` and stories.
 - Put project/client ADRs in `docs/ai/adr/`, hosted backend ADRs in `server/docs/ai/adr/`. Follow [server ADR rules](server/AGENTS.md).
 - Keep documentation with its code in the same commit/PR. Keep agent configuration changes in a separate commit/PR.
 - Keep structured `README.md` files in each `packages/` and `apps/` entry: purpose, usage, when to use, and when not to use.
@@ -106,7 +106,7 @@ Testing tiers:
 - Commit loop: run `pnpm verify` after each change.
 - Branch gate: run `pnpm verify --gate` before landing.
 
-For live acceptance and the change-to-check policy, see [Testing and QA](docs/ai/testing.md).
+For live acceptance and the change-to-check policy, see [Testing and QA](docs/ai/context/testing.md).
 
 After each task, run `pnpm verify` before finishing. It typechecks the changed packages and their dependents through Turbo, lints the changed files, and runs the tests related to them. It typechecks every package when a root config file changes. It skips a step that already passed on the same working tree.
 Use `pnpm lint` or root `pnpm typecheck` only when a task needs the whole repository checked. Report only executed checks, their commands/results, changes, and follow-up work.
@@ -124,7 +124,7 @@ Read the listed file before starting. Skill paths below are under `.agents/skill
 | Task | Read |
 | --- | --- |
 | UI appearance/interaction design, changes, review | [DESIGN.md](DESIGN.md) |
-| Choosing which checks to run | [Testing and QA](docs/ai/testing.md) |
+| Choosing which checks to run | [Testing and QA](docs/ai/context/testing.md) |
 | TypeScript/Vue writing, refactoring, review | [enforce-rules-for-typescript](.agents/skills/enforce-rules-for-typescript/SKILL.md) |
 | Tests, bug reproduction, mocks, test import boundaries | [enforce-rules-for-vitest](.agents/skills/enforce-rules-for-vitest/SKILL.md) |
 | UnoCSS, Vue styles, components, animation, icons, color mode | [enforce-rules-for-unocss](.agents/skills/enforce-rules-for-unocss/SKILL.md) |
@@ -143,7 +143,7 @@ Read the listed file before starting. Skill paths below are under `.agents/skill
 
 ## NOTES
 Nested guides own local exceptions and package-specific checks. Historical ADRs/audits and scanner observations are not current runtime acceptance.
-The fork removed the Kirie Godot/CEF desktop host on 2026-10-31. `docs/ai/upstream-watch.md` records when to port it back.
+The fork removed the Kirie Godot/CEF desktop host on 2026-10-31. `docs/ai/context/upstream-watch.md` records when to port it back.
 The fork retired the Pocket native mobile host on 2026-11-04. The same watch list records its port-back condition; mobile browser layouts remain part of the web host.
 Root `pnpm dev*` scripts run through `node scripts/dev.mjs`, which bypasses Windows `.cmd` shims and supports only `&&` chains of plain words.
 Nested `AGENTS.md` and `CLAUDE.md` files are committed, so an agent on any machine gets the same guidance from a fresh clone. Do not add them to `.git/info/exclude`.
