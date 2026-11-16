@@ -103,15 +103,15 @@ analytics:
   notice:
     title: Usage analytics
     description: >-
-      AIRI collects anonymous usage analytics to help us understand how the app
-      is used and improve stability. No personal data is collected.
+      AIRI can send anonymous usage analytics to help us understand how the app
+      is used and improve stability. It sends nothing unless you turn this on.
     privacyPrefix: Read the
     privacyLink: privacy policy
-    onboardingHint: You can turn analytics off later in Settings > System > General.
-    settingsHint: You can turn analytics off at any time.
+    onboardingHint: Analytics is off. You can turn it on in Settings > System > General.
+    settingsHint: Analytics stays off until you turn it on, and you can turn it off again at any time.
   toggle:
     title: Enable usage analytics
-    description: Turn this off to opt out of analytics collection.
+    description: Turn this on to share anonymous usage analytics.
   disabled:
     title: Analytics disabled for this development build
 model-select:
