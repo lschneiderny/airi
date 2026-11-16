@@ -15,7 +15,7 @@ import { toast } from 'vue-sonner'
 import { electronOpenSettings, electronStageGetState } from '../../shared/eventa'
 
 /** The stage page owns the notice when the desktop stage runs; the main window owns it otherwise. */
-export const presenceNoticeOwner: Record<StageHostMode, 'index' | 'stage'> = {
+const presenceNoticeOwner: Record<StageHostMode, 'index' | 'stage'> = {
   window: 'index',
   desktop: 'stage',
 }

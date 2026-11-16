@@ -1,7 +1,7 @@
 import type { IOTraceHubState, SerializedIOSpan } from '@proj-airi/stage-shared/types/io-trace'
 
-export const IO_TRACE_HUB_MAX_SPANS = 5000
-export const IO_TRACE_HUB_MAX_AGE_MS = 30 * 60 * 1000
+const IO_TRACE_HUB_MAX_SPANS = 5000
+const IO_TRACE_HUB_MAX_AGE_MS = 30 * 60 * 1000
 
 interface IOTraceHubOptions {
   getStoredCollecting: () => boolean

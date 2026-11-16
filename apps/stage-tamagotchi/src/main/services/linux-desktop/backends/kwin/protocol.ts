@@ -36,7 +36,7 @@ const outputs = pipe(array(strictObject({
 const cursor = strictObject({ x: coordinate, y: coordinate })
 const ownPids = pipe(array(pipe(pid, minValue(1))), maxLength(256))
 
-export class KwinProtocolError extends Error {
+class KwinProtocolError extends Error {
   constructor() {
     // Never include parser issues or the input: both can contain window titles.
     super('Invalid KWin payload')

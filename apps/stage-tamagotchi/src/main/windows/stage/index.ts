@@ -48,7 +48,7 @@ export interface StageWindowHost extends Pick<StageWindowInvokes, 'getCharacterP
   stageDisplayId: () => string
 }
 
-export function relaunchApp(): void {
+function relaunchApp(): void {
   app.relaunch()
   app.exit()
 }

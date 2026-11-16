@@ -15,7 +15,7 @@ export interface PerfRecordingFs {
 }
 
 /** A segment reaching this size closes at the next append. */
-export const SEGMENT_MAX_BYTES = 64 * 1024 * 1024
+const SEGMENT_MAX_BYTES = 64 * 1024 * 1024
 export const PERF_FILE_MODE = 0o600
 
 /** `<ISO start time with ':' and '.' as '-'>-<6 base36 characters>`, safe in a file name on every platform. */

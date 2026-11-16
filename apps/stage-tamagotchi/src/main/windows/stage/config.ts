@@ -47,7 +47,7 @@ export function createStageConfig() {
 }
 
 /** The size and scale that identify a display when its id changes, for example after a reconnect. */
-export function displayFingerprint(display: Pick<StageDisplayInfo, 'workArea' | 'scaleFactor'>): StageDisplayFingerprint {
+function displayFingerprint(display: Pick<StageDisplayInfo, 'workArea' | 'scaleFactor'>): StageDisplayFingerprint {
   return { width: display.workArea.width, height: display.workArea.height, scaleFactor: display.scaleFactor }
 }
 

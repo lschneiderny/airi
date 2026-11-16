@@ -131,7 +131,7 @@ const TITLE_MAX_UNITS = 256
 const WALK_MAX_WINDOWS = 4096
 
 /** One 4 Hz period: an off-main walk slower than this is reported as timed out. */
-export const WINDOW_RECTS_DEFAULT_TIMEOUT_MS = 250
+const WINDOW_RECTS_DEFAULT_TIMEOUT_MS = 250
 
 type WindowRectsCall = {
   [K in keyof WindowRectsCalls]: { name: K, args: Parameters<WindowRectsCalls[K]> }

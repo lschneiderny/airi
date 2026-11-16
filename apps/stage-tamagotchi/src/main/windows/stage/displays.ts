@@ -9,7 +9,7 @@ import { resolveHomeDisplay } from './config'
 /** How long a move to another display waits for the window's rectangle to arrive there before it is undone. */
 export const stageMoveTimeoutMs = 1500
 
-export function toStageDisplayInfos(displays: readonly Display[], primaryId: number): StageDisplayInfo[] {
+function toStageDisplayInfos(displays: readonly Display[], primaryId: number): StageDisplayInfo[] {
   return displays.map(display => ({
     id: String(display.id),
     bounds: { ...display.bounds },

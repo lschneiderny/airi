@@ -3,8 +3,8 @@ import type { MenuItemConstructorOptions, Rectangle } from 'electron'
 import { readWindowRect } from '../services/electron/coordinates'
 import { isStageWindow } from '../windows/stage/identity'
 
-export const RECOMMENDED_WIDTH = 450
-export const RECOMMENDED_HEIGHT = 600
+const RECOMMENDED_WIDTH = 450
+const RECOMMENDED_HEIGHT = 600
 const ASPECT_RATIO = RECOMMENDED_WIDTH / RECOMMENDED_HEIGHT
 
 export type AlignPosition = 'center' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
