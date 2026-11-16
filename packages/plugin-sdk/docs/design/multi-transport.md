@@ -191,4 +191,4 @@ Each plugin has its own context and transport. APIs are bound to that context, p
 
 ### Related Documentations
 
-- [Plugin Lifecycle](./plugin-lifecycle.md)
+- Plugin Lifecycle (`./plugin-lifecycle.md`)

@@ -8,7 +8,7 @@
 
 また、VRM Addon とは別に Godot 用の MToon シェーダーも同梱されています。（MToon 単体での利用が可能です）
 
-![Example of VRM Addon used to import two example characters](vrm_samples/screenshot/vrm_sample_screenshot.png)
+Example of VRM Addon used to import two example characters: `vrm_samples/screenshot/vrm_sample_screenshot.png`
 
 
 VRM が持つデータは全てインポートされ、インスペクタに表示されます。ただし、ボーンアニメーション等を行う場合に[リターゲットの必要性が出てくる](https://qiita.com/TokageItLab/items/e5880123a9f508b2769d)ので、それらに関しては他のスクリプトやアドオンの導入を各自で検討して下さい。

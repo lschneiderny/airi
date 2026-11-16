@@ -9,7 +9,7 @@ Proudly brought to you by the [V-Sekai team](https://v-sekai.org/about).
 
 This package also includes a standalone full implementation of the MToon Shader for Godot Engine.
 
-![Example of VRM Addon used to import two example characters](vrm_samples/screenshot/vrm_sample_screenshot.png)
+Example of VRM Addon used to import two example characters: `vrm_samples/screenshot/vrm_sample_screenshot.png`
 
 ## What is VRM?
 

@@ -54,17 +54,17 @@ import { Button } from '@proj-airi/ui'
 
 ## Components
 
-* [Animations](src/components/Animations)
-    * [TransitionVertical](src/components/Animations/TransitionVertical.vue)
-* [Form](src/components/Form)
-    * [Checkbox](src/components/Form/Checkbox)
-    * [Select](src/components/Form/Select)
-    * [Field](src/components/Form/Field)
-    * [Input](src/components/Form/Input)
-    * [Radio](src/components/Form/Radio)
-    * [Range](src/components/Form/Range)
-    * [ComboboxSelect](src/components/Form/Select)
-    * [Textarea](src/components/Form/Textarea)
+* [Animations](src/components/animations)
+    * [TransitionVertical](src/components/animations/transition-vertical.vue)
+* [Form](src/components/form)
+    * [Checkbox](src/components/form/checkbox)
+    * [Select](src/components/form/select)
+    * [Field](src/components/form/field)
+    * [Input](src/components/form/input)
+    * [Radio](src/components/form/radio)
+    * [Range](src/components/form/range)
+    * [ComboboxSelect](src/components/form/combobox-select)
+    * [Textarea](src/components/form/textarea)
 
 ## License
 
