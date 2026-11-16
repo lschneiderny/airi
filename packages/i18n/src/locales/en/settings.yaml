@@ -848,7 +848,7 @@ pages:
         description: Irreversible actions. Export what you need before continuing.
       all:
         title: Delete all data
-        description: Wipe every local setting, provider config, and model.
+        description: Wipe every local setting, provider config, chat, and model. The desktop app also deletes its logs, IO traces, computer-use captures, and the Home Assistant token.
         delete: Delete all data
       desktop-folder:
         title: Open app data folder
