@@ -12,7 +12,7 @@ Agent guidance holds only what an agent cannot learn from the code, `package.jso
 - Keep each nested `AGENTS.md` short. When one has no package-specific rules left, delete it and its `CLAUDE.md`.
 
 ## CONVENTIONS
-- Change only Supported projects for fork work. Carried projects stay as upstream ships them; fix them only to keep the workspace building. See [Support scope](README.md#support-scope).
+- Change only Supported projects for fork work. Projects kept from upstream stay as upstream ships them; fix them only to keep the workspace building. See [Support scope](README.md#support-scope).
 - The policy docs in `docs/ai/context/` are the current rules. When a change alters a rule they state, update the doc in the same commit. ADRs are history; do not edit their bodies.
 - Keep changes in scope. Correct rule violations in touched functions/components/tests, not unrelated code. Refactor small changes step by step.
 - Do not add one-off patterns. Before adding utilities, search internal implementations. If logic can become shared, propose that approach to the user. Put shared logic in `packages/`. Keep module boundaries clear.
