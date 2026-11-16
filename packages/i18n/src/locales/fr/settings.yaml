@@ -91,15 +91,10 @@ controls-island:
 analytics:
   notice:
     title: Statistiques d'utilisation
-    description: >-
-      AIRI collecte des statistiques d'utilisation anonymes pour nous aider à comprendre comment l'application est utilisée et améliorer sa stabilité. Aucune donnée personnelle n'est collectée.
     privacyPrefix: Lire la
     privacyLink: politique de confidentialité
-    onboardingHint: Vous pouvez désactiver les statistiques plus tard dans Paramètres > Système > Général.
-    settingsHint: Vous pouvez désactiver les statistiques à tout moment.
   toggle:
     title: Activer les statistiques d'utilisation
-    description: Désactivez cette option pour ne plus participer à la collecte de statistiques.
   disabled:
     title: Statistiques désactivées pour cette version de développement
 model-select:

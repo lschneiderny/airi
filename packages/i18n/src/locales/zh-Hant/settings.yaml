@@ -93,15 +93,10 @@ controls-island:
 analytics:
   notice:
     title: 使用情況分析
-    description: >-
-      AIRI 收集匿名使用情況資料，以了解應用程式的使用方式並改善穩定性，不會收集個人資料。
     privacyPrefix: 閱讀
     privacyLink: 隱私權政策
-    onboardingHint: 之後可在「設定 > 系統 > 通用」中關閉使用情況分析。
-    settingsHint: 你可以隨時關閉使用情況分析。
   toggle:
     title: 啟用使用情況分析
-    description: 關閉此選項即可停止收集分析資料。
   disabled:
     title: 此開發版本已停用使用情況分析
 model-select:
