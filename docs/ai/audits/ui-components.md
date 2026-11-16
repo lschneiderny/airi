@@ -49,7 +49,7 @@ The Kirie application repeats several desktop control implementations. Treat the
 | [packages/stage-ui/src/components/layouts/page-header.vue:82](../../../packages/stage-ui/src/components/layouts/page-header.vue#L82) | The back action uses a native button without its own accessible label. | Use IconButton and provide a localized accessible name. |
 | [packages/stage-ui/src/components/scenarios/providers/provider-validation-alerts.vue:34](../../../packages/stage-ui/src/components/scenarios/providers/provider-validation-alerts.vue#L34) | Validation actions use multiple native buttons. | Use Button or GhostButton. Retain the validation state and action handlers. |
 | [packages/stage-pages/src/pages/settings/providers/index.vue:223](../../../packages/stage-pages/src/pages/settings/providers/index.vue#L223) | Category and filter controls use native buttons. | Compare SelectTab and GhostButton. Preserve selected state and navigation. |
-| [apps/stage-pocket/src/components/websocket-status-button.vue:59](../../../apps/stage-pocket/src/components/websocket-status-button.vue#L59) | Connection state owns a custom surface and native button. | Build the status surface on BasicButton. Preserve connection labels and state colors. |
+| `apps/stage-pocket/src/components/websocket-status-button.vue:59` | Connection state owns a custom surface and native button. | Build the status surface on BasicButton. Preserve connection labels and state colors. |
 | [packages/stage-ui/src/components/scenarios/chat/components/tool-call-shell.vue:33](../../../packages/stage-ui/src/components/scenarios/chat/components/tool-call-shell.vue#L33) | A local trigger button sits inside shared Collapsible. | Use GhostButton or BasicButton. Keep the collapsible contract. |
 | [packages/stage-ui/src/components/misc/steppers/steppers.vue:125](../../../packages/stage-ui/src/components/misc/steppers/steppers.vue#L125) | Stepper actions use native buttons. | Compare Button and GhostButton for the action surface. |
 | [packages/stage-ui/src/components/data-pane/property-number.vue:159](../../../packages/stage-ui/src/components/data-pane/property-number.vue#L159) | Numeric controls include custom drag and pointer behavior. | Retain the domain interaction. Evaluate shared Input only after comparing behavior. |
@@ -65,7 +65,7 @@ The following table contains every stage-ui component without direct coverage. C
 | Component | Status |
 | --- | --- |
 | [animations/Replayable.vue](../../../packages/stage-ui/src/components/animations/Replayable.vue) | Needs a dedicated scenario and fixture |
-| [auth/SignInPanel.vue](../../../packages/stage-ui/src/components/auth/SignInPanel.vue) | Needs a dedicated scenario and fixture |
+| `auth/SignInPanel.vue` | Needs a dedicated scenario and fixture |
 | [data-pane/color-picker.vue](../../../packages/stage-ui/src/components/data-pane/color-picker.vue) | Composed in an existing story |
 | [data-pane/container.vue](../../../packages/stage-ui/src/components/data-pane/container.vue) | Needs a dedicated scenario and fixture |
 | [data-pane/pane.vue](../../../packages/stage-ui/src/components/data-pane/pane.vue) | Needs a dedicated scenario and fixture |
@@ -82,7 +82,7 @@ The following table contains every stage-ui component without direct coverage. C
 | [modules/GamingModuleSettings.vue](../../../packages/stage-ui/src/components/modules/GamingModuleSettings.vue) | Needs a dedicated scenario and fixture |
 | [modules/MessagingDiscord.vue](../../../packages/stage-ui/src/components/modules/MessagingDiscord.vue) | Needs a dedicated scenario and fixture |
 | [modules/WebSearch.vue](../../../packages/stage-ui/src/components/modules/WebSearch.vue) | Needs a dedicated scenario and fixture |
-| [modules/X.vue](../../../packages/stage-ui/src/components/modules/X.vue) | Needs a dedicated scenario and fixture |
+| `modules/X.vue` | Needs a dedicated scenario and fixture |
 | [modules/stickers.vue](../../../packages/stage-ui/src/components/modules/stickers.vue) | Needs a dedicated scenario and fixture |
 | [scenarios/about/about-content.vue](../../../packages/stage-ui/src/components/scenarios/about/about-content.vue) | Needs a dedicated scenario and fixture |
 | [scenarios/chat/JournalPreviewModal.vue](../../../packages/stage-ui/src/components/scenarios/chat/JournalPreviewModal.vue) | Needs a dedicated scenario and fixture |
@@ -104,8 +104,8 @@ The following table contains every stage-ui component without direct coverage. C
 | [scenarios/chat/components/tool-call-block.vue](../../../packages/stage-ui/src/components/scenarios/chat/components/tool-call-block.vue) | Needs a dedicated scenario and fixture |
 | [scenarios/chat/components/user-item.vue](../../../packages/stage-ui/src/components/scenarios/chat/components/user-item.vue) | Composed in an existing story |
 | [scenarios/chat/components/voice-drafts.vue](../../../packages/stage-ui/src/components/scenarios/chat/components/voice-drafts.vue) | Needs a dedicated scenario and fixture |
-| [scenarios/chat/components/voice-message-controls.vue](../../../packages/stage-ui/src/components/scenarios/chat/components/voice-message-controls.vue) | Needs a dedicated scenario and fixture |
-| [scenarios/chat/components/voice-message-preview.vue](../../../packages/stage-ui/src/components/scenarios/chat/components/voice-message-preview.vue) | Needs a dedicated scenario and fixture |
+| `scenarios/chat/components/voice-message-controls.vue` | Needs a dedicated scenario and fixture |
+| `scenarios/chat/components/voice-message-preview.vue` | Needs a dedicated scenario and fixture |
 | [scenarios/connection/settings/index.vue](../../../packages/stage-ui/src/components/scenarios/connection/settings/index.vue) | Needs a dedicated scenario and fixture |
 | [scenarios/dialogs/about.vue](../../../packages/stage-ui/src/components/scenarios/dialogs/about.vue) | Needs a dedicated scenario and fixture |
 | [scenarios/dialogs/about/about-dialog.vue](../../../packages/stage-ui/src/components/scenarios/dialogs/about/about-dialog.vue) | Needs a dedicated scenario and fixture |
