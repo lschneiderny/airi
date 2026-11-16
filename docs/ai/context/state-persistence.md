@@ -1,12 +1,12 @@
 # State persistence
 
-Verified against the code on 2026-11-16 (commit `5099f3b0a`). These rules state where client state lives today and how to place new state. They win over the ADRs, which record why each rule was chosen.
+Verified against the code on 2026-11-16 (commit `1976c952b`). These rules state where client state lives today and how to place new state. They win over the ADRs, which record why each rule was chosen.
 
 Terms follow the [domain glossary](glossary.md), in particular [Leader and follower windows](glossary.md#leader-and-follower-windows) and [Synced settings document](glossary.md#synced-settings-document). Code is cited by repository path and exported symbol.
 
 ## Choosing a tier
 
-Choose the first tier that fits the state. A store that persists anything is registered with `useDataMaintenance` (`packages/stage-ui/src/composables/use-data-maintenance.ts`) in the same commit, so "Delete all data" reaches it.
+Choose the first [tier](glossary.md#persistence-tier) that fits the state. A store that persists anything is registered with `useDataMaintenance` (`packages/stage-ui/src/composables/use-data-maintenance.ts`) in the same commit, so "Delete all data" reaches it.
 
 | # | State | Tier |
 | --- | --- | --- |
@@ -26,7 +26,7 @@ A store that fits no tier needs an amendment to this document before it lands.
 
 ## Members
 
-The table lists every persisting store and component found in the `src` directories of the workspace packages and in `apps/stage-tamagotchi/src` on this commit. It omits the web app and the stage-ui Twitter module, which are being removed.
+The table lists every persisting store and component found in the `src` directories of the workspace packages and in `apps/stage-tamagotchi/src` on this commit.
 
 Column meanings:
 
@@ -145,15 +145,15 @@ Three other writers sit outside the stores. `migrateGoCredentials` (`apps/stage-
 
 Six tier 1 stores and one helper exist:
 
-- `useLive2DNaturalSettings` and `useMMDNaturalSettings` are built on `useSettingsDocument`. Each starts from the old per-setting Natural keys while no document is stored, and its first leader-routed `update` or `reset` writes the document and deletes those keys. Each store's `// NOTICE:` block states when that import can be removed.
+- `useLive2DNaturalSettings` and `useMMDNaturalSettings` are built on `useSettingsDocument`. Each starts from the old per-setting [Natural](glossary.md#natural) keys while no document is stored, and its first leader-routed `update` or `reset` writes the document and deletes those keys. Each store's `// NOTICE:` block states when that import can be removed.
 - `useSituationSettings`, `useExpressionPerformanceSettings`, `useHostNoticeSettings`, and `useConversationSettings` hand-roll the same code. Each calls `useLocalStorageManualReset` directly with `listenToStorageChanges: false` and `writeDefaults: false`, validates the document itself, and declares leader-routed `update` and `reset` actions. They can adopt `useSettingsDocument` without changing their keys.
 
 New tier 1 stores use `useSettingsDocument`.
 
 ## Named exceptions
 
-- **Long-term memory.** `useMemoryStore` is tier 4 data that any window may write, without leader routing or a lock. A write invalidates the other windows over the `airi:memory` BroadcastChannel. This is safe while only the leader runs chat turns, which are the only writers besides Settings.
-- **The gate's inner state.** `settings/situation-inner` is the only tier 2 member. It holds the urge-gate memory and the conversation threads that the situation extracts, which are personal and grow with every save, so it never replicates. `useSituationStore().forget` clears it in the leader.
+- **[Long-term memory](glossary.md#long-term-memory).** `useMemoryStore` is tier 4 data that any window may write, without leader routing or a lock. A write invalidates the other windows over the `airi:memory` BroadcastChannel. This is safe while only the leader runs chat turns, which are the only writers besides Settings.
+- **The [gate](glossary.md#gate)'s inner state.** `settings/situation-inner` is the only tier 2 member. It holds the urge-gate memory and the conversation threads that the [situation](glossary.md#situation) extracts, which are personal and grow with every save, so it never replicates. `useSituationStore().forget` clears it in the leader.
 - **Expression documents.** The Live2D and MMD expression stores write `expression-catalog:<id>` and `expression-rest:<id>` from the stage window, outside any store registration. `useDataMaintenance` clears them by prefix, including documents of models that are not loaded.
 - **Chat assets.** `chatAssetsRepo` has no reset of its own. `chatSessionsRepo` releases a session's assets when it deletes the session, so deleting all chat sessions removes them.
 
