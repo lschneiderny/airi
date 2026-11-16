@@ -14,8 +14,9 @@ import { sharedUnoConfig } from '../../uno.config.ts'
 
 export const stagePagesBrowserProject: TestProjectInlineConfiguration = {
   root: import.meta.dirname,
-  // Follower-window tests must not reload while their election is starting.
-  optimizeDeps: { include: ['pinia-plugin-synced'] },
+  // Follower-window tests must not reload while their election is starting. stage-pages does not depend on
+  // pinia-plugin-synced itself, so the include names it through stage-ui; a bare name fails to resolve and is skipped.
+  optimizeDeps: { include: ['@proj-airi/stage-ui > pinia-plugin-synced'] },
   plugins: [
     Info(),
     Vue(),
