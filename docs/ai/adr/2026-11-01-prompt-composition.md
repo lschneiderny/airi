@@ -1,7 +1,7 @@
 # Prompt composition
 
 Date: 2026-11-01
-Status: accepted
+Status: accepted. Current rules: [LLM prompt](../context/llm-prompt.md).
 
 ## Context
 

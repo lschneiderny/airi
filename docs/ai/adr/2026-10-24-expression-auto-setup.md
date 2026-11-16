@@ -1,7 +1,7 @@
 # Automatic expression setup
 
 Date: 2026-10-24
-Status: accepted
+Status: accepted. Current rules: [Body ownership](../context/body-ownership.md).
 
 Channel ownership is defined in the [living parameter-ownership document](../context/body-ownership.md).
 

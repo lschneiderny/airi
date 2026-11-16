@@ -1,7 +1,7 @@
 # Unprompted reach-out cadence
 
 Date: 2026-10-30
-Status: accepted
+Status: accepted. Current rules: [Autonomous behavior](../context/autonomous-behavior.md), [State persistence](../context/state-persistence.md).
 
 ## Status
 

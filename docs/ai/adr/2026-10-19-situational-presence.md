@@ -5,7 +5,7 @@ recorded in the [host capability parity
 matrix](2026-11-08-host-capability-contract.md#host-parity-matrix).
 
 Date: 2026-10-19
-Status: accepted; the opportunity gate section is superseded by [Unprompted reach-out cadence](2026-10-29-unprompted-reach-out-cadence.md).
+Status: accepted; the opportunity gate section is superseded by [Unprompted reach-out cadence](2026-10-29-unprompted-reach-out-cadence.md). Current rules: [Autonomous behavior](../context/autonomous-behavior.md), [LLM prompt](../context/llm-prompt.md).
 
 ## Context
 

@@ -1,7 +1,7 @@
 # Long-term memory adoption
 
 Date: 2026-10-30
-Status: accepted
+Status: accepted. Current rules: [LLM prompt](../context/llm-prompt.md), [State persistence](../context/state-persistence.md).
 
 ## Context
 

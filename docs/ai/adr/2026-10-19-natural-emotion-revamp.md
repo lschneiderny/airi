@@ -1,7 +1,7 @@
 # Natural emotion revamp: held emotions and gestures
 
 Date: 2026-10-19
-Status: accepted
+Status: accepted. Current rules: [Body ownership](../context/body-ownership.md).
 
 Channel ownership is defined in the [living parameter-ownership document](../context/body-ownership.md).
 

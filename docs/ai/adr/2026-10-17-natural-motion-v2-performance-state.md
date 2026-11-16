@@ -1,7 +1,7 @@
 # Natural motion v2 and the performance state
 
 Date: 2026-10-17
-Status: accepted
+Status: accepted. Current rules: [Body ownership](../context/body-ownership.md).
 
 Channel ownership is defined in the [living parameter-ownership document](../context/body-ownership.md).
 

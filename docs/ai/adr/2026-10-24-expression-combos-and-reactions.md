@@ -1,7 +1,7 @@
 # Expression combos and reactions
 
 Date: 2026-10-24
-Status: accepted
+Status: accepted. Current rules: [Body ownership](../context/body-ownership.md), [Autonomous behavior](../context/autonomous-behavior.md).
 
 Channel ownership is defined in the [living parameter-ownership document](../context/body-ownership.md).
 

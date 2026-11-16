@@ -5,7 +5,7 @@ recorded in the [host capability parity
 matrix](2026-11-08-host-capability-contract.md#host-parity-matrix).
 
 Date: 2026-10-31
-Status: accepted
+Status: accepted. Current rules: [Autonomous behavior](../context/autonomous-behavior.md).
 
 This decision was made on `luke/feat/fullscreen-stage`, which lands on `main` in slices under [the lazy 3D renderers ADR](2026-11-04-lazy-3d-renderers.md). On `main` today: the stage-world contract, locomotion, the arm rest pose, clip masks, the MMD stage-world adapter, the body tools, and the asynchronous alpha reader. The desktop stage host, its window contract, click-through, the chat anchor, the Desktop stage settings section, and `pnpm qa:stage` are on `main` too, behind the off-by-default **Experimental 3D stage** setting. While it is off, the classic window is the only host, and the MMD scene runs its stage-world code only when a host passes `stageWorld`.
 

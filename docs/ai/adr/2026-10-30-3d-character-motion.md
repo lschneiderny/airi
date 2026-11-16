@@ -1,7 +1,7 @@
 # 3D character motion for MMD models
 
 Date: 2026-10-30
-Status: accepted
+Status: accepted. Current rules: [Body ownership](../context/body-ownership.md).
 
 ## Context
 

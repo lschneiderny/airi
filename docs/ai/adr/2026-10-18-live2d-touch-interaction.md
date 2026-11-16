@@ -1,7 +1,7 @@
 # Live2D touch interaction: poke and pet
 
 Date: 2026-10-18
-Status: accepted
+Status: accepted. Current rules: [Body ownership](../context/body-ownership.md).
 
 Channel ownership is defined in the [living parameter-ownership document](../context/body-ownership.md).
 

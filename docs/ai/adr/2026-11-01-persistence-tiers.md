@@ -1,7 +1,7 @@
 # Choosing a persistence tier for client state
 
 Date: 2026-11-01
-Status: accepted
+Status: accepted. Current rules: [State persistence](../context/state-persistence.md).
 
 ## Context
 

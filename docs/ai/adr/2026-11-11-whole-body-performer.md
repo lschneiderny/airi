@@ -1,7 +1,7 @@
 # Whole-body performer for MMD characters
 
 Date: 2026-11-11
-Status: accepted
+Status: accepted. Current rules: [Body ownership](../context/body-ownership.md).
 
 ## Context
 

@@ -1,7 +1,7 @@
 # Nonverbal channels: touch, gestures, wordless replies, and the conversation register
 
 Date: 2026-10-31
-Status: accepted
+Status: accepted. Current rules: [LLM prompt](../context/llm-prompt.md).
 
 ## Context
 

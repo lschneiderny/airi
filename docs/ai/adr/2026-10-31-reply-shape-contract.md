@@ -1,7 +1,7 @@
 # Reply-shape rules in the stage contract
 
 Date: 2026-10-31
-Status: accepted
+Status: accepted. Current rules: [LLM prompt](../context/llm-prompt.md).
 
 ## Context
 

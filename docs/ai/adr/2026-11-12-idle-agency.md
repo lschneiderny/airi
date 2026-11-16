@@ -1,7 +1,7 @@
 # Idle agency: self-directed behaviour on screen and in chat
 
 Date: 2026-11-12
-Status: accepted. The motion shapes were tuned on a rendered Live2D rig (see Validation); naturalness in motion and the pacing still need Luke's visual review, and MMD is tuned separately.
+Status: accepted. The motion shapes were tuned on a rendered Live2D rig (see Validation); naturalness in motion and the pacing still need Luke's visual review, and MMD is tuned separately. Current rules: [Body ownership](../context/body-ownership.md), [Autonomous behavior](../context/autonomous-behavior.md).
 
 ## Context
 

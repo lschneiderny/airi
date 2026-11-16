@@ -1,7 +1,7 @@
 # Clip actions for MMD models
 
 Date: 2026-11-03
-Status: accepted
+Status: accepted. Current rules: [Body ownership](../context/body-ownership.md), [Autonomous behavior](../context/autonomous-behavior.md).
 
 ## Context
 

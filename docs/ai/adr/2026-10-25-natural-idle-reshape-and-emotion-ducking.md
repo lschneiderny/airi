@@ -1,7 +1,7 @@
 # Natural idle reshape and emotion ducking
 
 Date: 2026-10-25
-Status: accepted. The idle reshape was built and adjusted on 2026-11-07 (see Idle reshape on today's code); naturalness still needs Luke's visual review.
+Status: accepted. The idle reshape was built and adjusted on 2026-11-07 (see Idle reshape on today's code); naturalness still needs Luke's visual review. Current rules: [Body ownership](../context/body-ownership.md).
 
 ## Context
 

@@ -5,7 +5,7 @@ in the [host capability parity
 matrix](2026-11-08-host-capability-contract.md#host-parity-matrix).
 
 Date: 2026-10-24
-Status: accepted
+Status: accepted. Current rules: [Body ownership](../context/body-ownership.md).
 
 ## Decision and scope
 

@@ -1,7 +1,7 @@
 # Interaction portability across renderers
 
 Date: 2026-11-04
-Status: accepted
+Status: accepted. Current rules: [Body ownership](../context/body-ownership.md).
 
 ## Context
 

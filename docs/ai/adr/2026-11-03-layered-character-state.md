@@ -1,7 +1,7 @@
 # Layered character state: moment, mood, temperament, relationship
 
 Date: 2026-11-03
-Status: accepted
+Status: accepted. Current rules: [Autonomous behavior](../context/autonomous-behavior.md), [State persistence](../context/state-persistence.md).
 
 ## Context
 
