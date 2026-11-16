@@ -6,7 +6,7 @@
  *
  * Inputs: AIRI_QA_RIG_FORBOOTH (rig folder), AIRI_QA_CUBISM_CORE (optional core path).
  * The core is served from its own folder as Vite's public directory and loaded with a script tag,
- * like apps/stage-web/src/test/setup-live2d.browser.ts. Rig bytes cross from Node through commands.
+ * like the Live2D browser test setup in the retired web app. Rig bytes cross from Node through commands.
  */
 import type { BrowserCommand } from 'vitest/node'
 
