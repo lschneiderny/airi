@@ -24,6 +24,7 @@ describe('pruneExpiredLogs', () => {
   })
 
   afterEach(async () => {
+    vi.restoreAllMocks()
     await rm(logsDir, { recursive: true, force: true })
   })
 
@@ -35,5 +36,11 @@ describe('pruneExpiredLogs', () => {
     await pruneExpiredLogs(logsDir, nowMs)
 
     expect((await readdir(logsDir)).sort()).toEqual(['airi-tamagotchi-2.log', 'notes.txt'])
+  })
+
+  it('resolves when the folder cannot be listed, so the session log still opens', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await expect(pruneExpiredLogs(join(logsDir, 'missing'), nowMs)).resolves.toBeUndefined()
   })
 })

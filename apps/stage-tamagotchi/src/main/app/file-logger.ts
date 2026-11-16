@@ -103,12 +103,20 @@ async function ensureLogsDirectory(): Promise<string | null> {
 
 /**
  * Removes the session logs in `logsDir` that were last written more than {@link LOG_RETENTION_MS} before `nowMs`.
- * Files that are not session logs stay. A file that cannot be read or removed is skipped, so a failure here never
- * keeps the app from starting.
+ * Files that are not session logs stay. A folder that cannot be listed and a file that cannot be read or removed
+ * are skipped, so a failure here never keeps the session log from opening.
  */
 export async function pruneExpiredLogs(logsDir: string, nowMs: number): Promise<void> {
   const cutoff = nowMs - LOG_RETENTION_MS
-  for (const name of await readdir(logsDir)) {
+  let names: string[]
+  try {
+    names = await readdir(logsDir)
+  }
+  catch (error) {
+    console.error(`[FileLogger] Failed to list logs for pruning: ${errorMessageFrom(error)}`)
+    return
+  }
+  for (const name of names) {
     if (!name.startsWith(`${LOG_FILE_PREFIX}-`) || !name.endsWith('.log'))
       continue
     const path = join(logsDir, name)
