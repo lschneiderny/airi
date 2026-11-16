@@ -53,7 +53,7 @@ const kCGWindowListOptionOnScreenOnly = 1
 const kCGWindowListExcludeDesktopElements = 16
 const kCGNullWindowID = 0
 // Bound title allocation and IPC payload, independently of the app's reported length.
-const TITLE_MAX_UNITS = 1024
+export const TITLE_MAX_UNITS = 1024
 const AX_BUDGET_MS = 250
 const AX_BACKOFF_MS = 10_000
 

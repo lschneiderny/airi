@@ -9,6 +9,9 @@ import { posix } from 'node:path'
 /** How long after an AIRI window's focus event the compositor may take to report it active. */
 const FOCUS_CONFIRM_MS = 1000
 
+/** Longest caption a backend passes on. The KWin bridge script cuts a longer one to this length. */
+const CAPTION_MAX_UNITS = 4096
+
 /** Consecutive unconfirmed focus events that revoke foreground verification. */
 const MISSES_TO_REVOKE = 3
 
@@ -37,9 +40,10 @@ function readExePath(pid: number): string | null {
  * - `appNames` lists every name the block list may match: the executable, the window class, and the desktop
  *   file name. Apps that share one `electron` or `python` executable differ only in the last two.
  *   These names stay in the main process; only `sample` crosses IPC.
+ * - `titleCut` is true when the caption is as long as a backend passes on, so its end may be missing.
  */
 export function createLinuxSampler(bridge: Pick<LinuxDesktopBridge, 'activeWindow' | 'busyHint'>, isOwnProcess: (pid: number) => boolean) {
-  return function read(): { sample: ForegroundWindowSample, appNames: readonly (string | null)[] } | null {
+  return function read(): { sample: ForegroundWindowSample, appNames: readonly (string | null)[], titleCut: boolean } | null {
     const active = bridge.activeWindow()
     if (!active)
       return null
@@ -57,6 +61,7 @@ export function createLinuxSampler(bridge: Pick<LinuxDesktopBridge, 'activeWindo
         sampledAtMs: Date.now(),
       },
       appNames: [exeName, active.resourceClass, active.desktopFileName],
+      titleCut: active.caption.length >= CAPTION_MAX_UNITS,
     }
   }
 }

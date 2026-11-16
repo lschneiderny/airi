@@ -16,9 +16,9 @@ import { isLinux, isMacOS, isWindows } from 'std-env'
 import { electron } from '../../../shared/eventa'
 import { onAppBeforeQuit } from '../../libs/bootkit/lifecycle'
 import { onWindowClosed } from '../../libs/electron/on-window-closed'
-import { createDarwinSampler, loadDarwinBinding } from './foreground-window-darwin'
+import { createDarwinSampler, TITLE_MAX_UNITS as DARWIN_TITLE_MAX_UNITS, loadDarwinBinding } from './foreground-window-darwin'
 import { createLinuxForegroundVerifier, createLinuxSampler } from './foreground-window-linux'
-import { createWin32Sampler, loadWin32Binding } from './foreground-window-win32'
+import { createWin32Sampler, loadWin32Binding, TITLE_MAX_UNITS as WIN32_TITLE_MAX_UNITS } from './foreground-window-win32'
 import { getCurrentHostCapabilities, reportForegroundBindingFailed, reportLinuxDesktop } from './host-capabilities'
 
 /** Linux backends whose bridge reports the active window. */
@@ -37,29 +37,36 @@ function linuxVerifierFor(bridge: LinuxDesktopBridge) {
   return verifier
 }
 
-/** A sample and every name the block list may match for its app. Only the sample crosses IPC. */
+/** A sample and what the main process needs to decide whether to hide it. Only the sample crosses IPC. */
 interface ForegroundReading {
   sample: ForegroundWindowSample
+  /** Every name the block list may match for the app. */
   appNames: readonly (string | null)[]
+  /** The host's read cap may have cut the title, so a private-window marker at its end may be missing. */
+  titleCut: boolean
 }
 
-/** Windows and macOS know an app by its executable or bundle only. */
-function withExeNames(read: () => ForegroundWindowSample | null) {
+/**
+ * Windows and macOS know an app by its executable or bundle only. Their samplers keep the first `titleMaxUnits`
+ * code units of a title, less one when the cut would split a surrogate pair.
+ */
+function withExeNames(read: () => ForegroundWindowSample | null, titleMaxUnits: number) {
   return (): ForegroundReading | null => {
     const sample = read()
-    return sample && { sample, appNames: [sample.exeName, sample.exePath] }
+    return sample && { sample, appNames: [sample.exeName, sample.exePath], titleCut: sample.title.length >= titleMaxUnits - 1 }
   }
 }
 
 /**
  * Whether a reading must stay in the main process: its app is on the user's block list, or its title marks a
- * private browser window. AIRI's own windows always pass, because the renderer needs them to learn AIRI's own app
- * id and to read busy.
+ * private browser window. A title that the read cap may have cut is treated as private, because the marker sits at
+ * the end of a title. AIRI's own windows always pass, because the renderer needs them to learn AIRI's own app id
+ * and to read busy.
  */
 function isHiddenFromPresence(reading: ForegroundReading, blockedApps: readonly string[]): boolean {
   if (reading.sample.ownProcess)
     return false
-  return isPrivateWindowTitle(reading.sample.title) || isBlockedApp(reading.appNames, blockedApps, process.platform)
+  return reading.titleCut || isPrivateWindowTitle(reading.sample.title) || isBlockedApp(reading.appNames, blockedApps, process.platform)
 }
 
 /**
@@ -81,7 +88,8 @@ function isHiddenFromPresence(reading: ForegroundReading, blockedApps: readonly 
  * Returns:
  * - Nothing; the handler goes with the window, or with the app if it quits first.
  *   Reads resolve `null` off Windows/macOS and after a failed koffi load, instead of rejecting.
- *   They also resolve `null` for a blocked app and for a private browser window, so neither reaches a renderer.
+ *   They also resolve `null` for a blocked app, a private browser window, and a window whose title the read cap
+ *   may have cut, so none of them reaches a renderer.
  *   The title is empty unless the read asks for it; the private-window check still reads it here.
  */
 export function createForegroundWindowService(params: {
@@ -107,9 +115,9 @@ export function createForegroundWindowService(params: {
   function getSampler() {
     // On Linux the snapshot gate below keeps reads off until the bridge is ready and verified.
     sampler ??= (isWindows
-      ? loadWin32Binding().then(binding => withExeNames(createWin32Sampler(binding, isOwnProcess)))
+      ? loadWin32Binding().then(binding => withExeNames(createWin32Sampler(binding, isOwnProcess), WIN32_TITLE_MAX_UNITS))
       : isMacOS
-        ? loadDarwinBinding().then(binding => withExeNames(createDarwinSampler(binding, isOwnProcess)))
+        ? loadDarwinBinding().then(binding => withExeNames(createDarwinSampler(binding, isOwnProcess), DARWIN_TITLE_MAX_UNITS))
         : Promise.resolve(linuxBridge ? createLinuxSampler(linuxBridge, isOwnProcess) : null)).catch((error) => {
       reportForegroundBindingFailed()
       log.withError(error).warn(`foreground window sampling is unavailable: ${errorMessageFrom(error) ?? 'koffi failed to load'}`)

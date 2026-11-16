@@ -7,6 +7,7 @@ import { electron } from '@proj-airi/electron-eventa'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createForegroundWindowService } from './foreground-window'
+import { createWin32Sampler, loadWin32Binding } from './foreground-window-win32'
 
 const host = vi.hoisted(() => ({
   isWindows: true,
@@ -23,6 +24,7 @@ const darwin = vi.hoisted(() => ({
 vi.mock('./foreground-window-darwin', () => ({
   loadDarwinBinding: darwin.load,
   createDarwinSampler: darwin.createSampler,
+  TITLE_MAX_UNITS: 1024,
 }))
 
 /** The process-wide foreground status; the real snapshot is covered in foreground-window.trust.test.ts. */
@@ -245,6 +247,10 @@ describe('createForegroundWindowService', () => {
       await expect(createReader(undefined, createBridge('kwin', firefox))([], false)).resolves.toBeNull()
     })
 
+    it('resolves null for a caption as long as the bridge passes on', async () => {
+      await expect(createReader(undefined, createBridge('kwin', { ...konsole, caption: 'a'.repeat(4096) }))()).resolves.toBeNull()
+    })
+
     it('keeps an own window even when the block list matches everything', async () => {
       await expect(createReader(undefined, createBridge('kwin', { ...konsole, pid: process.pid }))(['*'])).resolves.toMatchObject({ ownProcess: true })
     })
@@ -304,10 +310,18 @@ describe('createForegroundWindowService', () => {
     // 1023 ASCII units put the emoji's high surrogate at the last readable unit.
     desktop.title = `${'a'.repeat(1023)}\u{1F3AE}${'b'.repeat(5000)}`
 
-    const sample = await createReader()()
+    const sample = createWin32Sampler(await loadWin32Binding(), () => false)()
 
     expect(win32.GetWindowTextW).toHaveBeenCalledWith(1n, expect.any(Buffer), 1025)
     expect(sample?.title).toBe('a'.repeat(1023))
+  })
+
+  it('resolves null for a title the read cap may have cut, because a private-window marker sits at its end', async () => {
+    desktop.title = `${'a'.repeat(1100)} \u2014 Mozilla Firefox Private Browsing`
+    await expect(createReader()()).resolves.toBeNull()
+
+    desktop.title = 'a'.repeat(1000)
+    await expect(createReader()()).resolves.toMatchObject({ title: desktop.title })
   })
 
   it('reports an empty title for an untitled window', async () => {
