@@ -65,6 +65,7 @@ describe('situation settings', () => {
       chattiness: 0.5,
       dontDisturb: false,
       shareForegroundWindow: true,
+      shareWindowTitles: true,
       shareBrowserActivity: true,
       quietApps: ['zoom.exe', 'ms-teams.exe', 'teams.exe', 'webex*.exe', 'zoom.us.app', 'Microsoft Teams.app', 'FaceTime.app', 'Webex*.app'],
       blockedApps: ['1Password*.app', 'Bitwarden.app', 'KeePassXC.app', 'Passwords.app', 'Keychain Access.app'],

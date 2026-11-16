@@ -6,7 +6,7 @@ import { errorMessageFrom } from '@moeru/std'
 import { electron } from '@proj-airi/electron-eventa'
 import { getElectronEventaContext } from '@proj-airi/electron-vueuse'
 import { useForegroundWindowStore } from '@proj-airi/stage-shared/stores/foreground-window'
-import { useSituationSettings } from '@proj-airi/stage-ui/features/situation/settings'
+import { foregroundReadPolicy, useSituationSettings } from '@proj-airi/stage-ui/features/situation/settings'
 import { defineStore } from 'pinia'
 import { computed, effectScope, shallowRef, watch } from 'vue'
 
@@ -106,7 +106,7 @@ export const useForegroundWindowProducerStore = defineStore('foreground-window-p
       return
 
     const invokeSample = defineInvoke(getElectronEventaContext(), electron.foregroundWindow.sample)
-    const readForegroundWindow = () => invokeSample({ blockedApps: [...situationSettings.document.blockedApps] })
+    const readForegroundWindow = () => invokeSample(foregroundReadPolicy(situationSettings.document))
     polling.value = true
     void sample(readForegroundWindow)
     schedule(readForegroundWindow, stageVisible.value)

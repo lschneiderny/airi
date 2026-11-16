@@ -5,14 +5,15 @@ import { defineInvokeEventa } from '@moeru/eventa'
  *
  * The title is raw (up to the main process read cap). Consumers own normalization
  * before a title reaches a prompt, and must not persist it. The main process never
- * returns a reading of a blocked app or of a private browser window.
+ * returns a reading of a blocked app or of a private browser window, and returns
+ * the title only when the request asks for it.
  */
 export interface ForegroundWindowSample {
   /** Full image path of the owning process, or `null` when the host cannot read it. */
   exePath: string | null
   /** File name of `exePath` with its original casing, for example `Notepad.exe` or `TextEdit.app`. */
   exeName: string | null
-  /** Window title; empty when the window has none. */
+  /** Window title; empty when the window has none or the request did not set `includeTitle`. */
   title: string
   pid: number
   /** `true` when the window belongs to one of AIRI's own Electron processes. */
@@ -32,6 +33,11 @@ export interface ForegroundWindowRequest {
    * before it replies, so a blocked app's name, title, and pid never cross IPC. AIRI's own windows are exempt.
    */
   blockedApps: readonly string[]
+  /**
+   * Whether the reply carries the window title (the `shareWindowTitles` presence setting). When false the main
+   * process replies with an empty title, so no title crosses IPC.
+   */
+  includeTitle: boolean
 }
 
 /**

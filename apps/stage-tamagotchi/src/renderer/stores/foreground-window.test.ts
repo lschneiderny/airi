@@ -92,17 +92,20 @@ describe('useForegroundWindowProducerStore', async () => {
     expect(reads).toBe(5)
   })
 
-  it('sends the current block list with every read', async () => {
+  it('sends the current block list and title sharing with every read', async () => {
     const producer = useForegroundWindowProducerStore()
     const settings = useSituationSettings()
     await settings.update({ blockedApps: ['keepassxc'] })
 
     producer.start()
     await vi.advanceTimersByTimeAsync(0)
-    await settings.update({ blockedApps: ['keepassxc', '*bitwarden*'] })
+    await settings.update({ blockedApps: ['keepassxc', '*bitwarden*'], shareWindowTitles: false })
     await vi.advanceTimersByTimeAsync(1000)
 
-    expect(requests).toEqual([{ blockedApps: ['keepassxc'] }, { blockedApps: ['keepassxc', '*bitwarden*'] }])
+    expect(requests).toEqual([
+      { blockedApps: ['keepassxc'], includeTitle: true },
+      { blockedApps: ['keepassxc', '*bitwarden*'], includeTitle: false },
+    ])
   })
 
   it('keeps polling at the slower hidden cadence while the stage is minimized or hidden', async () => {

@@ -11,7 +11,7 @@ import {
 import { useForegroundWindowStore } from '@proj-airi/stage-shared/stores/foreground-window'
 import { effectScope, watch } from 'vue'
 
-import { useSituationSettings } from '../../../features/situation/settings'
+import { foregroundReadPolicy, useSituationSettings } from '../../../features/situation/settings'
 
 /**
  * While the stage window is visible, a foreground sample further than this from now is too old to describe the
@@ -90,8 +90,9 @@ export interface ForegroundSensor {
  * state, activity, or category, and clears a reported category. It forgets what it reported, so turning the setting
  * back on reports the current sample again, even for the same app.
  *
- * When the `blockedApps` setting changes, the sensor forgets what it reported and reports no activity from the
- * sample it holds, because the host read that sample under the previous list. The next sample is reported again.
+ * When the read policy changes (the `blockedApps` or the `shareWindowTitles` setting), the sensor forgets what it
+ * reported and reports no activity from the sample it holds, because the host read that sample under the previous
+ * policy. The next sample is reported again. The host leaves the title empty while `shareWindowTitles` is false.
  */
 export function startForegroundSensor(ingest: (observation: Observation) => void, options: ForegroundSensorOptions): ForegroundSensor {
   const foreground = useForegroundWindowStore()
@@ -168,16 +169,16 @@ export function startForegroundSensor(ingest: (observation: Observation) => void
 
   const scope = effectScope(true)
   scope.run(() => {
-    // The list is compared by content: every settings update replaces the array, also when another field changed.
-    watch([() => foreground.sample, () => settings.document.shareForegroundWindow, () => settings.document.blockedApps.join('\n')], ([, sharing, blockedApps], previous) => {
+    // The policy is compared by content: every settings update replaces the document, also when another field changed.
+    watch([() => foreground.sample, () => settings.document.shareForegroundWindow, () => JSON.stringify(foregroundReadPolicy(settings.document))], ([, sharing, policy], previous) => {
       // The immediate first run has no previous values.
-      const blockListChanged = previous[2] !== undefined && previous[2] !== blockedApps
-      if (!sharing || blockListChanged)
+      const policyChanged = previous[2] !== undefined && previous[2] !== policy
+      if (!sharing || policyChanged)
         forgetReported()
       const nowMs = Date.now()
       reportBusy(nowMs)
       const sample = sharedSample()
-      if (!blockListChanged && sample && isFresh(sample, nowMs, options.stageVisible()))
+      if (!policyChanged && sample && isFresh(sample, nowMs, options.stageVisible()))
         reportActivity(sample)
       reportCategory(nowMs)
     }, { immediate: true, flush: 'sync' })

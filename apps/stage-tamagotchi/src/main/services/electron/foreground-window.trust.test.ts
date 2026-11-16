@@ -72,7 +72,7 @@ describe('createForegroundWindowService on macOS facts', () => {
     createHostCapabilitiesService({ context: context as never, window: new EventEmitter() as never })
     createForegroundWindowService({ context: context as never, window: { once: vi.fn() } as never })
     const read = defineInvoke(context, electron.foregroundWindow.sample)
-    const sample = () => read({ blockedApps: [] })
+    const sample = () => read({ blockedApps: [], includeTitle: true })
 
     await expect(sample()).resolves.toMatchObject({ exeName: 'Safari', pid: 4321, ownProcess: false, busy: 'accepts', title: '' })
     expect(getCurrentHostCapabilities().signals.foregroundWindow).toEqual({ kind: 'degraded', reason: 'macos-window-titles-untrusted' })
@@ -91,7 +91,7 @@ describe('createForegroundWindowService on macOS facts', () => {
     createHostCapabilitiesService({ context: context as never, window: new EventEmitter() as never })
     createForegroundWindowService({ context: context as never, window: { once: vi.fn() } as never })
     const read = defineInvoke(context, electron.foregroundWindow.sample)
-    const sample = () => read({ blockedApps: [] })
+    const sample = () => read({ blockedApps: [], includeTitle: true })
 
     await expect(sample()).resolves.toMatchObject({ exeName: 'Safari', pid: 4321 })
 

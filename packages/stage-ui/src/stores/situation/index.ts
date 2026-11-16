@@ -67,7 +67,7 @@ import { defineStore } from 'pinia'
 import { computed, shallowRef, watch } from 'vue'
 
 import { localLogicalDayKey, useSituationInnerState } from '../../features/situation/inner-state'
-import { useSituationSettings } from '../../features/situation/settings'
+import { foregroundReadPolicy, useSituationSettings } from '../../features/situation/settings'
 import { createThreadExtractor } from '../../features/situation/thread-extraction'
 import { chatComposerActivityChangedEvent, getSpeechBusContext, situationForgetRequestedEvent, situationNotifyObservedEvent, speechInputUserSpeakingChangedEvent, voiceRequestSnapshot, voiceRequestTurns, voiceSnapshotChanged, voiceTurnsChanged, watchVoiceHostEnd } from '../../services/speech/bus'
 import { bridgeSituationToCharacter } from '../character-state/situation-bridge'
@@ -332,13 +332,11 @@ export const useSituationStore = defineStore('situation', () => {
     characterStateObservability.setLeading(isLeading)
   }, { flush: 'sync', immediate: true })
 
-  // The foreground sensor stops reporting by itself; what it reported earlier must leave the state too, so the next
-  // prompt carries no app or title. Followers hold the initial state, and the situation is neither synced nor
-  // persisted, so this watcher writes no replicated state.
-  // A changed block list does the same: the state may hold an app that is blocked now, and no later reading
-  // would replace it, because the host stays silent about a blocked app. An app that is still allowed is read again.
-  watch([() => settings.document.shareForegroundWindow, () => settings.document.blockedApps.join('\n')], ([sharing, blockedApps], [, previousBlockedApps]) => {
-    if ((!sharing || blockedApps !== previousBlockedApps) && leading.value)
+  // The sensor stops reporting by itself, but what it reported must leave the state too, so the next prompt carries
+  // no app or title. A changed read policy does the same: the host stays silent about an app that is blocked now,
+  // so no later reading would replace it. Only the leader holds a situation, so this writes no replicated state.
+  watch([() => settings.document.shareForegroundWindow, () => JSON.stringify(foregroundReadPolicy(settings.document))], ([sharing, policy], [, previousPolicy]) => {
+    if ((!sharing || policy !== previousPolicy) && leading.value)
       current.value = forgetForeground(current.value)
   }, { flush: 'sync' })
 
