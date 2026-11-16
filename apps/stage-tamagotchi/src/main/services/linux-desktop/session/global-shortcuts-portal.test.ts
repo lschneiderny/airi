@@ -34,6 +34,7 @@ describe('globalShortcuts portal on a private daemon', () => {
     events = new EventTarget()
     driver = new PortalShortcutsDriver({
       sessionBus: bus.client,
+      appId: 'ai.moeru.airi',
       flatpak: false,
       onState: (state) => {
         states.push(state)
@@ -186,7 +187,7 @@ describe('globalShortcuts portal on a private daemon', () => {
   it('skips Registry entirely inside Flatpak', async () => {
     await driver.stop()
     bus.flatpak = true
-    driver = new PortalShortcutsDriver({ sessionBus: bus.client, flatpak: true, onState: state => states.push(state), onTriggered: () => {}, onError: error => errors.push(error) })
+    driver = new PortalShortcutsDriver({ sessionBus: bus.client, appId: 'ai.moeru.airi', flatpak: true, onState: state => states.push(state), onTriggered: () => {}, onError: error => errors.push(error) })
     expect(await driver.bind([binding])).toEqual([{ id: binding.id, ok: true }])
     expect(bus.registerCount).toBe(0)
   })

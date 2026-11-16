@@ -2,10 +2,15 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { isAbsolute, join } from 'node:path'
 
 /**
- * The desktop file basename. The XDG portals identify AIRI by it, so it must equal the app id.
- * Packaged Linux builds install it through electron-builder's `syncDesktopName`.
+ * The Linux app id. The XDG portals and the compositor identify AIRI by the desktop file `<app id>.desktop`.
+ *
+ * A packaged build uses `ai.moeru.airi`, whose desktop file electron-builder installs through `syncDesktopName`.
+ * A development build has its own id, because a desktop file in the user's data home replaces a system one of the
+ * same name: a shared id would let the hidden development entry remove an installed AIRI from the application menu.
  */
-export const DESKTOP_FILE_NAME = 'ai.moeru.airi.desktop'
+export function resolveLinuxAppId(development: boolean): string {
+  return development ? 'ai.moeru.airi.dev' : 'ai.moeru.airi'
+}
 
 /** Quotes one Exec argument per the Desktop Entry Specification, including the string-value escape of backslashes. */
 function quoteExecArgument(argument: string): string {
@@ -13,10 +18,10 @@ function quoteExecArgument(argument: string): string {
 }
 
 /**
- * Writes `<data home>/applications/ai.moeru.airi.desktop` for a development build when no such file exists.
+ * Writes `<data home>/applications/ai.moeru.airi.dev.desktop` for a development build when no such file exists.
  *
  * Use when:
- * - A development build must be resolvable as `ai.moeru.airi` by the portals, which a packaged install provides itself
+ * - A development build must be resolvable by its app id by the portals, which a packaged install provides itself
  *
  * Expects:
  * - `dataHome` resolved from the caller's injected environment, see {@link resolveDataHome}
@@ -25,8 +30,9 @@ function quoteExecArgument(argument: string): string {
  * - The written path, or `undefined` when a file already exists; an existing file is never replaced
  */
 export async function installDevelopmentDesktopEntry(options: { dataHome: string, execPath: string, appPath: string }): Promise<string | undefined> {
+  const appId = resolveLinuxAppId(true)
   const directory = join(options.dataHome, 'applications')
-  const path = join(directory, DESKTOP_FILE_NAME)
+  const path = join(directory, `${appId}.desktop`)
   const entry = [
     '[Desktop Entry]',
     'Type=Application',
@@ -35,7 +41,7 @@ export async function installDevelopmentDesktopEntry(options: { dataHome: string
     `Exec=${quoteExecArgument(options.execPath)} ${quoteExecArgument(options.appPath)}`,
     'Terminal=false',
     'NoDisplay=true',
-    'StartupWMClass=ai.moeru.airi',
+    `StartupWMClass=${appId}`,
     '',
   ].join('\n')
 

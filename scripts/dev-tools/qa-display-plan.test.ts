@@ -383,7 +383,7 @@ describe('qa display binaries', () => {
   })
 
   it('seeds the push-to-talk trigger in the app group', () => {
-    expect(kglobalShortcutsSeed()).toBe('[ai.moeru.airi]\n_k_friendly_name=AIRI\nvoice-push-to-talk=Ctrl+Shift+Space,Ctrl+Shift+Space,Push to Talk\n')
+    expect(kglobalShortcutsSeed()).toBe('[ai.moeru.airi.dev]\n_k_friendly_name=AIRI\nvoice-push-to-talk=Ctrl+Shift+Space,Ctrl+Shift+Space,Push to Talk\n')
   })
 })
 

@@ -48,6 +48,8 @@ export interface GlobalShortcutServiceOptions {
    * the injected environment. Without it, every key-up binding uses the uiohook driver.
    */
   portal?: {
+    /** The app id the portal registers, which must be the basename of an installed desktop file. */
+    appId: string
     /** Opens a connection that the service owns and closes on dispose. */
     openBus: () => Promise<DbusTransport>
     /** Bound on each portal request, including a BindShortcuts dialog. Defaults to the driver's 60 s. */
@@ -139,6 +141,7 @@ export function setupGlobalShortcutService(options: GlobalShortcutServiceOptions
       const bus = await config.openBus()
       const driver: PortalShortcutsDriver = new PortalShortcutsDriver({
         sessionBus: bus,
+        appId: config.appId,
         onTriggered: broadcastTriggered,
         onState: (portalShortcuts) => {
           reportLinuxDesktop({ portalShortcuts })

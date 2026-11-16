@@ -347,8 +347,12 @@ export function locateGlobalAccelDaemon(rpmFiles: string): { kind: 'executable' 
   return library ? { kind: 'kwin-plugin', path: library } : null
 }
 
-/** The push-to-talk binding QA binds over the GlobalShortcuts portal: id and default from `use-push-to-talk-shortcut.ts`. */
-export const qaPushToTalkShortcut = { appId: 'ai.moeru.airi', id: 'voice-push-to-talk', trigger: 'Ctrl+Shift+Space', description: 'Push to Talk' } as const
+/**
+ * The push-to-talk binding QA binds over the GlobalShortcuts portal: id and default from `use-push-to-talk-shortcut.ts`.
+ * QA runs a development build, so `appId` is the development app id from `resolveLinuxAppId` in stage-tamagotchi's
+ * `src/main/app/desktop-entry.ts`.
+ */
+export const qaPushToTalkShortcut = { appId: 'ai.moeru.airi.dev', id: 'voice-push-to-talk', trigger: 'Ctrl+Shift+Space', description: 'Push to Talk' } as const
 
 /** `kglobalshortcutsrc` with the app's group pre-filled, so a portal bind may skip KDE's confirmation dialog. */
 export function kglobalShortcutsSeed(): string {

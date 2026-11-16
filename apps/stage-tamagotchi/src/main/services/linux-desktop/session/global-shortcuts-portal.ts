@@ -42,6 +42,8 @@ export class PortalShortcutsDriver {
 
   constructor(private readonly options: {
     readonly sessionBus: DbusTransport
+    /** Registered with the host portal Registry; the portal resolves it to the desktop file `<appId>.desktop`. */
+    readonly appId: string
     readonly onTriggered: (id: string, phase: 'down' | 'up') => void
     readonly onState: (state: 'absent' | 'session' | 'bound') => void
     readonly onError: (error: unknown) => void
@@ -153,7 +155,7 @@ export class PortalShortcutsDriver {
         }
       }))
       if (this.registeredOwner !== owner && !(this.options.flatpak ?? existsSync('/.flatpak-info'))) {
-        await bus.call({ destination: owner, path: portalPath, interface: 'org.freedesktop.host.portal.Registry', member: 'Register', signature: 'sa{sv}', body: ['ai.moeru.airi', {}] }, { signal, timeout: 1500 })
+        await bus.call({ destination: owner, path: portalPath, interface: 'org.freedesktop.host.portal.Registry', member: 'Register', signature: 'sa{sv}', body: [this.options.appId, {}] }, { signal, timeout: 1500 })
         this.registeredOwner = owner
       }
       sessionSignal.throwIfAborted()

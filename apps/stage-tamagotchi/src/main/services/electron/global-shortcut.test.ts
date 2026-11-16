@@ -539,7 +539,7 @@ describe('setupGlobalShortcutService with the GlobalShortcuts portal on a privat
 
   async function setup(host: HostId, uiohook?: 'running' | 'load-fails' | 'start-fails', withPortal = true) {
     const m = await setupMocks({ host, uiohook })
-    const portal: GlobalShortcutServiceOptions['portal'] = withPortal ? { openBus: async () => fake.client, requestTimeoutMs: 200 } : undefined
+    const portal: GlobalShortcutServiceOptions['portal'] = withPortal ? { appId: 'ai.moeru.airi', openBus: async () => fake.client, requestTimeoutMs: 200 } : undefined
     service = m.setupGlobalShortcutService({ portal })
     const ctx = createMockContext()
     registerMockWindow(service, ctx)

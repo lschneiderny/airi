@@ -21,7 +21,7 @@ import { isLinux } from 'std-env'
 import devIcon from '../../resources/icon-dev.png?asset'
 
 import { openDebugger, setupDebugger } from './app/debugger'
-import { DESKTOP_FILE_NAME, installDevelopmentDesktopEntry, resolveDataHome } from './app/desktop-entry'
+import { installDevelopmentDesktopEntry, resolveDataHome, resolveLinuxAppId } from './app/desktop-entry'
 import { AppExit } from './app/exit'
 import { nullFileLoggerHandle, setupFileLogger } from './app/file-logger'
 import { resolveIsWayland } from './app/ozone'
@@ -162,8 +162,9 @@ if (is.dev)
   app.dock?.setIcon(devIcon)
 electronApp.setAppUserModelId('ai.moeru.airi')
 // The XDG portals and the compositor identify AIRI by this desktop file, which carries the app id.
+const linuxAppId = resolveLinuxAppId(import.meta.env.DEV)
 if (isLinux)
-  app.setDesktopName(DESKTOP_FILE_NAME)
+  app.setDesktopName(`${linuxAppId}.desktop`)
 
 // Track the real user-facing AIRI window because the process also owns hidden utility windows.
 // The second-instance handler should restore the main UI instead of accidentally surfacing internals.
@@ -262,7 +263,7 @@ app.whenReady().then(async () => {
     onAppBeforeQuit(() => bridge.stop())
     // Coordinate ownership observes the bridge from its first state change.
     onAppBeforeQuit(attachLinuxCoordinates(bridge))
-    shortcutPortal = { openBus: () => bridge.openSessionBus() }
+    shortcutPortal = { appId: linuxAppId, openBus: () => bridge.openSessionBus() }
     // The bridge bounds startup, including bus connection and Hello, to 2 s.
     await bridge.start()
     if (appExit.exiting)
