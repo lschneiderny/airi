@@ -86,11 +86,20 @@ export function defaultSituationSettings(): SituationSettings {
 
 /**
  * What a host's foreground read may return under these settings; the Electron producer sends it with every read.
- * A reader that holds an earlier reading compares the serialized policy and drops the reading when it changes,
- * because that reading may name an app that is blocked now or carry a title that is no longer shared.
+ * A reader that holds an earlier reading watches {@link foregroundReadPolicyKey} and drops the reading when it
+ * changes, because that reading may name an app that is blocked now or carry a title that is no longer shared.
  */
 export function foregroundReadPolicy(settings: Pick<SituationSettings, 'blockedApps' | 'shareWindowTitles'>) {
   return { blockedApps: [...settings.blockedApps], includeTitle: settings.shareWindowTitles }
+}
+
+/**
+ * The read policy as one comparable value. Every holder of a foreground reading watches this same key, so they all
+ * agree on when the policy changed. Every settings update replaces the document, also when another field changed,
+ * so the document itself cannot be compared.
+ */
+export function foregroundReadPolicyKey(settings: Pick<SituationSettings, 'blockedApps' | 'shareWindowTitles'>): string {
+  return JSON.stringify(foregroundReadPolicy(settings))
 }
 
 /**
