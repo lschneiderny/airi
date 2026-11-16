@@ -47,6 +47,14 @@ async function main() {
   const godot = process.env.GODOT4
   if (!godot || !existsSync(godot))
     fail('set GODOT4 to the Godot .NET editor executable that exports the stage sidecar')
+  const engineDir = join(root, 'engines/stage-tamagotchi-godot')
+  try {
+    // Run in the engine directory so `dotnet` resolves the SDK that its global.json pins.
+    capture('dotnet', ['--version'], { cwd: engineDir })
+  }
+  catch {
+    fail('no .NET SDK matches engines/stage-tamagotchi-godot/global.json; the Godot export needs one (Fedora: `sudo dnf install dotnet-sdk-10.0`)')
+  }
   try {
     capture('gh', ['auth', 'status'], { cwd: root })
   }
@@ -71,7 +79,6 @@ async function main() {
 
   const appDir = join(root, 'apps/stage-tamagotchi')
   const distDir = join(appDir, 'dist')
-  const engineDir = join(root, 'engines/stage-tamagotchi-godot')
   const godotOutDir = join(engineDir, 'out', target.godotOutDir)
 
   console.info(`release: ${tag} from ${head.slice(0, 12)} for ${process.platform}-${process.arch}, ${existing ? 'adding to the existing draft' : 'creating a draft'} on ${repo}`)

@@ -119,6 +119,7 @@ Before it builds, the command refuses to continue unless:
 
 - you are on `main`, with no tracked changes, and `HEAD` matches `origin/main`;
 - `GODOT4` names the Godot .NET editor (the `mono` build, at the version `global.json` pins as `Godot.NET.Sdk`), and its .NET export templates are installed under `~/.local/share/godot/export_templates/<version>.stable.mono/`;
+- `dotnet` resolves an SDK that `engines/stage-tamagotchi-godot/global.json` accepts, since the Godot .NET editor does not bundle one (Fedora: `sudo dnf install dotnet-sdk-10.0`);
 - `gh` is signed in;
 - no published release has this tag, and an existing draft targets the same commit as `HEAD`.
 
