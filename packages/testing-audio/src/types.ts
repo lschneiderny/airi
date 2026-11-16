@@ -3,13 +3,6 @@ import type { PiniaActionEvent, PiniaActionEventStatus } from '@proj-airi/stage-
 import type { AudioCapture, AudioCaptureFormat, AudioTestCase, AudioTestPreflightCallback, AudioTestSession } from '@proj-airi/vitest-plugin-fakemic'
 import type { ElectronApplication, Page } from 'playwright'
 
-export const audioInputTargets = ['web', 'electron'] as const
-
-export type AudioInputTarget = (typeof audioInputTargets)[number]
-
-/** Audio pipelines that need case-specific runner preparation. */
-export type AudioInputPipeline = 'kws'
-
 /** Values available when one case resolves its preflight callbacks. */
 export interface AudioInputPreflightContext {
   /** Environment variables loaded for this case. */
@@ -24,14 +17,7 @@ export interface AudioInputPreflightContext {
 export type AudioInputPreflightCallback = AudioTestPreflightCallback<AudioInputPreflightContext>
 
 /** One AIRI audio-input test definition. */
-export interface AudioInputTestCase extends AudioTestCase<AudioInputPreflightContext> {
-  /**
-   * Selects pipelines that the runner prepares before the file microphone starts.
-   * For `kws` on Web, the runner downloads and verifies the pinned wake word model.
-   * @default []
-   */
-  pipelines?: readonly AudioInputPipeline[]
-}
+export type AudioInputTestCase = AudioTestCase<AudioInputPreflightContext>
 
 /** Snapshot of the observable AIRI audio pipeline state. */
 export interface AudioInputSnapshot {
@@ -140,14 +126,12 @@ export interface AudioInputObservations {
 
 /** Runtime handle for one AIRI audio-input test. */
 export interface AudioInputSession extends AudioInputObservations, AudioTestSession {
-  /** Electron application for Electron tasks. */
-  electronApp?: ElectronApplication
+  /** Electron application that owns the runtime pages. */
+  electronApp: ElectronApplication
   /** Page used by case interactions. */
   page: Page
   /** Page that owns the audio-input pipeline. */
   runtimePage: Page
-  /** Runtime selected for this concrete task. */
-  target: AudioInputTarget
   /** Selects the page used by subsequent case interactions. */
   activatePage: (page: Page) => void
   snapshot: () => Promise<AudioInputSnapshot>

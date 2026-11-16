@@ -1,6 +1,6 @@
 import type { AudioTestTask } from '@proj-airi/vitest-plugin-fakemic'
 
-import type { AudioInputPipeline, AudioInputPreflightContext, AudioInputSession, AudioInputTestCase } from './types'
+import type { AudioInputPreflightContext, AudioInputSession, AudioInputTestCase } from './types'
 
 import { env } from 'node:process'
 import { fileURLToPath } from 'node:url'
@@ -10,23 +10,18 @@ import { createAudioTestAPI, createAudioTestTask, runAudioTestSession, startFake
 import { inject } from 'vitest'
 
 import { expect, installAudioInputMatchers } from './expect-extend'
-import { prepareWakeWordModel } from './setup/wake-word-model'
-
-interface RunnableAudioInputTest extends AudioTestTask {
-  pipelines?: readonly AudioInputPipeline[]
-}
 
 installAudioInputMatchers()
 
 const audioTestAPI = createAudioTestAPI<
   AudioInputTestCase,
-  RunnableAudioInputTest,
+  AudioTestTask,
   { audio: AudioInputSession },
   AudioInputPreflightContext
 >({
   preflight: definition => definition.preflight,
   createPlans(name, testCase) {
-    const task: RunnableAudioInputTest = { ...createAudioTestTask(name, testCase), pipelines: testCase.pipelines }
+    const task = createAudioTestTask(name, testCase)
     return [{
       name: task.name,
       definition: task,
@@ -37,9 +32,6 @@ const audioTestAPI = createAudioTestAPI<
     }]
   },
   async execute({ plan, task, invokeHandler, runPreflight }) {
-    // Electron bundles the wake word model. Web downloads it, so the download must finish before the recording starts.
-    if (plan.definition.pipelines?.includes('kws') && inject('fakemicRuntime').kind === 'web')
-      await prepareWakeWordModel()
     await runAudioTestSession({
       start() {
         const microphoneInput = fileURLToPath(plan.definition.input)
@@ -52,10 +44,7 @@ const audioTestAPI = createAudioTestAPI<
           skip: (condition, note) => task.context.skip(Boolean(condition), note),
         })
         await session.runtimePage.reload({ waitUntil: 'domcontentloaded' })
-        const ready = session.target === 'web'
-          ? session.runtimePage.locator('textarea').first()
-          : session.runtimePage.locator('[i-solar\\:alt-arrow-up-line-duotone]').first()
-        await ready.waitFor({ state: 'visible', timeout: 30_000 })
+        await session.runtimePage.locator('[i-solar\\:alt-arrow-up-line-duotone]').first().waitFor({ state: 'visible', timeout: 30_000 })
         await session.runtimePage.bringToFront()
         await session.runtimePage.waitForTimeout(750)
         Object.assign(task.context, { audio: session })

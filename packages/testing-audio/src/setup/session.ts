@@ -2,7 +2,7 @@ import type { PiniaActionEvent } from '@proj-airi/stage-shared/types/pinia-actio
 import type { AudioCapture } from '@proj-airi/vitest-plugin-fakemic'
 import type { ElectronApplication, Page } from 'playwright'
 
-import type { AudioInputChatMessage, AudioInputSession, AudioInputTarget, AudioInputTurn } from '../types'
+import type { AudioInputChatMessage, AudioInputSession, AudioInputTurn } from '../types'
 
 import { Buffer } from 'node:buffer'
 
@@ -13,9 +13,8 @@ import { readCompletedSpans } from './browser-probe'
 
 /** Creates the runtime session for one audio test. */
 export function createSession(options: {
-  electronApp?: ElectronApplication
+  electronApp: ElectronApplication
   page: Page
-  target: AudioInputTarget
   close: () => Promise<void>
   transcriptionCaptureFormat?: AudioCapture['format']
 }): AudioInputSession {
@@ -23,7 +22,6 @@ export function createSession(options: {
     electronApp: options.electronApp,
     page: options.page,
     runtimePage: options.page,
-    target: options.target,
     transcriptionCaptureFormat: options.transcriptionCaptureFormat,
     activatePage(page) {
       session.page = page
@@ -107,7 +105,7 @@ export function createSession(options: {
       }
       catch (error) {
         // REVIEW:
-        // Wake word cases sometimes time out with the model `ready`, about 1 of 4 Mandarin runs on Web.
+        // On the retired Web host, about 1 of 4 Mandarin wake word runs timed out with the model `ready`.
         // Reruns of the same fixture pass. The cause is unknown.
         // The wake word preparation tells if the timeout came from the model, or from detection after the model was ready.
         const wakeWordPreparation = await options.page.evaluate(() => window.__airiAudioInputE2E?.wakeWordPreparation)

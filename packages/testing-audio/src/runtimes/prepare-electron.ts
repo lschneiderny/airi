@@ -19,7 +19,6 @@ export default async function prepareElectronRuntime(context: FakemicElectronPre
   return createSession({
     electronApp: context.app,
     page,
-    target: 'electron',
     close: context.close,
   })
 }

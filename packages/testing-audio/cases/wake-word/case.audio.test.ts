@@ -9,7 +9,6 @@ describe('wake word detection', () => {
   // The spoken phrase repeats three times to exercise the real microphone and Worker path.
   it('begins a voice input in the session of the character that owns the wake word', {
     input: new URL('./input.test.wav', import.meta.url),
-    pipelines: ['kws'],
     preflight: [
       configureOnboarding(() => ({ completed: true })),
       configureWakeWord(() => [{ targetCardId, text: 'Light up', pronunciations: [['L', 'AY1', 'T', 'AH1', 'P']] }]),

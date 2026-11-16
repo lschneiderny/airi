@@ -25,8 +25,8 @@ export function configureOnboarding(resolve: OnboardingResolver): AudioInputPref
     if (configuration.completed || configuration.skipped) {
       await new Promise(resolveWait => setTimeout(resolveWait, 1_000))
       const onboardingPages = context.runtime.electronApp
-        ?.windows()
-        .filter(page => new URL(page.url()).hash.startsWith('#/onboarding')) ?? []
+        .windows()
+        .filter(page => new URL(page.url()).hash.startsWith('#/onboarding'))
       await Promise.all(onboardingPages.map(page => page.close().catch(() => undefined)))
     }
   }

@@ -10,7 +10,6 @@ describe('wake word routing', () => {
   // It starts with 15 seconds of silence while the application loads the KWS model.
   it('begins the voice input in the session of the character whose wake word was said', {
     input: new URL('./input.test.wav', import.meta.url),
-    pipelines: ['kws'],
     preflight: [
       configureOnboarding(() => ({ completed: true })),
       configureWakeWord(() => [

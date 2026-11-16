@@ -9,7 +9,6 @@ describe('wake word pronunciations', () => {
   // It starts with 15 seconds of silence while the application loads the KWS model.
   it('wakes the character with a later pronunciation in another language', {
     input: new URL('./input.test.wav', import.meta.url),
-    pipelines: ['kws'],
     preflight: [
       configureOnboarding(() => ({ completed: true })),
       configureWakeWord(() => [{

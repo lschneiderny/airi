@@ -9,73 +9,47 @@ export interface EnableChatMicrophoneOptions {
   readiness?: 'streaming-transcription' | 'vad'
 }
 
-/** Enables the chat microphone through the UI owned by the selected runtime. */
+/** Opens the Electron chat window and enables its microphone through the main window's hearing popover. */
 export async function enableChatMicrophone(
   runtime: AudioInputSession,
   options: EnableChatMicrophoneOptions = {},
 ): Promise<void> {
-  if (runtime.target === 'electron') {
-    const app = runtime.electronApp
-    if (!app)
-      throw new Error('The Electron audio session does not expose its application.')
-
-    const existingChatPage = app.windows().find(page => page.url().includes('#/chat'))
-    if (existingChatPage) {
-      runtime.activatePage(existingChatPage)
-    }
-    else {
-      const chatButton = runtime.runtimePage.locator('button').filter({
-        has: runtime.runtimePage.locator('[i-solar\\:chat-line-line-duotone]'),
-      }).first()
-      await chatButton.waitFor({ state: 'visible', timeout: 30_000 })
-      runtime.activatePage(await openElectronChat(app, chatButton))
-    }
+  const app = runtime.electronApp
+  const existingChatPage = app.windows().find(page => page.url().includes('#/chat'))
+  if (existingChatPage) {
+    runtime.activatePage(existingChatPage)
   }
-
-  if (runtime.target === 'web') {
-    // The startup screen covers the page until its exit animation ends.
-    // A click before that point lands on the startup screen and does not open the hearing popover.
-    await runtime.page.locator('.startup-screen').waitFor({ state: 'detached', timeout: 60_000 })
+  else {
+    const chatButton = runtime.runtimePage.locator('button').filter({
+      has: runtime.runtimePage.locator('[i-solar\\:chat-line-line-duotone]'),
+    }).first()
+    await chatButton.waitFor({ state: 'visible', timeout: 30_000 })
+    runtime.activatePage(await openElectronChat(app, chatButton))
   }
 
   const { page } = runtime
   await page.locator('textarea').first().waitFor({ state: 'visible', timeout: 60_000 })
   await captureStreamingTranscription(page, 'textarea')
 
-  if (runtime.target === 'electron') {
-    await runtime.runtimePage.waitForFunction(async () => {
-      const devices = await navigator.mediaDevices.enumerateDevices()
-      return devices.some(device => device.kind === 'audioinput' && device.label.includes('Fake'))
-    })
+  await runtime.runtimePage.waitForFunction(async () => {
+    const devices = await navigator.mediaDevices.enumerateDevices()
+    return devices.some(device => device.kind === 'audioinput' && device.label.includes('Fake'))
+  })
 
-    const hearingTrigger = runtime.runtimePage.locator('div[aria-haspopup="dialog"] button').first()
-    await hearingTrigger.waitFor({ state: 'visible', timeout: 15_000 })
-    await hearingTrigger.hover()
-    await hearingTrigger.click({ force: true })
-    await runtime.runtimePage.waitForTimeout(500)
+  const hearingTrigger = runtime.runtimePage.locator('div[aria-haspopup="dialog"] button').first()
+  await hearingTrigger.waitFor({ state: 'visible', timeout: 15_000 })
+  await hearingTrigger.hover()
+  await hearingTrigger.click({ force: true })
+  await runtime.runtimePage.waitForTimeout(500)
 
-    const enableButton = runtime.runtimePage.locator('button[aria-label="Enable microphone input"]')
-    await enableButton.waitFor({ state: 'visible', timeout: 15_000 })
-    const inputReady = options.readiness === 'streaming-transcription'
-      ? runtime.waitForStreamingTranscriptionReady()
-      : undefined
-    await enableButton.click({ force: true })
-    const disableButton = runtime.runtimePage.locator('button[aria-label="Disable microphone input"]')
-    await disableButton.waitFor({ state: 'visible', timeout: 15_000 })
-    await inputReady
-    return
-  }
-
-  const microphoneTrigger = page.getByRole('button', { name: 'Hearing' }).first()
-  await microphoneTrigger.click({ force: true })
-
-  const enableButton = page.locator('button[aria-label="Enable microphone input"]')
-  await enableButton.waitFor({ state: 'visible' })
+  const enableButton = runtime.runtimePage.locator('button[aria-label="Enable microphone input"]')
+  await enableButton.waitFor({ state: 'visible', timeout: 15_000 })
   const inputReady = options.readiness === 'streaming-transcription'
     ? runtime.waitForStreamingTranscriptionReady()
     : undefined
-  await enableButton.click()
-  await page.locator('button[aria-label="Disable microphone input"]').waitFor({ state: 'visible' })
+  await enableButton.click({ force: true })
+  const disableButton = runtime.runtimePage.locator('button[aria-label="Disable microphone input"]')
+  await disableButton.waitFor({ state: 'visible', timeout: 15_000 })
   await inputReady
 }
 
@@ -93,7 +67,7 @@ export function assistantMessages(runtime: AudioInputSession): Locator {
 }
 
 async function openElectronChat(
-  app: NonNullable<AudioInputSession['electronApp']>,
+  app: AudioInputSession['electronApp'],
   chatButton: Locator,
 ): Promise<AudioInputSession['page']> {
   let lastError: unknown
@@ -111,7 +85,7 @@ async function openElectronChat(
 }
 
 async function waitForElectronPage(
-  app: NonNullable<AudioInputSession['electronApp']>,
+  app: AudioInputSession['electronApp'],
   predicate: (page: AudioInputSession['page']) => boolean,
   timeoutMs = 60_000,
 ): Promise<AudioInputSession['page']> {

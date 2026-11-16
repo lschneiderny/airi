@@ -3,10 +3,8 @@ import type { AiriCard } from '@proj-airi/stage-ui/types'
 
 import type { AudioInputPreflightCallback, AudioInputPreflightContext } from '../../../src/types'
 
-import { sherpawModelArtifactUrl } from '@proj-airi/provider-inference/sherpaw-transcription/models'
 import { kwsModel } from '@proj-airi/stage-ui/libs/voice/kws-model-info'
 
-import { prepareWakeWordModel } from '../../../src/setup/wake-word-model'
 import { configureStorage } from './storage'
 
 export interface WakeWordConfiguration {
@@ -23,8 +21,7 @@ type WakeWordResolver = (context: AudioInputPreflightContext) => WakeWordConfigu
 /**
  * Adds one AIRI Card with a wake word for each configuration, and selects the `wake-word` Hearing input mode with the microphone on.
  *
- * The case needs no ASR Provider. On Web, the callback serves the verified model from the workspace cache, so the
- * model asset repository installs it without a network download. Electron loads the pack from its bundle.
+ * The case needs no ASR Provider. Electron loads the KWS model pack from its bundle.
  *
  * @example
  * configureWakeWord(() => [{ targetCardId: 'wake-target', text: 'Light up', pronunciations: [['L', 'AY1', 'T', 'AH1', 'P']] }])
@@ -34,19 +31,6 @@ export function configureWakeWord(resolve: WakeWordResolver): AudioInputPrefligh
     const configurations = await resolve(context)
     if (!configurations)
       return
-
-    if (context.runtime.target === 'web') {
-      const modelFiles = await prepareWakeWordModel()
-      for (const filename of ['preload.data', 'preload.js.metadata'] as const) {
-        // The build can use a Hugging Face mirror, so the route matches the pinned path on any host.
-        const pinnedPath = new URL(sherpawModelArtifactUrl(kwsModel, filename)).pathname
-        await context.runtime.runtimePage.route(url => url.pathname === pinnedPath, route => route.fulfill({
-          path: modelFiles[filename],
-          contentType: filename.endsWith('.metadata') ? 'application/json' : 'application/octet-stream',
-          headers: { 'access-control-allow-origin': '*' },
-        }))
-      }
-    }
 
     const targets = configurations.map(configuration => ({
       cardId: configuration.targetCardId,

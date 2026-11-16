@@ -6,7 +6,7 @@ This package runs recorded microphone tests through the real AIRI audio pipeline
 input.wav -> virtual microphone -> VAD -> ASR -> LLM -> TTS -> playback -> UI
 ```
 
-The package exports audio-aware `describe`, `it`, and `expect` APIs. Vitest owns the task tree and result protocol. Each project starts its configured Playwright runtime.
+The package exports audio-aware `describe`, `it`, and `expect` APIs. Vitest owns the task tree and result protocol. The `audio-electron` project starts the built desktop app through Playwright.
 
 `src` only owns test scheduling, runtime startup, browser probes, and matchers. Case-specific environment, storage, Provider, route, and UI operations live under `cases/shared`:
 
@@ -70,7 +70,7 @@ A case can independently choose its VAD behavior, ASR, LLM, and TTS configuratio
 
 Use `configureWakeWord` to add AIRI Cards with wake words. Each configuration adds one card with one wake word and its pronunciations. The callback also turns on the microphone and selects the `wake-word` Hearing input mode. The case does not need an ASR Provider.
 
-Set `pipelines: ['kws']`. Then the Web runner downloads and verifies the pinned KWS model before the file microphone starts. The Web page gets the model from the workspace cache, not from the network. Electron uses its bundled model.
+The desktop app loads the pinned KWS model from its bundle, so the case needs no model download.
 
 ```ts
 import { describe, expect, it } from '../../src'
@@ -80,7 +80,6 @@ import { readSessionCharacterId } from '../shared/interactions'
 describe('wake word detection', () => {
   it('begins a voice input for the character', {
     input: new URL('./input.test.wav', import.meta.url),
-    pipelines: ['kws'],
     preflight: [
       configureOnboarding(() => ({ completed: true })),
       configureWakeWord(() => [{
@@ -122,15 +121,11 @@ The script reads the `TESTING_AUDIO_TTS_*` variables in the same way as the case
 pnpm -F @proj-airi/testing-audio exec tsx scripts/generate-wake-word-fixtures.ts
 ```
 
-The speech changes a little on each request. After you generate the fixtures, run the cases on both hosts. If a phrase does not wake the character, change the phrase or its pronunciation. Do not change the assertions.
-
-Run the cases on both hosts:
+The speech changes a little on each request. After you generate the fixtures, run the cases. If a phrase does not wake the character, change the phrase or its pronunciation. Do not change the assertions.
 
 ```bash
 pnpm -F @proj-airi/testing-audio test:run cases/wake-word
 ```
-
-The desktop app is the only host: build it and select `--project audio-electron`.
 
 ## Provider environment
 
@@ -169,7 +164,7 @@ These tests send audio and text to external Providers. Each run can incur Provid
 
 ## Run the tests
 
-Build both targets and run all runtime projects:
+Build the desktop app and run the runtime project:
 
 ```bash
 pnpm -F @proj-airi/testing-audio test:run
@@ -181,7 +176,7 @@ Use existing builds:
 pnpm -F @proj-airi/testing-audio test:existing-builds
 ```
 
-Run the runtime project:
+Run only the runtime project, without the unit tests:
 
 ```bash
 pnpm -F @proj-airi/testing-audio exec vitest run --project audio-electron

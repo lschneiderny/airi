@@ -7,9 +7,6 @@ import { captureStreamingTranscription } from './streaming-transcription'
 /** Opens the Electron hearing playground for a case that selects this input UI. */
 export async function openHearingPlayground(runtime: AudioInputSession): Promise<Page> {
   const app = runtime.electronApp
-  if (!app)
-    throw new Error('The hearing playground interaction requires an Electron runtime')
-
   const settingsButton = runtime.page.getByRole('button', { name: /Open settings|打开设置/ }).last()
   if (!await settingsButton.isVisible().catch(() => false)) {
     await runtime.page.getByRole('button', { name: /Expand|展开/ }).last().click({ force: true })
