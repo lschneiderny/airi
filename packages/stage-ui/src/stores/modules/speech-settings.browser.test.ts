@@ -189,6 +189,8 @@ it.each(['mount', 'provider change'])('handles interrupted model discovery after
 // committed the provider. Analytics must use the completed selection receipt.
 it('reports the committed provider and model after a settings-page click', async () => {
   localStorage.clear()
+  // Capture is off until the user opts in.
+  localStorage.setItem('settings/analytics/opted-in', 'true')
   vi.mocked(captureAnalyticsEvent).mockReset().mockReturnValue(true)
   vi.mocked(enableAnalyticsCapture).mockReturnValue(true)
   vi.mocked(isAnalyticsAvailableInBuild).mockReturnValue(true)
