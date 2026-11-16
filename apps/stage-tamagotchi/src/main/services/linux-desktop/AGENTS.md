@@ -14,7 +14,7 @@ runtime facts. Follow the stage-tamagotchi guide and the
 - (a) Report the currently active window, whatever app owns it, through
   `Active`: caption, resourceClass, desktopFileName, pid and fullScreen.
   Update on activation, captionChanged and fullScreenChanged. App-side
-  presence rules enforce sharing, the denylist and 120-character titles.
+  presence rules enforce sharing, the block list and 120-character titles.
 - (b) Own-window discovery may enumerate windows reading only pid for an
   OwnPids comparison inside KWin. For windows neither active nor AIRI's own,
   never read, send, store or log any other property.
