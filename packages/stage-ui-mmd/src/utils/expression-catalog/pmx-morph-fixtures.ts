@@ -188,7 +188,7 @@ export const chisaMorphs: readonly MorphRow[] = [
 ]
 
 /** Ellen (艾莲.pmx): 59 vertex morphs. */
-export const ellenMorphs: readonly MorphRow[] = [
+const ellenMorphs: readonly MorphRow[] = [
   ['まばたき', 2, 1],
   ['ウィンク２右', 2, 1],
   ['ウィンク２', 2, 1],

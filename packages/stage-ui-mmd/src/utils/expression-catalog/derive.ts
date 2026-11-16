@@ -32,7 +32,7 @@ function matchesToken(text: string, token: string): boolean {
  * (`stage-ui-live2d/src/utils/expression-catalog/tokens.ts`) with the
  * Japanese names PMX models use instead of the Live2D file-name vocabulary.
  */
-export const mmdEmotionTokens: [EmotionMapping['emotion'], string[]][] = [
+const mmdEmotionTokens: [EmotionMapping['emotion'], string[]][] = [
   ['happy', ['happy', 'smile', 'grin', 'joy', 'laugh', '笑', 'にこ', 'にっこり', 'にやり', '喜', 'なごみ']],
   ['sad', ['sad', 'cry', 'tear', '悲', '泣', '涙']],
   ['angry', ['angry', 'anger', 'mad', '怒']],
@@ -48,7 +48,7 @@ export const mmdEmotionTokens: [EmotionMapping['emotion'], string[]][] = [
 
 const negationTokens = ['off', 'hide', 'cancel', 'no', '消', '非表示']
 
-export function suggestMMDKind(morph: PmxMorphInfo): ExpressionKind {
+function suggestMMDKind(morph: PmxMorphInfo): ExpressionKind {
   const text = morph.name.toLowerCase()
   if (vowelNames.has(morph.name) || blinkTokens.some(token => matchesToken(text, token)))
     return 'system'
@@ -57,7 +57,7 @@ export function suggestMMDKind(morph: PmxMorphInfo): ExpressionKind {
   return 'face'
 }
 
-export function suggestMMDArea(kind: ExpressionKind, category: number): ExpressionArea {
+function suggestMMDArea(kind: ExpressionKind, category: number): ExpressionArea {
   if (kind === 'system' || category === 0)
     return 'hidden'
   if (kind === 'effect')
@@ -69,7 +69,7 @@ export function suggestMMDArea(kind: ExpressionKind, category: number): Expressi
   return 'whole-look'
 }
 
-export function suggestMMDMappings(name: string, kind: ExpressionKind, area: ExpressionArea): EmotionMapping[] {
+function suggestMMDMappings(name: string, kind: ExpressionKind, area: ExpressionArea): EmotionMapping[] {
   if (kind !== 'face' && kind !== 'effect')
     return []
   const text = name.toLowerCase()

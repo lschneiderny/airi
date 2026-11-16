@@ -258,7 +258,7 @@ function quadraticInterval(a: number, b: number, c: number): Interval {
  * the same contract three's `Ray.intersectSphere` and `Ray.intersectBox` follow. A height of 0
  * makes both balls coincide, which is a sphere.
  */
-export function mmdCapsuleRayDistance(ray: Ray, radius: number, halfHeight: number): number | null {
+function mmdCapsuleRayDistance(ray: Ray, radius: number, halfHeight: number): number | null {
   const { origin: o, direction: d } = ray
   const radial = d.x * d.x + d.z * d.z
   const outsideRadius = o.x * o.x + o.z * o.z - radius * radius

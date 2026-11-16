@@ -15,9 +15,9 @@ export interface MeshBounds {
 }
 
 /** Head top sits this many neck-to-head lengths above the 頭 bone. */
-export const HEAD_TOP_NECK_FACTOR = 1.5
+const HEAD_TOP_NECK_FACTOR = 1.5
 /** Framed width is the shoulder span times this factor, to leave room for the arms. */
-export const SHOULDER_WIDTH_FACTOR = 2.2
+const SHOULDER_WIDTH_FACTOR = 2.2
 
 /**
  * The gait swings an arm by at most 2 + 12 * 1.3 = 17.6 degrees of shoulder flexion plus 12 to 20 degrees of elbow flexion,
