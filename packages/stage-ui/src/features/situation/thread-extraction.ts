@@ -22,7 +22,7 @@ export const EXTRACTION_MESSAGE_CHARS_MAX = 400
 /** Longest conversation text, in code points, sent in one extraction. Older messages are dropped first. */
 export const EXTRACTION_INPUT_CHARS_MAX = 4000
 /** An extraction that has not finished by then is aborted and recorded as `failed`. */
-export const EXTRACTION_TIMEOUT_MS = 20_000
+const EXTRACTION_TIMEOUT_MS = 20_000
 /**
  * Output token cap of the extraction request (`StreamOptions.maxTokens`, sent as `max_tokens`/`max_output_tokens`).
  * A full answer of three threads takes about 300 tokens, but the cap also covers reasoning the provider does not

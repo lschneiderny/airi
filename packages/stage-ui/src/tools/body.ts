@@ -23,7 +23,7 @@ export interface BodyToolResult {
   retryAfterSeconds?: number
 }
 
-export const bodyLookTargets = ['camera', 'cursor', 'chat', 'away'] as const
+const bodyLookTargets = ['camera', 'cursor', 'chat', 'away'] as const
 
 export type BodyToolLookTarget = typeof bodyLookTargets[number]
 
