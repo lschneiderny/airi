@@ -63,7 +63,18 @@ For each step, merge the last upstream commit of that day on `upstream/main`'s f
 2. Run `pnpm install` and `pnpm verify --gate`.
 3. Record notable resolutions in the merge commit message.
 
-Use `git mv` for every move during the sync, so history survives later syncs. Upstream automations and recipes that make her speak stay out: the mind's voice channel is the only decider for unasked speech (memory adoption plan D3). Upstream's module-defaults ADR (2026-11-11, proposed) conflicts with the character-behavior settings document (character mind ADR decision 11); record the resolution in the ledger.
+Use `git mv` for every move during the sync, so history survives later syncs. Upstream automations and recipes that make her speak stay out: the mind's voice channel is the only decider for unasked speech (memory adoption plan D3).
+
+Upstream features that collide with the target arrive in these steps. Each needs a ruling, recorded in the ledger, before its step's merge is resolved: adopt upstream's version, keep it beside the fork's, or drop it.
+
+| Upstream change | Step | Collides with | Ruling |
+| --- | --- | --- | --- |
+| `259b6188a` Live2D taps and head pats (#3292): a touch module in `stage-ui-live2d` | 1.3 | A second touch decider beside Natural's pet and poke layers; CM1 | Open |
+| `84df1c2df` MAGIC motion turns toward the cursor (#3285) | 1.3 | Cursor attention under Natural; the MAGIC retirement in ADR decision 7; CM6 and CM7 | Open |
+| `543d8dfe3` Beat Sync on top of MAGIC poses and on one clock (#3420) | 1.4 | The beat-sync writer that CM5 deletes; overlaps 1 and 2 may be partly closed upstream | Open |
+| `2026-11-13-chat-selects-character.md` (proposed ADR) | 1.4 | Which character the mind belongs to; one mind per character (ADR decision 1) | Open |
+| `1c010856b` display model settings per model (#3544): about 80 keys in five renderers move under `settings/models/<model id>/<renderer>/` | 1.4 | The Members table of the state persistence doc; the registry (step S); the character-behavior settings document (ADR decision 11) | Open |
+| `2026-11-11-module-defaults-and-character-values.md` (proposed ADR) | 1.4 | The character-behavior settings document (ADR decision 11) | Open |
 
 After the last step: write `docs/ai/context/upstream-policy.md`, adopt upstream's per-package `test:run` (plan decision D5), run `pnpm verify --gate` and `pnpm qa:display run -- pnpm qa:smoke`, then fast-forward `main`.
 
