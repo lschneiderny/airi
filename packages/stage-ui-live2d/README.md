@@ -333,7 +333,7 @@ Recordings and exported traces are private. Write them under `.omo/evidence/`, w
 
 QA gates are committed code in `natural-motion/gates.ts`. Each gate has an `id` and an integer `version`, and lists its metrics, thresholds, windows, trial counts, and seeds. Change a gate only by editing that file, and bump `version` when you do. Reports record the git SHA of the last commit that changed the file, so every verdict names the rules it was judged by.
 
-For the QA levels, their limits, commands, evidence and accepted scorer limits, see [`@proj-airi/qa-tools`](../qa-tools/README.md). Run T0 unit tests, then use T1 for deterministic controller scoring, T2 for the real headless rig, T3 for rendered Electron transfer, and T4 for Luke's visual review. The committed gate ids are `natural-idle-liveliness`, `natural-talking`, `natural-emotion`, and `natural-emotion-t3`. The T3 emotion gate is version 2 and uses session-stratified placebo windows.
+The liveliness and emotion gate tests in this package run the gates at T0. The qa-tools runners for T1 simulation, T3 rendered transfer, and scorer validation were removed on 2026-11-17, so `natural-emotion` and `natural-emotion-t3` have no rendered runner; `pnpm qa:live2d-rig` runs the real headless rig (T2) without a gate. See [`@proj-airi/qa-tools`](../qa-tools/README.md#t2-status). The committed gate ids are `natural-idle-liveliness`, `natural-talking`, `natural-emotion`, and `natural-emotion-t3`. The T3 emotion gate is version 2 and uses session-stratified placebo windows.
 
 | Gate | Id | What it judges |
 | --- | --- | --- |
