@@ -80,6 +80,13 @@ const codeFile = /\.(?:[cm]?[jt]sx?|vue)$/
 const testDataFile = /\.(?:json5?|jsonc|ya?ml)$/
 /** Manifests and compiler configs that no test imports; a change to one alone would only start browsers to find nothing. */
 const toolingFile = /(?:^|\/)(?:package\.json|tsconfig[^/]*\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|turbo\.json)$/
+/**
+ * Docs that a test checks against the code. The test reads them from disk, which `vitest related` cannot see, so a
+ * change to one of these docs runs its test directly.
+ */
+const docGuards: readonly { docs: RegExp, test: string }[] = [
+  { docs: /^docs\/ai\/context\/[^/]+\.md$/, test: 'scripts/dev-tools/policy-docs.test.ts' },
+]
 /** Prose that no compiler reads, so a change to it alone needs no typecheck. */
 const docFile = /\.(?:md|mdx|txt)$/i
 const binaryFile = /\.(?:png|jpe?g|gif|webp|avif|ico|icns|bmp|svgz|mp[34]|wav|ogg|flac|webm|mov|zip|7z|gz|tgz|woff2?|ttf|otf|moc3|vrm|pmx|pmd|vmd|glb|gltf|bin|exe|dll|node|wasm|pdf|psd)$/i
@@ -177,7 +184,8 @@ export function planVerify(changed: ChangedFile[], packagePaths: string[], rootD
       ? { kind: 'all', reason: `${rootDependency.path} is in a root dependency` }
       : { kind: 'affected' }
   }
-  const testFiles = present.filter(path => codeFile.test(path) || (testDataFile.test(path) && !toolingFile.test(path)))
+  const guardTests = docGuards.filter(guard => present.some(path => guard.docs.test(path))).map(guard => guard.test)
+  const testFiles = [...new Set([...present.filter(path => codeFile.test(path) || (testDataFile.test(path) && !toolingFile.test(path))), ...guardTests])]
   return {
     typecheck,
     typecheckPackagePaths: [...new Set(typed.map(file => packageOf(file.path, packagePaths)).filter(path => path !== undefined))],

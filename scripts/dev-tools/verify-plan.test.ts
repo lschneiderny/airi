@@ -71,6 +71,12 @@ describe('planVerify', () => {
     expect(plan.lintFiles).toEqual(['packages/stage-ui/README.md', 'packages/cpu-slots/docs/notes.mdx'])
   })
 
+  it('runs the policy doc guard when a context doc changes', () => {
+    const plan = planVerify([file('docs/ai/context/glossary.md'), file('docs/ai/adr/2026-01-01-example.md')], packages)
+    expect(plan.testFiles).toEqual(['scripts/dev-tools/policy-docs.test.ts'])
+    expect(plan.typecheck.kind).toBe('none')
+  })
+
   it('runs tests related to changed JSON and YAML data, but not to manifests', () => {
     const plan = planVerify([
       file('packages/stage-ui/src/fixtures/bands.json'),
