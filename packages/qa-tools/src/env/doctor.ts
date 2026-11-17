@@ -97,7 +97,8 @@ const cubismCorePaths = [
   'apps/stage-tamagotchi/public/assets/js/CubismSdkForWeb-5-r.3/Core/live2dcubismcore.min.js',
 ] as const
 
-const rigEnvNames = ['AIRI_QA_RIG_FORBOOTH', 'AIRI_QA_RIG_BEAR'] as const
+const live2dRigEnv = 'AIRI_QA_RIG_FORBOOTH'
+const mmdModelEnv = 'AIRI_QA_MMD_MODEL'
 
 function ok(detail: string): Omit<DoctorRow, 'id'> {
   return { status: 'ok', detail, fix: '' }
@@ -258,24 +259,30 @@ function createDoctorChecks(probes: DoctorProbes): DoctorCheck[] {
         const unset: string[] = []
         const invalid: string[] = []
         const found: string[] = []
-        for (const name of rigEnvNames) {
-          const dir = probes.env[name]
-          if (!dir) {
-            unset.push(name)
-            continue
-          }
-          const listing = probes.listRig(dir)
-          if (!listing.isDirectory)
-            invalid.push(`${name}=${dir} is not a directory`)
-          else if (listing.models.length === 0)
-            invalid.push(`${name}=${dir} has no *.model3.json at depth <= 2`)
-          else
-            found.push(`${name}: ${listing.models[0]}`)
+        const rigDir = probes.env[live2dRigEnv]
+        if (!rigDir) {
+          unset.push(live2dRigEnv)
         }
+        else {
+          const listing = probes.listRig(rigDir)
+          if (!listing.isDirectory)
+            invalid.push(`${live2dRigEnv}=${rigDir} is not a directory`)
+          else if (listing.models.length === 0)
+            invalid.push(`${live2dRigEnv}=${rigDir} has no *.model3.json at depth <= 2`)
+          else
+            found.push(`${live2dRigEnv}: ${listing.models[0]}`)
+        }
+        const mmdModel = probes.env[mmdModelEnv]
+        if (!mmdModel)
+          unset.push(mmdModelEnv)
+        else if (!/\.pm[dx]$/i.test(mmdModel) || !probes.existsAbsolute(mmdModel))
+          invalid.push(`${mmdModelEnv}=${mmdModel} is not an existing .pmx or .pmd file`)
+        else
+          found.push(`${mmdModelEnv}: ${mmdModel}`)
         if (invalid.length > 0)
-          return { status: 'fail', detail: invalid.join('; '), fix: 'Point the variable at the rig directory that contains the *.model3.json, or unset it.' }
+          return { status: 'fail', detail: invalid.join('; '), fix: `Point ${live2dRigEnv} at the Live2D rig directory that contains the *.model3.json and ${mmdModelEnv} at an MMD model file, or unset them.` }
         if (unset.length > 0)
-          return { status: 'warn', detail: [`${unset.join(', ')} unset`, ...found].join('; '), fix: `Set ${unset.join(' / ')} to a Live2D rig directory for rendered QA runs.` }
+          return { status: 'warn', detail: [`${unset.join(', ')} unset`, ...found].join('; '), fix: `Set ${live2dRigEnv} to a Live2D rig directory and ${mmdModelEnv} to an MMD .pmx file for rendered QA runs and model-gated tests.` }
         return ok(found.join('; '))
       },
     },

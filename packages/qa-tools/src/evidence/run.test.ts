@@ -26,7 +26,7 @@ describe('createRun', () => {
     now: () => startedAt,
     readGitState: () => ({ gitSha: 'abc123', dirty: true }),
     command: ['node', 'run.ts', '--x'],
-    env: { APP_REMOTE_DEBUG: 'true', AIRI_QA_RIG_BEAR: 'bear', PATH: '/bin', HOME: '/home' },
+    env: { APP_REMOTE_DEBUG: 'true', AIRI_QA_MMD_MODEL: 'bear', PATH: '/bin', HOME: '/home' },
   })
 
   it('names the run dir <timestamp>-<tool>-<label> under .temp/qa', () => {
@@ -55,7 +55,7 @@ describe('createRun', () => {
       gate: { id: 'g', version: '1', fileSha: 'f' },
       result: { exitCode: 0, summary: 'ok' },
     })
-    expect(onDisk.env).toEqual({ AIRI_QA_RIG_BEAR: 'bear', APP_REMOTE_DEBUG: 'true' })
+    expect(onDisk.env).toEqual({ AIRI_QA_MMD_MODEL: 'bear', APP_REMOTE_DEBUG: 'true' })
     expect(onDisk.startedAt).toBe(startedAt.toISOString())
     expect(typeof onDisk.endedAt).toBe('string')
     expect(artifact).toEqual({ path: 'out.txt', kind: 'log', sha256: sha256Buffer(Buffer.from('hello')) })

@@ -759,7 +759,7 @@ Run `pnpm qa:doctor` first. It checks whether the current worktree can produce m
 | Command | Use |
 | --- | --- |
 | `pnpm qa:setup cubism [--force]` | Download Cubism Core for the desktop app without opening a window. Skip present copies; `--force` downloads again. |
-| `pnpm qa:doctor [--json] [--warm]` | Check Node, pinned pnpm, temporary directory and compile cache space (`temp-space`), installation, built packages, Cubism Core, Chromium, rig paths, and conflicting Electron processes. `--warm` runs the stage-ui browser warm-up. |
+| `pnpm qa:doctor [--json] [--warm]` | Check Node, pinned pnpm, temporary directory and compile cache space (`temp-space`), installation, built packages, Cubism Core, Chromium, the Live2D rig directory (`AIRI_QA_RIG_FORBOOTH`) and MMD model file (`AIRI_QA_MMD_MODEL`), and conflicting Electron processes. `--warm` runs the stage-ui browser warm-up. |
 | `pnpm qa:test --all` | Run the registered Vitest package and project set, then report new, known, fixed, and flaky-passed tests. |
 | `pnpm qa:test --package <name> [--package <name>...] [--project node\|browser] [--registry <file>] [--timeout <seconds>]` | Run selected test targets. |
 | `pnpm qa:motion gate emotion --level t1 [--emotions a,b] [--bands clear,strong] [--seeds N] [--workers N] [--timeout-minutes N]` | Score the deterministic controller simulation against committed emotion rules. |
@@ -852,6 +852,7 @@ Put local defaults in the repository root's ignored `.env.qa`, for example:
 
 ```dotenv
 AIRI_QA_RIG_FORBOOTH="/path/to/rig"
+AIRI_QA_MMD_MODEL="/path/to/model.pmx"
 ```
 
 Doctor, motion, stage, t2-probe, and qa:test load this file before reading QA settings or recording their environment. Only `AIRI_QA_*` keys apply, and existing shell variables (including empty values) take precedence. A missing file is silent. Malformed input produces a warning and applies no values; unrelated keys produce warnings and are ignored. Doctor names the source file and loaded keys in its rigs row.

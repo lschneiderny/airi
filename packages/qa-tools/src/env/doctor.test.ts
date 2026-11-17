@@ -27,7 +27,7 @@ function healthyProbes(overrides: Partial<DoctorProbes> = {}): DoctorProbes {
     newestMtime: dir => dir === 'packages/i18n/dist' ? 2000 : 1000,
     chromiumExecutable: () => '/ms-playwright/chromium/chrome',
     existsAbsolute: () => true,
-    env: { AIRI_QA_RIG_FORBOOTH: '/rigs/forbooth', AIRI_QA_RIG_BEAR: '/rigs/bear' },
+    env: { AIRI_QA_RIG_FORBOOTH: '/rigs/forbooth', AIRI_QA_MMD_MODEL: '/models/chisa/chisa.pmx' },
     listRig: () => ({ isDirectory: true, models: ['model/rig.model3.json'] }),
     listProcesses: async () => [{ pid: 7, commandLine: 'node vitest run' }],
     kwinPointer: async () => {
@@ -176,15 +176,21 @@ describe('runDoctor', () => {
     expect(unresolved.status).toBe('warn')
   })
 
-  it('rigs warns when unset and fails naming the path when set but invalid', async () => {
+  it('rigs warns when the Live2D rig or MMD model is unset and fails naming the path when set but invalid', async () => {
     const unset = await rowOf('rigs', healthyProbes({ env: {} }))
     const notDir = await rowOf('rigs', healthyProbes({ env: { AIRI_QA_RIG_FORBOOTH: 'C:/nonexistent' }, listRig: () => ({ isDirectory: false, models: [] }) }))
     const noModel = await rowOf('rigs', healthyProbes({ listRig: () => ({ isDirectory: true, models: [] }) }))
+    const missingMmd = await rowOf('rigs', healthyProbes({ existsAbsolute: path => path !== '/models/chisa/chisa.pmx' }))
+    const notPmx = await rowOf('rigs', healthyProbes({ env: { AIRI_QA_RIG_FORBOOTH: '/rigs/forbooth', AIRI_QA_MMD_MODEL: '/models/chisa' } }))
 
     expect(unset.status).toBe('warn')
+    expect(unset.detail).toContain('AIRI_QA_RIG_FORBOOTH, AIRI_QA_MMD_MODEL unset')
     expect(notDir.status).toBe('fail')
     expect(notDir.detail).toContain('C:/nonexistent')
     expect(noModel.status).toBe('fail')
+    expect(missingMmd.status).toBe('fail')
+    expect(missingMmd.detail).toContain('/models/chisa/chisa.pmx')
+    expect(notPmx.status).toBe('fail')
   })
 
   it('stray-electron warns with the PIDs of this worktree\'s stage-tamagotchi electron processes only', async () => {

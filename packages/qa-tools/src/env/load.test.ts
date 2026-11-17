@@ -23,12 +23,12 @@ describe('loadQaEnv', () => {
   })
 
   it('parses quoted values and preserves shell variables including empty strings', () => {
-    writeFileSync(join(root, '.env.qa'), '# local rigs\nAIRI_QA_RIG_FORBOOTH="/rig with spaces"\nAIRI_QA_RIG_BEAR=file\nAIRI_QA_CUBISM_CORE=file-core\n')
-    const env = { AIRI_QA_RIG_BEAR: '/shell', AIRI_QA_CUBISM_CORE: '' }
+    writeFileSync(join(root, '.env.qa'), '# local rigs\nAIRI_QA_RIG_FORBOOTH="/rig with spaces"\nAIRI_QA_MMD_MODEL=file\nAIRI_QA_CUBISM_CORE=file-core\n')
+    const env = { AIRI_QA_MMD_MODEL: '/shell', AIRI_QA_CUBISM_CORE: '' }
 
     const result = loadQaEnv(root, env)
 
-    expect(env).toEqual({ AIRI_QA_RIG_FORBOOTH: '/rig with spaces', AIRI_QA_RIG_BEAR: '/shell', AIRI_QA_CUBISM_CORE: '' })
+    expect(env).toEqual({ AIRI_QA_RIG_FORBOOTH: '/rig with spaces', AIRI_QA_MMD_MODEL: '/shell', AIRI_QA_CUBISM_CORE: '' })
     expect(result.loaded).toEqual(['AIRI_QA_RIG_FORBOOTH'])
   })
 
