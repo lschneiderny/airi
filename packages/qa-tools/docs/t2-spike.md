@@ -97,15 +97,6 @@ Physics dominates the remaining cost (about 0.24 ms per frame). With deformation
 - Take the core path from an environment variable, because fresh worktrees lack it.
 - Wait one macrotask after evaluating the core before calling into it.
 
-## Reproduce
+## Spike code
 
-From `packages/qa-tools`, with `AIRI_QA_RIG_FORBOOTH` set and `AIRI_QA_CUBISM_CORE` pointing at a local core:
-
-```sh
-tsx spikes/t2/node-run.ts parity --physics on --out ../../.temp/qa/t2-spike/node.json
-T2_SPIKE_OUT=../../.temp/qa/t2-spike/browser.json vitest run --config spikes/t2/vitest.browser.config.ts
-tsx spikes/t2/parity.ts ../../.temp/qa/t2-spike/browser.json ../../.temp/qa/t2-spike/node.json --out ../../.temp/qa/t2-spike/parity.json
-tsx spikes/t2/node-run.ts speed --seconds 600 --deform off
-```
-
-The spike files are excluded from the package `tsconfig` and from the Vitest `node` project. Evidence: `.omo/evidence/qa-tooling/task-7-node-run.txt`, `task-7-parity.json`, `task-7-parity-negative.json`, `task-7-speed.json`, `task-7-bad-rig.txt`, and `task-7-verdict.json`.
+The spike harness (`spikes/t2/`) was removed on 2026-11-17; the headless runner in `src/t2/` carries its result. To rerun the spike, read the files from the commit before the removal with `git show 02893f329:packages/qa-tools/spikes/t2/<file>`. Evidence: `.omo/evidence/qa-tooling/task-7-node-run.txt`, `task-7-parity.json`, `task-7-parity-negative.json`, `task-7-speed.json`, `task-7-bad-rig.txt`, and `task-7-verdict.json`.

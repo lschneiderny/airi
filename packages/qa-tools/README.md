@@ -853,7 +853,7 @@ AIRI_QA_RIG_FORBOOTH="/path/to/rig"
 AIRI_QA_MMD_MODEL="/path/to/model.pmx"
 ```
 
-Doctor, motion, stage, and t2-probe load this file before reading QA settings or recording their environment. Only `AIRI_QA_*` keys apply, and existing shell variables (including empty values) take precedence. A missing file is silent. Malformed input produces a warning and applies no values; unrelated keys produce warnings and are ignored. Doctor names the source file and loaded keys in its rigs row.
+Doctor, motion, and stage load this file before reading QA settings or recording their environment. Only `AIRI_QA_*` keys apply, and existing shell variables (including empty values) take precedence. A missing file is silent. Malformed input produces a warning and applies no values; unrelated keys produce warnings and are ignored. Doctor names the source file and loaded keys in its rigs row.
 
 ## Pointer platform preflight
 
@@ -1577,7 +1577,7 @@ The unchanged T3 capture lasts 600 seconds: 180 seconds of warm-up and 420 score
 
 ## Evidence
 
-After argument and environment checks pass, `pnpm qa:motion gate` at T1, T2, or T3, direct `pnpm qa:motion t3`, `pnpm qa:motion validate-scorer`, `pnpm qa:model run`, and `pnpm qa:model score` create unique runs under `.temp/qa/<timestamp>-<tool>-<label>/`. Each run's `run.json` records its command, source SHA, dirty state, relevant `APP_*` and `AIRI_QA_*` environment values, gate provenance when applicable, artifact hashes, and result. A T3 gate also creates one run per capture session. An emotion `--rescore` creates its new run only after the archive passes validation; a refusal exits 2 before creating it. The standalone `t2:probe` prints a JSON summary and creates no run directory.
+After argument and environment checks pass, `pnpm qa:motion gate` at T1, T2, or T3, direct `pnpm qa:motion t3`, `pnpm qa:motion validate-scorer`, `pnpm qa:model run`, and `pnpm qa:model score` create unique runs under `.temp/qa/<timestamp>-<tool>-<label>/`. Each run's `run.json` records its command, source SHA, dirty state, relevant `APP_*` and `AIRI_QA_*` environment values, gate provenance when applicable, artifact hashes, and result. A T3 gate also creates one run per capture session. An emotion `--rescore` creates its new run only after the archive passes validation; a refusal exits 2 before creating it.
 
 `pnpm qa:doctor` prints its findings, including with `--warm`, and creates no run directory or manifest. `pnpm qa:report` writes `report.html` into the first input run directory or the path passed with `--out`; it creates no separate run directory or manifest. The evidence archive command copies files under `.omo/evidence/<slug>` and writes that archive's `manifest.json`, not a QA run directory or `run.json`.
 

@@ -19,7 +19,6 @@
     "motion3d": "tsx bin/motion3d.ts",
     "report": "tsx bin/report.ts",
     "stage": "tsx bin/stage.ts",
-    "t2:probe": "tsx bin/t2-probe.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
