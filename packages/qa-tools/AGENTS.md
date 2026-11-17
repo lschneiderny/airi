@@ -10,6 +10,9 @@
 - `fixtures/model/scenarios/replay/` holds hand-written replies for the replay server, not model output.
 - App sessions use the `live` CPU lease and may share capacity with tests. Frame-timing runs (`qa:stage measure`, `qa:bench`) use `exclusive`.
 - The headless Live2D rig runner (`src/t2/`) needs a local ForBOOTH rig and Cubism Core.
+- Live2D acceptance on ForBOOTH counts for Bear Pajama too (Luke, 2026-10-18; [motion QA levels ADR](../../docs/ai/adr/2026-10-20-motion-qa-levels.md)).
+- Luke's VTS desk recordings are a reference for idle liveliness only, not for emotion or speech (Luke, 2026-10-19).
+- A stage run that presses on the character locates her by opaque pixels with an alpha-qualified locator. A locator built from a composite screenshot reports false fall-throughs on transparent edge pixels (`.omo/plans/linux-sensor-parity.md`, todo 34).
 - Run output and rig, model, or core assets are not committed.
 
 ## ANTI-PATTERNS
