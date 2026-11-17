@@ -54,6 +54,7 @@ beforeEach(() => {
   mkdirSync(join(scratch, 'profile'))
   const root = join(scratch, 'broker')
   vi.stubEnv('AIRI_CPU_SLOTS_DIR', root)
+  vi.stubEnv('AIRI_CPU_SLOTS_HISTORY_DIR', join(scratch, 'history'))
   vi.stubEnv('AIRI_CPU_BUDGET', '12')
   vi.stubEnv('AIRI_CPU_SLOTS', '')
   vi.stubEnv('AIRI_CPU_LEASE', '')
