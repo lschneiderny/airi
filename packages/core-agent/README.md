@@ -84,6 +84,8 @@ pnpm -F @proj-airi/core-agent typecheck
 pnpm -F @proj-airi/core-agent exec vitest run src/runtime src/messages src/agents/spark-notify
 ```
 
+Evaluations run with `pnpm -F @proj-airi/core-agent eval:run` and require `OPENROUTER_API_KEY`.
+
 ## Type boundaries
 
 Turn types constrain their content. User and system turns cannot contain execution rounds. Only assistant rounds own tool invocations.
