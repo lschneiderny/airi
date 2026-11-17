@@ -85,7 +85,7 @@ Column meanings:
 | Store | Keys | Tier | Writer | Registered |
 | --- | --- | --- | --- | --- |
 | `useSettingsGeneral` (`packages/stage-ui/src/stores/settings/general.ts`) | `settings/language`, `settings/streamer-mode`, `settings/disable-transitions`, `settings/use-page-specific-transitions`, `settings/websocket/secure-enabled` | plain | any window | yes, through `useSettings` |
-| `useSettingsAnalytics` (`packages/stage-ui/src/stores/settings/analytics.ts`) | `settings/analytics/enabled` | plain | any window | yes, through `useSettings` |
+| `useSettingsAnalytics` (`packages/stage-ui/src/stores/settings/analytics.ts`) | `settings/analytics/opted-in` | plain | any window | yes, through `useSettings` |
 | `useSettingsControlsIsland` (`packages/stage-ui/src/stores/settings/controls-island.ts`) | `settings/allow-visible-on-all-workspaces`, `settings/always-on-top`, `settings/controls-island/icon-size` | plain | any window | yes, through `useSettings` |
 | `useSettingsDeveloper` (`packages/stage-ui/src/stores/settings/developer.ts`) | `settings/developer/inspect-updater-diagnostics` | plain | any window | yes, through `useSettings` |
 | `useSettingsTheme` (`packages/stage-ui/src/stores/settings/theme.ts`) | `settings/theme/colors/*` | plain | any window | yes, through `useSettings` |
@@ -141,6 +141,14 @@ The inventory search was `git grep -nE 'useLocalStorageManualReset|useLocalStora
 
 Three other writers sit outside the stores. `migrateGoCredentials` (`apps/stage-tamagotchi/src/renderer/bridges/opencode-go-migration.ts`) rewrites provider keys once. The OpenPanel client (`packages/stage-ui/src/libs/product-signals/openpanel.ts`) keeps a device id in `sessionStorage`, which ends with the session. `useModelStore().resetModelStore` deletes a legacy model-source key.
 
+### Main-process files
+
+The desktop app's main process writes files under the Electron user data directory, outside the renderer stores and outside `useDataMaintenance`. The Data settings page (`apps/stage-tamagotchi/src/renderer/pages/settings/data/index.vue`) passes `deleteHostData` to the shared danger section, which runs it after `deleteAllData`. It clears the Home Assistant address and token through `homeAssistantSetConfig` and invokes `storedDataDeleteActivity`, whose handler `setupStoredData` (`apps/stage-tamagotchi/src/main/services/airi/stored-data/index.ts`) removes earlier session logs, empties the open one, removes the IO traces, and clears the computer-use store through its owner.
+
+- Session logs older than `LOG_RETENTION_MS` (14 days) are removed at every start (`pruneExpiredLogs` in `apps/stage-tamagotchi/src/main/app/file-logger.ts`).
+- Perf records keep their own 14-day retention and are not deleted with all data.
+- Main-process settings files stay: window state, the image-generation options, `mcp.json`, and the OpenCode Go key, which its own settings page clears.
+
 ## Settings documents
 
 Six tier 1 stores and one helper exist:
@@ -176,6 +184,7 @@ These are observations, not fixes. Each needs either a registration, a move to t
 - The stage-layouts `useBackgroundStore` (`packages/stage-layouts/src/stores/background.ts`) shares the default localforage database with `useDisplayModelsStore`, the stage-ui `useBackgroundStore`, and `useMMD`, and separates its records only by key prefix. The desktop app does not render the stage-layouts background components that use it.
 - The unstorage `outbox` mount (IndexedDB `airi-sync-queue`) in `storage` has no reader or writer in the client.
 - `useLanguage` and `useSettingsGeneral` both own `settings/language`.
+- `useSettingsAnalytics` moved from `settings/analytics/enabled` to `settings/analytics/opted-in`. The old key stays in storage with no owner, so "Delete all data" does not remove it.
 
 ## References
 
