@@ -114,7 +114,7 @@ After each task, run `pnpm verify` before finishing. It typechecks the changed p
 Use `pnpm lint` or root `pnpm typecheck` only when a task needs the whole repository checked. Report only executed checks, their commands/results, changes, and follow-up work.
 When `pnpm run` or `pnpm exec` fails because dependencies are out of date, run `pnpm install` once explicitly. The workspace sets `verifyDepsBeforeRun: error` so installs never start silently.
 Create and remove worktrees with `pnpm wt new <name>` and `pnpm wt rm <name>`. Stop a worktree's processes with `pnpm dev:top kill <name> --yes`, never by PID alone.
-Root `vitest.config.ts` also owns the `dev-tools`, `root-scripts`, `github-scripts`, and `web-extension` projects: `pnpm exec vitest run --project <name> <path>`.
+Root `vitest.config.ts` also owns the `dev-tools`, `root-scripts`, and `web-extension` projects: `pnpm exec vitest run --project <name> <path>`.
 The `pnpm verify` typecheck covers Turbo workspace packages (`packages/*`, `apps/*`, `server/**`, `services/*`) only. Root scripts get lint and tests only. Engines use `pnpm typecheck:engines` and `pnpm build:engines`.
 If Vitest finds no tests, inspect `vitest.config.ts` includes. Source-only packages can lack build scripts. Use their nested guidance.
 Electron build runs `electron-vite build`, not typecheck. Its typecheck runs `vue-tsc --noEmit`. Stage UI uses `test:run` and has no compilation build.
