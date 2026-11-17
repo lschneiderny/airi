@@ -72,7 +72,7 @@ Scores prove direction, size relative to the recipe, release, and detectability 
 
 ## Open across milestones
 
-- Beat-matched dance playback (D4).
+- Beat-matched dance playback (D4) is replaced: the [character mind ADR](../adr/2026-11-17-character-mind-direction.md) treats music as a stimulus that the mind answers with a groove episode, and the [character mind roadmap](character-mind-roadmap.md) tracks that step.
 - Display hand-off: walking from one display to another. Built on 2026-11-10 ([display hand-off ADR](../adr/2026-11-10-display-hand-off.md)). A crossing passes `stage-handoff` in a two-output headless KWin session; the crossing on physical displays is not yet checked.
 - A `go_to` tool. M3 added no `go_to` or `list_actions` tool.
 - A Live2D stage mode, which no milestone has scheduled.
