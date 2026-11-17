@@ -8,24 +8,27 @@ import { errorMessageFrom } from '@moeru/std'
 
 import { loadQaEnv } from '../../packages/qa-tools/src/env/load'
 import { compileCacheEnv } from './lib/compile-cache'
-import { gatedRunRefusal, listGatedTestFiles, qaGatedFiles } from './lib/gated-tests'
+import { listGatedTestFiles, planGatedRun, qaGatedFiles, skippedGatedNotice } from './lib/gated-tests'
 import { repoRoot } from './lib/git'
 
 async function main(): Promise<number> {
   if (process.argv.length > 2) {
-    console.error('Usage: pnpm qa:test:model\n\nRuns every test file gated on AIRI_QA_* variables, with .env.qa loaded.')
+    console.error('Usage: pnpm qa:test:model\n\nRuns the test files gated on AIRI_QA_* variables that are set, with .env.qa loaded.')
     return 2
   }
   const root = repoRoot(process.cwd())
   const { file: envFile } = loadQaEnv(root)
-  const files = qaGatedFiles(listGatedTestFiles(root))
-  const refusal = gatedRunRefusal(files, process.env, envFile, existsSync)
-  if (refusal) {
-    console.error(`qa:test:model: ${refusal}`)
+  const plan = planGatedRun(qaGatedFiles(listGatedTestFiles(root)), process.env, envFile, existsSync)
+  if (!plan.ok) {
+    console.error(`qa:test:model: ${plan.message}`)
     return 2
   }
+  const files = plan.run
   const variables = [...new Set(files.flatMap(file => file.variables))]
   console.info(`qa:test:model: ${files.length} file(s) gated on ${variables.join(', ')}\n${files.map(file => `  ${file.file}`).join('\n')}`)
+  const skipped = skippedGatedNotice(plan.skipped, process.env)
+  if (skipped)
+    console.info(`qa:test:model: ${skipped}`)
   // The root Vitest config takes its CPU slots through withCpuSlots, like every other test run.
   return await new Promise<number>((resolve, reject) => {
     const child = spawn(process.execPath, [join(root, 'node_modules/vitest/vitest.mjs'), 'run', '--config', 'vitest.config.ts', ...files.map(file => file.file)], {

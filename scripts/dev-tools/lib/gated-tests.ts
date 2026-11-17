@@ -2,24 +2,87 @@ import { spawnSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { isAbsolute, join } from 'node:path'
 
-/** A test file that runs only when environment variables are set, as `it.runIf(process.env.NAME)` states. */
+import ts from 'typescript'
+
+/** A test file that runs some of its tests only when environment variables are set. */
 export interface GatedTestFile {
   /** Repository-relative path with `/` separators. */
   file: string
   variables: string[]
 }
 
-// The two gate spellings that need a variable set: `.runIf(process.env.X ...)` and `.skipIf(!process.env.X ...)`,
-// optionally through `Boolean(...)`. `.skipIf(process.env.X)` runs when X is unset, so it is no requirement.
-const gatePatterns = [
-  /\.runIf\(\s*(?:Boolean\(\s*)?process\.env\.([A-Z_]\w*)/g,
-  /\.skipIf\(\s*!\s*(?:Boolean\(\s*)?process\.env\.([A-Z_]\w*)/g,
-]
+const testCalls = new Set(['it', 'test', 'describe', 'expect'])
 
-/** The variables a test file's `runIf` and `skipIf` gates require, in source order without repeats. */
+function isEnvRead(node: ts.Node): node is ts.PropertyAccessExpression {
+  return ts.isPropertyAccessExpression(node)
+    && ts.isPropertyAccessExpression(node.expression)
+    && node.expression.name.text === 'env'
+    && ts.isIdentifier(node.expression.expression)
+    && node.expression.expression.text === 'process'
+}
+
+/** `process.env.X ?? fallback` and `process.env.X || fallback` work without X, so X is no requirement. */
+function hasFallback(node: ts.Node): boolean {
+  const parent = node.parent
+  return ts.isBinaryExpression(parent) && parent.left === node
+    && (parent.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken || parent.operatorToken.kind === ts.SyntaxKind.BarBarToken)
+}
+
+function calledName(call: ts.CallExpression): string | undefined {
+  let callee: ts.Expression = call.expression
+  while (ts.isPropertyAccessExpression(callee) || ts.isCallExpression(callee))
+    callee = callee.expression
+  return ts.isIdentifier(callee) ? callee.text : undefined
+}
+
+/** Whether `node` declares a test or asserts, so a condition around it decides what the file tests. */
+function holdsTest(node: ts.Node): boolean {
+  if (ts.isCallExpression(node) && testCalls.has(calledName(node) ?? ''))
+    return true
+  return ts.forEachChild(node, holdsTest) ?? false
+}
+
+/**
+ * The variables a test file's gates require, in source order without repeats. A gate is the condition of a `runIf` or
+ * `skipIf` call, or of an `if` that declares tests or asserts. Conditions may read `process.env` through constants
+ * declared in the file, such as `const enabled = Boolean(process.env.X)`. `.skipIf(process.env.X)` runs when X is
+ * unset, so it is no requirement.
+ */
 export function gateVariables(source: string): string[] {
-  const found = gatePatterns.flatMap(pattern => [...source.matchAll(pattern)].map(match => ({ index: match.index, name: match[1] })))
-  return [...new Set(found.sort((a, b) => a.index - b.index).map(item => item.name))]
+  const file = ts.createSourceFile('gate.test.ts', source, ts.ScriptTarget.Latest, true)
+  const constants = new Map<string, ts.Expression>()
+  const gates: ts.Expression[] = []
+  const visit = (node: ts.Node): void => {
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer && !constants.has(node.name.text))
+      constants.set(node.name.text, node.initializer)
+    if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) && node.arguments.length) {
+      const method = node.expression.name.text
+      const condition = node.arguments[0]
+      if (method === 'runIf' || (method === 'skipIf' && !isEnvRead(condition)))
+        gates.push(condition)
+    }
+    if (ts.isIfStatement(node) && holdsTest(node.thenStatement))
+      gates.push(node.expression)
+    ts.forEachChild(node, visit)
+  }
+  visit(file)
+
+  const found: { position: number, name: string }[] = []
+  const collect = (node: ts.Node, seen: Set<string>): void => {
+    if (isEnvRead(node)) {
+      if (!hasFallback(node))
+        found.push({ position: node.getStart(), name: node.name.text })
+      return
+    }
+    if (ts.isIdentifier(node) && constants.has(node.text) && !seen.has(node.text)) {
+      collect(constants.get(node.text)!, new Set([...seen, node.text]))
+      return
+    }
+    ts.forEachChild(node, child => collect(child, seen))
+  }
+  for (const gate of gates)
+    collect(gate, new Set())
+  return [...new Set(found.sort((a, b) => a.position - b.position).map(item => item.name))]
 }
 
 /** Gated files `.env.qa` can enable: every gate is an `AIRI_QA_*` key, the only keys `loadQaEnv` applies. */
@@ -31,20 +94,31 @@ function unsetVariables(files: GatedTestFile[], env: Record<string, string | und
   return [...new Set(files.flatMap(file => file.variables.filter(name => !env[name])))].sort()
 }
 
+export type GatedRun = { ok: true, run: GatedTestFile[], skipped: GatedTestFile[] } | { ok: false, message: string }
+
 /**
- * Why `pnpm qa:test:model` must not run `files`, or `null`: a gate variable is unset, or names an absolute path that
- * does not exist (the model moved or its mount is down).
+ * Which gated files `pnpm qa:test:model` runs: those whose variables are all set. It refuses when none is, or when a
+ * set variable names an absolute path that does not exist (the model moved or its mount is down).
  */
-export function gatedRunRefusal(files: GatedTestFile[], env: Record<string, string | undefined>, envFile: string, exists: (path: string) => boolean): string | null {
+export function planGatedRun(files: GatedTestFile[], env: Record<string, string | undefined>, envFile: string, exists: (path: string) => boolean): GatedRun {
   if (!files.length)
-    return 'No test file is gated on an AIRI_QA_* variable.'
-  const unset = unsetVariables(files, env)
-  if (unset.length)
-    return `${unset.join(', ')} ${unset.length === 1 ? 'is' : 'are'} unset. Put ${unset[0]}=<path> in ${envFile} or set it in the environment; \`pnpm wt new <name> --qa\` writes it for a new worktree.`
-  const missing = [...new Set(files.flatMap(file => file.variables))].filter(name => isAbsolute(env[name]!) && !exists(env[name]!))
+    return { ok: false, message: 'No test file is gated on an AIRI_QA_* variable.' }
+  const run = files.filter(file => file.variables.every(name => env[name]))
+  if (!run.length) {
+    const unset = unsetVariables(files, env)
+    return { ok: false, message: `${unset.join(', ')} ${unset.length === 1 ? 'is' : 'are'} unset. Put ${unset[0]}=<path> in ${envFile} or set it in the environment; \`pnpm wt new <name> --qa\` writes AIRI_QA_MMD_MODEL for a new worktree.` }
+  }
+  const missing = [...new Set(run.flatMap(file => file.variables))].filter(name => isAbsolute(env[name]!) && !exists(env[name]!))
   if (missing.length)
-    return missing.map(name => `${name}=${env[name]} does not exist.`).join(' ')
-  return null
+    return { ok: false, message: missing.map(name => `${name}=${env[name]} does not exist.`).join(' ') }
+  return { ok: true, run, skipped: files.filter(file => !run.includes(file)) }
+}
+
+/** The line `pnpm qa:test:model` prints for gated files it did not run, or `null` when it ran them all. */
+export function skippedGatedNotice(skipped: GatedTestFile[], env: Record<string, string | undefined>): string | null {
+  if (!skipped.length)
+    return null
+  return `skipped ${skipped.length} file(s) (${unsetVariables(skipped, env).join(', ')} unset): ${skipped.map(file => file.file).join(', ')}`
 }
 
 /**
@@ -66,7 +140,7 @@ export function gatedNotice(files: GatedTestFile[], affectedPackagePaths: string
 
 /** Every tracked or untracked test file under `root` with a variable gate, found with `git grep`. */
 export function listGatedTestFiles(root: string): GatedTestFile[] {
-  const result = spawnSync('git', ['grep', '-l', '--untracked', '-E', '\\.(runIf|skipIf)\\(', '--', '*.test.ts', '*.test.mts', '*.test.js', '*.test.mjs'], { cwd: root, encoding: 'utf8' })
+  const result = spawnSync('git', ['grep', '-l', '--untracked', '-F', 'process.env.', '--', '*.test.ts', '*.test.mts', '*.test.js', '*.test.mjs'], { cwd: root, encoding: 'utf8' })
   // `git grep` exits 1 when nothing matches.
   if (result.status === 1)
     return []

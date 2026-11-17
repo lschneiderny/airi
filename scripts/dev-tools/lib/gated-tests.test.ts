@@ -1,14 +1,16 @@
 import { describe, expect, it } from 'vitest'
 
-import { gatedNotice, gatedRunRefusal, gateVariables, qaGatedFiles } from './gated-tests'
+import { gatedNotice, gateVariables, planGatedRun, qaGatedFiles, skippedGatedNotice } from './gated-tests'
 
 const model = { file: 'packages/qa-tools/src/t2-3d/runner/run.test.ts', variables: ['AIRI_QA_MMD_MODEL'] }
+const rig = { file: 'packages/qa-tools/src/t2/runner.test.ts', variables: ['AIRI_QA_RIG_FORBOOTH'] }
 const darwin = { file: 'apps/stage-tamagotchi/src/main/foreground.test.ts', variables: ['AIRI_FOREGROUND_QA_SAFARI'] }
+
+// Built from parts so the repository scan in `listGatedTestFiles` does not count this file as gated.
+const env = ['process', 'env'].join('.')
 
 describe('gateVariables', () => {
   it('finds runIf and negated skipIf gates and ignores a skipIf that runs when the variable is unset', () => {
-    // Built from parts so the repository scan in `listGatedTestFiles` does not count this file as gated.
-    const env = ['process', 'env'].join('.')
     const source = [
       `it.runIf(${env}.AIRI_QA_MMD_MODEL)('loads', () => {})`,
       `describe.runIf(Boolean(${env}.AIRI_BINDING_QA_PID))('binds', () => {})`,
@@ -19,16 +21,57 @@ describe('gateVariables', () => {
 
     expect(gateVariables(source)).toEqual(['AIRI_QA_MMD_MODEL', 'AIRI_BINDING_QA_PID', 'AIRI_QA_OTHER'])
   })
+
+  it('follows gate conditions through file constants and skips variables read with a fallback', () => {
+    const source = [
+      `const rigRoot = ${env}.AIRI_QA_RIG_FORBOOTH`,
+      `const corePath = ${env}.AIRI_QA_CUBISM_CORE ?? defaultCorePath`,
+      `const skipReason = !rigRoot ? 'unset' : !existsSync(corePath) ? 'missing core' : undefined`,
+      `const enabled = process.platform === 'darwin' && ${env}.AIRI_FOREGROUND_MEMORY_PATH === 'native'`,
+      `describe.skipIf(skipReason)('rig', () => {})`,
+      `describe.runIf(enabled)('memory', () => {})`,
+    ].join('\n')
+
+    expect(gateVariables(source)).toEqual(['AIRI_QA_RIG_FORBOOTH', 'AIRI_FOREGROUND_MEMORY_PATH'])
+  })
+
+  it('counts an if that declares tests or asserts, and ignores one that only writes output', () => {
+    const source = [
+      `const mocapDir = ${env}.AIRI_QA_MOCAP_DIR`,
+      `if (mocapDir) {`,
+      `  it('reads real clips', () => {})`,
+      `}`,
+      `it('rebuilds', () => {`,
+      `  const directory = ${env}.AIRI_QA_REFERENCE_DIR`,
+      `  if (directory)`,
+      `    expect(rebuild(directory)).toEqual(committed)`,
+      `  const out = ${env}.EVIDENCE_DIR`,
+      `  if (out)`,
+      `    writeEvidence(out)`,
+      `})`,
+    ].join('\n')
+
+    expect(gateVariables(source)).toEqual(['AIRI_QA_MOCAP_DIR', 'AIRI_QA_REFERENCE_DIR'])
+  })
 })
 
-describe('gatedRunRefusal', () => {
-  const files = qaGatedFiles([model, darwin])
+describe('planGatedRun', () => {
+  const files = qaGatedFiles([model, rig, darwin])
 
-  it('runs only AIRI_QA_* gated files and refuses when their variable is unset or names a missing file', () => {
-    expect(files).toEqual([model])
-    expect(gatedRunRefusal(files, {}, '/repo/.env.qa', () => true)).toContain('AIRI_QA_MMD_MODEL is unset')
-    expect(gatedRunRefusal(files, { AIRI_QA_MMD_MODEL: '/models/gone.pmx' }, '/repo/.env.qa', () => false)).toContain('/models/gone.pmx does not exist')
-    expect(gatedRunRefusal(files, { AIRI_QA_MMD_MODEL: '/models/chisa.pmx' }, '/repo/.env.qa', () => true)).toBeNull()
+  it('keeps only AIRI_QA_* gated files', () => {
+    expect(files).toEqual([model, rig])
+  })
+
+  it('runs the files whose variables are set and names the others', () => {
+    const plan = planGatedRun(files, { AIRI_QA_MMD_MODEL: '/models/chisa.pmx' }, '/repo/.env.qa', () => true)
+
+    expect(plan).toEqual({ ok: true, run: [model], skipped: [rig] })
+    expect(plan.ok && skippedGatedNotice(plan.skipped, {})).toBe(`skipped 1 file(s) (AIRI_QA_RIG_FORBOOTH unset): ${rig.file}`)
+  })
+
+  it('refuses when no gated file can run or a set variable names a missing path', () => {
+    expect(planGatedRun(files, {}, '/repo/.env.qa', () => true)).toMatchObject({ ok: false, message: expect.stringContaining('AIRI_QA_MMD_MODEL, AIRI_QA_RIG_FORBOOTH are unset') })
+    expect(planGatedRun(files, { AIRI_QA_MMD_MODEL: '/models/gone.pmx' }, '/repo/.env.qa', () => false)).toMatchObject({ ok: false, message: expect.stringContaining('/models/gone.pmx does not exist') })
   })
 })
 
