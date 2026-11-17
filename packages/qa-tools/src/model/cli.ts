@@ -4,7 +4,6 @@ import { parseArgs } from 'node:util'
 
 import { errorMessageFrom } from '@moeru/std'
 
-import { runImportOllamaBenchCli } from './import/ollama-bench'
 import { runPromptCli } from './prompt'
 import { runRunCli } from './run/command'
 import { runScoreCli } from './score/command'
@@ -15,7 +14,6 @@ Commands:
   run --scenario <id|file.json> --base-url <url> --model <id> [--config <name>] [--history raw|canonical] [--out <dir>] [--machine-label <l>] [--json]  run a scenario against a live OpenAI-compatible chat endpoint and record the replies
   score <transcripts.jsonl> [--set <id>] [--label <l>] [--exposed-actions <label:kind,...>]  score a transcript file with the real runtime replay
   prompt [--locale en] [--card <file>] [--full <fixture>] [--exposed-actions <label:kind,...>] [--json]  print the system prompt the app sends and its hashes
-  import-ollama-bench <dir> --set <id>                   convert legacy ollama-bench results into transcripts
   help                                                   print this usage
 
 Kinds are gesture, action, and dance.
@@ -30,7 +28,6 @@ export interface ModelCliIo {
     run: ModelCommandHandler
     prompt: ModelCommandHandler
     score: ModelCommandHandler
-    importOllamaBench: ModelCommandHandler
   }
   stdout?: (text: string) => void
   stderr?: (text: string) => void
@@ -57,7 +54,6 @@ export async function runModelCli(
     run: runRunCli,
     prompt: runPromptCli,
     score: runScoreCli,
-    importOllamaBench: runImportOllamaBenchCli,
   }
 
   const [command, ...rest] = argv
@@ -79,9 +75,7 @@ export async function runModelCli(
       ? handlers.prompt
       : command === 'score'
         ? handlers.score
-        : command === 'import-ollama-bench'
-          ? handlers.importOllamaBench
-          : undefined
+        : undefined
   if (!handler) {
     stderr(`qa-tools model: ${command === undefined ? 'missing command' : `unknown command ${JSON.stringify(command)}`}\n\n${modelUsage}`)
     return 2

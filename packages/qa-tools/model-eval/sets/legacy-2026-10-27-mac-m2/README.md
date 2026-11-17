@@ -2,28 +2,27 @@
 
 ## Provenance
 
-This set contains 607 replies imported from `scripts/ollama-bench/results/2026-10-27-mac-m2/`: 132 from `bench.jsonl`, 425 from `sweep.jsonl`, and 50 from `flash-attention.jsonl`. The source machine was an Apple Mac M2 with 16 GB of memory and Ollama 0.34.3. The results directory and `scripts/ollama-bench/README.md:36` identify that machine and server version. Tamagotchi was closed during capture.
+This set contains 607 replies imported from the October benchmark's results, now in `results/`: 132 from `bench.jsonl`, 425 from `sweep.jsonl`, and 50 from `flash-attention.jsonl`. The benchmark tool, `scripts/ollama-bench/`, was removed on 2026-11-17 and its inputs and results moved into this directory; read the tool with `git show 9f6ff5e8d:scripts/ollama-bench/<file>`. Each transcript's `source.file` still names the original `scripts/ollama-bench/results/2026-10-27-mac-m2/` path, and its `fileSha256` hashes that file with CRLF line endings, as the import read it from a Windows checkout. The source machine was an Apple Mac M2 with 16 GB of memory and Ollama 0.34.3. `results/notes.md` and the removed tool's README identify that machine and server version. Tamagotchi was closed during capture.
 
-The captured prompt is `scripts/ollama-bench/inputs/shuka-system-prompt.txt`. Its byte-level SHA-256 is `c16e7c0ded89f74ef9b33354a20ba4fdd71a7ed49024c19f00304dce8ff7bd83`. It includes the captured Shuka card and an older stage contract; it differs from the committed contract. At scoring time, `pnpm qa:model prompt --json` returned `promptSha256` = `d2bf028f67892f328878cfab21b223bc15b968d8958f9fa587056b826b1dc080` and `contractSha256` = `f979e6969867590d47465f8db19b1cd38e97774d85dce3124369abb744a7de5a`. The canonical command uses its default card, not the captured Shuka card, so the full-prompt hashes are provenance identifiers, not a controlled contract-only comparison. The imported records retain the captured prompt hash and an unknown contract version.
+The captured prompt is `inputs/shuka-system-prompt.txt`. Its byte-level SHA-256 is `c16e7c0ded89f74ef9b33354a20ba4fdd71a7ed49024c19f00304dce8ff7bd83`. It includes the captured Shuka card and an older stage contract; it differs from the committed contract. At scoring time, `pnpm qa:model prompt --json` returned `promptSha256` = `d2bf028f67892f328878cfab21b223bc15b968d8958f9fa587056b826b1dc080` and `contractSha256` = `f979e6969867590d47465f8db19b1cd38e97774d85dce3124369abb744a7de5a`. The canonical command uses its default card, not the captured Shuka card, so the full-prompt hashes are provenance identifiers, not a controlled contract-only comparison. The imported records retain the captured prompt hash and an unknown contract version.
 
 This is a separate legacy set. Never mix it with canonical-contract runs. Use it to reproduce historical findings and compare scorer behavior on fixed replies, not to rank models against the current prompt.
 
 ## Production
 
-Run these commands from the repository root after building core-agent and i18n:
+`transcripts.jsonl` came from the removed `qa:model import-ollama-bench` command. Rescore it from the repository root after building core-agent and i18n:
 
 ```sh
-pnpm qa:model import-ollama-bench scripts/ollama-bench/results/2026-10-27-mac-m2 --set legacy-2026-10-27-mac-m2 --server-version 0.34.3 --mem-gb 16
-pnpm qa:model score packages/qa-tools/model-eval/sets/legacy-2026-10-27-mac-m2/transcripts.jsonl --set legacy-2026-10-27-mac-m2 --label legacy --example-lines-from scripts/ollama-bench/inputs/shuka-system-prompt.txt
+pnpm qa:model score packages/qa-tools/model-eval/sets/legacy-2026-10-27-mac-m2/transcripts.jsonl --set legacy-2026-10-27-mac-m2 --label legacy --example-lines-from packages/qa-tools/model-eval/sets/legacy-2026-10-27-mac-m2/inputs/shuka-system-prompt.txt
 ```
 
-The producing run is `.temp/qa/20261110-201924-model-score-legacy/`, on commit `4b8a3454f` with a clean checkout. The second command wrote `summary.json` and `summary.md` into this directory; the import command was not run again, so `transcripts.jsonl` and the captured prompt bytes are unchanged. The scorer is `cue-contract-score` version 5, and its fixtures passed 34/34. The LF `summary.json` SHA-256 is `89bdfc8b6487b7fb646e87cff3ff38218228057471298a68c62f47d530640159`.
+The producing run is `.temp/qa/20261110-201924-model-score-legacy/`, on commit `4b8a3454f` with a clean checkout. The score command wrote `summary.json` and `summary.md` into this directory; the import command was not run again, so `transcripts.jsonl` and the captured prompt bytes are unchanged. The scorer is `cue-contract-score` version 5, and its fixtures passed 34/34. The LF `summary.json` SHA-256 is `89bdfc8b6487b7fb646e87cff3ff38218228057471298a68c62f47d530640159`.
 
 The summary before it came from `.temp/qa/20261030-142420-model-score-followup-c-v2/`, with scorer version 2 and 25 fixtures. Compared with that summary, the new one adds the fields of scorer versions 3 and 4 (`nonverbal.*`, `actionsAccepted`, `actionsUnknown`, `actionToolCalls`, and `actionToolUnknown`) and changes three existing columns: `chunkVariant` in 31 run keys, `style.meanWords` in 12, and `style.personaFace` in 4. These differences come from scorer and runtime changes made between 2026-10-30 and this run. The cue recovery change of 2026-11-10 (the swapped `|<ACT ...|>` opener, the closer that ends a reply, and the near-miss decline marker) changed no metric of this set: a score of the same transcripts on commit `64e16ae71`, the last one with the earlier recovery, gave the same metrics in all 80 run keys. Every number in the comparison table below is unchanged.
 
 ## Comparison
 
-The source references below are lines in `scripts/ollama-bench/results/2026-10-27-mac-m2/notes.md`. Counts are quoted from `summary.json`; run keys identify the exact groups. JSON form counts are cue counts, not percentages of replies. The `exampleEcho` and `stageDir` columns are heuristics, not persona judgments.
+The source references below are lines in `results/notes.md`. Counts are quoted from `summary.json`; run keys identify the exact groups. JSON form counts are cue counts, not percentages of replies. The `exampleEcho` and `stageDir` columns are heuristics, not persona judgments.
 
 | Row | Claim | Source | Scorer columns, run keys, and exact numbers | Result |
 | --- | --- | --- | --- | --- |

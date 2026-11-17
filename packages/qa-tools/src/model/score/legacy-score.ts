@@ -3,8 +3,8 @@ import type { ReplyTranscriptRecord } from '../transcript/schema'
 // NOTICE:
 // Verbatim copy of `scoreReplies` from `scripts/ollama-bench/score.ts` at commit 9f6ff5e8d,
 // so the legacy table stays comparable with the October Mac benchmark. Do not change the logic.
-// Source: scripts/ollama-bench/score.ts.
-// Removal condition: the legacy ollama-bench tool and its results are retired.
+// Source: scripts/ollama-bench/score.ts, removed on 2026-11-17 (`git show 9f6ff5e8d:scripts/ollama-bench/score.ts`).
+// Removal condition: the legacy-2026-10-27-mac-m2 model-eval set is retired.
 
 const EMOTIONS = ['happy', 'sad', 'angry', 'think', 'surprised', 'awkward', 'question', 'curious', 'neutral', 'love', 'flustered', 'sleepy']
 const HEARTS = /[\u2665\u2764\u{1F49C}\u{1F497}\u{1F496}\u{1F495}\u{1F493}\u{1F49E}\u{1F498}\u{1F49D}\u{1F9E1}\u{1F49B}\u{1F49A}\u{1F499}\u{1F90D}\u{1F5A4}\uFE0F]/gu

@@ -3,8 +3,8 @@ import type { ScoreContext } from './scorer'
 // NOTICE:
 // These regular expressions are copied verbatim from `scripts/ollama-bench/score.ts` (commit 9f6ff5e8d)
 // so the style columns stay comparable with the legacy table. Do not edit them.
-// Source: scripts/ollama-bench/score.ts lines 7, 45-55.
-// Removal condition: the legacy ollama-bench tool is retired.
+// Source: scripts/ollama-bench/score.ts lines 7, 45-55, removed on 2026-11-17 (`git show 9f6ff5e8d:scripts/ollama-bench/score.ts`).
+// Removal condition: the legacy-2026-10-27-mac-m2 model-eval set is retired.
 
 const HEARTS = /[\u2665\u2764\u{1F49C}\u{1F497}\u{1F496}\u{1F495}\u{1F493}\u{1F49E}\u{1F498}\u{1F49D}\u{1F9E1}\u{1F49B}\u{1F49A}\u{1F499}\u{1F90D}\u{1F5A4}\uFE0F]/gu
 

@@ -8,6 +8,7 @@ import { legacyScoreReplies, scoreReplies } from './legacy-score'
 
 // Captured once with:
 // bun scripts/ollama-bench/score.ts scripts/ollama-bench/results/2026-10-27-mac-m2/sweep.jsonl dolphin3:8b
+// (that tool was removed on 2026-11-17; the results now live in model-eval/sets/legacy-2026-10-27-mac-m2/results/)
 // (the row { model: 'dolphin3:8b', config: 'defaults' }; the replies above are that row's replies).
 const captured = {
   replies: 7,
