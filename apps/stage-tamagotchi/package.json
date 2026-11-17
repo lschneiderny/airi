@@ -15,8 +15,6 @@
   "scripts": {
     "lint": "eslint --cache .",
     "typecheck": "vue-tsc --noEmit",
-    "app:dev": "pnpm run dev",
-    "app:build": "pnpm run build",
     "start": "install-electron && electron-vite preview",
     "start:xwayland": "install-electron && electron-vite preview -- --ozone-platform=x11",
     "dev": "install-electron && electron-vite dev",
@@ -26,7 +24,6 @@
     "build:unpack": "pnpm run build && electron-builder --dir",
     "build:win": "pnpm run build && electron-builder --win",
     "build:mac": "pnpm run build && electron-builder --mac",
-    "build:linux": "pnpm run build && electron-builder --linux",
     "smoke:desktop-overlay-live-window": "NODE_OPTIONS='--experimental-websocket' tsx scripts/desktop-overlay-live-window-smoke.ts",
     "smoke:linux-window-render": "NODE_OPTIONS='--experimental-websocket' tsx scripts/linux-window-render-smoke.ts",
     "update-test:generate": "tsx scripts/update-test/generate-manifest.ts",

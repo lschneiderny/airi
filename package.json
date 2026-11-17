@@ -19,11 +19,8 @@
     "dev:server": "node scripts/dev.mjs packages/server-runtime dev",
     "dev:tamagotchi": "node scripts/dev.mjs apps/stage-tamagotchi dev",
     "dev:tamagotchi:xwayland": "node scripts/dev.mjs apps/stage-tamagotchi dev:xwayland",
-    "dev:apps": "pnpm -rF=\"./apps/*\" run --parallel dev",
-    "dev:packages": "pnpm -rF=\"./packages/*\" --parallel run dev",
     "build": "tsx packages/cpu-slots/src/cli.ts run --class build -- turbo run build -F=\"./packages/*\" -F=\"./apps/*\" -F=\"./server/**\" \"--concurrency={grant}\"",
-    "build:tamagotchi": "tsx packages/cpu-slots/src/cli.ts run --class build -- pnpm -rF @proj-airi/stage-tamagotchi run app:build",
-    "build:apps": "tsx packages/cpu-slots/src/cli.ts run --class build -- turbo run build -F=\"./apps/*\" \"--concurrency={grant}\"",
+    "build:tamagotchi": "tsx packages/cpu-slots/src/cli.ts run --class build -- pnpm -F @proj-airi/stage-tamagotchi build",
     "build:packages": "tsx packages/cpu-slots/src/cli.ts run --class build -- turbo run build -F=\"./packages/*\" \"--concurrency={grant}\"",
     "build:engines": "tsx packages/cpu-slots/src/cli.ts run --class build -- turbo run build -F=\"./engines/*\" \"--concurrency={grant}\"",
     "check:bundle": "pnpm build:tamagotchi && tsx scripts/dev-tools/bundle-check.ts",
@@ -67,7 +64,6 @@
     "qa:display": "tsx scripts/dev-tools/qa-display.ts",
     "qa:kwin-probe": "tsx scripts/dev-tools/kwin-probe.ts",
     "up": "taze -w -r -I && pnpm prune && pnpm dedupe",
-    "nolyfill": "pnpm dlx nolyfill",
     "knip": "knip"
   },
   "devDependencies": {
