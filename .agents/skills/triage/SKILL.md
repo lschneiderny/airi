@@ -1,11 +1,11 @@
 ---
 name: triage
-description: Review the dTuber Obsidian vault inbox at /opt/truenas/Obsidian/dTuber, including captures in 00 Inbox and bugs or follow-ups that /vault-sync found in the repository, propose an outcome for each note, and apply the approved outcomes. Use when the user runs /triage, or asks to sort, review, file, or clean up vault inbox captures.
+description: Review the dTuber Obsidian vault inbox (`$DTUBER_VAULT`), including captures in 00 Inbox and bugs or follow-ups that /vault-sync found in the repository, propose an outcome for each note, and apply the approved outcomes. Use when the user runs /triage, or asks to sort, review, file, or clean up vault inbox captures.
 ---
 
 # Triage the vault inbox
 
-The dTuber planning vault is a separate git repository at `/opt/truenas/Obsidian/dTuber`, an NFS mount of the TrueNAS `code` share. Search it with `rg --glob '*.md'`, which skips `.git`. Run git there as `git -c safe.directory=/opt/truenas/Obsidian/dTuber -C /opt/truenas/Obsidian/dTuber <command>`, because the share's files belong to another user ID. Its `Home.md` documents the folders, properties, and the status lifecycle: `inbox`, `open`, `next`, `doing`, `fixed`, `done`, `dropped`. Never open `Engineering/ips and keys.md`; it holds personal credentials.
+The dTuber planning vault is a separate git repository on a network share. Its path is in the `DTUBER_VAULT` environment variable: resolve it once with `echo "$DTUBER_VAULT"` and pass the absolute path to the file tools. If the variable is unset, ask the user for the path. Search it with `rg --glob '*.md'`, which skips `.git`. Run git there as `git -c safe.directory="$DTUBER_VAULT" -C "$DTUBER_VAULT" <command>`, because the share's files belong to another user ID. Its `Home.md` documents the folders, properties, and the status lifecycle: `inbox`, `open`, `next`, `doing`, `fixed`, `done`, `dropped`. Never open `Engineering/ips and keys.md`; it holds personal credentials.
 
 The vault is on a slow network drive. Do not run recursive `grep` or `find` over it from Bash. Use the Grep tool with a `*.md` glob, or read specific files.
 

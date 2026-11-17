@@ -1,11 +1,11 @@
 ---
 name: idea
-description: Save an idea, bug, or question to the dTuber Obsidian vault inbox at /opt/truenas/Obsidian/dTuber/00 Inbox. Use when the user runs /idea, or asks to note, capture, or remember an idea or issue for later in the vault.
+description: Save an idea, bug, or question to the dTuber Obsidian vault inbox (the `00 Inbox` folder of `$DTUBER_VAULT`). Use when the user runs /idea, or asks to note, capture, or remember an idea or issue for later in the vault.
 ---
 
 # Capture to the vault inbox
 
-The dTuber planning vault is a separate git repository at `/opt/truenas/Obsidian/dTuber`, an NFS mount of the TrueNAS `code` share. Search it with `rg --glob '*.md'`, which skips `.git`. Run git there as `git -c safe.directory=/opt/truenas/Obsidian/dTuber -C /opt/truenas/Obsidian/dTuber <command>`, because the share's files belong to another user ID. Captures go in its `00 Inbox` folder. The vault's `Home.md` documents its layout and statuses.
+The dTuber planning vault is a separate git repository on a network share. Its path is in the `DTUBER_VAULT` environment variable: resolve it once with `echo "$DTUBER_VAULT"` and pass the absolute path to the file tools. If the variable is unset, ask the user for the path. Search it with `rg --glob '*.md'`, which skips `.git`. Run git there as `git -c safe.directory="$DTUBER_VAULT" -C "$DTUBER_VAULT" <command>`, because the share's files belong to another user ID. Captures go in its `00 Inbox` folder. The vault's `Home.md` documents its layout and statuses.
 
 ## Steps
 
@@ -14,7 +14,7 @@ The dTuber planning vault is a separate git repository at `/opt/truenas/Obsidian
    - `bug` when something behaves wrongly or feels wrong while using the app.
    - `idea` for everything else, including questions.
 3. Choose a short, recognizable title in sentence case, such as `Petting rocks too fast`. Use it as the filename. If a note with that name exists, append ` 2`, ` 3`, and so on.
-4. Write the note with the matching template's shape from `/opt/truenas/Obsidian/dTuber/Templates/Idea.md` or `Bug.md`. Replace the QuickAdd tokens: `{{TITLE}}` with the title, `{{DATE:YYYY-MM-DD}}` with today's date, and each free-text `{{VALUE:...}}` with the user's words. Keep `status: inbox`, and on bugs keep `source: capture` and `fixed_in: ""`. Replace each `js quickadd` block with its result: for bugs, the output of `git describe --always --dirty` in this repository; for the "Captured from" line, nothing.
+4. Write the note with the matching template's shape from `$DTUBER_VAULT/Templates/Idea.md` or `Bug.md`. Replace the QuickAdd tokens: `{{TITLE}}` with the title, `{{DATE:YYYY-MM-DD}}` with today's date, and each free-text `{{VALUE:...}}` with the user's words. Keep `status: inbox`, and on bugs keep `source: capture` and `fixed_in: ""`. Replace each `js quickadd` block with its result: for bugs, the output of `git describe --always --dirty` in this repository; for the "Captured from" line, nothing.
 5. Fill each dropdown token (`{{VALUE:a,b,c|label:...}}`) with one of its listed values:
    - `area`: the area from the table in the vault's `Home.md` that clearly owns the capture, or `unsure`.
    - `severity` and `frequency` on bugs: only what the user said. Otherwise use `annoying` and `not sure`.

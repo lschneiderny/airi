@@ -1,14 +1,14 @@
 ---
 name: vault-sync
-description: Bring the dTuber Obsidian vault at /opt/truenas/Obsidian/dTuber up to date with this repository after new commits. Proposes new bugs and follow-ups, marks tracked items whose fix landed, and lists reference notes the changes touched, then applies what the user approves. Use when the user runs /vault-sync, or asks to sync, refresh, or catch the vault up after a pull or merge.
+description: Bring the dTuber Obsidian vault (`$DTUBER_VAULT`) up to date with this repository after new commits. Proposes new bugs and follow-ups, marks tracked items whose fix landed, and lists reference notes the changes touched, then applies what the user approves. Use when the user runs /vault-sync, or asks to sync, refresh, or catch the vault up after a pull or merge.
 ---
 
 # Sync the vault with the repository
 
-The dTuber planning vault is a separate git repository at `/opt/truenas/Obsidian/dTuber`, an NFS mount of the TrueNAS `code` share. Obsidian runs as a Flatpak and opens the same folder through a document-portal path under `/run/user/1000/doc/`; edit the files at the `/opt/truenas` path. Its `Home.md` documents the folders, statuses and properties. Never open `Engineering/ips and keys.md`; it holds personal credentials.
+The dTuber planning vault is a separate git repository on a network share. Its path is in the `DTUBER_VAULT` environment variable: resolve it once with `echo "$DTUBER_VAULT"` and pass the absolute path to the file tools. If the variable is unset, ask the user for the path. Obsidian runs as a Flatpak and opens the same folder through a document-portal path under `/run/user/1000/doc/`; edit the files under `$DTUBER_VAULT`. Its `Home.md` documents the folders, statuses and properties. Never open `Engineering/ips and keys.md`; it holds personal credentials.
 
-- **Search:** use `rg --glob '*.md' <pattern> /opt/truenas/Obsidian/dTuber`. `rg` skips `.git` by default. Do not run `grep -r` or `find` over the vault without excluding `.git`, because walking `.git` over NFS is slow.
-- **Git:** the share's files belong to another user ID, so plain `git` in the vault fails with `detected dubious ownership`. Run it as `git -c safe.directory=/opt/truenas/Obsidian/dTuber -C /opt/truenas/Obsidian/dTuber <command>`. Do not add a global `safe.directory` entry unless the user asks.
+- **Search:** use `rg --glob '*.md' <pattern> "$DTUBER_VAULT"`. `rg` skips `.git` by default. Do not run `grep -r` or `find` over the vault without excluding `.git`, because walking `.git` over the network share is slow.
+- **Git:** the share's files belong to another user ID, so plain `git` in the vault fails with `detected dubious ownership`. Run it as `git -c safe.directory="$DTUBER_VAULT" -C "$DTUBER_VAULT" <command>`. Do not add a global `safe.directory` entry unless the user asks.
 
 ## What the vault tracks
 
