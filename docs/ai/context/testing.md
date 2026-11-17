@@ -105,11 +105,6 @@ read append-only lease events and wait summaries. Set
 directories for isolated scheduling tests. Set `AIRI_CPU_PRESSURE_FILE` to a
 fixture when a scenario must have deterministic pressure.
 
-Older worktrees running the previous broker use strict FIFO and the original
-budget ceiling. They see the new `live` lease as wire class `browser` with
-`policy: 'live'`, so it counts as shared work; they wait when the new broker
-overcommits beyond their fixed budget, and cannot grant above that budget.
-
 Heavy verification, builds, and rendered QA compete for the shared machine.
 Keep no more than three heavy plan lanes active at once. If a ticket waits,
 check `pnpm slots status` and `pnpm slots history` before adding more heavy
