@@ -165,6 +165,27 @@ New tier 1 stores use `useSettingsDocument`.
 - **Expression documents.** The Live2D and MMD expression stores write `expression-catalog:<id>` and `expression-rest:<id>` from the stage window, outside any store registration. `useDataMaintenance` clears them by prefix, including documents of models that are not loaded.
 - **Chat assets.** `chatAssetsRepo` has no reset of its own. `chatSessionsRepo` releases a session's assets when it deletes the session, so deleting all chat sessions removes them.
 
+## Target
+
+This section states the design that refactors move toward. It does not describe the code. The [character mind ADR](../adr/2026-11-17-character-mind-direction.md) records the decision. When a refactor lands a rule, the rule moves into the sections above and the gaps it closes leave the list below.
+
+1. **One registration point.** Every piece of persisted client state is declared in one place with its tier, its keys or key prefix, and its reset. "Delete all data" resets exactly the registered set.
+2. **A test enforces it.** A focused test fails when the client writes storage under a key that no registration owns.
+3. **Every store fits a tier.** Plain localStorage refs and synced stores that persist replicated plain refs migrate to a tier, upstream stores included. The closed tiers stay closed.
+4. **Behavior settings form one document.** The character-behavior settings that the [character mind](glossary.md#character-mind) reads are one tier 1 document. Renderer settings documents hold only realisation settings.
+5. **The mind's slow state is the per-card character state.** The per-card record in tier 4 holds mood, energy, temperament, relationship, and the voice policy's pacing memory (urge memory, last-spoke times, own-day weight). Only the leader reads and writes it, and the mind applies decay for the time away on load. A card export carries temperament only. Fast state is not persisted.
+6. **One owner per key.** No two stores own the same storage key.
+
+| Known gap | Closed by |
+| --- | --- |
+| Persisting stores that `useDataMaintenance` does not reset | Rules 1 and 2 |
+| Partial reset of `useModelStore` | Rule 1 |
+| Synced stores that persist plain refs as replicated state | Rule 3 |
+| The stage-layouts `useBackgroundStore` sharing the default localforage database | Rule 1, or deletion if the desktop app keeps not rendering it |
+| The unstorage `outbox` mount with no reader or writer | Rule 1, or deletion |
+| `useLanguage` and `useSettingsGeneral` both own `settings/language` | Rule 6 |
+| The gate's inner state as the only tier 2 member | Rule 5 moves its pacing memory into the per-card record; the extracted conversation threads stay leader-only personal content (roadmap step V) |
+
 ## Known gaps
 
 These are observations, not fixes. Each needs either a registration, a move to the right tier, or an amendment to this document.

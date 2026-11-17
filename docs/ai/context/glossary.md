@@ -408,6 +408,42 @@ The Live2D motion driver inherited from upstream: it plays the model's own motio
 **Not to be confused with:** classic, the MMD driver that plays clips without Natural.
 **Avoid:** "default driver", "legacy driver".
 
+## Target terms
+
+These terms name parts of the target design in the [character mind ADR](../adr/2026-11-17-character-mind-direction.md). No code implements them yet. When code lands, each entry moves into [Terms](#terms) with its defining path.
+
+### Channel
+
+One part of her output with a single owner: gaze, head and posture, face and expression slots, body (stance, clips, locomotion), and voice.
+
+**Not to be confused with:** a Live2D parameter or an MMD bone, several of which make up one channel.
+
+### Character mind
+
+The one module per character, in the leader window, that turns every stimulus into intents on one clock. Its core is a pure step function over serializable state; a thin leader-side class owns the clock, the random source, persistence, and transport to the stages.
+
+**Not to be confused with:** the decider, which it subsumes as one part; the conductor, which today does per-stage dispatch; and the chat orchestrator.
+**Avoid:** "brain", "AI", "scheduler" for the whole module.
+
+### Intent
+
+What the character mind emits for one channel: an episode to start or end, such as an idle act, a glance at a target, a reaction, sleep, a groove, or a line to speak. A performer realises or refuses an intent.
+
+**Not to be confused with:** `BodyIntent`, the MMD director's per-frame output today.
+
+### Performer (target)
+
+The per-stage, renderer-side module (Live2D or MMD) that realises the mind's intents with continuous per-frame control and declares the capabilities it can realise. It may contain renderer deciders that act on intents and on the renderer's own world.
+
+**Not to be confused with:** the current usages listed under [Conflicting usages](#conflicting-usages).
+
+### Stimulus
+
+An observation the character mind answers: a touch, a cursor notice, the user's return, music, a desktop event, a chat event, or elapsed idle time.
+
+**Not to be confused with:** an affect signal, which is the decider's input today.
+**Avoid:** "event" alone, "trigger".
+
 ## Conflicting usages
 
 - **Gate.** The [situational presence ADR](../adr/2026-10-19-situational-presence.md) describes an "opportunity gate" with `evaluateGate`, `promotionGateMemory`, and `visibilityRegainGateMemory`. That section is superseded: the code exports `evaluateUrgeGate`, `promotionUrgeMemory`, and `visibilityRegainUrgeMemory` from `packages/stage-shared/src/situation/urge-gate.ts`. Comments in `packages/stage-ui/src/stores/situation/index.ts`, `packages/stage-ui/src/stores/situation/sensors/notify.ts`, and `packages/stage-ui/src/features/situation/settings.ts` still say "opportunity gate", and `packages/stage-ui/src/stores/devtools/situation-observability.ts` keeps a devtools function named `evaluateGate` that asks the leader for the urge-gate evaluation.

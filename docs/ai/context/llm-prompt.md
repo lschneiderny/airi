@@ -67,6 +67,26 @@ These requests are not character turns either. Each builds its own prompt withou
 - `packages/core-agent` holds no stage prompt text. Its Spark Notify agent receives the host instruction as a function. The exception is the eval oracle, `packages/core-agent/src/runtime/cue-compliance.ts` and `packages/core-agent/src/runtime/cue-contract-fixtures.ts`, which stays in core-agent because qa-tools scores against it.
 - The situation block, the trigger message of an unprompted turn, and per-message timestamps are not segments and must stay out of the system prompt.
 
+## Target
+
+This section states the design that refactors move toward. It does not describe the code. The [character mind ADR](../adr/2026-11-17-character-mind-direction.md) records the decision. When a refactor lands a rule, the rule moves into the sections above and the gaps it closes leave the list below.
+
+1. **One composer for every character call.** Every LLM call that speaks or acts as the character, including the Spark Notify commands-only agent, builds its system prompt through `composePrompt` from segments that one builder assembles. Paths differ only by declared request inputs, never by their own concatenation. Calls that do not speak as the character, such as thread extraction and the artistry director, keep their own task prompts and budgets outside the composer.
+2. **Same segments, same caps.** Every path receives the same segments under the same budgets. Plugin text is the capped `plugin` segment on every path.
+3. **One memory source.** The memory index is the speaking character's: the character that owns the session the turn belongs to.
+4. **No segment without a producer.** A segment id that no app path produces is deleted from the order, the budgets, and the fixtures.
+5. **Actions follow capabilities.** The `actions` segment offers the model only what the active [performer](glossary.md#performer-target) declares.
+6. **The mind decides when to speak; the model may decline.** An unprompted turn starts only from the [character mind](glossary.md#character-mind)'s voice channel, including widget and plugin turns. Its reason reaches the prompt as a declared request input. Every unprompted instruction keeps the model's veto: it may answer `<|SILENT|>`. A spoken reaction is stored in chat history, and a reply may consist of an expression alone.
+
+| Known gap | Closed by |
+| --- | --- |
+| The `account` segment has no producer | Rule 4 |
+| Plugin text on the Spark Notify agent is not capped | Rules 1 and 2 |
+| Spark Notify does not receive the same segments as chat | Rules 1 and 2 |
+| Spoken Spark Notify reactions use the session character's memory | Rule 3 makes the session character's memory the rule; amend the ADRs' "active card" wording when it lands |
+| The memory ADR places `memory` first in the tail | No target rule. ADR bodies are frozen history. |
+| The situational presence ADR says unprompted turns carry no tools | No target rule. ADR bodies are frozen history. |
+
 ## Known gaps
 
 Each item states what an ADR says, what the code does, and where. None is fixed here.

@@ -49,6 +49,45 @@ The order applied today, from the outermost arbiter inward. Each step names the 
    - Goal requests: debug over tool over chat unfold. Then a held goal, then the cursor chase, then return home, then entering a zone from a wing, then a wander or visit. While the user is active (`watching`), a wander only visits.
 9. On the MMD gaze, walking outranks everything: travel direction, then the cursor while Natural fixates it, then the chat, then free fixation around the camera (`MMDBody` in `packages/stage-ui-mmd/src/composables/mmd/body/index.ts`).
 
+## Target
+
+This section states the design that refactors move toward. It does not describe the code. The [character mind ADR](../adr/2026-11-17-character-mind-direction.md) records the decision. When a refactor lands a rule, the rule moves into the sections above and the overlaps it closes leave the list below.
+
+1. **One mind per character.** Every [decider](glossary.md#decider) in [Deciders](#deciders) becomes part of one [character mind](glossary.md#character-mind) that runs in the leader window, or a realiser of its intents. Mood, idle draws, refractories, and reach-out pacing exist once per character, not once per rendered stage.
+2. **One stimulus, one response.** The mind answers each [stimulus](glossary.md#stimulus) once, across every [channel](glossary.md#channel). A touch, a return, or a beat gets one coordinated response, chosen with every channel's state in view.
+3. **One clock.** Body episodes and the voice channel share the mind's clock. The urge gate and the spoken reaction policy become the mind's voice policy.
+4. **Episodes in the mind, frames in the performer.** The mind decides discrete episodes. The per-stage [performer](glossary.md#performer-target) runs continuous control. Cursor notice is a mind decision; tracking the cursor is the performer's.
+5. **Renderer deciders act on intents.** The MMD body director and any other renderer decider act on the mind's [intents](glossary.md#intent) and on the renderer's own world. They never subscribe to touch, cursor, return, chat, or music directly.
+6. **Music is a stimulus.** One detector reports music to the mind, which starts a groove episode. No decider moves the body on beats outside the mind.
+7. **Only declared capabilities.** The mind issues only the episodes the active performer declares. A refusal comes back as a reported event.
+8. **Behavior settings belong to the character.** One character-behavior settings document gates what the mind decides. Renderer pages hold only realisation settings.
+9. **Every unprompted voice goes through the mind.** Widget and plugin turns that make her speak are stimuli. The voice policy decides their timing and may defer them, but never drops them silently. Only the user's own turns bypass the mind.
+
+### Rulings the slices keep
+
+Luke made these product rulings in earlier plans. Today they live in frozen ADR bodies and drafts, and the slices rewrite the code that carries them. Each slice keeps every ruling it touches, or records Luke's new ruling here.
+
+- **Touch** (CM1). A pet or poke gets a mood change or an expression every time, and a spoken line only occasionally. Pets melt into the hand: no look-up and no camera snap while a pet runs. A pet longer than 3 s ends with one camera glance of about 1.2 s. Sources: the [nonverbal channels ADR](../adr/2026-10-31-nonverbal-channels.md) context, decisions D1 and A8 of the [cursor attention ADR](../adr/2026-10-24-live2d-cursor-attention.md).
+- **Cursor** (CM6). She does not always notice the cursor. Sometimes she pays attention to it at medium or far range and sometimes not, as an independent character would. Source: decision D2 of the cursor attention ADR.
+- **Return and presence** (CM2). An unknown presence reading counts as idle. No substitute signal stands in for a missing sensor. Source: the [host capability contract ADR](../adr/2026-11-08-host-capability-contract.md) owner decisions.
+- **Voice** (CM3). Code decides when she may speak, and the model decides whether and what: it may decline with `<|SILENT|>`. Silence is the default. Most openings are hers and never follow an app switch. She opens no new topic inside a live exchange. After one unanswered opening only a continuation follows, and after two she stays quiet for hours. A reply does not restore the rate at once. A follow-up returns once to an open thread. A ritual happens at most once a day, and a missed window stays missed. A decline counts as neutral for backoff. Sources: the [situational presence ADR](../adr/2026-10-19-situational-presence.md) and the [reach-out cadence ADR](../adr/2026-10-29-unprompted-reach-out-cadence.md).
+- **Spoken reactions** (CM3). A spoken reaction is stored in chat history; a spoken-but-forgotten reaction was rejected. A turn may be answered with an expression alone. Source: the nonverbal channels ADR.
+- **Character state** (CM4). The state stays hidden from the user and changes over long timescales, with no daily reset. The relationship cannot be farmed, absence never punishes, and trust is asymmetric. The long-term reward is changed behavior, not a number. The model never sees numbers or two moods, and model cues never feed temperament. Source: the [layered character state ADR](../adr/2026-11-03-layered-character-state.md).
+
+| Known overlap | Closed by |
+| --- | --- |
+| 1. Beat sync and Natural on Live2D head angles | Rule 6; Body ownership Target rule 2 |
+| 2. Music | Rule 6 |
+| 3. Idle draw and reach-out on separate clocks | Rule 3 |
+| 4. One touch, five reactions | Rule 2 |
+| 5. Two rendered stages | Rule 1 |
+| 6. The user comes back | Rule 2 |
+| 7. Glances | Rule 2; the gaze channel has one owner (Body ownership Target rule 3) |
+| 8. The cursor on MMD | Rules 4 and 5: the mind notices, the director may walk as its realisation of the attend intent |
+| 9. Sleep on Live2D | Rule 1; Body ownership Target rule 1 |
+
+Slice names (CM0 to CM7) and prerequisite steps refer to the [character mind roadmap](character-mind-roadmap.md).
+
 ## Known overlaps
 
 Each case below has two or more deciders acting on the same trigger or channel with no single arbiter between them. This list describes the code; it proposes nothing.
