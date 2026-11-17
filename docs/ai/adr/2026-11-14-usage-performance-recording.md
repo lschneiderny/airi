@@ -1,7 +1,7 @@
 # Usage performance recording: local recorder, pnpm perf, and qa:bench
 
 Date: 2026-11-14
-Status: accepted for the Electron desktop app. The recorder, the `pnpm perf` reader, and `qa:bench` are implemented. Linux numbers come from live sessions and the measurements listed under Validation. macOS and Windows CPU paths are checked by fixtures only.
+Status: accepted for the Electron desktop app. The recorder, the `pnpm perf` reader, and `qa:bench` are implemented. Linux numbers come from live sessions and the measurements listed under Validation. macOS and Windows CPU paths are checked by fixtures only. Superseded in part on 2026-11-17: `qa:stage measure --perf-ab` is gone, so `qa:bench` is the frame-time tool, and the stage-web lag sampler left with the web app. Current rules: [qa-tools perf reports](../../../packages/qa-tools/README.md#perf-reports).
 
 ## Context
 

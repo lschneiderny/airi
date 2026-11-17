@@ -1,7 +1,7 @@
 # Scorer validation protocol 2
 
 Date: 2026-10-21
-Status: accepted
+Status: accepted. Superseded in part on 2026-11-17: `validate-scorer`, the scorer it validated, and the Live2D T1 and T3 gates were removed. Current rules: [Testing and QA](../context/testing.md).
 
 ## Context
 

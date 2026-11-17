@@ -1,7 +1,7 @@
 # Testing tiers and shared-resource policy
 
 Date: 2026-11-10
-Status: accepted
+Status: accepted. Superseded in part on 2026-11-17: the shared verify pass cache and the `live`-as-`browser` wire encoding were removed. Current rules: [Testing and QA](../context/testing.md).
 
 ## Context
 

@@ -1,7 +1,7 @@
 # Motion QA levels and committed gates
 
 Date: 2026-10-20
-Status: accepted
+Status: accepted. Superseded in part on 2026-11-17: the T1 simulator, the Live2D T1 and T3 gates, the statistical scorer, the known-failures registry, and `validate-scorer` were removed. Current rules: [Testing and QA](../context/testing.md).
 
 ## Context
 
