@@ -127,19 +127,30 @@ To stop the processes of a worktree, run `pnpm dev:top kill <name> --yes`.
 ## Commits and branches
 
 - Use [Conventional Commits](https://www.conventionalcommits.org/) with the package name as the scope, for example `feat(stage-ui-live2d): add touch debug overlay`.
-- Name branches `<username>/feat/<short-name>`.
+- Name branches `<username>/<type>/<short-name>`, where `<type>` is a Conventional Commit type such as `feat` or `fix`.
 - Pull with rebase.
 - Keep documentation in the same commit as the code it describes. Put agent configuration changes (`AGENTS.md`, `.agents/`, `.github/copilot-instructions.md`) in a separate commit.
 - Add user-visible strings in English under `packages/i18n/src/locales/en/`. Do not add placeholder translations for other locales.
 
 ## Bring in upstream changes
 
-The fork has diverged heavily from upstream, so upstream fixes are brought in by cherry-pick instead of merge:
+Upstream changes come in by merge, never by cherry-pick or rebase. Merge `upstream/main` into a `<username>/chore/upstream-sync` branch, resolve the conflicts there, and run `pnpm verify --gate`:
 
 ```shell
 git fetch upstream
-git log --oneline main..upstream/main
-git cherry-pick <commit>
+git switch -c <username>/chore/upstream-sync main
+git merge upstream/main
+pnpm verify --gate
 ```
+
+Land the branch locally with a fast-forward, not through a GitHub pull request:
+
+```shell
+git switch main
+git merge --ff-only <username>/chore/upstream-sync
+git push
+```
+
+The fork's pull requests allow only rebase merges, which would copy every upstream commit under a new hash and make the next sync conflict with the last one. For the same reason, do not rebase the fork onto upstream.
 
 Run long verification for a sync in a dedicated worktree.
