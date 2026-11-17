@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process'
 
 import { errorMessageFrom } from '@moeru/std'
 
+import { readBrowserTestProjects } from './lib/browser-projects'
 import { compileCacheEnv } from './lib/compile-cache'
 import { repoRoot } from './lib/git'
 import { runSuites, summarizeSuites, testRunSuites } from './test-run-plan'
@@ -19,7 +20,7 @@ function runCommand(command: string, cwd: string): Promise<number | null> {
 
 async function main(): Promise<number> {
   const root = repoRoot(process.cwd())
-  const results = await runSuites(testRunSuites, (suite) => {
+  const results = await runSuites(testRunSuites(readBrowserTestProjects(root)), (suite) => {
     console.info(`\n[test:run] ${suite.label}: ${suite.command}`)
     return runCommand(suite.command, root)
   })

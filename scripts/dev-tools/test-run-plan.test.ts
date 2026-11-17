@@ -6,6 +6,7 @@ import { dirname, join } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
+import { readBrowserTestProjects } from './lib/browser-projects'
 import { buildWorkspacePackagesCommand, runSuites, summarizeSuites, testRunSuites, vitestConfigCoverage } from './test-run-plan'
 
 const suites: TestRunSuite[] = [
@@ -20,19 +21,14 @@ function clock() {
 }
 
 describe('testRunSuites', () => {
-  it('rebuilds stale workspace packages first, then runs the suites in order', () => {
-    expect(testRunSuites[0].command).toBe(buildWorkspacePackagesCommand)
-    expect(testRunSuites.slice(1).map(suite => suite.command)).toEqual([
+  it('rebuilds stale packages, runs the root config, then gives each browser project its own process', () => {
+    const suites = testRunSuites([{ name: 'stage-ui:browser', packagePath: 'packages/stage-ui' }, { name: 'audio:browser', packagePath: 'packages/audio' }])
+
+    expect(suites.map(suite => suite.command)).toEqual([
+      buildWorkspacePackagesCommand,
       'pnpm exec vitest run',
-      'pnpm exec vitest run --config vitest.browser.config.ts --project provider-inference:browser',
-      'pnpm run test-stage-tamagotchi:run',
-      'pnpm run test-stage-pages:run',
-      'pnpm run test-ui:run',
-      'pnpm run test-stage-ui-live2d:run',
-      'pnpm run test-model-driver-lipsync:run',
-      'pnpm run test-stage-ui-three:run',
-      'pnpm run test-stage-ui-mmd:run',
-      'pnpm run test-audio-browser:run',
+      'pnpm exec vitest run --config vitest.browser.config.ts --project stage-ui:browser',
+      'pnpm exec vitest run --config vitest.browser.config.ts --project audio:browser',
     ])
   })
 })
@@ -88,8 +84,7 @@ describe('vitestConfigCoverage', () => {
     .map(line => line.trim())
     .filter(line => line && line !== 'vitest.config.ts')
   const rootConfig = readFileSync(join(root, 'vitest.config.ts'), 'utf8')
-  const browserRootConfig = readFileSync(join(root, 'vitest.browser.config.ts'), 'utf8')
-  const packageScripts = (JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { scripts: Record<string, string> }).scripts
+  const browserPackages = new Set(readBrowserTestProjects(root).map(project => project.packagePath))
 
   it('accounts for every tracked Vitest config', () => {
     expect(Object.keys(vitestConfigCoverage).sort()).toEqual([...trackedConfigs].sort())
@@ -100,24 +95,13 @@ describe('vitestConfigCoverage', () => {
     expect(unexplained.map(([config]) => config)).toEqual([])
   })
 
-  it('points each runner at a project or script that exists', () => {
+  it('points each runner at a project that exists', () => {
     const missing: string[] = []
     for (const [config, entry] of Object.entries(vitestConfigCoverage)) {
-      for (const runner of entry.runBy) {
-        if (runner === 'root') {
-          if (!rootConfig.includes(dirname(config)))
-            missing.push(`${config}: the root config names no project in ${dirname(config)}`)
-        }
-        else if (runner === 'browser-root') {
-          if (!testRunSuites.some(suite => suite.command === 'pnpm exec vitest run --config vitest.browser.config.ts --project provider-inference:browser'))
-            missing.push(`${config}: test:run has no browser root suite`)
-          if (config !== 'vitest.browser.config.ts' && !browserRootConfig.includes(dirname(config)))
-            missing.push(`${config}: the browser root names no project in ${dirname(config)}`)
-        }
-        else if (!testRunSuites.some(suite => suite.command === `pnpm run ${runner}`) || !packageScripts[runner]) {
-          missing.push(`${config}: test:run has no script ${runner}`)
-        }
-      }
+      if (entry.runBy.includes('root') && !rootConfig.includes(dirname(config)))
+        missing.push(`${config}: the root config names no project in ${dirname(config)}`)
+      if (entry.runBy.includes('browser-root') && config !== 'vitest.browser.config.ts' && !browserPackages.has(dirname(config)))
+        missing.push(`${config}: the browser root names no project in ${dirname(config)}`)
     }
     expect(missing).toEqual([])
   })

@@ -62,8 +62,8 @@ export default withCpuSlots(defineConfig({
           include: ['plugins/airi-plugin-web-extension/src/**/*.test.ts'],
         },
       },
-      // Node projects of packages whose own config also holds browser projects. Their browser projects run through
-      // `pnpm test:run`'s package scripts. These packages declare no node-only config, so the projects are inline.
+      // Node projects of packages whose own config also holds browser projects. Their browser projects run in
+      // `vitest.browser.config.ts`. These packages declare no node-only config, so the projects are inline.
       {
         test: {
           name: 'audio:node',

@@ -1,10 +1,12 @@
 import type { AcquireOptions } from '@proj-airi/cpu-slots'
 
+import type { BrowserTestProject } from './lib/browser-projects'
 import type { ChangedFile } from './lib/git'
 import type { VerifyStatsOptions } from './verify-history'
 
 import { classes } from '@proj-airi/cpu-slots'
 
+import { browserRootConfig } from './lib/browser-projects'
 import { parseStatsArgs } from './verify-history'
 
 /** Lint runs first: it is the cheapest step, and a lint failure stops verify before the slower steps start. */
@@ -76,23 +78,6 @@ const typecheckGlobalFile = /^(?:tsconfig[^/]*\.json|package\.json|pnpm-lock\.ya
 const codeFile = /\.(?:[cm]?[jt]sx?|vue)$/
 const binaryFile = /\.(?:png|jpe?g|gif|webp|avif|ico|icns|bmp|svgz|mp[34]|wav|ogg|flac|webm|mov|zip|7z|gz|tgz|woff2?|ttf|otf|moc3|vrm|pmx|pmd|vmd|glb|gltf|bin|exe|dll|node|wasm|pdf|psd)$/i
 
-export interface ExtraTestConfig {
-  config: string
-  project?: string
-}
-
-/** Vitest configs that `pnpm test:run` runs besides the root config, with the project it selects. */
-export const extraTestConfigs: ExtraTestConfig[] = [
-  { config: 'apps/stage-tamagotchi/vitest.config.ts', project: 'browser' },
-  { config: 'packages/stage-ui/vitest.config.ts' },
-  { config: 'packages/stage-ui-live2d/vitest.config.ts', project: 'browser' },
-  { config: 'packages/model-driver-lipsync/vitest.config.ts', project: 'browser' },
-  { config: 'packages/stage-ui-three/vitest.config.ts', project: 'browser' },
-  { config: 'packages/stage-ui-mmd/vitest.config.ts', project: 'browser' },
-  { config: 'packages/stage-pages/vitest.config.ts' },
-  { config: 'packages/audio/vitest.config.ts', project: 'browser' },
-]
-
 /**
  * Turbo arguments that rebuild stale workspace package output before the test step. Tests import `dist` output such as
  * the i18n locales, and a pull or merge that changes package sources leaves it stale while the install step stays
@@ -124,8 +109,8 @@ export interface VerifyPlan {
   lintFiles: string[]
   testFiles: string[]
   /**
-   * Workspace package directories that hold a changed code file. The extra configs only hold package tests, so they
-   * run only for these packages and the packages that depend on them.
+   * Workspace package directories that hold a changed code file. Browser projects only hold package tests, so they run
+   * only for these packages and the packages that depend on them.
    */
   testPackagePaths: string[]
 }
@@ -139,21 +124,13 @@ function inPackage(path: string, packagePaths: string[]): boolean {
 }
 
 /**
- * Keeps the extra configs whose package is in `affectedPackagePaths`: the packages with a changed code file plus every
- * package that depends on one. A config in any other package cannot import the changed code, so `vitest related`
+ * The browser projects whose package is in `affectedPackagePaths`: the packages with a changed code file plus every
+ * package that depends on one. A project in any other package cannot import the changed code, so `vitest related`
  * would only start its browser to find nothing.
  */
-export function selectExtraTestConfigs(affectedPackagePaths: string[]): ExtraTestConfig[] {
+export function selectBrowserTestProjects(affectedPackagePaths: string[], projects: BrowserTestProject[]): string[] {
   const affected = new Set(affectedPackagePaths)
-  return extraTestConfigs.filter(({ config }) => affected.has(config.slice(0, config.lastIndexOf('/'))))
-}
-
-/** Browser projects share one root, while package selection keeps the existing affected-config boundary. */
-export function selectBrowserTestProjects(affectedPackagePaths: string[]): string[] {
-  const packages = selectExtraTestConfigs(affectedPackagePaths).map(({ config }) => config.slice(0, config.lastIndexOf('/')))
-  if (affectedPackagePaths.includes('packages/provider-inference'))
-    packages.push('packages/provider-inference')
-  return packages.map(path => `${path.slice(path.lastIndexOf('/') + 1)}:browser`)
+  return projects.filter(project => affected.has(project.packagePath)).map(project => project.name)
 }
 
 export interface TestRun {
@@ -170,7 +147,7 @@ export function planTestRuns(browserProjects: string[]): TestRun[] {
   // Remove when the plugin keys that cache per server.
   return [
     { config: 'vitest.config.ts', projects: [] },
-    ...browserProjects.map(project => ({ config: 'vitest.browser.config.ts', projects: [project] })),
+    ...browserProjects.map(project => ({ config: browserRootConfig, projects: [project] })),
   ]
 }
 

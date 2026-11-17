@@ -1,4 +1,8 @@
+import type { BrowserTestProject } from './lib/browser-projects'
+
 import { errorMessageFrom } from '@moeru/std'
+
+import { browserRootConfig } from './lib/browser-projects'
 
 export interface TestRunSuite {
   label: string
@@ -14,24 +18,21 @@ export interface TestRunSuite {
  */
 export const buildWorkspacePackagesCommand = 'pnpm run build:packages'
 
-/** The suites `pnpm test:run` runs, in order. Each package script runs its own Vitest config. */
-export const testRunSuites: readonly TestRunSuite[] = [
-  { label: 'rebuild stale packages', command: buildWorkspacePackagesCommand },
-  { label: 'root vitest', command: 'pnpm exec vitest run' },
-  { label: 'provider-inference browser', command: 'pnpm exec vitest run --config vitest.browser.config.ts --project provider-inference:browser' },
-  { label: 'test-stage-tamagotchi:run', command: 'pnpm run test-stage-tamagotchi:run' },
-  { label: 'test-stage-pages:run', command: 'pnpm run test-stage-pages:run' },
-  { label: 'test-ui:run', command: 'pnpm run test-ui:run' },
-  { label: 'test-stage-ui-live2d:run', command: 'pnpm run test-stage-ui-live2d:run' },
-  { label: 'test-model-driver-lipsync:run', command: 'pnpm run test-model-driver-lipsync:run' },
-  { label: 'test-stage-ui-three:run', command: 'pnpm run test-stage-ui-three:run' },
-  { label: 'test-stage-ui-mmd:run', command: 'pnpm run test-stage-ui-mmd:run' },
-  { label: 'test-audio-browser:run', command: 'pnpm run test-audio-browser:run' },
-]
+/**
+ * The suites `pnpm test:run` runs, in order: the package rebuild, the root config, then one process per browser project
+ * of the browser root (see `planTestRuns` in `verify-plan.ts` for why each gets its own process).
+ */
+export function testRunSuites(browserProjects: BrowserTestProject[]): TestRunSuite[] {
+  return [
+    { label: 'rebuild stale packages', command: buildWorkspacePackagesCommand },
+    { label: 'root vitest', command: 'pnpm exec vitest run' },
+    ...browserProjects.map(({ name }) => ({ label: name, command: `pnpm exec vitest run --config ${browserRootConfig} --project ${name}` })),
+  ]
+}
 
 export interface VitestConfigCoverage {
-  /** `root` and `browser-root` select repository roots. Other entries name `pnpm test:run` package scripts. */
-  runBy: string[]
+  /** The repository roots that run the config: the node root `vitest.config.ts` or the browser root. */
+  runBy: ('root' | 'browser-root')[]
   /** Why no runner runs the config, or what part of it runs. */
   note?: string
 }
@@ -42,10 +43,10 @@ export interface VitestConfigCoverage {
  * cannot have tests that no runner runs.
  */
 export const vitestConfigCoverage: Readonly<Record<string, VitestConfigCoverage>> = {
-  'apps/stage-tamagotchi/vitest.config.ts': { runBy: ['test-stage-tamagotchi:run'] },
+  'apps/stage-tamagotchi/vitest.config.ts': { runBy: ['browser-root'], note: 'its node project runs through vitest.node.config.ts' },
   'apps/stage-tamagotchi/vitest.node.config.ts': { runBy: ['root'] },
   'integrations/minecraft/vitest.config.ts': { runBy: ['root'] },
-  'packages/audio/vitest.config.ts': { runBy: ['root', 'test-audio-browser:run'], note: 'the root config holds an inline node project' },
+  'packages/audio/vitest.config.ts': { runBy: ['root', 'browser-root'], note: 'the root config holds an inline node project' },
   'packages/better-ws/vitest.config.ts': { runBy: ['root'] },
   'packages/ccc/vitest.config.ts': { runBy: ['root'] },
   'packages/core-agent/vitest.config.ts': { runBy: ['root'] },
@@ -56,7 +57,7 @@ export const vitestConfigCoverage: Readonly<Record<string, VitestConfigCoverage>
   'packages/input-gamepad-vueuse/vitest.config.ts': { runBy: ['root'] },
   'packages/input-gamepad/vitest.config.ts': { runBy: ['root'] },
   'packages/input-playstation-dualsense-5/vitest.config.ts': { runBy: ['root'] },
-  'packages/model-driver-lipsync/vitest.config.ts': { runBy: ['test-model-driver-lipsync:run'] },
+  'packages/model-driver-lipsync/vitest.config.ts': { runBy: ['browser-root'], note: 'its node project runs through vitest.node.config.ts' },
   'packages/model-driver-lipsync/vitest.node.config.ts': { runBy: ['root'] },
   'packages/model-driver-magic-live2d/vitest.config.ts': { runBy: ['root'] },
   'packages/motion-driver-humanoid/vitest.config.ts': { runBy: ['root'] },
@@ -66,7 +67,7 @@ export const vitestConfigCoverage: Readonly<Record<string, VitestConfigCoverage>
   'packages/plugin-protocol/vitest.config.ts': { runBy: ['root'] },
   'packages/plugin-sdk-tamagotchi/vitest.config.ts': { runBy: ['root'] },
   'packages/plugin-sdk/vitest.config.ts': { runBy: ['root'] },
-  'packages/provider-inference/vitest.config.ts': { runBy: ['root', 'browser-root'], note: 'node runs in the node root; browser runs in the browser root' },
+  'packages/provider-inference/vitest.config.ts': { runBy: ['root', 'browser-root'] },
   'packages/qa-tools/spikes/t2/vitest.browser.config.ts': { runBy: [], note: 'A spike harness that needs a Live2D rig folder and a Cubism core through environment variables. It runs by hand.' },
   'packages/qa-tools/vitest.config.ts': { runBy: [], note: 'Its node project runs through vitest.node.config.ts. Its gate project runs only through the qa-tools gate CLI and needs a rig and a Cubism core.' },
   'packages/qa-tools/vitest.node.config.ts': { runBy: ['root'] },
@@ -75,22 +76,22 @@ export const vitestConfigCoverage: Readonly<Record<string, VitestConfigCoverage>
   'packages/server-runtime/vitest.config.ts': { runBy: ['root'] },
   'packages/server-sdk/vitest.config.ts': { runBy: ['root'] },
   'packages/stage-layouts/vitest.config.ts': { runBy: ['root'] },
-  'packages/stage-pages/vitest.config.ts': { runBy: ['test-stage-pages:run'] },
+  'packages/stage-pages/vitest.config.ts': { runBy: ['browser-root'] },
   'packages/stage-shared/vitest.config.ts': { runBy: ['root'] },
-  'packages/stage-ui-live2d/vitest.config.ts': { runBy: ['test-stage-ui-live2d:run'] },
+  'packages/stage-ui-live2d/vitest.config.ts': { runBy: ['browser-root'], note: 'its node project runs through vitest.node.config.ts' },
   'packages/stage-ui-live2d/vitest.node.config.ts': { runBy: ['root'] },
-  'packages/stage-ui-mmd/vitest.config.ts': { runBy: ['root', 'test-stage-ui-mmd:run'], note: 'the root config holds an inline node project' },
+  'packages/stage-ui-mmd/vitest.config.ts': { runBy: ['root', 'browser-root'], note: 'the root config holds an inline node project' },
   'packages/stage-ui-tachie/vitest.config.ts': { runBy: ['root'] },
-  'packages/stage-ui-three/vitest.config.ts': { runBy: ['test-stage-ui-three:run'] },
+  'packages/stage-ui-three/vitest.config.ts': { runBy: ['browser-root'], note: 'its node project runs through vitest.node.config.ts' },
   'packages/stage-ui-three/vitest.node.config.ts': { runBy: ['root'] },
-  'packages/stage-ui/vitest.config.ts': { runBy: ['root', 'test-ui:run'], note: 'node runs in the node root and the package suite' },
+  'packages/stage-ui/vitest.config.ts': { runBy: ['root', 'browser-root'] },
   'packages/testing-audio/vitest.config.ts': { runBy: ['root'], note: 'only the unit project, as an inline root project. The fakemic projects need the built Electron app and a microphone runtime, so they run only on demand through the package script.' },
   'packages/vite-plugin-sherpaw/vitest.config.ts': { runBy: ['root'] },
   'packages/vitest-plugin-fakemic/vitest.config.ts': { runBy: ['root'] },
   'server/apps/api/vitest.config.ts': { runBy: ['root'] },
   'server/apps/auth/vitest.config.ts': { runBy: ['root'] },
   'services/computer-use-mcp/vitest.config.ts': { runBy: ['root'] },
-  'vitest.browser.config.ts': { runBy: ['browser-root'], note: 'test:run selects provider-inference:browser here; the remaining browser projects run through package suites' },
+  'vitest.browser.config.ts': { runBy: ['browser-root'] },
 }
 
 export interface SuiteResult {

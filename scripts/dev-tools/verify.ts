@@ -9,6 +9,7 @@ import { delimiter, join, relative } from 'node:path'
 import { errorMessageFrom } from '@moeru/std'
 import { acquire } from '@proj-airi/cpu-slots'
 
+import { readBrowserTestProjects } from './lib/browser-projects'
 import { compileCacheEnv } from './lib/compile-cache'
 import { capture, chunkByLength, nodeCommandChunkLimitsFor, run, shimCommandChunkLimits } from './lib/exec'
 import { gatedNotice, listGatedTestFiles } from './lib/gated-tests'
@@ -192,7 +193,7 @@ async function main(): Promise<number> {
     }
     const plan = planVerify(changed, workspaces.paths, workspaces.rootDependencyPaths)
     const affected = step === 'test' ? withDependents(root, plan.testPackagePaths) : []
-    const browserProjects = step === 'test' ? selectBrowserTestProjects(affected) : []
+    const browserProjects = affected.length ? selectBrowserTestProjects(affected, readBrowserTestProjects(root)) : []
     const commands = commandsFor(step, root, plan, browserProjects)
     if (typeof commands === 'string') {
       finish({ step, status: 'skipped', detail: commands, durationMs: 0 }, history)

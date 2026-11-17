@@ -5,7 +5,7 @@ import { defineConfig } from 'vitest/config'
 import { audioBrowserProject } from './vitest.browser-project.ts'
 
 export default withCpuSlots(defineConfig({
-  // `pnpm test:run` runs this config from the repo root, where the relative `src/**` includes match nothing.
+  // A run from the repo root would otherwise resolve the relative `src/**` includes there and match nothing.
   root: import.meta.dirname,
   test: {
     projects: [

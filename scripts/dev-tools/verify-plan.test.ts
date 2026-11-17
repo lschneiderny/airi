@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { acquire } from '@proj-airi/cpu-slots'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { lintAllFixable, parseVerifyArgs, planStepLease, planTestRuns, planVerify, selectExtraTestConfigs, testPrerequisiteTurboArgs, verifySteps } from './verify-plan'
+import { lintAllFixable, parseVerifyArgs, planStepLease, planTestRuns, planVerify, selectBrowserTestProjects, testPrerequisiteTurboArgs, verifySteps } from './verify-plan'
 
 const packages = ['packages/stage-ui', 'apps/stage-tamagotchi']
 const file = (path: string, deleted = false) => ({ path, deleted })
@@ -50,7 +50,7 @@ describe('planVerify', () => {
     expect(planVerify([file('packages/stage-ui/package.json')], packages).typecheck).toEqual({ kind: 'affected' })
   })
 
-  it('skips typecheck and extra test configs for root-only code', () => {
+  it('skips typecheck and browser projects for root-only code', () => {
     const plan = planVerify([file('scripts/dev-tools/verify.ts')], packages)
     expect(plan.typecheck).toEqual({ kind: 'none' })
     expect(plan.testFiles).toEqual(['scripts/dev-tools/verify.ts'])
@@ -73,22 +73,24 @@ describe('planVerify', () => {
   })
 })
 
-describe('selectExtraTestConfigs', () => {
-  it('keeps only the configs of affected packages, with their projects', () => {
-    expect(selectExtraTestConfigs(['packages/stage-ui-mmd', 'apps/stage-tamagotchi', 'packages/stage-ui', 'packages/qa-tools'])).toEqual([
-      { config: 'apps/stage-tamagotchi/vitest.config.ts', project: 'browser' },
-      { config: 'packages/stage-ui/vitest.config.ts' },
-      { config: 'packages/stage-ui-mmd/vitest.config.ts', project: 'browser' },
-    ])
+describe('selectBrowserTestProjects', () => {
+  const projects = [
+    { name: 'stage-ui-mmd:browser', packagePath: 'packages/stage-ui-mmd' },
+    { name: 'stage-ui:browser', packagePath: 'packages/stage-ui' },
+    { name: 'stage-tamagotchi:browser', packagePath: 'apps/stage-tamagotchi' },
+  ]
+
+  it('keeps the projects of affected packages once, in config order', () => {
+    expect(selectBrowserTestProjects(['apps/stage-tamagotchi', 'packages/stage-ui', 'packages/stage-ui', 'packages/qa-tools'], projects))
+      .toEqual(['stage-ui:browser', 'stage-tamagotchi:browser'])
   })
 
-  it('selects nothing when no affected package owns an extra config', () => {
-    expect(selectExtraTestConfigs([])).toEqual([])
-    expect(selectExtraTestConfigs(['packages/core-agent'])).toEqual([])
-  })
-
-  it('does not match a package that only shares a name prefix', () => {
-    expect(selectExtraTestConfigs(['packages/stage-ui-three-extra', 'packages/stage'])).toEqual([])
+  it.each([
+    { paths: [] },
+    { paths: ['packages/core-agent'] },
+    { paths: ['packages/stage-ui-mmd-extra', 'packages/stage'] },
+  ])('starts no browser for unaffected packages: $paths', ({ paths }) => {
+    expect(selectBrowserTestProjects(paths, projects)).toEqual([])
   })
 })
 
