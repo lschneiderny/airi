@@ -33,4 +33,4 @@
 - Choose required tiers from the [testing guide](../../docs/ai/context/testing.md); this section lists command mechanics only.
 - Node tests: `pnpm -F @proj-airi/qa-tools exec vitest run --project node`.
 - Doc path audit: `pnpm -F @proj-airi/qa-tools exec tsx scripts/check-doc-paths.ts`. It checks paths named in the motion QA ADR and skill.
-- Bridge leak scan after a desktop build: `pnpm -F @proj-airi/qa-tools exec tsx bin/check-prod-bundle.ts`.
+- Bridge leak scan: `pnpm check:bundle` builds the desktop app and fails if a renderer chunk contains the motion QA bridge.

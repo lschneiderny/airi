@@ -15,4 +15,3 @@
 - Do not cache a failed verify step, or a pass when files changed during the step. Keep worker-count flags out of cache keys through `stripWorkerFlags`.
 - Do not let `wt rm` delete a worktree with live processes, uncommitted files without `--force`, or unmerged detached commits.
 - Do not add a `package.json` here or move these tools into a workspace package without asking. Their root-only ownership is deliberate.
-- Do not treat a shallow `build-airi-docs.sh` clone as changelog-complete. Pass a full-history checkout through `AIRI_DOCS_DIR` when changelogs matter.
