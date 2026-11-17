@@ -91,7 +91,7 @@ export async function runHostCli(argv: string[], repoRoot: string): Promise<numb
       throw new Error('--xwayland requires a Linux Wayland session')
     const detected = resolveHostCapabilities(facts, 0)
     const forced = values.expect
-    if (forced !== undefined && !['windows', 'macos', 'linux-x11', 'linux-xwayland', 'linux-wayland', 'web'].includes(forced))
+    if (forced !== undefined && !['windows', 'macos', 'linux-x11', 'linux-xwayland', 'linux-wayland'].includes(forced))
       throw new Error(`Unknown --expect host: ${forced}`)
     // The test-only mismatch flag changes the oracle, never the launched app or runner facts.
     const expectation = hostSmokeExpectation(
