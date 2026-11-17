@@ -1579,15 +1579,9 @@ The unchanged T3 capture lasts 600 seconds: 180 seconds of warm-up and 420 score
 
 After argument and environment checks pass, `pnpm qa:motion gate` at T1, T2, or T3, direct `pnpm qa:motion t3`, `pnpm qa:motion validate-scorer`, `pnpm qa:model run`, and `pnpm qa:model score` create unique runs under `.temp/qa/<timestamp>-<tool>-<label>/`. Each run's `run.json` records its command, source SHA, dirty state, relevant `APP_*` and `AIRI_QA_*` environment values, gate provenance when applicable, artifact hashes, and result. A T3 gate also creates one run per capture session. An emotion `--rescore` creates its new run only after the archive passes validation; a refusal exits 2 before creating it.
 
-`pnpm qa:doctor` prints its findings, including with `--warm`, and creates no run directory or manifest. `pnpm qa:report` writes `report.html` into the first input run directory or the path passed with `--out`; it creates no separate run directory or manifest. The evidence archive command copies files under `.omo/evidence/<slug>` and writes that archive's `manifest.json`, not a QA run directory or `run.json`.
+`pnpm qa:doctor` prints its findings, including with `--warm`, and creates no run directory or manifest. `pnpm qa:report` writes `report.html` into the first input run directory or the path passed with `--out`; it creates no separate run directory or manifest.
 
-Archive plan evidence into the main checkout before removing a worktree:
-
-```bash
-pnpm -F @proj-airi/qa-tools run evidence archive --plan <slug> --from <worktree-path>
-```
-
-The archive command preserves the source, refuses conflicting bytes, and writes a hash manifest. Run output and evidence are not committed.
+Run output and evidence are not committed.
 
 ## Bridge gates
 
