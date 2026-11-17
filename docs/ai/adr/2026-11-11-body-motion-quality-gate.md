@@ -332,3 +332,241 @@ missing-roll faults that must fail. No other walk-form line and no gate band
 changed.
 
 Scores compare motion statistics with bands derived from human capture. They do not prove naturalness or appeal, which stay a visual review.
+
+## Band history
+
+Moved from the qa-tools README on 2026-11-17, unchanged, so the README keeps only the current version. Paths are relative to `packages/qa-tools`.
+
+### Version 2: pooled body sides, 2026-11-11
+
+Version 2 fits every mirrored left/right band, activity floor and arm move
+speed from both sides pooled. A sided
+metric is a fitted metric whose id names a left or right bone or region and
+whose mirror is also fitted: the shoulder, upper-arm and lower-arm chain
+correlations and lags, the upper-arm ACF, and the arm LDLJ and spike rates.
+For each such pair, in every class, the per-clip values or episodes of both
+sides form one pool. The unchanged percentile, margin, transform, minimum-count
+and vacuous-band rules fit one band from it, and both ids use that band.
+For a pooled pair the ten-value clip minimum counts side values, not clips, so
+pairs that neither side could fit alone are now gated, which makes the gate
+stricter: idle `smooth.armL.spikeRate` and `smooth.armR.spikeRate` (8 fitting
+clips with a value per side, 16 pooled) and talk `smooth.armR.spikeRate` (7
+values in version 1, 18 pooled side values in version 2).
+Episode pools take each clip in manifest order, the left side's episodes
+before the right side's. Held-out units are judged on both sides against the
+pooled band: a held-out clip counts once for each side that fails it, an
+episode group counts once for the pair, and the unchanged 0-or-1 rule decides
+whether the pair stays gated.
+The held-out allowance stays at one failing unit, while a pooled pair has about
+twice the held-out units of either side. The talk arm LDLJ pair has 14 held-out
+episode groups instead of 7 per side; two fail, so `smooth.armL.ldlj` and
+`smooth.armR.ldlj` became REPORT with `holdout-failures: 2`. This is a loss of
+a gated check for speech: version 2 no longer gates arm smoothness (LDLJ) in
+talk.
+Each left or right bone's activity floor is half
+the P10 of both sides' fitting-clip activities, and `armL` and `armR` share the
+median of both arms' fitting-clip median speeds; both sides use that one
+value. Non-mirrored detector parameters, every declared band, the manifest and
+the fit/held-out split are unchanged. A non-sided band keeps its fitting rule,
+but when its metric reads a pooled floor or arm move speed (coverage,
+bilateral, dimensionality, gesture stroke rate, onset) its human values are
+measured with the pooled value, so the band can move; in version 2, eleven such
+bands moved and none changed status. `context.sidePooling` in the bands file
+lists the pooled pairs per class.
+
+Mirrored bands whose status changed: idle and walk
+`chain.leftUpperArm-leftLowerArm.lagMs` /
+`chain.rightUpperArm-rightLowerArm.lagMs` and walk
+`chain.leftLowerArm-leftHand.lagMs` / `chain.rightLowerArm-rightHand.lagMs`
+became REPORT as vacuous (version 1 gated the left side only); talk
+`smooth.armL.ldlj` / `smooth.armR.ldlj` became REPORT; idle
+`smooth.armL.spikeRate` / `smooth.armR.spikeRate` and talk
+`smooth.armR.spikeRate` became GATED (talk `smooth.armL.spikeRate` was already
+gated).
+
+A pooled floor can fall outside both version 1 side values when a class has few
+fitting clips, because the floor is half the 10th percentile with linear
+interpolation and pooling changes the interpolation rank. This happens in talk
+(lower arm, upper leg, lower leg, foot, toes) and in the shared
+gaze/emotion/react set (upper leg); every idle and walk pooled floor lies
+between its two side values. Within each clip, left-side values are ordered
+before right-side values in the pooled episodes, which decides which episodes
+share a held-out group of eight and which values the seeded bootstrap draws;
+the rule did not specify this order.
+
+Why: version 1 fitted each side separately from 11 idle clips of one
+performer, so sided bands carried that performer's handedness. For example,
+the idle limit of `chain.leftShoulder-leftUpperArm.zeroLagCorr` was r 0.62
+and the right side's was r 0.98. The floors were lopsided as well: idle
+`leftHand` 0.0054 against `rightHand` 0.0030 rad/s, so a metric could read
+`no-motion` on one side only. A character whose arms move alike on both
+sides failed on the left only. This change was made after a tuned character
+failed left-side metrics only. No character data entered the fit. The user
+decided on 2026-11-11: "Arm bands: Gate v2, pooled sides (Recommended)".
+`bands-v1.json` stays in the repository unchanged as the record of version 1.
+
+### Version 3: speech rules now, emotion clear of neutral, 2026-11-11
+
+The project owner decided on 2026-11-11: "Speech gate: Rules now, reference
+later (Recommended)" and "Emotion gate: Clear of neutral (Recommended)". Both
+decisions were made before any goal-3 gesture or emotion motion code existed,
+on the evidence of a feasibility probe. That probe added designed gestures and emotion postures to
+a real Chisa trace and judged them with the frozen version 2 bands. Version 3
+carries these two decisions and nothing else. Every fitted bound, floor, move
+speed, held-out verdict and admission record is the same as in version 2.
+Idle, walk, gaze and touch are identical to version 2. No character motion
+data entered any band or rule.
+
+Speech. Every talk performer in the reference locomotes: storyteller 138,
+who supplies 11 of the 16 fitting window clips, has a median root speed of
+about 1 leg length/s. The talk activity floors and the clip-unit talk bands
+therefore describe a walking speaker. A calm, well-formed standing speaker
+missed the upper-arm floor by a factor of 2 to 3 and the trunk floors by up to
+12. Version 3 applies one rule: in the talk class, every gated band fitted per
+clip from the talk window clips becomes REPORT with the reason `talk
+reference performers locomote; floors are not valid for a standing speaker`.
+The values are still measured and printed, and the fitted bounds stay in the
+file. The rule selects 18 metrics, which version 3 no longer gates for speech:
+
+- the chain correlations `chain.spine-chest`, `chain.chest-neck`,
+  `chain.neck-head`, and both sides' `UpperArm-LowerArm` and `LowerArm-Hand`
+  (`zeroLagCorr`);
+- `coverage.core` and `coverage.arms`;
+- `bilateral.upperArm`, `bilateral.lowerArm` and `bilateral.hand`
+  (`peakCorr`);
+- `inter.speedCv`, `dim.upper` and `dim.core`;
+- `smooth.head.spikeRate`, `smooth.armL.spikeRate` and `smooth.armR.spikeRate`.
+
+This is a loss of gated checks for speech. Criterion-level rules make up for
+it, and those rules are not part of this gate. Under version 3, a speech trace
+passes the gate if its arm strokes land on the speech peaks and its fingers
+are not constant. This holds even with a frozen trunk and head, one arm,
+mirrored arms, rigid lockstep joints, pops or single-axis motion. The
+criterion-level reports of goal 3 judge those properties, not the gate. A standing-speaker reference is
+to be proposed later, under a further gate version. Talk still gates these
+metrics:
+
+- `smooth.head.ldlj`: reads the head move speed;
+- `onset.attackFraction` and `onset.easedOrAnticipated`: read the region move
+  speeds;
+- `gesture.strokeP` and `gesture.strokeLagMs`: read the arm move speeds;
+- `coverage.fingers`: reads the fitted talk hand floors;
+- `fingers.frozen`: reads no detector parameter.
+
+These parameters are version 2's talk move speeds and floors. The arm and
+hand values come from talk performers, but no metric here needs the trunk or
+upper arm to reach a reference floor.
+
+Emotion. Neutral has no posture, so `emotion.minSeparation` (all pairs,
+including neutral against placebo) was at most 0.474 for any posture set
+in the probe. It keeps its formula and its bound of 2 and is now REPORT. The new gated
+`emotion.minSeparationFromNeutral` is the minimum, over every emotion other
+than neutral, of its separation from neutral and its separation from the
+placebo. It uses the same pooled SD units and must be at least 2. The
+neutral-against-placebo pair is not part of it. A pool without a `neutral`
+condition fails the metric: its value is undefined with detail
+`no-neutral-condition`, because such a pool cannot show that any emotion is
+clear of neutral. This bar is lower than version 2's declared
+all-pairs bar, because pairs of two non-neutral emotions are no longer gated.
+The threshold of 2 was a declared number, transferred from the Live2D emotion
+gate. It was not fitted from human data. `emotion.armShare` and the onset
+bands are unchanged.
+
+### Version 4: unscorable smoothness, 2026-11-12
+
+The project owner decided on 2026-11-12: "an unscorable arm or head is
+skipped only when a separate check proves it is not frozen". Version 4
+carries that rule and nothing else. `bands-v4.json` differs from
+`bands-v3.json` only in `gate.version`; every band, floor and move speed is the
+same. A `smooth.<region>.ldlj` metric of a character trace with fewer than 8
+episodes, none included, is judged as follows:
+
+- **Not frozen.** The region's windowed displacement is the median, over the
+  class windows (talk 5 s, otherwise 10 s, half hop), of the p95 distance in
+  DIP that its visible end moves from that window's mean position. The head's
+  end is the eyes' mid-point in the chest frame; the arm's is the wrist in the
+  shoulder frame. DIP are at the default 560 DIP character height
+  (`settings/mmd/stage-character-height`), where the stage camera draws d model
+  units as d x 560 / model height DIP. The model height is the rest height of
+  the rig's highest traced bone, the eyes on both rigs. When the reading is at
+  least 0.8375 DIP for the head or 1.789 DIP for an arm, the metric is SKIPPED
+  with `insufficient-episodes; not frozen: windowed displacement <dip> DIP
+  against <threshold>`.
+- **Frozen.** Below that, it is `undefined: no-motion; frozen: ...`, which a
+  gated band (the head in idle and talk) judges FAIL.
+- **Reference clips are unchanged.** The bands cannot move.
+
+Version 3 failed a head with no move segment and skipped one with 1 to 7.
+So a calm head that never crossed the talk threshold failed, and a head held
+still except for one turn passed. Both are now judged by the check.
+
+The rule comes from 156 labelled cases built in the posed bones of real speak
+runs on two rigs (lane U, revision 3).
+- **Must count as frozen:** frozen heads and arms; drift; one turn; a rigid
+  arm carried by its shoulder; and, at the edge, tremors at 0.5, 2, 8 and
+  12 Hz and drifts whose visible end moves under 1 DIP (one pixel at device
+  ratio 1) peak to peak, or within a 5 s window.
+- **Must count as alive:** a calm scaled head, and a real idle arm.
+
+Each threshold is the geometric mean of its region's worst frozen and worst
+alive reading: head 0.381 and 1.842 DIP, arm 0.550 and 5.823 DIP.
+
+Limits of version 4:
+
+- The visibility edge is an assumption: 1 DIP at the default character
+  height, for a viewer of the default stage. A larger character, or a device
+  ratio of 2, shows smaller motion. Below 1 DIP, a motion can still show as
+  antialiasing shimmer.
+- The thresholds sit between those frozen and alive cases. No human
+  reference sets them.
+- Sensitivity, on both rigs:
+  - The head check still fails a frozen head with an 8 Hz tremor of up to 4 deg
+    (0.79 DIP at the face), a drift of up to 90 deg per minute, or a single
+    turn; it passes a 5 deg tremor and a 120 deg per minute drift.
+  - The arm check fails a frozen arm with a tremor of up to 0.7 deg (1.63 DIP at
+    the hand), a drift of up to 10 deg per minute, or a rigid arm moved only
+    by its shoulder; it passes a 0.9 deg tremor and a 20 deg per minute drift.
+- False failures: it judged 0 of 627 regions frozen on 209 stored correct
+  runs (278 of them unscorable). The closest correct region read 1.323 DIP
+  against 0.8375 (the head of an emotions run, 1.58x).
+- A region alive in at least half of the windows passes. A region that
+  freezes for the rest of the run is not caught by any line.
+- A rig without eye bones has no visible head end. Its unscorable head
+  fails.
+- A skipped line proves nothing about smoothness: only that the region moves
+  visibly and makes too few episodes to score.
+- A passing smoothness line does not prove human texture. The talk band
+  passes minimum-jerk turns with an 8 Hz jitter and fails them clean, and its
+  lower edge passes an arm made of six one-frame 20 deg jumps per gesture
+  (`pops` fails that arm).
+
+### Version 5: side-invariant emotion separation, 2026-11-12
+
+The project owner decided on 2026-11-12: "Emotion gate: Reviewed rule change",
+a new gate version with side-invariant features that also fixes a flip when a
+bone turns past 180 degrees. Version 5 carries that rule and nothing else.
+`bands-v5.json` differs from `bands-v4.json` only in `gate.version`.
+
+- **Features.** `emotion.minSeparation`, `emotion.medianSeparation` and
+  `emotion.minSeparationFromNeutral` read `postureFeatures`
+  (`src/t2-3d/metrics/mirror.ts`) instead of the signed posture vector. Each
+  bone's turn becomes (R - I) / sqrt(2), which is continuous through 180
+  degrees: a hand turned 179 degrees and one turned 181 degrees lie 2 degrees
+  apart. The features are the mirror-symmetric part of those numbers and, per
+  bone, the length of the antisymmetric part, so a pose and its mirror image
+  read the same. Centres, the pooled SD, the bar of 2 and the required pairs
+  are unchanged. `emotion.armShare` keeps the signed vectors that its band was
+  fitted on.
+- **Why.** The design puts an emotion's sided pose (an arm form, a lean, one
+  shoulder) on a random side. Version 4 read the same full-size poses at 0.65
+  SD on random sides and 3.04 SD on one side. Every arm-form hand turns 162 to
+  180 degrees, where the rotation vector flips.
+- **Labelled cases.** On both rigs, built in the posed bones of idle runs
+  (E/g3/s/rules.md sections 11.5 and 12.5), the correct sets read 3.82 to 4.03,
+  with the form hands at 175 to 185 degrees, at 179 or at 181 degrees, and on
+  either side. The fault sets read at most 1.39: a quarter-size pose, a 0.5 s
+  pulse, its edge, and no pose. Two emotions that differ only by side read
+  1.14 to 1.20 apart.
+- **Limits.** The smallest design-shaped pose that clears 2 is about 0.46 of
+  the design. Making every sided pose go to one side no longer raises the
+  reading (0.99 times the random-side reading).
