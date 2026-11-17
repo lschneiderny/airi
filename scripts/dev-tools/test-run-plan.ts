@@ -66,7 +66,6 @@ export const vitestConfigCoverage: Readonly<Record<string, VitestConfigCoverage>
   'packages/plugin-sdk-tamagotchi/vitest.config.ts': { runBy: ['root'] },
   'packages/plugin-sdk/vitest.config.ts': { runBy: ['root'] },
   'packages/provider-inference/vitest.config.ts': { runBy: ['root', 'browser-root'] },
-  'packages/qa-tools/spikes/t2/vitest.browser.config.ts': { runBy: [], note: 'A spike harness that needs a Live2D rig folder and a Cubism core through environment variables. It runs by hand.' },
   'packages/qa-tools/vitest.config.ts': { runBy: [], note: 'Its node project runs through vitest.node.config.ts. Its gate project runs only through the qa-tools gate CLI and needs a rig and a Cubism core.' },
   'packages/qa-tools/vitest.node.config.ts': { runBy: ['root'] },
   'packages/scenarios-stage-tamagotchi-browser/vitest.config.ts': { runBy: ['root'] },
