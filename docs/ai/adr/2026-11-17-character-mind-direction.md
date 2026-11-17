@@ -60,9 +60,10 @@ Luke made these decisions on 2026-11-17.
 ## Open questions
 
 - **Models Natural drives poorly.** What the performer does for a Live2D rig with non-standard parameters once Universal retires.
-- **Leadership hand-off.** How the mind's state moves when the leader window closes and another window takes the lead.
-- **Per-window stimuli.** The cursor and touch are per stage. Which stage's stimulus the mind takes when two stages report at once.
+- **Leadership hand-off**, only if a second stage exists. How the mind's state moves when the leader window closes and another window takes the lead. Today leadership is static: one launch builds one host window, and only that window leads (`resolveRendererWindowContext`).
+- **Per-window stimuli**, only if a second stage exists. The cursor and touch are per stage. Which stage's stimulus the mind takes when two stages report at once. Today the settings preview has no conductor or touch, so only one stage reports.
 - **The groove episode's shape on MMD.** Whether it is a Natural body offset, a clip, or both.
+- **Renderers without Natural.** `Stage.vue` also mounts VRM (`stage-ui-three`), Spine, and tachie scenes, and the README keeps the Godot VRM stage as supported. None runs Natural. Whether each is a performer that declares only voice and expressions, or outside the mind's world, is decided with the VRM adapter (3D roadmap M5), together with the two questions above.
 
 ## Alternatives considered
 
