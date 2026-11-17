@@ -114,7 +114,7 @@ Use this sensor for awareness of the user's foreground app. Do not use it to cap
 
 ## Window-rect sensor spike
 
-`src/main/services/electron/window-rects-spike.ts` measures what reading the other windows' rectangles costs before the M4 sensor is designed. It runs only on Windows with `AIRI_WINDOW_SENSOR_SPIKE=1`; `AIRI_WINDOW_SENSOR_SPIKE_MODE=main|async|worker` picks its default strategy, and `packages/qa-tools/src/window-rects/measure.ts` drives it. The 2026-11-04 results are in `window-rects-spike.md` beside it: a 4 Hz worker poll takes about 0.75 ms per sample, under 0.5% of one core, and leaves the main thread unaffected.
+`src/main/services/electron/window-rects-spike.ts` measures what reading the other windows' rectangles costs before the M4 sensor is designed. It runs only on Windows with `AIRI_WINDOW_SENSOR_SPIKE=1`; `AIRI_WINDOW_SENSOR_SPIKE_MODE=main|async|worker` picks its default strategy. Its measurement driver, `packages/qa-tools/src/window-rects/measure.ts`, was removed after the measurement; restore it from Git history to measure again. The 2026-11-04 results are in `window-rects-spike.md` beside it: a 4 Hz worker poll takes about 0.75 ms per sample, under 0.5% of one core, and leaves the main thread unaffected.
 
 ## Computer use
 

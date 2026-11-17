@@ -603,8 +603,8 @@ function p99Ms(histogram: ReturnType<typeof monitorEventLoopDelay>): number {
 
 /**
  * Starts the spike: one sampler per strategy, created on first use, and a measurement hook on
- * `globalThis.__airiWindowRectsSpike` that `packages/qa-tools/src/window-rects/measure.ts` drives
- * over the main-process inspector. The hook is the spike's only surface; it adds no IPC.
+ * `globalThis.__airiWindowRectsSpike` that a driver drives over the main-process inspector (the 2026-11-04
+ * driver, `packages/qa-tools/src/window-rects/measure.ts`, is in Git history). The hook is the spike's only surface; it adds no IPC.
  *
  * Expects:
  * - Windows, after `app` is ready; `AIRI_WINDOW_SENSOR_SPIKE_MODE=main|async|worker` picks the
