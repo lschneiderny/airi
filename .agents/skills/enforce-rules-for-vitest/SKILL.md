@@ -7,7 +7,7 @@ description: Apply AIRI test-scope, regression, async, and runtime-boundary rule
 
 For check selection, see the [testing guide](../../../docs/ai/context/testing.md).
 
-Do not add tests for pure prose or assertions that only restate setup and constants.
+Do not add tests for pure prose or assertions that only restate setup and constants. Do not rely on smoke-only tests.
 
 ## Regression Coverage
 
@@ -41,6 +41,7 @@ Do not add tests for pure prose or assertions that only restate setup and consta
 - Use the real Electron runtime when an integration test or live reproduction needs its lifecycle behavior.
 - Stub unrelated child components or stores only when their behavior is outside the assertion.
 - Do not replace the integration being tested with mocks that make its failure impossible.
+- Assert observable behavior with explicit `expect` statements. Prefer one assertion per line so that failures stay readable.
 - Keep external-service integration tests separate and controlled by explicit environment configuration.
 - For Node global or built-in isolation, use a worker or minimal CLI reproduction instead of replacing global properties directly.
 - Use a real browser when a platform mock prevents the test from exercising the reported failure.
