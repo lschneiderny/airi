@@ -3,18 +3,14 @@ import { defineConfig } from 'vitest/config'
 
 // eslint-disable-next-line no-restricted-syntax -- Vite's native config loader, its planned default, resolves a relative import only with its extension.
 import { stageUiThreeBrowserProject } from './vitest.browser-project.ts'
+// eslint-disable-next-line no-restricted-syntax -- Vite's native config loader, its planned default, resolves a relative import only with its extension.
+import { stageUiThreeNodeProject } from './vitest.node-project.ts'
 
 export default withCpuSlots(defineConfig({
   root: import.meta.dirname,
   test: {
     projects: [
-      {
-        test: {
-          name: 'node',
-          include: ['src/**/*.test.ts'],
-          exclude: ['src/**/*.browser.test.ts'],
-        },
-      },
+      stageUiThreeNodeProject,
       stageUiThreeBrowserProject,
     ],
   },

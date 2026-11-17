@@ -14,7 +14,7 @@ import { loadEnv } from 'vite'
 // eslint-disable-next-line no-restricted-syntax -- Vite's native config loader, its planned default, resolves a relative import only with its extension.
 import unoConfig from './uno.config.ts'
 
-export function createStageTamagotchiProject(): TestProjectInlineConfiguration {
+function createStageTamagotchiProject(): TestProjectInlineConfiguration {
   return {
     root: import.meta.dirname,
     plugins: [

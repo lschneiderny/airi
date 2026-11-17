@@ -1,17 +1,32 @@
+import type { TestProjectInlineConfiguration } from 'vitest/config'
+
 import { withCpuSlots } from '@proj-airi/cpu-slots/vitest'
 import { defineConfig } from 'vitest/config'
 
 // eslint-disable-next-line no-restricted-syntax -- Vite's native config loader, its planned default, resolves a relative import only with its extension.
+import { stageTamagotchiNodeProject } from './apps/stage-tamagotchi/vitest.node-project.ts'
+// eslint-disable-next-line no-restricted-syntax -- Vite's native config loader, its planned default, resolves a relative import only with its extension.
+import { modelDriverLipsyncNodeProject } from './packages/model-driver-lipsync/vitest.node-project.ts'
+// eslint-disable-next-line no-restricted-syntax -- Vite's native config loader, its planned default, resolves a relative import only with its extension.
 import { providerInferenceNodeProject } from './packages/provider-inference/vitest.node-project.ts'
 // eslint-disable-next-line no-restricted-syntax -- Vite's native config loader, its planned default, resolves a relative import only with its extension.
+import { stageUiLive2dNodeProject } from './packages/stage-ui-live2d/vitest.node-project.ts'
+// eslint-disable-next-line no-restricted-syntax -- Vite's native config loader, its planned default, resolves a relative import only with its extension.
+import { stageUiThreeNodeProject } from './packages/stage-ui-three/vitest.node-project.ts'
+// eslint-disable-next-line no-restricted-syntax -- Vite's native config loader, its planned default, resolves a relative import only with its extension.
 import { stageUiNodeProject } from './packages/stage-ui/vitest.node-project.ts'
+
+/** A package's node project under a repository-unique name; inside its package config it is just `node`. */
+function named(project: TestProjectInlineConfiguration, name: string): TestProjectInlineConfiguration {
+  return { ...project, test: { ...project.test, name } }
+}
 
 export default withCpuSlots(defineConfig({
   test: {
     projects: [
       'server/apps/auth',
       'server/apps/api',
-      'apps/stage-tamagotchi/vitest.node.config.ts',
+      named(stageTamagotchiNodeProject, 'stage-tamagotchi:node'),
       'packages/ccc',
       'packages/core-agent',
       'packages/cpu-slots',
@@ -22,7 +37,7 @@ export default withCpuSlots(defineConfig({
       'packages/input-gamepad',
       'packages/input-gamepad-vueuse',
       'packages/input-playstation-dualsense-5',
-      'packages/model-driver-lipsync/vitest.node.config.ts',
+      named(modelDriverLipsyncNodeProject, 'model-driver-lipsync:node'),
       'packages/better-ws',
       'packages/model-driver-magic-live2d',
       'packages/motion-driver-magic',
@@ -36,15 +51,15 @@ export default withCpuSlots(defineConfig({
       'packages/plugin-sdk',
       'packages/plugin-sdk-tamagotchi',
       providerInferenceNodeProject,
-      { ...stageUiNodeProject, test: { ...stageUiNodeProject.test, name: 'stage-ui:node' } },
+      named(stageUiNodeProject, 'stage-ui:node'),
       'packages/qa-tools/vitest.node.config.ts',
       'packages/scenarios-stage-tamagotchi-browser',
       'packages/scenarios-stage-tamagotchi-electron',
       'packages/server-runtime',
       'packages/server-sdk',
       'packages/stage-shared',
-      'packages/stage-ui-live2d/vitest.node.config.ts',
-      'packages/stage-ui-three/vitest.node.config.ts',
+      named(stageUiLive2dNodeProject, 'stage-ui-live2d:node'),
+      named(stageUiThreeNodeProject, 'stage-ui-three:node'),
       'packages/vitest-plugin-fakemic',
       'packages/vite-plugin-sherpaw',
       // Root developer tools (`pnpm verify`, `pnpm wt`, `pnpm dev:top`). They belong to no package.
