@@ -80,7 +80,7 @@ Use workspace `package.json` names with pnpm filters, for example `@proj-airi/st
 pnpm dev | dev:ui                             # Electron desktop app, UI stories
 pnpm dev:backend                              # Local backend stack (server/docker-compose.yaml)
 pnpm exec vitest run <path>; pnpm test:run
-pnpm qa:doctor | qa:test | qa:motion | qa:report
+pnpm qa:doctor | qa:live2d-rig                 # Environment report, headless Live2D rig trial
 pnpm qa:setup cubism | qa:llm serve            # Cubism Core download, scripted replay provider
 pnpm qa:app run --dry-run ...                 # Rendered app session: seed, send chat, wait for events, summary
 AIRI_DEV_QUIET=1 pnpm dev                     # Agent dev session: log file, ready URL, and errors only
@@ -94,13 +94,13 @@ pnpm qa:display run -- <command>              # Linux: run app windows in a head
 pnpm qa:smoke [--model <path>]                # Fresh-profile start; fails on any renderer or main-process error
 pnpm qa:app run --model <path> --say <text>   # Replayed chat turn in the real app: ACT, expression, speech events
 pnpm qa:motion3d run --model <pmx> --scenario <id> --seed <n> --out <dir>   # Headless MMD body motion in Node, deterministic per seed
-pnpm qa:motion3d gate | diff | frames | clip <run dir> ...                 # Motion-quality gate, run identity, stills and clips
+pnpm qa:motion3d gate | report <topic> | diff | frames | clip <run dir> ... # Motion-quality gate, topic reports, run identity, stills and clips
 pnpm qa:test:model                            # Env-gated rig tests (MMD model, Live2D rig, mocap) whose variables .env.qa sets
 pnpm perf sessions | features | compare | incident    # Usage performance records and bench comparisons
 pnpm qa:display run -- pnpm qa:bench [--scenario <id>] [--runs <n>]   # Recorder-measured scenario matrix, exclusive lease per launch
 ```
-On Linux, start every agent command that opens app windows (T3 runs, agent-browser on Electron, Vishot) through `pnpm qa:display run --`, so the user's desktop, focus, and cursor stay undisturbed. Use `--name <name>` for parallel sessions and stop yours with `pnpm qa:display down --name <name>`.
-The `airi-qa` MCP server in `.mcp.json` (`pnpm qa:mcp`) offers the same app session as tools: `airi_start`, `airi_send`, `airi_screenshot`, `airi_errors`, `airi_eval`, and `airi_stop`. Always call `airi_stop` when done, because the session holds a `live` CPU lease.
+On Linux, start every agent command that opens app windows (rendered QA runs, agent-browser on Electron, Vishot) through `pnpm qa:display run --`, so the user's desktop, focus, and cursor stay undisturbed. Use `--name <name>` for parallel sessions and stop yours with `pnpm qa:display down --name <name>`.
+The `airi-qa` MCP server in `.mcp.json` (`pnpm qa:mcp`) offers the same app session as tools: `airi_start`, `airi_send`, `airi_state`, `airi_events`, `airi_import_model`, `airi_screenshot`, `airi_errors`, `airi_eval`, and `airi_stop`. Always call `airi_stop` when done, because the session holds a `live` CPU lease.
 
 Testing tiers. [Testing and QA](docs/ai/context/testing.md) says what each check proves and which checks a change needs:
 - Inner loop: the narrowest package project, `pnpm exec vitest run --project <name> <path>`.
@@ -143,7 +143,7 @@ Read the listed file before starting. Skill paths below are under `.agents/skill
 | Local file upload via browser/Electron chooser or input | [Upload reference](.agents/skills/use-agent-browser-for-airi/references/input-file.md), [agent-browser](.agents/skills/agent-browser/SKILL.md). For Electron, also [agent-browser-electron](.agents/skills/agent-browser-electron/SKILL.md). |
 | Screenshots and visual evidence | [use-vishot](.agents/skills/use-vishot/SKILL.md). Load only the matching runtime and scenario references. |
 | Live2D, VRM, MMD import/rendering in the desktop app | [use-agent-browser-for-airi](.agents/skills/use-agent-browser-for-airi/SKILL.md) |
-| Motion QA, emotion/idle gates, rendered motion runs, headless MMD body motion (`pnpm qa:motion3d`) | [motion-qa](.agents/skills/motion-qa/SKILL.md); for `qa:motion3d`, also the [qa-tools README](packages/qa-tools/README.md) |
+| Motion QA, emotion/idle checks, rendered motion runs, headless MMD body motion (`pnpm qa:motion3d`), headless Live2D rig (`pnpm qa:live2d-rig`) | [motion-qa](.agents/skills/motion-qa/SKILL.md); for `qa:motion3d`, also the [qa-tools README](packages/qa-tools/README.md) |
 | Checking a change in the running app: clean start, chat turn, screenshot, errors | [qa-tools README](packages/qa-tools/README.md#clean-start-smoke): `qa:smoke`, `qa:app`, and the `airi-qa` MCP server |
 | Live QA on Linux: anything that opens app windows | [`pnpm qa:display`](scripts/dev-tools/README.md#pnpm-qadisplay) |
 | Performance history, heavy features, incidents, perf regressions between commits | [qa-tools README](packages/qa-tools/README.md#perf-reports) |
