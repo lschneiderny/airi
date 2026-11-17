@@ -1,5 +1,7 @@
 # perf-tracking - Work Plan
 
+> Status 2026-11-17: complete; frozen history.
+
 ## TL;DR (For humans)
 
 **Who this is for and what changes for them:** Luke, and the agents working on the app with him. Today the app's performance can only be watched live in developer panels. After this work, every development session leaves a tagged record of CPU, memory and frame timing, so slowdowns can be compared across commits and features.

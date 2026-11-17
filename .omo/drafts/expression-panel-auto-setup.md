@@ -24,6 +24,8 @@ approach: Make Live2D expression setup hands-off (label-lexicon emotion mappings
 
 # Draft: expression-panel-auto-setup
 
+> Status 2026-11-17: complete; frozen history.
+
 Stance: one-by-one (one prior planning-style episode in this repo: Luke picked recommended options on one-by-one forks). Luke answered a 4-question batch this session without friction.
 
 ## Affected user and ideal state

@@ -25,6 +25,8 @@ approach: see Approval gate section
 
 # Draft: nonverbal-channels
 
+> Status 2026-11-17: superseded in part. Touch reactions and the urge gate become one voice policy on the mind's clock, mood exists once per character, Universal and MAGIC retire, and the T1 gesture gates are deleted. Current rules: [character mind ADR](../../docs/ai/adr/2026-11-17-character-mind-direction.md), [Autonomous behavior](../../docs/ai/context/autonomous-behavior.md), [LLM prompt](../../docs/ai/context/llm-prompt.md), [fork policy plan](../plans/fork-policy-and-tooling.md), [character mind roadmap](../../docs/ai/context/character-mind-roadmap.md). Its body is frozen history.
+
 > Rebuilt 2026-10-31 after `scaffold-plan.mjs --reset --force` wiped the draft together with the plan; content restored verbatim from the session's earlier draft edits.
 
 ## Affected user and ideal state

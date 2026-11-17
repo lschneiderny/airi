@@ -1,5 +1,7 @@
 # expression-reactions-and-combos - Work Plan
 
+> Status 2026-11-17: complete; frozen history.
+
 ## TL;DR (For humans)
 <!-- Fill this LAST, after the detailed plan below is written, so it summarizes the REAL plan. -->
 <!-- Plain English for a non-engineer: NO file paths, NO todo numbers, NO wave/agent/tool names. -->

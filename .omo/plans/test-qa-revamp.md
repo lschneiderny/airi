@@ -1,5 +1,7 @@
 # test-qa-revamp - Work Plan
 
+> Status 2026-11-17: superseded in part. Several `qa:*` commands were removed after all, the verify pass cache and the `live`-as-`browser` encoding are gone, and the T3 exclusive gate was deleted. Current rules: [Testing and QA](../../docs/ai/context/testing.md), [fork policy plan](fork-policy-and-tooling.md), [character mind roadmap](../../docs/ai/context/character-mind-roadmap.md). Its body is frozen history.
+
 ## TL;DR (For humans)
 
 **Who this is for and what changes for them:** Luke and the agent lanes that run checks before landing work. After this plan, an everyday check re-tests only what changed since the last good check, live app testing no longer freezes every other lane, and one guide says exactly which checks a change needs.

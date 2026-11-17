@@ -1,5 +1,7 @@
 # natural-placement-attention - Work Plan
 
+> Status 2026-11-17: superseded in part. Chat glances and attention decisions move into the character mind, the web and Pocket hosts are retired, and the T1 and T3 checks are deleted. Current rules: [character mind ADR](../../docs/ai/adr/2026-11-17-character-mind-direction.md), [Autonomous behavior](../../docs/ai/context/autonomous-behavior.md), [README Support scope](../../README.md#support-scope), [character mind roadmap](../../docs/ai/context/character-mind-roadmap.md). Its body is frozen history.
+
 ## TL;DR (For humans)
 
 **Who this is for and what changes for them:** This is for anyone running the desktop app with a Live2D character on the Natural motion setting. When the character sits in a corner of the screen, she now rests very slightly turned toward the middle of the user's monitors. Her side glances lean into the screen rather than off its edge, and when she watches the screen she looks toward where the content is. She glances at the chat while the user types, reads a message when the user sends it, and looks at the chat when it opens. Her replies stay on the user.

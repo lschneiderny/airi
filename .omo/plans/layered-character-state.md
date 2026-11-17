@@ -1,5 +1,7 @@
 # layered-character-state - Work Plan
 
+> Status 2026-11-17: superseded in part. Mood exists once per character in the mind, the mood factor moves from the urge gate onto the mind's clock, and agents run live QA through `qa:display`. Current rules: [layered character state ADR](../../docs/ai/adr/2026-11-03-layered-character-state.md), [character mind ADR](../../docs/ai/adr/2026-11-17-character-mind-direction.md), [State persistence](../../docs/ai/context/state-persistence.md), [character mind roadmap](../../docs/ai/context/character-mind-roadmap.md). Its body is frozen history.
+
 ## TL;DR (For humans)
 <!-- Fill this LAST, after the detailed plan below is written, so it summarizes the REAL plan. -->
 <!-- Plain English for a non-engineer: NO file paths, NO todo numbers, NO wave/agent/tool names. -->

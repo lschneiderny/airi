@@ -52,6 +52,8 @@ approach: "Eight waves: (0) character-neutral stage contract + card-owned person
 
 # Draft: situational-presence
 
+> Status 2026-11-17: superseded in part. The opportunity gate becomes the mind's voice policy, gate memory persists, presence settings join the character-behavior document, idle chatter follows the reach-out cadence, and the web, Pocket, and Kirie hosts are retired. Current rules: [character mind ADR](../../docs/ai/adr/2026-11-17-character-mind-direction.md), [Autonomous behavior](../../docs/ai/context/autonomous-behavior.md), [LLM prompt](../../docs/ai/context/llm-prompt.md), [State persistence](../../docs/ai/context/state-persistence.md), [character mind roadmap](../../docs/ai/context/character-mind-roadmap.md). Its body is frozen history.
+
 ## Affected user and ideal state
 <!-- Who this output touches (a customer, another programmer, a program or agent consuming it - often more than one) and how each uses it today and will use it after. -->
 <!-- IS-n | property of the ideal state: nothing snags, feels odd, regresses, or degrades for them | reason -->

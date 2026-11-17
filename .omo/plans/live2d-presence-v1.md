@@ -1,5 +1,7 @@
 # live2d-presence-v1 - Work Plan
 
+> Status 2026-11-17: abandoned in favor of [live2d-presence-v2](live2d-presence-v2.md), and superseded in part. Natural is the only motion driver, and beat sync becomes a music stimulus. Current rules: [character mind ADR](../../docs/ai/adr/2026-11-17-character-mind-direction.md), [Body ownership](../../docs/ai/context/body-ownership.md), [character mind roadmap](../../docs/ai/context/character-mind-roadmap.md). Its body is frozen history.
+
 > **Closed 2026-10-22 as superseded by `live2d-presence-v2`.** v2 replaced the controller that row 5 and F1-F4 would have tested, and v2 rows 14, 23 and 24 covered the same rendered scenarios. See `docs/ai/audits/2026-10-22-workstream-audit.md`, decision D2.
 
 ## TL;DR (For humans)

@@ -25,6 +25,8 @@ approach: Add an opt-in Natural mode with optional cursor attention and preserve
 
 # Draft: live2d-presence-v1
 
+> Status 2026-11-17: abandoned in favor of [live2d-presence-v2](../plans/live2d-presence-v2.md), and superseded in part. Natural is the only motion driver, and beat sync becomes a music stimulus. Current rules: [character mind ADR](../../docs/ai/adr/2026-11-17-character-mind-direction.md), [Body ownership](../../docs/ai/context/body-ownership.md), [character mind roadmap](../../docs/ai/context/character-mind-roadmap.md). Its body is frozen history.
+
 ## Affected user and ideal state
 <!-- Who this output touches (a customer, another programmer, a program or agent consuming it - often more than one) and how each uses it today and will use it after. -->
 <!-- IS-n | property of the ideal state: nothing snags, feels odd, regresses, or degrades for them | reason -->

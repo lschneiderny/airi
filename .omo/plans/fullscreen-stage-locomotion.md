@@ -1,5 +1,7 @@
 # fullscreen-stage-locomotion - Work Plan
 
+> Status 2026-11-17: superseded in part. Chases started from raw stimuli and the body-tool refractories move into the character mind, the classic window fallback is scheduled for removal, Linux sessions can get the desktop stage, and Windows is not checked. Current rules: [full-screen stage ADR](../../docs/ai/adr/2026-10-31-fullscreen-stage-and-locomotion.md), [Linux desktop bridge ADR](../../docs/ai/adr/2026-11-09-linux-desktop-bridge.md), [character mind ADR](../../docs/ai/adr/2026-11-17-character-mind-direction.md), [character mind roadmap](../../docs/ai/context/character-mind-roadmap.md). Its body is frozen history.
+
 ## TL;DR (For humans)
 <!-- Fill this LAST, after the detailed plan below is written, so it summarizes the REAL plan. -->
 <!-- Plain English for a non-engineer: NO file paths, NO todo numbers, NO wave/agent/tool names. -->

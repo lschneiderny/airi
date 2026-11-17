@@ -1,5 +1,7 @@
 # prompt-composer - Work Plan
 
+> Status 2026-11-17: superseded in part. Spark Notify reads the speaking character's memory, and the `account` segment is to be removed. Current rules: [LLM prompt](../../docs/ai/context/llm-prompt.md), [character mind ADR](../../docs/ai/adr/2026-11-17-character-mind-direction.md), [character mind roadmap](../../docs/ai/context/character-mind-roadmap.md). Its body is frozen history.
+
 ## TL;DR (For humans)
 
 **Who this is for and what changes for them:** The character gets the same, size-bounded instructions whether you type, use a devtools path, or a plugin reaction (Spark Notify) makes her speak, and the model evaluation scores the instructions the app really sends. The prompt inspector finally shows what the model received.

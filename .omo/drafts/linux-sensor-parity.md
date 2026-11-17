@@ -24,6 +24,8 @@ approach: one Linux desktop bridge in Electron main (KWin script backend first, 
 
 # Draft: linux-sensor-parity
 
+> Status 2026-11-17: superseded in part. Only KDE Wayland is checked on Linux; sway, X11, and Hyprland are planned, not checked, and the classic window fallback is scheduled for removal. Current rules: [Linux desktop bridge ADR](../../docs/ai/adr/2026-11-09-linux-desktop-bridge.md), [README Platform support](../../README.md#platform-support), [character mind roadmap](../../docs/ai/context/character-mind-roadmap.md). Its body is frozen history.
+
 ## Affected user and ideal state
 <!-- Who this output touches (a customer, another programmer, a program or agent consuming it - often more than one) and how each uses it today and will use it after. -->
 <!-- IS-n | property of the ideal state: nothing snags, feels odd, regresses, or degrades for them | reason -->

@@ -25,6 +25,8 @@ approach: Replace the gate's floor-gap timing with a seeded urge-integrator haza
 
 # Draft: unprompted-reach-out-redesign
 
+> Status 2026-11-17: superseded in part. The urge gate becomes the mind's voice policy, `settings/situation-inner` folds into the mind's slow state, and Chattiness moves into the character-behavior document. Current rules: [character mind ADR](../../docs/ai/adr/2026-11-17-character-mind-direction.md), [Autonomous behavior](../../docs/ai/context/autonomous-behavior.md), [State persistence](../../docs/ai/context/state-persistence.md), [character mind roadmap](../../docs/ai/context/character-mind-roadmap.md). Its body is frozen history.
+
 ## Affected user and ideal state
 
 Affected users:

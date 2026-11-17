@@ -25,6 +25,8 @@ approach: Port upstream's long-term memory subsystem alone (types, IndexedDB rep
 
 # Draft: adopt-upstream-long-term-memory
 
+> Status 2026-11-17: superseded in part. Spark Notify reads the speaking character's memory, not the active card's, and `scripts/ollama-bench` is deleted. Current rules: [LLM prompt](../../docs/ai/context/llm-prompt.md), [fork policy plan](../plans/fork-policy-and-tooling.md), [character mind roadmap](../../docs/ai/context/character-mind-roadmap.md). Its body is frozen history.
+
 ## Affected user and ideal state
 **Affected users**
 - U1 Luke as the owner talking to a character (Tamagotchi desktop, stage-web). Today: the character forgets everything between sessions; the only ambient context is the 500-char situation block. After: each card remembers facts he states, recalls them in normal and unprompted turns, and he manages what is remembered in Settings.

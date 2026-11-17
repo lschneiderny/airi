@@ -1,5 +1,7 @@
 # live2d-cursor-touch-integration - Work Plan
 
+> Status 2026-11-17: superseded in part. Cursor notice and touch responses move into the character mind, Universal retires, and its T1 and T3 QA recipe is deleted. Current rules: [cursor attention ADR](../../docs/ai/adr/2026-10-24-live2d-cursor-attention.md), [character mind ADR](../../docs/ai/adr/2026-11-17-character-mind-direction.md), [Autonomous behavior](../../docs/ai/context/autonomous-behavior.md), [fork policy plan](fork-policy-and-tooling.md), [character mind roadmap](../../docs/ai/context/character-mind-roadmap.md). Its body is frozen history.
+
 ## TL;DR (For humans)
 <!-- Fill this LAST, after the detailed plan below is written, so it summarizes the REAL plan. -->
 <!-- Plain English for a non-engineer: NO file paths, NO todo numbers, NO wave/agent/tool names. -->

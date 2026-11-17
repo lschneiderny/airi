@@ -24,6 +24,8 @@ approach: Option A (architect st_01a1964e) - pure `composePrompt` with ordered, 
 
 # Draft: prompt-composer
 
+> Status 2026-11-17: superseded in part. Spark Notify reads the speaking character's memory, and the `account` segment is to be removed. Current rules: [LLM prompt](../../docs/ai/context/llm-prompt.md), [character mind ADR](../../docs/ai/adr/2026-11-17-character-mind-direction.md), [character mind roadmap](../../docs/ai/context/character-mind-roadmap.md). Its body is frozen history.
+
 ## Affected user and ideal state
 <!-- Who this output touches (a customer, another programmer, a program or agent consuming it - often more than one) and how each uses it today and will use it after. -->
 <!-- IS-n | property of the ideal state: nothing snags, feels odd, regresses, or degrades for them | reason -->

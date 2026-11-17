@@ -26,6 +26,8 @@ approach: "Pure placement geometry in stage-shared; the Tamagotchi host passes d
 
 # Draft: natural-placement-attention
 
+> Status 2026-11-17: complete; frozen history.
+
 ## Affected user and ideal state
 <!-- Who this output touches (a customer, another programmer, a program or agent consuming it - often more than one) and how each uses it today and will use it after. -->
 <!-- IS-n | property of the ideal state: nothing snags, feels odd, regresses, or degrades for them | reason -->

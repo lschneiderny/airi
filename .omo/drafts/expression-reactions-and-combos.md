@@ -24,6 +24,8 @@ approach: one plan, two tracks in dependency order - Track A (catalog data fixes
 
 # Draft: expression-reactions-and-combos
 
+> Status 2026-11-17: complete; frozen history.
+
 ## Affected user and ideal state
 Affected users:
 - Luke (streamer, configures the model in the Expressions tab of the Electron settings window and stage-web), today sees a flat list where moods (Angry) and details (Puff Cheeks) look identical, duplicates appear twice, unrecognized files land under 'face'.

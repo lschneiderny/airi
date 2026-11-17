@@ -1,5 +1,7 @@
 # mmd-actions-library - Work Plan
 
+> Status 2026-11-17: superseded in part. Beat matching is replaced by music as a stimulus, the director stops reacting to raw drag, poke, and chat, the classic window is scheduled for removal, and Windows is not checked. Current rules: [character mind ADR](../../docs/ai/adr/2026-11-17-character-mind-direction.md), [Autonomous behavior](../../docs/ai/context/autonomous-behavior.md), [README Platform support](../../README.md#platform-support), [character mind roadmap](../../docs/ai/context/character-mind-roadmap.md). Its body is frozen history.
+
 > **Reconciled 2026-11-06.** This plan was implemented on `luke/feat/fullscreen-stage` and landed on `main` through the six-slice plan `.omo/plans/fullscreen-stage-landing.md` instead of being re-run. Todos 2-18 are implemented; each row names its main commit. Todo 19 and F1, F3 and F4 stay open: they need acceptance evidence on the real surface, which waits for Luke's QA. Additional acceptance for any remaining work: `pnpm check:bundle` must pass, and the desktop stage host must stay behind the off-by-default Experimental 3D stage setting (`AIRI_STAGE_HOST` overrides it in development builds only).
 
 

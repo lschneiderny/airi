@@ -24,6 +24,8 @@ approach: layered stochastic Natural v2 (home drift + filtered-OU continuous mot
 
 # Draft: live2d-presence-v2
 
+> Status 2026-11-17: superseded in part. Universal and MAGIC retire, the per-stage performance-state resolver moves into the character mind, beat sync becomes a music stimulus, the web host is retired, and the Live2D statistical acceptance is deleted. Current rules: [natural motion v2 ADR](../../docs/ai/adr/2026-10-17-natural-motion-v2-performance-state.md), [character mind ADR](../../docs/ai/adr/2026-11-17-character-mind-direction.md), [Body ownership](../../docs/ai/context/body-ownership.md), [fork policy plan](../plans/fork-policy-and-tooling.md), [character mind roadmap](../../docs/ai/context/character-mind-roadmap.md). Its body is frozen history.
+
 ## Affected user and ideal state
 Users: (U1) Luke as viewer - Live2D companion (ForBOOTH, Bear Pajama) in a screen corner during work/gaming, Electron desktop primary, web secondary. (U2) Luke as tuner - needs to judge and tune motion without guessing. (U3) Universal/MAGIC mode users and web client - must not regress. (U4) Chat/LLM pipeline - emits emotion acts and speech state that Natural consumes.
 

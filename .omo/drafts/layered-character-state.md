@@ -25,6 +25,8 @@ approach: <fill: the approach you intend to plan>
 
 # Draft: layered-character-state
 
+> Status 2026-11-17: superseded in part. Mood exists once per character in the mind, the mood factor moves from the urge gate onto the mind's clock, and agents run live QA through `qa:display`. Current rules: [layered character state ADR](../../docs/ai/adr/2026-11-03-layered-character-state.md), [character mind ADR](../../docs/ai/adr/2026-11-17-character-mind-direction.md), [State persistence](../../docs/ai/context/state-persistence.md), [character mind roadmap](../../docs/ai/context/character-mind-roadmap.md). Its body is frozen history.
+
 ## Affected user and ideal state
 Users: (U1) Luke as the person in the relationship (talks, texts, pets, leaves, returns, over weeks-months); (U2) the chat model, which reads the per-request situation block and emits cues; (U3) Luke/agents as developers tuning it via devtools, simulator, model-eval; (U4) future plans (closeness behaviour, callbacks) building on the state.
 - IS-1 | Her tone in text follows a mood that persists for hours with a stated reason, survives restarts, fades by wall-clock time, no 04:00 reset | D-user-1/3/4

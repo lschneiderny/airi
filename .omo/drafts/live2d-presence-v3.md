@@ -1,5 +1,7 @@
 # live2d-presence-v3: stub carried over from v2 F4 (2026-10-18)
 
+> Status 2026-11-17: superseded in part. Every item depends on the deleted Live2D scorer and rendered gates or on Universal, which retires. Current rules: [character mind ADR](../../docs/ai/adr/2026-11-17-character-mind-direction.md), [Testing and QA](../../docs/ai/context/testing.md), [fork policy plan](../plans/fork-policy-and-tooling.md). Its body is frozen history.
+
 v2's F4 audit (.omo/evidence/live2d-presence-v2-F4-fidelity-final.md) proposed five follow-ups. Two are in v2 as todos 24 and 25. Luke did not answer the scope question within 30 minutes, so the orchestrator took the recommended option and moved the three research-sized items here. Each one repeats work that already hit v2's stop rule.
 
 ## Candidate todos

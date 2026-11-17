@@ -1,5 +1,7 @@
 # motion-gate-redesign - Work Plan
 
+> Status 2026-11-17: superseded in part. The protocol-2 scorer validation, `validate-scorer`, and the Live2D statistical gates were deleted. Current rules: [Testing and QA](../../docs/ai/context/testing.md), [fork policy plan](fork-policy-and-tooling.md). Its body is frozen history.
+
 ## TL;DR (For humans)
 <!-- Fill this LAST, after the detailed plan below is written, so it summarizes the REAL plan. -->
 <!-- Plain English for a non-engineer: NO file paths, NO todo numbers, NO wave/agent/tool names. -->

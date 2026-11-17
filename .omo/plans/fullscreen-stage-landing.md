@@ -1,5 +1,7 @@
 # Land luke/feat/fullscreen-stage on main behind the experimental flag
 
+> Status 2026-11-17: superseded in part. The plan was executed despite its own status line; the classic window for MMD is scheduled for removal, and Natural becomes the only motion driver. Current rules: [full-screen stage ADR](../../docs/ai/adr/2026-10-31-fullscreen-stage-and-locomotion.md), [character mind ADR](../../docs/ai/adr/2026-11-17-character-mind-direction.md), [character mind roadmap](../../docs/ai/context/character-mind-roadmap.md). Its body is frozen history.
+
 Status: decisions settled 2026-11-04; not executed.
 
 ## Goal

@@ -1,5 +1,7 @@
 # linux-sensor-parity - Work Plan
 
+> Status 2026-11-17: superseded in part. Only KDE Wayland is checked on Linux; sway, X11, and Hyprland are planned, not checked, and the classic window fallback is scheduled for removal. Current rules: [Linux desktop bridge ADR](../../docs/ai/adr/2026-11-09-linux-desktop-bridge.md), [README Platform support](../../README.md#platform-support), [character mind roadmap](../../docs/ai/context/character-mind-roadmap.md). Its body is frozen history.
+
 ## TL;DR (For humans)
 <!-- Fill this LAST, after the detailed plan below is written, so it summarizes the REAL plan. -->
 <!-- Plain English for a non-engineer: NO file paths, NO todo numbers, NO wave/agent/tool names. -->

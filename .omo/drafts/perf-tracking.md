@@ -24,6 +24,8 @@ approach: one plan, 4 waves - W1 shared contract + MMD accumulators + build iden
 
 # Draft: perf-tracking
 
+> Status 2026-11-17: complete; frozen history.
+
 ## Affected user and ideal state
 Users: (U1) Luke running `pnpm dev:tamagotchi` daily on Linux (and packaged builds on his MacBook), wanting a history across commits and answers to "what is heavy"; (U2) coding agents doing optimization/bug work who read `pnpm perf` output (text + `--json`) and run the bench; (U3) the running app itself, whose MMD frame has no idle time (notes/mmd-frame-budget-ammo-wasm2js), so the recorder must not degrade it; (U4) stage-web users of the existing lag overlay (must not regress).
 

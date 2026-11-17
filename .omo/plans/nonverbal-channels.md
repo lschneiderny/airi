@@ -1,5 +1,7 @@
 # nonverbal-channels - Work Plan
 
+> Status 2026-11-17: superseded in part. Touch reactions and the urge gate become one voice policy on the mind's clock, mood exists once per character, Universal and MAGIC retire, and the T1 gesture gates are deleted. Current rules: [character mind ADR](../../docs/ai/adr/2026-11-17-character-mind-direction.md), [Autonomous behavior](../../docs/ai/context/autonomous-behavior.md), [LLM prompt](../../docs/ai/context/llm-prompt.md), [fork policy plan](fork-policy-and-tooling.md), [character mind roadmap](../../docs/ai/context/character-mind-roadmap.md). Its body is frozen history.
+
 ## TL;DR (For humans)
 <!-- Fill this LAST, after the detailed plan below is written, so it summarizes the REAL plan. -->
 <!-- Plain English for a non-engineer: NO file paths, NO todo numbers, NO wave/agent/tool names. -->

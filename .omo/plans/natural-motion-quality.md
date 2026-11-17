@@ -1,5 +1,7 @@
 # natural-motion-quality - Work Plan
 
+> Status 2026-11-17: superseded in part. Its `qa:motion` gates, `qa:test`, and `known-failures.json` acceptance are deleted, and Universal and MAGIC retire. Current rules: [Testing and QA](../../docs/ai/context/testing.md), [character mind ADR](../../docs/ai/adr/2026-11-17-character-mind-direction.md), [fork policy plan](fork-policy-and-tooling.md), [character mind roadmap](../../docs/ai/context/character-mind-roadmap.md). Its body is frozen history.
+
 ## TL;DR (For humans)
 
 **Who this is for and what changes for them:** Luke watching the corner Live2D companion for hours: idle stops doing quick back-and-forth wiggles and instead moves like a person (small steps, short pauses, calm and restless spells), and emotions read clearly because idle steps back while an emotion plays and the laugh looks like a laugh.

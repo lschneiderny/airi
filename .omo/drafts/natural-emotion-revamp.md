@@ -24,6 +24,8 @@ approach: hybrid held-emotion state (decider holds + hold performer + Natural ho
 
 # Draft: natural-emotion-revamp
 
+> Status 2026-11-17: superseded in part. The Universal and MAGIC fallbacks retire, held emotions move into one character-behavior document, and the T1 and T3 checks are deleted. Current rules: [character mind ADR](../../docs/ai/adr/2026-11-17-character-mind-direction.md), [Body ownership](../../docs/ai/context/body-ownership.md), [State persistence](../../docs/ai/context/state-persistence.md), [fork policy plan](../plans/fork-policy-and-tooling.md), [character mind roadmap](../../docs/ai/context/character-mind-roadmap.md). Its body is frozen history.
+
 ## Affected user and ideal state
 Affected:
 - (U1) Luke as viewer of the corner companion during chat, and as the person tuning a model in Settings and previewing expressions.

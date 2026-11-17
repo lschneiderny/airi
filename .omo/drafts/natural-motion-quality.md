@@ -25,6 +25,8 @@ approach: two parallel tracks - Track E (emotion quick wins: idle ducking during
 
 # Draft: natural-motion-quality
 
+> Status 2026-11-17: complete; frozen history.
+
 ## Affected user and ideal state
 Users:
 - U1 Luke as viewer: watches the corner Live2D companion for hours at widget size; today sees occasional MAGIC-like quick back-and-forth jitter, emotion head moves that barely differ from idle, a laugh that reads as a shiver, repeated identical clips. After: idle moves like a person (slow steps + short holds + calm/restless spells), emotions read at a glance, nothing grates over hours.

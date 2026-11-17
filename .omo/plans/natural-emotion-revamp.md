@@ -1,5 +1,7 @@
 # natural-emotion-revamp - Work Plan
 
+> Status 2026-11-17: superseded in part. The Universal and MAGIC fallbacks retire, held emotions move into one character-behavior document, and the T1 and T3 checks are deleted. Current rules: [character mind ADR](../../docs/ai/adr/2026-11-17-character-mind-direction.md), [Body ownership](../../docs/ai/context/body-ownership.md), [State persistence](../../docs/ai/context/state-persistence.md), [fork policy plan](fork-policy-and-tooling.md), [character mind roadmap](../../docs/ai/context/character-mind-roadmap.md). Its body is frozen history.
+
 ## TL;DR (For humans)
 <!-- Fill this LAST, after the detailed plan below is written, so it summarizes the REAL plan. -->
 <!-- Plain English for a non-engineer: NO file paths, NO todo numbers, NO wave/agent/tool names. -->

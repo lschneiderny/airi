@@ -31,6 +31,8 @@ approach: "Quick wins (pnpm resolution, known-failures registry, doctor, evidenc
 
 # Draft: qa-tooling
 
+> Status 2026-11-17: superseded in part. The known-failures registry, `qa:test`, `qa:report`, the T1 simulator, the scorer, and the Live2D T3 gates were deleted. Current rules: [Testing and QA](../../docs/ai/context/testing.md), [qa-tools README](../../packages/qa-tools/README.md), [fork policy plan](../plans/fork-policy-and-tooling.md). Its body is frozen history.
+
 ## Affected user and ideal state
 <!-- Who this output touches (a customer, another programmer, a program or agent consuming it - often more than one) and how each uses it today and will use it after. -->
 <!-- IS-n | property of the ideal state: nothing snags, feels odd, regresses, or degrades for them | reason -->

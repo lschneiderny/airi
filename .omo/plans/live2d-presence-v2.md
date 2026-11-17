@@ -1,5 +1,7 @@
 # live2d-presence-v2 - Work Plan
 
+> Status 2026-11-17: superseded in part. Universal and MAGIC retire, the per-stage performance-state resolver moves into the character mind, beat sync becomes a music stimulus, the web host is retired, and the Live2D statistical acceptance is deleted. Current rules: [natural motion v2 ADR](../../docs/ai/adr/2026-10-17-natural-motion-v2-performance-state.md), [character mind ADR](../../docs/ai/adr/2026-11-17-character-mind-direction.md), [Body ownership](../../docs/ai/context/body-ownership.md), [fork policy plan](fork-policy-and-tooling.md), [character mind roadmap](../../docs/ai/context/character-mind-roadmap.md). Its body is frozen history.
+
 ## TL;DR (For humans)
 <!-- Filled LAST, after the detailed plan below. -->
 

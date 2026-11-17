@@ -1,5 +1,7 @@
 # emotion-expression-performance - Work Plan
 
+> Status 2026-11-17: superseded in part. Mood and the expression decider move from each stage into one character mind, behavior settings move into one character-behavior document, Universal and MAGIC retire, and the Live2D statistical gates are deleted. Current rules: [character mind ADR](../../docs/ai/adr/2026-11-17-character-mind-direction.md), [Autonomous behavior](../../docs/ai/context/autonomous-behavior.md), [State persistence](../../docs/ai/context/state-persistence.md), [fork policy plan](fork-policy-and-tooling.md), [character mind roadmap](../../docs/ai/context/character-mind-roadmap.md). Its body is frozen history.
+
 ## TL;DR (For humans)
 <!-- Fill this LAST, after the detailed plan below is written, so it summarizes the REAL plan. -->
 <!-- Plain English for a non-engineer: NO file paths, NO todo numbers, NO wave/agent/tool names. -->

@@ -1,5 +1,7 @@
 # host-capability-contract - Work Plan
 
+> Status 2026-11-17: superseded in part. The `web` host is retired, the liveliness gates are deleted, Windows is no longer the reference platform, and Linux has compositor sensors and the desktop stage. The idle-fix patch it applies landed as `6b4874358` and was deleted. Current rules: [host capability ADR](../../docs/ai/adr/2026-11-08-host-capability-contract.md), [Linux desktop bridge ADR](../../docs/ai/adr/2026-11-09-linux-desktop-bridge.md), [README Platform support](../../README.md#platform-support), [fork policy plan](fork-policy-and-tooling.md), [character mind roadmap](../../docs/ai/context/character-mind-roadmap.md). Its body is frozen history.
+
 ## TL;DR (For humans)
 <!-- Fill this LAST, after the detailed plan below is written, so it summarizes the REAL plan. -->
 <!-- Plain English for a non-engineer: NO file paths, NO todo numbers, NO wave/agent/tool names. -->

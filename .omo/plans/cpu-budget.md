@@ -1,5 +1,7 @@
 # cpu-budget - Work Plan
 
+> Status 2026-11-17: superseded in part. Vitest configs stop taking leases (the CLIs take them), the verify pass cache is gone, and the T1 gate cache left with the Live2D gates. Current rules: [cpu-slots README](../../packages/cpu-slots/README.md), [Testing and QA](../../docs/ai/context/testing.md), [fork policy plan](fork-policy-and-tooling.md), [character mind roadmap](../../docs/ai/context/character-mind-roadmap.md). Its body is frozen history.
+
 ## TL;DR (For humans)
 <!-- Fill this LAST, after the detailed plan below is written, so it summarizes the REAL plan. -->
 <!-- Plain English for a non-engineer: NO file paths, NO todo numbers, NO wave/agent/tool names. -->

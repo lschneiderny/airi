@@ -1,5 +1,7 @@
 # expression-panel-auto-setup - Work Plan
 
+> Status 2026-11-17: superseded in part. Combos replaced user-made groups, and the Kirie and web hosts are retired. Current rules: [combos and reactions ADR](../../docs/ai/adr/2026-10-24-expression-combos-and-reactions.md), [README Support scope](../../README.md#support-scope). Its body is frozen history.
+
 ## TL;DR (For humans)
 
 **Who this is for and what changes for them:** Anyone who loads a Live2D model with many expressions and opens the Expressions settings. Out of the box, the character's emotional faces and effects are recognized from their names and used automatically. The settings list shows only what is in use, instead of every file as a full card.

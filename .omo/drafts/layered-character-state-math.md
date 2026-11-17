@@ -1,4 +1,7 @@
 # Advisory lane output: math (st_01a1a36c), 2026-11-03
+
+> Status 2026-11-17: complete; frozen history.
+
 Claims to verify; not decisions.
 
 st_01a1a36c [completed] transcript via event-log:

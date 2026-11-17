@@ -26,6 +26,8 @@ approach: zero-dependency machine-wide CPU slot lease broker (12-slot budget, st
 
 # Draft: cpu-budget
 
+> Status 2026-11-17: superseded in part. Vitest configs stop taking leases (the CLIs take them), the verify pass cache is gone, and the T1 gate cache left with the Live2D gates. Its source material, `cpu-budget-prior-plan.md`, was deleted. Current rules: [cpu-slots README](../../packages/cpu-slots/README.md), [Testing and QA](../../docs/ai/context/testing.md), [fork policy plan](../plans/fork-policy-and-tooling.md), [character mind roadmap](../../docs/ai/context/character-mind-roadmap.md). Its body is frozen history.
+
 ## Affected user and ideal state
 <!-- Who this output touches (a customer, another programmer, a program or agent consuming it - often more than one) and how each uses it today and will use it after. -->
 <!-- IS-n | property of the ideal state: nothing snags, feels odd, regresses, or degrades for them | reason -->

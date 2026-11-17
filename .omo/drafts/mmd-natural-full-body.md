@@ -26,6 +26,8 @@ approach: Extract pure Live2D Natural into packages/motion-driver-natural (move-
 
 # Draft: mmd-natural-full-body
 
+> Status 2026-11-17: superseded in part. Natural becomes the only driver and Classic retires, touch and presence reactions move into the character mind, the web host is retired, and the Live2D T1 gates are deleted. Current rules: [character mind ADR](../../docs/ai/adr/2026-11-17-character-mind-direction.md), [Body ownership](../../docs/ai/context/body-ownership.md), [Autonomous behavior](../../docs/ai/context/autonomous-behavior.md), [character mind roadmap](../../docs/ai/context/character-mind-roadmap.md). Its body is frozen history.
+
 ## Affected user and ideal state
 <!-- Who this output touches (a customer, another programmer, a program or agent consuming it - often more than one) and how each uses it today and will use it after. -->
 <!-- IS-n | property of the ideal state: nothing snags, feels odd, regresses, or degrades for them | reason -->
