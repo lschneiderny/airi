@@ -273,7 +273,9 @@ export default {
     // This installs `desktopName` from package.json as /usr/share/applications/ai.moeru.airi.desktop.
     syncDesktopName: true,
     artifactName: '${productName}-${version}-linux-${arch}.${ext}',
-    icon: 'build/icons/icon.png',
+    // electron-builder converts the icns into a 16-256 px PNG set for the hicolor icon theme. build/icon.png
+    // would install as one 1024 px icon, a size hicolor 0.18 has no directory for.
+    icon: 'icon.icns',
   },
   npmRebuild: false,
 
