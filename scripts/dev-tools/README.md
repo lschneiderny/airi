@@ -127,7 +127,7 @@ Before it builds, the command refuses to continue unless:
 - `gh` is signed in;
 - no published release has this tag, and an existing draft targets the same commit as `HEAD`.
 
-It then runs `pnpm verify --gate`, a clean-start smoke (through `pnpm qa:display run --` on Linux), the Godot export into `engines/stage-tamagotchi-godot/out/<linux|mac>`, the app build, and electron-builder with `AIRI_REQUIRE_GODOT_STAGE=true` under a `build` CPU slot. The first platform creates the draft; the second adds its files to it. `--dry-run` stops after the checks.
+It then checks the whole repository, not only a diff: `pnpm lint`, `pnpm typecheck`, `pnpm test:run`, and a clean-start smoke (through `pnpm qa:display run --` on Linux). `pnpm verify --gate` would check nothing here, because a release builds `main` and the gate compares against `main`. Then it runs the Godot export into `engines/stage-tamagotchi-godot/out/<linux|mac>`, the app build, the [bundle check](#pnpm-checkbundle) on that build, and electron-builder with `AIRI_REQUIRE_GODOT_STAGE=true` under a `build` CPU slot. Any failed step stops the release before upload. The first platform creates the draft; the second adds its files to it. `--dry-run` stops after the preflight checks above and runs nothing else.
 
 The smoke starts the development build, not the installer. Before you publish the draft, install each installer on a real display and start it:
 

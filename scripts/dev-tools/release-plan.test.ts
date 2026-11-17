@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { checkExistingRelease, checkGitState, isReleaseArtifact, parseReleaseArgs, releaseTarget } from './release-plan'
+import { checkExistingRelease, checkGitState, isReleaseArtifact, parseReleaseArgs, releaseChecks, releaseTarget } from './release-plan'
 
 describe('parseReleaseArgs', () => {
   it('accepts a calendar version and the dry-run flag', () => {
@@ -50,5 +50,15 @@ describe('releaseTarget', () => {
     expect(releaseTarget('linux', 'arm64')?.godotPreset).toBe('Linux arm64')
     expect(releaseTarget('darwin', 'arm64')?.builderFlag).toBe('--mac')
     expect(releaseTarget('win32', 'x64')).toBeUndefined()
+  })
+})
+
+describe('releaseChecks', () => {
+  it('runs the whole-repository checks, not the diff-scoped verify gate', () => {
+    expect(releaseChecks('darwin').map(check => check.args)).toEqual([['lint'], ['typecheck'], ['test:run'], ['qa:smoke']])
+  })
+
+  it('runs the Linux smoke inside a QA display session', () => {
+    expect(releaseChecks('linux').at(-1)?.args).toEqual(['qa:display', 'run', '--', 'pnpm', 'qa:smoke'])
   })
 })

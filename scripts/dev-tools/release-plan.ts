@@ -17,6 +17,30 @@ export function releaseTarget(platform: NodeJS.Platform, arch: NodeJS.Architectu
   return undefined
 }
 
+export interface ReleaseStep {
+  title: string
+  command: string
+  args: string[]
+}
+
+/**
+ * Whole-repository checks that run before anything is built, on whatever commit is released. `pnpm verify --gate`
+ * checks only the diff against main, which is empty on main itself, so release runs the full checks instead.
+ * On Linux the smoke runs inside a `pnpm qa:display` session, so its app window stays off the user's desktop.
+ */
+export function releaseChecks(platform: NodeJS.Platform): ReleaseStep[] {
+  const smoke = platform === 'linux' ? ['qa:display', 'run', '--', 'pnpm', 'qa:smoke'] : ['qa:smoke']
+  return [
+    { title: 'lint', command: 'pnpm', args: ['lint'] },
+    { title: 'typecheck', command: 'pnpm', args: ['typecheck'] },
+    { title: 'test suite', command: 'pnpm', args: ['test:run'] },
+    { title: 'clean-start smoke', command: 'pnpm', args: smoke },
+  ]
+}
+
+/** Runs after the app build, because it reads the renderer output in `apps/stage-tamagotchi/out`. */
+export const bundleCheck: ReleaseStep = { title: 'bundle check', command: 'pnpm', args: ['exec', 'tsx', 'scripts/dev-tools/bundle-check.ts'] }
+
 export interface ReleaseArgs {
   version: string
   dryRun: boolean

@@ -8,7 +8,7 @@ import { join } from 'node:path'
 import { releaseRepository } from '../../apps/stage-tamagotchi/src/shared/release-repository'
 import { capture, run } from './lib/exec'
 import { git, repoRoot } from './lib/git'
-import { checkExistingRelease, checkGitState, isReleaseArtifact, parseReleaseArgs, releaseTag, releaseTarget } from './release-plan'
+import { bundleCheck, checkExistingRelease, checkGitState, isReleaseArtifact, parseReleaseArgs, releaseChecks, releaseTag, releaseTarget } from './release-plan'
 
 const repo = `${releaseRepository.owner}/${releaseRepository.repo}`
 
@@ -85,9 +85,8 @@ async function main() {
   if (args.dryRun)
     return
 
-  await step('branch gate', 'pnpm', ['verify', '--gate'], { cwd: root })
-  const smoke = process.platform === 'linux' ? ['qa:display', 'run', '--', 'pnpm', 'qa:smoke'] : ['qa:smoke']
-  await step('clean-start smoke', 'pnpm', smoke, { cwd: root })
+  for (const check of releaseChecks(process.platform))
+    await step(check.title, check.command, check.args, { cwd: root })
 
   rmSync(godotOutDir, { recursive: true, force: true })
   mkdirSync(godotOutDir, { recursive: true })
@@ -103,6 +102,7 @@ async function main() {
 
   rmSync(distDir, { recursive: true, force: true })
   await step('app build', 'pnpm', ['slots', 'run', '--class', 'build', '--', 'pnpm', '-F', '@proj-airi/stage-tamagotchi', 'run', 'build'], { cwd: root })
+  await step(bundleCheck.title, bundleCheck.command, bundleCheck.args, { cwd: root })
   // The rpm step stages the unpacked app twice, about 4 GB, under the temporary directory. On Linux that is usually a
   // RAM-backed tmpfs with a per-user quota, and an interrupted run leaves its copies there, so the next run fails with
   // `Disk quota exceeded`. Packaging gets a directory on disk instead, emptied before and after.
