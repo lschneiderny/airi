@@ -3,13 +3,16 @@
 This is a personal fork of the `moeru-ai/airi` pnpm monorepo. It documents account-free clients. Internal hosted/auth adapters do not prove that hosted services or client routes are enabled.
 
 ## AGENTS.md POLICY
-Agent guidance holds only what an agent cannot learn from the code, `package.json`, or a README. Repository overviews cost tokens without improving task success ([Gloaguen et al., 2026](https://arxiv.org/abs/2602.11988)).
+Agent guidance holds only what an agent cannot learn from the code, `package.json`, a README, or a doc that a task already routes to. In [Gloaguen et al., 2026](https://arxiv.org/abs/2602.11988), context files did not raise task success and raised inference cost by about 20%. Agents follow nearly every instruction, so each line costs steps. Repository overviews did not help them find files, and files that repeated existing docs added nothing. Short, hand-written files limited to non-standard practices did best.
 - Write conventions, prohibitions, ownership boundaries, non-standard commands, flags, and environment variables, gotchas, and required reading before a specific task.
-- Do not write overviews, directory trees, "where to look" tables, code maps, symbol or reference counts, or generated headers. They go stale and the agent can read the code.
-- Do not list commands that follow the standard `pnpm -F <package> typecheck | build | test` shape. List only commands with special flags, projects, or ordering.
+- An agent runs what a file names: a tool mentioned in guidance gets used. Name a command or tool only when agents should run it, and say when.
+- Do not repeat a README, a skill, a policy doc, or a parent `AGENTS.md`. Link to one only as required reading before a specific task.
+- Do not write overviews, directory trees, "where to look" tables, code maps, symbol or reference counts, line numbers, or generated headers. They go stale and the agent can read the code.
+- Do not list commands that follow the standard `pnpm -F <package> typecheck | build | test | test:run` shape. List only commands with special flags, projects, or ordering.
 - Edit guidance by hand. Do not regenerate it with init-deep, `/init`, or another generator. Add a rule after an agent gets something wrong, and remove rules that stop applying.
 - Put a rule in the nested file closest to the code it governs. Put it here only when it applies across packages.
 - Keep each nested `AGENTS.md` short. When one has no package-specific rules left, delete it and its `CLAUDE.md`.
+- The fork owns every `AGENTS.md`, including those under paths kept from upstream. At a sync, keep the fork's version and add only the upstream rules that meet this policy.
 
 ## CONVENTIONS
 - Change only Supported projects for fork work. Projects kept from upstream stay as upstream ships them; fix them only to keep the workspace building. See [Support scope](README.md#support-scope).
@@ -29,7 +32,6 @@ Agent guidance holds only what an agent cannot learn from the code, `package.jso
 - The Electron desktop stage host is gated by the off-by-default Experimental 3D stage setting. `AIRI_STAGE_HOST=window|desktop` overrides the saved mode in development builds only, for QA.
 - The server channel (`packages/server-runtime`, `packages/server-sdk`, `packages/server-shared`) is separate from hosted `server/packages`.
 - For 3D character motion work, track milestones in `docs/ai/context/3d-character-roadmap.md`.
-- Electron main/renderer examples: `src/main/services/electron`. DI example: `apps/stage-tamagotchi/src/main/index.ts`.
 - Preserve the public `@proj-airi/stage-ui/stores` forwarding barrel. Shared component API edits also update `docs/ai/context/ui-components.md` and stories.
 - Put project/client ADRs in `docs/ai/adr/`, hosted backend ADRs in `server/docs/ai/adr/`, and current reference and policy docs in `docs/ai/context/`. Follow [server ADR rules](server/AGENTS.md).
 - Keep documentation with its code in the same commit/PR. Keep agent configuration changes in a separate commit/PR.
@@ -39,13 +41,13 @@ Agent guidance holds only what an agent cannot learn from the code, `package.jso
 
 ### Dependencies
 - Prefer `es-toolkit` for general utilities. Ask before adding another general utility library, including `unjs` or `tinylib` packages.
-- For node builtins, DOM, Vue composables, React hooks, Vite plugins, and GitHub workflows, research existing libraries first.
+- For node builtins, DOM, Vue composables, and Vite plugins, research existing libraries first.
 - Before choosing a library, ask the user to choose and compare options. For spec-driven work, provide a Markdown comparison table.
 - For requested tools/dependencies, read Context7 documentation first, then repository usage. Ask when returned names lack clear differences. If documentation conflicts with typecheck, inspect dependency source in `node_modules`.
 
 ## ANTI-PATTERNS (THIS PROJECT)
 - Do not hide import/type errors in `tsconfig.json`. Reconsider ownership for circular imports. Ask if the cycle cannot be resolved confidently.
-- Do not add backward-compatibility guards. For extended old caller/data support, document the target refactor. Start another Codex/Claude shell session for it.
+- Do not add backward-compatibility guards. For extended old caller/data support, document the target refactor and propose a separate session for it.
 - Temporary compatibility fallbacks require `// NOTICE:` and removal conditions. Document permanent fallbacks as supported policy, not legacy.
 - Nested guidance can override the compatibility rule for public contracts only by naming the overridden root rule.
 - Explicit contract exceptions exist in [API](server/apps/api/AGENTS.md) and [CCv3](packages/ccc/AGENTS.md).
@@ -64,7 +66,6 @@ Agent guidance holds only what an agent cannot learn from the code, `package.jso
 - Put conditions before commands. Use Conventional Commits without gitmoji, for example `feat(<package name>): add runner reconnect backoff`.
 - Name branches `username/<type>/short-name`, where `<type>` is a Conventional Commit type such as `feat` or `fix`. Rebase when pulling.
 - This personal fork has no release-note, attachment-upload, or Crowdin maintenance workflow, and no GitHub Actions workflows. `pnpm verify` and the pre-commit hook are the only checks.
-- Desktop releases are manual: `pnpm release <year>.<month>.<n>` on Linux and on macOS uploads installers to a draft GitHub release on the fork. See `scripts/dev-tools/README.md#pnpm-release`.
 
 ### Source control workflow
 - Commit small, self-contained changes directly to `main` after `pnpm verify` passes.
@@ -76,51 +77,25 @@ Agent guidance holds only what an agent cannot learn from the code, `package.jso
 - Sync upstream only when asked: merge `upstream/main` into a `username/chore/upstream-sync` branch, resolve conflicts there, and run `pnpm verify`. Land it locally with `git switch main && git merge --ff-only <branch> && git push`, not through a GitHub pull request: the fork's rebase-only merge would re-create upstream commits under new hashes and break later syncs. Do not rebase the fork onto upstream.
 
 ## COMMANDS
-Use workspace `package.json` names with pnpm filters, for example `@proj-airi/stage-tamagotchi`.
-```bash
-pnpm dev | dev:ui                             # Electron desktop app, UI stories
-pnpm dev:backend                              # Local backend stack (server/docker-compose.yaml)
-pnpm exec vitest run <path>; pnpm test:run
-pnpm qa:doctor | qa:live2d-rig                 # Environment report, headless Live2D rig trial
-pnpm qa:setup cubism | qa:llm serve            # Cubism Core download, scripted replay provider
-pnpm qa:app run --dry-run ...                 # Rendered app session: seed, send chat, wait for events, summary
-AIRI_DEV_QUIET=1 pnpm dev                     # Agent dev session: log file, ready URL, and errors only
-pnpm typecheck; pnpm lint | lint:fix          # ESLint also formats
-pnpm verify                                   # Incremental changed-file typecheck, lint, and related tests
-pnpm verify --gate                            # Full branch check before landing
-pnpm verify --stats                           # Summarize verify step history
-pnpm wt ls; pnpm dev:top; pnpm slots status   # Worktrees, per-worktree CPU/memory, CPU slot budget
-pnpm slots history                            # Summarize CPU lease history
-pnpm qa:display run -- <command>              # Linux: run app windows in a headless KWin session, off the user's desktop
-pnpm qa:smoke [--model <path>]                # Fresh-profile start; fails on any renderer or main-process error
-pnpm qa:app run --model <path> --say <text>   # Replayed chat turn in the real app: ACT, expression, speech events
-pnpm qa:motion3d run --model <pmx> --scenario <id> --seed <n> --out <dir>   # Headless MMD body motion in Node, deterministic per seed
-pnpm qa:motion3d gate | report <topic> | diff | frames | clip <run dir> ... # Motion-quality gate, topic reports, run identity, stills and clips
-pnpm qa:test:model                            # Env-gated rig tests (MMD model, Live2D rig, mocap) whose variables .env.qa sets
-pnpm perf sessions | features | compare | incident    # Usage performance records and bench comparisons
-pnpm qa:display run -- pnpm qa:bench [--scenario <id>] [--runs <n>]   # Recorder-measured scenario matrix, exclusive lease per launch
-```
-On Linux, start every agent command that opens app windows (rendered QA runs, agent-browser on Electron, Vishot) through `pnpm qa:display run --`, so the user's desktop, focus, and cursor stay undisturbed. Use `--name <name>` for parallel sessions and stop yours with `pnpm qa:display down --name <name>`.
-The `airi-qa` MCP server in `.mcp.json` (`pnpm qa:mcp`) offers the same app session as tools: `airi_start`, `airi_send`, `airi_state`, `airi_events`, `airi_import_model`, `airi_screenshot`, `airi_errors`, `airi_eval`, and `airi_stop`. Always call `airi_stop` when done, because the session holds a `live` CPU lease.
+Use workspace `package.json` names with pnpm filters, for example `@proj-airi/stage-tamagotchi`. ESLint also formats: fix style with `pnpm lint:fix`, not another formatter.
 
-Testing tiers. [Testing and QA](docs/ai/context/testing.md) says what each check proves and which checks a change needs:
-- Inner loop: the narrowest package project, `pnpm exec vitest run --project <name> <path>`.
-- Commit loop: `pnpm verify` after each change. It lints the changed files, typechecks the changed packages and their dependents, and runs the tests related to the changed code by imports.
-- Branch gate: `pnpm verify --gate` before landing. Same checks over the whole branch, related tests only. Add `pnpm qa:display run -- pnpm qa:smoke` when app runtime code changed.
-- Release: `pnpm release` runs the full typecheck, full test suite, lint, bundle checks, and clean-start smoke before it uploads.
-- Renderer motion: MMD uses `pnpm qa:motion3d` and `pnpm qa:test:model`; Live2D uses `pnpm qa:live2d-rig` (headless ForBOOTH, T2) and the idle liveliness test in `stage-ui-live2d`'s suite; its emotion gates have no runner (see its guide). Rendered checks use `qa:app` or the `airi-qa` MCP server, with visual review.
+Checks. [Testing and QA](docs/ai/context/testing.md) says what each check proves and which checks a change needs:
+- Inner loop: the narrowest package project, `pnpm exec vitest run --project <name> <path>`. A browser project also needs `--config vitest.browser.config.ts`.
+- After each change: `pnpm verify`. It lints the changed files, typechecks the changed packages and their dependents, and runs the tests related to the changed code.
+- Before landing a branch: `pnpm verify --gate`, plus `pnpm qa:display run -- pnpm qa:smoke` when app runtime code changed.
 - Platforms: only macOS and Linux KDE Wayland are checked. Windows, sway, and X11 are planned, not checked.
 
-After each task, run `pnpm verify` before finishing. It typechecks every package when a root config file changes and skips typecheck for Markdown-only changes. Each step checks only what changed since it last passed on the current branch.
-Use `pnpm lint` or root `pnpm typecheck` only when a task needs the whole repository checked. Report only executed checks, their commands/results, changes, and follow-up work.
+Use root `pnpm lint` or `pnpm typecheck` only when a task needs the whole repository checked. Report only executed checks, their commands/results, changes, and follow-up work.
 When `pnpm run` or `pnpm exec` fails because dependencies are out of date, run `pnpm install` once explicitly. The workspace sets `verifyDepsBeforeRun: error` so installs never start silently.
-Create and remove worktrees with `pnpm wt new <name>` and `pnpm wt rm <name>`. Stop a worktree's processes with `pnpm dev:top kill <name> --yes`, never by PID alone.
-Root `vitest.config.ts` also owns the `dev-tools`, `root-scripts`, and `web-extension` projects: `pnpm exec vitest run --project <name> <path>`.
+Root `vitest.config.ts` also owns the `dev-tools`, `root-scripts`, and `web-extension` projects: `pnpm exec vitest run --project <name> <path>`. If Vitest finds no tests, inspect the config's includes.
 The `pnpm verify` typecheck covers Turbo workspace packages (`packages/*`, `apps/*`, `server/**`, `services/*`) only. Root scripts get lint and tests only. Engines use `pnpm typecheck:engines` and `pnpm build:engines`.
-If Vitest finds no tests, inspect `vitest.config.ts` includes. Source-only packages can lack build scripts. Use their nested guidance.
-Electron build runs `electron-vite build`, not typecheck. Its typecheck runs `vue-tsc --noEmit`. Stage UI uses `test:run` and has no compilation build.
+The Electron build runs `electron-vite build`, not a typecheck; its typecheck runs `vue-tsc --noEmit`. Stage UI has no compilation build.
 
-Build, typecheck, and QA scripts take CPU slots ([cpu-slots](packages/cpu-slots/AGENTS.md)) from a shared budget through `pnpm slots run --class <class>`. If a command waits, run `pnpm slots status` to see who holds the budget and what is queued. `AIRI_CPU_SLOTS=off` is a supported opt-out only for one-off diagnosis of the broker itself; never use it for routine runs. If a command prints `cpu-slots: dist/vitest.mjs is stale`, run `pnpm -F @proj-airi/cpu-slots build`. Never bypass the stale-build guard.
+To run the app as an agent, use `AIRI_DEV_QUIET=1 pnpm dev`: it writes a log file and prints only the ready URL and errors. On Linux, start every agent command that opens app windows (rendered QA runs, agent-browser on Electron, Vishot) through `pnpm qa:display run --`, so the user's desktop, focus, and cursor stay undisturbed. Use `--name <name>` for parallel sessions and stop yours with `pnpm qa:display down --name <name>`. A session of the `airi-qa` MCP server holds a `live` CPU lease, so always call `airi_stop` when done.
+
+Create and remove worktrees with `pnpm wt new <name>` and `pnpm wt rm <name>`. Stop a worktree's processes with `pnpm dev:top kill <name> --yes`, never by PID alone.
+
+Build, typecheck, and QA scripts take CPU slots ([cpu-slots](packages/cpu-slots/README.md)) from a shared budget. If a command waits, run `pnpm slots status` to see who holds the budget. `AIRI_CPU_SLOTS=off` is a supported opt-out only for one-off diagnosis of the broker itself; never use it for routine runs. If a command prints `cpu-slots: dist/vitest.mjs is stale`, run `pnpm -F @proj-airi/cpu-slots build`. Never bypass the stale-build guard.
 
 ## TASK ROUTING
 Read the listed file before starting. Skill paths below are under `.agents/skills/`.
@@ -139,7 +114,6 @@ Read the listed file before starting. Skill paths below are under `.agents/skill
 | Prompt or other LLM-facing text | [LLM prompt](docs/ai/context/llm-prompt.md) |
 | New persisted state or settings store | [State persistence](docs/ai/context/state-persistence.md) |
 | Server work | [server](server/AGENTS.md), plus [API](server/apps/api/AGENTS.md) or [Auth](server/apps/auth/AGENTS.md) for those apps |
-| Documentation, comments, and commit text | Follow the prose rules under Unique Styles above. |
 | Slow/failed chat, speech, audio using saved IO traces | [analyze-io-traces](.agents/skills/analyze-io-traces/SKILL.md) |
 | Local file upload via browser/Electron chooser or input | [Upload reference](.agents/skills/use-agent-browser-for-airi/references/input-file.md), [agent-browser](.agents/skills/agent-browser/SKILL.md). For Electron, also [agent-browser-electron](.agents/skills/agent-browser-electron/SKILL.md). |
 | Screenshots and visual evidence | [use-vishot](.agents/skills/use-vishot/SKILL.md). Load only the matching runtime and scenario references. |
@@ -150,8 +124,7 @@ Read the listed file before starting. Skill paths below are under `.agents/skill
 | Performance history, heavy features, incidents, perf regressions between commits | [qa-tools README](packages/qa-tools/README.md#perf-reports) |
 
 ## NOTES
-Nested guides own local exceptions and package-specific checks. Historical ADRs/audits and scanner observations are not current runtime acceptance.
-The fork removed the Kirie Godot/CEF desktop host on 2026-10-31. `docs/ai/context/upstream-watch.md` records when to port it back.
-The fork retired the Pocket native mobile host on 2026-11-04. The same watch list records its port-back condition.
+Historical ADRs, audits, and scanner observations are not current runtime acceptance.
+Before porting back a retired project, read `docs/ai/context/upstream-watch.md`.
 Root `pnpm dev*` scripts run through `node scripts/dev.mjs`, which bypasses Windows `.cmd` shims and supports only `&&` chains of plain words.
 Nested `AGENTS.md` and `CLAUDE.md` files are committed, so an agent on any machine gets the same guidance from a fresh clone. Do not add them to `.git/info/exclude`.
