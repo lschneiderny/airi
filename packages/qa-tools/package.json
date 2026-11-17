@@ -14,9 +14,7 @@
     "doctor": "tsx bin/doctor.ts",
     "character": "tsx src/character-state/main.ts",
     "model": "tsx bin/model.ts",
-    "motion": "tsx bin/motion.ts",
     "motion3d": "tsx bin/motion3d.ts",
-    "report": "tsx bin/report.ts",
     "stage": "tsx bin/stage.ts",
     "typecheck": "tsc --noEmit"
   },

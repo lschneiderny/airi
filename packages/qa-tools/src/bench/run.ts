@@ -20,11 +20,14 @@ import { matchExpectations } from '../app/summary'
 import { loadScript } from '../llm/script'
 import { ReplayServer } from '../llm/server'
 import { AppSessionCore } from '../session/app-session'
-import { T3_LEASE_TIMEOUT_EXIT, T3_LEASE_WAIT_MS } from '../t3/cli'
 import { importRig, zipRig } from '../t3/import-rig'
 import { appendBenchLine } from './history'
 import { measurableFrom, readRawRun, summarizeBenchRun } from './summarize'
 
+/** Longest wait for the exclusive CPU lease of one launch; other worktrees' work can hold the budget that long. */
+const LEASE_WAIT_MS = 30 * 60_000
+/** Exit code when the lease or the mounted model does not arrive in time. 0, 1, 2 and 130 are taken. */
+const LEASE_TIMEOUT_EXIT = 3
 /** Launch, bridge, and import together; a launch that has not mounted its model by then is hung, not slow. */
 const MOUNT_TIMEOUT_MS = 6 * 60_000
 const TURN_TIMEOUT_MS = 120_000
@@ -69,7 +72,7 @@ class BenchStop extends Error {
 async function withinMountDeadline<T>(work: Promise<T>): Promise<T> {
   let timer: NodeJS.Timeout | undefined
   const deadline = new Promise<never>((_, reject) => {
-    timer = globalThis.setTimeout(reject, MOUNT_TIMEOUT_MS, new BenchStop(`the model did not mount within ${MOUNT_TIMEOUT_MS / 60_000} min; the launch was torn down and its lease released`, T3_LEASE_TIMEOUT_EXIT))
+    timer = globalThis.setTimeout(reject, MOUNT_TIMEOUT_MS, new BenchStop(`the model did not mount within ${MOUNT_TIMEOUT_MS / 60_000} min; the launch was torn down and its lease released`, LEASE_TIMEOUT_EXIT))
   })
   try {
     return await Promise.race([work, deadline])
@@ -119,14 +122,14 @@ async function benchLaunch(launch: BenchLaunch, context: LaunchContext): Promise
   const perfDir = join(runDir, 'perf')
   mkdirSync(profileDir, { recursive: true })
 
-  const leaseWait = AbortSignal.timeout(T3_LEASE_WAIT_MS)
+  const leaseWait = AbortSignal.timeout(LEASE_WAIT_MS)
   let lease: Lease
   try {
     lease = await acquire({ class: 'exclusive', command: `qa:bench ${scenario.id} run ${run}`, cwd: context.repoRoot, signal: AbortSignal.any([context.signal, leaseWait]) })
   }
   catch (error) {
     if (!context.signal.aborted && leaseWait.aborted)
-      throw new BenchStop(`no exclusive CPU lease within ${T3_LEASE_WAIT_MS / 60_000} min; run \`pnpm slots status\` to see who holds the budget`, T3_LEASE_TIMEOUT_EXIT)
+      throw new BenchStop(`no exclusive CPU lease within ${LEASE_WAIT_MS / 60_000} min; run \`pnpm slots status\` to see who holds the budget`, LEASE_TIMEOUT_EXIT)
     throw error
   }
 

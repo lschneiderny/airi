@@ -19,7 +19,7 @@ import { modelFingerprint } from '../src/bench/summarize'
 import { loadQaEnv } from '../src/env/load'
 import { formatRunTimestamp } from '../src/evidence/run'
 import { refuseIfWorktreeBusy } from '../src/session/app-session'
-import { resolveRig, T3UsageError } from '../src/t3/args'
+import { resolveLive2DRig, RigSetupError } from '../src/t3/import-rig'
 
 const repoRoot = resolve(import.meta.dirname, '../../..')
 loadQaEnv(repoRoot)
@@ -31,12 +31,12 @@ class BenchSetupError extends Error {}
 function resolveModel(scenario: BenchScenario): BenchModel {
   if (scenario.model.kind === 'live2d') {
     try {
-      const rig = resolveRig('forbooth', process.env)
+      const rig = resolveLive2DRig(process.env)
       const { size, mtimeMs } = statSync(rig.model3)
       return { kind: 'live2d', zipFrom: rig.modelDir, fingerprint: modelFingerprint({ path: rig.model3, size, mtimeMs }) }
     }
     catch (error) {
-      if (error instanceof T3UsageError)
+      if (error instanceof RigSetupError)
         throw new BenchSetupError(`${scenario.id}: ${error.message}`)
       throw error
     }

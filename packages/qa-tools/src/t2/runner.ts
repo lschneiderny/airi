@@ -5,8 +5,8 @@ import type { PhysicsRigLike } from '@proj-airi/stage-ui-live2d/composables/live
 import type { CubismParameterTable, NaturalTrace } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/trace'
 import type { SlotLeases } from '@proj-airi/stage-ui-live2d/stores/expression-slot-leases'
 
-import type { ScenarioHost } from '../motion/scenario-sink'
 import type { T2RigData } from './rig'
+import type { ScenarioHost } from './scenario-sink'
 
 import process from 'node:process'
 
@@ -23,10 +23,10 @@ import { createSlotLeases, emptyLeases } from '@proj-airi/stage-ui-live2d/stores
 import { resolve } from '@proj-airi/stage-ui-live2d/stores/expression-store'
 import { computed, ref } from 'vue'
 
-import { runScenarioSink } from '../motion/scenario-sink'
 import { defaultCorePath, installWindowShim, loadCubismCoreInNode } from './core-node'
 import { T2SetupError } from './errors'
 import { readRig } from './rig'
+import { runScenarioSink } from './scenario-sink'
 
 /** Fixed SDK step in seconds: T2 simulates at 60 Hz whatever the render rate would be. */
 const t2Step = 1 / 60

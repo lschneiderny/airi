@@ -236,8 +236,8 @@ describe('runDoctor', () => {
     const row = await rowOf('pointer-platform', healthyProbes({ platform: () => platform }))
 
     expect(row.status).toBe('warn')
-    expect(row.detail).toContain('pointer-platform-unsupported')
-    expect(row.detail).toContain('cursorAttention off')
+    expect(row.detail).toContain('no real-pointer input')
+    expect(row.detail).toContain('cursor parking is Windows-only')
     expect(row.detail).toContain('stage-frame-budget readback is unmeasured')
     expect(row.detail).not.toContain('#2521')
     expect(row.fix).toContain('pnpm qa:display run --')
@@ -252,7 +252,7 @@ describe('runDoctor', () => {
     }))
 
     expect(row.status).toBe('ok')
-    expect(row.detail).toContain('QA display "touch": real-pointer T3 touch runs inject input through KWin EIS on a 1920x1080 output')
+    expect(row.detail).toContain('QA display "touch": qa:display pointer injects input through KWin EIS on a 1920x1080 output')
     expect(row.detail).toContain('stage-frame-budget readback is unmeasured')
     expect(row.detail).toContain('#2521')
   })

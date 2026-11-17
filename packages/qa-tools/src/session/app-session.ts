@@ -14,9 +14,8 @@ import { setTimeout } from 'node:timers/promises'
 import { killTree, listLiveProcesses, runGroupMembers } from '../env/processes'
 import { PageErrorCollector } from '../smoke/page-errors'
 import { MotionQaBridgeClient } from '../t3/bridge-client'
-import { connectStage, failOnExit, launchStageTamagotchi, stageTargetPattern } from '../t3/launch'
+import { closeBrowser, connectStage, failOnExit, launchStageTamagotchi, stageTargetPattern } from '../t3/launch'
 import { completeOnboarding } from '../t3/onboarding'
-import { closeBrowser } from '../t3/run-t3'
 import { findWorktreeAppProcesses, teardownRun, trackTree, waitForRunGroupExit } from '../t3/teardown'
 
 /** Throws when this worktree already runs an Electron or stage-tamagotchi process; commands call it before creating a run. */

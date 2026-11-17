@@ -11,7 +11,7 @@ import { errorMessageFrom } from '@moeru/std'
 
 import { defaultCompileCacheDir } from '../../../../scripts/dev-tools/lib/compile-cache'
 import { isPathInside } from '../../../../scripts/dev-tools/lib/paths'
-import { parseKwinProbe, runKwinHelper } from '../t3/pointer-kwin'
+import { parseKwinProbe, runKwinProbe } from '../t3/pointer-kwin'
 import { resolvePnpm, resolveVitestEntry } from './pnpm'
 import { commandLineContainsPath, killOwnedTree, killTree, listLiveProcesses } from './processes'
 
@@ -301,19 +301,19 @@ function createDoctorChecks(probes: DoctorProbes): DoctorCheck[] {
           const probe = await probes.kwinPointer()
           if (probe.ok) {
             const output = probe.screen ? ` on a ${probe.screen.width}x${probe.screen.height} output` : ''
-            return ok([`QA display "${display}": real-pointer T3 touch runs inject input through KWin EIS${output} and park the session cursor`, 'runs without pointer events inject no input, so T3 liveliness/emotion runs still use cursorAttention off instead of a parked cursor', measure, ...wayland].join('; '))
+            return ok([`QA display "${display}": qa:display pointer injects input through KWin EIS${output}`, measure, ...wayland].join('; '))
           }
           return {
             status: 'warn',
-            detail: [`QA display "${display}": the KWin EIS pointer backend is unavailable (${probe.missing.join('; ')}), so real-pointer T3 touch scenarios will fail`, measure, ...wayland].join('; '),
+            detail: [`QA display "${display}": the KWin EIS pointer backend is unavailable (${probe.missing.join('; ')}), so qa:display pointer moves (qa:host smoke evidence, qa:stage handoff) fail`, measure, ...wayland].join('; '),
             fix: 'Install python3-gobject and libei, and use a KWin that exports org.kde.KWin.EIS.RemoteDesktop.',
           }
         }
         const limits = [
           platform === 'linux'
-            ? 'linux outside the QA display: real-pointer T3 touch scenarios exit pointer-platform-unsupported'
-            : `${platform}: real-pointer T3 touch scenarios exit pointer-platform-unsupported`,
-          'cursor parking is not implemented, so T3 liveliness/emotion runs use cursorAttention off instead of a parked cursor (a different condition)',
+            ? 'linux outside the QA display: no real-pointer input'
+            : `${platform}: no real-pointer input`,
+          'cursor parking is Windows-only',
           measure,
           ...wayland,
         ]
@@ -547,7 +547,7 @@ export function createSystemProbes(repoRoot: string, env: Record<string, string 
     listProcesses: () => listLiveProcesses(10_000, platform, env),
     kwinPointer: async () => {
       try {
-        return parseKwinProbe(await runKwinHelper('probe', { timeoutMs: 10_000 }))
+        return parseKwinProbe(await runKwinProbe({ timeoutMs: 10_000 }))
       }
       catch (error) {
         return { ok: false, missing: [errorMessageFrom(error) ?? 'the KWin pointer probe failed'] }

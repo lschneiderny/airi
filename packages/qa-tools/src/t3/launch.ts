@@ -8,6 +8,7 @@ import type { LiveProcess, OwnedProcess, ProcessLister } from '../env/processes'
 import { createWriteStream } from 'node:fs'
 import { platform, env as processEnv } from 'node:process'
 
+import { errorMessageFrom } from '@moeru/std'
 import { CdpClient, findAvailablePort, findDebugTarget, waitForRemoteDebug } from '@proj-airi/scenarios-stage-tamagotchi-electron/runtime/remote-debug'
 
 import { spawnPnpm } from '../env/pnpm'
@@ -148,4 +149,20 @@ export async function connectStage(app: LaunchedApp, targetPattern = stageTarget
     throw new Error(`The main stage target ${target.url} has no WebSocket debugger URL`)
   const stage = await CdpClient.connect(target.webSocketDebuggerUrl)
   return { stage, browserUrl, targetUrl: target.url }
+}
+
+/** Closes the app's browser over CDP; a socket that closes before answering is the expected outcome. */
+export async function closeBrowser(browserUrl: string): Promise<void> {
+  const browser = await CdpClient.connect(browserUrl, 5_000)
+  try {
+    await browser.send('Browser.close', {}, 5_000)
+  }
+  catch (error) {
+    // The browser may close its socket before answering; that is the expected outcome.
+    if (!/socket (?:closed|errored)/i.test(errorMessageFrom(error) ?? ''))
+      throw error
+  }
+  finally {
+    browser.close()
+  }
 }
