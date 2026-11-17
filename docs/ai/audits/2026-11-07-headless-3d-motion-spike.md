@@ -3,7 +3,7 @@
 Date: 2026-11-07
 
 Scope: goal G5 of the agent QA tooling run, against `origin/main` at
-`8f24621f8`, in `/mnt/dev/projects/dtuber-wt/aqa-g5-3d`.
+`8f24621f8`, in `<worktrees>/aqa-g5-3d`.
 
 ## Verdict
 
@@ -27,12 +27,12 @@ remain untracked outside the worktree.
 
 ## Model and execution
 
-The search covered `/home/luke` and `/mnt/dev` for `.pmx` and `.vmd` files,
+The search covered the home folder and the development drive for `.pmx` and `.vmd` files,
 excluding `node_modules`. It found personal PMX assets and no VMD files.
 No PMX fixture was available in the repository. The model used was Chisa:
 
 ```text
-/mnt/dev/quarantine/personal/vtuber/random-models/MMD/WuWa_Chisa_v1.03/鸣潮_千咲1.02.pmx
+<model library>/MMD/WuWa_Chisa_v1.03/鸣潮_千咲1.02.pmx
 ```
 
 The model stayed at that path. Its SHA-256 is
@@ -259,7 +259,7 @@ the engine's required visible-window visual acceptance.
 All evidence is under this untracked directory:
 
 ```text
-/mnt/dev/projects/dtuber/.omo/evidence/agent-qa-tooling/g5/
+<main checkout>/.omo/evidence/agent-qa-tooling/g5/
 ```
 
 It contains `spike.mjs`, `raw-loader.txt`, `spike-run-1.txt`,
@@ -273,9 +273,9 @@ From the worktree, reproduce each successful capture with:
 
 ```bash
 pnpm -F @proj-airi/qa-tools exec tsx \
-  /mnt/dev/projects/dtuber/.omo/evidence/agent-qa-tooling/g5/spike.mjs 1
+  <main checkout>/.omo/evidence/agent-qa-tooling/g5/spike.mjs 1
 pnpm -F @proj-airi/qa-tools exec tsx \
-  /mnt/dev/projects/dtuber/.omo/evidence/agent-qa-tooling/g5/spike.mjs 2
+  <main checkout>/.omo/evidence/agent-qa-tooling/g5/spike.mjs 2
 ```
 
 The spike is deliberately not committed. The only committed artifact

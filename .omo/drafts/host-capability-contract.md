@@ -13,7 +13,7 @@ pending-action: handoff (execution via /ulw-execute host-capability-contract)
 review:
   plan_reviewer:
     status: approved
-    workspace_root: /mnt/dev/projects/dtuber
+    workspace_root: <main checkout>
     runtime_home: null
     target: .omo/plans/host-capability-contract.md
     round_id: hcc-r13-1794168094906

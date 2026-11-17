@@ -87,7 +87,7 @@ Your next move: start execution with ulw-execute once the high-accuracy review a
 - Package checks: `pnpm -F <package> typecheck`, `pnpm -F <package> exec vitest run <path>`, then `pnpm verify` in the worktree before every commit.
 - Motion tuning: todo 18 changes Natural idle constants under Luke's 2026-11-08 decision to include the retune in this plan; this is a recorded one-plan override of the qa-tools rule against tuning a Natural recipe to make a failing run pass. Bands, metrics, seeds and gate versions stay frozen.
 - Live QA (Luke's 2026-11-08 one-plan override of the live-QA deferral): allowed on this Linux machine only, native Wayland and XWayland, in the worktree, with temp profiles (`APP_USER_DATA_PATH=$RUN_TMP/profile-<n>`). Windows and macOS live rows are marked partial `[~]` for Luke.
-- Rig setup for T2/T3: copy `apps/*/public/assets/js/CubismSdkForWeb-5-r.3` from the main checkout into the worktree; copy the ForBOOTH rig from `/opt/truenas/shuka/shuka-models/shuka` into `$RUN_TMP/forbooth` and add `脸红2.exp3.json` as a byte copy of `Blush 2.exp3.json` (symlinks are not followed); set `AIRI_QA_RIG_FORBOOTH=$RUN_TMP/forbooth`. Before any launch confirm port 9250 is free (`ss -ltn | grep 9250` empty).
+- Rig setup for T2/T3: copy `apps/*/public/assets/js/CubismSdkForWeb-5-r.3` from the main checkout into the worktree; copy the ForBOOTH rig from `<ForBOOTH rig folder>` into `$RUN_TMP/forbooth` and add `脸红2.exp3.json` as a byte copy of `Blush 2.exp3.json` (symlinks are not followed); set `AIRI_QA_RIG_FORBOOTH=$RUN_TMP/forbooth`. Before any launch confirm port 9250 is free (`ss -ltn | grep 9250` empty).
 - Evidence: `.omo/evidence/host-capability-contract/task-<todo number>-<slug>.<ext>` in the worktree (outside ulw-loop); under ulw-execute use the attempt dir it provides.
 
 ## Execution strategy
@@ -130,7 +130,7 @@ Your next move: start execution with ulw-execute once the high-accuracy review a
 <!-- APPEND TASK BATCHES BELOW THIS LINE WITH edit/apply_patch - never rewrite the headers above. -->
 - [x] 1. Create the worktree from origin/main and carry the 2026-11-08 idle-time fix
   Recommended task executor category: quick - mechanical setup plus one patch apply.
-  What to do: from `/mnt/dev/projects/dtuber` run `git fetch origin`, then `pnpm wt new host-capability-contract --base origin/main --branch luke/feat/host-capability-contract` (creates the worktree at `../dtuber-wt/host-capability-contract` from origin/main `8f24621f8` or newer and runs `pnpm install`; `scripts/dev-tools/wt.ts:100-127`). Apply `/mnt/dev/projects/dtuber/.omo/drafts/host-capability-contract.idle-fix.patch` with `git apply`. Copy `apps/stage-tamagotchi/public/assets/js/CubismSdkForWeb-5-r.3` and `apps/stage-web/public/assets/js/CubismSdkForWeb-5-r.3` from the main checkout. Run `pnpm install` once if `pnpm` reports out-of-date dependencies. Must NOT: branch from local `main` (it carries another session's unpushed `a11532c1e`), touch the main checkout's dirty files, or commit the Cubism SDK copy.
+  What to do: from `<main checkout>` run `git fetch origin`, then `pnpm wt new host-capability-contract --base origin/main --branch luke/feat/host-capability-contract` (creates the worktree at `../dtuber-wt/host-capability-contract` from origin/main `8f24621f8` or newer and runs `pnpm install`; `scripts/dev-tools/wt.ts:100-127`). Apply `<main checkout>/.omo/drafts/host-capability-contract.idle-fix.patch` with `git apply`. Copy `apps/stage-tamagotchi/public/assets/js/CubismSdkForWeb-5-r.3` and `apps/stage-web/public/assets/js/CubismSdkForWeb-5-r.3` from the main checkout. Run `pnpm install` once if `pnpm` reports out-of-date dependencies. Must NOT: branch from local `main` (it carries another session's unpushed `a11532c1e`), touch the main checkout's dirty files, or commit the Cubism SDK copy.
   Closes: prerequisite for every GAP
   Parallelization: Wave 1 | Blocked by: - | Blocks: all
   References: patch content = `apps/stage-tamagotchi/src/main/services/electron/desktop-activity.ts` (idle null only under XWayland), its test, `docs/ai/adr/2026-10-17-natural-motion-v2-performance-state.md` Linux/Wayland section, `packages/stage-shared/src/performance-state/index.ts:56`; worktree rules root `AGENTS.md` Source control workflow; `pnpm wt` in `scripts/dev-tools/README.md`.
@@ -385,31 +385,31 @@ Your next move: start execution with ulw-execute once the high-accuracy review a
 
 - [~] 25. Follow-up (F2 pre-pass): treat a not-yet-arrived capability snapshot as unknown, not unavailable, in the renderer
   Recommended task executor category: deep-low.
-  What to do: fix M1, M9 and L2 in /mnt/dev/projects/dtuber/.omo/evidence/host-capability-contract-F2-prepass-review.md. Renderer gates (use-screen-ambient-light start(), index.vue screenPlacement/cursorAwayFromWindow, stage.vue forceCapture, controls-island-root liveWindowBounds, use-presence-notice non-null assertion) must not take the degraded path while the snapshot is still null on a live host; Windows/macOS startup behaviour equals origin/main (IS-11).
+  What to do: fix M1, M9 and L2 in <main checkout>/.omo/evidence/host-capability-contract-F2-prepass-review.md. Renderer gates (use-screen-ambient-light start(), index.vue screenPlacement/cursorAwayFromWindow, stage.vue forceCapture, controls-island-root liveWindowBounds, use-presence-notice non-null assertion) must not take the degraded path while the snapshot is still null on a live host; Windows/macOS startup behaviour equals origin/main (IS-11).
   Closes: F2 pre-pass M1, M9, L2 | Blocked by: - | Blocks: 21
   Commit: Y | `fix(stage-tamagotchi): wait for the host capability snapshot before choosing degraded paths`
 
 - [x] 26. Follow-up (F2 pre-pass): remove the test-only uiohook seam, the unreachable cursor listener, and the per-sample trust call
   Recommended task executor category: unspecified-low.
-  What to do: fix M2, M3, M7 and L3 in /mnt/dev/projects/dtuber/.omo/evidence/host-capability-contract-F2-prepass-review.md, keeping IS-11 behaviour and every existing test meaningful.
+  What to do: fix M2, M3, M7 and L3 in <main checkout>/.omo/evidence/host-capability-contract-F2-prepass-review.md, keeping IS-11 behaviour and every existing test meaningful.
   Closes: F2 pre-pass M2, M3, M7, L3 | Blocked by: - | Blocks: 21
   Commit: Y | `refactor(stage-tamagotchi): read host capability state through the service only`
 
 - [x] 27. Follow-up (F2 pre-pass): single source for host and signal lists, one Wayland detector in qa-tools, no prose-pinning tests
   Recommended task executor category: unspecified-low.
-  What to do: fix M4, M5, M6 and L4 in /mnt/dev/projects/dtuber/.omo/evidence/host-capability-contract-F2-prepass-review.md: export as-const lists from packages/stage-shared/src/host-capabilities and derive types (remove the duplication NOTICE), share one qa-tools session detector, assert on codes or i18n keys instead of English prose, and record the optional-x/y persistence policy in the host capability ADR.
+  What to do: fix M4, M5, M6 and L4 in <main checkout>/.omo/evidence/host-capability-contract-F2-prepass-review.md: export as-const lists from packages/stage-shared/src/host-capabilities and derive types (remove the duplication NOTICE), share one qa-tools session detector, assert on codes or i18n keys instead of English prose, and record the optional-x/y persistence policy in the host capability ADR.
   Closes: F2 pre-pass M4, M5, M6, L4 | Blocked by: - | Blocks: 21
   Commit: Y | `refactor(stage-shared): derive host capability lists from one source`
 
 - [x] 28. Follow-up (todo 25 attempt-3 review): no renderer decision from a null or untrusted cursor or origin in floating chat, desktop overlay, and caption border
   Recommended task executor category: deep-low.
-  What to do: fix Q1 (use-chat-floating-click-through.ts:206, click-through from (0,0) before the first cursor reading), Q2 (desktop-overlay.vue:136, markers positioned from a hidden Wayland origin, IS-2), and Q3 (caption.vue:150, border visible while cursor availability is false) in /mnt/dev/projects/dtuber/.omo/evidence/host-capability-contract-task-25-gate-review-3.md, on top of todo 25's commit 51f45c647. Windows/macOS behaviour equals origin/main (IS-11).
+  What to do: fix Q1 (use-chat-floating-click-through.ts:206, click-through from (0,0) before the first cursor reading), Q2 (desktop-overlay.vue:136, markers positioned from a hidden Wayland origin, IS-2), and Q3 (caption.vue:150, border visible while cursor availability is false) in <main checkout>/.omo/evidence/host-capability-contract-task-25-gate-review-3.md, on top of todo 25's commit 51f45c647. Windows/macOS behaviour equals origin/main (IS-11).
   Closes: todo 25 review Q1, Q2, Q3 | Blocked by: 25 | Blocks: 21
   Commit: Y | `fix(stage-tamagotchi): gate floating chat, overlay and caption on cursor and origin trust`
 
 - [x] 29. Follow-up (F3): caption must not fade from an unavailable cursor
   Recommended task executor category: deep-low.
-  What to do: on native Wayland with no pointer events, cursorAvailable=false but isOutsideWindow=false makes caption.vue fade and hide valid text (F3 evidence /mnt/dev/projects/dtuber-wt/host-capability-contract/.omo/evidence/host-capability-contract/F3/actions-wayland-caption.json, wayland-caption-no-input.png). Unavailable or unknown cursor state must not count as hover; the DOM hover fallback may. Windows/macOS behaviour equals origin/main (IS-11).
+  What to do: on native Wayland with no pointer events, cursorAvailable=false but isOutsideWindow=false makes caption.vue fade and hide valid text (F3 evidence <worktrees>/host-capability-contract/.omo/evidence/host-capability-contract/F3/actions-wayland-caption.json, wayland-caption-no-input.png). Unavailable or unknown cursor state must not count as hover; the DOM hover fallback may. Windows/macOS behaviour equals origin/main (IS-11).
   Closes: F3 caption defect | Blocked by: 28 | Blocks: F1, F3
   Commit: Y | `fix(stage-tamagotchi): keep captions visible when the cursor is unavailable`
 

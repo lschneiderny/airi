@@ -11,7 +11,7 @@ pending-action: none (plan approved by plan-reviewer round 4; execution starts o
 review:
   plan_reviewer:
     status: approved
-    workspace_root: /mnt/dev/projects/dtuber
+    workspace_root: <main checkout>
     runtime_home: null
     target: .omo/plans/linux-sensor-parity.md
     round_id: lsp-r4-mw9eebxy
@@ -112,7 +112,7 @@ next workflow action: write and review .omo/plans/linux-sensor-parity.md (pendin
 <!-- That durable record is the loop guard: on a later turn read it and resume at the gate instead of re-running exploration. -->
 
 ## Plan generation log
-- Plan written 2026-11-09 after approval; plan-consultant st_01a1c0bd returned F1-F21, folded into todos 1-13 and 18 (coordinate provider, launch gate from detection, verifying excluded from notice, backend field, interim smoke tolerance, qa:display portals/compositor-aware env, per-pid KWin names, Plasma 5 failure path, dependency fail-fast checks, private PipeWire for audio QA, MMD QA model at /opt/truenas/random models/MMD/WuWa_Iuno_Rigged). F15 (dbus-native stale) disproved by npm registry 2026-11-09 (0.16.3, 2026-10-28); F17 resolved by a local MMD model.
+- Plan written 2026-11-09 after approval; plan-consultant st_01a1c0bd returned F1-F21, folded into todos 1-13 and 18 (coordinate provider, launch gate from detection, verifying excluded from notice, backend field, interim smoke tolerance, qa:display portals/compositor-aware env, per-pid KWin names, Plasma 5 failure path, dependency fail-fast checks, private PipeWire for audio QA, MMD QA model at <model library>/MMD/WuWa_Iuno_Rigged). F15 (dbus-native stale) disproved by npm registry 2026-11-09 (0.16.3, 2026-10-28); F17 resolved by a local MMD model.
 - Structural self-check PASS: 0 violations, rows 1-20 + F1-F4, every todo has a category line, header order matches the template.
 - Review round 1: lsp-r1-mw9e654x, sha e8711821f6b8cf37423bf94b3ae43c4ef1254cdf9ce2221d0f0e1d352d2de98b.
 - Round 1 (st_01a1c0d6): REJECT (changes_requested), 2 new blockers: B1 stationary cursor invalidated by 1 s gap rule (todos 4/9); B2 X11 coordinate ownership conflict (todos 9/14). Both fixed: silence never invalidates the cursor (null only on transport failure), cursor script sends position at load, 5 s rest QA in todos 9 and 13; per-backend/session coordinate ownership table in todo 9 (X11 keeps Electron), X11 coordinate regression QA in todo 14, deps 13<-14.

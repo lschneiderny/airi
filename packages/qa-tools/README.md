@@ -584,7 +584,7 @@ pnpm qa:display run -- pnpm qa:host smoke --expect-idle verified --expect-backen
 ```
 
 The smoke passed with 37 samples in `.temp/qa/20261109-184734-host-smoke`
-under `/mnt/dev/projects/dtuber-wt/lsp-t19`. Lock and audio are not listed
+under `<worktrees>/lsp-t19`. Lock and audio are not listed
 because that session did not provide a lock source or run capture.
 
 The command prints a JSON report and saves `report.json` and `app.log` under the reported `.temp/qa/` run directory. Every sample includes its elapsed time, raw host snapshot, idle reading, and resolved performance mode. A live idle sensor must advance; native Wayland may stay unverified with null idle readings or promote once to live and then advance. Runtime hook or foreground binding failures fail the signal comparison and name their reason.

@@ -11,7 +11,7 @@ pending-action: none (ready for /ulw-execute after linux-sensor-parity lands)
 review:
   plan_reviewer:
     status: approved
-    workspace_root: /mnt/dev/projects/dtuber
+    workspace_root: <main checkout>
     runtime_home: null
     target: .omo/plans/test-qa-revamp.md
     round_id: r5-20261110

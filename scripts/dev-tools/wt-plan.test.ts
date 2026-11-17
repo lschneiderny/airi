@@ -82,7 +82,7 @@ describe('tempWorktreeRefusal', () => {
   it('refuses a path inside the temporary directory and allows a sibling with the same prefix', () => {
     expect(tempWorktreeRefusal('/tmp/repo-wt/probe', '/tmp')).toContain('inodes')
     expect(tempWorktreeRefusal('/tmpfs-repo-wt/probe', '/tmp')).toBeNull()
-    expect(tempWorktreeRefusal('/mnt/dev/repo-wt/probe', '/tmp')).toBeNull()
+    expect(tempWorktreeRefusal('/srv/repo-wt/probe', '/tmp')).toBeNull()
   })
 })
 

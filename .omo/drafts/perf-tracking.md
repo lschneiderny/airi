@@ -11,7 +11,7 @@ pending-action: none - hand off to /ulw-execute perf-tracking
 review:
   plan_reviewer:
     status: approved
-    workspace_root: /mnt/dev/projects/dtuber
+    workspace_root: <main checkout>
     runtime_home: null
     target: .omo/plans/perf-tracking.md
     round_id: r2
