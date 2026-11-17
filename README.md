@@ -125,7 +125,7 @@ Each app and package has its own `README.md`. [`AGENTS.md`](./AGENTS.md) records
 
 ## Upstream
 
-`origin` is this fork and `upstream` is `moeru-ai/airi`. The fork has diverged heavily in chat orchestration, the Live2D stack, and the stores. For that reason, upstream changes are brought in as selected cherry-picks instead of merges.
+`origin` is this fork and `upstream` is `moeru-ai/airi`. The fork has diverged heavily in chat orchestration, the Live2D stack, and the stores. Upstream changes come in by merging `upstream/main` on a sync branch, never by cherry-pick or rebase; [`.github/CONTRIBUTING.md`](./.github/CONTRIBUTING.md#bring-in-upstream-changes) has the steps.
 
 ## License and credits
 
