@@ -69,7 +69,7 @@ Agent guidance holds only what an agent cannot learn from the code, `package.jso
 ### Source control workflow
 - Commit small, self-contained changes directly to `main` after `pnpm verify` passes.
 - Put plan-sized or multi-commit work, such as a `.omo/plans` execution, on a branch. Open a pull request against `lschneiderny/airi`, never against upstream `moeru-ai/airi`. The fork allows only rebase merges, so keep each commit atomic and passing.
-- Move tracked files with `git mv`, so rename history survives upstream syncs.
+- Move tracked files with `git mv` in a commit of its own with no content edits, so Git detects the rename and history survives upstream syncs.
 - Work in the main checkout by default. Create a worktree with `pnpm wt new <name>` only for parallel or long-running work, and remove it with `pnpm wt rm <name>`.
 - `/tmp` is RAM-backed. Never export, clone, or install the repository under `/tmp`. To build or test another revision, use `pnpm wt new <name>` and remove it with `pnpm wt rm <name>`; to read an old file, use `git show <rev>:<path>`.
 - `main` rejects force pushes and deletion. Never rewrite pushed history on `main`; if a push is rejected, run `git pull --rebase` and push again.
@@ -108,7 +108,7 @@ Testing tiers. [Testing and QA](docs/ai/context/testing.md) says what each check
 - Commit loop: `pnpm verify` after each change. It lints the changed files, typechecks the changed packages and their dependents, and runs the tests related to the changed code by imports.
 - Branch gate: `pnpm verify --gate` before landing. Same checks over the whole branch, related tests only. Add `pnpm qa:display run -- pnpm qa:smoke` when app runtime code changed.
 - Release: `pnpm release` runs the full typecheck, full test suite, lint, bundle checks, and clean-start smoke before it uploads.
-- Renderer motion: MMD uses `pnpm qa:motion3d` and `pnpm qa:test:model`; Live2D uses `pnpm qa:live2d-rig` (headless ForBOOTH, T2) and has no statistical gate; the gate code left in `packages/stage-ui-live2d` is a leftover (see its guide). Rendered checks use `qa:app` or the `airi-qa` MCP server, with visual review.
+- Renderer motion: MMD uses `pnpm qa:motion3d` and `pnpm qa:test:model`; Live2D uses `pnpm qa:live2d-rig` (headless ForBOOTH, T2) and the idle liveliness test in `stage-ui-live2d`'s suite; its emotion gates have no runner (see its guide). Rendered checks use `qa:app` or the `airi-qa` MCP server, with visual review.
 - Platforms: only macOS and Linux KDE Wayland are checked. Windows, sway, and X11 are planned, not checked.
 
 After each task, run `pnpm verify` before finishing. It typechecks every package when a root config file changes and skips typecheck for Markdown-only changes. Each step checks only what changed since it last passed on the current branch.
