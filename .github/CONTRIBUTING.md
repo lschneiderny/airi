@@ -85,6 +85,8 @@ If mise is not [activated in your shell](https://mise.jdx.dev/dev-tools/shims.ht
 
 The workspace sets `verifyDepsBeforeRun: error`. If `pnpm run` or `pnpm exec` reports that dependencies are out of date, run `pnpm install` once.
 
+To bump dependencies, run `pnpm deps:up`. It picks updates interactively with taze, which skips versions younger than the workspace's `minimumReleaseAge` (three days), so `pnpm install` accepts every version it writes. It is not named `up`, because `pnpm up` is pnpm's own `update` command.
+
 ## Run an app
 
 ### Desktop (Stage Tamagotchi)
