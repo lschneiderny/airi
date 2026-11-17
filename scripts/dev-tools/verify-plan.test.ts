@@ -37,8 +37,8 @@ describe('planVerify', () => {
 
   it('plans the directory scope when the change is confined to a root dependency', () => {
     const withSlots = [...packages, 'packages/cpu-slots']
-    expect(planVerify([file('packages/cpu-slots/README.md')], withSlots, ['packages/cpu-slots']).typecheck)
-      .toEqual({ kind: 'all', reason: 'packages/cpu-slots/README.md is in a root dependency' })
+    expect(planVerify([file('packages/cpu-slots/src/store.ts')], withSlots, ['packages/cpu-slots']).typecheck)
+      .toEqual({ kind: 'all', reason: 'packages/cpu-slots/src/store.ts is in a root dependency' })
   })
 
   it('keeps the affected scope for a package the root does not depend on', () => {
@@ -62,6 +62,24 @@ describe('planVerify', () => {
     expect(plan.typecheck).toEqual({ kind: 'affected' })
     expect(plan.lintFiles).toEqual([])
     expect(plan.testFiles).toEqual([])
+  })
+
+  it('skips typecheck for a documentation-only change, even in a root dependency', () => {
+    const plan = planVerify([file('packages/stage-ui/README.md'), file('packages/cpu-slots/docs/notes.mdx')], [...packages, 'packages/cpu-slots'], ['packages/cpu-slots'])
+    expect(plan.typecheck).toEqual({ kind: 'none' })
+    expect(plan.typecheckPackagePaths).toEqual([])
+    expect(plan.lintFiles).toEqual(['packages/stage-ui/README.md', 'packages/cpu-slots/docs/notes.mdx'])
+  })
+
+  it('runs tests related to changed JSON and YAML data, but not to manifests', () => {
+    const plan = planVerify([
+      file('packages/stage-ui/src/fixtures/bands.json'),
+      file('packages/stage-ui/locales/en.yaml'),
+      file('packages/stage-ui/package.json'),
+      file('apps/stage-tamagotchi/tsconfig.node.json'),
+    ], packages)
+    expect(plan.testFiles).toEqual(['packages/stage-ui/src/fixtures/bands.json', 'packages/stage-ui/locales/en.yaml'])
+    expect(plan.testPackagePaths).toEqual(['packages/stage-ui'])
   })
 
   it('does not lint binary assets', () => {

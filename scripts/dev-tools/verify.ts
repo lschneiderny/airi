@@ -69,7 +69,7 @@ function commandsFor(step: VerifyStep, root: string, plan: ReturnType<typeof pla
     }))
   }
   if (!plan.testFiles.length)
-    return 'no code file changed'
+    return 'no code or test data file changed'
   const configs = planTestRuns(browserProjects)
   // `vitest related` resolves relative paths against each project's package root.
   const absoluteFiles = plan.testFiles.map(file => join(root, file))

@@ -76,6 +76,12 @@ export function touchesAppRuntime(changed: ChangedFile[]): boolean {
 const typecheckGlobalFile = /^(?:tsconfig[^/]*\.json|package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|turbo\.json|[^/]+\.d\.ts)$/
 
 const codeFile = /\.(?:[cm]?[jt]sx?|vue)$/
+/** Data that tests import, such as fixtures, gate bands, and locales. `vitest related` finds the tests that import it. */
+const testDataFile = /\.(?:json5?|jsonc|ya?ml)$/
+/** Manifests and compiler configs that no test imports; a change to one alone would only start browsers to find nothing. */
+const toolingFile = /(?:^|\/)(?:package\.json|tsconfig[^/]*\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|turbo\.json)$/
+/** Prose that no compiler reads, so a change to it alone needs no typecheck. */
+const docFile = /\.(?:md|mdx|txt)$/i
 const binaryFile = /\.(?:png|jpe?g|gif|webp|avif|ico|icns|bmp|svgz|mp[34]|wav|ogg|flac|webm|mov|zip|7z|gz|tgz|woff2?|ttf|otf|moc3|vrm|pmx|pmd|vmd|glb|gltf|bin|exe|dll|node|wasm|pdf|psd)$/i
 
 /**
@@ -109,7 +115,7 @@ export interface VerifyPlan {
   lintFiles: string[]
   testFiles: string[]
   /**
-   * Workspace package directories that hold a changed code file. Browser projects only hold package tests, so they run
+   * Workspace package directories that hold a changed code or test data file. Browser projects only hold package tests, so they run
    * only for these packages and the packages that depend on them.
    */
   testPackagePaths: string[]
@@ -159,21 +165,22 @@ export function planTestRuns(browserProjects: string[]): TestRun[] {
  */
 export function planVerify(changed: ChangedFile[], packagePaths: string[], rootDependencyPaths: string[] = []): VerifyPlan {
   const present = changed.filter(file => !file.deleted).map(file => file.path)
-  const globalFile = changed.find(file => typecheckGlobalFile.test(file.path))
+  const typed = changed.filter(file => !docFile.test(file.path))
+  const globalFile = typed.find(file => typecheckGlobalFile.test(file.path))
   let typecheck: TypecheckScope = { kind: 'none' }
   if (globalFile) {
     typecheck = { kind: 'all', reason: `${globalFile.path} changed` }
   }
-  else if (changed.some(file => inPackage(file.path, packagePaths))) {
-    const rootDependency = changed.find(file => inPackage(file.path, rootDependencyPaths))
+  else if (typed.some(file => inPackage(file.path, packagePaths))) {
+    const rootDependency = typed.find(file => inPackage(file.path, rootDependencyPaths))
     typecheck = rootDependency
       ? { kind: 'all', reason: `${rootDependency.path} is in a root dependency` }
       : { kind: 'affected' }
   }
-  const testFiles = present.filter(path => codeFile.test(path))
+  const testFiles = present.filter(path => codeFile.test(path) || (testDataFile.test(path) && !toolingFile.test(path)))
   return {
     typecheck,
-    typecheckPackagePaths: [...new Set(changed.map(file => packageOf(file.path, packagePaths)).filter(path => path !== undefined))],
+    typecheckPackagePaths: [...new Set(typed.map(file => packageOf(file.path, packagePaths)).filter(path => path !== undefined))],
     lintFiles: present.filter(path => !binaryFile.test(path)),
     testFiles,
     testPackagePaths: [...new Set(testFiles.map(path => packageOf(path, packagePaths)).filter(path => path !== undefined))],
