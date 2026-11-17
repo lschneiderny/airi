@@ -96,7 +96,7 @@ Column meanings:
 | `useSettingsScreenAmbientLight` (`packages/stage-shared/src/stores/screen-ambient-light.ts`) | `settings/screen-ambient-light/*` | plain | any window | yes |
 | `useSettingsLive2d` (`packages/stage-ui-live2d/src/composables/live2d/live2d.ts`) | `settings/live2d/*` driver, tracking, idle, blink, expression, shadow, FPS, and render-scale keys | plain | any window | yes |
 | `useLive2dParams` (`packages/stage-ui-live2d/src/stores/model-parameters.ts`) | `settings/live2d/current-motion`, `available-motions`, `motion-map`, `parameters` | plain | any window | yes |
-| `useL2dViewControl` (`packages/stage-ui-live2d/src/stores/view-control.ts`) | `settings/live2d/scale`, `settings/live2d/position` | plain | any window | no |
+| `useL2dViewControl` (`packages/stage-ui-live2d/src/stores/view-control.ts`) | `settings/live2d/scale`, `settings/live2d/position` | plain | any window | yes, through `useLive2dParams` |
 | `useLive2DMotionMagicSettings` (`packages/stage-ui/src/features/motions/live2d/settings.ts`) | `settings/live2d/magic/*` | plain | any window | yes |
 | `useMMD` (`packages/stage-ui-mmd/src/stores/mmd.ts`) | `settings/mmd/*`; imported motions as items in the default localforage database | plain; 4 for motions | any window | yes |
 | `useMMDViewControl` (`packages/stage-ui-mmd/src/stores/view-control.ts`) | `settings/mmd/scale`, `settings/mmd/rotationY`, `settings/mmd/position` | plain | any window | yes, through `useMMD` |
@@ -174,7 +174,7 @@ These are observations, not fixes. Each needs either a registration, a move to t
 - Tier 1: `useConversationSettings`. It is also missing from the tier 1 member list in the persistence-tiers ADR.
 - Tier 4: `useBackgroundStore` in stage-ui and `useStickersStore`, including their IndexedDB records.
 - Synced plain refs: `useVisionStore` and `useArtistryStore`.
-- Unsynced plain refs: `useSettingsBeatSync`, `useL2dViewControl`, `useSpine`, `useSpineViewControl`, `useVisionProcessingStore`, `useModsServerChannelStore`, `useSpeechOutputControlStore`, and `useWakeWordsStore`.
+- Unsynced plain refs: `useSettingsBeatSync`, `useSpine`, `useSpineViewControl`, `useVisionProcessingStore`, `useModsServerChannelStore`, `useSpeechOutputControlStore`, and `useWakeWordsStore`.
 - Desktop app: `useDanmakuFeedSettings`, `useControlsIslandStore`, `useServerChannelSettingsStore`, `usePushToTalkShortcutSettings`, and the component-level keys `chat-window/danmaku/composer-folded`, `ui/chat/settings/send-mode`, `ui/chat/voice-mode`, and `selected-runtime-motion*`.
 - Partial resets: `useModelStore().resetModelStore` resets the model, camera position, view offset, and tracking keys, but leaves the lighting, environment, render-scale, multisampling, and FPS keys and the `useThreeCamera` field of view and distance.
 

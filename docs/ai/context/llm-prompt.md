@@ -57,6 +57,8 @@ The output cap is not a segment. `REPLY_MAX_TOKENS` (320) in `packages/stage-sha
 
 **Outside the composer.** The artistry director in `useAutonomousArtistryStore` in `packages/stage-ui/src/stores/modules/artistry-autonomous.ts` is not a character turn. It writes its own system prompt and appends `composeMemoryPrompt` from `packages/stage-ui/src/tools/memory.ts` with the full index of the card being processed, so its [memory index](glossary.md#long-term-memory) has no entry or char cap.
 
+These requests are not character turns either. Each builds its own prompt without `composePrompt`: expression tag suggestions (`requestExpressionTagSuggestions`), vision inference (`useVisionInference`), the voice end judge (`useVoiceEndJudge`), voice rephrasing (`useVoiceRephrase`), thread extraction (`createThreadExtractor`, run by `useSituationStore` and capped at `EXTRACTION_MAX_TOKENS`), provider validation pings (`createOpenAICompatibleValidators` in `packages/provider-inference`), and the Minecraft bot's `LLMAgent` (`integrations/minecraft`).
+
 ## Who may add a segment
 
 - A new system-prompt segment needs a row in `PROMPT_SEGMENT_ORDER` and in `PROMPT_SEGMENT_BUDGETS` in `packages/stage-shared/src/stage-contract/compose.ts`, and an amendment to the [prompt composition ADR](../adr/2026-11-01-prompt-composition.md). The code enforces the first part: `PROMPT_SEGMENT_BUDGETS` must cover every `PromptSegmentId`, the `PromptSegment` type accepts only known ids and the list shape for `drop-oldest` segments, and `composePrompt` throws on an unknown or duplicate id at run time. Nothing in code enforces the ADR amendment.
