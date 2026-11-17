@@ -3,8 +3,8 @@ import type { PageError } from './page-errors'
 import { array, minLength, object, parse, picklist, pipe, string } from 'valibot'
 
 /**
- * A known error a clean start may log. Every entry names why it is acceptable and when to delete it, like the
- * known-failures registry; an entry without a concrete cause does not belong here.
+ * A known error a clean start may log. Every entry names why it is acceptable and when to delete it; an entry
+ * without a concrete cause does not belong here.
  */
 export interface AllowedError {
   /** A regular expression source, matched against `text`. */

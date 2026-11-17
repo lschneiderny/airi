@@ -760,8 +760,6 @@ Run `pnpm qa:doctor` first. It checks whether the current worktree can produce m
 | --- | --- |
 | `pnpm qa:setup cubism [--force]` | Download Cubism Core for the desktop app without opening a window. Skip present copies; `--force` downloads again. |
 | `pnpm qa:doctor [--json] [--warm]` | Check Node, pinned pnpm, temporary directory and compile cache space (`temp-space`), installation, built packages, Cubism Core, Chromium, the Live2D rig directory (`AIRI_QA_RIG_FORBOOTH`) and MMD model file (`AIRI_QA_MMD_MODEL`), and conflicting Electron processes. `--warm` runs the stage-ui browser warm-up. |
-| `pnpm qa:test --all` | Run the registered Vitest package and project set, then report new, known, fixed, and flaky-passed tests. |
-| `pnpm qa:test --package <name> [--package <name>...] [--project node\|browser] [--registry <file>] [--timeout <seconds>]` | Run selected test targets. |
 | `pnpm qa:motion gate emotion --level t1 [--emotions a,b] [--bands clear,strong] [--seeds N] [--workers N] [--timeout-minutes N]` | Score the deterministic controller simulation against committed emotion rules. |
 | `pnpm qa:motion gate liveliness --level t1 [--workers N] [--timeout-minutes N]` | Check idle motion against the committed generated-liveliness rules. |
 | `pnpm qa:motion gate <emotion\|liveliness> --level t2 --rig forbooth [options]` | Run the selected gate against the headless ForBOOTH rig and Cubism Core. Set `AIRI_QA_RIG_FORBOOTH`; set `AIRI_QA_CUBISM_CORE` when the core is not at the checkout's default path. |
@@ -855,7 +853,7 @@ AIRI_QA_RIG_FORBOOTH="/path/to/rig"
 AIRI_QA_MMD_MODEL="/path/to/model.pmx"
 ```
 
-Doctor, motion, stage, t2-probe, and qa:test load this file before reading QA settings or recording their environment. Only `AIRI_QA_*` keys apply, and existing shell variables (including empty values) take precedence. A missing file is silent. Malformed input produces a warning and applies no values; unrelated keys produce warnings and are ignored. Doctor names the source file and loaded keys in its rigs row.
+Doctor, motion, stage, and t2-probe load this file before reading QA settings or recording their environment. Only `AIRI_QA_*` keys apply, and existing shell variables (including empty values) take precedence. A missing file is silent. Malformed input produces a warning and applies no values; unrelated keys produce warnings and are ignored. Doctor names the source file and loaded keys in its rigs row.
 
 ## Pointer platform preflight
 
@@ -1098,7 +1096,7 @@ The session itself does not add these switches; the smoke passes them only when 
 
 While the app runs, a CDP collector attaches to every window, including windows opened later, and records uncaught exceptions, unhandled rejections, `console.error` and failed `console.assert` calls, and browser error log entries such as failed resource loads. Enabling the domains replays what V8 buffered before the attach, so errors from the first paint count. After teardown, the main-process log is scanned for app logger `[error]` lines, uncaught exceptions, and unhandled rejections. Chromium's own `:ERROR:` lines and the renderer errors that Vite echoes as `[vite] (client)` are excluded.
 
-Any error that does not match an entry in `fixtures/smoke/allowed-errors.json` (or `--allow <json>`) fails the run, and so does a window the collector could not attach to. Each allowlist entry names its `kind` (`exception`, `console`, `log`, or `main`), a regular-expression `pattern`, a `reason`, the date it was `added`, and when to remove it (`removeWhen`). Add an entry only for a concrete, understood cause, as in the known-failures registry; an unexplained error is a finding.
+Any error that does not match an entry in `fixtures/smoke/allowed-errors.json` (or `--allow <json>`) fails the run, and so does a window the collector could not attach to. Each allowlist entry names its `kind` (`exception`, `console`, `log`, or `main`), a regular-expression `pattern`, a `reason`, the date it was `added`, and when to remove it (`removeWhen`). Add an entry only for a concrete, understood cause; an unexplained error is a finding.
 
 Stdout is one JSON line: `ok`, `runDir`, `failure`, `expectHost`, the watched `windows`, counts of unexpected `errors` and `mainErrors`, `allowed`, `unwatchedWindows`, the `firstErrors`, and the `screenshot`. The run directory keeps `errors.json` (every error with its window, kind, text, and source), `diagnostics.json`, `stage.png`, and `app.log`. Exit 0 means a clean start, 1 means an unexpected error or a broken run, 2 means invalid arguments or setup, and 130 means interruption.
 
@@ -1579,7 +1577,7 @@ The unchanged T3 capture lasts 600 seconds: 180 seconds of warm-up and 420 score
 
 ## Evidence
 
-After argument and environment checks pass, `pnpm qa:test`, `pnpm qa:motion gate` at T1, T2, or T3, direct `pnpm qa:motion t3`, `pnpm qa:motion validate-scorer`, `pnpm qa:model run`, and `pnpm qa:model score` create unique runs under `.temp/qa/<timestamp>-<tool>-<label>/`. Each run's `run.json` records its command, source SHA, dirty state, relevant `APP_*` and `AIRI_QA_*` environment values, gate provenance when applicable, artifact hashes, and result. A T3 gate also creates one run per capture session. An emotion `--rescore` creates its new run only after the archive passes validation; a refusal exits 2 before creating it. The standalone `t2:probe` prints a JSON summary and creates no run directory.
+After argument and environment checks pass, `pnpm qa:motion gate` at T1, T2, or T3, direct `pnpm qa:motion t3`, `pnpm qa:motion validate-scorer`, `pnpm qa:model run`, and `pnpm qa:model score` create unique runs under `.temp/qa/<timestamp>-<tool>-<label>/`. Each run's `run.json` records its command, source SHA, dirty state, relevant `APP_*` and `AIRI_QA_*` environment values, gate provenance when applicable, artifact hashes, and result. A T3 gate also creates one run per capture session. An emotion `--rescore` creates its new run only after the archive passes validation; a refusal exits 2 before creating it. The standalone `t2:probe` prints a JSON summary and creates no run directory.
 
 `pnpm qa:doctor` prints its findings, including with `--warm`, and creates no run directory or manifest. `pnpm qa:report` writes `report.html` into the first input run directory or the path passed with `--out`; it creates no separate run directory or manifest. The evidence archive command copies files under `.omo/evidence/<slug>` and writes that archive's `manifest.json`, not a QA run directory or `run.json`.
 
@@ -1590,12 +1588,6 @@ pnpm -F @proj-airi/qa-tools run evidence archive --plan <slug> --from <worktree-
 ```
 
 The archive command preserves the source, refuses conflicting bytes, and writes a hash manifest. Run output and evidence are not committed.
-
-## Known failures
-
-`packages/qa-tools/known-failures.json` is the committed baseline. `pnpm qa:test` matches package, project, file, and full test name. New failures and suite errors fail the command. Known failures are reported without being called passes; fixed known failures are reported for registry removal, and flaky entries that pass are identified separately.
-
-Never skip, delete, or weaken a test to clear a failure. Fix a regression or add a registry entry only when there is a concrete cause, date, and removal condition.
 
 ## Bridge gates
 
