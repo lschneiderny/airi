@@ -370,7 +370,7 @@ The register-neutral part of the system prompt that tells the model how to drive
 
 ### Stage host
 
-The Electron window that hosts the character. `window` is the classic 450x600 window. `desktop` is the full-screen, click-through desktop stage on the home display, where an MMD character can walk; it is off by default behind the Experimental 3D stage setting, and a saved mode applies at the next launch. `AIRI_STAGE_HOST=window|desktop` overrides the saved mode in development builds only.
+The Electron window that hosts the character. `window` is the classic 450x600 window. `desktop` is the full-screen, click-through desktop stage on the home display, where an MMD character can walk; it is off by default behind the Experimental 3D stage setting, which is the only switch between the two and applies at the next launch. `AIRI_STAGE_HOST=window|desktop` overrides the setting in development builds only.
 
 **Code:** `apps/stage-tamagotchi/src/shared/eventa/index.ts` `StageHostMode`, `StageHostState`; `apps/stage-tamagotchi/src/main/windows/stage/config.ts` `buildStageHostState`; `apps/stage-tamagotchi/src/renderer/composables/use-stage-host-wiring.ts` `useStageHostWiring`.
 **Not to be confused with:** the host in host capabilities (the platform and desktop session), and the Godot VRM stage sidecar (`engines/stage-tamagotchi-godot`, launched from `apps/stage-tamagotchi/src/main/services/airi/godot-stage`), which renders VRM models in a separate process.

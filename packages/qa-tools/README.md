@@ -833,7 +833,7 @@ pnpm qa:smoke --model /models/miku/miku.pmx --stage-host desktop --expect-host w
 pnpm qa:smoke --xwayland                                   # launch through dev:xwayland inside a Wayland session
 ```
 
-By default the smoke forces the classic window (`AIRI_STAGE_HOST=window`). `--stage-host desktop` instead saves the Experimental 3D stage setting, the desktop mode, and an MMD renderer in the temporary profile's `stage-config.json`, so the launch goes through `selectHostMode` and its platform gate, and attaches to the `#/stage` page. It needs an MMD `--model`.
+By default the smoke forces the classic window (`AIRI_STAGE_HOST=window`). `--stage-host desktop` instead saves the Experimental 3D stage setting and an MMD renderer in the temporary profile's `stage-config.json`, so the launch goes through `selectHostMode` and its platform gate, and attaches to the `#/stage` page. It needs an MMD `--model`.
 
 `--expect-host` names the host the run must end in; it defaults to `--stage-host`. On a platform where the gate keeps the classic window, such as a `qa:display --compositor sway` session, pass `--stage-host desktop --expect-host window`: the run then attaches to the classic `#/` window, imports the model there, and passes only when the main process logged `Building the classic window host`, the collector attached to a `#/` window, and no `#/stage` window existed at any time during the run. Every run checks the same three facts for its expected host (`#/stage` instead of `#/` for the desktop stage), so a run that silently ended in the other host fails. `--expect-host desktop` needs `--stage-host desktop`. The summary reports `expectHost`.
 

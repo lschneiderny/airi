@@ -40,7 +40,7 @@ export async function runSmoke(options: SmokeOptions, repoRoot: string, signal: 
     // The desktop stage is enabled in the temporary profile the way the setting saves it, so the launch goes through
     // `selectHostMode` and its platform gate. An empty AIRI_STAGE_HOST is not a mode, so it overrides nothing.
     if (desktop)
-      writeFileSync(join(profileDir, 'stage-config.json'), `${JSON.stringify({ experimental: true, mode: 'desktop', activeRenderer: 'mmd' })}\n`)
+      writeFileSync(join(profileDir, 'stage-config.json'), `${JSON.stringify({ experimental: true, activeRenderer: 'mmd' })}\n`)
     const { stage, bridge, initialState } = await session.start({
       launch: {
         lease,

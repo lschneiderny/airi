@@ -10,7 +10,7 @@ import { env, platform, versions } from 'node:process'
 import { createContext, defineInvoke, defineInvokeEventa } from '@moeru/eventa'
 import { describe, expect, it, vi } from 'vitest'
 
-import { electronStageMoveToDisplay, electronStageRehome, electronStageSetActiveRenderer, electronStageSetExperimental, electronStageSetFollowMe, electronStageSetHomeDisplay, electronStageSetMode, electronStageStateChanged } from '../../../../shared/eventa'
+import { electronStageMoveToDisplay, electronStageRehome, electronStageSetActiveRenderer, electronStageSetExperimental, electronStageSetFollowMe, electronStageSetHomeDisplay, electronStageStateChanged } from '../../../../shared/eventa'
 import { defaultStageConfig } from '../config'
 import { isLinuxStageEligible, selectHostMode } from '../mode'
 import { createStageStateBroadcast } from '../state-broadcast'
@@ -39,7 +39,7 @@ const screen = { getAllDisplays: () => [builtIn], getPrimaryDisplay: () => built
 const external = { id: 7, bounds: { x: 1440, y: 0, width: 2560, height: 1440 }, workArea: { x: 1440, y: 0, width: 2560, height: 1415 }, scaleFactor: 1 } as Display
 
 function setup(options: { running?: 'window' | 'desktop', onLeaveMmd?: () => void } = {}) {
-  let config: StageConfig = { ...defaultStageConfig, mode: 'desktop', activeRenderer: 'mmd' }
+  let config: StageConfig = { ...defaultStageConfig, activeRenderer: 'mmd' }
   const store = {
     get: () => config,
     update: (next: StageConfig) => {
@@ -69,10 +69,10 @@ describe('setupStageWindowInvokes state fan-out', () => {
 
     expect(state.activeRenderer).toBe('other')
     expect(received).toHaveLength(1)
-    expect(received[0]).toMatchObject({ activeRenderer: 'other', mode: 'desktop', running: 'desktop', next: 'window' })
+    expect(received[0]).toMatchObject({ activeRenderer: 'other', running: 'desktop', next: 'window' })
   })
 
-  it('emits the state on the stage window when the settings window saves the mode, and stops after the settings window closes', async () => {
+  it('emits the state on the stage window when the settings window saves a setting, and stops after the settings window closes', async () => {
     const { stageContext, settingsContext, settingsWindow, received } = setup()
     const stageReceived: StageHostState[] = []
     stageContext.on(electronStageStateChanged, (event: { body?: StageHostState }) => {
@@ -80,14 +80,14 @@ describe('setupStageWindowInvokes state fan-out', () => {
         stageReceived.push(event.body)
     })
 
-    await defineInvoke(settingsContext, electronStageSetMode)('window')
-    expect(stageReceived.map(state => state.mode)).toEqual(['window'])
-    expect(received.map(state => state.mode)).toEqual(['window'])
+    await defineInvoke(settingsContext, electronStageSetFollowMe)(true)
+    expect(stageReceived.map(state => state.followMe)).toEqual([true])
+    expect(received.map(state => state.followMe)).toEqual([true])
 
     settingsWindow.emit('closed')
-    await defineInvoke(stageContext, electronStageSetMode)('desktop')
-    expect(stageReceived.map(state => state.mode)).toEqual(['window', 'desktop'])
-    expect(received.map(state => state.mode)).toEqual(['window'])
+    await defineInvoke(stageContext, electronStageSetFollowMe)(false)
+    expect(stageReceived.map(state => state.followMe)).toEqual([true, false])
+    expect(received.map(state => state.followMe)).toEqual([true])
   })
 })
 
@@ -136,8 +136,8 @@ describe('leaving MMD while the desktop stage runs', () => {
     await setActiveRenderer('other')
 
     expect(onLeaveMmd).toHaveBeenCalledOnce()
-    // The saved mode is untouched: the next launch picks the classic window because the renderer is not MMD.
-    expect(getConfig()).toMatchObject({ mode: 'desktop', activeRenderer: 'other' })
+    // The setting is untouched: the next launch picks the classic window because the renderer is not MMD.
+    expect(getConfig()).toMatchObject({ experimental: false, activeRenderer: 'other' })
   })
 
   it('does not ask while the classic window runs, or when the renderer goes back to MMD', async () => {

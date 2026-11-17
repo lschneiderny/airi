@@ -4,22 +4,22 @@ import { isLinuxStageEligible, selectHostMode } from './mode'
 
 const dev = { development: true }
 const production = { development: false }
-const desktopMmd = { experimental: true, mode: 'desktop', activeRenderer: 'mmd' } as const
+const desktopMmd = { experimental: true, activeRenderer: 'mmd' } as const
 
 describe('selectHostMode', () => {
-  it('uses the saved mode for an MMD model', () => {
+  it('builds the desktop stage for an MMD model while the Experimental 3D stage setting is on', () => {
     expect(selectHostMode(desktopMmd, 'darwin', {}, dev, false)).toBe('desktop')
-    expect(selectHostMode({ ...desktopMmd, mode: 'window' }, 'win32', {}, dev, false)).toBe('window')
+    expect(selectHostMode(desktopMmd, 'win32', {}, dev, false)).toBe('desktop')
   })
 
-  it('keeps the classic window while the Experimental 3D stage setting is off, even for a saved desktop mode', () => {
+  it('keeps the classic window while the Experimental 3D stage setting is off', () => {
     expect(selectHostMode({ ...desktopMmd, experimental: false }, 'darwin', {}, dev, false)).toBe('window')
     expect(selectHostMode({ ...desktopMmd, experimental: false }, 'win32', {}, dev, false)).toBe('window')
     expect(selectHostMode({ ...desktopMmd, experimental: false }, 'linux', {}, production, true)).toBe('window')
   })
 
-  it('lets AIRI_STAGE_HOST override, in a development build, the setting, the platform, the renderer and the saved mode', () => {
-    expect(selectHostMode({ experimental: false, mode: 'window', activeRenderer: 'other' }, 'linux', { AIRI_STAGE_HOST: 'desktop' }, dev, false)).toBe('desktop')
+  it('lets AIRI_STAGE_HOST override, in a development build, the setting, the platform and the renderer', () => {
+    expect(selectHostMode({ experimental: false, activeRenderer: 'other' }, 'linux', { AIRI_STAGE_HOST: 'desktop' }, dev, false)).toBe('desktop')
     expect(selectHostMode(desktopMmd, 'win32', { AIRI_STAGE_HOST: 'window' }, dev, false)).toBe('window')
     expect(selectHostMode(desktopMmd, 'linux', { AIRI_STAGE_HOST: 'window' }, dev, true)).toBe('window')
   })
@@ -39,9 +39,8 @@ describe('selectHostMode', () => {
     expect(selectHostMode(desktopMmd, 'linux', { AIRI_STAGE_HOST: 'desktop' }, production, false)).toBe('window')
   })
 
-  it('uses the saved mode on an eligible Linux desktop', () => {
+  it('builds the desktop stage on an eligible Linux desktop', () => {
     expect(selectHostMode(desktopMmd, 'linux', {}, production, true)).toBe('desktop')
-    expect(selectHostMode({ ...desktopMmd, mode: 'window' }, 'linux', {}, production, true)).toBe('window')
     expect(selectHostMode({ ...desktopMmd, activeRenderer: 'other' }, 'linux', {}, production, true)).toBe('window')
   })
 

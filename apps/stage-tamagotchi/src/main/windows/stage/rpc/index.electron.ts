@@ -22,7 +22,6 @@ import {
   electronStageSetFollowMe,
   electronStageSetHome,
   electronStageSetHomeDisplay,
-  electronStageSetMode,
   electronStageStateChanged,
 } from '../../../../shared/eventa'
 import { onWindowClosed } from '../../../libs/electron/on-window-closed'
@@ -33,7 +32,6 @@ import { isLinuxStageEligible, selectHostMode } from '../mode'
 
 const rectSchema = object({ x: number(), y: number(), width: number(), height: number() })
 const placementSchema = object({ displayId: string(), bounds: rectSchema, homeBounds: rectSchema })
-const modeSchema = picklist(['window', 'desktop'])
 const rendererSchema = picklist(['mmd', 'other'])
 
 export interface StageConfigStore {
@@ -51,7 +49,7 @@ export interface StageWindowInvokes {
 
 /**
  * Registers the stage contracts on one window: the desktop stage, the classic main window, whose page reports the
- * active renderer too, or the settings window, whose page edits the mode and the home display.
+ * active renderer too, or the settings window, whose page edits the stage settings and the home display.
  *
  * Use when:
  * - A window whose renderer reads or writes the stage config has been created
@@ -145,12 +143,6 @@ export function setupStageWindowInvokes(params: {
     if (!parsed.success)
       throw new TypeError(`electronStageSetFollowMe: expected a boolean, got ${JSON.stringify(payload)}`)
     return updateConfig({ ...getConfig(), followMe: parsed.output })
-  })
-  defineInvokeHandler(context, electronStageSetMode, (payload) => {
-    const parsed = safeParse(modeSchema, payload)
-    if (!parsed.success)
-      throw new TypeError(`electronStageSetMode: expected 'window' or 'desktop', got ${JSON.stringify(payload)}`)
-    return updateConfig({ ...getConfig(), mode: parsed.output })
   })
   defineInvokeHandler(context, electronStageSetActiveRenderer, (payload) => {
     const parsed = safeParse(rendererSchema, payload)

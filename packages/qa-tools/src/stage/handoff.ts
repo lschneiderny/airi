@@ -193,7 +193,7 @@ export async function runHandOff(options: { repoRoot: string, model: string, lim
   let teardownOk = false
   try {
     // The desktop stage is enabled the way the setting saves it, so the launch goes through `selectHostMode`.
-    writeFileSync(join(profileDir, 'stage-config.json'), `${JSON.stringify({ experimental: true, mode: 'desktop', activeRenderer: 'mmd' })}\n`)
+    writeFileSync(join(profileDir, 'stage-config.json'), `${JSON.stringify({ experimental: true, activeRenderer: 'mmd' })}\n`)
     const { stage, bridge } = await session.start({
       launch: { lease: options.lease, logFile: run.path('app.log'), env: { AIRI_STAGE_HOST: '' }, script: 'dev' },
       onLaunched: app => run.recordProcess({ rootPid: app.root.pid, created: app.root.created, commandLine: app.root.commandLine }),
