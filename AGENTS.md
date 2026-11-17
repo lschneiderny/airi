@@ -107,7 +107,7 @@ Testing tiers. [Testing and QA](docs/ai/context/testing.md) says what each check
 - Commit loop: `pnpm verify` after each change. It lints the changed files, typechecks the changed packages and their dependents, and runs the tests related to the changed code by imports.
 - Branch gate: `pnpm verify --gate` before landing. Same checks over the whole branch, related tests only. Add `pnpm qa:display run -- pnpm qa:smoke` when app runtime code changed.
 - Release: `pnpm release` runs the full typecheck, full test suite, lint, bundle checks, and clean-start smoke before it uploads.
-- Renderer motion: MMD uses `pnpm qa:motion3d` and `pnpm qa:test:model`; Live2D uses `pnpm qa:live2d-rig` (headless ForBOOTH, T2) and has no statistical gate. Rendered checks use `qa:app` or the `airi-qa` MCP server, with visual review.
+- Renderer motion: MMD uses `pnpm qa:motion3d` and `pnpm qa:test:model`; Live2D uses `pnpm qa:live2d-rig` (headless ForBOOTH, T2) and has no statistical gate; the gate code left in `packages/stage-ui-live2d` is a leftover (see its guide). Rendered checks use `qa:app` or the `airi-qa` MCP server, with visual review.
 - Platforms: only macOS and Linux KDE Wayland are checked. Windows, sway, and X11 are planned, not checked.
 
 After each task, run `pnpm verify` before finishing. It typechecks every package when a root config file changes and skips typecheck for Markdown-only changes. Each step checks only what changed since it last passed on the current branch.

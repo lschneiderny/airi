@@ -15,8 +15,7 @@
 - The natural-motion SDK adapter overlays before physics, bracketed by SDK save/load.
 - The touch gesture classifier is `NaturalTouchGestures` in `motion-driver-natural`, shared with MMD. Hit regions here use visible drawable bounds.
 - Natural-motion tests use seeded streams and fixed frame steps, not wall-clock waits.
-- Bump `EmotionGate.version` whenever a threshold, window, or seed rule changes.
-- `score-natural-captures.ts` requires `--gate <gate id>` and at least three trace files.
+- `natural-motion/gates.ts`, `natural-motion/liveliness-gate.test.ts`, `scripts/score-natural-captures.ts`, and `scripts/extract-natural-reference.ts` are leftovers of the removed Live2D statistical gates. Their qa-tools runners are gone, and a later cleanup removes them. Keep them unchanged until then; Live2D motion checks run through `pnpm qa:live2d-rig` and rendered review.
 - Run `scripts/` trace and benchmark tools with `node --import tsx` from the package.
 
 ## ANTI-PATTERNS
