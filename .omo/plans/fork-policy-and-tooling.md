@@ -15,7 +15,7 @@
 | # | Decision |
 | --- | --- |
 | D1 | Take upstream by **merge** into a `luke/chore/upstream-sync` branch, fast-forwarded onto `main` (as root `AGENTS.md` already says). `CONTRIBUTING.md`'s cherry-pick text is wrong. |
-| D2 | **Fork entry files plus a ledger.** The fork owns root `AGENTS.md`, `README.md`, `.github/CONTRIBUTING.md`, `.agents/skills/README.md`, and the TypeScript, Vitest, and xsai skills. Every other upstream policy file returns to upstream's exact bytes at sync, including guidance under kept-from-upstream paths. Fork-only rules live in fork-only files. `docs/ai/context/upstream-policy.md` lists every upstream rule the fork overrides or drops, the fork's rule, and why. |
+| D2 | **Fork entry files plus a ledger.** The fork owns root `AGENTS.md`, `README.md`, `.github/CONTRIBUTING.md`, `.agents/skills/README.md`, and the TypeScript, Vitest, and xsai skills. Every other upstream policy file returns to upstream's exact bytes at sync, including guidance under kept-from-upstream paths. Fork-only rules live in fork-only files. `docs/ai/context/upstream-policy.md` lists every upstream rule the fork overrides or drops, the fork's rule, and why. Amended 2026-11-17: the fork owns every `AGENTS.md` and `CLAUDE.md`, including those under kept paths, and trims them to the root AGENTS.md policy; at sync it keeps its version and adds only upstream rules that meet that policy. |
 | D3 | Platforms: Linux (KDE Wayland), macOS, Windows, and other Linux sessions all stay supported. Only macOS and KDE Wayland get active work and checks for now. Windows, sway, and X11 code stays in place, is not deleted or extended, and is documented as "planned, not checked". `README.md` stops claiming Windows releases. |
 | D4 | `pnpm release` runs everything before uploading, on any branch: full typecheck, full test suite, lint, both bundle checks (including the production-bundle marker scan), and the clean-start smoke. `pnpm verify --gate` stays related-tests-only. |
 | D5 | Adopt upstream's test model during the sync: per-package `test:run` through Turbo with caching. Rework verify's related-tests step to run per package. |
@@ -69,7 +69,7 @@ Phases 1 and 2 landed on `luke/refactor/lock-in` (49 commits; `pnpm verify --gat
 
 ## Phase 3: Upstream sync (branch, `pnpm verify --gate`)
 
-1. Merge `upstream/main` (D1). Resolve policy files per D2: fork entry files keep the fork's version, other upstream policy files take upstream's bytes, and fork additions inside them move to fork-only files first.
+1. Merge `upstream/main` (D1). Resolve policy files per D2: fork entry files and every `AGENTS.md` and `CLAUDE.md` keep the fork's version, with only the new upstream rules that meet the root AGENTS.md policy added; other upstream policy files take upstream's bytes, and fork additions inside them move to fork-only files first.
 2. Write `docs/ai/context/upstream-policy.md`: one row per F-override and U-dropped rule (from the 2026-11-17 audit), plus the D8 restorations, and the upstream policy files that stay deleted at sync. Add a sync step: review upstream's policy diff and update the ledger.
 3. Adopt upstream's test model (D5).
 4. Decide the roughly 55 upstream rules added since the fork point. The audit lists them: Private Data, `date-fns`, the `Assisted-by` trailer, x18n `i18n:check`, and the ESLint bans on `awilix` and `localforage`.
