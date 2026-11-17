@@ -58,10 +58,10 @@ This section states the design that refactors move toward. It does not describe 
 3. **One clock.** Body episodes and the voice channel share the mind's clock. The urge gate and the spoken reaction policy become the mind's voice policy.
 4. **Episodes in the mind, frames in the performer.** The mind decides discrete episodes. The per-stage [performer](glossary.md#performer-target) runs continuous control. Cursor notice is a mind decision; tracking the cursor is the performer's.
 5. **Renderer deciders act on intents.** The MMD body director and any other renderer decider act on the mind's [intents](glossary.md#intent) and on the renderer's own world. They never subscribe to touch, cursor, return, chat, or music directly.
-6. **Music is a stimulus.** One detector reports music to the mind, which starts a groove episode. No decider moves the body on beats outside the mind.
+6. **Music is a stimulus.** Under Natural, one detector reports music to the mind, which starts a groove episode, and no decider moves the body on beats outside the mind. Beat sync stays as upstream ships it for Universal and MAGIC.
 7. **Only declared capabilities.** The mind issues only the episodes the active performer declares. A refusal comes back as a reported event.
 8. **Behavior settings belong to the character.** One character-behavior settings document gates what the mind decides. Renderer pages hold only realisation settings.
-9. **Every unprompted voice goes through the mind.** Widget and plugin turns that make her speak are stimuli. The voice policy decides their timing and may defer them, but never drops them silently. Only the user's own turns bypass the mind.
+9. **Every unprompted voice goes through the mind.** Widget and plugin turns that make her speak are stimuli. The voice policy decides their timing and may defer them, and she keeps the model's veto over them. The caller always receives the outcome. A turn not spoken before the caller's timeout becomes a notify in the situation, which she may raise on her own. Only the user's own turns bypass the mind.
 
 ### Rulings the slices keep
 
@@ -87,7 +87,7 @@ Luke made these product rulings in earlier plans. Today they live in frozen ADR 
 | 9. Sleep on Live2D | Rule 1; Body ownership Target rule 1 |
 | 10. Forced widget reactions bypass the gate | Rule 9 |
 
-Slice names (CM0 to CM7) and prerequisite steps refer to the [character mind roadmap](character-mind-roadmap.md).
+Slice names (CM1 to CM7) and prerequisite steps refer to the [character mind roadmap](character-mind-roadmap.md).
 
 ## Known overlaps
 

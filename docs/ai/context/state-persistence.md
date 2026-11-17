@@ -171,9 +171,9 @@ This section states the design that refactors move toward. It does not describe 
 
 1. **One registration point.** Every piece of persisted client state is declared in one place with its tier, its keys or key prefix, and its reset. "Delete all data" resets exactly the registered set.
 2. **A test enforces it.** A focused test fails when the client writes storage under a key that no registration owns.
-3. **Every store fits a tier.** Plain localStorage refs and synced stores that persist replicated plain refs migrate to a tier, upstream stores included. The closed tiers stay closed.
+3. **Every store fits a tier.** Plain localStorage refs and synced stores that persist replicated plain refs migrate to a tier where the fork owns them. Upstream's stores keep upstream's keys and are registered as they are. The closed tiers stay closed.
 4. **Behavior settings form one document.** The character-behavior settings that the [character mind](glossary.md#character-mind) reads are one tier 1 document. Renderer settings documents hold only realisation settings.
-5. **The mind's slow state is the per-card character state.** The per-card record in tier 4 holds mood, energy, temperament, relationship, and the voice policy's pacing memory (urge memory, last-spoke times, own-day weight). Only the leader reads and writes it, and the mind applies decay for the time away on load. A card export carries temperament only. Fast state is not persisted.
+5. **The mind's slow state is the per-card character state.** The per-card record in tier 4 holds mood, energy, learned temperament, relationship, and her own pacing memory (urge memory, last-spoke times, own-day weight). The floor after any spoken line and the hourly cap are per user across characters and stay in the user's gate state. Only the leader reads and writes the record, and the mind applies decay for the time away on load. Sharing a card carries its profile only; a separate backup carries the whole record. Fast state is not persisted.
 6. **One owner per key.** No two stores own the same storage key.
 
 | Known gap | Closed by |
@@ -184,7 +184,7 @@ This section states the design that refactors move toward. It does not describe 
 | The stage-layouts `useBackgroundStore` sharing the default localforage database | Rule 1, or deletion if the desktop app keeps not rendering it |
 | The unstorage `outbox` mount with no reader or writer | Rule 1, or deletion |
 | `useLanguage` and `useSettingsGeneral` both own `settings/language` | Rule 6 |
-| The gate's inner state as the only tier 2 member | Rule 5 moves its pacing memory into the per-card record; the extracted conversation threads stay leader-only personal content (roadmap step V) |
+| The gate's inner state as the only tier 2 member | Rule 5 moves her own pacing memory into the per-card record, while the floor and hourly-cap state stays here, per user; the extracted conversation threads stay leader-only personal content (roadmap step V) |
 
 ## Known gaps
 

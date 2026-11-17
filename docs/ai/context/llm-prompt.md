@@ -76,7 +76,7 @@ This section states the design that refactors move toward. It does not describe 
 3. **One memory source.** The memory index is the speaking character's: the character that owns the session the turn belongs to.
 4. **No segment without a producer.** A segment id that no app path produces is deleted from the order, the budgets, and the fixtures.
 5. **Actions follow capabilities.** The `actions` segment offers the model only what the active [performer](glossary.md#performer-target) declares.
-6. **The mind decides when to speak; the model may decline.** An unprompted turn starts only from the [character mind](glossary.md#character-mind)'s voice channel, including widget and plugin turns. Its reason reaches the prompt as a declared request input. Every unprompted instruction keeps the model's veto: it may answer `<|SILENT|>`. A spoken reaction is stored in chat history, and a reply may consist of an expression alone.
+6. **The mind decides when to speak; the model may decline.** An unprompted turn starts only from the [character mind](glossary.md#character-mind)'s voice channel, including widget and plugin turns. Its reason reaches the prompt as a declared request input. Every unprompted instruction keeps the model's veto, forced widget and plugin turns included: it may answer `<|SILENT|>`, and the caller receives the outcome. A spoken reaction is stored in chat history, and a reply may consist of an expression alone.
 
 | Known gap | Closed by |
 | --- | --- |
