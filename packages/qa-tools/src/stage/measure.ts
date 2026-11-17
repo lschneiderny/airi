@@ -1,7 +1,6 @@
 import type { Buffer } from 'node:buffer'
 
 import type { OwnedProcess } from '../env/processes'
-import type { AppCpuWindow } from './app-cpu'
 import type { StageFrameRun, StageMode, StageScenario } from './gates'
 
 import { execFile, spawn } from 'node:child_process'
@@ -17,7 +16,6 @@ import { CdpClient, findDebugTarget, sleep, waitForRemoteDebug } from '@proj-air
 import { killTree, listLiveProcesses, runGroupMembers } from '../env/processes'
 import { closeBrowser, failOnExit, launchStageTamagotchi } from '../t3/launch'
 import { teardownRun, trackTree, waitForRunGroupExit } from '../t3/teardown'
-import { AppTreeCpu } from './app-cpu'
 import { stageMeasureColumns, stageScenarioColumns } from './gates'
 
 /**
@@ -81,8 +79,6 @@ export interface StageMeasureRecord {
   valid: boolean
   /** The walk series of the measured span (`stageMeasureColumns`), which `stage-walk-skate` judges when it leaves idle. */
   perFrameSeries: { columns: string[], rows: unknown[][] }
-  /** The launched app tree's CPU over the measured window; only `measure --perf-ab` reads it. */
-  appCpu?: AppCpuWindow
 }
 
 export interface StagePairsRecord {
@@ -284,7 +280,7 @@ async function startLoadWatch(seconds: number): Promise<{ attempt: StageMeasureA
   }
 }
 
-async function measureAttempt(client: CdpClient, options: { seconds: number, pointer: { cx: number, cy: number, r: number, origin: { x: number, y: number } }, appCpu?: AppTreeCpu }): Promise<{ collected: Collected, attempt: StageMeasureAttempt, appCpu?: AppCpuWindow }> {
+async function measureAttempt(client: CdpClient, options: { seconds: number, pointer: { cx: number, cy: number, r: number, origin: { x: number, y: number } } }): Promise<{ collected: Collected, attempt: StageMeasureAttempt }> {
   const { seconds, pointer } = options
   const { attempt, stop } = await startLoadWatch(seconds)
   const wiggle = startOsWiggle(pointer, seconds)
@@ -309,13 +305,10 @@ async function measureAttempt(client: CdpClient, options: { seconds: number, poi
           })
       }, 50)
   try {
-    const cpuBefore = await options.appCpu?.snapshot()
     const collected = await client.evaluate<Collected>(collectExpression(seconds), seconds * 1_000 + 30_000)
-    const cpuAfter = await options.appCpu?.snapshot()
     if (wiggle)
       attempt.pointer = { method: 'os', moves: await wiggle }
-    const appCpu = options.appCpu && cpuBefore && cpuAfter ? options.appCpu.window(cpuBefore, cpuAfter) : undefined
-    return { collected, attempt, ...(appCpu ? { appCpu } : {}) }
+    return { collected, attempt }
   }
   finally {
     clearInterval(pointerTimer)
@@ -327,13 +320,13 @@ async function measureAttempt(client: CdpClient, options: { seconds: number, poi
  * Measures the stage on an already mounted model: up to `attempts` runs, repeating a run that saw concurrent load.
  * The record is `valid: false` when every attempt was invalid.
  */
-async function measureStage(client: CdpClient, options: { mode: StageMode, target: string, seconds: number, attempts: number, n?: number, appCpu?: AppTreeCpu, log: (line: string) => void }): Promise<StageMeasureRecord> {
+async function measureStage(client: CdpClient, options: { mode: StageMode, target: string, seconds: number, attempts: number, n?: number, log: (line: string) => void }): Promise<StageMeasureRecord> {
   const pointer = await client.evaluate<{ loadedModelKey: string, cx: number, cy: number, r: number, origin: { x: number, y: number } }>(mountedExpression(180_000), 190_000)
   const discarded: StageMeasureAttempt[] = []
   for (let index = 1; ; index += 1) {
     await waitForQuiet(300_000, options.log)
     options.log(`qa-tools stage: measuring ${options.mode}${options.n ? ` pair ${options.n}` : ''} for ${options.seconds} s (attempt ${index}/${options.attempts})`)
-    const { collected, attempt, appCpu } = await measureAttempt(client, { seconds: options.seconds, pointer, appCpu: options.appCpu })
+    const { collected, attempt } = await measureAttempt(client, { seconds: options.seconds, pointer })
     if (!collected.measurement)
       throw new Error(`no measurement arrived (${collected.snapshots} snapshots); is an MMD model mounted on the ${options.mode} stage?`)
     if (attempt.verdict === 'VALID' || index >= options.attempts) {
@@ -354,7 +347,6 @@ async function measureStage(client: CdpClient, options: { mode: StageMode, targe
         discarded,
         valid: attempt.verdict === 'VALID',
         perFrameSeries: { columns: [...stageMeasureColumns], rows: collected.rows },
-        ...(appCpu ? { appCpu } : {}),
       }
     }
     options.log(`qa-tools stage: attempt ${index} INVALID-CONCURRENT-LOAD (${attempt.heavyweightHits} sidecar hits), repeating`)
@@ -659,13 +651,9 @@ export async function measurePairs(options: {
   return record
 }
 
-/**
- * One measured launch of a fresh copy of `profile` under its own exclusive lease, torn down like T3. `label` (default:
- * the mode) names the run's scratch files and lease; `env` is added to the launch environment; `measureAppCpu` adds
- * the app tree's CPU over the measured window (Linux `/proc`).
- */
-export async function launchAndMeasure(options: { repoRoot: string, profile: string, mode: StageMode, n: number, seconds: number, settleSeconds: number, attempts: number, scratch: string, selfPids: readonly number[], log: (line: string) => void, label?: string, env?: Record<string, string>, measureAppCpu?: boolean }): Promise<StageMeasureRecord> {
-  const label = options.label ?? options.mode
+/** One measured launch of a fresh copy of `profile` under its own exclusive lease, torn down with ownership checks. */
+async function launchAndMeasure(options: { repoRoot: string, profile: string, mode: StageMode, n: number, seconds: number, settleSeconds: number, attempts: number, scratch: string, selfPids: readonly number[], log: (line: string) => void }): Promise<StageMeasureRecord> {
+  const label = options.mode
   const profileDir = join(options.scratch, `${label}-${options.n}-profile`)
   cpSync(options.profile, profileDir, { recursive: true })
   options.log(`qa-tools stage: launching ${label} pair ${options.n}`)
@@ -676,7 +664,7 @@ export async function launchAndMeasure(options: { repoRoot: string, profile: str
     profileDir,
     logFile: join(options.scratch, `${label}-${options.n}.log`),
     list: listLiveProcesses,
-    env: { AIRI_STAGE_HOST: options.mode, ...options.env },
+    env: { AIRI_STAGE_HOST: options.mode },
   }).catch((error) => {
     lease.release()
     throw error
@@ -691,8 +679,7 @@ export async function launchAndMeasure(options: { repoRoot: string, profile: str
     tracked = trackTree(await listLiveProcesses(), app.root)
     await failOnExit(app, 'the model mount', client.evaluate(mountedExpression(180_000), 190_000))
     await sleep(options.settleSeconds * 1_000)
-    const appCpu = options.measureAppCpu ? await AppTreeCpu.create(app.root) : undefined
-    return await failOnExit(app, 'the measurement', measureStage(client, { ...options, target: connected.url, appCpu }))
+    return await failOnExit(app, 'the measurement', measureStage(client, { ...options, target: connected.url }))
   }
   finally {
     client?.close()
