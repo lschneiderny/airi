@@ -160,7 +160,6 @@
     "@electron-toolkit/preload": "catalog:",
     "@electron-toolkit/tsconfig": "catalog:",
     "@electron-toolkit/utils": "catalog:",
-    "@electron/notarize": "catalog:",
     "@iconify-json/carbon": "catalog:",
     "@iconify-json/eos-icons": "catalog:",
     "@iconify-json/lucide": "catalog:",
