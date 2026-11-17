@@ -80,11 +80,12 @@ Luke made these product rulings in earlier plans. Today they live in frozen ADR 
 | 2. Music | Rule 6 |
 | 3. Idle draw and reach-out on separate clocks | Rule 3 |
 | 4. One touch, five reactions | Rule 2 |
-| 5. Two rendered stages | Rule 1 |
+| 5. Two rendered stages (latent) | Rule 1, once a second stage exists |
 | 6. The user comes back | Rule 2 |
 | 7. Glances | Rule 2; the gaze channel has one owner (Body ownership Target rule 3) |
 | 8. The cursor on MMD | Rules 4 and 5: the mind notices, the director may walk as its realisation of the attend intent |
 | 9. Sleep on Live2D | Rule 1; Body ownership Target rule 1 |
+| 10. Forced widget reactions bypass the gate | Rule 9 |
 
 Slice names (CM0 to CM7) and prerequisite steps refer to the [character mind roadmap](character-mind-roadmap.md).
 
