@@ -158,9 +158,14 @@ export function runArguments(run: PlannedRun, model: string, out: string): strin
   ]
 }
 
+/** The leading arguments of a judging command: `gate` runs as itself, every other report as `report <topic>`. */
+export function judgeArguments(command: string): string[] {
+  return command === 'gate' ? ['gate'] : ['report', command]
+}
+
 export function reportArguments(report: PlannedReport, runDir: (id: string) => string, json: string): string[] {
   return [
-    report.command,
+    ...judgeArguments(report.command),
     ...report.runs.map(runDir),
     ...report.options.flatMap(([option, ids]) => [option, ...ids.map(runDir)]),
     ...report.flags,

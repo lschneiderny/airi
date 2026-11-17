@@ -5,10 +5,10 @@ import process from 'node:process'
 import { CUE_FALSE_POSITIVE_LIMIT, cueBodyReport, cueFalsePositives, formatCueBody, formatCueFalsePositives } from '../reports/cue-body'
 import { runReportCommand } from './report-cli'
 
-const usage = 'qa:motion3d cue-body <emotions run directory>... | cue-body --calibrate <run directory>...'
+const usage = 'qa:motion3d report cue-body <emotions run directory>... | report cue-body --calibrate <run directory>...'
 
 /**
- * `qa:motion3d cue-body <run>...`: the C002 cue report (unit M2 R3), written into the first run. `--calibrate` prints
+ * `qa:motion3d report cue-body <run>...`: the C002 cue report (unit M2 R3), written into the first run. `--calibrate` prints
  * the split-half placebo false-positive share per cue kind instead, writes nothing, and exits 1 above 10 %.
  */
 export async function cueBodyMotion3d(args: readonly string[], context: Motion3dCliContext): Promise<number> {

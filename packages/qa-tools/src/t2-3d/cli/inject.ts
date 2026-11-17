@@ -15,6 +15,7 @@ import * as v from 'valibot'
 import { sha256 } from '../gate/load'
 import { labelsFileSchema, scoreCase, sealFileSchema, sealFor, sealPath, sealRefusals } from '../inject/labels'
 import { applyOperations, InjectRefusal } from '../inject/operations'
+import { judgeArguments } from '../matrix/plan'
 import { MotionTraceRefusal, parseTrace } from '../read-trace'
 import { runMotion3dChild } from './motion3d-child'
 import { readVerdict } from './verdicts'
@@ -122,7 +123,7 @@ async function score(path: string, out: string, signal: AbortSignal): Promise<nu
     const verdicts = []
     for (const [name, dir] of Object.entries(dirs)) {
       const file = join(out, labelled.id, `${name}.verdict.json`)
-      const child = await runMotion3dChild([labelled.report.command, dir, ...labelled.report.flags ?? [], '--json', file], join(out, labelled.id, `${name}.out`), signal)
+      const child = await runMotion3dChild([...judgeArguments(labelled.report.command), dir, ...labelled.report.flags ?? [], '--json', file], join(out, labelled.id, `${name}.out`), signal)
       if (signal.aborted)
         return 130
       verdicts.push({ name, command: child.argv, exitCode: child.exitCode, verdict: await readVerdict(file) })

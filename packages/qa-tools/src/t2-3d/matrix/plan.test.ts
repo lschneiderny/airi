@@ -25,6 +25,7 @@ describe('matrix planning', () => {
     expect(plan.refusals).toEqual([])
     expect(plan.runs.map(run => run.id)).toEqual(['speak-s3', 'speak-s1', 'speak-s2', 'idle-s1', 'idle-s2', 'idle-s3'])
     expect(reportArguments(plan.reports[0], id => `/out dir/runs/${id}`, '/out dir/verdicts/timing.json')).toEqual([
+      'report',
       'gesture-timing',
       '/out dir/runs/speak-s3',
       '/out dir/runs/speak-s1',

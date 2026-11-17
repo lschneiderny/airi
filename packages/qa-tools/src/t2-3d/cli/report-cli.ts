@@ -48,8 +48,8 @@ export async function runReportCommand(name: string, usage: string, args: readon
   catch (error) {
     if (!(error instanceof ReportUsageError) && !(error instanceof MotionTraceRefusal) && !(error instanceof GateRefusal))
       throw error
-    console.error(`qa:motion3d ${name}: ${error.message}`)
-    context.verdicts?.refuse(`qa:motion3d ${name}: ${error.message}`)
+    console.error(`qa:motion3d report ${name}: ${error.message}`)
+    context.verdicts?.refuse(`qa:motion3d report ${name}: ${error.message}`)
     return 2
   }
 }

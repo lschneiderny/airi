@@ -14,6 +14,20 @@ export interface Motion3dCliContext {
   readonly verdicts?: VerdictRecorder
 }
 
+/** The criterion reports `report <topic>` runs; each topic keeps its own report version and verdict name. */
+const reportTopics: Record<string, (args: string[], context: Motion3dCliContext) => Promise<number>> = {
+  'gaze-order': async (args, context) => (await import('../src/t2-3d/cli/gaze-order')).gazeOrderMotion3d(args, context),
+  'gesture-timing': async (args, context) => (await import('../src/t2-3d/cli/gesture-timing')).gestureTimingMotion3d(args, context),
+  'emotion-table': async (args, context) => (await import('../src/t2-3d/cli/emotion-table')).emotionTableMotion3d(args, context),
+  'cue-body': async (args, context) => (await import('../src/t2-3d/cli/cue-body')).cueBodyMotion3d(args, context),
+  'ownership': async (args, context) => (await import('../src/t2-3d/cli/ownership')).ownershipMotion3d(args, context),
+  'turn': async (args, context) => (await import('../src/t2-3d/cli/turn')).turnMotion3d(args, context),
+  'pops': async (args, context) => (await import('../src/t2-3d/cli/pops')).popsMotion3d(args, context),
+  'idle-acts': async (args, context) => (await import('../src/t2-3d/cli/idle-acts')).idleActsMotion3d(args, context),
+  'walk-form': async (args, context) => (await import('../src/t2-3d/cli/walk-form')).walkFormMotion3d(args, context),
+  'rest': async (args, context) => (await import('../src/t2-3d/cli/rest')).restMotion3d(args, context),
+}
+
 const repoRoot = resolve(import.meta.dirname, '..', '..', '..')
 loadQaEnv(repoRoot)
 const interrupt = new AbortController()
@@ -29,7 +43,9 @@ async function main(): Promise<number> {
     return 2
   }
   const cwd = process.env.INIT_CWD ?? process.cwd()
-  const verdicts = json.path === null ? undefined : new VerdictRecorder(command ?? '', resolve(cwd, json.path))
+  // A report's verdict file names its topic, as before topics moved under `report`, so stored verdicts stay comparable.
+  const label = command === 'report' ? json.args[0] : command
+  const verdicts = json.path === null ? undefined : new VerdictRecorder(label ?? '', resolve(cwd, json.path))
   const code = await dispatch(command, json.args, { repoRoot, cwd, signal: interrupt.signal, verdicts })
   return verdicts ? verdicts.finish(interrupt.signal.aborted ? 130 : code) : code
 }
@@ -39,16 +55,14 @@ async function dispatch(command: string | undefined, args: string[], context: Mo
     case 'run': return (await import('../src/t2-3d/cli/run')).runMotion3d(args, context)
     case 'gate': return (await import('../src/t2-3d/cli/gate')).gateMotion3d(args, context)
     case 'reference': return (await import('../src/t2-3d/cli/reference')).referenceMotion3d(args, context)
-    case 'gaze-order': return (await import('../src/t2-3d/cli/gaze-order')).gazeOrderMotion3d(args, context)
-    case 'gesture-timing': return (await import('../src/t2-3d/cli/gesture-timing')).gestureTimingMotion3d(args, context)
-    case 'emotion-table': return (await import('../src/t2-3d/cli/emotion-table')).emotionTableMotion3d(args, context)
-    case 'cue-body': return (await import('../src/t2-3d/cli/cue-body')).cueBodyMotion3d(args, context)
-    case 'ownership': return (await import('../src/t2-3d/cli/ownership')).ownershipMotion3d(args, context)
-    case 'turn': return (await import('../src/t2-3d/cli/turn')).turnMotion3d(args, context)
-    case 'pops': return (await import('../src/t2-3d/cli/pops')).popsMotion3d(args, context)
-    case 'idle-acts': return (await import('../src/t2-3d/cli/idle-acts')).idleActsMotion3d(args, context)
-    case 'walk-form': return (await import('../src/t2-3d/cli/walk-form')).walkFormMotion3d(args, context)
-    case 'rest': return (await import('../src/t2-3d/cli/rest')).restMotion3d(args, context)
+    case 'report': {
+      const [topic, ...rest] = args
+      const report = topic === undefined ? undefined : reportTopics[topic]
+      if (report)
+        return report(rest, context)
+      console.error(`Usage: qa:motion3d report <${Object.keys(reportTopics).join('|')}> <run directory>... [--json <verdict file>]`)
+      return 2
+    }
     case 'diff': return (await import('../src/t2-3d/cli/diff')).diffMotion3d(args, context)
     case 'verdicts': return (await import('../src/t2-3d/cli/verdicts')).verdictsMotion3d(args, context)
     case 'frames': return (await import('../src/t2-3d/cli/frames')).framesMotion3d(args, context)
@@ -57,7 +71,7 @@ async function dispatch(command: string | undefined, args: string[], context: Mo
     case 'inject': return (await import('../src/t2-3d/cli/inject')).injectMotion3d(args, context)
     case 'matrix': return (await import('../src/t2-3d/cli/matrix')).matrixMotion3d(args, context)
     default:
-      console.error('Usage: qa:motion3d <run|gate|reference|gaze-order|gesture-timing|emotion-table|cue-body|ownership|turn|pops|idle-acts|walk-form|rest|diff|verdicts|frames|affected|clip|inject|matrix> [arguments] [--json <verdict file>]')
+      console.error('Usage: qa:motion3d <run|gate|reference|report <topic>|diff|verdicts|frames|affected|clip|inject|matrix> [arguments] [--json <verdict file>]')
       return 2
   }
 }
