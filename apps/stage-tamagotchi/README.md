@@ -152,7 +152,7 @@ The installer bundles the Godot stage sidecar from `engines/stage-tamagotchi-god
 
 Build fork releases with `pnpm release <version>` from the repository root. It exports the sidecar, packages the installers, and uploads them to a draft GitHub release. See [`pnpm release`](../../scripts/dev-tools/README.md#pnpm-release). Releases and updates use the fork's repository, `releaseRepository` in `src/shared/release-repository.ts`. macOS builds are ad-hoc signed, so the updater is off on macOS.
 
-Windows installers are x64 only (`--windows --x64`), so only `@koromix/koffi-win32-x64` is bundled.
+Windows is planned, not checked: no Windows installer is built or tested (see [Platform support](../../README.md#platform-support)). The `build:win` script and the `win` and `nsis` sections of `electron-builder.config.ts` stay in place.
 
 ## Verification
 
