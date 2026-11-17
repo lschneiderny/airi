@@ -170,6 +170,7 @@ describe('per-step slot acquisition', () => {
   beforeEach(() => {
     store = mkdtempSync(join(tmpdir(), 'verify-slots-'))
     vi.stubEnv('AIRI_CPU_SLOTS_DIR', store)
+    vi.stubEnv('AIRI_CPU_SLOTS_HISTORY_DIR', join(store, 'history'))
     vi.stubEnv('AIRI_CPU_BUDGET', '12')
     vi.stubEnv('AIRI_CPU_SLOTS', '')
     vi.stubEnv('CI', '')

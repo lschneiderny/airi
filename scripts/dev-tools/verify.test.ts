@@ -22,7 +22,7 @@ describe('verify step execution', () => {
     const git = (...args: string[]) => execFileSync('git', args, { cwd: root, stdio: 'pipe' })
     git('init', '--initial-branch=main')
     git('-c', 'user.name=Verify test', '-c', 'user.email=verify@example.invalid', '-c', 'commit.gpgSign=false', '-c', `core.hooksPath=${join(root, '.git/hooks')}`, 'commit', '--allow-empty', '-m', 'fixture')
-    writeFileSync(join(root, '.gitignore'), 'node_modules/\nslots/\nreceipts.jsonl\n')
+    writeFileSync(join(root, '.gitignore'), 'node_modules/\nslots/\nslots-history/\nreceipts.jsonl\n')
     writeFileSync(join(root, 'package.json'), '{"type":"module"}')
     writeFileSync(join(root, 'change.ts'), 'export const changed = true\n')
     const command = `
@@ -65,7 +65,7 @@ describe('verify step execution', () => {
   function verify(args: string[], action = '') {
     return exec(process.execPath, ['--import', import.meta.resolve('tsx'), fileURLToPath(new URL('./verify.ts', import.meta.url)), ...args], {
       cwd: root,
-      env: { ...process.env, CI: '', AIRI_CPU_SLOTS: '', AIRI_CPU_SLOTS_DIR: join(root, 'slots'), AIRI_CPU_BUDGET: '12', AIRI_CPU_LEASE: '', AIRI_CPU_GRANT: '', AIRI_CPU_CLASS: '', VERIFY_FIXTURE_ACTION: action },
+      env: { ...process.env, CI: '', AIRI_CPU_SLOTS: '', AIRI_CPU_SLOTS_DIR: join(root, 'slots'), AIRI_CPU_SLOTS_HISTORY_DIR: join(root, 'slots-history'), AIRI_CPU_BUDGET: '12', AIRI_CPU_LEASE: '', AIRI_CPU_GRANT: '', AIRI_CPU_CLASS: '', VERIFY_FIXTURE_ACTION: action },
       timeout: 15_000,
     })
   }
@@ -74,7 +74,7 @@ describe('verify step execution', () => {
     const store = join(root, 'slots')
     await exec(process.execPath, ['--import', import.meta.resolve('tsx'), fileURLToPath(new URL('./verify.ts', import.meta.url)), '--only', 'test', '--force'], {
       cwd: root,
-      env: { ...process.env, CI: '', AIRI_CPU_SLOTS: '', AIRI_CPU_SLOTS_DIR: store, AIRI_CPU_BUDGET: '12', AIRI_CPU_LEASE: '', AIRI_CPU_GRANT: '', AIRI_CPU_CLASS: '' },
+      env: { ...process.env, CI: '', AIRI_CPU_SLOTS: '', AIRI_CPU_SLOTS_DIR: store, AIRI_CPU_SLOTS_HISTORY_DIR: join(root, 'slots-history'), AIRI_CPU_BUDGET: '12', AIRI_CPU_LEASE: '', AIRI_CPU_GRANT: '', AIRI_CPU_CLASS: '' },
       timeout: 15_000,
     })
     const receipts: { command: string, leaseId: string, class: string, slots: number, grant: number }[] = JSON.parse(`[${readFileSync(join(root, 'receipts.jsonl'), 'utf8').trim().split('\n').join(',')}]`)

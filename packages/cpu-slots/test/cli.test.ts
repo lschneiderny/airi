@@ -378,6 +378,7 @@ async function queuedTickets(count: number): Promise<void> {
 
 it('a14 three processes and an in-process caller are granted strictly in ticket order', async () => {
   vi.stubEnv('AIRI_CPU_SLOTS_DIR', root)
+  vi.stubEnv('AIRI_CPU_SLOTS_HISTORY_DIR', join(root, 'history'))
   vi.stubEnv('AIRI_CPU_BUDGET', '8')
   for (const name of ['CI', 'AIRI_CPU_SLOTS', 'AIRI_CPU_LEASE', 'AIRI_CPU_GRANT'])
     vi.stubEnv(name, '')
