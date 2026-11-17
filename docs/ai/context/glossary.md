@@ -420,7 +420,7 @@ One part of her output with a single owner: gaze, head and posture, face and exp
 
 ### Character mind
 
-The one module per character, in the leader window, that turns every stimulus into intents on one clock. Its core is a pure step function over serializable state; a thin leader-side class owns the clock, the random source, persistence, and transport to the stages.
+The one module per character, in the leader window, that turns every stimulus into intents on one clock. Its core is a pure step function over serializable state; a thin class in the window that hosts the stage owns the clock, the random source, and persistence, and calls the core in-process. It drives only the Natural performer.
 
 **Not to be confused with:** the decider, which it subsumes as one part; the conductor, which today does per-stage dispatch; and the chat orchestrator.
 **Avoid:** "brain", "AI", "scheduler" for the whole module.
@@ -433,7 +433,7 @@ What the character mind emits for one channel: an episode to start or end, such 
 
 ### Performer (target)
 
-The per-stage, renderer-side module (Live2D or MMD) that realises the mind's intents with continuous per-frame control and declares the capabilities it can realise. It may contain renderer deciders that act on intents and on the renderer's own world.
+The per-stage, renderer-side module (Live2D or MMD, under the Natural driver) that realises the mind's intents with continuous per-frame control and declares the capabilities it can realise. It may contain renderer deciders that act on intents and on the renderer's own world.
 
 **Not to be confused with:** the current usages listed under [Conflicting usages](#conflicting-usages).
 
