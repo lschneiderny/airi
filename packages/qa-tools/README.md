@@ -630,7 +630,7 @@ The KWin backend needs the default `kwin` QA display (with or without `--portals
 
 - Cursor parking is Windows-only.
 - `qa:stage measure` falls back to CDP pointer moves outside Windows, which never trigger hit-test readback. The `stage-frame-budget` readback is therefore unmeasured. This also holds inside the QA display.
-- On Linux Wayland, the app uses the classic window only, disables click-through, and its polled cursor can stick stale (#2521). See `apps/stage-tamagotchi/src/renderer/pages/index.vue` and the [fullscreen stage ADR](../../docs/ai/adr/2026-10-31-fullscreen-stage-and-locomotion.md).
+- On Linux, the desktop stage runs only where the desktop bridge can emulate click-through: KWin or an EWMH X11 session with a supported Electron (`isLinuxStageEligible` in `apps/stage-tamagotchi/src/main/windows/stage/mode.ts`; see the [Linux desktop bridge ADR](../../docs/ai/adr/2026-11-09-linux-desktop-bridge.md)). Other Linux sessions get the classic window, and their polled cursor can stick stale (#2521). See `apps/stage-tamagotchi/src/renderer/pages/index.vue` and the [fullscreen stage ADR](../../docs/ai/adr/2026-10-31-fullscreen-stage-and-locomotion.md).
 
 ## Model evaluation
 
