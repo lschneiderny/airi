@@ -105,7 +105,7 @@ Exit handlers share a 2 s budget (`EXIT_BUSY_BUDGET_MS`). A running snapshot can
 
 ## Inheritance
 
-A process started under a lease can reuse it. `acquire` reads `AIRI_CPU_LEASE` from the environment. When the store holds a lease with that id, the child takes it without a new ticket. Its grant is `AIRI_CPU_GRANT`, capped at the parent's slots, and then at the request's `max`, or at the class default max when `max` is unset (`reuse` and the inherited-lease check in `packages/cpu-slots/src/acquire.ts`). When `AIRI_CPU_GRANT` is not a positive integer, the parent's slots are used. The child never releases the parent's lease. An exclusive request under a shared lease fails with `exclusive-under-shared` (`assertShareable` in `acquire.ts`), and `pnpm slots run` exits 2 (the `main` rejection handler in `cli.ts`). `qa:motion t3` also exits 2 with a message that names the inherited lease.
+A process started under a lease can reuse it. `acquire` reads `AIRI_CPU_LEASE` from the environment. When the store holds a lease with that id, the child takes it without a new ticket. Its grant is `AIRI_CPU_GRANT`, capped at the parent's slots, and then at the request's `max`, or at the class default max when `max` is unset (`reuse` and the inherited-lease check in `packages/cpu-slots/src/acquire.ts`). When `AIRI_CPU_GRANT` is not a positive integer, the parent's slots are used. The child never releases the parent's lease. An exclusive request under a shared lease fails with `exclusive-under-shared` (`assertShareable` in `acquire.ts`), and `pnpm slots run` exits 2 (the `main` rejection handler in `cli.ts`).
 
 ## Vitest integration
 
