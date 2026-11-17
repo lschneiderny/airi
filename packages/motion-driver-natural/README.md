@@ -190,6 +190,24 @@ const { head, eyes, act, owner } = motion.reviewState()
 
 `follow` in the review gains is a candidate motion, not a layer. At 0, its default, a posture shift goes in a random direction, as it ships. At 1, each shift lands near where the eyes look (`headAimShare` head units per eye unit, with a fifth of the random offset kept), and a new fixation starts the next shift 50 ms after the eyes leave. It adds no random draws and no shifts. Do not make it the default without an ADR: it moves the liveliness statistics.
 
+## Reference statistics
+
+The idle posture shape was fitted to human head motion from two private VTS desk recordings, 7525 s pooled and resampled to 30 Hz. The recordings are never committed, so these aggregates are the only copy in the repository. They show quiet desk work, so use them as a reference for idle liveliness only, not for emotion or speech.
+
+| Quantity | Human value |
+| --- | --- |
+| Frames faster than 2 deg/s | 57% |
+| Move rate (runs above 2 deg/s, gaps up to 0.1 s merged) | 0.49 per second |
+| Hold q10 / q50 / q90 / q99 | 0.13 / 0.37 / 1.9 / 7.3 s |
+| Hold lognormal fit (mu, sigma) | -0.82, 1.02 |
+| Move amplitude q10 / q50 / q90 / q99 | 0.28 / 0.88 / 6.4 / 31 deg |
+| Move duration median / q90 | 0.40 / 2.9 s |
+| Speed CV over 60 s windows | 0.775 |
+| Dwell above or below median speed, q50 / q90 | 20 s / 70-80 s |
+| Quick reversals of at least 0.25 deg, yaw / pitch / roll | 0.44 / 0.88 / 0.35 per second |
+
+`posture.ts` draws its holds from the lognormal fit. Sources: `.omo/ulw-research/20261024-181357/verify-wave3-step-regimes.md` for the step structure and `verify-recording-reversals.md` in the same run for the reversals.
+
 ## Checks
 
 ```bash
