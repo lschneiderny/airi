@@ -54,7 +54,7 @@ Under Universal and MAGIC, Natural is inactive. The adapter eases its [posture](
    - `restoreExpressionBases`;
    - beat sync (`useMotionUpdatePluginBeatSync`);
    - idle disable (`useMotionUpdatePluginIdleDisable`).
-3. If no plugin handled the frame, the SDK motion update runs. Post plugins run next, and idle focus (`useMotionUpdatePluginIdleFocus`) is the only post plugin.
+3. If no pre plugin handled the frame, the SDK motion update runs and marks the frame handled when it updated a motion. Post plugins run only on a frame that is still unhandled, and idle focus (`useMotionUpdatePluginIdleFocus`) is the only post plugin.
 4. Final plugins always run, even on a handled frame, in this order:
    - expression (`useMotionUpdatePluginExpression`);
    - auto blink (`useMotionUpdatePluginAutoEyeBlink`);
@@ -141,7 +141,7 @@ Slot names resolve to model morph names through `createMorphController` (`packag
 
 ### Per-frame order
 
-1. The render loop (`packages/stage-ui-mmd/src/components/scenes/MMD.vue` `renderLoop`) updates the director (`MMDStanceDirector` `update`), applies a base-clip change with `setBaseMotion`, plays or stops the accepted clip action (`obeyAction`), lets the action and body tool ports read the director's answers, and sends the locomotion goal to `MMDBody` `setLocomotionGoal`.
+1. The render loop (`packages/stage-ui-mmd/src/components/scenes/MMD.vue` `renderLoop`) updates the expression store, then the director (`MMDStanceDirector` `update`), applies a base-clip change with `setBaseMotion`, plays or stops the accepted clip action (`obeyAction`), lets the action port read the director's answers, reports the body and realises idle errands (`reportBody`, `realiseErrands`), lets the body tool port read the answers, and sends the locomotion goal to `MMDBody` `setLocomotionGoal`. After the animation update in step 2, it handles touch events (`MMDTouch` `update`).
 2. The animation manager's `update` advances base fades (`advanceBaseFades`) and layer fades (`advanceLayers`), then calls `MMDFramePipeline` `step`, with `dt` clamped to 1/20 s.
 3. `step` runs `beforeUpdate`, then `restore`, which returns bones and morphs to the last clean pose.
 4. `commands` runs playback commands deferred to this clean frame, including layer teardown.
