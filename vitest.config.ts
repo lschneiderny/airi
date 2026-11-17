@@ -62,13 +62,6 @@ export default withCpuSlots(defineConfig({
           include: ['plugins/airi-plugin-web-extension/src/**/*.test.ts'],
         },
       },
-      // Repository scripts under .github. They belong to no package.
-      {
-        test: {
-          name: 'github-scripts',
-          include: ['.github/scripts/**/*.test.ts'],
-        },
-      },
       // Node projects of packages whose own config also holds browser projects. Their browser projects run through
       // `pnpm test:run`'s package scripts. These packages declare no node-only config, so the projects are inline.
       {
