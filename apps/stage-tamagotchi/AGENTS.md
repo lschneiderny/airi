@@ -20,8 +20,8 @@
 pnpm -F @proj-airi/stage-tamagotchi build:unpack
 ```
 `vitest.config.ts` separates node and Chromium browser coverage. Browser setup loads the shipped Cubism core.
-The node project runs files serially. `vitest.node.config.ts` defines the same node scope as the standalone `stage-tamagotchi:node` project.
-From the repository root, `pnpm test-stage-tamagotchi:run` runs only the browser project. Use `dev:xwayland` to force X11 on Linux.
+The node project runs files serially. `vitest.node-project.ts` defines it once; the root config runs it as `stage-tamagotchi:node`.
+From the repository root, `pnpm exec vitest run --config vitest.browser.config.ts --project stage-tamagotchi:browser` runs only the browser project. Use `dev:xwayland` to force X11 on Linux.
 
 ## HOTSPOTS
 These files exceed 500 lines. Read the owning module before editing them: `godot-stage/index.ts`, `plugins/host/index.ts`, `main/windows/widgets/index.ts`, `services/electron/auto-updater.ts`, `renderer/components/InteractiveArea.vue`, and `stage-islands/controls-island/index.vue`.

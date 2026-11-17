@@ -31,6 +31,6 @@
 ## CHECKS
 
 - Vitest separates Node tests from headless Chromium `*.browser.test.ts` GPU tests.
-- Node tests only: `pnpm -F @proj-airi/stage-ui-live2d exec vitest run --config vitest.node.config.ts`.
-- Browser tests only, from the repository root: `pnpm test-stage-ui-live2d:run`.
+- Node tests only, from the repository root: `pnpm exec vitest run --project stage-ui-live2d:node`.
+- Browser tests only, from the repository root: `pnpm exec vitest run --config vitest.browser.config.ts --project stage-ui-live2d:browser`.
 - Natural-motion benchmark: `node --expose-gc --import tsx scripts/bench-natural.ts [--frames 10000] [--runs 5]`.

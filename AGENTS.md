@@ -79,7 +79,6 @@ Use workspace `package.json` names with pnpm filters, for example `@proj-airi/st
 ```bash
 pnpm dev | dev:ui                             # Electron desktop app, UI stories
 pnpm dev:backend                              # Local backend stack (server/docker-compose.yaml)
-pnpm -F <package-name> typecheck | build | exec vitest run
 pnpm exec vitest run <path>; pnpm test:run
 pnpm qa:doctor | qa:test | qa:motion | qa:report
 pnpm qa:setup cubism | qa:llm serve            # Cubism Core download, scripted replay provider
@@ -96,21 +95,22 @@ pnpm qa:smoke [--model <path>]                # Fresh-profile start; fails on an
 pnpm qa:app run --model <path> --say <text>   # Replayed chat turn in the real app: ACT, expression, speech events
 pnpm qa:motion3d run --model <pmx> --scenario <id> --seed <n> --out <dir>   # Headless MMD body motion in Node, deterministic per seed
 pnpm qa:motion3d gate | diff | frames | clip <run dir> ...                 # Motion-quality gate, run identity, stills and clips
-pnpm qa:test:model                            # Model-gated tests; needs AIRI_QA_MMD_MODEL in .env.qa
+pnpm qa:test:model                            # Env-gated rig tests (MMD model, Live2D rig, mocap) whose variables .env.qa sets
 pnpm perf sessions | features | compare | incident    # Usage performance records and bench comparisons
 pnpm qa:display run -- pnpm qa:bench [--scenario <id>] [--runs <n>]   # Recorder-measured scenario matrix, exclusive lease per launch
 ```
 On Linux, start every agent command that opens app windows (T3 runs, agent-browser on Electron, Vishot) through `pnpm qa:display run --`, so the user's desktop, focus, and cursor stay undisturbed. Use `--name <name>` for parallel sessions and stop yours with `pnpm qa:display down --name <name>`.
 The `airi-qa` MCP server in `.mcp.json` (`pnpm qa:mcp`) offers the same app session as tools: `airi_start`, `airi_send`, `airi_screenshot`, `airi_errors`, `airi_eval`, and `airi_stop`. Always call `airi_stop` when done, because the session holds a `live` CPU lease.
 
-Testing tiers:
-- Inner loop: run the narrowest relevant package tests.
-- Commit loop: run `pnpm verify` after each change.
-- Branch gate: run `pnpm verify --gate` before landing.
+Testing tiers. [Testing and QA](docs/ai/context/testing.md) says what each check proves and which checks a change needs:
+- Inner loop: the narrowest package project, `pnpm exec vitest run --project <name> <path>`.
+- Commit loop: `pnpm verify` after each change. It lints the changed files, typechecks the changed packages and their dependents, and runs the tests related to the changed code by imports.
+- Branch gate: `pnpm verify --gate` before landing. Same checks over the whole branch, related tests only. Add `pnpm qa:display run -- pnpm qa:smoke` when app runtime code changed.
+- Release: `pnpm release` runs the full typecheck, full test suite, lint, bundle checks, and clean-start smoke before it uploads.
+- Renderer motion: MMD uses `pnpm qa:motion3d` and `pnpm qa:test:model`; Live2D uses `pnpm qa:live2d-rig` (headless ForBOOTH, T2) and has no statistical gate. Rendered checks use `qa:app` or the `airi-qa` MCP server, with visual review.
+- Platforms: only macOS and Linux KDE Wayland are checked. Windows, sway, and X11 are planned, not checked.
 
-For live acceptance and the change-to-check policy, see [Testing and QA](docs/ai/context/testing.md).
-
-After each task, run `pnpm verify` before finishing. It typechecks the changed packages and their dependents through Turbo, lints the changed files, and runs the tests related to them. It typechecks every package when a root config file changes. It skips a step that already passed on the same working tree.
+After each task, run `pnpm verify` before finishing. It typechecks every package when a root config file changes and skips typecheck for Markdown-only changes. Each step checks only what changed since it last passed on the current branch.
 Use `pnpm lint` or root `pnpm typecheck` only when a task needs the whole repository checked. Report only executed checks, their commands/results, changes, and follow-up work.
 When `pnpm run` or `pnpm exec` fails because dependencies are out of date, run `pnpm install` once explicitly. The workspace sets `verifyDepsBeforeRun: error` so installs never start silently.
 Create and remove worktrees with `pnpm wt new <name>` and `pnpm wt rm <name>`. Stop a worktree's processes with `pnpm dev:top kill <name> --yes`, never by PID alone.
