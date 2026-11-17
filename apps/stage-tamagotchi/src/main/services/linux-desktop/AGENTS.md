@@ -1,8 +1,8 @@
 # Linux desktop bridge
 
 The main process owns the bridge, its bus connections, script lifecycle and
-runtime facts. Follow the stage-tamagotchi guide and the
-`docs/ai/adr/2026-11-09-linux-desktop-bridge.md` contract.
+runtime facts. Read `docs/ai/adr/2026-11-09-linux-desktop-bridge.md` before
+changing the bridge.
 
 - Only `dbus/transport.ts` imports `dbus-native`.
 - Only `index.ts` imports Electron. Backends and session sources run under Node.
@@ -24,7 +24,6 @@ runtime facts. Follow the stage-tamagotchi guide and the
   runtime/data directories. Never attach to the user's compositor, display or
   session bus. Use a fake/private system bus for lock QA as well.
 
-Run the node project for `src/main/services/linux-desktop` and
-`src/main/services/electron/host-capabilities.test.ts`, then `pnpm verify`.
-Live evidence must include the snapshot, script-unload receipt and manifest
-cleanup, as well as the ready log line.
+After a change, also run `src/main/services/electron/host-capabilities.test.ts`
+in the node project. Live evidence must include the snapshot, script-unload
+receipt and manifest cleanup, as well as the ready log line.

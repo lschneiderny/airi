@@ -1,15 +1,12 @@
 # i18n
 
-Scope: `packages/i18n/**`, and every string that a user sees. The root guide gives locale-edit rules.
+Scope: `packages/i18n/**`, and every string that a user sees.
 
 ## Glossary
 
-`packages/i18n/glossary/terms.yaml` gives the approved English term for each product concept.
-`pnpm -F @proj-airi/i18n glossary:build` writes the glossary as a TBX file in the shape Crowdin imports.
-`packages/i18n/glossary/schema.ts` documents each field.
+`packages/i18n/glossary/schema.ts` documents each field of `packages/i18n/glossary/terms.yaml`.
 
 - Read `terms.yaml` before you write or change a string that a user sees. Use the term it gives.
-- Do not edit `packages/i18n/glossary/translations/`. It holds the last upstream Crowdin export, which this fork does not sync.
 - Take terms from the interface. Search the documentation to confirm a term, not to find one.
 
 **Add a term when it prevents one of two failures:**
@@ -35,7 +32,3 @@ the pull request.
 the `note`. Keep each sentence short and active: translators read them, and most do not read English
 as a first language.
 
-## CHECKS
-
-- Vitest includes only `glossary/**/*.test.ts`, so locale catalogs have no unit tests here.
-- The `dev` script only runs the build.

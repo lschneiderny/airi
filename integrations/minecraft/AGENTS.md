@@ -1,16 +1,11 @@
 # Minecraft integration
 
 ## CONVENTIONS
-- Read the README's migration notice. Mineflayer is being replaced by a Fabric runtime.
-- Keep new long-term Mineflayer features inside that migration plan.
-- This package uses Awilix, alien-signals, and isolated-vm, rather than the app's Pinia runtime.
 - Perception emits frozen raw events. Reflexes and conscious actions share body/pathfinder ownership.
-- Tests use `NODE_OPTIONS=--no-node-snapshot`. Vitest excludes `src/agents/action/*.test.ts`.
-- Config precedence: `.env.local`, saved configuration, `.env`, process environment, then defaults.
+- Tests use `NODE_OPTIONS=--no-node-snapshot`.
 - Debug workflow: `codex-skills/minecraft-debug-mcp/SKILL.md`.
 
 ## ANTI-PATTERNS
-- Do not connect this bot to untrusted public servers.
 - Never await `mineflayer.loadPlugin()` inside serialized lifecycle hooks. The queue is non-reentrant.
 - Resolve rule paths with `fileURLToPath`, not URL pathname, for Windows drive paths.
 - Never let lower-priority reflex work preempt a running async behavior.

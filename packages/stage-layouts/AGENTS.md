@@ -13,11 +13,6 @@
 
 ## ANTI-PATTERNS
 
-- Do not remove Safari viewport workarounds without satisfying their documented removal conditions.
 - Do not let analytics prevent mute when an auxiliary renderer loses its output host.
 - Do not change theme tabs to unequal widths while the indicator uses equal shares.
 - Do not leave object URLs or browser style changes owned by an unmounted layout.
-
-## CHECKS
-
-- The test configuration uses jsdom and resolves `~build/*` through `unplugin-info/vite`.

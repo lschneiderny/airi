@@ -5,9 +5,7 @@
 - Browser runtime messaging carries Eventa invocation contracts with per-instance source IDs.
 - Context updates use `ReplaceSelf` and separate `web:page`, `web:video`, and `web:subtitle` lanes.
 - Popup state uses VueUse global state and localStorage, not Pinia.
-- Defaults enable context/subtitle notifications and disable vision capture.
-- Default AIRI endpoint is `ws://localhost:6121/ws`.
-- Firefox variants are `dev:firefox` and `build:firefox`. Typecheck with `compile`, not `typecheck`.
+- Typecheck with `compile`, not `typecheck`.
 - WXT generates `.wxt/tsconfig.json`. `postinstall` runs `wxt prepare`.
 
 ## ANTI-PATTERNS

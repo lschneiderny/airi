@@ -3,8 +3,6 @@
 ## CONVENTIONS
 - MCP schemas use the SDK's Zod contracts. Keep descriptor metadata aligned with registered tools.
 - Desktop mutations use global logical coordinates, not Retina backing pixels.
-- Desktop click grounding rejects snapshots older than 5,000 ms (`server/desktop-grounding-actions.ts`).
-- Browser surface selection prefers the extension DOM bridge, then CDP; remote is unsuitable (`server/browser-surface.ts`).
 - Terminal surface and transport are separate contracts. Workflow bindings use stable step IDs.
 - JSONL transcripts are append-only interaction history, distinct from audit logs.
 - Session task memory is not long-term memory. Preserve turn ordering and bounded merge limits.

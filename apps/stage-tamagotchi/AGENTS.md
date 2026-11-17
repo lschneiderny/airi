@@ -8,29 +8,18 @@
 - Get a main-process Eventa context from `src/main/libs/electron/window-context.ts`: `createWindowContext(window)` for one window, `createAppContext()` for a request from any window. A window has one shared context, which the window owns.
 - Clean up after a window with `onWindowClosed(window, callback)` from `src/main/libs/electron/on-window-closed.ts`.
 - Shared window helpers own navigation protection, persistence, and platform-specific layering.
-- Home Assistant transport and secrets stay in main. Renderers receive only token presence and masked previews.
+- Home Assistant transport and secrets stay in main. Renderers receive only token presence and masked previews, never addresses or tokens.
 - Extension directory import separates prepare/review from serialized commit.
 - Managed extension sessions retain ownership until runtime and asset cleanup finish.
-- Computer use runs one lazy private daemon with serialized desktop operations.
-- macOS builds are ad-hoc signed and do not self-update.
-- The desktop build and typecheck are separate scripts.
 
 ## COMMANDS
-```sh
-pnpm -F @proj-airi/stage-tamagotchi build:unpack
-```
-`vitest.config.ts` separates node and Chromium browser coverage. Browser setup loads the shipped Cubism core.
-The node project runs files serially. `vitest.node-project.ts` defines it once; the root config runs it as `stage-tamagotchi:node`.
+The root config runs the node tests as the `stage-tamagotchi:node` project, one file at a time.
 From the repository root, `pnpm exec vitest run --config vitest.browser.config.ts --project stage-tamagotchi:browser` runs only the browser project. Use `dev:xwayland` to force X11 on Linux.
-
-## HOTSPOTS
-These files exceed 500 lines. Read the owning module before editing them: `godot-stage/index.ts`, `plugins/host/index.ts`, `main/windows/widgets/index.ts`, `services/electron/auto-updater.ts`, `renderer/components/InteractiveArea.vue`, and `stage-islands/controls-island/index.vue`.
 
 ## ANTI-PATTERNS
 - Do not append Chromium `enable-features` switches separately. Chromium replaces the previous value.
 - Do not enable Vulkan for native Wayland until Electron supports its surface presentation.
 - Do not make Chat directly depend on Settings. Settings reaches Chat through Spotlight.
-- Do not expose Home Assistant addresses or tokens to renderer transport.
 - Do not execute extensions during directory-import preparation.
 - Do not accept symlinks, escaping entrypoints, or changed packages after directory-import review.
 - Do not replace the iframe request queue with one latest value. Vue batches prop updates.
