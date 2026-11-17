@@ -171,6 +171,25 @@ Slot names resolve to model morph names through `createMorphController` (`packag
 - **Base clips.** A stance or idle change cross-fades the base with three.js `fadeIn` and `fadeOut` over `BASE_CROSSFADE` (0.6 s).
 - **Body yield.** Ownership reads the layer's nominal weight each frame, so the performer yields a group in step with the clip's fade. The performer's own layers ease in and out on their own ramps, and `setPerformanceLayer` turns one on or off.
 
+## Target
+
+This section states the design that refactors move toward. It does not describe the code. The [character mind ADR](../adr/2026-11-17-character-mind-direction.md) records the decision. When a refactor lands a rule, the rule moves into the sections above and the gaps it closes leave the list below.
+
+1. **Natural is the only motion driver.** Classic, Universal, and MAGIC retire as character drivers. Motions a model ships with become material the Natural [performer](glossary.md#performer-target) may use to realise an [intent](glossary.md#intent).
+2. **Natural owns posture; others offset it.** An expression's head tilt, a groove, or any other posture contribution is an input that Natural composes as an offset with a declared weight. Nothing else writes the posture channels.
+3. **One writer per channel per frame.** Every [channel](glossary.md#channel) in each renderer has exactly one owner. A second contribution enters through the owner's inputs, never as a second writer ordered by plugin stage.
+4. **Performers declare capabilities.** Each performer declares the gestures and episodes it can realise. It realises every declared one and reports a refusal for anything else. It never drops a request silently.
+5. **Performers map emotions to assets.** The mind sends an emotion, its strength, and its hold. Each performer picks its own model's expression entries for it (picker, combos, moments, pastimes, and the user's mapping), seeded by the intent's id so stages agree, and reports masked or refused expressions.
+6. **Feel targets survive the rewrite.** A held emotion fills roughly 50 to 70 % of a parameter's range at the clear band and nearly all of it at strong. Each emotion reads unmistakably on the whole face at corner size, even when a rig's expression files only switch decorations. `dizzy` is not part of the emotion vocabulary. Sources: owner rulings in the 2026-10-19 natural emotion revamp plan.
+7. **The app ships no motion clips.** MMD motion is a procedural core plus VMD clips the user imports locally; model terms forbid redistributing clips. Source: owner ruling in the MMD natural full-body plan.
+8. **Renderer decisions answer intents.** The MMD body director's stance, clip, and locomotion choices realise the mind's intents within the renderer's world. They do not start from raw stimuli.
+
+| Known gap | Closed by |
+| --- | --- |
+| Live2D skips shrug and lean cue gestures | Rule 4: Live2D either realises them or stops declaring them |
+| No ADR records the Live2D posture overwrite | Rule 2, recorded by the character mind ADR |
+| Stale text in the 3D motion, clip actions, and idle agency ADRs | No target rule. ADR bodies are frozen history; the current sections above state the code. |
+
 ## Known gaps
 
 Each entry names a rule that an ADR states and the code does not follow. This section only describes the gaps; it does not decide how to close them.
