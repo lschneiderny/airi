@@ -32,6 +32,7 @@ Agent guidance holds only what an agent cannot learn from the code, `package.jso
 - The Electron desktop stage host is gated by the off-by-default Experimental 3D stage setting. `AIRI_STAGE_HOST=window|desktop` overrides the saved mode in development builds only, for QA.
 - The server channel (`packages/server-runtime`, `packages/server-sdk`, `packages/server-shared`) is separate from hosted `server/packages`.
 - For 3D character motion work, track milestones in `docs/ai/context/3d-character-roadmap.md`.
+- For character mind work (autonomy, body ownership, prompt, and state refactors), read the [character mind ADR](docs/ai/adr/2026-11-17-character-mind-direction.md) and track slices in `docs/ai/context/character-mind-roadmap.md`.
 - Preserve the public `@proj-airi/stage-ui/stores` forwarding barrel. Shared component API edits also update `docs/ai/context/ui-components.md` and stories.
 - Put project/client ADRs in `docs/ai/adr/`, hosted backend ADRs in `server/docs/ai/adr/`, and current reference and policy docs in `docs/ai/context/`. Follow [server ADR rules](server/AGENTS.md).
 - Keep documentation with its code in the same commit/PR. Keep agent configuration changes in a separate commit/PR.
