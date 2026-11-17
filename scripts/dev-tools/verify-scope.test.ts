@@ -36,7 +36,8 @@ describe.each(verifySteps)('%s scope', (step) => {
     expect(advanceLastPass(record, context, { step, status, entry: { ...entry, tree: 'unchecked' } })).toEqual(record)
   })
 
-  it.each(['passed', 'cached'] as const)('records a %s fallback and advances only its own entry', (status) => {
+  it('records a passed fallback and advances only its own entry', () => {
+    const status = 'passed'
     const next = { ...entry, tree: 'next-tree', head: 'next-head' }
     expect(advanceLastPass(null, context, { step, status, entry: next })).toEqual({
       mergeBase: context.mergeBase,

@@ -10,7 +10,7 @@ import { promisify } from 'node:util'
 import { readStatus } from '@proj-airi/cpu-slots'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-import { readLastPass } from './verify-cache'
+import { readLastPass } from './verify-last-pass'
 
 const exec = promisify(execFile)
 
@@ -72,7 +72,7 @@ describe('verify step execution', () => {
 
   it('holds one real lease across the build and related-test commands, then releases it', async () => {
     const store = join(root, 'slots')
-    await exec(process.execPath, ['--import', import.meta.resolve('tsx'), fileURLToPath(new URL('./verify.ts', import.meta.url)), '--only', 'test', '--force'], {
+    await exec(process.execPath, ['--import', import.meta.resolve('tsx'), fileURLToPath(new URL('./verify.ts', import.meta.url)), '--only', 'test'], {
       cwd: root,
       env: { ...process.env, CI: '', AIRI_CPU_SLOTS: '', AIRI_CPU_SLOTS_DIR: store, AIRI_CPU_SLOTS_HISTORY_DIR: join(root, 'slots-history'), AIRI_CPU_BUDGET: '12', AIRI_CPU_LEASE: '', AIRI_CPU_GRANT: '', AIRI_CPU_CLASS: '' },
       timeout: 15_000,
@@ -104,33 +104,6 @@ describe('verify step execution', () => {
     expect(readLastPass(cache, 'main')).toEqual(record)
   }, 20_000)
 
-  function commitFixture() {
-    execFileSync('git', ['add', '.'], { cwd: root })
-    execFileSync('git', ['-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', '-c', 'commit.gpgSign=false', '-c', `core.hooksPath=${join(root, '.git/hooks')}`, 'commit', '-m', 'fixture files'], { cwd: root, stdio: 'pipe' })
-    execFileSync('git', ['branch', 'base', 'HEAD~1'], { cwd: root })
-  }
-
-  it('reuses a pass at the same clean tree without running commands and restores a missing last record', async () => {
-    commitFixture()
-    await verify(['--gate', '--base', 'base', '--only', 'test'])
-    const cache = join(root, '.git/airi-verify')
-    const record = readLastPass(cache, 'main')
-    const receipts = readFileSync(join(root, 'receipts.jsonl'), 'utf8')
-    rmSync(join(cache, 'last/main.json'))
-    const result = await verify(['--gate', '--base', 'base', '--only', 'test'])
-    expect(result.stdout).toMatch(/\[test\] cached: passed at [0-9a-f]{12} in .+ at \d{4}-/)
-    expect(result.stdout).toMatch(/test\s+cached/)
-    expect(readLastPass(cache, 'main')?.steps.test?.tree).toBe(record?.steps.test?.tree)
-    expect(readFileSync(join(root, 'receipts.jsonl'), 'utf8')).toBe(receipts)
-  }, 20_000)
-
-  it('never reuses a pass for a tree with untracked files', async () => {
-    await verify(['--gate', '--only', 'test'])
-    const result = await verify(['--gate', '--only', 'test'])
-    expect(result.stdout).toContain('not reused: working tree has uncommitted or untracked files')
-    expect(readFileSync(join(root, 'receipts.jsonl'), 'utf8').trim().split('\n')).toHaveLength(4)
-  }, 20_000)
-
   it.each(['fail', 'mutate'])('never advances the record when a command does %s', async (action) => {
     await verify(['--gate', '--only', 'test'])
     const cache = join(root, '.git/airi-verify')
@@ -139,7 +112,7 @@ describe('verify step execution', () => {
     if (action === 'fail')
       await expect(verify(['--only', 'test'], action)).rejects.toMatchObject({ code: 1, stdout: expect.stringContaining('All tests passed') })
     else
-      expect((await verify(['--only', 'test'], action)).stdout).toContain('not cached: files changed during the step')
+      expect((await verify(['--only', 'test'], action)).stdout).toContain('not recorded: files changed during the step')
     expect(readLastPass(cache, 'main')).toEqual(record)
     expect(readStatus({ root: join(root, 'slots') })).toMatchObject({ held: 0, leases: [], queue: [] })
   }, 20_000)

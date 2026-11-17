@@ -14,8 +14,8 @@ import { compileCacheEnv } from './lib/compile-cache'
 import { capture, chunkByLength, nodeCommandChunkLimitsFor, run, shimCommandChunkLimits } from './lib/exec'
 import { gatedNotice, listGatedTestFiles } from './lib/gated-tests'
 import { changedFiles, git, gitCommonDir, repoRoot, workingTreeHash } from './lib/git'
-import { decideReuse, envKeyOf, readLastPass, readTreeRecords, toolchainOf, writeLastPass, writeTreeRecord } from './verify-cache'
 import { appendVerifyRun, formatVerifyStats, readVerifyStats } from './verify-history'
+import { readLastPass, writeLastPass } from './verify-last-pass'
 import { advanceLastPass, lintAllFixable, parseVerifyArgs, planStepLease, planTestRuns, planVerify, selectBrowserTestProjects, selectVerifyScope, testPrerequisiteTurboArgs, touchesAppRuntime, typecheckFilters, verifyUsage } from './verify-plan'
 
 interface Command {
@@ -27,7 +27,7 @@ interface Command {
 
 interface StepResult {
   step: VerifyStep
-  status: 'passed' | 'cached' | 'failed' | 'skipped'
+  status: 'passed' | 'failed' | 'skipped'
   detail: string
   durationMs: number
 }
@@ -94,7 +94,6 @@ async function main(): Promise<number> {
   const { args } = parsed
   const root = repoRoot(process.cwd())
   const cacheDir = join(gitCommonDir(root), 'airi-verify')
-  const treePassDir = join(cacheDir, 'tree-passes')
   const historyDir = process.env.AIRI_VERIFY_HISTORY_DIR ?? cacheDir
   if (args.stats) {
     const stats = readVerifyStats(historyDir, args.stats.sinceMs ? Date.now() - args.stats.sinceMs : 0)
@@ -114,18 +113,14 @@ async function main(): Promise<number> {
   const branch = git(root, ['branch', '--show-current']) || null
   const head = git(root, ['rev-parse', 'HEAD'])
   const context = { branch, mergeBase: base, gate: args.gate }
-  const toolchain = toolchainOf(process.version, process.platform)
-  const envKey = envKeyOf(process.env)
-  // Shared passes are read and written only for a committed tree: HEAD's tree with nothing staged, unstaged or untracked.
-  const isClean = () => git(root, ['status', '--porcelain', '--untracked-files=normal']) === '' && git(root, ['rev-parse', 'HEAD^{tree}']) === tree
   const record = branch && !args.gate ? readLastPass(cacheDir, branch) : null
-  const recordStep = (step: VerifyStep, status: 'passed' | 'cached') => {
+  const recordStep = (step: VerifyStep) => {
     if (!branch)
       return
     // Reread so a completed step never replaces another step's newer record with the startup copy.
     const next = advanceLastPass(readLastPass(cacheDir, branch), context, {
       step,
-      status,
+      status: 'passed',
       entry: { tree, head, recordedAt: new Date().toISOString() },
     })
     if (next)
@@ -143,7 +138,7 @@ async function main(): Promise<number> {
   const finish = (result: StepResult, history: Pick<VerifyRun, 'scopeBase' | 'mode' | 'commands' | 'files' | 'waitMs' | 'grant'>) => {
     results.push(result)
     if (!args.dryRun) {
-      const status = { passed: 'pass', failed: 'fail', cached: 'cached', skipped: 'skipped' } as const
+      const status = { passed: 'pass', failed: 'fail', skipped: 'skipped' } as const
       appendVerifyRun(historyDir, {
         ts: Date.now(),
         worktree: root,
@@ -201,18 +196,6 @@ async function main(): Promise<number> {
     }
     if (step === 'test')
       gatedTestNotice = gatedNotice(listGatedTestFiles(root), affected, changed.map(file => file.path), process.env)
-    const decision = args.dryRun
-      ? null
-      : decideReuse({ step, tree, toolchain, envKey, gate: args.gate, changed: changed.map(file => file.path), clean: isClean(), noCache: args.force }, readTreeRecords(treePassDir, tree))
-    if (decision?.kind === 'reuse' && workingTreeHash(root) === tree) {
-      const { pass } = decision
-      console.info(`[${step}] cached: passed at ${tree.slice(0, 12)} in ${pass.worktree} at ${pass.at} (${pass.mode} pass covering ${pass.covers.length} file(s) from ${pass.coverBase.slice(0, 9)}; this scope asks ${changed.length})`)
-      recordStep(step, 'cached')
-      finish({ step, status: 'cached', detail: `passed at ${tree.slice(0, 12)} in ${pass.worktree} at ${pass.at}`, durationMs: 0 }, { ...history, commands: commands.map(item => [process.execPath, ...item.args]) })
-      continue
-    }
-    if (decision?.kind === 'run' && decision.reason !== 'no pass at this tree')
-      console.info(`[${step}] not reused: ${decision.reason}`)
     const affectedTypecheckCount = step === 'typecheck' && plan.typecheck.kind === 'affected'
       ? withDependents(root, plan.typecheckPackagePaths).length
       : 0
@@ -257,7 +240,6 @@ async function main(): Promise<number> {
     }
     const durationMs = Date.now() - started
     if (failed) {
-      writeTreeRecord(treePassDir, { kind: 'failure', step, tree, toolchain, envKey, worktree: root, at: new Date().toISOString() })
       finish({ step, status: 'failed', detail: failed, durationMs }, execution)
       if (step === 'lint') {
         lintFailed = true
@@ -268,16 +250,10 @@ async function main(): Promise<number> {
     }
     const labels = commands.map(item => item.label).join('; ')
     if (workingTreeHash(root) !== tree) {
-      finish({ step, status: 'passed', detail: `${labels} (not cached: files changed during the step)`, durationMs }, execution)
+      finish({ step, status: 'passed', detail: `${labels} (not recorded: files changed during the step)`, durationMs }, execution)
       continue
     }
-    if (isClean()) {
-      // An incremental pass continues the per-branch record, so it vouches for the whole range from the merge base.
-      const coverBase = scope.mode === 'incremental' ? base : scope.base
-      const covers = scope.mode === 'incremental' ? changedFiles(root, coverBase, tree).map(file => file.path) : changed.map(file => file.path)
-      writeTreeRecord(treePassDir, { kind: 'pass', step, tree, toolchain, envKey, mode: scope.mode, covers, coverBase, worktree: root, branch, at: new Date().toISOString(), durationMs })
-    }
-    recordStep(step, 'passed')
+    recordStep(step)
     finish({ step, status: 'passed', detail: labels, durationMs }, execution)
   }
 

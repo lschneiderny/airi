@@ -4,7 +4,7 @@ Root commands for working on this repository with many worktrees and parallel ag
 
 | Command | What it does |
 | --- | --- |
-| `pnpm verify` | Typechecks changed packages and their dependents, lints changed files, and runs related tests. Skips a step that already passed on the same working tree. |
+| `pnpm verify` | Typechecks changed packages and their dependents, lints changed files, and runs related tests. Each step checks only what changed since that step last passed on the current branch. |
 | `pnpm wt ls \| new \| rm \| gc` | Lists, creates, removes, and garbage-collects worktrees. |
 | `pnpm dev:top` | Shows dev process memory and CPU per worktree, flags orphans, and stops one worktree's processes. |
 | `pnpm qa:display up \| down \| status \| env \| run \| shot` | Runs a headless, GPU-accelerated KWin session on Linux, so agents can run the Electron app and live QA without touching the user's desktop. |
@@ -59,7 +59,6 @@ pnpm verify --gate               # full branch against the merge base with main
 pnpm verify --only lint,test     # some steps
 pnpm verify --base origin/main   # another base
 pnpm verify --dry-run            # print the plan and commands
-pnpm verify --no-cache           # rerun every step instead of reusing a pass at this tree (alias --force)
 pnpm verify --stats              # summarize recorded step outcomes
 pnpm verify --stats --since 2d --json
 ```
@@ -72,39 +71,23 @@ The steps, in the order they run:
 - **test** passes the changed files to each Vitest process in one command on Linux and macOS. On Windows the list is split to stay under the CreateProcess command-line limit, and each process then runs once per part.
 - **test** starts one Vitest process per affected browser project, one after the other, although the projects share `vitest.browser.config.ts`. Vitest starts one Vite server per project, and `@vitejs/plugin-vue` 6.0.8 keeps one descriptor cache per Node process, keyed by absolute file name, while it derives a component's scoped id from its path relative to each server's root. With two roots in one process, one server can serve a component's scoped style under the other root's id, and the component renders unstyled for that whole run. This failed about 1 verify run in 11 on `packages/ui`'s `range.vue` (`expected 16 to be greater than or equal to 24` in the Live2D settings browser test). To reproduce it without a browser, create two Vite servers with the Vue plugin in one Node process, one rooted in `packages/stage-ui` and one in `packages/stage-pages`, transform the same scoped component on the first and then on the second, and request its style block from the first: the selector carries the second root's id. Two sibling package roots disagree on any component that lives inside one of them, so grouping the projects would not be enough.
 
-Each step acquires one CPU lease before its first command and releases it after its last command, including on failure. A failed command stops the remaining commands in that step. `--dry-run` prints one lease request per uncached, runnable step.
+Each step acquires one CPU lease before its first command and releases it after its last command, including on failure. A failed command stops the remaining commands in that step. `--dry-run` prints one lease request per runnable step.
 
 Each step prints its scope. Plain verify uses that step's last passing tree on the current branch, including committed, staged, unstaged, and untracked changes since that tree. A commit without verification does not advance the baseline. Comparing working-tree snapshots also avoids repeatedly checking unchanged untracked files.
 
 The per-branch record lives at `<git common dir>/airi-verify/last/<encoded-branch>.json`, with slashes percent-encoded. It holds the merge base and a `{ tree, head, recordedAt }` entry per step. A missing or malformed record, missing step entry, changed merge base, or pruned tree falls back to the full branch scope and prints why. Detached HEAD always uses branch scope and never reads or writes a last-pass record. `--base` selects the ref used to compute the merge base.
 
-After a pass, including a cached pass, only that step's entry advances. Skipped and failed steps leave their entries unchanged. A pass against a different merge base starts a new record so old entries cannot narrow the other steps. Dry runs never write records. Files must remain unchanged during the step before either the pass cache or the last-pass record is written.
+After a pass, only that step's entry advances. Skipped and failed steps leave their entries unchanged. A pass against a different merge base starts a new record so old entries cannot narrow the other steps. Dry runs never write records. Files must remain unchanged during the step before the last-pass record is written.
 
 Use `pnpm verify --gate` before landing to check the full branch regardless of previous passes. If the branch touches app runtime paths (`apps/stage-tamagotchi/src/`, `packages/stage-ui*/src/`, `packages/stage-shared/src/`, `packages/stage-pages/src/`, or `packages/stage-layouts/src/`), the gate prints a reminder to run `pnpm qa:display run -- pnpm qa:smoke`.
 
-### Pass cache shared by every worktree
-
-A step that passes on a committed tree is recorded under `<git common dir>/airi-verify/tree-passes/`, which every worktree of the clone reads. Committed means a clean status: no staged, unstaged, or untracked (not ignored) file, so the tree is `HEAD^{tree}`. A record holds the tree, step, Node.js version and platform, a hash of the `AIRI_QA_*` variables (they turn environment-gated tests on), the scope mode, the worktree, the time, and `covers`: the paths the pass vouches for. A branch-scope pass covers the files changed from the merge base. An incremental pass continues the per-branch record, so it covers the files changed from the record's merge base, the same trust the incremental scope already gives.
-
-A later verify in any worktree reuses a record when all of these hold, and prints `[<step>] cached: passed at <tree> in <worktree> at <time> (...)` for each reused step:
-
-- the working tree is clean and at the same tree, with the same Node.js version, platform, and `AIRI_QA_*` variables;
-- every file the requested scope would check is in `covers`, so a narrower or equal scope can reuse a wider pass but never the reverse (each step's plan grows with the set of changed files);
-- no failure of that step was recorded at that tree after the pass (a failed step writes a failure record, so a flaky failure is never hidden by an earlier pass);
-- `--gate` reuses only passes that ran branch scope themselves, never an incremental chain;
-- `--no-cache` (or `--force`) and `--dry-run` were not given.
-
-Otherwise the step runs and, when a record existed but could not be used, prints `[<step>] not reused: <reason>`. A dirty working tree never reuses and never records a pass. Skipped, cached, and dry-run steps, and passes during which files changed, write nothing. The store keeps at most 2,000 records and drops records older than 30 days on each write. A malformed record is ignored, which can only cause a rerun.
-
-The landing case this serves: a worker's verify passes at tree T in its worktree; the lead's check of the same commit in another worktree is at the same clean tree T with branch scope from the same merge base, so each step is reused instead of rerun.
-
 An empty scope reports `skipped`.
 
-Step history is separate from the pass cache. Each completed step appends a record to `<git common dir>/airi-verify/runs.jsonl`, including failures, cached passes, and skips. Records contain `ts` (epoch milliseconds), `worktree`, `branch` (null for detached HEAD), `head`, `tree`, `scopeBase`, `mode`, `step`, `status` (`pass`, `fail`, `cached`, or `skipped`), `durationMs`, `commands` (argument arrays), `files`, `waitMs`, and `grant`. Executed commands include the granted concurrency; cached steps list their planned commands. Steps without a lease record zero wait and a null grant. Duration includes waiting for the lease. Dry runs do not append history.
+Step history is separate from the last-pass record. Each completed step appends a record to `<git common dir>/airi-verify/runs.jsonl`, including failures and skips. Records contain `ts` (epoch milliseconds), `worktree`, `branch` (null for detached HEAD), `head`, `tree`, `scopeBase`, `mode`, `step`, `status` (`pass`, `fail`, or `skipped`; records written before 2026-11-17 can also say `cached`), `durationMs`, `commands` (argument arrays), `files`, `waitMs`, and `grant`. Executed commands include the granted concurrency. Steps without a lease record zero wait and a null grant. Duration includes waiting for the lease. Dry runs do not append history.
 
-`pnpm verify --stats` reads history without running checks or changing cache records. It reports counts by status for each step and scope mode, failure rate, median and p90 duration, and the slowest five executed steps with their worktree and branch. Failure rates and duration distributions use executed passes and failures; cached and skipped steps contribute only to counts. `--since` accepts a positive integer followed by `ms`, `s`, `m`, `h`, or `d`. `--json` prints the summary as JSON. Malformed lines are skipped and counted, including malformed lines outside the requested time window.
+`pnpm verify --stats` reads history without running checks or changing last-pass records. It reports counts by status for each step and scope mode, failure rate, median and p90 duration, and the slowest five executed steps with their worktree and branch. Failure rates and duration distributions use executed passes and failures; cached and skipped steps contribute only to counts. `--since` accepts a positive integer followed by `ms`, `s`, `m`, `h`, or `d`. `--json` prints the summary as JSON. Malformed lines are skipped and counted, including malformed lines outside the requested time window.
 
-Before an append, a history file larger than 5 MiB rotates to `runs.1.jsonl`, replacing the previous generation. Statistics read both generations. History write failures print a warning without changing check results. Set `AIRI_VERIFY_HISTORY_DIR` to use another history directory, such as a temporary directory for QA; this setting does not redirect pass-cache or last-pass records.
+Before an append, a history file larger than 5 MiB rotates to `runs.1.jsonl`, replacing the previous generation. Statistics read both generations. History write failures print a warning without changing check results. Set `AIRI_VERIFY_HISTORY_DIR` to use another history directory, such as a temporary directory for QA; this setting does not redirect last-pass records.
 
 Exit codes: 0 every step passed, 1 a step failed, 2 usage error.
 
@@ -258,7 +241,7 @@ Script files live in `$XDG_RUNTIME_DIR/airi-kwin/`, which each QA session keeps 
 
 The backend imports its compositor scripts with Vite's `?raw` suffix, so the probe registers a small Node loader hook for those imports.
 
-## CPU slots and the verify cache
+## CPU slots and verify
 
 `pnpm verify` takes a lease from the CPU slot budget for each step, so steps from several worktrees queue instead of oversubscribing the machine. The classes are:
 
@@ -267,8 +250,6 @@ The backend imports its compositor scripts with Vite's `?raw` suffix, so the pro
 - `test`: the prerequisite Turbo build and every `vitest related --run` command share one lease. Turbo receives `--concurrency={grant}`; child Vitest wrappers inherit the lease and apply their class caps, including the browser cap.
 
 A waiting step prints `cpu-slots: waiting for N slot(s) ...`. Run `pnpm slots status` to see the holders.
-
-Passing steps are recorded per committed tree, as described under "Pass cache shared by every worktree" above. The record holds no command line, so the CPU grant a run received cannot change whether it is reused. `--no-cache` reruns every step. Failures are recorded so they outrank earlier passes. A pass is not recorded when files changed while its step ran.
 
 `pnpm dev:top` prints `cpu slots: held X/Y, N queued` in its header, with one line per lease and queued caller. If the store lock is held, it prints `cpu slots: busy (lock held), try again`. If the store cannot be read, it prints `cpu slots: unavailable (...)`. `pnpm dev:top kill <worktree>` is a dry run unless `--yes` is passed, and `--orphans` limits it to orphaned processes. Each kill re-reads the live command line first.
 

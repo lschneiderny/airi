@@ -49,7 +49,7 @@ Use `pnpm verify` as the incremental commit loop, then run
 `pnpm verify --gate` before landing to check the full branch. If a step fails,
 fix the cause and rerun the required checks. See the
 [dev-tools README's verify section](../../../scripts/dev-tools/README.md#pnpm-verify)
-for scope selection, pass caching, leases, and command behavior.
+for scope selection, last-pass records, leases, and command behavior.
 
 `pnpm verify --stats` reads the append-only step history without running
 checks. It reports counts by step and scope mode, failure rate, median and
@@ -57,7 +57,7 @@ checks. It reports counts by step and scope mode, failure rate, median and
 and branch. Cached and skipped results count toward totals but not duration
 or failure-rate calculations. Use `--since 2d` to filter by a positive
 duration, or `--json` for machine-readable output. Malformed records are
-skipped and counted. History is separate from pass-cache and last-pass data;
+skipped and counted. History is separate from last-pass data;
 setting `AIRI_VERIFY_HISTORY_DIR` redirects only history.
 
 ## CPU slot scheduling

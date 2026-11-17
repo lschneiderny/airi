@@ -112,17 +112,18 @@ describe('planTestRuns', () => {
 
 describe('parseVerifyArgs', () => {
   it('defaults to every step against main', () => {
-    expect(parseVerifyArgs([])).toEqual({ ok: true, args: { base: 'main', steps: ['lint', 'typecheck', 'test'], force: false, dryRun: false, gate: false } })
+    expect(parseVerifyArgs([])).toEqual({ ok: true, args: { base: 'main', steps: ['lint', 'typecheck', 'test'], dryRun: false, gate: false } })
   })
 
   it('keeps step order canonical whatever order --only lists', () => {
-    expect(parseVerifyArgs(['--only', 'test,lint', '--base', 'origin/main', '--force'])).toEqual({ ok: true, args: { base: 'origin/main', steps: ['lint', 'test'], force: true, dryRun: false, gate: false } })
+    expect(parseVerifyArgs(['--only', 'test,lint', '--base', 'origin/main', '--gate'])).toEqual({ ok: true, args: { base: 'origin/main', steps: ['lint', 'test'], dryRun: false, gate: true } })
   })
 
   it('rejects unknown steps, missing values, and stray arguments', () => {
     expect(parseVerifyArgs(['--only', 'build']).ok).toBe(false)
     expect(parseVerifyArgs(['--base']).ok).toBe(false)
-    expect(parseVerifyArgs(['--base', '--force']).ok).toBe(false)
+    expect(parseVerifyArgs(['--base', '--gate']).ok).toBe(false)
+    expect(parseVerifyArgs(['--no-cache']).ok).toBe(false)
     expect(parseVerifyArgs(['extra']).ok).toBe(false)
   })
 })

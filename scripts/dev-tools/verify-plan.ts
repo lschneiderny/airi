@@ -56,8 +56,8 @@ export function selectVerifyScope(context: VerifyContext, previous: { record: La
 }
 
 /** Only call for the unchanged tree checked by a step, from its selected branch or verified-tree scope. */
-export function advanceLastPass(record: LastVerifyPass | null, context: VerifyContext, result: { step: VerifyStep, status: 'passed' | 'cached' | 'failed' | 'skipped', entry: VerifiedTree }): LastVerifyPass | null {
-  if (!context.branch || (result.status !== 'passed' && result.status !== 'cached'))
+export function advanceLastPass(record: LastVerifyPass | null, context: VerifyContext, result: { step: VerifyStep, status: 'passed' | 'failed' | 'skipped', entry: VerifiedTree }): LastVerifyPass | null {
+  if (!context.branch || result.status !== 'passed')
     return record
   return {
     mergeBase: context.mergeBase,
@@ -183,7 +183,6 @@ export function planVerify(changed: ChangedFile[], packagePaths: string[], rootD
 export interface VerifyArgs {
   base: string
   steps: VerifyStep[]
-  force: boolean
   dryRun: boolean
   gate: boolean
   stats?: VerifyStatsOptions
@@ -191,7 +190,7 @@ export interface VerifyArgs {
 
 export type ParsedVerifyArgs = { ok: true, args: VerifyArgs } | { ok: false, message: string }
 
-export const verifyUsage = `Usage: pnpm verify [--gate] [--base <ref>] [--only lint,typecheck,test] [--no-cache] [--dry-run]
+export const verifyUsage = `Usage: pnpm verify [--gate] [--base <ref>] [--only lint,typecheck,test] [--dry-run]
        pnpm verify --stats [--since <duration>] [--json]
 
   --stats    summarize step history without running checks
@@ -200,7 +199,6 @@ export const verifyUsage = `Usage: pnpm verify [--gate] [--base <ref>] [--only l
   --gate     check the full branch instead of changes since each step's last pass
   --base     compare against the merge base with <ref> (default main)
   --only     run only these steps (default all)
-  --no-cache rerun every step instead of reusing a pass recorded at this tree (alias --force)
   --dry-run  print the plan and commands without running them
 Exit codes: 0 every step passed, 1 a step failed, 2 usage error.`
 
@@ -208,17 +206,14 @@ export function parseVerifyArgs(argv: string[]): ParsedVerifyArgs {
   if (argv.includes('--stats')) {
     const parsed = parseStatsArgs(argv)
     return parsed.ok
-      ? { ok: true, args: { base: 'main', steps: [], force: false, dryRun: false, gate: false, stats: parsed.stats } }
+      ? { ok: true, args: { base: 'main', steps: [], dryRun: false, gate: false, stats: parsed.stats } }
       : parsed
   }
-  const args: VerifyArgs = { base: 'main', steps: [...verifySteps], force: false, dryRun: false, gate: false }
+  const args: VerifyArgs = { base: 'main', steps: [...verifySteps], dryRun: false, gate: false }
   for (let index = 0; index < argv.length; index++) {
     const flag = argv[index]
     if (flag === '--gate') {
       args.gate = true
-    }
-    else if (flag === '--force' || flag === '--no-cache') {
-      args.force = true
     }
     else if (flag === '--dry-run') {
       args.dryRun = true
