@@ -129,7 +129,7 @@ To stop the processes of a worktree, run `pnpm dev:top kill <name> --yes`.
 - Use [Conventional Commits](https://www.conventionalcommits.org/) with the package name as the scope, for example `feat(stage-ui-live2d): add touch debug overlay`.
 - Name branches `<username>/<type>/<short-name>`, where `<type>` is a Conventional Commit type such as `feat` or `fix`.
 - Pull with rebase.
-- Keep documentation in the same commit as the code it describes. Put agent configuration changes (`AGENTS.md`, `.agents/`, `.github/copilot-instructions.md`) in a separate commit.
+- Keep documentation in the same commit as the code it describes. Put agent configuration changes (`AGENTS.md`, `CLAUDE.md`, `.agents/`) in a separate commit.
 - Add user-visible strings in English under `packages/i18n/src/locales/en/`. Do not add placeholder translations for other locales.
 
 ## Bring in upstream changes
