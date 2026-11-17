@@ -38,7 +38,7 @@ Wayland and XWayland.
 
 ## Support scope
 
-The fork targets one app: the Electron desktop app, on the platforms listed under [Platform support](#platform-support). Every workspace project falls into one of three groups.
+The fork targets one app: the Electron desktop app, on the platforms listed under [Platform support](#platform-support). Every workspace project falls into one of three groups. A project is retired only when it is an easy drop; otherwise it is kept (owner ruling 2026-11-16).
 
 ### Supported
 
@@ -90,6 +90,8 @@ These paths were removed. Upstream changes to them are dropped on sync.
 | packages/stage-ui/src/components/modules/X.vue | Retired 2026-11-16 | The stage-ui X module (with packages/stage-ui/src/stores/modules/twitter.ts) |
 
 The Retired table is the path list the upstream sync uses to resolve delete-versus-modify conflicts: a retired path stays deleted. The port-back conditions for Kirie and Pocket are in [`docs/ai/context/upstream-watch.md`](./docs/ai/context/upstream-watch.md).
+
+The web app left code behind in shared packages: the `isStageWeb()` branches, kept at first because they were not easy drops, and the `web` host profile. Both are now scheduled for removal (owner ruling 2026-11-17); the [character mind roadmap](./docs/ai/context/character-mind-roadmap.md) tracks it.
 
 ## Getting started
 
