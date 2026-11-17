@@ -1,6 +1,6 @@
 # State persistence
 
-Verified against the code on 2026-11-16 (commit `1976c952b`). These rules state where client state lives and how to place new state. These rules win over the ADRs in `docs/ai/adr/`; the ADRs record the history behind them.
+This file describes the code on `main`. A change that makes a statement here false updates this file in the same commit. These rules state where client state lives and how to place new state. These rules win over the ADRs in `docs/ai/adr/`; the ADRs record the history behind them.
 
 Terms follow the [domain glossary](glossary.md), in particular [Leader and follower windows](glossary.md#leader-and-follower-windows) and [Synced settings document](glossary.md#synced-settings-document). Code is cited by repository path and exported symbol.
 
@@ -26,7 +26,7 @@ A store that fits no tier needs an amendment to this document before it lands.
 
 ## Members
 
-The table lists every persisting store and component found in the `src` directories of the workspace packages and in `apps/stage-tamagotchi/src` as of the commit named above.
+The table lists every persisting store and component found in the `src` directories of the workspace packages and in `apps/stage-tamagotchi/src` with the inventory search under [Uses of the search terms that persist nothing](#uses-of-the-search-terms-that-persist-nothing).
 
 Column meanings:
 

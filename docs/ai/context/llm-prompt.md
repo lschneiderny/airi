@@ -1,6 +1,6 @@
 # LLM prompt
 
-Verified against the code on 2026-11-16 (commit `1976c952b`). These rules win over the ADRs in `docs/ai/adr/`; the ADRs record the history behind them.
+This file describes the code on `main`. A change that makes a statement here false updates this file in the same commit. These rules win over the ADRs in `docs/ai/adr/`; the ADRs record the history behind them.
 
 The system prompt of every character turn is built by one pure function, `composePrompt` in `packages/stage-shared/src/stage-contract/compose.ts`. It reads no locale, store, or clock. It sorts the supplied [segments](glossary.md#prompt-segment) by `PROMPT_SEGMENT_ORDER`, fits each segment to its entry in `PROMPT_SEGMENT_BUDGETS`, drops empty segments, and joins the rest with a blank line. The one exception to the join is that the card follows the format rules directly. The function returns the full text, the prefix, the tail, and a size report with one entry per supplied segment. An unknown or duplicate segment id throws. Overflow never throws.
 

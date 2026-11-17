@@ -1,8 +1,8 @@
 # Domain glossary
 
-Verified against the code on 2026-11-16 (commit `1976c952b`). These definitions win over the ADRs in `docs/ai/adr/`; the ADRs record the history behind them.
+This file describes the code on `main`. A change that makes a statement here false updates this file in the same commit. These definitions win over the ADRs in `docs/ai/adr/`; the ADRs record the history behind them.
 
-This file defines the domain terms that the client's code and documentation use for the character, her motion, and her presence on the desktop. It is for contributors and agents, not translators: `packages/i18n/glossary/terms.yaml` holds only user-visible, translatable terms (see "Glossary" in `packages/i18n/AGENTS.md`), and a term can appear in both files with different scope. Each definition describes the behavior of the code as of the commit named above. When an ADR uses a term differently, the definition here wins, and the difference is listed under [Conflicting usages](#conflicting-usages).
+This file defines the domain terms that the client's code and documentation use for the character, her motion, and her presence on the desktop. It is for contributors and agents, not translators: `packages/i18n/glossary/terms.yaml` holds only user-visible, translatable terms (see "Glossary" in `packages/i18n/AGENTS.md`), and a term can appear in both files with different scope. Each definition describes the behavior of the code. When an ADR uses a term differently, the definition here wins, and the difference is listed under [Conflicting usages](#conflicting-usages).
 
 Each entry names the defining path and its exported symbol. Symbols are cited by name, never by line number.
 

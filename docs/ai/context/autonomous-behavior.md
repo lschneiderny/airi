@@ -1,6 +1,6 @@
 # Autonomous behavior
 
-Verified against the code on 2026-11-16 (commit `1976c952b`). These rules win over the ADRs in `docs/ai/adr/`; the ADRs record the history behind them. When an ADR and this file disagree, this file describes the code.
+This file describes the code on `main`. A change that makes a statement here false updates this file in the same commit. These rules win over the ADRs in `docs/ai/adr/`; the ADRs record the history behind them. When an ADR and this file disagree, this file describes the code.
 
 This file lists every piece of code that makes the character do something nobody asked for, the order that applies today when two of them want the same moment or body part, and the places where two of them act on the same trigger or channel without one arbiter. Code is cited by repository path and symbol, never by line number. Terms follow the [domain glossary](glossary.md).
 
