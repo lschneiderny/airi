@@ -14,8 +14,6 @@ export interface DesktopStageDisplay {
 export interface DesktopStageState {
   /** The Experimental 3D stage setting. While it is off, the next launch builds the classic window. */
   experimental: boolean
-  /** The saved mode. It applies at the next launch. */
-  mode: DesktopStageMode
   /** The host this launch built. */
   running: DesktopStageMode
   /** The host selected by the native launch policy for the next launch. */
@@ -36,7 +34,6 @@ export interface DesktopStageHost {
   /** `null` until the host answered the first read. */
   state: Readonly<Ref<DesktopStageState | null>>
   setExperimental: (enabled: boolean) => Promise<void>
-  setMode: (mode: DesktopStageMode) => Promise<void>
   setHomeDisplay: (displayId: string) => Promise<void>
   setFollowMe: (enabled: boolean) => Promise<void>
   relaunch: () => Promise<void>

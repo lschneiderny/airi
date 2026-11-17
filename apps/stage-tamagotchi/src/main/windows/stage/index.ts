@@ -58,7 +58,7 @@ const stageDisplays = { getAllDisplays: readDisplays, getPrimaryDisplay: readPri
 
 /**
  * Registers the stage contracts on a window other than the desktop stage: the classic main window, so its page can
- * report the active renderer, and the settings window, so its page can edit the mode and the home display.
+ * report the active renderer, and the settings window, so its page can edit the stage settings and the home display.
  */
 export function setupWindowStageInvokes(params: {
   window: BrowserWindow
@@ -137,8 +137,8 @@ export async function setupStageWindow(
           i18n: params.i18n,
           notice: 'click-through-notice',
           relaunch: () => {
-            // The saved mode is the rollback path, so the relaunch builds the classic window.
-            params.config.update({ ...getConfig(), mode: 'window' })
+            // The setting is the only switch between the hosts, so turning it off makes the relaunch build the classic window.
+            params.config.update({ ...getConfig(), experimental: false })
             relaunchApp()
           },
         }).catch(error => console.error('[stage] Failed to show the click-through notice:', errorMessageFrom(error)))

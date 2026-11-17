@@ -2,7 +2,7 @@
 import type { ClipKind, MMDClipCuration, MMDGazeMode, MMDMotionDriver, MMDRoamMode, MorphSlot } from '@proj-airi/stage-ui-mmd'
 import type { SelectTabOption } from '@proj-airi/ui'
 
-import type { DesktopStageDisplay, DesktopStageMode } from './desktop-stage'
+import type { DesktopStageDisplay } from './desktop-stage'
 import type { ExpressionPanelCommand, ExpressionPanelSnapshot, ExpressionPanelSource } from './expressions/source'
 import type { ModelSettingsRuntimeSnapshot } from './runtime'
 
@@ -102,23 +102,7 @@ const desktopStageFollowMe = computed<boolean>({
   get: () => desktopStageState.value?.followMe ?? false,
   set: (enabled) => { void desktopStage?.setFollowMe(enabled) },
 })
-const desktopStageMode = computed<DesktopStageMode>({
-  get: () => desktopStageState.value?.mode ?? 'window',
-  set: (mode) => { void desktopStage?.setMode(mode) },
-})
 const desktopStageNeedsRelaunch = computed(() => desktopStageState.value !== null && needsRelaunch(desktopStageState.value))
-const desktopStageModeOptions = computed<SelectTabOption<DesktopStageMode>[]>(() => [
-  {
-    value: 'window',
-    label: t('settings.mmd.stage.mode.options.window.title'),
-    description: t('settings.mmd.stage.mode.options.window.description'),
-  },
-  {
-    value: 'desktop',
-    label: t('settings.mmd.stage.mode.options.desktop.title'),
-    description: t('settings.mmd.stage.mode.options.desktop.description'),
-  },
-])
 
 function homeDisplayLabel(display: DesktopStageDisplay) {
   const label = t('settings.mmd.stage.home-display.option', {
@@ -537,28 +521,11 @@ function removeMotion(id: string) {
     </div>
     <template v-if="desktopStageState?.experimental">
       <p
-        v-if="desktopStageState.mode === 'desktop' && desktopStageState.next === 'window'"
+        v-if="desktopStageState.next === 'window'"
         :class="['text-xs text-neutral-500 dark:text-neutral-400']"
       >
         {{ t('settings.mmd.stage.classic-host-notice') }}
       </p>
-      <label :class="['flex flex-wrap gap-4']">
-        <div :class="['min-w-0 flex-1 basis-full sm:basis-auto']">
-          <div :class="['flex items-center gap-1 text-sm font-medium']">
-            {{ t('settings.mmd.stage.mode.title') }}
-          </div>
-          <div :class="['text-xs text-neutral-500 dark:text-neutral-400']">
-            {{ t('settings.mmd.stage.mode.description') }}
-          </div>
-        </div>
-        <SelectTab
-          v-model="desktopStageMode"
-          :options="desktopStageModeOptions"
-          :disabled="desktopStageState === null"
-          size="sm"
-          :class="['shrink-0', 'min-w-72']"
-        />
-      </label>
       <FieldCombobox
         :model-value="desktopStageState?.homeDisplayId ?? ''"
         :options="homeDisplayOptions"

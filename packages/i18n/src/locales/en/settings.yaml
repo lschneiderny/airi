@@ -2917,21 +2917,11 @@ mmd:
       description: >-
         Off by default. While it is off, the character always stays in the classic
         window. The setting applies at the next launch.
-    mode:
-      title: Stage mode
-      description: The mode applies at the next launch.
-      options:
-        window:
-          title: Classic window
-          description: A movable window that frames the character.
-        desktop:
-          title: Desktop stage
-          description: The character stands on the work area of the home display.
     relaunch:
       button: Relaunch to apply
       description: >-
-        The saved mode differs from the running one. An unsent chat draft is not
-        carried across the relaunch.
+        The next launch builds a different window than the running one. An unsent
+        chat draft is not carried across the relaunch.
     home-display:
       title: Home display
       description: The display the character stands on. The saved home position stays on each display.

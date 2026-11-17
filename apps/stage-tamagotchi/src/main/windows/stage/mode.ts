@@ -24,14 +24,14 @@ export function isLinuxStageEligible(environment: Record<string, string | undefi
  * 2. While the Experimental 3D stage setting (`config.experimental`) is off, the classic window.
  * 3. Linux gets the classic window unless `linuxStageEligible` ({@link isLinuxStageEligible}) holds.
  * 4. A stage model that is not MMD (or has never been reported, `null`) gets the classic window.
- * 5. Otherwise the saved `config.mode`.
+ * 5. Otherwise the desktop stage.
  *
  * @example
- * selectHostMode({ ...defaultStageConfig, experimental: true, mode: 'desktop', activeRenderer: 'mmd' }, 'darwin', {}, { development: false }, false)
+ * selectHostMode({ ...defaultStageConfig, experimental: true, activeRenderer: 'mmd' }, 'darwin', {}, { development: false }, false)
  * // => 'desktop'
  */
 export function selectHostMode(
-  config: Pick<StageConfig, 'experimental' | 'mode' | 'activeRenderer'>,
+  config: Pick<StageConfig, 'experimental' | 'activeRenderer'>,
   platform: string,
   environment: Record<string, string | undefined>,
   build: { development: boolean },
@@ -49,13 +49,6 @@ export function selectHostMode(
   if (platform === 'linux' && !linuxStageEligible)
     return 'window'
 
-  if (config.activeRenderer !== 'mmd')
-    return 'window'
-
-  // NOTICE:
-  // The saved mode can still pick the classic window for an MMD model, as a rollback path.
   // Window flags are fixed at creation, so the host is chosen once per launch.
-  // Source: docs/ai/adr/2026-10-31-fullscreen-stage-and-locomotion.md, Follow-ups.
-  // Removal condition: roaming, chat anchoring and display hand-off ship, plus one feedback cycle.
-  return config.mode
+  return config.activeRenderer === 'mmd' ? 'desktop' : 'window'
 }

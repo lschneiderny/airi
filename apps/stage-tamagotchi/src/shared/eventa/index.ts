@@ -245,8 +245,6 @@ export interface StageDisplayInfo {
 export interface StageHostState {
   /** The Experimental 3D stage setting. While it is off, the next launch builds the classic window. */
   experimental: boolean
-  /** The saved mode. It applies at the next launch, so it can differ from `running`. */
-  mode: StageHostMode
   /** The renderer the stage pages last reported; `null` until one has reported. */
   activeRenderer: StageActiveRenderer | null
   displays: StageDisplayInfo[]
@@ -315,11 +313,9 @@ export const electronStageMoveToDisplay = defineInvokeEventa<StageHostState, str
 export const electronStageSetFollowMe = defineInvokeEventa<StageHostState, boolean>('eventa:invoke:electron:windows:stage:set-follow-me')
 /** Persists the Experimental 3D stage setting. It applies at the next launch (see `electronStageRelaunch`). */
 export const electronStageSetExperimental = defineInvokeEventa<StageHostState, boolean>('eventa:invoke:electron:windows:stage:set-experimental')
-/** Persists the host mode. It applies at the next launch (see `electronStageRelaunch`). */
-export const electronStageSetMode = defineInvokeEventa<StageHostState, StageHostMode>('eventa:invoke:electron:windows:stage:set-mode')
 /** Persists the renderer of the stage model. Both stage pages call it whenever the stage model changes. */
 export const electronStageSetActiveRenderer = defineInvokeEventa<StageHostState, StageActiveRenderer>('eventa:invoke:electron:windows:stage:set-active-renderer')
-/** Restarts the app so a changed mode applies. */
+/** Restarts the app so the host chosen for the next launch is built. */
 export const electronStageRelaunch = defineInvokeEventa<void>('eventa:invoke:electron:windows:stage:relaunch')
 /** Sent by the stage renderer when the character placement changes. */
 export const electronStageCharacterPlacementChanged = defineEventa<StageCharacterPlacement>('eventa:event:electron:windows:stage:character-placement-changed')

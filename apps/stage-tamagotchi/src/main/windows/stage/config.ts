@@ -15,7 +15,6 @@ const displayFingerprintSchema = object({
 export const stageConfigSchema = object({
   /** The Experimental 3D stage setting. While it is off, every launch builds the classic window. */
   experimental: optional(boolean(), false),
-  mode: optional(picklist(['window', 'desktop']), 'window'),
   activeRenderer: optional(nullable(picklist(['mmd', 'other'])), null),
   homeDisplayId: optional(nullable(string()), null),
   /** The Follow me setting: the display the cursor stays on becomes the home display. Off by default. */
@@ -31,7 +30,6 @@ export type StageDisplayFingerprint = InferOutput<typeof displayFingerprintSchem
 
 export const defaultStageConfig: StageConfig = {
   experimental: false,
-  mode: 'window',
   activeRenderer: null,
   homeDisplayId: null,
   followMe: false,
@@ -112,7 +110,6 @@ export function buildStageHostState(params: {
   const homeDisplayId = resolveHomeDisplay(params.displays, params.config).id
   return {
     experimental: params.config.experimental,
-    mode: params.config.mode,
     activeRenderer: params.config.activeRenderer,
     displays: [...params.displays],
     homeDisplayId,
