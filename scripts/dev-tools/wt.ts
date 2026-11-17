@@ -3,7 +3,7 @@ import type { WorktreeState } from './wt-plan'
 
 import process from 'node:process'
 
-import { execFileSync, spawn, spawnSync } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir, userInfo } from 'node:os'
 import { basename, dirname, join } from 'node:path'
@@ -14,7 +14,7 @@ import { acquire } from '@proj-airi/cpu-slots'
 import { compileCacheEnv } from './lib/compile-cache'
 import { git, listWorktrees, repoRoot } from './lib/git'
 import { ancestry, attribute, normalizePath, snapshotProcesses, withoutCommands } from './lib/processes'
-import { defaultBranch, envQaLine, gcDecision, qaModelSource, rmBlocker, tempWorktreeRefusal, validName } from './wt-plan'
+import { cherryMerged, defaultBranch, envQaLine, gcDecision, qaModelSource, rmBlocker, tempWorktreeRefusal, validName } from './wt-plan'
 
 const usage = `Usage: pnpm wt ls
        pnpm wt new <name> [--base <ref>] [--branch <branch>] [--no-install | --qa]
@@ -49,7 +49,7 @@ function stateOf(worktree: Worktree, index: number, main: string, liveByWorktree
     return { ...base, prunable: true, dirtyFiles: 0, merged: false, lastCommitAt: null }
   const dirtyFiles = git(worktree.path, ['status', '--porcelain']).split('\n').filter(Boolean).length
   const lastCommitAt = Number(git(worktree.path, ['log', '-1', '--format=%ct'])) * 1000
-  const merged = spawnSync('git', ['-C', worktree.path, 'merge-base', '--is-ancestor', 'HEAD', main], { stdio: 'ignore' }).status === 0
+  const merged = cherryMerged(git(worktree.path, ['cherry', main, 'HEAD']))
   return { ...base, dirtyFiles, merged, lastCommitAt }
 }
 
@@ -218,11 +218,12 @@ function removeOne(root: string, state: WorktreeState, force: boolean, deleteBra
   git(root, ['worktree', 'prune'])
   console.info(`${state.name}: removed ${state.path}`)
   if (deleteBranch && state.branch) {
-    try {
-      git(root, ['branch', '-d', state.branch])
+    // `branch -d` accepts only ancestors of HEAD, so it refuses a rebase-merged branch. `merged` came from `git cherry`.
+    if (state.merged) {
+      git(root, ['branch', '-D', state.branch])
       console.info(`${state.name}: deleted merged branch ${state.branch}`)
     }
-    catch {
+    else {
       console.info(`${state.name}: kept branch ${state.branch} (not merged)`)
     }
   }

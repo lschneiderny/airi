@@ -11,13 +11,23 @@ export interface WorktreeState {
   /** Git reports the directory as gone. */
   prunable: boolean
   dirtyFiles: number
-  /** HEAD is an ancestor of the main branch, so removing the worktree loses no commit. */
+  /** Main already holds every commit of HEAD, by hash or as a rebased copy (see `cherryMerged`). */
   merged: boolean
   lastCommitAt: number | null
   liveProcesses: number
 }
 
 const dayMs = 24 * 60 * 60 * 1000
+
+/**
+ * Whether `git cherry <main> HEAD` shows every commit of HEAD in main. The fork lands pull requests with rebase merges,
+ * which give each commit a new hash, so a landed branch is usually not an ancestor of main. `git cherry` compares
+ * patch ids instead: it prints `-` for a commit with an equivalent in main and `+` for one main lacks. An ancestor of
+ * main prints nothing.
+ */
+export function cherryMerged(cherryOutput: string): boolean {
+  return !cherryOutput.split('\n').some(line => line.startsWith('+'))
+}
 
 /**
  * Why `gc` may remove this worktree, or why it must not. Removal deletes only the directory:
@@ -36,7 +46,7 @@ export function gcDecision(state: WorktreeState, idleDays: number, now: number):
   if (state.dirtyFiles)
     return { remove: false, reason: `${state.dirtyFiles} uncommitted file(s)` }
   if (state.merged)
-    return { remove: true, reason: state.branch ? 'merged into main' : 'detached at a main commit' }
+    return { remove: true, reason: state.branch ? 'merged into main' : 'detached with every commit in main' }
   if (!state.branch)
     return { remove: false, reason: 'detached with commits main does not contain' }
   const idle = state.lastCommitAt === null ? Number.POSITIVE_INFINITY : (now - state.lastCommitAt) / dayMs

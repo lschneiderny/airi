@@ -4,7 +4,7 @@ import { parseEnv } from 'node:util'
 
 import { describe, expect, it } from 'vitest'
 
-import { defaultBranch, envQaLine, gcDecision, qaModelSource, rmBlocker, tempWorktreeRefusal, validName } from './wt-plan'
+import { cherryMerged, defaultBranch, envQaLine, gcDecision, qaModelSource, rmBlocker, tempWorktreeRefusal, validName } from './wt-plan'
 
 const now = Date.UTC(2026, 9, 20)
 function daysAgo(days: number): number {
@@ -44,7 +44,18 @@ describe('gcDecision', () => {
   it('keeps an active branch and a detached HEAD with commits main lacks', () => {
     expect(gcDecision(state({ lastCommitAt: daysAgo(3) }), 14, now).remove).toBe(false)
     expect(gcDecision(state({ branch: null, lastCommitAt: daysAgo(90) }), 14, now)).toEqual({ remove: false, reason: 'detached with commits main does not contain' })
-    expect(gcDecision(state({ branch: null, merged: true }), 14, now)).toEqual({ remove: true, reason: 'detached at a main commit' })
+    expect(gcDecision(state({ branch: null, merged: true }), 14, now)).toEqual({ remove: true, reason: 'detached with every commit in main' })
+  })
+})
+
+describe('cherryMerged', () => {
+  it('counts a rebase-merged branch and an ancestor of main as merged', () => {
+    expect(cherryMerged('- c632f583f162da16939e009bb0afa50a407c7ae2\n- 772a88851be15b9dd07356ee54227cf2d1576f4a\n')).toBe(true)
+    expect(cherryMerged('')).toBe(true)
+  })
+
+  it('keeps a branch with any commit main lacks unmerged', () => {
+    expect(cherryMerged('- 5513e9dd7bd13bce1e98400d743af04f9fa0d67e\n+ 5099f3b0ad0b488509fe6a493459f3d1cd641e8e\n')).toBe(false)
   })
 })
 
