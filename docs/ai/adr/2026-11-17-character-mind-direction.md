@@ -1,7 +1,7 @@
 # Character mind: the target design for autonomy, body, prompt, and state
 
 Date: 2026-11-17
-Status: accepted as direction. No code implements it yet. Refactors move the code toward it, one step at a time. Target rules: the Target sections of [Autonomous behavior](../context/autonomous-behavior.md#target), [Body ownership](../context/body-ownership.md#target), [LLM prompt](../context/llm-prompt.md#target), and [State persistence](../context/state-persistence.md#target).
+Status: accepted as direction. No code implements it yet. Refactors move the code toward it, one step at a time. Target rules: the Target sections of [Autonomous behavior](../context/autonomous-behavior.md#target), [Body ownership](../context/body-ownership.md#target), [LLM prompt](../context/llm-prompt.md#target), and [State persistence](../context/state-persistence.md#target). Order and status: [Character mind roadmap](../context/character-mind-roadmap.md).
 
 ## Context
 
