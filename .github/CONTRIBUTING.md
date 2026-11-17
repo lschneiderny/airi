@@ -12,6 +12,8 @@ This guide covers setting up, running, and checking this personal fork of [Proje
 <details>
 <summary>Windows setup</summary>
 
+Windows is planned, not checked: the code stays, but no release is built and no change is tested on Windows. See [Platform support](../README.md#platform-support).
+
 1. Open PowerShell.
 2. Install [Scoop](https://scoop.sh/).
 

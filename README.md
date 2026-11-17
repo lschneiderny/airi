@@ -25,7 +25,12 @@ The design records for these features are in [`docs/ai/adr/`](./docs/ai/adr/).
 
 ## Platform support
 
-Windows and macOS retain their documented desktop capability contract.
+| Platform | Status |
+| --- | --- |
+| Linux, KDE Plasma on Wayland | Developed and checked; released as deb and rpm |
+| macOS | Developed and checked; released as an ad-hoc signed dmg and zip |
+| Windows | Planned, not checked. The Windows code stays, but no release is built and no change is tested on Windows. |
+| Other Linux sessions (sway, X11) | Planned, not checked. The code stays, but changes are not tested there. |
 
 On Linux, support depends on the desktop backend. On the tested Plasma 6.8.2
 host, KDE had the broadest verified set, including the desktop stage on native
@@ -33,7 +38,7 @@ Wayland and XWayland.
 
 ## Support scope
 
-The fork targets one platform: the Electron desktop app on Linux, macOS, and Windows. Every workspace project falls into one of three groups.
+The fork targets one app: the Electron desktop app, on the platforms listed under [Platform support](#platform-support). Every workspace project falls into one of three groups.
 
 ### Supported
 
@@ -88,7 +93,7 @@ The Retired table is the path list the upstream sync uses to resolve delete-vers
 
 ## Getting started
 
-This fork publishes no releases, so you run it from source. You need [Git](https://git-scm.com/downloads) and [mise](https://mise.jdx.dev/installing-mise.html), which installs the Node.js and pnpm versions pinned in [`.tool-versions`](./.tool-versions).
+The fork's [GitHub releases](https://github.com/lschneiderny/airi/releases) carry Linux and macOS installers, built by hand with `pnpm release`. To run it from source, you need [Git](https://git-scm.com/downloads) and [mise](https://mise.jdx.dev/installing-mise.html), which installs the Node.js and pnpm versions pinned in [`.tool-versions`](./.tool-versions).
 
 ```shell
 git clone https://github.com/lschneiderny/airi.git
