@@ -7,6 +7,17 @@ import { posix } from 'node:path'
  */
 const threeMarker = '__THREE__'
 
+/** Strings that exist only in the dev-only motion QA bridge: its globals, its Eventa contract ids, and its installer. */
+export const motionQaMarkers = ['__airiMotionQa', 'motion-qa:', 'installMotionQaDispatcher'] as const
+
+export interface MarkerLeak {
+  file: string
+  marker: string
+  /** Character offset of the match; production bundles are minified, so line numbers say little. */
+  offset: number
+  excerpt: string
+}
+
 export interface BundleCheckResult {
   /** Chunks the window loads before any dynamic import, relative to the output directory. */
   eager: string[]
@@ -82,4 +93,14 @@ export function checkEagerChunks(html: string, chunks: ReadonlyMap<string, strin
       queue.push(posix.join(posix.dirname(file), specifier))
   }
   return { eager, heavy, missing }
+}
+
+/** Every motion QA bridge marker in one file's text. A production build must contain none. */
+export function findMotionQaMarkers(file: string, text: string): MarkerLeak[] {
+  const leaks: MarkerLeak[] = []
+  for (const marker of motionQaMarkers) {
+    for (let offset = text.indexOf(marker); offset !== -1; offset = text.indexOf(marker, offset + marker.length))
+      leaks.push({ file, marker, offset, excerpt: text.slice(Math.max(0, offset - 40), offset + marker.length + 40) })
+  }
+  return leaks
 }

@@ -178,7 +178,7 @@ export function summarizeBenchRun(raw: RawRun, context: BenchRunContext): BenchR
     diffHash: identity.diffHash,
     modelFingerprint: context.modelFingerprint,
     host: sessionStart.host,
-    // The motion QA bridge that drives the bench exists only in dev builds (`bin/check-prod-bundle.ts`).
+    // The motion QA bridge that drives the bench exists only in dev builds (`scripts/dev-tools/bundle-check.ts`).
     buildMode: 'dev',
     electronVersion: sessionStart.electronVersion,
     leaseClass: 'exclusive',

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { checkEagerChunks, entryScripts, staticImports } from './bundle-check-plan'
+import { checkEagerChunks, entryScripts, findMotionQaMarkers, staticImports } from './bundle-check-plan'
 
 const html = '<head><script type="module" crossorigin src="./assets/main-a1.js"></script><link rel="modulepreload" href="./assets/vendor-b2.js"></head>'
 
@@ -39,5 +39,20 @@ describe('bundle check', () => {
       ['assets/three.core-e5.js', 'window.__THREE__="180"'],
     ])
     expect(checkEagerChunks(html, chunks)).toEqual({ eager: ['assets/main-a1.js'], heavy: [], missing: ['assets/gone-f6.js'] })
+  })
+})
+
+describe('findMotionQaMarkers', () => {
+  it('reports every marker occurrence with its offset', () => {
+    const text = 'a="eventa:invoke:motion-qa:state";globalThis.__airiMotionQa={};x.installMotionQaDispatcher()'
+    expect(findMotionQaMarkers('chunk.js', text).map(leak => [leak.marker, leak.offset])).toEqual([
+      ['__airiMotionQa', text.indexOf('__airiMotionQa')],
+      ['motion-qa:', text.indexOf('motion-qa:')],
+      ['installMotionQaDispatcher', text.indexOf('installMotionQaDispatcher')],
+    ])
+  })
+
+  it('accepts text without markers', () => {
+    expect(findMotionQaMarkers('chunk.js', 'const motionQa = 1; // motion qa')).toEqual([])
   })
 })
