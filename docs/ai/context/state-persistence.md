@@ -184,7 +184,7 @@ This section states the design that refactors move toward. It does not describe 
 | The stage-layouts `useBackgroundStore` sharing the default localforage database | Rule 1, or deletion if the desktop app keeps not rendering it |
 | The unstorage `outbox` mount with no reader or writer | Rule 1, or deletion |
 | `useLanguage` and `useSettingsGeneral` both own `settings/language` | Rule 6 |
-| The gate's inner state as the only tier 2 member | Rule 5 moves her own pacing memory into the per-card record, while the floor and hourly-cap state stays here, per user; the extracted conversation threads stay leader-only personal content (roadmap step V) |
+| The gate's inner state as the only tier 2 member | Rule 5 moves her own pacing memory into the per-card record, while the floor and hourly-cap state stays here, per user; the extracted conversation threads stay leader-only personal content, and a thread that repeats a held title is dropped before it is stored |
 
 ## Known gaps
 
