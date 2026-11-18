@@ -2,10 +2,10 @@
 import type { ChatStreamEventContext, SpeechClip, SpeechClipEnd } from '@proj-airi/core-agent'
 import type { Live2DLipSync, Live2DLipSyncOptions } from '@proj-airi/model-driver-lipsync'
 import type { Profile } from '@proj-airi/model-driver-lipsync/shared/wlipsync'
-import type { NaturalTouchGesture } from '@proj-airi/motion-driver-natural/frame-types'
 import type { IdleBehaviourReport } from '@proj-airi/motion-driver-natural/idle-activities'
 import type { StreamingControlLook } from '@proj-airi/pipelines-audio'
 import type { CaptionChannelEvent, PresenceBubbleState } from '@proj-airi/stage-shared'
+import type { Moment } from '@proj-airi/stage-shared/expression-performance'
 import type { PerformanceCueAttention, PerformanceInputs, PerformanceState, ResolverMemory } from '@proj-airi/stage-shared/performance-state'
 import type { PlacementRect } from '@proj-airi/stage-shared/stage-placement'
 import type { MMDStageWorld } from '@proj-airi/stage-ui-mmd/composables/mmd'
@@ -75,7 +75,6 @@ import { useSettings } from '../../stores/settings'
 import { useSettingsStageModel } from '../../stores/settings/stage-model'
 import { useSituationStore } from '../../stores/situation'
 import { useSpeechOutputControlStore } from '../../stores/speech-output-control'
-import { useStageTouchStore } from '../../stores/touch'
 import { useVoiceStore } from '../../stores/voice'
 import { chatActivityFrom } from './chat-activity'
 import { initialMusicMemory, resolveMusic } from './idle-music'
@@ -365,9 +364,11 @@ const { conductor: performanceConductor, settings: performanceSettings } = useSt
   characterReading,
   music: musicPlaying,
   mind: useCharacterMind(),
+  markMoment,
+  // Each scene classifies touches only under its Natural driver and reports them to `performanceConductor.touch`.
+  // The leader's situation store records the touch and runs her line; in a follower window it offers no view.
+  voice: () => situationStore,
 })
-
-const stageTouch = useStageTouchStore()
 
 const stageSelf = useStageSelfStore()
 
@@ -640,14 +641,9 @@ function onLive2dIdle(report: IdleBehaviourReport) {
   stageSelf.idle(report)
 }
 
-/** A pet or poke on the Live2D or MMD scene; each scene classifies touches only under its Natural driver. */
-function onTouch(event: NaturalTouchGesture) {
-  stageTouch.touch(event, performanceConductor)
-  // A touch is also a moment she may mark with one of her own expressions.
-  if (event.kind === 'poke')
-    idleProps.onMoment('poked')
-  else if (event.kind === 'pet-end')
-    idleProps.onMoment('petted')
+/** A moment the mind decided, such as a poke or a finished pet; she may mark it with one of her own expressions. */
+function markMoment(moment: Moment) {
+  idleProps.onMoment(moment)
 }
 
 function updatePerformance() {
@@ -779,8 +775,8 @@ const avatarTouchAggregator = createAvatarTouchAggregator({
   },
 })
 /**
- * A tap or pat that the Live2D scene recognized. Under Natural, `onTouch` is the only reaction to a touch, so the
- * character is not also notified here.
+ * A tap or pat that the Live2D scene recognized. Under Natural, the mind's answer to the scene's `naturalTouch` is the
+ * only reaction to a touch (`performanceConductor.touch`), so the character is not also notified here.
  */
 function onAvatarTouch(touch: AvatarTouch) {
   if (live2dMotionDriver.value !== 'natural')
@@ -1199,7 +1195,7 @@ defineExpose({
         :live2d-render-scale="live2dRenderScale"
         @error="handleStageRenderError"
         @touch="onAvatarTouch"
-        @natural-touch="onTouch"
+        @natural-touch="performanceConductor.touch($event)"
         @idle="onLive2dIdle"
         @errand="idleProps.onErrand"
       />
@@ -1279,7 +1275,7 @@ defineExpose({
         :audio-context="audioContext"
         :connect-speech="connectSpeech"
         @error="reportStageRenderError"
-        @touch="onTouch"
+        @touch="performanceConductor.touch($event)"
         @idle="stageSelf.idle"
         @self="stageSelf.report"
         @placement="emit('placement', $event)"

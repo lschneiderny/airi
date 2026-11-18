@@ -1,7 +1,7 @@
 <script setup lang="ts">
+import type { TouchReactionIntent, TouchReport } from '@proj-airi/character-mind'
 import type { FaceBaseline } from '@proj-airi/motion-driver-natural/baseline'
 import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
-import type { NaturalTouchGesture } from '@proj-airi/motion-driver-natural/frame-types'
 import type { IdleBehaviourKind, IdleBehaviourReport, IdleCueKind, NaturalIdleDrive } from '@proj-airi/motion-driver-natural/idle-activities'
 import type { IdleErrandReport } from '@proj-airi/motion-driver-natural/idle-errands'
 import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
@@ -81,8 +81,8 @@ const emit = defineEmits<{
   error: [error: Error]
   /** A pointer tapped the character, or stroked its head. The model already plays its own reaction from the press. */
   touch: [touch: Live2DTouch]
-  /** A poke or pet the Natural driver reacted to, for consumers such as a future chat reaction. */
-  naturalTouch: [event: NaturalTouchGesture]
+  /** A poke or pet the Natural classifier recognized. The stage answers with `reactToTouch`; nothing shows before it. */
+  naturalTouch: [report: TouchReport]
   idle: [report: IdleBehaviourReport]
   errand: [report: IdleErrandReport]
 }>()
@@ -280,6 +280,8 @@ defineExpose({
   setEmotion: (episode: NaturalEpisode) => live2dModelRef.value?.setEmotion(episode),
   gesture: (kind: CueGestureKind, count: number) => live2dModelRef.value?.gesture(kind, count),
   addMood: (dose: MoodDose) => live2dModelRef.value?.addMood(dose),
+  /** Natural only: performs the mind's reaction to a touch this scene reported. */
+  reactToTouch: (intent: TouchReactionIntent) => live2dModelRef.value?.reactToTouch(intent),
   setFaceBaseline: (baseline: FaceBaseline) => live2dModelRef.value?.setFaceBaseline(baseline),
   setIdleDrive: (drive: NaturalIdleDrive | null) => live2dModelRef.value?.setIdleDrive(drive),
   idleCue: (kind: IdleCueKind) => live2dModelRef.value?.idleCue(kind),

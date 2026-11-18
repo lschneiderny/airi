@@ -72,6 +72,7 @@
     "@pixi/sprite": "catalog:",
     "@pixi/ticker": "catalog:",
     "@pixi/utils": "catalog:",
+    "@proj-airi/character-mind": "workspace:^",
     "@proj-airi/core-character": "workspace:^",
     "@proj-airi/model-driver-magic-live2d": "workspace:^",
     "@proj-airi/motion-driver-natural": "workspace:^",

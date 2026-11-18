@@ -4149,6 +4149,9 @@ importers:
       '@pixi/utils':
         specifier: 'catalog:'
         version: 6.5.10(@pixi/constants@6.5.10)(@pixi/settings@6.5.10(@pixi/constants@6.5.10))
+      '@proj-airi/character-mind':
+        specifier: workspace:^
+        version: link:../character-mind
       '@proj-airi/core-character':
         specifier: workspace:^
         version: link:../core-character
@@ -4240,6 +4243,9 @@ importers:
       '@moeru/three-mmd-physics-ammo':
         specifier: 'catalog:'
         version: 0.2.0-beta.2(@moeru/three-mmd@0.2.0-beta.2(@types/three@0.185.4)(three@0.185.1))(@types/three@0.185.4)(three@0.185.1)
+      '@proj-airi/character-mind':
+        specifier: workspace:^
+        version: link:../character-mind
       '@proj-airi/model-driver-lipsync':
         specifier: workspace:^
         version: link:../model-driver-lipsync

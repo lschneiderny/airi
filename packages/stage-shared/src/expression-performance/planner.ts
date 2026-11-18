@@ -8,7 +8,6 @@ import { entrySlots } from './combos'
 import { createPickerDecider } from './picker'
 import { cancelTurn, createSchedulerState, earliestExpiry, expire, schedule, take } from './scheduler'
 import { applySlotOccupants, autoPicks, clearCommands, drawEpisodeTickets, enterEpisode, explicitExpressionCommand, neutralCommands, slotHoldSeconds } from './selection'
-import { touchAffect } from './touch-affect'
 import { bandRank } from './types'
 
 /** An automatic pick waiting for its timing slot. */
@@ -66,7 +65,6 @@ function withoutSlots(scheduler: SchedulerState<PlannedPick>, slots: readonly Sl
  *   (band rank, then intensity, then insertion order); the others are consumed and dropped.
  * - Every automatic change passes the budget (see {@link admit}); over-budget picks are dropped, not queued.
  * - Explicit LLM expressions, clears, and neutral bypass the budget and act at once.
- * - Touch doses mood at once, like the picker, and never touches plans or the budget.
  * - `utterance_end` cancels the turn's pending plans.
  * - A decision made while `autoExpressions` is off drops every pending plan before it handles the signal.
  */
@@ -78,7 +76,7 @@ export function createPlannerDecider(): Decider<PlannerState> {
     },
     nextDeadline: state => earliestExpiry(state.scheduler),
     decide(signal, ctx, state) {
-      const decision: PerformanceDecision = { slots: [], moods: [] }
+      const decision: PerformanceDecision = { slots: [] }
       // Every pending plan is an automatic pick, so any decision made while the switch is off drops
       // them all: none can activate later, even after the switch is turned back on. Explicit
       // expressions, clears, active slots, and performer leases are not plans and stay untouched.
@@ -153,12 +151,6 @@ export function createPlannerDecider(): Decider<PlannerState> {
           next = { ...next, scheduler: expired.state }
           release(expired.expired)
           return { decision, state: next }
-        }
-        case 'touch': {
-          const affect = touchAffect(state.touch, signal, ctx.settings)
-          if (affect.dose)
-            decision.moods.push(affect.dose)
-          return { decision, state: { ...state, touch: affect.memory } }
         }
         case 'neutral':
           decision.slots = neutralCommands(signal.turnId)

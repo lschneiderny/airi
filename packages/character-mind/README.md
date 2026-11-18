@@ -18,17 +18,23 @@ const intents = mind.receive({ kind: 'emotion', source: 'act', emotion: 'happy',
 
 ### Stimuli and intents
 
-| Stimulus | Intent on the `face` channel |
+| Stimulus | Intents |
 | --- | --- |
-| `emotion` | `emotion`, with the episode and its hold, when the emotion starts or escalates an episode. `release` with scope `neutral` when a neutral resets the reaction state. Nothing for a repeat that does neither. |
-| `expression-request` | `entry`. With an emotion mapping and held emotions on, it carries a hold for the entry's lease, and the episode when the request started one. |
-| `expression-clear` | `release` with the named slot as its scope, or scope `all` and a hold release when no slot is named. |
+| `emotion` | `face`: `emotion`, with the episode and its hold, when the emotion starts or escalates an episode. `release` with scope `neutral` when a neutral resets the reaction state. Nothing for a repeat that does neither. |
+| `expression-request` | `face`: `entry`. With an emotion mapping and held emotions on, it carries a hold for the entry's lease, and the episode when the request started one. |
+| `expression-clear` | `face`: `release` with the named slot as its scope, or scope `all` and a hold release when no slot is named. |
+| `touch` | One response, decided together. `posture`: `touch-reaction` for every touch, a poke at its point or a pet `start` or `end`, and `mood` when `touchAffect` returns a dose. `face`: `moment` (`poked` or `petted`) for a poke and a finished pet. `voice`: `speak` when `reactionPolicy` decides a line. |
+| `voice-outcome` | None. It settles the pending line; a `spoken` outcome always starts the refractory. |
+
+A scene reports a touch as a `TouchReport`: a poke with its region and a point relative to that region, a pet start, or a pet end with its duration. The `touch` stimulus adds the settings and a `TouchVoiceView`, which is what the voice channel shows of the touch the situation just recorded. Without a view (a pet start, a follower window, no running gate) the mind decides no line and leaves its voice state untouched. The caller runs a `speak` intent and returns what became of it as a `voice-outcome` with the intent's `eventId`.
 
 The mind decides the emotion, its strength, its hold, and the reason. It reads no catalog: the caller reads a named entry's lease and primary emotion mapping from the catalog of the rendered model and sends them with the request. Which entries show an emotion stays with each performer.
 
 Every stimulus advances `MindState.seq`. An intent's `cause` is the sequence number of the stimulus it answers, and its `id` is unique within one mind.
 
-The emotion rules still keep their own random checkpoint, so `initialMindState` takes the seed and `step` does not draw from `rng` yet.
+The emotion and voice rules still keep their own random checkpoints, so `initialMindState` takes the seed and `step` does not draw from `rng` yet.
+
+`nowMs` reaches `reactionPolicy` as milliseconds and `touchAffect` and `acceptReaction` as seconds (`nowMs / 1000`). `MindState` is fast state: nothing is saved, so the pacing of touch doses and spoken reactions starts over with every mind.
 
 ## Checks
 
@@ -39,7 +45,7 @@ pnpm -F @proj-airi/character-mind typecheck
 
 ## When to use
 
-Use this package for a decision about what the character does at event rate: which emotion episode starts, how strong it is, and how long it is held. Drive the core from tests with scripted stimuli and a seeded random source.
+Use this package for a decision about what the character does at event rate: which emotion episode starts, how strong it is, and how long it is held, and how she answers a pet or a poke with her body, her mood, and her voice. Drive the core from tests with scripted stimuli and a seeded random source.
 
 ## When not to use
 

@@ -223,7 +223,7 @@ describe('affect trace', () => {
       nextDeadline: (state: number) => state + 2,
       decide(signal: AffectSignal) {
         received.push(signal)
-        return { state: signal.at, decision: { slots: [], moods: [] } }
+        return { state: signal.at, decision: { slots: [] } }
       },
     }
     const trace = fixture()

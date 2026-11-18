@@ -2,7 +2,7 @@ import type { MoodDose, TouchAffectInput, TouchAffectMemory } from '.'
 
 import { describe, expect, it } from 'vitest'
 
-import { createDecider, defaultExpressionPerformanceSettings, initialTouchAffectMemory, parseAffectTrace, resolveEffectiveSettings, touchAffect } from '.'
+import { defaultExpressionPerformanceSettings, initialTouchAffectMemory, resolveEffectiveSettings, touchAffect } from '.'
 
 const settings = defaultExpressionPerformanceSettings
 // Default units: slight 0.15 x 0.25, clear 0.25 x 0.6.
@@ -122,32 +122,5 @@ describe('touchAffect', () => {
     expect(restored).toEqual(memory)
     for (const input of [petEnd(12, 4), poke(9), poke(9.5, 'body')])
       expect(touchAffect(restored, input, settings)).toEqual(touchAffect(memory, input, settings))
-  })
-})
-
-describe('touch signals in the deciders', () => {
-  const ctx = { settings, catalog: [] }
-
-  it.each(['picker', 'planner'] as const)('%s turns a touch into a mood dose only', (kind) => {
-    const decider = createDecider(kind)
-    const start = decider.decide({ kind: 'touch', touch: 'pet-start', region: 'head', at: 0 }, ctx, decider.initial(1))
-    expect(start.decision).toEqual({ slots: [], moods: [{ id: 'touch-1-pet', valence: slight, arousal: 0, tension: -slight / 2 }] })
-    const end = decider.decide({ kind: 'touch', touch: 'pet-end', region: 'head', durationSeconds: 4, at: 4 }, ctx, start.state)
-    expect(end.decision.slots).toEqual([])
-    expect(end.decision.moods.map(dose => dose.id)).toEqual(['touch-2-pet-long'])
-    expect(end.state.tickets).toBeNull()
-  })
-
-  it('accepts touch signals in recorded traces', () => {
-    const trace = parseAffectTrace({
-      version: 2,
-      decider: 'picker',
-      checkpoint: createDecider('picker').initial(1),
-      initialContext: ctx,
-      entries: [{ type: 'signal', signal: { kind: 'touch', touch: 'pet-end', region: 'head', durationSeconds: 3, at: 3 } }],
-      truncated: false,
-      endAt: 3,
-    })
-    expect(trace.entries[0]).toEqual({ type: 'signal', signal: { kind: 'touch', touch: 'pet-end', region: 'head', durationSeconds: 3, at: 3 } })
   })
 })

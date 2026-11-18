@@ -2,7 +2,6 @@ import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
 import type { GenerationProvider } from '@proj-airi/provider-inference'
 import type { CharacterReading } from '@proj-airi/stage-shared/character-state'
 import type { ExpressionPerformanceSettings, MoodDose } from '@proj-airi/stage-shared/expression-performance'
-import type { TouchObservation } from '@proj-airi/stage-shared/situation'
 import type { Component, ComponentInternalInstance, VNode } from 'vue'
 
 import type { StagePerformanceScene } from '../../composables/performance/use-stage-performance-conductor'
@@ -26,7 +25,6 @@ import { Emotion, EMOTION_EmotionMotionName_value, EmotionThinkMotionName } from
 import { useLive2DExpressionBackend } from '../../features/performance/expression-backend'
 import { useExpressionPerformanceSettings } from '../../features/performance/settings'
 import { avatarTouchSettleMs } from '../../libs/avatar-touch/notify'
-import { getSpeechBusContext } from '../../services/speech/bus'
 import { useLLM } from '../../stores/ai/chat-llm/llm'
 import { useLlmStreamingControlStore } from '../../stores/ai/chat-llm/streaming-control'
 import { useLlmToolsStore } from '../../stores/ai/chat-llm/tools'
@@ -40,9 +38,8 @@ import { useConsciousnessStore } from '../../stores/modules/consciousness'
 import { useSpeechStore } from '../../stores/modules/speech'
 import { useNaturalPerformanceOverride } from '../../stores/natural-performance-override'
 import { useSettingsStageModel } from '../../stores/settings/stage-model'
-import { situationTouchObservedEvent } from '../../stores/situation/touch-bus'
+import { useSituationStore } from '../../stores/situation'
 import { useSpeechOutputControlStore } from '../../stores/speech-output-control'
-import { useStageTouchStore } from '../../stores/touch'
 import { createSyncedContextPlugin } from '../../test/synced-context'
 import { ChatHistory } from '../scenarios/chat'
 
@@ -390,22 +387,20 @@ describe('stage emotion routing on Live2D', () => {
     expect(action).not.toHaveBeenCalled()
   })
 
-  it('doses mood from a scene touch under Natural and forwards the poke to the situation leader', async () => {
+  it('answers a scene touch under Natural once: the scene reacts, mood is dosed, and the situation records the poke', async () => {
     const { scene, moods } = await renderStage('natural')
-    const observations = shallowRef<TouchObservation[]>([])
-    onTestFinished(getSpeechBusContext().on(situationTouchObservedEvent, ({ body }) => {
-      if (body)
-        observations.value = [...observations.value, body]
-    }))
+    const observeTouch = vi.spyOn(useSituationStore(), 'observeTouch')
+    const reactToTouch = vi.fn<NonNullable<StagePerformanceScene['reactToTouch']>>()
+    const exposed = scene.exposed as { reactToTouch: NonNullable<StagePerformanceScene['reactToTouch']> }
+    exposed.reactToTouch = reactToTouch
 
-    const dosed = until(() => moods.value.length, count => count === 1)
-    const forwarded = until(() => observations.value.length, count => count === 1)
-    scene.emit('naturalTouch', { kind: 'poke', region: 'head', x: 0, y: 0 })
-    await Promise.all([dosed, forwarded])
+    // The mind answers in the call stack of the scene's event.
+    scene.emit('naturalTouch', { gesture: 'poke', region: 'head', point: { x: 0.5, y: -0.5 } })
 
+    expect(reactToTouch.mock.calls).toEqual([[expect.objectContaining({ kind: 'touch-reaction', gesture: 'poke', region: 'head', point: { x: 0.5, y: -0.5 } })]])
     expect(moods.value).toEqual([expect.objectContaining({ id: 'touch-1-poke', valence: 0, tension: 0 })])
     expect(moods.value[0].arousal).toBeGreaterThan(0)
-    expect(observations.value).toEqual([{ kind: 'touch', gesture: 'poke', region: 'head', atMs: expect.any(Number) }])
+    expect(observeTouch.mock.calls).toEqual([[{ kind: 'touch', gesture: 'poke', region: 'head', atMs: expect.any(Number) }]])
   })
 
   /**
@@ -429,7 +424,7 @@ describe('stage emotion routing on Live2D', () => {
     // A synthetic pointer has no active pointer to capture, so the real call would throw.
     const capture = vi.spyOn(canvas, 'setPointerCapture').mockImplementation(() => {})
     const notifyTouch = vi.spyOn(useAvatarTouchStore(), 'notifyTouch').mockResolvedValue('sent')
-    const naturalTouch = vi.spyOn(useStageTouchStore(), 'touch')
+    const naturalTouch = vi.spyOn(StagePerformanceConductor.prototype, 'touch')
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     onTestFinished(() => {
       vi.useRealTimers()
@@ -455,7 +450,7 @@ describe('stage emotion routing on Live2D', () => {
 
     const heldPage = tapCanvas(canvas)
     // The Natural layer of the model reports its gesture with this event.
-    scene.emit('naturalTouch', { kind: 'poke', region: 'head', x: 0, y: 0 })
+    scene.emit('naturalTouch', { gesture: 'poke', region: 'head', point: { x: 0, y: 0 } })
     // A touch event of the touch module must not reach the character either.
     scene.emit('touch', { region: 'head', gesture: 'tap', side: 0 })
     vi.advanceTimersByTime(avatarTouchSettleMs)
@@ -466,7 +461,7 @@ describe('stage emotion routing on Live2D', () => {
     expect(playTouchMotion).not.toHaveBeenCalled()
     expect(notifyTouch).not.toHaveBeenCalled()
     expect(naturalTouch).toHaveBeenCalledTimes(1)
-    expect(naturalTouch.mock.calls[0][0]).toEqual({ kind: 'poke', region: 'head', x: 0, y: 0 })
+    expect(naturalTouch.mock.calls[0][0]).toEqual({ gesture: 'poke', region: 'head', point: { x: 0, y: 0 } })
   })
 
   it.each(['magic', 'universal'] as const)('gives a press on the character to the touch module under %s', async (driver) => {
@@ -1004,22 +999,15 @@ describe('stage performance routing on MMD', () => {
     expect(gestures.value).toEqual([['shake', 3]])
   })
 
-  it('doses mood from an MMD scene touch and forwards the poke to the situation leader', async () => {
+  it('answers an MMD scene touch once: mood is dosed and the situation records the poke', async () => {
     const scene = await renderMMD()
     const { moods } = recordMMDScene(scene)
-    const observations = shallowRef<TouchObservation[]>([])
-    onTestFinished(getSpeechBusContext().on(situationTouchObservedEvent, ({ body }) => {
-      if (body)
-        observations.value = [...observations.value, body]
-    }))
+    const observeTouch = vi.spyOn(useSituationStore(), 'observeTouch')
 
-    const dosed = until(() => moods.value.length, count => count === 1)
-    const forwarded = until(() => observations.value.length, count => count === 1)
-    scene.emit('touch', { kind: 'poke', region: 'head', x: 0, y: 0 })
-    await Promise.all([dosed, forwarded])
+    scene.emit('touch', { gesture: 'poke', region: 'head', point: { x: 0, y: 0 } })
 
     expect(moods.value).toEqual([expect.objectContaining({ id: 'touch-1-poke' })])
-    expect(observations.value).toEqual([{ kind: 'touch', gesture: 'poke', region: 'head', atMs: expect.any(Number) }])
+    expect(observeTouch.mock.calls).toEqual([[{ kind: 'touch', gesture: 'poke', region: 'head', atMs: expect.any(Number) }]])
   })
 
   it('dispatches an ACT happy expression and Natural episode through the MMD scene', async () => {

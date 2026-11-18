@@ -569,12 +569,18 @@ stored at load; the Ammo world is never read. Bodies under 頭/首 are `head`, a
 bodies under 上半身/上半身2/上半身3/下半身 are `body`. A model without usable rigid
 bodies falls back to a skinned mesh raycast and the hit face's heaviest bone.
 `NaturalTouchGestures` from `@proj-airi/motion-driver-natural/touch-gestures`,
-the classifier Live2D uses, turns the samples into pokes and pets. They feed
-`NaturalMotion`, so the response is pre-physics head and body motion.
+the classifier Live2D uses, turns the samples into pokes and pets. `MMDTouch`
+returns each as a `TouchReport` of `@proj-airi/character-mind`, a poke with its
+region-relative point, and the scene emits it as a `touch` event without showing
+anything. `Stage.vue` hands the report to the character mind, which decides the
+body reaction, the mood dose, and a possible reaction line together, as on
+Live2D. The scene performs the mind's `touch-reaction` intent through its
+exposed `reactToTouch`: a poke calls Natural's `poke`, the pet hand reaches
+Natural only between a pet `start` and its `end`, and a poke and a pet start
+count as interactions for the body director. The response is pre-physics head
+and body motion.
 The `touch` (default on) and `touchPetRequiresHold` (default off) Natural
-settings match the Live2D settings, and the scene emits `touch` events like `Live2DScene`. `Stage.vue`
-routes them to the stage touch store, so a pet or poke doses mood, reaches the
-situation, and can start a reaction turn as on Live2D. The scene also plays ACT
+settings match the Live2D settings. The scene also plays ACT
 cue gestures (`gesture`) and takes mood doses (`addMood`), and
 the `emotionStrength` Natural setting holds per-model emotion strengths in the
 Live2D shape. The Natural settings are one synced settings document, held by
