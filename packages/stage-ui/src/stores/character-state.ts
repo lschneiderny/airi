@@ -4,7 +4,7 @@ import type { SyncedPiniaRuntime } from 'pinia-plugin-synced'
 
 import { errorMessageFrom } from '@moeru/std'
 import { advance, applyEvent, CharacterProfileSchema, DEFAULT_CHARACTER_PROFILE, initialCharacterState, migrateCharacterState, moodCueBody, parseMoodCue, readCharacter } from '@proj-airi/stage-shared/character-state'
-import { LOGICAL_DAY_ROLLOVER_HOUR } from '@proj-airi/stage-shared/situation'
+import { LOGICAL_DAY_ROLLOVER_HOUR, repeatsHeldTitle } from '@proj-airi/stage-shared/situation'
 import { isEqual } from 'es-toolkit'
 import { defineStore } from 'pinia'
 import { safeParse } from 'valibot'
@@ -355,14 +355,16 @@ export const useCharacterStateStore = defineStore('character-state', () => {
   /**
    * Applies the MOOD cues of the chat replies of this window: each `<|MOOD ...|>` special token that `parseMoodCue`
    * accepts becomes one `model-cue` event, at most one per turn (see {@link moodCueEventId}). A malformed cue applies
-   * nothing. The chat store calls it once from its setup; the first source wins. The event goes straight to the leader
-   * queue (`applyNow`, not the synced `apply` action), so only a leading window applies it and a follower drops it.
+   * nothing, and neither does a cue whose reason repeats one of `heldTitles()`, the window and page titles the
+   * situation holds, because the reason is stored with the mood. The chat store calls it once from its setup; the first
+   * source wins. The event goes straight to the leader queue (`applyNow`, not the synced `apply` action), so only a
+   * leading window applies it and a follower drops it.
    */
-  function observeChat(hooks: CharacterStateChatHooks) {
+  function observeChat(hooks: CharacterStateChatHooks, heldTitles: () => readonly string[]) {
     stopChatHooks ??= hooks.onTokenSpecial(async (special, context) => {
       const body = moodCueBody(special)
       const cue = body === null ? null : parseMoodCue(body)
-      if (!cue)
+      if (!cue || repeatsHeldTitle(cue.reason, heldTitles()))
         return
       await applyNow({ kind: 'model-cue', id: moodCueEventId(context.turnId), atMs: now(), turnId: context.turnId, directions: cue.directions, reason: cue.reason })
     })

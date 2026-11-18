@@ -8,7 +8,7 @@ import type { ChatExchange } from '../../stores/situation/sensors/exchange'
 
 import { errorMessageFrom } from '@moeru/std'
 import { CHARACTER_STATE_SETTINGS } from '@proj-airi/stage-shared/character-state'
-import { THREAD_CUE_MAX_CHARS, THREAD_SUMMARY_MAX_CHARS } from '@proj-airi/stage-shared/situation'
+import { repeatsHeldTitle, THREAD_CUE_MAX_CHARS, THREAD_SUMMARY_MAX_CHARS } from '@proj-airi/stage-shared/situation'
 
 import * as v from 'valibot'
 
@@ -107,6 +107,11 @@ export interface ThreadExtractorDeps {
    * invalid extraction moves nothing, so the next one reads its messages again.
    */
   onExtractedThrough: (sessionId: string, messageId: string) => void
+  /**
+   * The window and page titles the situation holds when an answer is read (`heldTitles`). A thread or an event whose
+   * text repeats one is dropped, because both are stored; the other entries of the answer are kept.
+   */
+  heldTitles: () => readonly string[]
   /** Receives the validated, sanitized threads of one extraction; never called with an empty list. */
   onThreads: (drafts: readonly ThreadDraft[], sessionId: string) => void
   /** Receives the validated, sanitized relationship events of one extraction; never called with an empty list. */
@@ -215,22 +220,23 @@ function carriesInjection(text: string): boolean {
 /**
  * The sanitized events of a validated answer, or `null` when any event text tries to inject markers or roles: an
  * event moves the relationship, so such an answer is rejected whole instead of losing one entry. An event whose reason
- * is empty after sanitizing, and a milestone without memory text, are dropped; other kinds lose any memory text.
+ * is empty after sanitizing, an event whose reason or memory text repeats one of `titles`, and a milestone without
+ * memory text are dropped; other kinds lose any memory text.
  */
-function sanitizedEvents(entries: v.InferOutput<typeof extractedEventsSchema>): ExtractedEvent[] | null {
+function sanitizedEvents(entries: v.InferOutput<typeof extractedEventsSchema>, titles: readonly string[]): ExtractedEvent[] | null {
   const events: ExtractedEvent[] = []
   for (const entry of entries) {
     if (carriesInjection(entry.reason) || (entry.memory !== undefined && carriesInjection(entry.memory)))
       return null
     const reason = threadText(entry.reason)
-    if (reason === null)
+    if (reason === null || repeatsHeldTitle(reason, titles))
       continue
     if (entry.kind !== 'milestone') {
       events.push({ kind: entry.kind, reason })
       continue
     }
     const memory = entry.memory === undefined ? null : threadText(entry.memory)
-    if (memory !== null)
+    if (memory !== null && !repeatsHeldTitle(memory, titles))
       events.push({ kind: entry.kind, reason, memory })
   }
   return events
@@ -317,7 +323,8 @@ export function createThreadExtractor(deps: ThreadExtractorDeps): ThreadExtracto
       const result = v.safeParse(extractionAnswerSchema, parsed)
       if (!result.success)
         return { requestChars, messageCount, status: 'invalid', threads: [], error: v.summarize(result.issues), answer: answerEntry }
-      const events = sanitizedEvents(result.output.events)
+      const titles = deps.heldTitles()
+      const events = sanitizedEvents(result.output.events, titles)
       if (events === null)
         return { requestChars, messageCount, status: 'invalid', threads: [], error: 'An event carries marker or chat role text', answer: answerEntry }
 
@@ -325,7 +332,7 @@ export function createThreadExtractor(deps: ThreadExtractorDeps): ThreadExtracto
       for (const entry of result.output.threads) {
         const summary = threadText(entry.summary)
         const cue = threadText(entry.cue)
-        if (summary === null || cue === null)
+        if (summary === null || cue === null || repeatsHeldTitle(`${summary}\n${cue}`, titles))
           continue
         drafts.push({ kind: entry.kind, summary, cue, ...(entry.dueInMinutes === null ? {} : { dueInMinutes: entry.dueInMinutes }) })
       }

@@ -46,7 +46,7 @@ function answerOf(threads: readonly unknown[], events: readonly unknown[] = []):
 const EMPTY_ANSWER = answerOf([])
 
 /** An extractor over `messages` whose model answers `answer`, unless a test passes its own `stream`. */
-function createHarness(options: { answer?: string, messages?: readonly ChatHistoryItem[], extractedThrough?: string, stream?: LlmStream } = {}) {
+function createHarness(options: { answer?: string, messages?: readonly ChatHistoryItem[], extractedThrough?: string, stream?: LlmStream, heldTitles?: readonly string[] } = {}) {
   const stream = vi.fn<LlmStream>(options.stream ?? (async (_model, _provider, _conversation, streamOptions) => {
     await streamOptions?.onStreamEvent?.({ type: 'text-delta', text: options.answer ?? EMPTY_ANSWER })
   }))
@@ -60,6 +60,7 @@ function createHarness(options: { answer?: string, messages?: readonly ChatHisto
     selection: async () => ({ provider, model: 'chat-model', characterName: 'Airi' }),
     messages: () => options.messages ?? CONVERSATION,
     extractedThrough: () => options.extractedThrough,
+    heldTitles: () => options.heldTitles ?? [],
     onExtractedThrough,
     onThreads,
     onEvents,
@@ -146,6 +147,20 @@ describe('createThreadExtractor', () => {
 
     expect(entry).toMatchObject({ status: 'ok', threads: [{ kind: 'event', summary: 'He has a dentist appointment on Friday.' }] })
     expect(onThreads).toHaveBeenCalledExactlyOnceWith([{ kind: 'event', summary: 'He has a dentist appointment on Friday.', cue: 'how the dentist went' }], 'session-1')
+  })
+
+  it('drops a thread and an event that repeat a held title and keeps the rest of the answer', async () => {
+    const answer = answerOf(
+      [thread({ cue: 'the Quarterly Tax Return 2026 tab he had open' }), thread({ kind: 'later', summary: 'She promised to send him the recipe later.', cue: 'the recipe she promised' })],
+      [{ kind: 'disclosure', reason: 'He was reading quarterly  tax return 2026.' }, { kind: 'disclosure', reason: 'He told her he is scared of dentists.' }],
+    )
+    const { extractor, onThreads, onEvents } = createHarness({ answer, heldTitles: ['Quarterly tax return 2026'] })
+
+    const entry = await extractor.extract(EXCHANGE)
+
+    expect(entry.status).toBe('ok')
+    expect(onThreads).toHaveBeenCalledExactlyOnceWith([{ kind: 'later', summary: 'She promised to send him the recipe later.', cue: 'the recipe she promised' }], 'session-1')
+    expect(onEvents).toHaveBeenCalledExactlyOnceWith([{ kind: 'disclosure', reason: 'He told her he is scared of dentists.' }], 'session-1')
   })
 
   it('records more than three entries as invalid, because the schema caps the list', async () => {
@@ -370,6 +385,7 @@ describe('createThreadExtractor', () => {
         selection: async () => ({ provider: streaming, model: 'claude-haiku-5-5', characterName: 'Airi' }),
         messages: () => CONVERSATION,
         extractedThrough: () => undefined,
+        heldTitles: () => [],
         onExtractedThrough: () => {},
         onThreads,
         onEvents,
