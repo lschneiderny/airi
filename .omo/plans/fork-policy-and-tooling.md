@@ -48,6 +48,15 @@ Phases 1 and 2 landed on `luke/refactor/lock-in` (49 commits; `pnpm verify --gat
 - The T1 touch and gesture coverage left with the Live2D simulator; mind-core tests replace it.
 - The model-gated `t2-3d` tests were failing before the cleanup; run `pnpm qa:test:model`.
 
+## Status (2026-11-18)
+
+Phase 3 is done on `luke/chore/upstream-sync`, which waits for the owner's word before `main` is fast-forwarded:
+
+- Four stepped merges contain `upstream/main` at `b3a6d6071`: `4b1e405a4`, `9d9b45354`, `14c763cfb`, `e259d4c6e`. Each passed `pnpm verify --gate`, the classic and desktop-stage smokes, and a replayed chat turn.
+- `docs/ai/context/upstream-policy.md` is the ledger. It records every departure from upstream, the files the fork owns, the upstream rules adopted and left out, and the steps of a sync.
+- D5 is done: every package runs its own `test:run`, `pnpm test:run` goes through Turbo with caching, and `pnpm verify` runs related tests per package. A2 was not needed for it and stays carried forward.
+- Decisions made while the owner was away, open to his veto: the update feed and error reporting are off in fork builds unless the build supplies its own endpoints, upstream's Live2D touch module runs only under upstream's drivers, and upstream's beat sync layer is inactive under Natural. The ledger has the reasons.
+
 ## Phase 1: Fix what is broken (fork-only, small commits to `main` after `pnpm verify`)
 
 1. `pnpm release` gate: run the D4 checks instead of `verify --gate` on `main`. Fold `check-prod-bundle`'s marker scan into `scripts/dev-tools/bundle-check.ts`.
