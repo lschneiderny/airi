@@ -3016,6 +3016,9 @@ importers:
       '@proj-airi/pipelines-audio':
         specifier: workspace:^
         version: link:../pipelines-audio
+      '@proj-airi/provider-inference':
+        specifier: workspace:^
+        version: link:../provider-inference
       '@proj-airi/scenarios-stage-tamagotchi-electron':
         specifier: workspace:^
         version: link:../scenarios-stage-tamagotchi-electron

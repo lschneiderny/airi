@@ -105,14 +105,15 @@ function errorText(value: unknown): string {
  *
  * Never throws for a failed request: a refused connection, an HTTP error, an error event, a timeout, and a stream
  * that ends without a finish reason all return an outcome whose `error` says what happened. Whatever arrived before
- * the failure is kept. It sends credentials only when `apiKey` is given, as a bearer token.
+ * the failure is kept. It sends credentials only when `apiKey` is given, as a bearer token. `send` makes the request;
+ * a run against Anthropic's native API passes the provider's translating fetch, so the request stays Chat Completions.
  */
-export async function requestChat(baseUrl: string, body: string, timeoutMs: number, apiKey?: string): Promise<ChatOutcome> {
+export async function requestChat(baseUrl: string, body: string, timeoutMs: number, apiKey?: string, send: typeof globalThis.fetch = fetch): Promise<ChatOutcome> {
   const outcome: ChatOutcome = { status: null, id: null, model: null, systemFingerprint: null, text: '', thinkingText: '', toolCalls: [], toolCallIds: [], toolCallArguments: [], textMarks: [], finish: null, usage: null, error: null, ttftMs: null, totalMs: 0 }
   const calls: { id: string | null, name: string, arguments: string }[] = []
   const started = performance.now()
   try {
-    const response = await fetch(`${baseUrl.replace(/\/+$/, '')}/chat/completions`, {
+    const response = await send(`${baseUrl.replace(/\/+$/, '')}/chat/completions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(apiKey === undefined ? {} : { Authorization: `Bearer ${apiKey}` }) },
       body,

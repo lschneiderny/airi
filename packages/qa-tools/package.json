@@ -26,6 +26,7 @@
     "@proj-airi/motion-driver-humanoid": "workspace:^",
     "@proj-airi/motion-driver-natural": "workspace:^",
     "@proj-airi/pipelines-audio": "workspace:^",
+    "@proj-airi/provider-inference": "workspace:^",
     "@proj-airi/scenarios-stage-tamagotchi-electron": "workspace:^",
     "@proj-airi/stage-shared": "workspace:^",
     "@proj-airi/stage-ui": "workspace:^",
