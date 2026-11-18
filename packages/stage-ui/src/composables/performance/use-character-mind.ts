@@ -1,7 +1,19 @@
+import type { MindStep } from '@proj-airi/character-mind'
+import type { ReactionDecision } from '@proj-airi/stage-shared/situation'
+
 import { CharacterMind } from '@proj-airi/character-mind'
 import { onScopeDispose } from 'vue'
 
 import { useSituationObservabilityStore } from '../../stores/devtools/situation-observability'
+
+/**
+ * The voice decision a step made, or null when none of its stimuli reached the voice policy: only a poke or a
+ * finished pet with a voice view does. The state keeps the last decision between steps, so it alone cannot tell.
+ */
+export function voiceDecisionOf({ stimuli, state }: Pick<MindStep, 'stimuli' | 'state'>): ReactionDecision | null {
+  const decided = stimuli.some(stimulus => stimulus.kind === 'touch' && stimulus.voice !== null && stimulus.gesture !== 'pet-start')
+  return decided ? state.voice.lastDecision : null
+}
 
 /**
  * Creates the character mind of the stage that calls it: one mind per `Stage.vue`, seeded from the platform's
@@ -16,11 +28,12 @@ export function useCharacterMind(): CharacterMind {
   const mind = new CharacterMind({ seed: crypto.getRandomValues(new Uint32Array(1))[0] })
   const observability = useSituationObservabilityStore()
   observability.publishReactionMemory(mind.state.voice.reaction)
-  const stop = mind.onStep(({ atMs, stimuli, state }) => {
-    const { lastDecision, reaction } = state.voice
-    if (lastDecision && stimuli.some(stimulus => stimulus.kind === 'touch' && stimulus.voice !== null && stimulus.gesture !== 'pet-start'))
-      observability.recordReactionDecision(lastDecision, reaction, atMs)
-    else if (stimuli.some(stimulus => stimulus.kind === 'voice-outcome'))
+  const stop = mind.onStep((step) => {
+    const { reaction } = step.state.voice
+    const decision = voiceDecisionOf(step)
+    if (decision)
+      observability.recordReactionDecision(decision, reaction, step.atMs)
+    else if (step.stimuli.some(stimulus => stimulus.kind === 'voice-outcome'))
       observability.publishReactionMemory(reaction)
   })
   onScopeDispose(() => {

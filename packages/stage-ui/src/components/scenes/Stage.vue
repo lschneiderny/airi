@@ -350,6 +350,7 @@ function musicPlaying() {
 function characterReading() {
   return characterState.cardId === cards.activeCardId ? characterState.reading : null
 }
+const characterMind = useCharacterMind()
 const { conductor: performanceConductor, settings: performanceSettings } = useStagePerformanceConductor({
   renderer: () => stageModelRenderer.value,
   scene: () => performanceRenderer.value.scene,
@@ -363,7 +364,7 @@ const { conductor: performanceConductor, settings: performanceSettings } = useSt
   profile: performanceProfileOf,
   characterReading,
   music: musicPlaying,
-  mind: useCharacterMind(),
+  mind: characterMind,
   markMoment,
   // Each scene classifies touches only under its Natural driver and reports them to `performanceConductor.touch`.
   // The leader's situation store records the touch and runs her line; in a follower window it offers no view.
@@ -735,6 +736,7 @@ if (import.meta.env.DEV && isMotionQaBridgeEnabled()) {
             await useChatStore().send({ sessionId, text })
           },
           voicing: () => speechVoicing.value,
+          mind: characterMind,
           modelLoaded: () => componentState.value === 'mounted',
           prepareModelImport: () => { componentState.value = 'pending' },
           emotionsQueue,

@@ -6,6 +6,9 @@ import type { LaunchedApp } from '../t3/launch'
 import type { AppSessionDeps, SessionStage } from './app-session'
 
 import { ChildProcess } from 'node:child_process'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 import { describe, expect, it, vi } from 'vitest'
 
@@ -139,6 +142,44 @@ describe('appSessionCore', () => {
     expect(session.collector).toBeUndefined()
     // The bridge client exists even without the wait, so a caller can still drive it.
     expect(started.bridge).toBeDefined()
+  })
+
+  it('starts on the classic window when asked, over whatever the launch env says', async () => {
+    const world = fakeWorld()
+    const launch = vi.spyOn(world.deps, 'launch')
+    const session = new AppSessionCore({ repoRoot, profileDir }, world.deps)
+    await session.start({ stageHost: 'window', launch: { logFile: '/dev/null', lease, env: { AIRI_STAGE_HOST: 'desktop', AIRI_PERF_RECORD: '1' } }, onboarding: false })
+
+    expect(launch.mock.calls[0][0].env).toEqual({ AIRI_STAGE_HOST: 'window', AIRI_PERF_RECORD: '1' })
+    expect(world.steps).toEqual(['launch:dev', 'connect:synced-leader=true[^#]*#\\/$'])
+  })
+
+  it('starts on the desktop stage by saving its setting in the profile, and attaches to the #/stage window', async () => {
+    const desktopProfile = mkdtempSync(join(tmpdir(), 'qa-session-test-'))
+    try {
+      const world = fakeWorld()
+      const launch = vi.spyOn(world.deps, 'launch')
+      const session = new AppSessionCore({ repoRoot, profileDir: desktopProfile }, world.deps)
+      await session.start({ stageHost: 'desktop', launch: { logFile: '/dev/null', lease }, onboarding: false })
+
+      // An empty mode overrides nothing, so the saved setting decides and the platform gate still applies.
+      expect(launch.mock.calls[0][0].env).toEqual({ AIRI_STAGE_HOST: '' })
+      expect(JSON.parse(readFileSync(join(desktopProfile, 'stage-config.json'), 'utf8'))).toEqual({ experimental: true, activeRenderer: 'mmd' })
+      expect(world.steps).toEqual(['launch:dev', 'connect:synced-leader=true[^#]*#\\/stage$'])
+    }
+    finally {
+      rmSync(desktopProfile, { recursive: true, force: true })
+    }
+  })
+
+  it('leaves the host to the launch env and an explicit target when no stage host is named', async () => {
+    const world = fakeWorld()
+    const launch = vi.spyOn(world.deps, 'launch')
+    const session = new AppSessionCore({ repoRoot, profileDir }, world.deps)
+    await session.start({ launch: { logFile: '/dev/null', lease, env: { AIRI_STAGE_HOST: '' } }, targetPattern: /custom$/, onboarding: false })
+
+    expect(launch.mock.calls[0][0].env).toEqual({ AIRI_STAGE_HOST: '' })
+    expect(world.steps).toEqual(['launch:dev', 'connect:custom$'])
   })
 
   it('refuses a second start while the first one owns the app', async () => {

@@ -3,6 +3,7 @@ import type { CdpClient } from '@proj-airi/scenarios-stage-tamagotchi-electron/r
 import type { MotionQaEvent } from '@proj-airi/stage-shared/motion-scenario'
 
 import type { RunHandle } from '../evidence/run'
+import type { StageHost } from '../session/app-session'
 import type { MotionQaBridgeClient } from '../t3/bridge-client'
 import type { LaunchedApp } from '../t3/launch'
 import type { TeardownReport } from '../t3/teardown'
@@ -37,6 +38,13 @@ export interface StartOptions {
   kind?: ModelKind
   /** A `qa:llm` replay script. Without one, each `send` must carry its own reply. */
   script?: string
+  /** Defaults to the classic window. The desktop stage needs an MMD `model`. */
+  stageHost?: StageHost
+}
+
+function modelKindOf(model: string, kind?: ModelKind): ModelKind {
+  const extension = extname(model).toLowerCase()
+  return kind ?? (extension === '.vrm' ? 'vrm' : ['.pmx', '.pmd'].includes(extension) ? 'mmd' : 'live2d')
 }
 
 interface Live {
@@ -59,7 +67,7 @@ const mcpDisplayName = 'mcp'
 
 /**
  * One live app for an agent: a fresh profile seeded with the replay LLM, onboarding completed, and the bridge
- * ready. On Linux outside a QA display it starts `qa:display` session `mcp` and launches the app there, so the
+ * ready, on the classic window unless `stageHost` asks for the desktop stage. On Linux outside a QA display it starts `qa:display` session `mcp` and launches the app there, so the
  * user's desktop stays undisturbed. The app holds the live CPU lease until `stop`.
  */
 export class AppSession {
@@ -81,6 +89,8 @@ export class AppSession {
   async start(options: StartOptions): Promise<Record<string, unknown>> {
     if (this.live || this.starting)
       throw new Error('An app is already running in this server. Call airi_stop first.')
+    if (options.stageHost === 'desktop' && (!options.model || modelKindOf(options.model, options.kind) !== 'mmd'))
+      throw new Error('stageHost desktop needs an MMD model')
     this.starting = true
     try {
       return await this.launch(options)
@@ -121,7 +131,8 @@ export class AppSession {
     try {
       lease = await acquire({ class: 'live', command: 'qa:mcp session', cwd: this.repoRoot })
       const { app, stage, bridge } = await core.start({
-        launch: { logFile: run.path('app.log'), env: { AIRI_STAGE_HOST: 'window' }, baseEnv, lease },
+        stageHost: options.stageHost ?? 'window',
+        launch: { logFile: run.path('app.log'), baseEnv, lease },
         onLaunched: launched => run.recordProcess({ rootPid: launched.root.pid, created: launched.root.created, commandLine: launched.root.commandLine }),
         collectPageErrors: true,
         beforeOnboarding: async ({ stage }) => {
@@ -149,15 +160,13 @@ export class AppSession {
 
   async importModel(model: string, kind?: ModelKind): Promise<unknown> {
     const live = this.require()
-    const extension = extname(model).toLowerCase()
-    const inferred: ModelKind = extension === '.vrm' ? 'vrm' : ['.pmx', '.pmd'].includes(extension) ? 'mmd' : 'live2d'
     let input = model
-    if (statSync(model).isDirectory() || ['.pmx', '.pmd'].includes(extension)) {
+    if (statSync(model).isDirectory() || ['.pmx', '.pmd'].includes(extname(model).toLowerCase())) {
       input = live.run.path('model.zip')
       rmSync(input, { force: true })
       await zipRig(statSync(model).isDirectory() ? model : dirname(model), input)
     }
-    return await failOnExit(live.app, 'model import', importRig(live.stage, live.bridge, input, 600_000, kind ?? inferred))
+    return await failOnExit(live.app, 'model import', importRig(live.stage, live.bridge, input, 600_000, modelKindOf(model, kind)))
   }
 
   async state(): Promise<unknown> {

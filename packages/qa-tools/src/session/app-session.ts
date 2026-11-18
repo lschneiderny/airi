@@ -8,13 +8,14 @@ import type { RunGroupExit, TeardownReport } from '../t3/teardown'
 
 import process from 'node:process'
 
-import { rmSync } from 'node:fs'
+import { rmSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { setTimeout } from 'node:timers/promises'
 
 import { killTree, listLiveProcesses, runGroupMembers } from '../env/processes'
 import { PageErrorCollector } from '../smoke/page-errors'
 import { MotionQaBridgeClient } from '../t3/bridge-client'
-import { closeBrowser, connectStage, failOnExit, launchStageTamagotchi, stageTargetPattern } from '../t3/launch'
+import { closeBrowser, connectStage, desktopStageTargetPattern, failOnExit, launchStageTamagotchi, stageTargetPattern } from '../t3/launch'
 import { completeOnboarding } from '../t3/onboarding'
 import { findWorktreeAppProcesses, teardownRun, trackTree, waitForRunGroupExit } from '../t3/teardown'
 
@@ -25,6 +26,18 @@ export async function refuseIfWorktreeBusy(repoRoot: string, list: ProcessLister
 }
 
 export type LaunchOptions = Parameters<typeof launchStageTamagotchi>[0]
+
+/** The Electron window that hosts the stage: the classic window, or the full-screen desktop stage. */
+export type StageHost = 'window' | 'desktop'
+
+/**
+ * The launch environment that selects a stage host. `window` forces the classic window. `desktop` forces nothing:
+ * an empty `AIRI_STAGE_HOST` is not a mode, so the launch obeys the setting that `AppSessionCore.start` saves in
+ * the profile and goes through `selectHostMode` and its platform gate.
+ */
+export function stageHostEnv(host: StageHost): { AIRI_STAGE_HOST: string } {
+  return { AIRI_STAGE_HOST: host === 'desktop' ? '' : 'window' }
+}
 
 /** What the session needs from the stage window connection; `CdpClient` in production. */
 export interface SessionStage extends RendererEvaluator {
@@ -75,7 +88,13 @@ export interface AppSessionContext {
 
 export interface AppSessionStartOptions<Stage extends SessionStage> {
   launch: Omit<LaunchOptions, 'repoRoot' | 'profileDir' | 'list'>
-  /** The stage window to attach to; defaults to the classic main stage window. */
+  /**
+   * The stage host to start on; it sets `AIRI_STAGE_HOST` over the launch env (see {@link stageHostEnv}). `desktop`
+   * also saves the Experimental 3D stage setting and the MMD renderer in the fresh profile the way the setting saves
+   * them, so the run needs an MMD model. Omitted, the launch env alone decides the host.
+   */
+  stageHost?: StageHost
+  /** The stage window to attach to; defaults to the stage window of `stageHost`, the classic one when that is omitted. */
   targetPattern?: RegExp
   /** Runs right after the launch, before any wait, so a run records its root process even when the connect fails. */
   onLaunched?: (app: LaunchedApp) => void
@@ -190,10 +209,13 @@ export class AppSessionCore<Stage extends SessionStage> {
       throw new Error('This app session was already started; create a new one for another launch')
     this.started = true
     this.context.signal?.throwIfAborted()
-    const app = await this.deps.launch({ ...options.launch, repoRoot: this.context.repoRoot, profileDir: this.context.profileDir, list: this.deps.list })
+    if (options.stageHost === 'desktop')
+      writeFileSync(join(this.context.profileDir, 'stage-config.json'), `${JSON.stringify({ experimental: true, activeRenderer: 'mmd' })}\n`)
+    const env = options.stageHost ? { ...options.launch.env, ...stageHostEnv(options.stageHost) } : options.launch.env
+    const app = await this.deps.launch({ ...options.launch, env, repoRoot: this.context.repoRoot, profileDir: this.context.profileDir, list: this.deps.list })
     this.launched = app
     options.onLaunched?.(app)
-    const connected = await this.bounded(this.deps.connect(app, options.targetPattern ?? stageTargetPattern))
+    const connected = await this.bounded(this.deps.connect(app, options.targetPattern ?? (options.stageHost === 'desktop' ? desktopStageTargetPattern : stageTargetPattern)))
     this.connected = connected
     this.ownedTree = trackTree(await this.bounded(this.deps.list()), app.root)
     if (this.context.abortMode === 'after-connect')
