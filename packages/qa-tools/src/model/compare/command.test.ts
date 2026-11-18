@@ -59,7 +59,8 @@ describe('qa:model compare', () => {
     })
 
     expect(code).toBe(0)
-    const { rows, contractVersions } = JSON.parse(stdout)
+    const { rows, contractVersions, runDir, scoreRun } = JSON.parse(stdout)
+    owned.push(runDir, scoreRun)
     expect(contractVersions).toEqual(['contract-a'])
     expect(rows.map((row: { contender: string }) => row.contender).sort()).toEqual(['large · default', 'small · default'])
     const small = rows.find((row: { contender: string }) => row.contender === 'small · default')
