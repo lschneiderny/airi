@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Persona judging</title>
+<style>
+  /* Stacks copied from uno.config.ts (theme.fontFamily sans and mono): this page is served without UnoCSS. */
+  :root {
+    --font-sans: "DM Sans Variant", "DM Sans", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+    --font-mono: "Maple Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    --bg: #f6f6f4; --surface: #ffffff; --text: #1d1d1b; --muted: #6b6b66; --line: #e2e2dd;
+    --accent: #3a6df0; --good: #1f8a5b; --bad: #c2453b; --chip: #efefeb;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #151514; --surface: #1f1f1d; --text: #ecece8; --muted: #9a9a93; --line: #33332f; --accent: #7c9cff; --good: #4cc38a; --bad: #ff7b6e; --chip: #2a2a27; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--font-sans); line-height: 1.5; }
+  main { max-width: 1080px; margin: 0 auto; padding: 20px 16px 48px; }
+  header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+  header h1 { font-size: 16px; font-weight: 600; margin: 0; }
+  .progress { flex: 1; min-width: 160px; height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
+  .progress > div { height: 100%; background: var(--accent); width: 0; transition: width .2s; }
+  .count { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .reveal { font-size: 13px; color: var(--muted); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; margin-bottom: 16px; }
+  .reveal b { color: var(--text); font-weight: 600; }
+  .turn { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+  .meta { font-size: 12px; color: var(--muted); display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+  .earlier { font-size: 13px; color: var(--muted); margin-bottom: 8px; }
+  .user { font-size: 18px; }
+  .user::before { content: "They said"; display: block; font-size: 12px; color: var(--muted); }
+  .cards { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+  @media (max-width: 720px) { .cards { grid-template-columns: minmax(0, 1fr); } }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+  .card h2 { margin: 0; font-size: 13px; font-weight: 600; color: var(--muted); display: flex; justify-content: space-between; }
+  .spoken { font-size: 19px; min-height: 3em; white-space: pre-wrap; }
+  .spoken.empty { color: var(--muted); font-style: italic; font-size: 15px; }
+  .cues { display: flex; gap: 6px; flex-wrap: wrap; }
+  .cue { font-family: var(--font-mono); font-size: 11px; background: var(--chip); color: var(--muted); border-radius: 6px; padding: 2px 6px; max-width: 100%; overflow-wrap: anywhere; }
+  details { font-size: 13px; color: var(--muted); }
+  details p { margin: 6px 0 0; }
+  .tags { display: flex; gap: 6px; flex-wrap: wrap; }
+  .tag { font: inherit; font-size: 12px; border: 1px solid var(--line); background: transparent; color: var(--muted); border-radius: 999px; padding: 3px 10px; cursor: pointer; }
+  .tag[aria-pressed="true"].good { border-color: var(--good); color: var(--good); }
+  .tag[aria-pressed="true"].bad { border-color: var(--bad); color: var(--bad); }
+  .verdicts { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin: 16px 0 12px; }
+  @media (max-width: 720px) { .verdicts { grid-template-columns: 1fr 1fr; } }
+  .verdict { font: inherit; font-size: 14px; padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--text); cursor: pointer; }
+  .verdict kbd, .actions kbd, h2 kbd { font-family: var(--font-mono); font-size: 11px; color: var(--muted); margin-right: 4px; }
+  .verdict[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  .actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .actions input { flex: 1; min-width: 200px; font: inherit; font-size: 14px; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--text); }
+  .actions button { font: inherit; font-size: 14px; padding: 9px 16px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--text); cursor: pointer; }
+  .actions button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .actions button:disabled { opacity: .5; cursor: default; }
+  .done, .error { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 24px; text-align: center; }
+  .error { color: var(--bad); }
+  .help { font-size: 12px; color: var(--muted); margin-top: 16px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Persona judging</h1>
+    <div class="progress" aria-hidden="true"><div id="bar"></div></div>
+    <span class="count" id="count"></span>
+  </header>
+  <div class="reveal" id="reveal" hidden></div>
+  <div id="view"></div>
+  <p class="help">Read both replies as the character's spoken lines and pick the one that sounds more like her. Keys: <b>1–5</b> verdict, <b>Enter</b> save, <b>S</b> skip, <b>N</b> note. Names stay hidden until you save.</p>
+</main>
+<script>
+const state = { pair: null, verdict: null, tags: { left: new Set(), right: new Set() }, shownAt: 0, meta: null, busy: false }
+const $ = id => document.getElementById(id)
+
+function el(tag, props = {}, ...children) {
+  const node = document.createElement(tag)
+  for (const [key, value] of Object.entries(props)) {
+    if (key === 'class') node.className = value
+    else if (key.startsWith('on')) node.addEventListener(key.slice(2), value)
+    else node.setAttribute(key, value)
+  }
+  for (const child of children.flat()) {
+    if (child !== null && child !== undefined) node.append(child)
+  }
+  return node
+}
+
+async function api(path, body) {
+  const response = await fetch(path, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {})
+  const data = await response.json()
+  if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`)
+  return data
+}
+
+function progress(p) {
+  $('count').textContent = `${p.done} judged · ${p.remaining} left`
+  const total = p.done + p.remaining
+  $('bar').style.width = total ? `${(100 * p.done) / total}%` : '0'
+}
+
+function card(side, reply) {
+  const tags = state.meta.tags.map(tag => el('button', {
+    class: `tag ${tag.tone}`, type: 'button', 'aria-pressed': 'false',
+    onclick: event => {
+      const set = state.tags[side]
+      set.has(tag.id) ? set.delete(tag.id) : set.add(tag.id)
+      event.currentTarget.setAttribute('aria-pressed', String(set.has(tag.id)))
+    },
+  }, tag.label))
+  return el('section', { class: 'card' },
+    el('h2', {}, side === 'left' ? 'Left' : 'Right'),
+    reply.spoken.trim()
+      ? el('div', { class: 'spoken' }, reply.spoken.trim())
+      : el('div', { class: 'spoken empty' }, 'No words: she answered with cues only.'),
+    reply.cues.length ? el('div', { class: 'cues' }, reply.cues.map(cue => el('span', { class: 'cue', title: cue }, cue))) : null,
+    reply.previous
+      ? el('details', {}, el('summary', {}, 'Her previous line in this conversation'), el('p', {}, `They: ${reply.previous.user}`), el('p', {}, `Her: ${reply.previous.spoken.trim() || '(cues only)'}`))
+      : null,
+    el('div', { class: 'tags' }, tags),
+  )
+}
+
+const VERDICT_LABELS = { 'left-much': 'Left, clearly', 'left': 'Left', 'tie': 'Same', 'right': 'Right', 'right-much': 'Right, clearly' }
+
+function render() {
+  const view = $('view')
+  view.replaceChildren()
+  if (!state.pair) {
+    view.append(el('div', { class: 'done' }, 'Nothing left to judge in this session. Run the report command to see the results.'))
+    return
+  }
+  const { pair } = state
+  const meta = [`Turn ${pair.turn}`, pair.stage ? `Stage: ${pair.stage}` : null, pair.seed ? `Seed ${pair.seed}` : null].filter(Boolean)
+  view.append(
+    el('section', { class: 'turn' },
+      el('div', { class: 'meta' }, meta.map(item => el('span', {}, item))),
+      pair.earlier ? el('div', { class: 'earlier' }, `Before that, they said: “${pair.earlier}”`) : null,
+      el('div', { class: 'user' }, pair.user),
+    ),
+    el('div', { class: 'cards' }, card('left', pair.left), card('right', pair.right)),
+    el('div', { class: 'verdicts', role: 'group', 'aria-label': 'Verdict' }, state.meta.verdicts.map((verdict, index) => el('button', {
+      class: 'verdict', type: 'button', 'data-verdict': verdict, 'aria-pressed': 'false', onclick: () => choose(verdict),
+    }, el('kbd', {}, String(index + 1)), VERDICT_LABELS[verdict]))),
+    el('div', { class: 'actions' },
+      el('input', { id: 'note', type: 'text', placeholder: 'Note (optional): what made the difference?', autocomplete: 'off' }),
+      el('button', { type: 'button', onclick: skip }, el('kbd', {}, 'S'), 'Skip'),
+      el('button', { id: 'save', class: 'primary', type: 'button', disabled: '', onclick: save }, el('kbd', {}, '↵'), 'Save'),
+    ),
+  )
+}
+
+function choose(verdict) {
+  state.verdict = verdict
+  for (const button of document.querySelectorAll('.verdict'))
+    button.setAttribute('aria-pressed', String(button.dataset.verdict === verdict))
+  $('save').disabled = false
+}
+
+async function load() {
+  const data = await api('/api/next')
+  state.pair = data.pair
+  state.verdict = null
+  state.tags = { left: new Set(), right: new Set() }
+  state.shownAt = performance.now()
+  progress(data.progress)
+  render()
+}
+
+async function save() {
+  if (!state.pair || !state.verdict || state.busy) return
+  state.busy = true
+  try {
+    const result = await api('/api/judgment', {
+      pairId: state.pair.id,
+      verdict: state.verdict,
+      leftTags: [...state.tags.left],
+      rightTags: [...state.tags.right],
+      note: $('note').value.trim(),
+      elapsedMs: Math.round(performance.now() - state.shownAt),
+    })
+    const reveal = $('reveal')
+    reveal.hidden = false
+    reveal.replaceChildren('Last pair: left was ', el('b', {}, result.reveal.left), ', right was ', el('b', {}, result.reveal.right), `. You chose “${VERDICT_LABELS[state.verdict]}”.`)
+    await load()
+  }
+  catch (error) { showError(error) }
+  finally { state.busy = false }
+}
+
+async function skip() {
+  if (!state.pair || state.busy) return
+  state.busy = true
+  try {
+    await api('/api/skip', { pairId: state.pair.id })
+    await load()
+  }
+  catch (error) { showError(error) }
+  finally { state.busy = false }
+}
+
+function showError(error) {
+  $('view').replaceChildren(el('div', { class: 'error' }, `Something went wrong: ${error.message}. Reload the page to continue; saved verdicts are kept.`))
+}
+
+document.addEventListener('keydown', (event) => {
+  if (event.target instanceof HTMLInputElement) {
+    if (event.key === 'Enter') { event.preventDefault(); save() }
+    if (event.key === 'Escape') event.target.blur()
+    return
+  }
+  if (event.metaKey || event.ctrlKey || event.altKey || !state.pair) return
+  const index = Number(event.key) - 1
+  if (index >= 0 && index < state.meta.verdicts.length) { choose(state.meta.verdicts[index]); return }
+  if (event.key === 'Enter') { event.preventDefault(); save() }
+  else if (event.key === 's' || event.key === 'S') skip()
+  else if (event.key === 'n' || event.key === 'N') { event.preventDefault(); $('note').focus() }
+})
+
+api('/api/state').then((meta) => { state.meta = meta; return load() }).catch(showError)
+</script>
+</body>
+</html>

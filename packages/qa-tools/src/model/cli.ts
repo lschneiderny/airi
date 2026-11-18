@@ -4,6 +4,7 @@ import { parseArgs } from 'node:util'
 
 import { errorMessageFrom } from '@moeru/std'
 
+import { runJudgeCli } from './judge/command'
 import { runPromptCli } from './prompt'
 import { runRunCli } from './run/command'
 import { runScoreCli } from './score/command'
@@ -14,6 +15,8 @@ Commands:
   run --scenario <id|file.json> --base-url <url> --model <id> [--config <name>] [--history raw|canonical] [--out <dir>] [--machine-label <l>] [--json]  run a scenario against a live OpenAI-compatible chat endpoint and record the replies
   score <transcripts.jsonl> [--set <id>] [--label <l>] [--exposed-actions <label:kind,...>]  score a transcript file with the real runtime replay
   prompt [--locale en] [--card <file>] [--full <fixture>] [--exposed-actions <label:kind,...>] [--json]  print the system prompt the app sends and its hashes
+  judge serve <transcripts|run dir|set id>... [--out <f>] [--judge <l>] [--contenders <a,b>] [--port <n>] [--seed <n>]  judge replies blind, two at a time, in a local page
+  judge report <judgments.jsonl>... [--json]  aggregate saved judgments into standings and tag rates
   help                                                   print this usage
 
 Kinds are gesture, action, and dance.
@@ -28,6 +31,7 @@ export interface ModelCliIo {
     run: ModelCommandHandler
     prompt: ModelCommandHandler
     score: ModelCommandHandler
+    judge: ModelCommandHandler
   }
   stdout?: (text: string) => void
   stderr?: (text: string) => void
@@ -54,6 +58,7 @@ export async function runModelCli(
     run: runRunCli,
     prompt: runPromptCli,
     score: runScoreCli,
+    judge: runJudgeCli,
   }
 
   const [command, ...rest] = argv
@@ -69,13 +74,7 @@ export async function runModelCli(
     return 0
   }
 
-  const handler = command === 'run'
-    ? handlers.run
-    : command === 'prompt'
-      ? handlers.prompt
-      : command === 'score'
-        ? handlers.score
-        : undefined
+  const handler = command !== undefined && Object.hasOwn(handlers, command) ? handlers[command as keyof typeof handlers] : undefined
   if (!handler) {
     stderr(`qa-tools model: ${command === undefined ? 'missing command' : `unknown command ${JSON.stringify(command)}`}\n\n${modelUsage}`)
     return 2
