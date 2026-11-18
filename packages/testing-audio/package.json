@@ -16,7 +16,8 @@
     "test": "vitest",
     "test:e2e": "pnpm run build:targets && vitest run",
     "test:existing-builds": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:run": "vitest run --project unit"
   },
   "dependencies": {
     "@moeru/std": "catalog:",

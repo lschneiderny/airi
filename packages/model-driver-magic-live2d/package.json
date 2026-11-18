@@ -31,7 +31,8 @@
   "scripts": {
     "build": "tsdown",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:run": "vitest run --config vitest.config.ts"
   },
   "dependencies": {
     "@proj-airi/motion-driver-magic": "workspace:^",

@@ -9,7 +9,8 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc --noEmit",
-    "test": "NODE_OPTIONS=--no-node-snapshot vitest"
+    "test": "NODE_OPTIONS=--no-node-snapshot vitest",
+    "test:run": "NODE_OPTIONS=--no-node-snapshot vitest run"
   },
   "dependencies": {
     "@guiiai/logg": "catalog:",

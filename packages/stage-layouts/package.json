@@ -28,7 +28,8 @@
     "./stores/*": "./src/stores/*.ts"
   },
   "scripts": {
-    "typecheck": "vue-tsc --noEmit"
+    "typecheck": "vue-tsc --noEmit",
+    "test:run": "vitest run --config vitest.config.ts"
   },
   "dependencies": {
     "@moeru/eventa": "catalog:",
