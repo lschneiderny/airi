@@ -6,6 +6,8 @@ import { createHash } from 'node:crypto'
 
 import * as v from 'valibot'
 
+import { contenderOf, SEED_TOKEN } from '../contender'
+
 /** Reason tags a judge can attach to one reply. Ids are stable: judgments store them, and reports count them. */
 export const PERSONA_TAGS = [
   { id: 'in-character', label: 'In character', tone: 'good' },
@@ -80,21 +82,6 @@ export interface SpokenReply {
   record: ReplyTranscriptRecord
   spoken: string
   cues: string[]
-}
-
-const SEED_TOKEN = /(?:^|-)seed-(\d+)(?=-|\+|$)/
-
-/**
- * Names what a reply competes as: the model and its generation config without the seed, so the seeded repeats of one
- * setup pool into one contender. `temp-0.3-seed-2-nothink` and `temp-0.3-seed-3-nothink` both become `temp-0.3-nothink`.
- */
-export function contenderOf(record: ReplyTranscriptRecord): string {
-  // A relationship-stage run labels each stage's config `<config>@<stage>`; the stage belongs to the slot, not the contender.
-  const stage = record.schema === 'airi.reply-transcript/v2' ? record.live.scenario.stage : null
-  const label = stage !== null && record.generation.config.endsWith(`@${stage}`) ? record.generation.config.slice(0, -stage.length - 1) : record.generation.config
-  const config = label.replace(SEED_TOKEN, '').replace(/^-+|-+$/g, '').replace(/-+(?=\+)/g, '')
-  // A config that was only a seed, or a seed with a suffix such as `+canonical-history`, is the default setup.
-  return `${record.model.id} · ${!config || config.startsWith('+') ? `default${config}` : config}`
 }
 
 /**

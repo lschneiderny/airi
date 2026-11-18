@@ -3,8 +3,8 @@ import type { PersonaJudgment, SpokenReply } from './pairs'
 import process from 'node:process'
 
 import { once } from 'node:events'
-import { readFile, stat } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
+import { readFile } from 'node:fs/promises'
+import { resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 
 import { mulberry32 } from '@proj-airi/stage-shared/perf/usage'
@@ -13,6 +13,7 @@ import { STAGE_RUNTIME_CONFIG } from '@proj-airi/stage-shared/stage-contract'
 import * as v from 'valibot'
 
 import { assertCoreAgentDistCurrent } from '../core-agent-dist'
+import { resolveTranscriptInput } from '../inputs'
 import { readTranscript } from '../transcript/jsonl'
 import { buildJudgeReplies, pairKey, PersonaJudgmentSchema, planPairs } from './pairs'
 import { buildJudgmentReport, renderJudgmentMarkdown } from './report'
@@ -123,22 +124,6 @@ async function report(argv: string[], repoRoot: string, stdout: (text: string) =
   const result = buildJudgmentReport(judgments)
   stdout(values.json ? `${JSON.stringify(result, null, 2)}\n` : renderJudgmentMarkdown(result))
   return 0
-}
-
-/** A transcript file, a run directory holding `transcripts.jsonl`, or the id of a committed model-eval set. */
-async function resolveTranscriptInput(repoRoot: string, input: string): Promise<string> {
-  const direct = resolve(repoRoot, input)
-  const info = await stat(direct).catch(() => undefined)
-  if (info?.isFile())
-    return direct
-  if (info?.isDirectory())
-    return join(direct, 'transcripts.jsonl')
-  if (/^[\w.-]+$/.test(input) && !input.includes('..')) {
-    const set = resolve(repoRoot, 'packages/qa-tools/model-eval/sets', input, 'transcripts.jsonl')
-    if ((await stat(set).catch(() => undefined))?.isFile())
-      return set
-  }
-  throw new Error(`transcript input not found: ${input} (expected a transcripts.jsonl file, a run directory, or a set id)`)
 }
 
 /** Reads and validates a judgments file. A missing file is empty only when `missingIsEmpty` (a new session's output). */

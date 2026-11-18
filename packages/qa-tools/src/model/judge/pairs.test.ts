@@ -4,7 +4,7 @@ import type { JudgeReply, SpokenReply } from './pairs'
 import { mulberry32 } from '@proj-airi/stage-shared/perf/usage'
 import { describe, expect, it } from 'vitest'
 
-import { buildJudgeReplies, contenderOf, pairKey, planPairs, slotOf } from './pairs'
+import { buildJudgeReplies, pairKey, planPairs, slotOf } from './pairs'
 
 function record(overrides: { model?: string, config?: string, turn?: number | null, user?: string, replyId?: string, runKey?: string, error?: string | null, kind?: 'turn' | 'probe' } = {}): ReplyTranscriptRecord {
   const model = overrides.model ?? 'model-a'
@@ -28,22 +28,14 @@ function record(overrides: { model?: string, config?: string, turn?: number | nu
 
 const spoken = (r: ReplyTranscriptRecord, text = r.reply.text): SpokenReply => ({ record: r, spoken: text, cues: [] })
 
-describe('contenderOf', () => {
-  it.each([
-    ['seed-1-nothink', 'model-a · nothink'],
-    ['temp-0.3-seed-2-nothink', 'model-a · temp-0.3-nothink'],
-    ['seed-3', 'model-a · default'],
-    ['seed-1+canonical-history', 'model-a · default+canonical-history'],
-    ['seed-2-nothink+app-tools', 'model-a · nothink+app-tools'],
-    ['default-nothink', 'model-a · default-nothink'],
-  ])('pools the seeds of config %s into %s', (config, expected) => {
-    expect(contenderOf(record({ config }))).toBe(expected)
+describe('slotOf', () => {
+  it('keys a reply by turn, seed, stage, and user text', () => {
+    expect(slotOf(record({ config: 'temp-0.3-seed-2-nothink', turn: 3, user: 'hey' }))).toEqual({ key: JSON.stringify([3, '2', null, 'hey']), turn: 3, user: 'hey', seed: '2', stage: null })
   })
 
-  it('leaves the relationship stage to the slot, so one setup is one contender across stages', () => {
-    const base = record({ config: 'default-nothink@intimate' })
+  it('keeps the relationship stage of a live record in the slot', () => {
     const staged: ReplyTranscriptRecord = {
-      ...base,
+      ...record({ config: 'default-nothink@intimate' }),
       schema: 'airi.reply-transcript/v2',
       live: {
         scenario: { id: 'relationship-stages', version: 1, stage: 'intimate' },
@@ -54,14 +46,7 @@ describe('contenderOf', () => {
       },
     }
 
-    expect(contenderOf(staged)).toBe('model-a · default-nothink')
     expect(slotOf(staged)?.stage).toBe('intimate')
-  })
-})
-
-describe('slotOf', () => {
-  it('keys a reply by turn, seed, stage, and user text', () => {
-    expect(slotOf(record({ config: 'temp-0.3-seed-2-nothink', turn: 3, user: 'hey' }))).toEqual({ key: JSON.stringify([3, '2', null, 'hey']), turn: 3, user: 'hey', seed: '2', stage: null })
   })
 
   it('gives probes and turnless records no slot', () => {
