@@ -12,6 +12,11 @@ This personal fork keeps local development workflows, not upstream publishing or
 | `enforce-rules-for-unocss` | Local styling, shared primitives, icons, and themes. |
 | `enforce-rules-for-vitest` | Test scope, regression coverage, Vue tests, and runtime boundaries. |
 | `enforce-rules-for-pinia-synced` | Cross-window ownership, replication, and persistence. |
+| `enforce-rules-for-ui-tests` | How to verify UI work, and which UI tests are allowed. |
+| `enforce-rules-for-ui-components` | Pages, panels, lists, forms, borders, and loading, empty, and error states. |
+| `enforce-rules-for-fonts` | Font families, `@font-face`, and font packages. |
+| `enforce-rules-for-render-loops` | Motion, reactions, and springs that a render loop samples. |
+| `design-audio-visualizations` | Visuals that react to a microphone or to playback. |
 | `stage-tamagotchi-godot-csharp` | Godot engine C# method and style. |
 | `analyze-io-traces` | Saved chat, voice, and audio trace analysis. |
 | `motion-qa` | Motion, emotion, and idle QA levels, gates, and evidence workflow. |

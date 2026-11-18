@@ -25,6 +25,7 @@ Agent guidance holds only what an agent cannot learn from the code, `package.jso
 - Use `injeca` dependency injection only at external boundaries: databases, model runtimes, queues, caches, filesystems, networks, clocks, environments, feature gates. Do not add dependency objects for internal sibling calls or parameter forwarding.
 - Prefer classes for runtime/browser APIs and substantial stateful business modules with lifecycle or domain ownership. Prefer functions for pure transformations/local helpers.
 - Use Valibot schemas near consumers. Use `errorMessageFrom(error)` from `@moeru/std`, with `?? 'fallback'` when needed. Prefer other `@moeru/std` error patterns.
+- Use `date-fns` for date and time code, with `@date-fns/utc` for UTC values and `@date-fns/tz` for named time zones, added through the pnpm catalog. Ask before researching or adding another date library. Render-loop clocks and `performance.now()` durations are not date code.
 - Settings/devtools pages need `<route lang="yaml"> meta: layout: settings </route>`. Register routes and icons in both settings layouts: `packages/stage-layouts/src/layouts/settings.vue` and `apps/stage-tamagotchi/src/renderer/layouts/settings.vue`.
 - Keep pure orchestration outside Vue/store integration.
 - Reuse existing animations in `apps/stage-tamagotchi/src/renderer/styles` before adding new ones.
@@ -36,7 +37,7 @@ Agent guidance holds only what an agent cannot learn from the code, `package.jso
 - For character mind work (autonomy, body ownership, prompt, and state refactors), read the [character mind ADR](docs/ai/adr/2026-11-17-character-mind-direction.md) and track slices in `docs/ai/context/character-mind-roadmap.md`.
 - Preserve the public `@proj-airi/stage-ui/stores` forwarding barrel. Shared component API edits also update `docs/ai/context/ui-components.md` and stories.
 - Put project/client ADRs in `docs/ai/adr/`, hosted backend ADRs in `server/docs/ai/adr/`, and current reference and policy docs in `docs/ai/context/`. Follow [server ADR rules](server/AGENTS.md).
-- Keep documentation with its code in the same commit/PR. Keep agent configuration changes in a separate commit/PR.
+- Keep documentation with its code in the same commit/PR. Put agent configuration changes (`AGENTS.md`, `CLAUDE.md`, skills) in a commit of their own. When they describe the code of a PR, that commit belongs in the same PR.
 - Keep structured `README.md` files in each `packages/` and `apps/` entry: purpose, usage, when to use, and when not to use.
 - Put translations in `packages/i18n`. Edit only English source and your own locale unless asked. The other locales are frozen copies of upstream's Crowdin exports; this fork does not sync them. Add only implemented locales. Do not insert English placeholders into other locales.
 - When adding nested `AGENTS.md`, add adjacent `CLAUDE.md` containing only `@AGENTS.md`. Root Claude guidance otherwise blocks nested discovery.
@@ -61,6 +62,11 @@ Agent guidance holds only what an agent cannot learn from the code, `package.jso
 // Source/context (file, issue, URL, or node_modules reference).
 // Removal condition (when it can be safely deleted).
 ```
+
+## PRIVATE DATA
+- Do not put private data in code, tests, fixtures, docs, comments, or commit messages. Private data describes a real person, device, or network: names, email addresses, usernames, host names, domains, IP addresses, local paths, device names, tokens, and recorded content. The fork's public repository name is not private.
+- Do not copy values from the user's configuration, logs, traces, or command output into a commit. In examples and tests, use reserved values: `example.com`, `user@example.com`, `192.0.2.0/24`, `198.51.100.0/24`, and `/home/user`.
+- Before committing, search the diff and the commit message for private data. If private data is already pushed, stop and tell the user. Do not rewrite pushed history without approval.
 
 ## UNIQUE STYLES
 - Write clear, complete sentences. Use consistent terms and remove filler.
@@ -105,9 +111,14 @@ Read the listed file before starting. Skill paths below are under `.agents/skill
 | --- | --- |
 | UI appearance/interaction design, changes, review | [DESIGN.md](DESIGN.md) |
 | Choosing which checks to run | [Testing and QA](docs/ai/context/testing.md) |
-| TypeScript/Vue writing, refactoring, review | [enforce-rules-for-typescript](.agents/skills/enforce-rules-for-typescript/SKILL.md) |
+| TypeScript/Vue writing, refactoring, review, including date, time, and unit helpers | [enforce-rules-for-typescript](.agents/skills/enforce-rules-for-typescript/SKILL.md) |
 | Tests, bug reproduction, mocks, test import boundaries | [enforce-rules-for-vitest](.agents/skills/enforce-rules-for-vitest/SKILL.md) |
+| Adding, changing, or planning tests or verification for a Vue page, component, or UI flow | [enforce-rules-for-ui-tests](.agents/skills/enforce-rules-for-ui-tests/SKILL.md) |
 | UnoCSS, Vue styles, components, animation, icons, color mode | [enforce-rules-for-unocss](.agents/skills/enforce-rules-for-unocss/SKILL.md) |
+| Setting or changing a font, `font-family`, `@font-face`, or a font package | [enforce-rules-for-fonts](.agents/skills/enforce-rules-for-fonts/SKILL.md) |
+| Building or reviewing a page, panel, list, or form; adding a border, a loading, empty, or error state, or a new component | [enforce-rules-for-ui-components](.agents/skills/enforce-rules-for-ui-components/SKILL.md) |
+| Motion, reactions, animations, or springs that a Pixi, TresJS, or Three render loop samples | [enforce-rules-for-render-loops](.agents/skills/enforce-rules-for-render-loops/SKILL.md) |
+| A visual that reacts to a microphone or to playback | [design-audio-visualizations](.agents/skills/design-audio-visualizations/SKILL.md) |
 | Adding `synced` or changing synced Pinia stores | [enforce-rules-for-pinia-synced](.agents/skills/enforce-rules-for-pinia-synced/SKILL.md) |
 | User-visible strings or glossary terms | [i18n guidance](packages/i18n/AGENTS.md) |
 | Domain terms in code, docs, or prompts | [Glossary](docs/ai/context/glossary.md) |

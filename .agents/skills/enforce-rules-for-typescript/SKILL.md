@@ -1,6 +1,6 @@
 ---
 name: enforce-rules-for-typescript
-description: Apply AIRI-specific TypeScript and Vue rules when changing imports, contracts, state ownership, lifecycle, or module boundaries.
+description: Apply AIRI-specific TypeScript and Vue rules when changing imports, contracts, state ownership, lifecycle, module boundaries, date and time code, or unit conversion and formatting helpers.
 ---
 
 # AIRI TypeScript and Vue
@@ -52,5 +52,23 @@ Use Composition API with `script setup lang="ts"` for Vue components.
 - Follow the root rules for classes and dependency injection.
 - Keep constants near their use. Explain non-obvious limits without adding comments to self-explanatory values.
 - Use path-safe arguments and platform-aware paths for process and filesystem work.
+
+## Dates and Times
+
+- Use `date-fns` for parsing, formatting, arithmetic, comparison, relative time, and durations. The root guide names the UTC and time-zone packages.
+- Do not write date arithmetic with millisecond constants such as `24 * 60 * 60 * 1000`. Use a `date-fns` function, or import the constant from `date-fns/constants`.
+- Do not format dates by hand with `padStart` on `getHours()` or by slicing `toISOString()`.
+- Use `UTCDate` for a value defined in UTC, such as a server day bucket, and `TZDate` for a named time zone.
+- For text that users see, pass the locale of `packages/i18n` to `date-fns`, or use its `intl*` functions with that locale.
+- On the server, store and send instants as ISO 8601 strings in UTC.
+- Frame clocks and `performance.now()` trace durations are not date code. The `enforce-rules-for-render-loops` skill covers them.
+
+## Units
+
+- Before writing a unit conversion or formatting helper (bytes, durations, clock time, percentages, pixels, audio samples), search for an existing one by its operation, for example `formatBytes`, `/ 1024`, or `style: 'percent'`.
+- A local helper is valid when no shared one exists and one place needs it. When a change adds the second copy, move the helper to a shared module in that change: `packages/stage-shared/src` for logic without Vue that several packages use, otherwise the owning package's `utils` directory.
+- Name the unit in each input and output name, for example `sizeBytes` or `durationMs`.
+- For locale-aware numbers, use `Intl.NumberFormat` with the `unit`, `percent`, or `compact` options and the locale of `packages/i18n`.
+- When two copies format the same value differently, pick one format and report the change.
 
 A readability-only change preserves behavior. For a behavior change, run the relevant checks and regression tests.

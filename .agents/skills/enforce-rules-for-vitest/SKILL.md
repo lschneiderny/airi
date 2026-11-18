@@ -19,6 +19,8 @@ Do not add tests for pure prose or assertions that only restate setup and consta
 
 ## Vue and Browser Behavior
 
+For UI work, read `enforce-rules-for-ui-tests` first. Do not write DOM-driven page or component tests outside the cases it allows. The visual baselines below are a fork check and stay allowed.
+
 - Assert props, emitted events, and visible results rather than private component state.
 - Use real Pinia behavior when store integration is under test. Control its initial state.
 - Mount lifecycle-dependent composables in a host component and unmount after the test.

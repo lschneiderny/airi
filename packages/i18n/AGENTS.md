@@ -2,6 +2,12 @@
 
 Scope: `packages/i18n/**`, and every string that a user sees.
 
+## Keys
+
+- After you add, rename, or delete a key, run `pnpm i18n:check` in the repository root. Fix each error that it reports.
+- Do not edit `.x18n/check-baseline.json` or run `x18n check --update-baseline`. The file is upstream's, and each upstream sync brings its version.
+- Before you delete a key that the check reports as unused, search the code for its parent key. The check cannot follow keys built at runtime.
+
 ## Glossary
 
 `packages/i18n/glossary/schema.ts` documents each field of `packages/i18n/glossary/terms.yaml`.
