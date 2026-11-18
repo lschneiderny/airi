@@ -5,6 +5,7 @@ import type { EmotionPulse, GestureRequest } from '../../../../stores/natural-pe
 
 import en from '@proj-airi/i18n/locales/en'
 
+import { CharacterMind } from '@proj-airi/character-mind'
 import { neutralReviewGains } from '@proj-airi/motion-driver-natural/review'
 import { defaultExpressionPerformanceSettings, parseAffectTrace } from '@proj-airi/stage-shared/expression-performance'
 import { useSettingsLive2d } from '@proj-airi/stage-ui-live2d/composables/live2d'
@@ -92,6 +93,7 @@ function createStage(diagnostics: ReturnType<typeof useNaturalMotionDiagnostics>
     settings: () => defaultExpressionPerformanceSettings,
     catalog: () => [],
     seed: 7,
+    mind: new CharacterMind({ seed: 7, clock: () => now * 1000 }),
     clock: () => now,
   })
   const stop = watch(() => diagnostics.affectTraceRequest, (request) => {
@@ -325,7 +327,7 @@ describe('natural motion lab', () => {
     expect(sink).toHaveBeenCalledTimes(1)
     const [saved, fileName] = sink.mock.calls[0]
     const trace = parseAffectTrace(JSON.parse(JSON.stringify(saved)))
-    expect(trace.entries.map(entry => entry.type === 'signal' ? [entry.signal.kind, entry.signal.at] : [entry.type])).toEqual([['emotion', 10], ['emotion', 11]])
+    expect(trace.entries.map(entry => entry.type === 'signal' ? [entry.signal.kind, entry.signal.at] : [entry.type])).toEqual([['reaction', 10], ['reaction', 11]])
     expect(trace).toMatchObject({ decider: 'picker', truncated: false, endAt: 11 })
     expect(fileName).toMatch(/^affect-trace-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}\.\d{3}Z\.json$/)
     await expect.element(screen.getByTestId('affect-trace-entries')).toHaveTextContent('affect-trace.exported')

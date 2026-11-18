@@ -126,30 +126,39 @@ Do not persist or replicate it, and do not add `synced`: it is per-window runtim
 
 ### Expression performance
 
-The `expression-performance` entrypoint owns the pure decision layer for character expression performance:
+The `expression-performance` entrypoint owns the pure rules for character expression performance. They fall on two sides. The character mind (`@proj-airi/character-mind`) decides the emotion, its strength, and its hold with `acceptReaction`, `emotionHold`, and `releaseHold`. The asset deciders here pick the catalog entries that show what the mind decided. The entrypoint holds:
 
 - the `AffectSignal`, `ReactionEpisode`, `SlotCommand`, `HoldCommand`, and `Decider` contracts;
 - the catalog schemas, `mergeCatalog`, `isAutoEligible`, and `isLlmEligible`;
 - the settings document schema `ExpressionPerformanceSettingsSchema`, its defaults, and `parseExpressionPerformanceSettings`;
-- reaction strength with bands, habituation, and escalation (`acceptReaction`);
-- the picker and planner deciders, selected by `createDecider`, and the timing-slot scheduler;
+- reaction strength with bands, habituation, and escalation (`acceptReaction`), and the emotion hold (`emotionHold`, `releaseHold`), for the mind;
+- the picker and planner asset deciders, selected by `createDecider`, and the timing-slot scheduler;
 - `choosePastime`, which picks the entry the user marked `idleUse: 'activity'` that she holds when Natural's idle draw starts a pastime (Natural decides when and for how long), with `idleActivityEntries` and `idleSleepEntryIds` to read the catalog;
 - `resolveOccasions`, which names the occasions that hold now (`morning`, `gaming`, `music`, `lonely` and the rest of `OCCASIONS`) from the hour, the foreground app, the music and the idle drive. A pastime entry tagged with `occasions` is offered only during one of them and picked first then; `occasionCoverage` lists which pastimes cover each occasion;
 - `chooseMomentEntry`, which picks the entry tagged with `moments` that she shows for a few seconds at a short moment (`check-in`, `poked`, `waking` and the rest of `MOMENTS`), with `momentEntries` and `momentCoverage` to read the catalog;
 - `buildTagSuggestionPrompt` and `parseTagSuggestions`, the two ends of a request that asks a language model to suggest `idleUse`, `occasions` and `moments` for a catalog. The parser drops everything the model may not decide; a suggestion is applied only by the user;
-- affect traces and their replay (`withAffectTrace`, `parseAffectTrace`, `replayAffectTrace`);
+- affect traces and their replay (`withAffectTrace`, `parseAffectTrace`, `replayAffectTrace`). A trace is `version: 2`: it records the deciders' signals, which carry the episodes the mind decided, so a replay needs no mind. A version 1 trace no longer parses;
 - character performance profiles (`resolveEffectiveSettings`, `applyMappingWeights`);
 - touch affect (`touchAffect`, `initialTouchAffectMemory`, `MoodDose`), which turns one classified pet or poke into at most one mood dose with cooldowns and habituation. A `touch` affect signal returns its dose in the decision's `moods`, and every other signal returns an empty list. Touch never creates an emotion episode.
 
 A decider never reads a clock, global randomness, or a store. Pass every time in the signal as monotonic seconds, and keep the returned state for the next call. The state is plain JSON, so it can be checkpointed and replayed.
 
-A `HoldCommand` tells the Natural driver which emotion to hold and for how long. It has an `emotion`, or `null` to release the hold, a `strength`, and the same `holdSeconds`, `until`, and `turnId` lifetime fields as a slot command.
-Every decision carries `holds`:
+A decider receives no raw emotion. Its signals are:
 
-- An accepted emotion episode holds its emotion at the episode intensity. A speech turn's hold lasts `slotHoldSeconds('face', emotion)` with `until: 'speech'`, the same as a face expression of that emotion; a hold without a turn lasts `held.turnlessSeconds` with `until: 'hold'`.
+- `reaction`, with the episode the mind decided. A new episode draws its pick tickets; an escalation reuses them and fills only empty slots.
+- `neutral`, when a neutral emotion reset the mind's reaction state. It releases the face and effect slots.
+- `expression`, for an entry the model named, with the episode the mind derived from the entry's emotion mapping, or `null`.
+- `clear`, `speech`, `muted`, `timing`, `deadline`, and `touch`.
+
+A decision carries the slot commands in `slots` and the mood doses of a `touch` in `moods`. It carries no episode and no hold: the mind sends those with its intents.
+
+A `HoldCommand` tells the Natural driver which emotion to hold and for how long. It has an `emotion`, or `null` to release the hold, a `strength`, and the same `holdSeconds`, `until`, and `turnId` lifetime fields as a slot command.
+The mind decides the hold:
+
+- An accepted emotion episode holds its emotion at the episode intensity (`emotionHold`). A speech turn's hold lasts `slotHoldSeconds('face', emotion)` with `until: 'speech'`, the same as a face expression of that emotion; a hold without a turn lasts `held.turnlessSeconds` with `until: 'hold'`.
 - `slotHoldSeconds` is `slots.holdSeconds` (4 s), times `slots.effectHoldScale` (1.5) for the effect slot and `slots.lingerScale` (2) for the `lingeringEmotions` (sad, sleepy, love, flustered, think). Automatic picks and explicit expressions without a hold of their own use it. A speech lease stays `slots.afterSpeechShare` (0.5) of its hold after its speech ends.
-- A neutral that resets the reaction state, and a clear that names no slot, release the hold.
-- An explicit expression whose catalog entry has emotion mappings accepts its heaviest mapping like an emotion signal, which can start or escalate an episode, and always holds that emotion for the expression's own slot lifetime.
+- A neutral that resets the reaction state, and a clear that names no slot, release the hold (`releaseHold`).
+- For an explicit expression, the caller reads the entry's lease with `explicitExpressionCommand` and its heaviest emotion mapping with `primaryMapping`, and sends both to the mind. The mind accepts the mapping like an emotion, which can start or escalate an episode, and always holds that emotion for the expression's own slot lifetime.
 - With `heldEmotions` off, explicit expressions keep their slot-only behavior.
 
 ```ts
@@ -161,16 +170,17 @@ const catalog: CatalogEntry[] = []
 const decider = createDecider('picker')
 let state = decider.initial(42)
 
+// The episode comes from the mind's `emotion` intent.
 const result = decider.decide(
-  { kind: 'emotion', source: 'act', emotion: 'happy', nominal: 0.6, turnId: 'turn-1', at: 12.5 },
+  { kind: 'reaction', episode: { id: 'happy-1', emotion: 'happy', nominal: 0.6, intensity: 0.6, band: 'clear', escalation: false }, turnId: 'turn-1', at: 12.5 },
   { catalog, settings: defaultExpressionPerformanceSettings },
   state,
 )
 state = result.state
-// result.decision.episodes and result.decision.holds go to Natural; result.decision.slots go to the expression performer.
+// result.decision.slots go to the expression performer. The episode and its hold go to Natural from the mind's intent.
 ```
 
-Use this entrypoint to decide how a character reacts to emotions and expression requests, and to compare deciders by replaying a recorded affect trace.
+Use this entrypoint to pick the entries that show a decided emotion or a named expression, and to compare deciders by replaying a recorded affect trace. To decide the emotion itself, use `@proj-airi/character-mind`.
 Do not use it to render, compose parameters, or hold timers. The stage conductor in `@proj-airi/stage-ui` owns clocks and timers, and `@proj-airi/stage-ui-live2d` executes the decisions.
 The [expression performance ADR](../../docs/ai/adr/2026-10-18-expression-performance.md) records the contracts.
 The [Natural emotion revamp ADR](../../docs/ai/adr/2026-10-19-natural-emotion-revamp.md) records the hold contract.

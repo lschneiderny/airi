@@ -56,6 +56,14 @@ The short `system:character` text rendered from the character state's reading. I
 **Not to be confused with:** the character state itself, which is the stored record; the situation block, which rides beside it on the same turn; and the character card's system prompt.
 **Avoid:** "mood prompt", "character prompt".
 
+### Character mind
+
+The module that turns [stimuli](#stimulus) into [intents](#intent). Its core is the pure function `step` over the plain, serializable `MindState`. The thin class `CharacterMind` owns the clock, the random source, and the state, calls the core in-process, and persists nothing. Each `Stage.vue` creates one mind through `useCharacterMind`, so the mind runs in the window that hosts the stage. Today it owns the emotion half of the expression decision: for an emotion, a named expression, or a clear, it decides the reaction episode, its strength, and its hold. The target design gives it every stimulus and one instance per character ([Autonomous behavior](autonomous-behavior.md#target)).
+
+**Code:** `packages/character-mind/src/mind.ts` `CharacterMind`; `packages/character-mind/src/step.ts` `step`, `initialMindState`; `packages/character-mind/src/types.ts` `MindState`; `packages/stage-ui/src/composables/performance/use-character-mind.ts` `useCharacterMind`.
+**Not to be confused with:** the decider, which stays as the asset picker and chooses the entries that show what the mind decided; the conductor, which sends stimuli to the mind and dispatches for one stage; and the chat orchestrator.
+**Avoid:** "brain", "AI", "scheduler" for the whole module.
+
 ### Character state
 
 The character's slow inner state for one character card, stored per card and hidden from the user except in devtools. The stored record holds three layers on their own clocks: mood (hours), temperament (days, a slow average of mood that becomes the mood baseline), and relationship (closeness, trust, familiarity, moved by discrete events). A `CharacterReading` derived from the record feeds the prompt, the face baseline, the idle drive, and the reach-out urge.
@@ -98,10 +106,10 @@ A user-defined expression that applies several catalog expressions together, eac
 
 ### Conductor
 
-The stage-side class that feeds affect signals (ACT cues, speech timing, touch, devtools pulses) to the decider under the active character profile and dispatches its decisions: reaction episodes to Natural, slot commands to the expression performer, and motion groups to the Universal and MAGIC drivers. It also sends the face baseline and the idle drive to the scene and records affect traces.
+The stage-side class that turns stage events (ACT cues, expression tool calls, speech timing, touch, devtools pulses) into stimuli for the character mind and affect signals for the decider, under the active character profile. An emotion, a named expression, and a clear go to the mind first, and the decider then receives what the mind decided. The conductor dispatches both results: the mind's reaction episodes and holds to Natural, the decider's slot commands to the expression performer, and motion groups to the Universal and MAGIC drivers. It takes the mind as its `mind` option. It also sends the face baseline and the idle drive to the scene and records affect traces.
 
-**Code:** `packages/stage-ui/src/composables/performance/use-stage-performance-conductor.ts` `StagePerformanceConductor`, `useStagePerformanceConductor`.
-**Not to be confused with:** the decider, which is pure and only decides; and the body director, which owns the MMD body.
+**Code:** `packages/stage-ui/src/composables/performance/use-stage-performance-conductor.ts` `StagePerformanceConductor`, `useStagePerformanceConductor`; `packages/stage-ui/src/composables/performance/use-character-mind.ts` `useCharacterMind`.
+**Not to be confused with:** the character mind, which decides the emotion; the decider, which is pure and only picks entries; and the body director, which owns the MMD body.
 **Avoid:** "performance manager", "orchestrator" (the chat orchestrator is a different module).
 
 ### Conversation register
@@ -122,10 +130,10 @@ Natural's response to the mouse cursor near her face. Interest rises with distan
 
 ### Decider
 
-A pure, checkpointable state machine that turns affect signals into a `PerformanceDecision`: reaction `episodes` for Natural and expression `slots` for the expression performer. Two kinds exist: the picker draws one expression per signal from weighted tickets with recency, and the planner extends the picker with planned holds and moments across a turn. The user's expression performance setting chooses the kind.
+A pure, checkpointable state machine that picks the expression entries that show what the character mind decided. It turns affect signals into a `PerformanceDecision`: expression `slots` for the expression performer, and mood doses (`moods`) for a touch signal. A decision carries no episode and no hold. Its input is the decided reaction episode (a `reaction` signal), never a raw emotion. Two kinds exist: the picker draws one expression per signal from weighted tickets with recency, and the planner extends the picker with planned holds and moments across a turn. The user's expression performance setting chooses the kind.
 
 **Code:** `packages/stage-shared/src/expression-performance/types.ts` `Decider`, `DeciderContext`; `packages/stage-shared/src/expression-performance/deciders.ts` `createDecider`; `packages/stage-shared/src/expression-performance/picker.ts` `createPickerDecider`; `packages/stage-shared/src/expression-performance/planner.ts` `createPlannerDecider`.
-**Not to be confused with:** the body director, which decides body behavior, not expressions; and the turn planner (`packages/motion-driver-humanoid/src/look-at/turn-planner.ts` `createTurnPlanner`), which plans head and body turns.
+**Not to be confused with:** the character mind, which decides the emotion, its strength, and its hold; the body director, which decides body behavior, not expressions; and the turn planner (`packages/motion-driver-humanoid/src/look-at/turn-planner.ts` `createTurnPlanner`), which plans head and body turns.
 **Avoid:** "expression AI", "selector".
 
 ### Desktop reaction
@@ -133,7 +141,7 @@ A pure, checkpointable state machine that turns affect signals into a `Performan
 A brief Natural response to a desktop event, which the performance state resolves as `reactKind` with a sequence number. `wake` fires when the desktop unlocks or resumes: a camera glance and nudge that also rouses her from idle sleep. `screen-change` fires when the screen content changes sharply: a glance at the screen, at most once every 10 s.
 
 **Code:** `packages/stage-shared/src/performance-state/index.ts` `PerformanceReactKind`, `resolvePerformanceState`; performed by `packages/motion-driver-natural/src/pending-actions.ts` `startPending`.
-**Not to be confused with:** a reaction episode from the decider; a touch reaction; and the `welcome-back` moment expression or ritual reach-out that the same return can start.
+**Not to be confused with:** a reaction episode from the character mind; a touch reaction; and the `welcome-back` moment expression or ritual reach-out that the same return can start.
 **Avoid:** "wake event" for both kinds, "screen reaction".
 
 ### Drive
@@ -162,7 +170,7 @@ On the character state, `energy` is one of the three mood axes (valence, energy,
 
 ### Expression performance
 
-The system that decides and plays expressions in response to affect: the expression catalog (per-model expressions, custom expressions, and combos with emotion mappings), the deciders, the scheduler of slot commands and holds, character profiles that scale intensity, and affect traces for replay. Its pure core lives in `stage-shared`; the conductor runs it, and each renderer's expression store executes its slot commands.
+The system that decides and plays expressions in response to affect: the expression catalog (per-model expressions, custom expressions, and combos with emotion mappings), the reaction rules that the character mind runs to decide the emotion, its strength, and its hold, the deciders that pick the entries, the scheduler of slot commands and holds, character profiles that scale intensity, and affect traces for replay. An affect trace is version 2: it records the deciders' signals, which carry the decided episodes, so a replay needs no mind. Its pure rules live in `stage-shared`; the conductor runs the mind and the deciders, and each renderer's expression store executes its slot commands.
 
 **Code:** `packages/stage-shared/src/expression-performance/index.ts` (module barrel); `packages/stage-shared/src/expression-performance/settings.ts` `ExpressionPerformanceSettingsSchema`; `packages/stage-shared/src/expression-performance/catalog.ts` `ExpressionKindSchema`.
 **Not to be confused with:** the performance state (the stage's current mode) and the whole-body performer for MMD.
@@ -199,6 +207,13 @@ A long idle behavior that Natural's idle draw only decides and records, and that
 **Code:** `packages/motion-driver-natural/src/idle-errands.ts` `IDLE_ERRAND_KINDS`, `IdleErrandKind`, `IDLE_ERRAND_PACING`, `IdleErrandReports`.
 **Not to be confused with:** an idle activity, which Natural plays itself.
 **Avoid:** "idle task", "idle job".
+
+### Intent
+
+What the character mind emits in answer to a stimulus, for one [channel](#channel). Each intent carries an `id` and a `cause`, the sequence number of the stimulus it answers. Today every intent is on the face channel: `emotion` (a reaction episode with its hold), `entry` (a named expression entry, with the episode and the hold that its emotion mapping gave, or none), and `release` (a neutral reset or a clear). The conductor turns each into a signal for the decider and, under Natural, sends the episode and the hold to the scene.
+
+**Code:** `packages/character-mind/src/types.ts` `MindIntent`; produced by `packages/character-mind/src/expression.ts` `answerEmotion`, `answerExpressionRequest`, `answerExpressionClear`.
+**Not to be confused with:** `BodyIntent`, the MMD director's per-frame output.
 
 ### Leader and follower windows
 
@@ -245,7 +260,7 @@ Markovian Animation Generator with Illusory Conditioning: a Live2D motion driver
 An expression entry that the user tagged for a moment lasting seconds (`welcome-back`, `check-in`, `held-back`, `waking`, `petted`, `poked`, `yawning`, `zoning-out`, `peering`). She shows it as an idle claim for some of those moments: with a 0.6 chance, at most once per entry every 60 s, and for the time in `MOMENT_HOLD_MS` or the length of the idle act, capped at 20 s. Only the Live2D expression store shows moments.
 
 **Code:** `packages/stage-shared/src/expression-performance/moments.ts` `MomentSchema`, `Moment`, `MOMENT_SETTINGS`, `MOMENT_HOLD_MS`, `chooseMomentEntry`; run by `packages/stage-ui/src/composables/performance/use-idle-props.ts` `useIdleProps`.
-**Not to be confused with:** a pastime, which is an idle errand gated by occasions that last minutes; and a reaction episode, which the decider picks by emotion.
+**Not to be confused with:** a pastime, which is an idle errand gated by occasions that last minutes; and a reaction episode, which the character mind decides and the decider shows with entries picked by emotion.
 **Avoid:** "reaction expression", and "moment" alone for the expression.
 
 ### Mood
@@ -293,7 +308,7 @@ An unprompted turn whose reason is something from her own day, improvised when t
 The part that executes decisions without making them. On MMD, the whole-body performer is a pure kinematic synthesizer that turns Natural's intent, gaze goals, the director's stance, the gait, and clip ownership into bone channels each 120 Hz tick, and `MMDBodyPerformer` writes those channels to the model's bones. On Live2D, the expression performer is the Live2D expression store with its hold performer, which applies slot commands and emotion holds.
 
 **Code:** `packages/motion-driver-humanoid/src/performance/index.ts` `createBodyPerformer`; `packages/stage-ui-mmd/src/composables/mmd/body/performer.ts` `MMDBodyPerformer`; `packages/stage-ui-live2d/src/composables/live2d/expression/hold.ts` `EmotionHoldPerformer`; tool-facing view `packages/stage-ui/src/composables/performance/use-stage-performance-conductor.ts` `ExpressionToolPerformer`.
-**Not to be confused with:** the conductor, which dispatches; the decider, which decides expressions; and the body director, which decides body behavior.
+**Not to be confused with:** the conductor, which dispatches; the character mind, which decides the emotion; the decider, which picks expression entries; and the body director, which decides body behavior.
 **Avoid:** "renderer" for a performer (the renderer draws the model).
 
 ### Persistence tier
@@ -346,9 +361,9 @@ An unprompted turn: a chat turn that the character starts on her own when the ga
 
 ### Reaction
 
-Three codes use this word. An expression reaction episode is one decided emotion at a nominal intensity and band, the unit the decider sends to Natural and the expression performer. A spoken touch reaction is a short line after a long pet (`pet-soft`) or a poke burst (`poke-protest`), allowed by its own reaction policy and submitted through `submitReaction`. A body reaction is the MMD performer's physical response to a poke, pet, or drag.
+Three codes use this word. An expression reaction episode is one decided emotion at a nominal intensity and band, the unit the character mind decides and sends to Natural; the decider receives it to pick entries. A spoken touch reaction is a short line after a long pet (`pet-soft`) or a poke burst (`poke-protest`), allowed by its own reaction policy and submitted through `submitReaction`. A body reaction is the MMD performer's physical response to a poke, pet, or drag.
 
-**Code:** `packages/stage-shared/src/expression-performance/types.ts` `ReactionEpisode`; `packages/stage-shared/src/expression-performance/reaction-strength.ts` `acceptReaction`; `packages/stage-shared/src/situation/reaction-policy.ts` `ReactionKind`, `settleReaction`; `packages/motion-driver-humanoid/src/performance/contracts.ts` `BodyReactionKind`.
+**Code:** `packages/stage-shared/src/expression-performance/types.ts` `ReactionEpisode`; `packages/stage-shared/src/expression-performance/reaction-strength.ts` `acceptReaction`, called only by `packages/character-mind/src/expression.ts` `answerEmotion` and `answerExpressionRequest`; `packages/stage-shared/src/situation/reaction-policy.ts` `ReactionKind`, `settleReaction`; `packages/motion-driver-humanoid/src/performance/contracts.ts` `BodyReactionKind`.
 **Not to be confused with:** Spark Notify reactions (`packages/core-agent/src/agents/spark-notify/plugins/reaction.ts` `createSparkNotifyReactionPlugin`), which are the notify agent's output, and chat message reactions (`packages/stage-ui/src/stores/chat.ts` `ChatReactionPayload`).
 **Avoid:** "response" for any of the three.
 
@@ -424,6 +439,14 @@ The MMD body's base pose, which the body director holds: `stand`, `sit`, or `sle
 **Not to be confused with:** posture, Natural's continuous pose; and the `shift-stance` idle activity, a weight shift while standing.
 **Avoid:** "pose" or "state" for a stance.
 
+### Stimulus
+
+An observation the character mind answers. Today three kinds exist: `emotion` (an ACT emotion, a tool call, or a devtools pulse, with a nominal strength already scaled by the card's expressiveness), `expression-request` (the model named an entry; the conductor reads the entry's lease and primary emotion mapping, so the mind needs no catalog), and `expression-clear`. The target design adds touch, a cursor notice, the user's return, music, desktop and chat events, and elapsed idle time.
+
+**Code:** `packages/character-mind/src/types.ts` `MindStimulus`; sent by `packages/stage-ui/src/composables/performance/use-stage-performance-conductor.ts` `StagePerformanceConductor` (`emotion`, `expression`, `clearExpression`).
+**Not to be confused with:** an affect signal, which is the decider's input and carries what the mind already decided.
+**Avoid:** "event" alone, "trigger".
+
 ### Synced settings document
 
 The persistence tier for one feature's user-facing settings: one Valibot-validated document in a synced Pinia store, persisted privately to localStorage, whose `update` and `reset` actions are leader-routed so followers never write storage. Each stored field is validated on its own, so an invalid field falls back to its default while valid siblings survive.
@@ -437,7 +460,7 @@ The persistence tier for one feature's user-facing settings: one Valibot-validat
 Everything that a poke or pet starts, each part with its own cooldown and no arbiter between them: Natural's body and face response (a poke nudge, surprise, and glance; the pet face and a pet gaze override), a mood dose to Natural's mood, a moment expression on Live2D, a spoken line (`pet-soft` or `poke-protest`) that the reaction policy allows on the leader, and on MMD a body reaction from the performer. These parts run only under the Natural driver. Under Universal and MAGIC, upstream's touch system answers instead: an additive head and body reaction, the model's own touch motion group on a tap, and an avatar touch notify that lets her speak through the gate.
 
 **Code:** `packages/stage-ui-live2d/src/composables/live2d/touch.ts` `createLive2DTouchReaction` (Universal and MAGIC); `packages/motion-driver-natural/src/touch.ts` `NaturalPetLayer`; `packages/motion-driver-natural/src/touch-gestures.ts` `NaturalTouchGestures`; `packages/stage-ui-mmd/src/composables/mmd/touch/touch.ts` `MMDTouch`; `packages/stage-ui/src/stores/touch.ts` `useStageTouchStore`; `packages/stage-shared/src/expression-performance/touch-affect.ts` `touchAffect`; `packages/stage-shared/src/situation/reaction-policy.ts` `reactionPolicy`, `ReactionKind`; `packages/motion-driver-humanoid/src/performance/contracts.ts` `BodyReactionKind`.
-**Not to be confused with:** a reaction episode (see Reaction), which comes from the decider; and a desktop reaction.
+**Not to be confused with:** a reaction episode (see Reaction), which comes from the character mind; and a desktop reaction.
 **Avoid:** "touch response" for one part without naming it.
 
 ### Universal
@@ -458,31 +481,11 @@ One part of her output with a single owner: gaze, head and posture, face and exp
 
 **Not to be confused with:** a Live2D parameter or an MMD bone, several of which make up one channel.
 
-### Character mind
-
-The one module per character, in the leader window, that turns every stimulus into intents on one clock. Its core is a pure step function over serializable state; a thin class in the window that hosts the stage owns the clock, the random source, and persistence, and calls the core in-process. It drives only the Natural performer.
-
-**Not to be confused with:** the decider, which it subsumes as one part; the conductor, which today does per-stage dispatch; and the chat orchestrator.
-**Avoid:** "brain", "AI", "scheduler" for the whole module.
-
-### Intent
-
-What the character mind emits for one channel: an episode to start or end, such as an idle act, a glance at a target, a reaction, sleep, a groove, or a line to speak. A performer realises or refuses an intent.
-
-**Not to be confused with:** `BodyIntent`, the MMD director's per-frame output today.
-
 ### Performer (target)
 
 The per-stage, renderer-side module (Live2D or MMD, under the Natural driver) that realises the mind's intents with continuous per-frame control and declares the capabilities it can realise. It may contain renderer deciders that act on intents and on the renderer's own world.
 
 **Not to be confused with:** the current usages listed under [Conflicting usages](#conflicting-usages).
-
-### Stimulus
-
-An observation the character mind answers: a touch, a cursor notice, the user's return, music, a desktop event, a chat event, or elapsed idle time.
-
-**Not to be confused with:** an affect signal, which is the decider's input today.
-**Avoid:** "event" alone, "trigger".
 
 ## Conflicting usages
 

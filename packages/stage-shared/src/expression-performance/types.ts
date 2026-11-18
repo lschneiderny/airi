@@ -25,17 +25,20 @@ export interface TimingEvent {
 }
 
 /**
- * ACT markers target the next matching timing event of their turn; devtools pulses never schedule.
- *
- * A `clear` releases the named slot, or the face, effect, and prop slots when no slot is named.
- * It differs from a `neutral` emotion, which clears only face and effect and also resets the
- * reaction history.
- *
- * A `touch` doses mood only (see `touchAffect`): it never creates an episode, slot, or hold.
+ * What an asset decider reacts to. The character mind decides the emotion, its strength, and its hold first, so
+ * no signal carries a raw emotion:
+ * - A `reaction` carries the episode the mind decided. A turn's picks target the next matching timing event of
+ *   that turn; a reaction without a turn never schedules.
+ * - A `neutral` says that a neutral emotion reset the mind's reaction state. It clears only face and effect.
+ * - An `expression` names an entry. Its `episode` is the one the mind derived from the entry's emotion mapping,
+ *   or null when the request started none.
+ * - A `clear` releases the named slot, or the face, effect, and prop slots when no slot is named.
+ * - A `touch` doses mood only (see `touchAffect`): it never creates a slot.
  */
 export type AffectSignal
-  = | { kind: 'emotion', source: 'act' | 'tool' | 'devtools', emotion: PerformanceEmotion, nominal: number, turnId?: string, at: number }
-    | { kind: 'expression', source: 'act' | 'tool', expressionId: string, holdSeconds?: number, turnId?: string, at: number }
+  = | { kind: 'reaction', episode: ReactionEpisode, turnId?: string, at: number }
+    | { kind: 'neutral', turnId?: string, at: number }
+    | { kind: 'expression', source: 'act' | 'tool', expressionId: string, holdSeconds?: number, episode: ReactionEpisode | null, turnId?: string, at: number }
     | { kind: 'clear', source: 'act' | 'tool' | 'devtools', slot?: SlotCommand['slot'], turnId?: string, at: number }
     | { kind: 'speech', event: 'clip-start' | 'clip-end' | 'clip-stopped' | 'turn-end', turnId: string, clipId?: string, at: number }
     | { kind: 'muted', muted: boolean, at: number }
@@ -63,9 +66,7 @@ export interface HoldCommand {
 }
 
 export interface PerformanceDecision {
-  episodes: ReactionEpisode[]
   slots: SlotCommand[]
-  holds: HoldCommand[]
   /** Mood doses for the Natural performer; empty for every signal except `touch`. */
   moods: MoodDose[]
 }

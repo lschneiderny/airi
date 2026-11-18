@@ -1,16 +1,13 @@
-import type { ReactionState } from './reaction-strength'
 import type { AutoSlot, Tickets } from './selection'
 import type { TouchAffectMemory } from './touch-affect'
 import type { Decider, DeciderContext, PerformanceDecision } from './types'
 
 import { entrySlots } from './combos'
-import { acceptReaction, createReactionState } from './reaction-strength'
-import { applySlotOccupants, autoPicks, clearCommands, drawEpisodeTickets, emotionHold, explicitExpressionCommand, explicitExpressionReaction, neutralCommands, releaseHold, slotHoldSeconds } from './selection'
+import { applySlotOccupants, autoPicks, clearCommands, drawEpisodeTickets, enterEpisode, explicitExpressionCommand, neutralCommands, slotHoldSeconds } from './selection'
 import { initialTouchAffectMemory, touchAffect } from './touch-affect'
 
 /** Episode tickets and occupants survive checkpoints so escalations cannot reroll a pick. */
 export interface PickerState {
-  reaction: ReactionState
   recency: Record<string, number>
   occupants: Record<AutoSlot, string | null>
   streams: Record<AutoSlot, number>
@@ -19,12 +16,14 @@ export interface PickerState {
   touch: TouchAffectMemory
 }
 
-/** Pure baseline policy; speech lifetimes belong to the slot performer, not this state. */
+/**
+ * Pure baseline policy: it picks the entries that show an episode the mind decided. Speech lifetimes belong to the
+ * slot performer, not this state.
+ */
 export function createPickerDecider(): Decider<PickerState> {
   return {
     initial(seed) {
       return {
-        reaction: createReactionState(seed),
         recency: {},
         occupants: { face: null, effect: null },
         streams: { face: (seed ^ 0x9E3779B9) >>> 0, effect: (seed ^ 0x85EBCA6B) >>> 0 },
@@ -34,7 +33,7 @@ export function createPickerDecider(): Decider<PickerState> {
     },
     nextDeadline: () => null,
     decide(signal, ctx: DeciderContext, state) {
-      const decision: PerformanceDecision = { episodes: [], slots: [], holds: [], moods: [] }
+      const decision: PerformanceDecision = { slots: [], moods: [] }
       if (signal.kind === 'touch') {
         const affect = touchAffect(state.touch, signal, ctx.settings)
         if (affect.dose)
@@ -46,40 +45,29 @@ export function createPickerDecider(): Decider<PickerState> {
         if (!commands)
           return { decision, state }
         decision.slots.push(...commands)
-        const command = commands[0]
-        const derived = explicitExpressionReaction(command, signal, ctx, state)
-        decision.episodes.push(...derived.episodes)
-        decision.holds.push(...derived.holds)
-        const occupants = applySlotOccupants(derived.state.occupants, commands, ctx.catalog)
-        return { decision, state: { ...derived.state, occupants, recency: { ...state.recency, [command.expressionId]: signal.at } } }
+        // An episode the entry started draws its tickets, so a later escalation picks from them. The entry is the
+        // pick, so no automatic pick runs and the other slot keeps its occupant.
+        const drawn = signal.episode && !signal.episode.escalation ? drawEpisodeTickets(state.streams) : {}
+        const occupants = applySlotOccupants(state.occupants, commands, ctx.catalog)
+        return { decision, state: { ...state, ...drawn, occupants, recency: { ...state.recency, [commands[0].expressionId]: signal.at } } }
       }
       if (signal.kind === 'clear') {
-        // Reaction history and episode tickets stay, so a later escalation may refill a cleared slot.
+        // Episode tickets stay, so a later escalation may refill a cleared slot.
         decision.slots = clearCommands(signal)
-        if (!signal.slot)
-          decision.holds.push(releaseHold(signal.turnId))
         const occupants = applySlotOccupants(state.occupants, decision.slots, ctx.catalog)
         return { decision, state: { ...state, occupants } }
       }
-      if (signal.kind !== 'emotion')
-        return { decision, state }
-      const reaction = acceptReaction(state.reaction, signal.emotion, ctx.settings.bands ? signal.nominal : 0.6, signal.at, ctx.settings)
-      let next = { ...state, reaction: reaction.state }
-      if (signal.emotion === 'neutral' && reaction.state !== state.reaction) {
+      if (signal.kind === 'neutral') {
         decision.slots = neutralCommands(signal.turnId)
-        decision.holds.push(releaseHold(signal.turnId))
-        return { decision, state: { ...next, occupants: { face: null, effect: null }, tickets: null } }
+        return { decision, state: { ...state, occupants: { face: null, effect: null }, tickets: null } }
       }
-      const episode = reaction.episode
-      if (!episode)
-        return { decision, state: next }
-      decision.episodes.push(episode)
-      decision.holds.push(emotionHold(episode, signal.turnId, ctx.settings))
-      if (!episode.escalation)
-        next = { ...next, ...drawEpisodeTickets(state.streams), occupants: { face: null, effect: null } }
+      if (signal.kind !== 'reaction')
+        return { decision, state }
+      const { episode } = signal
+      let next = enterEpisode(state, episode)
       if (!ctx.settings.autoExpressions)
         return { decision, state: next }
-      for (const { slot: picked, expressionId } of autoPicks(episode, ctx, next.tickets!, next.occupants, next.recency, signal.at)) {
+      for (const { slot: picked, expressionId } of autoPicks(episode, ctx, next.tickets, next.occupants, next.recency, signal.at)) {
         // Every slot a combo spans shares the hold of the slot it was picked for: one lease owns them all.
         const holdSeconds = slotHoldSeconds(picked, episode.emotion, ctx.settings.slots)
         const commands = entrySlots(ctx.catalog.find(entry => entry.id === expressionId)!, ctx.catalog).map(slot => ({ slot, expressionId, holdSeconds, until: 'speech' as const, turnId: signal.turnId }))

@@ -219,7 +219,7 @@ Both calls take effect on the next Natural grid step. Under Universal or MAGIC, 
 ### Held emotions
 
 While the `heldEmotions` switch is on, which is the default, Natural holds each emotion for as long as it lasts instead of showing a short reaction.
-The decider sends a hold with each episode, and the conductor passes it to the scene's `applyHolds` only while Natural drives the model:
+The character mind decides a hold with each episode, and the conductor passes it to the scene's `applyHolds` only while Natural drives the model:
 
 - An emotion of a speech turn is held while that turn speaks, and then for half of its hold: 2 s, or 4 s for a lingering emotion (sad, sleepy, love, flustered, think). An emotion without a turn, such as a lab pulse, is held for `held.turnlessSeconds` seconds, 4 by default.
 - An explicit expression whose catalog entry maps to an emotion holds that emotion for as long as the expression's own slot lease lasts. Its primary mapping is the one with the highest weight.

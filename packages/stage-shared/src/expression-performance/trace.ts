@@ -1,6 +1,6 @@
 import type { AffectSignal, Decider, DeciderContext, PerformanceDecision } from './types'
 
-import { array, boolean, check, finite, literal, maxValue, minValue, number, optional, parse, picklist, pipe, strictObject, string, unknown, variant } from 'valibot'
+import { array, boolean, check, finite, literal, maxValue, minValue, nullable, number, optional, parse, picklist, pipe, strictObject, string, unknown, variant } from 'valibot'
 
 import { EffectiveCatalogEntrySchema, EffectiveExpressionPerformanceSettingsSchema } from './profile'
 
@@ -9,9 +9,13 @@ const turnId = optional(string())
 const emotion = picklist(['happy', 'sad', 'angry', 'think', 'surprised', 'awkward', 'question', 'curious', 'neutral', 'love', 'flustered', 'sleepy'])
 // Recorded contexts hold profile-resolved settings and catalogs, bounded by the profile-scaled persisted bounds.
 const contextSchema = strictObject({ catalog: array(EffectiveCatalogEntrySchema), settings: EffectiveExpressionPerformanceSettingsSchema })
+const unit = pipe(number(), finite(), minValue(0), maxValue(1))
+// The episode the mind decided, exactly as the live decider received it.
+const episode = strictObject({ id: string(), emotion, nominal: unit, intensity: unit, band: picklist(['slight', 'clear', 'strong']), escalation: boolean() })
 const signalSchema = variant('kind', [
-  strictObject({ kind: literal('emotion'), source: picklist(['act', 'tool', 'devtools']), emotion, nominal: pipe(number(), finite(), minValue(0), maxValue(1)), turnId, at: seconds }),
-  strictObject({ kind: literal('expression'), source: picklist(['act', 'tool']), expressionId: string(), holdSeconds: optional(seconds), turnId, at: seconds }),
+  strictObject({ kind: literal('reaction'), episode, turnId, at: seconds }),
+  strictObject({ kind: literal('neutral'), turnId, at: seconds }),
+  strictObject({ kind: literal('expression'), source: picklist(['act', 'tool']), expressionId: string(), holdSeconds: optional(seconds), episode: nullable(episode), turnId, at: seconds }),
   strictObject({ kind: literal('clear'), source: picklist(['act', 'tool', 'devtools']), slot: optional(picklist(['face', 'effect', 'prop'])), turnId, at: seconds }),
   strictObject({ kind: literal('speech'), event: picklist(['clip-start', 'clip-end', 'clip-stopped', 'turn-end']), turnId: string(), clipId: optional(string()), at: seconds }),
   strictObject({ kind: literal('muted'), muted: boolean(), at: seconds }),
@@ -30,9 +34,14 @@ function isJson(value: unknown): boolean {
   return typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype && Object.values(value).every(isJson)
 }
 
-/** Checkpoints and contexts belong to the recording start, not the decider's initial seed. */
+/**
+ * Checkpoints and contexts belong to the recording start, not the decider's initial seed.
+ *
+ * Version 2 records the signals of the asset decider, which carry the episodes the mind decided. A version 1 trace
+ * recorded raw emotions and no longer parses.
+ */
 export const AffectTraceSchema = pipe(strictObject({
-  version: literal(1),
+  version: literal(2),
   decider: picklist(['picker', 'planner']),
   checkpoint: pipe(unknown(), check(isJson, 'Expected a JSON checkpoint')),
   initialContext: contextSchema,
@@ -56,7 +65,7 @@ export const AffectTraceSchema = pipe(strictObject({
 
 /** An explicit recording session, including its terminal monotonic time for comparison deadlines. */
 export interface AffectTrace {
-  version: 1
+  version: 2
   decider: 'picker' | 'planner'
   checkpoint: unknown
   initialContext: DeciderContext

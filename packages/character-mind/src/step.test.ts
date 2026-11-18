@@ -57,6 +57,31 @@ describe('step: emotion', () => {
       episode: { id: 'happy-1', intensity: 0.9, band: 'strong', escalation: true },
       hold: { strength: 0.9 },
     }])
+    const equal = step(stronger.state, [emotion('happy', 0.9, 'A')], 1500, rng)
+    expect(equal.intents).toEqual([])
+  })
+
+  it('decides the episode whether or not automatic expressions are on', () => {
+    const off = step(initialMindState(17), [emotion('happy', 0.9, 'A', { ...settings, autoExpressions: false })], 0, rng)
+    expect(off.intents).toEqual(step(initialMindState(17), [emotion('happy', 0.9, 'A')], 0, rng).intents)
+    expect(off.intents).toHaveLength(1)
+  })
+
+  it('holds each emotion of a script and releases the hold on a clear and on a neutral', () => {
+    const script: [number, MindStimulus][] = [
+      [0, emotion('happy', 0.6, 'A')],
+      [1000, emotion('happy', 0.9, 'A')],
+      [5000, emotion('sad', 0.6)],
+      [6000, { kind: 'expression-clear', source: 'act' }],
+      [7000, emotion('neutral', 0.6, 'B')],
+    ]
+    let state = initialMindState(17)
+    const held = script.map(([atMs, stimulus]) => {
+      const answer = step(state, [stimulus], atMs, rng)
+      state = answer.state
+      return answer.intents.map(intent => intent.hold?.emotion)
+    })
+    expect(held).toEqual([['happy'], ['happy'], ['sad'], [null], [null]])
   })
 
   it('weakens a repeat of the same emotion after the escalation window', () => {
@@ -103,6 +128,21 @@ describe('step: named entries', () => {
     const first = step(initialMindState(17), [emotion('sad', 0.9, 'A')], 0, rng)
     const repeat = step(first.state, [request({ emotion: 'sad', minBand: 'clear' })], 1000, rng)
     expect(repeat.intents).toMatchObject([{ kind: 'entry', episode: null, hold: { emotion: 'sad', strength: 0.9, holdSeconds: 5, until: 'hold' } }])
+  })
+
+  it('refreshes the hold of a mapped entry even when its configured dose is zero', () => {
+    const zero = { ...settings, intensity: { ...settings.intensity, strong: 0 } }
+    const { intents } = step(initialMindState(17), [request({ emotion: 'angry', minBand: 'strong' }, zero)], 0, rng)
+    expect(intents).toMatchObject([{ kind: 'entry', episode: null, hold: { emotion: 'angry', strength: 0, holdSeconds: 5, until: 'hold', turnId: 'A' } }])
+  })
+
+  it('escalates an episode an entry derived with a later stronger emotion, also after a JSON round trip', () => {
+    const first = step(initialMindState(17), [request({ emotion: 'sad', minBand: 'clear' })], 0, rng)
+    const stronger = [emotion('sad', 0.9, 'A')]
+    const direct = step(first.state, stronger, 1000, rng)
+    const resumed = step(JSON.parse(JSON.stringify(first.state)), stronger, 1000, rng)
+    expect(direct.intents).toMatchObject([{ kind: 'emotion', episode: { emotion: 'sad', escalation: true }, hold: { strength: 0.9 } }])
+    expect(resumed).toEqual(direct)
   })
 
   it('sends an entry alone when it maps to no emotion or held emotions are off', () => {

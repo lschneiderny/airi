@@ -22,9 +22,13 @@ try {
   const episodesByBand = { slight: 0, clear: 0, strong: 0 }
   const expressions: Record<string, number> = {}
   const changes: number[] = []
-  for (const { at, decision } of decisions) {
-    for (const episode of decision.episodes)
+  // The mind decided the episodes before the recording, so they are read from the signals, not replayed.
+  for (const entry of trace.entries) {
+    const episode = entry.type === 'signal' && (entry.signal.kind === 'reaction' || entry.signal.kind === 'expression') ? entry.signal.episode : null
+    if (episode)
       episodesByBand[episode.band]++
+  }
+  for (const { at, decision } of decisions) {
     for (const slot of decision.slots) {
       changes.push(at)
       if (slot.expressionId !== null)

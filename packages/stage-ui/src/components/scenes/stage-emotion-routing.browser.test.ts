@@ -7,10 +7,11 @@ import type { Component, ComponentInternalInstance, VNode } from 'vue'
 
 import type { StagePerformanceScene } from '../../composables/performance/use-stage-performance-conductor'
 
+import { CharacterMind } from '@proj-airi/character-mind'
 import { NaturalMotion } from '@proj-airi/motion-driver-natural'
 import { presenceBubbleIdle, presenceBubbleThinking } from '@proj-airi/stage-shared'
 import { DEFAULT_CHARACTER_PROFILE, faceBaselineOf, initialCharacterState, NEUTRAL_FACE_BASELINE, readCharacter } from '@proj-airi/stage-shared/character-state'
-import { createPickerDecider, defaultExpressionPerformanceSettings, replayAffectTrace } from '@proj-airi/stage-shared/expression-performance'
+import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { useDesktopActivityStore } from '@proj-airi/stage-shared/stores/desktop-activity'
 import { MMDScene } from '@proj-airi/stage-ui-mmd'
 import { useMMD, useMMDExpressionStore } from '@proj-airi/stage-ui-mmd/stores'
@@ -747,6 +748,7 @@ describe('per-signal character profiles at the Natural consumer', () => {
           scene: () => ({ setEmotion: episode => pending.push(episode), applySlots: () => {}, applyHolds: () => {}, onSpeech: () => {}, setMuted: () => {} }),
           driver: () => 'natural',
           playMotion: () => {},
+          mind: new CharacterMind({ seed: 7 }),
           mood: () => motion.moodState,
           profile: turnId => turnId === 'turn-a' ? { moodGainScale: 0, moodDecayScale: 2 } : undefined,
         })
@@ -764,10 +766,9 @@ describe('per-signal character profiles at the Natural consumer', () => {
     conductor.setMuted(true)
     await nextTick()
 
-    // The decider is unchanged: exact replay reproduces the dispatched episodes.
-    const replayed = replayAffectTrace(conductor.exportTrace()!, { ...createPickerDecider(), kind: 'picker' }, { mode: 'exact' })
-      .flatMap(({ decision }) => decision.episodes)
-    expect(pending.map(({ moodGain: _moodGain, ...episode }) => episode)).toEqual(replayed)
+    // The mind's decision is unchanged: the trace records exactly the dispatched episodes.
+    const recorded = conductor.exportTrace()!.entries.flatMap(entry => entry.type === 'signal' && entry.signal.kind === 'reaction' ? [entry.signal.episode] : [])
+    expect(pending.map(({ moodGain: _moodGain, ...episode }) => episode)).toEqual(recorded)
     expect(pending).toHaveLength(1)
 
     for (const episode of pending)
@@ -813,6 +814,7 @@ describe('resting face from the replicated character reading', () => {
           scene: () => ({ setEmotion: () => {}, applySlots: () => {}, applyHolds: () => {}, onSpeech: () => {}, setMuted: () => {}, setFaceBaseline: baseline => motion.setFaceBaseline(baseline) }),
           driver: () => 'natural',
           playMotion: () => {},
+          mind: new CharacterMind({ seed: 7 }),
           mood: () => motion.moodState,
           characterReading: () => reading,
         })
