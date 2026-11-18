@@ -1,0 +1,20 @@
+{
+  "name": "@proj-airi/character-mind",
+  "type": "module",
+  "private": true,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "test:run": "vitest run --config vitest.config.ts"
+  },
+  "dependencies": {
+    "@proj-airi/stage-shared": "workspace:^"
+  },
+  "devDependencies": {
+    "@proj-airi/cpu-slots": "workspace:^",
+    "vitest": "catalog:vitest"
+  }
+}
