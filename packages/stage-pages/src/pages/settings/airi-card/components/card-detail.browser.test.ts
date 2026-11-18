@@ -1,7 +1,7 @@
 import en from '@proj-airi/i18n/locales/en'
-import localforage from 'localforage'
 
 import { DEFAULT_CHARACTER_PROFILE, initialCharacterState } from '@proj-airi/stage-shared/character-state'
+import { storage } from '@proj-airi/stage-ui/database/storage'
 import { exportAiriCardPackage } from '@proj-airi/stage-ui/services/airi-card-import-export'
 import { useBackgroundStore } from '@proj-airi/stage-ui/stores/background'
 import { characterStateContext, useCharacterStateStore } from '@proj-airi/stage-ui/stores/character-state'
@@ -24,13 +24,11 @@ vi.mock('@proj-airi/stage-ui/composables/download', () => ({
   useDownload: () => ({ download: vi.fn() }),
 }))
 
-const records = localforage.createInstance({ name: 'airi-memory', storeName: 'entries' })
-
 describe('card detail', () => {
   let pinia: ReturnType<typeof createPinia>
 
   beforeEach(async () => {
-    await records.clear()
+    await storage.clear('memory')
     vi.mocked(exportAiriCardPackage).mockClear()
     localStorage.clear()
     pinia = createPinia()
@@ -41,7 +39,7 @@ describe('card detail', () => {
     disposePinia(pinia)
     vi.unstubAllGlobals()
     localStorage.clear()
-    await records.clear()
+    await storage.clear('memory')
   })
 
   // The store calls `useI18n()` at its own setup, so the first call to
@@ -75,8 +73,8 @@ describe('card detail', () => {
     const cardId = await useAiriCardStore(pinia).addCard({ name: 'Luna', version: '1.0.0' }, 'scratch')
     host.unmount()
     const own = { description: 'Favorite game', body: 'Minecraft.' }
-    await records.setItem('own', { id: 'own', persona: cardId, updatedAt: 1, ...own })
-    await records.setItem('general', { id: 'general', updatedAt: 2, description: 'Shared', body: 'Do not export.' })
+    await storage.setItemRaw('memory:own', { id: 'own', persona: cardId, updatedAt: 1, ...own })
+    await storage.setItemRaw('memory:general', { id: 'general', updatedAt: 2, description: 'Shared', body: 'Do not export.' })
     // The leader owns the record; this window only asks for it.
     const characterState = initialCharacterState(cardId, DEFAULT_CHARACTER_PROFILE, characterStateContext(Date.now()))
     const exportRecord = vi.spyOn(useCharacterStateStore(pinia), 'exportRecord').mockResolvedValue(characterState)

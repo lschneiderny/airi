@@ -5,6 +5,11 @@ import { RouterLink, useRouter } from 'vue-router'
 
 import HeaderLink from './HeaderLink.vue'
 
+withDefaults(defineProps<{
+  /** Shows the character switcher. Only the main stage shows it, because the character belongs to the stage. @default true */
+  characterSwitcher?: boolean
+}>(), { characterSwitcher: true })
+
 const router = useRouter()
 const { t } = useI18n()
 
@@ -17,7 +22,7 @@ function handleNavigation() {
   <header :class="['mb-1 w-full flex items-center justify-between gap-2']">
     <HeaderLink />
     <div :class="['flex items-center gap-2']">
-      <ProfileSwitcherPopover @manage="handleNavigation" />
+      <ProfileSwitcherPopover v-if="characterSwitcher" @manage="handleNavigation" />
       <RouterLink
         to="/settings"
         :aria-label="t('settings.title')"

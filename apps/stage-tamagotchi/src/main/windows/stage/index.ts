@@ -145,6 +145,7 @@ export async function setupStageWindow(
   // The stage page replaces the classic page, so it keeps every main-window invoke (controls, chat, inlay, settings).
   await setupMainWindowElectronInvokes({
     window,
+    controlsMenu: params.controlsMenuWindow,
     editorWindow: params.editorWindow,
     settingsWindow: params.settingsWindow,
     chatWindow: params.chatWindow,
@@ -215,6 +216,8 @@ export async function setupStageWindow(
     if (!inlay.isDestroyed())
       inlay.showInactive()
   }).catch(error => console.error('Failed to prepare the inlay window', error))
+  // The app menu loads once and stays hidden until the user opens it, as with the classic window.
+  void params.controlsMenuWindow.prepare().catch(error => console.error('Failed to prepare the controls menu window', error))
 
   initScreenCaptureForWindow(window, createWindowContext(window).context)
 

@@ -61,6 +61,7 @@ import {
   createLive2DTouchReaction,
   disableLive2DSdkBreath,
   findLive2DTouchMotionGroup,
+  isBeatSyncLayered,
   isPointInLive2DMesh,
   live2DCanvasRectToParent,
   live2DFocusTargetFromModelPoint,
@@ -70,7 +71,6 @@ import {
   useLive2DMotionManagerUpdate,
   useLive2DNaturalSettings,
   useMotionUpdatePluginAutoEyeBlink,
-  useMotionUpdatePluginBeatSync,
   useMotionUpdatePluginBreathControl,
   useMotionUpdatePluginExpression,
   useMotionUpdatePluginIdleDisable,
@@ -78,6 +78,7 @@ import {
   useMotionUpdatePluginLightSquint,
   useMotionUpdatePluginLipSync,
   useMotionUpdatePluginManualControl,
+  useMotionUpdatePluginsBeatSync,
   useMotionUpdatePluginTouchReaction,
   useSettingsLive2d,
 } from '../../../composables/live2d'
@@ -453,6 +454,10 @@ const beatSync = createBeatSyncController({
   }),
   initialStyle: 'sway-sine',
 })
+// A manual pose, for example from the MAGIC driver, writes the head angles in the final phase.
+// Beat Sync then moves as a layer on top of that pose.
+// Under the Natural driver the layer stays off, so Beat Sync adds no head angles in the final phase there.
+const beatSyncIsLayered = () => isBeatSyncLayered(manualMotionSpring.output.value.active, live2dMotionDriver.value)
 
 // Listen for model reload requests (e.g., when runtime motion is uploaded)
 const disposeShouldUpdateView = live2dStore.onShouldUpdateView(() => {
@@ -649,7 +654,8 @@ async function performModelLoad() {
     })
 
     motionManagerUpdate.register(ctx => expressionController.restoreExpressionBases(ctx.model), 'pre')
-    motionManagerUpdate.register(useMotionUpdatePluginBeatSync(beatSync), 'pre')
+    const beatSyncPlugins = useMotionUpdatePluginsBeatSync(beatSync, beatSyncIsLayered)
+    motionManagerUpdate.register(beatSyncPlugins.pre, 'pre')
     motionManagerUpdate.register(useMotionUpdatePluginIdleDisable(), 'pre')
     motionManagerUpdate.register(useMotionUpdatePluginIdleFocus(), 'post')
     // Both run in 'final' stage (ignores handled state).
@@ -675,6 +681,7 @@ async function performModelLoad() {
       controller: manualFocusBias,
       target: focusBiasTarget,
     }), 'final')
+    motionManagerUpdate.register(beatSyncPlugins.layer, 'final')
     motionManagerUpdate.register(useMotionUpdatePluginLipSync(mouthOpenSize, nowSpeaking, (owned) => {
       lipSyncOwnsMouth = owned
     }), 'final')

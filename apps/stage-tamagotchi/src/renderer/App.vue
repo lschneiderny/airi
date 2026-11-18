@@ -9,6 +9,7 @@ import { artistrySyncConfig } from '@proj-airi/stage-shared'
 import { ToasterRoot } from '@proj-airi/stage-ui/components'
 import { updateModelAssetStatus, useInferencePreload } from '@proj-airi/stage-ui/composables'
 import { useSituationSettings } from '@proj-airi/stage-ui/features/situation/settings'
+import { copyArrayBuffer } from '@proj-airi/stage-ui/libs/data-transfer'
 import { usePiniaSynced } from '@proj-airi/stage-ui/libs/pinia'
 import { initializeAnalytics } from '@proj-airi/stage-ui/libs/product-signals'
 import { isSherpawModelBundled, setSherpawModelAssetHost } from '@proj-airi/stage-ui/libs/providers/providers/sherpaw/model-assets'
@@ -16,6 +17,7 @@ import { removeRetiredAccountCredentials } from '@proj-airi/stage-ui/libs/retire
 import { useCharacterOrchestratorStore } from '@proj-airi/stage-ui/stores/character'
 import { useCharacterStateStore } from '@proj-airi/stage-ui/stores/character-state'
 import { useChatStore } from '@proj-airi/stage-ui/stores/chat'
+import { useDevicePermissionsStore } from '@proj-airi/stage-ui/stores/device-permissions'
 import { usePluginHostInspectorStore } from '@proj-airi/stage-ui/stores/devtools/plugin-host-debug'
 import { useDisplayModelsStore } from '@proj-airi/stage-ui/stores/display-models'
 import { useModsServerChannelStore } from '@proj-airi/stage-ui/stores/mods/api/channel-server'
@@ -49,7 +51,7 @@ import {
   i18nGetLocale,
   i18nSetLocale,
 } from '../shared/eventa'
-import { electronModelAssetCancel, electronModelAssetEnsure, electronModelAssetRemove, electronModelAssetsClear, electronModelAssetsList, electronModelAssetStatusChanged } from '../shared/eventa/model-assets'
+import { electronModelAssetCancel, electronModelAssetEnsure, electronModelAssetRemove, electronModelAssetRestore, electronModelAssetsClear, electronModelAssetsList, electronModelAssetStatusChanged } from '../shared/eventa/model-assets'
 import {
   electronPluginUpdateCapability,
   pluginProtocolListProviders,
@@ -70,6 +72,7 @@ import {
 import { electronPluginToolsChanged } from '../shared/eventa/plugin/tools'
 import { initializeIOTraceHubBridge } from './bridges/io-trace-hub'
 import { initializeStageThreeRuntimeTraceBridge } from './bridges/stage-three-runtime-trace'
+import { useDevicePermissions } from './composables/use-device-permissions'
 import { useHostCapabilitiesProducer } from './composables/use-host-capabilities-producer'
 import { useLanguage } from './composables/use-language'
 import { useFullscreenStore } from './stores/fullscreen'
@@ -90,10 +93,14 @@ const router = useRouter()
 const route = useRoute()
 const context = useElectronEventaContext()
 useHostCapabilitiesProducer()
+// Each window registers the same list. The stage window decides onboarding at startup, and the
+// onboarding and settings windows show the permissions.
+useDevicePermissionsStore().register(useDevicePermissions())
 const listModelAssets = useElectronEventaInvoke(electronModelAssetsList)
 const ensureModelAsset = useElectronEventaInvoke(electronModelAssetEnsure)
 const cancelModelAsset = useElectronEventaInvoke(electronModelAssetCancel)
 const removeModelAsset = useElectronEventaInvoke(electronModelAssetRemove)
+const restoreModelAsset = useElectronEventaInvoke(electronModelAssetRestore)
 const clearModelAssets = useElectronEventaInvoke(electronModelAssetsClear)
 const stopModelAssetStatus = context.value.on(electronModelAssetStatusChanged, (event) => {
   if (event.body && !isSherpawModelBundled(event.body.id))
@@ -108,6 +115,11 @@ setSherpawModelAssetHost({
   ensure: ensureModelAsset,
   cancel: cancelModelAsset,
   remove: removeModelAsset,
+  restore: (id, revision, files) => restoreModelAsset({
+    id,
+    revision,
+    files: Object.fromEntries(Object.entries(files).map(([name, bytes]) => [name, copyArrayBuffer(bytes)] as const)),
+  }),
   clear: clearModelAssets,
 })
 const getMainLocale = useElectronEventaInvoke(i18nGetLocale)
@@ -127,6 +139,8 @@ const syncedPinia = usePiniaSynced()
 const isSpotlightWindow = initialRoutePath === '/spotlight'
 // The floating chat resizes from its own edges, which keep the edges beside the character in place.
 const isFloatingChatWindow = initialRoutePath === '/chat-floating'
+// The app menu window covers the work area, so its edges are the edges of the screen.
+const isControlsMenuWindow = initialRoutePath === '/controls-menu'
 // The fullscreen mode places the main window itself, so its edges offer no resize.
 const { active: mainWindowFullscreen } = storeToRefs(useFullscreenStore())
 // A window that hosts the fullscreen mode can load on a settings route, after a reload for example. So the windows
@@ -431,7 +445,7 @@ onUnmounted(() => {
   <ToasterRoot @close="id => toast.dismiss(id)">
     <Toaster />
   </ToasterRoot>
-  <ResizeHandler v-if="!isSpotlightWindow && !isFloatingChatWindow && !mainWindowFullscreen" />
+  <ResizeHandler v-if="!isSpotlightWindow && !isFloatingChatWindow && !isControlsMenuWindow && !mainWindowFullscreen" />
   <SettingsWindowFrame :enabled="!windowContext.fullscreenHost">
     <RouterView />
   </SettingsWindowFrame>

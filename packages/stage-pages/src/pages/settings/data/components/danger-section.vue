@@ -19,7 +19,7 @@ const emit = defineEmits<DataSettingsStatusEmits>()
 const { t } = useI18n()
 const { trackDataAction } = useAnalytics()
 const { deleteAllData, resetProvidersSettings } = useDataMaintenance()
-const { emitStatus, handleActionError } = createDataSettingsStatusHelpers(emit)
+const { emitStatus, handleActionError } = createDataSettingsStatusHelpers(emit, t('settings.pages.data.status.action_error'))
 
 async function resetProviders() {
   try {

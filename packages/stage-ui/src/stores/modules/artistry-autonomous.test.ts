@@ -29,6 +29,7 @@ vi.mock('../chat/session-store', () => ({
   useChatSessionStore: () => ({
     activeSessionId: 's1',
     sessionMetas: { s1: { characterId: 'c1' } },
+    characterMembersOf: (sessionId: string) => sessionId === 's1' ? ['c1'] : [],
   }),
 }))
 
@@ -71,11 +72,6 @@ describe('store artistry-autonomous director prompt', () => {
     useProviderStore(pinia).getChatProviderInstance = vi.fn().mockResolvedValue({})
     const cards = useAiriCardStore(pinia)
     cards.cards = new Map([['c1', cardWithAutonomousArtistry()]])
-    cards.moduleDefaults = {
-      consciousness: { provider: 'mock-provider', model: 'mock-model' },
-      vision: { provider: 'mock-provider', model: 'mock-model' },
-      speech: { provider: 'mock-provider', model: 'mock-model', voice_id: 'alloy' },
-    }
 
     const memory = useMemoryStore(pinia)
     await memory.write({ description: 'Card one fact.', body: 'One.' }, 'c1')

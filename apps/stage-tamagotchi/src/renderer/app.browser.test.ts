@@ -4,8 +4,6 @@ import type { BrowserWindow, IpcMain, IpcMainEvent, IpcRendererEvent, WebContent
 
 import type { PluginCapabilityPayload } from '../shared/eventa/plugin/capabilities'
 
-import localforage from 'localforage'
-
 import { defineInvoke, defineInvokeHandler } from '@moeru/eventa'
 import { createContext as createMainContext } from '@moeru/eventa/adapters/electron/main'
 import { PiniaColada } from '@pinia/colada'
@@ -14,6 +12,7 @@ import { getElectronEventaContext, resetElectronEventaContextForTesting } from '
 import { parseEvent, stringifyEvent } from '@proj-airi/server-sdk'
 import { artistrySyncConfig } from '@proj-airi/stage-shared'
 import { capabilitiesForHost } from '@proj-airi/stage-shared/host-capabilities'
+import { storage } from '@proj-airi/stage-ui/database/storage'
 import { setupSynced, usePiniaSynced } from '@proj-airi/stage-ui/libs/pinia'
 import { useCharacterOrchestratorStore } from '@proj-airi/stage-ui/stores/character'
 import { useChatStore } from '@proj-airi/stage-ui/stores/chat'
@@ -350,7 +349,7 @@ async function renderStage(routePath: string, search: string) {
 beforeEach(async () => {
   vi.stubEnv('RUNTIME_ENVIRONMENT', 'electron')
   localStorage.clear()
-  await localforage.clear()
+  await storage.clear('device')
   inference.loadModel.mockClear()
 })
 

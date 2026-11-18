@@ -1,7 +1,6 @@
 import type { AnalyticsCaptureOptions } from './client'
 import type { AnalyticsEvent, InferAnalyticsEventPayload } from './utils/dsl'
 
-import { isStageTamagotchi } from '@proj-airi/stage-shared'
 import { watch } from 'vue'
 
 import { useBuildInfo } from '../../composables/use-build-info'
@@ -12,20 +11,24 @@ import {
   configureAnalyticsAdapter,
   disableAnalyticsCapture,
   enableAnalyticsCapture,
-  getAnalyticsIdentitySnapshot,
+  getAnalyticsIdentityHeaders,
   isAnalyticsAvailableInBuild,
   registerAnalyticsBuildInfo,
 } from './client'
+import { setErrorReportingEnabled } from './error-reporting'
 import {
   analyticsSettingChangedEvent,
   appLoadedEvent,
   characterSwitchedEvent,
   firstMessageSentEvent,
 } from './events/app'
+import { analyticsSurface } from './surface'
 
 export * from './client'
+export * from './error-reporting'
 export * from './events'
 export * from './privacy-policy'
+export * from './surface'
 export type { AnalyticsEvent, InferAnalyticsEventPayload } from './utils/dsl'
 export { defineEvent } from './utils/dsl'
 
@@ -37,12 +40,6 @@ export interface AnalyticsRecorder {
   emit: <Event extends AnyAnalyticsEvent>(event: Event, payload: InferAnalyticsEventPayload<Event>, options?: AnalyticsCaptureOptions) => boolean
   /** Emits the first-message event once for the current application lifetime. */
   recordFirstMessage: () => boolean
-}
-
-function analyticsSurface(): 'web' | 'desktop' {
-  return isStageTamagotchi()
-    ? 'desktop'
-    : 'web'
 }
 
 /**
@@ -64,6 +61,8 @@ class Analytics implements AnalyticsRecorder {
     const buildInfo = useBuildInfo()
     const settingsAnalytics = useSettingsAnalytics()
     this.appStartTime = Date.now()
+    // Error reports follow the same switch and the same AIRI user as product events.
+    setErrorReportingEnabled(settingsAnalytics.analyticsEnabled)
 
     if (settingsAnalytics.analyticsEnabled && enableAnalytics()) {
       registerAnalyticsBuildInfo(buildInfo)
@@ -74,6 +73,7 @@ class Analytics implements AnalyticsRecorder {
     }
 
     watch(() => settingsAnalytics.analyticsEnabled, (enabled, previousEnabled) => {
+      setErrorReportingEnabled(enabled)
       if (previousEnabled && !enabled) {
         this.emit(analyticsSettingChangedEvent, {
           setting_name: 'analytics_enabled',
@@ -169,4 +169,4 @@ export function initializeAnalytics(): void {
   analytics.initialize()
 }
 
-export { configureAnalyticsAdapter, getAnalyticsIdentitySnapshot, isAnalyticsAvailableInBuild }
+export { configureAnalyticsAdapter, getAnalyticsIdentityHeaders, isAnalyticsAvailableInBuild }

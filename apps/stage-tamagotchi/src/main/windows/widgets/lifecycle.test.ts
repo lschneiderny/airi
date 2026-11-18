@@ -102,7 +102,8 @@ vi.mock('../../libs/electron/window-context', () => ({
   })),
 }))
 
-vi.mock('@proj-airi/electron-vueuse/main', () => ({
+vi.mock('@proj-airi/electron-vueuse/main', async importOriginal => ({
+  ...await importOriginal<typeof import('@proj-airi/electron-vueuse/main')>(),
   safeClose: vi.fn((window: BrowserWindow) => {
     window.close()
     return true

@@ -72,7 +72,6 @@
     "@unocss/reset": "catalog:",
     "@vitejs/plugin-vue": "catalog:",
     "@vitest/browser-playwright": "catalog:vitest",
-    "localforage": "catalog:",
     "unocss": "catalog:",
     "unplugin-info": "catalog:",
     "vitest": "catalog:vitest",

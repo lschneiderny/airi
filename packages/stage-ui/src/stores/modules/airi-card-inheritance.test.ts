@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp, nextTick, toRaw } from 'vue'
 
 import { DEFAULT_ARTISTRY_WIDGET_SPAWNING_PROMPT } from '../../constants/prompts/character-defaults'
+import { useProviderStore } from '../providers/provider'
 import { useAiriCardStore } from './airi-card'
 import { useArtistryStore } from './artistry'
 import { useConsciousnessStore } from './consciousness'
@@ -19,14 +20,15 @@ vi.mock('vue-i18n', () => ({
 vi.mock('../../database/repos/memory.repo')
 vi.mock('../../database/repos/character-state.repo')
 
-vi.mock('localforage', () => ({
-  default: {
-    getItem: vi.fn(async () => undefined),
-    iterate: vi.fn(async () => undefined),
-    removeItem: vi.fn(async () => undefined),
-    setItem: vi.fn(async <T>(_: string, value: T) => value),
-  },
-}))
+// Node has no IndexedDB. An in-memory driver replaces the IndexedDB mounts.
+vi.mock('../../database/storage', async (importOriginal) => {
+  const { createStorage } = await import('unstorage')
+  const { default: memoryDriver } = await import('unstorage/drivers/memory')
+  return {
+    ...await importOriginal<typeof import('../../database/storage')>(),
+    storage: createStorage({ driver: memoryDriver() }),
+  }
+})
 
 function card(provider = '', model = ''): AiriCard {
   return {
@@ -73,8 +75,8 @@ describe('card inheritance with real module stores', () => {
   // https://github.com/moeru-ai/airi/pull/2332
   // ROOT CAUSE:
   // Empty fields skipped runtime writes, so the previous card became the default.
-  // Resolve each activation from saved defaults instead of the previous runtime.
-  it('restores global settings after an explicit card', async () => {
+  // The module stores now hold only the defaults. An activation does not write them.
+  it('keeps the global defaults when a card with its own values becomes active', async () => {
     const consciousness = useConsciousnessStore()
     consciousness.activeProvider = 'global-provider'
     consciousness.activeModel = 'global-model'
@@ -83,8 +85,11 @@ describe('card inheritance with real module stores', () => {
     const explicit = await cards.addCard(card('card-provider', 'card-model'), 'import')
     const inherited = await cards.addCard(card(), 'import')
     await cards.activateCard(explicit)
-    expect(consciousness.activeModel).toBe('card-model')
+    expect(cards.getModules(explicit).consciousness).toEqual({ provider: 'card-provider', model: 'card-model' })
+    expect(consciousness.activeProvider).toBe('global-provider')
+    expect(consciousness.activeModel).toBe('global-model')
     await cards.activateCard(inherited)
+    expect(cards.getModules(inherited).consciousness).toEqual({ provider: 'global-provider', model: 'global-model' })
     expect(consciousness.activeProvider).toBe('global-provider')
     expect(consciousness.activeModel).toBe('global-model')
   })
@@ -100,8 +105,9 @@ describe('card inheritance with real module stores', () => {
     uploaded.extensions.airi.modules.vision.provider = 'another-provider'
     const id = await cards.addCard(uploaded, 'import')
     await cards.activateCard(id)
-    expect(vision.activeProvider).toBe('another-provider')
-    expect(vision.activeModel).toBe('')
+    expect(cards.getModules(id).vision).toEqual({ provider: 'another-provider', model: '' })
+    expect(vision.activeProvider).toBe('global-provider')
+    expect(vision.activeModel).toBe('global-model')
   })
 
   // https://github.com/moeru-ai/airi/pull/2332
@@ -224,9 +230,8 @@ describe('card inheritance with real module stores', () => {
     uploaded.extensions.airi.modules.speech.model = 'card-model'
     const id = await cards.addCard(uploaded, 'import')
     await cards.activateCard(id)
-    expect(speech.activeSpeechModel).toBe('card-model')
-    expect(speech.activeSpeechVoiceId).toBe('')
-    await cards.activateCard('default')
+    expect(cards.getModules(id).speech).toEqual({ provider: 'speech-provider', model: 'card-model', voice_id: '' })
+    expect(cards.getModules('default').speech).toEqual({ provider: 'speech-provider', model: 'global-model', voice_id: 'global-voice' })
     expect(speech.activeSpeechModel).toBe('global-model')
     expect(speech.activeSpeechVoiceId).toBe('global-voice')
   })
@@ -255,6 +260,31 @@ describe('card inheritance with real module stores', () => {
     }))
   })
 
+  // ROOT CAUSE:
+  //
+  // Selecting Apple Vision stored an empty model on the card before the catalog
+  // loaded. The catalog default changed only the runtime model, so applying the
+  // card again restored the empty model.
+  //
+  // The vision store now holds the default, and the selection stores the catalog default there.
+  // An activation does not write the vision store.
+  it('keeps the catalog default of a selected vision provider when the card applies again', async () => {
+    const cards = useAiriCardStore()
+    await cards.initialize()
+    useProviderStore().providerRuntimeState = {
+      'apple-vision': { models: [], defaultModel: 'system', modelStatus: 'ready', modelError: null },
+    }
+
+    await useVisionStore().selectProvider('apple-vision')
+    expect(useVisionStore()).toMatchObject({ enabled: true, activeProvider: 'apple-vision', activeModel: 'system' })
+    expect(cards.activeCard?.extensions.airi.modules.vision).toEqual({ provider: '', model: '' })
+
+    await cards.activateCard(cards.activeCardId)
+
+    expect(useVisionStore()).toMatchObject({ activeProvider: 'apple-vision', activeModel: 'system' })
+    expect(cards.getModules(cards.activeCardId).vision).toEqual({ provider: 'apple-vision', model: 'system' })
+  })
+
   it('keeps artistry models and options within their provider', async () => {
     const artistry = useArtistryStore()
     artistry.globalProvider = 'comfyui'
@@ -274,7 +304,7 @@ describe('card inheritance with real module stores', () => {
     expect(artistry.providerOptions).toEqual({ workflow: 'global-workflow' })
   })
 
-  it('keeps defaults separate across persisted state and follower snapshots', async () => {
+  it('keeps the defaults of a follower unchanged after a card snapshot', async () => {
     const leader = createPinia()
     createApp({}).use(leader).use(PiniaColada)
     setActivePinia(leader)
@@ -288,15 +318,14 @@ describe('card inheritance with real module stores', () => {
     const snapshot = structuredClone({
       cards: toRaw(cards.cards),
       activeCardId: cards.activeCardId,
-      moduleDefaults: toRaw(cards.moduleDefaults),
     })
 
     const follower = createPinia()
     createApp({}).use(follower).use(PiniaColada)
     setActivePinia(follower)
     const followerConsciousness = useConsciousnessStore(follower)
-    followerConsciousness.activeProvider = 'card-provider'
-    followerConsciousness.activeModel = 'card-model'
+    followerConsciousness.activeProvider = 'global-provider'
+    followerConsciousness.activeModel = 'global-model'
     const followerCards = useAiriCardStore(follower)
     const updates = vi.fn()
     followerConsciousness.$subscribe(updates, { flush: 'sync' })
@@ -305,6 +334,7 @@ describe('card inheritance with real module stores', () => {
     // Applying a card snapshot must not start another runtime transition.
     expect(updates).not.toHaveBeenCalled()
     await followerCards.initialize()
+    expect(followerCards.getModules(id).consciousness).toEqual({ provider: 'card-provider', model: 'card-model' })
     await followerCards.activateCard('default')
     expect(followerConsciousness.activeProvider).toBe('global-provider')
     expect(followerConsciousness.activeModel).toBe('global-model')

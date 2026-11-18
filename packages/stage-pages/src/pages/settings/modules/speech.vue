@@ -55,7 +55,6 @@ const {
 } = storeToRefs(speechStore)
 
 const {
-  trackProviderClick,
   trackTtsProviderSelected,
   trackVoicePreviewPlayed,
   trackVoiceSelected,
@@ -190,8 +189,7 @@ function voiceAnalyticsPayload(
 /**
  * Tracks explicit voice selection from catalog or custom input controls.
  */
-async function selectSpeechVoice(voiceId: string | undefined) {
-  await persistSelection()
+function selectSpeechVoice(voiceId: string | undefined) {
   if (!voiceId)
     return
 
@@ -203,7 +201,6 @@ async function selectSpeechVoice(voiceId: string | undefined) {
   })
 }
 
-/** Persists the selection only after the leader commits its provider and model. */
 async function selectSpeechSource(sourceId: string) {
   const selection = await speechStore.selectSource(sourceId)
   if (!selection) {
@@ -219,14 +216,11 @@ async function selectSpeechSource(sourceId: string) {
     tts_model_id: selection.model || 'unknown',
     source: 'settings',
   })
-  // A follower can receive the action receipt before its state snapshot. Persist the committed selection.
-  await airiCardStore.updateActiveCardSpeech(selection)
 }
 
 /** Resolves the displayed model option before committing it in the leader. */
 async function selectSpeechModel(modelOptionId: string) {
   await speechStore.selectProviderModel(activeSpeechProvider.value, modelOptionId)
-  await persistSelection()
 }
 
 /** Applies provider defaults in the leader without a follower state proposal. */
@@ -275,14 +269,6 @@ watch(activeSpeechProvider, async (newProvider) => {
       errorMessage.value = errorMessageFrom(error) ?? 'An unknown error occurred'
   }
 })
-
-async function persistSelection() {
-  await airiCardStore.updateActiveCardSpeech({
-    provider: activeSpeechProvider.value,
-    model: activeSpeechModel.value,
-    voice_id: activeSpeechVoiceId.value,
-  })
-}
 
 // Function to generate speech
 async function generateTestSpeech() {
@@ -458,7 +444,6 @@ async function updateCustomModelName(value: string | undefined) {
   errorMessage.value = ''
   try {
     await speechStore.selectProviderModel(activeSpeechProvider.value, value || '')
-    await persistSelection()
   }
   catch (error) {
     errorMessage.value = errorMessageFrom(error) ?? 'An unknown error occurred'
@@ -506,7 +491,6 @@ async function handleDeleteProvider(providerId: string) {
               :value="source.id"
               :title="source.title"
               :description="source.description"
-              @click="trackProviderClick(source.providerId || source.id, 'speech')"
             >
               <template #topRight>
                 <button

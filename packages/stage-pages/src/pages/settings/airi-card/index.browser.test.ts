@@ -1,8 +1,8 @@
 import en from '@proj-airi/i18n/locales/en'
-import localforage from 'localforage'
 
 import { exportToJSON } from '@proj-airi/ccc'
 import { DEFAULT_CHARACTER_PROFILE, initialCharacterState } from '@proj-airi/stage-shared/character-state'
+import { storage } from '@proj-airi/stage-ui/database/storage'
 import { importAiriCardPackage } from '@proj-airi/stage-ui/services/airi-card-import-export'
 import { characterStateContext, useCharacterStateStore } from '@proj-airi/stage-ui/stores/character-state'
 import { useMemoryStore } from '@proj-airi/stage-ui/stores/memory'
@@ -28,12 +28,11 @@ vi.mock('vue-sonner', async importOriginal => ({
   toast: vi.fn(),
 }))
 
-const records = localforage.createInstance({ name: 'airi-memory', storeName: 'entries' })
 let pinia: ReturnType<typeof createPinia>
 
 beforeEach(async () => {
   localStorage.clear()
-  await records.clear()
+  await storage.clear('memory')
   pinia = createPinia()
   let now = 1
   vi.spyOn(Date, 'now').mockImplementation(() => now++)
@@ -44,7 +43,7 @@ afterEach(async () => {
   disposePinia(pinia)
   vi.restoreAllMocks()
   localStorage.clear()
-  await records.clear()
+  await storage.clear('memory')
 })
 
 it('restores imported memories and character state under the newly created card id', async () => {

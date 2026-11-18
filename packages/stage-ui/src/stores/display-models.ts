@@ -1,3 +1,4 @@
+import { removeDisplayModelSettings } from '@proj-airi/stage-shared/composables'
 import { createEventHook, until } from '@vueuse/core'
 import { nanoid } from 'nanoid'
 import { defineStore } from 'pinia'
@@ -208,6 +209,7 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
   /** Removes the model from this device and reports it, so the card store drops its references. */
   async function removeDisplayModel(id: string) {
     await removeLocalCopy(id)
+    removeDisplayModelSettings(id)
     await displayModelsDeleted.trigger([id])
   }
 
@@ -219,6 +221,8 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
     }
 
     displayModels.value = [...displayModelsPresets].sort((a, b) => b.importedAt - a.importedAt)
+    for (const id of userModelIds)
+      removeDisplayModelSettings(id)
     if (userModelIds.length > 0)
       await displayModelsDeleted.trigger(userModelIds)
   }

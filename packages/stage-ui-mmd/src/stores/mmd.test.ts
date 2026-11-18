@@ -31,14 +31,18 @@ function installBrowserGlobals() {
   vi.stubGlobal('localStorage', storage)
 }
 
-const files = vi.hoisted(() => new Map<string, unknown>())
-vi.mock('localforage', () => ({
-  default: {
-    setItem: async (key: string, value: unknown) => void files.set(key, value),
-    getItem: async (key: string) => files.get(key) ?? null,
-    removeItem: async (key: string) => void files.delete(key),
-  },
-}))
+// Node has no IndexedDB. An in-memory driver replaces the store of the motion files.
+const files = vi.hoisted(() => ({ clear: () => {} }))
+vi.mock('unstorage/drivers/indexedb', async () => {
+  const { default: memoryDriver } = await import('unstorage/drivers/memory')
+  return {
+    default: () => {
+      const driver = memoryDriver()
+      files.clear = () => void driver.clear?.('', {})
+      return driver
+    },
+  }
+})
 
 const MODEL = 'model-a'
 

@@ -147,6 +147,46 @@ export const electronInlayReturnHome = defineInvokeEventa<void>('eventa:invoke:e
  * click-through window, where an empty but shown inlay would take every click over its area.
  */
 export const electronInlaySetPresent = defineInvokeEventa<void, { present: boolean }>('eventa:invoke:electron:windows:inlay:set-present')
+
+/**
+ * Where the app menu of the controls island opens, and the state of the main window that the menu shows. The menu opens
+ * on `side` of the anchor, aligned to its `align` edge, away from the screen corner that the island docks to.
+ */
+export interface ControlsMenuRequest {
+  /**
+   * The more button of the island, in CSS pixels. The island sends it in the page coordinates of the main window. The
+   * main process passes it on in the page coordinates of the menu window.
+   */
+  anchor: Rectangle
+  side: 'left' | 'right'
+  align: 'start' | 'end'
+}
+/**
+ * What the main window does after the menu closes. The menu window cannot do these itself.
+ *
+ * - `open-hearing`: opens Hearing controls, which the microphone button opens too.
+ * - `center-main-window`: moves the main window to the center of its display.
+ */
+export type ControlsMenuAction = 'open-hearing' | 'center-main-window'
+/**
+ * Opens the app menu in a window of its own, so the menu can extend past the main window. The main window sends it.
+ * Resolves when the menu closes, with the action that the user chose, or `undefined`. Rejects when the menu window
+ * closes or cannot show.
+ */
+export const electronControlsMenuOpen = defineInvokeEventa<ControlsMenuAction | undefined, ControlsMenuRequest>('eventa:invoke:electron:windows:controls-menu:open')
+/**
+ * Asks the menu page to open the menu at the anchor. The main process shows the window after the page answers, so the
+ * first frame holds the open menu.
+ */
+export const electronControlsMenuShow = defineInvokeEventa<void, ControlsMenuRequest>('eventa:invoke:electron:windows:controls-menu:show')
+/** Tells the main process that the menu page can take requests. The first request waits for it. */
+export const electronControlsMenuPageMounted = defineInvokeEventa<void>('eventa:invoke:electron:windows:controls-menu:page-mounted')
+/**
+ * Tells the main process that the menu closed and its exit animation ended, with the action that the user chose. The
+ * main process hides the window and answers the open request.
+ */
+export const electronControlsMenuClosed = defineInvokeEventa<void, ControlsMenuAction | undefined>('eventa:invoke:electron:windows:controls-menu:closed')
+
 export const electronSettingsNavigate = defineEventa<{ route: string }>('eventa:event:electron:windows:settings:navigate')
 export const electronOpenChat = defineInvokeEventa('eventa:invoke:electron:windows:chat:open')
 
@@ -822,6 +862,11 @@ export const electronAppGetVersion = defineInvokeEventa<string>('eventa:invoke:e
 export const electronMainPageMounted = defineInvokeEventa<void>('eventa:invoke:electron:main-window:page-mounted')
 export const electronAppIconGet = defineInvokeEventa<boolean>('eventa:invoke:electron:app-icon:get')
 export const electronAppIconSet = defineInvokeEventa<boolean, boolean>('eventa:invoke:electron:app-icon:set')
+/**
+ * The renderer sends the analytics switch to main. Main saves it and applies it to error reports from main, from the
+ * renderers, and from native crashes, also on the next start before a renderer loads.
+ */
+export const electronErrorReportingSet = defineInvokeEventa<void, boolean>('eventa:invoke:electron:error-reporting:set')
 
 export type ElectronGodotStageState = 'stopped' | 'starting' | 'running' | 'stopping' | 'error'
 

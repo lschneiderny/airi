@@ -29,7 +29,6 @@ import {
   electronPluginListXsaiTools,
   electronPluginToolsChanged,
 } from '../../../../shared/eventa/plugin/tools'
-import { onAppBeforeQuit } from '../../../libs/bootkit/lifecycle'
 import { onWindowClosed } from '../../../libs/electron/on-window-closed'
 import { createAppContext } from '../../../libs/electron/window-context'
 import { setupExtensionHostServiceInternal } from './host'
@@ -255,10 +254,9 @@ export async function setupExtensionHost(options: SetupExtensionHostOptions): Pr
     }
   })
 
-  onAppBeforeQuit(() => hostService.dispose())
-
   return {
     host: hostService.host,
     manifests: hostService.manifests,
+    dispose: hostService.dispose,
   }
 }

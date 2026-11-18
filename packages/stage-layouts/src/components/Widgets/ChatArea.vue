@@ -2,8 +2,8 @@
 import type { ChatComposerController, ChatImageAttachment } from '@proj-airi/stage-ui/components/scenarios/chat'
 
 import { ChatComposerAddMenu, ChatComposerVoiceInput, ChatImageAttachmentPreview, ChatProviderSetupCallout, ChatReplyPreview, ChatSendButton, useChatImages, useStartVoiceCall, VoicePresence } from '@proj-airi/stage-ui/components/scenarios/chat'
+import { useChatStore } from '@proj-airi/stage-ui/stores/chat'
 import { useChatSessionStore } from '@proj-airi/stage-ui/stores/chat/session-store'
-import { useConsciousnessStore } from '@proj-airi/stage-ui/stores/modules/consciousness'
 import { useSettings } from '@proj-airi/stage-ui/stores/settings'
 import { useVoiceCallStore } from '@proj-airi/stage-ui/stores/voice-call'
 import { BasicButton, BasicTextarea } from '@proj-airi/ui'
@@ -46,7 +46,7 @@ const sendMode = useLocalStorage<SendMode>('ui/chat/settings/send-mode', 'enter'
 const lastEnterTime = ref(0)
 
 const { themeColorsHueDynamic } = storeToRefs(useSettings())
-const { chatReady } = storeToRefs(useConsciousnessStore())
+const { activeChatReady: chatReady } = storeToRefs(useChatStore())
 
 const replyTarget = props.composer.replyTarget
 const { t } = useI18n()

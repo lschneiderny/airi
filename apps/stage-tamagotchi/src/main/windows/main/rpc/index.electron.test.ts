@@ -67,6 +67,7 @@ async function setup(window: BrowserWindow) {
   type Params = Parameters<typeof setupMainWindowElectronInvokes>[0]
   return setupMainWindowElectronInvokes({
     window,
+    controlsMenu: {} as Params['controlsMenu'],
     editorWindow: {} as Params['editorWindow'],
     settingsWindow: {} as Params['settingsWindow'],
     chatWindow: {

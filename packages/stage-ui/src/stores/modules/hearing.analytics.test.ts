@@ -64,19 +64,9 @@ describe('useHearingStore analytics lifecycle', () => {
     )
 
     expect(result.text).toBe('hello')
-    expect(analyticsMock.capture).toHaveBeenCalledWith('voice_input_started', {
-      app_surface: 'web',
-      trigger_method: 'voice',
-      trigger_type: 'user_action',
-      stt_provider_id: 'openai-compatible-audio-transcription',
-    })
-    expect(analyticsMock.capture).toHaveBeenCalledWith('stt_succeeded', {
-      provider: 'openai-compatible-audio-transcription',
-      latency_ms: expect.any(Number),
-      char_count: 5,
-      stream: false,
-    })
-  })
+    // A successful transcription is counted by its message round, so it sends no event of its own.
+    expect(analyticsMock.capture).not.toHaveBeenCalled()
+  }, 10000)
 
   /**
    * @example

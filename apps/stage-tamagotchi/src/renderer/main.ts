@@ -10,8 +10,9 @@ import { backdropSurfaceHostKey } from '@proj-airi/stage-ui/composables/backdrop
 import { pushToTalkTriggerKey } from '@proj-airi/stage-ui/composables/push-to-talk-trigger'
 import { trackButtonPlugin } from '@proj-airi/stage-ui/directives/track-button'
 import { piniaPluginTracing, setupSynced } from '@proj-airi/stage-ui/libs/pinia'
-import { configureAnalyticsAdapter } from '@proj-airi/stage-ui/libs/product-signals'
+import { configureAnalyticsAdapter, startErrorReporting } from '@proj-airi/stage-ui/libs/product-signals'
 import { settingsSearch } from '@proj-airi/stage-ui/libs/settings-search'
+import { useSettingsAnalytics } from '@proj-airi/stage-ui/stores/settings/analytics'
 import { MotionPlugin } from '@vueuse/motion'
 import { createPinia } from 'pinia'
 import { setupLayouts } from 'virtual:generated-layouts'
@@ -50,8 +51,8 @@ import '@fontsource/maple-mono/index.css'
 import '@fontsource-variable/nunito/index.css'
 
 configureAnalyticsAdapter(async (options) => {
-  const { createOpenpanelAdapter } = await import('@proj-airi/stage-ui/libs/product-signals/openpanel')
-  return createOpenpanelAdapter(options)
+  const { loadAnalyticsProviders } = await import('@proj-airi/stage-ui/libs/product-signals/providers')
+  return loadAnalyticsProviders(options)
 })
 
 // The settings search lists only what these modules hold. Each module decides at runtime whether it is on.
@@ -103,7 +104,16 @@ if (import.meta.hot) {
 }
 
 function mount() {
-  createApp(App)
+  const app = createApp(App)
+  // Main sends every report. Without a DSN in the build, main starts no SDK, so the renderer starts none either.
+  if (import.meta.env.AIRI_ERROR_REPORT_DSN) {
+    startErrorReporting(app, () => useSettingsAnalytics(pinia).analyticsEnabled, async (options) => {
+      const { createSentryAdapter } = await import('./modules/sentry')
+      return createSentryAdapter(options)
+    })
+  }
+
+  app
     .use(synced.vue)
     .use(MotionPlugin)
     // TODO: Fix autoAnimatePlugin type error

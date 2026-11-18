@@ -138,7 +138,9 @@ It serializes commands across windows, stores artifacts under the app's user-dat
 The CLI runs without a shell. Model arguments cannot change the device, endpoint, run, or storage root.
 Nonzero exits retain AUV output and failure details as tool errors. A zero exit code does not prove that the intended UI change occurred.
 
-On macOS, grant Accessibility and Screen Recording permissions to the launching app when the OS requests them.
+On macOS, grant Accessibility and Screen Recording permissions to AIRI when the OS requests them.
+The packaged app is its own TCC responsible process, also when a terminal or Steam starts it.
+A development run uses the permissions of the terminal that starts it.
 Some application actions also need Automation permission. If `permission.probe` reports missing screen-recording permission, a capture can contain only the desktop background despite exit code zero. Available commands depend on the OS and AUV backend.
 Use this feature for local native applications. It does not expose a remote-device gateway or replace the separate `services/computer-use-mcp` service.
 
@@ -152,6 +154,8 @@ The installer bundles the Godot stage sidecar from `engines/stage-tamagotchi-god
 `electron-builder.config.ts` checks that output in `beforePack`. By default a missing or empty directory logs a warning and the package is built without the sidecar, so the Godot renderer cannot start. Set `AIRI_REQUIRE_GODOT_STAGE=true` to fail packaging instead; `pnpm release` does.
 
 Build fork releases with `pnpm release <version>` from the repository root. It exports the sidecar, packages the installers, and uploads them to a draft GitHub release. See [`pnpm release`](../../scripts/dev-tools/README.md#pnpm-release). Releases use the fork's repository, `releaseRepository` in `src/shared/release-repository.ts`. The fork has no update feed, so the updater is off and the About page links to those releases. A build updates itself only when it sets both `AIRI_UPDATE_FEED_URL` and `AIRI_UPDATE_PUBLIC_KEY`, and never on macOS, where builds are ad-hoc signed.
+
+A fork build sends no error reports to upstream. Error reports are off unless the build sets its own `AIRI_ERROR_REPORT_DSN` and `VITE_ENABLE_ANALYTICS`, and the user turns the analytics setting on. Source maps are made and uploaded only when the build also sets `AIRI_SENTRY_ORG`, `AIRI_SENTRY_PROJECT`, and `SENTRY_AUTH_TOKEN`. See `src/shared/error-report-source.ts`.
 
 Windows is planned, not checked: no Windows installer is built or tested (see [Platform support](../../README.md#platform-support)). The `build:win` script and the `win` and `nsis` sections of `electron-builder.config.ts` stay in place.
 

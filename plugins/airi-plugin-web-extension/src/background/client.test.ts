@@ -1,63 +1,102 @@
-import type { WebSocketEventOptionalSource } from '@proj-airi/server-sdk'
+import type { ExtensionSettings } from '../shared/types'
 
-import type { ExtensionSettings, VideoContextPayload } from '../shared/types'
-import type { ClientState } from './client'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { Client } from '@proj-airi/server-sdk'
-import { describe, expect, it, vi } from 'vitest'
+import { DEFAULT_SETTINGS } from '../shared/constants'
+import { createClientState, disconnectClient, ensureClient, handleVideoContext, notifyVideo } from './client'
 
-import { handleVideoContext } from './client'
+const clients = vi.hoisted(() => [] as Array<{ options: Record<string, unknown>, send: ReturnType<typeof vi.fn> }>)
 
-const settings: ExtensionSettings = {
-  wsUrl: 'ws://localhost:6121/ws',
-  token: '',
-  enabled: true,
-  sendPageContext: true,
-  sendVideoContext: true,
-  sendSparkNotify: true,
-  sendSubtitles: true,
-  enableVision: false,
+// The channel server is a network boundary. This fake records what the extension sends.
+vi.mock('@proj-airi/server-sdk', () => ({
+  ContextUpdateStrategy: { ReplaceSelf: 'replace-self' },
+  Client: class {
+    send = vi.fn()
+
+    constructor(public options: Record<string, unknown>) {
+      clients.push(this)
+    }
+
+    async connect() {}
+
+    close() {}
+  },
+}))
+
+const settings: ExtensionSettings = { ...DEFAULT_SETTINGS, token: 'test-token' }
+const video = { site: 'youtube', url: 'https://example.com/watch?v=a', title: 'Song A', videoId: 'a' } as const
+
+function sentEvents() {
+  return clients[0]!.send.mock.calls.map(([event]) => event)
 }
 
-const video: VideoContextPayload = {
-  site: 'youtube',
-  url: 'https://www.youtube.com/watch?v=abc',
-  title: 'How tea is made',
-  channel: 'Tea Channel',
-  videoId: 'abc',
-}
-
-/** A connected state whose client records what it sends instead of opening a socket. */
-function connectedState() {
-  const client = new Client({ name: 'proj-airi:plugin-web-extension', autoConnect: false })
-  const sent: WebSocketEventOptionalSource[] = []
-  vi.spyOn(client, 'send').mockImplementation((event) => {
-    sent.push(event)
-    return true
+describe('web extension client', () => {
+  afterEach(() => {
+    clients.length = 0
   })
-  const state: ClientState = { client, connected: true }
-  return { state, sent }
-}
 
-describe('web extension spark notify', () => {
-  it('routes the video notify to the stage windows and addresses it to the character only', () => {
-    const { state, sent } = connectedState()
+  it('announces an extension module identity with the extension id', async () => {
+    const state = createClientState()
 
-    handleVideoContext(state, settings, video)
+    await ensureClient(state, settings)
 
-    const notify = sent.find(event => event.type === 'spark:notify')
+    expect(clients).toHaveLength(1)
+    expect(clients[0]!.options.identity).toEqual({
+      id: expect.any(String),
+      extension: {
+        id: 'proj-airi:plugin-web-extension',
+        version: expect.any(String),
+      },
+      labels: { runtime: 'web-extension' },
+    })
+    disconnectClient(state)
+  })
+
+  it('routes the video notify to the stage windows and addresses it to the character only', async () => {
+    const state = createClientState()
+    await ensureClient(state, settings)
+
+    notifyVideo(state, settings, { ...video, channel: 'Tea Channel' })
+
+    const notify = sentEvents().find(event => event.type === 'spark:notify')
     expect(notify).toMatchObject({
-      data: { headline: 'User is watching: How tea is made', note: 'Channel: Tea Channel', destinations: ['character'] },
+      data: { headline: 'User is watching: Song A', note: 'Channel: Tea Channel', destinations: ['character'] },
       // Stage windows connect as `proj-airi:stage-tamagotchi` or `proj-airi:stage-web`; no peer is named `character`.
       route: { destinations: ['proj-airi:stage-*'] },
     })
+    disconnectClient(state)
   })
 
-  it('sends no notify when spark notify is off', () => {
-    const { state, sent } = connectedState()
+  it('sends no notify when spark notify is off', async () => {
+    const state = createClientState()
+    await ensureClient(state, settings)
 
-    handleVideoContext(state, { ...settings, sendSparkNotify: false }, video)
+    notifyVideo(state, { ...settings, sendSparkNotify: false }, video)
 
-    expect(sent.map(event => event.type)).toEqual(['context:update'])
+    expect(sentEvents()).toEqual([])
+    disconnectClient(state)
+  })
+
+  it('notifies a video without replacing the video context', async () => {
+    const state = createClientState()
+    await ensureClient(state, settings)
+    handleVideoContext(state, settings, { ...video, url: 'https://example.com/watch?v=b', title: 'Song B', videoId: 'b' })
+    clients[0]!.send.mockClear()
+
+    notifyVideo(state, settings, video)
+
+    expect(sentEvents().map(event => event.type)).toEqual(['spark:notify'])
+    expect(state.lastVideo?.videoId).toBe('b')
+    disconnectClient(state)
+  })
+
+  it('updates the video context without a notification', async () => {
+    const state = createClientState()
+    await ensureClient(state, settings)
+
+    handleVideoContext(state, settings, video)
+
+    expect(sentEvents().map(event => event.type)).toEqual(['context:update'])
+    disconnectClient(state)
   })
 })

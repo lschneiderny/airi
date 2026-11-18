@@ -71,7 +71,7 @@ describe.each(['main', 'dashboard'] as const)('%s bounds persistence', (tag) => 
     if (saved)
       mocks.config.windows.push({ title, tag, x: 123, y: 456, width: 300, height: 400 })
     const window = tag === 'main'
-      ? await setupMainWindow({ inlayWindow: async () => new mocks.Window(), chatWindow: { attachFullscreen: () => () => {} } } as never)
+      ? await setupMainWindow({ controlsMenuWindow: { prepare: async () => {} }, inlayWindow: async () => new mocks.Window(), chatWindow: { attachFullscreen: () => () => {} } } as never)
       : await setupDashboardWindow({} as never)
     window.emit('resize')
 

@@ -11,9 +11,10 @@ import type {
 } from './types'
 
 import { storeToRefs } from 'pinia'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, shallowRef, watch } from 'vue'
 
 import StepModelSelection from './step-model-selection.vue'
+import StepPermissions from './step-permissions.vue'
 import StepProviderConfiguration from './step-provider-configuration.vue'
 import StepProviderSelection from './step-provider-selection.vue'
 import StepWelcome from './step-welcome.vue'
@@ -171,6 +172,12 @@ const allSteps = computed<OnboardingStep[]>(() => {
       version: sharedVersionOf('model-selection'),
       component: StepModelSelection,
     },
+    {
+      id: 'permissions',
+      version: sharedVersionOf('permissions'),
+      optional: true,
+      component: StepPermissions,
+    },
   ]
 
   return coreSteps
@@ -178,14 +185,15 @@ const allSteps = computed<OnboardingStep[]>(() => {
 
 // The flow shows the pending shared steps, and the host steps that this device has no record of.
 // The list is fixed when the flow starts. A `later` record during the flow does not move the step index.
+// Only a sign-in changes it, see the watch below.
 const sharedStepIds = new Set(sharedOnboardingSteps.map(sharedStep => sharedStep.id))
 const pendingSharedStepIds = new Set(onboardingStore.pendingSharedSteps.map(sharedStep => sharedStep.id))
-const flowStepIds = new Set(allSteps.value
+const flowStepIds = shallowRef(new Set(allSteps.value
   .filter(flowStep => sharedStepIds.has(flowStep.id)
     ? pendingSharedStepIds.has(flowStep.id)
     : isStepPending(onboardingStore.stepRecords, { id: flowStep.id, version: flowStep.version ?? 1 }))
-  .map(flowStep => flowStep.id))
-const flowSteps = computed(() => allSteps.value.filter(flowStep => flowStepIds.has(flowStep.id)))
+  .map(flowStep => flowStep.id)))
+const flowSteps = computed(() => allSteps.value.filter(flowStep => flowStepIds.value.has(flowStep.id)))
 /** Steps that the user postponed in this flow. The finish keeps their `later` record. */
 const postponedStepIds = new Set<string>()
 
@@ -259,6 +267,18 @@ const requestLater: OnboardingStepLaterHandler = async () => {
   await advance()
 }
 
+// A sign-in in any window ends provider setup and sends a close request. When device steps are still pending, for
+// example permissions, the flow leaves provider setup and goes on with them. Otherwise the host closes the flow.
+const providerSetupStepIds = new Set(sharedOnboardingSteps.filter(sharedStep => sharedStep.scope === 'provider-setup').map(sharedStep => sharedStep.id))
+watch(() => onboardingStore.closeRequestId, () => {
+  if (onboardingStore.pendingSharedSteps.length === 0)
+    return
+
+  flowStepIds.value = new Set([...flowStepIds.value].filter(id => !providerSetupStepIds.has(id)))
+  direction.value = 'next'
+  step.value = 0
+})
+
 onMounted(() => {
   trackOnboardingStarted({ entry: 'app_start' })
 })
@@ -274,7 +294,7 @@ onMounted(() => {
         class="flex flex-1 flex-col"
         v-bind="currentStepProps"
         :on-next="requestNextStep"
-        :on-previous="requestPreviousStep"
+        :on-previous="step > 0 ? requestPreviousStep : undefined"
         :on-later="currentStep.optional ? requestLater : undefined"
       />
     </Transition>

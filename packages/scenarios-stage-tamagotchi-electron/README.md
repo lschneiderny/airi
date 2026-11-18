@@ -53,6 +53,31 @@ pnpm exec vishot capture \
 
 Set `AIRI_DISPLAY_MODEL_FORMAT` to `live2d`, `vrm`, or `mmd`. The scenario skips first-run onboarding in the capture profile, imports and selects the supplied file through the model chooser, captures the main stage, then restores persisted state and removes the imported fixture.
 
+### Check the app menu window
+
+The app menu of the Controls Island opens in a window of its own. This scenario opens and closes it in each way and checks the handoff between the windows:
+
+```bash
+APP_IGNORE_FOCUS=1 \
+pnpm exec vishot capture \
+  ./packages/scenarios-stage-tamagotchi-electron/src/scenarios/controls-menu-window.ts \
+  --target electron \
+  --app-entrypoint ./apps/stage-tamagotchi \
+  --cwd . \
+  --settle-ms 2500 \
+  --output-dir ./.vishot/controls-menu-window
+```
+
+Quit a running `dev:tamagotchi` first. The app directory shares its single-instance lock, and the capture app quits at once.
+
+Expected result:
+
+- The run ends without an error. Each step waits for the window that answers it, so a broken handoff stops the run.
+- `controls-menu-open` shows the menu beside the more button. `controls-menu-main-window` shows the Island at that time.
+- `controls-menu-hearing` shows Hearing controls in the main window.
+
+With `APP_IGNORE_FOCUS=1`, the menu window never takes focus. Check by hand that a click in another app closes the menu.
+
 ## Remote debug helpers
 
 `@proj-airi/scenarios-stage-tamagotchi-electron/runtime/remote-debug` holds the Chrome DevTools Protocol helpers for scripts that start the real app with `APP_REMOTE_DEBUG=true`: `findAvailablePort`, `waitForRemoteDebug`, `findDebugTarget`, `waitFor` and `CdpClient`. Every wait is bounded; `CdpClient.connect`, `send` and `evaluate` take a `timeoutMs` (default 30 s). The stage-tamagotchi smoke scripts and the qa-tools T3 harness use it. It is separate from the vishot scenarios above, which do not use remote debug.

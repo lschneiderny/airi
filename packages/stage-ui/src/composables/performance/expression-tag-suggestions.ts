@@ -32,7 +32,7 @@ export async function requestExpressionTagSuggestions(catalog: readonly CatalogE
   const model = consciousness.activeModel
   if (!providerId || !model)
     throw new NoChatModelError()
-  const provider = await consciousness.getChatProviderInstance(providerId)
+  const provider = await consciousness.getChatProviderInstance(providerId, model)
   const prompt = buildTagSuggestionPrompt(catalog)
   const conversation: Conversation = { turns: [
     { id: 'expression-tag-suggestions-instructions', type: 'system', authority: 'system', content: [{ type: 'text', text: prompt.system }] },

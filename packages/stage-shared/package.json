@@ -17,7 +17,11 @@
   "exports": {
     ".": "./src/index.ts",
     "./auth": "./src/auth/index.ts",
+    "./analytics/app-origins": "./src/analytics/app-origins.ts",
     "./analytics/openpanel": "./src/analytics/openpanel.ts",
+    "./analytics/posthog": "./src/analytics/posthog.ts",
+    "./analytics/sentry": "./src/analytics/sentry.ts",
+    "./analytics/sentry-vite": "./src/analytics/sentry-vite.ts",
     "./beat-sync": "./src/beat-sync/index.ts",
     "./character-state": "./src/character-state/index.ts",
     "./conversation-register": "./src/conversation-register/index.ts",
@@ -61,6 +65,7 @@
     "gpuu": "catalog:",
     "ofetch": "catalog:",
     "pinia": "catalog:",
+    "posthog-js": "catalog:",
     "valibot": "catalog:",
     "vue": "catalog:"
   },
@@ -70,6 +75,7 @@
     "@proj-airi/cpu-slots": "workspace:^",
     "@proj-airi/electron-screen-capture": "workspace:^",
     "@proj-airi/i18n": "workspace:^",
+    "@sentry/bundler-plugins": "catalog:",
     "@types/audioworklet": "catalog:",
     "vue-i18n": "catalog:"
   }

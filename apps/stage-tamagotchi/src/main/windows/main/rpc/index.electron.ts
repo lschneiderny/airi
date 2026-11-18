@@ -9,6 +9,7 @@ import type { PerfRecordingService } from '../../../services/airi/perf-recording
 import type { AutoUpdater } from '../../../services/electron/auto-updater'
 import type { GlobalShortcutService } from '../../../services/electron/global-shortcut'
 import type { ChatWindowManager } from '../../chat'
+import type { ControlsMenuWindowManager } from '../../controls-menu'
 import type { EditorWindowManager } from '../../editor'
 import type { NoticeWindowManager } from '../../notice'
 import type { OnboardingWindowManager } from '../../onboarding'
@@ -21,6 +22,7 @@ import {
   electronCenterMainWindow,
   electronChatAttentionTargetChanged,
   electronChatButtonStateChanged,
+  electronControlsMenuOpen,
   electronGetChatAttentionTarget,
   electronGetChatButtonState,
   electronMainPageMounted,
@@ -44,6 +46,8 @@ import { setupBaseWindowElectronInvokes } from '../../shared/window'
 
 export async function setupMainWindowElectronInvokes(params: {
   window: BrowserWindow
+  /** The app menu of the controls island. It opens in its own window, so it can extend past this one. */
+  controlsMenu: ControlsMenuWindowManager
   editorWindow: EditorWindowManager
   settingsWindow: SettingsWindowManager
   chatWindow: ChatWindowManager
@@ -105,4 +109,5 @@ export async function setupMainWindowElectronInvokes(params: {
   const stopChatAttentionTarget = params.chatWindow.onAttentionTargetChange(target => context.emit(electronChatAttentionTargetChanged, target))
   onWindowClosed(params.window, stopChatAttentionTarget)
   defineInvokeHandler(context, noticeWindowEventa.openWindow, payload => params.noticeWindow.open(payload))
+  defineInvokeHandler(context, electronControlsMenuOpen, request => params.controlsMenu.open(request))
 }

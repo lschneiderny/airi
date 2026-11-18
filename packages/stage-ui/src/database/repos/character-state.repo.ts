@@ -1,8 +1,10 @@
 import type { CharacterStateRecordV1 } from '@proj-airi/stage-shared/character-state'
 
-import localforage from 'localforage'
+import { prefixStorage } from 'unstorage'
 
-const records = localforage.createInstance({ name: 'airi-character-state', storeName: 'cards' })
+import { listRawItems, storage } from '../storage'
+
+const records = prefixStorage(storage, 'character-state')
 
 /**
  * Runs one access under the lock that every window's character-state writes take. Reads take it too, so a new leader
@@ -21,21 +23,15 @@ function locked<T>(run: () => Promise<T>) {
 export const characterStateRepo = {
   /** The stored value of one card, or `null` when the card has none. */
   async load(cardId: string) {
-    return locked(() => records.getItem<unknown>(cardId))
+    return locked(async () => await records.getItemRaw<unknown>(cardId) ?? null)
   },
   /** Every stored value, in no particular order. */
   async loadAll() {
-    return locked(async () => {
-      const values: unknown[] = []
-      await records.iterate<unknown, void>((value) => {
-        values.push(value)
-      })
-      return values
-    })
+    return locked(async () => (await listRawItems<unknown>(records, '')).map(([, value]) => value))
   },
   /** Saves the record under its card id, replacing the card's previous record. */
   async save(record: CharacterStateRecordV1) {
-    await locked(() => records.setItem<CharacterStateRecordV1>(record.cardId, record))
+    await locked(() => records.setItemRaw<CharacterStateRecordV1>(record.cardId, record))
   },
   /** Deletes the record of one card. */
   async remove(cardId: string) {

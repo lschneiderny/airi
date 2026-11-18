@@ -1,18 +1,33 @@
-import localforage from 'localforage'
-
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { DisplayModelFormat, useDisplayModelsStore } from './display-models'
 
-vi.mock('localforage', () => ({
-  default: {
-    getItem: vi.fn(async () => undefined),
-    iterate: vi.fn(async () => undefined),
-    removeItem: vi.fn(async () => undefined),
-    setItem: vi.fn(async (_key: string, value: unknown) => value),
-  },
-}))
+const records = vi.hoisted(() => new Map<string, unknown>())
+const listDeviceKeys = vi.hoisted(() => vi.fn(() => [...records.keys()]))
+
+// Node has no IndexedDB. The `device` mount reads and writes `records` instead.
+// IndexedDB returns a copy of each record, so a change is not visible until a write.
+vi.mock('../database/storage', async (importOriginal) => {
+  const { createStorage } = await import('unstorage')
+  const storage = createStorage()
+  const read = (key: string) => records.has(key) ? { ...records.get(key) as object } : null
+  storage.mount('device', {
+    name: 'device-records',
+    hasItem: key => records.has(key),
+    getItem: read,
+    getItemRaw: read,
+    setItemRaw: (key, value) => {
+      records.set(key, value)
+    },
+    removeItem: (key) => {
+      records.delete(key)
+    },
+    getKeys: listDeviceKeys,
+    clear: () => records.clear(),
+  })
+  return { ...await importOriginal<typeof import('../database/storage')>(), storage }
+})
 vi.mock('@proj-airi/stage-ui-live2d/utils/live2d-zip-loader', () => ({}))
 vi.mock('@proj-airi/stage-ui-live2d/utils/live2d-opfs-registration', () => ({}))
 vi.mock('@proj-airi/stage-ui-live2d/utils/live2d-preview', () => ({ loadLive2DModelPreview: async () => 'live2d-preview' }))
@@ -25,6 +40,7 @@ describe('display models store', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
+    records.clear()
   })
 
   it('resolves newly imported display models from memory before IndexedDB', async () => {
@@ -72,6 +88,6 @@ describe('display models store', () => {
       store.loadDisplayModelsFromIndexedDB(),
     ])
 
-    expect(localforage.iterate).toHaveBeenCalledTimes(1)
+    expect(listDeviceKeys).toHaveBeenCalledTimes(1)
   })
 })

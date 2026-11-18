@@ -363,6 +363,13 @@ function endPress(event: PointerEvent) {
 }
 useEventListener(window, 'pointerup', endPress)
 useEventListener(window, 'pointercancel', endPress)
+// A right-click on her opens the app menu, as on the classic page. The Island and its panels keep their own menu.
+useEventListener(window, 'contextmenu', (event: MouseEvent) => {
+  if (event.target !== stageCanvas.value)
+    return
+  event.preventDefault()
+  controlsIslandRef.value?.openMenu()
+})
 
 // Click-through: no readback outside her padded rect; inside, one readback per frame (`resolveStageClickThrough`).
 
