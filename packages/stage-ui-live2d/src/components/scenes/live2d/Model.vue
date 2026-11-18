@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Application } from '@pixi/app'
 import type { Filter } from '@pixi/core'
+import type { TouchReactionIntent, TouchReport } from '@proj-airi/character-mind'
 import type { FaceBaseline } from '@proj-airi/motion-driver-natural/baseline'
 import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
 import type { NaturalMotionObserver, NaturalTouchGesture } from '@proj-airi/motion-driver-natural/frame-types'
@@ -195,8 +196,8 @@ const props = withDefaults(defineProps<{
 const emits = defineEmits<{
   (e: 'modelLoaded'): void
   (e: 'error', error: Error): void
-  /** A poke or pet the Natural driver reacted to; nothing else consumes it yet. */
-  (e: 'touch', event: NaturalTouchGesture): void
+  /** A poke or pet the Natural classifier recognized; the stage answers with `reactToTouch`. */
+  (e: 'touch', report: TouchReport): void
   /** A self-directed idle behaviour of the Natural driver started or ended. */
   (e: 'idle', report: IdleBehaviourReport): void
   /** An errand of the Natural driver's idle draw (a pastime) started or ended, for the stage's realiser. */
@@ -244,6 +245,8 @@ const pendingNaturalEmotions: NaturalEpisode[] = []
 const pendingNaturalPokes: Live2DNaturalMotionAttention['pendingPokes'] = []
 /** Hand position relative to the head center while the user pets it, read on every composition. */
 let naturalPetHand: { x: number, y: number } | null = null
+/** Whether the mind's pet runs. The hand reaches Natural only meanwhile. */
+let naturalPetGranted = false
 const touchGestures = new NaturalTouchGestures({ requireHold: live2dNaturalTouchPetRequiresHold.value })
 const touchPoint = new Point()
 /** Head and body boxes in model canvas space, re-measured at most every 100 ms while the pointer moves. */
@@ -757,7 +760,7 @@ async function performModelLoad() {
           placement,
           chat,
           pendingPokes: pendingNaturalPokes,
-          pet: naturalPetHand,
+          pet: naturalPetGranted ? naturalPetHand : null,
         }
       },
       document,
@@ -1640,11 +1643,12 @@ watch(naturalTouchHeadScale, () => {
   touchRegions = undefined
 })
 
-/** Ends any gesture in progress and drops queued pokes, for a model swap or disabled touch. */
+/** Ends any gesture in progress, drops queued pokes, and withdraws the pet hand, for a model swap or disabled touch. */
 function resetTouch(timeMs: number) {
   handleTouchEvents(touchGestures.reset(timeMs))
   pendingNaturalPokes.length = 0
   naturalPetHand = null
+  naturalPetGranted = false
   touchRegions = undefined
 }
 
@@ -1716,16 +1720,29 @@ function touchSampleFrom(event: PointerEvent, canvas: HTMLCanvasElement): Natura
   }
 }
 
+/** Reports each classified touch; a poke's point is normalized inside the box of its region. Nothing shows until the mind answers through {@link reactToTouch}. */
 function handleTouchEvents(events: NaturalTouchGesture[]) {
   for (const event of events) {
     if (event.kind === 'poke') {
       const box = event.region === 'head' ? touchRegions?.head : touchRegions?.body
-      pendingNaturalPokes.push({ region: event.region, x: acrossRect(event.x, box), y: acrossRectY(event.y, box) })
+      emits('touch', { gesture: 'poke', region: event.region, point: { x: acrossRect(event.x, box), y: acrossRectY(event.y, box) } })
     }
-    if (event.kind === 'pet-end')
+    else if (event.kind === 'pet-start') {
+      emits('touch', { gesture: 'pet-start', region: 'head' })
+    }
+    else {
       naturalPetHand = null
-    emits('touch', event)
+      emits('touch', { gesture: 'pet-end', region: 'head', durationMs: event.durationMs })
+    }
   }
+}
+
+/** Performs the mind's reaction: a poke joins Natural's queue, and a pet grants or withdraws the pet hand. */
+function reactToTouch(intent: TouchReactionIntent) {
+  if (intent.gesture === 'poke')
+    pendingNaturalPokes.push({ region: intent.region, x: intent.point.x, y: intent.point.y })
+  else
+    naturalPetGranted = intent.phase === 'start'
 }
 
 function onTouchPointer(event: PointerEvent) {
@@ -1996,6 +2013,7 @@ defineExpose({
   setEmotion: (episode: NaturalEpisode) => { pendingNaturalEmotions.push(episode) },
   gesture: (kind: CueGestureKind, count: number) => naturalMotion?.gesture(kind, count),
   addMood: (dose: MoodDose) => naturalMotion?.addMood(dose),
+  reactToTouch,
   /** The resting face target; a model that loads later receives it on the stage's next once-per-second update. */
   setFaceBaseline: (baseline: FaceBaseline) => naturalMotion?.setFaceBaseline(baseline),
   /**

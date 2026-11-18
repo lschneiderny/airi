@@ -544,21 +544,26 @@ Do not pass a raw window title in `topicText`, because the trigger message is st
 A reaction is an unprompted turn with the turn ID `reaction:<eventId>`, so it shares the single pending turn: while any unprompted turn is pending, another reaction or unprompted turn fails with `Another unprompted turn is still pending`, and a repeated call for the pending event joins it.
 The trigger message is `base.prompt.reaction-trigger` with `topicText`, and its trigger is `{ topicKey: 'touch', text: topicText, kind }` with kind `touch-pet` or `touch-poke`. The instruction is `base.prompt.reaction`, or `base.prompt.reaction-protest` for a poke protest. A reaction has no reason category and is never forced: it gets only `builtIn_readMemory`, and a `<|SILENT|>` reply declines it with one control record.
 
-Use `submitReaction` only for the touch reaction policy of the situation leader. Do not use it for notify or widget reactions; they use `submitUnprompted`.
+Only `useSituationStore().speakReaction` calls `submitReaction`, for a line the character mind decided about a touch. Do not use it for notify or widget reactions; they use `submitUnprompted`.
 
 ### Stage touch
 
-`Stage.vue` hands each Live2D `touch` event to `useStageTouchStore`, together with its own performance conductor. Only the Natural driver classifies touches.
+Only the Natural driver classifies touches. The Live2D scene reports a pet start, a pet end, or a poke with its `naturalTouch` event and the MMD scene with its `touch` event, each as a `TouchReport` of `@proj-airi/character-mind`. `Stage.vue` hands every report to `StagePerformanceConductor.touch`, and nothing shows the touch before the mind answers.
 
-- Every pet start, pet end, and poke becomes a `touch` affect signal on that conductor. Its decider owns cooldowns and habituation, and the conductor sends the resulting mood doses to the scene's `addMood` under Live2D Natural only.
-- A finished pet and a poke are also sent to the situation leader as a `TouchObservation` over `situationTouchObservedEvent` (`stores/situation/touch-bus`) on the speech bus. A pet start is not sent.
-- Each rendered stage owns its own conductor, so two stages that render at once dose mood twice for touches on both. No guard prevents it.
+Under a Natural driver, `conductor.touch(report)` answers one touch once, in the call stack of the scene's event:
 
-The leader folds each observation into the situation and, while its urge gate runs, evaluates the touch reaction policy of `@proj-airi/stage-shared/situation`. A speak decision marks the touch event shown and calls `submitReaction`. A spoken reaction settles at its first literal: it starts the policy's 45 s refractory and the gate's short floor (`recordExternalSpeech`). A declined, cancelled, or failed reaction only clears the pending entry, and a send refused by another pending unprompted turn settles as `refused`: its retry wait is taken back and a protest's burst may roll again, but its random draw is spent. Reaction outcomes never reach `recordUrgeFireOutcome`. The reaction memory is saved with the gate's inner state.
+1. For a finished pet and a poke it calls `voice().observeTouch(observation)`, which is `useSituationStore().observeTouch`. The leader folds the `TouchObservation` into the situation and returns a `TouchVoiceView`, or `null` in a follower window and while the urge gate does not run. A pet start is not observed.
+2. It sends the mind one `touch` stimulus with the active card's effective settings and that view.
+3. It dispatches the mind's intents in order: `touch-reaction` to the scene's `reactToTouch`, `mood` to the scene's `addMood`, `moment` to `markMoment` (`useIdleProps().onMoment`, which keeps the chance, the pick, and the entry rest), and `speak` to `voice().speakReaction`.
+
+The scene performs only what `reactToTouch` hands it: a poke starts Natural's poke at the reported point, and the pet hand reaches Natural only between a pet `start` and its `end`. The asset decider is not involved, and an affect trace records no touch.
+
+`useSituationStore().speakReaction({ kind, eventId })` runs the line. It resolves `refused` without sending while another unprompted turn is pending, so the touch stays unshown for her next reply. Otherwise it marks the touch event shown, calls `submitReaction`, and resolves at the first spoken literal, at a decline, or with the turn's result; a spoken line also starts the gate's short floor (`recordExternalSpeech`). It resolves `failed` in a follower window, while the gate does not run, and when the window stopped leading before the turn had a result. The conductor returns the outcome to the mind as a `voice-outcome` stimulus. Reaction outcomes never reach `recordUrgeFireOutcome`.
+
+The pacing of these lines (the 45 s refractory, the retry wait, the burst roll) is the mind's fast state. It is not saved, so it starts over at every launch. `useCharacterMind` creates one mind per `Stage.vue` and feeds its voice decisions to the devtools reaction inspector. Two stages that render at once would run two minds and dose mood twice for touches on both; no guard prevents it.
 
 A reaction turn's own cues dose no mood, because the touch already did. When a turn's trigger has the `touch` topic key, `Stage.vue` calls `markMoodless(turnId)` on the conductor, and every episode of that turn carries a mood gain of 0.
-The conductor's `gesture(kind, count)` plays an ACT `gesture` field on the scene under Live2D Natural only; Universal and MAGIC ignore it.
-MMD Natural currently ignores gestures, touch mood doses, and touch reactions; MMD support is a follow-up.
+The conductor's `gesture(kind, count)` plays an ACT `gesture` field on the scene under the Natural driver of Live2D and MMD; Universal, MAGIC, and MMD Classic ignore it.
 The conductor's `action(label, gesture?)` forwards an ACT `action` label to the scene under every driver. `Stage.vue` routes an action label, with its cue gesture, only while the MMD renderer is active, and the MMD scene resolves the label against the clips the user exposed. A Live2D scene never receives one.
 The [nonverbal channels ADR](../../docs/ai/adr/2026-10-31-nonverbal-channels.md) records the design and its consequences.
 

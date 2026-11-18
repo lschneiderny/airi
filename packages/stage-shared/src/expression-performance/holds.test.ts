@@ -121,7 +121,7 @@ function slotsSuite<S>(name: 'picker' | 'planner', decider: Decider<S>) {
     })
 
     it('emits nothing for an unknown entry and the slot alone for an unmapped one', () => {
-      expect(decider.decide(expression('missing', 0), ctx, decider.initial(17)).decision).toEqual({ slots: [], moods: [] })
+      expect(decider.decide(expression('missing', 0), ctx, decider.initial(17)).decision).toEqual({ slots: [] })
       expect(decider.decide(expression('plain', 0, 'A'), ctx, decider.initial(17)).decision.slots.map(slot => slot.expressionId)).toEqual(['plain'])
     })
 

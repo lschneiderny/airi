@@ -2,7 +2,7 @@ import type { AffectSignal, AffectTrace, CatalogEntry, ExpressionPerformanceSett
 
 import type { ActionToolPort } from '../../tools/action'
 import type { BodyToolPort } from '../../tools/body'
-import type { ListedAction, StagePerformanceDriver, StagePerformanceScene } from './use-stage-performance-conductor'
+import type { ListedAction, StagePerformanceConductorOptions, StagePerformanceDriver, StagePerformanceScene, TouchVoicePort } from './use-stage-performance-conductor'
 
 import { CharacterMind } from '@proj-airi/character-mind'
 import { createDecider, createPickerDecider, defaultExpressionPerformanceSettings, initialTouchAffectMemory, parseAffectTrace, parseExpressionPerformanceSettings, replayAffectTrace, touchAffect } from '@proj-airi/stage-shared/expression-performance'
@@ -52,11 +52,14 @@ function fakeScene() {
     setMuted: vi.fn<StagePerformanceScene['setMuted']>(),
     gesture: vi.fn<NonNullable<StagePerformanceScene['gesture']>>(),
     addMood: vi.fn<NonNullable<StagePerformanceScene['addMood']>>(),
+    reactToTouch: vi.fn<NonNullable<StagePerformanceScene['reactToTouch']>>(),
   }
 }
 
-function createConductor(driver: StagePerformanceDriver, scene: StagePerformanceScene = fakeScene(), settings: ExpressionPerformanceSettings = defaultExpressionPerformanceSettings, profile?: PerformanceProfile, entries: readonly CatalogEntry[] = catalog) {
+function createConductor(driver: StagePerformanceDriver, scene: StagePerformanceScene = fakeScene(), settings: ExpressionPerformanceSettings = defaultExpressionPerformanceSettings, profile?: PerformanceProfile, entries: readonly CatalogEntry[] = catalog, touch: Pick<StagePerformanceConductorOptions, 'markMoment' | 'voice'> & { mindSeed?: number } = {}) {
   let now = 10
+  // The mind counts the conductor's seconds as milliseconds, so both read 10 s at the start.
+  const mind = new CharacterMind({ seed: touch.mindSeed ?? 7, clock: () => now * 1000 })
   const playMotion = vi.fn<(group: string) => void>()
   const conductor = new StagePerformanceConductor({
     scene: () => scene,
@@ -65,7 +68,9 @@ function createConductor(driver: StagePerformanceDriver, scene: StagePerformance
     settings: () => settings,
     catalog: () => entries,
     seed: 7,
-    mind: new CharacterMind({ seed: 7, clock: () => now * 1000 }),
+    mind,
+    markMoment: touch.markMoment,
+    voice: touch.voice,
     clock: () => now,
     profile: () => profile,
     modelId: () => 'rig',
@@ -73,7 +78,7 @@ function createConductor(driver: StagePerformanceDriver, scene: StagePerformance
   function advance(seconds: number) {
     now += seconds
   }
-  return { conductor, playMotion, advance }
+  return { conductor, mind, playMotion, advance }
 }
 
 describe('stage performance renderer selection', () => {
@@ -143,7 +148,7 @@ describe('stage performance renderer selection', () => {
     conductor.turnEnd('turn-a')
     conductor.clearExpression(undefined, 'devtools')
 
-    expect(Object.values(scene).map(method => method.mock.calls.length)).toEqual([0, 0, 0, 0, 0, 0, 0])
+    expect(Object.values(scene).map(method => method.mock.calls.length)).toEqual([0, 0, 0, 0, 0, 0, 0, 0])
     expect(selected.value.expressionBackend).toBeUndefined()
     expect(selected.value.driver).toBe('natural')
   })
@@ -160,7 +165,7 @@ describe('stage performance renderer selection', () => {
 
     expect(() => conductor.expression('game', undefined, 'act', 'turn-b')).not.toThrow()
 
-    expect(Object.values(scene).map(method => method.mock.calls.length)).toEqual([0, 0, 0, 0, 0, 0, 0])
+    expect(Object.values(scene).map(method => method.mock.calls.length)).toEqual([0, 0, 0, 0, 0, 0, 0, 0])
     expect(useLlmToolsStore().tools).toEqual([])
   })
 
@@ -172,7 +177,7 @@ describe('stage performance renderer selection', () => {
     expect(conductor.expression('smile', undefined, 'act', 'mmd-turn')?.id).toBe('mmd:0:smile')
     expect(mmdScene.applySlots).toHaveBeenLastCalledWith(expect.arrayContaining([expect.objectContaining({ expressionId: 'mmd:0:smile' })]), expect.any(Number))
     expect(selected.value.expressionBackend?.catalog).toBe(mmdStore.catalog)
-    expect(Object.values(scene).map(method => method.mock.calls.length)).toEqual([0, 0, 0, 0, 0, 0, 0])
+    expect(Object.values(scene).map(method => method.mock.calls.length)).toEqual([0, 0, 0, 0, 0, 0, 0, 0])
   })
 
   it('keeps the Live2D backend catalog and performer state live', () => {
@@ -457,28 +462,105 @@ describe('stage performance conductor', () => {
   })
 
   describe('touch, cue gestures, and moodless turns', () => {
-    it('doses mood from a touch through the decider and hands the dose to the Natural scene only', () => {
+    const point = { x: 0.2, y: -0.4 }
+    /** A voice port that records nothing of its own: it answers every observation with `view`. */
+    function fakeVoice(view: ReturnType<TouchVoicePort['observeTouch']> = null) {
+      return {
+        observeTouch: vi.fn<TouchVoicePort['observeTouch']>(() => view),
+        speakReaction: vi.fn<TouchVoicePort['speakReaction']>(async () => 'spoken'),
+      }
+    }
+
+    it('answers a poke once through the mind: the scene reacts, mood is dosed, and the moment is marked', () => {
       const scene = fakeScene()
-      const { conductor } = createConductor('natural', scene)
+      const markMoment = vi.fn<NonNullable<StagePerformanceConductorOptions['markMoment']>>()
+      const { conductor } = createConductor('natural', scene, undefined, undefined, undefined, { markMoment })
 
-      conductor.touch({ touch: 'poke', region: 'head' })
+      conductor.touch({ gesture: 'poke', region: 'head', point })
 
-      // The conductor clock reads 10, so the decider sees the poke at 10 s.
+      expect(scene.reactToTouch.mock.calls).toEqual([[{ id: '1-touch-reaction', cause: 1, channel: 'posture', kind: 'touch-reaction', gesture: 'poke', region: 'head', point }]])
+      // The mind's clock reads 10 000 ms, so the dose is paced at 10 s.
       const expected = touchAffect(initialTouchAffectMemory, { touch: 'poke', region: 'head', at: 10 }, defaultExpressionPerformanceSettings).dose
       expect(expected).not.toBeNull()
       expect(scene.addMood.mock.calls).toEqual([[expected]])
+      expect(markMoment.mock.calls).toEqual([['poked']])
       expect(scene.setEmotion).not.toHaveBeenCalled()
       expect(scene.applySlots).not.toHaveBeenCalled()
     })
 
-    it.each(['basic'] as const)('never doses mood or plays a motion group for a touch under %s', (driver) => {
+    it('grants and withdraws the pet through the scene, and marks only a finished pet', () => {
       const scene = fakeScene()
-      const { conductor, playMotion } = createConductor(driver, scene)
+      const markMoment = vi.fn<NonNullable<StagePerformanceConductorOptions['markMoment']>>()
+      const { conductor, advance } = createConductor('natural', scene, undefined, undefined, undefined, { markMoment })
 
-      conductor.touch({ touch: 'pet-start', region: 'head' })
-      conductor.touch({ touch: 'poke', region: 'body' })
+      conductor.touch({ gesture: 'pet-start', region: 'head' })
+      advance(4)
+      conductor.touch({ gesture: 'pet-end', region: 'head', durationMs: 4000 })
 
+      expect(scene.reactToTouch.mock.calls.map(([intent]) => intent)).toMatchObject([{ gesture: 'pet', phase: 'start' }, { gesture: 'pet', phase: 'end' }])
+      expect(scene.addMood.mock.calls.map(([dose]) => dose.id)).toEqual(['touch-1-pet', 'touch-2-pet-long'])
+      expect(markMoment.mock.calls).toEqual([['petted']])
+    })
+
+    it('records a finished pet and a poke in the situation, and never a pet start', () => {
+      vi.useFakeTimers({ toFake: ['Date'] })
+      onTestFinished(() => {
+        vi.useRealTimers()
+      })
+      const T0 = 1_700_000_000_000
+      vi.setSystemTime(T0)
+      const voice = fakeVoice()
+      const { conductor } = createConductor('natural', fakeScene(), undefined, undefined, undefined, { voice: () => voice })
+
+      conductor.touch({ gesture: 'pet-start', region: 'head' })
+      expect(voice.observeTouch).not.toHaveBeenCalled()
+
+      conductor.touch({ gesture: 'pet-end', region: 'head', durationMs: 4200 })
+      vi.setSystemTime(T0 + 1500)
+      conductor.touch({ gesture: 'poke', region: 'body', point })
+
+      expect(voice.observeTouch.mock.calls.map(([observation]) => observation)).toEqual([
+        { kind: 'touch', gesture: 'pet', region: 'head', atMs: T0, durationMs: 4200 },
+        { kind: 'touch', gesture: 'poke', region: 'body', atMs: T0 + 1500 },
+      ])
+      expect(voice.speakReaction).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      ['its outcome', async (): Promise<'refused'> => 'refused', 'refused'],
+      ['a failed outcome when it throws', async (): Promise<'refused'> => { throw new Error('No chat') }, 'failed'],
+    ] as const)('speaks the line the mind decided and returns %s to the mind', async (_name, speakReaction, outcome) => {
+      vi.spyOn(console, 'error').mockImplementation(() => {})
+      // The conductor's clock reads 10 s, so the mind decides at 10 000 ms about a burst that ends then.
+      const voice = { ...fakeVoice({ sessionId: 'session-1', eventId: 'touch-event', pet: null, pokeTimesMs: [8000, 9000, 10_000], lastCharacterLineAtMs: null, held: null }), speakReaction: vi.fn<TouchVoicePort['speakReaction']>(speakReaction) }
+      // Seed 17 draws below the odds of a protest; the conductor's seed 7 would hold it.
+      const { conductor, mind } = createConductor('natural', fakeScene(), undefined, undefined, undefined, { voice: () => voice, mindSeed: 17 })
+      const settled = new Promise<Parameters<Parameters<CharacterMind['onStep']>[0]>[0]>((resolve) => {
+        mind.onStep(step => step.stimuli.some(stimulus => stimulus.kind === 'voice-outcome') && resolve(step))
+      })
+
+      conductor.touch({ gesture: 'poke', region: 'head', point })
+
+      expect(voice.speakReaction.mock.calls).toEqual([[{ kind: 'poke-protest', eventId: 'touch-event' }]])
+      expect(mind.state.voice.reaction.pending).toMatchObject({ eventId: 'touch-event' })
+      expect((await settled).stimuli).toEqual([{ kind: 'voice-outcome', eventId: 'touch-event', outcome }])
+      expect(mind.state.voice.reaction.pending).toBeNull()
+    })
+
+    it.each(['basic'] as const)('never reaches the mind, the scene, or the situation for a touch under %s', (driver) => {
+      const scene = fakeScene()
+      const voice = fakeVoice()
+      const markMoment = vi.fn<NonNullable<StagePerformanceConductorOptions['markMoment']>>()
+      const { conductor, mind, playMotion } = createConductor(driver, scene, undefined, undefined, undefined, { voice: () => voice, markMoment })
+
+      conductor.touch({ gesture: 'pet-start', region: 'head' })
+      conductor.touch({ gesture: 'poke', region: 'body', point })
+
+      expect(mind.state.seq).toBe(0)
+      expect(scene.reactToTouch).not.toHaveBeenCalled()
       expect(scene.addMood).not.toHaveBeenCalled()
+      expect(voice.observeTouch).not.toHaveBeenCalled()
+      expect(markMoment).not.toHaveBeenCalled()
       expect(playMotion).not.toHaveBeenCalled()
       expect(scene.setEmotion).not.toHaveBeenCalled()
     })

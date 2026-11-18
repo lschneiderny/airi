@@ -190,7 +190,7 @@ describe('picker', () => {
       { kind: 'deadline', at: 0 },
     ]
     for (const signal of signals)
-      expect(decider.decide(signal, ctx, state)).toEqual({ decision: { slots: [], moods: [] }, state })
+      expect(decider.decide(signal, ctx, state)).toEqual({ decision: { slots: [] }, state })
     decider.decide(reaction(), ctx, state)
     expect(JSON.stringify(state)).toBe(before)
     expect(decider.nextDeadline(state)).toBeNull()
@@ -203,7 +203,7 @@ describe('picker clear signal', () => {
 
     const result = decider.decide({ kind: 'clear', source: 'tool', slot: 'face', turnId: 'turn', at: 1 }, ctx, state)
 
-    expect(result.decision).toEqual({ slots: [{ slot: 'face', expressionId: null, holdSeconds: 0, until: 'hold', turnId: 'turn' }], moods: [] })
+    expect(result.decision).toEqual({ slots: [{ slot: 'face', expressionId: null, holdSeconds: 0, until: 'hold', turnId: 'turn' }] })
     expect(state.occupants.face).not.toBeNull()
     expect(result.state.occupants.face).toBeNull()
     expect(result.state.occupants.effect).toBe(state.occupants.effect)

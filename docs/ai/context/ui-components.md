@@ -1117,7 +1117,7 @@ pass through to the underlying `BasicButton`.
 
 ## Live2D scene API
 
-`Live2D.vue` in `@proj-airi/stage-ui-live2d` is a scene component, not a `@proj-airi/ui` primitive. It has two touch events. `naturalTouch` carries a poke or a pet that the Natural driver reacted to. `touch` carries a tap or a pat that the scene recognized under the Universal and MAGIC drivers, and it never fires under Natural. Its `naturalEnergy` and `performanceSettings` props, the Natural touch event, and its exposed `applySlots` and `applyHolds` methods are documented in the [stage-ui-live2d README](../../../packages/stage-ui-live2d/README.md), under Expression slots, Held emotions, Energy, and Touch: poke and pet.
+`Live2D.vue` in `@proj-airi/stage-ui-live2d` is a scene component, not a `@proj-airi/ui` primitive. It has two touch events. `naturalTouch` carries a `TouchReport` (`@proj-airi/character-mind`) for a poke, a pet start, or a pet end that the Natural classifier recognized. The scene shows nothing for it until the stage answers through the exposed `reactToTouch(intent: TouchReactionIntent)`. `touch` carries a tap or a pat that the scene recognized under the Universal and MAGIC drivers, and it never fires under Natural. Its `naturalEnergy` and `performanceSettings` props, the Natural touch event, and its exposed `applySlots`, `applyHolds`, and `reactToTouch` methods are documented in the [stage-ui-live2d README](../../../packages/stage-ui-live2d/README.md), under Expression slots, Held emotions, Energy, and Touch: poke and pet.
 
 ---
 

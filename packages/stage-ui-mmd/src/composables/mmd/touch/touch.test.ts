@@ -108,8 +108,7 @@ describe('mmd touch without usable rigid bodies', () => {
     touch.pointer({ type: 'pointerdown', button: 0, timeStamp: 0, ...point }, camera(), viewport)
     const events = touch.pointer({ type: 'pointerup', button: 0, timeStamp: 100, ...point }, camera(), viewport)
 
-    expect(events).toEqual([expect.objectContaining({ kind: 'poke', region: 'body' })])
-    expect(touch.takePokes()).toEqual([expect.objectContaining({ region: 'body' })])
+    expect(events).toEqual([{ gesture: 'poke', region: 'body', point: { x: expect.any(Number), y: expect.any(Number) } }])
   })
 
   it('never reads the mesh when the model has a usable rigid body', () => {

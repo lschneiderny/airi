@@ -4,6 +4,7 @@ import { createReactionState, initialTouchAffectMemory } from '@proj-airi/stage-
 import { initialReactionMemory } from '@proj-airi/stage-shared/situation'
 
 import { answerEmotion, answerExpressionClear, answerExpressionRequest } from './expression'
+import { answerTouch, answerVoiceOutcome } from './touch'
 
 /** Keeps the voice checkpoint off the emotion checkpoint, so the two rules do not draw the same values. */
 const VOICE_SEED_SALT = 0x9E3779B9
@@ -43,8 +44,12 @@ export function step(state: MindState, stimuli: readonly MindStimulus[], nowMs: 
       answer = answerEmotion(next, stimulus, cause, atSeconds)
     else if (stimulus.kind === 'expression-request')
       answer = answerExpressionRequest(next, stimulus, cause, atSeconds)
-    else
+    else if (stimulus.kind === 'expression-clear')
       answer = answerExpressionClear(next, stimulus, cause)
+    else if (stimulus.kind === 'touch')
+      answer = answerTouch(next, stimulus, cause, nowMs)
+    else
+      answer = answerVoiceOutcome(next, stimulus, nowMs)
 
     next = answer.state
     intents.push(...answer.intents)

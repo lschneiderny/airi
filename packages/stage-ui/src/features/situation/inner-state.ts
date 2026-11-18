@@ -1,10 +1,10 @@
-import type { ReactionMemory, RitualDay, SavedGateMemory, Thread } from '@proj-airi/stage-shared/situation'
+import type { RitualDay, SavedGateMemory, Thread } from '@proj-airi/stage-shared/situation'
 
 import { errorMessageFrom } from '@moeru/std'
 import { logicalDayKey, THREAD_CUE_MAX_CHARS, THREAD_SUMMARY_MAX_CHARS } from '@proj-airi/stage-shared/situation'
 import { isPlainObject } from 'es-toolkit'
 import { defineStore } from 'pinia'
-import { array, boolean, check, custom, finite, integer, literal, maxLength, maxValue, minValue, nullable, number, optional, parse, picklist, pipe, safeParse, strictObject, string, unknown } from 'valibot'
+import { array, check, custom, finite, integer, literal, maxLength, maxValue, minValue, nullable, number, optional, parse, picklist, pipe, safeParse, strictObject, string, unknown } from 'valibot'
 
 const time = pipe(number(), finite())
 const nullableTime = nullable(time)
@@ -46,18 +46,6 @@ const SavedGateMemorySchema = strictObject({
   rngState: pipe(number(), integer(), minValue(0), maxValue(0xFFFFFFFF)),
 })
 
-const ReactionMemorySchema = strictObject({
-  sessionId: nullable(string()),
-  /** Mulberry32 checkpoint, a uint32, separate from the gate's. */
-  rngState: pipe(number(), integer(), minValue(0), maxValue(0xFFFFFFFF)),
-  petsSeen: count,
-  lastPetStartedAtMs: nullableTime,
-  pokeBurstRolled: boolean(),
-  lastLineAtMs: nullableTime,
-  lastAttemptAtMs: nullableTime,
-  pending: nullable(strictObject({ kind: picklist(['pet-soft', 'poke-protest']), eventId: string(), atMs: time, previousAttemptAtMs: nullableTime })),
-})
-
 const innerStateEntries = {
   v: optional(literal(1), 1),
   /** Open threads of every chat session; the gate filters them by session. */
@@ -68,8 +56,6 @@ const innerStateEntries = {
   gate: optional(nullable(SavedGateMemorySchema), null),
   /** Per chat session, the newest message that thread extraction read, so the next extraction starts after it. */
   extractedThrough: optional(array(strictObject({ sessionId: string(), messageId: string() })), () => []),
-  /** The touch reaction policy's memory, with its own random checkpoint; `null` before the first touch was evaluated. */
-  reaction: optional(nullable(ReactionMemorySchema), null),
   /** Epoch milliseconds of the last write; 0 when nothing was saved. */
   savedAtMs: optional(time, 0),
 }
@@ -84,7 +70,6 @@ export interface SavedInnerState {
   readonly rituals: RitualDay | null
   readonly gate: SavedGateMemory | null
   readonly extractedThrough: readonly ExtractionReadPosition[]
-  readonly reaction: ReactionMemory | null
   readonly savedAtMs: number
 }
 
@@ -94,7 +79,7 @@ export interface ExtractionReadPosition {
   readonly messageId: string
 }
 
-export type SavedInnerStatePatch = Partial<Pick<SavedInnerState, 'threads' | 'rituals' | 'gate' | 'extractedThrough' | 'reaction'>>
+export type SavedInnerStatePatch = Partial<Pick<SavedInnerState, 'threads' | 'rituals' | 'gate' | 'extractedThrough'>>
 
 export function defaultSavedInnerState(): SavedInnerState {
   return parse(SavedInnerStateSchema, {})
@@ -152,8 +137,8 @@ function storedSavedAtMs(): number {
 }
 
 /**
- * Persists the unprompted gate's durable inner state (open threads, the ritual day, the gate's social memory, how far
- * thread extraction read each chat session, and the touch reaction policy's memory) so a leader reload or a promoted window does not start her from day
+ * Persists the unprompted gate's durable inner state (open threads, the ritual day, the gate's social memory, and how
+ * far thread extraction read each chat session) so a leader reload or a promoted window does not start her from day
  * one or extract a conversation twice.
  *
  * The store is deliberately not replicated across windows: only the leader's situation store reads and writes it,
@@ -213,7 +198,6 @@ export const useSituationInnerState = defineStore('situation-inner-state', () =>
       rituals: patch.rituals === undefined ? base.rituals : patch.rituals,
       gate: patch.gate === undefined ? base.gate : patch.gate,
       extractedThrough: patch.extractedThrough ?? base.extractedThrough,
-      reaction: patch.reaction === undefined ? base.reaction : patch.reaction,
       savedAtMs: Date.now(),
     }
     try {
