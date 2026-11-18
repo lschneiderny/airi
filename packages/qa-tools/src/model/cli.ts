@@ -6,6 +6,7 @@ import { errorMessageFrom } from '@moeru/std'
 
 import { runCompareCli } from './compare/command'
 import { runJudgeCli } from './judge/command'
+import { runProbeCli } from './probe/command'
 import { runPromptCli } from './prompt'
 import { runCaptureCli } from './run/capture-command'
 import { runRunCli } from './run/command'
@@ -18,6 +19,7 @@ Commands:
   capture <qa:app run dir|requests.jsonl> --out <file>  save the app's system prompt and tools for run --app-request
   score <transcripts.jsonl> [--set <id>] [--label <l>] [--exposed-actions <label:kind,...>]  score a transcript file with the real runtime replay
   compare <transcripts|run dir|set id>... [--exposed-actions <label:kind,...>] [--json]  score runs together and print one row per model and config
+  probe cache-events|cold-start|overflow|server-sweep --model <id> ...  measure how a local server handles the app's requests (see the qa-tools README)
   prompt [--locale en] [--card <file>] [--full <fixture>] [--exposed-actions <label:kind,...>] [--json]  print the system prompt the app sends and its hashes
   judge serve <transcripts|run dir|set id>... [--out <f>] [--judge <l>] [--contenders <a,b>] [--port <n>] [--seed <n>]  judge replies blind, two at a time, in a local page
   judge report <judgments.jsonl>... [--json]  aggregate saved judgments into standings and tag rates
@@ -38,6 +40,7 @@ export interface ModelCliIo {
     judge: ModelCommandHandler
     capture: ModelCommandHandler
     compare: ModelCommandHandler
+    probe: ModelCommandHandler
   }
   stdout?: (text: string) => void
   stderr?: (text: string) => void
@@ -67,6 +70,7 @@ export async function runModelCli(
     judge: runJudgeCli,
     capture: runCaptureCli,
     compare: runCompareCli,
+    probe: runProbeCli,
   }
 
   const [command, ...rest] = argv
