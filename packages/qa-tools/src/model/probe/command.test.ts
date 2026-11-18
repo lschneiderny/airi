@@ -45,6 +45,8 @@ async function probe(args: string[]) {
       stderr += text
     },
   })
+  // Each probe names its run directory under the repository's `.temp/qa` on stderr; remove it with the test.
+  owned.push(...[...stderr.matchAll(/^[\w-]+: (\S+-model-probe-[\w-]+)$/gm)].map(match => match[1]!))
   return { code, stdout, stderr }
 }
 
