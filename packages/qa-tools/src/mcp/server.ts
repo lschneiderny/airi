@@ -4,9 +4,10 @@ import type { AppSession } from './session'
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { errorMessageFrom } from '@moeru/std'
+import { MotionQaEventSchema } from '@proj-airi/stage-shared/motion-scenario'
 import { z } from 'zod'
 
-const eventKinds = ['act', 'expression', 'clip', 'tts', 'turn'] as const
+const eventKinds = MotionQaEventSchema.entries.kind.options
 
 function json(value: unknown): CallToolResult {
   return { content: [{ type: 'text', text: JSON.stringify(value, null, 2) }] }
@@ -37,6 +38,7 @@ export function createAiriQaServer(session: QaSession, version: string): McpServ
       model: z.string().optional().describe('Absolute path to a Live2D ZIP or directory, an MMD ZIP or PMX/PMD, or a VRM to import and select'),
       kind: z.enum(['live2d', 'mmd', 'vrm']).optional().describe('Model kind; inferred from the extension, ZIPs and directories default to live2d'),
       script: z.string().optional().describe('Absolute path to a qa:llm replay script (JSON or JSONL). Without one, pass `reply` to airi_send'),
+      stageHost: z.enum(['window', 'desktop']).optional().describe('The stage host: the classic window (default), or the full-screen desktop stage, which needs an MMD model and attaches to the #/stage window'),
     },
   }, args => guarded(async () => json(await session.start(args))))
 
@@ -55,7 +57,7 @@ export function createAiriQaServer(session: QaSession, version: string): McpServ
   }, args => guarded(async () => json(await session.send(args.text, { reply: args.reply, expect: args.expect ?? [], timeoutMs: (args.timeoutSeconds ?? 60) * 1000 }))))
 
   server.registerTool('airi_events', {
-    description: 'Read the app\'s event log (ACT, expression, speech, turn) after a sequence number.',
+    description: 'Read the app\'s event log after a sequence number: ACT, expression, speech, and turn events, and one `mind` event per step of the character mind, with the stimulus kind and gesture, each intent\'s channel, kind, id, and cause as a JSON array, and the voice decision (speak, or hold with its reason).',
     inputSchema: { sinceSeq: z.number().int().min(0).optional() },
   }, args => guarded(async () => json(await session.events(args.sinceSeq))))
 

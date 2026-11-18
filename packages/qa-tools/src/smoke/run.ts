@@ -3,7 +3,7 @@ import type { Lease } from '@proj-airi/cpu-slots'
 import type { SmokeOptions } from './args'
 
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
-import { dirname, extname, join, resolve } from 'node:path'
+import { dirname, extname, resolve } from 'node:path'
 import { setTimeout } from 'node:timers/promises'
 
 import { errorMessageFrom } from '@moeru/std'
@@ -36,16 +36,11 @@ export async function runSmoke(options: SmokeOptions, repoRoot: string, signal: 
   let interruptedRun = false
 
   try {
-    const desktop = options.stageHost === 'desktop'
-    // The desktop stage is enabled in the temporary profile the way the setting saves it, so the launch goes through
-    // `selectHostMode` and its platform gate. An empty AIRI_STAGE_HOST is not a mode, so it overrides nothing.
-    if (desktop)
-      writeFileSync(join(profileDir, 'stage-config.json'), `${JSON.stringify({ experimental: true, activeRenderer: 'mmd' })}\n`)
     const { stage, bridge, initialState } = await session.start({
+      stageHost: options.stageHost,
       launch: {
         lease,
         logFile: run.path('app.log'),
-        env: { AIRI_STAGE_HOST: desktop ? '' : 'window' },
         script: options.xwayland ? 'dev:xwayland' : 'dev',
         electronArgs: options.electronArgs,
       },

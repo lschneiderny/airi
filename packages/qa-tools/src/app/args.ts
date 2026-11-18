@@ -1,6 +1,7 @@
 import { extname, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 
+import { MotionQaEventSchema } from '@proj-airi/stage-shared/motion-scenario'
 import { parse, picklist } from 'valibot'
 
 class AppUsageError extends Error {}
@@ -12,6 +13,7 @@ export function parseAppArgs(argv: readonly string[], cwd: string) {
     options: {
       'model': { type: 'string' },
       'kind': { type: 'string' },
+      'stage-host': { type: 'string', default: 'window' },
       'say': { type: 'string', multiple: true },
       'script': { type: 'string' },
       'set': { type: 'string' },
@@ -24,7 +26,7 @@ export function parseAppArgs(argv: readonly string[], cwd: string) {
     },
   })
   if (positionals.length !== 1 || positionals[0] !== 'run' || !values.model?.trim() || !values.say?.length)
-    throw new AppUsageError('Usage: pnpm qa:app run --model <path> --say <text> [--say <text>] [--kind live2d|mmd|vrm] [--script file|--set id] [--expect act,tts] [--timeout seconds] [--out dir] [--perf-dir dir] [--keep-open] [--dry-run]')
+    throw new AppUsageError('Usage: pnpm qa:app run --model <path> --say <text> [--say <text>] [--kind live2d|mmd|vrm] [--stage-host window|desktop] [--script file|--set id] [--expect act,tts] [--timeout seconds] [--out dir] [--perf-dir dir] [--keep-open] [--dry-run]')
   if (values.script !== undefined && values.set !== undefined)
     throw new AppUsageError('--script and --set are mutually exclusive')
   for (const value of [...values.say, values.script, values.set, values.out, values['perf-dir']]) {
@@ -37,10 +39,15 @@ export function parseAppArgs(argv: readonly string[], cwd: string) {
   const extension = extname(values.model).toLowerCase()
   const inferred = extension === '.vrm' ? 'vrm' : ['.pmx', '.pmd'].includes(extension) ? 'mmd' : 'live2d'
   const kind = parse(picklist(['live2d', 'mmd', 'vrm']), values.kind ?? inferred)
-  const expect = [...new Set(values.expect.split(',').map(kind => parse(picklist(['act', 'expression', 'clip', 'tts', 'turn']), kind.trim())))]
+  const stageHost = parse(picklist(['window', 'desktop']), values['stage-host'])
+  // The desktop stage renders an MMD character only.
+  if (stageHost === 'desktop' && kind !== 'mmd')
+    throw new AppUsageError('--stage-host desktop needs an MMD --model')
+  const expect = [...new Set(values.expect.split(',').map(kind => parse(MotionQaEventSchema.entries.kind, kind.trim())))]
   return {
     model: resolve(cwd, values.model),
     kind,
+    stageHost,
     say: values.say,
     script: values.script ? resolve(cwd, values.script) : undefined,
     set: values.set,

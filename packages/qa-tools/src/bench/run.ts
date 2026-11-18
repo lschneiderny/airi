@@ -153,7 +153,7 @@ async function benchLaunch(launch: BenchLaunch, context: LaunchContext): Promise
     const replayURL = baseURL
     const started = await withinMountDeadline((async () => {
       const startedSession = await session.start({
-        launch: { logFile: join(runDir, 'app.log'), env: appLaunchEnv({ perfDir }), lease },
+        launch: { logFile: join(runDir, 'app.log'), env: appLaunchEnv({ perfDir, stageHost: 'window' }), lease },
         beforeOnboarding: replayURL === undefined
           ? undefined
           : async ({ stage }) => {

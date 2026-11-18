@@ -55,6 +55,7 @@ export async function runApp(options: AppOptions, repoRoot: string, signal: Abor
     const baseURL = await server.listen()
     details.replay = { baseURL, source: script.source, entries: script.entries.length }
     const started = await session.start({
+      stageHost: options.stageHost,
       launch: { logFile: run.path('app.log'), env: appLaunchEnv(options), lease },
       onLaunched: launched => run.recordProcess({ rootPid: launched.root.pid, created: launched.root.created, commandLine: launched.root.commandLine }),
       collectPageErrors: true,

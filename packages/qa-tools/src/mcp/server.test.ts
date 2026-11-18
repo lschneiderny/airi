@@ -5,6 +5,7 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import { describe, expect, it, vi } from 'vitest'
 
 import { createAiriQaServer } from './server'
+import { AppSession } from './session'
 
 function fakeSession(overrides: Partial<QaSession> = {}): QaSession {
   const notRunning = async () => {
@@ -55,6 +56,23 @@ describe('airi-qa MCP server', () => {
     expect(session.send).toHaveBeenNthCalledWith(2, 'yo', { reply: 'Hey', expect: ['act'], timeoutMs: 5_000 })
   })
 
+  it('hands the stage host to the session and refuses one that is not a host', async () => {
+    const session = fakeSession()
+    const client = await connect(session)
+    await client.callTool({ name: 'airi_start', arguments: { model: '/models/body.pmx', stageHost: 'desktop' } })
+    expect(session.start).toHaveBeenCalledExactlyOnceWith({ model: '/models/body.pmx', stageHost: 'desktop' })
+    const result = await client.callTool({ name: 'airi_start', arguments: { stageHost: 'stage' } })
+    expect(result.isError).toBe(true)
+    expect(session.start).toHaveBeenCalledOnce()
+  })
+
+  it('accepts a mind step as an expected event kind', async () => {
+    const session = fakeSession()
+    const client = await connect(session)
+    await client.callTool({ name: 'airi_send', arguments: { text: 'hi', expect: ['mind'] } })
+    expect(session.send).toHaveBeenCalledExactlyOnceWith('hi', { reply: undefined, expect: ['mind'], timeoutMs: 60_000 })
+  })
+
   it('returns screenshots as an image plus the saved path, and undefined eval results as null', async () => {
     const client = await connect(fakeSession())
     expect((await client.callTool({ name: 'airi_screenshot', arguments: {} })).content).toEqual([
@@ -70,5 +88,17 @@ describe('airi-qa MCP server', () => {
     const result = await client.callTool({ name: 'airi_send', arguments: { text: 'hi', expect: ['dance'] } })
     expect(result.isError).toBe(true)
     expect(session.send).not.toHaveBeenCalled()
+  })
+})
+
+describe('airi-qa app session', () => {
+  it.each([
+    [{ stageHost: 'desktop' as const }],
+    [{ stageHost: 'desktop' as const, model: '/models/character.zip' }],
+    [{ stageHost: 'desktop' as const, model: '/models/body.pmx', kind: 'vrm' as const }],
+  ])('refuses the desktop stage without an MMD model before it launches anything: %j', async (options) => {
+    const session = new AppSession('/repo')
+    await expect(session.start(options)).rejects.toThrow('stageHost desktop needs an MMD model')
+    expect(session.running).toBe(false)
   })
 })
