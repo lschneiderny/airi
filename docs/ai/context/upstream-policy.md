@@ -140,9 +140,9 @@ Each row is behavior where the merged tree differs from upstream.
 
 | Area | Upstream | Fork | Reason | Revisit |
 | --- | --- | --- | --- | --- |
-| Update feed | The updater reads `release-updates.airi.build` with upstream's key | Off unless the build sets `AIRI_UPDATE_FEED_URL` and `AIRI_UPDATE_PUBLIC_KEY`; About links to the fork's releases | A fork build must never take upstream's bundles. Replaces the fork's update from GitHub releases (`2cd360ca2`). Open to the owner's veto | When the fork hosts a feed |
+| Update feed | The updater reads `release-updates.airi.build` with upstream's key | Off unless the build sets `AIRI_UPDATE_FEED_URL` and `AIRI_UPDATE_PUBLIC_KEY`; About links to the fork's releases | A fork build must never take upstream's bundles. Replaces the fork's update from GitHub releases (`2cd360ca2`). See [Decisions to revisit](#decisions-to-revisit) | When the fork hosts a feed |
 | Update switch | The main service and the launcher each decide | The launcher alone decides, macOS included | The two could disagree about health | Not planned |
-| Error reporting | Sentry reports to upstream's project (#3458) | Off unless the build sets its own DSN, and an unset switch means off | A fork build must not report to upstream. Open to the owner's veto | When the fork has its own project |
+| Error reporting | Sentry reports to upstream's project (#3458) | Off unless the build sets its own DSN, and an unset switch means off | A fork build must not report to upstream. See [Decisions to revisit](#decisions-to-revisit) | When the fork has its own project |
 | Release notes | Read from `moeru-ai/airi` | Read from the fork's repository | The fork publishes its own releases | Not planned |
 | Linux packaging | `pacman` and `AppImage` targets | `deb` and `rpm` | The fork dropped AppImage packaging | Not planned |
 
@@ -151,8 +151,8 @@ Each row is behavior where the merged tree differs from upstream.
 | Area | Upstream | Fork | Reason | Revisit |
 | --- | --- | --- | --- | --- |
 | Live2D expressions | Card-owned controls and a Live2D context; the store and controller are deleted (`c4048b6fa`) | The fork's store, controller, panel, and string ACT label, with upstream's context beside them | Reactions, combos, the rest look, and MMD expression commands build on the store (owner ruling 2026-11-17) | Slice CM1 |
-| Touch on Live2D | A touch module under every driver (`259b6188a`) | Upstream's module under Universal and MAGIC; the fork's pet, poke, touch regions, and spoken reaction under Natural | One touch gets one response (ADR decision 7). Open to the owner's veto | Slice CM1 |
-| Beat sync layer | Runs under every driver (`543d8dfe3`) | Inactive under Natural | Nothing new writes head angles under Natural before the mind owns music | Slice CM5 |
+| Touch on Live2D | A touch module under every driver (`259b6188a`) | Upstream's module under Universal and MAGIC; the fork's pet, poke, touch regions, and spoken reaction under Natural | One touch gets one response (ADR decision 7). See [Decisions to revisit](#decisions-to-revisit) | Slice CM1 |
+| Beat sync layer | Runs under every driver (`543d8dfe3`) | Inactive under Natural | Nothing new writes head angles under Natural before the mind owns music. See [Decisions to revisit](#decisions-to-revisit) | Slice CM5 |
 | Live2D model cache | The OPFS loader checks the cache and saves without serializing loads | A load holds a Web Lock per model id from its cache check to the end of its save (`c4c357ab8`, `packages/stage-ui-live2d/src/utils/opfs-loader.ts`) | Two loads of one model raced, and the later save removed the files under the earlier load | When upstream serializes the cache, or offer the fix upstream |
 | Display model defaults | `universal` driver, expressions off, max FPS 0 | `natural`, expressions on, 60 FPS, on upstream's per-model stores | The fork's defaults | Not planned |
 | System prompt | `sessionSystemPrompt` composes it | `buildChatPromptSegments` and `composePrompt`; recipe steps ride in the `card` segment and card guidance in `toolset` | One composer (prompt composition ADR) | Roadmap step P |
@@ -183,6 +183,19 @@ Each row is behavior where the merged tree differs from upstream.
 | `.tool-versions` | Node 26.12.1 | Node 26.11.1 | The bump needs that Node on the owner's machines first | When it is installed |
 | `.gitignore` | Lines for the Twitter service and Nix | The fork's lines | Retired paths | Not planned |
 | Visual baselines | Not present | The alert and checkbox baselines were regenerated for upstream's new component and palette | Fork check | Not planned |
+
+## Decisions to revisit
+
+The sync made these four decisions while the owner was away. On 2026-11-18 the owner kept all four and asked for them to be recorded for a later decision.
+
+| Decision | Before the sync | What the sync decided | Left to decide | Where |
+| --- | --- | --- | --- | --- |
+| Automatic updates | The fork updated from its own GitHub releases (`2cd360ca2`) | Off in a fork build unless the build sets both `AIRI_UPDATE_FEED_URL` and `AIRI_UPDATE_PUBLIC_KEY` | Whether to bring back updates from the fork's releases, and with which feed and key | `apps/stage-tamagotchi/src/shared/update-source.ts` |
+| Error reports | Not present; upstream's Sentry reporting (#3458) arrived with the sync | Off unless the build sets `AIRI_ERROR_REPORT_DSN` | Whether the fork gets its own error-report project | `apps/stage-tamagotchi/src/shared/error-report-source.ts` |
+| Touch on Live2D | The fork's pet, poke, touch regions, and spoken reaction were the only touch handling | Upstream's touch module (`259b6188a`) runs only under the Universal and MAGIC drivers; under Natural only the fork's handling runs | Roadmap slice CM1 settles touch | `touchGesturesActive` in `packages/stage-ui-live2d/src/components/scenes/Live2D.vue`; the module is `src/composables/live2d/touch.ts` |
+| Beat sync layer | Not present; upstream's layer (`543d8dfe3`) arrived with the sync | Inactive under Natural | Roadmap slice CM5 settles music under Natural | `isBeatSyncLayered` in `packages/stage-ui-live2d/src/composables/live2d/motion-manager.ts` |
+
+Open question, not one of the four: fork source still names upstream's analytics endpoints, OpenPanel in `packages/stage-shared/src/analytics/openpanel.ts` and PostHog in `packages/stage-shared/src/analytics/posthog.ts`. They are used only when a build sets `VITE_ENABLE_ANALYTICS` and the user opts in. The owner has not decided on them.
 
 ## At each sync
 
