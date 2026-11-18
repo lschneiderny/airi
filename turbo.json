@@ -26,12 +26,70 @@
       "outputLogs": "errors-only"
     },
     "test:run": {
-      "dependsOn": ["^build"],
+      "dependsOn": ["^build", "@proj-airi/cpu-slots#build"],
       "env": ["CI", "NODE_OPTIONS", "TESTING_AUDIO_*"],
+      "passThroughEnv": ["AIRI_CPU_*", "NODE_COMPILE_CACHE"],
       "inputs": [
         "$TURBO_DEFAULT$",
+        ".env*",
         "$TURBO_ROOT$/.env*",
-        "$TURBO_ROOT$/packages/*/.env*"
+        "!$TURBO_ROOT$/.env.qa",
+        "$TURBO_ROOT$/tsconfig.json",
+        "$TURBO_ROOT$/uno.config.ts",
+        "$TURBO_ROOT$/vitest.dom-storage.ts",
+        "$TURBO_ROOT$/scripts/dev-tools/vitest-isolate-host-session.ts"
+      ]
+    },
+    "@proj-airi/stage-ui#test:run": {
+      "dependsOn": ["^build", "@proj-airi/cpu-slots#build"],
+      "env": ["CI", "NODE_OPTIONS", "TESTING_AUDIO_*", "XDG_CURRENT_DESKTOP"],
+      "passThroughEnv": ["AIRI_CPU_*", "NODE_COMPILE_CACHE"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        ".env*",
+        "$TURBO_ROOT$/.env*",
+        "!$TURBO_ROOT$/.env.qa",
+        "$TURBO_ROOT$/tsconfig.json",
+        "$TURBO_ROOT$/uno.config.ts",
+        "$TURBO_ROOT$/vitest.dom-storage.ts",
+        "$TURBO_ROOT$/scripts/dev-tools/vitest-isolate-host-session.ts",
+        "$TURBO_ROOT$/packages/stage-pages/src/**",
+        "$TURBO_ROOT$/packages/qa-tools/fixtures/model/*.json"
+      ]
+    },
+    "@proj-airi/i18n#test:run": {
+      "dependsOn": ["^build", "@proj-airi/cpu-slots#build"],
+      "env": ["CI", "NODE_OPTIONS", "TESTING_AUDIO_*"],
+      "passThroughEnv": ["AIRI_CPU_*", "NODE_COMPILE_CACHE"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        ".env*",
+        "$TURBO_ROOT$/.env*",
+        "!$TURBO_ROOT$/.env.qa",
+        "$TURBO_ROOT$/tsconfig.json",
+        "$TURBO_ROOT$/uno.config.ts",
+        "$TURBO_ROOT$/vitest.dom-storage.ts",
+        "$TURBO_ROOT$/scripts/dev-tools/vitest-isolate-host-session.ts",
+        "$TURBO_ROOT$/README.md",
+        "$TURBO_ROOT$/docs/**/*.md"
+      ]
+    },
+    "@proj-airi/cpu-slots#test:run": {
+      "dependsOn": ["^build", "@proj-airi/cpu-slots#build"],
+      "env": ["CI", "NODE_OPTIONS", "TESTING_AUDIO_*"],
+      "passThroughEnv": ["AIRI_CPU_*", "NODE_COMPILE_CACHE"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        ".env*",
+        "$TURBO_ROOT$/.env*",
+        "!$TURBO_ROOT$/.env.qa",
+        "$TURBO_ROOT$/tsconfig.json",
+        "$TURBO_ROOT$/uno.config.ts",
+        "$TURBO_ROOT$/vitest.dom-storage.ts",
+        "$TURBO_ROOT$/scripts/dev-tools/vitest-isolate-host-session.ts",
+        "$TURBO_ROOT$/vitest.config.ts",
+        "$TURBO_ROOT$/{apps,packages,plugins,integrations,services,evals}/*/vitest*.config.*",
+        "$TURBO_ROOT$/server/{apps,packages}/*/vitest*.config.*"
       ]
     },
     "@proj-airi/electron-vueuse#build": {
