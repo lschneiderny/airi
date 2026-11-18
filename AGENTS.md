@@ -16,7 +16,7 @@ Agent guidance holds only what an agent cannot learn from the code, `package.jso
 
 ## CONVENTIONS
 - Change only Supported projects for fork work. Projects kept from upstream stay as upstream ships them; fix them only to keep the workspace building. See [Support scope](README.md#support-scope).
-- The policy docs in `docs/ai/context/` are the current rules. When a change alters a rule they state, update the doc in the same commit. ADRs are history; do not edit their bodies.
+- The policy docs in `docs/ai/context/` are the current rules. When a change alters a rule they state, update the doc in the same commit. Client ADRs in `docs/ai/adr/` are history; do not edit their bodies.
 - Keep changes in scope. Correct rule violations in touched functions/components/tests, not unrelated code. Refactor small changes step by step.
 - Do not add one-off patterns. Before adding utilities, search internal implementations. If logic can become shared, propose that approach to the user. Put shared logic in `packages/`. Keep module boundaries clear.
 - Use kebab-case filenames. Do not use `any`. Prefer generics. Use `as unknown as <Type>` only when safe type fixes fail.
