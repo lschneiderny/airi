@@ -126,6 +126,7 @@ Read the listed file before starting. Skill paths below are under `.agents/skill
 | Anything the character does unasked | [Autonomous behavior](docs/ai/context/autonomous-behavior.md) |
 | Prompt or other LLM-facing text | [LLM prompt](docs/ai/context/llm-prompt.md) |
 | New persisted state or settings store | [State persistence](docs/ai/context/state-persistence.md) |
+| An upstream sync, or a rule or behavior that differs from upstream | [Upstream policy ledger](docs/ai/context/upstream-policy.md) |
 | Server work | [server](server/AGENTS.md), plus [API](server/apps/api/AGENTS.md) or [Auth](server/apps/auth/AGENTS.md) for those apps |
 | Slow/failed chat, speech, audio using saved IO traces | [analyze-io-traces](.agents/skills/analyze-io-traces/SKILL.md) |
 | Local file upload via browser/Electron chooser or input | [Upload reference](.agents/skills/use-agent-browser-for-airi/references/input-file.md), [agent-browser](.agents/skills/agent-browser/SKILL.md). For Electron, also [agent-browser-electron](.agents/skills/agent-browser-electron/SKILL.md). |
