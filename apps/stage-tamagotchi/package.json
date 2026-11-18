@@ -9,7 +9,7 @@
     "email": "airi@moeru.ai",
     "url": "https://github.com/moeru-ai"
   },
-  "homepage": "https://airi.moeru.ai/docs/",
+  "homepage": "https://github.com/lschneiderny/airi",
   "main": "./out/main/index.js",
   "desktopName": "ai.moeru.airi.desktop",
   "scripts": {
