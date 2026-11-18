@@ -14,9 +14,8 @@ const props = withDefaults(defineProps<{
   highlight: 'AIRI',
   subtitle: '',
   links: () => ([
-    { label: 'Home', href: 'https://airi.moeru.ai/docs/', icon: 'i-solar:home-smile-outline' },
-    { label: 'Documentations', href: 'https://airi.moeru.ai/docs/en/docs/overview/', icon: 'i-solar:document-add-outline' },
-    { label: 'GitHub', href: 'https://github.com/moeru-ai/airi', icon: 'i-simple-icons:github' },
+    { label: 'GitHub', href: 'https://github.com/lschneiderny/airi', icon: 'i-simple-icons:github' },
+    { label: 'Upstream', href: 'https://github.com/moeru-ai/airi', icon: 'i-solar:branching-paths-up-outline' },
   ]),
 })
 

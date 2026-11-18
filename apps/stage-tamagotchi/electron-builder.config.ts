@@ -137,7 +137,7 @@ export default {
   extraMetadata: {
     name: 'ai.moeru.airi',
     main: 'out/main/index.js',
-    homepage: 'https://airi.moeru.ai/docs/',
+    homepage: 'https://github.com/lschneiderny/airi',
     repository: `https://github.com/${releaseRepository.owner}/${releaseRepository.repo}`,
     license: 'MIT',
   },
