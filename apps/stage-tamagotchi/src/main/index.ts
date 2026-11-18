@@ -1,5 +1,6 @@
 import type { FullscreenMode, FullscreenSurfaceId } from '../shared/eventa'
 import type { FileLoggerHandle } from './app/file-logger'
+import type { AutoUpdater } from './services/electron/auto-updater'
 import type { GlobalShortcutServiceOptions } from './services/electron/global-shortcut'
 import type { SettingsWindowManager } from './windows/settings'
 import type { FullscreenPlace } from './windows/shared/fullscreen'
@@ -56,7 +57,7 @@ import { createElectronPerfRecording, createElectronPerfRetention, watchPerfPowe
 import { setupExtensionHost } from './services/airi/plugins'
 import { setupStoredData } from './services/airi/stored-data'
 import { setupArtistryBridge } from './services/airi/widgets/artistry-bridge'
-import { isExternallyUpdatedInstall, setupAutoUpdater } from './services/electron/auto-updater'
+import { setupAutoUpdater } from './services/electron/auto-updater'
 import { setupSherpawModelAssetsProtocol } from './services/electron/bundled-sherpaw-assets'
 import { attachLinuxCoordinates } from './services/electron/coordinates'
 import { setupGlobalShortcutService } from './services/electron/global-shortcut'
@@ -357,9 +358,6 @@ app.whenReady().then(async () => {
   const autoUpdater = injeca.provide('services:auto-updater', {
     dependsOn: { appConfig },
     build: ({ dependsOn }) => setupAutoUpdater({
-      // Squirrel.Mac installs only updates that pass code-signature validation against the
-      // running app. Fork macOS builds are ad-hoc signed, so their updates are manual downloads.
-      enabled: platform !== 'darwin' && !isExternallyUpdatedInstall(),
       getStoredUpdateLane: () => dependsOn.appConfig.get()?.updateChannel,
       setStoredUpdateLane: (lane) => {
         const currentConfig = dependsOn.appConfig.get()
@@ -677,7 +675,19 @@ app.whenReady().then(async () => {
     },
   })
 
-  injeca.start().catch(err => log.withError(err).error('Failed to start injeca'))
+  // The update launcher keeps a new bundle only after it reports healthy, and rolls it back otherwise. The updater service
+  // reports it when every module has started and the main window has mounted its page.
+  let updates: AutoUpdater | undefined
+  injeca.invoke({
+    dependsOn: { autoUpdater },
+    callback: (deps) => {
+      updates = deps.autoUpdater
+    },
+  })
+
+  injeca.start()
+    .then(() => updates?.markMainReady())
+    .catch(err => log.withError(err).error('Failed to start injeca'))
 
   // Extra
   openDebugger()

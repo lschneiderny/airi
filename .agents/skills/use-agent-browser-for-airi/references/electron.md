@@ -6,13 +6,10 @@ Build or start stage-tamagotchi with a known CDP port. Prefer a dedicated user-d
 APP_REMOTE_DEBUG=true \
 APP_REMOTE_DEBUG_PORT=9250 \
 APP_REMOTE_DEBUG_NO_OPEN=true \
-APP_USER_DATA_PATH="$(mktemp -d)" \
-pnpm qa:display run -- pnpm dev:tamagotchi
+pnpm dev:tamagotchi
 ```
 
-On Linux, `pnpm qa:display run --` starts the app in a headless, GPU-accelerated KWin session, so its windows never open on the user's desktop. CDP and `agent-browser --cdp` work unchanged. Stop the session with `pnpm qa:display down` when you finish. On Windows and macOS, drop the `pnpm qa:display run --` prefix.
-
-If using the built app, launch its Electron executable with `apps/stage-tamagotchi/out/main/index.js` and an explicit `--user-data-dir` under a newly created temporary directory.
+If using the built app, launch its Electron executable with the app directory `apps/stage-tamagotchi` (its `main` is the ergosphere-it launcher in `out/launcher`) and an explicit `--user-data-dir` under a newly created temporary directory.
 
 ## Choose the renderer
 

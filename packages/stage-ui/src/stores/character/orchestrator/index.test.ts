@@ -93,9 +93,12 @@ function getArraySchema(schema?: Record<string, any>) {
 /** A synced runtime that makes this window the leader at once, as the plugin reports the current role on subscribe. */
 function leaderRuntime(): SyncedPiniaRuntime {
   return {
+    addRole: vi.fn(() => vi.fn()),
     dispose: vi.fn(),
     getLeaderId: vi.fn(),
     getParticipantCount: vi.fn(() => 1),
+    getParticipants: vi.fn(() => []),
+    getRoles: vi.fn(() => []),
     isLeader: () => true,
     onCoordinationChange: vi.fn(() => vi.fn()),
     onLeadershipChange: vi.fn((listener: (isLeader: boolean) => void) => {

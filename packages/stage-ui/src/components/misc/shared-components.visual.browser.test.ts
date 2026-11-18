@@ -1,9 +1,9 @@
-import { Button, Callout, Checkbox, Input } from '@proj-airi/ui'
+import type { AlertTone } from '@proj-airi/ui'
+
+import { Alert, Button, Callout, Checkbox, Input } from '@proj-airi/ui'
 import { describe, expect, it } from 'vitest'
 import { userEvent } from 'vitest/browser'
 import { h } from 'vue'
-
-import Alert from './alert.vue'
 
 import { renderVisualBaseline } from '../../test/visual-baseline'
 
@@ -67,12 +67,9 @@ describe('shared component visual baselines', () => {
   })
 
   it('alert tones', async (context) => {
-    // The loading tone is left out: its spinner icon animates.
-    const frame = await renderVisualBaseline(context, () => (['error', 'warning', 'success', 'info'] as const).map(type =>
-      h(Alert, { type }, {
-        title: () => `${type} title`,
-        content: () => 'Context for the current operation.',
-      }),
+    // The loading state is left out: its spinner icon animates.
+    const frame = await renderVisualBaseline(context, () => (['danger', 'warning', 'success', 'info'] satisfies AlertTone[]).map(tone =>
+      h(Alert, { tone, title: `${tone} title` }, () => 'Context for the current operation.'),
     ))
 
     await expect.element(frame).toMatchScreenshot('alert')

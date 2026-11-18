@@ -9,6 +9,7 @@ import { isMacOS } from 'std-env'
 import icon from '../../../../resources/icon.png?asset'
 
 import { electronOnboardingClose } from '../../../shared/eventa'
+import { showWindow } from '../../libs/electron/focus'
 import { baseUrl, getPreloadPath, getRendererRoot, load, withHashRoute } from '../../libs/electron/location'
 import { onWindowClosed } from '../../libs/electron/on-window-closed'
 import { createWindowContext } from '../../libs/electron/window-context'
@@ -55,7 +56,7 @@ export function setupOnboardingWindowManager(params: {
       },
     })
 
-    newWindow.on('ready-to-show', () => newWindow.show())
+    newWindow.on('ready-to-show', () => showWindow(newWindow))
     protectPrivilegedWindowNavigation(newWindow)
 
     const { context } = createWindowContext(newWindow)

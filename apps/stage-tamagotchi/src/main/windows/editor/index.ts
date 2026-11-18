@@ -7,6 +7,7 @@ import { BrowserWindow as ElectronBrowserWindow } from 'electron'
 
 import icon from '../../../../resources/icon.png?asset'
 
+import { showWindow } from '../../libs/electron/focus'
 import { baseUrl, getPreloadPath, getRendererRoot, load, withHashRoute } from '../../libs/electron/location'
 import { ignoreWindowClosedDuringCreation } from '../../libs/electron/window-closed'
 import { createReusableWindow } from '../../libs/electron/window-manager'
@@ -45,7 +46,7 @@ export function setupEditorWindowManager(params: {
       },
     })
 
-    window.on('ready-to-show', () => window.show())
+    window.on('ready-to-show', () => showWindow(window))
     protectPrivilegedWindowNavigation(window)
 
     await setupEditorWindowInvokes({

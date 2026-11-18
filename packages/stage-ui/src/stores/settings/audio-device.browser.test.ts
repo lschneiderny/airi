@@ -153,6 +153,21 @@ describe('microphone settings through the browser adapter', () => {
     devices.off = false
   })
 
+  // Turning microphone input on asked for access first, then opened the microphone again for the hold.
+  // The system microphone indicator then flashed on, off, and on.
+  it('opens no microphone to ask for access that is already granted', async () => {
+    const devices = mountDevices()
+    expect(await devices.askPermission()).toBe(true)
+    await expect.poll(() => devices.permission).toBe('granted')
+    await expect.poll(() => devices.stream).toBeUndefined()
+    const openMicrophone = vi.spyOn(navigator.mediaDevices, 'getUserMedia')
+
+    expect(await devices.askPermission()).toBe(true)
+
+    expect(openMicrophone).not.toHaveBeenCalled()
+    expect(devices.audioInputOptions.length).toBeGreaterThan(0)
+  })
+
   it('keeps the selected device and exposes unavailable-device failures', async () => {
     localStorage.setItem('settings/audio/input', 'missing-test-microphone')
     const devices = mountDevices()

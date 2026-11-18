@@ -6,7 +6,7 @@ import { nextTick, watch } from 'vue'
 
 import { useProviderConfigStore } from '../providers/config'
 import { useProviderStore } from '../providers/provider'
-import { toSignedPercent, useSpeechStore } from './speech'
+import { speechFieldsKeyOf, speechFieldStatus, toSignedPercent, useSpeechStore } from './speech'
 
 const i18nState = vi.hoisted(() => ({
   locale: { value: 'en-US' },
@@ -467,5 +467,28 @@ describe('vOICEVOX provider defaults', () => {
       rejectActive?.(new Error('test cleanup'))
       await active
     }
+  })
+})
+
+describe('speechFieldStatus', () => {
+  it('reports a missing voice', () => {
+    expect(speechFieldStatus({ provider: 'minimax-speech', model: 'speech-02-hd', voice_id: '' }, {}, () => undefined)).toEqual({ missing: ['voice'], pending: [] })
+  })
+
+  it('takes the model and the voice from the provider config', () => {
+    expect(speechFieldStatus({ provider: 'openai-compatible-audio-speech', model: '', voice_id: '' }, { model: 'tts-1', voice: 'alloy' }, () => null)).toEqual({ missing: [], pending: [] })
+  })
+
+  it('reports nothing when speech is off', () => {
+    expect(speechFieldStatus({ provider: 'speech-noop', model: '', voice_id: '' }, {}, () => null)).toEqual({ missing: [], pending: [] })
+  })
+})
+
+describe('speechFieldsKeyOf', () => {
+  it('names each set of fields with one key', () => {
+    expect(speechFieldsKeyOf(['model'])).toBe('model')
+    expect(speechFieldsKeyOf(['voice'])).toBe('voice')
+    expect(speechFieldsKeyOf(['model', 'voice'])).toBe('model-voice')
+    expect(speechFieldsKeyOf([])).toBeUndefined()
   })
 })

@@ -133,7 +133,7 @@ pnpm -F @proj-airi/testing-audio exec tsx scripts/generate-wake-word-fixtures.ts
 The speech changes a little on each request. After you generate the fixtures, run the cases. If a phrase does not wake the character, change the phrase or its pronunciation. Do not change the assertions.
 
 ```bash
-pnpm -F @proj-airi/testing-audio test:run cases/wake-word
+pnpm -F @proj-airi/testing-audio test:e2e cases/wake-word
 ```
 
 ## Test formula speech
@@ -202,7 +202,7 @@ These tests send audio and text to external Providers. Each run can incur Provid
 Build the desktop app and run the runtime project:
 
 ```bash
-pnpm -F @proj-airi/testing-audio test:run
+pnpm -F @proj-airi/testing-audio test:e2e
 ```
 
 Use existing builds:

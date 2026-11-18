@@ -16,6 +16,7 @@ import icon from '../../../../resources/icon.png?asset'
 
 import { electronStartDraggingWindow } from '../../../shared/eventa'
 import { shouldOpenDevTools } from '../../libs/electron/devtools'
+import { isWindowFocusIgnored, showWindow } from '../../libs/electron/focus'
 import { baseUrl, getPreloadPath, getRendererRoot, load, withHashRoute } from '../../libs/electron/location'
 import { onWindowClosed } from '../../libs/electron/on-window-closed'
 import { createConfig } from '../../libs/electron/persistence'
@@ -79,7 +80,7 @@ export async function setupDashboardWindow(params: {
 
   if (shouldOpenDevTools()) {
     try {
-      window.webContents.openDevTools({ mode: 'detach' })
+      window.webContents.openDevTools({ mode: 'detach', activate: !isWindowFocusIgnored() })
     }
     catch (err) {
       console.error('failed to open devtools:', err)
@@ -124,7 +125,7 @@ export async function setupDashboardWindow(params: {
   window.on('resize', handleNewBounds)
   window.on('move', handleNewBounds)
 
-  window.on('ready-to-show', () => window!.show())
+  window.on('ready-to-show', () => showWindow(window!))
   protectPrivilegedWindowNavigation(window)
 
   await setupDashboardWindowElectronInvokes({

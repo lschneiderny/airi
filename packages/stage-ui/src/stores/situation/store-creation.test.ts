@@ -9,9 +9,12 @@ import { useSituationStore } from './index'
 /** A synced runtime of a window that follows, reporting its role on subscribe like the plugin. */
 function followerRuntime(): SyncedPiniaRuntime {
   return {
+    addRole: vi.fn(() => vi.fn()),
     dispose: vi.fn(),
     getLeaderId: vi.fn(),
     getParticipantCount: vi.fn(() => 2),
+    getParticipants: vi.fn(() => []),
+    getRoles: vi.fn(() => []),
     isLeader: () => false,
     onCoordinationChange: vi.fn(() => vi.fn()),
     onLeadershipChange: vi.fn((listener: (isLeader: boolean) => void) => {

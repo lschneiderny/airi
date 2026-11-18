@@ -12,6 +12,7 @@ import { shell } from 'electron'
 import { injeca } from 'injeca'
 import { isLinux, isMacOS, isWindows } from 'std-env'
 
+import { focusWindow } from '../../libs/electron/focus'
 import { createServerChannelService } from '../../services/airi/channel-server'
 import { createI18nService } from '../../services/airi/i18n'
 import { createAppService, createAppVersionService, createDesktopActivityService, createForegroundWindowService, createHostCapabilitiesService, createPowerMonitorService, createScreenService, createSystemPreferencesService, createWindowService } from '../../services/electron'
@@ -31,8 +32,7 @@ export function toggleWindowShow(window?: BrowserWindow | null): void {
     window?.restore()
   }
 
-  window?.show()
-  window?.focus()
+  focusWindow(window)
 }
 
 export function transparentWindowConfig(): BrowserWindowConstructorOptions {

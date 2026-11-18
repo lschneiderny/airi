@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { Alert } from '@proj-airi/stage-ui/components'
+import { SettingsSearchField } from '@proj-airi/stage-ui/components'
 import { getAiriCardEditorModuleSettings } from '@proj-airi/stage-ui/services/airi-card-editor'
 import { AiriCardPackageError, importAiriCardPackage } from '@proj-airi/stage-ui/services/airi-card-import-export'
 import { useCharacterStateStore } from '@proj-airi/stage-ui/stores/character-state'
 import { useDisplayModelsStore } from '@proj-airi/stage-ui/stores/display-models'
 import { useMemoryStore } from '@proj-airi/stage-ui/stores/memory'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
-import { Button, Input } from '@proj-airi/ui'
+import { Alert, Button } from '@proj-airi/ui'
 import { ComboboxSelect } from '@proj-airi/ui/components/form'
 import { storeToRefs } from 'pinia'
 import { computed, shallowRef, useTemplateRef, watch } from 'vue'
@@ -170,11 +170,10 @@ watch(() => [route.query.cardId, route.query.tab], ([cardId, tab]) => {
     <WakeWordConflictAlert />
 
     <div :class="['flex flex-wrap items-center gap-3']">
-      <Input
+      <SettingsSearchField
         v-model="searchQuery"
-        type="search"
         :placeholder="t('settings.pages.card.search')"
-        :aria-label="t('settings.pages.card.search')"
+        size="md"
         :class="['w-full flex-1 sm:max-w-xs']"
       />
       <div :class="['w-full shrink-0 sm:w-40']">
@@ -243,13 +242,8 @@ watch(() => [route.query.cardId, route.query.tab], ([cardId, tab]) => {
           <p>{{ t('settings.pages.card.no_cards') }}</p>
         </div>
 
-        <Alert v-if="searchQuery && sortedFilteredCards.length === 0" type="warning" :class="['col-span-full']">
-          <template #title>
-            {{ t('settings.pages.card.no_results') }}
-          </template>
-          <template #content>
-            {{ t('settings.pages.card.try_different_search') }}
-          </template>
+        <Alert v-if="searchQuery && sortedFilteredCards.length === 0" tone="warning" :title="t('settings.pages.card.no_results')" :class="['col-span-full']">
+          {{ t('settings.pages.card.try_different_search') }}
         </Alert>
       </div>
 

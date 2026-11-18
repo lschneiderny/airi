@@ -22,6 +22,7 @@ import icon from '../../../../resources/icon.png?asset'
 
 import { widgetsClearEvent, widgetsIframeRequestEvent, widgetsRemoveEvent, widgetsRenderEvent, widgetsUpdateEvent } from '../../../shared/eventa'
 import { normalizeWidgetWindowSize } from '../../../shared/utils/electron/windows/window-size'
+import { showWindow } from '../../libs/electron/focus'
 import { baseUrl, getPreloadPath, getRendererRoot, load, withHashRoute } from '../../libs/electron/location'
 import { onWindowClosed } from '../../libs/electron/on-window-closed'
 import { createConfig } from '../../libs/electron/persistence'
@@ -242,7 +243,7 @@ function createWidgetsWindow() {
   if (isMacOS)
     window.setWindowButtonVisibility(false)
 
-  window.on('ready-to-show', () => window.show())
+  window.on('ready-to-show', () => showWindow(window))
   protectPrivilegedWindowNavigation(window)
 
   return window
@@ -539,7 +540,7 @@ export function setupWidgetsWindowManager(params: {
     setWindowAlwaysOnTop(window, snapshot?.alwaysOnTop ?? false)
     if (windowContext.currentRoute !== route)
       await loadWithRoute(windowContext, window, route)
-    window.show()
+    showWindow(window)
     return window
   }
 

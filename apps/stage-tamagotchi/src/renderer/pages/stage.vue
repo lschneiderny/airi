@@ -19,7 +19,7 @@ import {
 import { WidgetStage } from '@proj-airi/stage-ui/components/scenes'
 import { CanvasRegionAlphaReader, isCanvasRegionTransparent } from '@proj-airi/stage-ui/composables/canvas-alpha'
 import { useSettings } from '@proj-airi/stage-ui/stores/settings'
-import { refDebounced, useEventListener, useRafFn } from '@vueuse/core'
+import { refDebounced, until, useEventListener, useRafFn } from '@vueuse/core'
 import { isEqual } from 'es-toolkit'
 import { clamp } from 'es-toolkit/math'
 import { storeToRefs } from 'pinia'
@@ -30,6 +30,7 @@ import ControlsIsland from '../components/stage-islands/controls-island/index.vu
 
 import { defaultFloatingChatWidthDip } from '../../shared/chat-floating'
 import {
+  electronMainPageMounted,
   electronStageGetState,
   electronStageMoveToDisplay,
   electronStageRehome,
@@ -65,6 +66,11 @@ const widgetStageRef = ref<InstanceType<typeof WidgetStage>>()
 const stageCanvas = toRef(() => widgetStageRef.value?.canvasElement())
 const componentStateStage = ref<'pending' | 'loading' | 'mounted'>('pending')
 useScreenAmbientLight({ stageCanvas: () => stageCanvas.value })
+
+// This page is the main window in desktop mode, so it reports to the update launcher as the classic page does. The
+// launcher keeps a new bundle only when it reports healthy. A stage that never mounts never reports.
+const reportPageMounted = useElectronEventaInvoke(electronMainPageMounted)
+until(componentStateStage).toBe('mounted').then(() => reportPageMounted())
 
 // The stage window owns the same app-wide services and Natural inputs as the classic page, because it replaces that
 // page in desktop mode.

@@ -26,7 +26,7 @@ import { useCanvasPixelIsTransparentAtPoint } from '@proj-airi/stage-ui/composab
 import { FULLSCREEN_WORKSPACE_FLAG } from '@proj-airi/stage-ui/libs/feature-flags'
 import { useFeatureFlagsStore } from '@proj-airi/stage-ui/stores/feature-flags'
 import { useSettings } from '@proj-airi/stage-ui/stores/settings'
-import { refDebounced } from '@vueuse/core'
+import { refDebounced, until } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
 import { computed, nextTick, onMounted, ref, shallowRef, toRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
@@ -38,7 +38,7 @@ import ControlsIsland from '../components/stage-islands/controls-island/index.vu
 import ResourceStatusIsland from '../components/stage-islands/resource-status-island/index.vue'
 import WindowResizeBorder from '../components/window-resize-border.vue'
 
-import { defaultFullscreenSurface, electronFullscreenExit, electronFullscreenSetMode, electronMainWindowEnterFullscreen, electronMainWindowGetFullscreenState, electronMainWindowSetFullscreenBounds, electronOpenSettings } from '../../shared/eventa'
+import { defaultFullscreenSurface, electronFullscreenExit, electronFullscreenSetMode, electronMainPageMounted, electronMainWindowEnterFullscreen, electronMainWindowGetFullscreenState, electronMainWindowSetFullscreenBounds, electronOpenSettings } from '../../shared/eventa'
 import { fullscreenHostPages, fullscreenSurfaceOf } from '../components/fullscreen/surfaces'
 import { useModelSettingsRuntimeOwner } from '../composables/model-settings-runtime-owner'
 import { useFullscreenHost } from '../composables/use-fullscreen-host'
@@ -195,6 +195,12 @@ const isAroundWindowBorderFor250Ms = computed(() => canUseCursor.value && deboun
 // Keep the controls visible until capabilities arrive, as on the original classic page.
 // The edge band keeps the Island visible during resizing.
 const clickThroughAvailable = computed(() => hostCapabilities.status('clickThroughForward')?.kind === 'live')
+
+// The update launcher keeps a new bundle only when it reports healthy, and rolls it back otherwise. This page reports
+// when the stage stops loading, with the model or with the error surface. A page stuck on loading never reports.
+const reportPageMounted = useElectronEventaInvoke(electronMainPageMounted)
+until(isLoading).toBe(false).then(() => reportPageMounted())
+
 const cursorAwayFromWindow = computed(() => canUseCursor.value && isOutsideWindow.value && !isAroundWindowBorder.value)
 
 const setIgnoreMouseEvents = useElectronEventaInvoke(electron.window.setIgnoreMouseEvents)

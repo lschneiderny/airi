@@ -216,7 +216,7 @@ describe('centerWindowOnDisplay', () => {
     Object.assign(getCurrentHostCapabilities(), capabilitiesForHost('linux-wayland'))
     const setBounds = vi.fn()
     const show = vi.fn()
-    centerWindowOnDisplay({ getBounds: () => ({ x: 0, y: 0, width: 450, height: 600 }), isDestroyed: () => false, setBounds, show })
+    centerWindowOnDisplay({ getBounds: () => ({ x: 0, y: 0, width: 450, height: 600 }), isDestroyed: () => false, setBounds, show, showInactive: vi.fn() })
     expect(setBounds).not.toHaveBeenCalled()
     expect(show).toHaveBeenCalledOnce()
   })
@@ -237,6 +237,7 @@ describe('centerWindowOnDisplay', () => {
       isDestroyed: () => false,
       setBounds,
       show,
+      showInactive: vi.fn(),
     })
 
     expect(result).toEqual({ x: 495, y: 162, width: 450, height: 600 })
@@ -265,6 +266,7 @@ describe('centerWindowOnDisplay', () => {
       isDestroyed: () => true,
       setBounds: vi.fn(),
       show: vi.fn(),
+      showInactive: vi.fn(),
     })).toThrowError('Main AIRI window is not available.')
     expect(getBounds).not.toHaveBeenCalled()
   })

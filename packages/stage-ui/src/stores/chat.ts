@@ -32,6 +32,7 @@ import { useChatVision } from '../composables/vision/use-chat-vision'
 import { useVisionInference } from '../composables/vision/use-vision-inference'
 import { chatAssetIdFrom, inlineConversationAssets, storeChatAttachments } from '../libs/chat-assets'
 import { extractMessageText } from '../libs/chat-message'
+import { syncedRoles } from '../libs/pinia/synced-context'
 import { createChatAnalyticsHooks } from '../libs/product-signals/events/chat'
 import { getSpeechBusContext, voiceGenerationEnded } from '../services/speech/bus'
 import { composeDrawCardPrompt, createDrawCardTool, DRAW_CARD_TOOL_NAME, drawCardContent } from '../tools/draw-card'
@@ -318,6 +319,12 @@ const STORED_TOOL_IMAGE = 'A tool image was left out of the history.'
 
 /** Stands in for an earlier image whose read failed with the current vision selection. */
 const UNREADABLE_EARLIER_IMAGE = 'The user attached an image here earlier. The vision model failed to read it.'
+
+// REVIEW:
+// Executor order: the leader, the caller, then any speech player. With several Stage tabs, a call from elsewhere
+// speaks in an arbitrary one, and a cancel can miss its turn. The chat runtime can elect its own owner among speech
+// players, as a Kubernetes controller does with a Lease.
+const inSpeechPlayer = { roles: [syncedRoles.speechPlayer] }
 
 export const useChatStore = defineStore('chat', () => {
   const pinia = getActivePinia()
@@ -1517,16 +1524,17 @@ export const useChatStore = defineStore('chat', () => {
     const abort = new AbortController()
     // A keyword invokes its recipes like slash commands. A decision among them judges with the judgment tool.
     // An unprompted turn carries no words of the owner, so its topic text invokes nothing.
-    const invoked = unprompted ? [] : keywordRecipesFor(payload, extra)
-    const prepared = memory.ready()
-      .then(() => prepareSend({ ...payload, messageId }, abort.signal, voice, { ...extra, skills: invokedSkillsOf(invoked) }, invoked, unprompted))
+    // The recipes come from IndexedDB, so the first send of a window waits until they are read.
+    const invokedRecipes = recipes.ready().then(() => unprompted ? [] : keywordRecipesFor(payload, extra))
+    const prepared = Promise.all([invokedRecipes, memory.ready()])
+      .then(([invoked]) => prepareSend({ ...payload, messageId }, abort.signal, voice, { ...extra, skills: invokedSkillsOf(invoked) }, invoked, unprompted))
       .then(options => runtime.submit(payload.text, options, payload.sessionId))
     const request = {
       accepted: prepared.then(value => value.accepted),
       done: prepared.then(value => value.done),
     }
     // A background recipe starts once the owner's message is stored, so its task never runs for a refused send.
-    void request.accepted.then(() => {
+    void request.accepted.then(() => invokedRecipes).then((invoked) => {
       for (const recipe of invoked.filter(isBackgroundRecipe))
         void startRecipe(recipe, { parentSessionId: payload.sessionId, task: `The owner said: ${payload.text}` })
     }).catch(() => {})
@@ -1694,21 +1702,24 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   /**
-   * Sends one serializable chat request through the elected leader.
+   * Sends one serializable chat request to the context that runs chat: a speech player, or the leader when no context
+   * plays speech (see the `synced.actions` of this store). In the desktop app only the main window mounts a Stage and
+   * it is also the leader, so the leader-only stores see every turn.
    *
-   * The calling window names the user message. After a leader reload, tab-election delivers each running call to the
-   * new leader again, which then finds the message its predecessor stored: the runtime ends that turn at its `existing`
+   * The calling window names the user message. After a reload of that context, tab-election delivers each running call
+   * again, and the new executor finds the message its predecessor stored: the runtime ends that turn at its `existing`
    * receipt instead of storing the message twice and generating the reply again.
    */
   function send(payload: ChatSendPayload): Promise<ChatSendResult> {
-    // Through the store, so pinia-plugin-synced routes the call to the leader.
+    // Through the store, so pinia-plugin-synced routes the call to the context that runs chat.
     return useChatStore(pinia).sendInLeader(payload.messageId ? payload : { ...payload, messageId: nanoid() })
   }
 
   /**
-   * Runs one chat request in the elected leader. Callers use {@link send}, which gives the message its identity.
+   * Runs one chat request in the context that runs chat, which {@link send} describes. The name is from the time when
+   * that was always the leader. Callers use {@link send}, which gives the message its identity.
    *
-   * A send whose message an earlier leader already stored runs nothing here: the runtime ends the turn at its `existing`
+   * A send whose message an earlier executor already stored runs nothing here: the runtime ends the turn at its `existing`
    * receipt. When nothing follows that message, a leader reload cut off its reply, or came before the request reached
    * the model. History cannot tell the two apart, and neither is generated again. An error item marks the message
    * instead, and its Retry action sends the message again.
@@ -1922,7 +1933,24 @@ export const useChatStore = defineStore('chat', () => {
   }
 }, {
   synced: {
-    actions: ['submit', 'submitUnprompted', 'submitReaction', 'settleAudioTranscript', 'cancelTurn', 'receiveInterruption', 'cancelPendingSends', 'cleanup', 'deleteSession', 'dismissBackgroundTask', 'rerunToolCall', 'retry', 'sendInLeader', 'stopBackgroundTask'],
+    // Only the Stage chat hooks speak a reply, so generation runs in a speech player. Requests and runtime turns are
+    // local to that context, so every chat action runs there. Without a speech player, the leader runs them silently.
+    actions: {
+      submit: inSpeechPlayer,
+      submitUnprompted: inSpeechPlayer,
+      submitReaction: inSpeechPlayer,
+      settleAudioTranscript: inSpeechPlayer,
+      cancelTurn: inSpeechPlayer,
+      receiveInterruption: inSpeechPlayer,
+      cancelPendingSends: inSpeechPlayer,
+      cleanup: inSpeechPlayer,
+      deleteSession: inSpeechPlayer,
+      dismissBackgroundTask: inSpeechPlayer,
+      rerunToolCall: inSpeechPlayer,
+      retry: inSpeechPlayer,
+      sendInLeader: inSpeechPlayer,
+      stopBackgroundTask: inSpeechPlayer,
+    },
     state: true,
   },
 })

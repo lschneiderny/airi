@@ -2,11 +2,10 @@
 
 import type { Configuration } from 'electron-builder'
 
-import process from 'node:process'
-
 import { execSync } from 'node:child_process'
 import { readdirSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { env } from 'node:process'
 
 import { isMacOS } from 'std-env'
 
@@ -70,7 +69,7 @@ function checkGodotStageOutput(platformName: string, projectDir: string) {
     + 'Export it first (godot --headless --export-release, see engines/stage-tamagotchi-godot/README.md); '
     + 'without it the packaged app cannot start the Godot renderer.'
 
-  if (process.env.AIRI_REQUIRE_GODOT_STAGE === 'true')
+  if (env.AIRI_REQUIRE_GODOT_STAGE === 'true')
     throw new Error(`[electron-builder/config] ${message}`)
 
   console.warn(`[electron-builder/config] Warning: ${message} Continuing without it; set AIRI_REQUIRE_GODOT_STAGE=true to fail instead.`)
@@ -118,7 +117,7 @@ export default {
     '!electron.vite.config.{js,ts,mjs,cjs}',
     '!vite.config.{js,ts,mjs,cjs}',
     '!uno.config.{js,ts,mjs,cjs}',
-    '!{.eslintcache,eslint.config.ts,.yaml,dev-app-update.yml,CHANGELOG.md,README.md}',
+    '!{.eslintcache,eslint.config.ts,.yaml,CHANGELOG.md,README.md}',
     '!{.env,.env.*,.npmrc,pnpm-lock.yaml}',
     '!{tsconfig.json}',
   ],
@@ -135,8 +134,11 @@ export default {
     },
   ],
   extraMetadata: {
+    // CI names each build in `ERGOSPHERE_IT_VERSION`, for example `0.13.1-nightly.45.1bf946f`. The installer and its
+    // electron-updater feed must have the version of the installer manifest, so the app takes the installer.
+    ...(env.ERGOSPHERE_IT_VERSION ? { version: env.ERGOSPHERE_IT_VERSION } : {}),
     name: 'ai.moeru.airi',
-    main: 'out/main/index.js',
+    main: 'out/launcher/index.mjs',
     homepage: 'https://airi.moeru.ai/docs/',
     repository: `https://github.com/${releaseRepository.owner}/${releaseRepository.repo}`,
     license: 'MIT',
@@ -276,6 +278,14 @@ export default {
     // electron-builder converts the icns into a 16-256 px PNG set for the hicolor icon theme. build/icon.png
     // would install as one 1024 px icon, a size hicolor 0.18 has no directory for.
     icon: 'icon.icns',
+  },
+  rpm: {
+    // NOTICE:
+    // Two Electron rpm packages conflict on the same `/usr/lib/.build-id` links, so one of them fails to install.
+    // rpmbuild creates these links for each ELF file. Electron ships the same Chromium binaries in each app.
+    // https://github.com/jordansissel/fpm/issues/1503, https://github.com/jgraph/drawio-desktop/issues/259
+    // Remove it when fpm stops the creation of build-id links by default.
+    fpm: ['--rpm-rpmbuild-define', '_build_id_links none'],
   },
   npmRebuild: false,
 

@@ -13,6 +13,10 @@ vi.mock('std-env', () => ({
   },
 }))
 vi.mock('../shared/window', () => ({ setWindowAlwaysOnTop: mocks.setWindowAlwaysOnTop }))
+// The update launcher knows where the running bundle keeps its preload scripts.
+vi.mock('@ergosphere-it/electron/main', () => ({
+  activeBundle: { preloadOf: (name: string) => `/opt/airi/bundles/2/preload/${name}.cjs` },
+}))
 
 function createWindow() {
   return {
@@ -37,7 +41,7 @@ describe.each([
   })
 
   it('creates a hidden, frameless, transparent, focusable window over the work area', () => {
-    const options = createStageWindowOptions({ workArea, preloadPath: '/tmp/airi-preload.mjs' })
+    const options = createStageWindowOptions({ workArea })
 
     expect(options).toMatchObject({
       x: -1440,
@@ -52,9 +56,21 @@ describe.each([
       skipTaskbar: true,
       focusable: true,
       resizable: false,
-      webPreferences: { preload: '/tmp/airi-preload.mjs', sandbox: false, backgroundThrottling: false },
+      webPreferences: { sandbox: false, backgroundThrottling: false },
     })
     expect(options.type).toBe(type)
+  })
+
+  // ROOT CAUSE:
+  //
+  // The stage window built its own preload path, `../preload/index.mjs` beside the main bundle. The update launcher
+  // moved the preload scripts into the running bundle, so that file was gone: the page loaded without a preload, had
+  // no `window.electron`, and stopped at the first bridge that needs it ("OpenCode Go desktop transport requires an
+  // Electron window").
+  //
+  // The window now takes the shared preload of the running bundle, as every other window does.
+  it('loads the shared preload script of the running bundle', () => {
+    expect(createStageWindowOptions({ workArea }).webPreferences?.preload).toBe('/opt/airi/bundles/2/preload/index.cjs')
   })
 
   it('makes the window click-through and always on top, without content protection', () => {

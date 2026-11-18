@@ -3,6 +3,7 @@ import type { BrowserWindow, Rectangle } from 'electron'
 import type { DisplayArea } from '../../../shared/utils/electron/display'
 
 import { findDominantDisplayArea } from '../../../shared/utils/electron/display'
+import { showWindow } from '../../libs/electron/focus'
 import { displayForWindow, displayMatching, readRendererWindowBounds, readWindowRect } from '../../services/electron/coordinates'
 import { placeWindow } from './placement'
 
@@ -54,20 +55,20 @@ export function computeCenteredWindowBounds(options: {
  * Returns:
  * - The centered bounds applied to the window
  */
-export function centerWindowOnDisplay(window: Pick<BrowserWindow, 'getBounds' | 'isDestroyed' | 'setBounds' | 'show'> | undefined): Rectangle {
+export function centerWindowOnDisplay(window: Pick<BrowserWindow, 'getBounds' | 'isDestroyed' | 'setBounds' | 'show' | 'showInactive'> | undefined): Rectangle {
   if (!window || window.isDestroyed())
     throw new Error('Main AIRI window is not available.')
 
   const windowBounds = readWindowRect(window)
   if (!windowBounds) {
-    window.show()
+    showWindow(window)
     return readRendererWindowBounds(window) ?? { x: 0, y: 0, width: 0, height: 0 }
   }
   const displayWorkArea = displayMatching(windowBounds).workArea
   const centeredBounds = computeCenteredWindowBounds({ displayWorkArea, windowBounds })
 
   placeWindow(window, centeredBounds)
-  window.show()
+  showWindow(window)
 
   return centeredBounds
 }

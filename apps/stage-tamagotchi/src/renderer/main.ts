@@ -4,10 +4,12 @@ import type { RouteRecordRaw } from 'vue-router'
 import { autoAnimatePlugin } from '@formkit/auto-animate/vue'
 import { errorMessageFrom } from '@moeru/std'
 import { PiniaColada } from '@pinia/colada'
+import { settingsSearchModules } from '@proj-airi/stage-pages/settings-search'
 import { pushToTalkTriggerKey } from '@proj-airi/stage-ui/composables/push-to-talk-trigger'
 import { trackButtonPlugin } from '@proj-airi/stage-ui/directives/track-button'
 import { piniaPluginTracing, setupSynced } from '@proj-airi/stage-ui/libs/pinia'
 import { configureAnalyticsAdapter } from '@proj-airi/stage-ui/libs/product-signals'
+import { settingsSearch } from '@proj-airi/stage-ui/libs/settings-search'
 import { MotionPlugin } from '@vueuse/motion'
 import { createPinia } from 'pinia'
 import { setupLayouts } from 'virtual:generated-layouts'
@@ -36,17 +38,25 @@ import '@fontsource-variable/jura/index.css'
 import '@fontsource-variable/quicksand/index.css'
 import '@fontsource-variable/urbanist/index.css'
 import '@fontsource-variable/comfortaa/index.css'
-import '@fontsource/dm-mono/index.css'
 import '@fontsource/dm-serif-display/index.css'
 import '@fontsource/gugi/index.css'
 import '@fontsource/kiwi-maru/index.css'
 import '@fontsource/m-plus-rounded-1c/index.css'
+import '@fontsource/maple-mono/index.css'
 import '@fontsource-variable/nunito/index.css'
 
 configureAnalyticsAdapter(async (options) => {
   const { createOpenpanelAdapter } = await import('@proj-airi/stage-ui/libs/product-signals/openpanel')
   return createOpenpanelAdapter(options)
 })
+
+// The settings search lists only what these modules hold. Each module decides at runtime whether it is on.
+for (const [name, source] of Object.entries({
+  ...settingsSearchModules,
+  'modules:home-assistant': () => import('./pages/settings/modules/home-assistant.search'),
+  'modules:mcp': () => import('./pages/settings/modules/mcp.search'),
+}))
+  settingsSearch.provide(name, source)
 
 const windowContext = resolveRendererWindowContext()
 

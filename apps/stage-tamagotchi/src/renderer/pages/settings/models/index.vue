@@ -17,7 +17,7 @@ import { ModelSettingsPanel } from '@proj-airi/stage-ui/components/scenarios/set
 import { provideDesktopStageHost } from '@proj-airi/stage-ui/components/scenarios/settings/model-settings/desktop-stage'
 import { useAnalytics } from '@proj-airi/stage-ui/composables'
 import { useSettings } from '@proj-airi/stage-ui/stores/settings'
-import { Button, Callout, GhostButton } from '@proj-airi/ui'
+import { Alert, Button, Callout, GhostButton } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -367,14 +367,14 @@ onUnmounted(() => {
 
 <template>
   <div :class="['relative', 'h-full', 'flex flex-col items-center gap-3']">
-    <Callout
+    <Alert
       v-if="godotStatusMessage"
       :class="['w-full max-w-6xl']"
-      label="Godot Stage"
-      theme="orange"
+      tone="danger"
+      :title="t('tamagotchi.settings.pages.models.godot-stage-error.title')"
     >
-      <p>{{ godotStatusMessage }}</p>
-    </Callout>
+      {{ godotStatusMessage }}
+    </Alert>
     <Callout
       v-if="desktopStage.nonMmdNotice.value"
       :class="['w-full max-w-6xl']"

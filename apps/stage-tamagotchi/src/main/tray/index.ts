@@ -24,6 +24,7 @@ import { electronAppIconGet, electronAppIconSet } from '../../shared/eventa'
 import { findDominantDisplayArea } from '../../shared/utils/electron/display'
 import { onAppBeforeQuit } from '../libs/bootkit/lifecycle'
 import { shouldOpenDevTools } from '../libs/electron/devtools'
+import { showWindow } from '../libs/electron/focus'
 import { createAppContext } from '../libs/electron/window-context'
 import { displayMatching, readDisplays, readPrimaryDisplay, readWindowRect } from '../services/electron/coordinates'
 import { Animator } from '../windows/shared/animator'
@@ -44,7 +45,7 @@ function applyWindowSize(window: BrowserWindow, width: number, height: number, x
   const currentBounds = readWindowRect(window)
   if (!currentBounds) {
     window.setSize(Math.round(width), Math.round(height))
-    window.show()
+    showWindow(window)
     return
   }
 
@@ -62,7 +63,7 @@ function applyWindowSize(window: BrowserWindow, width: number, height: number, x
       })
 
   placeWindow(window, bounds)
-  window.show()
+  showWindow(window)
 }
 
 interface SetupTrayParams {
@@ -86,7 +87,7 @@ const setupTrayOnce = once((params: SetupTrayParams): void => {
       return
     const bounds = resolveAlignedWindowBounds(params.mainWindow, workArea, position)
     mainWindowAnimator.windowBoundsAnimateTo(bounds)
-    params.mainWindow.show()
+    showWindow(params.mainWindow)
   }
 
   function applyMainWindowSize(width: number, height: number, x?: number, y?: number) {

@@ -28,6 +28,7 @@ import * as coreAgent from '@proj-airi/core-agent'
 import { useStageContractPrompt } from '../composables/use-airi-runtime-prompt'
 import { characterStateRepo } from '../database/repos/character-state.repo'
 import { memoryRepo } from '../database/repos/memory.repo'
+import { recipesRepo } from '../database/repos/recipes.repo'
 import { useConversationSettings } from '../features/conversation/settings'
 import { usePerformanceRuntimeState } from '../features/performance/runtime-state'
 import { useExpressionPerformanceSettings } from '../features/performance/settings'
@@ -108,7 +109,6 @@ const getContextsSnapshotMock = vi.fn()
 const persistSessionMessagesMock = vi.fn()
 const forkSessionMock = vi.fn()
 const createSessionMock = vi.fn()
-const ensureSessionMock = vi.fn()
 const loadSessionMock = vi.fn()
 const deleteSessionMock = vi.fn()
 const initializeSessionMock = vi.fn()
@@ -181,10 +181,11 @@ vi.mock('./chat/context-store', () => ({
   }),
 }))
 
-// IndexedDB is a browser boundary. Browser tests exercise the real sticker repository.
+// IndexedDB is a browser boundary. Browser tests exercise the real sticker and recipe repositories.
 vi.mock('../database/repos/chat-assets.repo')
 vi.mock('../database/repos/memory.repo')
 vi.mock('../database/repos/character-state.repo')
+vi.mock('../database/repos/recipes.repo')
 
 vi.mock('../database/repos/stickers.repo', () => ({
   stickersRepo: { read: async () => ({ records: [], images: [] }) },
@@ -214,6 +215,7 @@ vi.mock('./chat/session-store', () => ({
   useChatSessionStore: defineStore('chat-session', () => ({
     activeSessionId: activeSessionIdRef,
     sessionMessages,
+    sessionMetas,
     storeMessage: async (sessionId: string, message: ChatHistoryItem & { id: string }) => {
       const messages = sessionMessages[sessionId] ?? []
       const index = messages.findIndex(item => item.id === message.id)
@@ -224,15 +226,6 @@ vi.mock('./chat/session-store', () => ({
     },
     replaceSessionHistory: async (sessionId: string, messages: ChatHistoryItem[]) => {
       sessionMessages[sessionId] = messages
-    },
-    sessionMetas,
-    ensureSession: (sessionId: string) => {
-      ensureSessionMock(sessionId)
-      sessionMessages[sessionId] ??= [{ role: 'system', content: 'system prompt', createdAt: 1, id: 'system' }]
-    },
-    appendSessionMessage: (sessionId: string, message: ChatHistoryItem) => {
-      sessionMessages[sessionId] ??= []
-      sessionMessages[sessionId].push(message)
     },
     commitUserMessage: (async (sessionId, message) => {
       sessionMessages[sessionId] ??= []
@@ -424,9 +417,12 @@ function leadSituation() {
 /** A synced runtime in which this window leads. */
 function createLeaderRuntime(): SyncedPiniaRuntime {
   return {
+    addRole: vi.fn(() => vi.fn()),
     dispose: vi.fn(),
     getLeaderId: vi.fn(),
     getParticipantCount: vi.fn(() => 1),
+    getParticipants: vi.fn(() => []),
+    getRoles: vi.fn(() => []),
     isLeader: vi.fn(() => true),
     onCoordinationChange: vi.fn(() => vi.fn()),
     onLeadershipChange: vi.fn((listener: (isLeader: boolean) => void) => {
@@ -440,6 +436,7 @@ function createLeaderRuntime(): SyncedPiniaRuntime {
 
 describe('chat store contract', () => {
   beforeEach(async () => {
+    await recipesRepo.clear()
     setActivePinia(createPinia())
     await memoryRepo.clear()
     useMemoryStore().enabled = false
@@ -981,7 +978,7 @@ describe('chat store contract', () => {
       prompts.push(JSON.stringify(context))
       await options.onStreamEvent?.({ type: 'finish' })
     })
-    useRecipesStore().add({
+    await useRecipesStore().add({
       name: 'i-have-adhd',
       description: 'ADHD-friendly answers.',
       instructions: 'Start with the next step.',

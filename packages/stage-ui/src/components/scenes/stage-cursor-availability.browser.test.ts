@@ -8,6 +8,7 @@ import { nextTick } from 'vue'
 import { createI18n } from 'vue-i18n'
 
 import { useSettingsStageModel } from '../../stores/settings/stage-model'
+import { createSyncedContextPlugin } from '../../test/synced-context'
 
 vi.mock('@proj-airi/stage-shared/performance-state', async importOriginal => ({
   ...await importOriginal<typeof import('@proj-airi/stage-shared/performance-state')>(),
@@ -36,7 +37,7 @@ function mountStage() {
   const props: { cursorPosition: { x: number, y: number } | undefined } = { cursorPosition: undefined }
   return render(Stage, {
     props,
-    global: { plugins: [pinia, createI18n({ legacy: false, locale: 'en', missingWarn: false, fallbackWarn: false, messages: { en: {} } })] },
+    global: { plugins: [pinia, createSyncedContextPlugin(), createI18n({ legacy: false, locale: 'en', missingWarn: false, fallbackWarn: false, messages: { en: {} } })] },
   })
 }
 

@@ -39,6 +39,7 @@ import { useNaturalPerformanceOverride } from '../../stores/natural-performance-
 import { useSettingsStageModel } from '../../stores/settings/stage-model'
 import { situationTouchObservedEvent } from '../../stores/situation/touch-bus'
 import { useSpeechOutputControlStore } from '../../stores/speech-output-control'
+import { createSyncedContextPlugin } from '../../test/synced-context'
 import { ChatHistory } from '../scenarios/chat'
 
 /** Walks the rendered tree under `vnode` for the first instance of `type`, through child components, fragments and slots. */
@@ -206,7 +207,7 @@ async function renderStage(driver: 'natural' | 'universal' | 'magic') {
       return () => h('div', { style: 'width:640px;height:480px' }, [h(Stage)])
     },
   }), {
-    global: { plugins: [pinia, createI18n({ legacy: false, locale: 'en', missingWarn: false, fallbackWarn: false, messages: { en: {} } })] },
+    global: { plugins: [pinia, createSyncedContextPlugin(), createI18n({ legacy: false, locale: 'en', missingWarn: false, fallbackWarn: false, messages: { en: {} } })] },
   })
 
   await nextTick()
@@ -674,7 +675,7 @@ describe('per-signal character profiles at the Natural consumer', () => {
         return () => h('div')
       },
     }), {
-      global: { plugins: [pinia, createI18n({ legacy: false, locale: 'en', missingWarn: false, fallbackWarn: false, messages: { en: {} } })] },
+      global: { plugins: [pinia, createSyncedContextPlugin(), createI18n({ legacy: false, locale: 'en', missingWarn: false, fallbackWarn: false, messages: { en: {} } })] },
     })
     const { conductor } = api!
 
@@ -738,7 +739,7 @@ describe('resting face from the replicated character reading', () => {
         return () => h('div')
       },
     }), {
-      global: { plugins: [pinia, createI18n({ legacy: false, locale: 'en', missingWarn: false, fallbackWarn: false, messages: { en: {} } })] },
+      global: { plugins: [pinia, createSyncedContextPlugin(), createI18n({ legacy: false, locale: 'en', missingWarn: false, fallbackWarn: false, messages: { en: {} } })] },
     })
   }
 
@@ -835,7 +836,7 @@ describe('stage emotion routing on Tachie', () => {
         return () => h('div', { style: 'width:640px;height:480px' }, [h(Stage)])
       },
     }), {
-      global: { plugins: [pinia, createI18n({ legacy: false, locale: 'en', missingWarn: false, fallbackWarn: false, messages: { en: {} } })] },
+      global: { plugins: [pinia, createSyncedContextPlugin(), createI18n({ legacy: false, locale: 'en', missingWarn: false, fallbackWarn: false, messages: { en: {} } })] },
     })
     await nextTick()
 
@@ -879,7 +880,7 @@ describe('stage performance routing on MMD', () => {
         return () => h('div', { style: 'width:640px;height:480px' }, [h(component, props)])
       },
     }), {
-      global: { plugins: [pinia, createI18n({ legacy: false, locale: 'en', missingWarn: false, fallbackWarn: false, messages: { en: {} } })] },
+      global: { plugins: [pinia, createSyncedContextPlugin(), createI18n({ legacy: false, locale: 'en', missingWarn: false, fallbackWarn: false, messages: { en: {} } })] },
     })
     return mountedMMDScene()
   }

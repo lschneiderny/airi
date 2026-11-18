@@ -7,7 +7,7 @@ import { createSyncedPiniaPlugin } from 'pinia-plugin-synced'
 import { onPageHide } from '../page-hide'
 import { injectKeyPiniaSynced } from './synced-context'
 
-export { injectKeyPiniaSynced, usePiniaSynced } from './synced-context'
+export { injectKeyPiniaSynced, syncedRoles, usePiniaSynced } from './synced-context'
 
 export type { LeadershipMode } from 'pinia-plugin-synced'
 

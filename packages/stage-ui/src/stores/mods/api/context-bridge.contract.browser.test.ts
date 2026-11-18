@@ -152,9 +152,12 @@ async function emitServerEvent(eventName: string, event: unknown) {
 /** Makes this window the situation leader, so context reaches the situation, or a follower that ingests nothing. */
 function initializeSituation(isLeader: boolean) {
   const runtime: SyncedPiniaRuntime = {
+    addRole: vi.fn(() => vi.fn()),
     dispose: vi.fn(),
     getLeaderId: vi.fn(),
     getParticipantCount: vi.fn(() => 1),
+    getParticipants: vi.fn(() => []),
+    getRoles: vi.fn(() => []),
     isLeader: () => isLeader,
     onCoordinationChange: vi.fn(() => vi.fn()),
     onLeadershipChange: vi.fn((listener: (isLeader: boolean) => void) => {

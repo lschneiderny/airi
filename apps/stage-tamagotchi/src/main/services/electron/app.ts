@@ -1,6 +1,7 @@
 import type { createContext } from '@moeru/eventa/adapters/electron/main'
 import type { BrowserWindow } from 'electron'
 
+import { activeBundle } from '@ergosphere-it/electron/main'
 import { defineInvokeHandler } from '@moeru/eventa'
 import { app, shell } from 'electron'
 import { isLinux, isMacOS, isWindows } from 'std-env'
@@ -24,12 +25,13 @@ export function createAppService(params: { context: ReturnType<typeof createCont
 }
 
 /**
- * Serves the app version to the renderer of one window.
+ * Serves the app version to the renderer of one window: the version of the bundle that runs. An update of the bundle
+ * changes it without a new installer, so `app.getVersion()` can be older.
  *
  * The handler lives on the window's own context, which hears only IPC from this window, so one request runs one
  * handler. The context, and with it the handler, goes when the window closes.
  */
 export function createAppVersionService(params: { window: BrowserWindow }) {
   const { context } = createWindowContext(params.window)
-  defineInvokeHandler(context, electronAppGetVersion, () => app.getVersion())
+  defineInvokeHandler(context, electronAppGetVersion, () => activeBundle.version)
 }

@@ -77,9 +77,12 @@ class MemoryStorage implements Storage {
 /** A synced runtime that leads, reporting its role on subscribe like the plugin. */
 function leaderRuntime(): SyncedPiniaRuntime {
   return {
+    addRole: vi.fn(() => vi.fn()),
     dispose: vi.fn(),
     getLeaderId: vi.fn(),
     getParticipantCount: vi.fn(() => 1),
+    getParticipants: vi.fn(() => []),
+    getRoles: vi.fn(() => []),
     isLeader: () => true,
     onCoordinationChange: vi.fn(() => vi.fn()),
     onLeadershipChange: vi.fn((listener: (isLeader: boolean) => void) => {

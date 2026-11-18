@@ -63,12 +63,13 @@ APP_REMOTE_DEBUG=true APP_REMOTE_DEBUG_PORT=9250 APP_USER_DATA_PATH="$(mktemp -d
 Stop it afterwards with `pnpm qa:display down`. On macOS:
 
 ```bash
-APP_REMOTE_DEBUG=true APP_REMOTE_DEBUG_PORT=9250 pnpm dev:tamagotchi
+APP_IGNORE_FOCUS=1 APP_REMOTE_DEBUG=true APP_REMOTE_DEBUG_PORT=9250 pnpm dev:tamagotchi
 ```
 
 For Windows PowerShell:
 
 ```powershell
+$env:APP_IGNORE_FOCUS = "1"
 $env:APP_REMOTE_DEBUG = "true"
 $env:APP_REMOTE_DEBUG_PORT = "9250"
 pnpm dev:tamagotchi
@@ -77,8 +78,10 @@ pnpm dev:tamagotchi
 For Windows Git Bash:
 
 ```bash
-APP_REMOTE_DEBUG=true APP_REMOTE_DEBUG_PORT=9250 pnpm dev:tamagotchi
+APP_IGNORE_FOCUS=1 APP_REMOTE_DEBUG=true APP_REMOTE_DEBUG_PORT=9250 pnpm dev:tamagotchi
 ```
+
+`APP_IGNORE_FOCUS=1` keeps AIRI windows from taking focus from the user. To test focus behavior, start the app without it, or set it to `0`.
 
 Adjust the port to match what the user actually started. If the project uses a different mechanism, inspect its Electron launch code before giving command advice.
 
@@ -168,7 +171,7 @@ The main window hosts the stage and its controls. Settings and chat have separat
 The `9250` examples below assume the app was started by the person running it with:
 
 ```bash
-APP_REMOTE_DEBUG=true APP_REMOTE_DEBUG_PORT=9250 pnpm dev:tamagotchi
+APP_IGNORE_FOCUS=1 APP_REMOTE_DEBUG=true APP_REMOTE_DEBUG_PORT=9250 pnpm dev:tamagotchi
 ```
 
 That port is not intrinsic to AIRI or Electron. It depends on the current command and environment. Most stage-tamagotchi code lives under `apps/stage-tamagotchi`; inspect that app's Electron startup and window code when the port, routes, or remote-debug behavior differ.

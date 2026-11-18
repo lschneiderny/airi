@@ -330,7 +330,7 @@ it('forgets memories and recipes when modules reset', async () => {
   const memory = useMemoryStore(pinia)
   const recipes = useRecipesStore(pinia)
   await memory.write({ description: 'What the owner likes to be called.', body: 'Yumeka.' }, 'default')
-  recipes.add({ name: 'Check in', description: '', instructions: 'Greet softly.', keywords: [], enabled: true })
+  await recipes.add({ name: 'Check in', description: '', instructions: 'Greet softly.', keywords: [], enabled: true })
 
   await maintenance.resetModulesSettings()
 

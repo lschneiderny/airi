@@ -125,7 +125,8 @@ Only the current selection grants access, including retries and tool reruns. His
 The selected request receives `computer_use` and `computer_use_read_image`.
 The first tool accepts AUV arguments, such as `["invoke", "window.list"]`.
 Use `["invoke", "--help"]` and command-specific help to discover supported operations.
-The image tool returns a screenshot as model image content. It accepts only PNG and JPEG artifacts inside the app's computer-use store.
+The image tool returns a screenshot as model image content. It accepts PNG, JPEG, and WebP artifacts inside the app's computer-use store.
+WebP artifacts convert to PNG. PNG and JPEG artifacts keep their original bytes.
 Use a model and provider that support tool calls for visual tasks.
 With **Use the vision model for tool images** on, the vision model reads the screenshot first for a chat model whose provider does not report image input.
 The chat model then gets a text description. It has the visible text and layout, but no pixel positions.
@@ -149,7 +150,7 @@ The installer bundles the Godot stage sidecar from `engines/stage-tamagotchi-god
 
 `electron-builder.config.ts` checks that output in `beforePack`. By default a missing or empty directory logs a warning and the package is built without the sidecar, so the Godot renderer cannot start. Set `AIRI_REQUIRE_GODOT_STAGE=true` to fail packaging instead; `pnpm release` does.
 
-Build fork releases with `pnpm release <version>` from the repository root. It exports the sidecar, packages the installers, and uploads them to a draft GitHub release. See [`pnpm release`](../../scripts/dev-tools/README.md#pnpm-release). Releases and updates use the fork's repository, `releaseRepository` in `src/shared/release-repository.ts`. macOS builds are ad-hoc signed, so the updater is off on macOS.
+Build fork releases with `pnpm release <version>` from the repository root. It exports the sidecar, packages the installers, and uploads them to a draft GitHub release. See [`pnpm release`](../../scripts/dev-tools/README.md#pnpm-release). Releases use the fork's repository, `releaseRepository` in `src/shared/release-repository.ts`. The fork has no update feed, so the updater is off and the About page links to those releases. A build updates itself only when it sets both `AIRI_UPDATE_FEED_URL` and `AIRI_UPDATE_PUBLIC_KEY`, and never on macOS, where builds are ad-hoc signed.
 
 Windows is planned, not checked: no Windows installer is built or tested (see [Platform support](../../README.md#platform-support)). The `build:win` script and the `win` and `nsis` sections of `electron-builder.config.ts` stay in place.
 

@@ -5,9 +5,7 @@ import type { setupMainWindow } from '../main'
 import type { StageConfigStore, StageWindowInvokes } from './rpc/index.electron'
 import type { StageStateBroadcast } from './state-broadcast'
 
-import { dirname, join, resolve } from 'node:path'
 import { env } from 'node:process'
-import { fileURLToPath } from 'node:url'
 
 import { is } from '@electron-toolkit/utils'
 import { errorMessageFrom } from '@moeru/std'
@@ -17,7 +15,7 @@ import { app, dialog, BrowserWindow as ElectronBrowserWindow, powerMonitor, scre
 
 import icon from '../../../../resources/icon.png?asset'
 
-import { baseUrl, getElectronMainDirname, load, withHashRoute } from '../../libs/electron/location'
+import { baseUrl, getRendererRoot, load, withHashRoute } from '../../libs/electron/location'
 import { onWindowClosed } from '../../libs/electron/on-window-closed'
 import { createWindowContext } from '../../libs/electron/window-context'
 import { onCompositorCursor, onCompositorWindowRect, readDisplays, readPrimaryDisplay, readWindowRect } from '../../services/electron/coordinates'
@@ -103,10 +101,7 @@ export async function setupStageWindow(
   const home = resolveHomeDisplay(readStageDisplays(stageDisplays), getConfig())
 
   const window = new ElectronBrowserWindow({
-    ...createStageWindowOptions({
-      workArea: home.workArea,
-      preloadPath: join(dirname(fileURLToPath(import.meta.url)), '../preload/index.mjs'),
-    }),
+    ...createStageWindowOptions({ workArea: home.workArea }),
     icon,
   })
   markStageWindow(window)
@@ -211,7 +206,7 @@ export async function setupStageWindow(
     },
   })
 
-  await load(window, withHashRoute(baseUrl(resolve(getElectronMainDirname(), '..', 'renderer')), '/stage', {
+  await load(window, withHashRoute(baseUrl(getRendererRoot()), '/stage', {
     query: mainWindowQuery(is.dev, env),
   }))
 

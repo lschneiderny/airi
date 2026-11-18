@@ -35,6 +35,7 @@
     "./plugin-host": "./src/plugin-host.ts",
     "./screen-ambient-light": "./src/screen-ambient-light/index.ts",
     "./server-channel-qr": "./src/server-channel-qr.ts",
+    "./settings-search": "./src/settings-search/index.ts",
     "./situation": "./src/situation/index.ts",
     "./speaker-model": "./src/speaker-model.ts",
     "./stage-contract": "./src/stage-contract/index.ts",

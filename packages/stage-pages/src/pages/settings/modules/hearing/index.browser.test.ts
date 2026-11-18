@@ -5,6 +5,7 @@ import { useHearingStore } from '@proj-airi/stage-ui/stores/modules/hearing'
 import { createPinia, disposePinia } from 'pinia'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render } from 'vitest-browser-vue'
+import { page } from 'vitest/browser'
 import { createI18n } from 'vue-i18n'
 import { createMemoryHistory, createRouter } from 'vue-router'
 
@@ -21,8 +22,12 @@ afterEach(() => {
   localStorage.clear()
 })
 
-/** Renders the Hearing overview in a host that declares whether it has a Push to Talk trigger. `undefined` provides nothing. */
-async function renderHearing(trigger: boolean | undefined) {
+/**
+ * Renders the Hearing overview in a host that declares whether it has a Push to Talk trigger. `undefined` provides nothing.
+ * The page renders selects on a wide screen and row lists on a narrow one, so each test sets its width.
+ */
+async function renderHearing(trigger: boolean | undefined, width = 1280) {
+  await page.viewport(width, 800)
   const pinia = createPinia()
   pinias.push(pinia)
   const router = createRouter({
@@ -90,6 +95,15 @@ describe('hearing overview', () => {
 })
 
 describe('hearing input mode', () => {
+  // A narrow web screen listens only during a voice call, so the input mode and the microphone switch change nothing there.
+  it('explains on a narrow web screen that only a voice call listens', async () => {
+    const screen = await renderHearing(undefined, 390)
+
+    await expect.element(screen.getByTestId('hearing-call-only')).toBeVisible()
+    expect(screen.getByTestId('hearing-input-mode').query()).toBeNull()
+    expect(screen.getByTestId('hearing-microphone-switch').query()).toBeNull()
+  })
+
   // Review: https://github.com/moeru-ai/airi/pull/2729#discussion_r4237157722
   it('disables Push to Talk with a hint when the host declares no trigger', async () => {
     const screen = await renderHearing(undefined)

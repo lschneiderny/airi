@@ -2,6 +2,7 @@ import type { BrowserWindow, BrowserWindowConstructorOptions, Rectangle } from '
 
 import { isMacOS } from 'std-env'
 
+import { getPreloadPath } from '../../libs/electron/location'
 import { setWindowAlwaysOnTop } from '../shared/window'
 
 /**
@@ -13,16 +14,15 @@ import { setWindowAlwaysOnTop } from '../shared/window'
  *
  * Expects:
  * - `workArea` is the home display's work area in Electron DIP screen coordinates
- * - `preloadPath` is an absolute path to the renderer preload script
  *
  * Returns:
  * - Options for a frameless, transparent, hidden window that stays out of the taskbar. Unlike the desktop overlay it
  *   is focusable (the Controls Island and touch need input) and has no content protection (screenshots and OBS must
- *   see the character).
+ *   see the character). The preload script is the shared one of the running bundle, as for every other window, so
+ *   the page gets `window.electron`.
  */
 export function createStageWindowOptions(params: {
   workArea: Rectangle
-  preloadPath: string
 }): BrowserWindowConstructorOptions {
   return {
     title: 'AIRI',
@@ -41,7 +41,7 @@ export function createStageWindowOptions(params: {
     // A panel window can stay above full-screen apps on macOS, as the classic main window does.
     type: isMacOS ? 'panel' : undefined,
     webPreferences: {
-      preload: params.preloadPath,
+      preload: getPreloadPath(),
       sandbox: false,
       backgroundThrottling: false,
     },

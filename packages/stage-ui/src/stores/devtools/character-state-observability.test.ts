@@ -31,9 +31,12 @@ const DAY_MS = 24 * HOUR_MS
 /** A synced runtime that reports the given role on subscribe, like the plugin. */
 function leadership(isLeader: boolean): SyncedPiniaRuntime {
   return {
+    addRole: vi.fn(() => vi.fn()),
     dispose: vi.fn(),
     getLeaderId: vi.fn(),
     getParticipantCount: vi.fn(() => 1),
+    getParticipants: vi.fn(() => []),
+    getRoles: vi.fn(() => []),
     isLeader: () => isLeader,
     onCoordinationChange: vi.fn(() => vi.fn()),
     onLeadershipChange: vi.fn((listener: (isLeader: boolean) => void) => {

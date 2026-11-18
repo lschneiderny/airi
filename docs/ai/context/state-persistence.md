@@ -121,13 +121,13 @@ Column meanings:
 | Store or component | Keys | Tier | Writer | Registered |
 | --- | --- | --- | --- | --- |
 | `useLanguage` (`apps/stage-tamagotchi/src/renderer/composables/use-language.ts`) | `settings/language`, shared with `useSettingsGeneral` | plain | any window | yes, through the shared key |
-| `useDanmakuFeedSettings` (`apps/stage-tamagotchi/src/renderer/composables/use-danmaku-feed-settings.ts`) | `chat-window/danmaku/*` | plain | any window | no |
+| `useDanmakuFeedSettings` (`packages/stage-ui/src/composables/use-danmaku-feed-settings.ts`) | `chat-window/danmaku/*` | plain | any window | no |
 | `apps/stage-tamagotchi/src/renderer/pages/chat-floating.vue` | `chat-window/danmaku/composer-folded` | plain | any window | no |
 | `useControlsIslandStore` (`apps/stage-tamagotchi/src/renderer/stores/controls-island.ts`) | `controls-island/fade-on-hover-enabled`, `preferences/dont-show-it-again/notice/fade-on-hover` | plain | any window | no |
 | `useServerChannelSettingsStore` (`apps/stage-tamagotchi/src/renderer/stores/settings/server-channel.ts`) | `settings/server-channel/*` | plain | any window | no |
 | `usePushToTalkShortcutSettings` (`apps/stage-tamagotchi/src/renderer/composables/use-push-to-talk-shortcut.ts`) | `settings/hearing/push-to-talk-shortcut`, `settings/hearing/push-to-talk-shortcut-error` | plain | any window | no |
 | `apps/stage-tamagotchi/src/renderer/components/InteractiveArea.vue`, `packages/stage-layouts/src/components/Widgets/ChatArea.vue`, `packages/stage-layouts/src/components/Widgets/ChatActionButtons.vue` | `ui/chat/settings/send-mode` | plain | any window | no |
-| `packages/stage-ui/src/components/scenarios/chat/components/voice-composer.vue`, `packages/stage-ui/src/components/scenarios/chat/components/voice-input-button.vue` | `ui/chat/voice-mode` | plain | any window | no |
+| `packages/stage-ui/src/components/scenarios/chat/components/voice-input-button.vue` | `ui/chat/voice-mode` | plain | any window | no |
 | `packages/stage-ui/src/components/scenarios/settings/model-settings/live2d.vue` | `selected-runtime-motion`, `selected-runtime-motion-group`, `selected-runtime-motion-index` | plain | any window | no |
 
 ### Uses of the search terms that persist nothing
@@ -136,7 +136,7 @@ The inventory search was `git grep -nE 'useLocalStorageManualReset|useLocalStora
 
 - `useLocalStorageManualReset` (`packages/stage-shared/src/composables/use-local-storage-manual-reset/index.ts`) and `useSettingsDocument` (`packages/stage-shared/src/composables/use-settings-document/index.ts`) define the helpers.
 - `storage` (`packages/stage-ui/src/database/storage.ts`) creates the unstorage instance. Its `local` mount backs the chat-session row above. Its `outbox` mount is listed under [Known gaps](#known-gaps).
-- `packages/stage-ui/src/components/modules/WebSearch.vue` mentions the helper in a comment, and `packages/stage-ui/src/components/scenarios/settings/model-settings/live2d.vue` holds commented-out localforage code.
+- `packages/stage-ui/src/components/scenarios/settings/model-settings/live2d.vue` holds commented-out localforage code.
 - `packages/scenarios-stage-tamagotchi-electron/src/scenarios/display-model-from-file.ts` seeds the default localforage database of a test profile in a QA scenario.
 
 Three other writers sit outside the stores. `migrateGoCredentials` (`apps/stage-tamagotchi/src/renderer/bridges/opencode-go-migration.ts`) rewrites provider keys once. The OpenPanel client (`packages/stage-ui/src/libs/product-signals/openpanel.ts`) keeps a device id in `sessionStorage`, which ends with the session. `useModelStore().resetModelStore` deletes a legacy model-source key.

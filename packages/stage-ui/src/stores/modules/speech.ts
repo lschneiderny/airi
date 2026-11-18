@@ -17,6 +17,7 @@ import { x } from 'xastscript'
 
 import { speechStorageKeys } from '../../constants/settings-storage'
 import { injectKeyPiniaSynced } from '../../libs/pinia/synced-context'
+import { getDefinedProvider } from '../../libs/providers/providers'
 import { useProviderConfigStore } from '../providers/config'
 import { useProviderStore } from '../providers/provider'
 
@@ -26,6 +27,68 @@ export function toSignedPercent(value: number): string {
   if (value < 0)
     return `-${Math.abs(value)}%`
   return '0%'
+}
+
+/** A field that a speech selection needs before it can speak. */
+export type MissingSpeechField = 'model' | 'voice'
+
+/**
+ * Resolves the model and the voice that a speech selection speaks with.
+ * The provider config can supply them, for example for an OpenAI-compatible provider.
+ * A streaming provider needs a model with a resource path. Without one, it uses `defaultModel`, the default model of the provider.
+ */
+function resolveSpeechSelection(selection: AiriExtension['modules']['speech'], config: Record<string, unknown>, defaultModel: () => string | null | undefined) {
+  const model = selection.model || (typeof config.model === 'string' ? config.model : '')
+  const voiceId = selection.voice_id || (typeof config.voice === 'string' ? config.voice : '')
+  const streaming = getDefinedProvider(selection.provider)?.capabilities?.speech?.transport === 'bidirectional-ws'
+  const streamingModel = streaming ? (model.includes('/') ? model : defaultModel()) : undefined
+  return { model, voiceId, streaming, streamingModel }
+}
+
+/** The empty fields of a speech selection. */
+export interface SpeechFieldStatus {
+  /** Fields that the speech lacks. Without them, `createOutput` of the speech store cannot speak, so the replies stay text only. */
+  missing: MissingSpeechField[]
+  /** Empty fields that a catalog fills after it loads. Until then, it is unknown if the speech can speak. */
+  pending: MissingSpeechField[]
+}
+
+/**
+ * Tells which fields a speech selection lacks before it can speak. Both lists are empty when speech is off, or when it can speak.
+ * A streaming provider uses the default model of its model catalog. While that catalog loads, an empty model is pending, not missing.
+ * A catalog that failed, that came back empty, or that nobody requested fills nothing, so its empty fields are missing.
+ * This fork has no hosted provider that picks a voice from its catalog, so an empty voice is always missing.
+ *
+ * @param config The config of the selected provider.
+ * @param defaultModel Gives the default model of the selected provider. It gives `null` when there is none, and `undefined` while the model catalog loads.
+ */
+export function speechFieldStatus(
+  selection: AiriExtension['modules']['speech'],
+  config: Record<string, unknown>,
+  defaultModel: () => string | null | undefined,
+): SpeechFieldStatus {
+  const status: SpeechFieldStatus = { missing: [], pending: [] }
+  if (!selection.provider || selection.provider === 'speech-noop')
+    return status
+  const { model, voiceId, streaming, streamingModel } = resolveSpeechSelection(selection, config, defaultModel)
+  if (streaming ? !streamingModel?.includes('/') : !model)
+    status[streaming && streamingModel === undefined ? 'pending' : 'missing'].push('model')
+  if (!voiceId)
+    status.missing.push('voice')
+  return status
+}
+
+/** One key for a set of speech fields, for the strings that name them. It is `undefined` for no fields. */
+export function speechFieldsKeyOf(fields: readonly MissingSpeechField[]): 'model' | 'voice' | 'model-voice' | undefined {
+  const model = fields.includes('model')
+  const voice = fields.includes('voice')
+  if (model && voice)
+    return 'model-voice'
+  if (model)
+    return 'model'
+  if (voice)
+    return 'voice'
+  return undefined
 }
 
 interface SpeechInputOptions {
@@ -453,8 +516,7 @@ export const useSpeechStore = defineStore('speech', () => {
     const config = structuredClone(toRaw(providerStore.getProviderConfig(providerId) ?? {}))
     const selectedVoice = availableVoices.value[providerId]?.find(voice => voice.id === selection.voice_id)
     const voice = selectedVoice ? structuredClone(toRaw(selectedVoice)) : undefined
-    const model = selection.model || (typeof config.model === 'string' ? config.model : '')
-    const voiceId = selection.voice_id || (typeof config.voice === 'string' ? config.voice : '')
+    const { model, voiceId } = resolveSpeechSelection(selection, config, () => providersStore.getDefaultModelForProvider(providerId))
     const useSSML = ssmlEnabled.value
     const canUseSSML = ['elevenlabs', 'microsoft-speech', 'azure-speech'].includes(providerId) || (providerId === 'alibaba-cloud-model-studio' && model === 'cosyvoice-v2')
     const pitchValue = pitch.value

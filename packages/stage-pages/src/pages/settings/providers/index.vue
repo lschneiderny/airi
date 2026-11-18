@@ -6,6 +6,7 @@ import { isCustomProvidersDisabled } from '@proj-airi/stage-shared'
 import { IconStatusItem, RippleGrid } from '@proj-airi/stage-ui/components'
 import { useAnalytics } from '@proj-airi/stage-ui/composables'
 import { useRippleGridState } from '@proj-airi/stage-ui/composables/use-ripple-grid-state'
+import { providerSettingsRouteOf } from '@proj-airi/stage-ui/libs/providers/metadata'
 import { useArtistryStore } from '@proj-airi/stage-ui/stores/modules/artistry'
 import { useProviderStore } from '@proj-airi/stage-ui/stores/providers/provider'
 import { storeToRefs } from 'pinia'
@@ -292,7 +293,7 @@ const providerBlocks = computed(() => {
           :icon="provider.icon"
           :icon-color="provider.iconColor"
           :icon-image="provider.iconImage"
-          :to="provider.to ?? `/settings/providers/${provider.category}/${provider.id}`"
+          :to="providerSettingsRouteOf(provider)"
           :configured="provider.configured"
           :pricing="provider.pricing"
           :deployment="provider.deployment"

@@ -35,6 +35,17 @@ const appMock = vi.hoisted(() => ({
   quit: vi.fn(),
 }))
 
+// The app version service serves the version of the running bundle, which the update launcher knows.
+const bundleVersion = vi.hoisted(() => vi.fn(() => '0.0.0'))
+
+vi.mock('@ergosphere-it/electron/main', () => ({
+  activeBundle: {
+    get version() {
+      return bundleVersion()
+    },
+  },
+}))
+
 const shellMock = vi.hoisted(() => ({
   openPath: vi.fn(async () => ''),
   showItemInFolder: vi.fn(),
@@ -178,7 +189,7 @@ describe('createWindowContext', () => {
 
     await defineInvoke(main.context, electronAppGetVersion)()
 
-    expect(appMock.getVersion).toHaveBeenCalledTimes(1)
+    expect(bundleVersion).toHaveBeenCalledTimes(1)
   })
 
   it('stops serving a window after the window closes and keeps serving the other windows', async () => {

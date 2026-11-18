@@ -9,6 +9,7 @@ import { cleanup, render } from 'vitest-browser-vue'
 import { page } from 'vitest/browser'
 import { defineComponent } from 'vue'
 import { createI18n } from 'vue-i18n'
+import { createMemoryHistory, createRouter } from 'vue-router'
 
 import CardEditor from './CardEditor.vue'
 
@@ -20,6 +21,11 @@ function evidencePath(name: string) {
   return `../../../../../../../.omo/evidence/layered-character-state/${name}`
 }
 
+/** The editor reads the route to reveal a setting that the settings search opened. */
+function createTestRouter() {
+  return createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { render: () => null } }] })
+}
+
 function createTestI18n() {
   return createI18n({ legacy: false, locale: 'en', messages: { en } })
 }
@@ -27,11 +33,13 @@ function createTestI18n() {
 describe('card editor character profile', () => {
   let pinia: ReturnType<typeof createPinia>
   let i18n: ReturnType<typeof createTestI18n>
+  let router: ReturnType<typeof createTestRouter>
 
   beforeEach(() => {
     localStorage.clear()
     pinia = createPinia()
     i18n = createTestI18n()
+    router = createTestRouter()
   })
 
   const t = (key: string) => i18n.global.t(key)
@@ -74,7 +82,7 @@ describe('card editor character profile', () => {
   }
 
   function renderEditor(cardId: string) {
-    return render(CardEditor, { props: { cardId, initialSection: 'modules' }, global: { plugins: [pinia, i18n] } })
+    return render(CardEditor, { props: { cardId, initialSection: 'modules' }, global: { plugins: [pinia, i18n, router] } })
   }
 
   /** Drives the range input of a slider like a user would: the browser emits `input` with the new value. */
@@ -139,7 +147,7 @@ describe('card editor character profile', () => {
 
   it('shows All for an existing card and saves a turn limit, zero, and All', async () => {
     const cardId = await createCard()
-    const screen = await render(CardEditor, { props: { cardId, initialSection: 'settings' }, global: { plugins: [pinia, i18n] } })
+    const screen = await render(CardEditor, { props: { cardId, initialSection: 'settings' }, global: { plugins: [pinia, i18n, router] } })
 
     const input = screen.getByRole('spinbutton', { name: t('settings.pages.card.context_window') })
     await expect.element(input).toHaveValue(null)
@@ -153,7 +161,7 @@ describe('card editor character profile', () => {
 
   it('shows an unset temperature for an existing card and saves a value, a value clamped to the range, and unset', async () => {
     const cardId = await createCard()
-    const screen = await render(CardEditor, { props: { cardId, initialSection: 'settings' }, global: { plugins: [pinia, i18n] } })
+    const screen = await render(CardEditor, { props: { cardId, initialSection: 'settings' }, global: { plugins: [pinia, i18n, router] } })
 
     const input = screen.getByRole('spinbutton', { name: t('settings.pages.card.temperature') })
     await expect.element(input).toHaveValue(null)

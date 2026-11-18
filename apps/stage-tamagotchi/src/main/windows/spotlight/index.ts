@@ -20,6 +20,7 @@ import {
   electronSpotlightShowResultNotification,
 } from '../../../shared/eventa'
 import { isSafeSpotlightAccelerator } from '../../../shared/spotlight-shortcut'
+import { focusWindow } from '../../libs/electron/focus'
 import { baseUrl, getPreloadPath, getRendererRoot, load, withHashRoute } from '../../libs/electron/location'
 import { createWindowContext } from '../../libs/electron/window-context'
 import { createReusableWindow } from '../../libs/electron/window-manager'
@@ -150,9 +151,8 @@ export function setupSpotlightWindowManager(params: {
   async function show() {
     const window = await reusable.getWindow()
     placeWindow(window, resolveSpotlightBounds())
-    window.show()
-    window.focus()
-    window.webContents.focus()
+    if (focusWindow(window))
+      window.webContents.focus()
   }
 
   function getShortcutAccelerator(): ShortcutAccelerator {

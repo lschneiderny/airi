@@ -27,6 +27,7 @@ import {
   electronChatWindowTakeDraft,
   electronFullscreenClose,
 } from '../../../shared/eventa'
+import { focusWindow, showWindow } from '../../libs/electron/focus'
 import { baseUrl, getPreloadPath, getRendererRoot, load, withHashRoute } from '../../libs/electron/location'
 import { onWindowClosed } from '../../libs/electron/on-window-closed'
 import { createConfig } from '../../libs/electron/persistence'
@@ -238,7 +239,7 @@ export function setupChatWindowManager(params: {
 
     if (isMacOS)
       window.setWindowButtonVisibility(true)
-    window.on('ready-to-show', () => window.show())
+    window.on('ready-to-show', () => showWindow(window))
     protectPrivilegedWindowNavigation(window)
     window.on('show', attentionTarget.update)
     window.on('hide', attentionTarget.update)
@@ -320,9 +321,8 @@ export function setupChatWindowManager(params: {
     const window = await legacy.getWindow()
     if (window.isMinimized())
       window.restore()
-    window.show()
-    window.focus()
-    window.moveTop()
+    if (focusWindow(window))
+      window.moveTop()
   }
 
   /** The windows that can carry the fullscreen chat. Without an active one, the fullscreen chat has nowhere to show. */

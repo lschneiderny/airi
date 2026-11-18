@@ -4,6 +4,12 @@ import type { Live2DExpressionSettingsSnapshot } from '@proj-airi/stage-ui-live2
 import type { StageModelRenderer } from '../../../../stores/settings/stage-model'
 import type { ExpressionPanelSnapshot } from './expressions/source'
 
+/**
+ * The marker of the button that opens the model picker. The display models live in that dialog,
+ * so a settings search result for a model points to this button.
+ */
+export const MODEL_PICKER_SEARCH_KEY = 'display-model-picker'
+
 export type ModelSettingsRuntimeRenderer = 'disabled' | 'live2d' | 'vrm' | 'spine' | 'tachie' | 'mmd' | 'godot'
 export type ModelSettingsRuntimePhase = 'pending' | 'loading' | 'binding' | 'mounted' | 'no-model' | 'error'
 

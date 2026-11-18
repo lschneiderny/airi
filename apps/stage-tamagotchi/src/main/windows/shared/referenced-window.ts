@@ -8,6 +8,7 @@ import type { ServerChannel } from '../../services/airi/channel-server'
 import { defineInvokeHandler } from '@moeru/eventa'
 import { safeClose } from '@proj-airi/electron-vueuse/main'
 
+import { focusWindow } from '../../libs/electron/focus'
 import { onWindowClosed } from '../../libs/electron/on-window-closed'
 import { createWindowContext } from '../../libs/electron/window-context'
 import { setupBaseWindowElectronInvokes } from './window'
@@ -72,8 +73,7 @@ export function createReferencedWindowManager<Payload extends RequestWindowPaylo
 
     try {
       await params.loadRoute(ctx.window, { ...payload, id })
-      ctx.window.show()
-      ctx.window.focus()
+      focusWindow(ctx.window)
     }
     catch (error) {
       const wrapped = error ?? new Error('Failed to open referenced window')

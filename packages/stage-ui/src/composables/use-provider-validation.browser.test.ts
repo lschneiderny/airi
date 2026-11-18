@@ -72,7 +72,6 @@ describe('useProviderValidation', () => {
     await expect.poll(() => follower.runtime.getLeaderId()).toBe(leader.runtime.participantId)
     follower.app.mount(document.createElement('div'))
 
-    const setProviderStatus = vi.spyOn(follower.providerConfigStore(), 'setProviderStatus')
     const markProviderAdded = vi.spyOn(follower.providerConfigStore(), 'markProviderAdded')
     const apiKey: WritableComputedRef<string> = follower.validation().apiKey
     apiKey.value = 'sk-ant-test'
@@ -85,13 +84,10 @@ describe('useProviderValidation', () => {
     expect(follower.validation().isValid.value).toBe(true)
     expect(apiKey.value).toBe('sk-ant-test')
 
-    // A committed snapshot can arrive before the follower's RPC replies.
-    // Settle both validation follow-up actions before disposing their runtime.
-    expect(setProviderStatus).toHaveBeenCalledWith('anthropic', 'configured')
+    // A committed snapshot can arrive before the follower's RPC replies. The provider store now records the status
+    // inside the check that the leader runs, so only the follow-up action of this window is left to settle before
+    // its runtime is disposed.
     expect(markProviderAdded).toHaveBeenCalledWith('anthropic')
-    await Promise.all([
-      ...setProviderStatus.mock.results.map(result => result.value),
-      ...markProviderAdded.mock.results.map(result => result.value),
-    ])
+    await Promise.all(markProviderAdded.mock.results.map(result => result.value))
   })
 })

@@ -1,26 +1,38 @@
+---
+name: use-vishot-for-airi
+description: Run AIRI-owned Vishot scenarios for stage-web or stage-tamagotchi, including skipping first-run onboarding and importing a local Live2D, VRM, or MMD display model before capture. Use when AIRI visual evidence must exercise a contributor-supplied avatar file instead of a preset model.
+---
+
 # Use Vishot for AIRI
 
-Read the [capture workflow](../SKILL.md), [Electron](electron.md), and [input-file](input-file.md) references. Reuse the product helper at `packages/scenarios-stage-tamagotchi-electron/src/scenarios/display-model-from-file.ts`.
+Invoke `$use-vishot`, `$use-vishot-with-electron`, and `$use-vishot-with-input-file`. Reuse the product helper at `packages/scenarios-stage-tamagotchi-electron/src/scenarios/display-model-from-file.ts`.
 
 ## Local model capture
 
-Set `MODEL_PATH` to an existing absolute model path. Build Electron, then pass that path and the explicit format through the environment:
+Build Electron, then pass the model path and explicit format through the environment:
 
 ```bash
 pnpm build:tamagotchi
 
+APP_IGNORE_FOCUS=1 \
 AIRI_DISPLAY_MODEL_FORMAT=live2d \
-AIRI_DISPLAY_MODEL_PATH="$MODEL_PATH" \
+AIRI_DISPLAY_MODEL_PATH='/Users/neko/Pictures/Project AIRI 静态资产/形象 - Iru/Live2D/Iru v2.0 @ Project AIRI 运行文件.zip' \
 pnpm exec vishot capture \
   ./packages/scenarios-stage-tamagotchi-electron/src/scenarios/display-model-from-file.ts \
   --target electron \
-  --app-entrypoint ./apps/stage-tamagotchi/out/main/index.js \
+  --app-entrypoint ./apps/stage-tamagotchi \
   --cwd . \
   --settle-ms 2500 \
   --output-dir ./.vishot/display-model/live2d
 ```
 
-Use `AIRI_DISPLAY_MODEL_FORMAT=vrm` with `AIRI_DISPLAY_MODEL_PATH` set to an absolute local VRM path.
+`APP_IGNORE_FOCUS=1` keeps AIRI windows from taking focus from the user. `pnpm capture:tamagotchi` sets it by default. To capture focus behavior, set it to `0`.
+
+Use `AIRI_DISPLAY_MODEL_FORMAT=vrm` with a local file such as:
+
+```text
+/Users/neko/Pictures/Project AIRI 静态资产/形象 - Iru/VRM/ReLU @ Project AIRI.vrm
+```
 
 Use `AIRI_DISPLAY_MODEL_FORMAT=mmd` with `.zip`, `.pmx`, or `.pmd`. A license-readable public candidate is [CG-CA Gene](https://github.com/mmdagent-ex/gene), whose repository provides PMX/PMD models and textures under CC BY 4.0. Prefer a ZIP containing the model and its texture directories.
 

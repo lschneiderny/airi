@@ -3,6 +3,7 @@ import { BrowserWindow } from 'electron'
 
 import icon from '../../../../resources/icon.png?asset'
 
+import { showWindow } from '../../libs/electron/focus'
 import { baseUrl, getPreloadPath, getRendererRoot, load, withHashRoute } from '../../libs/electron/location'
 import { onWindowClosed } from '../../libs/electron/on-window-closed'
 import { createWindowContext } from '../../libs/electron/window-context'
@@ -44,7 +45,7 @@ export function setupDevtoolsWindow(): DevtoolsWindowManager {
         },
       })
 
-      window.on('ready-to-show', () => window.show())
+      window.on('ready-to-show', () => showWindow(window))
       onWindowClosed(window, () => {
         if (reusableWindows.get(key) === reusable)
           reusableWindows.delete(key)
