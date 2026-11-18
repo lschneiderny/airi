@@ -141,6 +141,39 @@ export default defineConfig({
     }],
   },
 }, {
+  // The character mind's core is pure: it composes the pure rules of stage-shared and nothing that needs a window.
+  // See docs/ai/adr/2026-11-17-character-mind-direction.md, decision 9.
+  name: 'airi/character-mind-pure',
+  files: ['packages/character-mind/src/**'],
+  rules: {
+    'ts/no-restricted-imports': ['error', {
+      paths: ['vue', 'pinia', '@proj-airi/stage-shared', '@proj-airi/stage-shared/composables'].map(name => ({
+        name,
+        message: 'The character mind imports only the pure rules of @proj-airi/stage-shared/expression-performance and /situation.',
+      })),
+      patterns: [{
+        group: ['@vueuse/*', '@proj-airi/stage-ui*', '@proj-airi/stage-shared/stores/*'],
+        message: 'The character mind imports only the pure rules of @proj-airi/stage-shared/expression-performance and /situation.',
+      }],
+    }],
+  },
+}, {
+  // Only the shell (mind.ts) owns a clock. The core takes time and random draws as arguments.
+  name: 'airi/character-mind-pure/core',
+  files: ['packages/character-mind/src/**'],
+  ignores: ['packages/character-mind/src/mind.ts', '**/*.test.ts'],
+  rules: {
+    'no-restricted-properties': ['error', ...[['Math', 'random'], ['Date', 'now'], ['performance', 'now']].map(([object, property]) => ({
+      object,
+      property,
+      message: 'The core of the character mind takes nowMs and rng as arguments.',
+    }))],
+    'no-restricted-globals': ['error', ...['setTimeout', 'setInterval', 'setImmediate', 'requestAnimationFrame', 'queueMicrotask'].map(name => ({
+      name,
+      message: 'The core of the character mind runs no timers.',
+    }))],
+  },
+}, {
   // The eager Live2D path may import only the three-free 3D subpaths; scenes load through `import()`.
   // Pocket was retired. See docs/ai/adr/2026-11-04-lazy-3d-renderers.md.
   name: 'airi/lazy-3d-renderers',
