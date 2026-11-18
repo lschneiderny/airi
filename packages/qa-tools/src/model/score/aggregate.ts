@@ -70,8 +70,26 @@ export interface RunScore {
     exampleEcho: number
     meanWords: number
   }
-  timing: { replies: number, meanTtftMs: number | null, meanTotalMs: number | null, genTps: number | null } | null
+  timing: {
+    replies: number
+    meanTtftMs: number | null
+    meanTotalMs: number | null
+    /** Generation speed from the endpoint's own evaluation duration. Only imported Ollama-native records carry it. */
+    genTps: number | null
+    /** Mean time to first token of a conversation's first turn: it includes loading the model and the whole prompt. */
+    coldTtftMs: number | null
+    /** Mean time to first token of later turns: low only when the server reuses the prompt cache of the previous turn. */
+    warmTtftMs: number | null
+    /** Client-measured decode speed: completion tokens over the time from the first token to the end of the stream. */
+    decodeTps: number | null
+    /** Mean `usage.prompt_tokens`, to compare with the server's context size and to spot truncation. */
+    meanPromptTokens: number | null
+  } | null
   legacy?: ReturnType<typeof legacyScoreReplies>
+}
+
+function mean(values: readonly number[]): number | null {
+  return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null
 }
 
 function ranked(counts: Map<string, number>): [string, number][] {
@@ -137,7 +155,12 @@ export function aggregateRun(
     const invented = new Map<string, number>()
     const unknown = new Map<string, number>()
     const ttfts: number[] = []
+    const coldTtfts: number[] = []
+    const warmTtfts: number[] = []
     const totals: number[] = []
+    const promptTokens: number[] = []
+    let decodeTokens = 0
+    let decodeMs = 0
     let timedReplies = 0
     let evalTokens = 0
     let evalMs = 0
@@ -205,10 +228,22 @@ export function aggregateRun(
       run.call.valid += cue.call.valid
       for (const marker of cue.unknownMarkers)
         unknown.set(marker, (unknown.get(marker) ?? 0) + 1)
-      if (record.timing.ttftMs !== null)
-        ttfts.push(record.timing.ttftMs)
-      if (record.timing.totalMs !== null)
-        totals.push(record.timing.totalMs)
+      const { ttftMs, totalMs } = record.timing
+      if (ttftMs !== null) {
+        ttfts.push(ttftMs)
+        if (record.conversation.turn !== null)
+          (record.conversation.turn === 1 ? coldTtfts : warmTtfts).push(ttftMs)
+      }
+      if (totalMs !== null)
+        totals.push(totalMs)
+      const completionTokens = record.usage?.completion_tokens
+      // The first token's own time is in the TTFT, so the decode window holds the tokens after it.
+      if (typeof completionTokens === 'number' && completionTokens > 1 && ttftMs !== null && totalMs !== null && totalMs > ttftMs) {
+        decodeTokens += completionTokens - 1
+        decodeMs += totalMs - ttftMs
+      }
+      if (typeof record.usage?.prompt_tokens === 'number')
+        promptTokens.push(record.usage.prompt_tokens)
       const tokens = record.usage?.evalTokens
       const ms = record.usage?.evalMs
       const hasGeneration = typeof tokens === 'number' && typeof ms === 'number' && ms > 0
@@ -225,9 +260,13 @@ export function aggregateRun(
     if (timedReplies) {
       run.timing = {
         replies: timedReplies,
-        meanTtftMs: ttfts.length ? ttfts.reduce((sum, ms) => sum + ms, 0) / ttfts.length : null,
-        meanTotalMs: totals.length ? totals.reduce((sum, ms) => sum + ms, 0) / totals.length : null,
+        meanTtftMs: mean(ttfts),
+        meanTotalMs: mean(totals),
         genTps: evalMs ? evalTokens / (evalMs / 1000) : null,
+        coldTtftMs: mean(coldTtfts),
+        warmTtftMs: mean(warmTtfts),
+        decodeTps: decodeMs ? decodeTokens / (decodeMs / 1000) : null,
+        meanPromptTokens: mean(promptTokens),
       }
     }
     run.legacy = legacyScoreReplies(indices.map(index => records[index]))

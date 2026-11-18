@@ -746,14 +746,21 @@ A scenario is a JSON file that fixes everything about a run except the endpoint,
 | `prompt.exposedActions` | Optional exposed clips, for example `wave:gesture`. Only gestures are accepted, because a run sends no tools. Pass the same value to `score --exposed-actions`. |
 | `startsAt` | The time prefix of the first user turn, `YYYY-MM-DDTHH:MM`. Each later turn is one minute later. |
 | `stages` | Optional relationship stages. Each stage runs the turns as its own conversation, with the `system:character` text of that stage after each user message. |
-| `configs` | Named request options: `temperature`, `top_p`, `max_tokens`, `seed`, and `reasoning_effort` (`none`, `low`, `medium`, or `high`). An omitted key is not sent. A context size cannot be set here. |
+| `configs` | Named request options: `temperature`, `top_p`, `max_tokens`, `seed`, and `reasoning_effort` (`none`, `low`, `medium`, or `high`). An omitted key is not sent. A context size cannot be set here. The app's chat turns send `none` while the Consciousness reasoning setting is off, its default, so a run of a thinking model matches the app only with a `reasoning_effort: none` config. The committed scenarios omit the key, and a thinking model then reasons until it reaches `max_tokens` and may return no text. |
 | `turns` | The user turns. Each reply joins the history of the next request, as `--history` says. |
 
 The run always renders the current stage contract and composes the system prompt with the production composer, so a scenario cannot carry an old contract. It refuses to start when the rendered English contract is not `STAGE_CONTRACT_EN_SHA256`; rebuild i18n with `pnpm -F @proj-airi/i18n build`.
 
-A run directory holds `run.json`, `transcripts.jsonl`, and `requests.jsonl` (the exact body of each request, by reply id). Live records use the schema `airi.reply-transcript/v2`, which adds a `live` block to v1: the scenario id, version, and stage; the endpoint; the requested model, request body hash, and start time; the response status, id, reported model, system fingerprint, and end time; and the full contract hash. A value the endpoint does not report is `null`. Imported replies stay v1, and `score` reads both.
+A run directory holds `run.json`, `transcripts.jsonl`, and `requests.jsonl` (the exact body of each request, by reply id). When the origin of `--base-url` answers Ollama's `/api/version`, the run also writes `server.json` (`airi.ollama-snapshot/v1`), read after the last request while the model is still loaded: the server version, the model digest, family, parameter size, quantization, and capabilities, and the loaded `size`, `sizeVram`, and `contextLength` from `/api/ps`. `sizeVram` below `size` means part of the model ran on the CPU; `contextLength` is the context a compatible request cannot choose. The run prints the same facts as one `ollama …` line on stderr. Against any other server it records nothing. Live records use the schema `airi.reply-transcript/v2`, which adds a `live` block to v1: the scenario id, version, and stage; the endpoint; the requested model, request body hash, and start time; the response status, id, reported model, system fingerprint, and end time; and the full contract hash. A value the endpoint does not report is `null`. Imported replies stay v1, and `score` reads both.
 
-A run differs from an app request in these ways: it sends no tools, no situation block, and no memory, toolset, or sticker segment, and the built-in card has no widget instruction. Reply times are therefore not the app's reply times, and a run does not measure tool misfires. The summary reports no `genTps` for a live run, because the endpoint shape does not return an evaluation duration.
+A run differs from an app request in these ways: it sends no tools, no situation block, and no memory, toolset, or sticker segment, and the built-in card has no widget instruction. Reply times are therefore not the app's reply times, and a run does not measure tool misfires. The summary reports no `genTps` for a live run, because the endpoint shape does not return an evaluation duration. It reports these client-measured timing columns instead, which also fill for imported records that carry the fields:
+
+| Column | Meaning |
+| --- | --- |
+| `coldTtftMs` | Mean time to first token of turn 1. It includes loading the model when it was not loaded, and processing the whole system prompt. |
+| `warmTtftMs` | Mean time to first token of later turns. A local server keeps it low only when it reuses the cache of the previous request; a value near `coldTtftMs` means the prompt was processed again. |
+| `decodeTps` | Completion tokens after the first, over the time from the first token to the end of the stream. A reasoning model's hidden tokens count, since `usage.completion_tokens` includes them. |
+| `promptTok` | Mean `usage.prompt_tokens`, to compare with the server's context size. |
 
 ### Prompt command
 

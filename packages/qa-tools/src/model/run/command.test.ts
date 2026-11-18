@@ -50,8 +50,13 @@ async function replay(source: string | unknown[]) {
     baseUrl,
     script,
     out: join(dir, 'run'),
+    /** Every request the endpoint received, including the run's Ollama probe. */
+    async log(): Promise<{ method: string, path: string, body: unknown }[]> {
+      return (await readFile(join(dir, 'requests.jsonl'), 'utf8')).trim().split('\n').map(line => JSON.parse(line))
+    },
+    /** The bodies of the chat requests, in order. The run's Ollama probe is a GET and is left out. */
     async bodies() {
-      return (await readFile(join(dir, 'requests.jsonl'), 'utf8')).trim().split('\n').map(line => JSON.parse(line).body)
+      return (await readFile(join(dir, 'requests.jsonl'), 'utf8')).trim().split('\n').map(line => JSON.parse(line)).filter(entry => entry.method === 'POST' && entry.path.endsWith('/chat/completions')).map(entry => entry.body)
     },
   }
 }
@@ -142,6 +147,9 @@ describe('run command', () => {
     const manifest: RunManifest = JSON.parse(await readFile(join(endpoint.out, 'run.json'), 'utf8'))
     expect(manifest).toMatchObject({ tool: 'model-run', label: 'general', result: { exitCode: 0 } })
     expect(manifest.artifacts.map(artifact => [artifact.path, artifact.kind])).toEqual([['transcripts.jsonl', 'model-transcripts'], ['requests.jsonl', 'model-requests']])
+    // The replay server is not Ollama: the run asks for its version once and records no server snapshot.
+    expect((await endpoint.log()).filter(entry => entry.method === 'GET').map(entry => entry.path)).toEqual(['/api/version'])
+    expect(existsSync(join(endpoint.out, 'server.json'))).toBe(false)
     expect(manifest.artifacts[0].sha256).toBe(sha256Buffer(await readFile(join(endpoint.out, 'transcripts.jsonl'))))
   })
 

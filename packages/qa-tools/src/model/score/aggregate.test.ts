@@ -78,8 +78,9 @@ const style: StyleScore = {
 describe('aggregateRun', () => {
   it('aggregates every run field from aligned reply and style scores', () => {
     const first = record()
+    first.conversation.turn = 1
     first.timing = { ttftMs: 100, totalMs: 1000 }
-    first.usage = { evalTokens: 20, evalMs: 500 }
+    first.usage = { evalTokens: 20, evalMs: 500, completion_tokens: 10, prompt_tokens: 900 }
     const second = record()
     second.reply.error = 'failed'
     second.timing = { ttftMs: null, totalMs: 3000 }
@@ -156,7 +157,7 @@ describe('aggregateRun', () => {
       residualReplies: 1,
       chunkVariant: 1,
       style: { emoji: 1, stageDirection: 2, firstLetterLower: 2, personaFace: 2, aiBreak: 2, exampleEcho: 2, meanWords: 6 },
-      timing: { replies: 2, meanTtftMs: 100, meanTotalMs: 2000, genTps: 30 },
+      timing: { replies: 2, meanTtftMs: 100, meanTotalMs: 2000, genTps: 30, coldTtftMs: 100, warmTtftMs: null, decodeTps: 10, meanPromptTokens: 900 },
       legacy: legacyScoreReplies([first, second]),
     }])
   })

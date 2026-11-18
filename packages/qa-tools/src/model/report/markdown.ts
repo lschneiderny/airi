@@ -75,7 +75,7 @@ export function renderSummaryMarkdown(runs: RunScore[]): string {
       'aiBreak',
       'exampleEcho',
       'meanWords',
-      ...(timed ? ['timing replies', 'meanTtftMs', 'meanTotalMs', 'genTps'] : []),
+      ...(timed ? ['timing replies', 'meanTtftMs', 'meanTotalMs', 'genTps', 'coldTtftMs', 'warmTtftMs', 'decodeTps', 'promptTok'] : []),
     ]
     lines.push(`| ${columns.join(' | ')} |`, `| ${columns.map(() => '---').join(' | ')} |`)
     for (const run of rows) {
@@ -126,6 +126,10 @@ export function renderSummaryMarkdown(runs: RunScore[]): string {
           number(run.timing?.meanTtftMs ?? null),
           number(run.timing?.meanTotalMs ?? null),
           number(run.timing?.genTps ?? null),
+          number(run.timing?.coldTtftMs ?? null),
+          number(run.timing?.warmTtftMs ?? null),
+          number(run.timing?.decodeTps ?? null),
+          number(run.timing?.meanPromptTokens ?? null),
         )
       }
       lines.push(`| ${cells.map(value => escapeCell(String(value))).join(' | ')} |`)

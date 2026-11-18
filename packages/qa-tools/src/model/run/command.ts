@@ -9,7 +9,7 @@ import process from 'node:process'
 
 import { Buffer } from 'node:buffer'
 import { existsSync } from 'node:fs'
-import { appendFile } from 'node:fs/promises'
+import { appendFile, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 
@@ -23,6 +23,7 @@ import { buildSystemPrompt, renderDefaultCard } from '../stage-contract'
 import { createTranscriptWriter } from '../transcript/jsonl'
 import { replyIdFor } from '../transcript/schema'
 import { buildChatRequest, requestChat } from './chat'
+import { probeOllama } from './ollama-probe'
 import { loadScenario } from './scenario'
 
 /** One request may wait this long. A local model can spend most of a minute loading before its first token. */
@@ -221,6 +222,14 @@ export async function runRunCli(
     }
     run.addArtifact('transcripts.jsonl', 'model-transcripts')
     run.addArtifact('requests.jsonl', 'model-requests')
+    // Read while the model is still loaded, so the footprint and the context it was loaded with are on record.
+    const server = await probeOllama(baseUrl.href, model)
+    if (server !== null) {
+      await writeFile(run.path('server.json'), `${JSON.stringify(server, null, 2)}\n`)
+      run.addArtifact('server.json', 'model-server')
+      const loaded = server.loaded
+      stderr(`ollama ${server.version}: ${loaded === null ? 'model not loaded' : `${(loaded.size / 2 ** 30).toFixed(1)} GiB loaded, ${Math.round(100 * loaded.sizeVram / loaded.size)}% on GPU, context ${loaded.contextLength ?? 'unknown'}`}\n`)
+    }
     const exitCode = errors > 0 ? 1 : 0
     run.finish({ exitCode, summary: `${replies} replies, ${errors} failed; scenario ${scenario.id}@${scenario.version}, ${history} history, contract ${prompt.contract.version}` })
     stdout(json
