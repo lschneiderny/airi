@@ -12,7 +12,7 @@ import type { ThreadExtractionLedgerEntry } from '../devtools/situation-observab
 
 import { createChatHooks } from '@proj-airi/core-agent'
 import { DEFAULT_CHARACTER_PROFILE, initialCharacterState, readCharacter } from '@proj-airi/stage-shared/character-state'
-import { evaluateUrgeGate, FLOOR_MS, HOUR_MS, initialReactionMemory, initialSituationState, nextRandom, notifyTopicKey, REACTION_PENDING_MAX_MS, REACTION_REFRACTORY_MS, REACTION_RETRY_MS, reactionPolicy, recordUrgeFireOutcome, SETTLE_MS, threadMinAgeMs, TOUCH_TOPIC_KEY } from '@proj-airi/stage-shared/situation'
+import { evaluateUrgeGate, FLOOR_MS, HOUR_MS, initialReactionMemory, initialSituationState, nextRandom, notifyTopicKey, REACTION_PENDING_MAX_MS, REACTION_REFRACTORY_MS, REACTION_RETRY_MS, reactionPolicy, recordUrgeFireOutcome, SETTLE_MS, settleReaction, threadMinAgeMs, TOUCH_TOPIC_KEY } from '@proj-airi/stage-shared/situation'
 import { useDesktopActivityStore } from '@proj-airi/stage-shared/stores/desktop-activity'
 import { useForegroundWindowStore } from '@proj-airi/stage-shared/stores/foreground-window'
 import { createPinia, setActivePinia } from 'pinia'
@@ -50,6 +50,7 @@ vi.mock(import('@proj-airi/stage-shared/situation'), async (importOriginal) => {
     evaluateUrgeGate: vi.fn(actual.evaluateUrgeGate),
     reactionPolicy: vi.fn(actual.reactionPolicy),
     recordUrgeFireOutcome: vi.fn(actual.recordUrgeFireOutcome),
+    settleReaction: vi.fn(actual.settleReaction),
   }
 })
 
@@ -788,6 +789,7 @@ describe('situation gate loop', () => {
     vi.mocked(evaluateUrgeGate).mockClear()
     vi.mocked(reactionPolicy).mockClear()
     vi.mocked(recordUrgeFireOutcome).mockClear()
+    vi.mocked(settleReaction).mockClear()
     notifyCount = 0
   })
 
@@ -2040,10 +2042,9 @@ describe('situation gate loop', () => {
     expect(chat.submitReaction).toHaveBeenCalledOnce()
     expect(chat.submitReaction).toHaveBeenCalledWith({ kind: 'poke-protest', topicText: 'poked you 3 times in a few seconds', eventId: event?.id })
     expect(vi.mocked(reactionPolicy).mock.lastCall?.[0]).toMatchObject({
-      sessionId: 'session-1',
-      eventId: event?.id,
-      signals: { generating: false, stageVisible: true },
-      settings: { enabled: true, dontDisturb: false },
+      nowMs: Date.now(),
+      gesture: 'poke',
+      view: { sessionId: 'session-1', eventId: event?.id, pet: null, pokeTimesMs: [Date.now() - 2_000, Date.now() - 1_000, Date.now()], held: null },
     })
     // The trigger message carries the touch, so the block of the reaction's own request does not list it again.
     expect(event?.shownAtMs).toBe(Date.now())
@@ -2061,7 +2062,7 @@ describe('situation gate loop', () => {
     expect(chat.submitReaction).toHaveBeenCalledOnce()
   })
 
-  it('rolls back a reaction that a pending unprompted turn refuses, so it takes no refractory, retry wait, or draw', async () => {
+  it('settles a reaction that a pending unprompted turn refuses as refused: no refractory or retry wait, but the draw is spent', async () => {
     saveReactionCheckpoint()
     const { store, chat, observability } = startQuietLeader()
     // Another unprompted turn is pending, so the store does not even submit.
@@ -2075,16 +2076,19 @@ describe('situation gate loop', () => {
       pending: null,
       refractoryRemainingMs: 0,
       retryRemainingMs: 0,
-      memory: { lastLineAtMs: null, lastAttemptAtMs: null, rngState: REACTION_RNG_STATE, pokeBurstRolled: false },
+      memory: { lastLineAtMs: null, lastAttemptAtMs: null, rngState: nextRandom(REACTION_RNG_STATE)[1], pokeBurstRolled: false },
     })
+    expect(settleReaction).toHaveBeenCalledOnce()
+    expect(settleReaction).toHaveBeenCalledWith(expect.objectContaining({ pending: expect.objectContaining({ kind: 'poke-protest', previousAttemptAtMs: null }) }), 'refused', Date.now())
 
-    // The chat's own pending guard refuses the next attempt of the same burst, with the same draw.
+    // The chat's own pending guard refuses the next attempt of the same burst, which takes the next draw.
     chat.state.unpromptedPending = false
     chat.submitReaction.mockResolvedValueOnce({ status: 'failed', error: 'Another unprompted turn is still pending' })
     await pokeAfter(1_000)
 
     expect(chat.submitReaction).toHaveBeenCalledOnce()
-    expect((await reactionInspection(observability)).memory).toMatchObject({ lastLineAtMs: null, lastAttemptAtMs: null, rngState: REACTION_RNG_STATE, pending: null })
+    expect(vi.mocked(settleReaction).mock.calls.map(call => call[1])).toEqual(['refused', 'refused'])
+    expect((await reactionInspection(observability)).memory).toMatchObject({ lastLineAtMs: null, lastAttemptAtMs: null, rngState: nextRandom(nextRandom(REACTION_RNG_STATE)[1])[1], pending: null })
 
     // Neither refusal held the burst, so the next poke reacts at once.
     await pokeAfter(1_000)

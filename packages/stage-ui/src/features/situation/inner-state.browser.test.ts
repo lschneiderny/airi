@@ -89,7 +89,7 @@ describe('situation inner state', () => {
       pokeBurstRolled: true,
       lastLineAtMs: noonMs - 30_000,
       lastAttemptAtMs: noonMs - 10_000,
-      pending: { kind: 'poke-protest', eventId: 'event-3', atMs: noonMs - 10_000 },
+      pending: { kind: 'poke-protest', eventId: 'event-3', atMs: noonMs - 10_000, previousAttemptAtMs: null },
     }
     const saved = { threads: [thread(1)], rituals: ritualDay('2026-10-29'), gate: gateMemory(), extractedThrough: [{ sessionId: 'session-1', messageId: 'message-4' }], reaction }
     expect(leader.write(saved, 7)).toBe(true)

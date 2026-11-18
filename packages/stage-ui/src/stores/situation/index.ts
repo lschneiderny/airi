@@ -14,6 +14,7 @@ import type {
   SituationState,
   ThreadState,
   TouchObservation,
+  TouchVoiceView,
   UrgeGateDecision,
   UrgeGateMemory,
 } from '@proj-airi/stage-shared/situation'
@@ -57,6 +58,7 @@ import {
   restoreSocialMemory,
   settleReaction,
   TOUCH_TOPIC_KEY,
+  touchVoiceView,
   unpromptedTopicText,
   visibilityRegainUrgeMemory,
   WEB_EXTENSION_SOURCE,
@@ -224,11 +226,11 @@ interface RunningSensors {
  * extraction ledger, never in chat history.
  *
  * While the gate runs, the leader also answers touches. A pet or poke that a stage window reports over
- * `situationTouchObservedEvent` is folded like any observation, then the touch reaction policy decides whether she says
- * one short line about it. A speak decision marks the touch event as shown (the trigger message carries it) and starts a
+ * `situationTouchObservedEvent` is folded like any observation ({@link observeTouch}), then the touch reaction policy
+ * decides on the returned view whether she says one short line about it. A speak decision marks the touch event as shown (the trigger message carries it) and starts a
  * reaction turn through `submitReaction`. Its outcome settles the policy, never the gate's fire memory: a spoken line
- * starts the gate's floor (`recordExternalSpeech`) and counts as her last line, and a refused send counts as never
- * attempted. The reaction memory, with its own random checkpoint, is saved with the gate's inner state.
+ * starts the gate's floor (`recordExternalSpeech`) and counts as her last line, and a refused send takes no
+ * retry wait and frees its burst, but keeps its draw. The reaction memory, with its own random checkpoint, is saved with the gate's inner state.
  *
  * While it leads, the store also feeds the character state (`bridgeSituationToCharacter`): touches, returns,
  * reach-outs and their replies, turns, and the relationship events of each extraction. Forgetting everything forgets
@@ -783,36 +785,43 @@ export const useSituationStore = defineStore('situation', () => {
   }
 
   /**
-   * Runs the touch reaction policy for a touch that was just folded into the situation. Only the leader's running gate
-   * evaluates, with the chat controls it reads; a speak decision starts the reaction turn.
+   * Folds a touch into the situation and returns what the touch reaction policy needs to see of it and of the voice
+   * channel. Returns `null` in a follower window and while the gate does not run: nobody could speak the line.
    */
-  function evaluateReaction(touch: TouchObservation) {
+  function observeTouch(observation: TouchObservation): TouchVoiceView | null {
+    fold(observation)
     const controls = chat
-    if (!controls || gateTicker === undefined || reactionMemory === undefined)
-      return
-    const nowMs = Date.now()
-    const event = current.value.events.find(candidate => candidate.topicKey === TOUCH_TOPIC_KEY)
-    const before = reactionMemory
-    const { decision, memory } = reactionPolicy({
-      nowMs,
-      touch,
-      eventId: event?.id ?? '',
+    if (!leading.value || !controls || gateTicker === undefined)
+      return null
+    return touchVoiceView({
+      touch: observation,
       situation: current.value,
       sessionId: controls.activeSessionId(),
-      signals: gateSignals(controls, nowMs),
+      signals: gateSignals(controls, Date.now()),
       settings: gateSettings(),
-    }, before)
+    })
+  }
+
+  /** Observes a touch, then runs the touch reaction policy on its view; a speak decision starts the reaction turn. */
+  function answerTouch(touch: TouchObservation) {
+    const view = observeTouch(touch)
+    const controls = chat
+    if (view === null || !controls || reactionMemory === undefined)
+      return
+    const nowMs = Date.now()
+    const { decision, memory } = reactionPolicy({ nowMs, gesture: touch.gesture, view }, reactionMemory)
     observability.recordReactionDecision(decision, memory, nowMs)
     setReactionMemory(memory)
+    const event = decision.speak ? current.value.events.find(candidate => candidate.id === decision.eventId) : undefined
     if (decision.speak && event)
-      void react(controls, decision, event, before)
+      void react(controls, decision, event)
   }
 
   /**
    * Starts the reaction turn of a speak decision and settles the outcomes that no chat hook reports (cancelled and
-   * failed). A send that another pending unprompted turn refuses is rolled back: it takes no retry wait and no draw.
+   * failed). A send that another pending unprompted turn refuses settles as `refused`: it takes no retry wait.
    */
-  async function react(controls: SituationChatControls, decision: Extract<ReactionDecision, { speak: true }>, event: SituationEvent, before: ReactionMemory) {
+  async function react(controls: SituationChatControls, decision: Extract<ReactionDecision, { speak: true }>, event: SituationEvent) {
     const turnId = `reaction:${decision.eventId}`
     const startedIn = leadership
     let result: ChatUnpromptedResult
@@ -842,15 +851,7 @@ export const useSituationStore = defineStore('situation', () => {
       if (memory.pending?.eventId !== decision.eventId)
         return
       observability.recordReactionOutcome(decision.kind, 'refused')
-      // A refused protest leaves its burst free to roll again; the attempt and its draw never happened.
-      const sameSession = memory.sessionId === before.sessionId
-      setReactionMemory({
-        ...memory,
-        pending: null,
-        lastAttemptAtMs: sameSession ? before.lastAttemptAtMs : null,
-        rngState: before.rngState,
-        pokeBurstRolled: decision.kind === 'poke-protest' ? false : memory.pokeBurstRolled,
-      })
+      setReactionMemory(settleReaction(memory, 'refused', Date.now()))
       return
     }
     // A spoken turn settles at its first literal; a spoken result that arrives first settles it the same way.
@@ -1025,7 +1026,7 @@ export const useSituationStore = defineStore('situation', () => {
     // Touches on every stage window, this one's included, arrive here.
     stopTouchListener = getSpeechBusContext().on(situationTouchObservedEvent, ({ body }) => {
       if (body)
-        ingest(body)
+        answerTouch(body)
     })
     // What she does on her own on every stage window, this one's included, arrives here.
     stopSelfListener = getSpeechBusContext().on(situationSelfObservedEvent, ({ body }) => {
@@ -1077,14 +1078,22 @@ export const useSituationStore = defineStore('situation', () => {
     foregroundCategory.value = null
   }
 
+  /** Takes one observation: a touch is folded and then answered by the touch reaction policy, any other is folded. */
+  function ingest(observation: Observation) {
+    if (observation.kind === 'touch')
+      answerTouch(observation)
+    else
+      fold(observation)
+  }
+
   /**
    * Folds one observation into the situation. Followers and uninitialized windows ignore it.
    *
    * A notify enters the situation once per leadership: a repeat of a remembered topic key is dropped even after its
    * event decayed out of the ring, so one notification is never raised (and spoken) twice. A context or notify from a
-   * source the user does not share ({@link sharesSource}) is dropped. A touch then runs the touch reaction policy.
+   * source the user does not share ({@link sharesSource}) is dropped.
    */
-  function ingest(observation: Observation) {
+  function fold(observation: Observation) {
     if (!leading.value)
       return
     if ((observation.kind === 'context' || observation.kind === 'notify') && !sharesSource(observation.sourceKey))
@@ -1099,8 +1108,6 @@ export const useSituationStore = defineStore('situation', () => {
       if (oldest !== undefined)
         seenNotifyTopics.delete(oldest)
     }
-    if (observation.kind === 'touch')
-      evaluateReaction(observation)
   }
 
   /**
@@ -1257,6 +1264,7 @@ export const useSituationStore = defineStore('situation', () => {
     stageVisible: computed(() => stageVisible.value),
     hostSupportsUnprompted: computed(() => hostSupportsUnprompted.value),
     ingest,
+    observeTouch,
     sharesSource,
     advance,
     renderForRequest,

@@ -1,7 +1,8 @@
 import type { GateHardReason, GateOutcome, GateSettings, GateSignals } from './gate'
-import type { SituationState, TouchObservation } from './types'
+import type { SituationState, TouchGesture, TouchObservation } from './types'
 
 import { nextRandom, seedRng } from './rng'
+import { TOUCH_TOPIC_KEY } from './types'
 import { isDenylisted } from './window-title'
 
 // Every constant below is a starting value that has not been measured against real days. Tune them with the
@@ -34,6 +35,8 @@ export interface ReactionPending {
   readonly kind: ReactionKind
   readonly eventId: string
   readonly atMs: number
+  /** `lastAttemptAtMs` before this attempt; a refused send restores it, because the attempt never happened. */
+  readonly previousAttemptAtMs: number | null
 }
 
 /**
@@ -62,20 +65,6 @@ export interface ReactionMemory {
 /** Gate settings the reaction policy reads; a full {@link GateSettings} fits. */
 export type ReactionSettings = Pick<GateSettings, 'enabled' | 'dontDisturb' | 'quietApps'>
 
-export interface ReactionPolicyInput {
-  /** Epoch milliseconds of this evaluation, from the caller's clock. */
-  readonly nowMs: number
-  /** The touch that was just reduced into `situation`. */
-  readonly touch: TouchObservation
-  /** Id of the touch event the reducer emitted for `touch`; carried into the decision and the pending attempt. */
-  readonly eventId: string
-  /** The situation after reducing `touch`; its tracking holds the merged pet and the recent pokes. */
-  readonly situation: SituationState
-  readonly sessionId: string
-  readonly signals: GateSignals
-  readonly settings: ReactionSettings
-}
-
 /**
  * The gate's hard suppressors that also hold a reaction, in {@link hardReason} order. Presence, stale signals, and
  * busy states are skipped: a touch proves the user is at the stage right now.
@@ -84,6 +73,30 @@ export type ReactionHardReason = Extract<
   GateHardReason,
   'disabled' | 'dont-disturb' | 'stage-hidden' | 'user-speaking' | 'user-typing' | 'character-speaking' | 'generating' | 'queued' | 'quiet-app'
 >
+
+/**
+ * What the reaction policy sees of the voice channel and of the touch the situation just recorded. Plain JSON, built
+ * by {@link touchVoiceView} right after the touch was reduced.
+ */
+export interface TouchVoiceView {
+  readonly sessionId: string
+  /** The situation event of this touch, or null when the situation did not record it. */
+  readonly eventId: string | null
+  /** The merged pet span this touch ended, or null for a poke. */
+  readonly pet: { readonly startedAtMs: number, readonly durationMs: number } | null
+  /** Recent poke times, this one last. */
+  readonly pokeTimesMs: readonly number[]
+  readonly lastCharacterLineAtMs: number | null
+  /** Why the voice channel cannot take a line now, or null. */
+  readonly held: ReactionHardReason | null
+}
+
+export interface ReactionPolicyInput {
+  /** Epoch milliseconds of this evaluation, from the caller's clock. */
+  readonly nowMs: number
+  readonly gesture: TouchGesture
+  readonly view: TouchVoiceView
+}
 
 /**
  * Why the policy held, in evaluation order. `ignored`: the situation did not record the touch (a body pet, a stale
@@ -159,7 +172,7 @@ function normalizeMemory(memory: ReactionMemory, nowMs: number, sessionId: strin
   const raw = memory.pending
   const pending = raw !== null && typeof raw === 'object' && REACTION_KINDS.has(raw.kind) && typeof raw.eventId === 'string'
     && isTime(raw.atMs) && nowMs - Math.min(raw.atMs, nowMs) < REACTION_PENDING_MAX_MS
-    ? { kind: raw.kind, eventId: raw.eventId, atMs: Math.min(raw.atMs, nowMs) }
+    ? { kind: raw.kind, eventId: raw.eventId, atMs: Math.min(raw.atMs, nowMs), previousAttemptAtMs: atMost(raw.previousAttemptAtMs) }
     : null
 
   return {
@@ -175,8 +188,7 @@ function normalizeMemory(memory: ReactionMemory, nowMs: number, sessionId: strin
 }
 
 /** The subset of {@link hardReason} that holds a reaction, in the same order and failing closed the same way. */
-function reactionHardReason(input: ReactionPolicyInput): ReactionHardReason | null {
-  const { signals, settings, situation } = input
+export function reactionHardReason(signals: GateSignals, settings: ReactionSettings, situation: SituationState): ReactionHardReason | null {
   if (settings.enabled !== true)
     return 'disabled'
   if (settings.dontDisturb !== false)
@@ -207,58 +219,87 @@ function hold(memory: ReactionMemory, reason: ReactionHoldReason, kind: Reaction
 }
 
 /**
+ * Builds the policy's view of `touch` from the situation it was just reduced into. The touch counts as recorded, and
+ * gets its event id, only when the reducer kept it: a pet ends the latest pet span, a poke is the newest poke. `held`
+ * is {@link reactionHardReason} at the moment of the touch.
+ */
+export function touchVoiceView(input: {
+  readonly touch: TouchObservation
+  /** The situation after reducing `touch`; its tracking holds the merged pet and the recent pokes. */
+  readonly situation: SituationState
+  readonly sessionId: string
+  readonly signals: GateSignals
+  readonly settings: ReactionSettings
+}): TouchVoiceView {
+  const { touch, situation } = input
+  const { lastPet, pokeTimes } = situation.tracking
+  const endedPet = touch.gesture === 'pet' && lastPet !== null && lastPet.endedAtMs === touch.atMs ? lastPet : null
+  const recorded = isTime(touch.atMs) && (endedPet !== null || (touch.gesture === 'poke' && pokeTimes.at(-1) === touch.atMs))
+  const event = recorded ? situation.events.find(candidate => candidate.topicKey === TOUCH_TOPIC_KEY) : undefined
+  return {
+    sessionId: input.sessionId,
+    eventId: event?.id ?? null,
+    pet: recorded && endedPet !== null ? { startedAtMs: endedPet.startedAtMs, durationMs: endedPet.durationMs } : null,
+    pokeTimesMs: pokeTimes,
+    lastCharacterLineAtMs: situation.conversation.lastCharacterAtMs,
+    held: reactionHardReason(input.signals, input.settings, situation),
+  }
+}
+
+/**
  * Decides whether the character answers a touch with a line. Pure: time comes only from `input.nowMs`, and only
  * the roll step draws, so every earlier hold leaves `rngState` unchanged.
  *
  * Order: time and memory normalization, bookkeeping (always applied), candidate (pet or poke), pacing (pending,
- * refractory, retry wait), the hard suppressor subset, then the roll. A speak decision sets `pending` and
+ * refractory, retry wait), the view's hard suppressor, then the roll. A speak decision sets `pending` and
  * `lastAttemptAtMs`; the caller reports the outcome through {@link settleReaction}.
  */
 export function reactionPolicy(input: ReactionPolicyInput, memory: ReactionMemory): ReactionEvaluation {
-  const { nowMs, touch, situation } = input
+  const { nowMs, gesture, view } = input
   if (!isTime(nowMs))
     return hold(memory, 'invalid-time', null)
-  let next = normalizeMemory(memory, nowMs, input.sessionId)
+  let next = normalizeMemory(memory, nowMs, view.sessionId)
 
-  const { lastPet, pokeTimes } = situation.tracking
-  const touchAtMs = touch.atMs
-  // The touch is usable only when the reducer recorded it: a pet ends the latest pet span, a poke is the newest poke.
-  const recorded = isTime(touchAtMs) && (touch.gesture === 'pet'
-    ? lastPet !== null && lastPet.endedAtMs === touchAtMs
-    : touch.gesture === 'poke' && pokeTimes.at(-1) === touchAtMs)
+  const { eventId } = view
+  const pet = gesture === 'pet' ? view.pet : null
+  const pokeAtMs = gesture === 'poke' ? view.pokeTimesMs.at(-1) : undefined
+  // The touch is usable only when the situation recorded it.
+  if (eventId === null)
+    return hold(next, 'ignored', null)
 
   // Bookkeeping. A pet span counts once, however many pets merge into it.
-  if (recorded && touch.gesture === 'pet' && lastPet !== null && lastPet.startedAtMs !== next.lastPetStartedAtMs)
-    next = { ...next, petsSeen: next.petsSeen + 1, lastPetStartedAtMs: lastPet.startedAtMs }
-  if (recorded && touch.gesture === 'poke') {
-    const previousPokeAtMs = pokeTimes.at(-2)
-    if (previousPokeAtMs === undefined || touchAtMs - previousPokeAtMs >= POKE_BURST_WINDOW_MS)
+  if (pet !== null && pet.startedAtMs !== next.lastPetStartedAtMs)
+    next = { ...next, petsSeen: next.petsSeen + 1, lastPetStartedAtMs: pet.startedAtMs }
+  if (pokeAtMs !== undefined) {
+    const previousPokeAtMs = view.pokeTimesMs.at(-2)
+    if (previousPokeAtMs === undefined || pokeAtMs - previousPokeAtMs >= POKE_BURST_WINDOW_MS)
       next = { ...next, pokeBurstRolled: false }
   }
 
-  if (!recorded)
-    return hold(next, 'ignored', null)
-
   let kind: ReactionKind
   let probability: number
-  if (touch.gesture === 'pet' && lastPet !== null) {
+  if (pet !== null) {
     kind = 'pet-soft'
-    if (lastPet.durationMs < PET_SPEAK_MIN_MS)
+    if (pet.durationMs < PET_SPEAK_MIN_MS)
       return hold(next, 'pet-short', kind)
     if (next.petsSeen <= 1)
       return hold(next, 'first-pet', kind)
-    const lastLine = Math.max(situation.conversation.lastCharacterAtMs ?? Number.NEGATIVE_INFINITY, next.lastLineAtMs ?? Number.NEGATIVE_INFINITY)
+    const lastLine = Math.max(view.lastCharacterLineAtMs ?? Number.NEGATIVE_INFINITY, next.lastLineAtMs ?? Number.NEGATIVE_INFINITY)
     if (nowMs - lastLine < PET_QUIET_SINCE_LINE_MS)
       return hold(next, 'recent-line', kind)
     probability = PET_SPEAK_P
   }
-  else {
+  else if (pokeAtMs !== undefined) {
     kind = 'poke-protest'
-    if (pokeTimes.filter(time => touchAtMs - time < POKE_BURST_WINDOW_MS).length < POKE_BURST_COUNT)
+    if (view.pokeTimesMs.filter(time => pokeAtMs - time < POKE_BURST_WINDOW_MS).length < POKE_BURST_COUNT)
       return hold(next, 'poke-count', kind)
     if (next.pokeBurstRolled)
       return hold(next, 'burst-rolled', kind)
     probability = POKE_PROTEST_P
+  }
+  else {
+    // A recorded touch without its pet span or its poke time.
+    return hold(next, 'ignored', null)
   }
 
   if (next.pending !== null)
@@ -268,28 +309,40 @@ export function reactionPolicy(input: ReactionPolicyInput, memory: ReactionMemor
   if (next.lastAttemptAtMs !== null && nowMs - next.lastAttemptAtMs < REACTION_RETRY_MS)
     return hold(next, 'retry-wait', kind)
 
-  const hard = reactionHardReason(input)
-  if (hard !== null)
-    return hold(next, hard, kind)
+  if (view.held !== null)
+    return hold(next, view.held, kind)
 
   const [roll, rngState] = nextRandom(next.rngState)
   next = { ...next, rngState, pokeBurstRolled: kind === 'poke-protest' ? true : next.pokeBurstRolled }
   if (roll >= probability)
     return hold(next, 'roll', kind, roll)
   return {
-    decision: { speak: true, kind, eventId: input.eventId, roll, probability },
-    memory: { ...next, pending: { kind, eventId: input.eventId, atMs: nowMs }, lastAttemptAtMs: nowMs },
+    decision: { speak: true, kind, eventId, roll, probability },
+    memory: { ...next, pending: { kind, eventId, atMs: nowMs, previousAttemptAtMs: next.lastAttemptAtMs }, lastAttemptAtMs: nowMs },
   }
 }
 
 /**
  * Records the outcome of the pending reaction. Only `spoken` starts the refractory; a declined, cancelled, or
- * failed (refused) send clears `pending` and leaves the retry wait from the attempt as the only pacing.
+ * failed send clears `pending` and leaves the retry wait from the attempt as the only pacing.
+ *
+ * `refused` means another unprompted turn was pending, so the line was never sent: the attempt takes no retry wait
+ * (`lastAttemptAtMs` returns to its value before the attempt) and a protest's burst may roll again. The draw is
+ * spent; `rngState` is not restored.
  */
-export function settleReaction(memory: ReactionMemory, outcome: GateOutcome, nowMs: number): ReactionMemory {
+export function settleReaction(memory: ReactionMemory, outcome: GateOutcome | 'refused', nowMs: number): ReactionMemory {
   if (!isTime(nowMs))
     return memory
-  return outcome === 'spoken'
-    ? { ...memory, lastLineAtMs: nowMs, pending: null }
-    : { ...memory, pending: null }
+  if (outcome === 'spoken')
+    return { ...memory, lastLineAtMs: nowMs, pending: null }
+  const { pending } = memory
+  if (outcome === 'refused' && pending !== null) {
+    return {
+      ...memory,
+      pending: null,
+      lastAttemptAtMs: pending.previousAttemptAtMs,
+      pokeBurstRolled: pending.kind === 'poke-protest' ? false : memory.pokeBurstRolled,
+    }
+  }
+  return { ...memory, pending: null }
 }

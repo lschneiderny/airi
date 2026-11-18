@@ -55,7 +55,7 @@ const ReactionMemorySchema = strictObject({
   pokeBurstRolled: boolean(),
   lastLineAtMs: nullableTime,
   lastAttemptAtMs: nullableTime,
-  pending: nullable(strictObject({ kind: picklist(['pet-soft', 'poke-protest']), eventId: string(), atMs: time })),
+  pending: nullable(strictObject({ kind: picklist(['pet-soft', 'poke-protest']), eventId: string(), atMs: time, previousAttemptAtMs: nullableTime })),
 })
 
 const innerStateEntries = {
