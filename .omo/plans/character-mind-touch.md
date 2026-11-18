@@ -1,6 +1,6 @@
 # character-mind-touch - Work Plan
 
-Status: planned, not started. Roadmap row: slice CM1 in [`docs/ai/context/character-mind-roadmap.md`](../../docs/ai/context/character-mind-roadmap.md#steps). Rulings: the [character mind ADR](../../docs/ai/adr/2026-11-17-character-mind-direction.md). Branch: `luke/feat/character-mind-touch`, cut from `main` at `872b74cb5`, which contains upstream `moeru-ai/airi` through `b3a6d6071`. One PR against `lschneiderny/airi`.
+Status: done on the branch `luke/feat/character-mind-touch` on 2026-11-18, not yet merged. The commits are listed in [Commits](#commits), and the checks in [Checks run](#checks-run). Roadmap row: slice CM1 in [`docs/ai/context/character-mind-roadmap.md`](../../docs/ai/context/character-mind-roadmap.md#steps). Rulings: the [character mind ADR](../../docs/ai/adr/2026-11-17-character-mind-direction.md). Branch: `luke/feat/character-mind-touch`, cut from `main` at `872b74cb5`, which contains upstream `moeru-ai/airi` through `b3a6d6071`. One PR against `lschneiderny/airi`.
 
 The owner is away and runs these slices without a plan review. Every design fork below is taken on the recommended option and listed in [Decisions open to the owner's veto](#10-decisions-open-to-the-owners-veto).
 
@@ -366,3 +366,48 @@ Nothing. No ADR ruling or Target rule is contradicted by the code this slice tou
 ## Done when
 
 Overlap 4 is gone from the autonomous-behavior doc because one `step` call answers a touch under Natural; the picker and the planner take decided episodes and no longer call `acceptReaction`; the mind's tests run under Node with a seeded source and no Vue; the ADR records the package decision; and every check in section 8 passes.
+
+## Departures during implementation
+
+- The scene-reported touch type is `TouchReport`, not `TouchGesture`: `stage-shared` already exports `TouchGesture` for `'pet' | 'poke'`.
+- The lint rule is two blocks, `airi/character-mind-pure` and `airi/character-mind-pure/core`.
+- `touchVoiceView` is a pure builder added in `reaction-policy.ts`; `observeTouch` calls it.
+- `enterEpisode` in `selection.ts` draws tickets for an escalation that reaches a decider without them.
+- The stage-host seeding moved into `AppSessionCore.start`, and `qa:app run` gained `--stage-host`.
+- The `mind` QA event keeps scalar fields, with `intents` as a JSON string.
+- Work items 2 and 3 ran one after the other, not in parallel.
+- The rendered check used synthetic pointer events, which reached the handlers, so the KWin pointer helper was not needed.
+- `stage-shared` has 17 dependents after this slice, not 16: the new package is one of them.
+
+## Checks run
+
+Run on 2026-11-18 at `d8bf4945e`, the last commit that changes code or guides. `AIRI_QA_RIG_FORBOOTH` and `AIRI_QA_MMD_MODEL` named the models.
+
+| Check | Result |
+| --- | --- |
+| `pnpm verify --gate --base origin/main` | Exit 0: lint of 85 files, typecheck of every package, related tests; 10 env-gated files skipped |
+| `pnpm qa:display run -- pnpm qa:smoke` | Exit 0: classic host, 0 renderer errors, 0 main-process errors |
+| `pnpm qa:display run -- pnpm qa:smoke --model "$AIRI_QA_MMD_MODEL" --stage-host desktop` | Exit 0: desktop stage host, 0 renderer errors, 0 main-process errors |
+| `pnpm qa:live2d-rig` | Exit 0: 301 samples, 26 channels, 18 moving |
+| `pnpm qa:test:model` | Exit 0: 4 files, 15 tests; 2 files skipped (`AIRI_QA_MOCAP_DIR` unset) |
+| `pnpm qa:motion3d run --model "$AIRI_QA_MMD_MODEL" --scenario touch --seed 1` at `872b74cb5` and at the tip, then `pnpm qa:motion3d diff` | Exit 0: `IDENTICAL`, 4200 frames each |
+| Rendered touch 1: Live2D (`AIRI_QA_RIG_FORBOOTH`) under Natural, classic window | Pass. One poke gave one `mind` event with one `cause`: `posture/touch-reaction`, `posture/mood`, `face/moment`. The third of three pokes inside 10 s spoke, with one `turn` and one `tts`. Three later pokes held, the last with `refractory`. A 3.5 s stroke gave one `pet-start` and one `pet-end`. No errors |
+| Rendered touch 2: MMD (`AIRI_QA_MMD_MODEL`) on the desktop stage | Pass. One poke gave one `mind` event with one `cause`, and `touch.events` rose by one. A second poke 525 ms later gave a second event. No errors |
+| Rendered touch 3: Universal is untouched | Pass. A tap gave no `mind` event, upstream's reaction moved `ParamAngleY` and closed the eyes, and upstream's touch notify produced an ordinary chat turn |
+
+Not checked: the full 45 s wait before a second spoken line was not run on its own; the `refractory` hold inside the window and a log read 66 s after the spoken line cover it. Whether the reactions look natural is the owner's visual review.
+
+## Commits
+
+`git log --oneline main..HEAD`, oldest first, without the commit that adds this section:
+
+- `8e9db89a4` docs(plan): add the plan for the touch slice of the character mind
+- `f31b9fd5a` feat(character-mind): add the package, the shell, and the emotion half of the core
+- `f7b153c80` refactor(stage-shared,stage-ui,qa-tools): split the expression decider
+- `9eb3772b3` refactor(stage-shared,stage-ui): give the reaction policy a voice view
+- `162158f31` feat(character-mind,stage-ui,stage-ui-live2d,stage-ui-mmd): route touch through the mind and delete the old path
+- `307a10e1d` refactor(stage-shared,character-mind): take every draw from the mind's random source
+- `f70a3762a` feat(stage-shared,stage-ui,qa-tools): show the mind's steps to QA
+- `46f481db6` docs(motion-driver-natural): say who receives a touch gesture
+- `d8bf4945e` docs(agents): correct the touch rule of the live2d guide
+- `d34fb21a0` docs(ai): record the character mind core decisions and close the touch slice rows
