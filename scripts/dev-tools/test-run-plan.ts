@@ -1,133 +1,47 @@
-import type { BrowserTestProject } from './lib/browser-projects'
-
-import { errorMessageFrom } from '@moeru/std'
-
-import { browserRootConfig } from './lib/browser-projects'
-
-export interface TestRunSuite {
-  label: string
-  /** A fixed shell command line. It never includes caller input. */
-  command: string
-}
-
 /**
- * The command that brings every built workspace package up to date. Tests import `dist` output such as the i18n
- * locales, and a pull or merge that changes package sources leaves `dist` stale while the lockfile, and so the
- * install `postinstall` build, stays unchanged. Turbo skips a package whose input hash is unchanged, so an up-to-date
- * tree costs seconds.
+ * Turbo arguments that run the `test:run` script of every workspace package, each with its node and browser projects.
+ *
+ * Packages run one at a time, so each Vitest process may use the whole CPU lease it inherits. Three packages at once
+ * cut the full suite from 11 to 6 minutes in one run (2026-11-18), but every process then needs a share of the lease
+ * instead of the whole grant, and overlapping browser suites are unproven. Raise the concurrency only together with a
+ * per-process worker share.
+ *
+ * A failed package does not stop the others, so one run reports every failure. Only packages that really ran print
+ * their output; a cache hit prints one line.
  */
-export const buildWorkspacePackagesCommand = 'pnpm run build:packages'
+export const testRunTurboArgs = ['run', 'test:run', '--concurrency=1', '--continue=dependencies-successful', '--output-logs=new-only']
 
-/**
- * The suites `pnpm test:run` runs, in order: the package rebuild, the root config, then one process per browser project
- * of the browser root (see `planTestRuns` in `verify-plan.ts` for why each gets its own process).
- */
-export function testRunSuites(browserProjects: BrowserTestProject[]): TestRunSuite[] {
-  return [
-    { label: 'rebuild stale packages', command: buildWorkspacePackagesCommand },
-    { label: 'root vitest', command: 'pnpm exec vitest run' },
-    ...browserProjects.map(({ name }) => ({ label: name, command: `pnpm exec vitest run --config ${browserRootConfig} --project ${name}` })),
-  ]
+/** Packages that hold test files which `pnpm test:run` deliberately does not run, and why. */
+export const testRunExclusions: Readonly<Record<string, string>> = {
+  'apps/component-calling': 'Kept from upstream, which ships its one test file without a Vitest config, a vitest dependency, or a test script.',
 }
 
-export interface VitestConfigCoverage {
-  /** The repository roots that run the config: the node root `vitest.config.ts` or the browser root. */
-  runBy: ('root' | 'browser-root')[]
-  /** Why no runner runs the config, or what part of it runs. */
-  note?: string
+export interface WorkspaceManifest {
+  /** The package directory, relative to the repository root with `/`. */
+  path: string
+  scripts: Record<string, string>
 }
 
 /**
- * Every tracked Vitest config and the runner that runs it. A config with an empty `runBy` is deliberately excluded and
- * its `note` says why. The test in `test-run-plan.test.ts` fails when a tracked config is missing here, so a new package
- * cannot have tests that no runner runs.
- */
-export const vitestConfigCoverage: Readonly<Record<string, VitestConfigCoverage>> = {
-  'apps/stage-tamagotchi/vitest.config.ts': { runBy: ['root', 'browser-root'] },
-  'integrations/minecraft/vitest.config.ts': { runBy: ['root'] },
-  'packages/audio/vitest.config.ts': { runBy: ['root', 'browser-root'], note: 'the root config holds an inline node project' },
-  'packages/better-ws/vitest.config.ts': { runBy: ['root'] },
-  'packages/ccc/vitest.config.ts': { runBy: ['root'] },
-  'packages/core-agent/vitest.config.ts': { runBy: ['root'] },
-  'packages/cpu-slots/test/fixtures/vitest-wrapper/vitest.bundled-project.config.ts': { runBy: [], note: 'A fixture that the cpu-slots tests feed to Vitest. It holds no suite.' },
-  'packages/electron-screen-capture/vitest.config.ts': { runBy: ['root'] },
-  'packages/electron-vueuse/vitest.config.ts': { runBy: ['root'] },
-  'packages/i18n/vitest.config.ts': { runBy: ['root'] },
-  'packages/input-gamepad-vueuse/vitest.config.ts': { runBy: ['root'] },
-  'packages/input-gamepad/vitest.config.ts': { runBy: ['root'] },
-  'packages/input-playstation-dualsense-5/vitest.config.ts': { runBy: ['root'] },
-  'packages/model-driver-lipsync/vitest.config.ts': { runBy: ['root', 'browser-root'] },
-  'packages/model-driver-magic-live2d/vitest.config.ts': { runBy: ['root'] },
-  'packages/motion-driver-humanoid/vitest.config.ts': { runBy: ['root'] },
-  'packages/motion-driver-magic/vitest.config.ts': { runBy: ['root'] },
-  'packages/motion-driver-natural/vitest.config.ts': { runBy: ['root'] },
-  'packages/pipelines-audio/vitest.config.ts': { runBy: ['root'] },
-  'packages/plugin-protocol/vitest.config.ts': { runBy: ['root'] },
-  'packages/plugin-sdk-tamagotchi/vitest.config.ts': { runBy: ['root'] },
-  'packages/plugin-sdk/vitest.config.ts': { runBy: ['root'] },
-  'packages/provider-inference/vitest.config.ts': { runBy: ['root', 'browser-root'] },
-  'packages/qa-tools/vitest.config.ts': { runBy: [], note: 'Its node project runs through vitest.node.config.ts. Its gate project runs only through the qa-tools gate CLI and needs a rig and a Cubism core.' },
-  'packages/qa-tools/vitest.node.config.ts': { runBy: ['root'] },
-  'packages/scenarios-stage-tamagotchi-browser/vitest.config.ts': { runBy: ['root'] },
-  'packages/scenarios-stage-tamagotchi-electron/vitest.config.ts': { runBy: ['root'] },
-  'packages/server-runtime/vitest.config.ts': { runBy: ['root'] },
-  'packages/server-sdk/vitest.config.ts': { runBy: ['root'] },
-  'packages/stage-layouts/vitest.config.ts': { runBy: ['root'] },
-  'packages/stage-pages/vitest.config.ts': { runBy: ['browser-root'] },
-  'packages/stage-shared/vitest.config.ts': { runBy: ['root'] },
-  'packages/stage-ui-live2d/vitest.config.ts': { runBy: ['root', 'browser-root'] },
-  'packages/stage-ui-mmd/vitest.config.ts': { runBy: ['root', 'browser-root'], note: 'the root config holds an inline node project' },
-  'packages/stage-ui-tachie/vitest.config.ts': { runBy: ['root'] },
-  'packages/stage-ui-three/vitest.config.ts': { runBy: ['root', 'browser-root'] },
-  'packages/stage-ui/vitest.config.ts': { runBy: ['root', 'browser-root'] },
-  'packages/testing-audio/vitest.config.ts': { runBy: ['root'], note: 'only the unit project, as an inline root project. The fakemic projects need the built Electron app and a microphone runtime, so they run only on demand through the package script.' },
-  'packages/vite-plugin-sherpaw/vitest.config.ts': { runBy: ['root'] },
-  'packages/vitest-plugin-fakemic/vitest.config.ts': { runBy: ['root'] },
-  'server/apps/api/vitest.config.ts': { runBy: ['root'] },
-  'server/apps/auth/vitest.config.ts': { runBy: ['root'] },
-  'services/computer-use-mcp/vitest.config.ts': { runBy: ['root'] },
-  'vitest.browser.config.ts': { runBy: ['browser-root'] },
-}
-
-export interface SuiteResult {
-  suite: TestRunSuite
-  /** `null` when the process ended by a signal or could not start. */
-  exitCode: number | null
-  durationMs: number
-  /** Set when the suite could not be started. */
-  error?: string
-}
-
-/**
- * Runs every suite in order, including the suites after a failed one.
+ * Finds the tests that no runner runs. A test file inside a workspace package needs that package to have a `test:run`
+ * script, because Turbo runs nothing else. A test file outside every package needs to sit under `scripts/`, which the
+ * root Vitest config covers.
  *
  * Returns:
- * - One result per suite. A suite whose `runOne` rejects is recorded with its error, and the next suite still runs.
+ * - The package directories and root files that are neither run nor listed in `testRunExclusions`.
  */
-export async function runSuites(suites: readonly TestRunSuite[], runOne: (suite: TestRunSuite) => Promise<number | null>, now: () => number = Date.now): Promise<SuiteResult[]> {
-  const results: SuiteResult[] = []
-  for (const suite of suites) {
-    const started = now()
-    try {
-      const exitCode = await runOne(suite)
-      results.push({ suite, exitCode, durationMs: now() - started })
+export function testsWithoutRunner(testFiles: string[], packages: WorkspaceManifest[]): string[] {
+  const byDepth = [...packages].sort((a, b) => b.path.length - a.path.length)
+  const missing = new Set<string>()
+  for (const file of testFiles) {
+    const owner = byDepth.find(candidate => file.startsWith(`${candidate.path}/`))
+    if (!owner) {
+      if (!file.startsWith('scripts/'))
+        missing.add(file)
     }
-    catch (error) {
-      results.push({ suite, exitCode: null, durationMs: now() - started, error: errorMessageFrom(error) ?? 'unknown spawn error' })
+    else if (!owner.scripts['test:run'] && !(owner.path in testRunExclusions)) {
+      missing.add(owner.path)
     }
   }
-  return results
-}
-
-/** Exit 1 if and only if some suite did not exit 0. */
-export function summarizeSuites(results: readonly SuiteResult[]): { exitCode: 0 | 1, lines: string[] } {
-  const failed = results.filter(result => result.exitCode !== 0)
-  const lines = ['test:run summary']
-  for (const result of results) {
-    const status = result.exitCode === 0 ? 'passed' : 'FAILED'
-    const detail = result.error ? `could not start: ${result.error}` : `exit ${result.exitCode ?? 'signal'}`
-    lines.push(`  ${status.padEnd(6)} ${result.suite.label.padEnd(30)} ${(result.durationMs / 1000).toFixed(1).padStart(7)}s  ${detail}`)
-  }
-  lines.push(`${results.length - failed.length}/${results.length} suites passed${failed.length ? `; failed: ${failed.map(result => result.suite.label).join(', ')}` : ''}`)
-  return { exitCode: failed.length > 0 ? 1 : 0, lines }
+  return [...missing].sort()
 }

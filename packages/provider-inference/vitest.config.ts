@@ -1,12 +1,34 @@
+import type { TestProjectInlineConfiguration } from 'vitest/config'
+
 import { withCpuSlots } from '@proj-airi/cpu-slots/vitest'
+import { playwright } from '@vitest/browser-playwright'
 import { defineConfig } from 'vitest/config'
 
-// eslint-disable-next-line no-restricted-syntax -- Vite's native config loader, its planned default, resolves a relative import only with its extension.
-import { providerInferenceBrowserProject } from './vitest.browser-project.ts'
-// eslint-disable-next-line no-restricted-syntax -- Vite's native config loader, its planned default, resolves a relative import only with its extension.
-import { providerInferenceNodeProject } from './vitest.node-project.ts'
+export const providerInferenceProjects: TestProjectInlineConfiguration[] = [
+  {
+    test: {
+      name: 'node',
+      include: ['src/**/*.test.ts'],
+      exclude: ['src/**/*.browser.test.ts'],
+    },
+  },
+  {
+    test: {
+      name: 'browser',
+      include: ['src/**/*.browser.test.ts'],
+      browser: {
+        enabled: true,
+        headless: true,
+        provider: playwright(),
+        instances: [{ browser: 'chromium' }],
+      },
+    },
+  },
+]
 
 export default withCpuSlots(defineConfig({
   root: import.meta.dirname,
-  test: { projects: [providerInferenceNodeProject, providerInferenceBrowserProject] },
+  test: {
+    projects: providerInferenceProjects,
+  },
 }))

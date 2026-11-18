@@ -4,7 +4,7 @@ Root commands for working on this repository with many worktrees and parallel ag
 
 | Command | What it does |
 | --- | --- |
-| `pnpm verify` | Typechecks changed packages and their dependents, lints changed files, and runs related tests. Each step checks only what changed since that step last passed on the current branch. |
+| `pnpm verify` | Lints changed files, typechecks changed packages and their dependents, and runs the tests related to the change in each changed package and its dependents. Each step checks only what changed since that step last passed on the current branch. |
 | `pnpm wt ls \| new \| rm \| gc` | Lists, creates, removes, and garbage-collects worktrees. |
 | `pnpm dev:top` | Shows dev process memory and CPU per worktree, flags orphans, and stops one worktree's processes. |
 | `pnpm qa:display up \| down \| status \| env \| run \| shot` | Runs a headless, GPU-accelerated KWin session on Linux, so agents can run the Electron app and live QA without touching the user's desktop. |
@@ -12,7 +12,8 @@ Root commands for working on this repository with many worktrees and parallel ag
 | `pnpm release <year>.<month>.<n> [--dry-run]` | Builds this machine's desktop installers for a fork release and uploads them to a draft GitHub release. See [`pnpm release`](#pnpm-release). |
 | `pnpm qa:test:model` | Runs the test files gated on `AIRI_QA_*` variables, such as the MMD runner, Live2D rig, and mocap reference tests, with `.env.qa` loaded. `pnpm verify` skips these files and names this command. |
 | `pnpm check:bundle` | Builds the Electron app and fails if the main window loads three, three-mmd, three-vrm, or Tres at startup, or if any renderer chunk contains the dev-only motion QA bridge. |
-| `pnpm test:run` | Rebuilds stale workspace packages, runs the root Vitest config, then runs each browser project of `vitest.browser.config.ts` in its own Vitest process. Every suite runs even after a failure. It prints a per-suite summary and exits 1 if any suite failed. |
+| `pnpm test:run` | Runs the `test:run` script of every workspace package through Turbo, one package at a time, each with its node and browser projects. Turbo first builds the packages a test depends on, and it skips a package whose inputs match a cached pass. A failed package does not stop the others. Extra arguments go to Turbo, for example `pnpm test:run --force` to ignore the cache. See [`pnpm test:run`](#pnpm-testrun). |
+| `pnpm test:root` | Runs the root Vitest config, which holds only the tests that belong to no package: the `dev-tools` and `root-scripts` projects. |
 
 ## When to use
 
@@ -24,12 +25,14 @@ Root commands for working on this repository with many worktrees and parallel ag
 
 ## When not to use
 
-- Use root `pnpm typecheck`, `pnpm lint`, or `pnpm test:run` for a release or a whole-repository sweep. `pnpm verify` only covers what changed since the base.
+- Use root `pnpm typecheck`, `pnpm lint`, `pnpm test:run`, and `pnpm test:root` for a release or a whole-repository sweep. `pnpm verify` only covers what changed since the base.
 - `pnpm verify` does not run QA gates or Electron builds.
 
 ## Environment-gated tests
 
 Some tests run only when a variable is set, for example `it.runIf(process.env.AIRI_QA_MMD_MODEL)(...)` for tests that load a local MMD model. `pnpm verify` does not load `.env.qa`, so it skips them. When its test step skipped such files in a package the change affects (a changed package or one that depends on it), or a gated file that changed itself, it prints one `verify notice:` line after the summary. The notice names the files and the unset variables. It is not a failure.
+
+`pnpm test:run` never runs them, even when the variable is set in your shell. Turbo starts each package's tests with only the variables that the `test:run` task in `turbo.json` lists, and no gate variable is listed, so a cached result never depends on a local model or a live service.
 
 `pnpm qa:test:model` finds the gated files itself, so a new gated test needs no registration. It parses every test file that reads `process.env` (`gateVariables` in `lib/gated-tests.ts`) and counts these gates:
 
@@ -39,13 +42,13 @@ Some tests run only when a variable is set, for example `it.runIf(process.env.AI
 
 A variable read with a fallback (`process.env.X ?? defaultPath`) is optional and is not required. An `if` around output only, such as writing evidence when a directory is set, is no gate.
 
-It keeps the files whose gates are all `AIRI_QA_*` variables, the only keys `.env.qa` can set, and loads `.env.qa` without overriding shell values. It runs the files whose variables are all set through the root Vitest config, which takes CPU slots like any test run, and prints one line naming the files it skipped and their unset variables. It exits 2 without running anything when no gated file has its variables set, or when a set variable names an absolute path that does not exist. `pnpm wt new <name> --qa` writes `AIRI_QA_MMD_MODEL` to `.env.qa` for a new worktree. Tests gated on other variables, such as the macOS foreground-window tests, still need their variables set by hand.
+It keeps the files whose gates are all `AIRI_QA_*` variables, the only keys `.env.qa` can set, and loads `.env.qa` without overriding shell values. It runs the files whose variables are all set with Vitest in each file's own package, not through Turbo, so the variables reach the tests and no result is cached. Each run takes CPU slots like any test run. It prints one line naming the files it skipped and their unset variables. It exits 2 without running anything when no gated file has its variables set, or when a set variable names an absolute path that does not exist. `pnpm wt new <name> --qa` writes `AIRI_QA_MMD_MODEL` to `.env.qa` for a new worktree. Tests gated on other variables, such as the macOS foreground-window tests, still need their variables set by hand.
 
 ## Node compile cache
 
 Node keeps a compile cache only when something enables it: `NODE_COMPILE_CACHE=<dir>`, or a parent process that calls `module.enableCompileCache()` without a directory and so writes under `os.tmpdir()/node-compile-cache`. Some agent harnesses do the latter and pass the directory on to every child through `NODE_COMPILE_CACHE`. On a tmpfs with a fixed inode table, those files filled every inode on 2026-11-12.
 
-The launcher (`scripts/dev.mjs`), `pnpm verify`, `pnpm test:run`, and the install of `pnpm wt new` set `NODE_COMPILE_CACHE=<checkout>/node_modules/.cache/node-compile-cache` for the processes they start, but only when the variable is unset. A value you set, including an empty one, is kept. The directory belongs to the checkout, so `pnpm wt rm` deletes it with the worktree. `compileCacheEnv` in `lib/compile-cache.ts` makes this decision. To move an inherited `/tmp` cache, set `NODE_COMPILE_CACHE` in your own shell or agent environment. `pnpm qa:doctor` reports the temporary directory's inode and space use and flags a cache directory inside it.
+The launcher (`scripts/dev.mjs`), `pnpm verify`, `pnpm test:run`, and the install of `pnpm wt new` set `NODE_COMPILE_CACHE=<checkout>/node_modules/.cache/node-compile-cache` for the processes they start, but only when the variable is unset. The `test:run` task in `turbo.json` passes the variable through to each package's tests. A value you set, including an empty one, is kept. The directory belongs to the checkout, so `pnpm wt rm` deletes it with the worktree. `compileCacheEnv` in `lib/compile-cache.ts` makes this decision. To move an inherited `/tmp` cache, set `NODE_COMPILE_CACHE` in your own shell or agent environment. `pnpm qa:doctor` reports the temporary directory's inode and space use and flags a cache directory inside it.
 
 ## Quiet dev output
 
@@ -67,9 +70,18 @@ The steps, in the order they run:
 
 - **lint** runs `moeru-lint` (oxlint, then ESLint with its cache) on the changed files. It runs first because it is the cheapest step. When it fails, typecheck and test are reported `skipped (not run: lint failed)` and verify exits 1. When ESLint's summary says every problem is fixable with `--fix`, verify prints `hint: every lint problem above is auto-fixable: run pnpm lint:fix, then verify again`. Verify never fixes files itself.
 - **typecheck** runs `turbo run typecheck --filter=...{./<package-dir>}` for each changed package. Markdown (`.md`, `.mdx`) and `.txt` files do not count as changes for this step, so a documentation-only change skips it. Directory filters cover its dependents and accept scopes derived from Git trees. Turbo caches results in the main worktree's `.turbo/cache`, which all worktrees share. A change to a root file that every package reads (`tsconfig*.json`, `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `turbo.json`, a root `.d.ts`) typechecks every package.
-- **test** runs `vitest related` on the changed code files and test data files with the root config. Test data is JSON or YAML, such as fixtures, gate bands, and locales, except `package.json`, `tsconfig*.json`, and the workspace and lock files; `vitest related` runs the tests that import it, but not tests that read it through `fs`. A change to a doc in `docs/ai/context/` adds `policy-docs.test.ts`, which reads the docs through `fs`: in each doc that says it describes the code, outside its Target sections, every cited repository path must exist and every cited camelCase, PascalCase, or SCREAMING_SNAKE name must occur in a tracked source file. When a changed code or test data file is inside a workspace package, it also runs each browser project of `vitest.browser.config.ts` whose package is that package or depends on it, according to `turbo ls --filter=...{<package>}`. A project in an unrelated package cannot import the changed code, so it is skipped. `lib/browser-projects.ts` reads the projects and their packages from that config's source, so the config's project list is the only list of browser projects; `pnpm test:run` reads it the same way.
+- **test** first rebuilds stale workspace packages with Turbo, because tests import built output such as the i18n locales.
+- **test** then runs `vitest related` on the changed code files and test data files, in one Vitest process per place, one after the other. The first process uses the root config, which holds the projects that belong to no package. Then each changed package and each package that depends on one, according to `turbo ls --filter=...{<package>}`, runs in its own directory with its own config. A package in neither group cannot import the changed code, so it is skipped. Test data is JSON or YAML, such as fixtures, gate bands, and locales, except `package.json`, `tsconfig*.json`, and the workspace and lock files. `vitest related` runs the tests that import a changed file, but not tests that read it through `fs`.
+- **test** derives each package command from that package's `test:run` script (`relatedTestCommand` in `verify-plan.ts`): `vitest run --project unit` becomes `vitest related --run --passWithNoTests --project unit <files>`, and a variable the script sets, such as `NODE_OPTIONS`, is kept. The script stays the one definition of how a package's tests start. A package without a `test:run` script is skipped.
+- **test** adds `policy-docs.test.ts` when a doc in `docs/ai/context/` changes. The test reads the docs through `fs`: in each doc that says it describes the code, outside its Target sections, every cited repository path must exist and every cited camelCase, PascalCase, or SCREAMING_SNAKE name must occur in a tracked source file.
 - **test** passes the changed files to each Vitest process in one command on Linux and macOS. On Windows the list is split to stay under the CreateProcess command-line limit, and each process then runs once per part.
-- **test** starts one Vitest process per affected browser project, one after the other, although the projects share `vitest.browser.config.ts`. Vitest starts one Vite server per project, and `@vitejs/plugin-vue` 6.0.8 keeps one descriptor cache per Node process, keyed by absolute file name, while it derives a component's scoped id from its path relative to each server's root. With two roots in one process, one server can serve a component's scoped style under the other root's id, and the component renders unstyled for that whole run. This failed about 1 verify run in 11 on `packages/ui`'s `range.vue` (`expected 16 to be greater than or equal to 24` in the Live2D settings browser test). To reproduce it without a browser, create two Vite servers with the Vue plugin in one Node process, one rooted in `packages/stage-ui` and one in `packages/stage-pages`, transform the same scoped component on the first and then on the second, and request its style block from the first: the selector carries the second root's id. Two sibling package roots disagree on any component that lives inside one of them, so grouping the projects would not be enough.
+
+The test step runs related tests per package, not each package's whole `test:run` suite through Turbo. Measured on 2026-11-18, on a 16-core workstation:
+
+- Most packages the fork works on are dependencies of `stage-ui`, and a whole-suite step would run every dependent of a changed package. A change under `stage-ui` would run the suites of `stage-ui` (176 s alone), `stage-pages` (61 s), `stage-tamagotchi` (109 s), and `qa-tools` (112 s): about 8 minutes one after the other, or about 4 minutes with three packages at once. The related-test step had a median of 134 s.
+- The whole suites are still one command away. `pnpm test:run` runs them through Turbo's cache, and it also runs the tests that read a file through `fs`, which `vitest related` cannot see. Run it before landing a change to shared fixtures or test data.
+
+Each package's tests run in their own Vitest process. Do not gather the browser projects of several packages into one process: `@vitejs/plugin-vue` 6.0.8 keeps one descriptor cache per Node process, keyed by absolute file name, while it derives a component's scoped id from its path relative to each Vite server's root. With two roots in one process, one server can serve a component's scoped style under the other root's id, and the component renders unstyled for that whole run.
 
 Each step acquires one CPU lease before its first command and releases it after its last command, including on failure. A failed command stops the remaining commands in that step. `--dry-run` prints one lease request per runnable step.
 
@@ -90,6 +102,30 @@ Step history is separate from the last-pass record. Each completed step appends 
 Before an append, a history file larger than 5 MiB rotates to `runs.1.jsonl`, replacing the previous generation. Statistics read both generations. History write failures print a warning without changing check results. Set `AIRI_VERIFY_HISTORY_DIR` to use another history directory, such as a temporary directory for QA; this setting does not redirect last-pass records.
 
 Exit codes: 0 every step passed, 1 a step failed, 2 usage error.
+
+## `pnpm test:run`
+
+```bash
+pnpm test:run                                  # every package, cached
+pnpm test:run --force                          # every package, ignoring the cache
+pnpm test:run --filter=@proj-airi/stage-ui     # one package
+pnpm -F @proj-airi/stage-ui test:run           # the same suite without Turbo: no cache, no dependency build
+pnpm test:root                                 # the tests that belong to no package
+```
+
+Every workspace package with tests has a `test:run` script and its own `vitest.config.ts`, in upstream's shape. The root `vitest.config.ts` holds only the `dev-tools` and `root-scripts` projects. `testsWithoutRunner` in `test-run-plan.ts` and its test fail when a tracked test file sits in a package without a `test:run` script, or outside every package and outside `scripts/`. `testRunExclusions` lists the packages whose tests are deliberately not run, with the reason.
+
+The command holds one `test` CPU lease. Turbo runs one package at a time (`--concurrency=1`), and `turbo.json` passes the `AIRI_CPU_*` variables through, so each package's Vitest process inherits the lease and may use the whole grant. Measured on 2026-11-18, the full suite without the cache took 11 minutes this way and 6 minutes with three packages at once. Running packages side by side needs a worker share per process, and overlapping browser suites are unproven, so it is not the default.
+
+The `test:run` task in `turbo.json` decides what the cache reuses:
+
+- It depends on the build of each dependency (`^build`) and on the cpu-slots build, which every Vitest config loads. A change to a dependency therefore reruns the tests of its dependents.
+- Its inputs are the package's files, its `.env*` files, and the root files that package tests or configs load: root `.env*` except `.env.qa`, the root `tsconfig.json`, `uno.config.ts`, `vitest.dom-storage.ts`, and `vitest-isolate-host-session.ts`.
+- A package whose tests read files of another package, or of the repository, has its own `<package>#test:run` task that adds those files as inputs: stage-ui reads stage-pages sources and qa-tools prompt fixtures, i18n reads the root `README.md` and `docs/`, and cpu-slots reads every Vitest config. When a test reads a file outside its package without a workspace dependency on the owner, add such a task.
+- Turbo runs tasks in strict environment mode. `CI`, `NODE_OPTIONS`, and `TESTING_AUDIO_*` reach the tests and are part of the cache key. `AIRI_CPU_*` and `NODE_COMPILE_CACHE` reach the tests and are not. No other variable of your shell reaches a package test, so tests gated on a variable are skipped. See [Environment-gated tests](#environment-gated-tests).
+- stage-ui also receives `XDG_CURRENT_DESKTOP`, as part of its cache key. Chromium chooses its font rendering from the desktop session, and the visual baselines were captured in a KDE session: without the variable, three of them differ in their text pixels. A run outside a KDE session fails those baselines, as it does without Turbo.
+
+Turbo skips the tasks that depend on a failed build and runs the rest (`--continue=dependencies-successful`). It prints the output of the packages that ran and one line for each cache hit (`--output-logs=new-only`). Turbo's cache lives in the main worktree and is shared by every worktree.
 
 ## `pnpm check:bundle`
 
@@ -118,7 +154,7 @@ Before it builds, the command refuses to continue unless:
 - `gh` is signed in;
 - no published release has this tag, and an existing draft targets the same commit as `HEAD`.
 
-It then checks the whole repository, not only a diff: `pnpm lint`, `pnpm typecheck`, `pnpm test:run`, and a clean-start smoke (through `pnpm qa:display run --` on Linux). `pnpm verify --gate` would check nothing here, because a release builds `main` and the gate compares against `main`. Then it runs the Godot export into `engines/stage-tamagotchi-godot/out/<linux|mac>`, the app build, the [bundle check](#pnpm-checkbundle) on that build, and electron-builder with `AIRI_REQUIRE_GODOT_STAGE=true` under a `build` CPU slot. Any failed step stops the release before upload. The first platform creates the draft; the second adds its files to it. `--dry-run` stops after the preflight checks above and runs nothing else.
+It then checks the whole repository, not only a diff: `pnpm lint`, `pnpm typecheck`, `pnpm test:run`, `pnpm test:root`, and a clean-start smoke (through `pnpm qa:display run --` on Linux). `pnpm verify --gate` would check nothing here, because a release builds `main` and the gate compares against `main`. Then it runs the Godot export into `engines/stage-tamagotchi-godot/out/<linux|mac>`, the app build, the [bundle check](#pnpm-checkbundle) on that build, and electron-builder with `AIRI_REQUIRE_GODOT_STAGE=true` under a `build` CPU slot. Any failed step stops the release before upload. The first platform creates the draft; the second adds its files to it. `--dry-run` stops after the preflight checks above and runs nothing else.
 
 The smoke starts the development build, not the installer. Before you publish the draft, install each installer on a real display and start it:
 
@@ -247,13 +283,13 @@ The backend imports its compositor scripts with Vite's `?raw` suffix, so the pro
 
 - `typecheck`: one `turbo run typecheck` command, with `--concurrency={grant}`. Its requested maximum is the number of changed packages and their dependents, floored at the class minimum of two. An all-package typecheck keeps the class maximum.
 - `lint`: `moeru-lint` in chunks.
-- `test`: the prerequisite Turbo build and every `vitest related --run` command share one lease. Turbo receives `--concurrency={grant}`; child Vitest wrappers inherit the lease and apply their class caps, including the browser cap.
+- `test`: the prerequisite Turbo build and every `vitest related --run` command share one lease. Turbo receives `--concurrency={grant}`; each Vitest process, in the root or in a package, inherits the lease through `withCpuSlots` and applies its class cap, including the browser cap.
 
 A waiting step prints `cpu-slots: waiting for N slot(s) ...`. Run `pnpm slots status` to see the holders.
 
 `pnpm dev:top` prints `cpu slots: held X/Y, N queued` in its header, with one line per lease and queued caller. If the store lock is held, it prints `cpu slots: busy (lock held), try again`. If the store cannot be read, it prints `cpu slots: unavailable (...)`. `pnpm dev:top kill <worktree>` is a dry run unless `--yes` is passed, and `--orphans` limits it to orphaned processes. Each kill re-reads the live command line first.
 
-Editing any file under `packages/cpu-slots`, including its README, currently invalidates the Turbo typecheck cache for the whole repository. The cause and the measured cost are in the cpu-slots README under "Turbo cache cost".
+Editing any file under `packages/cpu-slots`, including its README, currently invalidates the Turbo typecheck and test caches for the whole repository. The cause and the measured cost are in the cpu-slots README under "Turbo cache cost".
 
 ## Moving the repository to a Dev Drive (Windows 11)
 

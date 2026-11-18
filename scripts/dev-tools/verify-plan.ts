@@ -1,12 +1,10 @@
 import type { AcquireOptions } from '@proj-airi/cpu-slots'
 
-import type { BrowserTestProject } from './lib/browser-projects'
 import type { ChangedFile } from './lib/git'
 import type { VerifyStatsOptions } from './verify-history'
 
 import { classes } from '@proj-airi/cpu-slots'
 
-import { browserRootConfig } from './lib/browser-projects'
 import { parseStatsArgs } from './verify-history'
 
 /** Lint runs first: it is the cheapest step, and a lint failure stops verify before the slower steps start. */
@@ -98,6 +96,32 @@ const binaryFile = /\.(?:png|jpe?g|gif|webp|avif|ico|icns|bmp|svgz|mp[34]|wav|og
  */
 export const testPrerequisiteTurboArgs = ['run', 'build', '-F=./packages/*', '--output-logs=errors-only']
 
+export interface RelatedTestCommand {
+  /** Variables the package's `test:run` script sets before Vitest, such as `NODE_OPTIONS`. */
+  env: Record<string, string>
+  /** Vitest arguments. The caller appends the changed files. */
+  args: string[]
+}
+
+/**
+ * Turns a package's `test:run` script into the `vitest related` command that runs only the tests reaching the changed
+ * files. The script stays the one definition of how the package's tests start: its config, its project selection, and
+ * its environment carry over.
+ *
+ * Returns:
+ * - `null` when the script is not a plain `vitest run`. Such a package cannot run related tests.
+ */
+export function relatedTestCommand(script: string): RelatedTestCommand | null {
+  const match = /^((?:[A-Z_][A-Z0-9_]*=\S+\s+)*)vitest run((?:\s+\S+)*)$/.exec(script.trim())
+  if (!match)
+    return null
+  const env = Object.fromEntries(match[1].trim().split(/\s+/).filter(Boolean).map((pair) => {
+    const separator = pair.indexOf('=')
+    return [pair.slice(0, separator), pair.slice(separator + 1)]
+  }))
+  return { env, args: ['related', '--run', '--passWithNoTests', ...match[2].trim().split(/\s+/).filter(Boolean)] }
+}
+
 export type TypecheckScope = { kind: 'none' } | { kind: 'affected' } | { kind: 'all', reason: string }
 
 /** Directory filters work for both commit and tree baselines; Turbo's [ref] selector needs a commit. */
@@ -122,8 +146,8 @@ export interface VerifyPlan {
   lintFiles: string[]
   testFiles: string[]
   /**
-   * Workspace package directories that hold a changed code or test data file. Browser projects only hold package tests, so they run
-   * only for these packages and the packages that depend on them.
+   * Workspace package directories that hold a changed code or test data file. Related tests run in these packages and
+   * in the packages that depend on them; no other package can import the changed code.
    */
   testPackagePaths: string[]
 }
@@ -134,34 +158,6 @@ function packageOf(path: string, packagePaths: string[]): string | undefined {
 
 function inPackage(path: string, packagePaths: string[]): boolean {
   return packageOf(path, packagePaths) !== undefined
-}
-
-/**
- * The browser projects whose package is in `affectedPackagePaths`: the packages with a changed code file plus every
- * package that depends on one. A project in any other package cannot import the changed code, so `vitest related`
- * would only start its browser to find nothing.
- */
-export function selectBrowserTestProjects(affectedPackagePaths: string[], projects: BrowserTestProject[]): string[] {
-  const affected = new Set(affectedPackagePaths)
-  return projects.filter(project => affected.has(project.packagePath)).map(project => project.name)
-}
-
-export interface TestRun {
-  config: string
-  projects: string[]
-}
-
-/** The Vitest processes of the test step: the root config, then one process per affected browser project. */
-export function planTestRuns(browserProjects: string[]): TestRun[] {
-  // NOTICE:
-  // One Vitest process per browser project: two Vite roots in one process make `@vitejs/plugin-vue` serve a scoped
-  // style under the other root's id (process-wide descriptor cache, root-relative ids).
-  // Source: `@vitejs/plugin-vue` 6.0.8 `createDescriptor`; `scripts/dev-tools/README.md`.
-  // Remove when the plugin keys that cache per server.
-  return [
-    { config: 'vitest.config.ts', projects: [] },
-    ...browserProjects.map(project => ({ config: browserRootConfig, projects: [project] })),
-  ]
 }
 
 /**

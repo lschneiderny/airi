@@ -1,17 +1,32 @@
 import { withCpuSlots } from '@proj-airi/cpu-slots/vitest'
+import { playwright } from '@vitest/browser-playwright'
 import { defineConfig } from 'vitest/config'
-
-// eslint-disable-next-line no-restricted-syntax -- Vite's native config loader, its planned default, resolves a relative import only with its extension.
-import { stageUiLive2dBrowserProject } from './vitest.browser-project.ts'
-// eslint-disable-next-line no-restricted-syntax -- Vite's native config loader, its planned default, resolves a relative import only with its extension.
-import { stageUiLive2dNodeProject } from './vitest.node-project.ts'
 
 export default withCpuSlots(defineConfig({
   root: import.meta.dirname,
   test: {
     projects: [
-      stageUiLive2dNodeProject,
-      stageUiLive2dBrowserProject,
+      {
+        test: {
+          name: 'node',
+          include: ['src/**/*.test.ts'],
+          exclude: ['src/**/*.browser.test.ts', '**/node_modules/**', '**/.git/**'],
+        },
+      },
+      {
+        test: {
+          name: 'browser',
+          include: ['src/**/*.browser.test.ts'],
+          browser: {
+            enabled: true,
+            headless: true,
+            provider: playwright(),
+            instances: [
+              { browser: 'chromium' },
+            ],
+          },
+        },
+      },
     ],
   },
 }))

@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
-import { isAbsolute, join } from 'node:path'
+import { isAbsolute, join, posix } from 'node:path'
 
 import ts from 'typescript'
 
@@ -124,7 +124,7 @@ export function skippedGatedNotice(skipped: GatedTestFile[], env: Record<string,
 /**
  * The one line `pnpm verify` prints when its test step skipped gated files related to the change. A file is related
  * when it changed itself or lies in a package the change affects (a changed package or one that depends on it), the
- * same package scope verify uses to choose browser projects.
+ * same packages verify runs related tests in.
  */
 export function gatedNotice(files: GatedTestFile[], affectedPackagePaths: string[], changedFiles: string[], env: Record<string, string | undefined>): string | null {
   const related = files.filter(file => changedFiles.includes(file.file) || affectedPackagePaths.some(path => file.file.startsWith(`${path}/`)))
@@ -136,6 +136,21 @@ export function gatedNotice(files: GatedTestFile[], affectedPackagePaths: string
     ? 'Run `pnpm qa:test:model` for the AIRI_QA_* gates.'
     : 'Set the variables to run them.'
   return `verify notice: skipped ${skipped.length} env-gated test file(s) related to the change (${unset.join(', ')} unset): ${skipped.map(file => file.file).join(', ')}. ${hint}`
+}
+
+/**
+ * Groups test files by the package that runs them: the nearest directory at or above each file that holds a
+ * `vitest.config.ts`. Each group's files are relative to that directory, as Vitest expects when it starts there.
+ */
+export function groupByVitestConfig(files: string[], hasConfig: (directory: string) => boolean): Map<string, string[]> {
+  const groups = new Map<string, string[]>()
+  for (const file of files) {
+    let directory = posix.dirname(file)
+    while (directory !== '.' && !hasConfig(directory))
+      directory = posix.dirname(directory)
+    groups.set(directory, [...(groups.get(directory) ?? []), posix.relative(directory, file)])
+  }
+  return groups
 }
 
 /** Every tracked or untracked test file under `root` with a variable gate, found with `git grep`. */

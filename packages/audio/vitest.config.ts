@@ -1,16 +1,19 @@
 import { withCpuSlots } from '@proj-airi/cpu-slots/vitest'
+import { playwright } from '@vitest/browser-playwright'
 import { defineConfig } from 'vitest/config'
 
-// eslint-disable-next-line no-restricted-syntax -- Vite's native config loader, its planned default, resolves a relative import only with its extension.
-import { audioBrowserProject } from './vitest.browser-project.ts'
-
 export default withCpuSlots(defineConfig({
-  // A run from the repo root would otherwise resolve the relative `src/**` includes there and match nothing.
   root: import.meta.dirname,
   test: {
     projects: [
       { test: { name: 'node', include: ['src/**/*.test.ts'], exclude: ['src/**/*.browser.test.ts'] } },
-      audioBrowserProject,
+      {
+        test: {
+          name: 'browser',
+          include: ['src/**/*.browser.test.ts'],
+          browser: { enabled: true, headless: true, provider: playwright({ launchOptions: { args: ['--autoplay-policy=no-user-gesture-required', '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'] } }), instances: [{ browser: 'chromium' }] },
+        },
+      },
     ],
   },
 }))

@@ -1,12 +1,89 @@
+import { cwd } from 'node:process'
+
+import vue from '@vitejs/plugin-vue'
+import UnoCss from 'unocss/vite'
+import Info from 'unplugin-info/vite'
+import VueRouter from 'vue-router/vite'
+
 import { withCpuSlots } from '@proj-airi/cpu-slots/vitest'
+import { DownloadLive2DSDK } from '@proj-airi/unplugin-live2d-sdk'
+import { playwright } from '@vitest/browser-playwright'
+import { loadEnv } from 'vite'
 import { defineConfig } from 'vitest/config'
 
 // eslint-disable-next-line no-restricted-syntax -- Vite's native config loader, its planned default, resolves a relative import only with its extension.
-import { stageTamagotchiBrowserProject } from './vitest.browser-project.ts'
-// eslint-disable-next-line no-restricted-syntax -- Vite's native config loader, its planned default, resolves a relative import only with its extension.
-import { stageTamagotchiNodeProject } from './vitest.node-project.ts'
+import unoConfig from './uno.config.ts'
 
 export default withCpuSlots(defineConfig({
   root: import.meta.dirname,
-  test: { projects: [stageTamagotchiNodeProject, stageTamagotchiBrowserProject] },
+  plugins: [
+    Info(),
+    vue(),
+    UnoCss({
+      ...unoConfig,
+      // NOTICE:
+      // Preserve the initial stylesheet scan; discovered content replaces inline content.
+      // Source: loadConfig in node_modules/@unocss/config/dist/index.mjs shallow-merges config.
+      // Removal condition: discovery preserves content.filesystem; remove the explicit config
+      // and verify the shuffled browser suite.
+      configFile: false,
+      // Generate the initial stylesheet before parallel browser files mount.
+      // Late utility extraction can resize controls during layout assertions.
+      content: {
+        ...unoConfig.content,
+        // NOTICE:
+        // Keep these globs root-relative. On Windows, `import.meta.dirname` has
+        // backslashes that tinyglobby reads as escapes, matching zero files.
+        // Source: @unocss/vite setupContentExtractor.
+        // Removal condition: none; absolute patterns would reintroduce it.
+        filesystem: [
+          'src/**/*.vue',
+          '../../packages/stage-layouts/src/**/*.vue',
+          '../../packages/stage-ui/src/**/*.vue',
+          '../../packages/ui/src/**/*.vue',
+        ],
+      },
+    }),
+  ],
+  test: {
+    env: loadEnv('test', cwd(), ''),
+    projects: [
+      {
+        extends: true,
+        test: {
+          name: 'node',
+          include: ['src/**/*.test.ts', 'scripts/**/*.test.ts'],
+          exclude: ['src/**/*.browser.test.ts', '**/node_modules/**', '**/.git/**'],
+          fileParallelism: false,
+          maxWorkers: 1,
+          // Main-process tests read desktop sensors, so they must never reach the user's display or buses.
+          setupFiles: ['../../scripts/dev-tools/vitest-isolate-host-session.ts'],
+        },
+      },
+      {
+        extends: true,
+        plugins: [
+          DownloadLive2DSDK(),
+          // The settings pages carry a `<route>` block, and this plugin is the
+          // one that turns that block into a module. A test that imports a page
+          // fails to resolve it without this plugin.
+          VueRouter({ dts: false, routesFolder: ['src/renderer/pages'] }),
+        ],
+        test: {
+          name: 'browser',
+          include: ['src/**/*.browser.test.ts'],
+          exclude: ['**/node_modules/**', '**/.git/**'],
+          setupFiles: ['./src/test/setup-live2d.browser.ts'],
+          browser: {
+            enabled: true,
+            headless: true,
+            provider: playwright(),
+            instances: [
+              { browser: 'chromium' },
+            ],
+          },
+        },
+      },
+    ],
+  },
 }))

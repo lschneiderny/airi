@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { gatedNotice, gateVariables, planGatedRun, qaGatedFiles, skippedGatedNotice } from './gated-tests'
+import { gatedNotice, gateVariables, groupByVitestConfig, planGatedRun, qaGatedFiles, skippedGatedNotice } from './gated-tests'
 
 const model = { file: 'packages/qa-tools/src/t2-3d/runner/run.test.ts', variables: ['AIRI_QA_MMD_MODEL'] }
 const rig = { file: 'packages/qa-tools/src/t2/runner.test.ts', variables: ['AIRI_QA_RIG_FORBOOTH'] }
@@ -85,5 +85,18 @@ describe('gatedNotice', () => {
     expect(gatedNotice([model], ['packages/qa'], [], {})).toBeNull()
     expect(gatedNotice([model], ['packages/qa-tools'], [], { AIRI_QA_MMD_MODEL: '/m.pmx' })).toBeNull()
     expect(gatedNotice([darwin], [], [darwin.file], {})).toContain('AIRI_FOREGROUND_QA_SAFARI unset')
+  })
+})
+
+describe('groupByVitestConfig', () => {
+  it('groups files under the nearest directory with a config, relative to it', () => {
+    const configs = new Set(['packages/qa-tools', 'apps/stage-tamagotchi'])
+    const groups = groupByVitestConfig([model.file, rig.file, darwin.file, 'scripts/dev-tools/a.test.ts'], directory => configs.has(directory))
+
+    expect([...groups]).toEqual([
+      ['packages/qa-tools', ['src/t2-3d/runner/run.test.ts', 'src/t2/runner.test.ts']],
+      ['apps/stage-tamagotchi', ['src/main/foreground.test.ts']],
+      ['.', ['scripts/dev-tools/a.test.ts']],
+    ])
   })
 })

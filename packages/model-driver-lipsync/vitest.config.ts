@@ -1,17 +1,30 @@
 import { withCpuSlots } from '@proj-airi/cpu-slots/vitest'
+import { playwright } from '@vitest/browser-playwright'
 import { defineConfig } from 'vitest/config'
-
-// eslint-disable-next-line no-restricted-syntax -- Vite's native config loader, its planned default, resolves a relative import only with its extension.
-import { modelDriverLipsyncBrowserProject } from './vitest.browser-project.ts'
-// eslint-disable-next-line no-restricted-syntax -- Vite's native config loader, its planned default, resolves a relative import only with its extension.
-import { modelDriverLipsyncNodeProject } from './vitest.node-project.ts'
 
 export default withCpuSlots(defineConfig({
   root: import.meta.dirname,
   test: {
     projects: [
-      modelDriverLipsyncNodeProject,
-      modelDriverLipsyncBrowserProject,
+      {
+        test: {
+          name: 'node',
+          include: ['src/**/*.test.ts'],
+          exclude: ['src/**/*.browser.test.ts', '**/node_modules/**', '**/.git/**'],
+        },
+      },
+      {
+        test: {
+          name: 'browser',
+          include: ['src/**/*.browser.test.ts'],
+          browser: {
+            enabled: true,
+            headless: true,
+            provider: playwright({ launchOptions: { args: ['--autoplay-policy=no-user-gesture-required'] } }),
+            instances: [{ browser: 'chromium' }],
+          },
+        },
+      },
     ],
   },
 }))

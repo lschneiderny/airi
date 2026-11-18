@@ -21,8 +21,8 @@ A lease lasts as long as its workload. A registered process, or any descendant o
 
 | Class | Min to max | Used by |
 | --- | --- | --- |
-| `test` | 2 to 6 | Root Vitest config |
-| `browser` | 2 to 4 | Extra Vitest configs and browser-mode projects |
+| `test` | 2 to 6 | A Vitest config without a browser project, `pnpm test:run`, and the test step of `pnpm verify` |
+| `browser` | 2 to 4 | A Vitest config with a browser-mode project |
 | `live` | 4 to 6 | App QA sessions, for example `pnpm slots run --class live -- sleep 20` |
 | `typecheck` | 2 to 6 | `turbo run typecheck` |
 | `build` | 2 to 6 | Package builds |
@@ -111,6 +111,8 @@ A process started under a lease can reuse it. `acquire` reads `AIRI_CPU_LEASE` f
 
 `@proj-airi/cpu-slots/vitest` exports `withCpuSlots`. It caps `maxWorkers` only. The first wrapped config sets the root grant, and later configs can only lower it.
 
+- Every package's `vitest.config.ts` and the root one are wrapped; `test/coverage.test.ts` fails for a tracked config that is not. A config from upstream needs the wrapper added at a sync.
+- `pnpm test:run` holds one `test` lease and runs the packages through Turbo, one at a time. `turbo.json` passes the `AIRI_CPU_*` variables to the `test:run` task, so each package's Vitest process inherits that lease instead of queueing for its own. The variables are not part of Turbo's cache key.
 - Parallel browser projects receive the grant. Vitest 4.1.11's browser pool ignores the root `maxWorkers`, so browser projects are capped per project instead.
 - Watch mode takes no lease when started with `--watch`. A bare `vitest` acquires at startup and releases once Vitest resolves to watch mode, through the `cpu-slots:release-in-watch-mode` plugin.
 - An explicit `--watch` run is capped without checking current leases or any inherited `AIRI_CPU_GRANT`, so two watch runs can exceed the budget. In local measurements, two explicit watch runs at a budget of 2 overlapped 2 workloads, against 8 for an unwrapped control. At a budget of 12, the overlap was 6, and serial projects overlapped 1.
@@ -120,7 +122,7 @@ A process started under a lease can reuse it. `acquire` reads `AIRI_CPU_LEASE` f
 
 ## Turbo cache cost
 
-Typecheck depends on the cpu-slots build, and the build's input list is narrowed in `turbo.json`. The cost is still high. A README-only edit to this package invalidates the build and all 57 typecheck tasks on a quiet tree. Warm, all 57 tasks hit the cache in 802 ms. After a README edit, none hit, and the run took 2m 9.8s. The cause is the root `package.json` devDependency `"@proj-airi/cpu-slots": "workspace:^"`, which Turbo folds into the global hash. README.md is also in the typecheck default inputs. Until both causes are fixed, expect a full typecheck after any edit to this README. The ADR's Follow-ups describe what removing the root dependency needs.
+Typecheck and `test:run` depend on the cpu-slots build, and the build's input list is narrowed in `turbo.json`. The cost is still high, and it applies to the test tasks in the same way. A README-only edit to this package invalidates the build and all 57 typecheck tasks on a quiet tree. Warm, all 57 tasks hit the cache in 802 ms. After a README edit, none hit, and the run took 2m 9.8s. The cause is the root `package.json` devDependency `"@proj-airi/cpu-slots": "workspace:^"`, which Turbo folds into the global hash. README.md is also in the typecheck default inputs. Until both causes are fixed, expect a full typecheck after any edit to this README. The ADR's Follow-ups describe what removing the root dependency needs.
 
 ## Troubleshooting
 

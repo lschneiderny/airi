@@ -33,7 +33,8 @@ export function releaseChecks(platform: NodeJS.Platform): ReleaseStep[] {
   return [
     { title: 'lint', command: 'pnpm', args: ['lint'] },
     { title: 'typecheck', command: 'pnpm', args: ['typecheck'] },
-    { title: 'test suite', command: 'pnpm', args: ['test:run'] },
+    { title: 'package tests', command: 'pnpm', args: ['test:run'] },
+    { title: 'root tests', command: 'pnpm', args: ['test:root'] },
     { title: 'clean-start smoke', command: 'pnpm', args: smoke },
   ]
 }

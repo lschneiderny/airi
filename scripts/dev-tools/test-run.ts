@@ -1,32 +1,32 @@
 import process from 'node:process'
 
-import { spawn } from 'node:child_process'
+import { join } from 'node:path'
 
 import { errorMessageFrom } from '@moeru/std'
+import { acquire } from '@proj-airi/cpu-slots'
 
-import { readBrowserTestProjects } from './lib/browser-projects'
 import { compileCacheEnv } from './lib/compile-cache'
+import { run } from './lib/exec'
 import { repoRoot } from './lib/git'
-import { runSuites, summarizeSuites, testRunSuites } from './test-run-plan'
+import { testRunTurboArgs } from './test-run-plan'
 
-// `pnpm` is a `.cmd` shim on Windows, so each fixed command line runs through the shell.
-function runCommand(command: string, cwd: string): Promise<number | null> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, { cwd, env: { ...process.env, ...compileCacheEnv(process.env, cwd) }, stdio: 'inherit', shell: true })
-    child.once('error', reject)
-    child.once('close', code => resolve(code))
-  })
-}
-
+/**
+ * Runs every package's `test:run` through Turbo under one `test` lease, which each package's Vitest process inherits.
+ * Extra arguments go to Turbo, such as `--force` or `--filter=<package>`.
+ */
 async function main(): Promise<number> {
   const root = repoRoot(process.cwd())
-  const results = await runSuites(testRunSuites(readBrowserTestProjects(root)), (suite) => {
-    console.info(`\n[test:run] ${suite.label}: ${suite.command}`)
-    return runCommand(suite.command, root)
-  })
-  const summary = summarizeSuites(results)
-  console.info(`\n${summary.lines.join('\n')}\ntest:run exit ${summary.exitCode}`)
-  return summary.exitCode
+  const lease = await acquire({ class: 'test', cwd: root, command: 'test:run' })
+  try {
+    return await run(process.execPath, [join(root, 'node_modules/turbo/bin/turbo'), ...testRunTurboArgs, ...process.argv.slice(2)], {
+      cwd: root,
+      env: { ...process.env, ...compileCacheEnv(process.env, root), ...lease.env },
+      onSpawn: lease.addWorkload,
+    })
+  }
+  finally {
+    lease.release()
+  }
 }
 
 main().then(code => process.exit(code), (error) => {

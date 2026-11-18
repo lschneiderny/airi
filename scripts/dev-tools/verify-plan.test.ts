@@ -5,16 +5,10 @@ import { join } from 'node:path'
 import { acquire } from '@proj-airi/cpu-slots'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { lintAllFixable, parseVerifyArgs, planStepLease, planTestRuns, planVerify, selectBrowserTestProjects, testPrerequisiteTurboArgs, verifySteps } from './verify-plan'
+import { lintAllFixable, parseVerifyArgs, planStepLease, planVerify, relatedTestCommand, verifySteps } from './verify-plan'
 
 const packages = ['packages/stage-ui', 'apps/stage-tamagotchi']
 const file = (path: string, deleted = false) => ({ path, deleted })
-
-describe('testPrerequisiteTurboArgs', () => {
-  it('builds only the workspace packages that tests import, with quiet output', () => {
-    expect(testPrerequisiteTurboArgs).toEqual(['run', 'build', '-F=./packages/*', '--output-logs=errors-only'])
-  })
-})
 
 describe('planVerify', () => {
   it('typechecks affected packages when only package files changed', () => {
@@ -28,6 +22,12 @@ describe('planVerify', () => {
   it('lists each package with a changed code file once', () => {
     const plan = planVerify([file('packages/stage-ui/src/a.ts'), file('packages/stage-ui/src/b.vue'), file('apps/stage-tamagotchi/src/c.ts'), file('apps/stage-tamagotchi/README.md')], packages)
     expect(plan.testPackagePaths).toEqual(['packages/stage-ui', 'apps/stage-tamagotchi'])
+  })
+
+  it('runs no test for a documentation-only change in a package', () => {
+    const plan = planVerify([file('packages/stage-ui/README.md'), file('apps/stage-tamagotchi/docs/notes.mdx')], packages)
+    expect(plan.testFiles).toEqual([])
+    expect(plan.testPackagePaths).toEqual([])
   })
 
   it('typechecks every package when a root config file changed', () => {
@@ -50,7 +50,7 @@ describe('planVerify', () => {
     expect(planVerify([file('packages/stage-ui/package.json')], packages).typecheck).toEqual({ kind: 'affected' })
   })
 
-  it('skips typecheck and browser projects for root-only code', () => {
+  it('skips typecheck and package tests for root-only code', () => {
     const plan = planVerify([file('scripts/dev-tools/verify.ts')], packages)
     expect(plan.typecheck).toEqual({ kind: 'none' })
     expect(plan.testFiles).toEqual(['scripts/dev-tools/verify.ts'])
@@ -97,40 +97,19 @@ describe('planVerify', () => {
   })
 })
 
-describe('selectBrowserTestProjects', () => {
-  const projects = [
-    { name: 'stage-ui-mmd:browser', packagePath: 'packages/stage-ui-mmd' },
-    { name: 'stage-ui:browser', packagePath: 'packages/stage-ui' },
-    { name: 'stage-tamagotchi:browser', packagePath: 'apps/stage-tamagotchi' },
-  ]
-
-  it('keeps the projects of affected packages once, in config order', () => {
-    expect(selectBrowserTestProjects(['apps/stage-tamagotchi', 'packages/stage-ui', 'packages/stage-ui', 'packages/qa-tools'], projects))
-      .toEqual(['stage-ui:browser', 'stage-tamagotchi:browser'])
+describe('relatedTestCommand', () => {
+  it('keeps the config and project selection of the package script', () => {
+    expect(relatedTestCommand('vitest run')).toEqual({ env: {}, args: ['related', '--run', '--passWithNoTests'] })
+    expect(relatedTestCommand('vitest run --config ./vitest.config.ts')).toEqual({ env: {}, args: ['related', '--run', '--passWithNoTests', '--config', './vitest.config.ts'] })
+    expect(relatedTestCommand('vitest run --project unit')).toEqual({ env: {}, args: ['related', '--run', '--passWithNoTests', '--project', 'unit'] })
   })
 
-  it.each([
-    { paths: [] },
-    { paths: ['packages/core-agent'] },
-    { paths: ['packages/stage-ui-mmd-extra', 'packages/stage'] },
-  ])('starts no browser for unaffected packages: $paths', ({ paths }) => {
-    expect(selectBrowserTestProjects(paths, projects)).toEqual([])
-  })
-})
-
-describe('planTestRuns', () => {
-  it('runs the root config alone when no browser project is affected', () => {
-    expect(planTestRuns([])).toEqual([{ config: 'vitest.config.ts', projects: [] }])
+  it('keeps the variables the script sets before Vitest', () => {
+    expect(relatedTestCommand('NODE_OPTIONS=--no-node-snapshot vitest run')).toEqual({ env: { NODE_OPTIONS: '--no-node-snapshot' }, args: ['related', '--run', '--passWithNoTests'] })
   })
 
-  it('gives every browser project its own Vitest process, so no process holds two Vite roots', () => {
-    const runs = planTestRuns(['stage-ui:browser', 'stage-pages:browser', 'stage-tamagotchi:browser'])
-    expect(runs).toEqual([
-      { config: 'vitest.config.ts', projects: [] },
-      { config: 'vitest.browser.config.ts', projects: ['stage-ui:browser'] },
-      { config: 'vitest.browser.config.ts', projects: ['stage-pages:browser'] },
-      { config: 'vitest.browser.config.ts', projects: ['stage-tamagotchi:browser'] },
-    ])
+  it.each(['pnpm run build:targets && vitest run', 'vitest', 'vitest run; echo done', 'dotnet test'])('refuses a script that is not a plain vitest run: %s', (script) => {
+    expect(relatedTestCommand(script)).toBeNull()
   })
 })
 

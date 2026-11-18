@@ -25,17 +25,24 @@ describe('verify step execution', () => {
     writeFileSync(join(root, '.gitignore'), 'node_modules/\nslots/\nslots-history/\nreceipts.jsonl\n')
     writeFileSync(join(root, 'package.json'), '{"type":"module"}')
     writeFileSync(join(root, 'change.ts'), 'export const changed = true\n')
+    mkdirSync(join(root, 'pkg'))
+    writeFileSync(join(root, 'pkg/package.json'), '{"name":"pkg","scripts":{"test:run":"FIXTURE_FLAG=on vitest run --config vitest.config.ts"}}')
+    writeFileSync(join(root, 'pkg/change.ts'), 'export const changed = true\n')
     const command = `
       import { appendFileSync, readFileSync } from 'node:fs'
-      import { join } from 'node:path'
+      import { join, relative } from 'node:path'
+      const fixtureRoot = ${JSON.stringify(root)}
       if (process.argv.includes('ls')) {
-        console.log(JSON.stringify({ packages: { items: [] } }))
+        console.log(JSON.stringify({ packages: { items: [{ name: 'pkg', path: 'pkg' }] } }))
         process.exit(0)
       }
       const id = process.env.AIRI_CPU_LEASE
       const lease = JSON.parse(readFileSync(join(process.env.AIRI_CPU_SLOTS_DIR, 'leases', id + '.json'), 'utf8'))
-      appendFileSync('receipts.jsonl', JSON.stringify({
+      appendFileSync(join(fixtureRoot, 'receipts.jsonl'), JSON.stringify({
         command: process.argv.includes('build') ? 'build' : 'related',
+        directory: relative(fixtureRoot, process.cwd()),
+        config: process.argv.includes('--config') ? process.argv[process.argv.indexOf('--config') + 1] : null,
+        flag: process.env.FIXTURE_FLAG ?? null,
         leaseId: lease.id,
         class: lease.class,
         slots: lease.slots,
@@ -70,19 +77,19 @@ describe('verify step execution', () => {
     })
   }
 
-  it('holds one real lease across the build and related-test commands, then releases it', async () => {
+  it('holds one real lease across the build, the root related tests, and each package\'s related tests, then releases it', async () => {
     const store = join(root, 'slots')
     await exec(process.execPath, ['--import', import.meta.resolve('tsx'), fileURLToPath(new URL('./verify.ts', import.meta.url)), '--only', 'test'], {
       cwd: root,
       env: { ...process.env, CI: '', AIRI_CPU_SLOTS: '', AIRI_CPU_SLOTS_DIR: store, AIRI_CPU_SLOTS_HISTORY_DIR: join(root, 'slots-history'), AIRI_CPU_BUDGET: '12', AIRI_CPU_LEASE: '', AIRI_CPU_GRANT: '', AIRI_CPU_CLASS: '' },
       timeout: 15_000,
     })
-    const receipts: { command: string, leaseId: string, class: string, slots: number, grant: number }[] = JSON.parse(`[${readFileSync(join(root, 'receipts.jsonl'), 'utf8').trim().split('\n').join(',')}]`)
-    expect(receipts.map(receipt => receipt.command)).toEqual(['build', 'related'])
+    const receipts: { command: string, directory: string, config: string | null, flag: string | null, leaseId: string, class: string, slots: number, grant: number }[] = JSON.parse(`[${readFileSync(join(root, 'receipts.jsonl'), 'utf8').trim().split('\n').join(',')}]`)
     expect(new Set(receipts.map(receipt => receipt.leaseId)).size).toBe(1)
-    expect(receipts.map(({ class: cpuClass, slots, grant }) => ({ cpuClass, slots, grant }))).toEqual([
-      { cpuClass: 'test', slots: 6, grant: 6 },
-      { cpuClass: 'test', slots: 6, grant: 6 },
+    expect(receipts.map(({ command, directory, config, flag, class: cpuClass, slots, grant }) => ({ command, directory, config, flag, cpuClass, slots, grant }))).toEqual([
+      { command: 'build', directory: '', config: null, flag: null, cpuClass: 'test', slots: 6, grant: 6 },
+      { command: 'related', directory: '', config: 'vitest.config.ts', flag: null, cpuClass: 'test', slots: 6, grant: 6 },
+      { command: 'related', directory: 'pkg', config: 'vitest.config.ts', flag: 'on', cpuClass: 'test', slots: 6, grant: 6 },
     ])
     expect(readStatus({ root: store })).toMatchObject({ held: 0, leases: [], queue: [] })
   }, 20_000)

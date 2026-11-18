@@ -55,7 +55,7 @@ describe('releaseTarget', () => {
 
 describe('releaseChecks', () => {
   it('runs the whole-repository checks, not the diff-scoped verify gate', () => {
-    expect(releaseChecks('darwin').map(check => check.args)).toEqual([['lint'], ['typecheck'], ['test:run'], ['qa:smoke']])
+    expect(releaseChecks('darwin').map(check => check.args)).toEqual([['lint'], ['typecheck'], ['test:run'], ['test:root'], ['qa:smoke']])
   })
 
   it('runs the Linux smoke inside a QA display session', () => {

@@ -9,20 +9,22 @@ import { delimiter, join, relative } from 'node:path'
 import { errorMessageFrom } from '@moeru/std'
 import { acquire } from '@proj-airi/cpu-slots'
 
-import { readBrowserTestProjects } from './lib/browser-projects'
 import { compileCacheEnv } from './lib/compile-cache'
 import { capture, chunkByLength, nodeCommandChunkLimitsFor, run, shimCommandChunkLimits } from './lib/exec'
 import { gatedNotice, listGatedTestFiles } from './lib/gated-tests'
 import { changedFiles, git, gitCommonDir, repoRoot, workingTreeHash } from './lib/git'
 import { appendVerifyRun, formatVerifyStats, readVerifyStats } from './verify-history'
 import { readLastPass, writeLastPass } from './verify-last-pass'
-import { advanceLastPass, lintAllFixable, parseVerifyArgs, planStepLease, planTestRuns, planVerify, selectBrowserTestProjects, selectVerifyScope, testPrerequisiteTurboArgs, touchesAppRuntime, typecheckFilters, verifyUsage } from './verify-plan'
+import { advanceLastPass, lintAllFixable, parseVerifyArgs, planStepLease, planVerify, relatedTestCommand, selectVerifyScope, testPrerequisiteTurboArgs, touchesAppRuntime, typecheckFilters, verifyUsage } from './verify-plan'
 
 interface Command {
   label: string
   args: string[]
   /** Whether the granted slot count is passed to the command as `--concurrency`. */
   concurrency?: boolean
+  /** The package directory the command runs in, relative to the root. Without it, the command runs in the root. */
+  packagePath?: string
+  env?: Record<string, string>
 }
 
 interface StepResult {
@@ -51,7 +53,11 @@ function withDependents(root: string, packagePaths: string[]): string[] {
   return listing.packages.items.map(item => item.path.replaceAll('\\', '/'))
 }
 
-function commandsFor(step: VerifyStep, root: string, plan: ReturnType<typeof planVerify>, browserProjects: string[]): Command[] | string {
+function testRunScript(root: string, packagePath: string): string | undefined {
+  return (JSON.parse(readFileSync(join(root, packagePath, 'package.json'), 'utf8')) as { scripts?: Record<string, string> }).scripts?.['test:run']
+}
+
+function commandsFor(step: VerifyStep, root: string, plan: ReturnType<typeof planVerify>, testedPackagePaths: string[]): Command[] | string {
   const node = (entry: string, args: string[]) => [join(root, entry), ...args]
   if (step === 'typecheck') {
     if (plan.typecheck.kind === 'none')
@@ -70,19 +76,31 @@ function commandsFor(step: VerifyStep, root: string, plan: ReturnType<typeof pla
   }
   if (!plan.testFiles.length)
     return 'no code or test data file changed'
-  const configs = planTestRuns(browserProjects)
-  // `vitest related` resolves relative paths against each project's package root.
-  const absoluteFiles = plan.testFiles.map(file => join(root, file))
+  // `vitest related` resolves relative paths against the directory it starts in, so the files are absolute.
+  const chunks = chunkByLength(plan.testFiles.map(file => join(root, file)), nodeCommandChunkLimitsFor(process.platform))
   const rebuild: Command = {
     label: 'rebuild stale workspace packages',
     args: node('node_modules/turbo/bin/turbo', testPrerequisiteTurboArgs),
     concurrency: true,
   }
-  const related: Command[] = configs.flatMap(({ config, projects }) => chunkByLength(absoluteFiles, nodeCommandChunkLimitsFor(process.platform)).map(files => ({
-    label: `tests related to changes (${config}${projects.length ? `, projects ${projects.join(', ')}` : ''})`,
-    args: node('node_modules/vitest/vitest.mjs', ['related', '--run', '--passWithNoTests', '--config', config, ...projects.flatMap(project => ['--project', project]), ...files]),
-  })))
-  return [rebuild, ...related]
+  const rootRelated: Command[] = chunks.map(files => ({
+    label: 'tests related to changes (root projects)',
+    args: node('node_modules/vitest/vitest.mjs', ['related', '--run', '--passWithNoTests', '--config', 'vitest.config.ts', ...files]),
+  }))
+  // One Vitest process per package, in the package's own directory and config, one after the other.
+  const packageRelated: Command[] = testedPackagePaths.flatMap((packagePath) => {
+    const script = testRunScript(root, packagePath)
+    const command = script === undefined ? null : relatedTestCommand(script)
+    if (!command)
+      return []
+    return chunks.map(files => ({
+      label: `tests related to changes (${packagePath})`,
+      args: node('node_modules/vitest/vitest.mjs', [...command.args, ...files]),
+      packagePath,
+      env: command.env,
+    }))
+  })
+  return [rebuild, ...rootRelated, ...packageRelated]
 }
 
 async function main(): Promise<number> {
@@ -188,8 +206,7 @@ async function main(): Promise<number> {
     }
     const plan = planVerify(changed, workspaces.paths, workspaces.rootDependencyPaths)
     const affected = step === 'test' ? withDependents(root, plan.testPackagePaths) : []
-    const browserProjects = affected.length ? selectBrowserTestProjects(affected, readBrowserTestProjects(root)) : []
-    const commands = commandsFor(step, root, plan, browserProjects)
+    const commands = commandsFor(step, root, plan, affected)
     if (typeof commands === 'string') {
       finish({ step, status: 'skipped', detail: commands, durationMs: 0 }, history)
       continue
@@ -203,7 +220,7 @@ async function main(): Promise<number> {
     if (args.dryRun) {
       console.info(`[${step}] acquire one lease (class ${leasePlan.class}${leasePlan.max !== undefined ? `, max ${leasePlan.max}` : ''})`)
       for (const item of commands)
-        console.info(`[${step}] ${item.label}\n  node ${[relative(root, item.args[0]), ...item.args.slice(1), ...(item.concurrency && slotsEnabled ? ['--concurrency={grant}'] : [])].join(' ')}`)
+        console.info(`[${step}] ${item.label}\n  ${item.packagePath ? `(in ${item.packagePath}) ` : ''}node ${[relative(root, item.args[0]), ...item.args.slice(1), ...(item.concurrency && slotsEnabled ? ['--concurrency={grant}'] : [])].join(' ')}`)
       finish({ step, status: 'skipped', detail: 'dry run', durationMs: 0 }, history)
       continue
     }
@@ -224,7 +241,7 @@ async function main(): Promise<number> {
         console.info(`\n[${step}] ${item.label}`)
         const args = item.concurrency && lease.grant !== null ? [...item.args, `--concurrency=${lease.grant}`] : item.args
         executed.push([process.execPath, ...args])
-        const exitCode = await run(process.execPath, args, { cwd: root, env: { ...env, ...lease.env }, onSpawn: lease.addWorkload, onOutput: step === 'lint' ? keepLintOutput : undefined })
+        const exitCode = await run(process.execPath, args, { cwd: item.packagePath ? join(root, item.packagePath) : root, env: { ...env, ...lease.env, ...item.env }, onSpawn: lease.addWorkload, onOutput: step === 'lint' ? keepLintOutput : undefined })
         if (exitCode !== 0) {
           failed = `${item.label} exited ${exitCode}`
           break

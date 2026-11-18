@@ -8,7 +8,7 @@ import { errorMessageFrom } from '@moeru/std'
 
 import { loadQaEnv } from '../../packages/qa-tools/src/env/load'
 import { compileCacheEnv } from './lib/compile-cache'
-import { listGatedTestFiles, planGatedRun, qaGatedFiles, skippedGatedNotice } from './lib/gated-tests'
+import { groupByVitestConfig, listGatedTestFiles, planGatedRun, qaGatedFiles, skippedGatedNotice } from './lib/gated-tests'
 import { repoRoot } from './lib/git'
 
 async function main(): Promise<number> {
@@ -29,16 +29,22 @@ async function main(): Promise<number> {
   const skipped = skippedGatedNotice(plan.skipped, process.env)
   if (skipped)
     console.info(`qa:test:model: ${skipped}`)
-  // The root Vitest config takes its CPU slots through withCpuSlots, like every other test run.
-  return await new Promise<number>((resolve, reject) => {
-    const child = spawn(process.execPath, [join(root, 'node_modules/vitest/vitest.mjs'), 'run', '--config', 'vitest.config.ts', ...files.map(file => file.file)], {
-      cwd: root,
-      env: { ...process.env, ...compileCacheEnv(process.env, root) },
-      stdio: 'inherit',
+  // Each package runs its own files, directly and not through Turbo, so no result is cached and the variables reach
+  // the tests. The package config takes its CPU slots through withCpuSlots, like every other test run.
+  let exitCode = 0
+  for (const [directory, packageFiles] of groupByVitestConfig(files.map(file => file.file), candidate => existsSync(join(root, candidate, 'vitest.config.ts')))) {
+    const code = await new Promise<number>((resolve, reject) => {
+      const child = spawn(process.execPath, [join(root, 'node_modules/vitest/vitest.mjs'), 'run', ...packageFiles], {
+        cwd: join(root, directory),
+        env: { ...process.env, ...compileCacheEnv(process.env, root) },
+        stdio: 'inherit',
+      })
+      child.once('error', reject)
+      child.once('close', code => resolve(code ?? 1))
     })
-    child.once('error', reject)
-    child.once('close', code => resolve(code ?? 1))
-  })
+    exitCode ||= code
+  }
+  return exitCode
 }
 
 try {
