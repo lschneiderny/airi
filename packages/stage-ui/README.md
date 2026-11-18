@@ -595,7 +595,7 @@ The [layered character state ADR](../../docs/ai/adr/2026-11-03-layered-character
 
 ## Long-term memory
 
-`useMemoryStore` in `stores/memory.ts` keeps entries in IndexedDB through the localforage instance `airi-memory/entries`. It uses the `airi:memory` BroadcastChannel to reload changes in other windows and stores the toggle at `memory/enabled`.
+`useMemoryStore` in `stores/memory.ts` keeps entries in IndexedDB, in the database `airi-memory` and its store `entries`, through the unstorage mount in `database/storage.ts`. It uses the `airi:memory` BroadcastChannel to reload changes in other windows and stores the toggle at `memory/enabled`.
 
 `tools/memory.ts` defines `builtIn_readMemory`, `builtIn_writeMemory`, and `builtIn_forgetMemory`. `composeMemoryHeader` renders the memory rules, and `composeMemoryPrompt` adds the index below them. The index lists one line per entry, oldest change first, and marks general entries with `(general)`. Card selection does not change the character bound to a queued turn. Spark Notify instead uses the active card's index.
 `memoryWriteRefusal` checks every entry of a `builtIn_writeMemory` call. It refuses an entry that repeats a window or page title the situation holds, unless the user's message of the same turn contains that title, and it always refuses an entry that matches a credential shape. The tool result gives the model the reason. Pass `guard` to `createMemoryTools` with the held titles and the user's message of the turn.
