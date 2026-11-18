@@ -547,6 +547,8 @@ Every root `qa:*` script runs its entry directly with `node --import tsx`, from 
 | `pnpm qa:model prompt [--locale en] [--card <file>] [--full <fixture.json>] [--exposed-actions <label:kind,...>] [--json]` | Print the application's system prompt; JSON mode includes the prompt and contract hashes and contract version. `--full` adds the tail segments of a fixture file. `--exposed-actions` adds the `actions` segment for the listed clips (see below). |
 | `pnpm qa:model run --scenario <id\|file.json> --base-url <url> --model <id> [--config <name>] [--history raw\|canonical] [--out <dir>] [--machine-label <label>] [--json]` | Run a scenario against a live OpenAI-compatible chat endpoint and record each reply as a transcript record with its request options and provenance (see [Live runs](#live-runs-m2)). |
 | `pnpm qa:model score <transcripts.jsonl> [--set <id>] [--label <l>] [--example-lines-from <file>] [--exposed-actions <label:kind,...>] [--json]` | Score saved replies through the real chat runtime and stage controller, then write reply, JSON summary, and Markdown summary artifacts. |
+| `pnpm qa:model judge serve <transcripts.jsonl\|run dir\|set id>... [--out <file>] [--judge <label>] [--contenders <a,b,...>] [--port <n>] [--seed <n>]` | Serve a local page that shows two contenders' replies to the same turn side by side, blind, and append each verdict to a JSONL file (see [Persona judging](#persona-judging-m4)). |
+| `pnpm qa:model judge report <judgments.jsonl>... [--json]` | Rank contenders from saved judgments: win rate with a 95% interval, Bradley–Terry strength, tag shares, and head-to-head counts. |
 | `pnpm qa:model help` | Print the model-evaluation command usage. |
 | `pnpm qa:character simulate --scenario <name\|file.json> [--days <n>] [--seed <n>] [--json]` | Drive the pure character-state core through a scenario, check the plan's Appendix A10 invariants, and print a daily table or JSON. An invariant violation exits 1. |
 | `pnpm qa:character render --stage <stranger\|friendly\|close\|intimate> [--mood <bucket words>]` | Print the exact `system:character` text for a relationship stage and optional mood buckets. |
@@ -640,9 +642,9 @@ Model evaluation separates deterministic fixtures, offline replay, live runs, fu
 | --- | --- | --- |
 | M0 | Committed cue-contract fixtures replayed through the real runtime at every chunk boundary. | Available |
 | M1 | Offline replay of saved transcripts through the real runtime and stage controller. | Available |
-| M2 | Live model runs with recorded request options and transcript provenance. | Tooling available; no real model has been run yet |
+| M2 | Live model runs with recorded request options and transcript provenance. | Available |
 | M3 | Judged persona review using an explicit rubric. | Planned |
-| M4 | Luke reads the replies and evidence for character quality. | Human review |
+| M4 | The owner reads the replies and evidence for character quality. Blind pairwise judging records the reading (see [Persona judging](#persona-judging-m4)). | Available |
 
 The runtime replay is the oracle for cue behavior. Prompt output comes from the shared contract renderer used by the app. Build `@proj-airi/core-agent` and `@proj-airi/i18n` before tests that import their dist-backed exports and before scoring. Scoring refuses when the core-agent dist is missing or older than its runtime source; rebuild it with `pnpm -F @proj-airi/core-agent build`. Build i18n with `pnpm -F @proj-airi/i18n build`.
 
@@ -761,6 +763,21 @@ A run differs from an app request in these ways: it sends no tools, no situation
 | `warmTtftMs` | Mean time to first token of later turns. A local server keeps it low only when it reuses the cache of the previous request; a value near `coldTtftMs` means the prompt was processed again. |
 | `decodeTps` | Completion tokens after the first, over the time from the first token to the end of the stream. A reasoning model's hidden tokens count, since `usage.completion_tokens` includes them. |
 | `promptTok` | Mean `usage.prompt_tokens`, to compare with the server's context size. |
+
+### Persona judging (M4)
+
+`qa:model judge` turns M4 reading into data. The design and its reasons are in the [persona judging ADR](../../docs/ai/adr/2026-11-18-persona-pairwise-judging.md).
+
+```sh
+pnpm qa:model judge serve live-2026-11-18-mac-m2-local-models --contenders gemma4,qwen3.5
+pnpm qa:model judge report .temp/qa/judge/judgments.jsonl
+```
+
+`serve` reads transcript files, run directories, or committed set ids, replays every reply through the core-agent runtime, and prints a loopback URL. The page shows the user line, the turn before it, and two replies to the same slot (same turn, seed, relationship stage, and user text) from different contenders. Each reply shows what the listener hears and its cues as chips; names stay hidden until the verdict is saved. A contender is the model id with the run config minus its seed, so the seeds of one config pool. `--contenders` keeps contenders whose name contains one of the comma-separated substrings.
+
+Pick a five-step verdict (keys 1–5), toggle tags on either side, add an optional note (N), and save (Enter) or skip (S). Each verdict is appended to `--out` (default `.temp/qa/judge/judgments.jsonl`) before the page moves on. A later `serve` with the same `--out` skips pairs already judged, so a session resumes. `--seed` fixes the pair order. The server accepts writes only from its own page. Rebuild core-agent first when `serve` refuses a stale dist.
+
+`report` treats a tie as half a win and "much better" as a clear win. Rank by Bradley–Terry strength, which weighs whom a contender beat; read the win-rate interval before trusting a gap. A tag share is the fraction of a contender's judged replies that carried the tag.
 
 ### Prompt command
 
