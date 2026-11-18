@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { REPLY_MAX_TOKENS } from '@proj-airi/stage-shared/stage-contract'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { loadScenario, parseScenario } from './scenario'
+import { evaluateChecks, loadScenario, parseScenario } from './scenario'
 
 const repoRoot = fileURLToPath(new URL('../../../../../', import.meta.url))
 const owned: string[] = []
@@ -64,10 +64,26 @@ describe('parseScenario', () => {
       .toThrow('"twirl" is a dance, which needs the perform_action tool')
     expect(() => parseScenario(scenario({ prompt: { register: 'talking', exposedActions: 'wave' } }))).toThrow('expected label:kind')
   })
+
+  it('rejects a recall check past the last turn', () => {
+    expect(() => parseScenario(scenario({ checks: [{ turn: 2, any: ['x'] }] }))).toThrow('checks: turn 2 is past the last of 1 turns')
+  })
+})
+
+describe('evaluateChecks', () => {
+  it('passes a reply that names one of the words in any case, and leaves turns never reached unknown', () => {
+    const checks = [{ turn: 1, any: ['biscuit'] }, { turn: 2, any: ['beagle', 'dog'] }, { turn: 3, any: ['maya'] }]
+
+    expect(evaluateChecks({ checks }, ['His name is Biscuit!', 'A cat, I think.'])).toEqual([
+      { turn: 1, any: ['biscuit'], passed: true },
+      { turn: 2, any: ['beagle', 'dog'], passed: false },
+      { turn: 3, any: ['maya'], passed: null },
+    ])
+  })
 })
 
 describe('loadScenario', () => {
-  it.each(['general', 'general-seeded', 'relationship-stages'])('loads the committed %s scenario with the app reply cap in every config', async (id) => {
+  it.each(['general', 'general-seeded', 'relationship-stages', 'long-conversation'])('loads the committed %s scenario with the app reply cap in every config', async (id) => {
     const loaded = await loadScenario(id, repoRoot)
 
     expect(loaded.scenario.id).toBe(id)

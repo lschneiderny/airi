@@ -4,14 +4,28 @@ import { errorMessageFrom } from '@moeru/std'
 
 import * as v from 'valibot'
 
-export interface ChatMessage {
-  role: 'system' | 'user' | 'assistant'
-  content: string
+/** A tool call as an assistant message carries it back to the endpoint in a later step. */
+export interface ChatToolCall {
+  id: string
+  type: 'function'
+  function: { name: string, arguments: string }
+}
+
+export type ChatMessage
+  = | { role: 'system' | 'user', content: string }
+    | { role: 'assistant', content: string, tool_calls?: ChatToolCall[] }
+    | { role: 'tool', tool_call_id: string, content: string }
+
+/** The extra fields of an app-conditions request: the app's tools and its reply budget. */
+export interface ChatRequestExtras {
+  tools?: readonly unknown[]
+  max_tokens?: number
 }
 
 export type ChatRequestBody = ModelScenarioConfig & {
   model: string
   messages: ChatMessage[]
+  tools?: unknown[]
   stream: true
   stream_options: { include_usage: true }
 }
@@ -20,8 +34,17 @@ export type ChatRequestBody = ModelScenarioConfig & {
  * Builds the body of one chat completion request. The config keys reach the body unchanged, and the request streams
  * with usage, as the app's requests do. Every key except `model` and `messages` is a request option of the record.
  */
-export function buildChatRequest(model: string, messages: readonly ChatMessage[], config: ModelScenarioConfig): ChatRequestBody {
-  return { model, messages: [...messages], ...config, stream: true, stream_options: { include_usage: true } }
+export function buildChatRequest(model: string, messages: readonly ChatMessage[], config: ModelScenarioConfig, extras: ChatRequestExtras = {}): ChatRequestBody {
+  return {
+    model,
+    messages: [...messages],
+    // The app's reply budget applies unless the scenario config sets its own.
+    ...(extras.max_tokens === undefined ? {} : { max_tokens: extras.max_tokens }),
+    ...config,
+    ...(extras.tools?.length ? { tools: [...extras.tools] } : {}),
+    stream: true,
+    stream_options: { include_usage: true },
+  }
 }
 
 /** What one request returned. A field the endpoint did not report stays `null`. */
@@ -34,6 +57,12 @@ export interface ChatOutcome {
   text: string
   thinkingText: string
   toolCalls: { name: string, arguments: unknown }[]
+  /** The endpoint's id for each entry of `toolCalls`, which a tool result must answer; `null` when it sent none. */
+  toolCallIds: (string | null)[]
+  /** The raw argument text of each entry of `toolCalls`, as a later step sends it back. */
+  toolCallArguments: string[]
+  /** `[elapsed ms, text length]` after each text delta, so a caller can find when speech first became audible. */
+  textMarks: [ms: number, length: number][]
   finish: string | null
   usage: Record<string, unknown> | null
   error: string | null
@@ -54,6 +83,7 @@ const chunkSchema = v.object({
       reasoning_content: v.optional(v.nullable(v.string())),
       tool_calls: v.optional(v.nullable(v.array(v.object({
         index: v.optional(v.number()),
+        id: v.optional(v.nullable(v.string())),
         function: v.optional(v.object({ name: v.optional(v.nullable(v.string())), arguments: v.optional(v.nullable(v.string())) })),
       })))),
     })),
@@ -78,8 +108,8 @@ function errorText(value: unknown): string {
  * the failure is kept. It sends no credentials.
  */
 export async function requestChat(baseUrl: string, body: string, timeoutMs: number): Promise<ChatOutcome> {
-  const outcome: ChatOutcome = { status: null, id: null, model: null, systemFingerprint: null, text: '', thinkingText: '', toolCalls: [], finish: null, usage: null, error: null, ttftMs: null, totalMs: 0 }
-  const calls: { name: string, arguments: string }[] = []
+  const outcome: ChatOutcome = { status: null, id: null, model: null, systemFingerprint: null, text: '', thinkingText: '', toolCalls: [], toolCallIds: [], toolCallArguments: [], textMarks: [], finish: null, usage: null, error: null, ttftMs: null, totalMs: 0 }
+  const calls: { id: string | null, name: string, arguments: string }[] = []
   const started = performance.now()
   try {
     const response = await fetch(`${baseUrl.replace(/\/+$/, '')}/chat/completions`, {
@@ -123,10 +153,14 @@ export async function requestChat(baseUrl: string, body: string, timeoutMs: numb
           const reasoning = delta?.reasoning ?? delta?.reasoning_content
           if (delta?.content || reasoning || delta?.tool_calls?.length)
             outcome.ttftMs ??= Math.round(performance.now() - started)
-          outcome.text += delta?.content ?? ''
+          if (delta?.content) {
+            outcome.text += delta.content
+            outcome.textMarks.push([Math.round(performance.now() - started), outcome.text.length])
+          }
           outcome.thinkingText += reasoning ?? ''
           for (const [position, call] of (delta?.tool_calls ?? []).entries()) {
-            const entry = calls[call.index ?? position] ??= { name: '', arguments: '' }
+            const entry = calls[call.index ?? position] ??= { id: null, name: '', arguments: '' }
+            entry.id ??= call.id ?? null
             entry.name += call.function?.name ?? ''
             entry.arguments += call.function?.arguments ?? ''
           }
@@ -155,7 +189,10 @@ export async function requestChat(baseUrl: string, body: string, timeoutMs: numb
     outcome.error = [errorMessageFrom(error) ?? 'request failed', cause].filter(Boolean).join(': ')
   }
   outcome.totalMs = Math.round(performance.now() - started)
-  outcome.toolCalls = calls.filter(Boolean).map((call) => {
+  const present = calls.filter(Boolean)
+  outcome.toolCallIds = present.map(call => call.id)
+  outcome.toolCallArguments = present.map(call => call.arguments)
+  outcome.toolCalls = present.map((call) => {
     try {
       return { name: call.name, arguments: JSON.parse(call.arguments) }
     }

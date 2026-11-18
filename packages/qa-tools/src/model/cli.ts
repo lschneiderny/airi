@@ -6,13 +6,15 @@ import { errorMessageFrom } from '@moeru/std'
 
 import { runJudgeCli } from './judge/command'
 import { runPromptCli } from './prompt'
+import { runCaptureCli } from './run/capture-command'
 import { runRunCli } from './run/command'
 import { runScoreCli } from './score/command'
 
 export const modelUsage = `Usage: pnpm qa:model <command> [options]
 
 Commands:
-  run --scenario <id|file.json> --base-url <url> --model <id> [--config <name>] [--history raw|canonical] [--out <dir>] [--machine-label <l>] [--json]  run a scenario against a live OpenAI-compatible chat endpoint and record the replies
+  run --scenario <id|file.json> --base-url <url> --model <id> [--config <name>] [--history raw|canonical|accepted] [--reasoning none|low|medium|high] [--app-request <file> [--max-steps <n>]] [--out <dir>] [--machine-label <l>] [--json]  run a scenario against a live OpenAI-compatible chat endpoint and record the replies
+  capture <qa:app run dir|requests.jsonl> --out <file>  save the app's system prompt and tools for run --app-request
   score <transcripts.jsonl> [--set <id>] [--label <l>] [--exposed-actions <label:kind,...>]  score a transcript file with the real runtime replay
   prompt [--locale en] [--card <file>] [--full <fixture>] [--exposed-actions <label:kind,...>] [--json]  print the system prompt the app sends and its hashes
   judge serve <transcripts|run dir|set id>... [--out <f>] [--judge <l>] [--contenders <a,b>] [--port <n>] [--seed <n>]  judge replies blind, two at a time, in a local page
@@ -32,6 +34,7 @@ export interface ModelCliIo {
     prompt: ModelCommandHandler
     score: ModelCommandHandler
     judge: ModelCommandHandler
+    capture: ModelCommandHandler
   }
   stdout?: (text: string) => void
   stderr?: (text: string) => void
@@ -59,6 +62,7 @@ export async function runModelCli(
     prompt: runPromptCli,
     score: runScoreCli,
     judge: runJudgeCli,
+    capture: runCaptureCli,
   }
 
   const [command, ...rest] = argv

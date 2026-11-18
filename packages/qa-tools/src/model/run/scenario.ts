@@ -65,6 +65,14 @@ export const ModelScenarioSchema = v.strictObject({
     v.check(configs => Object.keys(configs).length > 0, 'define at least one config'),
   ),
   turns: v.pipe(v.array(v.pipe(v.string(), v.trim(), v.nonEmpty())), v.minLength(1)),
+  /**
+   * Recall checks: the reply to `turn` (1-based) passes when it contains one of `any`, ignoring case and cues. Use them
+   * to ask late in a long conversation for facts stated early, where a context overflow or a weak model forgets them.
+   */
+  checks: v.optional(v.array(v.strictObject({
+    turn: v.pipe(v.number(), v.integer(), v.minValue(1)),
+    any: v.pipe(v.array(v.pipe(v.string(), v.trim(), v.nonEmpty())), v.minLength(1)),
+  }))),
 })
 export type ModelScenario = v.InferOutput<typeof ModelScenarioSchema>
 
@@ -99,7 +107,30 @@ export function parseScenario(value: unknown): { scenario: ModelScenario, expose
   const needsTool = exposedActions.find(action => action.kind !== 'gesture')
   if (needsTool)
     throw new Error(`prompt.exposedActions: ${JSON.stringify(needsTool.label)} is a ${needsTool.kind}, which needs the perform_action tool; a run sends no tools, so expose gestures only`)
+  const outside = scenario.checks?.find(check => check.turn > scenario.turns.length)
+  if (outside)
+    throw new Error(`checks: turn ${outside.turn} is past the last of ${scenario.turns.length} turns`)
   return { scenario, exposedActions }
+}
+
+export interface CheckResult {
+  turn: number
+  any: string[]
+  /** The reply's spoken text contained one of `any`; `null` when the conversation ended before that turn. */
+  passed: boolean | null
+}
+
+/**
+ * Applies a scenario's recall checks to the spoken text of one conversation's replies, given in turn order.
+ *
+ * Returns:
+ * - One result per check, in the scenario's order.
+ */
+export function evaluateChecks(scenario: Pick<ModelScenario, 'checks'>, spokenByTurn: readonly string[]): CheckResult[] {
+  return (scenario.checks ?? []).map((check) => {
+    const spoken = spokenByTurn[check.turn - 1]
+    return { turn: check.turn, any: check.any, passed: spoken === undefined ? null : check.any.some(word => spoken.toLowerCase().includes(word.toLowerCase())) }
+  })
 }
 
 /**

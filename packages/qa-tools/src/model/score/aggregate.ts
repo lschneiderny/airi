@@ -82,6 +82,11 @@ export interface RunScore {
     warmTtftMs: number | null
     /** Client-measured decode speed: completion tokens over the time from the first token to the end of the stream. */
     decodeTps: number | null
+    /**
+     * Mean time to the first spoken character of later turns, from records that measured it. Above `warmTtftMs` by the
+     * time a reply spends streaming an opening cue before it says anything.
+     */
+    warmFirstSpeechMs: number | null
     /** Mean `usage.prompt_tokens`, to compare with the server's context size and to spot truncation. */
     meanPromptTokens: number | null
   } | null
@@ -157,6 +162,7 @@ export function aggregateRun(
     const ttfts: number[] = []
     const coldTtfts: number[] = []
     const warmTtfts: number[] = []
+    const warmSpeech: number[] = []
     const totals: number[] = []
     const promptTokens: number[] = []
     let decodeTokens = 0
@@ -234,6 +240,9 @@ export function aggregateRun(
         if (record.conversation.turn !== null)
           (record.conversation.turn === 1 ? coldTtfts : warmTtfts).push(ttftMs)
       }
+      const speechMs = record.timing.firstSpeechMs
+      if (typeof speechMs === 'number' && record.conversation.turn !== null && record.conversation.turn > 1)
+        warmSpeech.push(speechMs)
       if (totalMs !== null)
         totals.push(totalMs)
       const completionTokens = record.usage?.completion_tokens
@@ -266,6 +275,7 @@ export function aggregateRun(
         coldTtftMs: mean(coldTtfts),
         warmTtftMs: mean(warmTtfts),
         decodeTps: decodeMs ? decodeTokens / (decodeMs / 1000) : null,
+        warmFirstSpeechMs: mean(warmSpeech),
         meanPromptTokens: mean(promptTokens),
       }
     }

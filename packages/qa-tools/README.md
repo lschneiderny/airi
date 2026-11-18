@@ -545,10 +545,11 @@ Every root `qa:*` script runs its entry directly with `node --import tsx`, from 
 | `pnpm qa:stage handoff --model <MMD model> [--seconds 120] --out <json>` | Launch the desktop stage on a fresh profile and walk her to another display and back. It needs a session with more than one display. See [Stage gates](#stage-gates). |
 | `pnpm qa:stage gate <json> [<json>...]` | Judge stage evidence with `stage-walk-skate`, `stage-arm-penetration`, `stage-frame-budget`, `stage-gesture-walk`, `stage-action-preempt`, and `stage-handoff`. |
 | `pnpm qa:model prompt [--locale en] [--card <file>] [--full <fixture.json>] [--exposed-actions <label:kind,...>] [--json]` | Print the application's system prompt; JSON mode includes the prompt and contract hashes and contract version. `--full` adds the tail segments of a fixture file. `--exposed-actions` adds the `actions` segment for the listed clips (see below). |
-| `pnpm qa:model run --scenario <id\|file.json> --base-url <url> --model <id> [--config <name>] [--history raw\|canonical] [--out <dir>] [--machine-label <label>] [--json]` | Run a scenario against a live OpenAI-compatible chat endpoint and record each reply as a transcript record with its request options and provenance (see [Live runs](#live-runs-m2)). |
+| `pnpm qa:model run --scenario <id\|file.json> --base-url <url> --model <id> [--config <name>] [--history raw\|canonical\|accepted] [--reasoning none\|low\|medium\|high] [--app-request <file> [--max-steps <n>]] [--out <dir>] [--machine-label <label>] [--json]` | Run a scenario against a live OpenAI-compatible chat endpoint and record each reply as a transcript record with its request options and provenance (see [Live runs](#live-runs-m2)). |
 | `pnpm qa:model score <transcripts.jsonl> [--set <id>] [--label <l>] [--example-lines-from <file>] [--exposed-actions <label:kind,...>] [--json]` | Score saved replies through the real chat runtime and stage controller, then write reply, JSON summary, and Markdown summary artifacts. |
 | `pnpm qa:model judge serve <transcripts.jsonl\|run dir\|set id>... [--out <file>] [--judge <label>] [--contenders <a,b,...>] [--port <n>] [--seed <n>]` | Serve a local page that shows two contenders' replies to the same turn side by side, blind, and append each verdict to a JSONL file (see [Persona judging](#persona-judging-m4)). |
 | `pnpm qa:model judge report <judgments.jsonl>... [--json]` | Rank contenders from saved judgments: win rate with a 95% interval, Bradley–Terry strength, tag shares, and head-to-head counts. |
+| `pnpm qa:model capture <qa:app run dir\|requests.jsonl> --out <file>` | Save the system prompt and tools of the app's first chat request, for `run --app-request` (see [App conditions](#app-conditions)). |
 | `pnpm qa:model help` | Print the model-evaluation command usage. |
 | `pnpm qa:character simulate --scenario <name\|file.json> [--days <n>] [--seed <n>] [--json]` | Drive the pure character-state core through a scenario, check the plan's Appendix A10 invariants, and print a daily table or JSON. An invariant violation exits 1. |
 | `pnpm qa:character render --stage <stranger\|friendly\|close\|intimate> [--mood <bucket words>]` | Print the exact `system:character` text for a relationship stage and optional mood buckets. |
@@ -683,7 +684,7 @@ When any scorer definition changes, bump `CUE_CONTRACT_SCORER.version` in the sa
 The first real runs, of `granite4:latest` on 2026-11-10, are committed as the `live-2026-11-10-granite4-general` and `live-2026-11-10-granite4-relationship-stages` sets. Every test uses the replay server as the endpoint.
 
 ```bash
-pnpm qa:model run --scenario <id|file.json> --base-url <url> --model <id> [--config <name>] [--history raw|canonical] [--out <dir>] [--machine-label <label>] [--json]
+pnpm qa:model run --scenario <id|file.json> --base-url <url> --model <id> [--config <name>] [--history raw|canonical|accepted] [--reasoning none|low|medium|high] [--app-request <file> [--max-steps <n>]] [--out <dir>] [--machine-label <label>] [--json]
 ```
 
 | Option | Meaning |
@@ -692,7 +693,10 @@ pnpm qa:model run --scenario <id|file.json> --base-url <url> --model <id> [--con
 | `--base-url` | An OpenAI-compatible base URL. The run posts to `<base-url>/chat/completions`. It sends no credentials and refuses a URL that contains them. |
 | `--model` | The model id to request. |
 | `--config` | A config name from the scenario. The default is `default`. |
-| `--history` | How an earlier reply joins the history of the next request. `raw`, the default, sends it as the model wrote it, so runs of the committed sets reproduce. `canonical` sends it as the app does: core-agent's `canonicalCueText` gives recovered near-miss cues their `<\|NAME body\|>` form and leaves out stripped markup. A canonical run adds `+canonical-history` to the config name in its records, so the two modes never share a run key or a summary row. |
+| `--history` | How an earlier reply joins the history of the next request. `raw`, the default, sends it as the model wrote it, so runs of the committed sets reproduce. `canonical` sends it as the app does: core-agent's `canonicalCueText` gives recovered near-miss cues their `<\|NAME body\|>` form and leaves out stripped markup. `accepted` keeps only the markers the stage accepts (cues the stage controller parses, MOOD, SILENT, and stickers). The app does not send this; use it to measure how far an unknown marker such as `<\|look: you\|>` spreads when it stays in the history. A non-raw run adds `+<mode>-history` to the config name in its records, so the modes never share a run key or a summary row. |
+| `--reasoning` | Overrides the config's `reasoning_effort`. Use `none` to run a thinking model as the app's Ollama provider sends it while the Consciousness reasoning setting is off. The run adds `+reasoning-<value>` to the config name. |
+| `--app-request` | A capture from `qa:model capture`. The run sends its system prompt and tools instead of composing a prompt, and answers tool calls (see [App conditions](#app-conditions)). It adds `+app-<file name>` to the config name. |
+| `--max-steps` | With `--app-request`, the most requests one user turn may take while the model calls tools. The default is 5, the range 1 to 20. |
 | `--out` | The run directory. It must not exist. The default is `.temp/qa/<timestamp>-model-run-<scenario id>/`. |
 | `--machine-label` | A name for the machine that serves the model. The default is the host of the base URL. |
 | `--json` | Print `{ runDir, transcripts, replies, errors, history, contractVersion }` instead of the transcript path. |
@@ -750,6 +754,7 @@ A scenario is a JSON file that fixes everything about a run except the endpoint,
 | `stages` | Optional relationship stages. Each stage runs the turns as its own conversation, with the `system:character` text of that stage after each user message. |
 | `configs` | Named request options: `temperature`, `top_p`, `max_tokens`, `seed`, and `reasoning_effort` (`none`, `low`, `medium`, or `high`). An omitted key is not sent. A context size cannot be set here. The app's chat turns send `none` while the Consciousness reasoning setting is off, its default, so a run of a thinking model matches the app only with a `reasoning_effort: none` config. The committed scenarios omit the key, and a thinking model then reasons until it reaches `max_tokens` and may return no text. |
 | `turns` | The user turns. Each reply joins the history of the next request, as `--history` says. |
+| `checks` | Optional recall checks, `[{ "turn": 35, "any": ["biscuit"] }]`: the spoken text of that turn's reply passes when it contains one of the words, ignoring case. The run prints `recall: <passed>/<checks>` per conversation and writes `checks.json`. |
 
 The run always renders the current stage contract and composes the system prompt with the production composer, so a scenario cannot carry an old contract. It refuses to start when the rendered English contract is not `STAGE_CONTRACT_EN_SHA256`; rebuild i18n with `pnpm -F @proj-airi/i18n build`.
 
@@ -762,7 +767,24 @@ A run differs from an app request in these ways: it sends no tools, no situation
 | `coldTtftMs` | Mean time to first token of turn 1. It includes loading the model when it was not loaded, and processing the whole system prompt. |
 | `warmTtftMs` | Mean time to first token of later turns. A local server keeps it low only when it reuses the cache of the previous request; a value near `coldTtftMs` means the prompt was processed again. |
 | `decodeTps` | Completion tokens after the first, over the time from the first token to the end of the stream. A reasoning model's hidden tokens count, since `usage.completion_tokens` includes them. |
-| `promptTok` | Mean `usage.prompt_tokens`, to compare with the server's context size. |
+| `warmSpeechMs` | Mean time to the first spoken character of later turns: the first text delta after which the core-agent runtime has speech to hand to text-to-speech. A reply that opens with a long JSON ACT cue streams for a while before it says anything, so this is the wait a listener hears. Live runs record it per reply as `timing.firstSpeechMs`. |
+| `promptTok` | Mean `usage.prompt_tokens`, to compare with the server's context size. With `--app-request`, it is the prompt size of the turn's first request. |
+
+The `long-conversation` scenario is one 50-turn evening conversation that states facts early and asks for them in turns 35 to 40, with a recall check for each. Use it to measure recall, drift, repetition, and latency growth as the history fills the server's context. Ollama drops the oldest messages without an error once the prompt exceeds its context; a failed recall check with a `promptTok` near the context size is that loss.
+
+#### App conditions
+
+A plain run sends a smaller request than the app (see above), and on 2026-11-18 one model's parsed-cue rate was 88% in a plain run and 16% in the app's own request. To run under the app's conditions, capture the system prompt and tools of a real app request, then pass the capture to `run`:
+
+```bash
+pnpm qa:app run --model packages/stage-ui/src/assets/live2d/models/hiyori_pro_zh.zip --script packages/qa-tools/fixtures/llm/example.json
+pnpm qa:model capture .temp/qa/<timestamp>-app-experience --out .temp/qa/app-requests/hiyori.json
+pnpm qa:model run --scenario general-seeded --config seed-1 --base-url http://127.0.0.1:11434/v1 --model <model> --app-request .temp/qa/app-requests/hiyori.json --reasoning none --history canonical
+```
+
+`capture` reads a replay request log (a `qa:app` run directory, or a `qa:llm --log` file) and saves the first chat request whose first message is a system message: its system prompt, its tools, and its `max_tokens`, with their hashes (`airi.app-request/v1`). Capture from a fresh `qa:app` profile only. A capture from a personal profile holds that profile's memory and card. A capture carries the stage contract of the build it came from, so `run` refuses one that lacks the current contract; capture again after a contract change. `run` also refuses a capture whose text no longer matches its hashes.
+
+Under `--app-request`, the scenario's `prompt` fields are not used. Each request carries the captured tools and `max_tokens` (a config's own `max_tokens` wins). When the model calls a tool, the run answers it with a stub and asks again, up to `--max-steps` requests per turn. The memory tools keep a store for one conversation; every other tool reports `{"ok":true}`. The turn's record holds the text of every step in order, every tool call, the number of steps, the first step's time to first token, and the summed time. `requests.jsonl` holds each step's body, with a `step` number. The next turn's history holds the turn's words as one assistant message, without its tool rounds. Records carry `generation.withTools: true`, `prompt.toolsSha256`, and `live.appRequest` (the capture's source and hashes). The run still sends no situation block and no control events, so per-request events that change the prompt are measured by `qa:model probe cache-events`.
 
 ### Persona judging (M4)
 

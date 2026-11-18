@@ -157,7 +157,7 @@ describe('aggregateRun', () => {
       residualReplies: 1,
       chunkVariant: 1,
       style: { emoji: 1, stageDirection: 2, firstLetterLower: 2, personaFace: 2, aiBreak: 2, exampleEcho: 2, meanWords: 6 },
-      timing: { replies: 2, meanTtftMs: 100, meanTotalMs: 2000, genTps: 30, coldTtftMs: 100, warmTtftMs: null, decodeTps: 10, meanPromptTokens: 900 },
+      timing: { replies: 2, meanTtftMs: 100, meanTotalMs: 2000, genTps: 30, coldTtftMs: 100, warmTtftMs: null, decodeTps: 10, warmFirstSpeechMs: null, meanPromptTokens: 900 },
       legacy: legacyScoreReplies([first, second]),
     }])
   })
