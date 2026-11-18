@@ -13,7 +13,7 @@ const intents = mind.receive({ kind: 'emotion', source: 'act', emotion: 'happy',
 ```
 
 - `step(state, stimuli, nowMs, rng)` is the core. It is a pure function over `MindState`, which is plain JSON. `nowMs` is epoch milliseconds and must not run backwards between calls.
-- `CharacterMind` is the shell. It owns the clock, the random source, and the state, and it never passes the core an earlier time than the last one. It persists nothing: every mind starts from `initialMindState`.
+- `CharacterMind` is the shell. It owns the clock, the random source, and the state, and it never passes the core an earlier time than the last one. It persists nothing: every mind starts from `initialMindState()`.
 - `seededRandom(seed)` is the shell's random source: the same seed gives the same draws.
 
 ### Stimuli and intents
@@ -32,7 +32,7 @@ The mind decides the emotion, its strength, its hold, and the reason. It reads n
 
 Every stimulus advances `MindState.seq`. An intent's `cause` is the sequence number of the stimulus it answers, and its `id` is unique within one mind.
 
-The emotion and voice rules still keep their own random checkpoints, so `initialMindState` takes the seed and `step` does not draw from `rng` yet.
+Every draw comes from `rng`, in the order of the stimuli: one for the jitter of each new emotion episode, and one for each spoken touch reaction that reaches its roll. `MindState` holds no random source, so a replay needs the same state and the same draws.
 
 `nowMs` reaches `reactionPolicy` as milliseconds and `touchAffect` and `acceptReaction` as seconds (`nowMs / 1000`). `MindState` is fast state: nothing is saved, so the pacing of touch doses and spoken reactions starts over with every mind.
 

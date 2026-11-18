@@ -1,4 +1,4 @@
-import type { MindIntent, MindState, MindStimulus } from './types'
+import type { MindIntent, MindRandom, MindState, MindStimulus } from './types'
 
 import { touchAffect } from '@proj-airi/stage-shared/expression-performance'
 import { reactionPolicy, settleReaction } from '@proj-airi/stage-shared/situation'
@@ -14,7 +14,7 @@ interface Answer { state: MindState, intents: MindIntent[] }
  * - Voice: for a poke or a finished pet with a voice view, `reactionPolicy` decides whether she says a line. The
  *   decision is kept either way. Without a view nobody could speak the line, so the voice state is untouched.
  */
-export function answerTouch(state: MindState, stimulus: Stimulus<'touch'>, cause: number, nowMs: number): Answer {
+export function answerTouch(state: MindState, stimulus: Stimulus<'touch'>, cause: number, nowMs: number, rng: MindRandom): Answer {
   const intents: MindIntent[] = []
   if (stimulus.gesture === 'poke')
     intents.push({ id: `${cause}-touch-reaction`, cause, channel: 'posture', kind: 'touch-reaction', gesture: 'poke', region: stimulus.region, point: stimulus.point })
@@ -34,7 +34,7 @@ export function answerTouch(state: MindState, stimulus: Stimulus<'touch'>, cause
   if (stimulus.gesture !== 'pet-start') {
     intents.push({ id: `${cause}-moment`, cause, channel: 'face', kind: 'moment', moment: stimulus.gesture === 'poke' ? 'poked' : 'petted' })
     if (stimulus.voice) {
-      const { decision, memory } = reactionPolicy({ nowMs, gesture: stimulus.gesture === 'poke' ? 'poke' : 'pet', view: stimulus.voice }, voice.reaction)
+      const { decision, memory } = reactionPolicy({ nowMs, gesture: stimulus.gesture === 'poke' ? 'poke' : 'pet', view: stimulus.voice }, voice.reaction, rng)
       voice = { reaction: memory, lastDecision: decision }
       if (decision.speak)
         intents.push({ id: `${cause}-speak`, cause, channel: 'voice', kind: 'speak', line: decision.kind, eventId: decision.eventId })
