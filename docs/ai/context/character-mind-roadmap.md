@@ -16,7 +16,7 @@ This page tracks the order and status of the work that moves the client to the t
 | --- | --- | --- | --- | --- |
 | 0a | Support scope, policy docs, tooling cleanup (`luke/refactor/lock-in`) | | Merged to `main` | Done (`dfe5a2ead`) |
 | 0b | This roadmap, the character mind ADR, and the policy Target sections (`luke/docs/character-mind-direction`) | 0a | Merged to `main` | Done (`80c1b759d`) |
-| 1 | Upstream sync (see [Upstream sync](#upstream-sync)) | 0a, 0b | `main` contains `upstream/main` as of the sync; the policy ledger exists; the fork runs upstream's per-package `test:run` | Not started |
+| 1 | Upstream sync (see [Upstream sync](#upstream-sync)) | 0a, 0b | `main` contains `upstream/main` as of the sync; the policy ledger exists; the fork runs upstream's per-package `test:run` | Done on 2026-11-18: merges `4b1e405a4`, `9d9b45354`, `14c763cfb`, and `e259d4c6e` bring upstream through `b3a6d6071` |
 | CM1 | Touch, and with it the mind's pure core, its types, and the shell that calls it in-process in the window that hosts the stage. Decides where the mind lives together with whether `stage-shared` is renamed or split (architecture audit R5) | 1 | Autonomous behavior overlap 4 closed under Natural: one touch gets one coordinated response that keeps the touch rulings in the autonomous-behavior Target. The expression decider splits: emotion in the mind, asset choice in each performer. Core tests run with a seeded random source and no Vue; the package decision is recorded | Not started |
 | CM2 | Return and desktop events | CM1 | Overlap 6 closed | Not started |
 | CM3 | Voice channel: the urge gate and spoken reactions become the mind's voice policy. States the responsibility boundary of `chat.ts` and the orchestrator runtime (audit R11): the mind decides to speak, chat runs the turn | CM1, V | Overlaps 3 and 10 closed; Autonomous behavior Target rule 9 and LLM prompt Target rule 6 land; widget and plugin turns go through the voice policy with the model's veto, the caller always gets the outcome, and a turn not spoken before the caller's timeout falls back to the notify route; the voice rulings hold; the chat boundary is written in the stage-ui guide | Not started |
@@ -48,35 +48,34 @@ Tuning a behavior that a slice is about to rewrite is wasted work. Feature and t
 
 ## Upstream sync
 
-The sync merges upstream in steps on one `luke/chore/upstream-sync` branch. Each step is a real merge of an upstream commit, resolved and checked on the branch before the next step starts. `main` takes the finished branch by fast-forward, never through a GitHub PR, because a rebase merge would rewrite upstream's commits.
+The sync merged upstream in four steps on the `luke/chore/upstream-sync` branch. Each step is a real merge of the last upstream commit of a day on `upstream/main`'s first-parent history, resolved and checked before the next step started. `main` takes the finished branch by fast-forward, never through a GitHub PR, because a rebase merge would rewrite upstream's commits.
 
-| Step | Merge upstream as of | Upstream commits in step |
-| --- | --- | --- |
-| 1.1 | 2026-10-23 | about 114 |
-| 1.2 | 2026-10-29 | about 100 |
-| 1.3 | 2026-11-04 | about 115 |
-| 1.4 | `upstream/main` at sync time | the rest |
+| Step | Upstream commit | Merge upstream as of | Upstream commits in step | Merge commit |
+| --- | --- | --- | --- | --- |
+| 1.1 | `6874cecc2` | 2026-10-23 | 114 | `4b1e405a4` |
+| 1.2 | `ae9dfe5ec` | 2026-10-29 | 101 | `9d9b45354` |
+| 1.3 | `120cad3a7` | 2026-11-04 | 117 | `14c763cfb` |
+| 1.4 | `b3a6d6071` | 2026-11-18, upstream's tip | 107 | `e259d4c6e` |
 
-For each step, merge the last upstream commit of that day on `upstream/main`'s first-parent history. Then:
+The [upstream policy ledger](upstream-policy.md) lists every departure the sync made and the procedure for the next sync. Each merge commit message records that step's resolutions.
 
-1. Resolve conflicts by area. A path the fork retired stays deleted. A policy file follows the policy split in `.omo/plans/fork-policy-and-tooling.md` (decision D2). The client stage code follows the character mind ADR's decision 14.
-2. Run `pnpm install` and `pnpm verify --gate`.
-3. Record notable resolutions in the merge commit message.
+The sync adopted upstream's recipes, decisions, background tasks, chat notices, and scene sessions, which the memory adoption plan had kept out. Upstream has no trigger for auto-run recipes yet. A trigger that makes her speak unasked stays out: the mind's voice channel is the only decider for unasked speech.
 
-Use `git mv` for every move during the sync, so history survives later syncs. Upstream automations and recipes that make her speak stay out: the mind's voice channel is the only decider for unasked speech (memory adoption plan D3).
+Upstream features that collide with the target arrived in these steps. Under ADR decision 14 each is adopted: the merge takes upstream's version, and the slice that rewrites the behavior builds beside it or redesigns around it. The last column says what the sync did. Where it departs from plain adoption, the ledger records the reason.
 
-Upstream features that collide with the target arrive in these steps. Under ADR decision 14 each is adopted: the merge takes upstream's version, and the slice that rewrites the behavior builds beside it or redesigns around it. A step that departs from that records the reason in the ledger.
-
-| Upstream change | Step | Collides with | Ruling |
+| Upstream change | Step | Collides with | What the sync did |
 | --- | --- | --- | --- |
-| `259b6188a` Live2D taps and head pats (#3292): a touch module in `stage-ui-live2d` | 1.3 | A second touch decider beside Natural's pet and poke layers; CM1 | Adopt |
-| `84df1c2df` MAGIC motion turns toward the cursor (#3285) | 1.3 | Cursor attention under Natural; CM6 | Adopt |
-| `543d8dfe3` Beat Sync on top of MAGIC poses and on one clock (#3420) | 1.4 | Beat sync, which stays for the upstream drivers and leaves Natural in CM5; overlaps 1 and 2 may be partly closed upstream | Adopt |
-| `2026-11-13-chat-selects-character.md` (proposed ADR) | 1.4 | Which character the mind belongs to; one mind per character (ADR decision 1) | Adopt |
-| `1c010856b` display model settings per model (#3544): about 80 keys in five renderers move under `settings/models/<model id>/<renderer>/` | 1.4 | The Members table of the state persistence doc; the registry (step S); the character-behavior settings document (ADR decision 11) | Adopt |
-| `2026-11-11-module-defaults-and-character-values.md` (proposed ADR) | 1.4 | The character-behavior settings document (ADR decision 11) | Adopt |
-
-After the last step: write `docs/ai/context/upstream-policy.md`, adopt upstream's per-package `test:run` (plan decision D5), run `pnpm verify --gate` and `pnpm qa:display run -- pnpm qa:smoke`, then fast-forward `main`.
+| `c4048b6fa` Live2D expression store and controller deleted; card-owned controls and a Live2D context replace them | 1.1 | The fork's expression store, controller, panel, reactions, combos, rest look, and string ACT label; CM1 | Kept the fork's system and merged upstream's context in beside it (owner ruling 2026-11-17). CM1 reconciles the two |
+| Recipes, decisions, background tasks, chat notices, and scene sessions | 1.1 | The voice channel as the only decider for unasked speech; CM3 | Adopted. Background task, scene, and notice turns do not count as the owner or the character speaking in the situation sensors, the character state, or the presence record |
+| Update feed: the updater reads upstream's release store with upstream's key | 1.2 | Nothing in the target; a fork build must not install upstream's bundles | Departed: updates are off unless a build sets its own feed and key |
+| `259b6188a` Live2D taps and head pats (#3292): a touch module in `stage-ui-live2d` | 1.3 | A second touch decider beside Natural's pet and poke layers; CM1 | Adopted under Universal and MAGIC. Under Natural the fork's pet, poke, touch regions, and spoken reaction stay the only response |
+| `84df1c2df` MAGIC motion turns toward the cursor (#3285) | 1.3 | Cursor attention under Natural; CM6 | Adopted, under MAGIC only |
+| `543d8dfe3` Beat Sync on top of MAGIC poses and on one clock (#3420) | 1.4 | Beat sync, which stays for the upstream drivers and leaves Natural in CM5; overlaps 1 and 2 | Adopted for the upstream drivers; the new layer is inactive under Natural |
+| Error reporting through Sentry (#3458) | 1.4 | Nothing in the target; a fork build must not report to upstream | Departed: reports are off unless a build sets its own DSN, and an unset switch means off |
+| The unstorage migration for IndexedDB repositories | 1.4 | The state registry (step S); the per-card character-state record (CM4) | Adopted. Fork-only repositories, the character-state repository among them, move to mounts on the same database and store, and old records still read |
+| `2026-11-13-chat-selects-character.md` (proposed ADR) | 1.4 | Which character the mind belongs to; one mind per character (ADR decision 1) | Adopted with its code |
+| `1c010856b` display model settings per model (#3544): the keys of five renderers move under `settings/models/<model id>/<renderer>/` | 1.4 | The Members table of the state persistence doc; the registry (step S); the character-behavior settings document (ADR decision 11) | Adopted. The fork's MMD motion driver and clip metadata move the same way; stance slots, clip curation, stage character height, and roam mode stay global. Live2D, Spine, and VRM keep the fork's defaults |
+| `2026-11-11-module-defaults-and-character-values.md` (proposed ADR) | 1.4 | The character-behavior settings document (ADR decision 11) | Adopted with its code |
 
 ## Open questions
 
