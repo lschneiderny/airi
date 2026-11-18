@@ -2,7 +2,7 @@
 
 ## Purpose
 
-A local broker that limits how many CPU-heavy developer processes run at once on one machine. Verify steps, QA gates, Vitest runs, and Turbo tasks from every worktree draw slots from one shared budget, which defaults to 12. A process waits for a grant before it starts.
+A local broker that limits how many CPU-heavy developer processes run at once on one machine. Verify steps, QA gates, Vitest runs, and Turbo tasks from every worktree draw slots from one shared budget, which defaults to 12, or less on machines with limited memory. A process waits for a grant before it starts.
 
 This is a developer coordination tool. It is not an operating-system CPU quota, and it does not limit long-running development servers.
 
@@ -35,7 +35,7 @@ A lease lasts as long as its workload. A registered process, or any descendant o
 
 ## Environment
 
-- `AIRI_CPU_BUDGET`: total slots. Defaults to 12. A value must be a positive safe integer, or the broker throws `CpuSlotsError('bad-budget')`.
+- `AIRI_CPU_BUDGET`: total slots. Without it, the budget is 12, lowered until the shared ceiling (the budget plus a quarter, used while CPU pressure is idle) fits in memory. Each slot is assumed to use 3 GiB, and 10 GiB stays reserved for everything else, so 32 GiB gets 6. An explicit value is used as given, without the memory limit. A value must be a positive safe integer, or the broker throws `CpuSlotsError('bad-budget')`.
 - `AIRI_CPU_SLOTS_DIR`: store location. Without it, the store is `airi-cpu-slots` under `LOCALAPPDATA` on Windows, or under the temp directory elsewhere.
 - `AIRI_CPU_SLOTS_HISTORY_DIR`: persistent history directory. Defaults to `$XDG_STATE_HOME/airi-cpu-slots`, or `~/.local/state/airi-cpu-slots` when unset. On Windows it defaults to `%LOCALAPPDATA%\airi-cpu-slots\history`.
 - `AIRI_CPU_PRESSURE_FILE`: CPU PSI input, defaulting to `/proc/pressure/cpu` on Linux. An explicit override works on any platform. Missing, unreadable, or malformed input disables pressure admission and keeps the normal budget rules.
