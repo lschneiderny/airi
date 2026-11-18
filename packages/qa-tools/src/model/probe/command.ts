@@ -211,6 +211,20 @@ async function overflow(target: ProbeTarget, sizes: string, progress: (line: str
   }
 }
 
+const LoadedModelsSchema = v.object({ models: v.array(v.object({ name: v.string() })) })
+
+/** Models loaded on the default Ollama server, or none when it does not answer. */
+async function loadedOnMainServer(): Promise<string[]> {
+  try {
+    const response = await fetch('http://127.0.0.1:11434/api/ps', { signal: AbortSignal.timeout(2000) })
+    const parsed = v.safeParse(LoadedModelsSchema, await response.json())
+    return parsed.success ? parsed.output.models.map(model => model.name) : []
+  }
+  catch {
+    return []
+  }
+}
+
 async function serverSweep(values: { 'context': string, 'scenario'?: string, 'config'?: string, 'variant'?: string[], 'app-request'?: string, 'reasoning'?: string, 'ollama-bin'?: string }, model: string, repoRoot: string, env: NodeJS.ProcessEnv, outDir: string, progress: (line: string) => void) {
   if (!values.scenario || !values.config)
     throw new Error('server-sweep needs --scenario and --config: each variant runs one conversation')
@@ -224,6 +238,9 @@ async function serverSweep(values: { 'context': string, 'scenario'?: string, 'co
     throw new Error('two variants share a label')
   const runArgs = ['--scenario', values.scenario, '--config', values.config, ...(values['app-request'] === undefined ? [] : ['--app-request', values['app-request']]), ...(values.reasoning === undefined ? [] : ['--reasoning', values.reasoning])]
   const binary = ollamaBinary(values['ollama-bin'])
+  const busy = await loadedOnMainServer()
+  if (busy.length)
+    progress(`the main Ollama server holds ${busy.join(', ')}; unload it first, or every variant shares its memory`)
   const rows = []
   for (const variant of variants)
     rows.push(await runVariant(variant, { repoRoot, env, binary, model, runArgs, outDir, progress }))
@@ -232,6 +249,7 @@ async function serverSweep(values: { 'context': string, 'scenario'?: string, 'co
     rows,
     notes: [
       'Each variant ran on its own private server, one after another. A model loaded on another server at the same time shares the memory and slows every variant.',
+      ...(busy.length ? [`The main Ollama server held ${busy.join(', ')} during the sweep, so its memory and speed figures are low.`] : []),
       ...rows.filter(row => row.maxPromptTokens !== null && row.load?.contextLength != null && row.maxPromptTokens >= row.load.contextLength).map(row => `${row.label}: a prompt of ${row.maxPromptTokens} tokens filled the ${row.load!.contextLength}-token context, so the server cut it and the row does not show the app's conditions.`),
     ],
     table: table(['Variant', 'env', 'exit', 'GPU GiB', 'CPU weights GiB', 'context', 'flash attn', 'cache k', 'cold TTFT s', 'warm TTFT s', 'warm speech s', 'mean total s', 'decode tok/s'], rows.map(row => [
