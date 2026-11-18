@@ -29,11 +29,18 @@ export const STAGE_RUNTIME_CONFIG = { declineMarker: '<|SILENT|>', recoverCueNam
 export const STAGE_CONTRACT_KEYS = { emotion: 'base.prompt.emotion', mood: 'base.prompt.mood', emoji: 'base.prompt.emoji', response: 'base.prompt.response' } as const
 
 /**
- * Output token cap of one model request on a chat turn. It backs the reply-shape rules of the contract: a reply
- * that obeys them stays far below it, so it binds only when the model ignores them. Providers decide whether
- * reasoning tokens count toward it; a thinking model that counts them can hit the cap before it speaks.
+ * Output token cap of one model request on a chat turn that does not reason. It backs the reply-shape rules of the
+ * contract: a reply that obeys them stays far below it, so it binds only when the model ignores them. A request that
+ * may reason gets {@link REASONING_REPLY_MAX_TOKENS} instead.
  */
 export const REPLY_MAX_TOKENS = 320
+
+/**
+ * Output token cap of one model request that may reason. Providers count reasoning tokens toward the cap, and a
+ * reasoning request that hits it returns no speech or a tool call cut mid-arguments. Claude Haiku 5.5 spent 593 to
+ * 711 tokens on a turn that reasoned and wrote a memory entry, so this leaves room for that and the spoken reply.
+ */
+export const REASONING_REPLY_MAX_TOKENS = 2048
 
 /** Renders the register-neutral stage rules (cues, emotion list, MOOD cue, emoji restriction, reply shape) without reading locale or application state. */
 export function renderStageContract(t: (key: string) => string): string {

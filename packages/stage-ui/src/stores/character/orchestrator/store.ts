@@ -5,7 +5,7 @@ import type { SyncedPiniaRuntime } from 'pinia-plugin-synced'
 
 import { createSparkNotifyAgent } from '@proj-airi/core-agent/agents/spark-notify'
 import { notifyTopicKey } from '@proj-airi/stage-shared/situation'
-import { composePrompt, REPLY_MAX_TOKENS } from '@proj-airi/stage-shared/stage-contract'
+import { composePrompt } from '@proj-airi/stage-shared/stage-contract'
 import { defineStore, storeToRefs } from 'pinia'
 import { onScopeDispose, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -87,7 +87,7 @@ export const useCharacterOrchestratorStore = defineStore('character-orchestrator
           waitForTools: request.policy.waitForTools,
           toolChoice: request.policy.toolChoice,
           onStreamEvent: request.onStreamEvent,
-          maxTokens: REPLY_MAX_TOKENS,
+          maxTokens: consciousnessStore.replyMaxTokens(request.selectedChat.providerId, request.selectedChat.model),
         },
       ),
     },

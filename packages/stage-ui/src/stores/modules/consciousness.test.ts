@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { streamFrom } from '@proj-airi/core-agent'
+import { REASONING_REPLY_MAX_TOKENS, REPLY_MAX_TOKENS } from '@proj-airi/stage-shared/stage-contract'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
@@ -174,6 +175,26 @@ describe('consciousness store provider selection', () => {
     const enabledProvider = await consciousnessStore.getChatProviderInstance('openai', 'gpt-5.1')
     expect(enabledProvider.generation('gpt-5.1').config).toMatchObject({ reasoning: { effort: 'medium', summary: 'auto' } })
     expect(enabledProvider.generation('test-model').config).not.toHaveProperty('reasoning')
+  })
+
+  // Claude 5 models reason on every request through Anthropic's OpenAI-compatible endpoint, which ignores reasoning
+  // controls. Under the 320-token cap, Claude Haiku 5.5 spent the cap on reasoning and returned no speech, or a
+  // memory tool call cut mid-arguments that the endpoint refused with HTTP 400.
+  it('gives requests that may reason room for the reasoning, and keeps the short cap for the others', async () => {
+    const providerConfigStore = useProviderConfigStore()
+    providerConfigStore.ensureProvider('anthropic', 'anthropic', { apiKey: 'test-key' })
+    providerConfigStore.ensureProvider('ollama', 'ollama', { baseUrl: 'http://127.0.0.1:11434/v1/' })
+    providerConfigStore.ensureProvider('openrouter-ai', 'openrouter-ai', { apiKey: 'test-key' })
+    const consciousnessStore = useConsciousnessStore()
+    const settingsStore = useConsciousnessSettingsStore()
+
+    expect(consciousnessStore.replyMaxTokens('anthropic', 'claude-haiku-5-5')).toBe(REASONING_REPLY_MAX_TOKENS)
+    expect(consciousnessStore.replyMaxTokens('ollama', 'gemma4:e4b-it-qat')).toBe(REPLY_MAX_TOKENS)
+    expect(consciousnessStore.replyMaxTokens('openrouter-ai', 'uncatalogued-model')).toBe(REASONING_REPLY_MAX_TOKENS)
+
+    await settingsStore.setReasoning(true)
+
+    expect(consciousnessStore.replyMaxTokens('ollama', 'gemma4:e4b-it-qat')).toBe(REASONING_REPLY_MAX_TOKENS)
   })
 
   // https://github.com/moeru-ai/airi/issues/2816

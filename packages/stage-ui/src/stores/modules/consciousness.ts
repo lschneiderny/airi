@@ -1,3 +1,4 @@
+import type { ChatReasoningMode } from '@proj-airi/provider-inference'
 import type {} from 'pinia-plugin-synced'
 
 import { useLocalStorageManualReset } from '@proj-airi/stage-shared/composables'
@@ -6,6 +7,8 @@ import { defineStore } from 'pinia'
 import { computed, watch } from 'vue'
 
 import { consciousnessStorageKeys } from '../../constants/settings-storage'
+import { resolveProviderAttributes } from '../../libs/providers/attributes'
+import { replyMaxTokensFor } from '../../libs/providers/reply-max-tokens'
 import { useProviderStore } from '../providers/provider'
 import { useConsciousnessSettingsStore } from './consciousness-settings'
 
@@ -128,24 +131,35 @@ export const useConsciousnessStore = defineStore('consciousness', () => {
   }
 
   /**
+   * The reasoning mode a request to `provider` for `model` carries, or `undefined` when the provider applies its own
+   * default: the provider cannot take the mode, or OpenRouter must use the model default.
+   */
+  function requestReasoning(provider: string, model: string): ChatReasoningMode | undefined {
+    const requestModel = providersStore.getModelsForProvider(provider).find(candidate => candidate.id === model)
+    // OpenRouter applies the model default when reasoning is mandatory or the catalog does not list the model.
+    if (isOpenRouterProvider(provider) && (!requestModel || requestModel.reasoning?.mandatory === true))
+      return undefined
+    const mode: ChatReasoningMode = settingsStore.reasoning ? 'enabled' : 'disabled'
+    return providersStore.findProviderDefinition(provider)?.capabilities?.chat?.reasoning?.modes.includes(mode) ? mode : undefined
+  }
+
+  /**
    * Resolves a provider with the reasoning mode shared by every Consciousness input path.
    *
    * `model` is the model of the request. A chat turn passes the model of the session character,
    * which can differ from the selection of this store.
    */
   async function getChatProviderInstance(provider: string, model: string) {
-    const requestModel = providersStore.getModelsForProvider(provider).find(candidate => candidate.id === model)
-    const useProviderReasoningDefault = isOpenRouterProvider(provider)
-      && (!requestModel || requestModel.reasoning?.mandatory === true)
+    const reasoning = requestReasoning(provider, model)
+    return reasoning === undefined
+      ? providersStore.getChatProviderInstance(provider)
+      : providersStore.getChatProviderInstance(provider, { reasoning })
+  }
 
-    // OpenRouter applies the model default when reasoning is mandatory or the catalog does not list the model.
-    if (useProviderReasoningDefault) {
-      return providersStore.getChatProviderInstance(provider)
-    }
-
-    return providersStore.getChatProviderInstance(provider, {
-      reasoning: settingsStore.reasoning ? 'enabled' : 'disabled',
-    })
+  /** The output cap of a chat request to `provider` for `model`, from the reasoning mode it carries. */
+  function replyMaxTokens(provider: string, model: string): number {
+    const definition = providersStore.findProviderDefinition(provider)
+    return replyMaxTokensFor({ reasoning: requestReasoning(provider, model), deployment: resolveProviderAttributes({ id: definition?.id }).deployment })
   }
 
   const configured = computed(() => {
@@ -194,6 +208,7 @@ export const useConsciousnessStore = defineStore('consciousness', () => {
     loadModelsForProvider,
     getModelsForProvider,
     getChatProviderInstance,
+    replyMaxTokens,
     resetState,
   }
 }, {

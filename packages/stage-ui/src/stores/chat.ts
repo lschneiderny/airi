@@ -20,7 +20,7 @@ import { supportsResponsesAudioInputEndpoint } from '@proj-airi/provider-inferen
 import { ContextUpdateStrategy } from '@proj-airi/server-sdk'
 import { renderCharacterContext } from '@proj-airi/stage-shared/character-state'
 import { heldTitles, TOUCH_TOPIC_KEY } from '@proj-airi/stage-shared/situation'
-import { composePrompt, REPLY_MAX_TOKENS, STAGE_RUNTIME_CONFIG } from '@proj-airi/stage-shared/stage-contract'
+import { composePrompt, STAGE_RUNTIME_CONFIG } from '@proj-airi/stage-shared/stage-contract'
 import { ATTR_GEN_AI_AGENT_ID, ATTR_GEN_AI_CONVERSATION_ID, ATTR_GEN_AI_OPERATION_NAME, ATTR_GEN_AI_PROVIDER_NAME, ATTR_GEN_AI_REQUEST_MODEL, ATTR_GEN_AI_TOOL_CALL_ARGUMENTS, ATTR_GEN_AI_TOOL_CALL_ID, ATTR_GEN_AI_TOOL_CALL_RESULT, ATTR_GEN_AI_TOOL_NAME, beginSpan, TraceLinkRelations, trackPath } from '@proj-airi/trace-kit'
 import { AgentAttributes, AgentIdKeys, AgentNames, AgentTracks } from '@proj-airi/trace-kit/agent'
 import { VoiceIdKeys } from '@proj-airi/trace-kit/voice'
@@ -1309,8 +1309,8 @@ export const useChatStore = defineStore('chat', () => {
         promptReport: prompt.report,
         temperature: input.temperature,
         topP: input.topP,
-        // Backs the contract's reply-shape rules; a reply that follows them stays far below the cap.
-        maxTokens: REPLY_MAX_TOKENS,
+        // Backs the contract's reply-shape rules, with room for reasoning when the request may reason.
+        maxTokens: consciousnessStore.replyMaxTokens(selection.providerId, selection.model),
       }
     }
   }

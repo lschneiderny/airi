@@ -289,6 +289,7 @@ vi.mock('./modules/consciousness', () => ({
     getChatProviderInstance: (providerId: string) => getChatProviderInstanceMock(providerId, {
       reasoning: useConsciousnessSettingsStore().reasoning ? 'enabled' : 'disabled',
     }),
+    replyMaxTokens: () => REPLY_MAX_TOKENS,
   })),
 }))
 
