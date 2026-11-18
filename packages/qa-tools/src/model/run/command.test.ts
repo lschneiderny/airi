@@ -168,6 +168,18 @@ describe('run command', () => {
     expect(result.stdout + result.stderr).not.toContain(key)
   })
 
+  it('refuses the Messages API without a key, and an unknown API', async () => {
+    const args = ['--scenario', 'general', '--base-url', 'https://api.example.com/v1', '--model', 'test-model']
+
+    const missingKey = await run([...args, '--api', 'messages'])
+    const unknown = await run([...args, '--api', 'responses'], { QA_MODEL_API_KEY: 'test-key' })
+
+    expect(missingKey.code).toBe(2)
+    expect(missingKey.stderr).toContain('--api messages needs QA_MODEL_API_KEY')
+    expect(unknown.code).toBe(2)
+    expect(unknown.stderr).toContain('--api must be one of chat-completions, messages')
+  })
+
   it('runs the same turns as a new conversation at each relationship stage, and the result scores as one run per stage', async () => {
     const endpoint = await replay(join(scenarios, 'replay/relationship-stages.json'))
 

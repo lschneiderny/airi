@@ -37,6 +37,8 @@ const REQUEST_TIMEOUT_MS = 300_000
 
 /** The values the app's Ollama provider sends as `reasoning_effort`; `none` turns reasoning off. */
 const REASONING_EFFORTS = ['none', 'low', 'medium', 'high'] as const
+/** The API a run's requests reach. `messages` sends them through the Anthropic provider's Messages API translator. */
+const RUN_APIS = ['chat-completions', 'messages'] as const
 /** Tool rounds of one turn under app conditions, after which the turn ends with whatever the model said. */
 const DEFAULT_MAX_STEPS = 5
 
@@ -82,6 +84,7 @@ export async function runRunCli(
   let history: HistoryMode
   let formatTimePrefix: typeof import('@proj-airi/core-agent').formatTimePrefix
   let reasoning: typeof REASONING_EFFORTS[number] | undefined
+  let api: typeof RUN_APIS[number] = 'chat-completions'
   let appRequest: AppRequest | null = null
   let appRequestName: string | null = null
   let maxSteps = 1
@@ -100,6 +103,7 @@ export async function runRunCli(
         'config': { type: 'string', default: 'default' },
         'history': { type: 'string' },
         'reasoning': { type: 'string' },
+        'api': { type: 'string' },
         'app-request': { type: 'string' },
         'max-steps': { type: 'string' },
         'ollama-log': { type: 'string' },
@@ -130,6 +134,14 @@ export async function runRunCli(
       if (!reasoning)
         throw new Error(`--reasoning must be one of ${REASONING_EFFORTS.join(', ')}`)
     }
+    if (values.api !== undefined) {
+      const requestedApi = RUN_APIS.find(name => name === values.api)
+      if (!requestedApi)
+        throw new Error(`--api must be one of ${RUN_APIS.join(', ')}`)
+      api = requestedApi
+    }
+    if (api === 'messages' && apiKey === undefined)
+      throw new Error('--api messages needs QA_MODEL_API_KEY: Anthropic\'s Messages API takes no request without a key')
     if (values['max-steps'] !== undefined && values['app-request'] === undefined)
       throw new Error('--max-steps needs --app-request: a run without the app\'s tools takes one step per turn')
     if (values['app-request'] !== undefined) {
@@ -200,6 +212,11 @@ export async function runRunCli(
   const config = reasoning === undefined ? scenario.configs[configName] : { ...scenario.configs[configName], reasoning_effort: reasoning }
   const tools = appRequest?.tools ?? []
   const stubs = new ToolStubs()
+  // The app's Anthropic provider translates its Chat Completions requests to the Messages API in its fetch; this
+  // run sends the same requests through the same translator.
+  const send = api === 'messages'
+    ? (await import('@proj-airi/provider-inference')).createAnthropicMessagesFetch({ apiKey: apiKey!, baseURL: baseUrl.href })
+    : fetch
   const checks: { runKey: string, results: CheckResult[] }[] = []
   let run: RunHandle | undefined
   try {
@@ -216,6 +233,7 @@ export async function runRunCli(
           configName,
           history === 'raw' ? null : `${history}-history`,
           reasoning === undefined ? null : `reasoning-${reasoning}`,
+          api === 'messages' ? 'messages-api' : null,
           appRequestName === null ? null : `app-${appRequestName}`,
         ].filter(Boolean).join('+')
         const label = stage === null ? configLabel : `${configLabel}@${stage}`
@@ -230,7 +248,7 @@ export async function runRunCli(
           // request assembly renders it (`renderSegmentText` in `packages/core-agent/src/messages/render-context.ts`).
           messages.push({ role: 'user', content: `${formatTimePrefix(wallClockMs(scenario.startsAt, index))}${user}${character === '' ? '' : `\n\n${character}`}` })
           const startedAt = new Date().toISOString()
-          const { steps, outcome, bodies } = await runTurn(baseUrl.href, model, messages, config, { tools, maxTokens: appRequest?.maxTokens ?? undefined, maxSteps, apiKey }, stubs)
+          const { steps, outcome, bodies } = await runTurn(baseUrl.href, model, messages, config, { tools, maxTokens: appRequest?.maxTokens ?? undefined, maxSteps, apiKey, send }, stubs)
           const endedAt = new Date().toISOString()
           const body = bodies[0]!
           const request = buildChatRequest(model, messages, config, { tools, max_tokens: appRequest?.maxTokens ?? undefined })
@@ -332,7 +350,7 @@ async function runTurn(
   model: string,
   messages: readonly ChatMessage[],
   config: Parameters<typeof buildChatRequest>[2],
-  options: { tools: readonly unknown[], maxTokens: number | undefined, maxSteps: number, apiKey: string | undefined },
+  options: { tools: readonly unknown[], maxTokens: number | undefined, maxSteps: number, apiKey: string | undefined, send: typeof globalThis.fetch },
   stubs: ToolStubs,
 ): Promise<TurnOutcome> {
   const turn: ChatMessage[] = []
@@ -343,7 +361,7 @@ async function runTurn(
   for (let step = 1; step <= options.maxSteps; step++) {
     const body = JSON.stringify(buildChatRequest(model, [...messages, ...turn], config, { tools: options.tools, max_tokens: options.maxTokens }))
     bodies.push(body)
-    const outcome = await requestChat(baseUrl, body, REQUEST_TIMEOUT_MS, options.apiKey)
+    const outcome = await requestChat(baseUrl, body, REQUEST_TIMEOUT_MS, options.apiKey, options.send)
     if (outcome.usage)
       usages.push(outcome.usage)
     const speechAt = result?.firstSpeechMs ?? await firstSpeechMs(outcome.text, outcome.textMarks)

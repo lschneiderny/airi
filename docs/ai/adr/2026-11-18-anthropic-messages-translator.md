@@ -19,6 +19,7 @@ The Anthropic provider gains an `api` setting. `messages` sets its `fetch` to `c
 - **Compatibility first.** The translation keeps the compatibility endpoint's behavior where AIRI depends on it. It joins every system message into the system prompt, drops fields that endpoint ignores, and pins API version `2023-06-01`. On that version, sampling parameters work wherever the model accepts them; on `2026-10-21` they fail on every model.
 - **What the native API adds.** Cache breakpoints sit at the end of the system prompt, at the end of the history before the newest input (the situation block rides on the newest user message), and at the end of a request that ends with tool results. `reasoning_effort` becomes `output_config.effort`. Tool calls are sent whole after the stop reason arrives, and none are sent when the output cap or a refusal stopped the reply, because xsAI runs every tool call it receives. API errors keep their status and headers, and the SDK makes no retries, so core-agent's transient retry still decides.
 - **The default stays `chat-completions`.** See the measurement below.
+- `qa:model run --api messages` sends a run's requests through the same translator.
 
 ## Measurement
 
