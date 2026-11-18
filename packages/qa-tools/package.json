@@ -20,6 +20,7 @@
     "@moeru/three-mmd": "catalog:",
     "@moeru/three-mmd-physics-ammo": "catalog:",
     "@napi-rs/image": "catalog:",
+    "@proj-airi/character-mind": "workspace:^",
     "@proj-airi/core-agent": "workspace:^",
     "@proj-airi/cpu-slots": "workspace:^",
     "@proj-airi/i18n": "workspace:^",

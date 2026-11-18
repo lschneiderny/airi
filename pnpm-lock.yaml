@@ -3005,6 +3005,9 @@ importers:
       '@napi-rs/image':
         specifier: 'catalog:'
         version: 1.15.0
+      '@proj-airi/character-mind':
+        specifier: workspace:^
+        version: link:../character-mind
       '@proj-airi/core-agent':
         specifier: workspace:^
         version: link:../core-agent
@@ -3623,6 +3626,9 @@ importers:
       '@proj-airi/ccc':
         specifier: workspace:^
         version: link:../ccc
+      '@proj-airi/character-mind':
+        specifier: workspace:^
+        version: link:../character-mind
       '@proj-airi/chromatic':
         specifier: 'catalog:'
         version: 2.0.1

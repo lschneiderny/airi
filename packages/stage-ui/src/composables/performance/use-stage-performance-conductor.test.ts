@@ -4,6 +4,7 @@ import type { ActionToolPort } from '../../tools/action'
 import type { BodyToolPort } from '../../tools/body'
 import type { ListedAction, StagePerformanceDriver, StagePerformanceScene } from './use-stage-performance-conductor'
 
+import { CharacterMind } from '@proj-airi/character-mind'
 import { createDecider, createPickerDecider, defaultExpressionPerformanceSettings, initialTouchAffectMemory, parseAffectTrace, parseExpressionPerformanceSettings, replayAffectTrace, touchAffect } from '@proj-airi/stage-shared/expression-performance'
 import { useNaturalMotionDiagnostics } from '@proj-airi/stage-ui-live2d/stores'
 import { useExpressionStore } from '@proj-airi/stage-ui-live2d/stores/expression-store'
@@ -64,6 +65,7 @@ function createConductor(driver: StagePerformanceDriver, scene: StagePerformance
     settings: () => settings,
     catalog: () => entries,
     seed: 7,
+    mind: new CharacterMind({ seed: 7, clock: () => now * 1000 }),
     clock: () => now,
     profile: () => profile,
     modelId: () => 'rig',
@@ -123,6 +125,7 @@ describe('stage performance renderer selection', () => {
       driver: () => selected.value.driver,
       expressionBackend: () => selected.value.expressionBackend,
       playMotion: vi.fn(),
+      mind: new CharacterMind({ seed: 7 }),
       mood: () => null,
     }))
     if (!result)
@@ -238,6 +241,21 @@ describe('stage performance conductor', () => {
       ['happy', 'slight'],
     ])
     expect(playMotion).not.toHaveBeenCalled()
+  })
+
+  it('hands the episode to the Natural scene at once under the planner, while its face waits for the sentence start', () => {
+    const scene = fakeScene()
+    const { conductor } = createConductor('natural', scene, { ...defaultExpressionPerformanceSettings, decider: 'planner' })
+
+    conductor.emotion('happy', 0.6, 'act', 'turn-a')
+
+    expect(scene.setEmotion.mock.calls.map(([episode]) => [episode.emotion, episode.band])).toEqual([['happy', 'clear']])
+    expect(scene.applySlots).not.toHaveBeenCalled()
+
+    conductor.clipStart('turn-a', 'clip-1', true)
+
+    expect(scene.applySlots.mock.calls.flatMap(([commands]) => commands).map(command => command.expressionId)).toEqual(['joy'])
+    conductor.dispose()
   })
 
   it.each(['basic'] as const)('plays a motion group for every recognized emotion under %s and still applies slots', (driver) => {
@@ -420,6 +438,7 @@ describe('stage performance conductor', () => {
       settings: () => defaultExpressionPerformanceSettings,
       catalog: () => local,
       seed: 7,
+      mind: new CharacterMind({ seed: 7, clock: () => 10_000 }),
       clock: () => 10,
     })
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
@@ -515,6 +534,7 @@ describe('stage performance conductor', () => {
         settings: () => defaultExpressionPerformanceSettings,
         catalog: () => catalog,
         seed: 7,
+        mind: new CharacterMind({ seed: 7, clock: () => 10_000 }),
         clock: () => 10,
         profile: () => undefined,
         modelId: () => 'rig',
@@ -656,6 +676,7 @@ describe('stage performance conductor', () => {
         settings: () => defaultExpressionPerformanceSettings,
         catalog: () => catalog,
         seed: 7,
+        mind: new CharacterMind({ seed: 7, clock: () => 10_000 }),
         clock: () => 10,
       })
       conductor.setMuted(true)
@@ -724,14 +745,14 @@ describe('stage performance conductor', () => {
       expect(scene.applySlots).not.toHaveBeenCalled()
     })
 
-    it('dispatches the holds of a deferred timing decision', () => {
+    it('dispatches the slot commands of a deferred timing decision and no hold', () => {
       const picker = createPickerDecider()
-      const hold = { emotion: 'happy' as const, strength: 0.6, holdSeconds: 1, until: 'speech' as const, turnId: 'turn-a' }
+      const command = { slot: 'face' as const, expressionId: 'joy', holdSeconds: 1, until: 'speech' as const, turnId: 'turn-a' }
       vi.mocked(createDecider).mockReturnValueOnce({
         ...picker,
         decide: (signal, ctx, state) => {
           const result = picker.decide(signal, ctx, state)
-          return signal.kind === 'timing' ? { ...result, decision: { ...result.decision, holds: [hold] } } : result
+          return signal.kind === 'timing' ? { ...result, decision: { ...result.decision, slots: [command] } } : result
         },
       })
       const scene = fakeScene()
@@ -739,7 +760,8 @@ describe('stage performance conductor', () => {
 
       conductor.clipStart('turn-a', 'clip-1', true)
 
-      expect(scene.applyHolds.mock.calls).toEqual([[[hold], 10]])
+      expect(scene.applySlots.mock.calls).toEqual([[[command], 10]])
+      expect(scene.applyHolds).not.toHaveBeenCalled()
       conductor.dispose()
     })
   })
@@ -761,6 +783,7 @@ describe('stage performance conductor', () => {
         settings: () => defaultExpressionPerformanceSettings,
         catalog: () => catalog,
         seed: 7,
+        mind: new CharacterMind({ seed: 7, clock: () => Date.now() }),
         clock: () => Date.now() / 1000,
         profile: () => profile,
         modelId: () => 'rig',
@@ -811,7 +834,7 @@ describe('stage performance conductor', () => {
       expect(trace.entries.filter(entry => entry.type === 'context')).toEqual([
         { type: 'context', context: expect.objectContaining({ catalog: expect.arrayContaining([expect.objectContaining({ id: 'anger', mappings: [] })]) }) },
       ])
-      expect(new Set(trace.entries.flatMap(entry => entry.type === 'signal' ? [entry.signal.kind] : []))).toEqual(new Set(['emotion', 'expression', 'clear', 'speech', 'timing']))
+      expect(new Set(trace.entries.flatMap(entry => entry.type === 'signal' ? [entry.signal.kind] : []))).toEqual(new Set(['reaction', 'neutral', 'expression', 'clear', 'speech', 'timing']))
       // Without the context entry, replay keeps picking the disabled face.
       expect(replaySlots({ ...trace, entries: trace.entries.filter(entry => entry.type === 'signal') })).not.toEqual(dispatched)
     })
@@ -842,7 +865,7 @@ describe('stage performance conductor', () => {
       expect(episode.band).toBe('strong')
       expect(episode.nominal).toBeCloseTo(0.9)
       expect(conductor.exportTrace()!.entries).toEqual([
-        { type: 'signal', signal: expect.objectContaining({ kind: 'emotion', nominal: expect.closeTo(0.9) }) },
+        { type: 'signal', signal: expect.objectContaining({ kind: 'reaction', episode: expect.objectContaining({ nominal: expect.closeTo(0.9) }) }) },
       ])
     })
 
@@ -856,6 +879,7 @@ describe('stage performance conductor', () => {
         settings: () => defaultExpressionPerformanceSettings,
         catalog: () => catalog,
         seed: 7,
+        mind: new CharacterMind({ seed: 7, clock: () => now * 1000 }),
         clock: () => now,
         profile: turnId => turnId === 'turn-a' ? { moodGainScale: 0 } : turnId === 'turn-b' ? { moodGainScale: 2 } : undefined,
       })
@@ -927,6 +951,7 @@ describe('stage performance conductor', () => {
         settings: () => settings,
         catalog: () => catalog,
         seed: 7,
+        mind: new CharacterMind({ seed: 7, clock: () => Date.now() }),
         clock: () => Date.now() / 1000,
       })
       function timing(kind?: TimingEvent['kind']) {
@@ -1243,6 +1268,7 @@ describe('stage performance conductor', () => {
         expressionBackend: () => undefined,
         bodyPort: () => bodyPort.value,
         playMotion: vi.fn(),
+        mind: new CharacterMind({ seed: 7 }),
         mood: () => null,
       }))
       await nextTick()
@@ -1273,6 +1299,7 @@ describe('stage performance conductor', () => {
       actionPort: () => actionPort.value,
       listActions: () => library.value,
       playMotion: vi.fn(),
+      mind: new CharacterMind({ seed: 7 }),
       mood: () => null,
     }))
     const enumOf = () => (tools.tools.find(tool => tool.id === 'action:perform_action')?.function.parameters as { properties: { action: { enum: string[] } } } | undefined)?.properties.action.enum

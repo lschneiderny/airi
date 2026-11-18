@@ -131,16 +131,16 @@ describe('touch signals in the deciders', () => {
   it.each(['picker', 'planner'] as const)('%s turns a touch into a mood dose only', (kind) => {
     const decider = createDecider(kind)
     const start = decider.decide({ kind: 'touch', touch: 'pet-start', region: 'head', at: 0 }, ctx, decider.initial(1))
-    expect(start.decision).toEqual({ episodes: [], slots: [], holds: [], moods: [{ id: 'touch-1-pet', valence: slight, arousal: 0, tension: -slight / 2 }] })
+    expect(start.decision).toEqual({ slots: [], moods: [{ id: 'touch-1-pet', valence: slight, arousal: 0, tension: -slight / 2 }] })
     const end = decider.decide({ kind: 'touch', touch: 'pet-end', region: 'head', durationSeconds: 4, at: 4 }, ctx, start.state)
-    expect(end.decision.episodes).toEqual([])
+    expect(end.decision.slots).toEqual([])
     expect(end.decision.moods.map(dose => dose.id)).toEqual(['touch-2-pet-long'])
-    expect(end.state.reaction).toEqual(decider.initial(1).reaction)
+    expect(end.state.tickets).toBeNull()
   })
 
   it('accepts touch signals in recorded traces', () => {
     const trace = parseAffectTrace({
-      version: 1,
+      version: 2,
       decider: 'picker',
       checkpoint: createDecider('picker').initial(1),
       initialContext: ctx,
