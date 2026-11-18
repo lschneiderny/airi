@@ -95,7 +95,7 @@ export async function runRunCli(
         'base-url': { type: 'string' },
         'model': { type: 'string' },
         'config': { type: 'string', default: 'default' },
-        'history': { type: 'string', default: 'raw' },
+        'history': { type: 'string' },
         'reasoning': { type: 'string' },
         'app-request': { type: 'string' },
         'max-steps': { type: 'string' },
@@ -114,7 +114,10 @@ export async function runRunCli(
     model = values.model!
     configName = values.config
     json = values.json
-    const historyMode = HISTORY_MODES.find(mode => mode === values.history)
+    // A run with a capture measures the app, which stores canonical cue text; without one, raw keeps the committed sets
+    // reproducible.
+    const requestedHistory = values.history ?? (values['app-request'] === undefined ? 'raw' : 'canonical')
+    const historyMode = HISTORY_MODES.find(mode => mode === requestedHistory)
     if (!historyMode)
       throw new Error(`--history must be one of ${HISTORY_MODES.join(', ')}`)
     history = historyMode
