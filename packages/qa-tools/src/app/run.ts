@@ -1,6 +1,7 @@
 import type { Lease } from '@proj-airi/cpu-slots'
 import type { MotionQaEvent } from '@proj-airi/stage-shared/motion-scenario'
 
+import type { MemorySummary } from '../host-memory/sampler'
 import type { AppOptions } from './args'
 import type { SendPath } from './summary'
 
@@ -13,6 +14,7 @@ import { setTimeout } from 'node:timers/promises'
 import { errorMessageFrom } from '@moeru/std'
 
 import { createRun } from '../evidence/run'
+import { memoryReport, SystemMemorySampler } from '../host-memory/sampler'
 import { loadScript } from '../llm/script'
 import { ReplayServer } from '../llm/server'
 import { AppSessionCore, refuseIfWorktreeBusy } from '../session/app-session'
@@ -30,6 +32,8 @@ export async function runApp(options: AppOptions, repoRoot: string, signal: Abor
   const profileDir = run.path('profile')
   mkdirSync(profileDir)
   const session = AppSessionCore.create({ repoRoot, profileDir, signal })
+  const memory = new SystemMemorySampler({ outFile: run.path('memory.jsonl') })
+  let memorySummary: MemorySummary | undefined
   const events: MotionQaEvent[] = []
   const sendPaths: SendPath[] = []
   const missing: string[] = []
@@ -45,6 +49,7 @@ export async function runApp(options: AppOptions, repoRoot: string, signal: Abor
   const bounded = <T>(work: Promise<T>): Promise<T> => session.bounded(work)
   const json = (name: string, value: unknown) => writeFileSync(run.path(name), `${JSON.stringify(value, null, 2)}\n`)
 
+  memory.start()
   try {
     server = new ReplayServer({ script, log: run.path('requests.jsonl') })
     const baseURL = await server.listen()
@@ -142,6 +147,11 @@ export async function runApp(options: AppOptions, repoRoot: string, signal: Abor
     }
   }
   finally {
+    // Stop before teardown, so the end-of-run swap figure describes the app still loaded.
+    memorySummary = await memory.stop()
+    // memory.jsonl holds every sample; the diagnostics keep only the figures.
+    const { samples: _samples, ...memoryFigures } = memorySummary
+    details.memory = memoryFigures
     try {
       const teardown = await session.teardown({ extraPaths: [run.path('model.zip')] })
       details.teardown = teardown
@@ -172,9 +182,9 @@ export async function runApp(options: AppOptions, repoRoot: string, signal: Abor
   details.durationMs = Date.now() - startedAt
   details.requests = existsSync(run.path('requests.jsonl')) ? readFileSync(run.path('requests.jsonl'), 'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line)) : []
   json('diagnostics.json', details)
-  const summary = buildSummary({ runDir: run.dir, model: options.model, sendPaths, events, missing, screenshot, diagnostics: run.path('diagnostics.json'), durationMs: Date.now() - startedAt, failed, pageErrors: collector?.errors.length ?? 0 })
+  const summary = buildSummary({ runDir: run.dir, model: options.model, sendPaths, events, missing, screenshot, diagnostics: run.path('diagnostics.json'), durationMs: Date.now() - startedAt, failed, pageErrors: collector?.errors.length ?? 0, memory: memorySummary ? memoryReport(memorySummary) : null })
   json('summary.json', summary)
-  for (const name of ['diagnostics.json', 'summary.json', 'requests.jsonl', 'stage.png', 'app.log']) {
+  for (const name of ['diagnostics.json', 'summary.json', 'requests.jsonl', 'stage.png', 'app.log', 'memory.jsonl']) {
     if (existsSync(run.path(name)))
       run.addArtifact(name, name.endsWith('.png') ? 'screenshot' : 'diagnostics')
   }

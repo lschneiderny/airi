@@ -70,7 +70,7 @@ describe('app expectations', () => {
     expect(matchExpectations(events.slice(0, 3), ['tts', 'turn'], 0)).toEqual(['tts'])
   })
   it('builds one failure summary with kind counts and missing expectations', () => {
-    expect(buildSummary({ runDir: '/run', model: '/rig.zip', sendPaths: ['composer', 'chatSend'], events, missing: ['clip'], screenshot: '/run/stage.png', diagnostics: '/run/diagnostics.json', durationMs: 42, failed: false, pageErrors: 2 })).toEqual({
+    expect(buildSummary({ runDir: '/run', model: '/rig.zip', sendPaths: ['composer', 'chatSend'], events, missing: ['clip'], screenshot: '/run/stage.png', diagnostics: '/run/diagnostics.json', durationMs: 42, failed: false, pageErrors: 2, memory: { peakUsedGiB: 11.5, peakCompressedGiB: 2.25, maxPressure: 'warn', peakPsiSome10: null, swapDeltaMiB: 512 } })).toEqual({
       ok: false,
       runDir: '/run',
       model: '/rig.zip',
@@ -81,6 +81,7 @@ describe('app expectations', () => {
       diagnostics: '/run/diagnostics.json',
       durationMs: 42,
       pageErrors: 2,
+      memory: { peakUsedGiB: 11.5, peakCompressedGiB: 2.25, maxPressure: 'warn', peakPsiSome10: null, swapDeltaMiB: 512 },
     })
   })
 })
