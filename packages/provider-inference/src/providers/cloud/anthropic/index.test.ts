@@ -1,3 +1,4 @@
+import { generateText } from '@xsai/generate-text'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { parse } from 'zod/v4/core'
 
@@ -66,5 +67,26 @@ describe('anthropic provider', () => {
     await expect(providerAnthropic.extraMethods!.listModels!(config, provider, { t: text => text }))
       .rejects
       .toThrow('HTTP 401')
+  })
+
+  it.each([
+    [undefined, 'https://api.anthropic.com/v1/chat/completions'],
+    ['messages', 'https://api.anthropic.com/v1/messages'],
+  ] as const)('sends chat with api %s to %s', async (api, endpoint) => {
+    const fetch = vi.fn<typeof globalThis.fetch>(async () => Response.json(endpoint.endsWith('/messages')
+      ? { id: 'msg_1', type: 'message', role: 'assistant', model: 'claude-haiku-5-5', content: [{ type: 'text', text: 'Hi.' }], stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 1, output_tokens: 1 } }
+      : { id: 'chat_1', object: 'chat.completion', created: 0, model: 'claude-haiku-5-5', choices: [{ index: 0, message: { role: 'assistant', content: 'Hi.' }, finish_reason: 'stop' }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } }))
+    vi.stubGlobal('fetch', fetch)
+    const schema = await providerAnthropic.createProviderConfig({ t: text => text })
+    const config = parse(schema, { apiKey: 'sk-ant-test', ...(api ? { api } : {}) })
+    const provider = await providerAnthropic.createProvider(config)
+    if (!('chat' in provider))
+      throw new Error('Anthropic provider must support chat')
+
+    const result = await generateText({ ...provider.chat('claude-haiku-5-5'), messages: [{ role: 'user', content: 'Hi' }] })
+
+    expect(result.text).toBe('Hi.')
+    expect(String(fetch.mock.calls[0]?.[0])).toBe(endpoint)
+    expect(new Headers(fetch.mock.calls[0]?.[1]?.headers).get('anthropic-dangerous-direct-browser-access')).toBe('true')
   })
 })

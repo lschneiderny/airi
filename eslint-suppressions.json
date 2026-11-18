@@ -314,11 +314,6 @@
       "count": 13
     }
   },
-  "packages/provider-inference/src/providers/cloud/anthropic/index.ts": {
-    "ts/no-explicit-any": {
-      "count": 2
-    }
-  },
   "packages/provider-inference/src/providers/cloud/azure-openai/index.ts": {
     "ts/no-explicit-any": {
       "count": 7

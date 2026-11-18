@@ -74,6 +74,27 @@ Explicitly enabling search sends the hosted tool on the official OpenAI endpoint
 Custom endpoints do not inherit this tool declaration. Model names never determine search support.
 Search uses the configured OpenAI key and does not require an AIRI login or Tavily key.
 
+## Anthropic Messages API
+
+The Anthropic provider's `api` setting selects the endpoint of its chat requests: `chat-completions`, Anthropic's OpenAI compatibility endpoint and the default, or `messages`, the native Messages API. Both speak the `chat-completions` generation protocol to core-agent, so the rest of AIRI sends the same requests either way.
+
+With `messages`, the provider's `fetch` is `createAnthropicMessagesFetch`. It translates each `POST <baseURL>chat/completions` into a native `/v1/messages` call through `@anthropic-ai/sdk` and translates the response or event stream back. Other requests, such as model listing, pass through. The translation follows the compatibility endpoint where AIRI depends on it:
+
+- Every system and developer message joins the top-level system prompt in order.
+- Fields that the compatibility endpoint ignores, such as `seed` and `response_format`, are dropped.
+- The API version is `2023-06-01`, whose sampling rules match the compatibility endpoint's; see `MESSAGES_API_VERSION`.
+
+It differs where the native API adds something:
+
+- It marks prompt cache breakpoints at the end of the system prompt, at the end of the history before the newest input, and at the end of a request that ends with tool results.
+- `reasoning_effort` sets `output_config.effort`, and `none` turns thinking off.
+- A request without `max_tokens` gets `DEFAULT_MAX_TOKENS`, because the Messages API requires one.
+- Tool calls arrive whole after the model stops. A response cut off by the output cap or refused carries none, so xsAI never runs a tool on partial input.
+- An API error comes back as an HTTP response with the API's status, headers, and body, and the SDK makes no retries, so core-agent's retry policy applies.
+- Audio input is refused.
+
+Choose `messages` for prompt caching and effort control, or for a proxy that serves only `/v1/messages`: the SDK appends `/v1/messages` to the base URL without its trailing `/v1`. Over 50 turns of the app's prompt, Claude Haiku 5.5 read 97% of its prompt tokens from the cache and cost 85% less on `messages`, but its first speech came about 75 ms later, so `chat-completions` stays the default. The [Anthropic Messages translator ADR](../../docs/ai/adr/2026-11-18-anthropic-messages-translator.md) has the numbers.
+
 ## Model metadata
 
 OpenAI and OpenRouter use their provider-specific [model-bank](https://github.com/lobehub/lobehub/tree/canary/packages/model-bank) catalogs.
