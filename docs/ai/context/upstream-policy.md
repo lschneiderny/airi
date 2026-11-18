@@ -135,6 +135,7 @@ Each row is behavior where the merged tree differs from upstream.
 | Provider pages | Amazon Bedrock, CometAPI, Gemini audio speech, MiMo, the official provider | None | Removed from the fork's catalog (`898455bd5`, `9af37b7a5`) | Not planned |
 | Speech field status | Four arguments, with a catalog-loading flag | Three arguments | No fork provider picks a voice from a catalog | If one is added |
 | Hearing analytics | `useAnalytics()` inside the hearing store | A direct consent-gated `capture` | The store can be created outside a component | Not planned |
+| Anthropic chat endpoint | The OpenAI compatibility endpoint, `/v1/chat/completions` (#1503); a native Messages PR (#2098) closed unmerged | The same endpoint by default; the provider's API setting adds the native Messages API through `createAnthropicMessagesFetch` at the provider's `fetch` boundary. Core-agent is unchanged | Prompt caching, effort control, and proxies that serve only the native API, as an option ([ADR](../adr/2026-11-18-anthropic-messages-translator.md)) | When upstream ships native Anthropic support (#1565): take upstream's and delete the translator |
 
 ### Updates, releases, and reporting
 

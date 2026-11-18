@@ -6,8 +6,20 @@ import { z } from 'zod'
 import { isModelProvider, ProviderValidationCheck } from '../../../types'
 import { createOpenAICompatibleValidators } from '../../../validators'
 import { defineProvider } from '../../registry'
+import { createAnthropicMessagesFetch } from './messages-fetch'
+
+/**
+ * The endpoint that chat requests reach. Both take the same OpenAI-shaped requests from AIRI.
+ * The compatibility endpoint is the default because it reached first speech about 75 ms sooner with Claude Haiku 5.5;
+ * the Messages API caches the prompt and honors effort (`docs/ai/adr/2026-11-18-anthropic-messages-translator.md`).
+ */
+const anthropicApis = [
+  { value: 'chat-completions', label: 'Chat Completions (OpenAI compatibility)' },
+  { value: 'messages', label: 'Messages API' },
+] as const
 
 const anthropicConfigSchema = z.object({
+  api: z.enum(['chat-completions', 'messages']).default('chat-completions'),
   apiKey: z
     .string('API Key'),
   baseUrl: z
@@ -39,18 +51,13 @@ function toModelInfo(model: AnthropicModel): ModelInfo {
   }
 }
 
-function createAnthropic(apiKey: string, baseURL: string = 'https://api.anthropic.com/v1/') {
-  const anthropicFetch = async (input: any, init: any) => {
-    init.headers ??= {}
-    if (Array.isArray(init.headers))
-      init.headers.push(['anthropic-dangerous-direct-browser-access', 'true'])
-    else if (init.headers instanceof Headers)
-      init.headers.append('anthropic-dangerous-direct-browser-access', 'true')
-    else
-      init.headers['anthropic-dangerous-direct-browser-access'] = 'true'
-
-    return fetch(input, init)
+function createAnthropic(apiKey: string, baseURL: string = 'https://api.anthropic.com/v1/', api: AnthropicConfig['api'] = 'chat-completions') {
+  const compatibilityFetch: typeof globalThis.fetch = async (input, init) => {
+    const headers = new Headers(init?.headers)
+    headers.set('anthropic-dangerous-direct-browser-access', 'true')
+    return fetch(input, { ...init, headers })
   }
+  const anthropicFetch = api === 'messages' ? createAnthropicMessagesFetch({ apiKey, baseURL }) : compatibilityFetch
 
   return merge(
     createChatProvider({ apiKey, fetch: anthropicFetch, baseURL }),
@@ -70,6 +77,12 @@ export const providerAnthropic = defineProvider<AnthropicConfig, 'anthropic'>({
   iconColor: 'i-lobe-icons:claude-color',
 
   createProviderConfig: ({ t }) => anthropicConfigSchema.extend({
+    api: anthropicConfigSchema.shape.api.meta({
+      type: 'select',
+      options: [...anthropicApis],
+      labelLocalized: t('settings.pages.providers.catalog.edit.config.common.fields.field.api-protocol.label'),
+      descriptionLocalized: t('settings.pages.providers.catalog.edit.config.common.fields.field.api-protocol.description'),
+    }),
     apiKey: anthropicConfigSchema.shape.apiKey.meta({
       labelLocalized: t('settings.pages.providers.catalog.edit.config.common.fields.field.api-key.label'),
       descriptionLocalized: t('settings.pages.providers.catalog.edit.config.common.fields.field.api-key.description'),
@@ -83,7 +96,7 @@ export const providerAnthropic = defineProvider<AnthropicConfig, 'anthropic'>({
     }),
   }),
   createProvider(config) {
-    return createAnthropic(config.apiKey, config.baseUrl)
+    return createAnthropic(config.apiKey, config.baseUrl, config.api)
   },
 
   extraMethods: {

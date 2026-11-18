@@ -41,6 +41,7 @@
     "test:browser": "vitest run --project browser"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "catalog:",
     "@google/genai": "catalog:",
     "@moeru/std": "catalog:",
     "@proj-airi/audio": "workspace:^",

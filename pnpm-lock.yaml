@@ -21,6 +21,9 @@ catalogs:
     '@anthropic-ai/claude-code':
       specifier: ^2.1.241
       version: 2.1.241
+    '@anthropic-ai/sdk':
+      specifier: ^1.8.0
+      version: 1.8.0
     '@apple/app-store-server-library':
       specifier: ^3.1.0
       version: 3.1.0
@@ -2886,6 +2889,9 @@ importers:
 
   packages/provider-inference:
     dependencies:
+      '@anthropic-ai/sdk':
+        specifier: 'catalog:'
+        version: 1.8.0(zod@4.4.3)
       '@google/genai':
         specifier: 'catalog:'
         version: 2.30.0(@modelcontextprotocol/sdk@1.30.0(supports-color@10.2.2)(zod@4.4.3))(bufferutil@4.1.0)(supports-color@10.2.2)(utf-8-validate@5.0.10)
@@ -5453,6 +5459,15 @@ packages:
     resolution: {integrity: sha512-S7DWEmJJAsI5taAUjhKm6soXcFJYIVeTH6Lg9kmp3yntFllCP612hGwZ7thOGh8r7YaRUH9+1jCX5A9QGazsxg==}
     engines: {node: '>=22.0.0'}
     hasBin: true
+
+  '@anthropic-ai/sdk@1.8.0':
+    resolution: {integrity: sha512-yDOArk2+Qpd/djEKmZjrv7JZ+pn5iBHARJ9PAdvfhGf4H5wNqTgY/2K0/yDKdQdm8G8hrNQchMlBAHpPK7yBfg==}
+    hasBin: true
+    peerDependencies:
+      zod: ^3.25.0 || ^4.0.0
+    peerDependenciesMeta:
+      zod:
+        optional: true
 
   '@apeira/core@0.0.7':
     resolution: {integrity: sha512-ld9ly08GU9tjDqnPcCnEIgGI88s5dRV37MI5dSJ8V0Jxx48IPqw+jLi6FwA3F8LUhwQPgbrV+1hW9jw+6yYfhw==}
@@ -14874,6 +14889,10 @@ packages:
   json-buffer@3.0.1:
     resolution: {integrity: sha512-4bV5BfR2mqfQTJm+V5tPPdf+ZpuhiIvTuAB5g8kcrXOZpTT/QwwVRWBywX1ozr6lEuPdbHxwaJlm9G6mI2sfSQ==}
 
+  json-schema-to-ts@3.1.1:
+    resolution: {integrity: sha512-+DWg8jCJG2TEnpy7kOm/7/AxaYoaRbjVB4LFZLySZlWn8exGs3A4OLJR966cVvU26N7X9TWxl+Jsw7dzAqKT6g==}
+    engines: {node: '>=16'}
+
   json-schema-traverse@0.4.1:
     resolution: {integrity: sha512-xbbCH5dCYU5T8LcEhhuh7HJ88HXuW3qsI3Y0zOZFKfZEHcpWiHU/Jxzk629Brsab/mMiHQti9wMP+845RPe3Vg==}
 
@@ -17463,6 +17482,9 @@ packages:
   truncate-utf8-bytes@1.0.2:
     resolution: {integrity: sha512-95Pu1QXQvruGEhv62XCMO3Mm90GscOCClvrIUwCM0PYOXK3kaF3l3sIHxx71ThJfcbM2O5Au6SO3AWCSEfW4mQ==}
 
+  ts-algebra@2.0.0:
+    resolution: {integrity: sha512-FPAhNPFMrkwz76P7cdjdmiShwMynZYN6SgOujD1urY4oNm80Ou9oMdmbR45LotcKOXoy7wSmHkRFE6Mxbrhefw==}
+
   ts-api-utils@2.5.0:
     resolution: {integrity: sha512-OJ/ibxhPlqrMM0UiNHJ/0CKQkoKF243/AEmplt3qpRgkW8VG7IfOS41h7V8TjITqdByHzrjcS/2si+y4lIh8NA==}
     engines: {node: '>=18.12'}
@@ -18992,6 +19014,14 @@ snapshots:
       '@anthropic-ai/claude-code-linux-x64-musl': 2.1.241
       '@anthropic-ai/claude-code-win32-arm64': 2.1.241
       '@anthropic-ai/claude-code-win32-x64': 2.1.241
+
+  '@anthropic-ai/sdk@1.8.0(zod@4.4.3)':
+    dependencies:
+      '@opentelemetry/api': 1.9.1
+      json-schema-to-ts: 3.1.1
+      standardwebhooks: 1.0.0
+    optionalDependencies:
+      zod: 4.4.3
 
   '@apeira/core@0.0.7(zod@4.4.3)':
     dependencies:
@@ -28732,6 +28762,11 @@ snapshots:
 
   json-buffer@3.0.1: {}
 
+  json-schema-to-ts@3.1.1:
+    dependencies:
+      '@babel/runtime': 7.29.7
+      ts-algebra: 2.0.0
+
   json-schema-traverse@0.4.1: {}
 
   json-schema-traverse@1.0.0: {}
@@ -32068,6 +32103,8 @@ snapshots:
   truncate-utf8-bytes@1.0.2:
     dependencies:
       utf8-byte-length: 1.0.5
+
+  ts-algebra@2.0.0: {}
 
   ts-api-utils@2.5.0(typescript@6.0.3):
     dependencies:
