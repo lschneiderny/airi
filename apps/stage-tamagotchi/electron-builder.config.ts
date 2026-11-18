@@ -139,7 +139,7 @@ export default {
     ...(env.ERGOSPHERE_IT_VERSION ? { version: env.ERGOSPHERE_IT_VERSION } : {}),
     name: 'ai.moeru.airi',
     main: 'out/launcher/index.mjs',
-    homepage: 'https://airi.moeru.ai/docs/',
+    homepage: 'https://github.com/lschneiderny/airi',
     repository: `https://github.com/${releaseRepository.owner}/${releaseRepository.repo}`,
     license: 'MIT',
   },

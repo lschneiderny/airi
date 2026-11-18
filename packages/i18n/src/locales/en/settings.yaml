@@ -1667,7 +1667,7 @@ pages:
               Try a different model or provider. We are working on supporting
               all the voice for this model as quickly as possible. If you need
               it urgently, please let us know on GitHub at
-              https://github.com/moeru-ai/airi/issues.
+              https://github.com/lschneiderny/airi/issues.
             show_less: Show less
             show_more: Show more
             title: Provider
@@ -2256,8 +2256,8 @@ pages:
                       <code>OLLAMA_HOST</code> explicitly when start the Ollama
                       application or Ollama CLI server, for detailed
                       information, check <a
-                      href="https://airi.moeru.ai/docs/en/docs/manual/integrations/providers/chat/ollama">Ollama
-                      integration guide</a>.
+                      href="https://docs.ollama.com/faq#how-do-i-configure-ollama-server">Ollama
+                      FAQ</a>.
     common:
       continueAnyway: Continue Anyway
       goToModelSelection: Select Model →

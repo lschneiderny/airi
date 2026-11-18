@@ -1,6 +1,6 @@
 import type { BrokerState, TicketRecord } from '../src/grant'
 
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { classes, CpuSlotsError, decide, parseBudget } from '../src'
 
@@ -176,6 +176,26 @@ describe('decide', () => {
 })
 
 describe('parseBudget', () => {
+  const GIB = 2 ** 30
+
+  it.each([
+    [64, 12],
+    [32, 6],
+    [16, 2],
+    [8, 1],
+  ])('defaults on %i GiB to %i, whose shared ceiling fits in memory', (memory, budget) => {
+    vi.stubEnv('AIRI_CPU_BUDGET', undefined)
+    expect(parseBudget(undefined, memory * GIB)).toBe(budget)
+  })
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  it('uses an explicit budget as given, regardless of memory', () => {
+    expect(parseBudget('16', 8 * GIB)).toBe(16)
+  })
+
   it.each(['1', '2', '12', '24', '9007199254740991'])('accepts the positive integer %s', (value) => {
     expect(parseBudget(value)).toBe(Number(value))
   })
