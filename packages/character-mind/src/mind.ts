@@ -17,11 +17,11 @@ export class CharacterMind {
   private readonly rng: MindRandom
   private readonly listeners = new Set<(step: MindStep) => void>()
 
-  /** `clock` returns epoch milliseconds. */
+  /** `seed` starts the random source; `clock` returns epoch milliseconds. */
   constructor(options: { seed: number, clock?: () => number }) {
     this.clock = options.clock ?? Date.now
     this.rng = seededRandom(options.seed)
-    this.current = initialMindState(options.seed)
+    this.current = initialMindState()
   }
 
   get state(): MindState {

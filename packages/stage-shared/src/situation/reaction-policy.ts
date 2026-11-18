@@ -1,7 +1,6 @@
 import type { GateHardReason, GateOutcome, GateSettings, GateSignals } from './gate'
 import type { SituationState, TouchGesture, TouchObservation } from './types'
 
-import { nextRandom, seedRng } from './rng'
 import { TOUCH_TOPIC_KEY } from './types'
 import { isDenylisted } from './window-title'
 
@@ -40,15 +39,13 @@ export interface ReactionPending {
 }
 
 /**
- * State the reaction policy carries between touches. Plain JSON. It owns its own Mulberry32 checkpoint, separate
- * from the urge gate's, so reactions never shift the gate's draws. Hold anchors later than the next `nowMs` (the
- * clock moved backwards) are pulled back to that `nowMs`, so a backward jump never extends a hold.
+ * State the reaction policy carries between touches. Plain JSON. It holds no random source: the caller passes the
+ * draw, so reactions never shift the urge gate's draws. Hold anchors later than the next `nowMs` (the clock moved
+ * backwards) are pulled back to that `nowMs`, so a backward jump never extends a hold.
  */
 export interface ReactionMemory {
-  /** Chat session the counters belong to; another session resets everything but `rngState`. */
+  /** Chat session the counters belong to; another session resets everything. */
   readonly sessionId: string | null
-  /** Mulberry32 checkpoint; advanced by exactly one draw per roll and by nothing else. */
-  readonly rngState: number
   /** Pet spans seen in this session; a pet merged into the previous span does not count again. */
   readonly petsSeen: number
   /** `startedAtMs` of the last counted pet span. An identity key, not a hold anchor: never pulled to `nowMs`. */
@@ -139,10 +136,9 @@ export interface ReactionEvaluation {
   readonly memory: ReactionMemory
 }
 
-export function initialReactionMemory(seed: number): ReactionMemory {
+export function initialReactionMemory(): ReactionMemory {
   return {
     sessionId: null,
-    rngState: seedRng(seed),
     petsSeen: 0,
     lastPetStartedAtMs: null,
     pokeBurstRolled: false,
@@ -160,13 +156,12 @@ const REACTION_KINDS: ReadonlySet<string> = new Set<ReactionKind>(['pet-soft', '
 
 /**
  * Brings stored memory into a usable shape at `nowMs`: drops non-finite values, pulls hold anchors in the future
- * back to `nowMs`, drops a pending attempt older than {@link REACTION_PENDING_MAX_MS}, and resets everything but
- * `rngState` when the session changed.
+ * back to `nowMs`, drops a pending attempt older than {@link REACTION_PENDING_MAX_MS}, and resets everything when
+ * the session changed.
  */
 function normalizeMemory(memory: ReactionMemory, nowMs: number, sessionId: string): ReactionMemory {
-  const rngState = isTime(memory.rngState) ? seedRng(memory.rngState) : 0
   if (memory.sessionId !== sessionId)
-    return { ...initialReactionMemory(rngState), sessionId }
+    return { ...initialReactionMemory(), sessionId }
 
   const atMost = (time: number | null): number | null => isTime(time) ? Math.min(time, nowMs) : null
   const raw = memory.pending
@@ -177,7 +172,6 @@ function normalizeMemory(memory: ReactionMemory, nowMs: number, sessionId: strin
 
   return {
     sessionId,
-    rngState,
     petsSeen: isTime(memory.petsSeen) && memory.petsSeen > 0 ? Math.floor(memory.petsSeen) : 0,
     lastPetStartedAtMs: isTime(memory.lastPetStartedAtMs) ? memory.lastPetStartedAtMs : null,
     pokeBurstRolled: memory.pokeBurstRolled === true,
@@ -247,14 +241,15 @@ export function touchVoiceView(input: {
 }
 
 /**
- * Decides whether the character answers a touch with a line. Pure: time comes only from `input.nowMs`, and only
- * the roll step draws, so every earlier hold leaves `rngState` unchanged.
+ * Decides whether the character answers a touch with a line. Pure: time comes only from `input.nowMs` and
+ * randomness only from `draw`, which returns a uniform value in [0, 1) from the caller's random source. Only the
+ * roll step calls it, exactly once, so every earlier hold draws nothing.
  *
  * Order: time and memory normalization, bookkeeping (always applied), candidate (pet or poke), pacing (pending,
  * refractory, retry wait), the view's hard suppressor, then the roll. A speak decision sets `pending` and
  * `lastAttemptAtMs`; the caller reports the outcome through {@link settleReaction}.
  */
-export function reactionPolicy(input: ReactionPolicyInput, memory: ReactionMemory): ReactionEvaluation {
+export function reactionPolicy(input: ReactionPolicyInput, memory: ReactionMemory, draw: () => number): ReactionEvaluation {
   const { nowMs, gesture, view } = input
   if (!isTime(nowMs))
     return hold(memory, 'invalid-time', null)
@@ -312,8 +307,8 @@ export function reactionPolicy(input: ReactionPolicyInput, memory: ReactionMemor
   if (view.held !== null)
     return hold(next, view.held, kind)
 
-  const [roll, rngState] = nextRandom(next.rngState)
-  next = { ...next, rngState, pokeBurstRolled: kind === 'poke-protest' ? true : next.pokeBurstRolled }
+  const roll = draw()
+  next = { ...next, pokeBurstRolled: kind === 'poke-protest' ? true : next.pokeBurstRolled }
   if (roll >= probability)
     return hold(next, 'roll', kind, roll)
   return {
@@ -328,7 +323,7 @@ export function reactionPolicy(input: ReactionPolicyInput, memory: ReactionMemor
  *
  * `refused` means another unprompted turn was pending, so the line was never sent: the attempt takes no retry wait
  * (`lastAttemptAtMs` returns to its value before the attempt) and a protest's burst may roll again. The draw is
- * spent; `rngState` is not restored.
+ * spent: the caller's random source does not go back.
  */
 export function settleReaction(memory: ReactionMemory, outcome: GateOutcome | 'refused', nowMs: number): ReactionMemory {
   if (!isTime(nowMs))

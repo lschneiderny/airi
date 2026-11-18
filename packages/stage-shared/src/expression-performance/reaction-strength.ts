@@ -1,18 +1,16 @@
 import type { ExpressionPerformanceSettings } from './settings'
 import type { Band, PerformanceEmotion, ReactionEpisode } from './types'
 
-/** Checkpointable history for the uninterrupted current emotion, with seconds supplied by callers. */
+/** Checkpointable history for the uninterrupted current emotion, with seconds supplied by callers. It holds no random source. */
 export interface ReactionState {
-  random: number
   counter: number
   lastAt: number | null
   starts: number[]
   current: { episode: ReactionEpisode, startedAt: number, h: number, u: number } | null
 }
 
-/** Seeds are normalized to uint32; no global random source is used. */
-export function createReactionState(seed: number): ReactionState {
-  return { random: seed >>> 0, counter: 0, lastAt: null, starts: [], current: null }
+export function createReactionState(): ReactionState {
+  return { counter: 0, lastAt: null, starts: [], current: null }
 }
 
 /** Advances Mulberry32 once, returning the complete uint32 checkpoint and a unit ticket. */
@@ -44,9 +42,12 @@ function jittered(dose: number, u: number, settings: ExpressionPerformanceSettin
 /**
  * Returns a new state without modifying a checkpoint. Unknown emotions and non-finite or
  * backwards timestamps are ignored. Finite doses clamp to [0,1]; non-finite doses act
- * as zero, clearing history. Neutral also clears history, but preserves ids and PRNG.
+ * as zero, clearing history. Neutral also clears history, but preserves ids.
+ *
+ * `draw` returns a uniform value in [0, 1) from the caller's random source. It is called exactly once, for the
+ * jitter of a new episode; an escalation reuses the episode's draw, and nothing else draws.
  */
-export function acceptReaction(state: ReactionState, emotion: PerformanceEmotion, nominal: number, at: number, settings: ExpressionPerformanceSettings): { episode: ReactionEpisode | null, state: ReactionState } {
+export function acceptReaction(state: ReactionState, emotion: PerformanceEmotion, nominal: number, at: number, settings: ExpressionPerformanceSettings, draw: () => number): { episode: ReactionEpisode | null, state: ReactionState } {
   if (!['happy', 'sad', 'angry', 'think', 'surprised', 'awkward', 'question', 'curious', 'neutral', 'love', 'flustered', 'sleepy'].includes(emotion)
     || !Number.isFinite(at) || (state.lastAt !== null && at < state.lastAt)) {
     return { episode: null, state }
@@ -70,8 +71,7 @@ export function acceptReaction(state: ReactionState, emotion: PerformanceEmotion
     ? state.starts.filter(start => at - start < settings.intensity.habituationWindow)
     : []
   const h = Math.max(settings.intensity.habituationFloor, settings.intensity.habituationBase ** starts.length)
-  // Mulberry32 keeps its complete stream position in one uint32 for JSON checkpoints.
-  const { random, value: u } = drawRandom(state.random)
+  const u = draw()
   const episode = { id: `${emotion}-${state.counter + 1}`, emotion, nominal, ...jittered(nominal * h, u, settings), escalation: false }
-  return { episode, state: { ...next, random, counter: state.counter + 1, starts: [...starts, at], current: { episode, startedAt: at, h, u } } }
+  return { episode, state: { ...next, counter: state.counter + 1, starts: [...starts, at], current: { episode, startedAt: at, h, u } } }
 }
