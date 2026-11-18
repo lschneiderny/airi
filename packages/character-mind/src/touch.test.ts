@@ -1,21 +1,19 @@
 import type { GateOutcome, ReactionHoldReason, TouchVoiceView } from '@proj-airi/stage-shared/situation'
 
-import type { MindIntent, MindState, MindStimulus } from './types'
+import type { MindIntent, MindRandom, MindState, MindStimulus } from './types'
 
 import { defaultExpressionPerformanceSettings as settings } from '@proj-airi/stage-shared/expression-performance'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
-import { seededRandom } from './random'
 import { initialMindState, step } from './step'
 
-const rng = seededRandom(17)
 const SEC = 1000
 /** Epoch milliseconds of the first touch of every script. */
 const T0 = 1_700_000_000_000
-/** A seed whose voice checkpoint first draws 0.248, 0.533, and 0.077: every line that reaches its roll speaks. */
-const SPEAKS = 17
-/** A seed whose voice checkpoint first draws 0.891, above the odds of a protest. */
-const HOLDS = 3
+/** A draw below the odds of a soft line (0.3) and of a protest (0.8): every line that reaches its roll speaks. */
+const speaks: MindRandom = () => 0.1
+/** A draw above the odds of a protest. */
+const holds: MindRandom = () => 0.9
 const EVENT_ID = 'touch-event'
 // Default units: slight 0.15 x 0.25, clear 0.25 x 0.6.
 const slight = 0.0375
@@ -37,8 +35,8 @@ function petEnd(durationMs: number, voice: TouchVoiceView | null = null): Touch 
 }
 
 /** One mind fed in order; every poke carries the view of the pokes so far, as the situation reports them. */
-function script(seed = SPEAKS) {
-  let state = initialMindState(seed)
+function script(rng = speaks) {
+  let state = initialMindState()
   const pokeTimesMs: number[] = []
   function send(atMs: number, stimulus: MindStimulus) {
     const answer = step(state, [stimulus], atMs, rng)
@@ -72,7 +70,7 @@ function kinds(intents: readonly MindIntent[]) {
 
 describe('step: touch', () => {
   it('answers a poke with a touch reaction at its point, a mood dose, and a moment, under one cause', () => {
-    const { state, intents } = step(initialMindState(SPEAKS), [poke(null, 'body')], T0, rng)
+    const { state, intents } = step(initialMindState(), [poke(null, 'body')], T0, speaks)
 
     expect(intents).toEqual([
       { id: '1-touch-reaction', cause: 1, channel: 'posture', kind: 'touch-reaction', gesture: 'poke', region: 'body', point: { x: 0.2, y: -0.4 } },
@@ -104,18 +102,20 @@ describe('step: touch', () => {
     expect(mind.state.reaction.current).toBeNull()
   })
 
-  it('decides no line and leaves the voice memory untouched without a voice view', () => {
-    const initial = initialMindState(SPEAKS)
+  it('decides no line, draws nothing, and leaves the voice memory untouched without a voice view', () => {
+    const initial = initialMindState()
+    const draw = vi.fn(speaks)
     let state = initial
     for (const [index, stimulus] of [poke(), poke(), poke(), petStart, petEnd(5 * SEC)].entries())
-      state = step(state, [stimulus], T0 + index * SEC, rng).state
+      state = step(state, [stimulus], T0 + index * SEC, draw).state
 
     expect(state.voice).toBe(initial.voice)
+    expect(draw).not.toHaveBeenCalled()
   })
 
   it('decides no line for a pet start, whatever its view', () => {
-    const initial = initialMindState(SPEAKS)
-    const { state, intents } = step(initial, [{ ...petStart, voice: view() }], T0, rng)
+    const initial = initialMindState()
+    const { state, intents } = step(initial, [{ ...petStart, voice: view() }], T0, speaks)
 
     expect(kinds(intents)).toEqual(['posture/touch-reaction', 'posture/mood'])
     expect(state.voice).toBe(initial.voice)
@@ -124,7 +124,8 @@ describe('step: touch', () => {
 
 describe('step: the spoken touch reaction', () => {
   it('speaks once for a burst of three pokes, and rolls each burst once', () => {
-    const mind = script()
+    const draw = vi.fn(speaks)
+    const mind = script(draw)
 
     expect(kinds(mind.pokeAt(T0))).not.toContain('voice/speak')
     expect(mind.decision).toMatchObject({ speak: false, reason: 'poke-count', kind: 'poke-protest', roll: null })
@@ -132,19 +133,19 @@ describe('step: the spoken touch reaction', () => {
     const third = mind.pokeAt(T0 + 2 * SEC)
 
     expect(third.at(-1)).toEqual({ id: '3-speak', cause: 3, channel: 'voice', kind: 'speak', line: 'poke-protest', eventId: EVENT_ID })
-    expect(mind.decision).toMatchObject({ speak: true, kind: 'poke-protest', eventId: EVENT_ID, probability: 0.8 })
+    expect(mind.decision).toMatchObject({ speak: true, kind: 'poke-protest', eventId: EVENT_ID, roll: 0.1, probability: 0.8 })
     expect(mind.state.voice.reaction).toMatchObject({ sessionId: 'session-1', pokeBurstRolled: true, lastAttemptAtMs: T0 + 2 * SEC, pending: { kind: 'poke-protest', eventId: EVENT_ID } })
 
     expect(kinds(mind.pokeAt(T0 + 3 * SEC))).not.toContain('voice/speak')
     expect(mind.decision).toMatchObject({ speak: false, reason: 'burst-rolled', kind: 'poke-protest', roll: null })
+    expect(draw).toHaveBeenCalledTimes(1)
   })
 
   it('holds a burst whose draw is at or above the odds, and keeps the draw in the decision', () => {
-    const mind = script(HOLDS)
+    const mind = script(holds)
 
     expect(kinds(mind.burstAt(T0))).not.toContain('voice/speak')
-    expect(mind.decision).toMatchObject({ speak: false, reason: 'roll', kind: 'poke-protest' })
-    expect(mind.decision?.roll).toBeGreaterThanOrEqual(0.8)
+    expect(mind.decision).toMatchObject({ speak: false, reason: 'roll', kind: 'poke-protest', roll: 0.9 })
     expect(mind.state.voice.reaction.pending).toBeNull()
   })
 
@@ -156,21 +157,21 @@ describe('step: the spoken touch reaction', () => {
     ['pet-short', petEnd(2 * SEC, view({ pet: { startedAtMs: T0 - 2 * SEC, durationMs: 2 * SEC } }))],
     ['first-pet', petEnd(5 * SEC, view({ pet: { startedAtMs: T0 - 5 * SEC, durationMs: 5 * SEC } }))],
   ])('holds with %s, draws nothing, and still reacts with the body', (reason, stimulus) => {
-    const initial = initialMindState(SPEAKS)
-    const { state, intents } = step(initial, [stimulus], T0, rng)
+    const draw = vi.fn(speaks)
+    const { state, intents } = step(initialMindState(), [stimulus], T0, draw)
 
     expect(state.voice.lastDecision).toMatchObject({ speak: false, reason, roll: null })
-    expect(state.voice.reaction.rngState).toBe(initial.voice.reaction.rngState)
+    expect(draw).not.toHaveBeenCalled()
     expect(kinds(intents)).toContain('posture/touch-reaction')
     expect(kinds(intents)).not.toContain('voice/speak')
   })
 
   it('speaks a soft line for the second long pet of a session, and stays silent right after her last line', () => {
     const second = (lastCharacterLineAtMs: number | null) => {
-      let state = initialMindState(SPEAKS)
-      state = step(state, [petEnd(5 * SEC, view({ pet: { startedAtMs: T0 - 5 * SEC, durationMs: 5 * SEC } }))], T0, rng).state
+      let state = initialMindState()
+      state = step(state, [petEnd(5 * SEC, view({ pet: { startedAtMs: T0 - 5 * SEC, durationMs: 5 * SEC } }))], T0, speaks).state
       const atMs = T0 + 30 * SEC
-      return step(state, [petEnd(5 * SEC, view({ pet: { startedAtMs: atMs - 5 * SEC, durationMs: 5 * SEC }, lastCharacterLineAtMs }))], atMs, rng)
+      return step(state, [petEnd(5 * SEC, view({ pet: { startedAtMs: atMs - 5 * SEC, durationMs: 5 * SEC }, lastCharacterLineAtMs }))], atMs, speaks)
     }
 
     expect(second(null).intents.at(-1)).toMatchObject({ channel: 'voice', kind: 'speak', line: 'pet-soft', eventId: EVENT_ID })
@@ -255,6 +256,6 @@ describe('step: the spoken touch reaction', () => {
     const third = poke(view({ pokeTimesMs: [T0 + SEC, T0 + 2 * SEC, T0 + 3 * SEC] }))
 
     expect(restored).toEqual(mind.state)
-    expect(step(restored, [third], T0 + 3 * SEC, rng)).toEqual(step(mind.state, [third], T0 + 3 * SEC, rng))
+    expect(step(restored, [third], T0 + 3 * SEC, speaks)).toEqual(step(mind.state, [third], T0 + 3 * SEC, speaks))
   })
 })

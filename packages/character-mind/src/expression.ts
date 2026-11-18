@@ -1,4 +1,4 @@
-import type { MindIntent, MindState, MindStimulus } from './types'
+import type { MindIntent, MindRandom, MindState, MindStimulus } from './types'
 
 import { acceptReaction, emotionHold, releaseHold } from '@proj-airi/stage-shared/expression-performance'
 
@@ -12,9 +12,9 @@ interface Answer { state: MindState, intents: MindIntent[] }
  * An emotion becomes an episode with its hold. A neutral that resets the reaction state releases the automatic
  * slots and the hold. A repeat that neither starts nor escalates an episode yields no intent.
  */
-export function answerEmotion(state: MindState, stimulus: Stimulus<'emotion'>, cause: number, atSeconds: number): Answer {
+export function answerEmotion(state: MindState, stimulus: Stimulus<'emotion'>, cause: number, atSeconds: number, rng: MindRandom): Answer {
   const { settings, turnId } = stimulus
-  const reaction = acceptReaction(state.reaction, stimulus.emotion, settings.bands ? stimulus.nominal : BANDLESS_NOMINAL, atSeconds, settings)
+  const reaction = acceptReaction(state.reaction, stimulus.emotion, settings.bands ? stimulus.nominal : BANDLESS_NOMINAL, atSeconds, settings, rng)
   const next = { ...state, reaction: reaction.state }
   if (stimulus.emotion === 'neutral' && reaction.state !== state.reaction)
     return { state: next, intents: [{ id: `${cause}-release`, cause, channel: 'face', kind: 'release', scope: 'neutral', hold: releaseHold(turnId), reason: stimulus.source, turnId }] }
@@ -33,7 +33,7 @@ export function answerEmotion(state: MindState, stimulus: Stimulus<'emotion'>, c
  *
  * Without a mapping, or with held emotions off, the reaction state is untouched and the entry travels alone.
  */
-export function answerExpressionRequest(state: MindState, stimulus: Stimulus<'expression-request'>, cause: number, atSeconds: number): Answer {
+export function answerExpressionRequest(state: MindState, stimulus: Stimulus<'expression-request'>, cause: number, atSeconds: number, rng: MindRandom): Answer {
   const { settings, turnId, lease } = stimulus
   const entry = { id: `${cause}-entry`, cause, channel: 'face', kind: 'entry', entryId: stimulus.entryId, reason: stimulus.source, turnId } as const
   const mapping = settings.heldEmotions ? stimulus.mapping : null
@@ -41,7 +41,7 @@ export function answerExpressionRequest(state: MindState, stimulus: Stimulus<'ex
     return { state, intents: [{ ...entry, episode: null, hold: null }] }
 
   const nominal = settings.bands ? settings.intensity[mapping.minBand] : BANDLESS_NOMINAL
-  const reaction = acceptReaction(state.reaction, mapping.emotion, nominal, atSeconds, settings)
+  const reaction = acceptReaction(state.reaction, mapping.emotion, nominal, atSeconds, settings, rng)
   const running = reaction.state.current?.episode
   const held = reaction.episode ?? (running?.emotion === mapping.emotion ? running : null)
 
