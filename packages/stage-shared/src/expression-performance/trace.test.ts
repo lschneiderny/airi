@@ -10,16 +10,17 @@ const context: DeciderContext = {
   settings: { ...defaultExpressionPerformanceSettings, intensity: { ...defaultExpressionPerformanceSettings.intensity, jitter: 0, habituationBase: 1 } },
   catalog: ['a', 'b'].map(id => ({ id, label: id, fileName: id, parameterIds: [], kind: 'face', confirmed: true, exposedToLlm: true, group: null, mappings: [{ emotion: 'happy', minBand: 'slight', weight: 1 }] })),
 }
-function emotion(at: number): AffectSignal {
-  return { kind: 'emotion', emotion: 'happy', source: 'act', nominal: 0.9, at }
+/** A new strong happy episode as the mind decides it under these settings; the scripts space them past the escalation window. */
+function reaction(at: number): AffectSignal {
+  return { kind: 'reaction', episode: { id: `happy-${at}`, emotion: 'happy', nominal: 0.9, intensity: 0.9, band: 'strong', escalation: false }, at }
 }
 function fixture() {
   return parse(AffectTraceSchema, {
-    version: 1,
+    version: 2,
     decider: 'picker',
     checkpoint: picker.initial(1),
     initialContext: context,
-    entries: [emotion(0), emotion(3)].map(signal => ({ type: 'signal', signal })),
+    entries: [reaction(0), reaction(3)].map(signal => ({ type: 'signal', signal })),
     truncated: false,
     endAt: 8,
   })
@@ -29,8 +30,8 @@ describe('affect trace', () => {
   it('replays deterministically from a checkpoint after 3000 earlier signals', () => {
     let state = picker.initial(17)
     for (let i = 0; i < 3000; i++)
-      state = picker.decide(emotion(i * 3), context, state).state
-    const trace = { ...fixture(), checkpoint: JSON.parse(JSON.stringify(state)), entries: [emotion(9000), emotion(9003)].map(signal => ({ type: 'signal' as const, signal })), endAt: 9004 }
+      state = picker.decide(reaction(i * 3), context, state).state
+    const trace = { ...fixture(), checkpoint: JSON.parse(JSON.stringify(state)), entries: [reaction(9000), reaction(9003)].map(signal => ({ type: 'signal' as const, signal })), endAt: 9004 }
     const expected = trace.entries.map(({ signal }) => {
       const result = picker.decide(signal, context, state)
       state = result.state
@@ -45,9 +46,9 @@ describe('affect trace', () => {
     const trace = fixture()
     trace.entries.splice(1, 0, { type: 'context', context: changed })
     let state = picker.initial(1)
-    const first = picker.decide(emotion(0), context, state)
+    const first = picker.decide(reaction(0), context, state)
     state = first.state
-    const second = picker.decide(emotion(3), changed, state)
+    const second = picker.decide(reaction(3), changed, state)
     expect(replayAffectTrace(trace, picker, { mode: 'exact' })).toEqual([{ at: 0, decision: first.decision }, { at: 3, decision: second.decision }])
     expect(second.decision.slots[0].expressionId).toBe('a')
     expect(replayAffectTrace(fixture(), picker, { mode: 'exact' })[1].decision).not.toEqual(second.decision)
@@ -60,13 +61,13 @@ describe('affect trace', () => {
       return picker.decide(signal, ctx, state)
     } }, signal => order.push(`sink:${signal.at}`))
     for (const at of [0, 3])
-      wrapped.decide(emotion(at), context, wrapped.initial(1))
+      wrapped.decide(reaction(at), context, wrapped.initial(1))
     expect(order).toEqual(['sink:0', 'decide:0', 'sink:3', 'decide:3'])
     expect(wrapped.nextDeadline(wrapped.initial(1))).toBeNull()
   })
 
   it('validates a clear signal and replays it exactly to the live slot commands', () => {
-    const signals: AffectSignal[] = [emotion(0), { kind: 'clear', source: 'tool', slot: 'face', at: 1 }, emotion(4), { kind: 'clear', source: 'devtools', turnId: 'turn', at: 5 }]
+    const signals: AffectSignal[] = [reaction(0), { kind: 'clear', source: 'tool', slot: 'face', at: 1 }, reaction(4), { kind: 'clear', source: 'devtools', turnId: 'turn', at: 5 }]
     const trace = parse(AffectTraceSchema, { ...fixture(), entries: signals.map(signal => ({ type: 'signal', signal })) })
     let state = picker.initial(1)
     const live = signals.map((signal) => {
@@ -87,7 +88,7 @@ describe('affect trace', () => {
     const doubled = { ...context, settings: resolveEffectiveSettings(base.value, { moodGainScale: 2 }).settings }
     const changed = { ...context, settings: resolveEffectiveSettings(base.value, { moodGainScale: 1.5 }).settings }
     expect(doubled.settings.moodDynamics.strongGain).toBe(1.6)
-    const signals = [emotion(0), emotion(3)]
+    const signals = [reaction(0), reaction(3)]
     const exported = JSON.stringify({ ...fixture(), initialContext: doubled, entries: [{ type: 'signal', signal: signals[0] }, { type: 'context', context: changed }, { type: 'signal', signal: signals[1] }] })
     const trace = parseAffectTrace(JSON.parse(exported))
     let state = picker.initial(1)
@@ -122,7 +123,7 @@ describe('affect trace', () => {
 
   describe('every persisted value under every profile scale', () => {
     function expectExactRoundTrip(live: DeciderContext) {
-      const signals = [emotion(0), emotion(3)]
+      const signals = [reaction(0), reaction(3)]
       const trace = parseAffectTrace(JSON.parse(JSON.stringify({ ...fixture(), initialContext: live, entries: signals.map(signal => ({ type: 'signal', signal })) })))
       let state = picker.initial(1)
       const decisions = signals.map((signal) => {
@@ -191,10 +192,13 @@ describe('affect trace', () => {
 
   it.each([
     { version: undefined },
+    // Version 1 recorded raw emotions, which no decider takes any more.
+    { version: 1 },
     { checkpoint: undefined },
     { checkpoint: { invalid: Infinity } },
-    { entries: [{ type: 'signal', signal: { kind: 'emotion', at: 1 } }] },
-    { entries: [{ type: 'signal', signal: emotion(3) }, { type: 'signal', signal: emotion(1) }] },
+    { entries: [{ type: 'signal', signal: { kind: 'reaction', at: 1 } }] },
+    { entries: [{ type: 'signal', signal: { kind: 'emotion', source: 'act', emotion: 'happy', nominal: 0.9, at: 1 } }] },
+    { entries: [{ type: 'signal', signal: reaction(3) }, { type: 'signal', signal: reaction(1) }] },
     { endAt: 1 },
   ])('rejects malformed input %j', (fields) => {
     expect(safeParse(AffectTraceSchema, { ...fixture(), ...fields }).success).toBe(false)
@@ -207,7 +211,7 @@ describe('affect trace', () => {
     ['sleepy ', false],
     ['lovey', false],
   ])('accepts or rejects the recorded emotion name %j: %s', (name, success) => {
-    const signal = { kind: 'emotion', source: 'act', emotion: name, nominal: 0.6, at: 1 }
+    const signal = { kind: 'reaction', episode: { id: 'e-1', emotion: name, nominal: 0.6, intensity: 0.6, band: 'clear', escalation: false }, at: 1 }
     expect(safeParse(AffectTraceSchema, { ...fixture(), entries: [{ type: 'signal', signal }] }).success).toBe(success)
   })
 
@@ -219,14 +223,14 @@ describe('affect trace', () => {
       nextDeadline: (state: number) => state + 2,
       decide(signal: AffectSignal) {
         received.push(signal)
-        return { state: signal.at, decision: { episodes: [], slots: [], holds: [], moods: [] } }
+        return { state: signal.at, decision: { slots: [], moods: [] } }
       },
     }
     const trace = fixture()
-    trace.entries = [emotion(1), { kind: 'deadline' as const, at: 2 }, emotion(6)].map(signal => ({ type: 'signal', signal }))
+    trace.entries = [reaction(1), { kind: 'deadline' as const, at: 2 }, reaction(6)].map(signal => ({ type: 'signal', signal }))
     trace.endAt = 10
     replayAffectTrace(trace, decider, { mode: 'compare', seed: 0 })
-    expect(received).toEqual([emotion(1), { kind: 'deadline', at: 3 }, { kind: 'deadline', at: 5 }, emotion(6), { kind: 'deadline', at: 8 }, { kind: 'deadline', at: 10 }])
+    expect(received).toEqual([reaction(1), { kind: 'deadline', at: 3 }, { kind: 'deadline', at: 5 }, reaction(6), { kind: 'deadline', at: 8 }, { kind: 'deadline', at: 10 }])
   })
 
   it('feeds exact deadlines verbatim and never initializes the policy', () => {

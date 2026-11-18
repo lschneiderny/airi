@@ -1,5 +1,6 @@
 import type { StagePerformanceScene } from '@proj-airi/stage-ui/composables/performance/use-stage-performance-conductor'
 
+import { CharacterMind } from '@proj-airi/character-mind'
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { StagePerformanceConductor } from '@proj-airi/stage-ui/composables/performance/use-stage-performance-conductor'
 import { createPinia, setActivePinia } from 'pinia'
@@ -25,6 +26,7 @@ describe('stagePerformanceConductor in the qa-tools node project', () => {
       playMotion: () => {},
       settings: () => defaultExpressionPerformanceSettings,
       catalog: () => [],
+      mind: new CharacterMind({ seed: 7, clock: () => 10_000 }),
       seed: 7,
       clock: () => 10,
       timers: { setTimeout: () => noHandle, clearTimeout: () => {} },

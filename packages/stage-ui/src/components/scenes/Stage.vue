@@ -46,6 +46,7 @@ import { computed, defineAsyncComponent, getCurrentScope, nextTick, onUnmounted,
 import StageAvatarModelMissing from './stage-avatar-model-missing.vue'
 import StageRenderError from './stage-render-error.vue'
 
+import { useCharacterMind } from '../../composables/performance/use-character-mind'
 import { useIdleProps } from '../../composables/performance/use-idle-props'
 import { useStagePerformanceConductor } from '../../composables/performance/use-stage-performance-conductor'
 // import { useDuckDb } from '../../composables/use-duck-db'
@@ -363,6 +364,7 @@ const { conductor: performanceConductor, settings: performanceSettings } = useSt
   profile: performanceProfileOf,
   characterReading,
   music: musicPlaying,
+  mind: useCharacterMind(),
 })
 
 const stageTouch = useStageTouchStore()

@@ -1,9 +1,10 @@
+import type { CharacterMind } from '@proj-airi/character-mind'
 import type { FaceBaseline } from '@proj-airi/motion-driver-natural/baseline'
 import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
 import type { IdleBehaviourKind, IdleCueKind, NaturalIdleDrive } from '@proj-airi/motion-driver-natural/idle-activities'
 import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
 import type { CharacterReading } from '@proj-airi/stage-shared/character-state'
-import type { AffectSignal, AffectTrace, CatalogEntry, DeciderContext, ExpressionPerformanceSettings, HoldCommand, MoodDose, PerformanceDecision, PerformanceProfile, SlotCommand, TimingEvent, TouchAffectInput } from '@proj-airi/stage-shared/expression-performance'
+import type { AffectSignal, AffectTrace, CatalogEntry, DeciderContext, ExpressionPerformanceSettings, HoldCommand, MoodDose, PerformanceDecision, PerformanceProfile, ReactionEpisode, SlotCommand, TimingEvent, TouchAffectInput } from '@proj-airi/stage-shared/expression-performance'
 import type { AffectTraceRequest } from '@proj-airi/stage-shared/expression-performance/affect-trace-diagnostics'
 
 import type { StageExpressionBackend } from '../../features/performance/expression-backend'
@@ -16,7 +17,7 @@ import type { ExpressionToolPort } from '../../tools/expression'
 import { errorMessageFrom } from '@moeru/std'
 import { SpeechOnsetDetector } from '@proj-airi/motion-driver-natural/speech-emphasis'
 import { faceBaselineOf, idleDriveOf } from '@proj-airi/stage-shared/character-state'
-import { applyMappingWeights, createDecider, isLlmEligible, resolveEffectiveSettings, withAffectTrace } from '@proj-airi/stage-shared/expression-performance'
+import { applyMappingWeights, createDecider, explicitExpressionCommand, isLlmEligible, primaryMapping, resolveEffectiveSettings, withAffectTrace } from '@proj-airi/stage-shared/expression-performance'
 import { useNaturalMotionDiagnostics } from '@proj-airi/stage-ui-live2d/stores'
 import { useIntervalFn } from '@vueuse/core'
 import { computed, onScopeDispose, shallowRef, watch } from 'vue'
@@ -36,9 +37,6 @@ type SlotName = SlotCommand['slot']
 type TimerHandle = ReturnType<typeof setTimeout>
 
 const slotNames: readonly SlotName[] = ['face', 'effect', 'prop']
-
-/** A decider decision whose episodes carry the mood dose gain of the context they were decided in. */
-type StageDecision = Omit<PerformanceDecision, 'episodes'> & { episodes: NaturalEpisode[] }
 
 /** An affect recording keeps at most this many entries; the next one marks it truncated. */
 export const maxAffectTraceEntries = 20_000
@@ -148,6 +146,13 @@ export interface StagePerformanceConductorOptions {
   playMotion: (group: string) => void
   settings: () => ExpressionPerformanceSettings
   catalog: () => readonly CatalogEntry[]
+  /**
+   * The character mind. It decides every emotion, its strength, and its hold before the decider picks entries.
+   *
+   * The mind answers on its own clock, in epoch milliseconds, and the conductor never passes it a time. A caller
+   * that injects `clock` gives the mind the same clock in milliseconds, so that both count the same seconds.
+   */
+  mind: CharacterMind
   /** Decider seed, fixed for the lifetime of the conductor so traces can replay it. */
   seed: number
   /**
@@ -187,17 +192,19 @@ const browserTimers: Required<StagePerformanceConductorOptions>['timers'] = {
 }
 
 /**
- * Turns stage events into decider signals and dispatches the decisions to the Live2D scene.
+ * Turns stage events into stimuli for the character mind and signals for the asset decider, and dispatches what
+ * they decide to the scene.
  *
  * State model: the conductor owns one decider state (seeded once), the turn ids it last saw
- * active, and the last muted flag. It validates inputs and dispatches; every performance
- * decision belongs to the decider.
+ * active, and the last muted flag. It validates inputs and dispatches. The mind decides each emotion, its strength,
+ * and its hold, and owns the reaction history; the decider picks the entries that show it. An emotion, a named
+ * expression, and a clear reach the mind first, and the decider then receives what the mind decided.
  *
  * Routing per driver:
- * - Natural: decided episodes go to `scene.setEmotion` and decided holds to `scene.applyHolds`.
+ * - Natural: the mind's episodes go to `scene.setEmotion` and its holds to `scene.applyHolds`.
  * - Basic (Live2D Universal and MAGIC, MMD Classic): every recognized emotion plays its motion group, repeats and
  *   `neutral` (`Idle`) included, independently of episode filtering.
- *   The decider context reports `heldEmotions` off there, so explicit expressions derive no
+ *   The mind's settings report `heldEmotions` off there, so explicit expressions derive no
  *   reaction state and later slot decisions match the held-emotion-free behavior.
  * - Slot commands go to `scene.applySlots` for every driver.
  * - Touch mood doses go to `scene.addMood` and ACT cue gestures to `scene.gesture`, both under the Natural driver of
@@ -226,7 +233,7 @@ const browserTimers: Required<StagePerformanceConductorOptions>['timers'] = {
  * Character profiles: every signal is decided under the effective context of its character
  * (see `profile`): `resolveEffectiveSettings` scales the mood dynamics, `applyMappingWeights`
  * scales or disables catalog mappings, and `expressiveness` scales an emotion's nominal
- * intensity, clamped to [0, 1], before the decider bands it. Each decided episode carries
+ * intensity, clamped to [0, 1], before the mind bands it. Each decided episode carries
  * `moodGain`, the mood dose gain of its band under that context, so Natural doses it under the
  * character that produced it even when a later decision uses another profile.
  *
@@ -282,12 +289,20 @@ export class StagePerformanceConductor {
     const at = this.clock()
     const { context, expressiveness } = this.effectiveContext(turnId)
     const scaled = Math.min(1, Math.max(0, nominal * expressiveness))
-    const decision = this.decide({ kind: 'emotion', source, emotion, nominal: scaled, turnId, at }, context)
-    if (this.options.driver() === 'natural')
-      this.dispatchNatural(decision, at)
-    else if (!options.suppressMotionGroup)
+    // A repeat that neither starts nor escalates an episode yields no intent, and the decider hears nothing.
+    const [intent] = this.options.mind.receive({ kind: 'emotion', source, emotion, nominal: scaled, turnId, settings: context.settings })
+    let slots: SlotCommand[] = []
+    if (intent?.kind === 'emotion') {
+      slots = this.decide({ kind: 'reaction', episode: intent.episode, turnId, at }, context).slots
+      this.dispatchNatural(this.dosed(intent.episode, context, turnId), intent.hold, at)
+    }
+    else if (intent?.kind === 'release') {
+      slots = this.decide({ kind: 'neutral', turnId, at }, context).slots
+      this.dispatchNatural(null, intent.hold, at)
+    }
+    if (this.options.driver() !== 'natural' && !options.suppressMotionGroup)
       this.options.playMotion(EMOTION_EmotionMotionName_value[emotion])
-    this.dispatchSlots(decision, at)
+    this.dispatchSlots(slots, at)
   }
 
   /**
@@ -308,22 +323,41 @@ export class StagePerformanceConductor {
       return undefined
     }
     const at = this.clock()
-    const decision = this.decide({ kind: 'expression', source, expressionId: entry.id, holdSeconds, turnId, at })
-    this.dispatchNatural(decision, at)
-    this.dispatchSlots(decision, at)
+    const { context } = this.effectiveContext(turnId)
+    // The mind reads no catalog, so the conductor reads the entry's lease and its primary emotion mapping for it.
+    // An entry without slots shows nothing and derives no reaction.
+    const lease = explicitExpressionCommand({ expressionId: entry.id, holdSeconds, turnId }, context)?.[0]
+    const mapping = primaryMapping(context.catalog.find(candidate => candidate.id === entry.id))
+    const [intent] = lease
+      ? this.options.mind.receive({
+          kind: 'expression-request',
+          source,
+          entryId: entry.id,
+          lease: { holdSeconds: lease.holdSeconds, until: lease.until },
+          mapping: mapping && { emotion: mapping.emotion, minBand: mapping.minBand },
+          turnId,
+          settings: context.settings,
+        })
+      : []
+    const request = intent?.kind === 'entry' ? intent : undefined
+    const episode = request?.episode ?? null
+    const decision = this.decide({ kind: 'expression', source, expressionId: entry.id, holdSeconds, episode, turnId, at }, context)
+    this.dispatchNatural(episode && this.dosed(episode, context, turnId), request?.hold ?? null, at)
+    this.dispatchSlots(decision.slots, at)
     return entry
   }
 
   /**
    * Releases one slot, or the face, effect, and prop slots when none is named. Saved defaults
-   * and manual toggles are not slot leases, so they stay. The clear is a decider signal, so an
-   * affect trace replays it like any other decision.
+   * and manual toggles are not slot leases, so they stay. The mind releases the held emotion when no slot is named.
+   * The clear is also a decider signal, so an affect trace replays it like any other decision.
    */
   clearExpression(slot: SlotName | undefined, source: 'act' | 'tool' | 'devtools', turnId?: string) {
     const at = this.clock()
+    const [intent] = this.options.mind.receive({ kind: 'expression-clear', source, slot, turnId })
     const decision = this.decide({ kind: 'clear', source, slot, turnId, at })
-    this.dispatchNatural(decision, at)
-    this.dispatchSlots(decision, at)
+    this.dispatchNatural(null, intent?.kind === 'release' ? intent.hold : null, at)
+    this.dispatchSlots(decision.slots, at)
   }
 
   /**
@@ -444,10 +478,10 @@ export class StagePerformanceConductor {
 
   /**
    * Starts an affect recording and replaces any open one. The trace starts from a copy of the
-   * decider state and the effective context of the active card. Every later signal is appended
-   * in order. A context entry precedes the first signal whose effective context differs from the
-   * last recorded one, so replay applies settings, catalog, and profile changes exactly where the
-   * live decider saw them. A recording keeps at most {@link maxAffectTraceEntries} entries; the
+   * decider state and the effective context of the active card. Every later decider signal is appended
+   * in order, with the episode the mind decided, so a replay needs no mind. A context entry precedes
+   * the first signal whose effective context differs from the last recorded one, so replay applies
+   * settings, catalog, and profile changes exactly where the live decider saw them. A recording keeps at most {@link maxAffectTraceEntries} entries; the
    * next entry marks it truncated and stops it. A decider switch also marks it truncated, because
    * the switch resets the decider state.
    */
@@ -456,7 +490,7 @@ export class StagePerformanceConductor {
     this.recording = {
       context,
       trace: {
-        version: 1,
+        version: 2,
         decider: this.deciderKind,
         checkpoint: structuredClone(this.state),
         initialContext: JSON.parse(context) as DeciderContext,
@@ -499,20 +533,20 @@ export class StagePerformanceConductor {
     const at = this.clock()
     this.muted = muted
     this.options.scene()?.setMuted(muted)
-    this.dispatchSlots(this.decide({ kind: 'muted', muted, at }), at)
+    this.dispatchSlots(this.decide({ kind: 'muted', muted, at }).slots, at)
   }
 
   private speech(event: SpeechEvent, turnId: string, clipId?: string) {
     const at = this.clock()
     const decision = this.decide({ kind: 'speech', event, turnId, clipId, at })
     this.options.scene()?.onSpeech(event, turnId, at)
-    this.dispatchSlots(decision, at)
+    this.dispatchSlots(decision.slots, at)
   }
 
   private timing(kind: TimingEvent['kind'], turnId: string) {
     const at = this.clock()
     const event: TimingEvent = { id: `timing-${++this.timingSeq}`, kind, turnId, at }
-    this.dispatch(this.decide({ kind: 'timing', event, at }), at)
+    this.dispatchSlots(this.decide({ kind: 'timing', event, at }).slots, at)
   }
 
   private armPause(turnId: string) {
@@ -571,27 +605,30 @@ export class StagePerformanceConductor {
       return
     this.deadline = undefined
     const at = Math.max(due, this.lastSignalAt)
-    this.dispatch(this.decide({ kind: 'deadline', at }), at)
+    this.dispatchSlots(this.decide({ kind: 'deadline', at }).slots, at)
   }
 
-  /** Sends a timing or deadline decision: episodes and holds reach the Natural scene, and slots reach every driver. */
-  private dispatch(decision: StageDecision, at: number) {
-    this.dispatchNatural(decision, at)
-    this.dispatchSlots(decision, at)
+  /**
+   * The episode with the mood dose gain of its band under the context it was decided in, or 0 for a moodless turn.
+   * Natural doses it under the character that produced it even when a later decision uses another profile.
+   */
+  private dosed(episode: ReactionEpisode, context: DeciderContext, turnId: string | undefined): NaturalEpisode {
+    const moodless = turnId !== undefined && this.moodlessTurns.has(turnId)
+    return { ...episode, moodGain: moodless ? 0 : context.settings.moodDynamics[`${episode.band}Gain`] }
   }
 
-  /** Natural only: episodes first, so a hold never precedes the episode it accompanies. */
-  private dispatchNatural(decision: StageDecision, at: number) {
+  /** Natural only: the episode first, so a hold never precedes the episode it accompanies. */
+  private dispatchNatural(episode: NaturalEpisode | null, hold: HoldCommand | null, at: number) {
     if (this.options.driver() !== 'natural')
       return
     const scene = this.options.scene()
-    for (const episode of decision.episodes)
+    if (episode)
       scene?.setEmotion(episode)
-    if (decision.holds.length > 0) {
+    if (hold) {
       // Like dispatchSlots: a scene that mounted after the last mute change has not heard it, and its
       // performer would keep an unstarted speech hold for the full unstarted expiry.
       scene?.setMuted(this.muted)
-      scene?.applyHolds(decision.holds, at)
+      scene?.applyHolds([hold], at)
     }
   }
 
@@ -634,7 +671,7 @@ export class StagePerformanceConductor {
     this.record({ type: 'context', context: JSON.parse(json) as DeciderContext })
   }
 
-  private decide(signal: AffectSignal, context = this.effectiveContext(turnOf(signal)).context): StageDecision {
+  private decide(signal: AffectSignal, context = this.effectiveContext(turnOf(signal)).context): PerformanceDecision {
     // A decider switch keeps the seed, so both deciders replay from the same randomness.
     if (context.settings.decider !== this.deciderKind) {
       this.deciderKind = context.settings.decider
@@ -648,20 +685,16 @@ export class StagePerformanceConductor {
     this.state = result.state
     this.lastSignalAt = Math.max(this.lastSignalAt, signal.at)
     this.armDeadline()
-    // After the decider, so decisions and traces stay exactly what the decider produced.
-    const mood = context.settings.moodDynamics
-    const turnId = turnOf(signal)
-    const moodless = turnId !== undefined && this.moodlessTurns.has(turnId)
-    return { ...result.decision, episodes: result.decision.episodes.map(episode => ({ ...episode, moodGain: moodless ? 0 : mood[`${episode.band}Gain`] })) }
+    return result.decision
   }
 
-  private dispatchSlots(decision: StageDecision, at: number) {
-    if (decision.slots.length === 0)
+  private dispatchSlots(commands: SlotCommand[], at: number) {
+    if (commands.length === 0)
       return
     const scene = this.options.scene()
     // The model, and with it the performer's muted flag, can mount after the last mute change.
     scene?.setMuted(this.muted)
-    scene?.applySlots(decision.slots, at)
+    scene?.applySlots(commands, at)
   }
 }
 
@@ -834,7 +867,7 @@ export const FACE_BASELINE_SAMPLE_MS = 1000
  * Every {@link FACE_BASELINE_SAMPLE_MS}, and once at creation, it reads `characterReading` and sends its face baseline
  * and its idle drive to the scene; no reading sends the neutral baseline and a drive that follows only the hour.
  */
-export function useStagePerformanceConductor(options: Pick<StagePerformanceConductorOptions, 'scene' | 'driver' | 'playMotion' | 'profile'> & {
+export function useStagePerformanceConductor(options: Pick<StagePerformanceConductorOptions, 'scene' | 'driver' | 'playMotion' | 'profile' | 'mind'> & {
   renderer: () => string | undefined
   expressionBackend: () => StageExpressionBackend | undefined
   /** The body tool port of the active scene; undefined when it has no body support (Live2D, classic MMD). */

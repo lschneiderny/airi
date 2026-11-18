@@ -95,6 +95,7 @@
     "@proj-airi/agents": "workspace:^",
     "@proj-airi/audio": "workspace:^",
     "@proj-airi/ccc": "workspace:^",
+    "@proj-airi/character-mind": "workspace:^",
     "@proj-airi/chromatic": "catalog:",
     "@proj-airi/cloud-client": "workspace:^",
     "@proj-airi/core-agent": "workspace:^",

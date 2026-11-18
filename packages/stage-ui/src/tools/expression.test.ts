@@ -2,6 +2,7 @@ import type { CatalogEntry } from '@proj-airi/stage-shared/expression-performanc
 
 import type { ExpressionToolPort } from './expression'
 
+import { CharacterMind } from '@proj-airi/character-mind'
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { useExpressionStore } from '@proj-airi/stage-ui-live2d/stores/expression-store'
 import { createPinia, setActivePinia } from 'pinia'
@@ -46,6 +47,7 @@ async function mount(curate = true) {
     settings: () => defaultExpressionPerformanceSettings,
     catalog: () => store.catalog,
     seed: 1,
+    mind: new CharacterMind({ seed: 1, clock: () => 10_000 }),
     clock: () => 10,
   })
   const tools = await createExpressionTools(createExpressionToolPort(conductor, store))

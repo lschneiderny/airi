@@ -1,11 +1,10 @@
 import type { CatalogEntry } from './catalog'
-import type { ReactionState } from './reaction-strength'
 import type { ExpressionPerformanceSettings } from './settings'
 import type { AffectSignal, DeciderContext, HoldCommand, PerformanceEmotion, ReactionEpisode, SlotCommand } from './types'
 
 import { isAutoEligible } from './catalog'
 import { entrySlots } from './combos'
-import { acceptReaction, drawRandom } from './reaction-strength'
+import { drawRandom } from './reaction-strength'
 import { bandRank } from './types'
 
 /**
@@ -46,6 +45,25 @@ export function drawEpisodeTickets(streams: Record<AutoSlot, number>) {
   const face = drawPickerTickets(streams.face)
   const effect = drawPickerTickets(streams.effect)
   return { streams: { face: face.random, effect: effect.random }, tickets: { face: face.tickets, effect: effect.tickets } }
+}
+
+/** The decider state an episode's automatic picks read and update. */
+interface EpisodeState {
+  streams: Record<AutoSlot, number>
+  tickets: Record<AutoSlot, Tickets> | null
+  occupants: Record<AutoSlot, string | null>
+}
+
+/**
+ * The state an episode picks from. A new episode draws its tickets and vacates the automatic slots. An escalation
+ * keeps both, so it cannot reroll a pick and fills only the slots that are still empty.
+ */
+export function enterEpisode<S extends EpisodeState>(state: S, episode: ReactionEpisode): S & { tickets: Record<AutoSlot, Tickets> } {
+  if (!episode.escalation)
+    return { ...state, ...drawEpisodeTickets(state.streams), occupants: { face: null, effect: null } }
+  // The mind keeps the reaction history, so an escalation can reach a state that never saw its episode start:
+  // after a decider switch, or in a compare replay of a recording that began mid-episode. It draws its own tickets.
+  return state.tickets ? { ...state, tickets: state.tickets } : { ...state, ...drawEpisodeTickets(state.streams) }
 }
 
 /** Zero tau disables recency, including a selection at the current signal time. */
@@ -121,9 +139,10 @@ export function autoPicks(episode: ReactionEpisode, ctx: DeciderContext, tickets
 
 /**
  * Commands for every slot of an explicit LLM expression, or null when it has no slots.
- * The conductor has already checked LLM eligibility.
+ * The conductor has already checked LLM eligibility. It also reads the first command as the entry's lease before it
+ * asks the mind, so the request needs no decided episode.
  */
-export function explicitExpressionCommand(signal: ExpressionSignal, ctx: DeciderContext): (SlotCommand & { expressionId: string })[] | null {
+export function explicitExpressionCommand(signal: Pick<ExpressionSignal, 'expressionId' | 'holdSeconds' | 'turnId'>, ctx: DeciderContext): (SlotCommand & { expressionId: string })[] | null {
   const entry = ctx.catalog.find(entry => entry.id === signal.expressionId)
   const slots = entry ? entrySlots(entry, ctx.catalog) : []
   if (!entry || slots.length === 0)
@@ -187,45 +206,4 @@ export function releaseHold(turnId: string | undefined): HoldCommand {
 /** The heaviest emotion mapping of an entry, earliest on ties, or null without mappings. */
 export function primaryMapping(entry: CatalogEntry | undefined): CatalogEntry['mappings'][number] | null {
   return entry?.mappings.reduce<CatalogEntry['mappings'][number] | null>((best, mapping) => best && best.weight >= mapping.weight ? best : mapping, null) ?? null
-}
-
-/** The decider state an explicit expression's derived reaction reads and updates. */
-interface ExpressionReactionState {
-  reaction: ReactionState
-  streams: Record<AutoSlot, number>
-  tickets: Record<AutoSlot, Tickets> | null
-}
-
-/**
- * Derives a reaction from an explicit expression that has emotion mappings, so the held face
- * follows what the LLM chose. The primary mapping is the heaviest one, earliest on ties, and it
- * is accepted exactly like a direct emotion signal at the mapping's minimum band. The hold mirrors
- * the slot command's own lifetime. No automatic picks run: the expression is the pick.
- * A repeat inside the same episode yields no new episode but still refreshes the hold, at the
- * running episode's strength, so the held face keeps matching the refreshed slot lease.
- *
- * A new episode draws its tickets so a later stronger signal of the same emotion escalates without
- * a null ticket. Occupants are unchanged here: the caller records every spanned slot.
- * With `heldEmotions` off, or no mapping, the state is returned untouched,
- * which keeps the old slot-only behavior.
- */
-export function explicitExpressionReaction<S extends ExpressionReactionState>(command: SlotCommand & { expressionId: string }, signal: ExpressionSignal, ctx: DeciderContext, state: S): { episodes: ReactionEpisode[], holds: HoldCommand[], state: S } {
-  const primary = ctx.settings.heldEmotions
-    ? primaryMapping(ctx.catalog.find(entry => entry.id === command.expressionId))
-    : null
-  if (!primary)
-    return { episodes: [], holds: [], state }
-  const reaction = acceptReaction(state.reaction, primary.emotion, ctx.settings.bands ? ctx.settings.intensity[primary.minBand] : 0.6, signal.at, ctx.settings)
-  let next = { ...state, reaction: reaction.state }
-  const episode = reaction.episode
-  const running = reaction.state.current?.episode
-  const held = episode ?? (running?.emotion === primary.emotion ? running : null)
-  if (episode && !episode.escalation)
-    next = { ...next, ...drawEpisodeTickets(state.streams) }
-  return {
-    episodes: episode ? [episode] : [],
-    // A configured zero dose has no running episode, but still refreshes the explicit slot's lease.
-    holds: [{ emotion: primary.emotion, strength: held?.intensity ?? (ctx.settings.bands ? ctx.settings.intensity[primary.minBand] : 0.6), holdSeconds: command.holdSeconds, until: command.until, turnId: signal.turnId }],
-    state: next,
-  }
 }

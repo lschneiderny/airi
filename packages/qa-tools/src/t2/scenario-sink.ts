@@ -12,6 +12,7 @@ import type { readLive2DRigProfile } from '@proj-airi/stage-ui-live2d/composable
 import type { NaturalTrace, NaturalTraceRecorder } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/trace'
 import type { StagePerformanceScene } from '@proj-airi/stage-ui/composables/performance/use-stage-performance-conductor'
 
+import { CharacterMind } from '@proj-airi/character-mind'
 import { NaturalTouchGestures } from '@proj-airi/motion-driver-natural/touch-gestures'
 import { normalizeActPayload, tokenAct } from '@proj-airi/pipelines-audio'
 import { parseExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
@@ -171,6 +172,8 @@ export function runScenarioSink(input: MotionScenario, options: ScenarioSinkOpti
       playMotion: () => {},
       settings: () => settings,
       catalog: () => catalog,
+      // The mind answers on the sim clock too, so a run decides the same episodes every time.
+      mind: new CharacterMind({ seed: scenario.seed, clock: () => simTime * 1000 }),
       seed: scenario.seed,
       clock: () => simTime,
       timers: {

@@ -1,9 +1,9 @@
 import type { CatalogEntry } from './catalog'
-import type { AffectSignal, DeciderContext } from './types'
+import type { AffectSignal, DeciderContext, ReactionEpisode } from './types'
 
 import { describe, expect, it } from 'vitest'
 
-import { createDecider, defaultExpressionPerformanceSettings, drawRandom, pickerCandidates, recencyWeight } from '.'
+import { bandOf, createDecider, defaultExpressionPerformanceSettings, drawRandom, pickerCandidates, recencyWeight } from '.'
 
 const decider = createDecider('picker')
 const settings = {
@@ -13,8 +13,12 @@ const settings = {
 function entry(id: string, kind: CatalogEntry['kind'] = 'face'): CatalogEntry {
   return { id, kind, label: id, fileName: id, parameterIds: [], confirmed: true, exposedToLlm: true, group: null, mappings: [{ emotion: 'happy', minBand: 'slight', weight: 1 }] }
 }
-function emotion(nominal = 0.9, at = 0): AffectSignal {
-  return { kind: 'emotion', emotion: 'happy', source: 'act', nominal, at, turnId: 'turn' }
+/** A happy episode as the mind decides it under these settings: without jitter and habituation its intensity is its dose. */
+function episode(nominal = 0.9, escalation = false): ReactionEpisode {
+  return { id: 'happy-1', emotion: 'happy', nominal, intensity: nominal, band: bandOf(nominal, settings)!, escalation }
+}
+function reaction(nominal = 0.9, at = 0, escalation = false): AffectSignal {
+  return { kind: 'reaction', episode: episode(nominal, escalation), at, turnId: 'turn' }
 }
 const ctx: DeciderContext = { settings, catalog: [entry('a'), entry('b'), entry('effect', 'effect')] }
 
@@ -23,18 +27,17 @@ describe('picker', () => {
   const comboCtx = { ...ctx, catalog: [...ctx.catalog.map(entry => ({ ...entry, mappings: entry.kind === 'face' ? [] : entry.mappings })), combo] }
 
   it('automatically emits every combo slot without a separate effect pick', () => {
-    const { decision, state } = decider.decide(emotion(), comboCtx, decider.initial(1))
+    const { decision, state } = decider.decide(reaction(), comboCtx, decider.initial(1))
     expect(decision.slots.map(command => [command.slot, command.expressionId])).toEqual([['face', combo.id], ['effect', combo.id]])
     expect(state.occupants).toEqual({ face: combo.id, effect: combo.id })
   })
 
   it('excludes combos with occupied spans or a prop and selects them only on their first slot', () => {
-    const episode = decider.decide(emotion(), ctx, decider.initial(1)).decision.episodes[0]
     for (const occupants of [{ face: 'a', effect: null }, { face: null, effect: 'effect' }])
-      expect(pickerCandidates(comboCtx.catalog, episode, 'face', occupants)).toEqual([])
-    expect(pickerCandidates(comboCtx.catalog, episode, 'effect', { face: null, effect: null }).map(candidate => candidate.id)).toEqual(['effect'])
+      expect(pickerCandidates(comboCtx.catalog, episode(), 'face', occupants)).toEqual([])
+    expect(pickerCandidates(comboCtx.catalog, episode(), 'effect', { face: null, effect: null }).map(candidate => candidate.id)).toEqual(['effect'])
     const propCombo: CatalogEntry = { ...combo, slots: ['face', 'prop'], members: [{ expressionId: 'a', strength: 1 }, { expressionId: 'prop', strength: 1 }] }
-    expect(pickerCandidates([...ctx.catalog, entry('prop', 'prop'), propCombo], episode, 'face', { face: null, effect: null }).map(candidate => candidate.id)).not.toContain(combo.id)
+    expect(pickerCandidates([...ctx.catalog, entry('prop', 'prop'), propCombo], episode(), 'face', { face: null, effect: null }).map(candidate => candidate.id)).not.toContain(combo.id)
   })
 
   it.each(['picker', 'planner'] as const)('%s advances identical streams with and without combo candidates', (kind) => {
@@ -42,7 +45,7 @@ describe('picker', () => {
     let withCombo = policy.initial(123)
     let withoutCombo = policy.initial(123)
     for (let i = 0; i < 20; i++) {
-      const signal = emotion([0.25, 0.6, 0.9][i % 3], i * 3)
+      const signal = reaction([0.25, 0.6, 0.9][i % 3], i * 3)
       withCombo = policy.decide(signal, comboCtx, withCombo).state
       withoutCombo = policy.decide(signal, ctx, withoutCombo).state
       expect(withCombo.streams).toEqual(withoutCombo.streams)
@@ -51,14 +54,13 @@ describe('picker', () => {
   })
 
   it('sorts ids by Unicode code point rather than UTF-16 units', () => {
-    const episode = decider.decide(emotion(), ctx, decider.initial(1)).decision.episodes[0]
-    expect(pickerCandidates([entry('\u{10000}'), entry('\uE000'), entry('aa'), entry('a')], episode, 'face', { face: null, effect: null }).map(candidate => candidate.id)).toEqual(['a', 'aa', '\uE000', '\u{10000}'])
+    expect(pickerCandidates([entry('\u{10000}'), entry('\uE000'), entry('aa'), entry('a')], episode(), 'face', { face: null, effect: null }).map(candidate => candidate.id)).toEqual(['a', 'aa', '\uE000', '\u{10000}'])
   })
 
   it.each([[0.5, 0], [0.65, 0.5], [0.8, 1]])('gates effects at intensity %s', (intensity, probability) => {
     let effects = 0
     for (let seed = 0; seed < 10000; seed++) {
-      effects += Number(decider.decide(emotion(intensity), ctx, decider.initial(seed)).decision.slots.some(slot => slot.slot === 'effect'))
+      effects += Number(decider.decide(reaction(intensity), ctx, decider.initial(seed)).decision.slots.some(slot => slot.slot === 'effect'))
     }
     expect(Math.abs(effects / 10000 - probability)).toBeLessThan(0.02)
   })
@@ -68,7 +70,7 @@ describe('picker', () => {
     for (let seed = 0; seed < 10000; seed++) {
       for (const [index, age] of [0, 1, 100].entries()) {
         const state = { ...decider.initial(seed), recency: { a: -age } }
-        const result = decider.decide(emotion(), ctx, state)
+        const result = decider.decide(reaction(), ctx, state)
         counts[index] += Number(result.decision.slots.some(slot => slot.expressionId === 'a'))
       }
     }
@@ -80,8 +82,8 @@ describe('picker', () => {
 
   it('consumes identical tickets even when both candidate lists are empty', () => {
     const initial = decider.initial(123)
-    const empty = decider.decide(emotion(), { ...ctx, catalog: [] }, initial)
-    const mapped = decider.decide(emotion(), ctx, initial)
+    const empty = decider.decide(reaction(), { ...ctx, catalog: [] }, initial)
+    const mapped = decider.decide(reaction(), ctx, initial)
     expect(empty.decision.slots).toEqual([])
     expect(empty.state.streams).toEqual(mapped.state.streams)
     expect(empty.state.tickets).toEqual(mapped.state.tickets)
@@ -92,7 +94,7 @@ describe('picker', () => {
       expect(empty.state.tickets?.[slot]).toEqual({ gate: gate.value, pick: pick.value })
     }
     const withoutRecency = { ...mapped.state, recency: {} }
-    expect(decider.decide(emotion(0.9, 3), ctx, empty.state)).toEqual(decider.decide(emotion(0.9, 3), ctx, withoutRecency))
+    expect(decider.decide(reaction(0.9, 3), ctx, empty.state)).toEqual(decider.decide(reaction(0.9, 3), ctx, withoutRecency))
   })
 
   it('replays identical seeds and JSON checkpoints independent of input order', () => {
@@ -100,7 +102,7 @@ describe('picker', () => {
     let replay = decider.initial(42)
     let checkpoint = decider.initial(42)
     for (let i = 0; i < 200; i++) {
-      const signal = emotion([0.25, 0.6, 0.9][i % 3], i * 3)
+      const signal = reaction([0.25, 0.6, 0.9][i % 3], i * 3)
       const result = decider.decide(signal, ctx, state)
       const repeated = decider.decide(signal, { ...ctx, catalog: [...ctx.catalog].reverse() }, replay)
       const restored = decider.decide(signal, ctx, checkpoint)
@@ -114,50 +116,53 @@ describe('picker', () => {
 
   it('never automatically selects outfit, prop, or system entries but allows unconfirmed faces', () => {
     const catalog = [entry('outfit', 'outfit'), entry('prop', 'prop'), entry('system', 'system')]
-    expect(decider.decide(emotion(), { ...ctx, catalog }, decider.initial(1)).decision.slots).toEqual([])
+    expect(decider.decide(reaction(), { ...ctx, catalog }, decider.initial(1)).decision.slots).toEqual([])
     const unconfirmed = [...catalog, { ...entry('unconfirmed'), confirmed: false }]
-    expect(decider.decide(emotion(), { ...ctx, catalog: unconfirmed }, decider.initial(1)).decision.slots.map(slot => slot.expressionId)).toContain(entry('unconfirmed').id)
+    expect(decider.decide(reaction(), { ...ctx, catalog: unconfirmed }, decider.initial(1)).decision.slots.map(slot => slot.expressionId)).toContain(entry('unconfirmed').id)
   })
 
   it('ignores malformed weights and neutral mappings', () => {
     const catalog = [0, -1, Number.NaN].map((weight, i) => ({ ...entry(`${i}`), mappings: [{ emotion: 'happy' as const, minBand: 'slight' as const, weight }] }))
     // A malformed document bypassing the catalog validator must still never select neutral.
     catalog.push(JSON.parse(JSON.stringify({ ...entry('neutral'), mappings: [{ emotion: 'neutral', minBand: 'slight', weight: 1 }] })))
-    expect(decider.decide(emotion(), { ...ctx, catalog }, decider.initial(1)).decision.slots).toEqual([])
+    expect(decider.decide(reaction(), { ...ctx, catalog }, decider.initial(1)).decision.slots).toEqual([])
   })
 
-  it('clears face and effect on neutral with no episode', () => {
-    const first = decider.decide(emotion(), ctx, decider.initial(1))
-    const neutral = decider.decide({ ...emotion(0.6, 1), emotion: 'neutral' } as AffectSignal, ctx, first.state)
-    expect(neutral.decision.episodes).toEqual([])
+  it('clears face and effect on neutral and forgets the episode tickets', () => {
+    const first = decider.decide(reaction(), ctx, decider.initial(1))
+    const neutral = decider.decide({ kind: 'neutral', turnId: 'turn', at: 1 }, ctx, first.state)
+    expect(neutral.state.tickets).toBeNull()
     expect(neutral.decision.slots.map(slot => [slot.slot, slot.expressionId])).toEqual([['face', null], ['effect', null]])
     expect(neutral.state.occupants).toEqual({ face: null, effect: null })
   })
 
   it('reuses tickets and occupied slots on escalation but fills empty slots', () => {
-    const first = decider.decide(emotion(0.5), ctx, decider.initial(1))
-    const escalated = decider.decide(emotion(0.9, 1), ctx, first.state)
+    const first = decider.decide(reaction(0.5), ctx, decider.initial(1))
+    const escalated = decider.decide(reaction(0.9, 1, true), ctx, first.state)
     expect(escalated.state.tickets).toEqual(first.state.tickets)
     expect(escalated.state.streams).toEqual(first.state.streams)
     expect(escalated.decision.slots.map(slot => slot.slot)).toEqual(['effect'])
     expect(escalated.state.occupants.face).toBe(first.state.occupants.face)
-    expect(escalated.decision.episodes[0].escalation).toBe(true)
-    const repeat = decider.decide(emotion(0.9, 1.5), ctx, escalated.state)
-    expect(repeat.decision).toEqual({ episodes: [], slots: [], holds: [], moods: [] })
+  })
+
+  it.each(['picker', 'planner'] as const)('%s draws tickets for an escalation whose episode began before its state', (kind) => {
+    // The mind keeps the reaction history, so a decider that was just switched to can meet an escalation first.
+    const policy = createDecider(kind)
+    const initial = policy.initial(1)
+    const escalated = policy.decide(reaction(0.9, 0, true), ctx, initial)
+    expect(escalated.state.tickets).not.toBeNull()
+    expect(escalated.state.streams).not.toEqual(initial.streams)
+    expect(escalated.decision.slots.map(slot => slot.slot)).toContain('face')
   })
 
   it('honors switches and minimum bands', () => {
-    const disabled = decider.decide(emotion(), { ...ctx, settings: { ...settings, autoExpressions: false } }, decider.initial(1))
+    const disabled = decider.decide(reaction(), { ...ctx, settings: { ...settings, autoExpressions: false } }, decider.initial(1))
     expect(disabled.decision.slots).toEqual([])
-    expect(disabled.decision.episodes).toHaveLength(1)
-    const enabled = decider.decide(emotion(), ctx, decider.initial(1))
+    const enabled = decider.decide(reaction(), ctx, decider.initial(1))
     expect(disabled.state.streams).toEqual(enabled.state.streams)
-    expect(disabled.state.reaction.random).toBe(drawRandom(1).random)
     expect(enabled.decision.slots.every(slot => slot.holdSeconds === (slot.slot === 'effect' ? 6 : 4) && slot.until === 'speech' && slot.turnId === 'turn')).toBe(true)
-    const bandsOff = decider.decide(emotion(), { ...ctx, settings: { ...settings, bands: false } }, decider.initial(1))
-    expect(bandsOff.decision.episodes[0].nominal).toBe(0.6)
     const strongOnly = { ...entry('strong'), mappings: [{ emotion: 'happy' as const, minBand: 'strong' as const, weight: 1 }] }
-    expect(decider.decide(emotion(0.6), { ...ctx, catalog: [strongOnly] }, decider.initial(1)).decision.slots).toEqual([])
+    expect(decider.decide(reaction(0.6), { ...ctx, catalog: [strongOnly] }, decider.initial(1)).decision.slots).toEqual([])
   })
 
   it('emits explicit face, effect, and prop commands with correct lifetimes', () => {
@@ -167,12 +172,12 @@ describe('picker', () => {
         [0, 0, 'speech'],
         [5, 5, 'hold'],
       ] as const) {
-        const result = decider.decide({ kind: 'expression', source: 'tool', expressionId: kind, at: 5, holdSeconds, turnId: 't' }, { ...ctx, catalog: [entry(kind, kind)] }, decider.initial(1))
+        const result = decider.decide({ kind: 'expression', source: 'tool', expressionId: kind, at: 5, holdSeconds, episode: null, turnId: 't' }, { ...ctx, catalog: [entry(kind, kind)] }, decider.initial(1))
         expect(result.decision.slots).toEqual([{ slot: kind, expressionId: kind, holdSeconds: expectedHoldSeconds, until, turnId: 't' }])
         expect(result.state.recency[kind]).toBe(5)
       }
     }
-    expect(decider.decide({ kind: 'expression', source: 'act', expressionId: 'unknown', at: 0 }, ctx, decider.initial(1)).decision.slots).toEqual([])
+    expect(decider.decide({ kind: 'expression', source: 'act', expressionId: 'unknown', episode: null, at: 0 }, ctx, decider.initial(1)).decision.slots).toEqual([])
   })
 
   it('ignores performer events and never schedules or mutates a checkpoint', () => {
@@ -185,31 +190,31 @@ describe('picker', () => {
       { kind: 'deadline', at: 0 },
     ]
     for (const signal of signals)
-      expect(decider.decide(signal, ctx, state)).toEqual({ decision: { episodes: [], slots: [], holds: [], moods: [] }, state })
-    decider.decide(emotion(), ctx, state)
+      expect(decider.decide(signal, ctx, state)).toEqual({ decision: { slots: [], moods: [] }, state })
+    decider.decide(reaction(), ctx, state)
     expect(JSON.stringify(state)).toBe(before)
     expect(decider.nextDeadline(state)).toBeNull()
   })
 })
 
 describe('picker clear signal', () => {
-  it('releases only the named slot and keeps the other occupant and the reaction history', () => {
-    const state = decider.decide(emotion(), ctx, decider.initial(1)).state
+  it('releases only the named slot and keeps the other occupant and the episode tickets', () => {
+    const state = decider.decide(reaction(), ctx, decider.initial(1)).state
 
     const result = decider.decide({ kind: 'clear', source: 'tool', slot: 'face', turnId: 'turn', at: 1 }, ctx, state)
 
-    expect(result.decision).toEqual({ episodes: [], slots: [{ slot: 'face', expressionId: null, holdSeconds: 0, until: 'hold', turnId: 'turn' }], holds: [], moods: [] })
+    expect(result.decision).toEqual({ slots: [{ slot: 'face', expressionId: null, holdSeconds: 0, until: 'hold', turnId: 'turn' }], moods: [] })
     expect(state.occupants.face).not.toBeNull()
     expect(result.state.occupants.face).toBeNull()
     expect(result.state.occupants.effect).toBe(state.occupants.effect)
-    expect(result.state.reaction).toEqual(state.reaction)
+    expect(result.state.tickets).toEqual(state.tickets)
   })
 
   it('releases face, effect, and prop when no slot is named, unlike neutral', () => {
-    const state = decider.decide(emotion(), ctx, decider.initial(1)).state
+    const state = decider.decide(reaction(), ctx, decider.initial(1)).state
 
     const cleared = decider.decide({ kind: 'clear', source: 'act', at: 1 }, ctx, state)
-    const neutral = decider.decide({ kind: 'emotion', emotion: 'neutral', source: 'act', nominal: 0.6, at: 3, turnId: 'turn' }, ctx, state)
+    const neutral = decider.decide({ kind: 'neutral', at: 3, turnId: 'turn' }, ctx, state)
 
     expect(cleared.decision.slots).toEqual((['face', 'effect', 'prop'] as const).map(slot => ({ slot, expressionId: null, holdSeconds: 0, until: 'hold', turnId: undefined })))
     expect(cleared.state.occupants).toEqual({ face: null, effect: null })
