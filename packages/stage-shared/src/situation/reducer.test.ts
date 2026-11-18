@@ -15,6 +15,8 @@ import {
   RETURNED_AFTER_AWAY_MS,
   SITUATION_EVENTS_MAX,
   TOUCH_TOPIC_KEY,
+  unpromptedTopicText,
+  WEB_EXTENSION_SOURCE,
 } from '.'
 
 const T0 = 1_700_000_000_000
@@ -306,12 +308,20 @@ describe('reduceSituation conversation, context, notify, stage, busy', () => {
     expect(eventsOf(state, 'context').map(e => [e.topicKey, e.salience])).toEqual([['context:game', 0.3], ['context:vision', 0.4]])
 
     state = run([context('game', 'in a dungeon', T0 + MIN)], state)
-    expect(state.contexts.game).toEqual({ text: 'in a dungeon', atMs: T0 + MIN })
+    expect(state.contexts.game).toEqual({ text: 'in a dungeon', title: null, atMs: T0 + MIN })
     expect(eventsOf(state, 'context').find(e => e.topicKey === 'context:game')?.atMs).toBe(T0)
 
     state = run([context('game', 'at a boss', T0 + 2 * MIN, { salience: 0.9 })], state)
     const game = eventsOf(state, 'context').filter(e => e.topicKey === 'context:game')
     expect(game.map(e => [e.text, e.salience])).toEqual([['at a boss', 0.9]])
+  })
+
+  it('keeps the title of a context and drops it when the source stops sending one', () => {
+    let state = run([context('page', 'User is browsing: Budget sheet.', T0, { title: ' Budget sheet ' })])
+    expect(state.contexts.page.title).toBe('Budget sheet')
+
+    state = run([context('page', 'User is browsing: Budget sheet.', T0 + MIN)], state)
+    expect(state.contexts.page.title).toBeNull()
   })
 
   it('maps notify urgency and critical reminders to salience', () => {
@@ -671,6 +681,16 @@ describe('forgetForeground', () => {
     const next = reduceSituation(forgotten, activity('b', T0 + 4 * MIN), T0 + 4 * MIN)
     expect(next.activity).toMatchObject({ appId: 'b', sinceMs: T0 + 4 * MIN })
     expect(next.recentActivities).toEqual([])
+  })
+})
+
+describe('unpromptedTopicText', () => {
+  it('names only the kind of a web extension topic and keeps the text of every other source', () => {
+    const module = `${WEB_EXTENSION_SOURCE}:module-a`
+
+    expect(unpromptedTopicText(`context:${module}`, 'User is browsing: Secret page (https://example.test).', false)).toBe('what the user has open in the browser')
+    expect(unpromptedTopicText(notifyTopicKey(module, 'video-1'), 'User is watching: Secret video', true)).toBe('a video the user started watching in the browser')
+    expect(unpromptedTopicText(notifyTopicKey('weather', 'storm-1'), 'Storm warning', true)).toBe('Storm warning')
   })
 })
 

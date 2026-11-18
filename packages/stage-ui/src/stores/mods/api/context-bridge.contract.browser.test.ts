@@ -612,7 +612,7 @@ describe('context bridge contract', () => {
       metadata: { module: 'vision', capturedAt },
     }))
 
-    expect(situation.state.contexts['weather:station-1']).toEqual({ text: 'A code editor with a failing test.', atMs: capturedAt })
+    expect(situation.state.contexts['weather:station-1']).toEqual({ text: 'A code editor with a failing test.', title: null, atMs: capturedAt })
     expect(situationIngestMock.mock.calls[0]?.[0]?.metadata).toMatchObject({
       module: 'vision',
       capturedAt,
