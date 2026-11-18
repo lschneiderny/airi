@@ -1,6 +1,6 @@
 # Local Character Models
 
-This page records which local model and server settings to use for the character on a MacBook with an Apple M2 and 16 GB of memory, and what limits local results today. The measurements are in the [local model screen set](../../../packages/qa-tools/model-eval/sets/live-2026-11-18-mac-m2-local-models/README.md), including its follow-up under app conditions. Re-check this page when Ollama, the stage contract, or the prompt layout changes.
+This page records which local model and server settings to use for the character on a MacBook with an Apple M2 and 16 GB of memory, and what limits local results today. The measurements are in the [local model screen set](../../../packages/qa-tools/model-eval/sets/live-2026-11-18-mac-m2-local-models/README.md), including its follow-up under app conditions. The [local model research report](../audits/2026-11-18-local-model-research.md) records how these conclusions were reached. Re-check this page when Ollama, the stage contract, or the prompt layout changes.
 
 ## Recommended setup
 
