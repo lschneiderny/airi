@@ -50,12 +50,12 @@ Phases 1 and 2 landed on `luke/refactor/lock-in` (49 commits; `pnpm verify --gat
 
 ## Status (2026-11-18)
 
-Phase 3 is done on `luke/chore/upstream-sync`, which waits for the owner's word before `main` is fast-forwarded:
+Phase 3 is done on `luke/chore/upstream-sync`. The owner approved the fast-forward of `main` on 2026-11-18:
 
 - Four stepped merges contain `upstream/main` at `b3a6d6071`: `4b1e405a4`, `9d9b45354`, `14c763cfb`, `e259d4c6e`. Each passed `pnpm verify --gate`, the classic and desktop-stage smokes, and a replayed chat turn.
 - `docs/ai/context/upstream-policy.md` is the ledger. It records every departure from upstream, the files the fork owns, the upstream rules adopted and left out, and the steps of a sync.
 - D5 is done: every package runs its own `test:run`, `pnpm test:run` goes through Turbo with caching, and `pnpm verify` runs related tests per package. A2 was not needed for it and stays carried forward.
-- Decisions made while the owner was away, open to his veto: the update feed and error reporting are off in fork builds unless the build supplies its own endpoints, upstream's Live2D touch module runs only under upstream's drivers, and upstream's beat sync layer is inactive under Natural. The ledger has the reasons.
+- Decisions made while the owner was away, kept by the owner on 2026-11-18; see the ledger's Decisions to revisit: the update feed and error reporting are off in fork builds unless the build supplies its own endpoints, upstream's Live2D touch module runs only under upstream's drivers, and upstream's beat sync layer is inactive under Natural. The ledger has the reasons.
 
 ## Phase 1: Fix what is broken (fork-only, small commits to `main` after `pnpm verify`)
 
