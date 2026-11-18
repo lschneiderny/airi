@@ -551,6 +551,7 @@ Every root `qa:*` script runs its entry directly with `node --import tsx`, from 
 | `pnpm qa:model judge report <judgments.jsonl>... [--json]` | Rank contenders from saved judgments: win rate with a 95% interval, Bradley–Terry strength, tag shares, and head-to-head counts. |
 | `pnpm qa:model capture <qa:app run dir\|requests.jsonl> --out <file>` | Save the system prompt and tools of the app's first chat request, for `run --app-request` (see [App conditions](#app-conditions)). |
 | `pnpm qa:model compare <transcripts.jsonl\|run dir\|set id>... [--exposed-actions <label:kind,...>] [--json]` | Score runs together and print one row per model and config, with memory and recall (see [Comparing runs](#comparing-runs)). |
+| `pnpm qa:model probe <cache-events\|cold-start\|overflow\|server-sweep> --model <id> ...` | Measure how a local server handles the app's requests: prompt-cache costs of app events, cold start, context overflow, or server settings (see [Probes](#probes)). |
 | `pnpm qa:model help` | Print the model-evaluation command usage. |
 | `pnpm qa:character simulate --scenario <name\|file.json> [--days <n>] [--seed <n>] [--json]` | Drive the pure character-state core through a scenario, check the plan's Appendix A10 invariants, and print a daily table or JSON. An invariant violation exits 1. |
 | `pnpm qa:character render --stage <stranger\|friendly\|close\|intimate> [--mood <bucket words>]` | Print the exact `system:character` text for a relationship stage and optional mood buckets. |
@@ -797,6 +798,24 @@ pnpm qa:model compare .temp/qa/<run a> .temp/qa/<run b> live-2026-11-18-mac-m2-l
 ```
 
 Inputs are transcript files, run directories, or committed set ids. The command concatenates them into its own run directory (`.temp/qa/<timestamp>-model-compare-pooled/`), scores the result once with `qa:model score`, and writes `compare.json` and `compare.md` there; stdout gets the Markdown table, or the JSON with `--json`. A row holds the cue outcome shares and lead-cue share of replies with spoken text, the top unknown markers and invented emotions, stage directions, emoji, AI breaks, and mean words, the timing means (cold and warm time to first token, warm time to first speech, decode speed, and prompt tokens, each weighted by the replies a run timed, with cold time weighted once per conversation), recall checks passed, and memory. Memory comes from the `server.json` beside each input: the largest pooled run's GPU footprint from its server-log buffers (marked `*`), or from `/api/ps` for a run without them, with the CPU weights and the context. Recall comes from the `checks.json` beside each input. A warning on stderr names the stage contracts when the inputs answered more than one; rows of different contracts are not comparable.
+
+### Probes
+
+`qa:model probe <name>` measures one property of a local server under the app's request, captured with `qa:model capture`. Each probe writes `probe.json` to `.temp/qa/<timestamp>-model-probe-<name>/` and prints a Markdown table, or JSON with `--json`. Requests send `reasoning_effort: none`.
+
+```bash
+pnpm qa:model probe cache-events --base-url http://127.0.0.1:11434/v1 --model gemma4:e4b-it-qat --app-request .temp/qa/app-requests/hiyori.json [--scenario general] [--rounds 3]
+pnpm qa:model probe cold-start   --base-url http://127.0.0.1:11434/v1 --model gemma4:e4b-it-qat --app-request .temp/qa/app-requests/hiyori.json [--rounds 3]
+pnpm qa:model probe overflow     --base-url http://127.0.0.1:11434/v1 --model gemma4:e4b-it-qat --app-request .temp/qa/app-requests/hiyori.json [--sizes 8000,14000,20000]
+pnpm qa:model probe server-sweep --model gemma4:e4b-it-qat --scenario <id|file> --config seed-1 --app-request .temp/qa/app-requests/hiyori.json --reasoning none --variant default: --variant kv-q8:OLLAMA_FLASH_ATTENTION=1,OLLAMA_KV_CACHE_TYPE=q8_0 [--context 16384]
+```
+
+| Probe | Measures |
+| --- | --- |
+| `cache-events` | Time to the first token of the request after each app event that changes the prompt: the same request again, a normal next turn, a memory write, an unprompted turn and the turn after it, and a voice turn with control events and the typed turn after it. The history is the model's own replies to the scenario's turns. Each round shifts the time prefixes by an hour, so no round reuses an earlier round's cached prompt. The prompt segments are appended in the probe; the stage-ui parity test keeps the control-event text equal to the app's. |
+| `cold-start` | Load time alone, then time to the first token of the first request after a load, the same request again, and a new message. It unloads the model through the native Ollama API, so `--base-url` must reach Ollama. |
+| `overflow` | Pads the history to each size and asks for a fact from the system prompt, the first message, and a cue. A lost fact shows where the server cut a prompt larger than its context. |
+| `server-sweep` | For each `--variant label:OLLAMA_X=v,...`, starts a private `ollama serve` on a free loopback port, runs one scenario conversation with `qa:model run`, reads the load's memory from that server's log, and stops it. Each server gets `OLLAMA_CONTEXT_LENGTH` from `--context` (default 16384) unless its variant sets one, because a plain `ollama serve` uses 4096 tokens and cuts the app's prompt. A note names any variant whose prompt filled its context. Unload the model from the main server first; two loaded copies share memory and slow both. |
 
 ### Persona judging (M4)
 

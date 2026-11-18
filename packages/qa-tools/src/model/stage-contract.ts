@@ -45,6 +45,20 @@ export function buildStageContract(locale = 'en') {
 }
 
 /**
+ * One prompt message from the installed locale messages, for example `base.prompt.unprompted`.
+ *
+ * Throws:
+ * - An `Error` when the key has no English message, because a probe would then send the key as text.
+ */
+export function renderPromptMessage(key: string, params: Record<string, string> = {}, locale = 'en'): string {
+  const warnings: string[] = []
+  const i18n = createPromptI18n(locale, warnings)
+  if (!i18n.global.te(key, 'en'))
+    throw new Error(`no English message for ${key}; run pnpm -F @proj-airi/i18n build`)
+  return i18n.global.t(key, params)
+}
+
+/**
  * The card prompt of the app's built-in card before the user edits it: its description, `base.prompt.prefix`.
  * The app also appends the card's widget instruction, which asks for a tool; a prompt that is sent without tools
  * leaves that part out.

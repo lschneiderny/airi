@@ -9,7 +9,7 @@ import { memoryRepo } from '../../database/repos/memory.repo'
 import { composeMemoryHeader } from '../../tools/memory'
 import { useLlmToolsetPromptsStore } from '../ai/chat-llm/toolset-prompts'
 import { useMemoryStore } from '../memory'
-import { stickerPromptSegment } from './prompt'
+import { controlEventsText, stickerPromptSegment } from './prompt'
 
 vi.mock('../../database/repos/memory.repo')
 
@@ -28,6 +28,8 @@ const fixture = parse(object({
   memory: object({ header: string(), entries: array(string()) }),
   stickers: object({ header: string(), entries: array(object({ id: string(), description: string() })) }),
 }), JSON.parse(readFileSync(join(import.meta.dirname, '../../../../qa-tools/fixtures/model/full-prompt.json'), 'utf8')))
+
+const probeSegments = parse(object({ controlPrefix: string() }), JSON.parse(readFileSync(join(import.meta.dirname, '../../../../qa-tools/fixtures/model/probe-segments.json'), 'utf8')))
 
 describe('qa-tools full-prompt fixture parity', () => {
   beforeEach(() => {
@@ -65,5 +67,9 @@ describe('qa-tools full-prompt fixture parity', () => {
     toolsets.registerToolsetPrompts('browser', [{ id: 'browser', title: 'Browser', content: 'Open a page when the owner asks for it.' }])
 
     expect(fixture.toolset).toBe(toolsets.activeToolsetPrompt)
+  })
+
+  it('carries the control segment preamble that the cache-event probe sends', () => {
+    expect(controlEventsText([{ kind: 'voice-interruption' }])).toBe(`${probeSegments.controlPrefix}[{"kind":"voice-interruption"}]`)
   })
 })

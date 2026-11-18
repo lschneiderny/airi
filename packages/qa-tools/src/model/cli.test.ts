@@ -12,6 +12,7 @@ function createIo() {
     judge: vi.fn(async () => 0),
     capture: vi.fn(async () => 0),
     compare: vi.fn(async () => 0),
+    probe: vi.fn(async () => 0),
   }
   return {
     out,
@@ -66,6 +67,7 @@ describe('runModelCli', () => {
     ['judge', 'judge'],
     ['capture', 'capture'],
     ['compare', 'compare'],
+    ['probe', 'probe'],
   ] as const)('routes %s to its handler with the remaining arguments', async (command, key) => {
     const { io, handlers } = createIo()
     handlers[key].mockResolvedValueOnce(7)
