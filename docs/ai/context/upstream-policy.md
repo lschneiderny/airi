@@ -18,7 +18,7 @@ At a sync these files keep the fork's version. Review upstream's diff of each on
 | Fork-only skills: `motion-qa`, `idea`, `triage`, `vault-sync` | No upstream counterpart |
 | Fork-only skill references: `use-agent-browser-for-airi/references/{input-file,attached-input,detached-input,native-file-chooser,verify-upload}.md`, `use-vishot/references/{airi,electron,input-file,web}.md` | Merged copies of upstream skills the fork deleted |
 | `docs/ai/context/` policy docs that upstream does not have | This ledger, `testing.md`, `upstream-watch.md`, the roadmaps, the glossary, and the domain policy docs |
-| Root `package.json` scripts, the root Vitest configs, `scripts/dev-tools/**` | The fork's check tooling |
+| Root `package.json` scripts, the root `vitest.config.ts`, `scripts/dev-tools/**` | The fork's check tooling |
 
 Every other policy file that exists upstream takes upstream's bytes, including every other file under `.agents/skills`. Upstream skills can therefore name retired hosts (stage-web, stage-pocket, Kirie) and upstream skills the fork merged or deleted. `.agents/skills/README.md` maps those names to fork files.
 
@@ -104,7 +104,8 @@ Decided on 2026-11-18 for upstream `f3e6a244e..b3a6d6071`. "Adopt" names the for
 | Agent configuration in its own commit, inside the PR whose code it describes | Adopt | Root CONVENTIONS |
 | `Assisted-by` trailer; no `Co-authored-by` for agents | Override | See Rule overrides |
 | Agent-written PR and issue text names the request, harness, and model | Leave out | See Rule overrides |
-| Test one file through `pnpm -F <package> exec vitest run`; `test:root`; `turbo run test:run --affected` | Override | The root COMMANDS section and `testing.md` define the fork's commands |
+| Test one file through `pnpm -F <package> exec vitest run`, with the path relative to the package; `test:root` for the tests that belong to no package | Adopt | Root COMMANDS section |
+| Test a branch with `turbo run test:run --affected` | Override | `pnpm verify` runs the tests related to the changed files, in each changed package and its dependents |
 | Run the branch tests before a PR; confirm CI tested the PR head | Leave out | No CI; `pnpm verify --gate` |
 | A UI change reviews its browser tests and is verified with stories, Vishot, and `agent-browser` | Adopt | Routing line for `enforce-rules-for-ui-tests`; pointer in the Vitest skill |
 | Do not delete an assertion only to pass; run the related tests on the final commit | Leave out | `testing.md` already forbids weakening tests, and `pnpm verify` runs per commit |
@@ -152,6 +153,7 @@ Each row is behavior where the merged tree differs from upstream.
 | Live2D expressions | Card-owned controls and a Live2D context; the store and controller are deleted (`c4048b6fa`) | The fork's store, controller, panel, and string ACT label, with upstream's context beside them | Reactions, combos, the rest look, and MMD expression commands build on the store (owner ruling 2026-11-17) | Slice CM1 |
 | Touch on Live2D | A touch module under every driver (`259b6188a`) | Upstream's module under Universal and MAGIC; the fork's pet, poke, touch regions, and spoken reaction under Natural | One touch gets one response (ADR decision 7). Open to the owner's veto | Slice CM1 |
 | Beat sync layer | Runs under every driver (`543d8dfe3`) | Inactive under Natural | Nothing new writes head angles under Natural before the mind owns music | Slice CM5 |
+| Live2D model cache | The OPFS loader checks the cache and saves without serializing loads | A load holds a Web Lock per model id from its cache check to the end of its save (`c4c357ab8`, `packages/stage-ui-live2d/src/utils/opfs-loader.ts`) | Two loads of one model raced, and the later save removed the files under the earlier load | When upstream serializes the cache, or offer the fix upstream |
 | Display model defaults | `universal` driver, expressions off, max FPS 0 | `natural`, expressions on, 60 FPS, on upstream's per-model stores | The fork's defaults | Not planned |
 | System prompt | `sessionSystemPrompt` composes it | `buildChatPromptSegments` and `composePrompt`; recipe steps ride in the `card` segment and card guidance in `toolset` | One composer (prompt composition ADR) | Roadmap step P |
 | Memory index | Lines grouped under "Your own:" and "General:" | The `(general)` marker and oldest-first order | The composer drops the oldest lines | Roadmap step P |
@@ -172,11 +174,11 @@ Each row is behavior where the merged tree differs from upstream.
 
 | Area | Upstream | Fork | Reason | Revisit |
 | --- | --- | --- | --- | --- |
-| Test model | Per-package `test:run` through Turbo and CI | As `testing.md` and the root COMMANDS section state | Plan decision D5 | When `testing.md` changes |
-| Root `package.json` scripts | Upstream's set, with `lint:swift`, `open:ios`, `sponsors:generate`, `nolyfill`, `up` | The fork's set, plus upstream's `lint:prune-suppressions` and `i18n:check` | The dropped scripts serve retired or removed things | Every sync |
+| Test model | Per-package `test:run` scripts and `vitest.config.ts` files; Turbo runs the whole suites two packages at a time, and CI runs every project | The same scripts and configs, in upstream's shape (`c0205bf27`), with four differences. Every Vitest config is wrapped in `withCpuSlots`. `pnpm test:run` runs `turbo run test:run` under one CPU slot lease, one package at a time, with Turbo's cache. There is no CI, and `pnpm verify` runs the tests related to a change per package, not whole suites. A test gated on an environment variable never runs under `pnpm test:run`, and `XDG_CURRENT_DESKTOP` is a hashed input of the stage-ui test task | The shared CPU budget; whole suites are too slow for the commit loop; a cached result must not depend on a local model; the visual baselines depend on the desktop session's font rendering | Roadmap step T |
+| Root `package.json` scripts | Upstream's set, with `lint:swift`, `open:ios`, `sponsors:generate`, `nolyfill`, `up` | The fork's set, plus `test:root`, `lint:prune-suppressions`, and `i18n:check` as upstream has them. `test:run` is the fork's wrapper around upstream's Turbo run | The dropped scripts serve retired or removed things | Every sync |
 | `eslint.config.ts` | Upstream's rules | The union of the fork's rule blocks and upstream's rules | The fork's blocks guard motion-driver neutrality, lazy 3D renderers, and host capabilities | Every sync |
 | `eslint-suppressions.json` | Upstream's baseline | The same file pruned of entries for files the fork lacks; no entry for fork code | ESLint fails on stale entries | Every sync |
-| `turbo.json` | Upstream's tasks | Upstream's `transit` dependency for `typecheck`, plus the fork's cpu-slots build dependency and quiet logs | The fork's CPU budget | Roadmap step T |
+| `turbo.json` | Upstream's tasks | Upstream's `transit` dependency for `typecheck`, plus the fork's cpu-slots build dependency and quiet logs. The `test:run` task declares its inputs and environment, and three packages whose tests read files outside the package have their own task | The fork's CPU budget; Turbo's cache must see every file and variable a test reads | Roadmap step T |
 | Catalog (`pnpm-workspace.yaml`) | Upstream's entries | Merged per entry: no `@capacitor/*`, `@grammyjs/files`, or `@gd-kirie/*` exception; Electron at the fork's `^43.8.7` | Retired projects; the fork's Electron is newer | Every sync |
 | `.tool-versions` | Node 26.12.1 | Node 26.11.1 | The bump needs that Node on the owner's machines first | When it is installed |
 | `.gitignore` | Lines for the Twitter service and Nix | The fork's lines | Retired paths | Not planned |
@@ -193,9 +195,9 @@ Each row is behavior where the merged tree differs from upstream.
    - `eslint.config.ts` and `turbo.json` are unions, as the tooling table states.
 3. Merge the catalog in `pnpm-workspace.yaml` per entry. Take upstream's version unless the fork's is newer, and drop entries that only retired projects use.
 4. Resolve the remaining conflicts by hand. Client stage code follows the character mind ADR's decision 14: take upstream's version, and keep fork behavior beside it.
-5. Run `pnpm install`, then `pnpm lint:prune-suppressions`. Add no suppression for fork code.
+5. Run `pnpm install`, then `pnpm lint:prune-suppressions`. Add no suppression for fork code. Wrap each Vitest config that upstream added in `withCpuSlots`, give each new package with tests a `test:run` script, and add a file that a package test reads outside its package to that package's `test:run` inputs in `turbo.json`.
 6. Review upstream's policy diff: `git diff <previous upstream commit> <new upstream commit> -- AGENTS.md '*/AGENTS.md' DESIGN.md .github/CONTRIBUTING.md .agents/skills eslint.config.ts`. Decide each new rule, add the accepted ones to the fork's guidance in agent-configuration commits, and record every decision in "Upstream rules added since the fork point".
 7. Compare the fork-owned skills with upstream's changes, and compare every other skill with upstream's bytes: `git diff <new upstream commit> HEAD -- .agents/skills`. Only fork-owned and fork-only files may differ.
 8. Add a row here for every new departure, remove the rows the sync closed, and update `upstream-watch.md`, the README's Support scope tables, and the nested guides the sync made false.
-9. Run `pnpm verify --gate` and `pnpm qa:display run -- pnpm qa:smoke` after each step. Record notable resolutions in each merge commit message.
+9. After each step, run `pnpm verify --gate`, `pnpm test:run`, `pnpm test:root`, and `pnpm qa:display run -- pnpm qa:smoke`. `pnpm verify` runs only related tests, and a merge changes more than they reach. Record notable resolutions in each merge commit message.
 10. Land with `git switch main && git merge --ff-only <branch> && git push`, never through a GitHub pull request.
