@@ -2,6 +2,7 @@ import type { Tool } from '@xsai/shared-chat'
 
 import type { MemoryEntry, MemoryWrite } from '../types/memory'
 
+import { repeatsHeldTitle } from '@proj-airi/stage-shared/situation'
 import { rawTool } from '@xsai/tool'
 import { array, description, maxLength, minLength, nullable, pipe, safeParse, strictObject, string } from 'valibot'
 import { toJsonSchema } from 'xsschema'
@@ -50,11 +51,57 @@ export function composeMemoryPrompt(index: string) {
   return index ? `${composeMemoryHeader(true)}\n${index}` : composeMemoryHeader(false)
 }
 
+/** What a memory write is checked against before it is saved. */
+export interface MemoryWriteGuard {
+  /** The window and page titles the situation holds (`heldTitles`); empty while the user shares none. */
+  titles: readonly string[]
+  /** The user's own message of this turn. Empty for an unprompted turn, which has none. */
+  ownerText: string
+}
+
+/**
+ * Credential shapes a memory entry never holds. The list is short on purpose: it backs the prompt rule "never save
+ * codes, passwords, or secrets" for the shapes that are unmistakable, and it is not a secret scanner.
+ */
+const CREDENTIAL_PATTERNS: readonly RegExp[] = [
+  // OpenAI and Anthropic style keys: `sk-` and at least 20 key characters (`sk-proj-...`, `sk-ant-...`).
+  /\bsk-[\w-]{20,}/,
+  // GitHub tokens: `ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_` and 36 or more characters.
+  /\bgh[pousr]_[A-Za-z0-9]{36,}/,
+  // GitHub fine-grained personal access tokens.
+  /\bgithub_pat_\w{22,}/,
+  // Slack tokens: `xoxb-`, `xoxp-`, `xoxa-`, `xoxr-`, `xoxs-`.
+  /\bxox[abprs]-[\w-]{10,}/,
+  // AWS access key ids: `AKIA` and 16 capitals or digits.
+  /\bAKIA[A-Z0-9]{16}\b/,
+  // A labelled secret with a value: `password: hunter2`, `passwd=...`, `api key: ...`, `api_key=...`.
+  /\b(?:password|passwd|api[ _-]?key)\s*[:=]\s*\S{4,}/i,
+]
+
+/**
+ * Why a memory entry must not be saved, as one sentence for the model, or `null` when it may be saved.
+ *
+ * - An entry that matches a credential shape is always refused.
+ * - An entry that repeats a held window or page title is refused, unless the user's own message of the turn contains
+ *   that title: the owner may state it, the situation block may not.
+ */
+export function memoryWriteRefusal(entry: Pick<MemoryWrite, 'description' | 'body'>, guard: MemoryWriteGuard): string | null {
+  const text = `${entry.description}\n${entry.body}`
+  if (CREDENTIAL_PATTERNS.some(pattern => pattern.test(text)))
+    return 'Memory not saved: it looks like a password or an access key. Never save one.'
+  const unstated = guard.titles.filter(title => !repeatsHeldTitle(guard.ownerText, [title]))
+  if (repeatsHeldTitle(text, unstated))
+    return 'Memory not saved: it repeats a window or page title. Save it only when the owner states it.'
+  return null
+}
+
 /** What the memory tools change. The caller binds them to the run's character card. */
 interface CreateMemoryToolsOptions {
   read: (id: string) => MemoryEntry | undefined
   write: (entry: MemoryWrite) => Promise<MemoryEntry | undefined>
   forget: (id: string) => Promise<boolean>
+  /** Read once per written entry, so a write is checked against the titles held when the model calls the tool. */
+  guard: () => MemoryWriteGuard
 }
 
 /** Creates the memory tools for one run. The run reads its card's memories and the general ones, and changes only its card's. */
@@ -84,6 +131,11 @@ export async function createMemoryTools(options: CreateMemoryToolsOptions): Prom
           return 'Memory not saved: each entry needs an id or null, and a body.'
         const lines: string[] = []
         for (const input of parsed.output.entries) {
+          const refusal = memoryWriteRefusal(input, options.guard())
+          if (refusal) {
+            lines.push(refusal)
+            continue
+          }
           const entry = await options.write({ id: input.id ?? undefined, description: input.description, body: input.body })
           lines.push(entry ? `Saved memory "${entry.id}".` : 'Memory not saved: it needs a body.')
         }

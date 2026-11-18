@@ -20,6 +20,8 @@ vi.mock('../modules/airi-card', async () => {
 })
 
 const context = { sessionId: 'session-1', origin: 'user' as const }
+/** No held titles: the write guard is not under test here. */
+const guard = () => ({ titles: [], ownerText: '' })
 
 function toolNamed(tools: Tool[], name: string): Tool {
   const tool = tools.find(candidate => candidate.function.name === name)
@@ -68,7 +70,7 @@ describe('memory observability store', () => {
     it('records one row for a read of two ids', async () => {
       const store = useMemoryObservabilityStore()
       const read = vi.fn(() => undefined)
-      const tools = store.observeMemoryTools(await createMemoryTools({ read, write: vi.fn(), forget: vi.fn() }), context)
+      const tools = store.observeMemoryTools(await createMemoryTools({ read, write: vi.fn(), forget: vi.fn(), guard }), context)
 
       await call(toolNamed(tools, READ_MEMORY_TOOL_NAME), { ids: ['a', 'b'] })
 
@@ -80,7 +82,7 @@ describe('memory observability store', () => {
     it('records one row for a write of two entries', async () => {
       const store = useMemoryObservabilityStore()
       const write = vi.fn(async (entry: { id?: string, description: string, body: string }) => ({ id: entry.id ?? `new-${entry.body}`, description: entry.description, body: entry.body, persona: 'default', updatedAt: 0 }))
-      const tools = store.observeMemoryTools(await createMemoryTools({ read: vi.fn(), write, forget: vi.fn() }), context)
+      const tools = store.observeMemoryTools(await createMemoryTools({ read: vi.fn(), write, forget: vi.fn(), guard }), context)
 
       const result = await call(toolNamed(tools, WRITE_MEMORY_TOOL_NAME), {
         entries: [
@@ -96,7 +98,7 @@ describe('memory observability store', () => {
 
     it('records a missing row for a read of an unknown id', async () => {
       const store = useMemoryObservabilityStore()
-      const tools = store.observeMemoryTools(await createMemoryTools({ read: () => undefined, write: vi.fn(), forget: vi.fn() }), { sessionId: 'session-2', origin: 'unprompted' })
+      const tools = store.observeMemoryTools(await createMemoryTools({ read: () => undefined, write: vi.fn(), forget: vi.fn(), guard }), { sessionId: 'session-2', origin: 'unprompted' })
 
       await call(toolNamed(tools, READ_MEMORY_TOOL_NAME), { ids: ['nope'] })
 
@@ -108,7 +110,7 @@ describe('memory observability store', () => {
       const store = useMemoryObservabilityStore()
       const write = vi.fn()
       const forget = vi.fn(async () => false)
-      const tools = store.observeMemoryTools(await createMemoryTools({ read: vi.fn(), write, forget }), context)
+      const tools = store.observeMemoryTools(await createMemoryTools({ read: vi.fn(), write, forget, guard }), context)
 
       await call(toolNamed(tools, WRITE_MEMORY_TOOL_NAME), { entries: 'nope' })
       await call(toolNamed(tools, FORGET_MEMORY_TOOL_NAME), { id: 'gone' })
