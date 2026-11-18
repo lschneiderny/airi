@@ -1,5 +1,6 @@
 import en from '@proj-airi/i18n/locales/en'
 
+import { storage } from '@proj-airi/stage-ui/database/storage'
 import { useMemoryStore } from '@proj-airi/stage-ui/stores/memory'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -11,22 +12,15 @@ import MemoriesPage from './memory-long-term-memories.vue'
 
 import 'virtual:uno.css'
 
-/** Empties the memory records that the repo keeps in IndexedDB, so each case starts with no entries. */
+/**
+ * Empties the memory records, so each case starts with no entries.
+ *
+ * It goes through the app's own storage mount. Opening the `airi-memory` database directly creates it without the
+ * `entries` object store when this file runs first, and the storage driver creates that store only together with the
+ * database, so every later memory write in the browser would fail.
+ */
 async function clearMemories() {
-  const database = await new Promise<IDBDatabase>((resolve, reject) => {
-    const request = indexedDB.open('airi-memory')
-    request.onsuccess = () => resolve(request.result)
-    request.onerror = () => reject(request.error)
-  })
-  if (database.objectStoreNames.contains('entries')) {
-    await new Promise<void>((resolve, reject) => {
-      const transaction = database.transaction('entries', 'readwrite')
-      transaction.objectStore('entries').clear()
-      transaction.oncomplete = () => resolve()
-      transaction.onerror = () => reject(transaction.error)
-    })
-  }
-  database.close()
+  await storage.clear('memory')
 }
 
 let pinia: ReturnType<typeof createPinia>
