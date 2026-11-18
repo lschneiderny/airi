@@ -28,6 +28,7 @@ Agent guidance holds only what an agent cannot learn from the code, `package.jso
 - Settings/devtools pages need `<route lang="yaml"> meta: layout: settings </route>`. Register routes and icons in both settings layouts: `packages/stage-layouts/src/layouts/settings.vue` and `apps/stage-tamagotchi/src/renderer/layouts/settings.vue`.
 - Keep pure orchestration outside Vue/store integration.
 - Reuse existing animations in `apps/stage-tamagotchi/src/renderer/styles` before adding new ones.
+- Group UnoCSS classes only in the markup you change. Do not reformat a component's other classes; this overrides the `enforce-rules-for-unocss` skill.
 - Before changing host capabilities, read the [host capability contract ADR](docs/ai/adr/2026-11-08-host-capability-contract.md).
 - The Electron desktop stage host is gated by the off-by-default Experimental 3D stage setting. `AIRI_STAGE_HOST=window|desktop` overrides the setting in development builds only, for QA.
 - The server channel (`packages/server-runtime`, `packages/server-sdk`, `packages/server-shared`) is separate from hosted `server/packages`.

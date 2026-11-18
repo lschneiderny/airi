@@ -28,12 +28,29 @@ This personal fork keeps local development workflows, not upstream publishing or
 
 | Skill | Use |
 | --- | --- |
-| `agent-browser` | Version-matched instructions for interactive browser inspection. Requires the CLI. |
+| `agent-browser` | Version-matched instructions for interactive browser inspection. Requires the CLI: install `agent-browser@0.41.2`, the version the fork tests with. |
 | `agent-browser-electron` | Electron target discovery and window-role preservation. |
 | `use-agent-browser-for-airi` | AIRI model imports. Its references also cover ordinary, detached, and native file inputs. |
 | `use-vishot` | Screenshot evidence. Load the Web, Electron, input-file, or AIRI reference as needed. |
-| `eventa` | Project event and RPC contracts. Check the installed dependency when API details differ. |
+| `eventa` | Project event and RPC contracts. Its Electron main example passes `webContents`; the installed adapter takes a `BrowserWindow`. In the desktop app, follow `apps/stage-tamagotchi/AGENTS.md` instead. |
 | `xsai` | Existing xsAI integration work. |
+
+## Upstream skill text
+
+The fork owns this file, the `enforce-rules-for-typescript`, `enforce-rules-for-vitest`, and `xsai` skills, the planning vault skills, `motion-qa`, and the reference files named below. Every other skill carries upstream's exact text, so that an upstream sync does not conflict. See the [upstream policy ledger](../../docs/ai/context/upstream-policy.md).
+
+Upstream's text can name hosts the fork retired: stage-web, stage-pocket, and Kirie. Only the desktop app applies. It also invokes upstream skills that the fork merged into references:
+
+| Upstream skill | Read in the fork |
+| --- | --- |
+| `use-agent-browser-with-input-file` | `use-agent-browser-for-airi/references/input-file.md` and the references beside it |
+| `use-vishot-for-airi` | `use-vishot/references/airi.md` |
+| `use-vishot-with-electron` | `use-vishot/references/electron.md` |
+| `use-vishot-with-web` | `use-vishot/references/web.md` |
+| `use-vishot-with-input-file` | `use-vishot/references/input-file.md` |
+| `use-vishot-with-capacitor`, and the `web.md` and `mobile.md` references of `use-agent-browser-for-airi` | Nothing. They serve retired hosts. |
+
+When upstream's text and a fork `AGENTS.md` disagree, the `AGENTS.md` wins.
 
 Generic Vue, Pinia, VueUse, UnoCSS, and bundler tutorials are not vendored as skills.
 Use installed dependency types, existing repository code, and official documentation for API details.

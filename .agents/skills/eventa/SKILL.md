@@ -1,8 +1,13 @@
 ---
 name: eventa
 description: >-
-  Use when editing AIRI's @moeru/eventa event contracts, transport adapters,
-  RPC handlers, streaming, cancellation, or channel routing.
+  Guide for using @moeru/eventa — a transport-aware event library powering ergonomic RPC
+  and streaming flows. Use this skill whenever the user imports from '@moeru/eventa',
+  mentions eventa, needs cross-process/cross-thread event communication (Electron IPC,
+  Web Workers, WebSocket, BroadcastChannel, EventEmitter, EventTarget, Worker Threads),
+  wants to define type-safe events with RPC invoke patterns, needs streaming RPC
+  (server-streaming, client-streaming, or bidirectional), or asks about transport-agnostic
+  event abstractions. Also use when the user discusses alternatives to birpc or async-call-rpc.
 license: MIT
 metadata:
   author: moeru-ai
@@ -208,7 +213,7 @@ const { context } = createContext(transportInstance)
 
 | Adapter | Import Path | Transport |
 |---------|-------------|-----------|
-| Electron Main | `@moeru/eventa/adapters/electron/main` | `ipcMain` + optional `BrowserWindow` |
+| Electron Main | `@moeru/eventa/adapters/electron/main` | `ipcMain` + `webContents` |
 | Electron Renderer | `@moeru/eventa/adapters/electron/renderer` | `ipcRenderer` |
 | Web Worker (main) | `@moeru/eventa/adapters/webworkers` | `Worker` instance |
 | Web Worker (worker) | `@moeru/eventa/adapters/webworkers/worker` | `self` (worker global) |
@@ -227,10 +232,9 @@ const { context } = createContext(transportInstance)
 import { defineInvokeEventa } from '@moeru/eventa'
 export const readdir = defineInvokeEventa<{ dirs: string[] }, { path: string }>('fs:readdir')
 
-// main.ts — register handler. The second argument is a BrowserWindow, not its webContents.
-// `onlySameWindow` makes the context hear only that window and dispose when it closes.
+// main.ts — register handler
 import { createContext } from '@moeru/eventa/adapters/electron/main'
-const { context } = createContext(ipcMain, mainWindow, { onlySameWindow: true })
+const { context } = createContext(ipcMain, mainWindow.webContents)
 defineInvokeHandler(context, readdir, async ({ path }) => ({ dirs: await fs.readdir(path) }))
 
 // renderer.ts (preload) — call it
@@ -239,20 +243,6 @@ const { context } = createContext(ipcRenderer)
 const invokeReaddir = defineInvoke(context, readdir)
 const result = await invokeReaddir({ path: '/usr' })
 ```
-
-### AIRI Electron main process
-
-In `apps/stage-tamagotchi/src/main`, do not call the adapter's `createContext`. Use
-`src/main/libs/electron/window-context.ts`:
-
-- `createWindowContext(window)` returns the one context of a window. Every service of the window shares it, and the
-  window owns it: remove your own handlers with the functions that `defineInvokeHandler` and `context.on` return,
-  and never dispose the context.
-- `createAppContext()` creates a context that hears every window and answers the sender. Use it for a request that
-  is not about one window.
-
-Both go through the IPC router, which keeps one real `ipcMain` listener per channel. See
-`docs/ai/adr/2026-11-10-electron-main-ipc-listeners.md`.
 
 ## Advanced Features
 

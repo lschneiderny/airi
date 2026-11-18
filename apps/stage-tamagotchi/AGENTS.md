@@ -7,6 +7,7 @@
 - Register window RPC before renderer load.
 - Get a main-process Eventa context from `src/main/libs/electron/window-context.ts`: `createWindowContext(window)` for one window, `createAppContext()` for a request from any window. A window has one shared context, which the window owns.
 - Clean up after a window with `onWindowClosed(window, callback)` from `src/main/libs/electron/on-window-closed.ts`.
+- Saved IO traces are in the `io-traces` directory under Electron's `userData` path, or under `APP_USER_DATA_PATH` when it is set. The `analyze-io-traces` skill lists only the macOS paths. One file holds the records of every window.
 - Shared window helpers own navigation protection, persistence, and platform-specific layering.
 - Home Assistant transport and secrets stay in main. Renderers receive only token presence and masked previews, never addresses or tokens.
 - Extension directory import separates prepare/review from serialized commit.

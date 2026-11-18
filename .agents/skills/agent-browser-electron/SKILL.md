@@ -5,8 +5,6 @@ description: Use when Codex needs to inspect, debug, or automate an Electron app
 
 # Agent Browser Electron
 
-For required checks by change type, see the [testing guide](../../../docs/ai/context/testing.md).
-
 ## Overview
 
 Inspect Electron renderer windows reliably when `agent-browser` alone is not enough to tell which CDP target maps to which visible app window.
@@ -54,13 +52,7 @@ If `/json/list` does not contain a window that the user says exists, do not assu
 
 The CDP port is project- and run-command-specific. Do not assume `9222`, `9250`, or any other value is universal. If an Electron process is running but no CDP port responds, tell the user to relaunch the app with the project's remote-debug environment variables or launch flags.
 
-For AIRI stage-tamagotchi on Linux, start the app inside the headless QA display so its windows stay off the user's desktop:
-
-```bash
-APP_REMOTE_DEBUG=true APP_REMOTE_DEBUG_PORT=9250 APP_USER_DATA_PATH="$(mktemp -d)" pnpm qa:display run -- pnpm dev:tamagotchi
-```
-
-Stop it afterwards with `pnpm qa:display down`. On macOS:
+For AIRI stage-tamagotchi on POSIX shells:
 
 ```bash
 APP_IGNORE_FOCUS=1 APP_REMOTE_DEBUG=true APP_REMOTE_DEBUG_PORT=9250 pnpm dev:tamagotchi
@@ -221,7 +213,18 @@ curl -sS http://127.0.0.1:9250/json/list
 agent-browser --cdp 9250 tab
 ```
 
-If controls do not respond, inspect the owning component and window mouse/focus behavior. Record diagnostic activation separately from pointer success.
+If the controls island is visible but the accessibility refs or CSS icon click do not expand it, inspect the Vue component as a diagnostic fallback. AIRI currently nests tooltip trigger buttons around icon buttons, so a CDP click can report success while landing on the wrapper instead of the Vue `ControlButton` listener. This fallback is for automation/debugging only; do not use it as evidence that end-user clicking works.
+
+```bash
+agent-browser --cdp 9250 eval '(() => {
+  const icon = document.querySelector("[i-solar\\:alt-arrow-up-line-duotone]")
+  let controls = icon.__vueParentComponent
+  for (let i = 0; i < 10; i++) controls = controls.parent
+  controls.devtoolsRawSetupState.expanded.value = true
+  controls.proxy.$nextTick()
+  return controls.devtoolsRawSetupState.expanded.value
+})()'
+```
 
 Expected verification for chat:
 - `agent-browser --cdp 9250 get url` returns `http://localhost:5173/#/chat`

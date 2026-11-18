@@ -7,8 +7,6 @@ description: Read and analyze AIRI IO traces that Tamagotchi saved to local file
 
 Tamagotchi saves each trace record as one JSON line when **Record IO traces automatically** is on. The setting is under Settings > System > Developer. The record format is in the README of `packages/trace-kit`.
 
-Every window sends its spans to the IO trace hub in the main process, and the recording reads them from the hub. One file therefore holds the spans of all windows, such as the stage, the settings window, and the chat window.
-
 ## Find the files
 
 Files are named `<start time>.jsonl`. A new file starts each time recording starts. When a span fails or runs past its deadline, the hub also writes the minute before it to `flight-<reason>-<time>.jsonl`, even when recording is off. Files older than seven days are deleted.
@@ -19,8 +17,6 @@ ls -t "$HOME/Library/Application Support/@proj-airi/stage-tamagotchi/io-traces"/
 ```
 
 The first path is the packaged app on macOS. The second is `pnpm dev` on macOS. If `APP_USER_DATA_PATH` is set, use `$APP_USER_DATA_PATH/io-traces`. If recording is off or nothing ran yet, the folder can be empty. Ask the user to turn recording on and reproduce the problem.
-
-On Windows, resolve Electron's `app.getPath("userData")` from the running app or its startup configuration, then inspect its `io-traces` directory. `APP_USER_DATA_PATH` takes precedence when configured. Do not assume the macOS paths above apply.
 
 ## Record shape
 
