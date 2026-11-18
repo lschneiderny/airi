@@ -51,7 +51,7 @@ function reactions(overrides: Partial<SituationReactionInspection> = {}): Situat
     memory: { ...initialReactionMemory(7), sessionId: 'chat-a', petsSeen: 3, lastLineAtMs: T0 - 30 * SEC, lastAttemptAtMs: T0 - 30 * SEC },
     refractoryRemainingMs: 15 * SEC,
     retryRemainingMs: 0,
-    pending: { kind: 'poke-protest', eventId: 'touch-0', atMs: T0 - 10 * SEC },
+    pending: { kind: 'poke-protest', eventId: 'touch-0', atMs: T0 - 10 * SEC, previousAttemptAtMs: null },
     outcomes: { 'pet-soft': { ...NO_OUTCOME, spoken: 2, declined: 1 }, 'poke-protest': { ...NO_OUTCOME, refused: 4 } },
     ...overrides,
   }

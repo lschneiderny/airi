@@ -22,6 +22,7 @@ import {
   reduceSituation,
   seedRng,
   settleReaction,
+  touchVoiceView,
 } from '.'
 
 const T0 = 1_700_000_000_000
@@ -42,6 +43,9 @@ const CLEAR_SIGNALS: GateSignals = {
 
 const SETTINGS: GateSettings = { enabled: true, chattiness: 0.5, dontDisturb: false, quietApps: [], speakDuringGames: false }
 
+/** What a view is built from: the touch, the situation it was reduced into, and the voice channel's inputs. */
+type TouchScene = Parameters<typeof touchVoiceView>[0]
+
 function pet(atMs: number, durationMs: number): TouchObservation {
   return { kind: 'touch', gesture: 'pet', region: 'head', atMs, durationMs }
 }
@@ -58,7 +62,7 @@ function seedWhere(accept: (roll: number) => boolean, start = 0): number {
   return seed
 }
 
-/** Reduces each touch into the situation, then asks the policy, carrying memory between touches like the host does. */
+/** Reduces each touch into the situation, builds its view, then asks the policy, carrying memory between touches like the host does. */
 function createStage(seed = SEED) {
   let situation: SituationState = initialSituationState
   let memory: ReactionMemory = initialReactionMemory(seed)
@@ -76,22 +80,16 @@ function createStage(seed = SEED) {
     observe(observation: Observation): void {
       situation = reduceSituation(situation, observation, observation.atMs)
     },
-    touch(touch: TouchObservation, adjust: (input: ReactionPolicyInput) => ReactionPolicyInput = input => input): ReactionEvaluation {
+    /** `adjust` changes what the view of this touch is built from. */
+    touch(touch: TouchObservation, adjust: (scene: TouchScene) => TouchScene = scene => scene): ReactionEvaluation {
       situation = reduceSituation(situation, touch, touch.atMs)
-      last = adjust({
-        nowMs: touch.atMs,
-        touch,
-        eventId: situation.events.at(-1)?.id ?? '',
-        situation,
-        sessionId: SESSION_ID,
-        signals: CLEAR_SIGNALS,
-        settings: SETTINGS,
-      })
+      const view = touchVoiceView(adjust({ touch, situation, sessionId: SESSION_ID, signals: CLEAR_SIGNALS, settings: SETTINGS }))
+      last = { nowMs: touch.atMs, gesture: touch.gesture, view }
       const evaluation = reactionPolicy(last, memory)
       memory = evaluation.memory
       return evaluation
     },
-    settle(outcome: GateOutcome, nowMs: number): void {
+    settle(outcome: GateOutcome | 'refused', nowMs: number): void {
       memory = settleReaction(memory, outcome, nowMs)
     },
   }
@@ -271,10 +269,22 @@ describe('reactionPolicy pacing', () => {
     expect(stage.memory).toEqual({ ...pending, pending: null })
   })
 
+  it('takes no retry wait and frees the burst when the send is refused', () => {
+    const T = T0 + 120 * SEC
+    const stage = spokenAt(T)
+    const attempted = stage.memory
+    stage.settle('refused', T)
+    // The draw is spent: the checkpoint stays where the attempt left it.
+    expect(stage.memory).toEqual({ ...attempted, pending: null, lastAttemptAtMs: null, pokeBurstRolled: false })
+
+    const before = stage.memory
+    expect(drew(stage.touch(poke(T + SEC)), before)).toBe(true)
+  })
+
   it('holds a second candidate before the first settles and drops the pending attempt after 30 s', () => {
     const T = T0 + 120 * SEC
     const stage = spokenAt(T)
-    expect(stage.memory.pending).toMatchObject({ kind: 'poke-protest', atMs: T })
+    expect(stage.memory.pending).toMatchObject({ kind: 'poke-protest', atMs: T, previousAttemptAtMs: null })
 
     stage.touch(poke(T + 10 * SEC))
     stage.touch(poke(T + 11 * SEC))
@@ -311,7 +321,7 @@ describe('reactionPolicy pacing', () => {
     const memory = stage.memory
     expect(memory).toMatchObject({ petsSeen: 1, pokeBurstRolled: true, lastAttemptAtMs: T })
     // Generating holds after pacing, so the hold shows the pending attempt and the rolled burst were reset.
-    const other = reactionPolicy({ ...stage.input, sessionId: 'chat-b', signals: { ...CLEAR_SIGNALS, generating: true } }, memory)
+    const other = reactionPolicy({ ...stage.input, view: { ...stage.input.view, sessionId: 'chat-b', held: 'generating' } }, memory)
     expect(holdReason(other)).toBe('generating')
     expect(other.memory).toEqual({ ...initialReactionMemory(memory.rngState), sessionId: 'chat-b' })
   })
@@ -339,7 +349,7 @@ describe('reactionPolicy pacing', () => {
 
 describe('reactionPolicy suppressors', () => {
   /** An eligible third poke whose input `adjust` changes. */
-  function eligiblePoke(adjust: (input: ReactionPolicyInput) => ReactionPolicyInput) {
+  function eligiblePoke(adjust: (input: TouchScene) => TouchScene) {
     const stage = createStage()
     stage.touch(poke(T0))
     stage.touch(poke(T0 + SEC))
@@ -347,9 +357,9 @@ describe('reactionPolicy suppressors', () => {
     return { before, evaluation: stage.touch(poke(T0 + 2 * SEC), adjust) }
   }
 
-  const withSignals = (signals: Partial<GateSignals>) => (input: ReactionPolicyInput): ReactionPolicyInput => ({ ...input, signals: { ...input.signals, ...signals } })
-  const withSettings = (settings: Partial<GateSettings>) => (input: ReactionPolicyInput): ReactionPolicyInput => ({ ...input, settings: { ...input.settings, ...settings } })
-  const withSituation = (situation: Partial<SituationState>) => (input: ReactionPolicyInput): ReactionPolicyInput => ({ ...input, situation: { ...input.situation, ...situation } })
+  const withSignals = (signals: Partial<GateSignals>) => (input: TouchScene): TouchScene => ({ ...input, signals: { ...input.signals, ...signals } })
+  const withSettings = (settings: Partial<GateSettings>) => (input: TouchScene): TouchScene => ({ ...input, settings: { ...input.settings, ...settings } })
+  const withSituation = (situation: Partial<SituationState>) => (input: TouchScene): TouchScene => ({ ...input, situation: { ...input.situation, ...situation } })
   const activity = (appId: string, category: 'call' | 'game') => withSituation({ activity: { appId, label: appId, category, title: null, sinceMs: T0 } })
 
   it.each([
@@ -370,7 +380,7 @@ describe('reactionPolicy suppressors', () => {
   })
 
   it('reports the suppressors in hardReason order', () => {
-    const steps: readonly ((input: ReactionPolicyInput) => ReactionPolicyInput)[] = [
+    const steps: readonly ((input: TouchScene) => TouchScene)[] = [
       withSettings({ enabled: true }),
       withSettings({ dontDisturb: false }),
       withSignals({ stageVisible: true }),
@@ -381,7 +391,7 @@ describe('reactionPolicy suppressors', () => {
       withSignals({ queued: 0 }),
       withSettings({ quietApps: [] }),
     ]
-    const allHolding = (input: ReactionPolicyInput): ReactionPolicyInput => activity('game.exe', 'game')({
+    const allHolding = (input: TouchScene): TouchScene => activity('game.exe', 'game')({
       ...input,
       signals: { ...CLEAR_SIGNALS, stageVisible: false, userSpeaking: true, userTyping: true, characterSpeaking: true, generating: true, queued: 2 },
       settings: { ...SETTINGS, enabled: false, dontDisturb: true, quietApps: ['GAME.*'] },
@@ -415,10 +425,22 @@ describe('reactionPolicy suppressors', () => {
 
 describe('settleReaction', () => {
   it('starts the refractory only for a spoken outcome', () => {
-    const memory: ReactionMemory = { ...initialReactionMemory(SEED), sessionId: SESSION_ID, lastAttemptAtMs: T0, pending: { kind: 'pet-soft', eventId: 'e1', atMs: T0 } }
+    const memory: ReactionMemory = { ...initialReactionMemory(SEED), sessionId: SESSION_ID, lastAttemptAtMs: T0, pending: { kind: 'pet-soft', eventId: 'e1', atMs: T0, previousAttemptAtMs: null } }
     expect(settleReaction(memory, 'spoken', T0 + SEC)).toEqual({ ...memory, lastLineAtMs: T0 + SEC, pending: null })
     for (const outcome of ['declined', 'cancelled', 'failed'] as const)
       expect(settleReaction(memory, outcome, T0 + SEC)).toEqual({ ...memory, pending: null })
+  })
+
+  it('restores the attempt time of a refused send and frees only a protest burst', () => {
+    const base: ReactionMemory = { ...initialReactionMemory(SEED), sessionId: SESSION_ID, lastAttemptAtMs: T0, pokeBurstRolled: true }
+    const protest: ReactionMemory = { ...base, pending: { kind: 'poke-protest', eventId: 'e1', atMs: T0, previousAttemptAtMs: T0 - 60 * SEC } }
+    expect(settleReaction(protest, 'refused', T0 + SEC)).toEqual({ ...base, lastAttemptAtMs: T0 - 60 * SEC, pokeBurstRolled: false })
+
+    const soft: ReactionMemory = { ...base, pending: { kind: 'pet-soft', eventId: 'e2', atMs: T0, previousAttemptAtMs: null } }
+    expect(settleReaction(soft, 'refused', T0 + SEC)).toEqual({ ...base, lastAttemptAtMs: null })
+
+    // Nothing is pending, so there is no attempt to take back.
+    expect(settleReaction(base, 'refused', T0 + SEC)).toEqual(base)
   })
 })
 
