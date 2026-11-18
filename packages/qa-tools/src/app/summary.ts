@@ -1,5 +1,7 @@
 import type { MotionQaEvent } from '@proj-airi/stage-shared/motion-scenario'
 
+import type { MemoryReport } from '../host-memory/sampler'
+
 export type SendPath = 'composer' | 'chatSend'
 
 /**
@@ -30,6 +32,8 @@ export interface SummaryInput {
   failed: boolean
   /** Renderer exceptions and console errors from every window. Reported, not gated; `qa:smoke` gates them. */
   pageErrors: number
+  /** Host memory over the session, or null when sampling was unavailable. Reported, not gated. */
+  memory: MemoryReport | null
 }
 
 export function buildSummary(input: SummaryInput) {
@@ -48,5 +52,6 @@ export function buildSummary(input: SummaryInput) {
     diagnostics: input.diagnostics,
     durationMs: input.durationMs,
     pageErrors: input.pageErrors,
+    memory: input.memory,
   }
 }
