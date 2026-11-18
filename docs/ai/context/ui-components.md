@@ -26,6 +26,21 @@ styling remains caller-owned. The content slides 4px from its trigger. With
 
 **Slots**: `default`
 
+### AnimatedHeight
+
+Container that animates its height to the height of its content, for example a
+panel that switches between views. The inner box is measured and the outer box
+gets that height in pixels, because a CSS height transition does not run between
+two `auto` heights. The outer box clips while it resizes, so the slot content
+sets its own padding and keeps focus rings inside it. `AnimatedContent` covers
+content that opens and closes instead.
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `align` | `'start' \| 'end'?` | `'start'` | Edge that stays in place while the height changes. Use `end` when the container grows upward |
+
+**Slots**: `default`
+
 ### TransitionBidirectional
 
 Bidirectional Vue `<Transition>` wrapper with customizable CSS classes.
@@ -219,10 +234,11 @@ renders the fallback when the URL is missing, loading, or fails.
 |------|------|---------|-------------|
 | `src` | `string \| null \| undefined` | `null` | Avatar image URL |
 | `alt` | `string \| null \| undefined` | `null` | Accessible image/fallback description; omit for decorative avatars |
+| `seed` | `string \| null \| undefined` | `null` | Stable identity, for example a user ID. When set, the default fallback is a generated beam avatar for it |
 | `referrerPolicy` | `ImgHTMLAttributes['referrerpolicy']?` | — | Image referrer policy |
 | `crossOrigin` | `ImgHTMLAttributes['crossorigin']?` | — | Image cross-origin mode |
 
-**Slots**: `fallback` (optional override for the built-in user icon)
+**Slots**: `fallback` (optional override for the built-in user icon and the beam avatar)
 
 ### Badge
 
@@ -1101,7 +1117,7 @@ pass through to the underlying `BasicButton`.
 
 ## Live2D scene API
 
-`Live2D.vue` in `@proj-airi/stage-ui-live2d` is a scene component, not a `@proj-airi/ui` primitive. Its `naturalEnergy` and `performanceSettings` props, its `touch` event, and its exposed `applySlots` and `applyHolds` methods are documented in the [stage-ui-live2d README](../../../packages/stage-ui-live2d/README.md), under Expression slots, Held emotions, Energy, and Touch: poke and pet.
+`Live2D.vue` in `@proj-airi/stage-ui-live2d` is a scene component, not a `@proj-airi/ui` primitive. It has two touch events. `naturalTouch` carries a poke or a pet that the Natural driver reacted to. `touch` carries a tap or a pat that the scene recognized under the Universal and MAGIC drivers, and it never fires under Natural. Its `naturalEnergy` and `performanceSettings` props, the Natural touch event, and its exposed `applySlots` and `applyHolds` methods are documented in the [stage-ui-live2d README](../../../packages/stage-ui-live2d/README.md), under Expression slots, Held emotions, Energy, and Touch: poke and pet.
 
 ---
 
