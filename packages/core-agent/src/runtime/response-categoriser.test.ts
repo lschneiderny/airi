@@ -48,8 +48,8 @@ describe('createStreamingCategorizer', () => {
     categorizer.consume('Hello <reasoning>thinking')
     const filtered1 = categorizer.filterToSpeech('Hello <reasoning>thinking', 0)
 
-    // Before tag closes, everything should be filtered (tag is incomplete)
-    expect(filtered1).toBe('')
+    // Speech before the tag is released at once, and the open tag waits for its closing tag
+    expect(filtered1).toBe('Hello ')
 
     // Complete the tag - the important thing is the final result is correct
     categorizer.consume(' about this</reasoning> world!')
@@ -110,6 +110,54 @@ describe('createStreamingCategorizer', () => {
     expect(spoken).toBe(streamed)
     expect(categorizer.flush()).toBe(flushed)
     expect(categorizer.flush()).toBe('')
+  })
+
+  /** Streams `pieces` as the chat runtime does: consume, filter, and flush once after the last piece. */
+  function speak(pieces: string[]) {
+    const categorizer = createStreamingCategorizer()
+    let streamed = ''
+    let position = 0
+    for (const piece of pieces) {
+      categorizer.consume(piece)
+      streamed += categorizer.filterToSpeech(piece, position)
+      position += piece.length
+    }
+    return { streamed, flushed: categorizer.flush() }
+  }
+
+  it.each([
+    ['whole', (text: string) => [text]],
+    ['per-char', (text: string) => [...text]],
+  ])('speaks the words around a tag that never closes, %s', (_chunking, chunk) => {
+    // ROOT CAUSE:
+    //
+    // An unclosed tag such as `<smile>` held the whole literal, the text before the tag included, and nothing released
+    // it at the end of the stream. A whole reply spoke nothing, and a per-character stream spoke only the text before it.
+    const { streamed, flushed } = speak(chunk('I am so glad <smile> you came back.'))
+
+    expect(streamed).toBe('I am so glad ')
+    expect(flushed).toBe(' you came back.')
+  })
+
+  it.each([
+    ['whole', (text: string) => [text]],
+    ['per-char', (text: string) => [...text]],
+  ])('hides closed reasoning while it streams and an unclosed reasoning tag at flush, %s', (_chunking, chunk) => {
+    const closed = speak(chunk('<think>hidden</think>visible'))
+    expect(closed.streamed).toBe('visible')
+    expect(closed.flushed).toBe('')
+
+    const cutOff = speak(chunk('Hi <think>still thinking when the reply was cut off'))
+    expect(cutOff.streamed).toBe('Hi ')
+    expect(cutOff.flushed).toBe('')
+  })
+
+  it('shows a marker only when no tag is open before it', () => {
+    const categorizer = createStreamingCategorizer()
+    categorizer.consume('Hi <think>a')
+    expect(categorizer.filterToSpeech('<|ACT happy|>', 11)).toBe('')
+    categorizer.consume('</think> there')
+    expect(categorizer.filterToSpeech('<|ACT happy|>', 25)).toBe('<|ACT happy|>')
   })
 
   it('should handle tags split across chunks', () => {
@@ -386,7 +434,7 @@ describe('createStreamingCategorizer', () => {
     // Stream incomplete tag
     categorizer.consume('Hello <reasoning>thinking')
     let filtered = categorizer.filterToSpeech('Hello <reasoning>thinking', 0)
-    expect(filtered).toBe('') // Tag not closed, filter everything
+    expect(filtered).toBe('Hello ') // The open tag waits, and the speech before it does not
 
     // Stream closing tag
     categorizer.consume('</reasoning>')

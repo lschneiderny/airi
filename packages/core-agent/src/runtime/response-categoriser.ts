@@ -207,6 +207,33 @@ export function categorizeResponse(
   }
 }
 
+/** Text outside closed tags, which are reasoning. Unlike `categorizeResponse`, it keeps the text as written. */
+function speechOutsideClosedTags(text: string): string {
+  if (!text.includes('<'))
+    return text
+  let speech = ''
+  let position = 0
+  for (const tag of extractAllTags(text)) {
+    // Tags arrive in document order, nested ones after their parent, which already hid them.
+    if (tag.startIndex < position)
+      continue
+    speech += text.slice(position, tag.startIndex)
+    position = tag.endIndex
+  }
+  return speech + text.slice(position)
+}
+
+/**
+ * A tag token that `flush` drops from text after a tag that never closed: an opening, closing, or comment tag, or one
+ * cut off by the end of the stream.
+ */
+const TAG_TOKEN = /<[a-z/!][^<>]*>?/gi
+
+/**
+ * Reasoning tags that a model can leave open when its reply is cut off. Their text stays hidden at the end of a stream.
+ */
+const UNCLOSED_REASONING_TAG = /^<(?:think|thinking|thought|reasoning)\b/i
+
 /**
  * Note: This receives literal text from useLlmmarkerParser (special tokens <|...|> are already extracted).
  * Only XML/HTML tags like <think>, <reasoning> need to be parsed here.
@@ -224,21 +251,21 @@ export function createStreamingCategorizer(
   type TagState = 'outside' | 'in-opening-tag' | 'in-content' | 'in-closing-tag'
   let tagState: TagState = 'outside'
   let tagStackDepth = 0
-  // Buffer index of a `<` that ended the buffer and was left out of speech. The next chunk decides whether it opens a
-  // tag, and `flush` releases it when the stream ends on it.
-  let heldLessThanAt = -1
+  // Speech is decided up to this buffer index: the text before it was released or hidden. The text after it waits,
+  // because it follows a tag that has not closed yet or a `<` that ends the buffer.
+  let decidedUntil = 0
 
-  // Fallback for filterToSpeech - uses rehype for incomplete tag detection
-  function checkIncompleteTag(holdTrailingLessThan = true): boolean {
+  // Whether `source` holds a tag that has not closed, judged by a rehype round trip
+  function checkIncompleteTag(source: string, holdTrailingLessThan = true): boolean {
     try {
       // rehype writes a text `<` (as in `a < b`) and `&` as references, so write them so here too. A `<` that ends the
-      // buffer stays raw, since the next chunk can make it a tag such as `<think>`, unless `holdTrailingLessThan` is false.
-      const source = buffer.replaceAll('&', '&#x26;').replace(holdTrailingLessThan ? /<(?![a-z/!]|$)/gi : /<(?![a-z/!])/gi, '&#x3C;')
-      const tree = unified().use(rehypeParse, { fragment: true }).parse(source) as Root
+      // source stays raw, since the next chunk can make it a tag such as `<think>`, unless `holdTrailingLessThan` is false.
+      const escaped = source.replaceAll('&', '&#x26;').replace(holdTrailingLessThan ? /<(?![a-z/!]|$)/gi : /<(?![a-z/!])/gi, '&#x3C;')
+      const tree = unified().use(rehypeParse, { fragment: true }).parse(escaped) as Root
       const stringified = unified().use(rehypeStringify).stringify(tree).toString()
 
-      if (stringified !== source) {
-        const bufferEnd = source.trim().slice(-30)
+      if (stringified !== escaped) {
+        const bufferEnd = escaped.trim().slice(-30)
         const stringifiedEnd = stringified.trim().slice(-30)
         return bufferEnd !== stringifiedEnd
       }
@@ -249,6 +276,23 @@ export function createStreamingCategorizer(
       // If parsing fails, assume incomplete
       return true
     }
+  }
+
+  /**
+   * Returns the end of the longest buffer prefix that holds no unclosed tag, at least `decidedUntil`. Speech up to it
+   * cannot change with later chunks. Every chunking of a stream reaches the same index, which keeps speech independent
+   * of chunk boundaries.
+   */
+  function completePrefixEnd(): number {
+    if (!checkIncompleteTag(buffer))
+      return buffer.length
+    // An unclosed tag starts at a `<`, so the complete prefix ends at one. A `<` that ends the prefix is followed by
+    // this `<`, so it opens no tag.
+    for (let index = buffer.lastIndexOf('<'); index > decidedUntil; index = buffer.lastIndexOf('<', index - 1)) {
+      if (!checkIncompleteTag(buffer.slice(0, index), false))
+        return index
+    }
+    return decidedUntil
   }
 
   // Tracks tag state incrementally (O(chunk.length)) to detect when tags close
@@ -373,119 +417,37 @@ export function createStreamingCategorizer(
     filterToSpeech(text: string, startPosition: number): string {
       // A literal is consumed before it is filtered. A marker is filtered without being consumed, only to test visibility.
       const consumed = startPosition + text.length === buffer.length
-      let released = ''
-      if (consumed && heldLessThanAt !== -1) {
-        // The rule of `checkIncompleteTag`: a `<` before a letter, `/`, or `!` opens a tag, which the tag handling
-        // below keeps out of speech. Any other `<` is text.
-        if (!/[a-z/!]/i.test(buffer[heldLessThanAt + 1] ?? ''))
-          released = '<'
-        heldLessThanAt = -1
+      if (!consumed) {
+        // A marker after an unclosed tag may be reasoning. A `<` held alone at the end of the buffer opens no tag before
+        // a marker, so the marker is visible and `flush` releases that `<`. A caller can consume literals without
+        // filtering them, so the complete prefix is measured here instead of read from `decidedUntil`.
+        const end = completePrefixEnd()
+        return end === buffer.length || (end === buffer.length - 1 && buffer.endsWith('<')) ? text : ''
       }
 
-      // A `<` that ends the buffer after complete text is held alone until the next chunk or `flush`. Filtering out the
-      // whole literal instead lost the text before a trailing face such as `>_<`, because nothing released it.
-      const onlyTrailingLessThan = buffer.endsWith('<') && !checkIncompleteTag(false)
-      if (onlyTrailingLessThan && consumed) {
-        heldLessThanAt = buffer.length - 1
-        text = text.slice(0, -1)
-      }
-
-      // Check if we're currently inside an incomplete tag
-      if (!onlyTrailingLessThan && checkIncompleteTag()) {
-        // Try to find where the tag closes in the combined buffer + text
-        const fullText = buffer + text
-        try {
-          const tree = unified().use(rehypeParse, { fragment: true }).parse(fullText) as Root
-          let closingOffset = -1
-
-          visit(tree, 'element', (node: Element) => {
-            const position = node.position
-            if (position?.end && closingOffset === -1) {
-              const endOffset = getOffsetFromPosition(fullText, position.end)
-              // Check if this element actually has a closing tag in the source
-              const elementSource = fullText.slice(
-                getOffsetFromPosition(fullText, position.start),
-                endOffset,
-              )
-              const expectedClosingTag = `</${node.tagName}>`
-
-              // Only consider it complete if the closing tag exists in source
-              if (elementSource.includes(expectedClosingTag)) {
-                // If this element closes within the new text chunk
-                if (endOffset >= buffer.length && endOffset <= fullText.length) {
-                  closingOffset = endOffset - buffer.length
-                }
-              }
-            }
-          })
-
-          if (closingOffset === -1)
-            return released // Still incomplete, filter everything
-
-          // Return only content after the closing tag
-          // The buffer already includes text up to closingOffset (from consume())
-          text = text.slice(closingOffset)
-          startPosition += closingOffset
-          // Re-categorize with the complete tag now in buffer
-          categorized = categorizeResponse(buffer, providerId)
-        }
-        catch {
-          return released // Parsing failed, filter everything
-        }
-      }
-
-      if (!categorized || categorized.segments.length === 0) {
-        // No segments detected, all text is speech
-        return released + text
-      }
-
-      let filtered = ''
-      const endPosition = startPosition + text.length
-
-      // Find all non-speech segments that overlap with this text
-      // Note: segments are already filtered to be complete by extractAllTags
-      const overlappingSegments = categorized.segments.filter(
-        segment => segment.endIndex > startPosition && segment.startIndex < endPosition,
-      )
-
-      if (overlappingSegments.length === 0) {
-        // No overlapping segments, all text is speech
-        return released + text
-      }
-
-      // Build filtered text by excluding non-speech segments
-      let currentPos = startPosition
-      for (const segment of overlappingSegments) {
-        const segmentStart = Math.max(segment.startIndex, startPosition)
-        const segmentEnd = Math.min(segment.endIndex, endPosition)
-
-        // Add text before this segment
-        if (segmentStart > currentPos) {
-          const beforeStart = currentPos - startPosition
-          const beforeEnd = segmentStart - startPosition
-          filtered += text.slice(beforeStart, beforeEnd)
-        }
-
-        // Skip the segment content (don't add to filtered)
-        currentPos = segmentEnd
-      }
-
-      // Add remaining text after last segment
-      if (currentPos < endPosition) {
-        const afterStart = currentPos - startPosition
-        filtered += text.slice(afterStart)
-      }
-
-      return released + filtered
+      // Speech before an unclosed tag is released at once. The rest waits until the tag closes, when a closed tag is
+      // reasoning, or until `flush`. Filtering out the whole literal lost the speech before a tag that never closed.
+      const end = completePrefixEnd()
+      const speech = speechOutsideClosedTags(buffer.slice(decidedUntil, end))
+      decidedUntil = end
+      return speech
     },
     /**
-     * Releases a `<` that ended the stream. It was held because a later chunk could have made it a tag.
-     * Call it once after the last chunk and treat the result as speech.
+     * Releases the text that still waits after the last chunk, or before a visible marker, as speech. Call it once
+     * after the last chunk, and treat the result as speech.
+     *
+     * A `<` that ended the stream is text. Text after a tag that never closed is speech, since small models write
+     * tag-like noise such as `<smile>` or `|<MOOD brighter|>`, but the tag tokens themselves are not spoken. A reasoning
+     * tag that never closed, as in a reply cut off while thinking, stays hidden.
      */
     flush(): string {
-      const held = heldLessThanAt === -1 ? '' : '<'
-      heldLessThanAt = -1
-      return held
+      const waiting = buffer.slice(decidedUntil)
+      decidedUntil = buffer.length
+      if (waiting === '<')
+        return waiting
+      if (UNCLOSED_REASONING_TAG.test(waiting))
+        return ''
+      return speechOutsideClosedTags(waiting).replace(TAG_TOKEN, '')
     },
     getCurrentPosition(): number {
       return buffer.length

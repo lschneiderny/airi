@@ -3971,3 +3971,30 @@ describe('malformed DELAY durations, line-broken ACT cues and colon-form cues th
     })
   })
 })
+
+describe('tag-like text that never closes', () => {
+  // ROOT CAUSE:
+  //
+  // Small local models write tag-like text such as `<smile>` or a swapped marker such as `|<MOOD brighter: x|>`. The
+  // streaming categorizer held everything after an unclosed tag, together with the text before it in the same literal,
+  // and nothing released it when the stream ended. A whole reply then spoke nothing, while a per-character stream
+  // spoke the text before the tag.
+  it.each([
+    ['Hey there!|<MOOD brighter: x|>', 'Hey there!|'],
+    ['Hey there!|<FOO bar|>', 'Hey there!|'],
+    ['|<ACT happy|>Hey there!|<MOOD brighter: x|> more text', 'Hey there!| more text'],
+    ['Hey there!<|MOOD brighter: x|>', 'Hey there!'],
+    ['I am so glad <smile> you came back today.', 'I am so glad  you came back today.'],
+    ['|<ACT happy|>\nHey there! Good morning, ready to start together!|<MOOD brighter: back to work|>\n<|CALL ["greet"]|>', '\nHey there! Good morning, ready to start together!|\n'],
+  ])('speaks the words of %j at every chunking', async (text, spoken) => {
+    const replay = await replayReplyAtEveryChunking(text, liveStage)
+
+    expect(replay.literals.join('')).toBe(spoken)
+  })
+
+  it('keeps closed reasoning hidden while it streams and after it closes', async () => {
+    const replay = await replayReplyAtEveryChunking('<think>hidden</think>visible', liveStage)
+
+    expect(replay.literals.join('')).toBe('visible')
+  })
+})

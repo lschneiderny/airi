@@ -70,7 +70,7 @@ describe('score command', () => {
       },
     })).toBe(0)
     expect(fixtureCount).toBe(34)
-    expect(row25Invariant).toBe(false)
+    expect(row25Invariant).toBe(true)
     expect(c.stderr).toBe('')
     const { runDir } = JSON.parse(c.stdout)
     expect((await readdir(runDir)).sort()).toEqual(['replies.jsonl', 'run.json', 'summary.json', 'summary.md'])
