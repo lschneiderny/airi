@@ -1,6 +1,6 @@
 # one-desktop-host - Work Plan
 
-Status: approved by Luke on 2026-11-17 (H1: remove now). Not started. Roadmap row: step H in [`docs/ai/context/character-mind-roadmap.md`](../../docs/ai/context/character-mind-roadmap.md).
+Status: done on `luke/refactor/one-desktop-host` (2026-11-17). Luke approved H1, remove now, the same day. The roadmap row moves to done once the roadmap is on `main`. Roadmap row: step H in [`docs/ai/context/character-mind-roadmap.md`](../../docs/ai/context/character-mind-roadmap.md).
 
 ## TL;DR (For humans)
 
