@@ -4,31 +4,36 @@ import type { Tool } from '@xsai/shared-chat'
 import type { streamText } from '@xsai/stream-text'
 import type { SyncedPiniaRuntime } from 'pinia-plugin-synced'
 
-import type { ChatHistoryItem } from '../types/chat'
+import type { ChatHistoryItem, StreamingAssistantMessage } from '../types/chat'
+import type { ChatSessionMeta } from '../types/chat-session'
 import type { LlmStreamOptions } from './ai/chat-llm/llm'
 
 import { errorMessageFrom } from '@moeru/std'
 import { SpanStatusCode } from '@opentelemetry/api'
 import { IOAttributes, IOSpanNames } from '@proj-airi/stage-shared'
 import { applyEvent, DEFAULT_CHARACTER_PROFILE, initialCharacterState, readCharacter, renderCharacterContext } from '@proj-airi/stage-shared/character-state'
-import { ASCII_FACES } from '@proj-airi/stage-shared/conversation-register'
+import { ASCII_FACES, renderRegisterSection } from '@proj-airi/stage-shared/conversation-register'
 import { notifyTopicKey } from '@proj-airi/stage-shared/situation'
 import { composeSystemPrompt, REPLY_MAX_TOKENS } from '@proj-airi/stage-shared/stage-contract'
 import { useDesktopActivityStore } from '@proj-airi/stage-shared/stores/desktop-activity'
 import { useForegroundWindowStore } from '@proj-airi/stage-shared/stores/foreground-window'
-import { createPinia, disposePinia, setActivePinia } from 'pinia'
+import { createPinia, defineStore, disposePinia, setActivePinia } from 'pinia'
 import { createSyncedPiniaPlugin } from 'pinia-plugin-synced'
 import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { computed, createApp, nextTick, reactive, ref, toRaw } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import * as coreAgent from '@proj-airi/core-agent'
 
+import { useStageContractPrompt } from '../composables/use-airi-runtime-prompt'
 import { characterStateRepo } from '../database/repos/character-state.repo'
 import { memoryRepo } from '../database/repos/memory.repo'
 import { useConversationSettings } from '../features/conversation/settings'
 import { usePerformanceRuntimeState } from '../features/performance/runtime-state'
 import { useExpressionPerformanceSettings } from '../features/performance/settings'
+import { getAnalytics } from '../libs/product-signals'
 import { getSpeechBusContext, voiceGenerationEnded } from '../services/speech/bus'
+import { composeDrawCardPrompt } from '../tools/draw-card'
 import { composeMemoryPrompt } from '../tools/memory'
 import { getEventSourceKey } from '../utils/event-source'
 import { resolveCustomTools } from './ai/chat-llm/tool-resolver'
@@ -39,6 +44,7 @@ import { useSituationObservabilityStore } from './devtools/situation-observabili
 import { useMemoryStore } from './memory'
 import { useConsciousnessSettingsStore } from './modules/consciousness-settings'
 import { useProviderConfigStore } from './providers/config'
+import { useRecipesStore } from './recipes'
 import { useSituationStore } from './situation'
 
 vi.hoisted(() => {
@@ -101,6 +107,8 @@ const ingestContextMessageMock = vi.fn()
 const getContextsSnapshotMock = vi.fn()
 const persistSessionMessagesMock = vi.fn()
 const forkSessionMock = vi.fn()
+const createSessionMock = vi.fn()
+const ensureSessionMock = vi.fn()
 const loadSessionMock = vi.fn()
 const deleteSessionMock = vi.fn()
 const initializeSessionMock = vi.fn()
@@ -122,50 +130,31 @@ const cardTemperatures = new Map<string, number>()
 const consciousnessTemperature: { value: number | undefined } = { value: undefined }
 /** Character prompts by card id. A card without one has the prompt `system prompt`, like the stored system message. */
 const cardPrompts = new Map<string, string>()
-/** The stage contract that the chat store passed to the session store, which ends every session system prompt. */
-const stageContract = { value: '' }
-/** The register section that the chat store passed to the session store, which follows the character prompt. */
-const registerPrompt = { value: '' }
+/** The stage contract of this renderer, which ends the character part of every system prompt. */
+const stageContract = {
+  get value() {
+    return useStageContractPrompt().value
+  },
+}
+/** The register section of the conversation settings, which follows the character prompt. */
+const registerPrompt = {
+  get value() {
+    const settings = useConversationSettings().document
+    return renderRegisterSection(settings.register, settings.textingFlavor, useI18n().t)
+  },
+}
+/** The toolset segment of an owner session: the toolset prompt, then when to draw a reply card. */
+const TOOLSET_SEGMENT = `Plugin toolset guidance.\n\n${composeDrawCardPrompt().trim()}`
 const activeModelRef = ref('gpt-test')
 const chatReadyRef = computed(() => !!activeProviderRef.value && !!activeModelRef.value)
-const streamingMessageRef = ref<any>({ role: 'assistant', content: '', slices: [], tool_results: [] })
+const streamingMessageRef = ref<StreamingAssistantMessage>({ role: 'assistant', content: '', slices: [], tool_results: [] })
 // The chat session store keeps messages in reactive state, so the mock does too.
-const sessionMessages = reactive<Record<string, any[]>>({})
+const sessionMessages = reactive<Record<string, ChatHistoryItem[]>>({})
+const sessionMetas = reactive<Record<string, ChatSessionMeta>>({})
 let currentGeneration = 1
-
-vi.mock('pinia', async () => {
-  const actual = await vi.importActual<typeof import('pinia')>('pinia')
-  return {
-    ...actual,
-    storeToRefs: (store: any) => store,
-  }
-})
 
 vi.mock('../composables', () => ({
   getConversationAnalyticsSurface: () => 'web',
-}))
-
-vi.mock('../libs/product-signals', () => ({
-  getAnalytics: () => ({
-    emit: (event: { name: string }, properties: unknown) => {
-      switch (event.name) {
-        case 'message_round':
-          chatAnalyticsMocks.trackMessageRound(properties)
-          break
-        case 'message_round_failed':
-          chatAnalyticsMocks.trackMessageRoundFailed(properties)
-          break
-        case 'message_sent':
-          chatAnalyticsMocks.trackMessageSent(properties)
-          break
-        default:
-          return false
-      }
-
-      return true
-    },
-    recordFirstMessage: trackFirstMessageMock,
-  }),
 }))
 
 vi.mock('../composables/use-io-tracer', () => ({
@@ -185,6 +174,8 @@ vi.mock('vue-i18n', () => ({
 
 vi.mock('./chat/context-store', () => ({
   useChatContextStore: () => ({
+    initialize: vi.fn(),
+    dispose: vi.fn(),
     ingestContextMessage: ingestContextMessageMock,
     getContextsSnapshot: getContextsSnapshotMock,
   }),
@@ -220,7 +211,7 @@ vi.mock('../composables/vision/use-vision-inference', () => ({
 }))
 
 vi.mock('./chat/session-store', () => ({
-  useChatSessionStore: () => ({
+  useChatSessionStore: defineStore('chat-session', () => ({
     activeSessionId: activeSessionIdRef,
     sessionMessages,
     storeMessage: async (sessionId: string, message: ChatHistoryItem & { id: string }) => {
@@ -234,6 +225,15 @@ vi.mock('./chat/session-store', () => ({
     replaceSessionHistory: async (sessionId: string, messages: ChatHistoryItem[]) => {
       sessionMessages[sessionId] = messages
     },
+    sessionMetas,
+    ensureSession: (sessionId: string) => {
+      ensureSessionMock(sessionId)
+      sessionMessages[sessionId] ??= [{ role: 'system', content: 'system prompt', createdAt: 1, id: 'system' }]
+    },
+    appendSessionMessage: (sessionId: string, message: ChatHistoryItem) => {
+      sessionMessages[sessionId] ??= []
+      sessionMessages[sessionId].push(message)
+    },
     commitUserMessage: (async (sessionId, message) => {
       sessionMessages[sessionId] ??= []
       const existing = sessionMessages[sessionId].some(item => item.id === message.id)
@@ -245,21 +245,18 @@ vi.mock('./chat/session-store', () => ({
     clearSessionMessages: async (sessionId: string) => {
       sessionMessages[sessionId] = []
     },
-    sessionMetas: { 'session-1': { characterId: 'alice' }, 'session-2': { characterId: 'bob' }, 'session-b': { characterId: 'bob' }, 'session-forked': { characterId: 'alice' } },
     getSessionMessages: (sessionId: string) => sessionMessages[sessionId] ?? [],
-    setStageContract: (contract: string) => {
-      stageContract.value = contract
-    },
-    setRegisterPrompt: (text: string) => {
-      registerPrompt.value = text
-    },
     getSessionMessagesIfLoaded: (sessionId: string) => sessionMessages[sessionId],
     loadSession: loadSessionMock,
     deleteSession: deleteSessionMock,
     initialize: initializeSessionMock,
     persistSessionMessages: persistSessionMessagesMock,
     getSessionGeneration: () => currentGeneration,
+    setSessionMessages: (sessionId: string, messages: ChatHistoryItem[]) => {
+      sessionMessages[sessionId] = messages
+    },
     forkSession: forkSessionMock,
+    createSession: createSessionMock,
     deleteMessage: async ({ sessionId, messageId }: { sessionId: string, messageId: string }) => {
       sessionMessages[sessionId] = (sessionMessages[sessionId] ?? []).filter(message => message.id !== messageId)
     },
@@ -271,15 +268,15 @@ vi.mock('./chat/session-store', () => ({
       controlRecords.push(event)
       return { status: 'queued' }
     },
-  }),
+  })),
 }))
 
 vi.mock('./chat/stream-store', () => ({
-  useChatStreamStore: () => ({
+  useChatStreamStore: defineStore('chat-stream', () => ({
     streamingMessage: streamingMessageRef,
     activeTurns: [],
     updateActiveTurns: vi.fn(),
-  }),
+  })),
 }))
 
 vi.mock('./ai/chat-llm/llm', () => ({
@@ -303,7 +300,7 @@ vi.mock('./ai/chat-llm/toolset-prompts', () => ({
 }))
 
 vi.mock('./modules/consciousness', () => ({
-  useConsciousnessStore: () => ({
+  useConsciousnessStore: defineStore('consciousness', () => ({
     activeModel: activeModelRef,
     activeProvider: activeProviderRef,
     get activeTemperature() {
@@ -315,8 +312,10 @@ vi.mock('./modules/consciousness', () => ({
     getChatProviderInstance: (providerId: string) => getChatProviderInstanceMock(providerId, {
       reasoning: useConsciousnessSettingsStore().reasoning ? 'enabled' : 'disabled',
     }),
-  }),
+  })),
 }))
+
+const cardPrompt = vi.hoisted(() => ({ value: 'system prompt' }))
 
 vi.mock('./modules/airi-card', () => ({
   useAiriCardStore: () => ({
@@ -327,7 +326,7 @@ vi.mock('./modules/airi-card', () => ({
     // A leading character-state store subscribes to card deletion; no test here deletes a card.
     onCardRemoval: () => () => {},
     getCard: (id: string) => cardTemperatures.has(id) ? { extensions: { airi: { temperature: cardTemperatures.get(id) } } } : undefined,
-    getSystemPrompt: (id: string) => cardPrompts.get(id) ?? 'system prompt',
+    getSystemPrompt: (id: string) => cardPrompts.get(id) ?? cardPrompt.value,
     getModules: (id: string) => ({
       consciousness: cardSelections.get(id) ?? { provider: activeProviderRef.value, model: activeModelRef.value },
       vision: { provider: visionMocks.configured ? 'vision-provider' : '', model: visionMocks.configured ? 'vision-model' : '' },
@@ -353,7 +352,7 @@ const provider: GenerationProvider = {
 }
 
 /** An assistant message whose stored tool result holds an original screenshot. */
-function storedToolImageMessage() {
+function storedToolImageMessage(): ChatHistoryItem {
   return {
     role: 'assistant',
     id: 'assistant-1',
@@ -444,6 +443,24 @@ describe('chat store contract', () => {
     setActivePinia(createPinia())
     await memoryRepo.clear()
     useMemoryStore().enabled = false
+    cardPrompt.value = 'system prompt'
+    vi.spyOn(getAnalytics(), 'emit').mockImplementation((event, properties) => {
+      switch (event.name) {
+        case 'message_round':
+          chatAnalyticsMocks.trackMessageRound(properties)
+          break
+        case 'message_round_failed':
+          chatAnalyticsMocks.trackMessageRoundFailed(properties)
+          break
+        case 'message_sent':
+          chatAnalyticsMocks.trackMessageSent(properties)
+          break
+        default:
+          return false
+      }
+      return true
+    })
+    vi.spyOn(getAnalytics(), 'recordFirstMessage').mockImplementation(trackFirstMessageMock)
     llmStreamMock.mockReset()
     trackFirstMessageMock.mockReset()
     for (const analyticsMock of Object.values(chatAnalyticsMocks))
@@ -458,6 +475,12 @@ describe('chat store contract', () => {
     persistSessionMessagesMock.mockReset()
     forkSessionMock.mockReset()
     loadSessionMock.mockReset().mockResolvedValue(true)
+    createSessionMock.mockReset().mockImplementation(async (characterId: string, options: Partial<ChatSessionMeta>) => {
+      const sessionId = `created-${createSessionMock.mock.calls.length}`
+      sessionMetas[sessionId] = { sessionId, userId: 'local', characterId, createdAt: 1, updatedAt: 1, ...options }
+      sessionMessages[sessionId] = []
+      return sessionId
+    })
     deleteSessionMock.mockReset().mockResolvedValue(undefined)
     initializeSessionMock.mockReset().mockResolvedValue(undefined)
     getChatProviderInstanceMock.mockReset().mockResolvedValue(provider)
@@ -486,14 +509,18 @@ describe('chat store contract', () => {
     cardTemperatures.clear()
     consciousnessTemperature.value = undefined
     cardPrompts.clear()
-    stageContract.value = ''
-    registerPrompt.value = ''
     streamingMessageRef.value = { role: 'assistant', content: '', slices: [], tool_results: [] }
     currentGeneration = 1
 
     for (const key of Object.keys(sessionMessages)) {
       delete sessionMessages[key]
     }
+    for (const key of Object.keys(sessionMetas)) {
+      delete sessionMetas[key]
+    }
+    // Voice sends read the character of their session.
+    for (const [sessionId, characterId] of [['session-1', 'alice'], ['session-2', 'bob'], ['session-b', 'bob'], ['session-forked', 'alice']])
+      sessionMetas[sessionId] = { sessionId, userId: 'local', characterId, createdAt: 1, updatedAt: 1 }
 
     sessionMessages['session-1'] = [{ role: 'system', content: 'system prompt', createdAt: 1, id: 'system' }]
   })
@@ -536,11 +563,16 @@ describe('chat store contract', () => {
 
     const prepared = submit.mock.calls[0][1]
     expect((await prepared.resolveStep!()).systemPrompt).toContain(composeMemoryPrompt(index))
+    // The owner's chat also gets the recipe tools, and the card tool with its icon search, which are on by default.
     expect(resolvedToolNames).toEqual([[
       'configure_wake_words',
       'builtIn_readMemory',
       'builtIn_writeMemory',
       'builtIn_forgetMemory',
+      'builtIn_useRecipe',
+      'builtIn_proposeRecipe',
+      'builtIn_drawCard',
+      'builtIn_searchIcons',
     ]])
     expect(prompts[0]).toContain(composeMemoryPrompt(index))
     expect(prompts[0]).toContain(`- ${own!.id}: Alice fact`)
@@ -620,7 +652,7 @@ describe('chat store contract', () => {
 
     await useChatStore().send({ sessionId: 'session-1', text: 'Hello' })
 
-    expect(resolvedToolNames).toEqual([['configure_wake_words']])
+    expect(resolvedToolNames).toEqual([['configure_wake_words', 'builtIn_useRecipe', 'builtIn_proposeRecipe', 'builtIn_drawCard', 'builtIn_searchIcons']])
     expect(prompts).toHaveLength(1)
     expect(prompts[0]).not.toContain('Long-term memory.')
     expect(prompts[0]).not.toContain(entry!.id)
@@ -774,9 +806,9 @@ describe('chat store contract', () => {
     const store = useChatStore()
     await store.send({ sessionId: 'session-1', text: 'Use a tool' })
 
-    expect(steps[0]).toMatchObject({ model: 'alice-model', providerId: 'alice-provider', systemPrompt: `${composeSystemPrompt(['Alice prompt', registerPrompt.value].filter(Boolean).join('\n\n'), stageContract.value)}\n\nPlugin toolset guidance.` })
+    expect(steps[0]).toMatchObject({ model: 'alice-model', providerId: 'alice-provider', systemPrompt: `${composeSystemPrompt(['Alice prompt', registerPrompt.value].filter(Boolean).join('\n\n'), stageContract.value)}\n\n${TOOLSET_SEGMENT}` })
     expect(steps[0]?.headers).toEqual({})
-    expect(steps[1]).toMatchObject({ model: 'chat-auto', providerId: 'another-provider', systemPrompt: `${composeSystemPrompt(['Edited Alice prompt', registerPrompt.value].filter(Boolean).join('\n\n'), stageContract.value)}\n\nPlugin toolset guidance.` })
+    expect(steps[1]).toMatchObject({ model: 'chat-auto', providerId: 'another-provider', systemPrompt: `${composeSystemPrompt(['Edited Alice prompt', registerPrompt.value].filter(Boolean).join('\n\n'), stageContract.value)}\n\n${TOOLSET_SEGMENT}` })
     expect(steps[1]?.headers).toEqual({})
     expect(getChatProviderInstanceMock).toHaveBeenLastCalledWith('another-provider', { reasoning: 'disabled' })
   })
@@ -918,10 +950,87 @@ describe('chat store contract', () => {
     expect(getChatProviderInstanceMock).toHaveBeenCalledWith('mock-provider', { reasoning: 'disabled' })
     expect(() => structuredClone(result)).not.toThrow()
     // The session character's wake word tool joins every turn. It is not a selectable stored tool.
+    // Reply cards are on by default, so the owner's chat also gets the card tool and the icon search of cards.
+    // Memory is off in this suite's setup, so the memory tools stay out.
     expect(resolvedToolNames).toEqual([
-      ['stage_widgets', 'configure_wake_words'],
-      ['stage_widgets', 'configure_wake_words'],
+      ['stage_widgets', 'configure_wake_words', 'builtIn_useRecipe', 'builtIn_proposeRecipe', 'builtIn_drawCard', 'builtIn_searchIcons'],
+      ['stage_widgets', 'configure_wake_words', 'builtIn_useRecipe', 'builtIn_proposeRecipe', 'builtIn_drawCard', 'builtIn_searchIcons'],
     ])
+  })
+
+  // The owner's switch decides whether the character can propose recipes at all.
+  it('drops the recipe proposal tool when the owner turns proposals off', async () => {
+    const toolNames: string[][] = []
+    llmStreamMock.mockImplementation(async (_model: string, _chatProvider: GenerationProvider, _messages: Conversation, options: any) => {
+      const tools = typeof options.tools === 'function' ? await options.tools() : options.tools
+      toolNames.push(tools.map((tool: Tool) => tool.function.name))
+      await options.onStreamEvent({ type: 'finish' })
+    })
+    useRecipesStore().proposalsEnabled = false
+
+    await useChatStore().send({ sessionId: 'session-1', text: 'make a recipe' })
+
+    expect(toolNames[0]).not.toContain('builtIn_proposeRecipe')
+    expect(toolNames[0]).toContain('builtIn_useRecipe')
+  })
+
+  // Like a slash command, a keyword gives a skill's steps to the owner's message. They stay with it for later turns.
+  it('stores the steps of a keyword-invoked skill with the owner message', async () => {
+    const prompts: string[] = []
+    llmStreamMock.mockImplementation(async (_model: string, _chatProvider: GenerationProvider, context: Conversation, options: StreamOptions) => {
+      prompts.push(JSON.stringify(context))
+      await options.onStreamEvent?.({ type: 'finish' })
+    })
+    useRecipesStore().add({
+      name: 'i-have-adhd',
+      description: 'ADHD-friendly answers.',
+      instructions: 'Start with the next step.',
+      keywords: ['/i-have-adhd'],
+      enabled: true,
+    })
+    const store = useChatStore()
+
+    await store.send({ sessionId: 'session-1', text: '/i-have-adhd help me plan' })
+    await store.send({ sessionId: 'session-1', text: 'what next?' })
+
+    expect(createSessionMock).not.toHaveBeenCalled()
+    expect(sessionMessages['session-1']?.find(message => message.role === 'user')).toMatchObject({ content: '/i-have-adhd help me plan', skills: [{ name: 'i-have-adhd', instructions: 'Start with the next step.' }] })
+    expect(prompts).toHaveLength(2)
+    expect(prompts[1]).toContain('Start with the next step.')
+  })
+
+  // A scene belongs to a persona. Its run reads general memories and its persona's own, and cannot save recipes.
+  it('gives a scene run its card memories, the general ones, and no recipe proposals', async () => {
+    sessionMetas['scene-session'] = { sessionId: 'scene-session', userId: 'local', characterId: 'discord-host', bindings: ['discord:channel:a'], createdAt: 1, updatedAt: 1 }
+    const toolNames: string[][] = []
+    let prompt = ''
+    llmStreamMock.mockImplementation(async (_model: string, _chatProvider: GenerationProvider, context: Conversation, options: any) => {
+      prompt = JSON.stringify(context)
+      const tools = typeof options.tools === 'function' ? await options.tools() : options.tools
+      toolNames.push(tools.map((tool: Tool) => tool.function.name))
+      await options.onStreamEvent({ type: 'finish' })
+    })
+    const memory = useMemoryStore()
+    memory.enabled = true
+    const nickname = await memory.write({ description: 'What the owner likes to be called.', body: 'Yumeka.' }, 'default')
+    await memory.makeGeneral(nickname!)
+    const rules = await memory.write({ description: 'Rules of this channel.', body: 'No spoilers.' }, 'discord-host')
+    await memory.write({ description: 'How the focus card answers.', body: 'Next step first.' }, 'focus')
+
+    await useChatStore().send({ sessionId: 'scene-session', text: 'save a recipe for me' })
+
+    expect(toolNames[0]).not.toContain('builtIn_proposeRecipe')
+    expect(toolNames[0]).toContain('builtIn_writeMemory')
+    expect(prompt).toContain(`- ${rules!.id}: Rules of this channel.`)
+    expect(prompt).toContain(`- ${nickname!.id} (general): What the owner likes to be called.`)
+    expect(prompt).not.toContain('How the focus card answers.')
+
+    // With long-term memory off, no memory tool or index reaches the run.
+    memory.enabled = false
+    await useChatStore().send({ sessionId: 'scene-session', text: 'hello again' })
+
+    expect(toolNames[1]).not.toContain('builtIn_writeMemory')
+    expect(prompt).not.toContain('Rules of this channel.')
   })
 
   it('preserves image attachments when retrying a failed turn', async () => {
@@ -946,7 +1055,7 @@ describe('chat store contract', () => {
 
     // The retried turn stores the image as an asset reference. The provider still receives its bytes.
     const retried = sessionMessages['session-1'].findLast(message => message.role === 'user')
-    expect(retried.content).toEqual([
+    expect(retried?.content).toEqual([
       { type: 'text', text: 'What is this?' },
       { type: 'image_url', image_url: { url: expect.stringMatching(/^airi-asset:[0-9a-f]{64}$/) } },
     ])
@@ -965,7 +1074,7 @@ describe('chat store contract', () => {
   //
   // We fixed this by restoring the history when the storage receipt rejects.
   it('keeps the source turn when a retry fails before its new turn is stored', async () => {
-    const recording = {
+    const recording: ChatHistoryItem = {
       role: 'user',
       content: [{ type: 'input_audio', input_audio: { data: 'UklGRg==', format: 'wav' } }],
       id: 'user-recording',
@@ -1073,7 +1182,7 @@ describe('chat store contract', () => {
       await sending
 
       expect(leaderSignal?.aborted).toBe(true)
-      expect(leaderStore.sending).toBe(false)
+      expect(leaderStore.activeTurns).toEqual([])
     }
     finally {
       followerRuntime.dispose()
@@ -1333,7 +1442,7 @@ describe('chat store contract', () => {
     llmStreamMock.mockImplementation(async (_model: string, _provider: GenerationProvider, _context: Conversation, options: StreamOptions) => {
       await options.onStreamEvent?.({ type: 'finish' })
     })
-    const imageMessage = { role: 'user', content: [{ type: 'text', text: 'Read this' }, { type: 'image_url', image_url: { url: 'data:image/png;base64,aW1hZ2U=' } }], createdAt: 2 }
+    const imageMessage: ChatHistoryItem = { role: 'user', content: [{ type: 'text', text: 'Read this' }, { type: 'image_url', image_url: { url: 'data:image/png;base64,aW1hZ2U=' } }], createdAt: 2 }
     const store = useChatStore()
     sessionMessages['session-1'] = [{ role: 'system', content: 'system prompt', createdAt: 1, id: 'system' }, { ...imageMessage }]
     await store.send({ sessionId: 'session-1', text: 'Hello' })
@@ -1537,7 +1646,7 @@ describe('chat store contract', () => {
   })
 
   it('initializes local sessions through the session store', async () => {
-    await useChatStore().initialize()
+    await useChatStore().initialize(createLeaderRuntime())
 
     expect(initializeSessionMock).toHaveBeenCalledOnce()
   })
@@ -1845,6 +1954,32 @@ describe('chat store contract', () => {
     expect(llmStreamMock).not.toHaveBeenCalled()
   })
 
+  // ROOT CAUSE:
+  //
+  // The card prompt was snapshotted into the session's first message and rewritten on card edits.
+  // A switch rewrote the visible session, and other sessions kept stale identities.
+  //
+  // We fixed this by reading the session persona's prompt when each run starts. History stores no identity.
+  // https://github.com/moeru-ai/airi/issues/1995
+  it('reads an edited card prompt for the next run without touching the history', async () => {
+    const systemTexts: string[] = []
+    llmStreamMock.mockImplementation(async (_model: string, _chatProvider: GenerationProvider, context: Conversation, options: any) => {
+      const system = context.turns.find(turn => turn.type === 'system')
+      systemTexts.push(system?.type === 'system' && system.content[0]?.type === 'text' ? system.content[0].text : '')
+      await options.onStreamEvent({ type: 'finish' })
+    })
+    const store = useChatStore()
+
+    await store.ingest('first', { model: 'gpt-test', chatProvider: provider })
+    cardPrompt.value = 'edited prompt'
+    await store.ingest('second', { model: 'gpt-test', chatProvider: provider })
+
+    // The owner's run composes the card, the register, and the contract, then the toolset segment, which says when to
+    // draw a card while reply cards are on, as they are by default. Memory is off here, so no index follows.
+    const promptOf = (card: string) => `${composeSystemPrompt([card, registerPrompt.value].filter(Boolean).join('\n\n'), stageContract.value)}\n\n${TOOLSET_SEGMENT}`
+    expect(systemTexts).toEqual([promptOf('system prompt'), promptOf('edited prompt')])
+  })
+
   it('keeps hook order and composes context prompt after system message', async () => {
     const contextsSnapshot = {
       'system:weather': [
@@ -1906,7 +2041,7 @@ describe('chat store contract', () => {
       chatProvider: provider,
     })
 
-    expect(store.sending).toBe(false)
+    expect(store.activeTurns).toEqual([])
     expect(trackFirstMessageMock).toHaveBeenCalledOnce()
     // Datetime is no longer pushed through ingestContextMessage; it is now
     // applied at message-assembly time as per-message [HH:MM] prefixes. The
@@ -1948,7 +2083,7 @@ describe('chat store contract', () => {
     if (composedMessages[0].type !== 'system' || composedMessages[1].type !== 'user')
       throw new Error('Expected system and user turns')
     expect(composedMessages[0].content).toEqual([
-      { type: 'text', text: `${composeSystemPrompt(['system prompt', registerPrompt.value].filter(Boolean).join('\n\n'), stageContract.value)}\n\nPlugin toolset guidance.` },
+      { type: 'text', text: `${composeSystemPrompt(['system prompt', registerPrompt.value].filter(Boolean).join('\n\n'), stageContract.value)}\n\n${TOOLSET_SEGMENT}` },
     ])
     expect(composedMessages[1].content[0]).toMatchObject({
       type: 'text',
@@ -1991,7 +2126,7 @@ describe('chat store contract', () => {
   it('preserves a synchronized sending snapshot without replaying it through the follower runtime for Issue #2085', async () => {
     // ROOT CAUSE:
     //
-    // Applying `sending: true` invoked the follower's idle runtime, whose
+    // Applying a running snapshot invoked the follower's idle runtime, whose
     // derived state cleared the synchronized stream payload and could target
     // that follower's unrelated local selection.
     const store = useChatStore()
@@ -2376,6 +2511,25 @@ describe('chat store contract', () => {
       type: 'runtime-context',
       entries: [{ source: 'system:situation', text: expect.stringMatching(/^\[Situation \d\d:\d\d\]\n- Stage - can show: face: smile$/) }],
     })
+  })
+
+  // ROOT CAUSE:
+  // Every send drove the character voice, so a channel reply took over the owner's speech.
+  it('gives the voice to the owner sessions and never to a scene', async () => {
+    sessionMetas['scene-session'] = { sessionId: 'scene-session', userId: 'local', characterId: 'default', bindings: ['discord:channel:a'], createdAt: 1, updatedAt: 1 }
+    llmStreamMock.mockImplementation(async (_model: string, _provider: GenerationProvider, _messages: Conversation, options: StreamOptions) => {
+      await options.onStreamEvent?.({ type: 'finish' })
+    })
+    const speaks: Array<boolean | undefined> = []
+    const store = useChatStore()
+    store.onBeforeSend(async (_message, context) => {
+      speaks.push(context.speaks)
+    })
+
+    await store.send({ sessionId: 'session-1', text: 'Hello' })
+    await store.send({ sessionId: 'scene-session', text: 'Hello from Discord' })
+
+    expect(speaks).toEqual([true, false])
   })
 
   it('rejects cancelled queued sends before they start', async () => {

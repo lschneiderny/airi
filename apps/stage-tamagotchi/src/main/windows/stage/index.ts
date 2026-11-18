@@ -25,12 +25,12 @@ import { getCurrentHostCapabilities, onHostCapabilitiesChange } from '../../serv
 import { hideOnClose } from '../main/hide-on-close'
 import { mainWindowQuery } from '../main/query'
 import { setupMainWindowElectronInvokes } from '../main/rpc/index.electron'
-import { protectPrivilegedWindowNavigation } from '../shared'
+import { protectPrivilegedWindowNavigation, setWindowAlwaysOnTop } from '../shared'
 import { placeWindow } from '../shared/placement'
 import { watchStageClickThrough } from './click-through-fallback'
 import { defaultStageConfig, resolveHomeDisplay } from './config'
 import { bindStageWindowToDisplay, readStageDisplays } from './displays'
-import { markStageWindow } from './identity'
+import { centerUserFacingWindow, markStageWindow } from './identity'
 import { offerClassicWindowRelaunch } from './leave-mmd-notice'
 import { setupStageWindowInvokes } from './rpc/index.electron'
 import { applyStageInputIsolation, createStageWindowOptions } from './window-contract'
@@ -165,6 +165,8 @@ export async function setupStageWindow(
     perfRecording: params.perfRecording,
     inlayWindow: params.inlayWindow,
     globalShortcut: params.globalShortcut,
+    setPinned: pinned => setWindowAlwaysOnTop(window, pinned),
+    center: () => centerUserFacingWindow(window),
   })
 
   const display = bindStageWindowToDisplay({

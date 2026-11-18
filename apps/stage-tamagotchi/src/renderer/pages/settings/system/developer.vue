@@ -5,7 +5,8 @@ import type { PerfRecordingState, PerfTraceState } from '../../../../shared/even
 
 import { useElectronEventaContext, useElectronEventaInvoke } from '@proj-airi/electron-vueuse'
 import { ButtonBar, CheckBar, IconItem } from '@proj-airi/stage-ui/components'
-import { useSettings } from '@proj-airi/stage-ui/stores/settings'
+import { useSettings, useSettingsDeveloper } from '@proj-airi/stage-ui/stores/settings'
+import { storeToRefs } from 'pinia'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
@@ -14,6 +15,7 @@ import { electronOpenDevtoolsWindow, electronOpenEditor, electronOpenMainDevtool
 
 const { t } = useI18n()
 const settings = useSettings()
+const { showToolPayloadsAsJson } = storeToRefs(useSettingsDeveloper())
 const router = useRouter()
 const eventaContext = useElectronEventaContext()
 const getIOTraceRecording = useElectronEventaInvoke(ioTraceRecordingGet)
@@ -373,6 +375,12 @@ const openEditor = useElectronEventaInvoke(electronOpenEditor)
     text="settings.animations.use-page-specific-transitions.title"
     description="settings.animations.use-page-specific-transitions.description"
     :class="['transition-all duration-250 ease-in-out']"
+  />
+  <CheckBar
+    v-model="showToolPayloadsAsJson"
+    text="settings.pages.system.sections.section.developer.sections.section.tool-payloads-as-json.title"
+    description="settings.pages.system.sections.section.developer.sections.section.tool-payloads-as-json.description"
+    :class="['mt-2', 'transition-all duration-250 ease-in-out']"
   />
   <div :class="['flex flex-col gap-4', 'mt-2 pb-12']">
     <IconItem

@@ -7,7 +7,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useSituationStore } from '..'
-import { contextObservationFrom, ingestContextMessage } from './context'
+import { clearContextSource, contextObservationFrom, ingestContextMessage } from './context'
 
 // The situation store feeds the character state, whose store reads the active card id and its profile from the card
 // store. The real card store's setup needs an i18n application context.
@@ -154,6 +154,16 @@ describe('context sensor', () => {
     ingestContextMessage(contextMessage({ text: 'sunny' }))
 
     expect(ingestContextMessage(contextMessage({ text: '   ' }))).toEqual({ sourceKey: 'weather:station-1', mutation: 'replace', entryCount: 0 })
+    expect(store.state.contexts).toEqual({})
+  })
+
+  it('clears the context of a source that left', () => {
+    const store = useSituationStore()
+    store.initialize(leadership(true))
+    ingestContextMessage(contextMessage({ text: 'sunny' }))
+
+    clearContextSource('weather:station-1')
+
     expect(store.state.contexts).toEqual({})
   })
 

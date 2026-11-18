@@ -1,13 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
-import { normalizeActPayload } from './payloads'
+import { normalizeActPayload, normalizeExpression } from './payloads'
 
 describe('normalizeActPayload', () => {
-  /**
-   * @example
-   * normalizeActPayload({ emotion: { name: 'happy', intensity: 0.8 }, motion: 'nod' })
-   * // -> { emotion: { name: 'happy', intensity: 0.8 }, motion: 'nod' }
-   */
   it('normalizes object emotion and motion from ACT payloads', () => {
     expect(normalizeActPayload({
       emotion: { name: 'happy', intensity: 0.8 },
@@ -226,5 +221,17 @@ describe('normalizeActPayload', () => {
       motion: 'nod',
       look: 'screen',
     })
+  })
+})
+
+describe('normalizeExpression', () => {
+  it('normalizes timed and persistent Live2D expressions', () => {
+    expect(normalizeExpression(' 05_Angry ')).toEqual({ name: '05_Angry' })
+
+    expect(normalizeExpression({ name: ' 08_EyeCheerful ', duration: 3 })).toEqual({ name: '08_EyeCheerful', duration: 3 })
+  })
+
+  it('normalizes a null expression as an explicit reset', () => {
+    expect(normalizeExpression(null)).toBeNull()
   })
 })

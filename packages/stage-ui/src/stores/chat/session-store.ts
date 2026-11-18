@@ -1,10 +1,9 @@
 import type {} from 'pinia-plugin-synced'
 
 import type { ChatHistoryItem } from '../../types/chat'
-import type { ChatSessionMeta, ChatSessionRecord, ChatSessionsExport, ChatSessionsIndex, StoredUnpromptedDecline, StoredVoiceInterruption } from '../../types/chat-session'
+import type { ChatSessionMeta, ChatSessionRecord, ChatSessionsExport, ChatSessionsIndex, ChatSessionTask, StoredUnpromptedDecline, StoredVoiceInterruption } from '../../types/chat-session'
 
 import { errorMessageFrom } from '@moeru/std'
-import { composeSystemPrompt } from '@proj-airi/stage-shared/stage-contract'
 import { cloneDeep } from 'es-toolkit'
 import { nanoid } from 'nanoid'
 import { defineStore, storeToRefs } from 'pinia'
@@ -40,7 +39,7 @@ const useChatSessionSelectionStore = defineStore('chat-session-selection', () =>
 
 export const useChatSessionStore = defineStore('chat-session', () => {
   const cards = useAiriCardStore()
-  const { activeCardId, systemPrompt } = storeToRefs(cards)
+  const { activeCardId } = storeToRefs(cards)
 
   const chatSessionSelection = useChatSessionSelectionStore()
   // The selected conversation belongs to one window. Expose it through the
@@ -67,10 +66,6 @@ export const useChatSessionStore = defineStore('chat-session', () => {
   const staleSessions = new Set<string>()
   const loadingSessions = new Map<string, Promise<boolean>>()
 
-  // Local to this renderer and not returned, so the synced state does not carry it.
-  const stageContract = ref('')
-  // Local to this renderer like the contract. Empty until the chat store sets it, and an empty section is left out.
-  const registerPrompt = ref('')
   function getCurrentCharacterId() {
     return activeCardId.value || 'default'
   }
@@ -116,98 +111,6 @@ export const useChatSessionStore = defineStore('chat-session', () => {
       sessionMessages.value[sessionId] = next
 
     return next
-  }
-
-  /**
-   * Composes a system prompt from the fixed formatting rules, the character prompt, the register section, and the
-   * stage contract. The register section belongs to the character prompt, so the contract text never depends on it.
-   */
-  function systemPromptFrom(characterPrompt: string, contract: string) {
-    const prompt = registerPrompt.value ? `${characterPrompt}\n\n${registerPrompt.value}` : characterPrompt
-    return composeSystemPrompt(prompt, contract)
-  }
-
-  /**
-   * Sets the stage contract that every system prompt ends with. The chat store owns the localized contract and
-   * passes it in, because it changes with the locale of this renderer. A change refreshes the stored system
-   * message of the active session.
-   */
-  function setStageContract(contract: string) {
-    stageContract.value = contract
-  }
-
-  /**
-   * Sets the register section that follows the character prompt. The chat store owns the localized text from the
-   * conversation settings and passes it in. A change refreshes the stored system message of the active session.
-   */
-  function setRegisterPrompt(text: string) {
-    registerPrompt.value = text
-  }
-
-  function generateInitialMessageFromPrompt(prompt: string) {
-    return {
-      role: 'system',
-      content: systemPromptFrom(prompt, stageContract.value),
-      id: nanoid(),
-      createdAt: Date.now(),
-    } satisfies ChatHistoryItem
-  }
-
-  function generateInitialMessage() {
-    return generateInitialMessageFromPrompt(systemPrompt.value)
-  }
-
-  /**
-   * Returns the current system prompt of the character that owns the session.
-   * The selected character does not change it. Only `generateInitialMessageForSession` and tests use it.
-   * Chat requests compose their own system prompt with `composePrompt(buildChatPromptSegments(...))`.
-   */
-  function getSessionSystemPrompt(sessionId: string) {
-    // A session without metadata has no owner yet. The selected character creates and owns it.
-    const characterId = sessionMetas.value[sessionId]?.characterId ?? getCurrentCharacterId()
-    return systemPromptFrom(cards.getSystemPrompt(characterId), stageContract.value)
-  }
-
-  function generateInitialMessageForSession(sessionId: string) {
-    return {
-      role: 'system',
-      content: getSessionSystemPrompt(sessionId),
-      id: nanoid(),
-      createdAt: Date.now(),
-    } satisfies ChatHistoryItem
-  }
-
-  function refreshActiveSessionSystemMessage() {
-    const sessionId = activeSessionId.value
-    const meta = sessionMetas.value[sessionId]
-
-    // A card switch updates `systemPrompt` before its character session has
-    // necessarily finished loading. Never rewrite the previous character's
-    // session or persist an empty in-memory placeholder over an IDB history
-    // that is still being hydrated.
-    if (!sessionId || !loadedSessions.has(sessionId) || meta?.characterId !== getCurrentCharacterId())
-      return
-
-    const currentMessages = sessionMessages.value[sessionId] ?? []
-    const systemMessageIndex = currentMessages.findIndex(message => message.role === 'system')
-    const currentSystemMessage = currentMessages[systemMessageIndex]
-    const resolvedSystemMessage = generateInitialMessage()
-
-    if (currentSystemMessage?.content === resolvedSystemMessage.content)
-      return
-
-    if (currentSystemMessage) {
-      const nextMessages = [...currentMessages]
-      nextMessages[systemMessageIndex] = {
-        ...currentSystemMessage,
-        role: 'system',
-        content: resolvedSystemMessage.content,
-      }
-      replaceSessionMessages(sessionId, nextMessages)
-      return
-    }
-
-    replaceSessionMessages(sessionId, [resolvedSystemMessage, ...currentMessages])
   }
 
   function ensureGeneration(sessionId: string) {
@@ -257,6 +160,7 @@ export const useChatSessionStore = defineStore('chat-session', () => {
 
       const messages = snapshotMessages(ensureSessionMessageIds(sessionId))
       const now = Date.now()
+      // Nested meta fields, such as the bindings, are reactive proxies. IndexedDB cannot clone them, so the record stores a plain copy.
       const updatedMeta = {
         ...cloneDeep(meta),
         updatedAt: now,
@@ -485,8 +389,6 @@ export const useChatSessionStore = defineStore('chat-session', () => {
           }
           staleSessions.delete(sessionId)
           loadedSessions.add(sessionId)
-          if (activeSessionId.value === sessionId)
-            refreshActiveSessionSystemMessage()
         }
 
         // Missing IDB payloads still need a valid canonical conversation.
@@ -538,7 +440,16 @@ export const useChatSessionStore = defineStore('chat-session', () => {
    * - The new session id. When `setActive` is not `false` the session is
    *   also made the active one.
    */
-  async function createSession(characterId: string, options?: { setActive?: boolean, messages?: ChatHistoryItem[], title?: string }) {
+  async function createSession(characterId: string, options?: {
+    setActive?: boolean
+    messages?: ChatHistoryItem[]
+    title?: string
+    bindings?: string[]
+    parentSessionId?: string
+    hidden?: boolean
+    recipeId?: string
+    task?: ChatSessionTask
+  }) {
     const currentUserId = 'local'
     const sessionId = nanoid()
     const now = Date.now()
@@ -547,11 +458,17 @@ export const useChatSessionStore = defineStore('chat-session', () => {
       userId: currentUserId,
       characterId,
       title: options?.title,
+      // A caller can pass reactive bindings, such as a parent session's. IndexedDB stores only a plain copy.
+      bindings: options?.bindings ? [...options.bindings] : undefined,
+      parentSessionId: options?.parentSessionId,
+      hidden: options?.hidden,
+      recipeId: options?.recipeId,
+      task: options?.task ? { ...options.task } : undefined,
       createdAt: now,
       updatedAt: now,
     }
 
-    const initialMessages = options?.messages?.length ? cloneDeep(options.messages) : [generateInitialMessageFromPrompt(cards.getSystemPrompt(characterId))]
+    const initialMessages = options?.messages?.length ? cloneDeep(options.messages) : []
 
     sessionMetas.value[sessionId] = meta
     replaceSessionMessages(sessionId, initialMessages, { persist: false })
@@ -628,8 +545,9 @@ export const useChatSessionStore = defineStore('chat-session', () => {
     await enqueuePersist(() => chatSessionsRepo.deleteSession(sessionId))
     await persistIndex()
     const characterIndex = index.value?.characters[characterId]
+    // A hidden session, such as a background task's own space, never becomes the selected conversation.
     const fallbackId = characterIndex
-      ? Object.keys(characterIndex.sessions).find(id => sessionMetas.value[id])
+      ? Object.keys(characterIndex.sessions).find(id => sessionMetas.value[id] && !sessionMetas.value[id].hidden)
       : undefined
 
     // Persisted character fallback is shared, but live selection is local to
@@ -756,7 +674,7 @@ export const useChatSessionStore = defineStore('chat-session', () => {
   function ensureSession(sessionId: string) {
     ensureGeneration(sessionId)
     if (!sessionMessages.value[sessionId] || sessionMessages.value[sessionId].length === 0) {
-      replaceSessionMessages(sessionId, [generateInitialMessageForSession(sessionId)], { persist: false })
+      replaceSessionMessages(sessionId, [], { persist: false })
     }
   }
 
@@ -846,10 +764,9 @@ export const useChatSessionStore = defineStore('chat-session', () => {
     ensureGeneration(sessionId)
     sessionGenerations.value[sessionId] += 1
     const previous = sessionMessages.value[sessionId] ?? []
-    const next = [generateInitialMessageForSession(sessionId)]
-    replaceSessionMessages(sessionId, next, { persist: false })
+    replaceSessionMessages(sessionId, [], { persist: false })
     await persistSession(sessionId)
-    await releaseRemovedAssets(sessionId, previous, next)
+    await releaseRemovedAssets(sessionId, previous, [])
   }
 
   function getAllSessions() {
@@ -912,13 +829,86 @@ export const useChatSessionStore = defineStore('chat-session', () => {
     return getSessionGeneration(target)
   }
 
-  async function forkSession(options: { fromSessionId: string, atIndex?: number, reason?: string, hidden?: boolean }) {
+  /**
+   * Recovers one external scene without changing the window's selected conversation.
+   * Only a root session of the scene can serve it. Otherwise the scene starts a new session.
+   */
+  async function ensureBoundSession(binding: string): Promise<string> {
+    if (!binding.trim())
+      throw new Error('An external session binding must not be empty')
+    if (!ready.value)
+      await initialize()
+
     const characterId = getCurrentCharacterId()
-    await loadSession(options.fromSessionId)
+    const existing = Object.values(sessionMetas.value)
+      .filter(meta => meta.userId === 'local' && meta.characterId === characterId && !meta.parentSessionId
+        && meta.bindings?.includes(binding))
+      .sort((left, right) => right.updatedAt - left.updatedAt)[0]
+    if (existing) {
+      if (!await loadSession(existing.sessionId))
+        throw new Error('Failed to recover the bound chat session')
+      return existing.sessionId
+    }
+
+    return createSession(characterId, { setActive: false, bindings: [binding] })
+  }
+
+  /**
+   * Records the status of the background task that a session runs, in the session record and the index.
+   * With `from`, the change applies only while the task is in one of those statuses. The check and the write run in one step after loading, so two changes never overwrite each other.
+   *
+   * Returns:
+   * - Whether the change applied. False when the session is gone, cannot load, or left the expected statuses.
+   */
+  async function setSessionTask(sessionId: string, change: Partial<ChatSessionTask>, from?: ChatSessionTask['status'][]) {
+    if (!sessionMetas.value[sessionId] || !await loadSession(sessionId))
+      return false
+    const meta = sessionMetas.value[sessionId]
+    if (!meta?.task || (from && !from.includes(meta.task.status)))
+      return false
+    sessionMetas.value[sessionId] = { ...meta, task: { ...meta.task, ...change } }
+    await persistSession(sessionId)
+    return true
+  }
+
+  /**
+   * Deletes a hidden session, such as a finished background task.
+   * Unlike {@link deleteSession}, it never moves a character's selected conversation and never creates a replacement, because nobody selects a hidden session.
+   */
+  async function deleteHiddenSession(sessionId: string) {
+    const meta = sessionMetas.value[sessionId]
+    if (!meta?.hidden)
+      return false
+    bumpSessionGeneration(sessionId)
+    delete sessionMetas.value[sessionId]
+    delete sessionMessages.value[sessionId]
+    loadedSessions.delete(sessionId)
+    staleSessions.delete(sessionId)
+    loadingSessions.delete(sessionId)
+    const characterIndex = index.value?.characters[meta.characterId]
+    if (characterIndex)
+      delete characterIndex.sessions[sessionId]
+    await enqueuePersist(() => chatSessionsRepo.deleteSession(sessionId))
+    await persistIndex()
+    return true
+  }
+
+  async function forkSession(options: { fromSessionId: string, atIndex?: number, reason?: string, hidden?: boolean }) {
+    if (!await loadSession(options.fromSessionId))
+      throw new Error('Failed to load the parent chat session')
+    const parentMeta = sessionMetas.value[options.fromSessionId]
+    const characterId = parentMeta.characterId
     const parentMessages = getSessionMessages(options.fromSessionId)
     const forkIndex = options.atIndex ?? parentMessages.length
     const nextMessages = parentMessages.slice(0, forkIndex)
-    return await createSession(characterId, { setActive: false, messages: nextMessages })
+    // A branch keeps its parent's scene. Recovery never treats it as the scene's root session.
+    return await createSession(characterId, {
+      setActive: false,
+      messages: nextMessages,
+      bindings: parentMeta.bindings,
+      parentSessionId: options.fromSessionId,
+      hidden: options.hidden,
+    })
   }
 
   async function exportSessions(): Promise<ChatSessionsExport> {
@@ -1030,11 +1020,6 @@ export const useChatSessionStore = defineStore('chat-session', () => {
     }
   })
 
-  // Keep the active conversation aligned with edits to the active card. The
-  // active session id is included because card switching resolves the target
-  // session asynchronously after the card prompt itself has already changed.
-  watch([systemPrompt, registerPrompt, stageContract, activeSessionId], refreshActiveSessionSystemMessage)
-
   return {
     isReady,
     initialize,
@@ -1062,9 +1047,6 @@ export const useChatSessionStore = defineStore('chat-session', () => {
     recordUnpromptedDecline,
     persistSessionMessages,
     getSessionMessages,
-    getSessionSystemPrompt,
-    setStageContract,
-    setRegisterPrompt,
     getSessionMessagesIfLoaded,
     sessionMessages,
     sessionMetas,
@@ -1078,6 +1060,9 @@ export const useChatSessionStore = defineStore('chat-session', () => {
     exportSessions,
     importSessions,
     createSession,
+    ensureBoundSession,
+    setSessionTask,
+    deleteHiddenSession,
     loadSession,
     refreshSession,
     deleteSession,
@@ -1098,6 +1083,7 @@ export const useChatSessionStore = defineStore('chat-session', () => {
       'deleteMessage',
       'deleteSession',
       'ensureCurrentSession',
+      'ensureBoundSession',
       'ensureCharacterSession',
       'exportSessions',
       'forkSession',
@@ -1105,6 +1091,8 @@ export const useChatSessionStore = defineStore('chat-session', () => {
       'loadSession',
       'refreshSession',
       'resetAllSessions',
+      'setSessionTask',
+      'deleteHiddenSession',
     ],
     state: true,
   },

@@ -362,6 +362,9 @@ export const useCharacterStateStore = defineStore('character-state', () => {
    */
   function observeChat(hooks: CharacterStateChatHooks, heldTitles: () => readonly string[]) {
     stopChatHooks ??= hooks.onTokenSpecial(async (special, context) => {
+      // A background task or a scene reply does not speak to the owner, so its cue is no change of her mood here.
+      if (context.speaks === false)
+        return
       const body = moodCueBody(special)
       const cue = body === null ? null : parseMoodCue(body)
       if (!cue || repeatsHeldTitle(cue.reason, heldTitles()))

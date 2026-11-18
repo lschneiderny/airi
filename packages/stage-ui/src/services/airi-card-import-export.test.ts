@@ -19,7 +19,7 @@ describe('airi card package import/export', () => {
     setActivePinia(createPinia())
     const displayModelsStore = useDisplayModelsStore()
     const card = createCard()
-    card.extensions.airi.modules.displayModelId = undefined
+    card.extensions.airi.defaultAvatarModelId = undefined
     card.extensions.airi.wakeWords = [{ text: 'AIRI', modelId: 'kws-vocabulary', pronunciations: [['a', 'ri'], ['ai', 'li']] }]
     const exported = await exportAiriCardPackage({ card, displayModelsStore })
     const imported = await importAiriCardPackage({ file: new File([exported], 'voice-card.zip'), displayModelsStore })
@@ -65,7 +65,52 @@ describe('airi card package import/export', () => {
     expect(airi.modules.artistry).not.toHaveProperty('workflowId')
     expect(airi.agents).toEqual({})
     expect(displayModelsStore.addDisplayModel).toHaveBeenCalledWith(DisplayModelFormat.VRM, expect.objectContaining({ name: 'AvatarSample_A.vrm' }))
-    expect(airiFrom(imported.card).modules.displayModelId).toBe('display-model-imported')
+    expect(airiFrom(imported.card).avatarModels[0]).toMatchObject({ displayModelId: 'display-model-imported', type: 'vrm' })
+    expect(airiFrom(imported.card).defaultAvatarModelId).toBe(airiFrom(imported.card).avatarModels[0].id)
+  })
+
+  it('keeps the selected Live2D control policy through package transfer', async () => {
+    const displayModelsStore = useDisplayModelsStore()
+    const card = createCard('local-live2d')
+    card.extensions.airi.avatarModels = [{
+      id: 'selected-avatar-model',
+      displayModelId: 'local-live2d',
+      type: 'live2d',
+      config: { controls: {
+        disabledExpressions: ['smile'],
+        disabledMotions: ['motions/idle.motion3.json'],
+      } },
+    }]
+    vi.spyOn(displayModelsStore, 'getDisplayModel').mockResolvedValue({
+      id: 'local-live2d',
+      format: DisplayModelFormat.Live2dZip,
+      type: 'file',
+      file: new File(['live2d-archive'], 'model.zip'),
+      name: 'model.zip',
+      importedAt: 1,
+    })
+    mockAddDisplayModel(displayModelsStore, 'imported-live2d')
+
+    const exported = await exportAiriCardPackage({ card, displayModelsStore })
+    const zip = await JSZip.loadAsync(await exported.arrayBuffer())
+    expect(await readJson(zip, 'manifest.json')).toMatchObject({
+      resources: { displayModel: { controls: {
+        disabledExpressions: ['smile'],
+        disabledMotions: ['motions/idle.motion3.json'],
+      } } },
+    })
+    expect(airiFrom(await readJson<ccv3.CharacterCardV3>(zip, 'card.json')).avatarModels).toEqual([])
+
+    const imported = await importAiriCardPackage({ file: new File([exported], 'card.zip'), displayModelsStore })
+    expect(airiFrom(imported.card).avatarModels[0]).toMatchObject({
+      displayModelId: 'imported-live2d',
+      type: 'live2d',
+      config: { controls: {
+        disabledExpressions: ['smile'],
+        disabledMotions: ['motions/idle.motion3.json'],
+      } },
+    })
+    expect(airiFrom(imported.card).avatarModels[0].id).not.toBe('selected-avatar-model')
   })
 
   it('applies the share-field whitelist to externally edited package JSON', async () => {
@@ -149,13 +194,14 @@ describe('airi card package import/export', () => {
       DisplayModelFormat.TachieZip,
       expect.objectContaining({ name: 'character.tachie.zip' }),
     )
-    expect(airiFrom(imported.card).modules.displayModelId).toBe('imported-tachie')
+    expect(airiFrom(imported.card).avatarModels[0]).toMatchObject({ displayModelId: 'imported-tachie', type: 'tachie' })
+    expect(airiFrom(imported.card).defaultAvatarModelId).toBe(airiFrom(imported.card).avatarModels[0].id)
   })
 
   it('round trips two memories without their original ownership', async () => {
     const displayModelsStore = useDisplayModelsStore()
     const card = createCard()
-    card.extensions.airi.modules.displayModelId = undefined
+    card.extensions.airi.avatarModels = []
     const memories = [
       { description: 'Favorite game', body: 'Minecraft.' },
       { description: 'Favorite drink', body: 'Tea.' },
@@ -187,7 +233,7 @@ describe('airi card package import/export', () => {
       displayModelsStore,
     })
     expect(imported.memories).toEqual([])
-    expect(airiFrom(imported.card).modules.displayModelId).toBe('model-only')
+    expect(airiFrom(imported.card).avatarModels[0]).toMatchObject({ displayModelId: 'model-only', type: 'vrm' })
   })
 
   it('rejects malformed memories rather than importing unvalidated entries', async () => {
@@ -205,7 +251,7 @@ describe('airi card package import/export', () => {
     const displayModelsStore = useDisplayModelsStore()
     const profile: CharacterProfile = { resting: { valence: 0.4, energy: -0.2, tension: 0.3 }, startingStage: 'friendly' }
     const card = createCard()
-    card.extensions.airi.modules.displayModelId = undefined
+    card.extensions.airi.avatarModels = []
     card.extensions.airi.modules.character = profile
     const context = characterStateContext(Date.now())
     const state = applyEvent(initialCharacterState('source-card', profile, context), {
@@ -229,7 +275,7 @@ describe('airi card package import/export', () => {
 
   it('imports a package without a profile or state with the default profile and no state record', async () => {
     const card = createCard()
-    card.extensions.airi.modules.displayModelId = undefined
+    card.extensions.airi.avatarModels = []
     const imported = await importAiriCardPackage({
       file: await packageFile(exportToJSON(card), { resources: {} }),
       displayModelsStore: useDisplayModelsStore(),
@@ -241,7 +287,7 @@ describe('airi card package import/export', () => {
   it('replaces a profile with out-of-range values by the default profile', async () => {
     const source = exportToJSON(createCard())
     const airi = airiFrom(source)
-    airi.modules.displayModelId = undefined
+    airi.avatarModels = []
     Object.assign(airi.modules, { character: { resting: { valence: 5, energy: 0, tension: -1 }, startingStage: 'intimate' } })
     const imported = await importAiriCardPackage({ file: await packageFile(source), displayModelsStore: useDisplayModelsStore() })
     expect(airiFrom(imported.card).modules.character).toEqual(DEFAULT_CHARACTER_PROFILE)
@@ -250,7 +296,7 @@ describe('airi card package import/export', () => {
   it('imports a card with a corrupted character state entry and no state record', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const card = createCard()
-    card.extensions.airi.modules.displayModelId = undefined
+    card.extensions.airi.avatarModels = []
     const zip = await JSZip.loadAsync(await (await packageFile(exportToJSON(card), {
       resources: { characterState: { path: 'character-state.json' } },
     })).arrayBuffer())
@@ -267,7 +313,7 @@ describe('airi card package import/export', () => {
   it('imports a malformed character state record as a fresh state from the imported profile', async () => {
     const profile: CharacterProfile = { resting: { valence: -0.3, energy: 0.2, tension: 0.4 }, startingStage: 'close' }
     const card = createCard()
-    card.extensions.airi.modules.displayModelId = undefined
+    card.extensions.airi.avatarModels = []
     card.extensions.airi.modules.character = profile
     const zip = await JSZip.loadAsync(await (await packageFile(exportToJSON(card), {
       resources: { characterState: { path: 'character-state.json' } },
@@ -307,11 +353,12 @@ function createCard(displayModelId = 'preset-vrm-1'): AiriCard {
       airi: {
         contextWindow: 42,
         temperature: 0.3,
+        avatarModels: [{ id: 'selected-avatar-model', displayModelId, type: displayModelId === 'tachie-model' ? 'tachie' : 'vrm', config: {} }],
+        defaultAvatarModelId: 'selected-avatar-model',
         modules: {
           consciousness: { provider: 'openai', model: 'gpt-4o' },
           vision: { provider: 'ollama', model: 'llava' },
           speech: { provider: 'elevenlabs', model: 'eleven', voice_id: 'alloy', pitch: 1 },
-          displayModelId,
           activeBackgroundId: 'background-secret',
           artistry: { provider: 'replicate', model: 'flux', workflowId: 'workflow-secret' },
         },

@@ -1,5 +1,6 @@
 import type { ConfigEnv, LogLevel } from 'vite'
 
+import { execFileSync } from 'node:child_process'
 import { join, resolve } from 'node:path'
 import { env } from 'node:process'
 
@@ -16,6 +17,7 @@ import VueMacros from 'vue-macros/vite'
 import VueRouter from 'vue-router/vite'
 
 import { paraformerBilingualZhEn, xAsrBilingualZhEnInt8, zipformerMultilingual } from '@proj-airi/provider-inference/sherpaw-transcription/models'
+import { speakerModel } from '@proj-airi/stage-shared/speaker-model'
 import { kwsModel } from '@proj-airi/stage-ui/libs/voice/kws-model-info'
 import { Download } from '@proj-airi/unplugin-fetch'
 import { DownloadLive2DSDK } from '@proj-airi/unplugin-live2d-sdk'
@@ -37,6 +39,30 @@ function buildLogLevel(command: ConfigEnv['command']): LogLevel | undefined {
   return command === 'build' && isAgent ? 'warn' : undefined
 }
 
+/**
+ * The time that `~build/time` reports.
+ *
+ * Two builds of one commit must give the same bytes in `out/`, so this value is not the wall clock.
+ * A packager can set `SOURCE_DATE_EPOCH` (https://reproducible-builds.org/specs/source-date-epoch/).
+ * Otherwise, the build uses the committer time of `HEAD`.
+ * If git cannot read the commit, `unplugin-info` uses the wall clock and the build is not reproducible.
+ */
+function resolveBuildTime() {
+  const sourceDateEpoch = env.SOURCE_DATE_EPOCH?.trim()
+  if (sourceDateEpoch)
+    return new Date(Number(sourceDateEpoch) * 1000)
+
+  try {
+    const committedAt = execFileSync('git', ['log', '-1', '--format=%ct'], { cwd: import.meta.dirname, encoding: 'utf8' })
+    return new Date(Number(committedAt.trim()) * 1000)
+  }
+  catch {
+    return undefined
+  }
+}
+
+const buildTime = resolveBuildTime()
+
 export default defineConfig(({ command }) => ({
   main: {
     logLevel: buildLogLevel(command),
@@ -44,19 +70,11 @@ export default defineConfig(({ command }) => ({
       'import.meta.env.SHERPAW_MODEL_ENDPOINT': JSON.stringify(sherpawModelEndpoint),
     },
     build: {
-      externalizeDeps: {
-        include: [
-          // Native modules that have `__dirname` usages. Externalize to avoid bundling
-          // them into ESM and causing issues in runtime.
-          'electron-click-drag-plugin',
-          'uiohook-napi',
-          '@auv-js/cli',
-          '@auv-js/sdk',
-          '@xsai-apple-speech/transcription-native',
-          '@xsai-apple-vision/vision-native',
-          'koffi',
-        ],
-      },
+      // electron-vite externalizes exactly the `dependencies` of package.json.
+      // electron-builder copies only `dependencies` into app.asar.
+      // Keep only native modules there: they use `__dirname` or load `.node` and binary files at runtime.
+      // Put every pure JS package in `devDependencies`, so main bundles it and app.asar does not copy it again.
+      externalizeDeps: true,
     },
     plugins: [
       {
@@ -93,7 +111,9 @@ export default defineConfig(({ command }) => ({
           return options
         },
       },
-      Info(),
+      Info({ time: buildTime }),
+      // Main bundles `@proj-airi/i18n/locales`, and its locale sources are YAML files.
+      Yaml(),
     ],
 
     resolve: {
@@ -232,7 +252,7 @@ export default defineConfig(({ command }) => ({
     },
 
     plugins: [
-      Info(),
+      Info({ time: buildTime }),
 
       {
         name: 'proj-airi:defines',
@@ -312,10 +332,10 @@ export default defineConfig(({ command }) => ({
         fullInstall: true,
       }),
 
-      // Main downloads remote transcription models. Every build bundles the small wake word model,
+      // Main downloads remote transcription and voiceprint models. Every build bundles the small wake word model,
       // and development serves it from the cache, because main's model asset service does not serve it.
       Sherpaw({
-        models: [...sherpawModels, kwsModel],
+        models: [...sherpawModels, kwsModel, speakerModel],
         developmentModels: [kwsModel],
         bundledModels: env.SHERPAW_BUNDLE_MODELS === 'true' ? [xAsrBilingualZhEnInt8, kwsModel] : [kwsModel],
         cacheDir: sharedCacheDir,

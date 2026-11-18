@@ -1,3 +1,5 @@
+import localforage from 'localforage'
+
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -19,19 +21,12 @@ vi.mock('@proj-airi/stage-ui-spine/utils/spine-preview', () => ({ loadSpineModel
 vi.mock('@proj-airi/stage-ui-tachie/utils/tachie-preview', () => ({ loadTachieModelPreview: async () => 'tachie-preview' }))
 vi.mock('@proj-airi/stage-ui-mmd/utils/mmd-preview', () => ({ loadMMDModelPreview: async () => 'mmd-preview' }))
 
-/**
- * @example
- * describe('display models store', () => {})
- */
 describe('display models store', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
+    vi.clearAllMocks()
   })
 
-  /**
-   * @example
-   * it('resolves newly imported display models from memory before IndexedDB', async () => {})
-   */
   it('resolves newly imported display models from memory before IndexedDB', async () => {
     const store = useDisplayModelsStore()
     const model = {
@@ -56,5 +51,27 @@ describe('display models store', () => {
     const model = await store.addDisplayModel(DisplayModelFormat.Live2dZip, new File(['model'], 'model.zip'))
 
     expect(model.previewImage).toBe('live2d-preview')
+  })
+
+  it('reports a model that is removed from this device as deleted', async () => {
+    const store = useDisplayModelsStore()
+    const deleted = vi.fn()
+    store.onDisplayModelsDeleted(deleted)
+
+    await store.removeDisplayModel('display-model-local')
+
+    expect(deleted.mock.calls).toEqual([[['display-model-local']]])
+  })
+
+  it('loads stored models once when several callers initialize at the same time', async () => {
+    const store = useDisplayModelsStore()
+
+    await Promise.all([
+      store.loadDisplayModelsFromIndexedDB(),
+      store.loadDisplayModelsFromIndexedDB(),
+      store.loadDisplayModelsFromIndexedDB(),
+    ])
+
+    expect(localforage.iterate).toHaveBeenCalledTimes(1)
   })
 })

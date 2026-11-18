@@ -236,7 +236,7 @@ describe('interactive area synchronized state', () => {
   it('opens mobile settings from an icon-only header and restores focus', async () => {
     await page.viewport(390, 844)
     const { screen } = await renderArea(MobileInteractiveArea)
-    const trigger = screen.getByRole('button', { name: 'stage.mobile-tools.title', exact: true })
+    const trigger = screen.getByRole('button', { name: 'stage.mobile-tools.menu', exact: true })
     const bounds = trigger.element().getBoundingClientRect()
     expect(bounds.width).toBeGreaterThanOrEqual(44)
     expect(bounds.height).toBeGreaterThanOrEqual(44)
@@ -249,11 +249,10 @@ describe('interactive area synchronized state', () => {
     await trigger.click()
     await expect.element(screen.getByRole('dialog', { name: 'stage.mobile-tools.title' })).toBeVisible()
     await expect.element(screen.getByText('stage.mobile-tools.cleanup', { exact: true })).not.toBeInTheDocument()
-    await expect.element(screen.getByRole('switch', { name: 'stage.mobile-tools.character-voice' })).toBeVisible()
-    const voice = screen.getByRole('switch', { name: 'stage.mobile-tools.character-voice' })
-    const before = voice.element().getAttribute('aria-checked')
-    await voice.click()
-    await expect.element(voice).toHaveAttribute('aria-checked', before === 'true' ? 'false' : 'true')
+    await expect.element(screen.getByRole('slider', { name: 'stage.mobile-tools.character-voice' })).toBeVisible()
+    const mute = screen.getByRole('button', { name: 'stage.speech-output.mute', exact: true })
+    await mute.click()
+    await expect.element(screen.getByRole('button', { name: 'stage.speech-output.unmute', exact: true })).toBeVisible()
     await expect.element(screen.getByRole('button', { name: 'Close', exact: true })).not.toBeInTheDocument()
     await userEvent.keyboard('{Escape}')
     await expect.element(trigger).toHaveFocus()
@@ -301,7 +300,13 @@ describe('interactive area synchronized state', () => {
     } satisfies ChatStreamEventContext
 
     await producer.emitStream({ type: 'before-send', message: 'ping', sessionId: 'session-b', context })
-    await producer.emitStream({ type: 'token-literal', literal: 'Remote reply', sessionId: 'session-b', context })
+    // The producing window sends each update of its reply whole.
+    await producer.emitStream({
+      type: 'assistant-progress',
+      message: { role: 'assistant', content: 'Remote reply', slices: [{ type: 'text', text: 'Remote reply' }], tool_results: [], id: 'assistant-1', createdAt: Date.now() },
+      sessionId: 'session-b',
+      context,
+    })
 
     await expect.element(screen.getByText('Remote reply')).toBeVisible()
   })

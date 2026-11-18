@@ -47,6 +47,7 @@ function cardWithAutonomousArtistry(): AiriCard {
     extensions: {
       airi: {
         agents: {},
+        avatarModels: [],
         modules: {
           consciousness: { provider: 'mock-provider', model: 'mock-model' },
           vision: { provider: 'mock-provider', model: 'mock-model' },
@@ -74,7 +75,6 @@ describe('store artistry-autonomous director prompt', () => {
       consciousness: { provider: 'mock-provider', model: 'mock-model' },
       vision: { provider: 'mock-provider', model: 'mock-model' },
       speech: { provider: 'mock-provider', model: 'mock-model', voice_id: 'alloy' },
-      displayModelId: '',
     }
 
     const memory = useMemoryStore(pinia)

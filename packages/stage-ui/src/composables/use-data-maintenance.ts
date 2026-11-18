@@ -31,8 +31,10 @@ import { useSpeechStore } from '../stores/modules/speech'
 import { useWebSearchStore } from '../stores/modules/web-search'
 import { useOnboardingStore } from '../stores/onboarding'
 import { useProviderStore } from '../stores/providers/provider'
+import { useRecipesStore } from '../stores/recipes'
 import { useSettings, useSettingsAudioDevice } from '../stores/settings'
 import { useSituationStore } from '../stores/situation'
+import { useVoiceprintStore } from '../stores/voiceprint'
 
 /** Per-model expression documents that the Live2D and MMD stages write, keyed `<prefix><model id>`. */
 const expressionDocumentPrefixes = ['expression-catalog:', 'expression-rest:']
@@ -78,10 +80,11 @@ export function useDataMaintenance() {
   const onboardingStore = useOnboardingStore()
   const airiCardStore = useAiriCardStore()
   const characterStateStore = useCharacterStateStore()
+  const recipesStore = useRecipesStore()
+  const voiceprintStore = useVoiceprintStore()
 
   async function deleteAllModels() {
     await displayModelsStore.resetDisplayModels()
-    settingsStore.stageModelSelected = 'preset-live2d-1'
     await settingsStore.updateStageModel()
   }
 
@@ -99,8 +102,6 @@ export function useDataMaintenance() {
       () => hearingStore.resetState(),
       () => homeAssistantStore.resetState(),
       () => speechStore.resetState(),
-      // Memories hold what the character learned about the owner.
-      () => memoryStore.resetState(),
       // Her mood, temperament, and relationship with the owner, for every card.
       () => characterStateStore.resetState(),
       () => consciousnessStore.resetState(),
@@ -109,6 +110,9 @@ export function useDataMaintenance() {
       () => discordStore.resetState(),
       () => factorioStore.resetState(),
       () => minecraftStore.resetState(),
+      // Memories and recipes hold what the character learned about the owner.
+      () => memoryStore.resetState(),
+      () => recipesStore.resetState(),
     ].map(reset => Promise.resolve().then(reset)))
     const failure = results.find(result => result.status === 'rejected')
     if (failure)
@@ -161,6 +165,8 @@ export function useDataMaintenance() {
   }
 
   async function deleteAllData() {
+    // The voiceprint identifies the user. Remove it first, so a failed cleanup step below cannot keep it.
+    voiceprintStore.remove()
     // Before the model switch below, so the stage loads the default model without a stored catalog.
     clearExpressionDocuments()
     await deleteAllModels()

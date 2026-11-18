@@ -2,39 +2,47 @@
 import type { ToolCallRerunRequest } from '../../../../stores/tool-call-rerun'
 import type { ChatAssistantMessage, ChatHistoryItem, ChatSlices, ChatSlicesText, ChatSlicesToolCallResult } from '../../../../types/chat'
 import type { ChatHistoryReplyPayload } from '../reply'
-import type { ChatToolCallRendererRegistry } from './tool-call-renderer'
+import type { ChatSliceEntry } from './tool-call-group'
+import type { ChatToolCallRendererRegistry, ChatToolCallWidgetRegistry } from './tool-call-renderer'
 
 import { isStageWeb } from '@proj-airi/stage-shared'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 
+import ChatReplyCard from './reply-card.vue'
 import ChatReplyQuote from './reply-quote.vue'
 import ResponseCitations from './response-citations.vue'
 import ChatResponsePart from './response-part.vue'
 import ChatSticker from './sticker.vue'
-import ChatToolCallBlock from './tool-call-block.vue'
+import ChatToolCallGroup from './tool-call-group.vue'
 
 import { MarkdownRenderer } from '../../../markdown'
-import { getChatHistoryItemCopyText, splitSlicesIntoBubbles } from '../utils'
+import { getChatHistoryItemCopyText } from '../utils'
 import { ChatActionMenu } from './action-menu'
+import { groupToolCallSlices } from './tool-call-group'
 import { createToolCallResultLookup, resolveToolCallBlockState } from './tool-call-results'
+import { builtinToolCallWidgets } from './tool-call-widgets'
 
 const props = withDefaults(defineProps<{
-  message: ChatAssistantMessage
+  /** A reply of the history, or the reply that streams now. The card state of its tool calls is keyed by its id. */
+  message: ChatAssistantMessage & { id?: string }
   label: string
   replyTarget?: ChatHistoryReplyPayload
   canReply?: boolean
   scrollContainer?: HTMLElement | null
   showPlaceholder?: boolean
   /**
-   * `true` while this message is the live stream of the history. A bubble after a break then appears `seconds` after
-   * the break slice arrived, on a schedule that keeps running after generation ends, as long as this item stays
-   * mounted. A message mounted complete shows every bubble at once.
+   * `true` while this message is the live stream of the history: the reply is still being written. A bubble after a
+   * break then appears `seconds` after the break slice arrived, on a schedule that keeps running after generation
+   * ends, as long as this item stays mounted. A message mounted complete shows every bubble at once.
    */
   streaming?: boolean
   variant?: 'desktop' | 'mobile'
   /** How the bubble paints its background; see `ChatHistory`'s `surface`. */
   surface?: 'translucent' | 'opaque'
   toolCallRenderers?: ChatToolCallRendererRegistry
+  /** Widgets that show tool results inside the unfolded rows of a tool call group. They add to the built-in widgets. */
+  toolCallWidgets?: ChatToolCallWidgetRegistry
 }>(), {
   canReply: false,
   showPlaceholder: false,
@@ -43,6 +51,7 @@ const props = withDefaults(defineProps<{
   variant: 'desktop',
   surface: 'translucent',
   toolCallRenderers: () => ({}),
+  toolCallWidgets: () => ({}),
 })
 
 const emit = defineEmits<{
@@ -53,6 +62,8 @@ const emit = defineEmits<{
   (e: 'reveal'): void
   (e: 'toolCallRerun', payload: ToolCallRerunRequest): void
 }>()
+
+const { t } = useI18n()
 
 const resolvedSlices = computed<ChatSlices[]>(() => {
   if (props.message.slices?.length) {
@@ -98,7 +109,7 @@ const invocationBySlice = computed(() => {
 })
 
 /**
- * Triggering workflow: ChatToolCallBlock `toolCallRerun` -> emitToolCallRerun
+ * Triggering workflow: ChatToolCallGroup `toolCallRerun` -> emitToolCallRerun
  * -> ChatHistory `toolCallRerun` -> executeToolCallRerun in the owning runtime.
  */
 function emitToolCallRerun(sliceIndex: number, payload: ToolCallRerunRequest) {
@@ -106,15 +117,34 @@ function emitToolCallRerun(sliceIndex: number, payload: ToolCallRerunRequest) {
   emit('toolCallRerun', invocationId === undefined ? payload : { ...payload, invocationId })
 }
 
-function getToolCallRenderer(slice: ChatSlices) {
-  if (slice.type !== 'tool-call') {
-    return ChatToolCallBlock
+const toolCallWidgets = computed<ChatToolCallWidgetRegistry>(() => ({ ...builtinToolCallWidgets, ...props.toolCallWidgets }))
+
+// The model writes a card for this reply now. Until it arrives, the reply says so, so it never looks empty.
+const drawingCard = computed(() => props.streaming && props.message.pendingContent === 'card')
+
+// A call with its own renderer shows by itself. Every other call joins a group with the calls next to it.
+const sliceEntries = computed(() => groupToolCallSlices(resolvedSlices.value, toolName => Boolean(props.toolCallRenderers[toolName])))
+
+/**
+ * The entries of each bubble. A break closes the bubble before it; a bubble without entries (a break before any
+ * entry, two adjacent breaks, or a trailing break) is dropped, so a trailing break renders one bubble.
+ */
+const bubbles = computed(() => {
+  const result: ChatSliceEntry[][] = []
+  let current: ChatSliceEntry[] = []
+  for (const entry of sliceEntries.value) {
+    if (entry.kind === 'slice' && entry.slice.type === 'break') {
+      if (current.length)
+        result.push(current)
+      current = []
+      continue
+    }
+    current.push(entry)
   }
-
-  return props.toolCallRenderers[slice.toolCall.toolName] ?? ChatToolCallBlock
-}
-
-const bubbles = computed(() => splitSlicesIntoBubbles(resolvedSlices.value))
+  if (current.length)
+    result.push(current)
+  return result
+})
 const breakSlices = computed(() => resolvedSlices.value.filter(slice => slice.type === 'break'))
 
 /**
@@ -174,7 +204,7 @@ const copyText = computed(() => getChatHistoryItemCopyText(props.message as Chat
 </script>
 
 <template>
-  <div flex :class="['font-cute', containerClass]" class="ph-no-capture">
+  <div :class="['flex font-cute ph-no-capture', containerClass]">
     <ChatActionMenu
       :copy-text="copyText"
       :can-reply="canReply"
@@ -209,31 +239,42 @@ const copyText = computed(() => getChatHistoryItemCopyText(props.message as Chat
                 :message="message"
                 :variant="variant"
               />
-              <div class="<sm:hidden">
+              <div :class="['<sm:hidden']">
                 <span :class="['text-sm font-normal', 'text-black/60 dark:text-white/65']">{{ label }}</span>
               </div>
             </template>
             <div v-if="bubble.length > 0" :class="['flex flex-col gap-2 break-words', 'text-primary-700 dark:text-primary-100']">
-              <template v-for="{ slice, index: sliceIndex } in bubble" :key="sliceIndex">
-                <component
-                  :is="getToolCallRenderer(slice)"
-                  v-if="slice.type === 'tool-call'"
-                  :tool-call-id="slice.toolCall.toolCallId"
-                  :tool-name="slice.toolCall.toolName"
-                  :args="slice.toolCall.args"
-                  :state="resolveToolCallBlockState(getToolCallResult(sliceIndex))"
-                  :result="getToolCallResult(sliceIndex)?.result"
-                  @tool-call-rerun="emitToolCallRerun(sliceIndex, $event)"
+              <template v-for="entry in bubble" :key="entry.kind === 'slice' ? entry.sliceIndex : `group-${entry.key}`">
+                <ChatToolCallGroup
+                  v-if="entry.kind === 'tool-group'"
+                  :items="entry.items"
+                  :result-of="getToolCallResult"
+                  :widgets="toolCallWidgets"
+                  :streaming="streaming"
+                  :message-id="message.id"
+                  @tool-call-rerun="emitToolCallRerun"
                 />
-                <template v-else-if="slice.type === 'tool-call-result'" />
-                <ChatSticker v-else-if="slice.type === 'sticker'" :sticker-id="slice.stickerId" />
-                <template v-else-if="slice.type === 'text'">
-                  <MarkdownRenderer :content="slice.text" />
-                </template>
+                <component
+                  :is="props.toolCallRenderers[entry.slice.toolCall.toolName]"
+                  v-else-if="entry.slice.type === 'tool-call'"
+                  :tool-call-id="entry.slice.toolCall.toolCallId"
+                  :tool-name="entry.slice.toolCall.toolName"
+                  :args="entry.slice.toolCall.args"
+                  :state="resolveToolCallBlockState(getToolCallResult(entry.sliceIndex))"
+                  :result="getToolCallResult(entry.sliceIndex)?.result"
+                  @tool-call-rerun="emitToolCallRerun(entry.sliceIndex, $event)"
+                />
+                <ChatSticker v-else-if="entry.slice.type === 'sticker'" :sticker-id="entry.slice.stickerId" />
+                <ChatReplyCard v-else-if="entry.slice.type === 'card'" :card="entry.slice" />
+                <MarkdownRenderer v-else-if="entry.slice.type === 'text'" :content="entry.slice.text" :streaming="streaming" />
               </template>
+              <div v-if="drawingCard && bubbleIndex === shells.length - 1" :class="['flex items-center gap-1.5 text-[11px]', 'text-neutral-500 dark:text-neutral-400']" aria-live="polite">
+                <span :class="['i-svg-spinners:ring-resize', 'text-xs', 'text-primary-500 dark:text-primary-300']" aria-hidden="true" />
+                <span>{{ t('stage.chat.reply-card.drawing') }}</span>
+              </div>
             </div>
             <ResponseCitations v-if="bubbleIndex === shells.length - 1 && message.citations?.length" :citations="message.citations" />
-            <div v-if="bubble.length === 0 && showLoader" i-eos-icons:three-dots-loading />
+            <div v-if="bubble.length === 0 && showLoader" :class="['i-eos-icons:three-dots-loading']" />
           </div>
         </div>
       </template>

@@ -11,9 +11,12 @@ const SEEN_TURNS_MAX = 64
  * Turns chat turns into `conversation` observations, once per turn and speaker.
  *
  * A user observation comes from `onBeforeSend` only for user-origin turns: the runtime also emits that hook for
- * unprompted turns, and those must never count as the user speaking. A character observation comes from the first
+ * unprompted turns, and those must never count as the user speaking. Neither does a notice turn, which reports
+ * finished background work into the conversation: the owner did not write it. A character observation comes from the first
  * of `onAssistantMessage` and `onChatTurnComplete`, which both fire for one finished reply; it carries the turn's
- * origin. Turns are keyed by session and turn id. Returns the function that unregisters the hooks.
+ * origin. Turns are keyed by session and turn id. A turn that does not speak on the host (`speaks` is false: a
+ * background task or a scene reply) is no conversation with the owner, so it yields no observation. Returns the
+ * function that unregisters the hooks.
  */
 export function startConversationSensor(hooks: ConversationHookSource, ingest: (observation: Observation) => void): () => void {
   const seen = new Set<string>()
@@ -32,14 +35,14 @@ export function startConversationSensor(hooks: ConversationHookSource, ingest: (
   }
 
   function characterSpoke(context: ChatStreamEventContext) {
-    if (!firstTime('character', context))
+    if (context.speaks === false || !firstTime('character', context))
       return
     ingest({ kind: 'conversation', who: 'character', origin: context.origin ?? 'user', atMs: Date.now() })
   }
 
   const unregister = [
     hooks.onBeforeSend(async (_message, context) => {
-      if (context.origin === 'unprompted' || !firstTime('user', context))
+      if (context.origin === 'unprompted' || context.speaks === false || context.message.notice || !firstTime('user', context))
         return
       ingest({ kind: 'conversation', who: 'user', origin: 'user', atMs: Date.now() })
     }),

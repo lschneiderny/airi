@@ -10,9 +10,6 @@ import type { setupCaptionWindowManager } from '../windows/caption'
 import type { SettingsWindowManager } from '../windows/settings'
 import type { WidgetsWindowManager } from '../windows/widgets'
 
-import { env } from 'node:process'
-
-import { is } from '@electron-toolkit/utils'
 import { defineInvokeHandler } from '@moeru/eventa'
 import { isRendererUnavailable } from '@proj-airi/electron-vueuse/main'
 import { effect } from 'alien-signals'
@@ -26,6 +23,7 @@ import macOSTrayIcon from '../../../resources/tray-icon-macos.png?asset'
 import { electronAppIconGet, electronAppIconSet } from '../../shared/eventa'
 import { findDominantDisplayArea } from '../../shared/utils/electron/display'
 import { onAppBeforeQuit } from '../libs/bootkit/lifecycle'
+import { shouldOpenDevTools } from '../libs/electron/devtools'
 import { createAppContext } from '../libs/electron/window-context'
 import { displayMatching, readDisplays, readPrimaryDisplay, readWindowRect } from '../services/electron/coordinates'
 import { Animator } from '../windows/shared/animator'
@@ -144,7 +142,7 @@ const setupTrayOnce = once((params: SetupTrayParams): void => {
         ]),
       },
       { type: 'separator' },
-      ...is.dev || env.MAIN_APP_DEBUG || env.APP_DEBUG
+      ...shouldOpenDevTools()
         ? [
             { type: 'header', label: params.i18n.t('tamagotchi.electron.tray.menu.labels.label.devtools') },
             { label: params.i18n.t('tamagotchi.electron.tray.menu.labels.label.troubleshoot_beatsync'), click: () => params.beatSyncBgWindow.webContents.openDevTools({ mode: 'detach' }) },

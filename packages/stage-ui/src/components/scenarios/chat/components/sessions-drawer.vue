@@ -42,8 +42,9 @@ const { trackChatSessionSelected, trackChatSessionStarted } = useAnalytics()
 const isCreatingSession = ref(false)
 
 // List only the device-local session namespace.
+// Background recipe sessions are hidden. Their results reach the conversation as notices.
 const ownedSessions = computed(() => {
-  return Object.values(sessionMetas.value).filter(meta => meta.userId === 'local')
+  return Object.values(sessionMetas.value).filter(meta => meta.userId === 'local' && !meta.hidden)
 })
 
 /**

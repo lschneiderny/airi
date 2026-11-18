@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { electronCenterMainWindow } from '../../../../shared/eventa'
 import { centerWindowOnDisplay } from '../../shared/display'
-import { markStageWindow } from '../../stage/identity'
+import { centerUserFacingWindow, markStageWindow } from '../../stage/identity'
 import { setupMainWindowElectronInvokes } from './index.electron'
 
 const invokeHandlers = vi.hoisted(() => new Map<unknown, (payload?: unknown) => unknown>())
@@ -76,6 +76,9 @@ async function setup(window: BrowserWindow) {
       onButtonStateChange: vi.fn(() => vi.fn()),
       getAttentionTarget: vi.fn(),
       onAttentionTargetChange: vi.fn(() => vi.fn()),
+      attachFullscreen: vi.fn(() => vi.fn()),
+      setMainWindowCovered: vi.fn(),
+      leaveFullscreenMode: vi.fn(),
     },
     widgetsManager: {} as Params['widgetsManager'],
     noticeWindow: {} as Params['noticeWindow'],
@@ -89,6 +92,9 @@ async function setup(window: BrowserWindow) {
     perfRecording: {} as Params['perfRecording'],
     inlayWindow: vi.fn(),
     globalShortcut: { registerWindow: vi.fn(), registerMainShortcut: vi.fn(), dispose: vi.fn() },
+    setPinned: vi.fn(),
+    // Both hosts center through this function: the classic window passes its own, and the desktop stage passes this one.
+    center: () => centerUserFacingWindow(window),
   })
 }
 

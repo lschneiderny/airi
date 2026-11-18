@@ -22,6 +22,15 @@
       "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/tsconfig.json"],
       "outputLogs": "errors-only"
     },
+    "test:run": {
+      "dependsOn": ["^build"],
+      "env": ["CI", "NODE_OPTIONS", "TESTING_AUDIO_*"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/.env*",
+        "$TURBO_ROOT$/packages/*/.env*"
+      ]
+    },
     "@proj-airi/electron-vueuse#build": {
       "dependsOn": ["@proj-airi/electron-eventa#build"],
       "outputs": ["dist/**"],
@@ -46,6 +55,10 @@
       "dependsOn": ["^build"],
       "outputs": [],
       "outputLogs": "errors-only"
+    },
+    "@proj-airi/electron-native-backdrop#build": {
+      "cache": false,
+      "outputs": ["dist/**"]
     }
   }
 }

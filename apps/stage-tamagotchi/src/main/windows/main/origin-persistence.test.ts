@@ -11,7 +11,7 @@ const mocks = await vi.hoisted(async () => {
   const { EventEmitter } = await import('node:events')
   class Window extends EventEmitter {
     bounds: Rectangle = { x: 0, y: 0, width: 450, height: 600 }
-    webContents = { openDevTools: vi.fn() }
+    webContents = { openDevTools: vi.fn(), on: vi.fn() }
     getBounds = () => ({ ...this.bounds })
     isDestroyed = () => false
     setVisibleOnAllWorkspaces = vi.fn()
@@ -28,6 +28,12 @@ vi.mock('electron', () => ({
   BrowserWindow: mocks.Window,
 }))
 vi.mock('std-env', () => ({ isMacOS: false, isLinux: true }))
+// Eventa is the IPC boundary. The window registers its fullscreen invokes on a context that this test does not serve.
+vi.mock('@moeru/eventa', async importOriginal => ({
+  ...await importOriginal<object>(),
+  defineInvokeHandler: () => () => {},
+  defineInvoke: () => async () => undefined,
+}))
 vi.mock('@electron-toolkit/utils', () => ({ is: { dev: false } }))
 vi.mock('@proj-airi/electron-screen-capture/main', () => ({ initScreenCaptureForWindow: vi.fn() }))
 vi.mock('../../libs/electron/window-context', () => ({ createWindowContext: () => ({ context: {} }) }))
@@ -38,12 +44,15 @@ vi.mock('../../libs/electron/persistence', () => ({
 vi.mock('../../libs/electron/location', () => ({
   baseUrl: () => 'http://localhost',
   getElectronMainDirname: () => '/main',
+  getPreloadPath: () => '/main/preload/index.mjs',
+  getRendererRoot: () => '/main/renderer',
   withHashRoute: (_base: string, route: string) => route,
   load: async () => {},
 }))
 vi.mock('../shared', () => ({ protectPrivilegedWindowNavigation: vi.fn(), setWindowAlwaysOnTop: vi.fn(), transparentWindowConfig: () => ({}) }))
 vi.mock('./hide-on-close', () => ({ hideOnClose: vi.fn() }))
 vi.mock('./rpc/index.electron', () => ({ setupMainWindowElectronInvokes: async () => {} }))
+vi.mock('../settings/rpc/index.electron', () => ({ setupSettingsPageInvokes: () => {} }))
 vi.mock('../dashboard/rpc/index.electron', () => ({ setupDashboardWindowElectronInvokes: async () => {} }))
 
 describe.each(['main', 'dashboard'] as const)('%s bounds persistence', (tag) => {
@@ -62,7 +71,7 @@ describe.each(['main', 'dashboard'] as const)('%s bounds persistence', (tag) => 
     if (saved)
       mocks.config.windows.push({ title, tag, x: 123, y: 456, width: 300, height: 400 })
     const window = tag === 'main'
-      ? await setupMainWindow({ inlayWindow: async () => new mocks.Window() } as never)
+      ? await setupMainWindow({ inlayWindow: async () => new mocks.Window(), chatWindow: { attachFullscreen: () => () => {} } } as never)
       : await setupDashboardWindow({} as never)
     window.emit('resize')
 

@@ -3,6 +3,7 @@ import type { CharacterProfile } from '@proj-airi/stage-shared/character-state'
 import type { PerformanceProfile } from '@proj-airi/stage-shared/expression-performance'
 
 import type { WakeWord } from '../libs/voice/wake-words'
+import type { CharacterAvatarModelReference } from './avatar-model'
 
 /**
  * AIRI-specific runtime configuration embedded in a character card.
@@ -25,6 +26,13 @@ export interface AiriExtension {
   temperature?: number
 
   wakeWords?: WakeWord[]
+
+  /** Character-owned references to stored display-model resources. */
+  avatarModels: CharacterAvatarModelReference[]
+
+  /** Avatar Model that the Character selects when it becomes active. */
+  defaultAvatarModelId?: string
+
   modules: {
     performance?: PerformanceProfile
     /** Her resting disposition and starting relationship; a card without a valid one uses `DEFAULT_CHARACTER_PROFILE`. */
@@ -62,8 +70,6 @@ export interface AiriExtension {
       url?: string
     }
 
-    /** ID from the display-models store. */
-    displayModelId?: string
     activeBackgroundId?: string
 
     artistry?: {

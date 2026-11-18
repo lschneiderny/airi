@@ -3,6 +3,7 @@ import type { Env } from './libs/env'
 import type { OtelInstance } from './otel'
 import type { Verifier as AppleIapVerifier } from './routes/apple-iap/verifier'
 import type { StreamingTtsVoiceType } from './routes/audio-speech-ws/session'
+import type { AccountEventPublisher } from './services/adapters/account-events'
 import type { ConfigKVService } from './services/adapters/config-kv'
 import type { RevenuecatSubscriberClient } from './services/adapters/revenuecat-subscriber'
 import type { RevenuecatSubscriptionSync } from './services/adapters/revenuecat-subscriptions'
@@ -11,6 +12,7 @@ import type { LlmBillingService } from './services/domain/billing/llm-billing'
 import type { CharacterCardService } from './services/domain/character-cards'
 import type { CharacterService } from './services/domain/characters'
 import type { ChatService } from './services/domain/chats'
+import type { DisplayModelService } from './services/domain/display-models'
 import type { FluxService } from './services/domain/flux'
 import type { FluxTransactionService } from './services/domain/flux-transaction'
 import type { LlmRouterService } from './services/domain/llm-router'
@@ -32,6 +34,7 @@ import Stripe from 'stripe'
 import { initLogger, LoggerFormat, LoggerLevel, setGlobalHookPostLog, useLogger } from '@guiiai/logg'
 import { createNodeWebSocket } from '@hono/node-ws'
 import { httpInstrumentationMiddleware } from '@hono/otel'
+import { createErrorHandler, createPayloadTooLargeError } from '@proj-airi/http-error-shared'
 import { Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
 import { cors } from 'hono/cors'
@@ -42,6 +45,7 @@ import { createLoggLogger, injeca, lifecycle } from 'injeca'
 import { createDrizzle, migrateDatabase } from './libs/db'
 import { parsedEnv } from './libs/env'
 import { initializeExternalDependency } from './libs/external-dependency'
+import { createStreamPublisher } from './libs/redis/stream'
 import { resolveRequestAuth } from './libs/request-auth'
 import { createUnauthorizedWsEvents } from './libs/ws-auth'
 import { authGuard, sessionMiddleware } from './middlewares/auth'
@@ -60,6 +64,7 @@ import { createChatWsV1Handlers } from './routes/chat-ws/v1'
 import { createChatWsV2Handlers } from './routes/chat-ws/v2'
 import { createChatWsPayloadLimit } from './routes/chat-ws/v2/payload-limit'
 import { createChatRoutes } from './routes/chats'
+import { createDisplayModelRoutes } from './routes/display-models'
 import { createFluxRoutes } from './routes/flux'
 import { createInternalAuthRoutes } from './routes/internal-auth'
 import { createLlmRequestRoutes } from './routes/llm-requests'
@@ -68,6 +73,7 @@ import { createProviderRoutes } from './routes/providers'
 import { createRevenuecatRoutes } from './routes/revenuecat'
 import { createStripeRoutes } from './routes/stripe'
 import { createVoicePackRoutes } from './routes/voice-packs'
+import { accountEventsStream, createUserDeletedEventHandler } from './services/adapters/account-events'
 import { createConfigKVService } from './services/adapters/config-kv'
 import { createConfigKVStore } from './services/adapters/config-kv/store'
 import { createS3ObjectStore } from './services/adapters/object-store'
@@ -80,6 +86,7 @@ import { SpeechBilling } from './services/domain/billing/speech-billing'
 import { createCharacterCardService } from './services/domain/character-cards'
 import { createCharacterService } from './services/domain/characters'
 import { createChatService } from './services/domain/chats'
+import { createDisplayModelService } from './services/domain/display-models'
 import { createFluxService } from './services/domain/flux'
 import { createFluxTransactionService } from './services/domain/flux-transaction'
 import { createConcurrencyLedger, createConfigSyncSubscriber, createLlmRouterService } from './services/domain/llm-router'
@@ -88,10 +95,10 @@ import { createProductEventService } from './services/domain/product-events'
 import { createProviderCatalogService } from './services/domain/provider-catalog'
 import { createProviderService } from './services/domain/providers'
 import { createRequestLogService } from './services/domain/request-log'
+import { createUploadSessionService } from './services/domain/upload-sessions'
 import { createUserDeletionService } from './services/domain/user-deletion'
 import { createVoicePackService } from './services/domain/voice-packs'
 import { createEnvelopeCrypto } from './utils/envelope-crypto'
-import { ApiError, createInternalError } from './utils/error'
 import { nanoid } from './utils/id'
 import { getTrustedOrigin } from './utils/origin'
 
@@ -110,9 +117,11 @@ interface AppDeps {
   billingService: BillingService
   speechBilling: SpeechBilling
   subscriptionSync: RevenuecatSubscriptionSync
+  accountEvents: AccountEventPublisher
   revenuecatSubscriber: RevenuecatSubscriberClient
   requestLogService: RequestLogService
   voicePackService: VoicePackService
+  displayModelService: DisplayModelService
   productEventService: ProductEventService
   configKV: ConfigKVService
   envelopeCrypto: EnvelopeCrypto
@@ -132,7 +141,9 @@ const DEFAULT_API_MAX_REQUEST_BYTES = 1024 * 1024
 function apiBodyLimit(maxSize: number) {
   return bodyLimit({
     maxSize,
-    onError: c => c.json({ error: 'PAYLOAD_TOO_LARGE', message: 'Payload Too Large' }, 413),
+    onError: () => {
+      throw createPayloadTooLargeError('Payload Too Large')
+    },
   })
 }
 
@@ -323,35 +334,7 @@ export async function buildApp(deps: AppDeps) {
         return next()
       return defaultApiBodyLimit(c, next)
     })
-    .onError((err, c) => {
-      if (err instanceof ApiError) {
-        // Surface details + cause to the server-side log only. SEC-5 keeps
-        // upstream body content (carried by `cause`) out of the client
-        // response body; the logger / OTel pipeline is the right channel
-        // for operators to see the real upstream message.
-        const logFields = { details: err.details, cause: (err as { cause?: unknown }).cause }
-
-        if (err.statusCode >= 500) {
-          logger.withError(err).withFields(logFields).error('API error occurred')
-        }
-        else if (err.statusCode !== 401) {
-          logger.withError(err).withFields(logFields).warn('API error occurred')
-        }
-
-        return c.json({
-          error: err.errorCode,
-          message: err.message,
-          details: err.details,
-        }, err.statusCode)
-      }
-
-      logger.withError(err).error('Unhandled error')
-      const internalError = createInternalError()
-      return c.json({
-        error: internalError.errorCode,
-        message: internalError.message,
-      }, internalError.statusCode)
-    })
+    .onError(createErrorHandler(logger))
 
     /**
      * Liveness probe (K8s convention). Returns 200 as long as the Node
@@ -418,6 +401,11 @@ export async function buildApp(deps: AppDeps) {
     .route('/api/v1/character-cards', createCharacterCardRoutes(deps.characterCardService))
 
     /**
+     * Display model routes sync imported Live2D and VRM originals through private object storage.
+     */
+    .route('/api/v1/display-models', createDisplayModelRoutes(deps.displayModelService))
+
+    /**
      * Provider routes are handled by the provider service.
      */
     .route('/api/v1/providers', createProviderRoutes(deps.providerService))
@@ -466,6 +454,8 @@ export async function buildApp(deps: AppDeps) {
      */
     .route('/api/v1/revenuecat', createRevenuecatRoutes(
       deps.subscriptionSync,
+      deps.accountEvents,
+      deps.revenuecatSubscriber,
       deps.env,
       deps.otel?.rateLimit ?? null,
     ))
@@ -611,8 +601,7 @@ export async function createApp() {
     dependsOn: { env: parsedEnv, lifecycle },
     build: ({ dependsOn }) => {
       const store = createS3ObjectStore(dependsOn.env)
-      if (store)
-        dependsOn.lifecycle.appHooks.onStop(() => store.dispose())
+      dependsOn.lifecycle.appHooks.onStop(() => store.dispose())
       return store
     },
   })
@@ -718,6 +707,11 @@ export async function createApp() {
     build: ({ dependsOn }) => createVoicePackService(dependsOn.db),
   })
 
+  const displayModelService = injeca.provide('services:displayModel', {
+    dependsOn: { db, objectStore },
+    build: ({ dependsOn }) => createDisplayModelService(dependsOn.db, dependsOn.objectStore, createUploadSessionService(dependsOn.objectStore)),
+  })
+
   const providerCatalogService = injeca.provide('services:providerCatalog', {
     dependsOn: { db },
     build: ({ dependsOn }) => createProviderCatalogService(dependsOn.db),
@@ -743,8 +737,16 @@ export async function createApp() {
     build: ({ dependsOn }) => createRevenuecatSubscriberClient({
       apiKey: dependsOn.env.REVENUECAT_V2_API_KEY ?? null,
       projectId: dependsOn.env.REVENUECAT_PROJECT_ID ?? null,
+      environment: dependsOn.env.REVENUECAT_ENVIRONMENT,
+      sandboxUserIds: dependsOn.env.REVENUECAT_SANDBOX_USER_IDS,
       sellsSubscriptions: Boolean(dependsOn.env.REVENUECAT_WEBHOOK_AUTH || dependsOn.env.REVENUECAT_WEBHOOK_SECRET),
     }),
+  })
+
+  // Producer of the account events stream that Cloud turns into notifications.
+  const accountEvents = injeca.provide('adapters:accountEvents', {
+    dependsOn: { redis },
+    build: ({ dependsOn }) => createStreamPublisher(dependsOn.redis, accountEventsStream),
   })
 
   const subscriptionSync = injeca.provide('services:revenuecatSubscriptionSync', {
@@ -762,19 +764,21 @@ export async function createApp() {
   //   1. give it a `deleteAllForUser(userId)` method
   //   2. add one `service.register(...)` line below
   // Domain knowledge stays inside each service instead of being copied into
-  // a parallel handler file. See `server/apps/api/docs/ai-context/account-deletion.md`.
+  // a parallel handler file.
   const userDeletionService = injeca.provide('services:userDeletion', {
-    dependsOn: { paymentService, fluxService, providerService, characterService, characterCardService, chatService },
+    dependsOn: { paymentService, fluxService, providerService, characterService, characterCardService, chatService, accountEvents },
     build: ({ dependsOn }) => {
       const service = createUserDeletionService()
       // priority: 20 = financial / cache state (Flux balance + Redis),
-      //           30 = pure DB soft-delete (no external touch).
+      //           30 = pure DB soft-delete (no external touch),
+      //           40 = account event for Cloud, after every soft delete.
       service.register({ name: 'payment', priority: 30, softDelete: ({ userId }) => dependsOn.paymentService.deleteAllForUser(userId) })
       service.register({ name: 'flux', priority: 20, softDelete: ({ userId }) => dependsOn.fluxService.deleteAllForUser(userId) })
       service.register({ name: 'providers', priority: 30, softDelete: ({ userId }) => dependsOn.providerService.deleteAllForUser(userId) })
       service.register({ name: 'characters', priority: 30, softDelete: ({ userId }) => dependsOn.characterService.deleteAllForUser(userId) })
       service.register({ name: 'characterCards', priority: 30, softDelete: ({ userId }) => dependsOn.characterCardService.deleteAllForUser(userId) })
       service.register({ name: 'chats', priority: 30, softDelete: ({ userId }) => dependsOn.chatService.deleteAllForUser(userId) })
+      service.register(createUserDeletedEventHandler(dependsOn.accountEvents))
       return service
     },
   })
@@ -813,9 +817,11 @@ export async function createApp() {
     fluxTransactionService,
     requestLogService,
     voicePackService,
+    displayModelService,
     productEventService,
     paymentService,
     subscriptionSync,
+    accountEvents,
     appleIapVerifier,
     stripe,
     billingService,
@@ -847,9 +853,11 @@ export async function createApp() {
     fluxTransactionService: resolved.fluxTransactionService,
     paymentService: resolved.paymentService,
     subscriptionSync: resolved.subscriptionSync,
+    accountEvents: resolved.accountEvents,
     appleIapVerifier: resolved.appleIapVerifier,
     stripe: resolved.stripe,
     voicePackService: resolved.voicePackService,
+    displayModelService: resolved.displayModelService,
     billingService: resolved.billingService,
     llmBilling: resolved.llmBilling,
     speechBilling: resolved.speechBilling,

@@ -11,9 +11,10 @@ import { NaturalMotion } from '@proj-airi/motion-driver-natural'
 import { presenceBubbleIdle, presenceBubbleThinking } from '@proj-airi/stage-shared'
 import { DEFAULT_CHARACTER_PROFILE, faceBaselineOf, initialCharacterState, NEUTRAL_FACE_BASELINE, readCharacter } from '@proj-airi/stage-shared/character-state'
 import { createPickerDecider, defaultExpressionPerformanceSettings, replayAffectTrace } from '@proj-airi/stage-shared/expression-performance'
+import { useDesktopActivityStore } from '@proj-airi/stage-shared/stores/desktop-activity'
 import { MMDScene } from '@proj-airi/stage-ui-mmd'
 import { useMMD, useMMDExpressionStore } from '@proj-airi/stage-ui-mmd/stores'
-import { createPinia, getActivePinia, setActivePinia } from 'pinia'
+import { createPinia, disposePinia, getActivePinia, setActivePinia } from 'pinia'
 import { afterEach, beforeAll, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { cleanup, render } from 'vitest-browser-vue'
 import { defineComponent, getCurrentInstance, h, isVNode, nextTick, shallowRef, watch } from 'vue'
@@ -57,6 +58,20 @@ function findInstance(vnode: VNode | null | undefined, type: Component): Compone
       return found
   }
   return undefined
+}
+
+/**
+ * Creates the Pinia of one test, makes it the active one, and ends it with the test.
+ *
+ * Stores outlive the components that use them. The stores of an ended test otherwise keep reacting to the tests after
+ * it, and one of their store lookups makes their Pinia the active one again. A later test then reads its stores from
+ * that Pinia after an await, so its events never reach the stage that it mounted.
+ */
+function createTestPinia() {
+  const pinia = createPinia()
+  setActivePinia(pinia)
+  onTestFinished(() => disposePinia(pinia))
+  return pinia
 }
 
 /** Resolves once `source` satisfies `predicate`. Register it before the action under test; it rejects after 5 s. */
@@ -115,7 +130,7 @@ function pcmWav(sampleRate: number, samples: number, sample: (index: number) => 
 }
 
 /** The loader the chat history shows for an assistant reply that has no text yet. */
-const streamingPlaceholder = '[i-eos-icons\\:three-dots-loading]'
+const streamingPlaceholder = '.i-eos-icons\\:three-dots-loading'
 
 /**
  * Lets the real chat store send through a fake provider. Each request stays open until it is aborted or released.
@@ -177,8 +192,7 @@ function renderHistory() {
 }
 
 async function renderStage(driver: 'natural' | 'universal' | 'magic') {
-  const pinia = createPinia()
-  setActivePinia(pinia)
+  const pinia = createTestPinia()
   useSettingsStageModel().setStageModelRenderer('live2d')
   live2d.useSettingsLive2d().live2dMotionDriver = driver
   const params = live2d.useLive2dParams()
@@ -430,6 +444,26 @@ describe('stage emotion routing on Live2D', () => {
     expect(episodes.value).toEqual([])
   })
 
+  it('takes an owner turn as the owner being here, and a notice turn as no sign of the owner', async () => {
+    const { scene } = await renderStage('universal')
+    const away = () => (scene.props.performance as { away: boolean }).away
+    // The desktop has had no input for ten minutes, so only a turn of the owner's own shows that the owner is here.
+    const left = until(away, value => value)
+    useDesktopActivityStore().setSnapshot({ idleSeconds: 600, locked: false, suspendedAtMs: null, resumedAtMs: null, unlockedAtMs: null, systemAudioLevel: null, screenChange: null, sampledAtMs: Date.now() })
+    await left
+    const chat = useChatStore()
+    const turn = { sessionId: 'session-1', contexts: {}, composedMessage: [], speaks: true }
+
+    // A finished background task reports into the conversation. The owner did not write it.
+    await chat.emitBeforeSendHooks('The task finished.', { ...turn, turnId: 'notice-1', message: { role: 'user', content: 'The task finished.', notice: { source: 'recipe:Research' } } })
+    await nextTick()
+    expect(away()).toBe(true)
+
+    const returned = until(away, value => !value)
+    await chat.emitBeforeSendHooks('hello', { ...turn, turnId: 'user-1', message: { role: 'user', content: 'hello' } })
+    expect(await returned).toBe(false)
+  })
+
   it('keeps presence idle, plays no Think motion, and shows no placeholder while an unprompted request is undecided', async () => {
     const { scene, motionGroups } = await renderStage('universal')
     const { sessionId, requests } = await holdProviderRequests()
@@ -470,7 +504,7 @@ describe('stage emotion routing on Live2D', () => {
     onTestFinished(control.onRejected(({ special }) => {
       rejected.push(special)
     }))
-    const context = { sessionId: 'session-1', turnId: 'mood-1', message: { role: 'user' as const, content: 'hello' }, contexts: {}, composedMessage: [] }
+    const context = { sessionId: 'session-1', turnId: 'mood-1', message: { role: 'user' as const, content: 'hello' }, contexts: {}, composedMessage: [], speaks: true }
 
     await useChatStore().emitTokenSpecialHooks('<|MOOD brighter: you came back|>', context)
     await useChatStore().emitTokenSpecialHooks('<|MOOD happy|>', context)
@@ -542,7 +576,7 @@ describe('stage emotion routing on Live2D', () => {
         captioned.value = [...captioned.value, event.data.text]
     }
     const chat = useChatStore()
-    const context = { sessionId, turnId: 'face-caption', message: { role: 'user' as const, content: 'hello' }, contexts: {}, composedMessage: [] }
+    const context = { sessionId, turnId: 'face-caption', message: { role: 'user' as const, content: 'hello' }, contexts: {}, composedMessage: [], speaks: true }
 
     const faceCaptioned = until(() => captioned.value, texts => texts.includes(':3'))
     await chat.emitBeforeMessageComposedHooks('hello', context)
@@ -622,8 +656,7 @@ describe('per-signal character profiles at the Natural consumer', () => {
     motion.advance(0)
     // Model.vue queues episodes until its next frame; this queue stands in for it.
     const pending: NaturalEpisode[] = []
-    const pinia = createPinia()
-    setActivePinia(pinia)
+    const pinia = createTestPinia()
     let api: ReturnType<typeof useStagePerformanceConductor> | undefined
     render(defineComponent({
       setup() {
@@ -690,8 +723,7 @@ describe('resting face from the replicated character reading', () => {
    */
   function mountConductor(motion: NaturalMotion, reading: CharacterReading | null) {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'], now: nowMs })
-    const pinia = createPinia()
-    setActivePinia(pinia)
+    const pinia = createTestPinia()
     render(defineComponent({
       setup() {
         useStagePerformanceConductor({
@@ -792,8 +824,7 @@ describe('stage emotion routing on Tachie', () => {
   })
 
   it('hands the Tachie scene an archive emotion for love, flustered, and sleepy and leaves the original emotions as they are', async () => {
-    const pinia = createPinia()
-    setActivePinia(pinia)
+    const pinia = createTestPinia()
     useSettingsStageModel().setStageModelRenderer('tachie')
     const tachie = await import('@proj-airi/stage-ui-tachie')
 
@@ -834,23 +865,29 @@ describe('stage performance routing on MMD', () => {
     vi.restoreAllMocks()
   })
 
-  async function renderMMD(component: Component = Stage) {
-    const pinia = createPinia()
-    setActivePinia(pinia)
+  /** The host of the last {@link renderMMD} call. */
+  let mmdHost = null as ComponentInternalInstance | null
+
+  async function renderMMD(component: Component = Stage, props: Record<string, unknown> = {}) {
+    const pinia = createTestPinia()
     useSettingsStageModel().setStageModelRenderer('mmd')
     useMMD().motionDriver = 'natural'
-    let host = null as ComponentInternalInstance | null
+    mmdHost = null
     render(defineComponent({
       setup() {
-        host = getCurrentInstance()
-        return () => h('div', { style: 'width:640px;height:480px' }, [h(component)])
+        mmdHost = getCurrentInstance()
+        return () => h('div', { style: 'width:640px;height:480px' }, [h(component, props)])
       },
     }), {
       global: { plugins: [pinia, createI18n({ legacy: false, locale: 'en', missingWarn: false, fallbackWarn: false, messages: { en: {} } })] },
     })
-    // Stage and PreviewStage load MMDScene on demand, so the instance appears once its import resolves.
-    await expect.poll(() => findInstance(host?.subTree, MMDScene)).toBeDefined()
-    return findInstance(host?.subTree, MMDScene)!
+    return mountedMMDScene()
+  }
+
+  /** The MMD scene that the stage shows now. Stage and PreviewStage load MMDScene on demand, so it appears once its import resolves. */
+  async function mountedMMDScene() {
+    await expect.poll(() => findInstance(mmdHost?.subTree, MMDScene)).toBeDefined()
+    return findInstance(mmdHost?.subTree, MMDScene)!
   }
 
   /** Records the gestures and mood doses the stage hands the MMD scene, through the exposed object it calls. */
@@ -948,7 +985,10 @@ describe('stage performance routing on MMD', () => {
   })
 
   it('keeps preview-stage usable without performance inputs', async () => {
-    const scene = await renderMMD(PreviewStage)
+    // The settings page owns the Live2D context of its preview and hands it over.
+    const live2dContext = live2d.createLive2D()
+    onTestFinished(() => live2dContext.dispose())
+    const scene = await renderMMD(PreviewStage, { live2dContext })
     expect(scene.props.performance).toEqual({ mode: 'idle', attention: 'camera', away: false, reactSeq: 0, reactKind: 'none' })
     expect(scene.props.mouthOpenSize).toBe(0)
     expect(scene.props.nowSpeaking).toBe(false)
@@ -956,11 +996,14 @@ describe('stage performance routing on MMD', () => {
   })
 
   it('sends synthesized speech level to MMD and the conductor, then stops sampling on VRM', async () => {
-    const scene = await renderMMD()
+    await renderMMD()
     const cards = useAiriCardStore()
     await cards.initialize()
     const sessions = useChatSessionStore()
     await sessions.initialize()
+    // The card store shows the avatar model of the active card when it initializes, so the stage returns to MMD here.
+    useSettingsStageModel().setStageModelRenderer('mmd')
+    const scene = await mountedMMDScene()
     const sessionId = sessions.activeSessionId
     onTestFinished(() => sessions.deleteSession(sessionId))
     const samples = shallowRef<number[]>([])
@@ -974,7 +1017,7 @@ describe('stage performance routing on MMD', () => {
     const pcm = pcmWav(sampleRate, sampleRate * 2, index => Math.sin(2 * Math.PI * 220 * index / sampleRate) * 10000)
     vi.spyOn(useSpeechStore(), 'createOutput').mockImplementation((_turn, _selection, output) => ({ ...output, synthesize: async () => new Blob([pcm], { type: 'audio/wav' }) }))
     const chat = useChatStore()
-    const context = { sessionId, turnId: 'mmd-tone', message: { role: 'user' as const, content: 'tone' }, contexts: {}, composedMessage: [] }
+    const context = { sessionId, turnId: 'mmd-tone', message: { role: 'user' as const, content: 'tone' }, contexts: {}, composedMessage: [], speaks: true }
     const mouthOpened = until(() => scene.props.mouthOpenSize as number, level => level > 0)
     const sampled = until(() => samples.value, levels => levels.some(level => level > 0))
     await chat.emitBeforeMessageComposedHooks('tone', context)

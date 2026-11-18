@@ -83,6 +83,27 @@ describe('exchange situation sensor', () => {
     expect(ended).toEqual([])
   })
 
+  it('never opens an exchange for a turn that does not speak on the host, such as a background task', async () => {
+    const sensor = start()
+    await reply(hooks, turn('task-turn', { sessionId: 'recipe-session', speaks: false }))
+
+    sensor.check(T0 + 2 * EXCHANGE_QUIET_MS)
+
+    expect(ended).toEqual([])
+  })
+
+  it('never opens an exchange for a notice turn, which the owner did not write', async () => {
+    const sensor = start()
+    await reply(hooks, turn('notice-turn', {
+      message: { role: 'user', content: 'The task finished.', createdAt: T0, id: 'message-notice', notice: { source: 'recipe:Research' } },
+      speaks: true,
+    }))
+
+    sensor.check(T0 + 2 * EXCHANGE_QUIET_MS)
+
+    expect(ended).toEqual([])
+  })
+
   it('opens an exchange on a user reply to an unprompted turn', async () => {
     const sensor = start()
     await reply(hooks, turn('turn-1', { origin: 'unprompted' }))

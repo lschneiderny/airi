@@ -12,6 +12,7 @@ import { getSpeechBusContext, voiceMessageCommand, voiceMessageDropped, voiceMes
 import { useChatStore } from './chat'
 import { useHearingStore } from './modules/hearing'
 import { useSettingsAudioDevice } from './settings/audio-device'
+import { useVoiceCaptureLeaseStore } from './voice-capture-lease'
 
 /** Resolves when encoding ends. A ready message can then be sent. A failed or discarded one cannot. */
 function encoded(message: VoiceMessage) {
@@ -34,6 +35,7 @@ export const useVoiceMessagesStore = defineStore('voice-messages', () => {
   const devices = useSettingsAudioDevice()
   const chat = useChatStore()
   const hearing = useHearingStore()
+  const captureLease = useVoiceCaptureLeaseStore()
   const messages = new Map<string, VoiceMessage>()
   const opened = new Set<string>()
   const isRecording = shallowRef(false)
@@ -61,9 +63,9 @@ export const useVoiceMessagesStore = defineStore('voice-messages', () => {
     return completed ? text.trim() : (text.trim() || undefined)
   }
 
-  /** Returns false for a used ID, and while the microphone is off. */
+  /** Returns false for a used ID, while the microphone is off, and while another window holds a capture lease. */
   function record(command: Extract<VoiceMessageCommand, { type: 'record' }>) {
-    if (opened.has(command.id) || devices.off)
+    if (opened.has(command.id) || devices.off || captureLease.held)
       return false
     opened.add(command.id)
     const message = new VoiceMessage(command.id, command.sessionId, devices.input, async (draft) => {
@@ -137,6 +139,15 @@ export const useVoiceMessagesStore = defineStore('voice-messages', () => {
             void message.finish()
         }
       }, { flush: 'sync' }),
+      // A capture lease needs the microphone alone. Keep what the user recorded as a draft that they can send or discard.
+      watch(() => captureLease.held, (held) => {
+        if (!held)
+          return
+        for (const message of messages.values()) {
+          if (['pending', 'capturing'].includes(message.snapshot.phase))
+            void message.finish()
+        }
+      }),
     ]
     publish()
     return () => {

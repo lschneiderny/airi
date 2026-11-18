@@ -67,6 +67,14 @@ export interface StreamingControlEmotionPayload {
   intensity: number
 }
 
+/** Selects one Live2D expression and its optional lifetime. */
+export interface StreamingControlExpressionPayload {
+  /** Exact expression name registered by the current Live2D model. */
+  name: string
+  /** Seconds before the runtime restores the model expression. */
+  duration?: number
+}
+
 export interface NormalizedActPayload {
   /** Emotion request emitted by the model, when present and supported. */
   emotion?: StreamingControlEmotionPayload
@@ -216,6 +224,49 @@ function normalizeCue(value: unknown): string | undefined {
   return normalized.length > 0
     ? normalized
     : undefined
+}
+
+function normalizeDuration(value: unknown): number | undefined {
+  const duration = typeof value === 'number'
+    ? value
+    : typeof value === 'string'
+      ? Number(value)
+      : Number.NaN
+
+  return Number.isFinite(duration) && duration > 0 ? duration : undefined
+}
+
+/**
+ * Normalizes the `expression` field of an ACT payload into a Live2D expression request.
+ *
+ * Null restores the model expression. `normalizeActPayload` keeps `expression` as a plain label instead;
+ * call this on the raw payload field when the consumer needs the name and lifetime.
+ */
+export function normalizeExpression(value: unknown): StreamingControlExpressionPayload | null | undefined {
+  if (value === null)
+    return null
+
+  if (typeof value === 'string') {
+    const name = value.trim()
+    return name.length > 0 ? { name } : undefined
+  }
+
+  if (typeof value !== 'object' || Array.isArray(value))
+    return undefined
+
+  const expression = value as { name?: unknown, duration?: unknown }
+  if (typeof expression.name !== 'string')
+    return undefined
+
+  const name = expression.name.trim()
+  if (name.length === 0)
+    return undefined
+
+  const duration = normalizeDuration(expression.duration)
+  return {
+    name,
+    ...(duration !== undefined && { duration }),
+  }
 }
 
 /**

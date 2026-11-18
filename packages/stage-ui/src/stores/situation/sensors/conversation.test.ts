@@ -63,6 +63,29 @@ describe('conversation situation sensor', () => {
     ])
   })
 
+  // A background task and a scene reply run through the same hooks. Neither is the owner speaking with the character.
+  it('records nothing for a turn that does not speak on the host', async () => {
+    startConversationSensor(hooks, observation => observations.push(observation))
+
+    await reply(hooks, turn('task-turn', { sessionId: 'recipe-session', speaks: false }))
+
+    expect(observations).toEqual([])
+  })
+
+  // A notice reports finished background work into the owner's conversation. Her reply to it is still her speaking.
+  it('records only the character for a notice turn, which the owner did not write', async () => {
+    startConversationSensor(hooks, observation => observations.push(observation))
+
+    await reply(hooks, turn('notice-turn', {
+      message: { role: 'user', content: 'The task finished.', createdAt: T0, id: 'message-notice', notice: { source: 'recipe:Research' } },
+      speaks: true,
+    }))
+
+    expect(observations).toEqual([
+      { kind: 'conversation', who: 'character', origin: 'user', atMs: T0 },
+    ])
+  })
+
   it('counts a turn once when its hooks fire again, and keeps turns of other sessions apart', async () => {
     startConversationSensor(hooks, observation => observations.push(observation))
 

@@ -64,3 +64,17 @@ export function ingestContextMessage(message: ContextMessage): ContextIngestResu
     entryCount: situation.state.contexts[observation.sourceKey] ? 1 : 0,
   }
 }
+
+/**
+ * Clears the context of a source that left, for example a module that was de-announced.
+ *
+ * Does nothing in a follower window, like {@link ingestContextMessage}.
+ */
+export function clearContextSource(sourceKey: string): void {
+  const situation = useSituationStore()
+  if (!situation.leading)
+    return
+
+  // The reducer deletes a source on empty text.
+  situation.ingest({ kind: 'context', sourceKey, text: '', atMs: Date.now(), salience: BASE_SALIENCE.context })
+}

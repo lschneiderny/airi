@@ -2,7 +2,7 @@ import type { ChatHistoryItem } from '../../../types/chat'
 
 import { describe, expect, it } from 'vitest'
 
-import { getChatHistoryItemCopyText, getChatHistoryItemKey, getUnpromptedCueKind, getWordlessCueWords, isWordlessReply, splitSlicesIntoBubbles } from './utils'
+import { getChatHistoryItemCopyText, getChatHistoryItemKey, getUnpromptedCueKind, getWordlessCueWords, isWordlessReply } from './utils'
 
 describe('getChatHistoryItemCopyText', () => {
   it('maps an unprompted trigger to its topic text instead of the prompt sent to the model', () => {
@@ -39,33 +39,6 @@ describe('getChatHistoryItemCopyText', () => {
 
   it('copies nothing from a wordless reply', () => {
     expect(getChatHistoryItemCopyText({ role: 'assistant', content: '', slices: [], tool_results: [], wordless: { cues: [{ emotion: 'happy' }] } })).toBe('')
-  })
-})
-
-describe('splitSlicesIntoBubbles', () => {
-  it('opens a bubble after each break and keeps the slice indexes', () => {
-    const bubbles = splitSlicesIntoBubbles([
-      { type: 'text', text: 'One' },
-      { type: 'break', seconds: 1 },
-      { type: 'tool-call', toolCall: { toolCallId: 'c', toolCallType: 'function', toolName: 'weather', args: '{}' } },
-      { type: 'text', text: 'Two' },
-    ])
-
-    expect(bubbles.map(bubble => bubble.map(({ index }) => index))).toEqual([[0], [2, 3]])
-  })
-
-  it('drops the empty bubbles of a leading, doubled, or trailing break', () => {
-    const bubbles = splitSlicesIntoBubbles([
-      { type: 'break', seconds: 1 },
-      { type: 'text', text: 'One' },
-      { type: 'break', seconds: 1 },
-      { type: 'break', seconds: 1 },
-      { type: 'text', text: 'Two' },
-      { type: 'break', seconds: 1 },
-    ])
-
-    expect(bubbles.map(bubble => bubble.map(({ slice }) => slice.type === 'text' ? slice.text : slice.type))).toEqual([['One'], ['Two']])
-    expect(splitSlicesIntoBubbles([])).toEqual([])
   })
 })
 

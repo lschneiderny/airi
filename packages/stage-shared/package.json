@@ -36,6 +36,7 @@
     "./screen-ambient-light": "./src/screen-ambient-light/index.ts",
     "./server-channel-qr": "./src/server-channel-qr.ts",
     "./situation": "./src/situation/index.ts",
+    "./speaker-model": "./src/speaker-model.ts",
     "./stage-contract": "./src/stage-contract/index.ts",
     "./stage-placement": "./src/stage-placement/index.ts",
     "./stage-world": "./src/stage-world/index.ts",
@@ -50,6 +51,7 @@
     "./webgpu": "./src/webgpu/index.ts"
   },
   "scripts": {
+    "test:run": "vitest run --config vitest.config.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

@@ -52,6 +52,8 @@ vi.mock('@moeru/eventa', async original => ({
 vi.mock('../../libs/electron/location', () => ({
   baseUrl: () => 'http://localhost',
   getElectronMainDirname: () => '/main',
+  getPreloadPath: () => '/main/preload/index.mjs',
+  getRendererRoot: () => '/main/renderer',
   withHashRoute: (_base: string, route: string) => route,
   load: async () => {},
 }))

@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { BasicButton, BottomDrawer, Checkbox, GhostButton, SelectTab, useTheme } from '@proj-airi/ui'
+import { useSpeechOutputControlStore } from '@proj-airi/stage-ui/stores/speech-output-control'
+import { BasicButton, BottomDrawer, GhostButton, RoundRange, SelectTab, useTheme } from '@proj-airi/ui'
 import { useEventListener } from '@vueuse/core'
-import { shallowRef } from 'vue'
+import { storeToRefs } from 'pinia'
+import { computed, shallowRef } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterLink } from 'vue-router'
 
@@ -18,6 +20,8 @@ const emit = defineEmits<{
 const characterVoiceEnabled = defineModel<boolean>('characterVoiceEnabled', { required: true })
 const { t } = useI18n()
 const { themeMode } = useTheme()
+const speechOutputControl = useSpeechOutputControlStore()
+const { speechVolume } = storeToRefs(speechOutputControl)
 const backgroundDialogOpen = shallowRef(false)
 const settingsOpen = shallowRef(false)
 const aboutOpen = shallowRef(false)
@@ -57,6 +61,20 @@ function finishSettingsClose() {
   }
   nextPanel.value = undefined
 }
+
+const characterVoiceVolume = computed({
+  get: () => Math.round(speechVolume.value * 100),
+  // The store couples zero volume with mute and restores the voice above 0.
+  set: percent => speechOutputControl.setSpeechVolume(percent / 100),
+})
+
+const characterVoiceIcon = computed(() => {
+  if (!characterVoiceEnabled.value || speechVolume.value === 0)
+    return 'i-solar:volume-cross-outline'
+  if (speechVolume.value < 0.5)
+    return 'i-solar:volume-small-outline'
+  return 'i-solar:volume-loud-outline'
+})
 </script>
 
 <template>
@@ -71,12 +89,16 @@ function finishSettingsClose() {
     <template #trigger>
       <BasicButton
         size="unset"
-        :aria-label="t('stage.mobile-tools.title')"
-        :title="t('stage.mobile-tools.title')"
+        :aria-label="t('stage.mobile-tools.menu')"
+        :title="t('stage.mobile-tools.menu')"
         data-testid="mobile-settings-button"
-        :class="['pointer-events-auto size-11 rounded-full bg-neutral-50/70 text-neutral-600 backdrop-blur-md dark:bg-neutral-900/70 dark:text-neutral-300', 'focus-visible:outline-2 focus-visible:outline-primary-500']"
+        :class="[
+          'pointer-events-auto relative size-11 rounded-full backdrop-blur-md',
+          'bg-neutral-50/70 text-neutral-600 dark:bg-neutral-900/70 dark:text-neutral-300',
+          'focus-visible:outline-2 focus-visible:outline-primary-500',
+        ]"
       >
-        <span aria-hidden="true" :class="['i-solar:settings-outline size-6']" />
+        <span aria-hidden="true" :class="['i-solar:hamburger-menu-outline size-6']" />
       </BasicButton>
     </template>
     <div :class="['mobile-settings-actions select-none', keyboardNavigation && 'keyboard-navigation']">
@@ -133,11 +155,33 @@ function finishSettingsClose() {
           {{ t('stage.mobile-tools.sound') }}
         </h3>
         <div :class="['overflow-hidden rounded-2xl bg-white dark:bg-neutral-800/60']">
-          <label :class="['min-h-13 flex cursor-pointer items-center gap-3 px-4 py-3']">
-            <span aria-hidden="true" :class="['i-solar:volume-loud-outline size-5 shrink-0 text-neutral-400']" />
-            <span :class="['flex-1 text-sm']">{{ t('stage.mobile-tools.character-voice') }}</span>
-            <Checkbox v-model="characterVoiceEnabled" :aria-label="t('stage.mobile-tools.character-voice')" />
-          </label>
+          <div :class="['min-h-13 flex items-center gap-3 px-4 py-3']">
+            <BasicButton
+              size="unset"
+              :aria-label="characterVoiceEnabled ? t('stage.speech-output.mute') : t('stage.speech-output.unmute')"
+              :class="[
+                'size-9 shrink-0 rounded-full',
+                'text-neutral-500 dark:text-neutral-400',
+                characterVoiceEnabled ? '' : 'text-neutral-400 dark:text-neutral-500',
+              ]"
+              @click="characterVoiceEnabled = !characterVoiceEnabled"
+            >
+              <span aria-hidden="true" :class="[characterVoiceIcon, 'size-5']" />
+            </BasicButton>
+            <!--
+              NOTICE:
+              On iOS, a touch drag on this range does not move the value.
+              The modal drawer locks body scroll. The lock adds a document `touchmove` listener that cancels moves outside a scrollable element.
+              Source: reka-ui `dist/shared/useBodyScrollLock.js`, `preventDefault` and `checkOverflowScroll`.
+              Remove `@touchmove.stop` when reka-ui stops cancelling `touchmove` on range inputs.
+            -->
+            <RoundRange
+              v-model="characterVoiceVolume"
+              :aria-label="t('stage.mobile-tools.character-voice')"
+              :class="['w-full flex-1', !characterVoiceEnabled && 'opacity-50']"
+              @touchmove.stop
+            />
+          </div>
         </div>
       </section>
       <section :class="['mb-4']">
@@ -188,7 +232,8 @@ function finishSettingsClose() {
 }
 
 .mobile-settings-actions.keyboard-navigation :deep(button:focus-visible),
-.mobile-settings-actions.keyboard-navigation :deep(a:focus-visible) {
+.mobile-settings-actions.keyboard-navigation :deep(a:focus-visible),
+.mobile-settings-actions.keyboard-navigation :deep(input[type='range']:focus-visible) {
   @apply rounded-lg outline outline-2 outline-neutral-500;
   outline-offset: -4px;
 }

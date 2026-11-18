@@ -1,6 +1,7 @@
 import type { PcmBlock } from '@proj-airi/pipelines-audio'
 
-import { AudioInput, capture, createPushStream, Playback } from '@proj-airi/pipelines-audio'
+import { AudioInput, capture, Playback } from '@proj-airi/pipelines-audio'
+import { createPushStream } from '@proj-airi/stream-kit'
 import { expect, it, onTestFinished, vi } from 'vitest'
 
 import { BrowserPlayback, mediaStreamSource, microphoneSource, toMediaStream } from './browser'

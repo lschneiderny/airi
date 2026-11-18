@@ -33,7 +33,6 @@ interface AiriCardEditorModules {
   consciousness: AiriExtension['modules']['consciousness']
   vision: AiriExtension['modules']['vision']
   speech: Pick<AiriExtension['modules']['speech'], 'provider' | 'model' | 'voice_id'>
-  displayModelId?: string
   artistry: Pick<
     NonNullable<AiriExtension['modules']['artistry']>,
     | 'provider'
@@ -54,13 +53,14 @@ interface AiriCardEditorModules {
  */
 export function getAiriCardEditorModuleSettings(
   card: Card | undefined,
-): Pick<AiriCardEditorModules, 'consciousness' | 'vision' | 'speech' | 'displayModelId' | 'performance' | 'temperature'> & { contextWindow: number } {
-  const modules = getAiriCardModules(card?.extensions?.airi)
-  const extension = card?.extensions?.airi
+): Pick<AiriCardEditorModules, 'consciousness' | 'vision' | 'speech' | 'performance' | 'temperature'> & { contextWindow: number, displayModelId: string } {
+  const stored = card?.extensions?.airi
+  const extension = isAiriExtension(stored) ? stored : undefined
+  const modules = getAiriCardModules(extension)
 
   return {
-    contextWindow: normalizeContextWindow(isRecord(extension) ? extension.contextWindow : undefined),
-    temperature: normalizeTemperature(isRecord(extension) ? extension.temperature : undefined),
+    contextWindow: normalizeContextWindow(isRecord(stored) ? stored.contextWindow : undefined),
+    temperature: normalizeTemperature(isRecord(stored) ? stored.temperature : undefined),
     ...(modules?.performance === undefined ? {} : { performance: parse(PerformanceProfileSchema, modules.performance) }),
     consciousness: {
       provider: getModuleString(modules?.consciousness, 'provider'),
@@ -75,7 +75,7 @@ export function getAiriCardEditorModuleSettings(
       model: getModuleString(modules?.speech, 'model'),
       voice_id: getModuleString(modules?.speech, 'voice_id'),
     },
-    displayModelId: getModuleString(modules, 'displayModelId'),
+    displayModelId: extension?.avatarModels?.find(model => model.id === extension.defaultAvatarModelId)?.displayModelId ?? '',
   }
 }
 
@@ -170,8 +170,9 @@ export function applyAiriCardEditorModules(
   const existing = isAiriExtension(card.extensions?.airi)
     ? card.extensions.airi
     : undefined
-  const { contextWindow, temperature: editedTemperature, ...editedModules } = edited
-  const temperature = normalizeTemperature(editedTemperature)
+  const temperature = normalizeTemperature(edited.temperature)
+  const existingModules = { ...existing?.modules }
+  Reflect.deleteProperty(existingModules, 'displayModelId')
 
   return {
     ...card,
@@ -180,11 +181,13 @@ export function applyAiriCardEditorModules(
       airi: {
         // The form states the temperature on every save, so the stored one is replaced or removed, never kept.
         ...(existing && omit(existing, ['temperature'])),
-        ...(contextWindow === undefined ? {} : { contextWindow: normalizeContextWindow(contextWindow) }),
+        ...(edited.contextWindow === undefined ? {} : { contextWindow: normalizeContextWindow(edited.contextWindow) }),
         ...(temperature === undefined ? {} : { temperature }),
+        avatarModels: existing?.avatarModels ?? [],
         modules: {
-          ...existing?.modules,
-          ...editedModules,
+          ...existingModules,
+          consciousness: edited.consciousness,
+          vision: edited.vision,
           ...(edited.performance === undefined
             ? {}
             : {

@@ -228,7 +228,7 @@ export function streamResponses(input: {
           maxOutputTokens: next.maxTokens ?? input.options?.maxTokens,
           headers: mergeRequestHeaders(nextRequest.config.headers, next.headers),
           tools: toolsSupported
-            ? nextRequest.webSearch && hostedSearchAllowed ? [...(next.tools ?? []), { type: 'web_search' as const }] : next.tools
+            ? nextRequest.webSearch && hostedSearchAllowed && input.options?.providerTools !== false ? [...(next.tools ?? []), { type: 'web_search' as const }] : next.tools
             : undefined,
           toolChoice: undefined,
         })

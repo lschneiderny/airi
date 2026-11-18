@@ -368,4 +368,22 @@ describe('setupAutoUpdater', () => {
 
     expect(updaterState.instance.quitAndInstall).toHaveBeenCalledTimes(1)
   })
+
+  it.each([
+    { name: 'a Flatpak sandbox', env: { FLATPAK_ID: 'ai.moeru.airi' }, externallyUpdated: true },
+    { name: 'a Steam build', env: { VITE_DISTRIBUTION: 'steam' }, externallyUpdated: true },
+    { name: 'a Nix package', env: { AIRI_DISTRIBUTION: 'nix' }, externallyUpdated: true },
+    { name: 'a direct download', env: {}, externallyUpdated: false },
+  ])('reports whether a store or a package manager updates $name', async ({ env, externallyUpdated }) => {
+    vi.stubEnv('FLATPAK_ID', undefined)
+    vi.stubEnv('VITE_DISTRIBUTION', undefined)
+    vi.stubEnv('AIRI_DISTRIBUTION', undefined)
+    for (const [key, value] of Object.entries(env))
+      vi.stubEnv(key, value)
+
+    const { isExternallyUpdatedInstall } = await import('./auto-updater')
+
+    expect(isExternallyUpdatedInstall()).toBe(externallyUpdated)
+    vi.unstubAllEnvs()
+  })
 })

@@ -16,6 +16,7 @@ import { createServerChannelService } from '../../services/airi/channel-server'
 import { createI18nService } from '../../services/airi/i18n'
 import { createAppService, createAppVersionService, createDesktopActivityService, createForegroundWindowService, createHostCapabilitiesService, createPowerMonitorService, createScreenService, createSystemPreferencesService, createWindowService } from '../../services/electron'
 import { readWindowRect, requestKeepAbove } from '../../services/electron/coordinates'
+import { WindowBackdropService } from '../../services/electron/window-backdrop'
 import { placeWindow } from './placement'
 
 export function toggleWindowShow(window?: BrowserWindow | null): void {
@@ -184,10 +185,12 @@ export async function setupBaseWindowElectronInvokes(params: {
   i18n: I18n
   /** The Godot stage sidecar's pid, for windows that own the sidecar; see `createForegroundWindowService`. */
   getSidecarPid?: () => number | null
+  /** Owns the window's pin instead of the renderer request applying it directly. */
+  setAlwaysOnTop?: (flag: boolean) => void
 }) {
   createHostCapabilitiesService({ context: params.context, window: params.window })
   createScreenService({ context: params.context, window: params.window })
-  createWindowService({ context: params.context, window: params.window })
+  createWindowService({ context: params.context, window: params.window, setAlwaysOnTop: params.setAlwaysOnTop })
   createAppService({ context: params.context, window: params.window })
   createAppVersionService({ window: params.window })
   const { bridge } = isLinux
@@ -197,6 +200,7 @@ export async function setupBaseWindowElectronInvokes(params: {
   createDesktopActivityService({ context: params.context, window: params.window })
   createForegroundWindowService({ context: params.context, window: params.window, getSidecarPid: params.getSidecarPid, bridge })
   createSystemPreferencesService({ context: params.context, window: params.window })
+  WindowBackdropService.install(params.window)
 
   await createI18nService({ context: params.context, window: params.window, i18n: params.i18n })
 

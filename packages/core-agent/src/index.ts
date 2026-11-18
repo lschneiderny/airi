@@ -27,6 +27,7 @@ export type {
   ChatOrchestratorSessionPort,
   ChatOrchestratorStageConfig,
   QueuedSendSnapshot,
+  ToolContent,
 } from './runtime/chat-orchestrator-runtime'
 export { createChatOrchestratorRuntime } from './runtime/chat-orchestrator-runtime'
 export type { ContextHistoryEntry, ContextIngestResult, ContextRegistry } from './runtime/context-registry'
@@ -41,6 +42,8 @@ export {
   modelKey,
   streamFrom,
 } from './runtime/llm-service'
+export { decisionOptions, isBackgroundRecipe, judgeDecision, matchKeywordRecipes, MODEL_DECIDES_STEPS, usableRecipes } from './runtime/recipe'
+export type { DecisionAction, DecisionOption, DecisionQuestion, Recipe, RecipeDecision } from './runtime/recipe'
 export { ChunkInvariantError, replayReply, replayReplyAtEveryChunking } from './runtime/reply-replay'
 export type { ReplyReplay } from './runtime/reply-replay'
 export {
@@ -56,13 +59,16 @@ export { mergeLoadedSessionMessages } from './session/merge-loaded-session-messa
 export type {
   ChatAssistantMessage,
   ChatHistoryItem,
+  ChatInvokedSkill,
   ChatMessage,
   ChatSlices,
   ChatSlicesBreak,
+  ChatSlicesCard,
   ChatSlicesSticker,
   ChatSlicesText,
   ChatSlicesToolCall,
   ChatSlicesToolCallResult,
+  ChatSlicesToolContent,
   ChatStreamEvent,
   ChatStreamEventContext,
   ChatToolReference,

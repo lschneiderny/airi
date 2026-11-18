@@ -16,7 +16,8 @@
 - Register WebSockets and live transcription before session/body-limit middleware.
 - Liveness avoids external probes. Readiness checks PostgreSQL and Redis, not provider credentials.
 - Rate limits are process-local, not distributed.
-- `ApiError` in `utils/error.ts` owns client error envelopes. Keep upstream bodies and secrets out of gateway details.
+- `ApiError` in `@proj-airi/http-error-shared` owns client error envelopes. Keep upstream bodies and secrets out of gateway details.
+- A Redis Stream publish failure must fail the request, so the caller retries. Never catch it.
 
 ## Public transport policy
 - This overrides the root **Backward Compatibility** ban only for existing deployed chat transport contracts.

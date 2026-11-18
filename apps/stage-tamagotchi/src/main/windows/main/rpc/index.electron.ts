@@ -1,4 +1,4 @@
-import type { BrowserWindow } from 'electron'
+import type { BrowserWindow, Rectangle } from 'electron'
 
 import type { I18n } from '../../../libs/i18n'
 import type { ServerChannel } from '../../../services/airi/channel-server'
@@ -40,7 +40,6 @@ import { registerPerfRecording } from '../../../services/airi/perf-recording/reg
 import { createWidgetsService } from '../../../services/airi/widgets'
 import { createAutoUpdaterService } from '../../../services/electron'
 import { setupBaseWindowElectronInvokes } from '../../shared/window'
-import { centerUserFacingWindow } from '../../stage/identity'
 
 export async function setupMainWindowElectronInvokes(params: {
   window: BrowserWindow
@@ -59,6 +58,10 @@ export async function setupMainWindowElectronInvokes(params: {
   perfRecording: PerfRecordingService
   inlayWindow: () => Promise<BrowserWindow>
   globalShortcut: GlobalShortcutService
+  /** Owns the main window's pin, which fullscreen mode overrides. */
+  setPinned: (pinned: boolean) => void
+  /** Centers the main window on its display, and returns its new bounds. Fullscreen mode centers the bounds it returns to. */
+  center: () => Rectangle
 }) {
   const { context } = createWindowContext(params.window)
 
@@ -67,6 +70,7 @@ export async function setupMainWindowElectronInvokes(params: {
     window: params.window,
     serverChannel: params.serverChannel,
     i18n: params.i18n,
+    setAlwaysOnTop: params.setPinned,
     getSidecarPid: () => params.godotStageManager.getStatus().pid,
   })
   // The stage renderer owns the voice host, so it registers the Push to Talk hold shortcut and receives its key events.
@@ -81,7 +85,7 @@ export async function setupMainWindowElectronInvokes(params: {
   const stopPerfRecording = registerPerfRecording(context, params.window, params.perfRecording)
   onWindowClosed(params.window, stopPerfRecording)
 
-  defineInvokeHandler(context, electronCenterMainWindow, () => centerUserFacingWindow(params.window))
+  defineInvokeHandler(context, electronCenterMainWindow, () => params.center())
   defineInvokeHandler(context, electronOpenMainDevtools, () => params.window.webContents.openDevTools({ mode: 'detach' }))
   defineInvokeHandler(context, electronOpenEditor, () => params.editorWindow.openWindow())
   // Speech opens the inlay without focus, so the user can keep working in another app while speaking.

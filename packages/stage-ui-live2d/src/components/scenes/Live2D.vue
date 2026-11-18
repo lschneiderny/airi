@@ -13,6 +13,7 @@ import type { PlacementRect } from '@proj-airi/stage-shared/stage-placement'
 import type { Live2DEyeFocusSource } from '../../composables/live2d'
 import type { SpeechEvent } from '../../composables/live2d/expression/slots'
 import type { NaturalChatActivity, NaturalChatTarget } from '../../composables/live2d/natural-chat-input'
+import type { Live2DContext } from '../../contexts/live2d'
 
 import { presenceBubbleIdle } from '@proj-airi/stage-shared'
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
@@ -26,6 +27,7 @@ import Live2DModel from './live2d/Model.vue'
 import Live2DPresenceBubble from './live2d/presence-bubble.vue'
 
 import { useLive2DEyeFocusFor, useLive2DNaturalSettings, useSettingsLive2d } from '../../composables/live2d'
+import { createLive2D, provideLive2D } from '../../contexts/live2d'
 import { createCursorExpiry } from './live2d/cursor-expiry'
 
 import '../../utils/live2d-zip-loader'
@@ -33,6 +35,8 @@ import '../../utils/live2d-opfs-registration'
 
 const props = withDefaults(defineProps<{
   cursorPosition?: Live2DEyeFocusSource
+  /** Controls of this renderer. The scene owns a new context when this is not set. */
+  context?: Live2DContext
   modelSrc?: string
   modelId?: string
   /** Scene painted inside the canvas, behind the model. */
@@ -83,6 +87,9 @@ const emit = defineEmits<{
 const componentState = defineModel<'pending' | 'loading' | 'mounted'>('state', { default: 'pending' })
 const componentStateCanvas = defineModel<'pending' | 'loading' | 'mounted'>('canvasState', { default: 'pending' })
 const componentStateModel = defineModel<'pending' | 'loading' | 'mounted'>('modelState', { default: 'pending' })
+
+const live2d = props.context ?? createLive2D()
+provideLive2D(live2d)
 
 const live2dCanvasRef = ref<InstanceType<typeof Live2DCanvas>>()
 const live2dModelRef = ref<InstanceType<typeof Live2DModel>>()
@@ -159,6 +166,8 @@ watch(live2dMotionDriver, (driver, previousDriver) => {
 
 onUnmounted(() => {
   cursorExpiry.dispose()
+  if (!props.context)
+    live2d.dispose()
 })
 
 watch([componentStateModel, componentStateCanvas], () => {

@@ -10,7 +10,7 @@ import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import { createPinia, disposePinia } from 'pinia'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { cleanup, render } from 'vitest-browser-vue'
-import { defineComponent, h } from 'vue'
+import { userEvent } from 'vitest/browser'
 import { createI18n } from 'vue-i18n'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
@@ -29,10 +29,6 @@ vi.mock('vue-sonner', async importOriginal => ({
 }))
 
 const records = localforage.createInstance({ name: 'airi-memory', storeName: 'entries' })
-const InputFileCardStub = defineComponent({
-  emits: ['update:modelValue'],
-  setup: (_, { emit }) => () => h('button', { onClick: () => emit('update:modelValue', [new File(['zip'], 'card.zip')]) }, 'Import fixture'),
-})
 let pinia: ReturnType<typeof createPinia>
 
 beforeEach(async () => {
@@ -60,7 +56,6 @@ it('restores imported memories and character state under the newly created card 
   const screen = await render(AiriCards, {
     global: {
       plugins: [pinia, router, createI18n({ legacy: false, locale: 'en', messages: { en } })],
-      stubs: { InputFileCard: InputFileCardStub },
     },
   })
   const cards = useAiriCardStore(pinia)
@@ -84,7 +79,8 @@ it('restores imported memories and character state under the newly created card 
     })
   })
   try {
-    await screen.getByRole('button', { name: 'Import fixture' }).click()
+    // The upload button opens this input. The package reader is mocked, so the file content is not read.
+    await userEvent.upload(screen.container.querySelector('input[type="file"]')!, new File(['zip'], 'card.zip'))
     await imported
     expect(cards.getCard(newCardId)?.name).toBe('Imported Luna')
     expect(memory.entries.map(({ description, body, persona }) => ({ description, body, persona }))).toEqual(memories.map(entry => ({ ...entry, persona: newCardId })))

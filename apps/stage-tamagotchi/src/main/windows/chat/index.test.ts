@@ -9,6 +9,7 @@ import {
   electronChatFloatingMoveTo,
   electronChatWindowDraftSettled,
   electronChatWindowSetPreferences,
+  electronChatWindowTakeDraft,
 } from '../../../shared/eventa'
 import { setupChatWindowManager } from './index'
 
@@ -139,12 +140,16 @@ vi.mock('../../libs/electron/window-context', () => ({
 vi.mock('../../libs/electron/location', () => ({
   baseUrl: () => 'http://localhost',
   getElectronMainDirname: () => '/main',
+  getPreloadPath: () => '/main/preload/index.mjs',
+  getRendererRoot: () => '/main/renderer',
   withHashRoute: (_base: string, route: string) => route,
-  // The chat page mounts once loaded, and reports the draft handover as
-  // useChatDraftHandover does.
+  // The chat page mounts once loaded. It takes the draft and then reports the handover, as
+  // useChatDraftHandover does. A report counts only after the page took the draft.
   load: async (window: object) => {
     queueMicrotask(() => {
-      mocks.handlers.get(window)?.get(electronChatWindowDraftSettled)?.({ restored: mocks.restoresDraft })
+      const handlers = mocks.handlers.get(window)
+      handlers?.get(electronChatWindowTakeDraft)?.()
+      handlers?.get(electronChatWindowDraftSettled)?.({ restored: mocks.restoresDraft })
     })
   },
 }))
@@ -173,12 +178,13 @@ const hidden: ChatAttentionTarget = { visible: false, bounds: null }
  * `placement`. `targets` records every target the main window would receive.
  */
 function setup(mode: ChatWindowMode, placement: ChatFloatingPlacement) {
-  mocks.config = { mode, placement, pinned: true, floating: { width: 380, height: 560, x: 1200, y: 200 } }
+  mocks.config = { mode, placement, danmaku: false, pinned: true, floating: { width: 380, height: 560, x: 1200, y: 200 } }
   const main = new mocks.FakeBrowserWindow()
   main.bounds = { x: 700, y: 300, width: 450, height: 600 }
   const manager = setupChatWindowManager({
     getMainWindow: () => main as never,
     openSettingsWindow: async () => {},
+    openFullscreenChat: async () => {},
     widgetsManager: {} as never,
     serverChannel: {} as never,
     mcpManager: {} as never,
@@ -204,7 +210,7 @@ describe('chat attention target', () => {
     mocks.restoresDraft = true
   })
 
-  describe.each(['attached', 'free', 'danmaku'] as const)('%s floating chat', (placement) => {
+  describe.each(['attached', 'free'] as const)('%s floating chat', (placement) => {
     it('points at the chat window while it is shown and unfolded', async () => {
       const { manager, targets } = setup('floating', placement)
 
@@ -241,8 +247,8 @@ describe('chat attention target', () => {
     expect(targets).toEqual([{ visible: true, bounds: chat.getBounds() }])
   })
 
-  it.each(['free', 'danmaku'] as const)('leaves a %s chat where it is when the main window moves', async (placement) => {
-    const { main, manager, targets } = setup('floating', placement)
+  it('leaves a free chat where it is when the main window moves', async () => {
+    const { main, manager, targets } = setup('floating', 'free')
     await manager.open()
     targets.length = 0
 

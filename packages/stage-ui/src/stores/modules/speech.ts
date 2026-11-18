@@ -458,12 +458,13 @@ export const useSpeechStore = defineStore('speech', () => {
     const useSSML = ssmlEnabled.value
     const canUseSSML = ['elevenlabs', 'microsoft-speech', 'azure-speech'].includes(providerId) || (providerId === 'alibaba-cloud-model-studio' && model === 'cosyvoice-v2')
     const pitchValue = pitch.value
+    const language = voice?.languages[0]?.code
     if (!providerId || providerId === 'speech-noop')
       return { ...output, synthesize: async () => null }
     if (!model || !voiceId)
       throw new Error('Speech requires a model and voice')
     const provider = providersStore.getProviderInstance<SpeechProviderWithExtraOptions<string, Record<string, unknown>>>(providerId)
-    return { ...output, synthesize: async (request, signal) => {
+    return { ...output, language, synthesize: async (request, signal) => {
       signal = AbortSignal.any([signal, synthesisSignal])
       signal.throwIfAborted()
       const client = await provider

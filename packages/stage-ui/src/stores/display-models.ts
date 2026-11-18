@@ -1,9 +1,9 @@
-import localforage from 'localforage'
-
-import { until } from '@vueuse/core'
+import { createEventHook, until } from '@vueuse/core'
 import { nanoid } from 'nanoid'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+
+import { displayModelsRepo } from '../database/repos/display-models.repo'
 
 export enum DisplayModelFormat {
   Live2dZip = 'live2d-zip',
@@ -58,6 +58,10 @@ const displayModelsPresets: DisplayModel[] = [
 export const useDisplayModelsStore = defineStore('display-models', () => {
   const displayModels = ref<DisplayModel[]>([])
 
+  // Reports the IDs of models that were removed from this device. The card store removes the
+  // references to reported IDs.
+  const displayModelsDeleted = createEventHook<[deletedIds: string[]]>()
+
   let generateLive2DPreview: (file: File) => Promise<string | undefined>
   let generateVrmPreview: (file: File) => Promise<string | undefined>
   let generateSpinePreview: (file: File) => Promise<string | undefined>
@@ -65,26 +69,31 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
   let generateMMDPreview: (file: File) => Promise<string | undefined>
 
   const displayModelsFromIndexedDBLoading = ref(false)
+  let displayModelsLoadPromise: Promise<void> | undefined
 
-  async function loadDisplayModelsFromIndexedDB() {
-    await until(displayModelsFromIndexedDBLoading).toBe(false)
+  function loadDisplayModelsFromIndexedDB() {
+    if (!displayModelsLoadPromise) {
+      displayModelsLoadPromise = (async () => {
+        await until(displayModelsFromIndexedDBLoading).toBe(false)
 
-    displayModelsFromIndexedDBLoading.value = true
-    const models = [...displayModelsPresets]
+        displayModelsFromIndexedDBLoading.value = true
+        const models = [...displayModelsPresets]
 
-    try {
-      await localforage.iterate<{ format: DisplayModelFormat, file: File, importedAt: number, previewImage?: string }, void>((val, key) => {
-        if (key.startsWith('display-model-')) {
-          models.push({ id: key, format: val.format, type: 'file', file: val.file, name: val.file.name, importedAt: val.importedAt, previewImage: val.previewImage })
+        try {
+          models.push(...await displayModelsRepo.list())
         }
+        catch (err) {
+          console.error(err)
+        }
+
+        displayModels.value = models.sort((a, b) => b.importedAt - a.importedAt)
+        displayModelsFromIndexedDBLoading.value = false
+      })().finally(() => {
+        displayModelsLoadPromise = undefined
       })
     }
-    catch (err) {
-      console.error(err)
-    }
 
-    displayModels.value = models.sort((a, b) => b.importedAt - a.importedAt)
-    displayModelsFromIndexedDBLoading.value = false
+    return displayModelsLoadPromise
   }
 
   async function getDisplayModel(id: string) {
@@ -99,12 +108,12 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
     if (modelFromMemory)
       return modelFromMemory
 
-    const modelFromFile = await localforage.getItem<DisplayModelFile>(id)
+    const modelFromFile = await displayModelsRepo.get(id)
     if (modelFromFile) {
       return modelFromFile
     }
 
-    // Fallback to in-memory presets if not found in localforage
+    // Fallback to in-memory presets if not found in storage
     return displayModelsPresets.find(model => model.id === id)
   }
 
@@ -114,27 +123,18 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
   const loadTachieModelPreview = (file: File) => generateTachiePreview(file)
   const loadMMDModelPreview = (file: File) => generateMMDPreview(file)
 
-  async function addDisplayModel(format: DisplayModelFormat, file: File) {
-    // The preview generators exist only after initialize(); an import right after launch must wait for it.
-    await initialize()
-    await until(displayModelsFromIndexedDBLoading).toBe(false)
-    const newDisplayModel: DisplayModelFile = { id: `display-model-${nanoid()}`, format, type: 'file', file, name: file.name, importedAt: Date.now() }
-
+  async function generatePreview(format: DisplayModelFormat, file: File): Promise<string | undefined> {
     if (format === DisplayModelFormat.Live2dZip) {
-      const previewImage = await loadLive2DModelPreview(file)
-      newDisplayModel.previewImage = previewImage
+      return loadLive2DModelPreview(file)
     }
     else if (format === DisplayModelFormat.VRM) {
-      const previewImage = await loadVrmModelPreview(file)
-      newDisplayModel.previewImage = previewImage
+      return loadVrmModelPreview(file)
     }
     else if (format === DisplayModelFormat.SpineZip) {
-      const previewImage = await loadSpineModelPreview(file)
-      newDisplayModel.previewImage = previewImage
+      return loadSpineModelPreview(file)
     }
     else if (format === DisplayModelFormat.TachieZip) {
-      const previewImage = await loadTachieModelPreview(file)
-      newDisplayModel.previewImage = previewImage
+      return loadTachieModelPreview(file)
     }
     else if (format === DisplayModelFormat.PMXZip || format === DisplayModelFormat.PMXDirectory || format === DisplayModelFormat.PMD) {
       // NOTICE:
@@ -146,12 +146,22 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
       try {
         if (!generateMMDPreview)
           throw new Error('MMD preview module not initialized')
-        newDisplayModel.previewImage = await loadMMDModelPreview(file)
+        return await loadMMDModelPreview(file)
       }
       catch (err) {
         console.error('[display-models] MMD preview generation failed; importing without a thumbnail:', err)
       }
     }
+    return undefined
+  }
+
+  async function addDisplayModel(format: DisplayModelFormat, file: File) {
+    // The preview generators exist only after initialize(); an import right after launch must wait for it.
+    await initialize()
+    await until(displayModelsFromIndexedDBLoading).toBe(false)
+    const newDisplayModel: DisplayModelFile = { id: `display-model-${nanoid()}`, format, type: 'file', file, name: file.name, importedAt: Date.now() }
+
+    newDisplayModel.previewImage = await generatePreview(format, file)
 
     displayModels.value.unshift(newDisplayModel)
 
@@ -162,7 +172,7 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
     // Source/context: model-selector import flow -> settings-stage-model.updateStageModel().
     // Removal condition: imported display models are persisted through a transactional queue
     // that blocks pick/navigation until the write is durably complete.
-    await localforage.setItem<DisplayModelFile>(newDisplayModel.id, newDisplayModel)
+    await displayModelsRepo.save(newDisplayModel)
       .catch(err => console.error(err))
 
     return newDisplayModel
@@ -171,7 +181,7 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
   async function renameDisplayModel(id: string, name: string) {
     await until(displayModelsFromIndexedDBLoading).toBe(false)
     const displayModel = id.startsWith('display-model-')
-      ? await localforage.getItem<DisplayModelFile>(id)
+      ? await displayModelsRepo.get(id)
       : displayModels.value.find(m => m.id === id)
 
     if (!displayModel)
@@ -185,26 +195,32 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
       displayModels.value[index].name = name
     }
 
-    // Persist if it's a file-based model
-    if (id.startsWith('display-model-')) {
-      await localforage.setItem(id, displayModel)
-    }
+    if (displayModel.type === 'file')
+      await displayModelsRepo.save(displayModel)
   }
 
-  async function removeDisplayModel(id: string) {
+  async function removeLocalCopy(id: string) {
     await until(displayModelsFromIndexedDBLoading).toBe(false)
-    await localforage.removeItem(id)
+    await displayModelsRepo.remove(id)
     displayModels.value = displayModels.value.filter(model => model.id !== id)
+  }
+
+  /** Removes the model from this device and reports it, so the card store drops its references. */
+  async function removeDisplayModel(id: string) {
+    await removeLocalCopy(id)
+    await displayModelsDeleted.trigger([id])
   }
 
   async function resetDisplayModels() {
     await loadDisplayModelsFromIndexedDB()
     const userModelIds = displayModels.value.filter(model => model.type === 'file').map(model => model.id)
     for (const id of userModelIds) {
-      await removeDisplayModel(id)
+      await removeLocalCopy(id)
     }
 
     displayModels.value = [...displayModelsPresets].sort((a, b) => b.importedAt - a.importedAt)
+    if (userModelIds.length > 0)
+      await displayModelsDeleted.trigger(userModelIds)
   }
 
   let initialization: Promise<void> | undefined
@@ -255,5 +271,6 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
     renameDisplayModel,
     removeDisplayModel,
     resetDisplayModels,
+    onDisplayModelsDeleted: displayModelsDeleted.on,
   }
 })

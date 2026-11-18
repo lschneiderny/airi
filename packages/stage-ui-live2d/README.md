@@ -436,6 +436,27 @@ The settings travel on the `useNaturalMotionDiagnostics` channel as Eventa event
 
 Changed gains move every liveliness statistic. Run a capture or a gate only under "Current".
 
+### Live2D context
+
+Each `Live2DRoot` owns one isolated renderer context. The context runs beside the expression catalog above: it registers the expressions and motions of the loaded model, and it writes no expression parameter until an expression is activated through it.
+
+Use `Live2DScene` when a Stage surface needs a complete Live2D renderer. Pass a
+`Live2DContext` when the parent must inspect or control that renderer.
+
+Use the context APIs for expression and motion registration. Character-owned
+control policies select which registered controls AIRI can use.
+
+```ts
+import { createLive2D } from '@proj-airi/stage-ui-live2d'
+
+const live2d = createLive2D({
+  controlPolicy: () => characterAvatarModel.config.controls,
+})
+
+await live2d.expressions.execute({ name: 'happy', duration: 3 })
+await live2d.motions.execute('motions/wave.motion3.json')
+```
+
 ## When to use
 
 Use this package to render Live2D models in AIRI hosts.
@@ -450,3 +471,10 @@ Do not use Natural to play recorded or authored motion; use model motions or MAG
 Do not use Natural to control physics outputs directly, or to drive the mouth during speech; lipsync owns the mouth.
 Do not use the expression store to decide which expression to show; the decider in `@proj-airi/stage-shared/expression-performance` owns that choice.
 Use a different renderer package for VRM, MMD, or other model formats.
+
+Do not store Character state or cross-window state in this package. Keep that
+state in `@proj-airi/stage-ui` and pass the required configuration to the
+Live2D context.
+
+Do not use the renderer context as persistent storage. Its state ends when its
+owning Vue scope or renderer is disposed.

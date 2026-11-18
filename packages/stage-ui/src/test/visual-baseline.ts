@@ -3,7 +3,7 @@ import type { Locator } from 'vitest/browser'
 import type { VNodeChild } from 'vue'
 
 import { render } from 'vitest-browser-vue'
-import { server } from 'vitest/browser'
+import { server, userEvent } from 'vitest/browser'
 
 import VisualBaselineFrame from './visual-baseline-frame.vue'
 
@@ -67,5 +67,10 @@ export async function renderVisualBaseline(
   })
   await waitForBundledFont()
 
-  return screen.getByTestId('visual-baseline')
+  const frame = screen.getByTestId('visual-baseline')
+  // All browser tests share one page, and its pointer stays where the last test left it. Over a control it would draw
+  // the hover state into the capture. The corner of the frame is panel padding, which no control covers.
+  await userEvent.hover(frame, { position: { x: 1, y: 1 } })
+
+  return frame
 }

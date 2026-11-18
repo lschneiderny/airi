@@ -10,10 +10,20 @@ export function extractMessageText(message: ChatHistoryItem): string {
     if (Array.isArray(assistant.slices) && assistant.slices.some(slice => slice.type === 'break') && typeof assistant.content === 'string')
       return assistant.content
     if (Array.isArray(assistant.slices) && assistant.slices.length > 0) {
-      const text = assistant.slices
-        .filter((slice): slice is { type: 'text', text: string } => slice.type === 'text')
-        .map(slice => slice.text)
-        .join('')
+      // Text slices of one run join as they streamed. A card ends the run and adds its text as a paragraph.
+      const blocks: string[] = []
+      let run = ''
+      for (const slice of assistant.slices) {
+        if (slice.type === 'text') {
+          run += slice.text
+        }
+        else if (slice.type === 'card') {
+          blocks.push(run, slice.text)
+          run = ''
+        }
+      }
+      blocks.push(run)
+      const text = blocks.filter(Boolean).join('\n\n')
       if (text)
         return text
     }

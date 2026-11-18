@@ -3,10 +3,10 @@ import type { ReaderLike } from 'clustr'
 import type { TextSegment, TextToken } from '../types'
 
 import { ASCII_FACES } from '@proj-airi/stage-shared/conversation-register'
+import { createPushStream } from '@proj-airi/stream-kit'
 import { readGraphemeClusters } from 'clustr'
 
 import { endsSpeechBeforeSpecial } from '../speech-pause'
-import { createPushStream } from '../stream'
 import { stripAsciiFaces } from './ascii-faces'
 
 export const TTS_FLUSH_INSTRUCTION = '\u200B'
@@ -17,7 +17,11 @@ const TTS_PAUSE_TOKEN = '\u2064'
 
 const regexpAnySingleDigit = /\d/
 
-const keptPunctuations = new Set('?？!！')
+/**
+ * A chunk without a letter, a digit, or an emoji, as a lone closing quote `”`, has no sound and is not a TTS request.
+ * Emoji stay, because some providers read them.
+ */
+const regexpSound = /[\p{L}\p{N}\p{Extended_Pictographic}]/u
 const hardPunctuations = new Set('.。?？!！…⋯～~\n\t\r')
 const softPunctuations = new Set(',，、–—:：;；《》「」')
 const regexpKana = /[\p{Script=Hiragana}\p{Script=Katakana}]/u
@@ -132,6 +136,16 @@ async function* chunkInput(
   input: string | ReaderLike,
   options?: TtsInputChunkOptions,
 ): AsyncGenerator<Omit<TtsInputChunk, 'sentenceIndex' | 'sentenceStart'>, void, unknown> {
+  // A chunk without sound is still emitted when it holds an ASCII face, because the face is shown and never spoken.
+  function hasOutput(text: string) {
+    if (regexpSound.test(text))
+      return true
+    if (!options?.stripAsciiFaces)
+      return false
+    const cleaned = removeChunkMarkers(text)
+    return stripAsciiFaces(cleaned) !== cleaned
+  }
+
   const {
     boost = 2,
     minimumWords = 4,
@@ -213,7 +227,6 @@ async function* chunkInput(
     const special = value === TTS_SPECIAL_TOKEN || pauseSpecial
     const hard = hardPunctuations.has(value)
     const soft = softPunctuations.has(value)
-    const kept = keptPunctuations.has(value)
     let next: IteratorResult<string, void> | undefined
     let afterNext: IteratorResult<string, void> | undefined
 
@@ -278,13 +291,17 @@ async function* chunkInput(
 
       if (chunkWordsCount > minimumWords && chunkWordsCount + words.length > maximumWords
         && canEndAtLimit(chunk.at(-1), chunk, chunkWordsCount + words.length, maximumWords)) {
-        const text = kept ? chunk.trim() + value : chunk.trim()
-        yield {
-          text,
-          words: chunkWordsCount,
-          reason: 'limit',
+        // The punctuation ends the buffer, not the chunk before it, so it stays with the buffer. Adding a `？` here too
+        // read it twice, as 方向、？ and then 移动？.
+        const text = chunk.trim()
+        if (hasOutput(text)) {
+          yield {
+            text,
+            words: chunkWordsCount,
+            reason: 'limit',
+          }
+          yieldCount++
         }
-        yieldCount++
         chunk = ''
         chunkWordsCount = 0
       }
@@ -308,12 +325,14 @@ async function* chunkInput(
       // own TTS request. A shorter opening clause stays in the chunk and joins the next one.
       else if (flush || hard || (chunkWordsCount > maximumWords && canEndAtLimit(value, chunk, chunkWordsCount, maximumWords)) || (yieldCount < boost && chunkWordsCount >= minimumWords)) {
         const text = chunk.trim()
-        yield {
-          text,
-          words: chunkWordsCount,
-          reason: flush ? 'flush' : hard ? 'hard' : chunkWordsCount > maximumWords ? 'limit' : 'boost',
+        if (hasOutput(text)) {
+          yield {
+            text,
+            words: chunkWordsCount,
+            reason: flush ? 'flush' : hard ? 'hard' : chunkWordsCount > maximumWords ? 'limit' : 'boost',
+          }
+          yieldCount++
         }
-        yieldCount++
         chunk = ''
         chunkWordsCount = 0
       }
@@ -342,7 +361,7 @@ async function* chunkInput(
     current = next
   }
 
-  if (chunk.length > 0 || buffer.length > 0) {
+  if (hasOutput(chunk + buffer)) {
     const text = (chunk + buffer).trim()
     yield {
       text,

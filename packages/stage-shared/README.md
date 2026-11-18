@@ -282,6 +282,12 @@ The `character-state` module holds the character's inner state on three clocks: 
 
 The tuning constants live in `src/character-state/settings.ts`. The [layered character state ADR](../../docs/ai/adr/2026-11-03-layered-character-state.md) lists them with the rules that use them and the known gaps in the starting values.
 
+The `speaker-model` entrypoint pins the CAM++ speaker embedding pack. The renderer and the Electron main process both read it:
+
+```ts
+import { speakerModel } from '@proj-airi/stage-shared/speaker-model'
+```
+
 ## Do not use this package
 
 Keep Electron IPC definitions in the Electron application. Keep UI state and actions in `@proj-airi/stage-ui`. Keep Extension runtime and manifest behavior in `@proj-airi/plugin-sdk`.

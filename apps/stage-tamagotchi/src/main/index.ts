@@ -1,11 +1,14 @@
+import type { FullscreenMode, FullscreenSurfaceId } from '../shared/eventa'
 import type { FileLoggerHandle } from './app/file-logger'
 import type { GlobalShortcutServiceOptions } from './services/electron/global-shortcut'
 import type { SettingsWindowManager } from './windows/settings'
+import type { FullscreenPlace } from './windows/shared/fullscreen'
 import type { StageWindowHost } from './windows/stage'
+import type { WorkspaceWindowManager } from './windows/workspace'
 
 import process, { env, platform } from 'node:process'
 
-import { dirname, join, resolve } from 'node:path'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import messages from '@proj-airi/i18n/locales'
@@ -33,7 +36,7 @@ import { createIOTraceHubConfig } from './configs/io-trace-hub'
 import { createIOTraceRecordingConfig } from './configs/io-trace-recording'
 import { createPerfRecordingConfig } from './configs/perf-recording'
 import { emitAppBeforeQuit, emitAppWindowAllClosed, onAppBeforeQuit } from './libs/bootkit/lifecycle'
-import { getElectronMainDirname, setElectronMainDirname } from './libs/electron/location'
+import { getRendererRoot, setElectronMainDirname } from './libs/electron/location'
 import { onWindowClosed } from './libs/electron/on-window-closed'
 import { createAppContext } from './libs/electron/window-context'
 import { createI18n } from './libs/i18n'
@@ -53,7 +56,7 @@ import { createElectronPerfRecording, createElectronPerfRetention, watchPerfPowe
 import { setupExtensionHost } from './services/airi/plugins'
 import { setupStoredData } from './services/airi/stored-data'
 import { setupArtistryBridge } from './services/airi/widgets/artistry-bridge'
-import { setupAutoUpdater } from './services/electron/auto-updater'
+import { isExternallyUpdatedInstall, setupAutoUpdater } from './services/electron/auto-updater'
 import { setupSherpawModelAssetsProtocol } from './services/electron/bundled-sherpaw-assets'
 import { attachLinuxCoordinates } from './services/electron/coordinates'
 import { setupGlobalShortcutService } from './services/electron/global-shortcut'
@@ -74,9 +77,11 @@ import { setupMainWindow } from './windows/main'
 import { setupNoticeWindowManager } from './windows/notice'
 import { setupOnboardingWindowManager } from './windows/onboarding'
 import { setupSettingsWindowReusableFunc } from './windows/settings'
+import { moveFullscreen } from './windows/shared/fullscreen'
 import { setupSpotlightWindowManager } from './windows/spotlight'
 import { createStageConfig, createStageStateBroadcast, defaultStageConfig, isLinuxStageEligible, selectHostMode, setupStageWindow, setupWindowStageInvokes } from './windows/stage'
 import { setupWidgetsWindowManager } from './windows/widgets'
+import { setupWorkspaceWindowManager } from './windows/workspace'
 
 setElectronMainDirname(dirname(fileURLToPath(import.meta.url)))
 protocol.registerSchemesAsPrivileged([{
@@ -172,7 +177,75 @@ let userFacingMainWindow: BrowserWindow | undefined
 let settingsWindowManager: SettingsWindowManager | undefined
 /** The desktop stage host, set when the launch builds the desktop stage. The chat attaches to its character placement. */
 let stageHost: StageWindowHost | undefined
+let workspaceWindowManager: WorkspaceWindowManager | undefined
+/** The fullscreen mode that the user chose, as the main window page reports it. */
+let fullscreenMode: FullscreenMode = 'off'
+/** Shows a surface in the fullscreen mode of the main window, and returns `false` unless the mode is `single-window`. */
+let openFullscreenInMainWindow: ((surface: FullscreenSurfaceId, route?: string) => boolean) | undefined
+/** The main window as a place of the fullscreen mode, once it exists. */
+let mainWindowPlace: FullscreenPlace | undefined
+/** Keeps the main window above the others, for the window of the `multi-window` mode that covers the screen under it. */
+let keepMainWindowAbove: ((above: boolean) => void) | undefined
 let extensionManagementWebContentsId: number | undefined
+
+/** Opens settings where the fullscreen mode says: in the main window, in the window of the `multi-window` mode, or in the settings window. */
+async function openSettings(route?: string) {
+  if (openFullscreenInMainWindow?.('settings', route))
+    return
+  if (fullscreenMode === 'multi-window' && workspaceWindowManager) {
+    await workspaceWindowManager.open('settings', route)
+    return
+  }
+  await settingsWindowManager?.openWindow(route)
+}
+
+/** The settings window as a place of the fullscreen mode. It shows settings while the mode is off. */
+const settingsWindowPlace: FullscreenPlace = {
+  pack: async () => {
+    const route = settingsWindowManager?.shownRoute()
+    return route ? { surface: 'settings', surfaces: [{ id: 'settings', state: route }] } : undefined
+  },
+  close: async () => {
+    settingsWindowManager?.closeWindow()
+    return true
+  },
+  // Settings carry the route that shows. The settings window shows only settings, so other surfaces stay behind.
+  open: async (pack) => {
+    const settings = pack.surfaces.find(entry => entry.id === 'settings')
+    if (settings)
+      await settingsWindowManager?.openWindow(typeof settings.state === 'string' ? settings.state : undefined)
+  },
+}
+
+/** The move in progress. Each change of the window mode waits for the move before it, so two moves never interleave. */
+let fullscreenMove: Promise<void> = Promise.resolve()
+
+/** The place where the fullscreen mode shows in a mode. */
+function placeOf(mode: FullscreenMode): FullscreenPlace | undefined {
+  if (mode === 'single-window')
+    return mainWindowPlace
+  if (mode === 'multi-window')
+    return workspaceWindowManager?.place
+  return settingsWindowPlace
+}
+
+/** Shows the chat in the fullscreen mode, in the window that the mode names. */
+async function openFullscreenChat() {
+  if (fullscreenMode === 'multi-window')
+    await workspaceWindowManager?.open('chat')
+  else
+    openFullscreenInMainWindow?.('chat')
+}
+
+/** Lets only the window that shows the settings interface manage extensions, until that window closes. */
+function trackExtensionManagementWindow(window: BrowserWindow) {
+  const webContentsId = window.webContents.id
+  extensionManagementWebContentsId = webContentsId
+  onWindowClosed(window, () => {
+    if (extensionManagementWebContentsId === webContentsId)
+      extensionManagementWebContentsId = undefined
+  })
+}
 const shouldStartMainProcess = installSingleInstanceGuard({ app, getWindow: () => userFacingMainWindow })
 
 if (shouldStartMainProcess) {
@@ -217,7 +290,7 @@ app.whenReady().then(async () => {
     return
   }
 
-  setupSherpawModelAssetsProtocol(resolve(getElectronMainDirname(), '..', 'renderer'))
+  setupSherpawModelAssetsProtocol(getRendererRoot)
   setupSherpawModelAssets(createAppContext().context)
   setupPermissionHandlers(session.defaultSession, hasSelectedScreenCaptureSource)
 
@@ -286,7 +359,7 @@ app.whenReady().then(async () => {
     build: ({ dependsOn }) => setupAutoUpdater({
       // Squirrel.Mac installs only updates that pass code-signature validation against the
       // running app. Fork macOS builds are ad-hoc signed, so their updates are manual downloads.
-      enabled: platform !== 'darwin',
+      enabled: platform !== 'darwin' && !isExternallyUpdatedInstall(),
       getStoredUpdateLane: () => dependsOn.appConfig.get()?.updateChannel,
       setStoredUpdateLane: (lane) => {
         const currentConfig = dependsOn.appConfig.get()
@@ -445,11 +518,12 @@ app.whenReady().then(async () => {
       getMainWindow: () => userFacingMainWindow,
       getCharacterPlacementSource: () => stageHost,
       // NOTICE:
-      // Chat cannot depend on Settings in injeca, because Settings depends on
-      // Spotlight and Spotlight depends on Chat. Settings is built before any
-      // window accepts input, so Chat resolves it lazily.
-      // Removal condition: Settings no longer depends on Spotlight.
-      openSettingsWindow: async (route) => { await settingsWindowManager?.openWindow(route) },
+      // Settings, the main window, and the fullscreen window depend on Chat
+      // through injeca, so Chat cannot depend on them. They exist before any
+      // window takes input, so Chat resolves them lazily.
+      // Removal condition: none of them depends on Chat.
+      openSettingsWindow: openSettings,
+      openFullscreenChat,
     }),
   })
 
@@ -473,7 +547,7 @@ app.whenReady().then(async () => {
   log.log(`Building the ${hostMode === 'desktop' ? 'desktop stage' : 'classic window'} host${isLinux ? ` (Linux desktop stage eligible: ${linuxStageEligible})` : ''}`)
 
   const settingsWindow = injeca.provide('windows:settings', {
-    dependsOn: { widgetsManager, beatSync, autoUpdater, devtoolsWindow: devtoolsMarkdownStressWindow, serverChannel, godotStageManager, mcpManager, i18n, globalShortcut, spotlightWindow, ioTraceRecording, perfRecording, goNetwork },
+    dependsOn: { widgetsManager, beatSync, autoUpdater, devtoolsWindow: devtoolsMarkdownStressWindow, editorWindow, serverChannel, godotStageManager, mcpManager, i18n, globalShortcut, spotlightWindow, ioTraceRecording, perfRecording, goNetwork },
     build: async ({ dependsOn }) => {
       settingsWindowManager = setupSettingsWindowReusableFunc({
         ...dependsOn,
@@ -481,20 +555,31 @@ app.whenReady().then(async () => {
         getMainWindow: () => userFacingMainWindow,
         onWindowCreated: (window) => {
           dependsOn.goNetwork.bindWindow(window)
-          const webContentsId = window.webContents.id
-          extensionManagementWebContentsId = webContentsId
-          onWindowClosed(window, () => {
-            if (extensionManagementWebContentsId === webContentsId) {
-              extensionManagementWebContentsId = undefined
-            }
-          })
+          trackExtensionManagementWindow(window)
         },
       })
-      return settingsWindowManager
+      // Every settings entry point asks this manager, so the fullscreen mode decides here where settings open.
+      return { ...settingsWindowManager, openWindow: openSettings }
     },
   })
 
-  const userFacingWindowDependencies = { editorWindow, settingsWindow, chatWindow, widgetsManager, noticeWindow, beatSync, autoUpdater, serverChannel, godotStageManager, mcpManager, i18n, onboardingWindowManager, inlayWindow, appleSpeechTranscription, appleVision, ioTraceRecording, perfRecording, globalShortcut, goNetwork }
+  const workspaceWindow = injeca.provide('windows:workspace', {
+    dependsOn: { chatWindow, widgetsManager, autoUpdater, devtoolsWindow: devtoolsMarkdownStressWindow, editorWindow, serverChannel, godotStageManager, mcpManager, i18n, globalShortcut, spotlightWindow, ioTraceRecording, perfRecording },
+    build: ({ dependsOn }) => {
+      workspaceWindowManager = setupWorkspaceWindowManager({
+        ...dependsOn,
+        getMainWindow: () => userFacingMainWindow,
+        isActive: () => fullscreenMode === 'multi-window',
+        openSettings,
+        onWindowCreated: trackExtensionManagementWindow,
+        // The window covers the screen, so the main window stays above it and the character stays in view.
+        onOpenChange: open => keepMainWindowAbove?.(open),
+      })
+      return workspaceWindowManager
+    },
+  })
+
+  const userFacingWindowDependencies = { editorWindow, settingsWindow, workspaceWindow, chatWindow, widgetsManager, noticeWindow, beatSync, autoUpdater, serverChannel, godotStageManager, mcpManager, i18n, onboardingWindowManager, inlayWindow, appleSpeechTranscription, appleVision, ioTraceRecording, perfRecording, globalShortcut, goNetwork, spotlightWindow, devtoolsWindow: devtoolsMarkdownStressWindow }
   const onUserFacingWindowCreated = (network: { bindWindow: (window: BrowserWindow) => void }) => (window: BrowserWindow) => {
     network.bindWindow(window)
     userFacingMainWindow = window
@@ -512,7 +597,36 @@ app.whenReady().then(async () => {
     : injeca.provide('windows:main', {
         dependsOn: userFacingWindowDependencies,
         build: async ({ dependsOn }) => {
-          const window = await setupMainWindow({ ...dependsOn, onWindowCreated: onUserFacingWindowCreated(dependsOn.goNetwork) })
+          const window = await setupMainWindow({
+            ...dependsOn,
+            onWindowCreated: onUserFacingWindowCreated(dependsOn.goNetwork),
+            onFullscreenOpener: (open) => {
+              openFullscreenInMainWindow = open
+            },
+            // The plugin host lets only the settings interface manage extensions. Settings show in the fullscreen mode of
+            // the main window, so while it lasts, that interface is the main window.
+            // Settings can already show in another window when the main window leaves the mode. That window keeps the role.
+            onFullscreenChange: (active) => {
+              const mainWindowId = userFacingMainWindow?.webContents.id
+              if (active)
+                extensionManagementWebContentsId = mainWindowId
+              else if (extensionManagementWebContentsId === mainWindowId)
+                extensionManagementWebContentsId = undefined
+            },
+            onKeepAbove: (keepAbove) => {
+              keepMainWindowAbove = keepAbove
+            },
+            onFullscreenPlace: (place) => {
+              mainWindowPlace = place
+            },
+            // What the mode shows moves to the place of the new mode, with every surface and its state.
+            onFullscreenModeChange: (mode, previous) => {
+              fullscreenMode = mode
+              fullscreenMove = fullscreenMove
+                .then(() => moveFullscreen(placeOf(previous), placeOf(mode)))
+                .catch(error => log.withError(error).error('Failed to move the fullscreen mode to the new window mode'))
+            },
+          })
           setupWindowStageInvokes({ window, config: stageConfig, running: 'window', broadcast: stageStateBroadcast })
           return window
         },

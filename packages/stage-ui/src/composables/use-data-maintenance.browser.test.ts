@@ -17,7 +17,9 @@ import { useHostNoticeSettings } from '../features/host-capabilities/notice-sett
 import { useExpressionPerformanceSettings } from '../features/performance/settings'
 import { useSituationSettings } from '../features/situation/settings'
 import { injectKeyPiniaSynced } from '../libs/pinia/synced-context'
+import { toStoredVoiceprint } from '../libs/voice/voiceprint'
 import { useCharacterStateStore } from '../stores/character-state'
+import { useDisplayModelsStore } from '../stores/display-models'
 import { useMemoryStore } from '../stores/memory'
 import { useModsServerChannelStore } from '../stores/mods/api/channel-server'
 import { useAiriCardStore } from '../stores/modules/airi-card'
@@ -33,6 +35,8 @@ import { useVisionStore } from '../stores/modules/vision'
 import { useWebSearchStore } from '../stores/modules/web-search'
 import { useProviderConfigStore } from '../stores/providers/config'
 import { useProviderStore } from '../stores/providers/provider'
+import { useRecipesStore } from '../stores/recipes'
+import { useVoiceprintStore } from '../stores/voiceprint'
 import { useDataMaintenance } from './use-data-maintenance'
 
 // Keep the model runtime outside this store regression. Voice selection needs no model download.
@@ -317,6 +321,23 @@ it.each(['resetSettings', 'resetState'])('continues independent module resets wh
   expect(useConsciousnessSettingsStore(leader.pinia).reasoning).toBe(action === 'resetState')
 })
 
+// ROOT CAUSE:
+// Deleting all data kept long-term memories and recipes, so the character still knew facts about the owner.
+it('forgets memories and recipes when modules reset', async () => {
+  vi.stubGlobal('fetch', vi.fn<typeof fetch>(async () => Response.json({ voices: [], models: [] })))
+  const { pinia, runtime, maintenance } = mountMaintenance(`maintenance:${crypto.randomUUID()}`, 'leader-only')
+  await vi.waitFor(() => expect(runtime.isLeader()).toBe(true))
+  const memory = useMemoryStore(pinia)
+  const recipes = useRecipesStore(pinia)
+  await memory.write({ description: 'What the owner likes to be called.', body: 'Yumeka.' }, 'default')
+  recipes.add({ name: 'Check in', description: '', instructions: 'Greet softly.', keywords: [], enabled: true })
+
+  await maintenance.resetModulesSettings()
+
+  expect(memory.entries).toEqual([])
+  expect(recipes.recipes.filter(recipe => recipe.source === 'user')).toEqual([])
+})
+
 it('removes downloaded speech models when all data is deleted', async () => {
   vi.stubGlobal('fetch', vi.fn<typeof fetch>(async () => Response.json({ voices: [], models: [] })))
   const origin = await navigator.storage.getDirectory()
@@ -404,4 +425,29 @@ it('forgets what the character learned when modules reset', async () => {
   expect(memory.entries).toEqual([])
   expect(memory.enabled).toBe(true)
   await expect(localforage.createInstance({ name: 'airi-memory', storeName: 'entries' }).length()).resolves.toBe(0)
+})
+
+it('removes the voiceprint when all data is deleted', async () => {
+  vi.stubGlobal('fetch', vi.fn<typeof fetch>(async () => Response.json({ voices: [], models: [] })))
+  localStorage.setItem('settings/voice/voiceprint', JSON.stringify(toStoredVoiceprint({ embedding: new Float32Array([1, 0]), seconds: 8 }, Date.now())))
+  const { pinia, runtime, maintenance } = mountMaintenance(`maintenance:${crypto.randomUUID()}`, 'leader-only')
+  await vi.waitFor(() => expect(runtime.isLeader()).toBe(true))
+  expect(useVoiceprintStore(pinia).record).toBeDefined()
+
+  await maintenance.deleteAllData()
+
+  expect(useVoiceprintStore(pinia).record).toBeUndefined()
+  expect(localStorage.getItem('settings/voice/voiceprint')).toBeNull()
+})
+
+it('removes the voiceprint when an earlier cleanup fails', async () => {
+  vi.stubGlobal('fetch', vi.fn<typeof fetch>(async () => Response.json({ voices: [], models: [] })))
+  localStorage.setItem('settings/voice/voiceprint', JSON.stringify(toStoredVoiceprint({ embedding: new Float32Array([1, 0]), seconds: 8 }, Date.now())))
+  const { pinia, runtime, maintenance } = mountMaintenance(`maintenance:${crypto.randomUUID()}`, 'leader-only')
+  await vi.waitFor(() => expect(runtime.isLeader()).toBe(true))
+  vi.spyOn(useDisplayModelsStore(pinia), 'resetDisplayModels').mockRejectedValue(new Error('Model storage unavailable'))
+
+  await expect(maintenance.deleteAllData()).rejects.toThrow('Model storage unavailable')
+
+  expect(localStorage.getItem('settings/voice/voiceprint')).toBeNull()
 })

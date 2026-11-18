@@ -1,8 +1,9 @@
 import type { MaybeRefOrGetter } from 'vue'
 
 import { electron } from '@proj-airi/electron-eventa'
-import { beforeEach, vi } from 'vitest'
+import { afterEach, beforeEach, vi } from 'vitest'
 import { computed, defineComponent, h, onMounted, ref, shallowRef, toValue } from 'vue'
+import { createMemoryHistory, createRouter } from 'vue-router'
 
 import MainPageComponent from './index.vue'
 import StagePageComponent from './stage.vue'
@@ -26,7 +27,14 @@ export const mountedStage = ref(false)
 export const stageCanvas = document.createElement('canvas')
 export const samplerReads: Array<{ renderer: 'canvas' | 'three', x: number, y: number }> = []
 
+const urlBeforeTest = location.href
+
 beforeEach(() => {
+  // The main process supplies the window query. The fullscreen store of the main page reads its host from it.
+  const url = new URL(urlBeforeTest)
+  url.searchParams.set('synced-leader', 'true')
+  url.searchParams.set('fullscreen-host', 'main-window')
+  history.replaceState(null, '', url)
   mountedStage.value = false
   samplerReads.length = 0
   boundsAvailable.value = true
@@ -45,26 +53,32 @@ vi.mock('@vueuse/core', async importOriginal => ({
 }))
 
 // Keep pages and Pinia real; isolate IPC, unrelated producers and the renderer boundary.
-vi.mock('@proj-airi/electron-vueuse', () => ({
-  useElectronAllDisplays: () => ref([display]),
-  useElectronWindowBounds: () => ({ x: boundsX, y: boundsY, width: boundsWidth, height: boundsHeight, available: boundsAvailable }),
-  useElectronRelativeMouse: () => ({ x: ref(20), y: ref(30), available: computed(() => cursorAvailable.value && boundsAvailable.value) }),
-  useElectronMouseInElement: () => ({ isOutside: ref(true) }),
-  useElectronMouseInWindow: () => ({ isOutside: outsideWindow }),
-  useElectronMouseAroundWindowBorder: () => ({ isNearAnyBorder: ref(false) }),
-  useElectronEventaContext: () => ref({ on: () => () => {} }),
-  useElectronEventaInvoke: (event: unknown) => event === electron.window.setIgnoreMouseEvents
-    ? setIgnoreMouseEvents
-    : async () => event === electronStageGetState
-      ? {
-          displays: [{ id: 'home', workArea: { x: 0, y: 0, width: 1600, height: 1000 } }],
-          homeDisplayId: 'home',
-          stageDisplayId: 'home',
-          followMe: false,
-          homes: { home: { xDip: 400 } },
-        }
-      : { visible: false, bounds: null },
-}))
+vi.mock('@proj-airi/electron-vueuse', async () => {
+  // The main page hosts the fullscreen mode and registers its handlers on the window context. Nothing calls them here.
+  const { createContext } = await import('@moeru/eventa')
+  const windowContext = createContext()
+  return {
+    getElectronEventaContext: () => windowContext,
+    useElectronAllDisplays: () => ref([display]),
+    useElectronWindowBounds: () => ({ x: boundsX, y: boundsY, width: boundsWidth, height: boundsHeight, available: boundsAvailable }),
+    useElectronRelativeMouse: () => ({ x: ref(20), y: ref(30), available: computed(() => cursorAvailable.value && boundsAvailable.value) }),
+    useElectronMouseInElement: () => ({ isOutside: ref(true) }),
+    useElectronMouseInWindow: () => ({ isOutside: outsideWindow }),
+    useElectronMouseAroundWindowBorder: () => ({ isNearAnyBorder: ref(false) }),
+    useElectronEventaContext: () => ref({ on: () => () => {} }),
+    useElectronEventaInvoke: (event: unknown) => event === electron.window.setIgnoreMouseEvents
+      ? setIgnoreMouseEvents
+      : async () => event === electronStageGetState
+        ? {
+            displays: [{ id: 'home', workArea: { x: 0, y: 0, width: 1600, height: 1000 } }],
+            homeDisplayId: 'home',
+            stageDisplayId: 'home',
+            followMe: false,
+            homes: { home: { xDip: 400 } },
+          }
+        : { visible: false, bounds: null },
+  }
+})
 vi.mock('@proj-airi/stage-ui/components/scenes', () => ({
   WidgetStage: defineComponent({
     props: ['screenPlacement', 'cursorPosition', 'state'],
@@ -144,3 +158,12 @@ vi.mock('../components/stage-islands/controls-island/index.vue', () => ({
   }),
 }))
 vi.mock('../components/stage-islands/resource-status-island/index.vue', () => ({ default: () => null }))
+
+afterEach(() => {
+  history.replaceState(null, '', urlBeforeTest)
+})
+
+/** The main page routes the fullscreen surfaces under its own page, so it needs a router. Its tests stay on `/`. */
+export function createPageRouter() {
+  return createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { render: () => null } }] })
+}

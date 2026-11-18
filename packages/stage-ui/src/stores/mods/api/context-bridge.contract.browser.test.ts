@@ -1,12 +1,12 @@
 import type { SyncedPiniaRuntime } from 'pinia-plugin-synced'
 
-import type { ChatHistoryItem, ChatStreamEvent, ChatStreamEventContext, ContextMessage } from '../../../types/chat'
+import type { ChatHistoryItem, ChatStreamEvent, ChatStreamEventContext, ContextMessage, StreamingAssistantMessage } from '../../../types/chat'
 
 import { ContextUpdateStrategy } from '@proj-airi/server-sdk'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { render } from 'vitest-browser-vue'
-import { defineComponent, h, nextTick, ref } from 'vue'
+import { defineComponent, h, nextTick, ref, shallowRef } from 'vue'
 
 import ChatHistory from '../../../components/scenarios/chat/components/history.vue'
 
@@ -34,9 +34,9 @@ const { situationIngestMock } = vi.hoisted(() => ({ situationIngestMock: vi.fn()
 const { characterWindows } = vi.hoisted(() => ({
   characterWindows: [] as Array<{ reactions: Array<[string, string]>, notifyIds: Map<string, string> }>,
 }))
-const beginStreamMock = vi.fn()
-const appendStreamLiteralMock = vi.fn()
-const appendStreamBreakMock = vi.fn()
+const showStreamMock = vi.fn()
+const streamActiveTurns = shallowRef<Array<{ sessionId: string, turnId: string, message: StreamingAssistantMessage }>>([])
+const finalizeStreamMock = vi.fn()
 const resetStreamMock = vi.fn()
 const refreshSessionMock = vi.fn()
 const serverSendMock = vi.fn()
@@ -115,6 +115,20 @@ function closeTestChannels() {
     channel.dispose(new Error('Context bridge contract test ended'))
   }
   testChannels.length = 0
+}
+
+/** A reply as the producing renderer sends it whole: its text, and any tool call before the text. */
+function reply(text: string, toolCalls: string[] = []): StreamingAssistantMessage {
+  return {
+    role: 'assistant',
+    id: 'reply-1',
+    content: text,
+    slices: [
+      ...toolCalls.map(name => ({ type: 'tool-call' as const, toolCall: { toolCallId: `call-${name}`, toolCallType: 'function' as const, toolName: name, args: '{}' } })),
+      ...(text ? [{ type: 'text' as const, text }] : []),
+    ],
+    tool_results: [],
+  }
 }
 
 async function waitForBroadcastDelivery() {
@@ -277,6 +291,7 @@ vi.mock('../../chat/session-store', () => ({
       return activeSessionIdRef.value
     },
     getSessionGenerationValue: () => currentGeneration,
+    ensureBoundSession: async (binding: string) => `bound:${binding}`,
     getSessionMessagesIfLoaded: (sessionId: string) => storedSessionMessages[sessionId],
     refreshSession: (sessionId: string) => refreshSessionMock(sessionId),
   }),
@@ -284,9 +299,16 @@ vi.mock('../../chat/session-store', () => ({
 
 vi.mock('../../chat/stream-store', () => ({
   useChatStreamStore: () => ({
-    beginStream: beginStreamMock,
-    appendStreamLiteral: appendStreamLiteralMock,
-    appendStreamBreak: appendStreamBreakMock,
+    get activeTurns() {
+      return streamActiveTurns.value
+    },
+    get streamingMessage() {
+      return showStreamMock.mock.lastCall?.[0]
+    },
+    set streamingMessage(message: StreamingAssistantMessage) {
+      showStreamMock(message)
+    },
+    finalizeStream: finalizeStreamMock,
     resetStream: resetStreamMock,
   }),
 }))
@@ -326,9 +348,9 @@ describe('context bridge contract', () => {
     consciousness = useConsciousnessStore(pinia)
 
     situationIngestMock.mockClear()
-    beginStreamMock.mockReset()
-    appendStreamLiteralMock.mockReset()
-    appendStreamBreakMock.mockReset()
+    showStreamMock.mockReset()
+    streamActiveTurns.value = []
+    finalizeStreamMock.mockReset()
     resetStreamMock.mockReset()
     refreshSessionMock.mockReset().mockResolvedValue(true)
     serverSendMock.mockReset()
@@ -458,6 +480,24 @@ describe('context bridge contract', () => {
       metadata: { event: { parentId: 'request-2' } },
     }))
     await chatAssetsRepo.clear()
+  })
+
+  it('sends input with a scene binding to the bound session', async () => {
+    consciousness.activeProvider = 'mock-provider'
+    consciousness.activeModel = 'mock-model'
+    const store = useContextBridgeStore()
+    await store.initialize()
+
+    await emitServerEvent('input:text', {
+      type: 'input:text',
+      source: 'discord',
+      metadata: createMetadata('discord', 'bot'),
+      data: { text: 'hello', overrides: { binding: 'discord:channel:a' } },
+    })
+
+    expect(chatOrchestratorMock.send).toHaveBeenCalledTimes(1)
+    expect(chatOrchestratorMock.send.mock.calls[0]?.[0]).toMatchObject({ sessionId: 'bound:discord:channel:a' })
+    await store.dispose()
   })
 
   it('records the situation ingest result for broadcast context updates', async () => {
@@ -760,14 +800,13 @@ describe('context bridge contract', () => {
 
     streamSender.postMessage({ type: 'before-send', message: 'ping', sessionId: 'session-1', context })
     await vi.waitFor(() => {
-      expect(beginStreamMock).toHaveBeenCalledWith('turn-1')
+      expect(store.isReceivingRemoteStream).toBe(true)
     })
     expect(chatOrchestratorMock.sending).toBe(false)
-    expect(store.isReceivingRemoteStream).toBe(true)
 
-    streamSender.postMessage({ type: 'token-literal', literal: 'hello', sessionId: 'session-1', context })
+    streamSender.postMessage({ type: 'assistant-progress', message: reply('hello'), sessionId: 'session-1', context })
     await vi.waitFor(() => {
-      expect(appendStreamLiteralMock).toHaveBeenCalledWith('hello')
+      expect(showStreamMock).toHaveBeenCalledWith(reply('hello'))
     })
 
     streamSender.postMessage({ type: 'assistant-end', message: 'final answer', sessionId: 'session-1', context })
@@ -808,69 +847,18 @@ describe('context bridge contract', () => {
     } satisfies ChatStreamEventContext
 
     streamSender.postMessage({ type: 'before-send', message: 'ping', sessionId: 'session-1', context })
-    await vi.waitFor(() => expect(beginStreamMock).toHaveBeenCalledWith('turn-1'))
+    streamSender.postMessage({ type: 'assistant-progress', message: reply('hel'), sessionId: 'session-1', context })
     streamSender.postMessage({ type: 'token-literal', literal: 'hel', sessionId: 'session-1', context })
-    streamSender.postMessage({ type: 'token-literal', literal: 'lo', sessionId: 'session-1', context })
-    await vi.waitFor(() => expect(appendStreamLiteralMock).toHaveBeenCalledTimes(2))
+    streamSender.postMessage({ type: 'assistant-progress', message: reply('hello'), sessionId: 'session-1', context })
+    await vi.waitFor(() => expect(showStreamMock).toHaveBeenCalledTimes(2))
     streamSender.postMessage({ type: 'assistant-end', message: 'hello', sessionId: 'session-1', context })
     await vi.waitFor(() => expect(refreshSessionMock).toHaveBeenCalledWith('session-1'))
 
-    expect(appendStreamLiteralMock).toHaveBeenNthCalledWith(1, 'hel')
-    expect(appendStreamLiteralMock).toHaveBeenNthCalledWith(2, 'lo')
+    expect(showStreamMock).toHaveBeenNthCalledWith(1, reply('hel'))
+    expect(showStreamMock).toHaveBeenNthCalledWith(2, reply('hello'))
     expect(localTokenHook).not.toHaveBeenCalled()
     expect(ensureConnectedMock).not.toHaveBeenCalled()
     expect(serverSendMock).not.toHaveBeenCalled()
-
-    await store.dispose()
-  })
-
-  it('relays a break between two texts so a minimal window shows the text after it as its own bubble', async () => {
-    // ROOT CAUSE:
-    //
-    // The chat window rebuilt a remote reply from literals only and dropped the forwarded break special,
-    // so it showed "hey :3you there? ^^" as one bubble with no pause.
-    //
-    // We fixed this by turning a well-formed break special into a break slice of the stream store.
-    const { useChatStreamStore: useRealChatStreamStore } = await vi.importActual<typeof import('../../chat/stream-store')>('../../chat/stream-store')
-    const stream = useRealChatStreamStore(pinia)
-    beginStreamMock.mockImplementation((id: string) => stream.beginStream(id))
-    appendStreamLiteralMock.mockImplementation((literal: string) => stream.appendStreamLiteral(literal))
-    appendStreamBreakMock.mockImplementation((seconds: number) => stream.appendStreamBreak(seconds))
-    const store = useContextBridgeStore()
-    await store.initializeStreamView()
-    const streamSender = createTestChannel(CHAT_STREAM_CHANNEL_NAME)
-    const context = {
-      sessionId: 'session-1',
-      turnId: 'turn-1',
-      message: { role: 'user', content: 'ping' },
-      contexts: {},
-      composedMessage: [],
-    } satisfies ChatStreamEventContext
-
-    streamSender.postMessage({ type: 'before-send', message: 'ping', sessionId: 'session-1', context })
-    streamSender.postMessage({ type: 'token-literal', literal: 'hey :3', sessionId: 'session-1', context })
-    // Other specials, and a BREAK whose body is no duration, split nothing.
-    streamSender.postMessage({ type: 'token-special', special: '<|ACT {"emotion":"happy"}|>', sessionId: 'session-1', context })
-    streamSender.postMessage({ type: 'token-special', special: '<|BREAK soon|>', sessionId: 'session-1', context })
-    streamSender.postMessage({ type: 'token-special', special: '<|BREAK 1.5|>', sessionId: 'session-1', context })
-    streamSender.postMessage({ type: 'token-literal', literal: 'you there?', sessionId: 'session-1', context })
-    streamSender.postMessage({ type: 'token-literal', literal: ' ^^', sessionId: 'session-1', context })
-    await vi.waitFor(() => expect(appendStreamLiteralMock).toHaveBeenCalledTimes(3))
-
-    expect(stream.streamingMessage.slices).toEqual([
-      { type: 'text', text: 'hey :3' },
-      { type: 'break', seconds: 1.5 },
-      { type: 'text', text: 'you there? ^^' },
-    ])
-    expect(stream.streamingMessage.content).toBe('hey :3\n\nyou there? ^^')
-    expect(appendStreamBreakMock).toHaveBeenCalledTimes(1)
-
-    // A break of a completed reply arrives too late to split anything.
-    streamSender.postMessage({ type: 'assistant-end', message: 'hey :3\n\nyou there? ^^', sessionId: 'session-1', context })
-    await vi.waitFor(() => expect(refreshSessionMock).toHaveBeenCalledWith('session-1'))
-    streamSender.postMessage({ type: 'token-special', special: '<|BREAK|>', sessionId: 'session-1', context })
-    await waitForBroadcastDelivery()
-    expect(appendStreamBreakMock).toHaveBeenCalledTimes(1)
 
     await store.dispose()
   })
@@ -881,40 +869,32 @@ describe('context bridge contract', () => {
     // The chat window keyed the remote stream by turn, but the reply is stored under its own id. The refresh
     // mounted the stored reply as complete, which showed a pending bubble early.
     //
-    // We fixed this by keying the stream with the reply id on the hook context.
-    const { useChatStreamStore: useRealChatStreamStore } = await vi.importActual<typeof import('../../chat/stream-store')>('../../chat/stream-store')
-    const stream = useRealChatStreamStore(pinia)
+    // The whole reply that the producing renderer sends carries the reply id, so the stored reply keeps the history item.
+    const emptyStream: StreamingAssistantMessage = { role: 'assistant', content: '', slices: [], tool_results: [] }
+    const shown = shallowRef<StreamingAssistantMessage>(emptyStream)
     // Each store call the bridge makes is recorded, so the test waits for the exact call instead of a delay.
     const streamCalls: string[] = []
-    let streamCallWaiter: { count: number, resolve: () => void } | undefined
+    let streamCallWaiter: { call: string, resolve: () => void } | undefined
     const recordStreamCall = (call: string) => {
       streamCalls.push(call)
-      if (streamCallWaiter && streamCalls.length >= streamCallWaiter.count) {
+      if (streamCallWaiter?.call === call) {
         streamCallWaiter.resolve()
         streamCallWaiter = undefined
       }
     }
-    const untilStreamCalls = (count: number) => {
-      if (streamCalls.length >= count)
+    const untilStreamCall = (call: string) => {
+      if (streamCalls.includes(call))
         return Promise.resolve()
       const waiter = Promise.withResolvers<void>()
-      streamCallWaiter = { count, resolve: waiter.resolve }
+      streamCallWaiter = { call, resolve: waiter.resolve }
       return waiter.promise
     }
-    beginStreamMock.mockImplementation((id: string) => {
-      stream.beginStream(id)
-      recordStreamCall(`begin:${id}`)
-    })
-    appendStreamLiteralMock.mockImplementation((literal: string) => {
-      stream.appendStreamLiteral(literal)
-      recordStreamCall(`literal:${literal}`)
-    })
-    appendStreamBreakMock.mockImplementation((seconds: number) => {
-      stream.appendStreamBreak(seconds)
-      recordStreamCall(`break:${seconds}`)
+    showStreamMock.mockImplementation((message: StreamingAssistantMessage) => {
+      shown.value = message
+      recordStreamCall(`show:${message.slices.length}`)
     })
     resetStreamMock.mockImplementation(() => {
-      stream.resetStream()
+      shown.value = emptyStream
       recordStreamCall('reset')
     })
     const userMessage: ChatHistoryItem = { id: 'turn-1', role: 'user', content: 'ping' }
@@ -926,6 +906,8 @@ describe('context bridge contract', () => {
       slices: [{ type: 'text', text: 'hey :3' }, { type: 'break', seconds: 1 }, { type: 'text', text: 'you there? ^^' }],
       tool_results: [],
     }
+    const firstBubble: StreamingAssistantMessage = { id: 'assistant-1', role: 'assistant', content: 'hey :3', slices: [{ type: 'text', text: 'hey :3' }], tool_results: [], createdAt: Date.now() }
+    const bothBubbles: StreamingAssistantMessage = { ...firstBubble, content: replyText, slices: storedReply.slices }
     const sessionMessages = ref<ChatHistoryItem[]>([userMessage])
     refreshSessionMock.mockImplementation(async () => {
       sessionMessages.value = [userMessage, storedReply]
@@ -939,7 +921,7 @@ describe('context bridge contract', () => {
         style: 'height: 480px; width: 480px; overflow-y: auto;',
         messages: sessionMessages.value,
         sending: store.isReceivingRemoteStream,
-        streamingMessage: stream.streamingMessage,
+        streamingMessage: shown.value,
       }),
     }), { global: { plugins: [pinia] } })
     onTestFinished(() => screen.unmount())
@@ -955,25 +937,23 @@ describe('context bridge contract', () => {
     } satisfies ChatStreamEventContext
 
     streamSender.postMessage({ type: 'before-send', message: 'ping', sessionId: 'session-1', context })
-    streamSender.postMessage({ type: 'token-literal', literal: 'hey :3', sessionId: 'session-1', context })
-    await untilStreamCalls(2)
+    streamSender.postMessage({ type: 'assistant-progress', message: firstBubble, sessionId: 'session-1', context })
+    await untilStreamCall('show:1')
     await vi.waitFor(() => expect(bubbleTexts()).toEqual([expect.stringContaining('hey :3')]))
 
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
     try {
-      streamSender.postMessage({ type: 'token-special', special: '<|BREAK|>', sessionId: 'session-1', context })
-      streamSender.postMessage({ type: 'token-literal', literal: 'you there? ^^', sessionId: 'session-1', context })
-      await untilStreamCalls(4)
+      streamSender.postMessage({ type: 'assistant-progress', message: bothBubbles, sessionId: 'session-1', context })
+      await untilStreamCall('show:3')
       await nextTick()
       expect(bubbleTexts()).toEqual([expect.stringContaining('hey :3')])
 
       // Generation ends 400 ms later, before the break's second: the stored reply replaces the stream.
       vi.advanceTimersByTime(400)
       streamSender.postMessage({ type: 'assistant-end', message: replyText, sessionId: 'session-1', context })
-      await untilStreamCalls(5)
+      await untilStreamCall('reset')
       await nextTick()
       expect(bubbleTexts()).toEqual([expect.stringContaining('hey :3')])
-      expect(streamCalls).toEqual(['begin:assistant-1', 'literal:hey :3', 'break:1', 'literal:you there? ^^', 'reset'])
 
       vi.advanceTimersByTime(599)
       await nextTick()
@@ -988,6 +968,41 @@ describe('context bridge contract', () => {
       vi.useRealTimers()
     }
 
+    await store.dispose()
+  })
+
+  it('shows the tool calls of a remote reply before its text', async () => {
+    // ROOT CAUSE:
+    //
+    // A stream view rebuilt the reply from `token-literal` events only. Tool calls never crossed windows,
+    // so the floating chat showed a waiting bubble through every tool round.
+    //
+    // We fixed this by sending the whole reply after each change.
+    const store = useContextBridgeStore()
+    await store.initializeStreamView()
+    const streamSender = createTestChannel(CHAT_STREAM_CHANNEL_NAME)
+    const context = { sessionId: 'session-1', turnId: 'turn-1', message: { role: 'user', content: 'weather?' }, contexts: {}, composedMessage: [] } satisfies ChatStreamEventContext
+
+    streamSender.postMessage({ type: 'before-send', message: 'weather?', sessionId: 'session-1', context })
+    streamSender.postMessage({ type: 'assistant-progress', message: reply('', ['get_weather']), sessionId: 'session-1', context })
+
+    await vi.waitFor(() => expect(showStreamMock).toHaveBeenCalledWith(reply('', ['get_weather'])))
+    await store.dispose()
+  })
+
+  it('sends each change of a local reply whole to the stream views', async () => {
+    const outgoingStreamMessages = collectChannelMessages<ChatStreamEvent>(CHAT_STREAM_CHANNEL_NAME)
+    const store = useContextBridgeStore()
+    await store.initialize()
+    const context = { sessionId: 'session-1', turnId: 'turn-1', message: { role: 'user', content: 'weather?' }, contexts: {}, composedMessage: [] } satisfies ChatStreamEventContext
+
+    streamActiveTurns.value = [{ sessionId: 'session-1', turnId: 'turn-1', message: reply('') }]
+    await chatOrchestratorMock.emitBeforeSendHooks('weather?', context)
+    streamActiveTurns.value = [{ sessionId: 'session-1', turnId: 'turn-1', message: reply('', ['get_weather']) }]
+
+    await vi.waitFor(() => expect(outgoingStreamMessages).toHaveLength(3))
+    expect(outgoingStreamMessages.map(event => event.type)).toEqual(['before-send', 'assistant-progress', 'assistant-progress'])
+    expect(outgoingStreamMessages[2]).toMatchObject({ sessionId: 'session-1', message: reply('', ['get_weather']) })
     await store.dispose()
   })
 
@@ -1082,7 +1097,9 @@ describe('context bridge contract', () => {
     } satisfies ChatStreamEventContext
 
     await streamPeer.emitStream({ type: 'before-send', message: 'ping', sessionId: 'session-1', context })
-    await vi.waitFor(() => expect(store.isReceivingRemoteStream).toBe(true))
+    await streamPeer.emitStream({ type: 'assistant-progress', message: reply(''), sessionId: 'session-1', context })
+    await vi.waitFor(() => expect(showStreamMock).toHaveBeenCalledWith(reply('')))
+    expect(store.isReceivingRemoteStream).toBe(true)
 
     await streamPeer.emitStreamCancel({ sessionId: 'session-1', turnId: 'turn-1' })
 
@@ -1099,13 +1116,13 @@ describe('context bridge contract', () => {
     testChannels.push(peer)
     const context = { sessionId: 'session-1', turnId: 'failed', message: { role: 'user', content: 'ping' }, contexts: {}, composedMessage: [] } satisfies ChatStreamEventContext
     await peer.emitStream({ type: 'before-send', message: 'ping', sessionId: context.sessionId, context })
-    await peer.emitStream({ type: 'token-literal', literal: 'partial', sessionId: context.sessionId, context })
-    await vi.waitFor(() => expect(appendStreamLiteralMock).toHaveBeenCalledWith('partial'))
+    await peer.emitStream({ type: 'assistant-progress', message: reply('partial'), sessionId: context.sessionId, context })
+    await vi.waitFor(() => expect(showStreamMock).toHaveBeenCalledWith(reply('partial')))
     await peer.emitStreamFailed(context)
     await vi.waitFor(() => expect(store.isReceivingRemoteStream).toBe(false))
-    await peer.emitStream({ type: 'token-literal', literal: 'late', sessionId: context.sessionId, context })
+    await peer.emitStream({ type: 'assistant-progress', message: reply('late'), sessionId: context.sessionId, context })
     await waitForBroadcastDelivery()
-    expect(appendStreamLiteralMock).not.toHaveBeenCalledWith('late')
+    expect(showStreamMock).not.toHaveBeenCalledWith(reply('late'))
     expect(resetStreamMock).toHaveBeenCalledOnce()
   })
 
@@ -1127,7 +1144,9 @@ describe('context bridge contract', () => {
     } satisfies ChatStreamEventContext
 
     await streamPeer.emitStream({ type: 'before-send', message: 'ping', sessionId: 'session-1', context })
-    await vi.waitFor(() => expect(store.isReceivingRemoteStream).toBe(true))
+    await streamPeer.emitStream({ type: 'assistant-progress', message: reply(''), sessionId: 'session-1', context })
+    await vi.waitFor(() => expect(showStreamMock).toHaveBeenCalledWith(reply('')))
+    expect(store.isReceivingRemoteStream).toBe(true)
 
     await store.cancelRemoteStream('session-1')
 
@@ -1171,6 +1190,7 @@ describe('context bridge contract', () => {
     const outgoingStreamMessages = collectChannelMessages<{ sessionId: string }>(CHAT_STREAM_CHANNEL_NAME)
     const store = useContextBridgeStore()
     await store.initialize()
+    // The context names its own session. Concurrent sends cannot borrow another send's owner.
     const context = {
       sessionId: 'session-a',
       turnId: 'turn-1',
@@ -1179,7 +1199,7 @@ describe('context bridge contract', () => {
       composedMessage: [],
     } satisfies ChatStreamEventContext
 
-    chatOrchestratorMock.activeSendSessionId = 'session-a'
+    chatOrchestratorMock.activeSendSessionId = 'session-c'
     activeSessionIdRef.value = 'session-b'
     await chatOrchestratorMock.emitTokenLiteralHooks('session A token', context)
     await vi.waitFor(() => expect(outgoingStreamMessages).toHaveLength(1))
@@ -1205,7 +1225,8 @@ describe('context bridge contract', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
 
     streamSender.postMessage({ type: 'before-send', message: 'ping', sessionId: 'session-1', context })
-    await vi.waitFor(() => expect(store.isReceivingRemoteStream).toBe(true))
+    streamSender.postMessage({ type: 'assistant-progress', message: reply(''), sessionId: 'session-1', context })
+    await vi.waitFor(() => expect(showStreamMock).toHaveBeenCalledWith(reply('')))
     streamSender.postMessage({ type: 'stream-end', sessionId: 'session-1', context })
     await vi.waitFor(() => expect(store.isReceivingRemoteStream).toBe(false))
 
@@ -1227,11 +1248,11 @@ describe('context bridge contract', () => {
 
     streamSender.postMessage({ type: 'before-send', message: 'ping', sessionId: 'session-1', context })
     await vi.waitFor(() => expect(store.isReceivingRemoteStream).toBe(true))
-    streamSender.postMessage({ type: 'token-literal', literal: 'foreign token', sessionId: 'session-2', context })
+    streamSender.postMessage({ type: 'assistant-progress', message: reply('foreign reply'), sessionId: 'session-2', context })
     streamSender.postMessage({ type: 'stream-end', sessionId: 'session-2', context })
     await waitForBroadcastDelivery()
 
-    expect(appendStreamLiteralMock).not.toHaveBeenCalledWith('foreign token')
+    expect(showStreamMock).not.toHaveBeenCalled()
     expect(store.isReceivingRemoteStream).toBe(true)
     streamSender.postMessage({ type: 'assistant-end', message: 'done', sessionId: 'session-1', context })
     await vi.waitFor(() => expect(store.isReceivingRemoteStream).toBe(false))
@@ -1251,8 +1272,9 @@ describe('context bridge contract', () => {
     } satisfies ChatStreamEventContext
 
     streamSender.postMessage({ type: 'before-send', message: 'background ping', sessionId: 'session-2', context })
+    streamSender.postMessage({ type: 'assistant-progress', message: reply('background reply'), sessionId: 'session-2', context })
     await waitForBroadcastDelivery()
-    expect(beginStreamMock).not.toHaveBeenCalled()
+    expect(showStreamMock).not.toHaveBeenCalled()
     expect(store.isReceivingRemoteStream).toBe(false)
 
     streamSender.postMessage({ type: 'stream-end', sessionId: 'session-2', context })
@@ -1262,11 +1284,12 @@ describe('context bridge contract', () => {
   })
 
   // https://github.com/moeru-ai/airi/pull/2086#discussion_r3755585351
-  it('keeps remote literals received before a mid-stream session switch for Issue #2085', async () => {
+  it('shows the whole remote reply after a mid-stream session switch for Issue #2085', async () => {
     // ROOT CAUSE:
     //
     // The bridge discarded literals while their session was not selected.
     // Selecting that session during the stream showed only later literals.
+    // Each event now carries the whole reply, so the switch shows the latest one.
     activeSessionIdRef.value = 'session-2'
     const store = useContextBridgeStore()
     await store.initialize()
@@ -1280,18 +1303,15 @@ describe('context bridge contract', () => {
     } satisfies ChatStreamEventContext
 
     streamSender.postMessage({ type: 'before-send', message: 'background ping', sessionId: 'session-1', context })
-    streamSender.postMessage({ type: 'token-literal', literal: 'first half ', sessionId: 'session-1', context })
+    streamSender.postMessage({ type: 'assistant-progress', message: reply('first half '), sessionId: 'session-1', context })
     await waitForBroadcastDelivery()
-    expect(beginStreamMock).not.toHaveBeenCalled()
-    expect(appendStreamLiteralMock).not.toHaveBeenCalled()
+    expect(showStreamMock).not.toHaveBeenCalled()
 
     activeSessionIdRef.value = 'session-1'
-    streamSender.postMessage({ type: 'token-literal', literal: 'second half', sessionId: 'session-1', context })
+    await vi.waitFor(() => expect(showStreamMock).toHaveBeenCalledWith(reply('first half ')))
+    streamSender.postMessage({ type: 'assistant-progress', message: reply('first half second half'), sessionId: 'session-1', context })
 
-    await vi.waitFor(() => expect(appendStreamLiteralMock).toHaveBeenCalledTimes(2))
-    expect(beginStreamMock).toHaveBeenCalledWith('turn-3')
-    expect(appendStreamLiteralMock).toHaveBeenNthCalledWith(1, 'first half ')
-    expect(appendStreamLiteralMock).toHaveBeenNthCalledWith(2, 'second half')
+    await vi.waitFor(() => expect(showStreamMock).toHaveBeenLastCalledWith(reply('first half second half')))
 
     await store.dispose()
   })
@@ -1315,7 +1335,7 @@ describe('context bridge contract', () => {
     } satisfies ChatStreamEventContext
 
     streamSender.postMessage({ type: 'before-send', message: 'background ping', sessionId: 'session-2', context })
-    streamSender.postMessage({ type: 'token-literal', literal: 'complete answer', sessionId: 'session-2', context })
+    streamSender.postMessage({ type: 'assistant-progress', message: reply('complete answer'), sessionId: 'session-2', context })
     streamSender.postMessage({ type: 'stream-end', sessionId: 'session-2', context })
     streamSender.postMessage({ type: 'assistant-end', message: 'complete answer', sessionId: 'session-2', context })
     await waitForBroadcastDelivery()
@@ -1326,8 +1346,7 @@ describe('context bridge contract', () => {
     activeSessionIdRef.value = 'session-2'
     await vi.waitFor(() => expect(refreshSessionMock).toHaveBeenCalledWith('session-2'))
     await vi.waitFor(() => expect(resetStreamMock).toHaveBeenCalledTimes(1))
-    expect(beginStreamMock).toHaveBeenCalledWith('turn-4')
-    expect(appendStreamLiteralMock).toHaveBeenCalledWith('complete answer')
+    expect(showStreamMock).toHaveBeenCalledWith(reply('complete answer'))
     expect(store.isReceivingRemoteStream).toBe(false)
 
     await store.dispose()
@@ -1367,7 +1386,7 @@ describe('context bridge contract', () => {
     await store.dispose()
   })
 
-  it('ignores remote literal and end events when generation guard is stale', async () => {
+  it('ignores remote replies and end events when generation guard is stale', async () => {
     const store = useContextBridgeStore()
     await store.initialize()
     const streamSender = createTestChannel(CHAT_STREAM_CHANNEL_NAME)
@@ -1381,18 +1400,20 @@ describe('context bridge contract', () => {
     } satisfies ChatStreamEventContext
 
     streamSender.postMessage({ type: 'before-send', message: 'ping', sessionId: 'session-1', context })
+    streamSender.postMessage({ type: 'assistant-progress', message: reply('fresh'), sessionId: 'session-1', context })
     await vi.waitFor(() => {
-      expect(beginStreamMock).toHaveBeenCalledWith('turn-1')
+      expect(showStreamMock).toHaveBeenCalledWith(reply('fresh'))
     })
 
     currentGeneration = 8
-    streamSender.postMessage({ type: 'token-literal', literal: 'stale-literal', sessionId: 'session-1', context })
+    streamSender.postMessage({ type: 'assistant-progress', message: reply('stale'), sessionId: 'session-1', context })
     await waitForBroadcastDelivery()
 
     streamSender.postMessage({ type: 'stream-end', sessionId: 'session-1', context })
     await waitForBroadcastDelivery()
 
-    expect(appendStreamLiteralMock).not.toHaveBeenCalledWith('stale-literal')
+    expect(showStreamMock).not.toHaveBeenCalledWith(reply('stale'))
+    expect(finalizeStreamMock).not.toHaveBeenCalled()
     expect(chatOrchestratorMock.sending).toBe(false)
     expect(store.isReceivingRemoteStream).toBe(false)
 

@@ -4,6 +4,7 @@ import type { SyncedPiniaRuntime } from 'pinia-plugin-synced'
 import type { CharacterStateSnapshot } from './character-state'
 import type { AiriCard } from './modules/airi-card'
 
+import { createChatHooks } from '@proj-airi/core-agent'
 import { advance, applyEvent, DEFAULT_CHARACTER_PROFILE, initialCharacterState, readCharacter } from '@proj-airi/stage-shared/character-state'
 import { createPinia, setActivePinia } from 'pinia'
 import { createSyncedPiniaPlugin } from 'pinia-plugin-synced'
@@ -70,6 +71,7 @@ function cardWith(character: CharacterProfile | Record<string, unknown>): AiriCa
     version: '1.0.0',
     extensions: {
       airi: {
+        avatarModels: [],
         // The field is read through the schema, so an invalid value is as plain data as a valid one.
         modules: { character: character as CharacterProfile, consciousness: inherit, vision: inherit, speech: { ...inherit, voice_id: '' } },
         agents: {},
@@ -136,6 +138,23 @@ describe('useCharacterStateStore', () => {
     // The replicated state carries the reading, never the record or its events.
     expect(Object.keys(store.$state)).toEqual(['replicated'])
     expect(Object.keys(store.replicated).sort()).toEqual(['cardId', 'reading', 'revision', 'updatedAtMs'])
+  })
+
+  // Background tasks and scene replies run through the same chat hooks as the owner's conversation.
+  it('applies the MOOD cue of a reply that speaks, and ignores the cue of a turn that does not', async () => {
+    const { store } = leaderStore()
+    await store.ready()
+    const hooks = createChatHooks()
+    store.observeChat(hooks, () => [])
+    const context = { sessionId: 'session-1', message: { role: 'user' as const, content: 'hello', createdAt: T0, id: 'message-1' }, contexts: {}, composedMessage: [] }
+    const before = store.revision
+    vi.advanceTimersByTime(1_000)
+
+    await hooks.emitTokenSpecialHooks('<|MOOD brighter: the task went well|>', { ...context, turnId: 'task-turn', speaks: false })
+    expect(store.revision).toBe(before)
+
+    await hooks.emitTokenSpecialHooks('<|MOOD brighter: you came back|>', { ...context, turnId: 'turn-1', speaks: true })
+    expect(store.revision).toBeGreaterThan(before)
   })
 
   it('saves after the debounce and refreshes the reading on the advance tick', async () => {

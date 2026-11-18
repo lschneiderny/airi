@@ -73,6 +73,7 @@ async function setup(window: BrowserWindow, getMainWindow?: () => BrowserWindow 
     widgetsManager: {} as Params['widgetsManager'],
     autoUpdater: {} as Params['autoUpdater'],
     devtoolsWindow: { openWindow: openDevtoolsWindow },
+    editorWindow: {} as Params['editorWindow'],
     serverChannel: {} as Params['serverChannel'],
     godotStageManager: {} as Params['godotStageManager'],
     mcpManager: {} as Params['mcpManager'],

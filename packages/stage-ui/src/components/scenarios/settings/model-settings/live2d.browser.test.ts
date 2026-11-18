@@ -869,6 +869,8 @@ describe('live2D model settings', () => {
     const pinia = createPinia()
     const { useSettingsStageModel } = await import('../../../../stores/settings/stage-model')
     const stageModel = useSettingsStageModel(pinia)
+    // The active character selects the stage model at runtime, so no model is selected by default.
+    stageModel.stageModelSelected = 'preset-live2d-1'
     const { screen, natural } = await renderNaturalEmotionStrength(pinia)
     const key = 'settings/live2d/natural'
     const love = screen.getByRole('slider', { name: t('settings.emotions.love') })
@@ -876,7 +878,6 @@ describe('live2D model settings', () => {
     await expect.element(love).toBeVisible()
     await expect.element(fieldOf(love).getByText('1.00×', { exact: true })).toBeVisible()
     await expect.element(reset).toBeDisabled()
-    expect(stageModel.stageModelSelected).toBe('preset-live2d-1')
 
     love.element().focus()
     for (let step = 0; step < 10; step++)
@@ -904,7 +905,10 @@ describe('live2D model settings', () => {
 
   it('reads a Love strength of "x" as 1 without an error', async () => {
     const handledErrors: unknown[] = []
-    const { screen, natural } = await renderNaturalEmotionStrength(createPinia(), error => handledErrors.push(error))
+    const pinia = createPinia()
+    const { useSettingsStageModel } = await import('../../../../stores/settings/stage-model')
+    useSettingsStageModel(pinia).stageModelSelected = 'preset-live2d-1'
+    const { screen, natural } = await renderNaturalEmotionStrength(pinia, error => handledErrors.push(error))
     const love = screen.getByRole('slider', { name: t('settings.emotions.love') })
     const sad = screen.getByRole('slider', { name: t('settings.emotions.sad') })
     const consoleError = vi.spyOn(console, 'error')
@@ -1037,4 +1041,85 @@ describe('live2D model settings', () => {
     }
     expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(width)
   }, 30_000)
+
+  // ROOT CAUSE:
+  // The settings window and stage window do not share a local expression store.
+  // Character controls live in the card store. Preview selection uses synchronized state.
+  it('shows character expressions and updates their policy and preview state', async () => {
+    Object.assign(window, { Live2DCubismCore: {} })
+    const [{ useSettingsLive2d }, { useAiriCardStore }, { useSharedLive2D }, { default: Live2DSettings }] = await Promise.all([
+      import('@proj-airi/stage-ui-live2d'),
+      import('../../../../stores/modules/airi-card'),
+      import('../../../../stores/live2d'),
+      import('./live2d.vue'),
+    ])
+
+    const pinia = createPinia()
+    useSettingsLive2d(pinia).live2dExpressionEnabled = true
+
+    const runtimeSnapshot = {
+      ownerInstanceId: 'stage-owner',
+      modelId: 'test-model',
+      renderer: 'live2d',
+      phase: 'mounted',
+      controlsLocked: false,
+      previewAvailable: true,
+      canCapturePreview: false,
+      updatedAt: 1,
+    } satisfies ModelSettingsRuntimeSnapshot
+
+    const screen = await render(Live2DSettings, {
+      props: { palette: [], runtimeSnapshot },
+      global: { plugins: [pinia, createTestI18n()] },
+    })
+
+    const cards = useAiriCardStore(pinia)
+    cards.cards.set('default', {
+      name: 'ReLU',
+      version: '1.0.0',
+      extensions: {
+        airi: {
+          avatarModels: [{
+            id: 'test-avatar',
+            displayModelId: 'test-model',
+            type: 'live2d',
+            config: { controls: { disabledExpressions: [], disabledMotions: [] } },
+          }],
+          defaultAvatarModelId: 'test-avatar',
+          modules: {
+            consciousness: { provider: '', model: '' },
+            speech: { provider: '', model: '', voice_id: '' },
+            vision: { provider: '', model: '' },
+          },
+          agents: {},
+        },
+      },
+    })
+    cards.selectedAvatarModelId = 'test-avatar'
+    cards.activeLive2DModelControls = {
+      expressions: [
+        { name: 'happy', fileName: 'happy.exp3.json' },
+        { name: 'surprised', fileName: 'surprised.exp3.json' },
+      ],
+      motions: [],
+    }
+
+    await screen.getByText(t('settings.live2d.expressions.title'), { exact: true }).click()
+    await expect.element(screen.getByText('happy', { exact: true })).toBeVisible()
+    await expect.element(screen.getByText('surprised', { exact: true })).toBeVisible()
+
+    await screen.getByRole('switch', { name: t('settings.live2d.expressions.actions.hide-from-airi', { name: 'happy' }) }).first().click()
+    await expect.poll(() => cards.selectedAvatarModel?.type === 'live2d'
+      ? cards.selectedAvatarModel.config.controls.disabledExpressions
+      : []).toContain('happy')
+
+    await screen.getByRole('button', { name: t('settings.live2d.expressions.actions.activate', { name: 'happy' }) }).first().click()
+    await expect.poll(() => useSharedLive2D(pinia).expressionPreview).toMatchObject({
+      avatarModelId: 'test-avatar',
+      names: ['happy'],
+    })
+
+    screen.unmount()
+    await expect.poll(() => useSharedLive2D(pinia).expressionPreview).toBeNull()
+  })
 })

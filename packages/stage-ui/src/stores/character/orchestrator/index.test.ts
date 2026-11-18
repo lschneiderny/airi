@@ -165,6 +165,7 @@ describe('store character-orchestrator', () => {
       version: '1.0',
       extensions: {
         airi: {
+          avatarModels: [],
           agents: {},
           modules: {
             consciousness: {
@@ -306,7 +307,8 @@ describe('store character-orchestrator', () => {
     const task = notebook.scheduleTask({ title: 'Stretch', priority: 'critical', dueAt: Date.now() })
 
     const store = useCharacterOrchestratorStore(pinia)
-    store.startTicker()
+    // Only the leader renderer ticks, and gaining leadership starts the ticker.
+    store.initialize(leaderRuntime())
     await vi.advanceTimersByTimeAsync(store.attentionConfig.tickIntervalMs)
 
     const topicKey = notifyTopicKey(TASK_SCHEDULER_SOURCE, task.id)

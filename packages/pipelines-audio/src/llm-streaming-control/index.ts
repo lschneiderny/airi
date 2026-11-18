@@ -1,10 +1,11 @@
 export { createStreamingControlParser } from './controller'
 export { tokenAct, tokenBreak, tokenDelay } from './parsers'
-export { normalizeActPayload } from './payloads'
+export { normalizeActPayload, normalizeExpression } from './payloads'
 export type {
   NormalizedActPayload,
   StreamingControlEmotion,
   StreamingControlEmotionPayload,
+  StreamingControlExpressionPayload,
   StreamingControlGesture,
   StreamingControlGestureKind,
   StreamingControlLook,

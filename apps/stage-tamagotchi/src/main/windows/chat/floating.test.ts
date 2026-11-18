@@ -92,6 +92,8 @@ vi.mock('../../libs/electron/window-context', () => ({ createWindowContext: () =
 vi.mock('../../libs/electron/location', () => ({
   baseUrl: () => 'http://localhost',
   getElectronMainDirname: () => '/main',
+  getPreloadPath: () => '/main/preload/index.mjs',
+  getRendererRoot: () => '/main/renderer',
   withHashRoute: (_base: string, route: string) => route,
   load: async () => {},
 }))
@@ -143,6 +145,7 @@ function setup(anchor: () => ChatAnchor | undefined) {
     getMainWindow: () => new mocks.FakeBrowserWindow() as never,
     getAnchor: anchor,
     getPlacement: () => 'attached',
+    getDanmaku: () => false,
     getPinned: () => true,
     getBounds: () => chatSize,
     saveBounds: () => {},
@@ -160,13 +163,14 @@ describe('floating chat attached to an anchor', () => {
     Object.assign(getCurrentHostCapabilities(), capabilitiesForHost('windows'))
   })
 
-  it.each(['attached', 'danmaku', 'free'] as const)('routes %s chat pinning through the compositor while keeping the default Electron level', async (placement) => {
+  it.each(['attached', 'free'] as const)('routes %s chat pinning through the compositor while keeping the default Electron level', async (placement) => {
     const main = new mocks.FakeBrowserWindow()
     main.isAlwaysOnTop = () => placement !== 'free'
     const floating = setupFloatingChatWindow({
       getMainWindow: () => main as never,
       getAnchor: () => createManualAnchor(homeAt(800)).anchor,
       getPlacement: () => placement,
+      getDanmaku: () => false,
       getPinned: () => true,
       getBounds: () => chatSize,
       saveBounds: () => {},

@@ -199,6 +199,74 @@ describe('chat history', () => {
     })
   })
 
+  // A notice is not owner speech, so it shows as a folded label instead of an owner bubble, and nobody replies to it.
+  it('shows a stored notice as a folded label with its source', async () => {
+    const screen = await render(ChatHistory, {
+      props: {
+        messages: [
+          { id: 'notice-1', role: 'user', content: 'The background task "Research" finished.\nThree builds compared.', notice: { source: 'recipe:Research' } },
+        ],
+        style: 'height: 240px; width: 320px;',
+      },
+      global: {
+        plugins: [createEnglishI18n()],
+      },
+    })
+
+    await vi.waitFor(() => {
+      expect(screen.container.textContent).toContain('Background report')
+      expect(screen.container.textContent).toContain('Research')
+      expect(screen.container.textContent).not.toContain('Three builds compared.')
+    })
+    expect(screen.container.querySelector('[data-chat-message-role="user"] .chat-message-item-container')).toBeNull()
+
+    screen.getByRole('button', { name: /Research/ }).element().dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await vi.waitFor(() => {
+      expect(screen.container.textContent).toContain('Three builds compared.')
+    })
+  })
+
+  // The owner must see when a reply handed a task to a recipe.
+  it('names the recipe that a reply used', async () => {
+    const screen = await render(ChatHistory, {
+      props: {
+        messages: [
+          {
+            id: 'assistant-1',
+            role: 'assistant',
+            content: 'Next step: open the editor.',
+            slices: [
+              { type: 'tool-call', toolCall: { toolCallId: 'call-1', toolCallType: 'function', toolName: 'builtIn_useRecipe', args: '{"name":"Research","task":"Compare PC builds for 3000 yuan."}' } },
+              { type: 'text', text: 'Next step: open the editor.' },
+            ],
+            tool_results: [{ id: 'call-1', result: JSON.stringify({ status: 'started', name: 'Research', task: 'Compare PC builds for 3000 yuan.' }) }],
+          },
+        ],
+        style: 'height: 240px; width: 320px;',
+      },
+      global: {
+        plugins: [createEnglishI18n()],
+      },
+    })
+
+    await vi.waitFor(() => {
+      const bubble = screen.container.querySelector<HTMLElement>('.chat-message-item-container')
+      expect(bubble?.textContent).toContain('Handed to recipe')
+      expect(bubble?.textContent).toContain('Research')
+      expect(bubble?.textContent).not.toContain('Compare PC builds for 3000 yuan.')
+    })
+
+    // The recipe call is a hit in the combo. Its row shows the task handed over. The recipe's steps stay in its own space.
+    screen.getByRole('button', { name: /Research/ }).first().element().dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await vi.waitFor(() => expect(screen.getByRole('button', { name: /Research/ }).all()).toHaveLength(2))
+    screen.getByRole('button', { name: /Research/ }).nth(1).element().dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await vi.waitFor(() => {
+      expect(screen.container.textContent).toContain('Compare PC builds for 3000 yuan.')
+    })
+    // A send builds the recipe tool for itself, so a rerun could not find it.
+    expect(screen.container.querySelector('button[aria-label="Run again"]')).toBeNull()
+  })
+
   // ROOT CAUSE:
   //
   // ChatHistoryMessageFrame always applied opacity-0, then added opacity-100
@@ -2015,7 +2083,8 @@ describe('chat history', () => {
       props: { messages: [message], style: 'height: 480px; width: 480px; overflow-y: auto;' },
       global: { plugins: [createEnglishI18n()] },
     })
-    await screen.getByLabelText('Re-run tool call').nth(1).click()
+    await screen.getByText('2-hit combo', { exact: true }).click()
+    await screen.getByLabelText('Run again').nth(1).click()
     expect(screen.emitted('toolCallRerun')).toEqual([[expect.objectContaining({ invocationId: 'invocation-1', toolCallId: 'same' })]])
   })
 
@@ -2053,7 +2122,8 @@ describe('chat history', () => {
       },
     })
 
-    await screen.getByLabelText('Re-run tool call').click()
+    await screen.getByText('Using Weather').click()
+    await screen.getByLabelText('Run again').click()
 
     expect(screen.emitted('toolCallRerun')).toEqual([[
       {
@@ -2151,9 +2221,9 @@ describe('chat history', () => {
       }
     })
 
-    it('reveals a break on its schedule in a window that rebuilds the reply in its stream store', async () => {
-      // The chat window runs no turn of its own. The context bridge rebuilds the reply in the stream store,
-      // and the window renders the store's message, as InteractiveArea does.
+    it('reveals a break on its schedule in a window that receives the reply whole in its stream store', async () => {
+      // The chat window runs no turn of its own. The context bridge puts each update of the reply whole into the
+      // stream store, and the window renders the store's message, as InteractiveArea does.
       let stream: ReturnType<typeof useChatStreamStore> | undefined
       const screen = render(defineComponent({
         setup() {
@@ -2170,14 +2240,20 @@ describe('chat history', () => {
       if (!stream)
         throw new Error('Expected the stream store to start.')
 
-      stream.beginStream('turn-1')
-      stream.appendStreamLiteral('hey :3')
+      const createdAt = Date.now()
+      stream.streamingMessage = { role: 'assistant', content: 'hey :3', slices: [text('hey :3')], tool_results: [], createdAt, id: 'turn-1' }
       await vi.waitFor(() => expect(bubbleTexts(screen.container)).toEqual([expect.stringContaining('hey :3')]))
 
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
       try {
-        stream.appendStreamBreak(1)
-        stream.appendStreamLiteral('you there? ^^')
+        stream.streamingMessage = {
+          role: 'assistant',
+          content: 'hey :3\n\nyou there? ^^',
+          slices: [text('hey :3'), { type: 'break', seconds: 1 }, text('you there? ^^')],
+          tool_results: [],
+          createdAt,
+          id: 'turn-1',
+        }
         await nextTick()
         expect(bubbleTexts(screen.container)).toEqual([expect.stringContaining('hey :3')])
 

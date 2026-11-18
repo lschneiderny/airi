@@ -27,6 +27,19 @@ Hearing cancels active transcription and rejects results from its previous enabl
 The voice host also stops listening and dictation. Text chat can continue without transcribing stored recordings.
 Disabling Speech stops its producers and playback. Text generation and tool work continue until the chat turn ends.
 
+## Notifications
+
+Notifications are private messages from AIRI Cloud to the signed-in account. Code and API names use `inbox`.
+`useInboxStore()` in `stores/inbox.ts` owns the unread count, the loaded pages, and the read actions for one window.
+The store reads the count at sign-in, on window focus, and every 5 minutes. A list loads only when a panel opens.
+Opening a message marks it read. The count changes at once and rolls back if Cloud rejects the write.
+Sign-out and account changes clear all state. Responses from the old session are dropped.
+Requests use the generated `@proj-airi/cloud-client` functions with `authedFetch`, so a 401 refreshes the token once.
+The store keeps only kinds that `inbox-presentation.ts` can render. It skips unknown kinds and invalid params.
+Entry points: the web account menu opens `InboxPopover` anchored to the account pill.
+The mobile menu opens `InboxDrawer` as a sub-panel with a back button. The Electron island shows `InboxPanel` in place.
+Entry points show nothing while the user is signed out. Announcements are a separate public surface.
+
 ## Message times
 
 Chat history shows a centered timestamp before the first dated message and after five minutes without a message.
@@ -41,7 +54,7 @@ Saving or synchronizing a session does not change its displayed activity time un
 
 ## Chat bursts and wordless replies
 
-An assistant message with break slices renders one bubble per run of slices between breaks; a leading, repeated, or trailing break adds no empty bubble. While the message streams, a bubble after a break appears `seconds` after that break slice arrived. The schedule keeps running after generation ends, so later bubbles of a short reply still appear on time. A message that is already complete when the history mounts, for example after a reload or a session switch, shows every bubble at once. A window that shows another renderer's reply, such as the Chat window, rebuilds its break slices from the break specials on the context channel (`appendStreamBreak` in the chat stream store), so the bubbles of a streaming reply follow the same schedule there. That window keys the stream with the context's `assistantMessageId` and keeps it in view until the session refresh loads the stored reply, so the stored reply takes over the same history item and its pending bubbles still wait. Copy still joins the text with blank lines.
+An assistant message with break slices renders one bubble per run of slices between breaks; a leading, repeated, or trailing break adds no empty bubble. While the message streams, a bubble after a break appears `seconds` after that break slice arrived. The schedule keeps running after generation ends, so later bubbles of a short reply still appear on time. A message that is already complete when the history mounts, for example after a reload or a session switch, shows every bubble at once. A window that shows another renderer's reply, such as the Chat window, receives the whole reply with its break slices after each change (`assistant-progress` on the context channel), so the bubbles of a streaming reply follow the same schedule there. That window keys the stream with the context's `assistantMessageId` and keeps it in view until the session refresh loads the stored reply, so the stored reply takes over the same history item and its pending bubbles still wait. Copy still joins the text with blank lines.
 
 A wordless or silent reply (an assistant message with `wordless`) renders as a small chip outside any bubble, such as "reacted - nodded" or "stayed quiet". It has no copy text and no reply action.
 
@@ -63,6 +76,7 @@ Consumers subscribe to the microphone input with their own abort signal. The las
 - Speech uses direct or local provider output. Chunked synthesis never speaks the ASCII faces of the texting register and pauses the speech track at each `<|BREAK|>` and each valid `<|DELAY n|>`; the speech pipeline in `@proj-airi/pipelines-audio` owns both. The stage captions a face that forms its own segment through the output's `onDisplayText`, after the clip before it.
 - `createVoiceRephrasePlugin` rewrites final transcripts with a chat model through a checked transcript patch. The raw text stays in the transcript history. Each segment gets its own rewrite, so segment boundaries stay for later speaker labels. A reply with another segment count leaves the text unchanged.
 - `createVoiceEndJudgePlugin` ends a paused input early when a chat model reads its transcript as a finished message. The model is the rephrase model, or the chat model when no rephrase provider is set.
+- `createSpeakerEvidencePlugin` compares each automatic input with the owner's voiceprint while Speaker recognition is on. It writes the mean cosine of the speech as speaker evidence, and the IO trace of the input records it. It never changes an input, and the chat prompt does not include it.
 
 A pause of 1.2 seconds can end an input. With the end judge on, which is the default, the voice activity silence limit grows by 3 seconds.
 The judge then ends a finished message at the pause, and an unfinished one waits for the speaker to continue.
@@ -132,6 +146,17 @@ Catalog changes rebuild the spotter keywords. A result after a stop or a keyword
 `useWakeWordDetectionStore().preparation` reports `unconfigured`, `preparing`, `ready`, or `error` for UI.
 The model loads only when the catalog has a pronunciation for the pinned model. Until the model is ready, detection returns no wake.
 While no listener runs, the preparation is `unconfigured`.
+
+`useSpeakerTrackerStore` owns the voice host's Sherpaw speaker tracker Worker. `acquire` downloads the pinned CAM++ pack and starts the Worker on first use.
+The tracker enrolls the saved voiceprint as speaker 0, and follows each change of it. `release` terminates the Worker.
+`preparation` reports `idle`, `preparing`, `ready`, or `error` for UI. No feature acquires the tracker yet.
+
+`useVoiceprintStore` keeps the voiceprint of the device owner in local storage. Only one person can enroll.
+`useVoiceEnrollment` records one enrollment from the speech input of the calling window, keeps only the speech that Silero VAD finds, and saves the voiceprint.
+The enrollment belongs to the calling component, so it ends when the component unmounts.
+While it records, it holds a capture lease (`holdCaptureLease`). The voice host follows leases with `useVoiceCaptureLeaseStore`.
+While a lease holds, the host begins no input and records no voice message. A new lease cancels the active input and keeps a voice message that records as a draft.
+A lease that nobody renews ends after 3 seconds.
 
 A host can pass its own `detectWakeWord` to `voice.startListening`. Then the built-in detection does not start.
 The detector remains active during playback. A supplied `acceptSpeech` classifier can reject playback echo before admission.
@@ -303,6 +328,7 @@ To add a platform, run the update command below on it, review the new images, an
 - Text uses the bundled `DM Sans Variable` font. The test fails if the font does not load instead of falling back to a system font.
 - The frame is 360 CSS pixels wide, and the Playwright page matches the 414x896 viewport, so screenshots are not scaled.
 - Vitest disables CSS animations and hides the text caret while it captures. It also retakes the screenshot until two captures match.
+- All browser tests share one page, and its pointer stays where the last test left it. `renderVisualBaseline` moves the pointer to the corner of the frame, which is panel padding, so no control is captured in its hover state.
 - Content must not depend on time, network, or random input. Leave out animated states such as spinners.
 - Icon collections resolve from this package directory, so a run from the repository root (`pnpm verify`) renders the same icons as a run from the package.
 - Classes and icons must come from scanned `.vue` files or the UnoCSS safelist. The test frame (`src/test/visual-baseline-frame.vue`) owns the layout classes for this reason.
@@ -468,7 +494,7 @@ Do not read them in the Electron main process.
 `useConversationSettings` in `features/conversation/settings` stores one document at `settings/conversation`: `register` (`talking` or `texting`, default `talking`) and `textingFlavor` (`plain` or `discord`, default `plain`, read only while texting).
 The value sets come from `@proj-airi/stage-shared/conversation-register`. An invalid stored field falls back to its default, and defaults are never written until the first `update` or `reset`. The leader routes `update` and `reset`.
 
-The chat store renders the register section with `renderRegisterSection(register, textingFlavor, t)` and passes it to `useChatSessionStore().setRegisterPrompt(text)`. Each session system prompt places it after the character prompt and before the stage contract, so the stage contract text and its hash never depend on the register. An empty section is left out. A register, flavor, or locale change rewrites the active session's stored system message once; an unchanged setting keeps the system prompt byte-identical across turns.
+The chat prompt composer renders the register section with `renderRegisterSection(register, textingFlavor, t)`. Each request's system prompt places it after the character prompt and before the stage contract, so the stage contract text and its hash never depend on the register. An empty section is left out. A session stores no system message, so a register, flavor, or locale change reaches the next request; an unchanged setting keeps the system prompt byte-identical across turns.
 
 ### Unprompted turns
 

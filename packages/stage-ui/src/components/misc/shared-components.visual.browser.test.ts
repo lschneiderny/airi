@@ -1,5 +1,6 @@
 import { Button, Callout, Checkbox, Input } from '@proj-airi/ui'
 import { describe, expect, it } from 'vitest'
+import { userEvent } from 'vitest/browser'
 import { h } from 'vue'
 
 import Alert from './alert.vue'
@@ -11,6 +12,14 @@ const icon = 'i-solar:leaf-bold-duotone'
 
 describe('shared component visual baselines', () => {
   it('button colors, shapes, sizes, and states', async (context) => {
+    // All browser tests share one page, and its pointer stays where the last test left it. This leaves it where the
+    // Accent button renders, so the capture shows a hovered button unless the baseline helper moves the pointer away.
+    const pointerRest = document.createElement('div')
+    pointerRest.style.cssText = 'position: fixed; left: 0; top: 0; width: 360px; height: 80px;'
+    document.body.append(pointerRest)
+    await userEvent.hover(pointerRest, { position: { x: 285, y: 34 } })
+    pointerRest.remove()
+
     const frame = await renderVisualBaseline(context, () => [
       h(Button, { label: 'Secondary' }),
       h(Button, { label: 'Primary', variant: 'primary' }),

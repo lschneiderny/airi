@@ -49,7 +49,8 @@ interface OpenExchange {
  * Detects the end of chat exchanges, so the open threads of a finished conversation can be extracted once.
  *
  * Only a user-origin `onBeforeSend` opens or extends an exchange: an unprompted turn alone, spoken or declined, never
- * opens one, but a user reply after it does. A completed turn of any origin in a session with an open exchange moves
+ * opens one, but a user reply after it does. A turn that does not speak on the host (`speaks` is false: a background
+ * task or a scene reply) opens none either, and neither does a notice turn, which the owner did not write. A completed turn of any origin in a session with an open exchange moves
  * its last activity. Exchanges are kept per chat session, so a session switch neither merges nor drops one. A repeat
  * of a user turn's hooks (same session and turn id) is counted once. {@link ExchangeSensor.check} reports each exchange
  * once, after `quietMs` without a turn, and only while no turn is generating; a later user turn starts a new exchange.
@@ -59,7 +60,7 @@ export function startExchangeSensor(hooks: ExchangeHookSource, options: Exchange
 
   const unregister = [
     hooks.onBeforeSend(async (_message, context) => {
-      if (context.origin === 'unprompted')
+      if (context.origin === 'unprompted' || context.speaks === false || context.message.notice)
         return
       const nowMs = options.now()
       const exchange = open.get(context.sessionId)

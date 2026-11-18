@@ -8,14 +8,14 @@ import { defineComponent, h, nextTick, onScopeDispose } from 'vue'
 import { createI18n } from 'vue-i18n'
 
 import { useControlsIslandStore } from '../stores/controls-island'
-import { cursorAvailable, MainPage, mountedStage, outsideWindow, samplerReads, stageCanvas } from './host-screen-placement.fixtures'
+import { createPageRouter, cursorAvailable, MainPage, mountedStage, outsideWindow, samplerReads, stageCanvas } from './host-screen-placement.fixtures'
 
 describe('classic cursor trust', () => {
   it('defers DOM hit testing while the capability snapshot is pending', async () => {
     const pinia = createPinia()
     cursorAvailable.value = false
     const hit = vi.spyOn(document, 'elementFromPoint')
-    const view = await render(MainPage, { global: { plugins: [pinia, createI18n({ legacy: false, locale: 'en' })] } })
+    const view = await render(MainPage, { global: { plugins: [pinia, createI18n({ legacy: false, locale: 'en' }), createPageRouter()] } })
     onTestFinished(() => {
       hit.mockRestore()
       cursorAvailable.value = true
@@ -49,7 +49,7 @@ describe('classic cursor trust', () => {
         },
       })
       const hit = vi.spyOn(document, 'elementFromPoint').mockReturnValue(stageCanvas)
-      const view = await render(Host, { global: { plugins: [pinia, createI18n({ legacy: false, locale: 'en' })] } })
+      const view = await render(Host, { global: { plugins: [pinia, createI18n({ legacy: false, locale: 'en' }), createPageRouter()] } })
       onTestFinished(() => {
         hit.mockRestore()
         cursorAvailable.value = true

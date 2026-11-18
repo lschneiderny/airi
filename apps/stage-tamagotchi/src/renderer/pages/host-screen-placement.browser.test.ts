@@ -8,7 +8,7 @@ import { render } from 'vitest-browser-vue'
 import { nextTick } from 'vue'
 import { createI18n } from 'vue-i18n'
 
-import { boundsAvailable, boundsHeight, boundsWidth, boundsX, boundsY, cursorAvailable, display, MainPage, outsideWindow, setIgnoreMouseEvents, stageFrame, StagePage, windowBounds } from './host-screen-placement.fixtures'
+import { boundsAvailable, boundsHeight, boundsWidth, boundsX, boundsY, createPageRouter, cursorAvailable, display, MainPage, outsideWindow, setIgnoreMouseEvents, stageFrame, StagePage, windowBounds } from './host-screen-placement.fixtures'
 
 describe.each([['classic', MainPage], ['desktop', StagePage]] as const)('%s screen placement', (_name, component) => {
   it.each(['windows', 'macos'] as const)('waits for the first %s bounds reading before forwarding placement and relative cursor', async (host) => {
@@ -20,7 +20,7 @@ describe.each([['classic', MainPage], ['desktop', StagePage]] as const)('%s scre
     boundsWidth.value = 0
     boundsHeight.value = 0
     cursorAvailable.value = true
-    const view = await render(component, { global: { plugins: [pinia, createI18n({ legacy: false, locale: 'en' })] } })
+    const view = await render(component, { global: { plugins: [pinia, createI18n({ legacy: false, locale: 'en' }), createPageRouter()] } })
     onTestFinished(() => view.unmount())
 
     expect(view.getByTestId('stage-placement').element().textContent).toBe('undefined')
@@ -43,7 +43,7 @@ describe.each([['classic', MainPage], ['desktop', StagePage]] as const)('%s scre
     boundsX.value = 0
     boundsY.value = 0
     cursorAvailable.value = true
-    const view = await render(component, { global: { plugins: [pinia, createI18n({ legacy: false, locale: 'en' })] } })
+    const view = await render(component, { global: { plugins: [pinia, createI18n({ legacy: false, locale: 'en' }), createPageRouter()] } })
     onTestFinished(() => {
       boundsX.value = windowBounds.x
       boundsY.value = windowBounds.y
@@ -66,7 +66,7 @@ describe.each([['classic', MainPage], ['desktop', StagePage]] as const)('%s scre
     cursorAvailable.value = false
     outsideWindow.value = true
     setIgnoreMouseEvents.mockClear()
-    const view = await render(component, { global: { plugins: [pinia, createI18n({ legacy: false, locale: 'en' })] } })
+    const view = await render(component, { global: { plugins: [pinia, createI18n({ legacy: false, locale: 'en' }), createPageRouter()] } })
     onTestFinished(() => {
       cursorAvailable.value = true
       outsideWindow.value = false
@@ -112,7 +112,7 @@ describe.each([['classic', MainPage], ['desktop', StagePage]] as const)('%s scre
   it.each<HostId>(['windows', 'macos', 'linux-x11', 'linux-xwayland'])('preserves live-origin bounds on %s', async (host) => {
     const pinia = createPinia()
     useHostCapabilitiesStore(pinia).set(capabilitiesForHost(host))
-    const view = await render(component, { global: { plugins: [pinia, createI18n({ legacy: false, locale: 'en' })] } })
+    const view = await render(component, { global: { plugins: [pinia, createI18n({ legacy: false, locale: 'en' }), createPageRouter()] } })
     onTestFinished(() => view.unmount())
 
     await expect.element(view.getByTestId('stage-placement')).toHaveTextContent(JSON.stringify({
@@ -124,7 +124,7 @@ describe.each([['classic', MainPage], ['desktop', StagePage]] as const)('%s scre
   it('withholds placement from Stage when the window origin is unavailable', async () => {
     const pinia = createPinia()
     useHostCapabilitiesStore(pinia).set(capabilitiesForHost('linux-wayland'))
-    const view = await render(component, { global: { plugins: [pinia, createI18n({ legacy: false, locale: 'en' })] } })
+    const view = await render(component, { global: { plugins: [pinia, createI18n({ legacy: false, locale: 'en' }), createPageRouter()] } })
     onTestFinished(() => view.unmount())
 
     await expect.element(view.getByTestId('stage-placement')).toHaveTextContent('undefined')
@@ -137,7 +137,7 @@ describe('classic controls startup visibility', () => {
     const capabilities = useHostCapabilitiesStore(pinia)
     cursorAvailable.value = true
     outsideWindow.value = true
-    const view = await render(MainPage, { global: { plugins: [pinia, createI18n({ legacy: false, locale: 'en' })] } })
+    const view = await render(MainPage, { global: { plugins: [pinia, createI18n({ legacy: false, locale: 'en' }), createPageRouter()] } })
     onTestFinished(() => {
       outsideWindow.value = false
       return view.unmount()

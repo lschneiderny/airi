@@ -3,6 +3,7 @@ import type { ContextUpdate, MetadataEventSource, WebSocketEventInputs } from '@
 import type { AssistantMessage, CommonContentPart, CompletionToolCall, Message, SystemMessage, ToolMessage, UserMessage } from '@xsai/shared-chat'
 
 import type { AssistantTurn } from '../messages/types'
+import type { DecisionQuestion } from '../runtime/recipe'
 
 export interface ChatSlicesText {
   type: 'text'
@@ -34,7 +35,21 @@ export interface ChatSlicesBreak {
   seconds: number
 }
 
-export type ChatSlices = ChatSlicesText | ChatSlicesToolCall | ChatSlicesToolCallResult | ChatSlicesSticker | ChatSlicesBreak
+/**
+ * A card that the model drew as part of its answer. The host draws `program`. Places that cannot draw it, such as copy,
+ * cloud sync, and export, use `text`.
+ */
+export interface ChatSlicesCard {
+  type: 'card'
+  program: string
+  /** The card as plain text: the answer and its key values. */
+  text: string
+}
+
+/** Content that a tool call adds to a reply in place of the call. */
+export type ChatSlicesToolContent = ChatSlicesCard
+
+export type ChatSlices = ChatSlicesText | ChatSlicesToolCall | ChatSlicesToolCallResult | ChatSlicesSticker | ChatSlicesBreak | ChatSlicesCard
 
 /** One ACT cue of a wordless reply, reduced to the fields that history shows. An ACT with neither field stays an empty entry. */
 export interface ChatWordlessCue {
@@ -47,9 +62,19 @@ export interface ChatWordlessCue {
 export interface ChatAssistantMessage extends AssistantMessage {
   /** True when transport failure ended this locally preserved response before completion. */
   interrupted?: true
+  /**
+   * Set on a reply to a stored notice. Like the notice, it never syncs to the cloud.
+   * `turnId` identifies the send. `source` names what sent the notice.
+   */
+  proactive?: { turnId: string, source: string }
   /** Sources returned by the provider, separate from text consumed by speech. */
   citations?: import('../messages/types').Citation[]
   search?: { id: string, status: 'in_progress' | 'searching' | 'completed' | 'failed' }
+  /**
+   * The kind of content that a tool call is about to add, from the moment the model starts the call until the content
+   * arrives or the model writes on. Only a reply that is still written uses it.
+   */
+  pendingContent?: ChatSlicesToolContent['type']
   slices: ChatSlices[]
   tool_results: {
     id: string
@@ -139,7 +164,24 @@ export type ChatHistoryItem = (ChatMessage | ErrorMessage) & {
   replyToMessageId?: string
   /** Tools selected for this message. The runtime rebuilds executors from these names. */
   tools?: ChatToolReference[]
+  /** Skills that the owner invoked with this message. Their steps stay with it, so later requests keep following them. */
+  skills?: ChatInvokedSkill[]
+  /**
+   * Set on a stored notice: text for the conversation that the owner did not write, for example a finished background task.
+   * Requests mark it as a notice, so the model never reads it as owner speech.
+   */
+  notice?: { source: string }
 }
+
+/**
+ * One skill that the owner invoked with a message. The model reads `instructions`. The chat shows the skill on the message.
+ * - `steps`: the skill gave its steps to the conversation.
+ * - `background`: the skill runs the message as a task in its own session.
+ * - `decision`: the skill asks the model a question, and the answer picks what follows.
+ */
+export type ChatInvokedSkill
+  = | { kind: 'steps' | 'background', name: string, instructions: string }
+    | { kind: 'decision', name: string, instructions: string, question: DecisionQuestion }
 
 export interface ChatStreamEventContext {
   /** Session ownership travels with the event across concurrent turns and renderer transports. */
@@ -159,6 +201,8 @@ export interface ChatStreamEventContext {
   origin?: 'unprompted'
   /** Cue counts of the reply. The runtime sets it before the stream-end hooks run, and only then. */
   cueStats?: ChatTurnCueStats
+  /** Whether the reply speaks on the host. Scene replies and background tasks stay silent. */
+  speaks?: boolean
 }
 
 /** How a reply used the ACT cue channel, counted by the runtime for one turn. */
@@ -191,6 +235,8 @@ export type ChatStreamEvent
     | { type: 'token-special', special: string, sessionId: string, context: ChatStreamEventContext }
     | { type: 'stream-end', sessionId: string, context: ChatStreamEventContext }
     | { type: 'assistant-end', message: string, sessionId: string, context: ChatStreamEventContext }
+    /** The whole reply so far, after each change. A view in another window shows it as it is, tool calls included. */
+    | { type: 'assistant-progress', message: StreamingAssistantMessage, sessionId: string, context: ChatStreamEventContext }
     | { type: 'assistant-message', message: ChatAssistantMessage, sessionId: string, messageText: string, context: ChatStreamEventContext }
 
 export type StreamingAssistantMessage = ChatAssistantMessage & { context?: ContextMessage } & { createdAt?: number, completedAt?: number, id?: string }

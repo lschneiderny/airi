@@ -1,4 +1,4 @@
-import type { ChatAssistantMessage, ChatHistoryItem, ChatSlices } from '../../../types/chat'
+import type { ChatAssistantMessage, ChatHistoryItem } from '../../../types/chat'
 
 function isTextPart(part: unknown): part is { type: 'text', text?: string } {
   return typeof part === 'object'
@@ -47,33 +47,6 @@ export function getWordlessCueWords(message: ChatHistoryItem | undefined): strin
   return message.wordless.cues.flatMap(cue => cue.gesture?.kind ?? cue.emotion ?? [])
 }
 
-/** A slice with its index in the message, which tool results are looked up by. */
-export interface ChatBubbleSlice {
-  slice: ChatSlices
-  index: number
-}
-
-/**
- * Groups the slices of one reply into bubbles. A break slice closes the bubble before it; a bubble without slices
- * (a break before any slice, two adjacent breaks, or a trailing break) is dropped, so a trailing break renders one bubble.
- */
-export function splitSlicesIntoBubbles(slices: ChatSlices[]): ChatBubbleSlice[][] {
-  const bubbles: ChatBubbleSlice[][] = []
-  let current: ChatBubbleSlice[] = []
-  for (const [index, slice] of slices.entries()) {
-    if (slice.type === 'break') {
-      if (current.length)
-        bubbles.push(current)
-      current = []
-      continue
-    }
-    current.push({ slice, index })
-  }
-  if (current.length)
-    bubbles.push(current)
-  return bubbles
-}
-
 export function getChatHistoryItemCopyText(message: ChatHistoryItem): string {
   // The trigger content is the instruction sent to the model; the cue stands for its topic.
   if (isUnpromptedCue(message))
@@ -84,9 +57,10 @@ export function getChatHistoryItemCopyText(message: ChatHistoryItem): string {
 
   if (message.role === 'assistant') {
     if (message.slices?.length) {
+      // A card copies as its text.
       const text = message.slices
-        .filter(slice => slice.type === 'text')
-        .map(slice => slice.text.trim())
+        .flatMap(slice => slice.type === 'text' || slice.type === 'card' ? [slice.text] : [])
+        .map(text => text.trim())
         .filter(Boolean)
         .join('\n\n')
 

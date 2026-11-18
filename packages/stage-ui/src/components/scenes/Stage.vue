@@ -28,7 +28,7 @@ import { isMotionQaBridgeEnabled } from '@proj-airi/stage-shared/motion-scenario
 import { initialResolverMemory, resolvePerformanceState } from '@proj-airi/stage-shared/performance-state'
 import { TOUCH_TOPIC_KEY } from '@proj-airi/stage-shared/situation'
 import { useDesktopActivityStore } from '@proj-airi/stage-shared/stores/desktop-activity'
-import { defaultLive2DMotionControlDynamics, Live2DScene, useLive2DMotionControl, useLive2DNaturalSettings, useLive2dParams, useSettingsLive2d } from '@proj-airi/stage-ui-live2d'
+import { createLive2D, defaultLive2DMotionControlDynamics, Live2DScene, useLive2DMotionControl, useLive2DNaturalSettings, useLive2dParams, useSettingsLive2d } from '@proj-airi/stage-ui-live2d'
 import { useMMD } from '@proj-airi/stage-ui-mmd/stores'
 import { SpineScene } from '@proj-airi/stage-ui-spine'
 import { TachieScene } from '@proj-airi/stage-ui-tachie'
@@ -42,6 +42,7 @@ import { useBroadcastChannel, useDocumentVisibility, useEventListener, useInterv
 import { storeToRefs } from 'pinia'
 import { computed, defineAsyncComponent, getCurrentScope, nextTick, onUnmounted, ref, shallowRef, watch } from 'vue'
 
+import StageAvatarModelMissing from './stage-avatar-model-missing.vue'
 import StageRenderError from './stage-render-error.vue'
 
 import { useIdleProps } from '../../composables/performance/use-idle-props'
@@ -59,12 +60,14 @@ import { useCharacterStateStore } from '../../stores/character-state'
 import { useChatStore } from '../../stores/chat'
 import { useChatSessionStore } from '../../stores/chat/session-store'
 import { useActComplianceStore } from '../../stores/devtools/act-compliance'
+import { useSharedLive2DExpressionPreview } from '../../stores/live2d'
 import { useAiriCardStore } from '../../stores/modules/airi-card'
 import { useSpeechStore } from '../../stores/modules/speech'
 import { useNaturalPerformanceOverride } from '../../stores/natural-performance-override'
 import { useSettingsPresenceBubble } from '../../stores/presence-bubble'
 import { useStageSelfStore } from '../../stores/self'
 import { useSettings } from '../../stores/settings'
+import { useSettingsStageModel } from '../../stores/settings/stage-model'
 import { useSituationStore } from '../../stores/situation'
 import { useSpeechOutputControlStore } from '../../stores/speech-output-control'
 import { useStageTouchStore } from '../../stores/touch'
@@ -100,6 +103,8 @@ const emit = defineEmits<{
   error: [error: Error]
   /** The stage dropped a render error and starts a new load. */
   reset: []
+  /** The active card has no model. The app opens the model settings. */
+  selectAvatarModel: []
   /** The MMD character's projected rect in work-area DIP changed; only emitted while `stageWorld` is set. */
   placement: [rect: PlacementRect]
   /** The MMD character's live root x in model units changed; only emitted while `stageWorld` is set. */
@@ -205,7 +210,7 @@ watch([nowSpeaking, speechVoicing], ([speaking, voicing]) => {
 const { audioContext } = useAudioContext()
 const currentAudioSource = ref<AudioBufferSourceNode>()
 const speechOutputControlStore = useSpeechOutputControlStore()
-const { speechMuted } = storeToRefs(speechOutputControlStore)
+const { speechMuted, speechVolume } = storeToRefs(speechOutputControlStore)
 const lastVrmInteractionAt = new Map<VrmInteractionTarget, number>()
 const VRM_INTERACTION_COOLDOWN_MS = 450
 
@@ -310,6 +315,17 @@ function resetAssistantSpeechSurface(source: string) {
   }
 }
 
+const { activeCardId: selectedCharacterId, activeCard, selectedAvatarModel, ready: cardsReady } = storeToRefs(useAiriCardStore())
+const { stageModelUnavailable } = storeToRefs(useSettingsStageModel())
+// Before the card store is ready, no card owns the Stage yet, so an empty Stage is not a missing model.
+// `missing`: the card has no model. `unavailable`: this device cannot load the model of the card.
+const avatarModelPrompt = computed<'missing' | 'unavailable' | undefined>(() => {
+  if (!cardsReady.value || stageModelRenderer.value !== 'disabled' || stageRenderError.value)
+    return undefined
+  if (!selectedAvatarModel.value)
+    return 'missing'
+  return stageModelUnavailable.value ? 'unavailable' : undefined
+})
 const { userSending: chatSending } = storeToRefs(useChatStore())
 const { presenceOverride } = storeToRefs(useSettingsPresenceBubble())
 
@@ -330,6 +346,12 @@ const { currentMotion } = storeToRefs(useLive2dParams())
 const voice = useVoiceStore()
 const cards = useAiriCardStore()
 const characterState = useCharacterStateStore()
+const live2d = createLive2D({
+  controlPolicy: () => selectedAvatarModel.value?.type === 'live2d'
+    ? selectedAvatarModel.value.config.controls
+    : undefined,
+})
+useSharedLive2DExpressionPreview(live2d, selectedCharacterId, () => selectedAvatarModel.value?.id)
 
 const live2dExpressionBackend = useLive2DExpressionBackend()
 const mmdExpressionBackend = useMMDExpressionBackend()
@@ -774,10 +796,19 @@ function showSpeechText(text: string) {
   }
 }
 
+// Analysis taps (Live2D lip sync, spectrum analyser) read from speechAnalysis,
+// before the user volume. A low playback volume must not change mouth or
+// analyser behavior; VRM and MMD already read the source node directly.
+const speechAnalysis = audioContext.createGain()
 const speechDestination = audioContext.createGain()
+speechAnalysis.connect(speechDestination)
 speechDestination.connect(audioContext.destination)
+// setTargetAtTime smooths slider drags into the gain, so volume changes do not click.
+watch(speechVolume, (volume) => {
+  speechDestination.gain.setTargetAtTime(volume, audioContext.currentTime, 0.05)
+}, { immediate: true })
 const playback = new Playback(new BrowserPlayback(audioContext, {
-  destination: speechDestination,
+  destination: speechAnalysis,
   onSource: (source) => { currentAudioSource.value = source },
 }))
 
@@ -894,7 +925,7 @@ async function setupLipSync() {
       return
     }
     live2dLipSync.value = lipSync
-    speechDestination.connect(lipSync.input)
+    speechAnalysis.connect(lipSync.input)
     await audioContext.resume()
     lipSyncStarted.value = true
     syncLipSyncLoop()
@@ -908,7 +939,7 @@ async function setupLipSync() {
 function setupAnalyser() {
   if (!audioAnalyser.value) {
     audioAnalyser.value = audioContext.createAnalyser()
-    speechDestination.connect(audioAnalyser.value)
+    speechAnalysis.connect(audioAnalyser.value)
   }
 }
 
@@ -920,6 +951,11 @@ watch(speechMuted, (muted) => {
       voice.getSpeech(turn)?.cancel('Speech muted')
   }
 })
+
+// Only a reply that speaks drives speech and expression. Background work and scene replies never speak here.
+function holdsVoice(context: { speaks?: boolean }) {
+  return context.speaks ?? false
+}
 
 /**
  * Unprompted turns of the active session whose speech surface is reset at their first literal.
@@ -933,6 +969,8 @@ function isTouchReaction(message: ChatStreamEventContext['message']) {
 }
 
 chatHookCleanups.push(onBeforeMessageComposed(async (_message, context) => {
+  if (!holdsVoice(context))
+    return
   // A touch reaction turn doses no mood from its own cues: the touch that started it already dosed mood.
   if (isTouchReaction(context.message))
     performanceConductor.markMoodless(context.turnId)
@@ -948,11 +986,16 @@ chatHookCleanups.push(onBeforeMessageComposed(async (_message, context) => {
 }))
 
 chatHookCleanups.push(onBeforeSend(async (_message, context) => {
+  // Background work and scene replies show nothing on the stage.
+  if (!holdsVoice(context))
+    return
   // The model may still decline an unprompted turn, so the character does not look like she is answering.
   if (context.origin !== 'unprompted') {
     currentMotion.value = { group: EmotionThinkMotionName }
     // A turn of the user's own proves they are here, in any session: a spoken one moves no pointer.
-    userTurnAtMs.value = Date.now()
+    // A notice reports finished background work. The owner did not write it, so it proves nothing.
+    if (!context.message.notice)
+      userTurnAtMs.value = Date.now()
   }
   // A reach-out shows before it is said: she looks up as if about to speak. A touch reaction answers a touch her body
   // already reacted to, so it gets no look.
@@ -970,11 +1013,13 @@ chatHookCleanups.push(onStreamEnd(async (context) => {
 chatHookCleanups.push(onTokenLiteral(async (literal, context) => {
   if (deferredSurfaceResets.delete(context.turnId))
     resetAssistantSpeechSurface('unprompted-speech')
-  if (!speechMuted.value)
+  if (holdsVoice(context) && !speechMuted.value)
     await voice.getSpeech(context)?.write(literal)
 }))
 
 chatHookCleanups.push(onTokenSpecial(async (special, context) => {
+  if (!holdsVoice(context))
+    return
   // MOOD cues belong to the character-state store, which reads them from the chat hooks. They are no stage cue, so
   // they never reach the streaming-control controller, which would reject them.
   if (MOOD_CUE_MARKER.test(special))
@@ -1006,6 +1051,8 @@ chatHookCleanups.push(streamingControl.onRejected(({ turnId, special }) => {
 }))
 
 chatHookCleanups.push(onAssistantResponseEnd(async (_message, context) => {
+  if (!holdsVoice(context))
+    return
   void voice.finishResponse(context).catch(error => console.error('Speech response completion failed', error))
 }))
 
@@ -1084,6 +1131,7 @@ async function captureCharacterFrame() {
 }
 
 onUnmounted(() => {
+  live2d.dispose()
   disposePlaybackStateHandler()
   disposeUserSpeakingListener()
   disposeChatComposerActivityListener()
@@ -1092,6 +1140,7 @@ onUnmounted(() => {
   chatHookCleanups.forEach(dispose => dispose?.())
   viewUpdateCleanups.forEach(dispose => dispose?.())
   disconnectVoiceOutput()
+  speechAnalysis.disconnect()
   speechDestination.disconnect()
 })
 
@@ -1122,6 +1171,7 @@ defineExpose({
         v-if="stageModelRenderer === 'live2d' && showStage"
         ref="live2dSceneRef"
         v-model:state="componentState"
+        :context="live2d"
         :presence="presenceBubble"
         :performance="performance"
         :natural-energy="performanceOverride?.energy ?? undefined"
@@ -1251,6 +1301,12 @@ defineExpose({
         </div>
       </div>
 
+      <StageAvatarModelMissing
+        v-if="avatarModelPrompt"
+        :reason="avatarModelPrompt"
+        :name="activeCard?.name ?? ''"
+        @select="emit('selectAvatarModel')"
+      />
       <StageRenderError
         v-if="stageRenderError"
         :error="stageRenderError"

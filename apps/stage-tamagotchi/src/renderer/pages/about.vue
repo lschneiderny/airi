@@ -39,6 +39,10 @@ const {
 } = useAnalytics()
 
 const isDisabled = computed(() => updateState.value.status === 'disabled')
+// Only an install that a store or a package manager updates reports `disabled`. Flatpak and Nix are known only at runtime, so the Steam build flag is not enough.
+const isExternallyUpdated = computed(() => import.meta.env.VITE_DISTRIBUTION === 'steam' || isDisabled.value)
+// Fork macOS builds are ad-hoc signed, so the updater is off there and updates are manual downloads.
+const isManualDownload = computed(() => isDisabled.value && updateState.value.diagnostics?.platform === 'darwin')
 const isLatestVersion = computed(() => {
   return updateState.value.status === 'not-available' && !isDisabled.value
 })
@@ -285,7 +289,7 @@ onMounted(() => {
             </div>
 
             <FieldSelect
-              v-if="!isDisabled"
+              v-if="!isExternallyUpdated"
               :model-value="selectedUpdateChannel"
               :disabled="isUpdateChannelUpdating || isBusy"
               :label="t('tamagotchi.stage.about.update.lane.label')"
@@ -397,7 +401,9 @@ onMounted(() => {
                       : isLatestVersion
                         ? t('tamagotchi.stage.about.update.actions.latest-version')
                         : isDisabled
-                          ? t('tamagotchi.stage.about.update.actions.manual-download')
+                          ? t(isManualDownload
+                            ? 'tamagotchi.stage.about.update.actions.manual-download'
+                            : 'tamagotchi.stage.about.update.actions.managed-by-store')
                           : isError
                             ? t('tamagotchi.stage.about.update.actions.retry-check')
                             : t('tamagotchi.stage.about.update.actions.check-for-updates')"

@@ -15,12 +15,12 @@ import type {
 } from './types'
 
 import { createContext } from '@moeru/eventa'
+import { createPushStream } from '@proj-airi/stream-kit'
 
 import { speechPipelineEventMap } from './eventa'
 import { createPriorityResolver } from './priority'
 import { createTtsSegmentStream } from './processors/tts-chunker'
 import { speechPauseSeconds } from './speech-pause'
-import { createPushStream } from './stream'
 import { createTimeline } from './timeline'
 
 export interface SpeechPipelineOptions<TAudio> {

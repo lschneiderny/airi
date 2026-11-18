@@ -1,5 +1,6 @@
 import type { Card, ccv3 } from '@proj-airi/ccc'
 import type { CharacterStateRecordV1 } from '@proj-airi/stage-shared/character-state'
+import type { Live2DControlPolicy } from '@proj-airi/stage-ui-live2d/types/avatar-model'
 import type { GenericSchema, InferOutput } from 'valibot'
 
 import type { DisplayModel, useDisplayModelsStore } from '../stores/display-models'
@@ -17,6 +18,7 @@ import { wakeWordSchema } from '../libs/voice/wake-words'
 import { characterProfileOf, characterStateContext } from '../stores/character-state'
 import { DisplayModelFormat } from '../stores/display-models'
 import { normalizeContextWindow, normalizeTemperature } from '../types/airiCard'
+import { createAvatarModelReference } from './avatar-model'
 
 const FORMAT = 'airi-character-card'
 const VERSION = 1
@@ -48,6 +50,10 @@ const manifestSchema = object({
       path: string(),
       format: picklist([DisplayModelFormat.Live2dZip, DisplayModelFormat.SpineZip, DisplayModelFormat.TachieZip, DisplayModelFormat.VRM]),
       name: string(),
+      controls: optional(object({
+        disabledExpressions: array(string()),
+        disabledMotions: array(string()),
+      })),
     })),
     memories: optional(object({ path: literal(MEMORIES_PATH) })),
     characterState: optional(object({ path: literal(CHARACTER_STATE_PATH) })),
@@ -99,7 +105,7 @@ export class AiriCardPackageError extends Error {
  */
 export async function exportAiriCardPackage({ card, displayModelsStore, memories, characterState }: { card: AiriCard, displayModelsStore: DisplayModelsStore, memories?: MemoryWrite[], characterState?: CharacterStateRecordV1 | null }): Promise<Blob> {
   const exportableCard = cardFromAiriCard(card)
-  const displayModel = await exportDisplayModel(exportableCard, displayModelsStore)
+  const displayModel = await exportDisplayModel(card, displayModelsStore)
   const manifest = {
     format: FORMAT,
     version: VERSION,
@@ -144,8 +150,8 @@ export async function importAiriCardPackage({ file, displayModelsStore }: { file
   const memories = manifest.resources?.memories
     ? await readJsonFile(zip, manifest.resources.memories.path, memoriesFileSchema)
     : []
-  const displayModelId = await importDisplayModel(zip, manifest, displayModelsStore)
-  const card = cardFromCharacterCard(cardJson, displayModelId)
+  const displayModel = await importDisplayModel(zip, manifest, displayModelsStore)
+  const card = cardFromCharacterCard(cardJson, displayModel, manifest.resources?.displayModel?.controls)
   const characterState = manifest.resources?.characterState
     ? await readCharacterState(zip, manifest.resources.characterState.path, card.extensions.airi)
     : null
@@ -168,8 +174,10 @@ async function readCharacterState(zip: JSZip, path: string, airi: AiriExtension)
   }
 }
 
-async function exportDisplayModel(card: ShareableAiriCard, store: DisplayModelsStore) {
-  const displayModelId = card.extensions.airi.modules.displayModelId
+async function exportDisplayModel(card: AiriCard, store: DisplayModelsStore) {
+  const extension = card.extensions.airi
+  const avatarModel = extension.avatarModels.find(model => model.id === extension.defaultAvatarModelId)
+  const displayModelId = avatarModel?.displayModelId
   if (!displayModelId)
     return
 
@@ -192,6 +200,12 @@ async function exportDisplayModel(card: ShareableAiriCard, store: DisplayModelsS
       format: model.format,
       name: payload.file.name,
       path: `models/body-model.${modelExt}`,
+      ...(avatarModel?.type === 'live2d'
+        ? { controls: {
+            disabledExpressions: [...avatarModel.config.controls.disabledExpressions],
+            disabledMotions: [...avatarModel.config.controls.disabledMotions],
+          } }
+        : {}),
     },
   }
 }
@@ -207,7 +221,7 @@ async function importDisplayModel(zip: JSZip, manifest: Manifest, store: Display
 
   try {
     const data = await file.async('arraybuffer')
-    return (await store.addDisplayModel(resource.format, new File([data], resource.name))).id
+    return await store.addDisplayModel(resource.format, new File([data], resource.name))
   }
   catch (cause) {
     throw error('invalid-file', 'Failed to import display model file', { cause })
@@ -252,7 +266,11 @@ function cardFromAiriCard(card: AiriCard): ShareableAiriCard {
   }
 }
 
-function cardFromCharacterCard(card: CharacterCardPackageJson, displayModelId?: string): ShareableAiriCard {
+function cardFromCharacterCard(
+  card: CharacterCardPackageJson,
+  displayModel?: DisplayModel,
+  controls?: Live2DControlPolicy,
+): ShareableAiriCard {
   const data = card.data
   return {
     name: data.name,
@@ -265,22 +283,34 @@ function cardFromCharacterCard(card: CharacterCardPackageJson, displayModelId?: 
     notes: data.creator_notes,
     systemPrompt: data.system_prompt,
     postHistoryInstructions: data.post_history_instructions,
-    extensions: { airi: sanitizeAiri(data.extensions?.airi, displayModelId) },
+    extensions: { airi: sanitizeAiri(data.extensions?.airi, displayModel, controls) },
   }
 }
 
-function sanitizeAiri(value: unknown, displayModelIdOverride?: string): AiriExtension {
+function sanitizeAiri(
+  value: unknown,
+  displayModel?: DisplayModel,
+  controls?: Live2DControlPolicy,
+): AiriExtension {
   const source = isRecord(value) ? value : {}
   const modules = isRecord(source.modules) ? source.modules : {}
   const artistry = isRecord(modules.artistry) ? modules.artistry : {}
   const speech = isRecord(modules.speech) ? modules.speech : {}
-  const displayModelId = displayModelIdOverride ?? stringValue(modules.displayModelId)
   const temperature = normalizeTemperature(source.temperature)
+  const avatarModel = displayModel ? createAvatarModelReference(displayModel.id, displayModel.format) : undefined
+  if (avatarModel?.type === 'live2d' && controls) {
+    avatarModel.config.controls = {
+      disabledExpressions: [...controls.disabledExpressions],
+      disabledMotions: [...controls.disabledMotions],
+    }
+  }
 
   return {
     contextWindow: normalizeContextWindow(source.contextWindow),
     ...(temperature === undefined ? {} : { temperature }),
     ...(source.wakeWords === undefined ? {} : { wakeWords: parse(array(wakeWordSchema), source.wakeWords) }),
+    avatarModels: avatarModel ? [avatarModel] : [],
+    defaultAvatarModelId: avatarModel?.id,
     modules: {
       character: characterProfileOf(modules.character),
       consciousness: providerModel(modules.consciousness),
@@ -289,7 +319,6 @@ function sanitizeAiri(value: unknown, displayModelIdOverride?: string): AiriExte
         ...providerModel(modules.speech),
         voice_id: stringValue(speech.voice_id),
       },
-      ...(displayModelId ? { displayModelId } : {}),
       artistry: {
         ...(typeof artistry.provider === 'string' ? { provider: artistry.provider } : {}),
         ...(typeof artistry.model === 'string' ? { model: artistry.model } : {}),

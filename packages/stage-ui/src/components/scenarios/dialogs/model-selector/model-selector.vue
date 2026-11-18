@@ -30,16 +30,9 @@ const displayModelStore = useDisplayModelsStore()
 const { displayModelsFromIndexedDBLoading, displayModels } = storeToRefs(displayModelStore)
 const { t } = useI18n()
 
-function handleRemoveModel(model: DisplayModel) {
-  const wasActive = props.selectedModel?.id === model.id
-  displayModelStore.removeDisplayModel(model.id)
-  // Removing the model that is currently on stage must also take it off the
-  // stage; otherwise the scene keeps rendering the already-loaded mesh (its
-  // blob URL stays valid). Switch to the first remaining model, or none.
-  if (wasActive) {
-    const fallback = displayModels.value.find(m => m.id !== model.id)
-    emits('pick', fallback)
-  }
+// The card store removes the references to a deleted model.
+async function handleRemoveModel(model: DisplayModel) {
+  await displayModelStore.removeDisplayModel(model.id)
 }
 
 const highlightDisplayModelCard = ref<string | undefined>(props.selectedModel?.id)
