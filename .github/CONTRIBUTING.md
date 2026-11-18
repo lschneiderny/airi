@@ -154,3 +154,5 @@ git push
 The fork's pull requests allow only rebase merges, which would copy every upstream commit under a new hash and make the next sync conflict with the last one. For the same reason, do not rebase the fork onto upstream.
 
 Run long verification for a sync in a dedicated worktree.
+
+When upstream is far ahead, merge in steps of about 100 commits and finish each step before the next. The [upstream policy ledger](../docs/ai/context/upstream-policy.md#at-each-sync) has the full procedure: which files keep the fork's version, which paths stay deleted, and what to record.

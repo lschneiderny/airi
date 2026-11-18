@@ -12,6 +12,7 @@ This is my personal fork of [Project AIRI](https://github.com/moeru-ai/airi). I 
 - **Expression performance.** Each model's `.exp3.json` files are loaded into a per-model catalog with derived labels and suggested emotion mappings. The language model can use the curated expressions through ACT cues and tools.
 - **Touch and cursor attention.** You can poke and pet the model. With the Natural driver, the character's attention follows the cursor.
 - **Situational presence.** The desktop character reaches out a few times a day for her own reasons, with long quiet stretches between messages. Settings > Presence controls what foreground information she can see.
+- **No accounts, no automatic updates, no error reports.** The clients have no sign-in. A build of this fork does not update itself and sends no error reports, unless the build sets its own update feed or error-report project.
 - **Development tooling.** The fork adds motion QA gates (`pnpm qa:*`), changed-file verification (`pnpm verify`), worktree helpers (`pnpm wt`, `pnpm dev:top`), and a shared CPU budget for builds and tests (`pnpm slots`).
 
 The design records for these features are in [`docs/ai/adr/`](./docs/ai/adr/).
@@ -67,6 +68,14 @@ The fork does not develop these. It changes them only to keep the workspace buil
 | `apps/component-calling` | Kept | The component-calling demo app |
 | `packages/memory-pgvector` | Kept | The pgvector memory package |
 | `packages/input-playstation-dualsense-5` | Kept | The DualSense controller input |
+| `packages/agents` | Kept | The single-purpose model agents that the runtimes and the evals share |
+| `packages/cloud-client` | Kept | The generated client for the hosted API |
+| `packages/electron-native-backdrop` | Kept | The regional macOS desktop blur for transparent windows |
+| `packages/extension-protocol` | Kept | The extension identity and permission types |
+| `packages/mathjson`, `packages/speech-transformer-math`, `packages/speech-transformer-chem` | Kept | The speech transformers that read formulas and chemistry as words |
+| `packages/trace-kit`, `packages/ui-trace` | Kept | The trace records and trace UI behind IO tracing |
+| `packages/timeline-canvas`, `packages/ui-timeline`, `packages/ui-panes` | Kept | The timeline and docking-pane UI of the tool pages |
+| `evals/*` | Kept | The upstream eval suites |
 | `packages/stage-pages/src/pages/v2` | Kept | The upstream v2 pages |
 | `packages/stage-ui/src/stores/modules/home-assistant.ts` | Kept | The in-app Home Assistant module, woven into shared code |
 | `packages/stage-ui/src/stores/modules/artistry.ts` | Kept | The in-app Artistry module, woven into shared code |
@@ -89,13 +98,13 @@ These paths were removed. Upstream changes to them are dropped on sync.
 | plugins/airi-plugin-bilibili-laplace | Retired 2026-11-16 | The Bilibili LAPLACE plugin |
 | packages/stage-ui/src/components/modules/X.vue | Retired 2026-11-16 | The stage-ui X module (with packages/stage-ui/src/stores/modules/twitter.ts) |
 
-The Retired table is the path list the upstream sync uses to resolve delete-versus-modify conflicts: a retired path stays deleted. The port-back conditions for Kirie and Pocket are in [`docs/ai/context/upstream-watch.md`](./docs/ai/context/upstream-watch.md).
+The Retired table is the path list the upstream sync uses to resolve delete-versus-modify conflicts: a retired path stays deleted. The other paths that stay deleted at a sync are in the [upstream policy ledger](./docs/ai/context/upstream-policy.md). The port-back conditions for Kirie and Pocket are in [`docs/ai/context/upstream-watch.md`](./docs/ai/context/upstream-watch.md).
 
 The web app left code behind in shared packages: the `isStageWeb()` branches, kept at first because they were not easy drops, and the `web` host profile. Both are now scheduled for removal (owner ruling 2026-11-17); the [character mind roadmap](./docs/ai/context/character-mind-roadmap.md) tracks it.
 
 ## Getting started
 
-The fork's [GitHub releases](https://github.com/lschneiderny/airi/releases) carry Linux and macOS installers, built by hand with `pnpm release`. To run it from source, you need [Git](https://git-scm.com/downloads) and [mise](https://mise.jdx.dev/installing-mise.html), which installs the Node.js and pnpm versions pinned in [`.tool-versions`](./.tool-versions).
+The fork's [GitHub releases](https://github.com/lschneiderny/airi/releases) carry Linux and macOS installers, built by hand with `pnpm release`. An installed build does not update itself; install a newer release by hand. To run it from source, you need [Git](https://git-scm.com/downloads) and [mise](https://mise.jdx.dev/installing-mise.html), which installs the Node.js and pnpm versions pinned in [`.tool-versions`](./.tool-versions).
 
 ```shell
 git clone https://github.com/lschneiderny/airi.git
@@ -116,6 +125,7 @@ After the app starts, configure a chat provider in Settings > Providers, then ch
 | `apps/` | The desktop app and upstream's component-calling demo |
 | `packages/` | Shared UI, chat orchestration, Live2D/VRM/MMD renderers, audio, providers, and i18n |
 | `engines/` | Godot rendering sidecar |
+| `evals/` | Eval suites inherited from upstream |
 | `integrations/` | Discord, Minecraft, and VS Code integrations inherited from upstream |
 | `plugins/`, `services/` | AIRI plugins and the computer-use service |
 | `server/` | Hosted backend inherited from upstream; the clients do not use it |
@@ -125,7 +135,7 @@ Each app and package has its own `README.md`. [`AGENTS.md`](./AGENTS.md) records
 
 ## Upstream
 
-`origin` is this fork and `upstream` is `moeru-ai/airi`. The fork has diverged heavily in chat orchestration, the Live2D stack, and the stores. Upstream changes come in by merging `upstream/main` on a sync branch, never by cherry-pick or rebase; [`.github/CONTRIBUTING.md`](./.github/CONTRIBUTING.md#bring-in-upstream-changes) has the steps.
+`origin` is this fork and `upstream` is `moeru-ai/airi`. The fork has diverged heavily in chat orchestration, the Live2D stack, and the stores. Upstream changes come in by merging `upstream/main` on a sync branch, never by cherry-pick or rebase; [`.github/CONTRIBUTING.md`](./.github/CONTRIBUTING.md#bring-in-upstream-changes) has the steps. The [upstream policy ledger](./docs/ai/context/upstream-policy.md) lists every place where the fork does not take upstream as shipped.
 
 ## License and credits
 
