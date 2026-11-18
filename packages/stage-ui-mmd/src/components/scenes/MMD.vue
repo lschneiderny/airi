@@ -117,7 +117,7 @@ import {
 type MMDSelfReport = Pick<SelfObservation, 'activity' | 'phase' | 'label'>
 
 const props = withDefaults(defineProps<{
-  /** The context that owns `currentAudioSource`. */
+  /** The context that creates the lip sync node. It must be the context of the played speech. */
   audioContext?: AudioContext
   modelSrc?: string
   modelId?: string
@@ -136,7 +136,8 @@ const props = withDefaults(defineProps<{
    * readback answers for the whole stage.
    */
   backgroundUrl?: string | null
-  currentAudioSource?: AudioBufferSourceNode
+  /** Connects the lip sync node to the played speech and returns the disconnection. */
+  connectSpeech?: (node: AudioNode) => () => void
   enableOrbitControls?: boolean
   /**
    * The desktop stage world. When set, the camera comes from the calibration (no framing, no orbit controls), the root
@@ -342,7 +343,7 @@ const stageModel = shallowRef<{ height: number, footBaselineY: number } | null>(
 // Lip-sync owns Vue lifecycle hooks, so it must be created during setup.
 const lipSync = useMMDLipSync(
   toRef(props, 'audioContext'),
-  toRef(props, 'currentAudioSource'),
+  toRef(props, 'connectSpeech'),
 )
 const blink = useMMDBlink()
 let gaze: ReturnType<typeof createGazeController> | undefined
@@ -1404,7 +1405,7 @@ async function loadModel(src: string) {
         },
         'lip-sync': ({ dt }) => {
           lipSync.update(lipMorphs, dt)
-          runtime.setComposition({ speakEnv: props.currentAudioSource ? 1 : 0 })
+          runtime.setComposition({ speakEnv: props.nowSpeaking ? 1 : 0 })
         },
         'bone-morphs': () => {
           activeMesh.skeleton.bones.forEach((bone, index) => {

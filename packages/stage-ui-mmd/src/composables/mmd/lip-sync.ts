@@ -24,13 +24,13 @@ const MMD_SLOT_BY_VOWEL: Record<WLipSyncVowel, VowelSlot> = {
 /**
  * Applies shared wLipSync vowel weights to MMD mouth morphs.
  *
- * The caller owns the AudioContext and audio source lifecycle. This composable
- * owns only the connection between that source and its wLipSync node.
+ * The caller owns the AudioContext and the played speech. `connectSpeech`
+ * connects the wLipSync node to that speech and returns the disconnection.
  * Call `update` after the MMD animation helper so lip-sync wins over VMD morphs.
  */
 export function useMMDLipSync(
   audioContext: Readonly<Ref<AudioContext | undefined>>,
-  audioSource: Readonly<Ref<AudioBufferSourceNode | undefined>>,
+  connectSpeech: Readonly<Ref<((node: AudioNode) => () => void) | undefined>>,
 ) {
   const lipSyncAnalysis = shallowRef<WLipSyncAnalysis>()
   const level = shallowRef(0)
@@ -64,26 +64,16 @@ export function useMMDLipSync(
       })
   }, { immediate: true })
 
-  watch([lipSyncAnalysis, audioSource], ([analysis, source], _, onCleanup) => {
-    if (!analysis || !source)
+  watch([lipSyncAnalysis, connectSpeech], ([analysis, connect], _, onCleanup) => {
+    if (!analysis || !connect)
       return
 
     try {
-      source.connect(analysis.input)
+      onCleanup(connect(analysis.input))
     }
     catch (error) {
       console.error('[stage-ui-mmd] Failed to connect the MMD lip-sync node.', error)
-      return
     }
-
-    onCleanup(() => {
-      try {
-        source.disconnect(analysis.input)
-      }
-      catch {
-        // The source can end before Vue runs this watcher cleanup.
-      }
-    })
   }, { immediate: true })
 
   function update(morphs: MorphController | undefined, delta = 0.016) {

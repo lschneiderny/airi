@@ -27,6 +27,10 @@ chat:
     title: Chat provider isn't configured
     description: Choose and validate a provider in Settings before sending a message.
     action: Open provider settings
+    sign-in-title: Sign in to start chatting
+    sign-in-description: Sign in to use the official AIRI provider, or set up your own provider in Settings.
+    sign-in-description-official-only: Sign in to use the official AIRI provider.
+    sign-in-action: Sign in
   voice-message:
     recording: Recording
     starting: Starting microphone
@@ -94,6 +98,11 @@ chat:
     finalizing: Finishing…
     sent: Sent
     dismiss: Dismiss
+    issues:
+      show: Show {count} problem | Show {count} problems
+      voice: Voice input
+      microphone: Microphone
+      wake-words: Wake words
   voice-input: Voice input
   reply-cut-off: The reply was cut off because the window that runs the chat reloaded. Retry to send this message again.
   composer:
@@ -101,16 +110,9 @@ chat:
     images: Images
     call: Voice call
   call:
-    title: Voice call
-    listening: Listening
-    hearing: Hearing you
-    speaking: Speaking
-    muted: Muted
     mute: Mute the microphone
     unmute: Unmute the microphone
     hang-up: Hang up
-    minimize: Minimize the call
-    expand: Return to the call
     failed: Could not start the voice call
     microphone-denied: AIRI cannot use the microphone.
     microphone-off: The microphone is turned off. Turn it on in Hearing to start a voice call.
@@ -272,6 +274,11 @@ chat:
     cloud-badge: Synced to cloud
     new-chat-fallback: New chat
     delete: Delete conversation
+    rename: Rename conversation
+    rename-input: Conversation name
+    rename-placeholder: Enter a conversation name
+    save-rename: Save conversation name
+    cancel-rename: Cancel renaming
 avatar-model-missing:
   title: No model selected
   unavailable-title: This model is not on this device
@@ -394,6 +401,14 @@ status:
   sign-in-unconfirmed: Could not confirm your session. Please sign in again.
   dismiss: Dismiss
   configure-hearing: Select and configure a Hearing provider in Settings.
+
+model-assets:
+  retry: Retry
+  errors:
+    network: Could not connect to {host}. Check your network or proxy settings.
+    server: '{host} returned an error (HTTP {status}).'
+    incomplete: The download from {host} stopped before it finished.
+    unknown: 'The download stopped with an error: {error}'
 
 notifications:
   title: Notifications

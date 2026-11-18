@@ -56,10 +56,18 @@ function waitForMouthLevel(readLevel: () => number): Promise<number> {
   })
 }
 
+/** Connects the lip sync node to `source`, the way a host connects it to the played speech. */
+function connectSpeechTo(source: AudioBufferSourceNode) {
+  return shallowRef<((node: AudioNode) => () => void) | undefined>((node) => {
+    source.connect(node)
+    return () => source.disconnect(node)
+  })
+}
+
 describe('useVRMLipSync', () => {
   it.each([48_000, 192_000])('opens the mouth for a tone at %i Hz', { timeout: 15_000 }, async (sampleRate) => {
     const { context, source } = await createToneSource(sampleRate)
-    const lipSync = useVRMLipSync(shallowRef<AudioContext | undefined>(context), shallowRef<AudioBufferSourceNode | undefined>(source), shallowRef(true))
+    const lipSync = useVRMLipSync(shallowRef<AudioContext | undefined>(context), connectSpeechTo(source), shallowRef(true))
     const { vrm, readLevel: readWeight } = createRecordingVrm()
     const readLevel = () => {
       lipSync.update(vrm as never, 0.016)
@@ -73,7 +81,7 @@ describe('useVRMLipSync', () => {
   it('does not touch the mouth when lip sync never owned it', () => {
     const names: string[] = []
     const vrm = { expressionManager: { setValue: (name: string) => names.push(name) } }
-    const lipSync = useVRMLipSync(shallowRef<AudioContext | undefined>(undefined), shallowRef<AudioBufferSourceNode | undefined>(undefined), shallowRef(false))
+    const lipSync = useVRMLipSync(shallowRef<AudioContext | undefined>(undefined), shallowRef(undefined), shallowRef(false))
 
     lipSync.update(vrm as never, 0.016)
 
@@ -87,7 +95,7 @@ describe('useVRMLipSync', () => {
     // VRM mouth stayed open on the last vowel until the next reply.
     const { context, source } = await createToneSource(48_000)
     const speechActive = shallowRef(true)
-    const lipSync = useVRMLipSync(shallowRef<AudioContext | undefined>(context), shallowRef<AudioBufferSourceNode | undefined>(source), speechActive)
+    const lipSync = useVRMLipSync(shallowRef<AudioContext | undefined>(context), connectSpeechTo(source), speechActive)
     const { vrm, readLevel: readWeight } = createRecordingVrm()
     source.start()
     await waitForMouthLevel(() => {

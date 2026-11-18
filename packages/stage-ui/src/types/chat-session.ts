@@ -44,6 +44,8 @@ export interface ChatSessionMeta {
   /** The background task that this session runs. Each task has its own session, so the status stays after the task ends. */
   task?: ChatSessionTask
   title?: string
+  /** Title waiting for cloud delivery. An empty string means clear the title. */
+  cloudTitlePending?: string
   createdAt: number
   updatedAt: number
   /**

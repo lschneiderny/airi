@@ -40,6 +40,7 @@ import {
   i18nGetLocale,
   i18nSetLocale,
 } from '../shared/eventa'
+import { homeAssistantGetConfig } from '../shared/eventa/home-assistant'
 import { electronPluginUpdateCapability, pluginProtocolListProviders, pluginProtocolListProvidersEventName } from '../shared/eventa/plugin/capabilities'
 import { electronPluginListXsaiTools } from '../shared/eventa/plugin/tools'
 import { resolveRendererWindowContext } from './window-context'
@@ -202,6 +203,7 @@ async function renderStage(routePath: string, search: string) {
     ...payload,
   }))
   defineInvokeHandler(bridge.main, electronMcpListTools, () => [])
+  defineInvokeHandler(bridge.main, homeAssistantGetConfig, () => ({ baseUrl: '', hasToken: false, tokenPreview: '' }))
   defineInvokeHandler(bridge.main, electronPluginListXsaiTools, () => ({ prompts: [], tools: [] }))
 
   const pinia = createPinia()
@@ -258,11 +260,20 @@ async function renderStage(routePath: string, search: string) {
   }
 
   const initializeCharacter = vi.fn()
+  const refreshHomeAssistantTools = vi.fn()
   pinia.use(({ store }) => {
     if (store.$id === 'character-orchestrator') {
       store.$onAction(({ name }) => {
         if (name === 'initialize')
           initializeCharacter()
+      })
+    }
+    // The leader refreshes these tools at startup. Record when that refresh
+    // ends, so a test does not destroy Pinia under it.
+    if (store.$id === 'tamagotchi-home-assistant-tools') {
+      store.$onAction(({ name, after }) => {
+        if (name === 'refresh')
+          after(() => refreshHomeAssistantTools())
       })
     }
   })
@@ -330,6 +341,7 @@ async function renderStage(routePath: string, search: string) {
     leader,
     listProviders: defineInvoke(bridge.main, pluginProtocolListProviders),
     pinia,
+    refreshHomeAssistantTools,
     reports,
     runtime: rendererRuntime,
   }
@@ -369,6 +381,7 @@ describe('renderer startup', () => {
     await expect(stage.listProviders()).resolves.toContainEqual({ name: 'Kokoro TTS' })
     await expect.poll(() => inference.loadModel.mock.calls, { timeout: 5000 }).toHaveLength(1)
     expect(inference.loadModel).toHaveBeenCalledWith('q8', 'wasm', { signal: expect.any(AbortSignal) })
+    await expect.poll(() => stage.refreshHomeAssistantTools.mock.calls, { timeout: 5000 }).toHaveLength(1)
   }, 15000)
 
   // Chat and widgets follow the main Stage window. Each case keeps the query

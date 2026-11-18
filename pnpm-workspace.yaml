@@ -7,6 +7,12 @@ minimumReleaseAgeExclude:
   # Source: https://releases.electronjs.org/release/v43.8.4
   # Remove this exception after 2026-10-30T18:05:12Z.
   - electron@43.8.4
+  # NOTICE:
+  # Install the download retry before the release-age delay ends. A dropped download failed release and CI builds.
+  # 0.2.6 retries network errors, stalls, truncated bodies, and 5xx statuses. Our team publishes this package.
+  # Source: https://github.com/proj-airi/unplugin-fetch/pull/4
+  # Remove this exception after 2026-11-07T08:45:06Z.
+  - '@proj-airi/unplugin-fetch@0.2.6'
   # Packages from the AIRI team must always be trusted
   - '@auv-js/*'
   - '@moeru/*'
@@ -44,17 +50,17 @@ packages:
   - '!**/dist/**'
 
 overrides:
-  '@types/hast': 'catalog:'
+  # @huggingface/transformers 3.8.1 pins an onnxruntime-web dev build. Use the catalog version, which @sherpaw needs.
+  # Remove when @huggingface/transformers declares the catalog version.
+  '@huggingface/transformers>onnxruntime-web': 'catalog:'
   array-flatten: npm:@nolyfill/array-flatten@^1.0.44
   axios: npm:feaxios@^0.0.23
   'eslint-plugin-sonarjs>typescript': 'catalog:'
-  hono: 4.13.3
   is-core-module: npm:@nolyfill/is-core-module@^1.0.39
   isarray: npm:@nolyfill/isarray@^1.0.44
   # rehype-katex 7.0.1 and micromark-extension-math 3.1.0 declare katex ^0.16. The speech transformers parse with the
   # catalog katex, so display and speech use one version. Remove when both declare the catalog version.
   micromark-extension-math>katex: 'catalog:'
-  onnxruntime-web: npm:onnxruntime-web@^1.27.0
   rehype-katex>katex: 'catalog:'
   safe-buffer: npm:@nolyfill/safe-buffer@^1.0.44
   safer-buffer: npm:@nolyfill/safer-buffer@^1.0.44
@@ -75,8 +81,8 @@ catalog:
   '@anthropic-ai/claude-code': ^2.1.241
   '@apple/app-store-server-library': ^3.1.0
   '@arethetypeswrong/core': ^0.18.5
-  '@auv-js/cli': 0.0.38
-  '@auv-js/sdk': 0.0.38
+  '@auv-js/cli': 0.0.43
+  '@auv-js/sdk': 0.0.43
   '@aws-sdk/client-s3': ^3.1135.0
   '@aws-sdk/s3-request-presigner': ^3.1135.0
   '@better-auth/cli': ^1.4.22
@@ -97,6 +103,7 @@ catalog:
   '@esotericsoftware/spine-webgl': ~4.2.0
   '@esotericsoftware/spine-webgl-4-0': npm:@esotericsoftware/spine-webgl@~4.0.31
   '@esotericsoftware/spine-webgl-4-1': npm:@esotericsoftware/spine-webgl@~4.1.56
+  '@flowershow/remark-wiki-link': 3.4.0
   '@fontsource-variable/comfortaa': ^5.3.0
   '@fontsource-variable/dm-sans': ^5.3.0
   '@fontsource-variable/jura': ^5.3.0
@@ -145,7 +152,6 @@ catalog:
   '@openpanel/web': 1.4.1
   '@opentelemetry/api': ^1.9.1
   '@opentelemetry/api-logs': ^0.221.0
-  '@opentelemetry/core': ^2.10.0
   '@opentelemetry/exporter-logs-otlp-proto': ^0.221.0
   '@opentelemetry/exporter-metrics-otlp-proto': ^0.221.0
   '@opentelemetry/exporter-trace-otlp-proto': ^0.221.0
@@ -159,7 +165,6 @@ catalog:
   '@opentelemetry/sdk-logs': ^0.221.0
   '@opentelemetry/sdk-metrics': ^2.10.0
   '@opentelemetry/sdk-node': ^0.221.0
-  '@opentelemetry/sdk-trace-base': ^2.10.0
   '@opentelemetry/sdk-trace-node': ^2.10.0
   '@opentelemetry/semantic-conventions': ^1.43.0
   '@openuidev/lang-core': 0.4.1
@@ -372,6 +377,7 @@ catalog:
   rehype-parse: ^9.0.1
   rehype-stringify: ^10.0.1
   reka-ui: ^2.10.3
+  remark-cjk-friendly: ^2.3.3
   remark-math: ^6.0.0
   remark-parse: ^11.0.0
   remark-rehype: ^11.1.2

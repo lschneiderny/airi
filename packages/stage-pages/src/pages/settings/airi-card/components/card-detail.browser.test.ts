@@ -5,6 +5,7 @@ import { DEFAULT_CHARACTER_PROFILE, initialCharacterState } from '@proj-airi/sta
 import { exportAiriCardPackage } from '@proj-airi/stage-ui/services/airi-card-import-export'
 import { useBackgroundStore } from '@proj-airi/stage-ui/stores/background'
 import { characterStateContext, useCharacterStateStore } from '@proj-airi/stage-ui/stores/character-state'
+import { useDisplayModelsStore } from '@proj-airi/stage-ui/stores/display-models'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import { createPinia, disposePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -56,6 +57,8 @@ describe('card detail', () => {
     })
     const cardId = await useAiriCardStore(pinia).addCard({ name: 'Luna', version: '1.0.0' }, 'scratch')
     await screen.rerender({ cardId })
+    // The detail loads the display models on mount. The test must not end before it.
+    await expect.poll(() => useDisplayModelsStore(pinia).displayModels.length).toBeGreaterThan(0)
     return { screen, cardId }
   }
 

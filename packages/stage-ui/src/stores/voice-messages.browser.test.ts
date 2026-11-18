@@ -146,10 +146,10 @@ describe('voice messages host', () => {
   })
 
   it('keeps a recording as a draft when another window takes the microphone', async () => {
-    const { store, latest } = connectHost()
+    const { store, latest, reachPhase } = connectHost()
     const command = defineInvoke(getSpeechBusContext(), voiceMessageCommand)
     await command({ type: 'record', id: 'message', sessionId: 'alice' })
-    await expect.poll(() => latest()[0]?.phase).toBe('capturing')
+    await reachPhase('capturing')
 
     const lease = new AbortController()
     cleanups.push(() => lease.abort())

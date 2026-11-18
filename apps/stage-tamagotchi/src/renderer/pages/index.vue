@@ -8,7 +8,6 @@ import { electron } from '@proj-airi/electron-eventa'
 import {
   useElectronEventaInvoke,
   useElectronMouseAroundWindowBorder,
-  useElectronMouseInElement,
   useElectronMouseInWindow,
 } from '@proj-airi/electron-vueuse'
 import { useHostCapabilitiesStore } from '@proj-airi/stage-shared/stores/host-capabilities'
@@ -16,7 +15,7 @@ import { useExpressionStore } from '@proj-airi/stage-ui-live2d/stores/expression
 import { useMMDExpressionStore, useMMDMotionDiagnostics } from '@proj-airi/stage-ui-mmd/stores'
 import { useThreeSceneIsTransparentAtPoint } from '@proj-airi/stage-ui-three/composables/hit-test'
 import { useModelStore } from '@proj-airi/stage-ui-three/stores/model-store'
-import { HearingStatus, HoloCoupon } from '@proj-airi/stage-ui/components'
+import { HoloCoupon } from '@proj-airi/stage-ui/components'
 import {
   createEmptyModelSettingsRuntimeSnapshot,
   resolveComponentStateToRuntimePhase,
@@ -52,8 +51,6 @@ import { useStageWindowLifecycleStore } from '../stores/stage-window-lifecycle'
 import { resolveFadeOnHoverInteraction } from '../utils/fade-on-hover'
 import { shouldSampleStageTransparency } from '../utils/stage-three-transparency'
 
-const hearingStatusElement = ref<HTMLElement>()
-const { isOutside: outsideHearingStatus } = useElectronMouseInElement(hearingStatusElement)
 const controlsIslandRef = ref<InstanceType<typeof ControlsIsland>>()
 const controlsIslandInteractionActive = shallowRef(false)
 const widgetStageRef = ref<InstanceType<typeof WidgetStage>>()
@@ -593,7 +590,7 @@ function handleFadeOnHoverInteractionChange() {
     return
   }
 
-  if (controlsOverlayActive.value || !outsideHearingStatus.value) {
+  if (controlsOverlayActive.value) {
     // Portaled controls must receive clicks even outside the Island's bounds.
     isIgnoringMouseEvents.value = false
     shouldFadeOnCursorWithin.value = false
@@ -630,7 +627,7 @@ function handleFadeOnHoverInteractionChange() {
 }
 
 watch(
-  [canUseCursor, outsideHearingStatus, isOutside, isOutsideFor250Ms, isPointerOverStageCanvas, isAroundWindowBorder, isAroundWindowBorderFor250Ms, isOutsideWindow, isTransparent, isTransparentForMouseEvents, controlsOverlayActive, fadeOnHoverEnabled, alwaysOnTop, stagePaused, clickThroughAvailable, fullscreenActive],
+  [canUseCursor, isOutside, isOutsideFor250Ms, isPointerOverStageCanvas, isAroundWindowBorder, isAroundWindowBorderFor250Ms, isOutsideWindow, isTransparent, isTransparentForMouseEvents, controlsOverlayActive, fadeOnHoverEnabled, alwaysOnTop, stagePaused, clickThroughAvailable, fullscreenActive],
   handleFadeOnHoverInteractionChange,
   { immediate: true },
 )
@@ -656,9 +653,6 @@ useModelSettingsRuntimeOwner({
     relative z-2 h-full overflow-hidden rounded-xl
     transition="opacity duration-500 ease-in-out"
   >
-    <div v-show="!settingsStore.streamerMode && !fullscreenActive" ref="hearingStatusElement" :class="['absolute bottom-3 left-1/2 z-30 w-fit -translate-x-1/2']">
-      <HearingStatus align="center" />
-    </div>
     <!-- Stage is always in DOM so TresCanvas can measure dimensions -->
     <div
       :class="[

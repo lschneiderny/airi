@@ -18,6 +18,7 @@ function createStore() {
 describe('memory store', () => {
   beforeEach(async () => {
     await records.clear()
+    localStorage.removeItem('memory/entries')
     // The entries are in the order of their changes, so each change gets its own time.
     let now = 1
     vi.spyOn(Date, 'now').mockImplementation(() => now++)
@@ -27,6 +28,7 @@ describe('memory store', () => {
     for (const pinia of stores.splice(0))
       disposePinia(pinia)
     vi.restoreAllMocks()
+    localStorage.removeItem('memory/entries')
     await records.clear()
   })
 
@@ -109,5 +111,21 @@ describe('memory store', () => {
     await vi.waitFor(() => expect(chat.entries).toEqual([]))
     // The removal stays as a tombstone.
     expect(await records.getItem(nickname.id)).toEqual({ id: nickname.id, updatedAt: expect.any(Number), deleted: true })
+  })
+
+  it('moves the entries from localStorage once, with new ids, before it is ready', async () => {
+    localStorage.setItem('memory/entries', JSON.stringify([
+      { name: 'nickname', description: 'What the owner likes to be called.', body: 'Yumeka.', persona: 'airi', updatedAt: 10 },
+      { name: 'tone', description: 'How to answer.', body: 'Calm.', updatedAt: 20 },
+    ]))
+
+    const memory = createStore()
+    await memory.ready()
+
+    expect(memory.entries).toEqual([
+      { id: expect.any(String), description: 'What the owner likes to be called.', body: 'Yumeka.', persona: 'airi', updatedAt: 10 },
+      { id: expect.any(String), description: 'How to answer.', body: 'Calm.', persona: undefined, updatedAt: 20 },
+    ])
+    expect(localStorage.getItem('memory/entries')).toBeNull()
   })
 })

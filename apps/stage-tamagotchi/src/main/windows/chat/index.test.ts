@@ -160,7 +160,7 @@ vi.mock('../../libs/electron/persistence', () => ({
     update: (next: unknown) => mocks.config = next,
   }),
 }))
-vi.mock('../shared', () => ({ protectPrivilegedWindowNavigation: () => {} }))
+vi.mock('../shared', () => ({ customTitleBarWindowConfig: () => ({}), protectPrivilegedWindowNavigation: () => {} }))
 vi.mock('../shared/window', () => ({
   protectPrivilegedWindowNavigation: () => {},
   resizeBoundsByDelta: (bounds: Rectangle) => bounds,

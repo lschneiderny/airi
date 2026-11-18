@@ -54,10 +54,18 @@ function waitForMouthLevel(readLevel: () => number): Promise<number> {
   })
 }
 
+/** Connects the lip sync node to `source`, the way a host connects it to the played speech. */
+function connectSpeechTo(source: AudioBufferSourceNode) {
+  return shallowRef<((node: AudioNode) => () => void) | undefined>((node) => {
+    source.connect(node)
+    return () => source.disconnect(node)
+  })
+}
+
 describe('useMMDLipSync', () => {
   it.each([48_000, 192_000])('opens the mouth for a tone at %i Hz', { timeout: 15_000 }, async (sampleRate) => {
     const { context, source } = await createToneSource(sampleRate)
-    const lipSync = useMMDLipSync(shallowRef<AudioContext | undefined>(context), shallowRef<AudioBufferSourceNode | undefined>(source))
+    const lipSync = useMMDLipSync(shallowRef<AudioContext | undefined>(context), connectSpeechTo(source))
     const { morphs, readLevel: readWeight } = createRecordingMorphs()
     const readLevel = () => {
       lipSync.update(morphs as never, 0.016)

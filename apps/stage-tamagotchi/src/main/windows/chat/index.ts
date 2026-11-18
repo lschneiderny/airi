@@ -34,7 +34,7 @@ import { createConfig } from '../../libs/electron/persistence'
 import { createWindowContext } from '../../libs/electron/window-context'
 import { createReusableWindow } from '../../libs/electron/window-manager'
 import { readRendererWindowBounds } from '../../services/electron/coordinates'
-import { protectPrivilegedWindowNavigation } from '../shared'
+import { customTitleBarWindowConfig, protectPrivilegedWindowNavigation } from '../shared'
 import { createCharacterAnchor, createMainWindowAnchor } from './anchor'
 import { chatAttentionTargetOf, createChatAttentionTargetFeed } from './attention-target'
 import { setupFloatingChatWindow } from './floating'
@@ -230,7 +230,7 @@ export function setupChatWindowManager(params: {
       show: false,
       icon,
       ...(isMacOS ? { transparent: true, backgroundColor: '#00000000' } : {}),
-      titleBarStyle: isMacOS ? 'hiddenInset' : undefined,
+      ...customTitleBarWindowConfig(),
       webPreferences: {
         preload: getPreloadPath(),
         sandbox: false,

@@ -18,7 +18,7 @@ export function resolveModuleSelection(
 }
 
 /** Card modules whose selection names a provider. The display model default has no provider. */
-export type CardProviderModule = 'consciousness' | 'vision' | 'speech'
+export type CardProviderModule = keyof CardModuleDefaults
 
 /**
  * Clears the selections whose provider, set or inherited, matches `shouldClear`.

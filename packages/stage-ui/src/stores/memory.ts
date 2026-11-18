@@ -4,9 +4,30 @@ import { errorMessageFrom } from '@moeru/std'
 import { useLocalStorageManualReset } from '@proj-airi/stage-shared/composables'
 import { useBroadcastChannel } from '@vueuse/core'
 import { defineStore } from 'pinia'
+import { v7 as uuidv7 } from 'uuid'
 import { computed, ref, watch } from 'vue'
 
 import { memoryRepo } from '../database/repos/memory.repo'
+
+const LEGACY_ENTRIES_STORAGE_KEY = 'memory/entries'
+
+// NOTICE:
+// Up to v0.13.1 the entries were in localStorage under `memory/entries`, keyed by a name that the model chose.
+// localStorage holds a few megabytes, and two facts could share a name. IndexedDB keeps the entries now, with store-made ids.
+// Move them once. The lock keeps two windows that start together from moving them twice.
+// Removal condition: two releases after the release that moves them.
+async function moveLegacyEntries() {
+  if (!globalThis.localStorage?.getItem(LEGACY_ENTRIES_STORAGE_KEY))
+    return
+  await navigator.locks.request('airi:memory-move', async () => {
+    const stored = localStorage.getItem(LEGACY_ENTRIES_STORAGE_KEY)
+    if (!stored)
+      return
+    const legacy: (Omit<MemoryEntry, 'id'> & { name: string })[] = JSON.parse(stored)
+    await memoryRepo.add(legacy.map(({ description, body, persona, updatedAt }) => ({ id: uuidv7(), description, body, persona, updatedAt })))
+    localStorage.removeItem(LEGACY_ENTRIES_STORAGE_KEY)
+  })
+}
 
 /**
  * Long-term memory as a small index and one entry per fact, kept by the character itself.
@@ -26,7 +47,8 @@ export const useMemoryStore = defineStore('memory', () => {
   const enabled = useLocalStorageManualReset<boolean>('memory/enabled', true)
   const entries = ref<MemoryEntry[]>([])
   const { data: changed, post } = useBroadcastChannel<string[], string[]>({ name: 'airi:memory' })
-  let pendingLoad: Promise<void> = Promise.resolve()
+  let pendingLoad = moveLegacyEntries()
+    .catch(error => console.warn('[memory] Failed to move the entries from localStorage:', errorMessageFrom(error)))
 
   /** Reads the entries again, after the reads that started before. */
   function load() {
@@ -37,7 +59,7 @@ export const useMemoryStore = defineStore('memory', () => {
   }
 
   /**
-   * Resolves after every read that started before the call, the first read included.
+   * Resolves after every read that started before the call, the first read and the move from localStorage included.
    * Until then, `entries` is empty because nothing is read yet, not because nothing is remembered.
    */
   function ready() {

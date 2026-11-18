@@ -71,6 +71,13 @@ export type SituationForgetRequest
  */
 export const situationForgetRequestedEvent = defineEventa<SituationForgetRequest>('eventa:situation:forget-requested')
 
+/**
+ * Level of the assistant speech that plays now, from 0 (silence) to 1 (full scale), with the scale of `voiceInputLevel`.
+ * The output host publishes it every 50 ms while a voice response plays audio, then one 0 when the response stops voicing.
+ * The host reads it before the user volume, so a low volume does not change it.
+ */
+export const speechOutputLevel = defineEventa<{ level: number }>('eventa:audio:speech:output:level')
+
 const BUS_CHANNEL_NAME = 'proj-airi:pipelines:outputs:speech'
 
 let context: ReturnType<typeof createBroadcastChannelContext>['context'] | undefined

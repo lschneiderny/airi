@@ -24,11 +24,13 @@ import { StagePerformanceConductor, useStagePerformanceConductor } from '../../c
 import { Emotion, EMOTION_EmotionMotionName_value, EmotionThinkMotionName } from '../../constants/emotions'
 import { useLive2DExpressionBackend } from '../../features/performance/expression-backend'
 import { useExpressionPerformanceSettings } from '../../features/performance/settings'
+import { avatarTouchSettleMs } from '../../libs/avatar-touch/notify'
 import { getSpeechBusContext } from '../../services/speech/bus'
 import { useLLM } from '../../stores/ai/chat-llm/llm'
 import { useLlmStreamingControlStore } from '../../stores/ai/chat-llm/streaming-control'
 import { useLlmToolsStore } from '../../stores/ai/chat-llm/tools'
 import { characterStateContext, useCharacterStateStore } from '../../stores/character-state'
+import { useAvatarTouchStore } from '../../stores/character/avatar-touch'
 import { useChatStore } from '../../stores/chat'
 import { useChatSessionStore } from '../../stores/chat/session-store'
 import { useChatStreamStore } from '../../stores/chat/stream-store'
@@ -39,6 +41,7 @@ import { useNaturalPerformanceOverride } from '../../stores/natural-performance-
 import { useSettingsStageModel } from '../../stores/settings/stage-model'
 import { situationTouchObservedEvent } from '../../stores/situation/touch-bus'
 import { useSpeechOutputControlStore } from '../../stores/speech-output-control'
+import { useStageTouchStore } from '../../stores/touch'
 import { createSyncedContextPlugin } from '../../test/synced-context'
 import { ChatHistory } from '../scenarios/chat'
 
@@ -396,12 +399,89 @@ describe('stage emotion routing on Live2D', () => {
 
     const dosed = until(() => moods.value.length, count => count === 1)
     const forwarded = until(() => observations.value.length, count => count === 1)
-    scene.emit('touch', { kind: 'poke', region: 'head', x: 0, y: 0 })
+    scene.emit('naturalTouch', { kind: 'poke', region: 'head', x: 0, y: 0 })
     await Promise.all([dosed, forwarded])
 
     expect(moods.value).toEqual([expect.objectContaining({ id: 'touch-1-poke', valence: 0, tension: 0 })])
     expect(moods.value[0].arousal).toBeGreaterThan(0)
     expect(observations.value).toEqual([{ kind: 'touch', gesture: 'poke', region: 'head', atMs: expect.any(Number) }])
+  })
+
+  /**
+   * Prepares the mounted Live2D scene for one press on the character. No model file loads in this test, so the
+   * model reports a head hit and records the calls of the touch module. The timers of the touch burst are controlled.
+   */
+  async function prepareTouch(scene: ComponentInternalInstance) {
+    const sceneExposed = scene.exposed as { canvasElement: () => HTMLCanvasElement | undefined }
+    await expect.poll(() => sceneExposed.canvasElement()).toBeInstanceOf(HTMLCanvasElement)
+    const canvas = sceneExposed.canvasElement()!
+    const model = findInstance(scene.subTree, live2d.Live2DModel)!.exposed as {
+      touchAt: () => { region: 'head', side: number }
+      react: (touch: unknown) => void
+      playTouchMotion: (region: string) => void
+    }
+    model.touchAt = () => ({ region: 'head', side: 0 })
+    const react = vi.fn()
+    model.react = react
+    const playTouchMotion = vi.fn()
+    model.playTouchMotion = playTouchMotion
+    // A synthetic pointer has no active pointer to capture, so the real call would throw.
+    const capture = vi.spyOn(canvas, 'setPointerCapture').mockImplementation(() => {})
+    const notifyTouch = vi.spyOn(useAvatarTouchStore(), 'notifyTouch').mockResolvedValue('sent')
+    const naturalTouch = vi.spyOn(useStageTouchStore(), 'touch')
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    onTestFinished(() => {
+      vi.useRealTimers()
+    })
+    return { canvas, react, playTouchMotion, capture, notifyTouch, naturalTouch }
+  }
+
+  /** Presses and releases the primary pointer on the canvas. Returns whether the press held the page from scrolling. */
+  function tapCanvas(canvas: HTMLCanvasElement) {
+    const pointer = { pointerId: 1, isPrimary: true, button: 0, clientX: 10, clientY: 10, bubbles: true }
+    canvas.dispatchEvent(new PointerEvent('pointerdown', { ...pointer, buttons: 1 }))
+    const touchStart = new TouchEvent('touchstart', { bubbles: true, cancelable: true })
+    canvas.dispatchEvent(touchStart)
+    canvas.dispatchEvent(new PointerEvent('pointerup', { ...pointer, buttons: 0 }))
+    return touchStart.defaultPrevented
+  }
+
+  // Upstream's touch module (moeru-ai/airi#3292) and the Natural touch layer listen on the same canvas.
+  // One driver has one decider: under Natural, only the Natural pokes and pets react to a touch.
+  it('leaves a press on the character to the Natural touch layer under Natural', async () => {
+    const { scene } = await renderStage('natural')
+    const { canvas, react, playTouchMotion, capture, notifyTouch, naturalTouch } = await prepareTouch(scene)
+
+    const heldPage = tapCanvas(canvas)
+    // The Natural layer of the model reports its gesture with this event.
+    scene.emit('naturalTouch', { kind: 'poke', region: 'head', x: 0, y: 0 })
+    // A touch event of the touch module must not reach the character either.
+    scene.emit('touch', { region: 'head', gesture: 'tap', side: 0 })
+    vi.advanceTimersByTime(avatarTouchSettleMs)
+
+    expect(capture).not.toHaveBeenCalled()
+    expect(heldPage).toBe(false)
+    expect(react).not.toHaveBeenCalled()
+    expect(playTouchMotion).not.toHaveBeenCalled()
+    expect(notifyTouch).not.toHaveBeenCalled()
+    expect(naturalTouch).toHaveBeenCalledTimes(1)
+    expect(naturalTouch.mock.calls[0][0]).toEqual({ kind: 'poke', region: 'head', x: 0, y: 0 })
+  })
+
+  it.each(['magic', 'universal'] as const)('gives a press on the character to the touch module under %s', async (driver) => {
+    const { scene } = await renderStage(driver)
+    const { canvas, react, playTouchMotion, capture, notifyTouch, naturalTouch } = await prepareTouch(scene)
+
+    const heldPage = tapCanvas(canvas)
+    vi.advanceTimersByTime(avatarTouchSettleMs)
+
+    expect(capture).toHaveBeenCalledTimes(1)
+    expect(heldPage).toBe(true)
+    expect(react).toHaveBeenCalledWith({ region: 'head', side: 0, gesture: 'tap' })
+    expect(playTouchMotion).toHaveBeenCalledWith('head')
+    expect(notifyTouch).toHaveBeenCalledTimes(1)
+    expect(notifyTouch).toHaveBeenCalledWith({ region: 'head', taps: 1, pats: 0 })
+    expect(naturalTouch).not.toHaveBeenCalled()
   })
 
   type TurnStart = (chat: ReturnType<typeof useChatStore>, sessionId: string) => Promise<unknown>

@@ -4,6 +4,7 @@ import type { VoiceHostSnapshot, VoiceInputCommand } from '@proj-airi/stage-ui/s
 import type { WindowBackdropStatus } from '../../../shared/eventa'
 
 import { defineInvokeHandler } from '@moeru/eventa'
+import { backdropSurfaceHostKey } from '@proj-airi/stage-ui/composables/backdrop-surface'
 import { getSpeechBusContext, voiceInputCommand, voiceSnapshotChanged } from '@proj-airi/stage-ui/services/speech/bus'
 import { createPinia, disposePinia } from 'pinia'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -13,6 +14,8 @@ import { nextTick } from 'vue'
 import { createI18n } from 'vue-i18n'
 
 import VoiceInlay from './voice-inlay.vue'
+
+import { createWindowBackdropHost } from '../../composables/window-backdrop'
 
 import 'virtual:uno.css'
 
@@ -36,11 +39,10 @@ const { backdrop, returnHome, setPresent, setIgnoreMouseEvents, registerShortcut
 // The inlay talks to its Electron window through these IPC composables. The cursor starts outside the page.
 vi.mock('@proj-airi/electron-vueuse', async () => {
   const { shallowRef } = await import('vue')
-  const { electronInlayReturnHome, electronInlaySetPresent, electronShortcutRegister, electronShortcutUnregister, electronWindowBackdropUpdate } = await import('../../../shared/eventa')
+  const { electronInlayReturnHome, electronInlaySetPresent, electronShortcutRegister, electronShortcutUnregister } = await import('../../../shared/eventa')
   const invokes = new Map<unknown, unknown>([
     [electronInlayReturnHome, returnHome],
     [electronInlaySetPresent, setPresent],
-    [electronWindowBackdropUpdate, backdrop],
     [electronShortcutRegister, registerShortcut],
     [electronShortcutUnregister, unregisterShortcut],
   ])
@@ -107,7 +109,14 @@ function renderInlay() {
   const pinia = createPinia()
   cleanups.push(() => disposePinia(pinia))
   // Test Utils stubs <Transition> by default. The inlay depends on its leave hooks, so the real component runs.
-  const view = render(VoiceInlay, { global: { stubs: { transition: false }, plugins: [pinia, createI18n({ legacy: false, locale: 'en', missingWarn: false, fallbackWarn: false })] } })
+  const view = render(VoiceInlay, {
+    global: {
+      stubs: { transition: false },
+      plugins: [pinia, createI18n({ legacy: false, locale: 'en', missingWarn: false, fallbackWarn: false })],
+      // The app root provides the native glass host. The test gives it the mocked IPC.
+      provide: { [backdropSurfaceHostKey as symbol]: createWindowBackdropHost(backdrop) },
+    },
+  })
   cleanups.push(() => view.unmount())
   return view
 }
@@ -133,7 +142,8 @@ describe('voice inlay', () => {
     expect(nativeRegion()?.height).toBe(44)
     expect(nativeRegion()?.radius).toBe(22)
     const capsule = document.querySelector<HTMLElement>('[data-testid="voice-inlay"]')!
-    expect(getComputedStyle(capsule).backgroundColor).toBe('rgba(255, 255, 255, 0.3)')
+    // The card keeps its own translucent fill over native glass.
+    expect(getComputedStyle(capsule).backgroundColor).toBe('rgba(255, 255, 255, 0.8)')
 
     publish({ drafts: [draft] })
     await expect.poll(() => nativeRegion()?.height).toBe(160)

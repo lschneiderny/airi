@@ -82,6 +82,39 @@ afterEach(() => {
   localStorage.clear()
 })
 
+async function flushMicrotasks(rounds = 8) {
+  for (let i = 0; i < rounds; i++)
+    await Promise.resolve()
+}
+
+describe('chat-session-store · another active Pinia', () => {
+  // ROOT CAUSE:
+  // After an await, the store called its own actions through the global active Pinia.
+  // Any action of another Pinia changes that global, so the store used a destroyed Pinia and threw "Pinia destroyed".
+  it('loads the selected session after another Pinia became active during initialize', async () => {
+    const meta: ChatSessionMeta = { sessionId: 'sess-A', userId: 'local', characterId: 'default', createdAt: 1, updatedAt: 1 }
+    let resolveIndex: ((index: ChatSessionsIndex) => void) | undefined
+    getIndexMock.mockImplementation(() => new Promise((resolve) => {
+      resolveIndex = resolve
+    }))
+    getSessionMock.mockResolvedValue({ meta, messages: [] })
+
+    const store = useChatSessionStore()
+    const initPromise = store.initialize()
+    await flushMicrotasks()
+    expect(resolveIndex).toBeDefined()
+
+    const other = createPinia()
+    disposePinia(other)
+    setActivePinia(other)
+    resolveIndex!({ userId: 'local', characters: { default: { activeSessionId: 'sess-A', sessions: { 'sess-A': meta } } } })
+    await initPromise
+
+    expect(store.activeSessionId).toBe('sess-A')
+    expect(getSessionMock).toHaveBeenCalledWith('sess-A')
+  })
+})
+
 describe('chat-session-store · loadSession vs concurrent deleteSession', () => {
   // ROOT CAUSE: Deleting a session during IndexedDB loading could restore its old record. loadSession now checks whether the session still exists after reading storage.
   it('does not resurrect a session deleted while loadSession was awaiting IDB', async () => {

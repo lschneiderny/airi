@@ -25,7 +25,7 @@ import { onWindowClosed } from '../../libs/electron/on-window-closed'
 import { ignoreWindowClosedDuringCreation } from '../../libs/electron/window-closed'
 import { createWindowContext } from '../../libs/electron/window-context'
 import { createReusableWindow } from '../../libs/electron/window-manager'
-import { protectPrivilegedWindowNavigation, toggleWindowShow } from '../shared'
+import { customTitleBarWindowConfig, protectPrivilegedWindowNavigation, toggleWindowShow } from '../shared'
 import { setupWindowStageInvokes } from '../stage'
 import { setupSettingsWindowInvokes } from './rpc/index.electron'
 
@@ -67,6 +67,7 @@ export function setupSettingsWindowReusableFunc(params: {
       height: 800.0,
       show: false,
       icon,
+      ...customTitleBarWindowConfig(),
       webPreferences: {
         preload: getPreloadPath(),
         sandbox: false,

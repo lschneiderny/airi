@@ -1075,7 +1075,7 @@ describe('live2D model settings', () => {
 
     const cards = useAiriCardStore(pinia)
     cards.cards.set('default', {
-      name: 'ReLU',
+      name: 'Iru',
       version: '1.0.0',
       extensions: {
         airi: {

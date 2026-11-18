@@ -1,7 +1,7 @@
 {
   "name": "@proj-airi/root",
   "type": "module",
-  "version": "0.13.1",
+  "version": "0.15.1",
   "private": true,
   "packageManager": "pnpm@11.24.0",
   "description": "LLM powered virtual character",
@@ -43,6 +43,7 @@
     "test:run": "tsx scripts/dev-tools/test-run.ts",
     "lint": "moeru-lint .",
     "lint:fix": "moeru-lint --fix .",
+    "lint:prune-suppressions": "eslint . --prune-suppressions",
     "capture:tamagotchi": "tsx packages/cpu-slots/src/cli.ts run --class live -- pnpm exec vishot capture --target electron ./packages/scenarios-stage-tamagotchi-electron/src/scenarios/demo-controls-settings-chat-websocket/index.ts --app-entrypoint ./apps/stage-tamagotchi/out/main/index.js --cwd . --output-dir ./packages/scenarios-stage-tamagotchi-browser/artifacts/raw --format avif",
     "typecheck": "tsx packages/cpu-slots/src/cli.ts run --class typecheck -- turbo run typecheck -F=\"./packages/*\" -F=\"./apps/*\" -F=\"./server/**\" -F=\"./services/*\" \"--concurrency={grant}\"",
     "typecheck:engines": "tsx packages/cpu-slots/src/cli.ts run --class build -- pnpm -rF=\"./engines/*\" --parallel typecheck",

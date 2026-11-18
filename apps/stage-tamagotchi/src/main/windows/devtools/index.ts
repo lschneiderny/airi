@@ -8,7 +8,8 @@ import { baseUrl, getPreloadPath, getRendererRoot, load, withHashRoute } from '.
 import { onWindowClosed } from '../../libs/electron/on-window-closed'
 import { createWindowContext } from '../../libs/electron/window-context'
 import { createReusableWindow } from '../../libs/electron/window-manager'
-import { protectPrivilegedWindowNavigation } from '../shared'
+import { createWindowService } from '../../services/electron'
+import { customTitleBarWindowConfig, protectPrivilegedWindowNavigation } from '../shared'
 import { placeWindow } from '../shared/placement'
 
 export interface OpenDevtoolsWindowParams extends Partial<Electron.Rectangle> {
@@ -38,6 +39,7 @@ export function setupDevtoolsWindow(): DevtoolsWindowManager {
         minHeight: 480,
         show: false,
         icon,
+        ...customTitleBarWindowConfig(),
         webPreferences: {
           preload: getPreloadPath(),
           // Preload exposes Electron APIs and needs Node access.
@@ -51,7 +53,11 @@ export function setupDevtoolsWindow(): DevtoolsWindowManager {
           reusableWindows.delete(key)
       })
       protectPrivilegedWindowNavigation(window)
-      initScreenCaptureForWindow(window, createWindowContext(window).context)
+      const { context } = createWindowContext(window)
+      initScreenCaptureForWindow(window, context)
+
+      // The self-drawn title bar is the only way to close this window, so its page must reach the window controls.
+      createWindowService({ context, window })
 
       await load(window, withHashRoute(baseUrl(getRendererRoot()), route, {
         query: { 'synced-leader': 'false' },

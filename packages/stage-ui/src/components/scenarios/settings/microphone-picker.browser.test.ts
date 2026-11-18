@@ -74,6 +74,13 @@ describe('microphone picker', () => {
     expect(requestAccess).toHaveBeenCalledOnce()
   })
 
+  it('waits for a click in a browser', async () => {
+    const requestAccess = vi.fn(async () => true)
+    await renderPicker({ requestAccess })
+
+    expect(requestAccess).not.toHaveBeenCalled()
+  })
+
   it('explains a denied request in place', async () => {
     const screen = await renderPicker({ requestAccess: async () => false })
 

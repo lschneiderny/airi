@@ -55,6 +55,9 @@ export function createStageUiProject(): TestProjectInlineConfiguration {
           filesystem: [
             'src/**/*.vue',
             '../ui/src/**/*.vue',
+            '../ui-panes/src/**/*.vue',
+            '../ui-timeline/src/**/*.vue',
+            '../ui-trace/src/**/*.vue',
           ],
         },
       }])),

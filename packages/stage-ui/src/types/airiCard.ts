@@ -101,7 +101,7 @@ export interface AiriExtension {
  * // => -1
  */
 export function normalizeContextWindow(value: unknown): number {
-  return typeof value === 'number' && Number.isInteger(value) && value >= -1
+  return typeof value === 'number' && Number.isFinite(value) && Number.isInteger(value) && value >= -1
     ? value
     : -1
 }

@@ -2,13 +2,13 @@
 import { useElectronEventaInvoke } from '@proj-airi/electron-vueuse'
 import { OnboardingScreen, OnboardingStepAnalyticsNotice } from '@proj-airi/stage-ui/components'
 import { isAnalyticsAvailableInBuild } from '@proj-airi/stage-ui/libs/product-signals'
-import { useOnboardingStore } from '@proj-airi/stage-ui/stores/onboarding'
 import { useTheme } from '@proj-airi/ui'
 import { computed } from 'vue'
 
+import WindowTitleBar from '../components/Window/TitleBar.vue'
+
 import { electronOnboardingClose } from '../../shared/eventa'
 
-const onboardingStore = useOnboardingStore()
 const { isDark } = useTheme()
 const closeWindow = useElectronEventaInvoke(electronOnboardingClose)
 
@@ -19,15 +19,9 @@ const extraSteps = computed(() => {
     : []
 })
 
-// These synced actions run on the leader window. Closing this window before they answer disposes the sync runtime
-// and rejects the pending call.
-async function handleSkipped() {
-  await onboardingStore.markSetupSkipped()
-  await closeWindow()
-}
-
+// The flow records its steps before it emits `configured`. Recording is a synced action that runs on the leader
+// window, and the flow awaits it, so closing this window here cannot reject the pending call.
 async function handleConfigured() {
-  await onboardingStore.markSetupCompleted()
   await closeWindow()
 }
 </script>
@@ -37,9 +31,10 @@ async function handleConfigured() {
   <div
     :class="['onboarding-root h-full min-h-0 w-full flex flex-col overflow-hidden overscroll-none', bgClass]"
   >
-    <div :class="['min-h-8 w-full flex-shrink-0 select-none drag-region', bgClass]" />
-    <div :class="['mx-8 mb-8 mt-2 min-h-0 flex flex-1 flex-col']">
-      <OnboardingScreen :extra-steps="extraSteps" @skipped="handleSkipped" @configured="handleConfigured" />
+    <WindowTitleBar transparent />
+    <div class="min-h-11 w-full flex-shrink-0" :class="bgClass" />
+    <div class="mx-8 mb-8 mt-2 min-h-0 flex flex-1 flex-col">
+      <OnboardingScreen :extra-steps="extraSteps" @configured="handleConfigured" />
     </div>
   </div>
 </template>

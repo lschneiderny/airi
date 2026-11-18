@@ -187,7 +187,6 @@ const visibleBubbles = computed(() => bubbles.value.slice(0, revealedBreaks.valu
 const showLoader = computed(() => props.showPlaceholder && resolvedSlices.value.length === 0)
 /** The bubble shells to draw: the visible bubbles, or one empty shell that holds the loader. */
 const shells = computed(() => visibleBubbles.value.length ? visibleBubbles.value : showLoader.value ? [[]] : [])
-const containerClass = computed(() => props.variant === 'mobile' ? 'mr-0' : 'mr-12')
 const boxClasses = computed(() => {
   const spacing = props.variant === 'mobile' ? 'px-2 py-2 text-sm' : 'px-3 py-3'
   if (props.surface === 'opaque')
@@ -204,7 +203,7 @@ const copyText = computed(() => getChatHistoryItemCopyText(props.message as Chat
 </script>
 
 <template>
-  <div :class="['flex font-cute ph-no-capture', containerClass]">
+  <div :class="['mr-12 flex font-cute ph-no-capture']">
     <ChatActionMenu
       :copy-text="copyText"
       :can-reply="canReply"

@@ -222,9 +222,16 @@ live2d:
           title: MAGIC
           description: Generate motion from the bundled MAGIC dataset.
       magic:
+        idle-profile:
+          title: Idle profile
+          description: Select the motion dataset that MAGIC plays while AIRI does not speak.
+        speaking-profile:
+          title: Speaking profile
+          description: Select the motion dataset that MAGIC plays while AIRI replies.
+        follow-speech:
+          title: Follow speech
+          description: Blend to the speaking profile while the voice of AIRI plays. Blend back to the idle profile after the voice stops.
         profile:
-          title: MAGIC profile
-          description: Select the bundled motion dataset that fits the MAGIC driver.
           options:
             idle-calm:
               title: Idle / calm
@@ -562,6 +569,24 @@ pages:
         accountAlreadyLinkedToDifferentUser: This OAuth account is already linked to another AIRI account. Choose a different provider account, or unlink it from the other AIRI account first.
         oauthCallbackFailed: We could not connect this OAuth account. Try again or choose another provider account.
         lastAccount: This is your only sign-in method. Set a password first before unlinking it.
+    sync:
+      tab: Sync
+      title: Sync
+      description: Choose the data that this device syncs to your account. Your choices apply only to this device.
+      off_note: When you turn off a sync, your data stays on this device and in your account. Changes from this device sync when you turn it on again.
+      items:
+        chats:
+          title: Chats
+          description: The text of your chats and their titles. Images and stickers stay on this device.
+        providers:
+          title: Providers
+          description: Your provider settings, with their API keys. The server keeps them encrypted.
+        character_cards:
+          title: Character cards
+          description: Your character cards. A card that you delete stays restorable for 30 days.
+        display_models:
+          title: Models
+          description: The Live2D and VRM models that you import. Large files use your account storage and network data.
     security:
       tab: Security
       title: Security
@@ -621,8 +646,6 @@ pages:
       action: Choose who answers
     sync:
       notice: Character cards sync to your account. A deleted card stays restorable for 30 days.
-      off_notice: You are signed in, but character card sync is off.
-      off_notice_link: Turn it on in Experimental Features.
       state:
         synced: Synced to your account
         pending: Waiting to upload
@@ -958,6 +981,48 @@ pages:
         plain: Plain
         discord: Discord
   models:
+    editor:
+      model:
+        all-models: All models
+      tabs:
+        model: Model
+        placement: Placement
+        motion: Motion
+        look: Look
+        display: Display
+      tools:
+        size: Size
+        position: Position
+        look-at: Look at
+        eyes: Eyes
+        idle-motion: Idle motion
+        motion-source: Motion source
+        expressions: Expressions
+        shadow: Shadow
+        theme-color: Theme color
+      position:
+        horizontal: Horizontal
+        vertical: Vertical
+        description: Drag the character on the stage, or use the rulers below.
+      look-at:
+        title: Where the character looks
+        options:
+          cursor: Cursor
+          off: Straight ahead
+      eyes:
+        look-around: Look around when idle
+        blink: Blink
+        blink-options:
+          off: 'Off'
+          model: From the model
+          airi: AIRI timer
+      reset: Reset
+      back: Back
+      clear-cache-confirm:
+        title: Clear the model cache?
+        description: The files of all Live2D models are deleted from this device. Each model downloads again the next time it loads.
+        confirm: Clear
+        cancel: Cancel
     description: Live2D, VRM, Spine, MMD, etc.
     title: Models
     sections:
@@ -2674,12 +2739,6 @@ pages:
         global: Available to signed-in accounts
         account: Available to your account
       features:
-        character_card_sync:
-          title: Character card cloud sync
-          description: Sync your character cards to your account when you are signed in, so they reach your other devices. Off by default. A card you delete stays in your account history for 30 days.
-        display_model_sync:
-          title: Model cloud sync
-          description: Upload imported Live2D and VRM models to your account when you are signed in, so you can use them on other devices. Off by default.
         fullscreen_workspace:
           title: Fullscreen workspace
           description: Open settings and the chat in a workspace that covers the screen, with the character on the left. Off by default.

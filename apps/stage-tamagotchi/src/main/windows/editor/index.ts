@@ -11,7 +11,7 @@ import { showWindow } from '../../libs/electron/focus'
 import { baseUrl, getPreloadPath, getRendererRoot, load, withHashRoute } from '../../libs/electron/location'
 import { ignoreWindowClosedDuringCreation } from '../../libs/electron/window-closed'
 import { createReusableWindow } from '../../libs/electron/window-manager'
-import { protectPrivilegedWindowNavigation, toggleWindowShow } from '../shared'
+import { customTitleBarWindowConfig, protectPrivilegedWindowNavigation, toggleWindowShow } from '../shared'
 import { setupEditorWindowInvokes } from './rpc/index.electron'
 
 export interface EditorWindowManager {
@@ -40,6 +40,7 @@ export function setupEditorWindowManager(params: {
       minHeight: 600,
       show: false,
       icon,
+      ...customTitleBarWindowConfig(),
       webPreferences: {
         preload: getPreloadPath(),
         sandbox: false,

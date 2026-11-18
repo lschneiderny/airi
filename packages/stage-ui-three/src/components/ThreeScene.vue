@@ -62,10 +62,11 @@ import { presenceBubblePaletteKey } from './presence-bubble-palette'
 const props = withDefaults(defineProps<{
   /** Drives the bubble above the character. */
   presence?: PresenceBubbleState
-  /** The context that owns `currentAudioSource`. */
+  /** The context that creates the lip sync node. It must be the context of the played speech. */
   audioContext?: AudioContext
-  currentAudioSource?: AudioBufferSourceNode
-  /** Whether speech is currently audible. When it turns false, the lip sync releases the mouth. */
+  /** Connects the lip sync node to the played speech and returns the disconnection. */
+  connectSpeech?: (node: AudioNode) => () => void
+  /** Whether speech is currently audible. Required when `connectSpeech` is set. */
   speechActive?: boolean
   cursorPosition?: { x: number, y: number }
   /**
@@ -1072,7 +1073,7 @@ defineExpose({
       <VRMModel
         ref="modelRef"
         :audio-context="props.audioContext"
-        :current-audio-source="props.currentAudioSource"
+        :connect-speech="props.connectSpeech"
         :speech-active="props.speechActive"
         :cursor-position="props.cursorPosition"
         :last-committed-model-id="lastCommittedModelId"

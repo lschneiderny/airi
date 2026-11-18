@@ -22,12 +22,12 @@ const VRM_EXPRESSION_BY_VOWEL: Record<WLipSyncVowel, string> = {
 /**
  * Applies shared wLipSync vowel weights to a VRM expression manager.
  *
- * The caller owns the AudioContext and audio source lifecycle. This composable
- * owns only the connection between that source and its wLipSync node.
+ * The caller owns the AudioContext and the played speech. `connectSpeech`
+ * connects the wLipSync node to that speech and returns the disconnection.
  */
 export function useVRMLipSync(
   audioContext: Readonly<Ref<AudioContext | undefined>>,
-  audioSource: Readonly<Ref<AudioBufferSourceNode | undefined>>,
+  connectSpeech: Readonly<Ref<((node: AudioNode) => () => void) | undefined>>,
   speechActive: Readonly<Ref<boolean | undefined>>,
 ) {
   const isLipSyncActive = ref(false)
@@ -64,26 +64,16 @@ export function useVRMLipSync(
       })
   }, { immediate: true })
 
-  watch([lipSyncAnalysis, audioSource], ([analysis, source], _, onCleanup) => {
-    if (!analysis || !source)
+  watch([lipSyncAnalysis, connectSpeech], ([analysis, connect], _, onCleanup) => {
+    if (!analysis || !connect)
       return
 
     try {
-      source.connect(analysis.input)
+      onCleanup(connect(analysis.input))
     }
     catch (error) {
       console.error('[stage-ui-three] Failed to connect the VRM lip-sync node.', error)
-      return
     }
-
-    onCleanup(() => {
-      try {
-        source.disconnect(analysis.input)
-      }
-      catch {
-        // The source can end before Vue runs this watcher cleanup.
-      }
-    })
   }, { immediate: true })
 
   function clearVisemes(vrm?: VRMCore) {
