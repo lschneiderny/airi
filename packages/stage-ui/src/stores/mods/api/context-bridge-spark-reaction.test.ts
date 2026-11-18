@@ -404,6 +404,21 @@ describe('widget spark reactions', () => {
     expect(reaction).toBe('Still here.')
   })
 
+  it('names only the kind of topic for a web extension source, and keeps another source\'s headline', async () => {
+    const { bridge } = startLeader()
+    chatSpeaks('Oh, what are you watching?')
+
+    await bridge.dispatchSparkNotifyReaction({ source: 'proj-airi:plugin-web-extension:video', headline: 'User is watching: Secret video', note: 'https://example.test/watch?v=1', fallbackResponseText: 'fallback' })
+    await bridge.dispatchSparkNotifyReaction({ source: 'proj-airi:plugin-web-extension:video', headline: 'ignored', messageOverride: { replaceUserMessage: 'Secret video just started' }, fallbackResponseText: 'fallback' })
+    await bridge.dispatchSparkNotifyReaction({ source: 'chess-board', headline: 'QA widget', note: 'from the chess board', fallbackResponseText: 'fallback' })
+
+    expect(submitUnprompted.mock.calls.map(([payload]) => payload.topicText)).toEqual([
+      'a video the user started watching in the browser',
+      'a video the user started watching in the browser',
+      'QA widget: from the chess board',
+    ])
+  })
+
   it('answers a request without a usable headline with its fallback and starts no turn', async () => {
     const { situation, bridge } = startLeader()
     chatSpeaks('unused')
