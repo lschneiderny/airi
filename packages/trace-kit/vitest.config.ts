@@ -1,10 +1,11 @@
+import { withCpuSlots } from '@proj-airi/cpu-slots/vitest'
 import { defineConfig } from 'vitest/config'
 
-export default defineConfig({
+export default withCpuSlots(defineConfig({
   test: {
     environment: 'node',
     // The reader benchmark runs a full garbage collection before each heap read.
     execArgv: ['--expose-gc'],
     include: ['src/**/*.test.ts', 'scripts/**/*.test.ts'],
   },
-})
+}))

@@ -1,8 +1,9 @@
 import Vue from '@vitejs/plugin-vue'
 
+import { withCpuSlots } from '@proj-airi/cpu-slots/vitest'
 import { defineConfig } from 'vitest/config'
 
-export default defineConfig({
+export default withCpuSlots(defineConfig({
   root: import.meta.dirname,
   // The row models import the time helpers of `@proj-airi/ui-timeline/headless`, whose index also exports components.
   plugins: [Vue()],
@@ -10,4 +11,4 @@ export default defineConfig({
     environment: 'node',
     include: ['src/**/*.test.ts'],
   },
-})
+}))
