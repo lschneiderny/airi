@@ -365,7 +365,7 @@ describe('run command', () => {
 
       const rows = await records(join(endpoint.out, 'transcripts.jsonl'))
       expect(rows[0]).toMatchObject({
-        runKey: 'recall@1/airi-replay/quiet+reasoning-none+app-hiyori',
+        runKey: 'recall@1/airi-replay/quiet+canonical-history+reasoning-none+app-hiyori',
         generation: { withTools: true, think: 'none' },
         prompt: { toolsSha256: expect.stringMatching(/^[0-9a-f]{64}$/), contractVersion: STAGE_CONTRACT_EN_SHA256.slice(0, 12) },
         reply: { text: '<|ACT happy|> Biscuit is a great name!', steps: 2, toolCalls: [{ name: 'builtIn_writeMemory' }] },
@@ -376,7 +376,7 @@ describe('run command', () => {
       const requests = (await readFile(join(endpoint.out, 'requests.jsonl'), 'utf8')).trim().split('\n').map(line => JSON.parse(line))
       expect(requests.map(entry => entry.step)).toEqual([1, 2, 1])
       const checks = JSON.parse(await readFile(join(endpoint.out, 'checks.json'), 'utf8'))
-      expect(checks.runs).toEqual([{ runKey: 'recall@1/airi-replay/quiet+reasoning-none+app-hiyori', results: [{ turn: 2, any: ['biscuit'], passed: true }] }])
+      expect(checks.runs).toEqual([{ runKey: 'recall@1/airi-replay/quiet+canonical-history+reasoning-none+app-hiyori', results: [{ turn: 2, any: ['biscuit'], passed: true }] }])
       expect(result.stderr).toContain('recall: 1/1')
     })
 
