@@ -1,12 +1,16 @@
+import type { MindStimulus } from '@proj-airi/character-mind'
 import type { MotionScenario } from '@proj-airi/stage-shared/motion-scenario'
 import type { PerformanceInputs, PerformanceMode } from '@proj-airi/stage-shared/performance-state'
+import type { TouchVoiceView } from '@proj-airi/stage-shared/situation'
 import type { NaturalCaptureResult } from '@proj-airi/stage-ui-live2d/stores'
 
 import type { MotionQaFrames } from './use-motion-qa-bridge'
 
 import { defineInvoke } from '@moeru/eventa'
+import { CharacterMind } from '@proj-airi/character-mind'
 import { createChatHooks } from '@proj-airi/core-agent'
 import { normalizeActPayload } from '@proj-airi/pipelines-audio'
+import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { capabilitiesForHost } from '@proj-airi/stage-shared/host-capabilities'
 import { createMotionQaContext, createMotionQaDispatcher, motionQaRunScenarioInvokeEventa } from '@proj-airi/stage-shared/motion-scenario'
 import { initialResolverMemory, resolvePerformanceState } from '@proj-airi/stage-shared/performance-state'
@@ -86,6 +90,9 @@ describe('useMotionQaBridge', () => {
   const voicing = ref(false)
   const mode = ref<PerformanceMode>('idle')
   let performanceInputs: PerformanceInputs
+  let mind: CharacterMind
+  /** Epoch milliseconds of the mind's clock; a test moves it by hand. */
+  let mindNowMs: number
 
   /** Stands in for the capture that Model.vue runs: scenario events stamped into it land in the log. */
   function recordCaptureMarks() {
@@ -99,6 +106,9 @@ describe('useMotionQaBridge', () => {
     log = []
     clock = controlledFrames()
     chat = createChatHooks()
+    mindNowMs = 1_700_000_000_000
+    // Seed 17 speaks the protest of the first burst of three pokes.
+    mind = new CharacterMind({ seed: 17, clock: () => mindNowMs })
     voicing.value = false
     mode.value = 'idle'
     performanceInputs = { nowMs: 0, speaking: false, userSpeaking: false, generating: false, cursorMovedAtMs: null, desktop: null, userTurnAtMs: null, visible: true, override: null, cueAttention: null, foregroundCategory: null }
@@ -117,6 +127,7 @@ describe('useMotionQaBridge', () => {
         chat,
         sendChat: async (text) => { log.push(`send:${text}`) },
         voicing: () => voicing.value,
+        mind,
         emotionsQueue: { enqueue: cue => log.push(`queue:${cue.emotion.name}:${cue.source}:${cue.emotion.intensity}`) },
         dispatchAct: marker => streaming.dispatchWith(marker),
         renderError: () => undefined,
@@ -159,6 +170,78 @@ describe('useMotionQaBridge', () => {
       ] },
     })
     expect(await dispatch({ name: 'events', input: { sinceSeq: 3 } })).toMatchObject({ result: { events: [{ seq: 4 }] } })
+  })
+
+  it('records each step of the mind with its stimulus, its intents, and its voice decision, and no content', async () => {
+    type Touch = Extract<MindStimulus, { kind: 'touch' }>
+    const settings = defaultExpressionPerformanceSettings
+    const pokeTimesMs: number[] = []
+    function poke(): Touch {
+      pokeTimesMs.push(mindNowMs)
+      const voice: TouchVoiceView = { sessionId: 'session-1', eventId: 'touch-event', pet: null, pokeTimesMs: [...pokeTimesMs], lastCharacterLineAtMs: null, held: null }
+      return { kind: 'touch', gesture: 'poke', region: 'head', point: { x: 0.2, y: -0.4 }, settings, voice }
+    }
+
+    mind.receive({ kind: 'touch', gesture: 'pet-start', region: 'head', settings, voice: null })
+    mindNowMs += 5_000
+    mind.receive(poke())
+    mindNowMs += 1_000
+    mind.receive(poke())
+    mindNowMs += 1_000
+    mind.receive(poke())
+    mind.receive({ kind: 'voice-outcome', eventId: 'touch-event', outcome: 'spoken' })
+
+    const reply = await dispatch({ name: 'events', input: {} }) as { ok: boolean, result: { events: { kind: string, payload: Record<string, string | null> }[] } }
+    expect(reply.ok).toBe(true)
+    const steps = reply.result.events.map(event => ({ kind: event.kind, ...event.payload, intents: JSON.parse(event.payload.intents ?? '') as unknown }))
+    expect(steps).toEqual([
+      {
+        kind: 'mind',
+        stimulus: 'touch',
+        gesture: 'pet-start',
+        outcome: null,
+        intents: [
+          { channel: 'posture', kind: 'touch-reaction', id: '1-touch-reaction', cause: 1 },
+          { channel: 'posture', kind: 'mood', id: '1-mood', cause: 1 },
+        ],
+        voice: null,
+        voiceLine: null,
+        voiceReason: null,
+      },
+      {
+        kind: 'mind',
+        stimulus: 'touch',
+        gesture: 'poke',
+        outcome: null,
+        intents: [
+          { channel: 'posture', kind: 'touch-reaction', id: '2-touch-reaction', cause: 2 },
+          { channel: 'posture', kind: 'mood', id: '2-mood', cause: 2 },
+          { channel: 'face', kind: 'moment', id: '2-moment', cause: 2 },
+        ],
+        voice: 'hold',
+        voiceLine: 'poke-protest',
+        voiceReason: 'poke-count',
+      },
+      expect.objectContaining({ gesture: 'poke', voice: 'hold', voiceReason: 'poke-count' }),
+      {
+        kind: 'mind',
+        stimulus: 'touch',
+        gesture: 'poke',
+        outcome: null,
+        intents: [
+          { channel: 'posture', kind: 'touch-reaction', id: '4-touch-reaction', cause: 4 },
+          { channel: 'posture', kind: 'mood', id: '4-mood', cause: 4 },
+          { channel: 'face', kind: 'moment', id: '4-moment', cause: 4 },
+          { channel: 'voice', kind: 'speak', id: '4-speak', cause: 4 },
+        ],
+        voice: 'speak',
+        voiceLine: 'poke-protest',
+        voiceReason: null,
+      },
+      { kind: 'mind', stimulus: 'voice-outcome', gesture: null, outcome: 'spoken', intents: [], voice: null, voiceLine: null, voiceReason: null },
+    ])
+    // Neither the poke's point nor the situation's event and session ids leave the window.
+    expect(JSON.stringify(reply)).not.toMatch(/touch-event|session-1|-0\.4/)
   })
 
   it('evicts old records from its bounded window and removes subscriptions on disposal', async () => {

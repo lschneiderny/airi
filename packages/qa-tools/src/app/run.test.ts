@@ -65,6 +65,14 @@ describe('runApp launch env', () => {
     expect((await requestedLaunch(['--perf-dir', 'p'])).env).toMatchObject({ AIRI_PERF_RECORD: '1', AIRI_PERF_DIR: resolve(repoRoot, 'p') })
   })
 
+  it('launches on the classic window by default', async () => {
+    expect((await requestedLaunch([])).env).toMatchObject({ AIRI_STAGE_HOST: 'window' })
+  })
+
+  it('launches without a forced host for --stage-host desktop, so the setting saved in the profile decides', async () => {
+    expect((await requestedLaunch(['--kind', 'mmd', '--stage-host', 'desktop'])).env).toMatchObject({ AIRI_STAGE_HOST: '' })
+  })
+
   it('leaves recording to the launcher default without --perf-dir', async () => {
     const { env } = await requestedLaunch([])
     expect(env).not.toHaveProperty('AIRI_PERF_RECORD')

@@ -132,8 +132,9 @@ export const MotionQaEventSchema = strictObject({
   seq: sequence,
   /** Unix epoch milliseconds from the recording renderer. */
   time: pipe(number(), finite()),
-  kind: picklist(['act', 'expression', 'clip', 'tts', 'turn']),
-  /** Bounded scalar fields only; reply text is truncated to 500 characters by the recorder. */
+  /** `mind` is one step of the character mind: its stimuli, the intents it returned, and its voice decision. */
+  kind: picklist(['act', 'expression', 'clip', 'tts', 'turn', 'mind']),
+  /** Bounded scalar fields only; reply text is truncated to 500 characters by the recorder. A `mind` event carries no text. */
   payload: record(string(), union([pipe(string(), maxLength(500)), number(), boolean(), nullable(string())])),
 })
 export type MotionQaEvent = InferOutput<typeof MotionQaEventSchema>

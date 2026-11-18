@@ -28,7 +28,22 @@ describe('app session planning', () => {
     expect(on.env).toMatchObject({ AIRI_PERF_RECORD: '1', AIRI_PERF_DIR: resolve('/work', 'p') })
   })
 
+  it('plans the classic window by default and the desktop stage with --stage-host desktop', () => {
+    const classic = buildPlan(parseAppArgs(['run', '--dry-run', '--model', 'a.zip', '--say', 'x'], '/work'), '/run')
+    expect(classic.env.AIRI_STAGE_HOST).toBe('window')
+    expect(classic.steps).toContain('launch T3 with temporary profile and window stage')
+    const options = parseAppArgs(['run', '--dry-run', '--model', 'body.pmx', '--say', 'x', '--stage-host', 'desktop', '--expect', 'mind'], '/work')
+    expect(options).toMatchObject({ stageHost: 'desktop', kind: 'mmd', expect: ['mind'] })
+    const desktop = buildPlan(options, '/run')
+    // An empty mode overrides nothing; the session saves the setting in the profile instead.
+    expect(desktop.env.AIRI_STAGE_HOST).toBe('')
+    expect(desktop.steps).toContain('launch T3 with temporary profile and desktop stage')
+  })
+
   it.each([
+    ['run', '--model', 'a.zip', '--say', 'x', '--stage-host', 'desktop'],
+    ['run', '--model', 'a.vrm', '--say', 'x', '--stage-host', 'desktop'],
+    ['run', '--model', 'a.pmx', '--say', 'x', '--stage-host', 'stage'],
     ['run', '--model', 'a.zip', '--say', 'x', '--perf-dir', ''],
     ['run', '--model', 'a.zip', '--say', 'x', '--perf-dir', '  '],
     ['run', '--model', 'a.zip', '--say', 'x', '--perf-dir'],

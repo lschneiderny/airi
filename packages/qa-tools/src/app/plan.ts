@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { consciousnessStorageKeys, providerStorageKeys, speechStorageKeys } from '@proj-airi/stage-ui/constants/settings-storage'
 
 import { replayModel, speechModel } from '../llm/protocol'
+import { stageHostEnv } from '../session/app-session'
 import { t3LaunchEnv } from '../t3/launch'
 
 /** Strings use VueUse's raw string serializer; objects and booleans use JSON. Only a disposable profile receives this. */
@@ -33,9 +34,9 @@ export function buildSeedEntries(baseURL: string, redact = false): Record<string
   }
 }
 
-/** The launch options env of an app session: the window stage host, plus perf recording when `--perf-dir` asks for it. It overrides `t3LaunchEnv`. */
-export function appLaunchEnv(options: Pick<AppOptions, 'perfDir'>): Record<string, string> {
-  return { AIRI_STAGE_HOST: 'window', ...(options.perfDir ? { AIRI_PERF_RECORD: '1', AIRI_PERF_DIR: options.perfDir } : {}) }
+/** The launch options env of an app session: the stage host of `--stage-host`, plus perf recording when `--perf-dir` asks for it. It overrides `t3LaunchEnv`. */
+export function appLaunchEnv(options: Pick<AppOptions, 'perfDir' | 'stageHost'>): Record<string, string> {
+  return { ...stageHostEnv(options.stageHost), ...(options.perfDir ? { AIRI_PERF_RECORD: '1', AIRI_PERF_DIR: options.perfDir } : {}) }
 }
 
 /** Pure, inspectable launch plan. Port and replay URL placeholders are resolved only during a live run. */
@@ -56,7 +57,7 @@ export function buildPlan(options: AppOptions, runDir: string) {
     steps: [
       'acquire exclusive CPU lease',
       'start replay server on loopback port 0',
-      'launch T3 with temporary profile and window stage',
+      `launch T3 with temporary profile and ${options.stageHost} stage`,
       'connect CDP and seed settings then reload leader',
       'import model through bridge file input and await mounted renderer',
       'send each message and poll events with a fresh sequence cursor',

@@ -1,3 +1,4 @@
+import type { CharacterMind } from '@proj-airi/character-mind'
 import type { MotionQaRunScenarioResult, MotionQaState, MotionScenario, ScenarioEvent } from '@proj-airi/stage-shared/motion-scenario'
 import type { PerformanceInputs, PerformanceState } from '@proj-airi/stage-shared/performance-state'
 
@@ -49,6 +50,8 @@ export interface MotionQaBridgeOptions {
   sendChat: (text: string) => Promise<void>
   /** True from a reply's first speech clip until its playback drains; unlike playback, it stays on between sentences. */
   voicing: () => boolean
+  /** The stage's character mind; the event log records each of its steps. */
+  mind: Pick<CharacterMind, 'onStep'>
   /** Shared scene lifecycle: true after the selected renderer reports mounted. */
   modelLoaded?: () => boolean
   prepareModelImport?: () => void

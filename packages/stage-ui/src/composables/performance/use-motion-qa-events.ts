@@ -1,3 +1,4 @@
+import type { CharacterMind } from '@proj-airi/character-mind'
 import type { MotionQaEvent, MotionQaEventsResult } from '@proj-airi/stage-shared/motion-scenario'
 
 import type { useChatStore } from '../../stores/chat'
@@ -7,11 +8,12 @@ import { onScopeDispose, watch } from 'vue'
 
 import { usePerformanceRuntimeState } from '../../features/performance/runtime-state'
 import { useLlmStreamingControlStore } from '../../stores/ai/chat-llm/streaming-control'
+import { voiceDecisionOf } from './use-character-mind'
 
 export type MotionQaChatHooks = Pick<ReturnType<typeof useChatStore>, 'onBeforeMessageComposed' | 'onChatTurnComplete'>
 
 /** Window-local, dev-only recorder. Its subscriptions never dispatch or modify performance state. */
-export function useMotionQaEvents(options: { chat: MotionQaChatHooks, voicing: () => boolean }) {
+export function useMotionQaEvents(options: { chat: MotionQaChatHooks, voicing: () => boolean, mind: Pick<CharacterMind, 'onStep'> }) {
   const events: MotionQaEvent[] = []
   let seq = 0
   let dropped = 0
@@ -41,6 +43,24 @@ export function useMotionQaEvents(options: { chat: MotionQaChatHooks, voicing: (
         gesture: act.gesture?.kind ?? null,
         action: act.action ?? null,
         expression: act.expression ?? null,
+      })
+    }),
+    // One event per step of the mind. It names what the mind was given and what it decided, never a point, a
+    // dose, a view of the situation, or any text.
+    options.mind.onStep((step) => {
+      const touches = step.stimuli.filter(stimulus => stimulus.kind === 'touch')
+      const outcomes = step.stimuli.filter(stimulus => stimulus.kind === 'voice-outcome')
+      const decision = voiceDecisionOf(step)
+      record('mind', {
+        stimulus: step.stimuli.map(stimulus => stimulus.kind).join(','),
+        gesture: touches.length ? touches.map(touch => touch.gesture).join(',') : null,
+        outcome: outcomes.length ? outcomes.map(stimulus => stimulus.outcome).join(',') : null,
+        // A JSON array, because a payload holds scalars only. A touch yields at most four intents of about 80
+        // characters each, which stays under the 500 characters `record` keeps of a string.
+        intents: JSON.stringify(step.intents.map(({ channel, kind, id, cause }) => ({ channel, kind, id, cause }))),
+        voice: decision ? (decision.speak ? 'speak' : 'hold') : null,
+        voiceLine: decision?.kind ?? null,
+        voiceReason: decision && !decision.speak ? decision.reason : null,
       })
     }),
   ]
