@@ -12,6 +12,7 @@ import type {
   SalienceKey,
   SelfActivity,
   SelfObservation,
+  SituationContext,
   SituationEvent,
   SituationEventKind,
   SituationPet,
@@ -105,7 +106,7 @@ type Mutable<T> = { -readonly [K in keyof T]: T[K] }
 interface Draft extends Mutable<SituationState> {
   recentActivities: SituationRecentActivity[]
   events: SituationEvent[]
-  contexts: Record<string, { text: string, atMs: number }>
+  contexts: Record<string, SituationContext>
   tracking: Mutable<SituationTracking> & { switchTimes: number[] }
 }
 
@@ -365,7 +366,7 @@ function applyContext(draft: Draft, o: ContextObservation, at: number): void {
     delete draft.contexts[o.sourceKey]
     return
   }
-  draft.contexts[o.sourceKey] = { text, atMs: at }
+  draft.contexts[o.sourceKey] = { text, title: (typeof o.title === 'string' && o.title.trim()) || null, atMs: at }
   if (existing && existing.text === text)
     return
 
@@ -596,6 +597,25 @@ export function isSourceInNamespace(sourceKey: string, namespace: string): boole
 export function isTopicFromSource(topicKey: string, namespace: string): boolean {
   const contextTopic = contextTopicKey(namespace)
   return topicKey === contextTopic || topicKey.startsWith(`${contextTopic}:`) || topicKey.startsWith(notifyTopicKey(namespace, ''))
+}
+
+/**
+ * The source namespace of the AIRI web extension. Its module identity names the extension
+ * `proj-airi:plugin-web-extension` (`PLUGIN_NAME` in `plugins/airi-plugin-web-extension/src/background/client.ts`), so
+ * its context updates and notifies carry source keys `proj-airi:plugin-web-extension:<module id>`.
+ */
+export const WEB_EXTENSION_SOURCE = 'proj-airi:plugin-web-extension'
+
+/**
+ * The topic text of an unprompted turn. Its trigger message keeps this text in chat history. A web extension topic's
+ * own text holds a page or video title and full link, so its trigger names only the kind of topic. The details reach
+ * the model through the situation block of the same request, while the topic's context line or `New:` line is in it.
+ * The text of every other source is returned unchanged.
+ */
+export function unpromptedTopicText(topicKey: string, text: string, aboutNotify: boolean): string {
+  if (!isTopicFromSource(topicKey, WEB_EXTENSION_SOURCE))
+    return text
+  return aboutNotify ? 'a video the user started watching in the browser' : 'what the user has open in the browser'
 }
 
 /**

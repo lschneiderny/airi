@@ -40,7 +40,6 @@ import {
   initialSituationState,
   initialUrgeMemory,
   isSourceInNamespace,
-  isTopicFromSource,
   LOGICAL_DAY_ROLLOVER_HOUR,
   markShown,
   markAddressed as markSituationAddressed,
@@ -57,7 +56,9 @@ import {
   restoreSocialMemory,
   settleReaction,
   TOUCH_TOPIC_KEY,
+  unpromptedTopicText,
   visibilityRegainUrgeMemory,
+  WEB_EXTENSION_SOURCE,
   withoutAppExtension,
 } from '@proj-airi/stage-shared/situation'
 import { useDesktopActivityStore } from '@proj-airi/stage-shared/stores/desktop-activity'
@@ -108,24 +109,6 @@ export const COMPOSER_REPORT_EXPIRY_MS = 15_000
  * notifications arrive while a reminder stays due.
  */
 export const SEEN_NOTIFY_TOPICS_MAX = 256
-
-/**
- * The source namespace of the AIRI web extension. Its module identity names the extension
- * `proj-airi:plugin-web-extension` (`PLUGIN_NAME` in `plugins/airi-plugin-web-extension/src/background/client.ts`), so
- * its context updates and notifies carry source keys `proj-airi:plugin-web-extension:<module id>`.
- */
-export const WEB_EXTENSION_SOURCE = 'proj-airi:plugin-web-extension'
-
-/**
- * The topic text of an unprompted turn. Its trigger message keeps this text in chat history. A web extension topic's
- * own text holds a page or video title and full link, so its trigger names only the kind of topic. The details reach
- * the model through the situation block of the same request, while the topic's context line or `New:` line is in it.
- */
-function unpromptedTopicText(topicKey: string, text: string, aboutNotify: boolean): string {
-  if (!isTopicFromSource(topicKey, WEB_EXTENSION_SOURCE))
-    return text
-  return aboutNotify ? 'a video the user started watching in the browser' : 'what the user has open in the browser'
-}
 
 /** `submitUnprompted` returns this error when another unprompted turn is still pending: busy, not a failure. */
 const UNPROMPTED_BUSY_ERROR = 'Another unprompted turn is still pending'

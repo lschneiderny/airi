@@ -79,6 +79,18 @@ describe('context sensor', () => {
     })
   })
 
+  it('carries a page title from the metadata, and none when it is missing or blank', () => {
+    // The way the bridge sees a web extension update: the update's own metadata merged under the sender's.
+    const titled = (title: unknown) => {
+      const metadata = { title, source: { id: 'station-1', extension: { id: 'weather' } } }
+      return contextObservationFrom(contextMessage({ metadata }), T0)
+    }
+
+    expect(titled(' Quarterly tax return ')?.title).toBe('Quarterly tax return')
+    expect(titled('   ')).not.toHaveProperty('title')
+    expect(titled(42)).not.toHaveProperty('title')
+  })
+
   it('gives vision output the vision salience and its capture time', () => {
     expect(contextObservationFrom(visionMessage('A code editor.', T0 - 5_000), T0)).toMatchObject({
       sourceKey: 'stage-window',
@@ -133,7 +145,7 @@ describe('context sensor', () => {
     vi.advanceTimersByTime(1_000)
     ingestContextMessage(contextMessage({ id: 'b', strategy: ContextUpdateStrategy.AppendSelf, text: 'windy' }))
 
-    expect(store.state.contexts).toEqual({ 'weather:station-1': { text: 'windy', atMs: T0 + 1_000 } })
+    expect(store.state.contexts).toEqual({ 'weather:station-1': { text: 'windy', title: null, atMs: T0 + 1_000 } })
   })
 
   it('clears a source on empty text', () => {

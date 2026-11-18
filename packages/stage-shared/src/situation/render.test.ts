@@ -43,7 +43,7 @@ const fullState = stateWith({
   activity: { appId: 'code', label: 'VS Code', category: 'editor', title: 'render.ts', sinceMs: T0 + 10 * MIN },
   recentActivities: [{ appId: 'game', label: 'Elden Ring', category: 'game', sinceMs: T0, endedAtMs: T0 + 10 * MIN }],
   conversation: { lastUserAtMs: T0 + 5 * MIN, lastCharacterAtMs: T0 + 6 * MIN, lastUnpromptedAtMs: T0 + 2 * MIN, lastUnpromptedTopic: 'the boss fight' },
-  contexts: { vision: { text: 'A text editor with TypeScript open', atMs: T0 + 12 * MIN } },
+  contexts: { vision: { text: 'A text editor with TypeScript open', title: null, atMs: T0 + 12 * MIN } },
   stage: { exposed: 'smile, wave', active: 'idle', atMs: T0 },
   events: [event({ atMs: T0 + 14 * MIN })],
 })
@@ -179,7 +179,7 @@ describe('renderSituation', () => {
       recentActivities: fullState.recentActivities,
       conversation: fullState.conversation,
       stage: fullState.stage,
-      contexts: Object.fromEntries(Array.from({ length: 6 }, (_, i) => [`src${i}`, { text: `${long}${i}`, atMs: T0 + i * MIN }])),
+      contexts: Object.fromEntries(Array.from({ length: 6 }, (_, i) => [`src${i}`, { text: `${long}${i}`, title: null, atMs: T0 + i * MIN }])),
       events: Array.from({ length: 20 }, (_, i) => event({ id: `e${i}`, text: `event number ${i}`, atMs: T0 + i * SEC })),
     })
     const { text } = renderSituation(state, T0 + 20 * MIN)
@@ -195,7 +195,7 @@ describe('renderSituation', () => {
   })
 
   it('orders contexts newest first', () => {
-    const state = stateWith({ contexts: { a: { text: 'older', atMs: T0 }, b: { text: 'newer', atMs: T0 + MIN } } })
+    const state = stateWith({ contexts: { a: { text: 'older', title: null, atMs: T0 }, b: { text: 'newer', title: null, atMs: T0 + MIN } } })
     expect(renderSituation(state, T0 + 2 * MIN).text.split('\n').slice(1)).toEqual(['- newer', '- older'])
   })
 
@@ -208,12 +208,12 @@ describe('renderSituation', () => {
   })
 
   it('collapses newlines so each bullet stays on one line', () => {
-    const state = stateWith({ contexts: { a: { text: 'line one\n\n  line two\r\nline three', atMs: T0 } } })
+    const state = stateWith({ contexts: { a: { text: 'line one\n\n  line two\r\nline three', title: null, atMs: T0 } } })
     expect(renderSituation(state, T0 + MIN).text.split('\n')).toEqual([`[Situation ${clock(T0 + MIN)}]`, '- line one line two line three'])
   })
 
   it('counts emoji by UTF-16 length and never splits a surrogate pair', () => {
-    const state = stateWith({ contexts: { a: { text: '😀'.repeat(100), atMs: T0 } } })
+    const state = stateWith({ contexts: { a: { text: '😀'.repeat(100), title: null, atMs: T0 } } })
     const { text } = renderSituation(state, T0 + MIN)
     const bullet = text.split('\n')[1]
     expect(bullet.length - 2).toBeLessThanOrEqual(120)
@@ -227,7 +227,7 @@ describe('renderSituation', () => {
     expect(renderSituation(fullState, Number.POSITIVE_INFINITY).text).toBe('[Situation --:--]')
     const blank = stateWith({
       activity: { appId: '', label: '  ', category: 'other', title: '', sinceMs: T0 },
-      contexts: { a: { text: '   ', atMs: T0 } },
+      contexts: { a: { text: '   ', title: null, atMs: T0 } },
       events: [event({ text: ' ' })],
     })
     expect(renderSituation(blank, T0, { userName: '  ', maxLines: Number.NaN, maxChars: -5 }).text).toBe(`[Situation ${clock(T0)}]`)
@@ -249,7 +249,7 @@ describe('renderSituation', () => {
     const base = {
       presence: fullState.presence,
       activity: fullState.activity,
-      contexts: { vision: { text: 'A cat on the screen', atMs: T0 + 14 * MIN } },
+      contexts: { vision: { text: 'A cat on the screen', title: null, atMs: T0 + 14 * MIN } },
       events: [contextEvent, ...notifications],
     }
     const nowMs = T0 + 15 * MIN

@@ -17,7 +17,8 @@ import { situationContextText } from './context-text'
  * its source instead of piling up. Vision output is recognized by `metadata.module === 'vision'`; it gets the vision
  * salience explicitly because its source key is the publishing peer, never the literal `vision` key that the reducer
  * maps by itself, and it is timed by its capture, so a late result never replaces a newer one.
- * The text goes through {@link situationContextText}.
+ * The text goes through {@link situationContextText}. A non-empty string `metadata.title` (the web extension's page or
+ * video title) is carried as `title`, so the situation can keep it out of stored text without parsing the prose.
  *
  * Returns `undefined` for a message without string text.
  */
@@ -28,11 +29,13 @@ export function contextObservationFrom(message: ContextMessage, nowMs: number): 
   const metadata: Record<string, unknown> | undefined = message.metadata
   const vision = metadata?.module === 'vision'
   const capturedAt = metadata?.capturedAt
+  const title = typeof metadata?.title === 'string' ? metadata.title.trim() : ''
 
   return {
     kind: 'context',
     sourceKey: getEventSourceKey(message),
     text: situationContextText(message.text),
+    ...(title ? { title } : {}),
     atMs: vision && typeof capturedAt === 'number' && Number.isFinite(capturedAt) ? capturedAt : nowMs,
     salience: vision ? BASE_SALIENCE['context-vision'] : BASE_SALIENCE.context,
   }

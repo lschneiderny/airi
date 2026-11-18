@@ -70,6 +70,11 @@ export interface ContextObservation {
   readonly kind: 'context'
   readonly sourceKey: string
   readonly text: string
+  /**
+   * The page or video title that `text` describes, when the source sends it as data. The situation holds it only to
+   * keep it out of stored text (see `heldTitles`); the model reads the title in `text`.
+   */
+  readonly title?: string
   readonly atMs: number
   /** Overrides {@link BASE_SALIENCE} for this observation, 0..1. */
   readonly salience?: number
@@ -249,6 +254,8 @@ export interface SituationConversation {
 
 export interface SituationContext {
   readonly text: string
+  /** The page or video title inside `text`, or `null` when the source sent none. Never rendered. */
+  readonly title: string | null
   readonly atMs: number
 }
 
