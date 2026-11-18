@@ -99,6 +99,41 @@ A probe sent a 12-turn history with the full app prompt and tools through Ollama
 
 A local server reuses its cache only up to the first changed token. Because the per-request segments sit in the system message, before the history, every voice turn processes the whole conversation again. Moving per-request text into the last user message keeps the time near condition A.
 
+## Follow-up: `gemma4:e4b-it-qat` under app conditions
+
+The screen above sends the `qa:model` prompt with no tools, on short conversations, with nothing else on the GPU. A same-day follow-up measured the lead model under the app's conditions. Its numbers are in `results/app-conditions.json`. Its transcripts are not committed: a scratch harness wrote them, and they carry provenance fields copied from a template record, so they would mislead as a dataset.
+
+Method:
+- **App request.** One `pnpm qa:app run` turn, with the bundled Hiyori Live2D model and the replay server, captured the exact request the app sends from a fresh profile. That request has 12 tools (26.8k characters) and a 6.3k-character system prompt: the default card, the legacy widget instructions, the Hiyori motion list from `formatLive2DActPrompt`, the stage contract, and the memory and card rules. About 6.4k tokens go out before any history.
+- **Harness.** It sent the scenario turns with that system prompt and those tools through `/v1`, in the app's message form: a time prefix on every user message, and a situation block on the last one only. It answered tool calls with stubs and scored the spoken text with `qa:model score`.
+- **History forms.** The harness fed replies back in three forms: raw, canonical (through core-agent's `canonicalCueText`, as the app stores them), and canonical with every marker other than `ACT`, `DELAY`, `MOOD`, and `SILENT` removed.
+
+Findings:
+- **The motion list.** Its `<|ACT {"motion":"motion/hiyori_m01.motion3.json"}|>` example is the largest single cause of bad cues. On the six general conversations without tools, the full app prompt gave 16% parsed and 68% recovered cues. The same prompt without the 561-character motion block gave 93% parsed and 7% rejected. Over 50 turns, the model also invented `<|motion:motion/hiyori_m01.motion3.json|>` markers.
+- **Tools.** They changed little. With the 12 tools the general conversations gave 23% parsed and 57% recovered. Across all 536 tool-enabled replies, 5 called a tool: four memory reads and one card. When asked for a fact from 30 turns earlier, it sometimes said it would check its memory, or wrote a tool call as text (`<|builtIn_readMemory…`), instead of reading the history.
+- **Invented markers spread through the history.** `canonicalCueText` rewrites near-miss cues but keeps well-formed unknown markers such as `<|look: you|>` and `<|motion:…|>`, so a marker invented once is copied in every later reply. Over 50 turns (two seeds each), canonical history gave 18% parsed cues with the app prompt. Removing unknown markers from the history raised that to 73%, or to 92% without the motion list, and recall of six early facts rose from 4–5 of 6 to 5–6 of 6. In one seed, a reply of only `<|SILENT|>` on turn 1 was copied for most of the remaining 49 turns, with and without the filter.
+- **Latency over 50 turns stayed flat.** The first token took 0.4 to 0.6 s per turn at a 6.4k to 11.5k-token prompt, because Ollama reused its cache on normal turns.
+
+Cache cost of the app's real per-request events at 12 turns of history with tools (a 7.1k-token prompt; time to first token):
+
+| Event | Time to first token |
+| --- | --- |
+| Normal next turn | 0.34 s |
+| Next turn after a memory write (memory index changed) | 14.7 s once |
+| Unprompted turn (`unprompted` segment and read-only tools) | 5.5 s |
+| The same with the instruction in the user message, read-only tools | 5.5 s |
+| The same with the instruction in the user message and the full tools | 0.5 s |
+| Normal turn after an unprompted turn | 14.7 s |
+| First voice turn with `control` events (after an interruption) | 14.9 s once |
+| The same with the control text in the user message | 0.56 s |
+
+The `voice` segment is empty with default settings, because only voice input plugins attach speech context and no built-in plugin does. The tool list is part of the start of the prompt, so the unprompted turn's smaller tool list forces a full re-read wherever its instruction sits, and the next normal turn re-reads everything again. llama-server keeps earlier prompt states in RAM (about 200 MB each) and restores them, so a layout it has already seen, such as alternating typed and voice turns, is fast after its first appearance.
+
+Other measurements:
+- **Cold start.** After an unload (Ollama unloads after 5 idle minutes by default), the first reply with the 1.1k-token screen prompt took 3.7 s: 1.3 s to load from the file cache plus the prompt. The very first load from disk took 6.6 s, and one load while the app ran took 10.4 s. With the app's 6.4k-token request, the cold prompt alone takes about 9 s, as the screen's prompt-cache probe measured. The `/v1` endpoint honors a `keep_alive` field in the request body: `keep_alive: 0` unloaded the model.
+- **With the app running.** While the app rendered its default Live2D character, decode speed fell from 29.6 to 25.6 tok/s and replies took 1.29 s instead of 1.16 s (three seeded conversations each, without the reload turn). Mean used memory rose from 10.3 to 12.3 GiB, compressed memory from 4.9 to 6.4 GiB, and the system stayed at memory pressure level 2 (warning) in both runs because of other programs. The Electron processes used 1.35 GiB.
+- **Context overflow.** Past 16384 tokens, Ollama silently dropped the oldest messages and kept the system prompt: a name given in the first user message was forgotten, while a secret word in the system prompt was recalled in 2 of 3 overflowing requests. The prompt was squeezed to about 16,350 tokens, which leaves about 30 tokens for the reply, and the server log marked one reply as truncated. The app trims history only when the card's history-length setting (`contextWindow`, in turns) is set; the default `-1` keeps everything.
+
 ## When to use
 
 Use it to compare a new local model or server setting on the same machine and scenarios, and as a replay source of current-contract replies from many model families (`pnpm qa:llm serve --set live-2026-11-18-mac-m2-local-models`).

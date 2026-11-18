@@ -1,0 +1,1050 @@
+{
+  "schema": "airi.local-model-app-conditions/v1",
+  "date": "2026-11-18",
+  "model": "gemma4:e4b-it-qat",
+  "server": "Ollama 0.40.16, context 16384",
+  "machine": "mac-m2-16gb",
+  "coldStart": {
+    "model": "gemma4:e4b-it-qat",
+    "tools": false,
+    "rounds": [
+      {
+        "loadOnly": 6.63,
+        "cold": {
+          "ttft": 3.74,
+          "total": 4.26,
+          "prompt": 1133
+        },
+        "warmSamePrompt": {
+          "ttft": 0.12,
+          "total": 0.75,
+          "prompt": 1133
+        },
+        "warmNewUser": {
+          "ttft": 0.18,
+          "total": 0.54,
+          "prompt": 1135
+        }
+      },
+      {
+        "loadOnly": 1.35,
+        "cold": {
+          "ttft": 3.67,
+          "total": 3.96,
+          "prompt": 1133
+        },
+        "warmSamePrompt": {
+          "ttft": 0.14,
+          "total": 0.5,
+          "prompt": 1133
+        },
+        "warmNewUser": {
+          "ttft": 0.19,
+          "total": 1.03,
+          "prompt": 1135
+        }
+      },
+      {
+        "loadOnly": 1.34,
+        "cold": {
+          "ttft": 3.67,
+          "total": 4.11,
+          "prompt": 1133
+        },
+        "warmSamePrompt": {
+          "ttft": 0.13,
+          "total": 0.89,
+          "prompt": 1133
+        },
+        "warmNewUser": {
+          "ttft": 0.19,
+          "total": 1.68,
+          "prompt": 1135
+        }
+      }
+    ],
+    "v1KeepAlive0Unloads": true
+  },
+  "concurrentApp": {
+    "timing": [
+      "noapp: n=18 coldTtft 0.41s warmTtft 0.25s total 1.16s decode 29.6 tok/s prompt 1185 tok, max prompt 1351",
+      "withapp: n=18 coldTtft 3.63s warmTtft 0.27s total 1.84s decode 25.7 tok/s prompt 1185 tok, max prompt 1351"
+    ],
+    "memoryNoApp": {
+      "meanUsedGiB": 10.29,
+      "maxUsedGiB": 12.82,
+      "meanCompressedGiB": 4.9,
+      "maxPressureLevel": 2
+    },
+    "memoryWithApp": {
+      "meanUsedGiB": 12.3,
+      "maxUsedGiB": 13.42,
+      "meanCompressedGiB": 6.37,
+      "maxPressureLevel": 2
+    },
+    "note": "Three seeded general conversations each; the first withapp turn reloaded the model (10.4 s). Electron RSS 1.35 GiB."
+  },
+  "cacheEvents": {
+    "model": "gemma4:e4b-it-qat",
+    "historyTurns": 11,
+    "cases": {
+      "repeat (same request)": {
+        "ttftS": [
+          0.11,
+          0.11,
+          0.11
+        ],
+        "promptTokens": 7129
+      },
+      "normal next turn": {
+        "ttftS": [
+          0.34,
+          0.34,
+          0.34
+        ],
+        "promptTokens": 7185
+      },
+      "next turn after a memory write": {
+        "ttftS": [
+          14.67,
+          0.18,
+          0.17
+        ],
+        "promptTokens": 7196
+      },
+      "unprompted turn (app now: segment + read-only tools)": {
+        "ttftS": [
+          5.47,
+          5.46,
+          5.46
+        ],
+        "promptTokens": 2837
+      },
+      "unprompted, segment in user message, read-only tools": {
+        "ttftS": [
+          5.46,
+          5.46,
+          5.46
+        ],
+        "promptTokens": 2837
+      },
+      "unprompted, segment in user message, same tools": {
+        "ttftS": [
+          0.5,
+          0.5,
+          0.5
+        ],
+        "promptTokens": 7258
+      },
+      "turn after an unprompted turn (app now)": {
+        "ttftS": [
+          14.69,
+          14.69,
+          14.68
+        ],
+        "promptTokens": 7185
+      },
+      "voice turn with control events after a typed turn (app now)": {
+        "ttftS": [
+          14.93,
+          0.17,
+          0.17
+        ],
+        "promptTokens": 7280
+      },
+      "voice turn, control events in user message": {
+        "ttftS": [
+          0.56,
+          0.56,
+          0.56
+        ],
+        "promptTokens": 7280
+      },
+      "typed turn after a voice turn with control events (app now)": {
+        "ttftS": [
+          0.17,
+          0.17,
+          0.17
+        ],
+        "promptTokens": 7185
+      }
+    }
+  },
+  "appPromptRuns": [
+    {
+      "label": "app-notools",
+      "replies": 36,
+      "blank": 10,
+      "parsed%": 16,
+      "recovered%": 68,
+      "rejected%": 16,
+      "none%": 0,
+      "stageDir%": 0,
+      "emoji%": 0,
+      "aiBreak": 0,
+      "waveOk": 0,
+      "words": 12.4,
+      "invented": [
+        [
+          "surprise",
+          2
+        ],
+        [
+          "cheerful",
+          1
+        ],
+        [
+          "thinking",
+          1
+        ]
+      ],
+      "repliesWithToolCalls": 0,
+      "toolCalls": {},
+      "toolNoSpeech": 0,
+      "meanTotalS": 1.57,
+      "meanTtftS": 0.34,
+      "maxTotalS": 4.6,
+      "promptTok": [
+        1726,
+        2131
+      ]
+    },
+    {
+      "label": "app-notools-nomotion",
+      "replies": 36,
+      "blank": 9,
+      "parsed%": 93,
+      "recovered%": 0,
+      "rejected%": 7,
+      "none%": 0,
+      "stageDir%": 0,
+      "emoji%": 0,
+      "aiBreak": 0,
+      "waveOk": 0,
+      "words": 13.6,
+      "invented": [
+        [
+          "worried",
+          1
+        ]
+      ],
+      "repliesWithToolCalls": 0,
+      "toolCalls": {},
+      "toolNoSpeech": 0,
+      "meanTotalS": 1.58,
+      "meanTtftS": 0.32,
+      "maxTotalS": 6.2,
+      "promptTok": [
+        1499,
+        1859
+      ]
+    },
+    {
+      "label": "app-tools",
+      "replies": 36,
+      "blank": 0,
+      "parsed%": 23,
+      "recovered%": 57,
+      "rejected%": 17,
+      "none%": 3,
+      "stageDir%": 7,
+      "emoji%": 0,
+      "aiBreak": 0,
+      "waveOk": 0,
+      "words": 15.3,
+      "invented": [
+        [
+          "anxious",
+          1
+        ],
+        [
+          "cheerful",
+          1
+        ],
+        [
+          "extremely",
+          1
+        ],
+        [
+          "thoughtful",
+          1
+        ],
+        [
+          "thinking",
+          1
+        ]
+      ],
+      "repliesWithToolCalls": 0,
+      "toolCalls": {},
+      "toolNoSpeech": 0,
+      "meanTotalS": 1.9,
+      "meanTtftS": 0.42,
+      "maxTotalS": 2.9,
+      "promptTok": [
+        6425,
+        6852
+      ]
+    },
+    {
+      "label": "long-raw",
+      "replies": 100,
+      "blank": 0,
+      "parsed%": 16,
+      "recovered%": 0,
+      "rejected%": 84,
+      "none%": 0,
+      "stageDir%": 3,
+      "emoji%": 5,
+      "aiBreak": 0,
+      "waveOk": 0,
+      "words": 18.4,
+      "invented": [
+        [
+          "slight_sad",
+          3
+        ],
+        [
+          "cheerful",
+          2
+        ],
+        [
+          "content",
+          2
+        ],
+        [
+          "joyful",
+          2
+        ],
+        [
+          "silent",
+          2
+        ],
+        [
+          "thoughtful",
+          2
+        ]
+      ],
+      "repliesWithToolCalls": 1,
+      "toolCalls": {
+        "builtIn_readMemory": 1
+      },
+      "toolNoSpeech": 0,
+      "meanTotalS": 2.76,
+      "meanTtftS": 0.61,
+      "maxTotalS": 12.5,
+      "promptTok": [
+        6426,
+        11513
+      ]
+    },
+    {
+      "label": "long-canon",
+      "replies": 100,
+      "blank": 2,
+      "parsed%": 18,
+      "recovered%": 0,
+      "rejected%": 82,
+      "none%": 0,
+      "stageDir%": 2,
+      "emoji%": 2,
+      "aiBreak": 0,
+      "waveOk": 0,
+      "words": 19.1,
+      "invented": [
+        [
+          "calm",
+          4
+        ],
+        [
+          "satisfied",
+          4
+        ],
+        [
+          "cheerful",
+          3
+        ],
+        [
+          "amazed",
+          2
+        ],
+        [
+          "bright",
+          2
+        ],
+        [
+          "clear",
+          2
+        ]
+      ],
+      "repliesWithToolCalls": 1,
+      "toolCalls": {
+        "builtIn_readMemory": 1
+      },
+      "toolNoSpeech": 0,
+      "meanTotalS": 2.49,
+      "meanTtftS": 0.5,
+      "maxTotalS": 6.7,
+      "promptTok": [
+        6426,
+        11316
+      ]
+    },
+    {
+      "label": "long-canon-nomotion",
+      "replies": 100,
+      "blank": 5,
+      "parsed%": 0,
+      "recovered%": 0,
+      "rejected%": 100,
+      "none%": 0,
+      "stageDir%": 4,
+      "emoji%": 4,
+      "aiBreak": 0,
+      "waveOk": 0,
+      "words": 6.9,
+      "invented": [
+        [
+          "slightly",
+          4
+        ],
+        [
+          "thoughtful",
+          4
+        ],
+        [
+          "amused",
+          2
+        ],
+        [
+          "cheerful",
+          2
+        ],
+        [
+          "tired",
+          2
+        ],
+        [
+          "apologetic",
+          1
+        ]
+      ],
+      "repliesWithToolCalls": 1,
+      "toolCalls": {
+        "builtIn_readMemory": 1
+      },
+      "toolNoSpeech": 0,
+      "meanTotalS": 1.35,
+      "meanTtftS": 0.41,
+      "maxTotalS": 12.9,
+      "promptTok": [
+        6199,
+        9421
+      ]
+    },
+    {
+      "label": "long-filtered",
+      "replies": 100,
+      "blank": 0,
+      "parsed%": 73,
+      "recovered%": 1,
+      "rejected%": 26,
+      "none%": 0,
+      "stageDir%": 6,
+      "emoji%": 0,
+      "aiBreak": 0,
+      "waveOk": 0,
+      "words": 20.3,
+      "invented": [
+        [
+          "daydreaming",
+          2
+        ],
+        [
+          "gentle",
+          2
+        ],
+        [
+          "sleepily",
+          2
+        ],
+        [
+          "sleeping",
+          2
+        ],
+        [
+          "smiling",
+          2
+        ],
+        [
+          "worried",
+          2
+        ]
+      ],
+      "repliesWithToolCalls": 2,
+      "toolCalls": {
+        "builtIn_readMemory": 1,
+        "builtIn_drawCard": 1
+      },
+      "toolNoSpeech": 0,
+      "meanTotalS": 2.2,
+      "meanTtftS": 0.48,
+      "maxTotalS": 15.1,
+      "promptTok": [
+        6426,
+        10355
+      ]
+    },
+    {
+      "label": "long-filtered-nomotion",
+      "replies": 100,
+      "blank": 4,
+      "parsed%": 92,
+      "recovered%": 0,
+      "rejected%": 8,
+      "none%": 0,
+      "stageDir%": 0,
+      "emoji%": 0,
+      "aiBreak": 0,
+      "waveOk": 0,
+      "words": 8.2,
+      "invented": [
+        [
+          "slightly",
+          4
+        ],
+        [
+          "thoughtful",
+          3
+        ],
+        [
+          "amused",
+          2
+        ],
+        [
+          "cheerful",
+          2
+        ],
+        [
+          "encouraging",
+          2
+        ],
+        [
+          "caring",
+          1
+        ]
+      ],
+      "repliesWithToolCalls": 0,
+      "toolCalls": {},
+      "toolNoSpeech": 0,
+      "meanTotalS": 1.13,
+      "meanTtftS": 0.41,
+      "maxTotalS": 2.2,
+      "promptTok": [
+        6199,
+        9152
+      ]
+    }
+  ],
+  "longConversation": [
+    {
+      "file": "long-tools.jsonl",
+      "config": "seed-1-nothink+app-tools",
+      "recall": "5/6",
+      "missed": [
+        "biscuit"
+      ],
+      "meanTotalS": {
+        "1-10": 2.74,
+        "11-25": 1.95,
+        "26-40": 2.21,
+        "41-50": 1.62
+      },
+      "meanTtftS": {
+        "1-10": 0.41,
+        "11-25": 0.45,
+        "26-40": 0.56,
+        "41-50": 0.44
+      },
+      "promptTok": [
+        6426,
+        10033
+      ],
+      "wordsFirst10": 18.7,
+      "wordsLast10": 15.4,
+      "topOpeners": [
+        [
+          "if i",
+          2
+        ],
+        [
+          "of course",
+          2
+        ],
+        [
+          "h-hi there",
+          1
+        ],
+        [
+          "oh no",
+          1
+        ]
+      ],
+      "toolCalls": 1
+    },
+    {
+      "file": "long-tools.jsonl",
+      "config": "seed-2-nothink+app-tools",
+      "recall": "4/6",
+      "missed": [
+        "biscuit",
+        "beagle"
+      ],
+      "meanTotalS": {
+        "1-10": 3.88,
+        "11-25": 3.11,
+        "26-40": 3.3,
+        "41-50": 3.47
+      },
+      "meanTtftS": {
+        "1-10": 0.48,
+        "11-25": 0.52,
+        "26-40": 0.55,
+        "41-50": 0.57
+      },
+      "promptTok": [
+        6426,
+        11513
+      ],
+      "wordsFirst10": 15.5,
+      "wordsLast10": 19.8,
+      "topOpeners": [
+        [
+          "i don't",
+          3
+        ],
+        [
+          "oh no",
+          2
+        ],
+        [
+          "",
+          2
+        ],
+        [
+          "oh! you're",
+          1
+        ]
+      ],
+      "toolCalls": 0
+    },
+    {
+      "file": "long-canon.jsonl",
+      "config": "seed-1-nothink+app-tools-canon",
+      "recall": "5/6",
+      "missed": [
+        "biscuit"
+      ],
+      "meanTotalS": {
+        "1-10": 1.8,
+        "11-25": 1.78,
+        "26-40": 2.05,
+        "41-50": 2.3
+      },
+      "meanTtftS": {
+        "1-10": 0.41,
+        "11-25": 0.43,
+        "26-40": 0.56,
+        "41-50": 0.48
+      },
+      "promptTok": [
+        6426,
+        10076
+      ],
+      "wordsFirst10": 18.7,
+      "wordsLast10": 26.6,
+      "topOpeners": [
+        [
+          "oh no",
+          2
+        ],
+        [
+          "if i",
+          2
+        ],
+        [
+          "of course",
+          2
+        ],
+        [
+          "h-hi there",
+          1
+        ]
+      ],
+      "toolCalls": 1
+    },
+    {
+      "file": "long-canon.jsonl",
+      "config": "seed-2-nothink+app-tools-canon",
+      "recall": "4/6",
+      "missed": [
+        "biscuit",
+        "beagle"
+      ],
+      "meanTotalS": {
+        "1-10": 2.99,
+        "11-25": 3.07,
+        "26-40": 3.07,
+        "41-50": 2.87
+      },
+      "meanTtftS": {
+        "1-10": 0.49,
+        "11-25": 0.5,
+        "26-40": 0.53,
+        "41-50": 0.52
+      },
+      "promptTok": [
+        6426,
+        11316
+      ],
+      "wordsFirst10": 18.0,
+      "wordsLast10": 14.8,
+      "topOpeners": [
+        [
+          "oh no",
+          2
+        ],
+        [
+          "",
+          2
+        ],
+        [
+          "oh! you're",
+          1
+        ],
+        [
+          "eek, that's",
+          1
+        ]
+      ],
+      "toolCalls": 0
+    },
+    {
+      "file": "long-canon-nomotion.jsonl",
+      "config": "seed-1-nothink+app-tools-canon-nomotion",
+      "recall": "0/6",
+      "missed": [
+        "biscuit",
+        "beagle",
+        "carbonara",
+        "maya",
+        "nurse",
+        "guitar"
+      ],
+      "meanTotalS": {
+        "1-10": 2.08,
+        "11-25": 0.77,
+        "26-40": 1.04,
+        "41-50": 0.7
+      },
+      "meanTtftS": {
+        "1-10": 0.39,
+        "11-25": 0.38,
+        "26-40": 0.39,
+        "41-50": 0.38
+      },
+      "promptTok": [
+        6199,
+        8603
+      ],
+      "wordsFirst10": 0.0,
+      "wordsLast10": 0.0,
+      "topOpeners": [
+        [
+          "",
+          49
+        ],
+        [
+          "\",\"motion\":\"<gesture>shake\"}|>",
+          1
+        ]
+      ],
+      "toolCalls": 0
+    },
+    {
+      "file": "long-canon-nomotion.jsonl",
+      "config": "seed-2-nothink+app-tools-canon-nomotion",
+      "recall": "5/6",
+      "missed": [
+        "biscuit"
+      ],
+      "meanTotalS": {
+        "1-10": 1.5,
+        "11-25": 1.54,
+        "26-40": 1.85,
+        "41-50": 1.41
+      },
+      "meanTtftS": {
+        "1-10": 0.4,
+        "11-25": 0.41,
+        "26-40": 0.44,
+        "41-50": 0.43
+      },
+      "promptTok": [
+        6199,
+        9421
+      ],
+      "wordsFirst10": 11.0,
+      "wordsLast10": 11.6,
+      "topOpeners": [
+        [
+          "oh no",
+          2
+        ],
+        [
+          "i... i",
+          2
+        ],
+        [
+          "hello! you're",
+          1
+        ],
+        [
+          "eek, that",
+          1
+        ]
+      ],
+      "toolCalls": 1
+    },
+    {
+      "file": "long-filtered.jsonl",
+      "config": "seed-1-nothink+app-tools-filtered",
+      "recall": "5/6",
+      "missed": [
+        "biscuit"
+      ],
+      "meanTotalS": {
+        "1-10": 3.05,
+        "11-25": 1.76,
+        "26-40": 1.9,
+        "41-50": 1.53
+      },
+      "meanTtftS": {
+        "1-10": 0.41,
+        "11-25": 0.44,
+        "26-40": 0.54,
+        "41-50": 0.44
+      },
+      "promptTok": [
+        6426,
+        9834
+      ],
+      "wordsFirst10": 20.7,
+      "wordsLast10": 14.8,
+      "topOpeners": [
+        [
+          "oh no",
+          2
+        ],
+        [
+          "h-hi there",
+          1
+        ],
+        [
+          "eek, another",
+          1
+        ],
+        [
+          "huh? biscuit",
+          1
+        ]
+      ],
+      "toolCalls": 1
+    },
+    {
+      "file": "long-filtered.jsonl",
+      "config": "seed-2-nothink+app-tools-filtered",
+      "recall": "6/6",
+      "missed": [],
+      "meanTotalS": {
+        "1-10": 1.9,
+        "11-25": 2.35,
+        "26-40": 2.87,
+        "41-50": 2.22
+      },
+      "meanTtftS": {
+        "1-10": 0.42,
+        "11-25": 0.46,
+        "26-40": 0.48,
+        "41-50": 0.49
+      },
+      "promptTok": [
+        6426,
+        10355
+      ],
+      "wordsFirst10": 17.0,
+      "wordsLast10": 22.8,
+      "topOpeners": [
+        [
+          "oh no",
+          2
+        ],
+        [
+          "of course",
+          2
+        ],
+        [
+          "oh! you're",
+          1
+        ],
+        [
+          "eeep! that's",
+          1
+        ]
+      ],
+      "toolCalls": 1
+    },
+    {
+      "file": "long-filtered-nomotion.jsonl",
+      "config": "seed-1-nothink+app-tools-filtered-nomotion",
+      "recall": "0/6",
+      "missed": [
+        "biscuit",
+        "beagle",
+        "carbonara",
+        "maya",
+        "nurse",
+        "guitar"
+      ],
+      "meanTotalS": {
+        "1-10": 0.97,
+        "11-25": 0.77,
+        "26-40": 1.12,
+        "41-50": 0.76
+      },
+      "meanTtftS": {
+        "1-10": 0.38,
+        "11-25": 0.38,
+        "26-40": 0.39,
+        "41-50": 0.38
+      },
+      "promptTok": [
+        6199,
+        8580
+      ],
+      "wordsFirst10": 0.0,
+      "wordsLast10": 0.0,
+      "topOpeners": [
+        [
+          "",
+          47
+        ],
+        [
+          "\",\"motion\":\"<gesture>shake\"}|>",
+          1
+        ],
+        [
+          "generate a",
+          1
+        ],
+        [
+          "paw ],call_summary:",
+          1
+        ]
+      ],
+      "toolCalls": 0
+    },
+    {
+      "file": "long-filtered-nomotion.jsonl",
+      "config": "seed-2-nothink+app-tools-filtered-nomotion",
+      "recall": "6/6",
+      "missed": [],
+      "meanTotalS": {
+        "1-10": 1.46,
+        "11-25": 1.36,
+        "26-40": 1.23,
+        "41-50": 1.38
+      },
+      "meanTtftS": {
+        "1-10": 0.41,
+        "11-25": 0.41,
+        "26-40": 0.41,
+        "41-50": 0.42
+      },
+      "promptTok": [
+        6199,
+        9152
+      ],
+      "wordsFirst10": 9.9,
+      "wordsLast10": 10.2,
+      "topOpeners": [
+        [
+          "oh no",
+          2
+        ],
+        [
+          "you were",
+          2
+        ],
+        [
+          "i think",
+          2
+        ],
+        [
+          "hello! you're",
+          1
+        ]
+      ],
+      "toolCalls": 0
+    }
+  ],
+  "overflow": [
+    {
+      "targetK": 8,
+      "padTurns": 26,
+      "promptTokens": 8555,
+      "secretWordOk": true,
+      "nameOk": true,
+      "cueOk": true,
+      "seconds": [
+        18.9,
+        0.7
+      ]
+    },
+    {
+      "targetK": 14,
+      "padTurns": 126,
+      "promptTokens": 16368,
+      "secretWordOk": true,
+      "nameOk": false,
+      "cueOk": true,
+      "seconds": [
+        38.8,
+        1.0
+      ]
+    },
+    {
+      "targetK": 20,
+      "padTurns": 226,
+      "promptTokens": 16352,
+      "secretWordOk": false,
+      "nameOk": false,
+      "cueOk": true,
+      "seconds": [
+        43.7,
+        5.9
+      ]
+    },
+    {
+      "targetK": 26,
+      "padTurns": 326,
+      "promptTokens": 16352,
+      "secretWordOk": true,
+      "nameOk": false,
+      "cueOk": true,
+      "seconds": [
+        48.8,
+        11.3
+      ]
+    }
+  ]
+}
