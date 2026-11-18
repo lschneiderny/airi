@@ -69,6 +69,9 @@ export async function runRunCli(
 ): Promise<number> {
   const stdout = io.stdout ?? ((text: string) => process.stdout.write(text))
   const stderr = io.stderr ?? ((text: string) => process.stderr.write(text))
+  // A cloud endpoint's key, sent as a bearer token. Its name lacks the `AIRI_QA_` prefix on purpose: `run.json` records
+  // the `APP_` and `AIRI_QA_` variables, and the key must stay out of every record.
+  const apiKey = env.QA_MODEL_API_KEY?.trim() || undefined
   let loaded: LoadedScenario
   let baseUrl: URL
   let model: string
@@ -227,7 +230,7 @@ export async function runRunCli(
           // request assembly renders it (`renderSegmentText` in `packages/core-agent/src/messages/render-context.ts`).
           messages.push({ role: 'user', content: `${formatTimePrefix(wallClockMs(scenario.startsAt, index))}${user}${character === '' ? '' : `\n\n${character}`}` })
           const startedAt = new Date().toISOString()
-          const { steps, outcome, bodies } = await runTurn(baseUrl.href, model, messages, config, { tools, maxTokens: appRequest?.maxTokens ?? undefined, maxSteps }, stubs)
+          const { steps, outcome, bodies } = await runTurn(baseUrl.href, model, messages, config, { tools, maxTokens: appRequest?.maxTokens ?? undefined, maxSteps, apiKey }, stubs)
           const endedAt = new Date().toISOString()
           const body = bodies[0]!
           const request = buildChatRequest(model, messages, config, { tools, max_tokens: appRequest?.maxTokens ?? undefined })
@@ -329,7 +332,7 @@ async function runTurn(
   model: string,
   messages: readonly ChatMessage[],
   config: Parameters<typeof buildChatRequest>[2],
-  options: { tools: readonly unknown[], maxTokens: number | undefined, maxSteps: number },
+  options: { tools: readonly unknown[], maxTokens: number | undefined, maxSteps: number, apiKey: string | undefined },
   stubs: ToolStubs,
 ): Promise<TurnOutcome> {
   const turn: ChatMessage[] = []
@@ -340,7 +343,7 @@ async function runTurn(
   for (let step = 1; step <= options.maxSteps; step++) {
     const body = JSON.stringify(buildChatRequest(model, [...messages, ...turn], config, { tools: options.tools, max_tokens: options.maxTokens }))
     bodies.push(body)
-    const outcome = await requestChat(baseUrl, body, REQUEST_TIMEOUT_MS)
+    const outcome = await requestChat(baseUrl, body, REQUEST_TIMEOUT_MS, options.apiKey)
     if (outcome.usage)
       usages.push(outcome.usage)
     const speechAt = result?.firstSpeechMs ?? await firstSpeechMs(outcome.text, outcome.textMarks)

@@ -110,6 +110,18 @@ describe('requestChat', () => {
     expect(outcome.totalMs).toBeGreaterThanOrEqual(outcome.ttftMs ?? Number.NaN)
   })
 
+  it('sends a key as a bearer token only when one is given', async () => {
+    const answer = (response: ServerResponse) => sse(response, [{ choices: [{ delta: { content: 'ok' }, finish_reason: 'stop' }] }])
+    const keyed = await endpoint(answer)
+    const open = await endpoint(answer)
+
+    await requestChat(keyed.baseUrl, '{}', 5000, 'test-key')
+    await requestChat(open.baseUrl, '{}', 5000)
+
+    expect(keyed.received[0]!.headers.authorization).toBe('Bearer test-key')
+    expect(open.received[0]!.headers).not.toHaveProperty('authorization')
+  })
+
   it('keeps null for an id, model, fingerprint, and usage that the endpoint does not report', async () => {
     const { baseUrl } = await endpoint(response => sse(response, [
       { choices: [{ delta: { content: 'ok' }, finish_reason: null }] },

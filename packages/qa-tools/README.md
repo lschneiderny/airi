@@ -704,6 +704,8 @@ pnpm qa:model run --scenario <id|file.json> --base-url <url> --model <id> [--con
 | `--machine-label` | A name for the machine that serves the model. The default is the host of the base URL. |
 | `--json` | Print `{ runDir, transcripts, replies, errors, history, contractVersion }` instead of the transcript path. |
 
+For a cloud endpoint that needs a key, set `QA_MODEL_API_KEY`; the run sends it as `Authorization: Bearer <key>`. The name lacks the `AIRI_QA_` prefix on purpose, because `run.json` records `APP_` and `AIRI_QA_` variables, and the key appears in no file the run writes. Anthropic's OpenAI compatibility endpoint (`--base-url https://api.anthropic.com/v1`) is the path the app's Anthropic provider uses. It ignores `reasoning_effort` and `seed`, has no prompt cache, and Claude 5 models think by default, so their thinking counts against `max_tokens`.
+
 The command prints the path of `transcripts.jsonl` on stdout and one progress line per reply on stderr. It exits 0 when every request returned a reply, 1 when a request failed, and 2 for invalid arguments, an invalid scenario, or a stale build. A failed request is recorded with its error, and it ends its conversation; the records written before it are kept.
 
 To run a model that Ollama serves, after `ollama pull <model>`:

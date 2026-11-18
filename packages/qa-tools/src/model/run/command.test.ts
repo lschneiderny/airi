@@ -6,7 +6,7 @@ import process from 'node:process'
 
 import { Buffer } from 'node:buffer'
 import { existsSync } from 'node:fs'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -61,10 +61,10 @@ async function replay(source: string | unknown[]) {
   }
 }
 
-async function run(args: string[]) {
+async function run(args: string[], env: NodeJS.ProcessEnv = {}) {
   let stdout = ''
   let stderr = ''
-  const code = await runRunCli(args, repoRoot, {}, {
+  const code = await runRunCli(args, repoRoot, env, {
     stdout: (text) => {
       stdout += text
     },
@@ -151,6 +151,21 @@ describe('run command', () => {
     expect((await endpoint.log()).filter(entry => entry.method === 'GET').map(entry => entry.path)).toEqual(['/api/version'])
     expect(existsSync(join(endpoint.out, 'server.json'))).toBe(false)
     expect(manifest.artifacts[0].sha256).toBe(sha256Buffer(await readFile(join(endpoint.out, 'transcripts.jsonl'))))
+  })
+
+  it('keeps a cloud endpoint key out of every file the run writes', async () => {
+    const endpoint = await replay(join(scenarios, 'replay/general.json'))
+    const key = 'test-key-not-a-secret-7f3a'
+
+    const result = await run(['--scenario', 'general', '--base-url', endpoint.baseUrl, '--model', 'test-model', '--out', endpoint.out], { QA_MODEL_API_KEY: key })
+
+    expect(result.code).toBe(0)
+    const files = await readdir(endpoint.out, { recursive: true, withFileTypes: true })
+    const written = files.filter(entry => entry.isFile()).map(entry => join(entry.parentPath, entry.name))
+    expect(written.length).toBeGreaterThan(2)
+    for (const file of written)
+      expect(await readFile(file, 'utf8'), file).not.toContain(key)
+    expect(result.stdout + result.stderr).not.toContain(key)
   })
 
   it('runs the same turns as a new conversation at each relationship stage, and the result scores as one run per stage', async () => {
