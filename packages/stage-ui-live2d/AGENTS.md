@@ -24,6 +24,6 @@
 
 ## CHECKS
 
-- Node tests only, from the repository root: `pnpm exec vitest run --project stage-ui-live2d:node`.
-- Browser tests only, from the repository root: `pnpm exec vitest run --config vitest.browser.config.ts --project stage-ui-live2d:browser`.
+- Node tests only: `pnpm -F @proj-airi/stage-ui-live2d exec vitest run --project node`.
+- Browser tests only: `pnpm -F @proj-airi/stage-ui-live2d exec vitest run --project browser`.
 - Natural-motion benchmark: `node --expose-gc --import tsx scripts/bench-natural.ts [--frames 10000] [--runs 5]`.

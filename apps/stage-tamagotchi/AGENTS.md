@@ -14,8 +14,7 @@
 - Managed extension sessions retain ownership until runtime and asset cleanup finish.
 
 ## COMMANDS
-The root config runs the node tests as the `stage-tamagotchi:node` project, one file at a time.
-From the repository root, `pnpm exec vitest run --config vitest.browser.config.ts --project stage-tamagotchi:browser` runs only the browser project. Use `dev:xwayland` to force X11 on Linux.
+The `node` project runs one file at a time. `pnpm -F @proj-airi/stage-tamagotchi exec vitest run --project browser` runs only the browser project. Use `dev:xwayland` to force X11 on Linux.
 
 ## ANTI-PATTERNS
 - Do not append Chromium `enable-features` switches separately. Chromium replaces the previous value.

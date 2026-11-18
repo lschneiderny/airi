@@ -88,14 +88,15 @@ Agent guidance holds only what an agent cannot learn from the code, `package.jso
 Use workspace `package.json` names with pnpm filters, for example `@proj-airi/stage-tamagotchi`. ESLint also formats: fix style with `pnpm lint:fix`, not another formatter.
 
 Checks. [Testing and QA](docs/ai/context/testing.md) says what each check proves and which checks a change needs:
-- Inner loop: the narrowest package project, `pnpm exec vitest run --project <name> <path>`. A browser project also needs `--config vitest.browser.config.ts`.
-- After each change: `pnpm verify`. It lints the changed files, typechecks the changed packages and their dependents, and runs the tests related to the changed code.
+- Inner loop: the narrowest project of the package, `pnpm -F <package> exec vitest run --project <node or browser> <path>`, with `<path>` relative to the package.
+- After each change: `pnpm verify`. It lints the changed files, typechecks the changed packages and their dependents, and runs the tests related to the changed code in each changed package and its dependents.
 - Before landing a branch: `pnpm verify --gate`, plus `pnpm qa:display run -- pnpm qa:smoke` when app runtime code changed.
 - Platforms: only macOS and Linux KDE Wayland are checked. Windows, sway, and X11 are planned, not checked.
 
-Use root `pnpm lint` or `pnpm typecheck` only when a task needs the whole repository checked. Report only executed checks, their commands/results, changes, and follow-up work.
+Use root `pnpm lint`, `pnpm typecheck`, or `pnpm test:run` (every package's whole test suite, cached by Turbo) only when a task needs the whole repository checked. Report only executed checks, their commands/results, changes, and follow-up work.
 When `pnpm run` or `pnpm exec` fails because dependencies are out of date, run `pnpm install` once explicitly. The workspace sets `verifyDepsBeforeRun: error` so installs never start silently.
-Root `vitest.config.ts` also owns the `dev-tools`, `root-scripts`, and `web-extension` projects: `pnpm exec vitest run --project <name> <path>`. If Vitest finds no tests, inspect the config's includes.
+Root `vitest.config.ts` owns only the `dev-tools` and `root-scripts` projects: `pnpm test:root`, or `pnpm exec vitest run --project <name> <path>`. Every other test belongs to a package and runs from it. If Vitest finds no tests, inspect the package config's includes.
+When a package test reads a file outside its package, add that file to the package's `test:run` inputs in `turbo.json`. Tests gated on an environment variable never run under `pnpm test:run`; see [dev-tools README](scripts/dev-tools/README.md#environment-gated-tests).
 The `pnpm verify` typecheck covers Turbo workspace packages (`packages/*`, `apps/*`, `server/**`, `services/*`) only. Root scripts get lint and tests only. Engines use `pnpm typecheck:engines` and `pnpm build:engines`.
 The Electron build runs `electron-vite build`, not a typecheck; its typecheck runs `vue-tsc --noEmit`. Stage UI has no compilation build.
 

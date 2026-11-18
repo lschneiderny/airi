@@ -13,5 +13,5 @@
 - Dispose previous environments when switching backgrounds.
 
 ## CHECKS
-- Node tests only, from the repository root: `pnpm exec vitest run --project stage-ui-three:node`.
-- Browser tests only, from the repository root: `pnpm exec vitest run --config vitest.browser.config.ts --project stage-ui-three:browser`. Headless Chromium runs `*.browser.test.ts` with autoplay allowed.
+- Node tests only: `pnpm -F @proj-airi/stage-ui-three exec vitest run --project node`.
+- Browser tests only: `pnpm -F @proj-airi/stage-ui-three exec vitest run --project browser`. Headless Chromium runs `*.browser.test.ts` with autoplay allowed.
