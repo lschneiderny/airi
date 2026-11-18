@@ -1,6 +1,6 @@
 # privacy-enforcement - Work Plan
 
-Status: done on `luke/feat/privacy-enforcement` (2026-11-17). Luke approved V1, titles plus credential shapes, and V2, drop the item, the same day. The roadmap row moves to done once the roadmap is on `main`. Roadmap row: step V in [`docs/ai/context/character-mind-roadmap.md`](../../docs/ai/context/character-mind-roadmap.md). Source: recommendation R14 of `docs/ai/audits/2026-10-31-architecture-boundaries.md`.
+Status: done on `luke/feat/privacy-enforcement` (2026-11-17). Luke approved V1, titles plus credential shapes, and V2, drop the item, the same day. Roadmap row: step V in [`docs/ai/context/character-mind-roadmap.md`](../../docs/ai/context/character-mind-roadmap.md). Source: recommendation R14 of `docs/ai/audits/2026-10-31-architecture-boundaries.md`.
 
 ## TL;DR (For humans)
 
