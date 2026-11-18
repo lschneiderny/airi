@@ -3,6 +3,7 @@
 ## CONVENTIONS
 
 - Read the README section `Visual baselines` before adding a `*.visual.browser.test.ts` test or updating references.
+- Put a component that serves one page or one use case in `src/components/scenarios/`.
 - Keep provider records serializable. Executable instances, request epochs, and tool executors stay local to their runtime.
 - `src/stores/chat.ts` is the integration hub where chat meets presence, unprompted turns, and memory. It may gain wiring lines only. A new system, such as touch observations, lives in its own module and talks to chat through chat store actions or the hooks and controls the store hands out (`useSituationStore().observeChat` is the pattern).
 

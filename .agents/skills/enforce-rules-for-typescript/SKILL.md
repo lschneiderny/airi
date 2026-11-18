@@ -31,6 +31,7 @@ Use Composition API with `script setup lang="ts"` for Vue components.
 - Use a stable empty reference when identity affects a watcher, computed value, or synchronized state projection.
 - A fresh empty object or array is valid when the operation intentionally creates an independent value.
 - Use nullish defaults when only null and undefined mean missing. Preserve valid false, zero, and empty-string values.
+- Do not use nested ternaries for a fallback chain when a branch is non-obvious. Use named intermediate variables or `if` / `else if` blocks, so that each comment sits next to its branch.
 - Make non-obvious fallback precedence explicit. Explain why stale, cached, or compatibility values are valid at their use sites.
 - Follow the root policy for compatibility fallbacks.
 
@@ -46,11 +47,13 @@ Use Composition API with `script setup lang="ts"` for Vue components.
 ## Module Boundaries
 
 - Split modules by stable responsibility, not file length or execution order.
-- Keep cohesive flows together. Do not create pass-through services, forwarding dependency bags, or test-only exports.
+- Keep cohesive flows together. A cohesive module of about 200 to 400 lines is better than several shallow modules that pass the same options to each other. Do not divide a module with separators such as `=====`.
+- Do not create pass-through services, forwarding dependency bags, or test-only exports.
 - Put reusable domain contracts in the package that owns them. Runtime entry points compose those boundaries.
 - Keep special cases near the affected branch. Prefer early returns when they improve readability.
 - Follow the root rules for classes and dependency injection.
-- Keep constants near their use. Explain non-obvious limits without adding comments to self-explanatory values.
+- Keep a constant near its use, with a `/** ... */` comment that says why it exists.
+- For configurable options with defaults, prefer the merge functions of `@moeru/std` and one documented defaults object over standalone constants.
 - Use path-safe arguments and platform-aware paths for process and filesystem work.
 
 ## Dates and Times
