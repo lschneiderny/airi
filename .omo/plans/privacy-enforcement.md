@@ -1,6 +1,6 @@
 # privacy-enforcement - Work Plan
 
-Status: approved by Luke on 2026-11-17 (V1: titles plus credential shapes; V2: drop the item). Not started. Roadmap row: step V in [`docs/ai/context/character-mind-roadmap.md`](../../docs/ai/context/character-mind-roadmap.md). Source: recommendation R14 of `docs/ai/audits/2026-10-31-architecture-boundaries.md`.
+Status: done on `luke/feat/privacy-enforcement` (2026-11-17). Luke approved V1, titles plus credential shapes, and V2, drop the item, the same day. The roadmap row moves to done once the roadmap is on `main`. Roadmap row: step V in [`docs/ai/context/character-mind-roadmap.md`](../../docs/ai/context/character-mind-roadmap.md). Source: recommendation R14 of `docs/ai/audits/2026-10-31-architecture-boundaries.md`.
 
 ## TL;DR (For humans)
 
@@ -22,7 +22,7 @@ Status: approved by Luke on 2026-11-17 (V1: titles plus credential shapes; V2: d
 | A MOOD cue reason is cleaned before it is stored | `parseMoodCue` in `packages/stage-shared/src/character-state/cue.ts` | `cleanReason` caps and cleans the text. Nothing checks for titles. |
 | Plugin text keeps system authority under a 2000-character cap | Owner decisions in the prompt composition ADR | Chat turns cap it in the `plugin` segment. `createSparkNotifyAgent` in `packages/core-agent/src/agents/spark-notify/agent.ts` appends it with no cap. |
 
-Titles the leader holds: the situation's current activity title, the titles of its recent apps, and the page and video titles in web extension context. While the "Share window titles" setting is off, the host sends no title, so the first two are empty.
+Titles the leader holds: the situation's current activity title, and the page and video titles of web extension context. Recent apps carry no title. The web extension sends its title as `metadata.title`, which the situation now keeps beside the context text. While the "Share window titles" setting is off, the host sends no window title.
 
 ## Decisions (Luke, 2026-11-17)
 
