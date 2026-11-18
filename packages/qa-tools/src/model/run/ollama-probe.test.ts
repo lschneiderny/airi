@@ -1,10 +1,13 @@
 import type { AddressInfo } from 'node:net'
 
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { probeOllama } from './ollama-probe'
+import { ollamaServerLog, probeOllama } from './ollama-probe'
 
 const closers: (() => Promise<void>)[] = []
 
@@ -45,7 +48,26 @@ describe('probeOllama', () => {
       quantization: 'Q4_K_M',
       capabilities: ['completion', 'tools'],
       loaded: { size: 6_000, sizeVram: 4_500, contextLength: 8192 },
+      load: null,
     })
+  })
+
+  it('reads the buffers of the model\'s load from the server log', async () => {
+    const blob = 'c'.repeat(64)
+    const baseUrl = await serve({
+      '/api/version': { version: '0.40.16' },
+      '/api/show': { modelfile: `# Modelfile\nFROM /home/user/.ollama/models/blobs/sha256-${blob}\nFROM /home/user/.ollama/models/blobs/sha256-${'d'.repeat(64)}\n` },
+      '/api/ps': { models: [] },
+    })
+    const dir = await mkdtemp(join(tmpdir(), 'ollama-log-'))
+    closers.push(() => rm(dir, { recursive: true, force: true }))
+    const log = join(dir, 'server.log')
+    await writeFile(log, `msg="starting llama-server" cmd="llama-server --model /home/user/.ollama/models/blobs/sha256-${blob} -c 4096"\nload_tensors:  MTL0_Mapped model buffer size =   100.00 MiB\n`)
+
+    const snapshot = await probeOllama(baseUrl, 'small:4b', { serverLog: log })
+
+    expect(snapshot?.load).toMatchObject({ gpuWeightsMiB: 100, contextLength: 4096 })
+    await expect(probeOllama(baseUrl, 'small:4b', { serverLog: join(dir, 'absent.log') })).resolves.toMatchObject({ load: null })
   })
 
   it('records an unloaded model and missing details as null', async () => {
@@ -62,5 +84,19 @@ describe('probeOllama', () => {
     const baseUrl = await serve({})
 
     await expect(probeOllama(baseUrl, 'airi-replay')).resolves.toBeNull()
+  })
+})
+
+describe('ollamaServerLog', () => {
+  it('uses an explicit log, the default log for a loopback server, and none for a remote one', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'ollama-home-'))
+    closers.push(() => rm(home, { recursive: true, force: true }))
+
+    expect(ollamaServerLog('http://192.0.2.1:11434/v1', '/logs/server.log', home)).toBe('/logs/server.log')
+    expect(ollamaServerLog('http://127.0.0.1:11434/v1', undefined, home)).toBeUndefined()
+    await mkdir(join(home, '.ollama', 'logs'), { recursive: true })
+    await writeFile(join(home, '.ollama', 'logs', 'server.log'), '')
+    expect(ollamaServerLog('http://127.0.0.1:11434/v1', undefined, home)).toBe(join(home, '.ollama', 'logs', 'server.log'))
+    expect(ollamaServerLog('http://192.0.2.1:11434/v1', undefined, home)).toBeUndefined()
   })
 })

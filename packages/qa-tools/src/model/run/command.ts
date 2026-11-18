@@ -28,7 +28,7 @@ import { loadAppRequest } from './app-request'
 import { buildChatRequest, requestChat } from './chat'
 import { firstSpeechMs, spokenText } from './first-speech'
 import { HISTORY_MODES, historyText } from './history'
-import { probeOllama } from './ollama-probe'
+import { describeOllamaSnapshot, ollamaServerLog, probeOllama } from './ollama-probe'
 import { evaluateChecks, loadScenario } from './scenario'
 import { ToolStubs } from './tool-stubs'
 
@@ -82,6 +82,7 @@ export async function runRunCli(
   let appRequest: AppRequest | null = null
   let appRequestName: string | null = null
   let maxSteps = 1
+  let ollamaLog: string | undefined
   /** The system prompt the run sends, its hash, and the version and hash of the stage contract inside it. */
   let prompt: { text: string, sha256: string, contract: { version: string, sha256: string } }
   try {
@@ -98,6 +99,7 @@ export async function runRunCli(
         'reasoning': { type: 'string' },
         'app-request': { type: 'string' },
         'max-steps': { type: 'string' },
+        'ollama-log': { type: 'string' },
         'out': { type: 'string' },
         'machine-label': { type: 'string' },
         'json': { type: 'boolean', default: false },
@@ -116,6 +118,7 @@ export async function runRunCli(
     if (!historyMode)
       throw new Error(`--history must be one of ${HISTORY_MODES.join(', ')}`)
     history = historyMode
+    ollamaLog = values['ollama-log'] === undefined ? undefined : resolve(repoRoot, values['ollama-log'])
     if (values.reasoning !== undefined) {
       reasoning = REASONING_EFFORTS.find(effort => effort === values.reasoning)
       if (!reasoning)
@@ -285,12 +288,11 @@ export async function runRunCli(
       run.addArtifact('checks.json', 'model-checks')
     }
     // Read while the model is still loaded, so the footprint and the context it was loaded with are on record.
-    const server = await probeOllama(baseUrl.href, model)
+    const server = await probeOllama(baseUrl.href, model, { serverLog: ollamaServerLog(baseUrl.href, ollamaLog) })
     if (server !== null) {
       await writeFile(run.path('server.json'), `${JSON.stringify(server, null, 2)}\n`)
       run.addArtifact('server.json', 'model-server')
-      const loaded = server.loaded
-      stderr(`ollama ${server.version}: ${loaded === null ? 'model not loaded' : `${(loaded.size / 2 ** 30).toFixed(1)} GiB loaded, ${Math.round(100 * loaded.sizeVram / loaded.size)}% on GPU, context ${loaded.contextLength ?? 'unknown'}`}\n`)
+      stderr(`${describeOllamaSnapshot(server)}\n`)
     }
     const exitCode = errors > 0 ? 1 : 0
     run.finish({ exitCode, summary: `${replies} replies, ${errors} failed; scenario ${scenario.id}@${scenario.version}, ${history} history${appRequestName === null ? '' : `, app request ${appRequestName}`}, contract ${prompt.contract.version}` })
