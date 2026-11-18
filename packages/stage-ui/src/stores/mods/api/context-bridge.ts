@@ -9,7 +9,7 @@ import { errorMessageFrom } from '@moeru/std'
 import { encodeBase64 } from '@moeru/std/base64'
 import { tokenBreak } from '@proj-airi/pipelines-audio'
 import { isStageTamagotchi, isStageWeb } from '@proj-airi/stage-shared'
-import { notifyTopicKey } from '@proj-airi/stage-shared/situation'
+import { notifyTopicKey, unpromptedTopicText } from '@proj-airi/stage-shared/situation'
 import { useBroadcastChannel } from '@vueuse/core'
 import { Mutex } from 'es-toolkit'
 import { nanoid } from 'nanoid'
@@ -419,9 +419,12 @@ export const useContextBridgeStore = defineStore('mods:api:context-bridge', () =
 
       // The headline is plugin input; one that is missing or blank leaves nothing to speak about.
       const note = observation.note ? `: ${observation.note}` : ''
-      const topicText = options.messageOverride?.replaceUserMessage?.trim() || (observation.headline ? `${observation.headline}${note}` : '')
-      if (!topicText || !await untilQuietMoment(SPARK_NOTIFY_QUIET_WAIT_MS))
+      const requested = options.messageOverride?.replaceUserMessage?.trim() || (observation.headline ? `${observation.headline}${note}` : '')
+      if (!requested || !await untilQuietMoment(SPARK_NOTIFY_QUIET_WAIT_MS))
         return fallback
+      // The trigger message keeps the topic text in chat history, so a web extension topic names only its kind, as
+      // it does for a gate-fired turn.
+      const topicText = unpromptedTopicText(topicKey, requested, true)
 
       const result = await chatOrchestrator.submitUnprompted({
         force: true,
