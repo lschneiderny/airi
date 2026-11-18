@@ -211,7 +211,7 @@ describe('planner', () => {
     const exhausted = run(['happy', 'sad', 'angry'].map((name, i) => reaction(0.9, i, 'A', name as PerformanceEmotion))).state
     const cleared = run([{ kind: 'clear', source: 'tool', turnId: 'A', at: 2.1 }], ctx, exhausted)
 
-    expect(cleared.decisions[0]).toEqual({ slots: (['face', 'effect', 'prop'] as const).map(slot => ({ slot, expressionId: null, holdSeconds: 0, until: 'hold', turnId: 'A' })), moods: [] })
+    expect(cleared.decisions[0]).toEqual({ slots: (['face', 'effect', 'prop'] as const).map(slot => ({ slot, expressionId: null, holdSeconds: 0, until: 'hold', turnId: 'A' })) })
     expect(cleared.state.occupants).toEqual({ face: null, effect: null })
     expect(cleared.state.tickets).toEqual(exhausted.tickets)
     const pending = run([reaction(0.6, 0), { kind: 'clear', source: 'tool', slot: 'face', at: 0.5 }, timing('sentence_start', 1)])

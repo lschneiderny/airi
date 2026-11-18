@@ -1,11 +1,12 @@
-import type { CharacterMind } from '@proj-airi/character-mind'
+import type { CharacterMind, MindIntent, TouchReactionIntent, TouchReport } from '@proj-airi/character-mind'
 import type { FaceBaseline } from '@proj-airi/motion-driver-natural/baseline'
 import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
 import type { IdleBehaviourKind, IdleCueKind, NaturalIdleDrive } from '@proj-airi/motion-driver-natural/idle-activities'
 import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
 import type { CharacterReading } from '@proj-airi/stage-shared/character-state'
-import type { AffectSignal, AffectTrace, CatalogEntry, DeciderContext, ExpressionPerformanceSettings, HoldCommand, MoodDose, PerformanceDecision, PerformanceProfile, ReactionEpisode, SlotCommand, TimingEvent, TouchAffectInput } from '@proj-airi/stage-shared/expression-performance'
+import type { AffectSignal, AffectTrace, CatalogEntry, DeciderContext, ExpressionPerformanceSettings, HoldCommand, Moment, MoodDose, PerformanceDecision, PerformanceProfile, ReactionEpisode, SlotCommand, TimingEvent } from '@proj-airi/stage-shared/expression-performance'
 import type { AffectTraceRequest } from '@proj-airi/stage-shared/expression-performance/affect-trace-diagnostics'
+import type { GateOutcome, ReactionKind, TouchObservation, TouchVoiceView } from '@proj-airi/stage-shared/situation'
 
 import type { StageExpressionBackend } from '../../features/performance/expression-backend'
 import type { ActiveExpression, ExposedAction, ExposedExpression, ExposedExpressionGroup, PerformanceMoodSnapshot } from '../../features/performance/runtime-state'
@@ -47,11 +48,11 @@ export const maxAffectTraceEntries = 20_000
  */
 const maxMoodlessTurns = 32
 
-/** The turn a signal belongs to; deadline, muted, and touch signals belong to none. */
+/** The turn a signal belongs to; deadline and muted signals belong to none. */
 function turnOf(signal: AffectSignal): string | undefined {
   if (signal.kind === 'timing')
     return signal.event.turnId
-  return signal.kind === 'deadline' || signal.kind === 'muted' || signal.kind === 'touch' ? undefined : signal.turnId
+  return signal.kind === 'deadline' || signal.kind === 'muted' ? undefined : signal.turnId
 }
 
 /** The performer slot each LLM-reachable kind occupies; outfit and system kinds have none. */
@@ -112,10 +113,15 @@ export interface StagePerformanceScene {
    */
   action?: (label: string, gesture?: { kind: CueGestureKind, count: number }) => void
   /**
-   * Live2D and MMD Natural: adds a decided mood dose, deduplicated by id. A scene without it, such as a scenario sink,
-   * drops the dose; the decider state still advances.
+   * Live2D and MMD Natural: adds the mood dose the mind decided, deduplicated by id. A scene without it, such as a
+   * scenario sink, drops the dose; the mind's state still advances.
    */
   addMood?: (dose: MoodDose) => void
+  /**
+   * Live2D and MMD Natural: performs the mind's reaction to a touch. A poke starts at its point. A pet `start` lets
+   * the pet hand reach Natural and `end` withdraws it, so no pet shows that the mind did not grant.
+   */
+  reactToTouch?: (intent: TouchReactionIntent) => void
   /**
    * Live2D and MMD Natural: sets the resting face target from the character's slow mood; Natural filters it. A scene
    * without it, such as a scenario sink, drops it.
@@ -138,6 +144,16 @@ export interface StagePerformanceScene {
  */
 export type StagePerformanceDriver = 'natural' | 'basic'
 
+/**
+ * The voice channel a touch can reach: the leader's situation store. `observeTouch` records the touch in the
+ * situation and returns what the mind may see of it, or null when nobody could speak a line. `speakReaction` runs the
+ * line the mind decided and resolves with what became of it.
+ */
+export interface TouchVoicePort {
+  observeTouch: (observation: TouchObservation) => TouchVoiceView | null
+  speakReaction: (line: { kind: ReactionKind, eventId: string }) => Promise<GateOutcome | 'refused'>
+}
+
 export interface StagePerformanceConductorOptions {
   /** Undefined while no performance scene is mounted; decisions still advance the decider state. */
   scene: () => StagePerformanceScene | undefined
@@ -153,6 +169,17 @@ export interface StagePerformanceConductorOptions {
    * that injects `clock` gives the mind the same clock in milliseconds, so that both count the same seconds.
    */
   mind: CharacterMind
+  /**
+   * Marks a moment the mind decided with one of the model's own expressions. The performer keeps the chance, the
+   * pick, and the entry rest. Without it the moment is dropped.
+   */
+  markMoment?: (moment: Moment) => void
+  /**
+   * The voice channel of a touch, or undefined when this stage has none; the mind then decides no line.
+   *
+   * @default () => undefined
+   */
+  voice?: () => TouchVoicePort | undefined
   /** Decider seed, fixed for the lifetime of the conductor so traces can replay it. */
   seed: number
   /**
@@ -207,8 +234,9 @@ const browserTimers: Required<StagePerformanceConductorOptions>['timers'] = {
  *   The mind's settings report `heldEmotions` off there, so explicit expressions derive no
  *   reaction state and later slot decisions match the held-emotion-free behavior.
  * - Slot commands go to `scene.applySlots` for every driver.
- * - Touch mood doses go to `scene.addMood` and ACT cue gestures to `scene.gesture`, both under the Natural driver of
- *   Live2D and MMD. Universal, MAGIC, and MMD Classic have no touch path and ignore the gesture field.
+ * - A touch reaches the mind only under Natural (see {@link StagePerformanceConductor.touch}). ACT cue gestures go to
+ *   `scene.gesture` under the Natural driver of Live2D and MMD. Universal, MAGIC, and MMD Classic have no touch path
+ *   and ignore the gesture field.
  * - The resting face baseline goes to `scene.setFaceBaseline` for every driver. Natural composes it only while it
  *   drives the face, so Universal and MAGIC hold it without writing.
  *
@@ -361,19 +389,27 @@ export class StagePerformanceConductor {
   }
 
   /**
-   * Doses mood from a classified touch. The decider owns pacing and habituation (see `touchAffect`); the doses reach
-   * `scene.addMood` under the Natural driver of Live2D and MMD, and Universal, MAGIC, and MMD Classic never receive one.
-   * A touch belongs to no
-   * turn, so it is decided under the active card's profile.
+   * Answers a classified touch once, under the Natural driver of Live2D and MMD; Universal, MAGIC, and MMD Classic
+   * have no touch path and never reach the mind. The mind decides the response and the conductor dispatches it:
+   * - `touch-reaction` to `scene.reactToTouch` and `mood` to `scene.addMood`;
+   * - `moment` to `markMoment`;
+   * - `speak` to the voice port, whose outcome returns to the mind as a `voice-outcome` stimulus.
+   *
+   * A finished pet and a poke are first recorded in the situation (`voice().observeTouch`), on the wall clock the
+   * situation counts in; a pet start is not, because the situation reports a pet once, when it ends. A touch belongs
+   * to no turn, so it is decided under the active card's profile. The asset decider is not involved.
    */
-  touch(input: Omit<TouchAffectInput, 'at'>) {
-    const at = this.clock()
-    const decision = this.decide({ kind: 'touch', ...input, at })
+  touch(report: TouchReport) {
     if (this.options.driver() !== 'natural')
       return
-    const scene = this.options.scene()
-    for (const dose of decision.moods)
-      scene?.addMood?.(dose)
+    let observation: TouchObservation | undefined
+    if (report.gesture === 'pet-end')
+      observation = { kind: 'touch', gesture: 'pet', region: 'head', atMs: Date.now(), durationMs: report.durationMs }
+    else if (report.gesture === 'poke')
+      observation = { kind: 'touch', gesture: 'poke', region: report.region, atMs: Date.now() }
+    const voice = observation ? this.options.voice?.()?.observeTouch(observation) ?? null : null
+    const { settings } = this.effectiveContext(undefined).context
+    this.performTouch(this.options.mind.receive({ kind: 'touch', ...report, settings, voice }))
   }
 
   /**
@@ -615,6 +651,33 @@ export class StagePerformanceConductor {
   private dosed(episode: ReactionEpisode, context: DeciderContext, turnId: string | undefined): NaturalEpisode {
     const moodless = turnId !== undefined && this.moodlessTurns.has(turnId)
     return { ...episode, moodGain: moodless ? 0 : context.settings.moodDynamics[`${episode.band}Gain`] }
+  }
+
+  /** Dispatches the response to one touch in the mind's order: body, mood, moment, line. */
+  private performTouch(intents: readonly MindIntent[]) {
+    const scene = this.options.scene()
+    for (const intent of intents) {
+      if (intent.kind === 'touch-reaction')
+        scene?.reactToTouch?.(intent)
+      else if (intent.kind === 'mood')
+        scene?.addMood?.(intent.dose)
+      else if (intent.kind === 'moment')
+        this.options.markMoment?.(intent.moment)
+      else if (intent.kind === 'speak')
+        void this.speak(intent)
+    }
+  }
+
+  /** Runs the line and tells the mind what became of it, so its pending attempt always settles. */
+  private async speak(intent: Extract<MindIntent, { kind: 'speak' }>) {
+    let outcome: GateOutcome | 'refused' = 'failed'
+    try {
+      outcome = await this.options.voice?.()?.speakReaction({ kind: intent.line, eventId: intent.eventId }) ?? 'failed'
+    }
+    catch (error) {
+      console.error('[performance-conductor] Touch reaction line failed:', errorMessageFrom(error) ?? 'unknown error')
+    }
+    this.options.mind.receive({ kind: 'voice-outcome', eventId: intent.eventId, outcome })
   }
 
   /** Natural only: the episode first, so a hold never precedes the episode it accompanies. */
@@ -867,7 +930,7 @@ export const FACE_BASELINE_SAMPLE_MS = 1000
  * Every {@link FACE_BASELINE_SAMPLE_MS}, and once at creation, it reads `characterReading` and sends its face baseline
  * and its idle drive to the scene; no reading sends the neutral baseline and a drive that follows only the hour.
  */
-export function useStagePerformanceConductor(options: Pick<StagePerformanceConductorOptions, 'scene' | 'driver' | 'playMotion' | 'profile' | 'mind'> & {
+export function useStagePerformanceConductor(options: Pick<StagePerformanceConductorOptions, 'scene' | 'driver' | 'playMotion' | 'profile' | 'mind' | 'markMoment' | 'voice'> & {
   renderer: () => string | undefined
   expressionBackend: () => StageExpressionBackend | undefined
   /** The body tool port of the active scene; undefined when it has no body support (Live2D, classic MMD). */

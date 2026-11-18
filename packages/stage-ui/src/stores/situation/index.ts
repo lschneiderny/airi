@@ -6,11 +6,9 @@ import type {
   GateSettings,
   GateSignals,
   Observation,
-  ReactionDecision,
-  ReactionMemory,
+  ReactionKind,
   ReasonKind,
   SavedGateMemory,
-  SituationEvent,
   SituationState,
   ThreadState,
   TouchObservation,
@@ -38,7 +36,6 @@ import {
   forgetForeground,
   forgetSource,
   heldTitles,
-  initialReactionMemory,
   initialSituationState,
   initialUrgeMemory,
   isSourceInNamespace,
@@ -49,14 +46,12 @@ import {
   promotionUrgeMemory,
   pruneThreads,
   raiseThread,
-  reactionPolicy,
   recordExternalSpeech,
   recordUrgeFireOutcome,
   recordUrgeUserTurn,
   reduceSituation,
   renderSituation,
   restoreSocialMemory,
-  settleReaction,
   TOUCH_TOPIC_KEY,
   touchVoiceView,
   unpromptedTopicText,
@@ -84,7 +79,6 @@ import { DESKTOP_SAMPLE_STALE_MS, startDesktopSensor } from './sensors/desktop'
 import { EXCHANGE_QUIET_MS, startExchangeSensor } from './sensors/exchange'
 import { FOREGROUND_SAMPLE_STALE_VISIBLE_MS, startForegroundSensor } from './sensors/foreground'
 import { startStageSensor } from './sensors/stage'
-import { situationTouchObservedEvent } from './touch-bus'
 
 /**
  * How often the leader derives the time-based events (settled app switches, long-session tiers, expiry) and
@@ -225,12 +219,13 @@ interface RunningSensors {
  * threads it returns join the gate's reasons for that chat session, and each attempt shows in the inspector's
  * extraction ledger, never in chat history.
  *
- * While the gate runs, the leader also answers touches. A pet or poke that a stage window reports over
- * `situationTouchObservedEvent` is folded like any observation ({@link observeTouch}), then the touch reaction policy
- * decides on the returned view whether she says one short line about it. A speak decision marks the touch event as shown (the trigger message carries it) and starts a
- * reaction turn through `submitReaction`. Its outcome settles the policy, never the gate's fire memory: a spoken line
- * starts the gate's floor (`recordExternalSpeech`) and counts as her last line, and a refused send takes no
- * retry wait and frees its burst, but keeps its draw. The reaction memory, with its own random checkpoint, is saved with the gate's inner state.
+ * While the gate runs, the leader is also the voice channel of a touch. The stage that leads calls it in-process: the
+ * character mind decides whether she says one short line about a pet or poke, and this store records the touch and
+ * runs the line. {@link observeTouch} folds the touch and returns what the mind may see of it. {@link speakReaction}
+ * marks the touch event as shown (the trigger message carries it), starts a reaction turn through `submitReaction`,
+ * and resolves with what became of it. The outcome never touches the gate's fire memory: a spoken line starts the
+ * gate's floor (`recordExternalSpeech`) and counts as her last line. The pacing of these lines is the mind's and is
+ * not saved.
  *
  * While it leads, the store also feeds the character state (`bridgeSituationToCharacter`): touches, returns,
  * reach-outs and their replies, turns, and the relationship events of each extraction. Forgetting everything forgets
@@ -300,11 +295,8 @@ export const useSituationStore = defineStore('situation', () => {
   const heldTopics = new Set<string>()
   /** The unprompted turn whose first literal was seen last, so its topic is addressed once. */
   let lastSpokenUnpromptedTurnId: string | undefined
-  /** The touch reaction policy's memory while the gate runs; `undefined` while it does not. */
-  let reactionMemory: ReactionMemory | undefined
-  /** The reaction turn that was submitted and has no result yet. */
-  let reacting: { turnId: string } | undefined
-  let stopTouchListener: (() => void) | undefined
+  /** The reaction turn that was submitted and has no result yet; `settle` reports its outcome once. */
+  let reacting: { turnId: string, settle: (outcome: GateOutcome | 'refused') => void } | undefined
   let stopSelfListener: (() => void) | undefined
   /** Feeds the character state from this leader's observations; see `bridgeSituationToCharacter`. */
   let characterBridge: SituationBridge | undefined
@@ -401,7 +393,7 @@ export const useSituationStore = defineStore('situation', () => {
       lastSpokenUnpromptedTurnId = context.turnId
       const trigger = context.message.role === 'user' ? context.message.trigger : undefined
       const nowMs = Date.now()
-      // A touch reaction is not a gate topic: it settles the reaction policy and never addresses the touch event.
+      // A touch reaction is not a gate topic: it settles the reaction turn and never addresses the touch event.
       if (trigger?.topicKey === TOUCH_TOPIC_KEY) {
         reactionSpoke(context.turnId, nowMs)
         return
@@ -433,9 +425,10 @@ export const useSituationStore = defineStore('situation', () => {
       if (context.origin !== 'unprompted' || !context.cueStats?.declined)
         return
       const trigger = context.message.role === 'user' ? context.message.trigger : undefined
-      // A declined touch reaction settles the reaction policy instead; the touch event is never addressed.
+      // A declined touch reaction settles its reaction turn instead; the touch event is never addressed.
       if (trigger?.topicKey === TOUCH_TOPIC_KEY) {
-        settleReactionTurn(context.turnId, 'declined', Date.now())
+        if (reacting?.turnId === context.turnId)
+          reacting.settle('declined')
         return
       }
       if (trigger)
@@ -613,15 +606,8 @@ export const useSituationStore = defineStore('situation', () => {
     saveInnerState()
   }
 
-  /** Changes the reaction memory, shows it in the devtools Situation inspector, and saves it. */
-  function setReactionMemory(memory: ReactionMemory) {
-    reactionMemory = memory
-    observability.publishReactionMemory(memory)
-    saveInnerState()
-  }
-
   function innerStateSnapshot(): string {
-    return JSON.stringify([savedGateMemory(gateMemory), threads.threads, extractedThrough, reactionMemory ?? null])
+    return JSON.stringify([savedGateMemory(gateMemory), threads.threads, extractedThrough])
   }
 
   /**
@@ -636,7 +622,7 @@ export const useSituationStore = defineStore('situation', () => {
     const snapshot = innerStateSnapshot()
     if (snapshot === savedSnapshot)
       return
-    if (innerState.write({ gate: savedGateMemory(gateMemory), threads: threads.threads, extractedThrough, reaction: reactionMemory ?? null }, leadership))
+    if (innerState.write({ gate: savedGateMemory(gateMemory), threads: threads.threads, extractedThrough }, leadership))
       savedSnapshot = snapshot
   }
 
@@ -786,10 +772,11 @@ export const useSituationStore = defineStore('situation', () => {
 
   /**
    * Folds a touch into the situation and returns what the touch reaction policy needs to see of it and of the voice
-   * channel. Returns `null` in a follower window and while the gate does not run: nobody could speak the line.
+   * channel. Returns `null` in a follower window and while the gate does not run: nobody could speak the line. The
+   * caller must not also {@link ingest} the same touch.
    */
   function observeTouch(observation: TouchObservation): TouchVoiceView | null {
-    fold(observation)
+    ingest(observation)
     const controls = chat
     if (!leading.value || !controls || gateTicker === undefined)
       return null
@@ -802,87 +789,75 @@ export const useSituationStore = defineStore('situation', () => {
     })
   }
 
-  /** Observes a touch, then runs the touch reaction policy on its view; a speak decision starts the reaction turn. */
-  function answerTouch(touch: TouchObservation) {
-    const view = observeTouch(touch)
-    const controls = chat
-    if (view === null || !controls || reactionMemory === undefined)
-      return
-    const nowMs = Date.now()
-    const { decision, memory } = reactionPolicy({ nowMs, gesture: touch.gesture, view }, reactionMemory)
-    observability.recordReactionDecision(decision, memory, nowMs)
-    setReactionMemory(memory)
-    const event = decision.speak ? current.value.events.find(candidate => candidate.id === decision.eventId) : undefined
-    if (decision.speak && event)
-      void react(controls, decision, event)
-  }
-
   /**
-   * Starts the reaction turn of a speak decision and settles the outcomes that no chat hook reports (cancelled and
-   * failed). A send that another pending unprompted turn refuses settles as `refused`: it takes no retry wait.
+   * Speaks the line the mind decided about the touch whose situation event is `eventId`, and resolves with what
+   * became of it: at the first spoken literal, at a decline, or with the result of the turn.
+   *
+   * It resolves `refused` without sending while another unprompted turn is pending, so the touch stays unshown for
+   * her next reply. It resolves `failed` in a follower window, while the gate does not run, when the event is gone,
+   * and when this window stopped leading before the turn had a result.
    */
-  async function react(controls: SituationChatControls, decision: Extract<ReactionDecision, { speak: true }>, event: SituationEvent) {
-    const turnId = `reaction:${decision.eventId}`
-    const startedIn = leadership
-    let result: ChatUnpromptedResult
+  function speakReaction(line: { kind: ReactionKind, eventId: string }): Promise<GateOutcome | 'refused'> {
+    const controls = chat
+    const event = current.value.events.find(candidate => candidate.id === line.eventId)
+    if (!leading.value || !controls || gateTicker === undefined || !event)
+      return Promise.resolve('failed')
     if (firing || controls.unpromptedPending()) {
-      // The chat would refuse it, so the touch stays unshown for her next reply.
-      result = { status: 'failed', error: UNPROMPTED_BUSY_ERROR }
+      observability.recordReactionOutcome(line.kind, 'refused')
+      return Promise.resolve('refused')
     }
-    else {
-      reacting = { turnId }
+
+    const turnId = `reaction:${line.eventId}`
+    const startedIn = leadership
+    return new Promise((resolve) => {
+      let settled = false
+      /** The first outcome wins: a literal or a decline arrives before the turn's own result. */
+      const settle = (outcome: GateOutcome | 'refused') => {
+        if (settled)
+          return
+        settled = true
+        observability.recordReactionOutcome(line.kind, outcome)
+        resolve(outcome)
+      }
+      reacting = { turnId, settle }
       // The trigger message carries the touch, so the situation block of the same request does not list it again.
       current.value = markShown(current.value, [event.id], Date.now())
-      try {
-        result = await controls.submitReaction({ kind: decision.kind, topicText: event.text, eventId: decision.eventId })
-      }
-      catch (error) {
-        result = { status: 'failed', error: errorMessageFrom(error) ?? 'Unknown reaction turn failure' }
-      }
-      finally {
-        if (reacting?.turnId === turnId)
-          reacting = undefined
-      }
-    }
-    if (startedIn !== leadership || reactionMemory === undefined)
-      return
-    if (result.status === 'failed' && result.error === UNPROMPTED_BUSY_ERROR) {
-      const memory = reactionMemory
-      if (memory.pending?.eventId !== decision.eventId)
-        return
-      observability.recordReactionOutcome(decision.kind, 'refused')
-      setReactionMemory(settleReaction(memory, 'refused', Date.now()))
-      return
-    }
-    // A spoken turn settles at its first literal; a spoken result that arrives first settles it the same way.
-    if (result.status === 'spoken' && reactionMemory.pending?.eventId === decision.eventId)
-      reactionSpoke(turnId, Date.now())
-    else
-      settleReactionTurn(turnId, result.status, Date.now())
-  }
 
-  /** Settles the pending reaction with `status` when `turnId` is its turn; a repeated or late outcome is ignored. */
-  function settleReactionTurn(turnId: string, status: GateOutcome, nowMs: number) {
-    const memory = reactionMemory
-    const pending = memory?.pending
-    if (!memory || !pending || `reaction:${pending.eventId}` !== turnId)
-      return
-    observability.recordReactionOutcome(pending.kind, status)
-    setReactionMemory(settleReaction(memory, status, nowMs))
+      const awaitResult = async () => {
+        let result: ChatUnpromptedResult
+        try {
+          result = await controls.submitReaction({ kind: line.kind, topicText: event.text, eventId: line.eventId })
+        }
+        catch (error) {
+          result = { status: 'failed', error: errorMessageFrom(error) ?? 'Unknown reaction turn failure' }
+        }
+        finally {
+          if (reacting?.turnId === turnId)
+            reacting = undefined
+        }
+        if (settled)
+          return
+        // The turn belongs to an earlier leadership; its outcome is not this leader's to count.
+        if (startedIn !== leadership)
+          resolve('failed')
+        else if (result.status === 'failed' && result.error === UNPROMPTED_BUSY_ERROR)
+          settle('refused')
+        // A spoken turn settles at its first literal; a spoken result that arrives first settles it the same way.
+        else if (result.status === 'spoken')
+          reactionSpoke(turnId, Date.now(), settle)
+        else
+          settle(result.status)
+      }
+      void awaitResult()
+    })
   }
 
   /**
-   * Records the first literal of a reaction turn: the policy settles as spoken (starting its refractory), the gate's
-   * floor starts like after a forced turn (never an unanswered opening), and the line counts as her last line.
-   * A late line whose pending attempt was already dropped (older than 30 s, or lost in a promotion) still starts the
-   * refractory, so she does not react again right after it; a newer pending attempt is left to its own turn.
+   * Records the first literal of a reaction turn: its turn settles as spoken, the gate's floor starts like after a
+   * forced turn (never an unanswered opening), and the line counts as her last line.
    */
-  function reactionSpoke(turnId: string, nowMs: number) {
-    const memory = reactionMemory
-    if (memory && memory.pending && `reaction:${memory.pending.eventId}` === turnId)
-      settleReactionTurn(turnId, 'spoken', nowMs)
-    else if (memory)
-      setReactionMemory({ ...memory, lastLineAtMs: nowMs })
+  function reactionSpoke(turnId: string, nowMs: number, settle = reacting?.turnId === turnId ? reacting.settle : undefined) {
+    settle?.('spoken')
     if (gateTicker !== undefined)
       setGateMemory(recordExternalSpeech(gateMemory, nowMs))
     ingest({ kind: 'conversation', who: 'character', origin: 'reaction', atMs: nowMs })
@@ -970,9 +945,6 @@ export const useSituationStore = defineStore('situation', () => {
       gateMemory = saved.gate === null ? promoted : restoreSocialMemory(promoted, saved.gate, nowMs)
       threads = { threads: saved.threads }
       extractedThrough = saved.extractedThrough
-      // The previous leader's pending reaction has no turn in this window, so it is dropped.
-      reactionMemory = saved.reaction === null ? initialReactionMemory(seedSource()) : { ...saved.reaction, pending: null }
-      observability.publishReactionMemory(reactionMemory)
       savedSnapshot = innerStateSnapshot()
       wasStageShown = false
       stopVoiceTurnListener = startVoiceTurnListener()
@@ -994,9 +966,7 @@ export const useSituationStore = defineStore('situation', () => {
       stopVoiceTurnListener = undefined
       threads = NO_THREADS
       extractedThrough = []
-      reactionMemory = undefined
       reacting = undefined
-      observability.publishReactionMemory(null)
       savedSnapshot = undefined
       setGateMemory(initialUrgeMemory)
     }
@@ -1022,11 +992,6 @@ export const useSituationStore = defineStore('situation', () => {
     stopNotifyListener = getSpeechBusContext().on(situationNotifyObservedEvent, ({ body }) => {
       if (body)
         ingest(body)
-    })
-    // Touches on every stage window, this one's included, arrive here.
-    stopTouchListener = getSpeechBusContext().on(situationTouchObservedEvent, ({ body }) => {
-      if (body)
-        answerTouch(body)
     })
     // What she does on her own on every stage window, this one's included, arrives here.
     stopSelfListener = getSpeechBusContext().on(situationSelfObservedEvent, ({ body }) => {
@@ -1054,8 +1019,6 @@ export const useSituationStore = defineStore('situation', () => {
     stopConversation = undefined
     stopNotifyListener?.()
     stopNotifyListener = undefined
-    stopTouchListener?.()
-    stopTouchListener = undefined
     stopSelfListener?.()
     stopSelfListener = undefined
     stopForgetListener?.()
@@ -1078,14 +1041,6 @@ export const useSituationStore = defineStore('situation', () => {
     foregroundCategory.value = null
   }
 
-  /** Takes one observation: a touch is folded and then answered by the touch reaction policy, any other is folded. */
-  function ingest(observation: Observation) {
-    if (observation.kind === 'touch')
-      answerTouch(observation)
-    else
-      fold(observation)
-  }
-
   /**
    * Folds one observation into the situation. Followers and uninitialized windows ignore it.
    *
@@ -1093,7 +1048,7 @@ export const useSituationStore = defineStore('situation', () => {
    * event decayed out of the ring, so one notification is never raised (and spoken) twice. A context or notify from a
    * source the user does not share ({@link sharesSource}) is dropped.
    */
-  function fold(observation: Observation) {
+  function ingest(observation: Observation) {
     if (!leading.value)
       return
     if ((observation.kind === 'context' || observation.kind === 'notify') && !sharesSource(observation.sourceKey))
@@ -1265,6 +1220,7 @@ export const useSituationStore = defineStore('situation', () => {
     hostSupportsUnprompted: computed(() => hostSupportsUnprompted.value),
     ingest,
     observeTouch,
+    speakReaction,
     sharesSource,
     advance,
     renderForRequest,

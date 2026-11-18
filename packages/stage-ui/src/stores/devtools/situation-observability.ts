@@ -233,7 +233,7 @@ export type SituationReactionOutcomeStatus = keyof SituationReactionOutcome
 export interface SituationReactionInspection {
   /** `null` until a touch was evaluated in this window. */
   decision: SituationReactionDecisionRecord | null
-  /** The reaction policy's memory now; `null` until the gate loop started. */
+  /** The mind's voice memory now; `null` while no stage of this window runs a mind. */
   memory: ReactionMemory | null
   /** Milliseconds until the refractory after the last spoken line ends, at the inspection's `nowMs`; 0 when none holds. */
   refractoryRemainingMs: number
@@ -486,7 +486,7 @@ export const useSituationObservabilityStore = defineStore('devtools:situation-ob
       countOutcome(spoken.kind, atMs - spoken.spokenAtMs <= SITUATION_ENGAGEMENT_WINDOW_MS ? 'engaged' : 'ignored')
   }
 
-  /** Called by the situation store of this window after every touch reaction evaluation, with the memory it left. */
+  /** Called by the stage's character mind of this window after every touch reaction evaluation, with the memory it left. */
   function recordReactionDecision(decision: ReactionDecision, memory: ReactionMemory, atMs: number) {
     reactionDecision.value = decision.speak
       ? { speak: true, kind: decision.kind, reason: null, roll: decision.roll, probability: decision.probability, atMs }
@@ -494,7 +494,7 @@ export const useSituationObservabilityStore = defineStore('devtools:situation-ob
     reactionMemory.value = memory
   }
 
-  /** Called by the situation store of this window whenever its reaction memory changes; `null` once the gate stops. */
+  /** Called by the stage's character mind of this window whenever its voice memory changes; `null` once the stage is gone. */
   function publishReactionMemory(memory: ReactionMemory | null) {
     reactionMemory.value = memory
   }

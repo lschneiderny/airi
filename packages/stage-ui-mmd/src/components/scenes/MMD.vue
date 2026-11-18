@@ -9,6 +9,7 @@
   * contract Stage.vue expects from every renderer.
 */
 
+import type { TouchReactionIntent, TouchReport } from '@proj-airi/character-mind'
 import type { ClipBoneMask, ClipMaskGroup } from '@proj-airi/motion-driver-humanoid/clip-mask'
 import type { BodyActionKind, BodyActionRequest } from '@proj-airi/motion-driver-humanoid/director'
 import type { IdleClipCandidate, IdleClipHistory } from '@proj-airi/motion-driver-humanoid/idle-clips'
@@ -17,7 +18,6 @@ import type { BodyIntent } from '@proj-airi/motion-driver-humanoid/types'
 import type { FaceBaseline } from '@proj-airi/motion-driver-natural/baseline'
 import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
 import type { NaturalEmotionStrengths } from '@proj-airi/motion-driver-natural/emotion-strengths'
-import type { NaturalTouchGesture } from '@proj-airi/motion-driver-natural/frame-types'
 import type { IdleBehaviourKind, IdleBehaviourReport, IdleCueKind, NaturalIdleDrive } from '@proj-airi/motion-driver-natural/idle-activities'
 import type { IdleErrandKind } from '@proj-airi/motion-driver-natural/idle-errands'
 import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
@@ -162,7 +162,8 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   (e: 'error', err: unknown): void
-  (e: 'touch', event: NaturalTouchGesture): void
+  /** A poke or pet the Natural classifier recognized; the stage answers with `reactToTouch`. */
+  (e: 'touch', report: TouchReport): void
   /** A self-directed idle behaviour of the Natural driver started or ended. */
   (e: 'idle', report: IdleBehaviourReport): void
   /** Something her body did on its own started or ended: sitting down, sleeping, a walk of her own, an unasked clip. */
@@ -1571,24 +1572,38 @@ watch(() => props.modelSrc, (src) => {
 // Pokes and pets are a Natural reaction, so touch runs only while Natural drives the model.
 const touchActive = computed(() => naturalSettings.document.touch && motionDriver.value === 'natural' && !props.paused)
 
-function handleTouchEvents(events: NaturalTouchGesture[]) {
+/** Whether the mind's pet runs. The pet hand reaches Natural only meanwhile. */
+let petGranted = false
+
+/** Reports each classified touch, then hands Natural the pet hand the mind granted. Nothing else shows a touch. */
+function handleTouchEvents(reports: TouchReport[]) {
   if (!touch)
     return
-  for (const poke of touch.takePokes()) {
-    natural?.poke(poke.region, poke)
+  for (const report of reports)
+    emit('touch', report)
+  natural?.setPet(petGranted ? touch.petHand : null)
+}
+
+/** Performs the mind's reaction. A poke and a pet start are interactions that start the director's chase window. */
+function reactToTouch(intent: TouchReactionIntent) {
+  if (intent.gesture === 'poke') {
+    natural?.poke(intent.region, intent.point)
     noteInteraction()
   }
-  natural?.setPet(touch.petHand)
-  for (const event of events) {
-    if (event.kind === 'pet-start')
-      noteInteraction()
-    emit('touch', event)
+  else if (intent.phase === 'start') {
+    petGranted = true
+    noteInteraction()
+  }
+  else {
+    petGranted = false
   }
 }
 
+/** Ends any gesture in progress and withdraws the pet hand. */
 function resetTouch() {
   if (touch)
     handleTouchEvents(touch.reset(performance.now()))
+  petGranted = false
 }
 
 // The model is ready once the scene reports it mounted; any other state means it is gone or loading.
@@ -1806,6 +1821,7 @@ defineExpose({
   applyHolds: (commands: HoldCommand[], now: number) => natural?.applyHolds(commands, now),
   gesture: (kind: CueGestureKind, count: number) => natural?.gesture(kind, count),
   addMood: (dose: MoodDose) => natural?.addMood(dose),
+  reactToTouch,
   setFaceBaseline: (baseline: FaceBaseline) => natural?.setFaceBaseline(baseline),
   /** The drive of self-directed idle behaviour; the stage sends it again every second. */
   setIdleDrive: (drive: NaturalIdleDrive | null) => { hostIdleDrive = drive },

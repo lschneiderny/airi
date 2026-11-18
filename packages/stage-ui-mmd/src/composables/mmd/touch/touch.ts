@@ -1,3 +1,4 @@
+import type { TouchReport } from '@proj-airi/character-mind'
 import type { NaturalTouchGesture, NaturalTouchRegion } from '@proj-airi/motion-driver-natural/frame-types'
 import type { NaturalTouchSample } from '@proj-airi/motion-driver-natural/touch-gestures'
 import type { PlacementRect } from '@proj-airi/stage-shared/stage-placement'
@@ -35,9 +36,10 @@ const clampUnit = (value: number) => Math.max(-1, Math.min(1, value))
  *
  * Pointer rays hit the model's rigid bodies as analytic shapes posed from bone matrices,
  * so touch never reads the physics world. A model without usable rigid bodies falls back
- * to a skinned mesh raycast and the hit face's heaviest bone. Natural receives the result
- * through {@link MMDTouch.takePokes} and {@link MMDTouch.petHand}, so the response is the
- * pre-physics head and body motion that physics then carries into hair and cloth.
+ * to a skinned mesh raycast and the hit face's heaviest bone. Each call returns the touches it
+ * classified as reports for the character mind, a poke with its region-relative point (X right,
+ * Y down). The scene hands Natural the mind's reaction and {@link MMDTouch.petHand}, so the
+ * response is the pre-physics head and body motion that physics then carries into hair and cloth.
  */
 export class MMDTouch {
   readonly gestures: NaturalTouchGestures
@@ -48,7 +50,6 @@ export class MMDTouch {
   private readonly raycaster = new Raycaster()
   private readonly pointerNdc = new Vector2()
   private readonly scratch = new Vector3()
-  private pokes: { region: NaturalTouchRegion, x: number, y: number }[] = []
   private pet: { x: number, y: number } | null = null
   private pressCenter: { x: number, y: number } | null = null
   private lastRegion: NaturalTouchRegion | null = null
@@ -69,7 +70,7 @@ export class MMDTouch {
     this.headCollider = this.colliders.find(collider => collider.boneIndex === this.headBoneIndex)
   }
 
-  pointer(event: MMDTouchPointer, camera: Camera, viewport: PlacementRect): NaturalTouchGesture[] {
+  pointer(event: MMDTouchPointer, camera: Camera, viewport: PlacementRect): TouchReport[] {
     if (event.type === 'pointerleave' || event.type === 'pointercancel')
       return this.handle(this.gestures.cancelled(event.timeStamp))
     const sample = this.sample(event, camera, viewport)
@@ -85,20 +86,14 @@ export class MMDTouch {
   }
 
   /** Commits held pokes and ends resting pets; call once per frame while either is pending. */
-  update(timeMs: number): NaturalTouchGesture[] {
+  update(timeMs: number): TouchReport[] {
     return this.gestures.petting || this.gestures.pressPending ? this.handle(this.gestures.update(timeMs)) : []
   }
 
-  reset(timeMs: number): NaturalTouchGesture[] {
+  reset(timeMs: number): TouchReport[] {
     const events = this.handle(this.gestures.reset(timeMs))
-    this.pokes = []
     this.pet = null
     return events
-  }
-
-  /** Pokes since the last call, region-relative with X right and Y down. */
-  takePokes() {
-    return this.pokes.splice(0)
   }
 
   get petHand() {
@@ -126,19 +121,20 @@ export class MMDTouch {
     }
   }
 
-  private handle(events: NaturalTouchGesture[]): NaturalTouchGesture[] {
-    for (const event of events) {
+  private handle(events: NaturalTouchGesture[]): TouchReport[] {
+    return events.map((event) => {
       this.events++
       if (event.kind === 'poke') {
         const center = this.pressCenter ?? { x: event.x, y: event.y }
         const unit = event.region === 'head' ? 0.5 : 1
         const span = this.headWidth * unit
-        this.pokes.push({ region: event.region, x: clampUnit((event.x - center.x) / span), y: clampUnit((event.y - center.y) / span) })
+        return { gesture: 'poke', region: event.region, point: { x: clampUnit((event.x - center.x) / span), y: clampUnit((event.y - center.y) / span) } }
       }
-      if (event.kind === 'pet-end')
-        this.pet = null
-    }
-    return events
+      if (event.kind === 'pet-start')
+        return { gesture: 'pet-start', region: 'head' }
+      this.pet = null
+      return { gesture: 'pet-end', region: 'head', durationMs: event.durationMs }
+    })
   }
 
   private sample(event: MMDTouchPointer, camera: Camera, viewport: PlacementRect): NaturalTouchSample | null {

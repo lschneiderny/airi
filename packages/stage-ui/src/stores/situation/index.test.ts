@@ -12,7 +12,7 @@ import type { ThreadExtractionLedgerEntry } from '../devtools/situation-observab
 
 import { createChatHooks } from '@proj-airi/core-agent'
 import { DEFAULT_CHARACTER_PROFILE, initialCharacterState, readCharacter } from '@proj-airi/stage-shared/character-state'
-import { evaluateUrgeGate, FLOOR_MS, HOUR_MS, initialReactionMemory, initialSituationState, nextRandom, notifyTopicKey, REACTION_PENDING_MAX_MS, REACTION_REFRACTORY_MS, REACTION_RETRY_MS, reactionPolicy, recordUrgeFireOutcome, SETTLE_MS, settleReaction, threadMinAgeMs, TOUCH_TOPIC_KEY } from '@proj-airi/stage-shared/situation'
+import { evaluateUrgeGate, FLOOR_MS, HOUR_MS, initialSituationState, notifyTopicKey, recordUrgeFireOutcome, SETTLE_MS, threadMinAgeMs, TOUCH_TOPIC_KEY } from '@proj-airi/stage-shared/situation'
 import { useDesktopActivityStore } from '@proj-airi/stage-shared/stores/desktop-activity'
 import { useForegroundWindowStore } from '@proj-airi/stage-shared/stores/foreground-window'
 import { createPinia, setActivePinia } from 'pinia'
@@ -29,7 +29,6 @@ import { useSituationObservabilityStore } from '../devtools/situation-observabil
 import { DESKTOP_SAMPLE_STALE_MS } from './sensors/desktop'
 import { EXCHANGE_QUIET_MS } from './sensors/exchange'
 import { FOREGROUND_SAMPLE_STALE_HIDDEN_MS, FOREGROUND_SAMPLE_STALE_VISIBLE_MS } from './sensors/foreground'
-import { situationTouchObservedEvent } from './touch-bus'
 
 // The situation store feeds the character state, whose store reads the active card id and its profile from the card
 // store. The real card store's setup needs an i18n application context.
@@ -42,15 +41,13 @@ vi.mock('../modules/airi-card', async () => {
   }
 })
 
-// The real urge gate and reaction policy, wrapped so tests can read their decisions and the memory each one left.
+// The real urge gate, wrapped so tests can read its decisions and the memory each one left.
 vi.mock(import('@proj-airi/stage-shared/situation'), async (importOriginal) => {
   const actual = await importOriginal()
   return {
     ...actual,
     evaluateUrgeGate: vi.fn(actual.evaluateUrgeGate),
-    reactionPolicy: vi.fn(actual.reactionPolicy),
     recordUrgeFireOutcome: vi.fn(actual.recordUrgeFireOutcome),
-    settleReaction: vi.fn(actual.settleReaction),
   }
 })
 
@@ -787,9 +784,7 @@ describe('situation gate loop', () => {
     // Every test starts from empty storage; a reload inside one test shares it, as windows share one origin.
     vi.stubGlobal('localStorage', new MemoryStorage())
     vi.mocked(evaluateUrgeGate).mockClear()
-    vi.mocked(reactionPolicy).mockClear()
     vi.mocked(recordUrgeFireOutcome).mockClear()
-    vi.mocked(settleReaction).mockClear()
     notifyCount = 0
   })
 
@@ -1990,40 +1985,32 @@ describe('situation gate loop', () => {
     expect(useSituationInnerState().read().gate?.day).toMatchObject({ dayKey: '2026-10-21', states: { greeting: 'open' } })
   })
 
-  /** A reaction checkpoint whose first three draws are below 0.3, so every reaction that reaches its roll speaks. */
-  const REACTION_RNG_STATE = 66
-
-  /** Saves reaction memory with {@link REACTION_RNG_STATE} before the leader starts, as an earlier leader would. */
-  function saveReactionCheckpoint() {
-    const inner = useSituationInnerState()
-    inner.claim(-1)
-    inner.read()
-    inner.write({ reaction: initialReactionMemory(REACTION_RNG_STATE) }, -1)
-  }
-
   function poke(): TouchObservation {
     return { kind: 'touch', gesture: 'poke', region: 'head', atMs: Date.now() }
   }
 
-  /** Waits `delayMs`, then pokes once through the touch bus, as a stage window reports it. */
-  async function pokeAfter(delayMs: number) {
-    await vi.advanceTimersByTimeAsync(delayMs)
-    getSpeechBusContext().emit(situationTouchObservedEvent, poke())
-    await vi.advanceTimersByTimeAsync(0)
+  /** Pokes `count` times, one second apart, as the stage reports them, and returns the view of the last poke. */
+  async function pokeTimes(store: ReturnType<typeof useSituationStore>, count: number) {
+    let view = store.observeTouch(poke())
+    for (let index = 1; index < count; index++) {
+      await vi.advanceTimersByTimeAsync(1_000)
+      view = store.observeTouch(poke())
+    }
+    return view
   }
 
-  /** Pokes `count` times, one second apart. */
-  async function pokeTimes(count: number) {
-    for (let index = 0; index < count; index++)
-      await pokeAfter(index === 0 ? 0 : 1_000)
+  /** Pokes three times and returns the protest line the mind would decide about the burst. */
+  async function protest(store: ReturnType<typeof useSituationStore>) {
+    const view = await pokeTimes(store, 3)
+    return { kind: 'poke-protest' as const, eventId: view?.eventId ?? '' }
   }
 
   function touchEvent(store: ReturnType<typeof useSituationStore>) {
     return store.state.events.find(event => event.topicKey === TOUCH_TOPIC_KEY)
   }
 
-  async function reactionInspection(observability: ReturnType<typeof useSituationObservabilityStore>) {
-    return (await observability.inspect()).reactions
+  async function reactionOutcomes(observability: ReturnType<typeof useSituationObservabilityStore>) {
+    return (await observability.inspect()).reactions.outcomes['poke-protest']
   }
 
   /** The hook context of a reaction turn, as the chat store starts it. */
@@ -2033,74 +2020,63 @@ describe('situation gate loop', () => {
     return { sessionId: 'session-1', turnId, origin: 'unprompted', message: { role: 'user', content: `(Just now, on the stage: they ${payload.topicText})`, createdAt: Date.now(), id: turnId, trigger }, contexts: {}, composedMessage: [] }
   }
 
-  it('answers a 3-poke burst on the leader with exactly one reaction, and rolls each burst once', async () => {
-    saveReactionCheckpoint()
-    const { store, chat, observability } = startQuietLeader()
-    await pokeTimes(3)
+  it('records each touch and returns the voice view of a 3-poke burst', async () => {
+    const { store } = startQuietLeader()
 
-    const event = touchEvent(store)
-    expect(chat.submitReaction).toHaveBeenCalledOnce()
-    expect(chat.submitReaction).toHaveBeenCalledWith({ kind: 'poke-protest', topicText: 'poked you 3 times in a few seconds', eventId: event?.id })
-    expect(vi.mocked(reactionPolicy).mock.lastCall?.[0]).toMatchObject({
-      nowMs: Date.now(),
-      gesture: 'poke',
-      view: { sessionId: 'session-1', eventId: event?.id, pet: null, pokeTimesMs: [Date.now() - 2_000, Date.now() - 1_000, Date.now()], held: null },
-    })
-    // The trigger message carries the touch, so the block of the reaction's own request does not list it again.
-    expect(event?.shownAtMs).toBe(Date.now())
-    // The reaction memory, with its own checkpoint, is saved with the gate's inner state.
-    expect(useSituationInnerState().read().reaction).toMatchObject({
+    const view = await pokeTimes(store, 3)
+
+    expect(view).toEqual({
       sessionId: 'session-1',
-      rngState: nextRandom(REACTION_RNG_STATE)[1],
-      pokeBurstRolled: true,
-      lastAttemptAtMs: Date.now(),
+      eventId: touchEvent(store)?.id,
+      pet: null,
+      pokeTimesMs: [Date.now() - 2_000, Date.now() - 1_000, Date.now()],
+      lastCharacterLineAtMs: null,
+      held: null,
     })
-
-    await pokeAfter(1_000)
-
-    expect((await reactionInspection(observability)).decision).toMatchObject({ speak: false, reason: 'burst-rolled', kind: 'poke-protest', roll: null })
-    expect(chat.submitReaction).toHaveBeenCalledOnce()
   })
 
-  it('settles a reaction that a pending unprompted turn refuses as refused: no refractory or retry wait, but the draw is spent', async () => {
-    saveReactionCheckpoint()
+  it('reports in the view why the voice channel cannot take a line', async () => {
+    const { store, chat } = startQuietLeader()
+    chat.state.sending = true
+
+    expect(await pokeTimes(store, 3)).toMatchObject({ held: 'generating' })
+  })
+
+  it('speaks a reaction about the touch event and marks the event shown', async () => {
     const { store, chat, observability } = startQuietLeader()
+    const line = await protest(store)
+
+    await expect(store.speakReaction(line)).resolves.toBe('spoken')
+
+    expect(chat.submitReaction).toHaveBeenCalledOnce()
+    expect(chat.submitReaction).toHaveBeenCalledWith({ kind: 'poke-protest', topicText: 'poked you 3 times in a few seconds', eventId: line.eventId })
+    // The trigger message carries the touch, so the block of the reaction's own request does not list it again.
+    expect(touchEvent(store)?.shownAtMs).toBe(Date.now())
+    expect(await reactionOutcomes(observability)).toEqual({ spoken: 1, declined: 0, cancelled: 0, failed: 0, refused: 0 })
+  })
+
+  it('refuses a reaction while another unprompted turn is pending, without sending or showing the touch', async () => {
+    const { store, chat, observability } = startQuietLeader()
+    const line = await protest(store)
     // Another unprompted turn is pending, so the store does not even submit.
     chat.state.unpromptedPending = true
-    await pokeTimes(3)
+
+    await expect(store.speakReaction(line)).resolves.toBe('refused')
 
     expect(chat.submitReaction).not.toHaveBeenCalled()
     expect(touchEvent(store)?.shownAtMs).toBeNull()
-    const refused = await reactionInspection(observability)
-    expect(refused).toMatchObject({
-      pending: null,
-      refractoryRemainingMs: 0,
-      retryRemainingMs: 0,
-      memory: { lastLineAtMs: null, lastAttemptAtMs: null, rngState: nextRandom(REACTION_RNG_STATE)[1], pokeBurstRolled: false },
-    })
-    expect(settleReaction).toHaveBeenCalledOnce()
-    expect(settleReaction).toHaveBeenCalledWith(expect.objectContaining({ pending: expect.objectContaining({ kind: 'poke-protest', previousAttemptAtMs: null }) }), 'refused', Date.now())
 
-    // The chat's own pending guard refuses the next attempt of the same burst, which takes the next draw.
+    // The chat's own pending guard refuses the next attempt.
     chat.state.unpromptedPending = false
     chat.submitReaction.mockResolvedValueOnce({ status: 'failed', error: 'Another unprompted turn is still pending' })
-    await pokeAfter(1_000)
+
+    await expect(store.speakReaction(line)).resolves.toBe('refused')
 
     expect(chat.submitReaction).toHaveBeenCalledOnce()
-    expect(vi.mocked(settleReaction).mock.calls.map(call => call[1])).toEqual(['refused', 'refused'])
-    expect((await reactionInspection(observability)).memory).toMatchObject({ lastLineAtMs: null, lastAttemptAtMs: null, rngState: nextRandom(nextRandom(REACTION_RNG_STATE)[1])[1], pending: null })
-
-    // Neither refusal held the burst, so the next poke reacts at once.
-    await pokeAfter(1_000)
-
-    expect(chat.submitReaction).toHaveBeenCalledTimes(2)
-    const reactions = await reactionInspection(observability)
-    expect(reactions.decision).toMatchObject({ speak: true, kind: 'poke-protest' })
-    expect(reactions.outcomes['poke-protest']).toEqual({ spoken: 1, declined: 0, cancelled: 0, failed: 0, refused: 2 })
+    expect(await reactionOutcomes(observability)).toEqual({ spoken: 0, declined: 0, cancelled: 0, failed: 0, refused: 2 })
   })
 
   it('starts the gate floor on a spoken reaction without an unanswered opening or a fire outcome', async () => {
-    saveReactionCheckpoint()
     const { store, hooks, chat, observability } = startQuietLeader()
     chat.submitReaction.mockImplementationOnce(async (payload) => {
       const context = reactionContext(payload)
@@ -2111,116 +2087,55 @@ describe('situation gate loop', () => {
       await hooks.emitChatTurnCompleteHooks({ output, outputText: 'Hey, quit it!', toolCalls: [] }, context)
       return { status: 'spoken', text: 'Hey, quit it!' }
     })
-    await pokeTimes(3)
+    const line = await protest(store)
     const spokenAtMs = Date.now()
+
+    await expect(store.speakReaction(line)).resolves.toBe('spoken')
 
     expect(await memoryAtNextTick()).toMatchObject({ lastFireAtMs: spokenAtMs, lastSpokenAtMs: spokenAtMs, unanswered: 0 })
     expect(recordUrgeFireOutcome).not.toHaveBeenCalled()
     // Her line counts only as her last line: it is no unprompted remark, and the touch is never addressed.
     expect(store.state.conversation).toMatchObject({ lastCharacterAtMs: spokenAtMs, lastUnpromptedAtMs: null })
     expect(store.state.tracking.addressedTopic).toBeNull()
-    const reactions = await reactionInspection(observability)
-    expect(reactions.memory).toMatchObject({ lastLineAtMs: spokenAtMs, pending: null })
-    expect(reactions.refractoryRemainingMs).toBe(REACTION_REFRACTORY_MS - GATE_INTERVAL_MS)
-    expect(reactions.outcomes['poke-protest']).toEqual({ spoken: 1, declined: 0, cancelled: 0, failed: 0, refused: 0 })
+    expect(await reactionOutcomes(observability)).toEqual({ spoken: 1, declined: 0, cancelled: 0, failed: 0, refused: 0 })
   })
 
-  it('settles a reaction answered with <|SILENT|> as declined and holds the next burst for the retry wait', async () => {
-    saveReactionCheckpoint()
+  it('resolves a reaction at its first literal, before the submit result arrives', async () => {
+    const { store, hooks, chat } = startQuietLeader()
+    chat.submitReaction.mockImplementationOnce(() => new Promise<ChatUnpromptedResult>(() => {}))
+    const line = await protest(store)
+    const spoken = store.speakReaction(line)
+    const context = reactionContext(chat.submitReaction.mock.calls[0][0])
+    await hooks.emitBeforeSendHooks('(Just now, on the stage)', context)
+
+    await hooks.emitTokenLiteralHooks('Hey, quit it!', context)
+
+    await expect(spoken).resolves.toBe('spoken')
+  })
+
+  it('resolves a declined reaction at its stream end, before the submit result arrives', async () => {
     const { store, hooks, chat, observability } = startQuietLeader()
-    chat.submitReaction.mockImplementationOnce(async (payload) => {
-      const context = reactionContext(payload)
-      await hooks.emitBeforeSendHooks('(Just now, on the stage)', context)
-      await hooks.emitStreamEndHooks({ ...context, cueStats: { act: 0, recovered: 0, rejected: 0, origin: 'unprompted', declined: true, silent: false, wordless: false, breaks: 0, breaksIgnored: 0 } })
-      return { status: 'declined' }
-    })
-    await pokeTimes(3)
-    const attemptAtMs = Date.now()
-
-    const declined = await reactionInspection(observability)
-    expect(declined.memory).toMatchObject({ lastAttemptAtMs: attemptAtMs, lastLineAtMs: null, pending: null })
-    expect(declined.outcomes['poke-protest']).toEqual({ spoken: 0, declined: 1, cancelled: 0, failed: 0, refused: 0 })
-    expect(recordUrgeFireOutcome).not.toHaveBeenCalled()
-    expect(store.state.tracking.addressedTopic).toBeNull()
-
-    // A poke 10 s after the last one starts a new burst, whose third poke is a candidate within the retry wait.
-    await pokeAfter(10_500)
-    await pokeAfter(500)
-    await pokeAfter(500)
-
-    expect(Date.now() - attemptAtMs).toBeLessThan(REACTION_RETRY_MS)
-    expect((await reactionInspection(observability)).decision).toMatchObject({ speak: false, reason: 'retry-wait', kind: 'poke-protest' })
-    expect(chat.submitReaction).toHaveBeenCalledOnce()
-  })
-
-  it('settles a declined reaction at its stream end, before the submit result arrives', async () => {
-    saveReactionCheckpoint()
-    const { hooks, chat, observability } = startQuietLeader()
     let finish!: (result: ChatUnpromptedResult) => void
     chat.submitReaction.mockImplementationOnce(() => new Promise<ChatUnpromptedResult>((resolve) => {
       finish = resolve
     }))
-    await pokeTimes(3)
+    const line = await protest(store)
+    const declined = store.speakReaction(line)
     const context = reactionContext(chat.submitReaction.mock.calls[0][0])
-    const attemptAtMs = Date.now()
     await hooks.emitBeforeSendHooks('(Just now, on the stage)', context)
 
     await hooks.emitStreamEndHooks({ ...context, cueStats: { act: 0, recovered: 0, rejected: 0, origin: 'unprompted', declined: true, silent: false, wordless: false, breaks: 0, breaksIgnored: 0 } })
 
-    const declined = await reactionInspection(observability)
-    expect(declined.memory).toMatchObject({ lastAttemptAtMs: attemptAtMs, lastLineAtMs: null, pending: null })
-    expect(declined.outcomes['poke-protest']).toEqual({ spoken: 0, declined: 1, cancelled: 0, failed: 0, refused: 0 })
+    await expect(declined).resolves.toBe('declined')
+    expect(await reactionOutcomes(observability)).toEqual({ spoken: 0, declined: 1, cancelled: 0, failed: 0, refused: 0 })
+    expect(recordUrgeFireOutcome).not.toHaveBeenCalled()
+    expect(store.state.tracking.addressedTopic).toBeNull()
 
-    // The result that arrives afterwards finds nothing pending and counts no second outcome.
+    // The result that arrives afterwards counts no second outcome.
     finish({ status: 'declined' })
     await vi.advanceTimersByTimeAsync(0)
 
-    expect((await reactionInspection(observability)).outcomes['poke-protest']).toEqual({ spoken: 0, declined: 1, cancelled: 0, failed: 0, refused: 0 })
-  })
-
-  it('starts the refractory for a reaction that speaks after its pending attempt was dropped', async () => {
-    saveReactionCheckpoint()
-    const { hooks, chat, observability } = startQuietLeader()
-    let finish!: (result: ChatUnpromptedResult) => void
-    chat.submitReaction.mockImplementationOnce(() => new Promise<ChatUnpromptedResult>((resolve) => {
-      finish = resolve
-    }))
-    await pokeTimes(3)
-    const context = reactionContext(chat.submitReaction.mock.calls[0][0])
-    await hooks.emitBeforeSendHooks('(Just now, on the stage)', context)
-
-    // A poke past the 30 s pending limit drops the attempt that is still waiting for its first literal.
-    await pokeAfter(REACTION_PENDING_MAX_MS + 1_000)
-    expect((await reactionInspection(observability)).pending).toBeNull()
-
-    await hooks.emitTokenLiteralHooks('Hey, quit it!', context)
-    const spokenAtMs = Date.now()
-    finish({ status: 'spoken', text: 'Hey, quit it!' })
-    await vi.advanceTimersByTimeAsync(0)
-
-    expect((await reactionInspection(observability)).memory).toMatchObject({ lastLineAtMs: spokenAtMs, pending: null })
-
-    // The retry wait from the attempt is over, so only the refractory of the late line holds the next burst.
-    await pokeAfter(1_000)
-    await pokeAfter(1_000)
-    await pokeAfter(1_000)
-
-    expect(Date.now() - spokenAtMs).toBeLessThan(REACTION_REFRACTORY_MS)
-    expect((await reactionInspection(observability)).decision).toMatchObject({ speak: false, reason: 'refractory', kind: 'poke-protest' })
-    expect(chat.submitReaction).toHaveBeenCalledOnce()
-  })
-
-  it('starts no reaction while a reply generates, and draws nothing', async () => {
-    saveReactionCheckpoint()
-    const { store, chat, observability } = startQuietLeader()
-    chat.state.sending = true
-    await pokeTimes(3)
-
-    expect(chat.submitReaction).not.toHaveBeenCalled()
-    const reactions = await reactionInspection(observability)
-    expect(reactions.decision).toMatchObject({ speak: false, reason: 'generating', roll: null })
-    expect(reactions.memory).toMatchObject({ rngState: REACTION_RNG_STATE, pending: null, lastAttemptAtMs: null })
-    expect(touchEvent(store)?.shownAtMs).toBeNull()
+    expect(await reactionOutcomes(observability)).toEqual({ spoken: 0, declined: 1, cancelled: 0, failed: 0, refused: 0 })
   })
 
   it('lists a touch once in the situation block and omits it from the next render', () => {
@@ -2232,14 +2147,20 @@ describe('situation gate loop', () => {
     expect(store.renderForRequest(Date.now())).not.toContain('petted your head')
   })
 
-  it('ignores touches in a follower window', async () => {
-    saveReactionCheckpoint()
+  it('offers no voice view and speaks no reaction in a follower window', async () => {
     const { store, chat } = startQuietLeader({ leader: false })
-    await pokeTimes(3)
-    store.ingest(poke())
+
+    expect(await pokeTimes(store, 3)).toBeNull()
 
     expect(store.state).toEqual(initialSituationState)
-    expect(reactionPolicy).not.toHaveBeenCalled()
+    await expect(store.speakReaction({ kind: 'poke-protest', eventId: 'touch-1' })).resolves.toBe('failed')
     expect(chat.submitReaction).not.toHaveBeenCalled()
+  })
+
+  it('records the touch but offers no voice view while the gate does not run', () => {
+    const { store } = startQuietLeader({ capable: false })
+
+    expect(store.observeTouch(poke())).toBeNull()
+    expect(touchEvent(store)).toBeDefined()
   })
 })

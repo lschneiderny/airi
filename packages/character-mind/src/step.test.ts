@@ -79,7 +79,7 @@ describe('step: emotion', () => {
     const held = script.map(([atMs, stimulus]) => {
       const answer = step(state, [stimulus], atMs, rng)
       state = answer.state
-      return answer.intents.map(intent => intent.hold?.emotion)
+      return answer.intents.map(intent => 'hold' in intent ? intent.hold?.emotion : undefined)
     })
     expect(held).toEqual([['happy'], ['happy'], ['sad'], [null], [null]])
   })

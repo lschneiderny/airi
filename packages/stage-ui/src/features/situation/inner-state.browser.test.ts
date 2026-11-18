@@ -1,4 +1,4 @@
-import type { ReactionMemory, RitualDay, SavedGateMemory, Thread } from '@proj-airi/stage-shared/situation'
+import type { RitualDay, SavedGateMemory, Thread } from '@proj-airi/stage-shared/situation'
 
 import type { SavedInnerState } from './inner-state'
 
@@ -77,21 +77,11 @@ describe('situation inner state', () => {
     vi.restoreAllMocks()
   })
 
-  it('round-trips threads, rituals, the gate memory, the extraction read positions, and the reaction memory across store instances', () => {
+  it('round-trips threads, rituals, the gate memory, and the extraction read positions across store instances', () => {
     const leader = createStore()
     expect(leader.read(noonMs)).toEqual(defaultSavedInnerState())
     leader.claim(7)
-    const reaction: ReactionMemory = {
-      sessionId: 'session-1',
-      rngState: 0xFFFFFFFF,
-      petsSeen: 2,
-      lastPetStartedAtMs: noonMs - 60_000,
-      pokeBurstRolled: true,
-      lastLineAtMs: noonMs - 30_000,
-      lastAttemptAtMs: noonMs - 10_000,
-      pending: { kind: 'poke-protest', eventId: 'event-3', atMs: noonMs - 10_000, previousAttemptAtMs: null },
-    }
-    const saved = { threads: [thread(1)], rituals: ritualDay('2026-10-29'), gate: gateMemory(), extractedThrough: [{ sessionId: 'session-1', messageId: 'message-4' }], reaction }
+    const saved = { threads: [thread(1)], rituals: ritualDay('2026-10-29'), gate: gateMemory(), extractedThrough: [{ sessionId: 'session-1', messageId: 'message-4' }] }
     expect(leader.write(saved, 7)).toBe(true)
 
     const reloaded = createStore()
@@ -109,30 +99,14 @@ describe('situation inner state', () => {
   })
 
   it('resets an invalid stored field to its default and keeps valid siblings, with one warning', () => {
-    localStorage.setItem(key, JSON.stringify({ v: 1, threads: [{ ...thread(1), kind: 'gossip' }], gate: gateMemory(), savedAtMs: 5, extra: true }))
+    // `reaction` is a field an older build saved; like any unknown field it is dropped without a warning.
+    localStorage.setItem(key, JSON.stringify({ v: 1, threads: [{ ...thread(1), kind: 'gossip' }], gate: gateMemory(), savedAtMs: 5, reaction: { sessionId: null, rngState: 1 } }))
     const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
     const state = createStore().read(noonMs)
 
     expect(state).toEqual({ ...defaultSavedInnerState(), gate: gateMemory(), savedAtMs: 5 })
     expect(warning).toHaveBeenCalledExactlyOnceWith('[situation-inner] Invalid stored fields reset to defaults:', 'threads')
-  })
-
-  it('resets a reaction memory with an invalid checkpoint or pending kind, and keeps the gate memory', () => {
-    const reaction = { sessionId: null, rngState: 1, petsSeen: 0, lastPetStartedAtMs: null, pokeBurstRolled: false, lastLineAtMs: null, lastAttemptAtMs: null, pending: null }
-    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    for (const invalid of [{ ...reaction, rngState: -1 }, { ...reaction, pending: { kind: 'wave', eventId: 'event-1', atMs: 1 } }]) {
-      localStorage.setItem(key, JSON.stringify({ v: 1, gate: gateMemory(), reaction: invalid, savedAtMs: 5 }))
-      expect(createStore().read(noonMs)).toEqual({ ...defaultSavedInnerState(), gate: gateMemory(), savedAtMs: 5 })
-    }
-    expect(warning).toHaveBeenCalledWith('[situation-inner] Invalid stored fields reset to defaults:', 'reaction')
-  })
-
-  it.each(['{corrupt', '[]', 'null', '"banana"'])('replaces a stored document that is not an object (%s) with defaults', (value) => {
-    localStorage.setItem(key, value)
-    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    expect(createStore().read(noonMs)).toEqual(defaultSavedInnerState())
-    expect(warning).toHaveBeenCalledOnce()
   })
 
   it('ignores writes without the current leadership token', () => {

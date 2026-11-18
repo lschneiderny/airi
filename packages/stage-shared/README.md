@@ -139,7 +139,7 @@ The `expression-performance` entrypoint owns the pure rules for character expres
 - `buildTagSuggestionPrompt` and `parseTagSuggestions`, the two ends of a request that asks a language model to suggest `idleUse`, `occasions` and `moments` for a catalog. The parser drops everything the model may not decide; a suggestion is applied only by the user;
 - affect traces and their replay (`withAffectTrace`, `parseAffectTrace`, `replayAffectTrace`). A trace is `version: 2`: it records the deciders' signals, which carry the episodes the mind decided, so a replay needs no mind. A version 1 trace no longer parses;
 - character performance profiles (`resolveEffectiveSettings`, `applyMappingWeights`);
-- touch affect (`touchAffect`, `initialTouchAffectMemory`, `MoodDose`), which turns one classified pet or poke into at most one mood dose with cooldowns and habituation. A `touch` affect signal returns its dose in the decision's `moods`, and every other signal returns an empty list. Touch never creates an emotion episode.
+- touch affect (`touchAffect`, `initialTouchAffectMemory`, `MoodDose`), which turns one classified pet or poke into at most one mood dose with cooldowns and habituation. The mind calls it for every `touch` stimulus and sends the dose as a `mood` intent. Touch never creates an emotion episode.
 
 A decider never reads a clock, global randomness, or a store. Pass every time in the signal as monotonic seconds, and keep the returned state for the next call. The state is plain JSON, so it can be checkpointed and replayed.
 
@@ -148,9 +148,11 @@ A decider receives no raw emotion. Its signals are:
 - `reaction`, with the episode the mind decided. A new episode draws its pick tickets; an escalation reuses them and fills only empty slots.
 - `neutral`, when a neutral emotion reset the mind's reaction state. It releases the face and effect slots.
 - `expression`, for an entry the model named, with the episode the mind derived from the entry's emotion mapping, or `null`.
-- `clear`, `speech`, `muted`, `timing`, `deadline`, and `touch`.
+- `clear`, `speech`, `muted`, `timing`, and `deadline`.
 
-A decision carries the slot commands in `slots` and the mood doses of a `touch` in `moods`. It carries no episode and no hold: the mind sends those with its intents.
+A touch is not a decider signal: the mind answers it, and no entry shows it.
+
+A decision carries the slot commands in `slots`. It carries no episode, no hold, and no mood dose: the mind sends those with its intents.
 
 A `HoldCommand` tells the Natural driver which emotion to hold and for how long. It has an `emotion`, or `null` to release the hold, a `strength`, and the same `holdSeconds`, `until`, and `turnId` lifetime fields as a slot command.
 The mind decides the hold:

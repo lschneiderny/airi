@@ -151,7 +151,10 @@ export function runScenarioSink(input: MotionScenario, options: ScenarioSinkOpti
   const host = options.createHost({ scenario, settings, catalog, home })
 
   try {
-    // The scene the stage's Model.vue exposes to the conductor.
+    const pendingPokes: Live2DNaturalMotionAttention['pendingPokes'] = []
+    /** Whether the mind's pet runs; the pet hand reaches Natural only meanwhile, as in the stage's Model.vue. */
+    let petGranted = false
+    // The scene the stage's Model.vue exposes to the conductor. It keeps no `addMood`, so a touch doses no mood here.
     const scene: StagePerformanceScene = {
       setEmotion: (episode) => { pendingEmotions.push(episode) },
       applySlots: (commands, now) => host.applySlots(commands, now),
@@ -163,6 +166,12 @@ export function runScenarioSink(input: MotionScenario, options: ScenarioSinkOpti
       setMuted: (muted) => {
         holdPerformer.setMuted(muted)
         host.setMuted(muted)
+      },
+      reactToTouch: (intent) => {
+        if (intent.gesture === 'poke')
+          pendingPokes.push({ region: intent.region, ...intent.point })
+        else
+          petGranted = intent.phase === 'start'
       },
     }
     setActivePinia(createPinia())
@@ -196,16 +205,20 @@ export function runScenarioSink(input: MotionScenario, options: ScenarioSinkOpti
     let speechEndedAt: number | null = null
     const emotionStrengths = {}
     const clipOwnedIds = new Set<string>()
-    const pendingPokes: Live2DNaturalMotionAttention['pendingPokes'] = []
     // The stage classifies hover pets; held-only pets are a user setting the scenarios do not exercise.
     const gestures = new NaturalTouchGestures({ requireHold: false })
     let pointer: { x: number, y: number } | null = null
     let pet: Live2DNaturalMotionAttention['pet'] = null
+    // Like the stage, the sink reports each touch to the conductor, and the scene performs the mind's reaction.
     const applyTouch = (events: NaturalTouchGesture[]) => {
       for (const touch of events) {
         options.onTouch?.(touch, simTime)
         if (touch.kind === 'poke')
-          pendingPokes.push({ region: touch.region, ...headHand(touch) })
+          conductor.touch({ gesture: 'poke', region: touch.region, point: headHand(touch) })
+        else if (touch.kind === 'pet-start')
+          conductor.touch({ gesture: 'pet-start', region: 'head' })
+        else
+          conductor.touch({ gesture: 'pet-end', region: 'head', durationMs: touch.durationMs })
       }
     }
 
@@ -377,7 +390,7 @@ export function runScenarioSink(input: MotionScenario, options: ScenarioSinkOpti
         if (options.idleAfterSeconds !== undefined && simTime >= options.idleAfterSeconds && performance.mode !== 'idle')
           throw new Error(`[qa-tools] mode-left-idle at ${simTime} s: ${performance.mode}`)
         applyTouch(gestures.update(simTime * 1000))
-        pet = gestures.petting && pointer ? headHand(pointer) : null
+        pet = petGranted && gestures.petting && pointer ? headHand(pointer) : null
         conductor.sampleVoiceLevel(speechLevel())
         host.frame(adapter, simTime)
       }
