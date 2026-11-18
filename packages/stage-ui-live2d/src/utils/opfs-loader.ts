@@ -8,6 +8,8 @@ interface OPFSContext extends Live2DFactoryContext {
   opfsKey?: string
   opfsUrl?: string
   opfsZipBlob?: Blob
+  /** Releases the cache entry that a load holds from its cache miss until its save ends. */
+  opfsRelease?: () => void
 }
 
 interface OPFSCacheMeta {
@@ -45,6 +47,20 @@ function blobFromBytes(data: Uint8Array): Blob {
   const buffer = new ArrayBuffer(data.byteLength)
   new Uint8Array(buffer).set(data)
   return new Blob([buffer])
+}
+
+/**
+ * Holds the cache entry of `key` for one load, in every window of this origin, and resolves with its release.
+ *
+ * A save clears the entry before it writes it, and a `File` read from the entry stops being readable once its entry
+ * is removed. Two loads of one model that both miss the cache would otherwise both save it, and the later save takes
+ * the files from under any load that read the finished entry in between: its moc request and its texture images fail.
+ * Holding the entry from the cache check to the end of the save makes the second load wait and read the saved entry.
+ */
+function holdCacheEntry(key: string): Promise<() => void> {
+  return new Promise((resolve, reject) => {
+    navigator.locks.request(`airi:live2d-opfs:${key}`, () => new Promise<void>(release => resolve(release))).catch(reject)
+  })
 }
 
 export class OPFSCache {
@@ -245,35 +261,44 @@ export class OPFSCache {
       return next()
     }
 
-    const files = await OPFSCache.get(key, blobUrl)
-
-    if (files) {
-      // cache hit
-      context.source = files
-      return next()
-    }
-
-    // cache miss
-    // eslint-disable-next-line no-console
-    console.debug(`[OPFS] Cache miss for ${key}`)
-    context.opfsKey = key
-    context.opfsUrl = blobUrl
-
+    const release = await holdCacheEntry(key)
     try {
-      const res = await fetch(blobUrl)
-      const blob = new Blob([await res.arrayBuffer()], {
-        type: res.headers.get('content-type') ?? '',
-      })
-      const fileName = `${key}.zip`
-      context.opfsZipBlob = blob
-      context.source = [new File([blob], fileName)]
-    }
-    catch (e) {
-      console.error(`[OPFS] Failed to fetch blob for ${key}`, e)
-      throw e
-    }
+      const files = await OPFSCache.get(key, blobUrl)
 
-    return next()
+      if (files) {
+        // cache hit
+        release()
+        context.source = files
+        return await next()
+      }
+
+      // cache miss
+      // eslint-disable-next-line no-console
+      console.debug(`[OPFS] Cache miss for ${key}`)
+      context.opfsKey = key
+      context.opfsUrl = blobUrl
+      context.opfsRelease = release
+
+      try {
+        const res = await fetch(blobUrl)
+        const blob = new Blob([await res.arrayBuffer()], {
+          type: res.headers.get('content-type') ?? '',
+        })
+        const fileName = `${key}.zip`
+        context.opfsZipBlob = blob
+        context.source = [new File([blob], fileName)]
+      }
+      catch (e) {
+        console.error(`[OPFS] Failed to fetch blob for ${key}`, e)
+        throw e
+      }
+
+      return await next()
+    }
+    finally {
+      // A load that fails before its save, such as one of an invalid archive, must not keep the entry.
+      release()
+    }
   }
 
   // Runs after ZipLoader to cache the files
@@ -283,6 +308,8 @@ export class OPFSCache {
     }
 
     await OPFSCache.save(context.opfsKey, context.opfsZipBlob, context.opfsUrl)
+    // The rest of the load reads the archive from memory, so the next load of this model can read the entry now.
+    context.opfsRelease?.()
 
     return next()
   }

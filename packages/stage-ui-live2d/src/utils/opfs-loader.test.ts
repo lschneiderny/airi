@@ -89,8 +89,12 @@ async function createZip(entries: Record<string, Blob | string | Uint8Array>): P
   return new Blob([await blobFromBytes(data).arrayBuffer()], { type: 'application/zip' })
 }
 
+// The cache holds a Web Lock for each load; Node has its own lock manager, so the stubbed navigator keeps the real one.
+const { locks } = navigator
+
 function installMemoryOPFS(root = new MemoryDirectoryHandle('root')): MemoryDirectoryHandle {
   vi.stubGlobal('navigator', {
+    locks,
     storage: {
       getDirectory: vi.fn(async () => root as unknown as FileSystemDirectoryHandle),
     },
