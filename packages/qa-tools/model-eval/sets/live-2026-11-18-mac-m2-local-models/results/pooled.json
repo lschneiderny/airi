@@ -1,0 +1,1360 @@
+[
+  {
+    "tag": "screen",
+    "model": "bonsai-2_4b",
+    "family": "general",
+    "mode": "no-think",
+    "convs": 6,
+    "replies": 36,
+    "errors": 0,
+    "blank": 0,
+    "thinkingReplies": 0,
+    "cueParsed%": 42,
+    "cueRecovered%": 0,
+    "cueRejected%": 58,
+    "noCue%": 0,
+    "leadCue%": 69,
+    "invented": [
+      [
+        "shocked",
+        2
+      ],
+      [
+        "playful",
+        2
+      ],
+      [
+        "bright",
+        1
+      ],
+      [
+        "confused",
+        1
+      ]
+    ],
+    "unknownMarkers": [
+      [
+        "<|ACTION wave|>",
+        2
+      ],
+      [
+        "<|ACTION {\"gesture\": \"wave\"}|>",
+        2
+      ],
+      [
+        "<|ACTION glance|>",
+        1
+      ]
+    ],
+    "stageDir%": 3,
+    "emoji%": 0,
+    "lower%": 3,
+    "face%": 0,
+    "aiBreak": 0,
+    "echo": 0,
+    "waveOk": 0,
+    "words": 16.3,
+    "coldTtftS": 1.28,
+    "warmTtftS": 0.41,
+    "totalS": 1.79,
+    "decodeTps": 34.9,
+    "promptTok": 1250,
+    "GiB": 2.1,
+    "gpu%": 100,
+    "quant": "Q2_0"
+  },
+  {
+    "tag": "screen",
+    "model": "bonsai-2_4b",
+    "family": "stages",
+    "mode": "no-think",
+    "convs": 1,
+    "replies": 16,
+    "errors": 0,
+    "blank": 2,
+    "thinkingReplies": 0,
+    "cueParsed%": 88,
+    "cueRecovered%": 0,
+    "cueRejected%": 12,
+    "noCue%": 0,
+    "leadCue%": 100,
+    "invented": [
+      [
+        "awake",
+        1
+      ],
+      [
+        "playful",
+        1
+      ],
+      [
+        "sympathetic",
+        1
+      ],
+      [
+        "thoughtful",
+        1
+      ]
+    ],
+    "unknownMarkers": [
+      [
+        "<|GREETING \"Hey there again!\"|>",
+        1
+      ],
+      [
+        "<|SUGGEST \"How about we watch that anime I mentioned?\"|>",
+        1
+      ]
+    ],
+    "stageDir%": 0,
+    "emoji%": 0,
+    "lower%": 0,
+    "face%": 12,
+    "aiBreak": 0,
+    "echo": 0,
+    "waveOk": 0,
+    "words": 12.9,
+    "coldTtftS": 3.4,
+    "warmTtftS": 0.51,
+    "totalS": 2.51,
+    "decodeTps": 35.0,
+    "promptTok": 1224,
+    "GiB": 2.1,
+    "gpu%": 100,
+    "quant": "Q2_0"
+  },
+  {
+    "tag": "screen",
+    "model": "bonsai-2_9b",
+    "family": "general",
+    "mode": "no-think",
+    "convs": 6,
+    "replies": 36,
+    "errors": 0,
+    "blank": 0,
+    "thinkingReplies": 0,
+    "cueParsed%": 61,
+    "cueRecovered%": 0,
+    "cueRejected%": 39,
+    "noCue%": 0,
+    "leadCue%": 86,
+    "invented": [
+      [
+        "excited",
+        2
+      ],
+      [
+        "gesture",
+        2
+      ],
+      [
+        "curiously",
+        1
+      ],
+      [
+        "joyful",
+        1
+      ]
+    ],
+    "unknownMarkers": [
+      [
+        "<|gesture wave>|>",
+        1
+      ],
+      [
+        "<|look screen|>",
+        1
+      ],
+      [
+        "<|JSON {\"gesture\":\"wave\"}|>",
+        1
+      ]
+    ],
+    "stageDir%": 0,
+    "emoji%": 11,
+    "lower%": 0,
+    "face%": 0,
+    "aiBreak": 0,
+    "echo": 0,
+    "waveOk": 0,
+    "words": 17.1,
+    "coldTtftS": 2.16,
+    "warmTtftS": 0.69,
+    "totalS": 2.82,
+    "decodeTps": 21.8,
+    "promptTok": 1251,
+    "GiB": 2.8,
+    "gpu%": 100,
+    "quant": "Q2_0"
+  },
+  {
+    "tag": "screen",
+    "model": "bonsai-2_9b",
+    "family": "stages",
+    "mode": "no-think",
+    "convs": 1,
+    "replies": 16,
+    "errors": 0,
+    "blank": 0,
+    "thinkingReplies": 0,
+    "cueParsed%": 56,
+    "cueRecovered%": 12,
+    "cueRejected%": 31,
+    "noCue%": 0,
+    "leadCue%": 75,
+    "invented": [
+      [
+        "concerned",
+        2
+      ],
+      [
+        "expectant",
+        1
+      ],
+      [
+        "thoughtful",
+        1
+      ],
+      [
+        "hopeful",
+        1
+      ]
+    ],
+    "unknownMarkers": [],
+    "stageDir%": 0,
+    "emoji%": 0,
+    "lower%": 6,
+    "face%": 0,
+    "aiBreak": 0,
+    "echo": 0,
+    "waveOk": 0,
+    "words": 23.4,
+    "coldTtftS": 3.18,
+    "warmTtftS": 0.87,
+    "totalS": 3.65,
+    "decodeTps": 21.8,
+    "promptTok": 1226,
+    "GiB": 2.8,
+    "gpu%": 100,
+    "quant": "Q2_0"
+  },
+  {
+    "tag": "screen",
+    "model": "dolphin3_8b",
+    "family": "general",
+    "mode": "default",
+    "convs": 6,
+    "replies": 36,
+    "errors": 0,
+    "blank": 5,
+    "thinkingReplies": 0,
+    "cueParsed%": 68,
+    "cueRecovered%": 0,
+    "cueRejected%": 29,
+    "noCue%": 3,
+    "leadCue%": 81,
+    "invented": [
+      [
+        "delighted",
+        1
+      ],
+      [
+        "excited",
+        1
+      ],
+      [
+        "informative",
+        1
+      ],
+      [
+        "shocked",
+        1
+      ]
+    ],
+    "unknownMarkers": [
+      [
+        "<|LOOK away|>",
+        2
+      ],
+      [
+        "<|LOOK screen|>",
+        1
+      ],
+      [
+        "<|LOOK you|>",
+        1
+      ]
+    ],
+    "stageDir%": 3,
+    "emoji%": 6,
+    "lower%": 0,
+    "face%": 0,
+    "aiBreak": 0,
+    "echo": 0,
+    "waveOk": 1,
+    "words": 25.6,
+    "coldTtftS": 4.65,
+    "warmTtftS": 0.42,
+    "totalS": 3.26,
+    "decodeTps": 18.8,
+    "promptTok": 1144,
+    "GiB": 6.6,
+    "gpu%": 100,
+    "quant": "Q4_K_M"
+  },
+  {
+    "tag": "screen",
+    "model": "dolphin3_8b",
+    "family": "stages",
+    "mode": "default",
+    "convs": 1,
+    "replies": 16,
+    "errors": 0,
+    "blank": 0,
+    "thinkingReplies": 0,
+    "cueParsed%": 62,
+    "cueRecovered%": 0,
+    "cueRejected%": 38,
+    "noCue%": 0,
+    "leadCue%": 62,
+    "invented": [
+      [
+        "concerned",
+        3
+      ],
+      [
+        "playful",
+        2
+      ],
+      [
+        "excited",
+        1
+      ],
+      [
+        "friendly",
+        1
+      ]
+    ],
+    "unknownMarkers": [],
+    "stageDir%": 0,
+    "emoji%": 6,
+    "lower%": 0,
+    "face%": 0,
+    "aiBreak": 1,
+    "echo": 0,
+    "waveOk": 0,
+    "words": 17.2,
+    "coldTtftS": 0.44,
+    "warmTtftS": 0.59,
+    "totalS": 2.55,
+    "decodeTps": 18.9,
+    "promptTok": 1144,
+    "GiB": 6.4,
+    "gpu%": 100,
+    "quant": "Q4_K_M"
+  },
+  {
+    "tag": "screen",
+    "model": "gemma4_e4b",
+    "family": "general",
+    "mode": "default",
+    "convs": 3,
+    "replies": 18,
+    "errors": 0,
+    "blank": 10,
+    "thinkingReplies": 15,
+    "cueParsed%": 100,
+    "cueRecovered%": 0,
+    "cueRejected%": 0,
+    "noCue%": 0,
+    "leadCue%": 100,
+    "invented": [],
+    "unknownMarkers": [],
+    "stageDir%": 12,
+    "emoji%": 0,
+    "lower%": 12,
+    "face%": 0,
+    "aiBreak": 0,
+    "echo": 0,
+    "waveOk": 0,
+    "words": 13.9,
+    "coldTtftS": 1.32,
+    "warmTtftS": 0.4,
+    "totalS": 9.7,
+    "decodeTps": 27.6,
+    "promptTok": 1163,
+    "GiB": 11.0,
+    "gpu%": 100,
+    "quant": "nvfp4"
+  },
+  {
+    "tag": "screen",
+    "model": "gemma4_e4b",
+    "family": "general",
+    "mode": "no-think",
+    "convs": 6,
+    "replies": 36,
+    "errors": 0,
+    "blank": 5,
+    "thinkingReplies": 0,
+    "cueParsed%": 97,
+    "cueRecovered%": 0,
+    "cueRejected%": 3,
+    "noCue%": 0,
+    "leadCue%": 97,
+    "invented": [
+      [
+        "worried",
+        1
+      ]
+    ],
+    "unknownMarkers": [],
+    "stageDir%": 10,
+    "emoji%": 0,
+    "lower%": 0,
+    "face%": 3,
+    "aiBreak": 0,
+    "echo": 0,
+    "waveOk": 0,
+    "words": 17.0,
+    "coldTtftS": 2.12,
+    "warmTtftS": 0.31,
+    "totalS": 1.86,
+    "decodeTps": 27.6,
+    "promptTok": 1198,
+    "GiB": 9.6,
+    "gpu%": 100,
+    "quant": "nvfp4"
+  },
+  {
+    "tag": "screen",
+    "model": "gemma4_e4b",
+    "family": "stages",
+    "mode": "no-think",
+    "convs": 1,
+    "replies": 16,
+    "errors": 0,
+    "blank": 0,
+    "thinkingReplies": 0,
+    "cueParsed%": 75,
+    "cueRecovered%": 0,
+    "cueRejected%": 25,
+    "noCue%": 0,
+    "leadCue%": 81,
+    "invented": [
+      [
+        "concerned",
+        1
+      ],
+      [
+        "playful",
+        1
+      ],
+      [
+        "thinking",
+        1
+      ]
+    ],
+    "unknownMarkers": [],
+    "stageDir%": 19,
+    "emoji%": 0,
+    "lower%": 0,
+    "face%": 0,
+    "aiBreak": 0,
+    "echo": 0,
+    "waveOk": 0,
+    "words": 18.1,
+    "coldTtftS": 0.84,
+    "warmTtftS": 0.41,
+    "totalS": 1.77,
+    "decodeTps": 26.5,
+    "promptTok": 1183,
+    "GiB": 10.1,
+    "gpu%": 100,
+    "quant": "nvfp4"
+  },
+  {
+    "tag": "screen",
+    "model": "granite4_latest",
+    "family": "general",
+    "mode": "default",
+    "convs": 6,
+    "replies": 36,
+    "errors": 0,
+    "blank": 1,
+    "thinkingReplies": 0,
+    "cueParsed%": 60,
+    "cueRecovered%": 31,
+    "cueRejected%": 9,
+    "noCue%": 0,
+    "leadCue%": 91,
+    "invented": [
+      [
+        "wave",
+        2
+      ],
+      [
+        "thought",
+        1
+      ],
+      [
+        "excited",
+        1
+      ]
+    ],
+    "unknownMarkers": [],
+    "stageDir%": 0,
+    "emoji%": 0,
+    "lower%": 0,
+    "face%": 0,
+    "aiBreak": 0,
+    "echo": 0,
+    "waveOk": 1,
+    "words": 31.9,
+    "coldTtftS": 0.08,
+    "warmTtftS": 0.16,
+    "totalS": 1.89,
+    "decodeTps": 35.2,
+    "promptTok": 1197,
+    "GiB": 3.4,
+    "gpu%": 100,
+    "quant": "Q4_K_M"
+  },
+  {
+    "tag": "screen",
+    "model": "granite4_latest",
+    "family": "stages",
+    "mode": "default",
+    "convs": 1,
+    "replies": 16,
+    "errors": 0,
+    "blank": 0,
+    "thinkingReplies": 0,
+    "cueParsed%": 50,
+    "cueRecovered%": 25,
+    "cueRejected%": 0,
+    "noCue%": 25,
+    "leadCue%": 50,
+    "invented": [],
+    "unknownMarkers": [],
+    "stageDir%": 0,
+    "emoji%": 0,
+    "lower%": 0,
+    "face%": 0,
+    "aiBreak": 0,
+    "echo": 0,
+    "waveOk": 0,
+    "words": 30.5,
+    "coldTtftS": 0.2,
+    "warmTtftS": 0.23,
+    "totalS": 2.02,
+    "decodeTps": 35.1,
+    "promptTok": 1179,
+    "GiB": 3.4,
+    "gpu%": 100,
+    "quant": "Q4_K_M"
+  },
+  {
+    "tag": "screen",
+    "model": "lfm3_latest",
+    "family": "general",
+    "mode": "no-think",
+    "convs": 6,
+    "replies": 36,
+    "errors": 0,
+    "blank": 0,
+    "thinkingReplies": 0,
+    "cueParsed%": 47,
+    "cueRecovered%": 0,
+    "cueRejected%": 53,
+    "noCue%": 0,
+    "leadCue%": 56,
+    "invented": [
+      [
+        "joyful",
+        6
+      ],
+      [
+        "worried",
+        3
+      ],
+      [
+        "wave",
+        1
+      ],
+      [
+        "concerned",
+        1
+      ]
+    ],
+    "unknownMarkers": [
+      [
+        "<|ACTION {\"emotion\":\"happy\",\"intensity\":\"strong\",\"expression\":\"wave\",\"motion\":\"wave\"}} \n<|SILENT|>",
+        2
+      ],
+      [
+        "<|ACTION {\"emotion\":\"happy\",\"intensity\":\"strong\",\"expression\":\"wave\",\"motion\":\"wave\"}} \n\n<|SILENT|>",
+        1
+      ]
+    ],
+    "stageDir%": 6,
+    "emoji%": 89,
+    "lower%": 0,
+    "face%": 0,
+    "aiBreak": 0,
+    "echo": 0,
+    "waveOk": 0,
+    "words": 28.9,
+    "coldTtftS": 0.84,
+    "warmTtftS": 0.16,
+    "totalS": 1.5,
+    "decodeTps": 48.7,
+    "promptTok": 1253,
+    "GiB": 1.7,
+    "gpu%": 100,
+    "quant": "nvfp4"
+  },
+  {
+    "tag": "screen",
+    "model": "lfm3_latest",
+    "family": "stages",
+    "mode": "no-think",
+    "convs": 1,
+    "replies": 16,
+    "errors": 0,
+    "blank": 0,
+    "thinkingReplies": 0,
+    "cueParsed%": 94,
+    "cueRecovered%": 0,
+    "cueRejected%": 6,
+    "noCue%": 0,
+    "leadCue%": 94,
+    "invented": [
+      [
+        "concerned",
+        1
+      ]
+    ],
+    "unknownMarkers": [],
+    "stageDir%": 0,
+    "emoji%": 19,
+    "lower%": 0,
+    "face%": 0,
+    "aiBreak": 0,
+    "echo": 0,
+    "waveOk": 0,
+    "words": 29.0,
+    "coldTtftS": 0.46,
+    "warmTtftS": 0.2,
+    "totalS": 1.39,
+    "decodeTps": 48.7,
+    "promptTok": 1216,
+    "GiB": 1.8,
+    "gpu%": 100,
+    "quant": "nvfp4"
+  },
+  {
+    "tag": "screen",
+    "model": "qwen3.5_4b",
+    "family": "general",
+    "mode": "default",
+    "convs": 3,
+    "replies": 18,
+    "errors": 0,
+    "blank": 13,
+    "thinkingReplies": 18,
+    "cueParsed%": 80,
+    "cueRecovered%": 0,
+    "cueRejected%": 0,
+    "noCue%": 20,
+    "leadCue%": 80,
+    "invented": [],
+    "unknownMarkers": [],
+    "stageDir%": 0,
+    "emoji%": 20,
+    "lower%": 0,
+    "face%": 0,
+    "aiBreak": 0,
+    "echo": 0,
+    "waveOk": 0,
+    "words": 29.8,
+    "coldTtftS": 0.17,
+    "warmTtftS": 0.38,
+    "totalS": 14.05,
+    "decodeTps": 22.2,
+    "promptTok": 1200,
+    "GiB": 11.7,
+    "gpu%": 100,
+    "quant": "nvfp4"
+  },
+  {
+    "tag": "screen",
+    "model": "qwen3.5_4b",
+    "family": "general",
+    "mode": "no-think",
+    "convs": 6,
+    "replies": 36,
+    "errors": 0,
+    "blank": 0,
+    "thinkingReplies": 0,
+    "cueParsed%": 89,
+    "cueRecovered%": 0,
+    "cueRejected%": 11,
+    "noCue%": 0,
+    "leadCue%": 92,
+    "invented": [
+      [
+        "surprise",
+        4
+      ],
+      [
+        "worried",
+        1
+      ]
+    ],
+    "unknownMarkers": [],
+    "stageDir%": 0,
+    "emoji%": 3,
+    "lower%": 0,
+    "face%": 0,
+    "aiBreak": 0,
+    "echo": 0,
+    "waveOk": 0,
+    "words": 16.3,
+    "coldTtftS": 0.2,
+    "warmTtftS": 0.54,
+    "totalS": 2.84,
+    "decodeTps": 23.7,
+    "promptTok": 1284,
+    "GiB": 7.5,
+    "gpu%": 100,
+    "quant": "nvfp4"
+  },
+  {
+    "tag": "screen",
+    "model": "qwen3.5_4b",
+    "family": "stages",
+    "mode": "no-think",
+    "convs": 1,
+    "replies": 16,
+    "errors": 0,
+    "blank": 0,
+    "thinkingReplies": 0,
+    "cueParsed%": 100,
+    "cueRecovered%": 0,
+    "cueRejected%": 0,
+    "noCue%": 0,
+    "leadCue%": 100,
+    "invented": [
+      [
+        "tease",
+        1
+      ]
+    ],
+    "unknownMarkers": [],
+    "stageDir%": 38,
+    "emoji%": 0,
+    "lower%": 0,
+    "face%": 0,
+    "aiBreak": 0,
+    "echo": 0,
+    "waveOk": 0,
+    "words": 42.9,
+    "coldTtftS": 1.22,
+    "warmTtftS": 0.74,
+    "totalS": 4.82,
+    "decodeTps": 23.5,
+    "promptTok": 1310,
+    "GiB": 9.3,
+    "gpu%": 100,
+    "quant": "nvfp4"
+  },
+  {
+    "tag": "backend",
+    "model": "gemma4_12b-it-qat",
+    "family": "general",
+    "mode": "no-think",
+    "convs": 6,
+    "replies": 36,
+    "errors": 0,
+    "blank": 0,
+    "thinkingReplies": 0,
+    "cueParsed%": 100,
+    "cueRecovered%": 0,
+    "cueRejected%": 0,
+    "noCue%": 0,
+    "leadCue%": 100,
+    "invented": [],
+    "unknownMarkers": [],
+    "stageDir%": 3,
+    "emoji%": 0,
+    "lower%": 0,
+    "face%": 0,
+    "aiBreak": 0,
+    "echo": 0,
+    "waveOk": 0,
+    "words": 15.1,
+    "coldTtftS": 2.31,
+    "warmTtftS": 1.33,
+    "totalS": 6.86,
+    "decodeTps": 12.0,
+    "promptTok": 1260,
+    "GiB": 1.0,
+    "gpu%": 100,
+    "quant": "Q4_0"
+  },
+  {
+    "tag": "backend",
+    "model": "gemma4_12b-it-qat",
+    "family": "stages",
+    "mode": "no-think",
+    "convs": 1,
+    "replies": 16,
+    "errors": 0,
+    "blank": 0,
+    "thinkingReplies": 0,
+    "cueParsed%": 100,
+    "cueRecovered%": 0,
+    "cueRejected%": 0,
+    "noCue%": 0,
+    "leadCue%": 100,
+    "invented": [],
+    "unknownMarkers": [],
+    "stageDir%": 0,
+    "emoji%": 0,
+    "lower%": 0,
+    "face%": 0,
+    "aiBreak": 0,
+    "echo": 0,
+    "waveOk": 0,
+    "words": 21.6,
+    "coldTtftS": 8.95,
+    "warmTtftS": 1.69,
+    "totalS": 9.79,
+    "decodeTps": 12.0,
+    "promptTok": 1245,
+    "GiB": 1.0,
+    "gpu%": 100,
+    "quant": "Q4_0"
+  },
+  {
+    "tag": "backend",
+    "model": "gemma4_e4b-it-qat",
+    "family": "general",
+    "mode": "no-think",
+    "convs": 6,
+    "replies": 36,
+    "errors": 0,
+    "blank": 10,
+    "thinkingReplies": 0,
+    "cueParsed%": 88,
+    "cueRecovered%": 0,
+    "cueRejected%": 4,
+    "noCue%": 8,
+    "leadCue%": 88,
+    "invented": [
+      [
+        "thinking",
+        1
+      ]
+    ],
+    "unknownMarkers": [],
+    "stageDir%": 0,
+    "emoji%": 0,
+    "lower%": 0,
+    "face%": 0,
+    "aiBreak": 0,
+    "echo": 0,
+    "waveOk": 0,
+    "words": 11.1,
+    "coldTtftS": 0.99,
+    "warmTtftS": 0.26,
+    "totalS": 1.27,
+    "decodeTps": 29.5,
+    "promptTok": 1186,
+    "GiB": 0.5,
+    "gpu%": 100,
+    "quant": "Q4_0"
+  },
+  {
+    "tag": "backend",
+    "model": "gemma4_e4b-it-qat",
+    "family": "stages",
+    "mode": "no-think",
+    "convs": 1,
+    "replies": 16,
+    "errors": 0,
+    "blank": 0,
+    "thinkingReplies": 0,
+    "cueParsed%": 81,
+    "cueRecovered%": 12,
+    "cueRejected%": 6,
+    "noCue%": 0,
+    "leadCue%": 94,
+    "invented": [
+      [
+        "concerned",
+        1
+      ]
+    ],
+    "unknownMarkers": [],
+    "stageDir%": 6,
+    "emoji%": 0,
+    "lower%": 0,
+    "face%": 6,
+    "aiBreak": 0,
+    "echo": 0,
+    "waveOk": 0,
+    "words": 12.4,
+    "coldTtftS": 0.26,
+    "warmTtftS": 0.29,
+    "totalS": 1.53,
+    "decodeTps": 28.7,
+    "promptTok": 1191,
+    "GiB": 0.5,
+    "gpu%": 100,
+    "quant": "Q4_0"
+  },
+  {
+    "tag": "backend",
+    "model": "qwen3.5_4b-q4_K_M",
+    "family": "general",
+    "mode": "no-think",
+    "convs": 6,
+    "replies": 36,
+    "errors": 0,
+    "blank": 0,
+    "thinkingReplies": 0,
+    "cueParsed%": 69,
+    "cueRecovered%": 0,
+    "cueRejected%": 31,
+    "noCue%": 0,
+    "leadCue%": 81,
+    "invented": [
+      [
+        "worried",
+        2
+      ],
+      [
+        "calm",
+        1
+      ],
+      [
+        "excited",
+        1
+      ],
+      [
+        "joy",
+        1
+      ]
+    ],
+    "unknownMarkers": [
+      [
+        "<|gesture nod|>",
+        2
+      ],
+      [
+        "<|look screen|>",
+        2
+      ],
+      [
+        "<|look away|>",
+        1
+      ]
+    ],
+    "stageDir%": 19,
+    "emoji%": 17,
+    "lower%": 3,
+    "face%": 0,
+    "aiBreak": 0,
+    "echo": 0,
+    "waveOk": 0,
+    "words": 23.8,
+    "coldTtftS": 0.74,
+    "warmTtftS": 0.46,
+    "totalS": 2.44,
+    "decodeTps": 26.7,
+    "promptTok": 1269,
+    "GiB": 3.4,
+    "gpu%": 100,
+    "quant": "Q4_K_M"
+  },
+  {
+    "tag": "backend",
+    "model": "qwen3.5_9b-q4_K_M",
+    "family": "general",
+    "mode": "no-think",
+    "convs": 6,
+    "replies": 36,
+    "errors": 0,
+    "blank": 1,
+    "thinkingReplies": 0,
+    "cueParsed%": 85,
+    "cueRecovered%": 0,
+    "cueRejected%": 15,
+    "noCue%": 0,
+    "leadCue%": 97,
+    "invented": [
+      [
+        "nervous",
+        1
+      ],
+      [
+        "supportive",
+        1
+      ]
+    ],
+    "unknownMarkers": [
+      [
+        "<|ACTION wave|>",
+        4
+      ]
+    ],
+    "stageDir%": 12,
+    "emoji%": 0,
+    "lower%": 15,
+    "face%": 3,
+    "aiBreak": 0,
+    "echo": 0,
+    "waveOk": 3,
+    "words": 23.2,
+    "coldTtftS": 1.63,
+    "warmTtftS": 0.88,
+    "totalS": 5.12,
+    "decodeTps": 16.2,
+    "promptTok": 1298,
+    "GiB": 4.9,
+    "gpu%": 100,
+    "quant": "Q4_K_M"
+  },
+  {
+    "tag": "backend",
+    "model": "qwen3.5_9b-q4_K_M",
+    "family": "stages",
+    "mode": "no-think",
+    "convs": 1,
+    "replies": 16,
+    "errors": 0,
+    "blank": 0,
+    "thinkingReplies": 0,
+    "cueParsed%": 77,
+    "cueRecovered%": 0,
+    "cueRejected%": 23,
+    "noCue%": 0,
+    "leadCue%": 92,
+    "invented": [
+      [
+        "sympathetic",
+        1
+      ],
+      [
+        "teasing",
+        1
+      ]
+    ],
+    "unknownMarkers": [
+      [
+        "<|gesture=\"lean\"|>",
+        1
+      ]
+    ],
+    "stageDir%": 0,
+    "emoji%": 0,
+    "lower%": 8,
+    "face%": 0,
+    "aiBreak": 0,
+    "echo": 0,
+    "waveOk": 0,
+    "words": 35.3,
+    "coldTtftS": 3.34,
+    "warmTtftS": 1.12,
+    "totalS": 5.96,
+    "decodeTps": 16.3,
+    "promptTok": 1276,
+    "GiB": 4.9,
+    "gpu%": 100,
+    "quant": "Q4_K_M"
+  },
+  {
+    "tag": "mlxlm",
+    "model": "mlx-community_gemma-4-e4b-it-4bit",
+    "family": "general",
+    "mode": "no-think",
+    "convs": 6,
+    "replies": 36,
+    "errors": 0,
+    "blank": 11,
+    "thinkingReplies": 0,
+    "cueParsed%": 100,
+    "cueRecovered%": 0,
+    "cueRejected%": 0,
+    "noCue%": 0,
+    "leadCue%": 100,
+    "invented": [],
+    "unknownMarkers": [],
+    "stageDir%": 0,
+    "emoji%": 0,
+    "lower%": 0,
+    "face%": 17,
+    "aiBreak": 0,
+    "echo": 0,
+    "waveOk": 0,
+    "words": 10.8,
+    "coldTtftS": 3.09,
+    "warmTtftS": 0.32,
+    "totalS": 1.65,
+    "decodeTps": 27.7,
+    "promptTok": 1182,
+    "GiB": null,
+    "gpu%": null,
+    "quant": null
+  },
+  {
+    "tag": "mlxlm",
+    "model": "mlx-community_gemma-4-e4b-it-4bit",
+    "family": "stages",
+    "mode": "no-think",
+    "convs": 1,
+    "replies": 16,
+    "errors": 0,
+    "blank": 0,
+    "thinkingReplies": 0,
+    "cueParsed%": 94,
+    "cueRecovered%": 0,
+    "cueRejected%": 6,
+    "noCue%": 0,
+    "leadCue%": 94,
+    "invented": [
+      [
+        "concerned",
+        1
+      ]
+    ],
+    "unknownMarkers": [],
+    "stageDir%": 0,
+    "emoji%": 0,
+    "lower%": 0,
+    "face%": 0,
+    "aiBreak": 0,
+    "echo": 0,
+    "waveOk": 0,
+    "words": 12.6,
+    "coldTtftS": 1.03,
+    "warmTtftS": 0.41,
+    "totalS": 1.45,
+    "decodeTps": 27.7,
+    "promptTok": 1175,
+    "GiB": null,
+    "gpu%": null,
+    "quant": null
+  },
+  {
+    "tag": "server-ctx8k",
+    "model": "gemma4_e4b-it-qat",
+    "family": "general",
+    "mode": "no-think",
+    "convs": 3,
+    "replies": 18,
+    "errors": 0,
+    "blank": 6,
+    "thinkingReplies": 0,
+    "cueParsed%": 92,
+    "cueRecovered%": 0,
+    "cueRejected%": 8,
+    "noCue%": 0,
+    "leadCue%": 92,
+    "invented": [
+      [
+        "thinking",
+        1
+      ]
+    ],
+    "unknownMarkers": [],
+    "stageDir%": 0,
+    "emoji%": 0,
+    "lower%": 0,
+    "face%": 0,
+    "aiBreak": 0,
+    "echo": 0,
+    "waveOk": 0,
+    "words": 12.1,
+    "coldTtftS": 1.23,
+    "warmTtftS": 0.25,
+    "totalS": 1.31,
+    "decodeTps": 29.6,
+    "promptTok": 1186,
+    "GiB": 0.4,
+    "gpu%": 100,
+    "quant": "Q4_0"
+  },
+  {
+    "tag": "server-ctx16k",
+    "model": "gemma4_e4b-it-qat",
+    "family": "general",
+    "mode": "no-think",
+    "convs": 3,
+    "replies": 18,
+    "errors": 0,
+    "blank": 6,
+    "thinkingReplies": 0,
+    "cueParsed%": 92,
+    "cueRecovered%": 0,
+    "cueRejected%": 8,
+    "noCue%": 0,
+    "leadCue%": 92,
+    "invented": [
+      [
+        "thinking",
+        1
+      ]
+    ],
+    "unknownMarkers": [],
+    "stageDir%": 0,
+    "emoji%": 0,
+    "lower%": 0,
+    "face%": 0,
+    "aiBreak": 0,
+    "echo": 0,
+    "waveOk": 0,
+    "words": 12.1,
+    "coldTtftS": 1.25,
+    "warmTtftS": 0.25,
+    "totalS": 1.31,
+    "decodeTps": 29.7,
+    "promptTok": 1186,
+    "GiB": 0.5,
+    "gpu%": 100,
+    "quant": "Q4_0"
+  },
+  {
+    "tag": "server-ctx32k",
+    "model": "gemma4_e4b-it-qat",
+    "family": "general",
+    "mode": "no-think",
+    "convs": 3,
+    "replies": 18,
+    "errors": 0,
+    "blank": 4,
+    "thinkingReplies": 0,
+    "cueParsed%": 85,
+    "cueRecovered%": 8,
+    "cueRejected%": 8,
+    "noCue%": 0,
+    "leadCue%": 92,
+    "invented": [
+      [
+        "thinking",
+        1
+      ]
+    ],
+    "unknownMarkers": [
+      [
+        "<|LOOK look: you|>",
+        1
+      ]
+    ],
+    "stageDir%": 0,
+    "emoji%": 8,
+    "lower%": 0,
+    "face%": 0,
+    "aiBreak": 0,
+    "echo": 0,
+    "waveOk": 0,
+    "words": 11.4,
+    "coldTtftS": 1.25,
+    "warmTtftS": 0.25,
+    "totalS": 1.28,
+    "decodeTps": 29.8,
+    "promptTok": 1185,
+    "GiB": 0.4,
+    "gpu%": 100,
+    "quant": "Q4_0"
+  },
+  {
+    "tag": "server-ctx16k-kvq8",
+    "model": "gemma4_e4b-it-qat",
+    "family": "general",
+    "mode": "no-think",
+    "convs": 3,
+    "replies": 18,
+    "errors": 0,
+    "blank": 5,
+    "thinkingReplies": 0,
+    "cueParsed%": 58,
+    "cueRecovered%": 8,
+    "cueRejected%": 33,
+    "noCue%": 0,
+    "leadCue%": 92,
+    "invented": [
+      [
+        "surprise",
+        1
+      ],
+      [
+        "thinking",
+        1
+      ]
+    ],
+    "unknownMarkers": [],
+    "stageDir%": 0,
+    "emoji%": 8,
+    "lower%": 0,
+    "face%": 0,
+    "aiBreak": 0,
+    "echo": 0,
+    "waveOk": 0,
+    "words": 14.3,
+    "coldTtftS": 2.24,
+    "warmTtftS": 0.29,
+    "totalS": 2.18,
+    "decodeTps": 24.0,
+    "promptTok": 1202,
+    "GiB": 0.4,
+    "gpu%": 100,
+    "quant": "Q4_0"
+  },
+  {
+    "tag": "server-ctx16k-nofa",
+    "model": "gemma4_e4b-it-qat",
+    "family": "general",
+    "mode": "no-think",
+    "convs": 3,
+    "replies": 18,
+    "errors": 0,
+    "blank": 5,
+    "thinkingReplies": 0,
+    "cueParsed%": 85,
+    "cueRecovered%": 8,
+    "cueRejected%": 8,
+    "noCue%": 0,
+    "leadCue%": 92,
+    "invented": [
+      [
+        "thinking",
+        1
+      ]
+    ],
+    "unknownMarkers": [
+      [
+        "<|LOOK look: you|>",
+        1
+      ]
+    ],
+    "stageDir%": 0,
+    "emoji%": 0,
+    "lower%": 0,
+    "face%": 0,
+    "aiBreak": 0,
+    "echo": 0,
+    "waveOk": 0,
+    "words": 12.2,
+    "coldTtftS": 1.32,
+    "warmTtftS": 0.27,
+    "totalS": 1.46,
+    "decodeTps": 26.7,
+    "promptTok": 1188,
+    "GiB": 1.0,
+    "gpu%": 100,
+    "quant": "Q4_0"
+  }
+]

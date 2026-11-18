@@ -1,0 +1,87 @@
+{
+  "schema": "airi.model-scenario/v1",
+  "id": "general-seeded-nothink",
+  "version": 1,
+  "description": "Scratch copy of general-seeded with reasoning disabled (reasoning_effort none).",
+  "prompt": {
+    "register": "talking",
+    "exposedActions": "wave:gesture"
+  },
+  "startsAt": "2026-11-10T09:00",
+  "configs": {
+    "seed-1-nothink": {
+      "max_tokens": 320,
+      "seed": 1,
+      "reasoning_effort": "none"
+    },
+    "seed-2-nothink": {
+      "max_tokens": 320,
+      "seed": 2,
+      "reasoning_effort": "none"
+    },
+    "seed-3-nothink": {
+      "max_tokens": 320,
+      "seed": 3,
+      "reasoning_effort": "none"
+    },
+    "seed-4-nothink": {
+      "max_tokens": 320,
+      "seed": 4,
+      "reasoning_effort": "none"
+    },
+    "seed-5-nothink": {
+      "max_tokens": 320,
+      "seed": 5,
+      "reasoning_effort": "none"
+    },
+    "seed-6-nothink": {
+      "max_tokens": 320,
+      "seed": 6,
+      "reasoning_effort": "none"
+    },
+    "temp-0.3-seed-1-nothink": {
+      "max_tokens": 320,
+      "seed": 1,
+      "temperature": 0.3,
+      "reasoning_effort": "none"
+    },
+    "temp-0.3-seed-2-nothink": {
+      "max_tokens": 320,
+      "seed": 2,
+      "temperature": 0.3,
+      "reasoning_effort": "none"
+    },
+    "temp-0.3-seed-3-nothink": {
+      "max_tokens": 320,
+      "seed": 3,
+      "temperature": 0.3,
+      "reasoning_effort": "none"
+    },
+    "temp-0.3-seed-4-nothink": {
+      "max_tokens": 320,
+      "seed": 4,
+      "temperature": 0.3,
+      "reasoning_effort": "none"
+    },
+    "temp-0.3-seed-5-nothink": {
+      "max_tokens": 320,
+      "seed": 5,
+      "temperature": 0.3,
+      "reasoning_effort": "none"
+    },
+    "temp-0.3-seed-6-nothink": {
+      "max_tokens": 320,
+      "seed": 6,
+      "temperature": 0.3,
+      "reasoning_effort": "none"
+    }
+  },
+  "turns": [
+    "hey, good morning!",
+    "i'm kinda nervous about my presentation tomorrow",
+    "update: i got the job i told you about!!",
+    "show me your most surprised face",
+    "can you wave at me?",
+    "what's the difference between a planet and a dwarf planet?"
+  ]
+}
