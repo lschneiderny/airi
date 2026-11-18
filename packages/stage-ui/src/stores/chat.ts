@@ -18,7 +18,7 @@ import { ContextUpdateStrategy } from '@proj-airi/server-sdk'
 import { IOAttributes, IOEvents, IOSpanNames, IOSubsystems } from '@proj-airi/stage-shared'
 import { renderCharacterContext } from '@proj-airi/stage-shared/character-state'
 import { renderRegisterSection } from '@proj-airi/stage-shared/conversation-register'
-import { TOUCH_TOPIC_KEY } from '@proj-airi/stage-shared/situation'
+import { heldTitles, TOUCH_TOPIC_KEY } from '@proj-airi/stage-shared/situation'
 import { composePrompt, REPLY_MAX_TOKENS, STAGE_RUNTIME_CONFIG } from '@proj-airi/stage-shared/stage-contract'
 import { isEqual } from 'es-toolkit'
 import { nanoid } from 'nanoid'
@@ -1021,6 +1021,8 @@ export const useChatStore = defineStore('chat', () => {
           read: id => memory.read(id, characterId),
           write: entry => memory.write(entry, characterId),
           forget: id => memory.forget(id, characterId),
+          // An unprompted turn has no user message, so no title in it counts as stated by the owner.
+          guard: () => ({ titles: heldTitles(situationStore.state), ownerText: unprompted ? '' : payload.text }),
         })
       : []
     // The devtools Memory inspector lists every memory tool call of this run.

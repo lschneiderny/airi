@@ -67,6 +67,12 @@ These requests are not character turns either. Each builds its own prompt withou
 - `packages/core-agent` holds no stage prompt text. Its Spark Notify agent receives the host instruction as a function. The exception is the eval oracle, `packages/core-agent/src/runtime/cue-compliance.ts` and `packages/core-agent/src/runtime/cue-contract-fixtures.ts`, which stays in core-agent because qa-tools scores against it.
 - The situation block, the trigger message of an unprompted turn, and per-message timestamps are not segments and must stay out of the system prompt.
 
+## Stored text
+
+The situation block is never stored, but the model can copy a title from it into text that is stored. Code keeps a held title out of that text. `heldTitles` in `packages/stage-shared/src/situation/held-titles.ts` lists the titles the [situation](glossary.md#situation) holds: the foreground window title and the page and video titles of web extension context. `repeatsHeldTitle` in the same file answers whether a text contains one of them whole, ignoring case and whitespace differences. A title shorter than `HELD_TITLE_MIN_CHARS` (8) never matches. While the user shares no titles, the list is empty and nothing is filtered.
+
+- **Memory writes.** `builtIn_writeMemory` checks every entry with `memoryWriteRefusal` in `packages/stage-ui/src/tools/memory.ts` before it saves it. An entry whose description or body repeats a held title is refused, unless the user's own message of the same turn contains that title. An unprompted turn has no user message, so the exception never applies there. An entry that matches a credential shape (a provider key prefix such as `sk-` or `ghp_`, or a `password:` style pair with a value) is always refused. A refused entry is not saved, the tool result tells the model why in one sentence, and the other entries of the call are saved. The sentences in `composeMemoryHeader` stay the main rule; the code covers only these shapes.
+
 ## Target
 
 This section states the design that refactors move toward. It does not describe the code. The [character mind ADR](../adr/2026-11-17-character-mind-direction.md) records the decision. When a refactor lands a rule, the rule moves into the sections above and the gaps it closes leave the list below.
