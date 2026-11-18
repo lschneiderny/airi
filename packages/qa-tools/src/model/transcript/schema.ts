@@ -51,6 +51,12 @@ const LiveSchema = v.strictObject({
   }),
   /** Full hash of the stage contract in the system prompt; `prompt.contractVersion` is its first 12 characters. */
   contractSha256: v.string(),
+  /** The captured app request whose system prompt and tools the run sent, when it ran under app conditions. */
+  appRequest: v.optional(v.strictObject({
+    source: v.string(),
+    systemSha256: v.string(),
+    toolsSha256: v.nullable(v.string()),
+  })),
 })
 
 const recordEntries = {
@@ -112,6 +118,11 @@ const recordEntries = {
   timing: v.strictObject({
     ttftMs: v.nullable(v.number()),
     totalMs: v.nullable(v.number()),
+    /**
+     * Time until the runtime had the first spoken character, which a reply that opens with a long cue delays past its
+     * first token. Live runs record it; it is `null` for a reply without speech.
+     */
+    firstSpeechMs: v.optional(v.nullable(v.number())),
   }),
   usage: v.nullable(v.record(v.string(), v.unknown())),
   stickers: v.optional(v.array(v.strictObject({ id: v.string() }))),

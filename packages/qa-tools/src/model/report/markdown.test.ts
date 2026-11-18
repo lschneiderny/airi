@@ -42,7 +42,7 @@ function run(runKey = 'b'): RunScore {
     residualReplies: 1,
     chunkVariant: 2,
     style: { emoji: 1, stageDirection: 2, firstLetterLower: 1, personaFace: 2, aiBreak: 1, exampleEcho: 2, meanWords: 12.5 },
-    timing: { replies: 2, meanTtftMs: 100, meanTotalMs: 2000, genTps: 30, coldTtftMs: 4000, warmTtftMs: 250, decodeTps: 12.5, meanPromptTokens: 1200 },
+    timing: { replies: 2, meanTtftMs: 100, meanTotalMs: 2000, genTps: 30, coldTtftMs: 4000, warmTtftMs: 250, warmFirstSpeechMs: 900, decodeTps: 12.5, meanPromptTokens: 1200 },
   }
 }
 
@@ -51,14 +51,14 @@ describe('renderSummaryMarkdown', () => {
     const runs = [run('b'), { ...run('a'), model: 'first' }]
     const text = renderSummaryMarkdown(runs)
     const lines = text.split('\n')
-    const columns = '| Model | Config | replies | errors | blank | toolNoSpeech | parsed% | recovered% | rejected% | none% | leadCue% | acts | actsInert | invalidEmotion | inventedEmotions | forms b/c/j | intensity s/c/st/n/-/? | fields e/m/l/ld/pe | actions acc/unk | action tools unk/calls | gestures ok/drop/bare | breaks kept/ign | silent mk/wordless/alone | faces | delay valid/count | call valid/count | stripped | stageRejected | unknownMarkers | chunkVariant | emoji | stageDir | firstLower% | personaFace% | aiBreak | exampleEcho | meanWords | timing replies | meanTtftMs | meanTotalMs | genTps | coldTtftMs | warmTtftMs | decodeTps | promptTok |'
+    const columns = '| Model | Config | replies | errors | blank | toolNoSpeech | parsed% | recovered% | rejected% | none% | leadCue% | acts | actsInert | invalidEmotion | inventedEmotions | forms b/c/j | intensity s/c/st/n/-/? | fields e/m/l/ld/pe | actions acc/unk | action tools unk/calls | gestures ok/drop/bare | breaks kept/ign | silent mk/wordless/alone | faces | delay valid/count | call valid/count | stripped | stageRejected | unknownMarkers | chunkVariant | emoji | stageDir | firstLower% | personaFace% | aiBreak | exampleEcho | meanWords | timing replies | meanTtftMs | meanTotalMs | genTps | coldTtftMs | warmTtftMs | warmSpeechMs | decodeTps | promptTok |'
     expect(lines).toContain(columns)
     expect(text).toContain('**Contract**')
     expect(text).toContain('**Heuristic**')
     expect(text).toContain('**Timing**')
     expect(text.indexOf('**Contract**')).toBeLessThan(text.indexOf('**Heuristic**'))
     expect(text.indexOf('**Heuristic**')).toBeLessThan(text.indexOf('**Timing**'))
-    expect(lines).toContain('| model | defaults | 5 | 1 | 1 | 1 | 50% | 50% | 0% | 0% | 50% | 6 | 2 | 4 | pouting: 3, zany: 2, alien: 1 | 1/2/3 | 1/2/3/4/5/6 | 2/3/4/5/6 | 7/8 | 10/9 | 11/12/13 | 14/15 | 16/17/18 | 19 | 2/3 | 1/4 | 2 | 3 | LOOK: 3, OTHER: 2, X: 1 | 2 | 1 | 2 | 50% | 100% | 1 | 2 | 12.5 | 2 | 100 | 2000 | 30 | 4000 | 250 | 12.5 | 1200 |')
+    expect(lines).toContain('| model | defaults | 5 | 1 | 1 | 1 | 50% | 50% | 0% | 0% | 50% | 6 | 2 | 4 | pouting: 3, zany: 2, alien: 1 | 1/2/3 | 1/2/3/4/5/6 | 2/3/4/5/6 | 7/8 | 10/9 | 11/12/13 | 14/15 | 16/17/18 | 19 | 2/3 | 1/4 | 2 | 3 | LOOK: 3, OTHER: 2, X: 1 | 2 | 1 | 2 | 50% | 100% | 1 | 2 | 12.5 | 2 | 100 | 2000 | 30 | 4000 | 250 | 900 | 12.5 | 1200 |')
     expect(text.indexOf('| first |')).toBeLessThan(text.indexOf('| model |'))
     expect(text).toContain('closure-hash')
     expect(text).toContain('25/25')
@@ -93,7 +93,7 @@ describe('renderSummaryMarkdown', () => {
     expect(line).toBeDefined()
     expect(line).toContain('m&#124;&#96;name&#96;<br>next')
     expect(line).toContain('&lt;&#124;LOOK screen&#124;&gt;: 2')
-    expect(line.split('|')).toHaveLength(47)
+    expect(line.split('|')).toHaveLength(48)
   })
 
   it('renders all-declined rates as zero without division by zero and separates sets', () => {

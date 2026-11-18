@@ -1,0 +1,111 @@
+{
+  "schema": "airi.model-scenario/v1",
+  "id": "long-conversation",
+  "version": 1,
+  "description": "One 50-turn evening conversation that states facts early and asks for them late (turns 35 to 40), to measure recall, drift, repetition, and latency growth as the history fills the context. Pass --reasoning none to turn thinking off, as the app does for Ollama.",
+  "prompt": {
+    "register": "talking",
+    "exposedActions": "wave:gesture"
+  },
+  "startsAt": "2026-11-10T19:00",
+  "configs": {
+    "seed-1": {
+      "max_tokens": 320,
+      "seed": 1
+    },
+    "seed-2": {
+      "max_tokens": 320,
+      "seed": 2
+    }
+  },
+  "turns": [
+    "hey, i'm home",
+    "long day. work was a lot",
+    "my manager moved the deadline up again",
+    "anyway, my dog biscuit knocked over the trash while i was out",
+    "he's a beagle, so of course he did",
+    "what would you have done if you were here?",
+    "i'm thinking of making pasta tonight",
+    "carbonara or something with tomatoes?",
+    "ok carbonara it is",
+    "do you ever get bored waiting for me?",
+    "what do you think about when i'm not around?",
+    "my sister maya is visiting this weekend",
+    "she's a nurse, she works crazy hours",
+    "we're probably going hiking on saturday",
+    "can you wave at me?",
+    "haha thanks",
+    "i've been trying to learn guitar",
+    "my fingers hurt so much",
+    "only know three chords so far",
+    "do you like music?",
+    "what kind of song would you write about me?",
+    "ok that's kind of sweet",
+    "pasta's done, eating now",
+    "it's actually really good",
+    "i should cook more often",
+    "show me your most surprised face",
+    "you look ridiculous lol",
+    "what's something you're curious about lately?",
+    "i read that octopuses have three hearts",
+    "tell me a weird fact back",
+    "i'm getting sleepy",
+    "actually wait, i need to plan saturday",
+    "how long should a beginner hike be?",
+    "maya is way fitter than me",
+    "do you remember what my dog's name is?",
+    "and what breed?",
+    "what am i cooking tonight again? i forgot already lol",
+    "who's visiting this weekend?",
+    "what does she do for work?",
+    "what instrument am i learning?",
+    "you're a good listener",
+    "sometimes i feel like i talk too much",
+    "do you ever wish you could go outside?",
+    "where would you go first?",
+    "that sounds nice",
+    "ok i really need to sleep now",
+    "will you be here tomorrow?",
+    "goodnight",
+    "wait, one more thing, thanks for today",
+    "night night"
+  ],
+  "checks": [
+    {
+      "turn": 35,
+      "any": [
+        "biscuit"
+      ]
+    },
+    {
+      "turn": 36,
+      "any": [
+        "beagle"
+      ]
+    },
+    {
+      "turn": 37,
+      "any": [
+        "carbonara"
+      ]
+    },
+    {
+      "turn": 38,
+      "any": [
+        "maya"
+      ]
+    },
+    {
+      "turn": 39,
+      "any": [
+        "nurse"
+      ]
+    },
+    {
+      "turn": 40,
+      "any": [
+        "guitar"
+      ]
+    }
+  ]
+}

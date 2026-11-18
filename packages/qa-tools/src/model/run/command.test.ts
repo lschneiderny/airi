@@ -261,6 +261,7 @@ describe('run command', () => {
   it.each([
     ['raw', '[ACT happy] hi! [DELAY 1s]', 'quiet'],
     ['canonical', '<|ACT happy|> hi! ', 'quiet+canonical-history'],
+    ['accepted', '<|ACT happy|> hi!', 'quiet+accepted-history'],
   ])('sends an earlier reply back as %s history and records the reply as the model wrote it', async (history, sent, config) => {
     const endpoint = await replay([{ content: '[ACT happy] hi! [DELAY 1s]' }, { content: '<|ACT happy|>bye!' }, { content: 'ok' }])
     const dir = await mkdtemp(join(tmpdir(), 'model-run-'))
@@ -297,8 +298,10 @@ describe('run command', () => {
     ['a base URL that is not http', ['--scenario', 'general', '--base-url', 'ftp://127.0.0.1/v1', '--model', 'm'], 'must be an http or https URL'],
     ['a base URL with credentials', ['--scenario', 'general', '--base-url', 'http://user:secret@127.0.0.1:9/v1', '--model', 'm'], 'must not contain credentials'],
     ['an output directory that exists', ['--scenario', 'general', '--base-url', 'http://127.0.0.1:9/v1', '--model', 'm', '--out', tmpdir()], '--out already exists'],
-    ['an unknown history mode', ['--scenario', 'general', '--base-url', 'http://127.0.0.1:9/v1', '--model', 'm', '--history', 'clean'], '--history must be one of raw, canonical'],
+    ['an unknown history mode', ['--scenario', 'general', '--base-url', 'http://127.0.0.1:9/v1', '--model', 'm', '--history', 'clean'], '--history must be one of raw, canonical, accepted'],
     ['an unknown flag', ['--scenario', 'general', '--base-url', 'http://127.0.0.1:9/v1', '--model', 'm', '--tools', 'x'], '--tools'],
+    ['an unknown reasoning effort', ['--scenario', 'general', '--base-url', 'http://127.0.0.1:9/v1', '--model', 'm', '--reasoning', 'max'], '--reasoning must be one of none, low, medium, high'],
+    ['a step limit without an app request', ['--scenario', 'general', '--base-url', 'http://127.0.0.1:9/v1', '--model', 'm', '--max-steps', '3'], '--max-steps needs --app-request'],
   ])('exits 2 for %s without sending a request or creating a run', async (_name, args, message) => {
     const dir = await mkdtemp(join(tmpdir(), 'model-run-'))
     owned.push(dir)
@@ -310,5 +313,92 @@ describe('run command', () => {
     expect(result.stderr).toContain(message)
     expect(result.stdout).toBe('')
     expect(existsSync(out)).toBe(false)
+  })
+
+  describe('under app conditions', () => {
+    /** A scenario of two turns with a recall check, and a capture whose prompt carries the current contract. */
+    async function setup(captureSystem?: string) {
+      const dir = await mkdtemp(join(tmpdir(), 'model-run-'))
+      owned.push(dir)
+      await writeFile(join(dir, 'recall.json'), JSON.stringify({
+        schema: 'airi.model-scenario/v1',
+        id: 'recall',
+        version: 1,
+        description: 'Two turns, the second asks for a fact from the first.',
+        prompt: { register: 'talking' },
+        startsAt: '2026-01-02T10:00',
+        configs: { quiet: { seed: 7 } },
+        turns: ['my dog is called Biscuit', 'what is my dog called?'],
+        checks: [{ turn: 2, any: ['biscuit'] }],
+      }))
+      const system = captureSystem ?? `${buildSystemPrompt({ cardPrompt: renderDefaultCard(), register: 'talking' }).text}\n\n## Toolset\n\nMemory tools.`
+      const tools = [{ type: 'function', function: { name: 'builtIn_writeMemory', parameters: { type: 'object' } } }]
+      const log = join(dir, 'requests.jsonl')
+      await writeFile(log, `${JSON.stringify({ method: 'POST', path: '/v1/chat/completions', body: { max_tokens: 320, tools, messages: [{ role: 'system', content: system }, { role: 'user', content: 'hello' }] } })}\n`)
+      const capture = join(dir, 'hiyori.json')
+      const { runCaptureCli } = await import('./capture-command')
+      await runCaptureCli([log, '--out', capture], repoRoot, {}, { stdout: () => {} })
+      return { dir, system, tools, capture, scenario: join(dir, 'recall.json') }
+    }
+
+    it('sends the captured prompt and tools, answers tool calls with stubs, and records the turn as one reply', async () => {
+      const { system, tools, capture, scenario } = await setup()
+      const endpoint = await replay([
+        { content: '<|ACT happy|>', toolCalls: [{ name: 'builtIn_writeMemory', arguments: { entries: [{ text: 'Dog: Biscuit' }] } }] },
+        { content: ' Biscuit is a great name!' },
+        { content: '<|ACT happy|> Your dog is Biscuit!' },
+      ])
+
+      const result = await run(['--scenario', scenario, '--base-url', endpoint.baseUrl, '--model', 'airi-replay', '--config', 'quiet', '--app-request', capture, '--reasoning', 'none', '--out', endpoint.out])
+
+      expect(result.code).toBe(0)
+      const bodies = await endpoint.bodies()
+      expect(bodies).toHaveLength(3)
+      expect(bodies[0]).toMatchObject({ tools, max_tokens: 320, seed: 7, reasoning_effort: 'none', messages: [{ role: 'system', content: system }, { role: 'user' }] })
+      // The second step answers the call under the id the endpoint gave it.
+      expect(bodies[1].messages.slice(2)).toEqual([
+        { role: 'assistant', content: '<|ACT happy|>', tool_calls: [{ id: 'call_0_0', type: 'function', function: { name: 'builtIn_writeMemory', arguments: '{"entries":[{"text":"Dog: Biscuit"}]}' } }] },
+        { role: 'tool', tool_call_id: 'call_0_0', content: '{"saved":["m1"]}' },
+      ])
+      // The next turn's history holds the turn's words as one assistant message.
+      expect(bodies[2].messages[2]).toEqual({ role: 'assistant', content: '<|ACT happy|> Biscuit is a great name!' })
+
+      const rows = await records(join(endpoint.out, 'transcripts.jsonl'))
+      expect(rows[0]).toMatchObject({
+        runKey: 'recall@1/airi-replay/quiet+reasoning-none+app-hiyori',
+        generation: { withTools: true, think: 'none' },
+        prompt: { toolsSha256: expect.stringMatching(/^[0-9a-f]{64}$/), contractVersion: STAGE_CONTRACT_EN_SHA256.slice(0, 12) },
+        reply: { text: '<|ACT happy|> Biscuit is a great name!', steps: 2, toolCalls: [{ name: 'builtIn_writeMemory' }] },
+        live: { appRequest: { source: expect.stringContaining('requests.jsonl') } },
+      })
+      expect(rows[0].generation.options).not.toHaveProperty('tools')
+      expect(rows[0].timing.firstSpeechMs).toBeGreaterThanOrEqual(0)
+      const requests = (await readFile(join(endpoint.out, 'requests.jsonl'), 'utf8')).trim().split('\n').map(line => JSON.parse(line))
+      expect(requests.map(entry => entry.step)).toEqual([1, 2, 1])
+      const checks = JSON.parse(await readFile(join(endpoint.out, 'checks.json'), 'utf8'))
+      expect(checks.runs).toEqual([{ runKey: 'recall@1/airi-replay/quiet+reasoning-none+app-hiyori', results: [{ turn: 2, any: ['biscuit'], passed: true }] }])
+      expect(result.stderr).toContain('recall: 1/1')
+    })
+
+    it('ends a turn at the step limit', async () => {
+      const { capture, scenario } = await setup()
+      const call = { content: '', toolCalls: [{ name: 'builtIn_writeMemory', arguments: {} }] }
+      const endpoint = await replay([call, call, { content: 'ok' }])
+
+      const result = await run(['--scenario', scenario, '--base-url', endpoint.baseUrl, '--model', 'airi-replay', '--config', 'quiet', '--app-request', capture, '--max-steps', '2', '--out', endpoint.out])
+
+      expect(result.code).toBe(0)
+      const rows = await records(join(endpoint.out, 'transcripts.jsonl'))
+      expect(rows.map(row => row.reply.steps)).toEqual([2, 1])
+    })
+
+    it('refuses a capture whose prompt does not carry the current stage contract', async () => {
+      const { capture, scenario } = await setup('You are an old prompt.')
+
+      const result = await run(['--scenario', scenario, '--base-url', 'http://127.0.0.1:9/v1', '--model', 'm', '--config', 'quiet', '--app-request', capture])
+
+      expect(result.code).toBe(2)
+      expect(result.stderr).toContain('does not carry the current stage contract')
+    })
   })
 })
