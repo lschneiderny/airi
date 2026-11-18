@@ -73,6 +73,10 @@ The situation block is never stored, but the model can copy a title from it into
 
 - **Memory writes.** `builtIn_writeMemory` checks every entry with `memoryWriteRefusal` in `packages/stage-ui/src/tools/memory.ts` before it saves it. An entry whose description or body repeats a held title is refused, unless the user's own message of the same turn contains that title. An unprompted turn has no user message, so the exception never applies there. An entry that matches a credential shape (a provider key prefix such as `sk-` or `ghp_`, or a `password:` style pair with a value) is always refused. A refused entry is not saved, the tool result tells the model why in one sentence, and the other entries of the call are saved. The sentences in `composeMemoryHeader` stay the main rule; the code covers only these shapes.
 - **Trigger messages.** The trigger message of an unprompted turn is stored in chat history with its topic text. Both senders pass that text through `unpromptedTopicText` in `packages/stage-shared/src/situation/reducer.ts`: the gate in `useSituationStore` and the widget reaction in `useContextBridgeStore`. For a topic of the web extension (`WEB_EXTENSION_SOURCE`) the function returns only the kind of topic, so the page or video title and link reach the model through the situation block alone. The headline and note of every other plugin are stored unchanged.
+- **Extracted threads and relationship events.** `createThreadExtractor` in `packages/stage-ui/src/features/situation/thread-extraction.ts` drops a thread whose summary or cue repeats a held title, and an event whose reason or memory text does. The other entries of the same answer are kept, and the answer is not recorded as invalid.
+- **MOOD cue reasons.** `useCharacterStateStore` in `packages/stage-ui/src/stores/character-state.ts` applies nothing for a MOOD cue whose reason repeats a held title. `parseMoodCue` in `packages/stage-shared/src/character-state/cue.ts` is unchanged.
+
+Dropped threads, events, and cues are dropped silently: the model is told only about a refused memory write.
 
 ## Target
 

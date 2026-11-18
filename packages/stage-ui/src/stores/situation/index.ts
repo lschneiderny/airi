@@ -36,6 +36,7 @@ import {
   evaluateUrgeGate,
   forgetForeground,
   forgetSource,
+  heldTitles,
   initialReactionMemory,
   initialSituationState,
   initialUrgeMemory,
@@ -923,6 +924,7 @@ export const useSituationStore = defineStore('situation', () => {
       selection: async sessionId => await chat?.extractionSelection(sessionId) ?? null,
       messages: sessionId => chat?.sessionMessages(sessionId) ?? [],
       extractedThrough: sessionId => extractedThrough.find(position => position.sessionId === sessionId)?.messageId,
+      heldTitles: () => heldTitles(current.value),
       onExtractedThrough(sessionId, messageId) {
         if (!active)
           return

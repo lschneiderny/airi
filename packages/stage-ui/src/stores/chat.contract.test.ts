@@ -2737,6 +2737,20 @@ describe('chat store contract', () => {
       expect(characterEntries()).toEqual([])
     })
 
+    it('applies nothing for a MOOD cue whose reason repeats a title the situation holds', async () => {
+      const characterState = await leadCharacterState()
+      const store = useChatStore()
+      leadSituation()
+      useSituationStore().ingest({ kind: 'context', sourceKey: 'extension:page', text: 'User is browsing: Quarterly tax return 2026.', title: 'Quarterly tax return 2026', atMs: Date.now() })
+      const context = { sessionId: 'session-1', message: { role: 'user' as const, content: 'hello' }, contexts: {}, composedMessage: [] }
+
+      await store.emitTokenSpecialHooks('<|MOOD tenser: the quarterly tax return 2026 looks stressful|>', { ...context, turnId: 'turn-title' })
+      await store.emitTokenSpecialHooks('<|MOOD tenser: you look stressed|>', { ...context, turnId: 'turn-plain' })
+      await characterState.ready()
+
+      expect(modelCueIds(characterState)).toEqual(['model-cue:turn-plain'])
+    })
+
     it('renders a MOOD reason without the marker text the model wrote into it', async () => {
       const characterState = await leadCharacterState()
       registryFromIngested()

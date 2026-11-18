@@ -847,8 +847,8 @@ export const useChatStore = defineStore('chat', () => {
     },
     stream: llmStore.stream,
   })
-  // MOOD cues of the replies become character-state events on the leader.
-  characterState.observeChat(runtime.hooks)
+  // MOOD cues of the replies become character-state events on the leader, unless a reason repeats a held title.
+  characterState.observeChat(runtime.hooks, () => heldTitles(situationStore.state))
 
   // One request owns preparation and generation. Cancellation cannot miss asynchronous startup.
   const requests = new Map<string, {
