@@ -8,7 +8,6 @@ import type { StyleScore } from './style'
 import process from 'node:process'
 
 import { Buffer } from 'node:buffer'
-import { existsSync, readdirSync, statSync } from 'node:fs'
 import { copyFile, open, readFile, stat, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
@@ -18,6 +17,7 @@ import { STAGE_RUNTIME_CONFIG } from '@proj-airi/stage-shared/stage-contract'
 
 import { createRun } from '../../evidence/run'
 import { sha256Bytes } from '../../motion/cache/key'
+import { assertCoreAgentDistCurrent } from '../core-agent-dist'
 import { parseExposedActions } from '../exposed-actions'
 import { renderSummaryMarkdown } from '../report/markdown'
 import { buildStageContract, extractExampleLines } from '../stage-contract'
@@ -34,21 +34,6 @@ interface ScoreCliIo {
   newestMtime?: (path: string) => number | undefined
   /** Runtime boundary seam for proving fixture failures refuse scoring. */
   fixtureScore?: typeof cueContractScorer.score
-}
-
-function newestMtime(path: string): number | undefined {
-  if (!existsSync(path))
-    return undefined
-  if (statSync(path).isFile())
-    return statSync(path).mtimeMs
-  let newest: number | undefined
-  for (const entry of readdirSync(path, { recursive: true, withFileTypes: true })) {
-    if (!entry.isFile())
-      continue
-    const mtime = statSync(join(entry.parentPath, entry.name)).mtimeMs
-    newest = newest === undefined ? mtime : Math.max(newest, mtime)
-  }
-  return newest
 }
 
 /** Scores saved replies through the runtime, refusing invalid input before creating evidence. */
@@ -106,14 +91,7 @@ export async function runScoreCli(
       if (!(await stat(join(setDir, 'transcripts.jsonl'))).isFile())
         throw new Error(`${setDir} lacks transcripts.jsonl`)
     }
-    const dist = resolve(repoRoot, 'packages/core-agent/dist/index.mjs')
-    const runtime = resolve(repoRoot, 'packages/core-agent/src/runtime')
-    const mtime = io.newestMtime ?? newestMtime
-    const distMtime = mtime(dist)
-    const sourceMtime = mtime(runtime)
-    if (distMtime === undefined || (sourceMtime !== undefined && distMtime < sourceMtime)) {
-      throw new Error(`${dist} is ${distMtime === undefined ? 'missing' : 'older than packages/core-agent/src/runtime'}; run pnpm -F @proj-airi/core-agent build`)
-    }
+    const dist = assertCoreAgentDistCurrent(repoRoot, io.newestMtime)
     // Import the dist-backed scorer only after the guard, so missing dist gets the same actionable refusal.
     const scoring = await import('./cue-contract')
     scorer = scoring.cueContractScorer
