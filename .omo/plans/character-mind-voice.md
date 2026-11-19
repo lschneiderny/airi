@@ -1,6 +1,6 @@
 # character-mind-voice - Work Plan
 
-Status: CM3a is done on the branch `luke/feat/character-mind-voice` on 2026-11-19, not yet merged; CM3b is not started. The commits are listed in [Commits](#commits), and the checks in [Checks run](#checks-run). Roadmap rows: slices CM3a and CM3b in [`docs/ai/context/character-mind-roadmap.md`](../../docs/ai/context/character-mind-roadmap.md#steps). Rulings: the [character mind ADR](../../docs/ai/adr/2026-11-17-character-mind-direction.md), the [character mind core ADR](../../docs/ai/adr/2026-11-18-character-mind-core.md), and the [character mind return ADR](../../docs/ai/adr/2026-11-19-character-mind-return.md). Branch: `luke/feat/character-mind-voice`, cut from `luke/feat/character-mind-return` at `e79755141` (CM2, PR #51, not yet merged), which is stacked on `luke/feat/character-mind-touch` (CM1, PR #47, not yet merged), which sits on `main` at `872b74cb5` and contains upstream `moeru-ai/airi` through `b3a6d6071`. The plan proposes two PRs (D1): CM3a on this branch with base `luke/feat/character-mind-return`, and CM3b on `luke/feat/character-mind-widget-turns`, cut from the tip of CM3a, with base `luke/feat/character-mind-voice`. When a PR below one merges, rebase the next branch onto `main` and retarget its PR.
+Status: CM3a and CM3b are both done on their branches on 2026-11-19, not yet merged: CM3a on `luke/feat/character-mind-voice` (PR #52), and CM3b on `luke/feat/character-mind-widget-turns` (CM3b's PR). The commits are listed in [Commits](#commits), and the checks in [Checks run](#checks-run). Roadmap rows: slices CM3a and CM3b in [`docs/ai/context/character-mind-roadmap.md`](../../docs/ai/context/character-mind-roadmap.md#steps). Rulings: the [character mind ADR](../../docs/ai/adr/2026-11-17-character-mind-direction.md), the [character mind core ADR](../../docs/ai/adr/2026-11-18-character-mind-core.md), and the [character mind return ADR](../../docs/ai/adr/2026-11-19-character-mind-return.md). Branch: `luke/feat/character-mind-voice`, cut from `luke/feat/character-mind-return` at `e79755141` (CM2, PR #51, not yet merged), which is stacked on `luke/feat/character-mind-touch` (CM1, PR #47, not yet merged), which sits on `main` at `872b74cb5` and contains upstream `moeru-ai/airi` through `b3a6d6071`. The plan proposes two PRs (D1): CM3a on this branch with base `luke/feat/character-mind-return`, and CM3b on `luke/feat/character-mind-widget-turns`, cut from the tip of CM3a, with base `luke/feat/character-mind-voice`. When a PR below one merges, rebase the next branch onto `main` and retarget its PR.
 
 The owner is away and runs these slices without a plan review. Every design fork below is taken on the recommended option and listed in [Decisions open to the owner's veto](#10-decisions-open-to-the-owners-veto).
 
@@ -450,6 +450,27 @@ Each item is one commit that passes `pnpm verify`.
 - CM3a: Two store tests changed. The "pending turn" test checks that the gate was not evaluated, because the connection tick records a decision. The sulky-mood test waits one more promise round.
 - CM3a: "Evaluate now" reaches the QA bridge as an `evaluateVoice` option that `Stage.vue` fills. A replay test pins `voice.json`.
 
+CM3b:
+
+1. **B1, new-run restore.** A request does not restore the gate memory for a new run; only ticks do. A widget line spoken before a run's first tick therefore leaves the floor unrecorded.
+2. **B1, deadlines.** A deadline passes at `nowMs >= deadline`.
+3. **B1, waiting requests.** A request left waiting after a line closes waits for the next tick or request. The closing outcome does not serve it.
+4. **B1, wake helper.** `nextVoiceWakeAt` takes `MindVoiceState`.
+5. **B1, gate skip.** The gate skips while a request waits, so a waiting request always goes before a reach-out. Its topic is also held from the gate, so the guarantee survives if the skip is relaxed.
+6. **B2, lost callers.** The store tracks `requestVoice` callers. When the mind disconnects or is replaced, or the gate stops, each caller whose line is not running gets `failed`.
+7. **B2, input listeners.** User input listeners start when a window leads and stop when it stops leading. A newly promoted leader learns of an existing composer draft at the composer's next report, within about 5 s.
+8. **B2, publishing.** `MindVoice` also publishes when the earliest deadline changed, so a new request arms the wake timer.
+9. **B2, cancel control.** `SituationChatControls` gains `cancelTurn`.
+10. **B2, tests.**
+    - Three tests of the removed `holdTopic` contract are deleted; the core covers held request topics.
+    - Three thread tests now save `lastOwnDayAtMs` instead of holding her own day.
+    - A performance-call test's `timeoutMs` went from 1 s to 10 s, because the caller's wait is now also the turn's deadline.
+11. **B3, scene-bound sessions.** The old `onBeforeSend` cue hook skipped a turn that does not speak on the host (`context.speaks` false, a scene-bound session). The mind cannot see that, so the look now plays and ends on its own after 10 s.
+12. **B3, refusals.** No extra rule guards a cue against a refused line. The view's `unpromptedPending` and the port's refusal use the same expression in one synchronous call.
+13. **B4, QA path.** No bridge verb was added. `widgetReaction` posts from the stage window through a fresh `BroadcastChannel`.
+14. **B4, fixture.** The `voice.json` widget entries come first and are anchored to the trigger text. The quiet-moment entries carry a negative lookahead. The rendered check found that an unanchored widget entry was taken by a user turn whose situation block named the headline. The fix is folded into B4, with a replay test.
+15. **B2 docs, rule pointers.** Target rule 9 (autonomous behavior) and Target rule 6 (LLM prompt) became pointers to where they landed, because the roadmap cites them by number. Precedence rule 17 holds Target rule 9.
+
 ## Checks run
 
 Run on 2026-11-19 at `0a2b39388`, the last commit that changes code. `AIRI_QA_RIG_FORBOOTH` and `AIRI_QA_MMD_MODEL` named the models.
@@ -467,6 +488,24 @@ Not checked: an unforced fire did not occur in the minutes the sessions ran. Wid
 
 Observed and not changed: `voice-outcome` `spoken` is recorded at the first literal, before `turn` end and `tts`. A declined turn records `turn` start without `turn` end. Under Natural, a declined fire still plays `about-to-speak` and `let-go`.
 
+### CM3b
+
+Run on 2026-11-19 at `03e772baf`. `AIRI_QA_RIG_FORBOOTH` and `AIRI_QA_MMD_MODEL` named the models.
+
+| Check | Result |
+| --- | --- |
+| `pnpm verify --gate --base luke/feat/character-mind-voice` | Exit 0, with lint of 38 files. It ran at `e3523cca6`, before the fixture anchor was folded into B4; that fix touches only the fixture and its replay test, and the replay test passed (16 tests) |
+| `pnpm qa:display run -- pnpm qa:smoke` and `pnpm qa:display run -- pnpm qa:smoke --stage-host desktop --model "$AIRI_QA_MMD_MODEL"` | Both exit 0, with 0 and 0 errors |
+| Rendered A: Live2D (`AIRI_QA_RIG_FORBOOTH`) under Natural | Pass. A widget request spoke after 139 ms (`lines` `widget`, `cues` `about-to-speak`, `voice-outcome` `spoken`, `tts`). A second request declined after 21 ms, with `cues` `let-go` and the let-go idle event, and fell back. A request sent as her reply's `tts` started was deferred: its step had no intents. It spoke at the first tick after her speech ended, 2.4 s after the request and about 560 ms after the `tts` end. 0 errors, and no `replay_exhausted` |
+| Rendered B: MMD (`AIRI_QA_MMD_MODEL`) on the desktop stage | Pass. Spoke after 677 ms, then declined after 469 ms with `let-go`. 0 errors |
+| Rendered C: Universal | Pass. The request went through the mind (`lines` `widget`), declined on a spare entry, and produced no idle events. 0 errors |
+
+Observed and not changed:
+
+- The deferred widget line got no about-to-speak idle event while an expression from the previous reply was active.
+- Cue intents still reach the conductor under Universal, which drops them.
+- A declined turn records a `turn` start with no end.
+
 ## Commits
 
 ### CM3a
@@ -481,3 +520,16 @@ Observed and not changed: `voice-outcome` `spoken` is recorded at the first lite
 - `47a245424` docs(ai): record the voice policy decisions and split the CM3 row
 
 This commit marks CM3a done.
+
+### CM3b
+
+`git log --oneline luke/feat/character-mind-voice..HEAD`, oldest first, without the commit that adds this section:
+
+- `297594831` feat(character-mind): defer widget and plugin turns
+- `57c59f9c7` refactor(stage-ui,i18n,stage-tamagotchi): route widget reactions through the mind
+- `bb0c66276` refactor(stage-ui,character-mind): let the mind cue the body for a line
+- `899fb5075` feat(stage-ui,qa-tools): show widget requests and cues to QA
+- `03e772baf` docs(stage-ui): state the boundary between the character mind and chat
+- `78fee1f41` docs(ai): record the widget turn decisions and close the voice slice
+
+This commit marks the voice slice done.
