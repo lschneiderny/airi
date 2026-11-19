@@ -135,6 +135,7 @@ Read the listed file before starting. Skill paths below are under `.agents/skill
 | Screenshots and visual evidence | [use-vishot](.agents/skills/use-vishot/SKILL.md). Load only the matching runtime and scenario references. |
 | Live2D, VRM, MMD import/rendering in the desktop app | [use-agent-browser-for-airi](.agents/skills/use-agent-browser-for-airi/SKILL.md) |
 | Motion QA, emotion/idle checks, rendered motion runs, headless MMD body motion (`pnpm qa:motion3d`), headless Live2D rig (`pnpm qa:live2d-rig`) | [motion-qa](.agents/skills/motion-qa/SKILL.md); for `qa:motion3d`, also the [qa-tools README](packages/qa-tools/README.md) |
+| Research: motion quality scores (`lab:motion3d`), LLM evaluation (`lab:model`), character-state simulation (`lab:character`) | [lab-tools README](packages/lab-tools/README.md) |
 | Checking a change in the running app: clean start, chat turn, screenshot, errors | [qa-tools README](packages/qa-tools/README.md#clean-start-smoke): `qa:smoke`, `qa:app`, and the `airi-qa` MCP server |
 | Live QA on Linux: anything that opens app windows | [`pnpm qa:display`](scripts/dev-tools/README.md#pnpm-qadisplay) |
 | Performance history, heavy features, incidents, perf regressions between commits | [qa-tools README](packages/qa-tools/README.md#perf-reports) |
