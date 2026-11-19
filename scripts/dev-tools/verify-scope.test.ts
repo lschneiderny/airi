@@ -2,7 +2,7 @@ import type { LastVerifyPass } from './verify-plan'
 
 import { describe, expect, it } from 'vitest'
 
-import { advanceLastPass, followUpChecks, parseVerifyArgs, selectVerifyScope, typecheckFilters, verifySteps } from './verify-plan'
+import { advanceLastPass, followUpChecks, gateQaCommand, gateQaFor, gateQaOutcome, parseVerifyArgs, selectVerifyScope, typecheckFilters, verifySteps } from './verify-plan'
 
 const context = { branch: 'luke/feat/example', mergeBase: 'base', gate: false }
 const entry = { tree: 'verified-tree', head: 'verified-head', recordedAt: '2026-11-10T00:00:00.000Z' }
@@ -90,8 +90,8 @@ describe('verify gate and typecheck planning', () => {
   })
 
   it.each([
-    ['packages/motion-driver-natural/src/index.ts', ['qa:live2d-rig']],
-    ['packages/stage-ui-live2d/src/composables/live2d/live2d.ts', ['qa:smoke', 'qa:live2d-rig']],
+    ['packages/motion-driver-natural/src/index.ts', ['AIRI_QA_RIG_FORBOOTH']],
+    ['packages/stage-ui-live2d/src/composables/live2d/live2d.ts', ['qa:smoke', 'AIRI_QA_RIG_FORBOOTH']],
     ['packages/stage-ui-live2d/src/components/scene.vue', ['qa:smoke']],
     ['packages/stage-ui-mmd/src/index.ts', ['qa:smoke', 'qa:motion3d diff']],
     ['packages/qa-tools/src/t2-3d/reports/idle-acts.ts', ['inject']],
@@ -100,5 +100,45 @@ describe('verify gate and typecheck planning', () => {
     const lines = followUpChecks([{ path, deleted: false }])
     expect(lines).toHaveLength(expected.length)
     expected.forEach((check, index) => expect(lines[index]).toContain(check))
+  })
+
+  it('drops a rule once the gate met all of its QA, and keeps a rule whose QA is only partly met', () => {
+    const changed = [{ path: 'packages/stage-ui-mmd/src/index.ts', deleted: false }]
+    expect(gateQaFor(changed)).toEqual(['smoke', 'model-tests', 'motion-affected'])
+    const partly = followUpChecks(changed, new Set(['smoke', 'model-tests']))
+    expect(partly).toHaveLength(1)
+    expect(partly[0]).toContain('qa:motion3d diff')
+    expect(followUpChecks(changed, new Set(['smoke', 'model-tests', 'motion-affected']))).toEqual([])
+  })
+
+  it('never meets a rule that the gate cannot run', () => {
+    const changed = [{ path: 'packages/qa-tools/src/t2-3d/reports/idle-acts.ts', deleted: false }]
+    expect(gateQaFor(changed)).toEqual([])
+    expect(followUpChecks(changed, new Set(['smoke', 'model-tests', 'motion-affected']))).toHaveLength(1)
+  })
+})
+
+describe('gate QA', () => {
+  it('runs the Linux smoke in a session of its own and stops it after', () => {
+    expect(gateQaCommand('smoke', 'linux', 'base', 'verify-7')).toEqual({
+      argv: ['pnpm', 'qa:display', 'run', '--name', 'verify-7', '--', 'pnpm', '--silent', 'qa:smoke'],
+      after: ['pnpm', 'qa:display', 'down', '--name', 'verify-7'],
+    })
+    expect(gateQaCommand('smoke', 'darwin', 'base', 'verify-7')).toEqual({ argv: ['pnpm', '--silent', 'qa:smoke'] })
+    expect(gateQaCommand('smoke', 'win32', 'base', 'verify-7')).toBeTypeOf('string')
+    expect(gateQaCommand('motion-affected', 'linux', 'base', 'verify-7')).toEqual({ argv: ['pnpm', '--silent', 'qa:motion3d', 'affected', 'base', 'HEAD'] })
+  })
+
+  it.each([
+    ['smoke', 0, { status: 'passed', met: true }],
+    ['smoke', 1, { status: 'failed', met: false }],
+    ['model-tests', 2, { status: 'skipped', met: false }],
+    ['model-tests', 1, { status: 'failed', met: false }],
+    ['motion-affected', 0, { status: 'passed', met: true }],
+    ['motion-affected', 1, { status: 'passed', met: false }],
+    ['motion-affected', 2, { status: 'passed', met: false }],
+    ['motion-affected', 134, { status: 'failed', met: false }],
+  ] as const)('reads %s exit %i', (qa, exitCode, expected) => {
+    expect(gateQaOutcome(qa, exitCode)).toMatchObject(expected)
   })
 })

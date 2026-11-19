@@ -131,7 +131,7 @@ describe('verify step execution', () => {
     const failure = await verifyFails(['--only', 'test'], 'fail')
     expect(failure.code).toBe(1)
     expect(failure.stdout).not.toMatch(/^\[test\] rebuild stale workspace packages$/m)
-    expect(failure.stdout).toMatch(/\[test\] rebuild stale workspace packages failed:\nAll tests passed\n[\s\S]*verify summary[\s\S]*full log: /)
+    expect(failure.stdout).toMatch(/\[test\] rebuild stale workspace packages exited 1:\nAll tests passed\n[\s\S]*verify summary[\s\S]*full log: /)
     const log = /full log: (.+)/.exec(failure.stdout)?.[1] ?? ''
     expect(readFileSync(log, 'utf8')).toContain('All tests passed')
 
@@ -146,6 +146,20 @@ describe('verify step execution', () => {
     expect(id).toBeDefined()
     const waited = await verify(['--wait', id!, '--timeout', '15'])
     expect(waited.stdout).toMatch(/verify summary\n {2}test {6}passed/)
+  }, 20_000)
+
+  it('runs the smoke at the gate when app runtime changed, and then lists no smoke follow-up', async () => {
+    mkdirSync(join(root, 'apps/stage-tamagotchi/src'), { recursive: true })
+    writeFileSync(join(root, 'apps/stage-tamagotchi/src/main.ts'), 'export const app = true\n')
+    // Verify puts the root's node_modules/.bin first on PATH, so this stands in for pnpm.
+    const pnpm = join(root, 'node_modules/.bin/pnpm')
+    mkdirSync(join(pnpm, '..'), { recursive: true })
+    writeFileSync(pnpm, `#!/bin/sh\necho "$*" >> ${JSON.stringify(join(root, 'pnpm-receipts.txt'))}\n`, { mode: 0o755 })
+    const result = await verify(['--gate', '--only', 'test'])
+    const calls = readFileSync(join(root, 'pnpm-receipts.txt'), 'utf8').trim().split('\n')
+    expect(calls[0]).toMatch(/qa:smoke$/)
+    expect(result.stdout).toMatch(/ {2}qa {8}passed .*qa:smoke/)
+    expect(result.stdout).not.toContain('also needed')
   }, 20_000)
 
   it('uses branch coverage on detached HEAD without creating a last record', async () => {
