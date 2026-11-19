@@ -1,7 +1,9 @@
 import type { MindIntent, MindRandom, MindState, MindStimulus } from './types'
 
 import { touchAffect } from '@proj-airi/stage-shared/expression-performance'
-import { reactionPolicy, settleReaction } from '@proj-airi/stage-shared/situation'
+import { reactionPolicy } from '@proj-airi/stage-shared/situation'
+
+import { reactionTurnId } from './voice'
 
 type Stimulus<K extends MindStimulus['kind']> = Extract<MindStimulus, { kind: K }>
 interface Answer { state: MindState, intents: MindIntent[] }
@@ -12,7 +14,7 @@ interface Answer { state: MindState, intents: MindIntent[] }
  * - Mood: `touchAffect` paces and habituates the dose, in seconds.
  * - Face: a poke and a finished pet are moments.
  * - Voice: for a poke or a finished pet with a voice view, `reactionPolicy` decides whether she says a line. The
- *   decision is kept either way. Without a view nobody could speak the line, so the voice state is untouched.
+ *   decision is kept either way. A line takes the line slot unless a reach-out holds it. Without a view nobody could speak the line, so the voice state is untouched.
  */
 export function answerTouch(state: MindState, stimulus: Stimulus<'touch'>, cause: number, nowMs: number, rng: MindRandom): Answer {
   const intents: MindIntent[] = []
@@ -35,27 +37,17 @@ export function answerTouch(state: MindState, stimulus: Stimulus<'touch'>, cause
     intents.push({ id: `${cause}-moment`, cause, channel: 'face', kind: 'moment', moment: stimulus.gesture === 'poke' ? 'poked' : 'petted' })
     if (stimulus.voice) {
       const { decision, memory } = reactionPolicy({ nowMs, gesture: stimulus.gesture === 'poke' ? 'poke' : 'pet', view: stimulus.voice }, voice.reaction, rng)
-      voice = { reaction: memory, lastDecision: decision }
-      if (decision.speak)
-        intents.push({ id: `${cause}-speak`, cause, channel: 'voice', kind: 'speak', line: decision.kind, eventId: decision.eventId })
+      voice = { ...voice, reaction: memory, lastDecision: decision }
+      if (decision.speak) {
+        const turnId = reactionTurnId(decision.eventId)
+        intents.push({ id: `${cause}-speak`, cause, channel: 'voice', kind: 'speak', turnId, line: { kind: 'reaction', reaction: decision.kind, eventId: decision.eventId } })
+        // The touch line takes the line slot, so the gate skips until it settles. A reach-out on its way keeps the
+        // slot; chat refuses the touch line then.
+        if (voice.line === null || voice.line.kind === 'reaction')
+          voice = { ...voice, line: { turnId, kind: 'reaction', before: null } }
+      }
     }
   }
 
   return { state: { ...state, touch: { affect: affect.memory }, voice }, intents }
-}
-
-/**
- * Settles the pending line when the outcome is its own. A spoken line always starts the refractory, also when its
- * attempt is no longer pending (it expired, or a newer attempt replaced it); a newer attempt stays pending for its
- * own outcome. Any other outcome of a line that is not pending changes nothing.
- */
-export function answerVoiceOutcome(state: MindState, stimulus: Stimulus<'voice-outcome'>, nowMs: number): Answer {
-  const memory = state.voice.reaction
-  let reaction = memory
-  if (memory.pending?.eventId === stimulus.eventId)
-    reaction = settleReaction(memory, stimulus.outcome, nowMs)
-  else if (stimulus.outcome === 'spoken')
-    reaction = { ...memory, lastLineAtMs: nowMs }
-
-  return { state: reaction === memory ? state : { ...state, voice: { ...state.voice, reaction } }, intents: [] }
 }

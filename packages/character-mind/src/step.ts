@@ -5,7 +5,8 @@ import { initialReactionMemory } from '@proj-airi/stage-shared/situation'
 
 import { answerEmotion, answerExpressionClear, answerExpressionRequest } from './expression'
 import { answerPresence, answerScreenChange } from './presence'
-import { answerTouch, answerVoiceOutcome } from './touch'
+import { answerTouch } from './touch'
+import { answerExternalSpeech, answerUserTurn, answerVoiceOutcome, answerVoiceTick } from './voice'
 
 /** The state of a mind that has answered nothing. It holds no random source: every draw comes from `step`'s `rng`. */
 export function initialMindState(): MindState {
@@ -13,7 +14,7 @@ export function initialMindState(): MindState {
     seq: 0,
     reaction: createReactionState(),
     touch: { affect: initialTouchAffectMemory },
-    voice: { reaction: initialReactionMemory(), lastDecision: null },
+    voice: { reaction: initialReactionMemory(), lastDecision: null, gate: null, runId: null, stageShown: false, line: null, lastGate: null },
     presence: { away: false, awaySinceMs: null },
     desktop: { screenReactAtMs: null },
   }
@@ -22,8 +23,8 @@ export function initialMindState(): MindState {
 /**
  * The pure core of the character mind: answers the stimuli in order and returns the next state with the intents.
  * It reads no clock and no global random source, and never mutates `state`. Every draw comes from `rng`, in the
- * order of the stimuli: one for the jitter of each new emotion episode, and one for each spoken touch reaction that
- * reaches its roll.
+ * order of the stimuli: one for the jitter of each new emotion episode, one for each spoken touch reaction that
+ * reaches its roll, one for the threshold of each new gate run, and the urge gate's own draws at each tick it evaluates.
  *
  * `nowMs` is epoch milliseconds and must not run backwards between calls: the rules drop a stimulus older than
  * the last one they accepted. Every stimulus advances `seq`, also when it yields no intent.
@@ -51,6 +52,12 @@ export function step(state: MindState, stimuli: readonly MindStimulus[], nowMs: 
       answer = answerPresence(next, stimulus, cause, nowMs)
     else if (stimulus.kind === 'screen-change')
       answer = answerScreenChange(next, cause, nowMs, wakes)
+    else if (stimulus.kind === 'voice-tick')
+      answer = answerVoiceTick(next, stimulus, cause, nowMs, rng)
+    else if (stimulus.kind === 'user-turn')
+      answer = answerUserTurn(next, stimulus)
+    else if (stimulus.kind === 'external-speech')
+      answer = answerExternalSpeech(next, stimulus)
     else
       answer = answerVoiceOutcome(next, stimulus, nowMs)
 
