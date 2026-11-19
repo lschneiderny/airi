@@ -3,10 +3,10 @@ import type { MotionTraceBone } from '@proj-airi/motion-driver-humanoid/motion-t
 import type { Quat } from '../metrics'
 import type { InjectOperation } from './operations'
 
+import { conjugate, multiply, rotationVector } from '@proj-airi/qa-tools/t2-3d/metrics/math'
+import { analyticTrace, angleX, angleY } from '@proj-airi/qa-tools/t2-3d/metrics/test-trace'
 import { describe, expect, it } from 'vitest'
 
-import { conjugate, multiply, rotationVector } from '../metrics/math'
-import { analyticTrace, angleX, angleY } from '../metrics/test-trace'
 import { applyOperations, InjectRefusal } from './operations'
 
 const BONES: readonly MotionTraceBone[] = ['hips', 'spine', 'leftUpperArm', 'leftLowerArm', 'rightUpperArm']

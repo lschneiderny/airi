@@ -2,12 +2,12 @@ import type { MotionTraceEvent } from '@proj-airi/motion-driver-humanoid/motion-
 
 import { resolve } from 'node:path'
 
+import { idleDriveDetail, QA_DRIVE_AWAY } from '@proj-airi/qa-tools/t2-3d/idle-drive'
+import { multiply } from '@proj-airi/qa-tools/t2-3d/metrics/math'
+import { analyticTrace } from '@proj-airi/qa-tools/t2-3d/metrics/test-trace'
 import { beforeAll, describe, expect, it } from 'vitest'
 
 import { loadBands } from '../gate/load'
-import { idleDriveDetail, QA_DRIVE_AWAY } from '../idle-drive'
-import { multiply } from '../metrics/math'
-import { analyticTrace } from '../metrics/test-trace'
 import { ReportUsageError } from './report'
 import { restReport } from './rest'
 import { loadedRun, moves, rotX, rotY, TEST_BONES } from './test-runs'

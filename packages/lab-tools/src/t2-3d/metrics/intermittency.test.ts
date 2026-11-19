@@ -1,8 +1,8 @@
+import { analyticTrace, angleX } from '@proj-airi/qa-tools/t2-3d/metrics/test-trace'
 import { describe, expect, it } from 'vitest'
 
 import { detectorQuantities, intermittencyMetrics } from './intermittency'
 import { prepareTrace } from './prepare'
-import { analyticTrace, angleX } from './test-trace'
 
 describe('body speed statistics', () => {
   it('measures a two-second move in each five-second cycle without counting window edges', () => {

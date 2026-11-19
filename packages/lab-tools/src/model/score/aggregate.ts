@@ -1,5 +1,6 @@
-import type { ClosureEntry } from '../../motion/cache/closure'
-import type { ReplyTranscriptRecord } from '../transcript/schema'
+import type { ReplyTranscriptRecord } from '@proj-airi/qa-tools/model/transcript/schema'
+import type { ClosureEntry } from '@proj-airi/qa-tools/motion/cache/closure'
+
 import type { ReplyScore } from './cue-contract'
 import type { StyleScore } from './style'
 

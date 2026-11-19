@@ -1,11 +1,11 @@
-import type { ClosureEntry } from '../../motion/cache/closure'
+import type { ClosureEntry } from '@proj-airi/qa-tools/motion/cache/closure'
 
 import { Buffer } from 'node:buffer'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
-import { normalizeModuleId } from '../../motion/cache/closure'
-import { sha256Bytes } from '../../motion/cache/key'
+import { normalizeModuleId } from '@proj-airi/qa-tools/motion/cache/closure'
+import { sha256Bytes } from '@proj-airi/qa-tools/motion/cache/key'
 
 /** Model provenance ignores checkout CRLF, preserving every other byte, including lone CR. */
 export function captureScoreClosure(ids: Iterable<string>, repoRoot: string): ClosureEntry[] {

@@ -1,19 +1,19 @@
 import type { MotionTraceBone } from '@proj-airi/motion-driver-humanoid/motion-trace'
 import type { BodyRest } from '@proj-airi/motion-driver-humanoid/performance'
+import type { Motion3dIdleDrive } from '@proj-airi/qa-tools/t2-3d/idle-drive'
+import type { DecodedMotionTrace } from '@proj-airi/qa-tools/t2-3d/read-trace'
 
-import type { Motion3dIdleDrive } from '../idle-drive'
 import type { Quat, Vec3 } from '../metrics'
-import type { DecodedMotionTrace } from '../read-trace'
 import type { CaseReport, CaseRequirement } from './case-report'
 import type { LoadedRun, ReportConstant } from './report'
 
 import { MOTION_TRACE_CHANNELS } from '@proj-airi/motion-driver-humanoid/motion-trace'
+import { stageGateThresholds } from '@proj-airi/qa-tools/stage/gates'
+import { IDLE_MARKER, idleDriveDetail, QA_DRIVE_PRESENT } from '@proj-airi/qa-tools/t2-3d/idle-drive'
+import { add, conjugate, DEG, multiply, rotate } from '@proj-airi/qa-tools/t2-3d/metrics/math'
 import { boolean, number, parseJson, pipe, record, safeParse, string, union } from 'valibot'
 
-import { stageGateThresholds } from '../../stage/gates'
 import { percentile } from '../gate/bands'
-import { IDLE_MARKER, idleDriveDetail, QA_DRIVE_PRESENT } from '../idle-drive'
-import { add, conjugate, DEG, multiply, rotate } from '../metrics/math'
 import { caseReport, formatCaseReport, judged, notExercised } from './case-report'
 import { fixed, gateStatus, markers, reportOnly, ReportUsageError } from './report'
 
@@ -789,7 +789,7 @@ export function formatIdleActs(report: CaseReport<IdleActsDetail>): string {
     `visual review list (C001): counted look-around and peer spans: ${d.review.spans.join(', ') || 'none'}; the count of ${C.distinct} ${d.review.dependsOnThem ? 'DEPENDS' : 'does not depend'} on them; consecutive counted acts: ${d.review.consecutive.join(', ') || 'none'}; check that she returns after each counted act on: ${d.review.following.join(', ') || 'none'}`,
     ...d.intermittency
       ? d.intermittency.map(m => `${m.id}: ${m.status} ${fixed(m.value)}${m.id === 'inter.speedCv' ? ' (gated)' : ' (REPORT, not judged)'}`)
-      : ['intermittency: no gate.json; run qa:motion3d gate on this run to print inter.speedCv and the O2 values'],
+      : ['intermittency: no gate.json; run lab:motion3d gate on this run to print inter.speedCv and the O2 values'],
     ...IDLE_ACTS_LIMITS,
   ])
 }

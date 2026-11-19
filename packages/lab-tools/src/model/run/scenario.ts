@@ -4,12 +4,12 @@ import { readFile } from 'node:fs/promises'
 import { dirname, relative, resolve } from 'node:path'
 
 import { errorMessageFrom } from '@moeru/std'
+import { sha256Buffer } from '@proj-airi/qa-tools/evidence/run'
 import { CLOSENESS_STAGES } from '@proj-airi/stage-shared/character-state'
 import { CONVERSATION_REGISTERS, TEXTING_FLAVORS } from '@proj-airi/stage-shared/conversation-register'
 
 import * as v from 'valibot'
 
-import { sha256Buffer } from '../../evidence/run'
 import { parseExposedActions } from '../exposed-actions'
 
 // A scenario id names the run directory, so it has no dot. A config name may have one, as in `temp-0.6`.
@@ -134,7 +134,7 @@ export function evaluateChecks(scenario: Pick<ModelScenario, 'checks'>, spokenBy
 }
 
 /**
- * Loads a scenario by id from `packages/qa-tools/fixtures/model/scenarios/`, or from a `.json` path that resolves
+ * Loads a scenario by id from `packages/lab-tools/fixtures/model/scenarios/`, or from a `.json` path that resolves
  * against the repository root.
  *
  * Throws:
@@ -143,7 +143,7 @@ export function evaluateChecks(scenario: Pick<ModelScenario, 'checks'>, spokenBy
 export async function loadScenario(reference: string, repoRoot: string): Promise<LoadedScenario> {
   const path = reference.endsWith('.json')
     ? resolve(repoRoot, reference)
-    : resolve(repoRoot, 'packages/qa-tools/fixtures/model/scenarios', `${reference}.json`)
+    : resolve(repoRoot, 'packages/lab-tools/fixtures/model/scenarios', `${reference}.json`)
   try {
     const bytes = await readFile(path)
     const { scenario, exposedActions } = parseScenario(JSON.parse(bytes.toString('utf8')))

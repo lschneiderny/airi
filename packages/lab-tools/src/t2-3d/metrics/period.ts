@@ -1,8 +1,9 @@
-import type { MetricResult, PreparedTrace, Vec3 } from './types'
+import type { MetricResult, PreparedTrace, Vec3 } from '@proj-airi/qa-tools/t2-3d/metrics/types'
+
+import { dot, finite, heading, HZ, mean, norm, principalAxis, sub, sum } from '@proj-airi/qa-tools/t2-3d/metrics/math'
 
 import { SIGNAL_BONES } from './bones'
 import { filterVectors } from './filter'
-import { dot, finite, heading, HZ, mean, norm, principalAxis, sub, sum } from './math'
 import { result, skipped, windowResult } from './result'
 import { runs } from './segments'
 

@@ -123,7 +123,7 @@ describe('serve configuration', () => {
   it('loads transcript reply text in file order for an exact run key', async () => {
     const repoRoot = resolve(import.meta.dirname, '../../../..')
     const script = await loadScript({ set: 'legacy-2026-10-27-mac-m2', runKey: 'dolphin3:8b/bench' }, repoRoot)
-    const source = (await readFile(join(repoRoot, 'packages/qa-tools/model-eval/sets/legacy-2026-10-27-mac-m2/transcripts.jsonl'), 'utf8'))
+    const source = (await readFile(join(repoRoot, 'packages/lab-tools/model-eval/sets/legacy-2026-10-27-mac-m2/transcripts.jsonl'), 'utf8'))
       .trim()
       .split('\n')
       .map(line => JSON.parse(line))

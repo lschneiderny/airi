@@ -5,10 +5,10 @@ import type { FormFeatures } from './gesture-timing'
 
 import { fileURLToPath } from 'node:url'
 
+import { multiply } from '@proj-airi/qa-tools/t2-3d/metrics/math'
 import { beforeAll, describe, expect, it } from 'vitest'
 
 import { loadBands } from '../gate/load'
-import { multiply } from '../metrics/math'
 import { formsDiffer, gestureTimingReport, largestDistinctSet } from './gesture-timing'
 import { ReportUsageError } from './report'
 import { armWorld, gateStub, loadedRun, moves, rotX, rotY, summaryStub, trace } from './test-runs'

@@ -1,12 +1,11 @@
 import type { MotionTraceBone, MotionTraceEvent } from '@proj-airi/motion-driver-humanoid/motion-trace'
+import type { Quat } from '@proj-airi/qa-tools/t2-3d/metrics/types'
 
-import type { Quat } from './metrics/types'
-
+import { multiply } from '@proj-airi/qa-tools/t2-3d/metrics/math'
+import { analyticTrace, angleY, detectors } from '@proj-airi/qa-tools/t2-3d/metrics/test-trace'
 import { describe, expect, it } from 'vitest'
 
 import { GazeOrderRefusal, gazeOrderReport } from './gaze-order'
-import { multiply } from './metrics/math'
-import { analyticTrace, angleY, detectors } from './metrics/test-trace'
 
 const bones: MotionTraceBone[] = ['hips', 'spine', 'chest', 'neck', 'head', 'leftEye', 'rightEye']
 const identity: Quat = [0, 0, 0, 1]

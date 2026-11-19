@@ -1,12 +1,11 @@
 import type { MotionTraceBone } from '@proj-airi/motion-driver-humanoid/motion-trace'
+import type { DetectorParameters } from '@proj-airi/qa-tools/t2-3d/metrics/types'
 
-import type { DetectorParameters } from './types'
-
+import { analyticTrace, angleY } from '@proj-airi/qa-tools/t2-3d/metrics/test-trace'
 import { describe, expect, it } from 'vitest'
 
 import { prepareTrace } from './prepare'
 import { smoothMetrics } from './smooth'
-import { analyticTrace, angleY } from './test-trace'
 
 const DEG = Math.PI / 180
 const minJerk = (u: number) => u <= 0 ? 0 : u >= 1 ? 1 : u * u * u * (10 - 15 * u + 6 * u * u)

@@ -1,6 +1,6 @@
-import type { Episode, Segment, Span } from './types'
+import type { Episode, Segment, Span } from '@proj-airi/qa-tools/t2-3d/metrics/types'
 
-import { HZ } from './math'
+import { HZ } from '@proj-airi/qa-tools/t2-3d/metrics/math'
 
 export function runs(mask: readonly boolean[]): Span[] {
   const spans: Span[] = []

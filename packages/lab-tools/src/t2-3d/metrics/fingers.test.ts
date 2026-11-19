@@ -1,10 +1,10 @@
 import type { MotionTraceBone } from '@proj-airi/motion-driver-humanoid/motion-trace'
 
+import { analyticTrace, angleX, detectors } from '@proj-airi/qa-tools/t2-3d/metrics/test-trace'
 import { describe, expect, it } from 'vitest'
 
 import { coreMetrics } from './core'
 import { prepareTrace } from './prepare'
-import { analyticTrace, angleX, detectors } from './test-trace'
 
 const bones = ['hips', 'leftHand', 'leftIndexProximal', 'leftMiddleProximal', 'leftRingProximal', 'leftLittleProximal'] as const satisfies readonly MotionTraceBone[]
 

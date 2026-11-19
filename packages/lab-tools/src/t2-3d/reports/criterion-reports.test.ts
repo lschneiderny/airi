@@ -5,11 +5,11 @@ import type { Quat } from '../metrics'
 import { fileURLToPath } from 'node:url'
 
 import { createRandomStream } from '@proj-airi/motion-driver-natural/random'
+import { multiply } from '@proj-airi/qa-tools/t2-3d/metrics/math'
 import { beforeAll, describe, expect, it } from 'vitest'
 
 import { loadBands } from '../gate/load'
 import { emotionTrials, prepareTrace } from '../metrics'
-import { multiply } from '../metrics/math'
 import { cueBodyReport, cueFalsePositives, formatCueBody } from './cue-body'
 import { C002_REQUIRED, emotionTableReport, formatEmotionTable, separationTable } from './emotion-table'
 import { formatOwnership, ownershipReport } from './ownership'

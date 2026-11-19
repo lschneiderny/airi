@@ -1,4 +1,5 @@
-import type { ReplyTranscriptRecord } from '../transcript/schema'
+import type { ReplyTranscriptRecord } from '@proj-airi/qa-tools/model/transcript/schema'
+
 import type { JudgeReply, SpokenReply } from './pairs'
 
 import { mulberry32 } from '@proj-airi/stage-shared/perf/usage'

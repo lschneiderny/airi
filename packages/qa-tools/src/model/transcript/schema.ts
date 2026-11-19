@@ -131,7 +131,7 @@ const recordEntries = {
 /**
  * One cue-contract reply with the provenance needed to compare it with another run.
  * Both versions are current formats: v1 holds a captured reply that was imported from another tool's output, and v2
- * holds a reply that `qa:model run` requested itself, so it adds the `live` block.
+ * holds a reply that `lab:model run` requested itself, so it adds the `live` block.
  */
 export const ReplyTranscriptRecordSchema = v.variant('schema', [
   v.strictObject({ schema: v.literal('airi.reply-transcript/v1'), ...recordEntries }),

@@ -3,11 +3,11 @@ import type { MotionTraceV1 } from '@proj-airi/motion-driver-humanoid/motion-tra
 import { resolve } from 'node:path'
 
 import { encodeBlock } from '@proj-airi/motion-driver-humanoid/motion-trace'
+import { analyticTrace, angleX } from '@proj-airi/qa-tools/t2-3d/metrics/test-trace'
+import { MotionTraceRefusal, parseTrace } from '@proj-airi/qa-tools/t2-3d/read-trace'
 import { describe, expect, it } from 'vitest'
 
 import { CORE } from '../metrics/bones'
-import { analyticTrace, angleX } from '../metrics/test-trace'
-import { MotionTraceRefusal, parseTrace } from '../read-trace'
 import { judgeTrace } from './judge'
 import { loadBands } from './load'
 

@@ -64,14 +64,14 @@ export interface Motion3dRunOptions {
   readonly seconds: number
   readonly warmupSeconds: number
   /**
-   * `off` sets no idle drive, so Natural's idle scheduler stays inert (the acts-off pair of `qa:motion3d report idle-acts`), and
+   * `off` sets no idle drive, so Natural's idle scheduler stays inert (the acts-off pair of `lab:motion3d report idle-acts`), and
    * is recorded in the trace source as `acts: 'off'`; `on` records nothing, so existing traces stay byte-identical. On a
    * scenario without an idle drive the switch changes nothing but that record.
    */
   readonly acts: 'on' | 'off'
   readonly git: RunGitState
   readonly signal: AbortSignal
-  /** Called after each pipeline step with the frame index and the posed mesh; read-only (`qa:motion3d frames` re-runs). */
+  /** Called after each pipeline step with the frame index and the posed mesh; read-only (`lab:motion3d frames` re-runs). */
   readonly onFrame?: (frame: number, mesh: SkinnedMesh) => void
 }
 

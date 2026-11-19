@@ -1,6 +1,5 @@
+import { readStageEvidence } from '@proj-airi/qa-tools/stage/gates'
 import { expect, it } from 'vitest'
-
-import { readStageEvidence } from '../../stage/gates'
 
 it('reads a synthetic stub-runner summary as exactly one walk timeline and one arm run', () => {
   // This is the stub runner's serialized diagnostics payload, without a model

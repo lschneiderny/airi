@@ -4,10 +4,10 @@ import type { CriterionReport, LoadedRun, ReportConstant } from './report'
 
 import { MOTION_TRACE_CHANNELS } from '@proj-airi/motion-driver-humanoid/motion-trace'
 import { createRandomStream } from '@proj-airi/motion-driver-natural/random'
+import { conjugate, DEG, heading, median, multiply, normalize, rotationVector } from '@proj-airi/qa-tools/t2-3d/metrics/math'
 
 import { percentile } from '../gate/bands'
 import { emphasisTimes } from '../metrics/gesture'
-import { conjugate, DEG, heading, median, multiply, normalize, rotationVector } from '../metrics/math'
 import { apexTimes } from './kinematics'
 import { criterionReport, fixed, formatReport, requireGate, requirement } from './report'
 

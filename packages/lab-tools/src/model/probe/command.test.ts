@@ -3,10 +3,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { parseScript, ReplayScript } from '@proj-airi/qa-tools/llm/script'
+import { ReplayServer } from '@proj-airi/qa-tools/llm/server'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { parseScript, ReplayScript } from '../../llm/script'
-import { ReplayServer } from '../../llm/server'
 import { buildSystemPrompt, renderDefaultCard } from '../stage-contract'
 import { runProbeCli } from './command'
 
@@ -50,7 +50,7 @@ async function probe(args: string[]) {
   return { code, stdout, stderr }
 }
 
-describe('qa:model probe', () => {
+describe('lab:model probe', () => {
   it('times every cache event against the endpoint', async () => {
     // Two history replies, then a before and an after request for each of the seven cases.
     const { baseUrl, capture, scenario } = await setup(Array.from({ length: 16 }, () => ({ content: 'ok' })))

@@ -20,18 +20,18 @@ vi.mock('../modules/airi-card', async () => {
 })
 
 // NOTICE:
-// qa-tools cannot import stage-ui, so its fixture repeats stage-ui's prompt text; this test fails when that text drifts.
-// Source: packages/qa-tools/src/model/prompt.ts (segmentsFromFixture).
-// Removal condition: qa-tools can import the stage-ui assembler.
+// lab-tools cannot import stage-ui, so its fixture repeats stage-ui's prompt text; this test fails when that text drifts.
+// Source: packages/lab-tools/src/model/prompt.ts (segmentsFromFixture).
+// Removal condition: lab-tools can import the stage-ui assembler.
 const fixture = parse(object({
   toolset: string(),
   memory: object({ header: string(), entries: array(string()) }),
   stickers: object({ header: string(), entries: array(object({ id: string(), description: string() })) }),
-}), JSON.parse(readFileSync(join(import.meta.dirname, '../../../../qa-tools/fixtures/model/full-prompt.json'), 'utf8')))
+}), JSON.parse(readFileSync(join(import.meta.dirname, '../../../../lab-tools/fixtures/model/full-prompt.json'), 'utf8')))
 
-const probeSegments = parse(object({ controlPrefix: string() }), JSON.parse(readFileSync(join(import.meta.dirname, '../../../../qa-tools/fixtures/model/probe-segments.json'), 'utf8')))
+const probeSegments = parse(object({ controlPrefix: string() }), JSON.parse(readFileSync(join(import.meta.dirname, '../../../../lab-tools/fixtures/model/probe-segments.json'), 'utf8')))
 
-describe('qa-tools full-prompt fixture parity', () => {
+describe('lab-tools full-prompt fixture parity', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
   })

@@ -1,7 +1,7 @@
+import { cv, dot, laggedCorrelation, mean, median, norm, principalAxis, rms } from '@proj-airi/qa-tools/t2-3d/metrics/math'
 import { describe, expect, it } from 'vitest'
 
 import { butterworth } from './filter'
-import { cv, dot, laggedCorrelation, mean, median, norm, principalAxis, rms } from './math'
 import { acfPeak, loopPeak } from './period'
 import { spectralEstimate } from './spectral'
 

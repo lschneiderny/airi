@@ -14,8 +14,8 @@ export const SCORE_CLOSURE_FILES = [
   'packages/pipelines-audio/src/llm-streaming-control/parsers/act.ts',
   'packages/pipelines-audio/src/llm-streaming-control/parsers/delay.ts',
   'packages/pipelines-audio/src/llm-streaming-control/parsers/call.ts',
-  'packages/qa-tools/src/model/score/cue-contract.ts',
-  'packages/qa-tools/src/model/score/style.ts',
-  'packages/qa-tools/src/model/score/legacy-score.ts',
-  'packages/qa-tools/src/model/score/aggregate.ts',
+  'packages/lab-tools/src/model/score/cue-contract.ts',
+  'packages/lab-tools/src/model/score/style.ts',
+  'packages/lab-tools/src/model/score/legacy-score.ts',
+  'packages/lab-tools/src/model/score/aggregate.ts',
 ] as const

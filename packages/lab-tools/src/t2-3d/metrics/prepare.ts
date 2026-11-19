@@ -1,14 +1,13 @@
 import type { MotionTraceBone } from '@proj-airi/motion-driver-humanoid/motion-trace'
-
-import type { DecodedMotionTrace } from '../read-trace'
-import type { BoneSeries, PreparedTrace, Quat, Region, Vec3 } from './types'
+import type { BoneSeries, PreparedTrace, Quat, Region, Vec3 } from '@proj-airi/qa-tools/t2-3d/metrics/types'
+import type { DecodedMotionTrace } from '@proj-airi/qa-tools/t2-3d/read-trace'
 
 import { MOTION_TRACE_CHANNELS } from '@proj-airi/motion-driver-humanoid/motion-trace'
+import { conjugate, dot, heading, HZ, mean, multiply, norm, normalize, rotationVector, scale, slerp, sub, yawQuat } from '@proj-airi/qa-tools/t2-3d/metrics/math'
+import { MotionTraceRefusal } from '@proj-airi/qa-tools/t2-3d/read-trace'
 
-import { MotionTraceRefusal } from '../read-trace'
 import { CORE, REGIONS } from './bones'
 import { butterworth, filterVectors } from './filter'
-import { conjugate, dot, heading, HZ, mean, multiply, norm, normalize, rotationVector, scale, slerp, sub, yawQuat } from './math'
 import { placeWindows, runs, splitSpans } from './segments'
 
 /** P13, rad/s: sqrt(mean_b |O_b|^2), over present bones only. */

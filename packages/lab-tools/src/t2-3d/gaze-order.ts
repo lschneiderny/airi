@@ -1,9 +1,11 @@
+import type { DecodedMotionTrace } from '@proj-airi/qa-tools/t2-3d/read-trace'
+
 import type { DetectorParameters, MetricSample, PreparedTrace, Quat } from './metrics'
-import type { DecodedMotionTrace } from './read-trace'
+
+import { conjugate, DEG, multiply } from '@proj-airi/qa-tools/t2-3d/metrics/math'
 
 import { gazeMetrics, prepareTrace } from './metrics'
 import { integratedEpisode } from './metrics/gaze'
-import { conjugate, DEG, multiply } from './metrics/math'
 import { headSignal } from './metrics/period'
 
 export type GazeOrderRefusalName = 'no-head-turns' | 'bone-absent' | 'missing-floor'

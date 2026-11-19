@@ -4,10 +4,11 @@ import type { Vec3 } from '../metrics'
 import type { CaseReport, CaseRequirement } from './case-report'
 import type { LoadedRun, ReportConstant } from './report'
 
-import { stageGateThresholds } from '../../stage/gates'
+import { stageGateThresholds } from '@proj-airi/qa-tools/stage/gates'
+import { DEG, heading, HZ, median, norm, rotate, sub, unwrap } from '@proj-airi/qa-tools/t2-3d/metrics/math'
+
 import { butterworth } from '../metrics/filter'
 import { jointPositions } from '../metrics/gait'
-import { DEG, heading, HZ, median, norm, rotate, sub, unwrap } from '../metrics/math'
 import { peaks, runs } from '../metrics/segments'
 import { caseReport, formatCaseReport, judged, notExercised } from './case-report'
 import { fixed, ReportUsageError, requireSummary } from './report'

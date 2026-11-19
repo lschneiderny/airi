@@ -95,7 +95,7 @@ describe('verify gate and typecheck planning', () => {
     ['packages/stage-ui-live2d/src/composables/live2d/live2d.ts', ['qa:smoke', 'AIRI_QA_RIG_FORBOOTH']],
     ['packages/stage-ui-live2d/src/components/scene.vue', ['qa:smoke']],
     ['packages/stage-ui-mmd/src/index.ts', ['qa:smoke', 'qa:motion3d diff']],
-    ['packages/qa-tools/src/t2-3d/reports/idle-acts.ts', ['inject']],
+    ['packages/lab-tools/src/t2-3d/reports/idle-acts.ts', ['inject']],
     ['docs/ai/context/testing.md', []],
   ])('names the follow-up checks for %s in rule order', (path, expected) => {
     const lines = followUpChecks([{ path, deleted: false }])
@@ -120,7 +120,7 @@ describe('verify gate and typecheck planning', () => {
   })
 
   it('never meets a rule that the gate cannot run', () => {
-    const changed = [{ path: 'packages/qa-tools/src/t2-3d/reports/idle-acts.ts', deleted: false }]
+    const changed = [{ path: 'packages/lab-tools/src/t2-3d/reports/idle-acts.ts', deleted: false }]
     expect(gateQaFor(changed)).toEqual([])
     expect(followUpChecks(changed, new Set(['smoke', 'AIRI_QA_MMD_MODEL', 'motion-affected']))).toHaveLength(1)
   })

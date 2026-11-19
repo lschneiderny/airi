@@ -5,13 +5,13 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
 import { encodeBlock } from '@proj-airi/motion-driver-humanoid/motion-trace'
+import { analyticTrace } from '@proj-airi/qa-tools/t2-3d/metrics/test-trace'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import * as v from 'valibot'
 
 import { popsMotion3d } from './cli/pops'
 import { verdictsMotion3d } from './cli/verdicts'
-import { analyticTrace } from './metrics/test-trace'
 import { caseReport, judged, notExercised } from './reports/case-report'
 import { criterionReport, formatReport, requirement } from './reports/report'
 import { gateStub, TEST_BONES } from './reports/test-runs'

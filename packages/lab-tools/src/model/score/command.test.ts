@@ -1,4 +1,5 @@
-import type { RunManifest } from '../../evidence/run'
+import type { RunManifest } from '@proj-airi/qa-tools/evidence/run'
+
 import type { RunScore } from './aggregate'
 
 import process from 'node:process'
@@ -9,9 +10,9 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { sha256Bytes } from '@proj-airi/qa-tools/motion/cache/key'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { sha256Bytes } from '../../motion/cache/key'
 import { extractExampleLines } from '../stage-contract'
 import { captureScoreClosure } from './closure'
 import { SCORE_CLOSURE_FILES } from './closure-files'
@@ -19,7 +20,7 @@ import { runScoreCli } from './command'
 import { cueContractScorer } from './cue-contract'
 
 const repoRoot = fileURLToPath(new URL('../../../../../', import.meta.url))
-const fixture = resolve(repoRoot, 'packages/qa-tools/src/model/score/__fixtures__/five.jsonl')
+const fixture = resolve(repoRoot, 'packages/lab-tools/src/model/score/__fixtures__/five.jsonl')
 const owned: string[] = []
 let sequence = 0
 
@@ -211,7 +212,7 @@ describe('score command', () => {
 
   it('refuses a set lacking transcripts and copies both summaries for a valid set', async () => {
     const id = `score-test-${process.pid}`
-    const dir = join(repoRoot, 'packages/qa-tools/model-eval/sets', id)
+    const dir = join(repoRoot, 'packages/lab-tools/model-eval/sets', id)
     owned.push(dir)
     const refused = cli()
     expect(await refused.run([fixture, '--set', id])).toBe(2)
@@ -269,7 +270,7 @@ describe('score command', () => {
   })
 
   describe('--exposed-actions', () => {
-    const transcript = resolve(repoRoot, 'packages/qa-tools/fixtures/model/actions-transcript.jsonl')
+    const transcript = resolve(repoRoot, 'packages/lab-tools/fixtures/model/actions-transcript.jsonl')
 
     async function scored(flag: string) {
       const c = cli()
@@ -309,7 +310,7 @@ describe('score command', () => {
       const c = cli()
       expect(await c.run([transcript, '--exposed-actions', flag])).toBe(2)
       expect(c.stdout).toBe('')
-      expect(c.stderr).toContain('qa-tools model score: invalid --exposed-actions')
+      expect(c.stderr).toContain('lab:model score: invalid --exposed-actions')
     })
   })
 })

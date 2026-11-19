@@ -100,9 +100,9 @@ const followUpRules: readonly { paths: RegExp, reason: string, checks: string, g
     gateNeeds: ['AIRI_QA_MMD_MODEL', 'motion-affected'],
   },
   {
-    paths: /^packages\/qa-tools\/src\/t2-3d\/reports\//,
-    reason: 'a qa:motion3d report rule changed',
-    checks: 'labelled qa:motion3d inject cases sealed before scoring, and the report version bump in its own commit',
+    paths: /^packages\/lab-tools\/src\/t2-3d\/reports\//,
+    reason: 'a lab:motion3d report rule changed',
+    checks: 'labelled lab:motion3d inject cases sealed before scoring, and the report version bump in its own commit',
     gateNeeds: [],
   },
 ]

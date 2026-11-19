@@ -10,7 +10,7 @@ import { bucketsOf, CHARACTER_STATE_SETTINGS, CLOSENESS_STAGES, DEFAULT_CHARACTE
 import { BUILTIN_SCENARIOS, loadScenario, startOf } from './scenario'
 import { formatSimulation, simulate, utcContext } from './simulate'
 
-export const characterUsage = `Usage: pnpm qa:character <command> [options]
+export const characterUsage = `Usage: pnpm lab:character <command> [options]
 
 Commands:
   simulate --scenario <name|file.json> [--days <n>] [--seed <n>] [--json]
@@ -64,7 +64,7 @@ function runSimulate(rest: string[], stdout: Output, stderr: Output, cwd: string
 
   const loaded = loadScenario(values.scenario, cwd)
   if (!loaded.ok) {
-    stderr(`qa-tools character: ${loaded.message}\n`)
+    stderr(`lab:character: ${loaded.message}\n`)
     return 2
   }
   const started = performance.now()
@@ -153,12 +153,12 @@ function runRender(rest: string[], stdout: Output, stderr: Output): number {
 }
 
 function usageError(stderr: Output, message: string): number {
-  stderr(`qa-tools character: ${message}\n\n${characterUsage}`)
+  stderr(`lab:character: ${message}\n\n${characterUsage}`)
   return 2
 }
 
 /**
- * Dispatches `qa:character` subcommands.
+ * Dispatches `lab:character` subcommands.
  *
  * Returns:
  * - 0 on success, 1 when a simulation violates an invariant or a command throws, 2 with usage on stderr for invalid
@@ -182,7 +182,7 @@ export function runCharacterCli(argv: string[], io: CharacterCliIo = {}): number
     // `parseArgs` throws a TypeError with a code for unknown or malformed flags.
     if (error instanceof TypeError && 'code' in error && typeof error.code === 'string' && error.code.startsWith('ERR_PARSE_ARGS'))
       return usageError(stderr, errorMessageFrom(error) ?? 'invalid arguments')
-    stderr(`qa-tools character ${command}: ${errorMessageFrom(error) ?? 'command failed'}\n`)
+    stderr(`lab:character ${command}: ${errorMessageFrom(error) ?? 'command failed'}\n`)
     return 1
   }
 }

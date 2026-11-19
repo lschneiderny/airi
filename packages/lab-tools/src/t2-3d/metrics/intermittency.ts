@@ -1,9 +1,9 @@
 import type { MotionTraceBone } from '@proj-airi/motion-driver-humanoid/motion-trace'
+import type { PreparedTrace, Region, Segment } from '@proj-airi/qa-tools/t2-3d/metrics/types'
 
-import type { PreparedTrace, Region, Segment } from './types'
+import { cv, HZ, mean, median } from '@proj-airi/qa-tools/t2-3d/metrics/math'
 
 import { activity } from './core'
-import { cv, HZ, mean, median } from './math'
 import { result, skipped, windowResult } from './result'
 import { placeWindows, segment } from './segments'
 

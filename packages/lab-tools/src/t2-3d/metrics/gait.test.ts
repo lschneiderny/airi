@@ -1,11 +1,11 @@
-import type { Vec3 } from './types'
+import type { Vec3 } from '@proj-airi/qa-tools/t2-3d/metrics/types'
 
+import { DEG, multiply } from '@proj-airi/qa-tools/t2-3d/metrics/math'
+import { analyticTrace, angleX, angleY } from '@proj-airi/qa-tools/t2-3d/metrics/test-trace'
 import { describe, expect, it } from 'vitest'
 
 import { gaitMetrics, jointPositions } from './gait'
-import { DEG, multiply } from './math'
 import { prepareTrace } from './prepare'
-import { analyticTrace, angleX, angleY } from './test-trace'
 
 describe('kinematic gait measurements', () => {
   it('derives foot extrema, pitch and signed arm lag from a synthetic walk', () => {

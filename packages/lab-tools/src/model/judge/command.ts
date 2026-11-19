@@ -7,6 +7,7 @@ import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 
+import { readTranscript } from '@proj-airi/qa-tools/model/transcript/jsonl'
 import { mulberry32 } from '@proj-airi/stage-shared/perf/usage'
 import { STAGE_RUNTIME_CONFIG } from '@proj-airi/stage-shared/stage-contract'
 
@@ -14,14 +15,13 @@ import * as v from 'valibot'
 
 import { assertCoreAgentDistCurrent } from '../core-agent-dist'
 import { resolveTranscriptInput } from '../inputs'
-import { readTranscript } from '../transcript/jsonl'
 import { buildJudgeReplies, pairKey, PersonaJudgmentSchema, planPairs } from './pairs'
 import { buildJudgmentReport, renderJudgmentMarkdown } from './report'
 import { JudgeServer } from './server'
 
 export const judgeUsage = `Usage:
-  pnpm qa:model judge serve <transcripts.jsonl|run dir|set id>... [--out <judgments.jsonl>] [--judge <label>] [--contenders <a,b,...>] [--port <n>] [--seed <n>]
-  pnpm qa:model judge report <judgments.jsonl>... [--json]
+  pnpm lab:model judge serve <transcripts.jsonl|run dir|set id>... [--out <judgments.jsonl>] [--judge <label>] [--contenders <a,b,...>] [--port <n>] [--seed <n>]
+  pnpm lab:model judge report <judgments.jsonl>... [--json]
 `
 
 /** Where judgments go without --out: one stable file, so a later session resumes where the last one stopped. */
@@ -35,11 +35,11 @@ export interface JudgeCliIo {
 }
 
 /**
- * Runs `qa:model judge`: `serve` starts a blind pairwise judging page for saved replies, and `report` aggregates
+ * Runs `lab:model judge`: `serve` starts a blind pairwise judging page for saved replies, and `report` aggregates
  * saved judgments.
  *
  * Returns:
- * - 0 on success. Invalid arguments throw, and the `qa:model` router reports them.
+ * - 0 on success. Invalid arguments throw, and the `lab:model` router reports them.
  */
 export async function runJudgeCli(argv: string[], repoRoot: string, _env: NodeJS.ProcessEnv, io: JudgeCliIo = {}): Promise<number> {
   const stdout = io.stdout ?? ((text: string) => process.stdout.write(text))
@@ -95,9 +95,9 @@ async function serve(argv: string[], repoRoot: string, stdout: (text: string) =>
     judged: new Set(earlier.map(j => pairKey(j.slot.key, j.left.replyId, j.right.replyId))),
     contenders: values.contenders?.split(',').map(part => part.trim()).filter(Boolean),
   })
-  stderr(`qa-tools model judge: ${spoken.length} replies, ${pairs.length} pairs to judge, ${earlier.length} judged before; writing to ${out}\n`)
+  stderr(`lab:model judge: ${spoken.length} replies, ${pairs.length} pairs to judge, ${earlier.length} judged before; writing to ${out}\n`)
   if (!pairs.length) {
-    stderr('qa-tools model judge: nothing to judge: no two contenders answered the same turn, or every pair is judged\n')
+    stderr('lab:model judge: nothing to judge: no two contenders answered the same turn, or every pair is judged\n')
     return 0
   }
 

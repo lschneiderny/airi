@@ -1,14 +1,16 @@
+import type { DecodedMotionTrace } from '@proj-airi/qa-tools/t2-3d/read-trace'
+import type { Motion3dRunSummary } from '@proj-airi/qa-tools/t2-3d/runner/measurement'
+
 import type { MotionBandsFile, MotionVerdict } from '../gate/types'
 import type { PreparedTrace } from '../metrics'
-import type { DecodedMotionTrace } from '../read-trace'
-import type { Motion3dRunSummary } from '../runner/measurement'
 
 import { existsSync } from 'node:fs'
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
+import { readTrace } from '@proj-airi/qa-tools/t2-3d/read-trace'
+
 import { prepareTrace } from '../metrics'
-import { readTrace } from '../read-trace'
 
 /** Invalid input for a report: a missing file or a trace the rule cannot read. Exit code 2, never a FAIL. */
 export class ReportUsageError extends Error {
@@ -98,7 +100,7 @@ export function requireSummary(run: LoadedRun): Motion3dRunSummary {
 
 export function requireGate(run: LoadedRun): MotionVerdict {
   if (!run.gate)
-    throw new ReportUsageError(`${run.dir} has no gate.json; run qa:motion3d gate on it first`)
+    throw new ReportUsageError(`${run.dir} has no gate.json; run lab:motion3d gate on it first`)
   return run.gate
 }
 

@@ -15,7 +15,7 @@ const labelPattern = /^[a-z0-9][a-z0-9-]{0,31}$/
  * Parses the `--exposed-actions` flag: comma-separated `label:kind` pairs, for example `wave:gesture,moonwalk:dance`.
  *
  * Use when:
- * - A qa-tools command takes the exposed clips of a run from the command line.
+ * - A lab-tools command takes the exposed clips of a run from the command line.
  *
  * Expects:
  * - `value` is operator input; every pair needs a slug label and one of the three kinds, and a label appears once

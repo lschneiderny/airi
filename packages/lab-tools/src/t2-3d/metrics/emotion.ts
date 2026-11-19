@@ -1,11 +1,10 @@
 import type { MotionTraceBone } from '@proj-airi/motion-driver-humanoid/motion-trace'
-
-import type { MetricResult, PreparedTrace, Quat, Vec3 } from './types'
+import type { MetricResult, PreparedTrace, Quat, Vec3 } from '@proj-airi/qa-tools/t2-3d/metrics/types'
 
 import { MOTION_TRACE_CHANNELS } from '@proj-airi/motion-driver-humanoid/motion-trace'
+import { conjugate, finite, heading, mean, median, multiply, normalize, rotationVector } from '@proj-airi/qa-tools/t2-3d/metrics/math'
 
 import { ARMS, UPPER } from './bones'
-import { conjugate, finite, heading, mean, median, multiply, normalize, rotationVector } from './math'
 import { postureFeatures } from './mirror'
 import { result, skipped } from './result'
 

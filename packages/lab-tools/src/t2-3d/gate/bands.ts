@@ -1,6 +1,6 @@
 import type { BandRule, MetricBand, Transform } from './types'
 
-import { mean, median } from '../metrics/math'
+import { mean, median } from '@proj-airi/qa-tools/t2-3d/metrics/math'
 
 /** Linear interpolation at rank (n - 1) * p. Callers supply finite measurements. */
 export function percentile(values: readonly number[], p: number): number {

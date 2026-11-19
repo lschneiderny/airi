@@ -8,7 +8,7 @@ import { reportStandingSpeaker, STANDING_SPEAKER } from './policy'
 
 const repoRoot = resolve(import.meta.dirname, '../../../../..')
 // Version 2 is the last file fitted with every talk clip band gated, so it is the input the rule was stated against.
-const v2 = parseBands(JSON.parse(await readFile(resolve(repoRoot, 'packages/qa-tools/fixtures/motion3d/bands-v2.json'), 'utf8')))
+const v2 = parseBands(JSON.parse(await readFile(resolve(repoRoot, 'packages/lab-tools/fixtures/motion3d/bands-v2.json'), 'utf8')))
 
 describe('standing-speaker talk reports', () => {
   it('reports exactly the talk bands fitted per clip from the talk window clips', () => {

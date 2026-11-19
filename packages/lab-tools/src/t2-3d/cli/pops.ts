@@ -3,9 +3,9 @@ import type { Motion3dCliContext } from '../../../bin/motion3d'
 import { formatPops, popsReport } from '../reports/pops'
 import { runReportCommand } from './report-cli'
 
-/** `qa:motion3d report pops <run>...`: one pops report per run directory (plan 2.6). */
+/** `lab:motion3d report pops <run>...`: one pops report per run directory (plan 2.6). */
 export async function popsMotion3d(args: readonly string[], context: Motion3dCliContext): Promise<number> {
-  return runReportCommand('pops', 'qa:motion3d report pops <run directory>...', args, context, runs => runs.map((run) => {
+  return runReportCommand('pops', 'lab:motion3d report pops <run directory>...', args, context, runs => runs.map((run) => {
     const report = popsReport(run)
     return { dir: run.dir, report, text: formatPops(report) }
   }))

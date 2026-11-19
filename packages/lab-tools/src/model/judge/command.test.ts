@@ -1,4 +1,4 @@
-import type { ReplyTranscriptRecord } from '../transcript/schema'
+import type { ReplyTranscriptRecord } from '@proj-airi/qa-tools/model/transcript/schema'
 
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -28,7 +28,7 @@ function record(model: string, turn: number, text: string): ReplyTranscriptRecor
   }
 }
 
-describe('qa:model judge', () => {
+describe('lab:model judge', () => {
   let dir: string
   let transcripts: string
   let out: string

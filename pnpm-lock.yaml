@@ -2656,6 +2656,70 @@ importers:
         specifier: 'catalog:'
         version: 1.0.7
 
+  packages/lab-tools:
+    dependencies:
+      '@moeru/std':
+        specifier: 'catalog:'
+        version: 0.1.0-beta.17
+      '@moeru/three-mmd':
+        specifier: 'catalog:'
+        version: 0.2.0-beta.2(@types/three@0.185.4)(three@0.185.1)
+      '@napi-rs/image':
+        specifier: 'catalog:'
+        version: 1.15.0
+      '@proj-airi/core-agent':
+        specifier: workspace:^
+        version: link:../core-agent
+      '@proj-airi/i18n':
+        specifier: workspace:^
+        version: link:../i18n
+      '@proj-airi/motion-driver-humanoid':
+        specifier: workspace:^
+        version: link:../motion-driver-humanoid
+      '@proj-airi/motion-driver-natural':
+        specifier: workspace:^
+        version: link:../motion-driver-natural
+      '@proj-airi/pipelines-audio':
+        specifier: workspace:^
+        version: link:../pipelines-audio
+      '@proj-airi/provider-inference':
+        specifier: workspace:^
+        version: link:../provider-inference
+      '@proj-airi/qa-tools':
+        specifier: workspace:^
+        version: link:../qa-tools
+      '@proj-airi/stage-shared':
+        specifier: workspace:^
+        version: link:../stage-shared
+      '@proj-airi/stage-ui-mmd':
+        specifier: workspace:^
+        version: link:../stage-ui-mmd
+      three:
+        specifier: 'catalog:'
+        version: 0.185.1
+      valibot:
+        specifier: 'catalog:'
+        version: 1.5.0(typescript@6.0.3)
+      vue-i18n:
+        specifier: 'catalog:'
+        version: 11.4.9(vue@3.5.41(typescript@6.0.3))
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.2.0
+      '@types/three':
+        specifier: 'catalog:'
+        version: 0.185.4
+      tsx:
+        specifier: 'catalog:'
+        version: 4.23.12
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+      vitest:
+        specifier: catalog:vitest
+        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/browser-playwright@4.1.11)(@vitest/coverage-v8@4.1.11)(jsdom@30.0.1(@noble/hashes@2.3.0)(canvas@3.2.3))(vite@8.3.4(@types/node@26.2.0)(esbuild@0.28.2)(jiti@2.7.0)(less@4.9.0(supports-color@10.2.2))(terser@5.50.0)(tsx@4.23.12)(yaml@2.9.1))
+
   packages/mathjson: {}
 
   packages/memory-pgvector:
@@ -2924,12 +2988,6 @@ importers:
       '@proj-airi/character-mind':
         specifier: workspace:^
         version: link:../character-mind
-      '@proj-airi/core-agent':
-        specifier: workspace:^
-        version: link:../core-agent
-      '@proj-airi/i18n':
-        specifier: workspace:^
-        version: link:../i18n
       '@proj-airi/motion-driver-humanoid':
         specifier: workspace:^
         version: link:../motion-driver-humanoid
@@ -2939,9 +2997,6 @@ importers:
       '@proj-airi/pipelines-audio':
         specifier: workspace:^
         version: link:../pipelines-audio
-      '@proj-airi/provider-inference':
-        specifier: workspace:^
-        version: link:../provider-inference
       '@proj-airi/scenarios-stage-tamagotchi-electron':
         specifier: workspace:^
         version: link:../scenarios-stage-tamagotchi-electron
@@ -9986,6 +10041,7 @@ packages:
   '@sapphire/shapeshift@4.0.0':
     resolution: {integrity: sha512-d9dUmWVA7MMiKobL3VpLF8P2aeanRTu6ypG2OIaEv/ZHH/SUQ2iHOVyi5wAPjQ+HmnMuL0whK9ez8I/raWbtIg==}
     engines: {node: '>=v16'}
+    deprecated: Shapeshift was created when other validation libraries had significant limitations in performance and error reporting. Those advantages have diminished as libraries such as Zod have become faster and improved their error messages, while also gaining broader environment support, a larger community, and custom error printers.
 
   '@sapphire/snowflake@3.5.5':
     resolution: {integrity: sha512-xzvBr1Q1c4lCe7i6sRnrofxeO1QTP/LKQ6A6qy0iB4x5yfiSfARMEQEghojzTNALDTcv8En04qYNIco9/K9eZQ==}

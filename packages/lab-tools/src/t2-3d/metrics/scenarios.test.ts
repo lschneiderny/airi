@@ -1,5 +1,6 @@
-import type { Vec3 } from './types'
+import type { Vec3 } from '@proj-airi/qa-tools/t2-3d/metrics/types'
 
+import { analyticTrace, angleX, detectors } from '@proj-airi/qa-tools/t2-3d/metrics/test-trace'
 import { describe, expect, it } from 'vitest'
 
 import { gazeMetrics } from './gaze'
@@ -7,7 +8,6 @@ import { idleMetrics } from './idle'
 import { onsetMetrics } from './onset'
 import { prepareTrace } from './prepare'
 import { smoothMetrics } from './smooth'
-import { analyticTrace, angleX, detectors } from './test-trace'
 
 const bones = ['hips', 'chest', 'neck', 'head'] as const
 const times = Array.from({ length: 10 }, (_, i) => 2 + 4 * i)

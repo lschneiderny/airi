@@ -1,10 +1,10 @@
 import type { MotionTraceBone } from '@proj-airi/motion-driver-humanoid/motion-trace'
+import type { MetricResult, PreparedTrace, Vec3 } from '@proj-airi/qa-tools/t2-3d/metrics/types'
 
-import type { MetricResult, PreparedTrace, Vec3 } from './types'
+import { add, DEG, heading, HZ, laggedCorrelation, mean, median, norm, rotate, sub, unwrap } from '@proj-airi/qa-tools/t2-3d/metrics/math'
 
 import { butterworth } from './filter'
 import { jointOnset } from './gaze'
-import { add, DEG, heading, HZ, laggedCorrelation, mean, median, norm, rotate, sub, unwrap } from './math'
 import { episodeResult, result, skipped } from './result'
 import { episode, peaks, runs } from './segments'
 

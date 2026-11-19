@@ -27,7 +27,7 @@ const verdictLineSchema = v.object({
   rule: v.string(),
   note: v.optional(v.string()),
 })
-/** The file `--json <path>` writes and `qa:motion3d verdicts` reads. */
+/** The file `--json <path>` writes and `lab:motion3d verdicts` reads. */
 export const verdictFileSchema = v.object({
   kind: v.literal(VERDICT_FILE_KIND),
   version: v.literal(VERDICT_FILE_VERSION),
@@ -65,7 +65,7 @@ function inputOf(run: string, trace: MotionTraceV1 | null): VerdictInput {
 }
 
 /**
- * Collects what one `qa:motion3d` command judged, and writes it once the command's FINAL exit code is known: a wrapper
+ * Collects what one `lab:motion3d` command judged, and writes it once the command's FINAL exit code is known: a wrapper
  * may still turn a report's FAIL into a refusal (exit 2) after the shared report runner returns. The file's verdict
  * follows that exit code, so it can never say PASS for a command that did not exit 0.
  */

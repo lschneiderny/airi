@@ -1,7 +1,7 @@
 import type { ChatOrchestratorStageConfig } from '@proj-airi/core-agent'
+import type { ReplyTranscriptRecord } from '@proj-airi/qa-tools/model/transcript/schema'
 
 import type { ExposedAction } from '../exposed-actions'
-import type { ReplyTranscriptRecord } from '../transcript/schema'
 
 /** What a scorer may need besides the reply itself. `contract` is null when the run has no cue contract text. */
 export interface ScoreContext {

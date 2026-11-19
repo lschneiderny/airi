@@ -1,7 +1,8 @@
-import type { MetricResult, PreparedTrace } from './types'
+import type { MetricResult, PreparedTrace } from '@proj-airi/qa-tools/t2-3d/metrics/types'
+
+import { finite, mean, sum } from '@proj-airi/qa-tools/t2-3d/metrics/math'
 
 import { SIGNAL_BONES } from './bones'
-import { finite, mean, sum } from './math'
 import { projection, scalarSignals } from './period'
 import { result, skipped } from './result'
 

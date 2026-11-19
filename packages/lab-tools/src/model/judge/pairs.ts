@@ -1,6 +1,5 @@
+import type { ReplyTranscriptRecord } from '@proj-airi/qa-tools/model/transcript/schema'
 import type { Random } from '@proj-airi/stage-shared/perf/usage'
-
-import type { ReplyTranscriptRecord } from '../transcript/schema'
 
 import { createHash } from 'node:crypto'
 

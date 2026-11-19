@@ -1,6 +1,5 @@
 import type { MotionTraceV1 } from '@proj-airi/motion-driver-humanoid/motion-trace'
-
-import type { DecodedMotionTrace } from '../read-trace'
+import type { DecodedMotionTrace } from '@proj-airi/qa-tools/t2-3d/read-trace'
 
 import { describe, expect, it } from 'vitest'
 

@@ -48,7 +48,31 @@
         "$TURBO_ROOT$/vitest.dom-storage.ts",
         "$TURBO_ROOT$/scripts/dev-tools/vitest-isolate-host-session.ts",
         "$TURBO_ROOT$/packages/stage-pages/src/**",
-        "$TURBO_ROOT$/packages/qa-tools/fixtures/model/*.json"
+        "$TURBO_ROOT$/packages/lab-tools/fixtures/model/*.json"
+      ]
+    },
+    "@proj-airi/qa-tools#test:run": {
+      "dependsOn": [
+        "^build"
+      ],
+      "env": [
+        "CI",
+        "NODE_OPTIONS",
+        "TESTING_AUDIO_*"
+      ],
+      "passThroughEnv": [
+        "NODE_COMPILE_CACHE"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        ".env*",
+        "$TURBO_ROOT$/.env*",
+        "!$TURBO_ROOT$/.env.qa",
+        "$TURBO_ROOT$/tsconfig.json",
+        "$TURBO_ROOT$/uno.config.ts",
+        "$TURBO_ROOT$/vitest.dom-storage.ts",
+        "$TURBO_ROOT$/scripts/dev-tools/vitest-isolate-host-session.ts",
+        "$TURBO_ROOT$/packages/lab-tools/model-eval/sets/legacy-2026-10-27-mac-m2/transcripts.jsonl"
       ]
     },
     "@proj-airi/i18n#test:run": {

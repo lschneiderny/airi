@@ -1,13 +1,12 @@
 import type { MotionTraceBone } from '@proj-airi/motion-driver-humanoid/motion-trace'
+import type { DecodedMotionTrace } from '@proj-airi/qa-tools/t2-3d/read-trace'
 
 import type { Quat, Vec3 } from '../metrics'
-import type { DecodedMotionTrace } from '../read-trace'
 
 import { MOTION_TRACE_BONES, MOTION_TRACE_CHANNELS } from '@proj-airi/motion-driver-humanoid/motion-trace'
+import { conjugate, multiply, normalize, rotationVector, yawQuat } from '@proj-airi/qa-tools/t2-3d/metrics/math'
 
 import * as v from 'valibot'
-
-import { conjugate, multiply, normalize, rotationVector, yawQuat } from '../metrics/math'
 
 const finite = v.pipe(v.number(), v.finite())
 const seconds = v.pipe(finite, v.minValue(0))

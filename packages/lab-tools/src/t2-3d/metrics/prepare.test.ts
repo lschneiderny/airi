@@ -1,8 +1,8 @@
+import { analyticTrace, angleX } from '@proj-airi/qa-tools/t2-3d/metrics/test-trace'
 import { describe, expect, it } from 'vitest'
 
 import { prepareTrace } from './prepare'
 import { placeWindows, segment } from './segments'
-import { analyticTrace, angleX } from './test-trace'
 
 describe('analysis windows and segmentation', () => {
   it('centres fixed windows with a half-window hop', () => {

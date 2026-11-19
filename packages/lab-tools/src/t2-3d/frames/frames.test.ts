@@ -1,9 +1,9 @@
 import type { Quat } from '../metrics'
 import type { FrameRig, FrameRigBone } from './pose'
 
+import { analyticTrace } from '@proj-airi/qa-tools/t2-3d/metrics/test-trace'
 import { describe, expect, it } from 'vitest'
 
-import { analyticTrace } from '../metrics/test-trace'
 import { drawText, GLYPH_HEIGHT, GLYPH_WIDTH } from './font'
 import { selectWindows } from './frames'
 import { FramePoseRefusal, poseFrame, skin, unposedBones } from './pose'

@@ -3,10 +3,10 @@ import type { Motion3dCliContext } from '../../../bin/motion3d'
 import { formatGestureTiming, gestureTimingReport } from '../reports/gesture-timing'
 import { runReportCommand } from './report-cli'
 
-const usage = 'qa:motion3d report gesture-timing <speak run directory>... --idle <companion idle run directory>...'
+const usage = 'lab:motion3d report gesture-timing <speak run directory>... --idle <companion idle run directory>...'
 
 /**
- * `qa:motion3d report gesture-timing <speak run>... --idle <idle run>...`: the C001 criterion report (plan 2.2) of each gated
+ * `lab:motion3d report gesture-timing <speak run>... --idle <idle run>...`: the C001 criterion report (plan 2.2) of each gated
  * speak run, its idle speed bar pooled over companion idle runs of the same model and commit (unit M3 item 1). Version 6
  * pools the trunk's locking and size over the speak runs given, which must be the speak seeds 1, 2 and 3.
  */

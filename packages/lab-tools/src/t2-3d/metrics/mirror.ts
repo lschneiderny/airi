@@ -1,6 +1,5 @@
 import type { MotionTraceBone } from '@proj-airi/motion-driver-humanoid/motion-trace'
-
-import type { Vec3 } from './types'
+import type { Vec3 } from '@proj-airi/qa-tools/t2-3d/metrics/types'
 
 /** The bone on the other side of the body; a midline bone is its own mirror. */
 export function mirrorBone(bone: MotionTraceBone): MotionTraceBone {

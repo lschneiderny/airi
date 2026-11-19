@@ -112,6 +112,6 @@ describe('runPromptCli', () => {
   it.each(['wave', 'wave:jig', 'wave:gesture,,nod:gesture', 'Wave!:gesture', ''])('rejects the malformed --exposed-actions %j with exit 2 and no stdout', async (value) => {
     expect(await run(['--exposed-actions', value])).toBe(2)
     expect(stdout).toEqual([])
-    expect(stderr.join('')).toContain('qa-tools model prompt: invalid --exposed-actions')
+    expect(stderr.join('')).toContain('lab:model prompt: invalid --exposed-actions')
   })
 })

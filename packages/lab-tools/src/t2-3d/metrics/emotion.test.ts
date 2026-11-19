@@ -2,13 +2,13 @@ import type { EmotionTrial } from './emotion'
 
 import { fileURLToPath } from 'node:url'
 
+import { analyticTrace, angleX } from '@proj-airi/qa-tools/t2-3d/metrics/test-trace'
 import { describe, expect, it } from 'vitest'
 
 import { judgeMetrics } from '../gate/judge'
 import { loadBands } from '../gate/load'
 import { emotionMetrics, emotionTrials } from './emotion'
 import { prepareTrace } from './prepare'
-import { analyticTrace, angleX } from './test-trace'
 
 /** Three trials per emotion and five placebo trials, each a head posture at its centre plus a small fixed spread. */
 function headPool(centres: Readonly<Record<string, number>>): EmotionTrial[] {

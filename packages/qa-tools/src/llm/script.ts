@@ -96,7 +96,7 @@ export async function loadScript(options: { readonly script?: string, readonly s
   if (options.set) {
     if (!/^[\w-]+$/.test(options.set))
       throw new ReplayError('Set id must contain only letters, numbers, underscores, or hyphens')
-    const path = resolve(repoRoot, 'packages/qa-tools/model-eval/sets', options.set, 'transcripts.jsonl')
+    const path = resolve(repoRoot, 'packages/lab-tools/model-eval/sets', options.set, 'transcripts.jsonl')
     const entries: ReplayEntry[] = []
     for await (const record of readTranscript(path)) {
       if (options.runKey === undefined || record.runKey === options.runKey)

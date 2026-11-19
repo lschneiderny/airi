@@ -10,7 +10,7 @@ import * as v from 'valibot'
 
 import { verdictFileSchema } from '../verdicts'
 
-const usage = 'Usage: qa:motion3d verdicts <verdict file or folder>... [--fail-on <status>[,<status>...]] (default FAIL,REFUSED; folders contribute every *.json file directly inside them that is a verdict file)'
+const usage = 'Usage: lab:motion3d verdicts <verdict file or folder>... [--fail-on <status>[,<status>...]] (default FAIL,REFUSED; folders contribute every *.json file directly inside them that is a verdict file)'
 const DEFAULT_FAIL_ON = ['FAIL', 'REFUSED']
 
 /**
@@ -45,7 +45,7 @@ export async function readVerdict(path: string): Promise<VerdictFile | string> {
 }
 
 /**
- * `qa:motion3d verdicts`: one line per verdict file, never cut, with the id and run of every line whose status
+ * `lab:motion3d verdicts`: one line per verdict file, never cut, with the id and run of every line whose status
  * `--fail-on` names. Exit 0 when nothing matches, 1 when a file verdict or a line status matches, 2 when a file is
  * missing, unparsable or not a verdict file, because a verdict that cannot be read is never a pass.
  */

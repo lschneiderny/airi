@@ -26,7 +26,7 @@ const fixtureSchema = strictObject({
 /**
  * Builds the tail segments of a fixture in the shapes that stage-ui's chat prompt builds: a memory header with its
  * entries oldest first, one text per plain segment, and one `<|STICKER id|>: description` line per catalog entry.
- * qa-tools cannot import stage-ui, so the fixture carries stage-ui's header and index-line text. The stage-ui test
+ * lab-tools cannot import stage-ui, so the fixture carries stage-ui's header and index-line text. The stage-ui test
  * `prompt-fixture-parity.test.ts` reads the fixture and fails when that text drifts; the sticker line format is pinned
  * there and in `prompt-full.test.ts`.
  */
@@ -75,7 +75,7 @@ export async function runPromptCli(
     }).values
   }
   catch (error) {
-    stderr(`qa-tools model prompt: ${errorMessageFrom(error) ?? 'invalid arguments'}\n`)
+    stderr(`lab:model prompt: ${errorMessageFrom(error) ?? 'invalid arguments'}\n`)
     return 2
   }
 
@@ -85,7 +85,7 @@ export async function runPromptCli(
       exposedActions = parseExposedActions(values['exposed-actions'])
     }
     catch (error) {
-      stderr(`qa-tools model prompt: invalid --exposed-actions: ${errorMessageFrom(error) ?? 'unreadable'}\n`)
+      stderr(`lab:model prompt: invalid --exposed-actions: ${errorMessageFrom(error) ?? 'unreadable'}\n`)
       return 2
     }
   }
@@ -97,7 +97,7 @@ export async function runPromptCli(
     }
     catch (error) {
       if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
-        stderr(`qa-tools model prompt: ${errorMessageFrom(error) ?? 'card file not found'}\n`)
+        stderr(`lab:model prompt: ${errorMessageFrom(error) ?? 'card file not found'}\n`)
         return 2
       }
       throw error
@@ -111,10 +111,10 @@ export async function runPromptCli(
     }
     catch (error) {
       if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
-        stderr(`qa-tools model prompt: fixture file not found: ${values.full}\n`)
+        stderr(`lab:model prompt: fixture file not found: ${values.full}\n`)
         return 2
       }
-      stderr(`qa-tools model prompt: invalid --full fixture ${values.full}: ${errorMessageFrom(error) ?? 'unreadable'}\n`)
+      stderr(`lab:model prompt: invalid --full fixture ${values.full}: ${errorMessageFrom(error) ?? 'unreadable'}\n`)
       return 2
     }
   }

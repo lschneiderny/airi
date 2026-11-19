@@ -1,6 +1,6 @@
 import type { MotionTraceBone } from '@proj-airi/motion-driver-humanoid/motion-trace'
+import type { Motion3dRunSummary } from '@proj-airi/qa-tools/t2-3d/runner/measurement'
 
-import type { Motion3dRunSummary } from '../runner/measurement'
 import type { Apex } from './gesture-timing'
 import type { Side } from './kinematics'
 import type { CriterionReport, LoadedRun, ReportConstant } from './report'

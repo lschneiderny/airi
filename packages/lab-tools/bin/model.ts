@@ -24,7 +24,7 @@ try {
   }).values.help
 }
 catch (error) {
-  process.stderr.write(`qa-tools model: ${errorMessageFrom(error) ?? 'invalid arguments'}\n\n${modelUsage}`)
+  process.stderr.write(`lab:model: ${errorMessageFrom(error) ?? 'invalid arguments'}\n\n${modelUsage}`)
   process.exit(2)
 }
 
@@ -38,6 +38,6 @@ const repoRoot = resolve(import.meta.dirname, '..', '..', '..')
 runModelCli(args, repoRoot, process.env).then((code) => {
   process.exitCode = code
 }, (error) => {
-  process.stderr.write(`qa-tools model: ${errorMessageFrom(error) ?? 'unexpected failure'}\n`)
+  process.stderr.write(`lab:model: ${errorMessageFrom(error) ?? 'unexpected failure'}\n`)
   process.exitCode = 1
 })

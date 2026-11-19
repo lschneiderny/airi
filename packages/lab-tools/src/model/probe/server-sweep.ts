@@ -1,5 +1,6 @@
+import type { ReplyTranscriptRecord } from '@proj-airi/qa-tools/model/transcript/schema'
+
 import type { OllamaServerSnapshot } from '../run/ollama-probe'
-import type { ReplyTranscriptRecord } from '../transcript/schema'
 
 import process from 'node:process'
 
@@ -11,8 +12,9 @@ import { createServer } from 'node:net'
 import { join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 
+import { readTranscript } from '@proj-airi/qa-tools/model/transcript/jsonl'
+
 import { runRunCli } from '../run/command'
-import { readTranscript } from '../transcript/jsonl'
 
 /** Ollama's binary inside its macOS app bundle, used when `ollama` is not on PATH. */
 const MAC_APP_BINARY = '/Applications/Ollama.app/Contents/Resources/ollama'
@@ -124,7 +126,7 @@ export interface SweepOptions {
 
 /**
  * Starts a private `ollama serve` on a free loopback port with the variant's environment, runs one scenario
- * conversation against it with `qa:model run`, reads the load's buffers from its log, and stops it.
+ * conversation against it with `lab:model run`, reads the load's buffers from its log, and stops it.
  */
 export async function runVariant(variant: SweepVariant, options: SweepOptions): Promise<SweepRow> {
   const port = await freePort()

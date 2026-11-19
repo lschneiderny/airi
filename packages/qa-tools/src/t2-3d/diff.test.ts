@@ -12,8 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { diffMotion3d } from './cli/diff'
 import { diffTraces, pairMismatches } from './diff'
 import { DEG } from './metrics/math'
-import { analyticTrace, angleX } from './metrics/test-trace'
-import { TEST_BONES } from './reports/test-runs'
+import { analyticTrace, angleX, TEST_BONES } from './metrics/test-trace'
 
 const turned = new Set<MotionTraceBone>(['leftLowerArm', 'leftHand'])
 const events: MotionTraceEvent[] = [{ t: 1, kind: 'marker', label: 'a' }, { t: 2, kind: 'marker', label: 'b' }]

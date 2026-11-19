@@ -1,6 +1,7 @@
-import type { DetectorParameters, MetricResult, PreparedTrace } from './types'
+import type { DetectorParameters, MetricResult, PreparedTrace } from '@proj-airi/qa-tools/t2-3d/metrics/types'
 
-import { dot, HZ, median } from './math'
+import { dot, HZ, median } from '@proj-airi/qa-tools/t2-3d/metrics/math'
+
 import { result, skipped, windowResult } from './result'
 import { peaks } from './segments'
 

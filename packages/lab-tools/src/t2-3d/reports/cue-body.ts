@@ -5,9 +5,9 @@ import type { PreparedTrace, Vec3 } from '../metrics'
 import type { CriterionReport, LoadedRun, ReportConstant } from './report'
 
 import { createRandomStream } from '@proj-airi/motion-driver-natural/random'
+import { conjugate, DEG, HZ, mean, multiply, norm, rotationVector } from '@proj-airi/qa-tools/t2-3d/metrics/math'
 
 import { percentile } from '../gate/bands'
-import { conjugate, DEG, HZ, mean, multiply, norm, rotationVector } from '../metrics/math'
 import { mirrorBone, mirrorRotation } from '../metrics/mirror'
 import { traceParent } from './kinematics'
 import { consensusSides, dot } from './mirror'

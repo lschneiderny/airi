@@ -1,8 +1,8 @@
+import { analyticTrace, angleX, detectors } from '@proj-airi/qa-tools/t2-3d/metrics/test-trace'
 import { describe, expect, it } from 'vitest'
 
 import { CORE } from './bones'
 import { measureTrace } from './index'
-import { analyticTrace, angleX, detectors } from './test-trace'
 
 const params = detectors(CORE)
 function motion(hz: number) {

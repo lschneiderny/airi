@@ -1,31 +1,32 @@
+import type { DecodedMotionTrace } from '@proj-airi/qa-tools/t2-3d/read-trace'
+
 import type { Motion3dCliContext } from '../../../bin/motion3d'
 import type { FrameSelection, FramesSummary } from '../frames/frames'
 import type { FrameRig, LocalPose } from '../frames/pose'
 import type { FrameView } from '../frames/render'
 import type { Quat } from '../metrics'
-import type { DecodedMotionTrace } from '../read-trace'
 
 import { existsSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 
 import { errorMessageFrom } from '@moeru/std'
+import { readGitStateFromRepo } from '@proj-airi/qa-tools/evidence/run'
+import { diffTraces } from '@proj-airi/qa-tools/t2-3d/diff'
+import { DEG } from '@proj-airi/qa-tools/t2-3d/metrics/math'
+import { MotionTraceRefusal, parseTrace, readTrace } from '@proj-airi/qa-tools/t2-3d/read-trace'
+import { loadHeadlessMMD } from '@proj-airi/qa-tools/t2-3d/runner/loader'
+import { runMotion3dScenario } from '@proj-airi/qa-tools/t2-3d/runner/run'
+import { motion3dScenarios } from '@proj-airi/qa-tools/t2-3d/scenarios'
 import { Quaternion } from 'three'
 
 import * as v from 'valibot'
 
-import { readGitStateFromRepo } from '../../evidence/run'
-import { diffTraces } from '../diff'
 import { availableChannels, drawFrames, frameAt, FRAMES_LIMITS, framesSummarySchema, selectWindows } from '../frames/frames'
 import { frameRigFromMMD, localPoses } from '../frames/model'
 import { FramePoseRefusal, neededBones, poseFrame } from '../frames/pose'
-import { DEG } from '../metrics/math'
-import { MotionTraceRefusal, parseTrace, readTrace } from '../read-trace'
-import { loadHeadlessMMD } from '../runner/loader'
-import { runMotion3dScenario } from '../runner/run'
-import { motion3dScenarios } from '../scenarios'
 
-const usage = 'Usage: qa:motion3d frames <run directory> --model <pmx> (--at <t>[,<t>...] | --window <from>:<to> [--hz <n>] | --around <marker label prefix or event kind> [--before <s>] [--after <s>] [--hz <n>]) [--views front,side] [--channels <name>[,<name>...]] --out <directory>'
+const usage = 'Usage: lab:motion3d frames <run directory> --model <pmx> (--at <t>[,<t>...] | --window <from>:<to> [--hz <n>] | --around <marker label prefix or event kind> [--before <s>] [--after <s>] [--hz <n>]) [--views front,side] [--channels <name>[,<name>...]] --out <directory>'
 /** A re-run must reproduce every stored rotation to this turn, else its untraced bones would not belong to the reviewed run. */
 const RERUN_TOLERANCE_DEG = 0.001
 /** Largest turn between a traced bone posed from the trace and the same bone in the re-run, on the drawn frames. */
@@ -98,7 +99,7 @@ function parse(args: readonly string[], cwd: string) {
 const turnDeg = (a: Quat, b: Quat) => 2 * Math.acos(Math.min(1, Math.abs(a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3]))) * DEG
 
 /**
- * `qa:motion3d frames`: stills of the posed character of one stored run, for visual review. Exit 0 when every frame
+ * `lab:motion3d frames`: stills of the posed character of one stored run, for visual review. Exit 0 when every frame
  * is written, 2 on a usage error, an unreadable run, a model that is not the run's, a selection that matches no time,
  * or a re-run that does not reproduce the stored trace; 130 on interrupt.
  */
@@ -164,7 +165,7 @@ export async function framesMotion3d(args: readonly string[], context: Motion3dC
       return 130
     if (!(error instanceof FramesUsageError) && !(error instanceof FramePoseRefusal) && !(error instanceof MotionTraceRefusal))
       throw error
-    console.error(`qa:motion3d frames: ${errorMessageFrom(error) ?? 'refused'}\n${error instanceof FramesUsageError ? usage : ''}`)
+    console.error(`lab:motion3d frames: ${errorMessageFrom(error) ?? 'refused'}\n${error instanceof FramesUsageError ? usage : ''}`)
     return 2
   }
 }
