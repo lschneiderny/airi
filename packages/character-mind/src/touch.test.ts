@@ -59,7 +59,7 @@ function script(rng = speaks) {
       return pokeAt(atMs + 2 * SEC)
     },
     outcomeAt(atMs: number, outcome: GateOutcome | 'refused', eventId = EVENT_ID) {
-      return send(atMs, { kind: 'voice-outcome', eventId, outcome })
+      return send(atMs, { kind: 'voice-outcome', turnId: `reaction:${eventId}`, outcome })
     },
   }
 }
@@ -132,7 +132,7 @@ describe('step: the spoken touch reaction', () => {
     mind.pokeAt(T0 + SEC)
     const third = mind.pokeAt(T0 + 2 * SEC)
 
-    expect(third.at(-1)).toEqual({ id: '3-speak', cause: 3, channel: 'voice', kind: 'speak', line: 'poke-protest', eventId: EVENT_ID })
+    expect(third.at(-1)).toEqual({ id: '3-speak', cause: 3, channel: 'voice', kind: 'speak', turnId: `reaction:${EVENT_ID}`, line: { kind: 'reaction', reaction: 'poke-protest', eventId: EVENT_ID } })
     expect(mind.decision).toMatchObject({ speak: true, kind: 'poke-protest', eventId: EVENT_ID, roll: 0.1, probability: 0.8 })
     expect(mind.state.voice.reaction).toMatchObject({ sessionId: 'session-1', pokeBurstRolled: true, lastAttemptAtMs: T0 + 2 * SEC, pending: { kind: 'poke-protest', eventId: EVENT_ID } })
 
@@ -174,7 +174,7 @@ describe('step: the spoken touch reaction', () => {
       return step(state, [petEnd(5 * SEC, view({ pet: { startedAtMs: atMs - 5 * SEC, durationMs: 5 * SEC }, lastCharacterLineAtMs }))], atMs, speaks)
     }
 
-    expect(second(null).intents.at(-1)).toMatchObject({ channel: 'voice', kind: 'speak', line: 'pet-soft', eventId: EVENT_ID })
+    expect(second(null).intents.at(-1)).toMatchObject({ channel: 'voice', kind: 'speak', turnId: `reaction:${EVENT_ID}`, line: { kind: 'reaction', reaction: 'pet-soft', eventId: EVENT_ID } })
     expect(second(T0 + 25 * SEC).state.voice.lastDecision).toMatchObject({ speak: false, reason: 'recent-line', kind: 'pet-soft' })
   })
 
@@ -217,7 +217,7 @@ describe('step: the spoken touch reaction', () => {
 
     // The line was never sent: no refractory and no retry wait, and the burst may roll again.
     expect(mind.state.voice.reaction).toMatchObject({ lastLineAtMs: null, lastAttemptAtMs: null, pokeBurstRolled: false, pending: null })
-    expect(mind.pokeAt(T0 + 3 * SEC).at(-1)).toMatchObject({ channel: 'voice', kind: 'speak', line: 'poke-protest' })
+    expect(mind.pokeAt(T0 + 3 * SEC).at(-1)).toMatchObject({ channel: 'voice', kind: 'speak', line: { kind: 'reaction', reaction: 'poke-protest' } })
   })
 
   it('starts the refractory for a line that speaks after its pending attempt was dropped', () => {

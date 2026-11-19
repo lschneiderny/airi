@@ -605,7 +605,7 @@ describe('stage performance conductor', () => {
 
       expect(voice.speakReaction.mock.calls).toEqual([[{ kind: 'poke-protest', eventId: 'touch-event' }]])
       expect(mind.state.voice.reaction.pending).toMatchObject({ eventId: 'touch-event' })
-      expect((await settled).stimuli).toEqual([{ kind: 'voice-outcome', eventId: 'touch-event', outcome }])
+      expect((await settled).stimuli).toEqual([{ kind: 'voice-outcome', turnId: 'reaction:touch-event', outcome }])
       expect(mind.state.voice.reaction.pending).toBeNull()
     })
 
