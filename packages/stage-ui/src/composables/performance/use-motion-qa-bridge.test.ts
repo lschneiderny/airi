@@ -119,6 +119,7 @@ describe('useMotionQaBridge', () => {
   let chat: ReturnType<typeof createChatHooks>
   const voicing = ref(false)
   const mode = ref<PerformanceMode>('idle')
+  let deleteAllData: () => Promise<void>
   let performanceInputs: PerformanceInputs
   let mind: CharacterMind
   /** Epoch milliseconds of the mind's clock; a test moves it by hand. */
@@ -145,6 +146,9 @@ describe('useMotionQaBridge', () => {
     evaluateVoice = vi.fn(async (): Promise<SituationGateEvaluation> => ({ status: 'skipped', reason: 'gate-not-running' }))
     voicing.value = false
     mode.value = 'idle'
+    deleteAllData = async () => {
+      log.push('delete-all-data')
+    }
     performanceInputs = { nowMs: 0, speaking: false, userSpeaking: false, generating: false, cursorMovedAtMs: null, desktop: null, userTurnAtMs: null, visible: true, override: null, cueAttention: null, foregroundCategory: null }
     const streaming = useLlmStreamingControlStore()
     const dispatcher = createMotionQaDispatcher()
@@ -168,6 +172,7 @@ describe('useMotionQaBridge', () => {
         renderError: () => undefined,
         performance: () => ({ inputs: performanceInputs, state: { ...resolvePerformanceState(performanceInputs, initialResolverMemory).state, mode: mode.value } }),
         evaluateVoice: () => evaluateVoice(),
+        deleteAllData: () => deleteAllData(),
         frames: clock.frames,
       })
     })
@@ -176,6 +181,16 @@ describe('useMotionQaBridge', () => {
   it('sends user text through the supplied real send boundary', async () => {
     expect(await dispatch({ name: 'chatSend', input: { text: 'hello' } })).toEqual({ ok: true, result: { sent: true } })
     expect(log).toEqual(['send:hello'])
+  })
+
+  it('runs delete all data through the supplied maintenance call and reports the first failure as a result', async () => {
+    expect(await dispatch({ name: 'deleteAllData' })).toEqual({ ok: true, result: { ok: true } })
+    expect(log).toEqual(['delete-all-data'])
+
+    deleteAllData = async () => {
+      throw new Error('Model storage unavailable')
+    }
+    expect(await dispatch({ name: 'deleteAllData' })).toEqual({ ok: true, result: { ok: false, error: 'Model storage unavailable' } })
   })
 
   it('records turn boundaries and truncates assistant text', async () => {

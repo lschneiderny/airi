@@ -2,23 +2,18 @@
 import type { DataSettingsStatusEmits } from '../status'
 
 import { useAnalytics } from '@proj-airi/stage-ui/composables'
+import { useHostDataDeletion } from '@proj-airi/stage-ui/composables/host-data-deletion'
 import { useDataMaintenance } from '@proj-airi/stage-ui/composables/use-data-maintenance'
 import { DoubleCheckButton } from '@proj-airi/ui'
 import { useI18n } from 'vue-i18n'
 
 import { createDataSettingsStatusHelpers } from '../status'
 
-const props = defineProps<{
-  /**
-   * Deletes what the host keeps outside the renderer's storage, such as files its main process wrote.
-   * Runs after the renderer's own deletion, also when that failed, as part of "Delete all data".
-   */
-  deleteHostData?: () => Promise<void>
-}>()
 const emit = defineEmits<DataSettingsStatusEmits>()
 const { t } = useI18n()
 const { trackDataAction } = useAnalytics()
-const { deleteAllData, resetProvidersSettings } = useDataMaintenance()
+const { deleteAllDataWithHost, resetProvidersSettings } = useDataMaintenance()
+const deleteHostData = useHostDataDeletion()
 const { emitStatus, handleActionError } = createDataSettingsStatusHelpers(emit, t('settings.pages.data.status.action_error'))
 
 async function resetProviders() {
@@ -33,18 +28,11 @@ async function resetProviders() {
 }
 
 async function deleteAll() {
-  // A renderer failure must not keep the host's data: run the host step anyway, then report the first failure.
-  const failures: unknown[] = []
-  for (const step of [deleteAllData, async () => props.deleteHostData?.()]) {
-    try {
-      await step()
-    }
-    catch (error) {
-      failures.push(error)
-    }
+  try {
+    await deleteAllDataWithHost(deleteHostData)
   }
-  if (failures.length > 0) {
-    handleActionError(failures[0])
+  catch (error) {
+    handleActionError(error)
     return
   }
   trackDataAction({ action: 'app_data_cleared' })

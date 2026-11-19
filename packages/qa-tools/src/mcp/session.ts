@@ -1,6 +1,6 @@
 import type { Lease } from '@proj-airi/cpu-slots'
 import type { CdpClient } from '@proj-airi/scenarios-stage-tamagotchi-electron/runtime/remote-debug'
-import type { MotionQaEvent } from '@proj-airi/stage-shared/motion-scenario'
+import type { MotionQaDeleteAllDataResult, MotionQaEvent } from '@proj-airi/stage-shared/motion-scenario'
 
 import type { RunHandle } from '../evidence/run'
 import type { StageHost } from '../session/app-session'
@@ -175,6 +175,12 @@ export class AppSession {
   async state(): Promise<unknown> {
     const live = this.require()
     return await live.bridge.call('state', undefined, 30_000)
+  }
+
+  /** Runs "Delete all data" in the stage window, host step included; `{ ok: false, error }` names the first failure. */
+  async deleteAllData(): Promise<MotionQaDeleteAllDataResult> {
+    const live = this.require()
+    return await failOnExit(live.app, 'delete all data', live.bridge.call('deleteAllData', undefined, 60_000))
   }
 
   async events(sinceSeq?: number): Promise<unknown> {

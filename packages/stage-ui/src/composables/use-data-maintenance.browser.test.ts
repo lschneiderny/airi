@@ -475,6 +475,20 @@ it('runs every later deletion when an owner reset fails, and still rejects', asy
   await expect(storage.getItemRaw('local:chat/sessions/orphan')).resolves.toBeNull()
 })
 
+it('runs the host step after a failed registry run and rejects with the registry failure', async () => {
+  vi.stubGlobal('fetch', vi.fn<typeof fetch>(async () => Response.json({ voices: [], models: [] })))
+  const { pinia, runtime, maintenance } = mountMaintenance(`maintenance:${crypto.randomUUID()}`, 'leader-only')
+  await vi.waitFor(() => expect(runtime.isLeader()).toBe(true))
+  vi.spyOn(useDisplayModelsStore(pinia), 'resetDisplayModels').mockRejectedValue(new Error('Model storage unavailable'))
+  const deleteHostData = vi.fn<() => Promise<void>>(async () => {
+    throw new Error('Host unavailable')
+  })
+
+  await expect(maintenance.deleteAllDataWithHost(deleteHostData)).rejects.toThrow('Model storage unavailable')
+
+  expect(deleteHostData).toHaveBeenCalledOnce()
+})
+
 const marker = 'delete-all-data-marker'
 /** Valid JSON, so the owners that read the marker before the deletion do not log parse errors. */
 const storedMarker = JSON.stringify(marker)
