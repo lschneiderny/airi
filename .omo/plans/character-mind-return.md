@@ -1,6 +1,6 @@
 # character-mind-return - Work Plan
 
-Status: planned on 2026-11-19, not started. Roadmap row: slice CM2 in [`docs/ai/context/character-mind-roadmap.md`](../../docs/ai/context/character-mind-roadmap.md#steps). Rulings: the [character mind ADR](../../docs/ai/adr/2026-11-17-character-mind-direction.md) and the [character mind core ADR](../../docs/ai/adr/2026-11-18-character-mind-core.md). Branch: `luke/feat/character-mind-return`, cut from `luke/feat/character-mind-touch` at `7d0f55812` (CM1, PR #47, not yet merged), which contains upstream `moeru-ai/airi` through `b3a6d6071`. One PR against `lschneiderny/airi` with base `luke/feat/character-mind-touch`. When CM1 merges, rebase the branch onto `main` and retarget the PR.
+Status: done on the branch `luke/feat/character-mind-return` on 2026-11-19, not yet merged. The commits are listed in [Commits](#commits), and the checks in [Checks run](#checks-run). Roadmap row: slice CM2 in [`docs/ai/context/character-mind-roadmap.md`](../../docs/ai/context/character-mind-roadmap.md#steps). Rulings: the [character mind ADR](../../docs/ai/adr/2026-11-17-character-mind-direction.md) and the [character mind core ADR](../../docs/ai/adr/2026-11-18-character-mind-core.md). Branch: `luke/feat/character-mind-return`, cut from `luke/feat/character-mind-touch` at `7d0f55812` (CM1, PR #47, not yet merged), which contains upstream `moeru-ai/airi` through `b3a6d6071`. One PR against `lschneiderny/airi` with base `luke/feat/character-mind-touch`. When CM1 merges, rebase the branch onto `main` and retarget the PR.
 
 The owner is away and runs these slices without a plan review. Every design fork below is taken on the recommended option and listed in [Decisions open to the owner's veto](#10-decisions-open-to-the-owners-veto).
 
@@ -323,6 +323,46 @@ Overlap 6 is gone from the autonomous-behavior doc, because one `step` call answ
 
 ## Departures during implementation
 
+- The `observe-wake` intent carries `wakeCause`, not `cause`, because every intent's `cause` is already the sequence number of its stimulus.
+- A requested wake also resets Natural's `awaySince`, so she does not fall straight back asleep when the wake reaches Natural before the performance update that clears `away`.
+- Both new Natural tests of item 3 are in `intent.test.ts`, because they drive `NaturalMotion` directly. `review.test.ts` only lost the two fields.
+- `WakeCause` stays in `situation/types`, and `performance-state` imports it from there. The plan's move would have made a type-only import cycle.
+- `situation-bridge.test.ts` changed its input from two presence observations to one `return` observation, because presence no longer pushes `returned`. The bridge code and the test's assertions are unchanged.
+- The situation store test of a 1 s lock lost its wake assertions, which could no longer fail because the sensor reports no wakes.
+- The fake ScreenSaver uses Gio, is run through `python3 -I` like `kwin-pointer.py` instead of being executable, and checks the QA display itself. The rendered check found that it dropped the unlock in 2 of 3 runs: the app looks up the owner of the sender's name when a signal arrives, and the helper released the name right after the unlock. It now keeps the name 5 s after the unlock.
+- The MMD scene's idle reports now also pass through `useIdleProps`, which is inert for a non-Live2D model, because one `onIdle` handler in `Stage.vue` serves both scenes.
+
 ## Checks run
 
+Run on 2026-11-19 at `b31b54681`, the last commit that changes code; the gate ran again on the finished branch. `AIRI_QA_RIG_FORBOOTH` and `AIRI_QA_MMD_MODEL` named the models.
+
+| Check | Result |
+| --- | --- |
+| `pnpm verify --gate --base luke/feat/character-mind-touch` | Exit 0 on the finished branch: lint of 64 files, typecheck, related tests; 10 env-gated files skipped |
+| `pnpm qa:display run -- pnpm qa:smoke` | Exit 0: classic window host, 0 renderer errors, 0 main-process errors |
+| `pnpm qa:display run -- pnpm qa:smoke --model "$AIRI_QA_MMD_MODEL" --stage-host desktop` | Exit 0: desktop stage host, 0 renderer errors, 0 main-process errors |
+| `pnpm qa:live2d-rig` | Exit 0 |
+| `pnpm qa:test:model` | Exit 0: 4 files, 15 tests |
+| `pnpm qa:motion3d run --model "$AIRI_QA_MMD_MODEL" --scenario <touch\|sleepy-no-clip> --seed 1` at `7d0f55812` (a temporary worktree) and at the tip, then `pnpm qa:motion3d diff` | `IDENTICAL` for both scenarios (rot, root, channels, events) |
+| Rendered return 1: Live2D (`AIRI_QA_RIG_FORBOOTH`) under Natural, classic window | Pass. The lock gave a `mind` presence event with `away: true` and no intents; sleep started 29.9 s later. The unlock 45 s after the lock gave one `mind` event with `away: false`, `wake: 'unlock'`, and intents of one cause in order `posture/desktop-reaction`, `face/moment`, `voice/observe-wake`, `voice/observe-return`, with no `posture/wake`; sleep ended 46 ms later. No errors |
+| Rendered return 2: the gentle wake | Pass. `systemIdleTime` became live about 4 minutes into the session. Idle time crossing 300 s gave the away step, and sleep started 22.9 s later. A pointer move 390 s after it gave `posture/wake`, `face/moment`, `voice/observe-return`, and the sleep end 28 ms later, then a stretch. An unprompted greeting 24 s later carried "came back after 6 min away" in its prompt and failed with the replay server's `replay_exhausted` (409), which logged 6 renderer errors; the session had no spare scripted replies |
+| Rendered return 3: MMD (`AIRI_QA_MMD_MODEL`) on the desktop stage | Pass. The same two `mind` events and four intents; sleep started 19.7 s after the lock and ended 2 ms after the return. No errors |
+| Rendered return 4: Universal | Pass. The same two `mind` events and four intents, and no `idle` events. No new errors |
+
+Rendered checks 1, 3, and 4 used the helper with the 5 s linger, which the tracked helper now has.
+
+Not checked: screen change and the voice side's welcome-back window (3 h) have unit tests only.
+
 ## Commits
+
+`git log --oneline luke/feat/character-mind-touch..HEAD`, oldest first, without the commit that adds this section:
+
+- `e0093f257` docs(plan): add the plan for the return slice of the character mind
+- `107f9795b` feat(character-mind): answer the user's return and desktop events
+- `6622bf634` feat(motion-driver-natural,stage-ui-live2d,stage-ui-mmd): let the performer wake and react on request
+- `d31eb4d0e` refactor(stage-shared,stage-ui,stage-ui-live2d,stage-ui-mmd,motion-driver-natural,qa-tools): route the return's body and face response through the mind
+- `b06c55318` refactor(stage-shared,stage-ui): let the gate learn a return from the mind
+- `b31b54681` feat(stage-shared,stage-ui,qa-tools): show returns and sleep to QA
+- `bb274e94e` docs(ai): record the character mind return decisions and close the return slice row
+
+This commit marks the plan done.
