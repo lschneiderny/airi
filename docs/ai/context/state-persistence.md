@@ -6,7 +6,7 @@ Terms follow the [domain glossary](glossary.md), in particular [Leader and follo
 
 ## Choosing a tier
 
-Choose the first [tier](glossary.md#persistence-tier) that fits the state. A store that persists anything is registered with `useDataMaintenance` (`packages/stage-ui/src/composables/use-data-maintenance.ts`) in the same commit, so "Delete all data" reaches it.
+Choose the first [tier](glossary.md#persistence-tier) that fits the state. A store that persists anything registers in the [state registry](#state-registry) in the same commit. `useDataMaintenance` (`packages/stage-ui/src/composables/use-data-maintenance.ts`) does not run the registry yet, so a store that "Delete all data" must reach is also reset there.
 
 | # | State | Tier |
 | --- | --- | --- |
@@ -23,6 +23,23 @@ Two tiers are closed to new state:
 - **A main-process ring with disk recording.** It stays specific to the IO trace hub. Use it only for diagnostics that must outlive a renderer.
 
 A store that fits no tier needs an amendment to this document before it lands.
+
+**Caches.** A copy that the app can download or rebuild again is not a tier: the copies of imported Live2D and MMD models in the origin private file system, the Sherpaw model assets, and the Transformers.js Cache Storage `transformers-cache`. Each registers in the state registry with the tier `cache`. A cache does not hold the user's only copy: the imported model files stay in IndexedDB, and the other caches download again.
+
+## State registry
+
+`stateRegistry` (`packages/stage-ui/src/persistence/state-registry.ts`) declares every piece of persisted renderer state. Each `StateRegistration` names its owner, the files that write it, its tier, its locations, and an optional owner reset. A location is a localStorage key, key prefix, or per-model key; a sessionStorage key; an IndexedDB object store, optionally narrowed by a key prefix; an OPFS directory; or a Cache Storage cache. `resetRegisteredState` runs the owner reset of each registration in registry order, then removes everything its locations match.
+
+**One owner per key.** No two registrations claim the same storage. A store reads a key that another store owns without writing it.
+
+To add persisted state:
+
+1. Choose a tier with [Choosing a tier](#choosing-a-tier).
+2. Add a registration to `stateRegistry` in the same commit. Write its locations and writers as literals. Use a prefix only for a key family that one owner holds whole; list exact keys when another owner writes under the same path. Mark a key that only an older release wrote as `legacy`.
+3. Give it a `reset` when the owner keeps the state in memory: a synced store, which routes the reset to the leader, or a store with a `resetState`. Leave it out when creating the store connects or loads; the sweep alone then resets the state.
+4. Run `state-registry.browser.test.ts`. It creates and resets every owner in a leader and a follower window, and fails on a write that no registration owns and on two registrations that claim the same storage.
+
+The registry covers renderer storage only. Main-process files stay with `storedDataDeleteActivity`; see [Main-process files](#main-process-files).
 
 ## Members
 
@@ -71,18 +88,18 @@ Settings of the device stay global: the frame-rate limits, render scales, and mu
 
 | Store | Database | Tier | Writer | Registered |
 | --- | --- | --- | --- | --- |
-| `useChatSessionStore` (`packages/stage-ui/src/stores/chat/session-store.ts`) through `chatSessionsRepo` (`packages/stage-ui/src/database/repos/chat-sessions.repo.ts`) | unstorage mount `local`, IndexedDB `airi-local` (`storage` in `packages/stage-ui/src/database/storage.ts`) | 4 | leader | yes |
+| `useChatSessionStore` (`packages/stage-ui/src/stores/chat/session-store.ts`) through `chatSessionsRepo` (`packages/stage-ui/src/database/repos/chat-sessions.repo.ts`) | unstorage mount `local`: idb-keyval's default database `keyval-store`, object store `keyval`, keys prefixed `airi-local:chat:` (`storage` in `packages/stage-ui/src/database/storage.ts`) | 4 | leader | yes |
 | `chatAssetsRepo` (`packages/stage-ui/src/database/repos/chat-assets.repo.ts`), written by `storeChatAsset` (`packages/stage-ui/src/libs/chat-assets.ts`) | mount `chat-assets`, IndexedDB `airi-chat-assets` / `assets` | 4 | the window saving a chat session | yes, released with each deleted session |
 | `useMemoryStore` (`packages/stage-ui/src/stores/memory.ts`) through `memoryRepo` (`packages/stage-ui/src/database/repos/memory.repo.ts`) | mount `memory`, IndexedDB `airi-memory` / `entries`, one record per entry id; key `memory/enabled` | 4 (named exception); plain for `memory/enabled` | any window | yes |
 | `useRecipesStore` (`packages/stage-ui/src/stores/recipes.ts`) through `recipesRepo` (`packages/stage-ui/src/database/repos/recipes.repo.ts`) | mount `recipes`, IndexedDB `airi-recipes` / `recipes`, one record per recipe id; key `recipes/proposals-enabled` | 4 (named exception); plain for `recipes/proposals-enabled` | any window | yes |
 | `useCharacterStateStore` (`packages/stage-ui/src/stores/character-state.ts`) through `characterStateRepo` (`packages/stage-ui/src/database/repos/character-state.repo.ts`) | mount `character-state`, IndexedDB `airi-character-state` / `cards` | 4 | leader | yes |
 | `useDisplayModelsStore` (`packages/stage-ui/src/stores/display-models.ts`) through `displayModelsRepo` (`packages/stage-ui/src/database/repos/display-models.repo.ts`) | mount `device`, IndexedDB `localforage` / `keyvaluepairs`, one item per model id | 4 | any window | yes |
-| `useBackgroundStore` (`packages/stage-ui/src/stores/background.ts`) | mount `device`, items prefixed `bg-` | 4 | any window | no |
+| `useBackgroundStore` (`packages/stage-ui/src/stores/background.ts`) | mount `device`, items prefixed `bg-`, and the built-in backgrounds it seeds under `builtin:` | 4 | any window | no |
 | `useStickersStore` (`packages/stage-ui/src/stores/modules/stickers.ts`) through `stickersRepo` (`packages/stage-ui/src/database/repos/stickers.repo.ts`) | mount `stickers`, IndexedDB `airi-sticker-library` / `records`, with the prefixes `entries` and `images`; keys `settings/stickers/*` | 4; plain for the settings keys | any window | no |
-| `toolCardDataRepo` (`packages/stage-ui/src/database/repos/tool-card-data.repo.ts`), written by the tool-card store below | mount `local`, keys `tool-cards/latest/<tool>/<card version>` | 4 | leader | no |
-| `useCharacterStore` (`packages/stage-ui/src/stores/characters.ts`) through `createCharactersModel` (`packages/stage-ui/src/models/characters.ts`) | mount `local`, key `characters` | 4 | any window | no |
+| `toolCardDataRepo` (`packages/stage-ui/src/database/repos/tool-card-data.repo.ts`), written by the tool-card store below | mount `local`, keys `tool-cards/latest/<tool>/<card version>`, stored as `airi-local:tool-cards:latest:<tool>:<card version>` in `keyval-store` | 4 | leader | no |
+| `useCharacterStore` (`packages/stage-ui/src/stores/characters.ts`) through `createCharactersModel` (`packages/stage-ui/src/models/characters.ts`) | mount `local`, key `characters`, stored as `airi-local:characters` in `keyval-store` | 4 | any window | no |
 
-Every repository reads and writes through a mount of `storage` (`packages/stage-ui/src/database/storage.ts`), an unstorage instance on IndexedDB. The `device`, `chat-assets`, `memory`, `recipes`, and `character-state` mounts open the databases and stores that localforage created, so records written before the move still read.
+Every repository reads and writes through a mount of `storage` (`packages/stage-ui/src/database/storage.ts`), an unstorage instance on IndexedDB. The `local` and `outbox` mounts pass only a `base` to the driver, so both write idb-keyval's default database `keyval-store`, object store `keyval`, under the key prefixes `airi-local:` and `airi-sync-queue:`. unstorage stores `/` in a key as `:`. The `device`, `chat-assets`, `memory`, `recipes`, and `character-state` mounts open the databases and stores that localforage created, so records written before the move still read.
 
 ### Synced stores with plain refs
 
@@ -128,7 +145,7 @@ Every repository reads and writes through a mount of `storage` (`packages/stage-
 | `useHomeAssistantStore` (`packages/stage-ui/src/stores/modules/home-assistant.ts`) | `settings/home-assistant/*` | plain | any window | yes |
 | `useWebSearchStore` (`packages/stage-ui/src/stores/modules/web-search.ts`) | `settings/web-search/*` | plain | any window | yes |
 | `useDiscordStore` (`packages/stage-ui/src/stores/modules/discord.ts`) | `settings/discord/*` | plain | any window | yes |
-| `createGamingModuleStore` (`packages/stage-ui/src/stores/modules/gaming-module-factory.ts`), used by `useMinecraftStore` and `useFactorioStore` | `settings/<module>/*` | plain | any window | yes |
+| `createGamingModuleStore` (`packages/stage-ui/src/stores/modules/gaming-module-factory.ts`), used by `useFactorioStore` | `settings/factorio/*`; `useMinecraftStore` keeps its state in memory, and the `settings/minecraft/*` keys of releases that built it with the factory are legacy | plain | any window | yes |
 | `useMcpStore` (`packages/stage-ui/src/stores/mcp.ts`) | `settings/mcp/*`, `mcp/connected` | plain | any window | yes |
 | `useVisionProcessingStore` (`packages/stage-ui/src/stores/modules/vision/processing-store.ts`) | `settings/vision/capture-interval-ms` | plain | any window | no |
 | `useModsServerChannelStore` (`packages/stage-ui/src/stores/mods/api/channel-server.ts`) | `settings/connection/websocket-url`, `settings/connection/websocket-auth-token` | plain | any window | no |
@@ -238,7 +255,7 @@ These are observations, not fixes. Each needs either a registration, a move to t
 
 - Synced stores that persist plain refs as replicated state (`useAiriCardStore`, `useConsciousnessStore`, `useHearingStore`, `useSpeechStore`, `useProviderConfigStore`, `useVisionStore`, and `useArtistryStore`) write storage from every window that receives a committed snapshot. Tier 1 forbids this for settings documents. These stores predate the tiers and are upstream code.
 - The stage-layouts `useBackgroundStore` (`packages/stage-layouts/src/stores/background.ts`) shares the `device` mount with `useDisplayModelsStore` and the stage-ui `useBackgroundStore`, and `useMMD` opens the same database through its own unstorage instance. The records are separated only by key prefix. The desktop app does not render the stage-layouts background components that use it.
-- The unstorage `outbox` mount (IndexedDB `airi-sync-queue`) in `storage` has no reader or writer in the client.
+- The unstorage `outbox` mount (`keyval-store`, keys prefixed `airi-sync-queue:`) in `storage` has no reader or writer in the client.
 - `useSettingsAnalytics` moved from `settings/analytics/enabled` to `settings/analytics/opted-in`. The old key stays in storage with no owner, so "Delete all data" does not remove it.
 - The analytics opt-in has two stored copies: `settings/analytics/opted-in` in the renderer and `errorReportingEnabled` in the main process's app options file. "Delete all data" resets the first, and the second follows only through the renderer's mirror.
 - Onboarding step records, the active card id, the consciousness request settings, and the saved tool cards are written with direct `localStorage` calls from synced actions. The leader is the only writer, but none of them is a tier 1 document or carries the tier 2 leadership token.

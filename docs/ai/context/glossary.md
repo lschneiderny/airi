@@ -313,9 +313,9 @@ The part that executes decisions without making them. On MMD, the whole-body per
 
 ### Persistence tier
 
-The six places that client state may live, chosen in order: 1, a synced settings document; 2, leader-only localStorage written by explicit command with a leadership token; 3, localStorage keyed by display model id and written by the stage window; 4, IndexedDB; 5, synced Pinia memory, replicated and not persisted; 6, per-window memory. Plain localStorage refs and a main-process ring with disk recording are closed to new state. Upstream's per-model display settings are plain refs stored once for each display model, under `settings/models/<model id>/`; they are not tier 3. A store that persists anything registers with `useDataMaintenance`.
+The six places that client state may live, chosen in order: 1, a synced settings document; 2, leader-only localStorage written by explicit command with a leadership token; 3, localStorage keyed by display model id and written by the stage window; 4, IndexedDB; 5, synced Pinia memory, replicated and not persisted; 6, per-window memory. Plain localStorage refs and a main-process ring with disk recording are closed to new state. Upstream's per-model display settings are plain refs stored once for each display model, under `settings/models/<model id>/`; they are not tier 3. A copy that the app can download or rebuild is a cache, not a tier. A store that persists anything registers in the state registry.
 
-**Code:** no type names the tiers. Examples: `packages/stage-shared/src/composables/use-settings-document/index.ts` `useSettingsDocument` (tier 1); `packages/stage-ui/src/features/situation/inner-state.ts` `useSituationInnerState` (tier 2); `packages/stage-ui/src/libs/pinia/setup-synced.ts` `setupSynced` (tiers 1 and 5); `packages/stage-ui/src/composables/use-data-maintenance.ts` `useDataMaintenance`.
+**Code:** `packages/stage-ui/src/persistence/state-registry.ts` `PersistenceTier`, which adds the closed plain-ref tier and caches. Examples: `packages/stage-shared/src/composables/use-settings-document/index.ts` `useSettingsDocument` (tier 1); `packages/stage-ui/src/features/situation/inner-state.ts` `useSituationInnerState` (tier 2); `packages/stage-ui/src/libs/pinia/setup-synced.ts` `setupSynced` (tiers 1 and 5).
 **Not to be confused with:** leader and follower windows, which decide who writes, not where.
 **Avoid:** "storage layer", "cache level".
 
@@ -446,6 +446,14 @@ The MMD body's base pose, which the body director holds: `stand`, `sit`, or `sle
 **Code:** `packages/motion-driver-humanoid/src/types/index.ts` `BodyIntent` (`stance`); `packages/motion-driver-humanoid/src/performance/contracts.ts` `BodyRest`; `packages/motion-driver-humanoid/src/director/index.ts` `STANCE_MIN_DWELL_MS`, `IDLE_TO_SIT_MS`; `packages/stage-ui-mmd/src/composables/mmd/stance.ts` `MMDStanceDirector`.
 **Not to be confused with:** posture, Natural's continuous pose; and the `shift-stance` idle activity, a weight shift while standing.
 **Avoid:** "pose" or "state" for a stance.
+
+### State registry
+
+The one list of every piece of persisted renderer state. Each registration names its owner, the files that write it, its persistence tier, its locations in browser storage, and an optional owner reset. No two registrations claim the same storage, and a browser test fails when creating or resetting the owners writes storage that no registration owns.
+
+**Code:** `packages/stage-ui/src/persistence/state-registry.ts` `stateRegistry`, `StateRegistration`, `resetRegisteredState`.
+**Not to be confused with:** the main-process files, which `setupStoredData` declares and deletes.
+**Avoid:** "storage keys list", "persistence manifest".
 
 ### Stimulus
 
