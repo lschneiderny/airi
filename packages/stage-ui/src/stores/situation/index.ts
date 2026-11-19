@@ -48,6 +48,7 @@ import {
   promotionUrgeMemory,
   pruneThreads,
   raiseThread,
+  randomSource,
   recordExternalSpeech,
   recordUrgeFireOutcome,
   recordUrgeUserTurn,
@@ -120,7 +121,7 @@ const NO_THREADS: ThreadState = Object.freeze({ threads: Object.freeze([]) })
  */
 const EXTRACTION_READ_POSITIONS_MAX = 64
 
-/** A fresh uint32 for the gate's first urge threshold of a leadership. */
+/** A fresh uint32 that seeds the gate's random source for a leadership. */
 function randomSeed(): number {
   return crypto.getRandomValues(new Uint32Array(1))[0] ?? 0
 }
@@ -159,7 +160,6 @@ function savedGateMemory(memory: UrgeGateMemory): SavedGateMemory {
     damp: memory.damp,
     day: memory.day,
     lastOwnDayAtMs: memory.lastOwnDayAtMs,
-    rngState: memory.rngState,
   }
 }
 
@@ -269,6 +269,8 @@ export const useSituationStore = defineStore('situation', () => {
   /** The durable state last saved, serialized, so an evaluation that changed nothing durable writes nothing. */
   let savedSnapshot: string | undefined
   let seedSource: () => number = randomSeed
+  /** The gate's random source; a new one is seeded from `seedSource` at every promotion. */
+  let gateRandom: () => number = randomSource(0)
   const innerState = useSituationInnerState()
   let stopGateEvaluation: (() => void) | undefined
   /** Stops thread extraction of the running gate; a late result of an earlier gate run is dropped. */
@@ -705,7 +707,7 @@ export const useSituationStore = defineStore('situation', () => {
       // stays as it was.
       moodFactor: characterBridge?.urgeFactor() ?? 1,
       forceTiming,
-    }, gateMemory)
+    }, gateMemory, gateRandom)
     // Recording the decision publishes this memory to the inspector too.
     gateMemory = memory
     observability.recordUrgeDecision(decision, memory)
@@ -747,7 +749,7 @@ export const useSituationStore = defineStore('situation', () => {
       return
     if (result.status === 'failed' && result.error === UNPROMPTED_BUSY_ERROR) {
       // Another caller's unprompted turn won the race. This fire never happened, so it takes no floor or cap slot and
-      // spends no urge or random draw. A user turn may have landed meanwhile, so the social fields stay current.
+      // spends no urge. Its five random draws stay spent, since the source cannot rewind. A user turn may have landed meanwhile, so the social fields stay current.
       setGateMemory({
         ...gateMemory,
         lastFireAtMs: before.lastFireAtMs,
@@ -755,7 +757,6 @@ export const useSituationStore = defineStore('situation', () => {
         pending: before.pending,
         urge: before.urge,
         urgeThreshold: before.urgeThreshold,
-        rngState: before.rngState,
         doubleText: before.doubleText,
       })
       return
@@ -952,7 +953,8 @@ export const useSituationStore = defineStore('situation', () => {
       // the leader before it, so a reload neither greets twice nor forgets an unanswered opening.
       const nowMs = Date.now()
       const saved = innerState.read(nowMs)
-      const promoted = promotionUrgeMemory(nowMs, seedSource())
+      gateRandom = randomSource(seedSource())
+      const promoted = promotionUrgeMemory(nowMs, gateRandom)
       gateMemory = saved.gate === null ? promoted : restoreSocialMemory(promoted, saved.gate, nowMs)
       threads = { threads: saved.threads }
       extractedThrough = saved.extractedThrough
@@ -1128,7 +1130,7 @@ export const useSituationStore = defineStore('situation', () => {
       innerState.reset()
       savedSnapshot = undefined
       if (gateTicker !== undefined)
-        gateMemory = promotionUrgeMemory(Date.now(), seedSource())
+        gateMemory = promotionUrgeMemory(Date.now(), gateRandom)
       // Also clears the character state of every card; the bridge's own memory of reach-outs and turns goes with it.
       void characterBridge?.forgetEverything()
     }
@@ -1203,7 +1205,7 @@ export const useSituationStore = defineStore('situation', () => {
    * subscription and its options. The leadership listener runs immediately with the current role, so an initial leader
    * starts at once.
    *
-   * `seedSource` gives the seed of the gate's first urge threshold on every promotion; it defaults to a random uint32.
+   * `seedSource` gives the seed of the gate's random source on every promotion; it defaults to a random uint32.
    * Tests pass a fixed seed so no assertion depends on luck.
    */
   function initialize(syncedPinia: SyncedPiniaRuntime, options: { seedSource?: () => number } = {}) {

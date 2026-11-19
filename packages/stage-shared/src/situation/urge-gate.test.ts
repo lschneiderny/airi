@@ -27,6 +27,7 @@ import {
   initialUrgeMemory,
   logicalDayKey,
   promotionUrgeMemory,
+  randomSource,
   recordExternalSpeech,
   recordUrgeFireOutcome,
   recordUrgeUserTurn,
@@ -154,7 +155,23 @@ function fired(decision: UrgeGateDecision): Extract<UrgeGateDecision, { fire: tr
 
 /** The fields an urgent or double-text fire must leave untouched. */
 function drawState(memory: UrgeGateMemory) {
-  return { urge: memory.urge, urgeThreshold: memory.urgeThreshold, rngState: memory.rngState, fires: memory.fires }
+  return { urge: memory.urge, urgeThreshold: memory.urgeThreshold, fires: memory.fires }
+}
+
+/** A Mulberry32 source from `seed` that counts how often the gate draws from it. */
+function countingSource(seed = 0): { random: () => number, draws: () => number } {
+  const next = randomSource(seed)
+  let draws = 0
+  const random = () => {
+    draws++
+    return next()
+  }
+  return { random, draws: () => draws }
+}
+
+/** Evaluates with a fresh Mulberry32 source unless the test passes its own. */
+function evaluate(input: UrgeGateInput, memory: UrgeGateMemory, random: () => number = randomSource(0)) {
+  return evaluateUrgeGate(input, memory, random)
 }
 
 describe('evaluateUrgeGate rate', () => {
@@ -163,7 +180,7 @@ describe('evaluateUrgeGate rate', () => {
     const expected = [[0, 0.1961], [0.25, 0.4429], [0.5, 1], [0.75, 2.2581], [1, 5.099]] as const
     const opens: number[] = []
     for (const [chattiness, ratio] of expected) {
-      const { trace } = evaluateUrgeGate(gateInput({ settings: { chattiness } }), initialUrgeMemory).decision
+      const { trace } = evaluate(gateInput({ settings: { chattiness } }), initialUrgeMemory).decision
       expect(trace.multipliers.base / BASE_RATE_AT_HALF_PER_HOUR).toBeCloseTo(ratio, 3)
       expect({ ...trace.multipliers, base: 0 }).toEqual({ base: 0, pressure: 0.6, exchange: 1, clear: 1, damping: 1, floor: 1, game: 1, mood: 1 })
       opens.push(trace.hazardPerHour.open)
@@ -174,13 +191,14 @@ describe('evaluateUrgeGate rate', () => {
 
   it('accumulates urge across holds and fires within the time the hazard implies', () => {
     const input = (nowMs: number) => gateInput({ nowMs, settings: { chattiness: 1 } })
-    const hazard = evaluateUrgeGate(input(T0), initialUrgeMemory).decision.trace.hazardPerHour.total
+    const hazard = evaluate(input(T0), initialUrgeMemory).decision.trace.hazardPerHour.total
     const threshold = 1.5
     let memory = memoryWith({ urgeThreshold: threshold })
     let previousUrge = 0
     let firedAtMs: number | null = null
     for (let nowMs = T0; nowMs <= T0 + 2 * (threshold / hazard) * HOUR_MS; nowMs += ACCRUAL_DT_MAX_MS) {
-      const evaluation = evaluateUrgeGate(input(nowMs), memory)
+      const source = countingSource()
+      const evaluation = evaluate(input(nowMs), memory, source.random)
       if (evaluation.decision.fire) {
         firedAtMs = nowMs
         expect(evaluation.decision.reason).toBe('urge')
@@ -189,7 +207,7 @@ describe('evaluateUrgeGate rate', () => {
       }
       expect(evaluation.decision.reason).toBe('urge')
       expect(evaluation.memory.urge).toBeGreaterThanOrEqual(previousUrge)
-      expect(evaluation.memory.rngState).toBe(memory.rngState)
+      expect(source.draws()).toBe(0)
       previousUrge = evaluation.memory.urge
       memory = evaluation.memory
     }
@@ -199,7 +217,7 @@ describe('evaluateUrgeGate rate', () => {
   })
 
   it('has zero hazard while his last turn is under two minutes old', () => {
-    const at = (lastUserAtMs: number) => evaluateUrgeGate(
+    const at = (lastUserAtMs: number) => evaluate(
       gateInput({ situation: quietSituation({ conversation: { ...initialSituationState.conversation, lastUserAtMs } }) }),
       memoryWith({ lastEvalAtMs: T0 - ACCRUAL_DT_MAX_MS }),
     )
@@ -211,14 +229,14 @@ describe('evaluateUrgeGate rate', () => {
 
   it('halves the opening hazard during games', () => {
     const game = quietSituation({ activity: { appId: 'elden-ring', label: 'Elden Ring', category: 'game', title: null, sinceMs: T0 - MIN } })
-    expect(evaluateUrgeGate(gateInput({ situation: game }), initialUrgeMemory).decision.trace.multipliers.game).toBe(0.5)
+    expect(evaluate(gateInput({ situation: game }), initialUrgeMemory).decision.trace.multipliers.game).toBe(0.5)
   })
 })
 
 describe('evaluateUrgeGate mood factor', () => {
   const morning: GateLocalTime = { dayKey: '2023-11-14', minuteOfDay: 9 * 60 }
   const withMood = (moodFactor?: number) => ({ ...gateInput({ local: morning, threads: [laterThread()] }), ...(moodFactor === undefined ? {} : { moodFactor }) })
-  const traceOf = (moodFactor?: number) => evaluateUrgeGate(withMood(moodFactor), initialUrgeMemory).decision.trace
+  const traceOf = (moodFactor?: number) => evaluate(withMood(moodFactor), initialUrgeMemory).decision.trace
 
   it('multiplies only the open hazard by the factor', () => {
     const plain = traceOf()
@@ -242,33 +260,35 @@ describe('evaluateUrgeGate mood factor', () => {
   })
 
   it('treats a non-finite factor as 1', () => {
-    const plain = evaluateUrgeGate(withMood(), initialUrgeMemory)
+    const plain = evaluate(withMood(), initialUrgeMemory)
     for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])
-      expect(evaluateUrgeGate(withMood(bad), initialUrgeMemory)).toEqual(plain)
+      expect(evaluate(withMood(bad), initialUrgeMemory)).toEqual(plain)
   })
 
   it('leaves every trace and the RNG draw count identical when the factor is omitted or 1', () => {
     const ready = memoryWith({ urge: 10, urgeThreshold: 0.5, lastEvalAtMs: T0 - ACCRUAL_DT_MAX_MS })
-    const omitted = evaluateUrgeGate(withMood(), ready)
-    const one = evaluateUrgeGate(withMood(1), ready)
+    const omittedSource = countingSource()
+    const omitted = evaluate(withMood(), ready, omittedSource.random)
+    const one = evaluate(withMood(1), ready)
     expect(omitted.decision.fire).toBe(true)
     expect(one).toEqual(omitted)
-    expect(omitted.memory.rngState).not.toBe(ready.rngState)
+    expect(omittedSource.draws()).toBe(5)
     // A held evaluation never draws, with or without the factor.
-    const held = memoryWith({ urgeThreshold: 1000 })
-    expect(evaluateUrgeGate(withMood(1.35), held).memory.rngState).toBe(held.rngState)
+    const heldSource = countingSource()
+    evaluate(withMood(1.35), memoryWith({ urgeThreshold: 1000 }), heldSource.random)
+    expect(heldSource.draws()).toBe(0)
   })
 })
 
 describe('evaluateUrgeGate floor', () => {
   it('holds every non-urgent fire for two minutes after any fire, without accruing', () => {
     const memory = memoryWith({ lastFireAtMs: T0 - FLOOR_MS + 1, lastEvalAtMs: T0 - ACCRUAL_DT_MAX_MS, urge: 5 })
-    const inside = evaluateUrgeGate(gateInput(), memory)
+    const inside = evaluate(gateInput(), memory)
     expect(inside.decision).toMatchObject({ fire: false, reason: 'floor' })
     expect(inside.decision.trace.hazardPerHour.total).toBe(0)
     expect(drawState(inside.memory)).toEqual(drawState(memory))
 
-    const after = evaluateUrgeGate(gateInput({ nowMs: T0 + 1 }), memory)
+    const after = evaluate(gateInput({ nowMs: T0 + 1 }), memory)
     expect(after.decision).toMatchObject({ fire: true, reason: 'urge' })
   })
 })
@@ -279,39 +299,41 @@ describe('evaluateUrgeGate urgent bypass', () => {
   it('fires an urgent notify inside the floor, inside exchange zero, and while quiet after two unanswered openings', () => {
     const situation = urgentSituation({ conversation: { ...initialSituationState.conversation, lastUserAtMs: T0 - 30 * SEC } })
     const memory = memoryWith({ lastFireAtMs: T0 - 10 * SEC, lastSpokenAtMs: T0 - 10 * SEC, unanswered: 2 })
-    const decision = fired(evaluateUrgeGate(gateInput({ situation }), memory).decision)
+    const decision = fired(evaluate(gateInput({ situation }), memory).decision)
     expect(decision).toMatchObject({ reason: 'urgent', category: 'urgent', topicKey: 'notify:timer' })
     expect(decision.trace.phase).toBe('quiet')
   })
 
   it('passes a game that would silence her but no other hard suppressor', () => {
     const game = urgentSituation({ activity: { appId: 'elden-ring', label: 'Elden Ring', category: 'game', title: null, sinceMs: T0 - MIN } })
-    expect(evaluateUrgeGate(gateInput({ situation: game, settings: { speakDuringGames: false } }), initialUrgeMemory).decision)
+    expect(evaluate(gateInput({ situation: game, settings: { speakDuringGames: false } }), initialUrgeMemory).decision)
       .toMatchObject({ fire: true, reason: 'urgent' })
-    expect(evaluateUrgeGate(gateInput({ situation: urgentSituation(), settings: { dontDisturb: true } }), initialUrgeMemory).decision)
+    expect(evaluate(gateInput({ situation: urgentSituation(), settings: { dontDisturb: true } }), initialUrgeMemory).decision)
       .toMatchObject({ fire: false, reason: 'dont-disturb' })
-    expect(evaluateUrgeGate(gateInput({ situation: urgentSituation(), signals: { userTyping: true } }), initialUrgeMemory).decision)
+    expect(evaluate(gateInput({ situation: urgentSituation(), signals: { userTyping: true } }), initialUrgeMemory).decision)
       .toMatchObject({ fire: false, reason: 'user-typing' })
   })
 
   it('keeps a held urgent topic unselectable', () => {
     const memory = memoryWith({ lastFireAtMs: T0 - 10 * SEC })
-    const decision = evaluateUrgeGate(gateInput({ situation: urgentSituation(), heldTopics: new Set(['notify:timer']) }), memory).decision
+    const decision = evaluate(gateInput({ situation: urgentSituation(), heldTopics: new Set(['notify:timer']) }), memory).decision
     expect(decision).toMatchObject({ fire: false, reason: 'floor' })
   })
 })
 
 describe('evaluateUrgeGate fire transitions', () => {
-  it('leaves urge, threshold, rng, and fires untouched on an urgent fire', () => {
+  it('leaves urge, threshold, and fires untouched and draws nothing on an urgent fire', () => {
     const memory = memoryWith({ lastEvalAtMs: T0 - ACCRUAL_DT_MAX_MS, urge: 0.4, fires: [T0 - 20 * MIN] })
-    const evaluation = evaluateUrgeGate(gateInput({ situation: quietSituation({ events: [urgentNotify()] }) }), memory)
+    const source = countingSource()
+    const evaluation = evaluate(gateInput({ situation: quietSituation({ events: [urgentNotify()] }) }), memory, source.random)
     expect(evaluation.decision.fire).toBe(true)
+    expect(source.draws()).toBe(0)
     expect(drawState(evaluation.memory)).toEqual(drawState(memory))
     expect(evaluation.memory.lastFireAtMs).toBe(T0)
     expect(evaluation.memory.pending).toMatchObject({ category: 'urgent', doubleTextRoll: 1, doubleTextOffsetMs: 0 })
   })
 
-  it('leaves urge, threshold, rng, and fires untouched on a double-text fire and consumes it', () => {
+  it('leaves urge, threshold, and fires untouched and draws nothing on a double-text fire and consumes it', () => {
     const memory = memoryWith({
       lastEvalAtMs: T0 - ACCRUAL_DT_MAX_MS,
       lastFireAtMs: T0 - 30 * SEC,
@@ -321,7 +343,9 @@ describe('evaluateUrgeGate fire transitions', () => {
       lastSpokenAtMs: T0 - 25 * SEC,
       doubleText: { topicKey: 'own-day', dueAtMs: T0, expiresAtMs: T0 + 35 * SEC },
     })
-    const evaluation = evaluateUrgeGate(gateInput(), memory)
+    const source = countingSource()
+    const evaluation = evaluate(gateInput(), memory, source.random)
+    expect(source.draws()).toBe(0)
     expect(evaluation.decision).toMatchObject({ fire: true, reason: 'double-text', category: 'double-text', topicKey: 'own-day' })
     expect(drawState(evaluation.memory)).toEqual(drawState(memory))
     expect(evaluation.memory.unanswered).toBe(1)
@@ -330,36 +354,53 @@ describe('evaluateUrgeGate fire transitions', () => {
 
   it('resets urge and draws a new threshold on an ordinary fire', () => {
     const memory = memoryWith({ urge: 5 })
-    const evaluation = evaluateUrgeGate(gateInput(), memory)
+    const evaluation = evaluate(gateInput(), memory, randomSource(1))
     const decision = fired(evaluation.decision)
     expect(decision).toMatchObject({ reason: 'urge', category: 'open', topicKey: 'own-day' })
     expect(decision.trace.pick).toMatchObject({ category: 'open', reasonKey: 'own-day' })
     expect(evaluation.memory.urge).toBe(0)
     expect(evaluation.memory.urgeThreshold).not.toBe(memory.urgeThreshold)
-    expect(evaluation.memory.rngState).not.toBe(memory.rngState)
     expect(evaluation.memory.fires).toEqual([T0])
     expect(evaluation.memory.pending?.doubleTextOffsetMs).toBeGreaterThanOrEqual(DOUBLE_TEXT_OFFSET_MIN_MS)
     expect(evaluation.memory.pending?.doubleTextOffsetMs).toBeLessThanOrEqual(DOUBLE_TEXT_OFFSET_MAX_MS)
   })
 
+  it('draws exactly five values for an ordinary fire, in order, and none for an urge hold', () => {
+    const fire = countingSource(42)
+    const evaluation = evaluate(gateInput(), memoryWith({ urge: 5 }), fire.random)
+    expect(fire.draws()).toBe(5)
+    const expected = randomSource(42)
+    const [thresholdRoll, categoryRoll, reasonRoll, doubleTextRoll] = [expected(), expected(), expected(), expected()]
+    expect(evaluation.decision.trace.pick).toMatchObject({ categoryRoll, reasonRoll })
+    expect(evaluation.memory.urgeThreshold).toBe(-Math.log1p(-thresholdRoll))
+    expect(evaluation.memory.pending?.doubleTextRoll).toBe(doubleTextRoll)
+
+    const hold = countingSource(42)
+    expect(evaluate(gateInput(), memoryWith({ urgeThreshold: 1000 }), hold.random).decision.reason).toBe('urge')
+    expect(hold.draws()).toBe(0)
+  })
+
   it('is deterministic for the same memory and input', () => {
     const memory = memoryWith({ urge: 5 })
-    expect(evaluateUrgeGate(gateInput(), memory)).toEqual(evaluateUrgeGate(gateInput(), memory))
+    expect(evaluate(gateInput(), memory)).toEqual(evaluate(gateInput(), memory))
   })
 
   it('fires with reason forced and a real pick when forceTiming skips a hold', () => {
-    const evaluation = evaluateUrgeGate(gateInput({ forceTiming: true }), initialUrgeMemory)
+    const source = countingSource()
+    const evaluation = evaluate(gateInput({ forceTiming: true }), initialUrgeMemory, source.random)
     expect(evaluation.decision).toMatchObject({ fire: true, reason: 'forced', category: 'open', topicKey: 'own-day' })
     expect(evaluation.decision.trace.pick).not.toBeNull()
-    expect(evaluation.memory.rngState).not.toBe(initialUrgeMemory.rngState)
+    expect(source.draws()).toBe(5)
     expect(evaluation.memory.fires).toEqual([T0])
   })
 
-  it('holds with no-topic and draws nothing when the drawn category has no reason', () => {
+  it('holds with no-topic after spending the five draws when the drawn category has no reason', () => {
     const memory = memoryWith({ urge: 5 })
-    const evaluation = evaluateUrgeGate(gateInput({ heldTopics: new Set(['own-day']) }), memory)
+    const source = countingSource()
+    const evaluation = evaluate(gateInput({ heldTopics: new Set(['own-day']) }), memory, source.random)
     expect(evaluation.decision).toMatchObject({ fire: false, reason: 'no-topic' })
-    expect(evaluation.memory.rngState).toBe(memory.rngState)
+    expect(source.draws()).toBe(5)
+    expect(evaluation.memory.urgeThreshold).toBe(memory.urgeThreshold)
     expect(evaluation.memory.urge).toBe(5)
   })
 })
@@ -374,20 +415,20 @@ describe('evaluateUrgeGate double text', () => {
     expect(spoken.doubleText).toEqual({ topicKey: 'own-day', dueAtMs: spokenAtMs + 30 * SEC, expiresAtMs: spokenAtMs + 60 * SEC })
     expect(spoken.unanswered).toBe(1)
 
-    expect(evaluateUrgeGate(gateInput({ nowMs: spokenAtMs + 30 * SEC - 1 }), spoken).decision.fire).toBe(false)
-    const second = evaluateUrgeGate(gateInput({ nowMs: spokenAtMs + 30 * SEC }), spoken)
+    expect(evaluate(gateInput({ nowMs: spokenAtMs + 30 * SEC - 1 }), spoken).decision.fire).toBe(false)
+    const second = evaluate(gateInput({ nowMs: spokenAtMs + 30 * SEC }), spoken)
     expect(second.decision).toMatchObject({ fire: true, reason: 'double-text', topicKey: 'own-day' })
 
     const after = recordUrgeFireOutcome(second.memory, 'spoken', spokenAtMs + 32 * SEC)
     expect(after.doubleText).toBeNull()
     expect(after.unanswered).toBe(1)
-    expect(evaluateUrgeGate(gateInput({ nowMs: spokenAtMs + 40 * SEC }), after).decision)
+    expect(evaluate(gateInput({ nowMs: spokenAtMs + 40 * SEC }), after).decision)
       .toMatchObject({ fire: false, reason: 'floor' })
   })
 
   it('expires 60 s after the opening was spoken', () => {
     const memory = memoryWith({ lastFireAtMs: T0 - 60 * SEC, doubleText: { topicKey: 'own-day', dueAtMs: T0 - 10 * SEC, expiresAtMs: T0 } })
-    const evaluation = evaluateUrgeGate(gateInput(), memory)
+    const evaluation = evaluate(gateInput(), memory)
     expect(evaluation.decision).toMatchObject({ fire: false, reason: 'floor' })
     expect(evaluation.memory.doubleText).toBeNull()
   })
@@ -421,16 +462,16 @@ describe('evaluateUrgeGate unanswered phases', () => {
 
   it('opens rituals and due bumps only when nothing is unanswered', () => {
     const input = gateInput({ local: morning, threads: [laterThread()] })
-    const open = evaluateUrgeGate(input, initialUrgeMemory).decision.trace
+    const open = evaluate(input, initialUrgeMemory).decision.trace
     expect(open.phase).toBe('open')
     expect(open.hazardPerHour).toMatchObject({ ritual: 12, due: 1, continuation: 0 })
 
-    const waiting = evaluateUrgeGate(input, memoryWith({ unanswered: 1, lastSpokenAtMs: T0 - 10 * MIN, pending: spokenPending() })).decision.trace
+    const waiting = evaluate(input, memoryWith({ unanswered: 1, lastSpokenAtMs: T0 - 10 * MIN, pending: spokenPending() })).decision.trace
     expect(waiting.phase).toBe('continuation-window')
     expect(waiting.hazardPerHour).toMatchObject({ open: 0, ritual: 0, due: 0 })
     expect(waiting.hazardPerHour.continuation).toBeGreaterThan(0)
 
-    const quiet = evaluateUrgeGate(input, memoryWith({ unanswered: 2, lastSpokenAtMs: T0 - HOUR_MS, urge: 5 }))
+    const quiet = evaluate(input, memoryWith({ unanswered: 2, lastSpokenAtMs: T0 - HOUR_MS, urge: 5 }))
     expect(quiet.decision).toMatchObject({ fire: false, reason: 'quiet-unanswered' })
     expect(quiet.decision.trace.hazardPerHour.total).toBe(0)
   })
@@ -442,7 +483,7 @@ describe('evaluateUrgeGate unanswered phases', () => {
     let previousUrge = 0
     let continuation: UrgeGateDecision | null = null
     for (let nowMs = T0; nowMs < lastSpokenAtMs + 90 * MIN; nowMs += ACCRUAL_DT_MAX_MS) {
-      const evaluation = evaluateUrgeGate(gateInput({ nowMs }), state)
+      const evaluation = evaluate(gateInput({ nowMs }), state)
       if (evaluation.decision.fire) {
         continuation = evaluation.decision
         break
@@ -454,9 +495,9 @@ describe('evaluateUrgeGate unanswered phases', () => {
     }
     expect(continuation).toMatchObject({ fire: true, reason: 'urge', category: 'continuation', topicKey: 'thread:question:1:0' })
 
-    const before = evaluateUrgeGate(gateInput({ nowMs: lastSpokenAtMs + 90 * MIN - 1 }), memory).decision.trace
+    const before = evaluate(gateInput({ nowMs: lastSpokenAtMs + 90 * MIN - 1 }), memory).decision.trace
     expect(before.phase).toBe('continuation-window')
-    const reopened = evaluateUrgeGate(gateInput({ nowMs: lastSpokenAtMs + 90 * MIN }), memory).decision.trace
+    const reopened = evaluate(gateInput({ nowMs: lastSpokenAtMs + 90 * MIN }), memory).decision.trace
     expect(reopened.phase).toBe('reopened')
     expect(reopened.multipliers.damping).toBe(0.5)
     expect(reopened.hazardPerHour.continuation).toBe(0)
@@ -465,8 +506,8 @@ describe('evaluateUrgeGate unanswered phases', () => {
 
   it('holds every non-urgent fire for four hours after two unanswered openings', () => {
     const memory = memoryWith({ unanswered: 2, lastSpokenAtMs: T0 - 4 * HOUR_MS + 1, urge: 5 })
-    expect(evaluateUrgeGate(gateInput(), memory).decision).toMatchObject({ fire: false, reason: 'quiet-unanswered' })
-    const reopened = evaluateUrgeGate(gateInput({ nowMs: T0 + 1 }), memory).decision
+    expect(evaluate(gateInput(), memory).decision).toMatchObject({ fire: false, reason: 'quiet-unanswered' })
+    const reopened = evaluate(gateInput({ nowMs: T0 + 1 }), memory).decision
     expect(reopened).toMatchObject({ fire: true, reason: 'urge' })
     expect(reopened.trace.multipliers.damping).toBe(0.3)
   })
@@ -475,7 +516,7 @@ describe('evaluateUrgeGate unanswered phases', () => {
     const replied = recordUrgeUserTurn(memoryWith({ unanswered: 2, lastSpokenAtMs: T0 - 5 * HOUR_MS }), T0)
     expect(replied).toMatchObject({ unanswered: 0, awaitingSinceMs: null, damp: { depth: 0.7, sinceMs: T0 } })
     const damping = [0, 30 * MIN, HOUR_MS, 2 * HOUR_MS, 6 * HOUR_MS]
-      .map(offset => evaluateUrgeGate(gateInput({ nowMs: T0 + offset }), replied).decision.trace)
+      .map(offset => evaluate(gateInput({ nowMs: T0 + offset }), replied).decision.trace)
     for (const trace of damping)
       expect(trace.phase).toBe('open')
     for (let i = 1; i < damping.length; i++)
@@ -494,7 +535,7 @@ describe('evaluateUrgeGate unanswered phases', () => {
   it('counts a forced external remark toward the floor but not as unanswered', () => {
     const spoke = recordExternalSpeech(initialUrgeMemory, T0)
     expect(spoke).toMatchObject({ lastFireAtMs: T0, lastSpokenAtMs: T0, unanswered: 0 })
-    expect(evaluateUrgeGate(gateInput({ nowMs: T0 + MIN }), { ...spoke, urge: 5 }).decision).toMatchObject({ fire: false, reason: 'floor' })
+    expect(evaluate(gateInput({ nowMs: T0 + MIN }), { ...spoke, urge: 5 }).decision).toMatchObject({ fire: false, reason: 'floor' })
   })
 })
 
@@ -507,27 +548,27 @@ describe('evaluateUrgeGate holds and clocks', () => {
     ['user-typing', { signals: { userTyping: true } }, false],
     ['generating', { signals: { generating: true } }, false],
   ] as const)('keeps urge and rng across a %s hold', (reason, overrides, long) => {
-    const evaluation = evaluateUrgeGate(gateInput(overrides), accruing)
+    const evaluation = evaluate(gateInput(overrides), accruing)
     expect(evaluation.decision).toMatchObject({ fire: false, reason })
     expect(drawState(evaluation.memory)).toEqual(drawState(accruing))
     expect(evaluation.memory.lastHardHoldAtMs).toBe(long ? T0 : null)
   })
 
   it('checks dont-disturb before stage-hidden', () => {
-    expect(evaluateUrgeGate(gateInput({ settings: { dontDisturb: true }, signals: { stageVisible: false } }), accruing).decision.reason)
+    expect(evaluate(gateInput({ settings: { dontDisturb: true }, signals: { stageVisible: false } }), accruing).decision.reason)
       .toBe('dont-disturb')
   })
 
-  it('keeps urge and rng across a quiet hold', () => {
+  it('keeps urge and threshold across a quiet hold', () => {
     const memory = { ...accruing, unanswered: 2, lastSpokenAtMs: T0 - HOUR_MS }
-    const evaluation = evaluateUrgeGate(gateInput(), memory)
+    const evaluation = evaluate(gateInput(), memory)
     expect(evaluation.decision.reason).toBe('quiet-unanswered')
     expect(drawState(evaluation.memory)).toEqual(drawState(memory))
   })
 
   it('ramps the opening hazard back up after a long hard hold clears', () => {
-    const held = evaluateUrgeGate(gateInput({ settings: { dontDisturb: true } }), accruing).memory
-    const clear = [SEC, MIN, 10 * MIN].map(offset => evaluateUrgeGate(gateInput({ nowMs: T0 + offset }), held).decision.trace.multipliers.clear)
+    const held = evaluate(gateInput({ settings: { dontDisturb: true } }), accruing).memory
+    const clear = [SEC, MIN, 10 * MIN].map(offset => evaluate(gateInput({ nowMs: T0 + offset }), held).decision.trace.multipliers.clear)
     expect(clear[0]).toBeLessThan(clear[1])
     expect(clear[1]).toBeLessThan(clear[2])
     expect(visibilityRegainUrgeMemory(accruing, T0).lastHardHoldAtMs).toBe(T0)
@@ -535,17 +576,17 @@ describe('evaluateUrgeGate holds and clocks', () => {
 
   it('accrues nothing across a backward clock jump and at most ten seconds across a forward one', () => {
     const memory = memoryWith({ lastEvalAtMs: T0, urge: 0.2, urgeThreshold: 10 })
-    const back = evaluateUrgeGate(gateInput({ nowMs: T0 - HOUR_MS }), memory)
+    const back = evaluate(gateInput({ nowMs: T0 - HOUR_MS }), memory)
     expect(back.memory.urge).toBe(0.2)
 
-    const forward = evaluateUrgeGate(gateInput({ nowMs: T0 + HOUR_MS }), memory)
+    const forward = evaluate(gateInput({ nowMs: T0 + HOUR_MS }), memory)
     const hazard = forward.decision.trace.hazardPerHour.total
     expect(forward.memory.urge).toBeGreaterThan(0.2)
     expect(forward.memory.urge - 0.2).toBeLessThanOrEqual(hazard * ACCRUAL_DT_MAX_MS / HOUR_MS + 1e-12)
   })
 
   it('returns memory unchanged for an invalid time', () => {
-    const evaluation = evaluateUrgeGate(gateInput({ nowMs: Number.NaN }), accruing)
+    const evaluation = evaluate(gateInput({ nowMs: Number.NaN }), accruing)
     expect(evaluation.decision).toMatchObject({ fire: false, reason: 'invalid-time' })
     expect(evaluation.memory).toBe(accruing)
   })
@@ -598,7 +639,7 @@ describe('evaluateUrgeGate hard contract (pinned before the urge rewrite)', () =
       quietApps: ['eldenring'],
       speakDuringGames: false,
     }
-    const decide = (): UrgeGateDecision => evaluateUrgeGate(gateInput({
+    const decide = (): UrgeGateDecision => evaluate(gateInput({
       settings: { enabled: state.enabled, dontDisturb: state.dontDisturb, quietApps: state.quietApps, speakDuringGames: state.speakDuringGames },
       signals: {
         stageVisible: state.stageVisible,
@@ -647,7 +688,7 @@ describe('evaluateUrgeGate hard contract (pinned before the urge rewrite)', () =
 
   it.each(faults.map(fault => [fault.reason, fault] as const))('treats an urgent notify under %s as pinned: fires only for busy-game, holds otherwise', (reason, fault) => {
     for (const memory of [ready, blocked]) {
-      const { decision } = evaluateUrgeGate(fault.input([notify]), memory)
+      const { decision } = evaluate(fault.input([notify]), memory)
 
       if (reason === 'busy-game')
         expect(decision).toMatchObject({ fire: true, reason: 'urgent', topicKey: notify.topicKey })
@@ -659,7 +700,7 @@ describe('evaluateUrgeGate hard contract (pinned before the urge rewrite)', () =
   it('still holds a game for an urgent notify when games are quiet but the app is also denylisted', () => {
     const input = gateInput({ settings: { speakDuringGames: false, quietApps: ['eldenring'] }, situation: quietSituation({ events: [notify], activity: gameActivity }) })
 
-    expect(evaluateUrgeGate(input, ready).decision).toMatchObject({ fire: false, reason: 'quiet-app' })
+    expect(evaluate(input, ready).decision).toMatchObject({ fire: false, reason: 'quiet-app' })
   })
 
   it('never makes a self-origin event a reason, urgent or not, even when forced', () => {
@@ -671,11 +712,11 @@ describe('evaluateUrgeGate hard contract (pinned before the urge rewrite)', () =
     const ownIds = own.map(event => event.id)
 
     // A world event of the same kind would fire urgent inside the floor; her own never does.
-    const held = evaluateUrgeGate(gateInput({ situation: quietSituation({ events: own }) }), blocked)
+    const held = evaluate(gateInput({ situation: quietSituation({ events: own }) }), blocked)
     expect(held.decision).toMatchObject({ fire: false, reason: 'floor' })
     expect(held.decision.trace.reasons.filter(reason => ownIds.includes(reason.sourceEventId ?? ''))).toEqual([])
 
-    const forced = fired(evaluateUrgeGate(gateInput({ forceTiming: true, situation: quietSituation({ events: own }) }), initialUrgeMemory).decision)
+    const forced = fired(evaluate(gateInput({ forceTiming: true, situation: quietSituation({ events: own }) }), initialUrgeMemory).decision)
     expect(forced.reason).toBe('forced')
     expect(ownKeys).not.toContain(forced.topicKey)
     expect(forced.trace.reasons.filter(reason => ownIds.includes(reason.sourceEventId ?? ''))).toEqual([])
@@ -683,7 +724,7 @@ describe('evaluateUrgeGate hard contract (pinned before the urge rewrite)', () =
 
   it.each(faults.map(fault => [fault.reason, fault] as const))('keeps %s a hold when timing is forced', (reason, fault) => {
     for (const memory of [ready, blocked])
-      expect(evaluateUrgeGate({ ...fault.input([]), forceTiming: true }, memory).decision).toMatchObject({ fire: false, reason })
+      expect(evaluate({ ...fault.input([]), forceTiming: true }, memory).decision).toMatchObject({ fire: false, reason })
   })
 })
 
@@ -700,7 +741,8 @@ describe('evaluateUrgeGate rituals', () => {
 
   it('fires each ritual at most once per logical day across two simulated days', () => {
     const start = Date.UTC(2026, 9, 30, 8)
-    let memory = promotionUrgeMemory(start, 7)
+    const random = randomSource(7)
+    let memory = promotionUrgeMemory(start, random)
     let lastUserAtMs: number | null = null
     let presence: SituationState['presence'] = { state: 'here', reason: null, sinceMs: start }
     const counts = new Map<string, number>()
@@ -712,7 +754,7 @@ describe('evaluateUrgeGate rituals', () => {
       if (state !== presence.state)
         presence = { state, reason: null, sinceMs: nowMs }
       const situation = quietSituation({ presence, conversation: { ...initialSituationState.conversation, lastUserAtMs } })
-      const evaluation = evaluateUrgeGate(gateInput({ nowMs, local, situation, settings: { chattiness: 1 } }), memory)
+      const evaluation = evaluate(gateInput({ nowMs, local, situation, settings: { chattiness: 1 } }), memory, random)
       memory = evaluation.memory
       if (!evaluation.decision.fire)
         continue
@@ -733,7 +775,7 @@ describe('evaluateUrgeGate rituals', () => {
   /** Evaluates the gate for a present user with the given tracking and returns the next memory. */
   function evaluateAt(nowMs: number, presence: SituationState['presence'], tracking: Partial<SituationState['tracking']>, memory: UrgeGateMemory = initialUrgeMemory) {
     const situation = quietSituation({ presence, tracking: { ...initialSituationState.tracking, ...tracking } })
-    return evaluateUrgeGate(gateInput({ nowMs, local: localAt(nowMs), situation }), memory).memory
+    return evaluate(gateInput({ nowMs, local: localAt(nowMs), situation }), memory).memory
   }
 
   it('opens the welcome-back window from the last return after an absence of 3 h within the logical day', () => {
@@ -757,11 +799,13 @@ describe('evaluateUrgeGate rituals', () => {
 })
 
 describe('urge gate memory lifecycle', () => {
-  it('seeds promotion memory from the seed and starts the clear ramp', () => {
-    const a = promotionUrgeMemory(T0, 1)
+  it('draws the promotion threshold from the source and starts the clear ramp', () => {
+    const source = countingSource(1)
+    const a = promotionUrgeMemory(T0, source.random)
     expect(a).toMatchObject({ urge: 0, lastHardHoldAtMs: T0, unanswered: 0 })
-    expect(promotionUrgeMemory(T0, 1)).toEqual(a)
-    expect(promotionUrgeMemory(T0, 2).rngState).not.toBe(a.rngState)
+    expect(source.draws()).toBe(1)
+    expect(promotionUrgeMemory(T0, randomSource(1))).toEqual(a)
+    expect(promotionUrgeMemory(T0, randomSource(2)).urgeThreshold).not.toBe(a.urgeThreshold)
   })
 
   it('restores the persisted social slice so a reload does not reset her', () => {
@@ -773,10 +817,9 @@ describe('urge gate memory lifecycle', () => {
       damp: null,
       day: null,
       lastOwnDayAtMs: T0 - 2 * HOUR_MS,
-      rngState: 12345,
     }
-    const restored = restoreSocialMemory(promotionUrgeMemory(T0, 1), saved, T0)
+    const restored = restoreSocialMemory(promotionUrgeMemory(T0, randomSource(1)), saved, T0)
     expect(restored).toMatchObject(saved)
-    expect(evaluateUrgeGate(gateInput(), { ...restored, urge: 5 }).decision.reason).toBe('quiet-unanswered')
+    expect(evaluate(gateInput(), { ...restored, urge: 5 }).decision.reason).toBe('quiet-unanswered')
   })
 })

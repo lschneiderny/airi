@@ -108,8 +108,6 @@ export interface UrgeGateMemory {
   readonly urge: number
   /** Exp(1) ticket the urge must reach; redrawn at every ordinary fire. */
   readonly urgeThreshold: number
-  /** Mulberry32 checkpoint; advanced by exactly five draws per ordinary fire and by nothing else. */
-  readonly rngState: number
   /** Ordinary fire times within the last hour, oldest first; the safety cap counts them. */
   readonly fires: readonly number[]
   readonly pending: UrgeGatePending | null
@@ -123,7 +121,7 @@ export interface UrgeGateMemory {
 }
 
 /** The social slice that survives a leader reload; everything else restarts from promotion. */
-export type SavedGateMemory = Pick<UrgeGateMemory, 'lastFireAtMs' | 'lastSpokenAtMs' | 'unanswered' | 'awaitingSinceMs' | 'damp' | 'day' | 'lastOwnDayAtMs' | 'rngState'>
+export type SavedGateMemory = Pick<UrgeGateMemory, 'lastFireAtMs' | 'lastSpokenAtMs' | 'unanswered' | 'awaitingSinceMs' | 'damp' | 'day' | 'lastOwnDayAtMs'>
 
 export type UrgeGateTimingReason = 'floor' | 'awaiting-reply' | 'quiet-unanswered' | 'urge' | 'safety-cap'
 
@@ -218,18 +216,14 @@ export interface UrgeGateEvaluation {
   readonly memory: UrgeGateMemory
 }
 
-function drawFirstThreshold(seed: number): { urgeThreshold: number, rngState: number } {
-  const [u, next] = nextRandom(seedRng(seed))
-  return { urgeThreshold: drawThreshold(u), rngState: next }
-}
-
 export const initialUrgeMemory: UrgeGateMemory = Object.freeze({
   lastEvalAtMs: null,
   lastFireAtMs: null,
   lastSpokenAtMs: null,
   lastHardHoldAtMs: null,
   urge: 0,
-  ...drawFirstThreshold(0),
+  // The first ticket of the Mulberry32 stream from seed 0, so the constant is deterministic.
+  urgeThreshold: drawThreshold(nextRandom(seedRng(0))[0]),
   fires: Object.freeze([]),
   pending: null,
   unanswered: 0,
@@ -314,7 +308,6 @@ function normalizeMemory(memory: UrgeGateMemory, nowMs: number): UrgeGateMemory 
     urge: isTime(memory.urge) && memory.urge > 0 ? memory.urge : 0,
     // 1 is the mean of the Exp(1) ticket; only reached when stored memory was corrupt.
     urgeThreshold: isTime(memory.urgeThreshold) && memory.urgeThreshold >= 0 ? memory.urgeThreshold : 1,
-    rngState: isTime(memory.rngState) ? seedRng(memory.rngState) : 0,
     fires,
     pending,
     unanswered: isTime(memory.unanswered) && memory.unanswered > 0 ? Math.floor(memory.unanswered) : 0,
@@ -451,8 +444,8 @@ function zeroMultipliers(chattiness: number): UrgeGateMultipliers {
 
 /**
  * Decides whether the character reaches out on her own now. Pure: time comes
- * only from `input.nowMs`, randomness only from `memory.rngState`, and neither
- * argument is mutated.
+ * only from `input.nowMs`, randomness only from `random`, and neither
+ * `input` nor `memory` is mutated.
  *
  * Order: hard suppressors ({@link hardReason}; `busy-game` lets
  * urgent notifies through) -> urgent notify -> due double text -> the urge
@@ -461,11 +454,12 @@ function zeroMultipliers(chattiness: number): UrgeGateMultipliers {
  *
  * Urge accrues only on the urge path, over at most {@link ACCRUAL_DT_MAX_MS}
  * since the previous evaluation, so hard holds, urgent fires, and double-text
- * fires never add urge. Holds never draw; an ordinary fire draws exactly five
- * randoms (threshold, category, reason, double-text roll, double-text offset).
+ * fires never add urge. Holds never call `random`; an ordinary fire calls it
+ * exactly five times (threshold, category, reason, double-text roll,
+ * double-text offset). A `no-topic` hold comes after those draws, so it spends them.
  * A non-finite `nowMs` holds with `invalid-time` and returns `memory` unchanged.
  */
-export function evaluateUrgeGate(input: UrgeGateInput, memory: UrgeGateMemory): UrgeGateEvaluation {
+export function evaluateUrgeGate(input: UrgeGateInput, memory: UrgeGateMemory, random: () => number): UrgeGateEvaluation {
   const { nowMs, situation } = input
   const chattiness = clampChattiness(input.settings.chattiness)
   const forceTiming = input.forceTiming === true
@@ -537,7 +531,7 @@ export function evaluateUrgeGate(input: UrgeGateInput, memory: UrgeGateMemory): 
     return { decision: { fire: false, reason: hard, trace: traceFor(base.urge, null) }, memory: held }
   }
 
-  // (B) Urgent fire: no draw; urge, threshold, rng, fires, unanswered, and the double text stay as they are.
+  // (B) Urgent fire: no draw; urge, threshold, fires, unanswered, and the double text stay as they are.
   if (urgent !== null) {
     const picked = urgent.reason
     return {
@@ -581,11 +575,11 @@ export function evaluateUrgeGate(input: UrgeGateInput, memory: UrgeGateMemory): 
     return { decision: { fire: false, reason: timing, trace: traceFor(accrued.urge, null) }, memory: accrued }
 
   // (A) Ordinary fire: exactly five draws in a fixed order.
-  const [thresholdRoll, s1] = nextRandom(accrued.rngState)
-  const [categoryRoll, s2] = nextRandom(s1)
-  const [reasonRoll, s3] = nextRandom(s2)
-  const [doubleTextRoll, s4] = nextRandom(s3)
-  const [doubleTextOffsetRoll, rngState] = nextRandom(s4)
+  const thresholdRoll = random()
+  const categoryRoll = random()
+  const reasonRoll = random()
+  const doubleTextRoll = random()
+  const doubleTextOffsetRoll = random()
 
   const category = pickCategory(hazards, categoryRoll)
   const picked = category === 'continuation'
@@ -602,7 +596,6 @@ export function evaluateUrgeGate(input: UrgeGateInput, memory: UrgeGateMemory): 
       ...accrued,
       urge: 0,
       urgeThreshold: drawThreshold(thresholdRoll),
-      rngState,
       lastFireAtMs: nowMs,
       fires: [...accrued.fires, nowMs],
       pending: {
@@ -620,12 +613,12 @@ export function evaluateUrgeGate(input: UrgeGateInput, memory: UrgeGateMemory): 
 
 /**
  * Memory for a window that just became the leader: urge 0, a fresh threshold
- * drawn from `seed`, and the clear ramp starting at `nowMs` so she does not
+ * drawn from `random`, and the clear ramp starting at `nowMs` so she does not
  * speak the moment she takes over. Restore the persisted social slice on top
  * with {@link restoreSocialMemory}.
  */
-export function promotionUrgeMemory(nowMs: number, seed: number): UrgeGateMemory {
-  return { ...initialUrgeMemory, ...drawFirstThreshold(seed), lastHardHoldAtMs: isTime(nowMs) ? nowMs : null }
+export function promotionUrgeMemory(nowMs: number, random: () => number): UrgeGateMemory {
+  return { ...initialUrgeMemory, urgeThreshold: drawThreshold(random()), lastHardHoldAtMs: isTime(nowMs) ? nowMs : null }
 }
 
 /** Memory for a stage that became visible again: restarts the clear ramp, nothing else. */
@@ -646,7 +639,6 @@ export function restoreSocialMemory(memory: UrgeGateMemory, saved: SavedGateMemo
     damp: saved.damp,
     day: saved.day,
     lastOwnDayAtMs: saved.lastOwnDayAtMs,
-    rngState: saved.rngState,
   }
   return isTime(nowMs) ? normalizeMemory(merged, nowMs) : merged
 }

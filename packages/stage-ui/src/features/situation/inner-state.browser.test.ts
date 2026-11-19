@@ -58,7 +58,6 @@ function gateMemory(): SavedGateMemory {
     damp: { depth: 0.75, sinceMs: noonMs - 1_800_000 },
     day: ritualDay('2026-10-29'),
     lastOwnDayAtMs: noonMs - 5_400_000,
-    rngState: 0xFFFFFFFF,
   }
 }
 
@@ -100,13 +99,24 @@ describe('situation inner state', () => {
 
   it('resets an invalid stored field to its default and keeps valid siblings, with one warning', () => {
     // `reaction` is a field an older build saved; like any unknown field it is dropped without a warning.
-    localStorage.setItem(key, JSON.stringify({ v: 1, threads: [{ ...thread(1), kind: 'gossip' }], gate: gateMemory(), savedAtMs: 5, reaction: { sessionId: null, rngState: 1 } }))
+    localStorage.setItem(key, JSON.stringify({ v: 1, threads: [{ ...thread(1), kind: 'gossip' }], gate: gateMemory(), savedAtMs: 5, reaction: { sessionId: null, seed: 1 } }))
     const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
     const state = createStore().read(noonMs)
 
     expect(state).toEqual({ ...defaultSavedInnerState(), gate: gateMemory(), savedAtMs: 5 })
     expect(warning).toHaveBeenCalledExactlyOnceWith('[situation-inner] Invalid stored fields reset to defaults:', 'threads')
+  })
+
+  it('resets a stored gate that still has the removed random checkpoint and keeps the threads', () => {
+    // `rngState` is the random checkpoint the saved gate memory held before the gate drew from the mind's source.
+    localStorage.setItem(key, JSON.stringify({ v: 1, threads: [thread(1)], gate: { ...gateMemory(), rngState: 1 }, savedAtMs: 5 }))
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const state = createStore().read(noonMs)
+
+    expect(state).toEqual({ ...defaultSavedInnerState(), threads: [thread(1)], gate: null, savedAtMs: 5 })
+    expect(warning).toHaveBeenCalledExactlyOnceWith('[situation-inner] Invalid stored fields reset to defaults:', 'gate')
   })
 
   it('ignores writes without the current leadership token', () => {

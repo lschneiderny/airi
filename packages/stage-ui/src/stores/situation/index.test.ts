@@ -1828,7 +1828,6 @@ describe('situation gate loop', () => {
     expect(restored).toMatchObject({
       urge: before.urge,
       urgeThreshold: before.urgeThreshold,
-      rngState: before.rngState,
       lastFireAtMs: before.lastFireAtMs,
       fires: before.fires,
       pending: before.pending,
