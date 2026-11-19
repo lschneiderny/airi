@@ -1,36 +1,26 @@
 import type { StoreGeneric } from 'pinia'
 
 import type { DataExportAdapter, DataImportAdapter } from '../libs/data-transfer'
+import type { StateRegistrationId } from '../persistence/state-registry'
 
 import { isStageTamagotchi } from '@proj-airi/stage-shared'
-import { useSettingsScreenAmbientLight } from '@proj-airi/stage-shared/stores/screen-ambient-light'
-import { useLive2DNaturalSettings, useSettingsLive2d } from '@proj-airi/stage-ui-live2d/composables/live2d'
-import { useLive2dParams } from '@proj-airi/stage-ui-live2d/stores/model-parameters'
-import { useMMD } from '@proj-airi/stage-ui-mmd/stores/mmd'
+import { useLive2DNaturalSettings } from '@proj-airi/stage-ui-live2d/composables/live2d'
 import { useMMDNaturalSettings } from '@proj-airi/stage-ui-mmd/stores/natural-settings'
-import { useModelStore } from '@proj-airi/stage-ui-three/stores/model-store'
 import { pick } from 'es-toolkit'
+import { getActivePinia } from 'pinia'
 
 import * as v from 'valibot'
 
-import { useHostNoticeSettings } from '../features/host-capabilities/notice-settings'
-import { useLive2DMotionMagicSettings } from '../features/motions/live2d'
 import { useExpressionPerformanceSettings } from '../features/performance/settings'
-import { useSituationSettings } from '../features/situation/settings'
 import { createJsonDataExportAdapter, decodeJsonFile } from '../libs/data-transfer'
-import { clearSherpawModelAssets } from '../libs/providers/providers/sherpaw/model-assets'
-import { useCharacterStateStore } from '../stores/character-state'
+import { resetRegisteredState } from '../persistence/state-registry'
 import { useChatStore } from '../stores/chat'
-import { useChatSessionStore } from '../stores/chat/session-store'
-import { useDisplayModelsStore } from '../stores/display-models'
-import { useMcpStore } from '../stores/mcp'
 import { useMemoryStore } from '../stores/memory'
 import { useAiriCardStore } from '../stores/modules/airi-card'
 import { useConsciousnessStore } from '../stores/modules/consciousness'
 import { useConsciousnessSettingsStore } from '../stores/modules/consciousness-settings'
 import { useDiscordStore } from '../stores/modules/discord'
 import { useFactorioStore } from '../stores/modules/gaming-factorio'
-import { useMinecraftStore } from '../stores/modules/gaming-minecraft'
 import { useHearingStore } from '../stores/modules/hearing'
 import { useHomeAssistantStore } from '../stores/modules/home-assistant'
 import { useSpeechStore } from '../stores/modules/speech'
@@ -38,9 +28,7 @@ import { useWebSearchStore } from '../stores/modules/web-search'
 import { useOnboardingStore } from '../stores/onboarding'
 import { useProviderStore } from '../stores/providers/provider'
 import { useRecipesStore } from '../stores/recipes'
-import { useSettings, useSettingsAudioDevice } from '../stores/settings'
-import { useSituationStore } from '../stores/situation'
-import { useVoiceprintStore } from '../stores/voiceprint'
+import { useSettingsAudioDevice, useSettingsGeneral, useSettingsStageModel } from '../stores/settings'
 import { moduleSettingsSchema, moduleSettingsSchemas } from './data-maintenance-schemas'
 
 interface StoreStateOwner {
@@ -100,136 +88,107 @@ async function restoreStoreBundle(bundle: ValidatedStoreBundle, owners: Record<s
   }
 }
 
-/** Per-model expression documents that the Live2D and MMD stages write, keyed `<prefix><model id>`. */
-const expressionDocumentPrefixes = ['expression-catalog:', 'expression-rest:']
+/** Today's members of "Reset modules": the module stores and what the character learned about the owner. */
+export const modulesRegistrations = [
+  'hearing',
+  'home-assistant',
+  'speech',
+  'character-state',
+  'consciousness',
+  'consciousness-settings',
+  'web-search',
+  'discord',
+  'factorio',
+  'minecraft',
+  'memory',
+  'recipes',
+] as const satisfies readonly StateRegistrationId[]
 
-/** Removes the curated expression catalog and saved rest expressions of every model, loaded or not. */
-function clearExpressionDocuments() {
-  for (const key of Object.keys(localStorage)) {
-    if (expressionDocumentPrefixes.some(prefix => key.startsWith(prefix)))
-      localStorage.removeItem(key)
-  }
-}
+/** The settings stores that the desktop reset clears with the modules. The stage model selection is reset apart. */
+const settingsRegistrations = [
+  'settings-general',
+  'settings-analytics',
+  'settings-spine',
+  'tachie',
+  'settings-theme',
+  'settings-controls-island',
+  'settings-developer',
+  'audio-device',
+  'live2d-params',
+  'live2d-settings',
+  'live2d-motion-magic',
+  'screen-ambient-light',
+  'three',
+  'mmd',
+  'situation-settings',
+  'expression-performance-settings',
+  'host-notice-settings',
+  'live2d-natural-settings',
+  'mmd-natural-settings',
+  'mcp',
+  'onboarding',
+  'airi-cards',
+] as const satisfies readonly StateRegistrationId[]
 
 export function useDataMaintenance() {
-  const chatStore = useChatSessionStore()
-  const chatOrchestrator = useChatStore()
-  const displayModelsStore = useDisplayModelsStore()
-  const providersStore = useProviderStore()
-  const settingsStore = useSettings()
-  const audioSettingsStore = useSettingsAudioDevice()
-  const live2dParamsStore = useLive2dParams()
-  const live2dSettingsStore = useSettingsLive2d()
-  const live2dNaturalSettingsStore = useLive2DNaturalSettings()
-  const live2dMagicSettingsStore = useLive2DMotionMagicSettings()
-  const screenAmbientLightSettingsStore = useSettingsScreenAmbientLight()
-  const threeStore = useModelStore()
-  const mmdStore = useMMD()
-  const mmdNaturalSettingsStore = useMMDNaturalSettings()
-  const situationStore = useSituationStore()
-  const situationSettingsStore = useSituationSettings()
-  const expressionPerformanceSettingsStore = useExpressionPerformanceSettings()
-  const hostNoticeSettingsStore = useHostNoticeSettings()
+  // Owners that need a component context when they are created. Create them here, so that the registry's owner
+  // resets find them already created.
+  useChatStore()
+  useProviderStore()
+  useSettingsGeneral()
+  useSettingsAudioDevice()
+  useAiriCardStore()
+  const speechStore = useSpeechStore()
   const hearingStore = useHearingStore()
   const homeAssistantStore = useHomeAssistantStore()
   const memoryStore = useMemoryStore()
-  const speechStore = useSpeechStore()
   const consciousnessStore = useConsciousnessStore()
   const consciousnessSettingsStore = useConsciousnessSettingsStore()
   const webSearchStore = useWebSearchStore()
   const discordStore = useDiscordStore()
   const factorioStore = useFactorioStore()
-  const minecraftStore = useMinecraftStore()
-  const mcpStore = useMcpStore()
-  const onboardingStore = useOnboardingStore()
-  const airiCardStore = useAiriCardStore()
-  const characterStateStore = useCharacterStateStore()
   const recipesStore = useRecipesStore()
-  const voiceprintStore = useVoiceprintStore()
+  // A leader-routed reset fails when the leader has not created its store. Nothing else creates these four in every
+  // window, so create them wherever maintenance is mounted, as before the registry.
+  useExpressionPerformanceSettings()
+  useLive2DNaturalSettings()
+  useMMDNaturalSettings()
+  useOnboardingStore()
+  // The stores above set the Pinia instance of this component's app as the active one.
+  const pinia = getActivePinia()
+  if (!pinia)
+    throw new Error('useDataMaintenance needs an installed Pinia instance')
+  const context = { pinia }
 
   async function deleteAllModels() {
-    await displayModelsStore.resetDisplayModels()
-    await settingsStore.updateStageModel()
+    await resetRegisteredState(context, ['display-models'])
   }
 
   async function resetProvidersSettings() {
-    await providersStore.resetProviderSettings()
-    await airiCardStore.clearUnavailableProviderSelections()
-    await hearingStore.clearUnavailableProviderSelection()
+    await resetRegisteredState(context, ['provider-settings'])
   }
 
-  /** Attempts every independent reset and reports the first failure only after all operations settle. */
+  /** Runs every module reset and reports the first failure only after all of them ran. */
   async function resetModulesSettings() {
-    // Schedule each reset separately so both synchronous errors and rejected
-    // leader RPCs leave the other modules free to finish their cleanup.
-    const results = await Promise.allSettled([
-      () => hearingStore.resetState(),
-      () => homeAssistantStore.resetState(),
-      () => speechStore.resetState(),
-      // Her mood, temperament, and relationship with the owner, for every card.
-      () => characterStateStore.resetState(),
-      () => consciousnessStore.resetState(),
-      () => consciousnessSettingsStore.resetState(),
-      () => webSearchStore.resetState(),
-      () => discordStore.resetState(),
-      () => factorioStore.resetState(),
-      () => minecraftStore.resetState(),
-      // Memories and recipes hold what the character learned about the owner.
-      () => memoryStore.resetState(),
-      () => recipesStore.resetState(),
-    ].map(reset => Promise.resolve().then(reset)))
-    const failure = results.find(result => result.status === 'rejected')
-    if (failure)
-      throw failure.reason
+    await resetRegisteredState(context, modulesRegistrations)
   }
 
   async function deleteAllChatSessions() {
-    await chatOrchestrator.cancelPendingSends()
-    await chatStore.resetAllSessions()
-    // The threads extracted from the sessions are derived from their messages, so they go with them.
-    situationStore.forget({ scope: 'threads' })
+    await resetRegisteredState(context, ['chat-sessions', 'chat-assets'])
   }
 
-  async function resetSettingsState() {
-    await settingsStore.resetState()
-    audioSettingsStore.resetState()
-    live2dParamsStore.resetState()
-    live2dSettingsStore.resetState()
-    live2dMagicSettingsStore.resetState()
-    screenAmbientLightSettingsStore.resetState()
-    threeStore.resetModelStore()
-    mmdStore.resetState()
-    await situationSettingsStore.reset()
-    await expressionPerformanceSettingsStore.reset()
-    await hostNoticeSettingsStore.reset()
-    await live2dNaturalSettingsStore.reset()
-    await mmdNaturalSettingsStore.reset()
-    mcpStore.resetState()
-    // A follower routes this synced action to the leader; await it so the reset commits before deletion reports done.
-    await onboardingStore.resetSetupState()
-    airiCardStore.resetState()
-  }
-
+  /** Runs every registration of the state registry and reports the first failure only after all of them ran. */
   async function deleteAllData() {
-    // The voiceprints identify people. Remove them first, so a failed cleanup step below cannot keep them.
-    voiceprintStore.removeAll()
-    // Before the model switch below, so the stage loads the default model without a stored catalog.
-    clearExpressionDocuments()
-    await deleteAllModels()
-    await resetProvidersSettings()
-    await resetModulesSettings()
-    await deleteAllChatSessions()
-    await resetSettingsState()
-    await clearSherpawModelAssets()
-    situationStore.forget({ scope: 'everything' })
+    await resetRegisteredState(context)
   }
 
   async function resetDesktopApplicationState() {
     if (!isStageTamagotchi())
       return
 
-    await resetSettingsState()
-    await resetModulesSettings()
+    // The selection is a setting; the display models it points to are not, so their registration does not run here.
+    await useSettingsStageModel(pinia).resetState()
+    await resetRegisteredState(context, [...settingsRegistrations, ...modulesRegistrations])
   }
 
   const moduleSettingsOwners = {

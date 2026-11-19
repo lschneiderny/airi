@@ -122,5 +122,6 @@ it('replicates follower dismissal without proposals or persistence and restores 
   expect(mutations).toBe(2)
   expect(actions).toEqual(['dismiss', 'reset'])
   expect(persist.mock.calls.filter(([storageKey]) => storageKey === 'settings/host-notice')).toHaveLength(2)
-  expect(JSON.parse(localStorage.getItem('settings/host-notice')!).dismissedKeys).toEqual([])
+  // The registry sweep removes the stored document after the reset.
+  expect(localStorage.getItem('settings/host-notice')).toBeNull()
 })
