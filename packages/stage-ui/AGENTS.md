@@ -6,6 +6,7 @@
 - Put a component that serves one page or one use case in `src/components/scenarios/`.
 - Keep provider records serializable. Executable instances, request epochs, and tool executors stay local to their runtime.
 - `src/stores/chat.ts` is the integration hub where chat meets presence, unprompted turns, and memory. It may gain wiring lines only. A new system, such as touch observations, lives in its own module and talks to chat through chat store actions or the hooks and controls the store hands out (`useSituationStore().observeChat` is the pattern).
+- The character mind decides whether and when she speaks unasked: reach-outs, spoken touch reactions, and widget or plugin turns. `chat.ts` and the orchestrator runtime run the turn it decided and report its outcome. Start an unprompted turn only from `VoicePort` `speak` in `src/stores/situation`, and add no timing, holds, or retries for unprompted turns in chat or the runtime. Only the user's own turns and notices bypass the mind.
 
 ## COMMANDS
 
