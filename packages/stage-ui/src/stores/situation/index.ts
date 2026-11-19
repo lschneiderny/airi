@@ -8,6 +8,7 @@ import type {
   Observation,
   ReactionKind,
   ReasonKind,
+  ReturnObservation,
   SavedGateMemory,
   SituationState,
   ThreadState,
@@ -15,6 +16,7 @@ import type {
   TouchVoiceView,
   UrgeGateDecision,
   UrgeGateMemory,
+  WakeObservation,
 } from '@proj-airi/stage-shared/situation'
 import type { SyncedPiniaRuntime } from 'pinia-plugin-synced'
 
@@ -223,7 +225,8 @@ interface RunningSensors {
  * character mind decides whether she says one short line about a pet or poke, and this store records the touch and
  * runs the line. {@link observeTouch} folds the touch and returns what the mind may see of it. {@link speakReaction}
  * marks the touch event as shown (the trigger message carries it), starts a reaction turn through `submitReaction`,
- * and resolves with what became of it. The outcome never touches the gate's fire memory: a spoken line starts the
+ * and resolves with what became of it. {@link observeReturn} records a return or a desktop wake that the mind
+ * decided. The outcome of a line never touches the gate's fire memory: a spoken line starts the
  * gate's floor (`recordExternalSpeech`) and counts as her last line. The pacing of these lines is the mind's and is
  * not saved.
  *
@@ -790,6 +793,14 @@ export const useSituationStore = defineStore('situation', () => {
   }
 
   /**
+   * Records a return or a desktop wake that the character mind decided. Does nothing in a follower window. The
+   * mind is the gate's only source of a return; the desktop sensor reports presence only.
+   */
+  function observeReturn(observation: ReturnObservation | WakeObservation): void {
+    ingest(observation)
+  }
+
+  /**
    * Speaks the line the mind decided about the touch whose situation event is `eventId`, and resolves with what
    * became of it: at the first spoken literal, at a decline, or with the result of the turn.
    *
@@ -1220,6 +1231,7 @@ export const useSituationStore = defineStore('situation', () => {
     hostSupportsUnprompted: computed(() => hostSupportsUnprompted.value),
     ingest,
     observeTouch,
+    observeReturn,
     speakReaction,
     sharesSource,
     advance,

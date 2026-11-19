@@ -333,24 +333,23 @@ function logicalDayStartMs(nowMs: number, local: GateLocalTime): number {
 }
 
 /**
- * Ritual facts derived from the situation. The latest away span ended when the
- * current present state began; `tracking.lastAwayMs` is its length. A later
- * here/idle flip reports the same span again, which `advanceRituals` ignores
- * once the welcome-back window has opened.
+ * Ritual facts derived from the situation. The latest away span ended at the
+ * character mind's last return (`tracking.lastReturnAtMs`) and lasted
+ * `tracking.lastAwayMs`; a here/idle flip does not move either.
  */
 function ritualFacts(input: UrgeGateInput): Parameters<typeof advanceRituals>[1] {
   const { nowMs, situation, local } = input
   const presence = situation.presence.state
   const present = presence === 'here' || presence === 'idle'
-  const lastAwayMs = situation.tracking.lastAwayMs
-  const awayEnded = present && lastAwayMs !== null && situation.presence.sinceMs !== null
+  const { lastAwayMs, lastReturnAtMs } = situation.tracking
+  const awayEnded = present && lastAwayMs !== null && lastReturnAtMs !== null
   const lastUserAtMs = situation.conversation.lastUserAtMs
   return {
     nowMs,
     local,
     presence,
     userSpokeToday: isTime(lastUserAtMs) && lastUserAtMs >= logicalDayStartMs(nowMs, local),
-    awayEndedAtMs: awayEnded ? situation.presence.sinceMs : null,
+    awayEndedAtMs: awayEnded ? lastReturnAtMs : null,
     awayDurationMs: awayEnded ? lastAwayMs : null,
   }
 }

@@ -1,5 +1,5 @@
 import type { DesktopActivitySnapshot } from '@proj-airi/stage-shared/performance-state'
-import type { Observation, PresenceReason, PresenceState, WakeObservation } from '@proj-airi/stage-shared/situation'
+import type { Observation, PresenceReason, PresenceState } from '@proj-airi/stage-shared/situation'
 
 import { AWAY_INPUT_IDLE_SECONDS, userIdleSeconds } from '@proj-airi/stage-shared/performance-state'
 import { useDesktopActivityStore } from '@proj-airi/stage-shared/stores/desktop-activity'
@@ -67,11 +67,10 @@ export interface DesktopSensor {
 }
 
 /**
- * Turns the desktop activity samples of this window into `presence` and `wake` observations.
+ * Turns the desktop activity samples of this window into `presence` observations.
  *
- * Presence is reported only when its state or reason changes. A wake is reported when `unlockedAtMs` or
- * `resumedAtMs` advances past the last known value; the first sample is only a baseline, because its times can be
- * hours old. Equal or older times are not wakes. The caller owns the clock: it calls {@link DesktopSensor.check}
+ * Presence is reported only when its state or reason changes. Returns and desktop wakes come from the character
+ * mind through the stage's voice port, not from this sensor. The caller owns the clock: it calls {@link DesktopSensor.check}
  * from its own ticker, so the sensor adds no timer. Hosts without a producer keep a `null` snapshot, which reads
  * as `unknown`. `userTurnAtMs` returns when the user last sent a turn of their own; the caller calls `check` after
  * one, because no sample changes then.
@@ -79,9 +78,6 @@ export interface DesktopSensor {
 export function startDesktopSensor(ingest: (observation: Observation) => void, userTurnAtMs: () => number | null = () => null): DesktopSensor {
   const desktopActivity = useDesktopActivityStore()
   let presence: Presence = UNKNOWN
-  let baselined = false
-  let unlockedAtMs: number | null = null
-  let resumedAtMs: number | null = null
 
   function reportPresence(nowMs: number) {
     const next = presenceOf(desktopActivity.snapshot, nowMs, userTurnAtMs())
@@ -91,38 +87,10 @@ export function startDesktopSensor(ingest: (observation: Observation) => void, u
     ingest({ kind: 'presence', state: next.state, ...(next.reason ? { reason: next.reason } : {}), atMs: nowMs })
   }
 
-  function reportWakes(snapshot: DesktopActivitySnapshot) {
-    const unlocked = timeOrNull(snapshot.unlockedAtMs)
-    const resumed = timeOrNull(snapshot.resumedAtMs)
-    if (!baselined) {
-      baselined = true
-      unlockedAtMs = unlocked
-      resumedAtMs = resumed
-      return
-    }
-
-    const wakes: WakeObservation[] = []
-    if (unlocked !== null && (unlockedAtMs === null || unlocked > unlockedAtMs)) {
-      unlockedAtMs = unlocked
-      wakes.push({ kind: 'wake', cause: 'unlock', atMs: unlocked })
-    }
-    if (resumed !== null && (resumedAtMs === null || resumed > resumedAtMs)) {
-      resumedAtMs = resumed
-      wakes.push({ kind: 'wake', cause: 'resume', atMs: resumed })
-    }
-    // The reducer keeps only the newest wake, so the older one goes first.
-    for (const wake of wakes.sort((a, b) => a.atMs - b.atMs))
-      ingest(wake)
-  }
-
   const scope = effectScope(true)
   scope.run(() => {
     // Sync, so two samples written in one tick (locked, then unlocked) are both seen.
-    watch(() => desktopActivity.snapshot, (snapshot) => {
-      if (snapshot)
-        reportWakes(snapshot)
-      reportPresence(Date.now())
-    }, { immediate: true, flush: 'sync' })
+    watch(() => desktopActivity.snapshot, () => reportPresence(Date.now()), { immediate: true, flush: 'sync' })
   })
 
   return {

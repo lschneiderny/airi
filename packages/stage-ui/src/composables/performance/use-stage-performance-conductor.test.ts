@@ -2,7 +2,7 @@ import type { AffectSignal, AffectTrace, CatalogEntry, ExpressionPerformanceSett
 
 import type { ActionToolPort } from '../../tools/action'
 import type { BodyToolPort } from '../../tools/body'
-import type { ListedAction, StagePerformanceConductorOptions, StagePerformanceDriver, StagePerformanceScene, TouchVoicePort } from './use-stage-performance-conductor'
+import type { ListedAction, StagePerformanceConductorOptions, StagePerformanceDriver, StagePerformanceScene, VoicePort } from './use-stage-performance-conductor'
 
 import { CharacterMind } from '@proj-airi/character-mind'
 import { createDecider, createPickerDecider, defaultExpressionPerformanceSettings, initialTouchAffectMemory, parseAffectTrace, parseExpressionPerformanceSettings, replayAffectTrace, touchAffect } from '@proj-airi/stage-shared/expression-performance'
@@ -506,15 +506,30 @@ describe('stage performance conductor', () => {
       expect(scene.reactToDesktop).not.toHaveBeenCalled()
       expect(markMoment.mock.calls).toEqual([['welcome-back']])
     })
+
+    it('records the wake and the return in the situation in intent order under a basic driver', () => {
+      const voice = { observeTouch: vi.fn<VoicePort['observeTouch']>(() => null), speakReaction: vi.fn<VoicePort['speakReaction']>(async () => 'spoken'), observeReturn: vi.fn<VoicePort['observeReturn']>() }
+      const { conductor, advance } = createConductor('basic', fakeScene(), undefined, undefined, undefined, { voice: () => voice })
+
+      conductor.desktop([lock])
+      advance(60)
+      conductor.desktop([unlock])
+
+      expect(voice.observeReturn.mock.calls.map(([observation]) => observation)).toEqual([
+        { kind: 'wake', cause: 'unlock', atMs: 189_000, awayMs: 179_000 },
+        { kind: 'return', atMs: 70_000, awayMs: 60_000 },
+      ])
+    })
   })
 
   describe('touch, cue gestures, and moodless turns', () => {
     const point = { x: 0.2, y: -0.4 }
     /** A voice port that records nothing of its own: it answers every observation with `view`. */
-    function fakeVoice(view: ReturnType<TouchVoicePort['observeTouch']> = null) {
+    function fakeVoice(view: ReturnType<VoicePort['observeTouch']> = null) {
       return {
-        observeTouch: vi.fn<TouchVoicePort['observeTouch']>(() => view),
-        speakReaction: vi.fn<TouchVoicePort['speakReaction']>(async () => 'spoken'),
+        observeTouch: vi.fn<VoicePort['observeTouch']>(() => view),
+        speakReaction: vi.fn<VoicePort['speakReaction']>(async () => 'spoken'),
+        observeReturn: vi.fn<VoicePort['observeReturn']>(),
       }
     }
 
@@ -579,7 +594,7 @@ describe('stage performance conductor', () => {
     ] as const)('speaks the line the mind decided and returns %s to the mind', async (_name, speakReaction, outcome) => {
       vi.spyOn(console, 'error').mockImplementation(() => {})
       // The conductor's clock reads 10 s, so the mind decides at 10 000 ms about a burst that ends then.
-      const voice = { ...fakeVoice({ sessionId: 'session-1', eventId: 'touch-event', pet: null, pokeTimesMs: [8000, 9000, 10_000], lastCharacterLineAtMs: null, held: null }), speakReaction: vi.fn<TouchVoicePort['speakReaction']>(speakReaction) }
+      const voice = { ...fakeVoice({ sessionId: 'session-1', eventId: 'touch-event', pet: null, pokeTimesMs: [8000, 9000, 10_000], lastCharacterLineAtMs: null, held: null }), speakReaction: vi.fn<VoicePort['speakReaction']>(speakReaction) }
       // Seed 17 draws below the odds of a protest; the conductor's seed 7 would hold it.
       const { conductor, mind } = createConductor('natural', fakeScene(), undefined, undefined, undefined, { voice: () => voice, mindSeed: 17 })
       const settled = new Promise<Parameters<Parameters<CharacterMind['onStep']>[0]>[0]>((resolve) => {
