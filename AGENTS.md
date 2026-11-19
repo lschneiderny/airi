@@ -104,7 +104,7 @@ To run the app as an agent, use `AIRI_DEV_QUIET=1 pnpm dev`: it writes a log fil
 
 Create and remove worktrees with `pnpm wt new <name>` and `pnpm wt rm <name>`. Stop a worktree's processes with `pnpm dev:top kill <name> --yes`, never by PID alone.
 
-Build, typecheck, and QA scripts take CPU slots ([cpu-slots](packages/cpu-slots/README.md)) from a shared budget. If a command waits, run `pnpm slots status` to see who holds the budget. `AIRI_CPU_SLOTS=off` is a supported opt-out only for one-off diagnosis of the broker itself; never use it for routine runs. If a command prints `cpu-slots: dist/vitest.mjs is stale`, run `pnpm -F @proj-airi/cpu-slots build`. Never bypass the stale-build guard.
+Build, typecheck, and QA scripts take CPU slots ([cpu-slots](packages/cpu-slots/README.md)) from a shared budget. A waiting command prints the wait reason and who holds the budget, and prints again when the holders change; read that output instead of polling `pnpm slots status`. `AIRI_CPU_SLOTS=off` is a supported opt-out only for one-off diagnosis of the broker itself; never use it for routine runs. If a command prints `cpu-slots: dist/vitest.mjs is stale`, run `pnpm -F @proj-airi/cpu-slots build`. Never bypass the stale-build guard.
 
 ## TASK ROUTING
 Read the listed file before starting. Skill paths below are under `.agents/skills/`.
