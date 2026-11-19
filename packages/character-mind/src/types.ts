@@ -13,6 +13,9 @@ export type TouchReport
     | { gesture: 'pet-start', region: 'head' }
     | { gesture: 'pet-end', region: 'head', durationMs: number }
 
+/** What woke the desktop: a screen unlock or a resume from suspend. */
+export type WakeCause = 'unlock' | 'resume'
+
 export type MindStimulus
   /** `voice` is null for a pet start and when no leader gate runs; the mind then decides no line. */
   = | (TouchReport & { kind: 'touch', settings: ExpressionPerformanceSettings, voice: TouchVoiceView | null })
@@ -23,6 +26,10 @@ export type MindStimulus
     | { kind: 'expression-clear', source: 'act' | 'tool' | 'devtools', slot?: SlotCommand['slot'], turnId?: string }
   /** What became of a `speak` intent, named by its `eventId`. `refused` means another unprompted turn was pending. */
     | { kind: 'voice-outcome', eventId: string, outcome: GateOutcome | 'refused' }
+  /** `away` changed, or a desktop wake appeared. `wake` names the newer of a new unlock and resume time. */
+    | { kind: 'presence', away: boolean, wake: { cause: WakeCause, atMs: number } | null }
+  /** The screen changed sharply. The mind keeps the refractory. */
+    | { kind: 'screen-change' }
 
 interface IntentBase {
   /** Unique among the intents of one mind since its initial state. */
@@ -45,9 +52,17 @@ export type MindIntent
   /** `neutral`: a neutral emotion reset the reaction state. `all`: a clear that names no slot. `hold` is null when a clear names a slot, which keeps the held emotion. */
     | (IntentBase & { channel: 'face', kind: 'release', scope: 'neutral' | 'all' | SlotCommand['slot'], hold: HoldCommand | null, reason: 'act' | 'tool' | 'devtools', turnId?: string })
   /** A moment the performer may mark with one of the model's own expressions; the performer keeps the chance and the pick. */
-    | (IntentBase & { channel: 'face', kind: 'moment', moment: 'poked' | 'petted' })
+    | (IntentBase & { channel: 'face', kind: 'moment', moment: 'poked' | 'petted' | 'welcome-back' })
+  /** End idle sleep gently. The performer does nothing when she is not asleep. */
+    | (IntentBase & { channel: 'posture', kind: 'wake' })
+  /** A brief reaction to the desktop: a `wake` also rouses her from idle sleep with a startle. */
+    | (IntentBase & { channel: 'posture', kind: 'desktop-reaction', reaction: 'wake' | 'screen-change' })
   /** One short line about the touch whose situation event is `eventId`. Its outcome returns as a `voice-outcome` stimulus. */
     | (IntentBase & { channel: 'voice', kind: 'speak', line: ReactionKind, eventId: string })
+  /** Tell the voice channel of a desktop wake. `wakeCause` names the wake (`cause` is the stimulus's sequence number). `awayMs` is the open span at the wake, or null when no span was open. */
+    | (IntentBase & { channel: 'voice', kind: 'observe-wake', wakeCause: WakeCause, atMs: number, awayMs: number | null })
+  /** Tell the voice channel of a return. The gate decides whether she says anything. */
+    | (IntentBase & { channel: 'voice', kind: 'observe-return', atMs: number, awayMs: number })
 
 /** The posture intent a scene performs for a touch. */
 export type TouchReactionIntent = Extract<MindIntent, { kind: 'touch-reaction' }>
@@ -62,4 +77,8 @@ export interface MindState {
   touch: { affect: TouchAffectMemory }
   /** Pacing of spoken touch reactions, and the last decision about one; null until a touch with a voice view arrives. */
   voice: { reaction: ReactionMemory, lastDecision: ReactionDecision | null }
+  /** The away span the mind is in, or the last presence it saw; `awaySinceMs` is null while she is not away. */
+  presence: { away: boolean, awaySinceMs: number | null }
+  /** When the last screen-change reaction was stamped, in epoch milliseconds. */
+  desktop: { screenReactAtMs: number | null }
 }

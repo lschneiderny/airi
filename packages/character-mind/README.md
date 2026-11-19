@@ -25,8 +25,16 @@ const intents = mind.receive({ kind: 'emotion', source: 'act', emotion: 'happy',
 | `expression-clear` | `face`: `release` with the named slot as its scope, or scope `all` and a hold release when no slot is named. |
 | `touch` | One response, decided together. `posture`: `touch-reaction` for every touch, a poke at its point or a pet `start` or `end`, and `mood` when `touchAffect` returns a dose. `face`: `moment` (`poked` or `petted`) for a poke and a finished pet. `voice`: `speak` when `reactionPolicy` decides a line. |
 | `voice-outcome` | None. It settles the pending line; a `spoken` outcome always starts the refractory. |
+| `presence` | One response, in the order posture, face, voice. A desktop wake: `posture` `desktop-reaction` `wake` and `voice` `observe-wake`. A return: `posture` `wake` (unless the wake reaction already rouses her), `face` `moment` `welcome-back`, and `voice` `observe-return`. Away turning true opens the span and yields nothing. |
+| `screen-change` | `posture`: `desktop-reaction` `screen-change`, unless one was stamped less than `SCREEN_CHANGE_REFRACTORY_MS` (10 s) ago or a desktop wake is in the same `step` call. |
 
 A scene reports a touch as a `TouchReport`: a poke with its region and a point relative to that region, a pet start, or a pet end with its duration. The `touch` stimulus adds the settings and a `TouchVoiceView`, which is what the voice channel shows of the touch the situation just recorded. Without a view (a pet start, a follower window, no running gate) the mind decides no line and leaves its voice state untouched. The caller runs a `speak` intent and returns what became of it as a `voice-outcome` with the intent's `eventId`.
+
+### Return and desktop events
+
+A **return** is the end of an away span: a `presence` stimulus with `away: false` after one with `away: true`. The mind opens the span at the step's `nowMs` and keeps it in `MindState.presence`. A desktop wake (`wake` set, `unlock` or `resume`) while she is still away keeps the span open; the later return still gets its response. `observe-wake` carries the open span at the wake time as `awayMs`, or null when no span was open, and `observe-return` carries the whole span. The voice channel decides whether she says anything about either.
+
+The `wake` intent is idempotent: the performer ends idle sleep with it and ignores it otherwise, so the mind need not know she sleeps. A desktop wake does not stamp the screen-change refractory, and screen changes while she is away still react.
 
 The mind decides the emotion, its strength, its hold, and the reason. It reads no catalog: the caller reads a named entry's lease and primary emotion mapping from the catalog of the rendered model and sends them with the request. Which entries show an emotion stays with each performer.
 
@@ -45,7 +53,7 @@ pnpm -F @proj-airi/character-mind typecheck
 
 ## When to use
 
-Use this package for a decision about what the character does at event rate: which emotion episode starts, how strong it is, and how long it is held, and how she answers a pet or a poke with her body, her mood, and her voice. Drive the core from tests with scripted stimuli and a seeded random source.
+Use this package for a decision about what the character does at event rate: which emotion episode starts, how strong it is, and how long it is held, how she answers a pet or a poke with her body, her mood, and her voice, and how she answers the user's return and desktop events. Drive the core from tests with scripted stimuli and a seeded random source.
 
 ## When not to use
 
