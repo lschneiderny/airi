@@ -21,6 +21,8 @@ export type VoiceLine
   = | { kind: 'reaction', reaction: ReactionKind, eventId: string }
   /** A reach-out the gate decided. */
     | { kind: 'reach-out', topicKey: string, topicText: string, reason: { kind: ReasonKind, category: ReasonCategory } }
+  /** A widget or plugin turn the mind let through. */
+    | { kind: 'widget', topicKey: string, topicText: string, supplement: string | null }
 
 export interface VoiceRun {
   /** The store bumps it at each promotion and at "Delete all data". A new id makes the mind restore its gate memory. */
@@ -47,6 +49,17 @@ export interface VoiceView {
   unpromptedPending: boolean
 }
 
+/** A widget or plugin asks her to speak. */
+export interface VoiceRequest {
+  /** `spark:<notify id>`, the streaming-control turn id that CALL handlers listen to. */
+  turnId: string
+  topicKey: string
+  topicText: string
+  supplement: string | null
+  /** The caller's wait. The mind cancels a line not spoken this long after the request. */
+  timeoutMs: number
+}
+
 export type MindStimulus
   /** `voice` is null for a pet start and when no leader gate runs; the mind then decides no line. */
   = | (TouchReport & { kind: 'touch', settings: ExpressionPerformanceSettings, voice: TouchVoiceView | null })
@@ -63,6 +76,8 @@ export type MindStimulus
     | { kind: 'user-turn', atMs: number }
   /** A forced widget or plugin turn spoke outside the mind. */
     | { kind: 'external-speech', atMs: number }
+  /** A widget or plugin asks her to speak; the mind holds it until she and the user are quiet. */
+    | { kind: 'voice-request', request: VoiceRequest, view: VoiceView }
   /** `away` changed, or a desktop wake appeared. `wake` names the newer of a new unlock and resume time. */
     | { kind: 'presence', away: boolean, wake: { cause: WakeCause, atMs: number } | null }
   /** The screen changed sharply. The mind keeps the refractory. */
@@ -96,6 +111,10 @@ export type MindIntent
     | (IntentBase & { channel: 'posture', kind: 'desktop-reaction', reaction: 'wake' | 'screen-change' })
   /** Speak one line. Its outcome returns as a `voice-outcome` stimulus with the same `turnId`. */
     | (IntentBase & { channel: 'voice', kind: 'speak', turnId: string, line: VoiceLine })
+  /** Stop the turn of a widget line not spoken before its caller's deadline. */
+    | (IntentBase & { channel: 'voice', kind: 'cancel', turnId: string })
+  /** Give up a widget request that found no moment to start. Its caller gets `cancelled`. */
+    | (IntentBase & { channel: 'voice', kind: 'drop', turnId: string })
   /** Tell the voice channel of a desktop wake. `wakeCause` names the wake (`cause` is the stimulus's sequence number). `awayMs` is the open span at the wake, or null when no span was open. */
     | (IntentBase & { channel: 'voice', kind: 'observe-wake', wakeCause: WakeCause, atMs: number, awayMs: number | null })
   /** Tell the voice channel of a return. The gate decides whether she says anything. */
@@ -123,8 +142,10 @@ export interface MindState {
 export interface VoiceLineState {
   turnId: string
   kind: VoiceLine['kind']
-  /** The gate fields a refused reach-out restores. Null for a touch line. */
+  /** The gate fields a refused reach-out restores. Null for other lines. */
   before: Pick<UrgeGateMemory, 'lastFireAtMs' | 'fires' | 'pending' | 'urge' | 'urgeThreshold' | 'doubleText'> | null
+  /** When a widget line must have spoken, on the mind's clock; null for other lines. */
+  speakBy: number | null
 }
 
 export interface MindVoiceState {
@@ -140,6 +161,8 @@ export interface MindVoiceState {
   stageShown: boolean
   /** The line on its way. One at a time, as chat runs one unprompted turn at a time. */
   line: VoiceLineState | null
+  /** Widget requests waiting for a quiet moment, oldest first. */
+  requests: Array<{ request: VoiceRequest, startBy: number, speakBy: number }>
   /** The last gate decision, for the inspector and QA. */
   lastGate: UrgeGateDecision | null
 }
