@@ -459,7 +459,7 @@ An observation the character mind answers. Today ten kinds exist: `emotion` (an 
 
 The persistence tier for one feature's user-facing settings: one Valibot-validated document in a synced Pinia store, persisted privately to localStorage, whose `update` and `reset` actions are leader-routed so followers never write storage. Each stored field is validated on its own, so an invalid field falls back to its default while valid siblings survive.
 
-**Code:** `packages/stage-shared/src/composables/use-settings-document/index.ts` `useSettingsDocument`, `SettingsDocument`; examples `packages/stage-ui-live2d/src/composables/live2d/natural-settings.ts` `Live2DNaturalSettings` and `packages/stage-ui-mmd/src/stores/natural-settings.ts` `MMDNaturalSettings`.
+**Code:** `packages/stage-shared/src/composables/use-settings-document/index.ts` `useSettingsDocument`, `SettingsDocument`; examples `packages/stage-ui-live2d/src/composables/live2d/natural-settings.ts` `Live2DNaturalSettings`, `packages/stage-ui-mmd/src/stores/natural-settings.ts` `MMDNaturalSettings`, and `packages/stage-ui/src/features/performance/settings.ts` `useExpressionPerformanceSettings`.
 **Not to be confused with:** synced Pinia memory (runtime state replicated but not persisted) and plain `useLocalStorageManualReset` refs, a tier closed to new state.
 **Avoid:** "settings store" for the document (a store may hold other state too).
 

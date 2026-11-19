@@ -73,6 +73,19 @@ describe('useSettingsDocument', () => {
     expect(useSettingsDocument(key, entries, { ...options, initial }).document.value).toEqual({ enabled: true, level: 2 })
   })
 
+  it('applies `upgrade` to a stored document before validating its fields, and never to `initial`', () => {
+    const upgrade = vi.fn(({ legacyLevel, ...rest }: Record<string, unknown>) => ({ ...rest, level: legacyLevel }))
+    localStorage.setItem(key, JSON.stringify({ enabled: false, legacyLevel: 99 }))
+    expect(useSettingsDocument(key, entries, { ...options, upgrade }).document.value).toEqual({ enabled: false, level: 10 })
+    expect(upgrade).toHaveBeenCalledExactlyOnceWith({ enabled: false, legacyLevel: 99 })
+
+    localStorage.clear()
+    upgrade.mockClear()
+    const initial = () => ({ legacyLevel: 3, level: 2 })
+    expect(useSettingsDocument(key, entries, { ...options, initial, upgrade }).document.value).toEqual({ enabled: true, level: 2 })
+    expect(upgrade).not.toHaveBeenCalled()
+  })
+
   it('resets to the schema defaults, not to `initial`', async () => {
     const settings = useSettingsDocument(key, entries, { ...options, initial: () => ({ enabled: false }) })
     expect(settings.document.value.enabled).toBe(false)
