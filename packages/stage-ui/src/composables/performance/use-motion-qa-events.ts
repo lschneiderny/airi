@@ -1,4 +1,5 @@
 import type { CharacterMind } from '@proj-airi/character-mind'
+import type { IdleBehaviourReport } from '@proj-airi/motion-driver-natural/idle-activities'
 import type { MotionQaEvent, MotionQaEventsResult } from '@proj-airi/stage-shared/motion-scenario'
 
 import type { useChatStore } from '../../stores/chat'
@@ -10,10 +11,18 @@ import { usePerformanceRuntimeState } from '../../features/performance/runtime-s
 import { useLlmStreamingControlStore } from '../../stores/ai/chat-llm/streaming-control'
 import { voiceDecisionOf } from './use-character-mind'
 
+/** Subscribes to the stage's idle reports, as `createEventHook().on` does. */
+export type MotionQaIdleHook = (listener: (report: IdleBehaviourReport) => void) => { off: () => void }
+
 export type MotionQaChatHooks = Pick<ReturnType<typeof useChatStore>, 'onBeforeMessageComposed' | 'onChatTurnComplete'>
 
 /** Window-local, dev-only recorder. Its subscriptions never dispatch or modify performance state. */
-export function useMotionQaEvents(options: { chat: MotionQaChatHooks, voicing: () => boolean, mind: Pick<CharacterMind, 'onStep'> }) {
+export function useMotionQaEvents(options: {
+  chat: MotionQaChatHooks
+  voicing: () => boolean
+  mind: Pick<CharacterMind, 'onStep'>
+  onIdle: MotionQaIdleHook
+}) {
   const events: MotionQaEvent[] = []
   let seq = 0
   let dropped = 0
@@ -51,6 +60,7 @@ export function useMotionQaEvents(options: { chat: MotionQaChatHooks, voicing: (
       const touches = step.stimuli.filter(stimulus => stimulus.kind === 'touch')
       const outcomes = step.stimuli.filter(stimulus => stimulus.kind === 'voice-outcome')
       const decision = voiceDecisionOf(step)
+      const presence = step.stimuli.find(stimulus => stimulus.kind === 'presence')
       record('mind', {
         stimulus: step.stimuli.map(stimulus => stimulus.kind).join(','),
         gesture: touches.length ? touches.map(touch => touch.gesture).join(',') : null,
@@ -61,8 +71,11 @@ export function useMotionQaEvents(options: { chat: MotionQaChatHooks, voicing: (
         voice: decision ? (decision.speak ? 'speak' : 'hold') : null,
         voiceLine: decision?.kind ?? null,
         voiceReason: decision && !decision.speak ? decision.reason : null,
+        // Only a presence step carries these: whether the user is away after it, and what woke the computer.
+        ...presence && { away: presence.away, wake: presence.wake?.cause ?? null },
       })
     }),
+    options.onIdle(report => record('idle', { phase: report.phase, behaviour: report.behaviour })).off,
   ]
   const performance = usePerformanceRuntimeState()
   watch(() => performance.active.map(item => ({ ...item })), (active, previous) => {

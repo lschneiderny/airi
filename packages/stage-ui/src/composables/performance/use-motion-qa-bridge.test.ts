@@ -1,4 +1,5 @@
 import type { MindStimulus } from '@proj-airi/character-mind'
+import type { IdleBehaviourReport } from '@proj-airi/motion-driver-natural/idle-activities'
 import type { MotionScenario } from '@proj-airi/stage-shared/motion-scenario'
 import type { PerformanceInputs, PerformanceMode } from '@proj-airi/stage-shared/performance-state'
 import type { TouchVoiceView } from '@proj-airi/stage-shared/situation'
@@ -19,6 +20,7 @@ import { useForegroundWindowStore } from '@proj-airi/stage-shared/stores/foregro
 import { useHostCapabilitiesStore } from '@proj-airi/stage-shared/stores/host-capabilities'
 import { useLive2DNaturalSettings, useSettingsLive2d } from '@proj-airi/stage-ui-live2d/composables/live2d'
 import { useNaturalMotionDiagnostics } from '@proj-airi/stage-ui-live2d/stores'
+import { createEventHook } from '@vueuse/core'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { effectScope, ref, watch } from 'vue'
@@ -93,6 +95,7 @@ describe('useMotionQaBridge', () => {
   let mind: CharacterMind
   /** Epoch milliseconds of the mind's clock; a test moves it by hand. */
   let mindNowMs: number
+  let idle: ReturnType<typeof createEventHook<IdleBehaviourReport>>
 
   /** Stands in for the capture that Model.vue runs: scenario events stamped into it land in the log. */
   function recordCaptureMarks() {
@@ -109,6 +112,7 @@ describe('useMotionQaBridge', () => {
     mindNowMs = 1_700_000_000_000
     // Seed 17 speaks the protest of the first burst of three pokes.
     mind = new CharacterMind({ seed: 17, clock: () => mindNowMs })
+    idle = createEventHook<IdleBehaviourReport>()
     voicing.value = false
     mode.value = 'idle'
     performanceInputs = { nowMs: 0, speaking: false, userSpeaking: false, generating: false, cursorMovedAtMs: null, desktop: null, userTurnAtMs: null, visible: true, override: null, cueAttention: null, foregroundCategory: null }
@@ -128,6 +132,7 @@ describe('useMotionQaBridge', () => {
         sendChat: async (text) => { log.push(`send:${text}`) },
         voicing: () => voicing.value,
         mind,
+        onIdle: idle.on,
         emotionsQueue: { enqueue: cue => log.push(`queue:${cue.emotion.name}:${cue.source}:${cue.emotion.intensity}`) },
         dispatchAct: marker => streaming.dispatchWith(marker),
         renderError: () => undefined,
@@ -242,6 +247,22 @@ describe('useMotionQaBridge', () => {
     ])
     // Neither the poke's point nor the situation's event and session ids leave the window.
     expect(JSON.stringify(reply)).not.toMatch(/touch-event|session-1|-0\.4/)
+  })
+
+  it('records a presence step with its away state and wake cause, and each idle report', async () => {
+    mind.receive({ kind: 'presence', away: true, wake: null })
+    await idle.trigger({ phase: 'start', behaviour: 'sleep' })
+    mindNowMs += 60_000
+    mind.receive({ kind: 'presence', away: false, wake: { cause: 'unlock', atMs: mindNowMs } })
+    await idle.trigger({ phase: 'end', behaviour: 'sleep' })
+
+    const reply = await dispatch({ name: 'events', input: {} }) as { result: { events: { kind: string, payload: Record<string, unknown> }[] } }
+    expect(reply.result.events.map(({ kind, payload }) => ({ kind, ...payload, intents: undefined }))).toEqual([
+      expect.objectContaining({ kind: 'mind', stimulus: 'presence', away: true, wake: null }),
+      { kind: 'idle', phase: 'start', behaviour: 'sleep', intents: undefined },
+      expect.objectContaining({ kind: 'mind', stimulus: 'presence', away: false, wake: 'unlock' }),
+      { kind: 'idle', phase: 'end', behaviour: 'sleep', intents: undefined },
+    ])
   })
 
   it('evicts old records from its bounded window and removes subscriptions on disposal', async () => {

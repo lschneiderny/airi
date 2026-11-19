@@ -36,7 +36,7 @@ import { TachieScene } from '@proj-airi/stage-ui-tachie'
 import { animations } from '@proj-airi/stage-ui-three/assets/vrm'
 import { createQueue } from '@proj-airi/stream-kit'
 import { Callout } from '@proj-airi/ui'
-import { useBroadcastChannel, useDocumentVisibility, useEventListener, useIntervalFn } from '@vueuse/core'
+import { createEventHook, useBroadcastChannel, useDocumentVisibility, useEventListener, useIntervalFn } from '@vueuse/core'
 // import { createTransformers } from '@xsai-transformers/embed'
 // import embedWorkerURL from '@xsai-transformers/embed/worker?worker&url'
 // import { embed } from '@xsai/embed'
@@ -638,10 +638,15 @@ const idleProps = useIdleProps({
   answer: (seq, outcome) => live2dSceneRef.value?.answerIdleErrand(seq, outcome),
   occasions: activeOccasions,
 })
-/** A pastime ends before the sleep that follows it is reported, so the situation closes them in order. */
-function onLive2dIdle(report: IdleBehaviourReport) {
+const idleReports = createEventHook<IdleBehaviourReport>()
+/**
+ * Each idle report of the Live2D or MMD scene. A pastime ends before the sleep that follows it is reported, so the
+ * situation closes them in order. The props follow only a Live2D model; for another one they have no backend.
+ */
+function onIdle(report: IdleBehaviourReport) {
   idleProps.onIdleBehaviour(report)
   stageSelf.idle(report)
+  void idleReports.trigger(report)
 }
 
 /** A moment the mind decided, such as a poke or a finished pet; she may mark it with one of her own expressions. */
@@ -732,6 +737,7 @@ if (import.meta.env.DEV && isMotionQaBridgeEnabled()) {
           },
           voicing: () => speechVoicing.value,
           mind: characterMind,
+          onIdle: idleReports.on,
           modelLoaded: () => componentState.value === 'mounted',
           prepareModelImport: () => { componentState.value = 'pending' },
           emotionsQueue,
@@ -1193,7 +1199,7 @@ defineExpose({
         @error="handleStageRenderError"
         @touch="onAvatarTouch"
         @natural-touch="performanceConductor.touch($event)"
-        @idle="onLive2dIdle"
+        @idle="onIdle"
         @errand="idleProps.onErrand"
       />
       <ThreeScene
@@ -1273,7 +1279,7 @@ defineExpose({
         :connect-speech="connectSpeech"
         @error="reportStageRenderError"
         @touch="performanceConductor.touch($event)"
-        @idle="stageSelf.idle"
+        @idle="onIdle"
         @self="stageSelf.report"
         @placement="emit('placement', $event)"
         @root="emit('root', $event)"

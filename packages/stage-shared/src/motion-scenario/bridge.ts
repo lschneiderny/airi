@@ -132,8 +132,12 @@ export const MotionQaEventSchema = strictObject({
   seq: sequence,
   /** Unix epoch milliseconds from the recording renderer. */
   time: pipe(number(), finite()),
-  /** `mind` is one step of the character mind: its stimuli, the intents it returned, and its voice decision. */
-  kind: picklist(['act', 'expression', 'clip', 'tts', 'turn', 'mind']),
+  /**
+   * `mind` is one step of the character mind: its stimuli, the intents it returned, and its voice decision. A step
+   * with a `presence` stimulus also carries `away` and `wake` (`'unlock'`, `'resume'`, or `null`).
+   * `idle` is one idle report of the Natural scene: `phase` (`'start'` or `'end'`) and `behaviour`.
+   */
+  kind: picklist(['act', 'expression', 'clip', 'tts', 'turn', 'mind', 'idle']),
   /** Bounded scalar fields only; reply text is truncated to 500 characters by the recorder. A `mind` event carries no text. */
   payload: record(string(), union([pipe(string(), maxLength(500)), number(), boolean(), nullable(string())])),
 })
