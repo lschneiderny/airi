@@ -238,7 +238,7 @@ The `situation` entrypoint owns the pure core of situational presence: observati
 - `unpromptedTopicText` returns the topic text that an unprompted turn stores in its trigger message. For a topic of the web extension (`WEB_EXTENSION_SOURCE`) it returns only the kind of topic; every other text is returned unchanged.
 - `normalizeWindowTitle`, `appIdFromExe`, `labelFromExe`, `categorizeApp`, and `isDenylisted` turn a foreground sample into an app id, label, category, and model-facing title. `isBlockedApp` and `isPrivateWindowTitle` decide whether a host must hide a reading before it leaves the main process.
 
-The pure rules read no clock, store, or global randomness. Pass explicit time and retain returned state and memory for the next call; the urge gate checkpoints its random state in its own memory, and the reaction policy and `acceptReaction` take a `draw` function from the caller, which the character mind's shell owns.
+The pure rules read no clock, store, or global randomness. Pass explicit time and retain returned state and memory for the next call; the urge gate takes a `random` source (`() => number`) from the caller and calls it exactly five times per ordinary fire (threshold, category, reason, double-text roll, double-text offset) and never on a hold before the pick, so a `no-topic` hold spends the five draws; `promotionUrgeMemory` draws the first threshold from the same source. `randomSource(seed)` wraps the Mulberry32 helpers `seedRng` and `nextRandom` as such a source. The reaction policy and `acceptReaction` take a `draw` function from the caller, which the character mind's shell owns.
 
 ```ts
 import { initialSituationState, markShown, reduceSituation, renderSituation } from '@proj-airi/stage-shared/situation'

@@ -42,8 +42,6 @@ const SavedGateMemorySchema = strictObject({
   damp: nullable(strictObject({ depth: pipe(number(), minValue(0), maxValue(1)), sinceMs: time })),
   day: nullable(RitualDaySchema),
   lastOwnDayAtMs: nullableTime,
-  /** Mulberry32 checkpoint, a uint32. */
-  rngState: pipe(number(), integer(), minValue(0), maxValue(0xFFFFFFFF)),
 })
 
 const innerStateEntries = {

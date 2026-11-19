@@ -7,7 +7,7 @@ import type { SyncedPiniaRuntime } from 'pinia-plugin-synced'
 import type { ChatUnpromptedPayload, ChatUnpromptedResult } from '../../chat'
 
 import { createChatHooks } from '@proj-airi/core-agent'
-import { evaluateUrgeGate, initialUrgeMemory, notifyTopicKey } from '@proj-airi/stage-shared/situation'
+import { evaluateUrgeGate, initialUrgeMemory, notifyTopicKey, randomSource } from '@proj-airi/stage-shared/situation'
 import { useDesktopActivityStore } from '@proj-airi/stage-shared/stores/desktop-activity'
 import { useForegroundWindowStore } from '@proj-airi/stage-shared/stores/foreground-window'
 import { createPinia, setActivePinia } from 'pinia'
@@ -163,7 +163,7 @@ function evaluateQuietGate(situation: UrgeGateInput['situation']): UrgeGateEvalu
     signals: { userSpeaking: false, userTyping: false, characterSpeaking: false, generating: false, queued: 0, desktopFresh: true, foregroundFresh: true, stageVisible: true },
     settings: { enabled: true, chattiness: 1, dontDisturb: false, quietApps: [], speakDuringGames: true },
     forceTiming: true,
-  }, initialUrgeMemory)
+  }, initialUrgeMemory, randomSource(SEED))
 }
 
 /** The topic keys of the reasons the gate could pick from. */

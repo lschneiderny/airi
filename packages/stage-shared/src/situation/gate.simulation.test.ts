@@ -27,14 +27,13 @@ import {
   initialSituationState,
   logicalDayKey,
   markAddressed,
-  nextRandom,
   promotionUrgeMemory,
   pruneThreads,
   raiseThread,
+  randomSource,
   recordUrgeFireOutcome,
   recordUrgeUserTurn,
   reduceSituation,
-  seedRng,
 } from '.'
 
 /*
@@ -145,15 +144,6 @@ interface RunResult {
 
 type Random = () => number
 
-function scriptRandom(seed: number): Random {
-  let state = seedRng(seed)
-  return () => {
-    const [value, next] = nextRandom(state)
-    state = next
-    return value
-  }
-}
-
 function logNormal(random: Random, medianMs: number, sigma: number): number {
   const radius = Math.sqrt(-2 * Math.log1p(-random()))
   return medianMs * Math.exp(sigma * radius * Math.cos(2 * Math.PI * random()))
@@ -182,9 +172,11 @@ type ScriptItem
     | { readonly atMs: number, readonly kind: 'thread', readonly summary: string }
 
 function simulate(chattiness: Chattiness, days: number): RunResult {
-  const random = scriptRandom(SEED)
+  const random = randomSource(SEED)
+  /** The gate's own stream, apart from the script's, so the script does not shift the gate's draws. */
+  const gateRandom = randomSource(SEED)
   const settings: GateSettings = { enabled: true, chattiness, dontDisturb: false, quietApps: [], speakDuringGames: true }
-  let memory: UrgeGateMemory = promotionUrgeMemory(DAY0_MS, SEED)
+  let memory: UrgeGateMemory = promotionUrgeMemory(DAY0_MS, gateRandom)
   let situation: SituationState = initialSituationState
   let threads: ThreadState = { threads: [] }
   const rows: DayRow[] = []
@@ -222,7 +214,7 @@ function simulate(chattiness: Chattiness, days: number): RunResult {
       signals: SIGNALS,
       settings,
       heldTopics: NO_HELD_TOPICS,
-    }, memory).memory
+    }, memory, gateRandom).memory
     observe({ kind: 'presence', state: 'here', atMs: arriveMs }, arriveMs)
     threads = pruneThreads(threads, arriveMs)
 
@@ -281,7 +273,7 @@ function simulate(chattiness: Chattiness, days: number): RunResult {
         signals: SIGNALS,
         settings,
         heldTopics: NO_HELD_TOPICS,
-      }, memory)
+      }, memory, gateRandom)
       memory = next
       for (const reason of decision.trace.reasons) {
         if (reason.kind.startsWith('thread-') && !everRipe.has(reason.key)) {
