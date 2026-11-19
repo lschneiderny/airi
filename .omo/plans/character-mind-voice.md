@@ -1,6 +1,6 @@
 # character-mind-voice - Work Plan
 
-Status: not started. Roadmap row: slice CM3 in [`docs/ai/context/character-mind-roadmap.md`](../../docs/ai/context/character-mind-roadmap.md#steps). Rulings: the [character mind ADR](../../docs/ai/adr/2026-11-17-character-mind-direction.md), the [character mind core ADR](../../docs/ai/adr/2026-11-18-character-mind-core.md), and the [character mind return ADR](../../docs/ai/adr/2026-11-19-character-mind-return.md). Branch: `luke/feat/character-mind-voice`, cut from `luke/feat/character-mind-return` at `e79755141` (CM2, PR #51, not yet merged), which is stacked on `luke/feat/character-mind-touch` (CM1, PR #47, not yet merged), which sits on `main` at `872b74cb5` and contains upstream `moeru-ai/airi` through `b3a6d6071`. The plan proposes two PRs (D1): CM3a on this branch with base `luke/feat/character-mind-return`, and CM3b on `luke/feat/character-mind-widget-turns`, cut from the tip of CM3a, with base `luke/feat/character-mind-voice`. When a PR below one merges, rebase the next branch onto `main` and retarget its PR.
+Status: CM3a is done on the branch `luke/feat/character-mind-voice` on 2026-11-19, not yet merged; CM3b is not started. The commits are listed in [Commits](#commits), and the checks in [Checks run](#checks-run). Roadmap rows: slices CM3a and CM3b in [`docs/ai/context/character-mind-roadmap.md`](../../docs/ai/context/character-mind-roadmap.md#steps). Rulings: the [character mind ADR](../../docs/ai/adr/2026-11-17-character-mind-direction.md), the [character mind core ADR](../../docs/ai/adr/2026-11-18-character-mind-core.md), and the [character mind return ADR](../../docs/ai/adr/2026-11-19-character-mind-return.md). Branch: `luke/feat/character-mind-voice`, cut from `luke/feat/character-mind-return` at `e79755141` (CM2, PR #51, not yet merged), which is stacked on `luke/feat/character-mind-touch` (CM1, PR #47, not yet merged), which sits on `main` at `872b74cb5` and contains upstream `moeru-ai/airi` through `b3a6d6071`. The plan proposes two PRs (D1): CM3a on this branch with base `luke/feat/character-mind-return`, and CM3b on `luke/feat/character-mind-widget-turns`, cut from the tip of CM3a, with base `luke/feat/character-mind-voice`. When a PR below one merges, rebase the next branch onto `main` and retarget its PR.
 
 The owner is away and runs these slices without a plan review. Every design fork below is taken on the recommended option and listed in [Decisions open to the owner's veto](#10-decisions-open-to-the-owners-veto).
 
@@ -438,6 +438,46 @@ Each item is one commit that passes `pnpm verify`.
 
 ## Departures during implementation
 
+- CM3a: A `no-topic` hold now spends the gate's five draws. The gate draws before it picks a topic, and a stream source cannot take draws back. The old checkpoint was left unchanged on that hold.
+- CM3a: `docs/ai/context/state-persistence.md` never cited `rngState`. Its gate exception changed in A3, not A1.
+- CM3a: A reach-out's `turnId` is `reach-out:<nowMs>-<cause>`, with no draw. The chat message id stays a fresh `nanoid`, so a clash between minds cannot reach chat.
+- CM3a: The skip check (an open line or a pending unprompted turn) runs before the shown edge. This matches today's `gateTick`, so a shown edge during a skip eases her in at the next evaluated tick.
+- CM3a: A touch line takes the line slot only when it is empty or holds another touch line. A touch line decided while a reach-out is open still emits `speak`, and the port refuses it, as before. A reach-out outcome for a `turnId` that is not the open line is ignored.
+- CM3a: The store ticks a mind at once when it connects. A held user turn follows that tick instead of preceding it, because a new mind has no gate memory before its first tick.
+- CM3a: The view's `unpromptedPending` is also true while the mind's own line has spoken its first literal but its chat result has not arrived, as the old `firing` rule did.
+- CM3a: "Evaluate now" keeps the decision from the published update that carries one, because a user turn during the send runs a second step.
+- CM3a: Two modules are new: `packages/stage-ui/src/composables/performance/mind-voice.ts` holds the port types and `MindVoice`, so store tests drive the real path without the conductor, and `packages/stage-ui/src/test/connect-mind.ts` is the shared test harness. The `no-mind` skip reason gained an inspector label in `stage-pages` and an English string.
+- CM3a: Two store tests changed. The "pending turn" test checks that the gate was not evaluated, because the connection tick records a decision. The sulky-mood test waits one more promise round.
+- CM3a: "Evaluate now" reaches the QA bridge as an `evaluateVoice` option that `Stage.vue` fills. A replay test pins `voice.json`.
+
 ## Checks run
 
+Run on 2026-11-19 at `0a2b39388`, the last commit that changes code. `AIRI_QA_RIG_FORBOOTH` and `AIRI_QA_MMD_MODEL` named the models.
+
+| Check | Result |
+| --- | --- |
+| `pnpm verify --gate --base luke/feat/character-mind-return` | Exit 0: lint of 46 files, typecheck, related tests |
+| `pnpm qa:display run -- pnpm qa:smoke` | Exit 0, `ok: true`: classic window host, 0 renderer errors, 0 main-process errors |
+| `pnpm qa:display run -- pnpm qa:smoke --stage-host desktop --model "$AIRI_QA_MMD_MODEL"` | Exit 0, `ok: true`: desktop stage host |
+| Rendered 1: Live2D (`AIRI_QA_RIG_FORBOOTH`) under Natural, classic window | Pass. The first forced `evaluateVoice` fired the greeting ritual: one `mind` voice tick with gate `forced`, category `ritual`, and `voice/speak`. The turn started 100 ms later, `voice-outcome` `spoken` came at 178 ms, the turn ended at 216 ms, and `tts` ran from 296 ms to 2.6 s. The second forced fire (category `open`) took the `<\|SILENT\|>` entry: `voice-outcome` `declined` at 34 ms, with no `tts`. 0 renderer and 0 main-process errors, and no `replay_exhausted` |
+| Rendered 2: MMD (`AIRI_QA_MMD_MODEL`) on the desktop stage | Pass. The same pattern: `spoken` at 676 ms with `tts`, then `declined` at 506 ms. `presence-unknown` held forced ticks until about 10 s after the model loaded. `no-mind` was never observed, because the mind was connected from the moment the bridge was reachable. 0 errors |
+| Rendered 3: Universal | Pass. A forced fire declined through the mind, with no `idle` events and 0 errors |
+
+Not checked: an unforced fire did not occur in the minutes the sessions ran. Widget turns are CM3b. `qa:motion3d` was not run, because no motion code changed.
+
+Observed and not changed: `voice-outcome` `spoken` is recorded at the first literal, before `turn` end and `tts`. A declined turn records `turn` start without `turn` end. Under Natural, a declined fire still plays `about-to-speak` and `let-go`.
+
 ## Commits
+
+### CM3a
+
+`git log --oneline luke/feat/character-mind-return..HEAD`, oldest first, without the commit that adds this section:
+
+- `307a004e3` docs(plan): add the plan for the voice slice of the character mind
+- `4a9f3d9f9` refactor(stage-shared,stage-ui): draw the urge gate from a random source
+- `0cca4cd2d` feat(character-mind,stage-ui): decide reach-outs in the voice policy
+- `85798193d` refactor(stage-ui): route reach-outs through the mind
+- `0a2b39388` feat(stage-shared,stage-ui,qa-tools): show voice decisions to QA
+- `47a245424` docs(ai): record the voice policy decisions and split the CM3 row
+
+This commit marks CM3a done.
