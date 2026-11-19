@@ -1,8 +1,8 @@
 import type { MotionTraceBone } from '@proj-airi/motion-driver-humanoid/motion-trace'
+import type { PreparedTrace, Quat, Vec3 } from '@proj-airi/qa-tools/t2-3d/metrics/types'
 
-import type { PreparedTrace, Quat, Vec3 } from './types'
+import { conjugate, median, multiply, normalize } from '@proj-airi/qa-tools/t2-3d/metrics/math'
 
-import { conjugate, median, multiply, normalize } from './math'
 import { placeWindows } from './segments'
 
 /**

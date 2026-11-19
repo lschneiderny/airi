@@ -1,8 +1,9 @@
-import type { DetectorParameters, MetricResult, PreparedTrace, Region } from './types'
+import type { DetectorParameters, MetricResult, PreparedTrace, Region } from '@proj-airi/qa-tools/t2-3d/metrics/types'
+
+import { cv, DEG, HZ, norm } from '@proj-airi/qa-tools/t2-3d/metrics/math'
 
 import { REGIONS } from './bones'
 import { eligibleSegments } from './intermittency'
-import { cv, DEG, HZ, norm } from './math'
 import { result, skipped } from './result'
 
 /**

@@ -1,6 +1,6 @@
 import type { MotionTraceEvent } from '@proj-airi/motion-driver-humanoid/motion-trace'
+import type { DecodedMotionTrace } from '@proj-airi/qa-tools/t2-3d/read-trace'
 
-import type { DecodedMotionTrace } from '../read-trace'
 import type { LocalPose } from './pose'
 import type { FrameView } from './render'
 

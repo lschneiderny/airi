@@ -1,7 +1,7 @@
+import { mean } from '@proj-airi/qa-tools/t2-3d/metrics/math'
 import { describe, expect, it } from 'vitest'
 
 import { butterworth } from './filter'
-import { mean } from './math'
 
 describe('zero-phase Butterworth preprocessing', () => {
   it('preserves a constant including its edges', () => {

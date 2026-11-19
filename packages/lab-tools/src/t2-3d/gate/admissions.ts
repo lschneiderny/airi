@@ -5,7 +5,8 @@ import type { ReferenceInput } from './reference-measure'
 
 import { basename } from 'node:path'
 
-import { MotionTraceRefusal, parseTrace } from '../read-trace'
+import { MotionTraceRefusal, parseTrace } from '@proj-airi/qa-tools/t2-3d/read-trace'
+
 import { ReferenceRefusal } from '../reference/bvh'
 import { ingestClip } from '../reference/ingest'
 import { referenceInput } from './reference-measure'

@@ -1,4 +1,4 @@
-import type { ReplyTranscriptRecord } from '../transcript/schema'
+import type { ReplyTranscriptRecord } from '@proj-airi/qa-tools/model/transcript/schema'
 
 import { cueContractFixtures, replayReply } from '@proj-airi/core-agent'
 import { STAGE_RUNTIME_CONFIG } from '@proj-airi/stage-shared/stage-contract'

@@ -1,4 +1,4 @@
-import type { ReplyTranscriptRecord } from '../transcript/schema'
+import type { ReplyTranscriptRecord } from '@proj-airi/qa-tools/model/transcript/schema'
 
 import { describe, expect, it } from 'vitest'
 

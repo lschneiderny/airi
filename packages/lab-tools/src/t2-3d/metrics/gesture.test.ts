@@ -1,10 +1,10 @@
 import type { MotionTraceEvent } from '@proj-airi/motion-driver-humanoid/motion-trace'
 
+import { analyticTrace, angleX, detectors } from '@proj-airi/qa-tools/t2-3d/metrics/test-trace'
 import { describe, expect, it } from 'vitest'
 
 import { binomialTail, gestureMetrics } from './gesture'
 import { prepareTrace } from './prepare'
-import { analyticTrace, angleX, detectors } from './test-trace'
 
 const emphasis = Array.from({ length: 12 }, (_, i) => 1 + 2 * i)
 const events: MotionTraceEvent[] = emphasis.map(t => ({ kind: 'emphasis', t, strength: 1, source: 'scenario' }))

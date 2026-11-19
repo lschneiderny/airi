@@ -9,6 +9,7 @@ import { dirname, join, relative, resolve } from 'node:path'
 
 import { errorMessageFrom } from '@moeru/std'
 import { encodeBlock } from '@proj-airi/motion-driver-humanoid/motion-trace'
+import { MotionTraceRefusal, parseTrace } from '@proj-airi/qa-tools/t2-3d/read-trace'
 
 import * as v from 'valibot'
 
@@ -16,11 +17,10 @@ import { sha256 } from '../gate/load'
 import { labelsFileSchema, scoreCase, sealFileSchema, sealFor, sealPath, sealRefusals } from '../inject/labels'
 import { applyOperations, InjectRefusal } from '../inject/operations'
 import { judgeArguments } from '../matrix/plan'
-import { MotionTraceRefusal, parseTrace } from '../read-trace'
 import { runMotion3dChild } from './motion3d-child'
 import { readVerdict } from './verdicts'
 
-const usage = 'Usage: qa:motion3d inject --seal <labels file> | qa:motion3d inject <labels file> --out <new directory>'
+const usage = 'Usage: lab:motion3d inject --seal <labels file> | lab:motion3d inject <labels file> --out <new directory>'
 /** Files a copied run carries; report outputs of the source are left behind so every report reads the copy fresh. */
 const RUN_FILES = ['trace.json', 'summary.json', 'run.json']
 
@@ -141,7 +141,7 @@ async function score(path: string, out: string, signal: AbortSignal): Promise<nu
 }
 
 /**
- * `qa:motion3d inject`: scores labelled fault cases on copies of stored runs. Exit 0 when every case reads as labelled,
+ * `lab:motion3d inject`: scores labelled fault cases on copies of stored runs. Exit 0 when every case reads as labelled,
  * 1 on a mismatch, 2 when it refuses (no seal, a labels file or source trace changed after its seal, an operation the
  * trace cannot take, an existing `--out`) or on a usage error.
  */
@@ -162,7 +162,7 @@ export async function injectMotion3d(args: readonly string[], context: Motion3dC
   catch (error) {
     if (!(error instanceof Refusal) && !(error instanceof InjectRefusal) && !(error instanceof MotionTraceRefusal))
       throw error
-    console.error(`qa:motion3d inject: ${error.message}`)
+    console.error(`lab:motion3d inject: ${error.message}`)
     return 2
   }
 }

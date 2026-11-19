@@ -5,14 +5,15 @@ import process from 'node:process'
 import { writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 
+import { MotionTraceRefusal, readTrace } from '@proj-airi/qa-tools/t2-3d/read-trace'
+
 import { loadBands } from '../gate/load'
 import { GateRefusal } from '../gate/refusals'
 import { formatGazeOrderReport, GazeOrderRefusal, gazeOrderReport } from '../gaze-order'
-import { MotionTraceRefusal, readTrace } from '../read-trace'
 
 export async function gazeOrderMotion3d(args: readonly string[], context: Motion3dCliContext): Promise<number> {
   if (args.length !== 1 || args[0].startsWith('-')) {
-    console.error('Usage: qa:motion3d report gaze-order <run directory>')
+    console.error('Usage: lab:motion3d report gaze-order <run directory>')
     return 2
   }
   const dir = resolve(context.cwd, args[0])
@@ -32,7 +33,7 @@ export async function gazeOrderMotion3d(args: readonly string[], context: Motion
   catch (error) {
     if (!(error instanceof GazeOrderRefusal) && !(error instanceof MotionTraceRefusal) && !(error instanceof GateRefusal))
       throw error
-    const message = `qa:motion3d report gaze-order ${dir}: ${error.name}: ${error.detail}`
+    const message = `lab:motion3d report gaze-order ${dir}: ${error.name}: ${error.detail}`
     console.error(message)
     context.verdicts?.refuse(message)
     return 2

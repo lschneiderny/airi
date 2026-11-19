@@ -1,10 +1,10 @@
+import { analyticTrace } from '@proj-airi/qa-tools/t2-3d/metrics/test-trace'
 import { describe, expect, it } from 'vitest'
 
 import { butterworth } from './filter'
 import { acfPeak, loopPeak, periodMetrics } from './period'
 import { prepareTrace } from './prepare'
 import { spectralEstimate } from './spectral'
-import { analyticTrace } from './test-trace'
 
 describe('periodicity diagnostics', () => {
   it('detects a 0.19 Hz root sinusoid in every short window and in the long span', () => {

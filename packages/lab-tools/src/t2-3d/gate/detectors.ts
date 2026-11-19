@@ -3,9 +3,9 @@ import type { MotionTraceBone } from '@proj-airi/motion-driver-humanoid/motion-t
 import type { DetectorParameters, detectorQuantities, PreparedTrace } from '../metrics'
 
 import { MOTION_TRACE_BONES } from '@proj-airi/motion-driver-humanoid/motion-trace'
+import { median } from '@proj-airi/qa-tools/t2-3d/metrics/math'
 
 import { isFinger } from '../metrics/bones'
-import { median } from '../metrics/math'
 import { percentile } from './bands'
 import { mirroredName } from './policy'
 

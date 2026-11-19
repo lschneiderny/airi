@@ -1,6 +1,6 @@
-import type { Vec3 } from './types'
+import type { Vec3 } from '@proj-airi/qa-tools/t2-3d/metrics/types'
 
-import { finite } from './math'
+import { finite } from '@proj-airi/qa-tools/t2-3d/metrics/math'
 
 /** Section 3.1 P7: forward/backward second-order Butterworth, 30-sample odd padding. */
 export function butterworth(x: readonly number[], cutoff: number): number[] {

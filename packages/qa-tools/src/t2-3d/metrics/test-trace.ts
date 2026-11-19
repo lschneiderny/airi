@@ -7,6 +7,9 @@ import { motionTraceParents } from '@proj-airi/motion-driver-humanoid/motion-tra
 
 import { conjugate, multiply } from './math'
 
+/** Analytic test input only: no asset, clip or captured trace. */
+export const TEST_BONES: readonly MotionTraceBone[] = ['hips', 'spine', 'chest', 'upperChest', 'neck', 'head', 'leftShoulder', 'leftUpperArm', 'leftLowerArm', 'leftHand', 'rightShoulder', 'rightUpperArm', 'rightLowerArm', 'rightHand']
+
 export interface AnalyticTraceOptions {
   readonly seconds: number
   readonly hz?: number

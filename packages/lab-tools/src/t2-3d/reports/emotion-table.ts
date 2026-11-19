@@ -4,11 +4,12 @@ import type { MotionBandsFile } from '../gate/types'
 import type { EmotionTrial, PreparedTrace, Quat, Vec3 } from '../metrics'
 import type { CriterionReport, LoadedRun, ReportConstant } from './report'
 
+import { conjugate, DEG, heading, mean, multiply, normalize, rotationVector } from '@proj-airi/qa-tools/t2-3d/metrics/math'
+
 import { percentile } from '../gate/bands'
 import { motionQualityGate } from '../gate/definition'
 import { emotionMetrics, emotionTrials, onsetMetrics } from '../metrics'
 import { UPPER } from '../metrics/bones'
-import { conjugate, DEG, heading, mean, multiply, normalize, rotationVector } from '../metrics/math'
 import { postureFeatures } from '../metrics/mirror'
 import { postureClearingScales } from './posture-scale'
 import { criterionReport, fixed, formatReport, gateStatus, reportOnly, requireGate, requirement } from './report'
@@ -34,7 +35,7 @@ const C = {
   episodes: motionQualityGate.constants.episodeMinimum,
 }
 
-/** Criterion C002's gate run: `qa:motion3d gate <emotion runs> --require` these ids. */
+/** Criterion C002's gate run: `lab:motion3d gate <emotion runs> --require` these ids. */
 export const C002_REQUIRED = ['emotion.minSeparationFromNeutral', 'emotion.armShare'] as const
 const ONSET_IDS = ['onset.attackFraction', 'onset.easedOrAnticipated'] as const
 

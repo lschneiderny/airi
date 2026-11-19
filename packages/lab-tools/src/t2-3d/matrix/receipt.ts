@@ -110,7 +110,7 @@ export function compareReceipts(then: MatrixReceipt, now: MatrixReceipt): Compar
 export function formatReceipt(receipt: MatrixReceipt): string {
   const cell = (text: string) => text.replaceAll('|', '\\|')
   return `${[
-    `# qa:motion3d matrix receipt`,
+    `# lab:motion3d matrix receipt`,
     '',
     `matrix ${receipt.matrix.path} (sha256 ${receipt.matrix.sha256})`,
     `commit ${receipt.commit}, dirty ${receipt.dirty}${receipt.allowDirty ? ' (--allow-dirty)' : ''}, ${receipt.startedAt} to ${receipt.endedAt}`,

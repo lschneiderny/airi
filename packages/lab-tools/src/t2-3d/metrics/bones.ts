@@ -1,6 +1,5 @@
 import type { MotionTraceBone } from '@proj-airi/motion-driver-humanoid/motion-trace'
-
-import type { Region } from './types'
+import type { Region } from '@proj-airi/qa-tools/t2-3d/metrics/types'
 
 export const CORE = [
   'hips',

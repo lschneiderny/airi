@@ -1,4 +1,4 @@
-import type { ReplyTranscriptRecord } from '../transcript/schema'
+import type { ReplyTranscriptRecord } from '@proj-airi/qa-tools/model/transcript/schema'
 
 // NOTICE:
 // Verbatim copy of `scoreReplies` from `scripts/ollama-bench/score.ts` at commit 9f6ff5e8d,

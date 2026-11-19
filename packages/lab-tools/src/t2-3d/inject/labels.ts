@@ -53,7 +53,7 @@ export function sealFor(labelsSha256: string, sources: readonly SourceHash[], se
 /** Every reason scoring must refuse; empty when the labels file and every source trace are what was sealed. */
 export function sealRefusals(seal: SealFile | null, labelsSha256: string, sources: readonly SourceHash[]): string[] {
   if (!seal)
-    return ['no seal: run qa:motion3d inject --seal <labels file> before scoring']
+    return ['no seal: run lab:motion3d inject --seal <labels file> before scoring']
   const refusals = seal.sha256 === labelsSha256 ? [] : [`labels file changed after its seal: sha256 ${labelsSha256}, sealed ${seal.sha256} at ${seal.sealedAt}`]
   for (const { source, traceSha256 } of sources) {
     const sealed = seal.sources.find(entry => entry.source === source)

@@ -1,8 +1,9 @@
+import type { DecodedMotionTrace } from '@proj-airi/qa-tools/t2-3d/read-trace'
+
 import type { Motion3dCliContext } from '../../../bin/motion3d'
 import type { FramesSummary } from '../frames/frames'
 import type { LocalPose } from '../frames/pose'
 import type { FrameView } from '../frames/render'
-import type { DecodedMotionTrace } from '../read-trace'
 
 import process from 'node:process'
 
@@ -14,6 +15,8 @@ import { join, resolve } from 'node:path'
 
 import { errorMessageFrom } from '@moeru/std'
 import { MOTION_TRACE_CHANNELS } from '@proj-airi/motion-driver-humanoid/motion-trace'
+import { MotionTraceRefusal, readTrace } from '@proj-airi/qa-tools/t2-3d/read-trace'
+import { loadHeadlessMMD } from '@proj-airi/qa-tools/t2-3d/runner/loader'
 
 import * as v from 'valibot'
 
@@ -22,11 +25,9 @@ import { eventLabel, frameAt, framesSummarySchema, selectWindows } from '../fram
 import { frameRigFromMMD } from '../frames/model'
 import { FramePoseRefusal, neededBones, poseFrame, skin, unposedBones } from '../frames/pose'
 import { framingFor, rasterize } from '../frames/render'
-import { MotionTraceRefusal, readTrace } from '../read-trace'
-import { loadHeadlessMMD } from '../runner/loader'
 import { DEFAULT_AFTER_SECONDS, DEFAULT_BEFORE_SECONDS, rerunRun } from './frames'
 
-const usage = 'Usage: qa:motion3d clip <run directory> --model <pmx> [--window <from>:<to> | --around <marker label prefix or event kind> [--before <s>] [--after <s>] [--match <n>]] [--compare <run directory>] [--views front,side] [--hz <n>] [--pose rerun|trace] --out <file.mp4|.webm|.webp|.gif>'
+const usage = 'Usage: lab:motion3d clip <run directory> --model <pmx> [--window <from>:<to> | --around <marker label prefix or event kind> [--before <s>] [--after <s>] [--match <n>]] [--compare <run directory>] [--views front,side] [--hz <n>] [--pose rerun|trace] --out <file.mp4|.webm|.webp|.gif>'
 const PANEL = { width: 270, height: 400 }
 const CHANNELS: readonly string[] = MOTION_TRACE_CHANNELS
 
@@ -135,7 +136,7 @@ interface PoseSource {
 }
 
 /**
- * `qa:motion3d clip`: the frames renderer's posed mesh at playback rate, encoded to one video or animated image by a
+ * `lab:motion3d clip`: the frames renderer's posed mesh at playback rate, encoded to one video or animated image by a
  * system ffmpeg, with a second run side by side. Exit 0 when the clip is written, 1 when ffmpeg fails, 2 on a usage
  * error or refusal (no ffmpeg or encoder, wrong model, scenario mismatch, a re-run that does not reproduce), 130 on
  * interrupt.
@@ -145,7 +146,7 @@ export async function clipMotion3d(args: readonly string[], context: Motion3dCli
     const options = parseClipArguments(args, context.cwd)
     const ffmpeg = findOnPath('ffmpeg', process.env.PATH, isExecutableFile)
     if (!ffmpeg)
-      throw new ClipRefusal('clip encodes through a system ffmpeg and none is on PATH; install ffmpeg, or use qa:motion3d frames for stills')
+      throw new ClipRefusal('clip encodes through a system ffmpeg and none is on PATH; install ffmpeg, or use lab:motion3d frames for stills')
     const codec = clipCodec(options.out)!
     if (!new RegExp(`\\s${codec.encoder}\\s`).test(execFileSync(ffmpeg, ['-hide_banner', '-encoders'], { encoding: 'utf8' })))
       throw new ClipRefusal(`${ffmpeg} has no ${codec.encoder} encoder for ${options.out}; try another of .mp4, .webm, .webp, .gif`)
@@ -232,7 +233,7 @@ export async function clipMotion3d(args: readonly string[], context: Motion3dCli
       encoder.stdin.end()
       const [code] = await exited
       if (code !== 0 || pipe.error !== null) {
-        console.error(`qa:motion3d clip: ffmpeg exited ${code}${pipe.error ? ` (${errorMessageFrom(pipe.error) ?? 'pipe closed'})` : ''}`)
+        console.error(`lab:motion3d clip: ffmpeg exited ${code}${pipe.error ? ` (${errorMessageFrom(pipe.error) ?? 'pipe closed'})` : ''}`)
         return 1
       }
       const bytes = statSync(options.out).size
@@ -264,7 +265,7 @@ export async function clipMotion3d(args: readonly string[], context: Motion3dCli
       return 130
     if (!(error instanceof ClipRefusal) && !(error instanceof FramePoseRefusal) && !(error instanceof MotionTraceRefusal))
       throw error
-    console.error(`qa:motion3d clip: ${errorMessageFrom(error) ?? 'refused'}${error instanceof ClipRefusal ? `\n${usage}` : ''}`)
+    console.error(`lab:motion3d clip: ${errorMessageFrom(error) ?? 'refused'}${error instanceof ClipRefusal ? `\n${usage}` : ''}`)
     return 2
   }
 }

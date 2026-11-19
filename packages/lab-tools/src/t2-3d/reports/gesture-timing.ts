@@ -5,9 +5,10 @@ import type { PreparedTrace, Quat, Vec3 } from '../metrics'
 import type { KinematicStroke, Side } from './kinematics'
 import type { CriterionReport, LoadedRun, ReportConstant } from './report'
 
+import { conjugate, DEG, HZ, median, multiply, norm, sub } from '@proj-airi/qa-tools/t2-3d/metrics/math'
+
 import { percentile } from '../gate/bands'
 import { describeOutside } from '../gate/meaning'
-import { conjugate, DEG, HZ, median, multiply, norm, sub } from '../metrics/math'
 import { NOT_FROZEN_DIP, notFrozen, STAGE_CHARACTER_HEIGHT_DIP, stageDipPerUnit } from '../metrics/not-frozen'
 import { handPath, kinematicStrokes, SIDES, STROKE_CONSTANTS, traceParent } from './kinematics'
 import { popCount, upperBodyPopBones } from './pops'

@@ -1,10 +1,10 @@
 import type { MotionTraceEvent } from '@proj-airi/motion-driver-humanoid/motion-trace'
 
+import { analyticTrace, angleX, detectors } from '@proj-airi/qa-tools/t2-3d/metrics/test-trace'
 import { describe, expect, it, vi } from 'vitest'
 
 import { gateMotion3d } from '../cli/gate'
 import { CORE } from '../metrics/bones'
-import { analyticTrace, angleX, detectors } from '../metrics/test-trace'
 import { context, encoded, readVerdicts, withTraces } from './pool-fixture'
 import { fitClass } from './reference-fit'
 

@@ -12,14 +12,14 @@ import { runCaptureCli } from './run/capture-command'
 import { runRunCli } from './run/command'
 import { runScoreCli } from './score/command'
 
-export const modelUsage = `Usage: pnpm qa:model <command> [options]
+export const modelUsage = `Usage: pnpm lab:model <command> [options]
 
 Commands:
   run --scenario <id|file.json> --base-url <url> --model <id> [--config <name>] [--history raw|canonical|accepted] [--reasoning none|low|medium|high] [--app-request <file> [--max-steps <n>]] [--out <dir>] [--machine-label <l>] [--json]  run a scenario against a live OpenAI-compatible chat endpoint and record the replies
   capture <qa:app run dir|requests.jsonl> --out <file>  save the app's system prompt and tools for run --app-request
   score <transcripts.jsonl> [--set <id>] [--label <l>] [--exposed-actions <label:kind,...>]  score a transcript file with the real runtime replay
   compare <transcripts|run dir|set id>... [--exposed-actions <label:kind,...>] [--json]  score runs together and print one row per model and config
-  probe cache-events|cold-start|overflow|server-sweep --model <id> ...  measure how a local server handles the app's requests (see the qa-tools README)
+  probe cache-events|cold-start|overflow|server-sweep --model <id> ...  measure how a local server handles the app's requests (see the lab-tools README)
   prompt [--locale en] [--card <file>] [--full <fixture>] [--exposed-actions <label:kind,...>] [--json]  print the system prompt the app sends and its hashes
   judge serve <transcripts|run dir|set id>... [--out <f>] [--judge <l>] [--contenders <a,b>] [--port <n>] [--seed <n>]  judge replies blind, two at a time, in a local page
   judge report <judgments.jsonl>... [--json]  aggregate saved judgments into standings and tag rates
@@ -47,7 +47,7 @@ export interface ModelCliIo {
 }
 
 /**
- * Dispatches `qa:model` subcommands.
+ * Dispatches `lab:model` subcommands.
  *
  * Use when:
  * - `bin/model.ts` or a test needs the subcommand router with injectable handlers and output.
@@ -79,7 +79,7 @@ export async function runModelCli(
       parseArgs({ args: rest, strict: true, allowPositionals: false })
     }
     catch (error) {
-      stderr(`qa-tools model: ${errorMessageFrom(error) ?? 'invalid arguments'}\n\n${modelUsage}`)
+      stderr(`lab:model: ${errorMessageFrom(error) ?? 'invalid arguments'}\n\n${modelUsage}`)
       return 2
     }
     stdout(modelUsage)
@@ -88,7 +88,7 @@ export async function runModelCli(
 
   const handler = command !== undefined && Object.hasOwn(handlers, command) ? handlers[command as keyof typeof handlers] : undefined
   if (!handler) {
-    stderr(`qa-tools model: ${command === undefined ? 'missing command' : `unknown command ${JSON.stringify(command)}`}\n\n${modelUsage}`)
+    stderr(`lab:model: ${command === undefined ? 'missing command' : `unknown command ${JSON.stringify(command)}`}\n\n${modelUsage}`)
     return 2
   }
 
@@ -96,7 +96,7 @@ export async function runModelCli(
     return await handler(rest, repoRoot, env)
   }
   catch (error) {
-    stderr(`qa-tools model ${command}: ${errorMessageFrom(error) ?? 'model command failed'}\n`)
+    stderr(`lab:model ${command}: ${errorMessageFrom(error) ?? 'model command failed'}\n`)
     return 1
   }
 }

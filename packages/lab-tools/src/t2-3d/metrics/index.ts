@@ -1,5 +1,5 @@
-import type { DecodedMotionTrace } from '../read-trace'
-import type { DetectorParameters, MetricResult } from './types'
+import type { DetectorParameters, MetricResult } from '@proj-airi/qa-tools/t2-3d/metrics/types'
+import type { DecodedMotionTrace } from '@proj-airi/qa-tools/t2-3d/read-trace'
 
 import { coreMetrics } from './core'
 import { emotionMetrics, emotionTrials } from './emotion'
@@ -26,7 +26,7 @@ export { periodMetrics } from './period'
 export { prepareTrace } from './prepare'
 export { smoothMetrics } from './smooth'
 export { spectralMetrics } from './spectral'
-export type * from './types'
+export type * from '@proj-airi/qa-tools/t2-3d/metrics/types'
 
 /**
  * One trace -> raw core and applicable scenario measurements; no files, bands, clocks or randomness.

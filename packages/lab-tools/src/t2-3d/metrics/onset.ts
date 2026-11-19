@@ -1,8 +1,9 @@
-import type { DetectorParameters, MetricResult, MetricSample, PreparedTrace, Vec3 } from './types'
+import type { DetectorParameters, MetricResult, MetricSample, PreparedTrace, Vec3 } from '@proj-airi/qa-tools/t2-3d/metrics/types'
+
+import { add, dot, HZ, scale } from '@proj-airi/qa-tools/t2-3d/metrics/math'
 
 import { REGIONS } from './bones'
 import { integratedEpisode } from './gaze'
-import { add, dot, HZ, scale } from './math'
 import { regionSpeed } from './prepare'
 import { episodeResult } from './result'
 import { episodes } from './segments'

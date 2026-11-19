@@ -6,9 +6,10 @@ import process from 'node:process'
 
 import { resolve } from 'node:path'
 
+import { MotionTraceRefusal } from '@proj-airi/qa-tools/t2-3d/read-trace'
+
 import { loadBands } from '../gate/load'
 import { GateRefusal } from '../gate/refusals'
-import { MotionTraceRefusal } from '../read-trace'
 import { loadRun, ReportUsageError, writeReport } from '../reports/report'
 
 export interface ReportOutput {
@@ -48,8 +49,8 @@ export async function runReportCommand(name: string, usage: string, args: readon
   catch (error) {
     if (!(error instanceof ReportUsageError) && !(error instanceof MotionTraceRefusal) && !(error instanceof GateRefusal))
       throw error
-    console.error(`qa:motion3d report ${name}: ${error.message}`)
-    context.verdicts?.refuse(`qa:motion3d report ${name}: ${error.message}`)
+    console.error(`lab:motion3d report ${name}: ${error.message}`)
+    context.verdicts?.refuse(`lab:motion3d report ${name}: ${error.message}`)
     return 2
   }
 }

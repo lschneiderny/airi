@@ -1,5 +1,6 @@
+import type { DecodedMotionTrace } from '@proj-airi/qa-tools/t2-3d/read-trace'
+
 import type { MetricResult } from '../metrics'
-import type { DecodedMotionTrace } from '../read-trace'
 import type { MotionBandsFile, MotionVerdict, VerdictMetric } from './types'
 
 import { measureTrace, onsetMetrics, prepareTrace } from '../metrics'

@@ -87,7 +87,7 @@ describe('loadScenario', () => {
     const loaded = await loadScenario(id, repoRoot)
 
     expect(loaded.scenario.id).toBe(id)
-    expect(loaded.file).toBe(`packages/qa-tools/fixtures/model/scenarios/${id}.json`)
+    expect(loaded.file).toBe(`packages/lab-tools/fixtures/model/scenarios/${id}.json`)
     expect(loaded.fileSha256).toMatch(/^[0-9a-f]{64}$/)
     expect(loaded.cardPrompt).toBeNull()
     for (const config of Object.values(loaded.scenario.configs))

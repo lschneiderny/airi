@@ -5,12 +5,12 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
+import { readGitStateFromRepo } from '@proj-airi/qa-tools/evidence/run'
+import { runMotion3dScenario } from '@proj-airi/qa-tools/t2-3d/runner/run'
+import { motion3dScenarios } from '@proj-airi/qa-tools/t2-3d/scenarios'
 import { expect, it, vi } from 'vitest'
 
-import { readGitStateFromRepo } from '../../evidence/run'
 import { framesMotion3d } from '../cli/frames'
-import { runMotion3dScenario } from '../runner/run'
-import { motion3dScenarios } from '../scenarios'
 
 const repoRoot = resolve(import.meta.dirname, '../../../../..')
 

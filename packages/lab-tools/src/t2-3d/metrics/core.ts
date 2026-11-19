@@ -1,9 +1,9 @@
 import type { MotionTraceBone } from '@proj-airi/motion-driver-humanoid/motion-trace'
+import type { BoneFloors, DetectorParameters, MetricResult, PreparedTrace, Span } from '@proj-airi/qa-tools/t2-3d/metrics/types'
 
-import type { BoneFloors, DetectorParameters, MetricResult, PreparedTrace, Span } from './types'
+import { add, dot, laggedCorrelation, mean, median, principalAxis, rms } from '@proj-airi/qa-tools/t2-3d/metrics/math'
 
 import { ARMS, CHAIN_PAIRS, CORE, isFinger, UPPER } from './bones'
-import { add, dot, laggedCorrelation, mean, median, principalAxis, rms } from './math'
 import { result, skipped, windowResult } from './result'
 
 /**

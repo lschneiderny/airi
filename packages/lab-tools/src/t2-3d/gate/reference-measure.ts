@@ -1,13 +1,14 @@
 import type { MotionScenarioClass } from '@proj-airi/motion-driver-humanoid/motion-trace'
+import type { DecodedMotionTrace } from '@proj-airi/qa-tools/t2-3d/read-trace'
 
 import type { DetectorParameters, MetricResult, PreparedTrace } from '../metrics'
-import type { DecodedMotionTrace } from '../read-trace'
 import type { ReferenceClip } from '../reference/manifest'
 import type { DetectorQuantities } from './detectors'
 
+import { DEG, norm } from '@proj-airi/qa-tools/t2-3d/metrics/math'
+
 import { coreMetrics, detectorQuantities, gaitMetrics, gazeMetrics, gestureMetrics, intermittencyMetrics, onsetMetrics, periodMetrics, prepareTrace, smoothMetrics } from '../metrics'
 import { integratedEpisode } from '../metrics/gaze'
-import { DEG, norm } from '../metrics/math'
 import { headSignal } from '../metrics/period'
 import { episodes } from '../metrics/segments'
 import { percentile } from './bands'

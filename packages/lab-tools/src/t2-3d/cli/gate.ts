@@ -1,19 +1,21 @@
+import type { DecodedMotionTrace } from '@proj-airi/qa-tools/t2-3d/read-trace'
+
 import type { Motion3dCliContext } from '../../../bin/motion3d'
 import type { MotionBandsFile, MotionVerdict } from '../gate/types'
 import type { MetricResult } from '../metrics'
-import type { DecodedMotionTrace } from '../read-trace'
 
 import { readFile, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
+
+import { MotionTraceRefusal, parseTrace } from '@proj-airi/qa-tools/t2-3d/read-trace'
 
 import { judgeTrace, refusedVerdict, verdictExitCode } from '../gate/judge'
 import { loadBands, sha256 } from '../gate/load'
 import { bandSide, formatBandSide } from '../gate/meaning'
 import { checkTrace, GateRefusal } from '../gate/refusals'
 import { emotionMetrics, emotionTrials, prepareTrace } from '../metrics'
-import { MotionTraceRefusal, parseTrace } from '../read-trace'
 
-const usage = 'Usage: qa:motion3d gate <run directory>... [--require <metric id>[,<metric id>...]]'
+const usage = 'Usage: lab:motion3d gate <run directory>... [--require <metric id>[,<metric id>...]]'
 
 /**
  * Frame-content identity: the frame's raw float32 rotations for every bone. Each
@@ -66,7 +68,7 @@ export async function gateMotion3d(args: readonly string[], context: Motion3dCli
     const known = new Set(Object.values(bands.classes).flatMap(c => Object.keys(c.metrics)))
     const unknown = requirements.filter(id => !known.has(id))
     if (unknown.length) {
-      console.error(`qa:motion3d gate: unknown required metric ids: ${unknown.join(', ')}`)
+      console.error(`lab:motion3d gate: unknown required metric ids: ${unknown.join(', ')}`)
       return 2
     }
   }
@@ -214,7 +216,7 @@ export async function gateMotion3d(args: readonly string[], context: Motion3dCli
     catch (error) {
       if (!(error instanceof Error))
         throw error
-      console.error(`qa:motion3d gate: cannot write ${entry.dir}/gate.json: ${error.message}`)
+      console.error(`lab:motion3d gate: cannot write ${entry.dir}/gate.json: ${error.message}`)
       return 2
     }
     for (const m of verdict.metrics)

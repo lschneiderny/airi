@@ -1,9 +1,9 @@
-import type { DecodedMotionTrace } from '../read-trace'
+import type { DecodedMotionTrace } from '@proj-airi/qa-tools/t2-3d/read-trace'
+
 import type { MotionBandsFile } from './types'
 
 import { MOTION_TRACE_CHANNELS } from '@proj-airi/motion-driver-humanoid/motion-trace'
-
-import { median } from '../metrics/math'
+import { median } from '@proj-airi/qa-tools/t2-3d/metrics/math'
 
 export class GateRefusal extends Error {
   constructor(override readonly name: string, readonly detail: string) {

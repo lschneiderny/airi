@@ -1,17 +1,17 @@
 import type { BodyRest } from '@proj-airi/motion-driver-humanoid/performance'
+import type { DecodedMotionTrace } from '@proj-airi/qa-tools/t2-3d/read-trace'
 
 import type { MotionBandsFile } from '../gate/types'
-import type { DecodedMotionTrace } from '../read-trace'
 import type { CaseReport, CaseRequirement } from './case-report'
 import type { LoadedRun, ReportConstant } from './report'
 
 import { IDLE_TO_SIT_MS } from '@proj-airi/motion-driver-humanoid/director'
 import { MOTION_TRACE_CHANNELS } from '@proj-airi/motion-driver-humanoid/motion-trace'
+import { QA_DRIVE_AWAY } from '@proj-airi/qa-tools/t2-3d/idle-drive'
+import { conjugate, DEG, HZ, mean, multiply, rotate } from '@proj-airi/qa-tools/t2-3d/metrics/math'
 
 import { percentile } from '../gate/bands'
-import { QA_DRIVE_AWAY } from '../idle-drive'
 import { prepareTrace, smoothMetrics } from '../metrics'
-import { conjugate, DEG, HZ, mean, multiply, rotate } from '../metrics/math'
 import { caseReport, formatCaseReport, judged, notExercised } from './case-report'
 import { driveRequirement, idleSpans, restStates, TracePose } from './idle-acts'
 import { POP_CONSTANTS } from './kinematics'

@@ -1,12 +1,12 @@
 import type { MetricResult } from '../metrics'
 import type { MeasuredReference } from './reference-measure'
 
+import { median } from '@proj-airi/qa-tools/t2-3d/metrics/math'
+import { detectors } from '@proj-airi/qa-tools/t2-3d/metrics/test-trace'
 import { expect, it } from 'vitest'
 
 import { CORE } from '../metrics/bones'
-import { median } from '../metrics/math'
 import { result } from '../metrics/result'
-import { detectors } from '../metrics/test-trace'
 import { fitClass } from './reference-fit'
 
 function measured(split: 'fit' | 'holdout', index: number, metric: MetricResult): MeasuredReference {

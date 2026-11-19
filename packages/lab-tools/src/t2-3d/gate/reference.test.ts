@@ -1,11 +1,11 @@
 import type { MetricResult } from '../metrics'
 import type { MeasuredReference } from './reference-measure'
 
+import { analyticTrace, angleX, detectors } from '@proj-airi/qa-tools/t2-3d/metrics/test-trace'
 import { describe, expect, it } from 'vitest'
 
 import { prepareTrace } from '../metrics'
 import { CORE } from '../metrics/bones'
-import { analyticTrace, angleX, detectors } from '../metrics/test-trace'
 import { fitDetectors } from './detectors'
 import { fitClass } from './reference-fit'
 import { measureReference, referenceInput } from './reference-measure'

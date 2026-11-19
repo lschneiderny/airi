@@ -1,15 +1,15 @@
 import type { MotionTraceBone, MotionTraceEvent } from '@proj-airi/motion-driver-humanoid/motion-trace'
+import type { Motion3dIdleDrive } from '@proj-airi/qa-tools/t2-3d/idle-drive'
+import type { DecodedMotionTrace } from '@proj-airi/qa-tools/t2-3d/read-trace'
 
-import type { Motion3dIdleDrive } from '../idle-drive'
 import type { Quat, Vec3 } from '../metrics'
-import type { DecodedMotionTrace } from '../read-trace'
 
 import { motionTraceParents } from '@proj-airi/motion-driver-humanoid/motion-trace'
+import { idleDriveDetail, QA_DRIVE_PRESENT, QA_IDLE_DRIVE } from '@proj-airi/qa-tools/t2-3d/idle-drive'
+import { multiply } from '@proj-airi/qa-tools/t2-3d/metrics/math'
+import { analyticTrace } from '@proj-airi/qa-tools/t2-3d/metrics/test-trace'
 import { describe, expect, it } from 'vitest'
 
-import { idleDriveDetail, QA_DRIVE_PRESENT, QA_IDLE_DRIVE } from '../idle-drive'
-import { multiply } from '../metrics/math'
-import { analyticTrace } from '../metrics/test-trace'
 import { idleActsReport } from './idle-acts'
 import { ReportUsageError } from './report'
 import { loadedRun, TEST_BONES } from './test-runs'

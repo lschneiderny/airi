@@ -1,6 +1,7 @@
-import type { RunManifest } from '../../evidence/run'
+import type { RunManifest } from '@proj-airi/qa-tools/evidence/run'
+import type { ReplyTranscriptRecord } from '@proj-airi/qa-tools/model/transcript/schema'
+
 import type { RunScore } from '../score/aggregate'
-import type { ReplyTranscriptRecord } from '../transcript/schema'
 
 import process from 'node:process'
 
@@ -11,23 +12,23 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { sha256Buffer } from '@proj-airi/qa-tools/evidence/run'
+import { parseScript, ReplayScript } from '@proj-airi/qa-tools/llm/script'
+import { ReplayServer } from '@proj-airi/qa-tools/llm/server'
+import { readTranscript } from '@proj-airi/qa-tools/model/transcript/jsonl'
 import { bucketsOf, DEFAULT_CHARACTER_PROFILE } from '@proj-airi/stage-shared/character-state'
 import { STAGE_CONTRACT_EN_SHA256 } from '@proj-airi/stage-shared/stage-contract'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { renderStage } from '../../character-state/cli'
-import { sha256Buffer } from '../../evidence/run'
-import { parseScript, ReplayScript } from '../../llm/script'
-import { ReplayServer } from '../../llm/server'
 import { runScoreCli } from '../score/command'
 import { buildSystemPrompt, renderDefaultCard } from '../stage-contract'
-import { readTranscript } from '../transcript/jsonl'
 import { runRunCli } from './command'
 
 type LiveRecord = Extract<ReplyTranscriptRecord, { schema: 'airi.reply-transcript/v2' }>
 
 const repoRoot = fileURLToPath(new URL('../../../../../', import.meta.url))
-const scenarios = resolve(repoRoot, 'packages/qa-tools/fixtures/model/scenarios')
+const scenarios = resolve(repoRoot, 'packages/lab-tools/fixtures/model/scenarios')
 const owned: string[] = []
 const servers: ReplayServer[] = []
 let sequence = 0
@@ -117,7 +118,7 @@ describe('run command', () => {
     expect(rows[0]).toMatchObject({
       set: 'general',
       runKey: 'general@1/test-model/temp-0.6',
-      source: { kind: 'live', file: 'packages/qa-tools/fixtures/model/scenarios/general.json', rowIndex: 0 },
+      source: { kind: 'live', file: 'packages/lab-tools/fixtures/model/scenarios/general.json', rowIndex: 0 },
       // The requested id names the model; the id the endpoint reported is kept beside it.
       model: { id: 'test-model', provider: 'openai-compatible', digest: null, capabilities: [] },
       generation: { config: 'temp-0.6', options: { max_tokens: 320, temperature: 0.6, stream: true, stream_options: { include_usage: true } }, think: null, withTools: false },

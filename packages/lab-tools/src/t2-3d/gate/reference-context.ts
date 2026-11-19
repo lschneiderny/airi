@@ -2,8 +2,9 @@ import type { MotionTraceBone } from '@proj-airi/motion-driver-humanoid/motion-t
 
 import type { PreparedTrace, Quat } from '../metrics'
 
+import { conjugate, mean, multiply, normalize, rotationVector, yawQuat } from '@proj-airi/qa-tools/t2-3d/metrics/math'
+
 import { ARMS, UPPER } from '../metrics/bones'
-import { conjugate, mean, multiply, normalize, rotationVector, yawQuat } from '../metrics/math'
 import { headSignal, loopPeak, scalarSignals } from '../metrics/period'
 
 export interface StylePosture {

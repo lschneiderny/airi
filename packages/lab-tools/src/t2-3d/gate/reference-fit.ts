@@ -5,7 +5,8 @@ import type { MetricPolicy } from './policy'
 import type { MeasuredReference } from './reference-measure'
 import type { ClassBands, HoldoutVerdict, MetricBand } from './types'
 
-import { mean, median } from '../metrics/math'
+import { mean, median } from '@proj-airi/qa-tools/t2-3d/metrics/math'
+
 import { fitBand, fitEpisodeBand, passesBand } from './bands'
 import { applyHoldoutRule } from './holdouts'
 import { judgeMetrics } from './judge'

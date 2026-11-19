@@ -21,7 +21,7 @@ export const motionQualityGate = {
   id: 'mmd-motion-quality',
   version: 6,
   limitation: LIMITATION,
-  bandsFile: 'packages/qa-tools/fixtures/motion3d/bands-v6.json',
+  bandsFile: 'packages/lab-tools/fixtures/motion3d/bands-v6.json',
   bandsSha256: 'dc331d8cbcb8c7f88caf9cb978b751f6ef9880480026db6b9d9926f21b23bdc9',
   refusals: [
     'trace-unreadable',

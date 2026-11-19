@@ -1,19 +1,18 @@
 import type { MotionTraceBone, MotionTraceEvent } from '@proj-airi/motion-driver-humanoid/motion-trace'
+import type { DecodedMotionTrace } from '@proj-airi/qa-tools/t2-3d/read-trace'
+import type { Motion3dRunSummary } from '@proj-airi/qa-tools/t2-3d/runner/measurement'
 
 import type { MotionVerdict, VerdictMetric } from '../gate/types'
 import type { Quat } from '../metrics'
-import type { DecodedMotionTrace } from '../read-trace'
-import type { Motion3dRunSummary } from '../runner/measurement'
 import type { LoadedRun } from './report'
 
 import { minJerk } from '@proj-airi/motion-driver-humanoid/dynamics'
+import { multiply } from '@proj-airi/qa-tools/t2-3d/metrics/math'
+import { analyticTrace, TEST_BONES } from '@proj-airi/qa-tools/t2-3d/metrics/test-trace'
 
 import { prepareTrace } from '../metrics'
-import { multiply } from '../metrics/math'
-import { analyticTrace } from '../metrics/test-trace'
 
-/** Analytic test input only: no asset, clip or captured trace. */
-export const TEST_BONES: readonly MotionTraceBone[] = ['hips', 'spine', 'chest', 'upperChest', 'neck', 'head', 'leftShoulder', 'leftUpperArm', 'leftLowerArm', 'leftHand', 'rightShoulder', 'rightUpperArm', 'rightLowerArm', 'rightHand']
+export { TEST_BONES }
 
 /** A sum of minimum-jerk moves on warped time `u^0.8` (architecture 4a), each from `start` over `duration` by `by`. */
 export function moves(list: readonly { readonly start: number, readonly duration: number, readonly by: number }[]): (t: number) => number {

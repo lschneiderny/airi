@@ -1,7 +1,7 @@
+import type { RunHandle } from '@proj-airi/qa-tools/evidence/run'
+import type { ReplyTranscriptRecord } from '@proj-airi/qa-tools/model/transcript/schema'
 import type { ClosenessStage } from '@proj-airi/stage-shared/character-state'
 
-import type { RunHandle } from '../../evidence/run'
-import type { ReplyTranscriptRecord } from '../transcript/schema'
 import type { AppRequest } from './app-request'
 import type { ChatMessage, ChatOutcome } from './chat'
 import type { HistoryMode } from './history'
@@ -16,14 +16,14 @@ import { basename, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 
 import { errorMessageFrom } from '@moeru/std'
+import { createRun, sha256Buffer } from '@proj-airi/qa-tools/evidence/run'
+import { createTranscriptWriter } from '@proj-airi/qa-tools/model/transcript/jsonl'
+import { replyIdFor } from '@proj-airi/qa-tools/model/transcript/schema'
 import { bucketsOf, DEFAULT_CHARACTER_PROFILE } from '@proj-airi/stage-shared/character-state'
 import { STAGE_CONTRACT_EN_SHA256 } from '@proj-airi/stage-shared/stage-contract'
 
 import { renderStage } from '../../character-state/cli'
-import { createRun, sha256Buffer } from '../../evidence/run'
 import { buildStageContract, buildSystemPrompt, renderDefaultCard } from '../stage-contract'
-import { createTranscriptWriter } from '../transcript/jsonl'
-import { replyIdFor } from '../transcript/schema'
 import { loadAppRequest } from './app-request'
 import { buildChatRequest, requestChat } from './chat'
 import { firstSpeechMs, spokenText } from './first-speech'
@@ -57,7 +57,7 @@ function wallClockMs(startsAt: string, turn: number): number {
  * Runs a scenario against a live chat endpoint and writes one transcript record per reply.
  *
  * Use when:
- * - A model's replies to the current system prompt must be captured for `qa:model score`.
+ * - A model's replies to the current system prompt must be captured for `lab:model score`.
  *
  * Returns:
  * - 0 when every request returned a reply, 1 when a request failed (the records written so far are kept), 2 for
@@ -204,7 +204,7 @@ export async function runRunCli(
     }
   }
   catch (error) {
-    stderr(`qa-tools model run: ${errorMessageFrom(error) ?? 'invalid arguments'}\n`)
+    stderr(`lab:model run: ${errorMessageFrom(error) ?? 'invalid arguments'}\n`)
     return 2
   }
 
@@ -328,7 +328,7 @@ export async function runRunCli(
   catch (error) {
     const message = errorMessageFrom(error) ?? 'run failed'
     run?.finish({ exitCode: 1, summary: message })
-    stderr(`qa-tools model run: ${message}\n`)
+    stderr(`lab:model run: ${message}\n`)
     return 1
   }
 }

@@ -2,10 +2,10 @@ import type { MotionTraceBone } from '@proj-airi/motion-driver-humanoid/motion-t
 
 import type { Quat } from '../metrics'
 
+import { multiply } from '@proj-airi/qa-tools/t2-3d/metrics/math'
+import { analyticTrace } from '@proj-airi/qa-tools/t2-3d/metrics/test-trace'
 import { describe, expect, it } from 'vitest'
 
-import { multiply } from '../metrics/math'
-import { analyticTrace } from '../metrics/test-trace'
 import { ReportUsageError } from './report'
 import { loadedRun, rotX, rotY, summaryStub, TEST_BONES } from './test-runs'
 import { walkFormReport } from './walk-form'

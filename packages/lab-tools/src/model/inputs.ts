@@ -2,7 +2,7 @@ import { stat } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 
 /**
- * Resolves a transcript input of a `qa:model` command: a transcript file, a run directory holding `transcripts.jsonl`,
+ * Resolves a transcript input of a `lab:model` command: a transcript file, a run directory holding `transcripts.jsonl`,
  * or the id of a committed model-eval set. Relative paths resolve against the repository root.
  *
  * Throws:
@@ -16,7 +16,7 @@ export async function resolveTranscriptInput(repoRoot: string, input: string): P
   if (info?.isDirectory())
     return join(direct, 'transcripts.jsonl')
   if (/^[\w.-]+$/.test(input) && !input.includes('..')) {
-    const set = resolve(repoRoot, 'packages/qa-tools/model-eval/sets', input, 'transcripts.jsonl')
+    const set = resolve(repoRoot, 'packages/lab-tools/model-eval/sets', input, 'transcripts.jsonl')
     if ((await stat(set).catch(() => undefined))?.isFile())
       return set
   }

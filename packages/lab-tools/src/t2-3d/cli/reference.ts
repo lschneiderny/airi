@@ -12,7 +12,7 @@ import { readManifest } from '../reference/manifest'
 
 export async function referenceMotion3d(args: readonly string[], context: Motion3dCliContext): Promise<number> {
   if (args.length !== 4 || args[0] !== '--from' || args[2] !== '--out' || !args[1] || !args[3]) {
-    console.error('Usage: qa:motion3d reference --from <reference directory> --out <bands.json>')
+    console.error('Usage: lab:motion3d reference --from <reference directory> --out <bands.json>')
     return 2
   }
   const directory = resolve(context.cwd, args[1])
@@ -45,7 +45,7 @@ export async function referenceMotion3d(args: readonly string[], context: Motion
     if (context.signal.aborted)
       return 130
     if (error instanceof Error) {
-      console.error(`qa:motion3d reference: ${error.message}`)
+      console.error(`lab:motion3d reference: ${error.message}`)
       return 2
     }
     throw error

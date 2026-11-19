@@ -2,10 +2,9 @@ import { Buffer } from 'node:buffer'
 import { readFile } from 'node:fs/promises'
 
 import { errorMessageFrom } from '@moeru/std'
+import { sha256Buffer } from '@proj-airi/qa-tools/evidence/run'
 
 import * as v from 'valibot'
-
-import { sha256Buffer } from '../../evidence/run'
 
 const ToolSchema = v.looseObject({
   type: v.literal('function'),
@@ -16,7 +15,7 @@ const ToolSchema = v.looseObject({
  * The system prompt and tools of one real app chat request, saved so a model run can send what the app sends.
  *
  * The app composes its system prompt from the card, the stage contract, the model's motion list, plugins, and memory,
- * and it sends a dozen tool definitions. `qa:model run` without a capture composes a smaller prompt and sends no tools,
+ * and it sends a dozen tool definitions. `lab:model run` without a capture composes a smaller prompt and sends no tools,
  * and on 2026-11-18 its cue scores were far better than the app's (88% against 16% parsed for one model).
  */
 export const AppRequestSchema = v.strictObject({
@@ -88,7 +87,7 @@ export function appRequestFromLog(lines: readonly string[], source: string, capt
 }
 
 /**
- * Loads and validates a capture written by `qa:model capture`.
+ * Loads and validates a capture written by `lab:model capture`.
  *
  * Throws:
  * - An `Error` naming the file when it is missing, not JSON, not a capture, or edited after capture (its hashes no

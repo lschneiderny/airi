@@ -1,4 +1,4 @@
-import type { ReplyTranscriptRecord } from '../transcript/schema'
+import type { ReplyTranscriptRecord } from '@proj-airi/qa-tools/model/transcript/schema'
 
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -33,7 +33,7 @@ function record(model: string, config: string, turn: number, text: string): Repl
   }
 }
 
-describe('qa:model compare', () => {
+describe('lab:model compare', () => {
   it('scores every input together and adds the memory and recall each run directory recorded', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'model-compare-'))
     owned.push(dir)

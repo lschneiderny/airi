@@ -1,9 +1,11 @@
+import type { DetectorParameters, MetricResult, PreparedTrace, Vec3 } from '@proj-airi/qa-tools/t2-3d/metrics/types'
+
 import type { FrozenRegion } from './not-frozen'
-import type { DetectorParameters, MetricResult, PreparedTrace, Vec3 } from './types'
+
+import { finite, heading, HZ, median, norm, scale, sub, sum } from '@proj-airi/qa-tools/t2-3d/metrics/math'
 
 import { filterVectors } from './filter'
 import { eligibleSegments } from './intermittency'
-import { finite, heading, HZ, median, norm, scale, sub, sum } from './math'
 import { notFrozen } from './not-frozen'
 import { episodeResult, result, skipped } from './result'
 

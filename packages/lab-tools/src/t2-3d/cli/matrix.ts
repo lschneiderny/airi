@@ -12,17 +12,17 @@ import { setTimeout as sleep } from 'node:timers/promises'
 import { parseArgs } from 'node:util'
 
 import { errorMessageFrom } from '@moeru/std'
+import { readGitStateFromRepo } from '@proj-airi/qa-tools/evidence/run'
 
 import * as v from 'valibot'
 
-import { readGitStateFromRepo } from '../../evidence/run'
 import { sha256 } from '../gate/load'
 import { matrixFileSchema, planMatrix, preflightRefusals, reportArguments, runArguments } from '../matrix/plan'
 import { compareReceipts, formatReceipt, receiptExitCode, receiptSchema, reportErrors, summarizeVerdict } from '../matrix/receipt'
 import { runMotion3dChild } from './motion3d-child'
 import { readVerdict } from './verdicts'
 
-const usage = 'Usage: qa:motion3d matrix <matrix file> --out <new directory> [--parallel <n>] [--memory-floor <MB>] [--allow-dirty] [--fail-on <status>[,<status>...]] [--runs-from <folder>] [--compare <receipt.json>] | qa:motion3d matrix compare <then receipt.json> <now receipt.json>'
+const usage = 'Usage: lab:motion3d matrix <matrix file> --out <new directory> [--parallel <n>] [--memory-floor <MB>] [--allow-dirty] [--fail-on <status>[,<status>...]] [--runs-from <folder>] [--compare <receipt.json>] | lab:motion3d matrix compare <then receipt.json> <now receipt.json>'
 const RUN_FILES = ['trace.json', 'summary.json', 'run.json']
 
 class Refusal extends Error {
@@ -105,7 +105,7 @@ async function runMatrix(options: Options, context: Motion3dCliContext): Promise
   for (const folder of ['runs', 'verdicts', 'logs'])
     await mkdir(join(options.out, folder), { recursive: true })
   const memory = memoryAvailable() === null ? 'no /proc/meminfo on this platform: runs start without a memory wait' : `runs wait while MemAvailable is under ${options.memoryFloor} MB; parallel ${options.parallel}`
-  console.info(`qa:motion3d matrix: ${plan.runs.length} runs, ${plan.reports.length} reports at ${git.gitSha}${git.dirty ? ' (dirty)' : ''}; ${memory}`)
+  console.info(`lab:motion3d matrix: ${plan.runs.length} runs, ${plan.reports.length} reports at ${git.gitSha}${git.dirty ? ' (dirty)' : ''}; ${memory}`)
   const commands: CommandRecord[] = []
   const queue = [...plan.runs]
   const worker = async () => {
@@ -174,7 +174,7 @@ function printComparison(then: MatrixReceipt, now: MatrixReceipt): number {
 }
 
 /**
- * `qa:motion3d matrix`: runs a declared scenario x seed x rig matrix and its reports at one commit and writes
+ * `lab:motion3d matrix`: runs a declared scenario x seed x rig matrix and its reports at one commit and writes
  * `receipt.json` and `receipt.md`. Exit 0 when every command ran and every verdict file was read, 1 on an error (or a
  * verdict `--fail-on` names, or a `--compare` difference), 2 when it refuses before running, 130 when interrupted.
  */
@@ -213,7 +213,7 @@ export async function matrixMotion3d(args: readonly string[], context: Motion3dC
   catch (error) {
     if (!(error instanceof Refusal) && (!(error instanceof TypeError) || !('code' in error) || !String(error.code).startsWith('ERR_PARSE_ARGS')))
       throw error
-    console.error(`qa:motion3d matrix: ${error.message}`)
+    console.error(`lab:motion3d matrix: ${error.message}`)
     return 2
   }
 }

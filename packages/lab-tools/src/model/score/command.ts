@@ -1,5 +1,6 @@
-import type { RunHandle } from '../../evidence/run'
-import type { ReplyTranscriptRecord } from '../transcript/schema'
+import type { RunHandle } from '@proj-airi/qa-tools/evidence/run'
+import type { ReplyTranscriptRecord } from '@proj-airi/qa-tools/model/transcript/schema'
+
 import type { RunScore } from './aggregate'
 import type { cueContractScorer, ReplyScore } from './cue-contract'
 import type { ScoreContext } from './scorer'
@@ -13,15 +14,15 @@ import { join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 
 import { errorMessageFrom } from '@moeru/std'
+import { createRun } from '@proj-airi/qa-tools/evidence/run'
+import { readTranscript } from '@proj-airi/qa-tools/model/transcript/jsonl'
+import { sha256Bytes } from '@proj-airi/qa-tools/motion/cache/key'
 import { STAGE_RUNTIME_CONFIG } from '@proj-airi/stage-shared/stage-contract'
 
-import { createRun } from '../../evidence/run'
-import { sha256Bytes } from '../../motion/cache/key'
 import { assertCoreAgentDistCurrent } from '../core-agent-dist'
 import { parseExposedActions } from '../exposed-actions'
 import { renderSummaryMarkdown } from '../report/markdown'
 import { buildStageContract, extractExampleLines } from '../stage-contract'
-import { readTranscript } from '../transcript/jsonl'
 import { aggregateRun } from './aggregate'
 import { captureScoreClosure } from './closure'
 import { SCORE_CLOSURE_FILES } from './closure-files'
@@ -87,7 +88,7 @@ export async function runScoreCli(
     if (!(await stat(input)).isFile())
       throw new Error(`transcript input is not a file: ${input}`)
     if (values.set !== undefined) {
-      setDir = resolve(repoRoot, 'packages/qa-tools/model-eval/sets', values.set)
+      setDir = resolve(repoRoot, 'packages/lab-tools/model-eval/sets', values.set)
       if (!(await stat(join(setDir, 'transcripts.jsonl'))).isFile())
         throw new Error(`${setDir} lacks transcripts.jsonl`)
     }
@@ -117,7 +118,7 @@ export async function runScoreCli(
     if (files.length !== SCORE_CLOSURE_FILES.length)
       throw new Error('scorer closure is incomplete')
     provenance = {
-      scorer: { ...scoring.CUE_CONTRACT_SCORER, fileSha: captureScoreClosure([resolve(repoRoot, 'packages/qa-tools/src/model/score/cue-contract.ts')], repoRoot)[0].sha256 },
+      scorer: { ...scoring.CUE_CONTRACT_SCORER, fileSha: captureScoreClosure([resolve(repoRoot, 'packages/lab-tools/src/model/score/cue-contract.ts')], repoRoot)[0].sha256 },
       sources: {
         files,
         closureDigest: sha256Bytes(Buffer.from(JSON.stringify(files))),
@@ -132,7 +133,7 @@ export async function runScoreCli(
       throw new Error('transcript input is empty')
   }
   catch (error) {
-    stderr(`qa-tools model score: ${errorMessageFrom(error) ?? 'invalid input'}\n`)
+    stderr(`lab:model score: ${errorMessageFrom(error) ?? 'invalid input'}\n`)
     return 2
   }
 
@@ -219,7 +220,7 @@ export async function runScoreCli(
   catch (error) {
     const message = errorMessageFrom(error) ?? 'scoring failed'
     run?.finish({ exitCode: 1, summary: message })
-    stderr(`qa-tools model score: ${message}\n`)
+    stderr(`lab:model score: ${message}\n`)
     return 1
   }
 }

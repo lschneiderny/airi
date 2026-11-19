@@ -1,9 +1,9 @@
 import type { MotionTraceBone } from '@proj-airi/motion-driver-humanoid/motion-trace'
+import type { DecodedMotionTrace } from '@proj-airi/qa-tools/t2-3d/read-trace'
 
 import type { Quat, Vec3 } from '../metrics'
-import type { DecodedMotionTrace } from '../read-trace'
 
-import { add, conjugate, multiply, normalize, rotate, sub, yawQuat } from '../metrics/math'
+import { add, conjugate, multiply, normalize, rotate, sub, yawQuat } from '@proj-airi/qa-tools/t2-3d/metrics/math'
 
 /** One bone of a skinned mesh at bind, in mesh world space. */
 export interface FrameRigBone {

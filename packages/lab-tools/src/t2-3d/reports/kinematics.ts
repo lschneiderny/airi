@@ -2,7 +2,7 @@ import type { MotionTraceBone } from '@proj-airi/motion-driver-humanoid/motion-t
 
 import type { PreparedTrace, Vec3 } from '../metrics'
 
-import { add, conjugate, DEG, HZ, norm, rotate, sub } from '../metrics/math'
+import { add, conjugate, DEG, HZ, norm, rotate, sub } from '@proj-airi/qa-tools/t2-3d/metrics/math'
 
 export type Side = 'left' | 'right'
 export const SIDES: readonly Side[] = ['left', 'right']

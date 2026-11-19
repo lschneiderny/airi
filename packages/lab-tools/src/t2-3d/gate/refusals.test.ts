@@ -1,17 +1,16 @@
 import type { MotionTraceV1 } from '@proj-airi/motion-driver-humanoid/motion-trace'
-
-import type { DecodedMotionTrace } from '../read-trace'
+import type { DecodedMotionTrace } from '@proj-airi/qa-tools/t2-3d/read-trace'
 
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 
 import { encodeBlock } from '@proj-airi/motion-driver-humanoid/motion-trace'
+import { analyticTrace, angleX } from '@proj-airi/qa-tools/t2-3d/metrics/test-trace'
 import { describe, expect, it, vi } from 'vitest'
 
 import { gateMotion3d } from '../cli/gate'
 import { CORE } from '../metrics/bones'
-import { analyticTrace, angleX } from '../metrics/test-trace'
 import { motionQualityGate } from './definition'
 
 import * as bandsLoader from './load'

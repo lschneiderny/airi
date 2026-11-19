@@ -1,13 +1,13 @@
 import type { MotionTraceBone } from '@proj-airi/motion-driver-humanoid/motion-trace'
+import type { DecodedMotionTrace } from '@proj-airi/qa-tools/t2-3d/read-trace'
 
 import type { EmotionTrial, Quat } from '../metrics'
-import type { DecodedMotionTrace } from '../read-trace'
 
 import { minJerk } from '@proj-airi/motion-driver-humanoid/dynamics'
 import { MOTION_TRACE_CHANNELS } from '@proj-airi/motion-driver-humanoid/motion-trace'
+import { multiply, normalize } from '@proj-airi/qa-tools/t2-3d/metrics/math'
 
 import { emotionTrials, prepareTrace } from '../metrics'
-import { multiply, normalize } from '../metrics/math'
 
 /**
  * Architecture 4c posture table at weight 1, degrees (g2/motion-architecture.md 4c): TL and TM pitch the lower and

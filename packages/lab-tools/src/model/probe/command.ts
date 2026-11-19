@@ -1,4 +1,5 @@
-import type { RunHandle } from '../../evidence/run'
+import type { RunHandle } from '@proj-airi/qa-tools/evidence/run'
+
 import type { ProbeTarget } from './request'
 
 import process from 'node:process'
@@ -8,10 +9,10 @@ import { resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 
 import { errorMessageFrom } from '@moeru/std'
+import { createRun } from '@proj-airi/qa-tools/evidence/run'
 
 import * as v from 'valibot'
 
-import { createRun } from '../../evidence/run'
 import { loadAppRequest } from '../run/app-request'
 import { loadScenario } from '../run/scenario'
 import { renderPromptMessage } from '../stage-contract'
@@ -22,10 +23,10 @@ import { send, targetFrom } from './request'
 import { ollamaBinary, parseVariant, runVariant } from './server-sweep'
 
 export const probeUsage = `Usage:
-  pnpm qa:model probe cache-events --base-url <url> --model <id> --app-request <file> [--scenario general] [--rounds 3] [--json]
-  pnpm qa:model probe cold-start --base-url <url> --model <id> --app-request <file> [--rounds 3] [--json]
-  pnpm qa:model probe overflow --base-url <url> --model <id> --app-request <file> [--sizes 8000,14000,20000] [--json]
-  pnpm qa:model probe server-sweep --model <id> --scenario <id|file> --config <name> --variant <label:OLLAMA_X=v,...>... [--app-request <file>] [--reasoning none] [--context 16384] [--ollama-bin <path>] [--json]
+  pnpm lab:model probe cache-events --base-url <url> --model <id> --app-request <file> [--scenario general] [--rounds 3] [--json]
+  pnpm lab:model probe cold-start --base-url <url> --model <id> --app-request <file> [--rounds 3] [--json]
+  pnpm lab:model probe overflow --base-url <url> --model <id> --app-request <file> [--sizes 8000,14000,20000] [--json]
+  pnpm lab:model probe server-sweep --model <id> --scenario <id|file> --config <name> --variant <label:OLLAMA_X=v,...>... [--app-request <file>] [--reasoning none] [--context 16384] [--ollama-bin <path>] [--json]
 `
 
 const PROBES = ['cache-events', 'cold-start', 'overflow', 'server-sweep'] as const
@@ -57,11 +58,11 @@ function endpoint(value: string | undefined): string {
 }
 
 /**
- * Runs `qa:model probe <name>`: one measurement of how a local server handles the app's requests, written to a run
+ * Runs `lab:model probe <name>`: one measurement of how a local server handles the app's requests, written to a run
  * directory as `probe.json` and printed as a table.
  *
  * Returns:
- * - 0 after the measurement, 1 when a request fails. Invalid arguments throw, and the `qa:model` router reports them.
+ * - 0 after the measurement, 1 when a request fails. Invalid arguments throw, and the `lab:model` router reports them.
  */
 export async function runProbeCli(argv: string[], repoRoot: string, env: NodeJS.ProcessEnv, io: ProbeCliIo = {}): Promise<number> {
   const stdout = io.stdout ?? ((text: string) => process.stdout.write(text))
@@ -131,7 +132,7 @@ export async function runProbeCli(argv: string[], repoRoot: string, env: NodeJS.
   catch (error) {
     const message = errorMessageFrom(error) ?? 'probe failed'
     run?.finish({ exitCode: 1, summary: message })
-    stderr(`qa-tools model probe ${probe}: ${message}\n`)
+    stderr(`lab:model probe ${probe}: ${message}\n`)
     return 1
   }
 }
@@ -157,8 +158,8 @@ async function cacheEvents(target: ProbeTarget, scenarioRef: string, rounds: num
     replies.push(reply.text)
     progress(`history turn ${index + 1}/${users.length}`)
   }
-  const segments = v.parse(ProbeSegmentsSchema, JSON.parse(await readFile(resolve(repoRoot, 'packages/qa-tools/fixtures/model/probe-segments.json'), 'utf8')))
-  const fullPrompt = v.parse(FullPromptMemorySchema, JSON.parse(await readFile(resolve(repoRoot, 'packages/qa-tools/fixtures/model/full-prompt.json'), 'utf8')))
+  const segments = v.parse(ProbeSegmentsSchema, JSON.parse(await readFile(resolve(repoRoot, 'packages/lab-tools/fixtures/model/probe-segments.json'), 'utf8')))
+  const fullPrompt = v.parse(FullPromptMemorySchema, JSON.parse(await readFile(resolve(repoRoot, 'packages/lab-tools/fixtures/model/full-prompt.json'), 'utf8')))
   const unprompted = renderPromptMessage('base.prompt.unprompted')
   const trigger = renderPromptMessage('base.prompt.unprompted-trigger', { reason: 'a while since they spoke' })
   const build = (round: number) => buildEventCases({

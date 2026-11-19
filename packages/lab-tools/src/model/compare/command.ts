@@ -1,4 +1,5 @@
-import type { RunHandle } from '../../evidence/run'
+import type { RunHandle } from '@proj-airi/qa-tools/evidence/run'
+
 import type { CheckResult } from '../run/scenario'
 import type { RunScore } from '../score/aggregate'
 import type { ServerMemory } from './pool'
@@ -10,17 +11,17 @@ import { dirname, join } from 'node:path'
 import { parseArgs } from 'node:util'
 
 import { errorMessageFrom } from '@moeru/std'
+import { createRun } from '@proj-airi/qa-tools/evidence/run'
+import { readTranscript } from '@proj-airi/qa-tools/model/transcript/jsonl'
 
 import * as v from 'valibot'
 
-import { createRun } from '../../evidence/run'
 import { resolveTranscriptInput } from '../inputs'
 import { runScoreCli } from '../score/command'
-import { readTranscript } from '../transcript/jsonl'
 import { poolRuns, renderCompareMarkdown } from './pool'
 
 export const compareUsage = `Usage:
-  pnpm qa:model compare <transcripts.jsonl|run dir|set id>... [--exposed-actions <label:kind,...>] [--json]
+  pnpm lab:model compare <transcripts.jsonl|run dir|set id>... [--exposed-actions <label:kind,...>] [--json]
 `
 
 const nullableNumber = v.nullable(v.number())
@@ -52,11 +53,11 @@ export interface CompareCliIo {
 }
 
 /**
- * Runs `qa:model compare`: scores every input together and prints one row per model and config, with the Ollama
+ * Runs `lab:model compare`: scores every input together and prints one row per model and config, with the Ollama
  * footprint and recall checks recorded beside each input.
  *
  * Returns:
- * - 0 after printing the table, 1 when scoring fails. Invalid arguments throw, and the `qa:model` router reports them.
+ * - 0 after printing the table, 1 when scoring fails. Invalid arguments throw, and the `lab:model` router reports them.
  */
 export async function runCompareCli(argv: string[], repoRoot: string, env: NodeJS.ProcessEnv, io: CompareCliIo = {}): Promise<number> {
   const stdout = io.stdout ?? ((text: string) => process.stdout.write(text))
@@ -115,15 +116,15 @@ export async function runCompareCli(argv: string[], repoRoot: string, env: NodeJ
     run.addArtifact('compare.md', 'model-compare-markdown')
     run.finish({ exitCode: 0, summary: `${rows.length} contenders from ${inputs.length} inputs` })
     if (contractVersions.length > 1)
-      stderr(`qa-tools model compare: the inputs answered ${contractVersions.length} stage contracts (${contractVersions.join(', ')}); rows of different contracts are not comparable\n`)
-    stderr(`qa-tools model compare: ${run.dir}\n`)
+      stderr(`lab:model compare: the inputs answered ${contractVersions.length} stage contracts (${contractVersions.join(', ')}); rows of different contracts are not comparable\n`)
+    stderr(`lab:model compare: ${run.dir}\n`)
     stdout(values.json ? `${JSON.stringify({ runDir: run.dir, scoreRun: runDir, contractVersions, rows })}\n` : markdown)
     return 0
   }
   catch (error) {
     const message = errorMessageFrom(error) ?? 'compare failed'
     run?.finish({ exitCode: 1, summary: message })
-    stderr(`qa-tools model compare: ${message}\n`)
+    stderr(`lab:model compare: ${message}\n`)
     return 1
   }
 }

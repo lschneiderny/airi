@@ -4,11 +4,11 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import { parseTrace } from '@proj-airi/qa-tools/t2-3d/read-trace'
 import { Quaternion } from 'three'
 import { BVHLoader } from 'three/examples/jsm/loaders/BVHLoader.js'
 import { describe, expect, it } from 'vitest'
 
-import { parseTrace } from '../read-trace'
 import { parseBvh, readBvh } from './bvh'
 import { convertBvh, ingestClip } from './ingest'
 import { parseManifest, readManifest } from './manifest'

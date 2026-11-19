@@ -1,17 +1,17 @@
 import type { MotionTraceBone } from '@proj-airi/motion-driver-humanoid/motion-trace'
+import type { DecodedMotionTrace } from '@proj-airi/qa-tools/t2-3d/read-trace'
 
 import type { Quat } from '../metrics'
-import type { DecodedMotionTrace } from '../read-trace'
 
 import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 
+import { conjugate, multiply } from '@proj-airi/qa-tools/t2-3d/metrics/math'
+import { analyticTrace, angleX, angleY, detectors } from '@proj-airi/qa-tools/t2-3d/metrics/test-trace'
 import { describe, expect, it } from 'vitest'
 
 import { emotionMetrics, measureTrace } from '../metrics'
 import { CORE } from '../metrics/bones'
-import { conjugate, multiply } from '../metrics/math'
-import { analyticTrace, angleX, angleY, detectors } from '../metrics/test-trace'
 import { readManifest } from '../reference/manifest'
 import { motionQualityGate } from './definition'
 import { heldoutFailureUnits, HOLDOUT_VALIDATION } from './holdouts'
@@ -84,7 +84,7 @@ describe('gate validity with committed bands', () => {
   })
 
   it('changes only the talk and emotion classes from version 2', async () => {
-    const v2 = parseBands(JSON.parse(await readFile(resolve(repoRoot, 'packages/qa-tools/fixtures/motion3d/bands-v2.json'), 'utf8')))
+    const v2 = parseBands(JSON.parse(await readFile(resolve(repoRoot, 'packages/lab-tools/fixtures/motion3d/bands-v2.json'), 'utf8')))
     for (const scenario of ['idle', 'walk', 'gaze', 'react'] as const)
       expect(bands.classes[scenario], scenario).toEqual(v2.classes[scenario])
     const talk = bands.classes.talk

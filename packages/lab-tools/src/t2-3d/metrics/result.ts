@@ -1,6 +1,6 @@
-import type { MetricBasis, MetricResult, MetricSample, MetricStatus, PreparedTrace, Span } from './types'
+import type { MetricBasis, MetricResult, MetricSample, MetricStatus, PreparedTrace, Span } from '@proj-airi/qa-tools/t2-3d/metrics/types'
 
-import { mean, median } from './math'
+import { mean, median } from '@proj-airi/qa-tools/t2-3d/metrics/math'
 
 export function result(id: string, unit: string, basis: MetricBasis, value: number | null, status: MetricStatus = 'ok', detail = '', samples: readonly MetricSample[] = []): MetricResult {
   const resolved = value === null && status === 'ok' ? 'undefined: no-motion' : status

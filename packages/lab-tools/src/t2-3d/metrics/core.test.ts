@@ -1,10 +1,10 @@
+import { multiply, yawQuat } from '@proj-airi/qa-tools/t2-3d/metrics/math'
+import { analyticTrace, angleX, detectors } from '@proj-airi/qa-tools/t2-3d/metrics/test-trace'
 import { describe, expect, it } from 'vitest'
 
 import { CORE } from './bones'
 import { coreMetrics, DOZE_FLOOR_SCALE } from './core'
-import { multiply, yawQuat } from './math'
 import { prepareTrace } from './prepare'
-import { analyticTrace, angleX, detectors } from './test-trace'
 
 const parameters = detectors(CORE)
 function chain(hz = 60) {

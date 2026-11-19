@@ -1,7 +1,8 @@
-import type { DetectorParameters, Episode, MetricResult, MetricSample, PreparedTrace, Vec3 } from './types'
+import type { DetectorParameters, Episode, MetricResult, MetricSample, PreparedTrace, Vec3 } from '@proj-airi/qa-tools/t2-3d/metrics/types'
+
+import { add, DEG, dot, heading, HZ, mean, norm, scale, sub } from '@proj-airi/qa-tools/t2-3d/metrics/math'
 
 import { filterVectors } from './filter'
-import { add, DEG, dot, heading, HZ, mean, norm, scale, sub } from './math'
 import { headSignal } from './period'
 import { episodeResult, skipped } from './result'
 import { episode, episodes } from './segments'

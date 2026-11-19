@@ -1,15 +1,14 @@
 import type { MotionTraceEvent, MotionTraceV1 } from '@proj-airi/motion-driver-humanoid/motion-trace'
-
-import type { DecodedMotionTrace } from '../read-trace'
+import type { DecodedMotionTrace } from '@proj-airi/qa-tools/t2-3d/read-trace'
 
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
 import { encodeBlock } from '@proj-airi/motion-driver-humanoid/motion-trace'
+import { analyticTrace, angleX } from '@proj-airi/qa-tools/t2-3d/metrics/test-trace'
 
 import { CORE } from '../metrics/bones'
-import { analyticTrace, angleX } from '../metrics/test-trace'
 
 const repoRoot = resolve(import.meta.dirname, '../../../../..')
 export const context = { repoRoot, cwd: repoRoot, signal: new AbortController().signal }
