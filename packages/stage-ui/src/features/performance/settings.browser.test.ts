@@ -61,11 +61,28 @@ describe('expression performance settings', () => {
     expect(JSON.parse(localStorage.getItem(key)!)).toEqual(defaultExpressionPerformanceSettings)
   })
 
-  it.each(['{"intensity":{"clear":2}}', '{"bands":"true"}', '{"extra":true}', '{"intensity":[]}'])('rejects invalid stored input %s', (value) => {
+  it.each(['{"intensity":{"clear":2}}', '{"bands":"true"}', '{"intensity":[]}'])('rejects invalid stored input %s', (value) => {
     localStorage.setItem(key, value)
     const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
     expect(createContext().store.document).toEqual(defaultExpressionPerformanceSettings)
     expect(warning).toHaveBeenCalledOnce()
+  })
+
+  it('drops an unknown stored top-level field without a warning', () => {
+    localStorage.setItem(key, '{"extra":true}')
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(createContext().store.document).toEqual(defaultExpressionPerformanceSettings)
+    expect(warning).not.toHaveBeenCalled()
+  })
+
+  it('resets an invalid stored naturalBands alone and keeps a valid picker', () => {
+    localStorage.setItem(key, JSON.stringify({ naturalBands: { headGain: 2 }, picker: { recencyTau: 3 } }))
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(createContext().store.document).toEqual({
+      ...defaultExpressionPerformanceSettings,
+      picker: { ...defaultExpressionPerformanceSettings.picker, recencyTau: 3 },
+    })
+    expect(warning).toHaveBeenCalledExactlyOnceWith('[expression-performance] Invalid stored fields reset to defaults:', 'naturalBands')
   })
 
   it('probes corrupt JSON storage and prints the recovered document', () => {
@@ -73,7 +90,7 @@ describe('expression performance settings', () => {
     const warning = vi.spyOn(console, 'warn')
     const { store } = createContext()
     expect(store.document).toEqual(defaultExpressionPerformanceSettings)
-    expect(warning).toHaveBeenCalledWith('[expression-performance] Invalid stored settings:', expect.any(String))
+    expect(warning).toHaveBeenCalledWith('[expression-performance] Stored settings are not an object; using defaults')
     console.warn('PASS corrupt storage recovered:', JSON.stringify(store.document))
   })
 
@@ -103,7 +120,7 @@ describe('expression performance settings', () => {
     ['the three keys with wrong types are still dropped', withBands({ energyAmplitude: 'x', energyRate: null, energySeconds: [] }), false],
     ['another unknown naturalBands key', withBands({ energyBogus: 1 }), true],
     ['another unknown key beside the removed keys', withBands({ ...removedEnergyKeys, energyBogus: 1 }), true],
-    ['an unknown top-level key beside the removed keys', withBands(removedEnergyKeys, { extra: true }), true],
+    ['an unknown top-level key beside the removed keys', withBands(removedEnergyKeys, { extra: true }), false],
     ['an invalid field beside the removed keys', withBands(removedEnergyKeys, { intensity: { clear: 2 } }), true],
     ['a non-object naturalBands', '{"naturalBands":5}', true],
     ['a null naturalBands', '{"naturalBands":null}', true],
