@@ -9,6 +9,8 @@ import type { ChatHistoryItem, StreamingAssistantMessage } from '../types/chat'
 import type { ChatSessionMeta } from '../types/chat-session'
 import type { LlmStreamOptions } from './ai/chat-llm/llm'
 
+import en from '@proj-airi/i18n/locales/en'
+
 import { errorMessageFrom } from '@moeru/std'
 import { applyEvent, DEFAULT_CHARACTER_PROFILE, initialCharacterState, readCharacter, renderCharacterContext } from '@proj-airi/stage-shared/character-state'
 import { ASCII_FACES, renderRegisterSection } from '@proj-airi/stage-shared/conversation-register'
@@ -2985,7 +2987,7 @@ describe('chat store contract', () => {
       expect(prompts[0]).toContain('base.prompt.unprompted-trigger')
       expect(prompts[0]).toContain(JSON.stringify({ reason: 'QA topic' }).replaceAll('"', '\\"'))
       expect(prompts[0]).toContain('base.prompt.unprompted')
-      expect(prompts[0]).not.toContain('base.prompt.unprompted-forced')
+      expect(prompts[0]).not.toContain('base.prompt.unprompted-widget')
       expect(sessionMessages['session-1'].slice(1)).toMatchObject([
         { role: 'user', id: 'unprompted-1', origin: 'unprompted', trigger: { topicKey: 'qa', text: 'QA topic' } },
         { role: 'assistant', content: expect.stringContaining('Oh, a QA topic!') },
@@ -3026,14 +3028,14 @@ describe('chat store contract', () => {
       expect(sessionMessages['session-1'].slice(1)[0]).toMatchObject({ trigger: { kind: 'notify' } })
     })
 
-    it('keeps the forced instruction for a forced turn whatever the category of its reason', async () => {
+    it('keeps the widget instruction for a widget turn whatever the category of its reason', async () => {
       const prompts: string[] = []
       llmStreamMock.mockImplementation(replyWith(['Hi.'], prompts))
       const store = useChatStore()
 
-      await store.submitUnprompted({ topicKey: 'qa', topicText: 'QA topic', force: true, reason: { kind: 'continuation', category: 'continuation' } })
+      await store.submitUnprompted({ topicKey: 'qa', topicText: 'QA topic', widget: true, reason: { kind: 'continuation', category: 'continuation' } })
 
-      expect(instructionKeysOf(prompts[0])).toEqual(['base.prompt.unprompted-forced'])
+      expect(instructionKeysOf(prompts[0])).toEqual(['base.prompt.unprompted-widget'])
     })
 
     it.each([
@@ -3158,36 +3160,46 @@ describe('chat store contract', () => {
       expect(spend.lastUnpromptedRequest?.chars).toBeGreaterThan('base.prompt.unprompted-trigger'.length)
     })
 
-    it('asks for a reply without the silence allowance when forced, and appends the supplement after it', async () => {
+    it('offers a widget turn the decline marker, and appends the supplement after its instruction', async () => {
       const prompts: string[] = []
       llmStreamMock.mockImplementation(replyWith(['Hi.'], prompts))
       const store = useChatStore()
 
-      await store.submitUnprompted({ topicKey: 'qa', topicText: 'QA topic', force: true, supplement: 'CALL manifest text' })
+      await store.submitUnprompted({ topicKey: 'qa', topicText: 'QA topic', widget: true, supplement: 'CALL manifest text' })
 
-      const forced = prompts[0].indexOf('base.prompt.unprompted-forced')
-      expect(forced).toBeGreaterThan(-1)
-      expect(prompts[0].indexOf('CALL manifest text')).toBeGreaterThan(forced)
+      const widget = prompts[0].indexOf('base.prompt.unprompted-widget')
+      expect(widget).toBeGreaterThan(-1)
+      expect(prompts[0].indexOf('CALL manifest text')).toBeGreaterThan(widget)
+      // The mocked `t` renders keys, so the English text of the instruction is read where it is defined.
+      expect(en.base).toMatchObject({ prompt: { 'unprompted-widget': expect.stringContaining('SILENT') } })
+    })
+
+    it('declines a widget turn on SILENT, so the model keeps its veto', async () => {
+      llmStreamMock.mockImplementation(replyWith(['<|SILENT|>']))
+      const store = useChatStore()
+
+      expect(await store.submitUnprompted({ topicKey: 'notify:widget:e-1', topicText: 'QA widget', widget: true, messageId: 'spark:widget-1' })).toEqual({ status: 'declined' })
     })
 
     // A widget reaction registers its CALL handlers under `spark:<id>` and submits that id as the message id.
-    it('runs a forced turn under its message id, so the CALL specials of a widget reaction reach its handlers', async () => {
+    it('runs a widget turn under its message id, so the CALL specials of a widget reaction reach its handlers', async () => {
       llmStreamMock.mockImplementation(replyWith(['<|CALL ["plugin.action"]|>', ' Nice move.']))
       const store = useChatStore()
       const specialHook = vi.fn()
       store.onTokenSpecial(specialHook)
 
-      const result = await store.submitUnprompted({ topicKey: 'notify:widget:e-1', topicText: 'QA widget', force: true, messageId: 'spark:widget-1' })
+      const result = await store.submitUnprompted({ topicKey: 'notify:widget:e-1', topicText: 'QA widget', widget: true, messageId: 'spark:widget-1' })
 
       expect(result).toEqual({ status: 'spoken', text: expect.stringContaining('Nice move.') })
       expect(specialHook).toHaveBeenCalledWith('<|CALL ["plugin.action"]|>', expect.objectContaining({ turnId: 'spark:widget-1', origin: 'unprompted' }))
     })
 
-    // Pin (e) of the gate hard contract: a widget reaction speaks through the real chat store while the leader's situation
-    // store observes its hooks, and the gate neither fires nor keeps anything pending.
-    it('speaks a forced widget turn through the real chat store without the gate firing, and leaves nothing pending', async () => {
+    // Pin (e) of the gate hard contract: a widget reaction speaks through the mind and the real chat store, and the gate
+    // neither fires nor keeps anything pending.
+    it('speaks a widget request through the mind and the real chat store without the gate firing, and leaves nothing pending', async () => {
       llmStreamMock.mockImplementation(replyWith(['Nice move.']))
-      const store = useChatStore()
+      // The chat store hands its controls to the situation store, which runs the widget line.
+      useChatStore()
       leadSituation()
       const situation = useSituationStore()
       situation.setHostCapabilities({ unprompted: true })
@@ -3196,7 +3208,7 @@ describe('chat store contract', () => {
       const before = (await observability.inspect()).urge.memory
       expect(before).not.toBeNull()
 
-      const result = await store.submitUnprompted({ topicKey: 'notify:widget:e-1', topicText: 'QA widget', force: true, messageId: 'spark:widget-1' })
+      const result = await situation.requestVoice({ turnId: 'spark:widget-1', topicKey: 'notify:widget:e-1', topicText: 'QA widget', supplement: null, timeoutMs: 30_000 })
 
       expect(result).toEqual({ status: 'spoken', text: expect.stringContaining('Nice move.') })
       expect(llmStreamMock).toHaveBeenCalledOnce()
@@ -3204,8 +3216,8 @@ describe('chat store contract', () => {
         { role: 'user', id: 'spark:widget-1', origin: 'unprompted', trigger: { topicKey: 'notify:widget:e-1' } },
         { role: 'assistant', content: expect.stringContaining('Nice move.') },
       ])
-      // The situation store saw her unprompted turn through the chat hooks, yet recorded no gate fire for it. The turn
-      // starts the gate's floor and counts as her last spoken turn, so only those two times moved.
+      // The situation store saw her unprompted turn through the chat hooks, yet recorded no gate fire for it. The mind
+      // starts the gate's floor for the spoken widget line and counts as her last spoken turn, so only those two times moved.
       expect(situation.state.conversation.lastUnpromptedAtMs).toEqual(expect.any(Number))
       const after = (await observability.inspect()).urge.memory
       expect(after).toEqual({ ...before, lastFireAtMs: expect.any(Number), lastSpokenAtMs: expect.any(Number) })
@@ -3214,7 +3226,7 @@ describe('chat store contract', () => {
       expect(after?.unanswered).toBe(0)
       // Nothing is pending in the chat store either: the next unprompted turn starts instead of failing as busy.
       llmStreamMock.mockImplementation(replyWith(['Again.']))
-      expect(await store.submitUnprompted({ topicKey: 'notify:widget:e-2', topicText: 'QA widget 2', force: true, messageId: 'spark:widget-2' })).toMatchObject({ status: 'spoken' })
+      expect(await situation.requestVoice({ turnId: 'spark:widget-2', topicKey: 'notify:widget:e-2', topicText: 'QA widget 2', supplement: null, timeoutMs: 30_000 })).toMatchObject({ status: 'spoken' })
     })
 
     it('declines on SILENT without changing history or opening a voice turn that never ends', async () => {

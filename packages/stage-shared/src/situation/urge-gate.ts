@@ -57,7 +57,7 @@ export interface UrgeGateInput {
   readonly sessionId: string
   readonly signals: GateSignals
   readonly settings: GateSettings
-  /** Topic keys a widget or plugin holds (`holdTopic`); held reasons are never picked, urgent ones included. */
+  /** Topic keys of the widget requests that the character mind holds; held reasons are never picked, urgent ones included. */
   readonly heldTopics: ReadonlySet<string>
   /** Skips the timing holds only (devtools "Evaluate now"); hard suppressors still apply and the fire still draws and picks. */
   readonly forceTiming?: boolean

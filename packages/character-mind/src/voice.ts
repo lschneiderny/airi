@@ -46,7 +46,8 @@ function gateInput(view: VoiceView, requests: MindVoiceState['requests'], nowMs:
     reasons: view.threads,
     local: view.local,
     sessionId: view.sessionId,
-    heldTopics: new Set([...view.heldTopics, ...requests.map(({ request }) => request.topicKey)]),
+    // A waiting request's topic is the widget's to raise, so the gate never picks it.
+    heldTopics: new Set(requests.map(({ request }) => request.topicKey)),
     signals: view.signals,
     settings: view.settings,
     moodFactor: view.moodFactor,
@@ -197,10 +198,4 @@ export function answerVoiceOutcome(state: MindState, stimulus: Stimulus<'voice-o
 export function answerUserTurn(state: MindState, stimulus: Stimulus<'user-turn'>): Answer {
   const { gate } = state.voice
   return { state: gate ? { ...state, voice: { ...state.voice, gate: recordUrgeUserTurn(gate, stimulus.atMs) } } : state, intents: [] }
-}
-
-/** A forced widget or plugin turn spoke: it starts the floor but never counts as an unanswered opening. */
-export function answerExternalSpeech(state: MindState, stimulus: Stimulus<'external-speech'>): Answer {
-  const { gate } = state.voice
-  return { state: gate ? { ...state, voice: { ...state.voice, gate: recordExternalSpeech(gate, stimulus.atMs) } } : state, intents: [] }
 }

@@ -171,6 +171,7 @@ function createChatControls() {
     activeSessionId: () => 'session-1',
     submitUnprompted: payload => submitUnprompted(payload),
     submitReaction: payload => submitReaction(payload),
+    cancelTurn: async () => {},
     sessionMessages: () => state.messages,
     extractionSelection: async () => ({ provider: extractionProvider, model: 'chat-model', characterName: 'Airi' }),
     stream: (...args) => stream(...args),
@@ -914,7 +915,11 @@ describe('situation gate loop', () => {
   }
 
   /** An open question from an earlier exchange of `session-1`, ripe now and saved before the leader starts. */
-  function saveRipeQuestion(): Thread {
+  /**
+   * Saves one ripe thread. `ownDayJustNow` also saves that she just talked about her own day, so its weight starts at
+   * zero and the thread is the reason she opens with.
+   */
+  function saveRipeQuestion(options: { ownDayJustNow?: boolean } = {}): Thread {
     const thread: Thread = {
       id: 'thread:question:1',
       topicKey: 'thread:question:1',
@@ -931,7 +936,10 @@ describe('situation gate loop', () => {
     const inner = useSituationInnerState()
     inner.claim(-1)
     inner.read()
-    inner.write({ threads: [thread] }, -1)
+    const gate = options.ownDayJustNow
+      ? { lastFireAtMs: null, lastSpokenAtMs: null, unanswered: 0, awaitingSinceMs: null, damp: null, day: null, lastOwnDayAtMs: Date.now() }
+      : undefined
+    inner.write({ threads: [thread], gate }, -1)
     return thread
   }
 
@@ -1461,7 +1469,7 @@ describe('situation gate loop', () => {
   })
 
   it('stops counting a voice input once its host ends without reporting, as a crashed window does', async () => {
-    const { store, chat, observability } = startQuietLeader()
+    const { chat, observability } = startQuietLeader()
     const bus = getSpeechBusContext()
     // The voice host holds this lock while it is connected. The browser releases it with the page, also on a crash.
     const lock = `situation-test-voice-host:${crypto.randomUUID()}`
@@ -1483,7 +1491,6 @@ describe('situation gate loop', () => {
     crashed.resolve()
     // Lock requests are granted in order, so this one runs after every window that waited for the host to end.
     await navigator.locks.request(lock, () => {})
-    expect(store.userMidInput()).toBe(false)
     await nextGateTick()
     expect((await observability.inspect()).urge.decision).toMatchObject({ fire: true, reason: 'urgent' })
     expect(chat.submitUnprompted).toHaveBeenCalledOnce()
@@ -1762,42 +1769,7 @@ describe('situation gate loop', () => {
   })
   // Pinned before the urge rewrite. Covered by name elsewhere: the leader-only loop ("never runs in a host without
   // the unprompted capability, nor in a follower"), one pending turn ("starts no second turn while one is pending"),
-  // and the forced widget turn, driven through the real chat store in chat.contract.test.ts.
-
-  it('keeps a held topic away from the gate until it is released, leaving it unaddressed', async () => {
-    const { store, chat, observability } = startQuietLeader()
-    const topicKey = offerUrgentTopic()
-    const release = store.holdTopic(topicKey)
-
-    await nextGateTick()
-    await nextGateTick()
-
-    expect((await observability.inspect()).urge.decision).toMatchObject({ fire: false })
-    expect(lastEvaluation().decision.trace.reasons.map(reason => reason.key)).not.toContain(topicKey)
-    expect(chat.submitUnprompted).not.toHaveBeenCalled()
-    expect(store.state.events.find(event => event.topicKey === topicKey)?.addressedAtMs).toBeNull()
-
-    release()
-    await nextGateTick()
-
-    expect((await observability.inspect()).urge.decision).toMatchObject({ fire: true, reason: 'urgent', topicKey })
-    expect(chat.submitUnprompted).toHaveBeenCalledOnce()
-  })
-
-  it('holds back even an urgent notify while its topic is held', async () => {
-    const { store, chat, observability } = startQuietLeader()
-    store.ingest({ kind: 'notify', sourceKey: 'plugin:widget', eventId: 'evt-1', headline: 'Doorbell', urgency: 'immediate', reminder: false, critical: true, atMs: Date.now() })
-    const topicKey = 'notify:plugin:widget:evt-1'
-    const release = store.holdTopic(topicKey)
-
-    await nextGateTick()
-    expect((await observability.inspect()).urge.decision).toMatchObject({ fire: false })
-    expect(chat.submitUnprompted).not.toHaveBeenCalled()
-
-    release()
-    await nextGateTick()
-    expect((await observability.inspect()).urge.decision).toMatchObject({ fire: true, reason: 'urgent', topicKey })
-  })
+  // and the widget turn, driven through the real chat store in chat.contract.test.ts.
 
   it('restores the memory from before the fire when the unprompted turn loses the busy race', async () => {
     const { chat, observability } = startQuietLeader()
@@ -1845,14 +1817,20 @@ describe('situation gate loop', () => {
     })
   })
 
-  it('starts the floor after a forced widget turn speaks, without counting it as an unanswered opening', async () => {
-    const { hooks } = startQuietLeader()
+  it('starts the floor after a widget line speaks, without counting it as an unanswered opening', async () => {
+    const { store, hooks, chat } = startQuietLeader()
     await nextGateTick()
     expect(lastEvaluation().decision).toMatchObject({ fire: false, reason: 'urge' })
+    chat.submitUnprompted.mockImplementationOnce(async (payload) => {
+      await unpromptedTurnIsSpoken(hooks, payload)
+      return { status: 'spoken', text: 'Nice move' }
+    })
 
-    // A widget reaction is a forced unprompted turn that the gate never fired.
-    await unpromptedTurnSpeaks(hooks, 'spark:widget-1', { topicKey: 'notify:plugin:widget:evt-1', text: 'Nice move', kind: 'notify' })
+    // A widget reaction is a line the mind let through, not a fire of the gate.
+    const result = await store.requestVoice({ turnId: 'spark:widget-1', topicKey: 'notify:plugin:widget:evt-1', topicText: 'Nice move', supplement: null, timeoutMs: 30_000 })
     const spokeAtMs = Date.now()
+    expect(result).toEqual({ status: 'spoken', text: 'Nice move' })
+    expect(chat.submitUnprompted.mock.calls[0][0]).toMatchObject({ widget: true, messageId: 'spark:widget-1', topicKey: 'notify:plugin:widget:evt-1' })
     await nextGateTick()
 
     expect(lastEvaluation().decision).toMatchObject({ fire: false, reason: 'floor' })
@@ -1863,33 +1841,14 @@ describe('situation gate loop', () => {
     expect(lastEvaluation().decision).toMatchObject({ fire: false, reason: 'urge' })
   })
 
-  it('keeps a held thread away from the reason collector until it is released', async () => {
-    const thread = saveRipeQuestion()
-    const { store, chat, observability } = startQuietLeader()
-    const releaseThread = store.holdTopic(thread.topicKey)
-    store.holdTopic('own-day')
-
-    await nextGateTick()
-    expect(lastEvaluation().decision.trace.reasons.map(reason => reason.key)).toEqual([])
-    expect(await observability.evaluateGate()).toMatchObject({ status: 'evaluated', decision: { fire: false, reason: 'no-topic' } })
-
-    releaseThread()
-    await nextGateTick()
-    expect(lastEvaluation().decision.trace.reasons.map(reason => reason.key)).toEqual([thread.topicKey])
-    expect(await observability.evaluateGate()).toMatchObject({ status: 'evaluated', decision: { fire: true, topicKey: thread.topicKey } })
-    expect(chat.submitUnprompted.mock.calls[0][0]).toMatchObject({ topicKey: thread.topicKey, topicText: thread.cue, reason: { kind: 'thread-question', category: 'open' } })
-  })
-
   it.each([
     ['declined', 'declined'],
     ['cancelled', 'cancelled'],
     ['failed', 'failed'],
     ['busy-rejected', 'busy'],
   ] as const)('leaves a thread eligible after a %s attempt, and raises it exactly once when a later turn speaks', async (_label, outcome) => {
-    const thread = saveRipeQuestion()
-    const { store, hooks, chat, observability } = startQuietLeader()
-    // Her own day would compete with the thread; holding it leaves the thread as the only reason to open with.
-    store.holdTopic('own-day')
+    const thread = saveRipeQuestion({ ownDayJustNow: true })
+    const { hooks, chat, observability } = startQuietLeader()
     chat.submitUnprompted.mockImplementationOnce(async (payload) => {
       if (outcome === 'declined') {
         await unpromptedTurnIsDeclined(hooks, payload)
@@ -1921,9 +1880,8 @@ describe('situation gate loop', () => {
   })
 
   it('records the urge decision, the open threads, and the outcome per reason kind in the inspector', async () => {
-    const thread = saveRipeQuestion()
-    const { store, hooks, chat, observability } = startQuietLeader()
-    store.holdTopic('own-day')
+    const thread = saveRipeQuestion({ ownDayJustNow: true })
+    const { hooks, chat, observability } = startQuietLeader()
     chat.submitUnprompted.mockImplementationOnce(async (payload) => {
       await unpromptedTurnIsDeclined(hooks, payload)
       return { status: 'declined' }

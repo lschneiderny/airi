@@ -418,7 +418,8 @@ export class StagePerformanceConductor {
   /**
    * Sends one voice stimulus from the voice port to the mind as one step, under every driver, and dispatches the
    * response in intent order: `speak` to `voice().speak` for every line kind, whose outcome returns to the mind as a
-   * `voice-outcome` stimulus with the same `turnId`. The port also receives the gate memory and decision of the step
+   * `voice-outcome` stimulus with the same `turnId`, and `cancel` and `drop` of a widget line to `voice().cancel` and
+   * `voice().drop`. The port also receives the gate memory, the decision, and the next widget deadline of the step
    * (`publishVoice`).
    */
   voiceStimulus(stimulus: VoiceStimulus) {

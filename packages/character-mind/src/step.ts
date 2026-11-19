@@ -6,7 +6,7 @@ import { initialReactionMemory } from '@proj-airi/stage-shared/situation'
 import { answerEmotion, answerExpressionClear, answerExpressionRequest } from './expression'
 import { answerPresence, answerScreenChange } from './presence'
 import { answerTouch } from './touch'
-import { answerExternalSpeech, answerUserTurn, answerVoiceOutcome, answerVoiceRequest, answerVoiceTick } from './voice'
+import { answerUserTurn, answerVoiceOutcome, answerVoiceRequest, answerVoiceTick } from './voice'
 
 /** The state of a mind that has answered nothing. It holds no random source: every draw comes from `step`'s `rng`. */
 export function initialMindState(): MindState {
@@ -56,8 +56,6 @@ export function step(state: MindState, stimuli: readonly MindStimulus[], nowMs: 
       answer = answerVoiceTick(next, stimulus, cause, nowMs, rng)
     else if (stimulus.kind === 'user-turn')
       answer = answerUserTurn(next, stimulus)
-    else if (stimulus.kind === 'external-speech')
-      answer = answerExternalSpeech(next, stimulus)
     else if (stimulus.kind === 'voice-request')
       answer = answerVoiceRequest(next, stimulus, cause, nowMs)
     else

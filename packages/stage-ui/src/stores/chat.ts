@@ -112,8 +112,8 @@ export interface ChatSendPayload {
 /**
  * A turn that the character starts without user input. The leader sends it to its active session.
  * `topicText` is shown to the model and stored on the trigger message, so it never holds a raw window title, nor a
- * page or video title or link from the web extension. Both callers, the gate and the widget reaction, pass their text
- * through `unpromptedTopicText`, which replaces a web extension topic's text with the kind of topic.
+ * page or video title or link from the web extension. The situation store, which runs every line the character mind
+ * decides, passes the text through `unpromptedTopicText`, which replaces a web extension topic's text with the kind of topic.
  */
 export interface ChatUnpromptedPayload {
   /** Situation topic that the turn is about. A declined turn records it. */
@@ -125,8 +125,8 @@ export interface ChatUnpromptedPayload {
    * A missing reason counts as an urgent notify.
    */
   reason?: { kind: ReasonKind, category: ReasonCategory }
-  /** Requires a reply: the model is not offered the decline marker. */
-  force?: boolean
+  /** A widget or plugin turn that the character mind let through: it takes the widget instruction instead of the reason's. */
+  widget?: boolean
   /** Stable identity of the turn. A repeated call with the same ID joins the pending turn. */
   messageId?: string
   /** Extra system prompt text, appended after the unprompted instruction. */
@@ -1259,6 +1259,7 @@ export const useChatStore = defineStore('chat', () => {
     activeSessionId: () => activeSessionId.value,
     submitUnprompted: payload => submitUnprompted(payload),
     submitReaction: payload => submitReaction(payload),
+    cancelTurn: turn => cancelTurn(turn),
     sessionMessages: sessionId => chatSession.getSessionMessagesIfLoaded(sessionId) ?? [],
     // Thread extraction runs on the active chat selection, like the chat itself, with the session character's name.
     extractionSelection: async (sessionId) => {
@@ -1665,7 +1666,7 @@ export const useChatStore = defineStore('chat', () => {
 
     return startUnprompted(payload.messageId ?? nanoid(), t('base.prompt.unprompted-trigger', { reason: payload.topicText }), {
       trigger: { topicKey: payload.topicKey, text: payload.topicText, kind: reason.kind },
-      instruction: unpromptedInstruction(t(payload.force ? 'base.prompt.unprompted-forced' : unpromptedInstructionKeys[reason.category])),
+      instruction: unpromptedInstruction(t(payload.widget ? 'base.prompt.unprompted-widget' : unpromptedInstructionKeys[reason.category])),
       supplement: payload.supplement,
     })
   }
