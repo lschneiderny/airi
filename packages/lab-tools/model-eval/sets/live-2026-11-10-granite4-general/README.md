@@ -13,8 +13,8 @@ This set contains 6 replies from one live run of `fixtures/model/scenarios/gener
 ## Production
 
 ```sh
-pnpm qa:model run --scenario general --base-url http://127.0.0.1:11434/v1 --model granite4:latest --machine-label luke-linux-4060ti
-pnpm qa:model score <run dir>/transcripts.jsonl --exposed-actions wave:gesture
+pnpm lab:model run --scenario general --base-url http://127.0.0.1:11434/v1 --model granite4:latest --machine-label luke-linux-4060ti
+pnpm lab:model score <run dir>/transcripts.jsonl --exposed-actions wave:gesture
 ```
 
 The model run is `.temp/qa/20261110-181301-model-run-general/`, on commit `44a561d64`. Its `run.json` records `dirty: true` because the checkout held untracked planning files; no tracked file differed. `transcripts.jsonl` is unchanged since that run.
