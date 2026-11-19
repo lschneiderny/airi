@@ -1,4 +1,4 @@
-import type { CharacterMind } from '@proj-airi/character-mind'
+import type { CharacterMind, MindState } from '@proj-airi/character-mind'
 import type { IdleBehaviourReport } from '@proj-airi/motion-driver-natural/idle-activities'
 import type { MotionQaEvent, MotionQaEventsResult } from '@proj-airi/stage-shared/motion-scenario'
 
@@ -26,6 +26,7 @@ export function useMotionQaEvents(options: {
   const events: MotionQaEvent[] = []
   let seq = 0
   let dropped = 0
+  let lastGate: MindState['voice']['lastGate'] = null
   function record(kind: MotionQaEvent['kind'], payload: MotionQaEvent['payload']) {
     const small = Object.fromEntries(Object.entries(payload).map(([key, value]) => [key, typeof value === 'string' ? value.slice(0, 500) : value]))
     events.push({ seq: ++seq, time: Date.now(), kind, payload: small })
@@ -55,8 +56,15 @@ export function useMotionQaEvents(options: {
       })
     }),
     // One event per step of the mind. It names what the mind was given and what it decided, never a point, a
-    // dose, a view of the situation, or any text.
+    // dose, a view of the situation, or any text. An unforced gate tick that yields nothing is not recorded: the
+    // gate ticks every 2 s and would fill the ring.
     options.mind.onStep((step) => {
+      const ticks = step.stimuli.filter(stimulus => stimulus.kind === 'voice-tick')
+      // The mind writes `lastGate` only when the gate evaluates; a tick skipped for an open line keeps the old one.
+      const gate = step.state.voice.lastGate !== lastGate ? step.state.voice.lastGate : null
+      lastGate = step.state.voice.lastGate
+      if (ticks.length === step.stimuli.length && !step.intents.length && !ticks.some(tick => tick.forceTiming))
+        return
       const touches = step.stimuli.filter(stimulus => stimulus.kind === 'touch')
       const outcomes = step.stimuli.filter(stimulus => stimulus.kind === 'voice-outcome')
       const decision = voiceDecisionOf(step)
@@ -71,6 +79,9 @@ export function useMotionQaEvents(options: {
         voice: decision ? (decision.speak ? 'speak' : 'hold') : null,
         voiceLine: decision?.kind ?? null,
         voiceReason: decision && !decision.speak ? decision.reason : null,
+        // Only a gate tick carries these: the fire or hold reason of its evaluation, null when the gate skipped, and
+        // the category of a fire.
+        ...ticks.length > 0 && { gate: gate?.reason ?? null, category: gate?.fire ? gate.category : null },
         // Only a presence step carries these: whether the user is away after it, and what woke the computer.
         ...presence && { away: presence.away, wake: presence.wake?.cause ?? null },
       })

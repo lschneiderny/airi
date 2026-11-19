@@ -13,6 +13,7 @@ import type {
   MotionQaStartCaptureInput,
   MotionQaStartCaptureResult,
   MotionQaState,
+  MotionQaVoiceEvaluateResult,
 } from '@proj-airi/stage-shared/motion-scenario'
 import type { GenericSchema } from 'valibot'
 
@@ -26,6 +27,7 @@ import {
   MotionQaRunScenarioResultSchema,
   MotionQaStartCaptureResultSchema,
   MotionQaStateSchema,
+  MotionQaVoiceEvaluateResultSchema,
 } from '@proj-airi/stage-shared/motion-scenario'
 import { safeParse } from 'valibot'
 
@@ -43,6 +45,7 @@ interface MotionQaCommands {
   startCapture: { input: MotionQaStartCaptureInput, result: MotionQaStartCaptureResult }
   runScenario: { input: MotionQaRunScenarioInput, result: MotionQaRunScenarioResult }
   awaitCapture: { input: MotionQaAwaitCaptureInput, result: MotionQaAwaitCaptureResult }
+  voiceEvaluate: { input: undefined, result: MotionQaVoiceEvaluateResult }
 }
 export type MotionQaCommandName = keyof MotionQaCommands
 
@@ -55,6 +58,7 @@ const resultSchemas: Record<MotionQaCommandName, GenericSchema> = {
   startCapture: MotionQaStartCaptureResultSchema,
   runScenario: MotionQaRunScenarioResultSchema,
   awaitCapture: MotionQaAwaitCaptureResultSchema,
+  voiceEvaluate: MotionQaVoiceEvaluateResultSchema,
 }
 
 /** The bridge answered `ok: false`, or its answer broke the contract. */
