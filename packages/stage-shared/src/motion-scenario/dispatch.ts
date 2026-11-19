@@ -23,6 +23,8 @@ import {
   MotionQaStartCaptureResultSchema,
   motionQaStateInvokeEventa,
   MotionQaStateSchema,
+  motionQaVoiceEvaluateInvokeEventa,
+  MotionQaVoiceEvaluateResultSchema,
 } from './bridge'
 
 /** One schema problem, with its dotted path from the command root (for example `input.scenario.events.0.kind`). */
@@ -68,6 +70,7 @@ export function createMotionQaDispatcher(context = createMotionQaContext()) {
     startCapture: defineInvoke(context, motionQaStartCaptureInvokeEventa),
     runScenario: defineInvoke(context, motionQaRunScenarioInvokeEventa),
     awaitCapture: defineInvoke(context, motionQaAwaitCaptureInvokeEventa),
+    voiceEvaluate: defineInvoke(context, motionQaVoiceEvaluateInvokeEventa),
   }
 
   async function run(text: string): Promise<{ name: string, schema: GenericSchema, result: unknown } | MotionQaResponse> {
@@ -103,6 +106,8 @@ export function createMotionQaDispatcher(context = createMotionQaContext()) {
         return { name: command.name, schema: MotionQaRunScenarioResultSchema, result: await invokes.runScenario(command.input) }
       case 'awaitCapture':
         return { name: command.name, schema: MotionQaAwaitCaptureResultSchema, result: await invokes.awaitCapture(command.input) }
+      case 'voiceEvaluate':
+        return { name: command.name, schema: MotionQaVoiceEvaluateResultSchema, result: await invokes.voiceEvaluate() }
     }
   }
 

@@ -65,6 +65,7 @@ import { useAvatarTouchStore } from '../../stores/character/avatar-touch'
 import { useChatStore } from '../../stores/chat'
 import { useChatSessionStore } from '../../stores/chat/session-store'
 import { useActComplianceStore } from '../../stores/devtools/act-compliance'
+import { useSituationObservabilityStore } from '../../stores/devtools/situation-observability'
 import { useSharedLive2DExpressionPreview } from '../../stores/live2d'
 import { useAiriCardStore } from '../../stores/modules/airi-card'
 import { useSpeechStore } from '../../stores/modules/speech'
@@ -750,6 +751,7 @@ if (import.meta.env.DEV && isMotionQaBridgeEnabled()) {
           dispatchAct: marker => streamingControl.dispatchWith(marker),
           renderError: () => stageRenderError.value,
           performance: () => ({ inputs: performanceInputs, state: performance.value }),
+          evaluateVoice: () => useSituationObservabilityStore().evaluateGateLeader(),
         }))
       }
     })

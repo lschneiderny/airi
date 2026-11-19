@@ -1,8 +1,9 @@
 import type { CharacterMind } from '@proj-airi/character-mind'
-import type { MotionQaRunScenarioResult, MotionQaState, MotionScenario, ScenarioEvent } from '@proj-airi/stage-shared/motion-scenario'
+import type { MotionQaRunScenarioResult, MotionQaState, MotionQaVoiceEvaluateResult, MotionScenario, ScenarioEvent } from '@proj-airi/stage-shared/motion-scenario'
 import type { PerformanceInputs, PerformanceState } from '@proj-airi/stage-shared/performance-state'
 
 import type { EmotionPayload } from '../../constants/emotions'
+import type { SituationGateEvaluation } from '../../stores/devtools/situation-observability'
 import type { MotionQaChatHooks, MotionQaIdleHook } from './use-motion-qa-events'
 
 import { defineInvokeHandler } from '@moeru/eventa'
@@ -20,6 +21,7 @@ import {
   motionQaRunScenarioInvokeEventa,
   motionQaStartCaptureInvokeEventa,
   motionQaStateInvokeEventa,
+  motionQaVoiceEvaluateInvokeEventa,
   nextScenarioChatInput,
 } from '@proj-airi/stage-shared/motion-scenario'
 import { useDesktopActivityStore } from '@proj-airi/stage-shared/stores/desktop-activity'
@@ -65,6 +67,8 @@ export interface MotionQaBridgeOptions {
   renderError: () => Error | undefined
   /** The last resolver inputs and the state the stage hands to Natural; read without resolving again. */
   performance: () => { inputs: PerformanceInputs, state: PerformanceState }
+  /** Devtools "Evaluate now" in the leader window: one forced gate tick and its decision. */
+  evaluateVoice: () => Promise<SituationGateEvaluation>
   /** Defaults to `performance.now()` and `requestAnimationFrame`. */
   frames?: MotionQaFrames
 }
@@ -377,6 +381,8 @@ export function useMotionQaBridge(options: MotionQaBridgeOptions) {
       startedCaptures.add(captureId)
       return { captureId }
     }),
+    // A JSON copy: the decision is frozen store data whose trace the contract leaves loose.
+    defineInvokeHandler(context, motionQaVoiceEvaluateInvokeEventa, async () => JSON.parse(JSON.stringify(await options.evaluateVoice())) as MotionQaVoiceEvaluateResult),
     defineInvokeHandler(context, motionQaRunScenarioInvokeEventa, ({ scenario }) => runScenario(scenario)),
     defineInvokeHandler(context, motionQaAwaitCaptureInvokeEventa, async ({ captureId }) => {
       if (!startedCaptures.has(captureId))

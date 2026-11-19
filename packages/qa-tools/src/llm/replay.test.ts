@@ -1,4 +1,5 @@
 import { Buffer } from 'node:buffer'
+import { readFileSync } from 'node:fs'
 
 import { describe, expect, it } from 'vitest'
 
@@ -43,6 +44,16 @@ describe('replay scripts', () => {
     expect(script.take('hi').entry.content).toBe('one')
     expect(script.remaining).toBe(1)
     expect(script.take('again').entry.content).toBe('two')
+  })
+
+  it('speaks the first quiet moment of voice.json, declines the second, and keeps other requests off both', () => {
+    const source = new URL('../../fixtures/llm/voice.json', import.meta.url)
+    const script = new ReplayScript(parseScript(readFileSync(source, 'utf8'), 'voice.json'), 'voice.json')
+    const quiet = '(A quiet moment. Nobody said anything. What is on your mind right now: tea)'
+    expect(script.take('hello').entry.content).toBe('<|SILENT|>')
+    expect(script.take(quiet).entry.content).toMatch(/tea I left steeping\.$/)
+    expect(script.take(quiet).entry.content).toBe('<|SILENT|>')
+    expect(script.take(quiet).index).toBe(3)
   })
 })
 

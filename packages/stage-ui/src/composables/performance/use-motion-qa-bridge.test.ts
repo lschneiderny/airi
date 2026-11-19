@@ -2,9 +2,11 @@ import type { MindStimulus } from '@proj-airi/character-mind'
 import type { IdleBehaviourReport } from '@proj-airi/motion-driver-natural/idle-activities'
 import type { MotionScenario } from '@proj-airi/stage-shared/motion-scenario'
 import type { PerformanceInputs, PerformanceMode } from '@proj-airi/stage-shared/performance-state'
-import type { TouchVoiceView } from '@proj-airi/stage-shared/situation'
+import type { SituationState, TouchVoiceView } from '@proj-airi/stage-shared/situation'
 import type { NaturalCaptureResult } from '@proj-airi/stage-ui-live2d/stores'
+import type { Mock } from 'vitest'
 
+import type { SituationGateEvaluation } from '../../stores/devtools/situation-observability'
 import type { MotionQaFrames } from './use-motion-qa-bridge'
 
 import { defineInvoke } from '@moeru/eventa'
@@ -15,6 +17,7 @@ import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/ex
 import { capabilitiesForHost } from '@proj-airi/stage-shared/host-capabilities'
 import { createMotionQaContext, createMotionQaDispatcher, motionQaRunScenarioInvokeEventa } from '@proj-airi/stage-shared/motion-scenario'
 import { initialResolverMemory, resolvePerformanceState } from '@proj-airi/stage-shared/performance-state'
+import { HOUR_MS, initialSituationState } from '@proj-airi/stage-shared/situation'
 import { useDesktopActivityStore } from '@proj-airi/stage-shared/stores/desktop-activity'
 import { useForegroundWindowStore } from '@proj-airi/stage-shared/stores/foreground-window'
 import { useHostCapabilitiesStore } from '@proj-airi/stage-shared/stores/host-capabilities'
@@ -80,6 +83,32 @@ function scenario(events: MotionScenario['events']): MotionScenario {
   return { version: 1, id: 'bridge-test', seed: 1, durationSeconds: 10, levels: ['t3'], events }
 }
 
+/** A gate tick for a user at the desk who accepts remarks, with nothing on the screen worth a word. */
+function voiceTick(forceTiming: boolean, nowMs: number): MindStimulus {
+  const situation: SituationState = {
+    ...initialSituationState,
+    presence: { state: 'here', reason: null, sinceMs: nowMs - HOUR_MS },
+    busy: { state: 'accepts', atMs: nowMs },
+    nowMs,
+  }
+  return {
+    kind: 'voice-tick',
+    forceTiming,
+    view: {
+      run: { id: 1, memory: null, saved: null },
+      situation,
+      threads: { threads: { threads: [] } },
+      local: { dayKey: '2023-11-14', minuteOfDay: 16 * 60 },
+      sessionId: 'session-1',
+      signals: { userSpeaking: false, userTyping: false, characterSpeaking: false, generating: false, queued: 0, desktopFresh: true, foregroundFresh: true, stageVisible: true },
+      settings: { enabled: true, chattiness: 0.5, dontDisturb: false, quietApps: [], speakDuringGames: true },
+      moodFactor: 1,
+      heldTopics: [],
+      unpromptedPending: false,
+    },
+  }
+}
+
 const report: NaturalCaptureResult['report'] = { metrics: {}, hardFailures: [], warnings: [], score: 100, pass: true }
 
 describe('useMotionQaBridge', () => {
@@ -96,6 +125,7 @@ describe('useMotionQaBridge', () => {
   /** Epoch milliseconds of the mind's clock; a test moves it by hand. */
   let mindNowMs: number
   let idle: ReturnType<typeof createEventHook<IdleBehaviourReport>>
+  let evaluateVoice: Mock<() => Promise<SituationGateEvaluation>>
 
   /** Stands in for the capture that Model.vue runs: scenario events stamped into it land in the log. */
   function recordCaptureMarks() {
@@ -113,6 +143,7 @@ describe('useMotionQaBridge', () => {
     // Seed 17 speaks the protest of the first burst of three pokes.
     mind = new CharacterMind({ seed: 17, clock: () => mindNowMs })
     idle = createEventHook<IdleBehaviourReport>()
+    evaluateVoice = vi.fn(async (): Promise<SituationGateEvaluation> => ({ status: 'skipped', reason: 'gate-not-running' }))
     voicing.value = false
     mode.value = 'idle'
     performanceInputs = { nowMs: 0, speaking: false, userSpeaking: false, generating: false, cursorMovedAtMs: null, desktop: null, userTurnAtMs: null, visible: true, override: null, cueAttention: null, foregroundCategory: null }
@@ -137,6 +168,7 @@ describe('useMotionQaBridge', () => {
         dispatchAct: marker => streaming.dispatchWith(marker),
         renderError: () => undefined,
         performance: () => ({ inputs: performanceInputs, state: { ...resolvePerformanceState(performanceInputs, initialResolverMemory).state, mode: mode.value } }),
+        evaluateVoice: () => evaluateVoice(),
         frames: clock.frames,
       })
     })
@@ -263,6 +295,35 @@ describe('useMotionQaBridge', () => {
       expect.objectContaining({ kind: 'mind', stimulus: 'presence', away: false, wake: 'unlock' }),
       { kind: 'idle', phase: 'end', behaviour: 'sleep', intents: undefined },
     ])
+  })
+
+  it('records a gate tick with its gate reason and fired category, and skips an unforced tick that yields nothing', async () => {
+    // A new run eases her in, so the first unforced tick holds without an intent.
+    mind.receive(voiceTick(false, mindNowMs))
+    mindNowMs += 2_000
+    mind.receive(voiceTick(true, mindNowMs))
+    // The reach-out line is open, so the forced tick skips the gate.
+    mindNowMs += 2_000
+    mind.receive(voiceTick(true, mindNowMs))
+
+    const reply = await dispatch({ name: 'events', input: {} }) as { result: { events: { kind: string, payload: Record<string, unknown> }[] } }
+    expect(reply.result.events.map(({ kind, payload }) => ({ kind, ...payload }))).toEqual([
+      expect.objectContaining({ kind: 'mind', stimulus: 'voice-tick', gate: 'forced', category: 'open', intents: expect.stringContaining('"kind":"speak"') }),
+      expect.objectContaining({ kind: 'mind', stimulus: 'voice-tick', gate: null, category: null, intents: '[]' }),
+    ])
+    expect(JSON.stringify(reply)).not.toMatch(/session-1/)
+  })
+
+  it('serves voiceEvaluate with the leader evaluation as plain JSON', async () => {
+    expect(await dispatch({ name: 'voiceEvaluate' })).toEqual({ ok: true, result: { status: 'skipped', reason: 'gate-not-running' } })
+    mind.receive(voiceTick(true, mindNowMs))
+    const { lastGate: decision, gate: memory } = mind.state.voice
+    if (!decision || !memory)
+      throw new Error('The forced tick did not evaluate the gate')
+    evaluateVoice.mockResolvedValueOnce({ status: 'evaluated', decision, memory })
+    const reply = await dispatch({ name: 'voiceEvaluate' })
+    expect(reply).toMatchObject({ ok: true, result: { status: 'evaluated', decision: { fire: true, reason: 'forced', category: 'open' } } })
+    expect(reply.result).toEqual(JSON.parse(JSON.stringify({ status: 'evaluated', decision, memory })))
   })
 
   it('evicts old records from its bounded window and removes subscriptions on disposal', async () => {

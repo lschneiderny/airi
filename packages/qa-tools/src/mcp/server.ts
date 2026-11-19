@@ -27,7 +27,7 @@ async function guarded(body: () => Promise<CallToolResult>): Promise<CallToolRes
  * The AIRI QA MCP server: a few verbs over one disposable app session, so an agent can check its own change in
  * the running app. Every tool except `airi_start` needs a running session.
  */
-export type QaSession = Pick<AppSession, 'start' | 'state' | 'send' | 'events' | 'importModel' | 'screenshot' | 'errors' | 'evaluate' | 'stop'>
+export type QaSession = Pick<AppSession, 'start' | 'state' | 'send' | 'events' | 'evaluateVoice' | 'importModel' | 'screenshot' | 'errors' | 'evaluate' | 'stop'>
 
 export function createAiriQaServer(session: QaSession, version: string): McpServer {
   const server = new McpServer({ name: 'airi-qa', version })
@@ -57,9 +57,13 @@ export function createAiriQaServer(session: QaSession, version: string): McpServ
   }, args => guarded(async () => json(await session.send(args.text, { reply: args.reply, expect: args.expect ?? [], timeoutMs: (args.timeoutSeconds ?? 60) * 1000 }))))
 
   server.registerTool('airi_events', {
-    description: 'Read the app\'s event log after a sequence number: ACT, expression, speech, and turn events, and one `mind` event per step of the character mind, with the stimulus kind and gesture, each intent\'s channel, kind, id, and cause as a JSON array, and the voice decision (speak, or hold with its reason).',
+    description: 'Read the app\'s event log after a sequence number: ACT, expression, speech, and turn events, and one `mind` event per step of the character mind, with the stimulus kind and gesture, each intent\'s channel, kind, id, and cause as a JSON array, the voice decision (speak, or hold with its reason), and for a gate tick the gate reason and the fired category. Unforced gate ticks without intents are not recorded.',
     inputSchema: { sinceSeq: z.number().int().min(0).optional() },
   }, args => guarded(async () => json(await session.events(args.sinceSeq))))
+
+  server.registerTool('airi_evaluate_voice', {
+    description: 'Run devtools "Evaluate now" in the leader window: one gate tick that skips the timing guards only. Returns `{ status: "evaluated", decision, memory }`, where `decision.fire` and `decision.reason` say whether she reaches out and why, or `{ status: "skipped", reason }`. A fire starts a real unprompted turn that consumes a replay entry; read its turn, speech, and mind events with airi_events.',
+  }, () => guarded(async () => json(await session.evaluateVoice())))
 
   server.registerTool('airi_import_model', {
     description: 'Import and select another model in the running app.',

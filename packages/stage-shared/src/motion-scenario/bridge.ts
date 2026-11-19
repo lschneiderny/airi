@@ -135,6 +135,9 @@ export const MotionQaEventSchema = strictObject({
   /**
    * `mind` is one step of the character mind: its stimuli, the intents it returned, and its voice decision. A step
    * with a `presence` stimulus also carries `away` and `wake` (`'unlock'`, `'resume'`, or `null`).
+   * A step with a `voice-tick` stimulus also carries `gate` (the fire or hold reason, or `null` when the gate
+   * skipped for an open line) and `category` (the fired reason category, or `null`). An unforced tick that yields no
+   * intent is not recorded.
    * `idle` is one idle report of the Natural scene: `phase` (`'start'` or `'end'`) and `behaviour`.
    */
   kind: picklist(['act', 'expression', 'clip', 'tts', 'turn', 'mind', 'idle']),
@@ -154,6 +157,16 @@ export type MotionQaChatSendInput = InferOutput<typeof MotionQaChatSendInputSche
 export type MotionQaChatSendResult = InferOutput<typeof MotionQaChatSendResultSchema>
 export type MotionQaEventsInput = InferOutput<typeof MotionQaEventsInputSchema>
 export type MotionQaEventsResult = InferOutput<typeof MotionQaEventsResultSchema>
+
+/**
+ * The leader's devtools "Evaluate now": one forced gate tick. `evaluated` carries the gate decision and memory as
+ * plain JSON (a fire also holds the picked reason and its topic text); `skipped` names why no decision was made.
+ */
+export const MotionQaVoiceEvaluateResultSchema = variant('status', [
+  looseObject({ status: literal('evaluated'), decision: looseObject({ fire: boolean(), reason: nonEmpty }), memory: looseObject({}) }),
+  strictObject({ status: literal('skipped'), reason: nonEmpty }),
+])
+export type MotionQaVoiceEvaluateResult = InferOutput<typeof MotionQaVoiceEvaluateResultSchema>
 
 export const MotionQaStartCaptureInputSchema = strictObject({
   durationSeconds: pipe(number(), finite(), minValue(1), maxValue(600)),
@@ -190,6 +203,7 @@ export const motionQaImportModelFromInputInvokeEventa = defineInvokeEventa<Motio
 export const motionQaStartCaptureInvokeEventa = defineInvokeEventa<MotionQaStartCaptureResult, MotionQaStartCaptureInput>('eventa:invoke:motion-qa:start-capture')
 export const motionQaRunScenarioInvokeEventa = defineInvokeEventa<MotionQaRunScenarioResult, MotionQaRunScenarioInput>('eventa:invoke:motion-qa:run-scenario')
 export const motionQaAwaitCaptureInvokeEventa = defineInvokeEventa<MotionQaAwaitCaptureResult, MotionQaAwaitCaptureInput>('eventa:invoke:motion-qa:await-capture')
+export const motionQaVoiceEvaluateInvokeEventa = defineInvokeEventa<MotionQaVoiceEvaluateResult>('eventa:invoke:motion-qa:voice-evaluate')
 
 /** One JSON command as the renderer dispatcher receives it: `{ "name": "state" }` or `{ "name": "configure", "input": {...} }`. */
 export const MotionQaCommandSchema = variant('name', [
@@ -201,6 +215,7 @@ export const MotionQaCommandSchema = variant('name', [
   strictObject({ name: literal('startCapture'), input: MotionQaStartCaptureInputSchema }),
   strictObject({ name: literal('runScenario'), input: MotionQaRunScenarioInputSchema }),
   strictObject({ name: literal('awaitCapture'), input: MotionQaAwaitCaptureInputSchema }),
+  strictObject({ name: literal('voiceEvaluate') }),
 ])
 
 let motionQaContext: ReturnType<typeof createContext> | undefined

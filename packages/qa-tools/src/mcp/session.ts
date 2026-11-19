@@ -179,6 +179,12 @@ export class AppSession {
     return await live.bridge.call('events', sinceSeq === undefined ? {} : { sinceSeq }, 30_000)
   }
 
+  /** Runs devtools "Evaluate now" in the leader window: one forced gate tick, answered with its decision or skip reason. */
+  async evaluateVoice(): Promise<unknown> {
+    const live = this.require()
+    return await live.bridge.call('voiceEvaluate', undefined, 30_000)
+  }
+
   /** Sends one chat message through the real chat path and waits for the expected events of this turn. */
   async send(text: string, options: { reply?: string, expect: EventKind[], timeoutMs: number }): Promise<Record<string, unknown>> {
     const live = this.require()

@@ -1,0 +1,15 @@
+[
+  {
+    "match": { "regex": "\\(A quiet moment\\." },
+    "content": "<|ACT {\"emotion\":\"happy\"}|>Oh, I just remembered the tea I left steeping.",
+    "usage": { "prompt_tokens": 40, "completion_tokens": 14, "total_tokens": 54 }
+  },
+  {
+    "match": { "regex": "\\(A quiet moment\\." },
+    "content": "<|SILENT|>"
+  },
+  { "match": { "regex": "[\\s\\S]*" }, "content": "<|SILENT|>" },
+  { "match": { "regex": "[\\s\\S]*" }, "content": "<|SILENT|>" },
+  { "match": { "regex": "[\\s\\S]*" }, "content": "<|SILENT|>" },
+  { "match": { "regex": "[\\s\\S]*" }, "content": "<|SILENT|>" }
+]
