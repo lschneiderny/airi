@@ -111,6 +111,8 @@ export type MindIntent
     | (IntentBase & { channel: 'voice', kind: 'cancel', turnId: string })
   /** Give up a widget request that found no moment to start. Its caller gets `cancelled`. */
     | (IntentBase & { channel: 'voice', kind: 'drop', turnId: string })
+  /** The body around a reach-out or widget line: `about-to-speak` before its `speak`, `let-go` when she declines it. Never for a touch line. */
+    | (IntentBase & { channel: 'posture', kind: 'cue', cue: 'about-to-speak' | 'let-go' })
   /** Tell the voice channel of a desktop wake. `wakeCause` names the wake (`cause` is the stimulus's sequence number). `awayMs` is the open span at the wake, or null when no span was open. */
     | (IntentBase & { channel: 'voice', kind: 'observe-wake', wakeCause: WakeCause, atMs: number, awayMs: number | null })
   /** Tell the voice channel of a return. The gate decides whether she says anything. */

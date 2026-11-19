@@ -59,7 +59,7 @@ export function step(state: MindState, stimuli: readonly MindStimulus[], nowMs: 
     else if (stimulus.kind === 'voice-request')
       answer = answerVoiceRequest(next, stimulus, cause, nowMs)
     else
-      answer = answerVoiceOutcome(next, stimulus, nowMs)
+      answer = answerVoiceOutcome(next, stimulus, cause, nowMs)
 
     next = answer.state
     intents.push(...answer.intents)
