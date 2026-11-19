@@ -1,6 +1,6 @@
 # state-registry - Work Plan
 
-Status: not started. The plan was written on 2026-11-19. Roadmap row: step S in [`docs/ai/context/character-mind-roadmap.md`](../../docs/ai/context/character-mind-roadmap.md#steps). Rulings: decision 13 of the [character mind ADR](../../docs/ai/adr/2026-11-17-character-mind-direction.md) and the [persistence tiers ADR](../../docs/ai/adr/2026-11-01-persistence-tiers.md). Policy: [`docs/ai/context/state-persistence.md`](../../docs/ai/context/state-persistence.md). Branch: `luke/refactor/state-registry`, cut from `origin/main` at `e36bfc903`, which contains upstream `moeru-ai/airi` through `b3a6d6071`. One PR against `lschneiderny/airi` with base `main` (D1). S must land before CM4, which keeps the mind's slow state in a registered location. S is independent of the stacked character mind PRs (#47, #51, #52, #53); section 3.9 says how they meet.
+Status: done on 2026-11-19; the PR is not merged yet. The plan was written on 2026-11-19. Roadmap row: step S in [`docs/ai/context/character-mind-roadmap.md`](../../docs/ai/context/character-mind-roadmap.md#steps). Rulings: decision 13 of the [character mind ADR](../../docs/ai/adr/2026-11-17-character-mind-direction.md) and the [persistence tiers ADR](../../docs/ai/adr/2026-11-01-persistence-tiers.md). Policy: [`docs/ai/context/state-persistence.md`](../../docs/ai/context/state-persistence.md). Branch: `luke/refactor/state-registry`, cut from `origin/main` at `e36bfc903`, which contains upstream `moeru-ai/airi` through `b3a6d6071`. One PR against `lschneiderny/airi` with base `main` (D1). S must land before CM4, which keeps the mind's slow state in a registered location. S is independent of the stacked character mind PRs (#47, #51, #52, #53); section 3.9 says how they meet.
 
 The owner is away and runs these steps without a plan review. Every design fork below is taken on the recommended option and listed in [Decisions open to the owner's veto](#10-decisions-open-to-the-owners-veto).
 
@@ -625,6 +625,67 @@ State persistence Target rules 1, 2, and 6 are in the current sections of `state
 
 ## Departures during implementation
 
+- **A2:**
+  - Unknown top-level fields of the expression performance document are now dropped silently.
+  - The text of the corrupt-storage warning changed.
+  - The NOTICE strip of the old slot key has no test, because none existed before.
+- **A3:**
+  - `fade-on-hover.vue` uses `useTheme().isDark` and loses its theme transition (`disableTransition: true`).
+  - No theme test was added, because no test home exists.
+- **A4:**
+  - Owners that need a component, because they call `useI18n` when created, are created by `useDataMaintenance` in its setup.
+  - `legacy` is allowed on IndexedDB prefix locations, for the old `image-journal-` background prefix.
+  - The display-models reset calls `useSettingsStageModel(pinia).resetState()`.
+  - Stickers own the whole `airi-sticker-library`/`records` store.
+  - Sherpaw keeps its place in the order.
+  - The ownership checks live in the test file.
+  - The plan's inventory missed four things, which were added:
+    - the built-in `builtin:` background records;
+    - that `useMinecraftStore` persists nothing, so `settings/minecraft/*` is legacy;
+    - two danmaku keys, under the `chat-window/danmaku/` prefix;
+    - seven more Artistry keys, under the `artistry-` prefix.
+- **A5:**
+  - Step 5 of the runtime test lives in `use-data-maintenance.browser.test.ts`.
+  - The failure test replaced "earlier cleanup fails".
+  - Four leader-routed owners are also created at setup: expression performance, the Live2D and MMD Natural settings, and onboarding. Audio device is also created there, because `useAnalytics` calls `useI18n`.
+  - The desktop reset clears the stage model selection directly.
+  - A desktop test assertion changed, so the commit scope includes `stage-tamagotchi`.
+- **A6:**
+  - `StorageWriteSite.operation` (`write`, `remove`, `open`) lets a remove target a legacy key.
+  - The QA drivers are not scanned.
+  - `opencode-go-migration.ts` resolves through constants, so it has no dynamic entry.
+  - OPFS is owned through `writers`.
+  - The scan forced two registrations: a new `retired-account-credentials` registration for seven legacy `auth/v1/*` keys, and `transformers-cache.ts` as a writer.
+  - No Turbo inputs were added; root tests run through `pnpm test:root`.
+- **A7:**
+  - The verb runs `useDataMaintenance().deleteAllDataWithHost`, which the danger section also calls.
+  - The host step moved to an app-level injection (`host-data-deletion.ts`; the desktop app provides it in `main.ts`).
+  - There is no MCP tool and no `qa:app` op.
+  - A browser test checks that the host step runs after a registry failure.
+  - In QA runs with the bridge, `Stage.vue` creates `useDataMaintenance` at setup, so the stage writes six default keys that the base does not write: `settings/discord/{enabled,token}` and `settings/factorio/*`. This happens only in dev builds with the bridge.
+
 ## Checks run
 
+All checks ran on the branch cut from `e36bfc903`, at the commit that is now `9789315e8`, unless the row says otherwise. The branch was then rebased onto `origin/main` at `e835d67ac` with no conflicts; after the rebase, `pnpm verify --gate --base origin/main` and the dev-tools tests (`storage-writes`, `lib/storage-writes`, `verify-plan`, `policy-docs`) passed again.
+
+| Check | Result |
+| --- | --- |
+| `pnpm verify --gate --base origin/main` | Passed after each item, A1 to A7. The first A5 run failed in `use-presence-notice-sync.browser.test.ts`, and the fix was folded in |
+| `pnpm exec vitest run --project dev-tools scripts/dev-tools/policy-docs.test.ts` | 11 of 11 passed |
+| The A4 and A5 browser tests | Three runs each, all passed |
+| The storage-write scan | Three runs, all passed. A deliberate unregistered `localStorage.setItem` failed it with a clear message |
+| `pnpm test:root` | 24 files, 404 tests passed |
+| `pnpm qa:display run -- pnpm qa:smoke` | `ok: true`, 0 renderer errors and 0 main-process errors |
+| The rendered check of section 3.10 | Pass. Step 1 ran on the base build at `e835d67ac`. In step 2, 255 of 257 census entries were unchanged; the two that changed also change on a base-only restart. In step 3, `deleteAllData` returned `ok`, the OPFS root was empty, no `display-model-` or `airi-local:chat:` record remained, and no value the driver set survived. In step 4, nothing came back, and onboarding started. Every launch had 0 errors. Survivors: three unregistered Vue DevTools keys of the dev build, and the empty IndexedDB containers. A pre-existing behavior was seen and not changed: after a restart, the stage loads the preset model, because the bridge import sets only the runtime selection |
+
 ## Commits
+
+- `1aae2c926` docs(plan): add the plan for the state registry step
+- `46b2aa285` refactor(stage-ui): build three settings documents on useSettingsDocument
+- `d84e0351f` refactor(stage-shared,stage-ui): build the expression performance settings on useSettingsDocument
+- `c8c1bf7fa` fix(stage-tamagotchi,ui-loading-screens): read the language and theme without writing them
+- `6bcc2ea23` feat(stage-ui): declare persisted client state in a state registry
+- `8b65d6a23` fix(stage-ui,stage-pages,stage-tamagotchi): delete every registered piece of state with "Delete all data"
+- `cfb22dac7` test(dev-tools,stage-ui): fail when renderer code writes storage that no registration owns
+- `9789315e8` feat(stage-shared,stage-ui,stage-pages,stage-tamagotchi,qa-tools): let QA delete all data in a running app
+- `8448d8729` docs(ai): record the state registry decisions and close step S
