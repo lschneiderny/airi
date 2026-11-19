@@ -30,8 +30,8 @@ This set holds 644 replies from 122 live runs of 11 local models on 2026-11-18. 
 ## Production
 
 ```sh
-pnpm qa:model run --scenario <path to scenario> --config <config> --base-url http://127.0.0.1:11434/v1 --model <tag> --machine-label mac-m2-16gb
-pnpm qa:model score packages/qa-tools/model-eval/sets/live-2026-11-18-mac-m2-local-models/transcripts.jsonl --exposed-actions wave:gesture
+pnpm lab:model run --scenario <path to scenario> --config <config> --base-url http://127.0.0.1:11434/v1 --model <tag> --machine-label mac-m2-16gb
+pnpm lab:model score packages/lab-tools/model-eval/sets/live-2026-11-18-mac-m2-local-models/transcripts.jsonl --exposed-actions wave:gesture
 ```
 
 `results/pooled.json` and `results/pooled.md` pool the score of each model's runs into one row per model, scenario family, and mode. They were computed from per-model score runs of the same transcripts and from each run's `server.json`. Their last five rows are the server-setting runs described under [Server settings](#server-settings), whose transcripts are not in this set because they repeat the run keys of the `gemma4:e4b-it-qat` rows.
@@ -101,11 +101,11 @@ A local server reuses its cache only up to the first changed token. Because the 
 
 ## Follow-up: `gemma4:e4b-it-qat` under app conditions
 
-The screen above sends the `qa:model` prompt with no tools, on short conversations, with nothing else on the GPU. A same-day follow-up measured the lead model under the app's conditions. Its numbers are in `results/app-conditions.json`. Its transcripts are not committed: a scratch harness wrote them, and they carry provenance fields copied from a template record, so they would mislead as a dataset.
+The screen above sends the `lab:model` prompt with no tools, on short conversations, with nothing else on the GPU. A same-day follow-up measured the lead model under the app's conditions. Its numbers are in `results/app-conditions.json`. Its transcripts are not committed: a scratch harness wrote them, and they carry provenance fields copied from a template record, so they would mislead as a dataset.
 
 Method:
 - **App request.** One `pnpm qa:app run` turn, with the bundled Hiyori Live2D model and the replay server, captured the exact request the app sends from a fresh profile. That request has 12 tools (26.8k characters) and a 6.3k-character system prompt: the default card, the legacy widget instructions, the Hiyori motion list from `formatLive2DActPrompt`, the stage contract, and the memory and card rules. About 6.4k tokens go out before any history.
-- **Harness.** It sent the scenario turns with that system prompt and those tools through `/v1`, in the app's message form: a time prefix on every user message, and a situation block on the last one only. It answered tool calls with stubs and scored the spoken text with `qa:model score`.
+- **Harness.** It sent the scenario turns with that system prompt and those tools through `/v1`, in the app's message form: a time prefix on every user message, and a situation block on the last one only. It answered tool calls with stubs and scored the spoken text with `lab:model score`.
 - **History forms.** The harness fed replies back in three forms: raw, canonical (through core-agent's `canonicalCueText`, as the app stores them), and canonical with every marker other than `ACT`, `DELAY`, `MOOD`, and `SILENT` removed.
 
 Findings:

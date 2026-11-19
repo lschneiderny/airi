@@ -39,6 +39,9 @@ model tests, the headless rigs, and identity diffs. `/vault-sync` proposes a
 backlog note for landed commits that changed motion, with the commit range,
 date, changed paths, and the scenarios and seeds to replay, so a later
 complaint can be placed in time and bisected by rendering again.
+Quality scores from the research tooling in
+[`@proj-airi/lab-tools`](../../../packages/lab-tools/README.md) (`lab:*`)
+inform that review and tuning; they do not gate either.
 See the [motion QA levels ADR](../adr/2026-10-20-motion-qa-levels.md) for the
 history of the motion levels.
 
@@ -66,7 +69,7 @@ are listed only here.
 | Any change before landing | `pnpm verify --gate`. |
 | App runtime code in the paths above | `pnpm verify --gate`, which runs the smoke. |
 | Natural or Live2D motion | `pnpm verify --gate`, which runs `pnpm qa:test:model`; set `AIRI_QA_RIG_FORBOOTH` in `.env.qa` so it runs the rig test. Feel goes to the [review backlog](#motion-feel). |
-| MMD body motion (`motion-driver-humanoid` performance or locomotion, `stage-ui-mmd` body) | `pnpm verify --gate`, which runs `pnpm qa:test:model` and `pnpm qa:motion3d affected`; keep `AIRI_QA_MMD_MODEL` set in `.env.qa` so it runs the MMD model tests. Unless it prints NOT AFFECTED, run each affected scenario with `pnpm qa:motion3d run`; for every scenario the change must not move, run it at the base and the tip and require `pnpm qa:motion3d diff` to print `IDENTICAL`. Judge with `lab:motion3d gate` or the topic report. Feel goes to the [review backlog](#motion-feel). |
+| MMD body motion (`motion-driver-humanoid` performance or locomotion, `stage-ui-mmd` body) | `pnpm verify --gate`, which runs `pnpm qa:test:model` and `pnpm qa:motion3d affected`; keep `AIRI_QA_MMD_MODEL` set in `.env.qa` so it runs the MMD model tests. Unless it prints NOT AFFECTED, run each affected scenario with `pnpm qa:motion3d run`; for every scenario the change must not move, run it at the base and the tip and require `pnpm qa:motion3d diff` to print `IDENTICAL`. To measure quality, score the runs with `lab:motion3d gate` or a topic report; scores inform tuning and do not gate. Feel goes to the [review backlog](#motion-feel). |
 | A `lab:motion3d` report rule (`packages/lab-tools/src/t2-3d/reports`) | Labelled cases in a `lab:motion3d inject` labels file, sealed before any scoring, including injected faults that must fail the changed line; the report's version bump in its own commit; every other line of the report unchanged on the identity runs, read from `--json` verdicts or a `lab:motion3d matrix` receipt. |
 | Documentation only | `pnpm verify`, which lints the files and skips typecheck and tests for Markdown. A doc in `docs/ai/context/` still runs its guard test. |
 | Performance-sensitive runtime change (frame loop, stage rendering, host CPU sampling, perf recording) | `pnpm verify --gate`. Optionally, run `pnpm qa:display run -- pnpm qa:bench` on the base and on the tip, then read the result with `pnpm perf compare --bench <base> <tip>`. Start a bench only when no other CPU-sensitive check is running. |

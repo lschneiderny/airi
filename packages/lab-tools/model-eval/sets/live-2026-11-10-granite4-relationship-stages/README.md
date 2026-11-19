@@ -13,8 +13,8 @@ This set contains 16 replies from one live run of `fixtures/model/scenarios/rela
 ## Production
 
 ```sh
-pnpm qa:model run --scenario relationship-stages --base-url http://127.0.0.1:11434/v1 --model granite4:latest --machine-label luke-linux-4060ti
-pnpm qa:model score <run dir>/transcripts.jsonl
+pnpm lab:model run --scenario relationship-stages --base-url http://127.0.0.1:11434/v1 --model granite4:latest --machine-label luke-linux-4060ti
+pnpm lab:model score <run dir>/transcripts.jsonl
 ```
 
 The model run is `.temp/qa/20261110-181348-model-run-relationship-stages/`, on commit `44a561d64`. Its `run.json` records `dirty: true` because the checkout held untracked planning files; no tracked file differed. `transcripts.jsonl` is unchanged since that run.
