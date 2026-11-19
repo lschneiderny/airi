@@ -9,15 +9,6 @@ vi.mock('vue-i18n', () => ({
   }),
 }))
 
-vi.mock('@proj-airi/stage-shared/composables', () => ({
-  useLocalStorageManualReset: vi.fn((key: string, initialValue: string) => {
-    // Tests control persisted state by pre-seeding localStorage before each case
-    const stored = localStorage.getItem(key)
-    const value = stored !== null ? stored : initialValue
-    return ref(value)
-  }),
-}))
-
 describe('useLanguage', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
@@ -150,5 +141,15 @@ describe('useLanguage', () => {
     await nextTick()
 
     expect(setLocale).toHaveBeenCalledWith('ja')
+  })
+  it('a first launch writes nothing to settings/language', async () => {
+    const language = ref('en')
+    const getMainLocale = vi.fn(async () => undefined)
+    const setLocale = vi.fn(async () => {})
+
+    const { restore } = useLanguage(language, getMainLocale, setLocale)
+    await restore()
+
+    expect(localStorage.getItem('settings/language')).toBeNull()
   })
 })

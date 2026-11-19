@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import type { Ref } from 'vue'
 
+import { useTheme } from '@proj-airi/ui'
 import { Rive } from '@rive-app/canvas-lite'
-import { breakpointsTailwind, useBreakpoints, useDark } from '@vueuse/core'
+import { breakpointsTailwind, useBreakpoints } from '@vueuse/core'
 import { computed, onMounted, ref, useTemplateRef, watch } from 'vue'
 
 import CircleFadeInAnimation from './assets/circle_blink_in_-_loading_(@proj-airi).riv'
@@ -247,7 +248,7 @@ const riveCanvas = useTemplateRef<HTMLCanvasElement>('riveCanvas')
 const rive = ref<Rive>()
 const crtRef = useTemplateRef<InstanceType<typeof CRT>>('crtRef')
 
-const isDark = useDark()
+const { isDark } = useTheme()
 
 function getTimestamp(): number {
   return performance.now() / 1000 * timeMultiplier.value
