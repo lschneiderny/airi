@@ -23,7 +23,7 @@ pnpm qa:stage measure | gate | capture ...
 pnpm qa:host smoke
 ```
 
-Live2D has a headless runner but no statistical gate. `pnpm qa:live2d-rig` runs one emotion trial through the Natural driver on the ForBOOTH rig and Cubism Core in Node and prints the samples, moving channels, trace hash, and speed. Use it to check that a Natural or Live2D motion change still drives the rig. For rendered Live2D checks, use `qa:app` or the `airi-qa` MCP server with a Live2D model, then a visual review.
+Live2D has a headless runner but no statistical gate. `pnpm qa:live2d-rig` runs one emotion trial through the Natural driver on the ForBOOTH rig and Cubism Core in Node and prints the samples, moving channels, trace hash, and speed. Use it to check that a Natural or Live2D motion change still drives the rig; `pnpm verify --gate` runs the rig test through `pnpm qa:test:model` when `AIRI_QA_RIG_FORBOOTH` is set. To show a Live2D change working in the app, use `qa:app` or the `airi-qa` MCP server with a Live2D model. How it feels goes to the [review backlog](../../../docs/ai/context/testing.md#motion-feel) and never blocks landing.
 
 For the MMD desktop stage, `pnpm qa:stage measure` records window/desktop frame-budget pairs and `pnpm qa:stage gate <json>...` judges `stage-walk-skate`, `stage-arm-penetration`, `stage-frame-budget`, `stage-gesture-walk`, and `stage-action-preempt`. `pnpm qa:stage capture --port <cdp port> --scenario idle --seconds 30 --out <dir>` records final MMD bones, shots and a contact sheet; `walk` needs stage mode and `attach` records without cues. Capture requires the Natural MMD driver, established by MMD diagnostics, not the Live2D fields of the motion QA bridge. Run measurements and captures inside the isolated QA display on Linux, with a temporary profile; stop the app and display afterward. A measurement moves the real OS cursor and needs a quiet, undisturbed desktop. See the Stage gates section of the qa-tools README.
 
@@ -48,7 +48,7 @@ pnpm qa:display run -- pnpm qa:stage measure --pairs <n> --profile <profile dir>
 pnpm qa:display down
 ```
 
-The session is a GPU-accelerated KWin compositor with its own Xwayland and D-Bus bus, run as a systemd user unit, so nothing reaches the user's desktop. Use `--name <name>` when another agent's session may be running, and stop your own session when you finish. `pnpm qa:display shot <file.png>` captures the whole session display when CDP screenshots are not enough. The display does not change a command's CPU slot class. Details: [`scripts/dev-tools/README.md`](../../../scripts/dev-tools/README.md#pnpm-qadisplay).
+The session is a GPU-accelerated KWin compositor with its own Xwayland and D-Bus bus, run as a systemd user unit, so nothing reaches the user's desktop. Use `--name <name>` when another agent's session may be running, and stop your own session when you finish. `pnpm qa:display shot <file.png>` captures the whole session display when CDP screenshots are not enough. Details: [`scripts/dev-tools/README.md`](../../../scripts/dev-tools/README.md#pnpm-qadisplay).
 
 Run `pnpm qa:host smoke` to compare a temporary Electron app's capability snapshot with the runner and observe host signals for 180 seconds. On native Wayland, pass `--expect-idle verified` or `--expect-idle unverified`, according to the machine's idle probe. Pass `--xwayland` to launch the XWayland backend; that flag requires a Linux Wayland session. The command tears down its app and temporary profile when it finishes.
 
@@ -66,6 +66,6 @@ Naturalness remains Luke's visual call. Never retune a gate, scorer constant, or
 
 ## Heavy runs
 
-Do not commit run output or rig, model, or core assets. App sessions take the `live` CPU slot class. `qa:stage measure` and `qa:bench` take `exclusive`, which waits until no other lease holds slots, and a measurement needs an undisturbed desktop. Run `pnpm slots status` to inspect current holders and queued work.
+Do not commit run output or rig, model, or core assets. `qa:bench` and `qa:stage measure` wait up to 30 minutes for a quiet host before they measure, and a measurement needs an undisturbed desktop.
 
 For details, read [`packages/qa-tools/README.md`](../../../packages/qa-tools/README.md).
