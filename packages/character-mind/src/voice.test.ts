@@ -1,11 +1,12 @@
 import type { GateSignals, SavedGateMemory, SituationState, UrgeGateMemory } from '@proj-airi/stage-shared/situation'
 
-import type { MindIntent, MindRandom, MindState, MindStimulus, VoiceRun, VoiceView } from './types'
+import type { MindIntent, MindRandom, MindState, MindStimulus, VoiceRequest, VoiceRun, VoiceView } from './types'
 
 import { DOUBLE_TEXT_PROBABILITY, FLOOR_MS, HOUR_MS, initialSituationState, initialUrgeMemory, promotionUrgeMemory, randomSource, restoreSocialMemory, visibilityRegainUrgeMemory } from '@proj-airi/stage-shared/situation'
 import { describe, expect, it } from 'vitest'
 
 import { initialMindState, step } from './step'
+import { nextVoiceWakeAt, WIDGET_DEADLINE_MARGIN_MS, WIDGET_START_WAIT_MS } from './voice'
 
 const SEC = 1000
 const MIN = 60 * SEC
@@ -123,7 +124,7 @@ describe('voice-tick', () => {
     const intent = speakOf(mind.send(T0, tick({}, true)))
 
     expect(intent).toMatchObject({ channel: 'voice', cause: 1, line: { kind: 'reach-out', topicKey: 'own-day', reason: { kind: 'own-day', category: 'open' } } })
-    expect(mind.state.voice.line).toEqual({ turnId: intent.turnId, kind: 'reach-out', before: expect.objectContaining({ fires: [], pending: null }) })
+    expect(mind.state.voice.line).toEqual({ turnId: intent.turnId, kind: 'reach-out', speakBy: null, before: expect.objectContaining({ fires: [], pending: null }) })
     expect(mind.state.voice.lastGate).toMatchObject({ fire: true, reason: 'forced' })
     expect(mind.draws).toBe(6)
   })
@@ -185,10 +186,121 @@ describe('user and external turns', () => {
   })
 })
 
+function request(turnId: string, overrides: Parameters<typeof view>[0] = {}, fields: Partial<VoiceRequest> = {}): MindStimulus {
+  return { kind: 'voice-request', request: { turnId, topicKey: 'notify:weather', topicText: 'Rain at five', supplement: null, timeoutMs: 30 * SEC, ...fields }, view: view(overrides) }
+}
+
+const kindsOf = (intents: readonly MindIntent[]) => intents.map(intent => intent.kind)
+
+describe('voice-request', () => {
+  it('speaks a widget line at once when nobody is busy, and opens the line with its deadline', () => {
+    const mind = script()
+    const intent = speakOf(mind.send(T0, request('spark:1', {}, { supplement: 'short' })))
+
+    expect(intent).toMatchObject({ channel: 'voice', turnId: 'spark:1', line: { kind: 'widget', topicKey: 'notify:weather', topicText: 'Rain at five', supplement: 'short' } })
+    expect(mind.state.voice.line).toEqual({ turnId: 'spark:1', kind: 'widget', before: null, speakBy: T0 + 30 * SEC - WIDGET_DEADLINE_MARGIN_MS })
+    expect(mind.state.voice.requests).toEqual([])
+  })
+
+  it('ignores the gate settings and presence', () => {
+    const mind = script()
+    const away = { ...situation, presence: { state: 'away' as const, reason: null, sinceMs: T0 - MIN } }
+    const settings = { enabled: false, chattiness: 0, dontDisturb: true, quietApps: ['*'], speakDuringGames: false }
+
+    speakOf(mind.send(T0, request('spark:1', { situation: away, settings, signals: { stageVisible: false, desktopFresh: false, foregroundFresh: false } })))
+  })
+
+  const holds: Array<[string, Parameters<typeof view>[0]]> = [
+    ['the user speaks', { signals: { userSpeaking: true } }],
+    ['the user may speak', { signals: { userSpeaking: null } }],
+    ['the user types', { signals: { userTyping: true } }],
+    ['she speaks', { signals: { characterSpeaking: true } }],
+    ['a turn generates', { signals: { generating: true } }],
+    ['a send is queued', { signals: { queued: 1 } }],
+    ['an unprompted turn is pending', { unpromptedPending: true }],
+  ]
+  it.each(holds)('defers while %s, and speaks at the first quiet tick', (_, busy) => {
+    const mind = script()
+    expect(mind.send(T0, request('spark:1', busy))).toEqual([])
+    expect(mind.send(T0 + 2 * SEC, tick(busy))).toEqual([])
+    expect(mind.state.voice.requests).toHaveLength(1)
+
+    expect(speakOf(mind.send(T0 + 4 * SEC, tick())).line.kind).toBe('widget')
+    expect(mind.state.voice.lastGate).toBeNull()
+  })
+
+  it('defers while a line is open, and serves requests oldest first', () => {
+    const mind = script()
+    mind.send(T0, request('spark:1'))
+    expect(mind.send(T0 + SEC, request('spark:2'))).toEqual([])
+    expect(mind.send(T0 + 2 * SEC, request('spark:3'))).toEqual([])
+    mind.send(T0 + 3 * SEC, { kind: 'voice-outcome', turnId: 'spark:1', outcome: 'declined' })
+
+    expect(mind.state.voice.line).toBeNull()
+    expect(speakOf(mind.send(T0 + 4 * SEC, tick())).turnId).toBe('spark:2')
+  })
+
+  it('drops a request past its start wait', () => {
+    const mind = script()
+    mind.send(T0, request('spark:1', { signals: { characterSpeaking: true } }))
+    const intents = mind.send(T0 + WIDGET_START_WAIT_MS, tick())
+
+    expect(intents).toMatchObject([{ channel: 'voice', kind: 'drop', turnId: 'spark:1' }])
+    expect(mind.state.voice.requests).toEqual([])
+  })
+
+  it('cancels a widget line not spoken by its deadline, and closes it', () => {
+    const mind = script()
+    mind.send(T0, request('spark:1', {}, { timeoutMs: 10 * SEC }))
+    expect(mind.send(T0 + 8 * SEC, tick({ signals: { stageVisible: false } }))).toEqual([])
+    const intents = mind.send(T0 + 9 * SEC, tick({ signals: { stageVisible: false } }))
+
+    expect(intents).toMatchObject([{ channel: 'voice', kind: 'cancel', turnId: 'spark:1' }])
+    expect(mind.state.voice.line).toBeNull()
+  })
+
+  it('keeps the gate off a waiting request and its topic', () => {
+    const mind = script()
+    mind.send(T0, request('spark:1', { signals: { characterSpeaking: true } }, { topicKey: 'own-day' }))
+    const intents = mind.send(T0 + SEC, tick({ signals: { characterSpeaking: true } }, true))
+
+    expect(intents).toEqual([])
+    expect(mind.state.voice.lastGate).toBeNull()
+    expect(kindsOf(mind.send(T0 + 2 * SEC, tick({}, true)))).toEqual(['speak'])
+    expect(mind.state.voice.line?.kind).toBe('widget')
+  })
+
+  it('starts the floor for a spoken widget line, which is no unanswered opening', () => {
+    const mind = script()
+    mind.send(T0, tick({ signals: { stageVisible: false } }))
+    mind.send(T0 + SEC, request('spark:1'))
+    mind.send(T0 + 2 * SEC, { kind: 'voice-outcome', turnId: 'spark:1', outcome: 'spoken' })
+
+    expect(mind.state.voice.line).toBeNull()
+    expect(mind.gate).toMatchObject({ lastFireAtMs: T0 + 2 * SEC, lastSpokenAtMs: T0 + 2 * SEC, unanswered: 0, pending: null })
+  })
+
+  it('names the earliest widget deadline as the wake time', () => {
+    const mind = script()
+    expect(nextVoiceWakeAt(mind.state.voice)).toBeNull()
+    mind.send(T0, request('spark:1', {}, { timeoutMs: 30 * SEC }))
+    mind.send(T0 + SEC, request('spark:2'))
+    expect(nextVoiceWakeAt(mind.state.voice)).toBe(T0 + WIDGET_START_WAIT_MS + SEC)
+
+    mind.send(T0 + 2 * SEC, request('spark:3', {}, { timeoutMs: 5 * SEC }))
+    mind.send(T0 + 3 * SEC, { kind: 'voice-outcome', turnId: 'spark:1', outcome: 'declined' })
+    mind.send(T0 + 4 * SEC, tick())
+    // spark:2 now speaks with its own deadline; spark:3 waits for its start.
+    expect(nextVoiceWakeAt(mind.state.voice)).toBe(T0 + 2 * SEC + WIDGET_START_WAIT_MS)
+  })
+})
+
 it('continues identically after a JSON round trip of the state', () => {
   const mind = script()
   const { turnId } = speakOf(mind.send(T0, tick({}, true)))
   mind.send(T0 + SEC, { kind: 'voice-outcome', turnId, outcome: 'spoken' })
+  mind.send(T0 + SEC, request('spark:1', { signals: { characterSpeaking: true } }))
+  mind.send(T0 + SEC, request('spark:2'))
   const restored: MindState = JSON.parse(JSON.stringify(mind.state))
   const next = tick({}, true)
 
