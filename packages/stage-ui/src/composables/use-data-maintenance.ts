@@ -2,6 +2,7 @@ import type { StoreGeneric } from 'pinia'
 
 import type { DataExportAdapter, DataImportAdapter } from '../libs/data-transfer'
 import type { StateRegistrationId } from '../persistence/state-registry'
+import type { HostDataDeletion } from './host-data-deletion'
 
 import { isStageTamagotchi } from '@proj-airi/stage-shared'
 import { useLive2DNaturalSettings } from '@proj-airi/stage-ui-live2d/composables/live2d'
@@ -182,6 +183,24 @@ export function useDataMaintenance() {
     await resetRegisteredState(context)
   }
 
+  /**
+   * "Delete all data" as the user runs it: the registry, then the host step. A renderer failure must not keep the
+   * host's data, so the host step runs anyway; the first failure is thrown after both ran.
+   */
+  async function deleteAllDataWithHost(deleteHostData?: HostDataDeletion) {
+    const failures: unknown[] = []
+    for (const step of [deleteAllData, async () => deleteHostData?.()]) {
+      try {
+        await step()
+      }
+      catch (error) {
+        failures.push(error)
+      }
+    }
+    if (failures.length > 0)
+      throw failures[0]
+  }
+
   async function resetDesktopApplicationState() {
     if (!isStageTamagotchi())
       return
@@ -296,6 +315,7 @@ export function useDataMaintenance() {
     createModuleSettingsExportAdapter,
     createModuleSettingsImportAdapter,
     deleteAllData,
+    deleteAllDataWithHost,
     resetDesktopApplicationState,
   }
 }

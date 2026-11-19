@@ -16,6 +16,7 @@ import {
   motionQaAwaitCaptureInvokeEventa,
   motionQaChatSendInvokeEventa,
   motionQaConfigureInvokeEventa,
+  motionQaDeleteAllDataInvokeEventa,
   motionQaEventsInvokeEventa,
   motionQaImportModelFromInputInvokeEventa,
   motionQaRunScenarioInvokeEventa,
@@ -69,6 +70,8 @@ export interface MotionQaBridgeOptions {
   performance: () => { inputs: PerformanceInputs, state: PerformanceState }
   /** Devtools "Evaluate now" in the leader window: one forced gate tick and its decision. */
   evaluateVoice: () => Promise<SituationGateEvaluation>
+  /** "Delete all data" as the Data settings page runs it, host step included; rejects with the first failure. */
+  deleteAllData: () => Promise<void>
   /** Defaults to `performance.now()` and `requestAnimationFrame`. */
   frames?: MotionQaFrames
 }
@@ -383,6 +386,15 @@ export function useMotionQaBridge(options: MotionQaBridgeOptions) {
     }),
     // A JSON copy: the decision is frozen store data whose trace the contract leaves loose.
     defineInvokeHandler(context, motionQaVoiceEvaluateInvokeEventa, async () => JSON.parse(JSON.stringify(await options.evaluateVoice())) as MotionQaVoiceEvaluateResult),
+    defineInvokeHandler(context, motionQaDeleteAllDataInvokeEventa, async () => {
+      try {
+        await options.deleteAllData()
+        return { ok: true as const }
+      }
+      catch (error) {
+        return { ok: false as const, error: errorMessageFrom(error) ?? 'unknown error' }
+      }
+    }),
     defineInvokeHandler(context, motionQaRunScenarioInvokeEventa, ({ scenario }) => runScenario(scenario)),
     defineInvokeHandler(context, motionQaAwaitCaptureInvokeEventa, async ({ captureId }) => {
       if (!startedCaptures.has(captureId))

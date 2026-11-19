@@ -46,9 +46,11 @@ import { computed, defineAsyncComponent, getCurrentScope, nextTick, onMounted, o
 import StageAvatarModelMissing from './stage-avatar-model-missing.vue'
 import StageRenderError from './stage-render-error.vue'
 
+import { useHostDataDeletion } from '../../composables/host-data-deletion'
 import { useCharacterMind } from '../../composables/performance/use-character-mind'
 import { useIdleProps } from '../../composables/performance/use-idle-props'
 import { useStagePerformanceConductor } from '../../composables/performance/use-stage-performance-conductor'
+import { useDataMaintenance } from '../../composables/use-data-maintenance'
 // import { useDuckDb } from '../../composables/use-duck-db'
 import { Emotion, EMOTION_VRMExpressionName_value, EmotionThinkMotionName } from '../../constants/emotions'
 import { useLive2DStageMotionMagic } from '../../features/motions/live2d/use-live2d-stage-motion-magic'
@@ -732,6 +734,9 @@ useIntervalFn(() => naturalPerformanceOverride.publishIdleLife(idleProps.state()
 // production builds drop this block, and with it the only import of the handler module.
 if (import.meta.env.DEV && isMotionQaBridgeEnabled()) {
   const scope = getCurrentScope()
+  // Created in setup: the bridge starts after an await, where neither injection nor store creation has a component.
+  const deleteHostData = useHostDataDeletion()
+  const dataMaintenance = useDataMaintenance()
   void import('../../composables/performance/use-motion-qa-bridge')
     .then((module) => {
       // The stage may unmount before the module arrives; a stopped scope must not gain handlers.
@@ -752,6 +757,7 @@ if (import.meta.env.DEV && isMotionQaBridgeEnabled()) {
           renderError: () => stageRenderError.value,
           performance: () => ({ inputs: performanceInputs, state: performance.value }),
           evaluateVoice: () => useSituationObservabilityStore().evaluateGateLeader(),
+          deleteAllData: () => dataMaintenance.deleteAllDataWithHost(deleteHostData),
         }))
       }
     })
