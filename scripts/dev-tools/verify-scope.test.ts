@@ -2,7 +2,7 @@ import type { LastVerifyPass } from './verify-plan'
 
 import { describe, expect, it } from 'vitest'
 
-import { advanceLastPass, parseVerifyArgs, selectVerifyScope, touchesAppRuntime, typecheckFilters, verifySteps } from './verify-plan'
+import { advanceLastPass, followUpChecks, parseVerifyArgs, selectVerifyScope, typecheckFilters, verifySteps } from './verify-plan'
 
 const context = { branch: 'luke/feat/example', mergeBase: 'base', gate: false }
 const entry = { tree: 'verified-tree', head: 'verified-head', recordedAt: '2026-11-10T00:00:00.000Z' }
@@ -84,7 +84,21 @@ describe('verify gate and typecheck planning', () => {
     ['scripts/dev-tools/verify.ts', false],
     ['packages/stage-shared/README.md', false],
     ['apps/component-calling/src/main.ts', false],
+    ['packages/stage-shared/src/index.test.ts', false],
   ])('classifies gate smoke coverage for %s', (path, expected) => {
-    expect(touchesAppRuntime([{ path, deleted: true }])).toBe(expected)
+    expect(followUpChecks([{ path, deleted: true }]).some(line => line.includes('qa:smoke'))).toBe(expected)
+  })
+
+  it.each([
+    ['packages/motion-driver-natural/src/index.ts', ['qa:live2d-rig']],
+    ['packages/stage-ui-live2d/src/composables/live2d/live2d.ts', ['qa:smoke', 'qa:live2d-rig']],
+    ['packages/stage-ui-live2d/src/components/scene.vue', ['qa:smoke']],
+    ['packages/stage-ui-mmd/src/index.ts', ['qa:smoke', 'qa:motion3d diff']],
+    ['packages/qa-tools/src/t2-3d/reports/idle-acts.ts', ['inject']],
+    ['docs/ai/context/testing.md', []],
+  ])('names the follow-up checks for %s in rule order', (path, expected) => {
+    const lines = followUpChecks([{ path, deleted: false }])
+    expect(lines).toHaveLength(expected.length)
+    expected.forEach((check, index) => expect(lines[index]).toContain(check))
   })
 })

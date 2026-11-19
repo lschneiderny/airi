@@ -22,8 +22,8 @@ that opens app windows through `pnpm qa:display run --`.
 
 App runtime code means files under `apps/stage-tamagotchi/src/**`,
 `packages/stage-ui*/src/**`, `packages/stage-shared/src/**`,
-`packages/stage-pages/src/**`, or `packages/stage-layouts/src/**`. A
-`--gate` run prints a smoke reminder for these paths.
+`packages/stage-pages/src/**`, or `packages/stage-layouts/src/**`. When
+these paths change, `pnpm verify` lists the smoke after its summary.
 
 Rendered sessions are needed only for visible changes. Other app runtime
 changes need the clean-start smoke at the branch gate, not a `qa:app` session.
@@ -38,6 +38,11 @@ it is planned, not checked: no check above runs there, and a change does not
 need evidence from them.
 
 ## Checks by change type
+
+`pnpm verify` lists the rows below that it can detect from changed paths, under
+`also needed, not run by verify`. The rows that need judgment, such as a
+visible change, test data read through `fs`, or a performance-sensitive change,
+are listed only here.
 
 | Change | Required checks |
 | --- | --- |

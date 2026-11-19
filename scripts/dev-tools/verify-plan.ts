@@ -63,8 +63,43 @@ export function advanceLastPass(record: LastVerifyPass | null, context: VerifyCo
   }
 }
 
-export function touchesAppRuntime(changed: ChangedFile[]): boolean {
-  return changed.some(({ path }) => /^(?:apps\/stage-tamagotchi|packages\/(?:stage-ui[^/]*|stage-shared|stage-pages|stage-layouts))\/src\//.test(path))
+/**
+ * Checks that verify does not run, keyed by the changed paths that need them, so an agent learns them from the
+ * verify output instead of reading the policy. Keep in step with "Checks by change type" in
+ * `docs/ai/context/testing.md`; rows that need judgment, such as "a visible change", stay only there.
+ */
+const followUpRules: readonly { paths: RegExp, reason: string, checks: string }[] = [
+  {
+    paths: /^(?:apps\/stage-tamagotchi|packages\/(?:stage-ui[^/]*|stage-shared|stage-pages|stage-layouts))\/src\//,
+    reason: 'app runtime changed',
+    checks: 'before landing, pnpm qa:display run -- pnpm qa:smoke',
+  },
+  {
+    paths: /^packages\/(?:(?:motion-driver-natural|motion-driver-magic|model-driver-magic-live2d)\/src|stage-ui-live2d\/src\/composables\/live2d)\//,
+    reason: 'Natural or Live2D motion changed',
+    checks: 'pnpm qa:live2d-rig, then a qa:app or airi-qa session with a Live2D model, with screenshots reviewed by eye',
+  },
+  {
+    paths: /^packages\/(?:motion-driver-humanoid|stage-ui-mmd)\/src\//,
+    reason: 'MMD body motion changed',
+    checks: 'pnpm qa:test:model; pnpm qa:motion3d run for each affected scenario, and pnpm qa:motion3d diff printing IDENTICAL between base and tip for each scenario the change must not move',
+  },
+  {
+    paths: /^packages\/qa-tools\/src\/t2-3d\/reports\//,
+    reason: 'a qa:motion3d report rule changed',
+    checks: 'labelled qa:motion3d inject cases sealed before scoring, and the report version bump in its own commit',
+  },
+]
+
+/** A test file changes no runtime behavior, so it alone needs no follow-up check. */
+const testFile = /\.(?:browser\.)?test\.[cm]?[jt]sx?$/
+
+/** One line per follow-up check the changed files need, in rule order. */
+export function followUpChecks(changed: ChangedFile[]): string[] {
+  const paths = changed.map(({ path }) => path).filter(path => !testFile.test(path))
+  return followUpRules
+    .filter(rule => paths.some(path => rule.paths.test(path)))
+    .map(rule => `${rule.checks} (${rule.reason})`)
 }
 
 /**

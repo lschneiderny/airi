@@ -91,7 +91,7 @@ The per-branch record lives at `<git common dir>/airi-verify/last/<encoded-branc
 
 After a pass, only that step's entry advances. Skipped and failed steps leave their entries unchanged. A pass against a different merge base starts a new record so old entries cannot narrow the other steps. Dry runs never write records. Files must remain unchanged during the step before the last-pass record is written.
 
-Use `pnpm verify --gate` before landing to check the full branch regardless of previous passes. If the branch touches app runtime paths (`apps/stage-tamagotchi/src/`, `packages/stage-ui*/src/`, `packages/stage-shared/src/`, `packages/stage-pages/src/`, or `packages/stage-layouts/src/`), the gate prints a reminder to run `pnpm qa:display run -- pnpm qa:smoke`.
+Use `pnpm verify --gate` before landing to check the full branch regardless of previous passes. After the summary, every run lists the checks the branch still needs that verify does not run, under `also needed, not run by verify`. The list comes from the changed non-test paths since the merge base (`followUpChecks` in `verify-plan.ts`): app runtime paths need `qa:smoke` before landing, Natural and Live2D motion packages need `qa:live2d-rig` and a Live2D session, MMD body packages need `qa:test:model` and `qa:motion3d` runs, and `qa:motion3d` report rules need labelled inject cases.
 
 An empty scope reports `skipped`.
 

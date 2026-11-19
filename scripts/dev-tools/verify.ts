@@ -15,7 +15,7 @@ import { gatedNotice, listGatedTestFiles } from './lib/gated-tests'
 import { changedFiles, git, gitCommonDir, repoRoot, workingTreeHash } from './lib/git'
 import { appendVerifyRun, formatVerifyStats, readVerifyStats } from './verify-history'
 import { readLastPass, writeLastPass } from './verify-last-pass'
-import { advanceLastPass, lintAllFixable, parseVerifyArgs, planStepLease, planVerify, relatedTestCommand, selectVerifyScope, testPrerequisiteTurboArgs, touchesAppRuntime, typecheckFilters, verifyUsage } from './verify-plan'
+import { advanceLastPass, followUpChecks, lintAllFixable, parseVerifyArgs, planStepLease, planVerify, relatedTestCommand, selectVerifyScope, testPrerequisiteTurboArgs, typecheckFilters, verifyUsage } from './verify-plan'
 
 interface Command {
   label: string
@@ -150,8 +150,7 @@ async function main(): Promise<number> {
 
   const slotsEnabled = !process.env.CI && process.env.AIRI_CPU_SLOTS !== 'off'
   console.info(`verify: merge base with ${args.base} ${base.slice(0, 9)}, tree ${tree.slice(0, 9)}`)
-  if (args.gate && touchesAppRuntime(changedFiles(root, base, tree)))
-    console.info('gate reminder: app runtime changed; run pnpm qa:display run -- pnpm qa:smoke before landing.')
+  const followUps = followUpChecks(changedFiles(root, base, tree))
   const results: StepResult[] = []
   const finish = (result: StepResult, history: Pick<VerifyRun, 'scopeBase' | 'mode' | 'commands' | 'files' | 'waitMs' | 'grant'>) => {
     results.push(result)
@@ -279,6 +278,11 @@ async function main(): Promise<number> {
     console.info(`  ${result.step.padEnd(9)} ${result.status.padEnd(7)} ${result.durationMs ? `${(result.durationMs / 1000).toFixed(1)}s ` : ''}${result.detail}`)
   if (gatedTestNotice)
     console.info(gatedTestNotice)
+  if (followUps.length > 0) {
+    console.info('\nalso needed, not run by verify (docs/ai/context/testing.md):')
+    for (const line of followUps)
+      console.info(`  ${line}`)
+  }
   return results.some(result => result.status === 'failed') ? 1 : 0
 }
 
