@@ -94,7 +94,7 @@ and check for an `idle:sway:start` marker.
 apart in the first 100 s, then all five cue gestures in seeded order in the last
 20 s. With `E = PERFORMANCE_EMOTIONS`, `k = (seed - 1) mod 6` and
 `p = floor(k / 2)`, rotate E by `3p` and take its first half for even k or
-second half for odd k. Run seeds 1 to 6 and gate them together: each emotion
+second half for odd k. Run seeds 1 to 6 and score them together with `pnpm lab:motion3d gate`: each emotion
 then has exactly three trials, with twelve placebo trials. Higher seeds repeat
 the sets with different seeded orders; every trial id includes its seed.
 Shorter runs truncate trials and do not carry this pooling guarantee.
@@ -246,7 +246,7 @@ Each entry is consumed once. The first unused entry whose `match` matches the la
 
 Tool replies end with `finish_reason: "tool_calls"`. AIRI can then send another request containing the tool result, so include a final text entry after a tool entry. The example's `perform_action` uses `{"action":"stop"}`, which does not require importing a particular animation. To play a clip instead, use an action label exposed for the active model. Provider validation may itself issue a completion and consume an entry; inspect the log and restart the server before a deterministic scenario.
 
-`--set` and `--script` are mutually exclusive. Set mode reads validated `airi.reply-transcript/v1` rows from `model-eval/sets/<id>/transcripts.jsonl`, optionally filters by exact `--run-key`, and replays `reply.text` in file order. It does not replay recorded tools, thinking, errors, or usage. An empty selection fails at startup.
+`--set` and `--script` are mutually exclusive. Set mode reads validated `airi.reply-transcript/v1` rows from `packages/lab-tools/model-eval/sets/<id>/transcripts.jsonl`, optionally filters by exact `--run-key`, and replays `reply.text` in file order. It does not replay recorded tools, thinking, errors, or usage. An empty selection fails at startup.
 
 `--chunk-chars N` (default 16, range 1-1048576) splits content and tool arguments by Unicode code point. `--delay-ms N` (default 0, range 0-60000) delays each SSE chunk. Streaming requests receive OpenAI chunks followed by `data: [DONE]`; nonstreaming requests receive a completion JSON object. Exhaustion returns HTTP 409 with the source filename and zero-based next index; malformed JSON or invalid request shapes return 400. Unknown routes return 404 JSON. Browser CORS preflight is supported.
 
@@ -440,7 +440,7 @@ On 2026-11-09 a stdio client on Linux started a session outside a QA display wit
 | T0 | Unit tests cover local contracts and deterministic behavior. | Integration with a rig or a rendered application. |
 | T2 | The real model runs headlessly at a fixed timestep: MMD through `qa:motion3d` (production pipeline, IK, and Ammo physics), Live2D through `qa:live2d-rig` (the ForBOOTH rig, Cubism Core, physics, and pose). | Renderer pixels, complete application behavior, or naturalness. |
 | T3 | The Electron app runs from a fresh profile: `qa:smoke`, `qa:app`, the `airi-qa` MCP server, `qa:host smoke`, `qa:bench`, and `qa:stage`. | Statistical confidence from a single rendered run, or visual naturalness. |
-| T4 | Luke reviews rendered images and clips for appearance and naturalness. | An automated, reproducible naturalness score. |
+| T4 | A person reviews rendered images and clips for appearance and naturalness, later, from the [review backlog](../../docs/ai/context/testing.md#motion-feel); it never gates landing. | An automated, reproducible naturalness score. |
 
 Scores prove direction, size relative to the recipe, release, and detectability above the rig's idle noise. They do not prove naturalness, which remains Luke's visual call.
 
@@ -458,7 +458,7 @@ defaults to 12 and `--seed` to 1. Seconds must be greater than 0 and at most
 
 Before it attaches, capture samples the host: load per core, machine CPU use,
 and CPU pressure, judged by `decideHostContended`. Load from other work stalls
-frames until the motion3d gate refuses the trace with `frame-gap`, so a
+frames until the [`lab:motion3d gate`](../lab-tools/README.md#gate) refuses the trace with `frame-gap`, so a
 contended host makes capture exit 2 with the reading. The captured app is the
 target, not outside load: capture reads its CPU seconds through the CDP port
 (`SystemInfo.getProcessInfo`, which lists only the app's own processes) and
@@ -760,7 +760,7 @@ The `deleteAllData` verb runs "Delete all data" in the stage window through the 
 
 ## T2 status
 
-T2 is GO, path A. The Cubism Core and ForBOOTH rig ran in Node without a GPU using two documented global shims. Across 600 frames and 281 parameters, Node and Chromium differed by 0; the negative control differed by 30. The measured Natural, adapter, and physics loop reached 55.19x real time. The runner skips mesh deformation because it reads but does not write parameters and costs about 90% of a frame. `pnpm qa:live2d-rig` runs it on one emotion trial; `src/t2/runner.test.ts` runs it when `AIRI_QA_RIG_FORBOOTH` is set. The statistical Live2D gates, the T1 simulator, the scorer validation, and the rendered Live2D T3 harness were removed on 2026-11-17; Live2D gates come back on `qa:motion3d`'s gate pattern when needed. The [motion QA levels ADR](../../docs/ai/adr/2026-10-20-motion-qa-levels.md) records the removed design.
+T2 is GO, path A. The Cubism Core and ForBOOTH rig ran in Node without a GPU using two documented global shims. Across 600 frames and 281 parameters, Node and Chromium differed by 0; the negative control differed by 30. The measured Natural, adapter, and physics loop reached 55.19x real time. The runner skips mesh deformation because it reads but does not write parameters and costs about 90% of a frame. `pnpm qa:live2d-rig` runs it on one emotion trial; `src/t2/runner.test.ts` runs it when `AIRI_QA_RIG_FORBOOTH` is set. The statistical Live2D gates, the T1 simulator, the scorer validation, and the rendered Live2D T3 harness were removed on 2026-11-17; Live2D gates come back on `lab:motion3d`'s gate pattern when needed. The [motion QA levels ADR](../../docs/ai/adr/2026-10-20-motion-qa-levels.md) records the removed design.
 
 ## Architecture
 

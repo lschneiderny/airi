@@ -102,6 +102,7 @@ const toolPatterns: [string, RegExp][] = [
   ['electron-vite', /electron-vite/],
   ['vite', /[/\\]vite[/\\]|vite\.js|\bvite\b/],
   ['qa-tools', /qa-tools|motion\.ts/],
+  ['lab-tools', /lab-tools/],
   ['electron', /electron(?:\.exe)?/],
   ['godot', /godot/],
   ['tsx', /tsx[/\\]dist/],
