@@ -32,6 +32,7 @@ Tracked notes carry `status` (`inbox`, `open`, `next`, `doing`, `fixed`, `done`,
    - `.omo/plans/` and `.omo/boulder.json`, including untracked plans. A plan is work, not behavior: confirm in code before treating anything as built.
    - Workaround and debt markers added or removed: `git diff -U0 <baseline>..<HEAD> -- . ':!**/node_modules/**' | grep -E '^[+-].*(NOTICE:|TODO|FIXME)'`.
    - Branches that landed: `git cherry <HEAD> <branch>` for branches named in follow-ups.
+   - Commits that changed motion: `git log --format='%h %cs %s' <baseline>..<HEAD> -- <paths>`, with the paths of the Natural or Live2D and MMD rules in `followUpRules` (`scripts/dev-tools/verify-plan.ts`).
 
 ## 2. Check open tracked items
 
@@ -57,6 +58,8 @@ Show everything before writing anything. Use these tables:
 
 | Reference note | Why it needs refreshing |
 | --- | --- |
+
+When motion changed, propose one follow-up for the motion review backlog: title `Motion review <baseline short>..<HEAD short>`, `kind: tuning`, `area: avatar`. List each motion commit's hash, date and subject, the changed paths, and the scenarios and seeds to replay, taken from the commits, their plans, or `qa:motion3d affected` output; when none are named, say so. The user reviews feel from it later, so a complaint can be placed in time and bisected; it blocks nothing.
 
 Also list Known Limits rows to add, change or remove, and new ADRs for the table in `03 Development/Decision Log.md`. When a change moves an avatar system onto another model type, list the cells to update in `02 Design/Avatar/Natural Coverage by Model Type.md`.
 

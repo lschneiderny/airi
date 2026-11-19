@@ -89,8 +89,8 @@ Use workspace `package.json` names with pnpm filters, for example `@proj-airi/st
 
 Checks. [Testing and QA](docs/ai/context/testing.md) says what each check proves and which checks a change needs:
 - Inner loop: the narrowest project of the package, `pnpm -F <package> exec vitest run --project <node or browser> <path>`, with `<path>` relative to the package.
-- After each change: `pnpm verify`. It lints the changed files, typechecks the changed packages and their dependents, and runs the tests related to the changed code in each changed package and its dependents.
-- Before landing a branch: `pnpm verify --gate`, plus `pnpm qa:display run -- pnpm qa:smoke` when app runtime code changed.
+- After each change: `pnpm verify`. It lints the changed files, typechecks the changed packages and their dependents, and runs the tests related to the changed code in each changed package and its dependents. To keep working while it runs, start `pnpm verify --detach`, then block once with `pnpm verify --wait` under a 10-minute tool timeout.
+- Before landing a branch: `pnpm verify --gate`. It also runs the smoke and motion QA the changed paths need, and lists what remains.
 - Platforms: only macOS and Linux KDE Wayland are checked. Windows, sway, and X11 are planned, not checked.
 
 Use root `pnpm lint`, `pnpm typecheck`, or `pnpm test:run` (every package's whole test suite, cached by Turbo) only when a task needs the whole repository checked. Report only executed checks, their commands/results, changes, and follow-up work.
@@ -100,18 +100,18 @@ When a package test reads a file outside its package, add that file to the packa
 The `pnpm verify` typecheck covers Turbo workspace packages (`packages/*`, `apps/*`, `server/**`, `services/*`) only. Root scripts get lint and tests only. Engines use `pnpm typecheck:engines` and `pnpm build:engines`.
 The Electron build runs `electron-vite build`, not a typecheck; its typecheck runs `vue-tsc --noEmit`. Stage UI has no compilation build.
 
-To run the app as an agent, use `AIRI_DEV_QUIET=1 pnpm dev`: it writes a log file and prints only the ready URL and errors. On Linux, start every agent command that opens app windows (rendered QA runs, agent-browser on Electron, Vishot) through `pnpm qa:display run --`, so the user's desktop, focus, and cursor stay undisturbed. Use `--name <name>` for parallel sessions and stop yours with `pnpm qa:display down --name <name>`. A session of the `airi-qa` MCP server holds a `live` CPU lease, so always call `airi_stop` when done.
+To run the app as an agent, use `AIRI_DEV_QUIET=1 pnpm dev`: it writes a log file and prints only the ready URL and errors. On Linux, start every agent command that opens app windows (rendered QA runs, agent-browser on Electron, Vishot) through `pnpm qa:display run --`, so the user's desktop, focus, and cursor stay undisturbed. Use `--name <name>` for parallel sessions and stop yours with `pnpm qa:display down --name <name>`. An `airi-qa` MCP session keeps its app running until `airi_stop`; call it when done.
 
 Create and remove worktrees with `pnpm wt new <name>` and `pnpm wt rm <name>`. Stop a worktree's processes with `pnpm dev:top kill <name> --yes`, never by PID alone.
 
-Build, typecheck, and QA scripts take CPU slots ([cpu-slots](packages/cpu-slots/README.md)) from a shared budget. A waiting command prints the wait reason and who holds the budget, and prints again when the holders change; read that output instead of polling `pnpm slots status`. `AIRI_CPU_SLOTS=off` is a supported opt-out only for one-off diagnosis of the broker itself; never use it for routine runs. If a command prints `cpu-slots: dist/vitest.mjs is stale`, run `pnpm -F @proj-airi/cpu-slots build`. Never bypass the stale-build guard.
+Run at most three heavy checks (a full verify, a whole package suite, a rendered QA run) at once; more is unmeasured on this machine.
 
 ## TASK ROUTING
 Read the listed file before starting. Skill paths below are under `.agents/skills/`.
 | Task | Read |
 | --- | --- |
 | UI appearance/interaction design, changes, review | [DESIGN.md](DESIGN.md) |
-| Choosing checks that `pnpm verify` does not list after its summary: a visible change, test data read through `fs`, a performance-sensitive change, or the CPU broker | [Testing and QA](docs/ai/context/testing.md) |
+| Choosing checks that `pnpm verify` does not list after its summary: a visible change, test data read through `fs`, or a performance-sensitive change | [Testing and QA](docs/ai/context/testing.md) |
 | TypeScript/Vue writing, refactoring, review, including date, time, and unit helpers | [enforce-rules-for-typescript](.agents/skills/enforce-rules-for-typescript/SKILL.md) |
 | Tests, bug reproduction, mocks, test import boundaries | [enforce-rules-for-vitest](.agents/skills/enforce-rules-for-vitest/SKILL.md) |
 | Adding, changing, or planning tests or verification for a Vue page, component, or UI flow | [enforce-rules-for-ui-tests](.agents/skills/enforce-rules-for-ui-tests/SKILL.md) |

@@ -8,15 +8,6 @@
 - `src/stores/chat.ts` is the integration hub where chat meets presence, unprompted turns, and memory. It may gain wiring lines only. A new system, such as touch observations, lives in its own module and talks to chat through chat store actions or the hooks and controls the store hands out (`useSituationStore().observeChat` is the pattern).
 - The character mind decides whether and when she speaks unasked: reach-outs, spoken touch reactions, and widget or plugin turns. `chat.ts` and the orchestrator runtime run the turn it decided and report its outcome. Start an unprompted turn only from `VoicePort` `speak` in `src/stores/situation`, and add no timing, holds, or retries for unprompted turns in chat or the runtime. Only the user's own turns and notices bypass the mind.
 
-## COMMANDS
-
-Run from the repository root. Select the project that matches the test file.
-
-```sh
-pnpm -F @proj-airi/stage-ui exec vitest run --project node src/stores/modules/default.test.ts
-pnpm -F @proj-airi/stage-ui exec vitest run --project browser src/components/scenarios/chat/components/history.browser.test.ts
-```
-
 ## ANTI-PATTERNS
 
 - Prefer explicit subpaths over the `@proj-airi/stage-ui/stores` forwarding barrel for new consumers.

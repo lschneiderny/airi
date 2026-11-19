@@ -9,5 +9,3 @@
 - A new `stageWorld` calibration can mean the stage window moved to another display (`stageWorld.row` is set). Then only the camera changes: never rebase the gait, move the root, or reset physics on a calibration change. Read `docs/ai/adr/2026-11-10-display-hand-off.md` before changing how the scene reacts to `stageWorld`.
 - Never call `animation.playAction` for a user clip; the scene plays a clip only with `playLayer` when `intent.action` reaches `playing`. Body ducking reads `body.ownership()`, never raw clip weights. Dances never loop, because a mixer loop resets physics. Read `docs/ai/adr/2026-11-03-mmd-clip-actions.md` before changing the clip library, layered playback, or the action port.
 - Do not edit `@moeru/three-mmd` or node_modules. No model, texture, or VMD assets in the repository.
-
-Checks: `pnpm -F @proj-airi/stage-ui-mmd exec vitest run --project node` and `pnpm -F @proj-airi/stage-ui-mmd exec vitest run --project browser`.
