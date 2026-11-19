@@ -1,4 +1,4 @@
-import type { NaturalBodyIntent, NaturalMotionFrame } from './frame-types'
+import type { NaturalBodyIntent, NaturalMotionEvent, NaturalMotionFrame } from './frame-types'
 
 import { Buffer } from 'node:buffer'
 
@@ -149,6 +149,20 @@ describe('natural body intent', () => {
     expect(later.react).toEqual(started.react)
     expect(later.touch.poke).toEqual(started.touch.poke)
     expect(later.energy.reactingUntil).toBe(dt + 2)
+  })
+
+  it('glances at the screen when asked to react to a screen change', () => {
+    const motion = new NaturalMotion({ seed: 41 })
+    motion.setPerformance(idle, 0.5, 0)
+    const glances: Extract<NaturalMotionEvent, { kind: 'glance' }>[] = []
+    motion.setObserver((event) => {
+      if (event.kind === 'glance')
+        glances.push(event)
+    })
+    motion.react('screen-change', 0)
+    motion.advance(2 * dt)
+    expect(glances).toEqual([expect.objectContaining({ at: dt, cause: 'screen-change', hold: 0.4 })])
+    expect(motion.bodyIntent().react).toEqual({ seq: 1, at: dt, kind: 'screen-change' })
   })
 
   it('exposes each accepted emphasis payload and the detector envelope without consuming them', () => {

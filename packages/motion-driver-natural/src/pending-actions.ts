@@ -26,6 +26,8 @@ export type PendingAction
     | { kind: 'gesture', gesture: CueGestureKind, count: number }
     | { kind: 'mood', dose: MoodDose }
     | { kind: 'react', reaction: 'wake' | 'screen-change' }
+    /** Ends a sleep through the gentle wake; the idle layer reads it, and it is ignored while she is awake. */
+    | { kind: 'wake' }
     | { kind: 'poke', region: NaturalTouchRegion, x: number, y: number }
     | { kind: 'chat', cue: 'sent' | 'unfold', words: number }
 
@@ -61,7 +63,7 @@ interface StartedActions extends PokeSurpriseState {
 }
 
 /** Starts emotion impulses and desktop reactions requested since the previous step; returns the updated poke surprise state. */
-export function startPending(actions: Exclude<PendingAction, { kind: 'chat' }>[], at: number, targets: PendingActionTargets, pokeState: PokeSurpriseState): StartedActions {
+export function startPending(actions: Exclude<PendingAction, { kind: 'chat' | 'wake' }>[], at: number, targets: PendingActionTargets, pokeState: PokeSurpriseState): StartedActions {
   const { impulses, gaze, energy, mood, gestures, cueGestures, emotionStrengths, settings, emotions, notify } = targets
   let { pokes, lastPokeSurprise } = pokeState
   const pokeEvents: { at: number, region: NaturalTouchRegion, x: number, y: number }[] = []

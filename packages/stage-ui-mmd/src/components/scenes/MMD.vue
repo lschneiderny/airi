@@ -1822,6 +1822,10 @@ defineExpose({
   gesture: (kind: CueGestureKind, count: number) => natural?.gesture(kind, count),
   addMood: (dose: MoodDose) => natural?.addMood(dose),
   reactToTouch,
+  /** Natural only: ends a sleep with the gentle wake; ignored while she is awake. */
+  wakeFromSleep: () => natural?.wake(),
+  /** Natural only: a brief reaction to the desktop; `wake` also rouses her from sleep with a start. */
+  reactToDesktop: (reaction: 'wake' | 'screen-change') => natural?.react(reaction),
   setFaceBaseline: (baseline: FaceBaseline) => natural?.setFaceBaseline(baseline),
   /** The drive of self-directed idle behaviour; the stage sends it again every second. */
   setIdleDrive: (drive: NaturalIdleDrive | null) => { hostIdleDrive = drive },

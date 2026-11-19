@@ -198,6 +198,8 @@ export class Live2DNaturalMotionAdapter {
   private readonly pendingMoods: MoodDose[] = []
   private readonly pendingIdleCues: IdleCueKind[] = []
   private readonly pendingIdlePlays: IdleBehaviourKind[] = []
+  /** Wake and desktop reaction requests, handed to the controller in order on the next frame. */
+  private readonly pendingDesktop: ({ kind: 'wake' } | { kind: 'react', reaction: 'wake' | 'screen-change' })[] = []
   /** The drive the host last set, and the one the controller runs; they differ while Natural is inactive. */
   private idleDrive: NaturalIdleDrive | null = null
   private appliedIdleDrive: NaturalIdleDrive | null = null
@@ -352,6 +354,18 @@ export class Live2DNaturalMotionAdapter {
       this.pendingErrandAnswers.push({ seq, outcome })
   }
 
+  /** Ends a sleep with the gentle wake on the next frame; ignored while she is awake or another driver runs. */
+  wake() {
+    if (!this.disposed && this.attention().driver === 'natural')
+      this.pendingDesktop.push({ kind: 'wake' })
+  }
+
+  /** Starts a desktop reaction on the next frame; ignored while another driver runs. */
+  react(reaction: 'wake' | 'screen-change') {
+    if (!this.disposed && this.attention().driver === 'natural')
+      this.pendingDesktop.push({ kind: 'react', reaction })
+  }
+
   /** Plays one idle behaviour by name, for previews and scripted QA runs; accepted like a cue. */
   idlePlay(kind: IdleBehaviourKind) {
     const { driver, exclusive } = this.attention()
@@ -449,6 +463,14 @@ export class Live2DNaturalMotionAdapter {
     for (const { seq, outcome } of this.pendingErrandAnswers.splice(0)) {
       if (active)
         this.controller.answerIdleErrand(seq, outcome, this.time)
+    }
+    for (const request of this.pendingDesktop.splice(0)) {
+      if (!active)
+        continue
+      if (request.kind === 'wake')
+        this.controller.wake(this.time)
+      else
+        this.controller.react(request.reaction, this.time)
     }
     // Emotions queued while Natural is inactive are stale by the time it resumes.
     for (const emotion of attention.pendingEmotions.splice(0)) {
