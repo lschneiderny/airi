@@ -1,8 +1,6 @@
 import type { Buffer } from 'node:buffer'
 import type { ChildProcess } from 'node:child_process'
 
-import type { Lease } from '@proj-airi/cpu-slots'
-
 import type { LiveProcess, OwnedProcess, ProcessLister } from '../env/processes'
 
 import { createWriteStream } from 'node:fs'
@@ -54,8 +52,6 @@ export interface LaunchedApp {
   waitExit: (timeoutMs: number) => Promise<boolean>
   /** Rejects when the dev session prints a fatal startup error (Electron keeps running without a window after one). */
   fatal: Promise<never>
-  /** Releases the caller's lease reference after teardown has stopped its entire workload. */
-  releaseLease: () => void
 }
 
 /** Startup errors after which Electron stays alive but never opens the remote debug endpoint or a window. */
@@ -67,17 +63,15 @@ export const fatalStartupPattern = /App threw an error during load[^\n]*\n?[^\n]
  * `baseEnv` replaces the inherited environment, for example with a QA display session's environment. Either way
  * `ELECTRON_RUN_AS_NODE` is not passed on, so the app always starts as an app.
  */
-export async function launchStageTamagotchi(options: { repoRoot: string, profileDir: string, logFile: string, list: ProcessLister, lease: Lease, env?: Record<string, string>, script?: DevScript, electronArgs?: readonly string[], baseEnv?: NodeJS.ProcessEnv }): Promise<LaunchedApp> {
+export async function launchStageTamagotchi(options: { repoRoot: string, profileDir: string, logFile: string, list: ProcessLister, env?: Record<string, string>, script?: DevScript, electronArgs?: readonly string[], baseEnv?: NodeJS.ProcessEnv }): Promise<LaunchedApp> {
   const port = await findAvailablePort()
   const env = { ...t3LaunchEnv(options.profileDir, port), ...options.env }
-  // The command owns acquisition and failure cleanup; a multi-session gate keeps the same handle until its last run.
-  const { lease } = options
   // A shell started by an Electron app (an editor's agent terminal) exports ELECTRON_RUN_AS_NODE=1. Inherited, it
   // starts the app's Electron as plain Node, which fails on its first `electron` import.
   const { ELECTRON_RUN_AS_NODE: _runAsNode, ...inherited } = options.baseEnv ?? processEnv
   const child = spawnPnpm(['--dir', options.repoRoot, '-F', '@proj-airi/stage-tamagotchi', ...devScriptArgs(options.script ?? 'dev', options.electronArgs ?? [])], {
     repoRoot: options.repoRoot,
-    env: { ...inherited, ...env, ...lease.env },
+    env: { ...inherited, ...env },
     stdio: 'pipe',
     detached: platform !== 'win32',
   })
@@ -109,7 +103,6 @@ export async function launchStageTamagotchi(options: { repoRoot: string, profile
   if (child.pid === undefined)
     throw new Error(`Could not start the stage-tamagotchi dev session: ${(await exited) ?? 'no exit code'}`)
   const pid = child.pid
-  lease.addWorkload(pid)
   const live: LiveProcess | undefined = (await options.list()).find(entry => entry.pid === pid)
   const root: OwnedProcess = { pid, created: live?.created, commandLine: live?.commandLine ?? child.spawnargs.join(' ') }
   return {
@@ -119,7 +112,6 @@ export async function launchStageTamagotchi(options: { repoRoot: string, profile
     env,
     exited,
     fatal,
-    releaseLease: () => lease.release(),
     waitExit: timeoutMs => new Promise<boolean>((resolveWait) => {
       const timer = setTimeout(resolveWait, timeoutMs, false)
       void exited.then(() => {

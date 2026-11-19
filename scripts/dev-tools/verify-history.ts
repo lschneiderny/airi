@@ -46,8 +46,6 @@ export interface VerifyRun {
   readonly durationMs: number
   readonly commands: string[][]
   readonly files: string[]
-  readonly waitMs: number
-  readonly grant: number | null
 }
 
 function missing(error: unknown): boolean {
@@ -89,8 +87,7 @@ function nonnegative(value: unknown): value is number {
 /** Parse the JSONL boundary once; malformed lines never participate in statistics. */
 function isRun(value: unknown): value is VerifyRun {
   return object(value)
-    && nonnegative(value.ts) && nonnegative(value.durationMs) && nonnegative(value.waitMs)
-    && (value.grant === null || (nonnegative(value.grant) && Number.isInteger(value.grant)))
+    && nonnegative(value.ts) && nonnegative(value.durationMs)
     && ['worktree', 'head', 'tree', 'scopeBase'].every(key => typeof value[key] === 'string')
     && (value.branch === null || typeof value.branch === 'string')
     && (value.mode === 'branch' || value.mode === 'incremental')

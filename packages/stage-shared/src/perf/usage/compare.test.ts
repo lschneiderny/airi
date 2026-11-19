@@ -14,7 +14,7 @@ const JITTER = [-0.3, -0.1, 0, 0.1, 0.2, 0.3]
 const quartiles = (median: number) => ({ q1: median - 0.5, median, q3: median + 0.5 })
 
 /** One segment cell of the stage window whose median p50 frame time is `p50FrameMs`. */
-function cell(p50FrameMs: number, options: { mmdPhysics?: boolean, windows?: number, hostContended?: boolean, leaseContended?: boolean | null } = {}): FeatureCompareCell {
+function cell(p50FrameMs: number, options: { mmdPhysics?: boolean, windows?: number, hostContended?: boolean } = {}): FeatureCompareCell {
   return {
     epoch: 0,
     sha: 'a'.repeat(40),
@@ -36,7 +36,6 @@ function cell(p50FrameMs: number, options: { mmdPhysics?: boolean, windows?: num
     quartiles: { p50FrameMs: quartiles(p50FrameMs), share21: quartiles(0), share36: quartiles(0), share100: quartiles(0), cpuPct: null, workingSetKb: null },
     stages: null,
     incidents: 0,
-    ...(options.leaseContended === undefined ? {} : { leaseContended: options.leaseContended }),
   }
 }
 
@@ -202,15 +201,15 @@ describe('compareFeature', () => {
     expect(comparison.verdict).toBe('within-noise')
   })
 
-  it('drops host- and lease-contended cells but keeps cells whose lease state is unknown', () => {
+  it('drops host-contended cells and keeps the calm cells of the same session', () => {
     const rollups = [
       ...separateSessions(around(16), around(20)),
-      { sessionId: 'noisy', host: hostX, cells: [cell(90, { hostContended: true }), cell(90, { leaseContended: true }), cell(20.1, { leaseContended: null })] },
+      { sessionId: 'noisy', host: hostX, cells: [cell(90, { hostContended: true }), cell(20.1)] },
     ]
 
     const report = compareFeature({ rollups, feature: 'mmdPhysics', metric: 'p50FrameMs', seed: 1 })
 
-    expect(report.droppedCells).toEqual({ hostContended: 1, leaseContended: 1 })
+    expect(report.droppedCells).toEqual({ hostContended: 1 })
     expect(report.comparisons[0].b).toMatchObject({ blocks: 7, sessions: 7 })
   })
 

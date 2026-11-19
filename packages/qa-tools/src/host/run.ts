@@ -12,7 +12,6 @@ import { setTimeout } from 'node:timers/promises'
 import { parseArgs, promisify } from 'node:util'
 
 import { errorMessageFrom } from '@moeru/std'
-import { acquire } from '@proj-airi/cpu-slots'
 import { waitFor } from '@proj-airi/scenarios-stage-tamagotchi-electron/runtime/remote-debug'
 import { capabilitiesForHost, LINUX_DESKTOP_BACKENDS, resolveHostCapabilities } from '@proj-airi/stage-shared/host-capabilities'
 
@@ -36,7 +35,7 @@ export function applySmokeResult(report: { exitCode: number, failures: unknown[]
   report.failures.push(...result.failures)
 }
 
-/** The CLI owns signals and its lease until its entire app tree has stopped. */
+/** The CLI owns signals until its entire app tree has stopped. */
 export async function runHostCli(argv: string[], repoRoot: string): Promise<number> {
   const samples: HostSample[] = []
   const report: {
@@ -62,7 +61,6 @@ export async function runHostCli(argv: string[], repoRoot: string): Promise<numb
   const signals = ['SIGINT', 'SIGTERM', 'SIGBREAK'] as const
   for (const signal of signals)
     process.on(signal, onInterrupt)
-  let lease: Awaited<ReturnType<typeof acquire>> | undefined
   try {
     const { values, positionals } = parseArgs({
       args: argv,
@@ -105,12 +103,6 @@ export async function runHostCli(argv: string[], repoRoot: string): Promise<numb
       throw new Error('--expect-idle verified|unverified is required on linux-wayland')
     if (findWorktreeAppProcesses(await listLiveProcesses(), repoRoot, [process.pid, process.ppid]).length)
       throw new Error('Refusing to launch: this worktree already has an Electron session')
-    lease = await acquire({
-      class: 'live',
-      command: `qa:host ${argv.join(' ')}`,
-      cwd: repoRoot,
-      signal: AbortSignal.any([controller.signal, AbortSignal.timeout(20 * 60_000)]),
-    })
     controller.signal.throwIfAborted()
     const run = createRun({ tool: 'host', label: values.xwayland ? 'smoke-xwayland' : 'smoke', repoRoot })
     report.runDir = run.dir
@@ -121,7 +113,7 @@ export async function runHostCli(argv: string[], repoRoot: string): Promise<numb
     report.exitCode = 1
     try {
       const { app, bridge } = await appSession.start({
-        launch: { logFile: run.path('app.log'), script: values.xwayland ? 'dev:xwayland' : 'dev', lease },
+        launch: { logFile: run.path('app.log'), script: values.xwayland ? 'dev:xwayland' : 'dev' },
         onLaunched: launched => run.recordProcess({ rootPid: launched.root.pid, created: launched.root.created, commandLine: launched.root.commandLine }),
         beforeOnboarding: async ({ stage, app }) => {
           await failOnExit(app, 'the dispatcher', waitFor('motion QA dispatcher', async () => {
@@ -177,7 +169,6 @@ export async function runHostCli(argv: string[], repoRoot: string): Promise<numb
     report.failures.push({ code: refused ? 'refused' : 'run-failed', message: errorMessageFrom(error) ?? 'host smoke refused' })
   }
   finally {
-    lease?.release()
     for (const signal of signals)
       process.off(signal, onInterrupt)
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`)

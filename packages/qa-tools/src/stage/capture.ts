@@ -2,9 +2,9 @@ import type { MotionTraceEvent, MotionTraceV1 } from '@proj-airi/motion-driver-h
 import type { CdpClient } from '@proj-airi/scenarios-stage-tamagotchi-electron/runtime/remote-debug'
 import type { MMDMotionSnapshot } from '@proj-airi/stage-ui-mmd/stores'
 
+import type { HostQuietResult } from '../host-quiet/wait'
 import type { Motion3dCue } from '../t2-3d/scenarios'
 import type { StageMode } from './gates'
-import type { CapturePreflight } from './preflight'
 
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -39,8 +39,8 @@ export interface CaptureOptions {
    * (plan 2.4), otherwise the scenario's class (idle for `attach`).
    */
   scenarioClass: 'idle' | 'talk' | null
-  /** The CPU slot broker pre-flight and lease of this capture, recorded in `capture.json`. */
-  preflight: (CapturePreflight & { lease: 'exclusive' | null }) | null
+  /** The host-quiet pre-flight of this capture, recorded in `capture.json`. */
+  preflight: HostQuietResult | null
 }
 
 /** Requests a full V8 collection of the stage renderer and lets the frames after its pause settle for a second. */
@@ -134,7 +134,7 @@ async function drainRecordedTrace(client: CdpClient, frames: number) {
   return { trace, sorted, median, gapFraction: intervals.filter(interval => interval > 1 / 24).length / intervals.length, frameGap: frameGapFigures(decoded.channels, frames) }
 }
 
-/** Attaches to an existing app. Its launcher owns the live CPU lease and the isolated display. */
+/** Attaches to an existing app. Its launcher owns the isolated display. */
 export async function captureStage(options: CaptureOptions) {
   const scenario = motion3dScenarios.find(scenario => scenario.id === options.scenario)
   if (!['idle', 'walk', 'attach'].includes(options.scenario))

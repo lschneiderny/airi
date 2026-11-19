@@ -33,7 +33,7 @@ export function createAiriQaServer(session: QaSession, version: string): McpServ
   const server = new McpServer({ name: 'airi-qa', version })
 
   server.registerTool('airi_start', {
-    description: 'Launch the AIRI desktop app (development build, fresh temporary profile, replay LLM and speech, onboarding done) and wait until it is ready. On Linux it runs in a headless QA display, never on the user\'s desktop. Holds the exclusive CPU lease until airi_stop, and can wait in the CPU slot queue first. Takes about 30 seconds, plus the model import.',
+    description: 'Launch the AIRI desktop app (development build, fresh temporary profile, replay LLM and speech, onboarding done) and wait until it is ready. On Linux it runs in a headless QA display, never on the user\'s desktop. The app runs until airi_stop. Takes about 30 seconds, plus the model import.',
     inputSchema: {
       model: z.string().optional().describe('Absolute path to a Live2D ZIP or directory, an MMD ZIP or PMX/PMD, or a VRM to import and select'),
       kind: z.enum(['live2d', 'mmd', 'vrm']).optional().describe('Model kind; inferred from the extension, ZIPs and directories default to live2d'),
@@ -99,7 +99,7 @@ export function createAiriQaServer(session: QaSession, version: string): McpServ
   }, args => guarded(async () => json(await session.evaluate(args.expression) ?? null)))
 
   server.registerTool('airi_stop', {
-    description: 'Close the app, remove its temporary profile, release the CPU lease, and stop the QA display this server started. Always call it when done.',
+    description: 'Close the app, remove its temporary profile, and stop the QA display this server started. Always call it when done.',
   }, () => guarded(async () => json(await session.stop())))
 
   return server

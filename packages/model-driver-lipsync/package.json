@@ -19,7 +19,6 @@
     "wlipsync": "catalog:"
   },
   "devDependencies": {
-    "@proj-airi/cpu-slots": "workspace:^",
     "@vitest/browser-playwright": "catalog:vitest",
     "vitest": "catalog:vitest"
   }

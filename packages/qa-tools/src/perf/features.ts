@@ -1,11 +1,10 @@
 import type { FeatureCompareRollup, FeatureComparison, FeatureComparisonReport, FeatureMetric, FeatureSide, SegmentCell, UsageFeatureKey, UsageHost } from '@proj-airi/stage-shared/perf/usage'
 
-import type { LeaseContention } from './lease'
 import type { PerfData } from './read'
 
-import { compareFeature, FEATURE_MIN_BLOCKS, FEATURE_MIN_DECISIVE_PAIRED_SESSIONS, FEATURE_MIN_PAIRED_SESSIONS, FEATURE_MIN_SESSIONS, FEATURE_MIN_WINDOWS, USAGE_FEATURE_KEYS } from '@proj-airi/stage-shared/perf/usage'
+import { bucketTotals, compareFeature, FEATURE_MIN_BLOCKS, FEATURE_MIN_DECISIVE_PAIRED_SESSIONS, FEATURE_MIN_PAIRED_SESSIONS, FEATURE_MIN_SESSIONS, FEATURE_MIN_WINDOWS, USAGE_FEATURE_KEYS } from '@proj-airi/stage-shared/perf/usage'
 
-/** One rolled-up segment; its cells' buckets carry the time spans the lease history join needs. */
+/** One rolled-up segment as `sessions.jsonl` holds it, its cells split into 5-minute buckets. */
 export interface UsageRollup {
   readonly sessionId: string
   readonly host: UsageHost
@@ -38,11 +37,20 @@ export function usageRollups(data: PerfData): UsageRollup[] {
     : []))
 }
 
+/** Each cell as its totals over all of its buckets, the cells `featureReports` and `compareCommits` compare. */
+export function totalRollups(rollups: readonly UsageRollup[]): FeatureCompareRollup[] {
+  return rollups.map(rollup => ({
+    sessionId: rollup.sessionId,
+    host: rollup.host,
+    cells: rollup.cells.map(({ buckets, ...key }) => ({ ...key, ...bucketTotals(buckets) })),
+  }))
+}
+
 function valueCounts(rollups: readonly FeatureCompareRollup[], feature: UsageFeatureKey): FeatureValueCount[] {
   const counts = new Map<string, { value: FeatureSide['value'], cells: number, sessions: Set<string>, windows: number }>()
   for (const rollup of rollups) {
     for (const cell of rollup.cells) {
-      if (cell.hostContended || cell.leaseContended === true)
+      if (cell.hostContended)
         continue
       const value = cell.features[feature]
       const key = JSON.stringify(value)
@@ -56,19 +64,13 @@ function valueCounts(rollups: readonly FeatureCompareRollup[], feature: UsageFea
   return [...counts.values()].map(count => ({ value: count.value, cells: count.cells, sessions: count.sessions.size, windows: count.windows }))
 }
 
-/** Runs `compareFeature` per requested feature over rollups whose cells already carry `leaseContended` (`markLeaseContention`). */
+/** Runs `compareFeature` per requested feature over the rollups' cells (`totalRollups`). */
 export function featureReports(rollups: readonly FeatureCompareRollup[], options: FeatureOptions): FeatureReport[] {
   const features = options.feature === null ? USAGE_FEATURE_KEYS : [options.feature]
   return features.map(feature => ({
     ...compareFeature({ rollups, feature, metric: options.metric, seed: options.seed }),
     values: valueCounts(rollups, feature),
   }))
-}
-
-/** The lease-history line `features` and `compare` print. */
-export function formatLeaseBuckets(lease: Pick<LeaseContention, 'buckets' | 'keptWindowShare'>): string {
-  const kept = lease.keptWindowShare === null ? 'no windows' : `${Number((lease.keptWindowShare * 100).toFixed(1))}% of windows kept`
-  return `lease history: ${lease.buckets.contended} 5-minute buckets contended, ${lease.buckets.clear} clear, ${lease.buckets.uncovered} not covered; ${kept}`
 }
 
 const number = (value: number | null) => (value === null ? '-' : Number(value.toFixed(3)).toString())
@@ -107,10 +109,10 @@ function formatComparison(report: FeatureReport, comparison: FeatureComparison):
   return lines
 }
 
-export function formatFeatureReports(reports: readonly FeatureReport[], lease: Pick<LeaseContention, 'buckets' | 'keptWindowShare'>): string {
+export function formatFeatureReports(reports: readonly FeatureReport[]): string {
   const sections = reports.map((report) => {
     const header = `${report.feature} ${report.metric} (observational)`
-    const dropped = `  dropped cells: ${report.droppedCells.hostContended} host contended, ${report.droppedCells.leaseContended} lease contended`
+    const dropped = `  dropped cells: ${report.droppedCells.hostContended} host contended`
     if (report.comparisons.length === 0) {
       const values = report.values.map(count => `${JSON.stringify(count.value)}: ${count.cells} cells, ${count.sessions} sessions, ${count.windows} windows`).join('; ') || 'no cells'
       return [header, `  insufficient data: no stratum holds two values (${values})`, dropped].join('\n')
@@ -119,7 +121,6 @@ export function formatFeatureReports(reports: readonly FeatureReport[], lease: P
   })
   return [
     ...sections,
-    formatLeaseBuckets(lease),
     'Observational: usage sessions are not controlled experiments. The 90% intervals are percentile bootstraps, which under-cover at small sample sizes.',
   ].join('\n\n')
 }

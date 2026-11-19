@@ -64,7 +64,7 @@ function isWellFormed(record: WindowRollupRecord): boolean {
  * `session-start`, overlapping 20 s from a model load, resume, renderer reload, or new identity epoch, or spanning
  * a suspend..resume gap. A segment after the first starts with its own `session-start`, so its first 60 s are
  * excluded too. Each cell splits its included windows into wall-clock 5-minute buckets by window end
- * (`SEGMENT_BUCKET_MS`), so readers can drop the buckets another worktree's CPU lease overlapped.
+ * (`SEGMENT_BUCKET_MS`), so readers can total any span of them (`bucketTotals`).
  */
 export class SegmentRollupReducer {
   readonly #sessionId: string

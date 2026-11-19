@@ -1,7 +1,7 @@
 # CPU slot budget and QA result cache
 
 Date: 2026-10-22
-Status: accepted
+Status: accepted. Superseded on 2026-11-19 by [Testing redesign](2026-11-19-testing-redesign.md).
 
 ## Problem
 

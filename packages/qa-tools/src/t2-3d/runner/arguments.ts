@@ -10,7 +10,7 @@ export class Motion3dUsageError extends Error {
   override readonly name = 'Motion3dUsageError'
 }
 
-/** Parses user inputs once, before taking a lease or creating evidence. */
+/** Parses user inputs once, before creating evidence. */
 export function parseRunArguments(args: readonly string[], cwd: string) {
   try {
     const { values } = parseArgs({

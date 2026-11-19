@@ -132,7 +132,6 @@ const records: PerfRecord[] = [
     host,
     buildMode: 'dev',
     electronVersion: '38.0.0',
-    leaseClass: 'exclusive',
     valid: false,
     invalidReason: 'host-contended',
     metrics: {

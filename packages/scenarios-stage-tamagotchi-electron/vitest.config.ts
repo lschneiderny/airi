@@ -1,9 +1,8 @@
-import { withCpuSlots } from '@proj-airi/cpu-slots/vitest'
 import { defineConfig } from 'vitest/config'
 
-export default withCpuSlots(defineConfig({
+export default defineConfig({
   root: import.meta.dirname,
   test: {
     include: ['src/**/*.test.ts'],
   },
-}))
+})

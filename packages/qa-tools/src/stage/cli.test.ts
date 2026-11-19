@@ -98,14 +98,22 @@ describe('qa:stage measure arguments', () => {
 })
 
 describe('qa:stage capture pre-flight', () => {
-  it('exits 2 before attaching and lists the holders while another worktree holds a CPU lease', async () => {
+  it('exits 2 before attaching and names the reading while the host is busy', async () => {
     const output = captureOutput()
-    const busy = { id: 'verify', class: 'typecheck' as const, slots: 6, exclusive: false, cwd: '/wt/other', command: 'verify typecheck', pid: 4242, startedAt: 0, createdAt: 0, workload: [], age: 90_000 }
+    const busy = { load1: 9, cores: 8, externalCpuPct: 70, psiCpuSomeAvg10: 32 }
 
-    const code = await runStageCli(['capture', '--port', '9', '--scenario', 'attach', '--seconds', '30', '--out', 'unused'], { ...context, readLeases: () => [busy] })
+    const code = await runStageCli(['capture', '--port', '9', '--scenario', 'attach', '--seconds', '30', '--out', 'unused'], { ...context, sampleHost: async () => busy })
 
     expect(code).toBe(2)
-    expect(output.stderr()).toContain('pid 4242')
-    expect(output.stderr()).toContain('verify typecheck')
+    expect(output.stderr()).toContain('load 9.00 on 8 cores, CPU PSI some avg10 32.0, machine CPU 70% busy')
+  })
+
+  it('refuses --allow-busy together with --wait-quiet', async () => {
+    const output = captureOutput()
+
+    const code = await runStageCli(['capture', '--port', '9', '--scenario', 'attach', '--seconds', '30', '--out', 'unused', '--allow-busy', '--wait-quiet', '5'], context)
+
+    expect(code).toBe(2)
+    expect(output.stderr()).toContain('drop --wait-quiet')
   })
 })

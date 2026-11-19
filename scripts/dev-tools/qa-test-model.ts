@@ -30,7 +30,7 @@ async function main(): Promise<number> {
   if (skipped)
     console.info(`qa:test:model: ${skipped}`)
   // Each package runs its own files, directly and not through Turbo, so no result is cached and the variables reach
-  // the tests. The package config takes its CPU slots through withCpuSlots, like every other test run.
+  // the tests.
   let exitCode = 0
   for (const [directory, packageFiles] of groupByVitestConfig(files.map(file => file.file), candidate => existsSync(join(root, candidate, 'vitest.config.ts')))) {
     const code = await new Promise<number>((resolve, reject) => {

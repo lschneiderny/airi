@@ -168,7 +168,7 @@ function weightedQuartiles(entries: readonly [WindowQuartiles, ...WindowQuartile
 }
 
 /**
- * A cell's totals over some of its buckets, such as those a reader keeps after dropping lease-contended ones.
+ * A cell's totals over some or all of its buckets.
  * Counts, the frame histogram and stage timings merge exactly. A bucket keeps only the quartiles of its own windows,
  * so each quartile of the totals is the window-weighted (lower) median of the buckets' values; over one bucket the
  * totals are that bucket's own.

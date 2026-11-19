@@ -35,14 +35,6 @@ describe('compareCommits', () => {
     expect(report.strata[0].a).toMatchObject({ sessions: 3, medians: { p50FrameMs: 18 } })
   })
 
-  it('excludes lease-contended cells', () => {
-    const contended = fixtureRollups([fixtureCell(16, { sha: shaA }), { ...fixtureCell(40, { sha: shaA }), leaseContended: true }, fixtureCell(20, { sha: shaB })])
-    const report = compareCommits(contended, { shaA: 'aaaaaaa', shaB: 'bbbbbbb', includeDirty: false })
-
-    expect(report.excluded.leaseContended).toBe(1)
-    expect(report.strata[0].a).toMatchObject({ cells: 1, medians: { p50FrameMs: 16 } })
-  })
-
   it('reports a side with no cells as empty', () => {
     const report = compareCommits(rollups(), { shaA: 'ccccccc', shaB: 'bbbbbbb', includeDirty: false })
 

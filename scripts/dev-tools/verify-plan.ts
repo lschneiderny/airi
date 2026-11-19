@@ -1,9 +1,5 @@
-import type { AcquireOptions } from '@proj-airi/cpu-slots'
-
 import type { ChangedFile } from './lib/git'
 import type { VerifyStatsOptions } from './verify-history'
-
-import { classes } from '@proj-airi/cpu-slots'
 
 import { parseStatsArgs } from './verify-history'
 
@@ -167,13 +163,6 @@ export function typecheckFilters(scope: TypecheckScope, packagePaths: string[]):
     case 'all': return ['-F=./packages/*', '-F=./apps/*', '-F=./server/**', '-F=./services/*']
     case 'affected': return packagePaths.map(path => `--filter=...{./${path}}`)
   }
-}
-
-/** One request covers every command in a step, including the test build prerequisite. */
-export function planStepLease(step: VerifyStep, typecheck: TypecheckScope, affectedPackageCount: number): Pick<AcquireOptions, 'class' | 'max'> {
-  if (step === 'typecheck' && typecheck.kind === 'affected')
-    return { class: step, max: Math.max(classes.typecheck.min, affectedPackageCount) }
-  return { class: step }
 }
 
 export interface VerifyPlan {

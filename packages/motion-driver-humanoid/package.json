@@ -25,7 +25,6 @@
     "@proj-airi/stage-shared": "workspace:^"
   },
   "devDependencies": {
-    "@proj-airi/cpu-slots": "workspace:^",
     "vitest": "catalog:vitest"
   }
 }

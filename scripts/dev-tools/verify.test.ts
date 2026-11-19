@@ -7,7 +7,6 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 
-import { readStatus } from '@proj-airi/cpu-slots'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { readLastPass } from './verify-last-pass'
@@ -22,31 +21,25 @@ describe('verify step execution', () => {
     const git = (...args: string[]) => execFileSync('git', args, { cwd: root, stdio: 'pipe' })
     git('init', '--initial-branch=main')
     git('-c', 'user.name=Verify test', '-c', 'user.email=verify@example.invalid', '-c', 'commit.gpgSign=false', '-c', `core.hooksPath=${join(root, '.git/hooks')}`, 'commit', '--allow-empty', '-m', 'fixture')
-    writeFileSync(join(root, '.gitignore'), 'node_modules/\nslots/\nslots-history/\nreceipts.jsonl\n')
+    writeFileSync(join(root, '.gitignore'), 'node_modules/\nreceipts.jsonl\n')
     writeFileSync(join(root, 'package.json'), '{"type":"module"}')
     writeFileSync(join(root, 'change.ts'), 'export const changed = true\n')
     mkdirSync(join(root, 'pkg'))
     writeFileSync(join(root, 'pkg/package.json'), '{"name":"pkg","scripts":{"test:run":"FIXTURE_FLAG=on vitest run --config vitest.config.ts"}}')
     writeFileSync(join(root, 'pkg/change.ts'), 'export const changed = true\n')
     const command = `
-      import { appendFileSync, readFileSync } from 'node:fs'
+      import { appendFileSync } from 'node:fs'
       import { join, relative } from 'node:path'
       const fixtureRoot = ${JSON.stringify(root)}
       if (process.argv.includes('ls')) {
         console.log(JSON.stringify({ packages: { items: [{ name: 'pkg', path: 'pkg' }] } }))
         process.exit(0)
       }
-      const id = process.env.AIRI_CPU_LEASE
-      const lease = JSON.parse(readFileSync(join(process.env.AIRI_CPU_SLOTS_DIR, 'leases', id + '.json'), 'utf8'))
       appendFileSync(join(fixtureRoot, 'receipts.jsonl'), JSON.stringify({
         command: process.argv.includes('build') ? 'build' : 'related',
         directory: relative(fixtureRoot, process.cwd()),
         config: process.argv.includes('--config') ? process.argv[process.argv.indexOf('--config') + 1] : null,
         flag: process.env.FIXTURE_FLAG ?? null,
-        leaseId: lease.id,
-        class: lease.class,
-        slots: lease.slots,
-        grant: Number(process.env.AIRI_CPU_GRANT),
       }) + '\\n')
       if (process.env.VERIFY_FIXTURE_ACTION === 'fail') {
         console.log('All tests passed')
@@ -72,26 +65,19 @@ describe('verify step execution', () => {
   function verify(args: string[], action = '') {
     return exec(process.execPath, ['--import', import.meta.resolve('tsx'), fileURLToPath(new URL('./verify.ts', import.meta.url)), ...args], {
       cwd: root,
-      env: { ...process.env, CI: '', AIRI_CPU_SLOTS: '', AIRI_CPU_SLOTS_DIR: join(root, 'slots'), AIRI_CPU_SLOTS_HISTORY_DIR: join(root, 'slots-history'), AIRI_CPU_BUDGET: '12', AIRI_CPU_LEASE: '', AIRI_CPU_GRANT: '', AIRI_CPU_CLASS: '', VERIFY_FIXTURE_ACTION: action },
+      env: { ...process.env, VERIFY_FIXTURE_ACTION: action },
       timeout: 15_000,
     })
   }
 
-  it('holds one real lease across the build, the root related tests, and each package\'s related tests, then releases it', async () => {
-    const store = join(root, 'slots')
-    await exec(process.execPath, ['--import', import.meta.resolve('tsx'), fileURLToPath(new URL('./verify.ts', import.meta.url)), '--only', 'test'], {
-      cwd: root,
-      env: { ...process.env, CI: '', AIRI_CPU_SLOTS: '', AIRI_CPU_SLOTS_DIR: store, AIRI_CPU_SLOTS_HISTORY_DIR: join(root, 'slots-history'), AIRI_CPU_BUDGET: '12', AIRI_CPU_LEASE: '', AIRI_CPU_GRANT: '', AIRI_CPU_CLASS: '' },
-      timeout: 15_000,
-    })
-    const receipts: { command: string, directory: string, config: string | null, flag: string | null, leaseId: string, class: string, slots: number, grant: number }[] = JSON.parse(`[${readFileSync(join(root, 'receipts.jsonl'), 'utf8').trim().split('\n').join(',')}]`)
-    expect(new Set(receipts.map(receipt => receipt.leaseId)).size).toBe(1)
-    expect(receipts.map(({ command, directory, config, flag, class: cpuClass, slots, grant }) => ({ command, directory, config, flag, cpuClass, slots, grant }))).toEqual([
-      { command: 'build', directory: '', config: null, flag: null, cpuClass: 'test', slots: 6, grant: 6 },
-      { command: 'related', directory: '', config: 'vitest.config.ts', flag: null, cpuClass: 'test', slots: 6, grant: 6 },
-      { command: 'related', directory: 'pkg', config: 'vitest.config.ts', flag: 'on', cpuClass: 'test', slots: 6, grant: 6 },
+  it('runs the build, the root related tests, and each package\'s related tests in order, in their own directories', async () => {
+    await verify(['--only', 'test'])
+    const receipts: { command: string, directory: string, config: string | null, flag: string | null }[] = JSON.parse(`[${readFileSync(join(root, 'receipts.jsonl'), 'utf8').trim().split('\n').join(',')}]`)
+    expect(receipts).toEqual([
+      { command: 'build', directory: '', config: null, flag: null },
+      { command: 'related', directory: '', config: 'vitest.config.ts', flag: null },
+      { command: 'related', directory: 'pkg', config: 'vitest.config.ts', flag: 'on' },
     ])
-    expect(readStatus({ root: store })).toMatchObject({ held: 0, leases: [], queue: [] })
   }, 20_000)
 
   it('records a gate pass and includes an unverified commit in the next scope', async () => {
@@ -121,7 +107,6 @@ describe('verify step execution', () => {
     else
       expect((await verify(['--only', 'test'], action)).stdout).toContain('not recorded: files changed during the step')
     expect(readLastPass(cache, 'main')).toEqual(record)
-    expect(readStatus({ root: join(root, 'slots') })).toMatchObject({ held: 0, leases: [], queue: [] })
   }, 20_000)
 
   it('runs lint first and stops on its failure, naming lint:fix when every problem is fixable', async () => {

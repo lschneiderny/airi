@@ -3,7 +3,6 @@ import process from 'node:process'
 import { resolve } from 'node:path'
 
 import { errorMessageFrom } from '@moeru/std'
-import { acquire } from '@proj-airi/cpu-slots'
 
 import { requireQaDisplaySession } from '../../../scripts/dev-tools/qa-display-guard'
 import { loadQaEnv } from '../src/env/load'
@@ -19,15 +18,8 @@ async function main(): Promise<number> {
   const stop = () => controller.abort(new Error('interrupted'))
   process.on('SIGINT', stop)
   process.on('SIGTERM', stop)
-  let lease: Awaited<ReturnType<typeof acquire>> | undefined
   try {
-    lease = await acquire({
-      class: 'live',
-      command: 'qa:smoke',
-      cwd: repoRoot,
-      signal: AbortSignal.any([controller.signal, AbortSignal.timeout(30 * 60_000)]),
-    })
-    const result = await runSmoke(options, repoRoot, controller.signal, lease)
+    const result = await runSmoke(options, repoRoot, controller.signal)
     process.stdout.write(`${JSON.stringify(result.summary)}\n`)
     return result.exitCode
   }
@@ -37,7 +29,6 @@ async function main(): Promise<number> {
     throw error
   }
   finally {
-    lease?.release()
     process.off('SIGINT', stop)
     process.off('SIGTERM', stop)
   }

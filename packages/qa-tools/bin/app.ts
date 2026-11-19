@@ -4,7 +4,6 @@ import { statSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 import { errorMessageFrom } from '@moeru/std'
-import { acquire } from '@proj-airi/cpu-slots'
 
 import { assertQaDisplaySession } from '../../../scripts/dev-tools/qa-display-guard'
 import { takeAllowHostSession } from '../../../scripts/dev-tools/qa-display-plan'
@@ -31,15 +30,8 @@ async function main(): Promise<number> {
   const stop = () => controller.abort(new Error('interrupted'))
   process.on('SIGINT', stop)
   process.on('SIGTERM', stop)
-  let lease: Awaited<ReturnType<typeof acquire>> | undefined
   try {
-    lease = await acquire({
-      class: 'live',
-      command: `qa:app run --model ${options.model}`,
-      cwd: repoRoot,
-      signal: AbortSignal.any([controller.signal, AbortSignal.timeout(30 * 60_000)]),
-    })
-    const result = await runApp(options, repoRoot, controller.signal, lease)
+    const result = await runApp(options, repoRoot, controller.signal)
     process.stdout.write(`${JSON.stringify(result.summary)}\n`)
     return result.exitCode
   }
@@ -49,7 +41,6 @@ async function main(): Promise<number> {
     throw error
   }
   finally {
-    lease?.release()
     process.off('SIGINT', stop)
     process.off('SIGTERM', stop)
   }

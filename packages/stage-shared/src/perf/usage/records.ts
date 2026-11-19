@@ -307,7 +307,6 @@ const BenchRunSchema = object({
   host: HostSchema,
   buildMode: picklist(BUILD_MODES),
   electronVersion: string(),
-  leaseClass: label,
   valid: boolean(),
   invalidReason: optional(string()),
   metrics: object({

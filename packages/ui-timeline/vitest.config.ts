@@ -1,14 +1,13 @@
 import Vue from '@vitejs/plugin-vue'
 import UnoCSS from 'unocss/vite'
 
-import { withCpuSlots } from '@proj-airi/cpu-slots/vitest'
 import { playwright } from '@vitest/browser-playwright'
 import { normalizePath } from 'vite'
 import { defineConfig } from 'vitest/config'
 
 import { sharedUnoConfig } from '../../uno.config'
 
-export default withCpuSlots(defineConfig({
+export default defineConfig({
   root: import.meta.dirname,
   plugins: [
     Vue(),
@@ -51,4 +50,4 @@ export default withCpuSlots(defineConfig({
       },
     ],
   },
-}))
+})

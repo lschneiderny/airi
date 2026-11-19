@@ -55,14 +55,13 @@ export function buildPlan(options: AppOptions, runDir: string) {
     timeoutMs: options.timeoutMs,
     keepOpen: options.keepOpen,
     steps: [
-      'acquire exclusive CPU lease',
       'start replay server on loopback port 0',
       `launch T3 with temporary profile and ${options.stageHost} stage`,
       'connect CDP and seed settings then reload leader',
       'import model through bridge file input and await mounted renderer',
       'send each message and poll events with a fresh sequence cursor',
       'save screenshot diagnostics replay requests and timings',
-      ...(options.keepOpen ? ['wait for interrupt while retaining CPU lease and replay server'] : []),
+      ...(options.keepOpen ? ['wait for interrupt while retaining the app and replay server'] : []),
       'teardown owned processes and remove temporary profile',
     ],
   }

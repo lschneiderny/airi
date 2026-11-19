@@ -5,7 +5,6 @@ import UnoCss from 'unocss/vite'
 import Info from 'unplugin-info/vite'
 import VueRouter from 'vue-router/vite'
 
-import { withCpuSlots } from '@proj-airi/cpu-slots/vitest'
 import { DownloadLive2DSDK } from '@proj-airi/unplugin-live2d-sdk'
 import { playwright } from '@vitest/browser-playwright'
 import { loadEnv } from 'vite'
@@ -14,7 +13,7 @@ import { defineConfig } from 'vitest/config'
 // eslint-disable-next-line no-restricted-syntax -- Vite's native config loader, its planned default, resolves a relative import only with its extension.
 import unoConfig from './uno.config.ts'
 
-export default withCpuSlots(defineConfig({
+export default defineConfig({
   root: import.meta.dirname,
   plugins: [
     Info(),
@@ -86,4 +85,4 @@ export default withCpuSlots(defineConfig({
       },
     ],
   },
-}))
+})

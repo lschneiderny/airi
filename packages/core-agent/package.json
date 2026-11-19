@@ -77,7 +77,6 @@
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@proj-airi/cpu-slots": "workspace:^",
     "@types/hast": "catalog:",
     "@types/mdast": "catalog:",
     "@types/node": "catalog:",

@@ -1,9 +1,8 @@
-import { withCpuSlots } from '@proj-airi/cpu-slots/vitest'
 import { defineConfig } from 'vitest/config'
 
 // Every workspace package runs its own tests through its `test:run` script. This config holds only the tests that
 // belong to no package.
-export default withCpuSlots(defineConfig({
+export default defineConfig({
   test: {
     projects: [
       // Root developer tools (`pnpm verify`, `pnpm wt`, `pnpm dev:top`).
@@ -23,4 +22,4 @@ export default withCpuSlots(defineConfig({
       },
     ],
   },
-}))
+})
