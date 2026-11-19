@@ -15,6 +15,11 @@ export interface UseSettingsDocumentOptions {
    * a stored document. `reset` ignores them and writes the schema defaults.
    */
   initial?: () => unknown
+  /**
+   * Rewrites a stored document before its fields are validated. Only for a `// NOTICE:` fallback that removes or
+   * renames stored fields, with that block's removal condition. Not applied to `initial`.
+   */
+  upgrade?: (stored: Record<string, unknown>) => Record<string, unknown>
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -76,7 +81,7 @@ export function useSettingsDocument<const TEntries extends ObjectEntries>(key: s
     catch {
       stored = undefined
     }
-    return sanitize(stored)
+    return sanitize(isRecord(stored) && options.upgrade ? options.upgrade(stored) : stored)
   }
 
   // Persistence is private: applying a remote snapshot never writes back into
