@@ -79,11 +79,12 @@ const testDataFile = /\.(?:json5?|jsonc|ya?ml)$/
 /** Manifests and compiler configs that no test imports; a change to one alone would only start browsers to find nothing. */
 const toolingFile = /(?:^|\/)(?:package\.json|tsconfig[^/]*\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|turbo\.json)$/
 /**
- * Docs that a test checks against the code. The test reads them from disk, which `vitest related` cannot see, so a
- * change to one of these docs runs its test directly.
+ * Files that a root test reads from disk, which `vitest related` cannot see, so a change to one of them runs its test
+ * directly: the policy docs, and the renderer sources and state registry that the storage write scan reads.
  */
-const docGuards: readonly { docs: RegExp, test: string }[] = [
-  { docs: /^docs\/ai\/context\/[^/]+\.md$/, test: 'scripts/dev-tools/policy-docs.test.ts' },
+const fileGuards: readonly { files: RegExp, test: string }[] = [
+  { files: /^docs\/ai\/context\/[^/]+\.md$/, test: 'scripts/dev-tools/policy-docs.test.ts' },
+  { files: /^(?:packages\/[^/]+\/src|apps\/stage-tamagotchi\/src\/renderer)\/.+\.(?:ts|vue)$/, test: 'scripts/dev-tools/storage-writes.test.ts' },
 ]
 /** Prose that no compiler reads, so a change to it alone needs no typecheck. */
 const docFile = /\.(?:md|mdx|txt)$/i
@@ -180,7 +181,7 @@ export function planVerify(changed: ChangedFile[], packagePaths: string[], rootD
       ? { kind: 'all', reason: `${rootDependency.path} is in a root dependency` }
       : { kind: 'affected' }
   }
-  const guardTests = docGuards.filter(guard => present.some(path => guard.docs.test(path))).map(guard => guard.test)
+  const guardTests = fileGuards.filter(guard => present.some(path => guard.files.test(path))).map(guard => guard.test)
   const testFiles = [...new Set([...present.filter(path => codeFile.test(path) || (testDataFile.test(path) && !toolingFile.test(path))), ...guardTests])]
   return {
     typecheck,

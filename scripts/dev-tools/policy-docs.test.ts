@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest'
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 
-/** `pnpm verify` runs this test when a doc here changes (`docGuards` in `verify-plan.ts`). */
+/** `pnpm verify` runs this test when a doc here changes (`fileGuards` in `verify-plan.ts`). */
 const contextDir = join(repoRoot, 'docs/ai/context')
 
 /** A doc opts in by stating that it describes the code; the check then holds it to that. */

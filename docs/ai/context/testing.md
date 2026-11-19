@@ -14,6 +14,7 @@ runs.
 | `pnpm test:run` and `pnpm test:root` | A whole-repository sweep, a change to shared fixtures or test data, and `pnpm release` | Every package's whole `test:run` suite through Turbo, including tests that read files through `fs`, and the root projects that belong to no package. Turbo reuses each suite that already passed on the same inputs. | Env-gated tests. |
 | `pnpm release` | Before each desktop release, on Linux and on macOS | The full typecheck, every test (`pnpm test:run` and `pnpm test:root`), lint, both bundle checks, and the clean-start smoke, before anything is uploaded. | The installed package; install and start each installer by hand before publishing the draft. |
 | Headless rig checks | A change to a renderer's motion | MMD: `pnpm qa:motion3d` drives body motion in Node, deterministically per seed, and `pnpm qa:test:model` runs the tests that need a local model. Live2D: `pnpm qa:live2d-rig` runs the headless ForBOOTH rig (T2) for Natural and Live2D motion changes. Live2D has no statistical gate. | How the motion looks in the app. |
+| Storage write scan (`scripts/dev-tools/storage-writes.test.ts`) | `pnpm verify`, when a renderer source changes | Every storage write site in the renderer source writes a key that a state registry registration owns, from a file among its writers. | Keys built at run time, which `state-registry.browser.test.ts` checks; writes in Web Workers and libraries. |
 | Rendered smoke (`pnpm qa:smoke`) | Branch gate, when app runtime code changed | The app starts from a fresh profile with no renderer or main-process error in any window. | Chat, speech, or motion behavior. |
 | Rendered sessions (`pnpm qa:app`, the `airi-qa` MCP server) | A visible change to motion, expression, or speech | A real chat turn in the running app, with events and screenshots for visual review. Use a Live2D or MMD model that matches the change. | Statistical motion quality. |
 
@@ -44,6 +45,7 @@ need evidence from them.
 | Pure logic or package behavior | Package tests, then `pnpm verify`. |
 | Browser-specific behavior or UI interaction | The package's browser project, then `pnpm verify`. |
 | A test that reads a file outside its package | Add the file to that package's `test:run` inputs in `turbo.json`, so Turbo's cache sees it, then `pnpm test:run`. |
+| A new storage key | A registration in `stateRegistry`, then `state-registry.browser.test.ts` in the stage-ui browser project and the storage write scan; see [State registry](state-persistence.md#state-registry). |
 | Any change before landing | `pnpm verify --gate`. |
 | App runtime code in the paths above | `pnpm verify --gate` and `pnpm qa:display run -- pnpm qa:smoke`. |
 | Natural or Live2D motion | Branch gate checks, `pnpm qa:live2d-rig`, and a `qa:app` or `airi-qa` MCP session with a Live2D model, with screenshots reviewed by eye. |
