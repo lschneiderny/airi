@@ -1213,7 +1213,7 @@ packageExtensionsChecksum: sha256-lLxz4me6BFXSsuohDen54RU9DmiItse34Xa+IWGtSzU=
 patchedDependencies:
   '@xsai-ext/responses@0.5.1': 46fe7d9840dd621747bb87f1c779d26ac5a43f506a3e02770b2ab84aef2ab84b
   mineflayer-pathfinder: 4bbfdca823ab48b74086e6e7d4b2f9baf5ee7c0ba9aee0c279b3c91c50bfd797
-  nano-staged@1.0.2: 5fdf171de36a430cc69f3e9eb46c521f6959a6626f868e27d71f18bff7079356
+  nano-staged@1.0.2: 7adccb45ff0d8775fa8575872dd1e1a926de538efca6a12eb5b12ddf74d30c61
   pixi-live2d-display: cee60f8b5121eb195718c1935f9a3a6012cc8d4e8b6deeafd29bad772c678530
   tab-election@4.6.2: ff8fe3c9aed66469fa00180f039fbf9f4f8e682430bfb3f6a07d9baf3f850674
   uiohook-napi@1.5.5: 012c5e5ad881d5ae40fc0af58832e31a0772ab0a74c038c8f4dfe51efaf398dd
@@ -1299,7 +1299,7 @@ importers:
         version: 6.32.2
       nano-staged:
         specifier: 'catalog:'
-        version: 1.0.2(patch_hash=5fdf171de36a430cc69f3e9eb46c521f6959a6626f868e27d71f18bff7079356)
+        version: 1.0.2(patch_hash=7adccb45ff0d8775fa8575872dd1e1a926de538efca6a12eb5b12ddf74d30c61)
       oxc-minify:
         specifier: 'catalog:'
         version: 0.146.0
@@ -29814,7 +29814,7 @@ snapshots:
       object-assign: 4.1.1
       thenify-all: 1.6.0
 
-  nano-staged@1.0.2(patch_hash=5fdf171de36a430cc69f3e9eb46c521f6959a6626f868e27d71f18bff7079356): {}
+  nano-staged@1.0.2(patch_hash=7adccb45ff0d8775fa8575872dd1e1a926de538efca6a12eb5b12ddf74d30c61): {}
 
   nanoid@3.3.20: {}
 

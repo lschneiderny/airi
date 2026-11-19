@@ -100,3 +100,17 @@ index 43cc8632bcbd756e446abcf1edcaedb8ad742c02..cee72124cc85cc96f540c72a0b80777b
          await git.exec(args, opts)
        }
      },
+diff --git a/lib/runner.js b/lib/runner.js
+index 2cef3dd1bd73f27b4eca2c55d950be5f66592107..c226d2f7cd814d0efbd511243478ea9eb6581f6a 100644
+--- a/lib/runner.js
++++ b/lib/runner.js
+@@ -16,7 +16,8 @@ export function createRunner({
+   bail,
+ }) {
+   const reporter = createReporter(stream)
+-  const renderer = createRenderer(stream, { isTTY: !process.env.CI, quiet })
++  // Redraw the task tree only on a terminal; piped output, such as an agent's commit, gets the plain log.
++  const renderer = createRenderer(stream, { isTTY: !process.env.CI && Boolean(stream.isTTY), quiet })
+ 
+   const runner = {
+     async run() {
