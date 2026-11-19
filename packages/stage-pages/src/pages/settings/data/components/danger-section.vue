@@ -11,7 +11,7 @@ import { createDataSettingsStatusHelpers } from '../status'
 const props = defineProps<{
   /**
    * Deletes what the host keeps outside the renderer's storage, such as files its main process wrote.
-   * Runs after the renderer's own data is gone, as part of "Delete all data".
+   * Runs after the renderer's own deletion, also when that failed, as part of "Delete all data".
    */
   deleteHostData?: () => Promise<void>
 }>()
@@ -33,15 +33,22 @@ async function resetProviders() {
 }
 
 async function deleteAll() {
-  try {
-    await deleteAllData()
-    await props.deleteHostData?.()
-    trackDataAction({ action: 'app_data_cleared' })
-    emitStatus(t('settings.pages.data.status.all_deleted'))
+  // A renderer failure must not keep the host's data: run the host step anyway, then report the first failure.
+  const failures: unknown[] = []
+  for (const step of [deleteAllData, async () => props.deleteHostData?.()]) {
+    try {
+      await step()
+    }
+    catch (error) {
+      failures.push(error)
+    }
   }
-  catch (error) {
-    handleActionError(error)
+  if (failures.length > 0) {
+    handleActionError(failures[0])
+    return
   }
+  trackDataAction({ action: 'app_data_cleared' })
+  emitStatus(t('settings.pages.data.status.all_deleted'))
 }
 </script>
 

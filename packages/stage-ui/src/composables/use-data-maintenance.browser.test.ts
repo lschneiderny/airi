@@ -1,8 +1,11 @@
 import type { LeadershipMode } from 'pinia-plugin-synced'
 
+import type { StorageLocation } from '../persistence/state-registry'
+
 import en from '@proj-airi/i18n/locales/en'
 
 import { PiniaColada } from '@pinia/colada'
+import { modelScopedStorageKey } from '@proj-airi/stage-shared/composables'
 import { useLive2DNaturalSettings } from '@proj-airi/stage-ui-live2d/composables/live2d'
 import { useMMD } from '@proj-airi/stage-ui-mmd/stores/mmd'
 import { useMMDNaturalSettings } from '@proj-airi/stage-ui-mmd/stores/natural-settings'
@@ -20,6 +23,7 @@ import { useSituationSettings } from '../features/situation/settings'
 import { importData } from '../libs/data-transfer'
 import { injectKeyPiniaSynced } from '../libs/pinia/synced-context'
 import { toStoredVoiceprint } from '../libs/voice/voiceprint'
+import { stateRegistry } from '../persistence/state-registry'
 import { useCharacterStateStore } from '../stores/character-state'
 import { useDisplayModelsStore } from '../stores/display-models'
 import { useMemoryStore } from '../stores/memory'
@@ -403,12 +407,12 @@ it('forgets derived conversation state, presence, expression, host notice, Natur
   expect(situationSettings.document.shareForegroundWindow).toBe(true)
   expect(expressionSettings.document.bands).toBe(true)
   expect(hostNotice.document.dismissedKeys).toEqual([])
-  expect(JSON.parse(localStorage.getItem('settings/host-notice')!).dismissedKeys).toEqual([])
+  expect(localStorage.getItem('settings/host-notice')).toBeNull()
   expect(mmd.physicsEnabled).toBe(true)
   expect(live2dNatural.document).toMatchObject({ energy: 0.5, touchHeadScale: {} })
-  expect(JSON.parse(localStorage.getItem('settings/live2d/natural')!).energy).toBe(0.5)
   expect(mmdNatural.document.energy).toBe(0.5)
-  expect(Object.keys(localStorage).filter(key => key.startsWith('settings/mmd/natural'))).toEqual(['settings/mmd/natural'])
+  // The sweep after each owner reset removes the stored documents and the keys from before them.
+  expect(Object.keys(localStorage).filter(key => /^settings\/(?:live2d|mmd)\/natural/.test(key))).toEqual([])
 })
 
 it('empties the character state of every card when all data is deleted', async () => {
@@ -456,9 +460,10 @@ it('removes the voiceprints when all data is deleted', async () => {
   expect(JSON.parse(localStorage.getItem('settings/voice/voiceprints') ?? '[]')).toEqual([])
 })
 
-it('removes the voiceprints when an earlier cleanup fails', async () => {
+it('runs every later deletion when an owner reset fails, and still rejects', async () => {
   vi.stubGlobal('fetch', vi.fn<typeof fetch>(async () => Response.json({ voices: [], models: [] })))
   localStorage.setItem('settings/voice/voiceprints', JSON.stringify([toStoredVoiceprint({ embedding: new Float32Array([1, 0]), seconds: 8 }, { id: 'voiceprint-1', label: '', createdAt: Date.now() })]))
+  await storage.setItemRaw('local:chat/sessions/orphan', { messages: [] })
   const { pinia, runtime, maintenance } = mountMaintenance(`maintenance:${crypto.randomUUID()}`, 'leader-only')
   await vi.waitFor(() => expect(runtime.isLeader()).toBe(true))
   vi.spyOn(useDisplayModelsStore(pinia), 'resetDisplayModels').mockRejectedValue(new Error('Model storage unavailable'))
@@ -466,6 +471,99 @@ it('removes the voiceprints when an earlier cleanup fails', async () => {
   await expect(maintenance.deleteAllData()).rejects.toThrow('Model storage unavailable')
 
   expect(JSON.parse(localStorage.getItem('settings/voice/voiceprints') ?? '[]')).toEqual([])
+  // The chat sessions come after the display models in the registry.
+  await expect(storage.getItemRaw('local:chat/sessions/orphan')).resolves.toBeNull()
+})
+
+const marker = 'delete-all-data-marker'
+/** Valid JSON, so the owners that read the marker before the deletion do not log parse errors. */
+const storedMarker = JSON.stringify(marker)
+/** A record that the display model list can read. */
+const recordMarker = { name: marker }
+
+function requestResult<T>(request: IDBRequest<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result)
+    request.onerror = () => reject(request.error)
+  })
+}
+
+/** Opens a database that holds `store`, adding the store when the database lacks it. */
+async function openWithStore(database: string, store: string): Promise<IDBDatabase> {
+  const db = await requestResult(indexedDB.open(database))
+  if (db.objectStoreNames.contains(store))
+    return db
+  db.close()
+  const upgrade = indexedDB.open(database, db.version + 1)
+  upgrade.onupgradeneeded = () => upgrade.result.createObjectStore(store)
+  return await requestResult(upgrade)
+}
+
+async function withStore<T>(database: string, store: string, mode: IDBTransactionMode, run: (store: IDBObjectStore) => IDBRequest<T>): Promise<T> {
+  const db = await openWithStore(database, store)
+  try {
+    return await requestResult(run(db.transaction(store, mode).objectStore(store)))
+  }
+  finally {
+    db.close()
+  }
+}
+
+/** Puts a marker into one location and returns a check that reads whether the marker is still there. */
+async function seedMarker(location: StorageLocation): Promise<Array<() => Promise<string | undefined>>> {
+  const left = (description: string, present: boolean) => present ? description : undefined
+  switch (location.area) {
+    case 'localStorage':
+    case 'sessionStorage': {
+      const area = location.area === 'localStorage' ? localStorage : sessionStorage
+      const keys = 'key' in location
+        ? [location.key]
+        : 'prefix' in location
+          ? [`${location.prefix}${marker}`]
+          : [modelScopedStorageKey('model-a', location.perModel), modelScopedStorageKey('model-b', location.perModel)]
+      keys.forEach(key => area.setItem(key, storedMarker))
+      return keys.map(key => async () => left(`${location.area} ${key}`, area.getItem(key) === storedMarker))
+    }
+    case 'indexedDB': {
+      const store = 'store' in location ? location.store : 'records'
+      const key = 'store' in location ? `${location.prefix ?? ''}${marker}` : marker
+      await withStore(location.database, store, 'readwrite', target => target.put(recordMarker, key))
+      if (!('store' in location)) {
+        return [async () => left(`indexedDB ${location.database}`, (await indexedDB.databases()).some(database => database.name === location.database))]
+      }
+      return [async () => left(`indexedDB ${location.database}/${store} ${key}`, await withStore(location.database, store, 'readonly', target => target.get(key)) !== undefined)]
+    }
+    case 'opfs': {
+      const name = 'directory' in location ? location.directory : `display-model-${marker}`
+      const root = await navigator.storage.getDirectory()
+      await (await root.getDirectoryHandle(name, { create: true })).getFileHandle(marker, { create: true })
+      return [async () => left(`opfs ${name}`, (await Array.fromAsync(root.keys())).includes(name))]
+    }
+    case 'cacheStorage':
+      await (await caches.open(location.cache)).put(`https://example.com/${marker}`, new Response(marker))
+      return [async () => left(`cacheStorage ${location.cache}`, await caches.has(location.cache))]
+  }
+}
+
+// Step 5 of the state registry's focused test: "Delete all data" resets exactly the registered set.
+it('leaves no registered location holding data when all data is deleted', async () => {
+  vi.stubGlobal('fetch', vi.fn<typeof fetch>(async () => Response.json({ voices: [], models: [] })))
+  const { runtime, maintenance } = mountMaintenance(`maintenance:${crypto.randomUUID()}`, 'leader-only')
+  await vi.waitFor(() => expect(runtime.isLeader()).toBe(true))
+  const checks: Array<() => Promise<string | undefined>> = []
+  for (const registration of stateRegistry) {
+    for (const location of registration.locations) {
+      if (!('kept' in location) || !location.kept)
+        checks.push(...await seedMarker(location))
+    }
+  }
+
+  await maintenance.deleteAllData()
+
+  const remaining = (await Promise.all(checks.map(check => check()))).filter(Boolean)
+  expect(remaining).toEqual([])
+  // An enrollment that started before the deletion must still see when it happened.
+  expect(localStorage.getItem('settings/voice/voiceprint-deleted-at')).not.toBeNull()
 })
 
 // ROOT CAUSE:
