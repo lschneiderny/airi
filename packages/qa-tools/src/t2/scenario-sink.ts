@@ -191,7 +191,7 @@ export function runScenarioSink(input: MotionScenario, options: ScenarioSinkOpti
       },
     })
 
-    let performance: PerformanceState = { mode: 'idle', attention: 'camera', away: false, reactSeq: 0, reactKind: 'none' }
+    let performance: PerformanceState = { mode: 'idle', attention: 'camera', away: false }
     const capabilities = scenario.settings?.host === undefined ? null : capabilitiesForHost(scenario.settings.host)
     let resolverMemory = initialResolverMemory
     let cursorMovedAtMs: number | null = null

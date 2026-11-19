@@ -33,9 +33,12 @@ export interface PresenceObservation {
   readonly atMs: number
 }
 
+/** What ended a desktop sleep or lock: an unlock or a resume. */
+export type WakeCause = 'unlock' | 'resume'
+
 export interface WakeObservation {
   readonly kind: 'wake'
-  readonly cause: 'unlock' | 'resume'
+  readonly cause: WakeCause
   readonly atMs: number
 }
 

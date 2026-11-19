@@ -66,7 +66,7 @@ describe('natural chat attention', () => {
     motion.setChat(input, 0)
     let at = 1
     if (blocked === 'talking')
-      motion.setPerformance({ mode: 'talking', attention: 'camera', away: false, reactSeq: 0, reactKind: 'none' }, 0.5, 0)
+      motion.setPerformance({ mode: 'talking', attention: 'camera', away: false }, 0.5, 0)
     if (blocked === 'pet' || blocked === 'pet-camera-hold') {
       motion.setPet({ x: 0, y: 0 }, 0)
       advance(motion, 0, 4)
@@ -120,7 +120,7 @@ describe('natural chat attention', () => {
 
   it('suppresses typing fixations during talking', () => {
     const { motion, events } = fixture()
-    motion.setPerformance({ mode: 'talking', attention: 'camera', away: false, reactSeq: 0, reactKind: 'none' }, 0.5, 0)
+    motion.setPerformance({ mode: 'talking', attention: 'camera', away: false }, 0.5, 0)
     motion.setChat({ ...input, typing: true }, 0)
     advance(motion, 0, 30)
     expect(motion.onChat).toBe(false)
@@ -133,7 +133,7 @@ describe('natural chat attention', () => {
     motion.setChat({ ...input, sentSeq: Number(cue === 'sent'), unfoldSeq: Number(cue === 'unfold') }, 1)
     const point = mapCursor(target).eye
     expect(motion.advance(1.5).fixation).toEqual(point)
-    motion.setPerformance({ mode: 'talking', attention: 'camera', away: false, reactSeq: 0, reactKind: 'none' }, 0.5, 1.5)
+    motion.setPerformance({ mode: 'talking', attention: 'camera', away: false }, 0.5, 1.5)
     expect(motion.advance(181 * dt).fixation).not.toEqual(point)
     let heldChatFrames = 0
     for (let frame = 182; frame <= 420; frame++) {
@@ -156,7 +156,7 @@ describe('natural chat attention', () => {
     expect(motion.onChat).toBe(true)
     const before = motion.advance(frame * dt).fixation
     const at = frame * dt
-    motion.setPerformance({ mode: 'talking', attention: 'camera', away: false, reactSeq: 0, reactKind: 'none' }, 0.5, at)
+    motion.setPerformance({ mode: 'talking', attention: 'camera', away: false }, 0.5, at)
     expect(motion.advance((++frame) * dt).fixation).not.toEqual(before)
     expect(motion.onChat).toBe(false)
     expect(motion.chatHeadFollow).toEqual({ x: 0, y: 0 })
@@ -172,7 +172,7 @@ describe('natural chat attention', () => {
     const { motion, events } = fixture()
     motion.setChat(input, 0)
     motion.setChat({ ...input, sentSeq: 1 }, 1)
-    motion.setPerformance({ mode: 'talking', attention: 'camera', away: false, reactSeq: 0, reactKind: 'none' }, 0.5, 1.1)
+    motion.setPerformance({ mode: 'talking', attention: 'camera', away: false }, 0.5, 1.1)
     advance(motion, 1.1, 6)
     expect(events.filter(event => event.kind === 'glance' && event.cause === 'chat-sent')).toEqual([])
   })

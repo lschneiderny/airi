@@ -144,8 +144,8 @@ describe('resolvePerformanceState', () => {
     const [web] = run([inputsAt(T0, { desktop: null })])
     const [wayland] = run([inputsAt(T0, { desktop: allNull })])
 
-    expect(web.state).toEqual({ mode: 'idle', attention: 'camera', away: false, reactSeq: 0, reactKind: 'none' })
-    expect(wayland.state).toEqual({ mode: 'idle', attention: 'camera', away: false, reactSeq: 0, reactKind: 'none' })
+    expect(web.state).toEqual({ mode: 'idle', attention: 'camera', away: false })
+    expect(wayland.state).toEqual({ mode: 'idle', attention: 'camera', away: false })
   })
 
   it.each([
@@ -213,50 +213,59 @@ describe('resolvePerformanceState', () => {
     expect(result.state.away).toBe(true)
   })
 
-  it('reacts once with wake on unlock', () => {
+  it('reports a lock as presence away and the unlock as its end with the wake', () => {
     const results = run([
-      inputsAt(T0, { desktop: quietDesktop({ locked: true }) }),
-      inputsAt(T0 + 1000, { desktop: quietDesktop({ unlockedAtMs: T0 + 900 }) }),
-      inputsAt(T0 + 1250, { desktop: quietDesktop({ unlockedAtMs: T0 + 900 }) }),
+      inputsAt(T0, { desktop: quietDesktop() }),
+      inputsAt(T0 + 1000, { desktop: quietDesktop({ locked: true }) }),
+      inputsAt(T0 + 2000, { desktop: quietDesktop({ unlockedAtMs: T0 + 1900 }) }),
+      inputsAt(T0 + 2250, { desktop: quietDesktop({ unlockedAtMs: T0 + 1900 }) }),
     ])
 
-    expect(results.map(r => r.state.reactSeq)).toEqual([0, 1, 1])
-    expect(results[1].state.reactKind).toBe('wake')
+    expect(results.map(r => r.events)).toEqual([
+      [],
+      [{ kind: 'presence', away: true, wake: null }],
+      [{ kind: 'presence', away: false, wake: { cause: 'unlock', atMs: T0 + 1900 } }],
+      [],
+    ])
   })
 
-  it('reacts with wake on resume from sleep', () => {
+  it('reports away at the first call', () => {
+    const [result] = run([inputsAt(T0, { desktop: quietDesktop({ locked: true }) })])
+
+    expect(result.events).toEqual([{ kind: 'presence', away: true, wake: null }])
+  })
+
+  it('never makes away from an unknown desktop or idle time', () => {
     const results = run([
-      inputsAt(T0, { desktop: quietDesktop({ suspendedAtMs: T0 - 60_000 }) }),
-      inputsAt(T0 + 1000, { desktop: quietDesktop({ suspendedAtMs: T0 - 60_000, resumedAtMs: T0 + 800 }) }),
+      inputsAt(T0, { desktop: null }),
+      inputsAt(T0 + 250, { desktop: quietDesktop({ idleSeconds: null }) }),
+      inputsAt(T0 + 500_000, { desktop: quietDesktop({ idleSeconds: null }) }),
     ])
 
-    expect(results[0].state.away).toBe(true)
-    expect(results[1].state.away).toBe(false)
-    expect(results[1].state.reactSeq).toBe(1)
-    expect(results[1].state.reactKind).toBe('wake')
+    expect(results.map(r => r.state.away)).toEqual([false, false, false])
+    expect(results.flatMap(r => r.events)).toEqual([])
   })
 
-  it('treats the first desktop snapshot as a baseline without reacting', () => {
+  it('treats the first desktop snapshot as a baseline without a wake', () => {
     const results = run([
       inputsAt(T0, { desktop: null }),
       inputsAt(T0 + 250, { desktop: quietDesktop({ unlockedAtMs: T0 - 1000, resumedAtMs: T0 - 2000 }) }),
       inputsAt(T0 + 500, { desktop: quietDesktop({ unlockedAtMs: T0 - 1000, resumedAtMs: T0 - 2000 }) }),
     ])
 
-    expect(results.map(r => r.state.reactSeq)).toEqual([0, 0, 0])
+    expect(results.flatMap(r => r.events)).toEqual([])
   })
 
-  it('reacts to a later unlock even when its timestamp is old', () => {
+  it('reports a later resume as a wake even when its time is older than the clock', () => {
     const results = run([
-      inputsAt(T0, { desktop: quietDesktop({ locked: true }) }),
-      inputsAt(T0 + 60_000, { desktop: quietDesktop({ unlockedAtMs: T0 + 1000 }) }),
+      inputsAt(T0, { desktop: quietDesktop() }),
+      inputsAt(T0 + 60_000, { desktop: quietDesktop({ resumedAtMs: T0 + 1000 }) }),
     ])
 
-    expect(results[1].state.reactSeq).toBe(1)
-    expect(results[1].state.reactKind).toBe('wake')
+    expect(results[1].events).toEqual([{ kind: 'presence', away: false, wake: { cause: 'resume', atMs: T0 + 1000 } }])
   })
 
-  it('reacts once to the same wake timestamp seen twice', () => {
+  it('keeps the last known time across a null, so a wake is reported once', () => {
     const results = run([
       inputsAt(T0, { desktop: quietDesktop() }),
       inputsAt(T0 + 30_000, { desktop: quietDesktop({ resumedAtMs: T0 + 10_000 }) }),
@@ -265,30 +274,43 @@ describe('resolvePerformanceState', () => {
       inputsAt(T0 + 30_750, { desktop: quietDesktop({ resumedAtMs: T0 + 10_000 }) }),
     ])
 
-    expect(results.map(r => r.state.reactSeq)).toEqual([0, 1, 1, 1, 1])
+    expect(results.map(r => r.events.length)).toEqual([0, 1, 0, 0, 0])
   })
 
-  it('reacts with screen-change when the screen change rises above 0.35', () => {
+  it.each([
+    ['unlock', T0 + 900, T0 + 800],
+    ['resume', T0 + 800, T0 + 900],
+  ] as const)('names the newer cause (%s) when both times are new in one call', (cause, unlockedAtMs, resumedAtMs) => {
+    const results = run([
+      inputsAt(T0, { desktop: quietDesktop() }),
+      inputsAt(T0 + 1000, { desktop: quietDesktop({ unlockedAtMs, resumedAtMs }) }),
+    ])
+
+    expect(results[1].events).toEqual([{ kind: 'presence', away: false, wake: { cause, atMs: Math.max(unlockedAtMs, resumedAtMs) } }])
+  })
+
+  it('reports a screen change once on the upward crossing above 0.35, with no refractory', () => {
     const results = run([
       inputsAt(T0, { desktop: quietDesktop({ screenChange: 0.3 }) }),
       inputsAt(T0 + 250, { desktop: quietDesktop({ screenChange: 0.5 }) }),
       inputsAt(T0 + 500, { desktop: quietDesktop({ screenChange: 0.6 }) }),
+      inputsAt(T0 + 750, { desktop: quietDesktop({ screenChange: 0 }) }),
+      inputsAt(T0 + 1000, { desktop: quietDesktop({ screenChange: 0.5 }) }),
     ])
 
-    expect(results.map(r => r.state.reactSeq)).toEqual([0, 1, 1])
-    expect(results[1].state.reactKind).toBe('screen-change')
+    expect(results.map(r => r.events)).toEqual([[], [{ kind: 'screen-change' }], [], [], [{ kind: 'screen-change' }]])
   })
 
-  it('screen-change within 10 s refractory does not increment reactSeq', () => {
+  it('reports a wake and a screen change in one call, the presence event first', () => {
     const results = run([
-      inputsAt(T0, { desktop: quietDesktop({ screenChange: 0.5 }) }),
-      inputsAt(T0 + 1000, { desktop: quietDesktop({ screenChange: 0 }) }),
-      inputsAt(T0 + 2000, { desktop: quietDesktop({ screenChange: 0.5 }) }),
-      inputsAt(T0 + 10_500, { desktop: quietDesktop({ screenChange: 0 }) }),
-      inputsAt(T0 + 11_000, { desktop: quietDesktop({ screenChange: 0.5 }) }),
+      inputsAt(T0, { desktop: quietDesktop({ locked: true }) }),
+      inputsAt(T0 + 1000, { desktop: quietDesktop({ unlockedAtMs: T0 + 900, screenChange: 0.5 }) }),
     ])
 
-    expect(results.map(r => r.state.reactSeq)).toEqual([1, 1, 1, 1, 2])
+    expect(results[1].events).toEqual([
+      { kind: 'presence', away: false, wake: { cause: 'unlock', atMs: T0 + 900 } },
+      { kind: 'screen-change' },
+    ])
   })
 
   it('lets the developer override win without dwell', () => {
@@ -311,7 +333,7 @@ describe('resolvePerformanceState', () => {
     expect(negative.state.away).toBe(false)
   })
 
-  it('does not flap modes or reopen refractory when the clock steps backwards', () => {
+  it('does not flap modes when the clock steps backwards', () => {
     const results = run([
       inputsAt(T0, { generating: true, desktop: quietDesktop({ screenChange: 0.5 }) }),
       inputsAt(T0 + 400, { speaking: true, desktop: quietDesktop({ screenChange: 0 }) }),
@@ -320,7 +342,6 @@ describe('resolvePerformanceState', () => {
     ])
 
     expect(results.map(r => r.state.mode)).toEqual(['thinking', 'talking', 'talking', 'talking'])
-    expect(results.map(r => r.state.reactSeq)).toEqual([1, 1, 1, 1])
     expect(results[3].memory.nowMs).toBe(T0 + 400)
   })
 

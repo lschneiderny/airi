@@ -1076,7 +1076,7 @@ describe('stage performance routing on MMD', () => {
     const live2dContext = live2d.createLive2D()
     onTestFinished(() => live2dContext.dispose())
     const scene = await renderMMD(PreviewStage, { live2dContext })
-    expect(scene.props.performance).toEqual({ mode: 'idle', attention: 'camera', away: false, reactSeq: 0, reactKind: 'none' })
+    expect(scene.props.performance).toEqual({ mode: 'idle', attention: 'camera', away: false })
     expect(scene.props.mouthOpenSize).toBe(0)
     expect(scene.props.nowSpeaking).toBe(false)
     expect((scene.exposed as { canvasElement: () => HTMLCanvasElement }).canvasElement()).toBeInstanceOf(HTMLCanvasElement)

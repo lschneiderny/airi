@@ -578,7 +578,10 @@ Live2D. The scene performs the mind's `touch-reaction` intent through its
 exposed `reactToTouch`: a poke calls Natural's `poke`, the pet hand reaches
 Natural only between a pet `start` and its `end`, and a poke and a pet start
 count as interactions for the body director. The response is pre-physics head
-and body motion.
+and body motion. The scene also exposes `wakeFromSleep()` and
+`reactToDesktop(reaction)`, which `Stage.vue` calls under Natural when the mind
+answers the user's return or a desktop event; they forward to
+`MMDNaturalAdapter.wake` and `react`.
 The `touch` (default on) and `touchPetRequiresHold` (default off) Natural
 settings match the Live2D settings. The scene also plays ACT
 cue gestures (`gesture`) and takes mood doses (`addMood`), and

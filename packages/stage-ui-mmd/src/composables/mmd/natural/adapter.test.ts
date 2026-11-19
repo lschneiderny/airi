@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { MMDNaturalAdapter } from './adapter'
 
 const input = {
-  performance: { mode: 'idle', attention: 'cursor', away: false, reactSeq: 0, reactKind: 'none' },
+  performance: { mode: 'idle', attention: 'cursor', away: false },
   energy: 0.5,
   voice: { speaking: false, speechActiveOrRecent: false, level: 0 },
   cursor: { x: 4, y: 0 },

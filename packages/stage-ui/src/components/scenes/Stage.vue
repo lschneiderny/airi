@@ -599,6 +599,8 @@ function resolvePerformance(): PerformanceState {
   }
   const resolution = resolvePerformanceState(performanceInputs, performanceMemory)
   performanceMemory = resolution.memory
+  // The mind answers the edges of this call, a return or a desktop event, in the same call stack.
+  performanceConductor.desktop(resolution.events)
   return resolution.state
 }
 
@@ -651,10 +653,8 @@ function updatePerformance() {
   const next = resolvePerformance()
   const current = performance.value
   // A new object every tick would re-render the scene four times a second for nothing.
-  if (next.mode !== current.mode || next.attention !== current.attention || next.away !== current.away
-    || next.reactSeq !== current.reactSeq || next.reactKind !== current.reactKind) {
+  if (next.mode !== current.mode || next.attention !== current.attention || next.away !== current.away)
     performance.value = next
-  }
 }
 
 // --- Chat activity for the Natural motion driver: typing timing and typed-send counters, never text.
@@ -714,11 +714,6 @@ onUnmounted(naturalPerformanceOverride.onIdleRequest(kind => performanceConducto
 onUnmounted(naturalPerformanceOverride.onPastimeRequest(() => idleProps.playPastime()))
 onUnmounted(naturalPerformanceOverride.onMomentRequest(moment => idleProps.onMoment(moment, { force: true })))
 useIntervalFn(() => naturalPerformanceOverride.publishIdleLife(idleProps.state()), 1000)
-// The user is back at the machine: a moment she may mark.
-watch(() => performance.value.away, (away, wasAway) => {
-  if (wasAway && !away)
-    idleProps.onMoment('welcome-back')
-})
 
 // The dev-only motion QA bridge answers remote-debug commands through this stage's real input paths. The
 // flag exists only when the Electron main process enabled the bridge and the renderer set it before mounting;
