@@ -10,3 +10,13 @@ export function nextRandom(state: number): readonly [value: number, next: number
   bits ^= bits + Math.imul(bits ^ (bits >>> 7), bits | 61)
   return [((bits ^ (bits >>> 14)) >>> 0) / 4294967296, next]
 }
+
+/** A Mulberry32 random source from `seed`: each call advances the stream once and returns a ticket in [0, 1). */
+export function randomSource(seed: number): () => number {
+  let state = seedRng(seed)
+  return () => {
+    const [value, next] = nextRandom(state)
+    state = next
+    return value
+  }
+}
