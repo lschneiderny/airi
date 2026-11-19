@@ -1,70 +1,32 @@
+import type { SettingsDocument } from '@proj-airi/stage-shared/composables'
 import type {} from 'pinia-plugin-synced'
-import type { InferOutput } from 'valibot'
 
-import { useLocalStorageManualReset } from '@proj-airi/stage-shared/composables'
-import { isPlainObject, uniq } from 'es-toolkit'
+import { useSettingsDocument } from '@proj-airi/stage-shared/composables'
+import { uniq } from 'es-toolkit'
 import { defineStore } from 'pinia'
-import { array, check, parse, pipe, safeParse, strictObject, string, unknown } from 'valibot'
-import { shallowRef, toRaw } from 'vue'
+import { array, optional, parse, strictObject, string } from 'valibot'
 
-// Valibot objects accept arrays; the settings document must be a record.
-const HostNoticeSettingsSchema = pipe(unknown(), check(isPlainObject, 'Expected a settings object'), strictObject({
+const hostNoticeSettingsEntries = {
   /** Presence notice keys (`presenceNoticeKey`) the user has already dismissed, one per host and set of limitations. */
-  dismissedKeys: array(string()),
-}))
-
-export type HostNoticeSettings = InferOutput<typeof HostNoticeSettingsSchema>
-
-export function defaultHostNoticeSettings(): HostNoticeSettings {
-  return { dismissedKeys: [] }
+  dismissedKeys: optional(array(string()), () => []),
 }
 
-/** localStorage is outside the app's control: anything but a valid document falls back to the defaults. */
-function readStoredHostNoticeSettings(raw: string): HostNoticeSettings {
-  let stored: unknown
-  try {
-    stored = JSON.parse(raw)
-  }
-  catch {
-    stored = undefined
-  }
-  const result = safeParse(HostNoticeSettingsSchema, stored)
-  if (!result.success) {
-    console.warn('[host-notice-settings] Stored settings are invalid; using defaults')
-    return defaultHostNoticeSettings()
-  }
-  return result.output
+export type HostNoticeSettings = SettingsDocument<typeof hostNoticeSettingsEntries>
+
+export function defaultHostNoticeSettings(): HostNoticeSettings {
+  return parse(strictObject(hostNoticeSettingsEntries), {})
 }
 
 /** Replicates which host notices the user dismissed; only leader-routed commands persist changes. */
 export const useHostNoticeSettings = defineStore('host-notice-settings', () => {
-  // Persistence is private: applying a remote snapshot never writes back into
-  // synchronized state or persists an uncommitted follower proposal.
-  const persisted = useLocalStorageManualReset<HostNoticeSettings>('settings/host-notice', defaultHostNoticeSettings, {
-    listenToStorageChanges: false,
-    writeDefaults: false,
-    flush: 'sync',
-    serializer: {
-      read: readStoredHostNoticeSettings,
-      write: value => JSON.stringify(value),
-    },
-  })
-  const document = shallowRef(structuredClone(toRaw(persisted.value)))
+  const settings = useSettingsDocument('settings/host-notice', hostNoticeSettingsEntries, { label: 'host-notice-settings' })
 
   /** Idempotent: every window can observe the same snapshot and ask again. */
   async function dismiss(key: string) {
-    const value = parse(HostNoticeSettingsSchema, { dismissedKeys: uniq([...document.value.dismissedKeys, key]) })
-    document.value = value
-    persisted.value = value
+    await settings.update({ dismissedKeys: uniq([...settings.document.value.dismissedKeys, key]) })
   }
 
-  async function reset() {
-    const value = defaultHostNoticeSettings()
-    document.value = value
-    persisted.value = value
-  }
-
-  return { document, dismiss, reset }
+  return { document: settings.document, dismiss, reset: settings.reset }
 }, {
   synced: {
     state: true,
