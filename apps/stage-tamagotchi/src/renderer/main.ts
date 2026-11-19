@@ -7,6 +7,7 @@ import { PiniaColada } from '@pinia/colada'
 import { useElectronEventaInvoke } from '@proj-airi/electron-vueuse'
 import { settingsSearchModules } from '@proj-airi/stage-pages/settings-search'
 import { backdropSurfaceHostKey } from '@proj-airi/stage-ui/composables/backdrop-surface'
+import { hostDataDeletionKey } from '@proj-airi/stage-ui/composables/host-data-deletion'
 import { pushToTalkTriggerKey } from '@proj-airi/stage-ui/composables/push-to-talk-trigger'
 import { trackButtonPlugin } from '@proj-airi/stage-ui/directives/track-button'
 import { piniaPluginTracing, setupSynced } from '@proj-airi/stage-ui/libs/pinia'
@@ -26,6 +27,7 @@ import { electronWindowBackdropUpdate } from '../shared/eventa'
 import { installGoNetwork } from './bridges/opencode-go'
 import { migrateGoCredentials } from './bridges/opencode-go-migration'
 import { nestFullscreenSurfaces } from './components/fullscreen/surfaces'
+import { createMainProcessDataDeletion } from './composables/main-process-data-deletion'
 import { createWindowBackdropHost } from './composables/window-backdrop'
 import { i18n } from './modules/i18n'
 import { resolveRendererWindowContext } from './window-context'
@@ -127,6 +129,8 @@ function mount() {
     .provide(pushToTalkTriggerKey, true)
     // Translucent surfaces in every window get native glass where the platform has it.
     .provide(backdropSurfaceHostKey, createWindowBackdropHost(useElectronEventaInvoke(electronWindowBackdropUpdate)))
+    // "Delete all data" on the Data page and through the QA bridge runs this host step after the renderer's own.
+    .provide(hostDataDeletionKey, createMainProcessDataDeletion())
     .mount('#app')
 }
 

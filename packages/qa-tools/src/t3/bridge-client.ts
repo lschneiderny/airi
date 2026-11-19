@@ -4,6 +4,7 @@ import type {
   MotionQaChatSendInput,
   MotionQaChatSendResult,
   MotionQaConfigureInput,
+  MotionQaDeleteAllDataResult,
   MotionQaEventsInput,
   MotionQaEventsResult,
   MotionQaImportModelInput,
@@ -21,6 +22,7 @@ import {
   MotionQaAwaitCaptureResultSchema,
   MotionQaChatSendResultSchema,
   MotionQaCommandSchema,
+  MotionQaDeleteAllDataResultSchema,
   MotionQaEventsResultSchema,
   MotionQaImportModelResultSchema,
   MotionQaRunScenarioResultSchema,
@@ -43,6 +45,7 @@ interface MotionQaCommands {
   startCapture: { input: MotionQaStartCaptureInput, result: MotionQaStartCaptureResult }
   runScenario: { input: MotionQaRunScenarioInput, result: MotionQaRunScenarioResult }
   awaitCapture: { input: MotionQaAwaitCaptureInput, result: MotionQaAwaitCaptureResult }
+  deleteAllData: { input: undefined, result: MotionQaDeleteAllDataResult }
 }
 export type MotionQaCommandName = keyof MotionQaCommands
 
@@ -55,6 +58,7 @@ const resultSchemas: Record<MotionQaCommandName, GenericSchema> = {
   startCapture: MotionQaStartCaptureResultSchema,
   runScenario: MotionQaRunScenarioResultSchema,
   awaitCapture: MotionQaAwaitCaptureResultSchema,
+  deleteAllData: MotionQaDeleteAllDataResultSchema,
 }
 
 /** The bridge answered `ok: false`, or its answer broke the contract. */

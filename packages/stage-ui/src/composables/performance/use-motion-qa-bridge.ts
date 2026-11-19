@@ -14,6 +14,7 @@ import {
   motionQaAwaitCaptureInvokeEventa,
   motionQaChatSendInvokeEventa,
   motionQaConfigureInvokeEventa,
+  motionQaDeleteAllDataInvokeEventa,
   motionQaEventsInvokeEventa,
   motionQaImportModelFromInputInvokeEventa,
   motionQaRunScenarioInvokeEventa,
@@ -60,6 +61,8 @@ export interface MotionQaBridgeOptions {
   renderError: () => Error | undefined
   /** The last resolver inputs and the state the stage hands to Natural; read without resolving again. */
   performance: () => { inputs: PerformanceInputs, state: PerformanceState }
+  /** "Delete all data" as the Data settings page runs it, host step included; rejects with the first failure. */
+  deleteAllData: () => Promise<void>
   /** Defaults to `performance.now()` and `requestAnimationFrame`. */
   frames?: MotionQaFrames
 }
@@ -371,6 +374,15 @@ export function useMotionQaBridge(options: MotionQaBridgeOptions) {
       }
       startedCaptures.add(captureId)
       return { captureId }
+    }),
+    defineInvokeHandler(context, motionQaDeleteAllDataInvokeEventa, async () => {
+      try {
+        await options.deleteAllData()
+        return { ok: true as const }
+      }
+      catch (error) {
+        return { ok: false as const, error: errorMessageFrom(error) ?? 'unknown error' }
+      }
     }),
     defineInvokeHandler(context, motionQaRunScenarioInvokeEventa, ({ scenario }) => runScenario(scenario)),
     defineInvokeHandler(context, motionQaAwaitCaptureInvokeEventa, async ({ captureId }) => {

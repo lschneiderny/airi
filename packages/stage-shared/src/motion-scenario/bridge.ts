@@ -167,6 +167,16 @@ export const MotionQaAwaitCaptureInputSchema = strictObject({ captureId: nonEmpt
 /** The trace is the Natural trace v2 JSON; stage-ui-live2d owns its full shape, so only the version is pinned here. */
 export const MotionQaAwaitCaptureResultSchema = strictObject({ trace: looseObject({ version: literal(2) }) })
 
+/**
+ * Runs "Delete all data" as the Data settings page does: the state registry, then the host step. A failed step does
+ * not stop the other; `ok: false` carries the first failure's message.
+ */
+export const MotionQaDeleteAllDataResultSchema = variant('ok', [
+  strictObject({ ok: literal(true) }),
+  strictObject({ ok: literal(false), error: nonEmpty }),
+])
+export type MotionQaDeleteAllDataResult = InferOutput<typeof MotionQaDeleteAllDataResultSchema>
+
 export type MotionQaConfigureInput = InferOutput<typeof MotionQaConfigureInputSchema>
 export type MotionQaImportModelInput = InferOutput<typeof MotionQaImportModelInputSchema>
 export type MotionQaImportModelResult = InferOutput<typeof MotionQaImportModelResultSchema>
@@ -185,6 +195,7 @@ export const motionQaImportModelFromInputInvokeEventa = defineInvokeEventa<Motio
 export const motionQaStartCaptureInvokeEventa = defineInvokeEventa<MotionQaStartCaptureResult, MotionQaStartCaptureInput>('eventa:invoke:motion-qa:start-capture')
 export const motionQaRunScenarioInvokeEventa = defineInvokeEventa<MotionQaRunScenarioResult, MotionQaRunScenarioInput>('eventa:invoke:motion-qa:run-scenario')
 export const motionQaAwaitCaptureInvokeEventa = defineInvokeEventa<MotionQaAwaitCaptureResult, MotionQaAwaitCaptureInput>('eventa:invoke:motion-qa:await-capture')
+export const motionQaDeleteAllDataInvokeEventa = defineInvokeEventa<MotionQaDeleteAllDataResult>('eventa:invoke:motion-qa:delete-all-data')
 
 /** One JSON command as the renderer dispatcher receives it: `{ "name": "state" }` or `{ "name": "configure", "input": {...} }`. */
 export const MotionQaCommandSchema = variant('name', [
@@ -196,6 +207,7 @@ export const MotionQaCommandSchema = variant('name', [
   strictObject({ name: literal('startCapture'), input: MotionQaStartCaptureInputSchema }),
   strictObject({ name: literal('runScenario'), input: MotionQaRunScenarioInputSchema }),
   strictObject({ name: literal('awaitCapture'), input: MotionQaAwaitCaptureInputSchema }),
+  strictObject({ name: literal('deleteAllData') }),
 ])
 
 let motionQaContext: ReturnType<typeof createContext> | undefined

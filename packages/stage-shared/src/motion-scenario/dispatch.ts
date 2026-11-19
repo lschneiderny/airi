@@ -13,6 +13,8 @@ import {
   MotionQaChatSendResultSchema,
   MotionQaCommandSchema,
   motionQaConfigureInvokeEventa,
+  motionQaDeleteAllDataInvokeEventa,
+  MotionQaDeleteAllDataResultSchema,
   motionQaEventsInvokeEventa,
   MotionQaEventsResultSchema,
   motionQaImportModelFromInputInvokeEventa,
@@ -68,6 +70,7 @@ export function createMotionQaDispatcher(context = createMotionQaContext()) {
     startCapture: defineInvoke(context, motionQaStartCaptureInvokeEventa),
     runScenario: defineInvoke(context, motionQaRunScenarioInvokeEventa),
     awaitCapture: defineInvoke(context, motionQaAwaitCaptureInvokeEventa),
+    deleteAllData: defineInvoke(context, motionQaDeleteAllDataInvokeEventa),
   }
 
   async function run(text: string): Promise<{ name: string, schema: GenericSchema, result: unknown } | MotionQaResponse> {
@@ -103,6 +106,8 @@ export function createMotionQaDispatcher(context = createMotionQaContext()) {
         return { name: command.name, schema: MotionQaRunScenarioResultSchema, result: await invokes.runScenario(command.input) }
       case 'awaitCapture':
         return { name: command.name, schema: MotionQaAwaitCaptureResultSchema, result: await invokes.awaitCapture(command.input) }
+      case 'deleteAllData':
+        return { name: command.name, schema: MotionQaDeleteAllDataResultSchema, result: await invokes.deleteAllData() }
     }
   }
 

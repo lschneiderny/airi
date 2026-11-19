@@ -85,6 +85,7 @@ describe('useMotionQaBridge', () => {
   let chat: ReturnType<typeof createChatHooks>
   const voicing = ref(false)
   const mode = ref<PerformanceMode>('idle')
+  let deleteAllData: () => Promise<void>
   let performanceInputs: PerformanceInputs
 
   /** Stands in for the capture that Model.vue runs: scenario events stamped into it land in the log. */
@@ -101,6 +102,9 @@ describe('useMotionQaBridge', () => {
     chat = createChatHooks()
     voicing.value = false
     mode.value = 'idle'
+    deleteAllData = async () => {
+      log.push('delete-all-data')
+    }
     performanceInputs = { nowMs: 0, speaking: false, userSpeaking: false, generating: false, cursorMovedAtMs: null, desktop: null, userTurnAtMs: null, visible: true, override: null, cueAttention: null, foregroundCategory: null }
     const streaming = useLlmStreamingControlStore()
     const dispatcher = createMotionQaDispatcher()
@@ -121,6 +125,7 @@ describe('useMotionQaBridge', () => {
         dispatchAct: marker => streaming.dispatchWith(marker),
         renderError: () => undefined,
         performance: () => ({ inputs: performanceInputs, state: { ...resolvePerformanceState(performanceInputs, initialResolverMemory).state, mode: mode.value } }),
+        deleteAllData: () => deleteAllData(),
         frames: clock.frames,
       })
     })
@@ -129,6 +134,16 @@ describe('useMotionQaBridge', () => {
   it('sends user text through the supplied real send boundary', async () => {
     expect(await dispatch({ name: 'chatSend', input: { text: 'hello' } })).toEqual({ ok: true, result: { sent: true } })
     expect(log).toEqual(['send:hello'])
+  })
+
+  it('runs delete all data through the supplied maintenance call and reports the first failure as a result', async () => {
+    expect(await dispatch({ name: 'deleteAllData' })).toEqual({ ok: true, result: { ok: true } })
+    expect(log).toEqual(['delete-all-data'])
+
+    deleteAllData = async () => {
+      throw new Error('Model storage unavailable')
+    }
+    expect(await dispatch({ name: 'deleteAllData' })).toEqual({ ok: true, result: { ok: false, error: 'Model storage unavailable' } })
   })
 
   it('records turn boundaries and truncates assistant text', async () => {
