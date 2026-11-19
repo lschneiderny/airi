@@ -34,7 +34,6 @@ function view(overrides: Partial<Omit<VoiceView, 'run' | 'signals'>> & { run?: P
     sessionId: 'chat-a',
     settings: { enabled: true, chattiness: 0.5, dontDisturb: false, quietApps: [], speakDuringGames: true },
     moodFactor: 1,
-    heldTopics: [],
     unpromptedPending: false,
     ...overrides,
     run: { id: 1, memory: null, saved: null, ...overrides.run },
@@ -167,7 +166,7 @@ describe('voice-outcome', () => {
   })
 })
 
-describe('user and external turns', () => {
+describe('user turns', () => {
   it('resets unanswered at a user turn', () => {
     const mind = script()
     mind.send(T0, tick({ run: { saved } }))
@@ -175,14 +174,6 @@ describe('user and external turns', () => {
 
     expect(mind.gate).toMatchObject({ unanswered: 0, awaitingSinceMs: null })
     expect(mind.gate.damp).not.toBeNull()
-  })
-
-  it('starts the floor at external speech', () => {
-    const mind = script()
-    mind.send(T0, tick({ signals: { stageVisible: false } }))
-    mind.send(T0 + SEC, { kind: 'external-speech', atMs: T0 + SEC })
-
-    expect(mind.gate).toMatchObject({ lastFireAtMs: T0 + SEC, lastSpokenAtMs: T0 + SEC, unanswered: 0 })
   })
 })
 

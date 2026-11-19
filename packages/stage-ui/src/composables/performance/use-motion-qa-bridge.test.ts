@@ -103,7 +103,6 @@ function voiceTick(forceTiming: boolean, nowMs: number): MindStimulus {
       signals: { userSpeaking: false, userTyping: false, characterSpeaking: false, generating: false, queued: 0, desktopFresh: true, foregroundFresh: true, stageVisible: true },
       settings: { enabled: true, chattiness: 0.5, dontDisturb: false, quietApps: [], speakDuringGames: true },
       moodFactor: 1,
-      heldTopics: [],
       unpromptedPending: false,
     },
   }

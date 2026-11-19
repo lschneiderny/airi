@@ -463,15 +463,14 @@ The character can reach out a few times a day for her own reasons, with long qui
 ### Situation store
 
 `useSituationStore` in `stores/situation` holds the situation of the leader window. Situation observations are neither synced nor persisted.
-Each host calls `initialize(syncedPinia)` next to the chat store. The leader starts the sensors and a 1-second advance ticker. A follower ignores every other call, but it tracks the user's voice and composer activity for `untilUserIdle`.
+Each host calls `initialize(syncedPinia)` next to the chat store. The leader starts the sensors, the listeners for the user's voice and composer activity in every window, and a 1-second advance ticker. A follower ignores every other call and reads no input.
 Every chat request carries the block from `renderForRequest` as its only runtime context. Outside the leader, `renderForRequest` returns `undefined`, so a host that never initializes the store sends no block.
 
 - `setHostCapabilities({ unprompted: true })` runs the gate loop in the leader: every 2 seconds the store sends the connected character mind a `voice-tick`, and the mind evaluates the urge gate. Only the Electron app sets it. With no mind connected, the tick is dropped.
 - `setStageVisible(visible)` reports whether the stage is on screen. A host that never calls it counts as hidden, so the gate stays quiet.
 - `ingest(observation)` folds one observation. Sensors call it; other code rarely needs it.
 - `markAddressed(topicKey)` keeps an eligible screen topic from being raised again. A thread reason is used up only when she speaks about it.
-- `holdTopic(topicKey)` keeps a topic away from the gate until the returned function releases it, without addressing it. Use it while a forced turn about that topic is on its way.
-- `userMidInput()` and `untilUserIdle(timeoutMs)` report whether the user is speaking into the microphone, waiting for speech-to-text to finish what they said, or writing in a chat composer in any window. They work in every initialized window.
+- `requestVoice(request)` asks the character mind to speak about a widget or plugin request; see [Widget reactions](#widget-reactions).
 - `onNotifySpoken(listener)` reports each spoken gate fire about a notify, with its topic key and reply text.
 - `onExchangeEnd(listener)` reports each finished chat exchange in the leader: at least one user turn, then a quiet stretch with no generation. An unprompted turn alone never opens an exchange.
 
@@ -523,19 +522,23 @@ The chat prompt composer renders the register section with `renderRegisterSectio
 
 ### Unprompted turns
 
-`useChatStore().submitUnprompted({ topicKey, topicText, force?, messageId?, supplement? })` starts one turn without user input in the leader's active session. It resolves to `spoken` with the text, `declined`, `cancelled`, or `failed`.
-`force` changes only the instruction: without it, the instruction invites the model to decline with `<|SILENT|>`, the `declineMarker` of `STAGE_RUNTIME_CONFIG` that the chat store passes to the runtime, and with it, the instruction asks her to speak. A forced turn still declines when the reply starts with the decline marker or has no visible speech. A decline writes an `unprompted-declined` control record and nothing else.
+`useChatStore().submitUnprompted({ topicKey, topicText, widget?, messageId?, supplement? })` starts one turn without user input in the leader's active session. It resolves to `spoken` with the text, `declined`, `cancelled`, or `failed`.
+Every instruction invites the model to decline with `<|SILENT|>`, the `declineMarker` of `STAGE_RUNTIME_CONFIG` that the chat store passes to the runtime. `widget` changes only the instruction: a widget turn takes `base.prompt.unprompted-widget`, a brief reaction to what the widget reports, instead of the instruction of its reason's category. A turn also declines when its reply has no visible speech. A decline writes an `unprompted-declined` control record and nothing else.
 At most one unprompted turn is pending at a time. A user send in the same session cancels it.
-The trigger message keeps `topicText` in chat history, so neither the gate nor a widget reaction passes a window title or a web extension title or link as `topicText`. Both call `unpromptedTopicText` from `@proj-airi/stage-shared/situation`. Its trigger kind identifies the reason source. Thread text reaches the model only as labelled data in the trigger, never in the instruction. For a web extension topic it passes only the kind of topic, and the situation block of the request carries the details.
+The trigger message keeps `topicText` in chat history, so no line passes a window title or a web extension title or link as `topicText`: `useSituationStore().speak` calls `unpromptedTopicText` from `@proj-airi/stage-shared/situation` for reach-outs and widget lines. Its trigger kind identifies the reason source. Thread text reaches the model only as labelled data in the trigger, never in the instruction. For a web extension topic it passes only the kind of topic, and the situation block of the request carries the details.
 `userSending` ignores unprompted turns, so the presence bubble and the streaming placeholder follow user turns only.
 Chat history shows a muted "Reached out: ..." cue above the reply unless **Show unprompted cue** is off. The trigger kind identifies whether the reason is a thread, ritual, own-day thought, eligible screen event, or touch. Unprompted turns are excluded from cloud sync.
 
-Widget reaction requests (`dispatchSparkNotifyReaction` and `dispatchSparkNotifyPerformance`) use `submitUnprompted` with `force: true` and the message id `spark:<id>`. Their topic text is the replacement message or the headline and note, passed through `unpromptedTopicText`: a request from the web extension stores only the kind of topic, and every other source's text is unchanged.
-The context bridge holds the notify topic with `holdTopic`, so the gate cannot raise it meanwhile. It first waits up to 20 seconds until the character has no open voice response and `untilUserIdle` reports that the user is neither speaking nor writing.
-A request returns the spoken text, or the fallback text when no quiet moment comes or the turn is declined, cancelled, failed, or busy. A declined reaction addresses its topic. A cancelled, failed, or busy one leaves the topic for the gate.
+### Widget reactions
+
+Only the leader serves widget reaction requests (`dispatchSparkNotifyReaction` and `dispatchSparkNotifyPerformance`): the Electron app sets the spark role `main` in the leader window and `client` in every other window, which forwards its requests over the `airi-spark-notify-bridge` BroadcastChannel.
+The context bridge calls `useSituationStore().requestVoice({ turnId: 'spark:<id>', topicKey, topicText, supplement, timeoutMs })` before the notify enters the situation, so the mind holds its topic from the gate from the start. The topic text is the replacement message or the headline and note. `timeoutMs` is the caller's `timeoutMs` (a client forwards its performance wait), else 30 seconds.
+`requestVoice` resolves `failed` at once in a follower window, while the gate loop does not run, and when no mind is connected. Otherwise the mind holds the request while she or the user is busy, and lets it through as a `widget` line. `speak` applies `unpromptedTopicText` (a request from the web extension stores only the kind of topic) and calls `submitUnprompted` with `widget: true` and the message id `spark:<id>`, which the CALL handlers of the request listen to.
+The mind gives up a request that found no quiet moment within 20 seconds (`drop`), and stops a line that has not spoken by the caller's deadline less 1 second (`cancel`, which calls chat `cancelTurn`); both answer the caller `cancelled`. The mind's earliest deadline reaches `publishVoice` as `wakeAtMs`, and the store ticks the mind then.
+A request returns the spoken text, or the fallback text when the turn is declined, cancelled, dropped, or failed. A spoken reaction addresses its topic at its first literal, and a declined one at its end. A cancelled, dropped, or failed one leaves the topic for the gate, so she may raise the notify on her own.
 The character store no longer speaks spark reactions through its own `Speech` client. A spoken notify reaction, from a gate fire or a widget request, is posted on the `airi-spark-notify-bridge` BroadcastChannel and recorded once per notify id in the `reactions` of every window.
 
-Use `submitUnprompted` for remarks that code decided to offer: gate fires and forced reactions.
+Only `useSituationStore().speak` calls `submitUnprompted`, for lines the character mind decided: reach-outs and widget reactions.
 Do not pass a raw window title in `topicText`, because the trigger message is stored in history.
 
 ### Reaction turns
@@ -565,14 +568,15 @@ The conductor reaches the leader's situation store through its `VoicePort` (`com
 The character mind of the stage that leads decides every reach-out; the situation store is its voice port.
 
 - `connect(send)`: `Stage.vue` connects the conductor's `voiceStimulus` on mount and disconnects on unmount. The newest connection wins. While the gate runs, the new mind gets a tick at once, then the user turn that arrived while no mind was connected.
-- The tick: the store prunes the threads and sends `voice-tick` with a `VoiceView` built from the gate signals, the gate settings, the local time, the threads, the reading's urge factor, the held topics, and whether an unprompted turn is pending. `user-turn` follows each user turn, and `external-speech` follows a forced widget turn that spoke.
-- `conductor.voiceStimulus(stimulus)` runs one mind step and dispatches `speak` for every line kind to `voice().speak(turnId, line)`. The outcome returns to the mind as `voice-outcome` with the same `turnId`.
-- `publishVoice({ runId, memory, decision, wakeAtMs })`: after each step that changed the gate memory or decided, the conductor publishes it. The store keeps the memory as the run's mirror, which the character state reads, saves the social slice with the leadership token when it changed, and records the decision in the inspector. `wakeAtMs` is always null for now.
+- The tick: the store prunes the threads and sends `voice-tick` with a `VoiceView` built from the gate signals, the gate settings, the local time, the threads, the reading's urge factor, and whether an unprompted turn is pending. `user-turn` follows each user turn. A widget request arrives as `voice-request` with the same view.
+- `conductor.voiceStimulus(stimulus)` runs one mind step and dispatches `speak` for every line kind to `voice().speak(turnId, line)`, `cancel` to `voice().cancel(turnId)`, and `drop` to `voice().drop(turnId)`. A line's outcome returns to the mind as `voice-outcome` with the same `turnId`.
+- `publishVoice({ runId, memory, decision, wakeAtMs })`: after each step that changed the gate memory or decided, the conductor publishes it. The store keeps the memory as the run's mirror, which the character state reads, saves the social slice with the leadership token when it changed, and records the decision in the inspector. A step also publishes when its widget deadline changed: the store arms one timer at `wakeAtMs` that ticks the mind, or clears it when `wakeAtMs` is null.
 - Runs: each promotion and "Delete all data" starts a new `VoiceRun` id. The mind restores its gate memory at its first tick of a run: from the mirror, so a remounted stage keeps the urge and the hourly cap, else from the slice saved at the promotion, else from promotion alone.
 
 `useSituationStore().speak(turnId, line)` runs a line. It resolves `refused` without sending while another unprompted turn is pending, and `failed` in a follower window, while the gate does not run, and when the window stopped leading before the turn had a result. Otherwise it resolves at the first spoken literal, at a decline, or with the turn's result.
 
 - A reach-out applies `unpromptedTopicText`, addresses its topic before the send (a thread only once her turn speaks), and calls `submitUnprompted` with its reason under a new message id; the mind's `turnId` is not the chat message id. At the first literal a thread topic is raised. The outcome is recorded per reason kind for the inspector.
+- A widget line calls `submitUnprompted` with `widget: true` under its `turnId`, and its caller receives the turn's result; see [Widget reactions](#widget-reactions).
 - A touch line marks the touch event shown and calls `submitReaction`. It resolves `failed` when its event is gone. The mind starts the gate's short floor for a spoken one (`recordExternalSpeech`); reaction outcomes never reach `recordUrgeFireOutcome`.
 
 The pacing of these lines (the 45 s refractory, the retry wait, the burst roll) is the mind's fast state. It is not saved, so it starts over at every launch. `useCharacterMind` creates one mind per `Stage.vue` and feeds its voice decisions to the devtools reaction inspector. Two stages that render at once would run two minds and dose mood twice for touches on both; no guard prevents it.

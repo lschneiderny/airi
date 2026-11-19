@@ -43,8 +43,6 @@ export interface VoiceView {
   signals: GateSignals
   settings: GateSettings
   moodFactor: number
-  /** Topics a widget or plugin turn holds (`holdTopic`); the gate never picks them. */
-  heldTopics: string[]
   /** An unprompted turn the mind did not start is pending in chat. */
   unpromptedPending: boolean
 }
@@ -74,8 +72,6 @@ export type MindStimulus
     | { kind: 'voice-tick', view: VoiceView, forceTiming: boolean }
   /** The user sent a turn of their own. */
     | { kind: 'user-turn', atMs: number }
-  /** A forced widget or plugin turn spoke outside the mind. */
-    | { kind: 'external-speech', atMs: number }
   /** A widget or plugin asks her to speak; the mind holds it until she and the user are quiet. */
     | { kind: 'voice-request', request: VoiceRequest, view: VoiceView }
   /** `away` changed, or a desktop wake appeared. `wake` names the newer of a new unlock and resume time. */

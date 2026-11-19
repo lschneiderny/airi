@@ -1,4 +1,4 @@
-import type { VoiceLine, VoiceRun } from '@proj-airi/character-mind'
+import type { VoiceLine, VoiceRequest, VoiceRun, VoiceView } from '@proj-airi/character-mind'
 import type { ChatHistoryItem, ChatHookRegistry, TurnRef } from '@proj-airi/core-agent'
 import type {
   AppCategory,
@@ -162,6 +162,8 @@ export interface SituationChatControls {
   submitUnprompted: (payload: ChatUnpromptedPayload) => Promise<ChatUnpromptedResult>
   /** Starts a touch reaction turn; it shares the single pending unprompted turn with `submitUnprompted`. */
   submitReaction: (payload: ChatReactionPayload) => Promise<ChatUnpromptedResult>
+  /** Cancels one chat turn, for a widget line that missed its caller's deadline. */
+  cancelTurn: (turn: { sessionId: string, turnId: string }) => Promise<void>
   /** The loaded messages of a session, oldest first, for thread extraction; empty when it is not loaded. */
   sessionMessages: (sessionId: string) => readonly ChatHistoryItem[]
   /** The active chat provider and model that extract threads, or `null` when none is configured. */
@@ -194,8 +196,8 @@ interface RunningSensors {
  * and a demoted or disposed window stops the sensors and the ticker and drops its state. Follower windows never
  * register sensors, so their chat hooks and desktop samples produce no observations. The conversation sensor runs
  * on the hooks that the chat store hands over through {@link observeChat}, and so does the exchange sensor, which the
- * advance ticker checks and which reports finished exchanges through {@link onExchangeEnd}. Only the user input listeners run in
- * every initialized window, so {@link untilUserIdle} answers wherever a widget reaction is served.
+ * advance ticker checks and which reports finished exchanges through {@link onExchangeEnd}. The user input listeners,
+ * which feed the gate's `userSpeaking` and `userTyping` signals, also run only while the window leads.
  *
  * In a host that declared the `unprompted` capability ({@link setHostCapabilities}), the leader also runs the gate
  * loop every {@link GATE_INTERVAL_MS}, and is the voice port ({@link VoicePort}) of the stage that leads. The character
@@ -218,6 +220,12 @@ interface RunningSensors {
  * marks the touch event as shown (the trigger message carries it), starts a reaction turn through `submitReaction`,
  * and resolves with what became of it. {@link observeReturn} records a return or a desktop wake that the mind
  * decided. The mind applies the outcome of every line to its gate memory.
+ *
+ * Only the leader serves widget and plugin reactions. {@link requestVoice} hands the request to the mind, which holds
+ * it until she and the user are quiet, then decides a widget line that {@link speak} runs. The mind's deadlines arrive
+ * as `wakeAtMs` in {@link publishVoice}, which arms one timer that ticks the mind then; a request the mind gave up
+ * ({@link drop}) or a line it stopped ({@link cancel}) answers its caller with `cancelled` and leaves the notify
+ * unaddressed.
  *
  * While it leads, the store also feeds the character state (`bridgeSituationToCharacter`): touches, returns,
  * reach-outs and their replies, turns, and the relationship events of each extraction. Forgetting everything forgets
@@ -250,6 +258,10 @@ export const useSituationStore = defineStore('situation', () => {
 
   const hostSupportsUnprompted = shallowRef(false)
   let gateTicker: ReturnType<typeof setInterval> | undefined
+  /** Ticks the mind at its next widget deadline; see {@link publishVoice}. */
+  let wakeTimer: ReturnType<typeof setTimeout> | undefined
+  /** The callers of widget requests that have no result yet, by turn id; see {@link requestVoice}. */
+  const widgetCallers = new Map<string, (result: ChatUnpromptedResult) => void>()
   /**
    * The gate run: its id, the mirror of the last memory a mind published in it (`memory`), and the slice saved at its
    * promotion. Replaced, never mutated, so a view sent to the mind keeps the run it was built in.
@@ -272,7 +284,7 @@ export const useSituationStore = defineStore('situation', () => {
   /** Stops thread extraction of the running gate; a late result of an earlier gate run is dropped. */
   let stopThreadExtraction: (() => void) | undefined
   /** The unprompted turn of the line the mind is speaking, from {@link speak} until its result. */
-  let speaking: { chatTurnId: string, line: VoiceLine, spoken: boolean, settle: (outcome: GateOutcome | 'refused') => void } | undefined
+  let speaking: { chatTurnId: string, sessionId: string, line: VoiceLine, spoken: boolean, settle: (outcome: GateOutcome | 'refused') => void } | undefined
   /** Advances on every promotion and demotion, so a result from an earlier leadership is dropped. */
   let leadership = 0
   let stopVoiceTurnListener: (() => void) | undefined
@@ -286,12 +298,8 @@ export const useSituationStore = defineStore('situation', () => {
   let speakingTurns: readonly TurnRef[] = []
   /** The newest report of each chat composer, with the local time it arrived. */
   const composers = new Map<string, { hasDraft: boolean, lastInputAtMs: number, receivedAtMs: number }>()
-  /** Re-checks of the pending {@link untilUserIdle} waits, run on every voice input or composer report. */
-  const userInputWaiters = new Set<() => void>()
   /** Notify topic keys that entered the situation during this leadership, oldest first. */
   const seenNotifyTopics = new Set<string>()
-  /** Topics that another caller's forced turn is about to raise. The gate never picks them; see {@link holdTopic}. */
-  const heldTopics = new Set<string>()
   /** The unprompted turn whose first literal was seen last, so its topic is addressed once. */
   let lastSpokenUnpromptedTurnId: string | undefined
   let stopSelfListener: (() => void) | undefined
@@ -398,24 +406,16 @@ export const useSituationStore = defineStore('situation', () => {
           ingest({ kind: 'conversation', who: 'character', origin: 'reaction', atMs: nowMs })
         return
       }
-      // Every spoken unprompted turn addresses its own topic here, whoever started it. A widget reaction's notify is
-      // addressed only once it speaks, and its topic becomes the remark recorded when the reply ends, not the topic
-      // of an earlier declined turn.
+      // Every spoken unprompted turn addresses its own topic here. A widget reaction's notify is addressed only once it
+      // speaks, and its topic becomes the remark recorded when the reply ends, not the topic of an earlier declined turn.
       if (trigger)
         markAddressed(trigger.topicKey)
-      // Settling a reach-out as spoken now, not when the reply ends, lets a user reply mid-reply count as engagement.
-      if (speaking?.chatTurnId === context.turnId) {
-        if (!speaking.spoken) {
-          // A thread is consumed here and only here, so a declined, cancelled, or failed attempt leaves it eligible.
-          if (trigger && isThreadTopic(trigger.topicKey))
-            raiseThreadTopic(trigger.topicKey, nowMs)
-          lineSpoke(speaking, nowMs)
-        }
-      }
-      else if (gateTicker !== undefined) {
-        // A forced widget or plugin turn spoke outside the mind. It starts the floor, so she does not open a new topic
-        // right after it, but it never counts as an unanswered opening.
-        mind?.send({ kind: 'external-speech', atMs: nowMs })
+      // Settling a line as spoken now, not when the reply ends, lets a user reply mid-reply count as engagement.
+      if (speaking?.chatTurnId === context.turnId && !speaking.spoken) {
+        // A thread is consumed here and only here, so a declined, cancelled, or failed attempt leaves it eligible.
+        if (trigger && isThreadTopic(trigger.topicKey))
+          raiseThreadTopic(trigger.topicKey, nowMs)
+        lineSpoke(speaking, nowMs)
       }
     })
     const stopDeclinedListener = chatHooks.onStreamEnd(async (context) => {
@@ -459,9 +459,8 @@ export const useSituationStore = defineStore('situation', () => {
   }
 
   /**
-   * Listens on the speech bus for the voice input and composer activity of every window. Unlike the rest of the store
-   * this runs in followers too, from {@link initialize} until {@link dispose}: any main window may serve a widget
-   * reaction, and the reaction waits through {@link untilUserIdle} wherever it runs.
+   * Listens on the speech bus for the voice input and composer activity of every window, while this window leads. The
+   * gate signals read them, and the mind holds widget requests on them.
    *
    * The voice host reports speech and transcription only while it lives. A host whose window crashes or is killed
    * sends no further report, so the store also watches the host's lock. When the lock ends, the store stops counting
@@ -469,10 +468,6 @@ export const useSituationStore = defineStore('situation', () => {
    */
   function startUserInputListeners() {
     const context = getSpeechBusContext()
-    const recheckWaiters = () => {
-      for (const recheck of [...userInputWaiters])
-        recheck()
-    }
     let watchedHost: { lock: string, stop: AbortController } | undefined
     const watchHost = (lock: string | undefined) => {
       if (watchedHost?.lock === lock)
@@ -490,7 +485,6 @@ export const useSituationStore = defineStore('situation', () => {
         remoteUserSpeaking = false
         remoteUserInputInFlight = false
         speakingTurns = []
-        recheckWaiters()
       })
     }
     const stops = [
@@ -498,7 +492,6 @@ export const useSituationStore = defineStore('situation', () => {
         if (!body)
           return
         remoteUserSpeaking = body.speaking
-        recheckWaiters()
       }),
       context.on(voiceSnapshotChanged, ({ body }) => {
         if (!body)
@@ -506,13 +499,11 @@ export const useSituationStore = defineStore('situation', () => {
         const phase = body.connected ? body.input?.phase : undefined
         remoteUserInputInFlight = phase === 'capturing' || phase === 'finalizing'
         watchHost(body.connected ? body.lock : undefined)
-        recheckWaiters()
       }),
       context.on(chatComposerActivityChangedEvent, ({ body }) => {
         if (!body)
           return
         composers.set(body.sourceId, { hasDraft: body.hasDraft, lastInputAtMs: body.lastInputAtMs, receivedAtMs: Date.now() })
-        recheckWaiters()
       }),
     ]
     // The host answers with its snapshot, so a window that starts after the host connected still learns its lock.
@@ -554,49 +545,6 @@ export const useSituationStore = defineStore('situation', () => {
   /** Whether the user speaks into the microphone, or speech-to-text still finishes what they said. */
   function userSpeakingOrTranscribing(): boolean {
     return remoteUserSpeaking || remoteUserInputInFlight
-  }
-
-  /**
-   * Whether the user is mid-input in any window: speaking into the microphone, speech-to-text still finishing their
-   * message, or writing in a chat composer (a draft that is not sent yet, or input within
-   * {@link COMPOSER_INPUT_RECENT_MS}). Reads `false` before {@link initialize}.
-   */
-  function userMidInput(nowMs = Date.now()): boolean {
-    return userSpeakingOrTranscribing() || userTyping(nowMs)
-  }
-
-  /**
-   * Resolves `true` once the user is no longer mid-input (see {@link userMidInput}), at once when they are not, and
-   * `false` when they still are after `timeoutMs`.
-   *
-   * Use when:
-   * - A forced turn skips the gate and must not start while the user speaks or writes, for example a widget reaction.
-   */
-  function untilUserIdle(timeoutMs: number): Promise<boolean> {
-    return new Promise((resolve) => {
-      let recheckTimer: ReturnType<typeof setTimeout> | undefined
-      const deadline = setTimeout(finish, timeoutMs, false)
-      function recheck() {
-        clearTimeout(recheckTimer)
-        const nowMs = Date.now()
-        if (!userMidInput(nowMs)) {
-          finish(true)
-          return
-        }
-        // Writing ends with time alone, without another report; speaking ends only with a report.
-        const endsAtMs = typingEndsAtMs(nowMs)
-        if (endsAtMs !== undefined)
-          recheckTimer = setTimeout(recheck, Math.max(1, endsAtMs - nowMs))
-      }
-      function finish(idle: boolean) {
-        clearTimeout(recheckTimer)
-        clearTimeout(deadline)
-        userInputWaiters.delete(recheck)
-        resolve(idle)
-      }
-      userInputWaiters.add(recheck)
-      recheck()
-    })
   }
 
   /** Shows the gate memory and the open threads in the devtools Situation inspector at once, and saves them if durable. */
@@ -667,10 +615,30 @@ export const useSituationStore = defineStore('situation', () => {
     }
   }
 
+  /** The mind's view of this moment, which a tick and a widget request carry. Prunes the threads first. */
+  function voiceView(controls: SituationChatControls): VoiceView {
+    const nowMs = Date.now()
+    threads = pruneThreads(threads, nowMs)
+    return {
+      run,
+      situation: current.value,
+      threads: { threads },
+      local: localTimeFor(nowMs),
+      sessionId: controls.activeSessionId(),
+      signals: gateSignals(controls, nowMs),
+      settings: gateSettings(),
+      // The bridge runs for as long as this window leads, so every tick has it. Without a reading yet the timing
+      // stays as it was.
+      moodFactor: characterBridge?.urgeFactor() ?? 1,
+      // A line of the mind that settled at its first literal is still pending in chat until its result arrives.
+      unpromptedPending: speaking !== undefined || controls.unpromptedPending(),
+    }
+  }
+
   /**
    * Sends the connected mind one gate tick with the view of this moment, and returns whether a mind received it. The
    * view is built as the gate's input: the signals, the settings, the local time, the pruned threads, the mood factor,
-   * the held topics, and whether another unprompted turn is pending. A user turn that no mind could receive follows
+   * and whether another unprompted turn is pending. A user turn that no mind could receive follows
    * the tick, which restores the gate memory of a mind that is new to the run.
    * `forceTiming` (devtools "Evaluate now") skips the timing guards only; a forced fire starts its turn like any other.
    */
@@ -679,28 +647,7 @@ export const useSituationStore = defineStore('situation', () => {
     const connected = mind
     if (!controls || !connected || gateTicker === undefined)
       return false
-    const nowMs = Date.now()
-    threads = pruneThreads(threads, nowMs)
-    connected.send({
-      kind: 'voice-tick',
-      forceTiming,
-      view: {
-        run,
-        situation: current.value,
-        threads: { threads },
-        local: localTimeFor(nowMs),
-        sessionId: controls.activeSessionId(),
-        signals: gateSignals(controls, nowMs),
-        settings: gateSettings(),
-        // The bridge runs for as long as this window leads, so every tick has it. Without a reading yet the timing
-        // stays as it was.
-        moodFactor: characterBridge?.urgeFactor() ?? 1,
-        // The collector drops held keys for every reason kind, thread and urgent notify topics included.
-        heldTopics: [...heldTopics],
-        // A line of the mind that settled at its first literal is still pending in chat until its result arrives.
-        unpromptedPending: speaking !== undefined || controls.unpromptedPending(),
-      },
-    })
+    connected.send({ kind: 'voice-tick', forceTiming, view: voiceView(controls) })
     connected.tickedRun = run.id
     if (pendingUserTurnAtMs !== null && mind === connected) {
       const atMs = pendingUserTurnAtMs
@@ -743,11 +690,14 @@ export const useSituationStore = defineStore('situation', () => {
    * Stores what the mind published after a step that touched its voice state: the memory becomes the run's mirror,
    * which the character state reads and the next mind of the run restores from, and it is saved with the leadership
    * token when a durable field changed. A decision is recorded in the inspector. A memory of an earlier run, or one
-   * that arrives while the gate does not run, is dropped. `wakeAtMs` is not used yet.
+   * that arrives while the gate does not run, is dropped. `wakeAtMs` replaces the one wake timer: the mind gets a tick
+   * at its next widget deadline, so a drop or a cancel is not late by up to {@link GATE_INTERVAL_MS}.
    */
   function publishVoice(update: { runId: number, memory: UrgeGateMemory, decision: UrgeGateDecision | null, wakeAtMs: number | null }) {
     if (gateTicker === undefined || update.runId !== run.id)
       return
+    clearTimeout(wakeTimer)
+    wakeTimer = update.wakeAtMs === null ? undefined : setTimeout(voiceTick, Math.max(0, update.wakeAtMs - Date.now()))
     run = { ...run, memory: update.memory }
     if (update.decision)
       observability.recordUrgeDecision(update.decision, update.memory)
@@ -763,16 +713,70 @@ export const useSituationStore = defineStore('situation', () => {
    * Connects the mind of the stage that leads: `send` receives every gate tick and user turn from now on. The newest
    * connection wins. While the gate runs, the mind gets a tick at once, so it restores the run's gate memory before
    * any other stimulus, and then the user turn that arrived while no mind was connected. Returns a function that
-   * disconnects this connection; it does nothing once a newer one replaced it.
+   * disconnects this connection; it does nothing once a newer one replaced it. The widget requests the previous mind
+   * still held are lost with it, so their callers get `failed`.
    */
   function connect(send: (stimulus: VoiceStimulus) => void): () => void {
+    failWaitingRequests()
     const connection: NonNullable<typeof mind> = { send, tickedRun: null }
     mind = connection
     voiceTick()
     return () => {
-      if (mind === connection)
-        mind = undefined
+      if (mind !== connection)
+        return
+      mind = undefined
+      clearTimeout(wakeTimer)
+      wakeTimer = undefined
+      failWaitingRequests()
     }
+  }
+
+  /** Answers one widget caller once; a later answer for the same turn does nothing. */
+  function settleWidget(turnId: string, result: ChatUnpromptedResult) {
+    const settle = widgetCallers.get(turnId)
+    widgetCallers.delete(turnId)
+    settle?.(result)
+  }
+
+  /** Answers `failed` to every widget caller whose line is not running in chat; a running line answers with its result. */
+  function failWaitingRequests() {
+    for (const turnId of [...widgetCallers.keys()]) {
+      if (speaking?.chatTurnId !== turnId)
+        settleWidget(turnId, { status: 'failed', error: 'The character mind that held the request is gone' })
+    }
+  }
+
+  /**
+   * Asks the mind of the stage that leads to speak about a widget or plugin request, and resolves with what became of
+   * it: `spoken` with the reply text, `declined`, `cancelled` when the mind gave up the request or stopped its line at
+   * the caller's deadline, or `failed`. Resolves `failed` at once in a follower window, while the gate loop does not
+   * run, and when no mind is connected.
+   *
+   * The request reaches the mind synchronously, so a caller that ingests the request's notify after this call has its
+   * topic held from the gate from the start. `turnId` (`spark:<id>`) is also the chat message id of the turn.
+   */
+  function requestVoice(request: VoiceRequest): Promise<ChatUnpromptedResult> {
+    const controls = chat
+    const connected = mind
+    if (!leading.value || !controls || !connected || gateTicker === undefined)
+      return Promise.resolve({ status: 'failed', error: 'No character mind can take the request' })
+    return new Promise((resolve) => {
+      // Registered before the send: a mind that finds a quiet moment speaks the line within the same call.
+      widgetCallers.set(request.turnId, resolve)
+      connected.send({ kind: 'voice-request', request, view: voiceView(controls) })
+    })
+  }
+
+  /** Cancels the chat turn of a widget line that missed its caller's deadline, and answers its caller `cancelled`. */
+  function cancel(turnId: string) {
+    if (speaking?.chatTurnId === turnId && chat)
+      void chat.cancelTurn({ sessionId: speaking.sessionId, turnId })
+    settleWidget(turnId, { status: 'cancelled' })
+  }
+
+  /** Answers the caller of a widget request that the mind gave up before it started, with `cancelled`. */
+  function drop(turnId: string) {
+    settleWidget(turnId, { status: 'cancelled' })
   }
 
   /**
@@ -811,14 +815,20 @@ export const useSituationStore = defineStore('situation', () => {
    * reason kind for the inspector. A touch line marks its touch event as shown (the trigger message carries it) and
    * starts a reaction turn.
    *
+   * A widget line applies `unpromptedTopicText` and starts a widget turn under the request's turn id; its caller
+   * receives the turn's result.
+   *
    * It resolves `refused` without sending while another unprompted turn is pending, so a touch stays unshown for her
    * next reply. It resolves `failed` in a follower window, while the gate does not run, when a touch line's event is
    * gone, and when this window stopped leading before the turn had a result.
    */
   function speak(turnId: string, line: VoiceLine): Promise<GateOutcome | 'refused'> {
     const controls = chat
-    if (!leading.value || !controls || gateTicker === undefined)
+    if (!leading.value || !controls || gateTicker === undefined) {
+      if (line.kind === 'widget')
+        settleWidget(turnId, { status: 'failed', error: 'The gate loop does not run' })
       return Promise.resolve('failed')
+    }
     if (line.kind === 'reaction') {
       const event = current.value.events.find(candidate => candidate.id === line.eventId)
       if (!event)
@@ -833,13 +843,21 @@ export const useSituationStore = defineStore('situation', () => {
       })
     }
 
-    // NOTICE:
-    // The mind can decide widget lines, but this store does not send it widget requests yet.
-    // The character mind's `voice-request` landed before the store's `requestVoice` route.
-    // .omo/plans/character-mind-voice.md, work items B1 and B2.
-    // Remove when B2 routes widget lines through `requestVoice`.
-    if (line.kind === 'widget')
-      return Promise.resolve('failed')
+    if (line.kind === 'widget') {
+      if (speaking || controls.unpromptedPending()) {
+        settleWidget(turnId, { status: 'failed', error: UNPROMPTED_BUSY_ERROR })
+        return Promise.resolve('refused')
+      }
+      // The chat message id is the request's turn id, which the widget's CALL handlers listen to. The topic is
+      // addressed at the first literal, so a declined, cancelled, or failed line leaves the notify for her to raise.
+      return runLine(turnId, line, () => controls.submitUnprompted({
+        widget: true,
+        topicKey: line.topicKey,
+        topicText: unpromptedTopicText(line.topicKey, line.topicText, true),
+        messageId: turnId,
+        supplement: line.supplement ?? undefined,
+      }), () => {}, result => settleWidget(turnId, result))
+    }
     if (speaking || controls.unpromptedPending())
       return Promise.resolve('refused')
     const { topicKey, reason } = line
@@ -881,6 +899,7 @@ export const useSituationStore = defineStore('situation', () => {
       let settled = false
       const turn: NonNullable<typeof speaking> = {
         chatTurnId,
+        sessionId: chat?.activeSessionId() ?? '',
         line,
         spoken: false,
         settle(outcome) {
@@ -1026,6 +1045,8 @@ export const useSituationStore = defineStore('situation', () => {
       saveInnerState()
       clearInterval(gateTicker)
       gateTicker = undefined
+      clearTimeout(wakeTimer)
+      wakeTimer = undefined
       stopGateEvaluation?.()
       stopGateEvaluation = undefined
       stopThreadExtraction?.()
@@ -1035,6 +1056,8 @@ export const useSituationStore = defineStore('situation', () => {
       threads = NO_THREADS
       extractedThrough = []
       speaking = undefined
+      // No line can run any more, so every widget caller is answered now.
+      failWaitingRequests()
       savedSnapshot = undefined
       run = { ...run, memory: null, saved: null }
       publishGateState()
@@ -1056,6 +1079,7 @@ export const useSituationStore = defineStore('situation', () => {
     })
     // Sensors report their current readings at once, so they start after `leading` lets `ingest` through.
     sensors = startSensors()
+    stopUserInputListeners = startUserInputListeners()
     startConversation()
     // Notifies that follower windows received arrive here; repeats of ones this window ingested are dropped by `ingest`.
     stopNotifyListener = getSpeechBusContext().on(situationNotifyObservedEvent, ({ body }) => {
@@ -1084,6 +1108,8 @@ export const useSituationStore = defineStore('situation', () => {
     // Sensors stop first, so nothing is folded into the state that is dropped below.
     sensors?.stop()
     sensors = undefined
+    stopUserInputListeners?.()
+    stopUserInputListeners = undefined
     stopConversation?.()
     stopConversation = undefined
     stopNotifyListener?.()
@@ -1105,7 +1131,6 @@ export const useSituationStore = defineStore('situation', () => {
       leadership += 1
     current.value = initialSituationState
     seenNotifyTopics.clear()
-    heldTopics.clear()
     lastSpokenUnpromptedTurnId = undefined
     pendingUserTurnAtMs = null
     foregroundCategory.value = null
@@ -1208,24 +1233,6 @@ export const useSituationStore = defineStore('situation', () => {
   }
 
   /**
-   * Keeps one topic away from the gate until the returned function releases it. Followers hold nothing.
-   *
-   * Use when:
-   * - Another caller is about to raise the topic in a forced unprompted turn, for example a widget reaction. The
-   *   turn reaches the chat a few ticks later (a synced call, then `prepareSend`), and the gate must not raise the
-   *   same topic meanwhile.
-   *
-   * Unlike {@link markAddressed}, holding leaves the topic unaddressed: a spoken turn addresses it at its first
-   * literal, and after a declined, cancelled, or failed turn the gate may still raise it.
-   */
-  function holdTopic(topicKey: string): () => void {
-    if (!leading.value)
-      return () => {}
-    heldTopics.add(topicKey)
-    return () => heldTopics.delete(topicKey)
-  }
-
-  /**
    * Receives the chat runtime hooks and controls of this window. The chat store calls it once from its setup; the
    * first source wins. While this window leads, the conversation sensor records user and character turns from these
    * hooks, and the gate reads the controls and starts unprompted turns through them.
@@ -1258,11 +1265,10 @@ export const useSituationStore = defineStore('situation', () => {
   }
 
   /**
-   * Binds the store to synchronized leadership and starts the user input listeners. Repeated calls keep the first
-   * subscription. The leadership listener runs immediately with the current role, so an initial leader starts at once.
+   * Binds the store to synchronized leadership. Repeated calls keep the first subscription. The leadership listener
+   * runs immediately with the current role, so an initial leader starts at once.
    */
   function initialize(syncedPinia: SyncedPiniaRuntime) {
-    stopUserInputListeners ??= startUserInputListeners()
     stopLeadershipListener ??= syncedPinia.onLeadershipChange(isLeader => isLeader ? startLeading() : stopLeading())
   }
 
@@ -1270,8 +1276,6 @@ export const useSituationStore = defineStore('situation', () => {
   function dispose() {
     stopLeadershipListener?.()
     stopLeadershipListener = undefined
-    stopUserInputListeners?.()
-    stopUserInputListeners = undefined
     stopLeading()
   }
 
@@ -1286,18 +1290,18 @@ export const useSituationStore = defineStore('situation', () => {
     observeTouch,
     observeReturn,
     speak,
+    cancel,
+    drop,
     publishVoice,
     connect,
+    requestVoice,
     sharesSource,
     advance,
     renderForRequest,
     markAddressed,
-    holdTopic,
     forget,
     onNotifySpoken,
     onExchangeEnd,
-    userMidInput,
-    untilUserIdle,
     observeChat,
     setStageVisible,
     setHostCapabilities,

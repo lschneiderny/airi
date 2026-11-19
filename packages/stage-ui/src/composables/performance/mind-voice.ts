@@ -2,9 +2,10 @@ import type { CharacterMind, MindIntent, MindStimulus, VoiceLine } from '@proj-a
 import type { GateOutcome, ReturnObservation, TouchObservation, TouchVoiceView, UrgeGateDecision, UrgeGateMemory, WakeObservation } from '@proj-airi/stage-shared/situation'
 
 import { errorMessageFrom } from '@moeru/std'
+import { nextVoiceWakeAt } from '@proj-airi/character-mind'
 
 /** The stimuli the voice port sends to the mind of the connected stage. */
-export type VoiceStimulus = Extract<MindStimulus, { kind: 'voice-tick' | 'user-turn' | 'external-speech' }>
+export type VoiceStimulus = Extract<MindStimulus, { kind: 'voice-tick' | 'user-turn' | 'voice-request' }>
 
 /**
  * The voice channel the mind can reach: the leader's situation store. It senses and folds the situation, runs the
@@ -21,7 +22,14 @@ export interface VoicePort {
    * a follower window, while the gate loop does not run, or when a touch line's event is gone.
    */
   speak: (turnId: string, line: VoiceLine) => Promise<GateOutcome | 'refused'>
-  /** Mirrors, saves, and publishes the voice state after a step that touched it. `wakeAtMs` is always null in CM3a. */
+  /** Cancels the chat turn of a widget line that has not spoken by its caller's deadline; its caller gets `cancelled`. */
+  cancel: (turnId: string) => void
+  /** Answers the caller of a widget request that the mind gave up before it started, with `cancelled`. */
+  drop: (turnId: string) => void
+  /**
+   * Mirrors, saves, and publishes the voice state after a step that touched it. `wakeAtMs` is the mind's next widget
+   * deadline, or null without one: the port ticks the mind then, so the deadline does not wait for the next interval.
+   */
   publishVoice: (update: { runId: number, memory: UrgeGateMemory, decision: UrgeGateDecision | null, wakeAtMs: number | null }) => void
   /** Hands the port this stage's way to send it a voice stimulus. The newest connection wins; the result disconnects. */
   connect: (send: (stimulus: VoiceStimulus) => void) => () => void
@@ -41,16 +49,21 @@ export class MindVoice {
     const intents = this.mind.receive(...stimuli)
     const after = this.mind.state.voice
     const decision = after.lastGate !== before.lastGate ? after.lastGate : null
-    if (after.gate !== null && after.runId !== null && (after.gate !== before.gate || decision !== null))
-      this.voice()?.publishVoice({ runId: after.runId, memory: after.gate, decision, wakeAtMs: null })
+    const wakeAtMs = nextVoiceWakeAt(after)
+    if (after.gate !== null && after.runId !== null && (after.gate !== before.gate || decision !== null || wakeAtMs !== nextVoiceWakeAt(before)))
+      this.voice()?.publishVoice({ runId: after.runId, memory: after.gate, decision, wakeAtMs })
     return intents
   }
 
-  /** Answers one stimulus of the voice port and speaks every line the step decided, in intent order. */
+  /** Answers one stimulus of the voice port and runs its voice intents in order: lines, cancels, and drops. */
   answer(stimulus: VoiceStimulus): void {
     for (const intent of this.receive(stimulus)) {
       if (intent.kind === 'speak')
         void this.speak(intent)
+      else if (intent.kind === 'cancel')
+        this.voice()?.cancel(intent.turnId)
+      else if (intent.kind === 'drop')
+        this.voice()?.drop(intent.turnId)
     }
   }
 

@@ -2,6 +2,7 @@ import type { SyncedPiniaRuntime } from 'pinia-plugin-synced'
 
 import type { ChatHistoryItem, ChatStreamEvent, ChatStreamEventContext, ContextMessage, StreamingAssistantMessage } from '../../../types/chat'
 
+import { createChatHooks } from '@proj-airi/core-agent'
 import { ContextUpdateStrategy } from '@proj-airi/server-sdk'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
@@ -12,6 +13,7 @@ import ChatHistory from '../../../components/scenarios/chat/components/history.v
 
 import { chatAssetsRepo } from '../../../database/repos/chat-assets.repo'
 import { storeChatAsset } from '../../../libs/chat-assets'
+import { connectMind } from '../../../test/connect-mind'
 import { CHAT_STREAM_CHANNEL_NAME, CONTEXT_CHANNEL_NAME } from '../../chat/constants'
 import { useConsciousnessStore } from '../../modules/consciousness'
 import { useConsciousnessSettingsStore } from '../../modules/consciousness-settings'
@@ -342,6 +344,29 @@ vi.mock('./channel-server', () => ({
     send: serverSendMock,
   }),
 }))
+
+/**
+ * Makes this window the leader with a connected character mind, as the main window is: only it serves widget
+ * reactions, and its mind runs them through the chat mock's `submitUnprompted`.
+ */
+function leadWithMind() {
+  const situation = initializeSituation(true)
+  situation.setHostCapabilities({ unprompted: true })
+  situation.observeChat(createChatHooks(), {
+    sending: () => false,
+    pendingQueuedSendCount: () => 0,
+    unpromptedPending: () => false,
+    activeSessionId: () => 'session-1',
+    submitUnprompted: payload => chatOrchestratorMock.submitUnprompted(payload),
+    submitReaction: async () => ({ status: 'failed', error: 'No reaction turns in this test' }),
+    cancelTurn: turn => chatOrchestratorMock.cancelTurn(turn),
+    sessionMessages: () => [],
+    extractionSelection: async () => null,
+    stream: async () => {},
+  })
+  // The gate's seed is irrelevant here: no test ticks long enough for a reach-out.
+  connectMind(situation, 1)
+}
 
 describe('context bridge contract', () => {
   beforeEach(() => {
@@ -1476,6 +1501,7 @@ describe('context bridge contract', () => {
   }
 
   it('answers a widget window\'s reaction request with the reply of the main window\'s chat turn', async () => {
+    leadWithMind()
     const main = useContextBridgeStore()
     main.setSparkNotifyHostRole('main')
     await main.initialize()
@@ -1486,7 +1512,7 @@ describe('context bridge contract', () => {
 
     expect(reaction).toBe('Oh, a QA widget!')
     expect(chatOrchestratorMock.submitUnprompted).toHaveBeenCalledOnce()
-    expect(chatOrchestratorMock.submitUnprompted).toHaveBeenCalledWith(expect.objectContaining({ force: true, topicText: 'QA widget', messageId: expect.stringMatching(/^spark:/) }))
+    expect(chatOrchestratorMock.submitUnprompted).toHaveBeenCalledWith(expect.objectContaining({ widget: true, topicText: 'QA widget', messageId: expect.stringMatching(/^spark:/) }))
   })
 
   /** Another Stage window, such as settings: its own Pinia and bridge, initialized as every non-widget window is. */
@@ -1503,6 +1529,7 @@ describe('context bridge contract', () => {
   }
 
   it('records a spoken widget reaction once in its own window and once in every other window', async () => {
+    leadWithMind()
     const main = useContextBridgeStore()
     main.setSparkNotifyHostRole('main')
     await main.initialize()
@@ -1550,6 +1577,7 @@ describe('context bridge contract', () => {
   })
 
   it('answers a declined widget reaction with its fallback text', async () => {
+    leadWithMind()
     const main = useContextBridgeStore()
     main.setSparkNotifyHostRole('main')
     await main.initialize()
