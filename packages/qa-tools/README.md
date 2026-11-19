@@ -1400,6 +1400,8 @@ Run output and evidence are not committed.
 
 The motion QA bridge is development-only and uses remote debug; it adds no listening port. Registration requires all three gates: a development build, `APP_REMOTE_DEBUG=true`, and `APP_MOTION_QA_BRIDGE=true`. The bridge uses typed Eventa commands as one dispatcher and validation boundary, not as an isolation or security boundary. Production bundle checks verify that bridge markers are absent.
 
+The `deleteAllData` verb runs "Delete all data" in the stage window through the same function as the Data settings page: the state registry, then the host step that the app provides. It answers `{ ok: true }` or `{ ok: false, error }` with the first failure's message, so a check can assert on it. Call it as `AppSession.deleteAllData()` or, on an `AppSessionCore`, as `core.bridge.call('deleteAllData', undefined, timeoutMs)`. It has no MCP tool.
+
 ## T2 status
 
 T2 is GO, path A. The Cubism Core and ForBOOTH rig ran in Node without a GPU using two documented global shims. Across 600 frames and 281 parameters, Node and Chromium differed by 0; the negative control differed by 30. The measured Natural, adapter, and physics loop reached 55.19x real time. The runner skips mesh deformation because it reads but does not write parameters and costs about 90% of a frame. `pnpm qa:live2d-rig` runs it on one emotion trial; `src/t2/runner.test.ts` runs it when `AIRI_QA_RIG_FORBOOTH` is set. The statistical Live2D gates, the T1 simulator, the scorer validation, and the rendered Live2D T3 harness were removed on 2026-11-17; Live2D gates come back on `qa:motion3d`'s gate pattern when needed. The [motion QA levels ADR](../../docs/ai/adr/2026-10-20-motion-qa-levels.md) records the removed design.
