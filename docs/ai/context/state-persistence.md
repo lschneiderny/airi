@@ -185,7 +185,8 @@ The desktop app's main process writes files under the Electron user data directo
 Six tier 1 stores and one helper exist:
 
 - `useLive2DNaturalSettings` and `useMMDNaturalSettings` are built on `useSettingsDocument`. Each starts from the old per-setting [Natural](glossary.md#natural) keys while no document is stored, and its first leader-routed `update` or `reset` writes the document and deletes those keys. Each store's `// NOTICE:` block states when that import can be removed.
-- `useSituationSettings`, `useExpressionPerformanceSettings`, `useHostNoticeSettings`, and `useConversationSettings` hand-roll the same code. Each calls `useLocalStorageManualReset` directly with `listenToStorageChanges: false` and `writeDefaults: false`, validates the document itself, and declares leader-routed `update` and `reset` actions. They can adopt `useSettingsDocument` without changing their keys.
+- `useSituationSettings`, `useConversationSettings`, and `useHostNoticeSettings` are built on `useSettingsDocument` with their original keys and stored shapes. `useHostNoticeSettings` declares the leader-routed actions `dismiss` and `reset`.
+- `useExpressionPerformanceSettings` hand-rolls the same code. It calls `useLocalStorageManualReset` directly with `listenToStorageChanges: false` and `writeDefaults: false`, validates the document itself, and declares leader-routed `update` and `reset` actions. It can adopt `useSettingsDocument` without changing its key.
 
 New tier 1 stores use `useSettingsDocument`.
 

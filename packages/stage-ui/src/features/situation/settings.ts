@@ -1,13 +1,12 @@
+import type { SettingsDocument } from '@proj-airi/stage-shared/composables'
 import type {} from 'pinia-plugin-synced'
-import type { InferOutput } from 'valibot'
 
 import { isElectronWindow } from '@proj-airi/stage-shared'
-import { useLocalStorageManualReset } from '@proj-airi/stage-shared/composables'
+import { useSettingsDocument } from '@proj-airi/stage-shared/composables'
 import { withoutAppExtension } from '@proj-airi/stage-shared/situation'
-import { clamp, isPlainObject, uniq } from 'es-toolkit'
+import { clamp, uniq } from 'es-toolkit'
 import { defineStore } from 'pinia'
-import { array, boolean, check, number, optional, parse, pipe, safeParse, strictObject, string, transform, unknown } from 'valibot'
-import { shallowRef, toRaw } from 'vue'
+import { array, boolean, number, optional, parse, pipe, strictObject, string, transform } from 'valibot'
 
 /**
  * Trims app-name glob entries and drops blank or repeated ones, so a newline-separated draft stores only usable
@@ -75,13 +74,10 @@ const situationSettingsEntries = {
   speakDuringGames: optional(boolean(), true),
 }
 
-// Valibot objects accept arrays; the settings document must be a record.
-const SituationSettingsSchema = pipe(unknown(), check(isPlainObject, 'Expected a settings object'), strictObject(situationSettingsEntries))
-
-export type SituationSettings = InferOutput<typeof SituationSettingsSchema>
+export type SituationSettings = SettingsDocument<typeof situationSettingsEntries>
 
 export function defaultSituationSettings(): SituationSettings {
-  return parse(SituationSettingsSchema, {})
+  return parse(strictObject(situationSettingsEntries), {})
 }
 
 /**
@@ -102,70 +98,11 @@ export function foregroundReadPolicyKey(settings: Pick<SituationSettings, 'block
   return JSON.stringify(foregroundReadPolicy(settings))
 }
 
-/**
- * localStorage is outside the app's control, so each stored field is validated on its own: an invalid field falls
- * back to its default while valid siblings survive, and unknown fields are dropped.
- */
-function readStoredSituationSettings(raw: string): SituationSettings {
-  let stored: unknown
-  try {
-    stored = JSON.parse(raw)
-  }
-  catch {
-    stored = undefined
-  }
-  if (!isPlainObject(stored)) {
-    console.warn('[situation-settings] Stored settings are not an object; using defaults')
-    return defaultSituationSettings()
-  }
-
-  const document: Record<string, unknown> = {}
-  const invalid: string[] = []
-  for (const [field, schema] of Object.entries(situationSettingsEntries)) {
-    const result = safeParse(schema, stored[field])
-    if (result.success)
-      document[field] = result.output
-    else
-      invalid.push(field)
-  }
-  if (invalid.length > 0)
-    console.warn('[situation-settings] Invalid stored fields reset to defaults:', invalid.join(', '))
-  return parse(SituationSettingsSchema, document)
-}
-
 /** Replicates one presence settings document; only leader-routed commands persist changes. */
 export const useSituationSettings = defineStore('situation-settings', () => {
-  // Persistence is private: applying a remote snapshot never writes back into
-  // synchronized state or persists an uncommitted follower proposal.
-  const persisted = useLocalStorageManualReset<SituationSettings>('settings/situation', defaultSituationSettings, {
-    listenToStorageChanges: false,
-    writeDefaults: false,
-    flush: 'sync',
-    serializer: {
-      read: readStoredSituationSettings,
-      write: value => JSON.stringify(value),
-    },
-  })
-  const document = shallowRef(structuredClone(toRaw(persisted.value)))
+  const settings = useSettingsDocument('settings/situation', situationSettingsEntries, { label: 'situation-settings' })
 
-  async function update(patch: Partial<SituationSettings>) {
-    const candidate = isPlainObject(patch) ? { ...structuredClone(toRaw(document.value)), ...patch } : patch
-    const result = safeParse(SituationSettingsSchema, candidate)
-    if (!result.success)
-      return { success: false as const, issues: result.issues }
-
-    document.value = result.output
-    persisted.value = result.output
-    return { success: true as const }
-  }
-
-  async function reset() {
-    const value = defaultSituationSettings()
-    document.value = value
-    persisted.value = value
-  }
-
-  return { document, update, reset }
+  return { document: settings.document, update: settings.update, reset: settings.reset }
 }, {
   synced: {
     state: true,
