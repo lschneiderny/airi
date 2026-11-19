@@ -22,6 +22,7 @@ describe('classifyTool', () => {
     expect(classifyTool({ name: 'node.exe', command: 'node "x\\vue-tsc\\bin\\vue-tsc.js" --noEmit' })).toBe('vue-tsc')
     expect(classifyTool({ name: 'node.exe', command: 'node C:/pnpm/bin/pnpm.mjs install --frozen-lockfile' })).toBe('pnpm install')
     expect(classifyTool({ name: 'node.exe', command: 'node C:/pnpm/bin/pnpm.mjs -F @proj-airi/qa-tools run motion gate' })).toBe('qa-tools')
+    expect(classifyTool({ name: 'node', command: 'node --import tsx packages/lab-tools/bin/motion3d.ts gate run' })).toBe('lab-tools')
   })
 
   it('does not mistake an install-named test file for pnpm install', () => {

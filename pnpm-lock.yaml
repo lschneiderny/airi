@@ -3030,9 +3030,6 @@ importers:
       vue:
         specifier: 'catalog:'
         version: 3.5.41(typescript@6.0.3)
-      vue-i18n:
-        specifier: 'catalog:'
-        version: 11.4.9(vue@3.5.41(typescript@6.0.3))
       zod:
         specifier: 'catalog:'
         version: 4.4.3

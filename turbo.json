@@ -51,6 +51,32 @@
         "$TURBO_ROOT$/packages/lab-tools/fixtures/model/*.json"
       ]
     },
+    "@proj-airi/lab-tools#test:run": {
+      "dependsOn": [
+        "^build"
+      ],
+      "env": [
+        "CI",
+        "NODE_OPTIONS",
+        "TESTING_AUDIO_*"
+      ],
+      "passThroughEnv": [
+        "NODE_COMPILE_CACHE"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        ".env*",
+        "$TURBO_ROOT$/.env*",
+        "!$TURBO_ROOT$/.env.qa",
+        "$TURBO_ROOT$/tsconfig.json",
+        "$TURBO_ROOT$/uno.config.ts",
+        "$TURBO_ROOT$/vitest.dom-storage.ts",
+        "$TURBO_ROOT$/scripts/dev-tools/vitest-isolate-host-session.ts",
+        "$TURBO_ROOT$/packages/core-agent/src/**",
+        "$TURBO_ROOT$/packages/stage-shared/src/stage-contract/**",
+        "$TURBO_ROOT$/packages/pipelines-audio/src/llm-streaming-control/**"
+      ]
+    },
     "@proj-airi/qa-tools#test:run": {
       "dependsOn": [
         "^build"

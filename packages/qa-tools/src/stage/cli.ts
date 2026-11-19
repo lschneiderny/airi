@@ -154,7 +154,7 @@ export async function runStageCli(argv: readonly string[], context: { repoRoot: 
       console.info(JSON.stringify({ ok: capture.valid, out: resolve(context.cwd, values.out), frames: capture.frames, fps: capture.fps, failure: capture.failure, frameGap: { maxIntervalMs: frameGap.maxIntervalMs, longFraction: frameGap.longFraction, wallDriftMs: frameGap.wallDriftMs, exceeded: frameGap.exceeded }, preflight }))
       if (frameGap.exceeded.length) {
         const { limits } = frameGap
-        log(`qa-tools stage: the motion3d gate will refuse this trace with frame-gap (${frameGap.exceeded.join(', ')}): worst interval ${frameGap.maxIntervalMs.toFixed(1)} ms (limit below ${limits.maxIntervalMs} ms), ${(frameGap.longFraction * 100).toFixed(2)}% of intervals over ${limits.longIntervalMs.toFixed(1)} ms (limit ${limits.longFraction * 100}%), wall drift ${frameGap.wallDriftMs.toFixed(1)} ms (limit ${limits.wallDriftMs} ms)`)
+        log(`qa-tools stage: the lab:motion3d gate will refuse this trace with frame-gap (${frameGap.exceeded.join(', ')}): worst interval ${frameGap.maxIntervalMs.toFixed(1)} ms (limit below ${limits.maxIntervalMs} ms), ${(frameGap.longFraction * 100).toFixed(2)}% of intervals over ${limits.longIntervalMs.toFixed(1)} ms (limit ${limits.longFraction * 100}%), wall drift ${frameGap.wallDriftMs.toFixed(1)} ms (limit ${limits.wallDriftMs} ms)`)
       }
       return capture.valid ? 0 : 1
     }
