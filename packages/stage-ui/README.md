@@ -466,7 +466,7 @@ The character can reach out a few times a day for her own reasons, with long qui
 Each host calls `initialize(syncedPinia)` next to the chat store. The leader starts the sensors and a 1-second advance ticker. A follower ignores every other call, but it tracks the user's voice and composer activity for `untilUserIdle`.
 Every chat request carries the block from `renderForRequest` as its only runtime context. Outside the leader, `renderForRequest` returns `undefined`, so a host that never initializes the store sends no block.
 
-- `setHostCapabilities({ unprompted: true })` evaluates the urge gate every 2 seconds in the leader. Only the Electron app sets it.
+- `setHostCapabilities({ unprompted: true })` runs the gate loop in the leader: every 2 seconds the store sends the connected character mind a `voice-tick`, and the mind evaluates the urge gate. Only the Electron app sets it. With no mind connected, the tick is dropped.
 - `setStageVisible(visible)` reports whether the stage is on screen. A host that never calls it counts as hidden, so the gate stays quiet.
 - `ingest(observation)` folds one observation. Sensors call it; other code rarely needs it.
 - `markAddressed(topicKey)` keeps an eligible screen topic from being raised again. A thread reason is used up only when she speaks about it.
@@ -544,7 +544,7 @@ Do not pass a raw window title in `topicText`, because the trigger message is st
 A reaction is an unprompted turn with the turn ID `reaction:<eventId>`, so it shares the single pending turn: while any unprompted turn is pending, another reaction or unprompted turn fails with `Another unprompted turn is still pending`, and a repeated call for the pending event joins it.
 The trigger message is `base.prompt.reaction-trigger` with `topicText`, and its trigger is `{ topicKey: 'touch', text: topicText, kind }` with kind `touch-pet` or `touch-poke`. The instruction is `base.prompt.reaction`, or `base.prompt.reaction-protest` for a poke protest. A reaction has no reason category and is never forced: it gets only `builtIn_readMemory`, and a `<|SILENT|>` reply declines it with one control record.
 
-Only `useSituationStore().speakReaction` calls `submitReaction`, for a line the character mind decided about a touch. Do not use it for notify or widget reactions; they use `submitUnprompted`.
+Only `useSituationStore().speak` calls `submitReaction`, for a line the character mind decided about a touch. Do not use it for notify or widget reactions; they use `submitUnprompted`.
 
 ### Stage touch
 
@@ -554,13 +554,26 @@ Under a Natural driver, `conductor.touch(report)` answers one touch once, in the
 
 1. For a finished pet and a poke it calls `voice().observeTouch(observation)`, which is `useSituationStore().observeTouch`. The leader folds the `TouchObservation` into the situation and returns a `TouchVoiceView`, or `null` in a follower window and while the urge gate does not run. A pet start is not observed.
 2. It sends the mind one `touch` stimulus with the active card's effective settings and that view.
-3. It dispatches the mind's intents in order: `touch-reaction` to the scene's `reactToTouch`, `mood` to the scene's `addMood`, `moment` to `markMoment` (`useIdleProps().onMoment`, which keeps the chance, the pick, and the entry rest), and `speak` to `voice().speakReaction`.
+3. It dispatches the mind's intents in order: `touch-reaction` to the scene's `reactToTouch`, `mood` to the scene's `addMood`, `moment` to `markMoment` (`useIdleProps().onMoment`, which keeps the chance, the pick, and the entry rest), and `speak` to `voice().speak`.
 
 The scene performs only what `reactToTouch` hands it: a poke starts Natural's poke at the reported point, and the pet hand reaches Natural only between a pet `start` and its `end`. The asset decider is not involved, and an affect trace records no touch.
 
-The conductor reaches the leader's situation store through its `VoicePort` (`observeTouch`, `speakReaction`, and `observeReturn`). `conductor.desktop(events)` dispatches the mind's `observe-wake` and `observe-return` intents, in intent order and under every driver, to `voice().observeReturn`, which folds a `WakeObservation` or a `ReturnObservation` into the situation in the leader and does nothing in a follower window.
+The conductor reaches the leader's situation store through its `VoicePort` (`composables/performance/mind-voice.ts`). `conductor.desktop(events)` dispatches the mind's `observe-wake` and `observe-return` intents, in intent order and under every driver, to `voice().observeReturn`, which folds a `WakeObservation` or a `ReturnObservation` into the situation in the leader and does nothing in a follower window.
 
-`useSituationStore().speakReaction({ kind, eventId })` runs the line. It resolves `refused` without sending while another unprompted turn is pending, so the touch stays unshown for her next reply. Otherwise it marks the touch event shown, calls `submitReaction`, and resolves at the first spoken literal, at a decline, or with the turn's result; a spoken line also starts the gate's short floor (`recordExternalSpeech`). It resolves `failed` in a follower window, while the gate does not run, and when the window stopped leading before the turn had a result. The conductor returns the outcome to the mind as a `voice-outcome` stimulus. Reaction outcomes never reach `recordUrgeFireOutcome`.
+### Reach-outs through the mind
+
+The character mind of the stage that leads decides every reach-out; the situation store is its voice port.
+
+- `connect(send)`: `Stage.vue` connects the conductor's `voiceStimulus` on mount and disconnects on unmount. The newest connection wins. While the gate runs, the new mind gets a tick at once, then the user turn that arrived while no mind was connected.
+- The tick: the store prunes the threads and sends `voice-tick` with a `VoiceView` built from the gate signals, the gate settings, the local time, the threads, the reading's urge factor, the held topics, and whether an unprompted turn is pending. `user-turn` follows each user turn, and `external-speech` follows a forced widget turn that spoke.
+- `conductor.voiceStimulus(stimulus)` runs one mind step and dispatches `speak` for every line kind to `voice().speak(turnId, line)`. The outcome returns to the mind as `voice-outcome` with the same `turnId`.
+- `publishVoice({ runId, memory, decision, wakeAtMs })`: after each step that changed the gate memory or decided, the conductor publishes it. The store keeps the memory as the run's mirror, which the character state reads, saves the social slice with the leadership token when it changed, and records the decision in the inspector. `wakeAtMs` is always null for now.
+- Runs: each promotion and "Delete all data" starts a new `VoiceRun` id. The mind restores its gate memory at its first tick of a run: from the mirror, so a remounted stage keeps the urge and the hourly cap, else from the slice saved at the promotion, else from promotion alone.
+
+`useSituationStore().speak(turnId, line)` runs a line. It resolves `refused` without sending while another unprompted turn is pending, and `failed` in a follower window, while the gate does not run, and when the window stopped leading before the turn had a result. Otherwise it resolves at the first spoken literal, at a decline, or with the turn's result.
+
+- A reach-out applies `unpromptedTopicText`, addresses its topic before the send (a thread only once her turn speaks), and calls `submitUnprompted` with its reason under a new message id; the mind's `turnId` is not the chat message id. At the first literal a thread topic is raised. The outcome is recorded per reason kind for the inspector.
+- A touch line marks the touch event shown and calls `submitReaction`. It resolves `failed` when its event is gone. The mind starts the gate's short floor for a spoken one (`recordExternalSpeech`); reaction outcomes never reach `recordUrgeFireOutcome`.
 
 The pacing of these lines (the 45 s refractory, the retry wait, the burst roll) is the mind's fast state. It is not saved, so it starts over at every launch. `useCharacterMind` creates one mind per `Stage.vue` and feeds its voice decisions to the devtools reaction inspector. Two stages that render at once would run two minds and dose mood twice for touches on both; no guard prevents it.
 
@@ -581,7 +594,7 @@ The exposed labels also reach the system prompt through `useStageActionsPrompt` 
 
 **Settings > System > Developer > Situation** shows the live situation, event table, last rendered block, urge and hazard trace, phase and expected wait, ripe reasons and their weights, thread ripeness and expiry, pick trace, ritual state, per-reason outcomes, extraction ledger, spend, and ACT compliance.
 `useSituationObservabilityStore` serves the page from the leader through Eventa invokes on a BroadcastChannel context, not through synced actions, so polling leaves nothing in the shared synced state.
-**Evaluate now** forces one gate evaluation past timing guards and the short floor; hard suppressors still apply.
+**Evaluate now** sends the connected mind one tick with `forceTiming`, past timing guards and the short floor; hard suppressors still apply. It answers with the decision the mind published in the same call, or as skipped: `unprompted-pending` while a line or another unprompted turn is open, `gate-not-running`, or `no-mind` when no stage is mounted.
 
 Use the inspector to tune the gate and to see why the character spoke or stayed quiet.
 Do not use it as a user-facing settings page.

@@ -1,3 +1,4 @@
+import type { VoiceLine } from '@proj-airi/character-mind'
 import type { ChatHistoryItem, ChatHookRegistry, ChatStreamEventContext } from '@proj-airi/core-agent'
 import type { GenerationProvider } from '@proj-airi/provider-inference'
 import type { DesktopActivitySnapshot } from '@proj-airi/stage-shared/performance-state'
@@ -10,6 +11,7 @@ import type { LlmStream } from '../../features/situation/thread-extraction'
 import type { ChatReactionPayload, ChatUnpromptedPayload, ChatUnpromptedResult } from '../chat'
 import type { ThreadExtractionLedgerEntry } from '../devtools/situation-observability'
 
+import { reactionTurnId } from '@proj-airi/character-mind'
 import { createChatHooks } from '@proj-airi/core-agent'
 import { DEFAULT_CHARACTER_PROFILE, initialCharacterState, readCharacter } from '@proj-airi/stage-shared/character-state'
 import { evaluateUrgeGate, FLOOR_MS, HOUR_MS, initialSituationState, notifyTopicKey, recordUrgeFireOutcome, SETTLE_MS, threadMinAgeMs, TOUCH_TOPIC_KEY } from '@proj-airi/stage-shared/situation'
@@ -24,6 +26,7 @@ import { useSituationInnerState } from '../../features/situation/inner-state'
 import { useSituationSettings } from '../../features/situation/settings'
 import { EXTRACTION_MAX_TOKENS } from '../../features/situation/thread-extraction'
 import { chatComposerActivityChangedEvent, getSpeechBusContext, situationForgetRequestedEvent, speechInputUserSpeakingChangedEvent, voiceRequestSnapshot, voiceRequestTurns, voiceSnapshotChanged, voiceTurnsChanged } from '../../services/speech/bus'
+import { connectMind } from '../../test/connect-mind'
 import { characterStateContext, useCharacterStateStore } from '../character-state'
 import { useSituationObservabilityStore } from '../devtools/situation-observability'
 import { DESKTOP_SAMPLE_STALE_MS } from './sensors/desktop'
@@ -840,8 +843,9 @@ describe('situation gate loop', () => {
     if (options.capable ?? true)
       store.setHostCapabilities({ unprompted: true })
     store.observeChat(hooks, chat.controls)
-    store.initialize(leadership.runtime, { seedSource: () => SEED })
-    return { store, hooks, chat, leadership, observability: useSituationObservabilityStore() }
+    store.initialize(leadership.runtime)
+    const connected = connectMind(store, SEED)
+    return { store, hooks, chat, leadership, observability: useSituationObservabilityStore(), ...connected }
   }
 
   /** An ordinary topic: a notify that is not urgent, so only the urge decides when the gate raises it. */
@@ -1294,13 +1298,15 @@ describe('situation gate loop', () => {
   })
 
   it('evaluates nothing while another caller\'s unprompted turn is pending', async () => {
-    const { chat, observability } = startQuietLeader()
+    const { chat } = startQuietLeader()
+    // The mind's first tick at its connection restored the run; nothing is evaluated after it.
+    vi.mocked(evaluateUrgeGate).mockClear()
     chat.state.unpromptedPending = true
     offerUrgentTopic()
 
     await nextGateTick()
 
-    expect((await observability.inspect()).urge.decision).toBeNull()
+    expect(evaluateUrgeGate).not.toHaveBeenCalled()
     expect(chat.submitUnprompted).not.toHaveBeenCalled()
   })
 
@@ -1614,6 +1620,8 @@ describe('situation gate loop', () => {
 
     expect(lastEvaluation().input.moodFactor).toBe(0.8)
     expect(evaluation).toMatchObject({ status: 'evaluated', decision: { trace: { multipliers: { mood: 0.8 } } } })
+    // The forced fire's line settles before the next evaluation.
+    await vi.advanceTimersByTimeAsync(0)
     useCharacterStateStore().replicated = { cardId: null, reading: null, revision: 2, updatedAtMs: Date.now() }
     await observability.evaluateGate()
     expect(lastEvaluation().input.moodFactor).toBe(1)
@@ -2005,6 +2013,69 @@ describe('situation gate loop', () => {
     expect(useSituationInnerState().read().gate?.day).toMatchObject({ dayKey: '2026-10-21', states: { greeting: 'open' } })
   })
 
+  it('drops a tick while no mind is connected, and answers "Evaluate now" with no-mind', async () => {
+    const { chat, observability, disconnect } = startQuietLeader()
+    disconnect()
+    vi.mocked(evaluateUrgeGate).mockClear()
+    offerUrgentTopic()
+    const saved = localStorage.getItem('settings/situation-inner')
+    const decision = (await observability.inspect()).urge.decision
+
+    await vi.advanceTimersByTimeAsync(5 * GATE_INTERVAL_MS)
+
+    expect(await observability.evaluateGate()).toEqual({ status: 'skipped', reason: 'no-mind' })
+    expect(evaluateUrgeGate).not.toHaveBeenCalled()
+    expect(chat.submitUnprompted).not.toHaveBeenCalled()
+    expect(localStorage.getItem('settings/situation-inner')).toBe(saved)
+    expect((await observability.inspect()).urge.decision).toBe(decision)
+  })
+
+  it('lets a reconnecting mind keep the fires of the run, and the newest connection win', async () => {
+    const { store, chat, observability, mind, disconnect } = startQuietLeader()
+    await observability.evaluateGate()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(chat.submitUnprompted).toHaveBeenCalledOnce()
+    const fires = mind.state.voice.gate?.fires
+    expect(fires).toHaveLength(1)
+
+    // A remount: the old stage disconnects after the new one connected, which keeps the new connection.
+    const remounted = connectMind(store, SEED + 1)
+    disconnect()
+    await nextGateTick()
+
+    expect(remounted.mind.state.voice.gate?.fires).toEqual(fires)
+    expect(remounted.mind.state.voice.gate?.pending).toBeNull()
+    expect(mind.state.voice.gate?.fires).toEqual(fires)
+    expect(lastEvaluation().memoryBefore.fires).toEqual(fires)
+  })
+
+  it('sends a user turn that arrived without a mind once the next mind restored its gate memory', async () => {
+    const { store, hooks, observability, mind, disconnect } = startQuietLeader()
+    await observability.evaluateGate()
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1_000)
+    expect(mind.state.voice.gate).toMatchObject({ unanswered: 1, damp: null })
+    disconnect()
+
+    await userTurn(hooks, 'user-reply')
+    const remounted = connectMind(store, SEED)
+    await nextGateTick()
+
+    expect(remounted.mind.state.voice.gate).toMatchObject({ unanswered: 0, damp: { depth: 0.5 } })
+  })
+
+  it('starts a new run at "Delete all data": the mind forgets the fires and the saved slice', async () => {
+    const { store, observability, mind } = startQuietLeader()
+    await observability.evaluateGate()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(useSituationInnerState().read().gate).toMatchObject({ unanswered: 1 })
+
+    store.forget({ scope: 'everything' })
+    await nextGateTick()
+
+    expect(mind.state.voice.gate).toMatchObject({ fires: [], lastFireAtMs: null, unanswered: 0, pending: null })
+    expect(useSituationInnerState().read().gate).toMatchObject({ lastFireAtMs: null, unanswered: 0 })
+  })
+
   function poke(): TouchObservation {
     return { kind: 'touch', gesture: 'poke', region: 'head', atMs: Date.now() }
   }
@@ -2022,7 +2093,8 @@ describe('situation gate loop', () => {
   /** Pokes three times and returns the protest line the mind would decide about the burst. */
   async function protest(store: ReturnType<typeof useSituationStore>) {
     const view = await pokeTimes(store, 3)
-    return { kind: 'poke-protest' as const, eventId: view?.eventId ?? '' }
+    const eventId = view?.eventId ?? ''
+    return { turnId: reactionTurnId(eventId), line: { kind: 'reaction', reaction: 'poke-protest', eventId } satisfies VoiceLine }
   }
 
   function touchEvent(store: ReturnType<typeof useSituationStore>) {
@@ -2064,9 +2136,9 @@ describe('situation gate loop', () => {
 
   it('speaks a reaction about the touch event and marks the event shown', async () => {
     const { store, chat, observability } = startQuietLeader()
-    const line = await protest(store)
+    const { turnId, line } = await protest(store)
 
-    await expect(store.speakReaction(line)).resolves.toBe('spoken')
+    await expect(store.speak(turnId, line)).resolves.toBe('spoken')
 
     expect(chat.submitReaction).toHaveBeenCalledOnce()
     expect(chat.submitReaction).toHaveBeenCalledWith({ kind: 'poke-protest', topicText: 'poked you 3 times in a few seconds', eventId: line.eventId })
@@ -2077,11 +2149,11 @@ describe('situation gate loop', () => {
 
   it('refuses a reaction while another unprompted turn is pending, without sending or showing the touch', async () => {
     const { store, chat, observability } = startQuietLeader()
-    const line = await protest(store)
+    const { turnId, line } = await protest(store)
     // Another unprompted turn is pending, so the store does not even submit.
     chat.state.unpromptedPending = true
 
-    await expect(store.speakReaction(line)).resolves.toBe('refused')
+    await expect(store.speak(turnId, line)).resolves.toBe('refused')
 
     expect(chat.submitReaction).not.toHaveBeenCalled()
     expect(touchEvent(store)?.shownAtMs).toBeNull()
@@ -2090,14 +2162,14 @@ describe('situation gate loop', () => {
     chat.state.unpromptedPending = false
     chat.submitReaction.mockResolvedValueOnce({ status: 'failed', error: 'Another unprompted turn is still pending' })
 
-    await expect(store.speakReaction(line)).resolves.toBe('refused')
+    await expect(store.speak(turnId, line)).resolves.toBe('refused')
 
     expect(chat.submitReaction).toHaveBeenCalledOnce()
     expect(await reactionOutcomes(observability)).toEqual({ spoken: 0, declined: 0, cancelled: 0, failed: 0, refused: 2 })
   })
 
   it('starts the gate floor on a spoken reaction without an unanswered opening or a fire outcome', async () => {
-    const { store, hooks, chat, observability } = startQuietLeader()
+    const { store, hooks, chat, observability, voice } = startQuietLeader()
     chat.submitReaction.mockImplementationOnce(async (payload) => {
       const context = reactionContext(payload)
       const output = { role: 'assistant' as const, content: 'Hey, quit it!', slices: [], tool_results: [] }
@@ -2107,10 +2179,11 @@ describe('situation gate loop', () => {
       await hooks.emitChatTurnCompleteHooks({ output, outputText: 'Hey, quit it!', toolCalls: [] }, context)
       return { status: 'spoken', text: 'Hey, quit it!' }
     })
-    const line = await protest(store)
+    const { turnId, line } = await protest(store)
     const spokenAtMs = Date.now()
 
-    await expect(store.speakReaction(line)).resolves.toBe('spoken')
+    // The mind speaks the line and hears its outcome.
+    await voice.speak({ id: 'touch-speak', cause: 0, channel: 'voice', kind: 'speak', turnId, line })
 
     expect(await memoryAtNextTick()).toMatchObject({ lastFireAtMs: spokenAtMs, lastSpokenAtMs: spokenAtMs, unanswered: 0 })
     expect(recordUrgeFireOutcome).not.toHaveBeenCalled()
@@ -2123,8 +2196,8 @@ describe('situation gate loop', () => {
   it('resolves a reaction at its first literal, before the submit result arrives', async () => {
     const { store, hooks, chat } = startQuietLeader()
     chat.submitReaction.mockImplementationOnce(() => new Promise<ChatUnpromptedResult>(() => {}))
-    const line = await protest(store)
-    const spoken = store.speakReaction(line)
+    const { turnId, line } = await protest(store)
+    const spoken = store.speak(turnId, line)
     const context = reactionContext(chat.submitReaction.mock.calls[0][0])
     await hooks.emitBeforeSendHooks('(Just now, on the stage)', context)
 
@@ -2139,8 +2212,8 @@ describe('situation gate loop', () => {
     chat.submitReaction.mockImplementationOnce(() => new Promise<ChatUnpromptedResult>((resolve) => {
       finish = resolve
     }))
-    const line = await protest(store)
-    const declined = store.speakReaction(line)
+    const { turnId, line } = await protest(store)
+    const declined = store.speak(turnId, line)
     const context = reactionContext(chat.submitReaction.mock.calls[0][0])
     await hooks.emitBeforeSendHooks('(Just now, on the stage)', context)
 
@@ -2173,7 +2246,7 @@ describe('situation gate loop', () => {
     expect(await pokeTimes(store, 3)).toBeNull()
 
     expect(store.state).toEqual(initialSituationState)
-    await expect(store.speakReaction({ kind: 'poke-protest', eventId: 'touch-1' })).resolves.toBe('failed')
+    await expect(store.speak(reactionTurnId('touch-1'), { kind: 'reaction', reaction: 'poke-protest', eventId: 'touch-1' })).resolves.toBe('failed')
     expect(chat.submitReaction).not.toHaveBeenCalled()
   })
 

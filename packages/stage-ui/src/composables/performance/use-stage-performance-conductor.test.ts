@@ -2,10 +2,12 @@ import type { AffectSignal, AffectTrace, CatalogEntry, ExpressionPerformanceSett
 
 import type { ActionToolPort } from '../../tools/action'
 import type { BodyToolPort } from '../../tools/body'
-import type { ListedAction, StagePerformanceConductorOptions, StagePerformanceDriver, StagePerformanceScene, VoicePort } from './use-stage-performance-conductor'
+import type { VoicePort } from './mind-voice'
+import type { ListedAction, StagePerformanceConductorOptions, StagePerformanceDriver, StagePerformanceScene } from './use-stage-performance-conductor'
 
 import { CharacterMind } from '@proj-airi/character-mind'
 import { createDecider, createPickerDecider, defaultExpressionPerformanceSettings, initialTouchAffectMemory, parseAffectTrace, parseExpressionPerformanceSettings, replayAffectTrace, touchAffect } from '@proj-airi/stage-shared/expression-performance'
+import { initialSituationState } from '@proj-airi/stage-shared/situation'
 import { useNaturalMotionDiagnostics } from '@proj-airi/stage-ui-live2d/stores'
 import { useExpressionStore } from '@proj-airi/stage-ui-live2d/stores/expression-store'
 import { useMMDExpressionStore } from '@proj-airi/stage-ui-mmd/stores'
@@ -508,7 +510,7 @@ describe('stage performance conductor', () => {
     })
 
     it('records the wake and the return in the situation in intent order under a basic driver', () => {
-      const voice = { observeTouch: vi.fn<VoicePort['observeTouch']>(() => null), speakReaction: vi.fn<VoicePort['speakReaction']>(async () => 'spoken'), observeReturn: vi.fn<VoicePort['observeReturn']>() }
+      const voice = { observeTouch: vi.fn<VoicePort['observeTouch']>(() => null), speak: vi.fn<VoicePort['speak']>(async () => 'spoken'), observeReturn: vi.fn<VoicePort['observeReturn']>(), publishVoice: vi.fn<VoicePort['publishVoice']>(), connect: vi.fn<VoicePort['connect']>(() => () => {}) }
       const { conductor, advance } = createConductor('basic', fakeScene(), undefined, undefined, undefined, { voice: () => voice })
 
       conductor.desktop([lock])
@@ -528,8 +530,10 @@ describe('stage performance conductor', () => {
     function fakeVoice(view: ReturnType<VoicePort['observeTouch']> = null) {
       return {
         observeTouch: vi.fn<VoicePort['observeTouch']>(() => view),
-        speakReaction: vi.fn<VoicePort['speakReaction']>(async () => 'spoken'),
+        speak: vi.fn<VoicePort['speak']>(async () => 'spoken'),
         observeReturn: vi.fn<VoicePort['observeReturn']>(),
+        publishVoice: vi.fn<VoicePort['publishVoice']>(),
+        connect: vi.fn<VoicePort['connect']>(() => () => {}),
       }
     }
 
@@ -585,16 +589,16 @@ describe('stage performance conductor', () => {
         { kind: 'touch', gesture: 'pet', region: 'head', atMs: T0, durationMs: 4200 },
         { kind: 'touch', gesture: 'poke', region: 'body', atMs: T0 + 1500 },
       ])
-      expect(voice.speakReaction).not.toHaveBeenCalled()
+      expect(voice.speak).not.toHaveBeenCalled()
     })
 
     it.each([
       ['its outcome', async (): Promise<'refused'> => 'refused', 'refused'],
       ['a failed outcome when it throws', async (): Promise<'refused'> => { throw new Error('No chat') }, 'failed'],
-    ] as const)('speaks the line the mind decided and returns %s to the mind', async (_name, speakReaction, outcome) => {
+    ] as const)('speaks the line the mind decided and returns %s to the mind', async (_name, speak, outcome) => {
       vi.spyOn(console, 'error').mockImplementation(() => {})
       // The conductor's clock reads 10 s, so the mind decides at 10 000 ms about a burst that ends then.
-      const voice = { ...fakeVoice({ sessionId: 'session-1', eventId: 'touch-event', pet: null, pokeTimesMs: [8000, 9000, 10_000], lastCharacterLineAtMs: null, held: null }), speakReaction: vi.fn<VoicePort['speakReaction']>(speakReaction) }
+      const voice = { ...fakeVoice({ sessionId: 'session-1', eventId: 'touch-event', pet: null, pokeTimesMs: [8000, 9000, 10_000], lastCharacterLineAtMs: null, held: null }), speak: vi.fn<VoicePort['speak']>(speak) }
       // Seed 17 draws below the odds of a protest; the conductor's seed 7 would hold it.
       const { conductor, mind } = createConductor('natural', fakeScene(), undefined, undefined, undefined, { voice: () => voice, mindSeed: 17 })
       const settled = new Promise<Parameters<Parameters<CharacterMind['onStep']>[0]>[0]>((resolve) => {
@@ -603,10 +607,44 @@ describe('stage performance conductor', () => {
 
       conductor.touch({ gesture: 'poke', region: 'head', point })
 
-      expect(voice.speakReaction.mock.calls).toEqual([[{ kind: 'poke-protest', eventId: 'touch-event' }]])
+      expect(voice.speak.mock.calls).toEqual([['reaction:touch-event', { kind: 'reaction', reaction: 'poke-protest', eventId: 'touch-event' }]])
       expect(mind.state.voice.reaction.pending).toMatchObject({ eventId: 'touch-event' })
       expect((await settled).stimuli).toEqual([{ kind: 'voice-outcome', turnId: 'reaction:touch-event', outcome }])
       expect(mind.state.voice.reaction.pending).toBeNull()
+    })
+
+    it.each(['natural', 'basic'] as const)('speaks the reach-out of a gate tick and publishes the gate under %s', async (driver) => {
+      const voice = fakeVoice()
+      const { conductor, mind } = createConductor(driver, fakeScene(), undefined, undefined, undefined, { voice: () => voice })
+      const settled = new Promise<void>((resolve) => {
+        mind.onStep(step => step.stimuli.some(stimulus => stimulus.kind === 'voice-outcome') && resolve())
+      })
+      // The mind's clock reads 10 000 ms. A user at the desk who accepts remarks; a forced tick picks her own day.
+      const situation = { ...initialSituationState, presence: { state: 'here' as const, reason: null, sinceMs: 0 }, busy: { state: 'accepts' as const, atMs: 10_000 }, nowMs: 10_000 }
+
+      conductor.voiceStimulus({
+        kind: 'voice-tick',
+        forceTiming: true,
+        view: {
+          run: { id: 1, memory: null, saved: null },
+          situation,
+          threads: { threads: { threads: [] } },
+          local: { dayKey: '1970-01-01', minuteOfDay: 16 * 60 },
+          sessionId: 'chat-a',
+          signals: { userSpeaking: false, userTyping: false, characterSpeaking: false, generating: false, queued: 0, desktopFresh: true, foregroundFresh: true, stageVisible: true },
+          settings: { enabled: true, chattiness: 0.5, dontDisturb: false, quietApps: [], speakDuringGames: true },
+          moodFactor: 1,
+          heldTopics: [],
+          unpromptedPending: false,
+        },
+      })
+
+      const turnId = mind.state.voice.line?.turnId
+      expect(voice.speak.mock.calls).toEqual([[turnId, { kind: 'reach-out', topicKey: 'own-day', topicText: expect.any(String), reason: { kind: 'own-day', category: 'open' } }]])
+      expect(voice.publishVoice.mock.calls).toEqual([[{ runId: 1, memory: mind.state.voice.gate, decision: expect.objectContaining({ fire: true }), wakeAtMs: null }]])
+      await settled
+      expect(mind.state.voice.line).toBeNull()
+      expect(voice.publishVoice).toHaveBeenLastCalledWith({ runId: 1, memory: expect.objectContaining({ lastSpokenAtMs: 10_000 }), decision: null, wakeAtMs: null })
     })
 
     it.each(['basic'] as const)('never reaches the mind, the scene, or the situation for a touch under %s', (driver) => {

@@ -7,7 +7,7 @@ import type { CharacterReading } from '@proj-airi/stage-shared/character-state'
 import type { AffectSignal, AffectTrace, CatalogEntry, DeciderContext, ExpressionPerformanceSettings, HoldCommand, Moment, MoodDose, PerformanceDecision, PerformanceProfile, ReactionEpisode, SlotCommand, TimingEvent } from '@proj-airi/stage-shared/expression-performance'
 import type { AffectTraceRequest } from '@proj-airi/stage-shared/expression-performance/affect-trace-diagnostics'
 import type { PerformanceEvent } from '@proj-airi/stage-shared/performance-state'
-import type { GateOutcome, ReactionKind, ReturnObservation, TouchObservation, TouchVoiceView, WakeObservation } from '@proj-airi/stage-shared/situation'
+import type { TouchObservation } from '@proj-airi/stage-shared/situation'
 
 import type { StageExpressionBackend } from '../../features/performance/expression-backend'
 import type { ActiveExpression, ExposedAction, ExposedExpression, ExposedExpressionGroup, PerformanceMoodSnapshot } from '../../features/performance/runtime-state'
@@ -15,6 +15,7 @@ import type { ExecutableTool } from '../../stores/ai/chat-llm/tools'
 import type { ActionToolPort, ExposedToolAction } from '../../tools/action'
 import type { BodyToolPort } from '../../tools/body'
 import type { ExpressionToolPort } from '../../tools/expression'
+import type { VoicePort, VoiceStimulus } from './mind-voice'
 
 import { errorMessageFrom } from '@moeru/std'
 import { SpeechOnsetDetector } from '@proj-airi/motion-driver-natural/speech-emphasis'
@@ -31,6 +32,7 @@ import { useLlmToolsStore } from '../../stores/ai/chat-llm/tools'
 import { createActionToolRegistration } from '../../tools/action'
 import { createBodyTools } from '../../tools/body'
 import { createExpressionTools } from '../../tools/expression'
+import { MindVoice } from './mind-voice'
 
 type SpeechEvent = Extract<AffectSignal, { kind: 'speech' }>['event']
 type Decider = ReturnType<typeof createDecider>
@@ -148,18 +150,6 @@ export interface StagePerformanceScene {
  * other driver (Live2D Universal and MAGIC, MMD Classic), which plays motion groups instead of episodes.
  */
 export type StagePerformanceDriver = 'natural' | 'basic'
-
-/**
- * The voice channel the mind can reach: the leader's situation store. `observeTouch` records the touch in the
- * situation and returns what the mind may see of it, or null when nobody could speak a line. `speakReaction` runs the
- * line the mind decided and resolves with what became of it.
- */
-export interface VoicePort {
-  observeTouch: (observation: TouchObservation) => TouchVoiceView | null
-  speakReaction: (line: { kind: ReactionKind, eventId: string }) => Promise<GateOutcome | 'refused'>
-  /** Records a return or a desktop wake in the situation. Does nothing in a follower window. */
-  observeReturn: (observation: ReturnObservation | WakeObservation) => void
-}
 
 export interface StagePerformanceConductorOptions {
   /** Undefined while no performance scene is mounted; decisions still advance the decider state. */
@@ -304,9 +294,12 @@ export class StagePerformanceConductor {
   private recording: { trace: Omit<AffectTrace, 'endAt'>, context: string } | undefined
   /** Turns whose episodes dose no mood, in insertion order; see {@link maxMoodlessTurns}. */
   private readonly moodlessTurns = new Set<string>()
+  /** Every mind step that may touch the voice state goes through it, so the voice port sees what changed. */
+  private readonly voice: MindVoice
 
   constructor(private readonly options: StagePerformanceConductorOptions) {
     this.seed = options.seed
+    this.voice = new MindVoice(options.mind, () => options.voice?.())
     this.deciderKind = options.settings().decider
     this.decider = this.createTracedDecider(this.deciderKind)
     this.state = this.decider.initial(this.seed)
@@ -419,7 +412,17 @@ export class StagePerformanceConductor {
       observation = { kind: 'touch', gesture: 'poke', region: report.region, atMs: Date.now() }
     const voice = observation ? this.options.voice?.()?.observeTouch(observation) ?? null : null
     const { settings } = this.effectiveContext(undefined).context
-    this.performTouch(this.options.mind.receive({ kind: 'touch', ...report, settings, voice }))
+    this.performTouch(this.voice.receive({ kind: 'touch', ...report, settings, voice }))
+  }
+
+  /**
+   * Sends one voice stimulus from the voice port to the mind as one step, under every driver, and dispatches the
+   * response in intent order: `speak` to `voice().speak` for every line kind, whose outcome returns to the mind as a
+   * `voice-outcome` stimulus with the same `turnId`. The port also receives the gate memory and decision of the step
+   * (`publishVoice`).
+   */
+  voiceStimulus(stimulus: VoiceStimulus) {
+    this.voice.answer(stimulus)
   }
 
   /**
@@ -433,7 +436,7 @@ export class StagePerformanceConductor {
       return
     const natural = this.options.driver() === 'natural'
     const scene = this.options.scene()
-    for (const intent of this.options.mind.receive(...events)) {
+    for (const intent of this.voice.receive(...events)) {
       if (intent.kind === 'wake' && natural)
         scene?.wakeFromSleep?.()
       else if (intent.kind === 'desktop-reaction' && natural)
@@ -699,25 +702,8 @@ export class StagePerformanceConductor {
       else if (intent.kind === 'moment')
         this.options.markMoment?.(intent.moment)
       else if (intent.kind === 'speak')
-        void this.speak(intent)
+        void this.voice.speak(intent)
     }
-  }
-
-  /**
-   * Runs the line and tells the mind what became of it under the intent's `turnId`, so its line always settles. Only
-   * touch lines reach the port yet; nothing sends the mind a gate tick, so a reach-out cannot arrive here.
-   */
-  private async speak(intent: Extract<MindIntent, { kind: 'speak' }>) {
-    const { line } = intent
-    let outcome: GateOutcome | 'refused' = 'failed'
-    try {
-      if (line.kind === 'reaction')
-        outcome = await this.options.voice?.()?.speakReaction({ kind: line.reaction, eventId: line.eventId }) ?? 'failed'
-    }
-    catch (error) {
-      console.error('[performance-conductor] Touch reaction line failed:', errorMessageFrom(error) ?? 'unknown error')
-    }
-    this.options.mind.receive({ kind: 'voice-outcome', turnId: intent.turnId, outcome })
   }
 
   /** Natural only: the episode first, so a hold never precedes the episode it accompanies. */

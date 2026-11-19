@@ -15,6 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
 
 import { chatComposerActivityChangedEvent, getSpeechBusContext, speechInputUserSpeakingChangedEvent, voiceRequestTurns, voiceSnapshotChanged, voiceTurnsChanged } from '../../../services/speech/bus'
+import { connectMind } from '../../../test/connect-mind'
 import { useSituationObservabilityStore } from '../../devtools/situation-observability'
 import { COMPOSER_INPUT_RECENT_MS, GATE_INTERVAL_MS, useSituationStore } from '../../situation'
 import { ingestSparkNotify, notifyObservationFrom } from '../../situation/sensors/notify'
@@ -259,7 +260,8 @@ describe('widget spark reactions', () => {
       extractionSelection: async () => null,
       stream: async () => {},
     })
-    situation.initialize(syncedRuntime(true), { seedSource: () => SEED })
+    situation.initialize(syncedRuntime(true))
+    connectMind(situation, SEED)
     const bridge = useContextBridgeStore()
     bridge.setSparkNotifyHostRole('main')
     return { situation, bridge }

@@ -138,7 +138,8 @@ const evaluationText = computed(() => {
   const { result, atMs } = evaluation
   const at = formatClock(atMs)
   if (result.status === 'skipped') {
-    return t(result.reason === 'unprompted-pending' ? 'tamagotchi.settings.devtools.pages.situation.gate.evaluation.skipped-pending' : 'tamagotchi.settings.devtools.pages.situation.gate.evaluation.skipped-leader', { at })
+    const key = result.reason === 'unprompted-pending' ? 'skipped-pending' : result.reason === 'no-mind' ? 'skipped-no-mind' : 'skipped-leader'
+    return t(`tamagotchi.settings.devtools.pages.situation.gate.evaluation.${key}`, { at })
   }
   const { decision } = result
   return decision.fire

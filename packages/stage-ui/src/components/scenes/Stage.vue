@@ -41,7 +41,7 @@ import { createEventHook, useBroadcastChannel, useDocumentVisibility, useEventLi
 // import embedWorkerURL from '@xsai-transformers/embed/worker?worker&url'
 // import { embed } from '@xsai/embed'
 import { storeToRefs } from 'pinia'
-import { computed, defineAsyncComponent, getCurrentScope, nextTick, onUnmounted, ref, shallowRef, watch } from 'vue'
+import { computed, defineAsyncComponent, getCurrentScope, nextTick, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
 
 import StageAvatarModelMissing from './stage-avatar-model-missing.vue'
 import StageRenderError from './stage-render-error.vue'
@@ -370,6 +370,12 @@ const { conductor: performanceConductor, settings: performanceSettings } = useSt
   // The leader's situation store records the touch and runs her line; in a follower window it offers no view.
   voice: () => situationStore,
 })
+// The situation store ticks this stage's mind for reach-outs and tells it of user turns; the newest stage wins.
+let disconnectVoice: (() => void) | undefined
+onMounted(() => {
+  disconnectVoice = situationStore.connect(stimulus => performanceConductor.voiceStimulus(stimulus))
+})
+onUnmounted(() => disconnectVoice?.())
 
 const stageSelf = useStageSelfStore()
 
