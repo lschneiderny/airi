@@ -1,10 +1,12 @@
 import type { VerifyRun } from './verify-history'
-import type { VerifyStep } from './verify-plan'
+import type { VerifyArgs, VerifyStep } from './verify-plan'
 
 import process from 'node:process'
 
-import { readFileSync } from 'node:fs'
+import { spawn } from 'node:child_process'
+import { appendFileSync, mkdirSync, readFileSync } from 'node:fs'
 import { delimiter, join, relative } from 'node:path'
+import { stripVTControlCharacters } from 'node:util'
 
 import { errorMessageFrom } from '@moeru/std'
 
@@ -14,7 +16,8 @@ import { gatedNotice, listGatedTestFiles } from './lib/gated-tests'
 import { changedFiles, git, gitCommonDir, repoRoot, workingTreeHash } from './lib/git'
 import { appendVerifyRun, formatVerifyStats, readVerifyStats } from './verify-history'
 import { readLastPass, writeLastPass } from './verify-last-pass'
-import { advanceLastPass, followUpChecks, lintAllFixable, parseVerifyArgs, planVerify, relatedTestCommand, selectVerifyScope, testPrerequisiteTurboArgs, typecheckFilters, verifyUsage } from './verify-plan'
+import { advanceLastPass, defaultWaitSeconds, followUpChecks, lintAllFixable, parseVerifyArgs, planVerify, relatedTestCommand, selectVerifyScope, testPrerequisiteTurboArgs, typecheckFilters, verifyUsage } from './verify-plan'
+import { latestRunRecord, newRunId, pruneRuns, runLogPath, runsDir, waitForRun, writeRunRecord } from './verify-runs'
 
 interface Command {
   label: string
@@ -22,6 +25,37 @@ interface Command {
   /** The package directory the command runs in, relative to the root. Without it, the command runs in the root. */
   packagePath?: string
   env?: Record<string, string>
+}
+
+/** Lines of a failed command's output that verify prints when its output is not a terminal. */
+const failureTailLines = 60
+
+/**
+ * Verify's own output. Every line and all command output go to the run log. On a terminal, command output also streams
+ * to the console; otherwise the console gets only `say` lines, which the run record keeps as the run's report.
+ */
+class Reporter {
+  readonly lines: string[] = []
+
+  constructor(readonly tty: boolean, readonly logPath: string | null) {}
+
+  say(line: string): void {
+    console.info(line)
+    this.lines.push(line)
+    this.log(`${line}\n`)
+  }
+
+  /** Progress a terminal reader wants and an agent does not. */
+  detail(line: string): void {
+    if (this.tty)
+      console.info(line)
+    this.log(`${line}\n`)
+  }
+
+  log(text: string): void {
+    if (this.logPath)
+      appendFileSync(this.logPath, text)
+  }
 }
 
 interface StepResult {
@@ -99,6 +133,53 @@ function commandsFor(step: VerifyStep, root: string, plan: ReturnType<typeof pla
   return [rebuild, ...rootRelated, ...packageRelated]
 }
 
+async function waitCommand(cacheDir: string, root: string, wait: { id: string | null, timeoutMs: number }): Promise<number> {
+  const id = wait.id ?? latestRunRecord(cacheDir, root)?.id
+  if (!id) {
+    console.error('No verify run has started in this worktree.')
+    return 2
+  }
+  const outcome = await waitForRun(cacheDir, id, { timeoutMs: wait.timeoutMs })
+  if (outcome.kind === 'missing') {
+    console.error(`No verify run ${id} in ${runsDir(cacheDir)}.`)
+    return 2
+  }
+  const { record } = outcome
+  if (outcome.kind === 'running') {
+    console.info(`verify run ${id} is still running after ${Math.round(wait.timeoutMs / 1000)}s. Wait again with pnpm verify --wait ${id}\nlog: ${record.log}`)
+    return 3
+  }
+  if (outcome.kind === 'lost') {
+    console.info(`verify run ${id} (pid ${record.pid}) ended without recording a result. Its log: ${record.log}`)
+    return 1
+  }
+  console.info(`verify run ${id}, started ${Math.round((Date.now() - record.startedAt) / 1000)}s ago:`)
+  for (const line of record.report)
+    console.info(line)
+  return record.exitCode ?? 1
+}
+
+/** Starts this command again as a detached process with the same arguments, minus `--detach`. */
+function detach(cacheDir: string, root: string): number {
+  const id = newRunId(Date.now(), process.pid)
+  const argv = process.argv.slice(2).filter(arg => arg !== '--detach')
+  const child = spawn(process.execPath, [...process.execArgv, process.argv[1], ...argv], {
+    cwd: process.cwd(),
+    env: { ...process.env, AIRI_VERIFY_RUN_ID: id },
+    detached: true,
+    stdio: 'ignore',
+  })
+  child.unref()
+  if (child.pid === undefined) {
+    console.error('verify could not start a background run.')
+    return 1
+  }
+  // Written here as well as by the run, so a --wait that follows at once finds the record.
+  writeRunRecord(cacheDir, { id, pid: child.pid, worktree: root, status: 'running', startedAt: Date.now(), finishedAt: null, exitCode: null, log: runLogPath(cacheDir, id), report: [] })
+  console.info(`verify run ${id} started in the background.\n  wait: pnpm verify --wait ${id}   (blocks up to ${defaultWaitSeconds}s; allow the call 10 minutes)\n  log:  ${runLogPath(cacheDir, id)}`)
+  return 0
+}
+
 async function main(): Promise<number> {
   const parsed = parseVerifyArgs(process.argv.slice(2))
   if (!parsed.ok) {
@@ -114,12 +195,42 @@ async function main(): Promise<number> {
     console.info(args.stats.json ? JSON.stringify(stats, null, 2) : formatVerifyStats(stats))
     return 0
   }
+  if (args.wait)
+    return waitCommand(cacheDir, root, args.wait)
+  if (args.detach)
+    return detach(cacheDir, root)
+  if (args.dryRun)
+    return verifyRun(args, root, cacheDir, historyDir, new Reporter(Boolean(process.stdout.isTTY), null))
+
+  const id = process.env.AIRI_VERIFY_RUN_ID ?? newRunId(Date.now(), process.pid)
+  const log = runLogPath(cacheDir, id)
+  pruneRuns(cacheDir)
+  mkdirSync(runsDir(cacheDir), { recursive: true })
+  const startedAt = Date.now()
+  const record = { id, pid: process.pid, worktree: root, startedAt, log }
+  writeRunRecord(cacheDir, { ...record, status: 'running', finishedAt: null, exitCode: null, report: [] })
+  const reporter = new Reporter(Boolean(process.stdout.isTTY), log)
+  let code = 1
+  try {
+    code = await verifyRun(args, root, cacheDir, historyDir, reporter)
+  }
+  catch (error) {
+    reporter.say(`verify broke: ${errorMessageFrom(error) ?? 'unknown error'}`)
+  }
+  finally {
+    reporter.say(`full log: ${log}`)
+    writeRunRecord(cacheDir, { ...record, status: code === 0 ? 'passed' : 'failed', finishedAt: Date.now(), exitCode: code, report: reporter.lines })
+  }
+  return code
+}
+
+async function verifyRun(args: VerifyArgs, root: string, cacheDir: string, historyDir: string, out: Reporter): Promise<number> {
   let base: string
   try {
     base = git(root, ['merge-base', 'HEAD', args.base])
   }
   catch (error) {
-    console.error(`Cannot find the merge base with ${args.base}: ${errorMessageFrom(error) ?? 'unknown error'}`)
+    out.say(`Cannot find the merge base with ${args.base}: ${errorMessageFrom(error) ?? 'unknown error'}`)
     return 2
   }
   const workspaces = workspacePackages(root)
@@ -142,9 +253,11 @@ async function main(): Promise<number> {
   }
   // Windows spells the variable `Path`; a second `PATH` key would hide the system directories.
   const pathKey = Object.keys(process.env).find(key => key.toUpperCase() === 'PATH') ?? 'PATH'
-  const env = { ...process.env, ...compileCacheEnv(process.env, root), [pathKey]: `${join(root, 'node_modules/.bin')}${delimiter}${process.env[pathKey] ?? ''}` }
+  // Checks never inherit this run's id; a verify they start is a run of its own.
+  const { AIRI_VERIFY_RUN_ID: _runId, ...inherited } = process.env
+  const env = { ...inherited, ...compileCacheEnv(process.env, root), [pathKey]: `${join(root, 'node_modules/.bin')}${delimiter}${process.env[pathKey] ?? ''}` }
 
-  console.info(`verify: merge base with ${args.base} ${base.slice(0, 9)}, tree ${tree.slice(0, 9)}`)
+  out.say(`verify: merge base with ${args.base} ${base.slice(0, 9)}, tree ${tree.slice(0, 9)}`)
   const followUps = followUpChecks(changedFiles(root, base, tree))
   const results: StepResult[] = []
   const finish = (result: StepResult, history: Pick<VerifyRun, 'scopeBase' | 'mode' | 'commands' | 'files'>) => {
@@ -183,7 +296,7 @@ async function main(): Promise<number> {
       }
     }
     const scope = selectVerifyScope(context, { record, step, treeExists })
-    console.info(`[${step}] scope: ${scope.mode === 'incremental' ? `incremental from ${scope.base} (${scope.reason})` : `branch (${scope.reason})`}`)
+    out.say(`[${step}] scope: ${scope.mode === 'incremental' ? `incremental from ${scope.base} (${scope.reason})` : `branch (${scope.reason})`}`)
     const changed = changedFiles(root, scope.base, tree)
     const history: Pick<VerifyRun, 'scopeBase' | 'mode' | 'commands' | 'files'> = {
       scopeBase: scope.base,
@@ -191,10 +304,10 @@ async function main(): Promise<number> {
       commands: [],
       files: changed.map(file => file.path),
     }
-    console.info(`[${step}] ${changed.length} changed file(s)`)
+    out.say(`[${step}] ${changed.length} changed file(s)`)
     if (args.dryRun) {
       for (const file of changed)
-        console.info(`  ${file.deleted ? 'D' : 'M'} ${file.path}`)
+        out.say(`  ${file.deleted ? 'D' : 'M'} ${file.path}`)
     }
     const plan = planVerify(changed, workspaces.paths, workspaces.rootDependencyPaths)
     const affected = step === 'test' ? withDependents(root, plan.testPackagePaths) : []
@@ -207,7 +320,7 @@ async function main(): Promise<number> {
       gatedTestNotice = gatedNotice(listGatedTestFiles(root), affected, changed.map(file => file.path), process.env)
     if (args.dryRun) {
       for (const item of commands)
-        console.info(`[${step}] ${item.label}\n  ${item.packagePath ? `(in ${item.packagePath}) ` : ''}node ${[relative(root, item.args[0]), ...item.args.slice(1)].join(' ')}`)
+        out.say(`[${step}] ${item.label}\n  ${item.packagePath ? `(in ${item.packagePath}) ` : ''}node ${[relative(root, item.args[0]), ...item.args.slice(1)].join(' ')}`)
       finish({ step, status: 'skipped', detail: 'dry run', durationMs: 0 }, history)
       continue
     }
@@ -215,17 +328,26 @@ async function main(): Promise<number> {
     let failed: string | null = null
     const executed: string[][] = []
     const execution = { ...history, commands: executed }
-    let output = ''
-    const keepLintOutput = (text: string) => {
-      output += text
-    }
+    let stepOutput = ''
     try {
       for (const item of commands) {
-        console.info(`\n[${step}] ${item.label}`)
+        out.detail(`\n[${step}] ${item.label}`)
         executed.push([process.execPath, ...item.args])
-        const exitCode = await run(process.execPath, item.args, { cwd: item.packagePath ? join(root, item.packagePath) : root, env: { ...env, ...item.env }, onOutput: step === 'lint' ? keepLintOutput : undefined })
+        let output = ''
+        const onOutput = (text: string) => {
+          output += text
+          out.log(text)
+        }
+        const exitCode = await run(process.execPath, item.args, { cwd: item.packagePath ? join(root, item.packagePath) : root, env: { ...env, ...item.env }, onOutput, echo: out.tty })
+        stepOutput += output
         if (exitCode !== 0) {
           failed = `${item.label} exited ${exitCode}`
+          if (!out.tty) {
+            const lines = stripVTControlCharacters(output).trimEnd().split('\n')
+            out.say(`\n[${step}] ${item.label} failed${lines.length > failureTailLines ? `; its last ${failureTailLines} lines (all of it is in the full log)` : ''}:`)
+            for (const line of lines.slice(-failureTailLines))
+              out.say(line)
+          }
           break
         }
       }
@@ -239,12 +361,12 @@ async function main(): Promise<number> {
       finish({ step, status: 'failed', detail: failed, durationMs }, execution)
       if (step === 'lint') {
         lintFailed = true
-        if (lintAllFixable(output))
-          console.info('\nhint: every lint problem above is auto-fixable: run pnpm lint:fix, then verify again')
+        if (lintAllFixable(stepOutput))
+          out.say('\nhint: every lint problem above is auto-fixable: run pnpm lint:fix, then verify again')
       }
       continue
     }
-    const labels = commands.map(item => item.label).join('; ')
+    const labels = commands.length > 3 ? `${commands.length} commands` : commands.map(item => item.label).join('; ')
     if (workingTreeHash(root) !== tree) {
       finish({ step, status: 'passed', detail: `${labels} (not recorded: files changed during the step)`, durationMs }, execution)
       continue
@@ -253,15 +375,15 @@ async function main(): Promise<number> {
     finish({ step, status: 'passed', detail: labels, durationMs }, execution)
   }
 
-  console.info('\nverify summary')
+  out.say('\nverify summary')
   for (const result of results)
-    console.info(`  ${result.step.padEnd(9)} ${result.status.padEnd(7)} ${result.durationMs ? `${(result.durationMs / 1000).toFixed(1)}s ` : ''}${result.detail}`)
+    out.say(`  ${result.step.padEnd(9)} ${result.status.padEnd(7)} ${result.durationMs ? `${(result.durationMs / 1000).toFixed(1)}s ` : ''}${result.detail}`)
   if (gatedTestNotice)
-    console.info(gatedTestNotice)
+    out.say(gatedTestNotice)
   if (followUps.length > 0) {
-    console.info('\nalso needed, not run by verify (docs/ai/context/testing.md):')
+    out.say('\nalso needed, not run by verify (docs/ai/context/testing.md):')
     for (const line of followUps)
-      console.info(`  ${line}`)
+      out.say(`  ${line}`)
   }
   return results.some(result => result.status === 'failed') ? 1 : 0
 }

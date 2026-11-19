@@ -221,12 +221,23 @@ export interface VerifyArgs {
   steps: VerifyStep[]
   dryRun: boolean
   gate: boolean
+  /** Start the run in a detached process, print its id, and return at once. */
+  detach: boolean
   stats?: VerifyStatsOptions
+  /** Block on a run that already started instead of starting one. A null id means the newest run in this worktree. */
+  wait?: { id: string | null, timeoutMs: number }
 }
 
 export type ParsedVerifyArgs = { ok: true, args: VerifyArgs } | { ok: false, message: string }
 
-export const verifyUsage = `Usage: pnpm verify [--gate] [--base <ref>] [--only lint,typecheck,test] [--dry-run]
+/**
+ * How long `--wait` blocks by default: under the 10-minute ceiling agent harnesses put on one tool call,
+ * and longer than a typical full verify, so one call usually sees the end.
+ */
+export const defaultWaitSeconds = 540
+
+export const verifyUsage = `Usage: pnpm verify [--gate] [--base <ref>] [--only lint,typecheck,test] [--dry-run] [--detach]
+       pnpm verify --wait [<run id>] [--timeout <seconds>]
        pnpm verify --stats [--since <duration>] [--json]
 
   --stats    summarize step history without running checks
@@ -236,20 +247,52 @@ export const verifyUsage = `Usage: pnpm verify [--gate] [--base <ref>] [--only l
   --base     compare against the merge base with <ref> (default main)
   --only     run only these steps (default all)
   --dry-run  print the plan and commands without running them
-Exit codes: 0 every step passed, 1 a step failed, 2 usage error.`
+  --detach   run in the background; print the run id and return
+  --wait     block until a run ends and print its report (default: this worktree's newest run)
+  --timeout  stop waiting after this many seconds (default ${defaultWaitSeconds})
+Exit codes: 0 every step passed, 1 a step failed or the run died, 2 usage error, 3 still running after --timeout.`
+
+function parseWaitArgs(argv: string[]): ParsedVerifyArgs {
+  const wait = { id: null as string | null, timeoutMs: defaultWaitSeconds * 1000 }
+  for (let index = 0; index < argv.length; index++) {
+    const flag = argv[index]
+    if (flag === '--wait') {
+      const next = argv[index + 1]
+      if (next !== undefined && !next.startsWith('--')) {
+        wait.id = next
+        index++
+      }
+    }
+    else if (flag === '--timeout') {
+      const seconds = Number(argv[++index])
+      if (!Number.isSafeInteger(seconds) || seconds < 0)
+        return { ok: false, message: `--timeout needs a whole number of seconds` }
+      wait.timeoutMs = seconds * 1000
+    }
+    else {
+      return { ok: false, message: `${JSON.stringify(flag)} does not combine with --wait` }
+    }
+  }
+  return { ok: true, args: { base: 'main', steps: [], dryRun: false, gate: false, detach: false, wait } }
+}
 
 export function parseVerifyArgs(argv: string[]): ParsedVerifyArgs {
   if (argv.includes('--stats')) {
     const parsed = parseStatsArgs(argv)
     return parsed.ok
-      ? { ok: true, args: { base: 'main', steps: [], dryRun: false, gate: false, stats: parsed.stats } }
+      ? { ok: true, args: { base: 'main', steps: [], dryRun: false, gate: false, detach: false, stats: parsed.stats } }
       : parsed
   }
-  const args: VerifyArgs = { base: 'main', steps: [...verifySteps], dryRun: false, gate: false }
+  if (argv.includes('--wait'))
+    return parseWaitArgs(argv)
+  const args: VerifyArgs = { base: 'main', steps: [...verifySteps], dryRun: false, gate: false, detach: false }
   for (let index = 0; index < argv.length; index++) {
     const flag = argv[index]
     if (flag === '--gate') {
       args.gate = true
+    }
+    else if (flag === '--detach') {
+      args.detach = true
     }
     else if (flag === '--dry-run') {
       args.dryRun = true

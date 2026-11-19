@@ -9,26 +9,27 @@ export function capture(command: string, args: string[], options: { cwd: string,
 }
 
 /**
- * `onSpawn` receives the child pid as soon as it exists, so callers can register it as budgeted work. With `onOutput`,
- * stdout and stderr are piped, copied to this process's own streams as they arrive, and also handed to `onOutput`.
+ * With `onOutput`, stdout and stderr are piped and handed to `onOutput`; they are also copied to this process's own
+ * streams unless `echo` is false.
  */
-export function run(command: string, args: string[], options: { cwd: string, env?: NodeJS.ProcessEnv, onSpawn?: (pid: number) => void, onOutput?: (text: string) => void }): Promise<number> {
+export function run(command: string, args: string[], options: { cwd: string, env?: NodeJS.ProcessEnv, onOutput?: (text: string) => void, echo?: boolean }): Promise<number> {
   return new Promise((resolve, reject) => {
     const onOutput = options.onOutput
+    const echo = options.echo ?? true
     const child = spawn(command, args, { cwd: options.cwd, env: options.env ?? process.env, stdio: onOutput ? ['inherit', 'pipe', 'pipe'] : 'inherit', shell: false })
     child.once('error', reject)
     if (onOutput) {
       child.stdout?.on('data', (chunk: Buffer) => {
-        process.stdout.write(chunk)
+        if (echo)
+          process.stdout.write(chunk)
         onOutput(chunk.toString('utf8'))
       })
       child.stderr?.on('data', (chunk: Buffer) => {
-        process.stderr.write(chunk)
+        if (echo)
+          process.stderr.write(chunk)
         onOutput(chunk.toString('utf8'))
       })
     }
-    if (child.pid !== undefined)
-      options.onSpawn?.(child.pid)
     child.once('close', code => resolve(code ?? 1))
   })
 }
