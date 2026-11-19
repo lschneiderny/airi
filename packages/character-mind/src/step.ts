@@ -4,6 +4,7 @@ import { createReactionState, initialTouchAffectMemory } from '@proj-airi/stage-
 import { initialReactionMemory } from '@proj-airi/stage-shared/situation'
 
 import { answerEmotion, answerExpressionClear, answerExpressionRequest } from './expression'
+import { answerPresence, answerScreenChange } from './presence'
 import { answerTouch, answerVoiceOutcome } from './touch'
 
 /** The state of a mind that has answered nothing. It holds no random source: every draw comes from `step`'s `rng`. */
@@ -13,6 +14,8 @@ export function initialMindState(): MindState {
     reaction: createReactionState(),
     touch: { affect: initialTouchAffectMemory },
     voice: { reaction: initialReactionMemory(), lastDecision: null },
+    presence: { away: false, awaySinceMs: null },
+    desktop: { screenReactAtMs: null },
   }
 }
 
@@ -28,6 +31,8 @@ export function initialMindState(): MindState {
 export function step(state: MindState, stimuli: readonly MindStimulus[], nowMs: number, rng: MindRandom): { state: MindState, intents: MindIntent[] } {
   const atSeconds = nowMs / 1000
   const intents: MindIntent[] = []
+  // A desktop wake anywhere in the call wins over a screen change in the same call.
+  const wakes = stimuli.some(stimulus => stimulus.kind === 'presence' && stimulus.wake !== null)
   let next = state
   for (const stimulus of stimuli) {
     const cause = next.seq + 1
@@ -42,6 +47,10 @@ export function step(state: MindState, stimuli: readonly MindStimulus[], nowMs: 
       answer = answerExpressionClear(next, stimulus, cause)
     else if (stimulus.kind === 'touch')
       answer = answerTouch(next, stimulus, cause, nowMs, rng)
+    else if (stimulus.kind === 'presence')
+      answer = answerPresence(next, stimulus, cause, nowMs)
+    else if (stimulus.kind === 'screen-change')
+      answer = answerScreenChange(next, cause, nowMs, wakes)
     else
       answer = answerVoiceOutcome(next, stimulus, nowMs)
 

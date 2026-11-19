@@ -1,4 +1,5 @@
 export * from './mind'
+export * from './presence'
 export * from './random'
 export * from './step'
 export * from './types'
