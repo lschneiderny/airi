@@ -1,6 +1,5 @@
 import type { Ref } from 'vue'
 
-import { useLocalStorageManualReset } from '@proj-airi/stage-shared/composables'
 import { watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
@@ -26,8 +25,9 @@ export function useLanguage(
   setLocale: (locale: string) => Promise<unknown> | unknown,
 ) {
   const i18n = useI18n()
-  const persistedLanguage = useLocalStorageManualReset<string>('settings/language', '')
-  const hasPersistedLanguage = persistedLanguage.value !== ''
+  // `useSettingsGeneral` owns `settings/language`; this only reads whether a language was saved.
+  // A storage ref here would write its default on a first launch.
+  const hasPersistedLanguage = (localStorage.getItem('settings/language') ?? '') !== ''
   let isLocaleSynced = false
 
   // Guard: do not propagate the store's navigator.language fallback back
