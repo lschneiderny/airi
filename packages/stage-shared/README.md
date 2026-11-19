@@ -130,7 +130,7 @@ The `expression-performance` entrypoint owns the pure decision layer for charact
 
 - the `AffectSignal`, `ReactionEpisode`, `SlotCommand`, `HoldCommand`, and `Decider` contracts;
 - the catalog schemas, `mergeCatalog`, `isAutoEligible`, and `isLlmEligible`;
-- the settings document schema `ExpressionPerformanceSettingsSchema`, its defaults, and `parseExpressionPerformanceSettings`;
+- the settings document schema `ExpressionPerformanceSettingsSchema`, its defaults, and `parseExpressionPerformanceSettings`, with `createExpressionPerformanceSettingsEntries` and `expressionPerformanceSettingsEntries`, the top-level fields that `useSettingsDocument` validates one by one;
 - reaction strength with bands, habituation, and escalation (`acceptReaction`);
 - the picker and planner deciders, selected by `createDecider`, and the timing-slot scheduler;
 - `choosePastime`, which picks the entry the user marked `idleUse: 'activity'` that she holds when Natural's idle draw starts a pastime (Natural decides when and for how long), with `idleActivityEntries` and `idleSleepEntryIds` to read the catalog;

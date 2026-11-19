@@ -189,12 +189,14 @@ export interface MoodBounds {
 }
 
 /**
- * Builds the settings document schema. Persisted documents use `moodGainRange` and `moodTauRange`; effective documents
- * use those ranges scaled by the profile ranges (see `EffectiveExpressionPerformanceSettingsSchema`).
+ * Builds the top-level fields of the settings document, each accepting `undefined` and supplying its default, so
+ * `useSettingsDocument` can validate a stored document field by field. Persisted documents use `moodGainRange` and
+ * `moodTauRange`; effective documents use those ranges scaled by the profile ranges (see
+ * `EffectiveExpressionPerformanceSettingsSchema`).
  */
-export function createExpressionPerformanceSettingsSchema(mood: MoodBounds) {
+export function createExpressionPerformanceSettingsEntries(mood: MoodBounds) {
   const moodDynamics = moodDynamicsSchema(mood)
-  return settingsObject({
+  return {
     /** False bypasses band recruitment. @default true */
     bands: optional(boolean(), true),
     /** False preserves idle without mood modulation. @default true */
@@ -223,10 +225,17 @@ export function createExpressionPerformanceSettingsSchema(mood: MoodBounds) {
     held: optional(heldSchema, () => parse(heldSchema, {})),
     /** Zero gap and window disable the planner budget; zero expiry stops picks from waiting for timing slots. */
     planner: optional(plannerSchema, () => parse(plannerSchema, {})),
-  })
+  }
 }
 
-export const ExpressionPerformanceSettingsSchema = createExpressionPerformanceSettingsSchema({ gain: moodGainRange, tau: moodTauRange })
+/** Builds the settings document schema from `createExpressionPerformanceSettingsEntries`. */
+export function createExpressionPerformanceSettingsSchema(mood: MoodBounds) {
+  return settingsObject(createExpressionPerformanceSettingsEntries(mood))
+}
+
+/** Top-level fields of the persisted settings document. */
+export const expressionPerformanceSettingsEntries = createExpressionPerformanceSettingsEntries({ gain: moodGainRange, tau: moodTauRange })
+export const ExpressionPerformanceSettingsSchema = settingsObject(expressionPerformanceSettingsEntries)
 export type ExpressionPerformanceSettings = InferOutput<typeof ExpressionPerformanceSettingsSchema>
 export const defaultExpressionPerformanceSettings = parse(ExpressionPerformanceSettingsSchema, {})
 

@@ -186,9 +186,9 @@ Six tier 1 stores and one helper exist:
 
 - `useLive2DNaturalSettings` and `useMMDNaturalSettings` are built on `useSettingsDocument`. Each starts from the old per-setting [Natural](glossary.md#natural) keys while no document is stored, and its first leader-routed `update` or `reset` writes the document and deletes those keys. Each store's `// NOTICE:` block states when that import can be removed.
 - `useSituationSettings`, `useConversationSettings`, and `useHostNoticeSettings` are built on `useSettingsDocument` with their original keys and stored shapes. `useHostNoticeSettings` declares the leader-routed actions `dismiss` and `reset`.
-- `useExpressionPerformanceSettings` hand-rolls the same code. It calls `useLocalStorageManualReset` directly with `listenToStorageChanges: false` and `writeDefaults: false`, validates the document itself, and declares leader-routed `update` and `reset` actions. It can adopt `useSettingsDocument` without changing its key.
+- `useExpressionPerformanceSettings` is built on `useSettingsDocument` with its original key and stored shape. Its `update` merges a patch at every depth, with arrays replaced, before the helper validates it. Its `upgrade` option strips removed stored fields under `// NOTICE:` blocks that state their removal conditions.
 
-New tier 1 stores use `useSettingsDocument`.
+All six stores are built on `useSettingsDocument`, and new tier 1 stores use it too. `upgrade` rewrites a stored document before its fields are validated; use it only for a `// NOTICE:` fallback that removes or renames stored fields.
 
 ## Named exceptions
 
