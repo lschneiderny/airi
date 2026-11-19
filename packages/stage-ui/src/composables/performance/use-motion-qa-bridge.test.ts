@@ -243,6 +243,8 @@ describe('useMotionQaBridge', () => {
         voice: null,
         voiceLine: null,
         voiceReason: null,
+        lines: null,
+        cues: null,
       },
       {
         kind: 'mind',
@@ -257,6 +259,8 @@ describe('useMotionQaBridge', () => {
         voice: 'hold',
         voiceLine: 'poke-protest',
         voiceReason: 'poke-count',
+        lines: null,
+        cues: null,
       },
       expect.objectContaining({ gesture: 'poke', voice: 'hold', voiceReason: 'poke-count' }),
       {
@@ -273,8 +277,10 @@ describe('useMotionQaBridge', () => {
         voice: 'speak',
         voiceLine: 'poke-protest',
         voiceReason: null,
+        lines: 'reaction',
+        cues: null,
       },
-      { kind: 'mind', stimulus: 'voice-outcome', gesture: null, outcome: 'spoken', intents: [], voice: null, voiceLine: null, voiceReason: null },
+      { kind: 'mind', stimulus: 'voice-outcome', gesture: null, outcome: 'spoken', intents: [], voice: null, voiceLine: null, voiceReason: null, lines: null, cues: null },
     ])
     // Neither the poke's point nor the situation's event and session ids leave the window.
     expect(JSON.stringify(reply)).not.toMatch(/touch-event|session-1|-0\.4/)
@@ -296,7 +302,7 @@ describe('useMotionQaBridge', () => {
     ])
   })
 
-  it('records a gate tick with its gate reason and fired category, and skips an unforced tick that yields nothing', async () => {
+  it('records a gate tick with its gate reason, fired category, line kind, and cues, a decline with its cue, and skips an unforced tick that yields nothing', async () => {
     // A new run eases her in, so the first unforced tick holds without an intent.
     mind.receive(voiceTick(false, mindNowMs))
     mindNowMs += 2_000
@@ -304,11 +310,16 @@ describe('useMotionQaBridge', () => {
     // The reach-out line is open, so the forced tick skips the gate.
     mindNowMs += 2_000
     mind.receive(voiceTick(true, mindNowMs))
+    const turnId = mind.state.voice.line?.turnId
+    if (!turnId)
+      throw new Error('The forced tick opened no line')
+    mind.receive({ kind: 'voice-outcome', turnId, outcome: 'declined' })
 
     const reply = await dispatch({ name: 'events', input: {} }) as { result: { events: { kind: string, payload: Record<string, unknown> }[] } }
     expect(reply.result.events.map(({ kind, payload }) => ({ kind, ...payload }))).toEqual([
-      expect.objectContaining({ kind: 'mind', stimulus: 'voice-tick', gate: 'forced', category: 'open', intents: expect.stringContaining('"kind":"speak"') }),
-      expect.objectContaining({ kind: 'mind', stimulus: 'voice-tick', gate: null, category: null, intents: '[]' }),
+      expect.objectContaining({ kind: 'mind', stimulus: 'voice-tick', gate: 'forced', category: 'open', intents: expect.stringContaining('"kind":"speak"'), lines: 'reach-out', cues: 'about-to-speak' }),
+      expect.objectContaining({ kind: 'mind', stimulus: 'voice-tick', gate: null, category: null, intents: '[]', lines: null, cues: null }),
+      expect.objectContaining({ kind: 'mind', stimulus: 'voice-outcome', outcome: 'declined', lines: null, cues: 'let-go' }),
     ])
     expect(JSON.stringify(reply)).not.toMatch(/session-1/)
   })

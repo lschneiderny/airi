@@ -69,6 +69,8 @@ export function useMotionQaEvents(options: {
       const outcomes = step.stimuli.filter(stimulus => stimulus.kind === 'voice-outcome')
       const decision = voiceDecisionOf(step)
       const presence = step.stimuli.find(stimulus => stimulus.kind === 'presence')
+      const lines = step.intents.flatMap(intent => intent.channel === 'voice' && intent.kind === 'speak' ? [intent.line.kind] : [])
+      const cues = step.intents.flatMap(intent => intent.channel === 'posture' && intent.kind === 'cue' ? [intent.cue] : [])
       record('mind', {
         stimulus: step.stimuli.map(stimulus => stimulus.kind).join(','),
         gesture: touches.length ? touches.map(touch => touch.gesture).join(',') : null,
@@ -76,6 +78,10 @@ export function useMotionQaEvents(options: {
         // A JSON array, because a payload holds scalars only. A touch yields at most four intents of about 80
         // characters each, which stays under the 500 characters `record` keeps of a string.
         intents: JSON.stringify(step.intents.map(({ channel, kind, id, cause }) => ({ channel, kind, id, cause }))),
+        // The kinds of the step's spoken lines (`reaction`, `reach-out`, `widget`) and its body cues
+        // (`about-to-speak`, `let-go`), comma-separated, or null.
+        lines: lines.length ? lines.join(',') : null,
+        cues: cues.length ? cues.join(',') : null,
         voice: decision ? (decision.speak ? 'speak' : 'hold') : null,
         voiceLine: decision?.kind ?? null,
         voiceReason: decision && !decision.speak ? decision.reason : null,
