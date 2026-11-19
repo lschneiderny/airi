@@ -703,16 +703,21 @@ export class StagePerformanceConductor {
     }
   }
 
-  /** Runs the line and tells the mind what became of it, so its pending attempt always settles. */
+  /**
+   * Runs the line and tells the mind what became of it under the intent's `turnId`, so its line always settles. Only
+   * touch lines reach the port yet; nothing sends the mind a gate tick, so a reach-out cannot arrive here.
+   */
   private async speak(intent: Extract<MindIntent, { kind: 'speak' }>) {
+    const { line } = intent
     let outcome: GateOutcome | 'refused' = 'failed'
     try {
-      outcome = await this.options.voice?.()?.speakReaction({ kind: intent.line, eventId: intent.eventId }) ?? 'failed'
+      if (line.kind === 'reaction')
+        outcome = await this.options.voice?.()?.speakReaction({ kind: line.reaction, eventId: line.eventId }) ?? 'failed'
     }
     catch (error) {
       console.error('[performance-conductor] Touch reaction line failed:', errorMessageFrom(error) ?? 'unknown error')
     }
-    this.options.mind.receive({ kind: 'voice-outcome', eventId: intent.eventId, outcome })
+    this.options.mind.receive({ kind: 'voice-outcome', turnId: intent.turnId, outcome })
   }
 
   /** Natural only: the episode first, so a hold never precedes the episode it accompanies. */

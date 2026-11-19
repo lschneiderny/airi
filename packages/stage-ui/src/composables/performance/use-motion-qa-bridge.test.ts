@@ -194,7 +194,7 @@ describe('useMotionQaBridge', () => {
     mind.receive(poke())
     mindNowMs += 1_000
     mind.receive(poke())
-    mind.receive({ kind: 'voice-outcome', eventId: 'touch-event', outcome: 'spoken' })
+    mind.receive({ kind: 'voice-outcome', turnId: 'reaction:touch-event', outcome: 'spoken' })
 
     const reply = await dispatch({ name: 'events', input: {} }) as { ok: boolean, result: { events: { kind: string, payload: Record<string, string | null> }[] } }
     expect(reply.ok).toBe(true)

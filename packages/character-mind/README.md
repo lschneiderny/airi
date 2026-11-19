@@ -24,11 +24,18 @@ const intents = mind.receive({ kind: 'emotion', source: 'act', emotion: 'happy',
 | `expression-request` | `face`: `entry`. With an emotion mapping and held emotions on, it carries a hold for the entry's lease, and the episode when the request started one. |
 | `expression-clear` | `face`: `release` with the named slot as its scope, or scope `all` and a hold release when no slot is named. |
 | `touch` | One response, decided together. `posture`: `touch-reaction` for every touch, a poke at its point or a pet `start` or `end`, and `mood` when `touchAffect` returns a dose. `face`: `moment` (`poked` or `petted`) for a poke and a finished pet. `voice`: `speak` when `reactionPolicy` decides a line. |
-| `voice-outcome` | None. It settles the pending line; a `spoken` outcome always starts the refractory. |
+| `voice-tick` | `voice`: `speak` with a `reach-out` line when the urge gate fires. A new `run.id` first restores the gate memory: from `run.memory` with `pending: null`, else `run.saved` over a promotion, else a promotion alone. A shown edge eases her in (`visibilityRegainUrgeMemory`). The gate skips while a line is open or `unpromptedPending` is set. |
+| `voice-outcome` | None. It settles the line named by `turnId` and closes it. A touch line (`reaction:<eventId>`) settles its pending attempt; a `spoken` one always starts the refractory and the gate's floor. A reach-out applies its outcome to the gate (`recordUrgeFireOutcome`); `refused` restores the gate fields of before the fire, with its draws spent. |
+| `user-turn` | None. `recordUrgeUserTurn`: unanswered openings become damping, and an armed double text clears. |
+| `external-speech` | None. A widget or plugin turn spoke outside the mind: `recordExternalSpeech` starts the floor. |
 | `presence` | One response, in the order posture, face, voice. A desktop wake: `posture` `desktop-reaction` `wake` and `voice` `observe-wake`. A return: `posture` `wake` (unless the wake reaction already rouses her), `face` `moment` `welcome-back`, and `voice` `observe-return`. Away turning true opens the span and yields nothing. |
 | `screen-change` | `posture`: `desktop-reaction` `screen-change`, unless one was stamped less than `SCREEN_CHANGE_REFRACTORY_MS` (10 s) ago or a desktop wake is in the same `step` call. |
 
-A scene reports a touch as a `TouchReport`: a poke with its region and a point relative to that region, a pet start, or a pet end with its duration. The `touch` stimulus adds the settings and a `TouchVoiceView`, which is what the voice channel shows of the touch the situation just recorded. Without a view (a pet start, a follower window, no running gate) the mind decides no line and leaves its voice state untouched. The caller runs a `speak` intent and returns what became of it as a `voice-outcome` with the intent's `eventId`.
+A scene reports a touch as a `TouchReport`: a poke with its region and a point relative to that region, a pet start, or a pet end with its duration. The `touch` stimulus adds the settings and a `TouchVoiceView`, which is what the voice channel shows of the touch the situation just recorded. Without a view (a pet start, a follower window, no running gate) the mind decides no line and leaves its voice state untouched. The caller runs a `speak` intent and returns what became of it as a `voice-outcome` with the intent's `turnId`.
+
+### The voice policy
+
+`voice.ts` decides when she speaks unasked: spoken touch reactions and reach-outs of the urge gate. The gate's rules stay in `@proj-airi/stage-shared/situation`; the mind composes them on its own clock and source. The store builds a `VoiceView` for every tick and keeps the saved social slice: the mind persists nothing, and it publishes its gate memory for the store to mirror and save. A touch line and a reach-out share one line slot, `MindVoiceState.line`, because chat runs one unprompted turn at a time. While it holds a line the gate skips; a touch line decided while a reach-out holds the slot leaves the slot alone, and chat refuses it.
 
 ### Return and desktop events
 
@@ -40,9 +47,9 @@ The mind decides the emotion, its strength, its hold, and the reason. It reads n
 
 Every stimulus advances `MindState.seq`. An intent's `cause` is the sequence number of the stimulus it answers, and its `id` is unique within one mind.
 
-Every draw comes from `rng`, in the order of the stimuli: one for the jitter of each new emotion episode, and one for each spoken touch reaction that reaches its roll. `MindState` holds no random source, so a replay needs the same state and the same draws.
+Every draw comes from `rng`, in the order of the stimuli: one for the jitter of each new emotion episode, one for each spoken touch reaction that reaches its roll, one for the threshold of a gate run restored by promotion, and five for each gate fire (and a `no-topic` hold). A refused fire keeps its draws spent. `MindState` holds no random source, so a replay needs the same state and the same draws.
 
-`nowMs` reaches `reactionPolicy` as milliseconds and `touchAffect` and `acceptReaction` as seconds (`nowMs / 1000`). `MindState` is fast state: nothing is saved, so the pacing of touch doses and spoken reactions starts over with every mind.
+`nowMs` reaches `reactionPolicy` as milliseconds and `touchAffect` and `acceptReaction` as seconds (`nowMs / 1000`). `MindState` is fast state: nothing is saved, so the pacing of touch doses and spoken reactions starts over with every mind. The gate memory survives a new mind only through the store's mirror in `VoiceRun`.
 
 ## Checks
 
@@ -53,7 +60,7 @@ pnpm -F @proj-airi/character-mind typecheck
 
 ## When to use
 
-Use this package for a decision about what the character does at event rate: which emotion episode starts, how strong it is, and how long it is held, how she answers a pet or a poke with her body, her mood, and her voice, and how she answers the user's return and desktop events. Drive the core from tests with scripted stimuli and a seeded random source.
+Use this package for a decision about what the character does at event rate: which emotion episode starts, how strong it is, and how long it is held, how she answers a pet or a poke with her body, her mood, and her voice, and how she answers the user's return and desktop events, and when the urge gate lets her reach out. Drive the core from tests with scripted stimuli and a seeded random source.
 
 ## When not to use
 

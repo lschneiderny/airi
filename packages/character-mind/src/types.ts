@@ -1,5 +1,5 @@
 import type { Band, ExpressionPerformanceSettings, HoldCommand, MoodDose, PerformanceEmotion, ReactionEpisode, ReactionState, SlotCommand, TouchAffectMemory } from '@proj-airi/stage-shared/expression-performance'
-import type { GateOutcome, ReactionDecision, ReactionKind, ReactionMemory, TouchVoiceView } from '@proj-airi/stage-shared/situation'
+import type { GateLocalTime, GateOutcome, GateSettings, GateSignals, ReactionDecision, ReactionKind, ReactionMemory, ReasonCategory, ReasonKind, ReasonState, SavedGateMemory, SituationState, TouchVoiceView, UrgeGateDecision, UrgeGateMemory } from '@proj-airi/stage-shared/situation'
 
 /** Uniform draws in [0, 1). The shell owns the source; the core stores none. */
 export type MindRandom = () => number
@@ -16,6 +16,37 @@ export type TouchReport
 /** What woke the desktop: a screen unlock or a resume from suspend. */
 export type WakeCause = 'unlock' | 'resume'
 
+export type VoiceLine
+  /** A spoken touch reaction (CM1). `eventId` names the touch's situation event. */
+  = | { kind: 'reaction', reaction: ReactionKind, eventId: string }
+  /** A reach-out the gate decided. */
+    | { kind: 'reach-out', topicKey: string, topicText: string, reason: { kind: ReasonKind, category: ReasonCategory } }
+
+export interface VoiceRun {
+  /** The store bumps it at each promotion and at "Delete all data". A new id makes the mind restore its gate memory. */
+  id: number
+  /** The store's mirror of the last memory a mind published in this run, or null before the first. */
+  memory: UrgeGateMemory | null
+  /** The social slice read at the promotion; null when nothing was saved or the user deleted all data. */
+  saved: SavedGateMemory | null
+}
+
+/** What the voice policy sees of the situation at one tick. Built by the store, never kept by the mind. */
+export interface VoiceView {
+  run: VoiceRun
+  situation: SituationState
+  threads: Pick<ReasonState, 'threads'>
+  local: GateLocalTime
+  sessionId: string
+  signals: GateSignals
+  settings: GateSettings
+  moodFactor: number
+  /** Topics a widget or plugin turn holds (`holdTopic`); the gate never picks them. */
+  heldTopics: string[]
+  /** An unprompted turn the mind did not start is pending in chat. */
+  unpromptedPending: boolean
+}
+
 export type MindStimulus
   /** `voice` is null for a pet start and when no leader gate runs; the mind then decides no line. */
   = | (TouchReport & { kind: 'touch', settings: ExpressionPerformanceSettings, voice: TouchVoiceView | null })
@@ -24,8 +55,14 @@ export type MindStimulus
   /** The model named an entry. The performer read the entry's lease and its primary emotion mapping from its catalog. */
     | { kind: 'expression-request', source: 'act' | 'tool', entryId: string, lease: { holdSeconds: number, until: 'speech' | 'hold' }, mapping: { emotion: PerformanceEmotion, minBand: Band } | null, turnId?: string, settings: ExpressionPerformanceSettings }
     | { kind: 'expression-clear', source: 'act' | 'tool' | 'devtools', slot?: SlotCommand['slot'], turnId?: string }
-  /** What became of a `speak` intent, named by its `eventId`. `refused` means another unprompted turn was pending. */
-    | { kind: 'voice-outcome', eventId: string, outcome: GateOutcome | 'refused' }
+  /** What became of a `speak` intent, named by its `turnId`. `refused` means another unprompted turn was pending. */
+    | { kind: 'voice-outcome', turnId: string, outcome: GateOutcome | 'refused' }
+  /** Every gate interval in the leader, and from devtools "Evaluate now" (`forceTiming`). */
+    | { kind: 'voice-tick', view: VoiceView, forceTiming: boolean }
+  /** The user sent a turn of their own. */
+    | { kind: 'user-turn', atMs: number }
+  /** A forced widget or plugin turn spoke outside the mind. */
+    | { kind: 'external-speech', atMs: number }
   /** `away` changed, or a desktop wake appeared. `wake` names the newer of a new unlock and resume time. */
     | { kind: 'presence', away: boolean, wake: { cause: WakeCause, atMs: number } | null }
   /** The screen changed sharply. The mind keeps the refractory. */
@@ -57,8 +94,8 @@ export type MindIntent
     | (IntentBase & { channel: 'posture', kind: 'wake' })
   /** A brief reaction to the desktop: a `wake` also rouses her from idle sleep with a startle. */
     | (IntentBase & { channel: 'posture', kind: 'desktop-reaction', reaction: 'wake' | 'screen-change' })
-  /** One short line about the touch whose situation event is `eventId`. Its outcome returns as a `voice-outcome` stimulus. */
-    | (IntentBase & { channel: 'voice', kind: 'speak', line: ReactionKind, eventId: string })
+  /** Speak one line. Its outcome returns as a `voice-outcome` stimulus with the same `turnId`. */
+    | (IntentBase & { channel: 'voice', kind: 'speak', turnId: string, line: VoiceLine })
   /** Tell the voice channel of a desktop wake. `wakeCause` names the wake (`cause` is the stimulus's sequence number). `awayMs` is the open span at the wake, or null when no span was open. */
     | (IntentBase & { channel: 'voice', kind: 'observe-wake', wakeCause: WakeCause, atMs: number, awayMs: number | null })
   /** Tell the voice channel of a return. The gate decides whether she says anything. */
@@ -75,10 +112,34 @@ export interface MindState {
   reaction: ReactionState
   /** Pacing and habituation of the mood doses of touches, in seconds of the mind's clock. */
   touch: { affect: TouchAffectMemory }
-  /** Pacing of spoken touch reactions, and the last decision about one; null until a touch with a voice view arrives. */
-  voice: { reaction: ReactionMemory, lastDecision: ReactionDecision | null }
+  voice: MindVoiceState
   /** The away span the mind is in, or the last presence it saw; `awaySinceMs` is null while she is not away. */
   presence: { away: boolean, awaySinceMs: number | null }
   /** When the last screen-change reaction was stamped, in epoch milliseconds. */
   desktop: { screenReactAtMs: number | null }
+}
+
+/** The line on its way, from its `speak` intent until its `voice-outcome`. */
+export interface VoiceLineState {
+  turnId: string
+  kind: VoiceLine['kind']
+  /** The gate fields a refused reach-out restores. Null for a touch line. */
+  before: Pick<UrgeGateMemory, 'lastFireAtMs' | 'fires' | 'pending' | 'urge' | 'urgeThreshold' | 'doubleText'> | null
+}
+
+export interface MindVoiceState {
+  /** Pacing of spoken touch reactions (CM1). */
+  reaction: ReactionMemory
+  /** The last decision about a touch line; null until a touch with a voice view arrives. */
+  lastDecision: ReactionDecision | null
+  /** The gate's memory; null until the first tick. */
+  gate: UrgeGateMemory | null
+  /** The run the gate memory belongs to; null until the first tick. */
+  runId: number | null
+  /** Whether the stage was shown at the last evaluated tick; a shown edge eases her in again. */
+  stageShown: boolean
+  /** The line on its way. One at a time, as chat runs one unprompted turn at a time. */
+  line: VoiceLineState | null
+  /** The last gate decision, for the inspector and QA. */
+  lastGate: UrgeGateDecision | null
 }
