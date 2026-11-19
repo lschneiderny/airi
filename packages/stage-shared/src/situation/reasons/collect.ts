@@ -83,8 +83,9 @@ function screenReasons(situation: SituationState, nowMs: number): Reason[] {
  * source event id) so callers see a stable order.
  *
  * A reason whose key is in `heldTopics` is never returned, urgent notifies
- * included: a held topic stays unselectable until its holder releases it
- * (the `holdTopic` contract widget reactions rely on).
+ * included: the character mind holds the topic of every widget request that
+ * waits for a quiet moment, so the gate never raises what a widget is about
+ * to say.
  *
  * Screen reasons come only from settled world events (`long-session` tier 2+,
  * `returned` after 3 min, `notify`). Thread reasons are scoped to `sessionId`.

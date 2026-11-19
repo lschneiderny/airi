@@ -510,7 +510,7 @@ describe('stage performance conductor', () => {
     })
 
     it('records the wake and the return in the situation in intent order under a basic driver', () => {
-      const voice = { observeTouch: vi.fn<VoicePort['observeTouch']>(() => null), speak: vi.fn<VoicePort['speak']>(async () => 'spoken'), observeReturn: vi.fn<VoicePort['observeReturn']>(), publishVoice: vi.fn<VoicePort['publishVoice']>(), connect: vi.fn<VoicePort['connect']>(() => () => {}) }
+      const voice = { observeTouch: vi.fn<VoicePort['observeTouch']>(() => null), speak: vi.fn<VoicePort['speak']>(async () => 'spoken'), observeReturn: vi.fn<VoicePort['observeReturn']>(), cancel: vi.fn<VoicePort['cancel']>(), drop: vi.fn<VoicePort['drop']>(), publishVoice: vi.fn<VoicePort['publishVoice']>(), connect: vi.fn<VoicePort['connect']>(() => () => {}) }
       const { conductor, advance } = createConductor('basic', fakeScene(), undefined, undefined, undefined, { voice: () => voice })
 
       conductor.desktop([lock])
@@ -532,6 +532,8 @@ describe('stage performance conductor', () => {
         observeTouch: vi.fn<VoicePort['observeTouch']>(() => view),
         speak: vi.fn<VoicePort['speak']>(async () => 'spoken'),
         observeReturn: vi.fn<VoicePort['observeReturn']>(),
+        cancel: vi.fn<VoicePort['cancel']>(),
+        drop: vi.fn<VoicePort['drop']>(),
         publishVoice: vi.fn<VoicePort['publishVoice']>(),
         connect: vi.fn<VoicePort['connect']>(() => () => {}),
       }
@@ -634,7 +636,6 @@ describe('stage performance conductor', () => {
           signals: { userSpeaking: false, userTyping: false, characterSpeaking: false, generating: false, queued: 0, desktopFresh: true, foregroundFresh: true, stageVisible: true },
           settings: { enabled: true, chattiness: 0.5, dontDisturb: false, quietApps: [], speakDuringGames: true },
           moodFactor: 1,
-          heldTopics: [],
           unpromptedPending: false,
         },
       })

@@ -112,6 +112,7 @@ function createChatControls() {
     activeSessionId: () => 'session-1',
     submitUnprompted,
     submitReaction: async () => ({ status: 'spoken', text: 'Hey!' }),
+    cancelTurn: async () => {},
     sessionMessages: () => state.messages,
     extractionSelection: async () => ({ provider: extractionProvider, model: 'chat-model', characterName: 'Airi' }),
     stream: async (_model, _provider, _conversation, options) => {

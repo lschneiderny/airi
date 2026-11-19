@@ -244,7 +244,8 @@ function createFullStageRuntime() {
     { immediate: true },
   )
 
-  contextBridgeStore.setSparkNotifyHostRole(isWidgetsWindow ? 'client' : 'main')
+  // Only the leader runs the character mind, which decides when a widget reaction speaks; every other window asks it.
+  contextBridgeStore.setSparkNotifyHostRole(windowContext.leadership === 'leader-only' ? 'main' : 'client')
 
   // NOTICE: register plugin host bridge during setup to avoid race with pages using it in immediate watchers.
   pluginHostInspectorStore.setBridge({

@@ -92,9 +92,7 @@ prompt:
   unprompted-continuation: "You reached out a little while ago and they have not answered. Either add one short follow-up to what you said, or stay silent with <{'|'}SILENT{'|'}>. Do not open a new topic and do not ask why they are quiet."
   unprompted-ritual: "A small daily moment: the reason in the last message says which one. Respond in one short line in character, or stay silent with <{'|'}SILENT{'|'}> if it would feel forced."
   unprompted-double-text: "You just reached out. Add one short extra line that naturally follows it, or stay silent with <{'|'}SILENT{'|'}>."
-  unprompted-forced: |
-    They have not said anything. Reach out on your own about the topic in the
-    last message. Keep it brief and in character, in one or two sentences.
+  unprompted-widget: "They have not said anything. Something you follow just happened: the last message says what. React to it in one or two short sentences in character, or stay silent with <{'|'}SILENT{'|'}> if it is not worth a word."
   reaction: "They just touched you on the stage; the last message says how. React in the moment, in character: one short line, a few words is plenty. If a look says it better, reply only with <{'|'}SILENT{'|'}>. Do not ask a question and do not narrate the touch."
   reaction-protest: "They keep poking you; the last message says how. Protest in one short playful line in character, or reply only with <{'|'}SILENT{'|'}>. Do not ask a question."
   reaction-trigger: '(Just now, on the stage: they {touch})'

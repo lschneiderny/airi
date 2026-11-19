@@ -6,6 +6,7 @@ import type { SyncedPiniaRuntime } from 'pinia-plugin-synced'
 
 import type { ChatUnpromptedPayload, ChatUnpromptedResult } from '../../chat'
 
+import { WIDGET_DEADLINE_MARGIN_MS, WIDGET_START_WAIT_MS } from '@proj-airi/character-mind'
 import { createChatHooks } from '@proj-airi/core-agent'
 import { evaluateUrgeGate, initialUrgeMemory, notifyTopicKey, randomSource } from '@proj-airi/stage-shared/situation'
 import { useDesktopActivityStore } from '@proj-airi/stage-shared/stores/desktop-activity'
@@ -45,6 +46,7 @@ const handleSparkNotify = vi.fn(async (event: SparkNotifyEvent, _control?: unkno
 })
 const recordSparkNotifyReaction = vi.fn()
 const submitUnprompted = vi.fn<(payload: ChatUnpromptedPayload) => Promise<ChatUnpromptedResult>>()
+const cancelTurn = vi.fn<(turn: { sessionId: string, turnId: string }) => Promise<void>>()
 
 vi.mock('../../character', () => ({
   useCharacterOrchestratorStore: () => ({ handleSparkNotify, sparkNotifyIdOf: (topicKey: string) => sparkNotifyIds.get(topicKey) }),
@@ -92,6 +94,8 @@ vi.mock('./channel-server', () => ({
 }))
 
 const T0 = Date.UTC(2026, 9, 20, 9, 0, 0)
+/** The bridge's default wait for a widget reaction. */
+const SPARK_NOTIFY_REACTION_TIMEOUT_MS = 30_000
 const BUSY = 'Another unprompted turn is still pending'
 
 /** A fixed gate seed with high first urge thresholds, so only urgent notifies and forced evaluations fire. */
@@ -218,6 +222,7 @@ describe('widget spark reactions', () => {
     sparkNotifyIds.clear()
     recordSparkNotifyReaction.mockClear()
     submitUnprompted.mockReset()
+    cancelTurn.mockReset()
     unpromptedPending = false
     speakingTurns = []
     const bus = getSpeechBusContext()
@@ -232,10 +237,10 @@ describe('widget spark reactions', () => {
   })
 
   /**
-   * A leader window whose chat runs unprompted turns through `submitUnprompted`. With `gate`, it also runs the
+   * A leader window whose chat runs unprompted turns through `submitUnprompted`, with a connected mind. It runs the
    * opportunity gate on a visible stage with fresh samples, so only the gate's own rules decide.
    */
-  function startLeader(options: { gate?: boolean } = {}) {
+  function startLeader() {
     hooks = createChatHooks()
     const desktop = useDesktopActivityStore()
     const foreground = useForegroundWindowStore()
@@ -247,8 +252,7 @@ describe('widget spark reactions', () => {
     setInterval(keepFresh, 1_000)
     const situation = useSituationStore()
     situation.setStageVisible(true)
-    if (options.gate)
-      situation.setHostCapabilities({ unprompted: true })
+    situation.setHostCapabilities({ unprompted: true })
     situation.observeChat(hooks, {
       sending: () => false,
       pendingQueuedSendCount: () => 0,
@@ -256,15 +260,16 @@ describe('widget spark reactions', () => {
       activeSessionId: () => 'session-1',
       submitUnprompted: payload => submitUnprompted(payload),
       submitReaction: async () => ({ status: 'failed', error: 'No reaction turns in this test' }),
+      cancelTurn: turn => cancelTurn(turn),
       sessionMessages: () => [],
       extractionSelection: async () => null,
       stream: async () => {},
     })
     situation.initialize(syncedRuntime(true))
-    connectMind(situation, SEED)
+    const { disconnect } = connectMind(situation, SEED)
     const bridge = useContextBridgeStore()
     bridge.setSparkNotifyHostRole('main')
-    return { situation, bridge }
+    return { situation, bridge, disconnect }
   }
 
   /** The chat answers every unprompted turn with `text`, spoken through the runtime hooks. */
@@ -285,11 +290,13 @@ describe('widget spark reactions', () => {
     return situation.state.events.filter(event => event.kind === 'notify')
   }
 
-  it('answers with the spoken reply of a forced turn, and addresses the notify only once she speaks', async () => {
+  it('answers with the spoken reply of a widget turn, and addresses the notify only once she speaks', async () => {
     const { situation, bridge } = startLeader()
-    let addressedAtSubmit: number | null | undefined
+    let addressedAtSend: number | null | undefined
+    hooks.onBeforeSend(async () => {
+      addressedAtSend = notifyEvents(situation)[0]?.addressedAtMs
+    })
     submitUnprompted.mockImplementation(async (payload) => {
-      addressedAtSubmit = notifyEvents(situation)[0]?.addressedAtMs
       await speakUnprompted(hooks, payload, 'Oh, a QA widget!')
       return { status: 'spoken', text: 'Oh, a QA widget!' }
     })
@@ -302,13 +309,13 @@ describe('widget spark reactions', () => {
     expect(event.data.id).not.toBe(event.data.eventId)
     expect(submitUnprompted).toHaveBeenCalledOnce()
     const payload = submitUnprompted.mock.calls[0]![0]
-    expect(payload).toMatchObject({ force: true, topicText: 'QA widget: from the chess board', messageId: `spark:${event.data.id}` })
+    expect(payload).toMatchObject({ widget: true, topicText: 'QA widget: from the chess board', messageId: `spark:${event.data.id}` })
     expect(payload.topicKey.endsWith(`:${event.data.eventId}`)).toBe(true)
 
     const notifies = notifyEvents(situation)
     expect(notifies).toHaveLength(1)
     expect(notifies[0].topicKey).toBe(payload.topicKey)
-    expect(addressedAtSubmit).toBeNull()
+    expect(addressedAtSend).toBeNull()
     expect(notifies[0].addressedAtMs).toEqual(expect.any(Number))
     expect(situation.state.conversation.lastUnpromptedTopic).toBe('QA widget: from the chess board')
     const evaluation = evaluateQuietGate(situation.state)
@@ -318,7 +325,7 @@ describe('widget spark reactions', () => {
   })
 
   it('addresses the notify of a declined reaction, so the gate never raises what she chose not to say', async () => {
-    const { situation, bridge } = startLeader({ gate: true })
+    const { situation, bridge } = startLeader()
     submitUnprompted.mockImplementationOnce(async (payload) => {
       unpromptedPending = true
       try {
@@ -437,18 +444,21 @@ describe('widget spark reactions', () => {
     expect(notifyEvents(situation)).toEqual([])
   })
 
-  it('starts the forced turn only after her current reply has finished speaking', async () => {
+  it('starts the widget turn only after her current reply has finished speaking', async () => {
     const { bridge } = startLeader()
     chatSpeaks('After you.')
+    const bus = getSpeechBusContext()
     speakingTurns = [{ sessionId: 'session-1', turnId: 'reply-to-user' }]
+    bus.emit(voiceTurnsChanged, speakingTurns)
 
     const reaction = bridge.dispatchSparkNotifyReaction({ headline: 'QA widget', fallbackResponseText: 'fallback' })
     await vi.advanceTimersByTimeAsync(10_000)
     expect(submitUnprompted).not.toHaveBeenCalled()
 
-    // The audio host reports that her reply drained.
+    // The audio host reports that her reply drained; the mind lets the request through at its next tick.
     speakingTurns = []
-    getSpeechBusContext().emit(voiceTurnsChanged, [])
+    bus.emit(voiceTurnsChanged, [])
+    await vi.advanceTimersByTimeAsync(GATE_INTERVAL_MS)
 
     await expect(reaction).resolves.toBe('After you.')
     expect(submitUnprompted).toHaveBeenCalledOnce()
@@ -458,16 +468,22 @@ describe('widget spark reactions', () => {
     const { situation, bridge } = startLeader()
     chatSpeaks('unused')
     speakingTurns = [{ sessionId: 'session-1', turnId: 'long-reply' }]
+    getSpeechBusContext().emit(voiceTurnsChanged, speakingTurns)
 
     const reaction = bridge.dispatchSparkNotifyReaction({ headline: 'QA widget', fallbackResponseText: 'fallback' })
-    await vi.advanceTimersByTimeAsync(20_000)
+    const settled = vi.fn()
+    void reaction.then(settled)
+    await vi.advanceTimersByTimeAsync(WIDGET_START_WAIT_MS - 1)
+    expect(settled).not.toHaveBeenCalled()
+    // The mind's wake timer drops the request at its start deadline, not at the next interval tick.
+    await vi.advanceTimersByTimeAsync(1)
 
     await expect(reaction).resolves.toBe('fallback')
     expect(submitUnprompted).not.toHaveBeenCalled()
     expect(notifyEvents(situation)[0].addressedAtMs).toBeNull()
   })
 
-  it('submits at once when the user is neither speaking nor writing', async () => {
+  it('submits at once when nobody is busy', async () => {
     const { bridge } = startLeader()
     let submittedAtMs: number | undefined
     submitUnprompted.mockImplementation(async (payload) => {
@@ -481,7 +497,23 @@ describe('widget spark reactions', () => {
     expect(submittedAtMs).toBe(T0)
   })
 
-  it('holds the forced turn while the user speaks into the microphone, and starts it once they stop', async () => {
+  it('defers the widget turn while another unprompted turn is pending, and starts it once that turn ends', async () => {
+    const { bridge } = startLeader()
+    chatSpeaks('My turn now.')
+    unpromptedPending = true
+
+    const reaction = bridge.dispatchSparkNotifyReaction({ headline: 'QA widget', fallbackResponseText: 'fallback' })
+    await vi.advanceTimersByTimeAsync(4_000)
+    expect(submitUnprompted).not.toHaveBeenCalled()
+
+    unpromptedPending = false
+    await vi.advanceTimersByTimeAsync(GATE_INTERVAL_MS)
+
+    await expect(reaction).resolves.toBe('My turn now.')
+    expect(submitUnprompted).toHaveBeenCalledOnce()
+  })
+
+  it('holds the widget turn while the user speaks into the microphone, and starts it once they stop', async () => {
     const { bridge } = startLeader()
     chatSpeaks('There you are.')
     const bus = getSpeechBusContext()
@@ -492,12 +524,13 @@ describe('widget spark reactions', () => {
     expect(submitUnprompted).not.toHaveBeenCalled()
 
     bus.emit(speechInputUserSpeakingChangedEvent, { speaking: false })
+    await vi.advanceTimersByTimeAsync(GATE_INTERVAL_MS)
 
     await expect(reaction).resolves.toBe('There you are.')
     expect(submitUnprompted).toHaveBeenCalledOnce()
   })
 
-  it('holds the forced turn while speech-to-text finishes the user\'s message, and starts it once the input settles', async () => {
+  it('holds the widget turn while speech-to-text finishes the user\'s message, and starts it once the input settles', async () => {
     const { bridge } = startLeader()
     chatSpeaks('Heard you.')
     const bus = getSpeechBusContext()
@@ -514,6 +547,7 @@ describe('widget spark reactions', () => {
     expect(submitUnprompted).not.toHaveBeenCalled()
 
     bus.emit(voiceSnapshotChanged, inputIn('settled'))
+    await vi.advanceTimersByTimeAsync(GATE_INTERVAL_MS)
 
     await expect(reaction).resolves.toBe('Heard you.')
     expect(submitUnprompted).toHaveBeenCalledOnce()
@@ -528,7 +562,7 @@ describe('widget spark reactions', () => {
     const resend = setInterval(reportDraft, 5_000)
 
     const reaction = bridge.dispatchSparkNotifyReaction({ headline: 'QA widget', fallbackResponseText: 'fallback' })
-    await vi.advanceTimersByTimeAsync(20_000)
+    await vi.advanceTimersByTimeAsync(WIDGET_START_WAIT_MS)
     clearInterval(resend)
 
     await expect(reaction).resolves.toBe('fallback')
@@ -536,7 +570,7 @@ describe('widget spark reactions', () => {
     expect(notifyEvents(situation)[0].addressedAtMs).toBeNull()
   })
 
-  it('starts the forced turn once the draft is cleared and the last input is no longer recent', async () => {
+  it('starts the widget turn once the draft is cleared and the last input is no longer recent', async () => {
     const { bridge } = startLeader()
     chatSpeaks('Done typing?')
     const bus = getSpeechBusContext()
@@ -550,13 +584,13 @@ describe('widget spark reactions', () => {
     bus.emit(chatComposerActivityChangedEvent, { sourceId: 'chat-window', hasDraft: false, lastInputAtMs: Date.now() })
     await vi.advanceTimersByTimeAsync(COMPOSER_INPUT_RECENT_MS - 1)
     expect(submitUnprompted).not.toHaveBeenCalled()
-    await vi.advanceTimersByTimeAsync(1)
+    await vi.advanceTimersByTimeAsync(GATE_INTERVAL_MS)
 
     await expect(reaction).resolves.toBe('Done typing?')
     expect(submitUnprompted).toHaveBeenCalledOnce()
   })
 
-  it('lets a user send during the wait go first, and starts the forced turn only after her reply to it', async () => {
+  it('lets a user send during the wait go first, and starts the widget turn only after her reply to it', async () => {
     const { bridge } = startLeader()
     chatSpeaks('Back to the widget.')
     const bus = getSpeechBusContext()
@@ -575,30 +609,56 @@ describe('widget spark reactions', () => {
 
     speakingTurns = []
     bus.emit(voiceTurnsChanged, [])
+    await vi.advanceTimersByTimeAsync(GATE_INTERVAL_MS)
 
     await expect(reaction).resolves.toBe('Back to the widget.')
     expect(submitUnprompted).toHaveBeenCalledOnce()
   })
 
-  it('holds a reaction that a follower window serves while a composer in another window has a draft', async () => {
-    // Any main window may take a widget request, so a follower reads the user's input from the bus too.
+  it('cancels a widget turn not spoken by the caller\'s deadline, answers the fallback, and leaves the notify for the gate', async () => {
+    const { situation, bridge } = startLeader()
+    // The turn generates slowly and ends only when it is cancelled.
+    submitUnprompted.mockImplementation(() => new Promise((resolve) => {
+      cancelTurn.mockImplementation(async () => resolve({ status: 'cancelled' }))
+    }))
+
+    const reaction = bridge.dispatchSparkNotifyReaction({ headline: 'QA widget', fallbackResponseText: 'fallback' })
+    const settled = vi.fn()
+    void reaction.then(settled)
+    expect(submitUnprompted).toHaveBeenCalledOnce()
+    // The deadline is the caller's 30 s wait less the margin for the bridge round trip.
+    await vi.advanceTimersByTimeAsync(SPARK_NOTIFY_REACTION_TIMEOUT_MS - WIDGET_DEADLINE_MARGIN_MS - 1)
+    expect(settled).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
+
+    await expect(reaction).resolves.toBe('fallback')
+    const { messageId } = submitUnprompted.mock.calls[0]![0]
+    expect(cancelTurn.mock.calls).toEqual([[{ sessionId: 'session-1', turnId: messageId }]])
+    expect(notifyEvents(situation)[0].addressedAtMs).toBeNull()
+    expect(reasonKeys(evaluateQuietGate(situation.state))).toContain(notifyEvents(situation)[0].topicKey)
+  })
+
+  it('answers the fallback at once, and starts no turn, when no mind is connected', async () => {
+    const { situation, bridge, disconnect } = startLeader()
+    chatSpeaks('unused')
+    disconnect()
+
+    // No fake timer is advanced, so the reaction can only resolve if nothing waits on time.
+    await expect(bridge.dispatchSparkNotifyReaction({ headline: 'QA widget', fallbackResponseText: 'fallback' })).resolves.toBe('fallback')
+    expect(submitUnprompted).not.toHaveBeenCalled()
+    expect(notifyEvents(situation)).toHaveLength(1)
+  })
+
+  it('never serves a widget request in a follower window', async () => {
+    // Only the leader runs a mind. A follower that took a request anyway answers its fallback at once.
     const situation = useSituationStore()
     situation.initialize(syncedRuntime(false))
     const bridge = useContextBridgeStore()
     bridge.setSparkNotifyHostRole('main')
     submitUnprompted.mockResolvedValue({ status: 'spoken', text: 'Hi from here.' })
-    const bus = getSpeechBusContext()
-    bus.emit(chatComposerActivityChangedEvent, { sourceId: 'chat-window', hasDraft: true, lastInputAtMs: Date.now() })
 
-    const reaction = bridge.dispatchSparkNotifyReaction({ headline: 'QA widget', fallbackResponseText: 'fallback' })
-    await vi.advanceTimersByTimeAsync(4_000)
+    await expect(bridge.dispatchSparkNotifyReaction({ headline: 'QA widget', fallbackResponseText: 'fallback' })).resolves.toBe('fallback')
     expect(submitUnprompted).not.toHaveBeenCalled()
-
-    bus.emit(chatComposerActivityChangedEvent, { sourceId: 'chat-window', hasDraft: false, lastInputAtMs: Date.now() })
-    await vi.advanceTimersByTimeAsync(COMPOSER_INPUT_RECENT_MS)
-
-    await expect(reaction).resolves.toBe('Hi from here.')
-    expect(submitUnprompted).toHaveBeenCalledOnce()
   })
 
   it('starts a fresh turn for every request, so a repeated widget request never meets an earlier send key', async () => {
@@ -615,8 +675,8 @@ describe('widget spark reactions', () => {
     expect(secondId).not.toBe(firstId)
   })
 
-  it('keeps the gate from raising the notify while the forced turn is on its way to the leader', async () => {
-    const { situation, bridge } = startLeader({ gate: true })
+  it('keeps the gate from raising the notify while the widget turn is on its way to the chat', async () => {
+    const { situation, bridge } = startLeader()
     // The synced call reaches the leader's chat a few gate ticks late: until then nothing reports a pending turn.
     let land!: () => void
     submitUnprompted.mockImplementationOnce(async (payload) => {
@@ -656,7 +716,7 @@ describe('widget spark reactions', () => {
   }
 
   it('records one reaction with the spoken reply when a gate-fired turn speaks about a notify', async () => {
-    startLeader({ gate: true })
+    startLeader()
     chatSpeaks(' Oh, a QA video! Enjoy. ')
     const event = characterNotify('QA video')
 
@@ -669,7 +729,7 @@ describe('widget spark reactions', () => {
   })
 
   it('records no reaction when a gate-fired turn about a notify is declined', async () => {
-    startLeader({ gate: true })
+    startLeader()
     submitUnprompted.mockImplementation(async (payload) => {
       unpromptedPending = true
       try {
@@ -689,7 +749,7 @@ describe('widget spark reactions', () => {
   })
 
   it('records no reaction when a gate-fired turn speaks about a topic that is not a notify', async () => {
-    startLeader({ gate: true })
+    startLeader()
     chatSpeaks('Welcome back.')
 
     // "Evaluate now" fires on a reason of her own (her day or a ritual), since no notify is in the situation.

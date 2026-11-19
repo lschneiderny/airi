@@ -8,7 +8,7 @@ import type { SparkNotifyPerformanceResult, SparkNotifyReactionOptions } from '.
 import { errorMessageFrom } from '@moeru/std'
 import { encodeBase64 } from '@moeru/std/base64'
 import { isStageTamagotchi, isStageWeb } from '@proj-airi/stage-shared'
-import { notifyTopicKey, unpromptedTopicText } from '@proj-airi/stage-shared/situation'
+import { notifyTopicKey } from '@proj-airi/stage-shared/situation'
 import { useBroadcastChannel } from '@vueuse/core'
 import { Mutex } from 'es-toolkit'
 import { nanoid } from 'nanoid'
@@ -16,7 +16,7 @@ import { defineStore, storeToRefs } from 'pinia'
 import { computed, ref, shallowReactive, toRaw, watch } from 'vue'
 
 import { ChatAssetTooLargeError, chatEventAttachmentsOf, MAX_CHAT_ASSET_BYTES, readChatAsset } from '../../../libs/chat-assets'
-import { getSpeechBusContext, voiceGenerationEnded, voiceRequestTurns, voiceTurnsChanged } from '../../../services/speech/bus'
+import { getSpeechBusContext, voiceGenerationEnded } from '../../../services/speech/bus'
 import { getEventSourceKey, getMetadataSourceLabel } from '../../../utils/event-source'
 import { useLlmStreamingControlStore } from '../../ai/chat-llm/streaming-control'
 import { useCharacterOrchestratorStore, useCharacterStore } from '../../character'
@@ -96,21 +96,12 @@ export const useContextBridgeStore = defineStore('mods:api:context-bridge', () =
     | ({ type: 'reaction' } & SpokenSparkNotifyReaction)
   const SPARK_NOTIFY_BRIDGE_CHANNEL_NAME = 'airi-spark-notify-bridge'
   /**
-   * How long a widget waits for a reaction before it uses its fallback text.
+   * How long a widget waits for a reaction before it uses its fallback text, unless the caller names its own wait.
    *
-   * Tuning: a forced reaction turn waits in the session queue behind any running turn and its speech, then generates.
+   * Tuning: the character mind holds a request until she and the user are quiet (at most `WIDGET_START_WAIT_MS`),
+   * then the turn generates; the mind cancels a turn not spoken by this deadline.
    */
   const SPARK_NOTIFY_REACTION_TIMEOUT_MS = 30_000
-  /**
-   * How long a forced reaction waits for a quiet moment: the character has finished her current reply, speech included,
-   * and the user is neither speaking nor writing a message.
-   *
-   * Tuning: past it the reaction gives up with its fallback instead of talking over either of them; keep it below
-   * {@link SPARK_NOTIFY_REACTION_TIMEOUT_MS}, so the turn still has time to generate.
-   */
-  const SPARK_NOTIFY_QUIET_WAIT_MS = 20_000
-  /** A window that hosts her voice answers a turns request at once; without an answer, nothing can be talked over. */
-  const VOICE_HOST_ANSWER_MS = 1_000
   const sparkNotifyBridgeInstanceId = `spark-notify-${nanoid()}`
   const sparkNotifyHostRole = ref<'main' | 'client'>('client')
   const sparkNotifyBridgeWaiters = new Map<string, {
@@ -323,64 +314,19 @@ export const useContextBridgeStore = defineStore('mods:api:context-bridge', () =
   }
 
   /**
-   * Resolves `true` once the character has no open voice response, which covers a reply that is still generating and
-   * one whose speech is still playing. Resolves `true` at once when no window answers for her voice, and `false` when
-   * she is still busy after `timeoutMs`.
-   */
-  function untilCharacterQuiet(timeoutMs: number): Promise<boolean> {
-    const bus = getSpeechBusContext()
-    return new Promise((resolve) => {
-      let answered = false
-      const stop = bus.on(voiceTurnsChanged, ({ body }) => {
-        answered = true
-        if (body?.length === 0)
-          finish(true)
-      })
-      const noHost = setTimeout(() => {
-        if (!answered)
-          finish(true)
-      }, VOICE_HOST_ANSWER_MS)
-      const deadline = setTimeout(finish, timeoutMs, false)
-      function finish(quiet: boolean) {
-        clearTimeout(noHost)
-        clearTimeout(deadline)
-        stop()
-        resolve(quiet)
-      }
-      bus.emit(voiceRequestTurns, undefined)
-    })
-  }
-
-  /**
-   * Resolves `true` at a moment when the character is quiet (see {@link untilCharacterQuiet}) and the user is not
-   * mid-input, so a forced turn talks over neither of them. Resolves `false` when no such moment comes within
-   * `timeoutMs`. Her reply to a user who sends meanwhile opens a voice turn, so the wait checks her again after the
-   * user stops.
-   */
-  async function untilQuietMoment(timeoutMs: number): Promise<boolean> {
-    const deadlineAtMs = Date.now() + timeoutMs
-    while (await untilCharacterQuiet(deadlineAtMs - Date.now())) {
-      if (!situation.userMidInput())
-        return true
-      if (!await situation.untilUserIdle(deadlineAtMs - Date.now()))
-        return false
-    }
-    return false
-  }
-
-  /**
-   * Answers one widget reaction request with a forced unprompted chat turn, so the reaction is spoken and stored like
-   * any other reply, with the spoke-up cue in history.
+   * Answers one widget reaction request through the character mind, so the reaction is spoken and stored like any
+   * other reply, with the spoke-up cue in history. Only the leader serves; see `setSparkNotifyHostRole`.
    *
-   * The notify becomes a situation observation first. The commands-only agent runs beside the turn when the notify is
-   * addressed beyond the character; a caller that forces a spark command gets only that agent run and its fallback.
-   * The turn's message id is `spark:<id>`, the streaming-control turn id that CALL handlers listen to. A forced turn
-   * skips the gate, so it first waits until the character is quiet and the user is neither speaking nor writing, and
-   * never talks over either of them; a user send during the wait goes first, and one that comes later cancels it. Meanwhile the gate holds the notify topic, and the turn addresses it only
-   * once it speaks.
+   * The request reaches the mind before the notify becomes a situation observation, so the gate never raises the
+   * notify meanwhile. The mind holds the request until she and the user are quiet, and the model may decline. The
+   * commands-only agent runs beside the turn when the notify is addressed beyond the character; a caller that forces a
+   * spark command gets only that agent run and its fallback. The turn id is `spark:<id>`, the streaming-control turn id
+   * that CALL handlers listen to. The caller's deadline is `options.timeoutMs` (a client forwards its performance
+   * wait there), else {@link SPARK_NOTIFY_REACTION_TIMEOUT_MS}; the mind cancels a turn not spoken by then.
    *
-   * Returns the spoken text with `spoken: true`, or the fallback text when the turn was declined, cancelled, failed,
-   * or found another unprompted turn pending.
+   * Returns the spoken text with `spoken: true`, or the fallback text when the turn was declined, cancelled, dropped,
+   * or failed, or when no mind could take it. A notify whose turn did not speak stays unaddressed, so she may raise it
+   * on her own later.
    */
   async function performSparkNotifyReaction(options: SparkNotifyReactionOptions, identity?: { id?: string, eventId?: string }): Promise<{ spoken: boolean, reaction: string }> {
     const fallback = { spoken: false, reaction: options.fallbackResponseText ?? '' }
@@ -405,11 +351,21 @@ export const useContextBridgeStore = defineStore('mods:api:context-bridge', () =
 
     const observation = notifyObservationFrom(event, Date.now())
     const topicKey = notifyTopicKey(observation.sourceKey, observation.eventId)
-    let release: (() => void) | undefined
 
     try {
-      // The hold starts before the notify enters the situation, so no gate tick can raise it before the turn starts.
-      release = situation.holdTopic(topicKey)
+      // The headline is plugin input; one that is missing or blank leaves nothing to speak about.
+      const note = observation.note ? `: ${observation.note}` : ''
+      const requested = options.messageOverride?.replaceUserMessage?.trim() || (observation.headline ? `${observation.headline}${note}` : '')
+      // Sent before the notify enters the situation, so the mind holds its topic from the gate from the start.
+      const reply = requested && !options.forceSparkCommandResponse
+        ? situation.requestVoice({
+            turnId: `spark:${event.data.id}`,
+            topicKey,
+            topicText: requested,
+            supplement: options.messageOverride?.appendSystemInstructions?.join('\n\n') || null,
+            timeoutMs: options.timeoutMs ?? SPARK_NOTIFY_REACTION_TIMEOUT_MS,
+          })
+        : undefined
       // The orchestrator ingests the notify synchronously, then runs the commands-only agent when one is due.
       const commands = characterOrchestratorStore.handleSparkNotify(event, {
         forceSparkCommandResponse: options.forceSparkCommandResponse,
@@ -420,23 +376,10 @@ export const useContextBridgeStore = defineStore('mods:api:context-bridge', () =
         return fallback
       }
       void commands.catch(error => console.warn('[context-bridge] spark:notify commands failed', error))
-
-      // The headline is plugin input; one that is missing or blank leaves nothing to speak about.
-      const note = observation.note ? `: ${observation.note}` : ''
-      const requested = options.messageOverride?.replaceUserMessage?.trim() || (observation.headline ? `${observation.headline}${note}` : '')
-      if (!requested || !await untilQuietMoment(SPARK_NOTIFY_QUIET_WAIT_MS))
+      if (!reply)
         return fallback
-      // The trigger message keeps the topic text in chat history, so a web extension topic names only its kind, as
-      // it does for a gate-fired turn.
-      const topicText = unpromptedTopicText(topicKey, requested, true)
 
-      const result = await chatOrchestrator.submitUnprompted({
-        force: true,
-        topicKey,
-        topicText,
-        messageId: `spark:${event.data.id}`,
-        supplement: options.messageOverride?.appendSystemInstructions?.join('\n\n'),
-      })
+      const result = await reply
       if (result.status !== 'spoken' || !result.text.trim())
         return fallback
 
@@ -447,9 +390,6 @@ export const useContextBridgeStore = defineStore('mods:api:context-bridge', () =
     catch (error) {
       console.warn('[context-bridge] spark:notify handling failed; using fallback', error)
       return fallback
-    }
-    finally {
-      release?.()
     }
   }
 
