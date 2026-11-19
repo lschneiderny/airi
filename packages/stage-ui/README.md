@@ -629,3 +629,11 @@ Chat requests build their system prompt with `useChatPrompt` in `stores/chat/pro
 Unprompted turns receive only `builtIn_readMemory` through the core-agent runtime's `unpromptedTools` option. In `stores/ai/chat-llm/llm.ts`, unprompted requests resolve only the supplied custom tools and no built-in tools.
 
 The [adoption ADR](../../docs/ai/adr/2026-10-30-long-term-memory-adoption.md) records the design and its consequences.
+
+## Persisted state
+
+`stateRegistry` in `persistence/state-registry.ts` declares every piece of persisted renderer state: localStorage and sessionStorage keys, IndexedDB stores, OPFS directories, and Cache Storage caches. Each registration names its owner, the files that write it, its tier, its locations, and an optional owner reset. `resetRegisteredState` runs the owner resets in registry order and then removes everything the locations match. `useDataMaintenance` does not run it yet.
+
+When you add persisted state, add a registration in the same commit and run `src/persistence/state-registry.browser.test.ts`. The test creates and resets every owner in a leader and a follower window, and fails on a write that no registration owns and on two registrations that claim the same storage. [State persistence](../../docs/ai/context/state-persistence.md#state-registry) states the rules.
+
+Use the registry for renderer storage only. The desktop app's main process deletes its own files through `storedDataDeleteActivity`.
