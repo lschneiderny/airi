@@ -62,6 +62,13 @@ describe('verify step execution', () => {
     console.info(`verify fixture cleanup: ${root} absent=true`)
   })
 
+  function verifyFails(args: string[], action = '') {
+    return verify(args, action).then(
+      () => { throw new Error(`verify ${args.join(' ')} passed`) },
+      (error: { code: number, stdout: string }) => error,
+    )
+  }
+
   function verify(args: string[], action = '') {
     return exec(process.execPath, ['--import', import.meta.resolve('tsx'), fileURLToPath(new URL('./verify.ts', import.meta.url)), ...args], {
       cwd: root,
@@ -118,6 +125,27 @@ describe('verify step execution', () => {
       stdout: expect.stringMatching(/hint: every lint problem above is auto-fixable: run pnpm lint:fix[\s\S]*typecheck skipped not run: lint failed[\s\S]*test\s+skipped not run: lint failed/),
     })
     expect(existsSync(join(root, 'receipts.jsonl'))).toBe(false)
+  }, 20_000)
+
+  it('prints only its own lines and a failing command\'s tail when output is not a terminal, and --wait replays them', async () => {
+    const failure = await verifyFails(['--only', 'test'], 'fail')
+    expect(failure.code).toBe(1)
+    expect(failure.stdout).not.toMatch(/^\[test\] rebuild stale workspace packages$/m)
+    expect(failure.stdout).toMatch(/\[test\] rebuild stale workspace packages failed:\nAll tests passed\n[\s\S]*verify summary[\s\S]*full log: /)
+    const log = /full log: (.+)/.exec(failure.stdout)?.[1] ?? ''
+    expect(readFileSync(log, 'utf8')).toContain('All tests passed')
+
+    const replay = await verifyFails(['--wait', '--timeout', '0'])
+    expect(replay.code).toBe(1)
+    expect(replay.stdout).toContain(failure.stdout.trim())
+  }, 20_000)
+
+  it('runs in the background with --detach and hands the result to --wait', async () => {
+    const started = await verify(['--only', 'test', '--detach'])
+    const id = /verify run (\S+) started in the background/.exec(started.stdout)?.[1]
+    expect(id).toBeDefined()
+    const waited = await verify(['--wait', id!, '--timeout', '15'])
+    expect(waited.stdout).toMatch(/verify summary\n {2}test {6}passed/)
   }, 20_000)
 
   it('uses branch coverage on detached HEAD without creating a last record', async () => {

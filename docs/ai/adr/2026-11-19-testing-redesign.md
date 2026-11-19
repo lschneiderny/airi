@@ -39,6 +39,12 @@ typecheck and tests) on a 16-core, 31 GB workstation:
 Every run passed every test. The broker made the workload 35% slower and
 protected nothing at this load; a lower CPU weight changed nothing measurable.
 
+Waiting cost more than the broker. A full verify's test step had a median of
+3 minutes and a 90th percentile of 6, close to the time limit agent harnesses
+put on one tool call, so agents backgrounded it and then polled processes and
+log files. Verify also streamed every command's output into the agent's
+context, and its summary named each of up to 55 test commands.
+
 ## Decision
 
 1. Remove `@proj-airi/cpu-slots`. Vitest configs drop `withCpuSlots`, which
@@ -53,6 +59,10 @@ protected nothing at this load; a lower CPU weight changed nothing measurable.
 3. Perf reports drop lease-contention marking; host contention, which the app
    measures itself, still drops cells.
 4. Keep the guideline of at most three heavy lanes, the load the test covered.
+5. Verify writes every run's full output to a run log and a run record. When
+   its output is not a terminal, it prints only its own lines and the tail of
+   a failed command. `--detach` starts a run in the background and `--wait`
+   blocks on one for up to 540 seconds, so waiting costs one tool call.
 
 ## Consequences
 
@@ -61,6 +71,8 @@ protected nothing at this load; a lower CPU weight changed nothing measurable.
   holds a host sample instead of lease holders.
 - Old verify history records keep `waitMs` and `grant`; the reader ignores
   them.
+- An agent reads a failure's tail in the verify output and opens the run log
+  only when the tail is not enough.
 - More than three heavy lanes, or rendered QA beside heavy tests, is not
   measured. If a desktop stall or memory pressure appears, measure it before
   adding coordination back, and prefer operating-system controls (a systemd

@@ -62,6 +62,8 @@ pnpm verify --gate               # full branch against the merge base with main
 pnpm verify --only lint,test     # some steps
 pnpm verify --base origin/main   # another base
 pnpm verify --dry-run            # print the plan and commands
+pnpm verify --detach             # run in the background and print the run id
+pnpm verify --wait [<run id>]    # block until a run ends and print its report
 pnpm verify --stats              # summarize recorded step outcomes
 pnpm verify --stats --since 2d --json
 ```
@@ -96,13 +98,21 @@ Use `pnpm verify --gate` before landing to check the full branch regardless of p
 
 An empty scope reports `skipped`.
 
+### Output, run logs, and waiting
+
+Every run writes all output, its own lines and every command's, to a run log at `<git common dir>/airi-verify/runs/<run id>.log`, and keeps a run record beside it, `<run id>.json`, which says whether the run is `running`, `passed`, or `failed`. The newest 30 runs are kept.
+
+On a terminal, command output streams as before. When the output is not a terminal, as under an agent or a pipe, verify prints only its own lines: each step's scope, the last 60 lines of a failed command, the summary, the follow-up checks, and the log path. The run record keeps those lines as the run's report. A step that ran more than three commands summarizes them as a count.
+
+`--detach` starts the same run in a detached process, prints its run id, and returns. `--wait [<run id>]` blocks until that run, or without an id this worktree's newest run, ends; then it prints the report and exits with the run's exit code. It waits at most `--timeout` seconds, 540 by default, which fits inside the 10-minute limit agent harnesses put on one tool call. A run still going exits 3; wait again with the same id. A run whose process died without recording an end exits 1 and names its log. `--wait` also works for a foreground run started elsewhere, such as one a harness put in the background.
+
 Step history is separate from the last-pass record. Each completed step appends a record to `<git common dir>/airi-verify/runs.jsonl`, including failures and skips. Records contain `ts` (epoch milliseconds), `worktree`, `branch` (null for detached HEAD), `head`, `tree`, `scopeBase`, `mode`, `step`, `status` (`pass`, `fail`, or `skipped`; records written before 2026-11-17 can also say `cached`), `durationMs`, `commands` (argument arrays), and `files`. Records written before 2026-11-19 also carry the `waitMs` and `grant` of the removed CPU slot broker. Dry runs do not append history.
 
 `pnpm verify --stats` reads history without running checks or changing last-pass records. It reports counts by status for each step and scope mode, failure rate, median and p90 duration, and the slowest five executed steps with their worktree and branch. Failure rates and duration distributions use executed passes and failures; cached and skipped steps contribute only to counts. `--since` accepts a positive integer followed by `ms`, `s`, `m`, `h`, or `d`. `--json` prints the summary as JSON. Malformed lines are skipped and counted, including malformed lines outside the requested time window.
 
 Before an append, a history file larger than 5 MiB rotates to `runs.1.jsonl`, replacing the previous generation. Statistics read both generations. History write failures print a warning without changing check results. Set `AIRI_VERIFY_HISTORY_DIR` to use another history directory, such as a temporary directory for QA; this setting does not redirect last-pass records.
 
-Exit codes: 0 every step passed, 1 a step failed, 2 usage error.
+Exit codes: 0 every step passed, 1 a step failed or a waited run died, 2 usage error, 3 a waited run is still running.
 
 ## `pnpm test:run`
 

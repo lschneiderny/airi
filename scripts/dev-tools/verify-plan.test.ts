@@ -116,11 +116,11 @@ describe('relatedTestCommand', () => {
 
 describe('parseVerifyArgs', () => {
   it('defaults to every step against main', () => {
-    expect(parseVerifyArgs([])).toEqual({ ok: true, args: { base: 'main', steps: ['lint', 'typecheck', 'test'], dryRun: false, gate: false } })
+    expect(parseVerifyArgs([])).toEqual({ ok: true, args: { base: 'main', steps: ['lint', 'typecheck', 'test'], dryRun: false, gate: false, detach: false } })
   })
 
   it('keeps step order canonical whatever order --only lists', () => {
-    expect(parseVerifyArgs(['--only', 'test,lint', '--base', 'origin/main', '--gate'])).toEqual({ ok: true, args: { base: 'origin/main', steps: ['lint', 'test'], dryRun: false, gate: true } })
+    expect(parseVerifyArgs(['--only', 'test,lint', '--base', 'origin/main', '--gate'])).toEqual({ ok: true, args: { base: 'origin/main', steps: ['lint', 'test'], dryRun: false, gate: true, detach: false } })
   })
 
   it('rejects unknown steps, missing values, and stray arguments', () => {
@@ -129,6 +129,13 @@ describe('parseVerifyArgs', () => {
     expect(parseVerifyArgs(['--base', '--gate']).ok).toBe(false)
     expect(parseVerifyArgs(['--no-cache']).ok).toBe(false)
     expect(parseVerifyArgs(['extra']).ok).toBe(false)
+  })
+
+  it('takes an optional run id and a timeout for --wait, and nothing else', () => {
+    expect(parseVerifyArgs(['--wait'])).toMatchObject({ ok: true, args: { wait: { id: null, timeoutMs: 540_000 } } })
+    expect(parseVerifyArgs(['--wait', '17-42', '--timeout', '30'])).toMatchObject({ ok: true, args: { wait: { id: '17-42', timeoutMs: 30_000 } } })
+    expect(parseVerifyArgs(['--wait', '--gate']).ok).toBe(false)
+    expect(parseVerifyArgs(['--wait', '--timeout', 'soon']).ok).toBe(false)
   })
 })
 

@@ -70,6 +70,12 @@ for scope selection, last-pass records, and command behavior, and its
 [`pnpm test:run` section](../../../scripts/dev-tools/README.md#pnpm-testrun)
 for what Turbo caches. If a step fails, fix the cause and rerun it.
 
+When its output is not a terminal, verify prints its own lines and the tail
+of a failed command, and writes everything else to a run log. A full run
+takes minutes, so an agent that wants to keep working starts it with
+`pnpm verify --detach` and later blocks once with `pnpm verify --wait`,
+instead of polling a process or a log.
+
 Every workspace package runs its own tests through its `test:run` script and
 its own Vitest config, as upstream does. `pnpm verify` runs the related tests
 of each affected package from that package; `pnpm test:run` runs every whole
