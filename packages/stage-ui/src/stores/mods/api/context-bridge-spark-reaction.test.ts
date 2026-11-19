@@ -374,7 +374,7 @@ describe('widget spark reactions', () => {
   it('names the widget topic as her last remark, not a gate topic that was declined before', async () => {
     const { situation, bridge } = startLeader()
     // A gate fire addressed an unlock, and its turn was declined: the unlock waits as the addressed topic.
-    situation.ingest({ kind: 'wake', cause: 'unlock', atMs: Date.now() })
+    situation.ingest({ kind: 'wake', cause: 'unlock', atMs: Date.now(), awayMs: null })
     situation.markAddressed('wake')
     chatSpeaks('Oh, a QA widget!')
 

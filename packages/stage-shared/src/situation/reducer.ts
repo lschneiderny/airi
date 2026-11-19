@@ -9,6 +9,7 @@ import type {
   PresenceObservation,
   PresenceReason,
   PresenceState,
+  ReturnObservation,
   SalienceKey,
   SelfActivity,
   SelfObservation,
@@ -254,19 +255,25 @@ function applyPresence(draft: Draft, o: PresenceObservation, at: number): void {
       tracking.awaySinceMs = at
   }
   else if (o.state === 'here' || o.state === 'idle') {
-    const awaySince = tracking.awaySinceMs
+    // The return itself, its length, and the `returned` event come from the character mind's return observation.
     tracking.awaySinceMs = null
-    if (awaySince !== null)
-      tracking.lastAwayMs = at - awaySince
-    if (awaySince !== null && at - awaySince >= RETURNED_AFTER_AWAY_MS) {
-      pushEvent(draft, makeEvent(
-        'returned',
-        'returned',
-        PRESENCE_RETURN_TOPIC_KEY,
-        `came back after ${Math.floor((at - awaySince) / MINUTE_MS)} min away`,
-        at,
-      ))
-    }
+  }
+}
+
+function applyReturn(draft: Draft, o: ReturnObservation, at: number): void {
+  const tracking = draft.tracking
+  if (!isTime(o.awayMs) || (tracking.lastReturnAtMs !== null && at < tracking.lastReturnAtMs))
+    return
+  tracking.lastReturnAtMs = at
+  tracking.lastAwayMs = o.awayMs
+  if (o.awayMs >= RETURNED_AFTER_AWAY_MS) {
+    pushEvent(draft, makeEvent(
+      'returned',
+      'returned',
+      PRESENCE_RETURN_TOPIC_KEY,
+      `came back after ${Math.floor(o.awayMs / MINUTE_MS)} min away`,
+      at,
+    ))
   }
 }
 
@@ -468,11 +475,10 @@ function applyObservation(draft: Draft, observation: Observation, now: number, o
       applyPresence(draft, observation, at)
       break
     case 'wake': {
-      // A wake ends the current away span, or the span that just ended when the return was reported first. A span
-      // shorter than the returned threshold (an instant lock) leaves no topic; a wake without a span to measure keeps it.
-      const tracking = draft.tracking
-      const awayMs = tracking.awaySinceMs !== null ? at - tracking.awaySinceMs : tracking.lastAwayMs
-      if (awayMs !== null && awayMs < RETURNED_AFTER_AWAY_MS)
+      // The mind measures the away span the wake ends. A span shorter than the returned threshold (an instant lock)
+      // leaves no topic; a wake without a span to measure keeps it.
+      const awayMs = observation.awayMs
+      if (isTime(awayMs) && awayMs < RETURNED_AFTER_AWAY_MS)
         break
       // The newest wake in the ring wins; an older wake must not replace it.
       if ((observation.cause === 'unlock' || observation.cause === 'resume') && !draft.events.some(event => event.topicKey === WAKE_TOPIC_KEY && event.atMs > at)) {
@@ -486,6 +492,9 @@ function applyObservation(draft: Draft, observation: Observation, now: number, o
       }
       break
     }
+    case 'return':
+      applyReturn(draft, observation, at)
+      break
     case 'activity':
       applyActivity(draft, observation, at, new Set((options.selfAppIds ?? []).map(id => id.toLowerCase())))
       break

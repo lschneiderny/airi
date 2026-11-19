@@ -7,7 +7,7 @@ import type { CharacterReading } from '@proj-airi/stage-shared/character-state'
 import type { AffectSignal, AffectTrace, CatalogEntry, DeciderContext, ExpressionPerformanceSettings, HoldCommand, Moment, MoodDose, PerformanceDecision, PerformanceProfile, ReactionEpisode, SlotCommand, TimingEvent } from '@proj-airi/stage-shared/expression-performance'
 import type { AffectTraceRequest } from '@proj-airi/stage-shared/expression-performance/affect-trace-diagnostics'
 import type { PerformanceEvent } from '@proj-airi/stage-shared/performance-state'
-import type { GateOutcome, ReactionKind, TouchObservation, TouchVoiceView } from '@proj-airi/stage-shared/situation'
+import type { GateOutcome, ReactionKind, ReturnObservation, TouchObservation, TouchVoiceView, WakeObservation } from '@proj-airi/stage-shared/situation'
 
 import type { StageExpressionBackend } from '../../features/performance/expression-backend'
 import type { ActiveExpression, ExposedAction, ExposedExpression, ExposedExpressionGroup, PerformanceMoodSnapshot } from '../../features/performance/runtime-state'
@@ -150,13 +150,15 @@ export interface StagePerformanceScene {
 export type StagePerformanceDriver = 'natural' | 'basic'
 
 /**
- * The voice channel a touch can reach: the leader's situation store. `observeTouch` records the touch in the
+ * The voice channel the mind can reach: the leader's situation store. `observeTouch` records the touch in the
  * situation and returns what the mind may see of it, or null when nobody could speak a line. `speakReaction` runs the
  * line the mind decided and resolves with what became of it.
  */
-export interface TouchVoicePort {
+export interface VoicePort {
   observeTouch: (observation: TouchObservation) => TouchVoiceView | null
   speakReaction: (line: { kind: ReactionKind, eventId: string }) => Promise<GateOutcome | 'refused'>
+  /** Records a return or a desktop wake in the situation. Does nothing in a follower window. */
+  observeReturn: (observation: ReturnObservation | WakeObservation) => void
 }
 
 export interface StagePerformanceConductorOptions {
@@ -180,11 +182,12 @@ export interface StagePerformanceConductorOptions {
    */
   markMoment?: (moment: Moment) => void
   /**
-   * The voice channel of a touch, or undefined when this stage has none; the mind then decides no line.
+   * The voice channel, or undefined when this stage has none; the mind then decides no line and the situation
+   * learns of no return.
    *
    * @default () => undefined
    */
-  voice?: () => TouchVoicePort | undefined
+  voice?: () => VoicePort | undefined
   /** Decider seed, fixed for the lifetime of the conductor so traces can replay it. */
   seed: number
   /**
@@ -422,7 +425,8 @@ export class StagePerformanceConductor {
   /**
    * Sends the performance resolver's events of one call to the mind as one step, under every driver, and dispatches
    * the response: `wake` to `scene.wakeFromSleep` and `desktop-reaction` to `scene.reactToDesktop` only under Natural,
-   * and `moment` to `markMoment` under every driver. The voice intents are not dispatched yet.
+   * `moment` to `markMoment` under every driver, and `observe-wake` and `observe-return` to `voice().observeReturn`
+   * under every driver, in intent order.
    */
   desktop(events: readonly PerformanceEvent[]) {
     if (events.length === 0)
@@ -436,6 +440,10 @@ export class StagePerformanceConductor {
         scene?.reactToDesktop?.(intent.reaction)
       else if (intent.kind === 'moment')
         this.options.markMoment?.(intent.moment)
+      else if (intent.kind === 'observe-wake')
+        this.options.voice?.()?.observeReturn({ kind: 'wake', cause: intent.wakeCause, atMs: intent.atMs, awayMs: intent.awayMs })
+      else if (intent.kind === 'observe-return')
+        this.options.voice?.()?.observeReturn({ kind: 'return', atMs: intent.atMs, awayMs: intent.awayMs })
     }
   }
 

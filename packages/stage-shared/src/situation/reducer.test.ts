@@ -192,14 +192,11 @@ describe('reduceSituation activity', () => {
 })
 
 describe('reduceSituation presence', () => {
-  it('emits returned only when away for at least 5 min', () => {
-    const shortAway = run([presence('here', T0 - MIN), presence('away', T0), presence('here', T0 + 5 * MIN - 1)])
-    expect(eventsOf(shortAway, 'returned')).toHaveLength(0)
-    expect(eventsOf(shortAway, 'went-away')).toHaveLength(0)
+  it('ends the away span on here without a returned event or a span length', () => {
+    const state = run([presence('here', T0 - MIN), presence('away', T0), presence('here', T0 + 20 * MIN)])
 
-    const longAway = run([presence('here', T0 - MIN), presence('away', T0), presence('here', T0 + 5 * MIN)])
-    expect(eventsOf(longAway, 'returned').map(e => [e.topicKey, e.text])).toEqual([['presence:return', 'came back after 5 min away']])
-    expect(eventsOf(longAway, 'went-away')).toHaveLength(1)
+    expect(eventsOf(state, 'returned')).toHaveLength(0)
+    expect(state.tracking).toMatchObject({ awaySinceMs: null, lastAwayMs: null, lastReturnAtMs: null })
   })
 
   it('creates no stepped-away topic for an instant lock and unlock', () => {
@@ -207,40 +204,6 @@ describe('reduceSituation presence', () => {
 
     expect(eventsOf(advanceSituation(state, T0 + 10 * MIN), 'went-away')).toHaveLength(0)
     expect(state.presence).toMatchObject({ state: 'here', sinceMs: T0 + SEC })
-  })
-
-  it.each(['unlock', 'resume'] as const)('creates no wake topic and no away topic for a 1 s lock that ends with %s', (cause) => {
-    const state = run([presence('here', T0 - MIN), presence('away', T0), { kind: 'wake', cause, atMs: T0 + SEC }, presence('here', T0 + SEC)])
-
-    expect(state.events).toEqual([])
-    expect(advanceSituation(state, T0 + 10 * MIN).events).toEqual([])
-  })
-
-  it('judges a wake that arrives after the return by the away span that just ended', () => {
-    const instant = run([presence('here', T0 - MIN), presence('away', T0), presence('here', T0 + 495), { kind: 'wake', cause: 'unlock', atMs: T0 + 1003 }])
-    expect(instant.events).toEqual([])
-
-    const long = run([presence('here', T0 - MIN), presence('away', T0), presence('here', T0 + 6 * MIN), { kind: 'wake', cause: 'unlock', atMs: T0 + 6 * MIN + 500 }])
-    expect(eventsOf(long, 'wake').map(e => [e.text, e.atMs])).toEqual([['unlocked the computer', T0 + 6 * MIN + 500]])
-  })
-
-  it('creates the wake topic only once the away span reaches the returned threshold', () => {
-    const away = run([presence('here', T0 - MIN), presence('away', T0)])
-    const wakesAt = (atMs: number) => eventsOf(reduceSituation(away, { kind: 'wake', cause: 'unlock', atMs }, atMs), 'wake')
-
-    expect(wakesAt(T0 + RETURNED_AFTER_AWAY_MS - 1)).toHaveLength(0)
-    expect(wakesAt(T0 + RETURNED_AFTER_AWAY_MS).map(e => [e.topicKey, e.text])).toEqual([['wake', 'unlocked the computer']])
-  })
-
-  it('keeps the stepped-away, wake and came-back topics for a 6 min absence', () => {
-    const state = run([presence('here', T0 - MIN), presence('away', T0), { kind: 'wake', cause: 'unlock', atMs: T0 + 6 * MIN }, presence('here', T0 + 6 * MIN)])
-
-    expect(state.events.map(e => [e.kind, e.topicKey, e.text, e.atMs])).toEqual([
-      ['went-away', 'presence:away', 'stepped away', T0 + RETURNED_AFTER_AWAY_MS],
-      ['wake', 'wake', 'unlocked the computer', T0 + 6 * MIN],
-      ['returned', 'presence:return', 'came back after 6 min away', T0 + 6 * MIN],
-    ])
-    expect(state.presence).toEqual({ state: 'here', reason: null, sinceMs: T0 + 6 * MIN })
   })
 
   it('creates the stepped-away topic once the user has been away for the returned threshold, and only once', () => {
@@ -255,22 +218,58 @@ describe('reduceSituation presence', () => {
     expect(eventsOf(decayed, 'went-away')).toHaveLength(0)
     expect(eventsOf(advanceSituation(decayed, T0 + 61 * MIN), 'went-away')).toHaveLength(0)
   })
+})
 
-  it('counts the away time through an unknown sample', () => {
-    const state = run([presence('away', T0), presence('unknown', T0 + MIN), presence('here', T0 + 20 * MIN)])
+describe('reduceSituation return', () => {
+  const back = (atMs: number, awayMs: number): Observation => ({ kind: 'return', atMs, awayMs })
 
+  it('emits returned only when away for at least 5 min, and records the span either way', () => {
+    const shortAway = run([back(T0, RETURNED_AFTER_AWAY_MS - 1)])
+    expect(eventsOf(shortAway, 'returned')).toHaveLength(0)
+    expect(shortAway.tracking).toMatchObject({ lastAwayMs: RETURNED_AFTER_AWAY_MS - 1, lastReturnAtMs: T0 })
+
+    const longAway = run([back(T0, RETURNED_AFTER_AWAY_MS)])
+    expect(eventsOf(longAway, 'returned').map(e => [e.topicKey, e.text, e.atMs])).toEqual([['presence:return', 'came back after 5 min away', T0]])
+    expect(longAway.tracking).toMatchObject({ lastAwayMs: RETURNED_AFTER_AWAY_MS, lastReturnAtMs: T0 })
+  })
+
+  it('ignores a return older than the last one', () => {
+    const base = run([back(T0 + 10 * MIN, 20 * MIN)])
+    const state = reduceSituation(base, back(T0, 60 * MIN), T0 + 11 * MIN)
+
+    expect(state.tracking).toMatchObject({ lastAwayMs: 20 * MIN, lastReturnAtMs: T0 + 10 * MIN })
     expect(eventsOf(state, 'returned').map(e => e.text)).toEqual(['came back after 20 min away'])
   })
 
-  it('emits a wake event when no away span was seen to measure', () => {
-    const state = run([{ kind: 'wake', cause: 'unlock', atMs: T0 }])
+  it('keeps the stepped-away, wake and came-back topics for a 6 min absence', () => {
+    const state = run([presence('here', T0 - MIN), presence('away', T0), { kind: 'wake', cause: 'unlock', atMs: T0 + 6 * MIN, awayMs: 6 * MIN }, back(T0 + 6 * MIN, 6 * MIN), presence('here', T0 + 6 * MIN)])
 
-    expect(eventsOf(state, 'wake').map(e => [e.topicKey, e.salience])).toEqual([['wake', 0.5]])
+    expect(state.events.map(e => [e.kind, e.topicKey, e.text, e.atMs])).toEqual([
+      ['went-away', 'presence:away', 'stepped away', T0 + RETURNED_AFTER_AWAY_MS],
+      ['wake', 'wake', 'unlocked the computer', T0 + 6 * MIN],
+      ['returned', 'presence:return', 'came back after 6 min away', T0 + 6 * MIN],
+    ])
+    expect(state.presence).toEqual({ state: 'here', reason: null, sinceMs: T0 + 6 * MIN })
   })
 })
 
-describe('reduceSituation wake ordering', () => {
-  const wake = (cause: 'unlock' | 'resume', atMs: number): Observation => ({ kind: 'wake', cause, atMs })
+describe('reduceSituation wake', () => {
+  const wake = (cause: 'unlock' | 'resume', atMs: number, awayMs: number | null = null): Observation => ({ kind: 'wake', cause, atMs, awayMs })
+
+  it.each(['unlock', 'resume'] as const)('creates no wake topic for a 1 s lock that ends with %s', (cause) => {
+    expect(run([wake(cause, T0 + SEC, SEC)]).events).toEqual([])
+  })
+
+  it('creates the wake topic only once the away span reaches the returned threshold', () => {
+    expect(eventsOf(run([wake('unlock', T0, RETURNED_AFTER_AWAY_MS - 1)]), 'wake')).toHaveLength(0)
+    expect(eventsOf(run([wake('unlock', T0, RETURNED_AFTER_AWAY_MS)]), 'wake').map(e => [e.topicKey, e.text])).toEqual([['wake', 'unlocked the computer']])
+  })
+
+  it('emits a wake event when no away span was seen to measure', () => {
+    const state = run([wake('unlock', T0)])
+
+    expect(eventsOf(state, 'wake').map(e => [e.topicKey, e.salience])).toEqual([['wake', 0.5]])
+  })
 
   it('ignores a wake older than the newest recorded wake', () => {
     const base = run([wake('unlock', T0 + 10 * SEC)])
@@ -439,7 +438,7 @@ describe('purity and time', () => {
   })
 
   it('does not duplicate events for a repeated observation', () => {
-    const wake: Observation = { kind: 'wake', cause: 'resume', atMs: T0 }
+    const wake: Observation = { kind: 'wake', cause: 'resume', atMs: T0, awayMs: null }
     const once = run([wake])
     const twice = run([wake, wake])
 

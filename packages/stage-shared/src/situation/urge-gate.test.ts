@@ -729,6 +729,31 @@ describe('evaluateUrgeGate rituals', () => {
     for (const count of counts.values())
       expect(count).toBe(1)
   })
+
+  /** Evaluates the gate for a present user with the given tracking and returns the next memory. */
+  function evaluateAt(nowMs: number, presence: SituationState['presence'], tracking: Partial<SituationState['tracking']>, memory: UrgeGateMemory = initialUrgeMemory) {
+    const situation = quietSituation({ presence, tracking: { ...initialSituationState.tracking, ...tracking } })
+    return evaluateUrgeGate(gateInput({ nowMs, local: localAt(nowMs), situation }), memory).memory
+  }
+
+  it('opens the welcome-back window from the last return after an absence of 3 h within the logical day', () => {
+    const backAtMs = Date.UTC(2026, 9, 30, 13)
+    const present = { state: 'here', reason: null, sinceMs: backAtMs + MIN } as const
+
+    expect(evaluateAt(backAtMs + MIN, present, { lastReturnAtMs: backAtMs, lastAwayMs: 3 * HOUR_MS }).day?.windowOpenedAtMs['welcome-back']).toBe(backAtMs)
+    expect(evaluateAt(backAtMs + MIN, present, { lastReturnAtMs: backAtMs, lastAwayMs: 3 * HOUR_MS - 1 }).day?.windowOpenedAtMs['welcome-back']).toBeNull()
+  })
+
+  it('opens no window when a here/idle flip comes hours after an overnight return', () => {
+    // Back at 06:00 after 8 h away, which began before the 04:00 rollover; a pause at noon moves only the presence.
+    const backAtMs = Date.UTC(2026, 9, 30, 6)
+    const noonMs = Date.UTC(2026, 9, 30, 12)
+    const tracking = { lastReturnAtMs: backAtMs, lastAwayMs: 8 * HOUR_MS }
+    const morning = evaluateAt(backAtMs, { state: 'here', reason: null, sinceMs: backAtMs }, tracking)
+    const noon = evaluateAt(noonMs, { state: 'idle', reason: 'idle', sinceMs: noonMs }, tracking, morning)
+
+    expect(noon.day?.windowOpenedAtMs['welcome-back']).toBeNull()
+  })
 })
 
 describe('urge gate memory lifecycle', () => {
