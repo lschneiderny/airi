@@ -111,7 +111,7 @@ Read the listed file before starting. Skill paths below are under `.agents/skill
 | Task | Read |
 | --- | --- |
 | UI appearance/interaction design, changes, review | [DESIGN.md](DESIGN.md) |
-| Choosing which checks to run | [Testing and QA](docs/ai/context/testing.md) |
+| Choosing checks that `pnpm verify` does not list after its summary: a visible change, test data read through `fs`, a performance-sensitive change, or the CPU broker | [Testing and QA](docs/ai/context/testing.md) |
 | TypeScript/Vue writing, refactoring, review, including date, time, and unit helpers | [enforce-rules-for-typescript](.agents/skills/enforce-rules-for-typescript/SKILL.md) |
 | Tests, bug reproduction, mocks, test import boundaries | [enforce-rules-for-vitest](.agents/skills/enforce-rules-for-vitest/SKILL.md) |
 | Adding, changing, or planning tests or verification for a Vue page, component, or UI flow | [enforce-rules-for-ui-tests](.agents/skills/enforce-rules-for-ui-tests/SKILL.md) |
