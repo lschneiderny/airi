@@ -299,7 +299,7 @@ export class StagePerformanceConductor {
 
   constructor(private readonly options: StagePerformanceConductorOptions) {
     this.seed = options.seed
-    this.voice = new MindVoice(options.mind, () => options.voice?.())
+    this.voice = new MindVoice(options.mind, () => options.voice?.(), cue => this.idleCue(cue))
     this.deciderKind = options.settings().decider
     this.decider = this.createTracedDecider(this.deciderKind)
     this.state = this.decider.initial(this.seed)
@@ -417,9 +417,10 @@ export class StagePerformanceConductor {
 
   /**
    * Sends one voice stimulus from the voice port to the mind as one step, under every driver, and dispatches the
-   * response in intent order: `speak` to `voice().speak` for every line kind, whose outcome returns to the mind as a
+   * response in intent order: `cue` to {@link idleCue}, which performs it only under Natural; `speak` to
+   * `voice().speak` for every line kind, whose outcome returns to the mind as a
    * `voice-outcome` stimulus with the same `turnId`, and `cancel` and `drop` of a widget line to `voice().cancel` and
-   * `voice().drop`. The port also receives the gate memory, the decision, and the next widget deadline of the step
+   * `voice().drop`. A `let-go` cue in the answer to a line's outcome also goes to {@link idleCue}. The port also receives the gate memory, the decision, and the next widget deadline of the step
    * (`publishVoice`).
    */
   voiceStimulus(stimulus: VoiceStimulus) {
@@ -473,7 +474,7 @@ export class StagePerformanceConductor {
     this.options.scene()?.setIdleDrive?.(this.options.driver() === 'natural' ? drive : null)
   }
 
-  /** Plays reach-out body language under the Natural driver; other drivers ignore it. The decider is not involved. */
+  /** Plays the body around a reach-out or widget line under the Natural driver; other drivers drop it. The mind decides it. */
   idleCue(kind: IdleCueKind) {
     if (this.options.driver() === 'natural')
       this.options.scene()?.idleCue?.(kind)

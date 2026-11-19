@@ -11,7 +11,8 @@ import { MindVoice } from '../composables/performance/mind-voice'
  */
 export function connectMind(store: ReturnType<typeof useSituationStore>, seed: number) {
   const mind = new CharacterMind({ seed })
-  const voice = new MindVoice(mind, () => store)
+  // A test has no body, so cues go nowhere.
+  const voice = new MindVoice(mind, () => store, () => {})
   const disconnect = store.connect(stimulus => voice.answer(stimulus))
   return { mind, voice, disconnect }
 }

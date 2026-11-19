@@ -1,4 +1,4 @@
-import type { UrgeGateInput, UrgeGateMemory } from '@proj-airi/stage-shared/situation'
+import type { GateOutcome, UrgeGateInput, UrgeGateMemory } from '@proj-airi/stage-shared/situation'
 
 import type { MindIntent, MindRandom, MindState, MindStimulus, MindVoiceState, VoiceLineState, VoiceView } from './types'
 
@@ -55,6 +55,16 @@ function gateInput(view: VoiceView, requests: MindVoiceState['requests'], nowMs:
   }
 }
 
+/** The look up before a reach-out or widget line, in the same response as its `speak` and before it. */
+function aboutToSpeak(cause: number): MindIntent {
+  return { id: `${cause}-cue`, cause, channel: 'posture', kind: 'cue', cue: 'about-to-speak' }
+}
+
+/** The answer to a declined reach-out or widget line: she lets the look go. */
+function letGo(outcome: GateOutcome | 'refused', cause: number): MindIntent[] {
+  return outcome === 'declined' ? [{ id: `${cause}-cue`, cause, channel: 'posture', kind: 'cue', cue: 'let-go' }] : []
+}
+
 /** She or the user is busy: no widget line starts. `userSpeaking: null` (cannot tell) counts as speaking. */
 function busy(view: VoiceView, voice: MindVoiceState): boolean {
   const { signals } = view
@@ -82,7 +92,7 @@ function serveRequests(voice: MindVoiceState, view: VoiceView, cause: number, no
   if (next === undefined || busy(view, voice))
     return { voice, intents }
   const { request } = next
-  intents.push({
+  intents.push(aboutToSpeak(cause), {
     id: `${cause}-speak`,
     cause,
     channel: 'voice',
@@ -110,7 +120,8 @@ export function nextVoiceWakeAt(voice: MindVoiceState): number | null {
 /**
  * One gate tick. A new run restores the gate memory, and the next shown tick eases her in. Widget deadlines and
  * requests come first. The gate skips while a line of the mind, a waiting request, or another unprompted turn is
- * open; otherwise a fire yields one `speak` with a reach-out line, which occupies the line slot until its outcome.
+ * open; otherwise a fire yields `cue` `about-to-speak` and one `speak` with a reach-out line, which occupies the line
+ * slot until its outcome.
  */
 export function answerVoiceTick(state: MindState, stimulus: Stimulus<'voice-tick'>, cause: number, nowMs: number, random: MindRandom): Answer {
   const { view } = stimulus
@@ -144,7 +155,7 @@ export function answerVoiceTick(state: MindState, stimulus: Stimulus<'voice-tick
   }
   return {
     state: { ...state, voice: { ...voice, line } },
-    intents: [...served.intents, {
+    intents: [...served.intents, aboutToSpeak(cause), {
       id: `${cause}-speak`,
       cause,
       channel: 'voice',
@@ -159,9 +170,10 @@ export function answerVoiceTick(state: MindState, stimulus: Stimulus<'voice-tick
  * Settles a line. A touch line (`reaction:<eventId>`) runs the touch rule: its pending attempt settles when the
  * outcome is its own, and a spoken one always starts the refractory, also when its attempt is no longer pending. A
  * spoken touch line also starts the gate's floor. A reach-out applies its outcome to the gate; `refused` restores
- * the gate fields of before the fire, whose draws stay spent. The line closes when the outcome is its own.
+ * the gate fields of before the fire, whose draws stay spent. A declined reach-out or widget line yields `cue`
+ * `let-go`. The line closes when the outcome is its own.
  */
-export function answerVoiceOutcome(state: MindState, stimulus: Stimulus<'voice-outcome'>, nowMs: number): Answer {
+export function answerVoiceOutcome(state: MindState, stimulus: Stimulus<'voice-outcome'>, cause: number, nowMs: number): Answer {
   const { voice } = state
   const own = voice.line?.turnId === stimulus.turnId
   const line = own ? null : voice.line
@@ -182,7 +194,7 @@ export function answerVoiceOutcome(state: MindState, stimulus: Stimulus<'voice-o
   if (own && voice.line?.kind === 'widget') {
     // A spoken widget line starts the floor and never counts as an unanswered opening.
     const gate = stimulus.outcome === 'spoken' && voice.gate ? recordExternalSpeech(voice.gate, nowMs) : voice.gate
-    return { state: { ...state, voice: { ...voice, gate, line } }, intents: [] }
+    return { state: { ...state, voice: { ...voice, gate, line } }, intents: letGo(stimulus.outcome, cause) }
   }
 
   if (!own || voice.line?.kind !== 'reach-out' || voice.gate === null)
@@ -191,7 +203,7 @@ export function answerVoiceOutcome(state: MindState, stimulus: Stimulus<'voice-o
   const gate = stimulus.outcome === 'refused'
     ? (before ? { ...voice.gate, ...before } : voice.gate)
     : recordUrgeFireOutcome(voice.gate, stimulus.outcome, nowMs)
-  return { state: { ...state, voice: { ...voice, gate, line } }, intents: [] }
+  return { state: { ...state, voice: { ...voice, gate, line } }, intents: letGo(stimulus.outcome, cause) }
 }
 
 /** The user's own turn turns unanswered openings into damping and clears the reply clock and an armed double text. */
