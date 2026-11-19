@@ -29,6 +29,15 @@ its own seeded stream, so a change in one layer does not reshuffle another.
 The controller advances every layer on a fixed 120 Hz grid and interpolates
 between grid states, so the frame rate does not change the motion.
 
+Desktop events reach the controller as requests that start on the next grid
+step, like pokes. `motion.react('wake' | 'screen-change', nowSeconds)` starts a
+desktop reaction: `wake` lifts the head, glances at the camera, and rouses her
+from sleep with a start; `screen-change` glances at the screen.
+`motion.wake(nowSeconds)` ends a sleep with the gentle wake (the eyes reach the
+camera as the lids open), even while the user is still away; awake, she ignores
+it, so a caller may send it on every return. A changed `reactSeq` in
+`setPerformance` still starts a reaction, and the user's return still ends a sleep.
+
 After `advance()`, `motion.bodyIntent()` returns the cached `NaturalBodyIntent`
 for the frame it most recently produced. Call `advance()` before the first read;
 reading earlier throws. Repeated reads return the same snapshot without stepping

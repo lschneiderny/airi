@@ -2014,6 +2014,10 @@ defineExpose({
   gesture: (kind: CueGestureKind, count: number) => naturalMotion?.gesture(kind, count),
   addMood: (dose: MoodDose) => naturalMotion?.addMood(dose),
   reactToTouch,
+  /** Natural only: ends a sleep with the gentle wake; ignored while she is awake. */
+  wakeFromSleep: () => naturalMotion?.wake(),
+  /** Natural only: a brief reaction to the desktop; `wake` also rouses her from sleep with a start. */
+  reactToDesktop: (reaction: 'wake' | 'screen-change') => naturalMotion?.react(reaction),
   /** The resting face target; a model that loads later receives it on the stage's next once-per-second update. */
   setFaceBaseline: (baseline: FaceBaseline) => naturalMotion?.setFaceBaseline(baseline),
   /**

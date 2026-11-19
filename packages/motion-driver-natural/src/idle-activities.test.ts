@@ -10,7 +10,7 @@ import { createRandomStream } from './random'
 
 const dt = 1 / 120
 const neutralDrive: NaturalIdleDrive = { energy: 0, valence: 0, tension: 0, sleepiness: 0, solitude: 0, music: false, allowSleep: true, rate: 1 }
-const idleInput: IdleStepInput = { mode: 'idle', away: false, blocked: false, interrupt: false, rouse: false, placement: 0, screenPoint: { x: 0, y: -0.18 } }
+const idleInput: IdleStepInput = { mode: 'idle', away: false, blocked: false, interrupt: false, rouse: false, wake: false, placement: 0, screenPoint: { x: 0, y: -0.18 } }
 const idleState = { mode: 'idle', attention: 'camera', away: false, reactSeq: 0, reactKind: 'none' } as const
 
 function layer(seed = 7, drive: NaturalIdleDrive | null = neutralDrive) {
@@ -512,6 +512,17 @@ describe('idle activity layer', () => {
   })
 })
 
+/** A controller asleep while the user stays away, and the time it was left at. */
+function asleep() {
+  const motion = new NaturalMotion({ seed: 41 })
+  motion.setIdleDrive({ ...neutralDrive, rate: 0 }, 0)
+  motion.setPerformance({ ...idleState, away: true }, 0.5, 0)
+  for (let step = 0; step <= 45 * 60; step++)
+    motion.advance(step / 60)
+  expect(motion.idleState.behaviour).toBe('sleep')
+  return { motion, at: 45 }
+}
+
 describe('idle activities in the controller', () => {
   it('leaves the motion unchanged without a drive, and with a drive that starts nothing', () => {
     const plain = new NaturalMotion({ seed: 41 })
@@ -573,6 +584,39 @@ describe('idle activities in the controller', () => {
       open = Math.max(open, motion.advance(45 + step / 60).blink.blinkFactor)
     expect(motion.idleState.behaviour).not.toBe('sleep')
     expect(open).toBe(1)
+  })
+
+  it('wakes with a start on a desktop wake reaction while the user is still away', () => {
+    const { motion, at } = asleep()
+    motion.react('wake', at)
+    motion.advance(at + 0.1)
+    expect(motion.idleState.behaviour).not.toBe('sleep')
+    expect(motion.bodyIntent().idle.behaviour).toMatchObject({ kind: 'sleep', releaseSeconds: 0.35 })
+  })
+
+  it('wakes gently on request while the user is still away, with her eyes on the camera as the lids open', () => {
+    const { motion, at } = asleep()
+    motion.wake(at)
+    let frame = motion.advance(at + 0.1)
+    expect(motion.idleState.behaviour).not.toBe('sleep')
+    expect(motion.bodyIntent().idle.behaviour).toMatchObject({ kind: 'sleep', releaseSeconds: 1.6 })
+    for (let step = 1; step <= 60; step++)
+      frame = motion.advance(at + 0.1 + step / 60)
+    expect(Math.hypot(frame.fixation.x, frame.fixation.y)).toBeLessThan(0.05)
+  })
+
+  it('ignores a wake request while she is awake', () => {
+    const plain = new NaturalMotion({ seed: 41 })
+    const woken = new NaturalMotion({ seed: 41 })
+    for (const motion of [plain, woken]) {
+      motion.setIdleDrive(neutralDrive, 0)
+      motion.setPerformance(idleState, 0.5, 0)
+    }
+    for (let frame = 1; frame <= 120 * 60; frame++) {
+      if (frame % 600 === 0)
+        woken.wake(frame / 60)
+      expect(woken.advance(frame / 60)).toEqual(plain.advance(frame / 60))
+    }
   })
 
   it('yawns with an open mouth in silence, and keeps the mouth with speech while she talks', () => {

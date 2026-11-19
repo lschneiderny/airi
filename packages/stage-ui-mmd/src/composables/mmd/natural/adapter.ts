@@ -185,6 +185,16 @@ export class MMDNaturalAdapter {
     this.natural.poke(region, point.x, point.y, this.time)
   }
 
+  /** Ends a sleep with the gentle wake at the next step; ignored while she is awake. */
+  wake(): void {
+    this.natural.wake(this.time)
+  }
+
+  /** Starts a desktop reaction; `wake` also rouses her from sleep with a start. */
+  react(reaction: 'wake' | 'screen-change'): void {
+    this.natural.react(reaction, this.time)
+  }
+
   setPet(point: { x: number, y: number } | null): void {
     this.natural.setPet(point, this.time)
   }

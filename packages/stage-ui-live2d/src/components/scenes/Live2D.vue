@@ -282,6 +282,10 @@ defineExpose({
   addMood: (dose: MoodDose) => live2dModelRef.value?.addMood(dose),
   /** Natural only: performs the mind's reaction to a touch this scene reported. */
   reactToTouch: (intent: TouchReactionIntent) => live2dModelRef.value?.reactToTouch(intent),
+  /** Natural only: ends a sleep with the gentle wake; ignored while she is awake. */
+  wakeFromSleep: () => live2dModelRef.value?.wakeFromSleep(),
+  /** Natural only: a brief reaction to the desktop; `wake` also rouses her from sleep with a start. */
+  reactToDesktop: (reaction: 'wake' | 'screen-change') => live2dModelRef.value?.reactToDesktop(reaction),
   setFaceBaseline: (baseline: FaceBaseline) => live2dModelRef.value?.setFaceBaseline(baseline),
   setIdleDrive: (drive: NaturalIdleDrive | null) => live2dModelRef.value?.setIdleDrive(drive),
   idleCue: (kind: IdleCueKind) => live2dModelRef.value?.idleCue(kind),

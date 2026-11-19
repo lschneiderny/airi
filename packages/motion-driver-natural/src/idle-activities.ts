@@ -109,6 +109,8 @@ export interface IdleStepInput {
   interrupt: boolean
   /** A touch or a desktop wake: the only interruptions that wake her from sleep before the user is back. */
   rouse: boolean
+  /** Ends a sleep through the gentle wake, even while the user is still away; ignored while she is awake. */
+  wake: boolean
   /** Eased screen inwardness, -1..1; the lean toward the screen follows its sign. */
   placement: number
   /** Where the screen content is, in normalized eye space. */
@@ -467,8 +469,8 @@ export class NaturalIdleActivities {
       const interrupted = current.kind === 'sleep' ? input.rouse : input.interrupt
       if (drive === null || claimed || interrupted)
         this.release(current, at, current.kind === 'sleep' && interrupted ? startledWakeSeconds : interruptSeconds, gaze)
-      else if (current.kind === 'sleep' && (current.requested ? at >= current.end : !input.away))
-        this.wake(current, at, gaze)
+      else if (current.kind === 'sleep' && (input.wake || (current.requested ? at >= current.end : !input.away)))
+        this.wake(current, at, gaze, input.wake)
       else if (current.kind === 'about-to-speak' && at - current.start >= aboutToSpeakMaxSeconds)
         this.release(current, at, 0.6, gaze)
       else if (at >= current.end)
@@ -693,8 +695,11 @@ export class NaturalIdleActivities {
     this.restUntil = at + rest.min + (rest.max - rest.min) * this.random()
   }
 
-  private wake(clip: Clip, at: number, gaze: NaturalGazeLayer) {
+  private wake(clip: Clip, at: number, gaze: NaturalGazeLayer, asked: boolean) {
     const slept = at - clip.start
+    // Woken on request before the user is back, she takes a fresh while to fall asleep again.
+    if (asked)
+      this.awaySince = null
     clip.releasedAt = at
     clip.releaseSeconds = wakeSeconds
     this.released(clip)
