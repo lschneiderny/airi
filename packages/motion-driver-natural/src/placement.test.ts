@@ -125,7 +125,7 @@ describe('natural placement controller', () => {
 
   it('activates the screen point only for watching or screen attention and uses it for screen changes', () => {
     const motion = new NaturalMotion({ seed: 41, home: 'desk' })
-    const state = { mode: 'idle', attention: 'camera', away: false, reactSeq: 0, reactKind: 'none' } as const
+    const state = { mode: 'idle', attention: 'camera', away: false } as const
     motion.setPlacement(1, 0)
     motion.setPerformance(state, 0.5, 0)
     motion.advance(30)
@@ -136,7 +136,8 @@ describe('natural placement controller', () => {
     motion.setPerformance({ ...state, mode: 'talking', attention: 'screen' }, 0.5, 30 + dt)
     motion.advance(30 + 2 * dt)
     expect(motion).toHaveProperty('gaze.screenPointActive', true)
-    motion.setPerformance({ ...state, mode: 'listening', reactSeq: 1, reactKind: 'screen-change' }, 0.5, 30 + 2 * dt)
+    motion.setPerformance({ ...state, mode: 'listening' }, 0.5, 30 + 2 * dt)
+    motion.react('screen-change', 30 + 2 * dt)
     const frame = motion.advance(30.2)
     expect(motion).toHaveProperty('gaze.screenPointActive', false)
     expect(frame.fixation.x).toBeCloseTo(0.3, 5)

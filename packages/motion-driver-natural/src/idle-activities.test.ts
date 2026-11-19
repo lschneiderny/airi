@@ -11,7 +11,7 @@ import { createRandomStream } from './random'
 const dt = 1 / 120
 const neutralDrive: NaturalIdleDrive = { energy: 0, valence: 0, tension: 0, sleepiness: 0, solitude: 0, music: false, allowSleep: true, rate: 1 }
 const idleInput: IdleStepInput = { mode: 'idle', away: false, blocked: false, interrupt: false, rouse: false, wake: false, placement: 0, screenPoint: { x: 0, y: -0.18 } }
-const idleState = { mode: 'idle', attention: 'camera', away: false, reactSeq: 0, reactKind: 'none' } as const
+const idleState = { mode: 'idle', attention: 'camera', away: false } as const
 
 function layer(seed = 7, drive: NaturalIdleDrive | null = neutralDrive) {
   const idle = new NaturalIdleActivities(createRandomStream(seed))
@@ -334,7 +334,7 @@ describe('idle activity layer', () => {
     expect(idle.behaviour).toBeNull()
   })
 
-  it('falls asleep while the user is away and wakes when they return', () => {
+  it('falls asleep while the user is away and wakes when asked', () => {
     const { idle, run, now } = layer()
     const away = { ...idleInput, away: true }
     run(31, away, () => idle.behaviour === 'sleep')
@@ -348,7 +348,10 @@ describe('idle activity layer', () => {
     // Sleep lasts as long as the absence; a busy screen does not wake her.
     run(now() + 600, { ...away, interrupt: true })
     expect(idle.behaviour).toBe('sleep')
-    const wokeAt = run(now() + dt, idleInput)
+    // The user's return alone does not end it; the wake input does.
+    run(now() + 1, idleInput)
+    expect(idle.behaviour).toBe('sleep')
+    const wokeAt = run(now() + dt, { ...idleInput, wake: true })
     expect(idle.behaviour).toBeNull()
     run(wokeAt + 1.7, { ...idleInput, blocked: true })
     expect(idle.output.lidClose).toBe(0)
@@ -374,7 +377,7 @@ describe('idle activity layer', () => {
       run(31, away, () => idle.behaviour === 'sleep')
       run(now() + 130, away)
       expect(idle.settled, `seed ${seed}`).toBe(true)
-      const wokeAt = run(now() + dt, idleInput)
+      const wokeAt = run(now() + dt, { ...idleInput, wake: true })
       run(wokeAt + 4, idleInput, () => idle.behaviour !== null)
       if (idle.behaviour)
         seen.add(idle.behaviour)
@@ -390,7 +393,7 @@ describe('idle activity layer', () => {
       run(31, away, () => idle.behaviour === 'sleep')
       run(now() + 130, away)
       const watching = { ...idleInput, mode: 'watching' as const }
-      const wokeAt = run(now() + dt, watching)
+      const wokeAt = run(now() + dt, { ...watching, wake: true })
       expect(idle.settled, `seed ${seed}`).toBe(false)
       run(wokeAt + 4, watching, () => idle.behaviour !== null)
       if (idle.behaviour)
@@ -568,7 +571,7 @@ describe('idle activities in the controller', () => {
     expect(motion.idleState.seq).toBe(Math.ceil(events.length / 2))
   })
 
-  it('closes her eyes while the user is away and opens them when they are back', () => {
+  it('closes her eyes while the user is away and opens them when she is woken', () => {
     const motion = new NaturalMotion({ seed: 41 })
     motion.setIdleDrive({ ...neutralDrive, rate: 0 }, 0)
     motion.setPerformance({ ...idleState, away: true }, 0.5, 0)
@@ -579,6 +582,7 @@ describe('idle activities in the controller', () => {
     expect(frame.blink.blinkFactor).toBeLessThan(1e-6)
     expect(frame.pose.headY).toBeLessThan(-0.2)
     motion.setPerformance(idleState, 0.5, 45)
+    motion.wake(45)
     let open = 0
     for (let step = 1; step <= 4 * 60; step++)
       open = Math.max(open, motion.advance(45 + step / 60).blink.blinkFactor)

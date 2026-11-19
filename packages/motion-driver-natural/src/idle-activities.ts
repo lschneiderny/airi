@@ -17,7 +17,7 @@ export function isIdleBodyKind(kind: IdleBehaviourKind): kind is IdleBodyKind {
   return (IDLE_BODY_KINDS as readonly IdleBehaviourKind[]).includes(kind)
 }
 
-/** Something she does on her own while nobody asks anything of her. `sleep` lasts as long as the user is away. */
+/** Something she does on her own while nobody asks anything of her. `sleep` lasts until a `wake` or `rouse` input ends it. */
 export type IdleActivityKind = 'stretch' | 'yawn' | 'look-around' | 'check-in' | 'peer' | 'zone-out' | 'nod-off' | 'sway' | 'sleep' | IdleBodyKind
 
 /** Body language the host requests around a reach-out: the moment before she may speak, and letting the thought go. */
@@ -365,8 +365,8 @@ export function idleEnergyOffset(drive: NaturalIdleDrive | null): number {
  *   the next can start, and each kind has its own cooldown.
  * - An activity yields at once to anything she must answer: speech, thinking, listening, a poke, a pet, an emotion,
  *   a cue gesture, a cursor she noticed. It fades out over 0.4 s and releases the gaze.
- * - While the user is away and the drive allows it, she falls asleep after 12 to 30 s of quiet and wakes when the user is
- *   back; a long sleep is often followed by a stretch or a yawn.
+ * - While the user is away and the drive allows it, she falls asleep after 12 to 30 s of quiet. She wakes when the
+ *   `wake` input asks, or with a start on `rouse`; a long sleep is often followed by a stretch or a yawn.
  * - Every random draw happens when a behaviour starts or ends, on this layer's own stream.
  *
  * Time is seconds of active motion. Call `step` once per grid step, then read `output`.
@@ -469,7 +469,7 @@ export class NaturalIdleActivities {
       const interrupted = current.kind === 'sleep' ? input.rouse : input.interrupt
       if (drive === null || claimed || interrupted)
         this.release(current, at, current.kind === 'sleep' && interrupted ? startledWakeSeconds : interruptSeconds, gaze)
-      else if (current.kind === 'sleep' && (input.wake || (current.requested ? at >= current.end : !input.away)))
+      else if (current.kind === 'sleep' && (input.wake || (current.requested && at >= current.end)))
         this.wake(current, at, gaze, input.wake)
       else if (current.kind === 'about-to-speak' && at - current.start >= aboutToSpeakMaxSeconds)
         this.release(current, at, 0.6, gaze)

@@ -67,7 +67,7 @@ const props = withDefaults(defineProps<{
   chatActivity?: NaturalChatActivity
 }>(), {
   presence: () => presenceBubbleIdle,
-  performance: () => ({ mode: 'idle', attention: 'camera', away: false, reactSeq: 0, reactKind: 'none' }),
+  performance: () => ({ mode: 'idle', attention: 'camera', away: false }),
   naturalEnergy: undefined,
   performanceSettings: () => defaultExpressionPerformanceSettings,
   paused: false,

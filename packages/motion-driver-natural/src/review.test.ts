@@ -7,7 +7,7 @@ import { NaturalMotion } from './natural-motion'
 import { postureHomes } from './posture'
 import { neutralReviewGains } from './review'
 
-const idleState = { mode: 'idle', attention: 'camera', away: false, reactSeq: 0, reactKind: 'none' } as const
+const idleState = { mode: 'idle', attention: 'camera', away: false } as const
 const neutralDrive: NaturalIdleDrive = { energy: 0, valence: 0, tension: 0, sleepiness: 0, solitude: 0, music: false, allowSleep: true, rate: 0 }
 
 function controller(seed = 41) {

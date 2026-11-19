@@ -152,7 +152,7 @@ const props = withDefaults(defineProps<{
   interactionSeq?: number
 }>(), {
   paused: false,
-  performance: () => ({ mode: 'idle', attention: 'camera', away: false, reactSeq: 0, reactKind: 'none' }),
+  performance: () => ({ mode: 'idle', attention: 'camera', away: false }),
   naturalEnergy: undefined,
   performanceSettings: () => defaultExpressionPerformanceSettings,
   mouthOpenSize: 0,

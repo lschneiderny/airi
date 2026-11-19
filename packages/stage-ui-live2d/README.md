@@ -73,7 +73,7 @@ The controller and its pure layers live in `packages/motion-driver-natural`, sha
 - Touch reacts when the user pokes the model or pets its head with the cursor; see Touch below.
 - Energy scales posture amplitude, posture shift rate, and gaze target choice from the performance state and the user's Energy setting.
 - Screen-aware attention uses the horizontal center of the bottom layer of displays as its placement reference. It eases a small resting head turn toward that reference and fades the turn while cursor attention is engaged. Peripheral and aside glances favor the screen side near an edge. During screen attention and watching mode, desk fixations and screen-change glances use an inward screen point.
-- Idle activities make her do things on her own while nobody asks anything of her: stretch, yawn, look around, check on the user, lean in to watch the screen, zone out, nod off, and sway to music. While the user is away she falls asleep with closed eyes, her head nodding slowly, and wakes when they return. Two cues frame a reach-out: a lifted look before she may speak, and letting it go when she stays silent. See Idle activities below.
+- Idle activities make her do things on her own while nobody asks anything of her: stretch, yawn, look around, check on the user, lean in to watch the screen, zone out, nod off, and sway to music. While the user is away she falls asleep with closed eyes, her head nodding slowly, and wakes when the stage asks her to. Two cues frame a reach-out: a lifted look before she may speak, and letting it go when she stays silent. See Idle activities below.
 - While the chat is visible, typing can draw periodic chat fixations with a partial head follow. A typed send triggers a delayed reading glance sized by word count, and opening the chat triggers a brief glance. When talking starts, active and pending chat attention ends at once, so replies keep gaze on the camera. The first chat input records send and unfold counters as a baseline, so its prior events don't trigger glances. Chat text is not sent to Natural.
 
 Screen-aware attention is controlled by the `screenAwareness` Natural setting, enabled by default. The setting appears only for Natural and gates both placement and chat attention. Turning it off restores the no-signal behavior. The screen point currently applies to both screen attention and watching mode; Luke may revisit that choice.
@@ -146,7 +146,7 @@ The stage resolves a `PerformanceState` from `@proj-airi/stage-shared/performanc
 Its mode is `talking`, `listening`, `thinking`, `watching`, or `idle`.
 Each mode has its own posture amplitude, shift rate, and camera-fixation probability, and Natural cross-fades between them, so a mode change never makes the pose jump.
 While the user is away from the desktop, Natural settles to smaller and less frequent movements.
-A wake (screen unlock or resume) lifts the head slightly and glances at the camera. A sharp screen change glances at the desk.
+The stage hands the resolver's presence and screen-change events to the character mind, and the scene performs its posture intents under Natural through two exposed methods: `reactToDesktop(reaction)` (a desktop `wake` lifts the head slightly, glances at the camera, and rouses her from sleep with a start; a `screen-change` glances at the desk) and `wakeFromSleep()` (the gentle wake when the user returns; awake, she ignores it).
 
 ### Energy
 

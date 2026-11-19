@@ -187,7 +187,7 @@ const props = withDefaults(defineProps<{
   screenAmbientLightMode: ambientLightDefaults.mode,
   screenAmbientLightStrength: ambientLightDefaults.strength,
   screenAmbientLightSquint: ambientLightDefaults.squint,
-  performance: () => ({ mode: 'idle', attention: 'camera', away: false, reactSeq: 0, reactKind: 'none' }),
+  performance: () => ({ mode: 'idle', attention: 'camera', away: false }),
   naturalEnergy: 0.5,
   naturalAutoBlink: true,
   performanceSettings: () => defaultExpressionPerformanceSettings,

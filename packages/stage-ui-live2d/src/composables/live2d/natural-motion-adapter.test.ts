@@ -86,7 +86,7 @@ function fixture({ omit = '', fixed = '', physics, profile: editProfile, restore
     manualActive: false,
     springActive: false,
     exclusive: false,
-    performance: { mode: 'idle', attention: 'camera', away: false, reactSeq: 0, reactKind: 'none' } as PerformanceState,
+    performance: { mode: 'idle', attention: 'camera', away: false } as PerformanceState,
     energy: 0.5,
     voice: { speaking: false, level: 0, lipSyncOwnsMouth: false },
     autoBlink: true,

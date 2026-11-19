@@ -86,7 +86,7 @@ function simulate(seed: number): LivelinessTrace {
 
 const talkingSeconds = naturalTalkingGate.scoredSeconds
 const talkingWarmUpSeconds = naturalTalkingGate.warmUpSeconds
-const idleState: PerformanceState = { mode: 'idle', attention: 'camera', away: false, reactSeq: 0, reactKind: 'none' }
+const idleState: PerformanceState = { mode: 'idle', attention: 'camera', away: false }
 
 /** Head-only desk trace in reference units; `talking` drives the talking state and the syllable fixture after warm-up. */
 function simulateVoice(seed: number, talking: boolean) {

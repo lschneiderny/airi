@@ -33,7 +33,7 @@ export class Motion3dCueDriver {
   debugGoal: MMDStanceWorld['debugGoal'] = null
   goalCancelled = false
   private sequence = 0
-  private activity: PerformanceState = { mode: 'idle', attention: 'camera', away: false, reactSeq: 0, reactKind: 'none' }
+  private activity: PerformanceState = { mode: 'idle', attention: 'camera', away: false }
   private speech: { cue: Extract<Motion3dCue, { kind: 'voice' }>, start: number, peak: number } | null = null
   private currentVoice: NaturalMotionVoice = { speaking: false, speechActiveOrRecent: false, level: 0 }
 

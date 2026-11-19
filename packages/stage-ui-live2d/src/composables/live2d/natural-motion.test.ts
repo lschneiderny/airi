@@ -17,7 +17,7 @@ import * as random from '@proj-airi/motion-driver-natural/random'
 
 import { Emotion } from '../../constants/emotions'
 
-const idle: PerformanceState = { mode: 'idle', attention: 'camera', away: false, reactSeq: 0, reactKind: 'none' }
+const idle: PerformanceState = { mode: 'idle', attention: 'camera', away: false }
 const headAxes = ['headX', 'headY', 'headZ'] as const
 
 it.each([
@@ -98,12 +98,12 @@ it.each([
   expect(moodBodyPeak).toBeGreaterThan(0)
 })
 
-it.each(['wake', 'screen-change'] as const)('starts the fixed reacting overlay for desktop %s', (reactKind) => {
+it.each(['wake', 'screen-change'] as const)('starts the fixed reacting overlay for desktop %s', (reaction) => {
   const react = vi.spyOn(NaturalPerformanceEnergy.prototype, 'react')
   try {
     const motion = new NaturalMotion({ seed: 41 })
     motion.setPerformance(idle, 0.5, 0)
-    motion.setPerformance({ ...idle, reactKind, reactSeq: 1 }, 0.5, 0)
+    motion.react(reaction, 0)
     motion.advance(2 / 120)
     expect(react).toHaveBeenCalledWith(expect.any(Number))
   }
@@ -368,15 +368,13 @@ describe('natural motion', () => {
     expect(largest).toBeLessThan(0.1)
   })
 
-  it('reacts once per reactSeq change after the first state', () => {
+  it('lifts the head and glances at the camera on a desktop wake reaction', () => {
     const woken = new NaturalMotion({ seed: 53 })
     const control = new NaturalMotion({ seed: 53 })
-    // A reaction that predates the controller is stale, so the first state only records the sequence.
-    woken.setPerformance({ ...idle, reactSeq: 4, reactKind: 'wake' }, 0.5, 0)
-    control.setPerformance({ ...idle, reactSeq: 4, reactKind: 'wake' }, 0.5, 0)
+    woken.setPerformance(idle, 0.5, 0)
+    control.setPerformance(idle, 0.5, 0)
     expect(woken.advance(3)).toEqual(control.advance(3))
-    woken.setPerformance({ ...idle, reactSeq: 5, reactKind: 'wake' }, 0.5, 3)
-    woken.setPerformance({ ...idle, reactSeq: 5, reactKind: 'wake' }, 0.5, 3.1)
+    woken.react('wake', 3)
     let lift = 0
     for (let frame = 3 * 60 + 1; frame <= 4 * 60; frame++)
       lift = Math.max(lift, woken.advance(frame / 60).pose.headY - control.advance(frame / 60).pose.headY)
@@ -1529,7 +1527,7 @@ describe('reacting overlay', () => {
   })
 
   it('still applies the fixed overlay for a desktop reaction', () => {
-    const woke = peaks(motion => motion.setPerformance({ ...idle, reactSeq: 1, reactKind: 'wake' }, 0.5, 0))
+    const woke = peaks(motion => motion.react('wake', 0))
     expect(woke.amplitude).toBeGreaterThan(rest.amplitude + 0.2)
     expect(woke.shiftRate).toBeGreaterThan(rest.shiftRate + 0.3)
   })
