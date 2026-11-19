@@ -108,6 +108,7 @@ Every repository reads and writes through a mount of `storage` (`packages/stage-
 | `useSettingsControlsIsland` (`packages/stage-ui/src/stores/settings/controls-island.ts`) | `settings/allow-visible-on-all-workspaces`, `settings/always-on-top`, `settings/controls-island/icon-size` | plain | any window | yes, through `useSettings` |
 | `useSettingsDeveloper` (`packages/stage-ui/src/stores/settings/developer.ts`) | `settings/developer/inspect-updater-diagnostics`, `settings/developer/show-tool-payloads-as-json` | plain | any window | yes, through `useSettings` |
 | `useSettingsTheme` (`packages/stage-ui/src/stores/settings/theme.ts`) | `settings/theme/colors/*` | plain | any window | yes, through `useSettings` |
+| `useTheme` (`packages/ui/src/composables/use-theme.ts`) | `vueuse-color-scheme` | plain | any window | no |
 | `useSettingsSpine` (`packages/stage-ui/src/stores/settings/spine.ts`) | per model: `settings/spine/premultiplied-alpha`, `default-mix`, `idle-enabled`; global: `settings/spine/max-fps`, `render-scale` | plain | any window | yes, through `useSettings` |
 | `useTachie` (`packages/stage-ui-tachie/src/stores/tachie.ts`) | per model: `settings/tachie/position`, `scale`, `shadow-enabled`; global: `settings/tachie/render-scale` | plain | any window | yes, through `useSettings` |
 | `useSettingsAudioDevice` (`packages/stage-ui/src/stores/settings/audio-device.ts`) | `settings/audio/input*` | plain | any window | yes |
@@ -142,7 +143,6 @@ Every repository reads and writes through a mount of `storage` (`packages/stage-
 
 | Store or component | Keys | Tier | Writer | Registered |
 | --- | --- | --- | --- | --- |
-| `useLanguage` (`apps/stage-tamagotchi/src/renderer/composables/use-language.ts`) | `settings/language`, shared with `useSettingsGeneral` | plain | any window | yes, through the shared key |
 | `useDanmakuFeedSettings` (`packages/stage-ui/src/composables/use-danmaku-feed-settings.ts`) | `chat-window/danmaku/*` | plain | any window | no |
 | `apps/stage-tamagotchi/src/renderer/pages/chat-floating.vue` | `chat-window/danmaku/composer-folded` | plain | any window | no |
 | `useControlsIslandStore` (`apps/stage-tamagotchi/src/renderer/stores/controls-island.ts`) | `controls-island/fade-on-hover-enabled`, `preferences/dont-show-it-again/notice/fade-on-hover` | plain | any window | no |
@@ -217,7 +217,6 @@ This section states the design that refactors move toward. It does not describe 
 | Synced stores that persist plain refs as replicated state | Rule 3 |
 | The stage-layouts `useBackgroundStore` sharing the default localforage database | Rule 1, or deletion if the desktop app keeps not rendering it |
 | The unstorage `outbox` mount with no reader or writer | Rule 1, or deletion |
-| `useLanguage` and `useSettingsGeneral` both own `settings/language` | Rule 6 |
 | The gate's inner state as the only tier 2 member | Rule 5 moves her own pacing memory into the per-card record, while the floor and hourly-cap state stays here, per user; the extracted conversation threads stay leader-only personal content, and a thread that repeats a held title is dropped before it is stored |
 
 ## Known gaps
@@ -240,7 +239,6 @@ These are observations, not fixes. Each needs either a registration, a move to t
 - Synced stores that persist plain refs as replicated state (`useAiriCardStore`, `useConsciousnessStore`, `useHearingStore`, `useSpeechStore`, `useProviderConfigStore`, `useVisionStore`, and `useArtistryStore`) write storage from every window that receives a committed snapshot. Tier 1 forbids this for settings documents. These stores predate the tiers and are upstream code.
 - The stage-layouts `useBackgroundStore` (`packages/stage-layouts/src/stores/background.ts`) shares the `device` mount with `useDisplayModelsStore` and the stage-ui `useBackgroundStore`, and `useMMD` opens the same database through its own unstorage instance. The records are separated only by key prefix. The desktop app does not render the stage-layouts background components that use it.
 - The unstorage `outbox` mount (IndexedDB `airi-sync-queue`) in `storage` has no reader or writer in the client.
-- `useLanguage` and `useSettingsGeneral` both own `settings/language`.
 - `useSettingsAnalytics` moved from `settings/analytics/enabled` to `settings/analytics/opted-in`. The old key stays in storage with no owner, so "Delete all data" does not remove it.
 - The analytics opt-in has two stored copies: `settings/analytics/opted-in` in the renderer and `errorReportingEnabled` in the main process's app options file. "Delete all data" resets the first, and the second follows only through the renderer's mirror.
 - Onboarding step records, the active card id, the consciousness request settings, and the saved tool cards are written with direct `localStorage` calls from synced actions. The leader is the only writer, but none of them is a tier 1 document or carries the tier 2 leadership token.

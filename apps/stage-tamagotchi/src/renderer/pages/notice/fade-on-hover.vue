@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useElectronEventaContext, useElectronEventaInvoke } from '@proj-airi/electron-vueuse'
-import { Button, Checkbox, TransitionVertical } from '@proj-airi/ui'
-import { refDebounced, useDark, useMouseInElement } from '@vueuse/core'
+import { Button, Checkbox, TransitionVertical, useTheme } from '@proj-airi/ui'
+import { refDebounced, useMouseInElement } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -30,7 +30,7 @@ const { isOutside } = useMouseInElement(descriptionContainerRef)
 const descriptionOpenImmediate = computed(() => !isOutside.value)
 const descriptionOpen = refDebounced(descriptionOpenImmediate, 80)
 
-const isDark = useDark({ disableTransition: false })
+const { isDark } = useTheme()
 
 const requestId = ref<string | null>(null)
 const waitingForRequest = computed(() => !requestId.value)
