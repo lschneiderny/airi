@@ -3,7 +3,7 @@ import type { MotionQaRunScenarioResult, MotionQaState, MotionScenario, Scenario
 import type { PerformanceInputs, PerformanceState } from '@proj-airi/stage-shared/performance-state'
 
 import type { EmotionPayload } from '../../constants/emotions'
-import type { MotionQaChatHooks } from './use-motion-qa-events'
+import type { MotionQaChatHooks, MotionQaIdleHook } from './use-motion-qa-events'
 
 import { defineInvokeHandler } from '@moeru/eventa'
 import { errorMessageFrom } from '@moeru/std'
@@ -52,6 +52,8 @@ export interface MotionQaBridgeOptions {
   voicing: () => boolean
   /** The stage's character mind; the event log records each of its steps. */
   mind: Pick<CharacterMind, 'onStep'>
+  /** The stage's idle reports from either scene; the event log records each one. */
+  onIdle: MotionQaIdleHook
   /** Shared scene lifecycle: true after the selected renderer reports mounted. */
   modelLoaded?: () => boolean
   prepareModelImport?: () => void
