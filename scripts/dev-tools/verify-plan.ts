@@ -59,43 +59,100 @@ export function advanceLastPass(record: LastVerifyPass | null, context: VerifyCo
   }
 }
 
+/** QA that `pnpm verify --gate` runs itself after its steps pass, when the changed paths need it. */
+export type GateQa = 'smoke' | 'model-tests' | 'motion-affected'
+
 /**
- * Checks that verify does not run, keyed by the changed paths that need them, so an agent learns them from the
- * verify output instead of reading the policy. Keep in step with "Checks by change type" in
- * `docs/ai/context/testing.md`; rows that need judgment, such as "a visible change", stay only there.
+ * Checks beyond the three steps, keyed by the changed paths that need them, so an agent learns them from the verify
+ * output instead of reading the policy. `gateRuns` names the QA the gate runs for a rule; when all of it is met, the
+ * rule needs nothing more. Keep in step with "Checks by change type" in `docs/ai/context/testing.md`; rows that need
+ * judgment, such as "a visible change", stay only there.
  */
-const followUpRules: readonly { paths: RegExp, reason: string, checks: string }[] = [
+const followUpRules: readonly { paths: RegExp, reason: string, checks: string, gateRuns: readonly GateQa[] }[] = [
   {
     paths: /^(?:apps\/stage-tamagotchi|packages\/(?:stage-ui[^/]*|stage-shared|stage-pages|stage-layouts))\/src\//,
     reason: 'app runtime changed',
-    checks: 'before landing, pnpm qa:display run -- pnpm qa:smoke',
+    checks: 'pnpm qa:smoke, which pnpm verify --gate runs',
+    gateRuns: ['smoke'],
   },
   {
     paths: /^packages\/(?:(?:motion-driver-natural|motion-driver-magic|model-driver-magic-live2d)\/src|stage-ui-live2d\/src\/composables\/live2d)\//,
     reason: 'Natural or Live2D motion changed',
-    checks: 'pnpm qa:live2d-rig, then a qa:app or airi-qa session with a Live2D model, with screenshots reviewed by eye',
+    checks: 'pnpm qa:test:model with AIRI_QA_RIG_FORBOOTH set, which pnpm verify --gate runs',
+    gateRuns: ['model-tests'],
   },
   {
     paths: /^packages\/(?:motion-driver-humanoid|stage-ui-mmd)\/src\//,
     reason: 'MMD body motion changed',
-    checks: 'pnpm qa:test:model; pnpm qa:motion3d run for each affected scenario, and pnpm qa:motion3d diff printing IDENTICAL between base and tip for each scenario the change must not move',
+    checks: 'pnpm qa:test:model and pnpm qa:motion3d affected, which pnpm verify --gate runs; unless affected prints NOT AFFECTED, pnpm qa:motion3d run for each affected scenario, and pnpm qa:motion3d diff printing IDENTICAL between base and tip for each scenario the change must not move',
+    gateRuns: ['model-tests', 'motion-affected'],
   },
   {
     paths: /^packages\/qa-tools\/src\/t2-3d\/reports\//,
     reason: 'a qa:motion3d report rule changed',
     checks: 'labelled qa:motion3d inject cases sealed before scoring, and the report version bump in its own commit',
+    gateRuns: [],
   },
 ]
 
 /** A test file changes no runtime behavior, so it alone needs no follow-up check. */
 const testFile = /\.(?:browser\.)?test\.[cm]?[jt]sx?$/
 
-/** One line per follow-up check the changed files need, in rule order. */
-export function followUpChecks(changed: ChangedFile[]): string[] {
+function matchedRules(changed: ChangedFile[]) {
   const paths = changed.map(({ path }) => path).filter(path => !testFile.test(path))
-  return followUpRules
-    .filter(rule => paths.some(path => rule.paths.test(path)))
+  return followUpRules.filter(rule => paths.some(path => rule.paths.test(path)))
+}
+
+/** One line per follow-up check the changed files still need, in rule order. A rule whose gate QA is all `met` is left out. */
+export function followUpChecks(changed: ChangedFile[], met: ReadonlySet<GateQa> = new Set()): string[] {
+  return matchedRules(changed)
+    .filter(rule => rule.gateRuns.length === 0 || rule.gateRuns.some(qa => !met.has(qa)))
     .map(rule => `${rule.checks} (${rule.reason})`)
+}
+
+/** The QA the gate runs for the changed files, in rule order, each once. */
+export function gateQaFor(changed: ChangedFile[]): GateQa[] {
+  return [...new Set(matchedRules(changed).flatMap(rule => rule.gateRuns))]
+}
+
+/**
+ * The command for one gate QA, or why it cannot run here. On Linux the smoke runs inside a `qa:display` session of its
+ * own, which `after` stops; macOS has no QA display. `motion-affected` reads commits, so it compares the merge base with
+ * HEAD.
+ */
+export function gateQaCommand(qa: GateQa, platform: NodeJS.Platform, mergeBase: string, session: string): { argv: string[], after?: string[] } | string {
+  if (qa === 'smoke') {
+    if (platform === 'linux')
+      return { argv: ['pnpm', 'qa:display', 'run', '--name', session, '--', 'pnpm', '--silent', 'qa:smoke'], after: ['pnpm', 'qa:display', 'down', '--name', session] }
+    return platform === 'darwin' ? { argv: ['pnpm', '--silent', 'qa:smoke'] } : `not run: no checked smoke on ${platform}`
+  }
+  if (qa === 'model-tests')
+    return { argv: ['pnpm', '--silent', 'qa:test:model'] }
+  return { argv: ['pnpm', '--silent', 'qa:motion3d', 'affected', mergeBase, 'HEAD'] }
+}
+
+export interface GateQaOutcome {
+  status: 'passed' | 'failed' | 'skipped'
+  /** The rule needs nothing more from this QA. */
+  met: boolean
+  detail: string
+}
+
+/** Reads a gate QA's exit code. `qa:test:model` exits 2 when no model or rig is configured; `affected` exits 1 or 2 when identity runs are still needed. */
+export function gateQaOutcome(qa: GateQa, exitCode: number): GateQaOutcome {
+  if (qa === 'motion-affected') {
+    if (exitCode === 0)
+      return { status: 'passed', met: true, detail: 'qa:motion3d affected: NOT AFFECTED, no identity runs needed' }
+    if (exitCode === 1 || exitCode === 2)
+      return { status: 'passed', met: false, detail: `qa:motion3d affected: ${exitCode === 1 ? 'AFFECTED' : 'CANNOT TELL'}, identity runs still needed` }
+    return { status: 'failed', met: false, detail: `qa:motion3d affected exited ${exitCode}` }
+  }
+  const name = qa === 'smoke' ? 'qa:smoke' : 'qa:test:model'
+  if (exitCode === 0)
+    return { status: 'passed', met: true, detail: name }
+  if (qa === 'model-tests' && exitCode === 2)
+    return { status: 'skipped', met: false, detail: `${name}: no AIRI_QA_* model or rig configured (.env.qa)` }
+  return { status: 'failed', met: false, detail: `${name} exited ${exitCode}` }
 }
 
 /**

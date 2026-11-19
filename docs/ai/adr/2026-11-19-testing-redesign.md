@@ -63,6 +63,15 @@ context, and its summary named each of up to 55 test commands.
    its output is not a terminal, it prints only its own lines and the tail of
    a failed command. `--detach` starts a run in the background and `--wait`
    blocks on one for up to 540 seconds, so waiting costs one tool call.
+6. `pnpm verify --gate` runs the QA the changed paths need once its steps
+   pass: the clean-start smoke, `pnpm qa:test:model`, and
+   `pnpm qa:motion3d affected`. Landing a branch is one command, and a rule
+   whose QA passed leaves the follow-up list.
+7. How motion, expression, and speech feel is reviewed by a person, later,
+   from a backlog that `/vault-sync` fills with the commit range, date,
+   changed paths, and scenarios to replay. It never gates landing, and agents
+   do not judge it by eye. Of the motion issues found so far, one was a
+   nitpick.
 
 ## Consequences
 
@@ -73,6 +82,8 @@ context, and its summary named each of up to 55 test commands.
   them.
 - An agent reads a failure's tail in the verify output and opens the run log
   only when the tail is not enough.
+- A feel regression can land and be found later. The backlog places it in a
+  commit range, and deterministic runs at both ends bisect it.
 - More than three heavy lanes, or rendered QA beside heavy tests, is not
   measured. If a desktop stall or memory pressure appears, measure it before
   adding coordination back, and prefer operating-system controls (a systemd

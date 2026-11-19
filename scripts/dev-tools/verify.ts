@@ -1,5 +1,5 @@
 import type { VerifyRun } from './verify-history'
-import type { VerifyArgs, VerifyStep } from './verify-plan'
+import type { GateQa, GateQaOutcome, VerifyArgs, VerifyStep } from './verify-plan'
 
 import process from 'node:process'
 
@@ -16,7 +16,7 @@ import { gatedNotice, listGatedTestFiles } from './lib/gated-tests'
 import { changedFiles, git, gitCommonDir, repoRoot, workingTreeHash } from './lib/git'
 import { appendVerifyRun, formatVerifyStats, readVerifyStats } from './verify-history'
 import { readLastPass, writeLastPass } from './verify-last-pass'
-import { advanceLastPass, defaultWaitSeconds, followUpChecks, lintAllFixable, parseVerifyArgs, planVerify, relatedTestCommand, selectVerifyScope, testPrerequisiteTurboArgs, typecheckFilters, verifyUsage } from './verify-plan'
+import { advanceLastPass, defaultWaitSeconds, followUpChecks, gateQaCommand, gateQaFor, gateQaOutcome, lintAllFixable, parseVerifyArgs, planVerify, relatedTestCommand, selectVerifyScope, testPrerequisiteTurboArgs, typecheckFilters, verifyUsage } from './verify-plan'
 import { latestRunRecord, newRunId, pruneRuns, runLogPath, runsDir, waitForRun, writeRunRecord } from './verify-runs'
 
 interface Command {
@@ -45,6 +45,12 @@ class Reporter {
     this.log(`${line}\n`)
   }
 
+  /** A line of command output that the log already holds, repeated for a reader without a terminal. */
+  quote(line: string): void {
+    console.info(line)
+    this.lines.push(line)
+  }
+
   /** Progress a terminal reader wants and an agent does not. */
   detail(line: string): void {
     if (this.tty)
@@ -56,6 +62,29 @@ class Reporter {
     if (this.logPath)
       appendFileSync(this.logPath, text)
   }
+}
+
+/**
+ * Runs one command with its output in the run log. On a terminal the output also streams; otherwise a nonzero exit
+ * prints the output's tail under `label`.
+ */
+async function runLogged(out: Reporter, label: string, command: string, args: string[], options: { cwd: string, env: NodeJS.ProcessEnv }): Promise<{ exitCode: number, output: string }> {
+  let output = ''
+  const exitCode = await run(command, args, {
+    ...options,
+    echo: out.tty,
+    onOutput: (text) => {
+      output += text
+      out.log(text)
+    },
+  })
+  if (exitCode !== 0 && !out.tty) {
+    const lines = stripVTControlCharacters(output).trimEnd().split('\n')
+    out.say(`\n${label} exited ${exitCode}${lines.length > failureTailLines ? `; its last ${failureTailLines} lines (all of it is in the full log)` : ''}:`)
+    for (const line of lines.slice(-failureTailLines))
+      out.quote(line)
+  }
+  return { exitCode, output }
 }
 
 interface StepResult {
@@ -258,7 +287,7 @@ async function verifyRun(args: VerifyArgs, root: string, cacheDir: string, histo
   const env = { ...inherited, ...compileCacheEnv(process.env, root), [pathKey]: `${join(root, 'node_modules/.bin')}${delimiter}${process.env[pathKey] ?? ''}` }
 
   out.say(`verify: merge base with ${args.base} ${base.slice(0, 9)}, tree ${tree.slice(0, 9)}`)
-  const followUps = followUpChecks(changedFiles(root, base, tree))
+  const branchChanges = changedFiles(root, base, tree)
   const results: StepResult[] = []
   const finish = (result: StepResult, history: Pick<VerifyRun, 'scopeBase' | 'mode' | 'commands' | 'files'>) => {
     results.push(result)
@@ -333,21 +362,10 @@ async function verifyRun(args: VerifyArgs, root: string, cacheDir: string, histo
       for (const item of commands) {
         out.detail(`\n[${step}] ${item.label}`)
         executed.push([process.execPath, ...item.args])
-        let output = ''
-        const onOutput = (text: string) => {
-          output += text
-          out.log(text)
-        }
-        const exitCode = await run(process.execPath, item.args, { cwd: item.packagePath ? join(root, item.packagePath) : root, env: { ...env, ...item.env }, onOutput, echo: out.tty })
+        const { exitCode, output } = await runLogged(out, `[${step}] ${item.label}`, process.execPath, item.args, { cwd: item.packagePath ? join(root, item.packagePath) : root, env: { ...env, ...item.env } })
         stepOutput += output
         if (exitCode !== 0) {
           failed = `${item.label} exited ${exitCode}`
-          if (!out.tty) {
-            const lines = stripVTControlCharacters(output).trimEnd().split('\n')
-            out.say(`\n[${step}] ${item.label} failed${lines.length > failureTailLines ? `; its last ${failureTailLines} lines (all of it is in the full log)` : ''}:`)
-            for (const line of lines.slice(-failureTailLines))
-              out.say(line)
-          }
           break
         }
       }
@@ -375,9 +393,45 @@ async function verifyRun(args: VerifyArgs, root: string, cacheDir: string, histo
     finish({ step, status: 'passed', detail: labels, durationMs }, execution)
   }
 
+  const qaResults: (GateQaOutcome & { durationMs: number })[] = []
+  const met = new Set<GateQa>()
+  if (args.gate && !results.some(result => result.status === 'failed')) {
+    for (const qa of gateQaFor(branchChanges)) {
+      const command = gateQaCommand(qa, process.platform, base, `verify-${process.pid}`)
+      if (typeof command === 'string') {
+        qaResults.push({ status: 'skipped', met: false, detail: command, durationMs: 0 })
+        continue
+      }
+      if (args.dryRun) {
+        out.say(`[qa] ${command.argv.join(' ')}`)
+        continue
+      }
+      if (qa === 'motion-affected' && git(root, ['rev-parse', 'HEAD^{tree}']) !== tree) {
+        qaResults.push({ status: 'skipped', met: false, detail: 'qa:motion3d affected: not run, it reads commits and the working tree has uncommitted changes', durationMs: 0 })
+        continue
+      }
+      out.detail(`\n[qa] ${command.argv.join(' ')}`)
+      const started = Date.now()
+      try {
+        const { exitCode } = await runLogged(out, `[qa] ${command.argv.join(' ')}`, command.argv[0], command.argv.slice(1), { cwd: root, env })
+        const outcome = gateQaOutcome(qa, exitCode)
+        if (outcome.met)
+          met.add(qa)
+        qaResults.push({ ...outcome, durationMs: Date.now() - started })
+      }
+      finally {
+        if (command.after)
+          await runLogged(out, `[qa] ${command.after.join(' ')}`, command.after[0], command.after.slice(1), { cwd: root, env })
+      }
+    }
+  }
+  const followUps = followUpChecks(branchChanges, met)
+
   out.say('\nverify summary')
   for (const result of results)
     out.say(`  ${result.step.padEnd(9)} ${result.status.padEnd(7)} ${result.durationMs ? `${(result.durationMs / 1000).toFixed(1)}s ` : ''}${result.detail}`)
+  for (const result of qaResults)
+    out.say(`  ${'qa'.padEnd(9)} ${result.status.padEnd(7)} ${result.durationMs ? `${(result.durationMs / 1000).toFixed(1)}s ` : ''}${result.detail}`)
   if (gatedTestNotice)
     out.say(gatedTestNotice)
   if (followUps.length > 0) {
@@ -385,7 +439,7 @@ async function verifyRun(args: VerifyArgs, root: string, cacheDir: string, histo
     for (const line of followUps)
       out.say(`  ${line}`)
   }
-  return results.some(result => result.status === 'failed') ? 1 : 0
+  return [...results, ...qaResults].some(result => result.status === 'failed') ? 1 : 0
 }
 
 main().then(code => process.exit(code), (error) => {

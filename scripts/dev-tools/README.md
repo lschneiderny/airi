@@ -94,7 +94,15 @@ The per-branch record lives at `<git common dir>/airi-verify/last/<encoded-branc
 
 After a pass, only that step's entry advances. Skipped and failed steps leave their entries unchanged. A pass against a different merge base starts a new record so old entries cannot narrow the other steps. Dry runs never write records. Files must remain unchanged during the step before the last-pass record is written.
 
-Use `pnpm verify --gate` before landing to check the full branch regardless of previous passes. After the summary, every run lists the checks the branch still needs that verify does not run, under `also needed, not run by verify`. The list comes from the changed non-test paths since the merge base (`followUpChecks` in `verify-plan.ts`): app runtime paths need `qa:smoke` before landing, Natural and Live2D motion packages need `qa:live2d-rig` and a Live2D session, MMD body packages need `qa:test:model` and `qa:motion3d` runs, and `qa:motion3d` report rules need labelled inject cases.
+Use `pnpm verify --gate` before landing to check the full branch regardless of previous passes. After the summary, every run lists the checks the branch still needs that verify does not run, under `also needed, not run by verify`. The list comes from the changed non-test paths since the merge base (`followUpChecks` in `verify-plan.ts`): app runtime paths need `qa:smoke`, Natural and Live2D motion packages need `qa:test:model` with the rig configured, MMD body packages need `qa:test:model` and `qa:motion3d` identity runs, and `qa:motion3d` report rules need labelled inject cases.
+
+When its steps pass, `--gate` runs the QA those paths need (`gateQaFor` and `gateQaCommand`) and shows each as a `qa` row in the summary:
+
+- **smoke**, for app runtime paths: `pnpm qa:smoke`, on Linux inside a `qa:display` session named `verify-<pid>` that it stops afterwards. A failure fails the gate. Other platforms report it skipped.
+- **model tests**, for motion paths: `pnpm qa:test:model`. A failure fails the gate; exit 2, no model or rig configured, reports it skipped.
+- **motion affected**, for MMD body paths: `pnpm qa:motion3d affected <merge base> HEAD`. NOT AFFECTED meets the rule; AFFECTED or CANNOT TELL leaves the identity runs in the follow-up list. It reads commits, so uncommitted changes skip it.
+
+A rule whose QA all passed leaves the follow-up list. `--dry-run` prints the QA commands without running them.
 
 An empty scope reports `skipped`.
 
