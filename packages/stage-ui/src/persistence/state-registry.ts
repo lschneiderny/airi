@@ -1005,6 +1005,22 @@ export const stateRegistry = defineStateRegistry([
     tier: 'plain',
     locations: [{ area: 'sessionStorage', key: 'airi:trace-source-id' }],
   },
+  {
+    id: 'retired-account-credentials',
+    owner: 'removeRetiredAccountCredentials',
+    writers: ['packages/stage-ui/src/libs/retired-account.ts'],
+    tier: 'plain',
+    // Tokens of the retired AIRI account service, which releases before the account-free fork wrote.
+    locations: [
+      { area: 'localStorage', key: 'auth/v1/token', legacy: true },
+      { area: 'localStorage', key: 'auth/v1/refresh-token', legacy: true },
+      { area: 'localStorage', key: 'auth/v1/oidc-id-token', legacy: true },
+      { area: 'localStorage', key: 'auth/v1/oidc-client-id', legacy: true },
+      { area: 'localStorage', key: 'auth/v1/oidc-token-expiry', legacy: true },
+      { area: 'localStorage', key: 'auth/v1/oidc-flow-state', legacy: true },
+      { area: 'localStorage', key: 'auth/v1/oidc-flow-params', legacy: true },
+    ],
+  },
 
   // Caches go last.
 
@@ -1023,6 +1039,8 @@ export const stateRegistry = defineStateRegistry([
       'packages/stage-ui/src/workers/kokoro/worker.ts',
       'packages/stage-ui/src/workers/vad/silero-vad-model.ts',
       'packages/stage-ui/src/workers/background-removal/worker.ts',
+      // `caches.open` creates the cache when it measures or checks it.
+      'packages/stage-ui/src/libs/inference/transformers-cache.ts',
     ],
     tier: 'cache',
     locations: [{ area: 'cacheStorage', cache: 'transformers-cache' }],

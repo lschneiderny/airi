@@ -15,7 +15,7 @@ describe('planVerify', () => {
     const plan = planVerify([file('packages/stage-ui/src/a.ts'), file('docs/readme.md')], packages)
     expect(plan.typecheck).toEqual({ kind: 'affected' })
     expect(plan.lintFiles).toEqual(['packages/stage-ui/src/a.ts', 'docs/readme.md'])
-    expect(plan.testFiles).toEqual(['packages/stage-ui/src/a.ts'])
+    expect(plan.testFiles).toEqual(['packages/stage-ui/src/a.ts', 'scripts/dev-tools/storage-writes.test.ts'])
     expect(plan.testPackagePaths).toEqual(['packages/stage-ui'])
   })
 
@@ -69,6 +69,12 @@ describe('planVerify', () => {
     expect(plan.typecheck).toEqual({ kind: 'none' })
     expect(plan.typecheckPackagePaths).toEqual([])
     expect(plan.lintFiles).toEqual(['packages/stage-ui/README.md', 'packages/cpu-slots/docs/notes.mdx'])
+  })
+
+  it('runs the storage write scan when a renderer source changes', () => {
+    expect(planVerify([file('apps/stage-tamagotchi/src/renderer/pages/chat.vue')], packages).testFiles)
+      .toEqual(['apps/stage-tamagotchi/src/renderer/pages/chat.vue', 'scripts/dev-tools/storage-writes.test.ts'])
+    expect(planVerify([file('apps/stage-tamagotchi/src/main/index.ts')], packages).testFiles).toEqual(['apps/stage-tamagotchi/src/main/index.ts'])
   })
 
   it('runs the policy doc guard when a context doc changes', () => {
