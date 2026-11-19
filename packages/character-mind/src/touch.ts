@@ -44,7 +44,7 @@ export function answerTouch(state: MindState, stimulus: Stimulus<'touch'>, cause
         // The touch line takes the line slot, so the gate skips until it settles. A reach-out on its way keeps the
         // slot; chat refuses the touch line then.
         if (voice.line === null || voice.line.kind === 'reaction')
-          voice = { ...voice, line: { turnId, kind: 'reaction', before: null } }
+          voice = { ...voice, line: { turnId, kind: 'reaction', before: null, speakBy: null } }
       }
     }
   }

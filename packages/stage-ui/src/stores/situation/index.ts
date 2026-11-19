@@ -833,6 +833,13 @@ export const useSituationStore = defineStore('situation', () => {
       })
     }
 
+    // NOTICE:
+    // The mind can decide widget lines, but this store does not send it widget requests yet.
+    // The character mind's `voice-request` landed before the store's `requestVoice` route.
+    // .omo/plans/character-mind-voice.md, work items B1 and B2.
+    // Remove when B2 routes widget lines through `requestVoice`.
+    if (line.kind === 'widget')
+      return Promise.resolve('failed')
     if (speaking || controls.unpromptedPending())
       return Promise.resolve('refused')
     const { topicKey, reason } = line
