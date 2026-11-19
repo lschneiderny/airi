@@ -68,4 +68,4 @@ Naturalness remains Luke's visual call. Never retune a gate, scorer constant, or
 
 Do not commit run output or rig, model, or core assets. `qa:bench` and `qa:stage measure` wait up to 30 minutes for a quiet host before they measure, and a measurement needs an undisturbed desktop.
 
-For details, read [`packages/qa-tools/README.md`](../../../packages/qa-tools/README.md).
+For details, read [`packages/qa-tools/README.md`](../../../packages/qa-tools/README.md) for runs and diffs, and [`packages/lab-tools/README.md`](../../../packages/lab-tools/README.md) for the gate, reports, clips, and the matrix.
