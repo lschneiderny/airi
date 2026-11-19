@@ -27,7 +27,7 @@ async function guarded(body: () => Promise<CallToolResult>): Promise<CallToolRes
  * The AIRI QA MCP server: a few verbs over one disposable app session, so an agent can check its own change in
  * the running app. Every tool except `airi_start` needs a running session.
  */
-export type QaSession = Pick<AppSession, 'start' | 'state' | 'send' | 'events' | 'evaluateVoice' | 'importModel' | 'screenshot' | 'errors' | 'evaluate' | 'stop'>
+export type QaSession = Pick<AppSession, 'start' | 'state' | 'send' | 'events' | 'evaluateVoice' | 'widgetReaction' | 'importModel' | 'screenshot' | 'errors' | 'evaluate' | 'stop'>
 
 export function createAiriQaServer(session: QaSession, version: string): McpServer {
   const server = new McpServer({ name: 'airi-qa', version })
@@ -64,6 +64,15 @@ export function createAiriQaServer(session: QaSession, version: string): McpServ
   server.registerTool('airi_evaluate_voice', {
     description: 'Run devtools "Evaluate now" in the leader window: one gate tick that skips the timing guards only. Returns `{ status: "evaluated", decision, memory }`, where `decision.fire` and `decision.reason` say whether she reaches out and why, or `{ status: "skipped", reason }`. A fire starts a real unprompted turn that consumes a replay entry; read its turn, speech, and mind events with airi_events.',
   }, () => guarded(async () => json(await session.evaluateVoice())))
+
+  server.registerTool('airi_widget_reaction', {
+    description: 'Post a widget reaction request on the airi-spark-notify-bridge channel from the stage window, as a widget does, and wait for the leader\'s response. The character mind holds the request until she and the user are quiet; the model may speak or decline. Returns `{ text, fallback, elapsedMs }`: `text` is the spoken reaction, or null with `fallback: true` when she declined, no mind was connected, or the turn missed its deadline. Returns `{ timedOut: true, elapsedMs }` when no response came. A spoken or declined request consumes a replay entry; `fixtures/llm/voice.json` matches the headline `QA widget ping`.',
+    inputSchema: {
+      headline: z.string().min(1),
+      note: z.string().optional(),
+      timeoutSeconds: z.number().positive().max(300).optional().describe('How long to wait for the response; default 45'),
+    },
+  }, args => guarded(async () => json(await session.widgetReaction({ headline: args.headline, note: args.note, timeoutMs: args.timeoutSeconds === undefined ? undefined : args.timeoutSeconds * 1000 }))))
 
   server.registerTool('airi_import_model', {
     description: 'Import and select another model in the running app.',

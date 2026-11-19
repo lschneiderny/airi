@@ -53,7 +53,25 @@ describe('replay scripts', () => {
     expect(script.take('hello').entry.content).toBe('<|SILENT|>')
     expect(script.take(quiet).entry.content).toMatch(/tea I left steeping\.$/)
     expect(script.take(quiet).entry.content).toBe('<|SILENT|>')
-    expect(script.take(quiet).index).toBe(3)
+    expect(script.take(quiet).index).toBe(5)
+  })
+
+  it('speaks the first QA widget ping of voice.json, declines the second, and keeps quiet moments off both', () => {
+    const source = new URL('../../fixtures/llm/voice.json', import.meta.url)
+    const script = new ReplayScript(parseScript(readFileSync(source, 'utf8'), 'voice.json'), 'voice.json')
+    const widget = '(A quiet moment. Nobody said anything. What is on your mind right now: QA widget ping)'
+    const quiet = '(A quiet moment. Nobody said anything. What is on your mind right now: tea)'
+    expect(script.take(quiet).entry.content).toMatch(/tea I left steeping\.$/)
+    expect(script.take(widget).entry.content).toMatch(/a ping!/)
+    expect(script.take(widget).entry.content).toBe('<|SILENT|>')
+    expect(script.take(widget).index).toBe(4)
+  })
+
+  it('keeps the QA widget ping entries of voice.json off a user turn whose situation names the headline', () => {
+    const source = new URL('../../fixtures/llm/voice.json', import.meta.url)
+    const script = new ReplayScript(parseScript(readFileSync(source, 'utf8'), 'voice.json'), 'voice.json')
+    const userTurn = 'Tell me a story.\n\nYou last spoke up on your own just now, about QA widget ping.'
+    expect(script.take(userTurn).index).toBe(4)
   })
 })
 

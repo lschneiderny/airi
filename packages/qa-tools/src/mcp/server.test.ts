@@ -17,6 +17,7 @@ function fakeSession(overrides: Partial<QaSession> = {}): QaSession {
     send: vi.fn(async () => ({ ok: true })),
     events: notRunning,
     evaluateVoice: notRunning,
+    widgetReaction: notRunning,
     importModel: notRunning,
     screenshot: async () => ({ path: '/run/stage-001.png', png: 'iVBORw0KGgo=' }),
     errors: () => ({ page: [] }),
@@ -38,7 +39,7 @@ describe('airi-qa MCP server', () => {
   it('registers the session verbs', async () => {
     const client = await connect(fakeSession())
     const names = (await client.listTools()).tools.map(tool => tool.name)
-    expect(names).toEqual(['airi_start', 'airi_state', 'airi_send', 'airi_events', 'airi_evaluate_voice', 'airi_import_model', 'airi_screenshot', 'airi_errors', 'airi_eval', 'airi_stop'])
+    expect(names).toEqual(['airi_start', 'airi_state', 'airi_send', 'airi_events', 'airi_evaluate_voice', 'airi_widget_reaction', 'airi_import_model', 'airi_screenshot', 'airi_errors', 'airi_eval', 'airi_stop'])
   })
 
   it('returns a session error as a tool error with its message', async () => {

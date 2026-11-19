@@ -138,6 +138,8 @@ export const MotionQaEventSchema = strictObject({
    * A step with a `voice-tick` stimulus also carries `gate` (the fire or hold reason, or `null` when the gate
    * skipped for an open line) and `category` (the fired reason category, or `null`). An unforced tick that yields no
    * intent is not recorded.
+   * Every `mind` step also carries `lines` (the kinds of its `speak` lines, for example `widget`) and `cues` (its body
+   * cues, `about-to-speak` or `let-go`), each comma-separated or `null`.
    * `idle` is one idle report of the Natural scene: `phase` (`'start'` or `'end'`) and `behaviour`.
    */
   kind: picklist(['act', 'expression', 'clip', 'tts', 'turn', 'mind', 'idle']),

@@ -70,6 +70,9 @@ const mcpDisplayName = 'mcp'
  * ready, on the classic window unless `stageHost` asks for the desktop stage. On Linux outside a QA display it starts `qa:display` session `mcp` and launches the app there, so the
  * user's desktop stays undisturbed. The app holds the live CPU lease until `stop`.
  */
+/** The answer to `AppSession.widgetReaction`: the reaction text, or `fallback` when she gave none, or no response at all. */
+export type WidgetReactionResult = { text: string | null, fallback: boolean, elapsedMs: number } | { timedOut: true, elapsedMs: number }
+
 export class AppSession {
   private live?: Live
   private starting = false
@@ -183,6 +186,32 @@ export class AppSession {
   async evaluateVoice(): Promise<unknown> {
     const live = this.require()
     return await live.bridge.call('voiceEvaluate', undefined, 30_000)
+  }
+
+  /**
+   * Posts one widget reaction request on the `airi-spark-notify-bridge` channel from a fresh channel object in the
+   * stage window, as a widget window would, and awaits the `response` addressed to it. The leader's own channel
+   * object is a different instance, so it receives the request even when the stage window is the leader. The fallback
+   * text is empty, so an empty reaction means she declined, no mind was connected, or the deadline passed.
+   */
+  async widgetReaction(options: { headline: string, note?: string, timeoutMs?: number }): Promise<WidgetReactionResult> {
+    const live = this.require()
+    const timeoutMs = options.timeoutMs ?? 45_000
+    const payload = { headline: options.headline, fallbackResponseText: '', ...(options.note !== undefined && { note: options.note }) }
+    return await live.stage.evaluate<WidgetReactionResult>(`new Promise((resolve) => {
+      const channel = new BroadcastChannel('airi-spark-notify-bridge')
+      const requestId = 'qa-' + crypto.randomUUID()
+      const fromInstanceId = 'qa-widget-' + crypto.randomUUID()
+      const startedAt = performance.now()
+      const finish = (result) => { clearTimeout(timer); channel.close(); resolve({ ...result, elapsedMs: Math.round(performance.now() - startedAt) }) }
+      const timer = setTimeout(() => finish({ timedOut: true }), ${timeoutMs})
+      channel.onmessage = ({ data }) => {
+        if (data?.type !== 'response' || data.toInstanceId !== fromInstanceId || data.requestId !== requestId)
+          return
+        finish({ text: data.reaction || null, fallback: !data.reaction })
+      }
+      channel.postMessage({ type: 'request', requestId, fromInstanceId, payload: ${JSON.stringify(payload)} })
+    })`, timeoutMs + 10_000)
   }
 
   /** Sends one chat message through the real chat path and waits for the expected events of this turn. */
