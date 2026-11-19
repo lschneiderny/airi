@@ -73,7 +73,6 @@
   "devDependencies": {
     "@electron-toolkit/preload": "catalog:",
     "@nekopaw/tempora": "catalog:",
-    "@proj-airi/cpu-slots": "workspace:^",
     "@proj-airi/electron-screen-capture": "workspace:^",
     "@proj-airi/i18n": "workspace:^",
     "@sentry/bundler-plugins": "catalog:",

@@ -1,4 +1,3 @@
-import type { Lease } from '@proj-airi/cpu-slots'
 import type { CdpClient } from '@proj-airi/scenarios-stage-tamagotchi-electron/runtime/remote-debug'
 import type { MotionQaEvent } from '@proj-airi/stage-shared/motion-scenario'
 import type { BenchRunRecord } from '@proj-airi/stage-shared/perf/usage'
@@ -12,11 +11,11 @@ import { join, resolve } from 'node:path'
 import { setTimeout } from 'node:timers/promises'
 
 import { errorMessageFrom } from '@moeru/std'
-import { acquire } from '@proj-airi/cpu-slots'
 
 import { appLaunchEnv, buildSeedEntries } from '../app/plan'
 import { sendMessage } from '../app/send'
 import { matchExpectations } from '../app/summary'
+import { formatHostLoad, waitForHostQuiet } from '../host-quiet/wait'
 import { loadScript } from '../llm/script'
 import { ReplayServer } from '../llm/server'
 import { AppSessionCore } from '../session/app-session'
@@ -24,10 +23,10 @@ import { importRig, zipRig } from '../t3/import-rig'
 import { appendBenchLine } from './history'
 import { measurableFrom, readRawRun, summarizeBenchRun } from './summarize'
 
-/** Longest wait for the exclusive CPU lease of one launch; other worktrees' work can hold the budget that long. */
-const LEASE_WAIT_MS = 30 * 60_000
-/** Exit code when the lease or the mounted model does not arrive in time. 0, 1, 2 and 130 are taken. */
-const LEASE_TIMEOUT_EXIT = 3
+/** Longest wait for a calm host before one launch; other worktrees' work can keep the machine busy that long. */
+const HOST_QUIET_WAIT_MS = 30 * 60_000
+/** Exit code when the host stays busy or the mounted model does not arrive in time. 0, 1, 2 and 130 are taken. */
+const BUSY_OR_HUNG_EXIT = 3
 /** Launch, bridge, and import together; a launch that has not mounted its model by then is hung, not slow. */
 const MOUNT_TIMEOUT_MS = 6 * 60_000
 const TURN_TIMEOUT_MS = 120_000
@@ -72,7 +71,7 @@ class BenchStop extends Error {
 async function withinMountDeadline<T>(work: Promise<T>): Promise<T> {
   let timer: NodeJS.Timeout | undefined
   const deadline = new Promise<never>((_, reject) => {
-    timer = globalThis.setTimeout(reject, MOUNT_TIMEOUT_MS, new BenchStop(`the model did not mount within ${MOUNT_TIMEOUT_MS / 60_000} min; the launch was torn down and its lease released`, LEASE_TIMEOUT_EXIT))
+    timer = globalThis.setTimeout(reject, MOUNT_TIMEOUT_MS, new BenchStop(`the model did not mount within ${MOUNT_TIMEOUT_MS / 60_000} min; the launch was torn down`, BUSY_OR_HUNG_EXIT))
   })
   try {
     return await Promise.race([work, deadline])
@@ -107,9 +106,9 @@ interface LaunchContext extends BenchOptions {
 }
 
 /**
- * One measured launch under its own exclusive lease: fresh profile in the run directory, recording into
- * `<run dir>/perf`, model import, settle, measurement, teardown, and the run's record. The lease is released after the
- * teardown, also when the launch hangs or breaks. Throws `BenchStop` for a lease timeout or a hung mount.
+ * One measured launch on a calm host: fresh profile in the run directory, recording into `<run dir>/perf`, model
+ * import, settle, measurement, teardown, and the run's record. Throws `BenchStop` for a host that stays busy or a hung
+ * mount.
  */
 async function benchLaunch(launch: BenchLaunch, context: LaunchContext): Promise<BenchRunOutcome> {
   const { scenario, run } = launch
@@ -122,16 +121,9 @@ async function benchLaunch(launch: BenchLaunch, context: LaunchContext): Promise
   const perfDir = join(runDir, 'perf')
   mkdirSync(profileDir, { recursive: true })
 
-  const leaseWait = AbortSignal.timeout(LEASE_WAIT_MS)
-  let lease: Lease
-  try {
-    lease = await acquire({ class: 'exclusive', command: `qa:bench ${scenario.id} run ${run}`, cwd: context.repoRoot, signal: AbortSignal.any([context.signal, leaseWait]) })
-  }
-  catch (error) {
-    if (!context.signal.aborted && leaseWait.aborted)
-      throw new BenchStop(`no exclusive CPU lease within ${LEASE_WAIT_MS / 60_000} min; run \`pnpm slots status\` to see who holds the budget`, LEASE_TIMEOUT_EXIT)
-    throw error
-  }
+  const host = await waitForHostQuiet({ waitSeconds: HOST_QUIET_WAIT_MS / 1_000, signal: context.signal })
+  if (!host.quiet)
+    throw new BenchStop(`the host stayed busy for ${HOST_QUIET_WAIT_MS / 60_000} min before the launch (${formatHostLoad(host.sample)}); stop the other load and run the bench again`, BUSY_OR_HUNG_EXIT)
 
   const { signal } = context
   const session = AppSessionCore.create({ repoRoot: context.repoRoot, profileDir, selfPids: context.selfPids, signal })
@@ -153,7 +145,7 @@ async function benchLaunch(launch: BenchLaunch, context: LaunchContext): Promise
     const replayURL = baseURL
     const started = await withinMountDeadline((async () => {
       const startedSession = await session.start({
-        launch: { logFile: join(runDir, 'app.log'), env: appLaunchEnv({ perfDir, stageHost: 'window' }), lease },
+        launch: { logFile: join(runDir, 'app.log'), env: appLaunchEnv({ perfDir, stageHost: 'window' }) },
         beforeOnboarding: replayURL === undefined
           ? undefined
           : async ({ stage }) => {
@@ -205,7 +197,6 @@ async function benchLaunch(launch: BenchLaunch, context: LaunchContext): Promise
       context.log(`qa:bench: ${scenario.id} run ${run}: teardown failed: ${errorMessageFrom(error) ?? 'unknown error'}`)
     }
     await server?.close()
-    lease.release()
   }
   if (failure instanceof BenchStop || signal.aborted)
     throw failure
@@ -226,7 +217,7 @@ async function benchLaunch(launch: BenchLaunch, context: LaunchContext): Promise
 /**
  * Runs the planned launches one after another and appends each launch's `bench-run` record to the history. Exit
  * codes: 0 every launch recorded a valid run, 1 a launch broke, recorded an invalid run, or left processes behind
- * (which also stops the bench), 3 a lease timeout or a hung mount (stops the bench), 130 interrupted.
+ * (which also stops the bench), 3 a host that stays busy or a hung mount (stops the bench), 130 interrupted.
  */
 export async function runBench(options: BenchOptions): Promise<{ exitCode: number, outcomes: BenchRunOutcome[] }> {
   const outcomes: BenchRunOutcome[] = []

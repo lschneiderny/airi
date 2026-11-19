@@ -215,9 +215,8 @@ export function parseProcStatParent(stat: string): number | null {
 }
 
 /**
- * Linux: every process in `/proc`, zombies included, that is in process group `rootPid` or still names it as parent.
- * The CPU slot broker counts such processes as the workload of a lease whose root was `rootPid`, even after the root
- * exited and while they only wait to be reaped. Empty where `/proc` does not exist.
+ * Linux: every process in `/proc`, zombies included, that is in process group `rootPid` or still names it as parent,
+ * even after the root exited and while they only wait to be reaped. Empty where `/proc` does not exist.
  */
 export function runGroupMembers(rootPid: number): { pid: number, state: string }[] {
   let entries: string[]

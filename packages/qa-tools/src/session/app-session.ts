@@ -60,7 +60,7 @@ export interface AppSessionDeps<Stage extends SessionStage> {
 }
 
 export interface AppSessionTeardownReport extends TeardownReport {
-  /** How long the lease waited for the launch's process group to exit; `null` when nothing of it was left. */
+  /** How long teardown waited for the launch's process group to exit; `null` when nothing of it was left. */
   runGroupExit: RunGroupExit | null
 }
 
@@ -121,7 +121,7 @@ export interface StartedAppSession<Stage extends SessionStage> {
 /**
  * The shared lifecycle of one rendered app run: launch, connect to the stage window, track the process tree, collect
  * page errors, complete onboarding, wait for the bridge, and tear everything down again. The commands that use it
- * (`qa:smoke`, `qa:app`, `qa:host`, and the MCP session) own their run directory, CPU lease, evidence and report.
+ * (`qa:smoke`, `qa:app`, `qa:host`, and the MCP session) own their run directory, evidence and report.
  *
  * By default every step after the launch is raced against the abort signal (see `abortMode`). A failed
  * or aborted `start` leaves whatever it reached in place; the caller always calls `teardown`, which also works when
@@ -238,9 +238,9 @@ export class AppSessionCore<Stage extends SessionStage> {
 
   /**
    * Stops the page-error collector, closes the browser over CDP, kills the owned process tree, and removes the profile
-   * and `extraPaths` only when nothing of the run is left. The launch's lease reference is released, once its process
-   * group has exited or 30 s have passed, and the stage connection closed even when the teardown throws. A command
-   * that launches several times under fresh leases relies on that wait. The report's `ok` is the caller's to judge.
+   * and `extraPaths` only when nothing of the run is left. It then waits until the launch's process group has exited or
+   * 30 s have passed, and closes the stage connection even when the teardown throws. A command that launches several
+   * times relies on that wait. The report's `ok` is the caller's to judge.
    */
   async teardown(options: { extraPaths?: readonly string[], removeDir?: (path: string) => void } = {}): Promise<AppSessionTeardownReport> {
     this.context.signal?.removeEventListener('abort', this.onAbort)
@@ -262,7 +262,6 @@ export class AppSessionCore<Stage extends SessionStage> {
     finally {
       if (app)
         runGroupExit = await waitForRunGroupExit(app.root.pid, { members: this.deps.groupMembers, sleep: this.deps.sleep })
-      app?.releaseLease()
       this.connected?.stage.close()
     }
     return { ...report, runGroupExit }

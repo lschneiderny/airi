@@ -6,7 +6,6 @@ import UnoCSS from 'unocss/vite'
 import Info from 'unplugin-info/vite'
 import VueRouter from 'vue-router/vite'
 
-import { withCpuSlots } from '@proj-airi/cpu-slots/vitest'
 import { playwright } from '@vitest/browser-playwright'
 import { mergeConfigs } from 'unocss'
 import { loadEnv } from 'vite'
@@ -20,7 +19,7 @@ import { domStorageExecArgv } from '../../vitest.dom-storage.ts'
 // Match the Playwright page to Vitest's iframe viewport for unscaled screenshots.
 const testViewport = { width: 414, height: 896 }
 
-export default withCpuSlots(defineConfig({
+export default defineConfig({
   root: import.meta.dirname,
   // Shared settings pages import these optional UI dependencies through the
   // component barrel, and test Workers import the eventa Worker adapter.
@@ -139,4 +138,4 @@ export default withCpuSlots(defineConfig({
       },
     ],
   },
-}))
+})

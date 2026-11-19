@@ -15,7 +15,7 @@ export interface BenchHistoryHost {
 }
 
 /**
- * The per-machine bench history, `<state dir>/airi-perf/bench.jsonl`, resolved like the CPU slot history:
+ * The per-machine bench history, `<state dir>/airi-perf/bench.jsonl`. The state directory is
  * `$XDG_STATE_HOME` or `~/.local/state` on Linux, `%LOCALAPPDATA%` on Windows, `~/Library/Application Support` on
  * macOS. `AIRI_PERF_BENCH_DIR` names the directory that holds `bench.jsonl` directly.
  */

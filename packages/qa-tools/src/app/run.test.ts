@@ -1,4 +1,3 @@
-import type { Lease } from '@proj-airi/cpu-slots'
 import type { CdpClient } from '@proj-airi/scenarios-stage-tamagotchi-electron/runtime/remote-debug'
 
 import type { LaunchOptions } from '../session/app-session'
@@ -26,7 +25,6 @@ vi.mock('../llm/server', () => ({
 }))
 
 const repoRoot = resolve(import.meta.dirname, '../../../..')
-const lease: Lease = { id: 'test', grant: 4, exclusive: false, inherited: false, env: {}, addWorkload: vi.fn(), release: vi.fn() }
 
 describe('runApp launch env', () => {
   let outDir: string
@@ -56,7 +54,7 @@ describe('runApp launch env', () => {
       groupMembers: () => [],
     }))
     const options = parseAppArgs(['run', '--model', 'a.zip', '--say', 'x', '--out', join(outDir, 'run'), ...extra], repoRoot)
-    await runApp(options, repoRoot, new AbortController().signal, lease)
+    await runApp(options, repoRoot, new AbortController().signal)
     expect(launches).toHaveLength(1)
     return launches[0]
   }

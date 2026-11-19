@@ -1,7 +1,6 @@
-import { withCpuSlots } from '@proj-airi/cpu-slots/vitest'
 import { defineConfig } from 'vitest/config'
 
-export default withCpuSlots(defineConfig({
+export default defineConfig({
   test: {
     environment: 'node',
     globals: true,
@@ -24,4 +23,4 @@ export default withCpuSlots(defineConfig({
       },
     },
   },
-}))
+})

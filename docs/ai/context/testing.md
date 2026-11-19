@@ -58,7 +58,6 @@ are listed only here.
 | A `qa:motion3d` report rule (`packages/qa-tools/src/t2-3d/reports`) | Labelled cases in a `qa:motion3d inject` labels file, sealed before any scoring, including injected faults that must fail the changed line; the report's version bump in its own commit; every other line of the report unchanged on the identity runs, read from `--json` verdicts or a `qa:motion3d matrix` receipt. |
 | Documentation only | `pnpm verify`, which lints the files and skips typecheck and tests for Markdown. A doc in `docs/ai/context/` still runs its guard test. |
 | Performance-sensitive runtime change (frame loop, stage rendering, host CPU sampling, perf recording) | `pnpm verify --gate`. Optionally, run `pnpm qa:display run -- pnpm qa:bench` on the base and on the tip, then read the result with `pnpm perf compare --bench <base> <tip>`. Start a bench only when no other CPU-sensitive check is running. |
-| CPU broker scheduling or pressure policy | The package tests and QA scenarios for the changed rule, using private broker and history stores and pressure fixtures. |
 
 The branch gate is required even when every commit-loop check passed: the
 commit loop is incremental, while the gate rechecks every change against the
@@ -67,7 +66,7 @@ branch base.
 ## Verify scope and results
 
 See the [dev-tools README's verify section](../../../scripts/dev-tools/README.md#pnpm-verify)
-for scope selection, last-pass records, leases, and command behavior, and its
+for scope selection, last-pass records, and command behavior, and its
 [`pnpm test:run` section](../../../scripts/dev-tools/README.md#pnpm-testrun)
 for what Turbo caches. If a step fails, fix the cause and rerun it.
 
@@ -90,58 +89,21 @@ or `--json` for machine-readable output. Malformed records are skipped and
 counted. History is separate from last-pass data; setting
 `AIRI_VERIFY_HISTORY_DIR` redirects only history.
 
-## CPU slot scheduling
+## Machine load
 
-CPU slots coordinate CPU-heavy commands across worktrees. They are a shared
-work budget, not an operating-system CPU quota. The default budget is 12.
+Checks run at the width their tools choose; nothing schedules them across
+worktrees. A load test on 2026-11-19 (three lanes of typecheck and tests on a
+16-core, 31 GB workstation) finished in 208 s without coordination and in
+322 s under the CPU slot broker that the
+[testing redesign ADR](../adr/2026-11-19-testing-redesign.md) removed, with
+CPU pressure under 10%, at least 7 GB free, and no desktop stall. Keep no more
+than three heavy lanes active at once.
 
-| Class | Minimum to maximum | Typical use |
-| --- | ---: | --- |
-| `lint` | 1 | Lint chunks |
-| `test` | 2 to 6 | Node tests; the lease of `pnpm test:run` and of the verify test step |
-| `browser` | 2 to 4 | Browser tests |
-| `typecheck` | 2 to 6 | Typecheck |
-| `build` | 2 to 6 | Package builds |
-| `install` | 4 | Dependency installation |
-| `gate` | 4 to 10 | Motion gates |
-| `live` | 4 to 6 | App smoke, app sessions, and rendered capture |
-| `exclusive` | Whole budget | Frame-timing work that must not share CPU, such as `qa:bench` |
-
-The scheduler grants a fitting queue head first. When a non-exclusive head
-does not fit and has waited less than 60 seconds, a later non-exclusive ticket
-may backfill if its minimum fits. Exclusive tickets are never granted out of
-order. Once a non-exclusive head has waited 60 seconds, backfill stops until
-running work drains enough for that head to fit. Exclusive heads do not age.
-
-When multiple non-exclusive tickets wait, each grant shares free capacity
-among the waiting non-exclusive tickets, with each ticket's minimum and
-maximum respected. A sole waiter can receive its class maximum. Grant sizes
-stay fixed until the lease ends.
-
-On Linux, the broker reads CPU PSI `some avg10` before each scheduling
-transaction. At or above the configured hold threshold, new grants pause
-while any lease is held. Below the configured idle threshold, non-exclusive
-grants may use a bounded extra quarter of the budget. The defaults are 20 and
-70, confirmed by a quiet-host calibration on 2026-11-10 (see
-`packages/cpu-slots/README.md`). With no pressure sample, scheduling uses the
-normal budget. Existing leases do not shrink when pressure changes. Exclusive
-work is never overcommitted and requires all slots to be free.
-
-A waiting command prints its wait reason and the current holders, and prints
-them again whenever the holders change, so there is no need to poll.
-`pnpm slots status` shows the whole queue and its decisions, including
-reasons such as `head-aging` and `cpu-pressure`. Use `pnpm slots history` to
-read append-only lease events and wait summaries. Tests and QA scenarios that
-take real leases must set `AIRI_CPU_SLOTS_DIR` and
-`AIRI_CPU_SLOTS_HISTORY_DIR` to private temporary directories, so their
-fixture leases stay out of the real store and history. Set
-`AIRI_CPU_PRESSURE_FILE` to a fixture when a scenario must have deterministic
-pressure.
-
-Heavy verification, builds, and rendered QA compete for the shared machine.
-Keep no more than three heavy plan lanes active at once. If a ticket waits,
-read its wait message, and `pnpm slots history` for longer trends, before
-adding more heavy work.
+Frame-timing work needs a calm host instead: `qa:bench` launches, launched
+`qa:stage measure` pairs, and `qa:stage capture` wait for one, judged by
+`decideHostContended` in `@proj-airi/stage-shared/perf/usage`, and a bench
+run sampled on a contended host is invalid. Start such work only when no
+other heavy check is running.
 
 ## Flaky tests
 
@@ -152,9 +114,8 @@ assertions.
 ## Tool references
 
 Use the [dev-tools README](../../../scripts/dev-tools/README.md) for verify,
-history, `test:run`, `qa:test:model`, and `qa:display` command mechanics. Use
-the [CPU slots README](../../../packages/cpu-slots/README.md) for broker
-details and the [QA tools README](../../../packages/qa-tools/README.md) for
+history, `test:run`, `qa:test:model`, and `qa:display` command mechanics, and
+the [QA tools README](../../../packages/qa-tools/README.md) for
 smoke, app sessions, rig runners, evidence, and CLI mechanics. For perf
 recording, `pnpm perf`, and `qa:bench`, use the
 [perf reports section](../../../packages/qa-tools/README.md#perf-reports) and

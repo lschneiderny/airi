@@ -1,11 +1,6 @@
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { describe, expect, it } from 'vitest'
 
-import { acquire } from '@proj-airi/cpu-slots'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-
-import { lintAllFixable, parseVerifyArgs, planStepLease, planVerify, relatedTestCommand, verifySteps } from './verify-plan'
+import { lintAllFixable, parseVerifyArgs, planVerify, relatedTestCommand } from './verify-plan'
 
 const packages = ['packages/stage-ui', 'apps/stage-tamagotchi']
 const file = (path: string, deleted = false) => ({ path, deleted })
@@ -36,13 +31,13 @@ describe('planVerify', () => {
   })
 
   it('plans the directory scope when the change is confined to a root dependency', () => {
-    const withSlots = [...packages, 'packages/cpu-slots']
-    expect(planVerify([file('packages/cpu-slots/src/store.ts')], withSlots, ['packages/cpu-slots']).typecheck)
-      .toEqual({ kind: 'all', reason: 'packages/cpu-slots/src/store.ts is in a root dependency' })
+    const withSlots = [...packages, 'packages/root-dependency']
+    expect(planVerify([file('packages/root-dependency/src/index.ts')], withSlots, ['packages/root-dependency']).typecheck)
+      .toEqual({ kind: 'all', reason: 'packages/root-dependency/src/index.ts is in a root dependency' })
   })
 
   it('keeps the affected scope for a package the root does not depend on', () => {
-    expect(planVerify([file('packages/stage-ui/src/a.ts')], [...packages, 'packages/cpu-slots'], ['packages/cpu-slots']).typecheck)
+    expect(planVerify([file('packages/stage-ui/src/a.ts')], [...packages, 'packages/root-dependency'], ['packages/root-dependency']).typecheck)
       .toEqual({ kind: 'affected' })
   })
 
@@ -65,10 +60,10 @@ describe('planVerify', () => {
   })
 
   it('skips typecheck for a documentation-only change, even in a root dependency', () => {
-    const plan = planVerify([file('packages/stage-ui/README.md'), file('packages/cpu-slots/docs/notes.mdx')], [...packages, 'packages/cpu-slots'], ['packages/cpu-slots'])
+    const plan = planVerify([file('packages/stage-ui/README.md'), file('packages/root-dependency/docs/notes.mdx')], [...packages, 'packages/root-dependency'], ['packages/root-dependency'])
     expect(plan.typecheck).toEqual({ kind: 'none' })
     expect(plan.typecheckPackagePaths).toEqual([])
-    expect(plan.lintFiles).toEqual(['packages/stage-ui/README.md', 'packages/cpu-slots/docs/notes.mdx'])
+    expect(plan.lintFiles).toEqual(['packages/stage-ui/README.md', 'packages/root-dependency/docs/notes.mdx'])
   })
 
   it('runs the storage write scan when a renderer source changes', () => {
@@ -150,64 +145,4 @@ describe('lintAllFixable', () => {
   it('gives no hint without an ESLint summary', () => {
     expect(lintAllFixable('Found 0 warnings and 2 errors.\n')).toBe(false)
   })
-})
-
-describe('planStepLease', () => {
-  it('maps each step to its CPU class', () => {
-    expect(verifySteps.map(step => planStepLease(step, { kind: 'affected' }, 3))).toEqual([
-      { class: 'lint' },
-      { class: 'typecheck', max: 3 },
-      { class: 'test' },
-    ])
-  })
-
-  it.each([
-    { count: 0, max: 2 },
-    { count: 1, max: 2 },
-    { count: 2, max: 2 },
-    { count: 5, max: 5 },
-    { count: 20, max: 20 },
-  ])('sizes an affected typecheck of $count packages to max $max', ({ count, max }) => {
-    expect(planStepLease('typecheck', { kind: 'affected' }, count)).toEqual({ class: 'typecheck', max })
-  })
-
-  it('keeps the class default for an all-package typecheck', () => {
-    expect(planStepLease('typecheck', { kind: 'all', reason: 'root config changed' }, 1)).toEqual({ class: 'typecheck' })
-  })
-})
-
-describe('per-step slot acquisition', () => {
-  let store: string
-
-  beforeEach(() => {
-    store = mkdtempSync(join(tmpdir(), 'verify-slots-'))
-    vi.stubEnv('AIRI_CPU_SLOTS_DIR', store)
-    vi.stubEnv('AIRI_CPU_SLOTS_HISTORY_DIR', join(store, 'history'))
-    vi.stubEnv('AIRI_CPU_BUDGET', '12')
-    vi.stubEnv('AIRI_CPU_SLOTS', '')
-    vi.stubEnv('CI', '')
-    vi.stubEnv('AIRI_CPU_LEASE', '')
-  })
-
-  afterEach(() => {
-    vi.unstubAllEnvs()
-    rmSync(store, { recursive: true, force: true })
-  })
-
-  // NOTICE:
-  // The test runs three real acquisitions against the broker, which snapshots processes on each acquire.
-  // acquire() builds its Store without snapshotProcesses or processStartedAt (packages/cpu-slots/src/acquire.ts), so no fake can be injected.
-  // Removal condition: drop the explicit timeout once acquire() accepts injected store options.
-  it('grants the next step immediately after the previous step releases', async () => {
-    const request = (step: 'typecheck' | 'lint' | 'test') => ({ ...planStepLease(step, { kind: 'affected' }, 1), cwd: process.cwd(), command: `verify ${step}`, signal: AbortSignal.timeout(10_000) })
-    const first = await acquire(request('typecheck'))
-    expect(first.grant).toBe(2)
-    first.release()
-    const second = await acquire(request('lint'))
-    expect(second.grant).toBe(1)
-    second.release()
-    const third = await acquire(request('test'))
-    expect(third.grant).toBeGreaterThan(0)
-    third.release()
-  }, 30_000)
 })

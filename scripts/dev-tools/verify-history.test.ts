@@ -22,8 +22,6 @@ const run: VerifyRun = {
   durationMs: 100,
   commands: [['lint', 'file.ts']],
   files: ['file.ts'],
-  waitMs: 12,
-  grant: 1,
 }
 
 describe('verify history', () => {
@@ -58,7 +56,7 @@ describe('verify history', () => {
   })
 
   it('counts malformed records while retaining valid records since the cutoff', () => {
-    const values = [run, { ...run, ts: 2000, status: 'fail' }, null, {}, { ...run, durationMs: -1 }, { ...run, grant: 'one' }]
+    const values = [run, { ...run, ts: 2000, status: 'fail' }, null, {}, { ...run, durationMs: -1 }, { ...run, step: 'build' }]
     writeFileSync(join(dir, 'runs.jsonl'), `${values.map(value => JSON.stringify(value)).join('\n')}\nnot json\n`)
     const stats = readVerifyStats(dir, 1500)
     expect(stats.malformed).toBe(5)

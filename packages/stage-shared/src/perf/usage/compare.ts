@@ -29,11 +29,8 @@ export const FEATURE_MIN_PAIRED_SESSIONS = 3
  */
 export const FEATURE_MIN_DECISIVE_PAIRED_SESSIONS = 8
 
-/**
- * A segment cell's totals over the buckets a reader kept (`bucketTotals`), with `leaseContended` set by readers that
- * know the CPU lease history (`null` when it does not cover every kept bucket).
- */
-export type FeatureCompareCell = SegmentCellKey & SegmentCellTotals & { readonly leaseContended?: boolean | null }
+/** A segment cell's totals over its buckets (`bucketTotals`). */
+export type FeatureCompareCell = SegmentCellKey & SegmentCellTotals
 
 export interface FeatureCompareRollup {
   readonly sessionId: string
@@ -110,7 +107,7 @@ export interface FeatureComparisonReport {
   readonly feature: UsageFeatureKey
   readonly metric: FeatureMetric
   readonly comparisons: readonly FeatureComparison[]
-  readonly droppedCells: { readonly hostContended: number, readonly leaseContended: number }
+  readonly droppedCells: { readonly hostContended: number }
 }
 
 interface Block {
@@ -229,21 +226,17 @@ function compareSides(stratum: FeatureStratum, sides: { value: FeatureValue, blo
 /**
  * Compares a metric between the values of one feature in recorded usage, per stratum (host, renderer, model,
  * activity, window, stage host, devtools, refresh rate, and every other feature); strata are never pooled.
- * Contended cells are dropped. Each stratum compares every pair of feature values it holds, the "off" value as
+ * Host-contended cells are dropped. Each stratum compares every pair of feature values it holds, the "off" value as
  * side a; a stratum with one value forms no comparison. Results are deterministic for a seed.
  */
 export function compareFeature(params: CompareFeatureParams): FeatureComparisonReport {
   const { feature, metric } = params
   const strata = new Map<string, Stratum>()
-  const droppedCells = { hostContended: 0, leaseContended: 0 }
+  const droppedCells = { hostContended: 0 }
   for (const rollup of params.rollups) {
     for (const cell of rollup.cells) {
       if (cell.hostContended) {
         droppedCells.hostContended += 1
-        continue
-      }
-      if (cell.leaseContended === true) {
-        droppedCells.leaseContended += 1
         continue
       }
       const stratum = stratumOf(rollup.host, cell, feature)

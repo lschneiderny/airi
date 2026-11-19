@@ -1,7 +1,6 @@
-import { withCpuSlots } from '@proj-airi/cpu-slots/vitest'
 import { defineConfig } from 'vitest/config'
 
-export default withCpuSlots(defineConfig({
+export default defineConfig({
   test: {
     environment: 'node',
     fileParallelism: false,
@@ -9,4 +8,4 @@ export default withCpuSlots(defineConfig({
     hookTimeout: 60_000,
     maxWorkers: 1,
   },
-}))
+})

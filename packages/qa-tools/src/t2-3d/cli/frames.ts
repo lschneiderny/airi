@@ -10,7 +10,6 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 
 import { errorMessageFrom } from '@moeru/std'
-import { acquire } from '@proj-airi/cpu-slots'
 import { Quaternion } from 'three'
 
 import * as v from 'valibot'
@@ -25,7 +24,6 @@ import { MotionTraceRefusal, parseTrace, readTrace } from '../read-trace'
 import { loadHeadlessMMD } from '../runner/loader'
 import { runMotion3dScenario } from '../runner/run'
 import { motion3dScenarios } from '../scenarios'
-import { RUN_LEASE_SLOTS } from './run'
 
 const usage = 'Usage: qa:motion3d frames <run directory> --model <pmx> (--at <t>[,<t>...] | --window <from>:<to> [--hz <n>] | --around <marker label prefix or event kind> [--before <s>] [--after <s>] [--hz <n>]) [--views front,side] [--channels <name>[,<name>...]] --out <directory>'
 /** A re-run must reproduce every stored rotation to this turn, else its untraced bones would not belong to the reviewed run. */
@@ -182,32 +180,25 @@ export async function rerunRun(context: Motion3dCliContext, model: string, summa
     throw new FramesUsageError(`unknown scenario ${summary.scenario.id}`)
   const locals = new Map<number, LocalPose[]>()
   const worlds = new Map<number, Quat[]>()
-  const lease = await acquire({ class: 'gate', min: RUN_LEASE_SLOTS, max: RUN_LEASE_SLOTS, command: `qa:motion3d frames re-run --scenario ${scenario.id} --seed ${summary.scenario.seed}`, cwd: context.repoRoot, signal: context.signal })
-  let result
-  try {
-    result = await runMotion3dScenario({
-      model,
-      scenario,
-      seed: summary.scenario.seed,
-      seconds: summary.scenario.seconds,
-      warmupSeconds: summary.scenario.warmupSeconds,
-      acts: stored.trace.source.detail.acts === 'off' ? 'off' : 'on',
-      git: readGitStateFromRepo(context.repoRoot),
-      signal: context.signal,
-      onFrame: (frame, mesh) => {
-        if (!frames.has(frame))
-          return
-        locals.set(frame, localPoses(mesh))
-        worlds.set(frame, mesh.skeleton.bones.map((bone) => {
-          const q = bone.getWorldQuaternion(new Quaternion())
-          return [q.x, q.y, q.z, q.w]
-        }))
-      },
-    })
-  }
-  finally {
-    lease.release()
-  }
+  const result = await runMotion3dScenario({
+    model,
+    scenario,
+    seed: summary.scenario.seed,
+    seconds: summary.scenario.seconds,
+    warmupSeconds: summary.scenario.warmupSeconds,
+    acts: stored.trace.source.detail.acts === 'off' ? 'off' : 'on',
+    git: readGitStateFromRepo(context.repoRoot),
+    signal: context.signal,
+    onFrame: (frame, mesh) => {
+      if (!frames.has(frame))
+        return
+      locals.set(frame, localPoses(mesh))
+      worlds.set(frame, mesh.skeleton.bones.map((bone) => {
+        const q = bone.getWorldQuaternion(new Quaternion())
+        return [q.x, q.y, q.z, q.w]
+      }))
+    },
+  })
   const blocks = diffTraces(stored, parseTrace(result.trace))
   const turn = blocks.find(block => block.name === 'rot')?.largest[0]?.value ?? 0
   const root = blocks.find(block => block.name === 'root')?.largest[0]?.value ?? 0

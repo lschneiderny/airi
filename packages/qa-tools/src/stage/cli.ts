@@ -1,5 +1,4 @@
-import type { Status } from '@proj-airi/cpu-slots'
-
+import type { HostLoad } from '../host-quiet/wait'
 import type { StageMode, StageScenario } from './gates'
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -7,17 +6,16 @@ import { dirname, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 
 import { errorMessageFrom } from '@moeru/std'
-import { acquire, readStatus } from '@proj-airi/cpu-slots'
 
+import { formatHostLoad, waitForHostQuiet } from '../host-quiet/wait'
 import { captureStage } from './capture'
 import { CaptureRefusal } from './capture-channel'
 import { formatGateResults, readStageEvidence, runStageGates } from './gates'
 import { runHandOff } from './handoff'
 import { measureAttached, measurePairs, measureScenario } from './measure'
-import { exclusiveRefusal, formatHolders, waitForQuiet } from './preflight'
 
 const stageUsage = `Usage:
-  stage capture --port <cdp port> --scenario <idle|walk|attach> --seconds <s> --out <dir> [--mode window|desktop] [--shots 12] [--seed 1] [--collect-before] [--class idle|talk] [--wait-quiet <s> | --allow-busy] [--exclusive]
+  stage capture --port <cdp port> --scenario <idle|walk|attach> --seconds <s> --out <dir> [--mode window|desktop] [--shots 12] [--seed 1] [--collect-before] [--class idle|talk] [--wait-quiet <s> | --allow-busy]
   stage measure --mode <window|desktop> --port <cdp port> [--seconds 60] [--attempts 3] --out <json>
   stage measure --pairs <n> --profile <profile dir> [--seconds 60] [--settle 10] [--attempts 3] --out <json>
   stage measure --mode <window|desktop> --port <cdp port> --scenario <gesture-walk|action-preempt> --clip <clip name> [--seconds 12] [--attempts 3] --out <json>
@@ -30,9 +28,8 @@ measure --scenario walks her 600 DIP and plays the imported clip over the walk (
 (action-preempt, with a second goal and a stop after --seconds of playing).
 handoff launches the desktop stage on a fresh profile, imports the model, and walks her to another display. It needs
 a session with more than one display: pnpm qa:display run --outputs 2 -- pnpm qa:stage handoff ...
-capture first reads the CPU slot broker and exits 2 with the holders while any lease other than this checkout's app
-session is held; --wait-quiet waits up to <s> seconds for them to end, --allow-busy captures anyway, and --exclusive
-holds an exclusive lease (only possible when the app holds no lease of its own).
+capture first samples the host's load average, CPU pressure and CPU use, and exits 2 with the reading while the host
+is busy; --wait-quiet waits up to <s> seconds for it to calm down, and --allow-busy captures anyway.
 gate prints PASS, FAIL or NO INPUT for stage-walk-skate, stage-arm-penetration, stage-frame-budget,
 stage-gesture-walk, stage-action-preempt and stage-handoff.`
 
@@ -78,7 +75,7 @@ function runGate(paths: readonly string[], cwd: string): number {
  * in). Exit codes: 0 every gate with input passed or the measurement is valid, 1 a gate failed, a run broke or every
  * attempt saw concurrent load, 2 usage error, unreadable evidence or no gate input.
  */
-export async function runStageCli(argv: readonly string[], context: { repoRoot: string, cwd: string, selfPids: readonly number[], signal?: AbortSignal, readLeases?: () => Status['leases'] }): Promise<number> {
+export async function runStageCli(argv: readonly string[], context: { repoRoot: string, cwd: string, selfPids: readonly number[], signal?: AbortSignal, sampleHost?: () => Promise<HostLoad> }): Promise<number> {
   const [command, ...rest] = argv
   const log = (line: string) => console.error(line)
   const parse = <T>(read: () => T): T => {
@@ -93,7 +90,7 @@ export async function runStageCli(argv: readonly string[], context: { repoRoot: 
     if (command === 'capture') {
       const { values } = parse(() => parseArgs({
         args: [...rest],
-        options: { 'port': { type: 'string' }, 'scenario': { type: 'string' }, 'seconds': { type: 'string' }, 'out': { type: 'string' }, 'mode': { type: 'string' }, 'shots': { type: 'string' }, 'seed': { type: 'string' }, 'collect-before': { type: 'boolean' }, 'class': { type: 'string' }, 'wait-quiet': { type: 'string' }, 'allow-busy': { type: 'boolean' }, 'exclusive': { type: 'boolean' } },
+        options: { 'port': { type: 'string' }, 'scenario': { type: 'string' }, 'seconds': { type: 'string' }, 'out': { type: 'string' }, 'mode': { type: 'string' }, 'shots': { type: 'string' }, 'seed': { type: 'string' }, 'collect-before': { type: 'boolean' }, 'class': { type: 'string' }, 'wait-quiet': { type: 'string' }, 'allow-busy': { type: 'boolean' } },
         strict: true,
       }))
       if (!values.port || !values.scenario || !values.seconds || !values.out)
@@ -120,60 +117,33 @@ export async function runStageCli(argv: readonly string[], context: { repoRoot: 
       if (!Number.isFinite(waitQuiet) || waitQuiet < 0 || waitQuiet > 3600)
         throw new UsageError('--wait-quiet must be between 0 and 3600 seconds')
       const allowBusy = values['allow-busy'] === true
-      const exclusive = values.exclusive === true
-      if (allowBusy && (exclusive || values['wait-quiet'] !== undefined))
-        throw new UsageError('--allow-busy skips the pre-flight; drop --wait-quiet and --exclusive')
-      const preflight = await waitForQuiet({
-        read: context.readLeases ?? (() => readStatus().leases),
-        repoRoot: context.repoRoot,
-        waitSeconds: allowBusy ? 0 : waitQuiet,
-        now: Date.now,
-        sleep: ms => new Promise(resolve => setTimeout(resolve, ms)),
-      })
+      if (allowBusy && values['wait-quiet'] !== undefined)
+        throw new UsageError('--allow-busy skips the pre-flight; drop --wait-quiet')
+      const preflight = await waitForHostQuiet({ waitSeconds: allowBusy ? 0 : waitQuiet, signal: context.signal, sample: context.sampleHost })
       if (!preflight.quiet && !allowBusy) {
-        log(`qa-tools stage: refusing the capture: ${preflight.busy.length} CPU lease(s) besides this checkout's app session ${waitQuiet ? `were still held after ${preflight.waitedSeconds}s` : 'are held'}. Their load stalls frames, and the motion3d gate refuses such a trace with frame-gap.\n${formatHolders(preflight.busy)}\nWait for them with --wait-quiet <seconds>, or pass --allow-busy for a capture you will not gate.`)
+        log(`qa-tools stage: refusing the capture: the host ${waitQuiet ? `was still busy after ${preflight.waitedSeconds}s` : 'is busy'} (${formatHostLoad(preflight.sample)}). Other load stalls frames, and the motion3d gate refuses such a trace with frame-gap.\nWait for it with --wait-quiet <seconds>, or pass --allow-busy for a capture you will not gate.`)
         return 2
       }
-      const refusal = exclusive ? exclusiveRefusal(preflight) : null
-      if (refusal) {
-        log(`qa-tools stage: ${refusal}`)
-        return 2
+      const capture = await captureStage({
+        repoRoot: context.repoRoot,
+        out: resolve(context.cwd, values.out),
+        port,
+        mode,
+        scenario: values.scenario,
+        seconds,
+        shots,
+        seed,
+        collectBefore: values['collect-before'] === true,
+        scenarioClass,
+        preflight,
+      })
+      const { frameGap } = capture
+      console.info(JSON.stringify({ ok: capture.valid, out: resolve(context.cwd, values.out), frames: capture.frames, fps: capture.fps, failure: capture.failure, frameGap: { maxIntervalMs: frameGap.maxIntervalMs, longFraction: frameGap.longFraction, wallDriftMs: frameGap.wallDriftMs, exceeded: frameGap.exceeded }, preflight }))
+      if (frameGap.exceeded.length) {
+        const { limits } = frameGap
+        log(`qa-tools stage: the motion3d gate will refuse this trace with frame-gap (${frameGap.exceeded.join(', ')}): worst interval ${frameGap.maxIntervalMs.toFixed(1)} ms (limit below ${limits.maxIntervalMs} ms), ${(frameGap.longFraction * 100).toFixed(2)}% of intervals over ${limits.longIntervalMs.toFixed(1)} ms (limit ${limits.longFraction * 100}%), wall drift ${frameGap.wallDriftMs.toFixed(1)} ms (limit ${limits.wallDriftMs} ms)`)
       }
-      let lease: Awaited<ReturnType<typeof acquire>> | null = null
-      if (exclusive) {
-        try {
-          lease = await acquire({ class: 'exclusive', cwd: context.repoRoot, command: 'qa:stage capture --exclusive', signal: AbortSignal.any([context.signal ?? new AbortController().signal, AbortSignal.timeout(60_000)]) })
-        }
-        catch (error) {
-          log(`qa-tools stage: no exclusive CPU lease within 60 s: ${errorMessageFrom(error) ?? 'unknown error'}`)
-          return 2
-        }
-      }
-      try {
-        const capture = await captureStage({
-          repoRoot: context.repoRoot,
-          out: resolve(context.cwd, values.out),
-          port,
-          mode,
-          scenario: values.scenario,
-          seconds,
-          shots,
-          seed,
-          collectBefore: values['collect-before'] === true,
-          scenarioClass,
-          preflight: { ...preflight, lease: lease ? 'exclusive' : null },
-        })
-        const { frameGap } = capture
-        console.info(JSON.stringify({ ok: capture.valid, out: resolve(context.cwd, values.out), frames: capture.frames, fps: capture.fps, failure: capture.failure, frameGap: { maxIntervalMs: frameGap.maxIntervalMs, longFraction: frameGap.longFraction, wallDriftMs: frameGap.wallDriftMs, exceeded: frameGap.exceeded }, preflight: { quiet: preflight.quiet, waitedSeconds: preflight.waitedSeconds, busyLeases: preflight.busy.length, lease: lease ? 'exclusive' : null } }))
-        if (frameGap.exceeded.length) {
-          const { limits } = frameGap
-          log(`qa-tools stage: the motion3d gate will refuse this trace with frame-gap (${frameGap.exceeded.join(', ')}): worst interval ${frameGap.maxIntervalMs.toFixed(1)} ms (limit below ${limits.maxIntervalMs} ms), ${(frameGap.longFraction * 100).toFixed(2)}% of intervals over ${limits.longIntervalMs.toFixed(1)} ms (limit ${limits.longFraction * 100}%), wall drift ${frameGap.wallDriftMs.toFixed(1)} ms (limit ${limits.wallDriftMs} ms)`)
-        }
-        return capture.valid ? 0 : 1
-      }
-      finally {
-        lease?.release()
-      }
+      return capture.valid ? 0 : 1
     }
     if (command === 'gate') {
       const { positionals } = parse(() => parseArgs({ args: [...rest], options: {}, allowPositionals: true, strict: true }))
@@ -187,18 +157,12 @@ export async function runStageCli(argv: readonly string[], context: { repoRoot: 
         throw new UsageError('--out is required')
       const limitSeconds = positiveInteger('seconds', values.seconds, 120)
       const signal = context.signal ?? new AbortController().signal
-      const lease = await acquire({ class: 'live', command: 'qa:stage handoff', cwd: context.repoRoot, signal: AbortSignal.any([signal, AbortSignal.timeout(30 * 60_000)]) })
-      try {
-        const { record, runDir, teardownOk } = await runHandOff({ repoRoot: context.repoRoot, model: resolve(context.cwd, values.model), limitSeconds, signal, lease })
-        writeJson(resolve(context.cwd, values.out), record)
-        console.info(JSON.stringify({ runDir, refusal: record.refusal, timedOut: record.timedOut, samples: record.perFrameSeries.rows.length, from: record.from, goals: record.goals, final: record.final }))
-        if (record.refusal)
-          log(`qa-tools stage: ${record.refusal}`)
-        return record.refusal === null && !record.timedOut && teardownOk ? 0 : 1
-      }
-      finally {
-        lease.release()
-      }
+      const { record, runDir, teardownOk } = await runHandOff({ repoRoot: context.repoRoot, model: resolve(context.cwd, values.model), limitSeconds, signal })
+      writeJson(resolve(context.cwd, values.out), record)
+      console.info(JSON.stringify({ runDir, refusal: record.refusal, timedOut: record.timedOut, samples: record.perFrameSeries.rows.length, from: record.from, goals: record.goals, final: record.final }))
+      if (record.refusal)
+        log(`qa-tools stage: ${record.refusal}`)
+      return record.refusal === null && !record.timedOut && teardownOk ? 0 : 1
     }
     if (command !== 'measure')
       throw new UsageError(command ? `unknown command ${command}` : 'missing command')

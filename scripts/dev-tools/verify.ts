@@ -7,7 +7,6 @@ import { readFileSync } from 'node:fs'
 import { delimiter, join, relative } from 'node:path'
 
 import { errorMessageFrom } from '@moeru/std'
-import { acquire } from '@proj-airi/cpu-slots'
 
 import { compileCacheEnv } from './lib/compile-cache'
 import { capture, chunkByLength, nodeCommandChunkLimitsFor, run, shimCommandChunkLimits } from './lib/exec'
@@ -15,13 +14,11 @@ import { gatedNotice, listGatedTestFiles } from './lib/gated-tests'
 import { changedFiles, git, gitCommonDir, repoRoot, workingTreeHash } from './lib/git'
 import { appendVerifyRun, formatVerifyStats, readVerifyStats } from './verify-history'
 import { readLastPass, writeLastPass } from './verify-last-pass'
-import { advanceLastPass, followUpChecks, lintAllFixable, parseVerifyArgs, planStepLease, planVerify, relatedTestCommand, selectVerifyScope, testPrerequisiteTurboArgs, typecheckFilters, verifyUsage } from './verify-plan'
+import { advanceLastPass, followUpChecks, lintAllFixable, parseVerifyArgs, planVerify, relatedTestCommand, selectVerifyScope, testPrerequisiteTurboArgs, typecheckFilters, verifyUsage } from './verify-plan'
 
 interface Command {
   label: string
   args: string[]
-  /** Whether the granted slot count is passed to the command as `--concurrency`. */
-  concurrency?: boolean
   /** The package directory the command runs in, relative to the root. Without it, the command runs in the root. */
   packagePath?: string
   env?: Record<string, string>
@@ -64,7 +61,7 @@ function commandsFor(step: VerifyStep, root: string, plan: ReturnType<typeof pla
       return 'no workspace package changed'
     const filters = typecheckFilters(plan.typecheck, plan.typecheckPackagePaths)
     const label = plan.typecheck.kind === 'all' ? `every package (${plan.typecheck.reason})` : 'changed packages and their dependents'
-    return [{ label, args: node('node_modules/turbo/bin/turbo', ['run', 'typecheck', ...filters, '--output-logs=errors-only']), concurrency: true }]
+    return [{ label, args: node('node_modules/turbo/bin/turbo', ['run', 'typecheck', ...filters, '--output-logs=errors-only']) }]
   }
   if (step === 'lint') {
     if (!plan.lintFiles.length)
@@ -81,7 +78,6 @@ function commandsFor(step: VerifyStep, root: string, plan: ReturnType<typeof pla
   const rebuild: Command = {
     label: 'rebuild stale workspace packages',
     args: node('node_modules/turbo/bin/turbo', testPrerequisiteTurboArgs),
-    concurrency: true,
   }
   const rootRelated: Command[] = chunks.map(files => ({
     label: 'tests related to changes (root projects)',
@@ -148,11 +144,10 @@ async function main(): Promise<number> {
   const pathKey = Object.keys(process.env).find(key => key.toUpperCase() === 'PATH') ?? 'PATH'
   const env = { ...process.env, ...compileCacheEnv(process.env, root), [pathKey]: `${join(root, 'node_modules/.bin')}${delimiter}${process.env[pathKey] ?? ''}` }
 
-  const slotsEnabled = !process.env.CI && process.env.AIRI_CPU_SLOTS !== 'off'
   console.info(`verify: merge base with ${args.base} ${base.slice(0, 9)}, tree ${tree.slice(0, 9)}`)
   const followUps = followUpChecks(changedFiles(root, base, tree))
   const results: StepResult[] = []
-  const finish = (result: StepResult, history: Pick<VerifyRun, 'scopeBase' | 'mode' | 'commands' | 'files' | 'waitMs' | 'grant'>) => {
+  const finish = (result: StepResult, history: Pick<VerifyRun, 'scopeBase' | 'mode' | 'commands' | 'files'>) => {
     results.push(result)
     if (!args.dryRun) {
       const status = { passed: 'pass', failed: 'fail', skipped: 'skipped' } as const
@@ -173,7 +168,7 @@ async function main(): Promise<number> {
   let lintFailed = false
   for (const step of args.steps) {
     if (lintFailed) {
-      finish({ step, status: 'skipped', detail: 'not run: lint failed', durationMs: 0 }, { scopeBase: base, mode: 'branch', commands: [], files: [], waitMs: 0, grant: null })
+      finish({ step, status: 'skipped', detail: 'not run: lint failed', durationMs: 0 }, { scopeBase: base, mode: 'branch', commands: [], files: [] })
       continue
     }
     const entry = record?.steps[step]
@@ -190,13 +185,11 @@ async function main(): Promise<number> {
     const scope = selectVerifyScope(context, { record, step, treeExists })
     console.info(`[${step}] scope: ${scope.mode === 'incremental' ? `incremental from ${scope.base} (${scope.reason})` : `branch (${scope.reason})`}`)
     const changed = changedFiles(root, scope.base, tree)
-    const history: Pick<VerifyRun, 'scopeBase' | 'mode' | 'commands' | 'files' | 'waitMs' | 'grant'> = {
+    const history: Pick<VerifyRun, 'scopeBase' | 'mode' | 'commands' | 'files'> = {
       scopeBase: scope.base,
       mode: scope.mode,
       commands: [],
       files: changed.map(file => file.path),
-      waitMs: 0,
-      grant: null,
     }
     console.info(`[${step}] ${changed.length} changed file(s)`)
     if (args.dryRun) {
@@ -212,25 +205,16 @@ async function main(): Promise<number> {
     }
     if (step === 'test')
       gatedTestNotice = gatedNotice(listGatedTestFiles(root), affected, changed.map(file => file.path), process.env)
-    const affectedTypecheckCount = step === 'typecheck' && plan.typecheck.kind === 'affected'
-      ? withDependents(root, plan.typecheckPackagePaths).length
-      : 0
-    const leasePlan = planStepLease(step, plan.typecheck, affectedTypecheckCount)
     if (args.dryRun) {
-      console.info(`[${step}] acquire one lease (class ${leasePlan.class}${leasePlan.max !== undefined ? `, max ${leasePlan.max}` : ''})`)
       for (const item of commands)
-        console.info(`[${step}] ${item.label}\n  ${item.packagePath ? `(in ${item.packagePath}) ` : ''}node ${[relative(root, item.args[0]), ...item.args.slice(1), ...(item.concurrency && slotsEnabled ? ['--concurrency={grant}'] : [])].join(' ')}`)
+        console.info(`[${step}] ${item.label}\n  ${item.packagePath ? `(in ${item.packagePath}) ` : ''}node ${[relative(root, item.args[0]), ...item.args.slice(1)].join(' ')}`)
       finish({ step, status: 'skipped', detail: 'dry run', durationMs: 0 }, history)
       continue
     }
     const started = Date.now()
     let failed: string | null = null
-    const lease = await acquire({ ...leasePlan, cwd: root, command: `verify ${step}` }).catch((error: unknown) => {
-      finish({ step, status: 'failed', detail: 'lease acquisition failed', durationMs: Date.now() - started }, history)
-      throw error
-    })
     const executed: string[][] = []
-    const execution = { ...history, commands: executed, waitMs: lease.waitMs ?? 0, grant: lease.grant }
+    const execution = { ...history, commands: executed }
     let output = ''
     const keepLintOutput = (text: string) => {
       output += text
@@ -238,9 +222,8 @@ async function main(): Promise<number> {
     try {
       for (const item of commands) {
         console.info(`\n[${step}] ${item.label}`)
-        const args = item.concurrency && lease.grant !== null ? [...item.args, `--concurrency=${lease.grant}`] : item.args
-        executed.push([process.execPath, ...args])
-        const exitCode = await run(process.execPath, args, { cwd: item.packagePath ? join(root, item.packagePath) : root, env: { ...env, ...lease.env, ...item.env }, onSpawn: lease.addWorkload, onOutput: step === 'lint' ? keepLintOutput : undefined })
+        executed.push([process.execPath, ...item.args])
+        const exitCode = await run(process.execPath, item.args, { cwd: item.packagePath ? join(root, item.packagePath) : root, env: { ...env, ...item.env }, onOutput: step === 'lint' ? keepLintOutput : undefined })
         if (exitCode !== 0) {
           failed = `${item.label} exited ${exitCode}`
           break
@@ -250,9 +233,6 @@ async function main(): Promise<number> {
     catch (error) {
       finish({ step, status: 'failed', detail: 'command execution failed', durationMs: Date.now() - started }, execution)
       throw error
-    }
-    finally {
-      lease.release()
     }
     const durationMs = Date.now() - started
     if (failed) {

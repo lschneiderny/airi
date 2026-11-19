@@ -7,12 +7,12 @@ import { BENCH_V1, BenchUsageError, selectScenarios } from './matrix'
 
 export const BENCH_USAGE = `Usage: pnpm qa:display run -- pnpm qa:bench [--scenario <${BENCH_V1.map(scenario => scenario.id).join('|')}>] [--runs <n>] [--out <dir>]
 
-Runs the bench-v1 matrix (or one scenario) --runs times (default 5, at least 3). Each launch takes its own exclusive
-CPU lease, starts the window stage on a fresh profile with perf recording on, imports the model from .env.qa
+Runs the bench-v1 matrix (or one scenario) --runs times (default 5, at least 3). Each launch waits for a calm host,
+starts the window stage on a fresh profile with perf recording on, imports the model from .env.qa
 (AIRI_QA_MMD_MODEL, AIRI_QA_RIG_FORBOOTH), and appends one bench-run record to bench.jsonl in the per-machine state
 directory (AIRI_PERF_BENCH_DIR overrides it). Run artifacts go to --out (default .temp/qa/<timestamp>-bench).
-Exit codes: 0 every run is valid, 1 a run broke or is invalid, 2 invalid arguments or refused setup, 3 no CPU lease or
-no mounted model in time, 130 interrupted.`
+Exit codes: 0 every run is valid, 1 a run broke or is invalid, 2 invalid arguments or refused setup, 3 the host stayed
+busy or no model mounted in time, 130 interrupted.`
 
 /** Fewer runs give `pnpm perf compare --bench` no usable median. */
 export const BENCH_MIN_RUNS = 3

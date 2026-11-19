@@ -1,5 +1,3 @@
-import type { Lease } from '@proj-airi/cpu-slots'
-
 import type { SmokeOptions } from './args'
 
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
@@ -20,9 +18,9 @@ const defaultAllowListPath = 'packages/qa-tools/fixtures/smoke/allowed-errors.js
 
 /**
  * One clean start: a fresh profile, onboarding completed, the bridge ready, an optional model import, and a quiet
- * settle period, while every window reports its errors. The CLI owns the live CPU lease and interrupt signal.
+ * settle period, while every window reports its errors. The CLI owns the interrupt signal.
  */
-export async function runSmoke(options: SmokeOptions, repoRoot: string, signal: AbortSignal, lease: Lease) {
+export async function runSmoke(options: SmokeOptions, repoRoot: string, signal: AbortSignal) {
   const allowList = parseAllowedErrors(JSON.parse(readFileSync(options.allow ?? resolve(repoRoot, defaultAllowListPath), 'utf8')))
   await refuseIfWorktreeBusy(repoRoot)
   const run = createRun({ tool: 'smoke', label: options.xwayland ? 'clean-start-xwayland' : 'clean-start', repoRoot, outDir: options.out })
@@ -39,7 +37,6 @@ export async function runSmoke(options: SmokeOptions, repoRoot: string, signal: 
     const { stage, bridge, initialState } = await session.start({
       stageHost: options.stageHost,
       launch: {
-        lease,
         logFile: run.path('app.log'),
         script: options.xwayland ? 'dev:xwayland' : 'dev',
         electronArgs: options.electronArgs,

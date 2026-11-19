@@ -31,7 +31,6 @@ function run(p95FrameMsApprox: number, options: RunOptions = {}, overrides: Part
     host,
     buildMode: 'dev',
     electronVersion: '43.8.7',
-    leaseClass: 'exclusive',
     valid: true,
     metrics: {
       fps: 1000 / p95FrameMsApprox,

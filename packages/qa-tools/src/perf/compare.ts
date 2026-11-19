@@ -29,7 +29,7 @@ export interface CommitComparisonReport {
   readonly resolved: { readonly a: readonly string[], readonly b: readonly string[] }
   readonly includeDirty: boolean
   readonly strata: readonly { readonly stratum: CommitStratum, readonly a: CommitSide, readonly b: CommitSide }[]
-  readonly excluded: { readonly dirty: number, readonly hostContended: number, readonly leaseContended: number }
+  readonly excluded: { readonly dirty: number, readonly hostContended: number }
 }
 
 interface SideCells {
@@ -75,11 +75,11 @@ function sideOf(side: SideCells | undefined): CommitSide {
 /**
  * Per-stratum medians of two commits' usage cells. Strata hold host, renderer, model, activity, window, stage
  * host, devtools, refresh rate and every feature value, and are never pooled. Dirty cells are excluded unless
- * `includeDirty`; host- and lease-contended cells are always excluded.
+ * `includeDirty`; host-contended cells are always excluded.
  */
 export function compareCommits(rollups: readonly FeatureCompareRollup[], options: CommitCompareOptions): CommitComparisonReport {
   const resolved = { a: resolveSha(rollups, options.shaA), b: resolveSha(rollups, options.shaB) }
-  const excluded = { dirty: 0, hostContended: 0, leaseContended: 0 }
+  const excluded = { dirty: 0, hostContended: 0 }
   const strata = new Map<string, { stratum: CommitStratum, a?: SideCells, b?: SideCells }>()
   for (const rollup of rollups) {
     for (const cell of rollup.cells) {
@@ -92,10 +92,6 @@ export function compareCommits(rollups: readonly FeatureCompareRollup[], options
       }
       if (cell.hostContended) {
         excluded.hostContended += 1
-        continue
-      }
-      if (cell.leaseContended === true) {
-        excluded.leaseContended += 1
         continue
       }
       const stratum: CommitStratum = {
@@ -148,7 +144,7 @@ export function formatCommitComparison(report: CommitComparisonReport, shas: { r
   return [
     `compare ${name('a')} -> ${name('b')} (observational, medians of cell medians)`,
     ...(sections.length > 0 ? sections : ['  no usage cells for either commit']),
-    `excluded cells: ${report.excluded.dirty} dirty${report.includeDirty ? '' : ' (use --include-dirty to keep them)'}, ${report.excluded.hostContended} host contended, ${report.excluded.leaseContended} lease contended`,
+    `excluded cells: ${report.excluded.dirty} dirty${report.includeDirty ? '' : ' (use --include-dirty to keep them)'}, ${report.excluded.hostContended} host contended`,
     'Observational: usage sessions of two commits differ in more than the commit. For a controlled comparison, run the bench and use `pnpm perf compare --bench <refA> <refB>`.',
   ].join('\n')
 }

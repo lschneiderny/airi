@@ -56,7 +56,7 @@ const LAUNCH_OVERHEAD_SECONDS = 100
 /** A turn-happy reply plays about 30 s of speech. */
 const TALK_TURN_SECONDS = 35
 
-/** A rough wall-clock estimate printed before the bench starts; lease waits come on top. */
+/** A rough wall-clock estimate printed before the bench starts; waits for a calm host come on top. */
 export function estimateSeconds(launches: readonly BenchLaunch[]): number {
   return launches.reduce((total, { scenario }) => {
     const { measure } = scenario

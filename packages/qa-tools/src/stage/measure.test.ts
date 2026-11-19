@@ -1,27 +1,23 @@
-import type { Lease } from '@proj-airi/cpu-slots'
-
 import type { LiveProcess } from '../env/processes'
 
 import process from 'node:process'
 
 import { ChildProcess } from 'node:child_process'
 import { once } from 'node:events'
-import { mkdirSync, mkdtempSync, readdirSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { performance } from 'node:perf_hooks'
 import { PassThrough } from 'node:stream'
 
-import { acquire, Store } from '@proj-airi/cpu-slots'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import * as remoteDebug from '@proj-airi/scenarios-stage-tamagotchi-electron/runtime/remote-debug'
 
 import { heavyweightProcesses, measurePairs, topCpu } from './measure'
 
-import * as brokerProcesses from '../../../cpu-slots/src/processes'
 import * as pnpm from '../env/pnpm'
 import * as processes from '../env/processes'
+import * as hostQuiet from '../host-quiet/wait'
 
 class FakeDevRoot extends ChildProcess {
   override stdin = new PassThrough()
@@ -41,41 +37,26 @@ class FakeDevRoot extends ChildProcess {
 }
 
 let scratch: string
-let store: Store
-let outer: Lease | undefined
 let child: FakeDevRoot
 let live: LiveProcess[]
 let launched: number
-let startedAt: number
 let killed: number[]
 
+const calm = { load1: 0, cores: 8, externalCpuPct: 0, psiCpuSomeAvg10: 0 }
+
 beforeEach(() => {
-  scratch = mkdtempSync(join(tmpdir(), 'qa-measure-lease-'))
+  scratch = mkdtempSync(join(tmpdir(), 'qa-measure-pairs-'))
   mkdirSync(join(scratch, 'profile'))
-  const root = join(scratch, 'broker')
-  vi.stubEnv('AIRI_CPU_SLOTS_DIR', root)
-  vi.stubEnv('AIRI_CPU_SLOTS_HISTORY_DIR', join(scratch, 'history'))
-  vi.stubEnv('AIRI_CPU_BUDGET', '12')
-  vi.stubEnv('AIRI_CPU_SLOTS', '')
-  vi.stubEnv('AIRI_CPU_LEASE', '')
-  vi.stubEnv('AIRI_CPU_GRANT', '')
-  vi.stubEnv('CI', '')
   vi.useFakeTimers()
   live = []
   launched = 0
   killed = []
-  outer = undefined
-  vi.spyOn(brokerProcesses, 'processStartedAt').mockImplementation(pid => pid === process.pid ? performance.timeOrigin : startedAt)
-  vi.spyOn(brokerProcesses, 'snapshotProcesses').mockImplementation(() => ({
-    platform: process.platform,
-    processes: live.map(entry => ({ pid: entry.pid, ppid: entry.parentPid, pgid: child.pid, startedAt })),
-  }))
-  store = new Store({ root, budget: 12 })
+  vi.spyOn(hostQuiet, 'waitForHostQuiet').mockResolvedValue({ quiet: true, waitedSeconds: 0, sample: calm })
   vi.spyOn(pnpm, 'spawnPnpm').mockImplementation((_args, options) => {
     launched += 1
     const pid = 800_000 + launched * 2
     child = new FakeDevRoot(pid)
-    startedAt = Date.now()
+    const startedAt = Date.now()
     live = [
       { pid, parentPid: process.pid, created: startedAt, commandLine: `stage-tamagotchi ${scratch}` },
       { pid: pid + 1, parentPid: pid, created: startedAt, commandLine: `electron --user-data-dir=${options?.env?.APP_USER_DATA_PATH}` },
@@ -105,101 +86,65 @@ beforeEach(() => {
 
 afterEach(() => {
   live = []
-  outer?.release()
   vi.useRealTimers()
   vi.restoreAllMocks()
-  vi.unstubAllEnvs()
   rmSync(scratch, { recursive: true, force: true })
 })
 
-describe('measurePairs lease lifecycle', () => {
-  it('returns the lease when spawning the dev root throws', async () => {
+function pairOptions() {
+  return {
+    repoRoot: scratch,
+    profile: join(scratch, 'profile'),
+    seconds: 1,
+    settleSeconds: 0,
+    attempts: 1,
+    selfPids: [process.pid],
+    log: () => {},
+    onRun: () => {},
+  }
+}
+
+describe('measurePairs launch lifecycle', () => {
+  it('records each launch whose spawn throws as a failed run', async () => {
     vi.mocked(pnpm.spawnPnpm).mockImplementation(() => {
       throw new Error('fake spawn failure')
     })
 
-    const record = await measurePairs({
-      repoRoot: scratch,
-      profile: join(scratch, 'profile'),
-      pairs: 1,
-      seconds: 1,
-      settleSeconds: 0,
-      attempts: 1,
-      selfPids: [process.pid],
-      log: () => {},
-      onRun: () => expect(store.snapshot().leases).toEqual([]),
-    })
+    const record = await measurePairs({ ...pairOptions(), pairs: 1 })
 
     expect(record.failures.map(failure => failure.error)).toEqual(['fake spawn failure', 'fake spawn failure'])
   })
 
-  it('releases each launch after descendant teardown so all three pairs can launch', async () => {
-    const record = await measurePairs({
-      repoRoot: scratch,
-      profile: join(scratch, 'profile'),
-      pairs: 3,
-      seconds: 1,
-      settleSeconds: 0,
-      attempts: 1,
-      selfPids: [process.pid],
-      log: () => {},
-      onRun: () => {
-        // Check before the next acquire: the old release lost its handle while this workload was alive.
-        expect(store.snapshot().leases).toEqual([])
-      },
-    })
+  it('tears each launch down, descendants included, so all three pairs launch', async () => {
+    const record = await measurePairs({ ...pairOptions(), pairs: 3 })
 
     expect(record.failures).toHaveLength(6)
     expect(launched).toBe(6)
     expect(killed).toEqual([800_003, 800_005, 800_007, 800_009, 800_011, 800_013])
-    expect(readdirSync(join(scratch, 'broker', 'tickets'))).toEqual([])
   })
 
-  it('holds each lease until the run\'s process group has exited, so a dying process cannot pin a released lease', async () => {
+  it('waits for each run\'s process group to exit before the next launch', async () => {
     const calls = new Map<number, number>()
-    const leasesWhileExiting: number[] = []
     vi.spyOn(processes, 'runGroupMembers').mockImplementation((rootPid) => {
       const seen = (calls.get(rootPid) ?? 0) + 1
       calls.set(rootPid, seen)
-      leasesWhileExiting.push(store.snapshot().leases.length)
       return seen < 3 ? [{ pid: rootPid + 1, state: 'Z' }] : []
     })
 
-    await measurePairs({
-      repoRoot: scratch,
-      profile: join(scratch, 'profile'),
-      pairs: 1,
-      seconds: 1,
-      settleSeconds: 0,
-      attempts: 1,
-      selfPids: [process.pid],
-      log: () => {},
-      onRun: () => expect(store.snapshot().leases).toEqual([]),
-    })
+    await measurePairs({ ...pairOptions(), pairs: 1 })
 
     expect([...calls.values()]).toEqual([3, 3])
-    expect(leasesWhileExiting).toEqual([1, 1, 1, 1, 1, 1])
   })
 
-  it('balances retained launcher references so the outer gate release removes its lease file', async () => {
-    outer = await acquire({ class: 'exclusive', command: 'gate --level t3', cwd: scratch })
-    const leaseFile = `${outer.id}.json`
+  it('refuses the launch and ends the pairs while the host stays busy', async () => {
+    const busy = { load1: 9, cores: 8, externalCpuPct: 70, psiCpuSomeAvg10: 32 }
+    vi.mocked(hostQuiet.waitForHostQuiet).mockResolvedValueOnce({ quiet: true, waitedSeconds: 0, sample: calm }).mockResolvedValue({ quiet: false, waitedSeconds: 1800, sample: busy })
 
-    await measurePairs({
-      repoRoot: scratch,
-      profile: join(scratch, 'profile'),
-      pairs: 1,
-      seconds: 1,
-      settleSeconds: 0,
-      attempts: 1,
-      selfPids: [process.pid],
-      log: () => {},
-      onRun: () => expect(readdirSync(join(scratch, 'broker', 'leases'))).toEqual([leaseFile]),
-    })
-    outer.release()
+    const record = await measurePairs({ ...pairOptions(), pairs: 3 })
 
-    expect(killed).toEqual([800_003, 800_005])
-    expect(readdirSync(join(scratch, 'broker', 'leases'))).toEqual([])
+    expect(launched).toBe(1)
+    expect(record.failures).toHaveLength(2)
+    expect(record.failures[1]).toMatchObject({ mode: 'desktop', n: 1, error: expect.stringContaining('load 9.00 on 8 cores') })
   })
 })
 

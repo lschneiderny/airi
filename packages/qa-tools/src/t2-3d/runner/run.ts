@@ -253,7 +253,7 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
     let stanceReason: string | null = null
     const started = performance.now()
     for (let frame = 0; frame < frames; frame++) {
-      // Yield for interrupts and the CPU lease heartbeat without advancing pose clocks.
+      // Yield for interrupts without advancing pose clocks.
       if (frame % 60 === 0)
         await setImmediate(undefined, { signal: options.signal })
       naturalSeconds = frame / 60

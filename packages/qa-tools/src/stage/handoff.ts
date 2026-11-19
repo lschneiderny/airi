@@ -1,5 +1,3 @@
-import type { Lease } from '@proj-airi/cpu-slots'
-
 import process from 'node:process'
 
 import { execFileSync } from 'node:child_process'
@@ -183,7 +181,7 @@ function captureSessionDisplay(repoRoot: string, file: string): void {
  * - The record `qa:stage gate` judges with `stage-handoff` and `stage-walk-skate`, and the run directory with the app
  *   log, a screenshot of the stage window after the walk, and, in a KWin QA display, a capture of every output
  */
-export async function runHandOff(options: { repoRoot: string, model: string, limitSeconds: number, signal: AbortSignal, lease: Lease }): Promise<{ record: StageHandOffRecord, runDir: string, teardownOk: boolean }> {
+export async function runHandOff(options: { repoRoot: string, model: string, limitSeconds: number, signal: AbortSignal }): Promise<{ record: StageHandOffRecord, runDir: string, teardownOk: boolean }> {
   await refuseIfWorktreeBusy(options.repoRoot)
   const run = createRun({ tool: 'stage', label: 'handoff', repoRoot: options.repoRoot })
   const profileDir = run.path('profile')
@@ -195,7 +193,7 @@ export async function runHandOff(options: { repoRoot: string, model: string, lim
     // The desktop stage is enabled the way the setting saves it, so the launch goes through `selectHostMode`.
     writeFileSync(join(profileDir, 'stage-config.json'), `${JSON.stringify({ experimental: true, activeRenderer: 'mmd' })}\n`)
     const { stage, bridge } = await session.start({
-      launch: { lease: options.lease, logFile: run.path('app.log'), env: { AIRI_STAGE_HOST: '' }, script: 'dev' },
+      launch: { logFile: run.path('app.log'), env: { AIRI_STAGE_HOST: '' }, script: 'dev' },
       onLaunched: app => run.recordProcess({ rootPid: app.root.pid, created: app.root.created, commandLine: app.root.commandLine }),
       targetPattern: desktopStageTargetPattern,
       collectPageErrors: true,

@@ -1,10 +1,7 @@
-import type { Lease } from '@proj-airi/cpu-slots'
-
 import { ChildProcess } from 'node:child_process'
 import { devNull } from 'node:os'
 import { PassThrough } from 'node:stream'
 
-import { acquire } from '@proj-airi/cpu-slots'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import * as remoteDebug from '@proj-airi/scenarios-stage-tamagotchi-electron/runtime/remote-debug'
@@ -12,11 +9,6 @@ import * as remoteDebug from '@proj-airi/scenarios-stage-tamagotchi-electron/run
 import { devScriptArgs, fatalStartupPattern, launchStageTamagotchi, stageTargetPattern, t3LaunchEnv } from './launch'
 
 import * as pnpm from '../env/pnpm'
-
-vi.mock('@proj-airi/cpu-slots', async importOriginal => ({
-  ...await importOriginal<typeof import('@proj-airi/cpu-slots')>(),
-  acquire: vi.fn(),
-}))
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -57,40 +49,14 @@ class FakeDevRoot extends ChildProcess {
 }
 
 describe('launchStageTamagotchi', () => {
-  it('registers the app on the caller lease without acquiring another reference', async () => {
-    const lease: Lease = { id: 'caller', grant: 4, exclusive: false, inherited: false, env: { AIRI_CPU_LEASE: 'caller', AIRI_CPU_GRANT: '4' }, addWorkload: vi.fn(), release: vi.fn() }
-    const acquiring = vi.mocked(acquire)
-    acquiring.mockClear()
-    acquiring.mockRejectedValue(new Error('launcher must use the caller lease'))
-    vi.spyOn(remoteDebug, 'findAvailablePort').mockResolvedValue(9333)
-    const child = new FakeDevRoot()
-    const spawn = vi.spyOn(pnpm, 'spawnPnpm').mockReturnValue(child)
-    const options = { repoRoot: '/repo', profileDir: '/run/profile', logFile: devNull, list: async () => [], lease }
-
-    const app = await launchStageTamagotchi(options)
-    child.emit('exit', 0)
-    await app.exited
-
-    expect(acquiring).not.toHaveBeenCalled()
-    expect(lease.addWorkload).toHaveBeenCalledExactlyOnceWith(child.pid)
-    expect(spawn.mock.lastCall?.[1]?.env).toMatchObject(lease.env)
-    expect(lease.release).not.toHaveBeenCalled()
-    app.releaseLease()
-    expect(lease.release).toHaveBeenCalledOnce()
-  })
-
-  /** Launches with a fake pnpm child, a fake lease and a fixed port, and returns the pnpm arguments it spawned. */
+  /** Launches with a fake pnpm child and a fixed port, and returns the pnpm arguments it spawned. */
   async function spawnedArgs(options: { script?: 'dev' | 'dev:xwayland', electronArgs?: readonly string[], baseEnv?: NodeJS.ProcessEnv }): Promise<readonly string[]> {
-    const lease: Lease = { id: 'test', grant: null, exclusive: true, inherited: false, env: {}, addWorkload: vi.fn(), release: vi.fn() }
-    vi.mocked(acquire).mockResolvedValue(lease)
     vi.spyOn(remoteDebug, 'findAvailablePort').mockResolvedValue(9333)
     const child = new FakeDevRoot()
     const spawn = vi.spyOn(pnpm, 'spawnPnpm').mockReturnValue(child)
-    const app = await launchStageTamagotchi({ repoRoot: '/repo', profileDir: '/run/profile', logFile: devNull, list: async () => [], lease, ...options })
+    const app = await launchStageTamagotchi({ repoRoot: '/repo', profileDir: '/run/profile', logFile: devNull, list: async () => [], ...options })
     child.emit('exit', 0)
     await app.exited
-    app.releaseLease()
-    expect(lease.release).toHaveBeenCalledOnce()
     return spawn.mock.lastCall![0]
   }
 

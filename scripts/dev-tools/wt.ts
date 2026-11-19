@@ -9,7 +9,6 @@ import { tmpdir, userInfo } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 
 import { errorMessageFrom } from '@moeru/std'
-import { acquire } from '@proj-airi/cpu-slots'
 
 import { compileCacheEnv } from './lib/compile-cache'
 import { git, listWorktrees, repoRoot } from './lib/git'
@@ -84,21 +83,12 @@ function list(root: string): number {
 
 async function install(path: string): Promise<number> {
   console.info(`\nInstalling in ${path}`)
-  // The lease comes from this checkout's cpu-slots; the new worktree may predate the package.
-  const lease = await acquire({ class: 'install', cwd: path, command: `pnpm install (${basename(path)})` })
-  try {
-    return await new Promise<number>((resolve, reject) => {
-      // pnpm is a .cmd/.ps1 shim on Windows, which only a shell can start.
-      const child = spawn('pnpm', ['install', '--frozen-lockfile', '--prefer-offline'], { cwd: path, env: { ...process.env, ...compileCacheEnv(process.env, path), ...lease.env }, stdio: 'inherit', shell: process.platform === 'win32' })
-      child.once('error', reject)
-      if (child.pid !== undefined)
-        lease.addWorkload(child.pid)
-      child.once('close', code => resolve(code ?? 1))
-    })
-  }
-  finally {
-    lease.release()
-  }
+  return await new Promise<number>((resolve, reject) => {
+    // pnpm is a .cmd/.ps1 shim on Windows, which only a shell can start.
+    const child = spawn('pnpm', ['install', '--frozen-lockfile', '--prefer-offline'], { cwd: path, env: { ...process.env, ...compileCacheEnv(process.env, path) }, stdio: 'inherit', shell: process.platform === 'win32' })
+    child.once('error', reject)
+    child.once('close', code => resolve(code ?? 1))
+  })
 }
 
 /** `pnpm qa:setup cubism` in the new worktree. */

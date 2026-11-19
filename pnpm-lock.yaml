@@ -1249,9 +1249,6 @@ importers:
       '@moeru/std':
         specifier: 'catalog:'
         version: 0.1.0-beta.17
-      '@proj-airi/cpu-slots':
-        specifier: workspace:^
-        version: link:packages/cpu-slots
       '@proj-airi/unocss-preset-chromatic':
         specifier: 'catalog:'
         version: 2.0.1
@@ -1581,9 +1578,6 @@ importers:
       '@proj-airi/ccc':
         specifier: workspace:^
         version: link:../../packages/ccc
-      '@proj-airi/cpu-slots':
-        specifier: workspace:^
-        version: link:../../packages/cpu-slots
       '@proj-airi/drizzle-duckdb-wasm':
         specifier: 'catalog:'
         version: 0.6.0(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.6)(@opentelemetry/api@1.9.1)(@prisma/client@5.22.0)(@types/pg@8.23.1)(better-sqlite3@12.11.1)(kysely@0.29.5)(pg@8.23.0)(postgres@3.4.9))(web-worker@1.5.0)
@@ -2269,9 +2263,6 @@ importers:
         specifier: 'catalog:'
         version: 3.25.2(zod@4.4.3)
     devDependencies:
-      '@proj-airi/cpu-slots':
-        specifier: workspace:^
-        version: link:../../packages/cpu-slots
       '@types/ws':
         specifier: 'catalog:'
         version: 8.18.1
@@ -2352,9 +2343,6 @@ importers:
         specifier: 'catalog:'
         version: 6.0.2
     devDependencies:
-      '@proj-airi/cpu-slots':
-        specifier: workspace:^
-        version: link:../cpu-slots
       '@types/audioworklet':
         specifier: 'catalog:'
         version: 0.0.100
@@ -2376,10 +2364,6 @@ importers:
       srvx:
         specifier: 'catalog:'
         version: 0.12.7
-    devDependencies:
-      '@proj-airi/cpu-slots':
-        specifier: workspace:^
-        version: link:../cpu-slots
 
   packages/ccc:
     dependencies:
@@ -2389,10 +2373,6 @@ importers:
       valibot:
         specifier: 'catalog:'
         version: 1.5.0(typescript@6.0.3)
-    devDependencies:
-      '@proj-airi/cpu-slots':
-        specifier: workspace:^
-        version: link:../cpu-slots
 
   packages/character-mind:
     dependencies:
@@ -2403,9 +2383,6 @@ importers:
         specifier: workspace:^
         version: link:../stage-shared
     devDependencies:
-      '@proj-airi/cpu-slots':
-        specifier: workspace:^
-        version: link:../cpu-slots
       vitest:
         specifier: catalog:vitest
         version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/browser-playwright@4.1.11)(@vitest/coverage-v8@4.1.11)(jsdom@30.0.1(@noble/hashes@2.3.0)(canvas@3.2.3))(vite@8.3.4(@types/node@26.2.0)(esbuild@0.28.2)(jiti@2.7.0)(less@4.9.0(supports-color@10.2.2))(terser@5.50.0)(tsx@4.23.12)(yaml@2.9.1))
@@ -2515,9 +2492,6 @@ importers:
         specifier: 'catalog:'
         version: 4.4.3
     devDependencies:
-      '@proj-airi/cpu-slots':
-        specifier: workspace:^
-        version: link:../cpu-slots
       '@types/hast':
         specifier: 'catalog:'
         version: 3.0.5
@@ -2548,18 +2522,6 @@ importers:
       clustr:
         specifier: 'catalog:'
         version: 1.0.2
-
-  packages/cpu-slots:
-    devDependencies:
-      tsdown:
-        specifier: 'catalog:'
-        version: 0.22.14(@arethetypeswrong/core@0.18.5)(@volar/typescript@2.4.28(typescript@6.0.3))(oxc-resolver@11.24.2)(publint@0.3.24)(tsx@4.23.12)(typescript@6.0.3)(unplugin-unused@0.6.0(esbuild@0.28.2)(rolldown@1.2.14)(rollup@4.62.5)(vite@8.3.4(@types/node@26.2.0)(esbuild@0.28.2)(jiti@2.7.0)(less@4.9.0(supports-color@10.2.2))(terser@5.50.0)(tsx@4.23.12)(yaml@2.9.1)))(vue-tsc@3.3.11(typescript@6.0.3))
-      typescript:
-        specifier: 'catalog:'
-        version: 6.0.3
-      vitest:
-        specifier: catalog:vitest
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/browser-playwright@4.1.11)(@vitest/coverage-v8@4.1.11)(jsdom@30.0.1(@noble/hashes@2.3.0)(canvas@3.2.3))(vite@8.3.4(@types/node@26.2.0)(esbuild@0.28.2)(jiti@2.7.0)(less@4.9.0(supports-color@10.2.2))(terser@5.50.0)(tsx@4.23.12)(yaml@2.9.1))
 
   packages/electron-eventa:
     dependencies:
@@ -2609,9 +2571,6 @@ importers:
       '@moeru/std':
         specifier: 'catalog:'
         version: 0.1.0-beta.17
-      '@proj-airi/cpu-slots':
-        specifier: workspace:^
-        version: link:../cpu-slots
       async-mutex:
         specifier: 'catalog:'
         version: 0.5.0
@@ -2646,9 +2605,6 @@ importers:
         specifier: 'catalog:'
         version: 4.2.0
     devDependencies:
-      '@proj-airi/cpu-slots':
-        specifier: workspace:^
-        version: link:../cpu-slots
       '@proj-airi/electron-eventa':
         specifier: workspace:^
         version: link:../electron-eventa
@@ -2663,9 +2619,6 @@ importers:
 
   packages/i18n:
     devDependencies:
-      '@proj-airi/cpu-slots':
-        specifier: workspace:^
-        version: link:../cpu-slots
       unplugin-yaml:
         specifier: 'catalog:'
         version: 4.2.1(@nuxt/kit@3.21.11(magicast@0.5.4))(esbuild@0.28.2)(rolldown@1.2.14)(rollup@4.62.5)(vite@8.3.4(@types/node@26.2.0)(esbuild@0.28.2)(jiti@2.7.0)(less@4.9.0(supports-color@10.2.2))(terser@5.50.0)(tsx@4.23.12)(yaml@2.9.1))
@@ -2682,11 +2635,7 @@ importers:
         specifier: 'catalog:'
         version: 2.9.1
 
-  packages/input-gamepad:
-    devDependencies:
-      '@proj-airi/cpu-slots':
-        specifier: workspace:^
-        version: link:../cpu-slots
+  packages/input-gamepad: {}
 
   packages/input-gamepad-vueuse:
     dependencies:
@@ -2697,9 +2646,6 @@ importers:
         specifier: 'catalog:'
         version: 14.4.0(vue@3.5.41(typescript@6.0.3))
     devDependencies:
-      '@proj-airi/cpu-slots':
-        specifier: workspace:^
-        version: link:../cpu-slots
       vue:
         specifier: 'catalog:'
         version: 3.5.41(typescript@6.0.3)
@@ -2709,10 +2655,6 @@ importers:
       '@types/w3c-web-hid':
         specifier: 'catalog:'
         version: 1.0.7
-    devDependencies:
-      '@proj-airi/cpu-slots':
-        specifier: workspace:^
-        version: link:../cpu-slots
 
   packages/mathjson: {}
 
@@ -2741,9 +2683,6 @@ importers:
         specifier: 'catalog:'
         version: 1.3.1
     devDependencies:
-      '@proj-airi/cpu-slots':
-        specifier: workspace:^
-        version: link:../cpu-slots
       '@vitest/browser-playwright':
         specifier: catalog:vitest
         version: 4.1.11(bufferutil@4.1.0)(playwright@1.62.1)(utf-8-validate@5.0.10)(vite@8.3.4(@types/node@26.2.0)(esbuild@0.28.2)(jiti@2.7.0)(less@4.9.0(supports-color@10.2.2))(terser@5.50.0)(tsx@4.23.12)(yaml@2.9.1))(vitest@4.1.11)
@@ -2759,10 +2698,6 @@ importers:
       es-toolkit:
         specifier: 'catalog:'
         version: 1.51.0
-    devDependencies:
-      '@proj-airi/cpu-slots':
-        specifier: workspace:^
-        version: link:../cpu-slots
 
   packages/motion-driver-humanoid:
     dependencies:
@@ -2770,9 +2705,6 @@ importers:
         specifier: workspace:^
         version: link:../stage-shared
     devDependencies:
-      '@proj-airi/cpu-slots':
-        specifier: workspace:^
-        version: link:../cpu-slots
       vitest:
         specifier: catalog:vitest
         version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/browser-playwright@4.1.11)(@vitest/coverage-v8@4.1.11)(jsdom@30.0.1(@noble/hashes@2.3.0)(canvas@3.2.3))(vite@8.3.4(@types/node@26.2.0)(esbuild@0.28.2)(jiti@2.7.0)(less@4.9.0(supports-color@10.2.2))(terser@5.50.0)(tsx@4.23.12)(yaml@2.9.1))
@@ -2782,10 +2714,6 @@ importers:
       es-toolkit:
         specifier: 'catalog:'
         version: 1.51.0
-    devDependencies:
-      '@proj-airi/cpu-slots':
-        specifier: workspace:^
-        version: link:../cpu-slots
 
   packages/motion-driver-natural:
     dependencies:
@@ -2796,9 +2724,6 @@ importers:
         specifier: workspace:^
         version: link:../stage-shared
     devDependencies:
-      '@proj-airi/cpu-slots':
-        specifier: workspace:^
-        version: link:../cpu-slots
       vitest:
         specifier: catalog:vitest
         version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/browser-playwright@4.1.11)(@vitest/coverage-v8@4.1.11)(jsdom@30.0.1(@noble/hashes@2.3.0)(canvas@3.2.3))(vite@8.3.4(@types/node@26.2.0)(esbuild@0.28.2)(jiti@2.7.0)(less@4.9.0(supports-color@10.2.2))(terser@5.50.0)(tsx@4.23.12)(yaml@2.9.1))
@@ -2826,10 +2751,6 @@ importers:
       nanoid:
         specifier: 'catalog:'
         version: 6.0.2
-    devDependencies:
-      '@proj-airi/cpu-slots':
-        specifier: workspace:^
-        version: link:../cpu-slots
 
   packages/plugin-protocol:
     dependencies:
@@ -2842,10 +2763,6 @@ importers:
       '@xsai/shared-chat':
         specifier: 'catalog:'
         version: 0.5.1
-    devDependencies:
-      '@proj-airi/cpu-slots':
-        specifier: workspace:^
-        version: link:../cpu-slots
 
   packages/plugin-sdk:
     dependencies:
@@ -2871,9 +2788,6 @@ importers:
         specifier: 'catalog:'
         version: 1.5.0(typescript@6.0.3)
     devDependencies:
-      '@proj-airi/cpu-slots':
-        specifier: workspace:^
-        version: link:../cpu-slots
       '@types/semver':
         specifier: 'catalog:'
         version: 7.8.0
@@ -2898,10 +2812,6 @@ importers:
       xsschema:
         specifier: 'catalog:'
         version: 0.5.1(@valibot/to-json-schema@1.8.0(valibot@1.5.0(typescript@6.0.3)))(zod-to-json-schema@3.25.2(zod@4.4.3))(zod@4.4.3)
-    devDependencies:
-      '@proj-airi/cpu-slots':
-        specifier: workspace:^
-        version: link:../cpu-slots
 
   packages/provider-inference:
     dependencies:
@@ -2972,9 +2882,6 @@ importers:
         specifier: 'catalog:'
         version: 4.4.3
     devDependencies:
-      '@proj-airi/cpu-slots':
-        specifier: workspace:^
-        version: link:../cpu-slots
       '@types/node':
         specifier: 'catalog:'
         version: 26.2.0
@@ -3020,9 +2927,6 @@ importers:
       '@proj-airi/core-agent':
         specifier: workspace:^
         version: link:../core-agent
-      '@proj-airi/cpu-slots':
-        specifier: workspace:^
-        version: link:../cpu-slots
       '@proj-airi/i18n':
         specifier: workspace:^
         version: link:../i18n
@@ -3142,9 +3046,6 @@ importers:
       '@iconify-json/ph':
         specifier: 'catalog:'
         version: 1.2.2
-      '@proj-airi/cpu-slots':
-        specifier: workspace:^
-        version: link:../cpu-slots
       '@unocss/reset':
         specifier: 'catalog:'
         version: 66.7.5
@@ -3169,10 +3070,6 @@ importers:
       playwright:
         specifier: 'catalog:'
         version: 1.62.1
-    devDependencies:
-      '@proj-airi/cpu-slots':
-        specifier: workspace:^
-        version: link:../cpu-slots
 
   packages/server-runtime:
     dependencies:
@@ -3206,10 +3103,6 @@ importers:
       valibot:
         specifier: 'catalog:'
         version: 1.5.0(typescript@6.0.3)
-    devDependencies:
-      '@proj-airi/cpu-slots':
-        specifier: workspace:^
-        version: link:../cpu-slots
 
   packages/server-sdk:
     dependencies:
@@ -3228,10 +3121,6 @@ importers:
       valibot:
         specifier: 'catalog:'
         version: 1.5.0(typescript@6.0.3)
-    devDependencies:
-      '@proj-airi/cpu-slots':
-        specifier: workspace:^
-        version: link:../cpu-slots
 
   packages/server-shared:
     dependencies:
@@ -3345,9 +3234,6 @@ importers:
       '@nekopaw/tempora':
         specifier: 'catalog:'
         version: 0.4.0-alpha.1
-      '@proj-airi/cpu-slots':
-        specifier: workspace:^
-        version: link:../cpu-slots
       '@proj-airi/stage-shared':
         specifier: workspace:^
         version: link:../stage-shared
@@ -3499,9 +3385,6 @@ importers:
       '@pinia/colada':
         specifier: 'catalog:'
         version: 1.4.2(pinia@4.0.3(@vue/devtools-api@8.2.1)(typescript@6.0.3)(vue@3.5.41(typescript@6.0.3)))(vue@3.5.41(typescript@6.0.3))
-      '@proj-airi/cpu-slots':
-        specifier: workspace:^
-        version: link:../cpu-slots
       '@proj-airi/stage-shared':
         specifier: workspace:^
         version: link:../stage-shared
@@ -3575,9 +3458,6 @@ importers:
       '@nekopaw/tempora':
         specifier: 'catalog:'
         version: 0.4.0-alpha.1
-      '@proj-airi/cpu-slots':
-        specifier: workspace:^
-        version: link:../cpu-slots
       '@proj-airi/electron-screen-capture':
         specifier: workspace:^
         version: link:../electron-screen-capture
@@ -4029,9 +3909,6 @@ importers:
       '@pinia/testing':
         specifier: 'catalog:'
         version: 2.0.1(pinia@4.0.3(@vue/devtools-api@8.2.1)(typescript@6.0.3)(vue@3.5.41(typescript@6.0.3)))
-      '@proj-airi/cpu-slots':
-        specifier: workspace:^
-        version: link:../cpu-slots
       '@proj-airi/lobe-icons':
         specifier: 'catalog:'
         version: 1.0.19
@@ -4222,9 +4099,6 @@ importers:
         specifier: 'catalog:'
         version: 4.4.3
     devDependencies:
-      '@proj-airi/cpu-slots':
-        specifier: workspace:^
-        version: link:../cpu-slots
       '@types/culori':
         specifier: 'catalog:'
         version: 4.0.1
@@ -4316,9 +4190,6 @@ importers:
         specifier: 'catalog:'
         version: 3.5.41(typescript@6.0.3)
     devDependencies:
-      '@proj-airi/cpu-slots':
-        specifier: workspace:^
-        version: link:../cpu-slots
       '@types/culori':
         specifier: 'catalog:'
         version: 4.0.1
@@ -4420,9 +4291,6 @@ importers:
         specifier: 'catalog:'
         version: 3.5.41(typescript@6.0.3)
     devDependencies:
-      '@proj-airi/cpu-slots':
-        specifier: workspace:^
-        version: link:../cpu-slots
       '@types/culori':
         specifier: 'catalog:'
         version: 4.0.1
@@ -4487,9 +4355,6 @@ importers:
         specifier: 'catalog:'
         version: 3.5.41(typescript@6.0.3)
     devDependencies:
-      '@proj-airi/cpu-slots':
-        specifier: workspace:^
-        version: link:../cpu-slots
       '@types/culori':
         specifier: 'catalog:'
         version: 4.0.1
@@ -4544,9 +4409,6 @@ importers:
       '@proj-airi/audio':
         specifier: workspace:^
         version: link:../audio
-      '@proj-airi/cpu-slots':
-        specifier: workspace:^
-        version: link:../cpu-slots
       '@proj-airi/pipelines-audio':
         specifier: workspace:^
         version: link:../pipelines-audio
@@ -4830,9 +4692,6 @@ importers:
         specifier: 'catalog:'
         version: 0.2.6(vite@8.3.4(@types/node@26.2.0)(esbuild@0.28.2)(jiti@2.7.0)(less@4.9.0(supports-color@10.2.2))(terser@5.50.0)(tsx@4.23.12)(yaml@2.9.1))
     devDependencies:
-      '@proj-airi/cpu-slots':
-        specifier: workspace:^
-        version: link:../cpu-slots
       '@types/node':
         specifier: 'catalog:'
         version: 26.2.0
@@ -4864,9 +4723,6 @@ importers:
         specifier: catalog:vitest
         version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/browser-playwright@4.1.11)(@vitest/coverage-v8@4.1.11)(jsdom@30.0.1(@noble/hashes@2.3.0)(canvas@3.2.3))(vite@8.3.4(@types/node@26.2.0)(esbuild@0.28.2)(jiti@2.7.0)(less@4.9.0(supports-color@10.2.2))(terser@5.50.0)(tsx@4.23.12)(yaml@2.9.1))
     devDependencies:
-      '@proj-airi/cpu-slots':
-        specifier: workspace:^
-        version: link:../cpu-slots
       '@types/node':
         specifier: 'catalog:'
         version: 26.2.0
@@ -5103,9 +4959,6 @@ importers:
         specifier: 'catalog:'
         version: 4.4.3
     devDependencies:
-      '@proj-airi/cpu-slots':
-        specifier: workspace:^
-        version: link:../../../packages/cpu-slots
       '@types/ioredis-mock':
         specifier: 'catalog:'
         version: 8.2.8(ioredis@6.0.0(supports-color@10.2.2))
@@ -5242,9 +5095,6 @@ importers:
       '@electric-sql/pglite':
         specifier: 'catalog:'
         version: 0.5.6
-      '@proj-airi/cpu-slots':
-        specifier: workspace:^
-        version: link:../../../packages/cpu-slots
       '@types/pg':
         specifier: 'catalog:'
         version: 8.23.1
@@ -5308,9 +5158,6 @@ importers:
         specifier: 'catalog:'
         version: 4.4.3
     devDependencies:
-      '@proj-airi/cpu-slots':
-        specifier: workspace:^
-        version: link:../../packages/cpu-slots
       '@types/ws':
         specifier: 'catalog:'
         version: 8.18.1

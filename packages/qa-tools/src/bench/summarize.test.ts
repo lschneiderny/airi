@@ -138,7 +138,6 @@ describe('summarizeBenchRun', () => {
       modelFingerprint: 'f'.repeat(64),
       buildMode: 'dev',
       electronVersion: '40.0.0',
-      leaseClass: 'exclusive',
       valid: true,
     })
     expect(summary.record.invalidReason).toBeUndefined()

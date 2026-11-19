@@ -24,6 +24,5 @@
     "playwright": "catalog:"
   },
   "devDependencies": {
-    "@proj-airi/cpu-slots": "workspace:^"
   }
 }

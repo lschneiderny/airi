@@ -24,7 +24,7 @@ import { resolveLive2DRig, RigSetupError } from '../src/t3/import-rig'
 const repoRoot = resolve(import.meta.dirname, '../../..')
 loadQaEnv(repoRoot)
 
-/** Setup that refuses the bench before it takes a lease or writes anything; exit 2. */
+/** Setup that refuses the bench before it launches or writes anything; exit 2. */
 class BenchSetupError extends Error {}
 
 /** The model of a scenario's rig variable; the fingerprint file is the PMX or the rig's `*.model3.json`. */
@@ -57,7 +57,7 @@ async function main(): Promise<number> {
     process.stdout.write(`${BENCH_USAGE}\n`)
     return 0
   }
-  // Exits 2 outside a live qa:display session, before anything is written or a lease is taken.
+  // Exits 2 outside a live qa:display session, before anything is written or launched.
   assertQaDisplaySession('qa:bench', allowHostSession)
   // Only Linux has the qa:display session that keeps the bench's windows off the user's desktop.
   if (process.platform !== 'linux')
@@ -67,7 +67,7 @@ async function main(): Promise<number> {
   const launches = planLaunches(command.scenarios, command.runs)
   const out = command.out ?? resolve(repoRoot, '.temp/qa', `${formatRunTimestamp(new Date())}-bench`)
   const historyPath = benchHistoryPath({ platform: process.platform, env: process.env, homedir: homedir() })
-  process.stderr.write(`qa:bench: ${launches.length} launches (${command.scenarios.map(scenario => scenario.id).join(', ')} x ${command.runs}), about ${Math.ceil(estimateSeconds(launches) / 60)} min plus CPU lease waits; runs in ${out}, history in ${historyPath}\n`)
+  process.stderr.write(`qa:bench: ${launches.length} launches (${command.scenarios.map(scenario => scenario.id).join(', ')} x ${command.runs}), about ${Math.ceil(estimateSeconds(launches) / 60)} min plus waits for a calm host; runs in ${out}, history in ${historyPath}\n`)
 
   const controller = new AbortController()
   const stop = () => controller.abort(new Error('interrupted'))

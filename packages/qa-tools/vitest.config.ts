@@ -1,9 +1,8 @@
 import Vue from '@vitejs/plugin-vue'
 
-import { withCpuSlots } from '@proj-airi/cpu-slots/vitest'
 import { defineConfig } from 'vitest/config'
 
-export default withCpuSlots(defineConfig({
+export default defineConfig({
   root: import.meta.dirname,
   plugins: [Vue()],
   test: {
@@ -20,4 +19,4 @@ export default withCpuSlots(defineConfig({
       },
     ],
   },
-}))
+})

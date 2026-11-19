@@ -77,10 +77,8 @@ export interface RunGroupExit {
 
 /**
  * Waits up to `timeoutMs` until no process of the launch's group is left, zombies included, and returns `null` when
- * none was left to wait for. Teardown on Linux cannot see a dying process (its command line is empty), but the CPU
- * slot broker still counts it as the lease's workload and, when a release finds the workload alive, keeps the lease
- * until the releasing process exits, so the next launch of the same process would wait forever. Call it after the
- * teardown and before releasing the lease.
+ * none was left to wait for. Teardown on Linux cannot see a dying process (its command line is empty), so a command
+ * that launches again calls it after the teardown, and the next launch does not start beside the last one's exit.
  */
 export async function waitForRunGroupExit(rootPid: number, deps: { members: (rootPid: number) => { pid: number, state: string }[], sleep: (ms: number) => Promise<void>, now?: () => number }, timeoutMs = 30_000): Promise<RunGroupExit | null> {
   const now = deps.now ?? Date.now

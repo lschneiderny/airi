@@ -28,8 +28,8 @@ export const PERF_HELP = [
   '',
   'features compares a metric between the values of one usage feature (all features without --feature), per stratum.',
   'compare prints per-stratum medians of two commits\' usage sessions; dirty cells are excluded unless --include-dirty.',
-  'Both are observational: usage sessions are not controlled experiments. Cells overlapped by another worktree\'s',
-  'cpu-slots lease are dropped; cells older than the lease history are kept and counted as not covered.',
+  'Both are observational: usage sessions are not controlled experiments. Cells the app recorded on a contended host',
+  'are dropped.',
   'features reports 90% percentile-bootstrap intervals, which under-cover at small sample sizes. The paired estimate',
   'decides only from 8 sessions holding both values; paired comparisons have low power below about 8 sessions.',
 ].join('\n')

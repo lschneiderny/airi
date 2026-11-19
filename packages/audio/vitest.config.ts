@@ -1,8 +1,7 @@
-import { withCpuSlots } from '@proj-airi/cpu-slots/vitest'
 import { playwright } from '@vitest/browser-playwright'
 import { defineConfig } from 'vitest/config'
 
-export default withCpuSlots(defineConfig({
+export default defineConfig({
   root: import.meta.dirname,
   test: {
     projects: [
@@ -16,4 +15,4 @@ export default withCpuSlots(defineConfig({
       },
     ],
   },
-}))
+})

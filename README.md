@@ -13,7 +13,7 @@ This is my personal fork of [Project AIRI](https://github.com/moeru-ai/airi). I 
 - **Touch and cursor attention.** You can poke and pet the model. With the Natural driver, the character's attention follows the cursor.
 - **Situational presence.** The desktop character reaches out a few times a day for her own reasons, with long quiet stretches between messages. Settings > Presence controls what foreground information she can see.
 - **No accounts, no automatic updates, no error reports.** The clients have no sign-in. A build of this fork does not update itself and sends no error reports, unless the build sets its own update feed or error-report project.
-- **Development tooling.** The fork adds motion QA gates (`pnpm qa:*`), changed-file verification (`pnpm verify`), worktree helpers (`pnpm wt`, `pnpm dev:top`), and a shared CPU budget for builds and tests (`pnpm slots`).
+- **Development tooling.** The fork adds motion QA gates (`pnpm qa:*`), changed-file verification (`pnpm verify`), and worktree helpers (`pnpm wt`, `pnpm dev:top`).
 
 The design records for these features are in [`docs/ai/adr/`](./docs/ai/adr/).
 

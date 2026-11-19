@@ -10,10 +10,10 @@ import { join } from 'node:path'
 import { platform } from 'node:process'
 
 import { errorMessageFrom } from '@moeru/std'
-import { acquire } from '@proj-airi/cpu-slots'
 import { CdpClient, findDebugTarget, sleep, waitForRemoteDebug } from '@proj-airi/scenarios-stage-tamagotchi-electron/runtime/remote-debug'
 
 import { killTree, listLiveProcesses, runGroupMembers } from '../env/processes'
+import { formatHostLoad, waitForHostQuiet } from '../host-quiet/wait'
 import { closeBrowser, failOnExit, launchStageTamagotchi } from '../t3/launch'
 import { teardownRun, trackTree, waitForRunGroupExit } from '../t3/teardown'
 import { stageMeasureColumns, stageScenarioColumns } from './gates'
@@ -612,10 +612,14 @@ export async function measureScenario(options: { port: number, mode: StageMode, 
   }
 }
 
+/** Longest wait for a calm host before each launch of `measurePairs`. */
+const HOST_QUIET_WAIT_SECONDS = 30 * 60
+
 /**
  * Alternating window/desktop pairs, each run on a fresh launch (`AIRI_STAGE_HOST=<mode>`) of a throwaway copy of
- * `profile`, which must already hold the onboarded profile with the model selected. `onRun` receives the record after
- * every run, so a broken later run keeps the earlier ones.
+ * `profile`, which must already hold the onboarded profile with the model selected. Each launch first waits for a calm
+ * host; a host still busy after the wait records a failure and ends the pairs. `onRun` receives the record after every
+ * run, so a broken later run keeps the earlier ones.
  */
 export async function measurePairs(options: {
   repoRoot: string
@@ -633,6 +637,14 @@ export async function measurePairs(options: {
   try {
     for (let n = 1; n <= options.pairs; n += 1) {
       for (const mode of ['window', 'desktop'] as const) {
+        const host = await waitForHostQuiet({ waitSeconds: HOST_QUIET_WAIT_SECONDS })
+        if (!host.quiet) {
+          const message = `the host stayed busy for ${host.waitedSeconds} s before the launch (${formatHostLoad(host.sample)})`
+          options.log(`qa-tools stage: ${mode} pair ${n} refused: ${message}`)
+          record.failures.push({ mode, n, error: message })
+          options.onRun(record)
+          return record
+        }
         try {
           record.runs.push(await launchAndMeasure({ ...options, mode, n, scratch }))
         }
@@ -651,23 +663,18 @@ export async function measurePairs(options: {
   return record
 }
 
-/** One measured launch of a fresh copy of `profile` under its own exclusive lease, torn down with ownership checks. */
+/** One measured launch of a fresh copy of `profile`, torn down with ownership checks. */
 async function launchAndMeasure(options: { repoRoot: string, profile: string, mode: StageMode, n: number, seconds: number, settleSeconds: number, attempts: number, scratch: string, selfPids: readonly number[], log: (line: string) => void }): Promise<StageMeasureRecord> {
   const label = options.mode
   const profileDir = join(options.scratch, `${label}-${options.n}-profile`)
   cpSync(options.profile, profileDir, { recursive: true })
   options.log(`qa-tools stage: launching ${label} pair ${options.n}`)
-  const lease = await acquire({ class: 'exclusive', command: `qa:stage measure ${label} pair ${options.n}`, cwd: options.repoRoot })
   const app = await launchStageTamagotchi({
-    lease,
     repoRoot: options.repoRoot,
     profileDir,
     logFile: join(options.scratch, `${label}-${options.n}.log`),
     list: listLiveProcesses,
     env: { AIRI_STAGE_HOST: options.mode },
-  }).catch((error) => {
-    lease.release()
-    throw error
   })
   let tracked: OwnedProcess[] = []
   let browserUrl: string | undefined
@@ -696,8 +703,7 @@ async function launchAndMeasure(options: { repoRoot: string, profile: string, mo
     ).finally(async () => {
       const waited = await waitForRunGroupExit(app.root.pid, { members: runGroupMembers, sleep })
       if (waited)
-        options.log(`qa-tools stage: ${label} pair ${options.n}: waited ${waited.waitedMs} ms for the run's process group to exit before releasing the lease${waited.remaining.length ? `; still present: ${waited.remaining.map(member => `${member.pid} (${member.state})`).join(', ')}` : ''}`)
-      app.releaseLease()
+        options.log(`qa-tools stage: ${label} pair ${options.n}: waited ${waited.waitedMs} ms for the run's process group to exit${waited.remaining.length ? `; still present: ${waited.remaining.map(member => `${member.pid} (${member.state})`).join(', ')}` : ''}`)
     })
     if (!report.ok)
       options.log(`qa-tools stage: teardown of ${label} pair ${options.n} left ${report.leftovers.length} processes${report.refused.length ? `; ${report.refused.join('; ')}` : ''}`)

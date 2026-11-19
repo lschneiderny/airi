@@ -181,7 +181,6 @@ export function summarizeBenchRun(raw: RawRun, context: BenchRunContext): BenchR
     // The motion QA bridge that drives the bench exists only in dev builds (`scripts/dev-tools/bundle-check.ts`).
     buildMode: 'dev',
     electronVersion: sessionStart.electronVersion,
-    leaseClass: 'exclusive',
     valid: invalidReason === undefined,
     ...(invalidReason === undefined ? {} : { invalidReason }),
     metrics: {

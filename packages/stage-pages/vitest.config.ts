@@ -5,14 +5,13 @@ import UnoCSS from 'unocss/vite'
 import Info from 'unplugin-info/vite'
 import VueRouter from 'vue-router/vite'
 
-import { withCpuSlots } from '@proj-airi/cpu-slots/vitest'
 import { playwright } from '@vitest/browser-playwright'
 import { defineConfig } from 'vitest/config'
 
 // eslint-disable-next-line no-restricted-syntax -- Vite's native config loader, its planned default, resolves a relative import only with its extension.
 import { sharedUnoConfig } from '../../uno.config.ts'
 
-export default withCpuSlots(defineConfig({
+export default defineConfig({
   root: import.meta.dirname,
   // Follower-window tests must not reload while their election is starting. stage-pages does not depend on
   // pinia-plugin-synced itself, so the include names it through stage-ui; a bare name fails to resolve and is skipped.
@@ -58,4 +57,4 @@ export default withCpuSlots(defineConfig({
       ],
     },
   },
-}))
+})

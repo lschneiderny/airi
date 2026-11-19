@@ -1,4 +1,3 @@
-import type { Lease } from '@proj-airi/cpu-slots'
 import type { CdpClient } from '@proj-airi/scenarios-stage-tamagotchi-electron/runtime/remote-debug'
 import type { MotionQaDeleteAllDataResult, MotionQaEvent } from '@proj-airi/stage-shared/motion-scenario'
 
@@ -14,8 +13,6 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync } from 'node:fs'
 import { dirname, extname } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
-
-import { acquire } from '@proj-airi/cpu-slots'
 
 import { buildSeedEntries } from '../app/plan'
 import { sendMessage } from '../app/send'
@@ -48,7 +45,6 @@ function modelKindOf(model: string, kind?: ModelKind): ModelKind {
 }
 
 interface Live {
-  lease: Lease
   run: RunHandle
   /** The launched app, its stage connection, process tree and page errors; torn down on `stop`. */
   core: AppSessionCore<CdpClient>
@@ -68,7 +64,7 @@ const mcpDisplayName = 'mcp'
 /**
  * One live app for an agent: a fresh profile seeded with the replay LLM, onboarding completed, and the bridge
  * ready, on the classic window unless `stageHost` asks for the desktop stage. On Linux outside a QA display it starts `qa:display` session `mcp` and launches the app there, so the
- * user's desktop stays undisturbed. The app holds the live CPU lease until `stop`.
+ * user's desktop stays undisturbed. The app runs until `stop`.
  */
 /** The answer to `AppSession.widgetReaction`: the reaction text, or `fallback` when she gave none, or no response at all. */
 export type WidgetReactionResult = { text: string | null, fallback: boolean, elapsedMs: number } | { timedOut: true, elapsedMs: number }
@@ -130,12 +126,10 @@ export class AppSession {
     const server = new ReplayServer({ script, log: run.path('requests.jsonl') })
     const baseURL = await server.listen()
     const core = AppSessionCore.create({ repoRoot: this.repoRoot, profileDir, processEnv: baseEnv })
-    let lease: Lease | undefined
     try {
-      lease = await acquire({ class: 'live', command: 'qa:mcp session', cwd: this.repoRoot })
       const { app, stage, bridge } = await core.start({
         stageHost: options.stageHost ?? 'window',
-        launch: { logFile: run.path('app.log'), baseEnv, lease },
+        launch: { logFile: run.path('app.log'), baseEnv },
         onLaunched: launched => run.recordProcess({ rootPid: launched.root.pid, created: launched.root.created, commandLine: launched.root.commandLine }),
         collectPageErrors: true,
         beforeOnboarding: async ({ stage }) => {
@@ -146,7 +140,7 @@ export class AppSession {
         },
         bridge: { step: 'the bridge', timeoutMs: 300_000 },
       })
-      this.live = { run, core, app, stage, bridge, server, script, display, lease, shots: 0 }
+      this.live = { run, core, app, stage, bridge, server, script, display, shots: 0 }
       let imported: unknown = null
       if (options.model)
         imported = await this.importModel(options.model, options.kind)
@@ -154,8 +148,8 @@ export class AppSession {
     }
     catch (error) {
       if (!this.live) {
-        // A partial start still owns processes, the lease, and the display; release them before reporting the error.
-        await this.teardown({ run, core, server, display, lease }).catch(() => {})
+        // A partial start still owns processes and the display; release them before reporting the error.
+        await this.teardown({ run, core, server, display }).catch(() => {})
       }
       throw error
     }
@@ -279,15 +273,13 @@ export class AppSession {
     return await this.teardown(live)
   }
 
-  private async teardown(parts: Pick<Live, 'run' | 'core' | 'server' | 'display'> & { lease?: Lease }): Promise<TeardownReport> {
+  private async teardown(parts: Pick<Live, 'run' | 'core' | 'server' | 'display'>): Promise<TeardownReport> {
     const { run } = parts
     let teardown: TeardownReport
     try {
       teardown = await parts.core.teardown({ extraPaths: [run.path('model.zip')] })
     }
     finally {
-      // Startup can fail before a launch exists; stop still owns the command reference.
-      parts.lease?.release()
       await parts.server.close().catch(() => {})
       if (parts.display)
         execFileSync('pnpm', ['--silent', '--dir', this.repoRoot, 'qa:display', 'down', '--name', parts.display], { stdio: 'ignore', timeout: 60_000 })

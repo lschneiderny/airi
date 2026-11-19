@@ -24,7 +24,7 @@ describe('host smoke report', () => {
     expect(persisted.failures.map(failure => failure.code)).toEqual(expect.arrayContaining(['backend-mismatch', 'verification-missing']))
   })
 
-  it('prints a refused run with a typed failure and exit 2, before taking any lease', async () => {
+  it('prints a refused run with a typed failure and exit 2, before launching anything', async () => {
     const written: string[] = []
     vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
       written.push(String(chunk))
