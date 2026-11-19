@@ -120,7 +120,9 @@ grants may use a bounded extra quarter of the budget. The defaults are 20 and
 normal budget. Existing leases do not shrink when pressure changes. Exclusive
 work is never overcommitted and requires all slots to be free.
 
-`pnpm slots status` shows current holders and queued decisions, including
+A waiting command prints its wait reason and the current holders, and prints
+them again whenever the holders change, so there is no need to poll.
+`pnpm slots status` shows the whole queue and its decisions, including
 reasons such as `head-aging` and `cpu-pressure`. Use `pnpm slots history` to
 read append-only lease events and wait summaries. Tests and QA scenarios that
 take real leases must set `AIRI_CPU_SLOTS_DIR` and
@@ -131,8 +133,8 @@ pressure.
 
 Heavy verification, builds, and rendered QA compete for the shared machine.
 Keep no more than three heavy plan lanes active at once. If a ticket waits,
-check `pnpm slots status` and `pnpm slots history` before adding more heavy
-work.
+read its wait message, and `pnpm slots history` for longer trends, before
+adding more heavy work.
 
 ## Flaky tests
 

@@ -153,6 +153,36 @@ describe('acquire lifecycle', () => {
     expect(events[3]).toMatchObject({ waitMs: 1_500, heldMs: 750 })
   })
 
+  it('names the wait reason and holders, and repeats the message only when the holders change', async () => {
+    vi.useFakeTimers()
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const store = new Store({ root, budget: 8 })
+    const hold = (cwd: string, command: string, slots: number) => {
+      const ticket = store.enqueue({ class: 'test', cwd, command })
+      const lease = store.grant(ticket.seq, slots, ticket.id)
+      expect(lease).toBeDefined()
+      return lease!
+    }
+    const first = hold('/home/user/first-wt', 'x'.repeat(100), 6)
+    const second = hold('/home/user/second-wt', 'vitest related', 2)
+    const pending = take({ ...request, class: 'install' })
+    await vi.advanceTimersByTimeAsync(2_000)
+    const waits = (): string[] => errors.mock.calls.map(call => String(call[0])).filter(line => line.includes('waiting for'))
+    expect(waits()).toHaveLength(1)
+    expect(waits()[0]).toMatch(/^cpu-slots: waiting for 4 slot\(s\) of install \(insufficient-slots; held 8\/8, 0 ahead\)\n/)
+    expect(waits()[0]).toContain(`test 6 slots first-wt 0s ${'x'.repeat(79)}…`)
+    expect(waits()[0]).toContain('test 2 slots second-wt 0s vitest related')
+
+    store.releaseIfIdle(second)
+    await vi.advanceTimersByTimeAsync(2_000)
+    expect(waits()).toHaveLength(2)
+    expect(waits()[1]).not.toContain('second-wt')
+
+    store.releaseIfIdle(first)
+    await vi.advanceTimersByTimeAsync(500)
+    await pending
+  })
+
   it('a10 reuses in process, caps the class, rejects exclusive, and never changes env or signal handlers', async () => {
     const env = { ...process.env }
     const signals = [process.listenerCount('SIGINT'), process.listenerCount('SIGTERM')]

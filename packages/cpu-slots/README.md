@@ -2,7 +2,7 @@
 
 ## Purpose
 
-A local broker that limits how many CPU-heavy developer processes run at once on one machine. Verify steps, QA gates, Vitest runs, and Turbo tasks from every worktree draw slots from one shared budget, which defaults to 12, or less on machines with limited memory. A process waits for a grant before it starts.
+A local broker that limits how many CPU-heavy developer processes run at once on one machine. Verify steps, QA gates, Vitest runs, and Turbo tasks from every worktree draw slots from one shared budget, which defaults to 12, or less on machines with limited memory. A process waits for a grant before it starts. While it waits, it prints why and lists each holder's class, slots, worktree, age, and command, and prints again whenever the holders change.
 
 This is a developer coordination tool. It is not an operating-system CPU quota, and it does not limit long-running development servers.
 

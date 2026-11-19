@@ -5,7 +5,7 @@ import process from 'node:process'
 
 import { randomUUID } from 'node:crypto'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { basename, join, resolve } from 'node:path'
 
 import { parseBudget } from './budget'
 import { classes } from './classes'
@@ -14,6 +14,22 @@ import { decide } from './grant'
 import { LeaseHistory } from './history'
 import { parsePressureThresholds, readCpuPressure } from './pressure'
 import { Store, StoreBusyError } from './store'
+
+/** Longest holder command shown in a wait message. */
+const WAIT_COMMAND_CHARS = 80
+
+/**
+ * Names why a ticket waits and who holds the budget, so a waiting caller does not need
+ * `pnpm slots status`. The first line keeps the shape earlier messages had.
+ */
+function waitReport(head: string, state: { leases: StoredLease[] }, budget: number, ahead: number, reason: string, now: number): string {
+  const held = state.leases.reduce((sum, lease) => sum + lease.slots, 0)
+  const holders = state.leases.map((lease) => {
+    const command = lease.command.length > WAIT_COMMAND_CHARS ? `${lease.command.slice(0, WAIT_COMMAND_CHARS - 1)}…` : lease.command
+    return `\n  ${lease.class} ${lease.slots} slots ${basename(lease.cwd)} ${Math.round((now - lease.createdAt) / 1_000)}s ${command}`
+  })
+  return `${head} (${reason}; held ${held}/${budget}, ${ahead} ahead)${holders.join('')}`
+}
 
 export interface AcquireOptions extends StoreRequest {
   signal?: AbortSignal
@@ -318,6 +334,9 @@ export async function acquire(request: AcquireOptions): Promise<Lease> {
   let ticket: Ticket | undefined
   let waiting = false
   let waitMessage = ''
+  /** Lease ids behind the latest wait message, and behind the last one printed. */
+  let waitHolders = ''
+  let reportedHolders = ''
   let inheritedChecked = false
   /** The store entry that has stayed unreadable on every poll since `since`. */
   let unreadable: { path: string, since: number, reported: boolean } | undefined
@@ -373,12 +392,15 @@ export async function acquire(request: AcquireOptions): Promise<Lease> {
             ticket = store.enqueue(request, id)
           const state = store.snapshot()
           const decision = decide(state, budget, Date.now(), pressure, thresholds)
-          waitMessage = `cpu-slots: waiting for ${Math.min(min, budget)} slot(s) of ${request.class} (held ${state.leases.reduce((sum, lease) => sum + lease.slots, 0)}/${budget}, ${state.tickets.filter(other => other.seq < ticket!.seq).length} ahead)`
+          const ahead = state.tickets.filter(other => other.seq < ticket!.seq).length
+          const reason = decision.kind === 'wait' ? decision.reason : decision.ticketSeq === ticket.seq ? null : 'queue-ahead'
+          waitHolders = state.leases.map(lease => lease.id).sort().join()
+          waitMessage = waitReport(`cpu-slots: waiting for ${Math.min(min, budget)} slot(s) of ${request.class}`, state, budget, ahead, reason ?? 'ready', Date.now())
           history.observe(
             ticket.seq,
             state.leases.reduce((sum, lease) => sum + lease.slots, 0),
-            state.tickets.filter(other => other.seq < ticket!.seq).length,
-            decision.kind === 'wait' ? decision.reason : decision.ticketSeq === ticket.seq ? null : 'queue-ahead',
+            ahead,
+            reason,
           )
           if (decision.kind === 'grant' && decision.ticketSeq === ticket.seq) {
             const record = store.grant(ticket.seq, decision.slots, id, pressure, thresholds)
@@ -404,9 +426,11 @@ export async function acquire(request: AcquireOptions): Promise<Lease> {
           resolveLease(lease)
           return
         }
-        if (!waiting) {
+        // Repeat the message only when the holders change, so a long wait shows progress without polling.
+        if (!waiting || waitHolders !== reportedHolders) {
           console.error(waitMessage)
           waiting = true
+          reportedHolders = waitHolders
         }
         history.wait(undefined, pressure)
       }
