@@ -36,10 +36,22 @@ export interface PresenceObservation {
 /** What ended a desktop sleep or lock: an unlock or a resume. */
 export type WakeCause = 'unlock' | 'resume'
 
+/**
+ * A desktop unlock or resume, as the character mind reports it. `awayMs` is the away span the wake ends or falls in,
+ * or `null` when the mind saw no span to measure.
+ */
 export interface WakeObservation {
   readonly kind: 'wake'
   readonly cause: WakeCause
   readonly atMs: number
+  readonly awayMs: number | null
+}
+
+/** The user came back after an away span of `awayMs`, as the character mind decides it. `atMs` is the return. */
+export interface ReturnObservation {
+  readonly kind: 'return'
+  readonly atMs: number
+  readonly awayMs: number
 }
 
 export interface ActivityObservation {
@@ -176,6 +188,7 @@ export interface SelfObservation {
 export type Observation
   = | PresenceObservation
     | WakeObservation
+    | ReturnObservation
     | ActivityObservation
     | ConversationObservation
     | ContextObservation
@@ -306,8 +319,10 @@ export interface SituationTracking {
   readonly awaySinceMs: number | null
   /** `awaySinceMs` of the away span whose `went-away` event exists. */
   readonly awayNotedSinceMs: number | null
-  /** Length of the latest away span that has ended, or `null` before any; it judges a wake reported after the return. */
+  /** Length of the latest away span that a return observation ended, or `null` before any. */
   readonly lastAwayMs: number | null
+  /** `atMs` of the latest return observation, or `null` before any; an older return is ignored. */
+  readonly lastReturnAtMs: number | null
   /** Text of the topic last addressed by `markAddressed`; it becomes `lastUnpromptedTopic` when her unprompted turn is spoken. */
   readonly addressedTopic: string | null
   readonly activityAtMs: number | null
@@ -385,6 +400,7 @@ export const initialSituationState: SituationState = Object.freeze({
     awaySinceMs: null,
     awayNotedSinceMs: null,
     lastAwayMs: null,
+    lastReturnAtMs: null,
     addressedTopic: null,
     activityAtMs: null,
     settledSinceMs: null,

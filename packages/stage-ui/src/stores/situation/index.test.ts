@@ -128,7 +128,7 @@ function createLeadership(initiallyLeader: boolean) {
 }
 
 function wake(atMs: number): WakeObservation {
-  return { kind: 'wake', cause: 'unlock', atMs }
+  return { kind: 'wake', cause: 'unlock', atMs, awayMs: null }
 }
 
 function activity(appId: string, atMs: number): ActivityObservation {
@@ -364,6 +364,26 @@ describe('situation store', () => {
     expect(vi.getTimerCount()).toBe(1)
   })
 
+  it('records a return the mind decided in the leader, and nothing in a follower', () => {
+    const leaderWindow = createLeadership(true)
+    const followerWindow = createLeadership(false)
+    setActivePinia(createPinia())
+    const leader = useSituationStore()
+    setActivePinia(createPinia())
+    const follower = useSituationStore()
+    leader.initialize(leaderWindow.runtime)
+    follower.initialize(followerWindow.runtime)
+
+    for (const store of [leader, follower]) {
+      store.observeReturn(wake(T0))
+      store.observeReturn({ kind: 'return', atMs: T0, awayMs: 10 * 60_000 })
+    }
+
+    expect(leader.state.events.map(event => event.kind)).toEqual(['wake', 'returned'])
+    expect(leader.state.tracking).toMatchObject({ lastReturnAtMs: T0, lastAwayMs: 10 * 60_000 })
+    expect(follower.state).toBe(initialSituationState)
+  })
+
   it('keeps the situation out of Pinia state, so no plugin can sync or persist it', () => {
     const leadership = createLeadership(true)
     const store = useSituationStore()
@@ -404,7 +424,7 @@ describe('situation store', () => {
     expect(store.renderForRequest(T0)).toMatch(/^\[Situation \d\d:\d\d\]\n- The user is at the desk, active for less than a minute\n- You two last talked just now\.\n- Stage - can show: face: smile$/)
   })
 
-  it('reports a wake from an unlocked sample after a 6 min lock, next to the unchanged presence and came-back lines', () => {
+  it('renders the mind\'s wake and return after a 6 min lock next to the presence from an unlocked sample', () => {
     const leadership = createLeadership(true)
     const store = useSituationStore()
     store.initialize(leadership.runtime)
@@ -417,6 +437,10 @@ describe('situation store', () => {
     vi.advanceTimersByTime(6 * 60 * 1_000)
     clearInterval(keepLocked)
     desktop.setSnapshot(desktopSample({ unlockedAtMs: Date.now() }))
+    // The unlocked sample alone reports only presence; the wake and the return come from the mind.
+    expect(store.state.events.map(event => event.kind)).toEqual(['went-away'])
+    store.observeReturn({ kind: 'wake', cause: 'unlock', atMs: Date.now(), awayMs: 6 * 60 * 1_000 })
+    store.observeReturn({ kind: 'return', atMs: Date.now(), awayMs: 6 * 60 * 1_000 })
 
     const block = store.renderForRequest(Date.now())
     expect(block).toContain('- The user is at the desk, active for less than a minute')
@@ -424,7 +448,7 @@ describe('situation store', () => {
     expect(block).toContain('- New: came back after 6 min away (just now)')
   })
 
-  it('adds no wake or stepped-away topic for a 1 s lock, and adds the stepped-away topic once a lock lasts 5 min', () => {
+  it('adds no stepped-away topic for a 1 s lock, and adds the stepped-away topic once a lock lasts 5 min', () => {
     const leadership = createLeadership(true)
     const store = useSituationStore()
     store.initialize(leadership.runtime)
@@ -434,12 +458,9 @@ describe('situation store', () => {
     desktop.setSnapshot(desktopSample({ locked: true }))
     vi.advanceTimersByTime(1_000)
     desktop.setSnapshot(desktopSample({ unlockedAtMs: Date.now() }))
-    expect(topics()).not.toContain('wake')
     vi.advanceTimersByTime(10 * 60 * 1_000)
     expect(topics()).not.toContain('presence:away')
-    expect(topics()).not.toContain('wake')
     expect(store.renderForRequest(Date.now())).not.toContain('stepped away')
-    expect(store.renderForRequest(Date.now())).not.toContain('unlocked the computer')
 
     // The producer keeps sampling while the session is locked.
     desktop.setSnapshot(desktopSample({ locked: true }))

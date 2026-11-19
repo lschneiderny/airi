@@ -80,8 +80,6 @@ describe('desktop situation sensor', () => {
       { kind: 'presence', state: 'away', reason: 'idle', atMs: T0 + 5_000 },
       { kind: 'presence', state: 'away', reason: 'locked', atMs: T0 + 6_000 },
       { kind: 'presence', state: 'away', reason: 'suspended', atMs: T0 + 7_000 },
-      // The first resume after the baseline is also a wake.
-      { kind: 'wake', cause: 'resume', atMs: T0 + 8_000 },
       { kind: 'presence', state: 'here', atMs: T0 + 8_000 },
     ])
   })
@@ -151,27 +149,6 @@ describe('desktop situation sensor', () => {
     ])
   })
 
-  it('takes the first sample as the wake baseline and reports only advancing unlock and resume times', () => {
-    const { observations, publish } = run()
-
-    // Hours-old times in the first sample are not news.
-    publish(T0, { unlockedAtMs: T0 - 3 * HOUR_MS, resumedAtMs: T0 - 2 * HOUR_MS })
-    publish(T0 + 1_000, { unlockedAtMs: T0 - 3 * HOUR_MS, resumedAtMs: T0 - 2 * HOUR_MS })
-    publish(T0 + 2_000, { unlockedAtMs: T0 + 2_000, resumedAtMs: T0 - 2 * HOUR_MS })
-    // The same time again, an older time (clock stepped back), and a missing time are not wakes.
-    publish(T0 + 3_000, { unlockedAtMs: T0 + 2_000 })
-    publish(T0 + 4_000, { unlockedAtMs: T0 + 1_000 })
-    publish(T0 + 5_000, { unlockedAtMs: null })
-    // Both advance in one sample: the older one goes first, because the reducer keeps the newest wake.
-    publish(T0 + 6_000, { unlockedAtMs: T0 + 6_000, resumedAtMs: T0 + 5_500 })
-
-    expect(observations.filter(observation => observation.kind === 'wake')).toEqual([
-      { kind: 'wake', cause: 'unlock', atMs: T0 + 2_000 },
-      { kind: 'wake', cause: 'resume', atMs: T0 + 5_500 },
-      { kind: 'wake', cause: 'unlock', atMs: T0 + 6_000 },
-    ])
-  })
-
   it('sees a locked and an unlocked sample written in the same tick', () => {
     const { observations, publish } = run()
     publish(T0)
@@ -182,7 +159,6 @@ describe('desktop situation sensor', () => {
     expect(observations).toEqual([
       { kind: 'presence', state: 'here', atMs: T0 },
       { kind: 'presence', state: 'away', reason: 'locked', atMs: T0 + 10_000 },
-      { kind: 'wake', cause: 'unlock', atMs: T0 + 10_000 },
       { kind: 'presence', state: 'here', atMs: T0 + 10_000 },
     ])
   })

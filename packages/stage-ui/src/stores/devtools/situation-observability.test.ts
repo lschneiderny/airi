@@ -30,7 +30,7 @@ import {
 const T0 = Date.UTC(2026, 9, 20, 9, 0, 0)
 
 function stateWithWake(): SituationState {
-  return reduceSituation(initialSituationState, { kind: 'wake', cause: 'unlock', atMs: T0 }, T0)
+  return reduceSituation(initialSituationState, { kind: 'wake', cause: 'unlock', atMs: T0, awayMs: null }, T0)
 }
 
 function rendered(text: string, shownEventIds: string[] = []): RenderedSituation {

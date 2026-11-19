@@ -361,10 +361,9 @@ describe('bridgeSituationToCharacter', () => {
 
   it('applies a return with its away gap', async () => {
     const { characterState, situation } = await startLeader()
-    situation.ingest({ kind: 'presence', state: 'away', atMs: T0 })
     const backAtMs = T0 + 3 * 24 * HOUR_MS
     vi.setSystemTime(backAtMs)
-    situation.ingest({ kind: 'presence', state: 'here', atMs: backAtMs })
+    situation.ingest({ kind: 'return', atMs: backAtMs, awayMs: backAtMs - T0 })
 
     const record = await recordOf(characterState)
     expect(record.appliedEvents.recent.map(entry => entry.id)).toEqual([`return:presence:return@${backAtMs}`])

@@ -156,7 +156,7 @@ describe('situation observability across windows', () => {
     await coordinated(settings.runtime, () => settings.runtime.getLeaderId() === stage.runtime.participantId)
 
     const now = Date.now()
-    const state = reduceSituation(initialSituationState, { kind: 'wake', cause: 'unlock', atMs: now }, now)
+    const state = reduceSituation(initialSituationState, { kind: 'wake', cause: 'unlock', atMs: now, awayMs: null }, now)
     stage.store.publishLiveState(true, state)
     stage.store.recordRender(now, { text: '[Situation 09:00]', shownEventIds: [] })
 
@@ -185,7 +185,7 @@ describe('situation observability across windows', () => {
     await coordinated(settings.runtime, () => settings.runtime.getLeaderId() === stage.runtime.participantId)
 
     const now = Date.now()
-    stage.store.publishLiveState(true, reduceSituation(initialSituationState, { kind: 'wake', cause: 'unlock', atMs: now }, now))
+    stage.store.publishLiveState(true, reduceSituation(initialSituationState, { kind: 'wake', cause: 'unlock', atMs: now, awayMs: null }, now))
     for (let index = 0; index < 20; index++)
       stage.store.recordRender(now + index, { text: `[Situation ${index}]`, shownEventIds: [] })
 
