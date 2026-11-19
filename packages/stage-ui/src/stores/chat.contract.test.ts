@@ -37,6 +37,7 @@ import { usePerformanceRuntimeState } from '../features/performance/runtime-stat
 import { useExpressionPerformanceSettings } from '../features/performance/settings'
 import { getAnalytics } from '../libs/product-signals'
 import { getSpeechBusContext, voiceGenerationEnded } from '../services/speech/bus'
+import { connectMind } from '../test/connect-mind'
 import { composeDrawCardPrompt } from '../tools/draw-card'
 import { composeMemoryPrompt } from '../tools/memory'
 import { getEventSourceKey } from '../utils/event-source'
@@ -391,7 +392,8 @@ const SITUATION_GATE_SEED = 497396
 function leadSituation() {
   vi.stubGlobal('localStorage', new MemoryStorage())
   const store = useSituationStore()
-  store.initialize(createLeaderRuntime(), { seedSource: () => SITUATION_GATE_SEED })
+  store.initialize(createLeaderRuntime())
+  connectMind(store, SITUATION_GATE_SEED)
   // The leader owns a 1 s ticker; stop it even when an assertion fails.
   onTestFinished(() => {
     store.dispose()

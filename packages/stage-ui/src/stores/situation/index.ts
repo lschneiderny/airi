@@ -1,3 +1,4 @@
+import type { VoiceLine, VoiceRun } from '@proj-airi/character-mind'
 import type { ChatHistoryItem, ChatHookRegistry, TurnRef } from '@proj-airi/core-agent'
 import type {
   AppCategory,
@@ -6,8 +7,6 @@ import type {
   GateSettings,
   GateSignals,
   Observation,
-  ReactionKind,
-  ReasonKind,
   ReturnObservation,
   SavedGateMemory,
   SituationState,
@@ -20,6 +19,7 @@ import type {
 } from '@proj-airi/stage-shared/situation'
 import type { SyncedPiniaRuntime } from 'pinia-plugin-synced'
 
+import type { VoicePort, VoiceStimulus } from '../../composables/performance/mind-voice'
 import type { ExtractionReadPosition } from '../../features/situation/inner-state'
 import type { LlmStream, ThreadExtractionSelection } from '../../features/situation/thread-extraction'
 import type { SituationForgetRequest } from '../../services/speech/bus'
@@ -34,7 +34,6 @@ import { isElectronWindow } from '@proj-airi/stage-shared'
 import {
   addThreads,
   advanceSituation,
-  evaluateUrgeGate,
   forgetForeground,
   forgetSource,
   heldTitles,
@@ -45,20 +44,13 @@ import {
   markShown,
   markAddressed as markSituationAddressed,
   notifyTopicKey,
-  promotionUrgeMemory,
   pruneThreads,
   raiseThread,
-  randomSource,
-  recordExternalSpeech,
-  recordUrgeFireOutcome,
-  recordUrgeUserTurn,
   reduceSituation,
   renderSituation,
-  restoreSocialMemory,
   TOUCH_TOPIC_KEY,
   touchVoiceView,
   unpromptedTopicText,
-  visibilityRegainUrgeMemory,
   WEB_EXTENSION_SOURCE,
   withoutAppExtension,
 } from '@proj-airi/stage-shared/situation'
@@ -120,11 +112,6 @@ const NO_THREADS: ThreadState = Object.freeze({ threads: Object.freeze([]) })
  * first. A dropped session's next extraction reads its newest messages again, within the extraction caps.
  */
 const EXTRACTION_READ_POSITIONS_MAX = 64
-
-/** A fresh uint32 that seeds the gate's random source for a leadership. */
-function randomSeed(): number {
-  return crypto.getRandomValues(new Uint32Array(1))[0] ?? 0
-}
 
 /** The local calendar position of `nowMs` in this host's time zone, for rituals and the logical day. */
 function localTimeFor(nowMs: number): GateLocalTime {
@@ -210,25 +197,27 @@ interface RunningSensors {
  * advance ticker checks and which reports finished exchanges through {@link onExchangeEnd}. Only the user input listeners run in
  * every initialized window, so {@link untilUserIdle} answers wherever a widget reaction is served.
  *
- * In a host that declared the `unprompted` capability ({@link setHostCapabilities}), the leader also runs the urge
- * gate every {@link GATE_INTERVAL_MS}. A fire addresses its topic (a thread topic is consumed only once her turn about
- * it speaks), then starts one unprompted turn through the chat controls, and the gate starts no other turn until that
- * one has a result. The gate's social memory (with the ritual day) and the open threads are restored from
+ * In a host that declared the `unprompted` capability ({@link setHostCapabilities}), the leader also runs the gate
+ * loop every {@link GATE_INTERVAL_MS}, and is the voice port ({@link VoicePort}) of the stage that leads. The character
+ * mind of that stage decides whether and when she speaks unasked; the store builds the mind's view at each tick and
+ * sends it to the connected mind ({@link connect}), runs the lines the mind decides ({@link speak}), and stores what
+ * the mind publishes ({@link publishVoice}). With no mind connected, a tick is dropped. A reach-out addresses its
+ * topic (a thread topic is consumed only once her turn about it speaks), then starts one unprompted turn through the
+ * chat controls. The gate's social memory (with the ritual day) and the open threads are restored from
  * `useSituationInnerState` when the gate starts and saved whenever a durable field changes, so a leader reload does
- * not start her from day one. Its randomness comes only from the seed that {@link initialize} takes. While the gate
+ * not start her from day one. Each promotion and "Delete all data" starts a new run ({@link VoiceRun}): its id makes
+ * the mind restore its gate memory, from the mirror of the memory a mind last published in the run, else from the
+ * slice saved at the promotion. While the gate
  * runs, every exchange that ends is sent to the thread extractor, which asks the chat model what is still open in the
  * messages of that chat session that no earlier extraction read (the read positions are saved with the threads); the
  * threads it returns join the gate's reasons for that chat session, and each attempt shows in the inspector's
  * extraction ledger, never in chat history.
  *
- * While the gate runs, the leader is also the voice channel of a touch. The stage that leads calls it in-process: the
- * character mind decides whether she says one short line about a pet or poke, and this store records the touch and
- * runs the line. {@link observeTouch} folds the touch and returns what the mind may see of it. {@link speakReaction}
+ * While the gate runs, the leader is also the voice channel of a touch. {@link observeTouch} folds the touch and
+ * returns what the mind may see of it. A touch line that the mind decided is spoken through {@link speak}: the store
  * marks the touch event as shown (the trigger message carries it), starts a reaction turn through `submitReaction`,
  * and resolves with what became of it. {@link observeReturn} records a return or a desktop wake that the mind
- * decided. The outcome of a line never touches the gate's fire memory: a spoken line starts the
- * gate's floor (`recordExternalSpeech`) and counts as her last line. The pacing of these lines is the mind's and is
- * not saved.
+ * decided. The mind applies the outcome of every line to its gate memory.
  *
  * While it leads, the store also feeds the character state (`bridgeSituationToCharacter`): touches, returns,
  * reach-outs and their replies, turns, and the relationship events of each extraction. Forgetting everything forgets
@@ -261,24 +250,29 @@ export const useSituationStore = defineStore('situation', () => {
 
   const hostSupportsUnprompted = shallowRef(false)
   let gateTicker: ReturnType<typeof setInterval> | undefined
-  let gateMemory: UrgeGateMemory = initialUrgeMemory
-  /** Open threads of every chat session; the gate filters them by the active session. Rituals live in `gateMemory.day`. */
+  /**
+   * The gate run: its id, the mirror of the last memory a mind published in it (`memory`), and the slice saved at its
+   * promotion. Replaced, never mutated, so a view sent to the mind keeps the run it was built in.
+   */
+  let run: VoiceRun = { id: 0, memory: null, saved: null }
+  /** The mind of the stage that leads, with the run it last received a tick in; see {@link connect}. */
+  let mind: { send: (stimulus: VoiceStimulus) => void, tickedRun: number | null } | undefined
+  /** The latest user turn that no mind could receive yet; sent after the tick that restores a mind's gate memory. */
+  let pendingUserTurnAtMs: number | null = null
+  /** Set while "Evaluate now" runs; {@link publishVoice} fills it with what the mind published in the same call. */
+  let evaluation: { decision: UrgeGateDecision | null, memory: UrgeGateMemory | null } | undefined
+  /** Open threads of every chat session; the gate filters them by the active session. Rituals live in the gate memory's `day`. */
   let threads: ThreadState = NO_THREADS
   /** How far thread extraction read each chat session, least recently extracted first. */
   let extractedThrough: readonly ExtractionReadPosition[] = []
   /** The durable state last saved, serialized, so an evaluation that changed nothing durable writes nothing. */
   let savedSnapshot: string | undefined
-  let seedSource: () => number = randomSeed
-  /** The gate's random source; a new one is seeded from `seedSource` at every promotion. */
-  let gateRandom: () => number = randomSource(0)
   const innerState = useSituationInnerState()
   let stopGateEvaluation: (() => void) | undefined
   /** Stops thread extraction of the running gate; a late result of an earlier gate run is dropped. */
   let stopThreadExtraction: (() => void) | undefined
-  /** Whether the stage was on screen with a fresh desktop sample at the previous gate tick. */
-  let wasStageShown = false
-  /** The unprompted turn the gate started, from the fire until its result is recorded. */
-  let firing: { turnId: string, kind: ReasonKind, spoken: boolean } | undefined
+  /** The unprompted turn of the line the mind is speaking, from {@link speak} until its result. */
+  let speaking: { chatTurnId: string, line: VoiceLine, spoken: boolean, settle: (outcome: GateOutcome | 'refused') => void } | undefined
   /** Advances on every promotion and demotion, so a result from an earlier leadership is dropped. */
   let leadership = 0
   let stopVoiceTurnListener: (() => void) | undefined
@@ -300,8 +294,6 @@ export const useSituationStore = defineStore('situation', () => {
   const heldTopics = new Set<string>()
   /** The unprompted turn whose first literal was seen last, so its topic is addressed once. */
   let lastSpokenUnpromptedTurnId: string | undefined
-  /** The reaction turn that was submitted and has no result yet; `settle` reports its outcome once. */
-  let reacting: { turnId: string, settle: (outcome: GateOutcome | 'refused') => void } | undefined
   let stopSelfListener: (() => void) | undefined
   /** Feeds the character state from this leader's observations; see `bridgeSituationToCharacter`. */
   let characterBridge: SituationBridge | undefined
@@ -371,7 +363,7 @@ export const useSituationStore = defineStore('situation', () => {
     const stopSensor = startConversationSensor(chatHooks, (observation) => {
       // Only one unprompted turn runs at a time, so a character turn that ends while a reaction runs is that reaction.
       // Its line was already folded with origin `reaction` when it started speaking, so it never counts as unprompted.
-      if (reacting && observation.kind === 'conversation' && observation.who === 'character' && observation.origin === 'unprompted')
+      if (speaking?.line.kind === 'reaction' && observation.kind === 'conversation' && observation.who === 'character' && observation.origin === 'unprompted')
         return
       ingest(observation)
       // The sensor reports user turns only for user-origin sends, so the character's own turns earn no engagement.
@@ -379,7 +371,7 @@ export const useSituationStore = defineStore('situation', () => {
         // Speaking to her is being here: presence follows the turn at once, so this turn's own prompt says so.
         sensors?.check(observation.atMs)
         observability.recordUserTurn(observation.atMs)
-        setGateMemory(recordUrgeUserTurn(gateMemory, observation.atMs))
+        sendUserTurn(observation.atMs)
       }
     })
     exchangeSensor = startExchangeSensor(chatHooks, {
@@ -400,7 +392,10 @@ export const useSituationStore = defineStore('situation', () => {
       const nowMs = Date.now()
       // A touch reaction is not a gate topic: it settles the reaction turn and never addresses the touch event.
       if (trigger?.topicKey === TOUCH_TOPIC_KEY) {
-        reactionSpoke(context.turnId, nowMs)
+        if (speaking?.chatTurnId === context.turnId)
+          lineSpoke(speaking, nowMs)
+        else
+          ingest({ kind: 'conversation', who: 'character', origin: 'reaction', atMs: nowMs })
         return
       }
       // Every spoken unprompted turn addresses its own topic here, whoever started it. A widget reaction's notify is
@@ -408,19 +403,19 @@ export const useSituationStore = defineStore('situation', () => {
       // of an earlier declined turn.
       if (trigger)
         markAddressed(trigger.topicKey)
-      // Recording a gate fire as spoken now, not when the reply ends, lets a user reply mid-reply count as engagement.
-      if (firing && !firing.spoken && context.turnId === firing.turnId) {
-        firing.spoken = true
-        // A thread is consumed here and only here, so a declined, cancelled, or failed attempt leaves it eligible.
-        if (trigger && isThreadTopic(trigger.topicKey))
-          raiseThreadTopic(trigger.topicKey, nowMs)
-        observability.recordReasonOutcome(firing.kind, 'spoken', nowMs)
-        setGateMemory(recordUrgeFireOutcome(gateMemory, 'spoken', nowMs))
+      // Settling a reach-out as spoken now, not when the reply ends, lets a user reply mid-reply count as engagement.
+      if (speaking?.chatTurnId === context.turnId) {
+        if (!speaking.spoken) {
+          // A thread is consumed here and only here, so a declined, cancelled, or failed attempt leaves it eligible.
+          if (trigger && isThreadTopic(trigger.topicKey))
+            raiseThreadTopic(trigger.topicKey, nowMs)
+          lineSpoke(speaking, nowMs)
+        }
       }
-      else if (gateTicker !== undefined && context.turnId !== firing?.turnId) {
-        // A forced widget or plugin turn spoke outside the gate. It starts the floor, so she does not open a new topic
+      else if (gateTicker !== undefined) {
+        // A forced widget or plugin turn spoke outside the mind. It starts the floor, so she does not open a new topic
         // right after it, but it never counts as an unanswered opening.
-        setGateMemory(recordExternalSpeech(gateMemory, nowMs))
+        mind?.send({ kind: 'external-speech', atMs: nowMs })
       }
     })
     const stopDeclinedListener = chatHooks.onStreamEnd(async (context) => {
@@ -432,8 +427,8 @@ export const useSituationStore = defineStore('situation', () => {
       const trigger = context.message.role === 'user' ? context.message.trigger : undefined
       // A declined touch reaction settles its reaction turn instead; the touch event is never addressed.
       if (trigger?.topicKey === TOUCH_TOPIC_KEY) {
-        if (reacting?.turnId === context.turnId)
-          reacting.settle('declined')
+        if (speaking?.chatTurnId === context.turnId)
+          speaking.settle('declined')
         return
       }
       if (trigger)
@@ -604,15 +599,14 @@ export const useSituationStore = defineStore('situation', () => {
     })
   }
 
-  /** Changes the gate memory, shows the change in the devtools Situation inspector at once, and saves it if durable. */
-  function setGateMemory(memory: UrgeGateMemory) {
-    gateMemory = memory
-    observability.publishUrgeState(memory, threads.threads)
+  /** Shows the gate memory and the open threads in the devtools Situation inspector at once, and saves them if durable. */
+  function publishGateState() {
+    observability.publishUrgeState(run.memory ?? initialUrgeMemory, threads.threads)
     saveInnerState()
   }
 
   function innerStateSnapshot(): string {
-    return JSON.stringify([savedGateMemory(gateMemory), threads.threads, extractedThrough])
+    return JSON.stringify([run.memory && savedGateMemory(run.memory), threads.threads, extractedThrough])
   }
 
   /**
@@ -627,7 +621,9 @@ export const useSituationStore = defineStore('situation', () => {
     const snapshot = innerStateSnapshot()
     if (snapshot === savedSnapshot)
       return
-    if (innerState.write({ gate: savedGateMemory(gateMemory), threads: threads.threads, extractedThrough }, leadership))
+    // Before a mind published a memory in this run, the stored gate slice stays as it is.
+    const gate = run.memory ? savedGateMemory(run.memory) : undefined
+    if (innerState.write({ gate, threads: threads.threads, extractedThrough }, leadership))
       savedSnapshot = snapshot
   }
 
@@ -672,105 +668,110 @@ export const useSituationStore = defineStore('situation', () => {
   }
 
   /**
-   * One gate evaluation. Nothing is evaluated while an unprompted turn is pending: from the fire until `sending`
-   * turns true the chat reports nothing, so the gate's own `generating` guard cannot see it yet.
+   * Sends the connected mind one gate tick with the view of this moment, and returns whether a mind received it. The
+   * view is built as the gate's input: the signals, the settings, the local time, the pruned threads, the mood factor,
+   * the held topics, and whether another unprompted turn is pending. A user turn that no mind could receive follows
+   * the tick, which restores the gate memory of a mind that is new to the run.
    * `forceTiming` (devtools "Evaluate now") skips the timing guards only; a forced fire starts its turn like any other.
    */
-  function gateTick(forceTiming = false): SituationGateEvaluation {
+  function voiceTick(forceTiming = false): boolean {
     const controls = chat
-    if (!controls)
-      return { status: 'skipped', reason: 'gate-not-running' }
-    if (firing || controls.unpromptedPending())
-      return { status: 'skipped', reason: 'unprompted-pending' }
-
+    const connected = mind
+    if (!controls || !connected || gateTicker === undefined)
+      return false
     const nowMs = Date.now()
-    const signals = gateSignals(controls, nowMs)
-    // A stage that comes back on screen eases in again, like a new leader, instead of speaking at once.
-    const stageShown = signals.stageVisible && signals.desktopFresh
-    if (stageShown && !wasStageShown)
-      setGateMemory(visibilityRegainUrgeMemory(gateMemory, nowMs))
-    wasStageShown = stageShown
     threads = pruneThreads(threads, nowMs)
-
-    const before = gateMemory
-    const { decision, memory } = evaluateUrgeGate({
-      nowMs,
-      situation: current.value,
-      reasons: { threads },
-      local: localTimeFor(nowMs),
-      sessionId: controls.activeSessionId(),
-      // The collector drops held keys for every reason kind, thread and urgent notify topics included.
-      heldTopics,
-      signals,
-      settings: gateSettings(),
-      // The bridge runs for as long as this window leads, so every tick has it. Without a reading yet the timing
-      // stays as it was.
-      moodFactor: characterBridge?.urgeFactor() ?? 1,
+    connected.send({
+      kind: 'voice-tick',
       forceTiming,
-    }, gateMemory, gateRandom)
-    // Recording the decision publishes this memory to the inspector too.
-    gateMemory = memory
-    observability.recordUrgeDecision(decision, memory)
-    observability.publishUrgeState(memory, threads.threads)
-    saveInnerState()
-    if (decision.fire)
-      void fire(controls, decision, before)
-    return { status: 'evaluated', decision, memory }
+      view: {
+        run,
+        situation: current.value,
+        threads: { threads },
+        local: localTimeFor(nowMs),
+        sessionId: controls.activeSessionId(),
+        signals: gateSignals(controls, nowMs),
+        settings: gateSettings(),
+        // The bridge runs for as long as this window leads, so every tick has it. Without a reading yet the timing
+        // stays as it was.
+        moodFactor: characterBridge?.urgeFactor() ?? 1,
+        // The collector drops held keys for every reason kind, thread and urgent notify topics included.
+        heldTopics: [...heldTopics],
+        // A line of the mind that settled at its first literal is still pending in chat until its result arrives.
+        unpromptedPending: speaking !== undefined || controls.unpromptedPending(),
+      },
+    })
+    connected.tickedRun = run.id
+    if (pendingUserTurnAtMs !== null && mind === connected) {
+      const atMs = pendingUserTurnAtMs
+      pendingUserTurnAtMs = null
+      connected.send({ kind: 'user-turn', atMs })
+    }
+    return true
+  }
+
+  /** Tells the mind of a user turn, or keeps it until a mind that holds this run's gate memory can receive it. */
+  function sendUserTurn(atMs: number) {
+    if (mind && mind.tickedRun === run.id)
+      mind.send({ kind: 'user-turn', atMs })
+    else
+      pendingUserTurnAtMs = atMs
   }
 
   /**
-   * Starts the unprompted turn of a fire and records its outcome. The topic is addressed before the turn starts,
-   * except a thread topic, which only a spoken turn consumes.
+   * Devtools "Evaluate now": one tick with `forceTiming`, answered with the decision that {@link publishVoice}
+   * received in the same call. The mind evaluates nothing while one of its lines or another unprompted turn is open.
    */
-  async function fire(controls: SituationChatControls, decision: Extract<UrgeGateDecision, { fire: true }>, before: UrgeGateMemory) {
-    const { picked } = decision
-    const turn = { turnId: nanoid(), kind: picked.kind, spoken: false }
-    const startedIn = leadership
-    const aboutNotify = picked.kind === 'notify'
-    firing = turn
-    if (!isThreadTopic(picked.key))
-      markAddressed(picked.key)
-    let result: ChatUnpromptedResult
+  function evaluateNow(): SituationGateEvaluation {
+    if (!chat)
+      return { status: 'skipped', reason: 'gate-not-running' }
+    const published: NonNullable<typeof evaluation> = { decision: null, memory: null }
+    evaluation = published
     try {
-      result = await controls.submitUnprompted({
-        topicKey: picked.key,
-        topicText: unpromptedTopicText(picked.key, picked.text, aboutNotify),
-        reason: { kind: picked.kind, category: decision.category },
-        messageId: turn.turnId,
-      })
-    }
-    catch (error) {
-      result = { status: 'failed', error: errorMessageFrom(error) ?? 'Unknown unprompted turn failure' }
+      if (!voiceTick(true))
+        return { status: 'skipped', reason: 'no-mind' }
+      return published.decision && published.memory
+        ? { status: 'evaluated', decision: published.decision, memory: published.memory }
+        : { status: 'skipped', reason: 'unprompted-pending' }
     }
     finally {
-      firing = undefined
+      evaluation = undefined
     }
-    if (startedIn !== leadership)
+  }
+
+  /**
+   * Stores what the mind published after a step that touched its voice state: the memory becomes the run's mirror,
+   * which the character state reads and the next mind of the run restores from, and it is saved with the leadership
+   * token when a durable field changed. A decision is recorded in the inspector. A memory of an earlier run, or one
+   * that arrives while the gate does not run, is dropped. `wakeAtMs` is not used yet.
+   */
+  function publishVoice(update: { runId: number, memory: UrgeGateMemory, decision: UrgeGateDecision | null, wakeAtMs: number | null }) {
+    if (gateTicker === undefined || update.runId !== run.id)
       return
-    if (result.status === 'failed' && result.error === UNPROMPTED_BUSY_ERROR) {
-      // Another caller's unprompted turn won the race. This fire never happened, so it takes no floor or cap slot and
-      // spends no urge. Its five random draws stay spent, since the source cannot rewind. A user turn may have landed meanwhile, so the social fields stay current.
-      setGateMemory({
-        ...gateMemory,
-        lastFireAtMs: before.lastFireAtMs,
-        fires: before.fires,
-        pending: before.pending,
-        urge: before.urge,
-        urgeThreshold: before.urgeThreshold,
-        doubleText: before.doubleText,
-      })
-      return
+    run = { ...run, memory: update.memory }
+    if (update.decision)
+      observability.recordUrgeDecision(update.decision, update.memory)
+    // A step that the line started (a user turn during its send) publishes no decision and keeps the evaluation's.
+    if (evaluation && update.decision) {
+      evaluation.decision = update.decision
+      evaluation.memory = update.memory
     }
-    if (!turn.spoken) {
-      const nowMs = Date.now()
-      // A spoken turn whose first literal was seen is counted there, with the time she started speaking.
-      observability.recordReasonOutcome(picked.kind, result.status, nowMs)
-      setGateMemory(recordUrgeFireOutcome(gateMemory, result.status, nowMs))
-    }
-    const text = result.status === 'spoken' ? result.text.trim() : ''
-    if (aboutNotify && text) {
-      for (const listener of notifySpokenListeners)
-        listener({ topicKey: picked.key, text })
+    publishGateState()
+  }
+
+  /**
+   * Connects the mind of the stage that leads: `send` receives every gate tick and user turn from now on. The newest
+   * connection wins. While the gate runs, the mind gets a tick at once, so it restores the run's gate memory before
+   * any other stimulus, and then the user turn that arrived while no mind was connected. Returns a function that
+   * disconnects this connection; it does nothing once a newer one replaced it.
+   */
+  function connect(send: (stimulus: VoiceStimulus) => void): () => void {
+    const connection: NonNullable<typeof mind> = { send, tickedRun: null }
+    mind = connection
+    voiceTick()
+    return () => {
+      if (mind === connection)
+        mind = undefined
     }
   }
 
@@ -802,77 +803,126 @@ export const useSituationStore = defineStore('situation', () => {
   }
 
   /**
-   * Speaks the line the mind decided about the touch whose situation event is `eventId`, and resolves with what
-   * became of it: at the first spoken literal, at a decline, or with the result of the turn.
+   * Speaks the line the mind decided and resolves with what became of it: at the first spoken literal, at a decline,
+   * or with the result of the turn.
    *
-   * It resolves `refused` without sending while another unprompted turn is pending, so the touch stays unshown for
-   * her next reply. It resolves `failed` in a follower window, while the gate does not run, when the event is gone,
-   * and when this window stopped leading before the turn had a result.
+   * A reach-out applies `unpromptedTopicText` and addresses its topic before the send (a thread topic only once her
+   * turn about it speaks), then starts an unprompted turn with the category's instruction. Its outcome is recorded per
+   * reason kind for the inspector. A touch line marks its touch event as shown (the trigger message carries it) and
+   * starts a reaction turn.
+   *
+   * It resolves `refused` without sending while another unprompted turn is pending, so a touch stays unshown for her
+   * next reply. It resolves `failed` in a follower window, while the gate does not run, when a touch line's event is
+   * gone, and when this window stopped leading before the turn had a result.
    */
-  function speakReaction(line: { kind: ReactionKind, eventId: string }): Promise<GateOutcome | 'refused'> {
+  function speak(turnId: string, line: VoiceLine): Promise<GateOutcome | 'refused'> {
     const controls = chat
-    const event = current.value.events.find(candidate => candidate.id === line.eventId)
-    if (!leading.value || !controls || gateTicker === undefined || !event)
+    if (!leading.value || !controls || gateTicker === undefined)
       return Promise.resolve('failed')
-    if (firing || controls.unpromptedPending()) {
-      observability.recordReactionOutcome(line.kind, 'refused')
-      return Promise.resolve('refused')
+    if (line.kind === 'reaction') {
+      const event = current.value.events.find(candidate => candidate.id === line.eventId)
+      if (!event)
+        return Promise.resolve('failed')
+      if (speaking || controls.unpromptedPending()) {
+        observability.recordReactionOutcome(line.reaction, 'refused')
+        return Promise.resolve('refused')
+      }
+      current.value = markShown(current.value, [event.id], Date.now())
+      return runLine(turnId, line, () => controls.submitReaction({ kind: line.reaction, topicText: event.text, eventId: line.eventId }), (outcome) => {
+        observability.recordReactionOutcome(line.reaction, outcome)
+      })
     }
 
-    const turnId = `reaction:${line.eventId}`
+    if (speaking || controls.unpromptedPending())
+      return Promise.resolve('refused')
+    const { topicKey, reason } = line
+    const aboutNotify = reason.kind === 'notify'
+    // The chat message id is the store's own; the mind's turn id names the line only between the mind and this store.
+    const messageId = nanoid()
+    if (!isThreadTopic(topicKey))
+      markAddressed(topicKey)
+    return runLine(messageId, line, () => controls.submitUnprompted({
+      topicKey,
+      topicText: unpromptedTopicText(topicKey, line.topicText, aboutNotify),
+      reason,
+      messageId,
+    }), (outcome) => {
+      if (outcome !== 'refused')
+        observability.recordReasonOutcome(reason.kind, outcome, Date.now())
+    }, (result) => {
+      const text = result.status === 'spoken' ? result.text.trim() : ''
+      if (aboutNotify && text) {
+        for (const listener of notifySpokenListeners)
+          listener({ topicKey, text })
+      }
+    })
+  }
+
+  /**
+   * Runs one line's chat turn. The first outcome wins: a literal or a decline arrives before the turn's own result.
+   * A busy result (another caller's unprompted turn won the race) settles as `refused`.
+   */
+  function runLine(
+    chatTurnId: string,
+    line: VoiceLine,
+    submit: () => Promise<ChatUnpromptedResult>,
+    onSettle: (outcome: GateOutcome | 'refused') => void,
+    onResult?: (result: ChatUnpromptedResult) => void,
+  ): Promise<GateOutcome | 'refused'> {
     const startedIn = leadership
     return new Promise((resolve) => {
       let settled = false
-      /** The first outcome wins: a literal or a decline arrives before the turn's own result. */
-      const settle = (outcome: GateOutcome | 'refused') => {
-        if (settled)
-          return
-        settled = true
-        observability.recordReactionOutcome(line.kind, outcome)
-        resolve(outcome)
+      const turn: NonNullable<typeof speaking> = {
+        chatTurnId,
+        line,
+        spoken: false,
+        settle(outcome) {
+          if (settled)
+            return
+          settled = true
+          onSettle(outcome)
+          resolve(outcome)
+        },
       }
-      reacting = { turnId, settle }
-      // The trigger message carries the touch, so the situation block of the same request does not list it again.
-      current.value = markShown(current.value, [event.id], Date.now())
+      speaking = turn
 
       const awaitResult = async () => {
         let result: ChatUnpromptedResult
         try {
-          result = await controls.submitReaction({ kind: line.kind, topicText: event.text, eventId: line.eventId })
+          result = await submit()
         }
         catch (error) {
-          result = { status: 'failed', error: errorMessageFrom(error) ?? 'Unknown reaction turn failure' }
+          result = { status: 'failed', error: errorMessageFrom(error) ?? 'Unknown unprompted turn failure' }
         }
         finally {
-          if (reacting?.turnId === turnId)
-            reacting = undefined
+          if (speaking === turn)
+            speaking = undefined
         }
-        if (settled)
-          return
         // The turn belongs to an earlier leadership; its outcome is not this leader's to count.
-        if (startedIn !== leadership)
+        if (startedIn !== leadership) {
+          settled = true
           resolve('failed')
-        else if (result.status === 'failed' && result.error === UNPROMPTED_BUSY_ERROR)
-          settle('refused')
+          return
+        }
+        if (result.status === 'failed' && result.error === UNPROMPTED_BUSY_ERROR)
+          turn.settle('refused')
         // A spoken turn settles at its first literal; a spoken result that arrives first settles it the same way.
-        else if (result.status === 'spoken')
-          reactionSpoke(turnId, Date.now(), settle)
+        else if (result.status === 'spoken' && !turn.spoken)
+          lineSpoke(turn, Date.now())
         else
-          settle(result.status)
+          turn.settle(result.status)
+        onResult?.(result)
       }
       void awaitResult()
     })
   }
 
-  /**
-   * Records the first literal of a reaction turn: its turn settles as spoken, the gate's floor starts like after a
-   * forced turn (never an unanswered opening), and the line counts as her last line.
-   */
-  function reactionSpoke(turnId: string, nowMs: number, settle = reacting?.turnId === turnId ? reacting.settle : undefined) {
-    settle?.('spoken')
-    if (gateTicker !== undefined)
-      setGateMemory(recordExternalSpeech(gateMemory, nowMs))
-    ingest({ kind: 'conversation', who: 'character', origin: 'reaction', atMs: nowMs })
+  /** Records the first literal of a line: it settles as spoken, and a touch line counts as her last line. */
+  function lineSpoke(turn: NonNullable<typeof speaking>, nowMs: number) {
+    turn.spoken = true
+    if (turn.line.kind === 'reaction')
+      ingest({ kind: 'conversation', who: 'character', origin: 'reaction', atMs: nowMs })
+    turn.settle('spoken')
   }
 
   /**
@@ -926,7 +976,7 @@ export const useSituationStore = defineStore('situation', () => {
         const nowMs = Date.now()
         threads = addThreads(threads, drafts, sessionId, nowMs, { dayEndsAtMs: nextLogicalDayEndsAtMs(nowMs) })
         // Publishes the new threads to the inspector and saves them with the social memory.
-        setGateMemory(gateMemory)
+        publishGateState()
       },
       onEvents: (events, sessionId) => {
         if (active)
@@ -949,22 +999,20 @@ export const useSituationStore = defineStore('situation', () => {
   function syncGateLoop() {
     const shouldRun = leading.value && hostSupportsUnprompted.value
     if (shouldRun && gateTicker === undefined) {
-      // A new leader starts with no urge and eases in, but keeps the social memory, the ritual day, and the threads of
-      // the leader before it, so a reload neither greets twice nor forgets an unanswered opening.
-      const nowMs = Date.now()
-      const saved = innerState.read(nowMs)
-      gateRandom = randomSource(seedSource())
-      const promoted = promotionUrgeMemory(nowMs, gateRandom)
-      gateMemory = saved.gate === null ? promoted : restoreSocialMemory(promoted, saved.gate, nowMs)
+      // A new run: the mind eases in again but restores the saved social memory and ritual day at its first tick, and
+      // the threads stay, so a reload neither greets twice nor forgets an unanswered opening.
+      const saved = innerState.read(Date.now())
+      run = { id: run.id + 1, memory: null, saved: saved.gate }
       threads = { threads: saved.threads }
       extractedThrough = saved.extractedThrough
       savedSnapshot = innerStateSnapshot()
-      wasStageShown = false
       stopVoiceTurnListener = startVoiceTurnListener()
-      gateTicker = setInterval(gateTick, GATE_INTERVAL_MS)
-      stopGateEvaluation = observability.serveGateEvaluation(() => gateTick(true))
+      gateTicker = setInterval(voiceTick, GATE_INTERVAL_MS)
+      stopGateEvaluation = observability.serveGateEvaluation(evaluateNow)
       stopThreadExtraction = startThreadExtraction()
-      setGateMemory(gateMemory)
+      publishGateState()
+      // A connected mind restores the new run's gate memory at once.
+      voiceTick()
     }
     else if (!shouldRun && gateTicker !== undefined) {
       // The final save runs while the leadership token is still this window's.
@@ -979,9 +1027,10 @@ export const useSituationStore = defineStore('situation', () => {
       stopVoiceTurnListener = undefined
       threads = NO_THREADS
       extractedThrough = []
-      reacting = undefined
+      speaking = undefined
       savedSnapshot = undefined
-      setGateMemory(initialUrgeMemory)
+      run = { ...run, memory: null, saved: null }
+      publishGateState()
     }
   }
 
@@ -994,7 +1043,7 @@ export const useSituationStore = defineStore('situation', () => {
     innerState.claim(leadership)
     characterBridge = bridgeSituationToCharacter({
       situation: () => current.value,
-      gate: () => gateMemory,
+      gate: () => run.memory ?? initialUrgeMemory,
       extractedThrough: sessionId => extractedThrough.find(position => position.sessionId === sessionId)?.messageId,
       messages: sessionId => chat?.sessionMessages(sessionId) ?? [],
     })
@@ -1051,6 +1100,7 @@ export const useSituationStore = defineStore('situation', () => {
     seenNotifyTopics.clear()
     heldTopics.clear()
     lastSpokenUnpromptedTurnId = undefined
+    pendingUserTurnAtMs = null
     foregroundCategory.value = null
   }
 
@@ -1129,8 +1179,8 @@ export const useSituationStore = defineStore('situation', () => {
       observability.forget()
       innerState.reset()
       savedSnapshot = undefined
-      if (gateTicker !== undefined)
-        gateMemory = promotionUrgeMemory(Date.now(), gateRandom)
+      // A new run: the mind starts her over from promotion alone at its next tick.
+      run = { id: run.id + 1, memory: null, saved: null }
       // Also clears the character state of every card; the bridge's own memory of reach-outs and turns goes with it.
       void characterBridge?.forgetEverything()
     }
@@ -1140,7 +1190,7 @@ export const useSituationStore = defineStore('situation', () => {
       stopThreadExtraction = startThreadExtraction()
     }
     // Publishes the remaining threads to the inspector and saves them while the gate runs.
-    setGateMemory(gateMemory)
+    publishGateState()
   }
 
   /** Marks the events of one topic as addressed by the character. Followers ignore it. */
@@ -1202,15 +1252,9 @@ export const useSituationStore = defineStore('situation', () => {
 
   /**
    * Binds the store to synchronized leadership and starts the user input listeners. Repeated calls keep the first
-   * subscription and its options. The leadership listener runs immediately with the current role, so an initial leader
-   * starts at once.
-   *
-   * `seedSource` gives the seed of the gate's random source on every promotion; it defaults to a random uint32.
-   * Tests pass a fixed seed so no assertion depends on luck.
+   * subscription. The leadership listener runs immediately with the current role, so an initial leader starts at once.
    */
-  function initialize(syncedPinia: SyncedPiniaRuntime, options: { seedSource?: () => number } = {}) {
-    if (!stopLeadershipListener)
-      seedSource = options.seedSource ?? randomSeed
+  function initialize(syncedPinia: SyncedPiniaRuntime) {
     stopUserInputListeners ??= startUserInputListeners()
     stopLeadershipListener ??= syncedPinia.onLeadershipChange(isLeader => isLeader ? startLeading() : stopLeading())
   }
@@ -1234,7 +1278,9 @@ export const useSituationStore = defineStore('situation', () => {
     ingest,
     observeTouch,
     observeReturn,
-    speakReaction,
+    speak,
+    publishVoice,
+    connect,
     sharesSource,
     advance,
     renderForRequest,

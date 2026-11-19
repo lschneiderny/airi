@@ -16,6 +16,7 @@ import { shallowRef } from 'vue'
 
 import { characterStateRepo } from '../../database/repos/character-state.repo'
 import { memoryRepo } from '../../database/repos/memory.repo'
+import { connectMind } from '../../test/connect-mind'
 import { CHARACTER_STATE_SAVE_DEBOUNCE_MS, characterStateContext, useCharacterStateStore } from '../character-state'
 import { useSituationObservabilityStore } from '../devtools/situation-observability'
 import { useSituationStore } from '../situation'
@@ -165,7 +166,8 @@ async function startLeader(options: { gate?: boolean } = {}) {
     situation.setHostCapabilities({ unprompted: true })
   }
   situation.observeChat(hooks, chat.controls)
-  situation.initialize(runtime, { seedSource: () => SEED })
+  situation.initialize(runtime)
+  connectMind(situation, SEED)
   await characterState.ready()
   return { characterState, situation, hooks, chat }
 }
