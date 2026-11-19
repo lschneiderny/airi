@@ -622,6 +622,24 @@ export class NaturalMotion {
   }
 
   /**
+   * Ends a sleep with the gentle wake (eyes to the camera as the lids open) at the next grid step, after advancing
+   * to this timestamp. Awake, she ignores it, so a caller may send it on every return.
+   */
+  wake(nowSeconds: number) {
+    this.advance(nowSeconds)
+    this.pending.push({ kind: 'wake' })
+  }
+
+  /**
+   * Starts a desktop reaction at the next grid step, after advancing to this timestamp: `wake` lifts the head, glances
+   * at the camera, and rouses her from sleep with a start; `screen-change` glances at the screen.
+   */
+  react(reaction: 'wake' | 'screen-change', nowSeconds: number) {
+    this.advance(nowSeconds)
+    this.pending.push({ kind: 'react', reaction })
+  }
+
+  /**
    * Starts or continues a pet with a head-relative hand (x: -1 left to 1 right, y: -1 top to
    * 1 bottom), or ends it with `null`. The pet gradually takes gaze and head from the cursor.
    */
@@ -743,7 +761,7 @@ export class NaturalMotion {
           this.notify({ kind: 'touch', at: stepStart, touch: 'poke', region: action.region })
       }
     }
-    const pokeState = startPending(pending.filter(action => action.kind !== 'chat'), stepStart, { impulses: this.impulses, gaze: this.gaze, energy: this.energy, mood: this.mood, gestures: this.gestures, cueGestures: this.cueGestures, emotionStrengths: this.emotionStrengths, settings: this.performanceSettings, emotions: this.emotions, notify: this.observer ? this.notify : undefined }, { pokes: this.pokes, lastPokeSurprise: this.lastPokeSurprise })
+    const pokeState = startPending(pending.filter(action => action.kind !== 'chat' && action.kind !== 'wake'), stepStart, { impulses: this.impulses, gaze: this.gaze, energy: this.energy, mood: this.mood, gestures: this.gestures, cueGestures: this.cueGestures, emotionStrengths: this.emotionStrengths, settings: this.performanceSettings, emotions: this.emotions, notify: this.observer ? this.notify : undefined }, { pokes: this.pokes, lastPokeSurprise: this.lastPokeSurprise })
     this.pokeSeq += pokeState.pokeEvents.length
     this.reactEventSeq += pokeState.reactEvents.length
     this.latestPoke = pokeState.pokeEvents.length ? { seq: this.pokeSeq, ...pokeState.pokeEvents[pokeState.pokeEvents.length - 1] } : this.latestPoke
@@ -767,6 +785,7 @@ export class NaturalMotion {
         || (this.performanceSettings.heldEmotions && (this.gestures.activeUntil() > stepStart || this.hold.level > 0.3)),
       interrupt: startedGesture || noticedCursor || this.pet.active,
       rouse: this.pet.active || pending.some(action => action.kind === 'poke' || (action.kind === 'react' && action.reaction === 'wake')),
+      wake: pending.some(action => action.kind === 'wake'),
       placement: this.placement.value,
       screenPoint: this.gaze.screenPoint(),
     }, this.gaze)
