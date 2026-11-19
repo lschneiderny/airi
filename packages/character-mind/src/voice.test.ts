@@ -2,6 +2,7 @@ import type { GateSignals, SavedGateMemory, SituationState, UrgeGateMemory } fro
 
 import type { MindIntent, MindRandom, MindState, MindStimulus, VoiceRequest, VoiceRun, VoiceView } from './types'
 
+import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { DOUBLE_TEXT_PROBABILITY, FLOOR_MS, HOUR_MS, initialSituationState, initialUrgeMemory, promotionUrgeMemory, randomSource, restoreSocialMemory, visibilityRegainUrgeMemory } from '@proj-airi/stage-shared/situation'
 import { describe, expect, it } from 'vitest'
 
@@ -257,7 +258,7 @@ describe('voice-request', () => {
 
     expect(intents).toEqual([])
     expect(mind.state.voice.lastGate).toBeNull()
-    expect(kindsOf(mind.send(T0 + 2 * SEC, tick({}, true)))).toEqual(['speak'])
+    expect(kindsOf(mind.send(T0 + 2 * SEC, tick({}, true)))).toEqual(['cue', 'speak'])
     expect(mind.state.voice.line?.kind).toBe('widget')
   })
 
@@ -297,4 +298,60 @@ it('continues identically after a JSON round trip of the state', () => {
 
   expect(restored).toEqual(mind.state)
   expect(step(restored, [next], T0 + 2 * SEC, randomSource(1))).toEqual(step(mind.state, [next], T0 + 2 * SEC, randomSource(1)))
+})
+
+describe('cues', () => {
+  const cuesOf = (intents: readonly MindIntent[]) => intents.flatMap(intent => intent.kind === 'cue' ? [intent.cue] : [])
+
+  it('cues about-to-speak before a reach-out line, under the same cause', () => {
+    const intents = script().send(T0, tick({}, true))
+
+    expect(intents.map(intent => [intent.kind, intent.cause])).toEqual([['cue', 1], ['speak', 1]])
+    expect(cuesOf(intents)).toEqual(['about-to-speak'])
+  })
+
+  it('cues about-to-speak before a widget line, under the same cause', () => {
+    const intents = script().send(T0, request('spark:1'))
+
+    expect(intents.map(intent => [intent.kind, intent.cause])).toEqual([['cue', 1], ['speak', 1]])
+    expect(cuesOf(intents)).toEqual(['about-to-speak'])
+  })
+
+  it('cues let-go when she declines a reach-out or a widget line, and nothing for another outcome', () => {
+    const reachOut = script()
+    const { turnId } = speakOf(reachOut.send(T0, tick({}, true)))
+    expect(cuesOf(reachOut.send(T0 + SEC, { kind: 'voice-outcome', turnId, outcome: 'declined' }))).toEqual(['let-go'])
+
+    const widget = script()
+    widget.send(T0, request('spark:1'))
+    expect(cuesOf(widget.send(T0 + SEC, { kind: 'voice-outcome', turnId: 'spark:1', outcome: 'declined' }))).toEqual(['let-go'])
+
+    const spoken = script()
+    spoken.send(T0, request('spark:1'))
+    expect(spoken.send(T0 + SEC, { kind: 'voice-outcome', turnId: 'spark:1', outcome: 'spoken' })).toEqual([])
+  })
+
+  it('cues nothing around a touch line', () => {
+    // Every draw speaks the line that reaches its roll.
+    const speaks: MindRandom = () => 0.1
+    let state = initialMindState()
+    const send = (atMs: number, stimulus: MindStimulus) => {
+      const answer = step(state, [stimulus], atMs, speaks)
+      state = answer.state
+      return answer.intents
+    }
+    const pokeTimesMs = [T0, T0 + SEC, T0 + 2 * SEC]
+    const intents = pokeTimesMs.flatMap(atMs => send(atMs, {
+      kind: 'touch',
+      gesture: 'poke',
+      region: 'head',
+      point: { x: 0, y: 0 },
+      settings: defaultExpressionPerformanceSettings,
+      voice: { sessionId: 'chat-a', eventId: 'touch-1', pet: null, pokeTimesMs: pokeTimesMs.filter(at => at <= atMs), lastCharacterLineAtMs: null, held: null },
+    }))
+    const { turnId } = speakOf(intents)
+
+    expect(cuesOf(intents)).toEqual([])
+    expect(send(T0 + 3 * SEC, { kind: 'voice-outcome', turnId, outcome: 'declined' })).toEqual([])
+  })
 })

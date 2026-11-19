@@ -41,7 +41,12 @@ export interface VoicePort {
  * outcome to the mind as a `voice-outcome` stimulus with the same `turnId`.
  */
 export class MindVoice {
-  constructor(private readonly mind: CharacterMind, private readonly voice: () => VoicePort | undefined) {}
+  /** `cue` performs the body around a reach-out or widget line; the conductor gates it by driver. */
+  constructor(
+    private readonly mind: CharacterMind,
+    private readonly voice: () => VoicePort | undefined,
+    private readonly cue: (cue: Extract<MindIntent, { kind: 'cue' }>['cue']) => void,
+  ) {}
 
   /** Answers the stimuli in one step, publishes the voice state when the step changed it, and returns the intents. */
   receive(...stimuli: MindStimulus[]): MindIntent[] {
@@ -55,10 +60,12 @@ export class MindVoice {
     return intents
   }
 
-  /** Answers one stimulus of the voice port and runs its voice intents in order: lines, cancels, and drops. */
+  /** Answers one stimulus of the voice port and runs its intents in order: cues, lines, cancels, and drops. */
   answer(stimulus: VoiceStimulus): void {
     for (const intent of this.receive(stimulus)) {
-      if (intent.kind === 'speak')
+      if (intent.kind === 'cue')
+        this.cue(intent.cue)
+      else if (intent.kind === 'speak')
         void this.speak(intent)
       else if (intent.kind === 'cancel')
         this.voice()?.cancel(intent.turnId)
@@ -67,7 +74,7 @@ export class MindVoice {
     }
   }
 
-  /** Runs the line and tells the mind what became of it, so its line always settles. */
+  /** Runs the line and tells the mind what became of it, so its line always settles; a decline may yield a cue. */
   async speak(intent: Extract<MindIntent, { kind: 'speak' }>): Promise<void> {
     let outcome: GateOutcome | 'refused' = 'failed'
     try {
@@ -76,6 +83,9 @@ export class MindVoice {
     catch (error) {
       console.error('[mind-voice] Voice line failed:', errorMessageFrom(error) ?? 'unknown error')
     }
-    this.receive({ kind: 'voice-outcome', turnId: intent.turnId, outcome })
+    for (const answer of this.receive({ kind: 'voice-outcome', turnId: intent.turnId, outcome })) {
+      if (answer.kind === 'cue')
+        this.cue(answer.cue)
+    }
   }
 }

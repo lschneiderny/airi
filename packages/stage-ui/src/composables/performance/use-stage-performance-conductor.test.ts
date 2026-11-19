@@ -666,6 +666,38 @@ describe('stage performance conductor', () => {
       expect(scene.setEmotion).not.toHaveBeenCalled()
     })
 
+    it.each([
+      ['natural', [['about-to-speak'], ['let-go']]],
+      ['basic', []],
+    ] as const)('performs the cues around a declined widget line under %s', async (driver, cues) => {
+      const voice = { ...fakeVoice(), speak: vi.fn<VoicePort['speak']>(async () => 'declined') }
+      const scene = { ...fakeScene(), idleCue: vi.fn<NonNullable<StagePerformanceScene['idleCue']>>() }
+      const { conductor, mind } = createConductor(driver, scene, undefined, undefined, undefined, { voice: () => voice })
+      const settled = new Promise<void>((resolve) => {
+        mind.onStep(step => step.stimuli.some(stimulus => stimulus.kind === 'voice-outcome') && resolve())
+      })
+
+      conductor.voiceStimulus({
+        kind: 'voice-request',
+        request: { turnId: 'spark:1', topicKey: 'notify:weather', topicText: 'Rain at five', supplement: null, timeoutMs: 30_000 },
+        view: {
+          run: { id: 1, memory: null, saved: null },
+          situation: initialSituationState,
+          threads: { threads: { threads: [] } },
+          local: { dayKey: '1970-01-01', minuteOfDay: 16 * 60 },
+          sessionId: 'chat-a',
+          signals: { userSpeaking: false, userTyping: false, characterSpeaking: false, generating: false, queued: 0, desktopFresh: true, foregroundFresh: true, stageVisible: true },
+          settings: { enabled: true, chattiness: 0.5, dontDisturb: false, quietApps: [], speakDuringGames: true },
+          moodFactor: 1,
+          unpromptedPending: false,
+        },
+      })
+      await settled
+
+      expect(voice.speak).toHaveBeenCalledOnce()
+      expect(scene.idleCue.mock.calls).toEqual(cues)
+    })
+
     it('sends the idle drive and reach-out cues to a Natural scene, and switches idle off under a basic driver', () => {
       const drive = { energy: 0.2, valence: 0, tension: 0, sleepiness: 0, solitude: 0.5, music: false, allowSleep: true, rate: 1 }
       const sent = (['natural', 'basic'] as const).map((driver) => {

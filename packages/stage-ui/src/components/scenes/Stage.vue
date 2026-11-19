@@ -1006,17 +1006,6 @@ chatHookCleanups.push(onBeforeSend(async (_message, context) => {
     if (!context.message.notice)
       userTurnAtMs.value = Date.now()
   }
-  // A reach-out shows before it is said: she looks up as if about to speak. A touch reaction answers a touch her body
-  // already reacted to, so it gets no look.
-  else if (context.sessionId === chatSession.activeSessionId && !isTouchReaction(context.message)) {
-    performanceConductor.idleCue('about-to-speak')
-  }
-}))
-
-// She decided against it: the look drops and the breath goes out, so the silence is visible too.
-chatHookCleanups.push(onStreamEnd(async (context) => {
-  if (context.origin === 'unprompted' && context.cueStats?.declined && context.sessionId === chatSession.activeSessionId && !isTouchReaction(context.message))
-    performanceConductor.idleCue('let-go')
 }))
 
 chatHookCleanups.push(onTokenLiteral(async (literal, context) => {
