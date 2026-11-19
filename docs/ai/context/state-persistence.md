@@ -34,14 +34,16 @@ A store that fits no tier needs an amendment to this document before it lands.
 
 **Order.** Registry order is reset order. The voiceprints go first, so a failed step cannot keep them; the expression documents go before the display models, because removing the models loads the default model, which must start without a stored catalog; the chat sessions go before the situation's inner state; caches go last.
 
-**One owner per key.** No two registrations claim the same storage. A store reads a key that another store owns without writing it.
+**One owner per key.** No two registrations claim the same storage. A store reads a key that another store owns without writing it. A file that writes a location is listed in the `writers` of its registration.
+
+**A test enforces it.** Two focused tests fail when the client writes storage that no registration owns. `state-registry.browser.test.ts` watches every write while it creates and resets every owner, so it sees keys built at run time and the defaults that VueUse writes. `scripts/dev-tools/storage-writes.test.ts` reads the renderer source (`packages/*/src` and `apps/stage-tamagotchi/src/renderer`, without tests, stories, and the QA drivers) and checks every storage call site, so it sees writes in actions and components that no reset runs. The scan fails when a site's key matches no location, when a write matches a `legacy` location, and when the site's file is not among the `writers` of the registration that owns the key. It resolves a key through literals, template literals up to their first unresolved part, constants of the file or of a relative import, loops over a key list, and arguments of a helper in the same file. A key that it cannot resolve needs an entry in the test's dynamic sites, which names the file, the registration, and the reason. An OPFS site is owned when its file writes a registration with an OPFS location. Neither test sees writes inside Web Workers or by libraries, cookies, or main-process files; the registrations of those are declared by hand.
 
 To add persisted state:
 
 1. Choose a tier with [Choosing a tier](#choosing-a-tier).
 2. Add a registration to `stateRegistry` in the same commit. Write its locations and writers as literals. Use a prefix only for a key family that one owner holds whole; list exact keys when another owner writes under the same path. Mark a key that only an older release wrote as `legacy`.
 3. Give it a `reset` when the owner keeps the state in memory: a synced store, which routes the reset to the leader, or a store with a `resetState`. Leave it out when creating the store connects or loads; the sweep alone then resets the state.
-4. Run `state-registry.browser.test.ts` and `use-data-maintenance.browser.test.ts`. The first creates and resets every owner in a leader and a follower window, and fails on a write that no registration owns and on two registrations that claim the same storage. The second puts a marker into every registered location, runs "Delete all data", and fails on a location that still holds one.
+4. Run `state-registry.browser.test.ts`, `use-data-maintenance.browser.test.ts`, and `pnpm exec vitest run --project dev-tools scripts/dev-tools/storage-writes.test.ts`. The first creates and resets every owner in a leader and a follower window, and fails on a write that no registration owns and on two registrations that claim the same storage. The second puts a marker into every registered location, runs "Delete all data", and fails on a location that still holds one.
 
 The registry covers renderer storage only. Main-process files stay with `storedDataDeleteActivity`; see [Main-process files](#main-process-files).
 
@@ -101,7 +103,6 @@ All six stores are built on `useSettingsDocument`, and new tier 1 stores use it 
 
 This section states the design that refactors move toward. It does not describe the code. The [character mind ADR](../adr/2026-11-17-character-mind-direction.md) records the decision. When a refactor lands a rule, the rule moves into the sections above and the gaps it closes leave the list below.
 
-2. **A test enforces it.** A focused test fails when the client writes storage under a key that no registration owns.
 3. **Every store fits a tier.** Plain localStorage refs and synced stores that persist replicated plain refs migrate to a tier where the fork owns them. Upstream's stores keep upstream's keys and are registered as they are. The closed tiers stay closed.
 4. **Behavior settings form one document.** The character-behavior settings that the [character mind](glossary.md#character-mind) reads are one tier 1 document. Renderer settings documents hold only realisation settings.
 5. **The mind's slow state is the per-card character state.** The per-card record in tier 4 holds mood, energy, learned temperament, relationship, and her own pacing memory (urge memory, last-spoke times, own-day weight). The floor after any spoken line and the hourly cap are per user across characters and stay in the user's gate state. Only the leader reads and writes the record, and the mind applies decay for the time away on load. Sharing a card carries its profile only; a separate backup carries the whole record. Fast state is not persisted.
