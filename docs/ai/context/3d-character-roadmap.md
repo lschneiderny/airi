@@ -55,7 +55,7 @@ Outside the milestone order, PR 32 (`luke/feat/natural-mmd-motion`) replaced the
 
 The idle acts include a two-hand clasp, a heel raise on a toe-down foot pitch, an arm-swing finger flick, and a hair tuck sized from ANSUR II. A capability gate keeps Natural from drawing an act that a rig cannot perform. On the test rigs the clasp plays only on Vivian, and the hair tuck only on Chisa.
 
-Headless QA runs the real MMD adapter in Node (`pnpm qa:motion3d`): seeded runs, the [body motion quality gate](../adr/2026-11-11-body-motion-quality-gate.md), topic reports, run diffs, clips, a run matrix, and sealed fault injection. Status: feature-complete; motion feel is not tuned yet. The decisions taken during the work are recorded in the amendments of the idle agency and whole-body performer ADRs.
+Headless QA runs the real MMD adapter in Node: `pnpm qa:motion3d` makes seeded runs and run diffs, and `pnpm lab:motion3d` holds the [body motion quality gate](../adr/2026-11-11-body-motion-quality-gate.md), topic reports, clips, a run matrix, and sealed fault injection. Status: feature-complete; motion feel is not tuned yet. The decisions taken during the work are recorded in the amendments of the idle agency and whole-body performer ADRs.
 
 ### Not met yet
 
