@@ -1,4 +1,4 @@
-import type { AppCategory } from '../situation/types'
+import type { AppCategory, WakeCause } from '../situation/types'
 
 /**
  * What the character is doing as a performer. The stage resolves it from chat,
@@ -23,13 +23,14 @@ export type PerformanceAttention = 'camera' | 'screen' | 'cursor' | 'aside'
 export type PerformanceCueAttention = 'camera' | 'screen' | 'aside'
 
 /**
- * Why `reactSeq` last advanced.
+ * An edge the resolver saw in one call. The resolver only detects; the character mind decides how she answers.
  *
- * - `none`: no reaction has happened yet.
- * - `wake`: the desktop was unlocked or resumed from sleep.
- * - `screen-change`: the screen content changed sharply.
+ * - `presence`: `away` changed, or a desktop wake appeared. `wake` names the newer of a new unlock and resume time.
+ * - `screen-change`: screen change crossed above `REACT_SCREEN_CHANGE`. No refractory: the mind keeps it.
  */
-export type PerformanceReactKind = 'none' | 'wake' | 'screen-change'
+export type PerformanceEvent
+  = | { kind: 'presence', away: boolean, wake: { cause: WakeCause, atMs: number } | null }
+    | { kind: 'screen-change' }
 
 /**
  * One resolved performance frame, passed as a single prop from the stage to the
@@ -40,12 +41,6 @@ export interface PerformanceState {
   attention: PerformanceAttention
   /** The user has left the desktop: it is locked, suspended, or idle for minutes. */
   away: boolean
-  /**
-   * Increments once per reaction. Consumers start a reaction when the value
-   * differs from the one they last saw, so a repeated frame never retriggers it.
-   */
-  reactSeq: number
-  reactKind: PerformanceReactKind
 }
 
 /**
@@ -130,8 +125,8 @@ export interface ResolverMemory {
   readonly userSpeaking: boolean
   /** When `userSpeaking` last turned false; `listening` holds for the release time from here. */
   readonly userSpeechEndedAtMs: number | null
-  readonly reactSeq: number
-  readonly reactKind: PerformanceReactKind
+  /** `away` on the previous call, to detect a change. */
+  readonly away: boolean
   /**
    * Whether a desktop snapshot has been seen. The first one is only a baseline:
    * its unlock and resume times can be hours old and are not news.
@@ -141,7 +136,6 @@ export interface ResolverMemory {
   readonly unlockedAtMs: number | null
   readonly resumedAtMs: number | null
   readonly screenChange: number | null
-  readonly screenReactAtMs: number | null
   /** `foregroundCategory` on the previous call, to detect a change. */
   readonly foregroundCategory: AppCategory | null
   /** When the foreground category last changed, or `null` before the first change so the first one applies at once. */
@@ -155,6 +149,8 @@ export interface ResolverMemory {
 export interface PerformanceResolution {
   state: PerformanceState
   memory: ResolverMemory
+  /** Edges seen in this call, a presence event first. Empty in most calls. */
+  events: PerformanceEvent[]
 }
 
 export const initialResolverMemory: ResolverMemory = Object.freeze({
@@ -162,13 +158,11 @@ export const initialResolverMemory: ResolverMemory = Object.freeze({
   modeSinceMs: null,
   userSpeaking: false,
   userSpeechEndedAtMs: null,
-  reactSeq: 0,
-  reactKind: 'none',
+  away: false,
   desktopBaselined: false,
   unlockedAtMs: null,
   resumedAtMs: null,
   screenChange: null,
-  screenReactAtMs: null,
   foregroundCategory: null,
   foregroundCategorySinceMs: null,
   screenCategory: false,
@@ -192,10 +186,8 @@ const WATCHING_SCREEN_CHANGE = 0.15
 const WATCHING_SYSTEM_AUDIO_LEVEL = 0.1
 /** Desktop input older than this means the user has left. Tuning: shorter makes the character settle sooner when nobody is there. */
 export const AWAY_INPUT_IDLE_SECONDS = 300
-/** A screen change crossing above this fraction starts a reaction. Tuning: raise if ordinary window switches cause reactions. */
+/** A screen change crossing above this fraction is a `screen-change` event. Tuning: raise if ordinary window switches cause reactions. */
 const REACT_SCREEN_CHANGE = 0.35
-/** Shortest gap between two screen-change reactions. Tuning: raise if busy screens make the character react repeatedly. */
-const SCREEN_CHANGE_REFRACTORY_MS = 10_000
 /** A new foreground category must hold this long before it changes watching attention, so a quick alt-tab does not flick the eyes. Tuning: raise if attention follows brief app switches. */
 const FOREGROUND_CATEGORY_SETTLE_MS = 2000
 
@@ -252,7 +244,7 @@ export function userIdleSeconds(desktopIdleSeconds: number | null, userTurnAtMs:
  */
 export function resolvePerformanceState(inputs: PerformanceInputs, previous: ResolverMemory): PerformanceResolution {
   // Clamp time so it never runs backwards. A stepped-back clock would
-  // otherwise reopen dwell windows and restart refractory periods.
+  // otherwise reopen dwell windows and restart release windows.
   const inputNowMs = finiteOrNull(inputs.nowMs)
   let nowMs = inputNowMs ?? previous.nowMs ?? 0
   if (previous.nowMs !== null && nowMs < previous.nowMs)
@@ -314,24 +306,23 @@ export function resolvePerformanceState(inputs: PerformanceInputs, previous: Res
     modeSinceMs = nowMs
   }
 
-  let reactSeq = previous.reactSeq
-  let reactKind = previous.reactKind
   let desktopBaselined = previous.desktopBaselined
   let knownUnlockedAtMs = previous.unlockedAtMs
   let knownResumedAtMs = previous.resumedAtMs
-  let screenReactAtMs = previous.screenReactAtMs
 
-  let wokeThisFrame = false
+  let wake: { cause: WakeCause, atMs: number } | null = null
   if (desktop !== null) {
     const unlockedAtMs = finiteOrNull(desktop.unlockedAtMs)
     const unlockedIsNew = unlockedAtMs !== null && unlockedAtMs !== knownUnlockedAtMs
     const resumedIsNew = resumedAtMs !== null && resumedAtMs !== knownResumedAtMs
     // The first snapshot only records the times. After it, a new time is a wake
-    // even if it arrives late, because each value is reacted to exactly once.
-    if (desktopBaselined && (unlockedIsNew || resumedIsNew)) {
-      reactSeq += 1
-      reactKind = 'wake'
-      wokeThisFrame = true
+    // even if it arrives late, because each value is reported exactly once.
+    // When both are new, the newer one names the cause.
+    if (desktopBaselined) {
+      if (unlockedIsNew && (!resumedIsNew || unlockedAtMs >= resumedAtMs))
+        wake = { cause: 'unlock', atMs: unlockedAtMs }
+      else if (resumedIsNew)
+        wake = { cause: 'resume', atMs: resumedAtMs }
     }
     // An unknown (`null`) time keeps the last known one, so a value that
     // returns after a gap in reporting is not mistaken for a new wake.
@@ -342,17 +333,14 @@ export function resolvePerformanceState(inputs: PerformanceInputs, previous: Res
     desktopBaselined = true
   }
 
-  // React on the upward crossing only, so a screen that stays busy reacts once.
-  const screenRose = screenChange !== null
+  const events: PerformanceEvent[] = []
+  if (away !== previous.away || wake !== null)
+    events.push({ kind: 'presence', away, wake })
+  // Report the upward crossing only, so a screen that stays busy reports once.
+  if (screenChange !== null
     && screenChange > REACT_SCREEN_CHANGE
-    && (previous.screenChange === null || previous.screenChange <= REACT_SCREEN_CHANGE)
-  const screenRefractory = screenReactAtMs !== null && nowMs - screenReactAtMs < SCREEN_CHANGE_REFRACTORY_MS
-  // A state carries one reactKind, so a wake in the same frame wins and this
-  // frame's screen up-cross is dropped.
-  if (screenRose && !screenRefractory && !wokeThisFrame) {
-    reactSeq += 1
-    reactKind = 'screen-change'
-    screenReactAtMs = nowMs
+    && (previous.screenChange === null || previous.screenChange <= REACT_SCREEN_CHANGE)) {
+    events.push({ kind: 'screen-change' })
   }
 
   // The first category applies at once; a later change waits until it has held long enough.
@@ -384,23 +372,22 @@ export function resolvePerformanceState(inputs: PerformanceInputs, previous: Res
     attention = inputs.cueAttention
 
   return {
-    state: { mode, attention, away, reactSeq, reactKind },
+    state: { mode, attention, away },
     memory: {
       mode,
       modeSinceMs,
       userSpeaking: inputs.userSpeaking,
       userSpeechEndedAtMs,
-      reactSeq,
-      reactKind,
+      away,
       desktopBaselined,
       unlockedAtMs: knownUnlockedAtMs,
       resumedAtMs: knownResumedAtMs,
       screenChange,
-      screenReactAtMs,
       foregroundCategory: rememberedCategory,
       foregroundCategorySinceMs,
       screenCategory,
       nowMs,
     },
+    events,
   }
 }

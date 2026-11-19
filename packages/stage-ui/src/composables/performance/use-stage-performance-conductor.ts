@@ -6,6 +6,7 @@ import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
 import type { CharacterReading } from '@proj-airi/stage-shared/character-state'
 import type { AffectSignal, AffectTrace, CatalogEntry, DeciderContext, ExpressionPerformanceSettings, HoldCommand, Moment, MoodDose, PerformanceDecision, PerformanceProfile, ReactionEpisode, SlotCommand, TimingEvent } from '@proj-airi/stage-shared/expression-performance'
 import type { AffectTraceRequest } from '@proj-airi/stage-shared/expression-performance/affect-trace-diagnostics'
+import type { PerformanceEvent } from '@proj-airi/stage-shared/performance-state'
 import type { GateOutcome, ReactionKind, TouchObservation, TouchVoiceView } from '@proj-airi/stage-shared/situation'
 
 import type { StageExpressionBackend } from '../../features/performance/expression-backend'
@@ -122,6 +123,10 @@ export interface StagePerformanceScene {
    * the pet hand reach Natural and `end` withdraws it, so no pet shows that the mind did not grant.
    */
   reactToTouch?: (intent: TouchReactionIntent) => void
+  /** Live2D and MMD Natural: ends idle sleep gently; awake, she ignores it. A scene without it drops the intent. */
+  wakeFromSleep?: () => void
+  /** Live2D and MMD Natural: a brief reaction to the desktop; a `wake` also rouses her from sleep with a start. */
+  reactToDesktop?: (reaction: 'wake' | 'screen-change') => void
   /**
    * Live2D and MMD Natural: sets the resting face target from the character's slow mood; Natural filters it. A scene
    * without it, such as a scenario sink, drops it.
@@ -237,6 +242,8 @@ const browserTimers: Required<StagePerformanceConductorOptions>['timers'] = {
  * - A touch reaches the mind only under Natural (see {@link StagePerformanceConductor.touch}). ACT cue gestures go to
  *   `scene.gesture` under the Natural driver of Live2D and MMD. Universal, MAGIC, and MMD Classic have no touch path
  *   and ignore the gesture field.
+ * - Presence and screen-change events reach the mind under every driver (see {@link StagePerformanceConductor.desktop});
+ *   only Natural performs the posture intents it answers with.
  * - The resting face baseline goes to `scene.setFaceBaseline` for every driver. Natural composes it only while it
  *   drives the face, so Universal and MAGIC hold it without writing.
  *
@@ -410,6 +417,26 @@ export class StagePerformanceConductor {
     const voice = observation ? this.options.voice?.()?.observeTouch(observation) ?? null : null
     const { settings } = this.effectiveContext(undefined).context
     this.performTouch(this.options.mind.receive({ kind: 'touch', ...report, settings, voice }))
+  }
+
+  /**
+   * Sends the performance resolver's events of one call to the mind as one step, under every driver, and dispatches
+   * the response: `wake` to `scene.wakeFromSleep` and `desktop-reaction` to `scene.reactToDesktop` only under Natural,
+   * and `moment` to `markMoment` under every driver. The voice intents are not dispatched yet.
+   */
+  desktop(events: readonly PerformanceEvent[]) {
+    if (events.length === 0)
+      return
+    const natural = this.options.driver() === 'natural'
+    const scene = this.options.scene()
+    for (const intent of this.options.mind.receive(...events)) {
+      if (intent.kind === 'wake' && natural)
+        scene?.wakeFromSleep?.()
+      else if (intent.kind === 'desktop-reaction' && natural)
+        scene?.reactToDesktop?.(intent.reaction)
+      else if (intent.kind === 'moment')
+        this.options.markMoment?.(intent.moment)
+    }
   }
 
   /**

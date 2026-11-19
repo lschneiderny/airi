@@ -24,7 +24,7 @@ It does not own a recognizer or Worker.
 ### Performance state
 
 The `performance-state` entrypoint owns the performance-state contract and its pure resolver.
-A `PerformanceState` says what the character is doing as a performer: its `mode` (`talking`, `listening`, `thinking`, `watching`, or `idle`), its `attention` (`camera`, `screen`, or `cursor`), whether the user is `away`, and a reaction sequence (`reactSeq` and `reactKind`) for wakes and sharp screen changes.
+A `PerformanceState` says what the character is doing as a performer: its `mode` (`talking`, `listening`, `thinking`, `watching`, or `idle`), its `attention` (`camera`, `screen`, or `cursor`), and whether the user is `away`. The resolver also returns the edges it saw in that call as `events`: a `presence` event when `away` changes or a desktop wake (a new unlock or resume time, `WakeCause`) appears, and a `screen-change` event when screen change crosses above 0.35. It decides no reaction; the character mind answers the events.
 The Live2D Natural motion driver reads it.
 
 Call `resolvePerformanceState` with the current inputs and the memory that the previous call returned. Start from `initialResolverMemory`.

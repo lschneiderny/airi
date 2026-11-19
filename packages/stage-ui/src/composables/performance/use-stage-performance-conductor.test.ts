@@ -53,6 +53,8 @@ function fakeScene() {
     gesture: vi.fn<NonNullable<StagePerformanceScene['gesture']>>(),
     addMood: vi.fn<NonNullable<StagePerformanceScene['addMood']>>(),
     reactToTouch: vi.fn<NonNullable<StagePerformanceScene['reactToTouch']>>(),
+    wakeFromSleep: vi.fn<NonNullable<StagePerformanceScene['wakeFromSleep']>>(),
+    reactToDesktop: vi.fn<NonNullable<StagePerformanceScene['reactToDesktop']>>(),
   }
 }
 
@@ -148,7 +150,7 @@ describe('stage performance renderer selection', () => {
     conductor.turnEnd('turn-a')
     conductor.clearExpression(undefined, 'devtools')
 
-    expect(Object.values(scene).map(method => method.mock.calls.length)).toEqual([0, 0, 0, 0, 0, 0, 0, 0])
+    expect(Object.values(scene).map(method => method.mock.calls.length)).toEqual([0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
     expect(selected.value.expressionBackend).toBeUndefined()
     expect(selected.value.driver).toBe('natural')
   })
@@ -165,7 +167,7 @@ describe('stage performance renderer selection', () => {
 
     expect(() => conductor.expression('game', undefined, 'act', 'turn-b')).not.toThrow()
 
-    expect(Object.values(scene).map(method => method.mock.calls.length)).toEqual([0, 0, 0, 0, 0, 0, 0, 0])
+    expect(Object.values(scene).map(method => method.mock.calls.length)).toEqual([0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
     expect(useLlmToolsStore().tools).toEqual([])
   })
 
@@ -177,7 +179,7 @@ describe('stage performance renderer selection', () => {
     expect(conductor.expression('smile', undefined, 'act', 'mmd-turn')?.id).toBe('mmd:0:smile')
     expect(mmdScene.applySlots).toHaveBeenLastCalledWith(expect.arrayContaining([expect.objectContaining({ expressionId: 'mmd:0:smile' })]), expect.any(Number))
     expect(selected.value.expressionBackend?.catalog).toBe(mmdStore.catalog)
-    expect(Object.values(scene).map(method => method.mock.calls.length)).toEqual([0, 0, 0, 0, 0, 0, 0, 0])
+    expect(Object.values(scene).map(method => method.mock.calls.length)).toEqual([0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
   })
 
   it('keeps the Live2D backend catalog and performer state live', () => {
@@ -459,6 +461,51 @@ describe('stage performance conductor', () => {
     ])
     expect(warn).toHaveBeenCalledTimes(5)
     expect(warn).toHaveBeenCalledWith('[performance-conductor] Expression is not exposed and was dropped:', 'hat', 'available:', ['game', 'Blush'])
+  })
+
+  describe('desktop events', () => {
+    const lock = { kind: 'presence', away: true, wake: null } as const
+    const unlock = { kind: 'presence', away: false, wake: { cause: 'unlock', atMs: 189_000 } } as const
+    const gentleReturn = { kind: 'presence', away: false, wake: null } as const
+
+    it('performs the posture intents on the scene under Natural and marks the welcome back', () => {
+      const scene = fakeScene()
+      const markMoment = vi.fn<NonNullable<StagePerformanceConductorOptions['markMoment']>>()
+      const { conductor, advance } = createConductor('natural', scene, undefined, undefined, undefined, { markMoment })
+
+      conductor.desktop([lock])
+      expect(scene.wakeFromSleep).not.toHaveBeenCalled()
+      expect(markMoment).not.toHaveBeenCalled()
+      advance(60)
+      conductor.desktop([gentleReturn])
+      advance(60)
+      conductor.desktop([lock])
+      advance(60)
+      conductor.desktop([unlock, { kind: 'screen-change' }])
+
+      expect(scene.wakeFromSleep).toHaveBeenCalledTimes(1)
+      // The wake wins over the screen change in the same step.
+      expect(scene.reactToDesktop.mock.calls).toEqual([['wake']])
+      expect(markMoment.mock.calls).toEqual([['welcome-back'], ['welcome-back']])
+    })
+
+    it('marks only the moment under a basic driver, while the mind still steps', () => {
+      const scene = fakeScene()
+      const markMoment = vi.fn<NonNullable<StagePerformanceConductorOptions['markMoment']>>()
+      const { conductor, mind, advance } = createConductor('basic', scene, undefined, undefined, undefined, { markMoment })
+      const steps = vi.fn()
+      mind.onStep(steps)
+
+      conductor.desktop([lock])
+      advance(60)
+      conductor.desktop([unlock])
+      conductor.desktop([])
+
+      expect(steps).toHaveBeenCalledTimes(2)
+      expect(scene.wakeFromSleep).not.toHaveBeenCalled()
+      expect(scene.reactToDesktop).not.toHaveBeenCalled()
+      expect(markMoment.mock.calls).toEqual([['welcome-back']])
+    })
   })
 
   describe('touch, cue gestures, and moodless turns', () => {

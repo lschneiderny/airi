@@ -58,9 +58,9 @@ The short `system:character` text rendered from the character state's reading. I
 
 ### Character mind
 
-The module that turns [stimuli](#stimulus) into [intents](#intent). Its core is the pure function `step` over the plain, serializable `MindState`. The thin class `CharacterMind` owns the clock, the random source, and the state, calls the core in-process, and persists nothing. Each `Stage.vue` creates one mind through `useCharacterMind`, so the mind runs in the window that hosts the stage. Today it owns the emotion half of the expression decision: for an emotion, a named expression, or a clear, it decides the reaction episode, its strength, and its hold. Under Natural it also answers a touch once: the body reaction, the mood dose, the moment, and a possible spoken line come from one `step` call (see [Touch reaction](#touch-reaction)). The target design gives it every stimulus and one instance per character ([Autonomous behavior](autonomous-behavior.md#target)).
+The module that turns [stimuli](#stimulus) into [intents](#intent). Its core is the pure function `step` over the plain, serializable `MindState`. The thin class `CharacterMind` owns the clock, the random source, and the state, calls the core in-process, and persists nothing. Each `Stage.vue` creates one mind through `useCharacterMind`, so the mind runs in the window that hosts the stage. Today it owns the emotion half of the expression decision: for an emotion, a named expression, or a clear, it decides the reaction episode, its strength, and its hold. Under Natural it also answers a touch once: the body reaction, the mood dose, the moment, and a possible spoken line come from one `step` call (see [Touch reaction](#touch-reaction)). Under every driver it answers a [return](#return) and the desktop events of the performance state (see [Desktop reaction](#desktop-reaction)); it keeps the open away span and the screen-change refractory as fast state. The target design gives it every stimulus and one instance per character ([Autonomous behavior](autonomous-behavior.md#target)).
 
-**Code:** `packages/character-mind/src/mind.ts` `CharacterMind`; `packages/character-mind/src/step.ts` `step`, `initialMindState`; `packages/character-mind/src/types.ts` `MindState`; `packages/character-mind/src/touch.ts` `answerTouch`, `answerVoiceOutcome`; `packages/stage-ui/src/composables/performance/use-character-mind.ts` `useCharacterMind`.
+**Code:** `packages/character-mind/src/mind.ts` `CharacterMind`; `packages/character-mind/src/step.ts` `step`, `initialMindState`; `packages/character-mind/src/types.ts` `MindState`; `packages/character-mind/src/touch.ts` `answerTouch`, `answerVoiceOutcome`; `packages/character-mind/src/presence.ts` `answerPresence`, `answerScreenChange`; `packages/stage-ui/src/composables/performance/use-character-mind.ts` `useCharacterMind`.
 **Not to be confused with:** the decider, which stays as the asset picker and chooses the entries that show what the mind decided; the conductor, which sends stimuli to the mind and dispatches for one stage; and the chat orchestrator.
 **Avoid:** "brain", "AI", "scheduler" for the whole module.
 
@@ -106,7 +106,7 @@ A user-defined expression that applies several catalog expressions together, eac
 
 ### Conductor
 
-The stage-side class that turns stage events (ACT cues, expression tool calls, speech timing, touch, devtools pulses) into stimuli for the character mind and affect signals for the decider, under the active character profile. An emotion, a named expression, and a clear go to the mind first, and the decider then receives what the mind decided. The conductor dispatches both results: the mind's reaction episodes and holds to Natural, the decider's slot commands to the expression performer, and motion groups to the Universal and MAGIC drivers. It takes the mind as its `mind` option. Under Natural it also answers a touch (`touch`): it asks the voice port (`TouchVoicePort`, its `voice` option) what the mind may see of the touch, sends the mind one `touch` stimulus, and dispatches the intents to the scene (`reactToTouch`, `addMood`), to its `markMoment` option, and to the voice port's `speakReaction`, whose outcome it returns to the mind. It also sends the face baseline and the idle drive to the scene and records affect traces.
+The stage-side class that turns stage events (ACT cues, expression tool calls, speech timing, touch, devtools pulses) into stimuli for the character mind and affect signals for the decider, under the active character profile. An emotion, a named expression, and a clear go to the mind first, and the decider then receives what the mind decided. The conductor dispatches both results: the mind's reaction episodes and holds to Natural, the decider's slot commands to the expression performer, and motion groups to the Universal and MAGIC drivers. It takes the mind as its `mind` option. Under Natural it also answers a touch (`touch`): it asks the voice port (`TouchVoicePort`, its `voice` option) what the mind may see of the touch, sends the mind one `touch` stimulus, and dispatches the intents to the scene (`reactToTouch`, `addMood`), to its `markMoment` option, and to the voice port's `speakReaction`, whose outcome it returns to the mind. Under every driver it sends the performance resolver's events of one call to the mind as one step (`desktop`); it performs the posture intents only under Natural, through the scene's `wakeFromSleep` and `reactToDesktop`, hands the `welcome-back` moment to `markMoment`, and drops the voice intents. It also sends the face baseline and the idle drive to the scene and records affect traces.
 
 **Code:** `packages/stage-ui/src/composables/performance/use-stage-performance-conductor.ts` `StagePerformanceConductor`, `useStagePerformanceConductor`, `TouchVoicePort`; `packages/stage-ui/src/composables/performance/use-character-mind.ts` `useCharacterMind`.
 **Not to be confused with:** the character mind, which decides the emotion and the response to a touch; the decider, which is pure and only picks entries; and the body director, which owns the MMD body.
@@ -138,9 +138,9 @@ A pure, checkpointable state machine that picks the expression entries that show
 
 ### Desktop reaction
 
-A brief Natural response to a desktop event, which the performance state resolves as `reactKind` with a sequence number. `wake` fires when the desktop unlocks or resumes: a camera glance and nudge that also rouses her from idle sleep. `screen-change` fires when the screen content changes sharply: a glance at the screen, at most once every 10 s.
+A brief Natural response to a desktop event. The performance resolver reports the event (`presence` with a `wake`, or `screen-change`), and the character mind decides the reaction as a posture `desktop-reaction` intent, which Natural performs. `wake` fires when the desktop unlocks or resumes: a camera glance and nudge that also rouses her from idle sleep. `screen-change` fires when the screen content changes sharply: a glance at the screen, at most once every 10 s, and not in a call that also holds a wake.
 
-**Code:** `packages/stage-shared/src/performance-state/index.ts` `PerformanceReactKind`, `resolvePerformanceState`; performed by `packages/motion-driver-natural/src/pending-actions.ts` `startPending`.
+**Code:** `packages/stage-shared/src/performance-state/index.ts` `PerformanceEvent`, `resolvePerformanceState`; decided by `packages/character-mind/src/presence.ts` `answerPresence`, `answerScreenChange`; performed by `packages/motion-driver-natural/src/natural-motion.ts` `NaturalMotion` (`react`) and `packages/motion-driver-natural/src/pending-actions.ts` `startPending`.
 **Not to be confused with:** a reaction episode from the character mind; a touch reaction; and the `welcome-back` moment expression or ritual reach-out that the same return can start.
 **Avoid:** "wake event" for both kinds, "screen reaction".
 
@@ -210,9 +210,9 @@ A long idle behavior that Natural's idle draw only decides and records, and that
 
 ### Intent
 
-What the character mind emits in answer to a stimulus, for one [channel](#channel). Each intent carries an `id` and a `cause`, the sequence number of the stimulus it answers. On the face channel: `emotion` (a reaction episode with its hold), `entry` (a named expression entry, with the episode and the hold that its emotion mapping gave, or none), `release` (a neutral reset or a clear), and `moment` (`poked` or `petted`, which the performer may mark with one of the model's expressions). On the posture channel: `touch-reaction` (a poke at its point, or a pet `start` or `end`) and `mood` (a dose for Natural's mood). On the voice channel: `speak` (one short line about a touch). The conductor dispatches each: an expression intent becomes a signal for the decider and, under Natural, an episode and a hold for the scene; a touch intent goes to the scene, to the moment marker, or to the voice port.
+What the character mind emits in answer to a stimulus, for one [channel](#channel). Each intent carries an `id` and a `cause`, the sequence number of the stimulus it answers. On the face channel: `emotion` (a reaction episode with its hold), `entry` (a named expression entry, with the episode and the hold that its emotion mapping gave, or none), `release` (a neutral reset or a clear), and `moment` (`poked`, `petted`, or `welcome-back`, which the performer may mark with one of the model's expressions). On the posture channel: `touch-reaction` (a poke at its point, or a pet `start` or `end`), `mood` (a dose for Natural's mood), `wake` (a gentle end of idle sleep, which does nothing while she is awake), and `desktop-reaction` (`wake` or `screen-change`). On the voice channel: `speak` (one short line about a touch), `observe-wake`, and `observe-return` (a desktop wake and a return for the situation, which the conductor does not dispatch yet). The conductor dispatches each: an expression intent becomes a signal for the decider and, under Natural, an episode and a hold for the scene; a touch intent goes to the scene, to the moment marker, or to the voice port.
 
-**Code:** `packages/character-mind/src/types.ts` `MindIntent`; produced by `packages/character-mind/src/expression.ts` `answerEmotion`, `answerExpressionRequest`, `answerExpressionClear`, and `packages/character-mind/src/touch.ts` `answerTouch`; `TouchReactionIntent` names the two `touch-reaction` forms.
+**Code:** `packages/character-mind/src/types.ts` `MindIntent`; produced by `packages/character-mind/src/expression.ts` `answerEmotion`, `answerExpressionRequest`, `answerExpressionClear`, and `packages/character-mind/src/touch.ts` `answerTouch`, and `packages/character-mind/src/presence.ts` `answerPresence`, `answerScreenChange`; `TouchReactionIntent` names the two `touch-reaction` forms.
 **Not to be confused with:** `BodyIntent`, the MMD director's per-frame output.
 
 ### Leader and follower windows
@@ -257,7 +257,7 @@ Markovian Animation Generator with Illusory Conditioning: a Live2D motion driver
 
 ### Moment expression
 
-An expression entry that the user tagged for a moment lasting seconds (`welcome-back`, `check-in`, `held-back`, `waking`, `petted`, `poked`, `yawning`, `zoning-out`, `peering`). She shows it as an idle claim for some of those moments: with a 0.6 chance, at most once per entry every 60 s, and for the time in `MOMENT_HOLD_MS` or the length of the idle act, capped at 20 s. Only the Live2D expression store shows moments.
+An expression entry that the user tagged for a moment lasting seconds (`welcome-back`, `check-in`, `held-back`, `waking`, `petted`, `poked`, `yawning`, `zoning-out`, `peering`). She shows it as an idle claim for some of those moments: with a 0.6 chance, at most once per entry every 60 s, and for the time in `MOMENT_HOLD_MS` or the length of the idle act, capped at 20 s. Only the Live2D expression store shows moments. `welcome-back`, `poked`, and `petted` come from the character mind's `moment` intent; the others come from Natural's idle reports.
 
 **Code:** `packages/stage-shared/src/expression-performance/moments.ts` `MomentSchema`, `Moment`, `MOMENT_SETTINGS`, `MOMENT_HOLD_MS`, `chooseMomentEntry`; run by `packages/stage-ui/src/composables/performance/use-idle-props.ts` `useIdleProps`.
 **Not to be confused with:** a pastime, which is an idle errand gated by occasions that last minutes; and a reaction episode, which the character mind decides and the decider shows with entries picked by emotion.
@@ -329,7 +329,7 @@ Natural's continuous head, body, and eye pose: homes, drift, shifts, and continu
 
 ### Presence
 
-Whether the user is at the desktop, as the situation reads it: `here`, `idle` (no input for 60 s), `away` (300 s, or the screen is locked or the system suspended), or `unknown` (the desktop sample is missing or older than 5 s). Idle time counts from the later of the last desktop input and the user's last turn.
+Whether the user is at the desktop, as the situation reads it: `here`, `idle` (no input for 60 s), `away` (300 s, or the screen is locked or the system suspended), or `unknown` (the desktop sample is missing or older than 5 s). Idle time counts from the later of the last desktop input and the user's last turn. The situation's presence decides the gate's holds, the greeting and sign-off, and the `went-away` event. A [return](#return) is decided separately, by the performance resolver's `away`, which turns true after 300 s without input or while the screen is locked or the system suspended, and never on an unknown reading.
 
 **Code:** `packages/stage-shared/src/situation/types.ts` `PresenceState`, `SituationPresence`.
 **Not to be confused with:** "situational presence", the feature name in the ADR for the whole situation-to-reach-out pipeline; the presence bubble (`packages/stage-shared/src/presence-bubble/content.ts` `resolvePresenceBubbleContent`), which shows thinking and unread state beside the character; and the presence notice (`apps/stage-tamagotchi/src/renderer/composables/use-presence-notice.ts` `usePresenceNotice`), which tells the user which signals this host lacks.
@@ -382,6 +382,14 @@ The stage-contract rules for what a reply looks like: spoken and short unless th
 **Code:** `packages/stage-shared/src/stage-contract/index.ts` `STAGE_CONTRACT_KEYS` (key `response`, the locale string `base.prompt.response`), `REPLY_MAX_TOKENS`.
 **Not to be confused with:** the register section of the character prompt, which decides whether she talks or texts.
 **Avoid:** "response format", "output style".
+
+### Return
+
+The end of an away span: the performance resolver's `away` turns false after it was true. The resolver reports it as a `presence` event, and the character mind answers it once, under every driver: a gentle wake from idle sleep, the `welcome-back` moment, and an `observe-return` voice intent. A desktop wake in the same call is part of the same response.
+
+**Code:** `packages/stage-shared/src/performance-state/index.ts` `resolvePerformanceState`, `PerformanceEvent`; answered by `packages/character-mind/src/presence.ts` `answerPresence`.
+**Not to be confused with:** a desktop wake, an unlock or resume, which can come while the user is still away; the situation's `returned` event and `welcome-back` ritual, which the gate still decides from the desktop sensor's own reading.
+**Avoid:** "welcome back" for the return itself, "unlock".
 
 ### Scene session
 
@@ -441,9 +449,9 @@ The MMD body's base pose, which the body director holds: `stand`, `sit`, or `sle
 
 ### Stimulus
 
-An observation the character mind answers. Today five kinds exist: `emotion` (an ACT emotion, a tool call, or a devtools pulse, with a nominal strength already scaled by the card's expressiveness), `expression-request` (the model named an entry; the conductor reads the entry's lease and primary emotion mapping, so the mind needs no catalog), `expression-clear`, `touch` (a `TouchReport` from a scene: a poke with its point, a pet start, or a pet end, with what the leader's voice channel shows of it, or `null`), and `voice-outcome` (what became of a `speak` intent). The target design adds a cursor notice, the user's return, music, desktop and chat events, and elapsed idle time.
+An observation the character mind answers. Today seven kinds exist: `emotion` (an ACT emotion, a tool call, or a devtools pulse, with a nominal strength already scaled by the card's expressiveness), `expression-request` (the model named an entry; the conductor reads the entry's lease and primary emotion mapping, so the mind needs no catalog), `expression-clear`, `touch` (a `TouchReport` from a scene: a poke with its point, a pet start, or a pet end, with what the leader's voice channel shows of it, or `null`), `voice-outcome` (what became of a `speak` intent), `presence` (the resolver's `away` changed or a desktop wake appeared), and `screen-change` (the screen content changed sharply). The target design adds a cursor notice, music, chat events, and elapsed idle time.
 
-**Code:** `packages/character-mind/src/types.ts` `MindStimulus`, `TouchReport`; sent by `packages/stage-ui/src/composables/performance/use-stage-performance-conductor.ts` `StagePerformanceConductor` (`emotion`, `expression`, `clearExpression`, `touch`).
+**Code:** `packages/character-mind/src/types.ts` `MindStimulus`, `TouchReport`; sent by `packages/stage-ui/src/composables/performance/use-stage-performance-conductor.ts` `StagePerformanceConductor` (`emotion`, `expression`, `clearExpression`, `touch`, `desktop`).
 **Not to be confused with:** an affect signal, which is the decider's input and carries what the mind already decided.
 **Avoid:** "event" alone, "trigger".
 

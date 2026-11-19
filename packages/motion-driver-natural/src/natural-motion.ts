@@ -179,8 +179,6 @@ export class NaturalMotion {
   /** Active seconds of the last poke surprise; a repeat within `pokeSurpriseDedupeSeconds` only flinches. */
   private lastPokeSurprise = Number.NEGATIVE_INFINITY
   private readonly pending: PendingAction[] = []
-  /** Last `reactSeq` seen; `undefined` until the first state, which only sets the baseline. */
-  private reactSeq: number | undefined
   private voice: NaturalMotionVoice = { speaking: false, speechActiveOrRecent: false, level: 0 }
   private saccadeCount = 0
   private cursor: GazePoint | null = null
@@ -432,18 +430,13 @@ export class NaturalMotion {
 
   /**
    * Applies the performance state and user energy (0..1, 0.5 neutral) after advancing to this
-   * timestamp. Presets cross-fade from the next grid step and no process restarts.
-   * A changed `reactSeq` starts the desktop reaction named by `reactKind`; the first call only
-   * records the sequence, because a reaction that happened before this controller existed is stale.
+   * timestamp. Presets cross-fade from the next grid step and no process restarts. It starts no
+   * reaction: desktop reactions arrive through {@link NaturalMotion.react}.
    */
   setPerformance(state: PerformanceState, energy: number, nowSeconds: number) {
     this.advance(nowSeconds)
     // The slow mood and the hour move the user's energy setting; without an idle drive the offset is exactly 0.
     this.energy.setState(state, energy + this.idle.energyOffset)
-    const seen = this.reactSeq
-    this.reactSeq = state.reactSeq
-    if (seen !== undefined && state.reactSeq !== seen && state.reactKind !== 'none')
-      this.pending.push({ kind: 'react', reaction: state.reactKind })
   }
 
   /**

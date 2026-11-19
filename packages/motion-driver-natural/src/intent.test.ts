@@ -11,7 +11,7 @@ import { createRandomStream, deriveSeed } from './random'
 import { NaturalSpeechEmphasis } from './speech-emphasis'
 
 const dt = 1 / 120
-const idle = { mode: 'idle', attention: 'camera', away: false, reactSeq: 0, reactKind: 'none' } as const
+const idle = { mode: 'idle', attention: 'camera', away: false } as const
 
 /** Raw IEEE-754 bytes, including signed zero, for every pre-intent numeric output. */
 function legacyBytes(frame: NaturalMotionFrame) {
@@ -135,20 +135,45 @@ describe('natural body intent', () => {
     motion.gesture('glance', 1, 0)
     motion.poke('head', -0.4, -0.6, 0)
     motion.poke('body', 0.7, 0.2, 0)
-    motion.setPerformance({ ...idle, reactSeq: 1, reactKind: 'wake' }, 0.5, 0)
-    motion.setPerformance({ ...idle, reactSeq: 2, reactKind: 'screen-change' }, 0.5, 0)
+    motion.react('wake', 0)
+    motion.react('screen-change', 0)
     motion.advance(2 * dt)
     const started = motion.bodyIntent()
     expect(started.cue).toMatchObject({ seq: 2, kind: 'glance', start: dt })
     expect(started.touch.poke).toEqual({ seq: 2, at: dt, region: 'body', x: 0.7, y: 0.2 })
     expect(started.impulse).toMatchObject({ seq: 1, emotion: 'surprised', intensity: 1 })
     expect(started.react).toEqual({ seq: 2, at: dt, kind: 'screen-change' })
-    motion.setPerformance({ ...idle, reactSeq: 2, reactKind: 'screen-change' }, 0.5, 0.1)
+    motion.setPerformance(idle, 0.5, 0.1)
     motion.advance(1)
     const later = motion.bodyIntent()
     expect(later.react).toEqual(started.react)
     expect(later.touch.poke).toEqual(started.touch.poke)
     expect(later.energy.reactingUntil).toBe(dt + 2)
+  })
+
+  it('starts no desktop reaction from setPerformance', () => {
+    const motion = new NaturalMotion({ seed: 41 })
+    motion.setPerformance(idle, 0.5, 0)
+    motion.setPerformance({ ...idle, away: true }, 0.5, 0.5)
+    motion.setPerformance(idle, 0.5, 1)
+    motion.advance(2)
+    expect(motion.bodyIntent().react).toBeNull()
+  })
+
+  it('stays asleep when away turns false alone, and wakes when asked', () => {
+    const motion = new NaturalMotion({ seed: 41 })
+    motion.setIdleDrive({ energy: 0, valence: 0, tension: 0, sleepiness: 0, solitude: 0, music: false, allowSleep: true, rate: 0 }, 0)
+    motion.setPerformance({ ...idle, away: true }, 0.5, 0)
+    for (let step = 0; step <= 45 * 60; step++)
+      motion.advance(step / 60)
+    expect(motion.idleState.behaviour).toBe('sleep')
+    motion.setPerformance(idle, 0.5, 45)
+    for (let step = 1; step <= 4 * 60; step++)
+      motion.advance(45 + step / 60)
+    expect(motion.idleState.behaviour).toBe('sleep')
+    motion.wake(49)
+    motion.advance(49.1)
+    expect(motion.idleState.behaviour).not.toBe('sleep')
   })
 
   it('glances at the screen when asked to react to a screen change', () => {
