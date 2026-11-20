@@ -487,7 +487,7 @@ export const useSituationObservabilityStore = defineStore('devtools:situation-ob
       countOutcome(spoken.kind, atMs - spoken.spokenAtMs <= SITUATION_ENGAGEMENT_WINDOW_MS ? 'engaged' : 'ignored')
   }
 
-  /** Called by the stage's character mind of this window after every touch reaction evaluation, with the memory it left. */
+  /** Called by the character mind store of this window after every touch reaction evaluation, with the memory it left. */
   function recordReactionDecision(decision: ReactionDecision, memory: ReactionMemory, atMs: number) {
     reactionDecision.value = decision.speak
       ? { speak: true, kind: decision.kind, reason: null, roll: decision.roll, probability: decision.probability, atMs }
@@ -495,7 +495,7 @@ export const useSituationObservabilityStore = defineStore('devtools:situation-ob
     reactionMemory.value = memory
   }
 
-  /** Called by the stage's character mind of this window whenever its voice memory changes; `null` once the stage is gone. */
+  /** Called by the character mind store of this window whenever its voice memory changes; `null` once the store is disposed. */
   function publishReactionMemory(memory: ReactionMemory | null) {
     reactionMemory.value = memory
   }

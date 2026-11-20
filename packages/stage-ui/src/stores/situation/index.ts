@@ -200,8 +200,8 @@ interface RunningSensors {
  * which feed the gate's `userSpeaking` and `userTyping` signals, also run only while the window leads.
  *
  * In a host that declared the `unprompted` capability ({@link setHostCapabilities}), the leader also runs the gate
- * loop every {@link GATE_INTERVAL_MS}, and is the voice port ({@link VoicePort}) of the stage that leads. The character
- * mind of that stage decides whether and when she speaks unasked; the store builds the mind's view at each tick and
+ * loop every {@link GATE_INTERVAL_MS}, and is the voice port ({@link VoicePort}) of the leader's character mind
+ * (`useCharacterMindStore`). The mind decides whether and when she speaks unasked; the store builds the mind's view at each tick and
  * sends it to the connected mind ({@link connect}), runs the lines the mind decides ({@link speak}), and stores what
  * the mind publishes ({@link publishVoice}). With no mind connected, a tick is dropped. A reach-out addresses its
  * topic (a thread topic is consumed only once her turn about it speaks), then starts one unprompted turn through the
@@ -267,7 +267,7 @@ export const useSituationStore = defineStore('situation', () => {
    * promotion. Replaced, never mutated, so a view sent to the mind keeps the run it was built in.
    */
   let run: VoiceRun = { id: 0, memory: null, saved: null }
-  /** The mind of the stage that leads, with the run it last received a tick in; see {@link connect}. */
+  /** The leader's character mind, with the run it last received a tick in; see {@link connect}. */
   let mind: { send: (stimulus: VoiceStimulus) => void, tickedRun: number | null } | undefined
   /** The latest user turn that no mind could receive yet; sent after the tick that restores a mind's gate memory. */
   let pendingUserTurnAtMs: number | null = null
@@ -710,7 +710,7 @@ export const useSituationStore = defineStore('situation', () => {
   }
 
   /**
-   * Connects the mind of the stage that leads: `send` receives every gate tick and user turn from now on. The newest
+   * Connects the leader's character mind: `send` receives every gate tick and user turn from now on. The newest
    * connection wins. While the gate runs, the mind gets a tick at once, so it restores the run's gate memory before
    * any other stimulus, and then the user turn that arrived while no mind was connected. Returns a function that
    * disconnects this connection; it does nothing once a newer one replaced it. The widget requests the previous mind
@@ -747,7 +747,7 @@ export const useSituationStore = defineStore('situation', () => {
   }
 
   /**
-   * Asks the mind of the stage that leads to speak about a widget or plugin request, and resolves with what became of
+   * Asks the leader's character mind to speak about a widget or plugin request, and resolves with what became of
    * it: `spoken` with the reply text, `declined`, `cancelled` when the mind gave up the request or stopped its line at
    * the caller's deadline, or `failed`. Resolves `failed` at once in a follower window, while the gate loop does not
    * run, and when no mind is connected.

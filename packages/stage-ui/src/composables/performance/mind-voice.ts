@@ -4,7 +4,7 @@ import type { GateOutcome, ReturnObservation, TouchObservation, TouchVoiceView, 
 import { errorMessageFrom } from '@moeru/std'
 import { nextVoiceWakeAt } from '@proj-airi/character-mind'
 
-/** The stimuli the voice port sends to the mind of the connected stage. */
+/** The stimuli the voice port sends to the connected mind. */
 export type VoiceStimulus = Extract<MindStimulus, { kind: 'voice-tick' | 'user-turn' | 'voice-request' }>
 
 /**
@@ -31,7 +31,7 @@ export interface VoicePort {
    * deadline, or null without one: the port ticks the mind then, so the deadline does not wait for the next interval.
    */
   publishVoice: (update: { runId: number, memory: UrgeGateMemory, decision: UrgeGateDecision | null, wakeAtMs: number | null }) => void
-  /** Hands the port this stage's way to send it a voice stimulus. The newest connection wins; the result disconnects. */
+  /** Hands the port the mind's way to send it a voice stimulus. The newest connection wins; the result disconnects. */
   connect: (send: (stimulus: VoiceStimulus) => void) => () => void
 }
 
