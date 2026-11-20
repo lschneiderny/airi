@@ -94,7 +94,10 @@ function unsetVariables(files: GatedTestFile[], env: Record<string, string | und
   return [...new Set(files.flatMap(file => file.variables.filter(name => !env[name])))].sort()
 }
 
-export type GatedRun = { ok: true, run: GatedTestFile[], skipped: GatedTestFile[] } | { ok: false, message: string }
+/** Why `pnpm qa:test:model` runs nothing: no file is gated, no gated file has its variables set, or a set variable names a missing path. */
+export type GatedRunRefusal = 'no-files' | 'unset' | 'missing'
+
+export type GatedRun = { ok: true, run: GatedTestFile[], skipped: GatedTestFile[] } | { ok: false, reason: GatedRunRefusal, message: string }
 
 /**
  * Which gated files `pnpm qa:test:model` runs: those whose variables are all set. It refuses when none is, or when a
@@ -102,15 +105,15 @@ export type GatedRun = { ok: true, run: GatedTestFile[], skipped: GatedTestFile[
  */
 export function planGatedRun(files: GatedTestFile[], env: Record<string, string | undefined>, envFile: string, exists: (path: string) => boolean): GatedRun {
   if (!files.length)
-    return { ok: false, message: 'No test file is gated on an AIRI_QA_* variable.' }
+    return { ok: false, reason: 'no-files', message: 'No test file is gated on an AIRI_QA_* variable.' }
   const run = files.filter(file => file.variables.every(name => env[name]))
   if (!run.length) {
     const unset = unsetVariables(files, env)
-    return { ok: false, message: `${unset.join(', ')} ${unset.length === 1 ? 'is' : 'are'} unset. Put ${unset[0]}=<path> in ${envFile} or set it in the environment; \`pnpm wt new <name> --qa\` writes AIRI_QA_MMD_MODEL for a new worktree.` }
+    return { ok: false, reason: 'unset', message: `${unset.join(', ')} ${unset.length === 1 ? 'is' : 'are'} unset. Put ${unset[0]}=<path> in ${envFile} or set it in the environment; \`pnpm wt new <name> --qa\` writes AIRI_QA_MMD_MODEL for a new worktree.` }
   }
   const missing = [...new Set(run.flatMap(file => file.variables))].filter(name => isAbsolute(env[name]!) && !exists(env[name]!))
   if (missing.length)
-    return { ok: false, message: missing.map(name => `${name}=${env[name]} does not exist.`).join(' ') }
+    return { ok: false, reason: 'missing', message: missing.map(name => `${name}=${env[name]} does not exist.`).join(' ') }
   return { ok: true, run, skipped: files.filter(file => !run.includes(file)) }
 }
 

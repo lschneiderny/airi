@@ -1,3 +1,4 @@
+import type { GatedRun } from './lib/gated-tests'
 import type { ChangedFile } from './lib/git'
 import type { VerifyStatsOptions } from './verify-history'
 
@@ -63,35 +64,46 @@ export function advanceLastPass(record: LastVerifyPass | null, context: VerifyCo
 export type GateQa = 'smoke' | 'model-tests' | 'motion-affected'
 
 /**
+ * What a rule needs from the gate's QA: the smoke, an affected verdict, or the `qa:test:model` files gated on one
+ * `AIRI_QA_*` variable. `qa:test:model` runs every gated file whose variables are set, so a pass meets only the
+ * variables of the files that ran.
+ */
+export type GateNeed = 'smoke' | 'motion-affected' | `AIRI_QA_${string}`
+
+function qaFor(need: GateNeed): GateQa {
+  return need === 'smoke' || need === 'motion-affected' ? need : 'model-tests'
+}
+
+/**
  * Checks beyond the three steps, keyed by the changed paths that need them, so an agent learns them from the verify
- * output instead of reading the policy. `gateRuns` names the QA the gate runs for a rule; when all of it is met, the
- * rule needs nothing more. Keep in step with "Checks by change type" in `docs/ai/context/testing.md`; rows that need
+ * output instead of reading the policy. `gateNeeds` names what the gate's QA must meet for a rule; when all of it is
+ * met, the rule needs nothing more. Keep in step with "Checks by change type" in `docs/ai/context/testing.md`; rows that need
  * judgment, such as "a visible change", stay only there.
  */
-const followUpRules: readonly { paths: RegExp, reason: string, checks: string, gateRuns: readonly GateQa[] }[] = [
+const followUpRules: readonly { paths: RegExp, reason: string, checks: string, gateNeeds: readonly GateNeed[] }[] = [
   {
     paths: /^(?:apps\/stage-tamagotchi|packages\/(?:stage-ui[^/]*|stage-shared|stage-pages|stage-layouts))\/src\//,
     reason: 'app runtime changed',
     checks: 'pnpm qa:smoke, which pnpm verify --gate runs',
-    gateRuns: ['smoke'],
+    gateNeeds: ['smoke'],
   },
   {
     paths: /^packages\/(?:(?:motion-driver-natural|motion-driver-magic|model-driver-magic-live2d)\/src|stage-ui-live2d\/src\/composables\/live2d)\//,
     reason: 'Natural or Live2D motion changed',
     checks: 'pnpm qa:test:model with AIRI_QA_RIG_FORBOOTH set, which pnpm verify --gate runs',
-    gateRuns: ['model-tests'],
+    gateNeeds: ['AIRI_QA_RIG_FORBOOTH'],
   },
   {
     paths: /^packages\/(?:motion-driver-humanoid|stage-ui-mmd)\/src\//,
     reason: 'MMD body motion changed',
-    checks: 'pnpm qa:test:model and pnpm qa:motion3d affected, which pnpm verify --gate runs; unless affected prints NOT AFFECTED, pnpm qa:motion3d run for each affected scenario, and pnpm qa:motion3d diff printing IDENTICAL between base and tip for each scenario the change must not move',
-    gateRuns: ['model-tests', 'motion-affected'],
+    checks: 'pnpm qa:test:model with AIRI_QA_MMD_MODEL set and pnpm qa:motion3d affected, which pnpm verify --gate runs; unless affected prints NOT AFFECTED, pnpm qa:motion3d run for each affected scenario, and pnpm qa:motion3d diff printing IDENTICAL between base and tip for each scenario the change must not move',
+    gateNeeds: ['AIRI_QA_MMD_MODEL', 'motion-affected'],
   },
   {
     paths: /^packages\/qa-tools\/src\/t2-3d\/reports\//,
     reason: 'a qa:motion3d report rule changed',
     checks: 'labelled qa:motion3d inject cases sealed before scoring, and the report version bump in its own commit',
-    gateRuns: [],
+    gateNeeds: [],
   },
 ]
 
@@ -103,16 +115,16 @@ function matchedRules(changed: ChangedFile[]) {
   return followUpRules.filter(rule => paths.some(path => rule.paths.test(path)))
 }
 
-/** One line per follow-up check the changed files still need, in rule order. A rule whose gate QA is all `met` is left out. */
-export function followUpChecks(changed: ChangedFile[], met: ReadonlySet<GateQa> = new Set()): string[] {
+/** One line per follow-up check the changed files still need, in rule order. A rule whose gate needs are all `met` is left out. */
+export function followUpChecks(changed: ChangedFile[], met: ReadonlySet<GateNeed> = new Set()): string[] {
   return matchedRules(changed)
-    .filter(rule => rule.gateRuns.length === 0 || rule.gateRuns.some(qa => !met.has(qa)))
+    .filter(rule => rule.gateNeeds.length === 0 || rule.gateNeeds.some(need => !met.has(need)))
     .map(rule => `${rule.checks} (${rule.reason})`)
 }
 
 /** The QA the gate runs for the changed files, in rule order, each once. */
 export function gateQaFor(changed: ChangedFile[]): GateQa[] {
-  return [...new Set(matchedRules(changed).flatMap(rule => rule.gateRuns))]
+  return [...new Set(matchedRules(changed).flatMap(rule => rule.gateNeeds.map(qaFor)))]
 }
 
 /**
@@ -133,8 +145,8 @@ export function gateQaCommand(qa: GateQa, platform: NodeJS.Platform, mergeBase: 
 
 export interface GateQaOutcome {
   status: 'passed' | 'failed' | 'skipped'
-  /** The rule needs nothing more from this QA. */
-  met: boolean
+  /** The rule needs this QA met. */
+  met: GateNeed[]
   detail: string
 }
 
@@ -144,25 +156,34 @@ const affectedExitCodes = { 'NOT AFFECTED': 0, 'AFFECTED': 1, 'CANNOT TELL': 2 }
 const affectedVerdictLine = /^affected [0-9a-f]+\.\.[0-9a-f]+: (NOT AFFECTED|AFFECTED|CANNOT TELL)\r?$/m
 
 /**
- * Reads a gate QA's result. `qa:test:model` exits 2 when no model or rig is configured. `qa:motion3d affected` exits 1
- * or 2 for its verdicts, but also for a thrown error or a usage error, so only its printed verdict line, with the exit
- * code that verdict returns, counts as a verdict; anything else is a failure.
+ * Reads the smoke's exit code, or the verdict of `qa:motion3d affected`. `affected` exits 1 or 2 for its verdicts, but
+ * also for a thrown error or a usage error, so only its printed verdict line, with the exit code that verdict returns,
+ * counts as a verdict; anything else is a failure.
  */
-export function gateQaOutcome(qa: GateQa, exitCode: number, output = ''): GateQaOutcome {
-  if (qa === 'motion-affected') {
-    const verdict = affectedVerdictLine.exec(output.replace(ansi, ''))?.[1] as keyof typeof affectedExitCodes | undefined
-    if (verdict === undefined || affectedExitCodes[verdict] !== exitCode)
-      return { status: 'failed', met: false, detail: `qa:motion3d affected exited ${exitCode}${verdict === undefined ? ' without a verdict' : ` after printing ${verdict}`}` }
-    if (verdict === 'NOT AFFECTED')
-      return { status: 'passed', met: true, detail: 'qa:motion3d affected: NOT AFFECTED, no identity runs needed' }
-    return { status: 'passed', met: false, detail: `qa:motion3d affected: ${verdict}, identity runs still needed` }
-  }
-  const name = qa === 'smoke' ? 'qa:smoke' : 'qa:test:model'
+export function gateQaOutcome(qa: 'smoke' | 'motion-affected', exitCode: number, output = ''): GateQaOutcome {
+  if (qa === 'smoke')
+    return exitCode === 0 ? { status: 'passed', met: ['smoke'], detail: 'qa:smoke' } : { status: 'failed', met: [], detail: `qa:smoke exited ${exitCode}` }
+  const verdict = affectedVerdictLine.exec(output.replace(ansi, ''))?.[1] as keyof typeof affectedExitCodes | undefined
+  if (verdict === undefined || affectedExitCodes[verdict] !== exitCode)
+    return { status: 'failed', met: [], detail: `qa:motion3d affected exited ${exitCode}${verdict === undefined ? ' without a verdict' : ` after printing ${verdict}`}` }
+  if (verdict === 'NOT AFFECTED')
+    return { status: 'passed', met: ['motion-affected'], detail: 'qa:motion3d affected: NOT AFFECTED, no identity runs needed' }
+  return { status: 'passed', met: [], detail: `qa:motion3d affected: ${verdict}, identity runs still needed` }
+}
+
+/**
+ * Reads `qa:test:model` from the plan it makes (`planGatedRun`), which the gate makes first in the same environment,
+ * and from its exit code when it ran. A pass meets the variables of the files that ran. A plan that runs nothing
+ * because no variable is set is skipped without running; one whose set variable names a missing path fails, since
+ * that model was meant to run.
+ */
+export function modelTestsOutcome(plan: GatedRun, exitCode?: number): GateQaOutcome {
+  if (!plan.ok)
+    return { status: plan.reason === 'missing' ? 'failed' : 'skipped', met: [], detail: `qa:test:model: not run: ${plan.message}` }
+  const variables = [...new Set(plan.run.flatMap(file => file.variables))].filter((name): name is `AIRI_QA_${string}` => name.startsWith('AIRI_QA_'))
   if (exitCode === 0)
-    return { status: 'passed', met: true, detail: name }
-  if (qa === 'model-tests' && exitCode === 2)
-    return { status: 'skipped', met: false, detail: `${name}: no AIRI_QA_* model or rig configured (.env.qa)` }
-  return { status: 'failed', met: false, detail: `${name} exited ${exitCode}` }
+    return { status: 'passed', met: variables, detail: `qa:test:model: files gated on ${variables.join(', ')}` }
+  return { status: 'failed', met: [], detail: `qa:test:model exited ${exitCode ?? 'without running'}` }
 }
 
 /**
