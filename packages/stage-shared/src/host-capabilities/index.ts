@@ -10,7 +10,7 @@ export { HOST_REASONS, HostReasons } from './reasons'
 export type { HostReason } from './reasons'
 
 /** The one list of host ids; schemas, CLIs and the `HostId` union all derive from it. */
-export const HOST_IDS = ['windows', 'macos', 'linux-x11', 'linux-xwayland', 'linux-wayland', 'web'] as const
+export const HOST_IDS = ['windows', 'macos', 'linux-x11', 'linux-xwayland', 'linux-wayland'] as const
 export type HostId = typeof HOST_IDS[number]
 
 /** The one list of host signals, in display order; schemas, UIs and the `HostSignal` union all derive from it. */
@@ -47,7 +47,7 @@ export interface HostCapabilities {
 }
 
 export interface HostFacts {
-  platform: 'win32' | 'darwin' | 'linux' | 'web'
+  platform: 'win32' | 'darwin' | 'linux'
   waylandSession: boolean
   waylandOzone: boolean
   macosMajorMinor: [number, number] | null
@@ -110,24 +110,6 @@ export function resolveHostCapabilities(facts: HostFacts, nowMs: number): HostCa
         }
       }
       break
-    case 'web':
-      return {
-        host: 'web',
-        linuxDesktopBackend: null,
-        signals: {
-          cursorScreenPoint: { kind: 'degraded', reason: HostReasons.WebPagePointerOnly },
-          windowOrigin: { kind: 'unavailable', reason: HostReasons.WebSandbox },
-          displayOrigins: { kind: 'unavailable', reason: HostReasons.WebSandbox },
-          systemIdleTime: { kind: 'unavailable', reason: HostReasons.WebSandbox },
-          screenLock: { kind: 'unavailable', reason: HostReasons.WebSandbox },
-          foregroundWindow: { kind: 'unavailable', reason: HostReasons.WebSandbox },
-          globalKeyUp: { kind: 'unavailable', reason: HostReasons.WebSandbox },
-          clickThroughForward: { kind: 'unavailable', reason: HostReasons.WebSandbox },
-          alwaysOnTop: { kind: 'unavailable', reason: HostReasons.WebSandbox },
-          systemAudioCapture: { kind: 'unavailable', reason: HostReasons.WebSandbox },
-        },
-        resolvedAtMs: nowMs,
-      }
   }
 
   // Host limitations take precedence over failures of a binding the host cannot support.
@@ -165,7 +147,6 @@ export function capabilitiesForHost(host: HostId, linuxDesktop?: LinuxDesktopFac
     'linux-x11': 'linux',
     'linux-xwayland': 'linux',
     'linux-wayland': 'linux',
-    'web': 'web',
   } as const
   return resolveHostCapabilities({
     platform: platforms[host],

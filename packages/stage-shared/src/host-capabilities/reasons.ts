@@ -16,8 +16,6 @@ export const HostReasons = Object.freeze({
   WaylandNoZOrder: 'wayland-no-z-order',
   LinuxCaptureAudioUnverified: 'linux-capture-audio-unverified',
   MacosCaptureAudioRequires14_2: 'macos-capture-audio-requires-14-2',
-  WebSandbox: 'web-sandbox',
-  WebPagePointerOnly: 'web-page-pointer-only',
   LinuxBridgeStarting: 'linux-bridge-starting',
   LinuxBridgeFailed: 'linux-bridge-failed',
   LinuxForegroundVerifying: 'linux-foreground-verifying',

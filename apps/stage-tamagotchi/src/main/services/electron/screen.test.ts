@@ -186,7 +186,11 @@ describe('screen service', () => {
   })
 
   it('withholds a degraded cursor outside the window once', async () => {
-    Object.assign(getCurrentHostCapabilities(), capabilitiesForHost('web'))
+    const macos = capabilitiesForHost('macos')
+    Object.assign(getCurrentHostCapabilities(), {
+      ...macos,
+      signals: { ...macos.signals, cursorScreenPoint: { kind: 'degraded', reason: 'linux-cursor-verifying' } },
+    })
     const { sent, tick, startLoop } = setupScreen()
     vi.mocked(screen.getCursorScreenPoint).mockReturnValue({ x: -800, y: 900 })
 

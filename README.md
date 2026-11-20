@@ -100,7 +100,7 @@ These paths were removed. Upstream changes to them are dropped on sync.
 
 The Retired table is the path list the upstream sync uses to resolve delete-versus-modify conflicts: a retired path stays deleted. The other paths that stay deleted at a sync are in the [upstream policy ledger](./docs/ai/context/upstream-policy.md). The port-back conditions for Kirie and Pocket are in [`docs/ai/context/upstream-watch.md`](./docs/ai/context/upstream-watch.md).
 
-The web app left code behind in shared packages: the `isStageWeb()` branches, kept at first because they were not easy drops, and the `web` host profile. Both are now scheduled for removal (owner ruling 2026-11-17); the [character mind roadmap](./docs/ai/context/character-mind-roadmap.md) tracks it.
+The web app left code behind in shared packages: the web stage branches and the `web` host profile. Step L of the [character mind roadmap](./docs/ai/context/character-mind-roadmap.md) removed both (owner ruling 2026-11-17); the "Web stage branches" row of the [upstream policy ledger](./docs/ai/context/upstream-policy.md) keeps them removed at a sync.
 
 ## Getting started
 
