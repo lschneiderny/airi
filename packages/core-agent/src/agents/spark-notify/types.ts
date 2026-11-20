@@ -14,7 +14,8 @@ import type { SparkNotifyCommandDraft } from './tools'
  */
 export interface SparkNotifyMessageOverride {
   /**
-   * Additional system instructions appended after the base spark-notify instruction block.
+   * Additional system instructions from the caller. The host composes them into its system prompt, and the agent
+   * does not read them.
    *
    * @default []
    */
@@ -178,8 +179,6 @@ export interface SparkNotifyPluginResult {
 
 /** Per-turn hooks returned by a Spark Notify plugin. */
 export interface SparkNotifyPluginSession {
-  /** Additional system instruction blocks appended in plugin order. */
-  systemInstructions?: string[]
   /** Additional user-message blocks appended in plugin order. */
   userSections?: string[]
   /** Tools that this plugin exposes for the turn. */

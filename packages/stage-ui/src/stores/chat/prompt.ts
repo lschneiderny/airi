@@ -34,6 +34,8 @@ export interface ChatPromptInput {
   plugin?: string
   /** The sticker catalog of this reply. Without it, the prompt has no sticker segment. */
   stickers?: readonly { id: string, description: string }[]
+  /** The Spark Notify agent's host instruction, which tells the character how to treat a notify. */
+  spark?: string
 }
 
 /**
@@ -104,6 +106,7 @@ export function useChatPrompt() {
       { id: 'unprompted', text: input.unprompted ?? '' },
       { id: 'plugin', text: input.plugin ?? '' },
       ...(input.stickers ? [stickerPromptSegment(input.stickers)] : []),
+      { id: 'spark', text: input.spark ?? '' },
     ]
   }
 

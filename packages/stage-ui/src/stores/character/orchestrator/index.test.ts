@@ -13,7 +13,7 @@ import type { AiriCard } from '../../modules'
 
 import { renderConversationPreview } from '@proj-airi/core-agent'
 import { effectiveSalience, notifyTopicKey } from '@proj-airi/stage-shared/situation'
-import { CODE_BLOCK_SYSTEM_PROMPT, MATH_SYNTAX_SYSTEM_PROMPT, REPLY_MAX_TOKENS } from '@proj-airi/stage-shared/stage-contract'
+import { CODE_BLOCK_SYSTEM_PROMPT, MATH_SYNTAX_SYSTEM_PROMPT, PROMPT_SEGMENT_BUDGETS, PROMPT_TRUNCATION_MARKER, REPLY_MAX_TOKENS } from '@proj-airi/stage-shared/stage-contract'
 import { tool } from '@xsai/tool'
 import { nanoid } from 'nanoid'
 import { createPinia, setActivePinia } from 'pinia'
@@ -410,8 +410,8 @@ describe('store character-orchestrator', () => {
     const context = mockStream.mock.lastCall?.[2] as Conversation | undefined
     const system = context ? String(renderConversationPreview(context)[0].content) : ''
     expect(system.startsWith(CODE_BLOCK_SYSTEM_PROMPT + MATH_SYNTAX_SYSTEM_PROMPT)).toBe(true)
-    // The host renders the notify instruction; the i18n mock returns the key.
-    expect(system).toContain('base.prompt.spark-notify')
+    // The notify instruction is the last segment; the i18n mock returns the key.
+    expect(system.endsWith('\n\nbase.prompt.spark-notify')).toBe(true)
     expect(mockStream.mock.lastCall?.[3]).toMatchObject({ maxTokens: REPLY_MAX_TOKENS })
   })
 
@@ -600,5 +600,46 @@ describe('store character-orchestrator', () => {
     expect(String(renderedMessages?.[0])).toContain('base.prompt.emotion')
     expect(String(renderedMessages?.[0])).toContain('base.prompt.emoji')
     expect(String(renderedMessages?.[1])).not.toContain('base.prompt.emotion')
+    // The stage contract, then the caller's text as the plugin segment, then the notify instruction as the spark segment.
+    const system = String(renderedMessages?.[0])
+    const contractAt = system.indexOf('base.prompt.emotion')
+    const pluginAt = system.indexOf('Plugin-specific hint')
+    expect(contractAt).toBeLessThan(pluginAt)
+    expect(pluginAt).toBeLessThan(system.indexOf('base.prompt.spark-notify'))
+    expect(system.split('Plugin-specific hint')).toHaveLength(2)
+  })
+
+  describe('caller system instructions', () => {
+    function moduleNotify(): WebSocketEventOf<'spark:notify'> {
+      return {
+        type: 'spark:notify',
+        source: 'minecraft',
+        data: { id: nanoid(), eventId: nanoid(), kind: 'alarm', urgency: 'immediate', headline: 'Hit by zombie', destinations: ['minecraft'] },
+      }
+    }
+
+    async function systemMessageFor(appendSystemInstructions: string[]) {
+      const mockStream = vi.fn()
+      mockedStore(useLLM, pinia).stream = mockStream
+      await useCharacterOrchestratorStore(pinia).handleSparkNotify(moduleNotify(), { messageOverride: { appendSystemInstructions } })
+      const context = mockStream.mock.lastCall?.[2]
+      if (!context)
+        throw new Error('The commands-only agent did not run')
+      return String(renderConversationPreview(context)[0].content)
+    }
+
+    it('caps the caller\'s appended instructions at the plugin budget', async () => {
+      const { maxChars } = PROMPT_SEGMENT_BUDGETS.plugin
+      const system = await systemMessageFor(['P'.repeat(maxChars + 500)])
+
+      const kept = 'P'.repeat(maxChars - PROMPT_TRUNCATION_MARKER.length)
+      expect(system).toContain(`\n\n${kept}${PROMPT_TRUNCATION_MARKER}\n\nbase.prompt.spark-notify`)
+    })
+
+    it('joins several appended instructions with a blank line inside the plugin segment', async () => {
+      const system = await systemMessageFor(['First hint', 'Second hint'])
+
+      expect(system).toContain('\n\nFirst hint\n\nSecond hint\n\nbase.prompt.spark-notify')
+    })
   })
 })

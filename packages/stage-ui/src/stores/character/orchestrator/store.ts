@@ -74,7 +74,6 @@ export const useCharacterOrchestratorStore = defineStore('character-orchestrator
   // The agent runs only for the commands of notifies addressed beyond the character. Whether the character speaks
   // about a notify is the situation gate's decision, so this agent has no reaction plugin and its text is ignored.
   const sparkNotifyAgent = createSparkNotifyAgent({
-    instruction: moduleName => t('base.prompt.spark-notify', { moduleName }),
     runner: {
       run: request => stream(
         request.selectedChat.model,
@@ -187,7 +186,12 @@ export const useCharacterOrchestratorStore = defineStore('character-orchestrator
         },
         // The stable stage contract belongs to the system prompt. Only the live state rides with the notify.
         // The agent reads the prompt and memory of the active session's character, as the spoken route does.
-        systemPrompt: composePrompt(buildChatPromptSegments({ characterId: chatSession.personaOf(chatSession.activeSessionId) })).text,
+        systemPrompt: composePrompt(buildChatPromptSegments({
+          characterId: chatSession.personaOf(chatSession.activeSessionId),
+          // The caller's system instructions are plugin text, so the composer caps them as on the spoken route.
+          plugin: control?.messageOverride?.appendSystemInstructions?.join('\n\n'),
+          spark: t('base.prompt.spark-notify', { moduleName: getEventSourceKey(event) }),
+        })).text,
         runtimePrompt: liveStatePrompt.value,
         control: { ...control, commandsOnly: true },
       })
