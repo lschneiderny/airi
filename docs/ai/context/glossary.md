@@ -370,7 +370,7 @@ The small panel beside the character's head. It shows one thing at a time: anima
 
 ### Prompt segment
 
-One named part of the system prompt of a character turn. `composePrompt` sorts the segments by `PROMPT_SEGMENT_ORDER` (`format`, `card`, `register`, `contract`, `actions`, `memory`, `toolset`, `account`, `voice`, `control`, `unprompted`, `plugin`, `stickers`, `spark`), fits each to its budget under its overflow policy (`fixed`, `warn`, `truncate`, or `drop-oldest`), and drops empty ones. The first four form the stable prefix that the provider's prompt cache depends on; the rest form the per-request tail.
+One named part of the system prompt of a character turn. `composePrompt` sorts the segments by `PROMPT_SEGMENT_ORDER` (`format`, `card`, `register`, `contract`, `actions`, `memory`, `toolset`, `voice`, `control`, `unprompted`, `plugin`, `stickers`, `spark`), fits each to its budget under its overflow policy (`fixed`, `warn`, `truncate`, or `drop-oldest`), and drops empty ones. The first four form the stable prefix that the provider's prompt cache depends on; the rest form the per-request tail.
 
 **Code:** `packages/stage-shared/src/stage-contract/compose.ts` `PROMPT_SEGMENT_ORDER`, `PROMPT_SEGMENT_BUDGETS`, `PromptSegmentId`, `OverflowPolicy`, `composePrompt`; built in the app by `packages/stage-ui/src/stores/chat/prompt.ts` `useChatPrompt` (`buildChatPromptSegments`).
 **Not to be confused with:** the situation block and the character context, which ride on the last user turn and are not segments; and the audio playback `OverflowPolicy` in `packages/pipelines-audio/src/managers/playback-manager.ts`.

@@ -16,7 +16,6 @@ const listSegmentSchema = strictObject({ header: optional(string()), entries: ar
 const fixtureSchema = strictObject({
   memory: optional(listSegmentSchema),
   toolset: optional(string()),
-  account: optional(string()),
   voice: optional(string()),
   control: optional(string()),
   unprompted: optional(string()),
@@ -36,7 +35,7 @@ export function segmentsFromFixture(value: unknown): PromptSegment[] {
   const segments: PromptSegment[] = []
   if (fixture.memory)
     segments.push({ id: 'memory', header: fixture.memory.header, text: fixture.memory.entries })
-  for (const id of ['toolset', 'account', 'voice', 'control', 'unprompted', 'plugin'] as const) {
+  for (const id of ['toolset', 'voice', 'control', 'unprompted', 'plugin'] as const) {
     const text = fixture[id]
     if (text !== undefined)
       segments.push({ id, text })

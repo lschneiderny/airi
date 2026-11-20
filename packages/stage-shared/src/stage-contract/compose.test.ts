@@ -48,7 +48,7 @@ describe('composePrompt', () => {
       { id: 'contract', text: '' },
       { id: 'memory', text: [] },
       { id: 'toolset', text: 'T' },
-      { id: 'account', text: '' },
+      { id: 'voice', text: '' },
       { id: 'plugin', text: 'P' },
     ])
 
