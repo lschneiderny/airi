@@ -15,6 +15,7 @@ import { initializeAnalytics } from '@proj-airi/stage-ui/libs/product-signals'
 import { isSherpawModelBundled, setSherpawModelAssetHost } from '@proj-airi/stage-ui/libs/providers/providers/sherpaw/model-assets'
 import { removeRetiredAccountCredentials } from '@proj-airi/stage-ui/libs/retired-account'
 import { useCharacterOrchestratorStore } from '@proj-airi/stage-ui/stores/character'
+import { useCharacterMindStore } from '@proj-airi/stage-ui/stores/character-mind'
 import { useCharacterStateStore } from '@proj-airi/stage-ui/stores/character-state'
 import { useChatStore } from '@proj-airi/stage-ui/stores/chat'
 import { useDevicePermissionsStore } from '@proj-airi/stage-ui/stores/device-permissions'
@@ -129,6 +130,7 @@ const initialRoutePath = resolveInitialRendererRoutePath(route.path)
 const chatStore = useChatStore()
 const characterStateStore = useCharacterStateStore()
 const situationStore = useSituationStore()
+const characterMindStore = useCharacterMindStore()
 const builtinToolsStore = useTamagotchiBuiltinToolsStore()
 const homeAssistantStore = useTamagotchiHomeAssistantStore()
 const mcpToolsStore = useTamagotchiMcpToolsStore()
@@ -418,6 +420,8 @@ onMounted(async () => {
   // The situation store feeds the character state, so the character state leads first.
   characterStateStore.initialize(syncedPinia)
   situationStore.initialize(syncedPinia)
+  // The mind connects to the situation's voice port once the window leads and the character state is loaded.
+  characterMindStore.initialize(syncedPinia)
 
   await fullStageRuntime?.initialize()
   await chatStreamView?.initializeStreamView()
@@ -435,6 +439,7 @@ onUnmounted(() => {
   stopIOTraceHubBridge()
   stopModelAssetStatus()
   stopLeadershipListener?.()
+  characterMindStore.dispose()
   situationStore.dispose()
   characterStateStore.dispose()
   fullStageRuntime?.dispose()
