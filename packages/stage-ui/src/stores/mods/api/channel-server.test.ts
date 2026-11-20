@@ -100,7 +100,6 @@ vi.mock('@proj-airi/server-sdk', () => ({
 
 vi.mock('@proj-airi/stage-shared', () => ({
   isStageTamagotchi: () => true,
-  isStageWeb: () => false,
 }))
 
 vi.mock('@vueuse/core', async () => {

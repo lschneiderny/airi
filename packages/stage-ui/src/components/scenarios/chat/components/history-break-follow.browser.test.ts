@@ -5,6 +5,7 @@ import en from '@proj-airi/i18n/locales/en'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render } from 'vitest-browser-vue'
+import { userEvent } from 'vitest/browser'
 import { nextTick } from 'vue'
 import { createI18n } from 'vue-i18n'
 
@@ -20,9 +21,16 @@ vi.hoisted(() => {
 })
 
 let pinia: ReturnType<typeof createPinia>
-beforeEach(() => {
+beforeEach(async () => {
   pinia = createPinia()
   setActivePinia(pinia)
+  // A pointer that an earlier test file left over the history counts as a reader inspecting an older message,
+  // which stops the follow. Park it in a corner the history does not cover.
+  const corner = document.createElement('div')
+  corner.style.cssText = 'position: fixed; right: 0; bottom: 0; width: 4px; height: 4px;'
+  document.body.append(corner)
+  await userEvent.hover(corner)
+  corner.remove()
 })
 afterEach(() => disposePinia(pinia))
 afterAll(() => {

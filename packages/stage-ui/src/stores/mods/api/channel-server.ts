@@ -11,7 +11,6 @@ import type { CommonContentPart } from '@xsai/shared-chat'
 
 import { errorMessageFrom } from '@moeru/std'
 import { Client, createTextProtocolConnector, WebSocketEventSource } from '@proj-airi/server-sdk'
-import { isStageTamagotchi, isStageWeb } from '@proj-airi/stage-shared'
 import { useLocalStorage } from '@vueuse/core'
 import { nanoid } from 'nanoid'
 import { defineStore, getActivePinia } from 'pinia'
@@ -136,7 +135,7 @@ export const useModsServerChannelStore = defineStore('mods:channels:proj-airi:se
       const textConnector = textConnectorFactory.value?.(requestedConnection.url)
 
       client.value = new Client({
-        name: isStageWeb() ? WebSocketEventSource.StageWeb : isStageTamagotchi() ? WebSocketEventSource.StageTamagotchi : WebSocketEventSource.StageWeb,
+        name: WebSocketEventSource.StageTamagotchi,
         url: requestedConnection.url,
         token: requestedConnection.token,
         connector: textConnector

@@ -3,7 +3,7 @@ import type { ComponentPublicInstance, ComputedRef, ShallowRef } from 'vue'
 
 import type { ChatActionMenuAction } from '.'
 
-import { errorMessageFromValue, isStageWeb } from '@proj-airi/stage-shared'
+import { errorMessageFromValue } from '@proj-airi/stage-shared'
 import { useElementVisibility, useEventListener } from '@vueuse/core'
 import { animate } from 'animejs'
 import { clamp } from 'es-toolkit'
@@ -24,7 +24,6 @@ import { useI18n } from 'vue-i18n'
 import { useWebHaptics } from 'web-haptics/vue'
 
 import { createChatActionMenuItems, createChatActionMenuTriggerState } from '.'
-import { useBreakpoints } from '../../../../../composables/use-breakpoints'
 import { useElementScroll } from '../../composables/use-element-scroll'
 
 const props = withDefaults(defineProps<{
@@ -87,9 +86,7 @@ const bottomSentinelVisible = useElementVisibility(bottomSentinelRef, {
 })
 
 const { trigger } = useWebHaptics()
-const { isMobile } = useBreakpoints()
 const { t } = useI18n()
-const shouldDisableDropdownMenu = computed(() => isStageWeb() && isMobile.value)
 const pressFeedbackEnabled = computed(() => props.pressFeedbackEnabled)
 const copyFeedbackActive = shallowRef(false)
 
@@ -352,7 +349,7 @@ onUnmounted(() => scaleAnimation?.cancel())
 
         <DropdownMenuRoot @update:open="handleDropdownMenuOpenChange">
           <DropdownMenuTrigger
-            v-if="hasMenuItems && !shouldDisableDropdownMenu"
+            v-if="hasMenuItems"
             as-child
             :class="[
               'absolute z-10 opacity-0 transition-opacity duration-200',

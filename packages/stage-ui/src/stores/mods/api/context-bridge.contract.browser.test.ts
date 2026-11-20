@@ -249,7 +249,6 @@ vi.mock('@proj-airi/stage-shared', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@proj-airi/stage-shared')>()
   return {
     ...actual,
-    isStageWeb: () => true,
     isStageTamagotchi: () => false,
   }
 })

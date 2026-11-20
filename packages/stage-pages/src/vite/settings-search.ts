@@ -1012,7 +1012,7 @@ export function createSettingsSearch() {
     return undefined
   }
 
-  /** Finds an exported function with one returned expression, such as `export function isStageWeb() { return ... }`. */
+  /** Finds an exported function with one returned expression, such as `export function isStageTamagotchi() { return ... }`. */
   async function findExportedFunction(module: string, name: string) {
     const declaration = await declarationOf(module, name)
     const program = declaration ? await readProgram(declaration.file) : undefined

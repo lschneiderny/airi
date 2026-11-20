@@ -5,7 +5,6 @@ import type { ChatHistoryReplyPayload } from '../reply'
 import type { ChatSliceEntry } from './tool-call-group'
 import type { ChatToolCallRendererRegistry, ChatToolCallWidgetRegistry } from './tool-call-renderer'
 
-import { isStageWeb } from '@proj-airi/stage-shared'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
@@ -228,7 +227,6 @@ const copyText = computed(() => getChatHistoryItemCopyText(props.message as Chat
               'h-unset <sm:h-fit',
               'shadow-sm shadow-primary-200/50 dark:shadow-none',
               boxClasses,
-              isStageWeb() && props.variant === 'mobile' ? 'select-none sm:select-auto' : '',
             ]"
           >
             <template v-if="bubbleIndex === 0">
