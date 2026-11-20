@@ -2,7 +2,7 @@
 
 ## Status and links
 
-Status: planned on 2026-11-20; not started. Part L1 is planned in full below. Part L2 is an owner action on macOS and is planned in outline.
+Status: Part L1 done on 2026-11-20 on `luke/refactor/leftovers` (see [Commits](#commits)); its PR awaits the owner. Part L2, the macOS confirmation of the observer hashes, is open: an owner action, planned in outline below.
 
 - Roadmap row: step L in [`docs/ai/context/character-mind-roadmap.md`](../../docs/ai/context/character-mind-roadmap.md#steps). Done when: "Each is removed, merged, confirmed, or recorded as kept."
 - Ruling on the web leftovers (owner, 2026-11-17: remove): the last paragraph of [Support scope](../../README.md#support-scope), recorded in `c3016c7ec`, and the status line of the [host capability contract ADR](../../docs/ai/adr/2026-11-08-host-capability-contract.md).
@@ -303,11 +303,32 @@ The ledger's Decisions to revisit section is not edited (D10).
 
 ## Departures during implementation
 
-None yet.
+1. **An added commit, `e7f091830`** (`test(stage-tamagotchi): import the caption page before the window bounds test starts`). The item 3 gate failed on `window-bounds-readiness.browser.test.ts`, at the parent commit as well. Root cause: the test imported `pages/caption.vue` dynamically inside its body; in a batch where every file builds its module graph from one fresh Vite server, that import took about 17 s against the 15 s timeout. Fix: a static import. Evidence: the 19-file related batch failed 4 of 4 before and passed 5 of 5 after; the whole stage-tamagotchi browser suite passed 2 of 2; no failing pair exists (all 18 pairs passed). It settles the T plan's owner question 3 for this test; `app.browser.test.ts` under load was not looked at.
+2. **Item 1:** the README's limitation sentence uses the liveliness wording from `gates.ts`.
+3. **Item 3:** all four packages re-export the shared enum with a plain `export { Emotion, EMOTION_VALUES } from '@proj-airi/stage-shared/expression-performance'`, because each package exposes `Emotion` in its public API.
+4. **Item 4** also changed three chat-history browser tests, folded in by amend:
+   - The short-error test checks that the "Show details" toggle is absent, instead of no `button[aria-expanded]`: the action menu's dropdown trigger now renders on mobile in browser tests.
+   - The mobile bottom-align test waits for alignment.
+   - The break-follow test moves the pointer away from the history before each test. A pointer left by an earlier file set `isPointerOrFocusOnOlderMessage` and stopped the follow.
+   - Evidence: the stage-ui browser project passed 3 of 3 with the parent's chat components, failed 2 of 3 with item 4 before the fix, and passed 9 of 9 after.
+5. **Item 5:** `getStage()` and `StageEnvironment.Web` stay, because the analytics code (`product-signals/surface.ts`, `openpanel.ts`, `posthog.ts`, `events/interaction.ts`) reads them and analytics is out of scope (D11). Only the detector's Web variant went. The ledger row says so. Item 5's acceptance grep therefore prints those lines.
+6. **Item 6:** the plugin `runtimes: ['electron', 'web']` lines stay, because they are the plugin-host contract (`stage-shared/src/plugin-host.ts`), not the host profile. `system-audio-lipsync.browser.test.ts` dropped the `web` host from its host list.
+7. **The `isStageWeb` grep** prints two intended lines: the ledger row (D12) and the roadmap L row's "What lands" text.
+8. **Item 8:** the roadmap L Status also names departures 3, 5, and 6.
 
 ## Checks run
 
-None yet. Grounding runs on 2026-11-20 at `98f9bb93c`, on Linux x86_64:
+All on Linux x86_64.
+
+- Every commit passed `pnpm verify --gate --base origin/luke/refactor/lab-tools`, which runs lint, typecheck, related tests, the window `qa:smoke`, and `qa:test:model`. For the docs-only items 7 and 8 the gate skipped `qa:motion3d affected` because the change was staged, not committed; neither touches MMD paths.
+- `pnpm qa:live2d-rig` printed `4853812851e60da048e340407e481f9a14209df2f7aadd1548f48d4c67d1ed36` after items 1, 3, and 4.
+- `qa:motion3d affected` printed AFFECTED for item 3; all nine scenarios at seed 1 were IDENTICAL between `e7f091830` and `25029dffa`.
+- `pnpm i18n:check` exited 0 after item 6, with no change in warnings.
+- The desktop-stage `qa:smoke` after item 6: `ok: true`.
+- The policy-docs test passed 11 of 11 after each policy doc edit (items 3, 5, 6, 7, and 8).
+- Whole suites at the end (item 8): `pnpm test:run --filter=@proj-airi/stage-ui-live2d` passed 52 files, 821 tests; `pnpm test:run --filter=@proj-airi/stage-shared` passed 94 files, 1847 tests.
+
+Grounding runs on 2026-11-20 at `98f9bb93c`:
 
 | Command | Result |
 | --- | --- |
@@ -317,4 +338,16 @@ None yet. Grounding runs on 2026-11-20 at `98f9bb93c`, on Linux x86_64:
 
 ## Commits
 
-None yet.
+Part L1, on `luke/refactor/leftovers`:
+
+- `97a4ef179` plan
+- `b83beb80b` item 1
+- `7df099e2c` item 2
+- `e7f091830` an added fix (departure 1)
+- `25029dffa` item 3
+- `54e624d86` item 4
+- `f67ce5d47` item 5
+- `d49ffda29` item 6
+- `689ffddc9` item 7
+- `146ae8298` item 8
+- item 9 is the commit that marks this plan done
