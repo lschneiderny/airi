@@ -16,7 +16,6 @@ import type {
 
 import { nanoid } from 'nanoid'
 
-import { getEventSourceKey } from './event-source'
 import { createSparkNotifyBuiltinToolsPlugin } from './plugins/builtin-tools'
 
 /**
@@ -47,6 +46,7 @@ export interface SparkNotifyHandleResult {
 export interface SparkNotifyHandleRequest {
   event: WebSocketEventOf<'spark:notify'>
   selectedChat: SparkNotifySelectedChat
+  /** The whole system turn. The host composes every system part, and the agent appends nothing to it. */
   systemPrompt: string
   /** Runtime instructions appended to the user message for this request. */
   runtimePrompt?: string
@@ -66,12 +66,6 @@ export interface CreateSparkNotifyAgentOptions {
   plugins?: SparkNotifyPlugin[]
   /** ID factory for generated Spark Command envelopes. */
   createId?: () => string
-  /**
-   * Renders the system instruction that tells the character how to treat a notify. The host owns this text.
-   *
-   * @param moduleName - The source key of the module that sent the notify.
-   */
-  instruction: (moduleName: string) => string
 }
 
 function renderSparkNotifyUserMessage(input: SparkNotifyHandleRequest, userSections: string[]) {
@@ -208,7 +202,6 @@ export function createSparkNotifyAgent(options: CreateSparkNotifyAgentOptions): 
       }),
     )
     const sessions = preparedSessions.filter((session): session is SparkNotifyPluginSession => session !== undefined)
-    const systemInstructions = sessions.flatMap(session => session.systemInstructions ?? [])
     const userSections = sessions.flatMap(session => session.userSections ?? [])
     const tools = policy.supportsTools
       ? sessions.flatMap(session => session.tools ?? [])
@@ -219,12 +212,7 @@ export function createSparkNotifyAgent(options: CreateSparkNotifyAgentOptions): 
         id: 'spark-system',
         type: 'system',
         authority: 'system',
-        content: [{ type: 'text', text: [
-          request.systemPrompt,
-          options.instruction(getEventSourceKey(request.event)),
-          ...(request.control?.messageOverride?.appendSystemInstructions ?? []),
-          ...systemInstructions,
-        ].filter(Boolean).join('\n\n') }],
+        content: [{ type: 'text', text: request.systemPrompt }],
       },
       {
         id: request.event.data.eventId,
