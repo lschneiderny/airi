@@ -114,7 +114,10 @@ const { seq, behaviour } = motion.idleState
   included. `NaturalIdleActivities` runs the schedule once per grid step on its
   own stream and draws the shape of what it starts. The lint block
   `airi/idle-schedule-pure` keeps the module and `./idle-errands` free of
-  clocks, timers and `Math.random`.
+  clocks, timers and `Math.random`. `IdleReport` and `IdleOrder` are the
+  contract with `@proj-airi/character-mind`'s idle policy, which composes the
+  schedule: the reports a performer sends and the orders it receives. They
+  live here because this package must not import the mind.
 - `idleActivityWeights` and `idleActivityRate` in `./idle-schedule`, and
   `idleEnergyOffset` in `./idle-activities`, are the pure rules that turn a
   drive into odds, pace and an energy offset.

@@ -147,13 +147,24 @@ export default defineConfig({
   files: ['packages/character-mind/src/**'],
   rules: {
     'ts/no-restricted-imports': ['error', {
-      paths: ['vue', 'pinia', '@proj-airi/stage-shared', '@proj-airi/stage-shared/composables'].map(name => ({
-        name,
-        message: 'The character mind imports only the pure rules of @proj-airi/stage-shared/expression-performance and /situation.',
-      })),
+      paths: [
+        ...['vue', 'pinia', '@proj-airi/stage-shared', '@proj-airi/stage-shared/composables'].map(name => ({
+          name,
+          message: 'The character mind imports only the pure rules of @proj-airi/stage-shared/expression-performance and /situation.',
+        })),
+        { name: '@proj-airi/motion-driver-natural', message: 'The character mind imports only the pure idle rules: /idle-schedule and /idle-errands, and types from /idle-activities.' },
+      ],
       patterns: [{
         group: ['@vueuse/*', '@proj-airi/stage-ui*', '@proj-airi/stage-shared/stores/*'],
         message: 'The character mind imports only the pure rules of @proj-airi/stage-shared/expression-performance and /situation.',
+      }, {
+        // The idle schedule and the errand pacing are pure (airi/idle-schedule-pure); the rest of Natural is the performer.
+        regex: '^@proj-airi/motion-driver-natural/(?!idle-schedule$|idle-errands$|idle-activities$)',
+        message: 'The character mind imports only the pure idle rules: /idle-schedule and /idle-errands, and types from /idle-activities.',
+      }, {
+        regex: '^@proj-airi/motion-driver-natural/idle-activities$',
+        allowTypeImports: true,
+        message: 'The character mind imports only types from /idle-activities, which holds the performer.',
       }],
     }],
   },

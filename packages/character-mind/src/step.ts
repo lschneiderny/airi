@@ -4,6 +4,7 @@ import { createReactionState, initialTouchAffectMemory } from '@proj-airi/stage-
 import { initialReactionMemory } from '@proj-airi/stage-shared/situation'
 
 import { answerEmotion, answerExpressionClear, answerExpressionRequest } from './expression'
+import { advanceIdle, answerIdle, answerIdlePlay, initialMindIdleState } from './idle'
 import { answerPresence, answerScreenChange } from './presence'
 import { answerTouch } from './touch'
 import { answerUserTurn, answerVoiceOutcome, answerVoiceRequest, answerVoiceTick, followPacing } from './voice'
@@ -20,6 +21,7 @@ export function initialMindState(slow: MindSlowState = { pacing: null }): MindSt
     voice: { reaction: initialReactionMemory(), lastDecision: null, gate: null, runId: null, stageShown: false, line: null, requests: [], lastGate: null },
     presence: { away: false, awaySinceMs: null },
     desktop: { screenReactAtMs: null },
+    idle: initialMindIdleState(),
     slow,
   }
 }
@@ -28,7 +30,8 @@ export function initialMindState(slow: MindSlowState = { pacing: null }): MindSt
  * The pure core of the character mind: answers the stimuli in order and returns the next state with the intents.
  * It reads no clock and no global random source, and never mutates `state`. Every draw comes from `rng`, in the
  * order of the stimuli: one for the jitter of each new emotion episode, one for each spoken touch reaction that
- * reaches its roll, one for the threshold of each new gate run, and the urge gate's own draws at each tick it evaluates.
+ * reaches its roll, one for the threshold of each new gate run, the urge gate's own draws at each tick it evaluates, and one
+ * that seeds the idle policy's own stream at the first `idle` or `idle-play` stimulus.
  *
  * `nowMs` is epoch milliseconds and must not run backwards between calls: the rules drop a stimulus older than
  * the last one they accepted. Every stimulus advances `seq`, also when it yields no intent. After each answer,
@@ -43,6 +46,10 @@ export function step(state: MindState, stimuli: readonly MindStimulus[], nowMs: 
   for (const stimulus of stimuli) {
     const cause = next.seq + 1
     next = { ...next, seq: cause }
+    // The idle clock catches up first, so a decision that fell due before this stimulus comes before its answer.
+    const due = advanceIdle(next, cause, nowMs)
+    next = due.state
+    intents.push(...due.intents)
 
     let answer: { state: MindState, intents: MindIntent[] }
     if (stimulus.kind === 'emotion')
@@ -63,6 +70,12 @@ export function step(state: MindState, stimuli: readonly MindStimulus[], nowMs: 
       answer = answerUserTurn(next, stimulus)
     else if (stimulus.kind === 'voice-request')
       answer = answerVoiceRequest(next, stimulus, cause, nowMs)
+    else if (stimulus.kind === 'idle')
+      answer = answerIdle(next, stimulus, cause, rng)
+    else if (stimulus.kind === 'idle-play')
+      answer = answerIdlePlay(next, stimulus, cause, rng)
+    else if (stimulus.kind === 'idle-wake')
+      answer = { state: next, intents: [] }
     else
       answer = answerVoiceOutcome(next, stimulus, cause, nowMs)
 
