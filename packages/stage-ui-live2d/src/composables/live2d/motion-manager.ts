@@ -246,34 +246,48 @@ function stepBeatSyncSpring(position: number, target: number, velocity: { value:
 }
 
 /**
- * Whether Beat Sync moves as a layer on top of a manual pose, for {@link useMotionUpdatePluginsBeatSync}.
+ * How the Beat Sync plugins of {@link useMotionUpdatePluginsBeatSync} write the head angles in a frame.
  *
- * Fork departure from upstream: the layer stays off under the Natural driver, so Beat Sync adds no head angles in
- * the final phase there, where Natural's own layers own the head.
+ * - `absolute`: `pre` springs the head angles toward the Beat Sync targets, as upstream ships it.
+ * - `layered`: a manual pose holds the head, and `layer` adds the beat offset on top of it.
+ * - `silent`: the springs advance, and neither plugin writes.
  */
-export function isBeatSyncLayered(manualPoseActive: boolean, driver: Live2DMotionDriver): boolean {
-  return manualPoseActive && driver !== 'natural'
+export type BeatSyncMode = 'absolute' | 'layered' | 'silent'
+
+/**
+ * Picks the Beat Sync mode: `silent` under Natural, `layered` while a manual pose holds the head, `absolute` otherwise.
+ *
+ * Fork departure from upstream: under the Natural driver Beat Sync writes nothing, so Natural is the only writer of
+ * the head angles. Under Universal and MAGIC, Beat Sync behaves as upstream ships it.
+ */
+export function beatSyncMode(manualPoseActive: boolean, driver: Live2DMotionDriver): BeatSyncMode {
+  if (driver === 'natural')
+    return 'silent'
+  return manualPoseActive ? 'layered' : 'absolute'
 }
 
 /**
  * Creates the two Beat Sync plugins. They decide once per frame who moves the head.
  *
- * - `pre` runs in the pre phase. Without a manual pose, it springs the head angles toward the Beat Sync targets.
- * - `layer` runs in the final phase after the manual-control plugin. With a manual pose, for example from the
- *   MAGIC driver, it springs the beat offset from the base angles and adds it, because the pose writes absolute
- *   head angles and hides anything that the pre phase wrote.
+ * - `pre` runs in the pre phase. In `absolute` mode, it springs the head angles toward the Beat Sync targets.
+ * - `layer` runs in the final phase after the manual-control plugin. In `layered` mode, for example under a MAGIC
+ *   pose, it springs the beat offset from the base angles and adds it, because the pose writes absolute head angles
+ *   and hides anything that the pre phase wrote.
+ * - In `silent` mode neither plugin writes. `pre` still advances the controller and the springs, so the controller
+ *   stays bounded and a switch to another mode does not kick the head.
  *
  * Only `pre` advances the springs, once per frame. It springs the beat offset on every frame, whoever owns the head.
  * The manual-control plugin can start or end a pose between the two plugins. `layer` adds the offset when the pose
  * wrote the head in this frame, or when `pre` left the head to a pose at the start of it.
  */
-export function useMotionUpdatePluginsBeatSync(beatSync: BeatSyncController, isLayered: () => boolean): { pre: MotionManagerPlugin, layer: MotionManagerPlugin } {
+export function useMotionUpdatePluginsBeatSync(beatSync: BeatSyncController, mode: () => BeatSyncMode): { pre: MotionManagerPlugin, layer: MotionManagerPlugin } {
   let layered = false
   const offset = { y: 0, z: 0 }
   const offsetVelocity = { y: { value: 0 }, z: { value: 0 } }
 
   const pre: MotionManagerPlugin = (ctx) => {
-    layered = isLayered()
+    const currentMode = mode()
+    layered = currentMode === 'layered'
 
     // `ctx.now` is in seconds. The controller schedules beats on its own clock in milliseconds.
     beatSync.updateTargets()
@@ -282,8 +296,8 @@ export function useMotionUpdatePluginsBeatSync(beatSync: BeatSyncController, isL
     offset.y = stepBeatSyncSpring(offset.y, targetOffset.y, offsetVelocity.y, ctx.timeDelta)
     offset.z = stepBeatSyncSpring(offset.z, targetOffset.z, offsetVelocity.z, ctx.timeDelta)
 
-    if (layered) {
-      // Keep the absolute spring moving with the beat, so the head does not kick when the pose ends.
+    if (currentMode !== 'absolute') {
+      // Keep the absolute spring moving with the beat, so the head does not kick when the pose or the silence ends.
       beatSync.velocityX.value = 0
       beatSync.velocityY.value = offsetVelocity.y.value
       beatSync.velocityZ.value = offsetVelocity.z.value
@@ -300,7 +314,8 @@ export function useMotionUpdatePluginsBeatSync(beatSync: BeatSyncController, isL
   }
 
   const layer: MotionManagerPlugin = (ctx) => {
-    if (!layered && !isLayered())
+    const currentMode = mode()
+    if (currentMode === 'silent' || (!layered && currentMode !== 'layered'))
       return
 
     if (offset.y)
