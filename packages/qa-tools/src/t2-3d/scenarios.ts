@@ -9,7 +9,7 @@ import type { Motion3dIdleDrive } from './idle-drive'
 import { createRandomStream } from '@proj-airi/motion-driver-natural/random'
 import { PERFORMANCE_EMOTIONS } from '@proj-airi/stage-shared/expression-performance'
 
-import { QA_DRIVE_AWAY, QA_DRIVE_PRESENT } from './idle-drive'
+import { QA_DRIVE_AWAY, QA_DRIVE_MUSIC, QA_DRIVE_PRESENT } from './idle-drive'
 
 export interface Motion3dScenario {
   /** Timeline version; a new version changes the cues, so traces of an older version are no longer its reference. */
@@ -148,6 +148,20 @@ export const motion3dScenarios: readonly Motion3dScenario[] = [
     seconds: 60,
     maxSeconds: 600,
     idleDrive: QA_DRIVE_PRESENT,
+    timeline: idleTimeline,
+  },
+  {
+    /**
+     * CM5 (character mind music): the `idle` timeline with the QA idle drive and music playing, so the character mind
+     * may draw her groove (the `sway` act). Its runs are the base that proves music's move into the mind unchanged.
+     */
+    version: 1,
+    id: 'music',
+    class: 'idle',
+    warmupSeconds: 10,
+    seconds: 60,
+    maxSeconds: 600,
+    idleDrive: QA_DRIVE_MUSIC,
     timeline: idleTimeline,
   },
   {
