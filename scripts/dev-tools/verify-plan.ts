@@ -138,14 +138,24 @@ export interface GateQaOutcome {
   detail: string
 }
 
-/** Reads a gate QA's exit code. `qa:test:model` exits 2 when no model or rig is configured; `affected` exits 1 or 2 when identity runs are still needed. */
-export function gateQaOutcome(qa: GateQa, exitCode: number): GateQaOutcome {
+const ansi = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g')
+
+const affectedExitCodes = { 'NOT AFFECTED': 0, 'AFFECTED': 1, 'CANNOT TELL': 2 } as const
+const affectedVerdictLine = /^affected [0-9a-f]+\.\.[0-9a-f]+: (NOT AFFECTED|AFFECTED|CANNOT TELL)\r?$/m
+
+/**
+ * Reads a gate QA's result. `qa:test:model` exits 2 when no model or rig is configured. `qa:motion3d affected` exits 1
+ * or 2 for its verdicts, but also for a thrown error or a usage error, so only its printed verdict line, with the exit
+ * code that verdict returns, counts as a verdict; anything else is a failure.
+ */
+export function gateQaOutcome(qa: GateQa, exitCode: number, output = ''): GateQaOutcome {
   if (qa === 'motion-affected') {
-    if (exitCode === 0)
+    const verdict = affectedVerdictLine.exec(output.replace(ansi, ''))?.[1] as keyof typeof affectedExitCodes | undefined
+    if (verdict === undefined || affectedExitCodes[verdict] !== exitCode)
+      return { status: 'failed', met: false, detail: `qa:motion3d affected exited ${exitCode}${verdict === undefined ? ' without a verdict' : ` after printing ${verdict}`}` }
+    if (verdict === 'NOT AFFECTED')
       return { status: 'passed', met: true, detail: 'qa:motion3d affected: NOT AFFECTED, no identity runs needed' }
-    if (exitCode === 1 || exitCode === 2)
-      return { status: 'passed', met: false, detail: `qa:motion3d affected: ${exitCode === 1 ? 'AFFECTED' : 'CANNOT TELL'}, identity runs still needed` }
-    return { status: 'failed', met: false, detail: `qa:motion3d affected exited ${exitCode}` }
+    return { status: 'passed', met: false, detail: `qa:motion3d affected: ${verdict}, identity runs still needed` }
   }
   const name = qa === 'smoke' ? 'qa:smoke' : 'qa:test:model'
   if (exitCode === 0)
@@ -374,8 +384,6 @@ export function parseVerifyArgs(argv: string[]): ParsedVerifyArgs {
   }
   return { ok: true, args }
 }
-
-const ansi = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g')
 
 /**
  * True when ESLint's summary says every reported problem can be fixed by `--fix`. Reads the stylish summary

@@ -413,8 +413,8 @@ async function verifyRun(args: VerifyArgs, root: string, cacheDir: string, histo
       out.detail(`\n[qa] ${command.argv.join(' ')}`)
       const started = Date.now()
       try {
-        const { exitCode } = await runLogged(out, `[qa] ${command.argv.join(' ')}`, command.argv[0], command.argv.slice(1), { cwd: root, env })
-        const outcome = gateQaOutcome(qa, exitCode)
+        const { exitCode, output } = await runLogged(out, `[qa] ${command.argv.join(' ')}`, command.argv[0], command.argv.slice(1), { cwd: root, env })
+        const outcome = gateQaOutcome(qa, exitCode, output)
         if (outcome.met)
           met.add(qa)
         qaResults.push({ ...outcome, durationMs: Date.now() - started })

@@ -42,7 +42,8 @@ function commitSource(repoRoot: string, commit: string): CommitSource {
 
 /**
  * `qa:motion3d affected <base> <tip>`: whether any file the headless runner loads changed between two commits.
- * Exit 0 not affected, 1 affected, 2 cannot tell (or a usage error).
+ * Exit 0 not affected, 1 affected, 2 cannot tell (or a usage error). A thrown error exits 1 as well, so `pnpm verify
+ * --gate` reads the `affected <base>..<tip>: <VERDICT>` line; keep its format.
  */
 export async function affectedMotion3d(args: readonly string[], context: Motion3dCliContext): Promise<number> {
   if (args.length !== 2 || args.some(arg => arg.startsWith('--'))) {

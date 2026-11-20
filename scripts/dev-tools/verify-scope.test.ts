@@ -134,11 +134,24 @@ describe('gate QA', () => {
     ['smoke', 1, { status: 'failed', met: false }],
     ['model-tests', 2, { status: 'skipped', met: false }],
     ['model-tests', 1, { status: 'failed', met: false }],
-    ['motion-affected', 0, { status: 'passed', met: true }],
-    ['motion-affected', 1, { status: 'passed', met: false }],
-    ['motion-affected', 2, { status: 'passed', met: false }],
-    ['motion-affected', 134, { status: 'failed', met: false }],
   ] as const)('reads %s exit %i', (qa, exitCode, expected) => {
     expect(gateQaOutcome(qa, exitCode)).toMatchObject(expected)
+  })
+
+  it.each([
+    ['NOT AFFECTED', 0, { status: 'passed', met: true }],
+    ['AFFECTED', 1, { status: 'passed', met: false }],
+    ['CANNOT TELL', 2, { status: 'passed', met: false }],
+  ] as const)('reads the affected verdict %s', (verdict, exitCode, expected) => {
+    expect(gateQaOutcome('motion-affected', exitCode, `affected 0123456ab..89abcdef0: ${verdict}\n  runner roots: x\n`)).toMatchObject(expected)
+  })
+
+  it.each([
+    ['a thrown error', 1, 'qa:motion3d broke: ENOENT\n'],
+    ['a usage error', 2, 'Usage: qa:motion3d affected <base commit> <tip commit>\n'],
+    ['a verdict with another exit code', 1, 'affected 0123456ab..89abcdef0: CANNOT TELL\n'],
+    ['a crash', 134, ''],
+  ])('fails qa:motion3d affected on %s', (_, exitCode, output) => {
+    expect(gateQaOutcome('motion-affected', exitCode, output)).toMatchObject({ status: 'failed', met: false })
   })
 })
