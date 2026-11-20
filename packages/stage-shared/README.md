@@ -48,6 +48,26 @@ function resolve(inputs: PerformanceInputs) {
 Use this entrypoint when a stage needs to tell a renderer what the character is doing.
 Do not use it to read desktop or voice signals. The caller collects them, and a `null` signal means that the host cannot measure it, so it never counts as activity.
 
+### Music
+
+The `music` entrypoint owns the pure music detector. It turns beat sync's beats into music edges: a run of beats is music once it has lasted `MUSIC_SETTLE_MS` (8 s), and it ends after a gap of `MUSIC_RELEASE_MS` (1.8 s) or while a game, call, or chat app is in front (`QUIET_CATEGORIES`).
+
+Call `advanceMusic` with the memory that the previous call returned and one observation: a beat, a deadline timer, or a change of the foreground app. Start from `initialMusicMemory`. It returns the new memory and the `started` or `stopped` edge it caused, or null. The detector never reads a clock: pass epoch milliseconds in `atMs`, and observe again at `nextMusicDeadline(memory)` so the settle end and the release fire without a new beat.
+
+```ts
+import { advanceMusic, initialMusicMemory, nextMusicDeadline } from '@proj-airi/stage-shared/music'
+
+let memory = initialMusicMemory
+
+function onBeat(nowMs: number) {
+  const result = advanceMusic(memory, { atMs: nowMs, beat: true, category: null })
+  memory = result.memory
+  return { edge: result.edge, deadline: nextMusicDeadline(memory) }
+}
+```
+
+Use this entrypoint to decide whether the character hears music. Do not use it for beat phase or to drive motion: the detector sees no single beat after it counts the run.
+
 ### Usage performance records
 
 The `perf/usage` entrypoint owns the contract for local performance recordings and the pure math around it:
