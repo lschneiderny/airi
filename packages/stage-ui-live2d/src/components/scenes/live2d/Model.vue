@@ -56,6 +56,7 @@ import ReviewCaption from './review-caption.vue'
 import TouchDebugOverlay from './touch-debug-overlay.vue'
 
 import {
+  beatSyncMode,
   createBeatSyncController,
   createLive2DFocusBias,
   createLive2DHeadTracker,
@@ -63,7 +64,6 @@ import {
   createLive2DTouchReaction,
   disableLive2DSdkBreath,
   findLive2DTouchMotionGroup,
-  isBeatSyncLayered,
   isPointInLive2DMesh,
   live2DCanvasRectToParent,
   live2DFocusTargetFromModelPoint,
@@ -462,8 +462,8 @@ const beatSync = createBeatSyncController({
 })
 // A manual pose, for example from the MAGIC driver, writes the head angles in the final phase.
 // Beat Sync then moves as a layer on top of that pose.
-// Under the Natural driver the layer stays off, so Beat Sync adds no head angles in the final phase there.
-const beatSyncIsLayered = () => isBeatSyncLayered(manualMotionSpring.output.value.active, live2dMotionDriver.value)
+// Under the Natural driver Beat Sync writes nothing, so Natural is the only writer of the head angles.
+const currentBeatSyncMode = () => beatSyncMode(manualMotionSpring.output.value.active, live2dMotionDriver.value)
 
 // Listen for model reload requests (e.g., when runtime motion is uploaded)
 const disposeShouldUpdateView = live2dStore.onShouldUpdateView(() => {
@@ -660,7 +660,7 @@ async function performModelLoad() {
     })
 
     motionManagerUpdate.register(ctx => expressionController.restoreExpressionBases(ctx.model), 'pre')
-    const beatSyncPlugins = useMotionUpdatePluginsBeatSync(beatSync, beatSyncIsLayered)
+    const beatSyncPlugins = useMotionUpdatePluginsBeatSync(beatSync, currentBeatSyncMode)
     motionManagerUpdate.register(beatSyncPlugins.pre, 'pre')
     motionManagerUpdate.register(useMotionUpdatePluginIdleDisable(), 'pre')
     motionManagerUpdate.register(useMotionUpdatePluginIdleFocus(), 'post')

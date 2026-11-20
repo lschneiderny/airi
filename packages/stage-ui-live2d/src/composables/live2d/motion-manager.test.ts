@@ -10,8 +10,8 @@ import { createBeatSyncController } from './beat-sync'
 import { createLive2DFocusBias } from './focus-bias'
 import { createLive2DMotionSpring } from './motion-control-spring'
 import {
+  beatSyncMode,
   disableLive2DSdkBreath,
-  isBeatSyncLayered,
   useLive2DMotionManagerUpdate,
   useMotionUpdatePluginAutoEyeBlink,
   useMotionUpdatePluginBreathControl,
@@ -448,7 +448,7 @@ describe('beat sync plugins', () => {
     const { clock, controller } = createBeatingController()
     clock.ms = 10_625
 
-    useMotionUpdatePluginsBeatSync(controller, () => false).pre(createContext({ now: clock.ms / 1000, timeDelta: frameSeconds }))
+    useMotionUpdatePluginsBeatSync(controller, () => 'absolute').pre(createContext({ now: clock.ms / 1000, timeDelta: frameSeconds }))
 
     // Half of the 250 ms segment toward the left side: easeOutCubic(0.5) of -10 degrees.
     expect(controller.targetY.value).toBeCloseTo(-8.75)
@@ -468,7 +468,7 @@ describe('beat sync plugins', () => {
       const { clock, controller } = createBeatingController()
       const context = createContext({ timeDelta: frameSeconds })
       const spring = createLive2DMotionSpring()
-      const beatSyncPlugins = useMotionUpdatePluginsBeatSync(controller, () => beating && spring.output.value.active)
+      const beatSyncPlugins = useMotionUpdatePluginsBeatSync(controller, () => beating && spring.output.value.active ? 'layered' : 'absolute')
       const plugins = [
         beatSyncPlugins.pre,
         useMotionUpdatePluginManualControl(ref({
@@ -503,7 +503,7 @@ describe('beat sync plugins', () => {
   it('settles instead of swinging wider when frames are long', () => {
     const { clock, controller } = createBeatingController()
     const context = createContext({ timeDelta: 0.1 })
-    const plugin = useMotionUpdatePluginsBeatSync(controller, () => false).pre
+    const plugin = useMotionUpdatePluginsBeatSync(controller, () => 'absolute').pre
 
     // 100 ms frames, as Pixi gives at its lowest frame rate. The release starts 1.8 s after the beat.
     for (let frame = 0; frame < 15; frame += 1) {
@@ -517,7 +517,7 @@ describe('beat sync plugins', () => {
   it('leaves the head to the pre-phase plugin when no pose is layered', () => {
     const { controller } = createBeatingController()
     const context = createContext({ timeDelta: frameSeconds })
-    const plugins = useMotionUpdatePluginsBeatSync(controller, () => false)
+    const plugins = useMotionUpdatePluginsBeatSync(controller, () => 'absolute')
 
     plugins.pre(context)
     plugins.layer(context)
@@ -530,7 +530,7 @@ describe('beat sync plugins', () => {
     const { controller } = createBeatingController()
     const context = createContext({ timeDelta: frameSeconds })
 
-    useMotionUpdatePluginsBeatSync(controller, () => true).pre(context)
+    useMotionUpdatePluginsBeatSync(controller, () => 'layered').pre(context)
 
     expect(context.model.setParameterValueById).not.toHaveBeenCalled()
   })
@@ -539,7 +539,7 @@ describe('beat sync plugins', () => {
     const { clock, controller } = createBeatingController()
     const context = createContext({ timeDelta: frameSeconds })
     let poseActive = false
-    const plugins = useMotionUpdatePluginsBeatSync(controller, () => poseActive)
+    const plugins = useMotionUpdatePluginsBeatSync(controller, () => poseActive ? 'layered' : 'absolute')
 
     // Half a second without a pose: the beat reaches the left side.
     for (let frame = 0; frame < 30; frame += 1) {
@@ -563,7 +563,7 @@ describe('beat sync plugins', () => {
   ] as const)('adds the beat on a manual pose $layerCalls time(s) per frame under the $driver driver', ({ driver, layerCalls }) => {
     const { clock, controller } = createBeatingController()
     const context = createContext({ timeDelta: frameSeconds })
-    const plugins = useMotionUpdatePluginsBeatSync(controller, () => isBeatSyncLayered(true, driver))
+    const plugins = useMotionUpdatePluginsBeatSync(controller, () => beatSyncMode(true, driver))
 
     // Half a second with a pose: the beat reaches the left side.
     for (let frame = 0; frame < 30; frame += 1) {
@@ -579,7 +579,7 @@ describe('beat sync plugins', () => {
     const { clock, controller } = createBeatingController()
     const context = createContext({ timeDelta: frameSeconds })
     let poseActive = false
-    const plugins = useMotionUpdatePluginsBeatSync(controller, () => poseActive)
+    const plugins = useMotionUpdatePluginsBeatSync(controller, () => poseActive ? 'layered' : 'absolute')
     const runFrames = (count: number) => {
       for (let frame = 0; frame < count; frame += 1) {
         clock.ms += frameSeconds * 1000
@@ -604,7 +604,7 @@ describe('beat sync plugins', () => {
     const { clock, controller } = createBeatingController()
     const context = createContext({ timeDelta: frameSeconds })
     let poseActive = before
-    const plugins = useMotionUpdatePluginsBeatSync(controller, () => poseActive)
+    const plugins = useMotionUpdatePluginsBeatSync(controller, () => poseActive ? 'layered' : 'absolute')
 
     // Half a second: the beat reaches the left side.
     for (let frame = 0; frame < 30; frame += 1) {
@@ -621,6 +621,105 @@ describe('beat sync plugins', () => {
     plugins.layer(context)
 
     expect(context.model.addParameterValueById).toHaveBeenCalledWith('ParamAngleY', expect.closeTo(-10, 0))
+  })
+})
+
+describe('beat sync under the Natural driver', () => {
+  const frameSeconds = 1 / 60
+  const headAngles = ['ParamAngleX', 'ParamAngleY', 'ParamAngleZ']
+
+  /** A sway controller around zero base angles that receives a beat every 500 ms from 10 s. */
+  function createBeatPattern() {
+    const clock = { ms: 10_000 }
+    const controller = createBeatSyncController({
+      baseAngles: () => ({ x: 0, y: 0, z: 0 }),
+      initialStyle: 'sway-sine',
+      now: () => clock.ms,
+    })
+    let nextBeatMs = clock.ms
+    const advanceFrame = () => {
+      clock.ms += frameSeconds * 1000
+      if (clock.ms >= nextBeatMs) {
+        controller.scheduleBeat()
+        nextBeatMs += 500
+      }
+    }
+    return { advanceFrame, controller }
+  }
+
+  function headWrites(context: ReturnType<typeof createContext>) {
+    return [
+      ...vi.mocked(context.model.setParameterValueById).mock.calls,
+      ...vi.mocked(context.model.addParameterValueById).mock.calls,
+    ].filter(([id]) => headAngles.includes(id))
+  }
+
+  it.each([false, true])('writes no head angle over a beat pattern when a manual pose is %s', (manualPoseActive) => {
+    const { advanceFrame, controller } = createBeatPattern()
+    const context = createContext({ timeDelta: frameSeconds })
+    const plugins = useMotionUpdatePluginsBeatSync(controller, () => beatSyncMode(manualPoseActive, 'natural'))
+
+    for (let frame = 0; frame < 300; frame += 1) {
+      advanceFrame()
+      plugins.pre(context)
+      plugins.layer(context)
+    }
+
+    expect(headWrites(context)).toEqual([])
+  })
+
+  it('keeps the controller bounded while silent', () => {
+    const { advanceFrame, controller } = createBeatPattern()
+    const context = createContext({ timeDelta: frameSeconds })
+    const plugins = useMotionUpdatePluginsBeatSync(controller, () => 'silent')
+
+    // Ten minutes of beats at 120 BPM.
+    for (let frame = 0; frame < 36_000; frame += 1) {
+      advanceFrame()
+      plugins.pre(context)
+      plugins.layer(context)
+    }
+
+    for (const value of [controller.targetY.value, controller.targetZ.value])
+      expect(Math.abs(value)).toBeLessThanOrEqual(10)
+    for (const value of [controller.velocityX.value, controller.velocityY.value, controller.velocityZ.value])
+      expect(Math.abs(value)).toBeLessThan(500)
+  })
+
+  it('continues the spring instead of starting from rest after a switch to Universal', () => {
+    function firstWrittenAngleY(keepVelocity: boolean) {
+      const { advanceFrame, controller } = createBeatPattern()
+      // Natural holds the head at the base angles while Beat Sync is silent.
+      const context = createContext({ timeDelta: frameSeconds })
+      headAngles.forEach(id => context.model.setParameterValueById(id, 0))
+      let driver: 'natural' | 'universal' = 'natural'
+      const plugins = useMotionUpdatePluginsBeatSync(controller, () => beatSyncMode(false, driver))
+
+      // The first beat primes the controller. Six frames after the second, the swing toward the left side moves fast.
+      for (let frame = 0; frame < 36; frame += 1) {
+        advanceFrame()
+        plugins.pre(context)
+        plugins.layer(context)
+      }
+      const velocityY = controller.velocityY.value
+      if (!keepVelocity) {
+        controller.velocityX.value = 0
+        controller.velocityY.value = 0
+        controller.velocityZ.value = 0
+      }
+
+      driver = 'universal'
+      advanceFrame()
+      plugins.pre(context)
+      return { angleY: context.model.getParameterValueById('ParamAngleY'), velocityY }
+    }
+
+    const continued = firstWrittenAngleY(true)
+    const fromRest = firstWrittenAngleY(false)
+
+    expect(continued.velocityY).toBeLessThan(-1)
+    expect(continued.angleY).toBeLessThan(fromRest.angleY)
+    expect(Math.abs(continued.angleY)).toBeLessThan(1)
   })
 })
 
