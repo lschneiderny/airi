@@ -42,6 +42,7 @@ A sync resolves a change to any of these as deleted.
 | Skills `create-pr`, `release-note-writer`, `upload-github-attachment`, `enforce-rules-for-i18n`, `simple-english`, `web-design-guidelines`, `use-vishot-with-capacitor` | They serve PR publishing, releases, Crowdin, upstream's prose style, or the mobile host |
 | Vendored skills `pinia`, `pnpm`, `tsdown`, `unocss`, `vue`, `vue-best-practices`, `vue-testing-best-practices`, `vueuse-functions` | Generic tutorials; the fork reads installed types and official docs |
 | Skills `use-agent-browser-with-input-file`, `use-vishot-for-airi`, `use-vishot-with-electron`, `use-vishot-with-web`, `use-vishot-with-input-file` | Merged into the fork-only references listed above |
+| `packages/core-agent/src/agents/spark-notify/event-source.ts` | The fork's agent names no module; the host writes the module name into the `spark` segment (see the Spark Notify system turn row) |
 
 Revisit any row when the fork gains the thing the row says it lacks.
 
