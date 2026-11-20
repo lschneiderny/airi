@@ -67,20 +67,20 @@ describe('motion3d scenario timelines', () => {
   })
 
   it('sets an idle drive only in the scenarios that judge the idle scheduler, and replays idle\'s timeline in idle-drive and music', () => {
-    expect(motion3dScenarios.filter(scenario => scenario.idleDrive).map(scenario => [scenario.id, scenario.idleDrive?.name])).toEqual([['idle-drive', 'qa-neutral-day'], ['music', 'qa-neutral-day-music'], ['sleepy-no-clip', 'qa-neutral-day-away']])
+    expect(motion3dScenarios.filter(scenario => scenario.idleDrive).map(scenario => [scenario.id, scenario.idleDrive?.name])).toEqual([['idle-drive', 'qa-neutral-day'], ['music', 'qa-neutral-day'], ['sleepy-no-clip', 'qa-neutral-day-away']])
     const timeline = (id: string) => motion3dScenarios.find(scenario => scenario.id === id)?.timeline(3, 600)
     expect(timeline('idle-drive')).toEqual(timeline('idle'))
     expect(timeline('music')).toEqual(timeline('idle'))
   })
 
-  it('runs music as an idle-class scenario whose drive is the QA drive with music playing, named in its provenance', () => {
+  it('runs music as an idle-class scenario whose drive is the plain QA drive, named in its provenance', () => {
     const scenario = motion3dScenarios.find(scenario => scenario.id === 'music')
     if (!scenario?.idleDrive)
       throw new Error('Missing music scenario drive')
     expect([scenario.version, scenario.class, scenario.warmupSeconds, scenario.seconds, scenario.maxSeconds]).toEqual([1, 'idle', 10, 60, 600])
     const detail = idleDriveDetail(scenario.idleDrive)
-    expect(detail.idleDrive).toBe('qa-neutral-day-music')
-    expect(JSON.parse(detail.idleDriveValues)).toEqual({ ...QA_IDLE_DRIVE, music: true })
+    expect(detail.idleDrive).toBe('qa-neutral-day')
+    expect(JSON.parse(detail.idleDriveValues)).toEqual(QA_IDLE_DRIVE)
     // The runner tells the character mind music plays; no other scenario does.
     expect(motion3dScenarios.filter(scenario => scenario.music).map(scenario => scenario.id)).toEqual(['music'])
   })

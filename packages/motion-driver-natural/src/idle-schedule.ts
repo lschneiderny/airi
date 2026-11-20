@@ -147,7 +147,7 @@ export function sameIdleDrive(a: NaturalIdleDrive | null, b: NaturalIdleDrive | 
     return false
   const sameList = (x: readonly string[] | undefined, y: readonly string[] | undefined) => (x ?? []).join() === (y ?? []).join() && (x === undefined) === (y === undefined)
   return a.energy === b.energy && a.valence === b.valence && a.tension === b.tension && a.sleepiness === b.sleepiness
-    && a.solitude === b.solitude && a.music === b.music && a.rate === b.rate && a.body === b.body
+    && a.solitude === b.solitude && a.rate === b.rate && a.body === b.body
     && sameList(a.unreachable, b.unreachable) && sameList(a.errands, b.errands)
 }
 

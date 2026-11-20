@@ -83,8 +83,7 @@ inactive), so the character mind decides her idle acts over the run; it defaults
 that `gesture-timing`, `ownership` and the gate's idle class score.
 
 `music` (CM5 of the character mind roadmap, idle class, version 1) is the `idle`
-timeline with the QA idle drive `qa-neutral-day-music`: `qa-neutral-day`'s values
-with `music: true`. The scenario also sets `music`, so the runner sends its
+timeline with the QA idle drive `qa-neutral-day`. The scenario also sets `music`, so the runner sends its
 character mind `{ kind: 'music', playing: true }` before the first frame and
 records `music: true` in the trace source detail; the mind may then draw her
 groove (the `sway` act). The stimulus draws nothing, so the idle stream's seed
