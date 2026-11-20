@@ -254,6 +254,7 @@ describe('useMotionQaBridge', () => {
         intents: [
           { channel: 'posture', kind: 'touch-reaction', id: '1-touch-reaction', cause: 1 },
           { channel: 'posture', kind: 'mood', id: '1-mood', cause: 1 },
+          { channel: 'body', kind: 'attend', id: '1-attend', cause: 1, windowMs: 60_000 },
         ],
         voice: null,
         voiceLine: null,
@@ -270,6 +271,7 @@ describe('useMotionQaBridge', () => {
           { channel: 'posture', kind: 'touch-reaction', id: '2-touch-reaction', cause: 2 },
           { channel: 'posture', kind: 'mood', id: '2-mood', cause: 2 },
           { channel: 'face', kind: 'moment', id: '2-moment', cause: 2 },
+          { channel: 'body', kind: 'attend', id: '2-attend', cause: 2, windowMs: 60_000 },
         ],
         voice: 'hold',
         voiceLine: 'poke-protest',
@@ -288,6 +290,7 @@ describe('useMotionQaBridge', () => {
           { channel: 'posture', kind: 'mood', id: '4-mood', cause: 4 },
           { channel: 'face', kind: 'moment', id: '4-moment', cause: 4 },
           { channel: 'voice', kind: 'speak', id: '4-speak', cause: 4 },
+          { channel: 'body', kind: 'attend', id: '4-attend', cause: 4, windowMs: 60_000 },
         ],
         voice: 'speak',
         voiceLine: 'poke-protest',
@@ -323,6 +326,14 @@ describe('useMotionQaBridge', () => {
     const reply = await dispatch({ name: 'events', input: {} }) as { result: { events: { kind: string, payload: Record<string, unknown> }[] } }
     expect(reply.result.events).toEqual([expect.objectContaining({ kind: 'mind', payload: expect.objectContaining({ stimulus: 'cursor', band: 'near', opportunity: 'appeared' }) })])
     expect(JSON.parse(reply.result.events[0].payload.intents as string)).toEqual([expect.objectContaining({ channel: 'gaze', kind: 'cursor-episode', band: 'near', engaging: true })])
+  })
+
+  it('records an interaction step with its source and the attend window it opened', async () => {
+    mind.receive({ kind: 'interaction', source: 'drag' })
+
+    const reply = await dispatch({ name: 'events', input: {} }) as { result: { events: { kind: string, payload: Record<string, unknown> }[] } }
+    expect(reply.result.events).toEqual([expect.objectContaining({ kind: 'mind', payload: expect.objectContaining({ stimulus: 'interaction', source: 'drag' }) })])
+    expect(JSON.parse(reply.result.events[0].payload.intents as string)).toEqual([expect.objectContaining({ channel: 'body', kind: 'attend', windowMs: 60_000 })])
   })
 
   it('records a gate tick with its gate reason, fired category, line kind, and cues, a decline with its cue, and skips an unforced tick that yields nothing', async () => {

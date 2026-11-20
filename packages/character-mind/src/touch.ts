@@ -3,6 +3,7 @@ import type { MindIntent, MindRandom, MindState, MindStimulus } from './types'
 import { touchAffect } from '@proj-airi/stage-shared/expression-performance'
 import { reactionPolicy } from '@proj-airi/stage-shared/situation'
 
+import { attendIntent } from './attention'
 import { reactionTurnId } from './voice'
 
 type Stimulus<K extends MindStimulus['kind']> = Extract<MindStimulus, { kind: K }>
@@ -15,6 +16,7 @@ interface Answer { state: MindState, intents: MindIntent[] }
  * - Face: a poke and a finished pet are moments.
  * - Voice: for a poke or a finished pet with a voice view, `reactionPolicy` decides whether she says a line. The
  *   decision is kept either way. A line takes the line slot unless a reach-out holds it. Without a view nobody could speak the line, so the voice state is untouched.
+ * - Body: a poke and a pet start end with `attend`, which opens the director's attend window. A pet end opens none.
  */
 export function answerTouch(state: MindState, stimulus: Stimulus<'touch'>, cause: number, nowMs: number, rng: MindRandom): Answer {
   const intents: MindIntent[] = []
@@ -48,6 +50,9 @@ export function answerTouch(state: MindState, stimulus: Stimulus<'touch'>, cause
       }
     }
   }
+
+  if (stimulus.gesture !== 'pet-end')
+    intents.push(attendIntent(cause))
 
   return { state: { ...state, touch: { affect: affect.memory }, voice }, intents }
 }

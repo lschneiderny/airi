@@ -56,7 +56,7 @@ function input(overrides: Partial<DirectorInput> = {}): DirectorInput {
     chatX: null,
     interactionSeq: 0,
     chatSendSeq: 0,
-    interactionAtMs: null,
+    attendUntilMs: null,
     actionRequest: null,
     actionFeedback: null,
     dragging: false,
@@ -247,7 +247,7 @@ describe('body director home, goals, roam and tools', () => {
       ...NO_WORLD_BODY_INPUT,
       interactionSeq: 0,
       chatSendSeq: 0,
-      interactionAtMs: null,
+      attendUntilMs: null,
       actionRequest: null,
       actionFeedback: null,
       dragging: false,
@@ -339,27 +339,38 @@ describe('body director home, goals, roam and tools', () => {
     expect(result.memory.lastInteractionSeq).toBe(3)
   })
 
-  it('chases the cursor to one leg length short of it inside the chase window', () => {
-    const result = decide(world({ nowMs: 1_000, interactionSeq: 1, interactionAtMs: 0, cursorOnStage: true, cursorX: 8 }))
+  it('chases while the attend window is open, through its last millisecond, and not after it', () => {
+    const base = { interactionSeq: 1, cursorOnStage: true, cursorX: 8 }
+    const results = [
+      decide(world({ ...base, nowMs: 5_000, attendUntilMs: 5_000 })),
+      decide(world({ ...base, nowMs: 5_001, attendUntilMs: 5_000 })),
+      decide(world({ ...base, nowMs: 5_000, attendUntilMs: null })),
+    ]
+
+    expect(results.map(result => result.intent.locomotion.reason)).toEqual(['approach-cursor', 'stay', 'stay'])
+  })
+
+  it('chases the cursor to one leg length short of it inside the attend window', () => {
+    const result = decide(world({ nowMs: 1_000, interactionSeq: 1, attendUntilMs: 60_000, cursorOnStage: true, cursorX: 8 }))
 
     expect(result.intent.locomotion).toMatchObject({ goalX: 7, pace: 'walk', reason: 'approach-cursor', arriveFacing: 0 })
   })
 
   it('does not chase outside the window, off stage, when close, or without a cursor', () => {
-    const base = { interactionSeq: 1, interactionAtMs: 0, cursorOnStage: true, cursorX: 8 }
+    const base = { interactionSeq: 1, attendUntilMs: 60_000, cursorOnStage: true, cursorX: 8 }
     const results = [
       decide(world({ ...base, nowMs: 60_001 })),
       decide(world({ ...base, nowMs: 1_000, cursorOnStage: false })),
       decide(world({ ...base, nowMs: 1_000, cursorX: 1 })),
       decide(world({ ...base, nowMs: 1_000, cursorX: null })),
-      decide(world({ ...base, nowMs: 1_000, interactionAtMs: null })),
+      decide(world({ ...base, nowMs: 1_000, attendUntilMs: null })),
     ]
 
     expect(results.map(result => result.intent.locomotion.goalX)).toEqual([null, null, null, null, null])
   })
 
   it('re-issues a chase goal at most once per minimum dwell', () => {
-    const base = { interactionSeq: 1, interactionAtMs: 0, cursorOnStage: true }
+    const base = { interactionSeq: 1, attendUntilMs: 60_000, cursorOnStage: true }
     const first = decide(world({ ...base, nowMs: 1_000, cursorX: 8 }))
     const early = decide(world({ ...base, nowMs: 2_000, cursorX: 12 }), first.memory)
     const later = decide(world({ ...base, nowMs: 1_000 + GOAL_MIN_DWELL_MS, cursorX: 12 }), early.memory)
@@ -369,7 +380,7 @@ describe('body director home, goals, roam and tools', () => {
   })
 
   it('ends a chase goal when the cursor comes within one leg, before the goal dwell', () => {
-    const base = { interactionSeq: 1, interactionAtMs: 0, cursorOnStage: true }
+    const base = { interactionSeq: 1, attendUntilMs: 60_000, cursorOnStage: true }
     const first = decide(world({ ...base, nowMs: 1_000, cursorX: 8 }))
     const landed = decide(world({ ...base, nowMs: 2_000, rootX: 3, locomotionMode: 'walking', cursorX: 3.5 }), first.memory)
 
@@ -378,7 +389,7 @@ describe('body director home, goals, roam and tools', () => {
   })
 
   it('issues no chase while the cursor stays within one leg', () => {
-    const base = { interactionSeq: 1, interactionAtMs: 0, cursorOnStage: true, rootX: 3 }
+    const base = { interactionSeq: 1, attendUntilMs: 60_000, cursorOnStage: true, rootX: 3 }
     const frames = [0, 1_000, 4_000, 8_000].map(nowMs => world({ ...base, nowMs, cursorX: 3.8 }))
 
     expect(run(frames).intent.locomotion.goalX).toBeNull()
@@ -557,7 +568,7 @@ describe('body director twenty minute scenario', () => {
         chatUnfoldSeq: nowMs >= 10_000 ? 1 : 0,
         chatX: 6,
         interactionSeq: nowMs >= 60_000 ? 1 : 0,
-        interactionAtMs: nowMs >= 60_000 ? 60_000 : null,
+        attendUntilMs: nowMs >= 60_000 ? 120_000 : null,
         cursorOnStage: nowMs >= 60_000 && nowMs < 75_000,
         cursorX: 13,
         // Natural asks for a wander ten minutes in, the earliest the old interval allowed.
@@ -909,7 +920,7 @@ describe('body director actions', () => {
   })
 
   it('works without a world: the classic window still performs and ends on a poke', () => {
-    const quiet = { ...NO_WORLD_BODY_INPUT, interactionSeq: 0, chatSendSeq: 0, interactionAtMs: null, actionRequest: null, actionFeedback: null, dragging: false, idle: { settled: false, asleep: false } }
+    const quiet = { ...NO_WORLD_BODY_INPUT, interactionSeq: 0, chatSendSeq: 0, attendUntilMs: null, actionRequest: null, actionFeedback: null, dragging: false, idle: { settled: false, asleep: false } }
     const frame = (nowMs: number, patch: Partial<DirectorInput> = {}): DirectorInput => ({
       nowMs,
       performance: performance(),
@@ -993,7 +1004,7 @@ describe('body director reach zones', () => {
   const reach = [left, right]
   /** A root in the wing between the two zones. */
   const wingX = 26
-  const chase = { interactionSeq: 1, interactionAtMs: 0, cursorOnStage: true }
+  const chase = { interactionSeq: 1, attendUntilMs: 60_000, cursorOnStage: true }
 
   it('decides exactly as without reach when the ground line is the only zone', () => {
     const frames = (extra: Partial<DirectorInput>) => [

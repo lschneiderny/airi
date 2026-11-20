@@ -98,7 +98,7 @@ const props = withDefaults(defineProps<{
   chatTarget?: { visible: boolean, bounds: PlacementRect | null }
   /** The desktop stage world for the MMD scene: calibrated camera, ground line and home x. Classic hosts leave it undefined. */
   stageWorld?: MMDStageWorld
-  /** Counts the host's own interactions with the MMD character (a drag release); a new value starts the director's chase window. */
+  /** Counts the host's own interactions with the MMD character (a drag release); a new value tells the mind of the drag, which opens the attend window, and ends the MMD director's clips. */
   interactionSeq?: number
   enableOrbitControls?: boolean
   paused?: boolean
@@ -388,6 +388,12 @@ onMounted(() => {
   })
 })
 onUnmounted(() => mindStage?.detach())
+// The host bumps `interactionSeq` on a drag release; the mind answers it with the attend window. The MMD scene still
+// reads the prop to end clips.
+watch(() => props.interactionSeq, (next, previous) => {
+  if (next !== undefined && next !== previous)
+    performanceConductor.interaction('drag')
+})
 
 const stageSelf = useStageSelfStore()
 
@@ -714,6 +720,7 @@ const disposeChatComposerSentListener = getSpeechBusContext().on(chatComposerSen
   chatSentSeq++
   chatSentWords = body.words
   updateChatActivity()
+  performanceConductor.interaction('chat-send')
 })
 
 // The typing window closes without a new report, so the same tick re-evaluates it.

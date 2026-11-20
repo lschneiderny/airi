@@ -88,6 +88,8 @@ export type MindStimulus
     | { kind: 'idle-play', act: IdleBehaviourKind }
   /** The reporting Natural performer could notice the cursor; the mind answers with a `cursor-episode`. */
     | { kind: 'cursor', report: CursorReport }
+  /** The user dragged her and let go (`drag`), or sent a chat message (`chat-send`); the mind answers with `attend`. */
+    | { kind: 'interaction', source: 'drag' | 'chat-send' }
 
 interface IntentBase {
   /** Unique among the intents of one mind since its initial state. */
@@ -133,11 +135,18 @@ export type MindIntent
     | (IntentBase & { channel: 'posture', kind: 'idle-errand', errand: IdleErrandKind, pick: number, holdSeconds: number | null })
   /** The cursor episode for the report `requestId`: whether she engages, its span, dwell, and cooldown. Only the reporting performer plays it. */
     | (IntentBase & { channel: 'gaze', kind: 'cursor-episode', requestId: number, episode: CursorEpisode })
+  /**
+   * Attend to the user at the cursor for `windowMs` from now. The body director stamps the window on its own clock and
+   * may walk toward the cursor inside it; a scene without a director drops it.
+   */
+    | (IntentBase & { channel: 'body', kind: 'attend', target: 'cursor', windowMs: number })
 
 /** The posture intent a scene performs for a touch. */
 export type TouchReactionIntent = Extract<MindIntent, { kind: 'touch-reaction' }>
 /** The intents a performer carries out as idle orders. */
 export type MindIdleIntent = Extract<MindIntent, { kind: 'idle-act' | 'idle-errand' }>
+/** The body intent that opens the director's attend window. */
+export type AttendIntent = Extract<MindIntent, { kind: 'attend' }>
 
 /** The part of the mind's state that the leader saves in the active card's character-state record. */
 export interface MindSlowState {

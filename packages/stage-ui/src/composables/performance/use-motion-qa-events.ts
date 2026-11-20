@@ -70,15 +70,16 @@ export function useMotionQaEvents(options: {
       const decision = voiceDecisionOf(step)
       const presence = step.stimuli.find(stimulus => stimulus.kind === 'presence')
       const cursor = step.stimuli.find(stimulus => stimulus.kind === 'cursor')
+      const interaction = step.stimuli.find(stimulus => stimulus.kind === 'interaction')
       const lines = step.intents.flatMap(intent => intent.channel === 'voice' && intent.kind === 'speak' ? [intent.line.kind] : [])
       const cues = step.intents.flatMap(intent => intent.channel === 'posture' && intent.kind === 'cue' ? [intent.cue] : [])
       record('mind', {
         stimulus: step.stimuli.map(stimulus => stimulus.kind).join(','),
         gesture: touches.length ? touches.map(touch => touch.gesture).join(',') : null,
         outcome: outcomes.length ? outcomes.map(stimulus => stimulus.outcome).join(',') : null,
-        // A JSON array, because a payload holds scalars only. A touch yields at most four intents of about 80
+        // A JSON array, because a payload holds scalars only. A touch yields at most five intents of about 80
         // characters each, which stays under the 500 characters `record` keeps of a string.
-        // Idle acts, idle errands, and cursor episodes also name what they decided.
+        // Idle acts, idle errands, cursor episodes, and attend windows also name what they decided.
         intents: JSON.stringify(step.intents.map(intent => ({
           channel: intent.channel,
           kind: intent.kind,
@@ -87,6 +88,7 @@ export function useMotionQaEvents(options: {
           ...intent.kind === 'idle-act' && { act: intent.act, requested: intent.requested },
           ...intent.kind === 'idle-errand' && { errand: intent.errand },
           ...intent.kind === 'cursor-episode' && { band: intent.episode.band, engaging: intent.episode.engaging },
+          ...intent.kind === 'attend' && { windowMs: intent.windowMs },
         }))),
         // The kinds of the step's spoken lines (`reaction`, `reach-out`, `widget`) and its body cues
         // (`about-to-speak`, `let-go`), comma-separated, or null.
@@ -102,6 +104,8 @@ export function useMotionQaEvents(options: {
         ...presence && { away: presence.away, wake: presence.wake?.cause ?? null },
         // Only a cursor step carries these: the band of the cursor and what made the notice possible.
         ...cursor && { band: cursor.report.band, opportunity: cursor.report.opportunity },
+        // Only an interaction step carries this: a drag release or a sent chat message.
+        ...interaction && { source: interaction.source },
       })
     }),
     options.onIdle(report => record('idle', { phase: report.phase, behaviour: report.behaviour })).off,

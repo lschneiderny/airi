@@ -70,7 +70,7 @@ function simulate(scenario: PressScenario) {
       roamMode: 'roam',
       interactionSeq: 0,
       chatSendSeq: 0,
-      interactionAtMs: scenario.chase ? 0 : null,
+      attendUntilMs: scenario.chase ? 60_000 : null,
       actionRequest: null,
       actionFeedback: null,
       dragging: false,

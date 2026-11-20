@@ -1,4 +1,4 @@
-import type { CharacterMind, MindIdleIntent, MindIntent, TouchReactionIntent, TouchReport } from '@proj-airi/character-mind'
+import type { AttendIntent, CharacterMind, MindIdleIntent, MindIntent, TouchReactionIntent, TouchReport } from '@proj-airi/character-mind'
 import type { FaceBaseline } from '@proj-airi/motion-driver-natural/baseline'
 import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
 import type { CursorOrder, CursorReport } from '@proj-airi/motion-driver-natural/cursor-notice'
@@ -155,6 +155,11 @@ export interface StagePerformanceScene {
    * A scene without it drops the order.
    */
   cursorEpisode?: (order: CursorOrder) => void
+  /**
+   * MMD under the Natural driver: opens the body director's attend window, inside which she may walk toward the
+   * cursor. A scene without a body director, such as the Live2D scene, drops it.
+   */
+  attend?: (intent: AttendIntent) => void
 }
 
 /**
@@ -258,6 +263,9 @@ const browserTimers: Required<StagePerformanceConductorOptions>['timers'] = {
  *   only Natural performs the posture intents it answers with.
  * - A cursor report reaches the mind only under Natural, and its episode returns to this conductor's scene (see
  *   {@link StagePerformanceConductor.cursor}).
+ * - A drag release and a sent chat message reach the mind under every driver, and its `attend` goes to `scene.attend`
+ *   only under Natural, because the MMD body walks only under Natural (see
+ *   {@link StagePerformanceConductor.interaction}). A touch's `attend` goes the same way.
  * - The resting face baseline goes to `scene.setFaceBaseline` for every driver. Natural composes it only while it
  *   drives the face, so Universal and MAGIC hold it without writing.
  *
@@ -421,7 +429,8 @@ export class StagePerformanceConductor {
    * have no touch path and never reach the mind. The mind decides the response and the conductor dispatches it:
    * - `touch-reaction` to `scene.reactToTouch` and `mood` to `scene.addMood`;
    * - `moment` to `markMoment`;
-   * - `speak` to the voice port, whose outcome returns to the mind as a `voice-outcome` stimulus.
+   * - `speak` to the voice port, whose outcome returns to the mind as a `voice-outcome` stimulus;
+   * - `attend` to `scene.attend`.
    *
    * A finished pet and a poke are first recorded in the situation (`voice().observeTouch`), on the wall clock the
    * situation counts in; a pet start is not, because the situation reports a pet once, when it ends. A touch belongs
@@ -528,6 +537,19 @@ export class StagePerformanceConductor {
         if (intent.kind === 'cursor-episode')
           this.options.scene()?.cursorEpisode?.({ requestId: intent.requestId, episode: intent.episode })
       }
+    }
+  }
+
+  /**
+   * Tells the mind that the user dragged her and let go, or sent a chat message, under every driver, and sends its
+   * `attend` to `scene.attend` only under Natural: the MMD body walks only under Natural, so the classic director gets
+   * no attend window (Body ownership Target rule 1).
+   */
+  interaction(source: 'drag' | 'chat-send') {
+    const natural = this.options.driver() === 'natural'
+    for (const intent of this.options.mind.receive({ kind: 'interaction', source })) {
+      if (intent.kind === 'attend' && natural)
+        this.options.scene()?.attend?.(intent)
     }
   }
 
@@ -769,7 +791,7 @@ export class StagePerformanceConductor {
     return { ...episode, moodGain: moodless ? 0 : context.settings.moodDynamics[`${episode.band}Gain`] }
   }
 
-  /** Dispatches the response to one touch in the mind's order: body, mood, moment, line. */
+  /** Dispatches the response to one touch in the mind's order: body, mood, moment, line, attend. */
   private performTouch(intents: readonly MindIntent[]) {
     const scene = this.options.scene()
     for (const intent of intents) {
@@ -781,6 +803,8 @@ export class StagePerformanceConductor {
         this.options.markMoment?.(intent.moment)
       else if (intent.kind === 'speak')
         void this.voice.speak(intent)
+      else if (intent.kind === 'attend')
+        scene?.attend?.(intent)
     }
   }
 

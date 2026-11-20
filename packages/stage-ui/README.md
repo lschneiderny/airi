@@ -557,7 +557,7 @@ Under a Natural driver, `conductor.touch(report)` answers one touch once, in the
 
 1. For a finished pet and a poke it calls `voice().observeTouch(observation)`, which is `useSituationStore().observeTouch`. The leader folds the `TouchObservation` into the situation and returns a `TouchVoiceView`, or `null` in a follower window and while the urge gate does not run. A pet start is not observed.
 2. It sends the mind one `touch` stimulus with the active card's effective settings and that view.
-3. It dispatches the mind's intents in order: `touch-reaction` to the scene's `reactToTouch`, `mood` to the scene's `addMood`, `moment` to `markMoment` (`useIdleProps().onMoment`, which keeps the chance, the pick, and the entry rest), and `speak` to `voice().speak`.
+3. It dispatches the mind's intents in order: `touch-reaction` to the scene's `reactToTouch`, `mood` to the scene's `addMood`, `moment` to `markMoment` (`useIdleProps().onMoment`, which keeps the chance, the pick, and the entry rest), `speak` to `voice().speak`, and `attend` to the scene's `attend`.
 
 The scene performs only what `reactToTouch` hands it: a poke starts Natural's poke at the reported point, and the pet hand reaches Natural only between a pet `start` and its `end`. The asset decider is not involved, and an affect trace records no touch.
 
@@ -584,6 +584,7 @@ The pacing of these lines (the 45 s refractory, the retry wait, the burst roll) 
 
 A reaction turn's own cues dose no mood, because the touch already did. When a turn's trigger has the `touch` topic key, `Stage.vue` calls `markMoodless(turnId)` on the conductor, and every episode of that turn carries a mood gain of 0.
 Under a Natural driver, `conductor.cursor(reports)` answers the scene's `cursorReports`: it steps the mind once per report and sends each `cursor-episode` intent back to its own scene's `cursorEpisode`, because the cursor's geometry belongs to the stage that saw it. Under another driver it drops the reports and the mind draws nothing.
+`conductor.interaction(source)` tells the mind of a drag release (`Stage.vue` calls it when its `interactionSeq` prop changes) or a sent chat message (where `chatComposerSentEvent` increments `chatSentSeq`), under every driver, and sends the mind's `attend` intent to the scene's `attend` only under the Natural driver. Under the classic driver the attend intent is not dispatched, so the director gets no attend window: the MMD body walks only under Natural. A scene without `attend`, such as the Live2D scene, drops it.
 The conductor's `gesture(kind, count)` plays an ACT `gesture` field on the scene under the Natural driver of Live2D and MMD; Universal, MAGIC, and MMD Classic ignore it.
 The conductor's `action(label, gesture?)` forwards an ACT `action` label to the scene under every driver. `Stage.vue` routes an action label, with its cue gesture, only while the MMD renderer is active, and the MMD scene resolves the label against the clips the user exposed. A Live2D scene never receives one.
 The [nonverbal channels ADR](../../docs/ai/adr/2026-10-31-nonverbal-channels.md) records the design and its consequences.

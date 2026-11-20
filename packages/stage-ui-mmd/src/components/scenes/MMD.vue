@@ -9,7 +9,7 @@
   * contract Stage.vue expects from every renderer.
 */
 
-import type { TouchReactionIntent, TouchReport } from '@proj-airi/character-mind'
+import type { AttendIntent, TouchReactionIntent, TouchReport } from '@proj-airi/character-mind'
 import type { ClipBoneMask, ClipMaskGroup } from '@proj-airi/motion-driver-humanoid/clip-mask'
 import type { BodyActionKind, BodyActionRequest } from '@proj-airi/motion-driver-humanoid/director'
 import type { IdleClipCandidate, IdleClipHistory } from '@proj-airi/motion-driver-humanoid/idle-clips'
@@ -149,8 +149,8 @@ const props = withDefaults(defineProps<{
    */
   stageWorld?: MMDStageWorld
   /**
-   * Counts the host's own interactions with her (a drag release). A new value starts the chase window the way a poke
-   * does. Stage mode only.
+   * Counts the host's own interactions with her (a drag release). A new value ends the director's clips the way a poke
+   * does; the attend window comes from the character mind through `attend`. Stage mode only.
    */
   interactionSeq?: number
 }>(), {
@@ -187,17 +187,18 @@ const mmdStore = useMMD()
 const naturalSettings = useMMDNaturalSettings()
 const diagnostics = useMMDMotionDiagnostics()
 const expressions = useMMDExpressionStore()
-// Interactions that start the director's chase window: touch pokes and pets, host drags and sent chat messages.
+// Touch pokes and pets and host drags; the director ends clips on them.
 let interactionSeq = 0
-let interactionAtMs: number | null = null
-// Sent chat messages count apart from touches: they start the chase window and end looping clips, never a one-shot.
+// Sent chat messages count apart from touches: they end looping clips, never a one-shot.
 let chatSendSeq = 0
+// The director time until which she attends to her user, from the character mind's `attend` intent; the director may
+// walk toward the cursor only inside it.
+let attendUntilMs: number | null = null
 let directorNowMs = 0
 // The host reports a drag in progress; the director refuses clips and ends broad ones while it lasts.
 let dragging = false
 function noteInteraction() {
   interactionSeq++
-  interactionAtMs = directorNowMs
 }
 watch(() => props.interactionSeq, (next, previous) => {
   if (next !== undefined && next !== previous) {
@@ -207,10 +208,8 @@ watch(() => props.interactionSeq, (next, previous) => {
   }
 })
 watch(() => props.chatActivity?.sentSeq, (next, previous) => {
-  if (next !== undefined && previous !== undefined && next > previous) {
+  if (next !== undefined && previous !== undefined && next > previous)
     chatSendSeq++
-    interactionAtMs = directorNowMs
-  }
 })
 const bodyToolPort = new MMDBodyToolPort()
 // Self-directed idle behaviour. The stage sends the drive every second; this scene narrows it, lists the errands it can
@@ -739,7 +738,7 @@ function renderLoop(now = performance.now()) {
       // Pokes and drags exist in the classic window too, so the interaction inputs ride outside the world.
       baseEligible: isBaseEligible,
       idle: naturalIdleStates(),
-      interaction: { interactionSeq, chatSendSeq, interactionAtMs, actionRequest: pendingAction, actionFeedback, dragging },
+      interaction: { interactionSeq, chatSendSeq, attendUntilMs, actionRequest: pendingAction, actionFeedback, dragging },
     })
     if (base.changed)
       animation.setBaseMotion(base.motion)
@@ -1609,7 +1608,7 @@ function handleTouchEvents(reports: TouchReport[]) {
   natural?.setPet(petGranted ? touch.petHand : null)
 }
 
-/** Performs the mind's reaction. A poke and a pet start are interactions that start the director's chase window. */
+/** Performs the mind's reaction. A poke and a pet start are interactions that end the director's clips. */
 function reactToTouch(intent: TouchReactionIntent) {
   if (intent.gesture === 'poke') {
     natural?.poke(intent.region, intent.point)
@@ -1847,6 +1846,8 @@ defineExpose({
   gesture: (kind: CueGestureKind, count: number) => natural?.gesture(kind, count),
   addMood: (dose: MoodDose) => natural?.addMood(dose),
   reactToTouch,
+  /** Natural only (the conductor sends it under Natural): opens the director's attend window for `windowMs`, counted from the last frame's director time. */
+  attend: (intent: AttendIntent) => { attendUntilMs = directorNowMs + intent.windowMs },
   /** Natural only: ends a sleep with the gentle wake; ignored while she is awake. */
   wakeFromSleep: () => natural?.wake(),
   /** Natural only: a brief reaction to the desktop; `wake` also rouses her from sleep with a start. */
