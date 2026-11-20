@@ -2,7 +2,7 @@
 
 ## Status and links
 
-Status: planned on 2026-11-20, not started. Roadmap row: step P in [`docs/ai/context/character-mind-roadmap.md`](../../docs/ai/context/character-mind-roadmap.md#steps). Rules: [LLM prompt](../../docs/ai/context/llm-prompt.md), Target rules 1 to 5; the [character mind ADR](../../docs/ai/adr/2026-11-17-character-mind-direction.md), decisions 6, 12, and 14; the [prompt composition ADR](../../docs/ai/adr/2026-11-01-prompt-composition.md) with its amendments; the [memory adoption ADR](../../docs/ai/adr/2026-10-30-long-term-memory-adoption.md); the upstream [chat selects character ADR](../../docs/ai/adr/2026-11-13-chat-selects-character.md). Earlier plan: [`prompt-composer.md`](prompt-composer.md), whose body is frozen history; this plan finishes what it left open. Step V's plan, [`privacy-enforcement.md`](privacy-enforcement.md), default D3, hands the cap on the text that the Spark Notify agent appends to this step.
+Status: done on 2026-11-20 (PR not merged). See [Commits](#commits), [Departures during implementation](#departures-during-implementation), and [Checks run](#checks-run). Roadmap row: step P in [`docs/ai/context/character-mind-roadmap.md`](../../docs/ai/context/character-mind-roadmap.md#steps). Rules: [LLM prompt](../../docs/ai/context/llm-prompt.md), Target rules 1 to 5; the [character mind ADR](../../docs/ai/adr/2026-11-17-character-mind-direction.md), decisions 6, 12, and 14; the [prompt composition ADR](../../docs/ai/adr/2026-11-01-prompt-composition.md) with its amendments; the [memory adoption ADR](../../docs/ai/adr/2026-10-30-long-term-memory-adoption.md); the upstream [chat selects character ADR](../../docs/ai/adr/2026-11-13-chat-selects-character.md). Earlier plan: [`prompt-composer.md`](prompt-composer.md), whose body is frozen history; this plan finishes what it left open. Step V's plan, [`privacy-enforcement.md`](privacy-enforcement.md), default D3, hands the cap on the text that the Spark Notify agent appends to this step.
 
 Branch: `luke/refactor/prompt-composer-everywhere`, cut from `main` at `e835d67ac`. One PR against `lschneiderny/airi`, rebase-merged (D1).
 
@@ -248,3 +248,38 @@ Item 7 copies the same into this plan. The eval closure digest changes, because 
 - LLM prompt Target rules 1 to 4 are in the current sections, their gaps have left Known gaps and the Target table, and rule 5 is CM7's.
 - The new ADR and the ledger row exist, and the roadmap shows P done.
 - Every check above passes.
+
+## Commits
+
+- `23e99d240` docs(plan): add the plan for one prompt composer for every character call
+- `a532857c3` item 1: refactor(stage-ui): move the persona of a session into the session store
+- `644c51bf4` item 2: refactor(stage-shared,qa-tools): delete the account prompt segment
+- `e4f8238b3` item 3: refactor(stage-ui): give the Spark Notify agent the active session's character
+- `2c2fc65e9` item 4: refactor(core-agent,stage-ui): compose the Spark Notify instruction and plugin text as segments
+- `f66bc8a8e` item 5: docs(adr): record one prompt composer for every character call
+- `b8e5cb3bc` item 6: docs(ai): land the one-composer prompt rules and mark step P done
+- item 7: this commit
+
+## Departures during implementation
+
+- **Item 1.** The `chat.contract.test.ts` mock of `useChatSessionStore` gained `personaOf`. It returns the first character member, or `'alice'`, the mocked active card. The moved function reads the session store's own `cards` instance and calls `characterMembersOf` directly; the behavior is the same.
+- **Item 3.** The orchestrator test uses the real session store, set up through `sessionMetas` and `activeSessionId`, with no `personaOf` mock.
+- **Item 4.**
+  - The `llm-prompt.md` plugin bullet also states that user-message plugin text is not capped (D17).
+  - The cap and join tests share a `describe('caller system instructions')` block.
+  - The stage-ui tests needed `pnpm -F @proj-airi/core-agent build` first, because the untracked dist was stale.
+- **Checks.** The Spark Notify run used a driver script (`AppSessionCore`, page evaluation, and the replay server) instead of the `airi-qa` MCP tools. The MCP server is registered from the main checkout, so it would have run `main`'s code.
+- **The sticker cut was not needed.** A fresh profile has no sticker catalog, so the `qa:app` comparison hashed the whole system messages.
+
+## Checks run
+
+- Each commit passed `pnpm verify --gate --base main`, and the policy-docs test passed 11 of 11.
+- The `qa:model prompt` hashes are unchanged at the tip: `45a72604fb5f2f9b4c8b6a4c839a9a0ca30a656c4c434a3d579e38fb78f7878f`, and with `--full`, `83fa9a60fb4ee7ec54d7823a5b0b50b1e5b6f2af2e1822ba8aa602fbc151156b`.
+- Both `qa:smoke` runs printed `ok`, with 0 renderer and 0 main-process errors.
+- `qa:app` replayed the turn at the tip and at base `e835d67ac`. Both passed with the same events (turn 2, act 1, expression 1, tts 2). The first chat request's system message has SHA-256 `c1782481c7cbc8b4a89b56d60142ee1e99516ba1c5bcd6160c764810b313d851` at both ends, 6323 characters each.
+- Spark Notify in the running app:
+  - The agent ran with the `builtIn_sparkCommand` tool, and the system message was 8072 characters.
+  - It ends with a blank line and the English `base.prompt.spark-notify` text naming `qa-module`.
+  - `PROMPT_TRUNCATION_MARKER` appears once, right after exactly 1988 `P` characters (2000 − 12), followed by the blank-line join and then the instruction, with no other segment between them. There is no run of 2500.
+  - There were 0 renderer and 0 main-process errors.
+- The eval closure digest changes, because `compose.ts` is in `SCORE_CLOSURE_FILES`.
