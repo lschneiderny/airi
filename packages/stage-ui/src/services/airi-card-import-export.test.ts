@@ -206,7 +206,7 @@ describe('airi card package import/export', () => {
       { description: 'Favorite game', body: 'Minecraft.' },
       { description: 'Favorite drink', body: 'Tea.' },
     ]
-    const exported = await exportAiriCardPackage({ card, displayModelsStore, memories })
+    const exported = await exportAiriCardPackage({ card, displayModelsStore, backup: { memories, characterState: null } })
     const zip = await JSZip.loadAsync(await exported.arrayBuffer())
     expect(await readJson(zip, 'manifest.json')).toMatchObject({ resources: { memories: { path: 'memories.json' } } })
     const imported = await importAiriCardPackage({ file: new File([exported], 'memories.zip'), displayModelsStore })
@@ -261,7 +261,7 @@ describe('airi card package import/export', () => {
       reason: 'shared a good moment',
     }, profile, context)
 
-    const exported = await exportAiriCardPackage({ card, displayModelsStore, characterState: state })
+    const exported = await exportAiriCardPackage({ card, displayModelsStore, backup: { memories: [], characterState: state } })
     const zip = await JSZip.loadAsync(await exported.arrayBuffer())
     expect(await readJson(zip, 'manifest.json')).toMatchObject({ resources: { characterState: { path: 'character-state.json' } } })
     expect(airiFrom(await readJson<ccv3.CharacterCardV3>(zip, 'card.json')).modules.character).toEqual(profile)
@@ -271,6 +271,38 @@ describe('airi card package import/export', () => {
     // The record keeps everything but its card id, which the store replaces with the new card's.
     expect({ ...imported.characterState, cardId: state.cardId }).toEqual(state)
     expect(imported.characterState?.mood.contributions.map(contribution => contribution.id)).toEqual(['moment-1'])
+  })
+
+  it('shares a card without its memories or state record, and imports it with no record', async () => {
+    const displayModelsStore = useDisplayModelsStore()
+    const card = createCard()
+    card.extensions.airi.avatarModels = []
+    const exported = await exportAiriCardPackage({ card, displayModelsStore })
+    const zip = await JSZip.loadAsync(await exported.arrayBuffer())
+    expect(zip.file('memories.json')).toBeNull()
+    expect(zip.file('character-state.json')).toBeNull()
+
+    const imported = await importAiriCardPackage({ file: new File([exported], 'share.zip'), displayModelsStore })
+    expect(imported.memories).toEqual([])
+    expect(imported.characterState).toBeNull()
+  })
+
+  it('backs up a card with its memories and a state record whose pacing survives import', async () => {
+    const displayModelsStore = useDisplayModelsStore()
+    const card = createCard()
+    card.extensions.airi.avatarModels = []
+    const context = characterStateContext(Date.now())
+    const pacing = { lastSpokenAtMs: context.nowMs - 60_000, unanswered: 2, awaitingSinceMs: context.nowMs - 30_000, damp: { depth: 0.5, sinceMs: context.nowMs - 30_000 }, lastOwnDayAtMs: context.nowMs - 3_600_000 }
+    const state = { ...initialCharacterState('source-card', DEFAULT_CHARACTER_PROFILE, context), pacing }
+    const memories = [{ description: 'Favorite drink', body: 'Tea.' }]
+    const exported = await exportAiriCardPackage({ card, displayModelsStore, backup: { memories, characterState: state } })
+    const zip = await JSZip.loadAsync(await exported.arrayBuffer())
+    expect(zip.file('memories.json')).not.toBeNull()
+    expect(zip.file('character-state.json')).not.toBeNull()
+
+    const imported = await importAiriCardPackage({ file: new File([exported], 'backup.zip'), displayModelsStore })
+    expect(imported.memories).toEqual(memories)
+    expect(imported.characterState?.pacing).toEqual(pacing)
   })
 
   it('imports a package without a profile or state with the default profile and no state record', async () => {

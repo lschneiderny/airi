@@ -966,9 +966,12 @@ pages:
     systemprompt: System Prompt
     title: Characters
     try_different_search: Try a different search term
-    export: Export
-    exported: Card package exported
+    share: Share
+    shared: Card package saved for sharing
     export_failed: Failed to export card package
+    back_up: Back up
+    backed_up: Card backup saved
+    back_up_failed: Failed to back up card
     imported: Card package imported
     import_missing_file: Card package is missing required files
     import_invalid_file: Card package file is invalid
