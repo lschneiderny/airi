@@ -33,6 +33,8 @@ export interface Motion3dScenario {
    * scenarios without a drive stay byte-identical. `--acts off` sets no drive.
    */
   idleDrive?: Motion3dIdleDrive
+  /** The character mind hears music for the whole run: the runner sends it a `music` stimulus before the first frame. */
+  music?: true
   /** Pure timeline in seconds from scoring start; negative times are warm-up. */
   timeline: (seed: number, seconds: number) => Motion3dCue[]
 }
@@ -152,7 +154,7 @@ export const motion3dScenarios: readonly Motion3dScenario[] = [
   },
   {
     /**
-     * CM5 (character mind music): the `idle` timeline with the QA idle drive and music playing, so the character mind
+     * CM5 (character mind music): the `idle` timeline with the QA idle drive while the character mind hears music, so it
      * may draw her groove (the `sway` act). Its runs are the base that proves music's move into the mind unchanged.
      */
     version: 1,
@@ -162,6 +164,7 @@ export const motion3dScenarios: readonly Motion3dScenario[] = [
     seconds: 60,
     maxSeconds: 600,
     idleDrive: QA_DRIVE_MUSIC,
+    music: true,
     timeline: idleTimeline,
   },
   {

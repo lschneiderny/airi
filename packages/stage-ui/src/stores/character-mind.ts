@@ -5,9 +5,11 @@ import type { SyncedPiniaRuntime } from 'pinia-plugin-synced'
 
 import { CharacterMind, nextIdleWakeAt } from '@proj-airi/character-mind'
 import { dormantIdleView } from '@proj-airi/motion-driver-natural/idle-schedule'
+import { isBeatSyncSupported, listenBeatSyncBeatSignal } from '@proj-airi/stage-shared/beat-sync'
 import { defineStore } from 'pinia'
 import { markRaw, watch } from 'vue'
 
+import { MindMusic } from '../composables/performance/mind-music'
 import { MindVoice } from '../composables/performance/mind-voice'
 import { useCharacterStateStore } from './character-state'
 import { useSituationObservabilityStore } from './devtools/situation-observability'
@@ -57,6 +59,9 @@ export function voiceDecisionOf({ stimuli, state }: Pick<MindStep, 'stimuli' | '
  * same act from the same seed, and only the newest stage reports what its performer saw. After every step the store
  * arms one timer at `nextIdleWakeAt` and sends `idle-wake` when it fires. A reset clears the timer and hands the new
  * state the reporting stage's latest view, because a performer reports its view only when it changes.
+ *
+ * Music: while the window leads, `MindMusic` listens to upstream's beat sync beats where beat sync runs, and tells the
+ * mind when music starts and stops. A demotion stops it and tells the mind the music stopped; a reset re-sends it.
  */
 export const useCharacterMindStore = defineStore('character-mind', () => {
   const situation = useSituationStore()
@@ -69,6 +74,13 @@ export const useCharacterMindStore = defineStore('character-mind', () => {
   const stages: MindStage[] = []
   /** Answers the voice port's stimuli; its cues go to the newest attached stage, or nowhere. */
   const voice = new MindVoice(mind, () => situation, cue => stages.at(-1)?.idleCue(cue))
+
+  /** Hears music for the mind while the window leads. */
+  const music = new MindMusic(mind, {
+    listen: onBeat => listenBeatSyncBeatSignal(() => onBeat()),
+    category: () => situation.foregroundCategory,
+  })
+  const stopCategoryWatch = watch(() => situation.foregroundCategory, () => music.observeCategory())
 
   /** The reporting stage's latest view, which a reset hands the new state; null without one. */
   let reportedView: IdleView | null = null
@@ -147,6 +159,7 @@ export const useCharacterMindStore = defineStore('character-mind', () => {
     // The performer reports its view only when it changes, so the new state hears the latest one now.
     if (reportedView && stages.length > 0)
       mind.receive({ kind: 'idle', reports: [{ kind: 'view', view: reportedView }] })
+    music.replay()
     loaded = record && { cardId: record.cardId, epoch: characterState.leaderEpoch }
     lastPacing = mind.state.slow.pacing
     disconnectVoice = situation.connect(stimulus => voice.answer(stimulus))
@@ -158,6 +171,8 @@ export const useCharacterMindStore = defineStore('character-mind', () => {
     if (promotion !== leadership || disconnectVoice)
       return
     loadAndConnect()
+    if (isBeatSyncSupported())
+      music.start()
   }
 
   function stopLeading() {
@@ -165,6 +180,7 @@ export const useCharacterMindStore = defineStore('character-mind', () => {
     disconnectVoice?.()
     disconnectVoice = undefined
     loaded = null
+    music.stop()
   }
 
   // Sync: the record changed inside the character state's leader task, so the reset reads it before any later step.
@@ -220,6 +236,7 @@ export const useCharacterMindStore = defineStore('character-mind', () => {
     stopIdle = undefined
     clearIdleWake()
     stopRecordWatch()
+    stopCategoryWatch()
     observability.publishReactionMemory(null)
   }
 

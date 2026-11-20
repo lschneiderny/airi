@@ -6,7 +6,15 @@ import { expect, it } from 'vitest'
 
 import { QA_IDLE_DRIVE } from '../idle-drive'
 import { parseTrace } from '../read-trace'
-import { runMotion3dScenario } from './run'
+import { createRunnerMind, runMotion3dScenario } from './run'
+
+it('tells the mind of a music scenario that music plays before the first frame, and the mind of any other nothing', () => {
+  const scenario = { version: 1, id: 'm', class: 'idle', seconds: 1, warmupSeconds: 0, timeline: () => [] } as const
+  const heard = createRunnerMind({ seed: 1, scenario: { ...scenario, music: true } }, () => 0)
+  expect([heard.state.seq, heard.state.music.playing]).toEqual([1, true])
+  const silent = createRunnerMind({ seed: 1, scenario }, () => 0)
+  expect([silent.state.seq, silent.state.music.playing]).toEqual([0, false])
+})
 
 it.runIf(process.env.AIRI_QA_MMD_MODEL)('records the stance reason on each change only in a scenario that asks for it', async () => {
   const model = process.env.AIRI_QA_MMD_MODEL

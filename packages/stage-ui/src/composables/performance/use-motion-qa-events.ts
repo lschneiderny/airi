@@ -69,6 +69,7 @@ export function useMotionQaEvents(options: {
       const outcomes = step.stimuli.filter(stimulus => stimulus.kind === 'voice-outcome')
       const decision = voiceDecisionOf(step)
       const presence = step.stimuli.find(stimulus => stimulus.kind === 'presence')
+      const music = step.stimuli.findLast(stimulus => stimulus.kind === 'music')
       const lines = step.intents.flatMap(intent => intent.channel === 'voice' && intent.kind === 'speak' ? [intent.line.kind] : [])
       const cues = step.intents.flatMap(intent => intent.channel === 'posture' && intent.kind === 'cue' ? [intent.cue] : [])
       record('mind', {
@@ -98,6 +99,8 @@ export function useMotionQaEvents(options: {
         ...ticks.length > 0 && { gate: gate?.reason ?? null, category: gate?.fire ? gate.category : null },
         // Only a presence step carries these: whether the user is away after it, and what woke the computer.
         ...presence && { away: presence.away, wake: presence.wake?.cause ?? null },
+        // Whether a `music` stimulus said music started (true) or stopped (false); null for a step without one.
+        music: music?.playing ?? null,
       })
     }),
     options.onIdle(report => record('idle', { phase: report.phase, behaviour: report.behaviour })).off,
