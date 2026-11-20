@@ -69,6 +69,7 @@ function record(): CharacterStateRecordV1 {
     },
     history: [summary(0)],
     appliedEvents: { recent: [{ id: 'touch-0', atMs: START_MS }], evictedThroughMs: null },
+    pacing: { lastSpokenAtMs: START_MS, unanswered: 2, awaitingSinceMs: START_MS, damp: { depth: 0.3, sinceMs: START_MS }, lastOwnDayAtMs: START_MS },
   }
 }
 

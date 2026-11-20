@@ -285,6 +285,7 @@ describe('insertContribution', () => {
       },
       history: [],
       appliedEvents: { recent: [], evictedThroughMs: null },
+      pacing: null,
     })
     expect(result.issues).toBeUndefined()
   })
