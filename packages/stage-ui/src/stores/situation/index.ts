@@ -265,8 +265,11 @@ export const useSituationStore = defineStore('situation', () => {
   let gateMemory: UrgeGateMemory | null = null
   /** The leader's character mind, with the run it last received a tick in; see {@link connect}. */
   let mind: { send: (stimulus: VoiceStimulus) => void, tickedRun: number | null } | undefined
-  /** The latest user turn that no mind could receive yet; sent after the tick that restores a mind's gate memory. */
-  let pendingUserTurnAtMs: number | null = null
+  /**
+   * Whether a user turn arrived that no mind could receive yet; it is sent after the tick that restores a mind's gate
+   * memory, and the mind applies it at that moment.
+   */
+  let pendingUserTurn = false
   /** Set while "Evaluate now" runs; {@link publishVoice} fills it with what the mind published in the same call. */
   let evaluation: { decision: UrgeGateDecision | null, memory: UrgeGateMemory | null } | undefined
   /** Open threads of every chat session; the gate filters them by the active session. Rituals live in the gate memory's `day`. */
@@ -375,7 +378,7 @@ export const useSituationStore = defineStore('situation', () => {
         // Speaking to her is being here: presence follows the turn at once, so this turn's own prompt says so.
         sensors?.check(observation.atMs)
         observability.recordUserTurn(observation.atMs)
-        sendUserTurn(observation.atMs)
+        sendUserTurn()
       }
     })
     exchangeSensor = startExchangeSensor(chatHooks, {
@@ -645,20 +648,19 @@ export const useSituationStore = defineStore('situation', () => {
       return false
     connected.send({ kind: 'voice-tick', forceTiming, view: voiceView(controls) })
     connected.tickedRun = run.id
-    if (pendingUserTurnAtMs !== null && mind === connected) {
-      const atMs = pendingUserTurnAtMs
-      pendingUserTurnAtMs = null
-      connected.send({ kind: 'user-turn', atMs })
+    if (pendingUserTurn && mind === connected) {
+      pendingUserTurn = false
+      connected.send({ kind: 'user-turn' })
     }
     return true
   }
 
   /** Tells the mind of a user turn, or keeps it until a mind that holds this run's gate memory can receive it. */
-  function sendUserTurn(atMs: number) {
+  function sendUserTurn() {
     if (mind && mind.tickedRun === run.id)
-      mind.send({ kind: 'user-turn', atMs })
+      mind.send({ kind: 'user-turn' })
     else
-      pendingUserTurnAtMs = atMs
+      pendingUserTurn = true
   }
 
   /**
@@ -1131,7 +1133,7 @@ export const useSituationStore = defineStore('situation', () => {
     current.value = initialSituationState
     seenNotifyTopics.clear()
     lastSpokenUnpromptedTurnId = undefined
-    pendingUserTurnAtMs = null
+    pendingUserTurn = false
     foregroundCategory.value = null
   }
 

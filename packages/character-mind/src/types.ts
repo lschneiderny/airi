@@ -72,8 +72,8 @@ export type MindStimulus
     | { kind: 'voice-outcome', turnId: string, outcome: GateOutcome | 'refused' }
   /** Every gate interval in the leader, and from devtools "Evaluate now" (`forceTiming`). */
     | { kind: 'voice-tick', view: VoiceView, forceTiming: boolean }
-  /** The user sent a turn of their own. */
-    | { kind: 'user-turn', atMs: number }
+  /** The user sent a turn of their own. The mind applies it at its own clock. */
+    | { kind: 'user-turn' }
   /** A widget or plugin asks her to speak; the mind holds it until she and the user are quiet. */
     | { kind: 'voice-request', request: VoiceRequest, view: VoiceView }
   /** `away` changed, or a desktop wake appeared. `wake` names the newer of a new unlock and resume time. */
