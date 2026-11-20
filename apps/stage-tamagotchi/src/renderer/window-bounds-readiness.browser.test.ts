@@ -8,6 +8,8 @@ import { expect, it, onTestFinished, vi } from 'vitest'
 import { render } from 'vitest-browser-vue'
 import { createApp, defineComponent, h, nextTick, ref } from 'vue'
 
+import Caption from './pages/caption.vue'
+
 import { captionGetIsFollowingWindow } from '../shared/eventa'
 import { useChatFloatingClickThrough } from './composables/use-chat-floating-click-through'
 import { main, sendBounds, sendCursor } from './electron-mouse.fixtures'
@@ -23,7 +25,6 @@ it('waits for actual window bounds before relative hit tests, native hover or ca
   capabilities.set(capabilitiesForHost('windows'))
   useElectronCursorAvailable()
   await sendCursor({ x: 140, y: 140 })
-  const { default: Caption } = await import('./pages/caption.vue')
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
   const captionHost = document.createElement('div')
   document.body.append(captionHost)
