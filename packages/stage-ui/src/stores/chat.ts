@@ -355,12 +355,6 @@ export const useChatStore = defineStore('chat', () => {
   const recipes = useRecipesStore()
   const memory = useMemoryStore()
 
-  /** The persona of a session. A session without one uses the selected card. */
-  function personaOf(sessionId: string) {
-    const [characterId] = chatSession.characterMembersOf(sessionId)
-    return characterId || cardStore.activeCardId || 'default'
-  }
-
   /**
    * The prompt segments of a session: the composer's segments for its persona, plus what the session itself adds.
    * A recipe's own session adds the recipe's steps after the identity. They stay the same there, so its prefix stays
@@ -371,7 +365,7 @@ export const useChatStore = defineStore('chat', () => {
     const recipe = recipeId ? recipes.recipes.find(entry => entry.id === recipeId) : undefined
     return buildChatPromptSegments({
       ...input,
-      characterId: personaOf(sessionId),
+      characterId: chatSession.personaOf(sessionId),
       cardSupplement: recipe ? composeRecipeSpacePrompt(recipe) : undefined,
       toolGuidance: drawsCards(sessionId) ? composeDrawCardPrompt().trim() : undefined,
     })
@@ -625,7 +619,7 @@ export const useChatStore = defineStore('chat', () => {
     const tools = recipeRunTools()
     let sessionId: string
     try {
-      sessionId = await chatSession.createSession(personaOf(request.parentSessionId), {
+      sessionId = await chatSession.createSession(chatSession.personaOf(request.parentSessionId), {
         setActive: false,
         hidden: true,
         title: recipe.name,
