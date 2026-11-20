@@ -3,11 +3,12 @@ import { PERFORMANCE_EMOTIONS } from '@proj-airi/stage-shared/expression-perform
 import { LAYER_FADE_SECONDS } from '@proj-airi/stage-ui-mmd/composables/mmd/layer-fade'
 import { describe, expect, it } from 'vitest'
 
+import { idleDriveDetail, QA_IDLE_DRIVE } from './idle-drive'
 import { motion3dScenarios } from './scenarios'
 
 describe('motion3d scenario timelines', () => {
   // Default seed-1 counts; gaze count varies with seeded hold/return durations.
-  const counts = { 'idle': 1, 'idle-drive': 1, 'gaze-shift': 18, 'speak': 11, 'gesture-under-clip': 9, 'emotions': 13, 'walk': 6, 'touch': 10, 'sleepy-no-clip': 4 } as const
+  const counts = { 'idle': 1, 'idle-drive': 1, 'music': 1, 'gaze-shift': 18, 'speak': 11, 'gesture-under-clip': 9, 'emotions': 13, 'walk': 6, 'touch': 10, 'sleepy-no-clip': 4 } as const
   it.each(motion3dScenarios)('replays $id for equal seeds and varies for another seed', (scenario) => {
     const first = scenario.timeline(1, scenario.seconds)
     expect(scenario.timeline(1, scenario.seconds)).toEqual(first)
@@ -65,10 +66,21 @@ describe('motion3d scenario timelines', () => {
     expect(motion3dScenarios.filter(scenario => scenario.recordStance).map(scenario => scenario.id)).toEqual(['sleepy-no-clip'])
   })
 
-  it('sets an idle drive only in the two scenarios that judge the idle scheduler, and replays idle\'s timeline in idle-drive', () => {
-    expect(motion3dScenarios.filter(scenario => scenario.idleDrive).map(scenario => [scenario.id, scenario.idleDrive?.name])).toEqual([['idle-drive', 'qa-neutral-day'], ['sleepy-no-clip', 'qa-neutral-day-away']])
+  it('sets an idle drive only in the scenarios that judge the idle scheduler, and replays idle\'s timeline in idle-drive and music', () => {
+    expect(motion3dScenarios.filter(scenario => scenario.idleDrive).map(scenario => [scenario.id, scenario.idleDrive?.name])).toEqual([['idle-drive', 'qa-neutral-day'], ['music', 'qa-neutral-day-music'], ['sleepy-no-clip', 'qa-neutral-day-away']])
     const timeline = (id: string) => motion3dScenarios.find(scenario => scenario.id === id)?.timeline(3, 600)
     expect(timeline('idle-drive')).toEqual(timeline('idle'))
+    expect(timeline('music')).toEqual(timeline('idle'))
+  })
+
+  it('runs music as an idle-class scenario whose drive is the QA drive with music playing, named in its provenance', () => {
+    const scenario = motion3dScenarios.find(scenario => scenario.id === 'music')
+    if (!scenario?.idleDrive)
+      throw new Error('Missing music scenario drive')
+    expect([scenario.version, scenario.class, scenario.warmupSeconds, scenario.seconds, scenario.maxSeconds]).toEqual([1, 'idle', 10, 60, 600])
+    const detail = idleDriveDetail(scenario.idleDrive)
+    expect(detail.idleDrive).toBe('qa-neutral-day-music')
+    expect(JSON.parse(detail.idleDriveValues)).toEqual({ ...QA_IDLE_DRIVE, music: true })
   })
 
   it.each([1, 2, 3])('speaks version 2 for seed %i: fifteen peaks at least 0.9 s apart, three energies and one chat reply', (seed) => {
