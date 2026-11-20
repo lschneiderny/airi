@@ -113,7 +113,7 @@ Natural never writes these channels:
 
 Head, body, and eye posture fades out while manual or spring motion control is active or an exclusive owner holds the model.
 On a channel that an explicit clip animates, posture keeps only 10% of its offset.
-Under the Natural driver, Natural owns the posture channels: at full posture weight the adapter writes its head and body value outright, replacing what motions, expressions, or beat sync left on that channel this frame. Face channels compose instead. This is the supported precedence, not a gap; an expression or beat that needs to move the head must do it through Natural (a gesture, hold, or impulse), not by writing the parameter.
+Under the Natural driver, Natural owns the posture channels: at full posture weight the adapter writes its head and body value outright, replacing what motions or expressions left on that channel this frame. Beat sync writes nothing under Natural: its `pre` plugin only advances its springs (`beatSyncMode` returns `silent`). Face channels compose instead. This is the supported precedence, not a gap; an expression or beat that needs to move the head must do it through Natural (a gesture, hold, or impulse), not by writing the parameter.
 Eyelids that an expression closes stay closed, and a blink closes open eyelids fully.
 While Natural is selected, the SDK blink plugin is off and Natural's own blink scheduler replaces it.
 
