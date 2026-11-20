@@ -1,7 +1,8 @@
+import type { CursorBand, CursorEpisode } from './cursor-notice'
 import type { GazePoint } from './gaze'
 import type { RandomStream } from './random'
 
-import { truncatedLognormal } from './random'
+import { drawCursorEpisode } from './cursor-notice'
 
 /** Head widths controlling radial soft saturation. */
 export const softRadius = 1.2
@@ -15,20 +16,8 @@ export const farDistance = 6
 export const gainFarDistance = 10
 /** Remaining head pull at and beyond the gain falloff distance. */
 export const farGain = 0.35
-/** Engagement probability for a medium-distance episode. */
-export const engageMedium = 0.55
-/** Engagement probability for a far-distance episode. */
-export const engageFar = 0.2
-/** Median interest spans in seconds for non-near episodes. */
-export const interestMedian = { medium: 2.5, far: 1.5 }
-/** Log-space standard deviation of interest spans. */
-export const interestLogSd = 0.5
-/** Allowed interest span range in seconds. */
-export const interestSpan = { min: 0.8, max: 8 }
 /** Weight of the initial notice glance. */
 export const noticeLevel = 0.35
-/** Seconds between noticing and full attention. */
-export const noticeDwell = { min: 0.25, max: 0.5 }
 /** Seconds a stationary cursor retains full interest. */
 export const restHold = 0.6
 /** Seconds of exponential interest decay after the rest hold. */
@@ -45,8 +34,6 @@ export const lostTau = 0.4
 export const dismissTau = 0.12
 /** Falling weight at which pursuit is released. */
 export const releaseAt = 0.3
-/** Seconds after release or an ignored draw before another same-or-farther episode. */
-export const cooldown = { min: 4, max: 10 }
 
 /** Maps an eye-anchored offset (head widths, Y up) without per-axis saturation. */
 export function mapCursor(offset: GazePoint) {
@@ -84,16 +71,6 @@ export interface CursorAttentionResult {
   events: CursorAttentionEvent[]
 }
 
-type Band = 'near' | 'medium' | 'far'
-
-interface Episode {
-  band: Band
-  engaging: boolean
-  span: number
-  dwell: number
-  cooldown: number
-}
-
 /** Seeded attention on monotonic active seconds; only a non-null episode start draws. */
 export class NaturalCursorAttention {
   private weight = 0
@@ -103,7 +80,7 @@ export class NaturalCursorAttention {
   private present = false
   private lastMovedAt = 0
   private distance = 0
-  private episode: Episode | null = null
+  private episode: CursorEpisode | null = null
   private startedAt = 0
   private cooldownUntil = 0
 
@@ -124,7 +101,7 @@ export class NaturalCursorAttention {
       }
     }
 
-    const band: Band = this.distance <= nearDistance ? 'near' : this.distance <= farDistance ? 'medium' : 'far'
+    const band: CursorBand = this.distance <= nearDistance ? 'near' : this.distance <= farDistance ? 'medium' : 'far'
     const rank = { near: 0, medium: 1, far: 2 }
     const nearer = cursor !== null && this.episode !== null && rank[band] < rank[this.episode.band]
     const reopened = permission === 'full' && this.permission !== 'full' && cursor !== null && at - this.lastMovedAt < restHold
@@ -139,7 +116,7 @@ export class NaturalCursorAttention {
 
     if (permission === 'full' && cursor !== null) {
       if (nearer || ((appeared || restarted || ((this.phase === 'idle' || this.phase === 'ignored') && moved)) && ready && !reopened)) {
-        this.episode = this.drawEpisode(band)
+        this.episode = drawCursorEpisode(band, this.random)
         // An ignored episode has no interest to release, so its cooldown starts now.
         if (!this.episode.engaging)
           this.cooldownUntil = at + this.episode.cooldown
@@ -148,7 +125,7 @@ export class NaturalCursorAttention {
       else if (reopened) {
         // Permission loss does not reroll whether this cursor was worth noticing.
         if (this.episode === null) {
-          this.episode = this.drawEpisode(band)
+          this.episode = drawCursorEpisode(band, this.random)
           if (!this.episode.engaging)
             this.cooldownUntil = at + this.episode.cooldown
         }
@@ -189,15 +166,5 @@ export class NaturalCursorAttention {
     this.phase = this.episode?.engaging ? 'notice' : 'ignored'
     if (this.phase === 'notice')
       events.push({ kind: 'notice', at, distance: this.distance })
-  }
-
-  private drawEpisode(band: Band): Episode {
-    return {
-      band,
-      engaging: band === 'near' || this.random() < (band === 'medium' ? engageMedium : engageFar),
-      span: band === 'near' ? Number.POSITIVE_INFINITY : truncatedLognormal(this.random, interestMedian[band], interestLogSd, interestSpan.min, interestSpan.max),
-      dwell: noticeDwell.min + this.random() * (noticeDwell.max - noticeDwell.min),
-      cooldown: cooldown.min + this.random() * (cooldown.max - cooldown.min),
-    }
   }
 }

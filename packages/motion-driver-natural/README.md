@@ -132,6 +132,13 @@ const { seq, behaviour } = motion.idleState
   contract with `@proj-airi/character-mind`'s idle policy, which composes the
   schedule: the reports a performer sends and the orders it receives. They
   live here because this package must not import the mind.
+- `./cursor-notice` holds the cursor episode draw as a pure rule:
+  `drawCursorEpisode(band, random)` decides whether she engages a cursor in a
+  `CursorBand` and draws the episode's interest span, notice dwell and
+  cooldown, in that order, with the constants it reads. A near cursor always
+  engages and draws no engagement. `NaturalCursorAttention` calls it on its
+  own stream; the lint block `airi/idle-schedule-pure` keeps the module free
+  of clocks, timers and `Math.random`.
 - `idleActivityWeights` and `idleActivityRate` in `./idle-schedule`, and
   `idleEnergyOffset` in `./idle-activities`, are the pure rules that turn a
   drive into odds, pace and an energy offset.
