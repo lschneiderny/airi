@@ -4,7 +4,7 @@
  * section belongs to the character prompt, so the contract text never depends on it. The tail tier follows in this order;
  * `actions` leads it because the exposed clips change only when the user curates them.
  */
-export const PROMPT_SEGMENT_ORDER = ['format', 'card', 'register', 'contract', 'actions', 'memory', 'toolset', 'account', 'voice', 'control', 'unprompted', 'plugin', 'stickers', 'spark'] as const
+export const PROMPT_SEGMENT_ORDER = ['format', 'card', 'register', 'contract', 'actions', 'memory', 'toolset', 'voice', 'control', 'unprompted', 'plugin', 'stickers', 'spark'] as const
 
 export type PromptSegmentId = typeof PROMPT_SEGMENT_ORDER[number]
 export type PromptTier = 'prefix' | 'tail'
@@ -33,7 +33,6 @@ export const PROMPT_SEGMENT_BUDGETS = {
   actions: { tier: 'tail', policy: 'truncate', maxChars: 1500 },
   memory: { tier: 'tail', policy: 'drop-oldest', maxEntries: 40, maxChars: 6000 },
   toolset: { tier: 'tail', policy: 'warn', maxChars: 2000 },
-  account: { tier: 'tail', policy: 'warn', maxChars: 2000 },
   voice: { tier: 'tail', policy: 'truncate', maxChars: 1000 },
   control: { tier: 'tail', policy: 'truncate', maxChars: 1500 },
   unprompted: { tier: 'tail', policy: 'fixed' },
