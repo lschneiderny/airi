@@ -1,3 +1,6 @@
+import type { IdleBehaviourKind } from '@proj-airi/motion-driver-natural/idle-activities'
+import type { IdleErrandKind } from '@proj-airi/motion-driver-natural/idle-errands'
+import type { IdleReport, IdleScheduleState, IdleView } from '@proj-airi/motion-driver-natural/idle-schedule'
 import type { Band, ExpressionPerformanceSettings, HoldCommand, MoodDose, PerformanceEmotion, ReactionEpisode, ReactionState, SlotCommand, TouchAffectMemory } from '@proj-airi/stage-shared/expression-performance'
 import type { CharacterPacingMemory, GateLocalTime, GateOutcome, GateSettings, GateSignals, ReactionDecision, ReactionKind, ReactionMemory, ReasonCategory, ReasonKind, ReasonState, SituationState, TouchVoiceView, UrgeGateDecision, UrgeGateMemory, UserGateMemory } from '@proj-airi/stage-shared/situation'
 
@@ -76,6 +79,12 @@ export type MindStimulus
     | { kind: 'presence', away: boolean, wake: { cause: WakeCause, atMs: number } | null }
   /** The screen changed sharply. The mind keeps the refractory. */
     | { kind: 'screen-change' }
+  /** What the reporting Natural performer saw in one frame that had an edge, in order. */
+    | { kind: 'idle', reports: readonly IdleReport[] }
+  /** The host's idle wake timer fired at `nextIdleWakeAt`. */
+    | { kind: 'idle-wake' }
+  /** The user or the devtools lab asks her to play an idle act now. */
+    | { kind: 'idle-play', act: IdleBehaviourKind }
 
 interface IntentBase {
   /** Unique among the intents of one mind since its initial state. */
@@ -115,6 +124,10 @@ export type MindIntent
     | (IntentBase & { channel: 'voice', kind: 'observe-wake', wakeCause: WakeCause, atMs: number, awayMs: number | null })
   /** Tell the voice channel of a return. The gate decides whether she says anything. */
     | (IntentBase & { channel: 'voice', kind: 'observe-return', atMs: number, awayMs: number })
+  /** Start an idle act whose shape the performer draws from `seed`. `requested` marks an `idle-play`; the performer answers with `started` or `refused`. */
+    | (IntentBase & { channel: 'posture', kind: 'idle-act', act: IdleBehaviourKind, seed: number, requested: boolean })
+  /** Start an idle errand. `pick` chooses among the realiser's candidates; `holdSeconds` is the pastime hold, null for other errands. */
+    | (IntentBase & { channel: 'posture', kind: 'idle-errand', errand: IdleErrandKind, pick: number, holdSeconds: number | null })
 
 /** The posture intent a scene performs for a touch. */
 export type TouchReactionIntent = Extract<MindIntent, { kind: 'touch-reaction' }>
@@ -138,6 +151,7 @@ export interface MindState {
   presence: { away: boolean, awaySinceMs: number | null }
   /** When the last screen-change reaction was stamped, in epoch milliseconds. */
   desktop: { screenReactAtMs: number | null }
+  idle: MindIdleState
   /** Saved by the host. The core keeps `slow.pacing` equal to her pacing in the gate memory and replaces the object only when a field changed. */
   slow: MindSlowState
 }
@@ -169,4 +183,24 @@ export interface MindVoiceState {
   requests: Array<{ request: VoiceRequest, startBy: number, speakBy: number }>
   /** The last gate decision, for the inspector and QA. */
   lastGate: UrgeGateDecision | null
+}
+
+/** The idle policy's memory. Plain JSON. */
+export interface MindIdleState {
+  /** The reporting performer's latest view, or null while no Natural performer has reported. */
+  view: IdleView | null
+  /** The mind's clock counted only while `view.active`: the idle schedule's time base, in seconds. */
+  activeSeconds: number
+  /** When `activeSeconds` was last advanced, in epoch milliseconds of the mind's clock; null before the first step. */
+  atMs: number | null
+  schedule: IdleScheduleState
+  /** The intent decided and not yet reported `started` or `refused`; no new decision while one waits. */
+  pending: string | null
+  /** The behavior the performer last reported started, with its intent and its start in active seconds. */
+  started: { seq: number, intentId: string | null, at: number } | null
+  /**
+   * The checkpoint of the idle policy's own stream, seeded by one draw of `rng` at the first idle stimulus; null
+   * before it. Its own stream keeps the idle draws apart from how often the other channels draw.
+   */
+  random: number | null
 }

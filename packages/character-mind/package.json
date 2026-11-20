@@ -11,6 +11,7 @@
     "test:run": "vitest run --config vitest.config.ts"
   },
   "dependencies": {
+    "@proj-airi/motion-driver-natural": "workspace:^",
     "@proj-airi/stage-shared": "workspace:^"
   },
   "devDependencies": {
