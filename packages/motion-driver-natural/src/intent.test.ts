@@ -164,6 +164,8 @@ describe('natural body intent', () => {
     const motion = new NaturalMotion({ seed: 41 })
     motion.setIdleDrive({ energy: 0, valence: 0, tension: 0, sleepiness: 0, solitude: 0, music: false, allowSleep: true, rate: 0 }, 0)
     motion.setPerformance({ ...idle, away: true }, 0.5, 0)
+    // The character mind decides the sleep; Natural performs it.
+    motion.idle({ id: 'sleep', kind: 'act', act: 'sleep', seed: 1, requested: false }, 0)
     for (let step = 0; step <= 45 * 60; step++)
       motion.advance(step / 60)
     expect(motion.idleState.behaviour).toBe('sleep')

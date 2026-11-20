@@ -1,7 +1,8 @@
-import type { CharacterMind, MindIntent, TouchReactionIntent, TouchReport } from '@proj-airi/character-mind'
+import type { CharacterMind, MindIdleIntent, MindIntent, TouchReactionIntent, TouchReport } from '@proj-airi/character-mind'
 import type { FaceBaseline } from '@proj-airi/motion-driver-natural/baseline'
 import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
 import type { IdleBehaviourKind, IdleCueKind, NaturalIdleDrive } from '@proj-airi/motion-driver-natural/idle-activities'
+import type { IdleOrder, IdleReport, IdleView } from '@proj-airi/motion-driver-natural/idle-schedule'
 import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
 import type { CharacterReading } from '@proj-airi/stage-shared/character-state'
 import type { AffectSignal, AffectTrace, CatalogEntry, DeciderContext, ExpressionPerformanceSettings, HoldCommand, Moment, MoodDose, PerformanceDecision, PerformanceProfile, ReactionEpisode, SlotCommand, TimingEvent } from '@proj-airi/stage-shared/expression-performance'
@@ -18,6 +19,8 @@ import type { ExpressionToolPort } from '../../tools/expression'
 import type { VoicePort } from './mind-voice'
 
 import { errorMessageFrom } from '@moeru/std'
+import { idleOrderOf } from '@proj-airi/character-mind'
+import { dormantIdleView } from '@proj-airi/motion-driver-natural/idle-schedule'
 import { SpeechOnsetDetector } from '@proj-airi/motion-driver-natural/speech-emphasis'
 import { faceBaselineOf, idleDriveOf } from '@proj-airi/stage-shared/character-state'
 import { applyMappingWeights, createDecider, explicitExpressionCommand, isLlmEligible, primaryMapping, resolveEffectiveSettings, withAffectTrace } from '@proj-airi/stage-shared/expression-performance'
@@ -141,8 +144,11 @@ export interface StagePerformanceScene {
   setIdleDrive?: (drive: NaturalIdleDrive | null) => void
   /** Live2D and MMD Natural: plays the body language around a reach-out. A scene without it drops the cue. */
   idleCue?: (kind: IdleCueKind) => void
-  /** Live2D Natural: plays one idle behaviour by name, for the devtools lab and scripted QA runs. */
-  idlePlay?: (kind: IdleBehaviourKind) => void
+  /**
+   * Live2D and MMD Natural: plays what the character mind's idle policy decided. The scene's Natural performer answers
+   * it in its idle reports. A scene without it, such as a scenario sink, drops the order.
+   */
+  idle?: (order: IdleOrder) => void
 }
 
 /**
@@ -178,6 +184,13 @@ export interface StagePerformanceConductorOptions {
    * @default () => undefined
    */
   voice?: () => VoicePort | undefined
+  /**
+   * Hands the scene's idle reports to the character mind: the stage's handle from `attachStage`. Without it the mind
+   * hears nothing of the idle performer, and decides no idle act.
+   *
+   * @default undefined
+   */
+  idleReports?: (reports: readonly IdleReport[]) => void
   /** Decider seed, fixed for the lifetime of the conductor so traces can replay it. */
   seed: number
   /**
@@ -296,6 +309,9 @@ export class StagePerformanceConductor {
   private readonly moodlessTurns = new Set<string>()
   /** Every mind step that may touch the voice state goes through it, so the voice port sees what changed. */
   private readonly voice: MindVoice
+  /** The latest idle view the scene reported under any driver, and whether the mind was last told the dormant view. */
+  private idleView: IdleView | null = null
+  private idleDormant = false
 
   constructor(private readonly options: StagePerformanceConductorOptions) {
     this.seed = options.seed
@@ -321,7 +337,8 @@ export class StagePerformanceConductor {
     const { context, expressiveness } = this.effectiveContext(turnId)
     const scaled = Math.min(1, Math.max(0, nominal * expressiveness))
     // A repeat that neither starts nor escalates an episode yields no intent, and the decider hears nothing.
-    const [intent] = this.options.mind.receive({ kind: 'emotion', source, emotion, nominal: scaled, turnId, settings: context.settings })
+    // An idle intent that fell due before the stimulus comes first; the store dispatches it.
+    const intent = this.options.mind.receive({ kind: 'emotion', source, emotion, nominal: scaled, turnId, settings: context.settings }).find(each => each.kind === 'emotion' || each.kind === 'release')
     let slots: SlotCommand[] = []
     if (intent?.kind === 'emotion') {
       slots = this.decide({ kind: 'reaction', episode: intent.episode, turnId, at }, context).slots
@@ -359,7 +376,7 @@ export class StagePerformanceConductor {
     // An entry without slots shows nothing and derives no reaction.
     const lease = explicitExpressionCommand({ expressionId: entry.id, holdSeconds, turnId }, context)?.[0]
     const mapping = primaryMapping(context.catalog.find(candidate => candidate.id === entry.id))
-    const [intent] = lease
+    const intent = (lease
       ? this.options.mind.receive({
           kind: 'expression-request',
           source,
@@ -369,7 +386,7 @@ export class StagePerformanceConductor {
           turnId,
           settings: context.settings,
         })
-      : []
+      : []).find(each => each.kind === 'entry')
     const request = intent?.kind === 'entry' ? intent : undefined
     const episode = request?.episode ?? null
     const decision = this.decide({ kind: 'expression', source, expressionId: entry.id, holdSeconds, episode, turnId, at }, context)
@@ -385,7 +402,7 @@ export class StagePerformanceConductor {
    */
   clearExpression(slot: SlotName | undefined, source: 'act' | 'tool' | 'devtools', turnId?: string) {
     const at = this.clock()
-    const [intent] = this.options.mind.receive({ kind: 'expression-clear', source, slot, turnId })
+    const intent = this.options.mind.receive({ kind: 'expression-clear', source, slot, turnId }).find(each => each.kind === 'release')
     const decision = this.decide({ kind: 'clear', source, slot, turnId, at })
     this.dispatchNatural(null, intent?.kind === 'release' ? intent.hold : null, at)
     this.dispatchSlots(decision.slots, at)
@@ -460,6 +477,7 @@ export class StagePerformanceConductor {
    */
   idleDrive(drive: NaturalIdleDrive | null) {
     this.options.scene()?.setIdleDrive?.(this.options.driver() === 'natural' ? drive : null)
+    this.followIdleDriver()
   }
 
   /** Plays the body around a reach-out or widget line under the Natural driver; other drivers drop it. The mind decides it. */
@@ -468,10 +486,56 @@ export class StagePerformanceConductor {
       this.options.scene()?.idleCue?.(kind)
   }
 
-  /** Plays one idle behaviour by name under the Natural driver, for the devtools lab and scripted QA runs. */
+  /**
+   * Asks the mind for one idle act by name under the Natural driver, for the devtools lab and scripted QA runs. The mind
+   * answers with a requested `idle-act`, which the mind store sends to every stage; other drivers drop the request.
+   */
   idlePlay(kind: IdleBehaviourKind) {
     if (this.options.driver() === 'natural')
-      this.options.scene()?.idlePlay?.(kind)
+      this.voice.receive({ kind: 'idle-play', act: kind })
+  }
+
+  /**
+   * Performs one idle intent of the mind under the Natural driver. Under another driver it is dropped, and the mind
+   * hears the dormant view, so it waits on no answer and decides nothing that no performer would show.
+   */
+  idle(intent: MindIdleIntent) {
+    if (this.options.driver() !== 'natural') {
+      this.followIdleDriver()
+      return
+    }
+    this.options.scene()?.idle?.(idleOrderOf(intent))
+  }
+
+  /** Hands the scene's idle reports to the mind under the Natural driver; under another one the mind hears the dormant view. */
+  idleReport(reports: readonly IdleReport[]) {
+    for (const report of reports) {
+      if (report.kind === 'view')
+        this.idleView = report.view
+    }
+    if (this.options.driver() !== 'natural') {
+      this.followIdleDriver()
+      return
+    }
+    this.idleDormant = false
+    this.options.idleReports?.(reports)
+  }
+
+  /**
+   * Tells the mind the dormant view once the driver left Natural, and the scene's latest view again once it is back:
+   * a performer reports its view only when it changes, and a scene that stopped advancing Natural reports nothing.
+   */
+  private followIdleDriver() {
+    const natural = this.options.driver() === 'natural'
+    if (!natural && !this.idleDormant) {
+      this.idleDormant = true
+      this.options.idleReports?.([{ kind: 'view', view: dormantIdleView() }])
+    }
+    else if (natural && this.idleDormant) {
+      this.idleDormant = false
+      if (this.idleView)
+        this.options.idleReports?.([{ kind: 'view', view: this.idleView }])
+    }
   }
 
   /**
@@ -946,7 +1010,7 @@ export const FACE_BASELINE_SAMPLE_MS = 1000
  * Every {@link FACE_BASELINE_SAMPLE_MS}, and once at creation, it reads `characterReading` and sends its face baseline
  * and its idle drive to the scene; no reading sends the neutral baseline and a drive that follows only the hour.
  */
-export function useStagePerformanceConductor(options: Pick<StagePerformanceConductorOptions, 'scene' | 'driver' | 'playMotion' | 'profile' | 'mind' | 'markMoment' | 'voice'> & {
+export function useStagePerformanceConductor(options: Pick<StagePerformanceConductorOptions, 'scene' | 'driver' | 'playMotion' | 'profile' | 'mind' | 'markMoment' | 'voice' | 'idleReports'> & {
   renderer: () => string | undefined
   expressionBackend: () => StageExpressionBackend | undefined
   /** The body tool port of the active scene; undefined when it has no body support (Live2D, classic MMD). */

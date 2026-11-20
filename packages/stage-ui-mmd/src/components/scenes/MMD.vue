@@ -18,8 +18,9 @@ import type { BodyIntent } from '@proj-airi/motion-driver-humanoid/types'
 import type { FaceBaseline } from '@proj-airi/motion-driver-natural/baseline'
 import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
 import type { NaturalEmotionStrengths } from '@proj-airi/motion-driver-natural/emotion-strengths'
-import type { IdleBehaviourKind, IdleBehaviourReport, IdleCueKind, NaturalIdleDrive } from '@proj-airi/motion-driver-natural/idle-activities'
+import type { IdleBehaviourReport, IdleCueKind, NaturalIdleDrive } from '@proj-airi/motion-driver-natural/idle-activities'
 import type { IdleErrandKind } from '@proj-airi/motion-driver-natural/idle-errands'
+import type { IdleOrder, IdleReport } from '@proj-airi/motion-driver-natural/idle-schedule'
 import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
 import type { NaturalChatInput } from '@proj-airi/motion-driver-natural/natural-motion'
 import type { ExpressionPerformanceSettings, HoldCommand, MoodDose, SlotCommand } from '@proj-airi/stage-shared/expression-performance'
@@ -42,6 +43,7 @@ import type { ResolvedMMDModel } from '../../utils/mmd-loader'
 import { errorMessageFrom } from '@moeru/std'
 import { deriveClipMeta, effectiveLayer } from '@proj-airi/motion-driver-humanoid/clip-meta'
 import { initialIdleClipHistory, pickIdleClip } from '@proj-airi/motion-driver-humanoid/idle-clips'
+import { dormantIdleView } from '@proj-airi/motion-driver-natural/idle-schedule'
 import { coverRect } from '@proj-airi/stage-shared'
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { screenInwardness } from '@proj-airi/stage-shared/stage-placement'
@@ -166,6 +168,8 @@ const emit = defineEmits<{
   (e: 'touch', report: TouchReport): void
   /** A self-directed idle behaviour of the Natural driver started or ended. */
   (e: 'idle', report: IdleBehaviourReport): void
+  /** Natural's idle reports for the character mind, once per frame that had one. */
+  (e: 'idleReports', reports: readonly IdleReport[]): void
   /** Something her body did on its own started or ended: sitting down, sleeping, a walk of her own, an unasked clip. */
   (e: 'self', report: MMDSelfReport): void
   /** The character's projected rect in work-area DIP changed (stage mode only). */
@@ -297,6 +301,20 @@ let animation: MMDAnimationManager | undefined
 let emote: ReturnType<typeof useMMDEmote> | undefined
 let morphRuntime: ReturnType<typeof createMMDMorphRuntime> | undefined
 let natural: MMDNaturalAdapter | undefined
+let stopNaturalIdleReports: (() => void) | undefined
+
+/**
+ * Replaces the Natural adapter, or drops it with `undefined`. The mind hears the dormant view for the old one, so it
+ * stops deciding for it and forgets an order it waited on, and then follows the new one's reports.
+ */
+function replaceNatural(next: MMDNaturalAdapter | undefined) {
+  stopNaturalIdleReports?.()
+  stopNaturalIdleReports = undefined
+  if (natural)
+    emit('idleReports', [{ kind: 'view', view: dormantIdleView() }])
+  natural = next
+  stopNaturalIdleReports = next?.onIdleReports(reports => emit('idleReports', reports))
+}
 let traceSource: MMDMotionTraceSource | null = null
 let stopTraceEvents: (() => void) | undefined
 // The loaded model's sampler stamps body events with the time of the frame that raised them.
@@ -914,7 +932,7 @@ function disposeModel() {
   idleClipHistory = initialIdleClipHistory
   clipErrand = null
   answeredErrandSeq = 0
-  natural = undefined
+  replaceNatural(undefined)
   body = undefined
   stance = undefined
   rig = undefined
@@ -1292,7 +1310,7 @@ async function loadModel(src: string) {
     emote = useMMDEmote(expressionMorphs)
     gaze = createGazeController(mesh)
     rig = readMMDRigProfile(resolved.mmd.pmx)
-    natural = new MMDNaturalAdapter(modelKey)
+    replaceNatural(new MMDNaturalAdapter(modelKey))
     const activeStance = new MMDStanceDirector()
     stance = activeStance
     const activeMesh = mesh
@@ -1740,7 +1758,7 @@ watch(motionDriver, () => {
     }
   }
   if (mesh && rig)
-    natural = new MMDNaturalAdapter(props.modelId ?? props.modelSrc ?? '')
+    replaceNatural(new MMDNaturalAdapter(props.modelId ?? props.modelSrc ?? ''))
   body?.resetPerformance()
   observeTraceEvents()
 })
@@ -1830,7 +1848,8 @@ defineExpose({
   /** The drive of self-directed idle behaviour; the stage sends it again every second. */
   setIdleDrive: (drive: NaturalIdleDrive | null) => { hostIdleDrive = drive },
   idleCue: (kind: IdleCueKind) => natural?.idleCue(kind),
-  idlePlay: (kind: IdleBehaviourKind) => natural?.idlePlay(kind),
+  /** Natural only: plays what the character mind's idle policy decided; Natural answers it in `idleReports`. */
+  idle: (order: IdleOrder) => natural?.idle(order),
   onSpeech: (event: SpeechEvent, turnId: string, now: number) => {
     expressions.onSpeech(event, turnId, now)
     natural?.onSpeech(event, turnId, now)

@@ -46,10 +46,11 @@ Widget and plugin turns arrive as `voice-request` stimuli and wait in `MindVoice
 
 `idle.ts` decides when she starts an idle act or an idle errand, which one, when she falls asleep while the user is away, and the stretch or yawn after a long sleep. The rules stay in `@proj-airi/motion-driver-natural/idle-schedule`, the package's one runtime dependency besides `stage-shared`; the mind imports only `/idle-schedule` and `/idle-errands`, and types from `/idle-activities`. Natural's performer sends `IdleReport`s in an `idle` stimulus: its `view` (drive, mode, away, blocked, settled, what runs), and the edges `started`, `ended`, `refused`, `errand-started`, and `errand-ended`. `MindState.idle` keeps the view, the schedule, and `activeSeconds`, the mind's clock counted only while the view is `active`.
 
-- Before every stimulus the idle clock catches up to `nowMs` and the schedule runs in pieces that end at its deadlines, so a hazard crossing lands exactly on its deadline and each decision is taken at its own time. `nextIdleWakeAt(idle)` returns the next deadline in epoch milliseconds, or null while no active view reports, while nothing is due, or while an intent waits. The host arms one timer at it and sends `idle-wake`.
+- Before every stimulus the idle clock catches up to `nowMs` and the schedule runs in pieces that end at its deadlines, so a hazard crossing lands exactly on its deadline and each decision is taken at its own time. `nextIdleWakeAt(idle)` returns the next deadline in epoch milliseconds, or null while no active view reports, while nothing is due, or while an intent waits. The host arms one timer at it and sends `idle-wake`: in the app `useCharacterMindStore`, in the headless MMD runner the frame loop before each advance.
 - A decided intent waits in `pending` until the performer reports it `started` (or `errand-started`) or `refused`; no other decision is taken meanwhile. A refusal spends the fire.
 - A view with no drive is dormant: it clears the follow-up, the away run, and `pending`, and the policy decides nothing.
 - Each act carries a 32-bit `seed`, drawn after the decision's own draws, from which the performer draws its shape.
+- `idleOrderOf(intent)` turns an `idle-act` or `idle-errand` intent (`MindIdleIntent`) into the `IdleOrder` that Natural's `idle` performs.
 - The policy draws from its own stream, `MindIdleState.random`, seeded by one draw of `rng` at the first `idle` or `idle-play` stimulus. The idle draws therefore do not depend on how often the other channels draw.
 
 ### Return and desktop events

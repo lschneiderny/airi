@@ -339,6 +339,15 @@ describe('useMotionQaBridge', () => {
     expect(JSON.stringify(reply)).not.toMatch(/session-1/)
   })
 
+  it('skips an idle step that yields no intent', async () => {
+    // No stage has reported an idle view, so the mind has nothing to order.
+    mind.receive({ kind: 'idle', reports: [] })
+    mind.receive({ kind: 'idle-wake' })
+
+    const reply = await dispatch({ name: 'events', input: {} }) as { result: { events: unknown[] } }
+    expect(reply.result.events).toEqual([])
+  })
+
   it('serves voiceEvaluate with the leader evaluation as plain JSON', async () => {
     expect(await dispatch({ name: 'voiceEvaluate' })).toEqual({ ok: true, result: { status: 'skipped', reason: 'gate-not-running' } })
     mind.receive(voiceTick(true, mindNowMs))

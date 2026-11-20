@@ -1,3 +1,5 @@
+import type { IdleReport } from '@proj-airi/motion-driver-natural/idle-schedule'
+
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -79,17 +81,22 @@ describe('mmd Natural adapter', () => {
     expect(largest).toBeGreaterThan(0.05)
   })
 
-  it('plays an idle behaviour by name: it is reported and reaches the body intent', () => {
+  it('queues an idle order to the next frame: it is reported to the mind and the observer and reaches the body intent', () => {
     const { adapter } = fixture()
-    adapter.setIdleDrive({ energy: 0, valence: 0, tension: 0, sleepiness: 0, solitude: 0, music: false, allowSleep: true, rate: 0, body: true })
+    const batches: (readonly IdleReport[])[] = []
+    adapter.onIdleReports(reports => batches.push(reports))
+    adapter.setIdleDrive({ energy: 0, valence: 0, tension: 0, sleepiness: 0, solitude: 0, music: false, allowSleep: true, rate: 1, body: true })
     adapter.advance(2 / 120, input, 100)
-    adapter.idlePlay('shoulder-roll')
+    adapter.idle({ id: 'roll', kind: 'act', act: 'shoulder-roll', seed: 1, requested: false })
+    expect(batches.flat()).not.toContainEqual(expect.objectContaining({ kind: 'started' }))
     const started: string[] = []
     for (let step = 1; step <= 4; step++) {
       adapter.advance(2 / 120, input, 100 + step * 2 / 120)
       started.push(...adapter.idleBehaviours.filter(report => report.phase === 'start').map(report => report.behaviour))
     }
     expect(started).toEqual(['shoulder-roll'])
+    expect(batches.flat()).toContainEqual({ kind: 'started', intentId: 'roll', seq: 1, act: 'shoulder-roll' })
+    expect(batches.flat().filter(report => report.kind === 'view').at(-1)).toMatchObject({ view: { current: { seq: 1, kind: 'shoulder-roll' } } })
     expect(adapter.bodyFrame.intent.idle.behaviour?.kind).toBe('shoulder-roll')
   })
 

@@ -91,18 +91,30 @@ and what each renderer performs is in
 `./idle-activities` holds `NaturalIdleActivities`, the layer of self-directed
 idle behaviour: stretch, yawn, look-around, check-in, peer, zone-out, nod-off
 and sway, sleep while the user is away, and the two reach-out cues
-`about-to-speak` and `let-go`.
+`about-to-speak` and `let-go`. The layer performs; it does not schedule.
+`@proj-airi/character-mind`'s idle policy decides each act and errand from
+the view the layer reports, and the host hands its orders to `idle`.
 
 ```ts
 motion.setIdleDrive({ energy: 0, valence: 0, tension: 0, sleepiness: 0.8, solitude: 0.5, music: false, allowSleep: true, rate: 1 }, now)
 motion.idleCue('about-to-speak', now)
-motion.idlePlay('yawn', now) // previews and scripted QA
+const off = motion.onIdleReports(reports => mind.receive({ kind: 'idle', reports }))
+motion.idle({ id: 'i-1', kind: 'act', act: 'yawn', seed: 7, requested: false }, now)
 const { seq, behaviour } = motion.idleState
 ```
 
-- The layer is inert until `setIdleDrive` receives a drive. Without one the
-  controller draws nothing for it and composes exactly as before, so seeded
-  traces and gates that never set a drive are unchanged.
+- The layer is inert until `setIdleDrive` receives a drive. Without one it
+  reports the dormant view (`dormantIdleView`, `drive: null`) and refuses
+  every order, so seeded traces and gates that never set a drive are
+  unchanged.
+- `onIdleReports` hears the reports at the end of each `advance`: the view,
+  only when a field changed (the drive compared by value with
+  `sameIdleDrive`), and `started`, `ended`, `refused`, `errand-started` and
+  `errand-ended`. `idle(order, now)` starts the ordered act or errand at the
+  next step, or refuses it: while blocked, while another act runs, while
+  suspended, and with no drive. Each act's shape comes from
+  `createRandomStream(order.seed)`; the layer's own `stream('idle')` draws
+  only the cues' shapes.
 - `./idle-schedule` holds the idle schedule as pure rules over plain JSON state,
   in active seconds, with every draw passed in: when an act or an errand
   starts and which one, the rest after each behaviour, the sleep delay while
@@ -111,8 +123,8 @@ const { seq, behaviour } = motion.idleState
   start and end. `advanceIdleSchedule` runs a span of time and returns at most
   one `IdleDecision`; `applyIdleEdge` applies an edge; `nextIdleDeadline`
   names the earliest time the schedule could decide, the hazard's crossing
-  included. `NaturalIdleActivities` runs the schedule once per grid step on its
-  own stream and draws the shape of what it starts. The lint block
+  included. The mind runs the schedule on its own clock and stream; Natural
+  only reports what it saw and performs the orders. The lint block
   `airi/idle-schedule-pure` keeps the module and `./idle-errands` free of
   clocks, timers and `Math.random`. `IdleReport` and `IdleOrder` are the
   contract with `@proj-airi/character-mind`'s idle policy, which composes the
@@ -123,16 +135,16 @@ const { seq, behaviour } = motion.idleState
   drive into odds, pace and an energy offset.
 - An activity yields within 0.4 s to speech, thinking, listening, touch, an
   emotion, a cue gesture and a noticed cursor.
-- `idlePlay` starts one behaviour by name at the next step, in place of the
-  running one, when a drawn activity could start too. A played sleep ends after
-  24 s.
+- A requested order (`requested: true`, from a preview or scripted QA)
+  replaces the running act when a drawn activity could start too. A requested
+  sleep ends after 24 s.
 - `motion.idleLidFactor` is the part of the frame's `blinkFactor` that a
   behaviour closes on purpose. A renderer whose blinks are switched off applies
   it alone. It is not a frame field, so recorded frames keep their shape.
 - `idleState.seq` increments at every start. `IdleBehaviourReports` turns
   per-frame reads of it into start and end reports; both renderer adapters use
   it. An attached observer also receives `idle` events.
-- The layer is the one idle scheduler for both renderers. A host that performs
+- The layer is the one idle performer for both renderers. A host that performs
   a whole body (MMD) sets `body: true` in the drive. That unlocks the
   whole-body kinds (`sigh`, `shoulder-roll`, `shift-stance`, `clasp-hands`,
   `hair-touch`, `heel-rock`, `arm-swing`) and settling in after 120 s of
@@ -164,7 +176,7 @@ const { seq, behaviour } = motion.idleState
   `IdleBehaviourRecord` (its timing, side and drawn parameters, kept after it
   ends) and `settled`, so a body host plays its own form of each behaviour. The
   frame Live2D draws does not change.
-- The same draw decides the long behaviours a host realises in full, the
+- The mind's same draw decides the long behaviours a host realises in full, the
   errands of `./idle-errands`: a `pastime` with one of her own props (Live2D),
   an `idle-clip` the user allowed for idle and a `wander` in roam mode (MMD). A
   host lists the errands it can realise now in the drive's `errands`; absent,

@@ -2,8 +2,9 @@ import type { FaceBaseline } from '@proj-airi/motion-driver-natural/baseline'
 import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
 import type { NaturalEmotionStrengths } from '@proj-airi/motion-driver-natural/emotion-strengths'
 import type { NaturalMotionObserver, NaturalTouchRegion } from '@proj-airi/motion-driver-natural/frame-types'
-import type { IdleBehaviourKind, IdleBehaviourReport, IdleCueKind, NaturalIdleDrive } from '@proj-airi/motion-driver-natural/idle-activities'
+import type { IdleBehaviourReport, IdleCueKind, NaturalIdleDrive } from '@proj-airi/motion-driver-natural/idle-activities'
 import type { IdleErrandRecord } from '@proj-airi/motion-driver-natural/idle-errands'
+import type { IdleOrder, IdleReport } from '@proj-airi/motion-driver-natural/idle-schedule'
 import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
 import type { NaturalChatInput, NaturalMotionFrame, NaturalMotionVoice } from '@proj-airi/motion-driver-natural/natural-motion'
 import type { ExpressionPerformanceSettings, HoldCommand, MoodDose, PerformanceEmotion } from '@proj-airi/stage-shared/expression-performance'
@@ -74,7 +75,7 @@ export class MMDNaturalAdapter {
   private readonly pendingGestures: { kind: CueGestureKind, count: number }[] = []
   private readonly pendingMoods: MoodDose[] = []
   private readonly pendingIdleCues: IdleCueKind[] = []
-  private readonly pendingIdlePlays: IdleBehaviourKind[] = []
+  private readonly pendingIdleOrders: IdleOrder[] = []
   private idleDrive: NaturalIdleDrive | null = null
   private appliedIdleDrive: NaturalIdleDrive | null = null
   private readonly idleReports = new IdleBehaviourReports()
@@ -122,8 +123,8 @@ export class MMDNaturalAdapter {
       this.natural.addMood(dose, this.time)
     for (const cue of this.pendingIdleCues.splice(0))
       this.natural.idleCue(cue, this.time)
-    for (const kind of this.pendingIdlePlays.splice(0))
-      this.natural.idlePlay(kind, this.time)
+    for (const order of this.pendingIdleOrders.splice(0))
+      this.natural.idle(order, this.time)
     // Before the performance state, whose energy the drive moves. Forwarded on change only.
     if (this.idleDrive !== this.appliedIdleDrive) {
       this.appliedIdleDrive = this.idleDrive
@@ -147,7 +148,7 @@ export class MMDNaturalAdapter {
     this.idleDrive = drive
   }
 
-  /** The latest errand Natural's idle draw started (an unasked clip, a wander), kept after it ends. */
+  /** The latest errand Natural started for the mind (an unasked clip, a wander), kept after it ends. */
   get idleErrand(): IdleErrandRecord | null {
     return this.natural.idleErrand
   }
@@ -163,11 +164,16 @@ export class MMDNaturalAdapter {
   }
 
   /**
-   * Plays one idle behaviour by name at the next frame, for previews and scripted QA runs. The body performs its own
-   * form of it from the body intent, as it does for a drawn one, so the whole-body kinds can be watched in the app.
+   * Plays what the character mind's idle policy decided, at the next frame. The body performs its own form of an act
+   * from the body intent, so the whole-body kinds show; Natural answers the order in its idle reports.
    */
-  idlePlay(kind: IdleBehaviourKind): void {
-    this.pendingIdlePlays.push(kind)
+  idle(order: IdleOrder): void {
+    this.pendingIdleOrders.push(order)
+  }
+
+  /** Calls `listener` with Natural's idle reports for the character mind; returns the function that stops it. */
+  onIdleReports(listener: (reports: readonly IdleReport[]) => void): () => void {
+    return this.natural.onIdleReports(listener)
   }
 
   /** The idle behaviours that started or ended in the latest frame. */

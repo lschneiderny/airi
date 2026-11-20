@@ -110,7 +110,7 @@ describe('review state', () => {
     motion.setIdleDrive(neutralDrive, 0)
     run(motion, 0, 2)
     expect(motion.reviewState().act).toBeNull()
-    motion.idlePlay('check-in', 2)
+    motion.idle({ id: 'check-in', kind: 'act', act: 'check-in', seed: 1, requested: true }, 2)
     run(motion, 2, 3)
     const state = motion.reviewState()
     expect(state.act).toBe('check-in')
