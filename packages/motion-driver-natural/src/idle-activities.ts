@@ -47,11 +47,6 @@ export interface NaturalIdleDrive {
   solitude: number
   /** Other applications are playing audio she can sway to. */
   music: boolean
-  /**
-   * Whether this layer may close her eyes and sleep while the user is away. A renderer that plays its own sleep
-   * stance turns it off, so the two never stack.
-   */
-  allowSleep: boolean
   /** Multiplies how often activities start; 1 is the default pace, 0 leaves only sleep and cues. */
   rate: number
   /**

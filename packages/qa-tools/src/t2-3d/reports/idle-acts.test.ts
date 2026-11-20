@@ -200,7 +200,7 @@ describe('idle-acts report version 7', () => {
   })
 
   it('d3: fails a run recorded with the head-only drive the runner sent before amendment 9', () => {
-    const headOnly = JSON.stringify({ energy: 0, valence: 0, tension: 0, sleepiness: 0, solitude: 0, music: false, allowSleep: true, rate: 1 })
+    const headOnly = JSON.stringify({ energy: 0, valence: 0, tension: 0, sleepiness: 0, solitude: 0, music: false, rate: 1 })
     expect(statuses(report({ seconds: 5, behaviours: [{ kind: 'peer', at: 1 }], driveValues: headOnly })).drive).toBe('FAIL')
     expect(QA_IDLE_DRIVE.body).toBe(true)
   })

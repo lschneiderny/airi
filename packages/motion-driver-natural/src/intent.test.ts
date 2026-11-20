@@ -162,7 +162,7 @@ describe('natural body intent', () => {
 
   it('stays asleep when away turns false alone, and wakes when asked', () => {
     const motion = new NaturalMotion({ seed: 41 })
-    motion.setIdleDrive({ energy: 0, valence: 0, tension: 0, sleepiness: 0, solitude: 0, music: false, allowSleep: true, rate: 0 }, 0)
+    motion.setIdleDrive({ energy: 0, valence: 0, tension: 0, sleepiness: 0, solitude: 0, music: false, rate: 0 }, 0)
     motion.setPerformance({ ...idle, away: true }, 0.5, 0)
     // The character mind decides the sleep; Natural performs it.
     motion.idle({ id: 'sleep', kind: 'act', act: 'sleep', seed: 1, requested: false }, 0)

@@ -10,7 +10,7 @@ import { NaturalMotion } from './natural-motion'
 import { createRandomStream } from './random'
 
 const dt = 1 / 120
-const neutralDrive: NaturalIdleDrive = { energy: 0, valence: 0, tension: 0, sleepiness: 0, solitude: 0, music: false, allowSleep: true, rate: 1 }
+const neutralDrive: NaturalIdleDrive = { energy: 0, valence: 0, tension: 0, sleepiness: 0, solitude: 0, music: false, rate: 1 }
 const idleInput: IdleStepInput = { mode: 'idle', away: false, blocked: false, interrupt: false, rouse: false, wake: false, placement: 0, screenPoint: { x: 0, y: -0.18 } }
 const idleState = { mode: 'idle', attention: 'camera', away: false } as const
 
