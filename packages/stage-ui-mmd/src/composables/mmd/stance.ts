@@ -14,7 +14,7 @@ export interface MMDStanceSlots {
 export type MMDStance = BodyIntent['stance']
 
 /** The user-interaction and action half of the director input; every host supplies it, with or without a stage world. */
-export type MMDStanceInteraction = Pick<BodyDirectorInput, 'interactionSeq' | 'chatSendSeq' | 'interactionAtMs' | 'actionRequest' | 'actionFeedback' | 'dragging'>
+export type MMDStanceInteraction = Pick<BodyDirectorInput, 'interactionSeq' | 'chatSendSeq' | 'attendUntilMs' | 'actionRequest' | 'actionFeedback' | 'dragging'>
 
 /** The world half of the director input; `NO_WORLD_BODY_INPUT` is its inert value. */
 export type MMDStanceWorld = Omit<BodyDirectorInput, 'nowMs' | 'performance' | 'cursorPoint' | 'chatPoint' | 'cameraPoint' | 'slots' | 'idle' | keyof MMDStanceInteraction>

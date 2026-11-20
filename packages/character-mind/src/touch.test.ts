@@ -76,6 +76,7 @@ describe('step: touch', () => {
       { id: '1-touch-reaction', cause: 1, channel: 'posture', kind: 'touch-reaction', gesture: 'poke', region: 'body', point: { x: 0.2, y: -0.4 } },
       { id: '1-mood', cause: 1, channel: 'posture', kind: 'mood', dose: { id: 'touch-1-poke', valence: 0, arousal: slight * 0.6, tension: 0 } },
       { id: '1-moment', cause: 1, channel: 'face', kind: 'moment', moment: 'poked' },
+      { id: '1-attend', cause: 1, channel: 'body', kind: 'attend', target: 'cursor', windowMs: 60_000 },
     ])
     expect(state.seq).toBe(1)
   })
@@ -83,10 +84,10 @@ describe('step: touch', () => {
   it('answers every touch with a touch reaction, also when the dose is paced away', () => {
     const mind = script()
 
-    expect(kinds(mind.send(T0, poke()))).toEqual(['posture/touch-reaction', 'posture/mood', 'face/moment'])
+    expect(kinds(mind.send(T0, poke()))).toEqual(['posture/touch-reaction', 'posture/mood', 'face/moment', 'body/attend'])
     // Inside the 1 s poke cooldown: no dose, but the body still reacts and the moment is still hers to mark.
-    expect(kinds(mind.send(T0 + 0.5 * SEC, poke()))).toEqual(['posture/touch-reaction', 'face/moment'])
-    expect(mind.send(T0 + 2 * SEC, petStart)).toMatchObject([{ kind: 'touch-reaction', gesture: 'pet', phase: 'start' }, { kind: 'mood' }])
+    expect(kinds(mind.send(T0 + 0.5 * SEC, poke()))).toEqual(['posture/touch-reaction', 'face/moment', 'body/attend'])
+    expect(mind.send(T0 + 2 * SEC, petStart)).toMatchObject([{ kind: 'touch-reaction', gesture: 'pet', phase: 'start' }, { kind: 'mood' }, { kind: 'attend' }])
     expect(mind.send(T0 + 3 * SEC, petEnd(1 * SEC))).toMatchObject([{ kind: 'touch-reaction', gesture: 'pet', phase: 'end' }, { kind: 'moment', moment: 'petted' }])
   })
 
@@ -117,8 +118,22 @@ describe('step: touch', () => {
     const initial = initialMindState()
     const { state, intents } = step(initial, [{ ...petStart, voice: view() }], T0, speaks)
 
-    expect(kinds(intents)).toEqual(['posture/touch-reaction', 'posture/mood'])
+    expect(kinds(intents)).toEqual(['posture/touch-reaction', 'posture/mood', 'body/attend'])
     expect(state.voice).toBe(initial.voice)
+  })
+})
+
+describe('step: touch opens the attend window', () => {
+  it('answers a poke and a pet start with one attend of 60 s, last, and a pet end with none', () => {
+    const attends = (intents: readonly MindIntent[]) => intents.filter(intent => intent.kind === 'attend')
+    const mind = script()
+
+    const poked = mind.send(T0, poke(view({ pokeTimesMs: [T0] })))
+    expect(attends(poked)).toEqual([{ id: '1-attend', cause: 1, channel: 'body', kind: 'attend', target: 'cursor', windowMs: 60_000 }])
+    // After the line, too: the attend comes after every other intent of the touch.
+    expect(kinds(poked).at(-1)).toBe('body/attend')
+    expect(attends(mind.send(T0 + 2 * SEC, petStart))).toMatchObject([{ windowMs: 60_000 }])
+    expect(attends(mind.send(T0 + 6 * SEC, petEnd(4 * SEC)))).toEqual([])
   })
 })
 
@@ -132,7 +147,7 @@ describe('step: the spoken touch reaction', () => {
     mind.pokeAt(T0 + SEC)
     const third = mind.pokeAt(T0 + 2 * SEC)
 
-    expect(third.at(-1)).toEqual({ id: '3-speak', cause: 3, channel: 'voice', kind: 'speak', turnId: `reaction:${EVENT_ID}`, line: { kind: 'reaction', reaction: 'poke-protest', eventId: EVENT_ID } })
+    expect(third.find(intent => intent.kind === 'speak')).toEqual({ id: '3-speak', cause: 3, channel: 'voice', kind: 'speak', turnId: `reaction:${EVENT_ID}`, line: { kind: 'reaction', reaction: 'poke-protest', eventId: EVENT_ID } })
     expect(mind.decision).toMatchObject({ speak: true, kind: 'poke-protest', eventId: EVENT_ID, roll: 0.1, probability: 0.8 })
     expect(mind.state.voice.reaction).toMatchObject({ sessionId: 'session-1', pokeBurstRolled: true, lastAttemptAtMs: T0 + 2 * SEC, pending: { kind: 'poke-protest', eventId: EVENT_ID } })
 
@@ -217,7 +232,7 @@ describe('step: the spoken touch reaction', () => {
 
     // The line was never sent: no refractory and no retry wait, and the burst may roll again.
     expect(mind.state.voice.reaction).toMatchObject({ lastLineAtMs: null, lastAttemptAtMs: null, pokeBurstRolled: false, pending: null })
-    expect(mind.pokeAt(T0 + 3 * SEC).at(-1)).toMatchObject({ channel: 'voice', kind: 'speak', line: { kind: 'reaction', reaction: 'poke-protest' } })
+    expect(mind.pokeAt(T0 + 3 * SEC).find(intent => intent.kind === 'speak')).toMatchObject({ channel: 'voice', kind: 'speak', line: { kind: 'reaction', reaction: 'poke-protest' } })
   })
 
   it('starts the refractory for a line that speaks after its pending attempt was dropped', () => {

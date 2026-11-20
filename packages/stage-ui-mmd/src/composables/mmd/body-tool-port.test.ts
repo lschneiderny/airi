@@ -10,7 +10,7 @@ import { CHAT_STAND_GAP_LEGS, chatStandX, MMDStanceDirector } from './stance'
 
 const idle: Pick<PerformanceState, 'mode' | 'attention' | 'away'> = { mode: 'idle', attention: 'camera', away: false }
 const EPOCH_MS = 1_000_000
-const quiet: MMDStanceInteraction = { interactionSeq: 0, chatSendSeq: 0, interactionAtMs: null, actionRequest: null, actionFeedback: null, dragging: false }
+const quiet: MMDStanceInteraction = { interactionSeq: 0, chatSendSeq: 0, attendUntilMs: null, actionRequest: null, actionFeedback: null, dragging: false }
 const unitsPerDip = 1 / 15
 const legLength = 9
 const halfWidth = 2.7

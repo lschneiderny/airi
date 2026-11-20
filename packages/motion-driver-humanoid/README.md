@@ -242,8 +242,11 @@ and looser still while she dozes.
 On a stage with a ground line, `decideBody` also owns where she goes:
 `BodyIntent.locomotion` carries the goal x, its reason (`approach-chat`,
 `approach-cursor`, `return-home`, `wander`, `tool`, `debug`, `enter-stage` or
-`stay`) and the pace. She approaches the chat when it unfolds, chases the cursor for
-`CHASE_WINDOW_MS` after a poke, pet, drag or sent message, returns home
+`stay`) and the pace. She approaches the chat when it unfolds, chases the cursor while
+`attendUntilMs` is open (the host stamps it from the character mind's `attend`
+intent, 60 s after a poke, pet start, drag or sent message; the conductor
+dispatches it only under the Natural driver, so under the classic driver the
+director gets no attend window), returns home
 `RETURN_HOME_DELAY_MS` after the last reason, and wanders in roam mode only,
 when Natural's idle draw asks for one (`input.wander`, a new `seq` per wander).
 A wander goes at least three leg lengths, or, where three legs fit on neither
@@ -298,7 +301,7 @@ the body is clear and then `playing`; the adapter echoes `actionFeedback`, and
 locomotion gate, parks the goal in progress as the pending goal, and hands the
 pending goal a fresh time to live when it ends. A poke, a drag, going away, a
 chat unfold (loops only), a sent chat message (`chatSendSeq`, loops only) or a move tool (loops only) ends it. Every host supplies
-`interactionSeq`, `chatSendSeq`, `interactionAtMs`, `actionRequest`, `actionFeedback` and
+`interactionSeq`, `chatSendSeq`, `attendUntilMs`, `actionRequest`, `actionFeedback` and
 `dragging`, with or without a stage world; `NO_WORLD_BODY_INPUT` no longer
 defaults them.
 

@@ -60,6 +60,10 @@ function fakeScene() {
   }
 }
 
+function attendingScene() {
+  return { ...fakeScene(), attend: vi.fn<NonNullable<StagePerformanceScene['attend']>>() }
+}
+
 function createConductor(driver: StagePerformanceDriver, scene: StagePerformanceScene = fakeScene(), settings: ExpressionPerformanceSettings = defaultExpressionPerformanceSettings, profile?: PerformanceProfile, entries: readonly CatalogEntry[] = catalog, touch: Pick<StagePerformanceConductorOptions, 'markMoment' | 'voice' | 'idleReports'> & { mindSeed?: number } = {}) {
   let now = 10
   // The mind counts the conductor's seconds as milliseconds, so both read 10 s at the start.
@@ -711,6 +715,33 @@ describe('stage performance conductor', () => {
       basic.conductor.cursor([{ requestId: 1, band: 'near', opportunity: 'appeared' }])
       expect(basic.scene.cursorEpisode).not.toHaveBeenCalled()
       expect(mind.state.seq).toBe(steps + 2)
+    })
+
+    it('sends the attend of a drag release and a sent chat message to the scene under Natural only', () => {
+      const attended = (['natural', 'basic'] as const).map((driver) => {
+        const scene = attendingScene()
+        const { conductor, mind } = createConductor(driver, scene)
+        const steps: string[] = []
+        mind.onStep(step => steps.push(step.stimuli.map(stimulus => stimulus.kind === 'interaction' ? stimulus.source : stimulus.kind).join(',')))
+        conductor.interaction('drag')
+        conductor.interaction('chat-send')
+        return [driver, steps, scene.attend.mock.calls.map(([intent]) => [intent.kind, intent.windowMs])]
+      })
+
+      expect(attended).toEqual([
+        ['natural', ['drag', 'chat-send'], [['attend', 60_000], ['attend', 60_000]]],
+        ['basic', ['drag', 'chat-send'], []],
+      ])
+    })
+
+    it('sends the attend of a poke to the scene after the touch reaction', () => {
+      const scene = attendingScene()
+      const { conductor } = createConductor('natural', scene)
+
+      conductor.touch({ gesture: 'poke', region: 'head', point: { x: 0, y: 0 } })
+
+      expect(scene.attend.mock.calls).toEqual([[{ id: '1-attend', cause: 1, channel: 'body', kind: 'attend', target: 'cursor', windowMs: 60_000 }]])
+      expect(scene.reactToTouch.mock.invocationCallOrder[0]).toBeLessThan(scene.attend.mock.invocationCallOrder[0])
     })
 
     it('hands idle reports to the mind under Natural, the dormant view once it leaves, and the latest view again on return', () => {
