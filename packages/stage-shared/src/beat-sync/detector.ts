@@ -9,7 +9,7 @@ import { defineInvoke, defineInvokeHandler } from '@moeru/eventa'
 import { startAnalyser as startTemporaAnalyser } from '@nekopaw/tempora'
 import { setupElectronScreenCapture } from '@proj-airi/electron-screen-capture/renderer'
 
-import { isStageTamagotchi, isStageWeb, StageEnvironment } from '../environment'
+import { isStageTamagotchi, StageEnvironment } from '../environment'
 import { isElectronWindow } from '../window'
 import {
   beatSyncBeatSignaledInvokeEventa,
@@ -40,9 +40,9 @@ export interface BeatSyncDetector {
   readonly source: AudioNode | undefined
 }
 
-export type CreateBeatSyncDetectorOptions
-  = | { env: StageEnvironment.Tamagotchi }
-    | { env: StageEnvironment.Web }
+export interface CreateBeatSyncDetectorOptions {
+  env: StageEnvironment.Tamagotchi
+}
 
 export function createBeatSyncDetector(options: CreateBeatSyncDetectorOptions): BeatSyncDetector {
   let context: AudioContext | undefined
@@ -126,37 +126,6 @@ export function createBeatSyncDetector(options: CreateBeatSyncDetectorOptions): 
 
   const startScreenCapture = async () => start(async (ctx) => {
     switch (options.env) {
-      case StageEnvironment.Web: {
-        const stream = await navigator.mediaDevices.getDisplayMedia({
-          audio: {
-            echoCancellation: false,
-            noiseSuppression: false,
-            autoGainControl: false,
-          },
-          video: true,
-        })
-
-        if (stream.getAudioTracks().length === 0) {
-          throw new Error('No audio track available in the stream')
-        }
-
-        stream.getAudioTracks().forEach((track) => {
-          let stopCalled = false
-          track.addEventListener('ended', () => {
-            if (stopCalled)
-              return
-            stopCalled = true
-            stop()
-          })
-        })
-
-        const node = ctx.createMediaStreamSource(stream)
-        stopSource = () => {
-          stream.getTracks().forEach(track => track.stop())
-        }
-
-        return node
-      }
       case StageEnvironment.Tamagotchi: {
         if (!isElectronWindow(window)) {
           throw new Error(`Electron window is required for this environment: ${options.env}`)
@@ -239,17 +208,6 @@ export function createBeatSyncDetector(options: CreateBeatSyncDetectorOptions): 
   }
 }
 
-let detector: BeatSyncDetector | undefined
-function getDetector() {
-  if (!isStageWeb())
-    throw new Error('getDetector() is only available in Stage Web environment')
-
-  if (!detector)
-    detector = createBeatSyncDetector({ env: StageEnvironment.Web })
-
-  return detector
-}
-
 let context: ReturnType<typeof createContext> | undefined
 
 function getContext() {
@@ -261,19 +219,10 @@ function getContext() {
 
 /** Returns whether the current Stage runtime can capture audio for Beat Sync. */
 export function isBeatSyncSupported() {
-  return isStageWeb() || isStageTamagotchi()
+  return isStageTamagotchi()
 }
 
 export function toggleBeatSync(enabled: boolean) {
-  if (isStageWeb()) {
-    if (enabled) {
-      return getDetector().startScreenCapture()
-    }
-    else {
-      return getDetector().stop()
-    }
-  }
-
   if (isStageTamagotchi()) {
     const toggleFn = defineInvoke(getContext(), beatSyncToggleInvokeEventa)
     return toggleFn(enabled)
@@ -283,10 +232,6 @@ export function toggleBeatSync(enabled: boolean) {
 }
 
 export async function getBeatSyncState() {
-  if (isStageWeb()) {
-    return getDetector().state
-  }
-
   if (isStageTamagotchi()) {
     return defineInvoke(getContext(), beatSyncGetStateInvokeEventa)()
   }
@@ -295,10 +240,6 @@ export async function getBeatSyncState() {
 }
 
 export function updateBeatSyncParameters(params: Partial<AnalyserWorkletParameters>) {
-  if (isStageWeb()) {
-    return getDetector().updateParameters(params)
-  }
-
   if (isStageTamagotchi()) {
     return defineInvoke(getContext(), beatSyncUpdateParametersInvokeEventa)(params)
   }
@@ -307,10 +248,6 @@ export function updateBeatSyncParameters(params: Partial<AnalyserWorkletParamete
 }
 
 export function listenBeatSyncStateChange(listener: (state: BeatSyncDetectorState) => void) {
-  if (isStageWeb()) {
-    return getDetector().on('stateChange', listener)
-  }
-
   if (isStageTamagotchi()) {
     return defineInvokeHandler(getContext(), beatSyncStateChangedInvokeEventa, listener)
   }
@@ -319,10 +256,6 @@ export function listenBeatSyncStateChange(listener: (state: BeatSyncDetectorStat
 }
 
 export function listenBeatSyncBeatSignal(listener: (e: AnalyserBeatEvent) => void) {
-  if (isStageWeb()) {
-    return getDetector().on('beat', listener)
-  }
-
   if (isStageTamagotchi()) {
     return defineInvokeHandler(getContext(), beatSyncBeatSignaledInvokeEventa, listener)
   }
@@ -331,10 +264,6 @@ export function listenBeatSyncBeatSignal(listener: (e: AnalyserBeatEvent) => voi
 }
 
 export async function getBeatSyncInputByteFrequencyData() {
-  if (isStageWeb()) {
-    return getDetector().getInputByteFrequencyData()
-  }
-
   if (isStageTamagotchi()) {
     return defineInvoke(getContext(), beatSyncGetInputByteFrequencyDataInvokeEventa)()
   }

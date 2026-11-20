@@ -38,7 +38,7 @@ import type { NaturalCaptureRequest } from '../../../stores'
 import { errorMessageFrom } from '@moeru/std'
 import { Point } from '@pixi/math'
 import { NaturalTouchGestures } from '@proj-airi/motion-driver-natural/touch-gestures'
-import { listenBeatSyncBeatSignal } from '@proj-airi/stage-shared/beat-sync'
+import { isBeatSyncSupported, listenBeatSyncBeatSignal } from '@proj-airi/stage-shared/beat-sync'
 import { defaultExpressionPerformanceSettings, idleActivityEntries } from '@proj-airi/stage-shared/expression-performance'
 import { ambientLightDefaults, ambientLightNeutralEnvironment, ambientLightPerceptualLevel, wholeWindowRectangle } from '@proj-airi/stage-shared/screen-ambient-light'
 import { screenInwardness } from '@proj-airi/stage-shared/stage-placement'
@@ -1855,6 +1855,9 @@ function focusBiasTarget(): Live2DFocusTarget | undefined {
 }
 
 onMounted(() => {
+  if (!isBeatSyncSupported())
+    return
+
   const removeListener = listenBeatSyncBeatSignal(() => beatSync.scheduleBeat())
   onUnmounted(() => removeListener())
 })
