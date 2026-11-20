@@ -949,9 +949,25 @@ describe('stage performance routing on MMD', () => {
   /** The host of the last {@link renderMMD} call. */
   let mmdHost = null as ComponentInternalInstance | null
 
+  /**
+   * Selects a display-model id that no Live2D test loads, then shows the MMD renderer.
+   *
+   * The Live2D and MMD OPFS caches keep one top-level directory per display-model id, and the MMD cache
+   * removes a directory whose metadata it did not write. With a Live2D preset id selected, the MMD scene
+   * would remove the Live2D cache directory while a Live2D load of an earlier test still reads its textures,
+   * which fails that load with unhandled "Texture loading error" rejections.
+   */
+  async function showMMDRenderer() {
+    const stageModel = useSettingsStageModel()
+    stageModel.stageModelSelected = 'mmd-routing-test'
+    // The load publishes the renderer of the selected model, so it finishes before the test sets MMD.
+    await stageModel.updateStageModel()
+    stageModel.setStageModelRenderer('mmd')
+  }
+
   async function renderMMD(component: Component = Stage, props: Record<string, unknown> = {}) {
     const pinia = createTestPinia()
-    useSettingsStageModel().setStageModelRenderer('mmd')
+    await showMMDRenderer()
     useMMD().motionDriver = 'natural'
     mmdHost = null
     render(defineComponent({
@@ -1083,7 +1099,7 @@ describe('stage performance routing on MMD', () => {
     const sessions = useChatSessionStore()
     await sessions.initialize()
     // The card store shows the avatar model of the active card when it initializes, so the stage returns to MMD here.
-    useSettingsStageModel().setStageModelRenderer('mmd')
+    await showMMDRenderer()
     const scene = await mountedMMDScene()
     const sessionId = sessions.activeSessionId
     onTestFinished(() => sessions.deleteSession(sessionId))
