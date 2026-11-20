@@ -30,6 +30,9 @@ const intents = mind.receive({ kind: 'emotion', source: 'act', emotion: 'happy',
 | `user-turn` | None. `recordUrgeUserTurn`: unanswered openings become damping, and an armed double text clears. |
 | `presence` | One response, in the order posture, face, voice. A desktop wake: `posture` `desktop-reaction` `wake` and `voice` `observe-wake`. A return: `posture` `wake` (unless the wake reaction already rouses her), `face` `moment` `welcome-back`, and `voice` `observe-return`. Away turning true opens the span and yields nothing. |
 | `screen-change` | `posture`: `desktop-reaction` `screen-change`, unless one was stamped less than `SCREEN_CHANGE_REFRACTORY_MS` (10 s) ago or a desktop wake is in the same `step` call. |
+| `idle` | `posture`: `idle-act` or `idle-errand` when the idle schedule decides at the current time after the reports are applied (see below). |
+| `idle-wake` | Nothing of its own. Like every stimulus, it first brings the idle clock up to `nowMs`, which can yield `posture` `idle-act` or `idle-errand`. |
+| `idle-play` | `posture`: `idle-act` with `requested: true`, at once. |
 
 A scene reports a touch as a `TouchReport`: a poke with its region and a point relative to that region, a pet start, or a pet end with its duration. The `touch` stimulus adds the settings and a `TouchVoiceView`, which is what the voice channel shows of the touch the situation just recorded. Without a view (a pet start, a follower window, no running gate) the mind decides no line and leaves its voice state untouched. The caller runs a `speak` intent and returns what became of it as a `voice-outcome` with the intent's `turnId`.
 
@@ -38,6 +41,16 @@ A scene reports a touch as a `TouchReport`: a poke with its region and a point r
 `voice.ts` decides when she speaks unasked: spoken touch reactions and reach-outs of the urge gate. The gate's rules stay in `@proj-airi/stage-shared/situation`; the mind composes them on its own clock and source. The store builds a `VoiceView` for every tick and keeps the user's slice of the gate memory: the mind publishes its gate memory, and the store carries that slice in `VoiceRun.user` and saves it. After each answer that changes the gate memory, the core sets `slow.pacing` to `pacingMemoryOf(gate)` when a field differs and keeps the object otherwise, so the host can tell a change by identity; a null pacing stays null while the gate holds none. A touch line and a reach-out share one line slot, `MindVoiceState.line`, because chat runs one unprompted turn at a time. While it holds a line the gate skips; a touch line decided while a reach-out holds the slot leaves the slot alone, and chat refuses it.
 
 Widget and plugin turns arrive as `voice-request` stimuli and wait in `MindVoiceState.requests`, oldest first. A request starts only when nobody is busy: `userSpeaking` is not `false`, `userTyping`, `characterSpeaking`, `generating`, `queued > 0`, `unpromptedPending`, or an open line all hold it. The gate's hard holds and settings do not apply. Then the mind yields `speak` with a `widget` line and opens the line with `speakBy`. At each tick and request the deadlines come first: a request still waiting at `startBy` (`WIDGET_START_WAIT_MS`, 20 s, after the request) yields `drop`, and a widget line still open at `speakBy` (the caller's `timeoutMs` less `WIDGET_DEADLINE_MARGIN_MS`) yields `cancel` and closes. A waiting request goes before a reach-out: the gate skips while one waits, and the waiting topics are the only topics held from the gate (`UrgeGateInput.heldTopics`). `nextVoiceWakeAt(voice)` returns the earliest deadline; `MindVoice` in `stage-ui` publishes it as `wakeAtMs` after each step, and the situation store ticks the mind then.
+
+### The idle policy
+
+`idle.ts` decides when she starts an idle act or an idle errand, which one, when she falls asleep while the user is away, and the stretch or yawn after a long sleep. The rules stay in `@proj-airi/motion-driver-natural/idle-schedule`, the package's one runtime dependency besides `stage-shared`; the mind imports only `/idle-schedule` and `/idle-errands`, and types from `/idle-activities`. Natural's performer sends `IdleReport`s in an `idle` stimulus: its `view` (drive, mode, away, blocked, settled, what runs), and the edges `started`, `ended`, `refused`, `errand-started`, and `errand-ended`. `MindState.idle` keeps the view, the schedule, and `activeSeconds`, the mind's clock counted only while the view is `active`.
+
+- Before every stimulus the idle clock catches up to `nowMs` and the schedule runs in pieces that end at its deadlines, so a hazard crossing lands exactly on its deadline and each decision is taken at its own time. `nextIdleWakeAt(idle)` returns the next deadline in epoch milliseconds, or null while no active view reports, while nothing is due, or while an intent waits. The host arms one timer at it and sends `idle-wake`.
+- A decided intent waits in `pending` until the performer reports it `started` (or `errand-started`) or `refused`; no other decision is taken meanwhile. A refusal spends the fire.
+- A view with no drive is dormant: it clears the follow-up, the away run, and `pending`, and the policy decides nothing.
+- Each act carries a 32-bit `seed`, drawn after the decision's own draws, from which the performer draws its shape.
+- The policy draws from its own stream, `MindIdleState.random`, seeded by one draw of `rng` at the first `idle` or `idle-play` stimulus. The idle draws therefore do not depend on how often the other channels draw.
 
 ### Return and desktop events
 
@@ -49,7 +62,7 @@ The mind decides the emotion, its strength, its hold, and the reason. It reads n
 
 Every stimulus advances `MindState.seq`. An intent's `cause` is the sequence number of the stimulus it answers, and its `id` is unique within one mind.
 
-Every draw comes from `rng`, in the order of the stimuli: one for the jitter of each new emotion episode, one for each spoken touch reaction that reaches its roll, one for the threshold of a gate run restored by promotion, and five for each gate fire (and a `no-topic` hold). A refused fire keeps its draws spent. `MindState` holds no random source, so a replay needs the same state and the same draws.
+Every draw comes from `rng`, in the order of the stimuli: one for the jitter of each new emotion episode, one for each spoken touch reaction that reaches its roll, one for the threshold of a gate run restored by promotion, five for each gate fire (and a `no-topic` hold), and one that seeds the idle stream. A refused fire keeps its draws spent. `MindState` holds no random source, so a replay needs the same state and the same draws.
 
 `nowMs` reaches `reactionPolicy` as milliseconds and `touchAffect` and `acceptReaction` as seconds (`nowMs / 1000`). Everything in `MindState` but `slow` is fast state: it is not saved, so the pacing of touch doses and spoken reactions, the urge, and its threshold start over with every mind and every reset.
 
@@ -62,10 +75,11 @@ pnpm -F @proj-airi/character-mind typecheck
 
 ## When to use
 
-Use this package for a decision about what the character does at event rate: which emotion episode starts, how strong it is, and how long it is held, how she answers a pet or a poke with her body, her mood, and her voice, and how she answers the user's return and desktop events, and when the urge gate lets her reach out. Drive the core from tests with scripted stimuli and a seeded random source.
+Use this package for a decision about what the character does at event rate: which emotion episode starts, how strong it is, and how long it is held, how she answers a pet or a poke with her body, her mood, and her voice, how she answers the user's return and desktop events, when the urge gate lets her reach out, and when she starts an idle act or errand or falls asleep. Drive the core from tests with scripted stimuli and a seeded random source.
 
 ## When not to use
 
 - Keep per-frame control (fixation, springs, blending) and the choice of a model's assets in the performers and their packages.
+- Keep the shape, interruption, settling, and cue acceptance of idle acts in Natural; the mind only decides which act starts and when. Do not import Natural's performer: only its pure idle subpaths.
 - Do not import Vue, Pinia, a store, or a renderer here, and do not read a clock or a global random source outside `mind.ts`. The `airi/character-mind-pure` lint blocks enforce both.
 - Put a pure rule that the asset deciders also use in `@proj-airi/stage-shared`; the mind composes it from there.

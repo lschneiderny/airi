@@ -2396,6 +2396,9 @@ importers:
 
   packages/character-mind:
     dependencies:
+      '@proj-airi/motion-driver-natural':
+        specifier: workspace:^
+        version: link:../motion-driver-natural
       '@proj-airi/stage-shared':
         specifier: workspace:^
         version: link:../stage-shared

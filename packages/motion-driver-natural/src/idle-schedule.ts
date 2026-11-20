@@ -1,5 +1,5 @@
 import type { DrawnIdleActivityKind, IdleActivityKind, IdleBehaviourKind, NaturalIdleDrive } from './idle-activities'
-import type { IdleErrandKind } from './idle-errands'
+import type { IdleErrandKind, IdleErrandOutcome } from './idle-errands'
 import type { RandomStream } from './random'
 
 import { IDLE_ERRAND_KINDS, IDLE_ERRAND_PACING, PASTIME_HOLD_SECONDS } from './idle-errands'
@@ -166,6 +166,24 @@ export type IdleEdge
     | { kind: 'ended', act: IdleBehaviourKind, how: 'finished' | 'released' | 'woken' | 'woken-on-request', sleptSeconds: number | null }
     | { kind: 'errand-started', errand: IdleErrandKind }
     | { kind: 'errand-ended', errand: IdleErrandKind }
+
+/**
+ * What the performer tells the schedule's owner, in the order it happened. `started` and `errand-started` name the
+ * order that caused them, or null for a behavior the performer started itself (a cue). `refused` answers an order the
+ * performer could not start when it arrived.
+ */
+export type IdleReport
+  = | { kind: 'view', view: IdleView }
+    | { kind: 'started', intentId: string | null, seq: number, act: IdleBehaviourKind }
+    | { kind: 'ended', seq: number, act: IdleBehaviourKind, how: 'finished' | 'released' | 'woken' | 'woken-on-request' }
+    | { kind: 'refused', intentId: string }
+    | { kind: 'errand-started', intentId: string, seq: number, errand: IdleErrandKind }
+    | { kind: 'errand-ended', seq: number, errand: IdleErrandKind, outcome: IdleErrandOutcome }
+
+/** What the performer is told to start. An act's shape is drawn from `seed`; `requested` marks a play asked for by the user or a lab. */
+export type IdleOrder
+  = | { id: string, kind: 'act', act: IdleBehaviourKind, seed: number, requested: boolean }
+    | { id: string, kind: 'errand', errand: IdleErrandKind, pick: number, holdSeconds: number | null }
 
 export function initialIdleSchedule(): IdleScheduleState {
   return { threshold: null, urge: 0, restUntil: 0, awaySince: null, sleepAfter: 0, followUp: null, lastStart: {}, lastDrawn: null, errandStarts: {}, errandEnds: {}, errandListedSince: {} }
