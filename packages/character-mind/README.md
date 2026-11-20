@@ -33,6 +33,7 @@ const intents = mind.receive({ kind: 'emotion', source: 'act', emotion: 'happy',
 | `idle` | `posture`: `idle-act` or `idle-errand` when the idle schedule decides at the current time after the reports are applied (see below). |
 | `idle-wake` | Nothing of its own. Like every stimulus, it first brings the idle clock up to `nowMs`, which can yield `posture` `idle-act` or `idle-errand`. |
 | `idle-play` | `posture`: `idle-act` with `requested: true`, at once. |
+| `music` | None, and no draw. It sets `MindState.music.playing`, fast state that a reset clears. While it is true the idle schedule may draw the groove, the `sway` act (`IdleContext` `music`). Like every stimulus, it first brings the idle clock up to `nowMs` under the old value. A `music` stimulus before the first `idle` report leaves the idle stream's seed unchanged. |
 
 A scene reports a touch as a `TouchReport`: a poke with its region and a point relative to that region, a pet start, or a pet end with its duration. The `touch` stimulus adds the settings and a `TouchVoiceView`, which is what the voice channel shows of the touch the situation just recorded. Without a view (a pet start, a follower window, no running gate) the mind decides no line and leaves its voice state untouched. The caller runs a `speak` intent and returns what became of it as a `voice-outcome` with the intent's `turnId`.
 

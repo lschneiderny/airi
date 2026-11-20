@@ -405,7 +405,7 @@ class FakePerformer {
  * Runs a mind and a fake performer from `T0` for `seconds`: the mind wakes at each `nextIdleWakeAt`, the performer
  * ends what is due, and every report returns to the mind at once.
  */
-function simulate(options: { seed: number, view?: Partial<IdleView>, seconds: number, answer?: 'done' | 'refused' }) {
+function simulate(options: { seed: number, view?: Partial<IdleView>, seconds: number, answer?: 'done' | 'refused', music?: boolean }) {
   const mind = script(options.seed)
   const performer = new FakePerformer(idleView(options.view), T0, options.answer)
   const intents: MindIntent[] = []
@@ -421,6 +421,8 @@ function simulate(options: { seed: number, view?: Partial<IdleView>, seconds: nu
       }
     }
   }
+  if (options.music)
+    mind.send(T0, { kind: 'music', playing: true })
   deliver([{ kind: 'view', view: idleView(options.view) }], T0)
   for (;;) {
     const candidates = [mind.wakeAt, performer.nextEndMs].filter((at): at is number => at !== null)
@@ -667,4 +669,24 @@ describe('idle errands with a performer', () => {
     const { intents } = simulate({ seed: 5, view: { drive: { ...drive, body: true } }, seconds: 4 * 3600 })
     expect(intents.filter(intent => intent.kind === 'idle-errand')).toEqual([])
   })
+})
+
+describe('the groove', () => {
+  it('is drawn only while the mind hears music', () => {
+    const kinds = (music: boolean) => simulate({ seed: 7, seconds: 3600, music }).performer.started.map(start => start.act)
+    expect(kinds(false)).not.toContain('sway')
+    expect(kinds(true)).toContain('sway')
+  })
+
+  it('starts at the long-run rate measured when music became a stimulus of the mind', () => {
+    // Measured at CM5a's item 4 over 1000 hours (seeds 1 to 4, 250 hours each) with music on: 14.199 grooves and
+    // 56.866 acts per hour. Music adds the groove to the pick and changes no rate.
+    const perHour = 14.2
+    const hours = 40
+    const { performer } = simulate({ seed: 9, seconds: hours * 3600, music: true })
+    const rate = performer.started.filter(start => start.act === 'sway').length / hours
+    // Starts are a renewal count over `hours`, so four Poisson standard deviations bound the difference.
+    const bound = 4 * Math.sqrt(perHour * hours) / hours
+    expect(Math.abs(rate - perHour), `${rate.toFixed(2)} grooves per hour now, ${perHour} measured`).toBeLessThan(bound)
+  }, 30_000)
 })

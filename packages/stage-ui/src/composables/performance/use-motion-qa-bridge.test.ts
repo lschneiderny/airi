@@ -260,6 +260,7 @@ describe('useMotionQaBridge', () => {
         voiceReason: null,
         lines: null,
         cues: null,
+        music: null,
       },
       {
         kind: 'mind',
@@ -276,6 +277,7 @@ describe('useMotionQaBridge', () => {
         voiceReason: 'poke-count',
         lines: null,
         cues: null,
+        music: null,
       },
       expect.objectContaining({ gesture: 'poke', voice: 'hold', voiceReason: 'poke-count' }),
       {
@@ -294,8 +296,9 @@ describe('useMotionQaBridge', () => {
         voiceReason: null,
         lines: 'reaction',
         cues: null,
+        music: null,
       },
-      { kind: 'mind', stimulus: 'voice-outcome', gesture: null, outcome: 'spoken', intents: [], voice: null, voiceLine: null, voiceReason: null, lines: null, cues: null },
+      { kind: 'mind', stimulus: 'voice-outcome', gesture: null, outcome: 'spoken', intents: [], voice: null, voiceLine: null, voiceReason: null, lines: null, cues: null, music: null },
     ])
     // Neither the poke's point nor the situation's event and session ids leave the window.
     expect(JSON.stringify(reply)).not.toMatch(/touch-event|session-1|-0\.4/)
@@ -314,6 +317,18 @@ describe('useMotionQaBridge', () => {
       { kind: 'idle', phase: 'start', behaviour: 'sleep', intents: undefined },
       expect.objectContaining({ kind: 'mind', stimulus: 'presence', away: false, wake: 'unlock' }),
       { kind: 'idle', phase: 'end', behaviour: 'sleep', intents: undefined },
+    ])
+  })
+
+  it('records a music step with the edge it carries', async () => {
+    mind.receive({ kind: 'music', playing: true })
+    mindNowMs += 10_000
+    mind.receive({ kind: 'music', playing: false })
+
+    const reply = await dispatch({ name: 'events', input: {} }) as { result: { events: { kind: string, payload: Record<string, unknown> }[] } }
+    expect(reply.result.events.map(({ kind, payload }) => ({ kind, stimulus: payload.stimulus, intents: payload.intents, music: payload.music }))).toEqual([
+      { kind: 'mind', stimulus: 'music', intents: '[]', music: true },
+      { kind: 'mind', stimulus: 'music', intents: '[]', music: false },
     ])
   })
 

@@ -81,6 +81,8 @@ describe('motion3d scenario timelines', () => {
     const detail = idleDriveDetail(scenario.idleDrive)
     expect(detail.idleDrive).toBe('qa-neutral-day-music')
     expect(JSON.parse(detail.idleDriveValues)).toEqual({ ...QA_IDLE_DRIVE, music: true })
+    // The runner tells the character mind music plays; no other scenario does.
+    expect(motion3dScenarios.filter(scenario => scenario.music).map(scenario => scenario.id)).toEqual(['music'])
   })
 
   it.each([1, 2, 3])('speaks version 2 for seed %i: fifteen peaks at least 0.9 s apart, three energies and one chat reply', (seed) => {

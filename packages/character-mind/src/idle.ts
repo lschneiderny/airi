@@ -1,4 +1,4 @@
-import type { IdleDecision, IdleOrder, IdleScheduleState, IdleView } from '@proj-airi/motion-driver-natural/idle-schedule'
+import type { IdleContext, IdleDecision, IdleOrder, IdleScheduleState, IdleView } from '@proj-airi/motion-driver-natural/idle-schedule'
 
 import type { MindIdleIntent, MindIdleState, MindIntent, MindRandom, MindState, MindStimulus } from './types'
 
@@ -49,12 +49,12 @@ function drawSeed(random: MindRandom) {
  * of its deadline, because the schedule's due checks (rest, cooldowns, refractories) read the start of the span it is
  * given: deciding at the start of a longer piece would make the pick depend on how the time was split.
  */
-function runSchedule(schedule: IdleScheduleState, view: IdleView, from: number, to: number, stream: IdleStream): { schedule: IdleScheduleState, decision: IdleDecision | null, at: number } {
+function runSchedule(schedule: IdleScheduleState, view: IdleView, context: IdleContext, from: number, to: number, stream: IdleStream): { schedule: IdleScheduleState, decision: IdleDecision | null, at: number } {
   const random = stream.random
   let at = from
   // A zero span at the start applies what a new view changes (the away run, the errand listing, a dormant drive) and
   // draws a threshold that is due, so the deadlines below read the current course.
-  const opened = advanceIdleSchedule(schedule, view, at, 0, random)
+  const opened = advanceIdleSchedule(schedule, view, context, at, 0, random)
   schedule = opened.state
   if (opened.decision)
     return { schedule, decision: opened.decision, at }
@@ -65,7 +65,7 @@ function runSchedule(schedule: IdleScheduleState, view: IdleView, from: number, 
     const end = reaches ? Math.max(at, deadline) : to
     if (end > at) {
       const checkpoint = stream.checkpoint()
-      const advanced = advanceIdleSchedule(schedule, view, at, end - at, random)
+      const advanced = advanceIdleSchedule(schedule, view, context, at, end - at, random)
       if (advanced.decision) {
         // The urge crossed at `end`, the earliest deadline: take the decision there instead, with the draws undone.
         stream.restore(checkpoint)
@@ -83,19 +83,24 @@ function runSchedule(schedule: IdleScheduleState, view: IdleView, from: number, 
     const shortfall = schedule.threshold === null ? 0 : schedule.threshold - schedule.urge
     if (shortfall > 0 && shortfall <= CROSSING_SLACK * Math.max(1, schedule.threshold!))
       schedule = { ...schedule, urge: schedule.threshold! }
-    const checked = advanceIdleSchedule(schedule, view, at, 0, random)
+    const checked = advanceIdleSchedule(schedule, view, context, at, 0, random)
     schedule = checked.state
     if (checked.decision)
       return { schedule, decision: checked.decision, at }
   }
 }
 
+/** What the schedule reads of the rest of the mind. */
+function idleContextOf(state: MindState): IdleContext {
+  return { music: state.music.playing }
+}
+
 /** Brings the schedule up to `idle.activeSeconds` and turns a decision into an intent with its seed. */
-function decide(idle: MindIdleState, from: number, id: string, cause: number): { idle: MindIdleState, intents: MindIntent[] } {
+function decide(idle: MindIdleState, context: IdleContext, from: number, id: string, cause: number): { idle: MindIdleState, intents: MindIntent[] } {
   if (idle.view === null || !idle.view.active || idle.random === null || idle.pending !== null)
     return { idle, intents: [] }
   const stream = idleStream(idle.random)
-  const { schedule, decision, at } = runSchedule(idle.schedule, idle.view, from, idle.activeSeconds, stream)
+  const { schedule, decision, at } = runSchedule(idle.schedule, idle.view, context, from, idle.activeSeconds, stream)
   let intent: MindIntent | null = null
   // The seed is drawn after the decision's own draws.
   if (decision?.kind === 'act')
@@ -121,7 +126,7 @@ export function advanceIdle(state: MindState, cause: number, nowMs: number): Ans
   const advanced = { ...idle, atMs: nowMs, activeSeconds: from + span }
   if (span === 0 && idle.atMs === nowMs)
     return { state, intents: [] }
-  const { idle: next, intents } = decide(advanced, from, `${cause}-idle-due`, cause)
+  const { idle: next, intents } = decide(advanced, idleContextOf(state), from, `${cause}-idle-due`, cause)
   return { state: { ...state, idle: next }, intents }
 }
 
@@ -176,7 +181,7 @@ export function answerIdle(state: MindState, stimulus: Stimulus<'idle'>, cause: 
     }
   }
   idle = { ...idle, view, schedule, pending, started, random: stream.checkpoint() }
-  const decided = decide(idle, at, `${cause}-idle`, cause)
+  const decided = decide(idle, idleContextOf(state), at, `${cause}-idle`, cause)
   return { state: { ...state, idle: decided.idle }, intents: decided.intents }
 }
 

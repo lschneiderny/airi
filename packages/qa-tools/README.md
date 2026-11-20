@@ -84,8 +84,11 @@ that `gesture-timing`, `ownership` and the gate's idle class score.
 
 `music` (CM5 of the character mind roadmap, idle class, version 1) is the `idle`
 timeline with the QA idle drive `qa-neutral-day-music`: `qa-neutral-day`'s values
-with `music: true`, so the character mind may draw her groove (the `sway` act).
-It defaults to 60 s and accepts up to 600 s; a sway is rare, so run it at 600 s
+with `music: true`. The scenario also sets `music`, so the runner sends its
+character mind `{ kind: 'music', playing: true }` before the first frame and
+records `music: true` in the trace source detail; the mind may then draw her
+groove (the `sway` act). The stimulus draws nothing, so the idle stream's seed
+does not move. It defaults to 60 s and accepts up to 600 s; a sway is rare, so run it at 600 s
 and check for an `idle:sway:start` marker.
 
 `emotions` defaults to 120 s: six clear pulses and two placebos, spaced 12 s

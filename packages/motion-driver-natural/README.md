@@ -115,13 +115,15 @@ const { seq, behaviour } = motion.idleState
   suspended, and with no drive. Each act's shape comes from
   `createRandomStream(order.seed)`; the layer's own `stream('idle')` draws
   only the cues' shapes.
-- `./idle-schedule` holds the idle schedule as pure rules over plain JSON state,
-  in active seconds, with every draw passed in: when an act or an errand
-  starts and which one, the rest after each behaviour, the sleep delay while
-  the user is away, and the stretch or yawn after a long sleep. The performer
-  tells it what it saw: `IdleView` once per step and an `IdleEdge` for each
-  start and end. `advanceIdleSchedule` runs a span of time and returns at most
-  one `IdleDecision`; `applyIdleEdge` applies an edge; `nextIdleDeadline`
+- `./idle-schedule` holds the idle schedule as pure rules over plain JSON
+  state, in active seconds, with every draw passed in: when an act or an
+  errand starts and which one, the rest after each behaviour, the sleep delay
+  while the user is away, and the stretch or yawn after a long sleep. The
+  performer tells it what it saw: `IdleView` once per step and an `IdleEdge`
+  for each start and end. `advanceIdleSchedule` runs a span of time and
+  returns at most one `IdleDecision`; its `IdleContext` carries what the mind
+  adds to the view, whether it hears `music`, which alone lets the pick weigh
+  `sway` (the groove); `applyIdleEdge` applies an edge; `nextIdleDeadline`
   names the earliest time the schedule could decide, the hazard's crossing
   included. The mind runs the schedule on its own clock and stream; Natural
   only reports what it saw and performs the orders. The lint block

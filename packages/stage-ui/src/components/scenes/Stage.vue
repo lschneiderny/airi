@@ -81,7 +81,6 @@ import { useSituationStore } from '../../stores/situation'
 import { useSpeechOutputControlStore } from '../../stores/speech-output-control'
 import { useVoiceStore } from '../../stores/voice'
 import { chatActivityFrom } from './chat-activity'
-import { initialMusicMemory, resolveMusic } from './idle-music'
 
 const props = withDefaults(defineProps<{
   cursorPosition?: { x: number, y: number }
@@ -333,22 +332,7 @@ const performanceRenderer = computed(() => selectStagePerformanceRenderer(stageM
   driver: mmdMotionDriver.value === 'natural' ? 'natural' : 'basic',
   expressionBackend: mmdExpressionBackend,
 }))
-// Read once a second by the conductor for the idle drive; the stretch of audio lives in the memory between reads.
-let musicMemory = initialMusicMemory
-let musicNow = false
-const desktopActivityStore = useDesktopActivityStore()
 const situationStore = useSituationStore()
-function musicPlaying() {
-  const resolved = resolveMusic({
-    nowMs: Date.now(),
-    systemAudioLevel: desktopActivityStore.snapshot?.systemAudioLevel ?? null,
-    category: situationStore.foregroundCategory,
-    speaking: nowSpeaking.value,
-  }, musicMemory)
-  musicMemory = resolved.memory
-  musicNow = resolved.music
-  return resolved.music
-}
 // Read only, never written from the stage. After a card switch the replicated reading still belongs to the previous
 // card until the leader publishes the new one, so it counts as no reading.
 function characterReading() {
@@ -372,7 +356,6 @@ const { conductor: performanceConductor, settings: performanceSettings } = useSt
   mood: () => stageModelRenderer.value === 'mmd' ? mmdSceneRef.value?.getMood() ?? null : live2dSceneRef.value?.getMood() ?? null,
   profile: performanceProfileOf,
   characterReading,
-  music: musicPlaying,
   mind: characterMind,
   markMoment,
   // Each scene classifies touches only under its Natural driver and reports them to `performanceConductor.touch`.
@@ -623,7 +606,7 @@ function resolvePerformance(): PerformanceState {
 }
 
 // What holds now that a tagged pastime can fit: the hour, the foreground app, the music and her mood. The music is
-// the conductor's latest reading, so the 8 s of audio it needs are counted once.
+// what the character mind hears.
 let occasionMemory = initialOccasionMemory
 function activeOccasions() {
   // The lab can name the occasions itself, so a pastime tagged for the morning can be watched at any hour.
@@ -640,7 +623,7 @@ function activeOccasions() {
     sleepiness: drive.sleepiness,
     solitude: drive.solitude,
     valence: drive.valence,
-    music: musicNow,
+    music: characterMind.state.music.playing,
     category: foregroundCategory.value,
   }, occasionMemory)
   occasionMemory = resolved.memory
