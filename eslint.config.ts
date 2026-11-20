@@ -185,19 +185,19 @@ export default defineConfig({
     }))],
   },
 }, {
-  // The idle schedule and the errand pacing are pure rules that the character mind will compose: time and random draws
-  // come in as arguments, as in the mind's core.
+  // The idle schedule, the errand pacing, and the cursor episode draw are pure rules that the character mind composes:
+  // time and random draws come in as arguments, as in the mind's core.
   name: 'airi/idle-schedule-pure',
-  files: ['packages/motion-driver-natural/src/idle-schedule.ts', 'packages/motion-driver-natural/src/idle-errands.ts'],
+  files: ['packages/motion-driver-natural/src/idle-schedule.ts', 'packages/motion-driver-natural/src/idle-errands.ts', 'packages/motion-driver-natural/src/cursor-notice.ts'],
   rules: {
     'no-restricted-properties': ['error', ...[['Math', 'random'], ['Date', 'now'], ['performance', 'now']].map(([object, property]) => ({
       object,
       property,
-      message: 'The idle schedule takes time and random draws as arguments.',
+      message: 'The pure rules take time and random draws as arguments.',
     }))],
     'no-restricted-globals': ['error', ...['setTimeout', 'setInterval', 'setImmediate', 'requestAnimationFrame', 'queueMicrotask'].map(name => ({
       name,
-      message: 'The idle schedule runs no timers.',
+      message: 'The pure rules run no timers.',
     }))],
   },
 }, {
