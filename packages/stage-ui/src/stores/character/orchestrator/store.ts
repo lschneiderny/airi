@@ -15,8 +15,8 @@ import { useStageLiveStatePrompt } from '../../../composables/use-airi-runtime-p
 import { getEventSourceKey } from '../../../utils/event-source'
 import { useLLM } from '../../ai/chat-llm/llm'
 import { useChatPrompt } from '../../chat/prompt'
+import { useChatSessionStore } from '../../chat/session-store'
 import { useModsServerChannelStore } from '../../mods/api/channel-server'
-import { useAiriCardStore } from '../../modules/airi-card'
 import { useConsciousnessStore } from '../../modules/consciousness'
 import { useSituationStore } from '../../situation'
 import { ingestSparkNotify } from '../../situation/sensors/notify'
@@ -37,7 +37,7 @@ export const useCharacterOrchestratorStore = defineStore('character-orchestrator
   const { activeProvider, activeModel } = storeToRefs(consciousnessStore)
   const { t } = useI18n()
   const notebookStore = useCharacterNotebookStore()
-  const cardStore = useAiriCardStore()
+  const chatSession = useChatSessionStore()
   const { buildChatPromptSegments } = useChatPrompt()
   const liveStatePrompt = useStageLiveStatePrompt()
   const modsServerChannelStore = useModsServerChannelStore()
@@ -186,8 +186,8 @@ export const useCharacterOrchestratorStore = defineStore('character-orchestrator
           provider,
         },
         // The stable stage contract belongs to the system prompt. Only the live state rides with the notify.
-        // Spark uses the active card's memory, not the memory of a queued turn's card.
-        systemPrompt: composePrompt(buildChatPromptSegments({ characterId: cardStore.activeCardId ?? 'default' })).text,
+        // The agent reads the prompt and memory of the active session's character, as the spoken route does.
+        systemPrompt: composePrompt(buildChatPromptSegments({ characterId: chatSession.personaOf(chatSession.activeSessionId) })).text,
         runtimePrompt: liveStatePrompt.value,
         control: { ...control, commandsOnly: true },
       })
