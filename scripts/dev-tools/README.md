@@ -94,15 +94,15 @@ The per-branch record lives at `<git common dir>/airi-verify/last/<encoded-branc
 
 After a pass, only that step's entry advances. Skipped and failed steps leave their entries unchanged. A pass against a different merge base starts a new record so old entries cannot narrow the other steps. Dry runs never write records. Files must remain unchanged during the step before the last-pass record is written.
 
-Use `pnpm verify --gate` before landing to check the full branch regardless of previous passes. After the summary, every run lists the checks the branch still needs that verify does not run, under `also needed, not run by verify`. The list comes from the changed non-test paths since the merge base (`followUpChecks` in `verify-plan.ts`): app runtime paths need `qa:smoke`, Natural and Live2D motion packages need `qa:test:model` with the rig configured, MMD body packages need `qa:test:model` and `qa:motion3d` identity runs, and `qa:motion3d` report rules need labelled inject cases.
+Use `pnpm verify --gate` before landing to check the full branch regardless of previous passes. After the summary, every run lists the checks the branch still needs that verify does not run, under `also needed, not run by verify`. The list comes from the changed non-test paths since the merge base (`followUpChecks` in `verify-plan.ts`): app runtime paths need `qa:smoke`, Natural and Live2D motion packages need `qa:test:model` with the rig configured, MMD body packages need `qa:test:model` with the MMD model configured and `qa:motion3d` identity runs, and `qa:motion3d` report rules need labelled inject cases.
 
 When its steps pass, `--gate` runs the QA those paths need (`gateQaFor` and `gateQaCommand`) and shows each as a `qa` row in the summary:
 
 - **smoke**, for app runtime paths: `pnpm qa:smoke`, on Linux inside a `qa:display` session named `verify-<pid>` that it stops afterwards. A failure fails the gate. Other platforms report it skipped.
-- **model tests**, for motion paths: `pnpm qa:test:model`. A failure fails the gate; exit 2, no model or rig configured, reports it skipped.
+- **model tests**, for motion paths: `pnpm qa:test:model`. The gate first makes the plan `qa:test:model` will make (`planGatedRun`, with `.env.qa` loaded), so it knows which gated files run. A pass meets a rule only when the files gated on that rule's variable ran: `AIRI_QA_RIG_FORBOOTH` for Natural and Live2D motion, `AIRI_QA_MMD_MODEL` for MMD body motion. A test failure fails the gate. When no gated file has its variables set, the gate reports it skipped without starting it; when a set variable names a path that does not exist, it fails the gate without starting it.
 - **motion affected**, for MMD body paths: `pnpm qa:motion3d affected <merge base> HEAD`. The gate reads its `affected <base>..<tip>: <VERDICT>` line, because an error exits 1 or 2 like a verdict does. NOT AFFECTED meets the rule; AFFECTED or CANNOT TELL leaves the identity runs in the follow-up list. Output without a verdict line, or a verdict with another exit code, fails the gate. It reads commits, so uncommitted changes skip it.
 
-A rule whose QA all passed leaves the follow-up list. `--dry-run` prints the QA commands without running them.
+A rule whose needs were all met leaves the follow-up list. `--dry-run` prints the QA commands without running them.
 
 An empty scope reports `skipped`.
 

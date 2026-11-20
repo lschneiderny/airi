@@ -1,8 +1,9 @@
+import type { GatedRun } from './lib/gated-tests'
 import type { LastVerifyPass } from './verify-plan'
 
 import { describe, expect, it } from 'vitest'
 
-import { advanceLastPass, followUpChecks, gateQaCommand, gateQaFor, gateQaOutcome, parseVerifyArgs, selectVerifyScope, typecheckFilters, verifySteps } from './verify-plan'
+import { advanceLastPass, followUpChecks, gateQaCommand, gateQaFor, gateQaOutcome, modelTestsOutcome, parseVerifyArgs, selectVerifyScope, typecheckFilters, verifySteps } from './verify-plan'
 
 const context = { branch: 'luke/feat/example', mergeBase: 'base', gate: false }
 const entry = { tree: 'verified-tree', head: 'verified-head', recordedAt: '2026-11-10T00:00:00.000Z' }
@@ -102,19 +103,26 @@ describe('verify gate and typecheck planning', () => {
     expected.forEach((check, index) => expect(lines[index]).toContain(check))
   })
 
-  it('drops a rule once the gate met all of its QA, and keeps a rule whose QA is only partly met', () => {
+  it('drops a rule once the gate met all of its needs, and keeps a rule whose needs are only partly met', () => {
     const changed = [{ path: 'packages/stage-ui-mmd/src/index.ts', deleted: false }]
     expect(gateQaFor(changed)).toEqual(['smoke', 'model-tests', 'motion-affected'])
-    const partly = followUpChecks(changed, new Set(['smoke', 'model-tests']))
+    const partly = followUpChecks(changed, new Set(['smoke', 'AIRI_QA_MMD_MODEL']))
     expect(partly).toHaveLength(1)
     expect(partly[0]).toContain('qa:motion3d diff')
-    expect(followUpChecks(changed, new Set(['smoke', 'model-tests', 'motion-affected']))).toEqual([])
+    expect(followUpChecks(changed, new Set(['smoke', 'AIRI_QA_MMD_MODEL', 'motion-affected']))).toEqual([])
+  })
+
+  it('keeps the Live2D rule when the model tests that passed did not include the rig', () => {
+    const changed = [{ path: 'packages/motion-driver-natural/src/index.ts', deleted: false }]
+    expect(gateQaFor(changed)).toEqual(['model-tests'])
+    expect(followUpChecks(changed, new Set(['AIRI_QA_MMD_MODEL']))).toHaveLength(1)
+    expect(followUpChecks(changed, new Set(['AIRI_QA_MMD_MODEL', 'AIRI_QA_RIG_FORBOOTH']))).toEqual([])
   })
 
   it('never meets a rule that the gate cannot run', () => {
     const changed = [{ path: 'packages/qa-tools/src/t2-3d/reports/idle-acts.ts', deleted: false }]
     expect(gateQaFor(changed)).toEqual([])
-    expect(followUpChecks(changed, new Set(['smoke', 'model-tests', 'motion-affected']))).toHaveLength(1)
+    expect(followUpChecks(changed, new Set(['smoke', 'AIRI_QA_MMD_MODEL', 'motion-affected']))).toHaveLength(1)
   })
 })
 
@@ -130,18 +138,27 @@ describe('gate QA', () => {
   })
 
   it.each([
-    ['smoke', 0, { status: 'passed', met: true }],
-    ['smoke', 1, { status: 'failed', met: false }],
-    ['model-tests', 2, { status: 'skipped', met: false }],
-    ['model-tests', 1, { status: 'failed', met: false }],
-  ] as const)('reads %s exit %i', (qa, exitCode, expected) => {
-    expect(gateQaOutcome(qa, exitCode)).toMatchObject(expected)
+    [0, { status: 'passed', met: ['smoke'] }],
+    [1, { status: 'failed', met: [] }],
+  ] as const)('reads smoke exit %i', (exitCode, expected) => {
+    expect(gateQaOutcome('smoke', exitCode)).toMatchObject(expected)
+  })
+
+  it('meets only the variables of the model test files that ran', () => {
+    const plan: GatedRun = { ok: true, run: [{ file: 'a.test.ts', variables: ['AIRI_QA_MMD_MODEL'] }], skipped: [{ file: 'b.test.ts', variables: ['AIRI_QA_RIG_FORBOOTH'] }] }
+    expect(modelTestsOutcome(plan, 0)).toMatchObject({ status: 'passed', met: ['AIRI_QA_MMD_MODEL'] })
+    expect(modelTestsOutcome(plan, 1)).toMatchObject({ status: 'failed', met: [] })
+  })
+
+  it('skips model tests when nothing is configured and fails them when a configured model is missing', () => {
+    expect(modelTestsOutcome({ ok: false, reason: 'unset', message: 'AIRI_QA_MMD_MODEL is unset.' })).toMatchObject({ status: 'skipped', met: [] })
+    expect(modelTestsOutcome({ ok: false, reason: 'missing', message: 'AIRI_QA_MMD_MODEL=/models/gone.pmx does not exist.' })).toMatchObject({ status: 'failed', met: [], detail: expect.stringContaining('does not exist') })
   })
 
   it.each([
-    ['NOT AFFECTED', 0, { status: 'passed', met: true }],
-    ['AFFECTED', 1, { status: 'passed', met: false }],
-    ['CANNOT TELL', 2, { status: 'passed', met: false }],
+    ['NOT AFFECTED', 0, { status: 'passed', met: ['motion-affected'] }],
+    ['AFFECTED', 1, { status: 'passed', met: [] }],
+    ['CANNOT TELL', 2, { status: 'passed', met: [] }],
   ] as const)('reads the affected verdict %s', (verdict, exitCode, expected) => {
     expect(gateQaOutcome('motion-affected', exitCode, `affected 0123456ab..89abcdef0: ${verdict}\n  runner roots: x\n`)).toMatchObject(expected)
   })
@@ -152,6 +169,6 @@ describe('gate QA', () => {
     ['a verdict with another exit code', 1, 'affected 0123456ab..89abcdef0: CANNOT TELL\n'],
     ['a crash', 134, ''],
   ])('fails qa:motion3d affected on %s', (_, exitCode, output) => {
-    expect(gateQaOutcome('motion-affected', exitCode, output)).toMatchObject({ status: 'failed', met: false })
+    expect(gateQaOutcome('motion-affected', exitCode, output)).toMatchObject({ status: 'failed', met: [] })
   })
 })

@@ -70,8 +70,8 @@ describe('planGatedRun', () => {
   })
 
   it('refuses when no gated file can run or a set variable names a missing path', () => {
-    expect(planGatedRun(files, {}, '/repo/.env.qa', () => true)).toMatchObject({ ok: false, message: expect.stringContaining('AIRI_QA_MMD_MODEL, AIRI_QA_RIG_FORBOOTH are unset') })
-    expect(planGatedRun(files, { AIRI_QA_MMD_MODEL: '/models/gone.pmx' }, '/repo/.env.qa', () => false)).toMatchObject({ ok: false, message: expect.stringContaining('/models/gone.pmx does not exist') })
+    expect(planGatedRun(files, {}, '/repo/.env.qa', () => true)).toMatchObject({ ok: false, reason: 'unset', message: expect.stringContaining('AIRI_QA_MMD_MODEL, AIRI_QA_RIG_FORBOOTH are unset') })
+    expect(planGatedRun(files, { AIRI_QA_MMD_MODEL: '/models/gone.pmx' }, '/repo/.env.qa', () => false)).toMatchObject({ ok: false, reason: 'missing', message: expect.stringContaining('/models/gone.pmx does not exist') })
   })
 })
 

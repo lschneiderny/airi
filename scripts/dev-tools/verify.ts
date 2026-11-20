@@ -1,22 +1,24 @@
+import type { GatedRun } from './lib/gated-tests'
 import type { VerifyRun } from './verify-history'
-import type { GateQa, GateQaOutcome, VerifyArgs, VerifyStep } from './verify-plan'
+import type { GateNeed, GateQaOutcome, VerifyArgs, VerifyStep } from './verify-plan'
 
 import process from 'node:process'
 
 import { spawn } from 'node:child_process'
-import { appendFileSync, mkdirSync, readFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { delimiter, join, relative } from 'node:path'
 import { stripVTControlCharacters } from 'node:util'
 
 import { errorMessageFrom } from '@moeru/std'
 
+import { loadQaEnv } from '../../packages/qa-tools/src/env/load'
 import { compileCacheEnv } from './lib/compile-cache'
 import { capture, chunkByLength, nodeCommandChunkLimitsFor, run, shimCommandChunkLimits } from './lib/exec'
-import { gatedNotice, listGatedTestFiles } from './lib/gated-tests'
+import { gatedNotice, listGatedTestFiles, planGatedRun, qaGatedFiles } from './lib/gated-tests'
 import { changedFiles, git, gitCommonDir, repoRoot, workingTreeHash } from './lib/git'
 import { appendVerifyRun, formatVerifyStats, readVerifyStats } from './verify-history'
 import { readLastPass, writeLastPass } from './verify-last-pass'
-import { advanceLastPass, defaultWaitSeconds, followUpChecks, gateQaCommand, gateQaFor, gateQaOutcome, lintAllFixable, parseVerifyArgs, planVerify, relatedTestCommand, selectVerifyScope, testPrerequisiteTurboArgs, typecheckFilters, verifyUsage } from './verify-plan'
+import { advanceLastPass, defaultWaitSeconds, followUpChecks, gateQaCommand, gateQaFor, gateQaOutcome, lintAllFixable, modelTestsOutcome, parseVerifyArgs, planVerify, relatedTestCommand, selectVerifyScope, testPrerequisiteTurboArgs, typecheckFilters, verifyUsage } from './verify-plan'
 import { latestRunRecord, newRunId, pruneRuns, runLogPath, runsDir, waitForRun, writeRunRecord } from './verify-runs'
 
 interface Command {
@@ -160,6 +162,13 @@ function commandsFor(step: VerifyStep, root: string, plan: ReturnType<typeof pla
     }))
   })
   return [rebuild, ...rootRelated, ...packageRelated]
+}
+
+/** The plan `pnpm qa:test:model` makes in this environment: the same files, with `.env.qa` loaded without overriding. */
+function modelTestsPlan(root: string, env: NodeJS.ProcessEnv): GatedRun {
+  const qaEnv = { ...env }
+  const { file } = loadQaEnv(root, qaEnv)
+  return planGatedRun(qaGatedFiles(listGatedTestFiles(root)), qaEnv, file, existsSync)
 }
 
 async function waitCommand(cacheDir: string, root: string, wait: { id: string | null, timeoutMs: number }): Promise<number> {
@@ -394,12 +403,12 @@ async function verifyRun(args: VerifyArgs, root: string, cacheDir: string, histo
   }
 
   const qaResults: (GateQaOutcome & { durationMs: number })[] = []
-  const met = new Set<GateQa>()
+  const met = new Set<GateNeed>()
   if (args.gate && !results.some(result => result.status === 'failed')) {
     for (const qa of gateQaFor(branchChanges)) {
       const command = gateQaCommand(qa, process.platform, base, `verify-${process.pid}`)
       if (typeof command === 'string') {
-        qaResults.push({ status: 'skipped', met: false, detail: command, durationMs: 0 })
+        qaResults.push({ status: 'skipped', met: [], detail: command, durationMs: 0 })
         continue
       }
       if (args.dryRun) {
@@ -407,16 +416,21 @@ async function verifyRun(args: VerifyArgs, root: string, cacheDir: string, histo
         continue
       }
       if (qa === 'motion-affected' && git(root, ['rev-parse', 'HEAD^{tree}']) !== tree) {
-        qaResults.push({ status: 'skipped', met: false, detail: 'qa:motion3d affected: not run, it reads commits and the working tree has uncommitted changes', durationMs: 0 })
+        qaResults.push({ status: 'skipped', met: [], detail: 'qa:motion3d affected: not run, it reads commits and the working tree has uncommitted changes', durationMs: 0 })
+        continue
+      }
+      const plan = qa === 'model-tests' ? modelTestsPlan(root, env) : null
+      if (plan && !plan.ok) {
+        qaResults.push({ ...modelTestsOutcome(plan), durationMs: 0 })
         continue
       }
       out.detail(`\n[qa] ${command.argv.join(' ')}`)
       const started = Date.now()
       try {
         const { exitCode, output } = await runLogged(out, `[qa] ${command.argv.join(' ')}`, command.argv[0], command.argv.slice(1), { cwd: root, env })
-        const outcome = gateQaOutcome(qa, exitCode, output)
-        if (outcome.met)
-          met.add(qa)
+        const outcome = qa === 'model-tests' ? modelTestsOutcome(plan!, exitCode) : gateQaOutcome(qa, exitCode, output)
+        for (const need of outcome.met)
+          met.add(need)
         qaResults.push({ ...outcome, durationMs: Date.now() - started })
       }
       finally {
