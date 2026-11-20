@@ -1,6 +1,6 @@
 # character-mind-gaze - Work Plan
 
-Status: planned on 2026-11-20; not started. Roadmap row: step CM6 in [`docs/ai/context/character-mind-roadmap.md`](../../docs/ai/context/character-mind-roadmap.md#steps). Rulings: the [character mind ADR](../../docs/ai/adr/2026-11-17-character-mind-direction.md) (decisions 2 and 5), the [core ADR](../../docs/ai/adr/2026-11-18-character-mind-core.md) (D15: realisation details stay in the performers), the [return ADR](../../docs/ai/adr/2026-11-19-character-mind-return.md) (its "Not decided" item for CM6), the [idle ADR](../../docs/ai/adr/2026-11-20-character-mind-idle.md) (the report-and-order pattern this plan reuses), the [Live2D cursor attention ADR](../../docs/ai/adr/2026-10-24-live2d-cursor-attention.md) (D2: she does not always notice), and the [fullscreen stage and locomotion ADR](../../docs/ai/adr/2026-10-31-fullscreen-stage-and-locomotion.md). Branch: `luke/feat/character-mind-gaze`, cut from CM4b's tip `754e30da1` on `luke/feat/character-mind-idle` (PR #58). CM4b stacks on CM4a (#57) and the earlier character mind PRs, none merged. Step H is done and is in this branch. The PR's base is `luke/feat/character-mind-idle`. When a PR below merges, rebase this branch onto the new base and retarget the PR.
+Status: built on 2026-11-20; the press clause of the Done-when is open on the braking ruling (D16); PR not merged. Roadmap row: step CM6 in [`docs/ai/context/character-mind-roadmap.md`](../../docs/ai/context/character-mind-roadmap.md#steps). Rulings: the [character mind ADR](../../docs/ai/adr/2026-11-17-character-mind-direction.md) (decisions 2 and 5), the [core ADR](../../docs/ai/adr/2026-11-18-character-mind-core.md) (D15: realisation details stay in the performers), the [return ADR](../../docs/ai/adr/2026-11-19-character-mind-return.md) (its "Not decided" item for CM6), the [idle ADR](../../docs/ai/adr/2026-11-20-character-mind-idle.md) (the report-and-order pattern this plan reuses), the [Live2D cursor attention ADR](../../docs/ai/adr/2026-10-24-live2d-cursor-attention.md) (D2: she does not always notice), and the [fullscreen stage and locomotion ADR](../../docs/ai/adr/2026-10-31-fullscreen-stage-and-locomotion.md). Branch: `luke/feat/character-mind-gaze`, cut from CM4b's tip `754e30da1` on `luke/feat/character-mind-idle` (PR #58). CM4b stacks on CM4a (#57) and the earlier character mind PRs, none merged. Step H is done and is in this branch. The PR's base is `luke/feat/character-mind-idle`. When a PR below merges, rebase this branch onto the new base and retarget the PR.
 
 CM5a is planned and built on the unmerged branch `luke/feat/character-mind-music` (PR #59), which also stacks on CM4b. CM6 does not depend on it, and CM7 depends on both. This plan must not contradict CM5a; [section 6.1](#61-expected-conflicts-with-cm5a) lists the files both slices edit, so the later rebase conflict is expected.
 
@@ -119,7 +119,7 @@ export interface CursorOrder { requestId: number, episode: CursorEpisode }
 
 - **Live2D.** `natural-motion-adapter.ts` forwards `onCursorReports` and queues `cursorEpisode`; `Model.vue` and `Live2D.vue` emit `cursor-reports`; `Stage.vue` hands them to the conductor.
 - **MMD.** `MMDNaturalAdapter` and `MMD.vue` do the same. `MMD.vue` gains `attend(intent)`: `attendUntilMs = directorNowMs + intent.windowMs`, at the last frame's director time. `noteInteraction()` keeps `interactionSeq++` and loses the stamp; the chat `sentSeq` watch keeps `chatSendSeq++` and loses the stamp.
-- **Conductor.** `StagePerformanceConductor.cursor(reports)` steps the mind once per report under Natural only and sends each `cursor-episode` intent back to its own scene's `cursorEpisode`; under another driver it drops the report. `interaction(source)` steps the mind under every driver and sends `attend` to `scene.attend` under every driver, because the MMD director runs under the classic driver too and opens its chase there today (D13). The touch dispatch sends `attend` the same way. A scene without `attend` (Live2D) ignores it.
+- **Conductor.** `StagePerformanceConductor.cursor(reports)` steps the mind once per report under Natural only and sends each `cursor-episode` intent back to its own scene's `cursorEpisode`; under another driver it drops the report. `interaction(source)` steps the mind under every driver and sends `attend` to `scene.attend` under every driver, because the MMD director runs under the classic driver too and opens its chase there today (D13). The touch dispatch sends `attend` the same way. A scene without `attend` (Live2D) ignores it. (Changed: `attend` goes to the scene only under Natural; see [Departures](#departures-during-implementation) 1.)
 - **Stage.vue.** It forwards `cursor-reports`, calls `interaction('drag')` when its `interactionSeq` prop changes (it still passes the prop to MMD for clip endings), and calls `interaction('chat-send')` where `chatComposerSentEvent` increments `chatSentSeq`.
 - **Two stages.** Each stage's conductor sends its own reports and receives its own orders, because cursor geometry is per stage. Both draw from the one mind stream (D10).
 - **QA events.** `use-motion-qa-events.ts` emits `mind` events for `cursor` and `interaction` steps (D22). Opportunities are rare: an ignored or released episode starts a 4 to 10 s cooldown.
@@ -191,7 +191,7 @@ Each item is one commit that passes `pnpm verify` and `pnpm verify --gate --base
 2. **`fix(motion-driver-humanoid): stop a walk aimed at the cursor once the cursor rests on her`.** Section 3.6's press rule and visit rule. Docs `[2]`. Tests in `director/index.test.ts`: a chase goal ends on the decision where the cursor comes within one leg, before `GOAL_MIN_DWELL_MS`; no chase is issued while the cursor stays within one leg; a visit due with the cursor within 1.5 legs issues no goal, answers the wander accepted, and draws a linger; a visit in progress ends with a linger when the cursor comes within 1.5 legs; idle mode still draws `VISIT_SHARE` first (the director's draw count is unchanged for that case). One closed-loop test (`director/press.test.ts`) steps `decideBody` and `createLocomotion` with the locomotion tests' fixture traits: with the pointer landing on her 1, 2, and 4 s into a chase, she comes to rest within 1 s and within 0.5 L of the pointer; with the visit, she does not move. Acceptance: the same loop against the base code fails these bounds (section 2.1 has its numbers), and `qa:motion3d diff` prints `IDENTICAL` for all nine scenarios, because no headless scenario chases or visits with a cursor.
 3. **`feat(motion-driver-natural,character-mind,stage-ui,stage-ui-live2d,stage-ui-mmd,qa-tools): move cursor notice into the character mind`.** The contract types, `attention.ts` with the `cursor` answer, `MindState.attention`, the dependency allowance, and sections 3.4, 3.5 (cursor parts), and 3.7. Docs `[3]`. Tests: `attention.test.ts` (Node, seeded): the first `cursor` stimulus seeds the stream with one `rng` draw and later ones draw none from `rng`; equal seeds give equal episodes; the stream continues identically after a JSON round trip; no other channel's intent appears; idle draws are unchanged by interleaved cursor stimuli. `cursor-attention.test.ts`: an opportunity reports instead of drawing; no second report while awaiting; an order with the wrong id, after the cursor left, or after a dismissal is dropped; a matching order notices and engages after its dwell; an ignored episode starts its cooldown at application; a `nearer` opportunity reports during a running episode; the existing behavior cases pass when a fake mind answers each report with `drawCursorEpisode` on a seeded stream. Both adapter tests queue orders and emit reports. The conductor test drops reports outside Natural and returns orders to the reporting scene only. The Live2D `observer.test.ts` hashes are re-pinned only if they move, once, with the reason in the commit body. Acceptance: section 8's headless expectations for item 3.
    - **3a. `chore(agents): say that the Live2D cursor layer plays the mind's episodes`.** The `packages/stage-ui-live2d/AGENTS.md` line only.
-4. **`feat(character-mind,motion-driver-humanoid,stage-ui,stage-ui-mmd,qa-tools): open the director's chase on the mind's attend intent`.** The `interaction` stimulus, the `attend` intent from interactions and touch, `ATTEND_WINDOW_MS`, and sections 3.5 (attend parts) and 3.6 (`attendUntilMs`). Docs `[4]`. Tests: the mind answers a poke, a pet start, a drag, and a chat send with one `attend` of 60,000 ms and a pet end with none; the director chases inside `attendUntilMs` and not after it, and never with a null window; the existing chase cases in `director/index.test.ts` and `stance.test.ts` move from `interactionAtMs` to `attendUntilMs` with the same expectations; the conductor sends `attend` to the scene under the Natural and the basic drivers. Acceptance: `qa:motion3d diff` prints `IDENTICAL` for every scenario against item 3's runs.
+4. **`feat(character-mind,motion-driver-humanoid,stage-ui,stage-ui-mmd,qa-tools): open the director's chase on the mind's attend intent`.** The `interaction` stimulus, the `attend` intent from interactions and touch, `ATTEND_WINDOW_MS`, and sections 3.5 (attend parts) and 3.6 (`attendUntilMs`). Docs `[4]`. Tests: the mind answers a poke, a pet start, a drag, and a chat send with one `attend` of 60,000 ms and a pet end with none; the director chases inside `attendUntilMs` and not after it, and never with a null window; the existing chase cases in `director/index.test.ts` and `stance.test.ts` move from `interactionAtMs` to `attendUntilMs` with the same expectations; the conductor sends `attend` to the scene under the Natural and the basic drivers (changed: only under Natural; see [Departures](#departures-during-implementation) 1). Acceptance: `qa:motion3d diff` prints `IDENTICAL` for every scenario against item 3's runs.
 5. **`docs(ai): record the gaze decisions and close CM6`.** The ADR, the roadmap `[5]`, and any policy doc bookkeeping the earlier items left (the Target table rows). The title is kept as fixed for this step; in this split, "close CM6" closes the CM6a row it creates (D2). Last, after the checks in section 8 pass.
 6. **`docs(plan): mark the gaze slice of the character mind done`.** This plan: Status, Departures, Checks run, Commits.
 
@@ -216,7 +216,7 @@ Each item is one commit that passes `pnpm verify` and `pnpm verify --gate --base
   1. **Live2D notice, Natural, rig from `AIRI_QA_RIG_FORBOOTH`.** Move the pointer from outside the window onto her face and rest. Pass: a `mind` event with a `cursor` stimulus of band `near` and a `gaze` `cursor-episode` intent with `engaging: true`. Then ten moves to medium and far range, each after a 12 s rest: every opportunity has its `mind` event; record how many engaged (report only; the odds are unchanged by construction).
   2. **The Live2D setting off, and Universal.** Turn Cursor attention off, repeat the moves: no `cursor` stimulus. Switch with `setLive2dDriver` to Universal: no `cursor` stimulus.
   3. **MMD notice, desktop stage, `AIRI_QA_MMD_MODEL`, Natural.** The pointer onto her head. Pass: a `cursor` stimulus and an engaged near episode.
-  4. **The attend window.** A drag release on her, and separately a sent chat message (replayed turn). Pass: each gives a `mind` event with an `interaction` stimulus and a `body` `attend` intent of 60,000 ms. A poke gives a `touch` stimulus with an `attend` intent. After each, with the pointer resting four placement widths to one side, `placement()` shows `reason: approach-cursor` within 3 s. Repeat the drag case under MMD's classic driver: the chase still starts (D13).
+  4. **The attend window.** A drag release on her, and separately a sent chat message (replayed turn). Pass: each gives a `mind` event with an `interaction` stimulus and a `body` `attend` intent of 60,000 ms. A poke gives a `touch` stimulus with an `attend` intent. After each, with the pointer resting four placement widths to one side, `placement()` shows `reason: approach-cursor` within 3 s. Repeat the drag case under MMD's classic driver: the chase still starts (D13). (Changed: classic gets no `attend`; see [Departures](#departures-during-implementation) 1.)
   5. **The press check, base against tip.** In the base worktree and on this branch, under Natural on the desktop stage: poke her to open the window; rest the pointer four placement widths to one side; when `placement()` shows `approach-cursor` and `mode` walking, move the pointer onto the centre of her current placement (x at the centre, y at 55 % of the height) and rest it R seconds, then press there (80 ms dwell). R in {0.3, 0.6, 1.0, 2.0}, three trials each, at walk times of about 1, 2, and 4 s. For each press record the pointer x, her placement centre x at the press, the offset in placement widths, and whether a `touch` stimulus with a poke followed within 500 ms. Pass on the tip: every press with R of at least 0.6 s gives a poke, and after the rest `locomotion.goalX` is null. The base is expected to miss some presses at R of 1.0 and 2.0 s (it keeps walking for 3 s and settles one leg away); record its counts. Presses at R = 0.3 s are recorded, not judged, because the gait is still braking (D16). If a tip press with R of at least 0.6 s misses, stop and report it as an owner question about the braking distance; do not tune the gait.
   6. **The visit under a resting pointer.** The lab's `requestIdle` requests acts only, so a wander cannot be forced. With the pointer resting on her and the user idle, watch `placement()` for up to 10 minutes for a `mind` event with an `idle-errand` `wander` intent. Pass: no goal follows it and she stays within 0.5 placement widths for 10 s. If no wander comes, record the step as not exercised and rely on item 2's tests.
   Every launch: 0 renderer and 0 main-process errors.
@@ -262,7 +262,7 @@ Each item is one commit that passes `pnpm verify` and `pnpm verify --gate --base
 | D10 | Which stage gets an order | The stage that reported, through its conductor; every stage | The reporter | Cursor geometry is per stage. One stream keeps the draws once per character |
 | D11 | What opens the attend window | Today's interactions (poke, pet start, drag release, sent message); a noticed cursor episode; both | Today's interactions | Keeps when she walks. Tying the walk to notice would make her chase less often, a user-visible change. Owner question |
 | D12 | How the window is timed | A span the director stamps on its clock; an absolute time on the mind's clock | A span | The director's clock is the frame's; no mind time enters a frame value |
-| D13 | `attend` under MMD's classic driver | Sent under every driver; Natural only | Every driver | The director runs under classic and opens its chase on drags and sent messages today. Natural only would remove that. Contradicts Body ownership Target rule 1's wording; owner question |
+| D13 | `attend` under MMD's classic driver | Sent under every driver; Natural only | Every driver | The director runs under classic and opens its chase on drags and sent messages today. Natural only would remove that. Contradicts Body ownership Target rule 1's wording; owner question. Flipped to Natural only; see [Departures](#departures-during-implementation) 1 |
 | D14 | The cursor's position in the director | World input used only to aim an attended walk or a visit; carried in the intent | World input | The mind has no world coordinates. Rule 5 forbids subscribing to the cursor as a trigger, not reading where it is |
 | D15 | The press rule | End a cursor-aimed goal at once within its stop distance and issue none there; shorten the dwell for cursor goals; re-aim on every cursor move; ignore the cursor while it rests | End at once | It is the only option that stops her where she is. A shorter dwell is tuning and still walks; re-aiming settles one leg away; rest detection would add a raw input to the director |
 | D16 | Braking distance at that stop | Unchanged; shortened | Unchanged | Gait tuning, not needed unless step 5 shows misses after 0.6 s. Then it goes to the owner |
@@ -275,12 +275,11 @@ Each item is one commit that passes `pnpm verify` and `pnpm verify --gate --base
 
 ## Blocked: needs the owner
 
-None of these block CM6a; each is taken on the conservative option above.
+None of these block CM6a's code; each is taken on the conservative option above. D16 blocks the press clause of the Done-when.
 
-- **Classic chase (D13).** Body ownership Target rule 1 says classic receives no intents, and Target rule 8 says the director acts on intents. The director runs under MMD's classic driver and chases today. CM6a keeps that chase by sending `attend` under every driver. The alternative removes the chase under classic.
+- **Braking (D16).** Rendered step 5 missed after a 1.0 s rest: the press rule ended the goal within 175 ms of the pointer landing, then she braked about 2.2 s and slid 0.53 to 0.60 legs. The fix is the gait's braking distance or a stop that anticipates the slide; both are owner rulings.
 - **Notice and walking (D11).** Should a walk toward the user imply that she notices the cursor? Today the two are independent, and CM6a keeps that.
 - **Visits under a resting pointer (D17).** She now stays and lingers instead of walking past the pointer.
-- **Braking (D16).** If rendered step 5 shows misses after 0.6 s, the braking distance needs a ruling.
 - **The split (D1) and the closing titles (D2).**
 - **An MMD Cursor attention setting.** Overlap 8 mentions that MMD has none. CM6a adds none; CM7's settings document is the place.
 
@@ -311,12 +310,71 @@ CM6b is planned in full when CM6a has landed. It meets the rest of CM6's Done-wh
 
 ## Departures during implementation
 
-None yet.
+1. **D13 flipped.** The conductor dispatches `attend` only under Natural. The rendered check found that under MMD's classic driver the director decided a chase but she never walked: the MMD body's input is enabled only under Natural, at the base too, so the classic chase was never visible. Dispatching only under Natural follows Body ownership Target rule 1 and changes nothing a user sees. The touch dispatch already ran only under Natural. Item 4 was amended before any push.
+2. **Item 1 also updated** the glossary and autonomous-behavior lines that pointed at the moved constants.
+3. **The press loop test.** `press.test.ts` measures rest by root movement (the last frame where the root moved more than 1e-4 of a leg), not by gait mode. Her root is still for about 1.1 s while the gait is `stopping`.
+4. **The old code settles later than [section 2.1](#21-the-press-miss-finding) implies.** It settles 6 to 8.5 s after the pointer lands, travelling up to 3.4 L.
+5. **Item 3 additions:**
+   - the test-only helper `answerCursorReports` in `motion-driver-natural/src/cursor-report-answers.ts`;
+   - `checkpointStream` and `drawSeed`, moved into `character-mind/src/random.ts`;
+   - three `natural-motion.test.ts` cases changed (the cue test dismisses the cursor at the switch, and the seeds of b, n, and d2 changed);
+   - the QA events gained the fields `band`, `opportunity`, and `engaging`.
+6. **Item 3 broke the env-gated test** "turns toward six gaze targets" in `qa-tools` `run.test.ts`, which `pnpm verify` skips. Its seed was re-pinned from 1 to 8 in a fixup to item 3, before any push.
+   - 8 is the smallest of seeds 1 to 8 that engages all six targets on the mind's stream.
+   - Over seeds 1 to 25 the tip engages the −80° medium cursor 13 of 25 times (0.52, against 0.55 expected).
+7. **Item 4 additions:**
+   - `attendIntent(cause)` and `AttendIntent`;
+   - `interaction()` steps the mind directly;
+   - an Attend window glossary term.
+   - With two stages mounted, a chat send gives two `interaction` steps, one per stage. It is harmless: the same window reopens.
+8. **The rendered check:**
+   - It stopped at step 5 on the first miss.
+   - Step 6 was not exercised: no wander came in 10 minutes.
+   - Idle time was pinned as in CM5.
 
 ## Checks run
 
-None yet.
+- **Every item commit passed** `pnpm verify --gate --base luke/feat/character-mind-idle`, and the policy-docs test passed 11 of 11.
+- **Headless motion, seed 1, against `754e30da1`:**
+  - After item 1: all nine scenarios `IDENTICAL`.
+  - After item 2: all nine `IDENTICAL`.
+  - After item 3: eight `IDENTICAL`, and `gaze-shift` `DIFFERENT` with determinism verified.
+    - The gate `mmd-motion-quality v6` reads PASS at both ends, and every line has the same status.
+    - `gaze-order` is the same at both ends: criterion share 19/19; head recruited on 8/8 shifts of 40° or more; chest on 9/10; blink share 6/8; detector (a) 17/27, (b) 17/27, (c) 9/27; 1 episode excluded.
+    - There were 19 gaze-shift events and 27 head-turn episodes at each end. Only the first shift moved, from 10.017 s to 10.033 s, one frame.
+  - Item 4 against item 3: all nine `IDENTICAL`.
+  - No seed sweep was needed.
+- **The old code fails the closed-loop test** (time to rest after the pointer lands / final offset / furthest travel):
+  - lands at 1 s: 8.46 s / 1.00 L / 1.70 L;
+  - lands at 2 s: 7.05 s / 1.00 L / 1.79 L;
+  - lands at 4 s: 6.25 s / 1.00 L / 3.44 L;
+  - visit: final offset 1.50 L, furthest travel 1.30 L.
+- **Both `qa:smoke` runs:** 0 renderer and 0 main-process errors.
+- **`qa:live2d-rig`:** hash unchanged.
+- **`qa:test:model`:** 4 files, 15 tests, passing after the re-pin.
+- **Rendered:**
+  - **Step 1, Live2D Natural:**
+    - A near `appeared` step, 74 ms after the move, gave an engaging episode.
+    - The medium and far moves gave 25 `cursor` steps, 9 engaged: medium 8 of 18, far 1 of 7.
+    - Opportunities: 15 `restarted`, 5 `nearer`, 5 `moved`. Each step had exactly one `cursor-episode` intent.
+  - **Step 2:** with the setting off, 0 `cursor` steps over 6 moves; under Universal, 0 over 6 moves.
+  - **Step 3, MMD Natural:** a near `nearer` step 101 ms after the move, engaging.
+  - **Step 4:**
+    - A poke gave a `touch` step with `attend` 60000 at 85 ms, and `approach-cursor` after 169 ms.
+    - A drag gave an `interaction` `drag` step with `attend` at 24 ms, and `approach-cursor` after 154 ms.
+    - A chat send gave one `interaction` `chat-send` step at 18 ms, and `approach-cursor` after 56 ms.
+    - Under classic, before the D13 flip: `attend` was sent and the director chose `approach-cursor`, but she never walked.
+  - **Step 5:** failed. On the desktop stage under Natural, the press rule ended the goal 172 to 175 ms after the pointer landed on her. She then braked for about 2.2 s and slid 0.53 to 0.60 legs. Both presses at R = 1.0 s missed; in one she came to rest 0.47 legs from the pointer. The headless closed loop had predicted 0.33 to 0.41 legs at rest. The check stopped at the first miss, so the base was not run and there is no full table.
+  - **Step 6:** not exercised.
+  - Every launch had 0 renderer and 0 main-process errors.
+- **The required wording:** "Scores prove direction, size relative to the recipe, release, and detectability above the rig's idle noise. They do not prove naturalness, which stays a visual review."
 
 ## Commits
 
-None yet.
+- `8c6ab20a8` docs(plan): add the plan for the gaze slice of the character mind
+- `de54d8d94` refactor(motion-driver-natural): extract the cursor episode draw as a pure rule
+- `5a6a2336a` fix(motion-driver-humanoid): stop a walk aimed at the cursor once the cursor rests on her
+- `67f535fc8` feat(motion-driver-natural,character-mind,stage-ui,stage-ui-live2d,stage-ui-mmd,qa-tools): move cursor notice into the character mind
+- `387834ea7` chore(agents): say that the Live2D cursor layer plays the mind's episodes
+- `67e1c81f0` feat(character-mind,motion-driver-humanoid,stage-ui,stage-ui-mmd,qa-tools): open the director's chase on the mind's attend intent
+- `e4cddff88` docs(ai): record the gaze decisions and close CM6
