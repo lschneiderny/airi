@@ -1085,8 +1085,7 @@ export function useStagePerformanceConductor(options: Pick<StagePerformanceCondu
     conductor.idleDrive({
       ...idleDriveOf(options.characterReading?.() ?? null, now.getTime(), now.getHours() + now.getMinutes() / 60),
       music: options.music?.() ?? false,
-      // The scene narrows these: a renderer with its own sleep stance turns sleep off, and the user's setting turns the drive off.
-      allowSleep: true,
+      // The scene narrows this, and the user's setting turns the drive off.
       rate: 1,
     })
   }

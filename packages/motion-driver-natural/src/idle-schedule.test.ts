@@ -7,7 +7,7 @@ import { advanceIdleSchedule, applyIdleEdge, dormantIdleView, idleActivityRate, 
 import { createRandomStream } from './random'
 
 const dt = 1 / 120
-const neutralDrive: NaturalIdleDrive = { energy: 0, valence: 0, tension: 0, sleepiness: 0, solitude: 0, music: false, allowSleep: true, rate: 1 }
+const neutralDrive: NaturalIdleDrive = { energy: 0, valence: 0, tension: 0, sleepiness: 0, solitude: 0, music: false, rate: 1 }
 
 describe('idle activity odds', () => {
   it('favours yawns, zoning out and nodding off when she is tired', () => {

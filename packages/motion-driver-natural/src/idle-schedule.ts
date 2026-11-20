@@ -147,7 +147,7 @@ export function sameIdleDrive(a: NaturalIdleDrive | null, b: NaturalIdleDrive | 
     return false
   const sameList = (x: readonly string[] | undefined, y: readonly string[] | undefined) => (x ?? []).join() === (y ?? []).join() && (x === undefined) === (y === undefined)
   return a.energy === b.energy && a.valence === b.valence && a.tension === b.tension && a.sleepiness === b.sleepiness
-    && a.solitude === b.solitude && a.music === b.music && a.allowSleep === b.allowSleep && a.rate === b.rate && a.body === b.body
+    && a.solitude === b.solitude && a.music === b.music && a.rate === b.rate && a.body === b.body
     && sameList(a.unreachable, b.unreachable) && sameList(a.errands, b.errands)
 }
 
@@ -365,7 +365,7 @@ export function advanceIdleSchedule(state: IdleScheduleState, view: IdleView, at
   let current = view.current?.kind ?? null
   // The wait counts quiet time only. While she talks, thinks or listens it starts over, so she does not shut her
   // eyes the moment she has answered someone the desktop still calls away.
-  if (view.away && drive.allowSleep && performing(view)) {
+  if (view.away && performing(view)) {
     if (next.awaySince === null) {
       next.awaySince = at
       next.sleepAfter = sleepDelay.min + (sleepDelay.max - sleepDelay.min) * random()
@@ -432,7 +432,7 @@ export function nextIdleDeadline(state: IdleScheduleState, view: IdleView, at: n
     earliest = earliest === null ? clamped : Math.min(earliest, clamped)
   }
   const current = view.current?.kind ?? null
-  if (view.away && drive.allowSleep && performing(view)) {
+  if (view.away && performing(view)) {
     if (state.awaySince === null)
       due(at)
     else if (current === null && !view.blocked)

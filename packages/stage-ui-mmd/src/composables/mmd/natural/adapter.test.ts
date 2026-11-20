@@ -85,7 +85,7 @@ describe('mmd Natural adapter', () => {
     const { adapter } = fixture()
     const batches: (readonly IdleReport[])[] = []
     adapter.onIdleReports(reports => batches.push(reports))
-    adapter.setIdleDrive({ energy: 0, valence: 0, tension: 0, sleepiness: 0, solitude: 0, music: false, allowSleep: true, rate: 1, body: true })
+    adapter.setIdleDrive({ energy: 0, valence: 0, tension: 0, sleepiness: 0, solitude: 0, music: false, rate: 1, body: true })
     adapter.advance(2 / 120, input, 100)
     adapter.idle({ id: 'roll', kind: 'act', act: 'shoulder-roll', seed: 1, requested: false })
     expect(batches.flat()).not.toContainEqual(expect.objectContaining({ kind: 'started' }))
