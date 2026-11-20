@@ -137,12 +137,30 @@ describe('desktop chat viewport layout', () => {
     })
     const composer = screen.getByTestId('chat-composer-layer').element() as HTMLElement
 
+    // Roadmap step T: this check failed now and then in gates and did not reproduce locally. The failing
+    // state showed the scroll to the new tail never ran. Read this message before rerunning a failure:
+    // it names the gate in the tail scroll (pointer, focus, selection, or scroll position) that held it.
+    function scrollState(mountedMessages: NodeListOf<HTMLElement>) {
+      const viewport = screen.container.querySelector<HTMLElement>('.chat-history-list')
+      const hovered = screen.container.querySelector<HTMLElement>('.chat-message-item:hover')
+      const label = (message: HTMLElement | null) => message?.textContent?.trim().slice(0, 24) ?? null
+      return `final message is behind the composer: ${JSON.stringify({
+        scrollTop: viewport?.scrollTop,
+        scrollHeight: viewport?.scrollHeight,
+        clientHeight: viewport?.clientHeight,
+        mountedMessages: [...mountedMessages].map(label),
+        activeElement: document.activeElement?.tagName,
+        hoveredMessage: label(hovered),
+        selectionCollapsed: document.getSelection()?.isCollapsed,
+      })}`
+    }
+
     async function expectVisibleTail(text: string) {
       await vi.waitFor(() => {
         const mountedMessages = screen.container.querySelectorAll<HTMLElement>('.chat-message-item')
         const finalMessage = [...mountedMessages].find(message => message.textContent?.includes(text))
         expect(finalMessage).not.toBeUndefined()
-        expect(finalMessage!.getBoundingClientRect().bottom).toBeLessThanOrEqual(composer.getBoundingClientRect().top + 1)
+        expect(finalMessage!.getBoundingClientRect().bottom, scrollState(mountedMessages)).toBeLessThanOrEqual(composer.getBoundingClientRect().top + 1)
       })
     }
 
