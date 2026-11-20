@@ -183,6 +183,24 @@ describe('chat session synchronization', () => {
   })
 
   // ROOT CAUSE:
+  it('gives a session its character member as persona, else the active card, else the default', async () => {
+    const context = createSyncedContext(`chat-persona:${crypto.randomUUID()}`, 'leader-only')
+    await vi.waitFor(() => expect(context.runtime.isLeader()).toBe(true))
+    const store = useChatSessionStore(context.pinia)
+    const cards = useAiriCardStore(context.pinia)
+    await store.initialize()
+
+    const member = await store.createSession('background-character', { setActive: false })
+    cards.activeCardId = 'default'
+    expect(store.personaOf(member)).toBe('background-character')
+
+    cards.activeCardId = 'background-character'
+    expect(store.personaOf('no-members')).toBe('background-character')
+
+    cards.activeCardId = ''
+    expect(store.personaOf('no-members')).toBe('default')
+  })
+
   // Background tasks were deleted through deleteSession, which moved the character's selected conversation to the first remaining session,
   // a hidden one included, and created a replacement when none remained.
   it('deletes a hidden task session without moving the selected conversation', async () => {

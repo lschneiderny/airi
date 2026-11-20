@@ -197,6 +197,8 @@ vi.mock('./chat/session-store', () => ({
     sessionMessages,
     sessionMetas,
     characterMembersOf: (sessionId: string) => characterMembersOfMeta(sessionMetas[sessionId]),
+    // The real store falls back to the active card, which the card store mock below fixes as 'alice'.
+    personaOf: (sessionId: string) => characterMembersOfMeta(sessionMetas[sessionId])[0] || 'alice',
     storeMessage: async (sessionId: string, message: ChatHistoryItem & { id: string }) => {
       const messages = sessionMessages[sessionId] ?? []
       const index = messages.findIndex(item => item.id === message.id)

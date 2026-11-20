@@ -78,6 +78,12 @@ export const useChatSessionStore = defineStore('chat-session', () => {
   function characterMembersOf(sessionId: string) {
     return characterMembersOfMeta(sessionMetas.value[sessionId])
   }
+
+  /** The persona of a session. A session without one uses the selected card. */
+  function personaOf(sessionId: string) {
+    const [characterId] = characterMembersOf(sessionId)
+    return characterId || cards.activeCardId || 'default'
+  }
   /**
    * Append a write task to the persist queue. Tasks always run sequentially
    * regardless of whether prior tasks rejected — but rejections propagate to
@@ -1163,6 +1169,7 @@ export const useChatSessionStore = defineStore('chat-session', () => {
     sessionMessages,
     sessionMetas,
     characterMembersOf,
+    personaOf,
     getSessionGeneration,
     bumpSessionGeneration,
     getSessionGenerationValue,
