@@ -118,7 +118,7 @@ describe('runtime Linux desktop capabilities', () => {
     },
   )
 
-  it.each(['windows', 'macos', 'web'] as const)('ignores Linux facts for %s', (host) => {
+  it.each(['windows', 'macos'] as const)('ignores Linux facts for %s', (host) => {
     expect(capabilitiesForHost(host, { ...desktop, foregroundVerified: true })).toEqual(capabilitiesForHost(host))
   })
 

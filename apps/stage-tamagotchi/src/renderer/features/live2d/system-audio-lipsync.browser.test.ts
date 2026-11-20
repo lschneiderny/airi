@@ -128,7 +128,7 @@ describe('live2D system-audio lip sync heard report', () => {
     expect(reports).toHaveLength(2)
   })
 
-  it.each(['windows', 'macos', 'web'] as const)('never reports on %s', async (host) => {
+  it.each(['windows', 'macos'] as const)('never reports on %s', async (host) => {
     useHost(host)
     peak = 0.5
     await startCapture()

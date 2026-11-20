@@ -67,22 +67,6 @@ const hostRows: Array<{ host: HostId, facts: HostFacts, signals: Record<HostSign
     facts: facts({ platform: 'linux', waylandSession: true, waylandOzone: true }),
     signals: waylandSignals,
   },
-  {
-    host: 'web',
-    facts: facts({ platform: 'web' }),
-    signals: {
-      cursorScreenPoint: { kind: 'degraded', reason: 'web-page-pointer-only' },
-      windowOrigin: { kind: 'unavailable', reason: 'web-sandbox' },
-      displayOrigins: { kind: 'unavailable', reason: 'web-sandbox' },
-      systemIdleTime: { kind: 'unavailable', reason: 'web-sandbox' },
-      screenLock: { kind: 'unavailable', reason: 'web-sandbox' },
-      foregroundWindow: { kind: 'unavailable', reason: 'web-sandbox' },
-      globalKeyUp: { kind: 'unavailable', reason: 'web-sandbox' },
-      clickThroughForward: { kind: 'unavailable', reason: 'web-sandbox' },
-      alwaysOnTop: { kind: 'unavailable', reason: 'web-sandbox' },
-      systemAudioCapture: { kind: 'unavailable', reason: 'web-sandbox' },
-    },
-  },
 ]
 
 describe('resolveHostCapabilities', () => {
@@ -162,7 +146,7 @@ describe('resolveHostCapabilities', () => {
     expect(caps.signals.foregroundWindow).toEqual({ kind: 'unavailable', reason: 'foreground-binding-load-failed' })
   })
 
-  it.each(hostRows.filter(row => ['linux-xwayland', 'linux-wayland', 'web'].includes(row.host)))(
+  it.each(hostRows.filter(row => ['linux-xwayland', 'linux-wayland'].includes(row.host)))(
     'preserves unavailable host signals over runtime failures on $host',
     ({ facts: hostFacts, signals }) => {
       const caps = resolveHostCapabilities({

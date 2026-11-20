@@ -27,11 +27,11 @@ describe('coordinateOwners', () => {
     expect(coordinateOwners('linux-x11', backend)).toEqual(electron)
   })
 
-  it.each(['windows', 'macos', 'web', 'linux-x11', 'linux-xwayland', 'linux-wayland'] as const)('uses Electron on %s without a ready bridge', (host) => {
+  it.each(['windows', 'macos', 'linux-x11', 'linux-xwayland', 'linux-wayland'] as const)('uses Electron on %s without a ready bridge', (host) => {
     expect(coordinateOwners(host, null)).toEqual(electron)
   })
 
-  it.each(['windows', 'macos', 'web'] as const)('never gives a non-Linux host a bridge owner, even with a backend', (host) => {
+  it.each(['windows', 'macos'] as const)('never gives a non-Linux host a bridge owner, even with a backend', (host) => {
     expect(coordinateOwners(host, 'kwin')).toEqual(electron)
   })
 })

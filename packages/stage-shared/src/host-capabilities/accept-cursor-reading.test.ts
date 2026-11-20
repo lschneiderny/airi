@@ -7,7 +7,7 @@ import { acceptCursorReading } from '.'
 describe('acceptCursorReading', () => {
   it.each([
     { cursor: { kind: 'live' }, accepted: true },
-    { cursor: { kind: 'degraded', reason: 'web-page-pointer-only' }, accepted: false },
+    { cursor: { kind: 'degraded', reason: 'linux-cursor-verifying' }, accepted: false },
     { cursor: { kind: 'unavailable', reason: 'wayland-cursor-unreported' }, accepted: false },
   ] satisfies Array<{ cursor: SignalStatus, accepted: boolean }>)(
     'accepts $cursor.kind: $accepted',

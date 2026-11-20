@@ -1,6 +1,6 @@
 # Host capability contract
 
-Status: accepted. Superseded in part on 2026-11-17: `apps/stage-web` is retired, and the `web` host id is scheduled for removal. Current rules: [Support scope](../../../README.md#support-scope), [character mind roadmap](../context/character-mind-roadmap.md).
+Status: accepted. Superseded in part on 2026-11-17: `apps/stage-web` is retired, and the `web` host id was removed in step L. Current rules: [Support scope](../../../README.md#support-scope), [character mind roadmap](../context/character-mind-roadmap.md).
 
 ## Context
 
