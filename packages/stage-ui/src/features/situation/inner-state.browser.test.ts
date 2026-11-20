@@ -52,12 +52,7 @@ function ritualDay(dayKey: string): RitualDay {
 function gateMemory(): SavedGateMemory {
   return {
     lastFireAtMs: noonMs - 600_000,
-    lastSpokenAtMs: noonMs - 590_000,
-    unanswered: 2,
-    awaitingSinceMs: noonMs - 590_000,
-    damp: { depth: 0.75, sinceMs: noonMs - 1_800_000 },
     day: ritualDay('2026-10-29'),
-    lastOwnDayAtMs: noonMs - 5_400_000,
   }
 }
 
@@ -111,6 +106,18 @@ describe('situation inner state', () => {
   it('resets a stored gate that still has the removed random checkpoint and keeps the threads', () => {
     // `rngState` is the random checkpoint the saved gate memory held before the gate drew from the mind's source.
     localStorage.setItem(key, JSON.stringify({ v: 1, threads: [thread(1)], gate: { ...gateMemory(), rngState: 1 }, savedAtMs: 5 }))
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const state = createStore().read(noonMs)
+
+    expect(state).toEqual({ ...defaultSavedInnerState(), threads: [thread(1)], gate: null, savedAtMs: 5 })
+    expect(warning).toHaveBeenCalledExactlyOnceWith('[situation-inner] Invalid stored fields reset to defaults:', 'gate')
+  })
+
+  it('resets a stored gate that still holds her pacing and keeps the threads', () => {
+    // An older build saved her pacing in the gate slice; it now lives in the card's character-state record.
+    const pacing = { lastSpokenAtMs: noonMs - 590_000, unanswered: 2, awaitingSinceMs: noonMs - 590_000, damp: { depth: 0.75, sinceMs: noonMs - 1_800_000 }, lastOwnDayAtMs: noonMs - 5_400_000 }
+    localStorage.setItem(key, JSON.stringify({ v: 1, threads: [thread(1)], gate: { ...gateMemory(), ...pacing }, savedAtMs: 5 }))
     const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
     const state = createStore().read(noonMs)

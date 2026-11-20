@@ -1,4 +1,4 @@
-import type { VoiceLine } from '@proj-airi/character-mind'
+import type { MindSlowState, VoiceLine, VoiceRun } from '@proj-airi/character-mind'
 import type { ChatHistoryItem, ChatHookRegistry, ChatStreamEventContext } from '@proj-airi/core-agent'
 import type { GenerationProvider } from '@proj-airi/provider-inference'
 import type { DesktopActivitySnapshot } from '@proj-airi/stage-shared/performance-state'
@@ -11,16 +11,17 @@ import type { LlmStream } from '../../features/situation/thread-extraction'
 import type { ChatReactionPayload, ChatUnpromptedPayload, ChatUnpromptedResult } from '../chat'
 import type { ThreadExtractionLedgerEntry } from '../devtools/situation-observability'
 
-import { reactionTurnId } from '@proj-airi/character-mind'
+import { CharacterMind, reactionTurnId } from '@proj-airi/character-mind'
 import { createChatHooks } from '@proj-airi/core-agent'
 import { DEFAULT_CHARACTER_PROFILE, initialCharacterState, readCharacter } from '@proj-airi/stage-shared/character-state'
-import { evaluateUrgeGate, FLOOR_MS, HOUR_MS, initialSituationState, notifyTopicKey, recordUrgeFireOutcome, SETTLE_MS, threadMinAgeMs, TOUCH_TOPIC_KEY } from '@proj-airi/stage-shared/situation'
+import { evaluateUrgeGate, FLOOR_MS, HOUR_MS, initialSituationState, notifyTopicKey, recordUrgeFireOutcome, SETTLE_MS, threadMinAgeMs, TOUCH_TOPIC_KEY, userGateMemoryOf } from '@proj-airi/stage-shared/situation'
 import { useDesktopActivityStore } from '@proj-airi/stage-shared/stores/desktop-activity'
 import { useForegroundWindowStore } from '@proj-airi/stage-shared/stores/foreground-window'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { GATE_INTERVAL_MS, useSituationStore } from '.'
+import { MindVoice } from '../../composables/performance/mind-voice'
 import { usePerformanceRuntimeState } from '../../features/performance/runtime-state'
 import { useSituationInnerState } from '../../features/situation/inner-state'
 import { useSituationSettings } from '../../features/situation/settings'
@@ -824,7 +825,7 @@ describe('situation gate loop', () => {
    * A leader in a host that supports unprompted turns, with a visible stage, an attentive user, and desktop and
    * foreground samples that its producers keep fresh, so only the gate's own rules decide. The gate's seed is pinned.
    */
-  function startQuietLeader(options: { capable?: boolean, leader?: boolean, foreground?: () => ForegroundWindowSample | null } = {}) {
+  function startQuietLeader(options: { capable?: boolean, leader?: boolean, foreground?: () => ForegroundWindowSample | null, slow?: MindSlowState } = {}) {
     const leadership = createLeadership(options.leader ?? true)
     const store = useSituationStore()
     const hooks = createChatHooks()
@@ -845,7 +846,7 @@ describe('situation gate loop', () => {
       store.setHostCapabilities({ unprompted: true })
     store.observeChat(hooks, chat.controls)
     store.initialize(leadership.runtime)
-    const connected = connectMind(store, SEED)
+    const connected = connectMind(store, SEED, options.slow)
     return { store, hooks, chat, leadership, observability: useSituationObservabilityStore(), ...connected }
   }
 
@@ -914,12 +915,8 @@ describe('situation gate loop', () => {
     await hooks.emitStreamEndHooks({ ...context, cueStats: { act: 0, recovered: 0, rejected: 0, origin: 'unprompted', declined: true, silent: false, wordless: false, breaks: 0, breaksIgnored: 0 } })
   }
 
-  /** An open question from an earlier exchange of `session-1`, ripe now and saved before the leader starts. */
-  /**
-   * Saves one ripe thread. `ownDayJustNow` also saves that she just talked about her own day, so its weight starts at
-   * zero and the thread is the reason she opens with.
-   */
-  function saveRipeQuestion(options: { ownDayJustNow?: boolean } = {}): Thread {
+  /** Saves one ripe question from an earlier exchange of `session-1` before the leader starts. */
+  function saveRipeQuestion(): Thread {
     const thread: Thread = {
       id: 'thread:question:1',
       topicKey: 'thread:question:1',
@@ -936,11 +933,13 @@ describe('situation gate loop', () => {
     const inner = useSituationInnerState()
     inner.claim(-1)
     inner.read()
-    const gate = options.ownDayJustNow
-      ? { lastFireAtMs: null, lastSpokenAtMs: null, unanswered: 0, awaitingSinceMs: null, damp: null, day: null, lastOwnDayAtMs: Date.now() }
-      : undefined
-    inner.write({ threads: [thread], gate }, -1)
+    inner.write({ threads: [thread] }, -1)
     return thread
+  }
+
+  /** Her pacing after she just talked about her own day, so its weight starts at zero and a thread is the reason she opens with. */
+  function ownDayJustNow(): MindSlowState {
+    return { pacing: { lastSpokenAtMs: null, unanswered: 0, awaitingSinceMs: null, damp: null, lastOwnDayAtMs: Date.now() } }
   }
 
   it('extracts the threads of an ended exchange without a chat hook or a chat message, and saves them for the gate', async () => {
@@ -1197,9 +1196,10 @@ describe('situation gate loop', () => {
     await endExchange(firstExtractions)
     first.leadership.set(false)
 
-    // The reloaded window has its own Pinia but the same localStorage.
+    // The reloaded window has its own Pinia but the same localStorage; its mind loads her pacing from the card's record.
+    const { slow } = first.mind.state
     setActivePinia(createPinia())
-    const reloaded = startQuietLeader()
+    const reloaded = startQuietLeader({ slow })
     const reloadedExtractions = watchExtractions(reloaded.observability)
     reloaded.chat.stream.mockImplementation(answers('{"threads":[],"events":[]}'))
     reloaded.chat.state.messages = [...INTERVIEW, ...SISTER]
@@ -1835,7 +1835,7 @@ describe('situation gate loop', () => {
 
     expect(lastEvaluation().decision).toMatchObject({ fire: false, reason: 'floor' })
     expect(lastEvaluation().memoryBefore).toMatchObject({ lastFireAtMs: spokeAtMs, lastSpokenAtMs: spokeAtMs, unanswered: 0, pending: null })
-    expect(useSituationInnerState().read().gate).toMatchObject({ lastFireAtMs: spokeAtMs, unanswered: 0 })
+    expect(useSituationInnerState().read().gate).toEqual({ lastFireAtMs: spokeAtMs, day: expect.any(Object) })
 
     await vi.advanceTimersByTimeAsync(FLOOR_MS)
     expect(lastEvaluation().decision).toMatchObject({ fire: false, reason: 'urge' })
@@ -1847,8 +1847,8 @@ describe('situation gate loop', () => {
     ['failed', 'failed'],
     ['busy-rejected', 'busy'],
   ] as const)('leaves a thread eligible after a %s attempt, and raises it exactly once when a later turn speaks', async (_label, outcome) => {
-    const thread = saveRipeQuestion({ ownDayJustNow: true })
-    const { hooks, chat, observability } = startQuietLeader()
+    const thread = saveRipeQuestion()
+    const { hooks, chat, observability } = startQuietLeader({ slow: ownDayJustNow() })
     chat.submitUnprompted.mockImplementationOnce(async (payload) => {
       if (outcome === 'declined') {
         await unpromptedTurnIsDeclined(hooks, payload)
@@ -1880,8 +1880,8 @@ describe('situation gate loop', () => {
   })
 
   it('records the urge decision, the open threads, and the outcome per reason kind in the inspector', async () => {
-    const thread = saveRipeQuestion({ ownDayJustNow: true })
-    const { hooks, chat, observability } = startQuietLeader()
+    const thread = saveRipeQuestion()
+    const { hooks, chat, observability } = startQuietLeader({ slow: ownDayJustNow() })
     chat.submitUnprompted.mockImplementationOnce(async (payload) => {
       await unpromptedTurnIsDeclined(hooks, payload)
       return { status: 'declined' }
@@ -1912,7 +1912,7 @@ describe('situation gate loop', () => {
     expect(spoken.urge.memory).toMatchObject({ unanswered: 0 })
   })
 
-  it('restores the unanswered count, the ritual day, and the threads after a reload of the leader window', async () => {
+  it('restores the ritual day and the threads after a reload of the leader window, and her pacing from the mind\'s slow state', async () => {
     vi.setSystemTime(MORNING)
     const thread = saveRipeQuestion()
     const first = startQuietLeader()
@@ -1922,9 +1922,10 @@ describe('situation gate loop', () => {
     expect(first.chat.submitUnprompted.mock.calls[0][0]).toMatchObject({ topicKey: 'ritual:greeting', reason: { kind: 'ritual-greeting', category: 'ritual' } })
     first.leadership.set(false)
 
-    // The reloaded window has its own Pinia but the same localStorage.
+    // The reloaded window has its own Pinia but the same localStorage; its mind loads her pacing from the card's record.
+    const { slow } = first.mind.state
     setActivePinia(createPinia())
-    const reloaded = startQuietLeader()
+    const reloaded = startQuietLeader({ slow })
     await nextGateTick()
 
     const { memoryBefore, input, decision } = lastEvaluation()
@@ -2015,23 +2016,52 @@ describe('situation gate loop', () => {
     disconnect()
 
     await userTurn(hooks, 'user-reply')
-    const remounted = connectMind(store, SEED)
+    // A reloaded mind carries her pacing in its slow state.
+    const remounted = connectMind(store, SEED, mind.state.slow)
     await nextGateTick()
 
     expect(remounted.mind.state.voice.gate).toMatchObject({ unanswered: 0, damp: { depth: 0.5 } })
   })
 
-  it('starts a new run at "Delete all data": the mind forgets the fires and the saved slice', async () => {
+  it('starts a new run at "Delete all data": the mind forgets the user\'s floor, fires, and saved slice', async () => {
     const { store, observability, mind } = startQuietLeader()
     await observability.evaluateGate()
     await vi.advanceTimersByTimeAsync(0)
-    expect(useSituationInnerState().read().gate).toMatchObject({ unanswered: 1 })
+    expect(useSituationInnerState().read().gate).toMatchObject({ lastFireAtMs: T0 })
 
     store.forget({ scope: 'everything' })
     await nextGateTick()
 
-    expect(mind.state.voice.gate).toMatchObject({ fires: [], lastFireAtMs: null, unanswered: 0, pending: null })
-    expect(useSituationInnerState().read().gate).toMatchObject({ lastFireAtMs: null, unanswered: 0 })
+    // Her pacing goes with the character state, whose reset reloads the mind (see the character mind store).
+    expect(mind.state.voice.gate).toMatchObject({ fires: [], lastFireAtMs: null, pending: null })
+    expect(useSituationInnerState().read().gate).toMatchObject({ lastFireAtMs: null })
+  })
+
+  it('seeds the run\'s user slice from the saved one without fires at promotion, and follows each publish', async () => {
+    const inner = useSituationInnerState()
+    inner.claim(-1)
+    inner.read()
+    inner.write({ gate: { lastFireAtMs: T0 - HOUR_MS, day: null } }, -1)
+    // The gate starts once this test's mind is connected, so the mind sees the promotion's run.
+    const { store, observability, disconnect } = startQuietLeader({ capable: false })
+    disconnect()
+    const mind = new CharacterMind({ seed: SEED })
+    const voice = new MindVoice(mind, () => store, () => {})
+    const runs: VoiceRun[] = []
+    store.connect((stimulus) => {
+      if (stimulus.kind === 'voice-tick')
+        runs.push(stimulus.view.run)
+      voice.answer(stimulus)
+    })
+    store.setHostCapabilities({ unprompted: true })
+    expect(runs[0].user).toEqual({ lastFireAtMs: T0 - HOUR_MS, fires: [], day: null })
+
+    await observability.evaluateGate()
+    await vi.advanceTimersByTimeAsync(0)
+    await nextGateTick()
+
+    expect(runs.at(-1)?.user?.fires).toHaveLength(1)
+    expect(runs.at(-1)?.user).toEqual(userGateMemoryOf(mind.state.voice.gate!))
   })
 
   function poke(): TouchObservation {

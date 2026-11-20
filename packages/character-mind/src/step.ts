@@ -1,4 +1,4 @@
-import type { MindIntent, MindRandom, MindState, MindStimulus } from './types'
+import type { MindIntent, MindRandom, MindSlowState, MindState, MindStimulus } from './types'
 
 import { createReactionState, initialTouchAffectMemory } from '@proj-airi/stage-shared/expression-performance'
 import { initialReactionMemory } from '@proj-airi/stage-shared/situation'
@@ -6,10 +6,13 @@ import { initialReactionMemory } from '@proj-airi/stage-shared/situation'
 import { answerEmotion, answerExpressionClear, answerExpressionRequest } from './expression'
 import { answerPresence, answerScreenChange } from './presence'
 import { answerTouch } from './touch'
-import { answerUserTurn, answerVoiceOutcome, answerVoiceRequest, answerVoiceTick } from './voice'
+import { answerUserTurn, answerVoiceOutcome, answerVoiceRequest, answerVoiceTick, followPacing } from './voice'
 
-/** The state of a mind that has answered nothing. It holds no random source: every draw comes from `step`'s `rng`. */
-export function initialMindState(): MindState {
+/**
+ * The state of a mind that has answered nothing, with the slow state the host loaded. It holds no random source:
+ * every draw comes from `step`'s `rng`.
+ */
+export function initialMindState(slow: MindSlowState = { pacing: null }): MindState {
   return {
     seq: 0,
     reaction: createReactionState(),
@@ -17,6 +20,7 @@ export function initialMindState(): MindState {
     voice: { reaction: initialReactionMemory(), lastDecision: null, gate: null, runId: null, stageShown: false, line: null, requests: [], lastGate: null },
     presence: { away: false, awaySinceMs: null },
     desktop: { screenReactAtMs: null },
+    slow,
   }
 }
 
@@ -27,7 +31,8 @@ export function initialMindState(): MindState {
  * reaches its roll, one for the threshold of each new gate run, and the urge gate's own draws at each tick it evaluates.
  *
  * `nowMs` is epoch milliseconds and must not run backwards between calls: the rules drop a stimulus older than
- * the last one they accepted. Every stimulus advances `seq`, also when it yields no intent.
+ * the last one they accepted. Every stimulus advances `seq`, also when it yields no intent. After each answer,
+ * `slow.pacing` follows her pacing in the gate memory.
  */
 export function step(state: MindState, stimuli: readonly MindStimulus[], nowMs: number, rng: MindRandom): { state: MindState, intents: MindIntent[] } {
   const atSeconds = nowMs / 1000
@@ -61,7 +66,7 @@ export function step(state: MindState, stimuli: readonly MindStimulus[], nowMs: 
     else
       answer = answerVoiceOutcome(next, stimulus, cause, nowMs)
 
-    next = answer.state
+    next = answer.state.voice.gate === next.voice.gate ? answer.state : followPacing(answer.state)
     intents.push(...answer.intents)
   }
 

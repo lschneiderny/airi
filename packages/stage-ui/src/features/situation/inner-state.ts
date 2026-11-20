@@ -4,7 +4,7 @@ import { errorMessageFrom } from '@moeru/std'
 import { logicalDayKey, THREAD_CUE_MAX_CHARS, THREAD_SUMMARY_MAX_CHARS } from '@proj-airi/stage-shared/situation'
 import { isPlainObject } from 'es-toolkit'
 import { defineStore } from 'pinia'
-import { array, check, custom, finite, integer, literal, maxLength, maxValue, minValue, nullable, number, optional, parse, picklist, pipe, safeParse, strictObject, string, unknown } from 'valibot'
+import { array, check, custom, finite, integer, literal, maxLength, minValue, nullable, number, optional, parse, picklist, pipe, safeParse, strictObject, string, unknown } from 'valibot'
 
 const time = pipe(number(), finite())
 const nullableTime = nullable(time)
@@ -36,12 +36,7 @@ const RitualDaySchema = strictObject({
 
 const SavedGateMemorySchema = strictObject({
   lastFireAtMs: nullableTime,
-  lastSpokenAtMs: nullableTime,
-  unanswered: count,
-  awaitingSinceMs: nullableTime,
-  damp: nullable(strictObject({ depth: pipe(number(), minValue(0), maxValue(1)), sinceMs: time })),
   day: nullable(RitualDaySchema),
-  lastOwnDayAtMs: nullableTime,
 })
 
 const innerStateEntries = {
@@ -50,7 +45,7 @@ const innerStateEntries = {
   threads: optional(array(ThreadSchema), () => []),
   /** The ritual day the reason collector reads. */
   rituals: optional(nullable(RitualDaySchema), null),
-  /** The gate's social memory; everything else in the gate memory restarts at promotion. */
+  /** The user's floor and ritual day; her pacing lives in the card's character-state record. */
   gate: optional(nullable(SavedGateMemorySchema), null),
   /** Per chat session, the newest message that thread extraction read, so the next extraction starts after it. */
   extractedThrough: optional(array(strictObject({ sessionId: string(), messageId: string() })), () => []),
@@ -135,7 +130,7 @@ function storedSavedAtMs(): number {
 }
 
 /**
- * Persists the unprompted gate's durable inner state (open threads, the ritual day, the gate's social memory, and how
+ * Persists the unprompted gate's durable inner state (open threads, the ritual day, the user's floor and ritual day of the gate, and how
  * far thread extraction read each chat session) so a leader reload or a promoted window does not start her from day
  * one or extract a conversation twice.
  *
