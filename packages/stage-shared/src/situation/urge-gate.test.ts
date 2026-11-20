@@ -31,7 +31,7 @@ import {
   recordExternalSpeech,
   recordUrgeFireOutcome,
   recordUrgeUserTurn,
-  restoreSocialMemory,
+  restoreGateMemory,
   visibilityRegainUrgeMemory,
 } from '.'
 
@@ -808,18 +808,28 @@ describe('urge gate memory lifecycle', () => {
     expect(promotionUrgeMemory(T0, randomSource(2)).urgeThreshold).not.toBe(a.urgeThreshold)
   })
 
-  it('restores the persisted social slice so a reload does not reset her', () => {
-    const saved = {
-      lastFireAtMs: T0 - HOUR_MS,
-      lastSpokenAtMs: T0 - HOUR_MS,
-      unanswered: 2,
-      awaitingSinceMs: T0 - HOUR_MS,
-      damp: null,
-      day: null,
-      lastOwnDayAtMs: T0 - 2 * HOUR_MS,
-    }
-    const restored = restoreSocialMemory(promotionUrgeMemory(T0, randomSource(1)), saved, T0)
-    expect(restored).toMatchObject(saved)
-    expect(evaluate(gateInput(), { ...restored, urge: 5 }).decision.reason).toBe('quiet-unanswered')
+  it('restores the user\'s slice and her pacing so a reload does not reset her', () => {
+    const user = { lastFireAtMs: T0 - MIN, fires: [T0 - MIN], day: null }
+    const pacing = { lastSpokenAtMs: T0 - HOUR_MS, unanswered: 2, awaitingSinceMs: T0 - HOUR_MS, damp: null, lastOwnDayAtMs: T0 - 2 * HOUR_MS }
+    const promoted = promotionUrgeMemory(T0, randomSource(1))
+
+    const restored = restoreGateMemory(promoted, user, pacing, T0)
+
+    expect(restored).toMatchObject({ ...user, ...pacing, urge: 0, urgeThreshold: promoted.urgeThreshold, lastHardHoldAtMs: T0 })
+    expect(evaluate(gateInput(), { ...restored, urge: 5 }).decision.reason).toBe('floor')
+    expect(evaluate(gateInput({ nowMs: T0 + 10 * MIN }), { ...restored, urge: 5 }).decision.reason).toBe('quiet-unanswered')
+  })
+
+  it('normalizes both slices at the restore and keeps the base fields of a missing one', () => {
+    const promoted = promotionUrgeMemory(T0, randomSource(1))
+    const restored = restoreGateMemory(
+      promoted,
+      { lastFireAtMs: T0 + HOUR_MS, fires: [T0 - 2 * HOUR_MS, T0 - MIN], day: null },
+      { lastSpokenAtMs: T0 + MIN, unanswered: 1.7, awaitingSinceMs: null, damp: { depth: 3, sinceMs: T0 + MIN }, lastOwnDayAtMs: null },
+      T0,
+    )
+
+    expect(restored).toMatchObject({ lastFireAtMs: T0, fires: [T0 - MIN], lastSpokenAtMs: T0, unanswered: 1, damp: { depth: 1, sinceMs: T0 } })
+    expect(restoreGateMemory(promoted, null, null, T0)).toEqual(promoted)
   })
 })

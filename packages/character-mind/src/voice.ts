@@ -1,14 +1,16 @@
-import type { GateOutcome, UrgeGateInput, UrgeGateMemory } from '@proj-airi/stage-shared/situation'
+import type { CharacterPacingMemory, GateOutcome, UrgeGateInput, UrgeGateMemory } from '@proj-airi/stage-shared/situation'
 
 import type { MindIntent, MindRandom, MindState, MindStimulus, MindVoiceState, VoiceLineState, VoiceView } from './types'
 
 import {
   evaluateUrgeGate,
+  initialUrgeMemory,
+  pacingMemoryOf,
   promotionUrgeMemory,
   recordExternalSpeech,
   recordUrgeFireOutcome,
   recordUrgeUserTurn,
-  restoreSocialMemory,
+  restoreGateMemory,
   settleReaction,
   visibilityRegainUrgeMemory,
 } from '@proj-airi/stage-shared/situation'
@@ -29,13 +31,35 @@ export function reactionTurnId(eventId: string): string {
   return `${REACTION_TURN_PREFIX}${eventId}`
 }
 
-/** The gate memory of a run the mind has not seen: the store's mirror, else the saved social slice, else promotion alone. */
-function restoreGate(view: VoiceView, nowMs: number, random: MindRandom): UrgeGateMemory {
-  if (view.run.memory)
-    // A mind that connects mid-run keeps the urge and the hourly cap. Its predecessor's fire has no outcome to wait for.
-    return { ...view.run.memory, pending: null }
-  const promoted = promotionUrgeMemory(nowMs, random)
-  return view.run.saved ? restoreSocialMemory(promoted, view.run.saved, nowMs) : promoted
+/**
+ * The gate memory of a run the mind has not seen: a promotion, with the user's slice of the run and her pacing from
+ * the slow state laid over it. The restore normalizes both, which is the decay of her pacing for the time away.
+ */
+function restoreGate(state: MindState, view: VoiceView, nowMs: number, random: MindRandom): UrgeGateMemory {
+  return restoreGateMemory(promotionUrgeMemory(nowMs, random), view.run.user, state.slow.pacing, nowMs)
+}
+
+/** Her pacing in a gate memory that never held any: what a null `slow.pacing` stands for. */
+const NO_PACING = pacingMemoryOf(initialUrgeMemory)
+
+function samePacing(a: CharacterPacingMemory, b: CharacterPacingMemory): boolean {
+  return a.lastSpokenAtMs === b.lastSpokenAtMs && a.unanswered === b.unanswered && a.awaitingSinceMs === b.awaitingSinceMs
+    && a.lastOwnDayAtMs === b.lastOwnDayAtMs && a.damp?.depth === b.damp?.depth && a.damp?.sinceMs === b.damp?.sinceMs
+}
+
+/**
+ * Sets `slow.pacing` to her pacing in the gate memory when a field differs, and returns `state` itself otherwise, so
+ * the host can tell a change by identity. A null pacing stays null while the gate holds none, so a mind that never
+ * spoke writes nothing to a fresh record.
+ */
+export function followPacing(state: MindState): MindState {
+  const { gate } = state.voice
+  if (gate === null)
+    return state
+  const pacing = pacingMemoryOf(gate)
+  if (samePacing(state.slow.pacing ?? NO_PACING, pacing))
+    return state
+  return { ...state, slow: { ...state.slow, pacing } }
 }
 
 /** The gate's input from the store's view, field by field as the store's own gate tick built it. */
@@ -127,7 +151,7 @@ export function answerVoiceTick(state: MindState, stimulus: Stimulus<'voice-tick
   const { view } = stimulus
   let voice: MindVoiceState = state.voice
   if (voice.runId !== view.run.id || voice.gate === null)
-    voice = { ...voice, runId: view.run.id, gate: restoreGate(view, nowMs, random), stageShown: false }
+    voice = { ...voice, runId: view.run.id, gate: restoreGate(state, view, nowMs, random), stageShown: false }
 
   const served = serveRequests(voice, view, cause, nowMs)
   voice = served.voice

@@ -694,6 +694,8 @@ export const stateRegistry = defineStateRegistry([
     tier: 2,
     exception: 'The gate\'s inner state',
     locations: [{ area: 'localStorage', key: 'settings/situation-inner' }],
+    // The user's floor and ritual day of the gate, the open threads, and the extraction read positions. Her pacing is
+    // in the character-state record.
     reset: ({ pinia }) => useSituationStore(pinia).forget({ scope: 'everything' }),
   },
 

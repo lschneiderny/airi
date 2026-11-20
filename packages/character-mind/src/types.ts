@@ -1,5 +1,5 @@
 import type { Band, ExpressionPerformanceSettings, HoldCommand, MoodDose, PerformanceEmotion, ReactionEpisode, ReactionState, SlotCommand, TouchAffectMemory } from '@proj-airi/stage-shared/expression-performance'
-import type { GateLocalTime, GateOutcome, GateSettings, GateSignals, ReactionDecision, ReactionKind, ReactionMemory, ReasonCategory, ReasonKind, ReasonState, SavedGateMemory, SituationState, TouchVoiceView, UrgeGateDecision, UrgeGateMemory } from '@proj-airi/stage-shared/situation'
+import type { CharacterPacingMemory, GateLocalTime, GateOutcome, GateSettings, GateSignals, ReactionDecision, ReactionKind, ReactionMemory, ReasonCategory, ReasonKind, ReasonState, SituationState, TouchVoiceView, UrgeGateDecision, UrgeGateMemory, UserGateMemory } from '@proj-airi/stage-shared/situation'
 
 /** Uniform draws in [0, 1). The shell owns the source; the core stores none. */
 export type MindRandom = () => number
@@ -27,10 +27,8 @@ export type VoiceLine
 export interface VoiceRun {
   /** The store bumps it at each promotion and at "Delete all data". A new id makes the mind restore its gate memory. */
   id: number
-  /** The store's mirror of the last memory a mind published in this run, or null before the first. */
-  memory: UrgeGateMemory | null
-  /** The social slice read at the promotion; null when nothing was saved or the user deleted all data. */
-  saved: SavedGateMemory | null
+  /** The user's slice: from the last memory a mind published in this run, else the slice saved at promotion; null when nothing was saved or the user deleted all data. */
+  user: UserGateMemory | null
 }
 
 /** What the voice policy sees of the situation at one tick. Built by the store, never kept by the mind. */
@@ -121,7 +119,13 @@ export type MindIntent
 /** The posture intent a scene performs for a touch. */
 export type TouchReactionIntent = Extract<MindIntent, { kind: 'touch-reaction' }>
 
-/** Plain JSON. Everything here is fast state: it resets on launch. */
+/** The part of the mind's state that the leader saves in the active card's character-state record. */
+export interface MindSlowState {
+  /** Her pacing memory; null for a card she never spoke as, or after "Delete all data". */
+  pacing: CharacterPacingMemory | null
+}
+
+/** Plain JSON. Everything but `slow` is fast state: it resets on launch and at a card switch. */
 export interface MindState {
   /** Stimuli answered so far. */
   seq: number
@@ -134,6 +138,8 @@ export interface MindState {
   presence: { away: boolean, awaySinceMs: number | null }
   /** When the last screen-change reaction was stamped, in epoch milliseconds. */
   desktop: { screenReactAtMs: number | null }
+  /** Saved by the host. The core keeps `slow.pacing` equal to her pacing in the gate memory and replaces the object only when a field changed. */
+  slow: MindSlowState
 }
 
 /** The line on its way, from its `speak` intent until its `voice-outcome`. */

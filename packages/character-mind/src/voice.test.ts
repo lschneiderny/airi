@@ -1,9 +1,9 @@
-import type { GateSignals, SavedGateMemory, SituationState, UrgeGateMemory } from '@proj-airi/stage-shared/situation'
+import type { CharacterPacingMemory, GateSignals, SituationState, UserGateMemory } from '@proj-airi/stage-shared/situation'
 
-import type { MindIntent, MindRandom, MindState, MindStimulus, VoiceRequest, VoiceRun, VoiceView } from './types'
+import type { MindIntent, MindRandom, MindSlowState, MindState, MindStimulus, VoiceRequest, VoiceRun, VoiceView } from './types'
 
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
-import { DOUBLE_TEXT_PROBABILITY, FLOOR_MS, HOUR_MS, initialSituationState, initialUrgeMemory, promotionUrgeMemory, randomSource, restoreSocialMemory, visibilityRegainUrgeMemory } from '@proj-airi/stage-shared/situation'
+import { DOUBLE_TEXT_PROBABILITY, FLOOR_MS, HOUR_MS, initialSituationState, promotionUrgeMemory, randomSource, restoreGateMemory, visibilityRegainUrgeMemory } from '@proj-airi/stage-shared/situation'
 import { describe, expect, it } from 'vitest'
 
 import { initialMindState, step } from './step'
@@ -37,7 +37,7 @@ function view(overrides: Partial<Omit<VoiceView, 'run' | 'signals'>> & { run?: P
     moodFactor: 1,
     unpromptedPending: false,
     ...overrides,
-    run: { id: 1, memory: null, saved: null, ...overrides.run },
+    run: { id: 1, user: null, ...overrides.run },
     signals: { ...QUIET, ...overrides.signals },
   }
 }
@@ -47,14 +47,14 @@ function tick(overrides: Parameters<typeof view>[0] = {}, forceTiming = false): 
 }
 
 /** One mind fed in order from one seeded source that counts its draws. */
-function script(seed = SEED) {
+function script(seed = SEED, slow?: MindSlowState) {
   const source = randomSource(seed)
   let draws = 0
   const random: MindRandom = () => {
     draws++
     return source()
   }
-  let state = initialMindState()
+  let state = initialMindState(slow)
   return {
     get state() { return state },
     get gate() { return state.voice.gate! },
@@ -73,28 +73,29 @@ function speakOf(intents: readonly MindIntent[]) {
   return speaks[0] as Extract<MindIntent, { kind: 'speak' }>
 }
 
-const saved: SavedGateMemory = { lastFireAtMs: T0 - 30 * MIN, lastSpokenAtMs: T0 - 30 * MIN, unanswered: 2, awaitingSinceMs: T0 - 30 * MIN, damp: null, day: null, lastOwnDayAtMs: null }
+const user: UserGateMemory = { lastFireAtMs: T0 - 30 * MIN, fires: [T0 - 30 * MIN], day: null }
+const pacing: CharacterPacingMemory = { lastSpokenAtMs: T0 - 30 * MIN, unanswered: 2, awaitingSinceMs: T0 - 30 * MIN, damp: null, lastOwnDayAtMs: null }
 
 describe('voice-tick', () => {
-  it('restores a new run from the mirror without its pending fire', () => {
-    const memory: UrgeGateMemory = { ...initialUrgeMemory, urge: 0.4, fires: [T0 - MIN], pending: { topicKey: 'own-day', firedAtMs: T0 - MIN, spokenAtMs: null, category: 'open', reasonKind: 'own-day', doubleTextRoll: 1, doubleTextOffsetMs: 0 } }
-    const mind = script()
+  it('restores a new run from the user\'s slice and her pacing over a promotion, normalized at the tick', () => {
+    // A stored time ahead of the tick (the clock moved back) is pulled back to it.
+    const ahead = { ...pacing, lastOwnDayAtMs: T0 + HOUR_MS }
+    const mind = script(SEED, { pacing: ahead })
     // A pending unprompted turn skips the gate, so the memory stays as restored.
-    mind.send(T0, tick({ run: { memory, saved }, unpromptedPending: true }))
+    mind.send(T0, tick({ run: { user }, unpromptedPending: true }))
 
     expect(mind.state.voice.runId).toBe(1)
-    expect(mind.gate).toEqual({ ...memory, pending: null })
+    expect(mind.gate).toEqual(restoreGateMemory(promotionUrgeMemory(T0, randomSource(SEED)), user, ahead, T0))
+    expect(mind.gate).toMatchObject({ ...user, ...pacing, lastOwnDayAtMs: T0, urge: 0, lastHardHoldAtMs: T0 })
+    expect(mind.draws).toBe(1)
   })
 
-  it('restores a new run from the saved slice over a promotion, and from promotion alone without one', () => {
-    for (const slice of [saved, null]) {
-      const mind = script()
-      mind.send(T0, tick({ run: { saved: slice }, unpromptedPending: true }))
-      const promoted = promotionUrgeMemory(T0, randomSource(SEED))
+  it('restores a new run from promotion alone without a slice or pacing', () => {
+    const mind = script()
+    mind.send(T0, tick({ unpromptedPending: true }))
 
-      expect(mind.gate).toEqual(slice ? restoreSocialMemory(promoted, slice, T0) : promoted)
-      expect(mind.draws).toBe(1)
-    }
+    expect(mind.gate).toEqual(promotionUrgeMemory(T0, randomSource(SEED)))
+    expect(mind.state.slow.pacing).toBeNull()
   })
 
   it('eases her in at a shown edge', () => {
@@ -169,8 +170,8 @@ describe('voice-outcome', () => {
 
 describe('user turns', () => {
   it('resets unanswered at a user turn', () => {
-    const mind = script()
-    mind.send(T0, tick({ run: { saved } }))
+    const mind = script(SEED, { pacing })
+    mind.send(T0, tick({ run: { user } }))
     mind.send(T0 + SEC, { kind: 'user-turn', atMs: T0 + SEC })
 
     expect(mind.gate).toMatchObject({ unanswered: 0, awaitingSinceMs: null })
@@ -353,5 +354,56 @@ describe('cues', () => {
 
     expect(cuesOf(intents)).toEqual([])
     expect(send(T0 + 3 * SEC, { kind: 'voice-outcome', turnId, outcome: 'declined' })).toEqual([])
+  })
+})
+
+describe('slow state', () => {
+  it('follows each gate change that alters her pacing, and keeps the object otherwise', () => {
+    const mind = script()
+    mind.send(T0, tick({ signals: { stageVisible: false } }))
+    // A fresh gate holds no pacing, so a mind that never spoke keeps none.
+    expect(mind.state.slow.pacing).toBeNull()
+
+    const { turnId } = speakOf(mind.send(T0 + 2 * SEC, tick({}, true)))
+    expect(mind.state.slow.pacing).toBeNull()
+    mind.send(T0 + 3 * SEC, { kind: 'voice-outcome', turnId, outcome: 'spoken' })
+    const spoken = mind.state.slow.pacing
+    expect(spoken).toEqual({ lastSpokenAtMs: T0 + 3 * SEC, unanswered: 1, awaitingSinceMs: T0 + 3 * SEC, damp: null, lastOwnDayAtMs: T0 + 3 * SEC })
+
+    // A held tick changes the gate memory but not her pacing.
+    mind.send(T0 + 5 * SEC, tick())
+    expect(mind.state.slow.pacing).toBe(spoken)
+
+    mind.send(T0 + 6 * SEC, { kind: 'user-turn', atMs: T0 + 6 * SEC })
+    expect(mind.state.slow.pacing).not.toBe(spoken)
+    expect(mind.state.slow.pacing).toMatchObject({ unanswered: 0, awaitingSinceMs: null, damp: { sinceMs: T0 + 6 * SEC } })
+  })
+
+  it('continues identically from a JSON round trip of a state with slow pacing', () => {
+    const steps: Array<[number, MindStimulus]> = [
+      [T0, tick({ run: { user } })],
+      [T0 + MIN, { kind: 'user-turn', atMs: T0 + MIN }],
+      [T0 + 10 * MIN, tick({}, true)],
+      [T0 + 10 * MIN + SEC, tick()],
+    ]
+    const direct = script(SEED, { pacing })
+    const resumed = script(SEED, { pacing })
+    for (const [atMs, stimulus] of steps.slice(0, 2)) {
+      direct.send(atMs, stimulus)
+      resumed.send(atMs, stimulus)
+    }
+    const restored: MindState = JSON.parse(JSON.stringify(resumed.state))
+    expect(restored.slow.pacing).not.toBeNull()
+    const random = randomSource(SEED)
+    for (let draw = 0; draw < resumed.draws; draw++)
+      random()
+
+    let state = restored
+    for (const [atMs, stimulus] of steps.slice(2)) {
+      const answer = step(state, [stimulus], atMs, random)
+      state = answer.state
+      expect(answer.intents).toEqual(direct.send(atMs, stimulus))
+    }
+    expect(state).toEqual(direct.state)
   })
 })

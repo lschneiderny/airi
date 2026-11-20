@@ -1,4 +1,4 @@
-import type { MindIntent, MindRandom, MindState, MindStimulus } from './types'
+import type { MindIntent, MindRandom, MindSlowState, MindState, MindStimulus } from './types'
 
 import { seededRandom } from './random'
 import { initialMindState, step } from './step'
@@ -8,7 +8,8 @@ export interface MindStep { atMs: number, stimuli: readonly MindStimulus[], inte
 
 /**
  * The shell around {@link step}: it owns the clock, the random source, and the state. The app constructs one, in the
- * window's `useCharacterMindStore`; it persists nothing, so every mind starts from the initial state.
+ * window's `useCharacterMindStore`. It persists nothing itself: the host saves `state.slow` and hands it back through
+ * the `slow` option or {@link reset}; everything else starts from the initial state.
  */
 export class CharacterMind {
   private current: MindState
@@ -17,15 +18,23 @@ export class CharacterMind {
   private readonly rng: MindRandom
   private readonly listeners = new Set<(step: MindStep) => void>()
 
-  /** `seed` starts the random source; `clock` returns epoch milliseconds. */
-  constructor(options: { seed: number, clock?: () => number }) {
+  /** `seed` starts the random source; `clock` returns epoch milliseconds; `slow` is the slow state the host loaded. */
+  constructor(options: { seed: number, clock?: () => number, slow?: MindSlowState }) {
     this.clock = options.clock ?? Date.now
     this.rng = seededRandom(options.seed)
-    this.current = initialMindState()
+    this.current = initialMindState(options.slow)
   }
 
   get state(): MindState {
     return this.current
+  }
+
+  /**
+   * Starts the mind over from `slow`, for a host that loaded another slow state. The random stream continues, and the
+   * clock stays monotonic: the next step is never earlier than the last one. Listeners stay and see no step for it.
+   */
+  reset(slow: MindSlowState): void {
+    this.current = initialMindState(slow)
   }
 
   /** Answers the stimuli now and returns the intents. */
