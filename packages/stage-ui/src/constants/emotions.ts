@@ -1,19 +1,6 @@
-export enum Emotion {
-  Happy = 'happy',
-  Sad = 'sad',
-  Angry = 'angry',
-  Think = 'think',
-  Surprise = 'surprised',
-  Awkward = 'awkward',
-  Question = 'question',
-  Curious = 'curious',
-  Neutral = 'neutral',
-  Love = 'love',
-  Flustered = 'flustered',
-  Sleepy = 'sleepy',
-}
+import { Emotion } from '@proj-airi/stage-shared/expression-performance'
 
-export const EMOTION_VALUES = Object.values(Emotion)
+export { Emotion, EMOTION_VALUES } from '@proj-airi/stage-shared/expression-performance'
 
 export const EmotionHappyMotionName = 'Happy'
 export const EmotionSadMotionName = 'Sad'

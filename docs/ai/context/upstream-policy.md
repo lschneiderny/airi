@@ -165,6 +165,7 @@ Each row is behavior where the merged tree differs from upstream.
 | Web extension video notify | `data.destinations: ['proj-airi:stage-*']` (#3433) | `['character']` plus the envelope route | The stage reads it as a situation topic and starts no agent run | Slice CM3 |
 | Card package | Exports the card and its display model; the format "is intentionally not a lossless backup" | Share writes the same. Back up adds the card's memories and its whole character-state record | [The mind's slow state](state-persistence.md#the-minds-slow-state) in State persistence and decision 10 of the [character mind ADR](../adr/2026-11-17-character-mind-direction.md) | Not planned |
 | Automations (auto-run recipes) | A settings tab marked as in development; no trigger | The same; a trigger that makes her speak unasked stays out | The mind's voice channel is the only decider for unasked speech | When upstream ships a trigger |
+| Emotion enum | Four copies of `Emotion` and `EMOTION_VALUES`, in `stage-ui`, `stage-ui-live2d`, `stage-ui-mmd`, and `stage-ui-spine` | One in `stage-shared` (`expression-performance/emotion.ts`); each package's `constants/emotions.ts` re-exports it and keeps its own maps | One vocabulary with `PERFORMANCE_EMOTIONS` | When upstream merges its copies |
 
 ### Desktop app structure
 
