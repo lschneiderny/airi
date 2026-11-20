@@ -70,6 +70,8 @@ Writers that only move or remove old keys sit outside the stores. `migrateGoCred
 
 A [character state](glossary.md#character-state) record (`CharacterStateRecordV1` in `packages/stage-shared/src/character-state/types.ts`) holds one card's mood, temperament, relationship, daily history, applied event ids, and her pacing memory (`pacing`: last-spoke time, unanswered openings, the reply wait, the damping, and the own-day mark). `useCharacterStateStore` loads and saves it in the leader. Its `recordPacing` writes `pacing` and drops a write whose card or `leaderEpoch` is stale; no caller writes it yet, so `pacing` stays `null`.
 
+A card leaves the device in one of two packages (`exportAiriCardPackage` in `packages/stage-ui/src/services/airi-card-import-export.ts`). A share carries the card and its profile (`CharacterProfile`) and its display model only; it never carries the card's memories or its character-state record, and its import starts the record fresh from the profile. A backup carries the card, its own memories, and the whole record, pacing included, and its import restores them.
+
 A chat session record stores no system message: each request composes it. A session record names one character, and `characterMembersOfMeta` (`packages/stage-ui/src/stores/chat/session-members.ts`) derives the session's character members from it.
 
 ### Main-process files

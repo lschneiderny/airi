@@ -93,17 +93,29 @@ export class AiriCardPackageError extends Error {
   }
 }
 
+/** What a backup adds to a share: the card's own memories, never shared ones, and its whole character-state record. */
+export interface AiriCardPackageBackup {
+  memories: MemoryWrite[]
+  characterState: CharacterStateRecordV1 | null
+}
+
 /**
- * Creates a portable AIRI Card share package.
+ * Creates an AIRI Card package.
  *
- * This format is intentionally not a lossless backup. It includes fields the
- * creation editor lets the sender review, a sanitized AIRI module subset, and
- * the selected display model, the card's own memories, never shared ones, and
- * the card's character state (mood, temperament, relationship) when given.
- * Unreviewed CCv3 metadata, custom extensions,
- * agent prompts, and machine-local runtime references are omitted.
+ * Without `backup`, the package is a share. It includes fields the creation
+ * editor lets the sender review, a sanitized AIRI module subset with the
+ * character profile, and the selected display model. Unreviewed CCv3 metadata,
+ * custom extensions, agent prompts, and machine-local runtime references are
+ * omitted.
+ *
+ * With `backup`, the package also carries the card's own memories and its whole
+ * character-state record (mood, temperament, relationship, her pacing), so an
+ * import restores the character as she was. It is still not a lossless backup
+ * of the card: the share-field whitelist applies to the card itself.
  */
-export async function exportAiriCardPackage({ card, displayModelsStore, memories, characterState }: { card: AiriCard, displayModelsStore: DisplayModelsStore, memories?: MemoryWrite[], characterState?: CharacterStateRecordV1 | null }): Promise<Blob> {
+export async function exportAiriCardPackage({ card, displayModelsStore, backup }: { card: AiriCard, displayModelsStore: DisplayModelsStore, backup?: AiriCardPackageBackup }): Promise<Blob> {
+  const memories = backup?.memories
+  const characterState = backup?.characterState
   const exportableCard = cardFromAiriCard(card)
   const displayModel = await exportDisplayModel(card, displayModelsStore)
   const manifest = {

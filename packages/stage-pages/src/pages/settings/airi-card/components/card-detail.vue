@@ -70,7 +70,28 @@ async function handleActivate() {
   }
 }
 
-async function handleExportCard() {
+async function handleShareCard() {
+  if (!selectedCard.value)
+    return
+
+  isExportingCard.value = true
+  try {
+    useDownload(
+      await exportAiriCardPackage({ card: selectedCard.value, displayModelsStore }),
+      `${selectedCard.value.name.trim()}.zip`,
+    ).download()
+    toast(t('settings.pages.card.shared'))
+  }
+  catch (error) {
+    console.error('Error sharing card package:', error)
+    toast(t('settings.pages.card.export_failed'))
+  }
+  finally {
+    isExportingCard.value = false
+  }
+}
+
+async function handleBackUpCard() {
   if (!selectedCard.value)
     return
 
@@ -81,18 +102,20 @@ async function handleExportCard() {
       await exportAiriCardPackage({
         card: selectedCard.value,
         displayModelsStore,
-        memories: memory.entries
-          .filter(entry => entry.persona === props.cardId)
-          .map(({ description, body }) => ({ description, body })),
-        characterState: await characterState.exportRecord(props.cardId),
+        backup: {
+          memories: memory.entries
+            .filter(entry => entry.persona === props.cardId)
+            .map(({ description, body }) => ({ description, body })),
+          characterState: await characterState.exportRecord(props.cardId),
+        },
       }),
-      `${selectedCard.value.name.trim()}.zip`,
+      `${selectedCard.value.name.trim()} backup.zip`,
     ).download()
-    toast(t('settings.pages.card.exported'))
+    toast(t('settings.pages.card.backed_up'))
   }
   catch (error) {
-    console.error('Error exporting card package:', error)
-    toast(t('settings.pages.card.export_failed'))
+    console.error('Error backing up card package:', error)
+    toast(t('settings.pages.card.back_up_failed'))
   }
   finally {
     isExportingCard.value = false
@@ -305,10 +328,17 @@ const proseClasses = [
             />
             <Button
               icon="i-solar:download-minimalistic-linear"
-              :label="t('settings.pages.card.export')"
+              :label="t('settings.pages.card.share')"
               :disabled="isExportingCard"
               :loading="isExportingCard"
-              @click="handleExportCard"
+              @click="handleShareCard"
+            />
+            <Button
+              icon="i-solar:download-square-linear"
+              :label="t('settings.pages.card.back_up')"
+              :disabled="isExportingCard"
+              :loading="isExportingCard"
+              @click="handleBackUpCard"
             />
             <Button
               v-if="cardId !== 'default'"

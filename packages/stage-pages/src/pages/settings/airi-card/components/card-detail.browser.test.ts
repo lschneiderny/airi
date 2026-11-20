@@ -60,7 +60,7 @@ describe('card detail', () => {
     return { screen, cardId }
   }
 
-  it('exports only the card own persisted memories and its character state from a fresh store', async () => {
+  it('backs up only the card own persisted memories and its character state from a fresh store', async () => {
     const global = {
       plugins: [pinia, createI18n({ legacy: false, locale: 'en', messages: { en } })],
     }
@@ -92,11 +92,11 @@ describe('card detail', () => {
       })
     })
     try {
-      await screen.getByRole('button', { name: 'Export', exact: true }).click()
+      await screen.getByRole('button', { name: 'Back up', exact: true }).click()
       const args = await exported
-      expect(args.memories).toEqual([own])
+      expect(args.backup?.memories).toEqual([own])
       expect(exportRecord).toHaveBeenCalledWith(cardId)
-      expect(args.characterState).toEqual(characterState)
+      expect(args.backup?.characterState).toEqual(characterState)
       expect(exportAiriCardPackage).toHaveBeenCalledTimes(1)
     }
     finally {
