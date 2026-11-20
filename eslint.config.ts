@@ -174,6 +174,22 @@ export default defineConfig({
     }))],
   },
 }, {
+  // The idle schedule and the errand pacing are pure rules that the character mind will compose: time and random draws
+  // come in as arguments, as in the mind's core.
+  name: 'airi/idle-schedule-pure',
+  files: ['packages/motion-driver-natural/src/idle-schedule.ts', 'packages/motion-driver-natural/src/idle-errands.ts'],
+  rules: {
+    'no-restricted-properties': ['error', ...[['Math', 'random'], ['Date', 'now'], ['performance', 'now']].map(([object, property]) => ({
+      object,
+      property,
+      message: 'The idle schedule takes time and random draws as arguments.',
+    }))],
+    'no-restricted-globals': ['error', ...['setTimeout', 'setInterval', 'setImmediate', 'requestAnimationFrame', 'queueMicrotask'].map(name => ({
+      name,
+      message: 'The idle schedule runs no timers.',
+    }))],
+  },
+}, {
   // The eager Live2D path may import only the three-free 3D subpaths; scenes load through `import()`.
   // Pocket was retired. See docs/ai/adr/2026-11-04-lazy-3d-renderers.md.
   name: 'airi/lazy-3d-renderers',

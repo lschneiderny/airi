@@ -1,9 +1,10 @@
 import type { GazePoint, NaturalGazeLayer } from './gaze'
 import type { IdleErrandKind, IdleErrandRecord } from './idle-errands'
+import type { IdleEdge, IdleScheduleState, IdleView } from './idle-schedule'
 import type { Vec3 } from './posture'
 import type { RandomStream } from './random'
 
-import { IDLE_ERRAND_KINDS, IDLE_ERRAND_PACING, PASTIME_HOLD_SECONDS } from './idle-errands'
+import { advanceIdleSchedule, applyIdleEdge, clamp01, finite, IDLE_WAKE_SECONDS, initialIdleSchedule } from './idle-schedule'
 import { minJerk } from './processes'
 
 /**
@@ -184,8 +185,7 @@ const sleepSettleSeconds = 6
  * before the next nod. A body host nods in its own doze instead.
  */
 const sleepNod = { sink: 5, rise: 3.5, pause: 5.5 }
-/** Seconds an ordinary wake takes, and a wake by touch. */
-const wakeSeconds = 1.6
+/** Seconds a wake by touch takes; an ordinary wake takes `IDLE_WAKE_SECONDS`. */
 const startledWakeSeconds = 0.35
 /** Seconds an interrupted activity takes to hand the body back. */
 const interruptSeconds = 0.4
@@ -195,40 +195,10 @@ const aboutToSpeakMaxSeconds = 10
 const letGoWindowSeconds = 30
 /** Posture shifts slow down under an activity but never stop: a hold drawn at a lower rate would outlast it. */
 const maxShiftCalm = 0.6
-/** Seconds between two activities: the minimum and maximum of the uniform rest draw. */
-const rest = { min: 6, max: 14 }
-/** Mean seconds between activity starts at a neutral drive, on top of the rest. */
-const meanGap = { idle: 45, watching: 70 }
-/** Seconds the user must be away before she falls asleep: the bounds of the uniform draw. */
-const sleepDelay = { min: 12, max: 30 }
-/** A sleep at least this long, in seconds, can be followed by a stretch or a yawn. */
-const longSleepSeconds = 90
 /** Seconds a sleep started by `play` lasts before she wakes on her own: the settle and one slow nod, into the next. */
 const playedSleepSeconds = 24
 /** Seconds of continuous `idle` mode after which a body host's character settles in: the director's idle-to-sit time (architecture 4f). */
 const settleSeconds = 120
-/**
- * Shortest seconds before the same activity is drawn again. The whole-body kinds, appended so the draw order of the
- * others stays, take architecture 4e's refractory of their act.
- */
-const cooldowns: Record<DrawnIdleActivityKind, number> = { 'stretch': 300, 'yawn': 75, 'look-around': 25, 'check-in': 30, 'peer': 25, 'zone-out': 40, 'nod-off': 100, 'sway': 30, 'sigh': 90, 'shoulder-roll': 240, 'shift-stance': 60, 'clasp-hands': 240, 'hair-touch': 300, 'heel-rock': 240, 'arm-swing': 180 }
-
-const drawnKinds = Object.keys(cooldowns) as DrawnIdleActivityKind[]
-
-/**
- * Seconds over which a kind a body host's character showed regains its full odds, linearly: about 60 s per act (45 s
- * mean gap, 10 s mean rest, a 5 s act) times the five other kinds of her settled pool, so each can come first.
- */
-const recoverySeconds = 300
-
-function clamp01(value: number) {
-  return Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0))
-}
-
-function finite(value: number) {
-  return Number.isFinite(value) ? Math.max(-1, Math.min(1, value)) : 0
-}
-
 /** Rise over `attack`, hold, fall over `release`; 0 outside. Zero slope at every joint. */
 function trapezoid(age: number, attack: number, hold: number, release: number) {
   if (age <= 0 || age >= attack + hold + release)
@@ -277,78 +247,6 @@ export class IdleBehaviourReports {
 /** The output while nothing contributes; shared, so a quiet layer allocates nothing per step. Never written. */
 const idleRest: IdleOutput = Object.freeze(neutral())
 
-/**
- * The drawn kinds that need her arms, her shoulders or a standing posture, which a settled character does not start.
- * Architecture 4f lets only the sigh, the yawn and the foot re-plant play on the rest. The head and gaze kinds
- * (look-around, check-in, zone-out, nod-off, sway) still play while she is settled: a recorded deviation from 4f's
- * list, because they move nothing the rest posture holds.
- */
-const SETTLED_OUT = ['stretch', 'peer', 'shoulder-roll', 'clasp-hands', 'hair-touch', 'heel-rock', 'arm-swing'] as const satisfies readonly DrawnIdleActivityKind[]
-
-/**
- * Relative odds of each drawn activity for a drive. Tiredness (night, or low mood energy) favours yawns, zoning out
- * and nodding off; a lively mood favours looking around and watching the screen; time without an exchange makes her
- * check on the user more; tension makes her restless. While the user is active (`watching`) she watches along more
- * and drifts off less. Sway is drawn only while music plays. The whole-body kinds take architecture 4e's act weights,
- * mood energy standing in for its arousal, and weigh 0 unless the drive sets `body`, so a head-only host's single
- * draw sees the same pool as before they existed. While a body host's character is `settled` (resting, or sitting on
- * a clip), nothing that needs her arms, her shoulders or a standing posture is drawn (architecture 4f restricts the
- * rest's acts), and a stretch that would follow a long sleep becomes a yawn; `settled` is never true without `body`.
- * With `body`, a kind started `since` seconds ago weighs `since / 300` of its odds until 300 s have passed, so she shows
- * most of what she can do before she repeats herself; a head-only host ignores `since`.
- */
-export function idleActivityWeights(drive: NaturalIdleDrive, context: { watching: boolean, settled?: boolean, since?: Partial<Record<DrawnIdleActivityKind, number>> }): Record<DrawnIdleActivityKind, number> {
-  const tired = clamp01(Math.max(drive.sleepiness, -finite(drive.energy)))
-  const lively = clamp01(finite(drive.energy))
-  const warm = clamp01(0.5 + finite(drive.valence))
-  const tense = clamp01(finite(drive.tension))
-  const solitude = clamp01(drive.solitude)
-  const body = drive.body === true
-  const weights: Record<DrawnIdleActivityKind, number> = {
-    'look-around': (1 + 0.5 * lively + 0.6 * tense) * (1 - 0.5 * tired),
-    'check-in': (0.45 + 0.6 * warm) * (1 + 0.8 * solitude) * (context.watching ? 1.2 : 1),
-    'peer': (context.watching ? 1.6 : 0.35) * (1 + 0.4 * lively) * (1 - 0.5 * tired),
-    'zone-out': (0.5 + 0.9 * tired + 0.4 * solitude) * (1 - 0.5 * tense) * (context.watching ? 0.5 : 1),
-    'stretch': 0.3 + 0.3 * tired + 0.2 * tense,
-    'yawn': 0.08 + 1.3 * tired,
-    'nod-off': tired > 0.45 ? 1.4 * (tired - 0.45) / 0.55 * (context.watching ? 0.6 : 1) : 0,
-    'sway': drive.music ? (0.8 + 0.6 * warm) * (1 - 0.6 * tense) : 0,
-    'sigh': body ? (finite(drive.valence) < -0.2 ? 2 : 1) : 0,
-    'shoulder-roll': body ? 0.8 : 0,
-    // 4e act 3: the body re-plants a foot. 4e act 6 clasps the hands (0.7), act 8 tucks the hair (0.5; a host whose rig
-    // lacks head clearance or the tuck's reach lists it in `unreachable`) and act 11 raises the heels (0 unless
-    // valence > 0.3, then 0.8).
-    'shift-stance': body ? 1.2 : 0,
-    'clasp-hands': body ? 0.7 : 0,
-    'hair-touch': body ? 0.5 : 0,
-    'heel-rock': body && finite(drive.valence) > 0.3 ? 0.8 : 0,
-    'arm-swing': body ? (lively > 0.2 ? 0.9 : 0.6) : 0,
-  }
-  if (context.settled) {
-    for (const kind of SETTLED_OUT)
-      weights[kind] = 0
-  }
-  for (const kind of drive.unreachable ?? [])
-    weights[kind] = 0
-  if (body && context.since) {
-    for (const kind of drawnKinds) {
-      const seconds = context.since[kind]
-      if (seconds !== undefined)
-        weights[kind] *= Math.min(1, Math.max(0, seconds) / recoverySeconds)
-    }
-  }
-  return weights
-}
-
-/**
- * Activity starts per second for a drive: a lively mood fidgets more, a tired one less, and the host's `rate` scales
- * the whole pace. The rest between activities comes on top.
- */
-export function idleActivityRate(drive: NaturalIdleDrive, context: { watching: boolean }): number {
-  const pace = Math.max(0.5, Math.min(1.5, 1 + 0.35 * finite(drive.energy) + 0.25 * clamp01(finite(drive.tension))))
-  return Math.max(0, Number.isFinite(drive.rate) ? drive.rate : 1) * pace / (context.watching ? meanGap.watching : meanGap.idle)
-}
-
 /** How far the slow mood and the hour move the user's Natural energy setting; 0 for a neutral drive. */
 export function idleEnergyOffset(drive: NaturalIdleDrive | null): number {
   return drive === null ? 0 : 0.3 * finite(drive.energy) - 0.15 * clamp01(drive.sleepiness)
@@ -360,9 +258,9 @@ export function idleEnergyOffset(drive: NaturalIdleDrive | null): number {
  *
  * - The layer is inert until the host sets a drive. Without one it draws nothing and adds nothing, so every seeded
  *   run from before it existed replays unchanged.
- * - Activities start by a hazard: `idleActivityRate` accumulates over eligible time and an activity starts when the
- *   sum crosses an `Exp(1)` draw, then `idleActivityWeights` picks which one. Each activity rests 6 to 14 s before
- *   the next can start, and each kind has its own cooldown.
+ * - What starts when is the idle schedule's (`idle-schedule.ts`), which this layer runs once per grid step and tells
+ *   what it saw: activities start by a hazard over eligible time, each rests 6 to 14 s before the next can start, and
+ *   each kind has its own cooldown. This layer draws the shape of what the schedule starts.
  * - An activity yields at once to anything she must answer: speech, thinking, listening, a poke, a pet, an emotion,
  *   a cue gesture, a cursor she noticed. It fades out over 0.4 s and releases the gaze.
  * - While the user is away and the drive allows it, she falls asleep after 12 to 30 s of quiet. She wakes when the
@@ -383,14 +281,8 @@ export class NaturalIdleActivities {
 
   private drive: NaturalIdleDrive | null = null
   private readonly clips: Clip[] = []
-  private urge = 0
-  private threshold: number | null = null
-  private restUntil = 0
-  private readonly lastStart: Partial<Record<IdleBehaviourKind, number>> = {}
-  private lastDrawn: DrawnIdleActivityKind | null = null
-  private awaySince: number | null = null
-  private sleepAfter = 0
-  private followUp: { kind: 'stretch' | 'yawn', at: number } | null = null
+  /** The schedule's memory: what she may start next, and when. */
+  private schedule: IdleScheduleState = initialIdleSchedule()
   private pendingCue: IdleCueKind | null = null
   private pendingPlay: IdleBehaviourKind | null = null
   /** Start time of the about-to-speak hold that a let-go already answered. */
@@ -401,11 +293,7 @@ export class NaturalIdleActivities {
   /** The latest errand drawn, kept after it ends; null before the first. */
   errand: IdleErrandRecord | null = null
   private errandSeq = 0
-  private readonly errandStarts: Partial<Record<IdleErrandKind, number>> = {}
-  private readonly errandEnds: Partial<Record<IdleErrandKind, number>> = {}
   private readonly errandAnswers: { seq: number, outcome: 'done' | 'refused' }[] = []
-  /** When the host started listing each errand, which its first refractory counts from where its timer's did. */
-  private readonly errandListedSince: Partial<Record<IdleErrandKind, number>> = {}
 
   constructor(private readonly random: RandomStream) {}
 
@@ -437,7 +325,7 @@ export class NaturalIdleActivities {
   /**
    * Requests one behaviour by name, for previews and scripted QA runs. It starts at the next step in place of the
    * running one, under the same conditions as a drawn activity: a drive, an idle or watching mode, and a free head.
-   * A played `sleep` does not need the user away and wakes after 14 s.
+   * A played `sleep` does not need the user away and wakes after 24 s.
    */
   play(kind: IdleBehaviourKind) {
     this.pendingPlay = kind
@@ -487,10 +375,9 @@ export class NaturalIdleActivities {
     if (drive === null) {
       this.pendingCue = null
       this.pendingPlay = null
-      this.followUp = null
-      this.awaySince = null
       this.idleSince = null
       this.settled = false
+      this.advanceSchedule(at, dt, null, input, current)
       this.sample(at + dt)
       return
     }
@@ -511,7 +398,7 @@ export class NaturalIdleActivities {
     }
     else if (cue === 'let-go' && performing && !input.blocked) {
       // A slow model can decide after the hold ran out; she still lets the thought go if nothing else started since.
-      const held = this.lastStart['about-to-speak']
+      const held = this.schedule.lastStart['about-to-speak']
       const recent = !current && held !== undefined && at - held <= letGoWindowSeconds && this.answeredHold !== held
       if (current?.kind === 'about-to-speak' || recent) {
         if (current)
@@ -533,50 +420,7 @@ export class NaturalIdleActivities {
         current.end = at + playedSleepSeconds
     }
 
-    // The wait counts quiet time only. While she talks, thinks or listens it starts over, so she does not shut her
-    // eyes the moment she has answered someone the desktop still calls away.
-    if (input.away && drive.allowSleep && performing) {
-      if (this.awaySince === null) {
-        this.awaySince = at
-        this.sleepAfter = sleepDelay.min + (sleepDelay.max - sleepDelay.min) * this.random()
-      }
-      if (!current && !input.blocked && at - this.awaySince >= this.sleepAfter)
-        current = this.start('sleep', at, drive, input)
-    }
-    else {
-      this.awaySince = null
-    }
-
-    const free = !current && performing && !input.blocked && !input.away
-    const errands = this.errandHazards(at, drive, input, current)
-    const actsOpen = free && at >= this.restUntil
-    if (this.followUp && at >= this.followUp.at) {
-      // A settled character does not stretch (SETTLED_OUT), so the stretch after a long sleep becomes the yawn.
-      const kind = this.settled && this.followUp.kind === 'stretch' ? 'yawn' : this.followUp.kind
-      this.followUp = null
-      if (free)
-        current = this.start(kind, at, drive, input)
-    }
-    else if (actsOpen || errands.length > 0) {
-      // One hazard for everything she may start: the acts' rate while an act may start, plus each eligible errand's.
-      this.threshold ??= -Math.log(1 - this.random())
-      const actRate = actsOpen ? idleActivityRate(drive, { watching: input.mode === 'watching' }) : 0
-      this.urge += (actRate + errands.reduce((sum, errand) => sum + errand.rate, 0)) * dt
-      if (this.urge >= this.threshold) {
-        this.urge = 0
-        this.threshold = null
-        // Without an eligible errand the draw is exactly the acts' draw as before; with one, a share by rate first.
-        const errand = errands.length > 0 ? this.chooseErrand(errands, actRate) : null
-        if (errand) {
-          this.startErrand(errand, at)
-        }
-        else if (actsOpen) {
-          const kind = this.pick(drive, input, at)
-          if (kind)
-            current = this.start(kind, at, drive, input)
-        }
-      }
-    }
+    this.advanceSchedule(at, dt, drive, input, current)
 
     for (const clip of this.clips) {
       if (clip.releasedAt !== null)
@@ -589,14 +433,30 @@ export class NaturalIdleActivities {
     this.sample(at + dt)
   }
 
+  /** Runs the schedule over this grid step and starts what it decides. */
+  private advanceSchedule(at: number, dt: number, drive: NaturalIdleDrive | null, input: IdleStepInput, current: Clip | undefined) {
+    const errand = this.errand !== null && this.errand.endedAt === null ? { seq: this.errand.seq, kind: this.errand.kind } : null
+    const view: IdleView = { drive, active: true, mode: input.mode, away: input.away, blocked: input.blocked, settled: this.settled, current: current ? { seq: current.seq, kind: current.kind } : null, errand }
+    const { state, decision } = advanceIdleSchedule(this.schedule, view, at, dt, this.random)
+    this.schedule = state
+    if (decision === null || drive === null)
+      return
+    if (decision.kind === 'errand') {
+      const end = decision.holdSeconds === null ? Number.POSITIVE_INFINITY : at + decision.holdSeconds
+      this.errand = { seq: ++this.errandSeq, kind: decision.errand, start: at, end, pick: decision.pick, endedAt: null, outcome: null }
+      this.edge({ kind: 'errand-started', errand: decision.errand }, at)
+    }
+    else {
+      this.start(decision.act, at, drive, input)
+    }
+  }
+
+  private edge(edge: IdleEdge, at: number) {
+    this.schedule = applyIdleEdge(this.schedule, edge, at, this.random)
+  }
+
   /** Applies the realisers' answers and ends an errand she is no longer free for. */
   private updateErrand(at: number, drive: NaturalIdleDrive | null, input: IdleStepInput, current: Clip | undefined) {
-    for (const kind of IDLE_ERRAND_KINDS) {
-      if (drive?.errands?.includes(kind))
-        this.errandListedSince[kind] ??= at
-      else
-        delete this.errandListedSince[kind]
-    }
     const errand = this.errand
     const answers = this.errandAnswers.splice(0)
     if (errand === null || errand.endedAt !== null)
@@ -610,55 +470,7 @@ export class NaturalIdleActivities {
     if (outcome === null)
       return
     this.errand = { ...errand, endedAt: at, outcome }
-    this.errandEnds[errand.kind] = at
-  }
-
-  /** The errands that may start now, each with its start rate per second. */
-  private errandHazards(at: number, drive: NaturalIdleDrive, input: IdleStepInput, current: Clip | undefined): { kind: IdleErrandKind, rate: number }[] {
-    if (drive.errands === undefined || drive.errands.length === 0 || (this.errand !== null && this.errand.endedAt === null))
-      return []
-    const performing = input.mode === 'idle' || input.mode === 'watching'
-    if (!performing || input.away)
-      return []
-    const rate = Math.max(0, Number.isFinite(drive.rate) ? drive.rate : 1)
-    const hazards: { kind: IdleErrandKind, rate: number }[] = []
-    for (const kind of IDLE_ERRAND_KINDS) {
-      if (!drive.errands.includes(kind))
-        continue
-      const pacing = IDLE_ERRAND_PACING[kind]
-      const last = pacing.from === 'start' ? this.errandStarts[kind] : this.errandEnds[kind]
-      const since = last ?? (pacing.firstAfterListing ? this.errandListedSince[kind] : undefined)
-      if (since !== undefined && at - since < pacing.refractory)
-        continue
-      // An unasked clip waits for her act to finish, as `decideIdleClip`'s quiet body did; whether she stands for it is
-      // the realiser's to answer. A wander and a pastime go on beside her acts, as their timers did.
-      if (kind === 'idle-clip' && (current !== undefined || input.blocked))
-        continue
-      if (kind === 'pastime' && current?.kind === 'sleep')
-        continue
-      hazards.push({ kind, rate: rate / pacing.meanGap })
-    }
-    return rate > 0 ? hazards : []
-  }
-
-  /** One draw shares the start between the acts and each errand by rate; null picks an act. */
-  private chooseErrand(errands: readonly { kind: IdleErrandKind, rate: number }[], actRate: number): IdleErrandKind | null {
-    let draw = this.random() * (actRate + errands.reduce((sum, errand) => sum + errand.rate, 0)) - actRate
-    if (draw < 0)
-      return null
-    for (const errand of errands) {
-      draw -= errand.rate
-      if (draw < 0)
-        return errand.kind
-    }
-    return errands[errands.length - 1].kind
-  }
-
-  private startErrand(kind: IdleErrandKind, at: number) {
-    const pick = this.random()
-    const end = kind === 'pastime' ? at + PASTIME_HOLD_SECONDS.min + (PASTIME_HOLD_SECONDS.max - PASTIME_HOLD_SECONDS.min) * this.random() : Number.POSITIVE_INFINITY
-    this.errand = { seq: ++this.errandSeq, kind, start: at, end, pick, endedAt: null, outcome: null }
-    this.errandStarts[kind] = at
+    this.edge({ kind: 'errand-ended', errand: errand.kind }, at)
   }
 
   private get active(): Clip | undefined {
@@ -676,15 +488,12 @@ export class NaturalIdleActivities {
     clip.releaseSeconds = seconds
     this.released(clip)
     clip.glances.length = 0
-    // Woken before the user is back, she takes a fresh while to fall asleep again.
-    if (clip.kind === 'sleep')
-      this.awaySince = null
     // The gaze returns to her own fixations at once; whatever claimed her issues its own glance on top.
     if (at < this.eyesUntil) {
       gaze.endHold(at)
       this.eyesUntil = at
     }
-    this.restUntil = at + rest.min
+    this.edge({ kind: 'ended', act: clip.kind, how: 'released', sleptSeconds: null }, at)
   }
 
   private finish(clip: Clip, at: number) {
@@ -692,48 +501,16 @@ export class NaturalIdleActivities {
     clip.releasedAt = at
     clip.releaseSeconds = 0
     this.released(clip)
-    this.restUntil = at + rest.min + (rest.max - rest.min) * this.random()
+    this.edge({ kind: 'ended', act: clip.kind, how: 'finished', sleptSeconds: null }, at)
   }
 
   private wake(clip: Clip, at: number, gaze: NaturalGazeLayer, asked: boolean) {
-    const slept = at - clip.start
-    // Woken on request before the user is back, she takes a fresh while to fall asleep again.
-    if (asked)
-      this.awaySince = null
     clip.releasedAt = at
-    clip.releaseSeconds = wakeSeconds
+    clip.releaseSeconds = IDLE_WAKE_SECONDS
     this.released(clip)
     // The eyes are already on the user when the lids open.
-    this.eyesUntil = Math.max(this.eyesUntil, gaze.glance({ x: 0, y: 0 }, wakeSeconds + 0.6, at))
-    this.restUntil = at + rest.min
-    if (slept >= longSleepSeconds && this.random() < 0.7)
-      this.followUp = { kind: this.random() < 0.6 ? 'stretch' : 'yawn', at: at + wakeSeconds + 0.8 + 1.2 * this.random() }
-  }
-
-  private pick(drive: NaturalIdleDrive, input: IdleStepInput, at: number): DrawnIdleActivityKind | null {
-    const since: Partial<Record<DrawnIdleActivityKind, number>> = {}
-    for (const kind of drawnKinds) {
-      const last = this.lastStart[kind]
-      if (last !== undefined)
-        since[kind] = at - last
-    }
-    const weights = idleActivityWeights(drive, { watching: input.mode === 'watching', settled: this.settled, since })
-    const eligible = drawnKinds.filter((kind) => {
-      const last = this.lastStart[kind]
-      return weights[kind] > 0 && (last === undefined || at - last >= cooldowns[kind])
-    })
-    // The same activity twice in a row reads as a loop, so it is drawn again only when nothing else is available.
-    const pool = eligible.length > 1 ? eligible.filter(kind => kind !== this.lastDrawn) : eligible
-    const total = pool.reduce((sum, kind) => sum + weights[kind], 0)
-    if (total <= 0)
-      return null
-    let draw = this.random() * total
-    for (const kind of pool) {
-      draw -= weights[kind]
-      if (draw < 0)
-        return kind
-    }
-    return pool[pool.length - 1]
+    this.eyesUntil = Math.max(this.eyesUntil, gaze.glance({ x: 0, y: 0 }, IDLE_WAKE_SECONDS + 0.6, at))
+    this.edge({ kind: 'ended', act: clip.kind, how: asked ? 'woken-on-request' : 'woken', sleptSeconds: at - clip.start }, at)
   }
 
   private start(kind: IdleBehaviourKind, at: number, drive: NaturalIdleDrive, input: IdleStepInput): Clip {
@@ -871,9 +648,7 @@ export class NaturalIdleActivities {
       glances: clip.glances.map(glance => ({ at: glance.at - at, x: glance.point.x, y: glance.point.y, hold: glance.hold })),
     }
     this.clips.push(clip)
-    this.lastStart[kind] = at
-    if (kind !== 'sleep' && kind !== 'about-to-speak' && kind !== 'let-go')
-      this.lastDrawn = kind
+    this.edge({ kind: 'started', act: kind }, at)
     this.seq++
     return clip
   }
