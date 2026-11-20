@@ -1,6 +1,6 @@
 # character-mind-idle - Work Plan
 
-Status: planned on 2026-11-19; not started. Roadmap row: step CM4b in [`docs/ai/context/character-mind-roadmap.md`](../../docs/ai/context/character-mind-roadmap.md#steps). Rulings: the [character mind ADR](../../docs/ai/adr/2026-11-17-character-mind-direction.md), the [core ADR](../../docs/ai/adr/2026-11-18-character-mind-core.md), the [return ADR](../../docs/ai/adr/2026-11-19-character-mind-return.md), the [voice ADR](../../docs/ai/adr/2026-11-19-character-mind-voice.md), the [widget turns ADR](../../docs/ai/adr/2026-11-19-character-mind-widget-turns.md), the [slow state ADR](../../docs/ai/adr/2026-11-19-character-mind-slow-state.md), and the [idle agency ADR](../../docs/ai/adr/2026-11-12-idle-agency.md) with its amendments. Branch: `luke/feat/character-mind-idle`, cut from CM4a's tip `755ef0a86` on `luke/feat/character-mind-slow-state` (PR #57). CM4a stacks on CM3b (#53), CM3a (#52), CM2 (#51), and CM1 (#47), none merged, and carries the ten commits of step S (#56), cherry-picked. The PR's base is `luke/feat/character-mind-slow-state`. When a PR below merges, rebase this branch onto the new base and retarget the PR.
+Status: done on 2026-11-20; PR not merged. Roadmap row: step CM4b in [`docs/ai/context/character-mind-roadmap.md`](../../docs/ai/context/character-mind-roadmap.md#steps). Rulings: the [character mind ADR](../../docs/ai/adr/2026-11-17-character-mind-direction.md), the [core ADR](../../docs/ai/adr/2026-11-18-character-mind-core.md), the [return ADR](../../docs/ai/adr/2026-11-19-character-mind-return.md), the [voice ADR](../../docs/ai/adr/2026-11-19-character-mind-voice.md), the [widget turns ADR](../../docs/ai/adr/2026-11-19-character-mind-widget-turns.md), the [slow state ADR](../../docs/ai/adr/2026-11-19-character-mind-slow-state.md), and the [idle agency ADR](../../docs/ai/adr/2026-11-12-idle-agency.md) with its amendments. Branch: `luke/feat/character-mind-idle`, cut from CM4a's tip `755ef0a86` on `luke/feat/character-mind-slow-state` (PR #57). CM4a stacks on CM3b (#53), CM3a (#52), CM2 (#51), and CM1 (#47), none merged, and carries the ten commits of step S (#56), cherry-picked. The PR's base is `luke/feat/character-mind-slow-state`. When a PR below merges, rebase this branch onto the new base and retarget the PR.
 
 The owner is away and runs these slices without a plan review. Every design fork below is taken on the recommended option and listed in [Decisions open to the owner's veto](#11-decisions-open-to-the-owners-veto).
 
@@ -363,9 +363,67 @@ The mind decides every idle act, errand start, sleep, and follow-up on its clock
 
 ## Departures during implementation
 
+**Item 1**
+- `advanceIdleSchedule(state, view, at, seconds, random)` takes a span instead of `(from, to)`, which keeps the draws bit-identical.
+- `nextIdleDeadline` returns `at` while the threshold has not been drawn.
+- Errand stamps happen only in `applyIdleEdge`.
+- The weights, the rate, the constants, `clamp01`, and `finite` moved into `idle-schedule.ts` to avoid a value-import cycle.
+- The pastime end arithmetic changed. Nothing moved.
+- Two policy-doc lines were fixed in this commit.
+- It pinned 58.0 and 41.7 acts per hour, measured over 1000 simulated hours.
+
+**Item 2**
+- The idle schedule draws from its own Mulberry32 stream, `MindIdleState.random`. One draw of the mind's rng at the first idle stimulus seeds it, so voice ticks cannot shift idle draws.
+- A decision that falls due is emitted under whatever stimulus arrives next (`-idle-due`).
+- Exact crossings use pieces that end at each deadline. A crossing found inside a piece is undone and taken at the deadline.
+- The float tolerances are 1 µs absolute and 1e-9 relative.
+- The schedule does not advance while an intent is pending.
+- `sleptSeconds` is the mind's active time.
+- The lint allowance uses `allowTypeImports` on a regex pattern.
+
+**Item 3**
+- Four guards keep an order from going unanswered: a disposed adapter or a detached stage sends the dormant view; a driver change tells the mind; a store reset re-sends the last view; a suspended controller refuses at once.
+- `MindIdleIntent` and `idleOrderOf` moved into `character-mind`, so qa-tools does not import stage-ui.
+- The scene event is `idleReports` (camelCase, for lint).
+- The replay pins for seeds 7, 11, 3, 23, 42, and 101 were re-pinned once.
+- Target rule 3 reads "Landed as" rather than being removed, so the numbered references hold.
+- The `rest-posture` seed sweep is recorded under [Checks run](#checks-run).
+- A 400-seed sleep-delay distribution test found an exact-deadline ulp miss. The rule now compares `at >= awaySince + sleepAfter`. The fix was squashed into item 3.
+
+**Item 4**
+- Rule 4 of `autonomous-behavior.md` and `MMD.vue` needed no change.
+- The deleted test was "never sleeps when the drive does not allow it".
+- `sleepAfter`, `errandHazards`, and `chooseErrand` remain as names in the schedule.
+
 ## Checks run
 
 | Check | Result |
 | --- | --- |
+| Gate per item | Each item passed the gate on its first run |
+| Policy docs | 11 of 11 |
+| Inner loops | `character-mind` 108, `motion-driver-natural` 327, `qa-tools` `t2-3d` 491 |
+| Headless motion, item 1, seed 1, against the base `755ef0a86` | `IDENTICAL` for `idle`, `idle-drive`, and `sleepy-no-clip` |
+| Headless motion, tip, seed 1, against the base | `IDENTICAL` for `idle`; `DIFFERENT` for `idle-drive` and `sleepy-no-clip`, with determinism verified |
+| `idle-acts` report | Every line has the same status at both ends |
+| `rest` report | Every line has the same status at both ends except `rest-posture` (FAIL at the tip, PASS at the base), which follows the draws. Seed sweep: tip PASS on 5 of 6 seeds, base PASS on 6 of 6; the only failure (tip, seed 1) is the only run at either end with a zone-out in the baseline window |
+| `sleep-onset` | 22.0 s at the base and 14.3 s at the tip. Over 30 tip seeds the mean is 19.9 s |
+| Wording | Scores prove direction, size relative to the recipe, release, and detectability above the rig's idle noise. They do not prove naturalness, which stays a visual review. |
+| Smoke | Both `qa:smoke` runs: `ok: true`, 0/0 errors |
+| Rigs | `qa:live2d-rig` hash unchanged (`4853812851e6…`). `qa:test:model`: 4 files, 15 tests |
+| Rendered step 1 | A mind-decided `stretch` started 19 ms after its intent |
+| Rendered step 2 | Under a held emotion, no `about-to-speak` event. After the hold, one event, 18 ms after the fire |
+| Rendered step 3 | Played sleep with `requested: true`. It ended at exactly 24.000 s. Sleep entries were not exercised |
+| Rendered step 4 | Away sleep came 16.0 s after away. The return gave `posture/wake`, and the sleep ended 25 ms later. Away was pinned by wrapping the desktop-activity store's `setSnapshot` in the page, because the bridge has no activity input |
+| Rendered step 5 | Universal, over 127 s: no idle events, no idle intents, no `idle-play`. The reach-out still fired |
+| Rendered step 6 | MMD on the desktop stage: an act at 156 s of the 180 s window, and sleep 28.0 s after away |
+| Errors | Every launch had 0 renderer and 0 main-process errors |
 
 ## Commits
+
+- `f44e45c72` docs(plan): add the plan for the idle slice of the character mind
+- `9db21cd46` refactor(motion-driver-natural): extract the idle schedule as pure rules
+- `56b8ffeb0` feat(motion-driver-natural,character-mind): add the idle policy
+- `bfc5727a5` feat(motion-driver-natural,character-mind,stage-ui,stage-ui-live2d,stage-ui-mmd,qa-tools): move the idle draw into the character mind
+- `35d4f6f65` chore(agents): say the idle layer seeds each act from its intent
+- `f20458885` refactor(motion-driver-natural,stage-ui,qa-tools): drop allowSleep from the idle drive
+- `0e38ec977` docs(ai): record the idle decisions and close CM4b
