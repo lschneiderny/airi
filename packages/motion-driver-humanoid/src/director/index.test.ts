@@ -368,6 +368,22 @@ describe('body director home, goals, roam and tools', () => {
     expect(later.intent.locomotion.goalX).toBe(11)
   })
 
+  it('ends a chase goal when the cursor comes within one leg, before the goal dwell', () => {
+    const base = { interactionSeq: 1, interactionAtMs: 0, cursorOnStage: true }
+    const first = decide(world({ ...base, nowMs: 1_000, cursorX: 8 }))
+    const landed = decide(world({ ...base, nowMs: 2_000, rootX: 3, locomotionMode: 'walking', cursorX: 3.5 }), first.memory)
+
+    expect(2_000 - 1_000).toBeLessThan(GOAL_MIN_DWELL_MS)
+    expect(landed.intent.locomotion).toMatchObject({ goalX: null, reason: 'stay' })
+  })
+
+  it('issues no chase while the cursor stays within one leg', () => {
+    const base = { interactionSeq: 1, interactionAtMs: 0, cursorOnStage: true, rootX: 3 }
+    const frames = [0, 1_000, 4_000, 8_000].map(nowMs => world({ ...base, nowMs, cursorX: 3.8 }))
+
+    expect(run(frames).intent.locomotion.goalX).toBeNull()
+  })
+
   it('returns home slowly after the return-home delay with no reason', () => {
     const started = decide(world({ rootX: 5 }))
     const early = decide(world({ nowMs: RETURN_HOME_DELAY_MS - 1, rootX: 5 }), started.memory)
@@ -1084,6 +1100,46 @@ describe('body director visits and lingering', () => {
 
     expect(due.intent.locomotion.goalX).toBeNull()
     expect(due.memory.pendingWander).toEqual({ seq: 1, sinceMs: 1_000 })
+  })
+
+  it('arrives in place when a visit is due with the cursor within the visit stop distance', () => {
+    const started = decide(roaming({ cursorX: 1.2 }))
+    const due = decide(roaming({ nowMs: 1_000, cursorX: 1.2, performance: performance('watching'), wander: { seq: 1 } }), started.memory)
+    const lingerMs = due.memory.lingerUntilMs - 1_000
+
+    expect(due.intent.locomotion).toMatchObject({ goalX: null, reason: 'stay' })
+    expect(due.memory.wanderAnswer).toEqual({ seq: 1, accepted: true })
+    expect(due.memory.pendingWander).toBeNull()
+    expect(lingerMs).toBeGreaterThanOrEqual(LINGER_MIN_MS)
+    expect(lingerMs).toBeLessThanOrEqual(LINGER_MAX_MS)
+  })
+
+  it('ends a visit in progress with a linger when the cursor comes within the visit stop distance', () => {
+    const started = decide(roaming())
+    const due = decide(roaming({ nowMs: 1_000, performance: performance('watching'), wander: { seq: 1 } }), started.memory)
+    const met = decide(roaming({ nowMs: 2_000, rootX: 3, locomotionMode: 'walking', cursorX: 4, performance: performance('watching') }), due.memory)
+    const lingerMs = met.memory.lingerUntilMs - 2_000
+
+    expect(due.intent.locomotion.reason).toBe('visit')
+    expect(met.intent.locomotion).toMatchObject({ goalX: null, reason: 'stay' })
+    expect(lingerMs).toBeGreaterThanOrEqual(LINGER_MIN_MS)
+    expect(lingerMs).toBeLessThanOrEqual(LINGER_MAX_MS)
+  })
+
+  it('still draws the visit share first in idle mode when the cursor is within the visit stop distance', () => {
+    // The same seeds walk a visit from farther away or arrive in place with the cursor near: the share draw comes first.
+    for (let seed = 1; seed <= 50; seed++) {
+      const far = decide(roaming({ nowMs: 1_000, seed, wander: { seq: 1 } }), decide(roaming({ seed })).memory)
+      const near = decide(roaming({ nowMs: 1_000, seed, cursorX: 1.2, wander: { seq: 1 } }), decide(roaming({ seed, cursorX: 1.2 })).memory)
+
+      if (far.intent.locomotion.reason === 'visit') {
+        expect(near.intent.locomotion).toMatchObject({ goalX: null, reason: 'stay' })
+      }
+      else {
+        expect(near.intent.locomotion).toMatchObject({ goalX: far.intent.locomotion.goalX, reason: 'wander' })
+        expect(near.memory.rngState).toBe(far.memory.rngState)
+      }
+    }
   })
 
   it('visits in about the visit share of idle wanders and strolls anywhere in the rest', () => {
