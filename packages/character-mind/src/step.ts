@@ -72,7 +72,7 @@ export function step(state: MindState, stimuli: readonly MindStimulus[], nowMs: 
     else if (stimulus.kind === 'voice-tick')
       answer = answerVoiceTick(next, stimulus, cause, nowMs, rng)
     else if (stimulus.kind === 'user-turn')
-      answer = answerUserTurn(next, stimulus)
+      answer = answerUserTurn(next, nowMs)
     else if (stimulus.kind === 'voice-request')
       answer = answerVoiceRequest(next, stimulus, cause, nowMs)
     else if (stimulus.kind === 'idle')

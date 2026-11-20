@@ -230,8 +230,12 @@ export function answerVoiceOutcome(state: MindState, stimulus: Stimulus<'voice-o
   return { state: { ...state, voice: { ...voice, gate, line } }, intents: letGo(stimulus.outcome, cause) }
 }
 
-/** The user's own turn turns unanswered openings into damping and clears the reply clock and an armed double text. */
-export function answerUserTurn(state: MindState, stimulus: Stimulus<'user-turn'>): Answer {
+/**
+ * The user's own turn turns unanswered openings into damping and clears the reply clock and an armed double text. It
+ * applies at `nowMs`, the mind's clock, also when the host held the turn back until a restore: an earlier time would
+ * pull the restored ease-in and the gate's other times back to it.
+ */
+export function answerUserTurn(state: MindState, nowMs: number): Answer {
   const { gate } = state.voice
-  return { state: gate ? { ...state, voice: { ...state.voice, gate: recordUrgeUserTurn(gate, stimulus.atMs) } } : state, intents: [] }
+  return { state: gate ? { ...state, voice: { ...state.voice, gate: recordUrgeUserTurn(gate, nowMs) } } : state, intents: [] }
 }

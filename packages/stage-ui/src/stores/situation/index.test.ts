@@ -2023,6 +2023,18 @@ describe('situation gate loop', () => {
     expect(remounted.mind.state.voice.gate).toMatchObject({ unanswered: 0, damp: { depth: 0.5 } })
   })
 
+  it('keeps the next mind\'s ease-in from its restore when it receives a user turn held from minutes before', async () => {
+    const { store, hooks, disconnect } = startQuietLeader()
+    disconnect()
+    await userTurn(hooks, 'user-reply')
+
+    await vi.advanceTimersByTimeAsync(3 * 60 * 1_000)
+    const connectedAtMs = Date.now()
+    const next = connectMind(store, SEED)
+
+    expect(next.mind.state.voice.gate).toMatchObject({ lastHardHoldAtMs: connectedAtMs, lastEvalAtMs: connectedAtMs })
+  })
+
   it('starts a new run at "Delete all data": the mind forgets the user\'s floor, fires, and saved slice', async () => {
     const { store, observability, mind } = startQuietLeader()
     await observability.evaluateGate()

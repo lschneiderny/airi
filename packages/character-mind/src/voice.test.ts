@@ -172,7 +172,7 @@ describe('user turns', () => {
   it('resets unanswered at a user turn', () => {
     const mind = script(SEED, { pacing })
     mind.send(T0, tick({ run: { user } }))
-    mind.send(T0 + SEC, { kind: 'user-turn', atMs: T0 + SEC })
+    mind.send(T0 + SEC, { kind: 'user-turn' })
 
     expect(mind.gate).toMatchObject({ unanswered: 0, awaitingSinceMs: null })
     expect(mind.gate.damp).not.toBeNull()
@@ -374,7 +374,7 @@ describe('slow state', () => {
     mind.send(T0 + 5 * SEC, tick())
     expect(mind.state.slow.pacing).toBe(spoken)
 
-    mind.send(T0 + 6 * SEC, { kind: 'user-turn', atMs: T0 + 6 * SEC })
+    mind.send(T0 + 6 * SEC, { kind: 'user-turn' })
     expect(mind.state.slow.pacing).not.toBe(spoken)
     expect(mind.state.slow.pacing).toMatchObject({ unanswered: 0, awaitingSinceMs: null, damp: { sinceMs: T0 + 6 * SEC } })
   })
@@ -382,7 +382,7 @@ describe('slow state', () => {
   it('continues identically from a JSON round trip of a state with slow pacing', () => {
     const steps: Array<[number, MindStimulus]> = [
       [T0, tick({ run: { user } })],
-      [T0 + MIN, { kind: 'user-turn', atMs: T0 + MIN }],
+      [T0 + MIN, { kind: 'user-turn' }],
       [T0 + 10 * MIN, tick({}, true)],
       [T0 + 10 * MIN + SEC, tick()],
     ]
