@@ -7,7 +7,6 @@ import type { ListedAction, StagePerformanceConductorOptions, StagePerformanceDr
 
 import { CharacterMind } from '@proj-airi/character-mind'
 import { createDecider, createPickerDecider, defaultExpressionPerformanceSettings, initialTouchAffectMemory, parseAffectTrace, parseExpressionPerformanceSettings, replayAffectTrace, touchAffect } from '@proj-airi/stage-shared/expression-performance'
-import { initialSituationState } from '@proj-airi/stage-shared/situation'
 import { useNaturalMotionDiagnostics } from '@proj-airi/stage-ui-live2d/stores'
 import { useExpressionStore } from '@proj-airi/stage-ui-live2d/stores/expression-store'
 import { useMMDExpressionStore } from '@proj-airi/stage-ui-mmd/stores'
@@ -615,39 +614,6 @@ describe('stage performance conductor', () => {
       expect(mind.state.voice.reaction.pending).toBeNull()
     })
 
-    it.each(['natural', 'basic'] as const)('speaks the reach-out of a gate tick and publishes the gate under %s', async (driver) => {
-      const voice = fakeVoice()
-      const { conductor, mind } = createConductor(driver, fakeScene(), undefined, undefined, undefined, { voice: () => voice })
-      const settled = new Promise<void>((resolve) => {
-        mind.onStep(step => step.stimuli.some(stimulus => stimulus.kind === 'voice-outcome') && resolve())
-      })
-      // The mind's clock reads 10 000 ms. A user at the desk who accepts remarks; a forced tick picks her own day.
-      const situation = { ...initialSituationState, presence: { state: 'here' as const, reason: null, sinceMs: 0 }, busy: { state: 'accepts' as const, atMs: 10_000 }, nowMs: 10_000 }
-
-      conductor.voiceStimulus({
-        kind: 'voice-tick',
-        forceTiming: true,
-        view: {
-          run: { id: 1, memory: null, saved: null },
-          situation,
-          threads: { threads: { threads: [] } },
-          local: { dayKey: '1970-01-01', minuteOfDay: 16 * 60 },
-          sessionId: 'chat-a',
-          signals: { userSpeaking: false, userTyping: false, characterSpeaking: false, generating: false, queued: 0, desktopFresh: true, foregroundFresh: true, stageVisible: true },
-          settings: { enabled: true, chattiness: 0.5, dontDisturb: false, quietApps: [], speakDuringGames: true },
-          moodFactor: 1,
-          unpromptedPending: false,
-        },
-      })
-
-      const turnId = mind.state.voice.line?.turnId
-      expect(voice.speak.mock.calls).toEqual([[turnId, { kind: 'reach-out', topicKey: 'own-day', topicText: expect.any(String), reason: { kind: 'own-day', category: 'open' } }]])
-      expect(voice.publishVoice.mock.calls).toEqual([[{ runId: 1, memory: mind.state.voice.gate, decision: expect.objectContaining({ fire: true }), wakeAtMs: null }]])
-      await settled
-      expect(mind.state.voice.line).toBeNull()
-      expect(voice.publishVoice).toHaveBeenLastCalledWith({ runId: 1, memory: expect.objectContaining({ lastSpokenAtMs: 10_000 }), decision: null, wakeAtMs: null })
-    })
-
     it.each(['basic'] as const)('never reaches the mind, the scene, or the situation for a touch under %s', (driver) => {
       const scene = fakeScene()
       const voice = fakeVoice()
@@ -664,38 +630,6 @@ describe('stage performance conductor', () => {
       expect(markMoment).not.toHaveBeenCalled()
       expect(playMotion).not.toHaveBeenCalled()
       expect(scene.setEmotion).not.toHaveBeenCalled()
-    })
-
-    it.each([
-      ['natural', [['about-to-speak'], ['let-go']]],
-      ['basic', []],
-    ] as const)('performs the cues around a declined widget line under %s', async (driver, cues) => {
-      const voice = { ...fakeVoice(), speak: vi.fn<VoicePort['speak']>(async () => 'declined') }
-      const scene = { ...fakeScene(), idleCue: vi.fn<NonNullable<StagePerformanceScene['idleCue']>>() }
-      const { conductor, mind } = createConductor(driver, scene, undefined, undefined, undefined, { voice: () => voice })
-      const settled = new Promise<void>((resolve) => {
-        mind.onStep(step => step.stimuli.some(stimulus => stimulus.kind === 'voice-outcome') && resolve())
-      })
-
-      conductor.voiceStimulus({
-        kind: 'voice-request',
-        request: { turnId: 'spark:1', topicKey: 'notify:weather', topicText: 'Rain at five', supplement: null, timeoutMs: 30_000 },
-        view: {
-          run: { id: 1, memory: null, saved: null },
-          situation: initialSituationState,
-          threads: { threads: { threads: [] } },
-          local: { dayKey: '1970-01-01', minuteOfDay: 16 * 60 },
-          sessionId: 'chat-a',
-          signals: { userSpeaking: false, userTyping: false, characterSpeaking: false, generating: false, queued: 0, desktopFresh: true, foregroundFresh: true, stageVisible: true },
-          settings: { enabled: true, chattiness: 0.5, dontDisturb: false, quietApps: [], speakDuringGames: true },
-          moodFactor: 1,
-          unpromptedPending: false,
-        },
-      })
-      await settled
-
-      expect(voice.speak).toHaveBeenCalledOnce()
-      expect(scene.idleCue.mock.calls).toEqual(cues)
     })
 
     it('sends the idle drive and reach-out cues to a Natural scene, and switches idle off under a basic driver', () => {

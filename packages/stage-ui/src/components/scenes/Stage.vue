@@ -47,7 +47,6 @@ import StageAvatarModelMissing from './stage-avatar-model-missing.vue'
 import StageRenderError from './stage-render-error.vue'
 
 import { useHostDataDeletion } from '../../composables/host-data-deletion'
-import { useCharacterMind } from '../../composables/performance/use-character-mind'
 import { useIdleProps } from '../../composables/performance/use-idle-props'
 import { useStagePerformanceConductor } from '../../composables/performance/use-stage-performance-conductor'
 import { useDataMaintenance } from '../../composables/use-data-maintenance'
@@ -62,6 +61,7 @@ import { chatComposerActivityChangedEvent, chatComposerSentEvent, getSpeechBusCo
 import { useLlmStreamingControlStore } from '../../stores/ai/chat-llm/streaming-control'
 import { useAudioContext, useSpeakingStore } from '../../stores/audio'
 import { useBackgroundStore } from '../../stores/background'
+import { useCharacterMindStore } from '../../stores/character-mind'
 import { useCharacterStateStore } from '../../stores/character-state'
 import { useAvatarTouchStore } from '../../stores/character/avatar-touch'
 import { useChatStore } from '../../stores/chat'
@@ -353,7 +353,9 @@ function musicPlaying() {
 function characterReading() {
   return characterState.cardId === cards.activeCardId ? characterState.reading : null
 }
-const characterMind = useCharacterMind()
+// The window's one mind lives in its store and outlives this stage; the leader's store connects it to the voice port.
+const characterMindStore = useCharacterMindStore()
+const characterMind = characterMindStore.mind
 const { conductor: performanceConductor, settings: performanceSettings } = useStagePerformanceConductor({
   renderer: () => stageModelRenderer.value,
   scene: () => performanceRenderer.value.scene,
@@ -373,12 +375,12 @@ const { conductor: performanceConductor, settings: performanceSettings } = useSt
   // The leader's situation store records the touch and runs her line; in a follower window it offers no view.
   voice: () => situationStore,
 })
-// The situation store ticks this stage's mind for reach-outs and tells it of user turns; the newest stage wins.
-let disconnectVoice: (() => void) | undefined
+// The mind performs the body around its reach-out and widget lines on the newest mounted stage.
+let detachStage: (() => void) | undefined
 onMounted(() => {
-  disconnectVoice = situationStore.connect(stimulus => performanceConductor.voiceStimulus(stimulus))
+  detachStage = characterMindStore.attachStage({ idleCue: cue => performanceConductor.idleCue(cue) })
 })
-onUnmounted(() => disconnectVoice?.())
+onUnmounted(() => detachStage?.())
 
 const stageSelf = useStageSelfStore()
 

@@ -9,7 +9,7 @@ import { onScopeDispose, watch } from 'vue'
 
 import { usePerformanceRuntimeState } from '../../features/performance/runtime-state'
 import { useLlmStreamingControlStore } from '../../stores/ai/chat-llm/streaming-control'
-import { voiceDecisionOf } from './use-character-mind'
+import { voiceDecisionOf } from '../../stores/character-mind'
 
 /** Subscribes to the stage's idle reports, as `createEventHook().on` does. */
 export type MotionQaIdleHook = (listener: (report: IdleBehaviourReport) => void) => { off: () => void }

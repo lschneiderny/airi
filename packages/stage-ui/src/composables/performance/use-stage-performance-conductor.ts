@@ -15,7 +15,7 @@ import type { ExecutableTool } from '../../stores/ai/chat-llm/tools'
 import type { ActionToolPort, ExposedToolAction } from '../../tools/action'
 import type { BodyToolPort } from '../../tools/body'
 import type { ExpressionToolPort } from '../../tools/expression'
-import type { VoicePort, VoiceStimulus } from './mind-voice'
+import type { VoicePort } from './mind-voice'
 
 import { errorMessageFrom } from '@moeru/std'
 import { SpeechOnsetDetector } from '@proj-airi/motion-driver-natural/speech-emphasis'
@@ -413,18 +413,6 @@ export class StagePerformanceConductor {
     const voice = observation ? this.options.voice?.()?.observeTouch(observation) ?? null : null
     const { settings } = this.effectiveContext(undefined).context
     this.performTouch(this.voice.receive({ kind: 'touch', ...report, settings, voice }))
-  }
-
-  /**
-   * Sends one voice stimulus from the voice port to the mind as one step, under every driver, and dispatches the
-   * response in intent order: `cue` to {@link idleCue}, which performs it only under Natural; `speak` to
-   * `voice().speak` for every line kind, whose outcome returns to the mind as a
-   * `voice-outcome` stimulus with the same `turnId`, and `cancel` and `drop` of a widget line to `voice().cancel` and
-   * `voice().drop`. A `let-go` cue in the answer to a line's outcome also goes to {@link idleCue}. The port also receives the gate memory, the decision, and the next widget deadline of the step
-   * (`publishVoice`).
-   */
-  voiceStimulus(stimulus: VoiceStimulus) {
-    this.voice.answer(stimulus)
   }
 
   /**

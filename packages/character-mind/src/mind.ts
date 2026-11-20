@@ -7,8 +7,8 @@ import { initialMindState, step } from './step'
 export interface MindStep { atMs: number, stimuli: readonly MindStimulus[], intents: readonly MindIntent[], state: MindState }
 
 /**
- * The shell around {@link step}: it owns the clock, the random source, and the state. It runs in the window that
- * hosts the stage and persists nothing, so every mind starts from the initial state.
+ * The shell around {@link step}: it owns the clock, the random source, and the state. The app constructs one, in the
+ * window's `useCharacterMindStore`; it persists nothing, so every mind starts from the initial state.
  */
 export class CharacterMind {
   private current: MindState
