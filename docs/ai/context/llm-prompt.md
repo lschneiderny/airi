@@ -4,7 +4,16 @@ This file describes the code on `main`. A change that makes a statement here fal
 
 The system prompt of every character turn is built by one pure function, `composePrompt` in `packages/stage-shared/src/stage-contract/compose.ts`. It reads no locale, store, or clock. It sorts the supplied [segments](glossary.md#prompt-segment) by `PROMPT_SEGMENT_ORDER`, fits each segment to its entry in `PROMPT_SEGMENT_BUDGETS`, drops empty segments, and joins the rest with a blank line. The one exception to the join is that the card follows the format rules directly. The function returns the full text, the prefix, the tail, and a size report with one entry per supplied segment. An unknown or duplicate segment id throws. Overflow never throws.
 
-Hosts render the segment texts. In the app, `useChatPrompt` in `packages/stage-ui/src/stores/chat/prompt.ts` returns `buildChatPromptSegments`, which is the only builder of character-turn segments. Every app path that makes the character speak calls it. See [Paths](#paths).
+Hosts render the segment texts. In the app, `useChatPrompt` in `packages/stage-ui/src/stores/chat/prompt.ts` returns `buildChatPromptSegments`, which is the only builder of character-turn segments. Every app path that makes the character speak or act calls it, including the Spark Notify commands-only agent. See [Paths](#paths).
+
+## Rules
+
+The [one prompt composer ADR](../adr/2026-11-20-one-prompt-composer.md) records why these rules hold. The numbers are those of the [Target](#target) list.
+
+1. **One composer for every character call.** Every LLM call that speaks or acts as the character, including the Spark Notify commands-only agent, builds its system prompt through `composePrompt` from the segments that `buildChatPromptSegments` assembles. Paths differ only by declared `ChatPromptInput` fields, never by their own concatenation. Calls that do not speak as the character, such as thread extraction and the artistry director, keep their own task prompts and budgets outside the composer (see [Paths](#paths)).
+2. **Same segments, same caps.** Every path receives the same segments under the same budgets. Plugin text with system authority is the capped `plugin` segment on every path.
+3. **One memory source.** The memory index is the speaking character's: the character that owns the session the turn belongs to, through `personaOf` in `useChatSessionStore`. The Spark Notify commands-only agent reads the active session's character.
+4. **No segment without a producer.** A segment id that no app path produces is deleted from `PROMPT_SEGMENT_ORDER`, `PROMPT_SEGMENT_BUDGETS`, and the qa-tools fixtures.
 
 ## Segments
 
@@ -102,11 +111,11 @@ Dropped threads, events, and cues are dropped silently: the model is told only a
 
 This section states the design that refactors move toward. It does not describe the code. The [character mind ADR](../adr/2026-11-17-character-mind-direction.md) records the decision. When a refactor lands a rule, the rule moves into the sections above and the gaps it closes leave the list below.
 
-1. **One composer for every character call.** Every LLM call that speaks or acts as the character, including the Spark Notify commands-only agent, builds its system prompt through `composePrompt` from segments that one builder assembles. Paths differ only by declared request inputs, never by their own concatenation. Calls that do not speak as the character, such as thread extraction and the artistry director, keep their own task prompts and budgets outside the composer.
-2. **Same segments, same caps.** Every path receives the same segments under the same budgets. Plugin text is the capped `plugin` segment on every path.
-3. **One memory source.** The memory index is the speaking character's: the character that owns the session the turn belongs to.
-4. **No segment without a producer.** A segment id that no app path produces is deleted from the order, the budgets, and the fixtures.
-5. **Actions follow capabilities.** The `actions` segment offers the model only what the active [performer](glossary.md#performer-target) declares.
+1. **One composer for every character call.** Landed in [Rules](#rules).
+2. **Same segments, same caps.** Landed in [Rules](#rules).
+3. **One memory source.** Landed in [Rules](#rules).
+4. **No segment without a producer.** Landed in [Rules](#rules).
+5. **Actions follow capabilities.** The `actions` segment offers the model only what the active [performer](glossary.md#performer-target) declares. Closed by CM7 of the [character mind roadmap](character-mind-roadmap.md).
 6. **The mind decides when to speak; the model may decline.** Landed in [Paths](#paths), under Unprompted turns.
 
 | Known gap | Closed by |
