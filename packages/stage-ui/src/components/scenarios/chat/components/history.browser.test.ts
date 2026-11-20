@@ -416,9 +416,17 @@ describe('chat history', () => {
     if (!history || messages.length !== 2)
       throw new Error('Expected a sent message and its streaming placeholder.')
 
-    const historyBottom = history.getBoundingClientRect().bottom
-    expect(historyBottom - messages[1].getBoundingClientRect().bottom).toBeLessThanOrEqual(16)
-    expect(historyBottom - messages[0].getBoundingClientRect().bottom).toBeLessThanOrEqual(64)
+    // ROOT CAUSE:
+    //
+    // The visible class comes from an IntersectionObserver, but the bottom
+    // alignment applies its translation in a later animation frame. On a busy
+    // renderer the positions were read before that frame, at the top-aligned
+    // position. We wait for the alignment itself, with the same bounds.
+    await vi.waitFor(() => {
+      const historyBottom = history.getBoundingClientRect().bottom
+      expect(historyBottom - messages[1].getBoundingClientRect().bottom).toBeLessThanOrEqual(16)
+      expect(historyBottom - messages[0].getBoundingClientRect().bottom).toBeLessThanOrEqual(64)
+    })
   })
 
   // ROOT CAUSE:
