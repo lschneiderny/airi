@@ -96,7 +96,7 @@ and sway, sleep while the user is away, and the two reach-out cues
 the view the layer reports, and the host hands its orders to `idle`.
 
 ```ts
-motion.setIdleDrive({ energy: 0, valence: 0, tension: 0, sleepiness: 0.8, solitude: 0.5, music: false, rate: 1 }, now)
+motion.setIdleDrive({ energy: 0, valence: 0, tension: 0, sleepiness: 0.8, solitude: 0.5, rate: 1 }, now)
 motion.idleCue('about-to-speak', now)
 const off = motion.onIdleReports(reports => mind.receive({ kind: 'idle', reports }))
 motion.idle({ id: 'i-1', kind: 'act', act: 'yawn', seed: 7, requested: false }, now)

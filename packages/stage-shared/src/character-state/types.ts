@@ -427,7 +427,7 @@ export interface FaceBaseline {
 /**
  * What shapes self-directed idle behaviour, derived from the slower state. Mirrors the first five fields of the Natural
  * driver's idle drive structurally, because this package does not depend on the driver; the host adds the desktop
- * fields (music, sleep ownership, pace).
+ * fields (sleep ownership, pace).
  */
 export interface IdleDrive {
   /** Mood energy relative to the resting disposition, in [-1, 1]. */

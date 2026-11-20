@@ -18,7 +18,7 @@ import { useCharacterMindStore } from './character-mind'
 import { useSituationObservabilityStore } from './devtools/situation-observability'
 
 const idleView: IdleView = {
-  drive: { energy: 0, valence: 0, tension: 0, sleepiness: 0, solitude: 0, music: false, rate: 1 },
+  drive: { energy: 0, valence: 0, tension: 0, sleepiness: 0, solitude: 0, rate: 1 },
   active: true,
   mode: 'idle',
   away: false,

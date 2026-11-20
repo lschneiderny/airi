@@ -7,7 +7,7 @@ import { advanceIdleSchedule, applyIdleEdge, dormantIdleView, idleActivityRate, 
 import { createRandomStream } from './random'
 
 const dt = 1 / 120
-const neutralDrive: NaturalIdleDrive = { energy: 0, valence: 0, tension: 0, sleepiness: 0, solitude: 0, music: false, rate: 1 }
+const neutralDrive: NaturalIdleDrive = { energy: 0, valence: 0, tension: 0, sleepiness: 0, solitude: 0, rate: 1 }
 
 describe('idle activity odds', () => {
   it('favours yawns, zoning out and nodding off when she is tired', () => {
@@ -78,8 +78,6 @@ describe('idle activity odds', () => {
   it('sways only while music plays', () => {
     expect(idleActivityWeights(neutralDrive, { watching: false, music: false }).sway).toBe(0)
     expect(idleActivityWeights(neutralDrive, { watching: false, music: true }).sway).toBeGreaterThan(0)
-    // The drive's own field no longer counts: the character mind's music does.
-    expect(idleActivityWeights({ ...neutralDrive, music: true }, { watching: false, music: false }).sway).toBe(0)
   })
 
   it('paces activities by mood energy and the host rate, and treats bad numbers as neutral', () => {

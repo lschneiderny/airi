@@ -9,7 +9,7 @@ import type { Motion3dIdleDrive } from './idle-drive'
 import { createRandomStream } from '@proj-airi/motion-driver-natural/random'
 import { PERFORMANCE_EMOTIONS } from '@proj-airi/stage-shared/expression-performance'
 
-import { QA_DRIVE_AWAY, QA_DRIVE_MUSIC, QA_DRIVE_PRESENT } from './idle-drive'
+import { QA_DRIVE_AWAY, QA_DRIVE_PRESENT } from './idle-drive'
 
 export interface Motion3dScenario {
   /** Timeline version; a new version changes the cues, so traces of an older version are no longer its reference. */
@@ -163,7 +163,7 @@ export const motion3dScenarios: readonly Motion3dScenario[] = [
     warmupSeconds: 10,
     seconds: 60,
     maxSeconds: 600,
-    idleDrive: QA_DRIVE_MUSIC,
+    idleDrive: QA_DRIVE_PRESENT,
     music: true,
     timeline: idleTimeline,
   },
