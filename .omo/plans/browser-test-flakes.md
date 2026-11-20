@@ -1,6 +1,6 @@
 # browser-test-flakes - Work Plan
 
-Status: planned on 2026-11-20; no work item has started. Roadmap row: step T in [`docs/ai/context/character-mind-roadmap.md`](../../docs/ai/context/character-mind-roadmap.md#steps), flake half only. Policy: [Testing and QA](../../docs/ai/context/testing.md#flaky-tests) ("A flaky test is a bug"). Branch: `luke/fix/browser-test-flakes`, cut from `luke/refactor/testing-redesign` at `41de317aa` (PR #54, which removes the CPU slot broker). The PR for this plan targets `luke/refactor/testing-redesign` until #54 merges, then `main`.
+Status: done on 2026-11-20; PR not merged. Roadmap row: step T in [`docs/ai/context/character-mind-roadmap.md`](../../docs/ai/context/character-mind-roadmap.md#steps), flake half only. Policy: [Testing and QA](../../docs/ai/context/testing.md#flaky-tests) ("A flaky test is a bug"). Branch: `luke/fix/browser-test-flakes`, cut from `luke/refactor/testing-redesign` at `41de317aa` (PR #54, which removes the CPU slot broker). The PR for this plan targets `luke/refactor/testing-redesign` until #54 merges, then `main`.
 
 The cpu-slots half of step T is superseded: PR #54 deletes `@proj-airi/cpu-slots` ([testing redesign ADR](../../docs/ai/adr/2026-11-19-testing-redesign.md), decision 1), so the A2 steps of [`fork-policy-and-tooling.md`](fork-policy-and-tooling.md) (leases taken by CLIs, `--maxWorkers=<grant>`, `AIRI_CPU_GRANT`) are moot. #54 already rewrote the T row to say so. This plan does not touch cpu-slots.
 
@@ -169,3 +169,30 @@ Each item is one commit for one low-effort worker. Each passes `pnpm verify --ga
 ## Done when
 
 W1 to W5 are committed on `luke/fix/browser-test-flakes`; the W1 precondition check shows no removal of a Live2D cache directory; the W2 check passes 6 of 6 loaded project runs; the T row records each flake's outcome and the superseded cpu-slots half; and every check in [Checks](#checks) passed and is recorded in the plan.
+
+## Departures during implementation
+
+- **W1 scope.** Only the speech-level test selected `preset-live2d-1` before switching to MMD; the other MMD tests had an empty selection. The new `showMMDRenderer()` helper selects `mmd-routing-test` and awaits `updateStageModel()` before setting the renderer, and every MMD test uses it.
+- **W1 proof.** The precondition check (the removal-logging probe) is the proof, as Checks says. The separate OPFS collision reproduction calls the two caches directly, not the test file, so it fails the same way after W1 and was not rerun.
+- **W3 message.** Message elements carry no key in the page, so the failure message names each mounted message by the first 24 characters of its text.
+- **W4 status cell.** It follows the other rows' wording ("Done on the branch ..., not yet merged") with the commit range of W1 to W3.
+- Gates ran in the foreground, not through `--detach` and `--wait`.
+
+## Checks run
+
+| Check | Result |
+| --- | --- |
+| `pnpm verify --gate --base origin/luke/refactor/testing-redesign`, each commit | Passed |
+| `policy-docs.test.ts` (W4) | 11 of 11 passed |
+| W1 precondition, 5 runs each | Before: every run logged the MMD cache removing `/preset-live2d-1`. After: no run logged any removal |
+| W1 symptom | The file alone 10 of 10 beside a 16-process burn, and the whole stage-ui browser project 4 runs beside an 8-process burn: no `Texture loading error`. One of those project runs failed on the W2 bug before W2 landed |
+| W2 | Before: 1 of 4 loaded project runs failed (2 of 4 during planning). After: the file alone 5 of 5 quiet, the whole stage-ui browser project 6 of 6 beside an 8-process burn |
+| W3 | The file alone 5 of 5 quiet. A scratch copy with the composer inset forced to 0 failed once and printed the scroll state as intended; the copy was deleted |
+
+## Commits
+
+- `9a6d520bd` docs(plan): add the plan for the browser test flakes
+- `f2d66f5ca` test(stage-ui): give the MMD routing tests a model that no Live2D test loads
+- `2c6409b22` test(stage-ui): wait for the bottom alignment before measuring a new mobile message
+- `52b42978b` test(stage-tamagotchi): report the scroll state when the chat tail stays behind the composer
+- `0601d5837` docs(ai): record the browser test flake outcomes in the roadmap
