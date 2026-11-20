@@ -124,7 +124,7 @@ Whether she talks or texts with the user: `talking`, the spoken default, or `tex
 
 Natural's response to the mouse cursor near her face. Interest rises with distance-weighted engagement; when it crosses `noticeLevel` she notices the cursor, orients her gaze to it, and later releases or dismisses it. Interest spans and cooldowns are drawn per episode from a separate seeded stream. Permission drops to dismiss while the setting is off or her attention is `aside` or `screen`.
 
-**Code:** `packages/motion-driver-natural/src/cursor-attention.ts` `NaturalCursorAttention`, `noticeLevel`, `interestSpan`; Live2D setting `packages/stage-ui-live2d/src/composables/live2d/natural-settings.ts` `useLive2DNaturalSettings` (`cursorAttention`).
+**Code:** `packages/motion-driver-natural/src/cursor-attention.ts` `NaturalCursorAttention`, `noticeLevel`; the episode draw `packages/motion-driver-natural/src/cursor-notice.ts` `drawCursorEpisode`, `interestSpan`; Live2D setting `packages/stage-ui-live2d/src/composables/live2d/natural-settings.ts` `useLive2DNaturalSettings` (`cursorAttention`).
 **Not to be confused with:** the body director's cursor chase on MMD (see Locomotion), which walks her toward the cursor; Universal's eye tracking, which follows the mouse without episodes; and the screen-cursor host capability, which says whether a cursor reading can be trusted.
 **Avoid:** "mouse tracking", "cursor follow".
 
