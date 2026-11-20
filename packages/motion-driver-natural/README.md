@@ -103,8 +103,21 @@ const { seq, behaviour } = motion.idleState
 - The layer is inert until `setIdleDrive` receives a drive. Without one the
   controller draws nothing for it and composes exactly as before, so seeded
   traces and gates that never set a drive are unchanged.
-- `idleActivityWeights`, `idleActivityRate` and `idleEnergyOffset` are the pure
-  rules that turn a drive into odds, pace and an energy offset.
+- `./idle-schedule` holds the idle schedule as pure rules over plain JSON state,
+  in active seconds, with every draw passed in: when an act or an errand
+  starts and which one, the rest after each behaviour, the sleep delay while
+  the user is away, and the stretch or yawn after a long sleep. The performer
+  tells it what it saw: `IdleView` once per step and an `IdleEdge` for each
+  start and end. `advanceIdleSchedule` runs a span of time and returns at most
+  one `IdleDecision`; `applyIdleEdge` applies an edge; `nextIdleDeadline`
+  names the earliest time the schedule could decide, the hazard's crossing
+  included. `NaturalIdleActivities` runs the schedule once per grid step on its
+  own stream and draws the shape of what it starts. The lint block
+  `airi/idle-schedule-pure` keeps the module and `./idle-errands` free of
+  clocks, timers and `Math.random`.
+- `idleActivityWeights` and `idleActivityRate` in `./idle-schedule`, and
+  `idleEnergyOffset` in `./idle-activities`, are the pure rules that turn a
+  drive into odds, pace and an energy offset.
 - An activity yields within 0.4 s to speech, thinking, listening, touch, an
   emotion, a cue gesture and a noticed cursor.
 - `idlePlay` starts one behaviour by name at the next step, in place of the

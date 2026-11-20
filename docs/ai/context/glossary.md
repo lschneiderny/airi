@@ -148,7 +148,7 @@ A brief Natural response to a desktop event. The performance resolver reports th
 
 The input that shapes Natural's idle behavior, set by the host from the slower character state and the desktop: slow mood energy, valence, and tension relative to her resting disposition, sleepiness by local hour, solitude since the last exchange, whether music is playing, whether she may sleep, a pace multiplier, and optionally whether the host performs a whole body, which whole-body kinds are unreachable, and which idle errands it can realize. Without a drive the idle activity layer is inert.
 
-**Code:** `packages/motion-driver-natural/src/idle-activities.ts` `NaturalIdleDrive`, `idleActivityWeights`; producer `packages/stage-shared/src/character-state/idle.ts` `idleDriveOf`, which returns the five-field `IdleDrive` (`packages/stage-shared/src/character-state/types.ts`).
+**Code:** `packages/motion-driver-natural/src/idle-activities.ts` `NaturalIdleDrive`, `packages/motion-driver-natural/src/idle-schedule.ts` `idleActivityWeights`; producer `packages/stage-shared/src/character-state/idle.ts` `idleDriveOf`, which returns the five-field `IdleDrive` (`packages/stage-shared/src/character-state/types.ts`).
 **Not to be confused with:** the motion driver (Natural, Universal, MAGIC, or classic), which is the setting that chooses the motion system.
 **Avoid:** "idle state", "idle mood".
 

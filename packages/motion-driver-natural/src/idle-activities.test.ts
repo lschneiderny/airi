@@ -4,7 +4,7 @@ import type { IdleBehaviourKind, IdleStepInput, NaturalIdleDrive } from './idle-
 import { describe, expect, it } from 'vitest'
 
 import { NaturalGazeLayer } from './gaze'
-import { idleActivityRate, idleActivityWeights, idleEnergyOffset, NaturalIdleActivities } from './idle-activities'
+import { idleEnergyOffset, NaturalIdleActivities } from './idle-activities'
 import { NaturalMotion } from './natural-motion'
 import { createRandomStream } from './random'
 
@@ -45,202 +45,20 @@ function observe(motion: NaturalMotion, from: number, seconds: number) {
   return events
 }
 
-describe('idle activity odds', () => {
-  it('favours yawns, zoning out and nodding off when she is tired', () => {
-    const rested = idleActivityWeights(neutralDrive, { watching: false })
-    const tired = idleActivityWeights({ ...neutralDrive, sleepiness: 0.9 }, { watching: false })
-    expect(rested['nod-off']).toBe(0)
-    expect(tired['nod-off']).toBeGreaterThan(0)
-    expect(tired.yawn).toBeGreaterThan(5 * rested.yawn)
-    expect(tired['zone-out']).toBeGreaterThan(rested['zone-out'])
-    expect(tired['look-around']).toBeLessThan(rested['look-around'])
-  })
-
-  it('watches the screen more while the user is active and checks in more after a long silence', () => {
-    expect(idleActivityWeights(neutralDrive, { watching: true }).peer).toBeGreaterThan(3 * idleActivityWeights(neutralDrive, { watching: false }).peer)
-    expect(idleActivityWeights({ ...neutralDrive, solitude: 1 }, { watching: false })['check-in'])
-      .toBeGreaterThan(1.5 * idleActivityWeights(neutralDrive, { watching: false })['check-in'])
-  })
-
-  it('draws the whole-body kinds only for a host that performs a body', () => {
-    const bodyKinds = ['sigh', 'shoulder-roll', 'arm-swing', 'shift-stance', 'clasp-hands'] as const
-    const live2d = idleActivityWeights(neutralDrive, { watching: false })
-    const mmd = idleActivityWeights({ ...neutralDrive, body: true }, { watching: false })
-    const bright = idleActivityWeights({ ...neutralDrive, body: true, valence: 0.5 }, { watching: false })
-    for (const kind of [...bodyKinds, 'hair-touch', 'heel-rock'] as const)
-      expect([live2d[kind], idleActivityWeights({ ...neutralDrive, valence: 0.5 }, { watching: false })[kind]], kind).toEqual([0, 0])
-    for (const kind of bodyKinds)
-      expect(mmd[kind], kind).toBeGreaterThan(0)
-    // Each takes its 4e act weight: the stance shift 1.2 (act 3), the clasp 0.7 (act 6), the hair tuck 0.5 (act 8), and
-    // the heel raise 0 unless valence is above 0.3, then 0.8 (act 11).
-    expect(mmd['shift-stance']).toBe(1.2)
-    expect(mmd['clasp-hands']).toBe(0.7)
-    expect([mmd['hair-touch'], bright['hair-touch']]).toEqual([0.5, 0.5])
-    expect([mmd['heel-rock'], bright['heel-rock']]).toEqual([0, 0.8])
-  })
-
-  it('never draws a whole-body kind the host\'s body cannot perform, and leaves the others as they were', () => {
-    const body = { ...neutralDrive, body: true }
-    const all = idleActivityWeights(body, { watching: false })
-    const limited = idleActivityWeights({ ...body, unreachable: ['clasp-hands', 'hair-touch'] }, { watching: false })
-    expect(all['clasp-hands']).toBeGreaterThan(0)
-    expect(all['hair-touch']).toBeGreaterThan(0)
-    expect([limited['clasp-hands'], limited['hair-touch']]).toEqual([0, 0])
-    expect({ ...limited, 'clasp-hands': all['clasp-hands'], 'hair-touch': all['hair-touch'] }).toEqual(all)
-  })
-
-  it('starts nothing that needs her arms or a standing posture while she is settled in', () => {
-    const settled = { watching: false, settled: true }
-    const weights = idleActivityWeights({ ...neutralDrive, body: true, sleepiness: 0.5 }, settled)
-    for (const kind of ['stretch', 'peer', 'shoulder-roll', 'arm-swing'] as const)
-      expect(weights[kind], kind).toBe(0)
-    // Architecture 4f lets the sigh, the yawn and the foot re-plant play while she rests.
-    expect(weights['shift-stance']).toBeGreaterThan(0)
-    expect(weights.sigh).toBeGreaterThan(0)
-    expect(weights.yawn).toBeGreaterThan(0)
-  })
-
-  it('weighs a kind she showed recently less on a body host, back to its full weight after 300 s', () => {
-    const body = { ...neutralDrive, body: true }
-    const fresh = idleActivityWeights(body, { watching: false })
-    const recent = idleActivityWeights(body, { watching: false, since: { 'look-around': 60 } })
-    expect(recent['look-around']).toBeCloseTo(fresh['look-around'] / 5)
-    expect(recent['check-in']).toBe(fresh['check-in'])
-    expect(idleActivityWeights(body, { watching: false, since: { 'look-around': 300 } })['look-around']).toBe(fresh['look-around'])
-    // A head-only host draws as it did before.
-    expect(idleActivityWeights(neutralDrive, { watching: false, since: { 'look-around': 60 } })).toEqual(idleActivityWeights(neutralDrive, { watching: false }))
-  })
-
-  it('sways only while music plays', () => {
-    expect(idleActivityWeights(neutralDrive, { watching: false }).sway).toBe(0)
-    expect(idleActivityWeights({ ...neutralDrive, music: true }, { watching: false }).sway).toBeGreaterThan(0)
-  })
-
-  it('paces activities by mood energy and the host rate, and treats bad numbers as neutral', () => {
-    const base = idleActivityRate(neutralDrive, { watching: false })
-    expect(idleActivityRate({ ...neutralDrive, energy: 1 }, { watching: false })).toBeGreaterThan(base)
-    expect(idleActivityRate({ ...neutralDrive, energy: -1 }, { watching: false })).toBeLessThan(base)
-    expect(idleActivityRate({ ...neutralDrive, rate: 0 }, { watching: false })).toBe(0)
-    expect(idleActivityRate(neutralDrive, { watching: true })).toBeLessThan(base)
-    expect(idleActivityRate({ ...neutralDrive, energy: Number.NaN }, { watching: false })).toBe(base)
-  })
-
+describe('idle activity layer', () => {
   it('moves the Natural energy with the slow mood and the hour, and not at all without a drive', () => {
     expect(idleEnergyOffset(null)).toBe(0)
     expect(idleEnergyOffset(neutralDrive)).toBe(0)
     expect(idleEnergyOffset({ ...neutralDrive, energy: 1 })).toBeCloseTo(0.3)
     expect(idleEnergyOffset({ ...neutralDrive, sleepiness: 1 })).toBeCloseTo(-0.15)
   })
-})
 
-describe('idle activity layer', () => {
   it('stays inert without a drive', () => {
     const { idle, run } = layer(7, null)
     run(600)
     expect(idle.seq).toBe(0)
     expect(idle.contributing).toBe(false)
     expect(idle.output.lidClose).toBe(0)
-  })
-
-  it('starts varied activities, rests between them, and returns to neutral after each', () => {
-    const { idle, run, now } = layer()
-    const seen: IdleBehaviourKind[] = []
-    let endedAt = 0
-    let seq = 0
-    let previous: IdleBehaviourKind | null = null
-    run(1800, idleInput, () => {
-      if (idle.seq !== seq) {
-        seq = idle.seq
-        // The rest after an activity is at least 6 s.
-        if (seen.length > 0)
-          expect(now() - endedAt).toBeGreaterThanOrEqual(6 - dt)
-        seen.push(idle.behaviour!)
-      }
-      if (previous !== null && idle.behaviour === null) {
-        endedAt = now()
-        // A finished activity hands every channel back without a jump.
-        expect(Math.max(...idle.output.head.map(Math.abs), ...idle.output.body.map(Math.abs), idle.output.lidClose, idle.output.mouthOpen)).toBeLessThan(0.02)
-      }
-      previous = idle.behaviour
-      return false
-    })
-    // Half an hour holds a few dozen activities of at least four kinds, never the same one twice in a row.
-    expect(seen.length).toBeGreaterThan(12)
-    expect(seen.length).toBeLessThan(60)
-    expect(new Set(seen).size).toBeGreaterThanOrEqual(4)
-    expect(seen.some((kind, i) => i > 0 && kind === seen[i - 1])).toBe(false)
-    // A rested, daytime character never nods off or sways to music that is not playing.
-    expect(seen).not.toContain('nod-off')
-    expect(seen).not.toContain('sway')
-    expect(seen).not.toContain('sleep')
-  })
-
-  it('draws exactly the activities, at exactly the times, it drew before the whole-body kinds existed when the host performs no body', () => {
-    // Recorded at 101fc9543, before the kinds existed (E/g4/a/scratch/base-sequence.ts), with this loop: every start
-    // in 900 s for two seeds. The same kinds at the same ticks means the pick consumed no extra draw.
-    const base: Record<number, string[]> = { 7: ['stretch@0.525', 'check-in@50.483', 'look-around@122.633', 'peer@181.400', 'look-around@219.833', 'peer@313.675', 'check-in@487.067', 'peer@517.500', 'stretch@583.008', 'zone-out@655.758', 'look-around@764.392', 'peer@793.367', 'look-around@816.892', 'check-in@864.492'], 11: ['check-in@32.242', 'stretch@83.267', 'check-in@126.258', 'look-around@192.267', 'check-in@275.425', 'zone-out@345.508', 'check-in@404.083', 'stretch@442.433', 'check-in@491.317', 'peer@510.683', 'look-around@562.283', 'zone-out@602.725', 'look-around@716.825', 'peer@776.575', 'stretch@843.350', 'check-in@890.383'] }
-    for (const seed of [7, 11]) {
-      const idle = new NaturalIdleActivities(createRandomStream(seed))
-      const gaze = new NaturalGazeLayer(createRandomStream(4))
-      idle.setDrive(neutralDrive)
-      const seen: string[] = []
-      let seq = 0
-      for (let at = 0; at < 900; at += dt) {
-        idle.step(at, dt, idleInput, gaze)
-        gaze.step(dt)
-        if (idle.seq !== seq) {
-          seq = idle.seq
-          seen.push(`${idle.behaviour}@${at.toFixed(3)}`)
-        }
-      }
-      expect(seen, `seed ${seed}`).toEqual(base[seed])
-    }
-  })
-
-  it('draws as before without a body for seeds recorded at the base of the recency rule', () => {
-    // Recorded at cd101c9fe with this loop (E/g4/i/scratch/base-sequence.ts): every start in 900 s.
-    const base: Record<number, string[]> = {
-      3: ['stretch@57.317', 'check-in@133.908', 'look-around@180.900', 'check-in@209.433', 'zone-out@247.192', 'look-around@275.983', 'check-in@299.975', 'look-around@347.658', 'zone-out@410.558', 'look-around@517.550', 'yawn@573.017', 'check-in@632.767', 'look-around@654.908', 'stretch@720.850', 'check-in@756.775', 'look-around@772.483', 'check-in@809.283', 'look-around@824.708'],
-      23: ['stretch@4.375', 'look-around@35.642', 'check-in@121.942', 'zone-out@266.450', 'look-around@306.275', 'stretch@340.208', 'look-around@399.983', 'check-in@429.875', 'look-around@495.242', 'peer@672.658', 'look-around@798.275'],
-      42: ['look-around@41.350', 'peer@63.425', 'stretch@104.950', 'look-around@161.467', 'peer@229.142', 'check-in@251.333', 'look-around@274.808', 'check-in@307.917', 'look-around@424.942', 'yawn@598.600', 'look-around@626.967', 'zone-out@738.108', 'check-in@813.550', 'look-around@826.475', 'peer@871.892'],
-      101: ['peer@6.558', 'stretch@44.958', 'look-around@76.492', 'check-in@96.108', 'look-around@115.542', 'peer@182.250', 'zone-out@256.125', 'look-around@320.558', 'zone-out@342.400', 'look-around@391.175', 'zone-out@513.800', 'look-around@548.917', 'check-in@589.850', 'look-around@619.742', 'yawn@667.717', 'look-around@759.175', 'check-in@802.692', 'look-around@845.500', 'check-in@882.450'],
-    }
-    for (const seed of [3, 23, 42, 101]) {
-      const idle = new NaturalIdleActivities(createRandomStream(seed))
-      const gaze = new NaturalGazeLayer(createRandomStream(4))
-      idle.setDrive(neutralDrive)
-      const seen: string[] = []
-      let seq = 0
-      for (let at = 0; at < 900; at += dt) {
-        idle.step(at, dt, idleInput, gaze)
-        gaze.step(dt)
-        if (idle.seq !== seq) {
-          seq = idle.seq
-          seen.push(`${idle.behaviour}@${at.toFixed(3)}`)
-        }
-      }
-      expect(seen, `seed ${seed}`).toEqual(base[seed])
-    }
-  })
-
-  it('on a body host draws a kind she has just shown far less often than its weight alone gives', () => {
-    // The same seeds twice: she shows a check-in, or a peer in its place, then a zone-out; the next drawn kind counts.
-    const nextAfter = (shown: IdleBehaviourKind) => {
-      let checkIns = 0
-      for (let seed = 1; seed <= 300; seed++) {
-        const { idle, gaze, run, now } = layer(seed, { ...neutralDrive, body: true })
-        idle.play(shown)
-        idle.step(now(), dt, idleInput, gaze)
-        idle.play('zone-out')
-        run(now() + 2 * dt)
-        const zoned = idle.seq
-        run(now() + 600, idleInput, () => idle.seq > zoned)
-        if (idle.behaviour === 'check-in')
-          checkIns++
-      }
-      return checkIns
-    }
-    expect(nextAfter('check-in')).toBeLessThan(0.5 * nextAfter('peer'))
   })
 
   it('settles in after two minutes of idle only when the host performs a body, and gets up when the mode changes', () => {
@@ -357,51 +175,6 @@ describe('idle activity layer', () => {
     expect(idle.output.lidClose).toBe(0)
   })
 
-  it('takes a fresh while to fall asleep after she talked to someone the desktop calls away', () => {
-    const { idle, run, now } = layer()
-    const away = { ...idleInput, away: true }
-    run(31, away, () => idle.behaviour === 'sleep')
-    // A reply longer than the longest wait: the wait must not run out while she speaks.
-    const spokeUntil = run(now() + 40, { ...away, mode: 'talking' })
-    expect(idle.behaviour).toBeNull()
-    run(spokeUntil + 31, away, () => idle.behaviour === 'sleep')
-    expect(idle.behaviour).toBe('sleep')
-    expect(now() - spokeUntil).toBeGreaterThan(12)
-  })
-
-  it('follows a long sleep with a yawn and never a stretch while she is settled in', () => {
-    const seen = new Set<IdleBehaviourKind>()
-    for (let seed = 1; seed <= 30; seed++) {
-      const { idle, run, now } = layer(seed, { ...neutralDrive, body: true })
-      const away = { ...idleInput, away: true }
-      run(31, away, () => idle.behaviour === 'sleep')
-      run(now() + 130, away)
-      expect(idle.settled, `seed ${seed}`).toBe(true)
-      const wokeAt = run(now() + dt, { ...idleInput, wake: true })
-      run(wokeAt + 4, idleInput, () => idle.behaviour !== null)
-      if (idle.behaviour)
-        seen.add(idle.behaviour)
-    }
-    expect([...seen]).toEqual(['yawn'])
-  })
-
-  it('can still stretch after a long sleep when the return stands her up', () => {
-    const seen = new Set<IdleBehaviourKind>()
-    for (let seed = 1; seed <= 30; seed++) {
-      const { idle, run, now } = layer(seed, { ...neutralDrive, body: true })
-      const away = { ...idleInput, away: true }
-      run(31, away, () => idle.behaviour === 'sleep')
-      run(now() + 130, away)
-      const watching = { ...idleInput, mode: 'watching' as const }
-      const wokeAt = run(now() + dt, { ...watching, wake: true })
-      expect(idle.settled, `seed ${seed}`).toBe(false)
-      run(wokeAt + 4, watching, () => idle.behaviour !== null)
-      if (idle.behaviour)
-        seen.add(idle.behaviour)
-    }
-    expect(seen.has('stretch')).toBe(true)
-  })
-
   it('wakes with a start when she is touched', () => {
     const { idle, gaze, run, now } = layer()
     const away = { ...idleInput, away: true }
@@ -411,12 +184,6 @@ describe('idle activity layer', () => {
     expect(idle.behaviour).toBeNull()
     run(now() + 0.4, { ...away, blocked: true })
     expect(idle.output.lidClose).toBe(0)
-  })
-
-  it('never sleeps when the renderer plays its own sleep stance', () => {
-    const { idle, run } = layer(7, { ...neutralDrive, allowSleep: false })
-    run(300, { ...idleInput, away: true })
-    expect(idle.seq).toBe(0)
   })
 
   it('holds a look at the user before a reach-out and lets it go when she stays silent', () => {
