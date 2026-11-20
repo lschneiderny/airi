@@ -95,7 +95,7 @@ function voiceTick(forceTiming: boolean, nowMs: number): MindStimulus {
     kind: 'voice-tick',
     forceTiming,
     view: {
-      run: { id: 1, memory: null, saved: null },
+      run: { id: 1, user: null },
       situation,
       threads: { threads: { threads: [] } },
       local: { dayKey: '2023-11-14', minuteOfDay: 16 * 60 },

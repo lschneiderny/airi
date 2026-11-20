@@ -5,6 +5,8 @@ import { defaultExpressionPerformanceSettings as settings } from '@proj-airi/sta
 import { describe, expect, it } from 'vitest'
 
 import { CharacterMind } from './mind'
+import { seededRandom } from './random'
+import { initialMindState, step } from './step'
 
 function happy(nominal: number): MindStimulus {
   return { kind: 'emotion', source: 'act', emotion: 'happy', nominal, turnId: 'A', settings }
@@ -57,5 +59,23 @@ describe('character mind', () => {
     stop()
     mind.receive(happy(0.9))
     expect(steps).toHaveLength(1)
+  })
+
+  it('starts over from the given slow state at a reset, with a monotonic clock and the same random stream', () => {
+    const slow = { pacing: { lastSpokenAtMs: 9_000, unanswered: 1, awaitingSinceMs: 9_000, damp: null, lastOwnDayAtMs: null } }
+    const mind = new CharacterMind({ seed: 41, clock: scriptedClock(10_000, 4_000) })
+    const steps: MindStep[] = []
+    mind.onStep(step => steps.push(step))
+    mind.receive(happy(0.6))
+
+    mind.reset(slow)
+    expect(mind.state).toEqual(initialMindState(slow))
+    const intents = mind.receive(happy(0.6))
+
+    // The episode's jitter is the stream's second draw, and the step keeps the time of the one before the reset.
+    const random = seededRandom(41)
+    random()
+    expect(intents).toEqual(step(initialMindState(slow), [happy(0.6)], 10_000, random).intents)
+    expect(steps.map(({ atMs }) => atMs)).toEqual([10_000, 10_000])
   })
 })

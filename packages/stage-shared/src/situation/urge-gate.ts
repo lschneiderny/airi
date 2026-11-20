@@ -120,8 +120,11 @@ export interface UrgeGateMemory {
   readonly lastOwnDayAtMs: number | null
 }
 
-/** The social slice that survives a leader reload; everything else restarts from promotion. */
-export type SavedGateMemory = Pick<UrgeGateMemory, 'lastFireAtMs' | 'lastSpokenAtMs' | 'unanswered' | 'awaitingSinceMs' | 'damp' | 'day' | 'lastOwnDayAtMs'>
+/** Per user, across characters: the floor counts from the last fire, the hourly cap counts the fires, the ritual day holds the day's rituals. */
+export type UserGateMemory = Pick<UrgeGateMemory, 'lastFireAtMs' | 'fires' | 'day'>
+
+/** The user's slice the leader saves in `settings/situation-inner`. `fires` restart at each launch. */
+export type SavedGateMemory = Pick<UserGateMemory, 'lastFireAtMs' | 'day'>
 
 /** Per character: her own pacing memory, saved in the card's character-state record. */
 export type CharacterPacingMemory = Pick<UrgeGateMemory, 'lastSpokenAtMs' | 'unanswered' | 'awaitingSinceMs' | 'damp' | 'lastOwnDayAtMs'>
@@ -617,8 +620,8 @@ export function evaluateUrgeGate(input: UrgeGateInput, memory: UrgeGateMemory, r
 /**
  * Memory for a window that just became the leader: urge 0, a fresh threshold
  * drawn from `random`, and the clear ramp starting at `nowMs` so she does not
- * speak the moment she takes over. Restore the persisted social slice on top
- * with {@link restoreSocialMemory}.
+ * speak the moment she takes over. Restore the user's slice and her pacing on
+ * top with {@link restoreGateMemory}.
  */
 export function promotionUrgeMemory(nowMs: number, random: () => number): UrgeGateMemory {
   return { ...initialUrgeMemory, urgeThreshold: drawThreshold(random()), lastHardHoldAtMs: isTime(nowMs) ? nowMs : null }
@@ -631,17 +634,31 @@ export function visibilityRegainUrgeMemory(memory: UrgeGateMemory, nowMs: number
   return { ...normalizeMemory(memory, nowMs), lastHardHoldAtMs: nowMs }
 }
 
-/** Lays a persisted social slice over `memory` and normalizes the result at `nowMs`. */
-export function restoreSocialMemory(memory: UrgeGateMemory, saved: SavedGateMemory, nowMs: number): UrgeGateMemory {
+/** The user's slice of `memory`. */
+export function userGateMemoryOf(memory: UrgeGateMemory): UserGateMemory {
+  return { lastFireAtMs: memory.lastFireAtMs, fires: memory.fires, day: memory.day }
+}
+
+/** Her pacing memory in `memory`. */
+export function pacingMemoryOf(memory: UrgeGateMemory): CharacterPacingMemory {
+  return {
+    lastSpokenAtMs: memory.lastSpokenAtMs,
+    unanswered: memory.unanswered,
+    awaitingSinceMs: memory.awaitingSinceMs,
+    damp: memory.damp,
+    lastOwnDayAtMs: memory.lastOwnDayAtMs,
+  }
+}
+
+/**
+ * Lays the user's slice and her pacing over `memory` and normalizes the result at `nowMs`; a null slice leaves its
+ * fields as `memory` has them. The normalization is the decay of both for the time away.
+ */
+export function restoreGateMemory(memory: UrgeGateMemory, user: UserGateMemory | null, pacing: CharacterPacingMemory | null, nowMs: number): UrgeGateMemory {
   const merged: UrgeGateMemory = {
     ...memory,
-    lastFireAtMs: saved.lastFireAtMs,
-    lastSpokenAtMs: saved.lastSpokenAtMs,
-    unanswered: saved.unanswered,
-    awaitingSinceMs: saved.awaitingSinceMs,
-    damp: saved.damp,
-    day: saved.day,
-    lastOwnDayAtMs: saved.lastOwnDayAtMs,
+    ...(user && { lastFireAtMs: user.lastFireAtMs, fires: user.fires, day: user.day }),
+    ...(pacing && { lastSpokenAtMs: pacing.lastSpokenAtMs, unanswered: pacing.unanswered, awaitingSinceMs: pacing.awaitingSinceMs, damp: pacing.damp, lastOwnDayAtMs: pacing.lastOwnDayAtMs }),
   }
   return isTime(nowMs) ? normalizeMemory(merged, nowMs) : merged
 }

@@ -51,6 +51,7 @@ import {
   TOUCH_TOPIC_KEY,
   touchVoiceView,
   unpromptedTopicText,
+  userGateMemoryOf,
   WEB_EXTENSION_SOURCE,
   withoutAppExtension,
 } from '@proj-airi/stage-shared/situation'
@@ -137,17 +138,9 @@ function isThreadTopic(topicKey: string): boolean {
   return topicKey.startsWith('thread:')
 }
 
-/** The slice of the gate memory that survives a leader reload. */
+/** The user's slice of the gate memory that survives a leader reload: the floor and the ritual day. */
 function savedGateMemory(memory: UrgeGateMemory): SavedGateMemory {
-  return {
-    lastFireAtMs: memory.lastFireAtMs,
-    lastSpokenAtMs: memory.lastSpokenAtMs,
-    unanswered: memory.unanswered,
-    awaitingSinceMs: memory.awaitingSinceMs,
-    damp: memory.damp,
-    day: memory.day,
-    lastOwnDayAtMs: memory.lastOwnDayAtMs,
-  }
+  return { lastFireAtMs: memory.lastFireAtMs, day: memory.day }
 }
 
 /** The parts of the leader's chat store the gate needs. The chat store hands them over through `observeChat`. */
@@ -205,11 +198,12 @@ interface RunningSensors {
  * sends it to the connected mind ({@link connect}), runs the lines the mind decides ({@link speak}), and stores what
  * the mind publishes ({@link publishVoice}). With no mind connected, a tick is dropped. A reach-out addresses its
  * topic (a thread topic is consumed only once her turn about it speaks), then starts one unprompted turn through the
- * chat controls. The gate's social memory (with the ritual day) and the open threads are restored from
- * `useSituationInnerState` when the gate starts and saved whenever a durable field changes, so a leader reload does
- * not start her from day one. Each promotion and "Delete all data" starts a new run ({@link VoiceRun}): its id makes
- * the mind restore its gate memory, from the mirror of the memory a mind last published in the run, else from the
- * slice saved at the promotion. While the gate
+ * chat controls. The user's slice of the gate memory (the floor and the ritual day) and the open threads are restored
+ * from `useSituationInnerState` when the gate starts and saved whenever a durable field changes, so a leader reload
+ * does not start her from day one; her own pacing is the mind's slow state, saved in the card's character-state
+ * record. Each promotion and "Delete all data" starts a new run ({@link VoiceRun}): its id makes the mind restore its
+ * gate memory from the run's user slice (the last one a mind published in the run, else the slice saved at the
+ * promotion) and its own pacing, so a card switch keeps the user's floor, hourly cap, and ritual day. While the gate
  * runs, every exchange that ends is sent to the thread extractor, which asks the chat model what is still open in the
  * messages of that chat session that no earlier extraction read (the read positions are saved with the threads); the
  * threads it returns join the gate's reasons for that chat session, and each attempt shows in the inspector's
@@ -263,10 +257,12 @@ export const useSituationStore = defineStore('situation', () => {
   /** The callers of widget requests that have no result yet, by turn id; see {@link requestVoice}. */
   const widgetCallers = new Map<string, (result: ChatUnpromptedResult) => void>()
   /**
-   * The gate run: its id, the mirror of the last memory a mind published in it (`memory`), and the slice saved at its
-   * promotion. Replaced, never mutated, so a view sent to the mind keeps the run it was built in.
+   * The gate run: its id and the user's slice, from the last memory a mind published in it, else the slice saved at
+   * its promotion. Replaced, never mutated, so a view sent to the mind keeps the run it was built in.
    */
-  let run: VoiceRun = { id: 0, memory: null, saved: null }
+  let run: VoiceRun = { id: 0, user: null }
+  /** The last gate memory the mind published in this run, for the inspector and the character-state bridge. */
+  let gateMemory: UrgeGateMemory | null = null
   /** The leader's character mind, with the run it last received a tick in; see {@link connect}. */
   let mind: { send: (stimulus: VoiceStimulus) => void, tickedRun: number | null } | undefined
   /** The latest user turn that no mind could receive yet; sent after the tick that restores a mind's gate memory. */
@@ -549,16 +545,16 @@ export const useSituationStore = defineStore('situation', () => {
 
   /** Shows the gate memory and the open threads in the devtools Situation inspector at once, and saves them if durable. */
   function publishGateState() {
-    observability.publishUrgeState(run.memory ?? initialUrgeMemory, threads.threads)
+    observability.publishUrgeState(gateMemory ?? initialUrgeMemory, threads.threads)
     saveInnerState()
   }
 
   function innerStateSnapshot(): string {
-    return JSON.stringify([run.memory && savedGateMemory(run.memory), threads.threads, extractedThrough])
+    return JSON.stringify([gateMemory && savedGateMemory(gateMemory), threads.threads, extractedThrough])
   }
 
   /**
-   * Saves the social memory, the threads, and the extraction read positions while the gate runs, only when one of
+   * Saves the user's slice of the gate memory, the threads, and the extraction read positions while the gate runs, only when one of
    * their fields changed (a fire, an outcome, a user turn, a day roll, a thread raised or expired, a ritual done, an
    * extraction read). The leadership token keeps a demoted
    * window from overwriting its successor's save. A refused write is retried at the next change.
@@ -570,7 +566,7 @@ export const useSituationStore = defineStore('situation', () => {
     if (snapshot === savedSnapshot)
       return
     // Before a mind published a memory in this run, the stored gate slice stays as it is.
-    const gate = run.memory ? savedGateMemory(run.memory) : undefined
+    const gate = gateMemory ? savedGateMemory(gateMemory) : undefined
     if (innerState.write({ gate, threads: threads.threads, extractedThrough }, leadership))
       savedSnapshot = snapshot
   }
@@ -687,9 +683,9 @@ export const useSituationStore = defineStore('situation', () => {
   }
 
   /**
-   * Stores what the mind published after a step that touched its voice state: the memory becomes the run's mirror,
-   * which the character state reads and the next mind of the run restores from, and it is saved with the leadership
-   * token when a durable field changed. A decision is recorded in the inspector. A memory of an earlier run, or one
+   * Stores what the mind published after a step that touched its voice state: the memory becomes the read model that
+   * the inspector and the character state read, its user slice becomes the run's, which a reloaded mind restores
+   * from, and that slice is saved with the leadership token when a durable field changed. A decision is recorded in the inspector. A memory of an earlier run, or one
    * that arrives while the gate does not run, is dropped. `wakeAtMs` replaces the one wake timer: the mind gets a tick
    * at its next widget deadline, so a drop or a cancel is not late by up to {@link GATE_INTERVAL_MS}.
    */
@@ -698,7 +694,8 @@ export const useSituationStore = defineStore('situation', () => {
       return
     clearTimeout(wakeTimer)
     wakeTimer = update.wakeAtMs === null ? undefined : setTimeout(voiceTick, Math.max(0, update.wakeAtMs - Date.now()))
-    run = { ...run, memory: update.memory }
+    gateMemory = update.memory
+    run = { ...run, user: userGateMemoryOf(update.memory) }
     if (update.decision)
       observability.recordUrgeDecision(update.decision, update.memory)
     // A step that the line started (a user turn during its send) publishes no decision and keeps the evaluation's.
@@ -1025,10 +1022,11 @@ export const useSituationStore = defineStore('situation', () => {
   function syncGateLoop() {
     const shouldRun = leading.value && hostSupportsUnprompted.value
     if (shouldRun && gateTicker === undefined) {
-      // A new run: the mind eases in again but restores the saved social memory and ritual day at its first tick, and
-      // the threads stay, so a reload neither greets twice nor forgets an unanswered opening.
+      // A new run: the mind eases in again but restores the user's saved floor and ritual day at its first tick, and
+      // the threads stay, so a reload does not greet twice. The hourly cap restarts with each launch.
       const saved = innerState.read(Date.now())
-      run = { id: run.id + 1, memory: null, saved: saved.gate }
+      run = { id: run.id + 1, user: saved.gate && { ...saved.gate, fires: [] } }
+      gateMemory = null
       threads = { threads: saved.threads }
       extractedThrough = saved.extractedThrough
       savedSnapshot = innerStateSnapshot()
@@ -1059,7 +1057,8 @@ export const useSituationStore = defineStore('situation', () => {
       // No line can run any more, so every widget caller is answered now.
       failWaitingRequests()
       savedSnapshot = undefined
-      run = { ...run, memory: null, saved: null }
+      run = { ...run, user: null }
+      gateMemory = null
       publishGateState()
     }
   }
@@ -1073,7 +1072,7 @@ export const useSituationStore = defineStore('situation', () => {
     innerState.claim(leadership)
     characterBridge = bridgeSituationToCharacter({
       situation: () => current.value,
-      gate: () => run.memory ?? initialUrgeMemory,
+      gate: () => gateMemory ?? initialUrgeMemory,
       extractedThrough: sessionId => extractedThrough.find(position => position.sessionId === sessionId)?.messageId,
       messages: sessionId => chat?.sessionMessages(sessionId) ?? [],
     })
@@ -1211,8 +1210,10 @@ export const useSituationStore = defineStore('situation', () => {
       observability.forget()
       innerState.reset()
       savedSnapshot = undefined
-      // A new run: the mind starts her over from promotion alone at its next tick.
-      run = { id: run.id + 1, memory: null, saved: null }
+      // A new run without the user's slice: the mind restores from promotion and its own pacing at its next tick, and
+      // forgetting the character state below resets that pacing.
+      run = { id: run.id + 1, user: null }
+      gateMemory = null
       // Also clears the character state of every card; the bridge's own memory of reach-outs and turns goes with it.
       void characterBridge?.forgetEverything()
     }
