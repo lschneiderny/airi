@@ -13,9 +13,6 @@ export const IDLE_TO_SIT_MS = 120_000
 /** Minimum time in milliseconds between stance changes. */
 export const STANCE_MIN_DWELL_MS = 3_000
 
-/** Chase window in milliseconds after the latest user interaction. */
-export const CHASE_WINDOW_MS = 60_000
-
 /** Distance, in leg lengths, at which a chase stops short of the cursor. */
 export const CHASE_STOP_LEGS = 1.0
 
@@ -165,7 +162,11 @@ export interface BodyDirectorInput {
   interactionSeq: number
   /** Count of chat messages the user sent; it ends a looping clip like a chat unfold and leaves a one-shot running. */
   chatSendSeq: number
-  interactionAtMs: number | null
+  /**
+   * Director time until which she attends to her user, or null. The host stamps it from the character mind's `attend`
+   * intent (`nowMs + windowMs`); only inside it may she walk toward the cursor.
+   */
+  attendUntilMs: number | null
   actionRequest: BodyActionRequest | null
   actionFeedback: BodyActionFeedback | null
   /** True while the user drags the character. */
@@ -199,7 +200,7 @@ export interface BodyDirectorInput {
  * Spread it under the six legacy fields; every goal rule stays inert. Clips, pokes and drags exist without a world, so
  * every host supplies the interaction and action inputs itself.
  */
-export const NO_WORLD_BODY_INPUT: Omit<BodyDirectorInput, 'nowMs' | 'performance' | 'cursorPoint' | 'chatPoint' | 'cameraPoint' | 'slots' | 'interactionSeq' | 'chatSendSeq' | 'interactionAtMs' | 'actionRequest' | 'actionFeedback' | 'dragging' | 'idle'> = Object.freeze({
+export const NO_WORLD_BODY_INPUT: Omit<BodyDirectorInput, 'nowMs' | 'performance' | 'cursorPoint' | 'chatPoint' | 'cameraPoint' | 'slots' | 'interactionSeq' | 'chatSendSeq' | 'attendUntilMs' | 'actionRequest' | 'actionFeedback' | 'dragging' | 'idle'> = Object.freeze({
   ground: null,
   rootX: 0,
   homeX: 0,
@@ -704,10 +705,10 @@ export function decideBody(
   }
 
   const chasing = ground !== null
-    && input.interactionAtMs !== null
+    && input.attendUntilMs !== null
+    && nowMs <= input.attendUntilMs
     && input.cursorOnStage
     && input.cursorX !== null
-    && nowMs - input.interactionAtMs <= CHASE_WINDOW_MS
     && Math.abs(input.cursorX - input.rootX) > CHASE_STOP_LEGS * leg
   if (chasing && ground !== null && input.cursorX !== null && pending === null && canIssue()) {
     const chaseX = clampToZones(input.cursorX - Math.sign(input.cursorX - input.rootX) * CHASE_STOP_LEGS * leg, zones)

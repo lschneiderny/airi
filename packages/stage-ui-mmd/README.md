@@ -58,8 +58,11 @@ reaching feature parity with the Live2D and VRM renderers:
   drive, the director no longer sits her after two minutes idle or sleeps her
   while the user is away, whatever clips are assigned (changed 2026-11-13).
 - **Stage locomotion** (desktop stage only, `stageWorld` set): the body director
-  also walks her to the chat after it unfolds, chases the cursor after a poke,
-  pet, drag or sent message, returns home 20 s after the last reason and, with
+  also walks her to the chat after it unfolds, chases the cursor inside the attend
+  window that the character mind's `attend` intent opens (a poke, pet start, drag
+  or sent message; `attend(intent)` stamps `attendUntilMs` on the director's clock
+  under the Natural driver; under the classic driver the attend intent is not
+  dispatched, so the director gets no attend window), returns home 20 s after the last reason and, with
   `roamMode` (`settings/mmd/roam-mode`, `'stay' | 'roam'`, default `'stay'`),
   wanders when Natural's idle draw asks for it (the `wander` errand, listed in
   the drive in roam mode on the desktop stage), so only under the Natural driver
@@ -577,7 +580,8 @@ body reaction, the mood dose, and a possible reaction line together, as on
 Live2D. The scene performs the mind's `touch-reaction` intent through its
 exposed `reactToTouch`: a poke calls Natural's `poke`, the pet hand reaches
 Natural only between a pet `start` and its `end`, and a poke and a pet start
-count as interactions for the body director. The response is pre-physics head
+bump `interactionSeq`, which ends the director's clips. The mind's `attend` intent
+for the same touch reaches the scene's `attend`. The response is pre-physics head
 and body motion. The scene also exposes `wakeFromSleep()` and
 `reactToDesktop(reaction)`, which `Stage.vue` calls under Natural when the mind
 answers the user's return or a desktop event; they forward to

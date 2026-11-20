@@ -15,7 +15,7 @@ import { CHAT_STAND_GAP_LEGS, chatStandX, directorIdleStates, frameClocks, MMDSt
 const idle: Pick<PerformanceState, 'mode' | 'attention' | 'away'> = { mode: 'idle', attention: 'camera', away: false }
 const away: Pick<PerformanceState, 'mode' | 'attention' | 'away'> = { mode: 'idle', attention: 'camera', away: true }
 const EPOCH_MS = 1_000_000
-const quiet: MMDStanceInteraction = { interactionSeq: 0, chatSendSeq: 0, interactionAtMs: null, actionRequest: null, actionFeedback: null, dragging: false }
+const quiet: MMDStanceInteraction = { interactionSeq: 0, chatSendSeq: 0, attendUntilMs: null, actionRequest: null, actionFeedback: null, dragging: false }
 
 function pose(name: string, center: number, legPitch: number, kneePitch: number): AnimationClip {
   const quaternion = (pitch: number) => new Quaternion().setFromEuler(new Euler(pitch, 0, 0)).toArray()
@@ -236,7 +236,7 @@ describe('mmd stance director in the stage world', () => {
   it('chases a cursor eight leg lengths away after a poke', () => {
     const director = new MMDStanceDirector()
     frame(director, 0, world())
-    frame(director, 1_000, world({ cursorX: 8, cursorOnStage: true }), idle, 0, { ...quiet, interactionSeq: 1, interactionAtMs: EPOCH_MS + 1_000 })
+    frame(director, 1_000, world({ cursorX: 8, cursorOnStage: true }), idle, 0, { ...quiet, interactionSeq: 1, attendUntilMs: EPOCH_MS + 61_000 })
     expect(director.diagnostics).toMatchObject({ goalX: 7, reason: 'approach-cursor' })
   })
 
@@ -400,7 +400,7 @@ describe('mmd stance director with clip performances', () => {
     }
     expect(director.intent?.action).toMatchObject({ seq: 1, phase: 'playing' })
 
-    run(director, at + 100, { actionRequest: full, chatSendSeq: 1, interactionAtMs: EPOCH_MS + at + 100 }, world({ rootX: 1 }))
+    run(director, at + 100, { actionRequest: full, chatSendSeq: 1, attendUntilMs: EPOCH_MS + at + 60_100 }, world({ rootX: 1 }))
     expect(director.intent?.action).toMatchObject({ seq: 1, phase: 'playing' })
     expect(director.diagnostics).toMatchObject({ goalX: null, pendingGoal: { x: 6, reason: 'debug' } })
 
@@ -435,7 +435,7 @@ describe('mmd stance director with clip performances', () => {
       run(director, at, { actionRequest: dance })
     }
     expect(director.intent?.action).toMatchObject({ seq: 2, layer: 'full', phase: 'playing' })
-    run(director, at + 100, { actionRequest: dance, interactionSeq: 1, interactionAtMs: EPOCH_MS + at + 100 })
+    run(director, at + 100, { actionRequest: dance, interactionSeq: 1, attendUntilMs: EPOCH_MS + at + 60_100 })
     expect(director.intent?.action).toBeNull()
     expect(director.diagnostics.lastActionSeq).toBe(2)
   })
