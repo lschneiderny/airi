@@ -46,6 +46,17 @@ const mindSeedLayer = 0x6D696E64
 const omitted = ['classic-gaze', 'classic-face', 'lip-sync', 'bone-morphs', 'morphs', 'natural-face', 'touch-colliders', 'overlays', 'clip-layers', 'images', 'render']
 const modes = { idle: 0, turning: 1, starting: 2, walking: 3, stopping: 4 } as const
 
+/**
+ * The run's character mind on the motion clock. A scenario with `music` tells it music plays before the first frame;
+ * the stimulus draws nothing, so the idle stream's seed stays the one the first `idle` report draws.
+ */
+export function createRunnerMind(options: Pick<Motion3dRunOptions, 'seed' | 'scenario'>, clock: () => number): CharacterMind {
+  const mind = new CharacterMind({ seed: deriveSeed(options.seed, mindSeedLayer), clock })
+  if (options.scenario.music)
+    mind.receive({ kind: 'music', playing: true })
+  return mind
+}
+
 export interface Motion3dRunOptions {
   readonly model: string
   readonly scenario: Motion3dScenario
@@ -94,7 +105,7 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
     let naturalSeconds = 0
     // The mind decides idle as in the app: Natural's reports go in, and its idle intents come back as orders. Without a
     // drive the view stays dormant and the mind decides nothing.
-    const mind = new CharacterMind({ seed: deriveSeed(options.seed, mindSeedLayer), clock: () => naturalSeconds * 1000 })
+    const mind = createRunnerMind(options, () => naturalSeconds * 1000)
     const perform = (intents: ReturnType<CharacterMind['receive']>) => {
       for (const intent of intents) {
         if (intent.kind === 'idle-act' || intent.kind === 'idle-errand')
@@ -212,6 +223,7 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
       ikChains: mmd.pmx.bones.filter(bone => bone.ik).length,
       ...options.acts === 'off' ? { acts: 'off' } : {},
       ...idleDrive ? idleDriveDetail(idleDrive) : {},
+      ...options.scenario.music ? { music: true } : {},
     }
     const source: MotionTraceSource = {
       level: 't2-3d',

@@ -1,5 +1,6 @@
 export * from './idle'
 export * from './mind'
+export * from './music'
 export * from './presence'
 export * from './random'
 export * from './step'

@@ -8,6 +8,7 @@ import type { VoicePort, VoiceStimulus } from '../composables/performance/mind-v
 
 import { nextIdleWakeAt } from '@proj-airi/character-mind'
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
+import { MUSIC_SETTLE_MS } from '@proj-airi/stage-shared/music'
 import { initialSituationState, userGateMemoryOf } from '@proj-airi/stage-shared/situation'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -34,6 +35,15 @@ const voice = vi.hoisted(() => ({ port: undefined as VoicePort | undefined }))
 const records = vi.hoisted(() => ({ state: undefined as FakeCharacterState | undefined }))
 vi.mock('./situation', () => ({ useSituationStore: () => voice.port }))
 vi.mock('./character-state', () => ({ useCharacterStateStore: () => records.state }))
+// The beat sync detector needs a stage runtime; the fake hands the test the store's beat listener.
+const beatSync = vi.hoisted(() => ({ listeners: new Set<() => void>() }))
+vi.mock('@proj-airi/stage-shared/beat-sync', () => ({
+  isBeatSyncSupported: () => true,
+  listenBeatSyncBeatSignal: (listener: () => void) => {
+    beatSync.listeners.add(listener)
+    return () => beatSync.listeners.delete(listener)
+  },
+}))
 
 interface FakeCharacterState {
   leaderRecord: { cardId: string, pacing: CharacterPacingMemory | null } | null
@@ -73,6 +83,7 @@ function fakePort() {
     drop: vi.fn<VoicePort['drop']>(),
     publishVoice: vi.fn<VoicePort['publishVoice']>(),
     connect: vi.fn<VoicePort['connect']>(() => vi.fn()),
+    foregroundCategory: null,
   }
 }
 
@@ -173,6 +184,32 @@ describe('character mind store', () => {
   afterEach(() => {
     useCharacterMindStore().dispose()
     vi.useRealTimers()
+  })
+
+  it('hears music only while the window leads, and a demotion stops it', async () => {
+    const store = useCharacterMindStore()
+    const leadership = createLeadership(false)
+    store.initialize(leadership.runtime)
+    await flush()
+    expect(beatSync.listeners.size).toBe(0)
+
+    leadership.set(true)
+    await flush()
+    expect(beatSync.listeners.size).toBe(1)
+    for (let ms = 0; ms <= MUSIC_SETTLE_MS; ms += 500) {
+      vi.setSystemTime(T0 + ms)
+      for (const listener of beatSync.listeners)
+        listener()
+    }
+    expect(store.mind.state.music.playing).toBe(true)
+
+    // A card switch resets the mind, which hears the music again.
+    characterState.replace('card-b', null)
+    expect(store.mind.state.music.playing).toBe(true)
+
+    leadership.set(false)
+    expect(beatSync.listeners.size).toBe(0)
+    expect(store.mind.state.music.playing).toBe(false)
   })
 
   it('keeps the mind out of Vue reactivity', () => {

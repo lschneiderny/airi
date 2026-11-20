@@ -58,7 +58,7 @@ export function finite(value: number) {
  * Relative odds of each drawn activity for a drive. Tiredness (night, or low mood energy) favours yawns, zoning out
  * and nodding off; a lively mood favours looking around and watching the screen; time without an exchange makes her
  * check on the user more; tension makes her restless. While the user is active (`watching`) she watches along more
- * and drifts off less. Sway is drawn only while music plays. The whole-body kinds take architecture 4e's act weights,
+ * and drifts off less. Sway, her groove, is drawn only while the character mind hears `music`. The whole-body kinds take architecture 4e's act weights,
  * mood energy standing in for its arousal, and weigh 0 unless the drive sets `body`, so a head-only host's single
  * draw sees the same pool as before they existed. While a body host's character is `settled` (resting, or sitting on
  * a clip), nothing that needs her arms, her shoulders or a standing posture is drawn (architecture 4f restricts the
@@ -66,7 +66,7 @@ export function finite(value: number) {
  * With `body`, a kind started `since` seconds ago weighs `since / 300` of its odds until 300 s have passed, so she shows
  * most of what she can do before she repeats herself; a head-only host ignores `since`.
  */
-export function idleActivityWeights(drive: NaturalIdleDrive, context: { watching: boolean, settled?: boolean, since?: Partial<Record<DrawnIdleActivityKind, number>> }): Record<DrawnIdleActivityKind, number> {
+export function idleActivityWeights(drive: NaturalIdleDrive, context: { watching: boolean, music: boolean, settled?: boolean, since?: Partial<Record<DrawnIdleActivityKind, number>> }): Record<DrawnIdleActivityKind, number> {
   const tired = clamp01(Math.max(drive.sleepiness, -finite(drive.energy)))
   const lively = clamp01(finite(drive.energy))
   const warm = clamp01(0.5 + finite(drive.valence))
@@ -81,7 +81,7 @@ export function idleActivityWeights(drive: NaturalIdleDrive, context: { watching
     'stretch': 0.3 + 0.3 * tired + 0.2 * tense,
     'yawn': 0.08 + 1.3 * tired,
     'nod-off': tired > 0.45 ? 1.4 * (tired - 0.45) / 0.55 * (context.watching ? 0.6 : 1) : 0,
-    'sway': drive.music ? (0.8 + 0.6 * warm) * (1 - 0.6 * tense) : 0,
+    'sway': context.music ? (0.8 + 0.6 * warm) * (1 - 0.6 * tense) : 0,
     'sigh': body ? (finite(drive.valence) < -0.2 ? 2 : 1) : 0,
     'shoulder-roll': body ? 0.8 : 0,
     // 4e act 3: the body re-plants a foot. 4e act 6 clasps the hands (0.7), act 8 tucks the hair (0.5; a host whose rig
@@ -302,14 +302,14 @@ function chooseErrand(errands: readonly { kind: IdleErrandKind, rate: number }[]
   return errands[errands.length - 1].kind
 }
 
-function pick(state: IdleScheduleState, view: IdleView, drive: NaturalIdleDrive, at: number, random: RandomStream): DrawnIdleActivityKind | null {
+function pick(state: IdleScheduleState, view: IdleView, context: IdleContext, drive: NaturalIdleDrive, at: number, random: RandomStream): DrawnIdleActivityKind | null {
   const since: Partial<Record<DrawnIdleActivityKind, number>> = {}
   for (const kind of drawnKinds) {
     const last = state.lastStart[kind]
     if (last !== undefined)
       since[kind] = at - last
   }
-  const weights = idleActivityWeights(drive, { watching: view.mode === 'watching', settled: view.settled, since })
+  const weights = idleActivityWeights(drive, { watching: view.mode === 'watching', music: context.music, settled: view.settled, since })
   const eligible = drawnKinds.filter((kind) => {
     const last = state.lastStart[kind]
     return weights[kind] > 0 && (last === undefined || at - last >= cooldowns[kind])
@@ -344,13 +344,19 @@ function listErrands(state: IdleScheduleState, drive: NaturalIdleDrive | null, a
   return listed
 }
 
+/** What the schedule's pick reads beside the performer's view: the character mind's own state. */
+export interface IdleContext {
+  /** Whether the mind hears music: the groove (`sway`) weighs above 0 only then. */
+  music: boolean
+}
+
 /**
- * Advances the schedule over the span of `seconds` that starts at `at`, under `view`, which holds over the whole span,
- * and returns at most one decision. The due checks (rest, sleep delay, follow-up, refractories) read `at`, and the urge
+ * Advances the schedule over the span of `seconds` that starts at `at`, under `view` and `context`, which hold over the
+ * whole span, and returns at most one decision. The due checks (rest, sleep delay, follow-up, refractories) read `at`, and the urge
  * grows by the span's rate times `seconds`. The character mind's idle policy calls it over spans that end at
  * `nextIdleDeadline`, so the rate holds over each span.
  */
-export function advanceIdleSchedule(state: IdleScheduleState, view: IdleView, at: number, seconds: number, random: RandomStream): { state: IdleScheduleState, decision: IdleDecision | null } {
+export function advanceIdleSchedule(state: IdleScheduleState, view: IdleView, context: IdleContext, at: number, seconds: number, random: RandomStream): { state: IdleScheduleState, decision: IdleDecision | null } {
   if (!view.active)
     return { state, decision: null }
   const next = { ...state, errandListedSince: listErrands(state, view.drive, at) }
@@ -407,7 +413,7 @@ export function advanceIdleSchedule(state: IdleScheduleState, view: IdleView, at
         decision = { kind: 'errand', errand, pick: errandPick, holdSeconds }
       }
       else if (actsOpen) {
-        const kind = pick(next, view, drive, at, random)
+        const kind = pick(next, view, context, drive, at, random)
         if (kind)
           decision = { kind: 'act', act: kind }
       }

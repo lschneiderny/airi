@@ -85,6 +85,14 @@ export type MindStimulus
     | { kind: 'idle-wake' }
   /** The user or the devtools lab asks her to play an idle act now. */
     | { kind: 'idle-play', act: IdleBehaviourKind }
+  /** The host's music detector saw music start or stop. */
+    | MusicStimulus
+
+/** The edge of the one music detector: whether she hears music from now on. */
+export interface MusicStimulus {
+  kind: 'music'
+  playing: boolean
+}
 
 interface IntentBase {
   /** Unique among the intents of one mind since its initial state. */
@@ -154,6 +162,7 @@ export interface MindState {
   /** When the last screen-change reaction was stamped, in epoch milliseconds. */
   desktop: { screenReactAtMs: number | null }
   idle: MindIdleState
+  music: MindMusicState
   /** Saved by the host. The core keeps `slow.pacing` equal to her pacing in the gate memory and replaces the object only when a field changed. */
   slow: MindSlowState
 }
@@ -185,6 +194,11 @@ export interface MindVoiceState {
   requests: Array<{ request: VoiceRequest, startBy: number, speakBy: number }>
   /** The last gate decision, for the inspector and QA. */
   lastGate: UrgeGateDecision | null
+}
+
+/** Whether she hears music, as the last `music` stimulus said. Fast state. Plain JSON. */
+export interface MindMusicState {
+  playing: boolean
 }
 
 /** The idle policy's memory. Plain JSON. */

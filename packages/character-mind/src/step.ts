@@ -5,6 +5,7 @@ import { initialReactionMemory } from '@proj-airi/stage-shared/situation'
 
 import { answerEmotion, answerExpressionClear, answerExpressionRequest } from './expression'
 import { advanceIdle, answerIdle, answerIdlePlay, initialMindIdleState } from './idle'
+import { answerMusic } from './music'
 import { answerPresence, answerScreenChange } from './presence'
 import { answerTouch } from './touch'
 import { answerUserTurn, answerVoiceOutcome, answerVoiceRequest, answerVoiceTick, followPacing } from './voice'
@@ -22,6 +23,7 @@ export function initialMindState(slow: MindSlowState = { pacing: null }): MindSt
     presence: { away: false, awaySinceMs: null },
     desktop: { screenReactAtMs: null },
     idle: initialMindIdleState(),
+    music: { playing: false },
     slow,
   }
 }
@@ -76,6 +78,8 @@ export function step(state: MindState, stimuli: readonly MindStimulus[], nowMs: 
       answer = answerIdlePlay(next, stimulus, cause, rng)
     else if (stimulus.kind === 'idle-wake')
       answer = { state: next, intents: [] }
+    else if (stimulus.kind === 'music')
+      answer = answerMusic(next, stimulus)
     else
       answer = answerVoiceOutcome(next, stimulus, cause, nowMs)
 

@@ -1027,11 +1027,6 @@ export function useStagePerformanceConductor(options: Pick<StagePerformanceCondu
    * @default () => null
    */
   characterReading?: () => CharacterReading | null
-  /**
-   * Whether other applications are playing audio she can sway to; part of the idle drive.
-   * @default () => false
-   */
-  music?: () => boolean
 }) {
   const performanceSettings = useExpressionPerformanceSettings()
   const expressions: StageExpressionBackend = {
@@ -1084,7 +1079,8 @@ export function useStagePerformanceConductor(options: Pick<StagePerformanceCondu
     const now = new Date()
     conductor.idleDrive({
       ...idleDriveOf(options.characterReading?.() ?? null, now.getTime(), now.getHours() + now.getMinutes() / 60),
-      music: options.music?.() ?? false,
+      // The character mind hears music as a stimulus, so the drive no longer carries it.
+      music: false,
       // The scene narrows this, and the user's setting turns the drive off.
       rate: 1,
     })

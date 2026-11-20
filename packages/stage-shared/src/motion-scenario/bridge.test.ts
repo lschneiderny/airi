@@ -2,12 +2,18 @@ import { defineInvoke, defineInvokeHandler } from '@moeru/eventa'
 import { safeParse } from 'valibot'
 import { afterEach, describe, expect, it, onTestFinished } from 'vitest'
 
-import { buildEmotionTrial, claimMotionQaHandlers, createMotionQaContext, hasMotionQaHandlers, isMotionQaBridgeEnabled, MotionQaAwaitCaptureResultSchema, MotionQaCommandSchema, MotionQaConfigureInputSchema, MotionQaRunScenarioInputSchema, MotionQaRunScenarioResultSchema, MotionQaStartCaptureInputSchema, motionQaStateInvokeEventa, MotionQaStateSchema } from '.'
+import { buildEmotionTrial, claimMotionQaHandlers, createMotionQaContext, hasMotionQaHandlers, isMotionQaBridgeEnabled, MotionQaAwaitCaptureResultSchema, MotionQaCommandSchema, MotionQaConfigureInputSchema, MotionQaEventSchema, MotionQaRunScenarioInputSchema, MotionQaRunScenarioResultSchema, MotionQaStartCaptureInputSchema, motionQaStateInvokeEventa, MotionQaStateSchema } from '.'
 import { capabilitiesForHost } from '../host-capabilities'
 
 const state = { modelId: 'm', modelLoaded: true, driver: 'natural', cursorAttention: false, expressionEnabled: true, heldEmotions: true, naturalActive: true, hold: { emotion: 'angry', strength: 0.9 }, captureActive: false, head: { x: 100, y: 50, width: 80, height: 90 }, screen: { x: -1200, y: 20, devicePixelRatio: 1.5 }, screenAwareness: true, placement: -0.75, placementYawBias: -0.08, chat: { hasTarget: true, typing: false, sentSeq: 2, unfoldSeq: 1 }, host: capabilitiesForHost('linux-wayland'), foreground: null, desktopIdleSeconds: 12.5, performanceMode: 'watching', performance: { resolvedAtMs: 20_000, away: false, cursorMovedAtMs: null, desktop: { idleSeconds: 12.5, locked: false, suspendedAtMs: null, resumedAtMs: null, unlockedAtMs: null, screenChange: 0.2, systemAudioLevel: null, sampledAtMs: 19_000 } } } as const
 
 describe('motion QA bridge schemas', () => {
+  it('accepts a mind event whose appended music field is a boolean or null', () => {
+    const event = { seq: 1, time: 1_000, kind: 'mind', payload: { stimulus: 'music', intents: '[]', lines: null, cues: null, music: true } }
+    expect(safeParse(MotionQaEventSchema, event).success).toBe(true)
+    expect(safeParse(MotionQaEventSchema, { ...event, payload: { ...event.payload, music: null } }).success).toBe(true)
+  })
+
   it('requires usable screen scale and positive head geometry, while accepting an unavailable head', () => {
     expect(safeParse(MotionQaStateSchema, { ...state, head: null }).success).toBe(true)
     expect(safeParse(MotionQaStateSchema, { ...state, head: { ...state.head, width: 0 } }).success).toBe(false)

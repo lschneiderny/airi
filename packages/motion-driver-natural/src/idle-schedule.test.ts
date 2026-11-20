@@ -11,8 +11,8 @@ const neutralDrive: NaturalIdleDrive = { energy: 0, valence: 0, tension: 0, slee
 
 describe('idle activity odds', () => {
   it('favours yawns, zoning out and nodding off when she is tired', () => {
-    const rested = idleActivityWeights(neutralDrive, { watching: false })
-    const tired = idleActivityWeights({ ...neutralDrive, sleepiness: 0.9 }, { watching: false })
+    const rested = idleActivityWeights(neutralDrive, { watching: false, music: false })
+    const tired = idleActivityWeights({ ...neutralDrive, sleepiness: 0.9 }, { watching: false, music: false })
     expect(rested['nod-off']).toBe(0)
     expect(tired['nod-off']).toBeGreaterThan(0)
     expect(tired.yawn).toBeGreaterThan(5 * rested.yawn)
@@ -21,18 +21,18 @@ describe('idle activity odds', () => {
   })
 
   it('watches the screen more while the user is active and checks in more after a long silence', () => {
-    expect(idleActivityWeights(neutralDrive, { watching: true }).peer).toBeGreaterThan(3 * idleActivityWeights(neutralDrive, { watching: false }).peer)
-    expect(idleActivityWeights({ ...neutralDrive, solitude: 1 }, { watching: false })['check-in'])
-      .toBeGreaterThan(1.5 * idleActivityWeights(neutralDrive, { watching: false })['check-in'])
+    expect(idleActivityWeights(neutralDrive, { watching: true, music: false }).peer).toBeGreaterThan(3 * idleActivityWeights(neutralDrive, { watching: false, music: false }).peer)
+    expect(idleActivityWeights({ ...neutralDrive, solitude: 1 }, { watching: false, music: false })['check-in'])
+      .toBeGreaterThan(1.5 * idleActivityWeights(neutralDrive, { watching: false, music: false })['check-in'])
   })
 
   it('draws the whole-body kinds only for a host that performs a body', () => {
     const bodyKinds = ['sigh', 'shoulder-roll', 'arm-swing', 'shift-stance', 'clasp-hands'] as const
-    const live2d = idleActivityWeights(neutralDrive, { watching: false })
-    const mmd = idleActivityWeights({ ...neutralDrive, body: true }, { watching: false })
-    const bright = idleActivityWeights({ ...neutralDrive, body: true, valence: 0.5 }, { watching: false })
+    const live2d = idleActivityWeights(neutralDrive, { watching: false, music: false })
+    const mmd = idleActivityWeights({ ...neutralDrive, body: true }, { watching: false, music: false })
+    const bright = idleActivityWeights({ ...neutralDrive, body: true, valence: 0.5 }, { watching: false, music: false })
     for (const kind of [...bodyKinds, 'hair-touch', 'heel-rock'] as const)
-      expect([live2d[kind], idleActivityWeights({ ...neutralDrive, valence: 0.5 }, { watching: false })[kind]], kind).toEqual([0, 0])
+      expect([live2d[kind], idleActivityWeights({ ...neutralDrive, valence: 0.5 }, { watching: false, music: false })[kind]], kind).toEqual([0, 0])
     for (const kind of bodyKinds)
       expect(mmd[kind], kind).toBeGreaterThan(0)
     // Each takes its 4e act weight: the stance shift 1.2 (act 3), the clasp 0.7 (act 6), the hair tuck 0.5 (act 8), and
@@ -45,8 +45,8 @@ describe('idle activity odds', () => {
 
   it('never draws a whole-body kind the host\'s body cannot perform, and leaves the others as they were', () => {
     const body = { ...neutralDrive, body: true }
-    const all = idleActivityWeights(body, { watching: false })
-    const limited = idleActivityWeights({ ...body, unreachable: ['clasp-hands', 'hair-touch'] }, { watching: false })
+    const all = idleActivityWeights(body, { watching: false, music: false })
+    const limited = idleActivityWeights({ ...body, unreachable: ['clasp-hands', 'hair-touch'] }, { watching: false, music: false })
     expect(all['clasp-hands']).toBeGreaterThan(0)
     expect(all['hair-touch']).toBeGreaterThan(0)
     expect([limited['clasp-hands'], limited['hair-touch']]).toEqual([0, 0])
@@ -54,7 +54,7 @@ describe('idle activity odds', () => {
   })
 
   it('starts nothing that needs her arms or a standing posture while she is settled in', () => {
-    const settled = { watching: false, settled: true }
+    const settled = { watching: false, music: false, settled: true }
     const weights = idleActivityWeights({ ...neutralDrive, body: true, sleepiness: 0.5 }, settled)
     for (const kind of ['stretch', 'peer', 'shoulder-roll', 'arm-swing'] as const)
       expect(weights[kind], kind).toBe(0)
@@ -66,18 +66,20 @@ describe('idle activity odds', () => {
 
   it('weighs a kind she showed recently less on a body host, back to its full weight after 300 s', () => {
     const body = { ...neutralDrive, body: true }
-    const fresh = idleActivityWeights(body, { watching: false })
-    const recent = idleActivityWeights(body, { watching: false, since: { 'look-around': 60 } })
+    const fresh = idleActivityWeights(body, { watching: false, music: false })
+    const recent = idleActivityWeights(body, { watching: false, music: false, since: { 'look-around': 60 } })
     expect(recent['look-around']).toBeCloseTo(fresh['look-around'] / 5)
     expect(recent['check-in']).toBe(fresh['check-in'])
-    expect(idleActivityWeights(body, { watching: false, since: { 'look-around': 300 } })['look-around']).toBe(fresh['look-around'])
+    expect(idleActivityWeights(body, { watching: false, music: false, since: { 'look-around': 300 } })['look-around']).toBe(fresh['look-around'])
     // A head-only host draws as it did before.
-    expect(idleActivityWeights(neutralDrive, { watching: false, since: { 'look-around': 60 } })).toEqual(idleActivityWeights(neutralDrive, { watching: false }))
+    expect(idleActivityWeights(neutralDrive, { watching: false, music: false, since: { 'look-around': 60 } })).toEqual(idleActivityWeights(neutralDrive, { watching: false, music: false }))
   })
 
   it('sways only while music plays', () => {
-    expect(idleActivityWeights(neutralDrive, { watching: false }).sway).toBe(0)
-    expect(idleActivityWeights({ ...neutralDrive, music: true }, { watching: false }).sway).toBeGreaterThan(0)
+    expect(idleActivityWeights(neutralDrive, { watching: false, music: false }).sway).toBe(0)
+    expect(idleActivityWeights(neutralDrive, { watching: false, music: true }).sway).toBeGreaterThan(0)
+    // The drive's own field no longer counts: the character mind's music does.
+    expect(idleActivityWeights({ ...neutralDrive, music: true }, { watching: false, music: false }).sway).toBe(0)
   })
 
   it('paces activities by mood energy and the host rate, and treats bad numbers as neutral', () => {
@@ -103,7 +105,7 @@ describe('idle schedule', () => {
       let decidedAt: number | null = null
       for (let step = 0; decidedAt === null && step < 3600 / dt; step++) {
         at = step * dt
-        const result = advanceIdleSchedule(state, view, at, dt, random)
+        const result = advanceIdleSchedule(state, view, { music: false }, at, dt, random)
         state = result.state
         if (result.decision !== null)
           decidedAt = at
@@ -121,7 +123,7 @@ describe('idle schedule', () => {
 
   it('decides nothing under the dormant view and names no deadline', () => {
     const random = createRandomStream(1)
-    const result = advanceIdleSchedule(initialIdleSchedule(), dormantIdleView(true), 0, 3600, random)
+    const result = advanceIdleSchedule(initialIdleSchedule(), dormantIdleView(true), { music: false }, 0, 3600, random)
     expect(result.decision).toBeNull()
     expect(nextIdleDeadline(result.state, dormantIdleView(true), 3600)).toBeNull()
   })
