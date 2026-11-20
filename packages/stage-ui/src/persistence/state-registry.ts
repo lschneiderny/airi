@@ -239,7 +239,7 @@ export const stateRegistry = defineStateRegistry([
     writers: ['packages/stage-ui/src/database/repos/character-state.repo.ts'],
     tier: 4,
     locations: [{ area: 'indexedDB', database: 'airi-character-state', store: 'cards' }],
-    // Her mood, temperament, and relationship with the owner, for every card.
+    // Her mood, temperament, relationship with the owner, and pacing memory, for every card.
     reset: ({ pinia }) => useCharacterStateStore(pinia).resetState(),
   },
   {

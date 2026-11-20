@@ -60,6 +60,7 @@ export function initialCharacterState(cardId: string, profile: CharacterProfile,
     relationship: rolloverStages(initialRelationship(profile), ctx.logicalDayKeyOf(ctx.nowMs)),
     history: [],
     appliedEvents: { recent: [], evictedThroughMs: null },
+    pacing: null,
   }
 }
 
