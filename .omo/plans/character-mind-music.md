@@ -1,6 +1,6 @@
 # character-mind-music - Work Plan
 
-Status: planned on 2026-11-20. Roadmap row: step CM5 in [`docs/ai/context/character-mind-roadmap.md`](../../docs/ai/context/character-mind-roadmap.md#steps). Rulings: the [character mind ADR](../../docs/ai/adr/2026-11-17-character-mind-direction.md) (decisions 2, 4, 7, and 8), the [core ADR](../../docs/ai/adr/2026-11-18-character-mind-core.md), the [slow state ADR](../../docs/ai/adr/2026-11-19-character-mind-slow-state.md), the [idle ADR](../../docs/ai/adr/2026-11-20-character-mind-idle.md), and the [idle agency ADR](../../docs/ai/adr/2026-11-12-idle-agency.md) with its amendments. Branch: `luke/feat/character-mind-music`, cut from CM4b's tip `754e30da1` on `luke/feat/character-mind-idle` (PR #58). CM4b stacks on CM4a (#57, which also carries step S's commits from #56), CM3b (#53), CM3a (#52), CM2 (#51), and CM1 (#47), none merged. The PR's base is `luke/feat/character-mind-idle`. When a PR below merges, rebase this branch onto the new base and retarget the PR.
+Status: done on 2026-11-20; PR not merged. Roadmap row: step CM5 in [`docs/ai/context/character-mind-roadmap.md`](../../docs/ai/context/character-mind-roadmap.md#steps). Rulings: the [character mind ADR](../../docs/ai/adr/2026-11-17-character-mind-direction.md) (decisions 2, 4, 7, and 8), the [core ADR](../../docs/ai/adr/2026-11-18-character-mind-core.md), the [slow state ADR](../../docs/ai/adr/2026-11-19-character-mind-slow-state.md), the [idle ADR](../../docs/ai/adr/2026-11-20-character-mind-idle.md), and the [idle agency ADR](../../docs/ai/adr/2026-11-12-idle-agency.md) with its amendments. Branch: `luke/feat/character-mind-music`, cut from CM4b's tip `754e30da1` on `luke/feat/character-mind-idle` (PR #58). CM4b stacks on CM4a (#57, which also carries step S's commits from #56), CM3b (#53), CM3a (#52), CM2 (#51), and CM1 (#47), none merged. The PR's base is `luke/feat/character-mind-idle`. When a PR below merges, rebase this branch onto the new base and retarget the PR.
 
 The owner is away and runs these slices without a plan review. Every design fork below is taken on the recommended option and listed in [Decisions open to the owner's veto](#11-decisions-open-to-the-owners-veto).
 
@@ -379,12 +379,56 @@ One detector reports music to the mind under Natural; the mind draws the groove 
 
 ## Departures during implementation
 
-None yet.
+**Item 3**
+- `advanceMusic` also ends a run when the clock steps back before the run's last beat, and a non-finite time changes nothing. The plan asked only that a clock that steps back never starts music.
+
+**Item 4**
+- The groove's long-run rate with music on is pinned at 14.2 per hour (56.9 acts per hour), measured over 1000 simulated hours, seeds 1 to 4.
+- The `music` run's `detail` differs from item 1's only by the provenance field `music`.
+
+**Item 5**
+- The `music` scenario runs the plain QA drive (`qa-neutral-day`) and still sets `music`, so its `detail` names the plain drive at the tip.
+- The commit also touched `character-mind`, `stage-shared`, `stage-ui-live2d`, and `stage-ui-mmd` fixtures and comments that named the drive's `music`, so its scope lists them.
+
+**Section 6**
+- The optional `chore(agents)` commit landed after item 2: `packages/stage-ui-live2d/AGENTS.md` now says beat sync writes the head only under Universal and MAGIC.
+
+**Rendered check**
+- The desktop-activity idle time was pinned, because the QA display reports no host idle time. The first wait for a sway in step 1 was invalid: she went away at 297 s and slept, so the step was rerun.
+- Step 3 ran in its own launch.
+- `ParamAngleY` was read inside the frame, because readings between frames are stale under Natural.
+- Step 3 used JPEG frames to reach 10 Hz.
+- Step 2's pass line said "peaks about one beat apart". Upstream's `balanced-v` style alternates sides, so the high and low points alternate every beat and same-side peaks are two beats apart. The records state the measured pattern.
 
 ## Checks run
 
-None yet.
+| Check | Result |
+| --- | --- |
+| Gate per item | Each item and the docs commit passed `pnpm verify --gate --base luke/feat/character-mind-idle` |
+| Policy docs | 11 of 11 |
+| Headless motion, item 1, seed 1 | The `music` scenario over 600 s drew 2 sways, at 315.87 s and 497.72 s |
+| Headless motion, item 4, seed 1 | Every motion block `IDENTICAL` for `idle`, `idle-drive`, and `sleepy-no-clip` against the base `754e30da1`, and for `music` against item 1 |
+| Headless motion, tip, seed 1 | Every motion block `IDENTICAL`; only the `detail` provenance differs |
+| `idle-acts` and `rest` reports | Every line reads the same status at both ends |
+| `sleep-onset` | 14.283 s at both ends |
+| Beat sync rig hash | Unchanged |
+| Wording | Scores prove direction, size relative to the recipe, release, and detectability above the rig's idle noise. They do not prove naturalness, which stays a visual review. |
+| Smoke | Both `qa:smoke` runs passed, 0 renderer and 0 main-process errors |
+| Rigs | `qa:live2d-rig` hash unchanged (`4853812851e6…`). `qa:test:model`: 4 files, 16 tests |
+| Music source | `musicOn` ran a second detector in the beat sync window over a synthetic 120 BPM kick track played into the private sink. No scripted fallback was needed |
+| Rendered step 1, Natural on Live2D | 120 s without music gave no `music` steps. `musicOn` at 120 BPM gave `music: true` 8001 ms after the first beat. A mind-decided `sway` came 382 s in; it started 19 ms after its intent and lasted 11.0 s. `musicOff` gave `music: false` 1804 ms after the last beat |
+| Rendered step 2, Universal | `music: true` at 8000 ms. Over 122 s, no idle-act or idle-errand steps and no `idle` events. Beat sync moved `ParamAngleY` 17.3° (34.7° sampled inside the frame); the high and low points alternate every 497 ms, one beat |
+| Rendered step 3, back to Natural during music | No errors. The largest head step per frame was 1.395°, against 0.813° before the switch and 1.68° for Universal's own beat motion. The head eased over about 180 ms with no visible jump |
+| Rendered step 4, MMD on the desktop stage | `music: true` at 8003 ms. A sway came 358 s in and lasted 9.6 s. `music: false` 1822 ms after the last beat |
+| Errors | Every launch had 0 renderer and 0 main-process errors |
 
 ## Commits
 
-None yet.
+- `f3a3c2219` docs(plan): add the plan for the music slice of the character mind
+- `b197bcf4b` feat(qa-tools): add a music scenario to the headless motion runs
+- `4847c4a8b` feat(stage-ui-live2d): keep beat sync off the head under Natural
+- `9a1bb6c07` chore(agents): say beat sync writes the head only under Universal and MAGIC
+- `23d1a0b78` feat(stage-shared): add the music detector over beat sync beats
+- `a47cee3ed` feat(motion-driver-natural,character-mind,stage-ui,stage-shared,qa-tools): make music a stimulus of the character mind
+- `b4d4b2292` refactor(motion-driver-natural,character-mind,stage-shared,stage-ui,stage-ui-live2d,stage-ui-mmd,qa-tools): drop music from the idle drive
+- `db7dd2c46` docs(ai): record the music decisions and close CM5a
