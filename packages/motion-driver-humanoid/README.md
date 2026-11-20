@@ -252,7 +252,11 @@ director holds an asked wander while she cannot walk yet and refuses it without
 ground, outside roam mode, on arrival from another goal, without room to wander,
 or after `PENDING_GOAL_TTL_MS`; `memory.wanderAnswer` reports the answer, which
 the host passes back to Natural. Without an idle drive nothing asks, so she
-never wanders. A goal waits while
+never wanders. A chase or a visit ends at once, before `GOAL_MIN_DWELL_MS`,
+when the cursor on the stage comes within its stop distance (`CHASE_STOP_LEGS`,
+`VISIT_STOP_LEGS`), so a pointer resting on her stops her where she is; a visit
+ended this way lingers as on arrival. A visit due with the cursor already that
+close arrives in place without walking. A goal waits while
 she speaks and is dropped after `PENDING_GOAL_TTL_MS`. Tool requests share
 `MOVE_TOOL_REFRACTORY_MS` for movement and use `LOOK_TOOL_REFRACTORY_MS` for a
 glance. The boundary is fixed: the director chooses goals and never moves the

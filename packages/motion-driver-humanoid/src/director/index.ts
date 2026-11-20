@@ -413,8 +413,14 @@ export function decideBody(
     ? previous.lookOverride
     : null
 
-  // A goal in progress ends once the body has settled on it.
-  const arrived = goalX !== null && input.locomotionMode === 'idle' && Math.abs(input.rootX - goalX) <= ARRIVAL_TOLERANCE
+  // Distance from the root to the cursor while it is on the stage, or null.
+  const cursorDistance = input.cursorOnStage && input.cursorX !== null ? Math.abs(input.cursorX - input.rootX) : null
+  // A goal in progress ends once the body has settled on it. A walk aimed at the cursor also ends at once, before the
+  // goal dwell, when the cursor comes within that walk's stop distance: the user pointed at her, so she stops there.
+  const cursorStopLegs = reason === 'approach-cursor' ? CHASE_STOP_LEGS : reason === 'visit' ? VISIT_STOP_LEGS : null
+  const reachedCursor = goalX !== null && cursorStopLegs !== null && cursorDistance !== null && cursorDistance <= cursorStopLegs * leg
+  const arrived = goalX !== null
+    && (reachedCursor || (input.locomotionMode === 'idle' && Math.abs(input.rootX - goalX) <= ARRIVAL_TOLERANCE))
   if (arrived) {
     // A walk of her own choosing has a destination worth staying at: she does not turn around after 20 seconds.
     if (reason === 'wander' || reason === 'visit') {
@@ -736,6 +742,15 @@ export function decideBody(
     && canIssue()
   ) {
     const asked = pendingWander
+    // A cursor already within a visit's stop distance is a visit that has arrived: she stays where she is.
+    const visitInPlace = cursorDistance !== null && cursorDistance <= VISIT_STOP_LEGS * leg
+    const arriveInPlace = () => {
+      const draw = drawRandom(rngState)
+      rngState = draw.state
+      lingerUntilMs = nowMs + LINGER_MIN_MS * (LINGER_MAX_MS / LINGER_MIN_MS) ** draw.value
+      lastReasonMs = nowMs
+      issued = true
+    }
     // Where the user is working, as far as the cursor shows it. A visit stops short of it on her side and stays on
     // the ground she stands on, like a wander.
     const cursorVisitX = input.cursorOnStage && input.cursorX !== null
@@ -745,17 +760,22 @@ export function decideBody(
     if (watching) {
       // While the user is active she only ever walks over to them; an aimless stroll would ignore them. Without a
       // place to visit the wander waits until they pause.
-      if (visitX !== null)
+      if (visitInPlace)
+        arriveInPlace()
+      else if (visitX !== null)
         issue({ x: visitX, pace: 'stroll', reason: 'visit' })
     }
     else {
       let visiting = false
-      if (visitX !== null) {
+      if (visitInPlace || visitX !== null) {
         const draw = drawRandom(rngState)
         rngState = draw.state
         visiting = draw.value < VISIT_SHARE
       }
-      if (visiting && visitX !== null) {
+      if (visiting && visitInPlace) {
+        arriveInPlace()
+      }
+      else if (visiting && visitX !== null) {
         issue({ x: visitX, pace: 'stroll', reason: 'visit' })
       }
       else {
