@@ -6,7 +6,7 @@
 - Archive readers share filename decoding. Unflagged non-ASCII ZIP names prefer GBK.
 - Persist original archive paths and settings. Increment cache version when its directory shape changes.
 - `package.json` exports each natural-motion module through the `./composables/live2d/natural-motion/*` wildcard. Keep those modules free of Pixi, Vue files, and `window`, because Node import tests resolve them directly.
-- Natural-motion time is monotonic seconds. Each layer receives its own seeded `RandomStream`, an idle act draws its shape from its order's `seed`, and nothing calls `Math.random`.
+- Natural-motion time is monotonic seconds. Each drawing layer receives its own seeded `RandomStream`, an idle act draws its shape from its order's `seed`, the cursor layer plays the episodes the character mind draws, and nothing calls `Math.random`.
 - Upstream's touch module and beat sync layer run under the Universal and MAGIC drivers only, as upstream ships them. A touch there never reaches the character mind. Under Natural, nothing new writes head angles.
 - Under Natural, the scene only classifies a touch and reports it (`naturalTouch`, a `TouchReport`). It shows a poke or a pet only when the stage calls `reactToTouch` with the character mind's `touch-reaction` intent, and the pet hand reaches Natural only while the mind's pet is granted. Never start a touch response from the classifier.
 - The touch gesture classifier is `NaturalTouchGestures` in `motion-driver-natural`, shared with MMD. Hit regions here use visible drawable bounds.
