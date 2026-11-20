@@ -1,6 +1,7 @@
 export * from './catalog'
 export * from './combos'
 export * from './deciders'
+export * from './emotion'
 export * from './exp3'
 export * from './idle-props'
 export * from './moments'
