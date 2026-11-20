@@ -1,3 +1,4 @@
+import type { CursorReport } from '@proj-airi/motion-driver-natural/cursor-notice'
 import type { IdleReport } from '@proj-airi/motion-driver-natural/idle-schedule'
 
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
@@ -98,6 +99,22 @@ describe('mmd Natural adapter', () => {
     expect(batches.flat()).toContainEqual({ kind: 'started', intentId: 'roll', seq: 1, act: 'shoulder-roll' })
     expect(batches.flat().filter(report => report.kind === 'view').at(-1)).toMatchObject({ view: { current: { seq: 1, kind: 'shoulder-roll' } } })
     expect(adapter.bodyFrame.intent.idle.behaviour?.kind).toBe('shoulder-roll')
+  })
+
+  it('emits Natural\'s cursor reports and plays the mind\'s order from the next frame', () => {
+    const { adapter } = fixture()
+    const reports: CursorReport[] = []
+    adapter.onCursorReports(batch => reports.push(...batch))
+    const near = { ...input, cursor: { x: 1, y: 0 } }
+    adapter.advance(2 / 120, near, 100)
+    adapter.advance(2 / 120, near, 100 + 2 / 120)
+    expect(reports).toEqual([{ requestId: 1, band: 'near', opportunity: 'appeared' }])
+    adapter.cursorEpisode({ requestId: 1, episode: { band: 'near', engaging: true, span: Number.POSITIVE_INFINITY, dwell: 0.3, cooldown: 5 } })
+    expect(adapter.bodyFrame.intent.attention.cursorShare).toBe(0)
+    for (let step = 2; step <= 60; step++)
+      adapter.advance(2 / 120, near, 100 + step * 2 / 120)
+    expect(adapter.bodyFrame.intent.attention.cursorShare).toBeGreaterThan(0.5)
+    expect(reports).toHaveLength(1)
   })
 
   it('queues episodes until settings reach the next frame and exposes the resulting mood', () => {

@@ -1,8 +1,12 @@
+import type { CursorOrder } from './cursor-notice'
+
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { drawCursorEpisode } from './cursor-notice'
 import { NaturalGazeLayer } from './gaze'
 import { NaturalMotion } from './natural-motion'
 import { NaturalPlacement, shapeInwardness } from './placement'
+import { createRandomStream } from './random'
 
 const dt = 1 / 120
 
@@ -88,12 +92,18 @@ describe('natural placement controller', () => {
       return originalStep.call(this, delta)
     })
     const motion = new NaturalMotion({ seed: 41, home: 'desk' })
+    // A fake mind answers each cursor report on its own seeded stream; the order goes in before the next advance.
+    const mind = createRandomStream(41)
+    const orders: CursorOrder[] = []
+    motion.onCursorReports(reports => orders.push(...reports.map(report => ({ requestId: report.requestId, episode: drawCursorEpisode(report.band, mind) }))))
     motion.setPlacement(1, 0)
     let engaged = 0
     let count = 0
     for (let frame = 1; frame <= 120 / dt; frame++) {
       const at = frame * dt
       motion.setCursor({ x: 1.5 + Math.cos(Math.PI * at), y: Math.sin(Math.PI * at) }, at - dt)
+      for (const order of orders.splice(0))
+        motion.cursorEpisode(order, at - dt)
       motion.advance(at)
       if (at < 10)
         continue

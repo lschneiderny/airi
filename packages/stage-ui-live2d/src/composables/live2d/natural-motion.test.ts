@@ -3,6 +3,7 @@ import type { PerformanceState } from '@proj-airi/stage-shared/performance-state
 
 import { NaturalBreathLayer } from '@proj-airi/motion-driver-natural/breath'
 import { lostTau, mapCursor, releaseAt } from '@proj-airi/motion-driver-natural/cursor-attention'
+import { answerCursorReports } from '@proj-airi/motion-driver-natural/cursor-report-answers'
 import { NaturalPerformanceEnergy } from '@proj-airi/motion-driver-natural/energy'
 import { NaturalGazeLayer } from '@proj-airi/motion-driver-natural/gaze'
 import { NaturalHoldLayer } from '@proj-airi/motion-driver-natural/hold'
@@ -11,13 +12,23 @@ import { NaturalPostureLayers } from '@proj-airi/motion-driver-natural/posture'
 import { withPostureShiftsHeld } from '@proj-airi/motion-driver-natural/posture-shift-hold'
 import { NaturalSpeechEmphasis } from '@proj-airi/motion-driver-natural/speech-emphasis'
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import * as random from '@proj-airi/motion-driver-natural/random'
 
 import { Emotion } from '../../constants/emotions'
 
 const idle: PerformanceState = { mode: 'idle', attention: 'camera', away: false }
+
+// The character mind draws every cursor episode; here each controller answers its own reports as the mind would.
+let stopAnswering: () => void
+/** Answers the cursor reports of every controller made from now on with the mind's draws on a stream of `seed`. */
+function answerWith(seed: number) {
+  stopAnswering?.()
+  stopAnswering = answerCursorReports(seed)
+}
+beforeEach(() => answerWith(1))
+afterEach(() => stopAnswering())
 const headAxes = ['headX', 'headY', 'headZ'] as const
 
 it.each([
@@ -467,6 +478,9 @@ describe('natural motion', () => {
     ] satisfies { name: string, next: PerformanceState }[])('ends the cue at once for $name during the pause', ({ next }) => {
       const { motion } = pausedAside()
       sample(motion, 2, 2.1)
+      // The cursor permission reopens at this step, and the mind's episode starts one step later, after the switch,
+      // where a notice would orient to the cursor. Dismissing it keeps the check on the cue alone.
+      motion.setCursor(null, 2.1, 'dismissed')
       motion.setPerformance(next, 0.5, 2.1)
       const point = sample(motion, 2.1, 2.25).at(-1)!
 
@@ -690,6 +704,7 @@ describe('continuous cursor attention and touch', () => {
   it('(b) engages a far cursor for some seeds and ignores it for others', () => {
     let engaged = 0
     for (let seed = 0; seed < 50; seed++) {
+      answerWith(seed)
       const { motion, events } = observed(seed)
       for (let frame = 0; frame <= 120; frame++)
         motion.setCursor({ x: 9, y: 0.2 * Math.sin(frame / 12) }, frame / 120)
@@ -747,8 +762,9 @@ describe('continuous cursor attention and touch', () => {
   }))
 
   it('(d2) pulls the head less at nine head widths than at three after engagement', () => {
-    // The same attention stream decides engagement in both runs; the seed also keeps
+    // The mind's stream decides engagement alike in both runs; its seed 7 also keeps
     // both non-near interest spans alive until the comparison.
+    answerWith(7)
     const seed = 26
     const medium = observed(seed)
     const far = observed(seed)
@@ -942,6 +958,7 @@ describe('continuous cursor attention and touch', () => {
     let checkedSteps = 0
     let nearest = Number.POSITIVE_INFINITY
     for (let seed = 0; seed < 50; seed++) {
+      answerWith(seed)
       const { motion, events } = observed(seed)
       motion.setCursor({ x: 3, y: 0 }, 0)
       motion.advance(0.6)

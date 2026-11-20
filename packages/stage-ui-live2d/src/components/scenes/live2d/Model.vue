@@ -4,6 +4,7 @@ import type { Filter } from '@pixi/core'
 import type { TouchReactionIntent, TouchReport } from '@proj-airi/character-mind'
 import type { FaceBaseline } from '@proj-airi/motion-driver-natural/baseline'
 import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
+import type { CursorOrder, CursorReport } from '@proj-airi/motion-driver-natural/cursor-notice'
 import type { NaturalMotionObserver, NaturalTouchGesture } from '@proj-airi/motion-driver-natural/frame-types'
 import type { IdleBehaviourReport, IdleCueKind, NaturalIdleDrive } from '@proj-airi/motion-driver-natural/idle-activities'
 import type { IdleErrandReport } from '@proj-airi/motion-driver-natural/idle-errands'
@@ -205,6 +206,8 @@ const emits = defineEmits<{
   (e: 'errand', report: IdleErrandReport): void
   /** Natural's idle reports for the character mind, once per composition that had one. */
   (e: 'idleReports', reports: readonly IdleReport[]): void
+  /** Natural's cursor reports for the character mind, once per composition that had one. */
+  (e: 'cursorReports', reports: readonly CursorReport[]): void
 }>()
 
 const componentState = defineModel<'pending' | 'loading' | 'mounted'>('state', { default: 'pending' })
@@ -777,6 +780,7 @@ async function performModelLoad() {
     naturalAdapter.onIdleBehaviour = report => emits('idle', report)
     naturalAdapter.onIdleErrand = report => emits('errand', report)
     naturalAdapter.onIdleReports = reports => emits('idleReports', reports)
+    naturalAdapter.onCursorReports = reports => emits('cursorReports', reports)
     naturalAdapter.setPaused(paused.value)
     naturalAdapter.setPerformanceSettings(props.performanceSettings)
     naturalAdapter.setReview(naturalDiagnostics.reviewSettings)
@@ -789,6 +793,7 @@ async function performModelLoad() {
       naturalAdapter.onIdleBehaviour = report => emits('idle', report)
       naturalAdapter.onIdleErrand = report => emits('errand', report)
       naturalAdapter.onIdleReports = reports => emits('idleReports', reports)
+      naturalAdapter.onCursorReports = reports => emits('cursorReports', reports)
       naturalAdapter.setPaused(paused.value)
       naturalAdapter.setPerformanceSettings(props.performanceSettings)
       naturalAdapter.setReview(naturalDiagnostics.reviewSettings)
@@ -2036,6 +2041,8 @@ defineExpose({
   idleCue: (kind: IdleCueKind) => naturalMotion?.idleCue(kind),
   /** Natural only: plays what the character mind's idle policy decided; Natural answers it in `idleReports`. */
   idle: (order: IdleOrder) => naturalMotion?.idle(order),
+  /** Natural only: plays the cursor episode the character mind drew for a `cursorReports` report. */
+  cursorEpisode: (order: CursorOrder) => naturalMotion?.cursorEpisode(order),
   /** Executes decider slot commands; lifetimes are owned by the expression store. */
   applySlots: (commands: SlotCommand[], now: number) => expressionStore.applySlots(commands, now),
   /** Natural only: the performer owns the lease and manual-preview fallback of the held emotion. */
