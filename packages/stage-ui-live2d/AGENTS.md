@@ -12,7 +12,7 @@
 - The touch gesture classifier is `NaturalTouchGestures` in `motion-driver-natural`, shared with MMD. Hit regions here use visible drawable bounds.
 - Natural-motion tests use seeded streams and fixed frame steps, not wall-clock waits.
 - `natural-motion/observer.test.ts` pins golden hashes of Natural frames. Compute them with Vitest under Node, never Bun, whose Math differs in the last bits. Re-pin once per intended motion change, with the reason in the commit message. Confirmation of the pins on macOS is pending.
-- `natural-motion/liveliness-gate.test.ts` still runs in this package's suite and scores idle liveliness against `reference-stats.ts`; desk recordings are valid for idle liveliness only. The emotion gate definitions in `natural-motion/gates.ts` (such as `natural-emotion-t3`) and `scripts/score-natural-captures.ts` and `scripts/extract-natural-reference.ts` lost their qa-tools runners. Do not extend them; a later cleanup decides them.
+- `natural-motion/liveliness-gate.test.ts` scores idle liveliness against `reference-stats.ts`; desk recordings are valid for idle liveliness only.
 - Run `scripts/` trace and benchmark tools with `node --import tsx` from the package.
 
 ## ANTI-PATTERNS
