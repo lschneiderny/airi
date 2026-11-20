@@ -1,5 +1,7 @@
 import type { GenericSchema } from 'valibot'
 
+import type { CharacterPacingMemory } from '../situation/urge-gate'
+
 import { array, finite, integer, literal, maxLength, maxValue, minLength, minValue, nullable, number, picklist, pipe, strictObject, string, variant } from 'valibot'
 
 import { CHARACTER_STATE_SETTINGS } from './settings'
@@ -245,6 +247,18 @@ export interface AppliedEvents {
 }
 
 /**
+ * Her own pacing memory as the record stores it: when she last spoke, the openings since his last reply, the reply
+ * wait, the damping those openings left, and the own-day mark. The urge gate owns its meaning.
+ */
+export const CharacterPacingMemorySchema = strictObject({
+  lastSpokenAtMs: nullable(time),
+  unanswered: count,
+  awaitingSinceMs: nullable(time),
+  damp: nullable(strictObject({ depth: unit, sinceMs: time })),
+  lastOwnDayAtMs: nullable(time),
+}) satisfies GenericSchema<unknown, CharacterPacingMemory>
+
+/**
  * The stored state of one character card. Plain JSON; tuning constants live in {@link CHARACTER_STATE_SETTINGS} and
  * are never copied here.
  */
@@ -261,6 +275,8 @@ export interface CharacterStateRecordV1 {
   /** Newest 400 kept, oldest first. */
   readonly history: readonly DailySummary[]
   readonly appliedEvents: AppliedEvents
+  /** Her pacing memory, which the character mind writes; `null` for a card she never spoke as, or after a forget. */
+  readonly pacing: CharacterPacingMemory | null
 }
 
 /**
@@ -284,6 +300,7 @@ export const CharacterStateRecordSchema = strictObject({
     recent: pipe(array(strictObject({ id, atMs: time })), maxLength(MAX_APPLIED_EVENT_IDS)),
     evictedThroughMs: nullable(time),
   }),
+  pacing: nullable(CharacterPacingMemorySchema),
 }) satisfies GenericSchema<unknown, CharacterStateRecordV1>
 
 /** Direction of one axis in a model cue. */

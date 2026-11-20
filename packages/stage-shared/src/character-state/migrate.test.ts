@@ -48,6 +48,20 @@ describe('migrateCharacterState', () => {
     expect(migrate(JSON.parse(JSON.stringify(state)))).toEqual(state)
   })
 
+  it('reads a stored record without pacing as null and keeps its siblings', () => {
+    const state = livedIn()
+    const { pacing: _, ...stored } = JSON.parse(JSON.stringify(state))
+    expect(migrate(stored)).toEqual({ ...state, pacing: null })
+  })
+
+  it('resets only an invalid pacing field', () => {
+    const state = { ...livedIn(), pacing: { lastSpokenAtMs: START_MS, unanswered: 1, awaitingSinceMs: START_MS, damp: { depth: 0.4, sinceMs: START_MS }, lastOwnDayAtMs: null } }
+    const stored = JSON.parse(JSON.stringify(state))
+    expect(migrate(stored)).toEqual(state)
+    stored.pacing.unanswered = -1
+    expect(migrate(stored)).toEqual({ ...state, pacing: null })
+  })
+
   it('resets only a corrupted relationship field and keeps the mood contributions', () => {
     const state = livedIn()
     const stored = JSON.parse(JSON.stringify(state))

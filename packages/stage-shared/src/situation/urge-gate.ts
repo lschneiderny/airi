@@ -123,6 +123,9 @@ export interface UrgeGateMemory {
 /** The social slice that survives a leader reload; everything else restarts from promotion. */
 export type SavedGateMemory = Pick<UrgeGateMemory, 'lastFireAtMs' | 'lastSpokenAtMs' | 'unanswered' | 'awaitingSinceMs' | 'damp' | 'day' | 'lastOwnDayAtMs'>
 
+/** Per character: her own pacing memory, saved in the card's character-state record. */
+export type CharacterPacingMemory = Pick<UrgeGateMemory, 'lastSpokenAtMs' | 'unanswered' | 'awaitingSinceMs' | 'damp' | 'lastOwnDayAtMs'>
+
 export type UrgeGateTimingReason = 'floor' | 'awaiting-reply' | 'quiet-unanswered' | 'urge' | 'safety-cap'
 
 /** Why the gate held. `no-topic` means the drawn category had no reason to pick. */

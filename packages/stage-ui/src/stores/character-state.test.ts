@@ -334,6 +334,34 @@ describe('useCharacterStateStore', () => {
     await store.ready()
     expect(await characterStateRepo.loadAll()).toEqual([])
   })
+
+  it('saves her pacing after the debounce and drops a write for another card or a stale epoch', async () => {
+    const { store } = leaderStore()
+    await store.ready()
+    const epoch = store.leaderEpoch
+    const pacing = { lastSpokenAtMs: T0, unanswered: 1, awaitingSinceMs: T0, damp: null, lastOwnDayAtMs: null }
+
+    await store.recordPacing('other', epoch, pacing)
+    await store.recordPacing('default', epoch - 1, pacing)
+    expect(store.leaderRecord?.pacing).toBeNull()
+
+    await store.recordPacing('default', epoch, pacing)
+    expect(store.leaderRecord?.pacing).toEqual(pacing)
+    expect(await characterStateRepo.load('default')).toBeNull()
+    vi.advanceTimersByTime(CHARACTER_STATE_SAVE_DEBOUNCE_MS)
+    await store.ready()
+    expect((await characterStateRepo.load('default') as CharacterStateRecordV1).pacing).toEqual(pacing)
+  })
+
+  it('bumps the leader epoch when it forgets the active card', async () => {
+    const { store } = leaderStore()
+    await store.ready()
+    const epoch = store.leaderEpoch
+    await store.forget('another-card')
+    expect(store.leaderEpoch).toBe(epoch)
+    await store.forget('default')
+    expect(store.leaderEpoch).toBe(epoch + 1)
+  })
 })
 
 describe('useCharacterStateStore across windows', () => {

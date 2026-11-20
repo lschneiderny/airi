@@ -1,5 +1,6 @@
 import type { ChatHookRegistry } from '@proj-airi/core-agent'
 import type { AdvanceContext, CharacterEvent, CharacterProfile, CharacterReading, CharacterStateRecordV1 } from '@proj-airi/stage-shared/character-state'
+import type { CharacterPacingMemory } from '@proj-airi/stage-shared/situation'
 import type { SyncedPiniaRuntime } from 'pinia-plugin-synced'
 
 import { errorMessageFrom } from '@moeru/std'
@@ -103,6 +104,8 @@ export const useCharacterStateStore = defineStore('character-state', () => {
   const record = shallowRef<CharacterStateRecordV1 | null>(null)
   /** The devtools clock jump, kept in the leader's memory only. */
   const clockOffsetMs = shallowRef(0)
+  /** Rises whenever the leader replaces the active record, so a writer can tell its record was swapped out. */
+  const leaderEpoch = shallowRef(0)
   const cards = useAiriCardStore()
 
   /** The profile of a card: its resting disposition and starting stage, or the default one without a valid card field. */
@@ -215,6 +218,7 @@ export const useCharacterStateStore = defineStore('character-state', () => {
         ? initialCharacterState(cardId, profile, context)
         : migrateCharacterState(stored, cardId, profile, context)
       record.value = advance(loaded, profile, context)
+      leaderEpoch.value += 1
       // A fresh record needs no save until something happens to it, so deleting all data leaves storage empty.
       if (stored !== null)
         scheduleSave()
@@ -269,8 +273,24 @@ export const useCharacterStateStore = defineStore('character-state', () => {
         return
       const nowMs = now()
       record.value = initialCharacterState(current.cardId, profile, characterStateContext(nowMs))
+      leaderEpoch.value += 1
       publish(record.value, nowMs, true)
     })
+  }
+
+  /**
+   * Stores her pacing memory in the active card's record and schedules the save. The write is dropped when `cardId` is
+   * not the active card or `epoch` is not the current {@link leaderEpoch}, so a mind that read a replaced record cannot
+   * write over its successor. Not a synced action: only the leader's character mind calls it, like `applyNow`.
+   */
+  function recordPacing(cardId: string, epoch: number, pacing: CharacterPacingMemory | null): Promise<void> {
+    return leaderTask(() => {
+      const current = record.value
+      if (!current || current.cardId !== cardId || epoch !== leaderEpoch.value)
+        return
+      record.value = { ...current, pacing, updatedAtMs: now() }
+      scheduleSave()
+    }).then(() => {})
   }
 
   /** Applies one event to the active card. Resolves to whether it changed the state. Leader-routed. */
@@ -311,6 +331,7 @@ export const useCharacterStateStore = defineStore('character-state', () => {
         return
       profile = cardProfile
       record.value = advance(imported, profile, context)
+      leaderEpoch.value += 1
       publish(record.value, nowMs, true)
     })
   }
@@ -460,6 +481,8 @@ export const useCharacterStateStore = defineStore('character-state', () => {
     /** The leader's live record of the active card for devtools; `null` in other windows. */
     leaderRecord: computed(() => record.value),
     clockOffsetMs: computed(() => clockOffsetMs.value),
+    /** The leader's count of active-record replacements: a card switch, a forget or an import of the active card. */
+    leaderEpoch: computed(() => leaderEpoch.value),
     apply,
     forget,
     resetState,
@@ -468,6 +491,7 @@ export const useCharacterStateStore = defineStore('character-state', () => {
     devtoolsJump,
     devtoolsApply,
     observeChat,
+    recordPacing,
     ready,
     initialize,
     dispose,
