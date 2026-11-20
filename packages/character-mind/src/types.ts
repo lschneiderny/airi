@@ -131,6 +131,8 @@ export type MindIntent
 
 /** The posture intent a scene performs for a touch. */
 export type TouchReactionIntent = Extract<MindIntent, { kind: 'touch-reaction' }>
+/** The intents a performer carries out as idle orders. */
+export type MindIdleIntent = Extract<MindIntent, { kind: 'idle-act' | 'idle-errand' }>
 
 /** The part of the mind's state that the leader saves in the active card's character-state record. */
 export interface MindSlowState {

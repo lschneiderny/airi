@@ -1,11 +1,12 @@
 import type { GazePoint, NaturalGazeLayer } from './gaze'
 import type { IdleErrandKind, IdleErrandRecord } from './idle-errands'
-import type { IdleEdge, IdleScheduleState, IdleView } from './idle-schedule'
+import type { IdleOrder, IdleReport, IdleView } from './idle-schedule'
 import type { Vec3 } from './posture'
 import type { RandomStream } from './random'
 
-import { advanceIdleSchedule, applyIdleEdge, clamp01, finite, IDLE_WAKE_SECONDS, initialIdleSchedule } from './idle-schedule'
+import { clamp01, dormantIdleView, finite, IDLE_WAKE_SECONDS, sameIdleDrive } from './idle-schedule'
 import { minJerk } from './processes'
+import { createRandomStream } from './random'
 
 /**
  * Acts only a whole body can show (architecture 4e acts 1, 2, 3, 6, 7, 8 and 11). They have no face or head shape here;
@@ -26,7 +27,7 @@ export type IdleCueKind = 'about-to-speak' | 'let-go'
 
 export type IdleBehaviourKind = IdleActivityKind | IdleCueKind
 
-/** Activities the scheduler draws; `sleep` is entered by the away rule, never drawn. */
+/** Activities the idle schedule draws; `sleep` is entered by the away rule, never drawn. */
 export type DrawnIdleActivityKind = Exclude<IdleActivityKind, 'sleep'>
 
 /**
@@ -155,7 +156,7 @@ interface Clip {
   releasedAt: number | null
   releaseSeconds: number
   side: -1 | 1
-  /** Started by `play`: a sleep that does not wait for the user to leave and ends on its own. */
+  /** Started by a requested order: a sleep that does not wait for the user to leave and ends on its own. */
   requested: boolean
   /** Period of the sway or of a sleep's slow nod, in seconds; a sleep without a nod has 0. */
   period: number
@@ -195,7 +196,7 @@ const aboutToSpeakMaxSeconds = 10
 const letGoWindowSeconds = 30
 /** Posture shifts slow down under an activity but never stop: a hold drawn at a lower rate would outlast it. */
 const maxShiftCalm = 0.6
-/** Seconds a sleep started by `play` lasts before she wakes on her own: the settle and one slow nod, into the next. */
+/** Seconds a requested sleep lasts before she wakes on her own: the settle and one slow nod, into the next. */
 const playedSleepSeconds = 24
 /** Seconds of continuous `idle` mode after which a body host's character settles in: the director's idle-to-sit time (architecture 4f). */
 const settleSeconds = 120
@@ -253,19 +254,19 @@ export function idleEnergyOffset(drive: NaturalIdleDrive | null): number {
 }
 
 /**
- * Self-directed idle behaviour: named activities of a few seconds each, sleep while the user is away, and the body
- * language around a reach-out.
+ * Self-directed idle behaviour: named activities of a few seconds each, sleep, and the body language around a
+ * reach-out. The character mind decides what starts when (its idle policy runs `idle-schedule.ts`); this layer plays
+ * its orders and reports what it saw.
  *
- * - The layer is inert until the host sets a drive. Without one it draws nothing and adds nothing, so every seeded
- *   run from before it existed replays unchanged.
- * - What starts when is the idle schedule's (`idle-schedule.ts`), which this layer runs once per grid step and tells
- *   what it saw: activities start by a hazard over eligible time, each rests 6 to 14 s before the next can start, and
- *   each kind has its own cooldown. This layer draws the shape of what the schedule starts.
+ * - The layer is inert until the host sets a drive. Without one it starts nothing, refuses every order, and adds
+ *   nothing, so every seeded run from before it existed replays unchanged.
+ * - An order starts at the next step if she is free for it, else the layer reports it `refused`. Each act's shape
+ *   (side, durations, keys, glances, count, variant) is drawn from `createRandomStream(order.seed)`, so every stage
+ *   that receives the order draws the same shape. A cue's shape comes from this layer's own stream.
  * - An activity yields at once to anything she must answer: speech, thinking, listening, a poke, a pet, an emotion,
  *   a cue gesture, a cursor she noticed. It fades out over 0.4 s and releases the gaze.
- * - While the user is away and the drive allows it, she falls asleep after 12 to 30 s of quiet. She wakes when the
- *   `wake` input asks, or with a start on `rouse`; a long sleep is often followed by a stretch or a yawn.
- * - Every random draw happens when a behaviour starts or ends, on this layer's own stream.
+ * - She wakes from sleep when the `wake` input asks, or with a start on `rouse`; a requested sleep wakes after 24 s.
+ * - `view` and `takeReports` tell the mind what she can see and what started and ended, in order.
  *
  * Time is seconds of active motion. Call `step` once per grid step, then read `output`.
  */
@@ -278,23 +279,27 @@ export class NaturalIdleActivities {
   record: IdleBehaviourRecord | null = null
   /** A body host's character has been idle long enough to settle in; always false without `body`. */
   settled = false
+  /** What she could see at the latest step; a new object only when a field changed. Null before the first step. */
+  view: IdleView | null = null
 
   private drive: NaturalIdleDrive | null = null
   private readonly clips: Clip[] = []
-  /** The schedule's memory: what she may start next, and when. */
-  private schedule: IdleScheduleState = initialIdleSchedule()
   private pendingCue: IdleCueKind | null = null
-  private pendingPlay: IdleBehaviourKind | null = null
+  private readonly orders: IdleOrder[] = []
+  private readonly reports: IdleReport[] = []
+  /** Start time of the latest about-to-speak hold, which a let-go may answer. */
+  private heldAt: number | null = null
   /** Start time of the about-to-speak hold that a let-go already answered. */
   private answeredHold: number | null = null
   private eyesUntil = 0
   /** Start of the continuous `idle` mode that settling counts from; null outside it or without `body`. */
   private idleSince: number | null = null
-  /** The latest errand drawn, kept after it ends; null before the first. */
+  /** The latest errand started, kept after it ends; null before the first. */
   errand: IdleErrandRecord | null = null
   private errandSeq = 0
   private readonly errandAnswers: { seq: number, outcome: 'done' | 'refused' }[] = []
 
+  /** `random` draws the shapes of cues only; an ordered act draws from its own seed. */
   constructor(private readonly random: RandomStream) {}
 
   /** Whether any behaviour, running or fading out, contributes to `output`. */
@@ -307,9 +312,10 @@ export class NaturalIdleActivities {
     return this.active?.kind ?? null
   }
 
-  /** `null` switches the layer off; a running behaviour then fades out at the next step. */
+  /** `null` switches the layer off; a running behaviour then fades out at the next step. A drive of equal values keeps the current one. */
   setDrive(drive: NaturalIdleDrive | null) {
-    this.drive = drive === null ? null : { ...drive }
+    if (!sameIdleDrive(drive, this.drive))
+      this.drive = drive === null ? null : { ...drive }
   }
 
   /** How far the drive moves the Natural energy; 0 without a drive. */
@@ -323,12 +329,27 @@ export class NaturalIdleActivities {
   }
 
   /**
-   * Requests one behaviour by name, for previews and scripted QA runs. It starts at the next step in place of the
-   * running one, under the same conditions as a drawn activity: a drive, an idle or watching mode, and a free head.
-   * A played `sleep` does not need the user away and wakes after 24 s.
+   * Queues what the mind decided, applied at the next step after any cue of that step. An act starts if she is free:
+   * performing, not blocked, nothing running, and, for an act other than sleep, the user not away. A requested act
+   * needs only performing and a free head, starts in place of the running one, and a requested `sleep` does not need
+   * the user away and wakes after 24 s. An errand starts if the drive lists it and she is free for it. Anything
+   * else is reported `refused`.
    */
-  play(kind: IdleBehaviourKind) {
-    this.pendingPlay = kind
+  order(order: IdleOrder) {
+    this.orders.push(order)
+  }
+
+  /** Reports `refused` for an order the host cannot hand to the layer, such as one that arrives while it is suspended. */
+  refuse(order: IdleOrder) {
+    this.reports.push({ kind: 'refused', intentId: order.id })
+  }
+
+  /** Moves the reports since the previous call into `into`, in the order they happened. */
+  drainReports(into: IdleReport[]) {
+    if (this.reports.length === 0)
+      return
+    into.push(...this.reports)
+    this.reports.length = 0
   }
 
   /**
@@ -374,10 +395,11 @@ export class NaturalIdleActivities {
     this.updateErrand(at, drive, input, current)
     if (drive === null) {
       this.pendingCue = null
-      this.pendingPlay = null
+      for (const order of this.orders.splice(0))
+        this.refuse(order)
       this.idleSince = null
       this.settled = false
-      this.advanceSchedule(at, dt, null, input, current)
+      this.updateView(null, input, undefined)
       this.sample(at + dt)
       return
     }
@@ -394,33 +416,49 @@ export class NaturalIdleActivities {
     if (cue === 'about-to-speak' && performing && !input.blocked && current?.kind !== 'sleep') {
       if (current)
         this.release(current, at, interruptSeconds, gaze)
-      current = this.start('about-to-speak', at, drive, input)
+      current = this.start('about-to-speak', at, drive, input, this.random, null)
+      this.heldAt = at
     }
     else if (cue === 'let-go' && performing && !input.blocked) {
       // A slow model can decide after the hold ran out; she still lets the thought go if nothing else started since.
-      const held = this.schedule.lastStart['about-to-speak']
-      const recent = !current && held !== undefined && at - held <= letGoWindowSeconds && this.answeredHold !== held
+      const held = this.heldAt
+      const recent = !current && held !== null && at - held <= letGoWindowSeconds && this.answeredHold !== held
       if (current?.kind === 'about-to-speak' || recent) {
         if (current)
           this.release(current, at, 0.5, gaze)
-        current = this.start('let-go', at, drive, input)
+        current = this.start('let-go', at, drive, input, this.random, null)
         // One hold earns one let-go.
-        this.answeredHold = held ?? null
+        this.answeredHold = held
       }
     }
 
-    const play = this.pendingPlay
-    this.pendingPlay = null
-    if (play !== null && performing && !input.blocked) {
+    for (const order of this.orders.splice(0)) {
+      if (order.kind === 'errand') {
+        if (!this.errandFree(order.errand, drive, input, current)) {
+          this.refuse(order)
+          continue
+        }
+        const end = order.holdSeconds === null ? Number.POSITIVE_INFINITY : at + order.holdSeconds
+        this.errand = { seq: ++this.errandSeq, kind: order.errand, start: at, end, pick: order.pick, endedAt: null, outcome: null }
+        this.reports.push({ kind: 'errand-started', intentId: order.id, seq: this.errand.seq, errand: order.errand })
+        continue
+      }
+      const free = order.requested
+        ? performing && !input.blocked
+        : current === undefined && performing && !input.blocked && (order.act === 'sleep' || !input.away)
+      if (!free) {
+        this.refuse(order)
+        continue
+      }
       if (current)
         this.release(current, at, interruptSeconds, gaze)
-      current = this.start(play, at, drive, input)
-      current.requested = true
-      if (play === 'sleep')
-        current.end = at + playedSleepSeconds
+      current = this.start(order.act, at, drive, input, createRandomStream(order.seed), order.id)
+      if (order.requested) {
+        current.requested = true
+        if (order.act === 'sleep')
+          current.end = at + playedSleepSeconds
+      }
     }
-
-    this.advanceSchedule(at, dt, drive, input, current)
 
     for (const clip of this.clips) {
       if (clip.releasedAt !== null)
@@ -430,29 +468,44 @@ export class NaturalIdleActivities {
         this.eyesUntil = Math.max(this.eyesUntil, gaze.glance(glance.point, glance.hold, at))
       }
     }
+    this.updateView(drive, input, current)
     this.sample(at + dt)
   }
 
-  /** Runs the schedule over this grid step and starts what it decides. */
-  private advanceSchedule(at: number, dt: number, drive: NaturalIdleDrive | null, input: IdleStepInput, current: Clip | undefined) {
-    const errand = this.errand !== null && this.errand.endedAt === null ? { seq: this.errand.seq, kind: this.errand.kind } : null
-    const view: IdleView = { drive, active: true, mode: input.mode, away: input.away, blocked: input.blocked, settled: this.settled, current: current ? { seq: current.seq, kind: current.kind } : null, errand }
-    const { state, decision } = advanceIdleSchedule(this.schedule, view, at, dt, this.random)
-    this.schedule = state
-    if (decision === null || drive === null)
-      return
-    if (decision.kind === 'errand') {
-      const end = decision.holdSeconds === null ? Number.POSITIVE_INFINITY : at + decision.holdSeconds
-      this.errand = { seq: ++this.errandSeq, kind: decision.errand, start: at, end, pick: decision.pick, endedAt: null, outcome: null }
-      this.edge({ kind: 'errand-started', errand: decision.errand }, at)
-    }
-    else {
-      this.start(decision.act, at, drive, input)
-    }
+  /** Whether an errand may start now: the drive lists it, none runs, and she is free for it, as the schedule's hazard requires. */
+  private errandFree(kind: IdleErrandKind, drive: NaturalIdleDrive, input: IdleStepInput, current: Clip | undefined) {
+    const open = this.errand !== null && this.errand.endedAt === null
+    const performing = input.mode === 'idle' || input.mode === 'watching'
+    if (open || !performing || input.away || !(drive.errands ?? []).includes(kind))
+      return false
+    if (kind === 'idle-clip')
+      return current === undefined && !input.blocked
+    return kind !== 'pastime' || current?.kind !== 'sleep'
   }
 
-  private edge(edge: IdleEdge, at: number) {
-    this.schedule = applyIdleEdge(this.schedule, edge, at, this.random)
+  /** Replaces `view` when a field changed; a view without a drive is the dormant view. */
+  private updateView(drive: NaturalIdleDrive | null, input: IdleStepInput, current: Clip | undefined) {
+    const errand = this.errand !== null && this.errand.endedAt === null ? this.errand : null
+    const view = this.view
+    if (drive === null) {
+      if (view === null || view.drive !== null || view.current !== null || view.errand !== null)
+        this.view = dormantIdleView(true)
+      return
+    }
+    if (view !== null && view.drive === drive && view.mode === input.mode && view.away === input.away && view.blocked === input.blocked
+      && view.settled === this.settled && view.current?.seq === current?.seq && view.errand?.seq === errand?.seq) {
+      return
+    }
+    this.view = {
+      drive,
+      active: true,
+      mode: input.mode,
+      away: input.away,
+      blocked: input.blocked,
+      settled: this.settled,
+      current: current ? { seq: current.seq, kind: current.kind } : null,
+      errand: errand && { seq: errand.seq, kind: errand.kind },
+    }
   }
 
   /** Applies the realisers' answers and ends an errand she is no longer free for. */
@@ -470,7 +523,7 @@ export class NaturalIdleActivities {
     if (outcome === null)
       return
     this.errand = { ...errand, endedAt: at, outcome }
-    this.edge({ kind: 'errand-ended', errand: errand.kind }, at)
+    this.reports.push({ kind: 'errand-ended', seq: errand.seq, errand: errand.kind, outcome })
   }
 
   private get active(): Clip | undefined {
@@ -493,7 +546,7 @@ export class NaturalIdleActivities {
       gaze.endHold(at)
       this.eyesUntil = at
     }
-    this.edge({ kind: 'ended', act: clip.kind, how: 'released', sleptSeconds: null }, at)
+    this.reports.push({ kind: 'ended', seq: clip.seq, act: clip.kind, how: 'released' })
   }
 
   private finish(clip: Clip, at: number) {
@@ -501,7 +554,7 @@ export class NaturalIdleActivities {
     clip.releasedAt = at
     clip.releaseSeconds = 0
     this.released(clip)
-    this.edge({ kind: 'ended', act: clip.kind, how: 'finished', sleptSeconds: null }, at)
+    this.reports.push({ kind: 'ended', seq: clip.seq, act: clip.kind, how: 'finished' })
   }
 
   private wake(clip: Clip, at: number, gaze: NaturalGazeLayer, asked: boolean) {
@@ -510,11 +563,11 @@ export class NaturalIdleActivities {
     this.released(clip)
     // The eyes are already on the user when the lids open.
     this.eyesUntil = Math.max(this.eyesUntil, gaze.glance({ x: 0, y: 0 }, IDLE_WAKE_SECONDS + 0.6, at))
-    this.edge({ kind: 'ended', act: clip.kind, how: asked ? 'woken-on-request' : 'woken', sleptSeconds: at - clip.start }, at)
+    this.reports.push({ kind: 'ended', seq: clip.seq, act: clip.kind, how: asked ? 'woken-on-request' : 'woken' })
   }
 
-  private start(kind: IdleBehaviourKind, at: number, drive: NaturalIdleDrive, input: IdleStepInput): Clip {
-    const random = this.random
+  /** Starts `kind`, drawing its shape from `random`; `intentId` names the order that started it, null for a cue. */
+  private start(kind: IdleBehaviourKind, at: number, drive: NaturalIdleDrive, input: IdleStepInput, random: RandomStream, intentId: string | null): Clip {
     const between = (min: number, max: number) => min + (max - min) * random()
     const drawnSide: -1 | 1 = random() < 0.5 ? -1 : 1
     const inwardSide: -1 | 1 = Math.abs(input.placement) > 0.1 ? (input.placement > 0 ? 1 : -1) : drawnSide
@@ -648,7 +701,7 @@ export class NaturalIdleActivities {
       glances: clip.glances.map(glance => ({ at: glance.at - at, x: glance.point.x, y: glance.point.y, hold: glance.hold })),
     }
     this.clips.push(clip)
-    this.edge({ kind: 'started', act: kind }, at)
+    this.reports.push({ kind: 'started', intentId, seq: clip.seq, act: kind })
     this.seq++
     return clip
   }

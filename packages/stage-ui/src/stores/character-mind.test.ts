@@ -1,10 +1,12 @@
 import type { MindStep, VoiceView } from '@proj-airi/character-mind'
+import type { IdleView } from '@proj-airi/motion-driver-natural/idle-schedule'
 import type { CharacterPacingMemory } from '@proj-airi/stage-shared/situation'
 import type { SyncedPiniaRuntime } from 'pinia-plugin-synced'
 import type { Mock } from 'vitest'
 
 import type { VoicePort, VoiceStimulus } from '../composables/performance/mind-voice'
 
+import { nextIdleWakeAt } from '@proj-airi/character-mind'
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { initialSituationState, userGateMemoryOf } from '@proj-airi/stage-shared/situation'
 import { createPinia, setActivePinia } from 'pinia'
@@ -13,6 +15,17 @@ import { isReactive, shallowReactive } from 'vue'
 
 import { useCharacterMindStore } from './character-mind'
 import { useSituationObservabilityStore } from './devtools/situation-observability'
+
+const idleView: IdleView = {
+  drive: { energy: 0, valence: 0, tension: 0, sleepiness: 0, solitude: 0, music: false, allowSleep: true, rate: 1 },
+  active: true,
+  mode: 'idle',
+  away: false,
+  blocked: false,
+  settled: false,
+  current: null,
+  errand: null,
+}
 
 // The mind store reaches the situation store through the voice port, and the character state store through
 // `ready`, the leader's record and epoch, and `recordPacing`. Both real stores need the chat runtime and IndexedDB.
@@ -224,7 +237,7 @@ describe('character mind store', () => {
     const store = useCharacterMindStore()
     port.speak.mockResolvedValue('declined')
     const idleCue = vi.fn()
-    store.attachStage({ idleCue })
+    store.attachStage({ idleCue, idle: vi.fn() })
     const send = await connected(store)
     const outcome = settled(store)
 
@@ -239,7 +252,7 @@ describe('character mind store', () => {
     const store = useCharacterMindStore()
     port.speak.mockResolvedValue('declined')
     const idleCue = vi.fn()
-    store.attachStage({ idleCue })()
+    store.attachStage({ idleCue, idle: vi.fn() }).detach()
     const send = await connected(store)
     const outcome = settled(store)
 
@@ -255,9 +268,9 @@ describe('character mind store', () => {
     port.speak.mockResolvedValue('declined')
     const older = vi.fn()
     const newer = vi.fn()
-    const detachOlder = store.attachStage({ idleCue: older })
-    store.attachStage({ idleCue: newer })
-    detachOlder()
+    const olderStage = store.attachStage({ idleCue: older, idle: vi.fn() })
+    store.attachStage({ idleCue: newer, idle: vi.fn() })
+    olderStage.detach()
     const send = await connected(store)
     const outcome = settled(store)
 
@@ -266,6 +279,61 @@ describe('character mind store', () => {
 
     expect(older).not.toHaveBeenCalled()
     expect(newer.mock.calls).toEqual([['about-to-speak'], ['let-go']])
+  })
+
+  it('sends every idle intent to every attached stage, and takes idle reports only from the newest', () => {
+    const store = useCharacterMindStore()
+    const older = vi.fn()
+    const newer = vi.fn()
+    const olderStage = store.attachStage({ idleCue: vi.fn(), idle: older })
+    const newerStage = store.attachStage({ idleCue: vi.fn(), idle: newer })
+
+    olderStage.report([{ kind: 'view', view: idleView }])
+    expect(store.mind.state.idle.view).toBeNull()
+    newerStage.report([{ kind: 'view', view: idleView }])
+    expect(store.mind.state.idle.view).toEqual(idleView)
+
+    const [intent] = store.mind.receive({ kind: 'idle-play', act: 'yawn' })
+    expect(intent).toMatchObject({ kind: 'idle-act', act: 'yawn', requested: true })
+    expect(older.mock.calls).toEqual([[intent]])
+    expect(newer.mock.calls).toEqual([[intent]])
+  })
+
+  it('tells the mind the dormant view when the reporting stage detaches', () => {
+    const store = useCharacterMindStore()
+    const olderStage = store.attachStage({ idleCue: vi.fn(), idle: vi.fn() })
+    const newerStage = store.attachStage({ idleCue: vi.fn(), idle: vi.fn() })
+    newerStage.report([{ kind: 'view', view: idleView }])
+
+    // An older stage leaving changes nothing: it never reported.
+    olderStage.detach()
+    expect(store.mind.state.idle.view).toEqual(idleView)
+    newerStage.detach()
+    expect(store.mind.state.idle.view).toMatchObject({ drive: null })
+    expect(nextIdleWakeAt(store.mind.state.idle)).toBeNull()
+  })
+
+  it('wakes the mind at its idle deadline, sends the act it decides, and stops the timer on dispose', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(T0)
+    const store = useCharacterMindStore()
+    const idle = vi.fn()
+    store.attachStage({ idleCue: vi.fn(), idle }).report([{ kind: 'view', view: idleView }])
+    const wakeAt = nextIdleWakeAt(store.mind.state.idle)!
+    expect(wakeAt).toBeGreaterThan(T0)
+
+    vi.advanceTimersByTime(Math.ceil(wakeAt - T0) - 1)
+    expect(idle).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(1)
+    expect(idle).toHaveBeenCalledOnce()
+    expect(idle.mock.calls[0][0]).toMatchObject({ channel: 'posture', kind: 'idle-act', requested: false })
+
+    // The act was neither started nor refused, so nothing is due; once refused, the next deadline is armed again.
+    expect(vi.getTimerCount()).toBe(0)
+    store.mind.receive({ kind: 'idle', reports: [{ kind: 'refused', intentId: idle.mock.calls[0][0].id }] })
+    expect(vi.getTimerCount()).toBe(1)
+    store.dispose()
+    expect(vi.getTimerCount()).toBe(0)
   })
 
   it('feeds the reaction inspector a touch decision and clears it on dispose', () => {

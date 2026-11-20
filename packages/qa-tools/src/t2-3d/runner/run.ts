@@ -14,8 +14,10 @@ import { createRequire } from 'node:module'
 import { dirname, resolve } from 'node:path'
 import { setImmediate } from 'node:timers/promises'
 
+import { CharacterMind, idleOrderOf, nextIdleWakeAt } from '@proj-airi/character-mind'
 import { NO_WORLD_BODY_INPUT } from '@proj-airi/motion-driver-humanoid/director'
 import { MOTION_TRACE_KIND, MOTION_TRACE_VERSION } from '@proj-airi/motion-driver-humanoid/motion-trace'
+import { deriveSeed } from '@proj-airi/motion-driver-natural/random'
 import { idleKindsOutOfReach, MMDBody } from '@proj-airi/stage-ui-mmd/composables/mmd/body'
 import { resolveBodyTarget } from '@proj-airi/stage-ui-mmd/composables/mmd/body/attention'
 import { MMDBodyPose } from '@proj-airi/stage-ui-mmd/composables/mmd/body/pose'
@@ -38,6 +40,8 @@ import { Motion3dLookTarget } from './look-target'
 import { Motion3dMeasurement } from './measurement'
 
 const motion3dStep = 1 / 60
+/** The layer of the run's seed that seeds the mind. */
+const mindSeedLayer = 0x6D696E64
 /** Production work this level does not run; their stages keep their slots in the shared composition and do nothing. */
 const omitted = ['classic-gaze', 'classic-face', 'lip-sync', 'bone-morphs', 'morphs', 'natural-face', 'touch-colliders', 'overlays', 'clip-layers', 'images', 'render']
 const modes = { idle: 0, turning: 1, starting: 2, walking: 3, stopping: 4 } as const
@@ -87,6 +91,17 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
     const pose = new MMDBodyPose(mmd, rig)
     const natural = new MMDNaturalAdapter(modelKey)
     const idleDrive = options.acts === 'on' ? options.scenario.idleDrive ?? null : null
+    let naturalSeconds = 0
+    // The mind decides idle as in the app: Natural's reports go in, and its idle intents come back as orders. Without a
+    // drive the view stays dormant and the mind decides nothing.
+    const mind = new CharacterMind({ seed: deriveSeed(options.seed, mindSeedLayer), clock: () => naturalSeconds * 1000 })
+    const perform = (intents: ReturnType<CharacterMind['receive']>) => {
+      for (const intent of intents) {
+        if (intent.kind === 'idle-act' || intent.kind === 'idle-errand')
+          natural.idle(idleOrderOf(intent))
+      }
+    }
+    natural.onIdleReports(reports => perform(mind.receive({ kind: 'idle', reports })))
     const stance = new MMDStanceDirector()
     const sampler = createMMDMotionTraceSampler(mmd, rig, pose)
     sampler.rig.id = modelKey
@@ -116,7 +131,6 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
     const metrics = new Motion3dMeasurement()
     let points: MMDBodyPoints | null = null
     let cursor: { x: number, y: number } | null = null
-    let naturalSeconds = 0
     const body = new MMDBody(mmd, rig, {
       modelKey,
       input: () => ({
@@ -152,6 +166,10 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
       body,
       host: {
         'natural': ({ dt }) => {
+          // Before the advance, so an act the wake decides starts in this frame.
+          const wakeAt = nextIdleWakeAt(mind.state.idle)
+          if (wakeAt !== null && wakeAt <= naturalSeconds * 1000)
+            perform(mind.receive({ kind: 'idle-wake' }))
           natural.advance(dt, {
             performance: cues.performance,
             energy: cues.energy,

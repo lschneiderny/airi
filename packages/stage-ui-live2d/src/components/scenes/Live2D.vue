@@ -2,8 +2,9 @@
 import type { TouchReactionIntent, TouchReport } from '@proj-airi/character-mind'
 import type { FaceBaseline } from '@proj-airi/motion-driver-natural/baseline'
 import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
-import type { IdleBehaviourKind, IdleBehaviourReport, IdleCueKind, NaturalIdleDrive } from '@proj-airi/motion-driver-natural/idle-activities'
+import type { IdleBehaviourReport, IdleCueKind, NaturalIdleDrive } from '@proj-airi/motion-driver-natural/idle-activities'
 import type { IdleErrandReport } from '@proj-airi/motion-driver-natural/idle-errands'
+import type { IdleOrder, IdleReport } from '@proj-airi/motion-driver-natural/idle-schedule'
 import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
 import type { PresenceBubbleState } from '@proj-airi/stage-shared'
 import type { ExpressionPerformanceSettings, HoldCommand, MoodDose, SlotCommand } from '@proj-airi/stage-shared/expression-performance'
@@ -85,6 +86,7 @@ const emit = defineEmits<{
   naturalTouch: [report: TouchReport]
   idle: [report: IdleBehaviourReport]
   errand: [report: IdleErrandReport]
+  idleReports: [reports: readonly IdleReport[]]
 }>()
 
 const componentState = defineModel<'pending' | 'loading' | 'mounted'>('state', { default: 'pending' })
@@ -289,7 +291,7 @@ defineExpose({
   setFaceBaseline: (baseline: FaceBaseline) => live2dModelRef.value?.setFaceBaseline(baseline),
   setIdleDrive: (drive: NaturalIdleDrive | null) => live2dModelRef.value?.setIdleDrive(drive),
   idleCue: (kind: IdleCueKind) => live2dModelRef.value?.idleCue(kind),
-  idlePlay: (kind: IdleBehaviourKind) => live2dModelRef.value?.idlePlay(kind),
+  idle: (order: IdleOrder) => live2dModelRef.value?.idle(order),
   answerIdleErrand: (seq: number, outcome: 'done' | 'refused') => live2dModelRef.value?.answerIdleErrand(seq, outcome),
   applySlots: (commands: SlotCommand[], now: number) => live2dModelRef.value?.applySlots(commands, now),
   applyHolds: (commands: HoldCommand[], now: number) => live2dModelRef.value?.applyHolds(commands, now),
@@ -354,6 +356,7 @@ defineExpose({
         @touch="emit('naturalTouch', $event)"
         @idle="emit('idle', $event)"
         @errand="emit('errand', $event)"
+        @idle-reports="emit('idleReports', $event)"
       />
       <Live2DPresenceBubble
         v-if="app"

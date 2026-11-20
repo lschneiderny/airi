@@ -5,8 +5,9 @@ import type { TouchReactionIntent, TouchReport } from '@proj-airi/character-mind
 import type { FaceBaseline } from '@proj-airi/motion-driver-natural/baseline'
 import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
 import type { NaturalMotionObserver, NaturalTouchGesture } from '@proj-airi/motion-driver-natural/frame-types'
-import type { IdleBehaviourKind, IdleBehaviourReport, IdleCueKind, NaturalIdleDrive } from '@proj-airi/motion-driver-natural/idle-activities'
+import type { IdleBehaviourReport, IdleCueKind, NaturalIdleDrive } from '@proj-airi/motion-driver-natural/idle-activities'
 import type { IdleErrandReport } from '@proj-airi/motion-driver-natural/idle-errands'
+import type { IdleOrder, IdleReport } from '@proj-airi/motion-driver-natural/idle-schedule'
 import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
 import type { NaturalChatInput } from '@proj-airi/motion-driver-natural/natural-motion'
 import type { NaturalTouchSample } from '@proj-airi/motion-driver-natural/touch-gestures'
@@ -200,8 +201,10 @@ const emits = defineEmits<{
   (e: 'touch', report: TouchReport): void
   /** A self-directed idle behaviour of the Natural driver started or ended. */
   (e: 'idle', report: IdleBehaviourReport): void
-  /** An errand of the Natural driver's idle draw (a pastime) started or ended, for the stage's realiser. */
+  /** An errand of the Natural driver (a pastime) started or ended, for the stage's realiser. */
   (e: 'errand', report: IdleErrandReport): void
+  /** Natural's idle reports for the character mind, once per composition that had one. */
+  (e: 'idleReports', reports: readonly IdleReport[]): void
 }>()
 
 const componentState = defineModel<'pending' | 'loading' | 'mounted'>('state', { default: 'pending' })
@@ -773,6 +776,7 @@ async function performModelLoad() {
     naturalAdapter.onPlacementStep = naturalDiagnostics.reportPlacement
     naturalAdapter.onIdleBehaviour = report => emits('idle', report)
     naturalAdapter.onIdleErrand = report => emits('errand', report)
+    naturalAdapter.onIdleReports = reports => emits('idleReports', reports)
     naturalAdapter.setPaused(paused.value)
     naturalAdapter.setPerformanceSettings(props.performanceSettings)
     naturalAdapter.setReview(naturalDiagnostics.reviewSettings)
@@ -784,6 +788,7 @@ async function performModelLoad() {
       naturalAdapter.onPlacementStep = naturalDiagnostics.reportPlacement
       naturalAdapter.onIdleBehaviour = report => emits('idle', report)
       naturalAdapter.onIdleErrand = report => emits('errand', report)
+      naturalAdapter.onIdleReports = reports => emits('idleReports', reports)
       naturalAdapter.setPaused(paused.value)
       naturalAdapter.setPerformanceSettings(props.performanceSettings)
       naturalAdapter.setReview(naturalDiagnostics.reviewSettings)
@@ -2029,7 +2034,8 @@ defineExpose({
   /** The stage's answer to a pastime Natural started: shown (`done` when put away early) or `refused`. */
   answerIdleErrand: (seq: number, outcome: 'done' | 'refused') => naturalMotion?.answerIdleErrand(seq, outcome),
   idleCue: (kind: IdleCueKind) => naturalMotion?.idleCue(kind),
-  idlePlay: (kind: IdleBehaviourKind) => naturalMotion?.idlePlay(kind),
+  /** Natural only: plays what the character mind's idle policy decided; Natural answers it in `idleReports`. */
+  idle: (order: IdleOrder) => naturalMotion?.idle(order),
   /** Executes decider slot commands; lifetimes are owned by the expression store. */
   applySlots: (commands: SlotCommand[], now: number) => expressionStore.applySlots(commands, now),
   /** Natural only: the performer owns the lease and manual-preview fallback of the held emotion. */

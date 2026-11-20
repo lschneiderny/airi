@@ -9,6 +9,7 @@ import type { NaturalBodyIntent, NaturalMotionEvent, NaturalMotionFrame, Natural
 import type { GazePoint } from './gaze'
 import type { IdleBehaviourKind, IdleCueKind, NaturalIdleDrive } from './idle-activities'
 import type { IdleErrandRecord } from './idle-errands'
+import type { IdleOrder, IdleReport, IdleView } from './idle-schedule'
 import type { NaturalEpisode } from './mood'
 import type { PendingAction } from './pending-actions'
 import type { Vec3 } from './posture'
@@ -154,11 +155,17 @@ export class NaturalMotion {
   private readonly hold: NaturalHoldLayer
   private readonly gestures: NaturalGestures
   private readonly cueGestures: NaturalCueGestures
-  private readonly idle: NaturalIdleActivities
+  private readonly idleLayer: NaturalIdleActivities
   /** Whether the previous step wrote an idle breath scale, which the next step without one must undo. */
   private idleBreathScaled = false
   /** Follows the idle behaviour for the observer. */
   private readonly idleReports = new IdleBehaviourReports()
+  /** Idle reports of the current `advance`, delivered once at its end. */
+  private readonly pendingIdleReports: IdleReport[] = []
+  /** The idle layer's view last reported, and whether it was reported active. */
+  private reportedIdleView: IdleView | null = null
+  private reportedIdleActive = true
+  private readonly idleListeners = new Set<(reports: readonly IdleReport[]) => void>()
   /** The review gains asked for, and the eased values the grid applies; both rest at exactly 1. */
   private reviewTarget: NaturalReviewGains = { ...neutralReviewGains }
   private readonly review: NaturalReviewGains = { ...neutralReviewGains }
@@ -257,7 +264,7 @@ export class NaturalMotion {
     this.impulses = new NaturalImpulses(stream('impulses'), this.emotions)
     this.gestures = new NaturalGestures(stream('gestures'))
     this.cueGestures = new NaturalCueGestures(stream('cueGestures'), this.gaze)
-    this.idle = new NaturalIdleActivities(stream('idle'))
+    this.idleLayer = new NaturalIdleActivities(stream('idle'))
     this.previous = { head: [...home], compensationHead: [...home], body: this.body.pose, gaze: { x: 0, y: 0 }, face: NaturalFaceLayer.rest(), blinkFactor: 1, breath: this.breath.output }
     this.next = this.integrate()
   }
@@ -273,6 +280,7 @@ export class NaturalMotion {
         this.next = this.integrate()
       }
     }
+    this.flushIdleReports()
     this.latestBodyIntent = {
       time: this.activeTime,
       head: {
@@ -298,7 +306,7 @@ export class NaturalMotion {
       touch: { poke: this.latestPoke && { ...this.latestPoke }, pet: { level: this.pet.level, active: this.pet.active, ...this.pet.easedHand } },
       react: this.latestReact && { ...this.latestReact },
       attention: { approach: this.approach, cursorShare: this.cursorShare },
-      idle: { behaviour: this.idle.record, settled: this.idle.settled, errand: this.idle.errand },
+      idle: { behaviour: this.idleLayer.record, settled: this.idleLayer.settled, errand: this.idleLayer.errand },
     }
     const weight = clamp((this.activeTime - (this.stepIndex - 1) * step) / step, 1)
     const { previous: a, next: b } = this
@@ -436,7 +444,7 @@ export class NaturalMotion {
   setPerformance(state: PerformanceState, energy: number, nowSeconds: number) {
     this.advance(nowSeconds)
     // The slow mood and the hour move the user's energy setting; without an idle drive the offset is exactly 0.
-    this.energy.setState(state, energy + this.idle.energyOffset)
+    this.energy.setState(state, energy + this.idleLayer.energyOffset)
   }
 
   /**
@@ -454,7 +462,7 @@ export class NaturalMotion {
    */
   setIdleDrive(drive: NaturalIdleDrive | null, nowSeconds: number) {
     this.advance(nowSeconds)
-    this.idle.setDrive(drive)
+    this.idleLayer.setDrive(drive)
   }
 
   /**
@@ -464,7 +472,7 @@ export class NaturalMotion {
    */
   idleCue(kind: IdleCueKind, nowSeconds: number) {
     this.advance(nowSeconds)
-    this.idle.cue(kind)
+    this.idleLayer.cue(kind)
   }
 
   /**
@@ -473,13 +481,35 @@ export class NaturalMotion {
    * blink factor. It stays outside the frame so recorded frames keep their shape.
    */
   get idleLidFactor(): number {
-    return this.idle.contributing ? 1 - this.idle.output.lidClose : 1
+    return this.idleLayer.contributing ? 1 - this.idleLayer.output.lidClose : 1
   }
 
-  /** Plays one idle behaviour by name on the next grid step, for previews and scripted QA runs. See `NaturalIdleActivities.play`. */
-  idlePlay(kind: IdleBehaviourKind, nowSeconds: number) {
+  /**
+   * Plays what the character mind's idle policy decided, at the next grid step. See `NaturalIdleActivities.order`;
+   * while the controller is suspended the order is refused at once.
+   */
+  idle(order: IdleOrder, nowSeconds: number) {
     this.advance(nowSeconds)
-    this.idle.play(kind)
+    if (this.suspended) {
+      this.idleLayer.refuse(order)
+      this.idleLayer.drainReports(this.pendingIdleReports)
+      this.flushIdleReports()
+      return
+    }
+    this.idleLayer.order(order)
+  }
+
+  /**
+   * Calls `listener` with the idle reports of each `advance` that produced one, in order: what started, ended, or
+   * was refused, and the layer's view whenever a field of it changed (the drive compared by value), last. A
+   * `setSuspended` that changes whether Natural runs reports the view with its new `active`. Returns the function
+   * that stops it.
+   */
+  onIdleReports(listener: (reports: readonly IdleReport[]) => void): () => void {
+    this.idleListeners.add(listener)
+    return () => {
+      this.idleListeners.delete(listener)
+    }
   }
 
   /**
@@ -487,18 +517,18 @@ export class NaturalMotion {
    * once per frame also sees a behaviour that started and ended between two reads.
    */
   get idleState(): { seq: number, behaviour: IdleBehaviourKind | null } {
-    return { seq: this.idle.seq, behaviour: this.idle.behaviour }
+    return { seq: this.idleLayer.seq, behaviour: this.idleLayer.behaviour }
   }
 
   /** The latest errand the idle draw started for the host to realise, kept after it ends; null before the first. */
   get idleErrand(): IdleErrandRecord | null {
-    return this.idle.errand
+    return this.idleLayer.errand
   }
 
   /** The realiser's answer to errand `seq`, applied at the next grid step. See `NaturalIdleActivities.answerErrand`. */
   answerIdleErrand(seq: number, outcome: 'done' | 'refused', nowSeconds: number) {
     this.advance(nowSeconds)
-    this.idle.answerErrand(seq, outcome)
+    this.idleLayer.answerErrand(seq, outcome)
   }
 
   /**
@@ -522,7 +552,7 @@ export class NaturalMotion {
   /** What drives the head and the eyes at the latest grid step. It draws nothing and changes no state. */
   reviewState(): NaturalReviewState {
     const now = this.stepIndex * step
-    const errand = this.idle.errand
+    const errand = this.idleLayer.errand
     return {
       time: this.activeTime,
       mode: this.energy.currentMode,
@@ -533,7 +563,7 @@ export class NaturalMotion {
         withGlance: this.attention.ledShift === this.posture.shiftCount,
       },
       eyes: { seq: this.gaze.saccadeCount, target: this.petOverride ? 'pet' : this.gaze.targetKind },
-      act: this.idle.behaviour,
+      act: this.idleLayer.behaviour,
       errand: errand !== null && errand.endedAt === null ? errand.kind : null,
       owner: this.pet.active
         ? 'pet'
@@ -647,6 +677,28 @@ export class NaturalMotion {
   setSuspended(suspended: boolean, nowSeconds: number) {
     this.advance(nowSeconds)
     this.suspended = suspended
+    // Idle time stops with her: the mind hears it now, not at the next grid step, which does not come while suspended.
+    const view = this.reportedIdleView
+    if (view !== null && this.reportedIdleActive === suspended) {
+      this.reportedIdleActive = !suspended
+      this.pendingIdleReports.push({ kind: 'view', view: { ...view, active: !suspended } })
+      this.flushIdleReports()
+    }
+  }
+
+  /** Delivers the idle reports gathered since the last delivery; a failing listener cannot interrupt the others. */
+  private flushIdleReports() {
+    if (this.pendingIdleReports.length === 0)
+      return
+    const reports = this.pendingIdleReports.splice(0)
+    for (const listener of this.idleListeners) {
+      try {
+        listener(reports)
+      }
+      catch (error) {
+        console.error('[natural-motion] An idle report listener failed:', errorMessageFrom(error) ?? 'unknown error')
+      }
+    }
   }
 
   /**
@@ -770,7 +822,7 @@ export class NaturalMotion {
     if (this.observer)
       this.reportHold(stepStart)
     const startedGesture = pending.some(action => action.kind === 'poke' || action.kind === 'emotion' || action.kind === 'gesture' || action.kind === 'react')
-    this.idle.step(stepStart, step, {
+    this.idleLayer.step(stepStart, step, {
       mode: this.energy.currentMode,
       away: this.energy.userAway,
       blocked: this.pet.active || this.petOverride || stepStart < this.petGlanceUntil || stepStart < this.chatGlanceUntil || this.chatGlance !== null
@@ -783,11 +835,17 @@ export class NaturalMotion {
       screenPoint: this.gaze.screenPoint(),
     }, this.gaze)
     if (this.observer) {
-      for (const report of this.idleReports.read(this.idle))
+      for (const report of this.idleReports.read(this.idleLayer))
         this.notify({ kind: 'idle', at: stepStart, ...report })
     }
+    this.idleLayer.drainReports(this.pendingIdleReports)
+    if (this.idleLayer.view !== this.reportedIdleView && this.idleLayer.view !== null) {
+      this.reportedIdleView = this.idleLayer.view
+      this.reportedIdleActive = true
+      this.pendingIdleReports.push({ kind: 'view', view: this.idleLayer.view })
+    }
     // Read only while a behaviour contributes, so a controller without an idle drive composes exactly as before.
-    const idle = this.idle.contributing ? this.idle.output : null
+    const idle = this.idleLayer.contributing ? this.idleLayer.output : null
     const moodScales = modulateByMood({
       amplitudeScale: this.energy.amplitudeScale * this.pet.postureAmplitudeScale * (1 - attentionCalm * cursorShare),
       shiftRateScale: this.energy.shiftRateScale,
@@ -842,7 +900,7 @@ export class NaturalMotion {
     // Postpone only a due shift. Adding the remaining duration every step would accumulate minutes of idle delay.
     if (remaining > 0.5 && this.posture.secondsUntilShift <= step)
       this.posture.postponeShift(remaining)
-    if (stepStart >= this.petGlanceUntil && stepStart >= this.chatGlanceUntil && !this.cueGestures.eyesActive(stepStart) && !this.idle.eyesOwned(stepStart))
+    if (stepStart >= this.petGlanceUntil && stepStart >= this.chatGlanceUntil && !this.cueGestures.eyesActive(stepStart) && !this.idleLayer.eyesOwned(stepStart))
       this.attention.update(this.posture, this.gaze, stepStart, step)
     this.onCursor += (Number(this.gaze.onCursor) - this.onCursor) * (1 - Math.exp(-step / cursorFixationSmoothingSeconds))
     if (this.gaze.onChat || this.onChatLevel !== 0)

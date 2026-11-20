@@ -14,6 +14,7 @@ import type { VrmInteractionTarget } from '@proj-airi/stage-ui-three'
 
 import type { EmotionPayload } from '../../constants/emotions'
 import type { AvatarTouch } from '../../libs/avatar-touch/notify'
+import type { MindStageHandle } from '../../stores/character-mind'
 import type { ChatActivity, ChatComposerReport } from './chat-activity'
 
 import { defineInvokeHandler } from '@moeru/eventa'
@@ -356,6 +357,9 @@ function characterReading() {
 // The window's one mind lives in its store and outlives this stage; the leader's store connects it to the voice port.
 const characterMindStore = useCharacterMindStore()
 const characterMind = characterMindStore.mind
+// The mind performs the body around its reach-out and widget lines on the newest mounted stage, and its idle acts on
+// every mounted stage.
+let mindStage: MindStageHandle | undefined
 const { conductor: performanceConductor, settings: performanceSettings } = useStagePerformanceConductor({
   renderer: () => stageModelRenderer.value,
   scene: () => performanceRenderer.value.scene,
@@ -374,13 +378,16 @@ const { conductor: performanceConductor, settings: performanceSettings } = useSt
   // Each scene classifies touches only under its Natural driver and reports them to `performanceConductor.touch`.
   // The leader's situation store records the touch and runs her line; in a follower window it offers no view.
   voice: () => situationStore,
+  // The conductor hands the scene's idle reports to the mind under Natural; only the newest stage's reach it.
+  idleReports: reports => mindStage?.report(reports),
 })
-// The mind performs the body around its reach-out and widget lines on the newest mounted stage.
-let detachStage: (() => void) | undefined
 onMounted(() => {
-  detachStage = characterMindStore.attachStage({ idleCue: cue => performanceConductor.idleCue(cue) })
+  mindStage = characterMindStore.attachStage({
+    idleCue: cue => performanceConductor.idleCue(cue),
+    idle: intent => performanceConductor.idle(intent),
+  })
 })
-onUnmounted(() => detachStage?.())
+onUnmounted(() => mindStage?.detach())
 
 const stageSelf = useStageSelfStore()
 
@@ -1206,6 +1213,7 @@ defineExpose({
         @natural-touch="performanceConductor.touch($event)"
         @idle="onIdle"
         @errand="idleProps.onErrand"
+        @idle-reports="performanceConductor.idleReport($event)"
       />
       <ThreeScene
         v-if="stageModelRenderer === 'vrm' && showStage"
@@ -1285,6 +1293,7 @@ defineExpose({
         @error="reportStageRenderError"
         @touch="performanceConductor.touch($event)"
         @idle="onIdle"
+        @idle-reports="performanceConductor.idleReport($event)"
         @self="stageSelf.report"
         @placement="emit('placement', $event)"
         @root="emit('root', $event)"
