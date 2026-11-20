@@ -1,6 +1,6 @@
-import type { IdleDecision, IdleScheduleState, IdleView } from '@proj-airi/motion-driver-natural/idle-schedule'
+import type { IdleDecision, IdleOrder, IdleScheduleState, IdleView } from '@proj-airi/motion-driver-natural/idle-schedule'
 
-import type { MindIdleState, MindIntent, MindRandom, MindState, MindStimulus } from './types'
+import type { MindIdleIntent, MindIdleState, MindIntent, MindRandom, MindState, MindStimulus } from './types'
 
 import { advanceIdleSchedule, applyIdleEdge, initialIdleSchedule, nextIdleDeadline } from '@proj-airi/motion-driver-natural/idle-schedule'
 import { nextRandom, seedRng } from '@proj-airi/stage-shared/situation'
@@ -189,6 +189,13 @@ export function answerIdlePlay(state: MindState, stimulus: Stimulus<'idle-play'>
     state: { ...state, idle: { ...idle, random: stream.checkpoint() } },
     intents: [{ id: `${cause}-idle-play`, cause, channel: 'posture', kind: 'idle-act', act: stimulus.act, seed, requested: true }],
   }
+}
+
+/** The order a performer carries out for an idle intent. */
+export function idleOrderOf(intent: MindIdleIntent): IdleOrder {
+  return intent.kind === 'idle-act'
+    ? { id: intent.id, kind: 'act', act: intent.act, seed: intent.seed, requested: intent.requested }
+    : { id: intent.id, kind: 'errand', errand: intent.errand, pick: intent.pick, holdSeconds: intent.holdSeconds }
 }
 
 /**

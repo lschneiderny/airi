@@ -1,8 +1,10 @@
-import type { MindIntent, MindStep } from '@proj-airi/character-mind'
+import type { MindIdleIntent, MindIntent, MindStep } from '@proj-airi/character-mind'
+import type { IdleReport, IdleView } from '@proj-airi/motion-driver-natural/idle-schedule'
 import type { ReactionDecision } from '@proj-airi/stage-shared/situation'
 import type { SyncedPiniaRuntime } from 'pinia-plugin-synced'
 
-import { CharacterMind } from '@proj-airi/character-mind'
+import { CharacterMind, nextIdleWakeAt } from '@proj-airi/character-mind'
+import { dormantIdleView } from '@proj-airi/motion-driver-natural/idle-schedule'
 import { defineStore } from 'pinia'
 import { markRaw, watch } from 'vue'
 
@@ -11,9 +13,20 @@ import { useCharacterStateStore } from './character-state'
 import { useSituationObservabilityStore } from './devtools/situation-observability'
 import { useSituationStore } from './situation'
 
-/** What a mounted stage lends the mind: the body around a line. The conductor gates it by driver. */
+/** An idle intent of the mind: an act or an errand for the Natural performer. */
+/** What a mounted stage lends the mind: the body around a line and its idle acts. The conductor gates both by driver. */
 export interface MindStage {
   idleCue: (cue: Extract<MindIntent, { kind: 'cue' }>['cue']) => void
+  /** Performs one idle intent; a stage under another driver drops it. */
+  idle: (intent: MindIdleIntent) => void
+}
+
+/** The handle `attachStage` returns. Only the newest attached stage's reports reach the mind. */
+export interface MindStageHandle {
+  /** Hands the mind what this stage's Natural performer saw; ignored unless this is the newest stage. */
+  report: (reports: readonly IdleReport[]) => void
+  /** Detaches the stage. When it was the reporting stage, the mind hears the dormant view and decides no more idle acts. */
+  detach: () => void
 }
 
 /**
@@ -39,6 +52,11 @@ export function voiceDecisionOf({ stimuli, state }: Pick<MindStep, 'stimuli' | '
  * request the old state held answers `failed`. After every step that gives `state.slow.pacing` a new object, the store
  * writes it back with `recordPacing`, named by the card and epoch it loaded, so a write for a replaced record is
  * dropped.
+ *
+ * Idle: every `idle-act` and `idle-errand` intent of any step goes to every attached stage, so two stages show the
+ * same act from the same seed, and only the newest stage reports what its performer saw. After every step the store
+ * arms one timer at `nextIdleWakeAt` and sends `idle-wake` when it fires. A reset clears the timer and hands the new
+ * state the reporting stage's latest view, because a performer reports its view only when it changes.
  */
 export const useCharacterMindStore = defineStore('character-mind', () => {
   const situation = useSituationStore()
@@ -51,6 +69,46 @@ export const useCharacterMindStore = defineStore('character-mind', () => {
   const stages: MindStage[] = []
   /** Answers the voice port's stimuli; its cues go to the newest attached stage, or nowhere. */
   const voice = new MindVoice(mind, () => situation, cue => stages.at(-1)?.idleCue(cue))
+
+  /** The reporting stage's latest view, which a reset hands the new state; null without one. */
+  let reportedView: IdleView | null = null
+  let idleTimer: ReturnType<typeof setTimeout> | undefined
+  /** The wake the timer is armed for, in epoch milliseconds of the mind's clock. */
+  let idleWakeAt: number | null = null
+
+  function clearIdleWake() {
+    if (idleTimer !== undefined)
+      clearTimeout(idleTimer)
+    idleTimer = undefined
+    idleWakeAt = null
+  }
+
+  /** Arms the one idle wake timer at the mind's next idle deadline, when it moved. */
+  function armIdleWake() {
+    const wakeAt = nextIdleWakeAt(mind.state.idle)
+    if (wakeAt === idleWakeAt)
+      return
+    clearIdleWake()
+    if (wakeAt === null)
+      return
+    idleWakeAt = wakeAt
+    idleTimer = setTimeout(() => {
+      idleTimer = undefined
+      idleWakeAt = null
+      mind.receive({ kind: 'idle-wake' })
+    }, Math.max(0, wakeAt - Date.now()))
+  }
+
+  let stopIdle: (() => void) | undefined = mind.onStep(({ intents }) => {
+    for (const intent of intents) {
+      if (intent.kind !== 'idle-act' && intent.kind !== 'idle-errand')
+        continue
+      // A copy: a stage that detaches while it performs must not skip the next one.
+      for (const stage of [...stages])
+        stage.idle(intent)
+    }
+    armIdleWake()
+  })
 
   observability.publishReactionMemory(mind.state.voice.reaction)
   let stopInspector: (() => void) | undefined = mind.onStep((step) => {
@@ -85,6 +143,10 @@ export const useCharacterMindStore = defineStore('character-mind', () => {
     disconnectVoice?.()
     const record = characterState.leaderRecord
     mind.reset({ pacing: record?.pacing ?? null })
+    clearIdleWake()
+    // The performer reports its view only when it changes, so the new state hears the latest one now.
+    if (reportedView && stages.length > 0)
+      mind.receive({ kind: 'idle', reports: [{ kind: 'view', view: reportedView }] })
     loaded = record && { cardId: record.cardId, epoch: characterState.leaderEpoch }
     lastPacing = mind.state.slow.pacing
     disconnectVoice = situation.connect(stimulus => voice.answer(stimulus))
@@ -112,14 +174,31 @@ export const useCharacterMindStore = defineStore('character-mind', () => {
       loadAndConnect()
   }, { flush: 'sync' })
 
-  /** Lends the mind a stage's body; the result detaches it. The newest stage wins. */
-  function attachStage(next: MindStage): () => void {
+  /** Lends the mind a stage's body. Cues go to the newest stage, idle intents to every stage, and only the newest reports. */
+  function attachStage(next: MindStage): MindStageHandle {
     const attached = { ...next }
     stages.push(attached)
-    return () => {
-      const index = stages.indexOf(attached)
-      if (index !== -1)
+    return {
+      report(reports) {
+        if (stages.at(-1) !== attached)
+          return
+        for (const report of reports) {
+          if (report.kind === 'view')
+            reportedView = report.view
+        }
+        mind.receive({ kind: 'idle', reports })
+      },
+      detach() {
+        const index = stages.indexOf(attached)
+        if (index === -1)
+          return
+        const reporting = index === stages.length - 1
         stages.splice(index, 1)
+        if (reporting) {
+          reportedView = null
+          mind.receive({ kind: 'idle', reports: [{ kind: 'view', view: dormantIdleView() }] })
+        }
+      },
     }
   }
 
@@ -137,6 +216,9 @@ export const useCharacterMindStore = defineStore('character-mind', () => {
     stopInspector = undefined
     stopPacing?.()
     stopPacing = undefined
+    stopIdle?.()
+    stopIdle = undefined
+    clearIdleWake()
     stopRecordWatch()
     observability.publishReactionMemory(null)
   }

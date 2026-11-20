@@ -1,9 +1,11 @@
-import type { NaturalIdleDrive } from '@proj-airi/motion-driver-natural/idle-activities'
+import type { IdleBehaviourKind, NaturalIdleDrive } from '@proj-airi/motion-driver-natural/idle-activities'
+import type { IdleErrandKind } from '@proj-airi/motion-driver-natural/idle-errands'
 import type { IdleReport, IdleView } from '@proj-airi/motion-driver-natural/idle-schedule'
 import type { GateSignals } from '@proj-airi/stage-shared/situation'
 
 import type { MindIntent, MindRandom, MindState, MindStimulus } from './types'
 
+import { IDLE_ERRAND_PACING, PASTIME_HOLD_SECONDS } from '@proj-airi/motion-driver-natural/idle-errands'
 import { HOUR_MS, initialSituationState, randomSource } from '@proj-airi/stage-shared/situation'
 import { describe, expect, it } from 'vitest'
 
@@ -247,5 +249,427 @@ describe('idle policy', () => {
     const quiet = run(false)
     expect(quiet.length).toBeGreaterThan(10)
     expect(run(true)).toEqual(quiet)
+  })
+})
+
+/**
+ * Seconds each act lasts, drawn from the act's seed in the ranges `NaturalIdleActivities` draws its shapes from. Only
+ * the length matters to the schedule: the rest after an act counts from its end.
+ */
+const actSeconds: Partial<Record<IdleBehaviourKind, (random: () => number) => number>> = {
+  'stretch': () => 5.2,
+  'yawn': () => 5.4,
+  'look-around': (random) => {
+    const count = 2 + Math.floor(random() * 3)
+    let seconds = 0
+    for (let index = 0; index < count; index++)
+      seconds += 1.2 + 1.4 * random() + 0.1
+    return seconds + 0.8
+  },
+  'check-in': random => 2.4 + 1.8 * random(),
+  'peer': random => 5 + 4 * random(),
+  'zone-out': random => 8 + 10 * random(),
+  'nod-off': (random) => {
+    const cycles = 2 + Math.floor(random() * 2)
+    let seconds = 0
+    for (let index = 0; index < cycles; index++)
+      seconds += (2.5 + 1.5 * random()) * 0.8 ** index + 1.58
+    return seconds
+  },
+  'sway': random => 8 + 8 * random(),
+  'sigh': random => 2.8 + 1.2 * random(),
+  'shoulder-roll': random => 3 + 1.5 * random(),
+  'shift-stance': random => 1.2 + 0.6 * random(),
+  'clasp-hands': random => 4 + 5 * random(),
+  'hair-touch': random => 2.2 + 0.8 * random(),
+  'heel-rock': random => 1.5 + random(),
+  'arm-swing': random => 2 + 2 * random(),
+}
+
+/**
+ * A fake Natural performer on exact times: it starts what the mind orders while she is free, with the tests
+ * `NaturalIdleActivities` applies, runs each act for its drawn length, and reports every edge and view change. A sleep
+ * lasts until `wake`. An unasked clip or a wander is answered with `answer` at once; a pastime runs its hold unless
+ * `answer` refuses it.
+ */
+class FakePerformer {
+  seq = 0
+  errandSeq = 0
+  /** Seconds in which no act ran, which the unasked clip's old timer counted. */
+  quietSeconds = 0
+  readonly started: Array<{ act: IdleBehaviourKind, atMs: number }> = []
+  readonly errands: Array<{ errand: IdleErrandKind, atMs: number, endedAtMs: number | null, holdSeconds: number | null }> = []
+  private current: { seq: number, kind: IdleBehaviourKind, endMs: number } | null = null
+  private errand: { seq: number, kind: IdleErrandKind, endMs: number } | null = null
+  private view: IdleView
+  private quietFromMs: number | null
+
+  constructor(view: IdleView, atMs: number, private readonly answer: 'done' | 'refused' = 'done') {
+    this.view = view
+    this.quietFromMs = atMs
+  }
+
+  get nextEndMs(): number | null {
+    const ends = [this.current?.endMs, this.errand?.endMs].filter((end): end is number => end !== undefined && Number.isFinite(end))
+    return ends.length > 0 ? Math.min(...ends) : null
+  }
+
+  /** The reports of a view the host changed, such as a new mode. */
+  setView(overrides: Partial<IdleView>): IdleReport[] {
+    this.view = { ...this.view, ...overrides }
+    return [{ kind: 'view', view: this.snapshot() }]
+  }
+
+  /** Plays one intent at `atMs` and returns the reports it caused. */
+  perform(intent: MindIntent, atMs: number): IdleReport[] {
+    const view = this.view
+    const performing = view.mode === 'idle' || view.mode === 'watching'
+    if (intent.kind === 'idle-errand') {
+      const kinds = view.drive?.errands ?? []
+      const free = this.errand === null && performing && !view.away && kinds.includes(intent.errand)
+        && (intent.errand !== 'idle-clip' || (this.current === null && !view.blocked))
+        && (intent.errand !== 'pastime' || this.current?.kind !== 'sleep')
+      if (!free)
+        return [{ kind: 'refused', intentId: intent.id }]
+      const seq = ++this.errandSeq
+      const record = { errand: intent.errand, atMs, endedAtMs: null as number | null, holdSeconds: intent.holdSeconds }
+      this.errands.push(record)
+      const reports: IdleReport[] = [{ kind: 'errand-started', intentId: intent.id, seq, errand: intent.errand }]
+      if (intent.errand !== 'pastime' || this.answer === 'refused') {
+        record.endedAtMs = atMs
+        reports.push({ kind: 'errand-ended', seq, errand: intent.errand, outcome: this.answer })
+      }
+      else {
+        this.errand = { seq, kind: intent.errand, endMs: atMs + (intent.holdSeconds ?? 0) * SEC }
+      }
+      reports.push({ kind: 'view', view: this.snapshot() })
+      return reports
+    }
+    if (intent.kind !== 'idle-act')
+      return []
+    const free = intent.requested
+      ? performing && !view.blocked
+      : this.current === null && performing && !view.blocked && (intent.act === 'sleep' || !view.away)
+    if (!free)
+      return [{ kind: 'refused', intentId: intent.id }]
+    const reports: IdleReport[] = []
+    if (this.current)
+      reports.push(this.end(atMs, 'released'))
+    const length = intent.act === 'sleep' ? Number.POSITIVE_INFINITY : actSeconds[intent.act]!(randomSource(intent.seed))
+    this.current = { seq: ++this.seq, kind: intent.act, endMs: atMs + length * SEC }
+    this.countQuiet(atMs)
+    this.started.push({ act: intent.act, atMs })
+    reports.push({ kind: 'started', intentId: intent.id, seq: this.current.seq, act: intent.act }, { kind: 'view', view: this.snapshot() })
+    return reports
+  }
+
+  /** Ends what is due at `atMs`: an act that ran its course, or a pastime's hold. */
+  finish(atMs: number): IdleReport[] {
+    const reports: IdleReport[] = []
+    if (this.current && this.current.endMs <= atMs)
+      reports.push(this.end(atMs, 'finished'))
+    if (this.errand && this.errand.endMs <= atMs) {
+      const { seq, kind } = this.errand
+      this.errand = null
+      this.errands.find((record, index) => index === seq - 1 && record.errand === kind)!.endedAtMs = atMs
+      reports.push({ kind: 'errand-ended', seq, errand: kind, outcome: 'done' })
+    }
+    reports.push({ kind: 'view', view: this.snapshot() })
+    return reports
+  }
+
+  /** Wakes her from sleep on request. */
+  wake(atMs: number): IdleReport[] {
+    return this.current?.kind === 'sleep' ? [this.end(atMs, 'woken-on-request'), { kind: 'view', view: this.snapshot() }] : []
+  }
+
+  countQuiet(atMs: number) {
+    if (this.quietFromMs !== null)
+      this.quietSeconds += (atMs - this.quietFromMs) / SEC
+    this.quietFromMs = this.current === null ? atMs : null
+  }
+
+  private end(atMs: number, how: 'finished' | 'released' | 'woken-on-request'): IdleReport {
+    const { seq, kind } = this.current!
+    this.current = null
+    this.quietFromMs = atMs
+    return { kind: 'ended', seq, act: kind, how }
+  }
+
+  private snapshot(): IdleView {
+    return { ...this.view, current: this.current && { seq: this.current.seq, kind: this.current.kind }, errand: this.errand && { seq: this.errand.seq, kind: this.errand.kind } }
+  }
+}
+
+/**
+ * Runs a mind and a fake performer from `T0` for `seconds`: the mind wakes at each `nextIdleWakeAt`, the performer
+ * ends what is due, and every report returns to the mind at once.
+ */
+function simulate(options: { seed: number, view?: Partial<IdleView>, seconds: number, answer?: 'done' | 'refused' }) {
+  const mind = script(options.seed)
+  const performer = new FakePerformer(idleView(options.view), T0, options.answer)
+  const intents: MindIntent[] = []
+  const endMs = T0 + options.seconds * SEC
+  const deliver = (reports: IdleReport[], atMs: number) => {
+    const queue = [mind.send(atMs, idle(...reports))]
+    while (queue.length > 0) {
+      for (const intent of queue.shift()!) {
+        intents.push(intent)
+        const answered = performer.perform(intent, atMs)
+        if (answered.length > 0)
+          queue.push(mind.send(atMs, idle(...answered)))
+      }
+    }
+  }
+  deliver([{ kind: 'view', view: idleView(options.view) }], T0)
+  for (;;) {
+    const candidates = [mind.wakeAt, performer.nextEndMs].filter((at): at is number => at !== null)
+    const atMs = Math.min(...candidates)
+    if (candidates.length === 0 || atMs >= endMs)
+      break
+    if (performer.nextEndMs === atMs)
+      deliver(performer.finish(atMs), atMs)
+    else
+      deliver([], atMs)
+  }
+  performer.countQuiet(endMs)
+  return { mind, performer, intents }
+}
+
+/**
+ * Runs a mind and a fake performer idle for `idleSeconds`, turns the view away at the first moment after it when no
+ * act runs, and returns the seconds from that edge to the sleep intent.
+ */
+function awayDelay(seed: number, idleSeconds: number, base: Partial<IdleView> = {}): number {
+  const mind = script(seed)
+  const performer = new FakePerformer(idleView(base), T0)
+  let sleepAtMs: number | null = null
+  const deliver = (reports: IdleReport[], atMs: number) => {
+    const queue = [mind.send(atMs, idle(...reports))]
+    while (queue.length > 0) {
+      for (const intent of queue.shift()!) {
+        if (intent.kind === 'idle-act' && intent.act === 'sleep' && sleepAtMs === null)
+          sleepAtMs = atMs
+        const answered = performer.perform(intent, atMs)
+        if (answered.length > 0)
+          queue.push(mind.send(atMs, idle(...answered)))
+      }
+    }
+  }
+  deliver([{ kind: 'view', view: idleView(base) }], T0)
+  let edgeMs: number | null = null
+  for (let guard = 0; guard < 10_000; guard++) {
+    if (sleepAtMs !== null)
+      break
+    const candidates = [mind.wakeAt, performer.nextEndMs].filter((at): at is number => at !== null)
+    const atMs = Math.min(...candidates)
+    if (edgeMs === null && performer.nextEndMs === null && atMs >= T0 + idleSeconds * SEC) {
+      // Nothing runs here: the edge lands on this step's time, before its own decision.
+      const at = Math.max(T0 + idleSeconds * SEC, mind.state.idle.atMs ?? T0)
+      edgeMs = at
+      deliver(performer.setView({ away: true }), at)
+      continue
+    }
+    if (performer.nextEndMs === atMs)
+      deliver(performer.finish(atMs), atMs)
+    else
+      deliver([], atMs)
+  }
+  if (edgeMs === null || sleepAtMs === null)
+    throw new Error(`seed ${seed}: no sleep`)
+  return (sleepAtMs - edgeMs) / SEC
+}
+
+describe('idle policy with a performer', () => {
+  it('falls asleep after a delay from the away edge that follows the uniform 12 to 30 s draw', () => {
+    // Over 400 runs the mean's standard error is 18 / sqrt(12 * 400) = 0.26 s, so 1.04 s is four of them. Both
+    // extremes reach within 1 s of the bounds, which 400 uniform draws miss with odds under 1e-9.
+    const delays = Array.from({ length: 400 }, (_, index) => awayDelay(index + 1, 30 + (index % 7) * 15))
+    const mean = delays.reduce((sum, delay) => sum + delay, 0) / delays.length
+    expect(Math.abs(mean - 21)).toBeLessThan(1.04)
+    expect(Math.min(...delays)).toBeGreaterThanOrEqual(12 - 1e-6)
+    expect(Math.max(...delays)).toBeLessThanOrEqual(30 + 1e-6)
+    expect(Math.min(...delays)).toBeLessThan(13)
+    expect(Math.max(...delays)).toBeGreaterThan(29)
+  })
+
+  it('starts varied activities, rests between them, and never repeats one in a row', () => {
+    const { performer } = simulate({ seed: 7, seconds: 1800 })
+    const kinds = performer.started.map(start => start.act)
+    // Half an hour holds a few dozen activities of at least four kinds.
+    expect(kinds.length).toBeGreaterThan(12)
+    expect(kinds.length).toBeLessThan(60)
+    expect(new Set(kinds).size).toBeGreaterThanOrEqual(4)
+    expect(kinds.some((kind, index) => index > 0 && kind === kinds[index - 1])).toBe(false)
+    // A rested, daytime character never nods off, sways to music that is not playing, or sleeps while the user is here.
+    expect(kinds).not.toContain('nod-off')
+    expect(kinds).not.toContain('sway')
+    expect(kinds).not.toContain('sleep')
+  })
+
+  it('replays the same starts for the same seed', () => {
+    // Re-pinned when the idle draw moved into the mind (item 3 of the character-mind-idle plan): every start in 900 s,
+    // from the mind's idle stream and this performer. The pins before it were of Natural's own stream.
+    const pins: Record<number, string[]> = {
+      7: ['check-in@21.456', 'look-around@70.045', 'check-in@130.799', 'stretch@261.302', 'look-around@312.976', 'check-in@353.006', 'look-around@384.449', 'check-in@551.028', 'peer@577.163', 'stretch@629.756', 'peer@719.949', 'zone-out@755.358'],
+      11: ['zone-out@21.209', 'peer@47.303', 'look-around@110.718', 'peer@199.484', 'look-around@233.479', 'check-in@418.333', 'zone-out@463.869', 'peer@493.211', 'look-around@527.371', 'peer@545.497', 'stretch@571.172', 'peer@639.356', 'look-around@658.733', 'check-in@835.985', 'peer@896.598'],
+      3: ['check-in@119.590', 'look-around@150.221', 'check-in@179.390', 'peer@280.083', 'look-around@316.020', 'zone-out@387.568', 'check-in@471.599', 'peer@490.765', 'check-in@510.328', 'zone-out@525.090', 'look-around@644.355', 'check-in@673.256', 'look-around@693.328', 'zone-out@732.475', 'peer@765.988', 'look-around@858.538', 'check-in@892.029'],
+      23: ['look-around@23.111', 'check-in@110.714', 'zone-out@164.404', 'look-around@357.678', 'zone-out@384.643', 'check-in@417.908', 'stretch@441.394', 'look-around@457.791', 'peer@495.145', 'look-around@519.858', 'check-in@564.022', 'zone-out@603.062', 'peer@640.993', 'check-in@663.892', 'zone-out@734.447', 'look-around@763.755', 'stretch@796.901', 'zone-out@819.863', 'check-in@859.832'],
+      42: ['look-around@12.803', 'zone-out@120.382', 'check-in@173.160', 'zone-out@209.662', 'check-in@245.662', 'stretch@268.167', 'check-in@341.008', 'zone-out@373.657', 'check-in@400.195', 'peer@531.807', 'look-around@580.637', 'check-in@645.769', 'look-around@725.571', 'zone-out@778.349', 'check-in@881.259'],
+      101: ['zone-out@104.979', 'stretch@154.406', 'zone-out@186.382', 'look-around@234.325', 'check-in@299.450', 'look-around@321.156', 'check-in@352.252', 'look-around@408.588', 'check-in@486.648', 'look-around@519.741', 'check-in@540.724', 'look-around@619.040', 'zone-out@645.269', 'peer@694.051', 'zone-out@719.421', 'stretch@838.483', 'check-in@861.833'],
+    }
+    for (const seed of [7, 11, 3, 23, 42, 101]) {
+      const { performer } = simulate({ seed, seconds: 900 })
+      const seen = performer.started.map(start => `${start.act}@${((start.atMs - T0) / SEC).toFixed(3)}`)
+      expect(seen, `seed ${seed}`).toEqual(pins[seed])
+    }
+    expect(simulate({ seed: 11, seconds: 900 }).performer.started).not.toEqual(simulate({ seed: 12, seconds: 900 }).performer.started)
+  })
+
+  it('starts as many activities per hour as Natural did, inactive and working', () => {
+    // Measured with `NaturalIdleActivities` over 1000 hours per mode (four seeds of 250 hours at 30 steps a second) when
+    // the schedule moved out of it; the idle agency ADR's evidence read 59 and 44 per hour under other conditions.
+    const perHour = { idle: 58.0, watching: 41.7 } as const
+    const hours = 40
+    for (const mode of ['idle', 'watching'] as const) {
+      const { performer } = simulate({ seed: 9, view: { mode }, seconds: hours * 3600 })
+      const rate = performer.seq / hours
+      // Starts are a renewal count over `hours`, so four Poisson standard deviations bound the difference.
+      const bound = 4 * Math.sqrt(perHour[mode] * hours) / hours
+      expect(Math.abs(rate - perHour[mode]), `${mode}: ${rate.toFixed(2)} per hour now, ${perHour[mode]} before`).toBeLessThan(bound)
+    }
+  }, 30_000)
+
+  it('on a body host draws a kind she has just shown far less often than its weight alone gives', () => {
+    // She shows a check-in, or a peer in its place, then a zone-out; the next drawn kind counts.
+    const nextAfter = (shown: IdleBehaviourKind) => {
+      let checkIns = 0
+      for (let seed = 1; seed <= 300; seed++) {
+        const mind = script(seed)
+        const shownPerformer = new FakePerformer(idleView({ drive: { ...drive, body: true } }), T0)
+        const send = (atMs: number, stimulus: MindStimulus) => {
+          for (const intent of mind.send(atMs, stimulus)) {
+            const reports = shownPerformer.perform(intent, atMs)
+            if (reports.length > 0)
+              send(atMs, idle(...reports))
+          }
+        }
+        send(T0, viewed({ drive: { ...drive, body: true } }))
+        send(T0, { kind: 'idle-play', act: shown })
+        send(T0 + 10, { kind: 'idle-play', act: 'zone-out' })
+        const zoned = shownPerformer.seq
+        for (let atMs = T0 + 10; shownPerformer.seq === zoned && atMs < T0 + 600 * SEC;) {
+          const next = [mind.wakeAt, shownPerformer.nextEndMs].filter((at): at is number => at !== null)
+          if (next.length === 0)
+            break
+          atMs = Math.min(...next)
+          if (shownPerformer.nextEndMs === atMs)
+            send(atMs, idle(...shownPerformer.finish(atMs)))
+          else
+            send(atMs, wake)
+        }
+        if (shownPerformer.started.at(-1)?.act === 'check-in' && shownPerformer.seq > zoned)
+          checkIns++
+      }
+      return checkIns
+    }
+    expect(nextAfter('check-in')).toBeLessThan(0.5 * nextAfter('peer'))
+  }, 30_000)
+
+  it('follows a long sleep with a yawn and never a stretch while she is settled in', () => {
+    const seen = new Set<IdleBehaviourKind>()
+    for (let seed = 1; seed <= 30; seed++) {
+      for (const act of afterLongSleep(seed, { settled: true }))
+        seen.add(act)
+    }
+    expect([...seen]).toEqual(['yawn'])
+  })
+
+  it('can still stretch after a long sleep when the return stands her up', () => {
+    const seen = new Set<IdleBehaviourKind>()
+    for (let seed = 1; seed <= 30; seed++) {
+      for (const act of afterLongSleep(seed, { mode: 'watching' }))
+        seen.add(act)
+    }
+    expect(seen.has('stretch')).toBe(true)
+  })
+
+  it('never sleeps when the drive does not allow it', () => {
+    const { intents } = simulate({ seed: 7, view: { away: true, drive: { ...drive, allowSleep: false } }, seconds: 300 })
+    expect(intents).toEqual([])
+  })
+})
+
+/**
+ * Puts her to sleep by the away rule on a body host, wakes her on request after 130 s with the view `after`, and
+ * returns the act the mind decides within 4 s of the wake, if any.
+ */
+function afterLongSleep(seed: number, after: Partial<IdleView>): [IdleBehaviourKind] | [] {
+  const body = { ...drive, body: true }
+  const mind = script(seed)
+  const performer = new FakePerformer(idleView({ drive: body, away: true, settled: after.settled ?? false }), T0)
+  const send = (atMs: number, stimulus: MindStimulus): IdleBehaviourKind | null => {
+    let decided: IdleBehaviourKind | null = null
+    for (const intent of mind.send(atMs, stimulus)) {
+      if (intent.kind === 'idle-act')
+        decided = intent.act
+      const reports = performer.perform(intent, atMs)
+      if (reports.length > 0)
+        decided = send(atMs, idle(...reports)) ?? decided
+    }
+    return decided
+  }
+  send(T0, viewed({ drive: body, away: true, settled: after.settled ?? false }))
+  expect(send(mind.wakeAt!, wake)).toBe('sleep')
+  const wokeAt = T0 + 160 * SEC
+  send(wokeAt, idle(...performer.setView({ away: false, ...after }), ...performer.wake(wokeAt)))
+  const due = mind.wakeAt
+  if (due === null || due > wokeAt + 4 * SEC)
+    return []
+  const act = send(due, wake)
+  return act ? [act] : []
+}
+
+describe('idle errands with a performer', () => {
+  it('starts each errand at about the long-run rate of the timer it replaces', () => {
+    // The old timers' own code, run for 1000 free hours at the U5 base aadf13984 (evidence u5/old-rates.txt).
+    const old: Record<IdleErrandKind, number> = { 'pastime': 5.39, 'idle-clip': 12.006, 'wander': 4.176 }
+    const hours = 200
+    for (const kind of ['pastime', 'idle-clip', 'wander'] as const) {
+      const { performer } = simulate({ seed: 5, view: { drive: { ...drive, body: kind !== 'pastime', errands: [kind] } }, seconds: hours * 3600 })
+      // `decideIdleClip` counted quiet time only, and the scene's quiet body had no Natural behaviour in progress.
+      const counted = (kind === 'idle-clip' ? performer.quietSeconds : hours * 3600) / 3600
+      const perHour = performer.errands.length / counted
+      // Starts are a renewal count over `counted` hours, so four Poisson standard deviations bound the difference.
+      const bound = 4 * Math.sqrt(old[kind] * counted) / counted
+      expect(Math.abs(perHour - old[kind]), `${kind}: ${perHour.toFixed(3)} per hour now, ${old[kind]} before`).toBeLessThan(bound)
+    }
+  }, 60_000)
+
+  it('orders a pastime hold of 90 to 300 s', () => {
+    const { performer } = simulate({ seed: 5, view: { drive: { ...drive, errands: ['pastime'] } }, seconds: 4 * 3600 })
+    expect(performer.errands.length).toBeGreaterThan(0)
+    for (const errand of performer.errands) {
+      expect(errand.holdSeconds).toBeGreaterThanOrEqual(PASTIME_HOLD_SECONDS.min)
+      expect(errand.holdSeconds).toBeLessThanOrEqual(PASTIME_HOLD_SECONDS.max)
+    }
+  })
+
+  it('treats a refused errand as spent and keeps its refractory', () => {
+    for (const kind of ['pastime', 'idle-clip', 'wander'] as const) {
+      const { performer } = simulate({ seed: 5, view: { drive: { ...drive, body: kind !== 'pastime', errands: [kind] } }, seconds: 6 * 3600, answer: 'refused' })
+      const started = performer.errands
+      expect(started.length, kind).toBeGreaterThan(2)
+      const { refractory, from } = IDLE_ERRAND_PACING[kind]
+      for (let index = 1; index < started.length; index++) {
+        const since = from === 'start' ? started[index - 1].atMs : started[index - 1].endedAtMs!
+        expect((started[index].atMs - since) / SEC, kind).toBeGreaterThanOrEqual(refractory - 1e-6)
+      }
+    }
+  })
+
+  it('starts no errand for a drive that lists none', () => {
+    const { intents } = simulate({ seed: 5, view: { drive: { ...drive, body: true } }, seconds: 4 * 3600 })
+    expect(intents.filter(intent => intent.kind === 'idle-errand')).toEqual([])
   })
 })

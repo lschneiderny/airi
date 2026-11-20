@@ -2,8 +2,9 @@ import type { FaceBaseline } from '@proj-airi/motion-driver-natural/baseline'
 import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
 import type { NaturalFaceOutput } from '@proj-airi/motion-driver-natural/face'
 import type { NaturalTouchRegion } from '@proj-airi/motion-driver-natural/frame-types'
-import type { IdleBehaviourKind, IdleBehaviourReport, IdleCueKind, NaturalIdleDrive } from '@proj-airi/motion-driver-natural/idle-activities'
+import type { IdleBehaviourReport, IdleCueKind, NaturalIdleDrive } from '@proj-airi/motion-driver-natural/idle-activities'
 import type { IdleErrandReport } from '@proj-airi/motion-driver-natural/idle-errands'
+import type { IdleOrder, IdleReport } from '@proj-airi/motion-driver-natural/idle-schedule'
 import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
 import type { NaturalChatInput, NaturalMotionFrame, NaturalMotionOptions, NaturalMotionPose } from '@proj-airi/motion-driver-natural/natural-motion'
 import type { PostureHome } from '@proj-airi/motion-driver-natural/posture'
@@ -18,6 +19,7 @@ import type { Live2DRigProfile, NaturalChannel } from './natural-motion/rig-prof
 
 import { IdleBehaviourReports } from '@proj-airi/motion-driver-natural/idle-activities'
 import { IdleErrandReports } from '@proj-airi/motion-driver-natural/idle-errands'
+import { dormantIdleView } from '@proj-airi/motion-driver-natural/idle-schedule'
 import { NaturalMotion } from '@proj-airi/motion-driver-natural/natural-motion'
 
 type Core = PixiLive2DInternalModel['coreModel']
@@ -197,7 +199,7 @@ export class Live2DNaturalMotionAdapter {
   private readonly pendingGestures: { kind: CueGestureKind, count: number }[] = []
   private readonly pendingMoods: MoodDose[] = []
   private readonly pendingIdleCues: IdleCueKind[] = []
-  private readonly pendingIdlePlays: IdleBehaviourKind[] = []
+  private readonly pendingIdleOrders: IdleOrder[] = []
   /** Wake and desktop reaction requests, handed to the controller in order on the next frame. */
   private readonly pendingDesktop: ({ kind: 'wake' } | { kind: 'react', reaction: 'wake' | 'screen-change' })[] = []
   /** The drive the host last set, and the one the controller runs; they differ while Natural is inactive. */
@@ -210,8 +212,10 @@ export class Live2DNaturalMotionAdapter {
   onIdleBehaviour: ((report: IdleBehaviourReport) => void) | null = null
   private readonly errandReports = new IdleErrandReports()
   private readonly pendingErrandAnswers: { seq: number, outcome: 'done' | 'refused' }[] = []
-  /** Reports each errand Natural's idle draw starts and ends (a pastime), for the host's realiser. */
+  /** Reports each errand Natural starts and ends (a pastime), for the host's realiser. */
   onIdleErrand: ((report: IdleErrandReport) => void) | null = null
+  /** Natural's idle reports for the character mind: edges, refusals, and its view when it changed. */
+  onIdleReports: ((reports: readonly IdleReport[]) => void) | null = null
   private readonly visibilityChanged = () => {
     this.hidden = this.visibility?.hidden ?? false
     this.frameTime = undefined
@@ -229,6 +233,7 @@ export class Live2DNaturalMotionAdapter {
   ) {
     this.home = options.home ?? 'product'
     this.controller = new NaturalMotion({ random, seed: options.seed, home: this.home, emotionTable: options.emotionTable })
+    this.controller.onIdleReports(reports => this.onIdleReports?.(reports))
     this.controller.setSuspended(true, 0)
     this.setRigProfile(rigProfile)
     this.originalFocus = model.updateFocus
@@ -366,11 +371,13 @@ export class Live2DNaturalMotionAdapter {
       this.pendingDesktop.push({ kind: 'react', reaction })
   }
 
-  /** Plays one idle behaviour by name, for previews and scripted QA runs; accepted like a cue. */
-  idlePlay(kind: IdleBehaviourKind) {
-    const { driver, exclusive } = this.attention()
-    if (!this.disposed && driver === 'natural' && !exclusive)
-      this.pendingIdlePlays.push(kind)
+  /**
+   * Plays what the character mind's idle policy decided, at the next composition. Natural refuses it while it does
+   * not drive the model (another driver, an exclusive clip, a pause, a hidden page), so every order gets an answer.
+   */
+  idle(order: IdleOrder) {
+    if (!this.disposed)
+      this.pendingIdleOrders.push(order)
   }
 
   /** Forwards the expression-performance switches and tunables to the Natural controller. */
@@ -456,10 +463,9 @@ export class Live2DNaturalMotionAdapter {
       if (active)
         this.controller.idleCue(cue, this.time)
     }
-    for (const kind of this.pendingIdlePlays.splice(0)) {
-      if (active)
-        this.controller.idlePlay(kind, this.time)
-    }
+    // Not gated by `active`: a suspended controller refuses the order, and the mind hears it.
+    for (const order of this.pendingIdleOrders.splice(0))
+      this.controller.idle(order, this.time)
     for (const { seq, outcome } of this.pendingErrandAnswers.splice(0)) {
       if (active)
         this.controller.answerIdleErrand(seq, outcome, this.time)
@@ -571,6 +577,8 @@ export class Live2DNaturalMotionAdapter {
       this.onIdleBehaviour?.(report)
     for (const report of this.errandReports.close(this.time))
       this.onIdleErrand?.(report)
+    // The mind stops deciding for a performer that went away, and forgets an order it was waiting on.
+    this.onIdleReports?.([{ kind: 'view', view: dormantIdleView() }])
     this.visibility?.removeEventListener('visibilitychange', this.visibilityChanged)
     this.model.updateFocus = this.originalFocus
   }

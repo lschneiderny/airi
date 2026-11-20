@@ -1,3 +1,4 @@
+import type { MindStep } from '@proj-airi/character-mind'
 import type { AffectSignal, AffectTrace, CatalogEntry, ExpressionPerformanceSettings, PerformanceProfile, SlotCommand, TimingEvent } from '@proj-airi/stage-shared/expression-performance'
 
 import type { ActionToolPort } from '../../tools/action'
@@ -59,7 +60,7 @@ function fakeScene() {
   }
 }
 
-function createConductor(driver: StagePerformanceDriver, scene: StagePerformanceScene = fakeScene(), settings: ExpressionPerformanceSettings = defaultExpressionPerformanceSettings, profile?: PerformanceProfile, entries: readonly CatalogEntry[] = catalog, touch: Pick<StagePerformanceConductorOptions, 'markMoment' | 'voice'> & { mindSeed?: number } = {}) {
+function createConductor(driver: StagePerformanceDriver, scene: StagePerformanceScene = fakeScene(), settings: ExpressionPerformanceSettings = defaultExpressionPerformanceSettings, profile?: PerformanceProfile, entries: readonly CatalogEntry[] = catalog, touch: Pick<StagePerformanceConductorOptions, 'markMoment' | 'voice' | 'idleReports'> & { mindSeed?: number } = {}) {
   let now = 10
   // The mind counts the conductor's seconds as milliseconds, so both read 10 s at the start.
   const mind = new CharacterMind({ seed: touch.mindSeed ?? 7, clock: () => now * 1000 })
@@ -74,6 +75,7 @@ function createConductor(driver: StagePerformanceDriver, scene: StagePerformance
     mind,
     markMoment: touch.markMoment,
     voice: touch.voice,
+    idleReports: touch.idleReports,
     clock: () => now,
     profile: () => profile,
     modelId: () => 'rig',
@@ -635,18 +637,89 @@ describe('stage performance conductor', () => {
     it('sends the idle drive and reach-out cues to a Natural scene, and switches idle off under a basic driver', () => {
       const drive = { energy: 0.2, valence: 0, tension: 0, sleepiness: 0, solitude: 0.5, music: false, allowSleep: true, rate: 1 }
       const sent = (['natural', 'basic'] as const).map((driver) => {
-        const scene = { ...fakeScene(), setIdleDrive: vi.fn<NonNullable<StagePerformanceScene['setIdleDrive']>>(), idleCue: vi.fn<NonNullable<StagePerformanceScene['idleCue']>>(), idlePlay: vi.fn<NonNullable<StagePerformanceScene['idlePlay']>>() }
+        const scene = { ...fakeScene(), setIdleDrive: vi.fn<NonNullable<StagePerformanceScene['setIdleDrive']>>(), idleCue: vi.fn<NonNullable<StagePerformanceScene['idleCue']>>() }
         const { conductor } = createConductor(driver, scene)
         conductor.idleDrive(drive)
         conductor.idleCue('about-to-speak')
-        conductor.idlePlay('yawn')
-        return [driver, scene.setIdleDrive.mock.calls, scene.idleCue.mock.calls, scene.idlePlay.mock.calls]
+        return [driver, scene.setIdleDrive.mock.calls, scene.idleCue.mock.calls]
       })
 
       expect(sent).toEqual([
-        ['natural', [[drive]], [['about-to-speak']], [['yawn']]],
-        ['basic', [[null]], [], []],
+        ['natural', [[drive]], [['about-to-speak']]],
+        ['basic', [[null]], []],
       ])
+    })
+
+    it('asks the mind for a requested idle act under Natural only', () => {
+      const asked = (['natural', 'basic'] as const).map((driver) => {
+        const { conductor, mind } = createConductor(driver)
+        const steps: MindStep[] = []
+        mind.onStep(step => steps.push(step))
+        conductor.idlePlay('yawn')
+        return [driver, steps.map(step => [step.stimuli, step.intents.map(intent => intent.kind === 'idle-act' && [intent.act, intent.requested])])]
+      })
+
+      expect(asked).toEqual([
+        ['natural', [[[{ kind: 'idle-play', act: 'yawn' }], [['yawn', true]]]]],
+        ['basic', []],
+      ])
+    })
+
+    it('performs an idle intent as a scene order under Natural, and drops it under a basic driver with the dormant view', () => {
+      const intents = [
+        { id: '3-idle', cause: 3, channel: 'posture', kind: 'idle-act', act: 'yawn', seed: 99, requested: false },
+        { id: '4-idle', cause: 4, channel: 'posture', kind: 'idle-errand', errand: 'pastime', pick: 0.5, holdSeconds: 120 },
+      ] as const
+      const performed = (['natural', 'basic'] as const).map((driver) => {
+        const scene = { ...fakeScene(), idle: vi.fn<NonNullable<StagePerformanceScene['idle']>>() }
+        const idleReports = vi.fn<NonNullable<StagePerformanceConductorOptions['idleReports']>>()
+        const { conductor } = createConductor(driver, scene, undefined, undefined, undefined, { idleReports })
+        for (const intent of intents)
+          conductor.idle(intent)
+        return [driver, scene.idle.mock.calls, idleReports.mock.calls]
+      })
+
+      expect(performed).toEqual([
+        ['natural', [
+          [{ id: '3-idle', kind: 'act', act: 'yawn', seed: 99, requested: false }],
+          [{ id: '4-idle', kind: 'errand', errand: 'pastime', pick: 0.5, holdSeconds: 120 }],
+        ], []],
+        ['basic', [], [[[{ kind: 'view', view: expect.objectContaining({ drive: null }) }]]]],
+      ])
+    })
+
+    it('hands idle reports to the mind under Natural, the dormant view once it leaves, and the latest view again on return', () => {
+      let driver: StagePerformanceDriver = 'natural'
+      const idleReports = vi.fn<NonNullable<StagePerformanceConductorOptions['idleReports']>>()
+      const conductor = new StagePerformanceConductor({ scene: () => fakeScene(), driver: () => driver, playMotion: vi.fn(), settings: () => defaultExpressionPerformanceSettings, catalog: () => catalog, seed: 7, mind: new CharacterMind({ seed: 7 }), idleReports })
+      const view = { drive: { energy: 0, valence: 0, tension: 0, sleepiness: 0, solitude: 0, music: false, allowSleep: true, rate: 1 }, active: true, mode: 'idle', away: false, blocked: false, settled: false, current: null, errand: null } as const
+      conductor.idleReport([{ kind: 'view', view }])
+      driver = 'basic'
+      conductor.idleReport([{ kind: 'view', view: { ...view, active: false } }])
+      conductor.idleDrive(null)
+      driver = 'natural'
+      conductor.idleDrive(null)
+
+      expect(idleReports.mock.calls).toEqual([
+        [[{ kind: 'view', view }]],
+        [[{ kind: 'view', view: expect.objectContaining({ drive: null }) }]],
+        [[{ kind: 'view', view: { ...view, active: false } }]],
+      ])
+    })
+
+    it('leaves the idle intents of a touch step to the mind store', () => {
+      const scene = { ...fakeScene(), idle: vi.fn<NonNullable<StagePerformanceScene['idle']>>() }
+      const { conductor, mind, advance } = createConductor('natural', scene)
+      mind.receive({ kind: 'idle', reports: [{ kind: 'view', view: { drive: { energy: 0, valence: 0, tension: 0, sleepiness: 0, solitude: 0, music: false, allowSleep: true, rate: 1 }, active: true, mode: 'idle', away: false, blocked: false, settled: false, current: null, errand: null } }] })
+      const steps: MindStep[] = []
+      mind.onStep(step => steps.push(step))
+      advance(3600)
+
+      conductor.touch({ gesture: 'poke', region: 'head', point })
+
+      expect(steps[0].intents.map(intent => intent.kind)).toContain('idle-act')
+      expect(scene.reactToTouch).toHaveBeenCalledOnce()
+      expect(scene.idle).not.toHaveBeenCalled()
     })
 
     it('plays an ACT cue gesture on the scene under Natural and ignores it under a basic driver', () => {

@@ -1,3 +1,5 @@
+import type { IdleBehaviourKind } from '@proj-airi/motion-driver-natural/idle-activities'
+import type { IdleOrder, IdleReport } from '@proj-airi/motion-driver-natural/idle-schedule'
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
 
 import type { Live2DMotionDriver } from './live2d'
@@ -986,6 +988,12 @@ describe('natural motion adapter', () => {
 describe('natural motion adapter idle behaviour', () => {
   const drive = { energy: 0, valence: 0, tension: 0, sleepiness: 0, solitude: 0, music: false, allowSleep: true, rate: 0 }
 
+  let orders = 0
+  /** An act order as the character mind sends it. */
+  function act(kind: IdleBehaviourKind, requested = false): IdleOrder {
+    return { id: `order-${++orders}`, kind: 'act', act: kind, seed: 1, requested }
+  }
+
   /** Runs frames at 30 fps from `from` to `to` seconds and returns the last one. */
   function run(f: ReturnType<typeof fixture>, from: number, to: number) {
     let last = f.frame(from)
@@ -1001,6 +1009,7 @@ describe('natural motion adapter idle behaviour', () => {
     f.state.driver = 'natural'
     f.state.performance = { ...f.state.performance, away: true }
     f.adapter.setIdleDrive(drive)
+    f.adapter.idle(act('sleep'))
 
     const asleep = run(f, 0, 45)
     expect(reports).toEqual(['sleep:start'])
@@ -1027,17 +1036,38 @@ describe('natural motion adapter idle behaviour', () => {
     f.state.autoBlink = false
     f.adapter.setIdleDrive(drive)
     run(f, 0, 1)
-    f.adapter.idlePlay('sleep')
+    f.adapter.idle(act('sleep', true))
     const asleep = run(f, 1.1, 10)
     expect(reports).toEqual(['sleep:start'])
     expect(asleep.commanded[f.at('ParamEyeLOpen')]).toBeCloseTo(0, 5)
+  })
 
-    // Under another driver the request is dropped, like a cue.
-    f.state.driver = 'universal'
-    f.adapter.idlePlay('yawn')
+  it('queues an idle order to the next composition and emits Natural\'s reports, refusing it under another driver', () => {
+    const f = fixture()
+    const batches: (readonly IdleReport[])[] = []
+    f.adapter.onIdleReports = reports => batches.push(reports)
     f.state.driver = 'natural'
-    run(f, 10.1, 11)
-    expect(reports).not.toContain('yawn:start')
+    f.adapter.setIdleDrive(drive)
+    run(f, 0, 1)
+    expect(batches.flat().filter(report => report.kind === 'view').at(-1)).toMatchObject({ view: { drive, active: true } })
+    const yawn = act('yawn')
+    f.adapter.idle(yawn)
+    expect(batches.flat()).not.toContainEqual(expect.objectContaining({ kind: 'started' }))
+    run(f, 1.1, 2)
+    expect(batches.flat()).toContainEqual({ kind: 'started', intentId: yawn.id, seq: 1, act: 'yawn' })
+
+    // Another driver suspends Natural: the view goes inactive and an order is refused.
+    f.state.driver = 'universal'
+    f.frame(2.1)
+    expect(batches.at(-1)).toEqual([{ kind: 'view', view: expect.objectContaining({ active: false }) }])
+    const stretch = act('stretch', true)
+    f.adapter.idle(stretch)
+    f.frame(2.2)
+    expect(batches.flat()).toContainEqual({ kind: 'refused', intentId: stretch.id })
+
+    // A disposed performer leaves the mind the dormant view.
+    f.adapter.dispose()
+    expect(batches.at(-1)).toEqual([{ kind: 'view', view: expect.objectContaining({ drive: null }) }])
   })
 
   it('withholds idle behaviour while a review switches acts off, and gives it back', () => {
@@ -1048,13 +1078,13 @@ describe('natural motion adapter idle behaviour', () => {
     f.adapter.setIdleDrive(drive)
     f.adapter.setReview({ gains: neutralReviewGains, acts: false })
     run(f, 0, 1)
-    f.adapter.idlePlay('yawn')
+    f.adapter.idle(act('yawn', true))
     run(f, 1.1, 3)
     expect(reports).toEqual([])
 
     f.adapter.setReview({ gains: neutralReviewGains, acts: true })
     run(f, 3.1, 4)
-    f.adapter.idlePlay('yawn')
+    f.adapter.idle(act('yawn', true))
     run(f, 4.1, 5)
     expect(reports).toEqual(['yawn:start'])
   })

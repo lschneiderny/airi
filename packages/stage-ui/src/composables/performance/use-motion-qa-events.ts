@@ -55,15 +55,15 @@ export function useMotionQaEvents(options: {
         expression: act.expression ?? null,
       })
     }),
-    // One event per step of the mind. It names what the mind was given and what it decided, never a point, a
-    // dose, a view of the situation, or any text. An unforced gate tick that yields nothing is not recorded: the
-    // gate ticks every 2 s and would fill the ring.
+    // One event per step of the mind, naming its stimuli and decisions, never a point, dose, view, or text.
+    // A step of unforced gate ticks and idle reports or wakes that yields nothing would fill the ring, so it is skipped.
     options.mind.onStep((step) => {
       const ticks = step.stimuli.filter(stimulus => stimulus.kind === 'voice-tick')
       // The mind writes `lastGate` only when the gate evaluates; a tick skipped for an open line keeps the old one.
       const gate = step.state.voice.lastGate !== lastGate ? step.state.voice.lastGate : null
       lastGate = step.state.voice.lastGate
-      if (ticks.length === step.stimuli.length && !step.intents.length && !ticks.some(tick => tick.forceTiming))
+      const quiet = step.stimuli.every(stimulus => stimulus.kind === 'idle' || stimulus.kind === 'idle-wake' || (stimulus.kind === 'voice-tick' && !stimulus.forceTiming))
+      if (quiet && !step.intents.length)
         return
       const touches = step.stimuli.filter(stimulus => stimulus.kind === 'touch')
       const outcomes = step.stimuli.filter(stimulus => stimulus.kind === 'voice-outcome')
@@ -77,7 +77,15 @@ export function useMotionQaEvents(options: {
         outcome: outcomes.length ? outcomes.map(stimulus => stimulus.outcome).join(',') : null,
         // A JSON array, because a payload holds scalars only. A touch yields at most four intents of about 80
         // characters each, which stays under the 500 characters `record` keeps of a string.
-        intents: JSON.stringify(step.intents.map(({ channel, kind, id, cause }) => ({ channel, kind, id, cause }))),
+        // An idle act also names its kind and whether it was requested; an idle errand names its kind.
+        intents: JSON.stringify(step.intents.map(intent => ({
+          channel: intent.channel,
+          kind: intent.kind,
+          id: intent.id,
+          cause: intent.cause,
+          ...intent.kind === 'idle-act' && { act: intent.act, requested: intent.requested },
+          ...intent.kind === 'idle-errand' && { errand: intent.errand },
+        }))),
         // The kinds of the step's spoken lines (`reaction`, `reach-out`, `widget`) and its body cues
         // (`about-to-speak`, `let-go`), comma-separated, or null.
         lines: lines.length ? lines.join(',') : null,

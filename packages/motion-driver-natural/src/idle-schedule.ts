@@ -7,9 +7,9 @@ import { IDLE_ERRAND_KINDS, IDLE_ERRAND_PACING, PASTIME_HOLD_SECONDS } from './i
 /**
  * The idle schedule: when she starts an idle act or an errand, which one, when she falls asleep while the user is away,
  * and the stretch or yawn after a long sleep. Pure rules over plain JSON state, in active seconds (the idle agency
- * ADR's unit), with every random draw taken from the `random` argument. The performer (`NaturalIdleActivities`) keeps
- * the shape of each act, its interruption, settling, and cue acceptance, and tells the schedule what it saw through
- * `IdleView` and `IdleEdge`.
+ * ADR's unit), with every random draw taken from the `random` argument. The character mind's idle policy runs them on
+ * its own clock and source. The performer (`NaturalIdleActivities`) plays what the mind orders: it keeps the shape of
+ * each act, its interruption, settling, and cue acceptance, and reports what it saw as `IdleReport`s.
  */
 
 /** Seconds between two activities: the minimum and maximum of the uniform rest draw. */
@@ -134,6 +134,23 @@ export interface IdleView {
   errand: { seq: number, kind: IdleErrandKind } | null
 }
 
+/** The view of a performer that runs no idle layer: the schedule decides nothing under it. */
+export function dormantIdleView(active = false): IdleView {
+  return { drive: null, active, mode: 'idle', away: false, blocked: false, settled: false, current: null, errand: null }
+}
+
+/** Whether two drives hold the same values, so a host that sends a fresh copy every second changes nothing. */
+export function sameIdleDrive(a: NaturalIdleDrive | null, b: NaturalIdleDrive | null): boolean {
+  if (a === b)
+    return true
+  if (a === null || b === null)
+    return false
+  const sameList = (x: readonly string[] | undefined, y: readonly string[] | undefined) => (x ?? []).join() === (y ?? []).join() && (x === undefined) === (y === undefined)
+  return a.energy === b.energy && a.valence === b.valence && a.tension === b.tension && a.sleepiness === b.sleepiness
+    && a.solitude === b.solitude && a.music === b.music && a.allowSleep === b.allowSleep && a.rate === b.rate && a.body === b.body
+    && sameList(a.unreachable, b.unreachable) && sameList(a.errands, b.errands)
+}
+
 /** The memory of the schedule. Plain JSON; every time is in active seconds. */
 export interface IdleScheduleState {
   /** The `Exp(1)` level the urge must reach for the next start; null until the hazard next runs. */
@@ -155,7 +172,7 @@ export interface IdleScheduleState {
   errandListedSince: Partial<Record<IdleErrandKind, number>>
 }
 
-/** What the schedule starts. The performer draws an act's shape itself. */
+/** What the schedule starts. The mind adds the seed the performer draws an act's shape from. */
 export type IdleDecision
   = | { kind: 'act', act: IdleActivityKind }
     | { kind: 'errand', errand: IdleErrandKind, pick: number, holdSeconds: number | null }
@@ -330,8 +347,8 @@ function listErrands(state: IdleScheduleState, drive: NaturalIdleDrive | null, a
 /**
  * Advances the schedule over the span of `seconds` that starts at `at`, under `view`, which holds over the whole span,
  * and returns at most one decision. The due checks (rest, sleep delay, follow-up, refractories) read `at`, and the urge
- * grows by the span's rate times `seconds`. `NaturalIdleActivities` calls it once per grid step with its step length,
- * after it has applied the step's edges and accepted any cue or requested play.
+ * grows by the span's rate times `seconds`. The character mind's idle policy calls it over spans that end at
+ * `nextIdleDeadline`, so the rate holds over each span.
  */
 export function advanceIdleSchedule(state: IdleScheduleState, view: IdleView, at: number, seconds: number, random: RandomStream): { state: IdleScheduleState, decision: IdleDecision | null } {
   if (!view.active)
@@ -353,7 +370,9 @@ export function advanceIdleSchedule(state: IdleScheduleState, view: IdleView, at
       next.awaySince = at
       next.sleepAfter = sleepDelay.min + (sleepDelay.max - sleepDelay.min) * random()
     }
-    if (current === null && !view.blocked && at - next.awaySince >= next.sleepAfter) {
+    // The same sum `nextIdleDeadline` names, so a step taken at that deadline reaches it: `at - awaySince` can fall an
+    // ulp short of `sleepAfter`.
+    if (current === null && !view.blocked && at >= next.awaySince + next.sleepAfter) {
       decision = { kind: 'act', act: 'sleep' }
       current = 'sleep'
     }
