@@ -25,6 +25,7 @@ import { useCharacterNotebookStore } from '..'
 import { memoryRepo } from '../../../database/repos/memory.repo'
 import { useSituationSettings } from '../../../features/situation/settings'
 import { useLLM } from '../../ai/chat-llm/llm'
+import { useChatSessionStore } from '../../chat/session-store'
 import { useMemoryStore } from '../../memory'
 import { useModsServerChannelStore } from '../../mods/api/channel-server'
 import { useAiriCardStore, useConsciousnessStore } from '../../modules'
@@ -523,18 +524,22 @@ describe('store character-orchestrator', () => {
       return String(renderConversationPreview(context)[0].content)
     }
 
-    it('gives the commands-only agent the index of the active card after the identity and stage contract', async () => {
+    it('gives the commands-only agent the index of the active session\'s character after the identity and stage contract', async () => {
       const mockStream = vi.fn()
       mockedStore(useLLM, pinia).stream = mockStream
+      useAiriCardStore(pinia).activeCardId = 'active-card'
+      const chatSession = useChatSessionStore(pinia)
+      chatSession.sessionMetas['member-session'] = { sessionId: 'member-session', userId: 'local', characterId: 'member-card', createdAt: 0, updatedAt: 0 }
+      chatSession.activeSessionId = 'member-session'
       const memory = useMemoryStore(pinia)
-      const entry = (await memory.write({ description: 'What the owner likes to be called.', body: 'Captain.' }, 'default'))!
-      await memory.write({ description: 'Another card only.', body: 'Secret.' }, 'other-card')
+      const entry = (await memory.write({ description: 'What the owner likes to be called.', body: 'Captain.' }, 'member-card'))!
+      await memory.write({ description: 'The active card only.', body: 'Secret.' }, 'active-card')
 
       await useCharacterOrchestratorStore(pinia).handleSparkNotify(moduleNotify())
 
       const system = systemMessageOf(mockStream)
       expect(system).toContain(`Memory index:\n- ${entry.id}: What the owner likes to be called.`)
-      expect(system).not.toContain('Another card only.')
+      expect(system).not.toContain('The active card only.')
       // The test card has no identity text of its own, so the stage contract is the part that the memory prompt must follow.
       const stageContractAt = system.indexOf('base.prompt.emotion')
       const memoryAt = system.indexOf('Long-term memory.')
