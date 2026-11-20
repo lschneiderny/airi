@@ -1,6 +1,6 @@
 # character-mind-slow-state - Work Plan
 
-Status: planned on 2026-11-19, not started. Roadmap row: step CM4 in [`docs/ai/context/character-mind-roadmap.md`](../../docs/ai/context/character-mind-roadmap.md#steps). Rulings: the [character mind ADR](../../docs/ai/adr/2026-11-17-character-mind-direction.md), the [core ADR](../../docs/ai/adr/2026-11-18-character-mind-core.md), the [return ADR](../../docs/ai/adr/2026-11-19-character-mind-return.md), the [voice ADR](../../docs/ai/adr/2026-11-19-character-mind-voice.md), the [widget turns ADR](../../docs/ai/adr/2026-11-19-character-mind-widget-turns.md), and the [state registry ADR](../../docs/ai/adr/2026-11-19-state-registry.md). Branch: `luke/feat/character-mind-slow-state`, cut from `luke/feat/character-mind-widget-turns` (CM3b) at `2171c202d`, with the ten commits of step S (PR #56 against `main`) cherry-picked on top, through `531dc5aa2`. CM3b sits on CM3a (PR #52), CM2 (PR #51), and CM1 (PR #47), none merged; the stack contains upstream `moeru-ai/airi` through `b3a6d6071`, which is also `upstream/main` today. The PR's base is `luke/feat/character-mind-widget-turns`, and its description says that the S commits are reviewed in #56. When a PR below merges, rebase this branch onto the new base and retarget the PR.
+Status: done on 2026-11-19 for CM4a; CM4b is planned in outline; the PR is not merged. Roadmap row: step CM4 in [`docs/ai/context/character-mind-roadmap.md`](../../docs/ai/context/character-mind-roadmap.md#steps). Rulings: the [character mind ADR](../../docs/ai/adr/2026-11-17-character-mind-direction.md), the [core ADR](../../docs/ai/adr/2026-11-18-character-mind-core.md), the [return ADR](../../docs/ai/adr/2026-11-19-character-mind-return.md), the [voice ADR](../../docs/ai/adr/2026-11-19-character-mind-voice.md), the [widget turns ADR](../../docs/ai/adr/2026-11-19-character-mind-widget-turns.md), and the [state registry ADR](../../docs/ai/adr/2026-11-19-state-registry.md). Branch: `luke/feat/character-mind-slow-state`, cut from `luke/feat/character-mind-widget-turns` (CM3b) at `2171c202d`, with the ten commits of step S (PR #56 against `main`) cherry-picked on top, through `531dc5aa2`. CM3b sits on CM3a (PR #52), CM2 (PR #51), and CM1 (PR #47), none merged; the stack contains upstream `moeru-ai/airi` through `b3a6d6071`, which is also `upstream/main` today. The PR's base is `luke/feat/character-mind-widget-turns`, and its description says that the S commits are reviewed in #56. When a PR below merges, rebase this branch onto the new base and retarget the PR.
 
 The owner is away and runs these slices without a plan review. Every design fork below is taken on the recommended option and listed in [Decisions open to the owner's veto](#11-decisions-open-to-the-owners-veto).
 
@@ -289,6 +289,54 @@ The app constructs one `CharacterMind`, in `useCharacterMindStore`, which connec
 
 ## Departures during implementation
 
+- **Item 1:**
+  - The new damp schema in `CharacterPacingMemorySchema` duplicated the one in `inner-state.ts` until item 4 removed the old one.
+  - `state-persistence.md` gained a paragraph that lists the record's fields, because no current section listed them.
+  - The schema round trip is covered by giving the fixture in `types.test.ts` a pacing value.
+  - The full-record literal in `mood.test.ts` gained `pacing: null`.
+- **Item 2:**
+  - No follower renders a stage today. `Stage.vue` is used only by `/` and `/stage`, only the main and desktop stage windows lead, and one launch builds only one of them. Every window that creates the store still constructs a mind, but only the leader's connects. A test covers a follower's mind that steps without being connected.
+  - "One mind in the leader" became Precedence rule 18, appended, so the references to rules 14 to 17 stay valid.
+  - `use-character-mind.ts` had no tests to move.
+  - Two tests were added: a promotion that a demotion overtakes does not connect, and the follower case.
+  - The store test mocks the situation and character-state stores as plain functions and fakes only `Date`.
+- **Item 3:**
+  - `export_failed` is kept for Share failures. `card-detail.browser.test.ts` was updated in place to click Back up.
+  - Back up uses the `i-solar:download-square-linear` icon.
+  - `memories.json` is left out when the card has no memories, as the base does.
+  - The nine frozen locales keep orphaned `export` and `exported` keys.
+- **Item 4:**
+  - A null pacing stays null while the gate holds no pacing, so a record reset by "Delete all data" is not refilled with zeros.
+  - The situation store tests now give the mind its slow state through `connectMind(..., slow)`.
+  - The Card package row of `upstream-policy.md` points to the new section "The mind's slow state".
+  - The headless runners needed no change.
+
 ## Checks run
 
+| Check | Result |
+| --- | --- |
+| `pnpm verify --gate --base luke/feat/character-mind-widget-turns` | Passed after each item. The first gate run of item 3 failed only on two pixi-live2d-display "Texture loading error" unhandled rejections in `stage-emotion-routing.browser.test.ts`, a file the item does not touch. It passes when run alone, and the rerun passed |
+| `policy-docs.test.ts` | 11 of 11 passed |
+| Registry tests (`state-registry`, `use-data-maintenance`, `storage-writes`) | Passed after each item |
+| Both `qa:smoke` runs, the classic window and MMD on the desktop stage | `ok: true`, 0 renderer and 0 main-process errors |
+| `pnpm qa:live2d-rig` | Passed: 301 samples, 26 channels |
+| `pnpm qa:test:model` | 4 files, 15 tests passed |
+| `qa:motion3d` `idle` seed 1 at `531dc5aa2` and at `0814ff933` | `IDENTICAL` in all blocks |
+| Rendered step 1 | The base saved a seven-field `gate`. The tip printed exactly one warning, `[situation-inner] Invalid stored fields reset to defaults: gate`, and kept `lastFireAtMs` and `day`. The threads, extraction positions, and rituals were unchanged. The profile had 0 threads, so this is a weak check for threads. A relaunch printed no warning |
+| Rendered step 2, Natural | Natural's own idle act ran, a `zone-out`. A forced reach-out gave one `mind` step with `posture/cue about-to-speak` before `voice/speak`, an `idle` `about-to-speak` event, and the `turn`. 3 s later the record held `pacing.unanswered` 1 and `lastSpokenAtMs`, and `gate` held only `day` and `lastFireAtMs` |
+| Rendered step 3, Universal | The cue and line arrived with no `idle` event, and the pacing updated (`unanswered` 2) |
+| Rendered step 4 | The share zip has no `memories.json` or `character-state.json`. The backup has both, and the record carries `pacing` |
+| Rendered step 5 | After a restart, the first evaluation's memory matched the stored pacing, with no warning. After `deleteAllData`, the `cards` store was empty, and the next evaluation reported `unanswered` 0 and `lastSpokenAtMs` null |
+| Errors | Every launch had 0 renderer and 0 main-process errors |
+| Seen and not changed | After a relaunch on a kept profile, the stage loads `preset-live2d-1` instead of the imported model. Step S saw the same, so it predates CM4a |
+
 ## Commits
+
+- `e03b882d4` docs(plan): add the plan for the slow state slice of the character mind
+- `bfbbc1ad7` feat(stage-shared,stage-ui): give the character-state record her pacing memory
+- `8ef7892d0` refactor(character-mind,stage-ui,stage-tamagotchi): run one mind in the leader
+- `4d5108f9e` feat(stage-ui,stage-pages,i18n): split the card export into share and back up
+- `0814ff933` feat(stage-shared,character-mind,stage-ui): keep her pacing as the mind's slow state
+- `deb63dc6d` docs(ai): record the slow state decisions and split the CM4 row
+
+The 10 commits below `e03b882d4` are step S, cherry-picked from #56.
