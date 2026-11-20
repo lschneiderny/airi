@@ -18,7 +18,7 @@ const T0 = 1_700_000_000_000
 /** Seed 1 rolls the 70 % follow-up after a long sleep. */
 const SEED = 1
 
-const drive: NaturalIdleDrive = { energy: 0, valence: 0, tension: 0, sleepiness: 0, solitude: 0, music: false, allowSleep: true, rate: 1 }
+const drive: NaturalIdleDrive = { energy: 0, valence: 0, tension: 0, sleepiness: 0, solitude: 0, music: false, rate: 1 }
 
 function idleView(overrides: Partial<IdleView> = {}): IdleView {
   return { drive, active: true, mode: 'idle', away: false, blocked: false, settled: false, current: null, errand: null, ...overrides }
@@ -592,11 +592,6 @@ describe('idle policy with a performer', () => {
         seen.add(act)
     }
     expect(seen.has('stretch')).toBe(true)
-  })
-
-  it('never sleeps when the drive does not allow it', () => {
-    const { intents } = simulate({ seed: 7, view: { away: true, drive: { ...drive, allowSleep: false } }, seconds: 300 })
-    expect(intents).toEqual([])
   })
 })
 
