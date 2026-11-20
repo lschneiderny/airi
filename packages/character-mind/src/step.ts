@@ -3,6 +3,7 @@ import type { MindIntent, MindRandom, MindSlowState, MindState, MindStimulus } f
 import { createReactionState, initialTouchAffectMemory } from '@proj-airi/stage-shared/expression-performance'
 import { initialReactionMemory } from '@proj-airi/stage-shared/situation'
 
+import { answerCursor } from './attention'
 import { answerEmotion, answerExpressionClear, answerExpressionRequest } from './expression'
 import { advanceIdle, answerIdle, answerIdlePlay, initialMindIdleState } from './idle'
 import { answerMusic } from './music'
@@ -24,6 +25,7 @@ export function initialMindState(slow: MindSlowState = { pacing: null }): MindSt
     desktop: { screenReactAtMs: null },
     idle: initialMindIdleState(),
     music: { playing: false },
+    attention: { random: null },
     slow,
   }
 }
@@ -32,8 +34,9 @@ export function initialMindState(slow: MindSlowState = { pacing: null }): MindSt
  * The pure core of the character mind: answers the stimuli in order and returns the next state with the intents.
  * It reads no clock and no global random source, and never mutates `state`. Every draw comes from `rng`, in the
  * order of the stimuli: one for the jitter of each new emotion episode, one for each spoken touch reaction that
- * reaches its roll, one for the threshold of each new gate run, the urge gate's own draws at each tick it evaluates, and one
- * that seeds the idle policy's own stream at the first `idle` or `idle-play` stimulus.
+ * reaches its roll, one for the threshold of each new gate run, the urge gate's own draws at each tick it evaluates, one
+ * that seeds the idle policy's own stream at the first `idle` or `idle-play` stimulus, and one that seeds the
+ * attention policy's own stream at the first `cursor` stimulus.
  *
  * `nowMs` is epoch milliseconds and must not run backwards between calls: the rules drop a stimulus older than
  * the last one they accepted. Every stimulus advances `seq`, also when it yields no intent. After each answer,
@@ -76,6 +79,8 @@ export function step(state: MindState, stimuli: readonly MindStimulus[], nowMs: 
       answer = answerIdle(next, stimulus, cause, rng)
     else if (stimulus.kind === 'idle-play')
       answer = answerIdlePlay(next, stimulus, cause, rng)
+    else if (stimulus.kind === 'cursor')
+      answer = answerCursor(next, stimulus, cause, rng)
     else if (stimulus.kind === 'idle-wake')
       answer = { state: next, intents: [] }
     else if (stimulus.kind === 'music')

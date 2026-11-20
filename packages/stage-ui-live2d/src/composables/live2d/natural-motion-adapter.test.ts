@@ -1,3 +1,4 @@
+import type { CursorReport } from '@proj-airi/motion-driver-natural/cursor-notice'
 import type { IdleBehaviourKind } from '@proj-airi/motion-driver-natural/idle-activities'
 import type { IdleOrder, IdleReport } from '@proj-airi/motion-driver-natural/idle-schedule'
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
@@ -7,8 +8,10 @@ import type { Live2DNaturalMotionAttention } from './natural-motion-adapter'
 import type { Live2DRigProfile, PhysicsRigLike } from './natural-motion/rig-profile'
 
 import { mapCursor } from '@proj-airi/motion-driver-natural/cursor-attention'
+import { drawCursorEpisode } from '@proj-airi/motion-driver-natural/cursor-notice'
 import { NaturalMotion } from '@proj-airi/motion-driver-natural/natural-motion'
 import { withPostureShiftsHeld } from '@proj-airi/motion-driver-natural/posture-shift-hold'
+import { createRandomStream } from '@proj-airi/motion-driver-natural/random'
 import { neutralReviewGains } from '@proj-airi/motion-driver-natural/review'
 import { createPinia, setActivePinia } from 'pinia'
 import { describe, expect, it, vi } from 'vitest'
@@ -454,7 +457,11 @@ describe('natural motion adapter', () => {
     const f = fixture({ omit: 'ParamAngleY', fixed: 'ParamBodyAngleZ' })
     f.state.eligible = true
     f.state.cursor = { x: -1, y: -1 }
+    // A fake mind answers the cursor report; its order applies from the next frame.
+    const mind = createRandomStream(1)
+    f.adapter.onCursorReports = reports => reports.forEach(report => f.adapter.cursorEpisode({ requestId: report.requestId, episode: drawCursorEpisode(report.band, mind) }))
     f.frame(0)
+    f.frame(0.02)
     const { commanded, written } = f.frame(1)
     expect(f.ids).not.toContain('ParamAngleY')
     expect(commanded[f.at('ParamBodyAngleZ')]).toBe(2)
@@ -1068,6 +1075,26 @@ describe('natural motion adapter idle behaviour', () => {
     // A disposed performer leaves the mind the dormant view.
     f.adapter.dispose()
     expect(batches.at(-1)).toEqual([{ kind: 'view', view: expect.objectContaining({ drive: null }) }])
+  })
+
+  it('emits Natural\'s cursor reports and queues the mind\'s order to the next composition', () => {
+    const f = fixture()
+    const reports: CursorReport[] = []
+    f.adapter.onCursorReports = batch => reports.push(...batch)
+    f.state.driver = 'natural'
+    f.state.eligible = true
+    f.state.cursor = { x: 0.5, y: 0 }
+    f.frame(0)
+    f.frame(0.02)
+    expect(reports).toEqual([{ requestId: 1, band: 'near', opportunity: 'appeared' }])
+    const episode = { band: 'near', engaging: true, span: Number.POSITIVE_INFINITY, dwell: 0.3, cooldown: 5 } as const
+    f.adapter.cursorEpisode({ requestId: 1, episode })
+    expect(f.adapter.natural.bodyIntent().attention.cursorShare).toBe(0)
+    f.frame(0.04)
+    for (let at = 0.06; at < 1.5; at += 0.02)
+      f.frame(at)
+    expect(f.adapter.natural.bodyIntent().attention.cursorShare).toBeGreaterThan(0.5)
+    f.adapter.dispose()
   })
 
   it('withholds idle behaviour while a review switches acts off, and gives it back', () => {

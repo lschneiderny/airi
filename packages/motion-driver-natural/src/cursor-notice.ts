@@ -42,3 +42,22 @@ export function drawCursorEpisode(band: CursorBand, random: RandomStream): Curso
     cooldown: cooldown.min + random() * (cooldown.max - cooldown.min),
   }
 }
+
+/**
+ * What made a cursor notice possible: the cursor appeared, moved again after a rest, moved while she was not
+ * attending, came nearer than the running episode's band, or came back when permission reopened.
+ */
+export type CursorOpportunity = 'appeared' | 'restarted' | 'moved' | 'nearer' | 'reopened'
+
+/** A notice the performer could start; the character mind answers it with a {@link CursorOrder} of the same id. */
+export interface CursorReport {
+  requestId: number
+  band: CursorBand
+  opportunity: CursorOpportunity
+}
+
+/** The episode the character mind drew for the report `requestId`. */
+export interface CursorOrder {
+  requestId: number
+  episode: CursorEpisode
+}

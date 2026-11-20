@@ -4,6 +4,7 @@ import type { PerformanceState } from '@proj-airi/stage-shared/performance-state
 import type { FaceBaseline } from './baseline'
 import type { NaturalBreathOutput } from './breath'
 import type { CueGestureKind } from './cue-gestures'
+import type { CursorOrder, CursorReport } from './cursor-notice'
 import type { NaturalFaceOutput } from './face'
 import type { NaturalBodyIntent, NaturalMotionEvent, NaturalMotionFrame, NaturalMotionObserver, NaturalMotionOptions, NaturalMotionVoice, NaturalRigTraits, NaturalTouchRegion } from './frame-types'
 import type { GazePoint } from './gaze'
@@ -58,7 +59,7 @@ export interface NaturalChatInput {
 
 // Layer stream indices for `deriveSeed`. Appending layers keeps existing sequences stable.
 // Index 4 belonged to the v1 fixation rule and now seeds the gaze layer that replaces it.
-const streamIndex = { drift: 0, continuous: 1, gain: 2, shift: 3, gaze: 4, attention: 5, body: 6, face: 7, blink: 8, breath: 9, emphasis: 10, impulses: 11, gestures: 12, cursorAttention: 13, chat: 14, cueGestures: 15, regime: 16, idle: 17 }
+const streamIndex = { drift: 0, continuous: 1, gain: 2, shift: 3, gaze: 4, attention: 5, body: 6, face: 7, blink: 8, breath: 9, emphasis: 10, impulses: 11, gestures: 12, chat: 14, cueGestures: 15, regime: 16, idle: 17 }
 
 // Fixed integration grid. Processes advance only in whole steps and the output is
 // interpolated between the two grid states around the current time, so frame
@@ -166,6 +167,9 @@ export class NaturalMotion {
   private reportedIdleView: IdleView | null = null
   private reportedIdleActive = true
   private readonly idleListeners = new Set<(reports: readonly IdleReport[]) => void>()
+  /** Cursor reports of the current `advance`, delivered once at its end. */
+  private readonly pendingCursorReports: CursorReport[] = []
+  private readonly cursorListeners = new Set<(reports: readonly CursorReport[]) => void>()
   /** The review gains asked for, and the eased values the grid applies; both rest at exactly 1. */
   private reviewTarget: NaturalReviewGains = { ...neutralReviewGains }
   private readonly review: NaturalReviewGains = { ...neutralReviewGains }
@@ -254,7 +258,7 @@ export class NaturalMotion {
       if (this.observer)
         this.notify({ kind: 'glance', at, cause: 'chat-typing', point, hold })
     })
-    this.cursorAttention = new NaturalCursorAttention(stream('cursorAttention'))
+    this.cursorAttention = new NaturalCursorAttention()
     this.body = new NaturalBodyLayer(stream('body'), home)
     this.attention = new NaturalAttentionShifts(stream('attention'))
     this.face = new NaturalFaceLayer(stream('face'))
@@ -281,6 +285,7 @@ export class NaturalMotion {
       }
     }
     this.flushIdleReports()
+    this.flushCursorReports()
     this.latestBodyIntent = {
       time: this.activeTime,
       head: {
@@ -500,6 +505,26 @@ export class NaturalMotion {
   }
 
   /**
+   * Plays the cursor episode the character mind drew for a report, at the next grid step. The step drops it when the
+   * report is no longer awaited, permission is not `full`, or the cursor is gone. See `NaturalCursorAttention.order`.
+   */
+  cursorEpisode(order: CursorOrder, nowSeconds: number) {
+    this.advance(nowSeconds)
+    this.cursorAttention.order(order)
+  }
+
+  /**
+   * Calls `listener` with the cursor reports of each `advance` that produced one: each is a notice the character mind
+   * answers with `cursorEpisode`. Returns the function that stops it.
+   */
+  onCursorReports(listener: (reports: readonly CursorReport[]) => void): () => void {
+    this.cursorListeners.add(listener)
+    return () => {
+      this.cursorListeners.delete(listener)
+    }
+  }
+
+  /**
    * Calls `listener` with the idle reports of each `advance` that produced one, in order: what started, ended, or
    * was refused, and the layer's view whenever a field of it changed (the drive compared by value), last. A
    * `setSuspended` that changes whether Natural runs reports the view with its new `active`. Returns the function
@@ -686,6 +711,21 @@ export class NaturalMotion {
     }
   }
 
+  /** Delivers the cursor reports gathered since the last delivery; a failing listener cannot interrupt the others. */
+  private flushCursorReports() {
+    if (this.pendingCursorReports.length === 0)
+      return
+    const reports = this.pendingCursorReports.splice(0)
+    for (const listener of this.cursorListeners) {
+      try {
+        listener(reports)
+      }
+      catch (error) {
+        console.error('[natural-motion] A cursor report listener failed:', errorMessageFrom(error) ?? 'unknown error')
+      }
+    }
+  }
+
   /** Delivers the idle reports gathered since the last delivery; a failing listener cannot interrupt the others. */
   private flushIdleReports() {
     if (this.pendingIdleReports.length === 0)
@@ -728,6 +768,7 @@ export class NaturalMotion {
     if (permission === 'dismiss')
       this.petGlanceUntil = 0
     const attention = this.cursorAttention.step(step, stepStart, { cursor: this.cursor, permission })
+    this.pendingCursorReports.push(...attention.reports)
     const noticedCursor = attention.events.some(event => event.kind === 'notice')
     const mapped = this.mappedCursor
     const proximity = this.cursor !== null && permission === 'full'

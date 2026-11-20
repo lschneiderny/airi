@@ -332,6 +332,14 @@ describe('useMotionQaBridge', () => {
     ])
   })
 
+  it('records a cursor step with its band, opportunity, and the episode it drew', async () => {
+    mind.receive({ kind: 'cursor', report: { requestId: 3, band: 'near', opportunity: 'appeared' } })
+
+    const reply = await dispatch({ name: 'events', input: {} }) as { result: { events: { kind: string, payload: Record<string, unknown> }[] } }
+    expect(reply.result.events).toEqual([expect.objectContaining({ kind: 'mind', payload: expect.objectContaining({ stimulus: 'cursor', band: 'near', opportunity: 'appeared' }) })])
+    expect(JSON.parse(reply.result.events[0].payload.intents as string)).toEqual([expect.objectContaining({ channel: 'gaze', kind: 'cursor-episode', band: 'near', engaging: true })])
+  })
+
   it('records a gate tick with its gate reason, fired category, line kind, and cues, a decline with its cue, and skips an unforced tick that yields nothing', async () => {
     // A new run eases her in, so the first unforced tick holds without an intent.
     mind.receive(voiceTick(false, mindNowMs))

@@ -2,6 +2,7 @@
 import type { TouchReactionIntent, TouchReport } from '@proj-airi/character-mind'
 import type { FaceBaseline } from '@proj-airi/motion-driver-natural/baseline'
 import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
+import type { CursorOrder, CursorReport } from '@proj-airi/motion-driver-natural/cursor-notice'
 import type { IdleBehaviourReport, IdleCueKind, NaturalIdleDrive } from '@proj-airi/motion-driver-natural/idle-activities'
 import type { IdleErrandReport } from '@proj-airi/motion-driver-natural/idle-errands'
 import type { IdleOrder, IdleReport } from '@proj-airi/motion-driver-natural/idle-schedule'
@@ -87,6 +88,7 @@ const emit = defineEmits<{
   idle: [report: IdleBehaviourReport]
   errand: [report: IdleErrandReport]
   idleReports: [reports: readonly IdleReport[]]
+  cursorReports: [reports: readonly CursorReport[]]
 }>()
 
 const componentState = defineModel<'pending' | 'loading' | 'mounted'>('state', { default: 'pending' })
@@ -292,6 +294,7 @@ defineExpose({
   setIdleDrive: (drive: NaturalIdleDrive | null) => live2dModelRef.value?.setIdleDrive(drive),
   idleCue: (kind: IdleCueKind) => live2dModelRef.value?.idleCue(kind),
   idle: (order: IdleOrder) => live2dModelRef.value?.idle(order),
+  cursorEpisode: (order: CursorOrder) => live2dModelRef.value?.cursorEpisode(order),
   answerIdleErrand: (seq: number, outcome: 'done' | 'refused') => live2dModelRef.value?.answerIdleErrand(seq, outcome),
   applySlots: (commands: SlotCommand[], now: number) => live2dModelRef.value?.applySlots(commands, now),
   applyHolds: (commands: HoldCommand[], now: number) => live2dModelRef.value?.applyHolds(commands, now),
@@ -357,6 +360,7 @@ defineExpose({
         @idle="emit('idle', $event)"
         @errand="emit('errand', $event)"
         @idle-reports="emit('idleReports', $event)"
+        @cursor-reports="emit('cursorReports', $event)"
       />
       <Live2DPresenceBubble
         v-if="app"
