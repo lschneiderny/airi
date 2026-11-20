@@ -333,41 +333,17 @@ Recordings and exported traces are private. Write them under `.omo/evidence/`, w
 
 QA gates are committed code in `natural-motion/gates.ts`. Each gate has an `id` and an integer `version`, and lists its metrics, thresholds, windows, trial counts, and seeds. Change a gate only by editing that file, and bump `version` when you do. Reports record the git SHA of the last commit that changed the file, so every verdict names the rules it was judged by.
 
-The liveliness and emotion gate tests in this package run the gates at T0. The qa-tools runners for T1 simulation, T3 rendered transfer, and scorer validation were removed on 2026-11-17, so `natural-emotion` and `natural-emotion-t3` have no rendered runner; `pnpm qa:live2d-rig` runs the real headless rig (T2) without a gate. See [`@proj-airi/qa-tools`](../qa-tools/README.md#t2-status). The committed gate ids are `natural-idle-liveliness`, `natural-talking`, `natural-emotion`, and `natural-emotion-t3`. The T3 emotion gate is version 2 and uses session-stratified placebo windows.
+The liveliness gate test in this package runs the gates at T0. The qa-tools runners for T1 simulation and T3 rendered captures were removed on 2026-11-17; `pnpm qa:live2d-rig` runs the real headless rig (T2) without a gate. See [`@proj-airi/qa-tools`](../qa-tools/README.md#t2-status). The committed gate ids are `natural-idle-liveliness` and `natural-talking`.
 
 | Gate | Id | What it judges |
 | --- | --- | --- |
 | `naturalIdleLivelinessGate` | `natural-idle-liveliness` | Idle liveliness metrics in generated mode, seeds 1-3, 180 s warm-up, 1800 s scored. |
 | `naturalTalkingGate` | `natural-talking` | Talking head speed relative to silence; onset enrichment is reported, not gated. |
-| `emotionGate` | `natural-emotion` | Emotion direction, size relative to the recipe, release, and detectability above idle noise. |
-| `naturalEmotionT3Gate` | `natural-emotion-t3` | Rendered transfer on ForBOOTH, session-stratified placebo null, visibility, T3-to-T1 face-effect ratio, and gross release regression. |
-| `naturalEmotionT3Gate` | `natural-emotion-t3` | Rendered transfer on one rig: angry strong, sad clear, love clear and sleepy strong, 10 pulses each, scored unpaired with the `emotionGate` windows against the placebo windows of each trial's own capture session (v2: session-stratified, `stratifiedUnpairedPValue`). Visibility hits, `E_T3 / E_T1` per face channel, and gross release only; posture is reported. |
 
-Every report states the same limitation. Scores prove direction, size relative to the recipe, release, and detectability above the rig's idle noise. They do not prove naturalness, which stays a visual review. The desk VTS recordings are valid for idle liveliness only.
+Every report states the same limitation. Liveliness scores compare idle motion statistics with the desk VTS reference bands. They do not prove naturalness, which stays a visual review. The desk VTS recordings are valid for idle liveliness only.
 
 Every statistical rendered gate scored from Natural traces uses 3 captures of the same duration on the same build, aggregated per the gate's rule. Single captures are diagnostic only.
 Functional event checks (a parameter rises after a marker, lipsync mouth > threshold, a tool result) are pass/fail runs, not statistical gates.
-
-Score liveliness captures against a committed gate:
-
-```bash
-pnpm -F @proj-airi/stage-ui-live2d exec tsx scripts/score-natural-captures.ts --gate natural-idle-liveliness <trace1.json> <trace2.json> <trace3.json>
-```
-
-The CLI requires at least 3 traces whose spans (last minus first timestamp) differ by at most 1 s. It exits 2 for an unknown gate, a missing argument, invalid traces, or unequal durations. Todo 9 removed the preregistration and file-mtime checks; select the committed rule set with `--gate`.
-Each metric is the median of its non-null measurements, band acceptance is recomputed on that median, and the score is the median of capture scores. The gate passes when no capture has a hard failure and every metric in the gate's `metrics` list passes, exactly as the liveliness gate test judges it; other metrics are reported in `aggregate` only.
-The output JSON holds `gate` (`id`, `version`, `fileSha`), `limitation`, `pass`, `failures`, `durations`, and `aggregate`. The command exits 0 on pass and 1 on fail.
-
-The emotion scorer in `natural-motion/emotion-score.ts` is pure and reads NaturalTrace version 2 files. It has two stages:
-
-- `measureEmotionTrial` measures one trial from its emotion run and the stripped run with the same seed. `measurePlacebos` measures the placebo windows of an emotion-free run. Both produce JSON records.
-- `scoreEmotionGate` turns the records into one result per `ChannelCheck`. `buildEmotionChecks` generates the checks from the recipe table, so a recipe edit changes the expectations with it.
-
-Each result reports significance (a sign-flip permutation test with Holm correction across the run), sign, size relative to the recipe on held-only trials, visibility above the placebo null, and release. A criterion without data is `n/a`, never a pass.
-Every resampling stream is seeded from the gate id and the check key, so results are byte-identical across runs and do not depend on input order.
-A trial is rejected when another emotion event falls within `naturalEmotionLifetime` of its window.
-The face and eyelid release fit uses only held-only trials whose face residue has ended when the fit window starts. The residue is `naturalFaceResidue`: impulse face hints and the glance, each followed by gaze-evoked lid responses.
-Posture has no release check. It decays with `held.postureTau`, and in held-only runs gesture clips (up to 7.5 s) still write the head and body during the release window.
 
 To compare Natural's frame cost before and after a runtime change, run the micro-benchmark from this package on the same machine. It prints the median of 5 runs, each of 10,000 idle adapter compositions on a stub rig:
 
