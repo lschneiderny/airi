@@ -100,7 +100,7 @@ When its steps pass, `--gate` runs the QA those paths need (`gateQaFor` and `gat
 
 - **smoke**, for app runtime paths: `pnpm qa:smoke`, on Linux inside a `qa:display` session named `verify-<pid>` that it stops afterwards. A failure fails the gate. Other platforms report it skipped.
 - **model tests**, for motion paths: `pnpm qa:test:model`. A failure fails the gate; exit 2, no model or rig configured, reports it skipped.
-- **motion affected**, for MMD body paths: `pnpm qa:motion3d affected <merge base> HEAD`. NOT AFFECTED meets the rule; AFFECTED or CANNOT TELL leaves the identity runs in the follow-up list. It reads commits, so uncommitted changes skip it.
+- **motion affected**, for MMD body paths: `pnpm qa:motion3d affected <merge base> HEAD`. The gate reads its `affected <base>..<tip>: <VERDICT>` line, because an error exits 1 or 2 like a verdict does. NOT AFFECTED meets the rule; AFFECTED or CANNOT TELL leaves the identity runs in the follow-up list. Output without a verdict line, or a verdict with another exit code, fails the gate. It reads commits, so uncommitted changes skip it.
 
 A rule whose QA all passed leaves the follow-up list. `--dry-run` prints the QA commands without running them.
 
