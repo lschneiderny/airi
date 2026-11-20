@@ -190,15 +190,14 @@ Each row is behavior where the merged tree differs from upstream.
 
 ## Decisions to revisit
 
-The sync made four decisions while the owner was away. On 2026-11-18 the owner kept all four and asked for them to be recorded for a later decision. Slice CM1 settled one of them, touch on Live2D, in the [character mind core ADR](../adr/2026-11-18-character-mind-core.md). These three remain.
+The sync made four decisions while the owner was away. On 2026-11-18 the owner kept all four and asked for them to be recorded for a later decision. Slice CM1 settled one of them, touch on Live2D, in the [character mind core ADR](../adr/2026-11-18-character-mind-core.md). Slice CM5 settled another, the beat sync layer, in the [character mind music ADR](../adr/2026-11-20-character-mind-music.md). These two remain.
 
 | Decision | Before the sync | What the sync decided | Left to decide | Where |
 | --- | --- | --- | --- | --- |
 | Automatic updates | The fork updated from its own GitHub releases (`2cd360ca2`) | Off in a fork build unless the build sets both `AIRI_UPDATE_FEED_URL` and `AIRI_UPDATE_PUBLIC_KEY` | Whether to bring back updates from the fork's releases, and with which feed and key | `apps/stage-tamagotchi/src/shared/update-source.ts` |
 | Error reports | Not present; upstream's Sentry reporting (#3458) arrived with the sync | Off unless the build sets `AIRI_ERROR_REPORT_DSN` | Whether the fork gets its own error-report project | `apps/stage-tamagotchi/src/shared/error-report-source.ts` |
-| Beat sync layer | Not present; upstream's layer (`543d8dfe3`) arrived with the sync | Inactive under Natural | Roadmap slice CM5 settles music under Natural | `beatSyncMode` in `packages/stage-ui-live2d/src/composables/live2d/motion-manager.ts` |
 
-Open question, not one of the three: fork source still names upstream's analytics endpoints, OpenPanel in `packages/stage-shared/src/analytics/openpanel.ts` and PostHog in `packages/stage-shared/src/analytics/posthog.ts`. They are used only when a build sets `VITE_ENABLE_ANALYTICS` and the user opts in. The owner has not decided on them.
+Open question, not one of the two: fork source still names upstream's analytics endpoints, OpenPanel in `packages/stage-shared/src/analytics/openpanel.ts` and PostHog in `packages/stage-shared/src/analytics/posthog.ts`. They are used only when a build sets `VITE_ENABLE_ANALYTICS` and the user opts in. The owner has not decided on them.
 
 ## At each sync
 
