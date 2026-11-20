@@ -696,7 +696,7 @@ describe('chat history', () => {
     })
 
     await vi.waitFor(() => expect(screen.container.querySelector('strong')?.textContent).toBe('Retry this request'))
-    expect(screen.container.querySelector('button[aria-expanded]')).toBeNull()
+    expect(screen.container.textContent).not.toContain('Show details')
   })
 
   // ROOT CAUSE:
