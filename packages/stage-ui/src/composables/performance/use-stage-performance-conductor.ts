@@ -1,6 +1,7 @@
 import type { CharacterMind, MindIdleIntent, MindIntent, TouchReactionIntent, TouchReport } from '@proj-airi/character-mind'
 import type { FaceBaseline } from '@proj-airi/motion-driver-natural/baseline'
 import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
+import type { CursorOrder, CursorReport } from '@proj-airi/motion-driver-natural/cursor-notice'
 import type { IdleBehaviourKind, IdleCueKind, NaturalIdleDrive } from '@proj-airi/motion-driver-natural/idle-activities'
 import type { IdleOrder, IdleReport, IdleView } from '@proj-airi/motion-driver-natural/idle-schedule'
 import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
@@ -149,6 +150,11 @@ export interface StagePerformanceScene {
    * it in its idle reports. A scene without it, such as a scenario sink, drops the order.
    */
   idle?: (order: IdleOrder) => void
+  /**
+   * Live2D and MMD Natural: plays the cursor episode the character mind drew for one of this scene's cursor reports.
+   * A scene without it drops the order.
+   */
+  cursorEpisode?: (order: CursorOrder) => void
 }
 
 /**
@@ -250,6 +256,8 @@ const browserTimers: Required<StagePerformanceConductorOptions>['timers'] = {
  *   and ignore the gesture field.
  * - Presence and screen-change events reach the mind under every driver (see {@link StagePerformanceConductor.desktop});
  *   only Natural performs the posture intents it answers with.
+ * - A cursor report reaches the mind only under Natural, and its episode returns to this conductor's scene (see
+ *   {@link StagePerformanceConductor.cursor}).
  * - The resting face baseline goes to `scene.setFaceBaseline` for every driver. Natural composes it only while it
  *   drives the face, so Universal and MAGIC hold it without writing.
  *
@@ -505,6 +513,22 @@ export class StagePerformanceConductor {
       return
     }
     this.options.scene()?.idle?.(idleOrderOf(intent))
+  }
+
+  /**
+   * Answers the scene's cursor reports under the Natural driver: the mind steps once per report and draws the
+   * episode, which goes back to this conductor's scene, because cursor geometry belongs to the stage that saw it.
+   * Under another driver the reports are dropped and the mind draws nothing.
+   */
+  cursor(reports: readonly CursorReport[]) {
+    if (this.options.driver() !== 'natural')
+      return
+    for (const report of reports) {
+      for (const intent of this.options.mind.receive({ kind: 'cursor', report })) {
+        if (intent.kind === 'cursor-episode')
+          this.options.scene()?.cursorEpisode?.({ requestId: intent.requestId, episode: intent.episode })
+      }
+    }
   }
 
   /** Hands the scene's idle reports to the mind under the Natural driver; under another one the mind hears the dormant view. */

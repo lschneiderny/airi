@@ -69,6 +69,7 @@ export function useMotionQaEvents(options: {
       const outcomes = step.stimuli.filter(stimulus => stimulus.kind === 'voice-outcome')
       const decision = voiceDecisionOf(step)
       const presence = step.stimuli.find(stimulus => stimulus.kind === 'presence')
+      const cursor = step.stimuli.find(stimulus => stimulus.kind === 'cursor')
       const lines = step.intents.flatMap(intent => intent.channel === 'voice' && intent.kind === 'speak' ? [intent.line.kind] : [])
       const cues = step.intents.flatMap(intent => intent.channel === 'posture' && intent.kind === 'cue' ? [intent.cue] : [])
       record('mind', {
@@ -77,7 +78,7 @@ export function useMotionQaEvents(options: {
         outcome: outcomes.length ? outcomes.map(stimulus => stimulus.outcome).join(',') : null,
         // A JSON array, because a payload holds scalars only. A touch yields at most four intents of about 80
         // characters each, which stays under the 500 characters `record` keeps of a string.
-        // An idle act also names its kind and whether it was requested; an idle errand names its kind.
+        // Idle acts, idle errands, and cursor episodes also name what they decided.
         intents: JSON.stringify(step.intents.map(intent => ({
           channel: intent.channel,
           kind: intent.kind,
@@ -85,6 +86,7 @@ export function useMotionQaEvents(options: {
           cause: intent.cause,
           ...intent.kind === 'idle-act' && { act: intent.act, requested: intent.requested },
           ...intent.kind === 'idle-errand' && { errand: intent.errand },
+          ...intent.kind === 'cursor-episode' && { band: intent.episode.band, engaging: intent.episode.engaging },
         }))),
         // The kinds of the step's spoken lines (`reaction`, `reach-out`, `widget`) and its body cues
         // (`about-to-speak`, `let-go`), comma-separated, or null.
@@ -98,6 +100,8 @@ export function useMotionQaEvents(options: {
         ...ticks.length > 0 && { gate: gate?.reason ?? null, category: gate?.fire ? gate.category : null },
         // Only a presence step carries these: whether the user is away after it, and what woke the computer.
         ...presence && { away: presence.away, wake: presence.wake?.cause ?? null },
+        // Only a cursor step carries these: the band of the cursor and what made the notice possible.
+        ...cursor && { band: cursor.report.band, opportunity: cursor.report.opportunity },
       })
     }),
     options.onIdle(report => record('idle', { phase: report.phase, behaviour: report.behaviour })).off,

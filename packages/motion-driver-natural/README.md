@@ -24,8 +24,9 @@ Times are monotonic seconds; seeded inputs preserve deterministic output.
 The layers are blink, breath, gaze, posture, body, face and face hints,
 impulses, hold, gestures, cue gestures, mood and mood modulation, energy,
 cursor attention, placement, speech emphasis, pending actions, touch and idle
-activities. Each layer draws from
+activities. Each layer that draws does so from
 its own seeded stream, so a change in one layer does not reshuffle another.
+Cursor attention draws nothing: it plays the episodes the character mind draws.
 The controller advances every layer on a fixed 120 Hz grid and interpolates
 between grid states, so the frame rate does not change the motion.
 
@@ -134,9 +135,17 @@ const { seq, behaviour } = motion.idleState
   `drawCursorEpisode(band, random)` decides whether she engages a cursor in a
   `CursorBand` and draws the episode's interest span, notice dwell and
   cooldown, in that order, with the constants it reads. A near cursor always
-  engages and draws no engagement. `NaturalCursorAttention` calls it on its
-  own stream; the lint block `airi/idle-schedule-pure` keeps the module free
-  of clocks, timers and `Math.random`.
+  engages and draws no engagement. `@proj-airi/character-mind` draws it on
+  its own stream; the lint block `airi/idle-schedule-pure` keeps the module
+  free of clocks, timers and `Math.random`. `CursorReport` and `CursorOrder`
+  are the contract with the mind's attention policy.
+- `NaturalCursorAttention` draws nothing. Where a notice is possible it
+  reports a `CursorReport` (band and opportunity) through `onCursorReports`
+  at the end of the `advance`, and starts nothing until the host hands the
+  mind's answer to `cursorEpisode(order, now)`. The order starts the episode
+  at the next grid step, or is dropped when the report is no longer awaited,
+  the cursor left, or permission closed; the next step may then report
+  anew. While it awaits an order it reports no other opportunity.
 - `idleActivityWeights` and `idleActivityRate` in `./idle-schedule`, and
   `idleEnergyOffset` in `./idle-activities`, are the pure rules that turn a
   drive into odds, pace and an energy offset.

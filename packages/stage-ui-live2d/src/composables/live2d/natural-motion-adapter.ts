@@ -1,5 +1,6 @@
 import type { FaceBaseline } from '@proj-airi/motion-driver-natural/baseline'
 import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
+import type { CursorOrder, CursorReport } from '@proj-airi/motion-driver-natural/cursor-notice'
 import type { NaturalFaceOutput } from '@proj-airi/motion-driver-natural/face'
 import type { NaturalTouchRegion } from '@proj-airi/motion-driver-natural/frame-types'
 import type { IdleBehaviourReport, IdleCueKind, NaturalIdleDrive } from '@proj-airi/motion-driver-natural/idle-activities'
@@ -200,6 +201,7 @@ export class Live2DNaturalMotionAdapter {
   private readonly pendingMoods: MoodDose[] = []
   private readonly pendingIdleCues: IdleCueKind[] = []
   private readonly pendingIdleOrders: IdleOrder[] = []
+  private readonly pendingCursorOrders: CursorOrder[] = []
   /** Wake and desktop reaction requests, handed to the controller in order on the next frame. */
   private readonly pendingDesktop: ({ kind: 'wake' } | { kind: 'react', reaction: 'wake' | 'screen-change' })[] = []
   /** The drive the host last set, and the one the controller runs; they differ while Natural is inactive. */
@@ -216,6 +218,8 @@ export class Live2DNaturalMotionAdapter {
   onIdleErrand: ((report: IdleErrandReport) => void) | null = null
   /** Natural's idle reports for the character mind: edges, refusals, and its view when it changed. */
   onIdleReports: ((reports: readonly IdleReport[]) => void) | null = null
+  /** Natural's cursor reports for the character mind: each is a notice the mind answers with `cursorEpisode`. */
+  onCursorReports: ((reports: readonly CursorReport[]) => void) | null = null
   private readonly visibilityChanged = () => {
     this.hidden = this.visibility?.hidden ?? false
     this.frameTime = undefined
@@ -234,6 +238,7 @@ export class Live2DNaturalMotionAdapter {
     this.home = options.home ?? 'product'
     this.controller = new NaturalMotion({ random, seed: options.seed, home: this.home, emotionTable: options.emotionTable })
     this.controller.onIdleReports(reports => this.onIdleReports?.(reports))
+    this.controller.onCursorReports(reports => this.onCursorReports?.(reports))
     this.controller.setSuspended(true, 0)
     this.setRigProfile(rigProfile)
     this.originalFocus = model.updateFocus
@@ -380,6 +385,15 @@ export class Live2DNaturalMotionAdapter {
       this.pendingIdleOrders.push(order)
   }
 
+  /**
+   * Plays the cursor episode the character mind drew for a report, at the next composition. Natural drops an order
+   * whose report it no longer awaits.
+   */
+  cursorEpisode(order: CursorOrder) {
+    if (!this.disposed)
+      this.pendingCursorOrders.push(order)
+  }
+
   /** Forwards the expression-performance switches and tunables to the Natural controller. */
   setPerformanceSettings(settings: ExpressionPerformanceSettings) {
     this.controller.setPerformanceSettings(settings)
@@ -466,6 +480,8 @@ export class Live2DNaturalMotionAdapter {
     // Not gated by `active`: a suspended controller refuses the order, and the mind hears it.
     for (const order of this.pendingIdleOrders.splice(0))
       this.controller.idle(order, this.time)
+    for (const order of this.pendingCursorOrders.splice(0))
+      this.controller.cursorEpisode(order, this.time)
     for (const { seq, outcome } of this.pendingErrandAnswers.splice(0)) {
       if (active)
         this.controller.answerIdleErrand(seq, outcome, this.time)

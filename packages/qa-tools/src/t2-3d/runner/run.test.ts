@@ -77,7 +77,7 @@ it.runIf(process.env.AIRI_QA_MMD_MODEL)('turns toward six gaze targets with incr
       const targetDegrees = side * magnitude
       const { trace } = await runMotion3dScenario({
         model,
-        seed: 1,
+        seed: 8,
         seconds: 6,
         warmupSeconds: 0,
         acts: 'on',
@@ -117,7 +117,8 @@ it.runIf(process.env.AIRI_QA_MMD_MODEL)('turns toward six gaze targets with incr
       const shifts = trace.events.flatMap(event => event.kind === 'marker' && event.label.startsWith('gaze-shift:')
         ? [{ t: event.t, kind: event.label.split(':')[3] }]
         : [])
-      // Seed 1 engages Natural at all six targets, including the medium-distance 80-degree cursor it may also ignore.
+      // Seed 8 is the smallest seed whose draws on the mind's cursor stream engage Natural at all six targets, including the
+      // medium-distance 80-degree cursor it may also ignore.
       const start = shifts.find(shift => shift.t >= 1 && shift.kind === 'sustained')
       if (!start)
         throw new Error(`no sustained look toward ${targetDegrees} degrees after the cue`)

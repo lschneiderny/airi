@@ -688,6 +688,31 @@ describe('stage performance conductor', () => {
       ])
     })
 
+    it('answers cursor reports under Natural on the reporting scene only, and drops them under a basic driver', () => {
+      const mind = new CharacterMind({ seed: 7, clock: () => 10_000 })
+      const stage = (driver: StagePerformanceDriver) => {
+        const scene = { ...fakeScene(), cursorEpisode: vi.fn<NonNullable<StagePerformanceScene['cursorEpisode']>>() }
+        const conductor = new StagePerformanceConductor({ scene: () => scene, driver: () => driver, playMotion: vi.fn(), settings: () => defaultExpressionPerformanceSettings, catalog: () => catalog, seed: 7, mind })
+        return { scene, conductor }
+      }
+      const reporting = stage('natural')
+      const other = stage('natural')
+      const basic = stage('basic')
+      const steps = mind.state.seq
+
+      reporting.conductor.cursor([{ requestId: 4, band: 'near', opportunity: 'appeared' }, { requestId: 5, band: 'far', opportunity: 'moved' }])
+      expect(mind.state.seq).toBe(steps + 2)
+      expect(reporting.scene.cursorEpisode.mock.calls).toEqual([
+        [{ requestId: 4, episode: expect.objectContaining({ band: 'near', engaging: true }) }],
+        [{ requestId: 5, episode: expect.objectContaining({ band: 'far' }) }],
+      ])
+      expect(other.scene.cursorEpisode).not.toHaveBeenCalled()
+
+      basic.conductor.cursor([{ requestId: 1, band: 'near', opportunity: 'appeared' }])
+      expect(basic.scene.cursorEpisode).not.toHaveBeenCalled()
+      expect(mind.state.seq).toBe(steps + 2)
+    })
+
     it('hands idle reports to the mind under Natural, the dormant view once it leaves, and the latest view again on return', () => {
       let driver: StagePerformanceDriver = 'natural'
       const idleReports = vi.fn<NonNullable<StagePerformanceConductorOptions['idleReports']>>()

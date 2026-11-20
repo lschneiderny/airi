@@ -3,7 +3,9 @@ import type { IdleDecision, IdleOrder, IdleScheduleState, IdleView } from '@proj
 import type { MindIdleIntent, MindIdleState, MindIntent, MindRandom, MindState, MindStimulus } from './types'
 
 import { advanceIdleSchedule, applyIdleEdge, initialIdleSchedule, nextIdleDeadline } from '@proj-airi/motion-driver-natural/idle-schedule'
-import { nextRandom, seedRng } from '@proj-airi/stage-shared/situation'
+import { seedRng } from '@proj-airi/stage-shared/situation'
+
+import { checkpointStream, drawSeed } from './random'
 
 type Stimulus<K extends MindStimulus['kind']> = Extract<MindStimulus, { kind: K }>
 interface Answer { state: MindState, intents: MindIntent[] }
@@ -20,28 +22,7 @@ export function initialMindIdleState(): MindIdleState {
   return { view: null, activeSeconds: 0, atMs: null, schedule: initialIdleSchedule(), pending: null, started: null, random: null }
 }
 
-/** A stream over the idle checkpoint; `checkpoint()` reads where it stopped. */
-function idleStream(start: number) {
-  let checkpoint = start
-  return {
-    random: (): number => {
-      const [value, next] = nextRandom(checkpoint)
-      checkpoint = next
-      return value
-    },
-    checkpoint: () => checkpoint,
-    restore: (to: number) => {
-      checkpoint = to
-    },
-  }
-}
-
-type IdleStream = ReturnType<typeof idleStream>
-
-/** A 32-bit seed for the shape of one act. */
-function drawSeed(random: MindRandom) {
-  return Math.floor(random() * 2 ** 32) >>> 0
-}
+type IdleStream = ReturnType<typeof checkpointStream>
 
 /**
  * Runs the schedule from `from` to `to` in pieces that end at its deadlines, so the rate is constant over each piece and
@@ -94,7 +75,7 @@ function runSchedule(schedule: IdleScheduleState, view: IdleView, from: number, 
 function decide(idle: MindIdleState, from: number, id: string, cause: number): { idle: MindIdleState, intents: MindIntent[] } {
   if (idle.view === null || !idle.view.active || idle.random === null || idle.pending !== null)
     return { idle, intents: [] }
-  const stream = idleStream(idle.random)
+  const stream = checkpointStream(idle.random)
   const { schedule, decision, at } = runSchedule(idle.schedule, idle.view, from, idle.activeSeconds, stream)
   let intent: MindIntent | null = null
   // The seed is drawn after the decision's own draws.
@@ -136,7 +117,7 @@ function seeded(idle: MindIdleState, rng: MindRandom): MindIdleState {
  */
 export function answerIdle(state: MindState, stimulus: Stimulus<'idle'>, cause: number, rng: MindRandom): Answer {
   let idle = seeded(state.idle, rng)
-  const stream = idleStream(idle.random!)
+  const stream = checkpointStream(idle.random!)
   const at = idle.activeSeconds
   let { schedule, pending, started, view } = idle
   for (const report of stimulus.reports) {
@@ -183,7 +164,7 @@ export function answerIdle(state: MindState, stimulus: Stimulus<'idle'>, cause: 
 /** A requested play starts at once; the performer keeps its own test, and its `started` report stamps the cooldowns. */
 export function answerIdlePlay(state: MindState, stimulus: Stimulus<'idle-play'>, cause: number, rng: MindRandom): Answer {
   const idle = seeded(state.idle, rng)
-  const stream = idleStream(idle.random!)
+  const stream = checkpointStream(idle.random!)
   const seed = drawSeed(stream.random)
   return {
     state: { ...state, idle: { ...idle, random: stream.checkpoint() } },

@@ -17,6 +17,7 @@ import type { MotionTraceEvent } from '@proj-airi/motion-driver-humanoid/motion-
 import type { BodyIntent } from '@proj-airi/motion-driver-humanoid/types'
 import type { FaceBaseline } from '@proj-airi/motion-driver-natural/baseline'
 import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
+import type { CursorOrder, CursorReport } from '@proj-airi/motion-driver-natural/cursor-notice'
 import type { NaturalEmotionStrengths } from '@proj-airi/motion-driver-natural/emotion-strengths'
 import type { IdleBehaviourReport, IdleCueKind, NaturalIdleDrive } from '@proj-airi/motion-driver-natural/idle-activities'
 import type { IdleErrandKind } from '@proj-airi/motion-driver-natural/idle-errands'
@@ -170,6 +171,8 @@ const emit = defineEmits<{
   (e: 'idle', report: IdleBehaviourReport): void
   /** Natural's idle reports for the character mind, once per frame that had one. */
   (e: 'idleReports', reports: readonly IdleReport[]): void
+  /** Natural's cursor reports for the character mind, once per frame that had one. */
+  (e: 'cursorReports', reports: readonly CursorReport[]): void
   /** Something her body did on its own started or ended: sitting down, sleeping, a walk of her own, an unasked clip. */
   (e: 'self', report: MMDSelfReport): void
   /** The character's projected rect in work-area DIP changed (stage mode only). */
@@ -302,6 +305,7 @@ let emote: ReturnType<typeof useMMDEmote> | undefined
 let morphRuntime: ReturnType<typeof createMMDMorphRuntime> | undefined
 let natural: MMDNaturalAdapter | undefined
 let stopNaturalIdleReports: (() => void) | undefined
+let stopNaturalCursorReports: (() => void) | undefined
 
 /**
  * Replaces the Natural adapter, or drops it with `undefined`. The mind hears the dormant view for the old one, so it
@@ -310,10 +314,13 @@ let stopNaturalIdleReports: (() => void) | undefined
 function replaceNatural(next: MMDNaturalAdapter | undefined) {
   stopNaturalIdleReports?.()
   stopNaturalIdleReports = undefined
+  stopNaturalCursorReports?.()
+  stopNaturalCursorReports = undefined
   if (natural)
     emit('idleReports', [{ kind: 'view', view: dormantIdleView() }])
   natural = next
   stopNaturalIdleReports = next?.onIdleReports(reports => emit('idleReports', reports))
+  stopNaturalCursorReports = next?.onCursorReports(reports => emit('cursorReports', reports))
 }
 let traceSource: MMDMotionTraceSource | null = null
 let stopTraceEvents: (() => void) | undefined
@@ -1850,6 +1857,8 @@ defineExpose({
   idleCue: (kind: IdleCueKind) => natural?.idleCue(kind),
   /** Natural only: plays what the character mind's idle policy decided; Natural answers it in `idleReports`. */
   idle: (order: IdleOrder) => natural?.idle(order),
+  /** Natural only: plays the cursor episode the character mind drew for a `cursorReports` report. */
+  cursorEpisode: (order: CursorOrder) => natural?.cursorEpisode(order),
   onSpeech: (event: SpeechEvent, turnId: string, now: number) => {
     expressions.onSpeech(event, turnId, now)
     natural?.onSpeech(event, turnId, now)

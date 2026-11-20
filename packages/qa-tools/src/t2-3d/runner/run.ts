@@ -92,16 +92,20 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
     const natural = new MMDNaturalAdapter(modelKey)
     const idleDrive = options.acts === 'on' ? options.scenario.idleDrive ?? null : null
     let naturalSeconds = 0
-    // The mind decides idle as in the app: Natural's reports go in, and its idle intents come back as orders. Without a
-    // drive the view stays dormant and the mind decides nothing.
+    // The mind decides idle and cursor notice as in the app: Natural's reports go in, and its idle and cursor episode
+    // intents come back as orders at the next frame. Without a drive the idle view stays dormant and the mind decides
+    // no idle act.
     const mind = new CharacterMind({ seed: deriveSeed(options.seed, mindSeedLayer), clock: () => naturalSeconds * 1000 })
     const perform = (intents: ReturnType<CharacterMind['receive']>) => {
       for (const intent of intents) {
         if (intent.kind === 'idle-act' || intent.kind === 'idle-errand')
           natural.idle(idleOrderOf(intent))
+        else if (intent.kind === 'cursor-episode')
+          natural.cursorEpisode({ requestId: intent.requestId, episode: intent.episode })
       }
     }
     natural.onIdleReports(reports => perform(mind.receive({ kind: 'idle', reports })))
+    natural.onCursorReports(reports => reports.forEach(report => perform(mind.receive({ kind: 'cursor', report }))))
     const stance = new MMDStanceDirector()
     const sampler = createMMDMotionTraceSampler(mmd, rig, pose)
     sampler.rig.id = modelKey

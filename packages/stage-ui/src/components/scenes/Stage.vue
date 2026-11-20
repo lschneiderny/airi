@@ -1214,6 +1214,7 @@ defineExpose({
         @idle="onIdle"
         @errand="idleProps.onErrand"
         @idle-reports="performanceConductor.idleReport($event)"
+        @cursor-reports="performanceConductor.cursor($event)"
       />
       <ThreeScene
         v-if="stageModelRenderer === 'vrm' && showStage"
@@ -1294,6 +1295,7 @@ defineExpose({
         @touch="performanceConductor.touch($event)"
         @idle="onIdle"
         @idle-reports="performanceConductor.idleReport($event)"
+        @cursor-reports="performanceConductor.cursor($event)"
         @self="stageSelf.report"
         @placement="emit('placement', $event)"
         @root="emit('root', $event)"

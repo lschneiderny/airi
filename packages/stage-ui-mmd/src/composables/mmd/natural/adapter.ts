@@ -1,5 +1,6 @@
 import type { FaceBaseline } from '@proj-airi/motion-driver-natural/baseline'
 import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
+import type { CursorOrder, CursorReport } from '@proj-airi/motion-driver-natural/cursor-notice'
 import type { NaturalEmotionStrengths } from '@proj-airi/motion-driver-natural/emotion-strengths'
 import type { NaturalMotionObserver, NaturalTouchRegion } from '@proj-airi/motion-driver-natural/frame-types'
 import type { IdleBehaviourReport, IdleCueKind, NaturalIdleDrive } from '@proj-airi/motion-driver-natural/idle-activities'
@@ -76,6 +77,7 @@ export class MMDNaturalAdapter {
   private readonly pendingMoods: MoodDose[] = []
   private readonly pendingIdleCues: IdleCueKind[] = []
   private readonly pendingIdleOrders: IdleOrder[] = []
+  private readonly pendingCursorOrders: CursorOrder[] = []
   private idleDrive: NaturalIdleDrive | null = null
   private appliedIdleDrive: NaturalIdleDrive | null = null
   private readonly idleReports = new IdleBehaviourReports()
@@ -125,6 +127,8 @@ export class MMDNaturalAdapter {
       this.natural.idleCue(cue, this.time)
     for (const order of this.pendingIdleOrders.splice(0))
       this.natural.idle(order, this.time)
+    for (const order of this.pendingCursorOrders.splice(0))
+      this.natural.cursorEpisode(order, this.time)
     // Before the performance state, whose energy the drive moves. Forwarded on change only.
     if (this.idleDrive !== this.appliedIdleDrive) {
       this.appliedIdleDrive = this.idleDrive
@@ -174,6 +178,19 @@ export class MMDNaturalAdapter {
   /** Calls `listener` with Natural's idle reports for the character mind; returns the function that stops it. */
   onIdleReports(listener: (reports: readonly IdleReport[]) => void): () => void {
     return this.natural.onIdleReports(listener)
+  }
+
+  /**
+   * Plays the cursor episode the character mind drew for a report, at the next frame. Natural drops an order whose
+   * report it no longer awaits.
+   */
+  cursorEpisode(order: CursorOrder): void {
+    this.pendingCursorOrders.push(order)
+  }
+
+  /** Calls `listener` with Natural's cursor reports for the character mind; returns the function that stops it. */
+  onCursorReports(listener: (reports: readonly CursorReport[]) => void): () => void {
+    return this.natural.onCursorReports(listener)
   }
 
   /** The idle behaviours that started or ended in the latest frame. */

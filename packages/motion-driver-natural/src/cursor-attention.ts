@@ -1,8 +1,5 @@
-import type { CursorBand, CursorEpisode } from './cursor-notice'
+import type { CursorBand, CursorEpisode, CursorOpportunity, CursorOrder, CursorReport } from './cursor-notice'
 import type { GazePoint } from './gaze'
-import type { RandomStream } from './random'
-
-import { drawCursorEpisode } from './cursor-notice'
 
 /** Head widths controlling radial soft saturation. */
 export const softRadius = 1.2
@@ -69,9 +66,14 @@ export interface CursorAttentionResult {
   phase: 'idle' | 'notice' | 'full' | 'ignored'
   oriented: boolean
   events: CursorAttentionEvent[]
+  /** The notice this step made possible, for the character mind to answer with an order; at most one. */
+  reports: CursorReport[]
 }
 
-/** Seeded attention on monotonic active seconds; only a non-null episode start draws. */
+/**
+ * Attention on monotonic active seconds. It draws nothing: each opportunity becomes a {@link CursorReport}, and the
+ * character mind's {@link CursorOrder} starts the episode at the grid step after it arrives.
+ */
 export class NaturalCursorAttention {
   private weight = 0
   private phase: CursorAttentionResult['phase'] = 'idle'
@@ -83,11 +85,19 @@ export class NaturalCursorAttention {
   private episode: CursorEpisode | null = null
   private startedAt = 0
   private cooldownUntil = 0
+  /** The report waiting for its order; no other opportunity is reported while it waits. */
+  private awaiting: number | null = null
+  private requestSeq = 0
+  private readonly orders: CursorOrder[] = []
 
-  constructor(private readonly random: RandomStream) {}
+  /** Queues the mind's answer to a report; the next step applies it, or drops it when it no longer matches. */
+  order(order: CursorOrder) {
+    this.orders.push(order)
+  }
 
   step(dt: number, at: number, input: CursorAttentionInput): CursorAttentionResult {
     const events: CursorAttentionEvent[] = []
+    const reports: CursorReport[] = []
     const { cursor, permission } = input
     const wasOriented = this.phase === 'notice' || this.phase === 'full'
     const appeared = cursor !== null && !this.present
@@ -103,10 +113,8 @@ export class NaturalCursorAttention {
 
     const band: CursorBand = this.distance <= nearDistance ? 'near' : this.distance <= farDistance ? 'medium' : 'far'
     const rank = { near: 0, medium: 1, far: 2 }
-    const nearer = cursor !== null && this.episode !== null && rank[band] < rank[this.episode.band]
     const reopened = permission === 'full' && this.permission !== 'full' && cursor !== null && at - this.lastMovedAt < restHold
     const restarted = moved && restBeforeMove >= restHold
-    const ready = at >= this.cooldownUntil
 
     if (permission === 'dismiss' && this.permission !== 'dismiss' && wasOriented) {
       events.push({ kind: 'dismiss', at, distance: this.distance })
@@ -114,22 +122,40 @@ export class NaturalCursorAttention {
       this.cooldownUntil = at + (this.episode?.cooldown ?? 0)
     }
 
-    if (permission === 'full' && cursor !== null) {
-      if (nearer || ((appeared || restarted || ((this.phase === 'idle' || this.phase === 'ignored') && moved)) && ready && !reopened)) {
-        this.episode = drawCursorEpisode(band, this.random)
-        // An ignored episode has no interest to release, so its cooldown starts now.
-        if (!this.episode.engaging)
-          this.cooldownUntil = at + this.episode.cooldown
-        this.start(at, events)
+    for (const order of this.orders.splice(0)) {
+      if (order.requestId !== this.awaiting)
+        continue
+      this.awaiting = null
+      if (permission !== 'full' || cursor === null)
+        continue
+      this.episode = order.episode
+      // An ignored episode has no interest to release, so its cooldown starts now.
+      if (!this.episode.engaging)
+        this.cooldownUntil = at + this.episode.cooldown
+      this.start(at, events)
+    }
+
+    if (permission === 'full' && cursor !== null && this.awaiting === null) {
+      // The running episode's band is read after an order applied, so a nearer cursor is compared with it.
+      const nearer = this.episode !== null && rank[band] < rank[this.episode.band]
+      const ready = at >= this.cooldownUntil
+      let opportunity: CursorOpportunity | null = null
+      if (nearer) {
+        opportunity = 'nearer'
+      }
+      else if ((appeared || restarted || ((this.phase === 'idle' || this.phase === 'ignored') && moved)) && ready && !reopened) {
+        opportunity = appeared ? 'appeared' : restarted ? 'restarted' : 'moved'
       }
       else if (reopened) {
         // Permission loss does not reroll whether this cursor was worth noticing.
-        if (this.episode === null) {
-          this.episode = drawCursorEpisode(band, this.random)
-          if (!this.episode.engaging)
-            this.cooldownUntil = at + this.episode.cooldown
-        }
-        this.start(at, events)
+        if (this.episode === null)
+          opportunity = 'reopened'
+        else
+          this.start(at, events)
+      }
+      if (opportunity !== null) {
+        this.awaiting = ++this.requestSeq
+        reports.push({ requestId: this.awaiting, band, opportunity })
       }
     }
 
@@ -158,7 +184,7 @@ export class NaturalCursorAttention {
 
     this.present = cursor !== null
     this.permission = permission
-    return { weight: this.weight, phase: this.phase, oriented: this.phase === 'notice' || this.phase === 'full', events }
+    return { weight: this.weight, phase: this.phase, oriented: this.phase === 'notice' || this.phase === 'full', events, reports }
   }
 
   private start(at: number, events: CursorAttentionEvent[]) {

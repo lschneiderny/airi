@@ -1,3 +1,4 @@
+import type { CursorEpisode, CursorReport } from '@proj-airi/motion-driver-natural/cursor-notice'
 import type { IdleBehaviourKind } from '@proj-airi/motion-driver-natural/idle-activities'
 import type { IdleErrandKind } from '@proj-airi/motion-driver-natural/idle-errands'
 import type { IdleReport, IdleScheduleState, IdleView } from '@proj-airi/motion-driver-natural/idle-schedule'
@@ -85,6 +86,8 @@ export type MindStimulus
     | { kind: 'idle-wake' }
   /** The user or the devtools lab asks her to play an idle act now. */
     | { kind: 'idle-play', act: IdleBehaviourKind }
+  /** The reporting Natural performer could notice the cursor; the mind answers with a `cursor-episode`. */
+    | { kind: 'cursor', report: CursorReport }
 
 interface IntentBase {
   /** Unique among the intents of one mind since its initial state. */
@@ -128,6 +131,8 @@ export type MindIntent
     | (IntentBase & { channel: 'posture', kind: 'idle-act', act: IdleBehaviourKind, seed: number, requested: boolean })
   /** Start an idle errand. `pick` chooses among the realiser's candidates; `holdSeconds` is the pastime hold, null for other errands. */
     | (IntentBase & { channel: 'posture', kind: 'idle-errand', errand: IdleErrandKind, pick: number, holdSeconds: number | null })
+  /** The cursor episode for the report `requestId`: whether she engages, its span, dwell, and cooldown. Only the reporting performer plays it. */
+    | (IntentBase & { channel: 'gaze', kind: 'cursor-episode', requestId: number, episode: CursorEpisode })
 
 /** The posture intent a scene performs for a touch. */
 export type TouchReactionIntent = Extract<MindIntent, { kind: 'touch-reaction' }>
@@ -154,6 +159,11 @@ export interface MindState {
   /** When the last screen-change reaction was stamped, in epoch milliseconds. */
   desktop: { screenReactAtMs: number | null }
   idle: MindIdleState
+  /**
+   * The checkpoint of the attention policy's own stream, seeded by one draw of `rng` at the first `cursor` stimulus;
+   * null before it. Cursor reports come at any rate, so their draws stay apart from the other channels'.
+   */
+  attention: { random: number | null }
   /** Saved by the host. The core keeps `slow.pacing` equal to her pacing in the gate memory and replaces the object only when a field changed. */
   slow: MindSlowState
 }
