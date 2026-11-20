@@ -1079,8 +1079,6 @@ export function useStagePerformanceConductor(options: Pick<StagePerformanceCondu
     const now = new Date()
     conductor.idleDrive({
       ...idleDriveOf(options.characterReading?.() ?? null, now.getTime(), now.getHours() + now.getMinutes() / 60),
-      // The character mind hears music as a stimulus, so the drive no longer carries it.
-      music: false,
       // The scene narrows this, and the user's setting turns the drive off.
       rate: 1,
     })

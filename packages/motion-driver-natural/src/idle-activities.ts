@@ -32,7 +32,7 @@ export type DrawnIdleActivityKind = Exclude<IdleActivityKind, 'sleep'>
 
 /**
  * What shapes her idle behaviour, set by the host from the slower character state and the desktop.
- * A neutral drive (all zero, no music) is a rested daytime character who talked a moment ago.
+ * A neutral drive (all zero) is a rested daytime character who talked a moment ago.
  */
 export interface NaturalIdleDrive {
   /** Slow mood energy relative to her resting disposition, -1 (drained) to 1 (buzzing). */
@@ -45,8 +45,6 @@ export interface NaturalIdleDrive {
   sleepiness: number
   /** 0 right after an exchange, 1 after a long time without one. */
   solitude: number
-  /** Other applications are playing audio she can sway to. */
-  music: boolean
   /** Multiplies how often activities start; 1 is the default pace, 0 leaves only sleep and cues. */
   rate: number
   /**

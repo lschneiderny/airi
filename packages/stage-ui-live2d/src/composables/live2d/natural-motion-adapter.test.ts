@@ -986,7 +986,7 @@ describe('natural motion adapter', () => {
 })
 
 describe('natural motion adapter idle behaviour', () => {
-  const drive = { energy: 0, valence: 0, tension: 0, sleepiness: 0, solitude: 0, music: false, rate: 0 }
+  const drive = { energy: 0, valence: 0, tension: 0, sleepiness: 0, solitude: 0, rate: 0 }
 
   let orders = 0
   /** An act order as the character mind sends it. */

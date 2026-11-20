@@ -10,7 +10,7 @@ import { NaturalMotion } from './natural-motion'
 import { createRandomStream } from './random'
 
 const dt = 1 / 120
-const neutralDrive: NaturalIdleDrive = { energy: 0, valence: 0, tension: 0, sleepiness: 0, solitude: 0, music: false, rate: 1 }
+const neutralDrive: NaturalIdleDrive = { energy: 0, valence: 0, tension: 0, sleepiness: 0, solitude: 0, rate: 1 }
 const idleInput: IdleStepInput = { mode: 'idle', away: false, blocked: false, interrupt: false, rouse: false, wake: false, placement: 0, screenPoint: { x: 0, y: -0.18 } }
 const idleState = { mode: 'idle', attention: 'camera', away: false } as const
 
@@ -169,7 +169,7 @@ describe('idle activity layer', () => {
 
   it('hands every channel back without a jump when an act runs its course', () => {
     for (const kind of ['stretch', 'yawn', 'look-around', 'check-in', 'peer', 'zone-out', 'nod-off', 'sway'] as const) {
-      const { idle, run } = layer(7, { ...neutralDrive, music: true })
+      const { idle, run } = layer(7, neutralDrive)
       idle.order(act(kind))
       run(0.1)
       run(60, idleInput, () => idle.behaviour === null)
@@ -607,7 +607,7 @@ describe('idle activities in the controller', () => {
   it('keeps every pose channel in range through half an hour of activities', () => {
     const kinds = ['stretch', 'yawn', 'look-around', 'check-in', 'peer', 'zone-out', 'nod-off', 'sway'] as const
     const motion = new NaturalMotion({ seed: 9 })
-    motion.setIdleDrive({ ...neutralDrive, sleepiness: 0.8, music: true, energy: 0.4 }, 0)
+    motion.setIdleDrive({ ...neutralDrive, sleepiness: 0.8, energy: 0.4 }, 0)
     motion.setPerformance(idleState, 0.5, 0)
     for (let step = 1; step <= 1800 * 30; step++) {
       // A new act every 25 s, each with its own seed; one still running refuses it.
