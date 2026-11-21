@@ -101,6 +101,31 @@ describe('mmd Natural adapter', () => {
     expect(adapter.bodyFrame.intent.idle.behaviour?.kind).toBe('shoulder-roll')
   })
 
+  it('hands queued beats to Natural at the next frame, so a sway started on them plays on the beat', () => {
+    const { adapter } = fixture()
+    // No cursor holds her gaze, so she is free for the sway.
+    const quiet = { ...input, performance: { ...input.performance, attention: 'camera' }, cursor: null } as const
+    const locks: number[] = []
+    adapter.onEvent((event) => {
+      if (event.kind === 'groove-lock')
+        locks.push(event.beatsPerCycle)
+    })
+    adapter.setIdleDrive({ energy: 0, valence: 0, tension: 0, sleepiness: 0, solitude: 0, rate: 1, body: true })
+    for (let frame = 1; frame <= 6 * 60; frame++) {
+      if (frame % 30 === 0)
+        adapter.beat(0.5)
+      adapter.advance(1 / 60, quiet)
+    }
+    adapter.idle({ id: 'groove', kind: 'act', act: 'sway', seed: 1, requested: true })
+    expect(adapter.bodyFrame.intent.idle.groovePhase).toBeNull()
+    // The order reaches Natural at the next frame and starts at its first grid step after it.
+    adapter.advance(1 / 60, quiet)
+    adapter.advance(1 / 60, quiet)
+    expect(adapter.bodyFrame.intent.idle.behaviour?.kind).toBe('sway')
+    expect(locks).toEqual([4])
+    expect(adapter.bodyFrame.intent.idle.groovePhase).toEqual(expect.any(Number))
+  })
+
   it('emits Natural\'s cursor reports and plays the mind\'s order from the next frame', () => {
     const { adapter } = fixture()
     const reports: CursorReport[] = []

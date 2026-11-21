@@ -383,3 +383,37 @@ describe('the act layer', () => {
     expect(awake.shifts.at(-1)).toBeGreaterThan(awake.shifts[from] + 5)
   })
 })
+
+describe('the sway on the beat', () => {
+  const sway = record('sway', 10, { period: 2 })
+  /** The sway from `START`; `phase` gives Natural's bound phase at `t` seconds after the act's first tick, or null. */
+  function swaying(phase: (age: number) => number | null) {
+    let first: number | null = null
+    return (t: number): BodyPerformanceInput => {
+      const input = quietInput(t)
+      if (t < START)
+        return input
+      first ??= t
+      return { ...input, idle: sway, groovePhase: phase(t - first) }
+    }
+  }
+  const closedForm = (age: number) => 2 * Math.PI * age / sway.period
+  const largest = (a: Float32Array[], b: Float32Array[]) => Math.max(...a.map((tick, i) => Math.max(...tick.map((value, channel) => Math.abs(value - b[i][channel])))))
+
+  it('plays a bound sway at Natural\'s phase and an unbound one at its closed form', () => {
+    const unbound = run(chisaTraits, swaying(() => null), START + 12)
+    // Natural's phase at the closed form's rate and origin draws the same body.
+    expect(largest(run(chisaTraits, swaying(closedForm), START + 12).channels, unbound.channels)).toBeLessThan(1e-5)
+    // Half a cycle later is the other side.
+    expect(largest(run(chisaTraits, swaying(age => closedForm(age) + Math.PI), START + 12).channels, unbound.channels)).toBeGreaterThan(1e-3)
+  })
+
+  it('carries a bound sway on at its last rate when the phase stops, and never binds one that started without it', () => {
+    const steady = run(chisaTraits, swaying(age => closedForm(age) + 1), START + 12)
+    const stopped = run(chisaTraits, swaying(age => age < 5 ? closedForm(age) + 1 : null), START + 12)
+    expect(largest(stopped.channels, steady.channels)).toBeLessThan(1e-4)
+    const unbound = run(chisaTraits, swaying(() => null), START + 12)
+    const late = run(chisaTraits, swaying(age => age < 1 ? null : closedForm(age) + 1), START + 12)
+    expect(largest(late.channels, unbound.channels)).toBe(0)
+  })
+})

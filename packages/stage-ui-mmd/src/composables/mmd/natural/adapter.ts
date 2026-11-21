@@ -80,6 +80,7 @@ export class MMDNaturalAdapter {
   private readonly pendingCursorOrders: CursorOrder[] = []
   /** Chat reads the character mind decided; applied after the frame's chat input, so an unfolded chat has its target. */
   private readonly pendingChatReads: NaturalChatRead[] = []
+  private readonly pendingBeats: number[] = []
   private idleDrive: NaturalIdleDrive | null = null
   private appliedIdleDrive: NaturalIdleDrive | null = null
   private readonly idleReports = new IdleBehaviourReports()
@@ -131,6 +132,8 @@ export class MMDNaturalAdapter {
       this.natural.idle(order, this.time)
     for (const order of this.pendingCursorOrders.splice(0))
       this.natural.cursorEpisode(order, this.time)
+    for (const intervalSeconds of this.pendingBeats.splice(0))
+      this.natural.beat(intervalSeconds, this.time)
     // Before the performance state, whose energy the drive moves. Forwarded on change only.
     if (this.idleDrive !== this.appliedIdleDrive) {
       this.appliedIdleDrive = this.idleDrive
@@ -177,6 +180,14 @@ export class MMDNaturalAdapter {
    */
   idle(order: IdleOrder): void {
     this.pendingIdleOrders.push(order)
+  }
+
+  /**
+   * A beat the music detector heard, `intervalSeconds` after its previous beat, handed to Natural's beat clock at the
+   * next frame on this adapter's motion time, so a bound groove plays on it.
+   */
+  beat(intervalSeconds: number): void {
+    this.pendingBeats.push(intervalSeconds)
   }
 
   /** Calls `listener` with Natural's idle reports for the character mind; returns the function that stops it. */
