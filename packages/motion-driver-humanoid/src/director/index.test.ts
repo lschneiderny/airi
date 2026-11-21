@@ -47,6 +47,7 @@ function input(overrides: Partial<DirectorInput> = {}): DirectorInput {
     slots: { sit: true, sleep: true },
     ground: null,
     rootX: 0,
+    restX: null,
     homeX: 0,
     locomotionMode: 'idle',
     clipOwnsRoot: false,
@@ -379,13 +380,28 @@ describe('body director home, goals, roam and tools', () => {
     expect(later.intent.locomotion.goalX).toBe(11)
   })
 
-  it('ends a chase goal when the cursor comes within one leg, before the goal dwell', () => {
+  it('ends a chase goal before the goal dwell once her rest point reaches a cursor within one leg', () => {
     const base = { interactionSeq: 1, attendUntilMs: 60_000, cursorOnStage: true }
     const first = decide(world({ ...base, nowMs: 1_000, cursorX: 8 }))
-    const landed = decide(world({ ...base, nowMs: 2_000, rootX: 3, locomotionMode: 'walking', cursorX: 3.5 }), first.memory)
+    const walking = { ...base, rootX: 3, locomotionMode: 'walking' as const, cursorX: 3.5 }
+    const short = decide(world({ ...walking, nowMs: 2_000, restX: 3.49 }), first.memory)
+    const reached = decide(world({ ...walking, nowMs: 2_008, restX: 3.5 }), short.memory)
+    const behind = decide(world({ ...walking, nowMs: 2_000, restX: 3.4, cursorX: 2.9 }), first.memory)
 
-    expect(2_000 - 1_000).toBeLessThan(GOAL_MIN_DWELL_MS)
-    expect(landed.intent.locomotion).toMatchObject({ goalX: null, reason: 'stay' })
+    expect(2_008 - 1_000).toBeLessThan(GOAL_MIN_DWELL_MS)
+    expect(short.intent.locomotion).toMatchObject({ goalX: 7, reason: 'approach-cursor' })
+    expect(reached.intent.locomotion).toMatchObject({ goalX: null, reason: 'stay' })
+    expect(behind.intent.locomotion).toMatchObject({ goalX: null, reason: 'stay' })
+  })
+
+  it('walks on a chase that has not set off until her rest point reaches a cursor ahead, and ends it for one under her', () => {
+    const base = { interactionSeq: 1, attendUntilMs: 60_000, cursorOnStage: true }
+    const first = decide(world({ ...base, nowMs: 1_000, cursorX: 8 }))
+    const ahead = decide(world({ ...base, nowMs: 1_100, locomotionMode: 'starting', restX: 0, cursorX: 0.5 }), first.memory)
+    const under = decide(world({ ...base, nowMs: 1_100, locomotionMode: 'starting', restX: 0, cursorX: 0 }), first.memory)
+
+    expect(ahead.intent.locomotion).toMatchObject({ goalX: 7, reason: 'approach-cursor' })
+    expect(under.intent.locomotion).toMatchObject({ goalX: null, reason: 'stay' })
   })
 
   it('issues no chase while the cursor stays within one leg', () => {

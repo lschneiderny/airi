@@ -46,6 +46,7 @@ function simulate(scenario: PressScenario) {
   let planted = bindFeet(0)
   let memory: BodyDirectorMemory = initialBodyDirectorMemory
   let rootX = 0
+  let restX: number | null = null
   let gait: BodyDirectorInput['locomotionMode'] = 'idle'
   let aim: number | null = null
   let lastMovingS = 0
@@ -65,6 +66,7 @@ function simulate(scenario: PressScenario) {
       slots: { sit: false, sleep: false },
       ground: { minX: -60 * leg, maxX: 60 * leg },
       rootX,
+      restX,
       homeX: 0,
       locomotionMode: gait,
       roamMode: 'roam',
@@ -89,12 +91,14 @@ function simulate(scenario: PressScenario) {
     if (Math.abs(frame.root.position.x - rootX) > restEpsilon)
       lastMovingS = t
     rootX = frame.root.position.x
+    restX = frame.restX
     gait = frame.mode
     maxTravel = Math.max(maxTravel, Math.abs(rootX))
   }
   return {
     restAfterLandingS: Math.max(0, lastMovingS - scenario.landAtS),
     offsetLegs: Math.abs(rootX - (aim ?? 0)) / leg,
+    goalX: memory.goalX,
     maxTravelLegs: maxTravel / leg,
   }
 }
@@ -105,6 +109,13 @@ describe('body director press loop', () => {
 
     expect(result.restAfterLandingS).toBeLessThanOrEqual(1)
     expect(result.offsetLegs).toBeLessThanOrEqual(0.5)
+  })
+
+  it.each([1, 2, 4])('comes to rest on a pointer that lands 0.5 L ahead of her %i s into a chase', (landAtS) => {
+    const result = simulate({ mode: 'watching', landAtS, farX: 8 * leg, landOffset: 0.5 * leg, chase: true, wanderAtS: null })
+
+    expect(result.offsetLegs).toBeLessThanOrEqual(0.02)
+    expect(result.goalX).toBeNull()
   })
 
   it('does not move for a visit while the pointer rests on her', () => {

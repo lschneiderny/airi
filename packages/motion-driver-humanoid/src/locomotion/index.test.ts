@@ -4,7 +4,7 @@ import type { GaitTraits, GaitVariability, LocomotionFrame, LocomotionInput } fr
 
 import { describe, expect, it } from 'vitest'
 
-import { createLocomotion } from './index'
+import { brakingDistance, createLocomotion } from './index'
 
 // L = 10 fixture from design notes B.2: the bind hip sits 10 units above each ankle.
 const legLength = 10
@@ -366,6 +366,27 @@ describe('procedural gait', () => {
       expect(last.feet.left.planted && last.feet.right.planted, name).toBe(true)
       const gap = foreAft(last, last.feet.left.target.position) - foreAft(last, last.feet.right.target.position)
       expect(Math.abs(gap), name).toBeLessThan(0.05 * legLength)
+    }
+  })
+
+  it('braking distance: the slide from v_ref is v_ref^2 / 2 a_max less half a tick of travel, and none from rest', () => {
+    expect(brakingDistance(referenceSpeed, legLength)).toBeCloseTo(referenceSpeed ** 2 / (2 * maxAcceleration) - referenceSpeed * dt / 2, 9)
+    expect(brakingDistance(maxAcceleration * dt / 2, legLength)).toBe(0)
+    expect(brakingDistance(0, legLength)).toBe(0)
+  })
+
+  it('rest point: a walk that loses its goal comes to rest where the frame before said it would', () => {
+    for (const [seconds, pace] of [[0.6, 'walk'], [1.2, 'walk'], [4, 'walk'], [4, 'stroll']] as const) {
+      const run = createRun({ x: 0, yaw: Math.PI / 2 }, 7, traits, {})
+      run.advance(seconds, () => ({ goalX: 500, pace, arriveFacing: Math.PI / 2 }))
+      const before = run.frames.at(-1)
+      run.advance(4, () => ({ goalX: null }))
+      const last = run.frames.at(-1)
+
+      expect(before?.speed, `${pace} ${seconds} s`).toBeGreaterThan(0)
+      expect(before?.restX, `${pace} ${seconds} s`).toBeGreaterThan(before?.root.position.x ?? Infinity)
+      expect(Math.abs((last?.root.position.x ?? 0) - (before?.restX ?? 0)), `${pace} ${seconds} s`).toBeLessThan(1e-9)
+      expect(last?.restX).toBe(last?.root.position.x)
     }
   })
 

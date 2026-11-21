@@ -860,6 +860,7 @@ function directorWorld(world: MMDStageWorld, modelKey: string): MMDStanceWorld {
     ground: world.ground,
     reach: onRow?.reach,
     rootX: stageRootX,
+    restX: body?.locomotionFrame?.restX ?? null,
     homeX: world.homeX,
     locomotionMode: body?.locomotionFrame?.mode ?? 'idle',
     clipOwnsRoot: !!owned && (owned.root > 0 || owned.leftLegIk > 0 || owned.rightLegIk > 0),

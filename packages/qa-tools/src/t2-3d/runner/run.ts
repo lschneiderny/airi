@@ -286,6 +286,7 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
           ...NO_WORLD_BODY_INPUT,
           ground: rig.legLength ? { minX: -60 * rig.legLength, maxX: 60 * rig.legLength } : null,
           rootX: mmd.mesh.position.x,
+          restX: body.locomotionFrame?.restX ?? null,
           locomotionMode: body.diagnostics.locomotion?.mode ?? 'idle',
           speaking: cues.voice.speaking,
           cursorX: points?.cursor?.x ?? null,
