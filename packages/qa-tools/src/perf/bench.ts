@@ -1,6 +1,6 @@
 import type { BenchComparison, BenchMetric, BenchRefusal, BenchRunRecord } from '@proj-airi/stage-shared/perf/usage'
 
-import { BENCH_METRICS, compareBench, median } from '@proj-airi/stage-shared/perf/usage'
+import { attributeStages, BENCH_METRICS, compareBench, median } from '@proj-airi/stage-shared/perf/usage'
 
 /** The code state a bench group was recorded from: a commit, plus the diff hash of a dirty tree. */
 export interface BenchCodeState {
@@ -78,9 +78,19 @@ export interface BenchSide {
   readonly excluded: readonly { readonly run: number, readonly t: number, readonly invalidReason: string }[]
 }
 
+/** The timed stages that moved in each direction; informational only, a metric's verdict picks which one applies. */
+export interface BenchScenarioAttribution {
+  readonly regression: ReturnType<typeof attributeStages>
+  readonly improvement: ReturnType<typeof attributeStages>
+}
+
 export type BenchScenarioComparison = { readonly scenario: string, readonly a: BenchSide, readonly b: BenchSide } & (
   | { readonly status: 'refused', readonly refusals: readonly BenchRefusal[] }
-  | { readonly status: 'compared', readonly comparisons: readonly Extract<BenchComparison, { status: 'compared' }>[] }
+  | {
+    readonly status: 'compared'
+    readonly comparisons: readonly Extract<BenchComparison, { status: 'compared' }>[]
+    readonly attribution: BenchScenarioAttribution
+  }
 )
 
 export type BenchCompareResult
@@ -149,13 +159,23 @@ export function compareBenchRefs(params: BenchCompareParams): BenchCompareResult
       })
       const valid = (side: typeof a) => ofScenario(side).filter(run => run.valid)
       const history = runs.filter(run => run.scenario === id)
-      const results = metrics.map(metric => compareBench({ runsA: valid(a), runsB: valid(b), history, metric }))
+      const runsA = valid(a)
+      const runsB = valid(b)
+      const results = metrics.map(metric => compareBench({ runsA, runsB, history, metric }))
       const head = { scenario: id, a: sideOf(a), b: sideOf(b) }
       // Refusals depend on the runs only, so they are the same for every metric.
       const refused = results.find(result => result.status === 'refused')
       if (refused !== undefined)
         return { ...head, status: 'refused', refusals: refused.refusals }
-      return { ...head, status: 'compared', comparisons: results.filter(result => result.status === 'compared') }
+      return {
+        ...head,
+        status: 'compared',
+        comparisons: results.filter(result => result.status === 'compared'),
+        attribution: {
+          regression: attributeStages({ runsA, runsB, history, direction: 'regression' }),
+          improvement: attributeStages({ runsA, runsB, history, direction: 'improvement' }),
+        },
+      }
     }),
   }
 }

@@ -176,3 +176,74 @@ describe('formatBenchCompare', () => {
     expect(formatBenchCompare(refused.scenarios)).toContain('electron-mismatch: 43.8.7 vs 44.0.0')
   })
 })
+
+/** A commit whose CPU ms per frame and `body-head` stage sit at the given centres, with a 0.1 ms spread; `render` never moves. */
+function timedCommit(cpuMsPerFrame: number, bodyHeadMs: number, options: RunOptions = {}): BenchRunRecord[] {
+  return OFFSETS.map((offset, index) => {
+    const base = run(16, { ...options, run: index + 1 })
+    const stage = (msPerFrame: number) => ({ msPerFrame, p95MsApprox: msPerFrame * 2, n: 600 })
+    return {
+      ...base,
+      metrics: { ...base.metrics, stageWindowCpuMsPerFrame: cpuMsPerFrame + offset * 0.1 },
+      stages: { 'body-head': stage(bodyHeadMs + offset * 0.1), 'render': stage(2 + offset * 0.1) },
+    }
+  })
+}
+
+const timedHistory = Array.from({ length: 10 }, (_, index) => timedCommit(4, 1, { sha: `${index}`.repeat(40), t: T0 - (index + 1) * DAY })).flat()
+
+describe('stage attribution', () => {
+  const compareCpu = (runs: readonly BenchRunRecord[]) => compare(runs, { metric: 'stageWindowCpuMsPerFrame' })
+
+  it('ranks the stage that grew under a regression, in JSON and text', () => {
+    const result = compareCpu([...timedHistory, ...timedCommit(4, 1), ...timedCommit(5, 2, { sha: SHA_B, t: T0 + 1 })])
+    const [scenario] = scenariosOf(result)
+    if (scenario.status !== 'compared')
+      throw new Error('expected a comparison')
+
+    expect(scenario.comparisons[0].verdict).toBe('regression')
+    expect(scenario.attribution.regression.stages[0].id).toBe('body-head')
+    expect(scenario.attribution.regression.stages.map(stage => stage.id)).not.toContain('render')
+    const text = formatBenchCompare(scenariosOf(result))
+    expect(text).toContain('stage attribution (informational)')
+    expect(text).toContain('stage body-head  +1.00 ms/frame')
+  })
+
+  it('prints the shrunk stage with signed values under an improvement', () => {
+    const result = compareCpu([...timedHistory, ...timedCommit(5, 2), ...timedCommit(4, 1, { sha: SHA_B, t: T0 + 1 })])
+    const [scenario] = scenariosOf(result)
+
+    expect(scenario.status === 'compared' && scenario.comparisons[0].verdict).toBe('improvement')
+    const text = formatBenchCompare(scenariosOf(result))
+    expect(text).toContain('stage body-head  -1.00 ms/frame  (z -')
+    expect(text).not.toContain('no timed stage moved')
+  })
+
+  it('says no timed stage moved when the metric moved but every stage held', () => {
+    const text = formatBenchCompare(scenariosOf(compareCpu([...timedHistory, ...timedCommit(4, 1), ...timedCommit(5, 1, { sha: SHA_B, t: T0 + 1 })])))
+
+    expect(text).toContain('  no timed stage moved: the cost is outside the timed stages (GPU, compositor, or untimed work)')
+  })
+
+  it('says stage timings were not recorded when the runs carry no stages', () => {
+    const text = formatBenchCompare(scenariosOf(compare([...history, ...commit(16), ...commit(16 + 3 * SIGMA, { sha: SHA_B, t: T0 + 1 })])))
+
+    expect(text).toContain('stage timings not recorded for this scenario')
+  })
+
+  it('prints no attribution under a within-noise verdict', () => {
+    const text = formatBenchCompare(scenariosOf(compareCpu([...timedHistory, ...timedCommit(4, 1), ...timedCommit(4, 2, { sha: SHA_B, t: T0 + 1 })])))
+
+    expect(text).toContain('within-noise')
+    expect(text).not.toContain('stage attribution')
+  })
+
+  it('gives a refused scenario no attribution', () => {
+    const otherHost = timedCommit(5, 2, { sha: SHA_B }).map(entry => ({ ...entry, host: { ...host, cpuModel: 'Apple M2' } }))
+
+    const [scenario] = scenariosOf(compareCpu([...timedCommit(4, 1), ...otherHost]))
+
+    expect(scenario.status).toBe('refused')
+    expect('attribution' in scenario).toBe(false)
+  })
+})
