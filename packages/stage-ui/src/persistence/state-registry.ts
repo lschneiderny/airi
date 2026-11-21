@@ -1221,11 +1221,13 @@ async function sweepLocation(location: StorageLocation) {
       await removeOpfsDirectory(root, location.directory)
       return
     }
-    for await (const name of root.keys()) {
+    // Collected first: removing entries while the iterator walks them can skip one.
+    for (const name of await Array.fromAsync(root.keys())) {
       if (namedOpfsDirectories.has(name))
         continue
-      // The Live2D cache holds this lock while it saves into the directory.
-      await navigator.locks.request(`airi:live2d-opfs:${name}`, () => removeOpfsDirectory(root, name))
+      // The Live2D and MMD caches each hold their lock while they save into the directory.
+      await navigator.locks.request(`airi:live2d-opfs:${name}`, () =>
+        navigator.locks.request(`airi:mmd-opfs:${name}`, () => removeOpfsDirectory(root, name)))
     }
     return
   }

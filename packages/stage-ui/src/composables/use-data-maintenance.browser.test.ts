@@ -381,6 +381,33 @@ it('removes downloaded speech models when all data is deleted', async () => {
   await expect(origin.getDirectoryHandle('airi-model-assets')).rejects.toThrow()
 })
 
+it('removes an MMD model cache only after the save that holds its lock has finished', async () => {
+  vi.stubGlobal('fetch', vi.fn<typeof fetch>(async () => Response.json({ voices: [], models: [] })))
+  const root = await navigator.storage.getDirectory()
+  const name = `display-model-${crypto.randomUUID()}`
+  const lock = `airi:mmd-opfs:${name}`
+  const { runtime, maintenance } = mountMaintenance(`maintenance:${crypto.randomUUID()}`, 'leader-only')
+  await vi.waitFor(() => expect(runtime.isLeader()).toBe(true))
+
+  // A save in progress, as `OPFSCache.save` runs it: its last write lands after the deletion reached the cache.
+  let settled = false
+  let deletion: Promise<void> | undefined
+  await navigator.locks.request(lock, async () => {
+    await root.getDirectoryHandle(name, { create: true })
+    deletion = maintenance.deleteAllData().finally(() => {
+      settled = true
+    })
+    await vi.waitFor(async () => {
+      const waiting = (await navigator.locks.query()).pending?.some(request => request.name === lock) ?? false
+      expect(waiting || settled).toBe(true)
+    }, { timeout: 10_000 })
+    await (await root.getDirectoryHandle(name, { create: true })).getFileHandle('__meta.json', { create: true })
+  })
+  await deletion
+
+  expect(await Array.fromAsync(root.keys())).not.toContain(name)
+})
+
 it('forgets derived conversation state, presence, expression, host notice, Natural, and MMD settings when all data is deleted', async () => {
   vi.stubGlobal('fetch', vi.fn<typeof fetch>(async () => Response.json({ voices: [], models: [] })))
   localStorage.setItem('settings/situation-inner', JSON.stringify({ v: 1, threads: [], savedAtMs: 1 }))
