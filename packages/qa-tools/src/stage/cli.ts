@@ -1,4 +1,4 @@
-import type { HostLoad } from '../host-quiet/wait'
+import type { HostLoad, HostQuietResult } from '../host-quiet/wait'
 import type { StageMode, StageScenario } from './gates'
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -7,7 +7,8 @@ import { parseArgs } from 'node:util'
 
 import { errorMessageFrom } from '@moeru/std'
 
-import { formatHostLoad, waitForHostQuiet } from '../host-quiet/wait'
+import { formatHostLoad, sampleHost, waitForHostQuiet } from '../host-quiet/wait'
+import { connectAppCpu } from './app-cpu'
 import { captureStage } from './capture'
 import { CaptureRefusal } from './capture-channel'
 import { formatGateResults, readStageEvidence, runStageGates } from './gates'
@@ -119,7 +120,19 @@ export async function runStageCli(argv: readonly string[], context: { repoRoot: 
       const allowBusy = values['allow-busy'] === true
       if (allowBusy && values['wait-quiet'] !== undefined)
         throw new UsageError('--allow-busy skips the pre-flight; drop --wait-quiet')
-      const preflight = await waitForHostQuiet({ waitSeconds: allowBusy ? 0 : waitQuiet, signal: context.signal, sample: context.sampleHost })
+      // The app being captured is the target, not outside load, so its own CPU is left out of the reading.
+      const app = context.sampleHost ? null : await connectAppCpu(port)
+      let preflight: HostQuietResult
+      try {
+        preflight = await waitForHostQuiet({
+          waitSeconds: allowBusy ? 0 : waitQuiet,
+          signal: context.signal,
+          sample: context.sampleHost ?? (() => sampleHost({ signal: context.signal, appCpuSeconds: app?.readSeconds })),
+        })
+      }
+      finally {
+        app?.close()
+      }
       if (!preflight.quiet && !allowBusy) {
         log(`qa-tools stage: refusing the capture: the host ${waitQuiet ? `was still busy after ${preflight.waitedSeconds}s` : 'is busy'} (${formatHostLoad(preflight.sample)}). Other load stalls frames, and the motion3d gate refuses such a trace with frame-gap.\nWait for it with --wait-quiet <seconds>, or pass --allow-busy for a capture you will not gate.`)
         return 2

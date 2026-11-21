@@ -2,7 +2,7 @@ import type { HostLoad } from './wait'
 
 import { describe, expect, it } from 'vitest'
 
-import { formatHostLoad, waitForHostQuiet } from './wait'
+import { formatHostLoad, sampleHost, waitForHostQuiet } from './wait'
 
 const calm: HostLoad = { load1: 1, cores: 8, externalCpuPct: 5, psiCpuSomeAvg10: 0.5 }
 const busy: HostLoad = { load1: 7, cores: 8, externalCpuPct: 60, psiCpuSomeAvg10: 25 }
@@ -55,9 +55,25 @@ describe('waitForHostQuiet', () => {
   })
 })
 
+describe('sampleHost', () => {
+  it('leaves the named app\'s own CPU out of the machine\'s busy share', async () => {
+    // Far more CPU than the machine has, so the remainder clamps to zero whatever else runs.
+    const reads = [0, 10_000]
+    const sample = await sampleHost({ intervalMs: 50, appCpuSeconds: async () => reads.shift()! })
+
+    expect(sample.externalCpuPct).toBe(0)
+    expect(sample.appCpuPct).toBeGreaterThan(100)
+  })
+
+  it('names no app share when no app was named', async () => {
+    expect(await sampleHost({ intervalMs: 10 })).not.toHaveProperty('appCpuPct')
+  })
+})
+
 describe('formatHostLoad', () => {
   it('names the load, the CPU pressure and the machine CPU', () => {
     expect(formatHostLoad(busy)).toBe('load 7.00 on 8 cores, CPU PSI some avg10 25.0, machine CPU 60% busy')
     expect(formatHostLoad({ ...calm, psiCpuSomeAvg10: null })).toBe('load 1.00 on 8 cores, PSI unavailable, machine CPU 5% busy')
+    expect(formatHostLoad({ ...calm, appCpuPct: 12.4 })).toBe('load 1.00 on 8 cores, CPU PSI some avg10 0.5, machine CPU 5% busy besides the app\'s 12%')
   })
 })

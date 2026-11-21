@@ -2,6 +2,7 @@ import type { CpuTimes } from '@proj-airi/stage-shared/perf/usage'
 
 import { readFileSync } from 'node:fs'
 import { availableParallelism, cpus, loadavg } from 'node:os'
+import { performance } from 'node:perf_hooks'
 import { setTimeout as delay } from 'node:timers/promises'
 
 import { decideHostContended, machineExternalCpuPct, parsePsiCpu } from '@proj-airi/stage-shared/perf/usage'
@@ -11,8 +12,13 @@ export interface HostLoad {
   /** One-minute load average. */
   load1: number
   cores: number
-  /** Busy share of the whole machine (0 to 100) over the sample interval; this process counts as well. */
+  /**
+   * Busy share of the whole machine (0 to 100) over the sample interval, less the measured app's share when the caller
+   * names the app; this process counts as well.
+   */
   externalCpuPct: number
+  /** The measured app's own share of the machine (0 to 100), left out of `externalCpuPct`; absent when no app was named. */
+  appCpuPct?: number
   /** `some avg10` of `/proc/pressure/cpu`; `null` where PSI is unavailable. */
   psiCpuSomeAvg10: number | null
 }
@@ -38,22 +44,36 @@ function readPsi(): number | null {
   }
 }
 
-/** Reads the load average and PSI, and the machine's busy share between two `os.cpus()` snapshots `intervalMs` apart. */
-export async function sampleHost(options: { intervalMs?: number, signal?: AbortSignal } = {}): Promise<HostLoad> {
+/**
+ * Reads the load average and PSI, and the machine's busy share between two `os.cpus()` snapshots `intervalMs` apart.
+ * `appCpuSeconds` reads the cumulative CPU seconds of an app the caller is about to measure; the app's share over the
+ * same interval is left out of the busy share, because it is the target and not outside load. The load average and
+ * PSI still count the app.
+ */
+export async function sampleHost(options: { intervalMs?: number, signal?: AbortSignal, appCpuSeconds?: () => Promise<number> } = {}): Promise<HostLoad> {
+  const appBefore = await options.appCpuSeconds?.()
   const prevTimes = cpuTimes()
+  const started = performance.now()
   await delay(options.intervalMs ?? 1_000, undefined, { signal: options.signal })
+  const nowTimes = cpuTimes()
+  const elapsedSeconds = (performance.now() - started) / 1_000
+  const appAfter = await options.appCpuSeconds?.()
   const cores = availableParallelism()
+  // Percent of one core, summed over the app's processes. A process that exited between the reads lowers the sum.
+  const appCpuPctOfCoreSum = appBefore === undefined || appAfter === undefined ? 0 : Math.max(0, appAfter - appBefore) / elapsedSeconds * 100
   return {
     load1: loadavg()[0],
     cores,
-    externalCpuPct: machineExternalCpuPct({ prevTimes, nowTimes: cpuTimes(), appCpuPctOfCoreSum: 0, cores }),
+    externalCpuPct: machineExternalCpuPct({ prevTimes, nowTimes, appCpuPctOfCoreSum, cores }),
     psiCpuSomeAvg10: readPsi(),
+    ...(appBefore === undefined ? {} : { appCpuPct: appCpuPctOfCoreSum / cores }),
   }
 }
 
 export function formatHostLoad(sample: HostLoad): string {
   const psi = sample.psiCpuSomeAvg10 === null ? 'PSI unavailable' : `CPU PSI some avg10 ${sample.psiCpuSomeAvg10.toFixed(1)}`
-  return `load ${sample.load1.toFixed(2)} on ${sample.cores} cores, ${psi}, machine CPU ${sample.externalCpuPct.toFixed(0)}% busy`
+  const app = sample.appCpuPct === undefined ? '' : ` besides the app's ${sample.appCpuPct.toFixed(0)}%`
+  return `load ${sample.load1.toFixed(2)} on ${sample.cores} cores, ${psi}, machine CPU ${sample.externalCpuPct.toFixed(0)}% busy${app}`
 }
 
 /**
