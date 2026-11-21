@@ -109,6 +109,11 @@ const groupKey = (run: BenchRunRecord) => JSON.stringify([run.sha, run.diffHash]
 const hostKey = ({ host }: BenchRunRecord) => JSON.stringify([host.platform, host.arch, host.cpuModel, host.cores, host.totalMemKb, host.gpu])
 const scenarioKey = (run: BenchRunRecord) => JSON.stringify([run.matrix, run.scenario, run.scenarioVersion])
 
+/** Host and model identity only; code-state differences still belong to the comparison refusal policy. */
+export function environmentKey(run: BenchRunRecord): string {
+  return JSON.stringify([hostKey(run), run.modelFingerprint])
+}
+
 /** Run fields that must agree across A, B, and history for their values to be comparable. */
 const COMPARABLE: readonly { readonly reason: BenchRefusalReason, readonly key: (run: BenchRunRecord) => string }[] = [
   { reason: 'host-mismatch', key: hostKey },

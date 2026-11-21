@@ -85,6 +85,16 @@ describe('track history file', () => {
     expect(statSync(join(dir, 'nested')).mode & 0o777).toBe(0o700)
   })
 
+  it('round-trips a zero-noise top stage with a null z', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'qa-track-zero-noise-'))
+    const path = join(dir, 'track.jsonl')
+    const event = openEvent(1, { topStages: [{ id: 'physics', deltaMsPerFrame: 1, z: null, zeroNoise: true }] })
+
+    appendTrackEvent(path, event)
+
+    expect((await readTrackEvents(path)).events).toEqual([event])
+  })
+
   it('refuses to append an invalid event', () => {
     dir = mkdtempSync(join(tmpdir(), 'qa-track-history-'))
     const path = join(dir, 'track.jsonl')

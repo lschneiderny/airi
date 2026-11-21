@@ -108,7 +108,7 @@ export const TrackEventSchema = variant('event', [
     practicalFloor: amount,
     sigma: nullable(amount),
     lowConfidence: boolean(),
-    topStages: array(object({ id: label, deltaMsPerFrame: signed, z: signed })),
+    topStages: array(object({ id: label, deltaMsPerFrame: signed, z: nullable(signed), zeroNoise: optional(boolean()) })),
     noStageMoved: boolean(),
     rangeCommits: count,
     renderLoopCommits: array(object({ sha, subject: string() })),
