@@ -8,7 +8,7 @@ import { randomUUID } from 'node:crypto'
 import { defineInvokeHandler } from '@moeru/eventa'
 import { maxLength, minLength, optional, parse, picklist, pipe, regex, strictObject, string } from 'valibot'
 
-import { goCancelRequest, goGetConfiguration, goOpenRequest, goReadChunk, goSetConfiguration } from '../../../../shared/eventa/opencode-go'
+import { goCancelRequest, goClearConfigurations, goGetConfiguration, goOpenRequest, goReadChunk, goSetConfiguration } from '../../../../shared/eventa/opencode-go'
 import { onWindowClosed } from '../../../libs/electron/on-window-closed'
 import { createWindowContext } from '../../../libs/electron/window-context'
 import { Credentials } from './credentials'
@@ -144,6 +144,11 @@ class GoNetworkService {
       const result = await this.credentials.set(providerId, apiKey)
       this.cancelMatching(state => state.providerId === providerId)
       return result
+    }))
+    registrations.push(defineInvokeHandler(context, goClearConfigurations, async (_input, options) => {
+      this.authorize(binding, options)
+      await this.credentials.clear()
+      this.cancelMatching(() => true)
     }))
     registrations.push(defineInvokeHandler(context, goOpenRequest, async (input, options): Promise<GoResponse> => {
       const requests = this.authorize(binding, options)
