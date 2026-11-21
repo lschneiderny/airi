@@ -295,7 +295,9 @@ async function verifyRun(args: VerifyArgs, root: string, cacheDir: string, histo
   const pathKey = Object.keys(process.env).find(key => key.toUpperCase() === 'PATH') ?? 'PATH'
   // Checks never inherit this run's id; a verify they start is a run of its own.
   const { AIRI_VERIFY_RUN_ID: _runId, ...inherited } = process.env
-  const env = { ...inherited, ...compileCacheEnv(process.env, root), [pathKey]: `${join(root, 'node_modules/.bin')}${delimiter}${process.env[pathKey] ?? ''}` }
+  // Output is piped so the run log keeps it, which turns colors off in the tools; on a terminal they get them back.
+  const color = out.tty && process.env.FORCE_COLOR === undefined && process.env.NO_COLOR === undefined ? { FORCE_COLOR: '1' } : {}
+  const env = { ...inherited, ...color, ...compileCacheEnv(process.env, root), [pathKey]: `${join(root, 'node_modules/.bin')}${delimiter}${process.env[pathKey] ?? ''}` }
 
   out.say(`verify: merge base with ${args.base} ${base.slice(0, 9)}, tree ${tree.slice(0, 9)}`)
   const branchChanges = changedFiles(root, base, tree)
