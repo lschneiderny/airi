@@ -57,7 +57,7 @@ function unwrap(node: ts.Expression): ts.Expression {
 
 interface FileContext {
   path: string
-  /** `const` initializers by name; a name declared more than once maps to `undefined`. */
+  /** Module-level `const` initializers by name; a name declared more than once maps to `undefined`. */
   constants: Map<string, ts.Expression | undefined>
   /** Imported bindings by local name. */
   imports: Map<string, { specifier: string, name: string }>
@@ -80,7 +80,8 @@ function contextOf(path: string, file: ts.SourceFile): FileContext {
         }
       }
     }
-    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer && ts.getCombinedNodeFlags(node) & ts.NodeFlags.Const) {
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer && ts.getCombinedNodeFlags(node) & ts.NodeFlags.Const
+      && ts.isVariableStatement(node.parent.parent) && ts.isSourceFile(node.parent.parent.parent)) {
       const name = node.name.text
       context.constants.set(name, context.constants.has(name) ? undefined : node.initializer)
     }
@@ -98,6 +99,43 @@ function contextOf(path: string, file: ts.SourceFile): FileContext {
 }
 
 type Resolved = { exact: string } | { prefix: string } | undefined
+
+/** Whether a declared name or binding pattern binds `name`. */
+function binds(node: ts.BindingName, name: string): boolean {
+  if (ts.isIdentifier(node))
+    return node.text === name
+  return node.elements.some(element => !ts.isOmittedExpression(element) && binds(element.name, name))
+}
+
+/**
+ * The nearest declaration of `name` in a scope that encloses `node`, below the module scope: the initializer of a
+ * `const`, or `shadowed` for a parameter, a loop or catch variable, a `let` or `var`, or a local function or class.
+ * Returns `undefined` when no such scope declares it, so only the module scope or an import can.
+ */
+function localBinding(node: ts.Node, name: string): ts.Expression | 'shadowed' | undefined {
+  for (let scope = node.parent; scope && !ts.isSourceFile(scope); scope = scope.parent) {
+    if (ts.isFunctionLike(scope) && scope.parameters.some(parameter => binds(parameter.name, name)))
+      return 'shadowed'
+    if ((ts.isForOfStatement(scope) || ts.isForInStatement(scope) || ts.isForStatement(scope)) && scope.initializer
+      && ts.isVariableDeclarationList(scope.initializer) && scope.initializer.declarations.some(declaration => binds(declaration.name, name))) {
+      return 'shadowed'
+    }
+    if (ts.isCatchClause(scope) && scope.variableDeclaration && binds(scope.variableDeclaration.name, name))
+      return 'shadowed'
+    if (!ts.isBlock(scope) && !ts.isCaseClause(scope) && !ts.isDefaultClause(scope))
+      continue
+    for (const statement of scope.statements) {
+      if ((ts.isFunctionDeclaration(statement) || ts.isClassDeclaration(statement)) && statement.name?.text === name)
+        return 'shadowed'
+      if (!ts.isVariableStatement(statement))
+        continue
+      const declaration = statement.declarationList.declarations.find(candidate => binds(candidate.name, name))
+      if (declaration)
+        return statement.declarationList.flags & ts.NodeFlags.Const && ts.isIdentifier(declaration.name) && declaration.initializer ? declaration.initializer : 'shadowed'
+    }
+  }
+  return undefined
+}
 
 class KeyResolver {
   private readonly contexts = new Map<string, FileContext | undefined>()
@@ -132,6 +170,20 @@ class KeyResolver {
     return undefined
   }
 
+  /** The constant expression that `node` names, found through its enclosing scopes first. */
+  private named(context: FileContext, node: ts.Identifier, seen: Set<string>): { context: FileContext, value: ts.Expression } | undefined {
+    const local = localBinding(node, node.text)
+    if (local === 'shadowed')
+      return undefined
+    if (!local)
+      return this.constant(context, node.text, seen)
+    const id = `${context.path}@${local.pos}`
+    if (seen.has(id))
+      return undefined
+    seen.add(id)
+    return { context, value: local }
+  }
+
   private constant(context: FileContext, name: string, seen: Set<string>): { context: FileContext, value: ts.Expression } | undefined {
     const id = `${context.path}#${name}`
     if (seen.has(id))
@@ -150,7 +202,7 @@ class KeyResolver {
     if (ts.isObjectLiteralExpression(node))
       return { context, value: node }
     if (ts.isIdentifier(node)) {
-      const found = this.constant(context, node.text, seen)
+      const found = this.named(context, node, seen)
       return found ? this.object(found.context, found.value, seen) : undefined
     }
     return undefined
@@ -180,7 +232,7 @@ class KeyResolver {
       return 'exact' in right ? { exact: left.exact + right.exact } : { prefix: left.exact + right.prefix }
     }
     if (ts.isIdentifier(node)) {
-      const found = this.constant(context, node.text, seen)
+      const found = this.named(context, node, seen)
       return found ? this.resolve(found.context, found.value, seen) : undefined
     }
     if (ts.isPropertyAccessExpression(node)) {
@@ -323,8 +375,8 @@ function vueScript(source: string): string {
 
 /**
  * The storage write sites of one source file. A `.vue` file is scanned through its script blocks. Keys resolve through
- * string literals, template literals (a prefix up to the first part that does not resolve), `const` declarations in the
- * file, and constants or `as const` object members that a relative import names.
+ * string literals, template literals (a prefix up to the first part that does not resolve), `const` declarations that
+ * the name's scope reaches, and constants or `as const` object members that a relative import names.
  */
 export function findStorageWrites(path: string, source: string, read: ReadRepositoryFile = () => undefined): StorageWriteSite[] {
   const script = path.endsWith('.vue') ? vueScript(source) : source

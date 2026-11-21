@@ -57,6 +57,24 @@ describe('findStorageWrites', () => {
     ])
   })
 
+  it('resolves a name through its scope, so a parameter or loop variable hides a same-named constant', () => {
+    const source = [
+      `const key = 'settings/example/a'`,
+      `function save(key: string) { localStorage.setItem(key, '1') }`,
+      `save(makeKey())`,
+      `function other() { const id = 'settings/example/b'; useLocalStorage(id, 1) }`,
+      `for (const id of keys()) localStorage.removeItem(id)`,
+      `useLocalStorage(key, 1)`,
+    ].join('\n')
+
+    expect(keysOf(source)).toEqual([
+      { unresolved: 'key' },
+      { exact: 'settings/example/b' },
+      { unresolved: 'id' },
+      { exact: 'settings/example/a' },
+    ])
+  })
+
   it('scans the script blocks of a `.vue` file with their line numbers', () => {
     const source = [
       '<template><div /></template>',
