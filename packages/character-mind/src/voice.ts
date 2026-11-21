@@ -39,6 +39,17 @@ function restoreGate(state: MindState, view: VoiceView, nowMs: number, random: M
   return restoreGateMemory(promotionUrgeMemory(nowMs, random), view.run.user, state.slow.pacing, nowMs)
 }
 
+/**
+ * The voice state in the view's run. A run the mind has not seen restores the gate memory, and the next shown tick
+ * eases her in. Every stimulus that carries a view comes here first, so a line always opens in the store's run.
+ */
+function inRun(state: MindState, view: VoiceView, nowMs: number, random: MindRandom): MindVoiceState {
+  const { voice } = state
+  if (voice.runId === view.run.id && voice.gate !== null)
+    return voice
+  return { ...voice, runId: view.run.id, gate: restoreGate(state, view, nowMs, random), stageShown: false }
+}
+
 /** Her pacing in a gate memory that never held any: what a null `slow.pacing` stands for. */
 const NO_PACING = pacingMemoryOf(initialUrgeMemory)
 
@@ -124,15 +135,16 @@ function serveRequests(voice: MindVoiceState, view: VoiceView, cause: number, no
     turnId: request.turnId,
     line: { kind: 'widget', topicKey: request.topicKey, topicText: request.topicText, supplement: request.supplement },
   })
-  return { voice: { ...voice, requests: rest, line: { turnId: request.turnId, kind: 'widget', before: null, speakBy: next.speakBy } }, intents }
+  return { voice: { ...voice, requests: rest, line: { turnId: request.turnId, kind: 'widget', runId: voice.runId, before: null, speakBy: next.speakBy } }, intents }
 }
 
-/** A widget or plugin request joins the queue and speaks at once when nobody is busy. */
-export function answerVoiceRequest(state: MindState, stimulus: Stimulus<'voice-request'>, cause: number, nowMs: number): Answer {
+/** A widget or plugin request joins the queue and speaks at once when nobody is busy. A new run restores first. */
+export function answerVoiceRequest(state: MindState, stimulus: Stimulus<'voice-request'>, cause: number, nowMs: number, random: MindRandom): Answer {
   const { request, view } = stimulus
   const entry = { request, startBy: nowMs + WIDGET_START_WAIT_MS, speakBy: nowMs + request.timeoutMs - WIDGET_DEADLINE_MARGIN_MS }
-  const { voice, intents } = serveRequests({ ...state.voice, requests: [...state.voice.requests, entry] }, view, cause, nowMs)
-  return { state: { ...state, voice }, intents }
+  const voice = inRun(state, view, nowMs, random)
+  const served = serveRequests({ ...voice, requests: [...voice.requests, entry] }, view, cause, nowMs)
+  return { state: { ...state, voice: served.voice }, intents: served.intents }
 }
 
 /** The earliest widget deadline (`startBy` of a waiting request, `speakBy` of an open line), or null without one. */
@@ -142,16 +154,14 @@ export function nextVoiceWakeAt(voice: MindVoiceState): number | null {
 }
 
 /**
- * One gate tick. A new run restores the gate memory, and the next shown tick eases her in. Widget deadlines and
+ * One gate tick. A new run restores the gate memory ({@link inRun}). Widget deadlines and
  * requests come first. The gate skips while a line of the mind, a waiting request, or another unprompted turn is
  * open; otherwise a fire yields `cue` `about-to-speak` and one `speak` with a reach-out line, which occupies the line
  * slot until its outcome.
  */
 export function answerVoiceTick(state: MindState, stimulus: Stimulus<'voice-tick'>, cause: number, nowMs: number, random: MindRandom): Answer {
   const { view } = stimulus
-  let voice: MindVoiceState = state.voice
-  if (voice.runId !== view.run.id || voice.gate === null)
-    voice = { ...voice, runId: view.run.id, gate: restoreGate(state, view, nowMs, random), stageShown: false }
+  let voice = inRun(state, view, nowMs, random)
 
   const served = serveRequests(voice, view, cause, nowMs)
   voice = served.voice
@@ -174,6 +184,7 @@ export function answerVoiceTick(state: MindState, stimulus: Stimulus<'voice-tick
   const line: VoiceLineState = {
     turnId,
     kind: 'reach-out',
+    runId: voice.runId,
     speakBy: null,
     before: { lastFireAtMs: gate.lastFireAtMs, fires: gate.fires, pending: gate.pending, urge: gate.urge, urgeThreshold: gate.urgeThreshold, doubleText: gate.doubleText },
   }
@@ -193,9 +204,11 @@ export function answerVoiceTick(state: MindState, stimulus: Stimulus<'voice-tick
 /**
  * Settles a line. A touch line (`reaction:<eventId>`) runs the touch rule: its pending attempt settles when the
  * outcome is its own, and a spoken one always starts the refractory, also when its attempt is no longer pending. A
- * spoken touch line also starts the gate's floor. A reach-out applies its outcome to the gate; `refused` restores
- * the gate fields of before the fire, whose draws stay spent. A declined reach-out or widget line yields `cue`
- * `let-go`. The line closes when the outcome is its own.
+ * spoken touch line also starts the gate's floor, and so does a spoken widget line. A reach-out applies its outcome
+ * to the gate; `refused` restores the gate fields of before the fire, whose draws stay spent. A reach-out that opened
+ * in an earlier run only starts the floor when spoken: the restore for the current run replaced the memory its
+ * outcome would update. A declined reach-out or widget line yields `cue` `let-go`. The line closes when the outcome
+ * is its own.
  */
 export function answerVoiceOutcome(state: MindState, stimulus: Stimulus<'voice-outcome'>, cause: number, nowMs: number): Answer {
   const { voice } = state
@@ -215,15 +228,20 @@ export function answerVoiceOutcome(state: MindState, stimulus: Stimulus<'voice-o
     return { state: { ...state, voice: { ...voice, reaction, gate, line } }, intents: [] }
   }
 
-  if (own && voice.line?.kind === 'widget') {
-    // A spoken widget line starts the floor and never counts as an unanswered opening.
+  const open = own ? voice.line : null
+  if (open === null)
+    return { state, intents: [] }
+  // A widget line, and a reach-out that opened before a restore replaced the gate memory: a spoken one starts the
+  // floor, which holds after any spoken line, and never counts as an unanswered opening. Nothing else of their outcome
+  // reaches the gate, so a refused reach-out of an earlier run restores none of its fields.
+  if (open.kind === 'widget' || open.runId !== voice.runId) {
     const gate = stimulus.outcome === 'spoken' && voice.gate ? recordExternalSpeech(voice.gate, nowMs) : voice.gate
     return { state: { ...state, voice: { ...voice, gate, line } }, intents: letGo(stimulus.outcome, cause) }
   }
 
-  if (!own || voice.line?.kind !== 'reach-out' || voice.gate === null)
+  if (open.kind !== 'reach-out' || voice.gate === null)
     return { state, intents: [] }
-  const { before } = voice.line
+  const { before } = open
   const gate = stimulus.outcome === 'refused'
     ? (before ? { ...voice.gate, ...before } : voice.gate)
     : recordUrgeFireOutcome(voice.gate, stimulus.outcome, nowMs)

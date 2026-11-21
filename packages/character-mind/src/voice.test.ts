@@ -125,7 +125,7 @@ describe('voice-tick', () => {
     const intent = speakOf(mind.send(T0, tick({}, true)))
 
     expect(intent).toMatchObject({ channel: 'voice', cause: 1, line: { kind: 'reach-out', topicKey: 'own-day', reason: { kind: 'own-day', category: 'open' } } })
-    expect(mind.state.voice.line).toEqual({ turnId: intent.turnId, kind: 'reach-out', speakBy: null, before: expect.objectContaining({ fires: [], pending: null }) })
+    expect(mind.state.voice.line).toEqual({ turnId: intent.turnId, kind: 'reach-out', runId: 1, speakBy: null, before: expect.objectContaining({ fires: [], pending: null }) })
     expect(mind.state.voice.lastGate).toMatchObject({ fire: true, reason: 'forced' })
     expect(mind.draws).toBe(6)
   })
@@ -154,6 +154,27 @@ describe('voice-outcome', () => {
     expect(mind.state.voice.line).toBeNull()
     expect(mind.gate.unanswered).toBe(1)
     expect(speakOf(mind.send(dueAtMs, tick())).line).toMatchObject({ kind: 'reach-out', topicKey: 'own-day', reason: { category: 'double-text' } })
+  })
+
+  it('keeps a refused reach-out of an earlier run out of the restored gate, and closes its line', () => {
+    const mind = script()
+    const { turnId } = speakOf(mind.send(T0, tick({}, true)))
+    // "Delete all data" starts run 2 while the line is on its way.
+    mind.send(T0 + SEC, tick({ run: { id: 2 } }))
+    const restored = mind.gate
+    mind.send(T0 + 2 * SEC, { kind: 'voice-outcome', turnId, outcome: 'refused' })
+
+    expect(mind.state.voice.line).toBeNull()
+    expect(mind.gate).toEqual(restored)
+  })
+
+  it('starts the floor of the current run for a spoken reach-out of an earlier run', () => {
+    const mind = script()
+    const { turnId } = speakOf(mind.send(T0, tick({}, true)))
+    mind.send(T0 + SEC, tick({ run: { id: 2 } }))
+    mind.send(T0 + 2 * SEC, { kind: 'voice-outcome', turnId, outcome: 'spoken' })
+
+    expect(mind.gate).toMatchObject({ lastFireAtMs: T0 + 2 * SEC, lastSpokenAtMs: T0 + 2 * SEC, unanswered: 0, pending: null })
   })
 
   it('starts the gate floor for a spoken touch line', () => {
@@ -191,7 +212,7 @@ describe('voice-request', () => {
     const intent = speakOf(mind.send(T0, request('spark:1', {}, { supplement: 'short' })))
 
     expect(intent).toMatchObject({ channel: 'voice', turnId: 'spark:1', line: { kind: 'widget', topicKey: 'notify:weather', topicText: 'Rain at five', supplement: 'short' } })
-    expect(mind.state.voice.line).toEqual({ turnId: 'spark:1', kind: 'widget', before: null, speakBy: T0 + 30 * SEC - WIDGET_DEADLINE_MARGIN_MS })
+    expect(mind.state.voice.line).toEqual({ turnId: 'spark:1', kind: 'widget', runId: 1, before: null, speakBy: T0 + 30 * SEC - WIDGET_DEADLINE_MARGIN_MS })
     expect(mind.state.voice.requests).toEqual([])
   })
 
@@ -271,6 +292,17 @@ describe('voice-request', () => {
 
     expect(mind.state.voice.line).toBeNull()
     expect(mind.gate).toMatchObject({ lastFireAtMs: T0 + 2 * SEC, lastSpokenAtMs: T0 + 2 * SEC, unanswered: 0, pending: null })
+  })
+
+  it('restores a new run at a request, so its spoken line starts the floor of that run', () => {
+    const mind = script()
+    mind.send(T0, tick({ signals: { stageVisible: false } }))
+    mind.send(T0 + SEC, request('spark:1', { run: { id: 2 } }))
+    mind.send(T0 + 2 * SEC, { kind: 'voice-outcome', turnId: 'spark:1', outcome: 'spoken' })
+    mind.send(T0 + 3 * SEC, tick({ run: { id: 2 }, signals: { stageVisible: false } }))
+
+    expect(mind.state.voice.runId).toBe(2)
+    expect(mind.gate).toMatchObject({ lastFireAtMs: T0 + 2 * SEC, lastSpokenAtMs: T0 + 2 * SEC })
   })
 
   it('names the earliest widget deadline as the wake time', () => {

@@ -34,7 +34,7 @@ export function initialMindState(slow: MindSlowState = { pacing: null }): MindSt
  * The pure core of the character mind: answers the stimuli in order and returns the next state with the intents.
  * It reads no clock and no global random source, and never mutates `state`. Every draw comes from `rng`, in the
  * order of the stimuli: one for the jitter of each new emotion episode, one for each spoken touch reaction that
- * reaches its roll, one for the threshold of each new gate run, the urge gate's own draws at each tick it evaluates, one
+ * reaches its roll, one for the threshold of each new gate run (at its first tick or widget request), the urge gate's own draws at each tick it evaluates, one
  * that seeds the idle policy's own stream at the first `idle` or `idle-play` stimulus, and one that seeds the
  * attention policy's own stream at the first `cursor` stimulus.
  *
@@ -74,7 +74,7 @@ export function step(state: MindState, stimuli: readonly MindStimulus[], nowMs: 
     else if (stimulus.kind === 'user-turn')
       answer = answerUserTurn(next, nowMs)
     else if (stimulus.kind === 'voice-request')
-      answer = answerVoiceRequest(next, stimulus, cause, nowMs)
+      answer = answerVoiceRequest(next, stimulus, cause, nowMs, rng)
     else if (stimulus.kind === 'idle')
       answer = answerIdle(next, stimulus, cause, rng)
     else if (stimulus.kind === 'idle-play')
