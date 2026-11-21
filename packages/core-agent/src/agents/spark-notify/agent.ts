@@ -46,7 +46,7 @@ export interface SparkNotifyHandleResult {
 export interface SparkNotifyHandleRequest {
   event: WebSocketEventOf<'spark:notify'>
   selectedChat: SparkNotifySelectedChat
-  /** The whole system turn. The host composes every system part, and the agent appends nothing to it. */
+  /** The whole system turn. The host composes every system part, and the agent appends nothing to it. A blank prompt sends no system turn. */
   systemPrompt: string
   /** Runtime instructions appended to the user message for this request. */
   runtimePrompt?: string
@@ -208,12 +208,10 @@ export function createSparkNotifyAgent(options: CreateSparkNotifyAgentOptions): 
       : []
 
     const turns: Turn[] = [
-      {
-        id: 'spark-system',
-        type: 'system',
-        authority: 'system',
-        content: [{ type: 'text', text: request.systemPrompt }],
-      },
+      // Some providers reject an empty system text block, so an empty host prompt sends no system turn.
+      ...(request.systemPrompt.trim()
+        ? [{ id: 'spark-system', type: 'system', authority: 'system', content: [{ type: 'text', text: request.systemPrompt }] } satisfies Turn]
+        : []),
       {
         id: request.event.data.eventId,
         type: 'user',
