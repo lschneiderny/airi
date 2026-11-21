@@ -5,17 +5,19 @@ import type { AcceptedCost, Git } from '../track/accepted-costs'
 import type { BaselineResetEvent, ClosedFinding, FindingResolution, OpenFinding, TrackEvent } from '../track/findings'
 import type { PerfFileCounts } from './read'
 
+import { TZDate } from '@date-fns/tz'
 import { median } from '@proj-airi/stage-shared/perf/usage'
+import { differenceInMilliseconds, isBefore, subDays, subHours } from 'date-fns'
+import { millisecondsInHour } from 'date-fns/constants'
 
 import { benchHistoryPath, readBenchHistory } from '../bench/history'
 import { introducingCommit, readAcceptedCosts } from '../track/accepted-costs'
 import { foldFindings, readTrackEvents, trackHistoryPath } from '../track/findings'
 
-const HOUR_MS = 3_600_000
 /** A tracker without a tick-start in this window is stale: the nightly timer stopped or keeps failing to start. */
-const STALE_AFTER_MS = 48 * HOUR_MS
+const STALE_AFTER_HOURS = 48
 /** Closed findings and baseline resets older than this window are history, not status. */
-const RECENT_MS = 14 * 24 * HOUR_MS
+const RECENT_DAYS = 14
 /** Below this many distinct clean commits in the bench history, pooled noise is a weak estimate. */
 const CONFIDENT_COMMITS = 10
 
@@ -84,15 +86,17 @@ export function buildStatus(inputs: StatusInputs): PerfStatus {
   const clean = runs.filter(run => !run.dirty && run.valid)
   const tipRuns = mainTip === null ? [] : clean.filter(run => run.sha === mainTip)
   const resolved = fold.outcomes.fixed + fold.outcomes.accepted + fold.outcomes.noise
+  // UTC days are always 24 hours, so the window does not shift across a daylight saving change.
+  const recentSince = subDays(new TZDate(now, 'UTC'), RECENT_DAYS)
 
   return {
     lastTick: fold.lastTick && {
       tickId: fold.lastTick.tickId,
       startedAt: fold.lastTick.startT,
-      ageHours: (now - fold.lastTick.startT) / HOUR_MS,
+      ageHours: differenceInMilliseconds(now, fold.lastTick.startT) / millisecondsInHour,
       exitCode: fold.lastTick.exitCode,
     },
-    trackerStale: fold.lastTick === null || now - fold.lastTick.startT > STALE_AFTER_MS,
+    trackerStale: fold.lastTick === null || isBefore(fold.lastTick.startT, subHours(now, STALE_AFTER_HOURS)),
     mainTip: mainTip === null
       ? null
       : {
@@ -102,10 +106,10 @@ export function buildStatus(inputs: StatusInputs): PerfStatus {
         },
     lowConfidence: new Set(clean.map(run => run.sha)).size < CONFIDENT_COMMITS,
     open: fold.open,
-    recentlyClosed: fold.closed.filter(finding => finding.close.t >= now - RECENT_MS),
+    recentlyClosed: fold.closed.filter(finding => !isBefore(finding.close.t, recentSince)),
     outcomes: { ...fold.outcomes, noiseShare: resolved > 0 ? fold.outcomes.noise / resolved : null },
     accepted: accepted.map(({ id, scenario, metric, reason, commit }) => ({ id, scenario, metric, reason, commit })),
-    baselineResets: fold.baselineResets.filter(reset => reset.t >= now - RECENT_MS),
+    baselineResets: fold.baselineResets.filter(reset => !isBefore(reset.t, recentSince)),
     ghFailureStreak: fold.ghFailureStreak,
     stages: [...latestBenchedMainTips(events, clean, mainTip)].sort(([left], [right]) => left.localeCompare(right)).map(([scenario, sha]) => ({
       scenario,
