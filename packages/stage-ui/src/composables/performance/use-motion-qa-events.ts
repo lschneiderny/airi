@@ -111,7 +111,11 @@ export function useMotionQaEvents(options: {
         ...interaction && { source: interaction.source },
       })
     }),
-    options.onIdle(report => record('idle', { phase: report.phase, behaviour: report.behaviour })).off,
+    options.onIdle((report) => {
+      record('idle', { phase: report.phase, behaviour: report.behaviour })
+      if (report.groove)
+        record('groove-lock', { beatSeconds: report.groove.beatSeconds, beatsPerCycle: report.groove.beatsPerCycle })
+    }).off,
   ]
   const performance = usePerformanceRuntimeState()
   watch(() => performance.active.map(item => ({ ...item })), (active, previous) => {

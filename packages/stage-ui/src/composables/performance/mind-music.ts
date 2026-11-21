@@ -4,9 +4,19 @@ import type { AppCategory } from '@proj-airi/stage-shared/situation'
 
 import { advanceMusic, initialMusicMemory, nextMusicDeadline } from '@proj-airi/stage-shared/music'
 
+/** One detected beat: `intervalSeconds` since the detector's previous beat, on its audio clock. */
+export interface MindMusicBeat {
+  intervalSeconds: number
+}
+
 export interface MindMusicOptions {
   /** Subscribes to the one detector's beats and returns the unsubscribe; the app passes `listenBeatSyncBeatSignal`. */
-  listen: (onBeat: () => void) => () => void
+  listen: (onBeat: (beat: MindMusicBeat) => void) => () => void
+  /**
+   * Hears each beat while started, after the music edges: the store hands it to its stages' beat clocks. It decides
+   * nothing, and the mind never hears a single beat.
+   */
+  onBeat?: (beat: MindMusicBeat) => void
   /** The leader's foreground category (`useSituationStore` `foregroundCategory`). */
   category: () => AppCategory | null
 }
@@ -25,7 +35,10 @@ export class MindMusic {
 
   /** Subscribes to beats and starts deciding edges; the store calls it at promotion. Repeated calls keep the first. */
   start(): void {
-    this.unlisten ??= this.options.listen(() => this.observe(true))
+    this.unlisten ??= this.options.listen((beat) => {
+      this.observe(true)
+      this.options.onBeat?.(beat)
+    })
   }
 
   /** Unsubscribes, clears the deadline timer, and, if music was playing, tells the mind it stopped. */

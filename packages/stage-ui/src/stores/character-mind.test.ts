@@ -36,10 +36,10 @@ const records = vi.hoisted(() => ({ state: undefined as FakeCharacterState | und
 vi.mock('./situation', () => ({ useSituationStore: () => voice.port }))
 vi.mock('./character-state', () => ({ useCharacterStateStore: () => records.state }))
 // The beat sync detector needs a stage runtime; the fake hands the test the store's beat listener.
-const beatSync = vi.hoisted(() => ({ listeners: new Set<() => void>() }))
+const beatSync = vi.hoisted(() => ({ listeners: new Set<(event: { energy: number, interval: number }) => void>() }))
 vi.mock('@proj-airi/stage-shared/beat-sync', () => ({
   isBeatSyncSupported: () => true,
-  listenBeatSyncBeatSignal: (listener: () => void) => {
+  listenBeatSyncBeatSignal: (listener: (event: { energy: number, interval: number }) => void) => {
     beatSync.listeners.add(listener)
     return () => beatSync.listeners.delete(listener)
   },
@@ -199,7 +199,7 @@ describe('character mind store', () => {
     for (let ms = 0; ms <= MUSIC_SETTLE_MS; ms += 500) {
       vi.setSystemTime(T0 + ms)
       for (const listener of beatSync.listeners)
-        listener()
+        listener({ energy: 1, interval: 0.5 })
     }
     expect(store.mind.state.music.playing).toBe(true)
 
@@ -210,6 +210,29 @@ describe('character mind store', () => {
     leadership.set(false)
     expect(beatSync.listeners.size).toBe(0)
     expect(store.mind.state.music.playing).toBe(false)
+  })
+
+  it('hands each beat to every attached stage while the window leads, and none after a demotion', async () => {
+    const store = useCharacterMindStore()
+    const leadership = createLeadership(false)
+    store.initialize(leadership.runtime)
+    const older = vi.fn()
+    const newer = vi.fn()
+    store.attachStage({ idleCue: vi.fn(), idle: vi.fn(), beat: older })
+    store.attachStage({ idleCue: vi.fn(), idle: vi.fn(), beat: newer })
+    await flush()
+    leadership.set(true)
+    await flush()
+    for (const listener of beatSync.listeners)
+      listener({ energy: 1, interval: 0.48 })
+    expect(older.mock.calls).toEqual([[0.48]])
+    expect(newer.mock.calls).toEqual([[0.48]])
+    // The mind hears music edges, never a single beat.
+    expect(store.mind.state.music.playing).toBe(false)
+
+    leadership.set(false)
+    expect(beatSync.listeners.size).toBe(0)
+    expect(older).toHaveBeenCalledTimes(1)
   })
 
   it('keeps the mind out of Vue reactivity', () => {
@@ -274,7 +297,7 @@ describe('character mind store', () => {
     const store = useCharacterMindStore()
     port.speak.mockResolvedValue('declined')
     const idleCue = vi.fn()
-    store.attachStage({ idleCue, idle: vi.fn() })
+    store.attachStage({ idleCue, idle: vi.fn(), beat: vi.fn() })
     const send = await connected(store)
     const outcome = settled(store)
 
@@ -289,7 +312,7 @@ describe('character mind store', () => {
     const store = useCharacterMindStore()
     port.speak.mockResolvedValue('declined')
     const idleCue = vi.fn()
-    store.attachStage({ idleCue, idle: vi.fn() }).detach()
+    store.attachStage({ idleCue, idle: vi.fn(), beat: vi.fn() }).detach()
     const send = await connected(store)
     const outcome = settled(store)
 
@@ -305,8 +328,8 @@ describe('character mind store', () => {
     port.speak.mockResolvedValue('declined')
     const older = vi.fn()
     const newer = vi.fn()
-    const olderStage = store.attachStage({ idleCue: older, idle: vi.fn() })
-    store.attachStage({ idleCue: newer, idle: vi.fn() })
+    const olderStage = store.attachStage({ idleCue: older, idle: vi.fn(), beat: vi.fn() })
+    store.attachStage({ idleCue: newer, idle: vi.fn(), beat: vi.fn() })
     olderStage.detach()
     const send = await connected(store)
     const outcome = settled(store)
@@ -322,8 +345,8 @@ describe('character mind store', () => {
     const store = useCharacterMindStore()
     const older = vi.fn()
     const newer = vi.fn()
-    const olderStage = store.attachStage({ idleCue: vi.fn(), idle: older })
-    const newerStage = store.attachStage({ idleCue: vi.fn(), idle: newer })
+    const olderStage = store.attachStage({ idleCue: vi.fn(), idle: older, beat: vi.fn() })
+    const newerStage = store.attachStage({ idleCue: vi.fn(), idle: newer, beat: vi.fn() })
 
     olderStage.report([{ kind: 'view', view: idleView }])
     expect(store.mind.state.idle.view).toBeNull()
@@ -338,8 +361,8 @@ describe('character mind store', () => {
 
   it('tells the mind the dormant view when the reporting stage detaches', () => {
     const store = useCharacterMindStore()
-    const olderStage = store.attachStage({ idleCue: vi.fn(), idle: vi.fn() })
-    const newerStage = store.attachStage({ idleCue: vi.fn(), idle: vi.fn() })
+    const olderStage = store.attachStage({ idleCue: vi.fn(), idle: vi.fn(), beat: vi.fn() })
+    const newerStage = store.attachStage({ idleCue: vi.fn(), idle: vi.fn(), beat: vi.fn() })
     newerStage.report([{ kind: 'view', view: idleView }])
 
     // An older stage leaving changes nothing: it never reported.
@@ -355,13 +378,13 @@ describe('character mind store', () => {
     vi.setSystemTime(T0)
     const store = useCharacterMindStore()
     const older = vi.fn()
-    store.attachStage({ idleCue: vi.fn(), idle: older }).report([{ kind: 'view', view: idleView }])
+    store.attachStage({ idleCue: vi.fn(), idle: older, beat: vi.fn() }).report([{ kind: 'view', view: idleView }])
     vi.advanceTimersByTime(Math.ceil(nextIdleWakeAt(store.mind.state.idle)! - T0))
     expect(older).toHaveBeenCalledOnce()
 
     // The older stage's answer to that act no longer counts, so only the newer stage's view can free the mind.
     const newer = vi.fn()
-    store.attachStage({ idleCue: vi.fn(), idle: newer }).report([{ kind: 'view', view: idleView }])
+    store.attachStage({ idleCue: vi.fn(), idle: newer, beat: vi.fn() }).report([{ kind: 'view', view: idleView }])
     const wakeAt = nextIdleWakeAt(store.mind.state.idle)
     expect(wakeAt).not.toBeNull()
     vi.advanceTimersByTime(Math.ceil(wakeAt! - Date.now()))
@@ -375,7 +398,7 @@ describe('character mind store', () => {
     vi.setSystemTime(T0)
     const store = useCharacterMindStore()
     const idle = vi.fn()
-    store.attachStage({ idleCue: vi.fn(), idle }).report([{ kind: 'view', view: idleView }])
+    store.attachStage({ idleCue: vi.fn(), idle, beat: vi.fn() }).report([{ kind: 'view', view: idleView }])
     const wakeAt = nextIdleWakeAt(store.mind.state.idle)!
     expect(wakeAt).toBeGreaterThan(T0)
 

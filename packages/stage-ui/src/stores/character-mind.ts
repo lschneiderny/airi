@@ -20,6 +20,8 @@ export interface MindStage {
   idleCue: (cue: Extract<MindIntent, { kind: 'cue' }>['cue']) => void
   /** Performs one idle intent; a stage under another driver drops it. */
   idle: (intent: MindIdleIntent) => void
+  /** Hands one detected beat to the stage's beat clock, which a groove plays on; a stage under another driver drops it. */
+  beat: (intervalSeconds: number) => void
 }
 
 /** The handle `attachStage` returns. Only the newest attached stage's reports reach the mind. */
@@ -63,6 +65,7 @@ export function voiceDecisionOf({ stimuli, state }: Pick<MindStep, 'stimuli' | '
  *
  * Music: while the window leads, `MindMusic` listens to upstream's beat sync beats where beat sync runs, and tells the
  * mind when music starts and stops. A demotion stops it and tells the mind the music stopped; a reset re-sends it.
+ * Each beat also goes to every attached stage, for its Natural beat clock; the mind never hears a single beat.
  */
 export const useCharacterMindStore = defineStore('character-mind', () => {
   const situation = useSituationStore()
@@ -78,8 +81,11 @@ export const useCharacterMindStore = defineStore('character-mind', () => {
 
   /** Hears music for the mind while the window leads. */
   const music = new MindMusic(mind, {
-    listen: onBeat => listenBeatSyncBeatSignal(() => onBeat()),
+    // The detector's `interval` is already in seconds of the worklet's audio clock (`currentTime`).
+    listen: onBeat => listenBeatSyncBeatSignal(event => onBeat({ intervalSeconds: event.interval })),
     category: () => situation.foregroundCategory,
+    // A copy: a stage that detaches while it takes the beat must not skip the next one.
+    onBeat: ({ intervalSeconds }) => [...stages].forEach(stage => stage.beat(intervalSeconds)),
   })
   const stopCategoryWatch = watch(() => situation.foregroundCategory, () => music.observeCategory())
 

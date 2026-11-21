@@ -1,5 +1,5 @@
 import type { CursorReport } from '@proj-airi/motion-driver-natural/cursor-notice'
-import type { IdleBehaviourKind } from '@proj-airi/motion-driver-natural/idle-activities'
+import type { IdleBehaviourKind, IdleBehaviourReport } from '@proj-airi/motion-driver-natural/idle-activities'
 import type { IdleOrder, IdleReport } from '@proj-airi/motion-driver-natural/idle-schedule'
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
 
@@ -410,6 +410,51 @@ describe('natural motion adapter', () => {
     // Disposed visibility changes cannot leave a wrapper on the old model.
     f.visibility.dispatchEvent(new Event('visibilitychange'))
     expect(f.model.updateFocus).toBe(f.original)
+  })
+
+  it('stamps beats on its own motion clock at the next composition, and loses them while Natural does not drive the model', () => {
+    const drive = { energy: 0, valence: 0, tension: 0, sleepiness: 0, solitude: 0, rate: 1 }
+    const sway = (id: string): IdleOrder => ({ id, kind: 'act', act: 'sway', seed: 1, requested: true })
+    const f = fixture()
+    f.state.eligible = true
+    f.adapter.setIdleDrive(drive)
+    const reports: IdleBehaviourReport[] = []
+    f.adapter.onIdleBehaviour = report => reports.push(report)
+    // The wall clock sends a beat every 0.5 s. At 3 s a frame stalls: the frame clock counts 0.1 s for a 0.4 s gap
+    // and stays 0.3 s behind. Each beat is stamped on the frame clock, so the clock anchors afresh on the shifted
+    // beats and locks again before the sway starts.
+    const frameAt = (wall: number) => wall < 3 ? wall : Math.max(3, wall - 0.3)
+    let nextBeat = 0.5
+    for (let frame = 1; frame <= 8 * 60; frame++) {
+      const wall = frame / 60
+      if (wall > 3 && wall < 3.4)
+        continue
+      while (nextBeat <= wall) {
+        f.adapter.beat(0.5)
+        nextBeat += 0.5
+      }
+      f.frame(frameAt(wall))
+    }
+    f.adapter.idle(sway('bound'))
+    f.frame(frameAt(8 + 1 / 60))
+    f.frame(frameAt(8 + 2 / 60))
+    expect(reports.filter(report => report.phase === 'start')).toEqual([{ phase: 'start', behaviour: 'sway', groove: { beatSeconds: 0.5, beatsPerCycle: 4 } }])
+
+    // Under another driver beats are dropped: no clock locks, and a sway played later starts unbound.
+    const other = fixture()
+    other.adapter.setIdleDrive(drive)
+    const unbound: IdleBehaviourReport[] = []
+    other.adapter.onIdleBehaviour = report => unbound.push(report)
+    for (let frame = 1; frame <= 6 * 60; frame++) {
+      if (frame % 30 === 0)
+        other.adapter.beat(0.5)
+      other.frame(frame / 60)
+    }
+    other.state.eligible = true
+    other.adapter.idle(sway('free'))
+    other.frame(6 + 1 / 60)
+    other.frame(6 + 2 / 60)
+    expect(unbound.filter(report => report.phase === 'start')).toEqual([{ phase: 'start', behaviour: 'sway' }])
   })
 
   it('preserves cursor distance, reversal, expiry, and asymmetric bounds', () => {

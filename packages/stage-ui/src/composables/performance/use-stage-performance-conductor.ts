@@ -146,6 +146,11 @@ export interface StagePerformanceScene {
   /** Live2D and MMD Natural: plays the body language around a reach-out. A scene without it drops the cue. */
   idleCue?: (kind: IdleCueKind) => void
   /**
+   * Live2D and MMD Natural: hands one detected beat, `intervalSeconds` after the previous, to Natural's beat clock, on
+   * which a groove plays. A scene without it drops the beat.
+   */
+  beat?: (intervalSeconds: number) => void
+  /**
    * Live2D and MMD Natural: plays what the character mind's idle policy decided. The scene's Natural performer answers
    * it in its idle reports. A scene without it, such as a scenario sink, drops the order.
    */
@@ -501,6 +506,15 @@ export class StagePerformanceConductor {
   idleCue(kind: IdleCueKind) {
     if (this.options.driver() === 'natural')
       this.options.scene()?.idleCue?.(kind)
+  }
+
+  /**
+   * Hands a detected beat to the scene's Natural beat clock under the Natural driver. Under another driver it is
+   * dropped: there, upstream's beat sync hears every beat on its own.
+   */
+  beat(intervalSeconds: number) {
+    if (this.options.driver() === 'natural')
+      this.options.scene()?.beat?.(intervalSeconds)
   }
 
   /**

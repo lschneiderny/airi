@@ -1855,6 +1855,8 @@ defineExpose({
   idleCue: (kind: IdleCueKind) => natural?.idleCue(kind),
   /** Natural only: plays what the character mind's idle policy decided; Natural answers it in `idleReports`. */
   idle: (order: IdleOrder) => natural?.idle(order),
+  /** Natural only: a detected beat for Natural's beat clock, on which a groove plays. */
+  beat: (intervalSeconds: number) => natural?.beat(intervalSeconds),
   /** Natural only: plays the cursor episode the character mind drew for a `cursorReports` report. */
   cursorEpisode: (order: CursorOrder) => natural?.cursorEpisode(order),
   onSpeech: (event: SpeechEvent, turnId: string, now: number) => {
