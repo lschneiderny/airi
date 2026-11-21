@@ -331,19 +331,16 @@ Recordings and exported traces are private. Write them under `.omo/evidence/`, w
 
 ### Natural QA
 
-QA gates are committed code in `natural-motion/gates.ts`. Each gate has an `id` and an integer `version`, and lists its metrics, thresholds, windows, trial counts, and seeds. Change a gate only by editing that file, and bump `version` when you do. Reports record the git SHA of the last commit that changed the file, so every verdict names the rules it was judged by.
+The liveliness gate test (`natural-motion/liveliness-gate.test.ts`) is the only Natural gate check. It reads its gates from `natural-motion/gates.ts`. Each gate has an `id` and an integer `version`, and lists its metrics, thresholds, windows, trial counts, and seeds. Change a gate only by editing that file, and bump `version` when you do.
 
-The liveliness gate test in this package runs the gates at T0. The qa-tools runners for T1 simulation and T3 rendered captures were removed on 2026-11-17; `pnpm qa:live2d-rig` runs the real headless rig (T2) without a gate. See [`@proj-airi/qa-tools`](../qa-tools/README.md#t2-status). The committed gate ids are `natural-idle-liveliness` and `natural-talking`.
+The test runs at T0. The qa-tools runners for T1 simulation and T3 rendered captures were removed on 2026-11-17; `pnpm qa:live2d-rig` runs the real headless rig (T2) without a gate. See [`@proj-airi/qa-tools`](../qa-tools/README.md#t2-status). The committed gate ids are `natural-idle-liveliness` and `natural-talking`.
 
 | Gate | Id | What it judges |
 | --- | --- | --- |
 | `naturalIdleLivelinessGate` | `natural-idle-liveliness` | Idle liveliness metrics in generated mode, seeds 1-3, 180 s warm-up, 1800 s scored. |
 | `naturalTalkingGate` | `natural-talking` | Talking head speed relative to silence; onset enrichment is reported, not gated. |
 
-Every report states the same limitation. Liveliness scores compare idle motion statistics with the desk VTS reference bands. They do not prove naturalness, which stays a visual review. The desk VTS recordings are valid for idle liveliness only.
-
-Every statistical rendered gate scored from Natural traces uses 3 captures of the same duration on the same build, aggregated per the gate's rule. Single captures are diagnostic only.
-Functional event checks (a parameter rises after a marker, lipsync mouth > threshold, a tool result) are pass/fail runs, not statistical gates.
+Both gates carry the same `limitation`. Liveliness scores compare idle motion statistics with the desk VTS reference bands. They do not prove naturalness, which stays a visual review. The desk VTS recordings are valid for idle liveliness only.
 
 To compare Natural's frame cost before and after a runtime change, run the micro-benchmark from this package on the same machine. It prints the median of 5 runs, each of 10,000 idle adapter compositions on a stub rig:
 
