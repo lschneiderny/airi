@@ -1000,7 +1000,8 @@ export const stateRegistry = defineStateRegistry([
     owner: 'useServerChannelSettingsStore',
     writers: ['apps/stage-tamagotchi/src/renderer/stores/settings/server-channel.ts'],
     tier: 'plain',
-    // Holds the desktop server channel token.
+    // Holds the renderer's copy of the desktop server channel token. The app's host step replaces the token in the main
+    // process and has this window read the new one.
     locations: [{ area: 'localStorage', prefix: 'settings/server-channel/' }],
   },
   {
