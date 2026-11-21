@@ -1,7 +1,7 @@
+import { Emotion, EMOTION_VALUES } from '@proj-airi/stage-shared/expression-performance'
 import { describe, expect, it } from 'vitest'
 
 import { EMOTION_ACTION_NAME } from './actions'
-import { Emotion, EMOTION_VALUES } from './emotions'
 import { EMOTION_MORPHS, MORPH_CANDIDATES, VOWEL_SLOTS } from './morphs'
 
 describe('mmd emotion/morph constants', () => {

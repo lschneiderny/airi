@@ -1,4 +1,4 @@
-import { Emotion } from './emotions'
+import { Emotion } from '@proj-airi/stage-shared/expression-performance'
 
 /**
  * Optional emotion → motion-name mapping for gesture playback.

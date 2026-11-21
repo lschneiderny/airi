@@ -1,7 +1,7 @@
 import type { ClipKind, ClipLayer, DerivedClipMeta } from '@proj-airi/motion-driver-humanoid/clip-meta'
+import type { Emotion } from '@proj-airi/stage-shared/expression-performance'
 
 import type { MMDStanceSlots } from '../composables/mmd/stance'
-import type { Emotion } from '../constants/emotions'
 import type { MorphSlot } from '../constants/morphs'
 
 import indexedDbDriver from 'unstorage/drivers/indexedb'

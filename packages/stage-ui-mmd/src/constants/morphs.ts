@@ -1,4 +1,4 @@
-import { Emotion } from './emotions'
+import { Emotion } from '@proj-airi/stage-shared/expression-performance'
 
 /**
  * Logical morph slots AIRI drives on an MMD model.
