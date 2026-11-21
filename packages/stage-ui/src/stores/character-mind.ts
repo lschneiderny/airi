@@ -57,7 +57,9 @@ export function voiceDecisionOf({ stimuli, state }: Pick<MindStep, 'stimuli' | '
  * Idle: every `idle-act` and `idle-errand` intent of any step goes to every attached stage, so two stages show the
  * same act from the same seed, and only the newest stage reports what its performer saw. After every step the store
  * arms one timer at `nextIdleWakeAt` and sends `idle-wake` when it fires. A reset clears the timer and hands the new
- * state the reporting stage's latest view, because a performer reports its view only when it changes.
+ * state the reporting stage's latest view, because a performer reports its view only when it changes. A newer stage
+ * that attaches hands the mind the dormant view until it reports, so an act the older stage was asked for no longer
+ * holds the mind.
  *
  * Music: while the window leads, `MindMusic` listens to upstream's beat sync beats where beat sync runs, and tells the
  * mind when music starts and stops. A demotion stops it and tells the mind the music stopped; a reset re-sends it.
@@ -197,6 +199,12 @@ export const useCharacterMindStore = defineStore('character-mind', () => {
   /** Lends the mind a stage's body. Cues go to the newest stage, idle intents to every stage, and only the newest reports. */
   function attachStage(next: MindStage): MindStageHandle {
     const attached = { ...next }
+    // The previous reporting stage stops reporting, so an order the mind waits on would never be answered: the mind
+    // hears the dormant view until the new stage reports its own.
+    if (reportedView !== null) {
+      reportedView = null
+      mind.receive({ kind: 'idle', reports: [{ kind: 'view', view: dormantIdleView() }] })
+    }
     stages.push(attached)
     return {
       report(reports) {
