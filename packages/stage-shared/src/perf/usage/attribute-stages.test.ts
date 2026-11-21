@@ -96,6 +96,27 @@ describe('stage attribution', () => {
     expect(result.stages.map(stage => stage.id)).toEqual(['six', 'five', 'four', 'three', 'two'])
   })
 
+  it.each(['regression', 'improvement'] as const)('ranks zero-noise stages first by size, with no z, for %s', (direction) => {
+    const sign = direction === 'regression' ? 1 : -1
+    const flat = (entries: BenchRunRecord[], centres: Record<string, number>) => entries.map(entry => ({
+      ...entry,
+      stages: { ...entry.stages, ...Object.fromEntries(Object.entries(centres).map(([id, centre]) => [id, { msPerFrame: centre, p95MsApprox: centre, n: 60 }])) },
+    }))
+    const result = attributeStages({
+      runsA: flat(runs('a', { body: 2 }), { flat: 2, flatter: 2, tiny: 2, opposite: 2 }),
+      runsB: flat(runs('b', { body: 2 + sign * 3 }), { flat: 2 + sign, flatter: 2 + sign * 0.5, tiny: 2 + sign * 0.01, opposite: 2 - sign }),
+      history: [],
+      direction,
+    })
+
+    expect(result.stages).toEqual([
+      { id: 'flat', deltaMsPerFrame: sign, z: null, zeroNoise: true },
+      { id: 'flatter', deltaMsPerFrame: sign * 0.5, z: null, zeroNoise: true },
+      { id: 'body', deltaMsPerFrame: sign * 3, z: expect.closeTo(sign * 3 / (1.4826 * 0.05)), zeroNoise: false },
+    ])
+    expect(JSON.stringify(result)).toContain(`{"id":"flat","deltaMsPerFrame":${sign},"z":null,"zeroNoise":true}`)
+  })
+
   it('pools residuals within each history commit rather than its shifted centre', () => {
     const result = attributeStages({
       runsA: runs('a', { body: 2 }),

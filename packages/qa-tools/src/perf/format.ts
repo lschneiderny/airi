@@ -112,7 +112,7 @@ function formatAttribution(attribution: BenchScenarioAttribution[keyof BenchScen
     return [...lines, '      stage timings not recorded for this scenario']
   if (attribution.noStageMoved)
     return [...lines, '      no timed stage moved: the cost is outside the timed stages (GPU, compositor, or untimed work)']
-  return [...lines, ...attribution.stages.map(stage => `      stage ${stage.id}  ${formatSigned(stage.deltaMsPerFrame, 2)} ms/frame  (z ${stage.z.toFixed(1)})`)]
+  return [...lines, ...attribution.stages.map(stage => `      stage ${stage.id}  ${formatSigned(stage.deltaMsPerFrame, 2)} ms/frame  ${stage.z === null ? '(no measured noise)' : `(z ${stage.z.toFixed(1)})`}`)]
 }
 
 /**
