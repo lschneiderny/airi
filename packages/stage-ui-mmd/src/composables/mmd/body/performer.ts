@@ -209,6 +209,7 @@ export class MMDBodyPerformer {
       gait: null,
       armLift: { left: 0, right: 0 },
       idle: null,
+      groovePhase: null,
     }
   }
 
