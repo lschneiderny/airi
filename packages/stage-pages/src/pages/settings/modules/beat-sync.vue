@@ -5,6 +5,7 @@ import {
   DEFAULT_BEAT_SYNC_PARAMETERS,
   getBeatSyncInputByteFrequencyData,
   getBeatSyncState,
+  isBeatSyncSupported,
   listenBeatSyncBeatSignal,
   listenBeatSyncStateChange,
   toggleBeatSync,
@@ -119,6 +120,10 @@ watch(state, async (newState) => {
 }, { immediate: true, deep: true })
 
 onMounted(() => {
+  // Beat sync runs only in the desktop app; elsewhere these calls throw, so the page stays idle.
+  if (!isBeatSyncSupported())
+    return
+
   getBeatSyncState().then(initialState => state.value = initialState)
 
   const removeHandlerFns = [
