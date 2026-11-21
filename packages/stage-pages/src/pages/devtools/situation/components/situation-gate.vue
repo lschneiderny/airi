@@ -131,16 +131,21 @@ const rows = computed<GateRow[]>(() => {
   ]
 })
 
+/** The message of each skipped evaluation, with each key written out so the i18n check can follow it. */
+const skippedEvaluationText = {
+  'unprompted-pending': (at: string) => t('tamagotchi.settings.devtools.pages.situation.gate.evaluation.skipped-pending', { at }),
+  'no-mind': (at: string) => t('tamagotchi.settings.devtools.pages.situation.gate.evaluation.skipped-no-mind', { at }),
+  'gate-not-running': (at: string) => t('tamagotchi.settings.devtools.pages.situation.gate.evaluation.skipped-leader', { at }),
+} satisfies Record<Extract<SituationGateEvaluation, { status: 'skipped' }>['reason'], (at: string) => string>
+
 const evaluationText = computed(() => {
   const evaluation = props.evaluation
   if (!evaluation)
     return undefined
   const { result, atMs } = evaluation
   const at = formatClock(atMs)
-  if (result.status === 'skipped') {
-    const key = result.reason === 'unprompted-pending' ? 'skipped-pending' : result.reason === 'no-mind' ? 'skipped-no-mind' : 'skipped-leader'
-    return t(`tamagotchi.settings.devtools.pages.situation.gate.evaluation.${key}`, { at })
-  }
+  if (result.status === 'skipped')
+    return skippedEvaluationText[result.reason](at)
   const { decision } = result
   return decision.fire
     ? t('tamagotchi.settings.devtools.pages.situation.gate.evaluation.fired', { at, topic: decision.topicKey, reason: decision.reason, category: decision.category, kind: decision.picked.kind })
