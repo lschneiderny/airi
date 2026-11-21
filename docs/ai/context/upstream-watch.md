@@ -2,7 +2,7 @@
 
 This list tracks upstream `moeru-ai/airi` systems that the fork does not carry, or carries without the part that matters. Each entry says what upstream has, why it matters here, and the condition for another look.
 
-The fork merges upstream as a whole ([upstream policy ledger](upstream-policy.md)). `main` contains upstream through `b3a6d6071` (2026-11-18), so every upstream system from before that commit is in the tree unless the README's Retired table or the ledger says otherwise. The sync of 2026-11-18 removed four entries from this list, because their systems arrived as upstream ships them: speaker recognition, rule-based voice input decisions, chat actions in the window with the speech-player role, and speech text transformation.
+The fork merges upstream as a whole ([upstream policy ledger](upstream-policy.md)). `main` contains upstream through `bd4f30391` (2026-11-21), so every upstream system from before that commit is in the tree unless the README's Retired table or the ledger says otherwise. The sync of 2026-11-18 removed four entries from this list, because their systems arrived as upstream ships them: speaker recognition, rule-based voice input decisions, chat actions in the window with the speech-player role, and speech text transformation.
 
 ## How to re-check an entry
 

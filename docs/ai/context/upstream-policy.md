@@ -1,6 +1,6 @@
 # Upstream policy ledger
 
-This ledger lists every place where the fork does not take upstream `moeru-ai/airi` as shipped: the upstream rule or behavior, the fork's rule or behavior, the reason, and the condition for another look. It is current as of the sync that ended on 2026-11-18 at upstream `b3a6d6071`. The fork point is `f3e6a244e`.
+This ledger lists every place where the fork does not take upstream `moeru-ai/airi` as shipped: the upstream rule or behavior, the fork's rule or behavior, the reason, and the condition for another look. It is current as of the sync that ended on 2026-11-21 at upstream `bd4f30391`. The fork point is `f3e6a244e`.
 
 Update this ledger in the same sync that changes a row. A departure that has no row here is a bug in the sync.
 
@@ -90,7 +90,7 @@ Plan decision D8 restored six rules the fork had dropped by accident. They are i
 
 ## Upstream rules added since the fork point
 
-Decided on 2026-11-18 for upstream `f3e6a244e..b3a6d6071`. "Adopt" names the fork file that now holds the rule.
+Decided on 2026-11-18 for upstream `f3e6a244e..b3a6d6071`, and on 2026-11-21 for `b3a6d6071..bd4f30391` (the last two rows). "Adopt" names the fork file that now holds the rule.
 
 | Upstream rule | Decision | Where or why |
 | --- | --- | --- |
@@ -122,6 +122,8 @@ Decided on 2026-11-18 for upstream `f3e6a244e..b3a6d6071`. "Adopt" names the for
 | Copilot instructions change | Leave out | The file is deleted |
 | ESLint: `ts/no-explicit-any` as an error; bans on `@better-fetch/fetch`, `awilix`, `colorjs.io`, `debug`, `localforage` | Adopt in config only | `eslint.config.ts`; lint reports them, so guidance does not repeat them. Four fork tests that prove old `localforage` records still read are exempt |
 | TypeScript skill description and routing text name date, time, and unit helpers | Adopt | Root TASK ROUTING |
+| Routing: continuing AIRI Agent, Computer Use, or AUV execution work reads the agent execution memory and the maintenance handoff (`3aa466f98`) | Adopt | Root TASK ROUTING; the two docs are upstream's bytes |
+| ESLint: the root Oxlint plugin's `flat/recommended` config, with the preset's Oxlint detection off | Adopt in config only | `eslint.config.ts` |
 
 ## Code and tooling departures
 
@@ -131,7 +133,7 @@ Each row is behavior where the merged tree differs from upstream.
 
 | Area | Upstream | Fork | Reason | Revisit |
 | --- | --- | --- | --- | --- |
-| Account features | Notifications inbox, display-model cloud sync and store, card sync and history, sync preferences and runner, the account sync section, sign-in in the provider callout | None | The fork removed the hosted account client (`a291588c0`) | If accounts are added |
+| Account features | Notifications inbox, display-model cloud sync and store, card sync and history, sync preferences and runner, the account sync section, sign-in in the provider callout, the cloud badge and account owner of a conversation and its folders | None; conversations and folders belong to the `local` user | The fork removed the hosted account client (`a291588c0`) | If accounts are added |
 | Controls menu | Account, Flux, sign-in, and notifications rows | None of those rows | Account-free fork | If accounts are added |
 | Provider pages | Amazon Bedrock, CometAPI, Gemini audio speech, MiMo, the official provider | None | Removed from the fork's catalog (`898455bd5`, `9af37b7a5`) | Not planned |
 | Speech field status | Four arguments, with a catalog-loading flag | Three arguments | No fork provider picks a voice from a catalog | If one is added |
@@ -143,7 +145,7 @@ Each row is behavior where the merged tree differs from upstream.
 | Area | Upstream | Fork | Reason | Revisit |
 | --- | --- | --- | --- | --- |
 | Update feed | The updater reads `release-updates.airi.build` with upstream's key | Off unless the build sets `AIRI_UPDATE_FEED_URL` and `AIRI_UPDATE_PUBLIC_KEY`; About links to the fork's releases | A fork build must never take upstream's bundles. Replaces the fork's update from GitHub releases (`2cd360ca2`). See [Decisions to revisit](#decisions-to-revisit) | When the fork hosts a feed |
-| Update switch | The main service and the launcher each decide | The launcher alone decides, macOS included | The two could disagree about health | Not planned |
+| Update switch | The main service and the launcher each decide; a Terminal Beta install counts as externally updated (`isExternallyUpdatedInstall`, `3aa466f98`) | The launcher alone decides, macOS included; `isUpdaterDisabled` turns updates off for Flatpak, Nix, and Terminal Beta installs | The two could disagree about health | Not planned |
 | Error reporting | Sentry reports to upstream's project (#3458) | Off unless the build sets its own DSN, and an unset switch means off | A fork build must not report to upstream. See [Decisions to revisit](#decisions-to-revisit) | When the fork has its own project |
 | Release notes | Read from `moeru-ai/airi` | Read from the fork's repository | The fork publishes its own releases | Not planned |
 | Linux packaging | `pacman` and `AppImage` targets | `deb` and `rpm` | The fork dropped AppImage packaging | Not planned |
@@ -157,6 +159,7 @@ Each row is behavior where the merged tree differs from upstream.
 | Beat sync | Both plugins write under every driver (`543d8dfe3`) | Both plugins write nothing under Natural; the `pre` plugin only advances its springs (`beatSyncMode`). Under Natural its beats feed the character mind's music detector (`MindMusic`), which tells the mind when music starts and stops. Universal and MAGIC run it as upstream ships it | Natural is the only writer of the head angles under Natural (overlap 1 of [Autonomous behavior](autonomous-behavior.md)) | Not planned |
 | Live2D model cache | The OPFS loader checks the cache and saves without serializing loads | A load holds a Web Lock per model id from its cache check to the end of its save (`c4c357ab8`, `packages/stage-ui-live2d/src/utils/opfs-loader.ts`) | Two loads of one model raced, and the later save removed the files under the earlier load | When upstream serializes the cache, or offer the fix upstream |
 | Display model defaults | `universal` driver, expressions off, max FPS 0 | `natural`, expressions on, 60 FPS, on upstream's per-model stores | The fork's defaults | Not planned |
+| Prompt projection | The synced `useContextPromptProjectionStore` keeps the last projection of a provider request (`3aa466f98`) | The same store; each snapshot also carries the turn id, the turn origin, and the composer's prompt report | The context devtools and the situation observability tell typed, voice, and unprompted turns apart and show the segment report | Not planned |
 | System prompt | `sessionSystemPrompt` composes it | `buildChatPromptSegments` and `composePrompt`; recipe steps ride in the `card` segment and card guidance in `toolset` | One composer (prompt composition ADR) | Not planned |
 | Memory index | Lines grouped under "Your own:" and "General:" | The `(general)` marker and oldest-first order | The composer drops the oldest lines | Not planned |
 | Spark Notify system turn | The agent appends its instruction, the caller's `appendSystemInstructions`, and plugin `systemInstructions` after the host prompt | The host composes the instruction as the `spark` segment, with the module name bounded by `getPromptSourceKey`, and the caller's text as the capped `plugin` segment; plugin sessions have no `systemInstructions` | One composer (character mind ADR decision 12) | When upstream changes the agent's system turn |
@@ -171,7 +174,7 @@ Each row is behavior where the merged tree differs from upstream.
 
 | Area | Upstream | Fork | Reason | Revisit |
 | --- | --- | --- | --- | --- |
-| Window context (main process) | `createWindowContext` returns `{ context, dispose }` | One shared context per window, `{ context }` only, with `onWindowClosed`; upstream's workspace window, controls menu window, and backdrop service are adapted to it | The IPC and window listener ADR (2026-11-10) | Not planned |
+| Window context (main process) | `createWindowContext` returns `{ context, dispose }` | One shared context per window, `{ context }` only, with `onWindowClosed`; upstream's workspace window, controls menu window, backdrop service, computer-use service, and terminal notice are adapted to it | The IPC and window listener ADR (2026-11-10) | Not planned |
 | Desktop stage window | No such window | Reads its preload and renderer root through `getPreloadPath` and `getRendererRoot`, reports that it mounted, opens the controls menu on a right-click, and preloads the menu window | The fork's desktop stage host follows upstream's window conventions | Not planned |
 | Fork-only repositories | Not present | On unstorage mounts over the same database and store as before; old records still read | Follows upstream's unstorage migration | Not planned |
 | Per-model settings | Five renderers' keys under `settings/models/<model id>/<renderer>/` | The same, plus the fork's MMD motion driver and clip metadata; stance slots, clip curation, stage character height, and roam mode stay global | Those four are properties of the stage, not of a model | Not planned. Step S registered the keys as upstream ships them |

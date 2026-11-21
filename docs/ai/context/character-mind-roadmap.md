@@ -53,7 +53,7 @@ Tuning a behavior that a slice is about to rewrite is wasted work. Feature and t
 
 ## Upstream sync
 
-The sync merged upstream in four steps on the `luke/chore/upstream-sync` branch. Each step is a real merge of the last upstream commit of a day on `upstream/main`'s first-parent history, resolved and checked before the next step started. `main` takes the finished branch by fast-forward, never through a GitHub PR, because a rebase merge would rewrite upstream's commits.
+The first sync merged upstream in four steps (1.1 to 1.4) on the `luke/chore/upstream-sync` branch, and the second, on 2026-11-21, in one step (2.1) on a new branch of the same name. Each step is a real merge of the last upstream commit of a day on `upstream/main`'s first-parent history, resolved and checked before the next step started. `main` takes the finished branch by fast-forward, never through a GitHub PR, because a rebase merge would rewrite upstream's commits.
 
 | Step | Upstream commit | Merge upstream as of | Upstream commits in step | Merge commit |
 | --- | --- | --- | --- | --- |
@@ -61,6 +61,7 @@ The sync merged upstream in four steps on the `luke/chore/upstream-sync` branch.
 | 1.2 | `ae9dfe5ec` | 2026-10-29 | 101 | `9d9b45354` |
 | 1.3 | `120cad3a7` | 2026-11-04 | 117 | `14c763cfb` |
 | 1.4 | `b3a6d6071` | 2026-11-18, upstream's tip | 107 | `e259d4c6e` |
+| 2.1 | `bd4f30391` | 2026-11-21, upstream's tip | 18 | `4edd67647` |
 
 The [upstream policy ledger](upstream-policy.md) lists every departure the sync made and the procedure for the next sync. Each merge commit message records that step's resolutions.
 
@@ -81,6 +82,9 @@ Upstream features that collide with the target arrived in these steps. Under ADR
 | `2026-11-13-chat-selects-character.md` (proposed ADR) | 1.4 | Which character the mind belongs to; one mind per character (ADR decision 1) | Adopted with its code |
 | `1c010856b` display model settings per model (#3544): the keys of five renderers move under `settings/models/<model id>/<renderer>/` | 1.4 | The Members table of the state persistence doc; the registry (step S); the character-behavior settings document (ADR decision 11) | Adopted. The fork's MMD motion driver and clip metadata move the same way; stance slots, clip curation, stage character height, and roam mode stay global. Live2D, Spine, and VRM keep the fork's defaults |
 | `2026-11-11-module-defaults-and-character-values.md` (proposed ADR) | 1.4 | The character-behavior settings document (ADR decision 11) | Adopted with its code |
+| `dc31699e8` three-mmd 0.2.0-beta.3: materials lose `descriptor` and the edge fields of the evaluated state; `alphaMorph` and `updateAlpha` decide transparency | 2.1 | The fork's material-morph applier and opacity composer, which MMD expressions and the body slices (CM5b, CM6b, CM7) drive | Adopted. The applier snapshots each material's authored appearance and outline edge when it is built, and applies PMX edge morphs itself |
+| `e2e19ca97` conversations organized by place and character, with pins, folders, and read-only archived conversations | 2.1 | Where a register lives (CM7); the voice channel: archiving refuses only the owner's actions, and `ingest` sends unprompted, widget, and plugin turns to the active conversation, so she can speak unasked into an archived conversation that the window shows | Adopted, in the `local` namespace. Whether the mind skips an archived conversation is left to the owner |
+| `3aa466f98` computer-use MCP, terminal approval, and Conversation Compact | 2.1 | LLM prompt rule 1 and ADR decision 12: the compact summary is a model call outside `composePrompt`, and a compacted conversation carries its summary as a history item no segment covers. The step budget (`maxSteps`, 30 by default) now ends long tool runs. Spoken turns carry the artistry tools instead of the composer's tool selection, which upstream removed | Adopted. Compact is off unless its experiment flag is on; [LLM prompt](llm-prompt.md) lists the summary under the requests that are not character turns, and its known gaps list the summary item. Terminal outcome notices are notice turns |
 
 ## Open questions
 
