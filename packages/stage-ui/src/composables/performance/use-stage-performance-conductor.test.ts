@@ -794,17 +794,25 @@ describe('stage performance conductor', () => {
       expect(scene.idle).not.toHaveBeenCalled()
     })
 
-    it('plays an ACT cue gesture on the scene under Natural and ignores it under a basic driver', () => {
+    it('steps the mind for a cue gesture under every driver and plays its gesture intent on the scene under Natural only', () => {
       const played = (['natural', 'basic'] as const).map((driver) => {
         const scene = fakeScene()
-        createConductor(driver, scene).conductor.gesture('nod', 2)
-        return [driver, scene.gesture.mock.calls]
+        const { conductor, mind } = createConductor(driver, scene)
+        const stimuli: unknown[] = []
+        mind.onStep(step => stimuli.push(...step.stimuli))
+        conductor.gesture('nod', 2, 'act', 'turn-1')
+        conductor.gesture('glance', 1, 'devtools')
+        return [driver, stimuli, scene.gesture.mock.calls]
       })
 
-      expect(played).toEqual([
-        ['natural', [['nod', 2]]],
-        ['basic', []],
-      ])
+      expect(played).toEqual((['natural', 'basic'] as const).map(driver => [
+        driver,
+        [
+          { kind: 'cue-gesture', gesture: 'nod', count: 2, source: 'act', turnId: 'turn-1' },
+          { kind: 'cue-gesture', gesture: 'glance', count: 1, source: 'devtools' },
+        ],
+        driver === 'natural' ? [['nod', 2], ['glance', 1]] : [],
+      ]))
     })
 
     it('forwards an ACT action label and its cue gesture to the scene under every driver', () => {

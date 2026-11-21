@@ -37,6 +37,7 @@ const intents = mind.receive({ kind: 'emotion', source: 'act', emotion: 'happy',
 | `cursor` | `gaze`: `cursor-episode` for the report's `requestId`, at once: whether she engages, the interest span, the notice dwell, and the cooldown (see below). |
 | `interaction` | `body`: `attend`, at once, for a drag release (`source: 'drag'`). |
 | `chat` | A typed send (`cue: 'sent'`, with its word count): `gaze` `chat-read` with the words, then `body` `attend`. A chat that unfolds (`cue: 'unfold'`): `gaze` `chat-read` with 0 words. No draw; the performer draws the read's delay and hold and drops it without a chat target or while she talks. |
+| `cue-gesture` | One `posture` `gesture` intent of the requested kind and count, without a draw. ACT cues name their reply with `turnId`; devtools requests take the same path. The conductor steps the mind under every driver and dispatches the intent only under Natural; the performer queues or refuses it when a running cue holds its channels. |
 
 A scene reports a touch as a `TouchReport`: a poke with its region and a point relative to that region, a pet start, or a pet end with its duration. The `touch` stimulus adds the settings and a `TouchVoiceView`, which is what the voice channel shows of the touch the situation just recorded. Without a view (a pet start, a follower window, no running gate) the mind decides no line and leaves its voice state untouched. The caller runs a `speak` intent and returns what became of it as a `voice-outcome` with the intent's `turnId`.
 

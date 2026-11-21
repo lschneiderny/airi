@@ -516,9 +516,9 @@ chatHookCleanups.push(streamingControl.onSignal(async (signal, context) => {
     const motion = stageModelRenderer.value === 'live2d' && act.motion ? act.motion : undefined
     if (motion)
       currentMotion.value = { group: motion }
-    // The conductor plays it under the Natural driver of Live2D and MMD; Universal, MAGIC, and MMD Classic ignore it.
+    // The mind hears it under every driver; the conductor plays its answer under the Natural driver of Live2D and MMD only.
     if (act.gesture)
-      performanceConductor.gesture(act.gesture.kind, act.gesture.count)
+      performanceConductor.gesture(act.gesture.kind, act.gesture.count, 'act', context.turnId)
     // The MMD scene resolves the label against the clips the user exposed; the gesture rides along so it can be superseded.
     if (act.action && stageModelRenderer.value === 'mmd')
       performanceConductor.action(act.action, act.gesture)
@@ -729,8 +729,8 @@ onUnmounted(naturalPerformanceOverride.onEmotionPulse((pulse) => {
     emotionsQueue.enqueue({ emotion, source: 'devtools' })
 }))
 
-// The lab's gesture buttons play through the conductor, which ignores them outside Natural.
-onUnmounted(naturalPerformanceOverride.onGestureRequest(request => performanceConductor.gesture(request.kind, request.count)))
+// The lab's gesture buttons go through the conductor and the mind, as ACT gestures do; they play only under Natural.
+onUnmounted(naturalPerformanceOverride.onGestureRequest(request => performanceConductor.gesture(request.kind, request.count, 'devtools')))
 onUnmounted(naturalPerformanceOverride.onIdleRequest(kind => performanceConductor.idlePlay(kind)))
 // The lab's pastime and moment buttons go through the stage's own realiser, which ignores them outside Natural.
 onUnmounted(naturalPerformanceOverride.onPastimeRequest(() => idleProps.playPastime()))
