@@ -5,7 +5,9 @@ import type { BenchScenarioAttribution, BenchScenarioComparison } from '../perf/
 import type { AcceptancePredicates, AcceptedCost } from './accepted-costs'
 import type { BaselineResetEvent, FindingCloseEvent, FindingOpenEvent, OpenFinding, TrackEvent } from './findings'
 
-import { BENCH_METRICS, BENCH_MIN_RUNS, BENCH_STALE_MS, compareBench, environmentKey } from '@proj-airi/stage-shared/perf/usage'
+import { TZDate } from '@date-fns/tz'
+import { BENCH_METRICS, BENCH_MIN_RUNS, compareBench, environmentKey } from '@proj-airi/stage-shared/perf/usage'
+import { isAfter, isBefore, subDays } from 'date-fns'
 
 import { BENCH_V1, estimateSeconds, planLaunches } from '../bench/matrix'
 import { acceptanceFor } from './accepted-costs'
@@ -15,6 +17,10 @@ import { scenariosForPaths } from './paths'
 type Subject = FindingOpenEvent['subject']
 type Baseline = FindingOpenEvent['baseline']
 type Compared = Extract<BenchComparison, { status: 'compared' }>
+
+/** A main anchor is a benched main tip 3 to 6 days old, inside the 7-day bench staleness window. */
+const ANCHOR_MIN_DAYS = 3
+const ANCHOR_MAX_DAYS = 6
 
 /** Git facts are resolved by the caller, including each PR's merge base with its own base ref. */
 export interface PlanInput {
@@ -86,7 +92,9 @@ export async function planSubjects(input: PlanInput): Promise<SubjectPlan[]> {
     event.event === 'subject' && (event.outcome === 'benched' || event.outcome === 'already-benched'))
   const mains = benched.filter(event => event.subject.kind === 'main' && event.subject.sha !== mainTip).toSorted((a, b) => b.t - a.t)
   const previous = mains[0]
-  const anchor = mains.find(event => now - event.t >= BENCH_STALE_MS * 3 / 7 && now - event.t <= BENCH_STALE_MS * 6 / 7)
+  // UTC days are always 24 hours, so the window does not shift across a daylight saving change.
+  const today = new TZDate(now, 'UTC')
+  const anchor = mains.find(event => !isAfter(event.t, subDays(today, ANCHOR_MIN_DAYS)) && !isBefore(event.t, subDays(today, ANCHOR_MAX_DAYS)))
   const allScenarios = BENCH_V1.map(row => row.id)
   const queue: { subject: Subject, baselines: Baseline[], scenarios: readonly BenchScenarioId[], runs: number }[] = []
   if (manual) {
