@@ -2,6 +2,7 @@ import type { GatedRun } from './lib/gated-tests'
 import type { ChangedFile } from './lib/git'
 import type { VerifyStatsOptions } from './verify-history'
 
+import { renderLoopPaths } from '../../packages/qa-tools/src/track/paths'
 import { parseStatsArgs } from './verify-history'
 
 /** Lint runs first: it is the cheapest step, and a lint failure stops verify before the slower steps start. */
@@ -103,6 +104,18 @@ const followUpRules: readonly { paths: RegExp, reason: string, checks: string, g
     paths: /^packages\/lab-tools\/src\/t2-3d\/reports\//,
     reason: 'a lab:motion3d report rule changed',
     checks: 'labelled lab:motion3d inject cases sealed before scoring, and the report version bump in its own commit',
+    gateNeeds: [],
+  },
+  {
+    paths: new RegExp(renderLoopPaths.map(row => row.re.source).join('|')),
+    reason: 'render-loop code changed',
+    checks: 'the nightly perf tracker benches this branch once it is pushed with an open PR (pnpm perf status shows its findings); to measure before landing, bench base and tip as the perf-qa procedure in packages/qa-tools/README.md#perf-reports says',
+    gateNeeds: [],
+  },
+  {
+    paths: /^packages\/stage-ui-mmd\/src\/composables\/mmd\/work-budget\.json$/,
+    reason: 'a headless work budget changed',
+    checks: 'state why each raised budget is needed in the commit body and in the entry reason',
     gateNeeds: [],
   },
 ]

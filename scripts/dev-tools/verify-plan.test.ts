@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { lintAllFixable, parseVerifyArgs, planVerify, relatedTestCommand } from './verify-plan'
+import { followUpChecks, lintAllFixable, parseVerifyArgs, planVerify, relatedTestCommand } from './verify-plan'
 
 const packages = ['packages/stage-ui', 'apps/stage-tamagotchi']
 const file = (path: string, deleted = false) => ({ path, deleted })
@@ -95,6 +95,13 @@ describe('planVerify', () => {
 
   it('does not match a package that only shares a name prefix', () => {
     expect(planVerify([file('packages/stage-ui-three/src/a.ts')], packages).typecheck).toEqual({ kind: 'none' })
+  })
+})
+
+describe('perf follow-ups', () => {
+  it('lists the perf follow-up for render-loop code and for a work budget file', () => {
+    expect(followUpChecks([file('packages/motion-driver-humanoid/src/x.ts')]).some(line => line.endsWith('(render-loop code changed)'))).toBe(true)
+    expect(followUpChecks([file('packages/stage-ui-mmd/src/composables/mmd/work-budget.json')]).some(line => line.endsWith('(a headless work budget changed)'))).toBe(true)
   })
 })
 
