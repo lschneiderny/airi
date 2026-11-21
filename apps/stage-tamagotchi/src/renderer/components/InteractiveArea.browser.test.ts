@@ -167,18 +167,6 @@ async function expectElectronReplyBubble(screen: Awaited<ReturnType<typeof rende
   if (!bubble || !swipeSurface)
     throw new Error('Expected the message input bubble and a swipe surface.')
 
-  const collapsedHeight = bubble.getBoundingClientRect().height
-  dispatchHorizontalPan(swipeSurface)
-
-  await vi.waitFor(() => {
-    const cancelButton = bubble.querySelector<HTMLButtonElement>('[aria-label="stage.chat.reply.cancel"]')
-    expect(cancelButton?.parentElement?.getAttribute('aria-hidden')).toBe('false')
-    expect(bubble.getBoundingClientRect().height).toBeGreaterThan(collapsedHeight)
-  })
-
-  expect(getComputedStyle(input).backgroundColor).toBe('rgba(0, 0, 0, 0)')
-  expect(getComputedStyle(bubble).backgroundColor).toBe('rgba(0, 0, 0, 0)')
-
   const cancelButton = bubble.querySelector<HTMLButtonElement>('[aria-label="stage.chat.reply.cancel"]')
   const replyTransition = cancelButton?.parentElement?.parentElement
   expect(replyTransition).not.toBeNull()
@@ -187,20 +175,60 @@ async function expectElectronReplyBubble(screen: Awaited<ReturnType<typeof rende
     throw new Error('Expected the reply transition and cancel button.')
 
   expect(Number.parseFloat(getComputedStyle(replyTransition).transitionDuration)).toBeGreaterThan(0)
+  const collapsedHeight = bubble.getBoundingClientRect().height
+  // The preview measures its content after Vue updates. Subscribe before the
+  // swipe, then finish the real animation once that measured height arrives.
+  const opened = new Promise<void>((resolve, reject) => {
+    const signal = AbortSignal.timeout(1000)
+    const observer = new MutationObserver(() => {
+      if (Number.parseFloat(replyTransition.style.maxHeight) > 0) {
+        observer.disconnect()
+        signal.removeEventListener('abort', abort)
+        for (const animation of replyTransition.getAnimations())
+          animation.finish()
+        resolve()
+      }
+    })
+    function abort() {
+      observer.disconnect()
+      reject(new Error('The reply preview did not publish its measured height.'))
+    }
+    signal.addEventListener('abort', abort, { once: true })
+    observer.observe(replyTransition, { attributes: true, attributeFilter: ['style'] })
+    onTestFinished(() => {
+      observer.disconnect()
+      signal.removeEventListener('abort', abort)
+    })
+  })
+  dispatchHorizontalPan(swipeSurface)
+  await opened
+  expect(cancelButton.parentElement?.getAttribute('aria-hidden')).toBe('false')
+  expect(bubble.getBoundingClientRect().height).toBeGreaterThan(collapsedHeight)
+  expect(getComputedStyle(input).backgroundColor).toBe('rgba(0, 0, 0, 0)')
+  expect(getComputedStyle(bubble).backgroundColor).toBe('rgba(0, 0, 0, 0)')
   const expandedHeight = bubble.getBoundingClientRect().height
   cancelButton.click()
   await nextTick()
+  // A loaded host can skip every intermediate closing frame between polls.
+  // Hold the real transition at each measured point instead of racing its clock.
+  const closing = replyTransition.getAnimations().find(animation => animation instanceof CSSTransition && animation.transitionProperty === 'max-height')
+  if (!closing)
+    throw new Error('Expected the reply height transition.')
+  closing.pause()
+  closing.currentTime = 0
+  await closing.ready
   expect(cancelButton.parentElement?.getAttribute('aria-hidden')).toBe('true')
   expect(bubble.getBoundingClientRect().height).toBeGreaterThan(collapsedHeight)
   expect(bubble.getBoundingClientRect().height).toBeCloseTo(expandedHeight, 0)
-  await vi.waitFor(() => {
-    const height = bubble.getBoundingClientRect().height
-    expect(height).toBeGreaterThan(collapsedHeight)
-    expect(height).toBeLessThan(expandedHeight)
-  })
-  await vi.waitFor(() => {
-    expect(bubble.getBoundingClientRect().height).toBeCloseTo(collapsedHeight, 0)
-  })
+  const duration = closing.effect?.getTiming().duration
+  if (typeof duration !== 'number')
+    throw new Error('Expected a finite reply height transition duration.')
+  closing.currentTime = duration / 2
+  const height = bubble.getBoundingClientRect().height
+  expect(height).toBeGreaterThan(collapsedHeight)
+  expect(height).toBeLessThan(expandedHeight)
+  closing.finish()
+  expect(bubble.getBoundingClientRect().height).toBeCloseTo(collapsedHeight, 0)
 }
 
 describe('interactive area synchronized state', () => {
