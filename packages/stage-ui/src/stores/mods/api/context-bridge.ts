@@ -7,7 +7,6 @@ import type { SparkNotifyPerformanceResult, SparkNotifyReactionOptions } from '.
 
 import { errorMessageFrom } from '@moeru/std'
 import { encodeBase64 } from '@moeru/std/base64'
-import { isStageTamagotchi } from '@proj-airi/stage-shared'
 import { notifyTopicKey } from '@proj-airi/stage-shared/situation'
 import { useBroadcastChannel } from '@vueuse/core'
 import { Mutex } from 'es-toolkit'
@@ -1161,7 +1160,7 @@ export const useContextBridgeStore = defineStore('mods:api:context-bridge', () =
               ...context.input?.data,
               message,
               'stage-web': false,
-              'stage-tamagotchi': isStageTamagotchi(),
+              'stage-tamagotchi': true,
               'gen-ai:chat': {
                 message: context.message as UserMessage,
                 composedMessage: context.composedMessage,
@@ -1182,7 +1181,7 @@ export const useContextBridgeStore = defineStore('mods:api:context-bridge', () =
               // TODO: tool calls should be captured properly
               'toolCalls': [],
               'stage-web': false,
-              'stage-tamagotchi': isStageTamagotchi(),
+              'stage-tamagotchi': true,
               // TODO: Properly calculate usage data
               'usage': {
                 promptTokens: 0,
