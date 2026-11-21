@@ -1,23 +1,68 @@
+import type { TrackHost } from '../src/track/run'
 import type { TimerHost } from '../src/track/timer'
 
 import process from 'node:process'
 
-import { execFileSync } from 'node:child_process'
+import { execFile, execFileSync, spawn } from 'node:child_process'
 import { homedir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
+import { promisify } from 'node:util'
 
 import { errorMessageFrom } from '@moeru/std'
 
+import { sampleHost } from '../src/host-quiet/wait'
 import { formatSkipped } from '../src/perf/format'
+import { defaultGit } from '../src/track/accepted-costs'
 import { parseTrackArgs, TRACK_HELP, TrackUsageError } from '../src/track/args'
 import { appendTrackEvent, foldFindings, readTrackEvents, trackHistoryPath } from '../src/track/findings'
+import { runTick } from '../src/track/run'
 import { installTimer, uninstallTimer } from '../src/track/timer'
 
 const print = (text: string) => process.stdout.write(`${text}\n`)
 const note = (text: string | null) => text !== null && process.stderr.write(text.split('\n').map(line => `perf:track: ${line}\n`).join(''))
 
+const toolRoot = resolve(import.meta.dirname, '../../..')
+const execFileAsync = promisify(execFile)
+
+function trackHost(signal: AbortSignal): TrackHost {
+  return {
+    toolRoot,
+    stateDir: dirname(trackHistoryPath({ platform: process.platform, env: process.env, homedir: homedir() })),
+    env: process.env,
+    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    pid: process.pid,
+    signal,
+    git: (cwd, args) => defaultGit(cwd)(args),
+    gh: async args => (await execFileAsync('gh', [...args], { cwd: toolRoot, encoding: 'utf8' })).stdout,
+    spawn: (command, args, options) => new Promise((resolveCode, reject) => {
+      // Child output goes to stderr, so the tick's stdout holds only its own subject and finding lines.
+      const child = spawn(command, [...args], { cwd: options.cwd, env: options.env, stdio: ['ignore', process.stderr, 'inherit'] })
+      child.once('error', reject)
+      child.once('close', (code, signalName) => resolveCode(code ?? (signalName === 'SIGINT' || signalName === 'SIGTERM' ? 130 : 1)))
+    }),
+    sampleHost: () => sampleHost(),
+    // The tick runs on the host, outside qa:display, so notify-send reaches the user's session bus.
+    notify: async (title, body) => {
+      await execFileAsync('notify-send', ['--app-name=AIRI', title, body])
+    },
+    now: () => Date.now(),
+    pidAlive: (pid) => {
+      try {
+        process.kill(pid, 0)
+        return true
+      }
+      catch (error) {
+        // EPERM: the pid exists under another user.
+        return error instanceof Error && 'code' in error && error.code === 'EPERM'
+      }
+    },
+    print,
+    log: line => note(line),
+  }
+}
+
 function timerHost(): TimerHost {
-  const run = (command: string) => (args: readonly string[]) => execFileSync(command, [...args], { cwd: resolve(import.meta.dirname, '../../..'), encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+  const run = (command: string) => (args: readonly string[]) => execFileSync(command, [...args], { cwd: toolRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
   return {
     git: run('git'),
     systemctl: run('systemctl'),
@@ -47,9 +92,19 @@ async function main(): Promise<number> {
       print(`closed ${command.id} as ${command.resolution}`)
       return 0
     }
-    case 'tick':
-      note(`${command.kind} is not implemented in this commit`)
-      return 1
+    case 'tick': {
+      const controller = new AbortController()
+      const stop = () => controller.abort()
+      process.on('SIGINT', stop)
+      process.on('SIGTERM', stop)
+      try {
+        return await runTick(trackHost(controller.signal), command)
+      }
+      finally {
+        process.off('SIGINT', stop)
+        process.off('SIGTERM', stop)
+      }
+    }
     case 'install-timer':
       installTimer(timerHost(), { ref: command.ref })
       return 0
