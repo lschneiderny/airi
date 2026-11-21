@@ -140,6 +140,15 @@ describe('verify step execution', () => {
     expect(replay.stdout).toContain(failure.stdout.trim())
   }, 20_000)
 
+  it('exits 1 from --wait for a waited run that exited 2, so 2 stays a usage error', async () => {
+    const broken = await verifyFails(['--base', 'no-such-ref'])
+    expect(broken.code).toBe(2)
+
+    const waited = await verifyFails(['--wait', '--timeout', '0'])
+    expect(waited.code).toBe(1)
+    expect(waited.stdout).toContain('Cannot find the merge base with no-such-ref')
+  }, 20_000)
+
   it('runs in the background with --detach and hands the result to --wait', async () => {
     const started = await verify(['--only', 'test', '--detach'])
     const id = /verify run (\S+) started in the background/.exec(started.stdout)?.[1]

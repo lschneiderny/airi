@@ -112,7 +112,7 @@ Every run writes all output, its own lines and every command's, to a run log at 
 
 On a terminal, command output streams as before. When the output is not a terminal, as under an agent or a pipe, verify prints only its own lines: each step's scope, the last 60 lines of a failed command, the summary, the follow-up checks, and the log path. The run record keeps those lines as the run's report. A step that ran more than three commands summarizes them as a count.
 
-`--detach` starts the same run in a detached process, prints its run id, and returns. `--wait [<run id>]` blocks until that run, or without an id this worktree's newest run, ends; then it prints the report and exits with the run's exit code. It waits at most `--timeout` seconds, 540 by default, which fits inside the 10-minute limit agent harnesses put on one tool call. A run still going exits 3; wait again with the same id. A run whose process died without recording an end exits 1 and names its log. `--wait` also works for a foreground run started elsewhere, such as one a harness put in the background.
+`--detach` starts the same run in a detached process, prints its run id, and returns. `--wait [<run id>]` blocks until that run, or without an id this worktree's newest run, ends; then it prints the report and exits 0 when the run passed and 1 when it did not, so 2 stays a usage error of `--wait` itself. `--dry-run` writes no run record, so it does not combine with `--detach`. It waits at most `--timeout` seconds, 540 by default, which fits inside the 10-minute limit agent harnesses put on one tool call. A run still going exits 3; wait again with the same id. A run whose process died without recording an end exits 1 and names its log. `--wait` also works for a foreground run started elsewhere, such as one a harness put in the background.
 
 Step history is separate from the last-pass record. Each completed step appends a record to `<git common dir>/airi-verify/runs.jsonl`, including failures and skips. Records contain `ts` (epoch milliseconds), `worktree`, `branch` (null for detached HEAD), `head`, `tree`, `scopeBase`, `mode`, `step`, `status` (`pass`, `fail`, or `skipped`; records written before 2026-11-17 can also say `cached`), `durationMs`, `commands` (argument arrays), and `files`. Records written before 2026-11-19 also carry the `waitMs` and `grant` of the removed CPU slot broker. Dry runs do not append history.
 
@@ -120,7 +120,7 @@ Step history is separate from the last-pass record. Each completed step appends 
 
 Before an append, a history file larger than 5 MiB rotates to `runs.1.jsonl`, replacing the previous generation. Statistics read both generations. History write failures print a warning without changing check results. Set `AIRI_VERIFY_HISTORY_DIR` to use another history directory, such as a temporary directory for QA; this setting does not redirect last-pass records.
 
-Exit codes: 0 every step passed, 1 a step failed or a waited run died, 2 usage error, 3 a waited run is still running.
+Exit codes: 0 every step passed, 1 a step failed, or a waited run failed or died, 2 usage error, 3 a waited run is still running.
 
 ## `pnpm test:run`
 
