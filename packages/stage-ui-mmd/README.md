@@ -60,8 +60,8 @@ reaching feature parity with the Live2D and VRM renderers:
 - **Stage locomotion** (desktop stage only, `stageWorld` set): the body director
   also walks her to the chat after it unfolds, chases the cursor inside the attend
   window that the character mind's `attend` intent opens (a poke, pet start, drag
-  or sent message; `attend(intent)` stamps `attendUntilMs` on the director's clock
-  under the Natural driver; under the classic driver the attend intent is not
+  or sent message; `attend(intent)` stamps `attendUntilMs` at the director time of
+  the next frame, through `MMDAttendWindow`, under the Natural driver; under the classic driver the attend intent is not
   dispatched, so the director gets no attend window), returns home 20 s after the last reason and, with
   `roamMode` (`settings/mmd/roam-mode`, `'stay' | 'roam'`, default `'stay'`),
   wanders when Natural's idle draw asks for it (the `wander` errand, listed in
