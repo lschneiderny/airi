@@ -20,6 +20,12 @@ const electronDisplays: Display[] = [
   { id: 2, bounds: { x: 1920, y: 0, width: 1280, height: 720 }, workArea: { x: 1920, y: 0, width: 1280, height: 720 }, scaleFactor: 1 } as Display,
 ]
 
+// Linux bridge reports must use Linux host facts on every test runner.
+vi.mock('node:process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:process')>()
+  return { default: { ...actual, platform: 'linux' } }
+})
+
 vi.mock('electron', () => ({
   app: {
     isReady: () => true,
