@@ -1115,8 +1115,11 @@ defaults to 12 and `--seed` to 1. Seconds must be greater than 0 and at most
 Before it attaches, capture samples the host: load per core, machine CPU use,
 and CPU pressure, judged by `decideHostContended`. Load from other work stalls
 frames until the motion3d gate refuses the trace with `frame-gap`, so a
-contended host makes capture exit 2 with the reading. The captured app counts
-toward the reading; an MMD scene alone stays under the thresholds.
+contended host makes capture exit 2 with the reading. The captured app is the
+target, not outside load: capture reads its CPU seconds through the CDP port
+(`SystemInfo.getProcessInfo`, which lists only the app's own processes) and
+leaves its share out of the machine CPU use. The load average and CPU pressure
+still include the app.
 `--wait-quiet <seconds>` (at most 3600) samples every 2 s until the host
 calms down, and exits 2 if it stays busy. `--allow-busy` skips the refusal,
 for a capture you will not gate, and records the reading. `capture.json`
