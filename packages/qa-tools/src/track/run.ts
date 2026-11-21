@@ -348,17 +348,23 @@ class Tick {
 
   private async runSubject(plan: SubjectPlan, opened: string[], compared: Candidate[]): Promise<void> {
     const regular = plan.baselines[0] ?? null
+    const resets = [...plan.resets]
+    // The planner's environment resets describe history already read, so they persist even when no step runs.
+    const stop = (outcome: SubjectOutcome, reason?: string) => {
+      this.recordSubject(plan.subject, regular, plan.scenarios, outcome, reason)
+      for (const reset of resets)
+        this.append(reset)
+    }
     if (plan.outcome === 'deferred') {
-      this.recordSubject(plan.subject, regular, plan.scenarios, 'deferred', plan.reason)
+      stop('deferred', plan.reason)
       return
     }
     const initial = await this.runSteps(plan.steps)
     if (initial.outcome !== 'ok') {
-      this.recordSubject(plan.subject, regular, plan.scenarios, initial.outcome, initial.reason)
+      stop(initial.outcome, initial.reason)
       return
     }
 
-    const resets = [...plan.resets]
     const candidates: { candidate: Candidate, attribution: BenchScenarioAttribution['regression'] }[] = []
     let rebenched = false
     for (const baseline of plan.baselines) {
@@ -388,7 +394,7 @@ class Tick {
           const step = (sha: string): BenchStep => ({ kind: 'bench', sha, scenarios: [baseline.scenario], runs: plan.runs })
           const again = await this.runSteps([step(baseline.sha), step(plan.subject.sha)])
           if (again.outcome !== 'ok') {
-            this.recordSubject(plan.subject, regular, plan.scenarios, again.outcome, again.reason)
+            stop(again.outcome, again.reason)
             return
           }
           continue
@@ -407,16 +413,14 @@ class Tick {
       const pairs = new Map(candidates.map(({ candidate }) => [`${candidate.baseline.sha}:${candidate.scenario}`, candidate]))
       const confirmation = await this.runSteps([...pairs.values()].flatMap(candidate => confirmSteps(candidate, plan.runs)), { cached: false })
       if (confirmation.outcome !== 'ok') {
-        this.recordSubject(plan.subject, regular, plan.scenarios, confirmation.outcome, confirmation.reason)
+        stop(confirmation.outcome, confirmation.reason)
         return
       }
       const runs = (await readBenchHistory(this.benchPath)).runs
       confirmed = confirmCandidates({ candidates: candidates.map(row => row.candidate), runs, confirmStartT, history: runs.filter(run => run.t < confirmStartT) })
     }
 
-    this.recordSubject(plan.subject, regular, plan.scenarios, plan.steps.length > 0 ? 'benched' : 'already-benched')
-    for (const reset of resets)
-      this.append(reset)
+    stop(plan.steps.length > 0 ? 'benched' : 'already-benched')
     for (const candidate of confirmed) {
       const match = await matchOpen({ candidate, open: foldFindings(this.events).open, rangesOverlap: (finding, other) => this.rangesOverlap(finding, other) })
       if (match) {
