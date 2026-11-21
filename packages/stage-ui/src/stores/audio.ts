@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { computed, ref, shallowRef } from 'vue'
+import { computed, onScopeDispose, ref, shallowRef } from 'vue'
 
 function calculateVolumeWithLinearNormalize(analyser: AnalyserNode) {
   const dataBuffer = new Uint8Array(analyser.frequencyBinCount)
@@ -74,6 +74,12 @@ export const useAudioContext = defineStore('audio-context', () => {
   // the 192 kHz test in packages/model-driver-lipsync/src/live2d/index.browser.test.ts.
   // Remove when that wlipsync@1.3.1 browser test stops reporting processorerror, meaning `execute` accepts 192 kHz.
   const audioContext = shallowRef<AudioContext>(new AudioContext({ sampleRate: 48000 }))
+  // An open context holds one of the browser's audio output streams until it closes, and Chromium renders only about
+  // 60 at once. A context past that limit plays nothing: its clock stands still. So the store closes the one it opened.
+  onScopeDispose(() => {
+    if (audioContext.value.state !== 'closed')
+      void audioContext.value.close()
+  })
 
   return {
     audioContext,
