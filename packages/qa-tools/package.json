@@ -38,6 +38,7 @@
     "test:run": "vitest run"
   },
   "dependencies": {
+    "@date-fns/tz": "catalog:",
     "@modelcontextprotocol/sdk": "catalog:",
     "@moeru/std": "catalog:",
     "@moeru/three-mmd": "catalog:",
@@ -52,6 +53,7 @@
     "@proj-airi/stage-ui": "workspace:^",
     "@proj-airi/stage-ui-live2d": "workspace:^",
     "@proj-airi/stage-ui-mmd": "workspace:^",
+    "date-fns": "catalog:",
     "jszip": "catalog:",
     "pinia": "catalog:",
     "pixi-live2d-display": "catalog:",

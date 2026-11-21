@@ -8,8 +8,13 @@ const BASELINE = 'a'.repeat(40)
 const parse = (argv: string[], env: Record<string, string> = {}) => parseTrackArgs(argv, env)
 
 describe('parseTrackArgs tick', () => {
-  it('defaults to an automatic manual-trigger tick, five runs and the 06:30 deadline', () => {
-    expect(parse(['tick'])).toEqual({ kind: 'tick', manual: null, scenario: null, runs: 5, deadline: '06:30', planOnly: false, trigger: 'manual' })
+  it('defaults to an automatic manual-trigger tick, five runs and no parsed deadline', () => {
+    expect(parse(['tick'])).toEqual({ kind: 'tick', manual: null, scenario: null, runs: 5, deadline: null, planOnly: false, trigger: 'manual' })
+  })
+
+  it('gives a manual pair no deadline unless --deadline is given', () => {
+    expect(parse(['tick', '--subject', 'head', '--baseline', 'base'])).toMatchObject({ manual: { subject: 'head', baseline: 'base' }, deadline: null })
+    expect(parse(['tick', '--subject', 'head', '--baseline', 'base', '--deadline', '05:45'])).toMatchObject({ deadline: '05:45' })
   })
 
   it('takes a subject and a baseline together as a manual tick', () => {

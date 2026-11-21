@@ -54,6 +54,9 @@ catalogs:
     '@cortex-js/compute-engine':
       specifier: ^0.153.0
       version: 0.153.0
+    '@date-fns/tz':
+      specifier: ^1.5.0
+      version: 1.5.0
     '@date-fns/utc':
       specifier: ^2.1.1
       version: 2.1.1
@@ -2970,6 +2973,9 @@ importers:
 
   packages/qa-tools:
     dependencies:
+      '@date-fns/tz':
+        specifier: 'catalog:'
+        version: 1.5.0
       '@modelcontextprotocol/sdk':
         specifier: 'catalog:'
         version: 1.30.0(supports-color@10.2.2)(zod@4.4.3)
@@ -3012,6 +3018,9 @@ importers:
       '@proj-airi/stage-ui-mmd':
         specifier: workspace:^
         version: link:../stage-ui-mmd
+      date-fns:
+        specifier: 'catalog:'
+        version: 4.4.0
       jszip:
         specifier: 'catalog:'
         version: 3.10.1

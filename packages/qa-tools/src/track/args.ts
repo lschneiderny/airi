@@ -17,7 +17,7 @@ export const TRACK_HELP = [
   TRACK_USAGE,
   '',
   'tick benches the subjects the tracker plans and records findings in track.jsonl beside bench.jsonl.',
-  '--subject and --baseline together bench one manual pair. --runs is at least 3 (default 5); --deadline defaults to 06:30.',
+  '--subject and --baseline together bench one manual pair. --runs is at least 3 (default 5). --deadline defaults to 06:30, except for a manual pair, which has none unless given.',
   '--plan-only, or AIRI_PERF_TRACK_PLAN_ONLY=1, records the plan without benching.',
   'close records how an open finding ended; pnpm perf status shows the outcome mix.',
 ].join('\n')
@@ -29,8 +29,8 @@ export type TrackCommand
     readonly manual: { readonly subject: string, readonly baseline: string } | null
     readonly scenario: string | null
     readonly runs: number
-    /** Local `HH:MM` after which no new bench starts. */
-    readonly deadline: string
+    /** Local `HH:MM` after which no new bench starts; `null` when `--deadline` is absent, and the tick picks the default. */
+    readonly deadline: string | null
     readonly planOnly: boolean
     readonly trigger: 'timer' | 'manual'
   }
@@ -131,7 +131,7 @@ export function parseTrackArgs(argv: readonly string[], env: Readonly<Record<str
         manual: subject !== null && baseline !== null ? { subject, baseline } : null,
         scenario: nonEmpty('scenario', values.scenario),
         runs: runs?.output ?? 5,
-        deadline: values.deadline ?? '06:30',
+        deadline: values.deadline ?? null,
         planOnly: values['plan-only'] === true || env.AIRI_PERF_TRACK_PLAN_ONLY === '1',
         trigger: trigger?.output ?? 'manual',
       }
