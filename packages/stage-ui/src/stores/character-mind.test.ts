@@ -456,6 +456,21 @@ describe('character mind store', () => {
       expect(characterState.leaderRecord?.pacing).toBeNull()
     })
 
+    it('keeps an away span open across a card switch, so the return after it gets its response', async () => {
+      const store = useCharacterMindStore()
+      await connected(store)
+      store.mind.receive({ kind: 'presence', away: true, wake: null })
+      vi.setSystemTime(T0 + 60_000)
+      characterState.replace('card-b', herPacing)
+
+      vi.setSystemTime(T0 + 120_000)
+      const intents = store.mind.receive({ kind: 'presence', away: false, wake: null })
+
+      expect(intents.map(intent => intent.kind)).toEqual(['wake', 'moment', 'observe-return'])
+      // The span reopens at the switch, so the return counts from there.
+      expect(intents.at(-1)).toMatchObject({ kind: 'observe-return', awayMs: 60_000 })
+    })
+
     it('lets the outcome of a line opened before a card switch reach the reloaded mind without error', async () => {
       let speak!: (outcome: 'spoken') => void
       port.speak.mockReturnValue(new Promise((resolve) => {
