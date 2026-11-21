@@ -19,17 +19,19 @@ function setup() {
         received.push({ playing: stimulus.playing, atMs: atMs - T0 })
     }
   })
-  const beats = { onBeat: undefined as (() => void) | undefined, unlisten: vi.fn() }
-  const listen = vi.fn((onBeat: () => void) => {
+  const beats = { onBeat: undefined as ((beat: { intervalSeconds: number }) => void) | undefined, unlisten: vi.fn() }
+  const listen = vi.fn((onBeat: (beat: { intervalSeconds: number }) => void) => {
     beats.onBeat = onBeat
     return beats.unlisten
   })
   let category: AppCategory | null = null
-  const music = new MindMusic(mind, { listen, category: () => category })
+  const heard: number[] = []
+  const music = new MindMusic(mind, { listen, category: () => category, onBeat: beat => heard.push(beat.intervalSeconds) })
   return {
     mind,
     music,
     received,
+    heard,
     listen,
     beats,
     setCategory(next: AppCategory | null) {
@@ -40,7 +42,7 @@ function setup() {
       for (let elapsed = 0; elapsed <= ms; elapsed += 500) {
         if (elapsed > 0)
           vi.advanceTimersByTime(500)
-        beats.onBeat!()
+        beats.onBeat!({ intervalSeconds: 0.5 })
       }
     },
   }
@@ -53,6 +55,17 @@ describe('mind music', () => {
   })
   afterEach(() => {
     vi.useRealTimers()
+  })
+
+  it('hands each beat\'s interval on while started, and none while stopped', () => {
+    const { music, heard, beats } = setup()
+    music.start()
+    beats.onBeat!({ intervalSeconds: 0.5 })
+    beats.onBeat!({ intervalSeconds: 0.52 })
+    expect(heard).toEqual([0.5, 0.52])
+    music.stop()
+    expect(beats.unlisten).toHaveBeenCalledTimes(1)
+    expect(heard).toEqual([0.5, 0.52])
   })
 
   it('turns beats into one start at the settle point and one stop at the release, from its deadline timer', () => {

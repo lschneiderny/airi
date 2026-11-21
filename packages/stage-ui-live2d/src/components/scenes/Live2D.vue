@@ -296,6 +296,7 @@ defineExpose({
   setIdleDrive: (drive: NaturalIdleDrive | null) => live2dModelRef.value?.setIdleDrive(drive),
   idleCue: (kind: IdleCueKind) => live2dModelRef.value?.idleCue(kind),
   idle: (order: IdleOrder) => live2dModelRef.value?.idle(order),
+  beat: (intervalSeconds: number) => live2dModelRef.value?.beat(intervalSeconds),
   cursorEpisode: (order: CursorOrder) => live2dModelRef.value?.cursorEpisode(order),
   answerIdleErrand: (seq: number, outcome: 'done' | 'refused') => live2dModelRef.value?.answerIdleErrand(seq, outcome),
   applySlots: (commands: SlotCommand[], now: number) => live2dModelRef.value?.applySlots(commands, now),

@@ -692,6 +692,15 @@ describe('stage performance conductor', () => {
       ])
     })
 
+    it('hands a detected beat to the scene only under Natural', () => {
+      for (const driver of ['natural', 'basic'] as const) {
+        const scene = { ...fakeScene(), beat: vi.fn<NonNullable<StagePerformanceScene['beat']>>() }
+        const { conductor } = createConductor(driver, scene)
+        conductor.beat(0.5)
+        expect(scene.beat.mock.calls, driver).toEqual(driver === 'natural' ? [[0.5]] : [])
+      }
+    })
+
     it('answers cursor reports under Natural on the reporting scene only, and drops them under a basic driver', () => {
       const mind = new CharacterMind({ seed: 7, clock: () => 10_000 })
       const stage = (driver: StagePerformanceDriver) => {

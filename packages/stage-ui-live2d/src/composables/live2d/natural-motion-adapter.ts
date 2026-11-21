@@ -201,6 +201,7 @@ export class Live2DNaturalMotionAdapter {
   private readonly pendingMoods: MoodDose[] = []
   private readonly pendingIdleCues: IdleCueKind[] = []
   private readonly pendingIdleOrders: IdleOrder[] = []
+  private readonly pendingBeats: number[] = []
   private readonly pendingCursorOrders: CursorOrder[] = []
   /** Wake and desktop reaction requests, handed to the controller in order on the next frame. */
   private readonly pendingDesktop: ({ kind: 'wake' } | { kind: 'react', reaction: 'wake' | 'screen-change' })[] = []
@@ -385,6 +386,15 @@ export class Live2DNaturalMotionAdapter {
   }
 
   /**
+   * A detected beat, `intervalSeconds` after the previous, handed to Natural's beat clock at the next composition on
+   * this adapter's motion time; dropped while Natural does not drive the model.
+   */
+  beat(intervalSeconds: number) {
+    if (!this.disposed && this.attention().driver === 'natural')
+      this.pendingBeats.push(intervalSeconds)
+  }
+
+  /**
    * Plays what the character mind's idle policy decided, at the next composition. Natural refuses it while it does
    * not drive the model (another driver, an exclusive clip, a pause, a hidden page), so every order gets an answer.
    */
@@ -490,6 +500,11 @@ export class Live2DNaturalMotionAdapter {
       this.controller.idle(order, this.time)
     for (const order of this.pendingCursorOrders.splice(0))
       this.controller.cursorEpisode(order, this.time)
+    // A beat from while Natural was inactive is stale, like a poke; a suspended controller drops it anyway.
+    for (const intervalSeconds of this.pendingBeats.splice(0)) {
+      if (active)
+        this.controller.beat(intervalSeconds, this.time)
+    }
     for (const { seq, outcome } of this.pendingErrandAnswers.splice(0)) {
       if (active)
         this.controller.answerIdleErrand(seq, outcome, this.time)

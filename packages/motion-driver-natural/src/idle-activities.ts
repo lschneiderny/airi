@@ -269,6 +269,8 @@ function neutral(): IdleOutput {
 export interface IdleBehaviourReport {
   phase: 'start' | 'end'
   behaviour: IdleBehaviourKind
+  /** Only on the start of a sway that bound to the beat clock: the clock's beat length and the sway's beats per cycle. */
+  groove?: { beatSeconds: number, beatsPerCycle: number }
 }
 
 /**
@@ -279,14 +281,21 @@ export class IdleBehaviourReports {
   private behaviour: IdleBehaviourKind | null = null
   private seq = 0
 
-  /** The reports since the previous read, an end before the start that follows it. */
-  read(state: { seq: number, behaviour: IdleBehaviourKind | null }): IdleBehaviourReport[] {
+  /**
+   * The reports since the previous read, an end before the start that follows it. A start carries `groove` when the
+   * state's `grooveLock` belongs to the behaviour that started.
+   */
+  read(state: { seq: number, behaviour: IdleBehaviourKind | null, grooveLock?: IdleGrooveLock | null }): IdleBehaviourReport[] {
     const reports: IdleBehaviourReport[] = []
     const restarted = state.seq !== this.seq
     if (this.behaviour !== null && (restarted || state.behaviour === null))
       reports.push({ phase: 'end', behaviour: this.behaviour })
-    if (state.behaviour !== null && (restarted || this.behaviour === null))
-      reports.push({ phase: 'start', behaviour: state.behaviour })
+    if (state.behaviour !== null && (restarted || this.behaviour === null)) {
+      const lock = state.grooveLock
+      reports.push(lock && lock.seq === state.seq
+        ? { phase: 'start', behaviour: state.behaviour, groove: { beatSeconds: lock.beatSeconds, beatsPerCycle: lock.beatsPerCycle } }
+        : { phase: 'start', behaviour: state.behaviour })
+    }
     this.behaviour = state.behaviour
     this.seq = state.seq
     return reports

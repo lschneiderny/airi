@@ -368,6 +368,7 @@ onMounted(() => {
   mindStage = characterMindStore.attachStage({
     idleCue: cue => performanceConductor.idleCue(cue),
     idle: intent => performanceConductor.idle(intent),
+    beat: intervalSeconds => performanceConductor.beat(intervalSeconds),
   })
 })
 onUnmounted(() => mindStage?.detach())
