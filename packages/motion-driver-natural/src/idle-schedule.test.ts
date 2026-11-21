@@ -119,6 +119,17 @@ describe('idle schedule', () => {
     }
   })
 
+  it('frees an errand at its refractory deadline when the subtraction rounds short of it', () => {
+    // `since + refractory` lands on `at` while `at - since` stays below the refractory. A refractory check written as the
+    // subtraction kept the errand out at its own deadline, so that deadline stayed due at `at` and a wake there never moved on.
+    const since = 7784.220062792753
+    const at = since + 600
+    expect(at - since).toBeLessThan(600)
+    const view: IdleView = { drive: { ...neutralDrive, body: true, errands: ['wander'] }, active: true, mode: 'idle', away: false, blocked: false, settled: false, current: { seq: 1, kind: 'sigh' }, errand: null }
+    const state = { ...initialIdleSchedule(), threshold: 3, urge: 0, errandStarts: { wander: since }, errandListedSince: { wander: 0 } }
+    expect(nextIdleDeadline(state, view, at)).toBeGreaterThan(at)
+  })
+
   it('decides nothing under the dormant view and names no deadline', () => {
     const random = createRandomStream(1)
     const result = advanceIdleSchedule(initialIdleSchedule(), dormantIdleView(true), { music: false }, 0, 3600, random)
