@@ -46,6 +46,7 @@ const stillInput: BodyPerformanceInput = {
   gait: null,
   armLift: { left: 0, right: 0 },
   idle: null,
+  groovePhase: null,
 }
 
 function channels(values: Partial<Record<typeof BODY_CHANNELS[number], number>>): Float32Array {

@@ -35,4 +35,22 @@ describe('mmd body intent mapping', () => {
     expect(bodyIdleAct({ ...base, releasedAt: 105.5, releaseSeconds: 0 }).release).toBeNull()
     expect(bodyIdleAct({ ...base, kind: 'sleep', end: Number.POSITIVE_INFINITY, releasedAt: 900, releaseSeconds: 1.6 }).release).toBe(1.6)
   })
+
+  it('blends the groove phase across the ticks of a frame, unwrapped across the seam, and never from or to null', () => {
+    const natural = new NaturalMotion({ seed: 1 })
+    const frame = natural.advance(0)
+    const intent = new MMDBodyIntent()
+    const phaseAt = (groovePhase: number | null, alpha: number) => {
+      const base = natural.bodyIntent()
+      intent.capture({ intent: { ...base, idle: { ...base.idle, groovePhase } }, frame, dt: 1 / 60, gaze: { yaw: 0, pitch: 0, kind: 'sustained' }, viewerYaw: 0, energy: 0.5, stance: 'stand', rest: 'none', dragging: false, owned, armLift: { left: 0, right: 0 }, eyeLimits: { yaw: 0.35, pitch: 0.25 } })
+      return intent.tick({ alpha, facingYaw: 0, allowTurn: false, rootVelocity: { x: 0, y: 0, z: 0 }, gait: null }).groovePhase
+    }
+    expect(phaseAt(null, 0.5)).toBeNull()
+    // A phase that appears is taken whole on the first tick.
+    expect(phaseAt(3, 0.5)).toBe(3)
+    expect(phaseAt(3.2, 0.5)).toBeCloseTo(3.1, 12)
+    // Across the seam the blend takes the short way: 3.2 to -3.0 is 0.083 forward.
+    expect(phaseAt(-3, 0.5)).toBeCloseTo(3.2 + (2 * Math.PI - 6.2) / 2, 12)
+    expect(phaseAt(null, 0.5)).toBeNull()
+  })
 })

@@ -235,6 +235,12 @@ export interface BodyPerformanceInput {
   readonly armLift: Readonly<Record<BodySide, number>>
   /** The latest idle behaviour Natural started, kept after it ends; null before the first and without an idle drive. */
   readonly idle: BodyIdleAct | null
+  /**
+   * The phase, radians, at which the sway of `idle` plays while it is bound to the beat (Natural's
+   * `bodyIntent().idle.groovePhase`, blended across the ticks of a display frame); null otherwise, and always without
+   * beats.
+   */
+  readonly groovePhase: number | null
 }
 
 export interface BodyCapabilities {

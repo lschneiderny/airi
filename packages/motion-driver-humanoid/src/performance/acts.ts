@@ -39,6 +39,19 @@ const WAKE = { overshoot: 0.15, clavicle: 4, clavicleSeconds: 0.4 } as const
  */
 const OWN_RELEASE: Partial<Record<BodyIdleKind, number>> = { stretch: 1.6, sleep: WAKE.clavicleSeconds + 0.3 }
 
+/**
+ * The phase a bound sway plays at `time`: Natural's while it comes, else the latest one carried on at its rate, so the
+ * form never switches to its closed form, and never steps, before it ends.
+ */
+function groovePhase(a: Act, phase: number | null, time: number): number {
+  const groove = a.groove
+  if (phase === null)
+    return groove === null ? 0 : groove.phase + groove.rate * (time - groove.at)
+  const rate = groove !== null && time > groove.at ? (phase - groove.phase) / (time - groove.at) : groove?.rate ?? 0
+  a.groove = { phase, at: time, rate }
+  return phase
+}
+
 function trapezoid(age: number, attack: number, hold: number, release: number): number {
   if (age <= 0 || age >= attack + hold + release)
     return 0
@@ -143,6 +156,10 @@ interface Act {
   readonly resting: boolean
   /** A clasp's rock count, drawn at its first tick. */
   rocks?: number
+  /** A sway that had Natural's beat phase at its first tick plays on it to its end; any other plays its closed form. */
+  readonly bound: boolean
+  /** A bound sway's latest phase, the tick it came at, and its rate, which carries it on if the phase stops coming. */
+  groove: { phase: number, at: number, rate: number } | null
 }
 
 /**
@@ -201,6 +218,8 @@ export function createActLayer(): PerformanceLayer {
         lift: null,
         stance: resting ? (context.previous.support > 0 ? -1 : 1) : record.side,
         resting,
+        bound: record.kind === 'sway' && input.groovePhase !== null,
+        groove: null,
       }
     }
     if (act && record?.seq === act.record.seq && record.release !== null && act.releaseAt === null) {
@@ -391,7 +410,7 @@ export function createActLayer(): PerformanceLayer {
         // the trunk turns and rolls 0.3 body units (3 deg) at Natural's drawn period, the roll spread over the trunk
         // as the posture's weight chain spreads it.
         const e = trapezoid(age, 1.5, D - 3, 1.5)
-        const phase = 2 * Math.PI * age / a.record.period
+        const phase = a.bound ? groovePhase(a, input.groovePhase, time) : 2 * Math.PI * age / a.record.period
         naturalHead(0.08 * e * Math.sin(phase - Math.PI / 2), 0.05 * e * Math.sin(2 * phase), 0.2 * e * Math.sin(phase))
         const trunk = NATURAL.body * 0.3 * e * Math.sin(phase - 0.6)
         add('lowerYaw', 0.5 * trunk)

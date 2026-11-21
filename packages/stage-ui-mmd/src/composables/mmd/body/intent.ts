@@ -77,6 +77,12 @@ export class MMDBodyIntent {
   private lowY = 0
   /** The record `input.idle` was mapped from; a new record object is a start or a release. */
   private idleRecord: IdleBehaviourRecord | null = null
+  /**
+   * The bound sway's phase at the previous and current display frame, unwrapped like the breath. It is blended only
+   * while both frames have one; a phase that appears is taken whole.
+   */
+  private groovePhaseFrom: number | null = null
+  private groovePhaseTo: number | null = null
   private readonly input = {
     head: {
       attitude: rotation(),
@@ -109,6 +115,7 @@ export class MMDBodyIntent {
     gait: null as BodyPerformanceInput['gait'],
     armLift: { left: 0, right: 0 },
     idle: null as BodyIdleAct | null,
+    groovePhase: null as number | null,
   }
 
   /** Records a display frame's intent. Call once per frame before its ticks, also on frames that hold no tick. */
@@ -189,6 +196,14 @@ export class MMDBodyIntent {
     Object.assign(input.owned, source.owned)
     input.armLift.left = source.armLift.left
     input.armLift.right = source.armLift.right
+    const groovePhase = intent.idle.groovePhase
+    this.groovePhaseFrom = this.groovePhaseTo
+    if (groovePhase === null)
+      this.groovePhaseTo = null
+    else if (this.groovePhaseFrom === null)
+      this.groovePhaseFrom = this.groovePhaseTo = groovePhase
+    else
+      this.groovePhaseTo = this.groovePhaseFrom + wrap(groovePhase - this.groovePhaseFrom)
     const record = intent.idle.behaviour
     if (record !== this.idleRecord) {
       this.idleRecord = record
@@ -226,6 +241,8 @@ export class MMDBodyIntent {
     input.events.pet.level = value(i++)
     input.events.pet.x = value(i++)
     input.events.pet.y = value(i++)
+    const { groovePhaseFrom, groovePhaseTo } = this
+    input.groovePhase = groovePhaseTo === null || groovePhaseFrom === null ? groovePhaseTo : groovePhaseFrom + (groovePhaseTo - groovePhaseFrom) * state.alpha
     input.facingYaw = state.facingYaw
     input.allowTurn = state.allowTurn
     input.rootVelocity.x = state.rootVelocity.x
@@ -242,5 +259,8 @@ export class MMDBodyIntent {
     this.lowY = 0
     this.idleRecord = null
     this.input.idle = null
+    this.groovePhaseFrom = null
+    this.groovePhaseTo = null
+    this.input.groovePhase = null
   }
 }
