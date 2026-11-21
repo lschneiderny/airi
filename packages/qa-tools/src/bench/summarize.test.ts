@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { FRAME_BINS_V1 } from '@proj-airi/stage-shared/perf/usage'
+import { FixedHistogram, FRAME_BINS_V1, STAGE_BINS_V1 } from '@proj-airi/stage-shared/perf/usage'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { selectScenarios } from './matrix'
@@ -16,7 +16,7 @@ const header = (t: number) => ({ v: 1 as const, t, sessionId })
 const [mmdIdle] = selectScenarios('mmd-idle')
 
 /** 250 frames of 16 ms (bin [15, 18)) per 5 s window, so 50 fps, with 2 ms of stage time per frame. */
-function window(t: number, frames = 250): WindowRollupRecord {
+function window(t: number, frames = 250, stages: WindowRollupRecord['stages'] = { physics: { n: frames, sumMs: frames * 2, maxMs: 3, hist: [[8, frames]] } }, activity: WindowRollupRecord['tags']['activity'] = 'idle'): WindowRollupRecord {
   const frameHist = Array.from<number>({ length: FRAME_BINS_V1.edges.length + 1 }).fill(0)
   frameHist[7] = frames
   return {
@@ -32,7 +32,7 @@ function window(t: number, frames = 250): WindowRollupRecord {
       modelName: 'Model',
       features: { speechMuted: false, mmdPhysics: true, naturalMotion: true, mmdRoam: false, wakeWord: false, hearing: false },
       featureHash: 'f',
-      activity: 'idle',
+      activity,
       chatGenerating: false,
       stageHost: 'window',
       devtoolsOpen: false,
@@ -44,7 +44,7 @@ function window(t: number, frames = 250): WindowRollupRecord {
     frameSumMs: frames * 16,
     frameMaxMs: 17,
     longTasks: { count: 0, maxMs: 0, sumMs: 0 },
-    stages: { physics: { n: frames, sumMs: frames * 2, maxMs: 3, hist: [[8, frames]] } },
+    stages,
     recorderUs: 100,
   }
 }
@@ -72,7 +72,7 @@ function sample(t: number, stageCpu: number, hostContended = false): SampleRecor
  * A 200 s recording: model loaded at 30 s, a tick every 5 s. Stage CPU is 80 % inside the measured span
  * (100 s .. 160 s) and 200 % outside it, so a sample outside the span would show in the result.
  */
-function recording(options: { contendedAt?: number, modelLoadAt?: number } = {}): PerfRecord[] {
+function recording(options: { contendedAt?: number, modelLoadAt?: number, windowAt?: (t: number) => WindowRollupRecord } = {}): PerfRecord[] {
   const records: PerfRecord[] = [
     {
       ...header(T0),
@@ -92,7 +92,7 @@ function recording(options: { contendedAt?: number, modelLoadAt?: number } = {})
   ]
   for (let at = 5_000; at <= 200_000; at += 5_000) {
     const measured = at > 100_000 && at <= 160_000
-    records.push(window(T0 + at), sample(T0 + at, measured ? 80 : 200, at === options.contendedAt))
+    records.push((options.windowAt ?? window)(T0 + at), sample(T0 + at, measured ? 80 : 200, at === options.contendedAt))
   }
   return records
 }
@@ -166,6 +166,41 @@ describe('summarizeBenchRun', () => {
     const summary = summarizeBenchRun(await readRawRun(writeRaw(recording({ modelLoadAt: 95_000 }))), context)
 
     expect(summary.ok && summary.record).toMatchObject({ valid: false, invalidReason: 'excluded-window' })
+  })
+
+  it('records each stage per frame over every measured bucket, adding up to the stage sum', async () => {
+    // The activity changes at 130 s, so the measured windows fall into two cells, one bucket each. Physics runs once
+    // per frame at 2 ms, then 3 ms; IK runs twice per frame at 0.5 ms, so its call count is not the frame count.
+    const windowAt = (t: number) => {
+      const late = t > T0 + 130_000
+      return window(t, 250, {
+        physics: { n: 250, sumMs: 250 * (late ? 3 : 2), maxMs: 3.5, hist: [[late ? 10 : 9, 250]] },
+        ik: { n: 500, sumMs: 250, maxMs: 0.6, hist: [[5, 500]] },
+      }, late ? 'talking' : 'idle')
+    }
+    const summary = summarizeBenchRun(await readRawRun(writeRaw(recording({ windowAt }))), context)
+
+    if (!summary.ok)
+      throw new Error(summary.reason)
+    const { stages, metrics } = summary.record
+    const stageSum = Object.values(stages ?? {}).reduce((sum, stage) => sum + stage.msPerFrame, 0)
+    expect(Math.abs(stageSum - (metrics.stageSumMeanMs ?? Number.NaN))).toBeLessThan(1e-9)
+    expect(stages).toEqual({
+      physics: { msPerFrame: 2.5, p95MsApprox: 4, n: 3000 },
+      ik: { msPerFrame: 1, p95MsApprox: 0.75, n: 6000 },
+    })
+    const physicsHist = new FixedHistogram(STAGE_BINS_V1)
+    physicsHist.mergeFrom(STAGE_BINS_V1.edges.map((_, index) => (index === 9 || index === 10 ? 1500 : 0)).concat(0))
+    expect(stages?.physics.p95MsApprox).toBe(FixedHistogram.approxQuantile(physicsHist.counts, STAGE_BINS_V1.edges, 0.95))
+  })
+
+  it('omits stages when no stage was timed', async () => {
+    const summary = summarizeBenchRun(await readRawRun(writeRaw(recording({ windowAt: t => window(t, 250, null) }))), context)
+
+    if (!summary.ok)
+      throw new Error(summary.reason)
+    expect(summary.record).not.toHaveProperty('stages')
+    expect(summary.record.metrics.stageSumMeanMs).toBeNull()
   })
 
   it('refuses a raw file without a session start', async () => {

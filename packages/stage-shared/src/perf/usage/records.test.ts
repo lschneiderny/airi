@@ -249,4 +249,24 @@ describe('parsePerfLine', () => {
       expect(parsePerfLine(line).ok).toBe(true)
     })
   })
+
+  describe('bench-run stages', () => {
+    const benchRun = records.find(record => record.kind === 'bench-run')!
+    const withStages = (stages: unknown) => JSON.stringify({ ...benchRun, stages })
+
+    it('accepts a bench run without stages and one with them', () => {
+      const stages = { 'mmd.physics': { msPerFrame: 1.2, p95MsApprox: 2, n: 300 } }
+
+      expect(parsePerfLine(JSON.stringify(benchRun))).toEqual({ ok: true, record: benchRun })
+      expect(parsePerfLine(withStages(stages))).toEqual({ ok: true, record: { ...benchRun, stages } })
+    })
+
+    it.each([
+      ['a negative call count', { 'mmd.physics': { msPerFrame: 1.2, p95MsApprox: 2, n: -1 } }],
+      ['a non-numeric msPerFrame', { 'mmd.physics': { msPerFrame: '1.2', p95MsApprox: 2, n: 300 } }],
+      ['an empty stage id', { '': { msPerFrame: 1.2, p95MsApprox: 2, n: 300 } }],
+    ])('reports schema for %s', (_name, stages) => {
+      expect(parsePerfLine(withStages(stages))).toEqual({ ok: false, reason: 'schema' })
+    })
+  })
 })

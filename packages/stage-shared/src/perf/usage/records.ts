@@ -325,6 +325,13 @@ const BenchRunSchema = object({
     stageSumMeanMs: nullable(amount),
     recorderMs: amount,
   }),
+  /**
+   * Per-stage cost keyed by stage id: `msPerFrame` over the same frame count as `stageSumMeanMs`, so the stages add up
+   * to it, the approximate 95th-percentile duration of one call, and the call count `n`. A run whose renderer times no
+   * stages has none. Records written before per-stage recording also have none: `bench.jsonl` is append-only, so
+   * readers treat an absent `stages` as "not recorded" as supported policy, not as a temporary fallback.
+   */
+  stages: optional(record(label, object({ msPerFrame: amount, p95MsApprox: amount, n: count }))),
 })
 
 export const PerfRecordSchema = variant('kind', [
