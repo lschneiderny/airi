@@ -48,8 +48,8 @@ describe('createStreamingCategorizer', () => {
     categorizer.consume('Hello <reasoning>thinking')
     const filtered1 = categorizer.filterToSpeech('Hello <reasoning>thinking', 0)
 
-    // Before tag closes, everything should be filtered (tag is incomplete)
-    expect(filtered1).toBe('')
+    // Speech before the tag is released at once, and the open tag waits for its closing tag
+    expect(filtered1).toBe('Hello ')
 
     // Complete the tag - the important thing is the final result is correct
     categorizer.consume(' about this</reasoning> world!')
@@ -333,7 +333,7 @@ describe('createStreamingCategorizer', () => {
     // Stream incomplete tag
     categorizer.consume('Hello <reasoning>thinking')
     let filtered = categorizer.filterToSpeech('Hello <reasoning>thinking', 0)
-    expect(filtered).toBe('') // Tag not closed, filter everything
+    expect(filtered).toBe('Hello ') // The open tag waits, and the speech before it does not
 
     // Stream closing tag
     categorizer.consume('</reasoning>')
