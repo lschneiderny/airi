@@ -116,6 +116,13 @@ are immutable. Changing a band, detector, formula, window, or gated list require
 the next version, a new file and SHA-256, in an isolated freeze commit before
 judging runs. A hash mismatch refuses scoring. A failing run never authorizes
 retuning.
+`gate.json` records `gate.fileSha256`, the SHA-256 of
+`src/t2-3d/gate/definition.ts`. It changed once, when the gate moved from
+qa-tools to lab-tools, because the definition named the bands file's path;
+the version stayed 6, because no band, detector, formula, window, or gated
+list changed. The path now lives in `src/t2-3d/gate/load.ts`, derived from the
+version as `fixtures/motion3d/bands-v<version>.json`, so moving the files no
+longer changes the hash.
 
 Scores compare motion statistics with bands derived from human capture. They do not prove naturalness or appeal, which stay a visual review.
 
@@ -495,7 +502,7 @@ Version 4 scores the clip actions. Each ACT record gains `action` (the normalize
 
 With `prompt`, the flag adds the `actions` segment after the stage contract, rendered through the same i18n keys and gesture versus action and dance split as stage-ui's `useStageActionsPrompt`. `contractSha256` and `contractVersion` do not change; `promptSha256` covers the composed text, so it changes with the segment. The text pinned in `fixtures/model/actions-prompt.json` is asserted against both renderers.
 
-When any scorer definition changes, bump `CUE_CONTRACT_SCORER.version` in the same commit. Compare runs using `closureDigest`, scorer version, and `coreAgentDistSha256` together. Closure file hashes normalize CRLF to LF so identical source across checkout line endings has the same provenance.
+When any scorer definition changes, bump `CUE_CONTRACT_SCORER.version` in the same commit. Compare runs using `closureDigest`, scorer version, and `coreAgentDistSha256` together. Closure file hashes normalize CRLF to LF so identical source across checkout line endings has the same provenance. `closureDigest` hashes the sorted file hashes and leaves their paths out, so moving or renaming a file with the same bytes keeps the digest. It changed once, when the scorer moved from qa-tools to lab-tools: summaries scored before the move, including those committed in `model-eval/sets/`, carry a digest over the old paths, so compare them with newer runs by the per-file `sha256` values in `files`.
 
 ### Live runs (M2)
 

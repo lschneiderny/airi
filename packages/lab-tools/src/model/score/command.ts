@@ -8,7 +8,6 @@ import type { StyleScore } from './style'
 
 import process from 'node:process'
 
-import { Buffer } from 'node:buffer'
 import { copyFile, open, readFile, stat, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
@@ -24,7 +23,7 @@ import { parseExposedActions } from '../exposed-actions'
 import { renderSummaryMarkdown } from '../report/markdown'
 import { buildStageContract, extractExampleLines } from '../stage-contract'
 import { aggregateRun } from './aggregate'
-import { captureScoreClosure } from './closure'
+import { captureScoreClosure, closureDigest } from './closure'
 import { SCORE_CLOSURE_FILES } from './closure-files'
 import { scoreStyle } from './style'
 
@@ -121,7 +120,7 @@ export async function runScoreCli(
       scorer: { ...scoring.CUE_CONTRACT_SCORER, fileSha: captureScoreClosure([resolve(repoRoot, 'packages/lab-tools/src/model/score/cue-contract.ts')], repoRoot)[0].sha256 },
       sources: {
         files,
-        closureDigest: sha256Bytes(Buffer.from(JSON.stringify(files))),
+        closureDigest: closureDigest(files),
         coreAgentDistSha256: sha256Bytes(await readFile(dist)),
       },
       fixtures: { ...CUE_CONTRACT_FIXTURES, passed: 0, total: fixtures.length },

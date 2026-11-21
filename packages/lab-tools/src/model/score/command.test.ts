@@ -14,7 +14,7 @@ import { sha256Bytes } from '@proj-airi/qa-tools/motion/cache/key'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { extractExampleLines } from '../stage-contract'
-import { captureScoreClosure } from './closure'
+import { captureScoreClosure, closureDigest } from './closure'
 import { SCORE_CLOSURE_FILES } from './closure-files'
 import { runScoreCli } from './command'
 import { cueContractScorer } from './cue-contract'
@@ -83,7 +83,7 @@ describe('score command', () => {
     expect(manifest.artifacts).toHaveLength(3)
     expect(summary[0].sources.files.map(file => file.repoPath)).toContain('packages/core-agent/src/runtime/response-categoriser.ts')
     expect(summary[0].sources.files).toHaveLength(18)
-    expect(summary[0].sources.closureDigest).toBe(sha256Bytes(Buffer.from(JSON.stringify(summary[0].sources.files))))
+    expect(summary[0].sources.closureDigest).toBe(closureDigest(summary[0].sources.files))
     expect(summary[0].sources.coreAgentDistSha256).toBe(sha256Bytes(await readFile(join(repoRoot, 'packages/core-agent/dist/index.mjs'))))
     expect(summary[0].fixtures).toMatchObject({ passed: 34, total: 34 })
     const replies = (await readFile(join(runDir, 'replies.jsonl'), 'utf8')).trim().split('\n').map(line => JSON.parse(line))
@@ -105,6 +105,14 @@ describe('score command', () => {
       expect(await readFile(join(JSON.parse(b.stdout).runDir, name), 'utf8')).toBe(first)
       expect(first).not.toMatch(/"startedAt"|"endedAt"|"gitSha"/)
     }
+  })
+
+  it('keeps the closure digest when a file with the same bytes moves', () => {
+    const files = [{ repoPath: 'packages/qa-tools/src/model/score/style.ts', sha256: 'b' }, { repoPath: 'packages/core-agent/src/a.ts', sha256: 'a' }]
+    const moved = [{ repoPath: 'packages/core-agent/src/a.ts', sha256: 'a' }, { repoPath: 'packages/lab-tools/src/model/score/style.ts', sha256: 'b' }]
+
+    expect(closureDigest(moved)).toBe(closureDigest(files))
+    expect(closureDigest([...moved, { repoPath: 'packages/core-agent/src/c.ts', sha256: 'c' }])).not.toBe(closureDigest(files))
   })
 
   it('ignores checkout line endings in provenance but detects changed content', async () => {

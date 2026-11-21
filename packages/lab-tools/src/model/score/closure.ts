@@ -21,3 +21,11 @@ export function captureScoreClosure(ids: Iterable<string>, repoRoot: string): Cl
     return { repoPath, sha256: sha256Bytes(Buffer.from(bytes, 'latin1')) }
   })
 }
+
+/**
+ * The identity of a scorer closure: a hash over its sorted file hashes alone. Paths are left out, so moving or renaming
+ * a file with the same bytes leaves the digest unchanged; the closure's `files` keep the paths for reading.
+ */
+export function closureDigest(files: readonly ClosureEntry[]): string {
+  return sha256Bytes(Buffer.from(JSON.stringify(files.map(file => file.sha256).sort())))
+}

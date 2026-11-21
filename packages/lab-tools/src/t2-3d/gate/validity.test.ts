@@ -16,12 +16,12 @@ import { readManifest } from '../reference/manifest'
 import { motionQualityGate } from './definition'
 import { heldoutFailureUnits, HOLDOUT_VALIDATION } from './holdouts'
 import { judgeMetrics, judgeTrace } from './judge'
-import { loadBands, parseBands } from './load'
+import { bandsFile, loadBands, parseBands } from './load'
 import { mirroredName } from './policy'
 import { buildReference } from './reference'
 
 const repoRoot = resolve(import.meta.dirname, '../../../../..')
-const bands = parseBands(JSON.parse(await readFile(resolve(repoRoot, motionQualityGate.bandsFile), 'utf8')))
+const bands = parseBands(JSON.parse(await readFile(resolve(repoRoot, bandsFile), 'utf8')))
 const identity = { path: 'analytic/trace.json', sha256: 'analytic' }
 
 function sine() {
