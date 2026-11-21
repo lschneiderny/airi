@@ -15,7 +15,6 @@ import { useCharacterStateStore } from './character-state'
 import { useSituationObservabilityStore } from './devtools/situation-observability'
 import { useSituationStore } from './situation'
 
-/** An idle intent of the mind: an act or an errand for the Natural performer. */
 /** What a mounted stage lends the mind: the body around a line and its idle acts. The conductor gates both by driver. */
 export interface MindStage {
   idleCue: (cue: Extract<MindIntent, { kind: 'cue' }>['cue']) => void
@@ -51,9 +50,9 @@ export function voiceDecisionOf({ stimuli, state }: Pick<MindStep, 'stimuli' | '
  * Its slow state is her pacing in the active card's character-state record. At each promotion, once the record has
  * loaded, and whenever the leader replaces that record (`leaderEpoch`: a card switch, an import over the active card,
  * a forget, "Delete all data"), the store resets the mind to the record's pacing and connects it again, so a widget
- * request the old state held answers `failed`. After every step that gives `state.slow.pacing` a new object, the store
- * writes it back with `recordPacing`, named by the card and epoch it loaded, so a write for a replaced record is
- * dropped.
+ * request the old state held answers `failed`. An away span open at the reset reopens at it, so the return after it
+ * still gets its response. After every step that gives `state.slow.pacing` a new object, the store writes it back with
+ * `recordPacing`, named by the card and epoch it loaded, so a write for a replaced record is dropped.
  *
  * Idle: every `idle-act` and `idle-errand` intent of any step goes to every attached stage, so two stages show the
  * same act from the same seed, and only the newest stage reports what its performer saw. After every step the store
@@ -154,8 +153,13 @@ export const useCharacterMindStore = defineStore('character-mind', () => {
   function loadAndConnect() {
     disconnectVoice?.()
     const record = characterState.leaderRecord
+    // Presence reaches the mind only as edges, so a reset while the user is away would lose the span and her return.
+    const away = mind.state.presence.away
     mind.reset({ pacing: record?.pacing ?? null })
     clearIdleWake()
+    // The span reopens at the reset; the return after it still gets its response.
+    if (away)
+      mind.receive({ kind: 'presence', away: true, wake: null })
     // The performer reports its view only when it changes, so the new state hears the latest one now.
     if (reportedView && stages.length > 0)
       mind.receive({ kind: 'idle', reports: [{ kind: 'view', view: reportedView }] })
