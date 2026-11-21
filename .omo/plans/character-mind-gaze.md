@@ -369,6 +369,41 @@ CM6b is planned in full when CM6a has landed. It meets the rest of CM6's Done-wh
   - Every launch had 0 renderer and 0 main-process errors.
 - **The required wording:** "Scores prove direction, size relative to the recipe, release, and detectability above the rig's idle noise. They do not prove naturalness, which stays a visual review."
 
+### Close-out runs on macOS, 2026-11-21
+
+The close-out follows the owner's D16 ruling: stop early, cut the cursor delay, then rerun the press check. The runs used the MacBook's real desktop. There is no QA display on macOS.
+
+- **How the pointer moved.** A scratch CGEvent helper warped the real cursor. Presses went through CDP `Input.dispatchMouseEvent` at the warped point, because a posted click needs an Accessibility grant that takes effect only after the agent's host app restarts. The poke is decided in the renderer by the MMD touch colliders, so a CDP press tests whether her body is under the pointer. It skips the OS click-through toggle, which can only add misses.
+- **Cursor latency, warp to the director**, 30 samples each, from `[cursor-hop]` instrumentation that was not committed. "Before" is this branch with `cfd603522` reverted.
+
+  | Hop | Before: median, p95 | After: median, p95 |
+  | --- | --- | --- |
+  | Warp to the main process's emit | 7.8 ms, 9.9 ms | 1.7 ms, 4.5 ms |
+  | Emit to the renderer's IPC | 20.8 ms, 29.9 ms | 10.1 ms, 21.8 ms |
+  | IPC to the director | 1.2 ms, 5.4 ms | 1.2 ms, 5.5 ms |
+  | Warp to the director | 28.4 ms, 39.2 ms | 16.4 ms, 27.8 ms |
+
+  The Linux figure of 172 to 175 ms was from the pointer landing to the goal ending, so it also held the director's decision. It is not the same span.
+- **Step 5, the press check, base (`bb576288a`) against tip (`cfd603522`).** Each cell gives the offset of the pointer from her placement centre at the press in placement widths, the gait mode, and whether a poke followed.
+
+  | Rest, walk | Base | Tip |
+  | --- | --- | --- |
+  | 0.3 s, 1 s | -0.03, stopping, poke | -0.04, stopping, poke |
+  | 0.3 s, 2 s | -0.32, stopping, miss | -0.33, stopping, miss |
+  | 0.3 s, 4 s | 0.40, stopping, miss | 0.30, stopping, miss |
+  | 0.6 s, 1 s | 0.00, idle, poke | 0.00, starting, poke |
+  | 0.6 s, 2 s | -0.47, stopping, miss | -0.48, stopping, miss |
+  | 0.6 s, 4 s | 0.39, stopping, miss | 0.00, idle, miss |
+  | 1.0 s, 1 s | 0.00, idle, poke | 0.50, stopping, miss |
+  | 1.0 s, 2 s | -0.49, stopping, miss | 0.45, stopping, miss |
+  | 1.0 s, 4 s | 0.57, stopping, miss | -0.45, stopping, miss |
+  | 2.0 s, 1 s | 0.00, idle, poke | 0.00, idle, poke |
+  | 2.0 s, 2 s | -0.50, stopping, miss | 0.35, idle, miss |
+  | 2.0 s, 4 s | 0.43, stopping, miss | -0.47, idle, miss |
+
+  Pokes: base 4 of 12, tip 3 of 12; with a rest of at least 0.6 s, base 3 of 9 and tip 2 of 9. The pass rule fails on the tip. The tip comes to rest within 2 s where the base is still sliding, but she settles 0.35 to 0.47 widths from the pointer, past it as often as short of it. One centred press on the tip (0.6 s, 4 s) missed while she stood still: the press point at 55 % of her height can fall between her legs.
+- Every launch had 0 renderer and 0 main-process errors.
+
 ## Commits
 
 - `8c6ab20a8` docs(plan): add the plan for the gaze slice of the character mind
@@ -378,3 +413,5 @@ CM6b is planned in full when CM6a has landed. It meets the rest of CM6's Done-wh
 - `387834ea7` chore(agents): say that the Live2D cursor layer plays the mind's episodes
 - `67e1c81f0` feat(character-mind,motion-driver-humanoid,stage-ui,stage-ui-mmd,qa-tools): open the director's chase on the mind's attend intent
 - `e4cddff88` docs(ai): record the gaze decisions and close CM6
+- `c8ef442a1` fix(motion-driver-humanoid,stage-ui-mmd,qa-tools): end a chase when her predicted stop reaches the cursor
+- `cfd603522` fix(stage-tamagotchi): send window bounds only when they change
