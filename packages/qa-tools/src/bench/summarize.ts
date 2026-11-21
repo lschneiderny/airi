@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto'
 import { readdir, readFile } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 
-import { FixedHistogram, FRAME_BINS_V1, parsePerfLine, PERF_RECORD_VERSION, ROLLUP_EVENT_SETTLING_MS, ROLLUP_SESSION_SETTLING_MS, SegmentRollupReducer } from '@proj-airi/stage-shared/perf/usage'
+import { FixedHistogram, FRAME_BINS_V1, parsePerfLine, PERF_RECORD_VERSION, ROLLUP_EVENT_SETTLING_MS, ROLLUP_SESSION_SETTLING_MS, SegmentRollupReducer, STAGE_BINS_V1 } from '@proj-airi/stage-shared/perf/usage'
 
 import { BENCH_MATRIX } from './matrix'
 
@@ -141,11 +141,23 @@ export function summarizeBenchRun(raw: RawRun, context: BenchRunContext): BenchR
   const histogram = new FixedHistogram(FRAME_BINS_V1)
   let stageSumMs = 0
   let timedStages = false
+  const stageTotals = new Map<string, { n: number, sumMs: number, readonly histogram: FixedHistogram }>()
   for (const bucket of row.cells.flatMap(cell => cell.buckets)) {
     histogram.mergeFrom(bucket.frameHist)
-    for (const stage of Object.values(bucket.stages ?? {})) {
+    for (const [stageId, stage] of Object.entries(bucket.stages ?? {})) {
       stageSumMs += stage.sumMs
       timedStages = true
+      let total = stageTotals.get(stageId)
+      if (!total) {
+        total = { n: 0, sumMs: 0, histogram: new FixedHistogram(STAGE_BINS_V1) }
+        stageTotals.set(stageId, total)
+      }
+      total.n += stage.n
+      total.sumMs += stage.sumMs
+      const counts = Array.from<number>({ length: total.histogram.counts.length }).fill(0)
+      for (const [binIndex, count] of stage.hist)
+        counts[binIndex] += count
+      total.histogram.mergeFrom(counts)
     }
   }
   const p50FrameMs = FixedHistogram.approxQuantile(histogram.counts, FRAME_BINS_V1.edges, 0.5)
@@ -162,6 +174,11 @@ export function summarizeBenchRun(raw: RawRun, context: BenchRunContext): BenchR
   const browserCpuPct = meanOverSamples(samples, 'browser', 'cpuPctOfCore')
   if (stageWindowCpuPct === null || stageWindowWorkingSetKb === null || gpuCpuPct === null || browserCpuPct === null)
     return { ok: false, reason: 'the measured samples lack CPU or memory of the stage window, GPU or browser process' }
+  // Per frame over the frame count of `stageSumMeanMs`, so the stage values add up to it.
+  const stages = Object.fromEntries([...stageTotals].flatMap(([stageId, total]) => {
+    const p95MsApprox = FixedHistogram.approxQuantile(total.histogram.counts, STAGE_BINS_V1.edges, 0.95)
+    return p95MsApprox === null ? [] : [[stageId, { msPerFrame: total.sumMs / histogram.count, p95MsApprox, n: total.n }]]
+  }))
   const invalidReason = samples.some(sample => sample.hostContended) ? 'host-contended' : row.excludedWindows > 0 ? 'excluded-window' : undefined
 
   const record: BenchRunRecord = {
@@ -199,6 +216,7 @@ export function summarizeBenchRun(raw: RawRun, context: BenchRunContext): BenchR
       stageSumMeanMs: timedStages ? stageSumMs / histogram.count : null,
       recorderMs: samples.reduce((sum, sample) => sum + sample.recorderMs, 0) + measuredWindows.reduce((sum, entry) => sum + entry.record.recorderUs / 1000, 0),
     },
+    ...(timedStages ? { stages } : {}),
   }
   // The record crosses into the shared history here; a NaN or out-of-range metric must not reach it.
   const checked = parsePerfLine(JSON.stringify(record))
