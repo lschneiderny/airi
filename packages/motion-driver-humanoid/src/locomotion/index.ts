@@ -127,6 +127,11 @@ export interface LocomotionFrame {
     readonly yaw: number
   }
   readonly speed: number
+  /**
+   * World x where the root comes to rest if the walk loses its goal now and brakes as hard as the gait allows
+   * (`brakingDistance`); the root x while she is not walking.
+   */
+  readonly restX: number
   /** Continuous phase, in steps. */
   readonly phase: number
   readonly feet: Record<Foot, LocomotionFoot>
@@ -196,6 +201,8 @@ const drawBackLean = -1.5 * radians
 const preparationDropShare = 0.008
 const stopDipShare = 0.006
 const paceSpeeds: Record<LocomotionPace, number> = { stroll: 0.6, walk: 1 }
+/** The gait's tick, seconds: it runs on a 120 Hz grid. */
+const gaitTick = 1 / 120
 /** Architecture 5.1: heel-strike and toe-off pitch at a full stride, scaled by min(1, strideScale). */
 const heelStrikePitch = 14 * radians
 const toeOffPitch = 32 * radians
@@ -1085,6 +1092,7 @@ class Locomotion {
       mode,
       root: { position: { x: this.x, y: 0, z: this.z }, yaw: this.yaw },
       speed: this.speed,
+      restX: this.walk ? this.x + this.walk.direction * brakingDistance(this.speed, this.traits.legLength) : this.x,
       phase: this.phase,
       feet: { left: this.footFrame('left', strideScale), right: this.footFrame('right', strideScale) },
       support,
@@ -1107,6 +1115,21 @@ class Locomotion {
       events,
     }
   }
+}
+
+/**
+ * Root travel, in model units, from `speed` to rest when a walk brakes as hard as the gait allows: each tick of the
+ * 120 Hz grid takes a_max * dt off the speed (a_max = v_ref per second, v_ref = 0.9 L per second) and then advances by
+ * the speed left. It is the slide that follows when a walk's goal ends, so a goal ended when `x + brakingDistance` reaches
+ * a point stops her on it.
+ */
+export function brakingDistance(speed: number, legLength: number): number {
+  const change = referenceLengthShare * legLength * referenceRate * gaitTick
+  if (!(speed > 0) || !(change > 0))
+    return 0
+  // Ticks k = 1..n move at speed - k * change while that is positive.
+  const ticks = Math.floor(speed / change)
+  return gaitTick * (ticks * speed - change * ticks * (ticks + 1) / 2)
 }
 
 /**

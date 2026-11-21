@@ -13,7 +13,7 @@ export const IDLE_TO_SIT_MS = 120_000
 /** Minimum time in milliseconds between stance changes. */
 export const STANCE_MIN_DWELL_MS = 3_000
 
-/** Distance, in leg lengths, at which a chase stops short of the cursor. */
+/** Distance, in leg lengths, at which a chase stops short of the cursor, and within which a cursor can end a chase. */
 export const CHASE_STOP_LEGS = 1.0
 
 /** Milliseconds with no goal reason before the character walks home. */
@@ -151,6 +151,11 @@ export interface BodyDirectorInput {
    */
   reach?: readonly { minX: number, maxX: number }[]
   rootX: number
+  /**
+   * The gait's predicted rest point (`LocomotionFrame.restX`): where the root comes to rest if the goal ends now. Null
+   * without a gait frame, when she stands at `rootX`.
+   */
+  restX: number | null
   homeX: number
   locomotionMode: 'idle' | 'turning' | 'starting' | 'walking' | 'stopping'
   /** True while a clip owns the root. */
@@ -203,6 +208,7 @@ export interface BodyDirectorInput {
 export const NO_WORLD_BODY_INPUT: Omit<BodyDirectorInput, 'nowMs' | 'performance' | 'cursorPoint' | 'chatPoint' | 'cameraPoint' | 'slots' | 'interactionSeq' | 'chatSendSeq' | 'attendUntilMs' | 'actionRequest' | 'actionFeedback' | 'dragging' | 'idle'> = Object.freeze({
   ground: null,
   rootX: 0,
+  restX: null,
   homeX: 0,
   locomotionMode: 'idle',
   clipOwnsRoot: false,
@@ -361,6 +367,15 @@ function chatStandGoal(chatX: number, homeX: number, leg: number, zones: readonl
 }
 
 /** Draws one uniform value and returns the advanced seed; no hidden state. */
+/**
+ * True once her rest point has reached `x` in the direction she walks: the rest point's side of her root while she
+ * moves, the goal's side while she has not set off.
+ */
+function restReaches(x: number, rootX: number, restX: number, goalX: number): boolean {
+  const heading = Math.sign(restX - rootX) || Math.sign(goalX - rootX) || 1
+  return (restX - x) * heading >= 0
+}
+
 function drawRandom(state: number): { value: number, state: number } {
   const stream = createRandomStream(state)
   const value = stream()
@@ -416,10 +431,15 @@ export function decideBody(
 
   // Distance from the root to the cursor while it is on the stage, or null.
   const cursorDistance = input.cursorOnStage && input.cursorX !== null ? Math.abs(input.cursorX - input.rootX) : null
-  // A goal in progress ends once the body has settled on it. A walk aimed at the cursor also ends at once, before the
-  // goal dwell, when the cursor comes within that walk's stop distance: the user pointed at her, so she stops there.
-  const cursorStopLegs = reason === 'approach-cursor' ? CHASE_STOP_LEGS : reason === 'visit' ? VISIT_STOP_LEGS : null
-  const reachedCursor = goalX !== null && cursorStopLegs !== null && cursorDistance !== null && cursorDistance <= cursorStopLegs * leg
+  // A goal in progress ends once the body has settled on it. A walk aimed at the cursor also ends before the goal dwell
+  // once the cursor is within that walk's stop distance: the user pointed at her, so she stops there. A chase ends when
+  // her predicted rest point reaches the cursor, so the gait's braking slide carries her onto it; one behind her ends it
+  // at once. A visit ends at once, short of the cursor, as it would on arrival.
+  const reachedCursor = goalX !== null && cursorDistance !== null && input.cursorX !== null && (
+    reason === 'approach-cursor'
+      ? cursorDistance <= CHASE_STOP_LEGS * leg && restReaches(input.cursorX, input.rootX, input.restX ?? input.rootX, goalX)
+      : reason === 'visit' && cursorDistance <= VISIT_STOP_LEGS * leg
+  )
   const arrived = goalX !== null
     && (reachedCursor || (input.locomotionMode === 'idle' && Math.abs(input.rootX - goalX) <= ARRIVAL_TOLERANCE))
   if (arrived) {
