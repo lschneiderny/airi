@@ -1,14 +1,5 @@
-import { vi } from 'vitest'
+import process from 'node:process'
 
-// Main-process tests run in Node, which does not provide Electron's process APIs.
-// Keep the real host platform; tests of version-dependent capabilities override this fixture.
-vi.mock('node:process', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('node:process')>()
-  return {
-    ...actual,
-    default: {
-      ...actual,
-      getSystemVersion: () => '14.2.0',
-    },
-  }
-})
+// Main-process tests run in plain Node, which lacks Electron's `process.getSystemVersion`. Tests of version-dependent
+// capabilities mock `node:process` with their own version; every other test gets this fixed one.
+Object.defineProperty(process, 'getSystemVersion', { value: () => '14.2.0', configurable: true, writable: true })
