@@ -369,6 +369,14 @@ describe('useMotionQaBridge', () => {
     ])
   })
 
+  it('records a cue gesture step with the gesture it decided', async () => {
+    mind.receive({ kind: 'cue-gesture', gesture: 'glance', count: 1, source: 'devtools' })
+
+    const reply = await dispatch({ name: 'events', input: {} }) as { result: { events: { kind: string, payload: Record<string, unknown> }[] } }
+    expect(reply.result.events).toEqual([expect.objectContaining({ kind: 'mind', payload: expect.objectContaining({ stimulus: 'cue-gesture' }) })])
+    expect(JSON.parse(reply.result.events[0].payload.intents as string)).toEqual([expect.objectContaining({ channel: 'posture', kind: 'gesture', gesture: 'glance', count: 1 })])
+  })
+
   it('records a gate tick with its gate reason, fired category, line kind, and cues, a decline with its cue, and skips an unforced tick that yields nothing', async () => {
     // A new run eases her in, so the first unforced tick holds without an intent.
     mind.receive(voiceTick(false, mindNowMs))

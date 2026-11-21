@@ -86,6 +86,8 @@ export function step(state: MindState, stimuli: readonly MindStimulus[], nowMs: 
       answer = answerInteraction(next, cause)
     else if (stimulus.kind === 'chat')
       answer = answerChat(next, stimulus, cause)
+    else if (stimulus.kind === 'cue-gesture')
+      answer = { state: next, intents: [{ id: `${cause}-gesture`, cause, channel: 'posture', kind: 'gesture', gesture: stimulus.gesture, count: stimulus.count }] }
     else if (stimulus.kind === 'idle-wake')
       answer = { state: next, intents: [] }
     else if (stimulus.kind === 'music')

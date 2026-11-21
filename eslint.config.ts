@@ -155,7 +155,7 @@ export default defineConfig({
           name,
           message: 'The character mind imports only the pure rules of @proj-airi/stage-shared/expression-performance and /situation.',
         })),
-        { name: '@proj-airi/motion-driver-natural', message: 'The character mind imports only the pure rules: /idle-schedule, /idle-errands, and /cursor-notice, and types from /idle-activities.' },
+        { name: '@proj-airi/motion-driver-natural', message: 'The character mind imports only the pure rules: /idle-schedule, /idle-errands, and /cursor-notice, and types from /idle-activities and /cue-gestures.' },
       ],
       patterns: [{
         group: ['@vueuse/*', '@proj-airi/stage-ui*', '@proj-airi/stage-shared/stores/*'],
@@ -163,12 +163,12 @@ export default defineConfig({
       }, {
         // The idle schedule, the errand pacing, and the cursor episode draw are pure (airi/idle-schedule-pure); the rest
         // of Natural is the performer.
-        regex: '^@proj-airi/motion-driver-natural/(?!idle-schedule$|idle-errands$|idle-activities$|cursor-notice$)',
-        message: 'The character mind imports only the pure rules: /idle-schedule, /idle-errands, and /cursor-notice, and types from /idle-activities.',
+        regex: '^@proj-airi/motion-driver-natural/(?!idle-schedule$|idle-errands$|idle-activities$|cursor-notice$|cue-gestures$)',
+        message: 'The character mind imports only the pure rules: /idle-schedule, /idle-errands, and /cursor-notice, and types from /idle-activities and /cue-gestures.',
       }, {
-        regex: '^@proj-airi/motion-driver-natural/idle-activities$',
+        regex: '^@proj-airi/motion-driver-natural/(?:idle-activities|cue-gestures)$',
         allowTypeImports: true,
-        message: 'The character mind imports only types from /idle-activities, which holds the performer.',
+        message: 'The character mind imports only types from /idle-activities and /cue-gestures, which hold the performers.',
       }],
     }],
   },

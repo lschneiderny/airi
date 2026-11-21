@@ -1,4 +1,4 @@
-import type { AttendIntent, CharacterMind, ChatReadIntent, ChatStimulus, MindIdleIntent, MindIntent, TouchReactionIntent, TouchReport } from '@proj-airi/character-mind'
+import type { AttendIntent, CharacterMind, ChatReadIntent, ChatStimulus, CueGestureStimulus, MindIdleIntent, MindIntent, TouchReactionIntent, TouchReport } from '@proj-airi/character-mind'
 import type { FaceBaseline } from '@proj-airi/motion-driver-natural/baseline'
 import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
 import type { CursorOrder, CursorReport } from '@proj-airi/motion-driver-natural/cursor-notice'
@@ -261,9 +261,10 @@ const browserTimers: Required<StagePerformanceConductorOptions>['timers'] = {
  *   The mind's settings report `heldEmotions` off there, so explicit expressions derive no
  *   reaction state and later slot decisions match the held-emotion-free behavior.
  * - Slot commands go to `scene.applySlots` for every driver.
- * - A touch reaches the mind only under Natural (see {@link StagePerformanceConductor.touch}). ACT cue gestures go to
- *   `scene.gesture` under the Natural driver of Live2D and MMD. Universal, MAGIC, and MMD Classic have no touch path
- *   and ignore the gesture field.
+ * - A touch reaches the mind only under Natural (see {@link StagePerformanceConductor.touch}). ACT and devtools cue
+ *   gestures step the mind under every driver, and its `gesture` intent goes to `scene.gesture` only under the Natural
+ *   driver of Live2D and MMD (see {@link StagePerformanceConductor.gesture}). Universal, MAGIC, and MMD Classic have no
+ *   touch path and play no cue gestures.
  * - Presence and screen-change events reach the mind under every driver (see {@link StagePerformanceConductor.desktop});
  *   only Natural performs the posture intents it answers with.
  * - A cursor report reaches the mind only under Natural, and its episode returns to this conductor's scene (see
@@ -482,12 +483,17 @@ export class StagePerformanceConductor {
   }
 
   /**
-   * Plays an ACT cue gesture under the Natural driver of Live2D and MMD; Universal, MAGIC, and MMD Classic ignore it.
-   * The decider is not involved.
+   * Sends an ACT or devtools cue gesture to the mind as a `cue-gesture` stimulus under every driver, and plays the mind's
+   * `gesture` intent on the scene under the Natural driver of Live2D and MMD only; Universal, MAGIC, and MMD Classic play
+   * none. The decider is not involved.
    */
-  gesture(kind: CueGestureKind, count: number) {
-    if (this.options.driver() === 'natural')
-      this.options.scene()?.gesture?.(kind, count)
+  gesture(kind: CueGestureKind, count: number, source: CueGestureStimulus['source'], turnId?: string) {
+    const natural = this.options.driver() === 'natural'
+    const stimulus: CueGestureStimulus = { kind: 'cue-gesture', gesture: kind, count, source, ...turnId !== undefined && { turnId } }
+    for (const intent of this.options.mind.receive(stimulus)) {
+      if (natural && intent.kind === 'gesture')
+        this.options.scene()?.gesture?.(intent.gesture, intent.count)
+    }
   }
 
   /** Sets the resting face of the mounted scene; the decider is not involved. */

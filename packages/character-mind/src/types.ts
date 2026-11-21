@@ -1,3 +1,4 @@
+import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
 import type { CursorEpisode, CursorReport } from '@proj-airi/motion-driver-natural/cursor-notice'
 import type { IdleBehaviourKind } from '@proj-airi/motion-driver-natural/idle-activities'
 import type { IdleErrandKind } from '@proj-airi/motion-driver-natural/idle-errands'
@@ -94,6 +95,17 @@ export type MindStimulus
     | { kind: 'interaction', source: 'drag' }
   /** The user sent a typed chat message of `words` words, or the chat unfolded; the mind answers with `chat-read`. */
     | ChatStimulus
+  /** An ACT cue gesture of the model's reply, or the devtools lab's; the mind answers with one `gesture` intent. */
+    | CueGestureStimulus
+
+/** A cue gesture the model or the devtools lab asked for, `count` times. `turnId` names the reply of an ACT gesture. */
+export interface CueGestureStimulus {
+  kind: 'cue-gesture'
+  gesture: CueGestureKind
+  count: number
+  source: 'act' | 'devtools'
+  turnId?: string
+}
 
 /** A typed chat send or a chat window that opened. Voice sends are not chat stimuli. */
 export type ChatStimulus
@@ -160,6 +172,8 @@ export type MindIntent
    * drops it without a chat target or while she talks.
    */
     | (IntentBase & { channel: 'gaze', kind: 'chat-read', cue: 'sent' | 'unfold', words: number })
+  /** Play a cue gesture `count` times. The performer queues or refuses it when a running gesture holds its channels. */
+    | (IntentBase & { channel: 'posture', kind: 'gesture', gesture: CueGestureKind, count: number })
 
 /** The posture intent a scene performs for a touch. */
 export type TouchReactionIntent = Extract<MindIntent, { kind: 'touch-reaction' }>
@@ -169,6 +183,8 @@ export type MindIdleIntent = Extract<MindIntent, { kind: 'idle-act' | 'idle-erra
 export type AttendIntent = Extract<MindIntent, { kind: 'attend' }>
 /** The gaze intent that reads the chat. */
 export type ChatReadIntent = Extract<MindIntent, { kind: 'chat-read' }>
+/** The posture intent that plays a cue gesture. */
+export type GestureIntent = Extract<MindIntent, { kind: 'gesture' }>
 
 /** The part of the mind's state that the leader saves in the active card's character-state record. */
 export interface MindSlowState {
