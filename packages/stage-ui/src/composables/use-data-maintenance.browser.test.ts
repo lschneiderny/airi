@@ -16,6 +16,7 @@ import { createApp, nextTick, toRaw } from 'vue'
 import { createI18n } from 'vue-i18n'
 
 import { characterStateRepo } from '../database/repos/character-state.repo'
+import { chatSessionsRepo } from '../database/repos/chat-sessions.repo'
 import { stickersRepo } from '../database/repos/stickers.repo'
 import { storage } from '../database/storage'
 import { useHostNoticeSettings } from '../features/host-capabilities/notice-settings'
@@ -26,6 +27,7 @@ import { injectKeyPiniaSynced } from '../libs/pinia/synced-context'
 import { toStoredVoiceprint } from '../libs/voice/voiceprint'
 import { stateRegistry } from '../persistence/state-registry'
 import { useCharacterStateStore } from '../stores/character-state'
+import { useChatSessionStore } from '../stores/chat/session-store'
 import { useDisplayModelsStore } from '../stores/display-models'
 import { useMemoryStore } from '../stores/memory'
 import { useModsServerChannelStore } from '../stores/mods/api/channel-server'
@@ -579,6 +581,22 @@ it('leaves no registered location holding data when all data is deleted', async 
   expect(remaining).toEqual([])
   // An enrollment that started before the deletion must still see when it happened.
   expect(localStorage.getItem('settings/voice/voiceprint-deleted-at')).not.toBeNull()
+})
+
+// ROOT CAUSE:
+// The chat sessions' reset saves a new empty session and the chat index, and the sweep after it removed both, so the
+// session existed only in memory.
+it('keeps the new empty chat session in storage after all data is deleted', async () => {
+  vi.stubGlobal('fetch', vi.fn<typeof fetch>(async () => Response.json({ voices: [], models: [] })))
+  const { pinia, runtime, maintenance } = mountMaintenance(`maintenance:${crypto.randomUUID()}`, 'leader-only')
+  await vi.waitFor(() => expect(runtime.isLeader()).toBe(true))
+
+  await maintenance.deleteAllData()
+
+  const sessions = useChatSessionStore(pinia)
+  expect(sessions.activeSessionId).not.toBe('')
+  expect(await chatSessionsRepo.getSession(sessions.activeSessionId)).not.toBeNull()
+  expect(Object.values((await chatSessionsRepo.getIndex('local'))?.characters ?? {}).flatMap(character => Object.keys(character.sessions))).toContain(sessions.activeSessionId)
 })
 
 // ROOT CAUSE:
