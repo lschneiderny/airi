@@ -4,6 +4,7 @@ import { createReactionState, initialTouchAffectMemory } from '@proj-airi/stage-
 import { initialReactionMemory } from '@proj-airi/stage-shared/situation'
 
 import { answerCursor, answerInteraction } from './attention'
+import { answerChat } from './chat'
 import { answerEmotion, answerExpressionClear, answerExpressionRequest } from './expression'
 import { advanceIdle, answerIdle, answerIdlePlay, initialMindIdleState } from './idle'
 import { answerMusic } from './music'
@@ -83,6 +84,8 @@ export function step(state: MindState, stimuli: readonly MindStimulus[], nowMs: 
       answer = answerCursor(next, stimulus, cause, rng)
     else if (stimulus.kind === 'interaction')
       answer = answerInteraction(next, cause)
+    else if (stimulus.kind === 'chat')
+      answer = answerChat(next, stimulus, cause)
     else if (stimulus.kind === 'idle-wake')
       answer = { state: next, intents: [] }
     else if (stimulus.kind === 'music')

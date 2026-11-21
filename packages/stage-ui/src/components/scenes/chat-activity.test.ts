@@ -3,11 +3,11 @@ import { describe, expect, it } from 'vitest'
 import { chatActivityFrom } from './chat-activity'
 
 const now = 1_000_000
-const sent = { sentSeq: 3, sentWords: 7 }
+const sent = 3
 
 describe('chatActivityFrom', () => {
   it('reports typing within 1.5 s of a draft change', () => {
-    expect(chatActivityFrom([{ hasDraft: true, lastInputAtMs: now - 1500 }], now, sent)).toEqual({ typing: true, sentSeq: 3, sentWords: 7 })
+    expect(chatActivityFrom([{ hasDraft: true, lastInputAtMs: now - 1500 }], now, sent)).toEqual({ typing: true, sentSeq: 3 })
   })
 
   it('stops typing 1.6 s after the last draft change', () => {

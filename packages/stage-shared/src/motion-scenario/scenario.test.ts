@@ -127,23 +127,20 @@ describe('motionScenarioSchema', () => {
 })
 
 describe('nextScenarioChatInput', () => {
-  it('creates a hidden chat with zero counters on the first chat event, then keeps fields the event does not set', () => {
+  it('creates a hidden chat on the first chat event, then keeps fields the event does not set', () => {
     const typing = nextScenarioChatInput(null, { kind: 'chat-typing', at: 1, active: true })
-    expect(typing).toEqual({ target: null, typing: true, sentSeq: 0, sentWords: 0, unfoldSeq: 0 })
+    expect(typing).toEqual({ target: null, typing: true })
     const shown = nextScenarioChatInput(typing, { kind: 'chat-target', at: 2, x: -3, y: -1 })
-    expect(shown).toEqual({ target: { x: -3, y: -1 }, typing: true, sentSeq: 0, sentWords: 0, unfoldSeq: 0 })
-    const sent = nextScenarioChatInput(nextScenarioChatInput(shown, { kind: 'chat-sent', at: 3, words: 8 }), { kind: 'chat-sent', at: 4, words: 2 })
-    expect(sent).toEqual({ target: { x: -3, y: -1 }, typing: true, sentSeq: 2, sentWords: 2, unfoldSeq: 0 })
-    const hidden = nextScenarioChatInput(sent, { kind: 'chat-target', at: 5, clear: true })
-    expect(hidden).toEqual({ target: null, typing: true, sentSeq: 2, sentWords: 2, unfoldSeq: 0 })
-    expect(nextScenarioChatInput(hidden, { kind: 'chat-unfold', at: 6 })).toEqual({ ...hidden, unfoldSeq: 1 })
+    expect(shown).toEqual({ target: { x: -3, y: -1 }, typing: true })
+    const hidden = nextScenarioChatInput(shown, { kind: 'chat-target', at: 5, clear: true })
+    expect(hidden).toEqual({ target: null, typing: true })
   })
 
   it('returns a new object and leaves the previous input unchanged', () => {
-    const previous = nextScenarioChatInput(null, { kind: 'chat-unfold', at: 1 })
-    const next = nextScenarioChatInput(previous, { kind: 'chat-unfold', at: 2 })
+    const previous = nextScenarioChatInput(null, { kind: 'chat-typing', at: 1, active: true })
+    const next = nextScenarioChatInput(previous, { kind: 'chat-typing', at: 2, active: false })
     expect(next).not.toBe(previous)
-    expect([previous.unfoldSeq, next.unfoldSeq]).toEqual([1, 2])
+    expect([previous.typing, next.typing]).toEqual([true, false])
   })
 })
 

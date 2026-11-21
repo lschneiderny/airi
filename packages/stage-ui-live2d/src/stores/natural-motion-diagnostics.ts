@@ -40,13 +40,11 @@ export interface NaturalStageSnapshot {
   head?: { x: number, y: number, width: number, height: number } | null
 }
 
-/** What the stage's model last handed to Natural as chat input, reduced to flags and counters for QA readout. */
+/** What the stage's model last handed to Natural as chat input, reduced to flags for QA readout. */
 export interface NaturalChatSummary {
   /** The chat is visible and placed, so Natural has a point to look at. */
   hasTarget: boolean
   typing: boolean
-  sentSeq: number
-  unfoldSeq: number
 }
 
 /** Compact capture outcome the lab renders. */
@@ -236,9 +234,9 @@ export const useNaturalMotionDiagnostics = defineStore('live2d-natural-motion-di
       return
     }
     const hasTarget = chat.target !== null
-    if (current && current.hasTarget === hasTarget && current.typing === chat.typing && current.sentSeq === chat.sentSeq && current.unfoldSeq === chat.unfoldSeq)
+    if (current && current.hasTarget === hasTarget && current.typing === chat.typing)
       return
-    lastChat.value = { hasTarget, typing: chat.typing, sentSeq: chat.sentSeq, unfoldSeq: chat.unfoldSeq }
+    lastChat.value = { hasTarget, typing: chat.typing }
   }
 
   /** The stage's model reports what it handed to Natural and the yaw bias the controller applied. */

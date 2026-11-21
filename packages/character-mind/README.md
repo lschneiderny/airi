@@ -35,7 +35,8 @@ const intents = mind.receive({ kind: 'emotion', source: 'act', emotion: 'happy',
 | `idle-play` | `posture`: `idle-act` with `requested: true`, at once. |
 | `music` | None, and no draw. It sets `MindState.music.playing`, fast state that a reset clears. While it is true the idle schedule may draw the groove, the `sway` act (`IdleContext` `music`). Like every stimulus, it first brings the idle clock up to `nowMs` under the old value. A `music` stimulus before the first `idle` report leaves the idle stream's seed unchanged. |
 | `cursor` | `gaze`: `cursor-episode` for the report's `requestId`, at once: whether she engages, the interest span, the notice dwell, and the cooldown (see below). |
-| `interaction` | `body`: `attend`, at once, for a drag release (`source: 'drag'`) or a sent chat message (`chat-send`). |
+| `interaction` | `body`: `attend`, at once, for a drag release (`source: 'drag'`). |
+| `chat` | A typed send (`cue: 'sent'`, with its word count): `gaze` `chat-read` with the words, then `body` `attend`. A chat that unfolds (`cue: 'unfold'`): `gaze` `chat-read` with 0 words. No draw; the performer draws the read's delay and hold and drops it without a chat target or while she talks. |
 
 A scene reports a touch as a `TouchReport`: a poke with its region and a point relative to that region, a pet start, or a pet end with its duration. The `touch` stimulus adds the settings and a `TouchVoiceView`, which is what the voice channel shows of the touch the situation just recorded. Without a view (a pet start, a follower window, no running gate) the mind decides no line and leaves its voice state untouched. The caller runs a `speak` intent and returns what became of it as a `voice-outcome` with the intent's `turnId`.
 

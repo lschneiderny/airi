@@ -109,10 +109,10 @@ describe('the attend window', () => {
   it('answers a drag release and a sent chat message with one attend of 60 s each, drawing nothing', () => {
     const mind = script(3)
     const dragged = mind.send(T0, { kind: 'interaction', source: 'drag' })
-    const sent = mind.send(T0 + 1000, { kind: 'interaction', source: 'chat-send' })
+    const sent = mind.send(T0 + 1000, { kind: 'chat', cue: 'sent', words: 4 })
 
     expect(dragged).toEqual([{ id: '1-attend', cause: 1, channel: 'body', kind: 'attend', target: 'cursor', windowMs: 60_000 }])
-    expect(sent).toEqual([{ id: '2-attend', cause: 2, channel: 'body', kind: 'attend', target: 'cursor', windowMs: 60_000 }])
+    expect(sent.filter(intent => intent.kind === 'attend')).toEqual([{ id: '2-attend', cause: 2, channel: 'body', kind: 'attend', target: 'cursor', windowMs: 60_000 }])
     expect(mind.draws).toBe(0)
     expect(mind.state.attention.random).toBeNull()
   })

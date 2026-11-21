@@ -1,4 +1,5 @@
 export * from './attention'
+export * from './chat'
 export * from './idle'
 export * from './mind'
 export * from './music'

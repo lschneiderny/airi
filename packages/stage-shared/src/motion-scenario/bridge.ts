@@ -80,7 +80,7 @@ export const MotionQaStateSchema = strictObject({
   /** Normalized head-X placement term the Natural controller last applied. */
   placementYawBias: pipe(number(), finite()),
   /** The chat input the stage last handed to Natural as flags and counters, or null when it had no chat signal. Never text. */
-  chat: nullable(strictObject({ hasTarget: boolean(), typing: boolean(), sentSeq: number(), unfoldSeq: number() })),
+  chat: nullable(strictObject({ hasTarget: boolean(), typing: boolean() })),
   /** The window's host capability snapshot, or null before a host wrote one. */
   host: nullable(hostCapabilities),
   /** The latest foreground window sample without its title, or null while the host has written none. Never the title. */

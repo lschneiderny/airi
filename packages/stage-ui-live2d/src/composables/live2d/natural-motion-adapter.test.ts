@@ -892,17 +892,17 @@ describe('natural motion adapter', () => {
       f.frame(0)
       expect(setChat).not.toHaveBeenCalled()
       f.state.placement = 0.4
-      f.state.chat = { target: { x: -3, y: -1 }, typing: true, sentSeq: 0, sentWords: 0, unfoldSeq: 0 }
+      f.state.chat = { target: { x: -3, y: -1 }, typing: true }
       f.frame(0.5)
       expect(setChat).toHaveBeenLastCalledWith(f.state.chat, 0.5)
       expect(setChat.mock.invocationCallOrder.at(-1)).toBeGreaterThan(setPlacement.mock.invocationCallOrder.at(-1)!)
       // The host builds a new object every composition; equal values are not a change.
-      f.state.chat = { target: { x: -3, y: -1 }, typing: true, sentSeq: 0, sentWords: 0, unfoldSeq: 0 }
+      f.state.chat = { target: { x: -3, y: -1 }, typing: true }
       f.frame(0.6)
       expect(setChat).toHaveBeenCalledTimes(1)
-      f.state.chat = { ...f.state.chat, sentSeq: 1, sentWords: 3 }
+      f.state.chat = { ...f.state.chat, typing: false }
       f.frame(0.7)
-      expect(setChat).toHaveBeenLastCalledWith({ target: { x: -3, y: -1 }, typing: true, sentSeq: 1, sentWords: 3, unfoldSeq: 0 }, 0.7)
+      expect(setChat).toHaveBeenLastCalledWith({ target: { x: -3, y: -1 }, typing: false }, 0.7)
       f.state.chat = { ...f.state.chat, target: null }
       f.frame(0.8)
       expect(setChat).toHaveBeenCalledTimes(3)
@@ -915,6 +915,31 @@ describe('natural motion adapter', () => {
     finally {
       setPlacement.mockRestore()
       setChat.mockRestore()
+    }
+  })
+
+  it('(k2) applies a chat read after the frame\'s chat input, and drops reads under another driver', () => {
+    const setChat = vi.spyOn(NaturalMotion.prototype, 'setChat')
+    const chatRead = vi.spyOn(NaturalMotion.prototype, 'chatRead')
+    try {
+      const f = fixture()
+      f.adapter.chatRead({ cue: 'sent', words: 3 })
+      f.state.eligible = true
+      f.frame(0)
+      expect(chatRead).not.toHaveBeenCalled()
+      // A chat that unfolds on the same frame as its read already has its target when the read arrives.
+      f.state.chat = { target: { x: -3, y: -1 }, typing: false }
+      f.adapter.chatRead({ cue: 'unfold', words: 0 })
+      f.frame(0.5)
+      expect(chatRead).toHaveBeenCalledExactlyOnceWith({ cue: 'unfold', words: 0 }, 0.5)
+      expect(chatRead.mock.invocationCallOrder[0]).toBeGreaterThan(setChat.mock.invocationCallOrder.at(-1)!)
+      f.frame(0.6)
+      expect(chatRead).toHaveBeenCalledTimes(1)
+      f.adapter.dispose()
+    }
+    finally {
+      setChat.mockRestore()
+      chatRead.mockRestore()
     }
   })
 

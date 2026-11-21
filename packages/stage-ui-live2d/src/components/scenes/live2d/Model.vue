@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { Application } from '@pixi/app'
 import type { Filter } from '@pixi/core'
-import type { TouchReactionIntent, TouchReport } from '@proj-airi/character-mind'
+import type { ChatReadIntent, TouchReactionIntent, TouchReport } from '@proj-airi/character-mind'
 import type { FaceBaseline } from '@proj-airi/motion-driver-natural/baseline'
 import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
 import type { CursorOrder, CursorReport } from '@proj-airi/motion-driver-natural/cursor-notice'
@@ -89,7 +89,7 @@ import { activeCanvasPointer } from '../../../composables/live2d/canvas-pointer'
 import { EmotionHoldPerformer, selectManualHold } from '../../../composables/live2d/expression/hold'
 import { useFitModel } from '../../../composables/live2d/fit-model'
 import { live2DCanvasRectToViewport } from '../../../composables/live2d/head-anchor'
-import { createUnfoldCounter, naturalChatInput } from '../../../composables/live2d/natural-chat-input'
+import { naturalChatInput } from '../../../composables/live2d/natural-chat-input'
 import { Live2DNaturalMotionAdapter } from '../../../composables/live2d/natural-motion-adapter'
 import { scoreLiveliness } from '../../../composables/live2d/natural-motion/liveliness'
 import { NaturalReviewLog } from '../../../composables/live2d/natural-motion/review'
@@ -238,13 +238,6 @@ let naturalCaptureObserver: NaturalMotionObserver | null = null
 /** Detaches the running trace capture without answering it; set only while a capture runs. */
 let stopNaturalCapture: (() => void) | undefined
 const localFocus = new Point()
-/** Hidden -> visible transitions of the host's chat; the first observation only records visibility. */
-const chatUnfolds = createUnfoldCounter()
-watch(() => props.chatTarget?.visible, (visible) => {
-  if (visible !== undefined)
-    chatUnfolds.observe(visible)
-}, { immediate: true })
-
 /** Emotions for the Natural driver; the adapter drains the queue on its next composition. */
 const pendingNaturalEmotions: NaturalEpisode[] = []
 /** Pokes for the Natural driver; the adapter drains the queue like the emotion queue. */
@@ -743,7 +736,6 @@ async function performModelLoad() {
               enabled: live2dNaturalScreenAwareness.value,
               chatTarget: props.chatTarget,
               activity: props.chatActivity,
-              unfoldSeq: chatUnfolds.seq,
               locate: bounds => locateChat(bounds, live2DModel, eyeUnit()),
             })
         composedChat = chat
@@ -2031,6 +2023,8 @@ defineExpose({
   wakeFromSleep: () => naturalMotion?.wake(),
   /** Natural only: a brief reaction to the desktop; `wake` also rouses her from sleep with a start. */
   reactToDesktop: (reaction: 'wake' | 'screen-change') => naturalMotion?.react(reaction),
+  /** Natural only: reads the chat, as the character mind decided for a sent message or an unfolded chat. */
+  chatRead: (intent: ChatReadIntent) => naturalMotion?.chatRead({ cue: intent.cue, words: intent.words }),
   /** The resting face target; a model that loads later receives it on the stage's next once-per-second update. */
   setFaceBaseline: (baseline: FaceBaseline) => naturalMotion?.setFaceBaseline(baseline),
   /**

@@ -7,7 +7,7 @@ import type { IdleBehaviourReport, IdleCueKind, NaturalIdleDrive } from '@proj-a
 import type { IdleErrandReport } from '@proj-airi/motion-driver-natural/idle-errands'
 import type { IdleOrder, IdleReport } from '@proj-airi/motion-driver-natural/idle-schedule'
 import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
-import type { NaturalChatInput, NaturalMotionFrame, NaturalMotionOptions, NaturalMotionPose } from '@proj-airi/motion-driver-natural/natural-motion'
+import type { NaturalChatInput, NaturalChatRead, NaturalMotionFrame, NaturalMotionOptions, NaturalMotionPose } from '@proj-airi/motion-driver-natural/natural-motion'
 import type { PostureHome } from '@proj-airi/motion-driver-natural/posture'
 import type { NaturalReviewGains } from '@proj-airi/motion-driver-natural/review'
 import type { ExpressionPerformanceSettings, MoodDose, PerformanceEmotion } from '@proj-airi/stage-shared/expression-performance'
@@ -66,8 +66,8 @@ export interface Live2DNaturalMotionAttention {
   /** Screen inwardness of the head (-1..1, positive toward screen +x), or `null` when there is no placement signal. */
   placement: number | null
   /**
-   * Chat target, typing, and typed-send counters, or `null` when the setting is off or the host has no chat.
-   * Hidden chat is an object with a `null` target, so the controller keeps its sequence baselines.
+   * Chat target and typing, or `null` when the setting is off or the host has no chat. Hidden chat is an object with a
+   * `null` target. Sent messages and unfolds arrive as `chatRead` calls.
    */
   chat: NaturalChatInput | null
   /** Host poke queue, `x` and `y` relative to the touched region's center (-1..1, y down); emptied like `pendingEmotions`. */
@@ -157,7 +157,7 @@ function composeEyelid(base: number, multiplier: number, hint: number, blinkFact
 function sameChat(a: NaturalChatInput | null, b: NaturalChatInput | null) {
   if (a === null || b === null)
     return a === b
-  return a.typing === b.typing && a.sentSeq === b.sentSeq && a.sentWords === b.sentWords && a.unfoldSeq === b.unfoldSeq
+  return a.typing === b.typing
     && (a.target === null || b.target === null ? a.target === b.target : a.target.x === b.target.x && a.target.y === b.target.y)
 }
 
@@ -204,6 +204,8 @@ export class Live2DNaturalMotionAdapter {
   private readonly pendingCursorOrders: CursorOrder[] = []
   /** Wake and desktop reaction requests, handed to the controller in order on the next frame. */
   private readonly pendingDesktop: ({ kind: 'wake' } | { kind: 'react', reaction: 'wake' | 'screen-change' })[] = []
+  /** Chat reads the character mind decided; applied after the frame's chat input, so an unfolded chat has its target. */
+  private readonly pendingChatReads: NaturalChatRead[] = []
   /** The drive the host last set, and the one the controller runs; they differ while Natural is inactive. */
   private idleDrive: NaturalIdleDrive | null = null
   private appliedIdleDrive: NaturalIdleDrive | null = null
@@ -376,6 +378,12 @@ export class Live2DNaturalMotionAdapter {
       this.pendingDesktop.push({ kind: 'react', reaction })
   }
 
+  /** Reads the chat on the next frame, as the character mind decided; ignored while another driver runs. */
+  chatRead(read: NaturalChatRead) {
+    if (!this.disposed && this.attention().driver === 'natural')
+      this.pendingChatReads.push({ ...read })
+  }
+
   /**
    * Plays what the character mind's idle policy decided, at the next composition. Natural refuses it while it does
    * not drive the model (another driver, an exclusive clip, a pause, a hidden page), so every order gets an answer.
@@ -517,6 +525,11 @@ export class Live2DNaturalMotionAdapter {
     if (!sameChat(attention.chat, this.chat)) {
       this.chat = attention.chat && { ...attention.chat, target: attention.chat.target && { ...attention.chat.target } }
       this.controller.setChat(attention.chat, this.time)
+    }
+    // Reads queued while Natural is inactive are stale by the time it resumes, like emotions.
+    for (const read of this.pendingChatReads.splice(0)) {
+      if (active)
+        this.controller.chatRead(read, this.time)
     }
     const frame = this.controller.advance(this.time)
     this.onPlacementStep?.(this.placement, this.controller.placementYawBias)

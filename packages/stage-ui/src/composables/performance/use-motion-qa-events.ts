@@ -72,6 +72,7 @@ export function useMotionQaEvents(options: {
       const music = step.stimuli.findLast(stimulus => stimulus.kind === 'music')
       const cursor = step.stimuli.find(stimulus => stimulus.kind === 'cursor')
       const interaction = step.stimuli.find(stimulus => stimulus.kind === 'interaction')
+      const chat = step.stimuli.find(stimulus => stimulus.kind === 'chat')
       const lines = step.intents.flatMap(intent => intent.channel === 'voice' && intent.kind === 'speak' ? [intent.line.kind] : [])
       const cues = step.intents.flatMap(intent => intent.channel === 'posture' && intent.kind === 'cue' ? [intent.cue] : [])
       record('mind', {
@@ -80,7 +81,7 @@ export function useMotionQaEvents(options: {
         outcome: outcomes.length ? outcomes.map(stimulus => stimulus.outcome).join(',') : null,
         // A JSON array, because a payload holds scalars only. A touch yields at most five intents of about 80
         // characters each, which stays under the 500 characters `record` keeps of a string.
-        // Idle acts, idle errands, cursor episodes, and attend windows also name what they decided.
+        // Idle acts, idle errands, cursor episodes, attend windows, and chat reads also name what they decided.
         intents: JSON.stringify(step.intents.map(intent => ({
           channel: intent.channel,
           kind: intent.kind,
@@ -90,6 +91,7 @@ export function useMotionQaEvents(options: {
           ...intent.kind === 'idle-errand' && { errand: intent.errand },
           ...intent.kind === 'cursor-episode' && { band: intent.episode.band, engaging: intent.episode.engaging },
           ...intent.kind === 'attend' && { windowMs: intent.windowMs },
+          ...intent.kind === 'chat-read' && { cue: intent.cue, words: intent.words },
         }))),
         // The kinds of the step's spoken lines (`reaction`, `reach-out`, `widget`) and its body cues
         // (`about-to-speak`, `let-go`), comma-separated, or null.
@@ -107,8 +109,10 @@ export function useMotionQaEvents(options: {
         music: music?.playing ?? null,
         // Only a cursor step carries these: the band of the cursor and what made the notice possible.
         ...cursor && { band: cursor.report.band, opportunity: cursor.report.opportunity },
-        // Only an interaction step carries this: a drag release or a sent chat message.
+        // Only an interaction step carries this: a drag release.
         ...interaction && { source: interaction.source },
+        // Only a chat step carries this: a typed send (`sent`) or a chat that unfolded (`unfold`).
+        ...chat && { chat: chat.cue },
       })
     }),
     options.onIdle(report => record('idle', { phase: report.phase, behaviour: report.behaviour })).off,

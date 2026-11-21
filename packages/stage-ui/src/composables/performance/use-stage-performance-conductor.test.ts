@@ -717,20 +717,36 @@ describe('stage performance conductor', () => {
       expect(mind.state.seq).toBe(steps + 2)
     })
 
-    it('sends the attend of a drag release and a sent chat message to the scene under Natural only', () => {
+    it('sends the attend of a drag release to the scene under Natural only', () => {
       const attended = (['natural', 'basic'] as const).map((driver) => {
         const scene = attendingScene()
         const { conductor, mind } = createConductor(driver, scene)
         const steps: string[] = []
         mind.onStep(step => steps.push(step.stimuli.map(stimulus => stimulus.kind === 'interaction' ? stimulus.source : stimulus.kind).join(',')))
         conductor.interaction('drag')
-        conductor.interaction('chat-send')
         return [driver, steps, scene.attend.mock.calls.map(([intent]) => [intent.kind, intent.windowMs])]
       })
 
       expect(attended).toEqual([
-        ['natural', ['drag', 'chat-send'], [['attend', 60_000], ['attend', 60_000]]],
-        ['basic', ['drag', 'chat-send'], []],
+        ['natural', ['drag'], [['attend', 60_000]]],
+        ['basic', ['drag'], []],
+      ])
+    })
+
+    it('steps the mind for chat activity under every driver and sends its read and attend to the scene under Natural only', () => {
+      const read = (['natural', 'basic'] as const).map((driver) => {
+        const scene = { ...attendingScene(), chatRead: vi.fn<NonNullable<StagePerformanceScene['chatRead']>>() }
+        const { conductor, mind } = createConductor(driver, scene)
+        const steps: string[] = []
+        mind.onStep(step => steps.push(step.stimuli.map(stimulus => stimulus.kind === 'chat' ? `chat:${stimulus.cue}` : stimulus.kind).join(',')))
+        conductor.chat('sent', 6)
+        conductor.chat('unfold')
+        return [driver, steps, scene.chatRead.mock.calls.map(([intent]) => [intent.cue, intent.words]), scene.attend.mock.calls.length]
+      })
+
+      expect(read).toEqual([
+        ['natural', ['chat:sent', 'chat:unfold'], [['sent', 6], ['unfold', 0]], 1],
+        ['basic', ['chat:sent', 'chat:unfold'], [], 0],
       ])
     })
 

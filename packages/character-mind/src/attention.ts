@@ -30,7 +30,7 @@ export function answerCursor(state: MindState, stimulus: Stimulus<'cursor'>, cau
   }
 }
 
-/** Answers a drag release or a sent chat message: she attends to her user for `ATTEND_WINDOW_MS`. Nothing else changes. */
+/** Answers a drag release: she attends to her user for `ATTEND_WINDOW_MS`. Nothing else changes. */
 export function answerInteraction(state: MindState, cause: number): Answer {
   return { state, intents: [attendIntent(cause)] }
 }
