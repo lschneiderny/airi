@@ -1,4 +1,4 @@
-import type { AttendIntent, CharacterMind, MindIdleIntent, MindIntent, TouchReactionIntent, TouchReport } from '@proj-airi/character-mind'
+import type { AttendIntent, CharacterMind, ChatReadIntent, ChatStimulus, MindIdleIntent, MindIntent, TouchReactionIntent, TouchReport } from '@proj-airi/character-mind'
 import type { FaceBaseline } from '@proj-airi/motion-driver-natural/baseline'
 import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
 import type { CursorOrder, CursorReport } from '@proj-airi/motion-driver-natural/cursor-notice'
@@ -160,6 +160,11 @@ export interface StagePerformanceScene {
    * cursor. A scene without a body director, such as the Live2D scene, drops it.
    */
   attend?: (intent: AttendIntent) => void
+  /**
+   * Live2D and MMD Natural: reads the chat, as the mind decided for a sent message or an unfolded chat. Natural draws
+   * the read's delay and hold and drops it without a chat target or while she talks. A scene without it drops the read.
+   */
+  chatRead?: (intent: ChatReadIntent) => void
 }
 
 /**
@@ -263,9 +268,11 @@ const browserTimers: Required<StagePerformanceConductorOptions>['timers'] = {
  *   only Natural performs the posture intents it answers with.
  * - A cursor report reaches the mind only under Natural, and its episode returns to this conductor's scene (see
  *   {@link StagePerformanceConductor.cursor}).
- * - A drag release and a sent chat message reach the mind under every driver, and its `attend` goes to `scene.attend`
- *   only under Natural, because the MMD body walks only under Natural (see
- *   {@link StagePerformanceConductor.interaction}). A touch's `attend` goes the same way.
+ * - A drag release reaches the mind under every driver, and its `attend` goes to `scene.attend` only under Natural,
+ *   because the MMD body walks only under Natural (see {@link StagePerformanceConductor.interaction}). A touch's
+ *   `attend` goes the same way.
+ * - A sent chat message and an unfolded chat reach the mind under every driver, and its `chat-read` and `attend` go to
+ *   the scene only under Natural (see {@link StagePerformanceConductor.chat}).
  * - The resting face baseline goes to `scene.setFaceBaseline` for every driver. Natural composes it only while it
  *   drives the face, so Universal and MAGIC hold it without writing.
  *
@@ -541,14 +548,32 @@ export class StagePerformanceConductor {
   }
 
   /**
-   * Tells the mind that the user dragged her and let go, or sent a chat message, under every driver, and sends its
-   * `attend` to `scene.attend` only under Natural: the MMD body walks only under Natural, so the classic director gets
-   * no attend window (Body ownership Target rule 1).
+   * Tells the mind that the user dragged her and let go, under every driver, and sends its `attend` to `scene.attend`
+   * only under Natural: the MMD body walks only under Natural, so the classic director gets no attend window (Body
+   * ownership Target rule 1).
    */
-  interaction(source: 'drag' | 'chat-send') {
+  interaction(source: 'drag') {
     const natural = this.options.driver() === 'natural'
     for (const intent of this.options.mind.receive({ kind: 'interaction', source })) {
       if (intent.kind === 'attend' && natural)
+        this.options.scene()?.attend?.(intent)
+    }
+  }
+
+  /**
+   * Tells the mind that the user sent a typed message of `words` words (`sent`), or that the chat unfolded (`unfold`),
+   * under every driver. Its `chat-read` goes to `scene.chatRead` and its `attend` to `scene.attend`, both only under
+   * Natural: no other driver reads the chat, and the classic director gets no attend window.
+   */
+  chat(cue: 'sent' | 'unfold', words = 0) {
+    const natural = this.options.driver() === 'natural'
+    const stimulus: ChatStimulus = cue === 'sent' ? { kind: 'chat', cue, words } : { kind: 'chat', cue }
+    for (const intent of this.options.mind.receive(stimulus)) {
+      if (!natural)
+        continue
+      if (intent.kind === 'chat-read')
+        this.options.scene()?.chatRead?.(intent)
+      else if (intent.kind === 'attend')
         this.options.scene()?.attend?.(intent)
     }
   }

@@ -66,6 +66,8 @@ export interface MotionQaBridgeOptions {
   dispatchAct: (marker: string) => Promise<boolean>
   /** The stage's render error for the selected model, if it reported one. */
   renderError: () => Error | undefined
+  /** A scripted chat send or unfold, through the stage's conductor and the mind, as the real chat sends them. */
+  chatRead: (cue: 'sent' | 'unfold', words: number) => void
   /** The last resolver inputs and the state the stage hands to Natural; read without resolving again. */
   performance: () => { inputs: PerformanceInputs, state: PerformanceState }
   /** Devtools "Evaluate now" in the leader window: one forced gate tick and its decision. */
@@ -225,9 +227,13 @@ export function useMotionQaBridge(options: MotionQaBridgeOptions) {
         return null
       case 'chat-target':
       case 'chat-typing':
-      case 'chat-sent':
-      case 'chat-unfold':
         diagnostics.chatOverride = nextScenarioChatInput(diagnostics.chatOverride ?? null, event)
+        return null
+      case 'chat-sent':
+        options.chatRead('sent', event.words)
+        return null
+      case 'chat-unfold':
+        options.chatRead('unfold', 0)
         return null
       case 'placebo':
       case 'noop':

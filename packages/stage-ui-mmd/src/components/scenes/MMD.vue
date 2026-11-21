@@ -9,7 +9,7 @@
   * contract Stage.vue expects from every renderer.
 */
 
-import type { AttendIntent, TouchReactionIntent, TouchReport } from '@proj-airi/character-mind'
+import type { AttendIntent, ChatReadIntent, TouchReactionIntent, TouchReport } from '@proj-airi/character-mind'
 import type { ClipBoneMask, ClipMaskGroup } from '@proj-airi/motion-driver-humanoid/clip-mask'
 import type { BodyActionKind, BodyActionRequest } from '@proj-airi/motion-driver-humanoid/director'
 import type { IdleClipCandidate, IdleClipHistory } from '@proj-airi/motion-driver-humanoid/idle-clips'
@@ -23,7 +23,6 @@ import type { IdleBehaviourReport, IdleCueKind, NaturalIdleDrive } from '@proj-a
 import type { IdleErrandKind } from '@proj-airi/motion-driver-natural/idle-errands'
 import type { IdleOrder, IdleReport } from '@proj-airi/motion-driver-natural/idle-schedule'
 import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
-import type { NaturalChatInput } from '@proj-airi/motion-driver-natural/natural-motion'
 import type { ExpressionPerformanceSettings, HoldCommand, MoodDose, SlotCommand } from '@proj-airi/stage-shared/expression-performance'
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
 import type { SelfObservation } from '@proj-airi/stage-shared/situation'
@@ -130,7 +129,8 @@ const props = withDefaults(defineProps<{
   performanceSettings?: ExpressionPerformanceSettings
   screenPlacement?: { displays: PlacementRect[], windowBounds: PlacementRect }
   chatTarget?: { visible: boolean, bounds: PlacementRect | null }
-  chatActivity?: Pick<NaturalChatInput, 'typing' | 'sentSeq' | 'sentWords'>
+  /** Typing for Natural; `sentSeq` counts typed sends for the body director, which reads them until it acts on intents. */
+  chatActivity?: { typing: boolean, sentSeq: number }
   mouthOpenSize?: number
   nowSpeaking?: boolean
   /**
@@ -1400,7 +1400,7 @@ async function loadModel(src: string) {
             voice: { speaking, speechActiveOrRecent: speaking, level: props.mouthOpenSize },
             cursor,
             chat: props.chatTarget
-              ? { ...props.chatActivity ?? { typing: false, sentSeq: 0, sentWords: 0 }, target: props.chatTarget.visible ? chatPoint : null, unfoldSeq: chatUnfoldSeq }
+              ? { typing: props.chatActivity?.typing ?? false, target: props.chatTarget.visible ? chatPoint : null }
               : null,
             placement: !head || headX === undefined
               ? null
@@ -1849,6 +1849,8 @@ defineExpose({
   wakeFromSleep: () => natural?.wake(),
   /** Natural only: a brief reaction to the desktop; `wake` also rouses her from sleep with a start. */
   reactToDesktop: (reaction: 'wake' | 'screen-change') => natural?.react(reaction),
+  /** Natural only: reads the chat, as the character mind decided for a sent message or an unfolded chat. */
+  chatRead: (intent: ChatReadIntent) => natural?.chatRead({ cue: intent.cue, words: intent.words }),
   setFaceBaseline: (baseline: FaceBaseline) => natural?.setFaceBaseline(baseline),
   /** The drive of self-directed idle behaviour; the stage sends it again every second. */
   setIdleDrive: (drive: NaturalIdleDrive | null) => { hostIdleDrive = drive },

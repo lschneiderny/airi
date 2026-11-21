@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { TouchReactionIntent, TouchReport } from '@proj-airi/character-mind'
+import type { ChatReadIntent, TouchReactionIntent, TouchReport } from '@proj-airi/character-mind'
 import type { FaceBaseline } from '@proj-airi/motion-driver-natural/baseline'
 import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
 import type { CursorOrder, CursorReport } from '@proj-airi/motion-driver-natural/cursor-notice'
@@ -290,6 +290,8 @@ defineExpose({
   wakeFromSleep: () => live2dModelRef.value?.wakeFromSleep(),
   /** Natural only: a brief reaction to the desktop; `wake` also rouses her from sleep with a start. */
   reactToDesktop: (reaction: 'wake' | 'screen-change') => live2dModelRef.value?.reactToDesktop(reaction),
+  /** Natural only: reads the chat, as the character mind decided. */
+  chatRead: (intent: ChatReadIntent) => live2dModelRef.value?.chatRead(intent),
   setFaceBaseline: (baseline: FaceBaseline) => live2dModelRef.value?.setFaceBaseline(baseline),
   setIdleDrive: (drive: NaturalIdleDrive | null) => live2dModelRef.value?.setIdleDrive(drive),
   idleCue: (kind: IdleCueKind) => live2dModelRef.value?.idleCue(kind),

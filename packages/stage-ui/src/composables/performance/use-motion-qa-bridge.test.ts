@@ -170,6 +170,7 @@ describe('useMotionQaBridge', () => {
         emotionsQueue: { enqueue: cue => log.push(`queue:${cue.emotion.name}:${cue.source}:${cue.emotion.intensity}`) },
         dispatchAct: marker => streaming.dispatchWith(marker),
         renderError: () => undefined,
+        chatRead: (cue, words) => log.push(`chat-read:${cue}:${words}`),
         performance: () => ({ inputs: performanceInputs, state: { ...resolvePerformanceState(performanceInputs, initialResolverMemory).state, mode: mode.value } }),
         evaluateVoice: () => evaluateVoice(),
         deleteAllData: () => deleteAllData(),
@@ -357,6 +358,17 @@ describe('useMotionQaBridge', () => {
     expect(JSON.parse(reply.result.events[0].payload.intents as string)).toEqual([expect.objectContaining({ channel: 'body', kind: 'attend', windowMs: 60_000 })])
   })
 
+  it('records a chat step with its cue and the read it decided, never the message', async () => {
+    mind.receive({ kind: 'chat', cue: 'sent', words: 4 })
+
+    const reply = await dispatch({ name: 'events', input: {} }) as { result: { events: { kind: string, payload: Record<string, unknown> }[] } }
+    expect(reply.result.events).toEqual([expect.objectContaining({ kind: 'mind', payload: expect.objectContaining({ stimulus: 'chat', chat: 'sent' }) })])
+    expect(JSON.parse(reply.result.events[0].payload.intents as string)).toEqual([
+      expect.objectContaining({ channel: 'gaze', kind: 'chat-read', cue: 'sent', words: 4 }),
+      expect.objectContaining({ channel: 'body', kind: 'attend', windowMs: 60_000 }),
+    ])
+  })
+
   it('records a gate tick with its gate reason, fired category, line kind, and cues, a decline with its cue, and skips an unforced tick that yields nothing', async () => {
     // A new run eases her in, so the first unforced tick holds without an intent.
     mind.receive(voiceTick(false, mindNowMs))
@@ -450,18 +462,18 @@ describe('useMotionQaBridge', () => {
     expect(await dispatch({ name: 'state' })).toMatchObject({ ok: true, result: { placement: null, placementYawBias: 0 } })
   })
 
-  it('reports the chat input the stage last handed to Natural as flags and counters', async () => {
+  it('reports the chat input the stage last handed to Natural as flags', async () => {
     expect(await dispatch({ name: 'state' })).toMatchObject({ ok: true, result: { chat: null } })
 
     const diagnostics = useNaturalMotionDiagnostics()
-    diagnostics.reportChat({ target: { x: -3, y: -1 }, typing: true, sentSeq: 2, sentWords: 5, unfoldSeq: 1 })
+    diagnostics.reportChat({ target: { x: -3, y: -1 }, typing: true })
     const reply = await dispatch({ name: 'state' })
-    // `sentWords` and the target point stay inside the stage; the bridge only says whether a target exists.
-    expect(reply).toMatchObject({ ok: true, result: { chat: { hasTarget: true, typing: true, sentSeq: 2, unfoldSeq: 1 } } })
-    expect(Object.keys((reply as { result: { chat: object } }).result.chat).sort()).toEqual(['hasTarget', 'sentSeq', 'typing', 'unfoldSeq'])
+    // The target point stays inside the stage; the bridge only says whether a target exists.
+    expect(reply).toMatchObject({ ok: true, result: { chat: { hasTarget: true, typing: true } } })
+    expect(Object.keys((reply as { result: { chat: object } }).result.chat).sort()).toEqual(['hasTarget', 'typing'])
 
-    diagnostics.reportChat({ target: null, typing: false, sentSeq: 2, sentWords: 5, unfoldSeq: 1 })
-    expect(await dispatch({ name: 'state' })).toMatchObject({ ok: true, result: { chat: { hasTarget: false, typing: false, sentSeq: 2, unfoldSeq: 1 } } })
+    diagnostics.reportChat({ target: null, typing: false })
+    expect(await dispatch({ name: 'state' })).toMatchObject({ ok: true, result: { chat: { hasTarget: false, typing: false } } })
 
     diagnostics.reportChat(null)
     expect(await dispatch({ name: 'state' })).toMatchObject({ ok: true, result: { chat: null } })
@@ -616,11 +628,11 @@ describe('useMotionQaBridge', () => {
     expect(diagnostics.chatOverride).toBeUndefined()
   })
 
-  it('drives the placement and chat overrides from scenario events, keeping the chat counters', async () => {
+  it('drives the placement and chat overrides from scenario events and sends chat reads through the stage', async () => {
     const diagnostics = useNaturalMotionDiagnostics()
     // Stale values from an earlier run must not leak into the next scenario.
     diagnostics.placementOverride = 0.5
-    diagnostics.chatOverride = { target: { x: 1, y: 1 }, typing: true, sentSeq: 7, sentWords: 3, unfoldSeq: 4 }
+    diagnostics.chatOverride = { target: { x: 1, y: 1 }, typing: true }
     scope.run(() => {
       watch(() => diagnostics.placementOverride, value => log.push(`placement:${value}`), { flush: 'sync' })
       watch(() => diagnostics.chatOverride, value => log.push(`chat:${JSON.stringify(value)}`), { flush: 'sync' })
@@ -641,11 +653,11 @@ describe('useMotionQaBridge', () => {
       'placement:null',
       'chat:null',
       'placement:1',
-      'chat:{"target":{"x":-3,"y":-1},"typing":false,"sentSeq":0,"sentWords":0,"unfoldSeq":0}',
-      'chat:{"target":{"x":-3,"y":-1},"typing":true,"sentSeq":0,"sentWords":0,"unfoldSeq":0}',
-      'chat:{"target":{"x":-3,"y":-1},"typing":true,"sentSeq":1,"sentWords":8,"unfoldSeq":0}',
-      'chat:{"target":null,"typing":true,"sentSeq":1,"sentWords":8,"unfoldSeq":0}',
-      'chat:{"target":null,"typing":true,"sentSeq":1,"sentWords":8,"unfoldSeq":1}',
+      'chat:{"target":{"x":-3,"y":-1},"typing":false}',
+      'chat:{"target":{"x":-3,"y":-1},"typing":true}',
+      'chat-read:sent:8',
+      'chat:{"target":null,"typing":true}',
+      'chat-read:unfold:0',
       'placement:null',
     ])
   })

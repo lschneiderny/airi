@@ -590,6 +590,10 @@ Under a Natural driver, `conductor.touch(report)` answers one touch once, in the
 
 The scene performs only what `reactToTouch` hands it: a poke starts Natural's poke at the reported point, and the pet hand reaches Natural only between a pet `start` and its `end`. The asset decider is not involved, and an affect trace records no touch.
 
+### Stage chat
+
+`Stage.vue` sends the mind each typed send (`chatComposerSentEvent`, with its word count, never its text) and each time the host's chat turns visible (`chatTarget.visible`; the first observation only records it) through `conductor.chat(cue, words)`. The conductor steps the mind under every driver and, only under Natural, hands the mind's `chat-read` intent to the scene's `chatRead` and its `attend` intent to the scene's `attend`. The scene's chat input (`chatTarget`, `chatActivity`) carries only the target and typing for Natural; `chatActivity.sentSeq` stays for the MMD body director until it acts on intents. The motion QA bridge sends scripted `chat-sent` and `chat-unfold` events through the same call.
+
 The conductor reaches the leader's situation store through its `VoicePort` (`composables/performance/mind-voice.ts`). `conductor.desktop(events)` dispatches the mind's `observe-wake` and `observe-return` intents, in intent order and under every driver, to `voice().observeReturn`, which folds a `WakeObservation` or a `ReturnObservation` into the situation in the leader and does nothing in a follower window.
 
 ### Reach-outs through the mind

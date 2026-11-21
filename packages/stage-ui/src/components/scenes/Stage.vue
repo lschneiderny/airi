@@ -677,13 +677,12 @@ function updatePerformance() {
 /** Latest report per composer that holds a draft; a composer that reports no draft is dropped. */
 const chatComposerReports = new Map<string, ChatComposerReport>()
 let chatSentSeq = 0
-let chatSentWords = 0
-const chatActivity = shallowRef<ChatActivity>({ typing: false, sentSeq: 0, sentWords: 0 })
+const chatActivity = shallowRef<ChatActivity>({ typing: false, sentSeq: 0 })
 
 function updateChatActivity() {
-  const next = chatActivityFrom(chatComposerReports.values(), Date.now(), { sentSeq: chatSentSeq, sentWords: chatSentWords })
+  const next = chatActivityFrom(chatComposerReports.values(), Date.now(), chatSentSeq)
   const current = chatActivity.value
-  if (next.typing !== current.typing || next.sentSeq !== current.sentSeq || next.sentWords !== current.sentWords)
+  if (next.typing !== current.typing || next.sentSeq !== current.sentSeq)
     chatActivity.value = next
 }
 
@@ -696,15 +695,25 @@ const disposeChatComposerActivityListener = getSpeechBusContext().on(chatCompose
     chatComposerReports.delete(body.sourceId)
   updateChatActivity()
 })
-// Voice sends never emit this event, so only typed sends trigger the read glance.
+// Voice sends never emit this event, so only typed sends reach the mind as `chat` `sent`. The MMD director still
+// counts them through `chatActivity` until it acts on intents.
 const disposeChatComposerSentListener = getSpeechBusContext().on(chatComposerSentEvent, ({ body }) => {
   if (!body)
     return
   chatSentSeq++
-  chatSentWords = body.words
   updateChatActivity()
-  performanceConductor.interaction('chat-send')
+  performanceConductor.chat('sent', body.words)
 })
+// Each hidden -> visible transition of the host's chat reaches the mind as `chat` `unfold`. The first observation only
+// records visibility, so a chat already open when the stage mounts never counts as an unfold.
+let chatVisible: boolean | undefined
+watch(() => props.chatTarget?.visible, (visible) => {
+  if (visible === undefined)
+    return
+  if (chatVisible === false && visible)
+    performanceConductor.chat('unfold')
+  chatVisible = visible
+}, { immediate: true })
 
 // The typing window closes without a new report, so the same tick re-evaluates it.
 useIntervalFn(() => {
@@ -756,6 +765,7 @@ if (import.meta.env.DEV && isMotionQaBridgeEnabled()) {
           emotionsQueue,
           dispatchAct: marker => streamingControl.dispatchWith(marker),
           renderError: () => stageRenderError.value,
+          chatRead: (cue, words) => performanceConductor.chat(cue, words),
           performance: () => ({ inputs: performanceInputs, state: performance.value }),
           evaluateVoice: () => useSituationObservabilityStore().evaluateGateLeader(),
           deleteAllData: async () => {

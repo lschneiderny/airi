@@ -48,13 +48,19 @@ import { NaturalPetLayer } from './touch'
 
 export type { NaturalAttentionEvent, NaturalBodyIntent, NaturalGestureEvent, NaturalGlanceEvent, NaturalHoldEvent, NaturalIdleEvent, NaturalImpulseEvent, NaturalMotionEvent, NaturalMotionFrame, NaturalMotionObserver, NaturalMotionOptions, NaturalMotionPose, NaturalMotionVoice, NaturalPlacementEvent, NaturalTouchEvent } from './frame-types'
 
-/** Chat timing and geometry only, never text. Target is an eye-anchored offset in head widths, Y up. */
+/**
+ * Chat geometry and typing timing only, never text. Target is an eye-anchored offset in head widths, Y up. A sent
+ * message or an opened chat reaches Natural as a read the character mind decided (`chatRead`), not through this input.
+ */
 export interface NaturalChatInput {
   target: GazePoint | null
   typing: boolean
-  sentSeq: number
-  sentWords: number
-  unfoldSeq: number
+}
+
+/** A chat read the character mind decided: a sent message of `words` words, or a chat that unfolded (0 words). */
+export interface NaturalChatRead {
+  cue: 'sent' | 'unfold'
+  words: number
 }
 
 // Layer stream indices for `deriveSeed`. Appending layers keeps existing sequences stable.
@@ -135,8 +141,6 @@ export class NaturalMotion {
   private readonly gaze: NaturalGazeLayer
   private readonly chatRandom: RandomStream
   private chat: NaturalChatInput | null = null
-  private seenSentSeq: number | undefined
-  private seenUnfoldSeq: number | undefined
   private onChatLevel = 0
   private chatGlance: { at: number, point: GazePoint, hold: number, cause: 'chat-sent' | 'chat-unfold' } | null = null
   /** A reading glance keeps its drawn hold instead of being interrupted by a posture-led fixation. */
@@ -382,21 +386,10 @@ export class NaturalMotion {
       this.mappedCursor = mapCursor(this.cursor)
   }
 
-  /**
-   * Null disables chat and cancels pending glances; a null target means hidden chat.
-   * The first non-null input baselines sequences, which survive disabling and hiding.
-   */
+  /** Null disables chat and cancels pending reads; a null target means hidden chat. */
   setChat(chat: NaturalChatInput | null, nowSeconds: number) {
     this.advance(nowSeconds)
     this.chat = chat === null ? null : { ...chat, target: chat.target && { ...chat.target } }
-    if (chat !== null) {
-      if (this.seenSentSeq !== undefined && chat.sentSeq !== this.seenSentSeq)
-        this.pending.push({ kind: 'chat', cue: 'sent', words: chat.sentWords })
-      if (this.seenUnfoldSeq !== undefined && chat.unfoldSeq !== this.seenUnfoldSeq)
-        this.pending.push({ kind: 'chat', cue: 'unfold', words: 0 })
-      this.seenSentSeq = chat.sentSeq
-      this.seenUnfoldSeq = chat.unfoldSeq
-    }
     if (chat?.target == null) {
       this.onChatLevel = 0
       this.chatGlance = null
@@ -407,6 +400,17 @@ export class NaturalMotion {
       }
       this.gaze.setChatTarget(null, false, this.activeTime)
     }
+  }
+
+  /**
+   * Reads the chat at the next grid step, after advancing to this timestamp: after a short delay the gaze glances at
+   * the chat target and holds it, longer for more words. Dropped while chat is disabled; a hidden chat, talking, or the
+   * gaze arbiter can still drop it later. Send it after the frame's `setChat`, so a chat that just unfolded has its target.
+   */
+  chatRead(read: NaturalChatRead, nowSeconds: number) {
+    this.advance(nowSeconds)
+    if (this.chat !== null)
+      this.pending.push({ kind: 'chat', cue: read.cue, words: read.words })
   }
 
   /** Whether gaze is currently in an autonomous typing fixation. */

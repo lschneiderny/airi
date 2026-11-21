@@ -348,9 +348,14 @@ export function runScenarioSink(input: MotionScenario, options: ScenarioSinkOpti
               break
             case 'chat-target':
             case 'chat-typing':
-            case 'chat-sent':
-            case 'chat-unfold':
               chat = nextScenarioChatInput(chat, event)
+              break
+            // The app's mind answers a send or an unfold with a read; the sink has no mind, so it asks the adapter.
+            case 'chat-sent':
+              adapter.chatRead({ cue: 'sent', words: event.words })
+              break
+            case 'chat-unfold':
+              adapter.chatRead({ cue: 'unfold', words: 0 })
               break
             case 'placebo':
             case 'noop':

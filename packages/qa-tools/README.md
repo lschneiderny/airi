@@ -24,7 +24,8 @@ five labelled peaks each (fifteen per run), spaced by seeded gaps of 0.9 to
 runs at one of the energies 0.45, 0.65 and 0.85 in seeded order, returning to
 0.5 after it. During one seeded utterance a chat panel 25 degrees to a seeded
 side and 10 degrees down shows half a second earlier and unfolds a reply, so
-Natural may glance at it while she answers. No emotion pulse is sent.
+Natural reads it for the quarter second before she answers, until talking
+ends the read. No emotion pulse is sent.
 
 `gesture-under-clip` (talk, 30 s, version 3) exercises clip ownership with a
 programmatic clip, never an asset. Every time follows from the timeline by one
@@ -44,7 +45,8 @@ pipeline like an app clip, and plays on the runner's mixer.
 Cue kinds beyond voice, gaze, emotion, gesture, touch, goal and activity:
 `energy` sets the user energy handed to Natural and the body (0.5 until set),
 `chat` shows or hides the chat panel (a head-width point, as the gaze cursor)
-and may unfold a reply, and `clip-claim` and `clip-release` start and end the
+and may unfold a reply, which the runner hands the adapter as a chat read
+(`chatRead`), as the app's character mind does, and `clip-claim` and `clip-release` start and end the
 runner's clip as the app's upper clip layer, with that layer's smoothstep fade
 (0.25 s in, 0.3 s out, `@proj-airi/stage-ui-mmd/composables/mmd/layer-fade`). Each is labelled in the trace as a `marker`.
 Gaze cursors are three head widths away: x is `3*sin(yaw)`, y is `3*sin(pitch)`;

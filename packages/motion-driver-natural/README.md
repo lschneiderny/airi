@@ -52,6 +52,13 @@ returns whether it started. To add a glance caller, rank its source in
 `GLANCE_PRIORITY`; do not add a guard at the caller. The observer gets a `glance`
 event for every start and refusal, with the source as `cause` and an `outcome`.
 
+`setChat({ target, typing }, at)` is the chat's frame input: where it sits and
+whether the user types, never text. A sent message or an unfolded chat arrives
+as `chatRead({ cue, words }, at)`, a read the character mind decided; send it
+after the frame's `setChat`. Natural draws the read's delay on its `chat`
+stream, holds longer for more words, and drops the read while chat is disabled,
+without a target, while she talks, or when the arbiter refuses it.
+
 After `advance()`, `motion.bodyIntent()` returns the cached `NaturalBodyIntent`
 for the frame it most recently produced. Call `advance()` before the first read;
 reading earlier throws. Repeated reads return the same snapshot without stepping

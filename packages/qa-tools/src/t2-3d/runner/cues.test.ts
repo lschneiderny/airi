@@ -6,7 +6,7 @@ import { expect, it, vi } from 'vitest'
 import { Motion3dCueDriver } from './cues'
 
 function boundary() {
-  const adapter = { impulse: vi.fn(), gesture: vi.fn(), poke: vi.fn(), setPet: vi.fn() }
+  const adapter = { impulse: vi.fn(), gesture: vi.fn(), poke: vi.fn(), setPet: vi.fn(), chatRead: vi.fn() }
   const events: MotionTraceEvent[] = []
   const driver = new Motion3dCueDriver(adapter, 2, event => events.push(event))
   return { adapter, events, driver }
@@ -97,8 +97,8 @@ it('scales goals by leg length and signals cancellation', () => {
   expect(events[1]).toEqual({ t: 1, kind: 'goal', x: null, pace: null })
 })
 
-it('sets energy, shows and hides the chat with an unfold count, and drives the clip with labelled markers', () => {
-  const adapter = { impulse: vi.fn(), gesture: vi.fn(), poke: vi.fn(), setPet: vi.fn() }
+it('sets energy, shows and hides the chat with an unfold read, and drives the clip with labelled markers', () => {
+  const adapter = { impulse: vi.fn(), gesture: vi.fn(), poke: vi.fn(), setPet: vi.fn(), chatRead: vi.fn() }
   const clip = { claim: vi.fn(), release: vi.fn() }
   const events: MotionTraceEvent[] = []
   const driver = new Motion3dCueDriver(adapter, 2, event => events.push(event), clip)
@@ -106,7 +106,8 @@ it('sets energy, shows and hides the chat with an unfold count, and drives the c
   driver.apply({ at: 0, kind: 'energy', level: 0.85 }, 0)
   driver.apply({ at: 1, kind: 'chat', target: { x: 1, y: -0.5 }, unfold: true }, 1)
   expect(driver.energy).toBe(0.85)
-  expect(driver.chat).toEqual({ target: { x: 1, y: -0.5 }, typing: false, sentSeq: 0, sentWords: 0, unfoldSeq: 1 })
+  expect(driver.chat).toEqual({ target: { x: 1, y: -0.5 }, typing: false })
+  expect(adapter.chatRead).toHaveBeenCalledExactlyOnceWith({ cue: 'unfold', words: 0 })
   driver.apply({ at: 2, kind: 'clip-claim' }, 2)
   driver.apply({ at: 3, kind: 'clip-release' }, 3)
   driver.apply({ at: 4, kind: 'chat', target: null, unfold: false }, 4)

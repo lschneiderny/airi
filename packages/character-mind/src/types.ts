@@ -90,8 +90,15 @@ export type MindStimulus
     | MusicStimulus
   /** The reporting Natural performer could notice the cursor; the mind answers with a `cursor-episode`. */
     | { kind: 'cursor', report: CursorReport }
-  /** The user dragged her and let go (`drag`), or sent a chat message (`chat-send`); the mind answers with `attend`. */
-    | { kind: 'interaction', source: 'drag' | 'chat-send' }
+  /** The user dragged her and let go; the mind answers with `attend`. */
+    | { kind: 'interaction', source: 'drag' }
+  /** The user sent a typed chat message of `words` words, or the chat unfolded; the mind answers with `chat-read`. */
+    | ChatStimulus
+
+/** A typed chat send or a chat window that opened. Voice sends are not chat stimuli. */
+export type ChatStimulus
+  = | { kind: 'chat', cue: 'sent', words: number }
+    | { kind: 'chat', cue: 'unfold' }
 
 /** The edge of the one music detector: whether she hears music from now on. */
 export interface MusicStimulus {
@@ -148,6 +155,11 @@ export type MindIntent
    * may walk toward the cursor inside it; a scene without a director drops it.
    */
     | (IntentBase & { channel: 'body', kind: 'attend', target: 'cursor', windowMs: number })
+  /**
+   * Read the chat: a sent message of `words` words (0 for an unfold). The performer draws the read's delay and hold, and
+   * drops it without a chat target or while she talks.
+   */
+    | (IntentBase & { channel: 'gaze', kind: 'chat-read', cue: 'sent' | 'unfold', words: number })
 
 /** The posture intent a scene performs for a touch. */
 export type TouchReactionIntent = Extract<MindIntent, { kind: 'touch-reaction' }>
@@ -155,6 +167,8 @@ export type TouchReactionIntent = Extract<MindIntent, { kind: 'touch-reaction' }
 export type MindIdleIntent = Extract<MindIntent, { kind: 'idle-act' | 'idle-errand' }>
 /** The body intent that opens the director's attend window. */
 export type AttendIntent = Extract<MindIntent, { kind: 'attend' }>
+/** The gaze intent that reads the chat. */
+export type ChatReadIntent = Extract<MindIntent, { kind: 'chat-read' }>
 
 /** The part of the mind's state that the leader saves in the active card's character-state record. */
 export interface MindSlowState {

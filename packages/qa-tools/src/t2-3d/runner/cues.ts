@@ -38,7 +38,7 @@ export class Motion3dCueDriver {
   private currentVoice: NaturalMotionVoice = { speaking: false, speechActiveOrRecent: false, level: 0 }
 
   constructor(
-    private readonly adapter: Pick<MMDNaturalAdapter, 'impulse' | 'gesture' | 'poke' | 'setPet'>,
+    private readonly adapter: Pick<MMDNaturalAdapter, 'impulse' | 'gesture' | 'poke' | 'setPet' | 'chatRead'>,
     private readonly legLength: number,
     private readonly event: (event: MotionTraceEvent) => void,
     private readonly clip: Motion3dClipControl | null = null,
@@ -116,8 +116,10 @@ export class Motion3dCueDriver {
         this.event({ t, kind: 'marker', label: `energy:${cue.level}` })
         return
       case 'chat': {
-        const unfoldSeq = (this.chat?.unfoldSeq ?? 0) + (cue.unfold ? 1 : 0)
-        this.chat = cue.target ? { target: { ...cue.target }, typing: false, sentSeq: 0, sentWords: 0, unfoldSeq } : null
+        this.chat = cue.target ? { target: { ...cue.target }, typing: false } : null
+        // The app's mind answers an unfold with a read; the runner has no mind, so it asks the adapter directly.
+        if (cue.target && cue.unfold)
+          this.adapter.chatRead({ cue: 'unfold', words: 0 })
         this.event({ t, kind: 'marker', label: cue.target ? `chat:show${cue.unfold ? ':unfold' : ''}` : 'chat:hide' })
         return
       }

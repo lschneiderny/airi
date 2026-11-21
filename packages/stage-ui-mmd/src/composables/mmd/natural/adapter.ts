@@ -7,7 +7,7 @@ import type { IdleBehaviourReport, IdleCueKind, NaturalIdleDrive } from '@proj-a
 import type { IdleErrandRecord } from '@proj-airi/motion-driver-natural/idle-errands'
 import type { IdleOrder, IdleReport } from '@proj-airi/motion-driver-natural/idle-schedule'
 import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
-import type { NaturalChatInput, NaturalMotionFrame, NaturalMotionVoice } from '@proj-airi/motion-driver-natural/natural-motion'
+import type { NaturalChatInput, NaturalChatRead, NaturalMotionFrame, NaturalMotionVoice } from '@proj-airi/motion-driver-natural/natural-motion'
 import type { ExpressionPerformanceSettings, HoldCommand, MoodDose, PerformanceEmotion } from '@proj-airi/stage-shared/expression-performance'
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
 import type { PlacementRect } from '@proj-airi/stage-shared/stage-placement'
@@ -78,6 +78,8 @@ export class MMDNaturalAdapter {
   private readonly pendingIdleCues: IdleCueKind[] = []
   private readonly pendingIdleOrders: IdleOrder[] = []
   private readonly pendingCursorOrders: CursorOrder[] = []
+  /** Chat reads the character mind decided; applied after the frame's chat input, so an unfolded chat has its target. */
+  private readonly pendingChatReads: NaturalChatRead[] = []
   private idleDrive: NaturalIdleDrive | null = null
   private appliedIdleDrive: NaturalIdleDrive | null = null
   private readonly idleReports = new IdleBehaviourReports()
@@ -139,6 +141,8 @@ export class MMDNaturalAdapter {
     this.natural.setPerformance(input.performance, input.energy, this.time)
     this.natural.setCursor(input.cursor, this.time)
     this.natural.setChat(input.chat, this.time)
+    for (const read of this.pendingChatReads.splice(0))
+      this.natural.chatRead(read, this.time)
     if (input.placement !== this.placement) {
       this.placement = input.placement
       this.natural.setPlacement(input.placement, this.time)
@@ -186,6 +190,11 @@ export class MMDNaturalAdapter {
    */
   cursorEpisode(order: CursorOrder): void {
     this.pendingCursorOrders.push(order)
+  }
+
+  /** Reads the chat at the next frame, as the character mind decided for a sent message or an unfolded chat. */
+  chatRead(read: NaturalChatRead): void {
+    this.pendingChatReads.push({ ...read })
   }
 
   /** Calls `listener` with Natural's cursor reports for the character mind; returns the function that stops it. */

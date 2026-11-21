@@ -297,7 +297,11 @@ the stage performance conductor to this scene when the MMD renderer is active
 (`selectStagePerformanceRenderer` in `@proj-airi/stage-ui`). The MMD Natural
 driver is the conductor's `natural` driver and Classic is `universal`. The
 exposed `setEmotion`, `applyHolds`, `applySlots`, `onSpeech`, `setMuted`,
-`getMood` and `action` methods form the `StagePerformanceScene` surface.
+`getMood` and `action` methods form the `StagePerformanceScene` surface. A sent
+message or an opened chat reaches Natural only as the character mind's
+`chat-read` intent, through the scene's `chatRead`; the adapter applies it after
+the frame's chat input. Until the director acts on intents, the scene still
+counts typed sends (`chatActivity.sentSeq`) and unfolds for the director.
 `action(label, gesture?)` receives an ACT `action` label (under Natural and
 Classic alike) and runs `resolveActAction`
 (`src/composables/mmd/actions/resolve-act-action.ts`) against

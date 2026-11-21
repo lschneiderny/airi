@@ -7,7 +7,9 @@ import { describe, expect, it } from 'vitest'
 
 const dt = 1 / 120
 const target = { x: -3, y: -1 }
-const input: NaturalChatInput = { target, typing: false, sentSeq: 0, sentWords: 8, unfoldSeq: 0 }
+const input: NaturalChatInput = { target, typing: false }
+const sent = { cue: 'sent', words: 8 } as const
+const unfold = { cue: 'unfold', words: 0 } as const
 
 function fixture() {
   const motion = new NaturalMotion({ seed: 42 })
@@ -46,7 +48,7 @@ describe('natural chat attention', () => {
   it('starts one delayed sent reading glance with an explicit 2.5-second hold', () => {
     const { motion, events } = fixture()
     motion.setChat(input, 0)
-    motion.setChat({ ...input, sentSeq: 1 }, 1)
+    motion.chatRead(sent, 1)
     advance(motion, 1, 5)
     const glances = events.filter(event => event.kind === 'glance' && event.cause === 'chat-sent')
     expect(glances).toHaveLength(1)
@@ -57,7 +59,7 @@ describe('natural chat attention', () => {
     // Replaying the same seed verifies the held target rather than only its observer metadata.
     const replay = fixture().motion
     replay.setChat(input, 0)
-    replay.setChat({ ...input, sentSeq: 1 }, 1)
+    replay.chatRead(sent, 1)
     expect(replay.advance(end).fixation).toEqual(mapCursor(target).eye)
   })
 
@@ -77,9 +79,11 @@ describe('natural chat attention', () => {
         at += dt
       }
     }
-    motion.setChat({ ...input, target: blocked === 'hidden' ? null : target, sentSeq: 1 }, at)
+    motion.setChat({ ...input, target: blocked === 'hidden' ? null : target }, at)
+    motion.chatRead(sent, at)
     advance(motion, at, at + 5)
-    motion.setChat({ ...input, sentSeq: 1 }, at + 5)
+    // A target that appears later does not replay the dropped read.
+    motion.setChat(input, at + 5)
     advance(motion, at + 5, at + 6)
     const reads = events.filter(event => event.kind === 'glance' && event.cause === 'chat-sent')
     // Hidden chat or talking starts no read; a pet or its camera hold refuses the read the gaze arbiter is asked for.
@@ -90,7 +94,8 @@ describe('natural chat attention', () => {
   it('glances once 0.25 seconds after hidden-first unfold with a 0.8-second hold', () => {
     const { motion, events } = fixture()
     motion.setChat({ ...input, target: null }, 0)
-    motion.setChat({ ...input, unfoldSeq: 1 }, 1)
+    motion.setChat(input, 1)
+    motion.chatRead(unfold, 1)
     advance(motion, 1, 3)
     const glances = events.filter(event => event.kind === 'glance' && event.cause === 'chat-unfold')
     expect(glances).toHaveLength(1)
@@ -98,7 +103,7 @@ describe('natural chat attention', () => {
     expect(glances[0]).toMatchObject({ point: mapCursor(target).eye, hold: 0.8 })
   })
 
-  it.each(['visible-first', 'null-first', 'null-between'] as const)('does not replay startup or unchanged sequences for %s', (lifecycle) => {
+  it.each(['visible-first', 'null-first', 'null-between'] as const)('starts no read from the chat input alone for %s', (lifecycle) => {
     const { motion, events } = fixture()
     if (lifecycle === 'null-first')
       motion.setChat(null, 0)
@@ -111,14 +116,14 @@ describe('natural chat attention', () => {
     expect(events.filter(event => event.kind === 'glance')).toEqual([])
   })
 
-  it('treats a sent sequence reset as one new cue and preserves the baseline across null', () => {
+  it('drops a read sent while chat is disabled, and does not replay it once chat is enabled', () => {
     const { motion, events } = fixture()
-    motion.setChat({ ...input, sentSeq: 5 }, 0)
-    motion.setChat(null, 0.5)
-    motion.setChat({ ...input, sentSeq: 0 }, 1)
-    motion.setChat({ ...input, sentSeq: 0 }, 1)
-    advance(motion, 1, 5)
-    expect(events.filter(event => event.kind === 'glance' && event.cause === 'chat-sent')).toHaveLength(1)
+    motion.chatRead(sent, 0.5)
+    motion.setChat(null, 1)
+    motion.chatRead(sent, 1.5)
+    motion.setChat(input, 2)
+    advance(motion, 2, 6)
+    expect(events.filter(event => event.kind === 'glance')).toEqual([])
   })
 
   it('suppresses typing fixations during talking', () => {
@@ -133,7 +138,7 @@ describe('natural chat attention', () => {
   it.each(['sent', 'unfold'] as const)('leaves an active %s read by the next grid step when talking starts', (cue) => {
     const { motion, events } = fixture()
     motion.setChat(input, 0)
-    motion.setChat({ ...input, sentSeq: Number(cue === 'sent'), unfoldSeq: Number(cue === 'unfold') }, 1)
+    motion.chatRead(cue === 'sent' ? sent : unfold, 1)
     const point = mapCursor(target).eye
     expect(motion.advance(1.5).fixation).toEqual(point)
     motion.setPerformance({ mode: 'talking', attention: 'camera', away: false }, 0.5, 1.5)
@@ -174,7 +179,7 @@ describe('natural chat attention', () => {
   it('holds a chat read through an emotion impulse, whose glance it refuses', () => {
     const { motion, events } = fixture()
     motion.setChat(input, 0)
-    motion.setChat({ ...input, sentSeq: 1 }, 1)
+    motion.chatRead(sent, 1)
     advance(motion, 1, 1.5)
     motion.impulse({ id: 'think', emotion: 'think', nominal: 0.6, intensity: 0.6, band: 'clear', escalation: false }, 1.5)
     advance(motion, 1.5, 2.5)
@@ -189,7 +194,7 @@ describe('natural chat attention', () => {
   it('cancels a pending read when talking starts before its deadline', () => {
     const { motion, events } = fixture()
     motion.setChat(input, 0)
-    motion.setChat({ ...input, sentSeq: 1 }, 1)
+    motion.chatRead(sent, 1)
     motion.setPerformance({ mode: 'talking', attention: 'camera', away: false }, 0.5, 1.1)
     advance(motion, 1.1, 6)
     expect(events.filter(event => event.kind === 'glance' && event.cause === 'chat-sent')).toEqual([])
@@ -221,9 +226,9 @@ describe('natural chat attention', () => {
       motion.advance(++frame * dt)
     expect(motion.onChat).toBe(true)
     const at = frame * dt
-    motion.setChat({ ...input, typing: true, sentSeq: 1 }, at)
+    motion.chatRead(sent, at)
     motion.advance((++frame) * dt)
-    motion.setChat(reason === 'disabled' ? null : { ...input, target: null, sentSeq: 1 }, frame * dt)
+    motion.setChat(reason === 'disabled' ? null : { ...input, target: null }, frame * dt)
     motion.advance((++frame) * dt)
     expect(motion.onChat).toBe(false)
     expect(motion.chatHeadFollow).toEqual({ x: 0, y: 0 })
