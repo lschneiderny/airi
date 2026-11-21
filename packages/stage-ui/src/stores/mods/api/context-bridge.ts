@@ -21,6 +21,7 @@ import { getEventSourceKey, getMetadataSourceLabel } from '../../../utils/event-
 import { useLlmStreamingControlStore } from '../../ai/chat-llm/streaming-control'
 import { useCharacterOrchestratorStore, useCharacterStore } from '../../character'
 import { useChatStore } from '../../chat'
+import { pluginInstructionsText } from '../../chat/prompt'
 import { useChatSessionStore } from '../../chat/session-store'
 import { useChatStreamStore } from '../../chat/stream-store'
 import { useContextObservabilityStore } from '../../devtools/context-observability'
@@ -362,7 +363,7 @@ export const useContextBridgeStore = defineStore('mods:api:context-bridge', () =
             turnId: `spark:${event.data.id}`,
             topicKey,
             topicText: requested,
-            supplement: options.messageOverride?.appendSystemInstructions?.join('\n\n') || null,
+            supplement: pluginInstructionsText(options.messageOverride?.appendSystemInstructions) || null,
             timeoutMs: options.timeoutMs ?? SPARK_NOTIFY_REACTION_TIMEOUT_MS,
           })
         : undefined

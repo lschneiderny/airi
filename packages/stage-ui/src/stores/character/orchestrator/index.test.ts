@@ -636,8 +636,8 @@ describe('store character-orchestrator', () => {
       expect(system).toContain(`\n\n${kept}${PROMPT_TRUNCATION_MARKER}\n\nbase.prompt.spark-notify`)
     })
 
-    it('joins several appended instructions with a blank line inside the plugin segment', async () => {
-      const system = await systemMessageFor(['First hint', 'Second hint'])
+    it('joins the non-blank appended instructions with a blank line inside the plugin segment', async () => {
+      const system = await systemMessageFor(['First hint', '', ' \n', 'Second hint'])
 
       expect(system).toContain('\n\nFirst hint\n\nSecond hint\n\nbase.prompt.spark-notify')
     })
