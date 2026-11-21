@@ -1,4 +1,5 @@
-import { isAfter } from 'date-fns'
+import { TZDate } from '@date-fns/tz'
+import { format, isAfter } from 'date-fns'
 
 /** Exit code when `--not-after` stopped the bench before a launch. 0, 1, 2, 3 and 130 are taken. */
 export const BENCH_DEADLINE_EXIT = 4
@@ -7,5 +8,5 @@ export const BENCH_DEADLINE_EXIT = 4
 export function pastNotAfter(notAfter: Date | null, now: Date): string | null {
   if (notAfter === null || !isAfter(now, notAfter))
     return null
-  return `it is past --not-after ${notAfter.toISOString()}; no further launch starts, and the records already appended stay`
+  return `it is past --not-after ${format(new TZDate(notAfter, 'UTC'), 'yyyy-MM-dd\'T\'HH:mm:ss.SSSXXX')}; no further launch starts, and the records already appended stay`
 }
