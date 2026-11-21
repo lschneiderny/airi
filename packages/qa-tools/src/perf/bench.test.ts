@@ -219,6 +219,20 @@ describe('stage attribution', () => {
     expect(text).not.toContain('no timed stage moved')
   })
 
+  it('ranks a stage that moved with no measured noise first, in JSON and text', () => {
+    const withFlat = (runs: BenchRunRecord[], msPerFrame: number) => runs.map(entry => ({ ...entry, stages: { ...entry.stages, flat: { msPerFrame, p95MsApprox: msPerFrame, n: 600 } } }))
+    const result = compareCpu([...withFlat(timedHistory, 1), ...withFlat(timedCommit(4, 1), 1), ...withFlat(timedCommit(5, 2, { sha: SHA_B, t: T0 + 1 }), 2)])
+    const [scenario] = scenariosOf(result)
+    if (scenario.status !== 'compared')
+      throw new Error('expected a comparison')
+
+    expect(scenario.attribution.regression.stages[0]).toEqual({ id: 'flat', deltaMsPerFrame: 1, z: null, zeroNoise: true })
+    expect(JSON.stringify(result)).toContain('"zeroNoise":true')
+    const text = formatBenchCompare(scenariosOf(result))
+    expect(text).toContain('stage flat  +1.00 ms/frame  (no measured noise)')
+    expect(text.indexOf('stage flat')).toBeLessThan(text.indexOf('stage body-head'))
+  })
+
   it('says no timed stage moved when the metric moved but every stage held', () => {
     const text = formatBenchCompare(scenariosOf(compareCpu([...timedHistory, ...timedCommit(4, 1), ...timedCommit(5, 1, { sha: SHA_B, t: T0 + 1 })])))
 

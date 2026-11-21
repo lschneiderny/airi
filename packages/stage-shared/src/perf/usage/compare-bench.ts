@@ -245,18 +245,23 @@ export function compareBench(params: CompareBenchParams): BenchComparison {
 export interface StageAttribution {
   readonly id: string
   readonly deltaMsPerFrame: number
-  readonly z: number
+  /** `null` when the stage has no measured noise. */
+  readonly z: number | null
+  /** The stage's sigma is 0, so it qualifies on its shift alone and ranks ahead of every finite z. */
+  readonly zeroNoise: boolean
 }
 
 /**
  * Ranks stages in the requested direction without assigning stage verdicts. Missing timings mean not recorded.
  * Call after comparing valid, comparable sides. History uses the same clean, trailing groups as the metric judge,
- * but stages pool history once three runs carry that stage. A nonzero shift with zero noise has infinite z.
+ * but stages pool history once three runs carry that stage. Stages with zero noise have no z: they rank first,
+ * largest shift first.
  */
 export function attributeStages(params: Pick<CompareBenchParams, 'runsA' | 'runsB' | 'history'> & {
   readonly direction: 'regression' | 'improvement'
 }): { readonly stages: readonly StageAttribution[], readonly timed: boolean, readonly noStageMoved: boolean } {
   const { runsA, runsB, direction } = params
+  const sign = direction === 'regression' ? 1 : -1
   const timed = runsA.some(run => run.stages !== undefined) && runsB.some(run => run.stages !== undefined)
   if (!timed)
     return { stages: [], timed, noStageMoved: true }
@@ -274,10 +279,13 @@ export function attributeStages(params: Pick<CompareBenchParams, 'runsA' | 'runs
     const pooled = groups.reduce((count, values) => count + values.length, 0) >= BENCH_MIN_RUNS
     const sigma = madSigma((pooled ? [a, b, ...groups] : [a, b]).flatMap(residuals))
     const deltaMsPerFrame = median(b) - median(a)
-    const z = deltaMsPerFrame === 0 ? 0 : deltaMsPerFrame / sigma
-    if (direction === 'regression' ? z > 1 && deltaMsPerFrame > 0.02 : z < -1 && deltaMsPerFrame < -0.02)
-      stages.push({ id, deltaMsPerFrame, z })
+    const zeroNoise = sigma === 0
+    const z = zeroNoise ? null : deltaMsPerFrame / sigma
+    if (sign * deltaMsPerFrame > 0.02 && (z === null || sign * z > 1))
+      stages.push({ id, deltaMsPerFrame, z, zeroNoise })
   }
-  stages.sort((left, right) => direction === 'regression' ? right.z - left.z : left.z - right.z)
+  stages.sort((left, right) => left.z === null || right.z === null
+    ? Number(right.z === null) - Number(left.z === null) || Math.abs(right.deltaMsPerFrame) - Math.abs(left.deltaMsPerFrame)
+    : sign * (right.z - left.z))
   return { stages: stages.slice(0, 5), timed, noStageMoved: stages.length === 0 }
 }
