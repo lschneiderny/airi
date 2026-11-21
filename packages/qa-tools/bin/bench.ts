@@ -21,8 +21,8 @@ import { formatRunTimestamp } from '../src/evidence/run'
 import { refuseIfWorktreeBusy } from '../src/session/app-session'
 import { resolveLive2DRig, RigSetupError } from '../src/t3/import-rig'
 
-const repoRoot = resolve(import.meta.dirname, '../../..')
-loadQaEnv(repoRoot)
+/** The running checkout: its harness and summarizer measure the checkout `--repo-root` names, or this one. */
+const ownRepoRoot = resolve(import.meta.dirname, '../../..')
 
 /** Setup that refuses the bench before it launches or writes anything; exit 2. */
 class BenchSetupError extends Error {}
@@ -57,6 +57,8 @@ async function main(): Promise<number> {
     process.stdout.write(`${BENCH_USAGE}\n`)
     return 0
   }
+  const repoRoot = command.repoRoot ?? ownRepoRoot
+  loadQaEnv(repoRoot)
   // Exits 2 outside a live qa:display session, before anything is written or launched.
   assertQaDisplaySession('qa:bench', allowHostSession)
   // Only Linux has the qa:display session that keeps the bench's windows off the user's desktop.
@@ -74,7 +76,7 @@ async function main(): Promise<number> {
   process.on('SIGINT', stop)
   process.on('SIGTERM', stop)
   try {
-    const result = await runBench({ repoRoot, out, launches, models, historyPath, selfPids: [process.pid, process.ppid], signal: controller.signal, log: line => process.stderr.write(`${line}\n`) })
+    const result = await runBench({ repoRoot, notAfter: command.notAfter, out, launches, models, historyPath, selfPids: [process.pid, process.ppid], signal: controller.signal, log: line => process.stderr.write(`${line}\n`) })
     process.stdout.write(`${JSON.stringify({
       exitCode: result.exitCode,
       out,
@@ -98,6 +100,8 @@ async function main(): Promise<number> {
   }
 }
 
+// Exit codes: 0 every run is valid, 1 a run broke or is invalid, 2 invalid arguments or refused setup (before any
+// launch), 3 a busy host or a hung mount, 4 --not-after was reached before a launch, 130 interrupted.
 main().then((code) => {
   process.exitCode = code
 }, (error) => {

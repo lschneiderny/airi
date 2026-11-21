@@ -20,12 +20,13 @@ import { loadScript } from '../llm/script'
 import { ReplayServer } from '../llm/server'
 import { AppSessionCore } from '../session/app-session'
 import { importRig, zipRig } from '../t3/import-rig'
+import { BENCH_DEADLINE_EXIT, pastNotAfter } from './deadline'
 import { appendBenchLine } from './history'
 import { measurableFrom, readRawRun, summarizeBenchRun } from './summarize'
 
 /** Longest wait for a calm host before one launch; other worktrees' work can keep the machine busy that long. */
 const HOST_QUIET_WAIT_MS = 30 * 60_000
-/** Exit code when the host stays busy or the mounted model does not arrive in time. 0, 1, 2 and 130 are taken. */
+/** Exit code when the host stays busy or the mounted model does not arrive in time. 0, 1, 2, 4 and 130 are taken. */
 const BUSY_OR_HUNG_EXIT = 3
 /** Launch, bridge, and import together; a launch that has not mounted its model by then is hung, not slow. */
 const MOUNT_TIMEOUT_MS = 6 * 60_000
@@ -41,7 +42,10 @@ export interface BenchModel {
 }
 
 export interface BenchOptions {
+  /** The checkout measured: its app is launched and its scripts are read; the harness is the running checkout's. */
   readonly repoRoot: string
+  /** No launch starts after this time; `null` runs every launch. */
+  readonly notAfter: Date | null
   readonly out: string
   readonly launches: readonly BenchLaunch[]
   readonly models: ReadonlyMap<BenchScenario['model']['env'], BenchModel>
@@ -124,6 +128,9 @@ async function benchLaunch(launch: BenchLaunch, context: LaunchContext): Promise
   const host = await waitForHostQuiet({ waitSeconds: HOST_QUIET_WAIT_MS / 1_000, signal: context.signal })
   if (!host.quiet)
     throw new BenchStop(`the host stayed busy for ${HOST_QUIET_WAIT_MS / 60_000} min before the launch (${formatHostLoad(host.sample)}); stop the other load and run the bench again`, BUSY_OR_HUNG_EXIT)
+  const late = pastNotAfter(context.notAfter, new Date())
+  if (late !== null)
+    throw new BenchStop(late, BENCH_DEADLINE_EXIT)
 
   const { signal } = context
   const session = AppSessionCore.create({ repoRoot: context.repoRoot, profileDir, selfPids: context.selfPids, signal })
@@ -217,7 +224,8 @@ async function benchLaunch(launch: BenchLaunch, context: LaunchContext): Promise
 /**
  * Runs the planned launches one after another and appends each launch's `bench-run` record to the history. Exit
  * codes: 0 every launch recorded a valid run, 1 a launch broke, recorded an invalid run, or left processes behind
- * (which also stops the bench), 3 a host that stays busy or a hung mount (stops the bench), 130 interrupted.
+ * (which also stops the bench), 3 a host that stays busy or a hung mount (stops the bench), 4 `notAfter` passed before a
+ * launch (stops the bench), 130 interrupted.
  */
 export async function runBench(options: BenchOptions): Promise<{ exitCode: number, outcomes: BenchRunOutcome[] }> {
   const outcomes: BenchRunOutcome[] = []

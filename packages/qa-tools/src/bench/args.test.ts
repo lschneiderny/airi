@@ -1,3 +1,5 @@
+import { resolve } from 'node:path'
+
 import { describe, expect, it } from 'vitest'
 
 import { parseBenchArgs } from './args'
@@ -18,6 +20,28 @@ describe('qa:bench arguments', () => {
 
   it.each([['--runs', '3.5'], ['--scenario', 'vrm-idle'], ['--bogus'], ['extra']])('refuses %j', (...argv) => {
     expect(() => parseBenchArgs(argv, '/work')).toThrow(BenchUsageError)
+  })
+
+  it('leaves the checkout and the deadline unset by default', () => {
+    expect(parseBenchArgs([], '/work')).toMatchObject({ kind: 'run', repoRoot: null, notAfter: null })
+  })
+
+  it('resolves --repo-root against the caller directory to an absolute checkout path', () => {
+    const repoRoot = resolve(import.meta.dirname, '../../../..')
+
+    expect(parseBenchArgs(['--repo-root', '../..'], resolve(repoRoot, 'packages/qa-tools'))).toMatchObject({ kind: 'run', repoRoot })
+  })
+
+  it('refuses a --repo-root without apps/stage-tamagotchi/package.json', () => {
+    expect(() => parseBenchArgs(['--repo-root', 'no-such-checkout'], import.meta.dirname)).toThrow(BenchUsageError)
+  })
+
+  it('parses --not-after as an ISO time with an offset', () => {
+    expect(parseBenchArgs(['--not-after', '2026-11-21T06:30:00+01:00'], '/work')).toMatchObject({ kind: 'run', notAfter: new Date('2026-11-21T05:30:00Z') })
+  })
+
+  it.each(['tomorrow', '1', '2026-11-21', '2026-11-21T06:30:00', '2026-13-40T99:00:00Z'])('refuses --not-after %j', (value) => {
+    expect(() => parseBenchArgs(['--not-after', value], '/work')).toThrow(BenchUsageError)
   })
 
   it('answers --help without other checks', () => {
