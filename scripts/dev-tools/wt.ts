@@ -25,7 +25,8 @@ const usage = `Usage: pnpm wt ls
         \`git config airi.branchPrefix\` or the OS user name) and install with the shared store;
         --qa also writes .env.qa with AIRI_QA_MMD_MODEL (from the environment or this checkout's
         .env.qa), runs pnpm qa:setup cubism, and checks the install
-  rm    remove one worktree; refuses while processes run from it or files are uncommitted
+  rm    remove one worktree; refuses while processes run from it or files are uncommitted;
+        --force overrides uncommitted files only; --delete-branch deletes the branch only when merged
   gc    list removable worktrees (merged, gone, or clean and idle for --days, default 14);
         --yes removes them. Removal keeps branches, so their commits stay reachable.`
 
@@ -214,7 +215,7 @@ function removeOne(root: string, state: WorktreeState, force: boolean, deleteBra
       console.info(`${state.name}: deleted merged branch ${state.branch}`)
     }
     else {
-      console.info(`${state.name}: kept branch ${state.branch} (not merged)`)
+      console.info(`${state.name}: kept branch ${state.branch} (not merged; delete it on purpose with \`git branch -D ${state.branch}\`)`)
     }
   }
   return true
