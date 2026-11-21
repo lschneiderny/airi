@@ -392,7 +392,8 @@ export function useMotionQaBridge(options: MotionQaBridgeOptions) {
         return { ok: true as const }
       }
       catch (error) {
-        return { ok: false as const, error: errorMessageFrom(error) ?? 'unknown error' }
+        // `||`: an Error with an empty message gives '', which the result contract rejects.
+        return { ok: false as const, error: errorMessageFrom(error) || 'unknown error' }
       }
     }),
     defineInvokeHandler(context, motionQaRunScenarioInvokeEventa, ({ scenario }) => runScenario(scenario)),

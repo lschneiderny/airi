@@ -191,6 +191,12 @@ describe('useMotionQaBridge', () => {
       throw new Error('Model storage unavailable')
     }
     expect(await dispatch({ name: 'deleteAllData' })).toEqual({ ok: true, result: { ok: false, error: 'Model storage unavailable' } })
+
+    deleteAllData = async () => {
+      // An Error whose message is empty, as some DOM and driver errors are.
+      throw Object.assign(new Error('placeholder'), { message: '' })
+    }
+    expect(await dispatch({ name: 'deleteAllData' })).toEqual({ ok: true, result: { ok: false, error: 'unknown error' } })
   })
 
   it('records turn boundaries and truncates assistant text', async () => {
