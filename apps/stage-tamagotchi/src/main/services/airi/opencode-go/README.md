@@ -18,7 +18,7 @@ This protects against process termination after acknowledgment, not every filesy
 
 Encryption uses the installed Electron asynchronous safeStorage APIs.
 Unavailable secure storage and Linux `basic_text` refuse nonempty writes and outbound decryption.
-Clearing a profile does not require encryption.
+Clearing a profile does not require encryption. `goClearConfigurations` removes every profile and the file, for "Delete all data".
 
 ## Requests
 

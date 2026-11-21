@@ -30,6 +30,8 @@ export type GoChunk = { done: true } | { done: false, data: Uint8Array }
 
 export const goGetConfiguration = defineInvokeEventa<GoConfiguration, GoProfile>('eventa:invoke:opencode-go:configuration:get')
 export const goSetConfiguration = defineInvokeEventa<GoConfiguration, GoProfile & { apiKey: string }>('eventa:invoke:opencode-go:configuration:set')
+/** Removes every stored key and cancels every request, for "Delete all data". */
+export const goClearConfigurations = defineInvokeEventa<void>('eventa:invoke:opencode-go:configuration:clear')
 export const goOpenRequest = defineInvokeEventa<GoResponse, GoRequest>('eventa:invoke:opencode-go:request:open')
 export const goReadChunk = defineInvokeEventa<GoChunk, { requestId: string }>('eventa:invoke:opencode-go:request:read')
 export const goCancelRequest = defineInvokeEventa<void, { requestId: string }>('eventa:invoke:opencode-go:request:cancel')

@@ -108,6 +108,23 @@ export class Credentials {
     return operation
   }
 
+  /** Forgets every profile and removes the file, after the writes before it. */
+  clear(): Promise<void> {
+    const operation = this.updates.then(async () => {
+      if (this.disposed)
+        throw new Error('OpenCode Go credential storage is disposed')
+      try {
+        await rm(this.path, { force: true })
+      }
+      catch {
+        throw new Error('OpenCode Go credential removal failed')
+      }
+      this.stored = { version: 1, profiles: [] }
+    })
+    this.updates = operation.then(() => {}, () => {})
+    return operation
+  }
+
   async dispose(): Promise<void> {
     this.disposed = true
     await this.updates

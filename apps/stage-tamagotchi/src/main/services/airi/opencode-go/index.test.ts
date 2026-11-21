@@ -8,7 +8,7 @@ import { join } from 'node:path'
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { goCancelRequest, goGetConfiguration, goOpenRequest, goReadChunk, goSetConfiguration } from '../../../../shared/eventa/opencode-go'
+import { goCancelRequest, goClearConfigurations, goGetConfiguration, goOpenRequest, goReadChunk, goSetConfiguration } from '../../../../shared/eventa/opencode-go'
 import { createGoNetworkService } from './index'
 
 type Handler = (input: unknown, options: unknown) => unknown
@@ -115,10 +115,21 @@ describe('openCode Go main service', () => {
     expect(await call(window, goSetConfiguration, { ...profile, apiKey: '  ' })).toEqual({ configured: false, revision: 2, keyPreview: '' })
   })
 
+  it('removes every stored key from disk when all data is deleted', async () => {
+    await configure()
+    await call(window, goSetConfiguration, { providerId: 'opencode-go:other', apiKey: 'other-token-5678' })
+
+    await call(window, goClearConfigurations, undefined)
+
+    expect(await call(window, goGetConfiguration, profile)).toEqual({ configured: false, revision: 0, keyPreview: '' })
+    expect(await call(window, goGetConfiguration, { providerId: 'opencode-go:other' })).toEqual({ configured: false, revision: 0, keyPreview: '' })
+    await expect(readFile(join(boundary.root, 'opencode-go-v1.json'), 'utf8')).rejects.toThrow('ENOENT')
+  })
+
   // The window owns its context and other services share it, so a shutdown removes only this service's handlers.
   it('removes its handlers on dispose and leaves the window context alive', async () => {
     const handlers = boundary.handlers.get(boundary.contexts.get(window)!)!
-    expect(handlers.size).toBe(5)
+    expect(handlers.size).toBe(6)
 
     await service.dispose()
 
