@@ -97,6 +97,32 @@ export function frameClocks(nowMs: number, directorOffsetMs: number): { naturalS
 }
 
 /**
+ * The director's attend window, inside which she may walk toward the cursor.
+ *
+ * The character mind's `attend` intent arrives outside the frame loop, so the window opens on the director time of the
+ * next frame that runs the director. The time of the last frame would be stale after the loop stalled (a paused stage,
+ * a hidden window, a model still loading) and could close the window before any frame saw it.
+ */
+export class MMDAttendWindow {
+  private requestedMs: number | null = null
+  private untilMs: number | null = null
+
+  /** Asks for a window of `windowMs`; it replaces an open one at the next frame. */
+  open(windowMs: number): void {
+    this.requestedMs = windowMs
+  }
+
+  /** The director time at which the window ends, for the frame at `directorMs`, or null when none was opened. */
+  atFrame(directorMs: number): number | null {
+    if (this.requestedMs !== null) {
+      this.untilMs = directorMs + this.requestedMs
+      this.requestedMs = null
+    }
+    return this.untilMs
+  }
+}
+
+/**
  * Resolves the looping base clip while standing.
  *
  * The per-model idle slot wins over the global idle selection. A motion in

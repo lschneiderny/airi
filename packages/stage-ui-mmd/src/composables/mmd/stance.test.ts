@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest'
 import { createMMDAnimationManager } from './animation-manager'
 import { MMDBody } from './body'
 import { bodyFixture } from './body/fixture'
-import { CHAT_STAND_GAP_LEGS, chatStandX, directorIdleStates, frameClocks, MMDStanceDirector, standingBaseMotion } from './stance'
+import { CHAT_STAND_GAP_LEGS, chatStandX, directorIdleStates, frameClocks, MMDAttendWindow, MMDStanceDirector, standingBaseMotion } from './stance'
 
 const idle: Pick<PerformanceState, 'mode' | 'attention' | 'away'> = { mode: 'idle', attention: 'camera', away: false }
 const away: Pick<PerformanceState, 'mode' | 'attention' | 'away'> = { mode: 'idle', attention: 'camera', away: true }
@@ -237,6 +237,19 @@ describe('mmd stance director in the stage world', () => {
     const director = new MMDStanceDirector()
     frame(director, 0, world())
     frame(director, 1_000, world({ cursorX: 8, cursorOnStage: true }), idle, 0, { ...quiet, interactionSeq: 1, attendUntilMs: EPOCH_MS + 61_000 })
+    expect(director.diagnostics).toMatchObject({ goalX: 7, reason: 'approach-cursor' })
+  })
+
+  it('opens an attend window on the director time of the next frame, however long the loop stalled', () => {
+    const director = new MMDStanceDirector()
+    const attend = new MMDAttendWindow()
+    const attendFrame = (atMs: number, input: MMDStanceWorld) =>
+      frame(director, atMs, input, idle, 0, { ...quiet, interactionSeq: 1, attendUntilMs: attend.atFrame(frameClocks(EPOCH_MS + atMs, 0).directorMs) })
+    attendFrame(0, world())
+
+    // The loop stalls for two minutes, as on a paused stage, and the intent arrives before the next frame.
+    attend.open(60_000)
+    attendFrame(120_000, world({ cursorX: 8, cursorOnStage: true }))
     expect(director.diagnostics).toMatchObject({ goalX: 7, reason: 'approach-cursor' })
   })
 

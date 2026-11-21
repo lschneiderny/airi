@@ -101,7 +101,7 @@ import { readMMDRigProfile } from '../../composables/mmd/rig'
 import { buildMMDClipMask, mmdClipMaskBones } from '../../composables/mmd/rig/clip-mask'
 import { composeMMDStages } from '../../composables/mmd/stage-composition'
 import { applyStageCamera, applyStageRoot, measureStageExtent, projectCharacterPlacement, rowInputs, stagePixelRatio } from '../../composables/mmd/stage-world'
-import { chatStandX, directorIdleStates, frameClocks, MMDStanceDirector } from '../../composables/mmd/stance'
+import { chatStandX, directorIdleStates, frameClocks, MMDAttendWindow, MMDStanceDirector } from '../../composables/mmd/stance'
 import { buildMMDTouchColliders, MMDTouch, mmdTouchRegionRoots } from '../../composables/mmd/touch'
 import { Emotion, EMOTION_VALUES } from '../../constants/emotions'
 import { useMMDExpressionStore } from '../../stores/expression-store'
@@ -191,10 +191,9 @@ const expressions = useMMDExpressionStore()
 let interactionSeq = 0
 // Sent chat messages count apart from touches: they end looping clips, never a one-shot.
 let chatSendSeq = 0
-// The director time until which she attends to her user, from the character mind's `attend` intent; the director may
-// walk toward the cursor only inside it.
-let attendUntilMs: number | null = null
-let directorNowMs = 0
+// The window in which she attends to her user, from the character mind's `attend` intent; the director may walk toward
+// the cursor only inside it.
+const attendWindow = new MMDAttendWindow()
 // The host reports a drag in progress; the director refuses clips and ends broad ones while it lasts.
 let dragging = false
 function noteInteraction() {
@@ -723,7 +722,6 @@ function renderLoop(now = performance.now()) {
   const clocks = frameClocks(now, diagnostics.directorClockOffsetMs)
   naturalSeconds = clocks.naturalSeconds
   if (animation && stance && loadedModelKey) {
-    directorNowMs = clocks.directorMs
     bodyPoints = motionDriver.value === 'natural' && natural && mesh && camera && canvasRef.value
       ? resolveBodyPoints({ mesh, camera, viewport: canvasRef.value.getBoundingClientRect(), gazeMode: gazeMode.value, calibration: props.stageWorld?.calibration }, natural.bodyFrame)
       : null
@@ -738,7 +736,7 @@ function renderLoop(now = performance.now()) {
       // Pokes and drags exist in the classic window too, so the interaction inputs ride outside the world.
       baseEligible: isBaseEligible,
       idle: naturalIdleStates(),
-      interaction: { interactionSeq, chatSendSeq, attendUntilMs, actionRequest: pendingAction, actionFeedback, dragging },
+      interaction: { interactionSeq, chatSendSeq, attendUntilMs: attendWindow.atFrame(clocks.directorMs), actionRequest: pendingAction, actionFeedback, dragging },
     })
     if (base.changed)
       animation.setBaseMotion(base.motion)
@@ -1846,8 +1844,8 @@ defineExpose({
   gesture: (kind: CueGestureKind, count: number) => natural?.gesture(kind, count),
   addMood: (dose: MoodDose) => natural?.addMood(dose),
   reactToTouch,
-  /** Natural only (the conductor sends it under Natural): opens the director's attend window for `windowMs`, counted from the last frame's director time. */
-  attend: (intent: AttendIntent) => { attendUntilMs = directorNowMs + intent.windowMs },
+  /** Natural only (the conductor sends it under Natural): opens the director's attend window for `windowMs`, counted from the next frame's director time. */
+  attend: (intent: AttendIntent) => attendWindow.open(intent.windowMs),
   /** Natural only: ends a sleep with the gentle wake; ignored while she is awake. */
   wakeFromSleep: () => natural?.wake(),
   /** Natural only: a brief reaction to the desktop; `wake` also rouses her from sleep with a start. */
