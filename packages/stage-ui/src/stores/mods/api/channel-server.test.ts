@@ -94,12 +94,7 @@ vi.mock('@proj-airi/server-sdk', () => ({
   Client: serverSdkMocks.MockClient,
   WebSocketEventSource: {
     StageTamagotchi: 'proj-airi:stage-tamagotchi',
-    StageWeb: 'proj-airi:stage-web',
   },
-}))
-
-vi.mock('@proj-airi/stage-shared', () => ({
-  isStageTamagotchi: () => true,
 }))
 
 vi.mock('@vueuse/core', async () => {
@@ -173,6 +168,18 @@ describe('channel-server store reconnect', () => {
         data: { message: 'queued-during-disconnect' },
       }),
     ]))
+  })
+
+  it('names the client the desktop stage', async () => {
+    const store = useModsServerChannelStore()
+
+    const initializePromise = store.initialize({ token: 'secret' })
+    const client = serverSdkMocks.MockClient.instances[0]
+
+    client.simulateAuthenticated()
+    await initializePromise
+
+    expect(client.options.name).toBe('proj-airi:stage-tamagotchi')
   })
 
   it('uses explicit heartbeat settings to avoid client/server timeout mismatch', async () => {
