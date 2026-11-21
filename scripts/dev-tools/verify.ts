@@ -194,7 +194,8 @@ async function waitCommand(cacheDir: string, root: string, wait: { id: string | 
   console.info(`verify run ${id}, started ${Math.round((Date.now() - record.startedAt) / 1000)}s ago:`)
   for (const line of record.report)
     console.info(line)
-  return record.exitCode ?? 1
+  // Any run that did not pass is 1 here; 2 stays a usage error of this --wait.
+  return record.exitCode === 0 ? 0 : 1
 }
 
 /** Starts this command again as a detached process with the same arguments, minus `--detach`. */

@@ -338,7 +338,8 @@ export const verifyUsage = `Usage: pnpm verify [--gate] [--base <ref>] [--only l
   --detach   run in the background; print the run id and return
   --wait     block until a run ends and print its report (default: this worktree's newest run)
   --timeout  stop waiting after this many seconds (default ${defaultWaitSeconds})
-Exit codes: 0 every step passed, 1 a step failed or the run died, 2 usage error, 3 still running after --timeout.`
+Exit codes: 0 every step passed, 1 a step failed or the run died (--wait: the waited run did not pass), 2 usage error,
+3 still running after --timeout.`
 
 function parseWaitArgs(argv: string[]): ParsedVerifyArgs {
   const wait = { id: null as string | null, timeoutMs: defaultWaitSeconds * 1000 }
@@ -403,6 +404,9 @@ export function parseVerifyArgs(argv: string[]): ParsedVerifyArgs {
       return { ok: false, message: `Unknown argument ${JSON.stringify(flag)}` }
     }
   }
+  // A dry run writes no run record, so a detached one would leave nothing for --wait.
+  if (args.dryRun && args.detach)
+    return { ok: false, message: '--dry-run prints the plan at once; drop --detach' }
   return { ok: true, args }
 }
 

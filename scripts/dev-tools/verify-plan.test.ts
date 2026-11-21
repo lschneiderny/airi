@@ -129,6 +129,7 @@ describe('parseVerifyArgs', () => {
     expect(parseVerifyArgs(['--base', '--gate']).ok).toBe(false)
     expect(parseVerifyArgs(['--no-cache']).ok).toBe(false)
     expect(parseVerifyArgs(['extra']).ok).toBe(false)
+    expect(parseVerifyArgs(['--dry-run', '--detach'])).toMatchObject({ ok: false, message: expect.stringContaining('drop --detach') })
   })
 
   it('takes an optional run id and a timeout for --wait, and nothing else', () => {
