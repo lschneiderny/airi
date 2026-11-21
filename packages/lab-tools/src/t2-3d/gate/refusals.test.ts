@@ -11,7 +11,6 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { gateMotion3d } from '../cli/gate'
 import { CORE } from '../metrics/bones'
-import { motionQualityGate } from './definition'
 
 import * as bandsLoader from './load'
 
@@ -118,9 +117,9 @@ describe('cLI named refusals', () => {
   it('refuses altered band bytes before scoring and exits 2', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'motion3d-hash-'))
     try {
-      const path = join(dir, motionQualityGate.bandsFile)
+      const path = join(dir, bandsLoader.bandsFile)
       await mkdir(dirname(path), { recursive: true })
-      await writeFile(path, `${await readFile(join(repoRoot, motionQualityGate.bandsFile), 'utf8')} `)
+      await writeFile(path, `${await readFile(join(repoRoot, bandsLoader.bandsFile), 'utf8')} `)
       await writeFile(join(dir, 'trace.json'), JSON.stringify(encoded(fixture())))
       expect(await gateMotion3d([dir], { repoRoot: dir, cwd: dir, signal: new AbortController().signal })).toBe(2)
       expect(JSON.parse(await readFile(join(dir, 'gate.json'), 'utf8'))).toMatchObject({ verdict: 'REFUSED', refusal: { name: 'bands-hash-mismatch' } })

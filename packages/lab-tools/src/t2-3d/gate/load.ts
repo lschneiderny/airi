@@ -55,6 +55,12 @@ const bandsSchema = v.object({
   context: v.record(v.string(), v.unknown()),
 }) satisfies v.GenericSchema<MotionBandsFile>
 
+/**
+ * The frozen bands of the current gate version, `bands-v<version>.json`, relative to the repository root. The path is
+ * kept out of `definition.ts`, so moving the files leaves the definition's hash (`gate.fileSha256`) alone.
+ */
+export const bandsFile = `packages/lab-tools/fixtures/motion3d/bands-v${motionQualityGate.version}.json`
+
 export const sha256 = (bytes: string | Uint8Array): string => createHash('sha256').update(bytes).digest('hex')
 export const definitionSha256 = sha256(readFileSync(new URL('./definition.ts', import.meta.url)))
 
@@ -65,7 +71,7 @@ export function parseBands(input: unknown): MotionBandsFile {
 export async function loadBands(repoRoot: string): Promise<MotionBandsFile> {
   let bytes: Uint8Array
   try {
-    bytes = await readFile(resolve(repoRoot, motionQualityGate.bandsFile))
+    bytes = await readFile(resolve(repoRoot, bandsFile))
   }
   catch (error) {
     if (error instanceof Error)
