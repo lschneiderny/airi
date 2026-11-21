@@ -5,7 +5,7 @@ import type { BodyDirectorInput, BodyDirectorMemory } from './index'
 import { describe, expect, it } from 'vitest'
 
 import { createLocomotion } from '../locomotion'
-import { decideBody, initialBodyDirectorMemory, NO_WORLD_BODY_INPUT } from './index'
+import { decideBody, initialBodyDirectorMemory, NO_WORLD_BODY_INPUT, STEP_ONTO_CURSOR_MIN_LEGS } from './index'
 
 // The locomotion tests' fixture traits: leg 10, on a ground of 60 legs each side.
 const leg = 10
@@ -50,11 +50,17 @@ function simulate(scenario: PressScenario) {
   let gait: BodyDirectorInput['locomotionMode'] = 'idle'
   let aim: number | null = null
   let lastMovingS = 0
+  let firstRestAfterLandingS: number | null = null
   let maxTravel = 0
+  let travel = 0
+  let correctiveGoals = 0
+  let correctiveDistance = 0
   for (let tick = 0; tick < durationS * 120; tick++) {
     const t = tick * dt
     if (t >= scenario.landAtS)
       aim ??= rootX + scenario.landOffset
+    if (aim !== null && gait === 'idle')
+      firstRestAfterLandingS ??= Math.max(0, lastMovingS - scenario.landAtS)
     const cursorX = aim ?? scenario.farX
     const result = decideBody({
       ...NO_WORLD_BODY_INPUT,
@@ -83,13 +89,18 @@ function simulate(scenario: PressScenario) {
       idle: { settled: false, asleep: false },
       wander: scenario.wanderAtS !== null && t >= scenario.wanderAtS ? { seq: 1 } : null,
     }, memory)
-    memory = result.memory
     const goal = result.intent.locomotion
+    if (goal.goalX !== null && goal.reason === 'approach-cursor' && goal.pace === 'stroll' && result.memory.goalSinceMs !== memory.goalSinceMs) {
+      correctiveGoals++
+      correctiveDistance = Math.abs(goal.goalX - rootX)
+    }
+    memory = result.memory
     const frame = locomotion.step({ now: t, goalX: goal.goalX, pace: goal.pace, arriveFacing: 0, enabled: true, idleSupport: 0, plantedFeet: planted }, dt)
     planted = { left: frame.feet.left.target, right: frame.feet.right.target }
     // She is at rest once her root stops travelling; the feet may still close up under her.
     if (Math.abs(frame.root.position.x - rootX) > restEpsilon)
       lastMovingS = t
+    travel += Math.abs(frame.root.position.x - rootX)
     rootX = frame.root.position.x
     restX = frame.restX
     gait = frame.mode
@@ -97,18 +108,43 @@ function simulate(scenario: PressScenario) {
   }
   return {
     restAfterLandingS: Math.max(0, lastMovingS - scenario.landAtS),
+    firstRestAfterLandingS,
     offsetLegs: Math.abs(rootX - (aim ?? 0)) / leg,
     goalX: memory.goalX,
     maxTravelLegs: maxTravel / leg,
+    travelLegs: travel / leg,
+    correctiveDistanceLegs: correctiveDistance / leg,
+    correctiveGoals,
+    gait,
   }
 }
 
 describe('body director press loop', () => {
-  it.each([1, 2, 4])('stops within 1 s and 0.5 L of a pointer that lands on her %i s into a chase', (landAtS) => {
+  it.each([1, 2, 4])('brakes within 1 s and ends within 0.5 L of a pointer that lands on her %i s into a chase', (landAtS) => {
     const result = simulate({ mode: 'watching', landAtS, farX: 8 * leg, landOffset: 0, chase: true, wanderAtS: null })
 
-    expect(result.restAfterLandingS).toBeLessThanOrEqual(1)
+    // D16 adds another walk after braking; the original 1 s bound still applies to that first stop.
+    expect(result.firstRestAfterLandingS).not.toBeNull()
+    expect(result.firstRestAfterLandingS).toBeLessThanOrEqual(1)
     expect(result.offsetLegs).toBeLessThanOrEqual(0.5)
+  })
+
+  // Total travel without the correction in this deterministic fixture, rounded up to six decimals.
+  it.each([
+    { landAtS: 1, originalTravelLegs: 0 },
+    { landAtS: 2, originalTravelLegs: 0.676 },
+    { landAtS: 4, originalTravelLegs: 2.535001 },
+  ])('takes at most one corrective step onto a pointer that lands on her $landAtS s into a chase', ({ landAtS, originalTravelLegs }) => {
+    const result = simulate({ mode: 'watching', landAtS, farX: 8 * leg, landOffset: 0, chase: true, wanderAtS: null })
+    // One 120 Hz tick at the nominal walk speed is 0.0075 L; allow 0.01 L for discrete stopping.
+    const toleranceLegs = 0.01
+
+    expect(result.offsetLegs, JSON.stringify({ landAtS, ...result })).toBeLessThanOrEqual(STEP_ONTO_CURSOR_MIN_LEGS + toleranceLegs)
+    expect(result.gait).toBe('idle')
+    expect(result.restAfterLandingS).toBeLessThanOrEqual(6)
+    expect(result.goalX).toBeNull()
+    expect(result.correctiveGoals).toBeLessThanOrEqual(1)
+    expect(result.travelLegs).toBeLessThanOrEqual(originalTravelLegs + result.correctiveDistanceLegs + toleranceLegs)
   })
 
   it.each([1, 2, 4])('comes to rest on a pointer that lands 0.5 L ahead of her %i s into a chase', (landAtS) => {

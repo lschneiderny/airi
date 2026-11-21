@@ -39,6 +39,8 @@ CM2 starts once CM1 has landed the core. CM3 is split into CM3a and CM3b, and ov
 
 ## Feature and tuning work
 
+CM6a's D16 ruling of 2026-11-21 adds one corrective stroll after a chase stops beside a resting pointer. The pure director remembers the opportunity in `cursorStepPending` and spends it at rest inside the attend window, beyond `STEP_ONTO_CURSOR_MIN_LEGS` (0.15 legs). The gait stays unchanged. Node closed-loop regressions cover landings at 1, 2, and 4 s; rendered press acceptance remains a separate close-out check.
+
 Tuning a behavior that a slice is about to rewrite is wasted work. Feature and tuning work waits for the slice that rewrites it. Work outside the slices proceeds at any time.
 
 | Work | Waits for |
