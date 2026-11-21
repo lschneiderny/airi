@@ -6,7 +6,7 @@ import { join } from 'node:path'
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-import { latestRunRecord, pruneRuns, readRunRecord, runLogPath, waitForRun, writeRunRecord } from './verify-runs'
+import { createRunRecord, latestRunRecord, pruneRuns, readRunRecord, runLogPath, waitForRun, writeRunRecord } from './verify-runs'
 
 function record(id: string, overrides: Partial<VerifyRunRecord> = {}): VerifyRunRecord {
   return { id, pid: 42, worktree: '/home/user/airi', status: 'running', startedAt: 0, finishedAt: null, exitCode: null, log: `${id}.log`, report: [], ...overrides }
@@ -21,6 +21,14 @@ describe('verify run records', () => {
 
   afterEach(() => {
     rmSync(cache, { recursive: true, force: true })
+  })
+
+  it('creates a record only when the run has none, so a recorded end is never replaced', () => {
+    expect(createRunRecord(cache, record('1-1'))).toBe(true)
+    writeRunRecord(cache, record('1-1', { status: 'passed', exitCode: 0 }))
+
+    expect(createRunRecord(cache, record('1-1'))).toBe(false)
+    expect(readRunRecord(cache, '1-1')).toMatchObject({ status: 'passed', exitCode: 0 })
   })
 
   it('finds the newest run of the asking worktree, not of another worktree', () => {
