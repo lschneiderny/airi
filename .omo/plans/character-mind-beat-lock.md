@@ -1,6 +1,6 @@
 # character-mind-beat-lock - Work Plan
 
-Status: planned on 2026-11-21. On 2026-11-21 the owner approved every recommended option, D1 to D7, as [Decisions for the owner](#decisions-for-the-owner) states them, and implementation started. Roadmap row: step CM5b in [`docs/ai/context/character-mind-roadmap.md`](../../docs/ai/context/character-mind-roadmap.md#steps). Rulings: the [character mind ADR](../../docs/ai/adr/2026-11-17-character-mind-direction.md) (decisions 2, 4, and 8), the [character mind music ADR](../../docs/ai/adr/2026-11-20-character-mind-music.md) (CM5a, which split off this slice), and the [idle agency ADR](../../docs/ai/adr/2026-11-12-idle-agency.md) with its amendments. Branch: `luke/feat/character-mind-beat-lock`, cut from `main` at `bec508cae`, which contains CM5a. The roadmap says a slice starts after a sync: the sync to upstream `bd4f30391` is in progress on `luke/chore/upstream-sync`. Rebase this branch onto `main` after that sync lands, before item 1.
+Status: built on 2026-11-21, and every check in section 7 passed on macOS; item 6 was not needed. On 2026-11-21 the owner approved every recommended option, D1 to D7, as [Decisions for the owner](#decisions-for-the-owner) states them, and implementation started. Roadmap row: step CM5b in [`docs/ai/context/character-mind-roadmap.md`](../../docs/ai/context/character-mind-roadmap.md#steps). Rulings: the [character mind ADR](../../docs/ai/adr/2026-11-17-character-mind-direction.md) (decisions 2, 4, and 8), the [character mind music ADR](../../docs/ai/adr/2026-11-20-character-mind-music.md) (CM5a, which split off this slice), and the [idle agency ADR](../../docs/ai/adr/2026-11-12-idle-agency.md) with its amendments. Branch: `luke/feat/character-mind-beat-lock`, cut from `main` at `bec508cae`, which contains CM5a. The roadmap says a slice starts after a sync: the sync to upstream `bd4f30391` is in progress on `luke/chore/upstream-sync`. Rebase this branch onto `main` after that sync lands, before item 1.
 
 The labels D1 to D7 name the forks in [Decisions for the owner](#decisions-for-the-owner). Each section below is written on the recommended option.
 
@@ -295,3 +295,42 @@ Each fork lists its options, the trade-off, and the recommendation. The plan abo
 | D7 | Headless evidence for the lock on MMD | (a) The `music-beat` scenario, Node tests of the phase, and a one-off, uncommitted measurement of the bob minima against the scripted beats. (b) A new `lab:motion3d` report rule, `groove-lock` | (a) proves the lock reaches the MMD body and that nothing else moved, at no process cost. (b) gives a re-runnable scored verdict, but a report rule needs sealed labelled cases, injected faults, and its own version commit (testing guide), for a check that does not gate | (a) |
 
 Nothing else blocks CM5b. The CM5a vetoes still open (its D1 to D14) and listening by default stay with the owner. CM5b assumes CM5a's D2 (beat sync is the one detector) and D14 (the MMD groove is a body offset); a veto of either would change this plan.
+
+## Departures during implementation
+
+1. **Item 6 is skipped (D6).** Rendered step 2 measured the delay from the audio onset to the beat's arrival in the stage window at a median of about 9 ms: detection 8.5 ms after the onset (p95 16.6 ms), and arrival 0.5 ms after detection (p95 3.6 ms). That is under the 20 ms that starts item 6, so `BEAT_LEAD_SECONDS` stays 0.
+2. **The checks ran on macOS, without a QA display.** On Linux, Electron exited at launch. The synthetic kick needs no private sink here, because the detector never connects to the audio destination.
+3. **The driver pinned the desktop idle time,** as CM5a's did. On an unattended desktop she went away and slept, and the requested sways never played.
+4. **The driver sent lab requests on its own BroadcastChannel.** A page does not receive its own channel's posts, so the override store's `requestIdle` called in the stage window never reached the stage.
+5. **The detector's first beat comes about 23 s after the kick starts,** while its threshold history fills, and the music edge 8 s after that. A step must wait for the edge before it requests a sway.
+6. **`music-beat` outside the sways.** Every root and channel frame equals `music`'s. Some arm and hand rotations differ by at most 0.55 degrees for up to about 10 s after each sway ends, because the arm springs settle from a different end phase. The plan's release window of 0.4 s is too short to cover that settling.
+7. **Step 5 was not run.** Step 1 and the headless `music-beat` cover the lock.
+
+## Checks run
+
+- **Headless, base `bb576288a` against tip `ee3237170`, seed 1:** `idle`, `idle-drive`, `idle-drive --acts off`, `sleepy-no-clip`, and `music --seconds 600` are `IDENTICAL` on every block.
+  - `pnpm qa:live2d-rig` gives the same trace hash at both ends.
+  - The `idle-acts` and `rest` reports read the same status on every line at both ends.
+- **`music-beat`, seed 1, 600 s, determinism verified:**
+  - Both sways start at the same times as in `music`, 315.9 s and 497.7 s, and each has a `groove:lock:4` marker on its start frame.
+  - The head's low points fall 2.05 and 1.99 beats apart, median, against the expected 2.
+  - Against the true beats, their error has a median of 23 and 27 ms and a maximum of 59 and 71 ms.
+- **Rendered, Live2D rig, Natural, classic window:**
+  - At 90, 120, and 150 BPM, each requested sway bound on its start frame: `beatSeconds` 60/BPM exactly, `beatsPerCycle` 4, and head pitch minima 2.00 beats apart.
+  - Step 2: the delay above.
+  - Step 3: stopping the music mid-sway gave no error, and the largest head step per frame after it was 0.64, against 1.30 in the bound part.
+  - Step 4: no lock, and the sway's head pitch minima 0.85 s apart.
+  - Step 6: under Universal, no `groove-lock` in 120 s.
+- **Rendered, MMD on the desktop stage:** a lock at all three tempos and none without music. A screenshot was taken during a bound sway at 120 BPM.
+- Every launch had 0 renderer and 0 main-process errors.
+- **The required wording:** "Scores prove direction, size relative to the recipe, release, and detectability above the rig's idle noise. They do not prove naturalness, which stays a visual review."
+
+## Commits
+
+- `99563ff3b` docs(plan): add the plan for the beat lock slice of the character mind
+- `42ba281bb` docs(plan): record the owner's approval of the beat lock decisions
+- `31a85a20b` feat(motion-driver-natural): add the beat clock
+- `bd6ac7cba` feat(motion-driver-natural): lock the groove's sway to the beat clock
+- `d609c834f` feat(motion-driver-humanoid,stage-ui-mmd): play the groove's beat phase on the MMD body
+- `e87bfea4c` feat(qa-tools): add a music-beat scenario to the headless motion runs
+- `ee3237170` feat(stage-ui,stage-ui-live2d,stage-ui-mmd,stage-shared): send detected beats to Natural's groove
