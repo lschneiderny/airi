@@ -2,13 +2,14 @@ import type { ExpressionPerformanceSettings, MoodDose, PerformanceEmotion } from
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
 
 import type { FaceBaseline } from './baseline'
+import type { BeatClockState } from './beat-clock'
 import type { NaturalBreathOutput } from './breath'
 import type { CueGestureKind } from './cue-gestures'
 import type { CursorOrder, CursorReport } from './cursor-notice'
 import type { NaturalFaceOutput } from './face'
 import type { NaturalBodyIntent, NaturalMotionEvent, NaturalMotionFrame, NaturalMotionObserver, NaturalMotionOptions, NaturalMotionVoice, NaturalRigTraits, NaturalTouchRegion } from './frame-types'
 import type { GazePoint } from './gaze'
-import type { IdleBehaviourKind, IdleCueKind, NaturalIdleDrive } from './idle-activities'
+import type { IdleBehaviourKind, IdleCueKind, IdleGrooveLock, NaturalIdleDrive } from './idle-activities'
 import type { IdleErrandRecord } from './idle-errands'
 import type { IdleOrder, IdleReport, IdleView } from './idle-schedule'
 import type { NaturalEpisode } from './mood'
@@ -21,6 +22,7 @@ import { errorMessageFrom } from '@moeru/std'
 import { defaultExpressionPerformanceSettings, PERFORMANCE_EMOTIONS } from '@proj-airi/stage-shared/expression-performance'
 
 import { FaceBaselineFilter } from './baseline'
+import { advanceBeatClock, initialBeatClock } from './beat-clock'
 import { NaturalBlinkScheduler } from './blink'
 import { NaturalBodyLayer } from './body'
 import { NaturalBreathLayer } from './breath'
@@ -167,6 +169,12 @@ export class NaturalMotion {
   private reportedIdleView: IdleView | null = null
   private reportedIdleActive = true
   private readonly idleListeners = new Set<(reports: readonly IdleReport[]) => void>()
+  /** Natural's estimate of the beat, on active time; a bound sway plays on it. */
+  private beatClock: BeatClockState = initialBeatClock
+  /** Beat intervals received since the latest grid step, stamped at the next one. */
+  private readonly pendingBeats: number[] = []
+  /** The groove lock last reported to the observer. */
+  private reportedGrooveLock: IdleGrooveLock | null = null
   /** Cursor reports of the current `advance`, delivered once at its end. */
   private readonly pendingCursorReports: CursorReport[] = []
   private readonly cursorListeners = new Set<(reports: readonly CursorReport[]) => void>()
@@ -311,7 +319,7 @@ export class NaturalMotion {
       touch: { poke: this.latestPoke && { ...this.latestPoke }, pet: { level: this.pet.level, active: this.pet.active, ...this.pet.easedHand } },
       react: this.latestReact && { ...this.latestReact },
       attention: { approach: this.approach, cursorShare: this.cursorShare },
-      idle: { behaviour: this.idleLayer.record, settled: this.idleLayer.settled, errand: this.idleLayer.errand },
+      idle: { behaviour: this.idleLayer.record, settled: this.idleLayer.settled, errand: this.idleLayer.errand, groovePhase: this.idleLayer.groovePhase },
     }
     const weight = clamp((this.activeTime - (this.stepIndex - 1) * step) / step, 1)
     const { previous: a, next: b } = this
@@ -502,6 +510,16 @@ export class NaturalMotion {
       return
     }
     this.idleLayer.order(order)
+  }
+
+  /**
+   * A beat the music detector heard, `intervalSeconds` after its previous beat on the audio clock. It reaches the beat
+   * clock at the next grid step, stamped with that step's active time. A suspended controller drops it.
+   */
+  beat(intervalSeconds: number, nowSeconds: number) {
+    this.advance(nowSeconds)
+    if (!this.suspended)
+      this.pendingBeats.push(intervalSeconds)
   }
 
   /**
@@ -698,10 +716,17 @@ export class NaturalMotion {
     this.pet.set(hand)
   }
 
-  /** Suspension freezes every layer; resume keeps all state, so output continues without a jump. */
+  /**
+   * Suspension freezes every layer; resume keeps all state, so output continues without a jump. The beat clock is the
+   * exception: the song goes on while active time stops, so suspension clears it.
+   */
   setSuspended(suspended: boolean, nowSeconds: number) {
     this.advance(nowSeconds)
     this.suspended = suspended
+    if (suspended) {
+      this.beatClock = initialBeatClock
+      this.pendingBeats.length = 0
+    }
     // Idle time stops with her: the mind hears it now, not at the next grid step, which does not come while suspended.
     const view = this.reportedIdleView
     if (view !== null && this.reportedIdleActive === suspended) {
@@ -862,6 +887,9 @@ export class NaturalMotion {
       this.hold.step(step)
     if (this.observer)
       this.reportHold(stepStart)
+    // A beat is stamped with the active time of the first step after it arrived, never with a wall-clock time.
+    for (const intervalSeconds of this.pendingBeats.splice(0))
+      this.beatClock = advanceBeatClock(this.beatClock, { at: stepStart, intervalSeconds })
     const startedGesture = pending.some(action => action.kind === 'poke' || action.kind === 'emotion' || action.kind === 'gesture' || action.kind === 'react')
     this.idleLayer.step(stepStart, step, {
       mode: this.energy.currentMode,
@@ -874,11 +902,16 @@ export class NaturalMotion {
       wake: pending.some(action => action.kind === 'wake'),
       placement: this.placement.value,
       screenPoint: this.gaze.screenPoint(),
+      beatClock: this.beatClock,
     }, this.gaze)
     if (this.observer) {
       for (const report of this.idleReports.read(this.idleLayer))
         this.notify({ kind: 'idle', at: stepStart, ...report })
+      const lock = this.idleLayer.grooveLock
+      if (lock !== null && lock !== this.reportedGrooveLock)
+        this.notify({ kind: 'groove-lock', at: lock.at, beatSeconds: lock.beatSeconds, beatsPerCycle: lock.beatsPerCycle })
     }
+    this.reportedGrooveLock = this.idleLayer.grooveLock
     this.idleLayer.drainReports(this.pendingIdleReports)
     if (this.idleLayer.view !== this.reportedIdleView && this.idleLayer.view !== null) {
       this.reportedIdleView = this.idleLayer.view

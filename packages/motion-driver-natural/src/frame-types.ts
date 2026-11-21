@@ -51,7 +51,7 @@ export interface NaturalMotionOptions {
  * - `hold`: side 1 raises the left brow; `null` while nothing is held;
  * - `gesture`: the clip's sided axes; drawn even for clips without sided axes.
  */
-export type NaturalMotionEvent = NaturalImpulseEvent | NaturalHoldEvent | NaturalGestureEvent | NaturalAttentionEvent | NaturalTouchEvent | NaturalPlacementEvent | NaturalGlanceEvent | NaturalIdleEvent
+export type NaturalMotionEvent = NaturalImpulseEvent | NaturalHoldEvent | NaturalGestureEvent | NaturalAttentionEvent | NaturalTouchEvent | NaturalPlacementEvent | NaturalGlanceEvent | NaturalIdleEvent | NaturalGrooveLockEvent
 
 /** A self-directed idle behaviour started, or the one that ran ended; `behaviour` names it in both cases. */
 export interface NaturalIdleEvent {
@@ -59,6 +59,15 @@ export interface NaturalIdleEvent {
   at: number
   phase: 'start' | 'end'
   behaviour: IdleBehaviourKind
+}
+
+/** A sway started on the beat clock and took its period and phase from the beat. `beatSeconds` is the clock's beat length. */
+export interface NaturalGrooveLockEvent {
+  kind: 'groove-lock'
+  at: number
+  beatSeconds: number
+  /** Beats per side-to-side cycle; the head bob lands on the beat every `beatsPerCycle / 2` beats. */
+  beatsPerCycle: number
 }
 
 /** A chat fixation or screen-change glance actually started. Point is normalized eye space; hold is seconds. */
@@ -280,12 +289,15 @@ export interface NaturalBodyIntent {
    * Self-directed idle life for a host that performs its own body: the latest behaviour (kept after it ends, null
    * before the first) and whether she has settled in. Without a drive the behaviour stays null and `settled` false.
    * `errand` is the latest errand the draw started for a realiser of the host (an unasked clip, a wander), kept after
-   * it ends; null without a drive that lists errands.
+   * it ends; null without a drive that lists errands. `groovePhase` is the phase, in radians, of the latest behaviour
+   * while it is a sway bound to the beat and still contributes, at the latest grid step: a host plays its own form of
+   * that sway at it. It is null for every other behaviour and always null without beats.
    */
   readonly idle: {
     readonly behaviour: IdleBehaviourRecord | null
     readonly settled: boolean
     readonly errand: IdleErrandRecord | null
+    readonly groovePhase: number | null
   }
 }
 

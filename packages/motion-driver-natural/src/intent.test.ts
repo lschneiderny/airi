@@ -279,3 +279,110 @@ describe('natural body intent', () => {
     expect(pet).toEqual(saved)
   })
 })
+
+describe('the beat in the controller', () => {
+  const drive = { energy: 0, valence: 0, tension: 0, sleepiness: 0, solitude: 0, rate: 1 }
+  const sway = (id: string, seed = 21) => ({ id, kind: 'act', act: 'sway', seed, requested: true }) as const
+
+  /** A controller at 60 fps that hears 120 BPM over [from, to) seconds, each beat at the first frame after it. */
+  function metronome(motion: NaturalMotion, from: number, to: number, script: (time: number) => void = () => {}) {
+    const events: NaturalMotionEvent[] = []
+    motion.setObserver(event => events.push(event))
+    let nextBeat = from
+    const phases: (number | null)[] = []
+    for (let frame = 1; frame <= to * 60; frame++) {
+      const now = frame / 60
+      if (now >= nextBeat && nextBeat < to) {
+        motion.beat(0.5, now)
+        nextBeat += 0.5
+      }
+      script(now)
+      motion.advance(now)
+      phases.push(motion.bodyIntent().idle.groovePhase)
+    }
+    motion.setObserver(null)
+    return { events: events.filter(event => event.kind === 'groove-lock'), phases }
+  }
+
+  function controller() {
+    const motion = new NaturalMotion({ seed: 41 })
+    motion.setIdleDrive(drive, 0)
+    motion.setPerformance(idle, 0.5, 0)
+    motion.advance(0)
+    return motion
+  }
+
+  it('locks a sway to beats it heard, with one event per bind and its phase through the release', () => {
+    const motion = controller()
+    let releasedAt = 0
+    const { events, phases } = metronome(motion, 1, 30, (now) => {
+      if (now === 6)
+        motion.idle(sway('a'), now)
+      if (now === 10)
+        motion.setPerformance({ ...idle, mode: 'talking' }, 0.5, now)
+      if (now === 11)
+        motion.setPerformance(idle, 0.5, now)
+      if (now === 15)
+        motion.idle(sway('b', 22), now)
+      if (motion.bodyIntent().idle.behaviour?.seq === 2 && motion.bodyIntent().idle.behaviour?.releasedAt != null && releasedAt === 0)
+        releasedAt = now
+    })
+    expect(events).toEqual([
+      { kind: 'groove-lock', at: expect.closeTo(6, 1), beatSeconds: 0.5, beatsPerCycle: 4 },
+      { kind: 'groove-lock', at: expect.closeTo(15, 1), beatSeconds: 0.5, beatsPerCycle: 4 },
+    ])
+    expect(phases.slice(0, 6 * 60 - 1).every(phase => phase === null)).toBe(true)
+    expect(phases.slice(6 * 60, 10 * 60).every(phase => typeof phase === 'number')).toBe(true)
+    // The talking interruption releases the sway over 0.4 s; its phase lasts as long as the release.
+    expect(typeof phases[10 * 60 + 12]).toBe('number')
+    expect(phases.slice(10 * 60 + 30, 15 * 60 - 1).every(phase => phase === null)).toBe(true)
+  })
+
+  it('binds nothing after a suspension, which drops beats and clears the clock', () => {
+    const cleared = controller()
+    metronome(cleared, 1, 6)
+    cleared.setSuspended(true, 6)
+    cleared.setSuspended(false, 6)
+    cleared.idle(sway('a'), 6)
+    cleared.advance(6.1)
+    expect(cleared.bodyIntent().idle.behaviour?.kind).toBe('sway')
+    expect(cleared.bodyIntent().idle.groovePhase).toBeNull()
+
+    const dropped = controller()
+    dropped.setSuspended(true, 0)
+    for (let beat = 0; beat < 10; beat++)
+      dropped.beat(0.5, 1 + beat / 2)
+    dropped.setSuspended(false, 6)
+    dropped.idle(sway('a'), 6)
+    dropped.advance(6.1)
+    expect(dropped.bodyIntent().idle.groovePhase).toBeNull()
+  })
+
+  it('never snaps the head or the body through a bound sway, a tempo step, a lost beat, and an interruption', () => {
+    const channels = ['headX', 'headY', 'headZ', 'bodyX', 'bodyY', 'bodyZ'] as const
+    for (const interrupted of [false, true]) {
+      const motion = controller()
+      let previous = motion.advance(0)
+      let fastest = 0
+      let nextBeat = 1
+      for (let step = 1; step <= 40 * 120; step++) {
+        const now = step / 120
+        // 120 BPM, then 128 BPM from 21 s, then silence from 24 s, all inside the sway's shortest length of 8 s.
+        const interval = nextBeat < 21 ? 0.5 : 60 / 128
+        if (now >= nextBeat && nextBeat < 24) {
+          motion.beat(interval, now)
+          nextBeat += interval
+        }
+        if (step === 18 * 120)
+          motion.idle(sway('a', 31), now)
+        if (interrupted && step === 25.5 * 120)
+          motion.setPerformance({ ...idle, mode: 'talking' }, 0.5, now)
+        const frame = motion.advance(now)
+        for (const channel of channels)
+          fastest = Math.max(fastest, Math.abs((frame.pose[channel] ?? 0) - (previous.pose[channel] ?? 0)) * 120)
+        previous = frame
+      }
+      expect(fastest, interrupted ? 'interrupted' : 'ran its course').toBeLessThan(6)
+    }
+  })
+})
