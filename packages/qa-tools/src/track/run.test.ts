@@ -43,9 +43,12 @@ interface BenchBehavior {
   /** The spawn itself fails, as when `pnpm` cannot start. */
   readonly reject?: boolean
   readonly p95?: number
+  /** One record per entry; given with exit 1, the bench records these runs, as qa:bench does when a run is invalid. */
   readonly valid?: readonly boolean[]
   readonly sha?: string
   readonly dirty?: boolean
+  /** Its invalid runs carry no `invalidReason`. */
+  readonly unexplained?: boolean
   /** Moves the fake clock to this time when the bench ends. */
   readonly endAt?: number
 }
@@ -217,10 +220,11 @@ function fakeHost(options: {
       if (behavior.reject)
         throw new Error('spawn pnpm ENOENT')
       const valid = behavior.valid ?? Array.from<boolean>({ length: call.runs }).fill(true)
-      if (behavior.exit === undefined || behavior.exit === 0 || behavior.exit === 4) {
+      if (behavior.exit === undefined || behavior.exit === 0 || behavior.exit === 4 || (behavior.exit === 1 && behavior.valid !== undefined)) {
         valid.forEach((isValid, index) => {
           clock += 1000
-          appendBenchLine(join(stateDir, 'bench.jsonl'), JSON.stringify(record(behavior.sha ?? call.sha, call.scenario, index + 1, clock, behavior.p95 ?? 16, isValid, behavior.dirty ?? false)))
+          const { invalidReason, ...rest } = record(behavior.sha ?? call.sha, call.scenario, index + 1, clock, behavior.p95 ?? 16, isValid, behavior.dirty ?? false)
+          appendBenchLine(join(stateDir, 'bench.jsonl'), JSON.stringify(behavior.unexplained ? rest : { ...rest, invalidReason }))
         })
       }
       clock = behavior.endAt ?? addMinutes(clock, 10).getTime()
@@ -243,7 +247,9 @@ function fakeHost(options: {
   /** `event`, plus a subject's `outcome:reason`, so a sequence reads as one array. */
   const sequence = () => events().map(event => event.event === 'subject' ? `subject:${event.outcome}${event.reason ? `:${event.reason}` : ''}` : event.event)
   const displayCalls = () => spawns.filter(call => call.args[0] === 'qa:display').map(call => call.args.includes('qa:bench') ? 'bench' : call.args[1])
-  return { host, main, wt, stateDir, trackPath, spawns, benches, notifications, printed, gitCalls, events, sequence, displayCalls }
+  /** Each qa:bench invocation's arguments without its `--out` pair, which is unique per invocation. */
+  const benchArgs = () => spawns.filter(call => call.args.includes('qa:bench')).map(call => call.args.filter((_, index) => index !== call.args.indexOf('--out') && index !== call.args.indexOf('--out') + 1))
+  return { host, main, wt, stateDir, trackPath, spawns, benches, notifications, printed, gitCalls, events, sequence, displayCalls, benchArgs }
 }
 
 function manual(overrides: Partial<TickOptions> = {}): TickOptions {
@@ -388,6 +394,71 @@ describe('runTick', () => {
     expect(fake.sequence()).toEqual(['tick-start', 'discovery', 'subject:broken:bench-exit-1', 'subject:deferred:host-busy', 'subject:deferred:host-busy', 'tick-end'])
     expect(fake.benches).toHaveLength(2)
     expect(fake.displayCalls()).toEqual(['bench', 'down', 'bench', 'down'])
+  })
+
+  it('keeps the valid runs of a confirm bench that exits 1 on an invalid run, rebenches that side once, and opens the finding', async () => {
+    const fake = fakeHost({ start: at(14), bench: call => ({ ...regressing(call), ...(call.seq === 4 ? { exit: 1, valid: [true, true, false] } : {}) }) })
+
+    expect(await runTick(fake.host, manual())).toBe(0)
+    expect(fake.sequence()).toEqual(['tick-start', 'subject:benched', 'finding-open', 'tick-end'])
+    expect(fake.benches.map(call => call.sha)).toEqual([BASE, HEAD, BASE, HEAD, HEAD, HEAD, BASE])
+    expect(fake.benchArgs()[4]).toEqual(fake.benchArgs()[3])
+  })
+
+  it('records bench-exit-1 when a bench exits 1 without recording a run', async () => {
+    const fake = fakeHost({ start: at(14), bench: () => ({ exit: 1, valid: [] }) })
+
+    expect(await runTick(fake.host, manual())).toBe(0)
+    expect(fake.sequence()).toEqual(['tick-start', 'subject:broken:bench-exit-1', 'tick-end'])
+    expect(fake.benches.map(call => call.sha)).toEqual([BASE])
+  })
+
+  it.each(([
+    ['another sha', { sha: OLD_HEAD }],
+    ['a dirty record', { dirty: true }],
+    ['an invalid run without invalidReason', { unexplained: true }],
+  ] as const).flatMap(([what, bad]) => [
+    [what, 'an initial', 1, bad, [BASE]],
+    [what, 'a confirmation', 3, bad, [BASE, HEAD, BASE]],
+  ] as const))('records bench-exit-1 when an exit 1 bench recorded %s in %s bench', async (_, _path, seq, bad: BenchBehavior, shas) => {
+    const fake = fakeHost({ start: at(14), bench: call => ({ ...regressing(call), ...(call.seq === seq ? { exit: 1, valid: [true, false, false], ...bad } : {}) }) })
+
+    expect(await runTick(fake.host, manual())).toBe(0)
+    expect(fake.sequence()).toEqual(['tick-start', 'subject:broken:bench-exit-1', 'tick-end'])
+    expect(fake.benches.map(call => call.sha)).toEqual(shas)
+  })
+
+  it.each([
+    ['an initial', 2, [BASE, HEAD]],
+    ['a confirmation', 4, [BASE, HEAD, BASE, HEAD]],
+  ])('starts no retry once %s bench with an invalid run ends past the deadline', async (_, seq, shas) => {
+    const fake = fakeHost({ start: at(1), bench: call => ({ ...regressing(call), ...(call.seq === seq ? { exit: 1, valid: [true, false, false], endAt: at(6, 31) } : {}) }) })
+
+    expect(await runTick(fake.host, manual({ deadline: '06:30', trigger: 'timer' }))).toBe(0)
+    expect(fake.sequence()).toEqual(['tick-start', 'subject:deferred:deadline', 'tick-end'])
+    expect(fake.benches.map(call => call.sha)).toEqual(shas)
+    expect(fake.displayCalls()).toEqual(shas.flatMap(() => ['bench', 'down']))
+  })
+
+  it.each([
+    ['baseline', [1, 2], [BASE, BASE, HEAD, BASE, HEAD]],
+    ['subject', [2, 3], [BASE, HEAD, HEAD, BASE, HEAD]],
+  ])('gives a %s side with no valid run after its retry the too-few-runs rebench of both sides', async (_, bad, shas) => {
+    const fake = fakeHost({ start: at(14), bench: call => bad.includes(call.seq) ? { exit: 1, valid: [false, false, false] } : {} })
+
+    expect(await runTick(fake.host, manual())).toBe(0)
+    expect(fake.sequence()).toEqual(['tick-start', 'subject:benched', 'tick-end'])
+    expect(fake.benches.map(call => call.sha)).toEqual(shas)
+  })
+
+  it('hands a side still short of valid runs after its rebench to the too-few-runs rebench, not to broken', async () => {
+    const fake = fakeHost({ start: at(14), bench: call => call.seq === 2 || call.seq === 3 ? { exit: 1, valid: [true, false, false] } : {} })
+
+    expect(await runTick(fake.host, manual())).toBe(0)
+    expect(fake.sequence()).toEqual(['tick-start', 'subject:benched', 'tick-end'])
+    // HEAD, its one rebench, then the comparison's too-few-runs rebench of both sides.
+    expect(fake.benches.map(call => call.sha)).toEqual([BASE, HEAD, HEAD, BASE, HEAD])
+    expect(fake.benchArgs()[2]).toEqual(fake.benchArgs()[1])
   })
 
   it('opens exactly one finding for a confirmed regression and notifies once', async () => {
