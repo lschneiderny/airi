@@ -133,5 +133,3 @@ typecheck 77 packages instead of 8 for a stage-ui-mmd change.
 - Browser test flakes under load: the stage-tamagotchi `app.browser.test.ts`
   startup test sometimes misses its list-providers report, and the lab-tools
   t2-3d report tests sometimes hit their 5000 ms timeouts.
-- `pnpm perf status` computes its 48-hour and 14-day windows from millisecond
-  constants. Move them to `date-fns`, as AGENTS.md requires for date code.
