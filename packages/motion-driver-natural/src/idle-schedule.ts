@@ -264,7 +264,8 @@ function errandHazards(state: IdleScheduleState, view: IdleView, drive: NaturalI
       continue
     const pacing = IDLE_ERRAND_PACING[kind]
     const since = errandRefractoryFrom(state, kind)
-    if (since !== undefined && at - since < pacing.refractory)
+    // The same form as the refractory's deadline below, so the errand is free again at the deadline itself.
+    if (since !== undefined && at < since + pacing.refractory)
       continue
     // An unasked clip waits for her act to finish, as `decideIdleClip`'s quiet body did; whether she stands for it is
     // the realiser's to answer. A wander and a pastime go on beside her acts, as their timers did.
@@ -453,7 +454,7 @@ export function nextIdleDeadline(state: IdleScheduleState, view: IdleView, at: n
   if (drive.errands !== undefined && view.errand === null && performing(view) && !view.away && errandPace(drive) > 0) {
     for (const kind of drive.errands) {
       const since = errandRefractoryFrom(state, kind)
-      if (since !== undefined && at - since < IDLE_ERRAND_PACING[kind].refractory)
+      if (since !== undefined && at < since + IDLE_ERRAND_PACING[kind].refractory)
         due(since + IDLE_ERRAND_PACING[kind].refractory)
     }
   }

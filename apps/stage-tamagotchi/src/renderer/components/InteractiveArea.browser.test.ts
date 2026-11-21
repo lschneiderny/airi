@@ -555,6 +555,13 @@ describe('interactive area synchronized state', () => {
     const { screen } = await renderArea(MobileInteractiveArea)
     const bubble = screen.getByTestId('mobile-input-bubble').element()
     const input = screen.getByRole('textbox').element()
+    // Focus intentionally widens the composer. Finish that transition before
+    // comparing the empty and filled states so only the send action changes.
+    await userEvent.click(input)
+    await nextTick()
+    const composer = screen.getByTestId('mobile-message-composer').element()
+    for (const animation of composer.getAnimations())
+      animation.finish()
     const emptyWidth = bubble.getBoundingClientRect().width
 
     await userEvent.fill(input, 'hi')

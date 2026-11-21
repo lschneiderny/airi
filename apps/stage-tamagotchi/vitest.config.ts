@@ -56,7 +56,7 @@ export default defineConfig({
           fileParallelism: false,
           maxWorkers: 1,
           // Main-process tests read desktop sensors, so they must never reach the user's display or buses.
-          setupFiles: ['../../scripts/dev-tools/vitest-isolate-host-session.ts'],
+          setupFiles: ['../../scripts/dev-tools/vitest-isolate-host-session.ts', './src/test/setup-electron-node.ts'],
         },
       },
       {

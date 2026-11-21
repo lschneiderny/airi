@@ -2,6 +2,7 @@ import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
+import { tmpdir } from 'node:os'
 import { createInterface } from 'node:readline'
 
 import { DbusTransport } from '../dbus/transport'
@@ -28,7 +29,8 @@ export class PrivateBus {
   }
 
   async start(): Promise<void> {
-    this.daemon = spawn('dbus-daemon', ['--session', '--nofork', '--print-address=1'], { stdio: 'pipe' })
+    // Select a private Unix listener instead of the host's session listener (launchd on macOS).
+    this.daemon = spawn('dbus-daemon', ['--session', '--nofork', '--print-address=1', `--address=unix:tmpdir=${tmpdir()}`], { stdio: 'pipe' })
     const lines = createInterface({ input: this.daemon.stdout })
     try {
       const [address] = await once(lines, 'line', { signal: AbortSignal.timeout(2000) })

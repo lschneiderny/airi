@@ -16,6 +16,13 @@ import { createLinuxDesktopBridge } from './index'
 import { PrivateBus } from './session/private-bus.test-helper'
 
 const facts = vi.hoisted(() => vi.fn())
+// The bridge owns lock events on Linux; the runner's OS must not choose native events.
+vi.mock('std-env', async importOriginal => ({
+  ...await importOriginal<typeof import('std-env')>(),
+  isLinux: true,
+  isMacOS: false,
+  isWindows: false,
+}))
 vi.mock('../electron/host-capabilities', () => ({ reportLinuxDesktop: facts }))
 vi.mock('electron', async () => {
   const { EventEmitter } = await import('node:events')
