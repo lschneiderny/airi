@@ -101,13 +101,16 @@ export class OPFSCache {
    */
   static async save(key: string, source: Blob, sourceUrl?: string): Promise<void> {
     try {
-      const root = await navigator.storage.getDirectory()
-      const dirHandle = await root.getDirectoryHandle(key, { create: true })
-      await OPFSCache.writeFile(dirHandle, sourceFileName, source)
-      await OPFSCache.writeFile(dirHandle, '__meta.json', JSON.stringify({
-        sourceUrl,
-        version: mmdOpfsCacheVersion,
-      }))
+      // "Delete all data" takes this lock before it removes the directory, so a save in progress does not outlive it.
+      await navigator.locks.request(`airi:mmd-opfs:${key}`, async () => {
+        const root = await navigator.storage.getDirectory()
+        const dirHandle = await root.getDirectoryHandle(key, { create: true })
+        await OPFSCache.writeFile(dirHandle, sourceFileName, source)
+        await OPFSCache.writeFile(dirHandle, '__meta.json', JSON.stringify({
+          sourceUrl,
+          version: mmdOpfsCacheVersion,
+        }))
+      })
     }
     catch (error) {
       console.error('[OPFS] Failed to save MMD cache:', error)
