@@ -1,5 +1,5 @@
 import type { createContext } from '@moeru/eventa/adapters/electron/main'
-import type { BrowserWindow } from 'electron'
+import type { BrowserWindow, Rectangle } from 'electron'
 
 import type { ElectronWindowControlsState, ElectronWindowLifecycleState } from '../../../shared/eventa'
 
@@ -66,15 +66,18 @@ export function createWindowService(params: {
     params.context.emit(electronWindowControlsStateChanged, getWindowControlsState())
   }
 
-  let withheld = false
+  // The last rectangle that the renderer received; `null` announces a withheld one, so the renderer stops using its
+  // cached origin. The renderer keeps the last one, so an unchanged rectangle needs no message. Every message waits in
+  // the window's one IPC queue, which the renderer drains between frames, so a message each tick delays the others,
+  // the cursor among them.
+  let sent: Rectangle | null | undefined
   const { start, stop } = createRendererLoop({
     window: params.window,
     run: () => {
       const rect = readRendererWindowBounds(params.window)
-      // A withheld rectangle is announced once, so the renderer stops using its cached origin.
-      if (!rect && withheld)
+      if (rect === null ? sent === null : sent && rect.x === sent.x && rect.y === sent.y && rect.width === sent.width && rect.height === sent.height)
         return
-      withheld = !rect
+      sent = rect && { ...rect }
       params.context.emit(bounds, rect)
     },
   })
@@ -86,8 +89,9 @@ export function createWindowService(params: {
     offAllClosed()
     offBeforeQuit()
   })
+  // A reloaded renderer starts the loop again with no rectangle, so the next tick sends it even if it did not change.
   defineInvokeHandler(params.context, startLoopGetBounds, () => {
-    withheld = false
+    sent = undefined
     start()
   })
   defineInvokeHandler(params.context, electronGetWindowLifecycleState, (_, options) => {
