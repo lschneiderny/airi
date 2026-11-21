@@ -38,6 +38,7 @@
     "qa:setup": "node --import tsx packages/qa-tools/bin/setup.ts",
     "qa:smoke": "node --import tsx packages/qa-tools/bin/smoke.ts",
     "perf": "node --import tsx packages/qa-tools/bin/perf.ts",
+    "perf:track": "node --import tsx packages/qa-tools/bin/track.ts",
     "qa:stage": "node --import tsx packages/qa-tools/bin/stage.ts",
     "qa:test:model": "tsx scripts/dev-tools/qa-test-model.ts",
     "test": "vitest --coverage",
