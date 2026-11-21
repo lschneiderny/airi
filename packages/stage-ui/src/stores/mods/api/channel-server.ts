@@ -368,6 +368,12 @@ export const useModsServerChannelStore = defineStore('mods:channels:proj-airi:se
     }
   }
 
+  /** Forgets the server address and the token. A connection that is open or opening reconnects to the default address. */
+  function resetState() {
+    websocketUrl.value = defaultWebSocketUrl
+    websocketAuthToken.value = ''
+  }
+
   watch([websocketUrl, websocketAuthToken], ([newUrl, newToken], [oldUrl, oldToken]) => {
     if (newUrl === oldUrl && newToken === oldToken)
       return
@@ -396,5 +402,6 @@ export const useModsServerChannelStore = defineStore('mods:channels:proj-airi:se
     onReconnected,
     getPendingSendSnapshot: () => [...pendingSend.value],
     dispose,
+    resetState,
   }
 })
