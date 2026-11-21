@@ -9,6 +9,7 @@ import { useMMDNaturalSettings } from '@proj-airi/stage-ui-mmd/stores/natural-se
 import { useSpine } from '@proj-airi/stage-ui-spine/stores/spine'
 import { useTachie } from '@proj-airi/stage-ui-tachie/stores/tachie'
 import { useModelStore } from '@proj-airi/stage-ui-three/stores/model-store'
+import { useTheme } from '@proj-airi/ui'
 
 import { useConversationSettings } from '../features/conversation/settings'
 import { useHostNoticeSettings } from '../features/host-capabilities/notice-settings'
@@ -20,8 +21,10 @@ import { useCharacterStateStore } from '../stores/character-state'
 import { useChatStore } from '../stores/chat'
 import { useChatSessionStore } from '../stores/chat/session-store'
 import { useDisplayModelsStore } from '../stores/display-models'
+import { useFeatureFlagsStore } from '../stores/feature-flags'
 import { useMcpStore } from '../stores/mcp'
 import { useMemoryStore } from '../stores/memory'
+import { useModsServerChannelStore } from '../stores/mods/api/channel-server'
 import { useAiriCardStore } from '../stores/modules/airi-card'
 import { useArtistryStore } from '../stores/modules/artistry'
 import { useConsciousnessStore } from '../stores/modules/consciousness'
@@ -49,6 +52,7 @@ import {
   useSettingsTheme,
 } from '../stores/settings'
 import { useSituationStore } from '../stores/situation'
+import { useSpeechOutputControlStore } from '../stores/speech-output-control'
 import { useToolCardsStore } from '../stores/tool-cards'
 import { useVoiceprintStore } from '../stores/voiceprint'
 
@@ -124,8 +128,9 @@ export function defineStateRegistry<const T extends readonly StateRegistration[]
  * - The expression documents go before the display models: removing the models switches the stage to the default
  *   model, which must load without a stored catalog.
  * - The chat sessions go before the situation's inner state, because deleting the sessions forgets their threads.
- * - A store whose creation connects or loads (the mods server channel, the sticker library, the background stores)
- *   has no owner reset; the sweep alone resets it.
+ * - A store whose creation connects or loads (the sticker library, the background stores) has no owner reset; the
+ *   sweep alone resets it. Every other owner that keeps the state in memory has one, because removing a localStorage
+ *   key fires no `storage` event in the window that removes it, so that window would keep and later save the old values.
  *
  * Not registered, and named in `docs/ai/context/state-persistence.md`: the main-process files that
  * `storedDataDeleteActivity` deletes (session logs, IO traces, the computer-use store), the perf records with their own
@@ -876,6 +881,7 @@ export const stateRegistry = defineStateRegistry([
       { area: 'localStorage', key: 'settings/connection/websocket-url' },
       { area: 'localStorage', key: 'settings/connection/websocket-auth-token' },
     ],
+    reset: ({ pinia }) => useModsServerChannelStore(pinia).resetState(),
   },
   {
     id: 'speech-output-control',
@@ -887,6 +893,8 @@ export const stateRegistry = defineStateRegistry([
       { area: 'localStorage', key: 'settings/speech/output-volume' },
       { area: 'localStorage', key: 'settings/speech/output-volume-last-audible' },
     ],
+    // Full volume also makes full volume the last audible one and unmutes, which are the three defaults.
+    reset: ({ pinia }) => useSpeechOutputControlStore(pinia).setSpeechVolume(1),
   },
   {
     id: 'wake-words',
@@ -904,6 +912,7 @@ export const stateRegistry = defineStateRegistry([
       { area: 'localStorage', key: 'settings/feature-flags' },
       { area: 'localStorage', key: 'settings/feature-flag-variants' },
     ],
+    reset: ({ pinia }) => useFeatureFlagsStore(pinia).resetState(),
   },
   {
     id: 'color-scheme',
@@ -911,6 +920,10 @@ export const stateRegistry = defineStateRegistry([
     writers: ['packages/ui/src/composables/use-theme.ts'],
     tier: 'plain',
     locations: [{ area: 'localStorage', key: 'vueuse-color-scheme' }],
+    // `auto`, the system scheme, is the color mode's default.
+    reset: () => {
+      useTheme().themeMode.value = 'auto'
+    },
   },
   {
     id: 'danmaku-feed',

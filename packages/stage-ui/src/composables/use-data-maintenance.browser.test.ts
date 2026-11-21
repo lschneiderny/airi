@@ -9,6 +9,7 @@ import { modelScopedStorageKey } from '@proj-airi/stage-shared/composables'
 import { useLive2DNaturalSettings } from '@proj-airi/stage-ui-live2d/composables/live2d'
 import { useMMD } from '@proj-airi/stage-ui-mmd/stores/mmd'
 import { useMMDNaturalSettings } from '@proj-airi/stage-ui-mmd/stores/natural-settings'
+import { useTheme } from '@proj-airi/ui'
 import { createPinia, disposePinia } from 'pinia'
 import { createSyncedPiniaPlugin } from 'pinia-plugin-synced'
 import { afterEach, expect, it, vi } from 'vitest'
@@ -45,6 +46,7 @@ import { useWebSearchStore } from '../stores/modules/web-search'
 import { useProviderConfigStore } from '../stores/providers/config'
 import { useProviderStore } from '../stores/providers/provider'
 import { useRecipesStore } from '../stores/recipes'
+import { useSpeechOutputControlStore } from '../stores/speech-output-control'
 import { useVoiceprintStore } from '../stores/voiceprint'
 import { useDataMaintenance } from './use-data-maintenance'
 
@@ -581,6 +583,30 @@ it('leaves no registered location holding data when all data is deleted', async 
   expect(remaining).toEqual([])
   // An enrollment that started before the deletion must still see when it happened.
   expect(localStorage.getItem('settings/voice/voiceprint-deleted-at')).not.toBeNull()
+})
+
+// ROOT CAUSE:
+// Removing a localStorage key fires no `storage` event in the window that removes it. Owners without a reset kept their
+// old values in that window, the server channel token among them, and a later write saved them back.
+it('forgets the values that owners keep in memory in the window that deletes all data', async () => {
+  vi.stubGlobal('fetch', vi.fn<typeof fetch>(async () => Response.json({ voices: [], models: [] })))
+  const { pinia, runtime, maintenance } = mountMaintenance(`maintenance:${crypto.randomUUID()}`, 'leader-only')
+  await vi.waitFor(() => expect(runtime.isLeader()).toBe(true))
+  const channel = useModsServerChannelStore(pinia)
+  channel.websocketUrl = 'ws://192.0.2.1:6121/ws'
+  channel.websocketAuthToken = 'channel-token'
+  const speech = useSpeechOutputControlStore(pinia)
+  speech.setSpeechVolume(0)
+  const theme = useTheme()
+  theme.themeMode.value = 'dark'
+
+  await maintenance.deleteAllData()
+
+  expect(channel.websocketAuthToken).toBe('')
+  expect(channel.websocketUrl).not.toBe('ws://192.0.2.1:6121/ws')
+  expect(speech.speechMuted).toBe(false)
+  expect(speech.speechVolume).toBe(1)
+  expect(theme.themeMode.value).toBe('auto')
 })
 
 // ROOT CAUSE:

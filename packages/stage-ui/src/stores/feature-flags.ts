@@ -85,5 +85,11 @@ export const useFeatureFlagsStore = defineStore('feature-flags', () => {
     return decision(feature).enabled
   }
 
-  return { features, setPreference, isEnabled, variantOf, setVariant }
+  /** Forgets every preference and variant the user chose. */
+  function resetState() {
+    preferences.reset()
+    variantPreferences.reset()
+  }
+
+  return { features, setPreference, isEnabled, variantOf, setVariant, resetState }
 })
