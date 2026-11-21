@@ -40,7 +40,11 @@ describe('qa:bench arguments', () => {
     expect(parseBenchArgs(['--not-after', '2026-11-21T06:30:00+01:00'], '/work')).toMatchObject({ kind: 'run', notAfter: new Date('2026-11-21T05:30:00Z') })
   })
 
-  it.each(['tomorrow', '1', '2026-11-21', '2026-11-21T06:30:00', '2026-13-40T99:00:00Z'])('refuses --not-after %j', (value) => {
+  it('accepts a --not-after leap day without seconds', () => {
+    expect(parseBenchArgs(['--not-after', '2028-02-29T06:30-05:45'], '/work')).toMatchObject({ kind: 'run', notAfter: new Date('2028-02-29T12:15:00Z') })
+  })
+
+  it.each(['tomorrow', '1', '2026-11-21', '2026-11-21T06:30:00', '2026-13-40T99:00:00Z', '2026-02-30T06:00:00Z', '2026-11-21T24:00:00Z', '2026-11-21T06:00:00+25:00'])('refuses --not-after %j', (value) => {
     expect(() => parseBenchArgs(['--not-after', value], '/work')).toThrow(BenchUsageError)
   })
 

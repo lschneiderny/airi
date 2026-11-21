@@ -4,6 +4,9 @@ import { existsSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 
+import { TZDate } from '@date-fns/tz'
+import { format, isValid, parseISO } from 'date-fns'
+
 import { BENCH_V1, BenchUsageError, selectScenarios } from './matrix'
 
 export const BENCH_USAGE = `Usage: pnpm qa:display run -- pnpm qa:bench [--scenario <${BENCH_V1.map(scenario => scenario.id).join('|')}>] [--runs <n>] [--out <dir>]
@@ -33,8 +36,22 @@ export type BenchCommand
       readonly notAfter: Date | null
     }
 
-/** A full ISO 8601 time with an explicit offset; `Date.parse` alone accepts junk such as `1`. */
-const ISO_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})$/
+/** A full ISO 8601 time with an explicit offset: `parseISO` alone also accepts a date, or a time in the local zone. */
+const ISO_TIME = /^(?<local>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?)(?:\.\d+)?(?<offset>Z|[+-](?:0\d|1[0-4]):[0-5]\d)$/
+
+/**
+ * The instant `text` names, or `null` when it is not an ISO time with an offset or names a wall-clock time that does
+ * not exist, such as `2026-02-30T06:00:00Z` or `24:00`, which `parseISO` would carry into the next day.
+ */
+function parseNotAfter(text: string): Date | null {
+  const groups = ISO_TIME.exec(text)?.groups
+  const parsed = parseISO(text)
+  if (!groups?.local || !groups.offset || !isValid(parsed))
+    return null
+  const local = groups.local.length === 16 ? `${groups.local}:00` : groups.local
+  const roundTrip = format(new TZDate(parsed, groups.offset === 'Z' ? 'UTC' : groups.offset), 'yyyy-MM-dd\'T\'HH:mm:ss')
+  return roundTrip === local ? parsed : null
+}
 
 function isParseArgsError(error: unknown): error is Error {
   return error instanceof Error && 'code' in error && typeof error.code === 'string' && error.code.startsWith('ERR_PARSE_ARGS')
@@ -76,8 +93,8 @@ export function parseBenchArgs(argv: readonly string[], cwd: string): BenchComma
   if (repoRoot !== null && !existsSync(join(repoRoot, 'apps/stage-tamagotchi/package.json')))
     throw new BenchUsageError(`--repo-root ${repoRoot} is not an AIRI checkout: it has no apps/stage-tamagotchi/package.json`)
   const notAfterText = values['not-after']
-  const notAfterMs = notAfterText === undefined ? Number.NaN : Date.parse(notAfterText)
-  if (notAfterText !== undefined && (!ISO_TIME.test(notAfterText) || Number.isNaN(notAfterMs)))
+  const notAfter = notAfterText === undefined ? null : parseNotAfter(notAfterText)
+  if (notAfterText !== undefined && notAfter === null)
     throw new BenchUsageError(`--not-after must be an ISO time with an offset, such as 2026-11-21T06:00:00Z, received "${notAfterText}"`)
   return {
     kind: 'run',
@@ -85,6 +102,6 @@ export function parseBenchArgs(argv: readonly string[], cwd: string): BenchComma
     runs,
     out: values.out === undefined ? null : resolve(cwd, values.out),
     repoRoot,
-    notAfter: notAfterText === undefined ? null : new Date(notAfterMs),
+    notAfter,
   }
 }
