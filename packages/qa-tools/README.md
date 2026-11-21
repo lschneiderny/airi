@@ -92,6 +92,17 @@ groove (the `sway` act). The stimulus draws nothing, so the idle stream's seed
 does not move. It defaults to 60 s and accepts up to 600 s; a sway is rare, so run it at 600 s
 and check for an `idle:sway:start` marker.
 
+`music-beat` (CM5b, idle class, version 1) is `music` with a detector's beats
+at 120 BPM (`beats: { bpm: 120, jitterSeconds: 0.02 }`). `scriptBeats` computes
+them from the run's seed on a seed layer of their own: one beat in ten missed,
+one extra off-beat in ten, each arrival jittered by up to 20 ms, and each
+interval the exact spacing of the detected beats, as the detector measures it
+on the audio clock. From the first warm-up frame the runner hands each beat to
+`MMDNaturalAdapter.beat` at the frame it arrives, records the scripted tempo as
+`beats` in the trace source detail, and records each `groove-lock` observer
+event as a `groove:lock:<beats per cycle>` marker. The beats draw nothing, so a
+seed draws its sways at the same times as in `music`.
+
 `emotions` defaults to 120 s: six clear pulses and two placebos, spaced 12 s
 apart in the first 100 s, then all five cue gestures in seeded order in the last
 20 s. With `E = PERFORMANCE_EMOTIONS`, `k = (seed - 1) mod 6` and
@@ -791,10 +802,10 @@ needs no GPU. Models and textures remain outside the repository. The optional
 load and gaze integration tests use `AIRI_QA_MMD_MODEL` when set.
 
 `--model`, `--scenario` and `--out` are required. Scenarios are `idle`,
-`idle-drive`, `music`, `gaze-shift`, `speak`, `gesture-under-clip`, `emotions`, `walk`,
+`idle-drive`, `music`, `music-beat`, `gaze-shift`, `speak`, `gesture-under-clip`, `emotions`, `walk`,
 `touch` and `sleepy-no-clip`. Seed defaults to 1;
 duration and warm-up default to the scenario's values (10 s warm-up).
-Scored duration is capped at 120 s, except for the idle-class `idle`, `idle-drive`, `music` and
+Scored duration is capped at 120 s, except for the idle-class `idle`, `idle-drive`, `music`, `music-beat` and
 `sleepy-no-clip` scenarios, which accept up to 600 s (owner decision O1, goal 4: a ten-minute idle). A
 600 s run is about five times a 120 s run in wall time and output size.
 Relative paths resolve against `INIT_CWD`.
@@ -810,12 +821,12 @@ the mind, its idle intents return to the adapter as orders, and before each
 Natural advance it sends `idle-wake` when `nextIdleWakeAt` is due. Without a
 drive the view stays dormant and the mind decides no idle act. The same mind
 draws every cursor episode: the adapter's cursor reports go to it, and its
-`cursor-episode` intents return to the adapter as orders for the next frame. Three scenarios set one,
+`cursor-episode` intents return to the adapter as orders for the next frame. Four scenarios set one,
 each with the product's documented neutral drive (all mood fields 0, sleepiness 0,
-solitude 0, no music except in `music`, sleep allowed, rate 1) and the whole-body capability the MMD
+solitude 0, no music except in `music` and `music-beat`, sleep allowed, rate 1) and the whole-body capability the MMD
 scene declares (`body: true`, rules amendment 9; without it she never settles,
 rests, dozes or draws a whole-body kind): `idle-drive` (`qa-neutral-day`, the
-user present; C001), `music` (`qa-neutral-day-music`, the user present with music
+user present; C001), `music` and `music-beat` (`qa-neutral-day`, the user present with music
 playing) and `sleepy-no-clip` version 2 (`qa-neutral-day-away`, the user
 away at its 40 s cue; C004). Every other scenario sets none and its trace is
 byte-identical to before. `--acts off` (default `on`) sets no idle drive, so the

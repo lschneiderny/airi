@@ -6,7 +6,7 @@ import type { PerformanceMode } from '@proj-airi/stage-shared/performance-state'
 
 import type { Motion3dIdleDrive } from './idle-drive'
 
-import { createRandomStream } from '@proj-airi/motion-driver-natural/random'
+import { createRandomStream, deriveSeed } from '@proj-airi/motion-driver-natural/random'
 import { PERFORMANCE_EMOTIONS } from '@proj-airi/stage-shared/expression-performance'
 
 import { QA_DRIVE_AWAY, QA_DRIVE_PRESENT } from './idle-drive'
@@ -35,6 +35,11 @@ export interface Motion3dScenario {
   idleDrive?: Motion3dIdleDrive
   /** The character mind hears music for the whole run: the runner sends it a `music` stimulus before the first frame. */
   music?: true
+  /**
+   * A detector's beats for the whole run, from the first warm-up frame: the runner hands each to Natural through the
+   * MMD adapter at its frame (`scriptBeats`). Unset sends none, so the traces of scenarios without beats stay the same.
+   */
+  beats?: Motion3dBeats
   /** Pure timeline in seconds from scoring start; negative times are warm-up. */
   timeline: (seed: number, seconds: number) => Motion3dCue[]
 }
@@ -97,6 +102,43 @@ function chatTarget(random: RandomStream): { x: number, y: number } {
 }
 
 const byTime = (a: Motion3dCue, b: Motion3dCue) => a.at - b.at
+
+/** A scripted song's beats as a loose detector reports them. */
+export interface Motion3dBeats {
+  bpm: number
+  /** Uniform jitter, ± seconds, of each beat's arrival at the stage. */
+  jitterSeconds: number
+}
+
+/** The seed layer of a run's beats, apart from every stream the run's seed already feeds. */
+const beatSeedLayer = 0xBEA7
+/** One beat in ten is missed, and one in ten is followed by an extra off-beat, as the fork's loosened detector does. */
+const beatDropShare = 0.1
+const beatExtraShare = 0.1
+
+/**
+ * The beats of a run from `from` to `to` scored seconds, a pure function of the seed: `beats` are the song's true beat
+ * times, and `onsets` are the detected beats as they reach the stage, each with its arrival time and the detector's
+ * interval since its previous detected beat. Detection happens on the audio clock, so intervals carry no arrival
+ * jitter; the first onset's interval counts from before the run.
+ */
+export function scriptBeats(seed: number, from: number, to: number, beats: Motion3dBeats) {
+  const random = createRandomStream(deriveSeed(seed, beatSeedLayer))
+  const period = 60 / beats.bpm
+  const times: number[] = []
+  for (let at = from; at < to; at += period)
+    times.push(at)
+  const detected: number[] = []
+  for (const at of times) {
+    if (random() >= beatDropShare)
+      detected.push(at)
+    if (random() < beatExtraShare)
+      detected.push(at + (0.25 + 0.5 * random()) * period)
+  }
+  const onsets = detected.map((at, i) => ({ at: at + beats.jitterSeconds * (2 * random() - 1), intervalSeconds: i === 0 ? 5 : at - detected[i - 1] }))
+  onsets.sort((a, b) => a.at - b.at)
+  return { beats: times, onsets }
+}
 
 // A seeded observation marker carries no performer input: idle stays idle.
 const idleTimeline: Motion3dScenario['timeline'] = (seed, seconds) => seconds > 0 ? [{ at: createRandomStream(seed)() * Math.min(1, seconds), kind: 'marker', label: 'observe-idle' }] : []
@@ -165,6 +207,22 @@ export const motion3dScenarios: readonly Motion3dScenario[] = [
     maxSeconds: 600,
     idleDrive: QA_DRIVE_PRESENT,
     music: true,
+    timeline: idleTimeline,
+  },
+  {
+    /**
+     * CM5b (the groove's beat lock): `music` with a detector's beats at 120 BPM, so a groove the mind draws binds to the
+     * beat clock. The beats draw nothing, so it draws its sways at the same times as `music` for the same seed.
+     */
+    version: 1,
+    id: 'music-beat',
+    class: 'idle',
+    warmupSeconds: 10,
+    seconds: 60,
+    maxSeconds: 600,
+    idleDrive: QA_DRIVE_PRESENT,
+    music: true,
+    beats: { bpm: 120, jitterSeconds: 0.02 },
     timeline: idleTimeline,
   },
   {
