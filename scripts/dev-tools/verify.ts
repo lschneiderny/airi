@@ -19,7 +19,7 @@ import { changedFiles, git, gitCommonDir, repoRoot, workingTreeHash } from './li
 import { appendVerifyRun, formatVerifyStats, readVerifyStats } from './verify-history'
 import { readLastPass, writeLastPass } from './verify-last-pass'
 import { advanceLastPass, defaultWaitSeconds, followUpChecks, gateQaCommand, gateQaFor, gateQaOutcome, lintAllFixable, modelTestsOutcome, parseVerifyArgs, planVerify, relatedTestCommand, selectVerifyScope, testPrerequisiteTurboArgs, typecheckFilters, verifyUsage } from './verify-plan'
-import { latestRunRecord, newRunId, pruneRuns, runLogPath, runsDir, waitForRun, writeRunRecord } from './verify-runs'
+import { createRunRecord, latestRunRecord, newRunId, pruneRuns, runLogPath, runsDir, waitForRun, writeRunRecord } from './verify-runs'
 
 interface Command {
   label: string
@@ -213,8 +213,9 @@ function detach(cacheDir: string, root: string): number {
     console.error('verify could not start a background run.')
     return 1
   }
-  // Written here as well as by the run, so a --wait that follows at once finds the record.
-  writeRunRecord(cacheDir, { id, pid: child.pid, worktree: root, status: 'running', startedAt: Date.now(), finishedAt: null, exitCode: null, log: runLogPath(cacheDir, id), report: [] })
+  // Written here as well as by the run, so a --wait that follows at once finds the record. Only when the run has not
+  // written its own yet: a fast run can already have recorded its end.
+  createRunRecord(cacheDir, { id, pid: child.pid, worktree: root, status: 'running', startedAt: Date.now(), finishedAt: null, exitCode: null, log: runLogPath(cacheDir, id), report: [] })
   console.info(`verify run ${id} started in the background.\n  wait: pnpm verify --wait ${id}   (blocks up to ${defaultWaitSeconds}s; allow the call 10 minutes)\n  log:  ${runLogPath(cacheDir, id)}`)
   return 0
 }

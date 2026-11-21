@@ -1,6 +1,6 @@
 import process from 'node:process'
 
-import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { linkSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 /**
@@ -58,6 +58,29 @@ export function writeRunRecord(cacheDir: string, record: VerifyRunRecord): void 
   // Write and rename, so a waiting reader never sees a half-written record.
   writeFileSync(`${path}.${process.pid}.tmp`, JSON.stringify(record))
   renameSync(`${path}.${process.pid}.tmp`, path)
+}
+
+/**
+ * Writes the record only when the run has none yet, and reports whether it did. The link is atomic and never replaces
+ * a file, so a record the run itself already wrote, even its end, always wins.
+ */
+export function createRunRecord(cacheDir: string, record: VerifyRunRecord): boolean {
+  mkdirSync(runsDir(cacheDir), { recursive: true })
+  const path = recordPath(cacheDir, record.id)
+  const temporary = `${path}.${process.pid}.tmp`
+  writeFileSync(temporary, JSON.stringify(record))
+  try {
+    linkSync(temporary, path)
+    return true
+  }
+  catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'EEXIST')
+      return false
+    throw error
+  }
+  finally {
+    rmSync(temporary, { force: true })
+  }
 }
 
 export function readRunRecord(cacheDir: string, id: string): VerifyRunRecord | null {
