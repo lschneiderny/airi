@@ -1,9 +1,9 @@
 import type { MorphSlot } from '../../constants/morphs'
 import type { MorphController } from './morph'
 
+import { Emotion } from '@proj-airi/stage-shared/expression-performance'
 import { ref } from 'vue'
 
-import { Emotion } from '../../constants/emotions'
 import { EMOTION_MORPHS } from '../../constants/morphs'
 
 function lerp(start: number, end: number, t: number): number {

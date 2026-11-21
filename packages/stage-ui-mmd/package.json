@@ -32,7 +32,6 @@
     "./composables/mmd/rig": "./src/composables/mmd/rig/index.ts",
     "./composables/mmd/stage-composition": "./src/composables/mmd/stage-composition.ts",
     "./composables/mmd/stance": "./src/composables/mmd/stance.ts",
-    "./constants/emotions": "./src/constants/emotions.ts",
     "./stores": "./src/stores/index.ts",
     "./stores/mmd": "./src/stores/mmd.ts",
     "./stores/natural-settings": "./src/stores/natural-settings.ts",
