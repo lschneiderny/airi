@@ -105,6 +105,11 @@ export interface StateRegistration {
    * cancelling a pending send. Without it the sweep alone resets the state.
    */
   readonly reset?: (context: ResetContext) => Promise<void> | void
+  /**
+   * Sweeps the locations before the owner reset instead of after it, for an owner whose reset saves a record that it
+   * keeps using: the chat sessions, whose reset creates and saves a new empty session.
+   */
+  readonly sweepFirst?: true
 }
 
 /** Keeps the ids as literal types, so the partial resets name registrations that exist. */
@@ -339,6 +344,7 @@ export const stateRegistry = defineStateRegistry([
     tier: 4,
     // The `local` mount writes idb-keyval's default database under its `airi-local` base.
     locations: [{ area: 'indexedDB', database: 'keyval-store', store: 'keyval', prefix: 'airi-local:chat:' }],
+    sweepFirst: true,
     reset: async ({ pinia }) => {
       await useChatStore(pinia).cancelPendingSends()
       await useChatSessionStore(pinia).resetAllSessions()
@@ -1223,26 +1229,27 @@ async function sweep(locations: readonly StorageLocation[]) {
 }
 
 /**
- * Runs the owner reset of each registration in registry order, then sweeps its locations. A failure does not stop the
- * rest; after every registration ran, the first failure is thrown. Without `ids` it runs every registration.
+ * Runs the owner reset of each registration in registry order, then sweeps its locations, or sweeps first for a
+ * registration marked `sweepFirst`. A failure does not stop the rest; after every registration ran, the first failure
+ * is thrown. Without `ids` it runs every registration.
  */
 export async function resetRegisteredState(context: ResetContext, ids?: readonly StateRegistrationId[]): Promise<void> {
   const failures: unknown[] = []
   const selected = ids && new Set<string>(ids)
   const registrations: readonly StateRegistration[] = stateRegistry.filter(registration => !selected || selected.has(registration.id))
+  const run = async (step: () => Promise<void> | void) => {
+    try {
+      await step()
+    }
+    catch (error) {
+      failures.push(error)
+    }
+  }
   for (const registration of registrations) {
-    try {
-      await registration.reset?.(context)
-    }
-    catch (error) {
-      failures.push(error)
-    }
-    try {
-      await sweep(registration.locations)
-    }
-    catch (error) {
-      failures.push(error)
-    }
+    const reset = () => registration.reset?.(context)
+    const sweepLocations = () => sweep(registration.locations)
+    for (const step of registration.sweepFirst ? [sweepLocations, reset] : [reset, sweepLocations])
+      await run(step)
   }
   if (failures.length > 0)
     throw failures[0]
