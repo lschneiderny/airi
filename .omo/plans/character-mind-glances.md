@@ -1,6 +1,6 @@
 # character-mind-glances - Work Plan
 
-Status: planned on 2026-11-21 for the owner's review; no code is written. Roadmap row: step CM6b in [`docs/ai/context/character-mind-roadmap.md`](../../docs/ai/context/character-mind-roadmap.md#steps). Rulings: the [character mind ADR](../../docs/ai/adr/2026-11-17-character-mind-direction.md) (decisions 2, 5, 6, 7, and 8), the [core ADR](../../docs/ai/adr/2026-11-18-character-mind-core.md) (D15: realisation details stay in the performers), the [idle ADR](../../docs/ai/adr/2026-11-20-character-mind-idle.md) (the report-and-order pattern, D2: pure rules stay in `motion-driver-natural`), and the [gaze ADR](../../docs/ai/adr/2026-11-20-character-mind-gaze.md) (CM6a: D13, D14, D20, D21). Plan branch: `luke/feat/character-mind-glances`, cut from `main` at `bec508cae`, which contains CM6a. The implementation branches are cut later, as section 7 says.
+Status: the owner approved D1 to D11 as recommended on 2026-11-21. CM6b1 (items 1 to 7) is built, and its section 8 checks passed on macOS; CM6b2 is not started. Roadmap row: step CM6b in [`docs/ai/context/character-mind-roadmap.md`](../../docs/ai/context/character-mind-roadmap.md#steps). Rulings: the [character mind ADR](../../docs/ai/adr/2026-11-17-character-mind-direction.md) (decisions 2, 5, 6, 7, and 8), the [core ADR](../../docs/ai/adr/2026-11-18-character-mind-core.md) (D15: realisation details stay in the performers), the [idle ADR](../../docs/ai/adr/2026-11-20-character-mind-idle.md) (the report-and-order pattern, D2: pure rules stay in `motion-driver-natural`), and the [gaze ADR](../../docs/ai/adr/2026-11-20-character-mind-gaze.md) (CM6a: D13, D14, D20, D21). Plan branch: `luke/feat/character-mind-glances`, cut from `main` at `bec508cae`, which contains CM6a. The implementation branches are cut later, as section 7 says.
 
 **Parallel work this plan composes with.**
 
@@ -372,3 +372,41 @@ Each item is one commit that passes `pnpm verify` and `pnpm verify --gate`.
 | D9 | MMD's classic driver | (a) New intents only under Natural: classic clips stop ending on drags, chat, and away; (b) send the director's intents under every MMD driver and amend Body ownership Target rule 1; (c) keep raw inputs under classic only | (a) is consistent with Target rule 1 and CM6a D13, and changes a non-default driver visibly. (b) keeps classic as it is but contradicts rule 1. (c) is the compatibility path the roadmap forbids | (a); CM7 decides whether the director runs under classic at all |
 | D10 | The `look_at` tool and `BodyIntent.attention` | (a) Realise the tool as a `look-tool` glance through the arbiter, and replace `BodyIntent.attention` with `look`; (b) delete `BodyIntent.attention` and stop offering `look_at`; (c) leave both as they are | (c) keeps telling the model she looked when she did not (finding 1). (b) removes a tool the model has | (a) |
 | D11 | The `VISIT_SHARE` draw | (a) Use the mind's wander `pick` against `VISIT_SHARE` in the director; (b) the mind decides a `visit` flag; (c) keep the director's draw | (b) needs the mind to know whether a visit is possible, which is the director's world. (c) keeps a second source for an idle decision | (a) |
+
+## Departures during implementation (CM6b1)
+
+1. **Item 4 extended the ESLint boundary.** The character mind's type-only import exception now also names `/cue-gestures`, so the mind types can name `CueGestureKind`. Runtime imports from Natural stay forbidden.
+2. **Item 3 moved `speak`.** The headless runner's chat cue now hands an unfold to the adapter as a read, so the `speak` scenario's unfold reads the chat as the app does. `speak` joins item 2's expected differences.
+3. **The Live2D rig's trace hash moved at item 2, though its motion did not.** Every channel of the rig trace is bit-identical between items 1 and 2. The trace now lists the emotion glance as an observer event, which item 2 added on purpose, and the hash covers the event list.
+4. **The headless runs compared the slice's base with its tip,** instead of each item with the one before. Only `speak` differed.
+5. **The rendered checks ran on macOS without a QA display:**
+   - Chat activity went through the motion QA bridge's scenario events, `chat-target`, `chat-unfold`, and `chat-sent`. They call the same conductor `chat` that the stage's chat hooks call, so no model provider was needed.
+   - Pokes and pets were CDP presses at her head, while the real cursor was warped along with each stroke. While the user is active, attention is `cursor` only while the real cursor moves, and the pet override needs that attention. Without the warp, the pet could not hold her gaze, as designed.
+   - Devtools requests went through the driver's own BroadcastChannel to the lab's events.
+   - The desktop idle time was pinned at 0 s, so she stayed present.
+
+## Checks run (CM6b1)
+
+- **Each item:** the worker ran the inner loops, the full node projects of the touched packages, the dependents' typechecks, and the policy-docs test for items 4 and 5. `pnpm verify --gate` ran on the rebased tip; see the PR.
+- **Headless, base `bb576288a` against tip `7f239f4d1`, seed 1:** `idle`, `idle-drive`, `gaze-shift` (determinism verified), `gesture-under-clip`, `emotions`, `walk`, `sleepy-no-clip`, and `touch` are `IDENTICAL`.
+  - `speak` is `DIFFERENT` from 32.08 s in `rot` and in its events; `root` and `channels` are identical.
+  - `lab:motion3d gate` reads PASS on all 7 lines at both ends, and `gaze-order` finds no qualifying episode at either end.
+  - No seed sweep was needed.
+- **The Live2D rig:** the same channels; the trace hash moved (Departure 3).
+- **Rendered, Live2D rig, Natural:**
+  - Step 1: an opened chat and a sent message each gave one `chat` step (`chat-read`, then `chat-read` and `attend`), and each was followed by a started glance (`chat-unfold` at 0.79 s, `chat-sent` at 3.34 s).
+  - Step 2: a poke 1.3 s into a devtools look-around started its glance over the act's, and a noticed cursor 0.8 s later was refused. During a 9.4 s pet, an emotion pulsed at 2 s into it was refused, the pet-end glance started at its end, and a noticed cursor 0.2 s later was refused.
+  - Step 3: a devtools `glance` gesture gave a `cue-gesture` step with one `gesture` intent and a started glance.
+  - Step 4: under Universal, both `chat` steps and their `chat-read` intents, and no glance.
+- **Rendered, MMD on the desktop stage, Natural:** step 1 gave the same two `chat` steps and intents.
+- Every launch had 0 renderer and 0 main-process errors.
+- **The required wording:** "Scores prove direction, size relative to the recipe, release, and detectability above the rig's idle noise. They do not prove naturalness, which stays a visual review."
+
+## Commits (CM6b1)
+
+- `a54d2f4ea` docs(plan): add the plan for the glances slice of the character mind
+- `ea4c1f74d` refactor(motion-driver-natural): name the source of every glance
+- `d576385f1` feat(motion-driver-natural): arbitrate glances by priority
+- `1727104cb` feat(character-mind,motion-driver-natural,stage-ui,stage-ui-live2d,stage-ui-mmd,qa-tools): move chat activity into the character mind
+- `9db8f8c1a` feat(character-mind,stage-ui): route ACT cue gestures through the character mind
+- `7f239f4d1` chore(agents): say that every glance goes through the gaze arbiter
