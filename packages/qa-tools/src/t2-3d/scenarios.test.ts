@@ -4,11 +4,11 @@ import { LAYER_FADE_SECONDS } from '@proj-airi/stage-ui-mmd/composables/mmd/laye
 import { describe, expect, it } from 'vitest'
 
 import { idleDriveDetail, QA_IDLE_DRIVE } from './idle-drive'
-import { motion3dScenarios } from './scenarios'
+import { motion3dScenarios, scriptBeats } from './scenarios'
 
 describe('motion3d scenario timelines', () => {
   // Default seed-1 counts; gaze count varies with seeded hold/return durations.
-  const counts = { 'idle': 1, 'idle-drive': 1, 'music': 1, 'gaze-shift': 18, 'speak': 11, 'gesture-under-clip': 9, 'emotions': 13, 'walk': 6, 'touch': 10, 'sleepy-no-clip': 4 } as const
+  const counts = { 'idle': 1, 'idle-drive': 1, 'music': 1, 'music-beat': 1, 'gaze-shift': 18, 'speak': 11, 'gesture-under-clip': 9, 'emotions': 13, 'walk': 6, 'touch': 10, 'sleepy-no-clip': 4 } as const
   it.each(motion3dScenarios)('replays $id for equal seeds and varies for another seed', (scenario) => {
     const first = scenario.timeline(1, scenario.seconds)
     expect(scenario.timeline(1, scenario.seconds)).toEqual(first)
@@ -66,11 +66,35 @@ describe('motion3d scenario timelines', () => {
     expect(motion3dScenarios.filter(scenario => scenario.recordStance).map(scenario => scenario.id)).toEqual(['sleepy-no-clip'])
   })
 
-  it('sets an idle drive only in the scenarios that judge the idle scheduler, and replays idle\'s timeline in idle-drive and music', () => {
-    expect(motion3dScenarios.filter(scenario => scenario.idleDrive).map(scenario => [scenario.id, scenario.idleDrive?.name])).toEqual([['idle-drive', 'qa-neutral-day'], ['music', 'qa-neutral-day'], ['sleepy-no-clip', 'qa-neutral-day-away']])
+  it('sets an idle drive only in the scenarios that judge the idle scheduler, and replays idle\'s timeline in idle-drive, music, and music-beat', () => {
+    expect(motion3dScenarios.filter(scenario => scenario.idleDrive).map(scenario => [scenario.id, scenario.idleDrive?.name])).toEqual([['idle-drive', 'qa-neutral-day'], ['music', 'qa-neutral-day'], ['music-beat', 'qa-neutral-day'], ['sleepy-no-clip', 'qa-neutral-day-away']])
     const timeline = (id: string) => motion3dScenarios.find(scenario => scenario.id === id)?.timeline(3, 600)
     expect(timeline('idle-drive')).toEqual(timeline('idle'))
     expect(timeline('music')).toEqual(timeline('idle'))
+    expect(timeline('music-beat')).toEqual(timeline('idle'))
+  })
+
+  it('runs music-beat as music with a detector\'s beats at 120 BPM, and sends beats in no other scenario', () => {
+    const music = motion3dScenarios.find(scenario => scenario.id === 'music')
+    const beat = motion3dScenarios.find(scenario => scenario.id === 'music-beat')
+    expect(beat).toEqual({ ...music, id: 'music-beat', beats: { bpm: 120, jitterSeconds: 0.02 }, timeline: beat?.timeline })
+    expect(motion3dScenarios.filter(scenario => scenario.beats).map(scenario => scenario.id)).toEqual(['music-beat'])
+  })
+
+  it('scripts a run\'s beats as a pure function of its seed: a loose detector\'s onsets around a steady beat', () => {
+    const spec = { bpm: 120, jitterSeconds: 0.02 }
+    const { beats, onsets } = scriptBeats(1, -10, 600, spec)
+    expect(scriptBeats(1, -10, 600, spec)).toEqual({ beats, onsets })
+    expect(scriptBeats(2, -10, 600, spec).onsets).not.toEqual(onsets)
+    expect(beats).toHaveLength(1220)
+    expect(beats.slice(1).every((at, i) => Math.abs(at - beats[i] - 0.5) < 1e-9)).toBe(true)
+    // About one beat in ten missed and one extra in ten: as many onsets as beats, give or take.
+    expect(Math.abs(onsets.length - beats.length)).toBeLessThan(0.05 * beats.length)
+    expect(onsets.slice(1).every((onset, i) => onset.at >= onsets[i].at)).toBe(true)
+    // Every onset arrives within its jitter of a beat or of an off-beat between two beats.
+    const onBeat = onsets.filter(onset => beats.some(at => Math.abs(onset.at - at) <= 0.02 + 1e-9))
+    expect(onBeat.length / beats.length).toBeGreaterThan(0.85)
+    expect(onBeat.length / beats.length).toBeLessThan(0.95)
   })
 
   it('runs music as an idle-class scenario whose drive is the plain QA drive, named in its provenance', () => {
@@ -82,7 +106,7 @@ describe('motion3d scenario timelines', () => {
     expect(detail.idleDrive).toBe('qa-neutral-day')
     expect(JSON.parse(detail.idleDriveValues)).toEqual(QA_IDLE_DRIVE)
     // The runner tells the character mind music plays; no other scenario does.
-    expect(motion3dScenarios.filter(scenario => scenario.music).map(scenario => scenario.id)).toEqual(['music'])
+    expect(motion3dScenarios.filter(scenario => scenario.music).map(scenario => scenario.id)).toEqual(['music', 'music-beat'])
   })
 
   it.each([1, 2, 3])('speaks version 2 for seed %i: fifteen peaks at least 0.9 s apart, three energies and one chat reply', (seed) => {

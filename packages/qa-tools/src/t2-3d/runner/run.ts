@@ -32,7 +32,8 @@ import { AnimationMixer, LoopOnce, Matrix4, Quaternion } from 'three'
 
 import * as v from 'valibot'
 
-import { idleDriveDetail, idleMarkerLabel } from '../idle-drive'
+import { GROOVE_LOCK_MARKER, idleDriveDetail, idleMarkerLabel } from '../idle-drive'
+import { scriptBeats } from '../scenarios'
 import { CLAIM_CLIP_NAME, CLAIM_TRACE_BONES, Motion3dClaimClip } from './claim-clip'
 import { Motion3dCueDriver } from './cues'
 import { loadHeadlessMMD } from './loader'
@@ -122,6 +123,7 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
     sampler.rig.id = modelKey
     sampler.rig.assetSha256 = loaded.assetSha256
     const timeline = options.scenario.timeline(options.seed, options.seconds)
+    const beats = options.scenario.beats ? scriptBeats(options.seed, -options.warmupSeconds, options.seconds, options.scenario.beats).onsets : []
     // A scenario that claims an arm gets one programmatic clip on the runner's mixer, registered like an app clip.
     const claim = timeline.some(cue => cue.kind === 'clip-claim') ? new Motion3dClaimClip(pose, rig, options.seconds) : null
     const claimAction = claim ? mixer.clipAction(claim.clip) : null
@@ -174,6 +176,10 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
       natural.setIdleDrive({ ...idleDrive.drive, unreachable: idleKindsOutOfReach(body.capabilities) })
     let motionTime = 0
     body.onEvent(event => sampler.bodyEvent(event))
+    natural.onEvent((event) => {
+      if (event.kind === 'groove-lock')
+        sampler.recorder.event({ t: naturalSeconds, kind: 'marker', label: `${GROOVE_LOCK_MARKER}${event.beatsPerCycle}` })
+    })
     if (claim)
       body.registerClip(CLAIM_CLIP_NAME, claim.clip)
     let chat: NaturalChatInput | null = null
@@ -228,6 +234,7 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
       ...options.acts === 'off' ? { acts: 'off' } : {},
       ...idleDrive ? idleDriveDetail(idleDrive) : {},
       ...options.scenario.music ? { music: true } : {},
+      ...options.scenario.beats ? { beats: JSON.stringify(options.scenario.beats) } : {},
     }
     const source: MotionTraceSource = {
       level: 't2-3d',
@@ -250,6 +257,7 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
     })
     const initializedMs = performance.now() - initializedAt
     let nextCue = 0
+    let nextBeat = 0
     let stanceReason: string | null = null
     const started = performance.now()
     for (let frame = 0; frame < frames; frame++) {
@@ -260,6 +268,9 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
       const scoredTime = naturalSeconds - options.warmupSeconds
       while (nextCue < timeline.length && timeline[nextCue].at <= scoredTime + 1e-9)
         cues.apply(timeline[nextCue++], naturalSeconds)
+      // A beat reaches the adapter at the first frame after it arrives, as the stage hands a detected beat on.
+      while (nextBeat < beats.length && beats[nextBeat].at <= scoredTime + 1e-9)
+        natural.beat(beats[nextBeat++].intervalSeconds)
       cues.step(naturalSeconds)
       const target = look.resolve(cues.cursor)
       // The camera sits straight ahead of the head at the scenario's look distance, as the app's camera faces her.

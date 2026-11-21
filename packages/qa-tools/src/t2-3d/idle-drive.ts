@@ -25,6 +25,9 @@ export function idleDriveDetail(drive: Motion3dIdleDrive): { idleDrive: string, 
   return { idleDrive: drive.name, idleDriveValues: JSON.stringify(drive.drive) }
 }
 
+/** The marker of a sway that bound to the beat clock, followed by its beats per cycle: `groove:lock:4`. */
+export const GROOVE_LOCK_MARKER = 'groove:lock:'
+
 export const IDLE_MARKER = 'idle:'
 
 /** The trace marker of one scheduler report: `idle:<kind>:<start|end>`. */
