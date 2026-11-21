@@ -3,7 +3,8 @@ import type { BenchRunRecord } from './records'
 
 import { describe, expect, it } from 'vitest'
 
-import { compareBench, environmentKey } from './compare-bench'
+import { compareBench } from './compare-bench'
+import { environmentKey } from './index'
 
 const T0 = 1_794_000_000_000
 const DAY = 86_400_000
