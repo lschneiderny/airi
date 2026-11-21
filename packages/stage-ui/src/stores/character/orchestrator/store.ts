@@ -12,7 +12,7 @@ import { useI18n } from 'vue-i18n'
 
 import { useCharacterNotebookStore } from '../'
 import { useStageLiveStatePrompt } from '../../../composables/use-airi-runtime-prompt'
-import { getEventSourceKey } from '../../../utils/event-source'
+import { getEventSourceKey, getPromptSourceKey } from '../../../utils/event-source'
 import { useLLM } from '../../ai/chat-llm/llm'
 import { pluginInstructionsText, useChatPrompt } from '../../chat/prompt'
 import { useChatSessionStore } from '../../chat/session-store'
@@ -190,7 +190,7 @@ export const useCharacterOrchestratorStore = defineStore('character-orchestrator
           characterId: chatSession.personaOf(chatSession.activeSessionId),
           // The caller's system instructions are plugin text, so the composer caps them as on the spoken route.
           plugin: pluginInstructionsText(control?.messageOverride?.appendSystemInstructions),
-          spark: t('base.prompt.spark-notify', { moduleName: getEventSourceKey(event) }),
+          spark: t('base.prompt.spark-notify', { moduleName: getPromptSourceKey(event) }),
         })).text,
         runtimePrompt: liveStatePrompt.value,
         control: { ...control, commandsOnly: true },

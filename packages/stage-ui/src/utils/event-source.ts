@@ -43,3 +43,23 @@ export function getEventSourceKey(event: EventSourcePayload, fallback = 'unknown
     ?? fallback
   )
 }
+
+/** Longest source key that a system prompt names. Plugin and module source keys are short ids. */
+export const PROMPT_SOURCE_KEY_MAX_CHARS = 64
+
+/**
+ * Returns the source key of an event for a host-written system prompt that names the sender.
+ *
+ * Use when:
+ * - A segment with system authority interpolates the module that sent an event
+ *
+ * Expects:
+ * - The server channel or a plugin supplied the key, so it can hold any text
+ *
+ * Returns:
+ * - The key on one line, without double quotes, cut to `PROMPT_SOURCE_KEY_MAX_CHARS`, or `unknown` when nothing is left
+ */
+export function getPromptSourceKey(event: EventSourcePayload) {
+  const key = getEventSourceKey(event).replace(/[\s"\u0000-\u001F\u007F]+/g, ' ').trim().slice(0, PROMPT_SOURCE_KEY_MAX_CHARS).trim()
+  return key || 'unknown'
+}
