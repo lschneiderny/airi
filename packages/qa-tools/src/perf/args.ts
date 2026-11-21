@@ -20,6 +20,7 @@ const PERF_USAGE = [
   '       pnpm perf compare <shaA> <shaB> [--include-dirty] [--json] [--dir <path>]...',
   '       pnpm perf bench [--scenario <id>] [--since <n>m|h|d] [--json]',
   `       pnpm perf compare --bench <refA> <refB> [--scenario <id>] [--metric ${BENCH_METRICS.join('|')}] [--json]`,
+  '       pnpm perf status [--json]',
   'A bench ref is a sha (at least 4 hex digits), HEAD, or worktree.',
 ].join('\n')
 
@@ -32,6 +33,8 @@ export const PERF_HELP = [
   'are dropped.',
   'features reports 90% percentile-bootstrap intervals, which under-cover at small sample sizes. The paired estimate',
   'decides only from 8 sessions holding both values; paired comparisons have low power below about 8 sessions.',
+  'status summarizes the perf tracker: its last tick, open findings, the outcome mix, accepted costs and the stage',
+  'costs of the latest benched main tip. It only reads.',
 ].join('\n')
 
 /** `null` dirs means the platform defaults; `--dir` replaces them. */
@@ -43,6 +46,7 @@ export type PerfCommand
     | { readonly kind: 'compare', readonly dirs: readonly string[] | null, readonly shaA: string, readonly shaB: string, readonly includeDirty: boolean, readonly json: boolean }
     | { readonly kind: 'bench', readonly scenario: string | null, readonly sinceMs: number | null, readonly json: boolean }
     | { readonly kind: 'compare-bench', readonly a: BenchRef, readonly b: BenchRef, readonly scenario: string | null, readonly metric: BenchMetric | null, readonly json: boolean }
+    | { readonly kind: 'status', readonly json: boolean }
     | { readonly kind: 'help' }
 
 /** An incident id names `incidents/<id>.json`, so it must stay a plain file name inside that directory. */
@@ -171,6 +175,10 @@ export function parsePerfArgs(argv: readonly string[], cwd: string): PerfCommand
         seed: values.seed === undefined ? 1 : Number(parseOption(SeedSchema, '--seed', values.seed)),
         json: values.json,
       }
+    case 'status':
+      if (rest.length > 0 || values.list || dirs !== null || values.since !== undefined || featureOptions || values['include-dirty'] || benchOnly)
+        throw new PerfUsageError(PERF_USAGE)
+      return { kind: 'status', json: values.json }
     default:
       throw new PerfUsageError(PERF_USAGE)
   }

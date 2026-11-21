@@ -2,6 +2,7 @@ import type { BenchCodeState, BenchGroupRow, BenchScenarioComparison, BenchSide 
 import type { IncidentEntry, IncidentFile } from './incident'
 import type { PerfFileCounts } from './read'
 import type { SessionSummary } from './sessions'
+import type { PerfStatus } from './status'
 
 /** `<short sha>`, then `*` when any epoch was dirty and `~<n>` when the identity changed during the session. */
 export function formatShaLabel(identity: Pick<SessionSummary, 'shortSha' | 'dirty' | 'epochs'>): string {
@@ -124,6 +125,45 @@ export function formatBenchCompare(scenarios: readonly BenchScenarioComparison[]
     }
     return lines
   }).join('\n')
+}
+
+const signedNumber = (value: number) => `${value >= 0 ? '+' : ''}${value.toFixed(2)}`
+const noneOr = (lines: readonly string[]) => (lines.length > 0 ? lines.map(line => `  ${line}`) : ['  none'])
+
+/** Qualifier lines first, then open findings, then the rest. */
+export function formatStatus(status: PerfStatus): string {
+  const qualifiers = [
+    status.trackerStale ? `stale: no tracker tick in 48 h (last ${status.lastTick === null ? 'never' : formatTime(status.lastTick.startedAt)})` : '',
+    status.lowConfidence ? 'lowConfidence: fewer than 10 clean commits in the bench history' : '',
+    status.mainTip !== null && !status.mainTip.benched ? `main tip not benched: ${status.mainTip.sha.slice(0, 9)}` : '',
+    status.ghFailureStreak > 0 ? `gh failed on the last ${status.ghFailureStreak} ticks: open PRs are not being benched` : '',
+  ].filter(Boolean)
+  const open = status.open.map((finding) => {
+    const [top] = finding.topStages
+    const stage = top === undefined ? (finding.noStageMoved ? 'no stage moved' : '-') : `${top.id} ${signedNumber(top.deltaMsPerFrame)} ms/frame`
+    const pr = finding.subject.pr === undefined ? '-' : `#${finding.subject.pr}`
+    return `${finding.id}  ${finding.scenario}  ${finding.metric}  ${signedNumber(finding.difference)} (floor ${finding.practicalFloor})  PR ${pr}  top stage ${stage}`
+  })
+  const { lastTick, mainTip, outcomes } = status
+  return [
+    ...qualifiers,
+    'open findings:',
+    ...noneOr(open),
+    `last tick: ${lastTick === null ? 'never' : `${lastTick.tickId} at ${formatTime(lastTick.startedAt)} (${lastTick.ageHours.toFixed(1)} h ago), exit ${lastTick.exitCode ?? 'running'}`}`,
+    `main tip: ${mainTip === null ? 'unknown' : `${mainTip.sha.slice(0, 9)}, ${mainTip.benchedAt === null ? 'not benched' : `benched ${formatTime(mainTip.benchedAt)}`}`}`,
+    `outcomes: fixed ${outcomes.fixed}, accepted ${outcomes.accepted}, noise ${outcomes.noise}, noise share ${formatPercent(outcomes.noiseShare)}`,
+    'closed in the last 14 days:',
+    ...noneOr(status.recentlyClosed.map(finding => `${finding.id}  ${finding.close.resolution}  ${formatTime(finding.close.t)}`)),
+    'accepted costs:',
+    ...noneOr(status.accepted.map(cost => `${cost.id}  ${cost.scenario}  ${cost.metric}  ${cost.commit?.slice(0, 9) ?? 'uncommitted'}  ${cost.reason}`)),
+    'baseline resets in the last 14 days:',
+    ...noneOr(status.baselineResets.map(reset => `${reset.scenario}  ${reset.baselineSha.slice(0, 9)}..${reset.subjectSha.slice(0, 9)}  ${reset.kind}  ${reset.reasons.join(', ')}`)),
+    'stages of the latest benched main tip:',
+    ...noneOr(status.stages.flatMap(entry => [
+      `${entry.scenario} ${entry.sha.slice(0, 9)}`,
+      ...entry.stages.map(stage => `  ${stage.id}  ${stage.msPerFrame.toFixed(2)} ms/frame`),
+    ])),
+  ].join('\n')
 }
 
 /** One line per file with rejected lines, or `null` when every line parsed. */
