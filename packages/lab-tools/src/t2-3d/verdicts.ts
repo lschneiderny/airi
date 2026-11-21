@@ -143,8 +143,8 @@ export class VerdictRecorder {
   async finish(exitCode: number): Promise<number> {
     const code = this.recorded ? exitCode : 2
     if (!this.recorded) {
-      const reason = exitCode === 2 ? 'the command stopped before it judged anything (exit 2)' : `qa:motion3d ${this.command} records no verdict lines; --json applies to gate and report commands`
-      console.error(`qa:motion3d ${this.command}: ${reason}`)
+      const reason = exitCode === 2 ? 'the command stopped before it judged anything (exit 2)' : `lab:motion3d ${this.command} records no verdict lines; --json applies to gate and report commands`
+      console.error(`lab:motion3d ${this.command}: ${reason}`)
       this.refusals.push(reason)
     }
     await writeFile(this.path, `${JSON.stringify(this.file(code), null, 2)}\n`)
