@@ -83,7 +83,7 @@ function qaFor(need: GateNeed): GateQa {
  */
 const followUpRules: readonly { paths: RegExp, reason: string, checks: string, gateNeeds: readonly GateNeed[] }[] = [
   {
-    paths: /^(?:apps\/stage-tamagotchi|packages\/(?:stage-ui[^/]*|stage-shared|stage-pages|stage-layouts))\/src\//,
+    paths: /^(?:apps\/stage-tamagotchi|packages\/(?:stage-ui[^/]*|stage-shared|stage-pages|stage-layouts|character-mind))\/src\//,
     reason: 'app runtime changed',
     checks: 'pnpm qa:smoke, which pnpm verify --gate runs',
     gateNeeds: ['smoke'],

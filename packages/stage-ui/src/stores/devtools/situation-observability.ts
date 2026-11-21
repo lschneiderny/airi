@@ -273,7 +273,7 @@ export interface SituationPreview extends RenderedSituation {
 /**
  * Result of one "Evaluate now". `skipped` means nothing was evaluated: `unprompted-pending` while an unprompted turn
  * has no result yet, `gate-not-running` when the answering window runs no gate (no unprompted capability), `no-mind`
- * when no stage's character mind is connected to the gate.
+ * when the leader's character mind is not connected to the gate.
  */
 export type SituationGateEvaluation
   = | { status: 'evaluated', decision: UrgeGateDecision, memory: UrgeGateMemory }

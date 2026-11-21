@@ -44,13 +44,13 @@ function scannedFiles(): string[] {
 }
 
 describe('renderer storage writes', () => {
-  // The scan parses every renderer file of the repository, which takes about 4 s alone and longer beside other checks.
-  it('writes only keys that a registration owns, from the files it names as writers', () => {
+  // The scan parses every renderer source file, about 4 s alone, so the default 5 s fails under a loaded machine.
+  it('writes only keys that a registration owns, from the files it names as writers', { timeout: 30_000 }, () => {
     const read = repositoryReader(repoRoot)
     const registry = readStateRegistry(readFileSync(join(repoRoot, registryPath), 'utf8'))
     const sites = scannedFiles().flatMap(path => findStorageWrites(path, read(path) ?? '', read))
 
     expect(sites.length).toBeGreaterThan(0)
     expect(checkStorageWrites(sites, registry, dynamicSites)).toEqual([])
-  }, 30_000)
+  })
 })

@@ -1,10 +1,9 @@
 /**
  * Turbo arguments that run the `test:run` script of every workspace package, each with its node and browser projects.
  *
- * Packages run one at a time, so each Vitest process may use the whole CPU lease it inherits. Three packages at once
- * cut the full suite from 11 to 6 minutes in one run (2026-11-18), but every process then needs a share of the lease
- * instead of the whole grant, and overlapping browser suites are unproven. Raise the concurrency only together with a
- * per-process worker share.
+ * Packages run one at a time, so each Vitest process may use every core. Three packages at once cut the full suite
+ * from 11 to 6 minutes in one run (2026-11-18), but the processes then compete for the cores, and overlapping browser
+ * suites are unproven. Raise the concurrency only together with a per-process worker share.
  *
  * A failed package does not stop the others, so one run reports every failure. Only packages that really ran print
  * their output; a cache hit prints one line.
