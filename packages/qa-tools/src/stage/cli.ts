@@ -227,6 +227,7 @@ export async function runStageCli(argv: readonly string[], context: { repoRoot: 
         selfPids: context.selfPids,
         log,
         onRun: partial => writeJson(out, partial),
+        signal: context.signal,
       })
       console.info(`qa-tools stage: wrote ${record.runs.length} runs (${record.failures.length} failed) to ${out}`)
       return record.failures.length > 0 || record.runs.some(entry => !entry.valid) ? 1 : 0

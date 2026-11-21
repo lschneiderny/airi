@@ -631,13 +631,15 @@ export async function measurePairs(options: {
   selfPids: readonly number[]
   log: (line: string) => void
   onRun: (record: StagePairsRecord) => void
+  /** Ends the host wait before a launch, so Ctrl-C does not sit out the 30 minutes. */
+  signal?: AbortSignal
 }): Promise<StagePairsRecord> {
   const record: StagePairsRecord = { kind: 'stage-measure-pairs', version: 1, pairs: options.pairs, seconds: options.seconds, profile: options.profile, runs: [], failures: [] }
   const scratch = mkdtempSync(join(tmpdir(), 'airi-qa-stage-'))
   try {
     for (let n = 1; n <= options.pairs; n += 1) {
       for (const mode of ['window', 'desktop'] as const) {
-        const host = await waitForHostQuiet({ waitSeconds: HOST_QUIET_WAIT_SECONDS })
+        const host = await waitForHostQuiet({ waitSeconds: HOST_QUIET_WAIT_SECONDS, signal: options.signal })
         if (!host.quiet) {
           const message = `the host stayed busy for ${host.waitedSeconds} s before the launch (${formatHostLoad(host.sample)})`
           options.log(`qa-tools stage: ${mode} pair ${n} refused: ${message}`)

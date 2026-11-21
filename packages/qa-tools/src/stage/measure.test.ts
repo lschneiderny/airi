@@ -148,6 +148,20 @@ describe('measurePairs launch lifecycle', () => {
   })
 })
 
+describe('measurePairs interruption', () => {
+  it('stops waiting for a calm host when interrupted, before any launch', async () => {
+    vi.mocked(hostQuiet.waitForHostQuiet).mockImplementation(async ({ signal }) => {
+      signal?.throwIfAborted()
+      return { quiet: true, waitedSeconds: 0, sample: calm }
+    })
+    const interrupt = new AbortController()
+    interrupt.abort(new Error('interrupted'))
+
+    await expect(measurePairs({ ...pairOptions(), pairs: 1, signal: interrupt.signal })).rejects.toThrow('interrupted')
+    expect(launched).toBe(0)
+  })
+})
+
 describe('quiet-machine host probes', () => {
   it('never reads the host process table on Linux or Windows', async () => {
     const exec = vi.fn(async () => '12.0 Xorg\n')
