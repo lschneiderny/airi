@@ -17,6 +17,7 @@ import { setupSynced, usePiniaSynced } from '@proj-airi/stage-ui/libs/pinia'
 import { useCharacterOrchestratorStore } from '@proj-airi/stage-ui/stores/character'
 import { useChatStore } from '@proj-airi/stage-ui/stores/chat'
 import { useChatSessionStore } from '@proj-airi/stage-ui/stores/chat/session-store'
+import { useDisplayModelsStore } from '@proj-airi/stage-ui/stores/display-models'
 import { useModsServerChannelStore } from '@proj-airi/stage-ui/stores/mods/api/channel-server'
 import { useSpeechStore } from '@proj-airi/stage-ui/stores/modules/speech'
 import { useVisionStore } from '@proj-airi/stage-ui/stores/modules/vision'
@@ -330,6 +331,10 @@ async function renderStage(routePath: string, search: string) {
   await providers.setProviderStatus('kokoro-local', 'configured')
   await expect.poll(() => useProviderConfigStore(pinia).configuredProviders['kokoro-local'], { timeout: 5000 }).toBeDefined()
   await channel?.initialize({ token: 'startup-test-token', connector: () => channelConnector })
+  // Preview modules include every renderer. Load that graph before measuring
+  // startup's IPC handshake, rather than racing Vite's on-demand transforms.
+  if (windowContext.stageRuntime === 'full')
+    await useDisplayModelsStore(pinia).initialize()
   readyToMount.value = true
   await nextTick()
 
