@@ -169,7 +169,7 @@ describe('natural gaze', () => {
     gaze.setAside(true, 0)
     const side = Math.sign(sample(gaze, 0, 1).at(-1)!.x)
     // The thinking glance of the Natural recipes, held for the clear band's 1.2 s.
-    gaze.glance({ x: 0.3, y: 0.25 }, 1.2, 1)
+    gaze.glance({ source: 'emotion', point: { x: 0.3, y: 0.25 }, hold: 1.2 }, 1)
     const glancing = sample(gaze, 1, 1.6).at(-1)!
     // The glance ends at 1 + saccade + 1.2 s; the next fixation is drawn there.
     const returned = sample(gaze, 1.6, 2.6).at(-1)!

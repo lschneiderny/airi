@@ -87,7 +87,7 @@ export function startPending(actions: Exclude<PendingAction, { kind: 'chat' | 'w
         lastPokeSurprise = at
         impulses.trigger({ id: `poke-${++pokes}`, emotion: 'surprised', nominal: strength.surprise, intensity: strength.surprise, band: 'clear', escalation: false }, at)
       }
-      gaze.glance(glanceTargets.camera, pokeGlanceHold, at)
+      gaze.glance({ source: 'poke', point: glanceTargets.camera, hold: pokeGlanceHold }, at)
       // The fixed reacting overlay, like a desktop reaction.
       energy.react(at)
       pokeEvents.push({ at, region: action.region, x: action.x, y: action.y })
@@ -107,16 +107,16 @@ export function startPending(actions: Exclude<PendingAction, { kind: 'chat' | 'w
       if (settings.mood)
         mood.add(action.episode)
       if (started.glance)
-        gaze.glance(started.glance.point, started.glance.hold, at)
+        gaze.glance({ source: 'emotion', point: started.glance.point, hold: started.glance.hold }, at)
       continue
     }
     if (action.reaction === 'wake') {
       impulses.nudge(wakeNudge.direction, wakeNudge.intensity, at)
-      gaze.glance(glanceTargets.camera, wakeGlanceHold, at)
+      gaze.glance({ source: 'desktop-wake', point: glanceTargets.camera, hold: wakeGlanceHold }, at)
     }
     else {
       const point = gaze.screenPoint()
-      gaze.glance(point, screenChangeGlanceHold, at)
+      gaze.glance({ source: 'screen-change', point, hold: screenChangeGlanceHold }, at)
       notify?.({ kind: 'glance', at, cause: 'screen-change', point, hold: screenChangeGlanceHold })
     }
     energy.react(at)

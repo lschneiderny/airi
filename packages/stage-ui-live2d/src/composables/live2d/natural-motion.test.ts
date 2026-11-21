@@ -994,7 +994,7 @@ describe('continuous cursor attention and touch', () => {
         motion.advance(duration + 0.1)
         expect(events.filter(event => event.kind === 'touch').map(event => event.touch)).toEqual(['pet-start', 'pet-end'])
       }
-      expect(glance).toHaveBeenCalledExactlyOnceWith({ x: 0, y: 0 }, 1.2, expect.any(Number))
+      expect(glance).toHaveBeenCalledExactlyOnceWith({ source: 'pet-end', point: { x: 0, y: 0 }, hold: 1.2 }, expect.any(Number))
     }
     finally {
       glance.mockRestore()

@@ -814,7 +814,7 @@ export class NaturalMotion {
     }
     else if (!this.pet.active && this.petStartedAt !== null) {
       if (permission === 'full' && stepStart - this.petStartedAt > longPetDurationSeconds)
-        this.petGlanceUntil = this.gaze.glance({ x: 0, y: 0 }, petGlanceDurationSeconds, stepStart)
+        this.petGlanceUntil = this.gaze.glance({ source: 'pet-end', point: { x: 0, y: 0 }, hold: petGlanceDurationSeconds }, stepStart)
       this.petStartedAt = null
       if (this.observer)
         this.notify({ kind: 'touch', at: stepStart, touch: 'pet-end', region: 'head' })
@@ -836,7 +836,7 @@ export class NaturalMotion {
       const glance = this.chatGlance
       this.chatGlance = null
       if (chatTarget != null && !this.energy.talking && !this.petOverride && stepStart >= this.petGlanceUntil) {
-        this.chatGlanceUntil = this.gaze.glance(glance.point, glance.hold, stepStart, 'chat')
+        this.chatGlanceUntil = this.gaze.glance({ source: glance.cause, point: glance.point, hold: glance.hold }, stepStart)
         if (this.observer)
           this.notify({ kind: 'glance', at: stepStart, cause: glance.cause, point: glance.point, hold: glance.hold })
       }

@@ -27,6 +27,9 @@ export type IdleCueKind = 'about-to-speak' | 'let-go'
 
 export type IdleBehaviourKind = IdleActivityKind | IdleCueKind
 
+/** The voice cues' glances rank with a chat read in the gaze layer, above her own idle acts. */
+const voiceCues: ReadonlySet<IdleBehaviourKind> = new Set<IdleCueKind>(['about-to-speak', 'let-go'])
+
 /** Activities the idle schedule draws; `sleep` is entered by the away rule, never drawn. */
 export type DrawnIdleActivityKind = Exclude<IdleActivityKind, 'sleep'>
 
@@ -458,7 +461,7 @@ export class NaturalIdleActivities {
         continue
       while (clip.glances.length > 0 && at >= clip.glances[0].at) {
         const glance = clip.glances.shift()!
-        this.eyesUntil = Math.max(this.eyesUntil, gaze.glance(glance.point, glance.hold, at))
+        this.eyesUntil = Math.max(this.eyesUntil, gaze.glance({ source: voiceCues.has(clip.kind) ? 'voice-cue' : 'idle-act', point: glance.point, hold: glance.hold }, at))
       }
     }
     this.updateView(drive, input, current)
@@ -555,7 +558,7 @@ export class NaturalIdleActivities {
     clip.releaseSeconds = IDLE_WAKE_SECONDS
     this.released(clip)
     // The eyes are already on the user when the lids open.
-    this.eyesUntil = Math.max(this.eyesUntil, gaze.glance({ x: 0, y: 0 }, IDLE_WAKE_SECONDS + 0.6, at))
+    this.eyesUntil = Math.max(this.eyesUntil, gaze.glance({ source: 'sleep-wake', point: { x: 0, y: 0 }, hold: IDLE_WAKE_SECONDS + 0.6 }, at))
     this.reports.push({ kind: 'ended', seq: clip.seq, act: clip.kind, how: asked ? 'woken-on-request' : 'woken' })
   }
 

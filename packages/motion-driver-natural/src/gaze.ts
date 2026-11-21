@@ -53,6 +53,21 @@ const motionStillGap = 0.03
 type Target = GazePoint | 'cursor'
 
 /**
+ * Who asked for a held glance. Every caller of {@link NaturalGazeLayer.glance} names one, so the gaze layer can tell
+ * the glances apart; `chat-sent` and `chat-unfold` are chat reads, which give up their hold when the chat hides.
+ */
+export type GlanceSource
+  = | 'pet-end' | 'poke' | 'desktop-wake' | 'sleep-wake' | 'chat-sent' | 'chat-unfold' | 'voice-cue'
+    | 'cue-gesture' | 'emotion' | 'screen-change' | 'idle-act'
+
+/** A held glance: saccade to `point`, then hold it for `hold` seconds. */
+export interface GlanceRequest {
+  source: GlanceSource
+  point: GazePoint
+  hold: number
+}
+
+/**
  * What the eyes are aimed at, for a reviewer's readout. `desk`, `side` and `side-up` are the autonomous fixation
  * points; `screen` is the desk fixation moved toward the screen content; `glance` is a held look another layer asked
  * for (an idle act, an emotion, a chat read); `override` is a target the controller forces, such as the petting hand.
@@ -233,15 +248,15 @@ export class NaturalGazeLayer {
   }
 
   /**
-   * Saccades to `point` at `at` and holds it for `hold` seconds before autonomous
-   * fixations resume. Used by emotion impulses and desktop reactions.
+   * Saccades to the request's point at `at` and holds it for its hold before autonomous fixations resume.
    * Returns the active-time end of the hold, including the approach saccade.
-   * A chat source relinquishes its hold when the chat target is cleared, including while talking.
+   * A chat read relinquishes its hold when the chat target is cleared, including while talking.
    */
-  glance(point: GazePoint, hold: number, at: number, source?: 'chat') {
-    this.saccadeTo(point, at, hold)
-    this.chatRead = source === 'chat'
-    this.targetKind = source === 'chat' ? 'chat' : 'glance'
+  glance(request: GlanceRequest, at: number) {
+    const read = request.source === 'chat-sent' || request.source === 'chat-unfold'
+    this.saccadeTo(request.point, at, request.hold)
+    this.chatRead = read
+    this.targetKind = read ? 'chat' : 'glance'
     return this.nextFixationAt
   }
 
