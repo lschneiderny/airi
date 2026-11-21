@@ -131,6 +131,7 @@ Read the listed file before starting. Skill paths below are under `.agents/skill
 | Server work | [server](server/AGENTS.md), plus [API](server/apps/api/AGENTS.md) or [Auth](server/apps/auth/AGENTS.md) for those apps |
 | Choosing, configuring, or testing a local character model or Ollama setting | [Local character models](docs/ai/context/local-models.md) |
 | Slow/failed chat, speech, audio using saved IO traces | [analyze-io-traces](.agents/skills/analyze-io-traces/SKILL.md) |
+| Continuing AIRI Agent, Computer Use, or AUV execution work | [Agent execution memory](docs/ai/references/agent-execution-memory.md) and [maintenance handoff](docs/ai/handoffs/airi-agent-execution-maintenance.md) |
 | Local file upload via browser/Electron chooser or input | [Upload reference](.agents/skills/use-agent-browser-for-airi/references/input-file.md), [agent-browser](.agents/skills/agent-browser/SKILL.md). For Electron, also [agent-browser-electron](.agents/skills/agent-browser-electron/SKILL.md). |
 | Screenshots and visual evidence | [use-vishot](.agents/skills/use-vishot/SKILL.md). Load only the matching runtime and scenario references. |
 | Live2D, VRM, MMD import/rendering in the desktop app | [use-agent-browser-for-airi](.agents/skills/use-agent-browser-for-airi/SKILL.md) |
