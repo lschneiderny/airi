@@ -55,6 +55,8 @@ export function updateSourceFromEnv(env: Record<string, string | undefined>): Up
  * - Flatpak and Nix installs use the build of the deb and rpm packages, so only the runtime can tell them. Flatpak
  *   sets `FLATPAK_ID` in each sandbox, and the `nix/package.nix` launcher sets `AIRI_DISTRIBUTION=nix`. Their package
  *   managers update the app.
+ * - The Terminal Beta distribution is a separate test install; the launcher sets `AIRI_DISTRIBUTION=terminal-beta` from
+ *   its package metadata, and it gets no updates.
  * - Squirrel.Mac installs only updates that pass code-signature validation against the running app. Fork macOS builds
  *   are ad-hoc signed, so their updates are manual downloads.
  */
@@ -62,5 +64,5 @@ export function isUpdaterDisabled(configDisabled: boolean, host: UpdateHost): bo
   return configDisabled
     || host.platform === 'darwin'
     || !!host.env.FLATPAK_ID
-    || host.env.AIRI_DISTRIBUTION === 'nix'
+    || ['nix', 'terminal-beta'].includes(host.env.AIRI_DISTRIBUTION ?? '')
 }

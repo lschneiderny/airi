@@ -24,6 +24,3 @@ export const EMOTION_ACTION_NAME: Record<Emotion, string> = {
   [Emotion.Flustered]: 'awkward',
   [Emotion.Sleepy]: '',
 }
-
-/** Conventional name AIRI uses for the persistent looping idle motion. */
-export const IDLE_ACTION_NAME = 'idle'

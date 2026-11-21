@@ -80,6 +80,7 @@ async function setup(window: BrowserWindow) {
       attachFullscreen: vi.fn(() => vi.fn()),
       setMainWindowCovered: vi.fn(),
       leaveFullscreenMode: vi.fn(),
+      owns: vi.fn(() => false),
     },
     widgetsManager: {} as Params['widgetsManager'],
     noticeWindow: {} as Params['noticeWindow'],

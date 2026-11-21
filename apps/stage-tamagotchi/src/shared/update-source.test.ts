@@ -39,6 +39,7 @@ describe('isUpdaterDisabled', () => {
   it.each([
     { name: 'a Flatpak sandbox', configDisabled: false, platform: 'linux', env: { FLATPAK_ID: 'ai.moeru.airi' }, expected: true },
     { name: 'a Nix package', configDisabled: false, platform: 'linux', env: { AIRI_DISTRIBUTION: 'nix' }, expected: true },
+    { name: 'a Terminal Beta install', configDisabled: false, platform: 'linux', env: { AIRI_DISTRIBUTION: 'terminal-beta' }, expected: true },
     { name: 'an ad-hoc signed macOS build', configDisabled: false, platform: 'darwin', env: {}, expected: true },
     { name: 'a build without a feed', configDisabled: true, platform: 'linux', env: {}, expected: true },
     { name: 'a direct download with a feed', configDisabled: false, platform: 'linux', env: {}, expected: false },

@@ -92,7 +92,7 @@ describe('morph runtime stages', () => {
     finally {
       mmd.dispose()
       disposeMMDObject(mesh)
-      material.descriptor.toonMap?.dispose()
+      material.toonMap?.dispose()
     }
   })
 
@@ -118,7 +118,7 @@ describe('morph runtime stages', () => {
     finally {
       mmd.dispose()
       disposeMMDObject(mesh)
-      material.descriptor.toonMap?.dispose()
+      material.toonMap?.dispose()
     }
   })
 
@@ -145,7 +145,7 @@ describe('morph runtime stages', () => {
     finally {
       mmd.dispose()
       disposeMMDObject(mesh)
-      material.descriptor.toonMap?.dispose()
+      material.toonMap?.dispose()
     }
   })
 
@@ -168,7 +168,7 @@ describe('morph runtime stages', () => {
       warn.mockRestore()
       mmd.dispose()
       disposeMMDObject(mesh)
-      material.descriptor.toonMap?.dispose()
+      material.toonMap?.dispose()
     }
   })
 })
@@ -178,9 +178,9 @@ describe('material outline binding', () => {
     const material = new MMDToonMaterial(descriptor())
     const outline = new ShaderMaterial({
       uniforms: {
-        outlineColor: { value: new Color() },
-        outlineAlpha: { value: 0 },
-        outlineThickness: { value: 0 },
+        outlineColor: { value: new Color(0.1, 0.1, 0.1) },
+        outlineAlpha: { value: 0.35 },
+        outlineThickness: { value: 0.01 },
       },
     })
     const runtime = new MaterialMorphApplier([material], [materialMorph()], [outline])
@@ -196,7 +196,7 @@ describe('material outline binding', () => {
     }
     finally {
       material.dispose()
-      material.descriptor.toonMap?.dispose()
+      material.toonMap?.dispose()
       outline.dispose()
     }
   })

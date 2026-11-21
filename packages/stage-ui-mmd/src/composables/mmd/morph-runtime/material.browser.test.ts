@@ -22,14 +22,14 @@ describe('real MMDToonMaterial morph composition', () => {
     }
     finally {
       material.dispose()
-      material.descriptor.toonMap?.dispose()
+      material.toonMap?.dispose()
     }
   })
 
-  it.each([0, 1] as const)('applies operation %s tints and restores every descriptor field exactly', (operation) => {
+  it.each([0, 1] as const)('applies operation %s tints and restores every authored field exactly', (operation) => {
     const material = new MMDToonMaterial(descriptor())
     const root = new Mesh(new BufferGeometry(), material)
-    const base = createMMDMaterialEvaluatedState(material.descriptor)
+    const base = createMMDMaterialEvaluatedState(material)
     const runtime = new MaterialMorphApplier([material], [materialMorph([element(0, operation)])])
     try {
       runtime.apply([1])
@@ -58,7 +58,7 @@ describe('real MMDToonMaterial morph composition', () => {
     }
     finally {
       disposeMMDObject(root)
-      material.descriptor.toonMap?.dispose()
+      material.toonMap?.dispose()
     }
   })
 
@@ -76,11 +76,10 @@ describe('real MMDToonMaterial morph composition', () => {
       expect(material.opacity).toBe(0)
       runtime.apply([0])
       expect(material.opacity).toBe(1)
-      expect(material.descriptor.opacity).toBe(1)
     }
     finally {
       disposeMMDObject(root)
-      material.descriptor.toonMap?.dispose()
+      material.toonMap?.dispose()
     }
   })
 })

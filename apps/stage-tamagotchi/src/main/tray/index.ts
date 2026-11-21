@@ -77,6 +77,7 @@ interface SetupTrayParams {
   serverChannel: ServerChannel
   i18n: I18n
   appConfig: Config<typeof globalAppConfigSchema>
+  terminalApproval: { restore: () => void }
 }
 
 const setupTrayOnce = once((params: SetupTrayParams): void => {
@@ -113,6 +114,7 @@ const setupTrayOnce = once((params: SetupTrayParams): void => {
       : readPrimaryDisplay()
     const contextMenu = Menu.buildFromTemplate([
       { label: params.i18n.t('tamagotchi.electron.tray.menu.labels.label.show'), click: () => showUserFacingWindow(params.mainWindow) },
+      { label: params.i18n.t('settings.pages.modules.mcp-server.terminal.restore'), click: params.terminalApproval.restore },
       ...windowLayoutMenuItems({
         window: params.mainWindow,
         workArea: currentDisplay.workArea,

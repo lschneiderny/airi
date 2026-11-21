@@ -44,6 +44,7 @@ function scannedFiles(): string[] {
 }
 
 describe('renderer storage writes', () => {
+  // The scan parses every renderer file of the repository, which takes about 4 s alone and longer beside other checks.
   it('writes only keys that a registration owns, from the files it names as writers', () => {
     const read = repositoryReader(repoRoot)
     const registry = readStateRegistry(readFileSync(join(repoRoot, registryPath), 'utf8'))
@@ -51,5 +52,5 @@ describe('renderer storage writes', () => {
 
     expect(sites.length).toBeGreaterThan(0)
     expect(checkStorageWrites(sites, registry, dynamicSites)).toEqual([])
-  })
+  }, 30_000)
 })

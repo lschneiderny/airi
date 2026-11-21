@@ -21,7 +21,7 @@ describe('material dirty tracking', () => {
     }
     finally {
       material.dispose()
-      material.descriptor.toonMap?.dispose()
+      material.toonMap?.dispose()
     }
   })
 
@@ -33,7 +33,7 @@ describe('material dirty tracking', () => {
     expect(material.opacity).toBe(0)
     runtime.apply([0])
     expect(material.opacity).toBe(1)
-    expect(material.color).toEqual(material.descriptor.diffuse)
+    expect(material.color.toArray()).toEqual([0.4, 0.5, 0.6])
     expect(apply).toHaveBeenCalledTimes(2)
     runtime.apply([0])
     expect(apply).toHaveBeenCalledTimes(2)

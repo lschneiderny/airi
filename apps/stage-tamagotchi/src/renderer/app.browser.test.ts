@@ -36,6 +36,7 @@ import {
   electronGetServerChannelConfig,
   electronGetWindowLifecycleState,
   electronGodotStageGetStatus,
+  electronMcpGetRuntimeStatus,
   electronMcpListTools,
   i18nGetLocale,
   i18nSetLocale,
@@ -203,6 +204,7 @@ async function renderStage(routePath: string, search: string) {
     ...payload,
   }))
   defineInvokeHandler(bridge.main, electronMcpListTools, () => [])
+  defineInvokeHandler(bridge.main, electronMcpGetRuntimeStatus, () => ({ path: 'fixture', servers: [], updatedAt: 0 }))
   defineInvokeHandler(bridge.main, homeAssistantGetConfig, () => ({ baseUrl: '', hasToken: false, tokenPreview: '' }))
   defineInvokeHandler(bridge.main, electronPluginListXsaiTools, () => ({ prompts: [], tools: [] }))
 

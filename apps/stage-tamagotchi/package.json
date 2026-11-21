@@ -24,6 +24,7 @@
     "postinstall": "electron-builder install-app-deps",
     "build:unpack": "pnpm run build && electron-builder --dir",
     "build:win": "pnpm run build && electron-builder --win",
+    "build:terminal-beta": "tsx scripts/build-terminal-beta.ts",
     "build:mac": "pnpm run build && electron-builder --mac",
     "check:reproducible-build": "tsx scripts/check-reproducible-build.ts",
     "smoke:desktop-overlay-live-window": "NODE_OPTIONS='--experimental-websocket' tsx scripts/desktop-overlay-live-window-smoke.ts",
@@ -33,7 +34,6 @@
     "@auv-js/cli": "catalog:",
     "@auv-js/sdk": "catalog:",
     "@ergosphere-it/electron": "catalog:",
-    "@napi-rs/image": "catalog:",
     "@proj-airi/electron-native-backdrop": "workspace:^",
     "@xsai-apple-speech/transcription-native": "catalog:",
     "@xsai-apple-vision/vision-native": "catalog:",
@@ -42,6 +42,7 @@
     "electron-updater": "^6.8.9",
     "koffi": "catalog:",
     "node-macos-disclaim": "catalog:",
+    "node-pty": "catalog:",
     "uiohook-napi": "catalog:"
   },
   "optionalDependencies": {
@@ -90,6 +91,8 @@
     "@pinia/colada": "catalog:",
     "@proj-airi/audio": "workspace:^",
     "@proj-airi/ccc": "workspace:^",
+    "@proj-airi/computer-use-mcp": "workspace:^",
+    "@proj-airi/core-agent": "workspace:^",
     "@proj-airi/drizzle-duckdb-wasm": "catalog:",
     "@proj-airi/electron-eventa": "workspace:^",
     "@proj-airi/electron-screen-capture": "workspace:^",
@@ -175,7 +178,6 @@
     "electron-vite": "catalog:",
     "embla-carousel-vue": "catalog:",
     "es-toolkit": "catalog:",
-    "file-type": "catalog:",
     "get-port-please": "catalog:",
     "h3": "catalog:",
     "injeca": "catalog:",
@@ -229,7 +231,6 @@
     "zod": "catalog:"
   },
   "build": {
-    "appId": "ai.moeru.airi",
     "extends": "electron-builder.config.ts"
   }
 }

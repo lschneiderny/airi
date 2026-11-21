@@ -203,11 +203,11 @@ describe('situation observability store', () => {
     context.captureProviderPromptProjection('session-a', [
       { role: 'system', content: 'You are AIRI.' },
       { role: 'user', content: [{ type: 'text', text: '(A quiet moment.)' }, { type: 'text', text: '[Situation]' }] },
-    ], { turnId: 'turn-1', origin: 'unprompted' })
+    ], { model: 'test-model', turnId: 'turn-1', origin: 'unprompted' })
     expect(context.lastPromptProjection).toMatchObject({ turnId: 'turn-1', origin: 'unprompted' })
 
     context.capturePromptProjection({ sessionId: 'session-a', message: 'hello', contexts: {} })
-    context.captureProviderPromptProjection('session-a', [{ role: 'user', content: 'hello there, a much longer user request' }], { turnId: 'turn-2', origin: 'user' })
+    context.captureProviderPromptProjection('session-a', [{ role: 'user', content: 'hello there, a much longer user request' }], { model: 'test-model', turnId: 'turn-2', origin: 'user' })
 
     expect((await store.inspect()).spend.lastUnpromptedRequest).toMatchObject({
       sessionId: 'session-a',
@@ -228,7 +228,7 @@ describe('situation observability store', () => {
     context.captureProviderPromptProjection('session-a', [
       { role: 'system', content: 'You are AIRI.' },
       { role: 'user', content: '(A quiet moment.)' },
-    ], { turnId: 'turn-1', origin: 'unprompted' })
+    ], { model: 'test-model', turnId: 'turn-1', origin: 'unprompted' })
 
     // 200 report chars for the system message plus the 17-char user message; the 13-char system text is not counted.
     expect((await store.inspect()).spend.lastUnpromptedRequest).toMatchObject({ turnId: 'turn-1', messageCount: 2, chars: 200 + '(A quiet moment.)'.length })

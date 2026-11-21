@@ -1,4 +1,4 @@
-import { defineConfig } from 'vitest/config'
+import { configDefaults, defineConfig } from 'vitest/config'
 
 // Every workspace package runs its own tests through its `test:run` script. This config holds only the tests that
 // belong to no package.
@@ -18,6 +18,8 @@ export default defineConfig({
         test: {
           name: 'root-scripts',
           include: ['scripts/**/*.test.mjs'],
+          // The gateway contract test runs under `node --test` against an external gateway copy, as its README says.
+          exclude: [...configDefaults.exclude, 'scripts/gateway-tool-result/**'],
         },
       },
     ],

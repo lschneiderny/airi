@@ -141,7 +141,7 @@ vi.mock('../stores/stage-window-lifecycle', async () => {
   const { defineStore } = await import('pinia')
   return { useStageWindowLifecycleStore: defineStore('placement-lifecycle', () => ({ stagePaused: ref(false) })) }
 })
-vi.mock('../stores/tools', () => ({ useToolSelectionStore: () => ({ requestTools: [] }) }))
+vi.mock('../stores/tools', () => ({ artistryToolReferences: [] }))
 vi.mock('../composables/use-stage-active-renderer', () => ({ useStageActiveRenderer: () => {} }))
 vi.mock('../composables/use-stage-placement-publisher', () => ({ useStagePlacementPublisher: () => {} }))
 vi.mock('../composables/use-screen-ambient-light', () => ({ useScreenAmbientLight: () => {} }))

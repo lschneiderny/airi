@@ -74,6 +74,7 @@ it('runs tray size commands without reading Wayland bounds and restores Windows 
     mainWindow: window,
     captionWindow: { isVisible: () => false, getIsFollowingWindow: () => true, onVisibilityChanged: () => vi.fn() },
     i18n: { t: (key: string) => key.split('.').at(-1), locale: () => 'en' },
+    terminalApproval: { restore: vi.fn() },
   } as never)
   await vi.advanceTimersByTimeAsync(50)
   const menu = mocks.menus.at(-1)

@@ -18,8 +18,13 @@ export function useChatToolCallRerun() {
   /**
    * Triggering workflow: ChatHistory `toolCallRerun` -> rerunToolCall
    * -> chatStore.rerunToolCall, which stores the new result in the leader.
+   *
+   * An archived conversation is read-only, like for the rerun of the chat store, so the rerun does nothing there.
    */
   async function rerunToolCall(payload: ChatToolCallRerunEvent) {
+    if (chatStore.activeChatArchived)
+      return
+
     const sessionId = chatSession.activeSessionId
     try {
       await chatStore.rerunToolCall({

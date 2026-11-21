@@ -22,7 +22,7 @@ import { toast } from 'vue-sonner'
 import { electronChatAttentionTargetChanged, electronGetChatAttentionTarget, electronOpenInlay, electronOpenOnboarding } from '../../shared/eventa'
 import { useDesktopActivityProducerStore } from '../stores/desktop-activity'
 import { useForegroundWindowProducerStore } from '../stores/foreground-window'
-import { useToolSelectionStore } from '../stores/tools'
+import { artistryToolReferences } from '../stores/tools'
 import { usePresenceNotice } from './use-presence-notice'
 import { usePushToTalkShortcut } from './use-push-to-talk-shortcut'
 import { useStageActiveRenderer } from './use-stage-active-renderer'
@@ -82,9 +82,7 @@ export function useStageHostWiring(page: 'index' | 'stage'): StageHostWiring {
   onScopeDispose(() => foregroundWindowProducer.stop())
 
   const voice = useVoiceStore()
-  const toolSelection = useToolSelectionStore()
-  // Spoken turns start in this window. They use the tools that the chat window composer grants.
-  onScopeDispose(voice.connectTools(() => toolSelection.requestTools))
+  onScopeDispose(voice.connectTools(() => artistryToolReferences))
   const openInlay = useElectronEventaInvoke(electronOpenInlay)
   useVoiceListening()
   usePushToTalkShortcut()
@@ -114,7 +112,7 @@ export function useStageHostWiring(page: 'index' | 'stage'): StageHostWiring {
   const onboardingStore = useOnboardingStore()
   const openOnboarding = useElectronEventaInvoke(electronOpenOnboarding)
   onMounted(() => {
-    if (onboardingStore.needsOnboarding)
+    if (onboardingStore.needsOnboarding && new URLSearchParams(location.search).get('start-hidden') !== 'true')
       openOnboarding()
   })
 

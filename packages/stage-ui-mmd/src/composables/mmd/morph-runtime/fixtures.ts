@@ -1,5 +1,5 @@
 import type { PmxObject } from '@moeru/three-mmd'
-import type { MMDMaterialDescriptor } from '@moeru/three-mmd/materials'
+import type { MMDMaterialParameters } from '@moeru/three-mmd/materials'
 
 import { Color, Texture } from 'three'
 
@@ -63,19 +63,14 @@ export function materialMorph(elements = [element()]): PmxObject.Morph.MaterialM
   return { name: 'material', englishName: '', category: 4, type: 8, elements }
 }
 
-export function descriptor(name = 'surface'): MMDMaterialDescriptor {
+export function descriptor(name = 'surface'): MMDMaterialParameters {
   return {
     name,
     ambient: new Color(0.1, 0.2, 0.3),
-    diffuse: new Color(0.4, 0.5, 0.6),
+    color: new Color(0.4, 0.5, 0.6),
     specular: new Color(0.2, 0.3, 0.4),
     shininess: 16,
     opacity: 1,
-    doubleSided: false,
-    fog: true,
-    isDefaultToonTexture: true,
     toonMap: new Texture(),
-    toonMapFileName: 'toon01.bmp',
-    outline: { alpha: 0.35, color: new Color(0.1, 0.1, 0.1), visible: true, width: 0.01 },
   }
 }

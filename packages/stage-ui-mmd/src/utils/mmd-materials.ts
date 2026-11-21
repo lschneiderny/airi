@@ -11,14 +11,16 @@ interface OriginalSurfaceState {
 
 const originalSurfaceStates = new WeakMap<MMDToonMaterial, OriginalSurfaceState>()
 
-/** Composes a live morph opacity with user intent and authored transparency. */
+/**
+ * Composes a live morph opacity with user intent. three-mmd's `updateAlpha` then derives the transparency from the
+ * opacity, the texture alpha, and whether a morph can change the opacity.
+ */
 export function composeMMDMaterialOpacity(material: MMDMaterial, evaluatedOpacity: number, override?: number): void {
-  const { descriptor } = material
-  const authoredTransparency = (descriptor.alphaTest ?? 0) <= 0 && (descriptor.opacity < 1 || descriptor.textureAlphaMode === 'blend')
   const previousTransparency = material.transparent
+  const previousAlphaTest = material.alphaTest
   material.opacity = override ?? evaluatedOpacity
-  material.transparent = authoredTransparency || material.opacity < 1
-  if (material.transparent !== previousTransparency)
+  material.updateAlpha()
+  if (material.transparent !== previousTransparency || material.alphaTest !== previousAlphaTest)
     material.needsUpdate = true
 }
 
