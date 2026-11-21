@@ -153,7 +153,7 @@ function residuals(values: readonly number[]): number[] {
  * Up to {@link BENCH_HISTORY_COMMITS} trailing clean commits other than A and B, each with enough valid runs: the
  * newest whose runs all precede B's first run, so a later commit never sets the noise for an earlier comparison.
  */
-function historyGroups(params: CompareBenchParams, reference: BenchRunRecord): BenchRunRecord[][] {
+function historyGroups(params: Pick<CompareBenchParams, 'runsA' | 'runsB' | 'history'>, reference: BenchRunRecord): BenchRunRecord[][] {
   const excluded = new Set([groupKey(params.runsA[0]), groupKey(params.runsB[0])])
   const firstRunOfB = Math.min(...params.runsB.map(run => run.t))
   const comparable = comparableKey(reference)
@@ -168,6 +168,43 @@ function historyGroups(params: CompareBenchParams, reference: BenchRunRecord): B
     .filter(runs => runs.length >= BENCH_MIN_RUNS && newest(runs) < firstRunOfB)
     .sort((left, right) => newest(right) - newest(left))
     .slice(0, BENCH_HISTORY_COMMITS)
+}
+
+/** Judges non-empty numeric sides with already selected, comparable history groups. */
+export function judgeDifference(params: {
+  readonly valuesA: readonly number[]
+  readonly valuesB: readonly number[]
+  readonly historyGroups: readonly (readonly number[])[]
+  readonly floor: number
+  readonly higherIsWorse: boolean
+}) {
+  const { valuesA: a, valuesB: b, historyGroups: history, floor: practicalFloor, higherIsWorse } = params
+  const pooled = history.length >= BENCH_HISTORY_COMMITS
+  const noiseGroups = pooled ? [a, b, ...history] : [a, b]
+  const sigma = madSigma(noiseGroups.flatMap(residuals))
+
+  const medianA = median(a)
+  const medianB = median(b)
+  const difference = medianB - medianA
+  const agreement = {
+    count: difference === 0 ? 0 : b.filter(value => Math.sign(value - medianA) === Math.sign(difference)).length,
+    required: Math.ceil((4 * b.length) / 5),
+    of: b.length,
+  }
+  const significant = Math.abs(difference) > BENCH_SIGMA_FACTOR * sigma && Math.abs(difference) > practicalFloor && agreement.count >= agreement.required
+  const worse = higherIsWorse ? difference > 0 : difference < 0
+  return {
+    medianA,
+    medianB,
+    difference,
+    sigma,
+    noise: pooled ? 'pooled' as const : 'pair-local' as const,
+    historyCommits: history.length,
+    lowConfidence: !pooled,
+    practicalFloor,
+    agreement,
+    verdict: significant ? (worse ? 'regression' as const : 'improvement' as const) : 'within-noise' as const,
+  }
 }
 
 /**
@@ -185,24 +222,6 @@ export function compareBench(params: CompareBenchParams): BenchComparison {
   const valuesOf = (runs: readonly BenchRunRecord[]) => runs.map(run => ({ run: run.run, t: run.t, value: run.metrics[metric] }))
   const valuesA = valuesOf(runsA)
   const valuesB = valuesOf(runsB)
-  const a = valuesA.map(entry => entry.value)
-  const b = valuesB.map(entry => entry.value)
-  const history = historyGroups(params, runsA[0])
-  const pooled = history.length >= BENCH_HISTORY_COMMITS
-  const noiseGroups = pooled ? [a, b, ...history.map(runs => runs.map(run => run.metrics[metric]))] : [a, b]
-  const sigma = madSigma(noiseGroups.flatMap(residuals))
-
-  const medianA = median(a)
-  const medianB = median(b)
-  const difference = medianB - medianA
-  const practicalFloor = BENCH_PRACTICAL_FLOORS[metric]
-  const agreement = {
-    count: difference === 0 ? 0 : b.filter(value => Math.sign(value - medianA) === Math.sign(difference)).length,
-    required: Math.ceil((4 * b.length) / 5),
-    of: b.length,
-  }
-  const significant = Math.abs(difference) > BENCH_SIGMA_FACTOR * sigma && Math.abs(difference) > practicalFloor && agreement.count >= agreement.required
-  const worse = HIGHER_IS_BETTER[metric] ? difference < 0 : difference > 0
   const groupOf = (run: BenchRunRecord): BenchGroup => ({ sha: run.sha, diffHash: run.diffHash, dirty: run.dirty })
   return {
     status: 'compared',
@@ -211,16 +230,54 @@ export function compareBench(params: CompareBenchParams): BenchComparison {
     groupB: groupOf(runsB[0]),
     valuesA,
     valuesB,
-    medianA,
-    medianB,
-    difference,
-    sigma,
-    noise: pooled ? 'pooled' : 'pair-local',
-    historyCommits: history.length,
-    lowConfidence: !pooled,
-    practicalFloor,
-    agreement,
-    verdict: significant ? (worse ? 'regression' : 'improvement') : 'within-noise',
+    ...judgeDifference({
+      valuesA: valuesA.map(entry => entry.value),
+      valuesB: valuesB.map(entry => entry.value),
+      historyGroups: historyGroups(params, runsA[0]).map(runs => runs.map(run => run.metrics[metric])),
+      floor: BENCH_PRACTICAL_FLOORS[metric],
+      higherIsWorse: !HIGHER_IS_BETTER[metric],
+    }),
     stale: Math.abs(newest(runsA) - newest(runsB)) > BENCH_STALE_MS,
   }
+}
+
+/** Informational movement of one timed stage; signed values always describe B minus A. */
+export interface StageAttribution {
+  readonly id: string
+  readonly deltaMsPerFrame: number
+  readonly z: number
+}
+
+/**
+ * Ranks stages in the requested direction without assigning stage verdicts. Missing timings mean not recorded.
+ * Call after comparing valid, comparable sides. History uses the same clean, trailing groups as the metric judge,
+ * but stages pool history once three runs carry that stage. A nonzero shift with zero noise has infinite z.
+ */
+export function attributeStages(params: Pick<CompareBenchParams, 'runsA' | 'runsB' | 'history'> & {
+  readonly direction: 'regression' | 'improvement'
+}): { readonly stages: readonly StageAttribution[], readonly timed: boolean, readonly noStageMoved: boolean } {
+  const { runsA, runsB, direction } = params
+  const timed = runsA.some(run => run.stages !== undefined) && runsB.some(run => run.stages !== undefined)
+  if (!timed)
+    return { stages: [], timed, noStageMoved: true }
+
+  const history = historyGroups(params, runsA[0])
+  const ids = new Set(runsA.flatMap(run => Object.keys(run.stages ?? {})))
+  const stages: StageAttribution[] = []
+  for (const id of ids) {
+    const valuesOf = (runs: readonly BenchRunRecord[]) => runs.flatMap(run => run.stages?.[id] === undefined ? [] : [run.stages[id].msPerFrame])
+    const a = valuesOf(runsA)
+    const b = valuesOf(runsB)
+    if (b.length === 0)
+      continue
+    const groups = history.map(valuesOf).filter(values => values.length > 0)
+    const pooled = groups.reduce((count, values) => count + values.length, 0) >= BENCH_MIN_RUNS
+    const sigma = madSigma((pooled ? [a, b, ...groups] : [a, b]).flatMap(residuals))
+    const deltaMsPerFrame = median(b) - median(a)
+    const z = deltaMsPerFrame === 0 ? 0 : deltaMsPerFrame / sigma
+    if (direction === 'regression' ? z > 1 && deltaMsPerFrame > 0.02 : z < -1 && deltaMsPerFrame < -0.02)
+      stages.push({ id, deltaMsPerFrame, z })
+  }
+  stages.sort((left, right) => direction === 'regression' ? right.z - left.z : left.z - right.z)
+  return { stages: stages.slice(0, 5), timed, noStageMoved: stages.length === 0 }
 }
