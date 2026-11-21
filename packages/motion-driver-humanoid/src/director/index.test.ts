@@ -20,6 +20,7 @@ import {
   PENDING_GOAL_TTL_MS,
   RETURN_HOME_DELAY_MS,
   STAND_SETTLE_MS,
+  STEP_ONTO_CURSOR_MIN_LEGS,
   VISIT_SHARE,
   VISIT_STOP_LEGS,
 } from './index'
@@ -392,6 +393,8 @@ describe('body director home, goals, roam and tools', () => {
     expect(short.intent.locomotion).toMatchObject({ goalX: 7, reason: 'approach-cursor' })
     expect(reached.intent.locomotion).toMatchObject({ goalX: null, reason: 'stay' })
     expect(behind.intent.locomotion).toMatchObject({ goalX: null, reason: 'stay' })
+    expect(short.memory.cursorStepPending).toBe(false)
+    expect(reached.memory.cursorStepPending).toBe(true)
   })
 
   it('walks on a chase that has not set off until her rest point reaches a cursor ahead, and ends it for one under her', () => {
@@ -409,6 +412,82 @@ describe('body director home, goals, roam and tools', () => {
     const frames = [0, 1_000, 4_000, 8_000].map(nowMs => world({ ...base, nowMs, cursorX: 3.8 }))
 
     expect(run(frames).intent.locomotion.goalX).toBeNull()
+  })
+
+  describe('one corrective step after a chase', () => {
+    const base = { attendUntilMs: 60_000, cursorOnStage: true, cursorX: 3, rootX: 3.4 }
+    const armed = { ...initialBodyDirectorMemory, nowMs: 2_000, goalSinceMs: 1_000, cursorStepPending: true }
+
+    it('waits for rest, then strolls onto the cursor before the old goal dwell and never arms another step', () => {
+      const stopping = decide(world({ ...base, nowMs: 2_100, locomotionMode: 'stopping' }), armed)
+      const step = decide(world({ ...base, nowMs: 2_200 }), stopping.memory)
+      const walking = decide(world({ ...base, nowMs: 2_300, rootX: 3.2, restX: 3.1, locomotionMode: 'walking' }), step.memory)
+      const arrived = decide(world({ ...base, nowMs: 2_400, rootX: 3.1, restX: 3, locomotionMode: 'walking' }), walking.memory)
+      const rested = decide(world({ ...base, nowMs: 2_500, rootX: 3.2 }), arrived.memory)
+
+      expect(stopping.intent.locomotion.goalX).toBeNull()
+      expect(stopping.memory.cursorStepPending).toBe(true)
+      expect(step.intent.locomotion).toMatchObject({ goalX: 3, pace: 'stroll', reason: 'approach-cursor' })
+      expect(step.memory.cursorStepPending).toBe(false)
+      expect(walking.intent.locomotion.goalX).toBe(3)
+      expect(arrived.intent.locomotion.goalX).toBeNull()
+      expect(arrived.memory.cursorStepPending).toBe(false)
+      expect(rested.intent.locomotion.goalX).toBeNull()
+    })
+
+    it('clamps the step to the nearest reachable zone', () => {
+      const result = decide(world({ ...base, nowMs: 2_100, rootX: 3.8, cursorX: 4.2, reach: [{ minX: 0, maxX: 4 }, { minX: 6, maxX: 10 }] }), armed)
+
+      expect(result.intent.locomotion.goalX).toBe(4)
+    })
+
+    it.each([0, STEP_ONTO_CURSOR_MIN_LEGS])('spends the correction when resting within %s legs', (cursorX) => {
+      const result = decide(world({ ...base, nowMs: 2_100, rootX: 0, cursorX }), armed)
+      const later = decide(world({ ...base, nowMs: 2_200, rootX: 0, cursorX: 0.4 }), result.memory)
+
+      expect(result.intent.locomotion.goalX).toBeNull()
+      expect(result.memory.cursorStepPending).toBe(false)
+      expect(later.intent.locomotion.goalX).toBeNull()
+    })
+
+    it.each([
+      { attendUntilMs: 2_099 },
+      { attendUntilMs: null },
+      { cursorOnStage: false },
+      { cursorX: null },
+    ])('cancels the correction when the cursor or attend window is unavailable: %j', (overrides) => {
+      const result = decide(world({ ...base, ...overrides, nowMs: 2_100, locomotionMode: 'stopping' }), armed)
+      const later = decide(world({ ...base, nowMs: 2_200 }), result.memory)
+
+      expect(result.intent.locomotion.goalX).toBeNull()
+      expect(result.memory.cursorStepPending).toBe(false)
+      expect(later.intent.locomotion.goalX).toBeNull()
+    })
+
+    it('lets a new goal consume the correction instead', () => {
+      const result = decide(world({ ...base, nowMs: 2_100, debugGoal: { seq: 1, x: 8, pace: 'walk' } }), armed)
+
+      expect(result.intent.locomotion).toMatchObject({ goalX: 8, reason: 'debug' })
+      expect(result.memory.cursorStepPending).toBe(false)
+    })
+
+    it('cancels the correction when the cursor leaves reach, even if she cannot start a new chase yet', () => {
+      const result = decide(world({ ...base, nowMs: 2_100, cursorX: 5, speaking: true }), armed)
+      const later = decide(world({ ...base, nowMs: 2_200 }), result.memory)
+
+      expect(result.intent.locomotion.goalX).toBeNull()
+      expect(result.memory.cursorStepPending).toBe(false)
+      expect(later.intent.locomotion.goalX).toBeNull()
+    })
+
+    it('holds the correction behind the same speaking gate as a chase', () => {
+      const blocked = decide(world({ ...base, nowMs: 2_100, speaking: true }), armed)
+      const open = decide(world({ ...base, nowMs: 2_200 }), blocked.memory)
+
+      expect(blocked.intent.locomotion.goalX).toBeNull()
+      expect(blocked.memory.cursorStepPending).toBe(true)
+      expect(open.intent.locomotion).toMatchObject({ goalX: 3, pace: 'stroll' })
+    })
   })
 
   it('returns home slowly after the return-home delay with no reason', () => {

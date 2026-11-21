@@ -16,6 +16,12 @@ export const STANCE_MIN_DWELL_MS = 3_000
 /** Distance, in leg lengths, at which a chase stops short of the cursor, and within which a cursor can end a chase. */
 export const CHASE_STOP_LEGS = 1.0
 
+/**
+ * Minimum rest offset in leg lengths for one corrective step onto the cursor after a chase.
+ * Tuning value from the owner's D16 ruling of 2026-11-21: correct the final offset without changing the gait.
+ */
+export const STEP_ONTO_CURSOR_MIN_LEGS = 0.15
+
 /** Milliseconds with no goal reason before the character walks home. */
 export const RETURN_HOME_DELAY_MS = 20_000
 
@@ -239,6 +245,8 @@ export interface BodyDirectorMemory {
   readonly goalSinceMs: number | null
   readonly goalPace: LocomotionPace
   readonly reason: BodyLocomotionReason
+  /** A chase ended within reach; once at rest she may take one step onto the cursor. */
+  readonly cursorStepPending: boolean
   /** A goal a gate blocked, held until the gate opens or the time to live passes. */
   readonly pendingGoal: (BodyGoalRequest & { requestedAtMs: number }) | null
   readonly lastUnfoldSeq: number
@@ -286,6 +294,7 @@ export const initialBodyDirectorMemory: BodyDirectorMemory = Object.freeze({
   goalSinceMs: null,
   goalPace: 'walk',
   reason: 'stay',
+  cursorStepPending: false,
   pendingGoal: null,
   lastUnfoldSeq: 0,
   lastInteractionSeq: 0,
@@ -409,6 +418,7 @@ export function decideBody(
   let goalSinceMs = previous.goalSinceMs
   let goalPace = previous.goalPace
   let reason = ground === null ? 'stay' : previous.reason
+  let cursorStepPending = previous.cursorStepPending
   let pending = previous.pendingGoal
   let lastReasonMs = previous.lastReasonMs ?? nowMs
   let pendingWander = previous.pendingWander
@@ -431,6 +441,11 @@ export function decideBody(
 
   // Distance from the root to the cursor while it is on the stage, or null.
   const cursorDistance = input.cursorOnStage && input.cursorX !== null ? Math.abs(input.cursorX - input.rootX) : null
+  const attendingCursor = ground !== null
+    && input.attendUntilMs !== null
+    && nowMs <= input.attendUntilMs
+    && input.cursorOnStage
+    && input.cursorX !== null
   // A goal in progress ends once the body has settled on it. A walk aimed at the cursor also ends before the goal dwell
   // once the cursor is within that walk's stop distance: the user pointed at her, so she stops there. A chase ends when
   // her predicted rest point reaches the cursor, so the gait's braking slide carries her onto it; one behind her ends it
@@ -443,6 +458,9 @@ export function decideBody(
   const arrived = goalX !== null
     && (reachedCursor || (input.locomotionMode === 'idle' && Math.abs(input.rootX - goalX) <= ARRIVAL_TOLERANCE))
   if (arrived) {
+    // Chases walk; the corrective approach strolls, so its own arrival never arms a second step.
+    if (reachedCursor && reason === 'approach-cursor' && goalPace === 'walk')
+      cursorStepPending = true
     // A walk of her own choosing has a destination worth staying at: she does not turn around after 20 seconds.
     if (reason === 'wander' || reason === 'visit') {
       const draw = drawRandom(rngState)
@@ -451,6 +469,14 @@ export function decideBody(
     }
     goalX = null
     reason = 'stay'
+  }
+  if (
+    !attendingCursor
+    || cursorDistance === null
+    || cursorDistance > CHASE_STOP_LEGS * leg
+    || (input.locomotionMode === 'idle' && cursorDistance <= STEP_ONTO_CURSOR_MIN_LEGS * leg)
+  ) {
+    cursorStepPending = false
   }
 
   // A wander Natural asks for waits until she can walk it; she never sets off again the moment another walk arrives.
@@ -711,6 +737,7 @@ export function decideBody(
   let issued = false
   const canIssue = () => gateOpen && !issued && (goalX === null || goalSinceMs === null || nowMs - goalSinceMs >= GOAL_MIN_DWELL_MS)
   const issue = (goal: BodyGoalRequest) => {
+    cursorStepPending = false
     goalX = goal.x
     goalPace = goal.pace
     reason = goal.reason
@@ -724,10 +751,11 @@ export function decideBody(
     pending = null
   }
 
-  const chasing = ground !== null
-    && input.attendUntilMs !== null
-    && nowMs <= input.attendUntilMs
-    && input.cursorOnStage
+  // D16: wait for the braking slide to finish, then spend the chase's one correction before any new idle goal.
+  if (cursorStepPending && !arrived && goalX === null && pending === null && input.locomotionMode === 'idle' && input.cursorX !== null && canIssue())
+    issue({ x: clampToZones(input.cursorX, zones), pace: 'stroll', reason: 'approach-cursor' })
+
+  const chasing = attendingCursor
     && input.cursorX !== null
     && Math.abs(input.cursorX - input.rootX) > CHASE_STOP_LEGS * leg
   if (chasing && ground !== null && input.cursorX !== null && pending === null && canIssue()) {
@@ -857,6 +885,7 @@ export function decideBody(
       goalSinceMs,
       goalPace,
       reason,
+      cursorStepPending,
       pendingGoal: pending,
       lastUnfoldSeq: Math.max(previous.lastUnfoldSeq, input.chatUnfoldSeq),
       lastInteractionSeq: Math.max(previous.lastInteractionSeq, input.interactionSeq),

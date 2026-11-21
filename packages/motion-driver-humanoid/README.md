@@ -257,8 +257,15 @@ or after `PENDING_GOAL_TTL_MS`; `memory.wanderAnswer` reports the answer, which
 the host passes back to Natural. Without an idle drive nothing asks, so she
 never wanders. A chase or a visit ends at once, before `GOAL_MIN_DWELL_MS`,
 when the cursor on the stage comes within its stop distance (`CHASE_STOP_LEGS`,
-`VISIT_STOP_LEGS`), so a pointer resting on her stops her where she is; a visit
-ended this way lingers as on arrival. A visit due with the cursor already that
+`VISIT_STOP_LEGS`); a chase waits until its predicted rest point reaches the
+cursor. Under the owner's D16 ruling of 2026-11-21, once that chase has stopped,
+`memory.cursorStepPending` allows one corrective stroll onto the cursor, clamped
+to her zones, before the goal dwell. She must be idle with no goal, still inside
+the attend window, with the cursor on stage within `CHASE_STOP_LEGS` and farther
+than `STEP_ONTO_CURSOR_MIN_LEGS` (0.15 legs, a tuning value). Issuing any goal,
+resting within that threshold, or losing the range, stage cursor, or attend
+window spends the correction; its own arrival never arms another. A visit
+ended within reach lingers as on arrival. A visit due with the cursor already that
 close arrives in place without walking. A goal waits while
 she speaks and is dropped after `PENDING_GOAL_TTL_MS`. Tool requests share
 `MOVE_TOOL_REFRACTORY_MS` for movement and use `LOOK_TOOL_REFRACTORY_MS` for a
