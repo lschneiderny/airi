@@ -16,6 +16,8 @@ export interface BenchScenario {
   readonly measure: BenchMeasure
 }
 
+export type BenchScenarioId = BenchScenario['id']
+
 /** Every scenario runs the window stage host, so the stage window is `stage-main`. */
 export const BENCH_V1: readonly BenchScenario[] = [
   { id: 'mmd-idle', version: 1, model: { kind: 'mmd', env: 'AIRI_QA_MMD_MODEL' }, settleSeconds: 20, measure: { kind: 'idle', seconds: 120 } },
