@@ -1,8 +1,9 @@
+import type { GlanceOutcome, GlanceSource } from './gaze'
 import type { RandomStream } from './random'
 
 import { describe, expect, it, vi } from 'vitest'
 
-import { NaturalAttentionShifts, NaturalGazeLayer } from './gaze'
+import { GLANCE_PRIORITY, NaturalAttentionShifts, NaturalGazeLayer } from './gaze'
 import { NaturalPostureLayers } from './posture'
 import { createRandomStream } from './random'
 
@@ -22,6 +23,14 @@ function onsets(path: number[][], threshold: number) {
     moving = speed > threshold
   }
   return times
+}
+
+/** Steps `gaze` from `from` to `to` seconds and returns the samples. */
+function sample(gaze: NaturalGazeLayer, from: number, to: number) {
+  const points = []
+  for (let i = Math.round(from / dt); i < Math.round(to / dt); i++)
+    points.push(gaze.step(dt))
+  return points
 }
 
 describe('natural gaze', () => {
@@ -124,14 +133,6 @@ describe('natural gaze', () => {
     // Head onsets just after an unrelated fixation saccade are coincidences, never the coordinated lead.
     expect(early / headOnsets.length).toBeLessThan(0.05)
   })
-
-  /** Steps `gaze` from `from` to `to` seconds and returns the samples. */
-  function sample(gaze: NaturalGazeLayer, from: number, to: number) {
-    const points = []
-    for (let i = Math.round(from / dt); i < Math.round(to / dt); i++)
-      points.push(gaze.step(dt))
-    return points
-  }
 
   /** Whether `point` lies at the aside fixation on `side`, within the target jitter. */
   function isAside(point: { x: number, y: number }, side: number) {
@@ -404,5 +405,90 @@ describe('natural gaze', () => {
     gaze.setOverride(null, 2.25)
     expect(gaze.saccadeCount).toBe(beforeClear + 1)
     expect(gaze.onCursor).toBe(true)
+  })
+})
+
+describe('gaze arbiter', () => {
+  const requested = (Object.keys(GLANCE_PRIORITY) as GlanceSource[]).filter(source => source !== 'cursor-notice')
+  const pairs = requested.flatMap(first => requested.filter(second => GLANCE_PRIORITY[first] !== GLANCE_PRIORITY[second]).map(second => ({ first, second })))
+  const left = { x: -0.3, y: 0 }
+  const right = { x: 0.3, y: 0 }
+
+  function arbiter() {
+    const outcomes: GlanceOutcome[] = []
+    const gaze = new NaturalGazeLayer(createRandomStream(3), createRandomStream(14), outcome => outcomes.push(outcome))
+    return { gaze, outcomes }
+  }
+
+  it.each(pairs)('starts the higher and refuses the lower of $first then $second', ({ first, second }) => {
+    const { gaze, outcomes } = arbiter()
+    const firstEnd = gaze.glance({ source: first, point: left, hold: 1 }, 0)
+    const secondEnd = gaze.glance({ source: second, point: right, hold: 1 }, 0.5)
+    const higher = GLANCE_PRIORITY[second] > GLANCE_PRIORITY[first]
+
+    expect(firstEnd).not.toBeNull()
+    expect(secondEnd === null).toBe(!higher)
+    expect(gaze.claim).toEqual({ source: higher ? second : first, until: higher ? secondEnd : firstEnd })
+    expect(outcomes.map(outcome => [outcome.source, outcome.outcome])).toEqual([[first, 'started'], [second, higher ? 'started' : 'refused']])
+  })
+
+  it('keeps the running hold and its end when it refuses a lower request', () => {
+    const { gaze } = arbiter()
+    const end = gaze.glance({ source: 'poke', point: left, hold: 1 }, 0)!
+    expect(gaze.glance({ source: 'idle-act', point: right, hold: 3 }, 0.2)).toBeNull()
+    const points = sample(gaze, 0, end - dt)
+
+    expect(points.at(-1)!.x).toBeCloseTo(left.x, 6)
+    expect(gaze.claim).toEqual({ source: 'poke', until: end })
+  })
+
+  it.each(requested)('lets a later %s replace one of its own priority', (source) => {
+    const { gaze } = arbiter()
+    gaze.glance({ source, point: left, hold: 2 }, 0)
+    const same = requested.find(other => other !== source && GLANCE_PRIORITY[other] === GLANCE_PRIORITY[source]) ?? source
+    const end = gaze.glance({ source: same, point: right, hold: 1 }, 0.5)
+
+    expect(end).not.toBeNull()
+    expect(gaze.claim).toEqual({ source: same, until: end })
+  })
+
+  it('releases the claim when the hold ends, and an owner ends only its own claim', () => {
+    const { gaze } = arbiter()
+    const end = gaze.glance({ source: 'idle-act', point: left, hold: 1 }, 0)!
+    gaze.endHold(0.2, new Set(['emotion']))
+    expect(gaze.claim?.source).toBe('idle-act')
+    sample(gaze, 0, end + dt)
+    expect(gaze.claim).toBeNull()
+
+    gaze.glance({ source: 'idle-act', point: left, hold: 1 }, end + dt)
+    gaze.endHold(end + 2 * dt, new Set(['idle-act']))
+    expect(gaze.claim).toBeNull()
+  })
+
+  it.each(requested)('refuses %s while an override holds, except the pet-end glance', (source) => {
+    const { gaze, outcomes } = arbiter()
+    gaze.setOverride({ x: 0.1, y: 0.2 }, 0)
+    const end = gaze.glance({ source, point: left, hold: 1 }, 0.5)
+
+    expect(end === null).toBe(source !== 'pet-end')
+    expect(outcomes.at(-1)).toMatchObject({ source, outcome: source === 'pet-end' ? 'started' : 'refused' })
+  })
+
+  it('skips the cursor notice while a higher glance holds and starts it over an idle act', () => {
+    const { gaze, outcomes } = arbiter()
+    gaze.setCursorTarget({ x: 0.4, y: 0.1 }, 1)
+    gaze.glance({ source: 'screen-change', point: left, hold: 1 }, 0)
+
+    expect(gaze.orient(0.2)).toBe(false)
+    expect(gaze.onCursor).toBe(false)
+
+    const { gaze: idle } = arbiter()
+    idle.setCursorTarget({ x: 0.4, y: 0.1 }, 1)
+    idle.glance({ source: 'idle-act', point: left, hold: 1 }, 0)
+
+    expect(idle.orient(0.2)).toBe(true)
+    expect(idle.onCursor).toBe(true)
+    expect(idle.claim?.source).toBe('cursor-notice')
+    expect(outcomes.map(outcome => [outcome.source, outcome.outcome])).toEqual([['screen-change', 'started'], ['cursor-notice', 'refused']])
   })
 })

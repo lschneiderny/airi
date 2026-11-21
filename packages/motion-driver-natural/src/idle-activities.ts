@@ -1,4 +1,4 @@
-import type { GazePoint, NaturalGazeLayer } from './gaze'
+import type { GazePoint, GlanceSource, NaturalGazeLayer } from './gaze'
 import type { IdleErrandKind, IdleErrandRecord } from './idle-errands'
 import type { IdleOrder, IdleReport, IdleView } from './idle-schedule'
 import type { Vec3 } from './posture'
@@ -29,6 +29,8 @@ export type IdleBehaviourKind = IdleActivityKind | IdleCueKind
 
 /** The voice cues' glances rank with a chat read in the gaze layer, above her own idle acts. */
 const voiceCues: ReadonlySet<IdleBehaviourKind> = new Set<IdleCueKind>(['about-to-speak', 'let-go'])
+/** The glances this layer starts; releasing a behaviour ends only one of these, never a glance another layer started. */
+const ownGlances: ReadonlySet<GlanceSource> = new Set<GlanceSource>(['idle-act', 'voice-cue', 'sleep-wake'])
 
 /** Activities the idle schedule draws; `sleep` is entered by the away rule, never drawn. */
 export type DrawnIdleActivityKind = Exclude<IdleActivityKind, 'sleep'>
@@ -461,7 +463,10 @@ export class NaturalIdleActivities {
         continue
       while (clip.glances.length > 0 && at >= clip.glances[0].at) {
         const glance = clip.glances.shift()!
-        this.eyesUntil = Math.max(this.eyesUntil, gaze.glance({ source: voiceCues.has(clip.kind) ? 'voice-cue' : 'idle-act', point: glance.point, hold: glance.hold }, at))
+        // A refused glance is dropped; the act goes on without it.
+        const until = gaze.glance({ source: voiceCues.has(clip.kind) ? 'voice-cue' : 'idle-act', point: glance.point, hold: glance.hold }, at)
+        if (until !== null)
+          this.eyesUntil = Math.max(this.eyesUntil, until)
       }
     }
     this.updateView(drive, input, current)
@@ -537,9 +542,9 @@ export class NaturalIdleActivities {
     clip.releaseSeconds = seconds
     this.released(clip)
     clip.glances.length = 0
-    // The gaze returns to her own fixations at once; whatever claimed her issues its own glance on top.
+    // The gaze returns to her own fixations at once, unless whatever claimed her already holds it with a glance.
     if (at < this.eyesUntil) {
-      gaze.endHold(at)
+      gaze.endHold(at, ownGlances)
       this.eyesUntil = at
     }
     this.reports.push({ kind: 'ended', seq: clip.seq, act: clip.kind, how: 'released' })
@@ -558,7 +563,9 @@ export class NaturalIdleActivities {
     clip.releaseSeconds = IDLE_WAKE_SECONDS
     this.released(clip)
     // The eyes are already on the user when the lids open.
-    this.eyesUntil = Math.max(this.eyesUntil, gaze.glance({ source: 'sleep-wake', point: { x: 0, y: 0 }, hold: IDLE_WAKE_SECONDS + 0.6 }, at))
+    const until = gaze.glance({ source: 'sleep-wake', point: { x: 0, y: 0 }, hold: IDLE_WAKE_SECONDS + 0.6 }, at)
+    if (until !== null)
+      this.eyesUntil = Math.max(this.eyesUntil, until)
     this.reports.push({ kind: 'ended', seq: clip.seq, act: clip.kind, how: asked ? 'woken-on-request' : 'woken' })
   }
 

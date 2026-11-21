@@ -53,12 +53,49 @@ const motionStillGap = 0.03
 type Target = GazePoint | 'cursor'
 
 /**
- * Who asked for a held glance. Every caller of {@link NaturalGazeLayer.glance} names one, so the gaze layer can tell
- * the glances apart; `chat-sent` and `chat-unfold` are chat reads, which give up their hold when the chat hides.
+ * Who asked for a held glance. Every caller of {@link NaturalGazeLayer.glance} names one, and the gaze layer ranks
+ * the request by {@link GLANCE_PRIORITY}; `chat-sent` and `chat-unfold` are chat reads, which give up their hold when
+ * the chat hides. `cursor-notice` is the notice saccade of {@link NaturalGazeLayer.orient}.
  */
 export type GlanceSource
   = | 'pet-end' | 'poke' | 'desktop-wake' | 'sleep-wake' | 'chat-sent' | 'chat-unfold' | 'voice-cue'
-    | 'cue-gesture' | 'emotion' | 'screen-change' | 'idle-act'
+    | 'cue-gesture' | 'emotion' | 'screen-change' | 'cursor-notice' | 'idle-act'
+
+/**
+ * The gaze arbiter's priorities; higher wins. A request starts unless the running glance ranks higher, so equal
+ * priority keeps "the latest wins" within a class. A lower request is dropped, not queued: a late glance would land
+ * after the moment it answers. Autonomous fixations (free, typing, cursor pursuit) rank below every glance.
+ */
+export const GLANCE_PRIORITY: Readonly<Record<GlanceSource, number>> = {
+  // The user's hand on her.
+  'pet-end': 7,
+  'poke': 7,
+  // She meets the user on a return or on waking.
+  'desktop-wake': 6,
+  'sleep-wake': 6,
+  // The user wrote to her, or she is about to speak or has just declined.
+  'chat-sent': 5,
+  'chat-unfold': 5,
+  'voice-cue': 5,
+  // The model's cues.
+  'cue-gesture': 4,
+  'emotion': 4,
+  // Something changed on the desktop.
+  'screen-change': 3,
+  // A noticed cursor: the episode still engages, and the autonomous draw picks the cursor after the hold.
+  'cursor-notice': 2,
+  // Her own idle acts.
+  'idle-act': 1,
+}
+
+/** What the gaze arbiter did with one request: `point` is where it aimed, `hold` its hold, null for a cursor notice. */
+export interface GlanceOutcome {
+  at: number
+  source: GlanceSource | 'chat-typing'
+  outcome: 'started' | 'refused'
+  point: GazePoint
+  hold: number | null
+}
 
 /** A held glance: saccade to `point`, then hold it for `hold` seconds. */
 export interface GlanceRequest {
@@ -136,11 +173,17 @@ export class NaturalGazeLayer {
   private chatTyping = false
   /** An explicit sent/unfold read owns the current fixation independently of the typing branch. */
   private chatRead = false
+  /** The running glance and the active-time end of its hold, or null while autonomous fixations run. */
+  private claimed: { source: GlanceSource, until: number } | null = null
 
+  /**
+   * @param report Receives every glance the arbiter starts or refuses, and every typing fixation on the chat. It draws
+   * nothing, so attaching it never changes motion.
+   */
   constructor(
     private readonly random: RandomStream,
     private readonly chatRandom: RandomStream = createRandomStream(14),
-    private readonly chatFixation?: (point: GazePoint, hold: number, at: number) => void,
+    private readonly report?: (outcome: GlanceOutcome) => void,
   ) {
     this.nextFixationAt = this.drawHold()
   }
@@ -174,10 +217,26 @@ export class NaturalGazeLayer {
     this.weight = weight
   }
 
-  /** Starts the notice saccade toward the current cursor target. */
+  /**
+   * Starts the notice saccade toward the current cursor target, ranked as a `cursor-notice` glance; its first fixation
+   * holds the claim. Returns whether it started. Without a cursor target nothing is asked, so nothing is reported.
+   */
   orient(at: number) {
-    if (this.cursor && !this.override)
-      this.saccadeTo('cursor', at)
+    if (!this.cursor)
+      return false
+    if (!this.admits('cursor-notice')) {
+      this.report?.({ at, source: 'cursor-notice', outcome: 'refused', point: { ...this.cursor }, hold: null })
+      return false
+    }
+    this.saccadeTo('cursor', at)
+    this.claimed = { source: 'cursor-notice', until: this.nextFixationAt }
+    this.report?.({ at, source: 'cursor-notice', outcome: 'started', point: { ...this.cursor }, hold: null })
+    return true
+  }
+
+  /** The running glance until its hold ends, its owner ends it, or an override or aside change starts a new fixation. */
+  get claim(): Readonly<{ source: GlanceSource, until: number }> | null {
+    return this.claimed
   }
 
   /** Ends pursuit in place, letting the next autonomous fixation resume within 300 ms. */
@@ -207,6 +266,16 @@ export class NaturalGazeLayer {
     this.fixateNext(at)
   }
 
+  /**
+   * Whether a request from `source` may start now. While an override (the petting hand) holds, only the pet-end glance
+   * starts: no look-up and no camera snap while a pet runs. Otherwise it starts unless the running glance ranks higher.
+   */
+  private admits(source: GlanceSource) {
+    if (this.override && source !== 'pet-end')
+      return false
+    return this.claimed === null || GLANCE_PRIORITY[this.claimed.source] <= GLANCE_PRIORITY[source]
+  }
+
   get onCursor(): boolean {
     return this.target === 'cursor'
   }
@@ -225,6 +294,7 @@ export class NaturalGazeLayer {
   setAside(active: boolean, at: number) {
     if (active === (this.aside !== null))
       return
+    this.claimed = null
     if (active) {
       if (at - this.asideReleasedAt > asideSideMemory)
         this.asideSide = this.random() < 0.5 - 0.15 * this.inward ? -1 : 1
@@ -248,21 +318,37 @@ export class NaturalGazeLayer {
   }
 
   /**
-   * Saccades to the request's point at `at` and holds it for its hold before autonomous fixations resume.
-   * Returns the active-time end of the hold, including the approach saccade.
+   * Asks the gaze arbiter for a held glance at `at`. When it starts, the gaze saccades to the request's point and holds
+   * it for its hold before autonomous fixations resume, and the request holds the claim until then. Returns the
+   * active-time end of the hold, including the approach saccade, or null when the arbiter refused the request: a
+   * running glance ranks higher, or an override holds. A refused request is dropped, never queued.
    * A chat read relinquishes its hold when the chat target is cleared, including while talking.
    */
-  glance(request: GlanceRequest, at: number) {
+  glance(request: GlanceRequest, at: number): number | null {
+    const point = { ...request.point }
+    if (!this.admits(request.source)) {
+      this.report?.({ at, source: request.source, outcome: 'refused', point, hold: request.hold })
+      return null
+    }
     const read = request.source === 'chat-sent' || request.source === 'chat-unfold'
     this.saccadeTo(request.point, at, request.hold)
     this.chatRead = read
     this.targetKind = read ? 'chat' : 'glance'
+    this.claimed = { source: request.source, until: this.nextFixationAt }
+    this.report?.({ at, source: request.source, outcome: 'started', point, hold: request.hold })
     return this.nextFixationAt
   }
 
-  /** Ends a glance hold early: the next autonomous fixation is drawn at `at`. A no-op once the hold has passed. */
-  endHold(at: number) {
+  /**
+   * Ends the running glance early when one of `sources` holds it: the next autonomous fixation is drawn at `at`.
+   * A glance another caller started since keeps its hold, so releasing a lower glance never cuts a higher one.
+   * A no-op once the hold has passed.
+   */
+  endHold(at: number, sources: ReadonlySet<GlanceSource>) {
+    if (this.claimed === null || !sources.has(this.claimed.source))
+      return
     this.nextFixationAt = Math.min(this.nextFixationAt, at)
+    this.claimed = null
   }
 
   /** Advances by `dt` seconds and returns the gaze point before head compensation. */
@@ -442,13 +528,14 @@ export class NaturalGazeLayer {
   }
 
   private fixateNext(at: number) {
+    this.claimed = null
     const target = this.drawTarget()
     const onChat = this.onChat
     const hold = onChat ? this.drawHold(this.chatRandom) : undefined
     this.saccadeTo(target, at, hold)
     this.onChat = onChat
     if (onChat && target !== 'cursor' && hold !== undefined)
-      this.chatFixation?.(target, hold, at)
+      this.report?.({ at, source: 'chat-typing', outcome: 'started', point: target, hold })
   }
 
   private drawHold(random = this.random) {
