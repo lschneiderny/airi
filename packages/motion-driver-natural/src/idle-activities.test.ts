@@ -4,6 +4,7 @@ import type { IdleOrder, IdleReport } from './idle-schedule'
 
 import { describe, expect, it } from 'vitest'
 
+import { advanceBeatClock, BEAT_TIMEOUT_SECONDS, initialBeatClock } from './beat-clock'
 import { NaturalGazeLayer } from './gaze'
 import { idleEnergyOffset, NaturalIdleActivities } from './idle-activities'
 import { NaturalMotion } from './natural-motion'
@@ -11,7 +12,7 @@ import { createRandomStream } from './random'
 
 const dt = 1 / 120
 const neutralDrive: NaturalIdleDrive = { energy: 0, valence: 0, tension: 0, sleepiness: 0, solitude: 0, rate: 1 }
-const idleInput: IdleStepInput = { mode: 'idle', away: false, blocked: false, interrupt: false, rouse: false, wake: false, placement: 0, screenPoint: { x: 0, y: -0.18 } }
+const idleInput: IdleStepInput = { mode: 'idle', away: false, blocked: false, interrupt: false, rouse: false, wake: false, placement: 0, screenPoint: { x: 0, y: -0.18 }, beatClock: initialBeatClock }
 const idleState = { mode: 'idle', attention: 'camera', away: false } as const
 
 let orders = 0
@@ -426,7 +427,7 @@ describe('idle activities in the controller', () => {
     const motion = new NaturalMotion({ seed: 41 })
     motion.setPerformance(idleState, 0.5, 0)
     motion.advance(0)
-    expect(motion.bodyIntent().idle).toEqual({ behaviour: null, settled: false, errand: null })
+    expect(motion.bodyIntent().idle).toEqual({ behaviour: null, settled: false, errand: null, groovePhase: null })
     motion.setIdleDrive({ ...neutralDrive, body: true }, 0)
     motion.idle(act('shoulder-roll', { requested: true }), 1)
     motion.advance(1.1)
@@ -621,4 +622,125 @@ describe('idle activities in the controller', () => {
     }
     expect(motion.idleState.seq).toBeGreaterThan(30)
   }, 30_000)
+})
+
+/**
+ * A layer that hears a metronome from `beatsFrom` seconds: each beat reaches it at its true time plus a seeded arrival
+ * jitter of up to `jitterSeconds`, with the detector's exact interval. `bpm` may change with time; `silentFrom` stops
+ * the beats.
+ */
+function grooveLayer(options: { bpm: (at: number) => number, beatsFrom?: number, silentFrom?: number, jitterSeconds?: number, seed?: number }) {
+  const idle = new NaturalIdleActivities(createRandomStream(7))
+  const gaze = new NaturalGazeLayer(createRandomStream(4))
+  const jitter = createRandomStream(options.seed ?? 1)
+  idle.setDrive(neutralDrive)
+  let clock = initialBeatClock
+  let at = 0
+  const beats: number[] = []
+  let nextBeat = options.beatsFrom ?? 0
+  let arrival = nextBeat
+  const head: { at: number, pitch: number, phase: number | null }[] = []
+  const run = (until: number) => {
+    while (at < until) {
+      while (arrival <= at && nextBeat < (options.silentFrom ?? Number.POSITIVE_INFINITY)) {
+        const interval = 60 / options.bpm(nextBeat)
+        clock = advanceBeatClock(clock, { at, intervalSeconds: interval })
+        beats.push(nextBeat)
+        nextBeat += interval
+        arrival = nextBeat + (options.jitterSeconds ?? 0) * (2 * jitter() - 1)
+      }
+      idle.step(at, dt, { ...idleInput, beatClock: clock }, gaze)
+      gaze.step(dt)
+      at += dt
+      head.push({ at, pitch: idle.output.head[1], phase: idle.groovePhase })
+    }
+  }
+  return { idle, run, beats, head, now: () => at }
+}
+
+/** Times of the local minima of the head pitch within the sway's hold, where its envelope is 1. */
+function bobLows(head: readonly { at: number, pitch: number }[], from: number, to: number) {
+  const lows: number[] = []
+  for (let i = 1; i + 1 < head.length; i++) {
+    if (head[i].at > from && head[i].at < to && head[i].pitch < head[i - 1].pitch && head[i].pitch <= head[i + 1].pitch)
+      lows.push(head[i].at)
+  }
+  return lows
+}
+
+describe('the groove on the beat', () => {
+  it('plays a sway without beats exactly as before, and draws the same shape from its seed', () => {
+    const plain = layer()
+    plain.idle.order(act('sway', { seed: 21 }))
+    // A clock that heard beats but never locked changes nothing.
+    const unlocked = grooveLayer({ bpm: () => 120, beatsFrom: 0, silentFrom: 0.9 })
+    unlocked.idle.order(act('sway', { seed: 21 }))
+    while (unlocked.now() < 14) {
+      plain.run(plain.now() + dt)
+      unlocked.run(unlocked.now() + dt)
+      expect([...unlocked.idle.output.head, ...unlocked.idle.output.body]).toEqual([...plain.idle.output.head, ...plain.idle.output.body])
+    }
+    expect(unlocked.idle.grooveLock).toBeNull()
+    expect(unlocked.head.every(sample => sample.phase === null)).toBe(true)
+    // The draws are pinned to the values of the code before the beat clock: the sway's stream did not move.
+    expect(plain.idle.record).toMatchObject({ kind: 'sway', start: 0, end: 11.57623247615993, side: -1, period: 1.869970418792218, tone: 0.5 })
+  })
+
+  it.each([
+    [60, () => 2],
+    [120, () => 4],
+    // At 180 BPM a 2 s period sits between 4 beats (1.33 s) and 8 (2.67 s); the smaller count takes the tie.
+    [180, (period: number) => period > 2 ? 8 : 4],
+  ])('binds a sway started on a locked clock at %i BPM with the beats per cycle nearest its period', (bpm, expected) => {
+    const periods: number[] = []
+    for (let seed = 1; seed <= 24; seed++) {
+      const { idle, run } = grooveLayer({ bpm: () => bpm })
+      run(5)
+      idle.order(act('sway', { seed }))
+      run(5.1)
+      const period = idle.record!.period
+      periods.push(period)
+      expect(idle.grooveLock, `seed ${seed}`).toMatchObject({ seq: 1, beatSeconds: expect.closeTo(60 / bpm, 6), beatsPerCycle: expected(period) })
+    }
+    expect(Math.min(...periods)).toBeLessThan(1.8)
+    expect(Math.max(...periods)).toBeGreaterThan(2.2)
+  })
+
+  it.each([90, 120, 150])('lowers the head on the beat every half cycle at %i BPM, within 30 ms', (bpm) => {
+    const { idle, run, beats, head } = grooveLayer({ bpm: () => bpm, jitterSeconds: 0.02, seed: bpm })
+    run(5)
+    idle.order(act('sway', { seed: 5, requested: true }))
+    run(5 + dt)
+    const { beatsPerCycle } = idle.grooveLock!
+    const record = idle.record!
+    run(record.end)
+    const lows = bobLows(head, record.start + 1.5, record.end - 1.5)
+    expect(lows.length).toBeGreaterThan(3)
+    const errors = lows.map(low => Math.min(...beats.map(beat => Math.abs(beat - low))))
+    expect(Math.max(...errors)).toBeLessThan(0.03)
+    const spacing = lows.slice(1).map((low, i) => (low - lows[i]) / (60 / bpm))
+    expect(spacing.every(beatsApart => Math.abs(beatsApart - beatsPerCycle / 2) < 0.1)).toBe(true)
+  })
+
+  it('never binds a sway that started before the clock locked', () => {
+    const { idle, run, head } = grooveLayer({ bpm: () => 120, beatsFrom: 1 })
+    idle.order(act('sway', { seed: 21 }))
+    run(20)
+    expect(idle.grooveLock).toBeNull()
+    expect(head.every(sample => sample.phase === null)).toBe(true)
+  })
+
+  it('keeps its rate without a step when the beats stop mid-sway', () => {
+    const { idle, run, head } = grooveLayer({ bpm: () => 120, silentFrom: 8, jitterSeconds: 0.02 })
+    run(5)
+    idle.order(act('sway', { seed: 21, requested: true }))
+    run(20)
+    const phases = head.filter(sample => sample.phase !== null).map(sample => sample.phase!)
+    const steps = phases.slice(1).map((phase, i) => phase - phases[i])
+    // Four beats per cycle at 0.5 s: π radians per second.
+    const rate = Math.PI * dt
+    const locked = head.findIndex(sample => sample.at > 8 + BEAT_TIMEOUT_SECONDS) - head.findIndex(sample => sample.phase !== null)
+    expect(steps.slice(locked).every(step => Math.abs(step - steps.at(-1)!) < 1e-12)).toBe(true)
+    expect(Math.max(...steps.map(step => Math.abs(step - rate)))).toBeLessThan(0.1 * rate)
+  })
 })

@@ -213,6 +213,19 @@ const { seq, behaviour } = motion.idleState
   `IdleBehaviourRecord` (its timing, side and drawn parameters, kept after it
   ends) and `settled`, so a body host plays its own form of each behaviour. The
   frame Live2D draws does not change.
+- `beat(intervalSeconds, now)` hands Natural a beat the music detector heard,
+  with the detector's seconds since its previous beat. `./beat-clock` turns the
+  beats into a beat clock on active time: the beat length is the median of the
+  last 8 intervals, and the phase follows the beats' arrival, stamped at the
+  next grid step, through a phase-locked loop. Four beats near the prediction
+  lock it, and 1.8 s without a beat or a suspension clears it. A `sway` that
+  starts while the clock is locked binds to it for its whole length: it takes
+  2, 4 or 8 beats per side-to-side cycle, the count nearest its drawn period,
+  and its head bob lands on the beat every half cycle. Its phase eases toward
+  each correction of the clock over 0.25 s and keeps its rate when the beats
+  stop. A sway that starts unbound plays exactly as before. The bind emits a
+  `groove-lock` observer event, and `bodyIntent().idle.groovePhase` carries the
+  bound sway's phase for a body host; it is null without beats.
 - The mind's same draw decides the long behaviours a host realises in full, the
   errands of `./idle-errands`: a `pastime` with one of her own props (Live2D),
   an `idle-clip` the user allowed for idle and a `wander` in roam mode (MMD). A

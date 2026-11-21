@@ -1,9 +1,11 @@
+import type { BeatClockState } from './beat-clock'
 import type { GazePoint, GlanceSource, NaturalGazeLayer } from './gaze'
 import type { IdleErrandKind, IdleErrandRecord } from './idle-errands'
 import type { IdleOrder, IdleReport, IdleView } from './idle-schedule'
 import type { Vec3 } from './posture'
 import type { RandomStream } from './random'
 
+import { beatAt } from './beat-clock'
 import { clamp01, dormantIdleView, finite, IDLE_WAKE_SECONDS, sameIdleDrive } from './idle-schedule'
 import { minJerk } from './processes'
 import { createRandomStream } from './random'
@@ -115,6 +117,18 @@ export interface IdleStepInput {
   placement: number
   /** Where the screen content is, in normalized eye space. */
   screenPoint: GazePoint
+  /** The controller's beat clock. A sway that starts while it is locked plays on its beat. */
+  beatClock: BeatClockState
+}
+
+/** The latest sway that bound to the beat clock at its start, kept after it ends. Times are active seconds. */
+export interface IdleGrooveLock {
+  /** The sway's `seq`. */
+  readonly seq: number
+  readonly at: number
+  readonly beatSeconds: number
+  /** Beats per side-to-side cycle; the head bob lands on the beat every `beatsPerCycle / 2` beats. */
+  readonly beatsPerCycle: number
 }
 
 /** What the layer adds to one grid step. Offsets are in the controller's normalized units; scales multiply. */
@@ -165,6 +179,42 @@ interface Clip {
   glances: Glance[]
   count: number
   variant: 0 | 1
+  /** A sway bound to the beat clock at its start; null for every other clip and for a sway that started unbound. */
+  groove: Groove | null
+}
+
+/** The phase of a sway that plays on the beat, advanced at each step instead of computed from its age. */
+interface Groove {
+  /** Beats per side-to-side cycle, kept for the whole clip so a drifting tempo never doubles her speed. */
+  readonly beatsPerCycle: number
+  /** Radians at `at`, unwrapped. */
+  phase: number
+  /** Radians per second at the latest locked step; kept while the clock is unlocked. */
+  rate: number
+  at: number
+}
+
+/** The beats per side-to-side cycle a bound sway may take; it takes the one whose cycle is nearest its drawn period. */
+const grooveBeatsPerCycle = [2, 4, 8] as const
+/**
+ * Seconds over which a bound sway's phase follows a correction of the beat clock, so the head never steps. The bob
+ * still moves with the beat between corrections, at the clock's rate.
+ */
+const grooveLagSeconds = 0.25
+/**
+ * The phase offset at a counted beat: `sin(2 * phase)`, the head bob, is at its low point there, so she nods down on
+ * the beat (CM5b D5).
+ */
+const grooveBeatPhase = 3 * Math.PI / 4
+
+/** The sway phase the beat clock asks for at `beats` beats, with `beatsPerCycle` beats per cycle. */
+function grooveTarget(beats: number, beatsPerCycle: number) {
+  return 2 * Math.PI * beats / beatsPerCycle + grooveBeatPhase
+}
+
+/** `radians` wrapped to the nearest turn, -π..π. */
+function nearestTurn(radians: number) {
+  return radians - 2 * Math.PI * Math.round(radians / (2 * Math.PI))
 }
 
 /** Seconds a look-around head move takes; holds are longer, so each move completes. */
@@ -275,6 +325,8 @@ export class NaturalIdleActivities {
   seq = 0
   /** The latest behaviour started, kept after it ends; null before the first. */
   record: IdleBehaviourRecord | null = null
+  /** The latest sway that bound to the beat clock, kept after it ends; null before the first. */
+  grooveLock: IdleGrooveLock | null = null
   /** A body host's character has been idle long enough to settle in; always false without `body`. */
   settled = false
   /** What she could see at the latest step; a new object only when a field changed. Null before the first step. */
@@ -398,6 +450,7 @@ export class NaturalIdleActivities {
       this.idleSince = null
       this.settled = false
       this.updateView(null, input, undefined)
+      this.advanceGrooves(at + dt, input.beatClock)
       this.sample(at + dt)
       return
     }
@@ -470,7 +523,38 @@ export class NaturalIdleActivities {
       }
     }
     this.updateView(drive, input, current)
+    this.advanceGrooves(at + dt, input.beatClock)
     this.sample(at + dt)
+  }
+
+  /**
+   * The phase of the latest behaviour while it is a sway bound to the beat and still contributes, in radians at the
+   * latest step's end; null otherwise. A host that plays its own form of the sway plays it at this phase.
+   */
+  get groovePhase(): number | null {
+    const seq = this.record?.seq
+    const clip = this.clips.find(candidate => candidate.seq === seq)
+    return clip?.groove?.phase ?? null
+  }
+
+  /**
+   * Advances each bound sway to `time`: at the clock's rate, plus a pull toward the phase the clock asks for over
+   * `grooveLagSeconds`, by the nearest turn. While the clock is unlocked the sway keeps its last rate.
+   */
+  private advanceGrooves(time: number, clock: BeatClockState) {
+    const position = beatAt(clock, time)
+    for (const clip of this.clips) {
+      const groove = clip.groove
+      if (groove === null)
+        continue
+      const seconds = time - groove.at
+      if (position !== null)
+        groove.rate = 2 * Math.PI / (groove.beatsPerCycle * position.beatSeconds)
+      groove.phase += groove.rate * seconds
+      if (position !== null)
+        groove.phase += nearestTurn(grooveTarget(position.beats, groove.beatsPerCycle) - groove.phase) * Math.min(1, seconds / grooveLagSeconds)
+      groove.at = time
+    }
   }
 
   /** Whether an errand may start now: the drive lists it, none runs, and she is free for it, as the schedule's hazard requires. */
@@ -574,7 +658,7 @@ export class NaturalIdleActivities {
     const between = (min: number, max: number) => min + (max - min) * random()
     const drawnSide: -1 | 1 = random() < 0.5 ? -1 : 1
     const inwardSide: -1 | 1 = Math.abs(input.placement) > 0.1 ? (input.placement > 0 ? 1 : -1) : drawnSide
-    const clip: Clip = { seq: this.seq + 1, kind, start: at, end: at, releasedAt: null, releaseSeconds: 0, side: drawnSide, requested: false, period: 2, tone: 0, keys: [], glances: [], count: 1, variant: 0 }
+    const clip: Clip = { seq: this.seq + 1, kind, start: at, end: at, releasedAt: null, releaseSeconds: 0, side: drawnSide, requested: false, period: 2, tone: 0, keys: [], glances: [], count: 1, variant: 0, groove: null }
     switch (kind) {
       case 'stretch':
         clip.end = at + 5.2
@@ -642,11 +726,21 @@ export class NaturalIdleActivities {
           clip.glances.push({ at: at + t - nodSettleSeconds + 0.2, point: { x: 0, y: 0 }, hold: 0.9 })
         break
       }
-      case 'sway':
+      case 'sway': {
         clip.end = at + between(8, 16)
         clip.period = between(1.7, 2.3)
         clip.tone = clamp01(0.5 + finite(drive.valence))
+        // Binds only at the start (CM5b D3), so a sway that starts unbound plays exactly as before the beat clock.
+        const position = beatAt(input.beatClock, at)
+        if (position !== null) {
+          const cycle = (beats: number) => Math.abs(beats * position.beatSeconds - clip.period)
+          // The smaller count wins a tie.
+          const beatsPerCycle = grooveBeatsPerCycle.reduce((best, beats) => cycle(beats) < cycle(best) ? beats : best)
+          clip.groove = { beatsPerCycle, phase: grooveTarget(position.beats, beatsPerCycle), rate: 2 * Math.PI / (beatsPerCycle * position.beatSeconds), at }
+          this.grooveLock = { seq: clip.seq, at, beatSeconds: position.beatSeconds, beatsPerCycle }
+        }
         break
+      }
       case 'sleep':
         clip.end = Number.POSITIVE_INFINITY
         clip.period = drive.body ? 0 : sleepNod.sink + sleepNod.rise + sleepNod.pause
@@ -853,7 +947,8 @@ export class NaturalIdleActivities {
         }
         case 'sway': {
           const e = trapezoid(age, 1.5, clip.end - clip.start - 3, 1.5)
-          const phase = 2 * Math.PI * age / clip.period
+          // A sway bound to the beat plays at its advanced phase; an unbound one computes it from its age, as before.
+          const phase = clip.groove?.phase ?? 2 * Math.PI * age / clip.period
           // The head trails the body and bobs once per beat, twice per sway.
           head(0.08 * e * Math.sin(phase - Math.PI / 2), 0.05 * e * Math.sin(2 * phase), 0.2 * e * Math.sin(phase))
           body(0.3 * e * Math.sin(phase - 0.6), 0, 0.3 * e * Math.sin(phase - 0.6))
