@@ -1,0 +1,13 @@
+[Unit]
+Description=AIRI perf tracker tick (pnpm perf:track tick)
+
+[Service]
+Type=oneshot
+Environment="PATH=@PATH@"
+WorkingDirectory=@RUNNER@
+TimeoutStartSec=6h
+ExecStartPre=@GIT@ -C @RUNNER@ fetch --quiet origin
+ExecStartPre=@GIT@ -C @RUNNER@ checkout --quiet --detach @REF@
+ExecStartPre=@PNPM@ -C @RUNNER@ install --frozen-lockfile
+ExecStart=/usr/bin/systemd-inhibit --what=sleep:idle --mode=block --who=airi-perf-track "--why=nightly perf bench" @PNPM@ -C @RUNNER@ perf:track tick --trigger timer
+ExecStopPost=@PNPM@ -C @RUNNER@ qa:display down --name perf-track

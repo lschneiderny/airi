@@ -1,15 +1,31 @@
+import type { TimerHost } from '../src/track/timer'
+
 import process from 'node:process'
 
+import { execFileSync } from 'node:child_process'
 import { homedir } from 'node:os'
+import { join, resolve } from 'node:path'
 
 import { errorMessageFrom } from '@moeru/std'
 
 import { formatSkipped } from '../src/perf/format'
 import { parseTrackArgs, TRACK_HELP, TrackUsageError } from '../src/track/args'
 import { appendTrackEvent, foldFindings, readTrackEvents, trackHistoryPath } from '../src/track/findings'
+import { installTimer, uninstallTimer } from '../src/track/timer'
 
 const print = (text: string) => process.stdout.write(`${text}\n`)
 const note = (text: string | null) => text !== null && process.stderr.write(text.split('\n').map(line => `perf:track: ${line}\n`).join(''))
+
+function timerHost(): TimerHost {
+  const run = (command: string) => (args: readonly string[]) => execFileSync(command, [...args], { cwd: resolve(import.meta.dirname, '../../..'), encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+  return {
+    git: run('git'),
+    systemctl: run('systemctl'),
+    configHome: process.env.XDG_CONFIG_HOME || join(homedir(), '.config'),
+    pathEnv: process.env.PATH ?? '',
+    print,
+  }
+}
 
 async function main(): Promise<number> {
   const command = parseTrackArgs(process.argv.slice(2), process.env)
@@ -32,10 +48,14 @@ async function main(): Promise<number> {
       return 0
     }
     case 'tick':
-    case 'install-timer':
-    case 'uninstall-timer':
       note(`${command.kind} is not implemented in this commit`)
       return 1
+    case 'install-timer':
+      installTimer(timerHost(), { ref: command.ref })
+      return 0
+    case 'uninstall-timer':
+      uninstallTimer(timerHost())
+      return 0
     default: {
       const unhandled: never = command
       return unhandled
