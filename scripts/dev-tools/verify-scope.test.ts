@@ -91,10 +91,10 @@ describe('verify gate and typecheck planning', () => {
   })
 
   it.each([
-    ['packages/motion-driver-natural/src/index.ts', ['AIRI_QA_RIG_FORBOOTH']],
-    ['packages/stage-ui-live2d/src/composables/live2d/live2d.ts', ['qa:smoke', 'AIRI_QA_RIG_FORBOOTH']],
-    ['packages/stage-ui-live2d/src/components/scene.vue', ['qa:smoke']],
-    ['packages/stage-ui-mmd/src/index.ts', ['qa:smoke', 'qa:motion3d diff']],
+    ['packages/motion-driver-natural/src/index.ts', ['AIRI_QA_RIG_FORBOOTH', 'render-loop code changed']],
+    ['packages/stage-ui-live2d/src/composables/live2d/live2d.ts', ['qa:smoke', 'AIRI_QA_RIG_FORBOOTH', 'render-loop code changed']],
+    ['packages/stage-ui-live2d/src/components/scene.vue', ['qa:smoke', 'render-loop code changed']],
+    ['packages/stage-ui-mmd/src/index.ts', ['qa:smoke', 'qa:motion3d diff', 'render-loop code changed']],
     ['packages/lab-tools/src/t2-3d/reports/idle-acts.ts', ['inject']],
     ['docs/ai/context/testing.md', []],
   ])('names the follow-up checks for %s in rule order', (path, expected) => {
@@ -107,16 +107,20 @@ describe('verify gate and typecheck planning', () => {
     const changed = [{ path: 'packages/stage-ui-mmd/src/index.ts', deleted: false }]
     expect(gateQaFor(changed)).toEqual(['smoke', 'model-tests', 'motion-affected'])
     const partly = followUpChecks(changed, new Set(['smoke', 'AIRI_QA_MMD_MODEL']))
-    expect(partly).toHaveLength(1)
+    expect(partly).toHaveLength(2)
     expect(partly[0]).toContain('qa:motion3d diff')
-    expect(followUpChecks(changed, new Set(['smoke', 'AIRI_QA_MMD_MODEL', 'motion-affected']))).toEqual([])
+    const met = followUpChecks(changed, new Set(['smoke', 'AIRI_QA_MMD_MODEL', 'motion-affected']))
+    expect(met).toHaveLength(1)
+    expect(met[0]).toContain('render-loop code changed')
   })
 
   it('keeps the Live2D rule when the model tests that passed did not include the rig', () => {
     const changed = [{ path: 'packages/motion-driver-natural/src/index.ts', deleted: false }]
     expect(gateQaFor(changed)).toEqual(['model-tests'])
-    expect(followUpChecks(changed, new Set(['AIRI_QA_MMD_MODEL']))).toHaveLength(1)
-    expect(followUpChecks(changed, new Set(['AIRI_QA_MMD_MODEL', 'AIRI_QA_RIG_FORBOOTH']))).toEqual([])
+    expect(followUpChecks(changed, new Set(['AIRI_QA_MMD_MODEL']))).toHaveLength(2)
+    const met = followUpChecks(changed, new Set(['AIRI_QA_MMD_MODEL', 'AIRI_QA_RIG_FORBOOTH']))
+    expect(met).toHaveLength(1)
+    expect(met[0]).toContain('render-loop code changed')
   })
 
   it('never meets a rule that the gate cannot run', () => {

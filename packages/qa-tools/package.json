@@ -30,7 +30,8 @@
     "./t2-3d/runner/loader": "./src/t2-3d/runner/loader.ts",
     "./t2-3d/runner/measurement": "./src/t2-3d/runner/measurement.ts",
     "./t2-3d/runner/run": "./src/t2-3d/runner/run.ts",
-    "./t2-3d/scenarios": "./src/t2-3d/scenarios.ts"
+    "./t2-3d/scenarios": "./src/t2-3d/scenarios.ts",
+    "./track/paths": "./src/track/paths.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
