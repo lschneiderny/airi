@@ -3,7 +3,7 @@ import type { BenchRunRecord } from './records'
 
 import { describe, expect, it } from 'vitest'
 
-import { compareBench } from './compare-bench'
+import { compareBench, environmentKey } from './compare-bench'
 
 const T0 = 1_794_000_000_000
 const DAY = 86_400_000
@@ -67,6 +67,19 @@ function compared(result: BenchComparison): Extract<BenchComparison, { status: '
 }
 
 describe('compareBench', () => {
+  it('keys the environment by every host field and model but not the code state', () => {
+    const original = run(16)
+    const key = environmentKey(original)
+    expect(environmentKey({ ...original, sha: 'b', electronVersion: '44', scenarioVersion: 2, buildMode: 'packaged' })).toBe(key)
+    for (const changed of [
+      { ...original, modelFingerprint: 'other' },
+      ...Object.entries({ platform: 'darwin', arch: 'arm64', cpuModel: 'fixture-cpu', cores: 8, totalMemKb: 100, gpu: 'fixture-gpu' })
+        .map(([field, value]) => ({ ...original, host: { ...host, [field]: value } })),
+    ]) {
+      expect(environmentKey(changed)).not.toBe(key)
+    }
+  })
+
   it('reports a 3-sigma slowdown that all five runs agree on as a regression', () => {
     const result = compared(compareBench({ runsA: commit(around(16)), runsB: commit(around(16 + 3 * SIGMA), { sha: 'b' }), history, metric: 'p95FrameMsApprox' }))
 
