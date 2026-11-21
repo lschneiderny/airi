@@ -23,9 +23,9 @@ that opens app windows through `pnpm qa:display run --`.
 
 App runtime code means files under `apps/stage-tamagotchi/src/**`,
 `packages/stage-ui*/src/**`, `packages/stage-shared/src/**`,
-`packages/stage-pages/src/**`, or `packages/stage-layouts/src/**`. When
-these paths change, `pnpm verify` lists the smoke after its summary, and
-`pnpm verify --gate` runs it.
+`packages/stage-pages/src/**`, `packages/stage-layouts/src/**`, or
+`packages/character-mind/src/**`. When these paths change, `pnpm verify`
+lists the smoke after its summary, and `pnpm verify --gate` runs it.
 
 Rendered sessions are needed only for visible changes. Other app runtime
 changes need the clean-start smoke at the branch gate, not a `qa:app` session.
