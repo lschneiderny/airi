@@ -2,7 +2,7 @@ import type { BenchRunRecord } from '@proj-airi/stage-shared/perf/usage'
 
 import type { BenchScenarioId } from '../bench/matrix'
 import type { HostLoad } from '../host-quiet/wait'
-import type { BenchScenarioAttribution } from '../perf/bench'
+import type { BenchScenarioAttribution, BenchScenarioComparison, BenchSide } from '../perf/bench'
 import type { AcceptedCost, Git } from './accepted-costs'
 import type { FindingOpenEvent, TrackEvent } from './findings'
 import type { BenchStep, Candidate, MetricBaseline, SubjectPlan } from './plan'
@@ -89,6 +89,24 @@ class Interrupted extends Error {}
 const OK: StepResult = { outcome: 'ok' }
 const lines = (text: string) => text.split('\n').map(line => line.trim()).filter(Boolean)
 const sha7 = (sha: string) => sha.slice(0, 7)
+
+/** Whether a bench that exited 1 recorded clean runs of `sha`, its only failures being runs marked invalid. */
+function onlyInvalidRuns(records: readonly BenchRunRecord[], sha: string): boolean {
+  return records.some(record => !record.valid)
+    && records.every(record => record.sha === sha && !record.dirty && (record.valid || record.invalidReason !== undefined))
+}
+
+/**
+ * A side whose recorded runs were all invalid has no eligible run, so `compareBenchRefs` cannot resolve it. This is
+ * the `no-runs` refusal `judgeComparison` rebenches; `undefined` when both sides have eligible runs.
+ */
+function noRunsComparison(scenario: string, a: string, b: string, eligible: readonly BenchRunRecord[]): BenchScenarioComparison | undefined {
+  const missing = [a, b].filter(sha => !eligible.some(run => run.sha === sha && run.scenario === scenario))
+  if (missing.length === 0)
+    return undefined
+  const side = (sha: string): BenchSide => ({ ref: sha, group: { sha, diffHash: null }, excluded: [] })
+  return { scenario, a: side(a), b: side(b), status: 'refused', refusals: missing.map(sha => ({ reason: 'no-runs', detail: `${sha7(sha)} has no eligible runs` })) }
+}
 
 /** Takes `<stateDir>/track.lock` (O_EXCL) for this pid; a lock whose pid is dead is stale and removed. */
 function takeLock(path: string, host: TrackHost): boolean {
@@ -371,15 +389,16 @@ class Tick {
       const ref = { kind: baseline.kind, sha: baseline.sha }
       for (;;) {
         const runs = (await readBenchHistory(this.benchPath)).runs
+        const eligible = eligibleRuns(runs, runs.filter(run => run.t >= this.startT))
         const result = compareBenchRefs({
-          runs: eligibleRuns(runs, runs.filter(run => run.t >= this.startT)),
+          runs: eligible,
           a: { kind: 'sha', text: baseline.sha, prefix: baseline.sha },
           b: { kind: 'sha', text: plan.subject.sha, prefix: plan.subject.sha },
           local: null,
           scenario: baseline.scenario,
           metric: null,
         })
-        const scenarioComparison = result.ok ? result.scenarios[0] : undefined
+        const scenarioComparison = result.ok ? result.scenarios[0] : noRunsComparison(baseline.scenario, baseline.sha, plan.subject.sha, eligible)
         if (!scenarioComparison) {
           this.host.log(`${baseline.scenario} ${sha7(baseline.sha)}..${sha7(plan.subject.sha)}: ${result.ok ? 'no comparison' : result.message}`)
           break
@@ -525,7 +544,8 @@ class Tick {
     return this.stopped
   }
 
-  private async bench(sha: string, scenario: BenchScenarioId, runs: number, cached: boolean): Promise<StepResult> {
+  /** `rebench` allows one more invocation of the same side when an exit 1 left it short of `runs` valid runs. */
+  private async bench(sha: string, scenario: BenchScenarioId, runs: number, cached: boolean, rebench = true): Promise<StepResult> {
     const prepared = this.launchBlocked() ?? await this.prepare(sha, cached)
     if (prepared.outcome !== 'ok')
       return prepared
@@ -551,6 +571,15 @@ class Tick {
     switch (code) {
       case 0:
         return this.checkRecords((await readBenchHistory(this.benchPath)).runs.slice(before), sha)
+      case 1: {
+        // qa:bench also exits 1 when a run is only invalid (host-contended, excluded-window); its valid runs still count.
+        const records = (await readBenchHistory(this.benchPath)).runs.slice(before)
+        if (!onlyInvalidRuns(records, sha))
+          return { outcome: 'broken', reason: 'bench-exit-1' }
+        if (rebench && records.filter(record => record.valid).length < runs)
+          return this.bench(sha, scenario, runs, cached, false)
+        return OK
+      }
       case 2:
         return { outcome: 'skipped', reason: 'subject-unsupported' }
       case 3:
