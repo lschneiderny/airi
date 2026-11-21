@@ -4,8 +4,8 @@ import type { GateOutcome, ReturnObservation, TouchObservation, TouchVoiceView, 
 import { errorMessageFrom } from '@moeru/std'
 import { nextVoiceWakeAt } from '@proj-airi/character-mind'
 
-/** The stimuli the voice port sends to the connected mind. */
-export type VoiceStimulus = Extract<MindStimulus, { kind: 'voice-tick' | 'user-turn' | 'voice-request' }>
+/** The stimuli the voice port sends to the connected mind. A `voice-outcome` reports a touch line the port no longer tracked. */
+export type VoiceStimulus = Extract<MindStimulus, { kind: 'voice-tick' | 'user-turn' | 'voice-request' | 'voice-outcome' }>
 
 /**
  * The voice channel the mind can reach: the leader's situation store. It senses and folds the situation, runs the

@@ -266,10 +266,11 @@ export const useSituationStore = defineStore('situation', () => {
   /** The leader's character mind, with the run it last received a tick in; see {@link connect}. */
   let mind: { send: (stimulus: VoiceStimulus) => void, tickedRun: number | null } | undefined
   /**
-   * Whether a user turn arrived that no mind could receive yet; it is sent after the tick that restores a mind's gate
-   * memory, and the mind applies it at that moment.
+   * Reports that no mind holding this run's gate memory could receive yet, at most one of each kind: a user turn, and
+   * a touch line that spoke while this store did not track it. They are sent after the tick that restores a mind's
+   * gate memory, and the mind applies each at that moment.
    */
-  let pendingUserTurn = false
+  let held: VoiceStimulus[] = []
   /** Set while "Evaluate now" runs; {@link publishVoice} fills it with what the mind published in the same call. */
   let evaluation: { decision: UrgeGateDecision | null, memory: UrgeGateMemory | null } | undefined
   /** Open threads of every chat session; the gate filters them by the active session. Rituals live in the gate memory's `day`. */
@@ -378,7 +379,7 @@ export const useSituationStore = defineStore('situation', () => {
         // Speaking to her is being here: presence follows the turn at once, so this turn's own prompt says so.
         sensors?.check(observation.atMs)
         observability.recordUserTurn(observation.atMs)
-        sendUserTurn()
+        report({ kind: 'user-turn' })
       }
     })
     exchangeSensor = startExchangeSensor(chatHooks, {
@@ -399,10 +400,15 @@ export const useSituationStore = defineStore('situation', () => {
       const nowMs = Date.now()
       // A touch reaction is not a gate topic: it settles the reaction turn and never addresses the touch event.
       if (trigger?.topicKey === TOUCH_TOPIC_KEY) {
-        if (speaking?.chatTurnId === context.turnId)
+        if (speaking?.chatTurnId === context.turnId) {
           lineSpoke(speaking, nowMs)
-        else
+        }
+        else {
           ingest({ kind: 'conversation', who: 'character', origin: 'reaction', atMs: nowMs })
+          // A touch line whose turn this store stopped tracking (its leadership ended mid-turn) still spoke: the mind
+          // starts the floor and the touch refractory. The chat turn id is the mind's turn id of the line.
+          report({ kind: 'voice-outcome', turnId: context.turnId, outcome: 'spoken' })
+        }
         return
       }
       // Every spoken unprompted turn addresses its own topic here. A widget reaction's notify is addressed only once it
@@ -637,8 +643,8 @@ export const useSituationStore = defineStore('situation', () => {
   /**
    * Sends the connected mind one gate tick with the view of this moment, and returns whether a mind received it. The
    * view is built as the gate's input: the signals, the settings, the local time, the pruned threads, the mood factor,
-   * and whether another unprompted turn is pending. A user turn that no mind could receive follows
-   * the tick, which restores the gate memory of a mind that is new to the run.
+   * and whether another unprompted turn is pending. The reports that no mind could receive (a user turn, an untracked
+   * spoken touch line) follow the tick, which restores the gate memory of a mind that is new to the run.
    * `forceTiming` (devtools "Evaluate now") skips the timing guards only; a forced fire starts its turn like any other.
    */
   function voiceTick(forceTiming = false): boolean {
@@ -648,19 +654,21 @@ export const useSituationStore = defineStore('situation', () => {
       return false
     connected.send({ kind: 'voice-tick', forceTiming, view: voiceView(controls) })
     connected.tickedRun = run.id
-    if (pendingUserTurn && mind === connected) {
-      pendingUserTurn = false
-      connected.send({ kind: 'user-turn' })
+    if (held.length > 0 && mind === connected) {
+      const replay = held
+      held = []
+      for (const stimulus of replay)
+        connected.send(stimulus)
     }
     return true
   }
 
-  /** Tells the mind of a user turn, or keeps it until a mind that holds this run's gate memory can receive it. */
-  function sendUserTurn() {
+  /** Tells the mind of a report, or holds it until a mind that holds this run's gate memory can receive it. */
+  function report(stimulus: Extract<VoiceStimulus, { kind: 'user-turn' | 'voice-outcome' }>) {
     if (mind && mind.tickedRun === run.id)
-      mind.send({ kind: 'user-turn' })
+      mind.send(stimulus)
     else
-      pendingUserTurn = true
+      held = [...held.filter(entry => entry.kind !== stimulus.kind), stimulus]
   }
 
   /**
@@ -711,7 +719,7 @@ export const useSituationStore = defineStore('situation', () => {
   /**
    * Connects the leader's character mind: `send` receives every gate tick and user turn from now on. The newest
    * connection wins. While the gate runs, the mind gets a tick at once, so it restores the run's gate memory before
-   * any other stimulus, and then the user turn that arrived while no mind was connected. Returns a function that
+   * any other stimulus, and then the reports that arrived while no mind was connected. Returns a function that
    * disconnects this connection; it does nothing once a newer one replaced it. The widget requests the previous mind
    * still held are lost with it, so their callers get `failed`.
    */
@@ -1133,7 +1141,7 @@ export const useSituationStore = defineStore('situation', () => {
     current.value = initialSituationState
     seenNotifyTopics.clear()
     lastSpokenUnpromptedTurnId = undefined
-    pendingUserTurn = false
+    held = []
     foregroundCategory.value = null
   }
 

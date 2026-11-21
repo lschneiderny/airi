@@ -2193,6 +2193,18 @@ describe('situation gate loop', () => {
     expect(await reactionOutcomes(observability)).toEqual({ spoken: 1, declined: 0, cancelled: 0, failed: 0, refused: 0 })
   })
 
+  it('starts the gate floor and the touch refractory for a reaction that speaks after the store stopped tracking it', async () => {
+    const { store, hooks, mind } = startQuietLeader()
+    const { line } = await protest(store)
+    const spokenAtMs = Date.now()
+
+    // The turn started under an earlier leadership of this window, so no line of this store runs it.
+    await hooks.emitTokenLiteralHooks('Hey, quit it!', reactionContext({ kind: line.reaction, topicText: 'poked her', eventId: line.eventId }))
+
+    expect(await memoryAtNextTick()).toMatchObject({ lastFireAtMs: spokenAtMs, lastSpokenAtMs: spokenAtMs, unanswered: 0 })
+    expect(mind.state.voice.reaction.lastLineAtMs).toBe(spokenAtMs)
+  })
+
   it('resolves a reaction at its first literal, before the submit result arrives', async () => {
     const { store, hooks, chat } = startQuietLeader()
     chat.submitReaction.mockImplementationOnce(() => new Promise<ChatUnpromptedResult>(() => {}))
