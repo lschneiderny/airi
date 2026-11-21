@@ -3,7 +3,7 @@ import type { Rectangle } from 'electron'
 import { EventEmitter } from 'node:events'
 
 import { createContext } from '@moeru/eventa'
-import { bounds } from '@proj-airi/electron-eventa'
+import { bounds, startLoopGetBounds } from '@proj-airi/electron-eventa'
 import { createRendererLoop } from '@proj-airi/electron-vueuse/main'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -199,5 +199,30 @@ describe('window service bounds loop', () => {
     await loop.run()
 
     expect(sent).toEqual([trusted, null, trusted])
+  })
+
+  it('sends a rectangle only when it changes, and again to a renderer that restarts the loop', async () => {
+    const context = createContext()
+    const window = Object.assign(new EventEmitter(), { webContents: { id: 1 } })
+    createWindowService({ context: context as never, window: window as never })
+    const sent: Array<Rectangle | null | undefined> = []
+    context.on(bounds, event => sent.push(event.body))
+    const [loop] = vi.mocked(createRendererLoop).mock.calls.at(-1) ?? []
+    if (!loop)
+      throw new Error('Window service did not register its bounds loop')
+
+    const at = { x: 50, y: 560, width: 300, height: 400 }
+    vi.mocked(readRendererWindowBounds).mockReturnValue(at)
+    await loop.run()
+    vi.mocked(readRendererWindowBounds).mockReturnValue({ ...at })
+    await loop.run()
+    const moved = { ...at, x: 51 }
+    vi.mocked(readRendererWindowBounds).mockReturnValue(moved)
+    await loop.run()
+    await loop.run()
+    await mocks.handlers.get(startLoopGetBounds)!(undefined, ownSender)
+    await loop.run()
+
+    expect(sent).toEqual([at, moved, moved])
   })
 })
