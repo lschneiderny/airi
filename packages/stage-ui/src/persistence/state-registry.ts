@@ -58,7 +58,11 @@ export type PersistenceTier = 1 | 2 | 3 | 4 | 'plain' | 'cache'
 interface LocationFlags {
   /** Only an older release or a `// NOTICE:` move wrote it. The sweep removes it; a write to it fails the focused test. */
   legacy?: true
-  /** The owner reset writes it and the sweep leaves it. Only the voiceprint deletion time, which an enrollment started before the deletion must still see. */
+  /**
+   * The sweep leaves it. Only the voiceprint deletion time, which the owner reset writes and an enrollment started
+   * before the deletion must still see, and the sticker copy's marker, which keeps the copy from reading the old sticker
+   * database again while its deletion waits for a connection to close.
+   */
   kept?: true
 }
 
@@ -818,10 +822,14 @@ export const stateRegistry = defineStateRegistry([
     writers: ['packages/stage-ui/src/database/repos/stickers.repo.ts', 'packages/stage-ui/src/stores/modules/stickers.ts'],
     tier: 4,
     locations: [
-      { area: 'indexedDB', database: 'airi-sticker-library', store: 'records' },
+      // Deleted before the library is emptied. A connection that an earlier copy left open delays the deletion, and the
+      // kept marker stops the next read from copying the old stickers back or waiting behind the deletion meanwhile.
+      { area: 'indexedDB', database: 'airi-stickers', legacy: true },
+      { area: 'indexedDB', database: 'airi-sticker-library', store: 'records', prefix: 'entries:' },
+      { area: 'indexedDB', database: 'airi-sticker-library', store: 'records', prefix: 'images:' },
+      { area: 'indexedDB', database: 'airi-sticker-library', store: 'records', prefix: 'migrated-from:', kept: true },
       { area: 'localStorage', key: 'settings/stickers/enabled' },
       { area: 'localStorage', key: 'settings/stickers/frequency' },
-      { area: 'indexedDB', database: 'airi-stickers', legacy: true },
     ],
   },
   {
@@ -1154,7 +1162,8 @@ async function deleteDatabase(name: string) {
     const request = indexedDB.deleteDatabase(name)
     request.onsuccess = () => resolve()
     request.onerror = () => reject(request.error)
-    // An open connection delays the deletion until it closes. The deletion stays queued, so do not wait for it.
+    // An open connection delays the deletion until it closes, which may be never for a window that keeps it open. The
+    // deletion stays queued and runs then; its registration keeps any reader from opening the database meanwhile.
     request.onblocked = () => resolve()
   })
 }
@@ -1207,8 +1216,10 @@ async function sweepLocation(location: StorageLocation) {
 async function sweep(locations: readonly StorageLocation[]) {
   sweepWebStorage('localStorage', locations)
   sweepWebStorage('sessionStorage', locations)
-  for (const location of locations)
-    await sweepLocation(location)
+  for (const location of locations) {
+    if (!isKept(location))
+      await sweepLocation(location)
+  }
 }
 
 /**
