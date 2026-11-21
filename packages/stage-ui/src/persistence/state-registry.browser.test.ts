@@ -193,11 +193,14 @@ it('lets no two registrations claim the same storage', () => {
   expect(new Set(named).size).toBe(named.length)
 })
 
-it('keeps only the voiceprint deletion time through a sweep', () => {
+it('keeps only the voiceprint deletion time and the sticker copy marker through a sweep', () => {
   const kept = registrations.flatMap(registration => registration.locations
     .filter(location => 'kept' in location && location.kept)
     .map(location => ({ id: registration.id, location })))
-  expect(kept).toEqual([{ id: 'voiceprints', location: { area: 'localStorage', key: 'settings/voice/voiceprint-deleted-at', kept: true } }])
+  expect(kept).toEqual([
+    { id: 'voiceprints', location: { area: 'localStorage', key: 'settings/voice/voiceprint-deleted-at', kept: true } },
+    { id: 'stickers', location: { area: 'indexedDB', database: 'airi-sticker-library', store: 'records', prefix: 'migrated-from:', kept: true } },
+  ])
 })
 
 it('registers every unstorage mount', () => {

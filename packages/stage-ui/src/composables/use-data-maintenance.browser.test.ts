@@ -16,6 +16,7 @@ import { createApp, nextTick, toRaw } from 'vue'
 import { createI18n } from 'vue-i18n'
 
 import { characterStateRepo } from '../database/repos/character-state.repo'
+import { stickersRepo } from '../database/repos/stickers.repo'
 import { storage } from '../database/storage'
 import { useHostNoticeSettings } from '../features/host-capabilities/notice-settings'
 import { useExpressionPerformanceSettings } from '../features/performance/settings'
@@ -578,6 +579,29 @@ it('leaves no registered location holding data when all data is deleted', async 
   expect(remaining).toEqual([])
   // An enrollment that started before the deletion must still see when it happened.
   expect(localStorage.getItem('settings/voice/voiceprint-deleted-at')).not.toBeNull()
+})
+
+// ROOT CAUSE:
+// The sweep emptied the sticker library, the copy's marker included, before it deleted the old sticker database, whose
+// deletion an open connection delayed. The next read ran the copy again and waited behind that deletion, holding the
+// sticker write lock.
+it('reads the sticker library at once after all data is deleted while a connection delays the old database\'s deletion', async () => {
+  vi.stubGlobal('fetch', vi.fn<typeof fetch>(async () => Response.json({ voices: [], models: [] })))
+  // The copy runs while no old database exists, and writes its marker.
+  await stickersRepo.read()
+  await withStore('airi-stickers', 'entries', 'readwrite', target => target.put({ id: 'old-sticker' }, 'old-sticker'))
+  // Another window that copied from the old database keeps its connection open.
+  const copyConnection = await requestResult(indexedDB.open('airi-stickers'))
+  const { runtime, maintenance } = mountMaintenance(`maintenance:${crypto.randomUUID()}`, 'leader-only')
+  await vi.waitFor(() => expect(runtime.isLeader()).toBe(true))
+  try {
+    await maintenance.deleteAllData()
+
+    expect((await stickersRepo.read()).records).toEqual([])
+  }
+  finally {
+    copyConnection.close()
+  }
 })
 
 // ROOT CAUSE:
