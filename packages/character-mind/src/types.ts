@@ -190,6 +190,8 @@ export interface MindState {
 export interface VoiceLineState {
   turnId: string
   kind: VoiceLine['kind']
+  /** The run the line opened in. A restore for a later run replaces the gate memory that the line's outcome would update. */
+  runId: number | null
   /** The gate fields a refused reach-out restores. Null for other lines. */
   before: Pick<UrgeGateMemory, 'lastFireAtMs' | 'fires' | 'pending' | 'urge' | 'urgeThreshold' | 'doubleText'> | null
   /** When a widget line must have spoken, on the mind's clock; null for other lines. */
