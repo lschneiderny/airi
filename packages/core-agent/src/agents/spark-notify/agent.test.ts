@@ -162,4 +162,21 @@ describe('createSparkNotifyAgent', () => {
     const system = run.mock.lastCall?.[0].conversation.turns[0]
     expect(system?.type === 'system' ? system.content : undefined).toEqual([{ type: 'text', text: 'You are a character.' }])
   })
+
+  it('sends no system turn for a blank host system prompt', async () => {
+    const run = vi.fn(async (_request: SparkNotifyRunRequest) => {})
+    const agent = createSparkNotifyAgent({ runner: { run } })
+
+    await agent.handle({
+      event: createEvent(),
+      selectedChat: {
+        providerId: 'mock-provider',
+        model: 'mock-model',
+        provider: { generation: model => ({ protocol: 'chat-completions', config: { model, baseURL: 'https://example.test/' } }) },
+      },
+      systemPrompt: ' \n',
+    })
+
+    expect(run.mock.lastCall?.[0].conversation.turns.map(turn => turn.type)).toEqual(['user'])
+  })
 })
