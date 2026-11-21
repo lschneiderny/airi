@@ -1,4 +1,4 @@
-import type { BenchCodeState, BenchGroupRow, BenchScenarioComparison, BenchSide } from './bench'
+import type { BenchCodeState, BenchGroupRow, BenchScenarioAttribution, BenchScenarioComparison, BenchSide } from './bench'
 import type { IncidentEntry, IncidentFile } from './incident'
 import type { PerfFileCounts } from './read'
 import type { SessionSummary } from './sessions'
@@ -103,7 +103,22 @@ export function formatBenchGroups(rows: readonly BenchGroupRow[]): string {
 const formatSide = (side: BenchSide) => `${side.ref} (${formatCodeState(side.group)})`
 const formatValues = (values: readonly { readonly run: number, readonly value: number }[]) => values.map(entry => `${entry.run}=${entry.value.toFixed(2)}`).join(' ')
 
-/** Every run value, the medians, sigma, practical floor, agreement, verdict, confidence and staleness, or the refusals. */
+const formatSigned = (value: number, digits: number) => `${value >= 0 ? '+' : ''}${value.toFixed(digits)}`
+
+/** The stages that moved in the verdict's direction, under a regression or improvement only. */
+function formatAttribution(attribution: BenchScenarioAttribution[keyof BenchScenarioAttribution]): string[] {
+  const lines = ['    stage attribution (informational):']
+  if (!attribution.timed)
+    return [...lines, '      stage timings not recorded for this scenario']
+  if (attribution.noStageMoved)
+    return [...lines, '      no timed stage moved: the cost is outside the timed stages (GPU, compositor, or untimed work)']
+  return [...lines, ...attribution.stages.map(stage => `      stage ${stage.id}  ${formatSigned(stage.deltaMsPerFrame, 2)} ms/frame  (z ${stage.z.toFixed(1)})`)]
+}
+
+/**
+ * Every run value, the medians, sigma, practical floor, agreement, verdict, confidence and staleness, or the refusals.
+ * A regression or improvement verdict is followed by the stage attribution in its direction.
+ */
 export function formatBenchCompare(scenarios: readonly BenchScenarioComparison[]): string {
   return scenarios.flatMap((scenario) => {
     const lines = [`${scenario.scenario}: A ${formatSide(scenario.a)} vs B ${formatSide(scenario.b)}`]
@@ -122,6 +137,8 @@ export function formatBenchCompare(scenarios: readonly BenchScenarioComparison[]
         `    sigma ${result.sigma.toFixed(3)} (${result.noise}, ${result.historyCommits} history commits), floor ${result.practicalFloor}, agreement ${result.agreement.count} of ${result.agreement.of} (needs ${result.agreement.required})`,
         `    lowConfidence ${result.lowConfidence}, stale ${result.stale}`,
       )
+      if (result.verdict !== 'within-noise')
+        lines.push(...formatAttribution(scenario.attribution[result.verdict]))
     }
     return lines
   }).join('\n')
