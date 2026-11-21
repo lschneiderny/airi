@@ -1,11 +1,13 @@
 import process from 'node:process'
 
 import { MOTION_TRACE_CHANNELS } from '@proj-airi/motion-driver-humanoid/motion-trace'
+import { MMDNaturalAdapter } from '@proj-airi/stage-ui-mmd/composables/mmd/natural/adapter'
 import { Quaternion, Vector3 } from 'three'
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
 
 import { QA_IDLE_DRIVE } from '../idle-drive'
 import { parseTrace } from '../read-trace'
+import { scriptBeats } from '../scenarios'
 import { createRunnerMind, runMotion3dScenario } from './run'
 
 it('tells the mind of a music scenario that music plays before the first frame, and the mind of any other nothing', () => {
@@ -65,6 +67,33 @@ it.runIf(process.env.AIRI_QA_MMD_MODEL)('sets a scenario\'s idle drive, names it
   expect(off.idle).toEqual([])
   expect(['idleDrive', 'idleDriveValues'].filter(key => key in off.detail)).toEqual([])
   expect(off.detail.acts).toBe('off')
+}, 90_000)
+
+it.runIf(process.env.AIRI_QA_MMD_MODEL)('hands a scenario\'s scripted beats to the MMD adapter at the frame each arrives, and names them in the provenance', async () => {
+  const model = process.env.AIRI_QA_MMD_MODEL
+  if (!model)
+    throw new Error('AIRI_QA_MMD_MODEL is required')
+  const beats = { bpm: 120, jitterSeconds: 0.02 }
+  const sent = vi.spyOn(MMDNaturalAdapter.prototype, 'beat')
+  try {
+    const { trace } = await runMotion3dScenario({
+      model,
+      seed: 1,
+      seconds: 6,
+      warmupSeconds: 2,
+      acts: 'on',
+      git: { gitSha: 'test', dirty: false },
+      signal: new AbortController().signal,
+      scenario: { version: 1, id: 'beats', class: 'idle', seconds: 6, warmupSeconds: 2, idleDrive: { name: 'test-drive', drive: QA_IDLE_DRIVE }, music: true, beats, timeline: () => [] },
+    })
+    // The last frame is at 7 59/60 s of the run, 5 59/60 s of scored time.
+    const expected = scriptBeats(1, -2, 6, beats).onsets.filter(onset => onset.at <= 6 - 1 / 60 + 1e-9)
+    expect(sent.mock.calls.map(([intervalSeconds]) => intervalSeconds)).toEqual(expected.map(onset => onset.intervalSeconds))
+    expect(JSON.parse(String(trace.source.detail.beats))).toEqual(beats)
+  }
+  finally {
+    sent.mockRestore()
+  }
 }, 90_000)
 
 it.runIf(process.env.AIRI_QA_MMD_MODEL)('turns toward six gaze targets with increasing head yaw on each side and looks back at the camera after each look', async () => {
