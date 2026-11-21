@@ -4,4 +4,5 @@
 - A stage run that presses on the character locates her by opaque pixels with an alpha-qualified locator. A locator built from a composite screenshot reports false fall-throughs on transparent edge pixels (`.omo/plans/linux-sensor-parity.md`, todo 34).
 - Rig, model, or core assets are not committed.
 - Never import `@proj-airi/lab-tools`. Research depends on QA, not the reverse: when lab-tools needs a module, add it to `exports` here.
+- Exception: `qa:llm --set` and `qa:app --set`, and the set-mode test in `src/llm/server.test.ts`, read `packages/lab-tools/model-eval/sets/<id>/transcripts.jsonl` as data. The rows use the transcript format qa-tools owns, and the sets stay in lab-tools with the records they belong to. Add no other read of lab-tools files.
 - Never skip, delete, or weaken a test to clear a failure.
