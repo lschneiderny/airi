@@ -185,12 +185,20 @@ describe('screen service', () => {
     expect(screen.getCursorScreenPoint).not.toHaveBeenCalled()
   })
 
-  it('withholds a degraded cursor outside the window once', async () => {
-    const macos = capabilitiesForHost('macos')
-    Object.assign(getCurrentHostCapabilities(), {
-      ...macos,
-      signals: { ...macos.signals, cursorScreenPoint: { kind: 'degraded', reason: 'linux-cursor-verifying' } },
-    })
+  it('withholds a compositor cursor that is still verifying outside the window once', async () => {
+    Object.assign(getCurrentHostCapabilities(), capabilitiesForHost('linux-xwayland', {
+      backend: 'kwin',
+      bridge: 'ready',
+      foregroundVerified: true,
+      cursorVerified: false,
+      geometryVerified: true,
+      keepAboveVerified: true,
+      lockSource: null,
+      portalShortcuts: 'absent',
+      bridgeFailure: null,
+      clickThroughToggle: false,
+      systemAudioVerified: false,
+    }))
     const { sent, tick, startLoop } = setupScreen()
     vi.mocked(screen.getCursorScreenPoint).mockReturnValue({ x: -800, y: 900 })
 
