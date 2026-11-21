@@ -4,7 +4,7 @@ Scope: find the best local-only results for the character on a MacBook with an A
 
 Status vocabulary: `measured` comes from a recorded run, `observed` was seen in replies or logs, `inferred` follows from code, and `unverified` names the check that would settle it.
 
-The data is in the [local model screen set](../../../packages/qa-tools/model-eval/sets/live-2026-11-18-mac-m2-local-models/README.md): its transcripts, scores, pooled tables, and `results/app-conditions.json`. The current recommendation and open decisions are kept in [Local character models](../context/local-models.md); this report is the record of how they were reached.
+The data is in the [local model screen set](../../../packages/lab-tools/model-eval/sets/live-2026-11-18-mac-m2-local-models/README.md): its transcripts, scores, pooled tables, and `results/app-conditions.json`. The current recommendation and open decisions are kept in [Local character models](../context/local-models.md); this report is the record of how they were reached.
 
 ## Summary
 
