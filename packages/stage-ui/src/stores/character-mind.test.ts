@@ -350,6 +350,26 @@ describe('character mind store', () => {
     expect(nextIdleWakeAt(store.mind.state.idle)).toBeNull()
   })
 
+  it('frees the mind from an idle act the older stage can no longer answer when a newer stage attaches', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(T0)
+    const store = useCharacterMindStore()
+    const older = vi.fn()
+    store.attachStage({ idleCue: vi.fn(), idle: older }).report([{ kind: 'view', view: idleView }])
+    vi.advanceTimersByTime(Math.ceil(nextIdleWakeAt(store.mind.state.idle)! - T0))
+    expect(older).toHaveBeenCalledOnce()
+
+    // The older stage's answer to that act no longer counts, so only the newer stage's view can free the mind.
+    const newer = vi.fn()
+    store.attachStage({ idleCue: vi.fn(), idle: newer }).report([{ kind: 'view', view: idleView }])
+    const wakeAt = nextIdleWakeAt(store.mind.state.idle)
+    expect(wakeAt).not.toBeNull()
+    vi.advanceTimersByTime(Math.ceil(wakeAt! - Date.now()))
+
+    expect(newer).toHaveBeenCalledOnce()
+    expect(newer.mock.calls[0][0]).toMatchObject({ kind: 'idle-act', requested: false })
+  })
+
   it('wakes the mind at its idle deadline, sends the act it decides, and stops the timer on dispose', () => {
     vi.useFakeTimers()
     vi.setSystemTime(T0)
