@@ -254,9 +254,9 @@ export class NaturalMotion {
       regime: stream('regime'),
     })
     this.chatRandom = stream('chat')
-    this.gaze = new NaturalGazeLayer(stream('gaze'), this.chatRandom, (point, hold, at) => {
+    this.gaze = new NaturalGazeLayer(stream('gaze'), this.chatRandom, ({ source, ...outcome }) => {
       if (this.observer)
-        this.notify({ kind: 'glance', at, cause: 'chat-typing', point, hold })
+        this.notify({ kind: 'glance', cause: source, ...outcome })
     })
     this.cursorAttention = new NaturalCursorAttention()
     this.body = new NaturalBodyLayer(stream('body'), home)
@@ -781,7 +781,7 @@ export class NaturalMotion {
     this.cursorShare = cursorShare
     this.gaze.setCursorTarget({ x: mapped.eye.x, y: above ? Math.min(aboveAnchorEyeLimit, mapped.eye.y) : mapped.eye.y }, attention.oriented ? cursorShare : 0)
     for (const event of attention.events) {
-      if (event.kind === 'notice' && stepStart >= this.petGlanceUntil)
+      if (event.kind === 'notice')
         this.gaze.orient(stepStart)
       else if (event.kind === 'release')
         this.gaze.disengage(stepStart)
@@ -814,7 +814,7 @@ export class NaturalMotion {
     }
     else if (!this.pet.active && this.petStartedAt !== null) {
       if (permission === 'full' && stepStart - this.petStartedAt > longPetDurationSeconds)
-        this.petGlanceUntil = this.gaze.glance({ source: 'pet-end', point: { x: 0, y: 0 }, hold: petGlanceDurationSeconds }, stepStart)
+        this.petGlanceUntil = this.gaze.glance({ source: 'pet-end', point: { x: 0, y: 0 }, hold: petGlanceDurationSeconds }, stepStart) ?? this.petGlanceUntil
       this.petStartedAt = null
       if (this.observer)
         this.notify({ kind: 'touch', at: stepStart, touch: 'pet-end', region: 'head' })
@@ -823,7 +823,7 @@ export class NaturalMotion {
     for (const action of pending) {
       if (action.kind !== 'chat')
         continue
-      if (chatTarget == null || this.energy.talking || this.petOverride || stepStart < this.petGlanceUntil)
+      if (chatTarget == null || this.energy.talking)
         continue
       this.chatGlance = {
         at: stepStart + (action.cue === 'sent' ? 0.18 + 0.12 * this.chatRandom() : 0.25),
@@ -835,11 +835,8 @@ export class NaturalMotion {
     if (this.chatGlance !== null && stepStart >= this.chatGlance.at) {
       const glance = this.chatGlance
       this.chatGlance = null
-      if (chatTarget != null && !this.energy.talking && !this.petOverride && stepStart >= this.petGlanceUntil) {
-        this.chatGlanceUntil = this.gaze.glance({ source: glance.cause, point: glance.point, hold: glance.hold }, stepStart)
-        if (this.observer)
-          this.notify({ kind: 'glance', at: stepStart, cause: glance.cause, point: glance.point, hold: glance.hold })
-      }
+      if (chatTarget != null && !this.energy.talking)
+        this.chatGlanceUntil = this.gaze.glance({ source: glance.cause, point: glance.point, hold: glance.hold }, stepStart) ?? this.chatGlanceUntil
     }
     if (this.observer) {
       for (const action of pending) {

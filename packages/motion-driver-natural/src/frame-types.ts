@@ -5,7 +5,7 @@ import type { NaturalBreathOutput } from './breath'
 import type { CueGestureKind } from './cue-gestures'
 import type { GestureKind, naturalEmotions } from './emotions'
 import type { NaturalFaceOutput } from './face'
-import type { GazePoint } from './gaze'
+import type { GazePoint, GlanceSource } from './gaze'
 import type { IdleBehaviourKind, IdleBehaviourRecord } from './idle-activities'
 import type { IdleErrandRecord } from './idle-errands'
 import type { PostureHome, Vec3 } from './posture'
@@ -61,13 +61,18 @@ export interface NaturalIdleEvent {
   behaviour: IdleBehaviourKind
 }
 
-/** A chat fixation or screen-change glance actually started. Point is normalized eye space; hold is seconds. */
+/**
+ * The gaze arbiter started or refused a glance, or a typing fixation on the chat started (`chat-typing`, always
+ * `started`). `cause` names the glance's source. Point is normalized eye space; hold is seconds, null for a cursor
+ * notice, whose pursuit has no fixed hold.
+ */
 export interface NaturalGlanceEvent {
   kind: 'glance'
   at: number
-  cause: 'chat-sent' | 'chat-unfold' | 'chat-typing' | 'screen-change'
+  cause: GlanceSource | 'chat-typing'
+  outcome: 'started' | 'refused'
   point: GazePoint
-  hold: number
+  hold: number | null
 }
 
 /** The eased placement yaw changed by at least 0.005, or placement was disabled. No motion or RNG effect. */

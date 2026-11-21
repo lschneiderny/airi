@@ -192,6 +192,22 @@ A pure check that decides whether the character may speak unprompted now. The ha
 **Not to be confused with:** `pnpm verify --gate` in dev tooling, which is unrelated; and the reaction policy (see Reaction).
 **Avoid:** "opportunity gate" (the superseded design; see Conflicting usages), "cooldown".
 
+### Gaze arbiter
+
+The rule in Natural's gaze layer that decides between [glances](#glance) under the Natural driver, on both renderers. Each request names its source, and the arbiter ranks it by a fixed priority: the long-pet camera glance and a poke, then the desktop wake and the wake from sleep, then a chat read and the idle voice cues, then cue gestures and emotions, then the screen change, then a noticed cursor, then idle acts. A request starts unless the running glance ranks higher; a lower one is refused and dropped, never queued. While the pet override holds, only the long-pet camera glance starts. It runs at frame rate on Natural's active seconds, and the [character mind](#character-mind) does not rank glances.
+
+**Code:** `packages/motion-driver-natural/src/gaze.ts` `NaturalGazeLayer` (`glance`, `orient`, `claim`), `GLANCE_PRIORITY`, `GlanceSource`.
+**Not to be confused with:** cursor attention, which decides whether she notices the cursor at all; and MMD's head and eye aim, which follows the gaze target the arbiter leaves.
+**Avoid:** "gaze policy" (the mind has none), "glance queue".
+
+### Glance
+
+A held look that another layer asks Natural's gaze layer for: a saccade to a point, held for a set time, before her own fixations resume. A poke, an emotion impulse, a desktop reaction, a chat read, a cue gesture, an idle act, the wake from sleep, and the end of a long pet each ask for one, and the [gaze arbiter](#gaze-arbiter) decides which runs. The observer reports every glance started or refused as a `glance` event with its source as `cause`.
+
+**Code:** `packages/motion-driver-natural/src/gaze.ts` `NaturalGazeLayer` `glance`, `GlanceRequest`; `packages/motion-driver-natural/src/frame-types.ts` `NaturalGlanceEvent`.
+**Not to be confused with:** the cue `glance` gesture, one source of a glance; and the autonomous fixations (free, typing, cursor pursuit), which are not glances and rank below every one.
+**Avoid:** "look" for a glance (the `look_at` tool and ACT `look` are other inputs).
+
 ### Groove
 
 The character's response to music: an episode of Natural's `sway` idle act, which the character mind's [idle policy](#idle-policy) draws only while it hears music, at the act's usual odds, cooldown, and length. The mind hears music from one detector: upstream's [beat sync](#beat-sync) detector, whose beats count as music after 8 s with no gap over 1.8 s, outside game, call, and chat apps. The leader's mind store hosts the detector while the window leads and sends each start and stop as a `music` stimulus. On MMD the performer plays the same act as a body offset. The groove sways at its drawn period; it does not follow the beat yet.
@@ -534,7 +550,7 @@ These terms name parts of the target design in the [character mind ADR](../adr/2
 
 ### Channel
 
-One part of her output with a single owner: gaze, head and posture, face and expression slots, body (stance, clips, locomotion), and voice.
+One part of her output with a single owner: gaze, head and posture, face and expression slots, body (stance, clips, locomotion), and voice. The gaze channel's owner under Natural is Natural's gaze layer, whose [gaze arbiter](#gaze-arbiter) decides every glance.
 
 **Not to be confused with:** a Live2D parameter or an MMD bone, several of which make up one channel.
 

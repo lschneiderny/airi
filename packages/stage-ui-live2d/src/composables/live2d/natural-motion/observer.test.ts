@@ -133,10 +133,10 @@ describe('natural motion observer', () => {
 
     expect(run(seed, 60, emotionTimeline)).toBe(emotionHashes[seed - 1])
     expect(run(seed, 60, emotionTimeline, { observer })).toBe(emotionHashes[seed - 1])
-    expect(events.map(event => event.kind)).toEqual(['impulse', 'gesture', 'hold', 'impulse', 'gesture', 'hold', 'hold'])
+    expect(events.map(event => event.kind)).toEqual(['impulse', 'gesture', 'glance', 'hold', 'impulse', 'gesture', 'glance', 'hold', 'hold'])
   })
 
-  it('reports impulses, gestures, and holds at the grid step that performs them', () => {
+  it('reports impulses, gestures, glances, and holds at the grid step that performs them', () => {
     const { events, observer } = recorder()
     run(1, 60, emotionTimeline, { observer })
     const side = expect.any(Number)
@@ -144,15 +144,17 @@ describe('natural motion observer', () => {
     expect(events).toEqual([
       { kind: 'impulse', at: expect.any(Number), emotion: 'angry', band: 'strong', intensity: 0.9, side },
       { kind: 'gesture', at: expect.any(Number), gesture: expect.stringMatching(/^(?:shake|drop)$/), side },
+      { kind: 'glance', at: expect.any(Number), cause: 'emotion', outcome: 'started', point: expect.any(Object), hold: expect.any(Number) },
       { kind: 'hold', at: expect.any(Number), emotion: 'angry', strength: 0.9, side },
       { kind: 'impulse', at: expect.any(Number), emotion: 'happy', band: 'clear', intensity: 0.6, side },
       { kind: 'gesture', at: expect.any(Number), gesture: 'laugh', side },
+      { kind: 'glance', at: expect.any(Number), cause: 'emotion', outcome: 'started', point: expect.any(Object), hold: expect.any(Number) },
       { kind: 'hold', at: expect.any(Number), emotion: 'happy', strength: 0.6, side },
       { kind: 'hold', at: expect.any(Number), emotion: null, strength: 0, side: null },
     ])
-    expect(events.slice(0, 6).every(event => 'side' in event && (event.side === -1 || event.side === 1))).toBe(true)
+    expect(events.filter(event => event.kind !== 'glance').slice(0, 6).every(event => 'side' in event && (event.side === -1 || event.side === 1))).toBe(true)
     // Inputs before `advance(t)` start on the first grid step at or after `t`.
-    for (const [index, input] of [20, 20, 20, 40, 40, 40, 50].entries()) {
+    for (const [index, input] of [20, 20, 20, 20, 40, 40, 40, 40, 50].entries()) {
       expect(events[index].at).toBeGreaterThanOrEqual(input - 1e-9)
       expect(events[index].at).toBeLessThan(input + step + 1e-9)
     }
@@ -183,8 +185,8 @@ describe('natural motion observer', () => {
     })
 
     expect(run(1, 60, emotionTimeline, { observer })).toBe(emotionHashes[0])
-    expect(observer).toHaveBeenCalledTimes(7)
-    expect(error).toHaveBeenCalledTimes(7)
+    expect(observer).toHaveBeenCalledTimes(9)
+    expect(error).toHaveBeenCalledTimes(9)
     expect(error).toHaveBeenCalledWith('[natural-motion] The observer failed:', 'observer fixture failure')
   })
 
@@ -202,12 +204,12 @@ describe('natural motion observer', () => {
     expect(Math.abs(events[0].at - 30)).toBeLessThanOrEqual(step + 1e-9)
   })
 
-  it('reports impulses but no holds or gestures while held emotions are off', () => {
+  it('reports impulses and their glances but no holds or gestures while held emotions are off', () => {
     const { events, observer } = recorder()
     const setup = (motion: NaturalMotion) => motion.setPerformanceSettings({ ...defaultExpressionPerformanceSettings, heldEmotions: false })
     run(1, 60, emotionTimeline, { observer, setup })
 
-    expect(events.map(event => event.kind)).toEqual(['impulse', 'impulse'])
+    expect(events.map(event => event.kind)).toEqual(['impulse', 'glance', 'impulse', 'glance'])
   })
 
   it('performs the injected recipe table', () => {

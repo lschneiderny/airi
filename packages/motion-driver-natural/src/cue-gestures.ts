@@ -183,7 +183,8 @@ export class NaturalCueGestures {
   private start(kind: CueGestureKind, count: number, at: number) {
     const side = kind === 'lean' && Math.abs(this.placement) > 0.1 ? (this.placement > 0 ? 1 : -1) : this.random() < 0.5 ? -1 : 1
     const duration = kind === 'nod' ? 0.45 * count : kind === 'shake' ? 0.5 * count : kind === 'shrug' ? 1.1 : 2.6
-    const end = kind === 'glance' ? this.gaze.glance({ source: 'cue-gesture', point: { x: side * 0.35, y: 0.05 }, hold: 0.6 }, at) : at + duration
+    // A glance the gaze arbiter refuses ends at once.
+    const end = kind === 'glance' ? this.gaze.glance({ source: 'cue-gesture', point: { x: side * 0.35, y: 0.05 }, hold: 0.6 }, at) ?? at : at + duration
     this.clips.push({ kind, count, side, start: at, end })
     this.latest = { seq: (this.latest?.seq ?? 0) + 1, start: at, end, kind, count, side }
     if (kind !== 'glance')

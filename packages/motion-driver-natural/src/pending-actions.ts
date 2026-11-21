@@ -115,9 +115,7 @@ export function startPending(actions: Exclude<PendingAction, { kind: 'chat' | 'w
       gaze.glance({ source: 'desktop-wake', point: glanceTargets.camera, hold: wakeGlanceHold }, at)
     }
     else {
-      const point = gaze.screenPoint()
-      gaze.glance({ source: 'screen-change', point, hold: screenChangeGlanceHold }, at)
-      notify?.({ kind: 'glance', at, cause: 'screen-change', point, hold: screenChangeGlanceHold })
+      gaze.glance({ source: 'screen-change', point: gaze.screenPoint(), hold: screenChangeGlanceHold }, at)
     }
     energy.react(at)
     reactEvents.push({ at, kind: action.reaction })

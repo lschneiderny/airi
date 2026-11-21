@@ -35,7 +35,7 @@ describe('natural chat attention', () => {
     if (typing) {
       expect(share).toBeGreaterThanOrEqual(0.25)
       expect(share).toBeLessThanOrEqual(0.45)
-      expect(events.some(event => event.kind === 'glance' && event.cause === 'chat-typing' && event.hold >= 0.18)).toBe(true)
+      expect(events.some(event => event.kind === 'glance' && event.cause === 'chat-typing' && (event.hold ?? 0) >= 0.18)).toBe(true)
     }
     else {
       expect(share).toBe(0)
@@ -81,7 +81,10 @@ describe('natural chat attention', () => {
     advance(motion, at, at + 5)
     motion.setChat({ ...input, sentSeq: 1 }, at + 5)
     advance(motion, at + 5, at + 6)
-    expect(events.filter(event => event.kind === 'glance' && event.cause === 'chat-sent')).toEqual([])
+    const reads = events.filter(event => event.kind === 'glance' && event.cause === 'chat-sent')
+    // Hidden chat or talking starts no read; a pet or its camera hold refuses the read the gaze arbiter is asked for.
+    expect(reads.filter(event => event.kind === 'glance' && event.outcome === 'started')).toEqual([])
+    expect(reads).toHaveLength(blocked === 'pet' || blocked === 'pet-camera-hold' ? 1 : 0)
   })
 
   it('glances once 0.25 seconds after hidden-first unfold with a 0.8-second hold', () => {
@@ -166,6 +169,21 @@ describe('natural chat attention', () => {
       expect(motion.onChat).toBe(false)
     }
     expect(events.filter(event => event.kind === 'glance' && event.cause.startsWith('chat-') && event.at >= at)).toEqual([])
+  })
+
+  it('holds a chat read through an emotion impulse, whose glance it refuses', () => {
+    const { motion, events } = fixture()
+    motion.setChat(input, 0)
+    motion.setChat({ ...input, sentSeq: 1 }, 1)
+    advance(motion, 1, 1.5)
+    motion.impulse({ id: 'think', emotion: 'think', nominal: 0.6, intensity: 0.6, band: 'clear', escalation: false }, 1.5)
+    advance(motion, 1.5, 2.5)
+    const { fixation } = motion.advance(2.5)
+    const eye = mapCursor(target).eye
+
+    expect(events.filter(event => event.kind === 'glance').map(event => event.kind === 'glance' && [event.cause, event.outcome])).toEqual([['chat-sent', 'started'], ['emotion', 'refused']])
+    expect(fixation.x).toBeCloseTo(eye.x, 6)
+    expect(fixation.y).toBeCloseTo(eye.y, 6)
   })
 
   it('cancels a pending read when talking starts before its deadline', () => {

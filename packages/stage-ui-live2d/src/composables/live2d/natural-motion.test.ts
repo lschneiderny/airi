@@ -1107,6 +1107,44 @@ describe('continuous cursor attention and touch', () => {
     motion.advance(7)
     expect(events).toHaveLength(reported)
   })
+
+  it('nudges but does not glance on a poke during a pet', () => {
+    const { motion, events } = observed(67)
+    motion.setPet({ x: 0.4, y: 0 }, 0)
+    for (let frame = 1; frame <= 240; frame++)
+      motion.advance(frame / 120)
+    motion.poke('head', 0.5, 0, 2)
+    motion.advance(2 + 2 / 120)
+
+    expect(events.filter(event => event.kind === 'glance' && event.cause === 'poke')).toEqual([expect.objectContaining({ outcome: 'refused' })])
+    expect(motion.bodyIntent().touch.poke?.seq).toBe(1)
+    expect(Math.hypot(...motion.bodyIntent().head.impulse)).toBeGreaterThan(0)
+  })
+
+  it('engages a cursor noticed during an emotion glance once the glance has held', () => {
+    const { motion, events } = observed(41)
+    motion.impulse({ id: 'think', emotion: 'think', nominal: 0.6, intensity: 0.6, band: 'clear', escalation: false }, 0)
+    let onCursorDuringHold = false
+    let onCursorAfterHold = false
+    for (let frame = 1; frame <= 4 * 120; frame++) {
+      const time = frame / 120
+      const offset = { x: 1, y: 0.1 * Math.sin(frame / 12) }
+      motion.setCursor(offset, time)
+      const { fixation } = motion.advance(time)
+      const glance = events.find(event => event.kind === 'glance' && event.cause === 'emotion')
+      const target = mapCursor(offset).eye
+      const onCursor = Math.hypot(fixation.x - target.x, fixation.y - target.y) < 0.05
+      if (glance?.kind === 'glance' && time < glance.at + glance.hold!)
+        onCursorDuringHold ||= onCursor
+      else if (glance)
+        onCursorAfterHold ||= onCursor
+    }
+
+    expect(events.filter(event => event.kind === 'glance').map(event => event.kind === 'glance' && [event.cause, event.outcome])).toEqual([['emotion', 'started'], ['cursor-notice', 'refused']])
+    expect(attentionEvents(events).map(event => event.phase)).toContain('engage')
+    expect(onCursorDuringHold).toBe(false)
+    expect(onCursorAfterHold).toBe(true)
+  })
 })
 
 describe('held Natural composition', () => {

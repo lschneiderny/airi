@@ -40,6 +40,18 @@ it, so a caller may send it on every return. `setPerformance` starts no
 reaction, and `away` turning false does not end a sleep: only `wake`, or a
 `react('wake')` or a touch with a start, does.
 
+Every held glance goes through one gaze arbiter in `NaturalGazeLayer`
+(`./gaze`). A caller passes `glance({ source, point, hold }, at)` with a
+`GlanceSource`; `GLANCE_PRIORITY` ranks it (a touch, then a wake, then a chat
+read or an idle voice cue, then the model's cues and emotions, then a screen
+change, then a noticed cursor, then idle acts). The request starts unless the
+running glance (`claim`) ranks higher, and `glance` returns its hold's end, or
+`null` when it was refused and dropped. While the pet override holds, only the
+`pet-end` glance starts. `orient` asks for the cursor notice the same way and
+returns whether it started. To add a glance caller, rank its source in
+`GLANCE_PRIORITY`; do not add a guard at the caller. The observer gets a `glance`
+event for every start and refusal, with the source as `cause` and an `outcome`.
+
 After `advance()`, `motion.bodyIntent()` returns the cached `NaturalBodyIntent`
 for the frame it most recently produced. Call `advance()` before the first read;
 reading earlier throws. Repeated reads return the same snapshot without stepping
