@@ -92,6 +92,37 @@ initialized only after a live MMD model is mounted. That package bundles
 plain JavaScript (wasm2js); it loads no WebAssembly module. One fixed physics
 step costs about 10 ms of main-thread time for a full model.
 
+## Headless work budget
+
+`src/composables/mmd/work-budget.test.ts` measures **counts, not time**. It runs
+the composed headless MMD stages on an asset-free body fixture, with hair, arms,
+body colliders, seeded Natural input and real Ammo physics. After 60 warm-up
+frames it counts matrix updates, CCD chain-link solves, physics updates, Bullet
+substeps and pipeline stage calls over 600 frames at 60 Hz. The committed limits
+are in `src/composables/mmd/work-budget.json`; each entry requires a reason.
+The idle fixture's planted feet currently exit before the inner CCD solve, so
+its zero IK budget does not describe the cost of walking or other poses.
+
+Run the check with:
+
+```sh
+pnpm -F @proj-airi/stage-ui-mmd exec vitest run --project node src/composables/mmd/work-budget
+```
+
+To accept an intended increase, first print measured values:
+
+```sh
+AIRI_WORK_BUDGET_PRINT=1 pnpm -F @proj-airi/stage-ui-mmd exec vitest run --project node src/composables/mmd/work-budget
+```
+
+Print mode emits paste-ready JSON and bypasses the budget assertions. Review the
+counts, edit the relevant `max` and `reason`, and explain the increase in the
+commit body. Give the IK counter `ceil(measured * 1.05)` headroom because pose
+changes affect early exits; other counters use the measured base values.
+Re-measure after a rebase or a conflict in the budget file rather than choosing
+one side's limits. This budget catches added work, not slower implementations;
+use rendered performance measurements to investigate time costs.
+
 ## How to use
 
 The package exposes the same scene contract as the other renderers, so it is

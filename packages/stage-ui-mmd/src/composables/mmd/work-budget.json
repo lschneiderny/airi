@@ -1,0 +1,14 @@
+{
+  "frames": 600,
+  "warmup": 60,
+  "seed": 1,
+  "fixture": "bodyFixture(hair, arms, bodies)",
+  "counters": {
+    "matrixWorld": { "max": 233400, "reason": "measured on 1cedbfe4f: matrix-world updates for the composed idle body and Ammo physics" },
+    "worldMatrix": { "max": 297000, "reason": "measured on 1cedbfe4f: world-matrix updates for the composed idle body and Ammo physics" },
+    "ikChains": { "max": 0, "reason": "measured on 1cedbfe4f: planted idle feet exit before solveChain; ceil(measured * 1.05) remains zero" },
+    "physicsUpdates": { "max": 600, "reason": "measured on 1cedbfe4f: one physics update per measured frame" },
+    "physicsSubsteps": { "max": 650, "reason": "measured on 1cedbfe4f: ten simulated seconds at the Ammo fixed step of 1/65 second" },
+    "stageCalls": { "max": 13800, "reason": "measured on 1cedbfe4f: 23 measured pipeline stages per frame, excluding motion-trace" }
+  }
+}
