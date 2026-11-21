@@ -42,7 +42,7 @@ import { createEventHook, useBroadcastChannel, useDocumentVisibility, useEventLi
 // import embedWorkerURL from '@xsai-transformers/embed/worker?worker&url'
 // import { embed } from '@xsai/embed'
 import { storeToRefs } from 'pinia'
-import { computed, defineAsyncComponent, getCurrentScope, nextTick, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
+import { computed, defineAsyncComponent, getCurrentInstance, getCurrentScope, nextTick, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
 
 import StageAvatarModelMissing from './stage-avatar-model-missing.vue'
 import StageRenderError from './stage-render-error.vue'
@@ -733,9 +733,11 @@ useIntervalFn(() => naturalPerformanceOverride.publishIdleLife(idleProps.state()
 // production builds drop this block, and with it the only import of the handler module.
 if (import.meta.env.DEV && isMotionQaBridgeEnabled()) {
   const scope = getCurrentScope()
-  // Created in setup: the bridge starts after an await, where neither injection nor store creation has a component.
+  // Resolved in setup: the bridge starts after an await, where injection has no component. The maintenance stores are
+  // created in the app's context only when QA deletes all data, so a bridge-enabled stage creates the stores that
+  // production creates.
   const deleteHostData = useHostDataDeletion()
-  const dataMaintenance = useDataMaintenance()
+  const app = getCurrentInstance()?.appContext.app
   void import('../../composables/performance/use-motion-qa-bridge')
     .then((module) => {
       // The stage may unmount before the module arrives; a stopped scope must not gain handlers.
@@ -756,7 +758,11 @@ if (import.meta.env.DEV && isMotionQaBridgeEnabled()) {
           renderError: () => stageRenderError.value,
           performance: () => ({ inputs: performanceInputs, state: performance.value }),
           evaluateVoice: () => useSituationObservabilityStore().evaluateGateLeader(),
-          deleteAllData: () => dataMaintenance.deleteAllDataWithHost(deleteHostData),
+          deleteAllData: async () => {
+            if (!app)
+              throw new Error('The stage has no app to delete all data in')
+            await app.runWithContext(() => useDataMaintenance()).deleteAllDataWithHost(deleteHostData)
+          },
         }))
       }
     })
