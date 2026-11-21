@@ -142,8 +142,10 @@ export const MotionQaEventSchema = strictObject({
    * cues, `about-to-speak` or `let-go`), each comma-separated or `null`, and, last, `music`: the `playing` of its
    * `music` stimulus, or `null` for a step without one.
    * `idle` is one idle report of the Natural scene: `phase` (`'start'` or `'end'`) and `behaviour`.
+   * `groove-lock` follows the `idle` start of a sway that bound to Natural's beat clock: `beatSeconds`, the clock's beat
+   * length, and `beatsPerCycle`.
    */
-  kind: picklist(['act', 'expression', 'clip', 'tts', 'turn', 'mind', 'idle']),
+  kind: picklist(['act', 'expression', 'clip', 'tts', 'turn', 'mind', 'idle', 'groove-lock']),
   /** Bounded scalar fields only; reply text is truncated to 500 characters by the recorder. A `mind` event carries no text. */
   payload: record(string(), union([pipe(string(), maxLength(500)), number(), boolean(), nullable(string())])),
 })

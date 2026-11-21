@@ -2038,6 +2038,8 @@ defineExpose({
   idleCue: (kind: IdleCueKind) => naturalMotion?.idleCue(kind),
   /** Natural only: plays what the character mind's idle policy decided; Natural answers it in `idleReports`. */
   idle: (order: IdleOrder) => naturalMotion?.idle(order),
+  /** Natural only: a detected beat for Natural's beat clock, on which a groove plays. */
+  beat: (intervalSeconds: number) => naturalMotion?.beat(intervalSeconds),
   /** Natural only: plays the cursor episode the character mind drew for a `cursorReports` report. */
   cursorEpisode: (order: CursorOrder) => naturalMotion?.cursorEpisode(order),
   /** Executes decider slot commands; lifetimes are owned by the expression store. */

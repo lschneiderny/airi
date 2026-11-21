@@ -563,8 +563,8 @@ export class NaturalMotion {
    * The idle behaviour of the latest grid step, and a counter that increments at every start, so a host that reads
    * once per frame also sees a behaviour that started and ended between two reads.
    */
-  get idleState(): { seq: number, behaviour: IdleBehaviourKind | null } {
-    return { seq: this.idleLayer.seq, behaviour: this.idleLayer.behaviour }
+  get idleState(): { seq: number, behaviour: IdleBehaviourKind | null, grooveLock: IdleGrooveLock | null } {
+    return { seq: this.idleLayer.seq, behaviour: this.idleLayer.behaviour, grooveLock: this.idleLayer.grooveLock }
   }
 
   /** The latest errand the idle draw started for the host to realise, kept after it ends; null before the first. */
@@ -906,7 +906,8 @@ export class NaturalMotion {
       beatClock: this.beatClock,
     }, this.gaze)
     if (this.observer) {
-      for (const report of this.idleReports.read(this.idleLayer))
+      // The observer hears a bind as its own `groove-lock` event, so its `idle` events carry no groove.
+      for (const report of this.idleReports.read({ seq: this.idleLayer.seq, behaviour: this.idleLayer.behaviour }))
         this.notify({ kind: 'idle', at: stepStart, ...report })
       const lock = this.idleLayer.grooveLock
       if (lock !== null && lock !== this.reportedGrooveLock)
