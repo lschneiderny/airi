@@ -9,9 +9,11 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createForegroundWindowService } from './foreground-window'
 import { loadDarwinBinding } from './foreground-window-darwin'
 
-// Only Electron's process inventory is mocked; the service, invoke, and native binding are real.
+// Electron is ready with no command-line overrides; the service, invoke, and native binding are real.
 vi.mock('electron', () => ({
   app: {
+    isReady: () => true,
+    commandLine: { getSwitchValue: () => '' },
     getAppMetrics: () => [],
   },
 }))

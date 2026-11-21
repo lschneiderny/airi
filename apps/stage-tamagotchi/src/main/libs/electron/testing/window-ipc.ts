@@ -26,6 +26,7 @@ export function createWindowIpc(ipcMain: EventEmitter) {
   const window = Object.assign(new EventEmitter(), {
     isDestroyed: () => destroyed,
     isVisible: () => !destroyed,
+    getWindowButtonPosition: () => null,
     webContents: Object.assign(new EventEmitter(), {
       id: nextWebContentsId++,
       isCrashed: () => false,
