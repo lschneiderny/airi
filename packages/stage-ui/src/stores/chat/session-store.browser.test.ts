@@ -182,7 +182,6 @@ describe('chat session synchronization', () => {
     expect(await follower.setSessionTask('missing-session', { status: 'done' })).toBe(false)
   })
 
-  // ROOT CAUSE:
   it('gives a session its character member as persona, else the active card, else the default', async () => {
     const context = createSyncedContext(`chat-persona:${crypto.randomUUID()}`, 'leader-only')
     await vi.waitFor(() => expect(context.runtime.isLeader()).toBe(true))
@@ -201,6 +200,7 @@ describe('chat session synchronization', () => {
     expect(store.personaOf('no-members')).toBe('default')
   })
 
+  // ROOT CAUSE:
   // Background tasks were deleted through deleteSession, which moved the character's selected conversation to the first remaining session,
   // a hidden one included, and created a replacement when none remained.
   it('deletes a hidden task session without moving the selected conversation', async () => {
