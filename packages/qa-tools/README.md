@@ -375,6 +375,7 @@ pnpm perf features [--feature <key>] [--metric p50FrameMs|share21|share36|share1
 pnpm perf compare <shaA> <shaB> [--include-dirty] [--json] [--dir <path>]...
 pnpm perf bench [--scenario <id>] [--since 7d] [--json]
 pnpm perf compare --bench <refA> <refB> [--scenario <id>] [--metric <metric>] [--json]
+pnpm perf status [--json]
 pnpm perf --help
 ```
 
@@ -392,7 +393,7 @@ Both commands are observational and label their output so. They drop host-conten
 
 Exit codes: 0 for success, including when there is no perf data or the data is insufficient; 2 for invalid arguments, an unknown incident id, or a sha prefix matching several commits; 1 when reading fails.
 
-`bench` and `compare --bench` read the `qa:bench` history, `bench.jsonl` in the per-machine state directory (`AIRI_PERF_BENCH_DIR` names another directory that holds it), and ignore `--dir`. `bench` lists runs grouped by scenario and code state (sha, plus `*<diff hash>` for a dirty tree) with valid/total runs and the medians of the valid runs. `compare --bench` compares two refs with the shared `compareBench` statistics: a ref is a sha of at least 4 hex digits (a clean commit in the history; an ambiguous prefix is refused), `HEAD` (the checked-out commit, clean), or `worktree` (the checked-out commit and the current diff hash, hashed like the recorder's identity, untracked file contents included). Without `--scenario` it compares every scenario either ref has; without `--metric`, every judged metric (`p95FrameMsApprox`, `fps`, `stageWindowCpuPct`, `stageWindowCpuMsPerFrame`, `stageWindowWorkingSetKb`). Each side holds the valid runs of its code state; invalid runs are listed with their reasons and left out. It prints every run value, both medians, the difference, sigma and its noise source, the practical floor, the agreement count, the verdict (`regression`, `improvement`, or `within-noise`), `lowConfidence` (fewer than 10 comparable clean history commits), and `stale` (newest runs more than 7 days apart), or the refusals with their reasons. `--json` prints the same as an array of scenarios. Exit codes: 0 when every scenario was compared, whatever the verdict; 2 for invalid arguments, a ref without runs (`no bench runs for <ref>`), or a refused comparison; 1 when reading the history or git fails.
+`bench` and `compare --bench` read the `qa:bench` history, `bench.jsonl` in the per-machine state directory (`AIRI_PERF_BENCH_DIR` names another directory that holds it). They reject `--dir` with a usage error and exit 2. `bench` lists runs grouped by scenario and code state (sha, plus `*<diff hash>` for a dirty tree) with valid/total runs and the medians of the valid runs. `compare --bench` compares two refs with the shared `compareBench` statistics: a ref is a sha of at least 4 hex digits (a clean commit in the history; an ambiguous prefix is refused), `HEAD` (the checked-out commit, clean), or `worktree` (the checked-out commit and the current diff hash, hashed like the recorder's identity, untracked file contents included). Without `--scenario` it compares every scenario either ref has; without `--metric`, every judged metric (`p95FrameMsApprox`, `fps`, `stageWindowCpuPct`, `stageWindowCpuMsPerFrame`, `stageWindowWorkingSetKb`). Each side holds the valid runs of its code state; invalid runs are listed with their reasons and left out. It prints every run value, both medians, the difference, sigma and its noise source, the practical floor, the agreement count, the verdict (`regression`, `improvement`, or `within-noise`), `lowConfidence` (fewer than 10 comparable clean history commits), and `stale` (newest runs more than 7 days apart), or the refusals with their reasons. Under a `regression` or `improvement` verdict, the text output adds a `stage attribution (informational)` block for that direction, described under [Stage attribution](#stage-attribution). `--json` prints the same as an array of scenarios, each compared scenario with an `attribution` object holding `regression` and `improvement`. Exit codes: 0 when every scenario was compared, whatever the verdict; 2 for invalid arguments, a ref without runs (`no bench runs for <ref>`), or a refused comparison; 1 when reading the history or git fails.
 
 ```bash
 pnpm -F @proj-airi/qa-tools exec vitest run --project node src/perf
@@ -401,12 +402,217 @@ pnpm -F @proj-airi/qa-tools exec vitest run --project node src/perf
 `pnpm qa:bench` runs the bench-v1 matrix on the Electron app and appends one `bench-run` record per launch to `bench.jsonl`. Run it through the display guard:
 
 ```bash
-pnpm qa:display run -- pnpm qa:bench [--scenario <id>] [--runs <n>] [--out <dir>]
+pnpm qa:display run -- pnpm qa:bench [--scenario <id>] [--runs <n>] [--out <dir>] [--repo-root <checkout>] [--not-after <ISO time>]
 ```
 
-`--runs` defaults to 5 and must be at least 3. Each launch waits for a calm host, starts the window stage on a fresh profile with perf recording on, and imports the model named in `.env.qa` (`AIRI_QA_MMD_MODEL`, `AIRI_QA_RIG_FORBOOTH`). Exit codes: 0 every run is valid, 1 a run broke or is invalid, 2 invalid arguments or refused setup, 3 no calm host or no mounted model in time, 130 interrupted. Bench one commit, bench the other, then compare the two with `pnpm perf compare --bench`. Start a bench only when no other CPU-sensitive check is running: a launch waits for the host to calm down, and a run sampled on a contended host is invalid.
+`--runs` defaults to 5 and must be at least 3. Each launch waits for a calm host, starts the window stage on a fresh profile with perf recording on, and imports the model named in `.env.qa` (`AIRI_QA_MMD_MODEL`, `AIRI_QA_RIG_FORBOOTH`). `--repo-root` measures another checkout with this checkout's harness and summarizer: the bench reads that checkout's `.env.qa`, launches its app, runs its scripts, and defaults `--out` to its `.temp/qa/`. The path must hold `apps/stage-tamagotchi/package.json`. `--not-after` takes an ISO time with an offset, such as `2026-11-21T06:00:00Z`; no launch starts after it, and the records already appended stay. Exit codes: 0 every run is valid, 1 a run broke or is invalid, 2 invalid arguments or refused setup, 3 no calm host or no mounted model in time, 4 `--not-after` was reached before a launch, 130 interrupted. Bench one commit, bench the other, then compare the two with `pnpm perf compare --bench`. Start a bench only when no other CPU-sensitive check is running: a launch waits for the host to calm down, and a run sampled on a contended host is invalid.
 
 The perf recorder's overhead was measured once with an independent instrument; the [usage performance recording ADR](../../docs/ai/adr/2026-11-14-usage-performance-recording.md) records the result. Frame-time comparisons between commits use `pnpm qa:bench`. `measure` has no `--help` flag: an unknown option prints its usage and exits 2.
+
+A manual `qa:bench` run still puts its per-run scratch directory in the system temporary directory (`os.tmpdir()`). The perf tracker sets `TMPDIR` to its state directory for the benches it starts. The [perf regression loop ADR](../../docs/ai/adr/2026-11-21-perf-regression-loop.md) records the design of the stage attribution, `pnpm perf status`, and the tracker below.
+
+### Stage attribution
+
+A `bench-run` record carries `stages` when the renderer timed its frame stages. The field maps each stage id to `msPerFrame`, `p95MsApprox`, and `n`. `msPerFrame` is the stage's total time divided by the run's frame count, so the stages of a run add up to `metrics.stageSumMeanMs`. `p95MsApprox` is the approximate 95th-percentile duration of one call, and `n` is the call count. A record without `stages` did not record them. This includes records written before per-stage recording, and readers treat them as "not recorded" by permanent policy.
+
+Stage attribution is information, not a verdict. No stage passes or fails. `compare --bench` prints attribution only under a metric's `regression` or `improvement` verdict, and only for that direction:
+
+- `stage <id>  +0.42 ms/frame  (z 3.1)` lists up to 5 stages that moved in the verdict's direction. Under a regression, a stage qualifies when its shift is above +0.02 ms per frame and its z is above 1. Under an improvement, its shift must be below -0.02 ms per frame and its z below -1. The shift and the z are signed, B minus A. The z is the shift over the stage's MAD sigma, which is pooled with the same trailing clean history commits as the metric once at least 3 history runs carry the stage. A stage whose sigma is 0 qualifies on its shift alone, which must still exceed 0.02 ms per frame in the verdict's direction. It prints `(no measured noise)` in place of the z and ranks ahead of every stage with a z, largest absolute shift first. In `--json` such a stage has `z: null` and `zeroNoise: true`.
+- `no timed stage moved` means that the cost lies outside the timed stages, such as GPU, compositor, or untimed work.
+- `stage timings not recorded for this scenario` means that A or B has no run with `stages`.
+
+### Perf status
+
+`pnpm perf status` reads the bench history, the tracker log `track.jsonl` beside it, the accepted costs of the checkout it runs in, and `origin/main`. Like the rest of `pnpm perf`, it never writes. Qualifier lines come first:
+
+- `stale` when no tracker tick started in the last 48 h;
+- `lowConfidence` when the bench history holds fewer than 10 distinct clean commits;
+- `main tip not benched` when `origin/main` has no clean run;
+- a `gh` failure streak, because open PRs are not benched while `gh` fails.
+
+After the qualifiers come these sections:
+
+- the open findings, each with its scenario, metric, difference, practical floor, PR, and top stage;
+- the last tick, with its age and exit code (`running` before its `tick-end`);
+- the main tip;
+- the outcome mix (`fixed`, `accepted`, `noise`, and the noise share);
+- findings closed in the last 14 days;
+- the accepted costs, each with the commit that introduced it, or `uncommitted`;
+- baseline resets in the last 14 days;
+- per scenario, the median `msPerFrame` of each stage at the latest benched main tip.
+
+`--json` prints the same fields: `lastTick`, `trackerStale`, `mainTip`, `lowConfidence`, `open`, `recentlyClosed`, `outcomes` with `noiseShare`, `accepted`, `baselineResets`, `ghFailureStreak`, and `stages`. Status reads accepted costs from its own checkout. To see an entry on a branch, run status in that branch's worktree. Exit codes follow `pnpm perf`: 0, including an empty history; 2 for invalid arguments; 1 when reading fails.
+
+### Perf tracker
+
+`pnpm perf:track` is the only perf command that writes. It records the tracker's work in `track.jsonl`, the file beside `bench.jsonl` in the per-machine state directory (`AIRI_PERF_BENCH_DIR` moves both). A new file is readable by its owner only.
+
+```bash
+pnpm perf:track tick [--subject <ref> --baseline <ref>] [--scenario <id>] [--runs <n>] [--deadline HH:MM] [--plan-only] [--trigger timer|manual]
+pnpm perf:track close <id> --resolution fixed|accepted|noise [--at <sha>] [--note <text>]
+pnpm perf:track install-timer [--ref <ref>]
+pnpm perf:track uninstall-timer
+pnpm perf:track --help
+```
+
+Exit codes:
+
+- 0 success, including a tick whose subjects were skipped, deferred, or broken;
+- 1 an unexpected step broke, the app worktree could not be prepared, or reading failed;
+- 2 a usage error or an id that is not an open finding;
+- 130 interrupted.
+
+#### Events
+
+Each line of `track.jsonl` is one event with `v` (1), `t` (epoch milliseconds), and `event`. Readers skip malformed lines and lines of another `v`, and count them on stderr. The events are:
+
+- `tick-start`, with `tickId` and `trigger`.
+- `discovery`, with `mainTip` and the open PRs (number, head, merge-base baseline, base ref). `prs` is `null` and `ghError` holds the message when `gh` failed.
+- `subject`, with one subject (`main`, `pr` with its number, or `manual`), its baseline, its scenarios, and an outcome: `benched`, `already-benched`, `deferred`, `skipped`, or `broken`. A `reason` says why a subject was not benched, for example `deadline`, `capacity`, `plan-only`, `host-busy`, `outside-window`, `subject-dirty`, `subject-unsupported`, `sha-mismatch`, `no-records`, or `bench-exit-<code>`.
+- `baseline-reset`, of kind `environment` or `not-comparable` (see [Comparisons](#comparisons)).
+- `finding-open`, `observed-again`, and `finding-close` (see [Findings](#findings)).
+- `tick-end`, with the exit code and the duration.
+
+#### Subjects and baselines
+
+A tick plans its subjects and their baselines:
+
+- The `origin/main` tip is benched with 5 runs per side. It is compared with the previous benched main tip and with an anchor, a main tip benched 3 to 6 days earlier, when one exists.
+- An open PR head is a subject only when its diff touches a render-loop path. The paths and the scenarios each one maps to are `renderLoopPaths` in `src/track/paths.ts`, and test files count for none. The head is benched with 3 runs, only in the mapped scenarios. It is compared with `git merge-base <head> origin/<base branch>`, so a stacked or unrebased PR is measured against its own starting point, not against `main`.
+- PRs that were benched least recently come first.
+- A side that already has enough clean runs in the current environment is not benched again. A subject with no missing side is `already-benched`.
+
+`--subject` and `--baseline` together bench one manual pair, in every scenario unless `--scenario` names one. `--runs` sets that pair's runs, at least 3 (default 5). The finding's `reproduce` command uses this mode. `--plan-only`, or `AIRI_PERF_TRACK_PLAN_ONLY=1`, records the plan without benching.
+
+Each subject's cost is estimated from its missing bench sides. The estimate also reserves time for a four-pass confirmation of every baseline and scenario pair. When the cost does not fit the time left before the deadline, the subject is `deferred` with reason `capacity` and waits for a later night.
+
+#### Comparisons
+
+Runs are compared only within one environment: the host and the model fingerprint of the newest run of each scenario.
+
+- A side benched only under an older environment gets a `baseline-reset` of kind `environment` and is benched again.
+- Sides whose Electron version, build mode, or scenario version differ get one `baseline-reset` of kind `not-comparable` per subject, baseline, and scenario. The comparison is never retried.
+- A side with too few runs is benched once more.
+- A `stale` comparison, whose sides are more than 7 days apart, opens nothing.
+
+A `regression` verdict is only a candidate. The confirm step benches it again in reverse order: baseline, subject, subject, baseline, with 3 runs each. It judges only the runs of that window, so cached runs cannot confirm a candidate. A candidate that is no longer a regression opens nothing.
+
+#### Findings
+
+A confirmed regression appends `finding-open`. The finding holds:
+
+- the id `<scenario>:<metric>:<baseline sha7>..<subject sha7>`;
+- the subject and baseline, with the PR number for a PR subject;
+- both medians, the difference, the practical floor, sigma, and `lowConfidence`;
+- up to 5 `topStages`, or `noStageMoved`;
+- the number of commits in the range, and the range commits that touch render-loop paths;
+- `reproduce`, a `pnpm perf:track tick --baseline <sha> --subject <sha> --scenario <id>` command;
+- `closeCheck`, the `pnpm perf compare --bench <baseline> <fix sha> --scenario <id> --metric <metric>` command that must show `within-noise` or `improvement`.
+
+When a confirmed regression matches an open finding with the same scenario and metric, and their commit ranges overlap by sha or by patch identity, the tracker appends `observed-again` instead of a second finding. This covers the anchor flagging a known regression again, and a PR finding seen on `main` after a rebase merge.
+
+Every finding ends as `fixed`, `accepted`, or `noise`:
+
+- `pnpm perf:track close <id> --resolution <resolution> [--at <sha>] [--note <text>]` closes it by hand. It refuses an id that is not open, lists the open ids, and exits 2.
+- The tracker closes a finding as `fixed` when a later subject of the same line (`main`, or the same PR), compared with the finding's baseline, is `within-noise` or an `improvement`.
+- The tracker closes a finding as `accepted` when an accepted cost covers it.
+
+The outcome mix in `pnpm perf status`, the noise share above all, shows whether the floors and the sigma factor can be trusted.
+
+#### Accepted costs
+
+An intended cost is an entry in the committed `packages/qa-tools/perf/accepted-costs.json`:
+
+```json
+{ "entries": [{ "id": "mmd-hair-physics", "scenario": "mmd-idle", "metric": "stageWindowCpuMsPerFrame", "reason": "Hair physics is a feature.", "accepted": "2026-11-21" }] }
+```
+
+An `id` is kebab-case and unique. `scenario` is a bench-v1 scenario, `metric` a judged bench metric, `reason` must not be empty, and `accepted` is a `YYYY-MM-DD` date. An entry holds no sha, no measured value, and no host value. Commit the entry with the change that pays the cost, or later.
+
+For each subject, the tracker reads the entries from the subject's own tree and resolves each entry in the subject's own history. Neither the tool checkout nor `origin/main` decides which entries apply. To resolve an entry, the tracker parses each committed version of the file reachable from the subject and takes the first commit, in history order, whose version holds the id. This survives reformatting the file, an entry in the same commit as the change, and a rebase merge that gives that commit a new sha. An entry accepts a finding with the same scenario and metric in these cases:
+
+- its commit lies in the finding's range;
+- its commit comes after the subject (late acceptance: the tracker flagged first, and the entry was committed later);
+- every commit of the range has a patch-equivalent in the history of the entry's commit, as after a rebase merge.
+
+The tracker then appends `finding-close` with `resolution: 'accepted'`, `by: 'tracker'`, and `at` set to the entry's commit, and benches that commit as the new baseline. When an entry's commit lies in the subject's history but not in the regular baseline's history, the entry's metric is compared with that commit, a baseline of kind `accepted`, and the scenario's other metrics keep the regular baseline. A cost accepted in the same commit as the change therefore opens no finding on that metric.
+
+#### Ticks
+
+A tick runs from the tool checkout: the `perf-track-runner` worktree under the timer, or the current worktree when run by hand. It never runs in the main checkout, and it never runs inside `qa:display`.
+
+1. The tick takes the lock `track.lock` in the state directory, which holds its pid. When a live process holds the lock, the tick prints `already running`, appends nothing, and exits 0. A lock whose pid is dead is stale and is removed.
+2. The tick appends `tick-start`. Its `tickId` is the local start time, `yyyyMMdd-HHmmss`. Times of day are read with `date-fns` in the system time zone.
+3. With `--trigger timer`, a tick that starts outside 01:00 to 06:30 local time records a `skipped` subject with reason `outside-window` and exits 0. This stops a missed run that `Persistent=true` starts at a daytime wake.
+4. Unless `--plan-only` is set, the tick samples the host. On a contended host it records a `skipped` subject with reason `host-busy: <load>` and exits 0. The host check sees CPU load only, not GPU load.
+5. The tick fetches `origin` in the main checkout, which it only fetches and reads. Unless it benches a manual pair, it lists the open PRs with `gh`, fetches each PR head, and computes its merge base and changed paths. When `gh` fails, `discovery` records `ghError`, and the tick plans the main tip only.
+6. The tick plans the subjects. With `--plan-only`, it records each planned subject as `skipped` with reason `plan-only`, or as `deferred` with reason `capacity`, and benches nothing.
+7. The tick benches each subject's missing sides in the app worktree `perf-track`, which it creates and locks on first use. To prepare a side, it does the following:
+   1. It checks out the sha.
+   2. It runs `git clean -fdxq`, which keeps `.env.qa`, `node_modules`, and the downloaded Cubism SDK directory.
+   3. It runs `pnpm install --frozen-lockfile`.
+   4. It runs `pnpm run build:packages`, because the clean removed the package builds and an install that finds `node_modules` current skips the postinstall that builds them.
+   5. It checks that tracked files are unchanged.
+   6. It writes the model paths from the main checkout's `.env.qa` into the worktree's `.env.qa`, unchanged, so the model fingerprint matches the history.
+   7. It runs `pnpm qa:setup cubism` when Cubism Core is missing.
+
+   A prepared sha is reused within the tick, except by the confirmation passes. A failed install, build, or setup fails the tick with exit 1.
+8. The tick runs each bench as `pnpm qa:display run --name perf-track -- pnpm qa:bench --repo-root <app worktree> --scenario <id> --runs <n> --out <dir>`, from the tool checkout. Each invocation gets a fresh `--out` directory, `runs/<tickId>/<seq>-<sha7>-<scenario>` in the state directory, and the confirmation passes and rebenches are included. After every bench, a failed one included, the tick runs `pnpm qa:display down --name perf-track`.
+9. The tick judges each subject against each baseline. When a side has too few runs, it benches both sides once more. It confirms candidates, then appends the subject's outcome, its baseline resets, and each `observed-again` or `finding-open`. After all subjects, it appends the `accepted` and `fixed` closes and benches the new accepted baselines that still fit.
+10. When at least one finding opened, the tick sends one desktop notification with `notify-send --app-name=AIRI`. `AIRI_PERF_TRACK_NOTIFY=0` turns it off, and every QA run sets it. A failed notification is logged and does not change the exit code.
+11. The tick appends `tick-end` with its exit code. It then removes the lock, empties its scratch directory, and keeps the run directories of the last 7 ticks.
+
+Stdout holds only the tick's own lines: one line per subject with its outcome, a line for each finding that opened, was observed again, or closed, and `tick <tickId> exited <code>`. The output of the benches and the other children goes to stderr.
+
+A tick that is not a manual pair has a deadline: the next `--deadline` time after the tick started, 06:30 local time by default. A manual pair has no deadline unless `--deadline` is given. Before each bench, the confirmation passes included, the tick checks the clock. Once the deadline has passed, it starts no further bench, and the remaining subjects are `deferred` with reason `deadline`. The bench gets the deadline as `--not-after`. Its exit codes map to subject outcomes:
+
+- 0 records nothing yet: the tick checks the new records first. No new record gives `broken` with reason `no-records`. A record of another sha gives `sha-mismatch`, and a dirty record gives `subject-dirty`.
+- 4 records `deferred` with reason `deadline`, and the tick starts no further bench.
+- 3 records `deferred` with reason `host-busy`, and the tick starts no further bench.
+- 2 records `skipped` with reason `subject-unsupported`, and the tick continues.
+- 130 stops the tick, which exits 130.
+- Any other code records `broken` with reason `bench-exit-<code>`, and the tick continues.
+
+Tracked files that still differ after the clean give `broken` with reason `subject-dirty`. The tick's `pnpm` children run with `TMPDIR` set to the state directory's `tmp/`, so bench scratch stays out of the system temporary directory. These children are the install, `build:packages`, `qa:setup cubism`, `qa:display`, and `qa:bench`. `git`, `gh`, and `notify-send` run with the caller's environment, including its `TMPDIR`.
+
+The tick exits 0 when it finished, even when subjects were skipped, deferred, or broken. A bench that exits 1 makes its subject `broken`, and the tick goes on. The tick exits 1 only when an unexpected step broke, for example when the app worktree could not be prepared. It exits 130 when interrupted, and 2 for an unknown `--scenario`, before anything is written.
+
+#### Nightly timer
+
+The tracker uses two persistent detached worktrees beside the checkout, under the directory that `pnpm wt new` uses:
+
+- `perf-track-runner` holds the tracker code at the timer's ref, so the current harness benches every subject, including subjects older than the tracker.
+- `perf-track` holds the subject being benched.
+
+Both are locked with reason `perf tracker`, so `pnpm wt gc` leaves them in place.
+
+After the tracker lands, the owner of the machine installs the timer once, by hand:
+
+```bash
+pnpm perf:track install-timer [--ref origin/main]
+```
+
+`install-timer` does the following:
+
+1. It creates and locks the runner worktree at `--ref` (default `origin/main`) when the worktree is missing.
+2. It resolves `git` and `pnpm` on `PATH` without a shell.
+3. It renders `airi-perf-track.service` and `airi-perf-track.timer` from the templates in `packages/qa-tools/perf/systemd/` into `$XDG_CONFIG_HOME/systemd/user` (default `~/.config/systemd/user`), with mode 0644.
+4. It reloads systemd, enables the timer, and prints the next run.
+
+The timer fires daily at 01:00 with up to 10 minutes of random delay, and `Persistent=true` catches up a missed night. The service has these parts:
+
+- Before each tick, it fetches and checks out the ref in the runner and runs `pnpm install --frozen-lockfile` there.
+- It runs `pnpm perf:track tick --trigger timer` under `systemd-inhibit --what=sleep:idle`, so the machine stays awake while the tick runs.
+- It stops after 6 hours.
+- It always runs `pnpm qa:display down --name perf-track` when it stops.
+
+The rendered units hold local paths and stay on the machine.
+
+`pnpm perf:track uninstall-timer` disables the timer, removes both units, and reloads systemd. It leaves both worktrees in place and prints the `git worktree unlock` and `git worktree remove` commands that remove them.
+
+```bash
+pnpm -F @proj-airi/qa-tools exec vitest run --project node src/track
+```
 
 ## Agent MCP server
 
