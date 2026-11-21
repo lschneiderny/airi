@@ -4,10 +4,9 @@ import { generatedBlinkBands, generatedHeadReportOnlyBands, generatedMouthOpenBa
 import { referenceStats } from './reference-stats'
 
 /**
- * Committed QA gates. Each gate is code with an `id` and an integer `version`: change a metric, threshold, window,
- * trial count, or seed rule only by editing this file, and bump `version` when you do. Reports record the git SHA of
- * this file, so a verdict always names the exact rules it was judged by. Run directories (qa-tools `RunGate`) store
- * the version as a string; convert with `String(gate.version)` at that boundary.
+ * The gates of the T0 liveliness test (`liveliness-gate.test.ts`), which scores generated Natural motion in the test
+ * suite. Each gate is code with an `id` and an integer `version`: change a metric, threshold, window, trial count, or
+ * seed rule only by editing this file, and bump `version` when you do.
  */
 
 export interface LivelinessGate {
