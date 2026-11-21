@@ -42,8 +42,18 @@ describe('parsePerfArgs', () => {
     expect(parsePerfArgs(['compare', '--bench', '8997DCD24', 'HEAD'], cwd)).toMatchObject({ a: { kind: 'sha', prefix: '8997dcd24' } })
   })
 
+  it('parses status with and without --json', () => {
+    expect(parsePerfArgs(['status', '--json'], cwd)).toEqual({ kind: 'status', json: true })
+    expect(parsePerfArgs(['status'], cwd)).toEqual({ kind: 'status', json: false })
+  })
+
   it.each([
     [['--bogus']],
+    [['status', 'extra']],
+    [['status', '--bogus']],
+    [['status', '--since', '1d']],
+    [['status', '--dir', 'a']],
+    [['status', '--scenario', 'mmd-idle']],
     [['features', 'extra']],
     [['features', '--feature', 'unknown']],
     [['features', '--metric', 'fps']],

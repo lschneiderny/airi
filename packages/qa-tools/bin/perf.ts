@@ -10,11 +10,13 @@ import { compareBenchRefs, listBenchGroups } from '../src/perf/bench'
 import { compareCommits, formatCommitComparison } from '../src/perf/compare'
 import { defaultPerfDirs } from '../src/perf/dirs'
 import { featureReports, formatFeatureReports, totalRollups, usageRollups } from '../src/perf/features'
-import { formatBenchCompare, formatBenchGroups, formatIncident, formatIncidentList, formatSessions, formatSkipped } from '../src/perf/format'
+import { formatBenchCompare, formatBenchGroups, formatIncident, formatIncidentList, formatSessions, formatSkipped, formatStatus } from '../src/perf/format'
 import { listIncidents, readIncident } from '../src/perf/incident'
 import { readPerfData } from '../src/perf/read'
 import { summarizeSessions } from '../src/perf/sessions'
+import { buildStatus, readStatusInputs } from '../src/perf/status'
 import { readWorktreeState } from '../src/perf/worktree'
+import { defaultGit } from '../src/track/accepted-costs'
 
 function isPidAlive(pid: number): boolean {
   try {
@@ -111,6 +113,15 @@ async function main(): Promise<number> {
     case 'compare': {
       const report = compareCommits(await compareRollups(perfDirs(command.dirs)), command)
       print(command.json ? JSON.stringify(report, null, 2) : formatCommitComparison(report, { a: command.shaA, b: command.shaB }))
+      return 0
+    }
+    case 'status': {
+      const git = defaultGit(cwd)
+      const repoRoot = (await git(['rev-parse', '--show-toplevel'])).trim()
+      const { inputs, counts } = await readStatusInputs({ platform: process.platform, env: process.env, homedir: homedir() }, repoRoot, git)
+      note(formatSkipped(counts))
+      const status = buildStatus({ ...inputs, now: Date.now() })
+      print(command.json ? JSON.stringify(status, null, 2) : formatStatus(status))
       return 0
     }
     default: {
