@@ -631,6 +631,20 @@ describe('runTick', () => {
     expect(fake.events().at(-2)).toMatchObject({ event: 'baseline-reset', kind: 'environment', baselineSha: BASE, scenario: 'mmd-idle' })
   })
 
+  it('records the environment reset even when capacity defers the rebench', async () => {
+    const fake = fakeHost({ start: at(14) })
+    for (let run = 1; run <= 3; run++) {
+      const old = record(BASE, 'mmd-idle', run, at(0) + run, 30, true, false)
+      appendBenchLine(join(fake.stateDir, 'bench.jsonl'), JSON.stringify({ ...old, host: { ...old.host, cpuModel: 'older-cpu' } }))
+    }
+    appendBenchLine(join(fake.stateDir, 'bench.jsonl'), JSON.stringify(record(OLD_HEAD, 'mmd-idle', 1, at(1), 16, true, false)))
+
+    expect(await runTick(fake.host, manual({ deadline: '14:01' }))).toBe(0)
+    expect(fake.sequence()).toEqual(['tick-start', 'subject:deferred:capacity', 'baseline-reset', 'tick-end'])
+    expect(fake.events().filter(event => event.event === 'baseline-reset')).toEqual([expect.objectContaining({ kind: 'environment', baselineSha: BASE, scenario: 'mmd-idle' })])
+    expect(fake.benches).toEqual([])
+  })
+
   it('records subject-unsupported for bench exit 2 and benches the next subject with its merge-base baseline', async () => {
     const prs = [{ number: 8, headRefOid: HEAD, baseRefName: 'main', updatedAt: '2026-11-20T11:00:00Z' }]
     const fake = fakeHost({ start: at(1), prs, bench: call => ({ exit: call.seq === 1 ? 2 : 0 }) })
