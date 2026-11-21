@@ -46,6 +46,14 @@ export function controlEventsText(events: readonly unknown[]): string {
 }
 
 /**
+ * The `plugin` segment text from a plugin's system instructions: blank entries are dropped, and the rest are joined
+ * with a blank line. Both Spark Notify routes build the segment with it.
+ */
+export function pluginInstructionsText(instructions: readonly string[] | undefined): string {
+  return (instructions ?? []).filter(text => text.trim()).join('\n\n')
+}
+
+/**
  * The sticker segment: how to use stickers, then one marker line per catalog entry. The runtime accepts only markers
  * from the same catalog.
  */

@@ -14,7 +14,7 @@ import { useCharacterNotebookStore } from '../'
 import { useStageLiveStatePrompt } from '../../../composables/use-airi-runtime-prompt'
 import { getEventSourceKey } from '../../../utils/event-source'
 import { useLLM } from '../../ai/chat-llm/llm'
-import { useChatPrompt } from '../../chat/prompt'
+import { pluginInstructionsText, useChatPrompt } from '../../chat/prompt'
 import { useChatSessionStore } from '../../chat/session-store'
 import { useModsServerChannelStore } from '../../mods/api/channel-server'
 import { useConsciousnessStore } from '../../modules/consciousness'
@@ -189,7 +189,7 @@ export const useCharacterOrchestratorStore = defineStore('character-orchestrator
         systemPrompt: composePrompt(buildChatPromptSegments({
           characterId: chatSession.personaOf(chatSession.activeSessionId),
           // The caller's system instructions are plugin text, so the composer caps them as on the spoken route.
-          plugin: control?.messageOverride?.appendSystemInstructions?.join('\n\n'),
+          plugin: pluginInstructionsText(control?.messageOverride?.appendSystemInstructions),
           spark: t('base.prompt.spark-notify', { moduleName: getEventSourceKey(event) }),
         })).text,
         runtimePrompt: liveStatePrompt.value,
