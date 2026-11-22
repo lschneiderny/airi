@@ -220,3 +220,20 @@ it('registers every unstorage mount', () => {
   })
   expect(unregistered).toEqual([])
 })
+
+it('splits mixed owners without repeating their reset or changing its order', () => {
+  for (const [ownerId, splitIds] of [
+    ['memory', ['memory-settings']],
+    ['recipes', ['recipe-settings']],
+    ['mmd', ['mmd-motion-files', 'mmd-performance-settings', 'mmd-clip-metadata']],
+    ['layout-backgrounds', ['layout-background-settings']],
+    ['stickers', ['sticker-settings']],
+  ] as const) {
+    const ownerIndex = registrations.findIndex(registration => registration.id === ownerId)
+    for (const id of splitIds) {
+      const splitIndex = registrations.findIndex(registration => registration.id === id)
+      expect(splitIndex).toBeGreaterThan(ownerIndex)
+      expect(registrations[splitIndex].reset).toBeUndefined()
+    }
+  }
+})

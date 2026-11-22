@@ -101,6 +101,8 @@ export interface StateRegistration {
   /** Repository paths of every file that writes a location. The static scan fails on a write from any other file. */
   readonly writers: readonly string[]
   readonly tier: PersistenceTier
+  /** Adopted upstream revision for a plain-state exception. Its writers and exact keys define the exception. */
+  readonly upstream?: string
   /** The heading of a named exception in `state-persistence.md`, when the state is one. */
   readonly exception?: string
   readonly locations: readonly StorageLocation[]
@@ -142,6 +144,7 @@ export const stateRegistry = defineStateRegistry([
     owner: 'useVoiceprintStore',
     writers: ['packages/stage-ui/src/stores/voiceprint.ts'],
     tier: 'plain',
+    upstream: 'bd4f30391',
     exception: 'Voiceprints',
     locations: [
       { area: 'localStorage', key: 'settings/voice/voiceprints' },
@@ -188,6 +191,7 @@ export const stateRegistry = defineStateRegistry([
       'apps/stage-tamagotchi/src/renderer/bridges/opencode-go-migration.ts',
     ],
     tier: 'plain',
+    upstream: 'bd4f30391',
     locations: [
       { area: 'localStorage', key: 'settings/providers/configured' },
       { area: 'localStorage', key: 'settings/providers/added' },
@@ -204,6 +208,7 @@ export const stateRegistry = defineStateRegistry([
     owner: 'useHearingStore',
     writers: ['packages/stage-ui/src/stores/modules/hearing.ts'],
     tier: 'plain',
+    upstream: 'bd4f30391',
     // Exact keys: the app owns the two push-to-talk keys under the same path.
     locations: [
       { area: 'localStorage', key: 'settings/hearing/enabled' },
@@ -227,7 +232,14 @@ export const stateRegistry = defineStateRegistry([
     owner: 'useHomeAssistantStore',
     writers: ['packages/stage-ui/src/stores/modules/home-assistant.ts'],
     tier: 'plain',
-    locations: [{ area: 'localStorage', prefix: 'settings/home-assistant/' }],
+    upstream: 'bd4f30391',
+    locations: [
+      { area: 'localStorage', key: 'settings/home-assistant/enabled' },
+      { area: 'localStorage', key: 'settings/home-assistant/has-credentials' },
+      { area: 'localStorage', key: 'settings/home-assistant/exposure-mode' },
+      { area: 'localStorage', key: 'settings/home-assistant/allowed-entities' },
+      { area: 'localStorage', key: 'settings/home-assistant/denied-entities' },
+    ],
     reset: ({ pinia }) => useHomeAssistantStore(pinia).resetState(),
   },
   {
@@ -235,6 +247,7 @@ export const stateRegistry = defineStateRegistry([
     owner: 'useSpeechStore',
     writers: ['packages/stage-ui/src/stores/modules/speech.ts'],
     tier: 'plain',
+    upstream: 'bd4f30391',
     // Exact keys: `useSpeechOutputControlStore` owns `settings/speech/output-*`.
     locations: [
       { area: 'localStorage', key: 'settings/speech/active-provider' },
@@ -261,6 +274,7 @@ export const stateRegistry = defineStateRegistry([
     owner: 'useConsciousnessStore',
     writers: ['packages/stage-ui/src/stores/modules/consciousness.ts'],
     tier: 'plain',
+    upstream: 'bd4f30391',
     locations: [
       { area: 'localStorage', key: 'settings/consciousness/active-provider' },
       { area: 'localStorage', key: 'settings/consciousness/active-model' },
@@ -275,6 +289,7 @@ export const stateRegistry = defineStateRegistry([
     owner: 'useConsciousnessSettingsStore',
     writers: ['packages/stage-ui/src/stores/modules/consciousness-settings.ts'],
     tier: 'plain',
+    upstream: 'bd4f30391',
     locations: [
       { area: 'localStorage', key: 'settings/consciousness/reasoning' },
       { area: 'localStorage', key: 'settings/consciousness/temperature-enabled' },
@@ -287,7 +302,13 @@ export const stateRegistry = defineStateRegistry([
     owner: 'useWebSearchStore',
     writers: ['packages/stage-ui/src/stores/modules/web-search.ts'],
     tier: 'plain',
-    locations: [{ area: 'localStorage', prefix: 'settings/web-search/' }],
+    upstream: 'bd4f30391',
+    locations: [
+      { area: 'localStorage', key: 'settings/web-search/enabled' },
+      { area: 'localStorage', key: 'settings/web-search/api-key' },
+      { area: 'localStorage', key: 'settings/web-search/provider' },
+      { area: 'localStorage', key: 'settings/web-search/deepseek-api-key' },
+    ],
     reset: ({ pinia }) => useWebSearchStore(pinia).resetState(),
   },
   {
@@ -295,7 +316,11 @@ export const stateRegistry = defineStateRegistry([
     owner: 'useDiscordStore',
     writers: ['packages/stage-ui/src/stores/modules/discord.ts'],
     tier: 'plain',
-    locations: [{ area: 'localStorage', prefix: 'settings/discord/' }],
+    upstream: 'bd4f30391',
+    locations: [
+      { area: 'localStorage', key: 'settings/discord/enabled' },
+      { area: 'localStorage', key: 'settings/discord/token' },
+    ],
     reset: ({ pinia }) => useDiscordStore(pinia).resetState(),
   },
   {
@@ -303,7 +328,13 @@ export const stateRegistry = defineStateRegistry([
     owner: 'useFactorioStore',
     writers: ['packages/stage-ui/src/stores/modules/gaming-module-factory.ts'],
     tier: 'plain',
-    locations: [{ area: 'localStorage', prefix: 'settings/factorio/' }],
+    upstream: 'bd4f30391',
+    locations: [
+      { area: 'localStorage', key: 'settings/factorio/enabled' },
+      { area: 'localStorage', key: 'settings/factorio/server-address' },
+      { area: 'localStorage', key: 'settings/factorio/server-port' },
+      { area: 'localStorage', key: 'settings/factorio/username' },
+    ],
     reset: ({ pinia }) => useFactorioStore(pinia).resetState(),
   },
   {
@@ -311,6 +342,7 @@ export const stateRegistry = defineStateRegistry([
     owner: 'useMinecraftStore',
     writers: ['packages/stage-ui/src/stores/modules/gaming-minecraft.ts'],
     tier: 'plain',
+    exception: 'Legacy sweep only',
     // The store keeps its runtime context in memory only. Releases that built it with `createGamingModuleStore` wrote
     // these keys.
     locations: [{ area: 'localStorage', prefix: 'settings/minecraft/', legacy: true }],
@@ -324,10 +356,21 @@ export const stateRegistry = defineStateRegistry([
     exception: 'Long-term memory',
     locations: [
       { area: 'indexedDB', database: 'airi-memory', store: 'entries' },
-      { area: 'localStorage', key: 'memory/enabled' },
       { area: 'localStorage', key: 'memory/entries', legacy: true },
     ],
     reset: ({ pinia }) => useMemoryStore(pinia).resetState(),
+  },
+
+  {
+    id: 'memory-settings',
+    owner: 'useMemoryStore',
+    writers: ['packages/stage-ui/src/stores/memory.ts'],
+    tier: 'plain',
+    upstream: 'bd4f30391',
+    // The preceding memory reset also resets this live toggle; do not run it twice.
+    locations: [
+      { area: 'localStorage', key: 'memory/enabled' },
+    ],
   },
   {
     id: 'recipes',
@@ -337,10 +380,21 @@ export const stateRegistry = defineStateRegistry([
     exception: 'Recipes',
     locations: [
       { area: 'indexedDB', database: 'airi-recipes', store: 'recipes' },
-      { area: 'localStorage', key: 'recipes/proposals-enabled' },
       { area: 'localStorage', key: 'recipes/custom', legacy: true },
     ],
     reset: ({ pinia }) => useRecipesStore(pinia).resetState(),
+  },
+
+  {
+    id: 'recipe-settings',
+    owner: 'useRecipesStore',
+    writers: ['packages/stage-ui/src/stores/recipes.ts'],
+    tier: 'plain',
+    upstream: 'bd4f30391',
+    // The preceding recipes reset also resets this live toggle; do not run it twice.
+    locations: [
+      { area: 'localStorage', key: 'recipes/proposals-enabled' },
+    ],
   },
   {
     id: 'chat-sessions',
@@ -370,6 +424,7 @@ export const stateRegistry = defineStateRegistry([
     owner: 'useSettingsGeneral',
     writers: ['packages/stage-ui/src/stores/settings/general.ts'],
     tier: 'plain',
+    upstream: 'bd4f30391',
     locations: [
       { area: 'localStorage', key: 'settings/language' },
       { area: 'localStorage', key: 'settings/streamer-mode' },
@@ -384,6 +439,7 @@ export const stateRegistry = defineStateRegistry([
     owner: 'useSettingsAnalytics',
     writers: ['packages/stage-ui/src/stores/settings/analytics.ts'],
     tier: 'plain',
+    exception: 'Fork state awaiting S2 migration',
     locations: [
       { area: 'localStorage', key: 'settings/analytics/opted-in' },
       { area: 'localStorage', key: 'settings/analytics/enabled', legacy: true },
@@ -395,6 +451,7 @@ export const stateRegistry = defineStateRegistry([
     owner: 'useSettingsSpine',
     writers: ['packages/stage-ui/src/stores/settings/spine.ts'],
     tier: 'plain',
+    upstream: 'bd4f30391',
     locations: [
       { area: 'localStorage', perModel: 'settings/spine/premultiplied-alpha' },
       { area: 'localStorage', perModel: 'settings/spine/default-mix' },
@@ -409,6 +466,7 @@ export const stateRegistry = defineStateRegistry([
     owner: 'useTachie',
     writers: ['packages/stage-ui-tachie/src/stores/tachie.ts'],
     tier: 'plain',
+    upstream: 'bd4f30391',
     locations: [
       { area: 'localStorage', perModel: 'settings/tachie/position' },
       { area: 'localStorage', perModel: 'settings/tachie/scale' },
@@ -422,6 +480,7 @@ export const stateRegistry = defineStateRegistry([
     owner: 'useSettingsTheme',
     writers: ['packages/stage-ui/src/stores/settings/theme.ts'],
     tier: 'plain',
+    upstream: 'bd4f30391',
     locations: [
       { area: 'localStorage', key: 'settings/theme/colors/hue' },
       { area: 'localStorage', key: 'settings/theme/colors/hue-dynamic' },
@@ -433,6 +492,7 @@ export const stateRegistry = defineStateRegistry([
     owner: 'useSettingsControlsIsland',
     writers: ['packages/stage-ui/src/stores/settings/controls-island.ts'],
     tier: 'plain',
+    upstream: 'bd4f30391',
     locations: [
       { area: 'localStorage', key: 'settings/allow-visible-on-all-workspaces' },
       { area: 'localStorage', key: 'settings/always-on-top' },
@@ -445,6 +505,7 @@ export const stateRegistry = defineStateRegistry([
     owner: 'useSettingsDeveloper',
     writers: ['packages/stage-ui/src/stores/settings/developer.ts'],
     tier: 'plain',
+    upstream: 'bd4f30391',
     locations: [
       { area: 'localStorage', key: 'settings/developer/inspect-updater-diagnostics' },
       { area: 'localStorage', key: 'settings/developer/show-tool-payloads-as-json' },
@@ -456,6 +517,7 @@ export const stateRegistry = defineStateRegistry([
     owner: 'useSettingsAudioDevice',
     writers: ['packages/stage-ui/src/stores/settings/audio-device.ts'],
     tier: 'plain',
+    upstream: 'bd4f30391',
     locations: [
       { area: 'localStorage', key: 'settings/audio/input' },
       { area: 'localStorage', key: 'settings/audio/input/enabled' },
@@ -471,6 +533,7 @@ export const stateRegistry = defineStateRegistry([
       'packages/stage-ui-live2d/src/stores/view-control.ts',
     ],
     tier: 'plain',
+    upstream: 'bd4f30391',
     locations: [
       { area: 'localStorage', perModel: 'settings/live2d/current-motion' },
       { area: 'localStorage', perModel: 'settings/live2d/available-motions' },
@@ -486,6 +549,7 @@ export const stateRegistry = defineStateRegistry([
     owner: 'useSettingsLive2d',
     writers: ['packages/stage-ui-live2d/src/composables/live2d/live2d.ts'],
     tier: 'plain',
+    upstream: 'bd4f30391',
     locations: [
       { area: 'localStorage', perModel: 'settings/live2d/motion-driver' },
       { area: 'localStorage', perModel: 'settings/live2d/eye-tracking' },
@@ -506,6 +570,7 @@ export const stateRegistry = defineStateRegistry([
     owner: 'useLive2DMotionMagicSettings',
     writers: ['packages/stage-ui/src/features/motions/live2d/settings.ts'],
     tier: 'plain',
+    upstream: 'bd4f30391',
     locations: [
       { area: 'localStorage', perModel: 'settings/live2d/magic/idle-profile' },
       { area: 'localStorage', perModel: 'settings/live2d/magic/speaking-profile' },
@@ -520,7 +585,29 @@ export const stateRegistry = defineStateRegistry([
     owner: 'useSettingsScreenAmbientLight',
     writers: ['packages/stage-shared/src/stores/screen-ambient-light.ts'],
     tier: 'plain',
-    locations: [{ area: 'localStorage', prefix: 'settings/screen-ambient-light/' }],
+    upstream: 'bd4f30391',
+    locations: [
+      { area: 'localStorage', key: 'settings/screen-ambient-light/enabled' },
+      { area: 'localStorage', key: 'settings/screen-ambient-light/source' },
+      { area: 'localStorage', key: 'settings/screen-ambient-light/forced-color' },
+      { area: 'localStorage', key: 'settings/screen-ambient-light/mode' },
+      { area: 'localStorage', key: 'settings/screen-ambient-light/strength' },
+      { area: 'localStorage', key: 'settings/screen-ambient-light/squint' },
+      { area: 'localStorage', key: 'settings/screen-ambient-light/capture-interval-ms' },
+      { area: 'localStorage', key: 'settings/screen-ambient-light/sample-width' },
+      { area: 'localStorage', key: 'settings/screen-ambient-light/response-ms' },
+      { area: 'localStorage', key: 'settings/screen-ambient-light/neutral-color-weight' },
+      { area: 'localStorage', key: 'settings/screen-ambient-light/dark-base' },
+      { area: 'localStorage', key: 'settings/screen-ambient-light/base-curve' },
+      { area: 'localStorage', key: 'settings/screen-ambient-light/local-share' },
+      { area: 'localStorage', key: 'settings/screen-ambient-light/tint' },
+      { area: 'localStorage', key: 'settings/screen-ambient-light/color-boost' },
+      { area: 'localStorage', key: 'settings/screen-ambient-light/wrap-intensity' },
+      { area: 'localStorage', key: 'settings/screen-ambient-light/wrap-saturation' },
+      { area: 'localStorage', key: 'settings/screen-ambient-light/wrap-diffuse' },
+      { area: 'localStorage', key: 'settings/screen-ambient-light/backlight' },
+      { area: 'localStorage', key: 'settings/screen-ambient-light/translucent-wrap' },
+    ],
     reset: ({ pinia }) => useSettingsScreenAmbientLight(pinia).resetState(),
   },
   {
@@ -532,6 +619,7 @@ export const stateRegistry = defineStateRegistry([
       'packages/stage-ui-three/src/stores/camera.ts',
     ],
     tier: 'plain',
+    upstream: 'bd4f30391',
     locations: [
       { area: 'localStorage', perModel: 'settings/stage-ui-three/modelRotationY' },
       { area: 'localStorage', perModel: 'settings/stage-ui-three/trackingMode' },
@@ -570,6 +658,7 @@ export const stateRegistry = defineStateRegistry([
     owner: 'useMMD, useMMDViewControl',
     writers: ['packages/stage-ui-mmd/src/stores/mmd.ts', 'packages/stage-ui-mmd/src/stores/view-control.ts'],
     tier: 'plain',
+    upstream: 'bd4f30391',
     // Exact keys: `useMMDNaturalSettings` owns `settings/mmd/natural`.
     locations: [
       { area: 'localStorage', perModel: 'settings/mmd/physics-enabled' },
@@ -577,7 +666,6 @@ export const stateRegistry = defineStateRegistry([
       { area: 'localStorage', perModel: 'settings/mmd/grant-enabled' },
       { area: 'localStorage', perModel: 'settings/mmd/physics-gravity' },
       { area: 'localStorage', perModel: 'settings/mmd/gaze-mode' },
-      { area: 'localStorage', perModel: 'settings/mmd/motion-driver' },
       { area: 'localStorage', perModel: 'settings/mmd/camera-fov' },
       { area: 'localStorage', perModel: 'settings/mmd/ambient-color' },
       { area: 'localStorage', perModel: 'settings/mmd/ambient-intensity' },
@@ -587,7 +675,6 @@ export const stateRegistry = defineStateRegistry([
       { area: 'localStorage', perModel: 'settings/mmd/albedo-glow' },
       { area: 'localStorage', perModel: 'settings/mmd/idle-motion' },
       { area: 'localStorage', perModel: 'settings/mmd/motions' },
-      { area: 'localStorage', perModel: 'settings/mmd/available-clip-meta' },
       { area: 'localStorage', perModel: 'settings/mmd/emotion-action-map' },
       { area: 'localStorage', perModel: 'settings/mmd/morph-overrides' },
       { area: 'localStorage', perModel: 'settings/mmd/available-morphs' },
@@ -597,14 +684,45 @@ export const stateRegistry = defineStateRegistry([
       { area: 'localStorage', perModel: 'settings/mmd/scale' },
       { area: 'localStorage', perModel: 'settings/mmd/rotationY' },
       { area: 'localStorage', key: 'settings/mmd/render-scale' },
+    ],
+    reset: ({ pinia }) => useMMD(pinia).resetState(),
+  },
+
+  {
+    id: 'mmd-motion-files',
+    owner: 'useMMD',
+    writers: ['packages/stage-ui-mmd/src/stores/mmd.ts'],
+    tier: 4,
+    // The mmd reset owns the live state and runs once before this sweep.
+    locations: [
+      { area: 'indexedDB', database: 'localforage', store: 'keyvaluepairs', prefix: 'mmd-motion-' },
+    ],
+  },
+  {
+    id: 'mmd-clip-metadata',
+    owner: 'useMMD',
+    writers: ['packages/stage-ui-mmd/src/stores/mmd.ts'],
+    tier: 'plain',
+    exception: 'Fork state awaiting S2 migration',
+    // The mmd reset owns the live state and runs once before this sweep.
+    locations: [
+      { area: 'localStorage', perModel: 'settings/mmd/available-clip-meta' },
+    ],
+  },
+  {
+    id: 'mmd-performance-settings',
+    owner: 'useMMD',
+    writers: ['packages/stage-ui-mmd/src/stores/mmd.ts'],
+    tier: 'plain',
+    exception: 'Fork state awaiting S2 migration',
+    // The mmd reset owns the live state and runs once before this sweep.
+    locations: [
+      { area: 'localStorage', perModel: 'settings/mmd/motion-driver' },
       { area: 'localStorage', key: 'settings/mmd/stage-character-height' },
       { area: 'localStorage', key: 'settings/mmd/roam-mode' },
       { area: 'localStorage', key: 'settings/mmd/stance-slots' },
       { area: 'localStorage', key: 'settings/mmd/clip-curation' },
-      // Imported motions, in the database of the `device` mount through the store's own unstorage instance.
-      { area: 'indexedDB', database: 'localforage', store: 'keyvaluepairs', prefix: 'mmd-motion-' },
     ],
-    reset: ({ pinia }) => useMMD(pinia).resetState(),
   },
   {
     id: 'situation-settings',
@@ -657,6 +775,7 @@ export const stateRegistry = defineStateRegistry([
     owner: 'useMcpStore',
     writers: ['packages/stage-ui/src/stores/mcp.ts'],
     tier: 'plain',
+    upstream: 'bd4f30391',
     locations: [
       { area: 'localStorage', key: 'settings/mcp/server-cmd' },
       { area: 'localStorage', key: 'settings/mcp/server-args' },
@@ -669,6 +788,7 @@ export const stateRegistry = defineStateRegistry([
     owner: 'useOnboardingStore',
     writers: ['packages/stage-ui/src/stores/onboarding.ts'],
     tier: 'plain',
+    upstream: 'bd4f30391',
     locations: [
       { area: 'localStorage', key: 'onboarding/steps' },
       { area: 'localStorage', key: 'onboarding/completed', legacy: true },
@@ -682,6 +802,7 @@ export const stateRegistry = defineStateRegistry([
     owner: 'useAiriCardStore',
     writers: ['packages/stage-ui/src/stores/modules/airi-card.ts'],
     tier: 'plain',
+    upstream: 'bd4f30391',
     locations: [
       { area: 'localStorage', key: 'airi-cards' },
       { area: 'localStorage', key: 'airi-card-active-id' },
@@ -729,6 +850,7 @@ export const stateRegistry = defineStateRegistry([
     owner: 'useVisionStore',
     writers: ['packages/stage-ui/src/stores/modules/vision/store.ts'],
     tier: 'plain',
+    upstream: 'bd4f30391',
     // Exact keys: `useVisionProcessingStore` owns `settings/vision/capture-interval-ms`.
     locations: [
       { area: 'localStorage', key: 'settings/vision/enabled' },
@@ -746,6 +868,7 @@ export const stateRegistry = defineStateRegistry([
     owner: 'useVisionProcessingStore',
     writers: ['packages/stage-ui/src/stores/modules/vision/processing-store.ts'],
     tier: 'plain',
+    upstream: 'bd4f30391',
     locations: [{ area: 'localStorage', key: 'settings/vision/capture-interval-ms' }],
     reset: ({ pinia }) => useVisionProcessingStore(pinia).resetState(),
   },
@@ -754,8 +877,24 @@ export const stateRegistry = defineStateRegistry([
     owner: 'useArtistryStore',
     writers: ['packages/stage-ui/src/stores/modules/artistry.ts'],
     tier: 'plain',
+    upstream: 'bd4f30391',
     // Holds the Replicate and Nano Banana API keys.
-    locations: [{ area: 'localStorage', prefix: 'artistry-' }],
+    locations: [
+      { area: 'localStorage', key: 'artistry-provider' },
+      { area: 'localStorage', key: 'artistry-model' },
+      { area: 'localStorage', key: 'artistry-prompt-prefix' },
+      { area: 'localStorage', key: 'artistry-provider-options' },
+      { area: 'localStorage', key: 'artistry-comfyui-server-url' },
+      { area: 'localStorage', key: 'artistry-comfyui-saved-workflows' },
+      { area: 'localStorage', key: 'artistry-comfyui-active-workflow' },
+      { area: 'localStorage', key: 'artistry-replicate-api-key' },
+      { area: 'localStorage', key: 'artistry-replicate-default-model' },
+      { area: 'localStorage', key: 'artistry-replicate-aspect-ratio' },
+      { area: 'localStorage', key: 'artistry-replicate-inference-steps' },
+      { area: 'localStorage', key: 'artistry-nanobanana-api-key' },
+      { area: 'localStorage', key: 'artistry-nanobanana-model' },
+      { area: 'localStorage', key: 'artistry-nanobanana-resolution' },
+    ],
     reset: ({ pinia }) => useArtistryStore(pinia).resetState(),
   },
   {
@@ -763,6 +902,7 @@ export const stateRegistry = defineStateRegistry([
     owner: 'useToolCardsStore',
     writers: ['packages/stage-ui/src/stores/tool-cards.ts'],
     tier: 'plain',
+    upstream: 'bd4f30391',
     locations: [{ area: 'localStorage', key: 'tool-cards/cards' }],
     // Each removal is leader-routed and also forgets the saved result of the card.
     reset: async ({ pinia }) => {
@@ -783,6 +923,7 @@ export const stateRegistry = defineStateRegistry([
     owner: 'useToolCardsStore',
     writers: ['packages/stage-ui/src/stores/tool-cards.ts'],
     tier: 'plain',
+    upstream: 'bd4f30391',
     locations: [
       { area: 'localStorage', key: 'settings/tool-cards/enabled' },
       { area: 'localStorage', key: 'settings/tool-cards/reply-cards' },
@@ -822,6 +963,17 @@ export const stateRegistry = defineStateRegistry([
     tier: 4,
     locations: [
       { area: 'indexedDB', database: 'localforage', store: 'keyvaluepairs', prefix: 'background-' },
+    ],
+  },
+
+  {
+    id: 'layout-background-settings',
+    owner: 'useBackgroundStore (stage-layouts)',
+    writers: ['packages/stage-layouts/src/stores/background.ts'],
+    tier: 'plain',
+    upstream: 'bd4f30391',
+    // Sweep only: constructing this owner loads the background library.
+    locations: [
       { area: 'localStorage', key: 'settings/theme/background/gallery-active' },
       { area: 'localStorage', key: 'settings/theme/background/gallery-options' },
       { area: 'localStorage', key: 'settings/theme/background/sampled-color' },
@@ -839,6 +991,17 @@ export const stateRegistry = defineStateRegistry([
       { area: 'indexedDB', database: 'airi-sticker-library', store: 'records', prefix: 'entries:' },
       { area: 'indexedDB', database: 'airi-sticker-library', store: 'records', prefix: 'images:' },
       { area: 'indexedDB', database: 'airi-sticker-library', store: 'records', prefix: 'migrated-from:', kept: true },
+    ],
+  },
+
+  {
+    id: 'sticker-settings',
+    owner: 'useStickersStore',
+    writers: ['packages/stage-ui/src/stores/modules/stickers.ts'],
+    tier: 'plain',
+    upstream: 'bd4f30391',
+    // Sweep only: constructing this owner loads the sticker library.
+    locations: [
       { area: 'localStorage', key: 'settings/stickers/enabled' },
       { area: 'localStorage', key: 'settings/stickers/frequency' },
     ],
@@ -848,6 +1011,7 @@ export const stateRegistry = defineStateRegistry([
     owner: 'useSettingsBeatSync',
     writers: ['packages/stage-ui/src/stores/settings/beat-sync.ts'],
     tier: 'plain',
+    upstream: 'bd4f30391',
     locations: [
       { area: 'localStorage', key: 'settings/beat-sync/parameters' },
       { area: 'localStorage', key: 'settings/beat-sync/spectrum-scale' },
@@ -859,6 +1023,7 @@ export const stateRegistry = defineStateRegistry([
     owner: 'useSpine, useSpineViewControl',
     writers: ['packages/stage-ui-spine/src/stores/spine.ts', 'packages/stage-ui-spine/src/stores/view-control.ts'],
     tier: 'plain',
+    upstream: 'bd4f30391',
     locations: [
       { area: 'localStorage', perModel: 'settings/spine/current-animation' },
       { area: 'localStorage', perModel: 'settings/spine/available-animations' },
@@ -877,6 +1042,7 @@ export const stateRegistry = defineStateRegistry([
     owner: 'useModsServerChannelStore',
     writers: ['packages/stage-ui/src/stores/mods/api/channel-server.ts'],
     tier: 'plain',
+    upstream: 'bd4f30391',
     locations: [
       { area: 'localStorage', key: 'settings/connection/websocket-url' },
       { area: 'localStorage', key: 'settings/connection/websocket-auth-token' },
@@ -888,6 +1054,7 @@ export const stateRegistry = defineStateRegistry([
     owner: 'useSpeechOutputControlStore',
     writers: ['packages/stage-ui/src/stores/speech-output-control.ts'],
     tier: 'plain',
+    upstream: 'bd4f30391',
     locations: [
       { area: 'localStorage', key: 'settings/speech/output-muted' },
       { area: 'localStorage', key: 'settings/speech/output-volume' },
@@ -901,6 +1068,7 @@ export const stateRegistry = defineStateRegistry([
     owner: 'useWakeWordsStore',
     writers: ['packages/stage-ui/src/stores/wake-words.ts'],
     tier: 'plain',
+    upstream: 'bd4f30391',
     locations: [{ area: 'localStorage', key: 'settings/voice/pronunciation-owners' }],
   },
   {
@@ -908,6 +1076,7 @@ export const stateRegistry = defineStateRegistry([
     owner: 'useFeatureFlagsStore',
     writers: ['packages/stage-ui/src/stores/feature-flags.ts'],
     tier: 'plain',
+    upstream: 'bd4f30391',
     locations: [
       { area: 'localStorage', key: 'settings/feature-flags' },
       { area: 'localStorage', key: 'settings/feature-flag-variants' },
@@ -919,6 +1088,7 @@ export const stateRegistry = defineStateRegistry([
     owner: 'useTheme',
     writers: ['packages/ui/src/composables/use-theme.ts'],
     tier: 'plain',
+    upstream: 'bd4f30391',
     locations: [{ area: 'localStorage', key: 'vueuse-color-scheme' }],
     // `auto`, the system scheme, is the color mode's default.
     reset: () => {
@@ -933,13 +1103,20 @@ export const stateRegistry = defineStateRegistry([
       'apps/stage-tamagotchi/src/renderer/pages/chat-floating.vue',
     ],
     tier: 'plain',
-    locations: [{ area: 'localStorage', prefix: 'chat-window/danmaku/' }],
+    upstream: 'bd4f30391',
+    locations: [
+      { area: 'localStorage', key: 'chat-window/danmaku/hide-read-messages' },
+      { area: 'localStorage', key: 'chat-window/danmaku/characters-per-second' },
+      { area: 'localStorage', key: 'chat-window/danmaku/minimum-seconds' },
+      { area: 'localStorage', key: 'chat-window/danmaku/composer-folded' },
+    ],
   },
   {
     id: 'settings-needs-attention',
     owner: 'useSettingsNeedsAttention',
     writers: ['packages/stage-ui/src/composables/use-settings-needs-attention.ts'],
     tier: 'plain',
+    upstream: 'bd4f30391',
     locations: [{ area: 'localStorage', key: 'settings/needs-attention/dismissed' }],
   },
   {
@@ -947,6 +1124,7 @@ export const stateRegistry = defineStateRegistry([
     owner: 'useLive2dModelSettings',
     writers: ['packages/stage-ui/src/components/scenarios/settings/model-settings/use-live2d-model-settings.ts'],
     tier: 'plain',
+    upstream: 'bd4f30391',
     locations: [
       { area: 'localStorage', key: 'selected-runtime-motion' },
       { area: 'localStorage', key: 'selected-runtime-motion-group' },
@@ -958,6 +1136,7 @@ export const stateRegistry = defineStateRegistry([
     owner: 'voice-input-button.vue',
     writers: ['packages/stage-ui/src/components/scenarios/chat/components/voice-input-button.vue'],
     tier: 'plain',
+    upstream: 'bd4f30391',
     locations: [{ area: 'localStorage', key: 'ui/chat/voice-mode' }],
   },
   {
@@ -965,6 +1144,7 @@ export const stateRegistry = defineStateRegistry([
     owner: 'composer-voice-input.vue',
     writers: ['packages/stage-ui/src/components/scenarios/chat/components/composer-voice-input.vue'],
     tier: 'plain',
+    upstream: 'bd4f30391',
     locations: [{ area: 'localStorage', key: 'ui/chat/composer-voice-mode' }],
   },
   {
@@ -976,6 +1156,7 @@ export const stateRegistry = defineStateRegistry([
       'packages/stage-layouts/src/components/Widgets/ChatActionButtons.vue',
     ],
     tier: 'plain',
+    upstream: 'bd4f30391',
     locations: [{ area: 'localStorage', key: 'ui/chat/settings/send-mode' }],
   },
   {
@@ -983,6 +1164,7 @@ export const stateRegistry = defineStateRegistry([
     owner: 'trace-timeline.vue',
     writers: ['packages/ui-trace/src/components/timeline/trace-timeline.vue'],
     tier: 'plain',
+    upstream: 'bd4f30391',
     locations: [{ area: 'localStorage', key: 'ui/devtools/io-tracer/label-width' }],
   },
   {
@@ -990,6 +1172,7 @@ export const stateRegistry = defineStateRegistry([
     owner: 'useControlsIslandStore',
     writers: ['apps/stage-tamagotchi/src/renderer/stores/controls-island.ts'],
     tier: 'plain',
+    upstream: 'bd4f30391',
     locations: [
       { area: 'localStorage', key: 'controls-island/fade-on-hover-enabled' },
       { area: 'localStorage', key: 'preferences/dont-show-it-again/notice/fade-on-hover' },
@@ -1000,15 +1183,21 @@ export const stateRegistry = defineStateRegistry([
     owner: 'useServerChannelSettingsStore',
     writers: ['apps/stage-tamagotchi/src/renderer/stores/settings/server-channel.ts'],
     tier: 'plain',
+    upstream: 'bd4f30391',
     // Holds the renderer's copy of the desktop server channel token. The app's host step replaces the token in the main
     // process and has this window read the new one.
-    locations: [{ area: 'localStorage', prefix: 'settings/server-channel/' }],
+    locations: [
+      { area: 'localStorage', key: 'settings/server-channel/websocket-tls-config' },
+      { area: 'localStorage', key: 'settings/server-channel/hostname' },
+      { area: 'localStorage', key: 'settings/server-channel/auth-token' },
+    ],
   },
   {
     id: 'push-to-talk-shortcut',
     owner: 'usePushToTalkShortcutSettings',
     writers: ['apps/stage-tamagotchi/src/renderer/composables/use-push-to-talk-shortcut.ts'],
     tier: 'plain',
+    upstream: 'bd4f30391',
     locations: [
       { area: 'localStorage', key: 'settings/hearing/push-to-talk-shortcut' },
       { area: 'localStorage', key: 'settings/hearing/push-to-talk-shortcut-error' },
@@ -1019,6 +1208,7 @@ export const stateRegistry = defineStateRegistry([
     owner: 'useFullscreenLayout',
     writers: ['apps/stage-tamagotchi/src/renderer/composables/use-fullscreen-layout.ts'],
     tier: 'plain',
+    upstream: 'bd4f30391',
     locations: [{ area: 'localStorage', key: 'fullscreen/surface-width' }],
   },
   {
@@ -1026,6 +1216,7 @@ export const stateRegistry = defineStateRegistry([
     owner: 'the OpenPanel client',
     writers: ['packages/stage-ui/src/libs/product-signals/openpanel.ts'],
     tier: 'plain',
+    exception: 'Session diagnostics',
     locations: [{ area: 'sessionStorage', key: 'airi:openpanel-device-id' }],
   },
   {
@@ -1033,6 +1224,7 @@ export const stateRegistry = defineStateRegistry([
     owner: 'the IO trace bridge',
     writers: ['apps/stage-tamagotchi/src/renderer/bridges/io-trace-hub.ts'],
     tier: 'plain',
+    exception: 'Session diagnostics',
     locations: [{ area: 'sessionStorage', key: 'airi:trace-source-id' }],
   },
   {
@@ -1040,6 +1232,7 @@ export const stateRegistry = defineStateRegistry([
     owner: 'removeRetiredAccountCredentials',
     writers: ['packages/stage-ui/src/libs/retired-account.ts'],
     tier: 'plain',
+    exception: 'Legacy sweep only',
     // Tokens of the retired AIRI account service, which releases before the account-free fork wrote.
     locations: [
       { area: 'localStorage', key: 'auth/v1/token', legacy: true },
