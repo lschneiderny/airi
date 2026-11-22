@@ -406,6 +406,8 @@ The close-out follows the owner's D16 ruling: stop early, cut the cursor delay, 
 
 - **The corrective step (D16, the owner's ruling of 2026-11-21).** After a chase that ended on the cursor, once she rests, she takes one `stroll` step onto a cursor still resting within `CHASE_STOP_LEGS` but farther than `STEP_ONTO_CURSOR_MIN_LEGS` (0.15). In the director's closed loop she then ends on the pointer. The rendered press check (rests of 0.3, 0.6, 1, 2, and 4 s) poked 10 of 15 times, and 8 of 12 with a rest of at least 0.6 s, against 2 of 9 before the step. The misses came while she still slid after a 2 s walk, or while she turned toward the pointer for the step. The pass rule (every press after 0.6 s pokes) is not met; a sidestep without the turn is the follow-up, which needs its own ruling.
 
+- **The sidestep (the owner's ruling of 2026-11-21, after the corrective step).** The corrective step no longer turns: a goal the director marks `step: 'sidestep'` within `SIDESTEP_MAX_LEGS` (0.6 legs) is taken as lateral step pairs at her current yaw. All nine headless scenarios are `IDENTICAL` against `main` `6e223c22b`, because none takes a corrective step. In the rendered press check, every press after a 4 s rest poked (3 of 3, one during the sidestep), and no press found her turning. With a rest of at least 0.6 s, 6 of 12 poked, against 8 of 12 for the turning step; every miss found her in `stopping`, 0.26 to 0.48 widths from the pointer, because the gait brakes for about 2 s from walking speed. The pass rule still needs a shorter brake when a chase ends on the pointer.
+
 ## Commits
 
 - `8c6ab20a8` docs(plan): add the plan for the gaze slice of the character mind
@@ -417,3 +419,4 @@ The close-out follows the owner's D16 ruling: stop early, cut the cursor delay, 
 - `e4cddff88` docs(ai): record the gaze decisions and close CM6
 - `c8ef442a1` fix(motion-driver-humanoid,stage-ui-mmd,qa-tools): end a chase when her predicted stop reaches the cursor
 - `cfd603522` fix(stage-tamagotchi): send window bounds only when they change
+- `8353ed264` feat(motion-driver-humanoid,stage-ui-mmd): sidestep onto a pointer resting on her instead of turning
