@@ -74,7 +74,10 @@ describe('mcpSettings', () => {
     await renderPage()
 
     await expect.element(page.getByText('Bundled Terminal', { exact: true })).toBeVisible()
-    await expect.element(page.getByRole('switch', { name: 'Bundled Terminal' })).toBeVisible()
+    const terminalSwitch = page.getByRole('switch', { name: 'Bundled Terminal' })
+    await expect.element(terminalSwitch).toBeVisible()
+    // The status pill sits outside the switch's label, so its text is not part of the switch's name.
+    await expect.element(terminalSwitch).not.toHaveAccessibleName(/not loaded/)
     await expect.element(page.getByTestId('terminal-connection-status')).toHaveTextContent('not loaded')
   })
 

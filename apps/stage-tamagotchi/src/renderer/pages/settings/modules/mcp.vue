@@ -448,12 +448,12 @@ useIntervalFn(() => {
       >
         <template #label>
           <span>{{ tn('terminal.title') }}</span>
-          <span :class="[RUNTIME_PILL, badgeClass(runtimeStateOf('airi-terminal'))]" data-testid="terminal-connection-status">
-            <span :class="['size-1 rounded-full', 'bg-current opacity-80']" />
-            {{ tn(`status.${runtimeStateOf('airi-terminal') ?? 'unknown'}`) }}
-          </span>
         </template>
       </FieldCheckbox>
+      <span :class="[RUNTIME_PILL, 'self-start', badgeClass(runtimeStateOf('airi-terminal'))]" data-testid="terminal-connection-status">
+        <span :class="['size-1 rounded-full', 'bg-current opacity-80']" />
+        {{ tn(`status.${runtimeStateOf('airi-terminal') ?? 'unknown'}`) }}
+      </span>
       <p v-if="runtime?.servers.find(server => server.name === 'airi-terminal')?.lastError" :class="['text-xs', 'text-red-600']" role="alert">
         {{ runtime?.servers.find(server => server.name === 'airi-terminal')?.lastError }}
       </p>
