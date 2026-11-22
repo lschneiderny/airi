@@ -9,7 +9,7 @@ import type { SlotLeases } from './expression-slot-leases'
 import { errorMessageFrom } from '@moeru/std'
 import { customEntryFromDocument, defaultExpressionPerformanceSettings, expandEntry, isAutoEligible, isLlmEligible, mergeCatalog, parseCuratedCatalogDocument, parseRestSet, resolveAlias } from '@proj-airi/stage-shared/expression-performance'
 import { defineStore } from 'pinia'
-import { computed, markRaw, ref } from 'vue'
+import { computed, markRaw, ref, shallowRef } from 'vue'
 
 import { ExpressionComposer } from '../composables/live2d/expression/compose'
 import { slotNames } from '../composables/live2d/expression/slots'
@@ -111,6 +111,8 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
   const idleSeq = ref<Record<string, number>>({})
   let claimSeq = 0
   const composer = markRaw(new ExpressionComposer())
+  /** Highest-priority, frame-scoped input from the Root context; never persisted or exposed as catalog entries. */
+  const contextPreview = shallowRef<ExpressionDefinition['parameters']>([])
   const derived = ref<CatalogEntry[]>([])
   const curated = ref<CuratedCatalogDocument>({ version: 1, overrides: [] })
   const parameters = ref<Omit<FreeParameter, 'name'>[]>([])
@@ -325,6 +327,7 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
   }
 
   function registerDefinitions(id: string, defs: NamedExpressionDefinition[], model3Refs: { File: string, Name?: unknown }[] = [], vtube?: unknown, displayInfo?: unknown, modelParameters: Omit<FreeParameter, 'name'>[] = [], modelFreeParameters: FreeParameter[] = [], hidesArt?: (definition: NamedExpressionDefinition) => boolean) {
+    contextPreview.value = []
     modelId.value = id
     parameters.value = modelParameters.map(parameter => ({ ...parameter }))
     freeParameters.value = modelFreeParameters.map(parameter => ({ ...parameter }))
@@ -472,6 +475,7 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
   }
 
   function dispose() {
+    contextPreview.value = []
     composer.restoreBases(() => {})
     definitions.value = []
     parameters.value = []
@@ -520,5 +524,5 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
     }
   }
 
-  return { definitions, modelId, restSet, restSuppressed, manualActive, manualSeq, idleActive, setIdleClaims, leases, composer, derived, curated, catalog, llmEligibleEntries, autoEligibleEntries, settingsSnapshot, ownersOf, reconcile, registerDefinitions, rederive, activate, activateFromSlot, releaseSlot, applySlots, onSpeech, setMuted, setSlotSettings, tickLeases, deactivate, toggle, saveDefaults, resetAll, updateEntry, resetEntry, dispose, applySettingsCommand }
+  return { definitions, modelId, restSet, restSuppressed, manualActive, manualSeq, idleActive, setIdleClaims, leases, contextPreview, composer, derived, curated, catalog, llmEligibleEntries, autoEligibleEntries, settingsSnapshot, ownersOf, reconcile, registerDefinitions, rederive, activate, activateFromSlot, releaseSlot, applySlots, onSpeech, setMuted, setSlotSettings, tickLeases, deactivate, toggle, saveDefaults, resetAll, updateEntry, resetEntry, dispose, applySettingsCommand }
 })

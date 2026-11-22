@@ -656,7 +656,8 @@ async function performModelLoad() {
       lastUpdateTime,
     })
 
-    motionManagerUpdate.register(ctx => expressionController.restoreExpressionBases(ctx.model), 'pre')
+    const expressionContextInput = () => live2dMotionDriver.value === 'natural' ? live2d.expressions : undefined
+    motionManagerUpdate.register(ctx => expressionController.restoreExpressionBases(ctx.model, expressionContextInput()), 'pre')
     const beatSyncPlugins = useMotionUpdatePluginsBeatSync(beatSync, currentBeatSyncMode)
     motionManagerUpdate.register(beatSyncPlugins.pre, 'pre')
     motionManagerUpdate.register(useMotionUpdatePluginIdleDisable(), 'pre')
@@ -665,9 +666,9 @@ async function performModelLoad() {
     // Expression first: sets desired parameter values (e.g. closed eyes = 0).
     // Blink second: reads post-expression eye values, Multiply-modulates on top.
     // This ensures blink respects expression state (0 × blinkFactor = 0).
-    motionManagerUpdate.register(ctx => expressionController.applyExpressions(ctx.model), 'final')
-    // The Root expression context writes nothing until an expression is activated through it.
-    motionManagerUpdate.register(useMotionUpdatePluginExpression(live2d.expressions), 'final')
+    motionManagerUpdate.register(ctx => expressionController.applyExpressions(ctx.model, expressionContextInput()), 'final')
+    // Natural consumes the Root context as a lease; upstream drivers keep its direct plugin.
+    motionManagerUpdate.register(useMotionUpdatePluginExpression(live2d.expressions, () => live2dMotionDriver.value !== 'natural'), 'final')
     motionManagerUpdate.register(useMotionUpdatePluginAutoEyeBlink(live2dExpressionEnabled), 'final')
     // After the blink plugin, so that it only narrows the value a blink returns
     // to. The signal is the light behind the character, not the screen level:

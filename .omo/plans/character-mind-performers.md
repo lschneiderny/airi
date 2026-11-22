@@ -557,6 +557,19 @@ stateless overlay; physics and pose are the only subsequent live writers.
 Headless and rendered acceptance remain assigned to the orchestrator, and
 the requested package checks replace repository-wide verify in this worktree.
 
+### d2: Context preview lease
+
+The section 2 gates still match the d1 inventory. The context represents both
+active controls and temporary previews as parameter operations, not catalog
+entries. Its Natural lease therefore lives beside the slot claims in the fork
+store and overrides their composed parameters without changing their lifetime.
+It has no fade or timer of its own, preserving immediate preview activation
+and withdrawal. Add retains upstream's model-default basis; Multiply reads the
+clamped fork result. A switch from an upstream driver releases its prior direct
+writes before capturing clean bases. Universal and MAGIC keep their plugin.
+The d2 regression is Node-only and exercises the real context, store, controller
+and plugin; no browser test was required by this item.
+
 ## Checks run (CM7a)
 
 The implementation base is `e57dd1393`. The owner requested package checks,

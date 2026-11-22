@@ -58,6 +58,12 @@ The stage window owns `useExpressionStore`. Other windows render its `settingsSn
 
 ### Expression slots
 
+Under Natural, the Root context's active expression controls and temporary
+previews form a frame-scoped parameter lease above the catalog claims. The
+fork composer is their only parameter writer. A preview ends immediately
+when the context withdraws it; the underlying slot and its transition remain
+alive. Universal and MAGIC retain the context's direct plugin and release.
+
 The expression store executes the decider's slot commands in three slots: `face`, `effect`, and `prop`. The scene exposes `applySlots`, `onSpeech`, and `setMuted` for the stage performance conductor.
 The scene also exposes `applyHolds`, which sets or releases the held emotion; see Held emotions below.
 Each slot holds at most one transient lease on top of the rest set and manual toggles. Releasing a lease never turns off an expression that the rest set or a manual toggle also owns.

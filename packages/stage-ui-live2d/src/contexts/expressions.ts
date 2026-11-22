@@ -58,6 +58,10 @@ export interface Live2DExpressionsContext {
   /** Applies one registered expression. Returns false for an unknown name. */
   activate: (name: string) => boolean
   reset: () => void
+  /** Active context operations, with Add resolved against the model default as in upstream apply. */
+  sample: () => Live2DExpressionParameterDefinition[]
+  /** Releases direct writes before another owner takes the context as an input. Keeps activation and preview state. */
+  release: (coreModel: Live2DExpressionCoreModel) => void
   apply: (coreModel: Live2DExpressionCoreModel) => void
   clear: () => void
 }
@@ -222,35 +226,45 @@ export function createLive2DExpressionsContext(
     return activeExecutor?.reset() ?? false
   }
 
-  function apply(coreModel: Live2DExpressionCoreModel) {
-    const activeThisFrame = new Set<string>()
-
+  function sample(): Live2DExpressionParameterDefinition[] {
+    const active: Live2DExpressionParameterDefinition[] = []
     for (const parameter of parameters.value.values()) {
       const preview = previewParameters.get(parameter.parameterId)
       if (!preview && parameter.currentValue === parameter.defaultValue)
         continue
 
       let value = preview?.value ?? parameter.currentValue
-      const blend = preview?.blend ?? parameter.activeBlend
-      if (blend === 'Add')
+      let blend = preview?.blend ?? parameter.activeBlend
+      if (blend === 'Add') {
         value = parameter.modelDefault + value
-      else if (blend === 'Multiply')
-        value = coreModel.getParameterValueById(parameter.parameterId) * value
-
-      coreModel.setParameterValueById(parameter.parameterId, value)
-      activeThisFrame.add(parameter.parameterId)
+        blend = 'Overwrite'
+      }
+      active.push({ parameterId: parameter.parameterId, value, blend })
     }
+    return active
+  }
 
+  function release(coreModel: Live2DExpressionCoreModel) {
     for (const parameterId of activeLastFrame) {
-      if (activeThisFrame.has(parameterId))
-        continue
-
       const parameter = parameters.value.get(parameterId)
       if (parameter)
         coreModel.setParameterValueById(parameterId, parameter.modelDefault)
     }
-
     activeLastFrame.clear()
+  }
+
+  function apply(coreModel: Live2DExpressionCoreModel) {
+    const activeThisFrame = new Set<string>()
+    for (const parameter of sample()) {
+      const value = parameter.blend === 'Multiply'
+        ? coreModel.getParameterValueById(parameter.parameterId) * parameter.value
+        : parameter.value
+      coreModel.setParameterValueById(parameter.parameterId, value)
+      activeThisFrame.add(parameter.parameterId)
+    }
+    for (const parameterId of activeThisFrame)
+      activeLastFrame.delete(parameterId)
+    release(coreModel)
     for (const parameterId of activeThisFrame)
       activeLastFrame.add(parameterId)
   }
@@ -277,6 +291,8 @@ export function createLive2DExpressionsContext(
     setPreviewExpressions,
     activate,
     reset,
+    sample,
+    release,
     apply,
     clear,
   }

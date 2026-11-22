@@ -1,11 +1,14 @@
-import type { PixiLive2DInternalModel } from './motion-manager'
+import type { Live2DExpressionsContext } from '../../contexts/expressions'
+import type { MotionManagerPluginContext, PixiLive2DInternalModel } from './motion-manager'
 
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { shallowRef } from 'vue'
 
+import { createLive2DExpressionsContext } from '../../contexts/expressions'
 import { useExpressionStore } from '../../stores/expression-store'
 import { useExpressionController } from './expression-controller'
+import { useMotionUpdatePluginExpression } from './motion-manager'
 
 describe('useExpressionController', () => {
   let now = 0
@@ -42,17 +45,105 @@ describe('useExpressionController', () => {
     })
     const coreFixture: unknown = core
     const modelCore = coreFixture as PixiLive2DInternalModel['coreModel']
-    const frame = () => {
-      controller.restoreExpressionBases(modelCore)
-      controller.applyExpressions(modelCore)
+    const frame = (context?: Live2DExpressionsContext) => {
+      controller.restoreExpressionBases(modelCore, context)
+      controller.applyExpressions(modelCore, context)
     }
-    return { controller, core, frame, store: useExpressionStore() }
+    return { controller, core, modelCore, frame, store: useExpressionStore() }
   }
 
   const archive = [
     { name: 'game', fileName: 'model/game.exp3.json', data: { FadeInTime: 0, FadeOutTime: 0, Parameters: [{ Id: 'Param2', Value: 1, Blend: 'Add' }] } },
     { name: 'eat', fileName: 'model/eat.exp3.json', data: { FadeInTime: 0, FadeOutTime: 0, Parameters: [{ Id: 'Param2', Value: 0, Blend: 'Add' }, { Id: 'Param4', Value: 1, Blend: 'Add' }] } },
   ]
+
+  it('leases context previews above a live slot and releases immediately without changing the slot', async () => {
+    const { controller, core, frame, store } = rig()
+    await controller.initialise('model', [], async () => '', archive)
+    expect(store.activateFromSlot('prop', { slot: 'prop', expressionId: archive[0].fileName, holdSeconds: 10, until: 'hold' }, 0)).toBe(true)
+    const context = createLive2DExpressionsContext({ getParameterDefault: () => 0.25, isEnabled: () => true })
+    context.register({
+      name: 'preview',
+      fileName: 'preview.exp3.json',
+      parameters: [
+        { parameterId: 'Param2', value: 0.5, blend: 'Add' },
+        { parameterId: 'previewOnly', value: 0.8, blend: 'Overwrite' },
+      ],
+    })
+    frame(context)
+    expect(core.getParameterValueById('Param2')).toBe(1)
+    context.setPreviewExpressions(['preview'])
+    frame(context)
+    expect(core.getParameterValueById('Param2')).toBe(0.75)
+    expect(core.getParameterValueById('previewOnly')).toBe(0.8)
+    now = 1
+    frame(context)
+    expect(core.getParameterValueById('Param2')).toBe(0.75)
+    expect(store.leases.prop?.expressionId).toBe(archive[0].fileName)
+    context.setPreviewExpressions([])
+    frame(context)
+    expect(core.getParameterValueById('Param2')).toBe(1)
+    expect(core.getParameterValueById('previewOnly')).toBe(0)
+    expect(store.contextPreview).toEqual([])
+    expect(store.leases.prop?.expressionId).toBe(archive[0].fileName)
+  })
+
+  it('multiplies the fork result once and keeps the upstream plugin on Universal through driver switches', async () => {
+    const { controller, core, modelCore, frame, store } = rig()
+    await controller.initialise('model', [], async () => '', archive)
+    store.activate(archive[0].fileName, 0)
+    const context = createLive2DExpressionsContext({ getParameterDefault: () => 0, isEnabled: () => true })
+    context.register({
+      name: 'preview',
+      fileName: 'preview.exp3.json',
+      parameters: [{ parameterId: 'Param2', value: 0.5, blend: 'Multiply' }],
+    })
+    context.setPreviewExpressions(['preview'])
+    let natural = false
+    const plugin = useMotionUpdatePluginExpression(context, () => !natural)
+    const pluginFixture: unknown = { model: modelCore }
+    const render = () => {
+      frame(natural ? context : undefined)
+      plugin(pluginFixture as MotionManagerPluginContext)
+    }
+    render()
+    expect(core.getParameterValueById('Param2')).toBe(0.5)
+    expect(store.contextPreview).toEqual([])
+    natural = true
+    render()
+    expect(core.getParameterValueById('Param2')).toBe(0.5)
+    render()
+    expect(core.getParameterValueById('Param2')).toBe(0.5)
+    natural = false
+    render()
+    expect(core.getParameterValueById('Param2')).toBe(0.5)
+    context.setPreviewExpressions([])
+    render()
+    // Upstream restores its model default on the release frame.
+    expect(core.getParameterValueById('Param2')).toBe(0)
+    render()
+    expect(core.getParameterValueById('Param2')).toBe(1)
+  })
+
+  it('withdraws a preview when its definition unloads and clears the lease on model disposal', async () => {
+    const { controller, core, frame, store } = rig()
+    await controller.initialise('model', [], async () => '', archive)
+    const context = createLive2DExpressionsContext({ getParameterDefault: () => 0, isEnabled: () => true })
+    const unregister = context.register({
+      name: 'preview',
+      fileName: 'preview.exp3.json',
+      parameters: [{ parameterId: 'Param2', value: 0.6, blend: 'Overwrite' }],
+    })
+    context.setPreviewExpressions(['preview'])
+    frame(context)
+    expect(core.getParameterValueById('Param2')).toBe(0.6)
+    unregister()
+    frame(context)
+    expect(core.getParameterValueById('Param2')).toBe(0)
+    expect(store.contextPreview).toEqual([])
+    controller.dispose()
+    expect(store.contextPreview).toEqual([])
+  })
 
   /** A rig with one watermark drawable, shown while `opacity(Param129)` is positive. */
   function watermarkRig(opacity: (value: number) => number) {
