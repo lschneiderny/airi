@@ -100,7 +100,7 @@ import { readMMDRigProfile } from '../../composables/mmd/rig'
 import { buildMMDClipMask, mmdClipMaskBones } from '../../composables/mmd/rig/clip-mask'
 import { composeMMDStages } from '../../composables/mmd/stage-composition'
 import { applyStageCamera, applyStageRoot, measureStageExtent, projectCharacterPlacement, rowInputs, stagePixelRatio } from '../../composables/mmd/stage-world'
-import { chatStandX, directorIdleStates, frameClocks, MMDAttendWindow, MMDStanceDirector } from '../../composables/mmd/stance'
+import { chatStandX, directorIdleStates, frameClocks, MMDAttendInbox, MMDStanceDirector } from '../../composables/mmd/stance'
 import { buildMMDTouchColliders, MMDTouch, mmdTouchRegionRoots } from '../../composables/mmd/touch'
 import { useMMDExpressionStore } from '../../stores/expression-store'
 import { useMMD } from '../../stores/mmd'
@@ -147,11 +147,6 @@ const props = withDefaults(defineProps<{
    * `row`, a change of calibration moves the camera to another display and leaves the root where it is.
    */
   stageWorld?: MMDStageWorld
-  /**
-   * Counts the host's own interactions with her (a drag release). A new value ends the director's clips the way a poke
-   * does; the attend window comes from the character mind through `attend`. Stage mode only.
-   */
-  interactionSeq?: number
 }>(), {
   paused: false,
   performance: () => ({ mode: 'idle', attention: 'camera', away: false }),
@@ -186,29 +181,10 @@ const mmdStore = useMMD()
 const naturalSettings = useMMDNaturalSettings()
 const diagnostics = useMMDMotionDiagnostics()
 const expressions = useMMDExpressionStore()
-// Touch pokes and pets and host drags; the director ends clips on them.
-let interactionSeq = 0
-// Sent chat messages count apart from touches: they end looping clips, never a one-shot.
-let chatSendSeq = 0
-// The window in which she attends to her user, from the character mind's `attend` intent; the director may walk toward
-// the cursor only inside it.
-const attendWindow = new MMDAttendWindow()
+// The character mind owns every attend cause; the inbox stamps cursor windows on the next director frame.
+const attendInbox = new MMDAttendInbox()
 // The host reports a drag in progress; the director refuses clips and ends broad ones while it lasts.
 let dragging = false
-function noteInteraction() {
-  interactionSeq++
-}
-watch(() => props.interactionSeq, (next, previous) => {
-  if (next !== undefined && next !== previous) {
-    noteInteraction()
-    // A drag release bumps the host's counter; the drag is over whatever the pointer handlers reported.
-    dragging = false
-  }
-})
-watch(() => props.chatActivity?.sentSeq, (next, previous) => {
-  if (next !== undefined && previous !== undefined && next > previous)
-    chatSendSeq++
-})
 const bodyToolPort = new MMDBodyToolPort()
 // Self-directed idle behaviour. The stage sends the drive every second; this scene narrows it, lists the errands it can
 // realise (unasked clips, wanders), and realises the ones Natural starts.
@@ -245,13 +221,6 @@ const ACT_DROP_COUNTER: Record<ActActionDropReason, keyof typeof actionDrops> = 
 }
 // Where she stands beside the open chat this frame; the tool port reports her position against it.
 let chatStandSpotX: number | null = null
-let chatVisible: boolean | undefined
-let chatUnfoldSeq = 0
-watch(() => props.chatTarget?.visible, (visible) => {
-  if (chatVisible === false && visible)
-    chatUnfoldSeq++
-  chatVisible = visible
-}, { immediate: true })
 const {
   physicsEnabled,
   ikEnabled,
@@ -732,10 +701,10 @@ function renderLoop(now = performance.now()) {
       isRegistered: name => registeredMotions.has(name),
       points: bodyPoints ?? undefined,
       world: props.stageWorld ? directorWorld(props.stageWorld, loadedModelKey) : undefined,
-      // Pokes and drags exist in the classic window too, so the interaction inputs ride outside the world.
+      // Attend intents and clip requests also apply without a stage world.
       baseEligible: isBaseEligible,
       idle: naturalIdleStates(),
-      interaction: { interactionSeq, chatSendSeq, attendUntilMs: attendWindow.atFrame(clocks.directorMs), actionRequest: pendingAction, actionFeedback, dragging },
+      interaction: { attend: attendInbox.atFrame(clocks.directorMs), actionRequest: pendingAction, actionFeedback, dragging },
     })
     if (base.changed)
       animation.setBaseMotion(base.motion)
@@ -866,7 +835,6 @@ function directorWorld(world: MMDStageWorld, modelKey: string): MMDStanceWorld {
     clipOwnsRoot: !!owned && (owned.root > 0 || owned.leftLegIk > 0 || owned.rightLegIk > 0),
     speaking: props.nowSpeaking || props.performance.mode === 'talking',
     roamMode: roamMode.value,
-    chatUnfoldSeq,
     chatX,
     cursorX: onRow ? onRow.cursorX : cursor ? dipToPlane(calibration, cursor, 0).x : null,
     cursorOnStage: onRow ? onRow.cursorOnStage : !!cursor && cursor.x >= 0 && cursor.y >= 0 && cursor.x <= world.workArea.width && cursor.y <= world.workArea.height,
@@ -1606,15 +1574,13 @@ function handleTouchEvents(reports: TouchReport[]) {
   natural?.setPet(petGranted ? touch.petHand : null)
 }
 
-/** Performs the mind's reaction. A poke and a pet start are interactions that end the director's clips. */
+/** Performs the mind's touch reaction; its separate attend intent reaches the director. */
 function reactToTouch(intent: TouchReactionIntent) {
   if (intent.gesture === 'poke') {
     natural?.poke(intent.region, intent.point)
-    noteInteraction()
   }
   else if (intent.phase === 'start') {
     petGranted = true
-    noteInteraction()
   }
   else {
     petGranted = false
@@ -1844,8 +1810,8 @@ defineExpose({
   gesture: (kind: CueGestureKind, count: number) => natural?.gesture(kind, count),
   addMood: (dose: MoodDose) => natural?.addMood(dose),
   reactToTouch,
-  /** Natural only (the conductor sends it under Natural): opens the director's attend window for `windowMs`, counted from the next frame's director time. */
-  attend: (intent: AttendIntent) => attendWindow.open(intent.windowMs),
+  /** Natural only: counts the mind's attend cause and opens cursor windows on the next director frame. */
+  attend: (intent: AttendIntent) => attendInbox.receive(intent),
   /** Natural only: ends a sleep with the gentle wake; ignored while she is awake. */
   wakeFromSleep: () => natural?.wake(),
   /** Natural only: a brief reaction to the desktop; `wake` also rouses her from sleep with a start. */

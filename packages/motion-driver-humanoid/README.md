@@ -256,11 +256,11 @@ and looser still while she dozes.
 On a stage with a ground line, `decideBody` also owns where she goes:
 `BodyIntent.locomotion` carries the goal x, its reason (`approach-chat`,
 `approach-cursor`, `return-home`, `wander`, `tool`, `debug`, `enter-stage` or
-`stay`) and the pace. She approaches the chat when it unfolds, chases the cursor while
-`attendUntilMs` is open (the host stamps it from the character mind's `attend`
+`stay`) and the pace. She approaches the chat on a new `attend.chatOpenSeq`, chases the cursor while
+`attend.untilMs` is open (the host stamps it from the character mind's `attend`
 intent, 60 s after a poke, pet start, drag or sent message; the conductor
 dispatches it only under the Natural driver, so under the classic driver the
-director gets no attend window), returns home
+director gets no attend counters or window), returns home
 `RETURN_HOME_DELAY_MS` after the last reason, and wanders in roam mode only,
 when Natural forwards the mind's idle draw (`input.wander`, a new `seq` per wander).
 The errand's `pick` chooses a visit below `VISIT_SHARE` (0.6) when one is possible;
@@ -326,8 +326,8 @@ the body is clear and then `playing`; the adapter echoes `actionFeedback`, and
 `PERFORM_WATCHDOG_MS` ends a one-shot that never reports. A full clip closes the
 locomotion gate, parks the goal in progress as the pending goal, and hands the
 pending goal a fresh time to live when it ends. A poke, a drag, going away, a
-chat unfold (loops only), a sent chat message (`chatSendSeq`, loops only) or a move tool (loops only) ends it. Every host supplies
-`interactionSeq`, `chatSendSeq`, `attendUntilMs`, `actionRequest`, `actionFeedback` and
+chat unfold (loops only), a chat-send attend (`attend.chatSeq`, loops only) or a move tool (loops only) ends it. Every host supplies
+`attend`, `actionRequest`, `actionFeedback` and
 `dragging`, with or without a stage world; `NO_WORLD_BODY_INPUT` no longer
 defaults them.
 

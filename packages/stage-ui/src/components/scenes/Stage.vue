@@ -372,8 +372,7 @@ onMounted(() => {
   })
 })
 onUnmounted(() => mindStage?.detach())
-// The host bumps `interactionSeq` on a drag release; the mind answers it with the attend window. The MMD scene still
-// reads the prop to end clips.
+// The host bumps `interactionSeq` on a drag release; the mind's attend carries it to the director.
 watch(() => props.interactionSeq, (next, previous) => {
   if (next !== undefined && next !== previous)
     performanceConductor.interaction('drag')
@@ -1285,7 +1284,6 @@ defineExpose({
         :chat-target="chatTarget"
         :chat-activity="chatActivity"
         :stage-world="stageWorld"
-        :interaction-seq="interactionSeq"
         :mouth-open-size="mouthOpenSize"
         :now-speaking="nowSpeaking"
         :background-url="activeBackgroundUrl"

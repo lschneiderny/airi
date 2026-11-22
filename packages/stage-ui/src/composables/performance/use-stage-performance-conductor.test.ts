@@ -766,11 +766,11 @@ describe('stage performance conductor', () => {
         const steps: string[] = []
         mind.onStep(step => steps.push(step.stimuli.map(stimulus => stimulus.kind === 'interaction' ? stimulus.source : stimulus.kind).join(',')))
         conductor.interaction('drag')
-        return [driver, steps, scene.attend.mock.calls.map(([intent]) => [intent.kind, intent.windowMs])]
+        return [driver, steps, scene.attend.mock.calls.map(([intent]) => [intent.target, intent.attendCause, intent.target === 'cursor' ? intent.windowMs : null])]
       })
 
       expect(attended).toEqual([
-        ['natural', ['drag'], [['attend', 60_000]]],
+        ['natural', ['drag'], [['cursor', 'drag', 60_000]]],
         ['basic', ['drag'], []],
       ])
     })
@@ -787,7 +787,7 @@ describe('stage performance conductor', () => {
       })
 
       expect(read).toEqual([
-        ['natural', ['chat:sent', 'chat:unfold'], [['sent', 6], ['unfold', 0]], 1],
+        ['natural', ['chat:sent', 'chat:unfold'], [['sent', 6], ['unfold', 0]], 2],
         ['basic', ['chat:sent', 'chat:unfold'], [], 0],
       ])
     })
@@ -798,7 +798,7 @@ describe('stage performance conductor', () => {
 
       conductor.touch({ gesture: 'poke', region: 'head', point: { x: 0, y: 0 } })
 
-      expect(scene.attend.mock.calls).toEqual([[{ id: '1-attend', cause: 1, channel: 'body', kind: 'attend', target: 'cursor', windowMs: 60_000 }]])
+      expect(scene.attend.mock.calls).toEqual([[{ id: '1-attend', cause: 1, channel: 'body', kind: 'attend', target: 'cursor', attendCause: 'touch', windowMs: 60_000 }]])
       expect(scene.reactToTouch.mock.invocationCallOrder[0]).toBeLessThan(scene.attend.mock.invocationCallOrder[0])
     })
 

@@ -261,7 +261,7 @@ describe('useMotionQaBridge', () => {
         intents: [
           { channel: 'posture', kind: 'touch-reaction', id: '1-touch-reaction', cause: 1 },
           { channel: 'posture', kind: 'mood', id: '1-mood', cause: 1 },
-          { channel: 'body', kind: 'attend', id: '1-attend', cause: 1, windowMs: 60_000 },
+          { channel: 'body', kind: 'attend', id: '1-attend', cause: 1, target: 'cursor', attendCause: 'touch', windowMs: 60_000 },
         ],
         voice: null,
         voiceLine: null,
@@ -279,7 +279,7 @@ describe('useMotionQaBridge', () => {
           { channel: 'posture', kind: 'touch-reaction', id: '2-touch-reaction', cause: 2 },
           { channel: 'posture', kind: 'mood', id: '2-mood', cause: 2 },
           { channel: 'face', kind: 'moment', id: '2-moment', cause: 2 },
-          { channel: 'body', kind: 'attend', id: '2-attend', cause: 2, windowMs: 60_000 },
+          { channel: 'body', kind: 'attend', id: '2-attend', cause: 2, target: 'cursor', attendCause: 'touch', windowMs: 60_000 },
         ],
         voice: 'hold',
         voiceLine: 'poke-protest',
@@ -299,7 +299,7 @@ describe('useMotionQaBridge', () => {
           { channel: 'posture', kind: 'mood', id: '4-mood', cause: 4 },
           { channel: 'face', kind: 'moment', id: '4-moment', cause: 4 },
           { channel: 'voice', kind: 'speak', id: '4-speak', cause: 4 },
-          { channel: 'body', kind: 'attend', id: '4-attend', cause: 4, windowMs: 60_000 },
+          { channel: 'body', kind: 'attend', id: '4-attend', cause: 4, target: 'cursor', attendCause: 'touch', windowMs: 60_000 },
         ],
         voice: 'speak',
         voiceLine: 'poke-protest',
@@ -355,7 +355,7 @@ describe('useMotionQaBridge', () => {
 
     const reply = await dispatch({ name: 'events', input: {} }) as { result: { events: { kind: string, payload: Record<string, unknown> }[] } }
     expect(reply.result.events).toEqual([expect.objectContaining({ kind: 'mind', payload: expect.objectContaining({ stimulus: 'interaction', source: 'drag' }) })])
-    expect(JSON.parse(reply.result.events[0].payload.intents as string)).toEqual([expect.objectContaining({ channel: 'body', kind: 'attend', windowMs: 60_000 })])
+    expect(JSON.parse(reply.result.events[0].payload.intents as string)).toEqual([expect.objectContaining({ channel: 'body', kind: 'attend', target: 'cursor', attendCause: 'drag', windowMs: 60_000 })])
   })
 
   it('records a chat step with its cue and the read it decided, never the message', async () => {
@@ -365,7 +365,7 @@ describe('useMotionQaBridge', () => {
     expect(reply.result.events).toEqual([expect.objectContaining({ kind: 'mind', payload: expect.objectContaining({ stimulus: 'chat', chat: 'sent' }) })])
     expect(JSON.parse(reply.result.events[0].payload.intents as string)).toEqual([
       expect.objectContaining({ channel: 'gaze', kind: 'chat-read', cue: 'sent', words: 4 }),
-      expect.objectContaining({ channel: 'body', kind: 'attend', windowMs: 60_000 }),
+      expect.objectContaining({ channel: 'body', kind: 'attend', target: 'cursor', attendCause: 'chat-send', windowMs: 60_000 }),
     ])
   })
 

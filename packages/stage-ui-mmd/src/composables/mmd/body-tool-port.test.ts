@@ -10,7 +10,7 @@ import { CHAT_STAND_GAP_LEGS, chatStandX, MMDStanceDirector } from './stance'
 
 const idle: Pick<PerformanceState, 'mode' | 'attention' | 'away'> = { mode: 'idle', attention: 'camera', away: false }
 const EPOCH_MS = 1_000_000
-const quiet: MMDStanceInteraction = { interactionSeq: 0, chatSendSeq: 0, attendUntilMs: null, actionRequest: null, actionFeedback: null, dragging: false }
+const quiet: MMDStanceInteraction = { attend: { untilMs: null, touchSeq: 0, chatSeq: 0, chatOpenSeq: 0 }, actionRequest: null, actionFeedback: null, dragging: false }
 const unitsPerDip = 1 / 15
 const legLength = 9
 const halfWidth = 2.7
@@ -26,7 +26,7 @@ function stage({ rootX, homeX }: Setup) {
   const director = new MMDStanceDirector()
   const port = new MMDBodyToolPort()
   const standX = chatStandX(chat, rootX, homeX, halfWidth, legLength, { minX: -80, maxX: 80 })
-  function frame(atMs: number, patch: Partial<MMDStanceWorld> = {}) {
+  function frame(atMs: number, patch: Partial<MMDStanceWorld> = {}, interaction: MMDStanceInteraction = quiet) {
     const world: MMDStanceWorld = {
       ...NO_WORLD_BODY_INPUT,
       ground: { minX: -80, maxX: 80 },
@@ -38,7 +38,7 @@ function stage({ rootX, homeX }: Setup) {
       ...patch,
     }
     const directorMs = EPOCH_MS + atMs
-    director.update({ interaction: quiet, nowMs: directorMs, performance: idle, slots: {}, idleMotionName: '', isRegistered: () => true, world })
+    director.update({ interaction, nowMs: directorMs, performance: idle, slots: {}, idleMotionName: '', isRegistered: () => true, world })
     port.observe({
       rootX,
       homeX,
@@ -80,7 +80,7 @@ describe('mmd body tool port with the stance director', () => {
   it('walks come_here to the same spot as an unfolded chat', async () => {
     const approach = stage({ rootX: 30, homeX: 40 })
     approach.frame(0)
-    approach.frame(100, { chatUnfoldSeq: 1 })
+    approach.frame(100, {}, { ...quiet, attend: { ...quiet.attend, chatSeq: 1, chatOpenSeq: 1 } })
 
     const tool = stage({ rootX: 30, homeX: 40 })
     tool.frame(0)

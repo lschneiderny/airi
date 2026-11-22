@@ -1,3 +1,4 @@
+import type { AttendIntent } from '@proj-airi/character-mind'
 import type { BodyDirectorInput, BodyDirectorMemory } from '@proj-airi/motion-driver-humanoid/director'
 import type { BodyIntent, Vec3 } from '@proj-airi/motion-driver-humanoid/types'
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
@@ -13,8 +14,8 @@ export interface MMDStanceSlots {
 
 export type MMDStance = BodyIntent['stance']
 
-/** The user-interaction and action half of the director input; every host supplies it, with or without a stage world. */
-export type MMDStanceInteraction = Pick<BodyDirectorInput, 'interactionSeq' | 'chatSendSeq' | 'attendUntilMs' | 'actionRequest' | 'actionFeedback' | 'dragging'>
+/** Intents, clip requests and the held body; every host supplies them, with or without a stage world. */
+export type MMDStanceInteraction = Pick<BodyDirectorInput, 'attend' | 'actionRequest' | 'actionFeedback' | 'dragging'>
 
 /** The world half of the director input; `NO_WORLD_BODY_INPUT` is its inert value. */
 export type MMDStanceWorld = Omit<BodyDirectorInput, 'nowMs' | 'performance' | 'cursorPoint' | 'chatPoint' | 'cameraPoint' | 'slots' | 'idle' | keyof MMDStanceInteraction>
@@ -97,28 +98,37 @@ export function frameClocks(nowMs: number, directorOffsetMs: number): { naturalS
 }
 
 /**
- * The director's attend window, inside which she may walk toward the cursor.
+ * The director's inbox for the mind's attend intents: clip-ending causes, chat approaches, and the cursor window.
  *
  * The character mind's `attend` intent arrives outside the frame loop, so the window opens on the director time of the
  * next frame that runs the director. The time of the last frame would be stale after the loop stalled (a paused stage,
  * a hidden window, a model still loading) and could close the window before any frame saw it.
  */
-export class MMDAttendWindow {
+export class MMDAttendInbox {
   private requestedMs: number | null = null
-  private untilMs: number | null = null
+  private attend: BodyDirectorInput['attend'] = { untilMs: null, touchSeq: 0, chatSeq: 0, chatOpenSeq: 0 }
 
-  /** Asks for a window of `windowMs`; it replaces an open one at the next frame. */
-  open(windowMs: number): void {
-    this.requestedMs = windowMs
+  /** Counts every intent once at delivery; a cursor intent replaces the window at the next frame. */
+  receive(intent: AttendIntent): void {
+    if (intent.target === 'chat') {
+      this.attend.chatSeq++
+      this.attend.chatOpenSeq++
+      return
+    }
+    this.requestedMs = intent.windowMs
+    if (intent.attendCause === 'chat-send')
+      this.attend.chatSeq++
+    else
+      this.attend.touchSeq++
   }
 
-  /** The director time at which the window ends, for the frame at `directorMs`, or null when none was opened. */
-  atFrame(directorMs: number): number | null {
+  /** A snapshot for this frame; windows start on its director clock, never on a stale event-time frame. */
+  atFrame(directorMs: number): BodyDirectorInput['attend'] {
     if (this.requestedMs !== null) {
-      this.untilMs = directorMs + this.requestedMs
+      this.attend.untilMs = directorMs + this.requestedMs
       this.requestedMs = null
     }
-    return this.untilMs
+    return { ...this.attend }
   }
 }
 
@@ -171,7 +181,7 @@ export class MMDStanceDirector {
     points?: { cursor: Vec3 | null, chat: Vec3 | null, camera: Vec3 | null }
     /** Omitted in classic mode: no ground, so no goal is ever issued. */
     world?: MMDStanceWorld
-    /** Pokes, drags and clip requests; classic mode has them too. */
+    /** Attend intents under Natural, clip requests under every driver, and whether the body is held. */
     interaction: MMDStanceInteraction
     /** Natural's long idle states (`bodyIntent().idle`); absent without an idle drive, when she neither settles nor sleeps. */
     idle?: BodyDirectorInput['idle']
@@ -183,9 +193,9 @@ export class MMDStanceDirector {
       // Requests that predate this model's load belong to an earlier director; only newer ones count.
       this.memory = {
         ...this.memory,
-        lastUnfoldSeq: world.chatUnfoldSeq,
-        lastInteractionSeq: input.interaction.interactionSeq,
-        lastSendSeq: input.interaction.chatSendSeq,
+        lastChatOpenSeq: input.interaction.attend.chatOpenSeq,
+        lastTouchSeq: input.interaction.attend.touchSeq,
+        lastChatSeq: input.interaction.attend.chatSeq,
         lastActionSeq: input.interaction.actionRequest?.seq ?? 0,
         lastToolSeq: world.toolRequest?.seq ?? 0,
         lastDebugSeq: world.debugGoal?.seq ?? 0,

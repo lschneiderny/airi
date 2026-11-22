@@ -12,8 +12,8 @@ interface Answer { state: MindState, intents: MindIntent[] }
 export const ATTEND_WINDOW_MS = 60_000
 
 /** The `attend` intent that answers an interaction of the step `cause`. */
-export function attendIntent(cause: number): AttendIntent {
-  return { id: `${cause}-attend`, cause, channel: 'body', kind: 'attend', target: 'cursor', windowMs: ATTEND_WINDOW_MS }
+export function attendIntent(cause: number, attendCause: Extract<AttendIntent, { target: 'cursor' }>['attendCause']): AttendIntent {
+  return { id: `${cause}-attend`, cause, channel: 'body', kind: 'attend', target: 'cursor', attendCause, windowMs: ATTEND_WINDOW_MS }
 }
 
 /**
@@ -32,5 +32,5 @@ export function answerCursor(state: MindState, stimulus: Stimulus<'cursor'>, cau
 
 /** Answers a drag release: she attends to her user for `ATTEND_WINDOW_MS`. Nothing else changes. */
 export function answerInteraction(state: MindState, cause: number): Answer {
-  return { state, intents: [attendIntent(cause)] }
+  return { state, intents: [attendIntent(cause, 'drag')] }
 }
