@@ -1,7 +1,7 @@
 # Character mind: refractories once per character
 
 Date: 2026-11-22
-Status: accepted; CM10 implemented. Headless and rendered acceptance are pending (see the placeholder below).
+Status: accepted; CM10 implemented. Headless and rendered acceptance are recorded below.
 
 Current rules are in [Autonomous behavior](../context/autonomous-behavior.md) (Precedence rule 29, the Body director, Emotion impulse, Touch reaction, and Moment expression rows, and Target rule 1) and the [glossary](../context/glossary.md) (Refractory). The [CM9 plan](../../../.omo/plans/character-mind-cm9.md) records the split, the decisions table, and the checks. This slice builds on every CM9 slice, above all the [settle ADR](2026-11-22-character-mind-settle.md) (the store-dispatched `settle` intent) and the [fast mood ADR](2026-11-22-character-mind-fast-mood.md) (a seed the mind hands a new performer).
 
@@ -57,4 +57,6 @@ CM10 is a real slice, the last of the CM9 plan.
 
 ## Headless and rendered acceptance
 
-Placeholder for the orchestrator: the base and tip `qa:motion3d` runs for all eleven scenarios at seed 1 and the Live2D rig hashes for `angry` and `happy` (all expected `IDENTICAL`; `gesture-under-clip` may shift a refractory end by one frame only), the `diff` lines, and rendered check 8 of plan section 8 (a second poke within 2 s after a model reload flinches without surprise; a labelled dance requested again within 60 s after a reload is refused `refractory`).
+Placeholder for the oHeadless (orchestrator, macOS, 2026-11-22): CM10 against the lane B tip, seed 1. All eleven `qa:motion3d` scenarios are `IDENTICAL`, `gesture-under-clip` included, and both rig hashes are unchanged (`angry` `446b746a`, `happy` `a273e525`).
+
+Rendered (orchestrator, macOS, 2026-11-22, the QA MMD model on the desktop stage, Natural, desktop idle pinned): a poke, a driver switch, and a second poke 0.67 s later gave a `touch-reaction` with `surprise` false, and Natural played only the first poke's surprise. A model reload takes about 3 s on this Mac, so a second poke within the 2 s dedupe across a reload cannot be staged; the poke 3.1 s later correctly surprised. A locally imported dance clip, labelled `dance`, played to its end through the scene's `perform_action` port (ACT plays only gesture clips), its `clip-ended` report gave a `refractory` intent with `danceMs` 60000, and after a model reload the same request 4.4 s later was refused `refractory` with 55 s left. 0 renderer and 0 main-process errors per launch.
