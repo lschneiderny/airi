@@ -162,8 +162,8 @@ export interface StagePerformanceScene {
    */
   cursorEpisode?: (order: CursorOrder) => void
   /**
-   * MMD under the Natural driver: opens the body director's attend window, inside which she may walk toward the
-   * cursor. A scene without a body director, such as the Live2D scene, drops it.
+   * MMD under the Natural driver: tells the body director why she attends and to what, for clip endings, the
+   * cursor window, and the approach to an opened chat. A scene without a body director, such as the Live2D scene, drops it.
    */
   attend?: (intent: AttendIntent) => void
   /**

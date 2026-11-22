@@ -80,9 +80,8 @@ function simulate(scenario: PressScenario) {
       homeX: 0,
       locomotionMode: gait,
       roamMode: 'roam',
-      interactionSeq: 0,
-      chatSendSeq: 0,
-      attendUntilMs: scenario.chase ? 60_000 : null,
+      attend: { untilMs: scenario.chase ? 60_000 : null, touchSeq: 0, chatSeq: 0, chatOpenSeq: 0 },
+
       actionRequest: null,
       actionFeedback: null,
       dragging: false,

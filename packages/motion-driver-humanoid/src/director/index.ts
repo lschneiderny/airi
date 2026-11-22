@@ -169,16 +169,18 @@ export interface BodyDirectorInput {
   clipOwnsRoot: boolean
   speaking: boolean
   roamMode: 'stay' | 'roam'
-  chatUnfoldSeq: number
   chatX: number | null
-  interactionSeq: number
-  /** Count of chat messages the user sent; it ends a looping clip like a chat unfold and leaves a one-shot running. */
-  chatSendSeq: number
-  /**
-   * Director time until which she attends to her user, or null. The host stamps it from the character mind's `attend`
-   * intent (`nowMs + windowMs`); only inside it may she walk toward the cursor.
-   */
-  attendUntilMs: number | null
+  /** Fed only by the character mind's `attend` intents; counters are monotonic within one scene. */
+  attend: {
+    /** Director time until which she may walk toward the cursor, or null. */
+    untilMs: number | null
+    /** Touch and drag attends: a new value ends a broad clip. */
+    touchSeq: number
+    /** Chat-send and chat-unfold attends: a new value ends a looping or unasked clip. */
+    chatSeq: number
+    /** Chat-unfold attends: a new value asks for the walk to the chat. */
+    chatOpenSeq: number
+  }
   actionRequest: BodyActionRequest | null
   actionFeedback: BodyActionFeedback | null
   /** True while the user drags the character. */
@@ -212,7 +214,7 @@ export interface BodyDirectorInput {
  * Spread it under the six legacy fields; every goal rule stays inert. Clips, pokes and drags exist without a world, so
  * every host supplies the interaction and action inputs itself.
  */
-export const NO_WORLD_BODY_INPUT: Omit<BodyDirectorInput, 'nowMs' | 'performance' | 'cursorPoint' | 'chatPoint' | 'cameraPoint' | 'slots' | 'interactionSeq' | 'chatSendSeq' | 'attendUntilMs' | 'actionRequest' | 'actionFeedback' | 'dragging' | 'idle'> = Object.freeze({
+export const NO_WORLD_BODY_INPUT: Omit<BodyDirectorInput, 'nowMs' | 'performance' | 'cursorPoint' | 'chatPoint' | 'cameraPoint' | 'slots' | 'attend' | 'actionRequest' | 'actionFeedback' | 'dragging' | 'idle'> = Object.freeze({
   ground: null,
   rootX: 0,
   restX: null,
@@ -221,7 +223,6 @@ export const NO_WORLD_BODY_INPUT: Omit<BodyDirectorInput, 'nowMs' | 'performance
   clipOwnsRoot: false,
   speaking: false,
   roamMode: 'stay',
-  chatUnfoldSeq: 0,
   chatX: null,
   cursorX: null,
   cursorOnStage: false,
@@ -250,9 +251,9 @@ export interface BodyDirectorMemory {
   readonly cursorStepPending: boolean
   /** A goal a gate blocked, held until the gate opens or the time to live passes. */
   readonly pendingGoal: (BodyGoalRequest & { requestedAtMs: number }) | null
-  readonly lastUnfoldSeq: number
-  readonly lastInteractionSeq: number
-  readonly lastSendSeq: number
+  readonly lastChatOpenSeq: number
+  readonly lastTouchSeq: number
+  readonly lastChatSeq: number
   readonly lastToolSeq: number
   readonly lastDebugSeq: number
   readonly toolRefused: boolean
@@ -297,9 +298,9 @@ export const initialBodyDirectorMemory: BodyDirectorMemory = Object.freeze({
   reason: 'stay',
   cursorStepPending: false,
   pendingGoal: null,
-  lastUnfoldSeq: 0,
-  lastInteractionSeq: 0,
-  lastSendSeq: 0,
+  lastChatOpenSeq: 0,
+  lastTouchSeq: 0,
+  lastChatSeq: 0,
   lastToolSeq: 0,
   lastDebugSeq: 0,
   toolRefused: false,
@@ -443,14 +444,12 @@ export function decideBody(
   // Distance from the root to the cursor while it is on the stage, or null.
   const cursorDistance = input.cursorOnStage && input.cursorX !== null ? Math.abs(input.cursorX - input.rootX) : null
   const attendingCursor = ground !== null
-    && input.attendUntilMs !== null
-    && nowMs <= input.attendUntilMs
+    && input.attend.untilMs !== null
+    && nowMs <= input.attend.untilMs
     && input.cursorOnStage
     && input.cursorX !== null
-  // A goal in progress ends once the body has settled on it. A walk aimed at the cursor also ends before the goal dwell
-  // once the cursor is within that walk's stop distance: the user pointed at her, so she stops there. A chase ends when
-  // her predicted rest point reaches the cursor, so the gait's braking slide carries her onto it; one behind her ends it
-  // at once. A visit ends at once, short of the cursor, as it would on arrival.
+  // Within the stop distance a chase waits for its predicted rest point to reach the cursor, so braking carries her
+  // onto it; a cursor behind her ends it at once. A visit stops short and lingers as on arrival.
   const reachedCursor = goalX !== null && cursorDistance !== null && input.cursorX !== null && (
     reason === 'approach-cursor'
       ? cursorDistance <= CHASE_STOP_LEGS * leg && restReaches(input.cursorX, input.rootX, input.restX ?? input.rootX, goalX)
@@ -536,9 +535,9 @@ export function decideBody(
     const broad = performing.request.layer === 'full' || performing.request.loop || unasked
     if (input.performance.away)
       endPerformance(true)
-    else if (broad && (input.dragging || input.interactionSeq > previous.lastInteractionSeq))
+    else if (broad && (input.dragging || input.attend.touchSeq > previous.lastTouchSeq))
       endPerformance(true)
-    else if ((performing.request.loop || unasked) && (input.chatUnfoldSeq > previous.lastUnfoldSeq || input.chatSendSeq > previous.lastSendSeq))
+    else if ((performing.request.loop || unasked) && input.attend.chatSeq > previous.lastChatSeq)
       endPerformance(true)
     else if (unasked && claimed)
       endPerformance(true)
@@ -672,7 +671,7 @@ export function decideBody(
 
   // Event requests: later sources win (debug over tool over chat).
   let request: BodyGoalRequest | null = null
-  if (input.chatUnfoldSeq > previous.lastUnfoldSeq && ground !== null && input.chatX !== null) {
+  if (input.attend.chatOpenSeq > previous.lastChatOpenSeq && ground !== null && input.chatX !== null) {
     request = {
       x: chatStandGoal(input.chatX, input.homeX, leg, zones),
       pace: 'walk',
@@ -891,9 +890,9 @@ export function decideBody(
       reason,
       cursorStepPending,
       pendingGoal: pending,
-      lastUnfoldSeq: Math.max(previous.lastUnfoldSeq, input.chatUnfoldSeq),
-      lastInteractionSeq: Math.max(previous.lastInteractionSeq, input.interactionSeq),
-      lastSendSeq: Math.max(previous.lastSendSeq, input.chatSendSeq),
+      lastChatOpenSeq: Math.max(previous.lastChatOpenSeq, input.attend.chatOpenSeq),
+      lastTouchSeq: Math.max(previous.lastTouchSeq, input.attend.touchSeq),
+      lastChatSeq: Math.max(previous.lastChatSeq, input.attend.chatSeq),
       lastToolSeq: tool !== null ? Math.max(previous.lastToolSeq, tool.seq) : previous.lastToolSeq,
       lastDebugSeq: input.debugGoal !== null ? Math.max(previous.lastDebugSeq, input.debugGoal.seq) : previous.lastDebugSeq,
       toolRefused,

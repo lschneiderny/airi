@@ -1,3 +1,4 @@
+import type { AttendIntent } from '@proj-airi/character-mind'
 import type { BodyActionRequest } from '@proj-airi/motion-driver-humanoid/director'
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
 
@@ -10,12 +11,38 @@ import { describe, expect, it } from 'vitest'
 import { createMMDAnimationManager } from './animation-manager'
 import { MMDBody } from './body'
 import { bodyFixture } from './body/fixture'
-import { CHAT_STAND_GAP_LEGS, chatStandX, directorIdleStates, frameClocks, MMDAttendWindow, MMDStanceDirector, standingBaseMotion } from './stance'
+import { CHAT_STAND_GAP_LEGS, chatStandX, directorIdleStates, frameClocks, MMDAttendInbox, MMDStanceDirector, standingBaseMotion } from './stance'
 
 const idle: Pick<PerformanceState, 'mode' | 'attention' | 'away'> = { mode: 'idle', attention: 'camera', away: false }
 const away: Pick<PerformanceState, 'mode' | 'attention' | 'away'> = { mode: 'idle', attention: 'camera', away: true }
 const EPOCH_MS = 1_000_000
-const quiet: MMDStanceInteraction = { interactionSeq: 0, chatSendSeq: 0, attendUntilMs: null, actionRequest: null, actionFeedback: null, dragging: false }
+const quiet: MMDStanceInteraction = { attend: { untilMs: null, touchSeq: 0, chatSeq: 0, chatOpenSeq: 0 }, actionRequest: null, actionFeedback: null, dragging: false }
+
+describe('mMDAttendInbox', () => {
+  it.each(['touch', 'drag', 'chat-send'] as const)('counts %s and stamps the full window on the next frame', (attendCause) => {
+    const inbox = new MMDAttendInbox()
+    const before = inbox.atFrame(100)
+    const intent: AttendIntent = { id: '1-attend', cause: 1, channel: 'body', kind: 'attend', target: 'cursor', attendCause, windowMs: 60_000 }
+    inbox.receive(intent)
+    const frame = inbox.atFrame(120_000)
+
+    expect(before).toEqual(quiet.attend)
+    expect(frame).toEqual({ untilMs: 180_000, touchSeq: attendCause === 'chat-send' ? 0 : 1, chatSeq: attendCause === 'chat-send' ? 1 : 0, chatOpenSeq: 0 })
+    expect(inbox.atFrame(121_000)).toEqual(frame)
+  })
+
+  it('counts chat opens without opening or extending a cursor window', () => {
+    const inbox = new MMDAttendInbox()
+    inbox.receive({ id: '1-attend', cause: 1, channel: 'body', kind: 'attend', target: 'chat', attendCause: 'chat-unfold' })
+    expect(inbox.atFrame(100)).toEqual({ untilMs: null, touchSeq: 0, chatSeq: 1, chatOpenSeq: 1 })
+
+    inbox.receive({ id: '2-attend', cause: 2, channel: 'body', kind: 'attend', target: 'cursor', attendCause: 'touch', windowMs: 60_000 })
+    const touched = inbox.atFrame(200)
+    inbox.receive({ id: '3-attend', cause: 3, channel: 'body', kind: 'attend', target: 'chat', attendCause: 'chat-unfold' })
+    expect(inbox.atFrame(300)).toEqual({ untilMs: 60_200, touchSeq: 1, chatSeq: 2, chatOpenSeq: 2 })
+    expect(touched.chatSeq).toBe(1)
+  })
+})
 
 function pose(name: string, center: number, legPitch: number, kneePitch: number): AnimationClip {
   const quaternion = (pitch: number) => new Quaternion().setFromEuler(new Euler(pitch, 0, 0)).toArray()
@@ -181,7 +208,7 @@ describe('mmd stance director in the stage world', () => {
     const director = new MMDStanceDirector()
     frame(director, 0, world())
     expect(director.diagnostics).toMatchObject({ goalX: null, reason: 'stay' })
-    frame(director, 100, world({ chatUnfoldSeq: 1, chatX: 5 }))
+    frame(director, 100, world({ chatX: 5 }), idle, 0, { ...quiet, attend: { untilMs: null, touchSeq: 0, chatSeq: 1, chatOpenSeq: 1 } })
     expect(director.diagnostics).toMatchObject({ goalX: 4, reason: 'approach-chat', pace: 'walk' })
     expect(director.intent?.locomotion).toMatchObject({ goalX: 4, reason: 'approach-chat' })
   })
@@ -195,7 +222,7 @@ describe('mmd stance director in the stage world', () => {
     const director = new MMDStanceDirector()
     const input = (patch: Partial<MMDStanceWorld>) => world({ ground, legLength, rootX: 8, homeX: 35.7, ...patch })
     frame(director, 0, input({}))
-    frame(director, 100, input({ chatUnfoldSeq: 1, chatX: chatStandX(chat, 8, 35.7, halfWidth, legLength, ground) }))
+    frame(director, 100, input({ chatX: chatStandX(chat, 8, 35.7, halfWidth, legLength, ground) }), idle, 0, { ...quiet, attend: { untilMs: null, touchSeq: 0, chatSeq: 1, chatOpenSeq: 1 } })
 
     const goalX = director.diagnostics.goalX!
     expect(goalX).toBeCloseTo(chat.maxX + halfWidth + CHAT_STAND_GAP_LEGS * legLength)
@@ -215,7 +242,7 @@ describe('mmd stance director in the stage world', () => {
         const director = new MMDStanceDirector()
         const input = (patch: Partial<MMDStanceWorld>) => world({ ground: { minX: -80, maxX: 80 }, legLength, rootX, homeX, ...patch })
         frame(director, 0, input({}))
-        frame(director, 100, input({ chatUnfoldSeq: 1, chatX: chatStandX(chat, rootX, homeX, halfWidth, legLength, { minX: -80, maxX: 80 }) }))
+        frame(director, 100, input({ chatX: chatStandX(chat, rootX, homeX, halfWidth, legLength, { minX: -80, maxX: 80 }) }), idle, 0, { ...quiet, attend: { untilMs: null, touchSeq: 0, chatSeq: 1, chatOpenSeq: 1 } })
         const goalX = director.diagnostics.goalX!
         const edge = rootSide > 0 ? chat.maxX : chat.minX
         const label = `root ${rootSide > 0 ? 'right' : 'left'}, home ${homeSide > 0 ? 'right' : 'left'}`
@@ -229,26 +256,26 @@ describe('mmd stance director in the stage world', () => {
 
   it('ignores requests that predate its first frame', () => {
     const director = new MMDStanceDirector()
-    frame(director, 0, world({ chatUnfoldSeq: 3, chatX: 5, debugGoal: { seq: 2, x: 6, pace: 'walk' } }))
+    frame(director, 0, world({ chatX: 5, debugGoal: { seq: 2, x: 6, pace: 'walk' } }), idle, 0, { ...quiet, attend: { untilMs: null, touchSeq: 0, chatSeq: 3, chatOpenSeq: 3 } })
     expect(director.diagnostics).toMatchObject({ goalX: null, reason: 'stay', pendingGoal: null })
   })
 
   it('chases a cursor eight leg lengths away after a poke', () => {
     const director = new MMDStanceDirector()
     frame(director, 0, world())
-    frame(director, 1_000, world({ cursorX: 8, cursorOnStage: true }), idle, 0, { ...quiet, interactionSeq: 1, attendUntilMs: EPOCH_MS + 61_000 })
+    frame(director, 1_000, world({ cursorX: 8, cursorOnStage: true }), idle, 0, { ...quiet, attend: { untilMs: EPOCH_MS + 61_000, touchSeq: 1, chatSeq: 0, chatOpenSeq: 0 } })
     expect(director.diagnostics).toMatchObject({ goalX: 7, reason: 'approach-cursor' })
   })
 
   it('opens an attend window on the director time of the next frame, however long the loop stalled', () => {
     const director = new MMDStanceDirector()
-    const attend = new MMDAttendWindow()
+    const attend = new MMDAttendInbox()
     const attendFrame = (atMs: number, input: MMDStanceWorld) =>
-      frame(director, atMs, input, idle, 0, { ...quiet, interactionSeq: 1, attendUntilMs: attend.atFrame(frameClocks(EPOCH_MS + atMs, 0).directorMs) })
+      frame(director, atMs, input, idle, 0, { ...quiet, attend: attend.atFrame(frameClocks(EPOCH_MS + atMs, 0).directorMs) })
     attendFrame(0, world())
 
     // The loop stalls for two minutes, as on a paused stage, and the intent arrives before the next frame.
-    attend.open(60_000)
+    attend.receive({ id: '1-attend', cause: 1, channel: 'body', kind: 'attend', target: 'cursor', attendCause: 'touch', windowMs: 60_000 })
     attendFrame(120_000, world({ cursorX: 8, cursorOnStage: true }))
     expect(director.diagnostics).toMatchObject({ goalX: 7, reason: 'approach-cursor' })
   })
@@ -256,7 +283,7 @@ describe('mmd stance director in the stage world', () => {
   it('holds a goal while speaking, finishes the one in flight, then issues the held goal', () => {
     const director = new MMDStanceDirector()
     frame(director, 0, world())
-    frame(director, 100, world({ chatUnfoldSeq: 1, chatX: 5 }))
+    frame(director, 100, world({ chatX: 5 }), idle, 0, { ...quiet, attend: { untilMs: null, touchSeq: 0, chatSeq: 1, chatOpenSeq: 1 } })
     expect(director.diagnostics.goalX).toBe(4)
 
     // Speaking starts mid-walk: the relocation finishes.
@@ -327,7 +354,7 @@ describe('mmd stance director in the stage world', () => {
   it('drops its goal and held goal when the host places her, and waits before walking home', () => {
     const director = new MMDStanceDirector()
     frame(director, 0, world())
-    frame(director, 100, world({ chatUnfoldSeq: 1, chatX: 5 }))
+    frame(director, 100, world({ chatX: 5 }), idle, 0, { ...quiet, attend: { untilMs: null, touchSeq: 0, chatSeq: 1, chatOpenSeq: 1 } })
     frame(director, 200, world({ speaking: true, debugGoal: { seq: 1, x: 6, pace: 'walk' } }))
     director.clearGoal()
     expect(director.diagnostics).toMatchObject({ goalX: null, reason: 'stay', pendingGoal: null })
@@ -341,7 +368,7 @@ describe('mmd stance director in the stage world', () => {
     const director = new MMDStanceDirector()
     const classic = { ...NO_WORLD_BODY_INPUT }
     frame(director, 0, classic)
-    frame(director, 100, { ...classic, chatUnfoldSeq: 1, chatX: 5, debugGoal: { seq: 1, x: 6, pace: 'walk' } })
+    frame(director, 100, { ...classic, chatX: 5, debugGoal: { seq: 1, x: 6, pace: 'walk' } }, idle, 0, { ...quiet, attend: { untilMs: null, touchSeq: 0, chatSeq: 1, chatOpenSeq: 1 } })
     expect(director.diagnostics).toMatchObject({ goalX: null, reason: 'stay', pendingGoal: null })
     expect(director.intent?.locomotion.goalX).toBeNull()
   })
@@ -413,11 +440,11 @@ describe('mmd stance director with clip performances', () => {
     }
     expect(director.intent?.action).toMatchObject({ seq: 1, phase: 'playing' })
 
-    run(director, at + 100, { actionRequest: full, chatSendSeq: 1, attendUntilMs: EPOCH_MS + at + 60_100 }, world({ rootX: 1 }))
+    run(director, at + 100, { actionRequest: full, attend: { untilMs: EPOCH_MS + at + 60_100, touchSeq: 0, chatSeq: 1, chatOpenSeq: 0 } }, world({ rootX: 1 }))
     expect(director.intent?.action).toMatchObject({ seq: 1, phase: 'playing' })
     expect(director.diagnostics).toMatchObject({ goalX: null, pendingGoal: { x: 6, reason: 'debug' } })
 
-    run(director, at + 200, { actionRequest: full, chatSendSeq: 1, actionFeedback: { seq: 1, state: 'finished' } }, world({ rootX: 1 }))
+    run(director, at + 200, { actionRequest: full, attend: { untilMs: null, touchSeq: 0, chatSeq: 1, chatOpenSeq: 0 }, actionFeedback: { seq: 1, state: 'finished' } }, world({ rootX: 1 }))
     expect(director.intent?.action).toBeNull()
     expect(director.diagnostics).toMatchObject({ goalX: 6, pendingGoal: null })
 
@@ -428,7 +455,7 @@ describe('mmd stance director with clip performances', () => {
       pokedAt += 100
       run(poked, pokedAt, { actionRequest: full })
     }
-    run(poked, pokedAt + 100, { actionRequest: full, interactionSeq: 1 })
+    run(poked, pokedAt + 100, { actionRequest: full, attend: { untilMs: null, touchSeq: 1, chatSeq: 0, chatOpenSeq: 0 } })
     expect(poked.intent?.action).toBeNull()
   })
 
@@ -448,7 +475,7 @@ describe('mmd stance director with clip performances', () => {
       run(director, at, { actionRequest: dance })
     }
     expect(director.intent?.action).toMatchObject({ seq: 2, layer: 'full', phase: 'playing' })
-    run(director, at + 100, { actionRequest: dance, interactionSeq: 1, attendUntilMs: EPOCH_MS + at + 60_100 })
+    run(director, at + 100, { actionRequest: dance, attend: { untilMs: EPOCH_MS + at + 60_100, touchSeq: 1, chatSeq: 0, chatOpenSeq: 0 } })
     expect(director.intent?.action).toBeNull()
     expect(director.diagnostics.lastActionSeq).toBe(2)
   })

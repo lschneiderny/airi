@@ -54,11 +54,9 @@ function input(overrides: Partial<DirectorInput> = {}): DirectorInput {
     clipOwnsRoot: false,
     speaking: false,
     roamMode: 'stay',
-    chatUnfoldSeq: 0,
+    attend: { untilMs: null, touchSeq: 0, chatSeq: 0, chatOpenSeq: 0 },
     chatX: null,
-    interactionSeq: 0,
-    chatSendSeq: 0,
-    attendUntilMs: null,
+
     actionRequest: null,
     actionFeedback: null,
     dragging: false,
@@ -225,7 +223,7 @@ function run(frames: DirectorInput[], memory = initialBodyDirectorMemory) {
 
 describe('body director home, goals, roam and tools', () => {
   it('reports a stay intent and keeps the stance logic when there is no world', () => {
-    const stay = decide(input({ homeX: 2, chatUnfoldSeq: 1, chatX: 6 }))
+    const stay = decide(input({ homeX: 2, attend: { untilMs: null, touchSeq: 0, chatSeq: 1, chatOpenSeq: 1 }, chatX: 6 }))
     const started = decide(input({ nowMs: 0, rootX: 9 }))
     const sitting = decide(input({ nowMs: 120_000, rootX: 9, idle: SETTLED }), started.memory)
 
@@ -247,9 +245,8 @@ describe('body director home, goals, roam and tools', () => {
       cameraPoint,
       slots: { sit: true, sleep: true },
       ...NO_WORLD_BODY_INPUT,
-      interactionSeq: 0,
-      chatSendSeq: 0,
-      attendUntilMs: null,
+      attend: { untilMs: null, touchSeq: 0, chatSeq: 0, chatOpenSeq: 0 },
+
       actionRequest: null,
       actionFeedback: null,
       dragging: false,
@@ -266,25 +263,25 @@ describe('body director home, goals, roam and tools', () => {
   })
 
   it.each(blockers)('holds a goal as pending while %s blocks it', (_name, blocked) => {
-    const held = decide(world({ chatUnfoldSeq: 1, chatX: 6, ...blocked }))
+    const held = decide(world({ attend: { untilMs: null, touchSeq: 0, chatSeq: 1, chatOpenSeq: 1 }, chatX: 6, ...blocked }))
 
     expect(held.intent.locomotion.goalX).toBeNull()
     expect(held.memory.pendingGoal).toMatchObject({ reason: 'approach-chat', requestedAtMs: 0 })
   })
 
   it('issues a pending goal when the gate opens inside the time to live', () => {
-    const held = decide(world({ chatUnfoldSeq: 1, chatX: 6, speaking: true }))
-    const issued = decide(world({ nowMs: 10_000, chatUnfoldSeq: 1, chatX: 6 }), held.memory)
+    const held = decide(world({ attend: { untilMs: null, touchSeq: 0, chatSeq: 1, chatOpenSeq: 1 }, chatX: 6, speaking: true }))
+    const issued = decide(world({ nowMs: 10_000, attend: { untilMs: null, touchSeq: 0, chatSeq: 1, chatOpenSeq: 1 }, chatX: 6 }), held.memory)
 
     expect(issued.intent.locomotion).toMatchObject({ goalX: 5, reason: 'approach-chat' })
     expect(issued.memory.pendingGoal).toBeNull()
   })
 
   it('drops a pending goal once the time to live has passed', () => {
-    const blocked = world({ chatUnfoldSeq: 1, chatX: 6, speaking: true })
+    const blocked = world({ attend: { untilMs: null, touchSeq: 0, chatSeq: 1, chatOpenSeq: 1 }, chatX: 6, speaking: true })
     const first = decide(blocked)
     const held = decide({ ...blocked, nowMs: PENDING_GOAL_TTL_MS - 1 }, first.memory)
-    const dropped = decide(world({ nowMs: PENDING_GOAL_TTL_MS, chatUnfoldSeq: 1, chatX: 6 }), held.memory)
+    const dropped = decide(world({ nowMs: PENDING_GOAL_TTL_MS, attend: { untilMs: null, touchSeq: 0, chatSeq: 1, chatOpenSeq: 1 }, chatX: 6 }), held.memory)
 
     expect(held.memory.pendingGoal).not.toBeNull()
     expect(dropped.intent.locomotion.goalX).toBeNull()
@@ -292,7 +289,7 @@ describe('body director home, goals, roam and tools', () => {
   })
 
   it('keeps only the latest blocked request as the pending goal', () => {
-    const chat = decide(world({ chatUnfoldSeq: 1, chatX: 6, speaking: true }))
+    const chat = decide(world({ attend: { untilMs: null, touchSeq: 0, chatSeq: 1, chatOpenSeq: 1 }, chatX: 6, speaking: true }))
     const debug = decide(world({ nowMs: 1_000, speaking: true, debugGoal: { seq: 1, x: -4, pace: 'stroll' } }), chat.memory)
     const issued = decide(world({ nowMs: 2_000 }), debug.memory)
 
@@ -325,9 +322,9 @@ describe('body director home, goals, roam and tools', () => {
   })
 
   it('approaches the chat one leg length short of it, facing the chat side', () => {
-    const right = decide(world({ chatUnfoldSeq: 1, chatX: 6 }))
-    const left = decide(world({ chatUnfoldSeq: 1, chatX: -6 }))
-    const clamped = decide(world({ chatUnfoldSeq: 1, chatX: 30 }))
+    const right = decide(world({ attend: { untilMs: null, touchSeq: 0, chatSeq: 1, chatOpenSeq: 1 }, chatX: 6 }))
+    const left = decide(world({ attend: { untilMs: null, touchSeq: 0, chatSeq: 1, chatOpenSeq: 1 }, chatX: -6 }))
+    const clamped = decide(world({ attend: { untilMs: null, touchSeq: 0, chatSeq: 1, chatOpenSeq: 1 }, chatX: 30 }))
 
     expect(right.intent.locomotion).toEqual({ homeX: 0, goalX: 5, pace: 'walk', arriveFacing: Math.PI / 4, reason: 'approach-chat' })
     expect(left.intent.locomotion).toMatchObject({ goalX: -5, arriveFacing: -Math.PI / 4 })
@@ -336,44 +333,44 @@ describe('body director home, goals, roam and tools', () => {
   })
 
   it('records the interaction sequence it has seen', () => {
-    const result = decide(world({ interactionSeq: 3 }))
+    const result = decide(world({ attend: { untilMs: null, touchSeq: 3, chatSeq: 0, chatOpenSeq: 0 } }))
 
-    expect(result.memory.lastInteractionSeq).toBe(3)
+    expect(result.memory.lastTouchSeq).toBe(3)
   })
 
   it('chases while the attend window is open, through its last millisecond, and not after it', () => {
-    const base = { interactionSeq: 1, cursorOnStage: true, cursorX: 8 }
+    const base = { attend: { untilMs: null, touchSeq: 1, chatSeq: 0, chatOpenSeq: 0 }, cursorOnStage: true, cursorX: 8 }
     const results = [
-      decide(world({ ...base, nowMs: 5_000, attendUntilMs: 5_000 })),
-      decide(world({ ...base, nowMs: 5_001, attendUntilMs: 5_000 })),
-      decide(world({ ...base, nowMs: 5_000, attendUntilMs: null })),
+      decide(world({ ...base, nowMs: 5_000, attend: { untilMs: 5_000, touchSeq: 0, chatSeq: 0, chatOpenSeq: 0 } })),
+      decide(world({ ...base, nowMs: 5_001, attend: { untilMs: 5_000, touchSeq: 0, chatSeq: 0, chatOpenSeq: 0 } })),
+      decide(world({ ...base, nowMs: 5_000, attend: { untilMs: null, touchSeq: 0, chatSeq: 0, chatOpenSeq: 0 } })),
     ]
 
     expect(results.map(result => result.intent.locomotion.reason)).toEqual(['approach-cursor', 'stay', 'stay'])
   })
 
   it('chases the cursor to one leg length short of it inside the attend window', () => {
-    const result = decide(world({ nowMs: 1_000, interactionSeq: 1, attendUntilMs: 60_000, cursorOnStage: true, cursorX: 8 }))
+    const result = decide(world({ nowMs: 1_000, attend: { untilMs: 60_000, touchSeq: 1, chatSeq: 0, chatOpenSeq: 0 }, cursorOnStage: true, cursorX: 8 }))
 
     expect(result.intent.locomotion).toMatchObject({ goalX: 7, pace: 'walk', reason: 'approach-cursor', arriveFacing: 0 })
     expect(result.intent.locomotion.step).toBeUndefined()
   })
 
   it('does not chase outside the window, off stage, when close, or without a cursor', () => {
-    const base = { interactionSeq: 1, attendUntilMs: 60_000, cursorOnStage: true, cursorX: 8 }
+    const base = { attend: { untilMs: 60_000, touchSeq: 1, chatSeq: 0, chatOpenSeq: 0 }, cursorOnStage: true, cursorX: 8 }
     const results = [
       decide(world({ ...base, nowMs: 60_001 })),
       decide(world({ ...base, nowMs: 1_000, cursorOnStage: false })),
       decide(world({ ...base, nowMs: 1_000, cursorX: 1 })),
       decide(world({ ...base, nowMs: 1_000, cursorX: null })),
-      decide(world({ ...base, nowMs: 1_000, attendUntilMs: null })),
+      decide(world({ ...base, nowMs: 1_000, attend: { untilMs: null, touchSeq: 0, chatSeq: 0, chatOpenSeq: 0 } })),
     ]
 
     expect(results.map(result => result.intent.locomotion.goalX)).toEqual([null, null, null, null, null])
   })
 
   it('re-issues a chase goal at most once per minimum dwell', () => {
-    const base = { interactionSeq: 1, attendUntilMs: 60_000, cursorOnStage: true }
+    const base = { attend: { untilMs: 60_000, touchSeq: 1, chatSeq: 0, chatOpenSeq: 0 }, cursorOnStage: true }
     const first = decide(world({ ...base, nowMs: 1_000, cursorX: 8 }))
     const early = decide(world({ ...base, nowMs: 2_000, cursorX: 12 }), first.memory)
     const later = decide(world({ ...base, nowMs: 1_000 + GOAL_MIN_DWELL_MS, cursorX: 12 }), early.memory)
@@ -383,7 +380,7 @@ describe('body director home, goals, roam and tools', () => {
   })
 
   it('ends a chase goal before the goal dwell once her rest point reaches a cursor within one leg', () => {
-    const base = { interactionSeq: 1, attendUntilMs: 60_000, cursorOnStage: true }
+    const base = { attend: { untilMs: 60_000, touchSeq: 1, chatSeq: 0, chatOpenSeq: 0 }, cursorOnStage: true }
     const first = decide(world({ ...base, nowMs: 1_000, cursorX: 8 }))
     const walking = { ...base, rootX: 3, locomotionMode: 'walking' as const, cursorX: 3.5 }
     const short = decide(world({ ...walking, nowMs: 2_000, restX: 3.49 }), first.memory)
@@ -399,7 +396,7 @@ describe('body director home, goals, roam and tools', () => {
   })
 
   it('walks on a chase that has not set off until her rest point reaches a cursor ahead, and ends it for one under her', () => {
-    const base = { interactionSeq: 1, attendUntilMs: 60_000, cursorOnStage: true }
+    const base = { attend: { untilMs: 60_000, touchSeq: 1, chatSeq: 0, chatOpenSeq: 0 }, cursorOnStage: true }
     const first = decide(world({ ...base, nowMs: 1_000, cursorX: 8 }))
     const ahead = decide(world({ ...base, nowMs: 1_100, locomotionMode: 'starting', restX: 0, cursorX: 0.5 }), first.memory)
     const under = decide(world({ ...base, nowMs: 1_100, locomotionMode: 'starting', restX: 0, cursorX: 0 }), first.memory)
@@ -409,14 +406,14 @@ describe('body director home, goals, roam and tools', () => {
   })
 
   it('issues no chase while the cursor stays within one leg', () => {
-    const base = { interactionSeq: 1, attendUntilMs: 60_000, cursorOnStage: true, rootX: 3 }
+    const base = { attend: { untilMs: 60_000, touchSeq: 1, chatSeq: 0, chatOpenSeq: 0 }, cursorOnStage: true, rootX: 3 }
     const frames = [0, 1_000, 4_000, 8_000].map(nowMs => world({ ...base, nowMs, cursorX: 3.8 }))
 
     expect(run(frames).intent.locomotion.goalX).toBeNull()
   })
 
   describe('one corrective step after a chase', () => {
-    const base = { attendUntilMs: 60_000, cursorOnStage: true, cursorX: 3, rootX: 3.4 }
+    const base = { attend: { untilMs: 60_000, touchSeq: 0, chatSeq: 0, chatOpenSeq: 0 }, cursorOnStage: true, cursorX: 3, rootX: 3.4 }
     const armed = { ...initialBodyDirectorMemory, nowMs: 2_000, goalSinceMs: 1_000, cursorStepPending: true }
 
     it('waits for rest, then strolls onto the cursor before the old goal dwell and never arms another step', () => {
@@ -454,8 +451,8 @@ describe('body director home, goals, roam and tools', () => {
     })
 
     it.each([
-      { attendUntilMs: 2_099 },
-      { attendUntilMs: null },
+      { attend: { untilMs: 2_099, touchSeq: 0, chatSeq: 0, chatOpenSeq: 0 } },
+      { attend: { untilMs: null, touchSeq: 0, chatSeq: 0, chatOpenSeq: 0 } },
       { cursorOnStage: false },
       { cursorX: null },
     ])('cancels the correction when the cursor or attend window is unavailable: %j', (overrides) => {
@@ -663,10 +660,9 @@ describe('body director twenty minute scenario', () => {
         performance: performance(speaking ? 'talking' : 'idle'),
         roamMode: 'roam',
         seed: 11,
-        chatUnfoldSeq: nowMs >= 10_000 ? 1 : 0,
+        attend: { untilMs: nowMs >= 60_000 ? 120_000 : null, touchSeq: nowMs >= 60_000 ? 1 : 0, chatSeq: nowMs >= 10_000 ? 1 : 0, chatOpenSeq: nowMs >= 10_000 ? 1 : 0 },
         chatX: 6,
-        interactionSeq: nowMs >= 60_000 ? 1 : 0,
-        attendUntilMs: nowMs >= 60_000 ? 120_000 : null,
+
         cursorOnStage: nowMs >= 60_000 && nowMs < 75_000,
         cursorX: 13,
         // Natural asks for a wander ten minutes in, the earliest the old interval allowed.
@@ -746,9 +742,9 @@ describe('body director actions', () => {
 
   it('(b) keeps a pending approach-chat through a 45 second dance and issues it afterwards', () => {
     const started = decide(world({ actionRequest: dance(1) }))
-    const unfolded = decide(world({ nowMs: 1_000, chatUnfoldSeq: 1, chatX: 6, actionRequest: dance(1) }), started.memory)
-    const during = decide(world({ nowMs: 40_000, chatUnfoldSeq: 1, chatX: 6, actionRequest: dance(1) }), unfolded.memory)
-    const finished = decide(world({ nowMs: 46_000, chatUnfoldSeq: 1, chatX: 6, actionRequest: dance(1), actionFeedback: { seq: 1, state: 'finished' } }), during.memory)
+    const unfolded = decide(world({ nowMs: 1_000, attend: { untilMs: null, touchSeq: 0, chatSeq: 1, chatOpenSeq: 1 }, chatX: 6, actionRequest: dance(1) }), started.memory)
+    const during = decide(world({ nowMs: 40_000, attend: { untilMs: null, touchSeq: 0, chatSeq: 1, chatOpenSeq: 1 }, chatX: 6, actionRequest: dance(1) }), unfolded.memory)
+    const finished = decide(world({ nowMs: 46_000, attend: { untilMs: null, touchSeq: 0, chatSeq: 1, chatOpenSeq: 1 }, chatX: 6, actionRequest: dance(1), actionFeedback: { seq: 1, state: 'finished' } }), during.memory)
 
     expect(started.intent.action).toMatchObject({ phase: 'playing', layer: 'full' })
     expect(unfolded.memory.pendingGoal).toMatchObject({ reason: 'approach-chat' })
@@ -843,10 +839,10 @@ describe('body director actions', () => {
 
   it('(e) ends a looping dance on a chat unfold and on a move tool, but not a one-shot', () => {
     const loop = decide(world({ actionRequest: dance(1, { loop: true }) }))
-    const unfolded = decide(world({ nowMs: 1_000, chatUnfoldSeq: 1, chatX: 6, actionRequest: dance(1, { loop: true }) }), loop.memory)
+    const unfolded = decide(world({ nowMs: 1_000, attend: { untilMs: null, touchSeq: 0, chatSeq: 1, chatOpenSeq: 1 }, chatX: 6, actionRequest: dance(1, { loop: true }) }), loop.memory)
     const moved = decide(world({ nowMs: 1_000, chatX: 6, actionRequest: dance(1, { loop: true }), toolRequest: { seq: 1, kind: 'come-here' } }), loop.memory)
     const oneShot = decide(world({ actionRequest: dance(1) }))
-    const oneShotUnfolded = decide(world({ nowMs: 1_000, chatUnfoldSeq: 1, chatX: 6, actionRequest: dance(1) }), oneShot.memory)
+    const oneShotUnfolded = decide(world({ nowMs: 1_000, attend: { untilMs: null, touchSeq: 0, chatSeq: 1, chatOpenSeq: 1 }, chatX: 6, actionRequest: dance(1) }), oneShot.memory)
     const oneShotMoved = decide(world({ nowMs: 1_000, chatX: 6, actionRequest: dance(1), toolRequest: { seq: 1, kind: 'come-here' } }), oneShot.memory)
 
     expect(loop.intent.action?.loop).toBe(true)
@@ -944,9 +940,9 @@ describe('body director actions', () => {
   describe('cancel and resume', () => {
     const goal = { seq: 1, x: 10, pace: 'walk' as const }
     const enders: Array<[string, Partial<DirectorInput>]> = [
-      ['an interaction', { interactionSeq: 1 }],
+      ['an interaction', { attend: { untilMs: null, touchSeq: 1, chatSeq: 0, chatOpenSeq: 0 } }],
       ['a drag', { dragging: true }],
-      ['a chat unfold', { chatUnfoldSeq: 1, chatX: 6 }],
+      ['a chat unfold', { attend: { untilMs: null, touchSeq: 0, chatSeq: 1, chatOpenSeq: 1 }, chatX: 6 }],
       ['going away', { performance: performance('idle', 'camera', true) }],
     ]
 
@@ -976,9 +972,9 @@ describe('body director actions', () => {
 
     it('ends a full one-shot on an interaction but lets an upper one-shot continue', () => {
       const full = decide(world({ actionRequest: action(1) }))
-      const fullPoked = decide(world({ nowMs: 1_000, interactionSeq: 1, actionRequest: action(1) }), full.memory)
+      const fullPoked = decide(world({ nowMs: 1_000, attend: { untilMs: null, touchSeq: 1, chatSeq: 0, chatOpenSeq: 0 }, actionRequest: action(1) }), full.memory)
       const upper = decide(world({ actionRequest: gesture(1) }))
-      const upperPoked = decide(world({ nowMs: 500, interactionSeq: 1, actionRequest: gesture(1) }), upper.memory)
+      const upperPoked = decide(world({ nowMs: 500, attend: { untilMs: null, touchSeq: 1, chatSeq: 0, chatOpenSeq: 0 }, actionRequest: gesture(1) }), upper.memory)
 
       expect(fullPoked.intent.action).toBeNull()
       expect(upperPoked.intent.action).toMatchObject({ layer: 'upper', phase: 'playing' })
@@ -996,9 +992,9 @@ describe('body director actions', () => {
     it('keeps a full one-shot playing with the goal pending, issues it after the clip, while a poke still ends it', () => {
       const request = dance(1)
       const playing = start(request)
-      const sent = decide(world({ nowMs: 7_000, rootX: 4, clipOwnsRoot: true, chatSendSeq: 1, actionRequest: request }), playing.memory)
-      const finished = decide(world({ nowMs: 8_000, rootX: 4, clipOwnsRoot: true, chatSendSeq: 1, actionRequest: request, actionFeedback: { seq: 1, state: 'finished' } }), sent.memory)
-      const poked = decide(world({ nowMs: 7_000, rootX: 4, clipOwnsRoot: true, interactionSeq: 1, actionRequest: request }), playing.memory)
+      const sent = decide(world({ nowMs: 7_000, rootX: 4, clipOwnsRoot: true, attend: { untilMs: null, touchSeq: 0, chatSeq: 1, chatOpenSeq: 0 }, actionRequest: request }), playing.memory)
+      const finished = decide(world({ nowMs: 8_000, rootX: 4, clipOwnsRoot: true, attend: { untilMs: null, touchSeq: 0, chatSeq: 1, chatOpenSeq: 0 }, actionRequest: request, actionFeedback: { seq: 1, state: 'finished' } }), sent.memory)
+      const poked = decide(world({ nowMs: 7_000, rootX: 4, clipOwnsRoot: true, attend: { untilMs: null, touchSeq: 1, chatSeq: 0, chatOpenSeq: 0 }, actionRequest: request }), playing.memory)
 
       expect(playing.intent.action?.phase).toBe('playing')
       expect(sent.intent.action).toMatchObject({ seq: 1, phase: 'playing' })
@@ -1010,7 +1006,7 @@ describe('body director actions', () => {
     it('ends a looping clip, like a chat unfold', () => {
       const request = dance(1, { loop: true })
       const playing = start(request)
-      const sent = decide(world({ nowMs: 7_000, rootX: 4, clipOwnsRoot: true, chatSendSeq: 1, actionRequest: request }), playing.memory)
+      const sent = decide(world({ nowMs: 7_000, rootX: 4, clipOwnsRoot: true, attend: { untilMs: null, touchSeq: 0, chatSeq: 1, chatOpenSeq: 0 }, actionRequest: request }), playing.memory)
 
       expect(playing.intent.action?.phase).toBe('playing')
       expect(sent.intent.action).toBeNull()
@@ -1018,7 +1014,7 @@ describe('body director actions', () => {
   })
 
   it('works without a world: the classic window still performs and ends on a poke', () => {
-    const quiet = { ...NO_WORLD_BODY_INPUT, interactionSeq: 0, chatSendSeq: 0, attendUntilMs: null, actionRequest: null, actionFeedback: null, dragging: false, idle: { settled: false, asleep: false } }
+    const quiet = { ...NO_WORLD_BODY_INPUT, attend: { untilMs: null, touchSeq: 0, chatSeq: 0, chatOpenSeq: 0 }, actionRequest: null, actionFeedback: null, dragging: false, idle: { settled: false, asleep: false } }
     const frame = (nowMs: number, patch: Partial<DirectorInput> = {}): DirectorInput => ({
       nowMs,
       performance: performance(),
@@ -1030,7 +1026,7 @@ describe('body director actions', () => {
       ...patch,
     })
     const started = decide(frame(0, { actionRequest: action(1) }))
-    const poked = decide(frame(1_000, { actionRequest: action(1), interactionSeq: 1 }), started.memory)
+    const poked = decide(frame(1_000, { actionRequest: action(1), attend: { untilMs: null, touchSeq: 1, chatSeq: 0, chatOpenSeq: 0 } }), started.memory)
 
     expect(started.intent.action).toMatchObject({ phase: 'playing' })
     expect(poked.intent.action).toBeNull()
@@ -1053,18 +1049,18 @@ describe('body director three minute performance scenario', () => {
         nowMs,
         rootX,
         locomotionMode: mode,
-        chatUnfoldSeq: nowMs >= 10_000 ? 1 : 0,
+        attend: { untilMs: null, touchSeq: nowMs >= 90_000 ? 1 : 0, chatSeq: nowMs >= 10_000 ? 1 : 0, chatOpenSeq: nowMs >= 10_000 ? 1 : 0 },
         chatX: 14,
         toolRequest: nowMs >= 40_000 ? { seq: 1, kind: 'come-here' } : null,
         actionRequest: nowMs >= 80_000 ? second : nowMs >= 20_000 ? first : null,
         actionFeedback: nowMs >= 70_000 ? { seq: 1, state: 'finished' } : null,
-        interactionSeq: nowMs >= 90_000 ? 1 : 0,
+
       })
       const out = decide(frame, previous)
       memory = out.memory
 
       if (previous.performing && !memory.performing)
-        log(nowMs, memory.lastInteractionSeq > previous.lastInteractionSeq ? 'ended by interaction' : 'finished')
+        log(nowMs, memory.lastTouchSeq > previous.lastTouchSeq ? 'ended by interaction' : 'finished')
       if (memory.goalSinceMs !== previous.goalSinceMs && memory.goalX !== null)
         log(nowMs, memory.reason === 'tool' ? 'tool issued' : memory.reason)
       if (memory.performing && memory.performing.phase !== previous.performing?.phase)
@@ -1102,13 +1098,13 @@ describe('body director reach zones', () => {
   const reach = [left, right]
   /** A root in the wing between the two zones. */
   const wingX = 26
-  const chase = { interactionSeq: 1, attendUntilMs: 60_000, cursorOnStage: true }
+  const chase = { attend: { untilMs: 60_000, touchSeq: 1, chatSeq: 0, chatOpenSeq: 0 }, cursorOnStage: true }
 
   it('decides exactly as without reach when the ground line is the only zone', () => {
     const frames = (extra: Partial<DirectorInput>) => [
       world({ ...extra, ...chase, nowMs: 1_000, cursorX: 40 }),
       world({ ...extra, ...chase, nowMs: 5_000, cursorX: -40, rootX: 12, locomotionMode: 'walking' }),
-      world({ ...extra, nowMs: 70_000, rootX: 19, chatUnfoldSeq: 1, chatX: 30 }),
+      world({ ...extra, nowMs: 70_000, rootX: 19, attend: { untilMs: null, touchSeq: 0, chatSeq: 1, chatOpenSeq: 1 }, chatX: 30 }),
       world({ ...extra, nowMs: 75_000, rootX: 19, toolRequest: { seq: 1, kind: 'go-home' }, debugGoal: { seq: 1, x: 99, pace: 'stroll' } }),
       world({ ...extra, nowMs: 200_000, rootX: 25 }),
     ]
@@ -1137,7 +1133,7 @@ describe('body director reach zones', () => {
     const started = decide(input(onRight))
     const home = decide(input({ ...onRight, nowMs: RETURN_HOME_DELAY_MS }), started.memory)
     const tool = decide(input({ ...onRight, toolRequest: { seq: 1, kind: 'go-home' } }))
-    const chat = decide(input({ ...onRight, chatUnfoldSeq: 1, chatX: 6 }))
+    const chat = decide(input({ ...onRight, attend: { untilMs: null, touchSeq: 0, chatSeq: 1, chatOpenSeq: 1 }, chatX: 6 }))
 
     expect(home.intent.locomotion).toMatchObject({ goalX: 0, pace: 'stroll', reason: 'return-home' })
     expect(tool.intent.locomotion).toMatchObject({ goalX: 0, reason: 'tool' })
@@ -1347,8 +1343,8 @@ describe('body director unasked clips', () => {
 
   it('ends an unasked clip when the user sends a message, touches her, or she starts to talk', () => {
     const start = () => decide(world({ actionRequest: idle(1, { durationMs: 6_000 }) }))
-    const sent = decide(world({ nowMs: 1_000, chatSendSeq: 1, actionRequest: idle(1) }), start().memory)
-    const touched = decide(world({ nowMs: 1_000, interactionSeq: 1, actionRequest: idle(1) }), start().memory)
+    const sent = decide(world({ nowMs: 1_000, attend: { untilMs: null, touchSeq: 0, chatSeq: 1, chatOpenSeq: 0 }, actionRequest: idle(1) }), start().memory)
+    const touched = decide(world({ nowMs: 1_000, attend: { untilMs: null, touchSeq: 1, chatSeq: 0, chatOpenSeq: 0 }, actionRequest: idle(1) }), start().memory)
     const talking = decide(world({ nowMs: 1_000, performance: performance('talking'), actionRequest: idle(1) }), start().memory)
 
     for (const ended of [sent, touched, talking])

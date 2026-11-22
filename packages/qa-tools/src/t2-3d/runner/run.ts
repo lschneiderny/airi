@@ -292,7 +292,7 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
         isRegistered: () => false,
         points: points ?? undefined,
         idle: directorIdleStates(natural.bodyFrame.intent.idle),
-        interaction: { interactionSeq: 0, chatSendSeq: 0, attendUntilMs: null, actionRequest: null, actionFeedback: null, dragging: false },
+        interaction: { attend: { untilMs: null, touchSeq: 0, chatSeq: 0, chatOpenSeq: 0 }, actionRequest: null, actionFeedback: null, dragging: false },
         world: {
           ...NO_WORLD_BODY_INPUT,
           ground: rig.legLength ? { minX: -60 * rig.legLength, maxX: 60 * rig.legLength } : null,

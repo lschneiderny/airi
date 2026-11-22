@@ -143,7 +143,7 @@ it('pre-empts the gait for a full clip and issues the walk goal again after it f
       idleMotionName: '',
       isRegistered: () => true,
       world: { ...NO_WORLD_BODY_INPUT, ground: { minX: -20, maxX: 20 }, legLength: 1, rootX: mesh.position.x, homeX: 0, locomotionMode: body.locomotionFrame?.mode ?? 'idle', debugGoal: debugGoal ? { seq: 1, x: 8, pace: 'walk' } : null },
-      interaction: { interactionSeq: 0, chatSendSeq: 0, attendUntilMs: null, actionRequest: wantRequest ? request : null, actionFeedback: feedback, dragging: false },
+      interaction: { attend: { untilMs: null, touchSeq: 0, chatSeq: 0, chatOpenSeq: 0 }, actionRequest: wantRequest ? request : null, actionFeedback: feedback, dragging: false },
     })
     const action = director.intent?.action
     if (action?.phase === 'playing' && playedSeq !== action.seq) {

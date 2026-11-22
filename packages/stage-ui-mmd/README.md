@@ -60,8 +60,8 @@ reaching feature parity with the Live2D and VRM renderers:
 - **Stage locomotion** (desktop stage only, `stageWorld` set): the body director
   also walks her to the chat after it unfolds, chases the cursor inside the attend
   window that the character mind's `attend` intent opens (a poke, pet start, drag
-  or sent message; `attend(intent)` stamps `attendUntilMs` at the director time of
-  the next frame, through `MMDAttendWindow`, under the Natural driver; under the classic driver the attend intent is not
+  or sent message; `attend(intent)` stamps `attend.untilMs` at the director time of
+  the next frame, through `MMDAttendInbox`, under the Natural driver; under the classic driver the attend intent is not
   dispatched, so the director gets no attend window), returns home 20 s after the last reason and, with
   `roamMode` (`settings/mmd/roam-mode`, `'stay' | 'roam'`, default `'stay'`),
   wanders when Natural's idle draw asks for it (the `wander` errand, listed in
@@ -619,9 +619,13 @@ anything. `Stage.vue` hands the report to the character mind, which decides the
 body reaction, the mood dose, and a possible reaction line together, as on
 Live2D. The scene performs the mind's `touch-reaction` intent through its
 exposed `reactToTouch`: a poke calls Natural's `poke`, the pet hand reaches
-Natural only between a pet `start` and its `end`, and a poke and a pet start
-bump `interactionSeq`, which ends the director's clips. The mind's `attend` intent
-for the same touch reaches the scene's `attend`. The response is pre-physics head
+Natural only between a pet `start` and its `end`. The mind's separate `attend`
+intent reaches `MMDAttendInbox`: `touch` and `drag` increment `touchSeq`,
+`chat-send` and `chat-unfold` increment `chatSeq`, and `chat-unfold` also increments
+`chatOpenSeq` for the approach. Only cursor attends open the cursor window.
+The scene keeps no raw touch, drag-release, sent-message, or unfold counters.
+Classic receives no attends: drag releases and chat activity no longer end its
+clips. The world still reports a drag in progress, which retains its clip rules. The response is pre-physics head
 and body motion. The scene also exposes `wakeFromSleep()` and
 `reactToDesktop(reaction)`, which `Stage.vue` calls under Natural when the mind
 answers the user's return or a desktop event; they forward to

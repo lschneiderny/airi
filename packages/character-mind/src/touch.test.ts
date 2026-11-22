@@ -76,7 +76,7 @@ describe('step: touch', () => {
       { id: '1-touch-reaction', cause: 1, channel: 'posture', kind: 'touch-reaction', gesture: 'poke', region: 'body', point: { x: 0.2, y: -0.4 } },
       { id: '1-mood', cause: 1, channel: 'posture', kind: 'mood', dose: { id: 'touch-1-poke', valence: 0, arousal: slight * 0.6, tension: 0 } },
       { id: '1-moment', cause: 1, channel: 'face', kind: 'moment', moment: 'poked' },
-      { id: '1-attend', cause: 1, channel: 'body', kind: 'attend', target: 'cursor', windowMs: 60_000 },
+      { id: '1-attend', cause: 1, channel: 'body', kind: 'attend', target: 'cursor', attendCause: 'touch', windowMs: 60_000 },
     ])
     expect(state.seq).toBe(1)
   })
@@ -129,10 +129,10 @@ describe('step: touch opens the attend window', () => {
     const mind = script()
 
     const poked = mind.send(T0, poke(view({ pokeTimesMs: [T0] })))
-    expect(attends(poked)).toEqual([{ id: '1-attend', cause: 1, channel: 'body', kind: 'attend', target: 'cursor', windowMs: 60_000 }])
+    expect(attends(poked)).toEqual([{ id: '1-attend', cause: 1, channel: 'body', kind: 'attend', target: 'cursor', attendCause: 'touch', windowMs: 60_000 }])
     // After the line, too: the attend comes after every other intent of the touch.
     expect(kinds(poked).at(-1)).toBe('body/attend')
-    expect(attends(mind.send(T0 + 2 * SEC, petStart))).toMatchObject([{ windowMs: 60_000 }])
+    expect(attends(mind.send(T0 + 2 * SEC, petStart))).toMatchObject([{ target: 'cursor', attendCause: 'touch', windowMs: 60_000 }])
     expect(attends(mind.send(T0 + 6 * SEC, petEnd(4 * SEC)))).toEqual([])
   })
 })

@@ -163,10 +163,12 @@ export type MindIntent
   /** The cursor episode for the report `requestId`: whether she engages, its span, dwell, and cooldown. Only the reporting performer plays it. */
     | (IntentBase & { channel: 'gaze', kind: 'cursor-episode', requestId: number, episode: CursorEpisode })
   /**
-   * Attend to the user at the cursor for `windowMs` from now. The body director stamps the window on its own clock and
-   * may walk toward the cursor inside it; a scene without a director drops it.
+   * Attend to the user at the cursor for `windowMs` from now, or approach the chat when it opens.
+   * `attendCause` names the interaction; `cause` remains the stimulus's sequence number. The body director stamps
+   * the cursor window on its own clock and keeps its clip-ending rules; a scene without a director drops it.
    */
-    | (IntentBase & { channel: 'body', kind: 'attend', target: 'cursor', windowMs: number })
+    | (IntentBase & { channel: 'body', kind: 'attend', target: 'cursor', attendCause: 'touch' | 'drag' | 'chat-send', windowMs: number })
+    | (IntentBase & { channel: 'body', kind: 'attend', target: 'chat', attendCause: 'chat-unfold' })
   /**
    * Read the chat: a sent message of `words` words (0 for an unfold). The performer draws the read's delay and hold, and
    * drops it without a chat target or while she talks.

@@ -55,7 +55,7 @@ function stage(clips: readonly MMDActionClip[] = library) {
       slots: {},
       idleMotionName: '',
       isRegistered: () => true,
-      interaction: { interactionSeq: 0, chatSendSeq: 0, attendUntilMs: null, actionRequest: request, actionFeedback: patch.feedback ?? null, dragging: patch.dragging ?? false },
+      interaction: { attend: { untilMs: null, touchSeq: 0, chatSeq: 0, chatOpenSeq: 0 }, actionRequest: request, actionFeedback: patch.feedback ?? null, dragging: patch.dragging ?? false },
     })
     port.observe({ directorMs, diagnostics: director.diagnostics })
   }

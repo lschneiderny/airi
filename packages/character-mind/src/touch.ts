@@ -52,7 +52,7 @@ export function answerTouch(state: MindState, stimulus: Stimulus<'touch'>, cause
   }
 
   if (stimulus.gesture !== 'pet-end')
-    intents.push(attendIntent(cause))
+    intents.push(attendIntent(cause, 'touch'))
 
   return { state: { ...state, touch: { affect: affect.memory }, voice }, intents }
 }

@@ -111,8 +111,8 @@ describe('the attend window', () => {
     const dragged = mind.send(T0, { kind: 'interaction', source: 'drag' })
     const sent = mind.send(T0 + 1000, { kind: 'chat', cue: 'sent', words: 4 })
 
-    expect(dragged).toEqual([{ id: '1-attend', cause: 1, channel: 'body', kind: 'attend', target: 'cursor', windowMs: 60_000 }])
-    expect(sent.filter(intent => intent.kind === 'attend')).toEqual([{ id: '2-attend', cause: 2, channel: 'body', kind: 'attend', target: 'cursor', windowMs: 60_000 }])
+    expect(dragged).toEqual([{ id: '1-attend', cause: 1, channel: 'body', kind: 'attend', target: 'cursor', attendCause: 'drag', windowMs: 60_000 }])
+    expect(sent.filter(intent => intent.kind === 'attend')).toEqual([{ id: '2-attend', cause: 2, channel: 'body', kind: 'attend', target: 'cursor', attendCause: 'chat-send', windowMs: 60_000 }])
     expect(mind.draws).toBe(0)
     expect(mind.state.attention.random).toBeNull()
   })
