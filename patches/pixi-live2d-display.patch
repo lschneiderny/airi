@@ -1,9 +1,9 @@
 diff --git a/core/README.md b/core/README.md
 deleted file mode 100644
-index ad383747237ee1a22ce39d01fbc7e77ac94b8e47..0000000000000000000000000000000000000000
+index e1cf888b7bf24af1821729267cfd8a5ca1c9b36d..0000000000000000000000000000000000000000
 diff --git a/core/live2d.d.ts b/core/live2d.d.ts
 deleted file mode 100644
-index 0283512ed1c9ea01d7dd1b67b76d660237b453e8..0000000000000000000000000000000000000000
+index eb9e6ec39091a643894479e1aaccd01ca04c575d..0000000000000000000000000000000000000000
 diff --git a/cubism/.vscode/extensions.json b/cubism/.vscode/extensions.json
 deleted file mode 100644
 index fda5ad57b9567b939382ba15fb1d3b9f1fecf77e..0000000000000000000000000000000000000000
@@ -11,7 +11,7 @@ diff --git a/cubism/.vscode/tasks.json b/cubism/.vscode/tasks.json
 deleted file mode 100644
 index 7cd3fffed85da69d5af154f63480bce8766a038f..0000000000000000000000000000000000000000
 diff --git a/dist/cubism2.es.js b/dist/cubism2.es.js
-index 0d40d5d40533881d154e3c2cdda9b360c57eaaa6..8dbdb1b36e2da42da264dc3533523e61745102f7 100644
+index 0d40d5d40533881d154e3c2cdda9b360c57eaaa6..70e0d63a88a9605ed02330621004d4b6be6cfd6b 100644
 --- a/dist/cubism2.es.js
 +++ b/dist/cubism2.es.js
 @@ -1373,7 +1373,7 @@ const _FileLoader = class {
@@ -42,7 +42,7 @@ index 0d40d5d40533881d154e3c2cdda9b360c57eaaa6..8dbdb1b36e2da42da264dc3533523e61
          throw new Error("Settings file not found");
        }
 diff --git a/dist/cubism2.js b/dist/cubism2.js
-index c3db490f8dbfdd63ad40648fe0e0325604f22e95..4b452db0b109ba7deaddf397ef351ae7bcfe145c 100644
+index c3db490f8dbfdd63ad40648fe0e0325604f22e95..3d49392617b92fcb3be29033bcabc2cd53e64a1c 100644
 --- a/dist/cubism2.js
 +++ b/dist/cubism2.js
 @@ -1373,7 +1373,7 @@ var __async = (__this, __arguments, generator) => {
@@ -73,7 +73,7 @@ index c3db490f8dbfdd63ad40648fe0e0325604f22e95..4b452db0b109ba7deaddf397ef351ae7
            throw new Error("Settings file not found");
          }
 diff --git a/dist/cubism4.es.js b/dist/cubism4.es.js
-index f21619f5794c00542bb2a9df340e50d4453a0367..a8ea49ed4ca012d952637bcec7c89faee3294435 100644
+index f21619f5794c00542bb2a9df340e50d4453a0367..6dc455f677cf349cfd0227435d9aacc6f6477700 100644
 --- a/dist/cubism4.es.js
 +++ b/dist/cubism4.es.js
 @@ -3186,7 +3186,7 @@ class CubismShader_WebGL {
@@ -121,7 +121,32 @@ index f21619f5794c00542bb2a9df340e50d4453a0367..a8ea49ed4ca012d952637bcec7c89fae
  class CubismRenderer_WebGL extends CubismRenderer {
    constructor() {
      super();
-@@ -3527,10 +3536,10 @@ class CubismRenderer_WebGL extends CubismRenderer {
+@@ -3510,6 +3519,13 @@ class CubismRenderer_WebGL extends CubismRenderer {
+     self._textures = void 0;
+   }
+   doDrawModel() {
++    this.prepareDrawModel();
++    this.drawModelRange(0, this.getModel().getDrawableCount());
++  }
++  // fork(live2d-stage-items): doDrawModel in two steps, so that a frame can draw
++  // the render order in ranges around inserted draws. The mask pass runs once per
++  // frame, here; every range reads the masks it drew.
++  prepareDrawModel() {
+     this.preDraw();
+     if (this._clippingManager != null) {
+       this._clippingManager.setupClippingContext(this.getModel(), this);
+@@ -3520,17 +3536,20 @@ class CubismRenderer_WebGL extends CubismRenderer {
+       const order = renderOrder[i];
+       this._sortedDrawableIndexList[order] = i;
+     }
+-    for (let i = 0; i < drawableCount; ++i) {
++  }
++  // fork(live2d-stage-items): draws the drawables at sorted render-order positions [from, to).
++  drawModelRange(from, to) {
++    for (let i = from; i < to; ++i) {
+       const drawableIndex = this._sortedDrawableIndexList[i];
+       if (!this.getModel().getDrawableDynamicFlagIsVisible(drawableIndex)) {
+         continue;
        }
        this.setClippingContextBufferForDraw(this._clippingManager != null ? this._clippingManager.getClippingContextListForDraw()[drawableIndex] : null);
        this.setIsCulling(this.getModel().getDrawableCulling(drawableIndex));
@@ -134,7 +159,7 @@ index f21619f5794c00542bb2a9df340e50d4453a0367..a8ea49ed4ca012d952637bcec7c89fae
      if (this.isCulling()) {
        this.gl.enable(this.gl.CULL_FACE);
      } else {
-@@ -3550,7 +3559,7 @@ class CubismRenderer_WebGL extends CubismRenderer {
+@@ -3550,7 +3569,7 @@ class CubismRenderer_WebGL extends CubismRenderer {
      if (this._textures[textureNo] != null) {
        drawtexture = this._textures[textureNo];
      }
@@ -143,7 +168,59 @@ index f21619f5794c00542bb2a9df340e50d4453a0367..a8ea49ed4ca012d952637bcec7c89fae
      this.gl.drawElements(this.gl.TRIANGLES, indexCount, this.gl.UNSIGNED_SHORT, 0);
      this.gl.useProgram(null);
      this.setClippingContextBufferForDraw(null);
-@@ -5012,7 +5021,7 @@ const _FileLoader = class {
+@@ -4820,6 +4839,17 @@ class Live2DTransform extends Transform {
+ }
+ const tempPoint = new Point();
+ const tempMatrix$1 = new Matrix();
++// fork(live2d-stage-items): Pixi caches GL bindings that the Cubism renderer changes
++// with raw GL calls, and the reverse. Flush the batch and drop every cached binding on
++// both sides of an insert; geometry.reset binds the default vertex array, which the
++// Cubism renderer draws with.
++function resetRendererForInsert(renderer) {
++  renderer.batch.flush();
++  renderer.geometry.reset();
++  renderer.shader.reset();
++  renderer.state.reset();
++  renderer.texture.reset();
++}
+ let tickerRef;
+ class Live2DModel extends Container {
+   constructor(options) {
+@@ -4972,10 +5002,32 @@ class Live2DModel extends Container {
+     }
+     const internalTransform = tempMatrix$1.copyFrom(renderer.globalUniforms.uniforms.projectionMatrix).append(this.worldTransform);
+     this.internalModel.updateTransform(internalTransform);
+-    this.internalModel.draw(renderer.gl);
++    if (this.itemInsertions) {
++      this.drawSegments(renderer, this.itemInsertions.segments(this.internalModel, renderer));
++    } else {
++      this.internalModel.draw(renderer.gl);
++    }
+     renderer.state.reset();
+     renderer.texture.reset();
+   }
++  // fork(live2d-stage-items): draws the frame as ordered segments. A model segment
++  // draws render-order positions [from, to); an insert segment renders Pixi objects
++  // between two ranges. The segments must cover every position once, in order.
++  drawSegments(renderer, segments) {
++    const gl = renderer.gl;
++    const framebuffer = this.internalModel.beginRangeDraw(gl);
++    for (let i = 0; i < segments.length; i++) {
++      const segment = segments[i];
++      if (segment.kind === "model") {
++        this.internalModel.drawRange(segment.from, segment.to);
++        continue;
++      }
++      resetRendererForInsert(renderer);
++      segment.render(renderer);
++      resetRendererForInsert(renderer);
++      this.internalModel.resumeRangeDraw(gl, framebuffer);
++    }
++  }
+   destroy(options) {
+     this.emit("destroy");
+     this.autoUpdate = false;
+@@ -5012,7 +5064,7 @@ const _FileLoader = class {
    }
    static createSettings(files) {
      return __async(this, null, function* () {
@@ -152,7 +229,7 @@ index f21619f5794c00542bb2a9df340e50d4453a0367..a8ea49ed4ca012d952637bcec7c89fae
        if (!settingsFile) {
          throw new TypeError("Settings file not found");
        }
-@@ -5050,7 +5059,7 @@ FileLoader.factory = (context, next) => __async(void 0, null, function* () {
+@@ -5050,7 +5102,7 @@ FileLoader.factory = (context, next) => __async(void 0, null, function* () {
      } else if (!settings._objectURL) {
        throw new Error('"_objectURL" must be specified in ModelSettings');
      }
@@ -161,7 +238,7 @@ index f21619f5794c00542bb2a9df340e50d4453a0367..a8ea49ed4ca012d952637bcec7c89fae
      yield _FileLoader.upload(files, settings);
      settings.resolveURL = function(url2) {
        return _FileLoader.resolveURL(this._objectURL, url2);
-@@ -5097,7 +5106,7 @@ const _ZipLoader = class {
+@@ -5097,7 +5149,7 @@ const _ZipLoader = class {
    static createSettings(reader) {
      return __async(this, null, function* () {
        const filePaths = yield _ZipLoader.getFilePaths(reader);
@@ -170,8 +247,49 @@ index f21619f5794c00542bb2a9df340e50d4453a0367..a8ea49ed4ca012d952637bcec7c89fae
        if (!settingsFilePath) {
          throw new Error("Settings file not found");
        }
+@@ -5448,6 +5500,30 @@ class Cubism4InternalModel extends InternalModel {
+     (_a = this.breath) == null ? void 0 : _a.updateParameters(this.coreModel, dt / 1e3);
+   }
+   draw(gl) {
++    this.setupDraw(gl.getParameter(gl.FRAMEBUFFER_BINDING));
++    this.renderer.drawModel();
++  }
++  // fork(live2d-stage-items): starts a frame drawn in render-order ranges and returns
++  // the framebuffer that every range draws into.
++  beginRangeDraw(gl) {
++    const framebuffer = gl.getParameter(gl.FRAMEBUFFER_BINDING);
++    this.setupDraw(framebuffer);
++    this.renderer.prepareDrawModel();
++    return framebuffer;
++  }
++  drawRange(from, to) {
++    this.renderer.drawModelRange(from, to);
++  }
++  // fork(live2d-stage-items): after an insert ran other GL code, restores what the next
++  // range needs: the render target, the module-level s_fbo and s_viewport (a nested
++  // model's draw rewrites them), and the fixed state that preDraw sets.
++  resumeRangeDraw(gl, framebuffer) {
++    gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
++    gl.viewport(this.viewport[0], this.viewport[1], this.viewport[2], this.viewport[3]);
++    this.renderer.setRenderState(framebuffer, this.viewport);
++    this.renderer.preDraw();
++  }
++  setupDraw(framebuffer) {
+     const matrix = this.drawingMatrix;
+     const array = tempMatrix.getArray();
+     array[0] = matrix.a;
+@@ -5457,8 +5533,7 @@ class Cubism4InternalModel extends InternalModel {
+     array[12] = matrix.tx;
+     array[13] = matrix.ty;
+     this.renderer.setMvpMatrix(tempMatrix);
+-    this.renderer.setRenderState(gl.getParameter(gl.FRAMEBUFFER_BINDING), this.viewport);
+-    this.renderer.drawModel();
++    this.renderer.setRenderState(framebuffer, this.viewport);
+   }
+   destroy() {
+     super.destroy();
 diff --git a/dist/cubism4.js b/dist/cubism4.js
-index 03c1fb2b32b3b908a8b0e604aa3ee50aa9130169..99fc587e3ca7e6f433099e13f33e0e480a10c25a 100644
+index 03c1fb2b32b3b908a8b0e604aa3ee50aa9130169..5f30dd3c47f522d20b32403dc54f9bd35bd80982 100644
 --- a/dist/cubism4.js
 +++ b/dist/cubism4.js
 @@ -5012,7 +5012,7 @@ var __async = (__this, __arguments, generator) => {
@@ -202,7 +320,7 @@ index 03c1fb2b32b3b908a8b0e604aa3ee50aa9130169..99fc587e3ca7e6f433099e13f33e0e48
            throw new Error("Settings file not found");
          }
 diff --git a/dist/index.es.js b/dist/index.es.js
-index f969d304f346c4e420b6798dbd4dec81b902a5e4..7e6b4d3ef53f1ea0648030899de9debd291fc551 100644
+index f969d304f346c4e420b6798dbd4dec81b902a5e4..22e714552a57a83dd2e81b85b3eedc58ec49eb49 100644
 --- a/dist/index.es.js
 +++ b/dist/index.es.js
 @@ -1373,7 +1373,7 @@ const _FileLoader = class {
@@ -233,7 +351,7 @@ index f969d304f346c4e420b6798dbd4dec81b902a5e4..7e6b4d3ef53f1ea0648030899de9debd
          throw new Error("Settings file not found");
        }
 diff --git a/dist/index.js b/dist/index.js
-index bc3d800c45889979190175cc88cdd8251feb9b5e..d1a660708ff81e1379f173709a32c6f4aa16696a 100644
+index bc3d800c45889979190175cc88cdd8251feb9b5e..1f4e1f41be7c606e1ef01393eb06af35497a47c7 100644
 --- a/dist/index.js
 +++ b/dist/index.js
 @@ -1373,7 +1373,7 @@ var __async = (__this, __arguments, generator) => {
