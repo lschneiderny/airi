@@ -1,10 +1,10 @@
 import type { ChatSessionMeta } from '../../../../types/chat-session'
 
 import { SwipeActionButton, SwipeActionsContent, SwipeActionsItem, SwipeActionsList, SwipeActionsRoot } from '@proj-airi/ui'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { render } from 'vitest-browser-vue'
 import { page, userEvent } from 'vitest/browser'
-import { defineComponent, ref } from 'vue'
+import { defineComponent, nextTick, ref } from 'vue'
 import { createI18n } from 'vue-i18n'
 
 import SessionsDialog from './sessions-dialog.vue'
@@ -526,18 +526,35 @@ describe('sessions dialog actions', () => {
     const screen = await render(createHarness(), { global: { plugins: [createTestI18n()] } })
     const row = screen.getByRole('button', { name: /^Second chat/ }).element().closest('[data-swipe-actions]')!
     const wheel = (deltaX: number) => row.dispatchEvent(new WheelEvent('wheel', { deltaX, bubbles: true, cancelable: true }))
-    wheel(260)
-    await expect.poll(() => row.getAttribute('data-armed')).toBe('true')
-    expect(screen.getByLabelText('deleted-session-id').element().textContent).toBe('none')
-    wheel(-160)
-    await expect.poll(() => row.getAttribute('data-armed')).toBe('false')
-    await expect.poll(() => row.getAttribute('data-state')).toBe('open')
-    expect(screen.getByLabelText('deleted-session-id').element().textContent).toBe('none')
-    wheel(220)
-    await expect.poll(() => screen.getByLabelText('deleted-session-id').element().textContent).toBe('session-two')
-    expect(screen.getByLabelText('selected-session-id').element().textContent).toBe('none')
-    await expect.poll(() => row.getAttribute('data-state')).toBe('closed')
-    expect(screen.getByLabelText('delete-count').element().textContent).toBe('1')
+    // A loaded browser can pass the 180ms wheel-idle deadline while observing
+    // the armed state. Control both the spring and idle clocks, and reverse
+    // just before release. expect.poll would advance these fake timers itself.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'requestAnimationFrame', 'cancelAnimationFrame', 'performance'] })
+    try {
+      wheel(260)
+      await nextTick()
+      expect(row.getAttribute('data-armed')).toBe('true')
+      await vi.advanceTimersByTimeAsync(179)
+      expect(screen.getByLabelText('deleted-session-id').element().textContent).toBe('none')
+      wheel(-160)
+      await nextTick()
+      expect(row.getAttribute('data-armed')).toBe('false')
+      await vi.advanceTimersByTimeAsync(180)
+      await vi.runAllTimersAsync()
+      expect(row.getAttribute('data-state')).toBe('open')
+      expect(screen.getByLabelText('deleted-session-id').element().textContent).toBe('none')
+      wheel(220)
+      await vi.advanceTimersByTimeAsync(180)
+      await vi.runAllTimersAsync()
+      expect(screen.getByLabelText('deleted-session-id').element().textContent).toBe('session-two')
+      expect(screen.getByLabelText('selected-session-id').element().textContent).toBe('none')
+      expect(row.getAttribute('data-state')).toBe('closed')
+      expect(screen.getByLabelText('delete-count').element().textContent).toBe('1')
+    }
+    finally {
+      vi.clearAllTimers()
+      vi.useRealTimers()
+    }
   })
 
   it('accumulates horizontal wheel intent and stretches the action area without resizing the drawer', async () => {
