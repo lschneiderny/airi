@@ -76,6 +76,8 @@ describe('useExpressionController', () => {
     frame(context)
     expect(core.getParameterValueById('Param2')).toBe(0.75)
     expect(core.getParameterValueById('previewOnly')).toBe(0.8)
+    expect(store.composer.parameterOffsets.get('Param2')).toBe(0.75)
+    expect(store.composer.parameterOffsets.get('previewOnly')).toBe(0.8)
     now = 1
     frame(context)
     expect(core.getParameterValueById('Param2')).toBe(0.75)
@@ -84,6 +86,8 @@ describe('useExpressionController', () => {
     frame(context)
     expect(core.getParameterValueById('Param2')).toBe(1)
     expect(core.getParameterValueById('previewOnly')).toBe(0)
+    expect(store.composer.parameterOffsets.get('Param2')).toBe(1)
+    expect(store.composer.parameterOffsets.has('previewOnly')).toBe(false)
     expect(store.contextPreview).toEqual([])
     expect(store.leases.prop?.expressionId).toBe(archive[0].fileName)
   })

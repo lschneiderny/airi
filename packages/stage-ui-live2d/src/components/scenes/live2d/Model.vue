@@ -38,6 +38,7 @@ import type { NaturalCaptureRequest } from '../../../stores'
 import { errorMessageFrom } from '@moeru/std'
 import { Point } from '@pixi/math'
 import { NO_CAPABILITIES } from '@proj-airi/character-mind'
+import { EXPRESSION_TILT_WEIGHT } from '@proj-airi/motion-driver-natural/natural-motion'
 import { NaturalTouchGestures } from '@proj-airi/motion-driver-natural/touch-gestures'
 import { isBeatSyncSupported, listenBeatSyncBeatSignal } from '@proj-airi/stage-shared/beat-sync'
 import { defaultExpressionPerformanceSettings, idleActivityEntries } from '@proj-airi/stage-shared/expression-performance'
@@ -752,6 +753,7 @@ async function performModelLoad() {
           autoBlink: props.naturalAutoBlink,
           manualBreathActive: manualBreathControl.value.active,
           clipOwnedIds: motionManagerUpdate.getClipOwnedIds(),
+          expressionTilt: { parameterOffsets: expressionStore.composer.parameterOffsets, weight: EXPRESSION_TILT_WEIGHT },
           pendingEmotions: pendingNaturalEmotions,
           heldEmotion: holdPerformer.current(holdClock()),
           emotionStrengths: props.naturalEmotionStrength ?? defaultEmotionStrengths,
