@@ -296,7 +296,6 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
         slots: {},
         idleMotionName: '',
         isRegistered: () => false,
-        points: points ?? undefined,
         idle: directorIdleStates(natural.bodyFrame.intent.idle),
         interaction: { away: bodyAway, attend: { untilMs: null, touchSeq: 0, chatSeq: 0, chatOpenSeq: 0 }, actionRequest: null, actionFeedback: null, dragging: false },
         world: {
@@ -320,7 +319,7 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
       body.setLocomotionGoal(stance.intent?.locomotion ?? null)
       motionTime = frame === 0 ? 0 : motionTime + motion3dStep
       sampler.inputs.wall = motionTime
-      const targetPoint = resolveBodyTarget(points, natural.bodyFrame, 'mouse', stance.intent)?.applyQuaternion(traceBasis)
+      const targetPoint = resolveBodyTarget(points, natural.bodyFrame, 'mouse', stance.intent, cues.performance.attention)?.applyQuaternion(traceBasis)
       sampler.inputs.channels = {
         voiceLevel: cues.voice.level,
         speaking: cues.voice.speaking ? 1 : 0,

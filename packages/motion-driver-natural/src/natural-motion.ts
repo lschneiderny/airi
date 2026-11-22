@@ -421,6 +421,12 @@ export class NaturalMotion {
       this.pending.push({ kind: 'chat', cue: read.cue, words: read.words })
   }
 
+  /** Queues a look tool on the next grid step. Targets are normalized eye points, away, or null for a missing target. */
+  look(target: GazePoint | 'away' | null, holdSeconds: number, nowSeconds: number) {
+    this.advance(nowSeconds)
+    this.pending.push({ kind: 'look', target: target && typeof target === 'object' ? { ...target } : target, holdSeconds })
+  }
+
   /** Whether gaze is currently in an autonomous typing fixation. */
   get onChat(): boolean {
     return this.gaze.onChat
@@ -976,7 +982,8 @@ export class NaturalMotion {
     // Postpone only a due shift. Adding the remaining duration every step would accumulate minutes of idle delay.
     if (remaining > 0.5 && this.posture.secondsUntilShift <= step)
       this.posture.postponeShift(remaining)
-    if (stepStart >= this.petGlanceUntil && stepStart >= this.chatGlanceUntil && !this.cueGestures.eyesActive(stepStart) && !this.idleLayer.eyesOwned(stepStart))
+    // A tool's explicit hold owns the eyes too; a free posture-led fixation must not shorten it.
+    if (stepStart >= this.petGlanceUntil && stepStart >= this.chatGlanceUntil && this.gaze.claim?.source !== 'look-tool' && !this.cueGestures.eyesActive(stepStart) && !this.idleLayer.eyesOwned(stepStart))
       this.attention.update(this.posture, this.gaze, stepStart, step)
     this.onCursor += (Number(this.gaze.onCursor) - this.onCursor) * (1 - Math.exp(-step / cursorFixationSmoothingSeconds))
     if (this.gaze.onChat || this.onChatLevel !== 0)

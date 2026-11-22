@@ -7,7 +7,7 @@ deterministic motion algorithms for reusable character motion drivers.
 
 - `./clip-mask`: `buildClipBoneMask`, which reports which bone groups a clip animates.
 - `./clip-meta`: `deriveClipMeta`, `effectiveLayer` and `slugLabel`, which turn a clip bone mask, duration and name into a layer, kind, loop flag and label.
-- `./director` exports the pure stance and attention director. It also issues
+- `./director` exports the pure stance, locomotion, clip, and look-request director. It also issues
   `visit` walks toward the cursor, keeps her where a wander or a visit took
   her for 45 to 150 s, and accepts `idle` clip requests as the weakest source.
 - `./idle-clips`: `pickIdleClip`, which picks the clip the user allowed for
@@ -333,6 +333,13 @@ a performance and refuses new clips. A move tool ends looping clips. Every host 
 defaults them. Classic receives no attends and keeps `away` false. Dragging
 in progress remains world and keeps its existing clip rules. The resolved
 performance mode stays a continuous world input.
+
+The director's performance input contains only `mode`; resolver attention and
+point geometry belong to the diagnostic mapper and the gaze performer. An
+accepted look tool produces `BodyIntent.look { seq, target, holdMs }` while
+its override holds. The host performs each new sequence once through Natural's
+gaze arbiter, with the same 8 s hold and existing tool refractory.
+`BodyLookTarget` belongs to `./types` and is also exported by `./director`.
 
 `MMDBody` and `MMDStanceDirector` in `@proj-airi/stage-ui-mmd` are the first
 consumers. The architecture is recorded in

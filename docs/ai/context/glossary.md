@@ -21,7 +21,7 @@ Inline control markers that the model writes into a reply. `<|ACT {...}|>` carri
 The span in which she attends to her user after an interaction, and the only time the MMD body director may chase the cursor. The [character mind](#character-mind) answers a poke, a pet start, a drag release, and a sent chat message (a `chat` `sent` stimulus) with a cursor-targeted `body` `attend` intent of `ATTEND_WINDOW_MS` (60 s), naming `attendCause` as `touch`, `drag`, or `chat-send`; a pet end opens none. A chat that unfolds yields a chat-targeted attend, without opening a cursor window. The intent carries a span, not a time: the MMD scene's `MMDAttendInbox` stamps `attend.untilMs` at the director time of the next frame, and the director reads the cursor's position from its world only to aim the walk. The conductor dispatches the intent only under the Natural driver; under the classic driver it is not dispatched, so the director gets no attend window.
 
 **Code:** `packages/character-mind/src/attention.ts` `ATTEND_WINDOW_MS`, `answerInteraction`; `packages/character-mind/src/chat.ts` `answerChat`; `packages/character-mind/src/touch.ts` `answerTouch`; `packages/stage-ui-mmd/src/components/scenes/MMD.vue` (`attend`); `packages/stage-ui-mmd/src/composables/mmd/stance.ts` `MMDAttendInbox`; `packages/motion-driver-humanoid/src/director/index.ts` `BodyDirectorInput` (`attend.untilMs`).
-**Not to be confused with:** [cursor attention](#cursor-attention), which decides whether she notices the cursor with her gaze; and `BodyIntent.attention`, the director's diagnostic attention target.
+**Not to be confused with:** [cursor attention](#cursor-attention), which decides whether she notices the cursor with her gaze; and `BodyIntent.look`, a model-requested glance realised by Natural's gaze arbiter.
 **Avoid:** "chase window" for the span (the chase is the director's walk inside it).
 
 ### Avatar model
@@ -57,7 +57,7 @@ A Live2D head dance to music. An audio detector reports beats, and a controller 
 
 ### Body director
 
-The pure function that decides what an MMD character's body does next: stance (stand, sit, settle), locomotion goals such as chasing the cursor, visiting, wandering and walking home, and which clip action plays. It takes the performance state, the idle report, the stage world, and action requests, and returns a `BodyIntent` plus memory for the next frame; it is the only part that decides what she does with her whole body.
+The pure function that decides what an MMD character's body does next: stance (stand, sit, settle), locomotion goals such as chasing the cursor, visiting, wandering and walking home, and which clip action plays. It takes the mind's attend and away answers, Natural's idle and wander realisations, model or user requests, and the stage world including performance mode. It returns a `BodyIntent` plus memory for the next frame; it is the only part that decides what she does with her whole body.
 
 **Code:** `packages/motion-driver-humanoid/src/director/index.ts` `decideBody`, `BodyDirectorInput`, `BodyDirectorMemory`; the MMD host wraps it in `packages/stage-ui-mmd/src/composables/mmd/stance.ts` `MMDStanceDirector`.
 **Not to be confused with:** the performer, which turns the director's intent into bone channels and decides nothing.
@@ -201,7 +201,7 @@ A pure check that decides whether the character may speak unprompted now. The ha
 
 ### Gaze arbiter
 
-The rule in Natural's gaze layer that decides between [glances](#glance) under the Natural driver, on both renderers. Each request names its source, and the arbiter ranks it by a fixed priority: the long-pet camera glance and a poke, then the desktop wake and the wake from sleep, then a chat read and the idle voice cues, then cue gestures and emotions, then the screen change, then a noticed cursor, then idle acts. A request starts unless the running glance ranks higher; a lower one is refused and dropped, never queued. While the pet override holds, only the long-pet camera glance starts. It runs at frame rate on Natural's active seconds, and the [character mind](#character-mind) does not rank glances.
+The rule in Natural's gaze layer that decides between [glances](#glance) under the Natural driver, on both renderers. Each request names its source, and the arbiter ranks it by a fixed priority: the long-pet camera glance and a poke, then the desktop wake and the wake from sleep, then a chat read and the idle voice cues, then look tools, cue gestures, and emotions, then the screen change, then a noticed cursor, then idle acts. A request starts unless the running glance ranks higher; a lower one is refused and dropped, never queued. While the pet override holds, only the long-pet camera glance starts. It runs at frame rate on Natural's active seconds, and the [character mind](#character-mind) does not rank glances.
 
 **Code:** `packages/motion-driver-natural/src/gaze.ts` `NaturalGazeLayer` (`glance`, `orient`, `claim`), `GLANCE_PRIORITY`, `GlanceSource`.
 **Not to be confused with:** cursor attention, which decides whether she notices the cursor at all; and MMD's head and eye aim, which follows the gaze target the arbiter leaves.

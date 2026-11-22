@@ -69,11 +69,8 @@ function simulate(scenario: PressScenario) {
     const result = decideBody({
       ...NO_WORLD_BODY_INPUT,
       nowMs: t * 1000,
-      performance: { mode: scenario.mode, attention: 'cursor' },
+      performance: { mode: scenario.mode },
       away: false,
-      cursorPoint: null,
-      chatPoint: null,
-      cameraPoint: null,
       slots: { sit: false, sleep: false },
       ground: { minX: -60 * leg, maxX: 60 * leg },
       rootX,

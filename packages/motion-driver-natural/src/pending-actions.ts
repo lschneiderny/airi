@@ -4,7 +4,7 @@ import type { CueGestureKind, NaturalCueGestures } from './cue-gestures'
 import type { naturalEmotions } from './emotions'
 import type { NaturalPerformanceEnergy } from './energy'
 import type { NaturalMotionObserver, NaturalTouchRegion } from './frame-types'
-import type { NaturalGazeLayer } from './gaze'
+import type { GazePoint, NaturalGazeLayer } from './gaze'
 import type { NaturalGestures } from './gestures'
 import type { NaturalImpulses } from './impulses'
 import type { NaturalEpisode, NaturalMood } from './mood'
@@ -30,6 +30,7 @@ export type PendingAction
     | { kind: 'wake' }
     | { kind: 'poke', region: NaturalTouchRegion, x: number, y: number }
     | { kind: 'chat', cue: 'sent' | 'unfold', words: number }
+    | { kind: 'look', target: GazePoint | 'away' | null, holdSeconds: number }
 
 /** Poke surprise bookkeeping the owner carries between calls. */
 export interface PokeSurpriseState {
@@ -62,13 +63,17 @@ interface StartedActions extends PokeSurpriseState {
   readonly reactEvents: readonly { readonly at: number, readonly kind: 'wake' | 'screen-change' }[]
 }
 
-/** Starts emotion impulses and desktop reactions requested since the previous step; returns the updated poke surprise state. */
+/** Starts reactions, gestures, and look requests queued since the previous step; returns the updated poke surprise state. */
 export function startPending(actions: Exclude<PendingAction, { kind: 'chat' | 'wake' }>[], at: number, targets: PendingActionTargets, pokeState: PokeSurpriseState): StartedActions {
   const { impulses, gaze, energy, mood, gestures, cueGestures, emotionStrengths, settings, emotions, notify } = targets
   let { pokes, lastPokeSurprise } = pokeState
   const pokeEvents: { at: number, region: NaturalTouchRegion, x: number, y: number }[] = []
   const reactEvents: { at: number, kind: 'wake' | 'screen-change' }[] = []
   for (const action of actions) {
+    if (action.kind === 'look') {
+      gaze.look(action.target, action.holdSeconds, at)
+      continue
+    }
     if (action.kind === 'gesture') {
       cueGestures.trigger(action.gesture, action.count, at)
       continue

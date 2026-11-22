@@ -1,6 +1,6 @@
 import type { AttendIntent } from '@proj-airi/character-mind'
 import type { BodyDirectorInput, BodyDirectorMemory } from '@proj-airi/motion-driver-humanoid/director'
-import type { BodyIntent, Vec3 } from '@proj-airi/motion-driver-humanoid/types'
+import type { BodyIntent } from '@proj-airi/motion-driver-humanoid/types'
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
 
 import { decideBody, initialBodyDirectorMemory, NO_WORLD_BODY_INPUT } from '@proj-airi/motion-driver-humanoid/director'
@@ -18,7 +18,7 @@ export type MMDStance = BodyIntent['stance']
 export type MMDStanceInteraction = Pick<BodyDirectorInput, 'attend' | 'away' | 'actionRequest' | 'actionFeedback' | 'dragging'>
 
 /** The world half of the director input; `NO_WORLD_BODY_INPUT` is its inert value. */
-export type MMDStanceWorld = Omit<BodyDirectorInput, 'nowMs' | 'performance' | 'cursorPoint' | 'chatPoint' | 'cameraPoint' | 'slots' | 'idle' | keyof MMDStanceInteraction>
+export type MMDStanceWorld = Omit<BodyDirectorInput, 'nowMs' | 'performance' | 'slots' | 'idle' | keyof MMDStanceInteraction>
 
 export interface MMDStanceDiagnostics {
   stance: MMDStance
@@ -171,15 +171,13 @@ export class MMDStanceDirector {
    */
   update(input: {
     nowMs: number
-    performance: Pick<PerformanceState, 'mode' | 'attention'>
+    performance: Pick<PerformanceState, 'mode'>
     slots: MMDStanceSlots
     idleMotionName: string
     isRegistered: (name: string) => boolean
     /** Rejects a clip as a standing base; absent accepts every clip. */
     baseEligible?: (name: string) => boolean
-    /** Target points in model units; absent points leave the matching attention without a target. */
-    points?: { cursor: Vec3 | null, chat: Vec3 | null, camera: Vec3 | null }
-    /** Omitted in classic mode: no ground, so no goal is ever issued. */
+    /** Omitted without a stage world: no ground, so no goal is ever issued. */
     world?: MMDStanceWorld
     /** Attend intents under Natural, clip requests under every driver, and whether the body is held. */
     interaction: MMDStanceInteraction
@@ -204,9 +202,6 @@ export class MMDStanceDirector {
     const { intent, memory } = decideBody({
       nowMs: input.nowMs,
       performance: input.performance,
-      cursorPoint: input.points?.cursor ?? null,
-      chatPoint: input.points?.chat ?? null,
-      cameraPoint: input.points?.camera ?? null,
       slots: available,
       ...world,
       ...input.interaction,
@@ -246,7 +241,7 @@ export class MMDStanceDirector {
     return { motion, changed }
   }
 
-  /** The latest intent, which the body reads for its attention target; null before the first frame. */
+  /** The latest body directives; null before the first frame. */
   get intent(): BodyIntent | null {
     return this.lastIntent
   }

@@ -1,4 +1,5 @@
 import type { BodyIntent } from '@proj-airi/motion-driver-humanoid/types'
+import type { PerformanceAttention } from '@proj-airi/stage-shared/performance-state'
 import type { CameraCalibration } from '@proj-airi/stage-shared/stage-world'
 import type { Camera, SkinnedMesh } from 'three'
 
@@ -28,7 +29,7 @@ export interface BodyView {
 }
 
 /**
- * Converts Natural's screen-DIP attention into world-space targets for the body director.
+ * Converts Natural's screen-DIP attention into world-space targets for the body.
  * With `calibration` (stage mode) points unproject onto the plane `0.6 * D` in front of her and the camera point is
  * the calibration eye; without it the legacy raycast onto her head plane applies. Returns null when the frame has no
  * input or the gaze mode is `none`.
@@ -73,14 +74,15 @@ export function bodyGazePoints(points: MMDBodyPoints | null, gazeMode: BodyView[
 }
 
 /**
- * The director's look-at target for diagnostics and trace channels: the camera in camera mode, the chat while Natural glances at it, otherwise the point of
- * the director's latest intent.
+ * Diagnostic and trace target: camera mode first, then Natural's chat read, then a tool look or resolver attention.
+ * The body's actual gaze is still realised exclusively from Natural's frame.
  */
 export function resolveBodyTarget(
   points: ReturnType<typeof resolveBodyPoints>,
   natural: Pick<MMDNaturalAdapter['bodyFrame'], 'onChat'>,
   gazeMode: BodyView['gazeMode'],
   intent: BodyIntent | null,
+  attention: PerformanceAttention,
 ): Vector3 | null {
   if (!points || gazeMode === 'none')
     return null
@@ -88,5 +90,12 @@ export function resolveBodyTarget(
     return points.camera
   if (natural.onChat && points.chat)
     return points.chat
-  return intent?.attention.point ? new Vector3().copy(intent.attention.point) : null
+  if (!intent)
+    return null
+  const target = intent.look?.target ?? attention
+  if (target === 'camera' || target === 'cursor' || target === 'chat') {
+    const point = points[target]
+    return point ? new Vector3().copy(point) : null
+  }
+  return null
 }

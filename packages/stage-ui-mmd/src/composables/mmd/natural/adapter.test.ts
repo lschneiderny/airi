@@ -1,6 +1,8 @@
 import type { CursorReport } from '@proj-airi/motion-driver-natural/cursor-notice'
+import type { NaturalGlanceEvent } from '@proj-airi/motion-driver-natural/frame-types'
 import type { IdleReport } from '@proj-airi/motion-driver-natural/idle-schedule'
 
+import { mapCursor } from '@proj-airi/motion-driver-natural/cursor-attention'
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -23,6 +25,48 @@ function fixture() {
 }
 
 describe('mmd Natural adapter', () => {
+  it.each(['camera', 'cursor', 'chat', 'away'] as const)('realises a look at %s from the next frame geometry', (target) => {
+    const { adapter } = fixture()
+    const events: NaturalGlanceEvent[] = []
+    adapter.onEvent((event) => {
+      if (event.kind === 'glance')
+        events.push(event)
+    })
+    const chat = { target: { x: -2, y: -1 }, typing: false }
+    adapter.look(target, 8)
+    for (let frame = 0; frame < 12; frame++)
+      adapter.advance(1 / 60, { ...input, chat }, 10_000 + frame / 60)
+
+    const event = events.find(event => event.cause === 'look-tool')
+    expect(event).toMatchObject({ outcome: 'started', hold: 8 })
+    expect(event?.at).toBeLessThan(1)
+    expect(adapter.bodyFrame.frame.fixation).toEqual(event?.point)
+    if (target === 'camera')
+      expect(event?.point).toEqual({ x: 0, y: 0 })
+    else if (target === 'cursor')
+      expect(event?.point).toEqual(mapCursor(input.cursor).eye)
+    else if (target === 'chat')
+      expect(event?.point).toEqual(mapCursor(chat.target).eye)
+    else
+      expect(event?.point).toMatchObject({ x: expect.any(Number), y: -0.15 })
+    if (target === 'away')
+      expect(Math.abs(event?.point?.x ?? 0)).toBe(0.55)
+  })
+
+  it.each(['cursor', 'chat'] as const)('reports a look at a missing %s as refused', (target) => {
+    const { adapter } = fixture()
+    const events: NaturalGlanceEvent[] = []
+    adapter.onEvent((event) => {
+      if (event.kind === 'glance')
+        events.push(event)
+    })
+    adapter.look(target, 8)
+    adapter.advance(1 / 60, { ...input, cursor: null }, 1000)
+    adapter.advance(1 / 60, { ...input, cursor: null }, 1000 + 1 / 60)
+
+    expect(events).toEqual([expect.objectContaining({ cause: 'look-tool', outcome: 'refused', point: null, hold: 8 })])
+  })
+
   it('adds and removes event listeners without changing seeded motion or event counts', () => {
     const { adapter } = fixture()
     const { adapter: control } = fixture()

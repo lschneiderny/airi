@@ -73,14 +73,14 @@ export interface NaturalGrooveLockEvent {
 /**
  * The gaze arbiter started or refused a glance, or a typing fixation on the chat started (`chat-typing`, always
  * `started`). `cause` names the glance's source. Point is normalized eye space; hold is seconds, null for a cursor
- * notice, whose pursuit has no fixed hold.
+ * notice, whose pursuit has no fixed hold. A refused look with no target has a null point.
  */
 export interface NaturalGlanceEvent {
   kind: 'glance'
   at: number
   cause: GlanceSource | 'chat-typing'
   outcome: 'started' | 'refused'
-  point: GazePoint
+  point: GazePoint | null
   hold: number | null
 }
 

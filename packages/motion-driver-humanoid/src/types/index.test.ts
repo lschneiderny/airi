@@ -84,7 +84,7 @@ describe('body locomotion intent', () => {
     const intent: BodyIntent = {
       stance: 'stand',
       rest: 'none',
-      attention: { kind: 'camera', point: null },
+      look: null,
       facingYaw: 0,
       locomotion: { homeX: 0, goalX: null, pace: 'stroll', arriveFacing: 0, reason: reasons[0] },
       action: null,
