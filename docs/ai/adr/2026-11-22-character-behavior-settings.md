@@ -1,7 +1,7 @@
 # Character-behavior settings and the conversation register
 
 Date: 2026-11-22
-Status: accepted; CM7c implemented, with headless and rendered acceptance assigned to the orchestrator.
+Status: accepted; CM7c implemented and accepted headless on macOS; its rendered checks run in the final QA pass on `main`.
 
 Current rules are in [Autonomous behavior](../context/autonomous-behavior.md) and [State persistence](../context/state-persistence.md). The [performers plan](../../../.omo/plans/character-mind-performers.md) records departures, commands, results, and the acceptance handoff.
 
@@ -65,7 +65,7 @@ A user who disabled idle or touch on only one renderer now has that behavior dis
 
 Node and browser tests cover import precedence, acknowledgement, narrowing, deletion, follower snapshots, behavior replay, disabled policies, renderer settings, and the new page. Dependent typechecks passed. The plan records command counts, repaired failures, and existing skips. Package browser fixture logs do not establish the app's renderer or main-process error count.
 
-**Orchestrator acceptance placeholder:** headless scenario identity, rendered checks 6 to 9, light/dark Behavior page Vishot captures, and both-host smoke results are pending. The orchestrator must add run directories, gate/report lines, event kinds and counts without content, and renderer/main-process error counts here. This worker ran no `qa:*` command or Electron launch.
+On macOS, all ten headless scenarios (`idle`, `idle-drive`, `gaze-shift`, `speak`, `gesture-under-clip`, `emotions`, `walk`, `sleepy-no-clip`, `touch`, and `music`, seed 1) are `IDENTICAL` against `main` before CM7a, and the `pnpm qa:live2d-rig` trial's `sha256` is unchanged. `pnpm verify --gate` passed, including both the smoke run and the model-gated tests. Rendered checks 6 to 9 and the Behavior page captures run on `main` in the final QA pass and are recorded in the plan. The old-profile import cannot be staged rendered, because QA app sessions do not keep localStorage across launches; Node tests cover it.
 
 Headless acceptance includes all ten named scenarios, including `music`, at seed 1, with defaults identical to the comparison base. The disabled-idle run must emit no idle act. Rendered acceptance must verify old-profile import with MMD-only idle off, shared MMD cursor permission, c6's zero-weight exclusion over ten ACT emotions, and deletion without resurrection. Capture the Behavior page in light and dark at desktop and mobile widths.
 
