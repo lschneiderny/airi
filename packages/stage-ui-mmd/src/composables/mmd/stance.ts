@@ -56,11 +56,12 @@ export interface MMDStanceDiagnostics {
 }
 
 /**
- * Natural's long idle states as the director takes them: settled in, or asleep while that sleep is not released. Every
- * host that drives the director from Natural uses this (the scene and the headless QA runner).
+ * Her long idle states as the director takes them: settled in, as the character mind's last `settle` intent said, or
+ * asleep while Natural's sleep is not released. Every host that drives the director from Natural uses this (the scene
+ * and the headless QA runner).
  */
-export function directorIdleStates(idle: { readonly settled: boolean, readonly behaviour: { readonly kind: string, readonly releasedAt: number | null } | null }): BodyDirectorInput['idle'] {
-  return { settled: idle.settled, asleep: idle.behaviour?.kind === 'sleep' && idle.behaviour.releasedAt === null }
+export function directorIdleStates(settled: boolean, behaviour: { readonly kind: string, readonly releasedAt: number | null } | null): BodyDirectorInput['idle'] {
+  return { settled, asleep: behaviour?.kind === 'sleep' && behaviour.releasedAt === null }
 }
 
 /** Gap, in leg lengths, between her body and the chat window's near edge when she stops beside it. */
@@ -181,7 +182,7 @@ export class MMDStanceDirector {
     world?: MMDStanceWorld
     /** Attend intents under Natural, clip requests under every driver, and whether the body is held. */
     interaction: MMDStanceInteraction
-    /** Natural's long idle states (`bodyIntent().idle`); absent without an idle drive, when she neither settles nor sleeps. */
+    /** Her long idle states (`directorIdleStates`); absent under another driver, when she neither settles nor sleeps. */
     idle?: BodyDirectorInput['idle']
   }): { motion: string | null, changed: boolean } {
     const ready = (name: string | undefined) => name !== undefined && name !== '' && input.isRegistered(name)

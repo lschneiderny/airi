@@ -22,6 +22,8 @@ export interface MindStage {
   idleCue: (cue: Extract<MindIntent, { kind: 'cue' }>) => void
   /** Performs one idle intent; an undeclared stage reports a refusal. */
   idle: (intent: MindIdleIntent) => void
+  /** Hands the mind's settle to the stage's body; a stage without posture drops it. */
+  settle: (settled: boolean) => void
   /** Hands one detected beat to the stage's beat clock, which a groove plays on; a stage under another driver drops it. */
   beat: (intervalSeconds: number) => void
 }
@@ -58,7 +60,7 @@ export function voiceDecisionOf({ stimuli, state }: Pick<MindStep, 'stimuli' | '
  * still gets its response. After every step that gives `state.slow.pacing` a new object, the store writes it back with
  * `recordPacing`, named by the card and epoch it loaded, so a write for a replaced record is dropped.
  *
- * Idle: every `idle-act` and `idle-errand` intent of any step goes to every attached stage, so two stages show the
+ * Idle: every `idle-act`, `idle-errand`, and `settle` intent of any step goes to every attached stage, so two stages show the
  * same act from the same seed, and only the newest stage reports what its performer saw. After every step the store
  * arms one timer at `nextIdleWakeAt` and sends `idle-wake` when it fires. A reset clears the timer and hands the new
  * state the reporting stage's latest view, because a performer reports its view only when it changes. A newer stage
@@ -124,11 +126,11 @@ export const useCharacterMindStore = defineStore('character-mind', () => {
 
   let stopIdle: (() => void) | undefined = mind.onStep(({ intents }) => {
     for (const intent of intents) {
-      if (intent.kind !== 'idle-act' && intent.kind !== 'idle-errand')
-        continue
       // A copy: a stage that detaches while it performs must not skip the next one.
-      for (const stage of [...stages])
-        stage.idle(intent)
+      if (intent.kind === 'idle-act' || intent.kind === 'idle-errand')
+        [...stages].forEach(stage => stage.idle(intent))
+      else if (intent.kind === 'settle')
+        [...stages].forEach(stage => stage.settle(intent.settled))
     }
     armIdleWake()
   })
@@ -181,6 +183,8 @@ export const useCharacterMindStore = defineStore('character-mind', () => {
     // Presence reaches the mind only as edges, so a reset while the user is away would lose the span and her return.
     const away = mind.state.presence.away
     mind.reset({ pacing: record?.pacing ?? null })
+    // A reset gets her up: the new state has not settled, and no edge would tell the stages.
+    stages.forEach(stage => stage.settle(mind.state.idle.settle.settled))
     loaded = record && { cardId: record.cardId, epoch: characterState.leaderEpoch }
     lastPacing = mind.state.slow.pacing
     clearIdleWake()

@@ -336,7 +336,7 @@ export class NaturalMotion {
       touch: { poke: this.latestPoke && { ...this.latestPoke }, pet: { level: this.pet.level, active: this.pet.active, ...this.pet.easedHand } },
       react: this.latestReact && { ...this.latestReact },
       attention: { approach: this.approach, cursorShare: this.cursorShare },
-      idle: { behaviour: this.idleLayer.record, settled: this.idleLayer.settled, errand: this.idleLayer.errand, groovePhase: this.idleLayer.groovePhase },
+      idle: { behaviour: this.idleLayer.record, errand: this.idleLayer.errand, groovePhase: this.idleLayer.groovePhase },
     }
     const weight = clamp((this.activeTime - (this.stepIndex - 1) * step) / step, 1)
     const { previous: a, next: b } = this

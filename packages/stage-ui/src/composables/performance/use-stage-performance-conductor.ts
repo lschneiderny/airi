@@ -57,6 +57,11 @@ export const maxAffectTraceEntries = 20_000
  */
 const maxMoodlessTurns = 32
 
+/** Intents the mind store hands to every attached stage; the conductor's own answers skip them. */
+function storeDispatched(intent: MindIntent): boolean {
+  return intent.kind === 'idle-act' || intent.kind === 'idle-errand' || intent.kind === 'settle'
+}
+
 /** The turn a signal belongs to; deadline and muted signals belong to none. */
 function turnOf(signal: AffectSignal): string | undefined {
   if (signal.kind === 'timing')
@@ -176,6 +181,11 @@ export interface StagePerformanceScene {
   attend?: (intent: AttendIntent) => void
   /** MMD Natural: the mind's presence answer, seeded again when a scene attaches or its driver becomes Natural. */
   setAway?: (away: boolean) => void
+  /**
+   * MMD Natural: the mind's settle, which the body director realises as she sits or rests; seeded again when a scene
+   * attaches or its posture returns. A scene without a body director drops it.
+   */
+  setSettled?: (settled: boolean) => void
   /**
    * Live2D and MMD Natural: reads the chat, as the mind decided for a sent message or an unfolded chat. Natural draws
    * the read's delay and hold and drops it without a chat target or while she talks. A scene without it drops the read.
@@ -330,9 +340,9 @@ export class StagePerformanceConductor {
   private idleDormant = false
   private presenceScene: StagePerformanceScene | undefined
   private presenceBody = false
-  /** The scene last given the mood seed, and whether it declared posture then. */
-  private moodScene: StagePerformanceScene | undefined
-  private moodPosture = false
+  /** The scene last seeded with her mood and her settle, and whether it declared posture then. */
+  private seededScene: StagePerformanceScene | undefined
+  private seededPosture = false
   private readonly refusalListeners = new Set<(refusal: PerformerRefusal) => void>()
 
   constructor(private readonly options: StagePerformanceConductorOptions) {
@@ -454,8 +464,8 @@ export class StagePerformanceConductor {
       return
     const scene = this.options.scene()
     for (const intent of this.voice.receive(...events)) {
-      // Idle orders from the same step are dispatched by the mind store.
-      if (intent.kind === 'idle-act' || intent.kind === 'idle-errand' || !this.permitted(intent))
+      // Idle orders and settles from the same step are dispatched by the mind store.
+      if (storeDispatched(intent) || !this.permitted(intent))
         continue
       if (intent.kind === 'wake')
         scene?.wakeFromSleep?.()
@@ -476,8 +486,8 @@ export class StagePerformanceConductor {
   gesture(kind: CueGestureKind, count: number, source: CueGestureStimulus['source'], turnId?: string) {
     const stimulus: CueGestureStimulus = { kind: 'cue-gesture', gesture: kind, count, source, ...turnId !== undefined && { turnId } }
     for (const intent of this.options.mind.receive(stimulus)) {
-      // Idle orders from the same step are dispatched by the mind store.
-      if (intent.kind === 'idle-act' || intent.kind === 'idle-errand' || !this.permitted(intent))
+      // Idle orders and settles from the same step are dispatched by the mind store.
+      if (storeDispatched(intent) || !this.permitted(intent))
         continue
       if (intent.kind === 'gesture')
         this.options.scene()?.gesture?.(intent.gesture, intent.count)
@@ -507,6 +517,15 @@ export class StagePerformanceConductor {
       this.options.scene()?.beat?.(intervalSeconds)
   }
 
+  /**
+   * Hands the mind's settle to the declared posture performer. A stage without posture drops it; `syncScene` seeds the
+   * mind's current settle when posture returns.
+   */
+  settle(settled: boolean) {
+    if (this.options.capabilities().posture)
+      this.options.scene()?.setSettled?.(settled)
+  }
+
   /** Asks the mind for a named idle act. The store dispatches its answer to attached stages. */
   idlePlay(kind: IdleBehaviourKind) {
     this.voice.receive({ kind: 'idle-play', act: kind })
@@ -534,8 +553,8 @@ export class StagePerformanceConductor {
   /** Answers a drag release and dispatches the attend only when this scene declares body. */
   interaction(source: 'drag') {
     for (const intent of this.options.mind.receive({ kind: 'interaction', source })) {
-      // Idle orders from the same step are dispatched by the mind store.
-      if (intent.kind === 'idle-act' || intent.kind === 'idle-errand' || !this.permitted(intent))
+      // Idle orders and settles from the same step are dispatched by the mind store.
+      if (storeDispatched(intent) || !this.permitted(intent))
         continue
       if (intent.kind === 'attend')
         this.options.scene()?.attend?.(intent)
@@ -546,8 +565,8 @@ export class StagePerformanceConductor {
   chat(cue: 'sent' | 'unfold', words = 0) {
     const stimulus: ChatStimulus = cue === 'sent' ? { kind: 'chat', cue, words } : { kind: 'chat', cue }
     for (const intent of this.options.mind.receive(stimulus)) {
-      // Idle orders from the same step are dispatched by the mind store.
-      if (intent.kind === 'idle-act' || intent.kind === 'idle-errand' || !this.permitted(intent))
+      // Idle orders and settles from the same step are dispatched by the mind store.
+      if (storeDispatched(intent) || !this.permitted(intent))
         continue
       if (intent.kind === 'chat-read')
         this.options.scene()?.chatRead?.(intent)
@@ -570,7 +589,7 @@ export class StagePerformanceConductor {
     this.options.idleReports?.(reports)
   }
 
-  /** Synchronizes scene and declaration changes. A body becoming available receives current presence; posture controls the idle view. */
+  /** Synchronizes scene and declaration changes. A body becoming available receives current presence; posture receives the current settle and controls the idle view. */
   syncScene() {
     const scene = this.options.scene()
     const { posture, body } = this.options.capabilities()
@@ -578,11 +597,13 @@ export class StagePerformanceConductor {
       scene?.setAway?.(this.options.mind.state.presence.away)
     this.presenceScene = scene
     this.presenceBody = body
-    // A scene that attaches or becomes Natural again starts from her mood, not from its controller's.
-    if (posture && (scene !== this.moodScene || !this.moodPosture))
+    // A scene that attaches or becomes Natural again starts from her mood and her settle, not from its controller's.
+    if (posture && (scene !== this.seededScene || !this.seededPosture)) {
       scene?.seedMood?.(() => this.options.mind.moodLevel())
-    this.moodScene = scene
-    this.moodPosture = posture
+      scene?.setSettled?.(this.options.mind.state.idle.settle.settled)
+    }
+    this.seededScene = scene
+    this.seededPosture = posture
     if (!posture && !this.idleDormant) {
       this.idleDormant = true
       this.options.idleReports?.([{ kind: 'view', view: dormantIdleView() }])
@@ -828,8 +849,8 @@ export class StagePerformanceConductor {
   private performTouch(intents: readonly MindIntent[]) {
     const scene = this.options.scene()
     for (const intent of intents) {
-      // Idle orders from the same step are dispatched by the mind store.
-      if (intent.kind === 'idle-act' || intent.kind === 'idle-errand' || !this.permitted(intent))
+      // Idle orders and settles from the same step are dispatched by the mind store.
+      if (storeDispatched(intent) || !this.permitted(intent))
         continue
       if (intent.kind === 'touch-reaction')
         scene?.reactToTouch?.(intent)

@@ -296,15 +296,14 @@ export interface NaturalBodyIntent {
   }
   /**
    * Self-directed idle life for a host that performs its own body: the latest behaviour (kept after it ends, null
-   * before the first) and whether she has settled in. Without a drive the behaviour stays null and `settled` false.
-   * `errand` is the latest errand the draw started for a realiser of the host (an unasked clip, a wander), kept after
+   * before the first); without a drive it stays null. Whether she has settled in is the character mind's `settle`
+   * intent, not a frame value. `errand` is the latest errand the draw started for a realiser of the host (an unasked clip, a wander), kept after
    * it ends; null without a drive that lists errands. `groovePhase` is the phase, in radians, of the latest behaviour
    * while it is a sway bound to the beat and still contributes, at the latest grid step: a host plays its own form of
    * that sway at it. It is null for every other behaviour and always null without beats.
    */
   readonly idle: {
     readonly behaviour: IdleBehaviourRecord | null
-    readonly settled: boolean
     readonly errand: IdleErrandRecord | null
     readonly groovePhase: number | null
   }

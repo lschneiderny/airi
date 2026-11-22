@@ -110,6 +110,8 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
     // no idle act.
     const mind = createRunnerMind(options, () => naturalSeconds * 1000)
     let bodyAway = false
+    // The mind's last settle intent, which the director realises as she sits or rests.
+    let settled = false
     const perform = (intents: ReturnType<CharacterMind['receive']>) => {
       for (const intent of intents) {
         if (intent.kind === 'idle-act' || intent.kind === 'idle-errand')
@@ -118,6 +120,8 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
           natural.cursorEpisode({ requestId: intent.requestId, episode: intent.episode })
         else if (intent.kind === 'away')
           bodyAway = intent.away
+        else if (intent.kind === 'settle')
+          settled = intent.settled
       }
     }
     natural.onIdleReports(reports => perform(mind.receive({ kind: 'idle', reports })))
@@ -298,7 +302,7 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
         slots: {},
         idleMotionName: '',
         isRegistered: () => false,
-        idle: directorIdleStates(natural.bodyFrame.intent.idle),
+        idle: directorIdleStates(settled, natural.bodyFrame.intent.idle.behaviour),
         interaction: { away: bodyAway, attend: { untilMs: null, touchSeq: 0, chatSeq: 0, chatOpenSeq: 0 }, actionRequest: null, actionFeedback: null, dragging: false },
         world: {
           ...NO_WORLD_BODY_INPUT,

@@ -8,8 +8,9 @@ import { createRandomStream } from '../random'
 export type { BodyLookTarget } from '../types'
 
 /**
- * Continuous idle time in milliseconds after which she settles in: Natural's idle layer times it (`settleSeconds`),
- * and the director realises the settle it reports (`BodyDirectorInput.idle`). Reports read it as the rest onset.
+ * Continuous idle time in milliseconds after which she settles in: the character mind's idle policy times it
+ * (`SETTLE_SECONDS`), and the director realises the settle it orders (`BodyDirectorInput.idle`). Reports read it as
+ * the rest onset.
  */
 export const IDLE_TO_SIT_MS = 120_000
 
