@@ -1750,9 +1750,13 @@ function handleTouchEvents(events: NaturalTouchGesture[]) {
     else if (event.kind === 'pet-start') {
       emits('touch', { gesture: 'pet-start', region: 'head' })
     }
-    else {
+    else if (event.kind === 'pet-end') {
       naturalPetHand = null
       emits('touch', { gesture: 'pet-end', region: 'head', durationMs: event.durationMs })
+    }
+    else {
+      naturalPetHand = null
+      emits('touch', { gesture: 'pet-cancel', region: 'head' })
     }
   }
 }

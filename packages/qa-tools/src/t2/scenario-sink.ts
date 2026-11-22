@@ -218,8 +218,10 @@ export function runScenarioSink(input: MotionScenario, options: ScenarioSinkOpti
           conductor.touch({ gesture: 'poke', region: touch.region, point: headHand(touch) })
         else if (touch.kind === 'pet-start')
           conductor.touch({ gesture: 'pet-start', region: 'head' })
-        else
+        else if (touch.kind === 'pet-end')
           conductor.touch({ gesture: 'pet-end', region: 'head', durationMs: touch.durationMs })
+        else
+          conductor.touch({ gesture: 'pet-cancel', region: 'head' })
       }
     }
 

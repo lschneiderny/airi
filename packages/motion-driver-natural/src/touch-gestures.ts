@@ -249,14 +249,21 @@ export class NaturalTouchGestures {
     return []
   }
 
-  /** Ends any gesture at once, for a model swap or disabled touch. */
+  /**
+   * Ends any gesture at once, for a model swap, pause, disabled touch, or driver change. A running pet reports
+   * `pet-cancel`, never a finished `pet-end`, so cleanup cannot earn a pet response or a spoken line.
+   */
   reset(timeMs: number): NaturalTouchGesture[] {
     this.press = undefined
     this.held = false
     this.lastInZone = false
-    this.trail = []
-    this.moveAnchor = undefined
-    return this.petting ? [this.endPet(timeMs)] : []
+    if (!this.petting) {
+      this.trail = []
+      this.moveAnchor = undefined
+      return []
+    }
+    this.endPet(timeMs)
+    return [{ kind: 'pet-cancel' }]
   }
 
   /** Reports the trail measurements and pet timers at `timeMs` without changing any state. */
