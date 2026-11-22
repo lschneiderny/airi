@@ -1,7 +1,7 @@
 # Character mind: expression picks and refusal reports
 
 Date: 2026-11-22
-Status: accepted; CM7b implemented, with headless and rendered acceptance reserved for the orchestrator.
+Status: accepted; CM7b implemented and accepted on macOS (results below).
 
 Current rules are in [Body ownership](../context/body-ownership.md). The
 [performers plan](../../../.omo/plans/character-mind-performers.md) records the
@@ -98,9 +98,7 @@ and existing admission refusals are observable without changing composition.
 No body or gaze rule, dependency, settings document, stored key, or fixed
 prompt changes.
 
-**Orchestrator acceptance placeholder: replace this sentence with the headless
-identity results, any b1 Live2D rig hash re-pin with the old and new emotion
-picks, and the rendered CM7b results.**
+On macOS, all ten headless scenarios (`idle`, `idle-drive`, `gaze-shift`, `speak`, `gesture-under-clip`, `emotions`, `walk`, `sleepy-no-clip`, `touch`, and `music`, seed 1) are `IDENTICAL` against `main` on every block, including `emotions` and `touch`, where face morph changes were allowed; the `pnpm qa:live2d-rig` trial's `sha256` is unchanged, so no re-pin was needed. In the rendered app with 0 renderer and 0 main-process errors, an ACT emotion on a free Live2D Natural slot produced an expression and no refusal. The `masked-by-manual` report was not demonstrated rendered: with one of the three entries mapped to `happy` held manually, the seeded picks chose other entries, so no conflict arose; the store and observer tests cover the report.
 
 The orchestrator must compare every scenario named in plan section 9; that
 list contains ten scenarios including `music`, although the plan says nine.
