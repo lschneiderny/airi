@@ -1,6 +1,6 @@
 # character-mind-performers - Work Plan
 
-Status: planned on 2026-11-21; the owner approved every recommended option, D1 to D12, on 2026-11-21, including the removals in D3 and D4. No code is written. CM7a starts after CM6b2 and the upstream sync land; item c6 may land earlier. Roadmap row: step CM7 in [`docs/ai/context/character-mind-roadmap.md`](../../docs/ai/context/character-mind-roadmap.md#steps). Rulings: the [character mind ADR](../../docs/ai/adr/2026-11-17-character-mind-direction.md) (decisions 5 to 8 and 11), the [core ADR](../../docs/ai/adr/2026-11-18-character-mind-core.md) (D10: emotion stimuli still reach the mind under the upstream drivers until CM7; "Not decided": seeded picks, refusal reports, capabilities), the [return ADR](../../docs/ai/adr/2026-11-19-character-mind-return.md) and [widget turns ADR](../../docs/ai/adr/2026-11-19-character-mind-widget-turns.md) ("Not decided": no posture or `cue` intents for undeclared drivers), the [one prompt composer ADR](../../docs/ai/adr/2026-11-20-one-prompt-composer.md) (D12: LLM prompt Target rule 5 moved here), the [gaze ADR](../../docs/ai/adr/2026-11-20-character-mind-gaze.md) ("Not decided": an MMD cursor attention setting), the [music ADR](../../docs/ai/adr/2026-11-20-character-mind-music.md) (D13: the expression tilt part of Body ownership Target rule 2), and the approved CM6b plan (`.omo/plans/character-mind-glances.md` on `origin/luke/feat/character-mind-glances`, D9: CM7 decides whether the director runs under classic). Plan branch: `luke/feat/character-mind-performers`, cut from `main` at `bec508cae`. The implementation branches are cut later, as section 8 says.
+Status: CM7a implemented on 2026-11-22, with headless and rendered acceptance assigned to the orchestrator. The owner approved every recommended option, D1 to D12, on 2026-11-21. c6 landed separately; CM7b, the remainder of CM7c, and CM7d are not implemented. The [roadmap](../../docs/ai/context/character-mind-roadmap.md#steps) tracks the four parts.
 
 The labels D1 to D12 name the forks in [Decisions for the owner](#decisions-for-the-owner). Each section is written on the recommended option.
 
@@ -501,3 +501,98 @@ id (`avatarModels[].displayModelId`), not the card's avatar reference id
   the scene declaration. Runtime-state and prompt tests exercise the real
   conductor producer, so the existing snapshot API and fixed contract bytes
   stay unchanged. The c6 mapping catalog is deliberately not gated.
+- **a6:** Rechecked the implemented gates; no additional runtime departure.
+  This item changes only the two package guidance files.
+- **a7:** The existing prompt composer reports every supplied segment, including
+  an empty actions row. Under classic the actions text is absent and its
+  report row has zero characters; section 9's literal "no actions entry"
+  wording does not match that report contract. The implementation preserves
+  the report contract and Natural prompt bytes rather than changing the
+  upstream prompt builder or the shared composer. Section 9 also names ten
+  scenarios when music is included, despite saying nine. Both qualifications
+  are recorded for the orchestrator. The glossary's earlier narrow performer
+  definition is merged with the newly implemented per-stage definition.
+  The final plan record is included in a7, keeping the requested seven commits.
+
+## Checks run (CM7a)
+
+The implementation base is `e57dd1393`. The owner requested package checks,
+not repository-wide `pnpm verify`, and reserved headless and rendered acceptance
+for the orchestrator. No `qa:*` command, Electron launch, install, dependency edit,
+threshold change, or timeout increase was used. Suites ran one at a time.
+
+These are the final successful results of the verification commands. Earlier
+item commits record their own counts where the suite grew during the slice.
+
+| Command | Result |
+| --- | --- |
+| `pnpm -F @proj-airi/character-mind exec vitest run src` | 138 passed; a1 had 130 before the capability-policy tests |
+| `pnpm -F @proj-airi/stage-ui exec vitest run --project node` | 1,934 passed; a1 1,926, a2 1,928, a3 and a4 1,932 |
+| `pnpm -F @proj-airi/stage-ui exec vitest run --project node src/composables/performance src/features` | 268 passed at a7 |
+| `pnpm -F @proj-airi/stage-ui exec vitest run --project browser` | 1,015 passed, 5 existing skips |
+| `pnpm -F @proj-airi/stage-ui exec vitest run --project browser src/components/scenes/stage-emotion-routing.browser.test.ts src/persistence` | 51 passed at a7 |
+| `pnpm -F @proj-airi/stage-shared exec vitest run src/expression-performance` | 291 passed |
+| `pnpm -F @proj-airi/stage-ui-live2d exec vitest run --project node` | 787 passed |
+| `pnpm -F @proj-airi/stage-ui-live2d exec vitest run --project node src/composables/live2d` | 513 passed |
+| `pnpm -F @proj-airi/stage-ui-live2d exec vitest run --project browser` | 43 passed |
+| `pnpm -F @proj-airi/stage-ui-mmd exec vitest run --project node` | 414 passed |
+| `pnpm -F @proj-airi/stage-ui-mmd exec vitest run --project browser` | 31 passed |
+| `pnpm -F @proj-airi/qa-tools exec vitest run --project node` | 880 passed, 9 existing environment-gated skips |
+| `pnpm -F @proj-airi/stage-pages exec vitest run` | 102 browser tests passed |
+| `pnpm exec vitest run --project dev-tools scripts/dev-tools/policy-docs.test.ts` | 11 passed after the policy edits and at a7 |
+
+Focused regressions also ran:
+
+| Command | Result |
+| --- | --- |
+| `pnpm -F @proj-airi/stage-ui exec vitest run --project node src/stores/character-mind.test.ts src/composables/performance src/tools/expression.test.ts` | 209 passed after the a2 fixture and pacing-owner repairs |
+| `pnpm -F @proj-airi/stage-ui exec vitest run --project node src/composables/performance src/stores/character-mind.test.ts src/tools/expression.test.ts` | 209 passed during a3 before the declaration matrix was added |
+| `pnpm -F @proj-airi/stage-ui exec vitest run --project node src/composables/performance/use-stage-performance-conductor.test.ts` | The first matrix run had 87 passing and 2 failing assertions; the incorrect touch assertions were repaired and the full Node project passed |
+| `pnpm -F @proj-airi/stage-ui exec vitest run --project node src/features/performance/runtime-state.test.ts src/composables/use-airi-runtime-prompt.test.ts src/composables/performance/use-stage-performance-conductor.test.ts` | 106 passed |
+| `pnpm -F @proj-airi/stage-ui exec vitest run --project browser src/components/scenes/stage-emotion-routing.browser.test.ts src/persistence src/features/devtools/motion/natural/devtools.browser.test.ts` | 65 passed during a2 |
+| `pnpm -F @proj-airi/stage-ui exec vitest run --project browser src/components/scenes/stage-emotion-routing.browser.test.ts src/persistence src/components/scenes/live2d-blink-ownership.browser.test.ts` | 48 passed during a3 |
+| `pnpm -F @proj-airi/stage-ui exec vitest run --project browser src/components/scenes/stage-emotion-routing.browser.test.ts` | 42 passed after the new nod test explicitly requested count 1 |
+| `pnpm -F @proj-airi/stage-ui exec vitest run --project browser src/components/scenes/stage-emotion-routing.browser.test.ts src/components/scenes/mmd-expression-output.browser.test.ts` | 53 passed during a4 |
+| `pnpm -F @proj-airi/stage-ui exec vitest run --project browser src/components/scenes/mmd-expression-output.browser.test.ts` | 7 passed with the generated PMX/VMD fixture and driver-switch regression |
+
+Each typecheck below completed successfully with exit code 0:
+
+| Item | Command | Packages |
+| --- | --- | --- |
+| a1 | `pnpm --filter "...@proj-airi/character-mind" --filter "...@proj-airi/stage-ui-live2d" --filter "...@proj-airi/stage-ui-mmd" --filter "...@proj-airi/stage-ui" --workspace-concurrency=2 typecheck` | 10 |
+| a2 | `pnpm --filter "...@proj-airi/character-mind" --filter "...@proj-airi/stage-ui" --filter "...@proj-airi/qa-tools" --filter "...@proj-airi/stage-pages" --workspace-concurrency=2 typecheck` | 10 |
+| a3 | `pnpm --filter "...@proj-airi/stage-ui-live2d" --filter "...@proj-airi/stage-ui-mmd" --filter "...@proj-airi/stage-ui" --filter "...@proj-airi/qa-tools" --workspace-concurrency=2 typecheck` | 9 |
+| a4 | `pnpm --filter "...@proj-airi/stage-ui-live2d" --filter "...@proj-airi/stage-ui-mmd" --filter "...@proj-airi/stage-ui" --workspace-concurrency=2 typecheck` | 9 |
+| a5 | `pnpm --filter "...@proj-airi/stage-ui" --workspace-concurrency=2 typecheck` | 7 |
+| a6 | `pnpm --filter "...@proj-airi/stage-ui-live2d" --filter "...@proj-airi/stage-ui" --workspace-concurrency=2 typecheck` | 8 |
+
+Diagnostic typechecks also used
+`pnpm --filter @proj-airi/character-mind --filter @proj-airi/stage-ui --filter @proj-airi/stage-pages --workspace-concurrency=2 typecheck`,
+`pnpm --filter @proj-airi/stage-ui-live2d --filter @proj-airi/stage-ui-mmd --filter @proj-airi/stage-ui --workspace-concurrency=2 typecheck`,
+and `pnpm -F @proj-airi/qa-tools typecheck`. Missing fixture imports, the
+obsolete driver option, and the accidental browser-observer import into Node
+were repaired at their owning boundaries; the dependent runs above then passed.
+The generated MMD clip test uses the owning loader rather than an undeclared
+Three import. No package or tsconfig workaround was added.
+
+The plan's obsolete-driver grep prints no matches. Changed code passed ESLint
+and every commit's hook. Two existing trivial-function warnings remain in
+Stage.vue. Browser fixtures log their existing model-loader and synchronization
+teardown messages; these runs do not establish rendered-app error counts.
+a7 changes documentation only and ran the five named inner loops and the policy
+check; no package type changed after the successful a6 dependent checks.
+
+## Commits (CM7a)
+
+| Item | Commit | Title |
+| --- | --- | --- |
+| a1 | `845a4901c` | `refactor(character-mind,stage-ui-live2d,stage-ui-mmd): declare what each performer can realise` |
+| a2 | `6dbd6b2d9` | `feat(character-mind,stage-ui,qa-tools): issue only the intents the newest stage declares` |
+| a3 | `25acf5ce6` | `refactor(stage-ui,stage-ui-live2d,stage-ui-mmd): dispatch the mind's intents without driver branches` |
+| a4 | `e42c5c479` | `feat(stage-ui,stage-ui-mmd): give Universal, MAGIC, and classic upstream's faces and clips again` |
+| a5 | `78326ad89` | `feat(stage-ui): offer the model only declared actions and tools` |
+| a6 | `d2d5b06ff` | `chore(agents): route stage dispatch through declared capabilities` |
+| a7 | This final documentation commit | `docs(ai): record the performer decisions` |
+
+The [CM7a ADR](../../docs/ai/adr/2026-11-22-character-mind-performers.md) leaves an
+explicit placeholder for the orchestrator's headless and rendered results.
