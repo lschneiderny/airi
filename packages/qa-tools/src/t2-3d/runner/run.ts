@@ -45,7 +45,7 @@ const motion3dStep = 1 / 60
 const mindSeedLayer = 0x6D696E64
 /** Production work this level does not run; their stages keep their slots in the shared composition and do nothing. */
 const omitted = ['classic-gaze', 'classic-face', 'lip-sync', 'bone-morphs', 'morphs', 'natural-face', 'touch-colliders', 'overlays', 'clip-layers', 'images', 'render']
-const modes = { idle: 0, turning: 1, starting: 2, walking: 3, stopping: 4 } as const
+const modes = { idle: 0, turning: 1, starting: 2, walking: 3, stopping: 4, sidestepping: 5 } as const
 
 /**
  * The run's character mind on the motion clock. A scenario with `music` tells it music plays before the first frame;

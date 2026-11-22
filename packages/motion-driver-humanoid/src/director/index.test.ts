@@ -356,6 +356,7 @@ describe('body director home, goals, roam and tools', () => {
     const result = decide(world({ nowMs: 1_000, interactionSeq: 1, attendUntilMs: 60_000, cursorOnStage: true, cursorX: 8 }))
 
     expect(result.intent.locomotion).toMatchObject({ goalX: 7, pace: 'walk', reason: 'approach-cursor', arriveFacing: 0 })
+    expect(result.intent.locomotion.step).toBeUndefined()
   })
 
   it('does not chase outside the window, off stage, when close, or without a cursor', () => {
@@ -428,8 +429,10 @@ describe('body director home, goals, roam and tools', () => {
       expect(stopping.intent.locomotion.goalX).toBeNull()
       expect(stopping.memory.cursorStepPending).toBe(true)
       expect(step.intent.locomotion).toMatchObject({ goalX: 3, pace: 'stroll', reason: 'approach-cursor' })
+      expect(step.intent.locomotion.step).toBe('sidestep')
       expect(step.memory.cursorStepPending).toBe(false)
       expect(walking.intent.locomotion.goalX).toBe(3)
+      expect(walking.intent.locomotion.step).toBe('sidestep')
       expect(arrived.intent.locomotion.goalX).toBeNull()
       expect(arrived.memory.cursorStepPending).toBe(false)
       expect(rested.intent.locomotion.goalX).toBeNull()
@@ -1197,6 +1200,7 @@ describe('body director visits and lingering', () => {
     const due = decide(roaming({ nowMs: 1_000, performance: performance('watching'), wander: { seq: 1 } }), started.memory)
 
     expect(due.intent.locomotion).toMatchObject({ goalX: 14 - VISIT_STOP_LEGS, pace: 'stroll', reason: 'visit' })
+    expect(due.intent.locomotion.step).toBeUndefined()
     expect(due.memory.wanderAnswer).toEqual({ seq: 1, accepted: true })
   })
 

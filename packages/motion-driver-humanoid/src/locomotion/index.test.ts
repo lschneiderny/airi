@@ -2,9 +2,11 @@ import type { Foot, FootAnchor } from '../foot-contact'
 import type { Vec3 } from '../types'
 import type { GaitTraits, GaitVariability, LocomotionFrame, LocomotionInput } from './index'
 
+import { createHash } from 'node:crypto'
+
 import { describe, expect, it } from 'vitest'
 
-import { brakingDistance, createLocomotion } from './index'
+import { brakingDistance, createLocomotion, SIDESTEP_MAX_LEGS } from './index'
 
 // L = 10 fixture from design notes B.2: the bind hip sits 10 units above each ankle.
 const legLength = 10
@@ -120,6 +122,98 @@ function scenario(name: ScenarioName) {
 }
 
 const allScenarios = Object.keys(scenarioDefinitions) as ScenarioName[]
+
+describe('sidestep', () => {
+  it.each([-0.55, -0.3, 0.3, 0.55, -SIDESTEP_MAX_LEGS, SIDESTEP_MAX_LEGS].flatMap(legs => [0, 0.2].map(yaw => ({ legs, yaw }))))('steps $legs legs sideways at yaw $yaw without turning or moving a planted foot', ({ legs, yaw }) => {
+    const start = { x: 3, yaw }
+    const goalX = start.x + legs * legLength
+    const run = createRun(start)
+    run.advance(8, () => ({ goalX, step: 'sidestep' as const, pace: 'stroll', arriveFacing: 0 }))
+    const last = run.frames.at(-1)!
+    expect(last.mode).toBe('idle')
+    expect(Math.abs(last.root.position.x - goalX)).toBeLessThanOrEqual(0.05 * legLength)
+    expect(run.frames.some(frame => frame.mode === 'turning')).toBe(false)
+    expect(Math.max(...run.frames.map(frame => Math.abs(wrap(frame.root.yaw - start.yaw))))).toBeLessThanOrEqual(rad)
+    expect(maxReach(run.frames)).toBeLessThanOrEqual(0.985 * legLength)
+    expect(run.locomotion.leashClamps).toBe(0)
+    const landed = bindFeet({ ...start, x: goalX })
+    for (const side of sides) {
+      expect(last.feet[side].planted).toBe(true)
+      expect(distance(last.feet[side].target.position, landed[side].position)).toBeLessThan(1e-9)
+      for (let tick = 1; tick < run.frames.length; tick++) {
+        const previous = run.frames[tick - 1]!.feet[side]
+        const foot = run.frames[tick]!.feet[side]
+        if (previous.planted && foot.planted)
+          expect(foot.target).toEqual(previous.target)
+      }
+    }
+    const lifts = eventsOf(run.frames, 'liftOff')
+    const strikes = eventsOf(run.frames, 'heelStrike')
+    expect(lifts.length).toBeGreaterThanOrEqual(2)
+    expect(lifts.length % 2).toBe(0)
+    expect(lifts[0]!.foot).toBe(legs > 0 ? 'left' : 'right')
+    expect(strikes.map(event => event.foot)).toEqual(lifts.map(event => event.foot))
+    // Each foot lands on the same pair destination; no root translation can drag the planted partner there.
+    strikes.forEach((strike, index) => {
+      const pairDistance = Math.min(Math.abs(legs) * legLength, (Math.floor(index / 2) + 1) * 0.5 * legLength)
+      const pairFeet = bindFeet({ ...start, x: start.x + Math.sign(legs) * pairDistance })
+      expect(distance(strike.frame.feet[strike.foot].target.position, pairFeet[strike.foot].position)).toBeLessThan(1e-9)
+    })
+    const replay = createRun(start)
+    replay.advance(8, () => ({ goalX, step: 'sidestep' as const, pace: 'stroll', arriveFacing: 0 }))
+    expect(replay.frames).toEqual(run.frames)
+  })
+
+  it.each([-0.8, 0.8])('walks exactly as before for a requested sidestep of %s legs', (legs) => {
+    const ordinary = createRun({ x: 0, yaw: 0 })
+    const requested = createRun({ x: 0, yaw: 0 })
+    ordinary.advance(10, () => ({ goalX: legs * legLength }))
+    requested.advance(10, () => ({ goalX: legs * legLength, step: 'sidestep' as const }))
+    expect(requested.frames).toEqual(ordinary.frames)
+  })
+
+  it('keeps every unrequested scenario identical to the pre-sidestep frames', () => {
+    const hash = createHash('sha256')
+    for (const name of allScenarios) {
+      const ordinary = simulate(name)
+      const definition = scenarioDefinitions[name]
+      const forwarded = createRun(definition.start)
+      forwarded.advance(definition.seconds, now => ({ ...definition.drive(now), step: undefined }))
+      expect(forwarded.frames).toEqual(ordinary.frames)
+      hash.update(JSON.stringify(ordinary.frames))
+    }
+    // Full frames from the pre-sidestep gait: cruise, arrival, turns, pace changes, and reversal.
+    expect(hash.digest('hex')).toBe('dcc9911e064d9af87d7e454c8c2665d41e7229e6db9bf4317f67bf969667cbaa')
+  })
+
+  it('finishes a withdrawn pair and settles with both feet planted', () => {
+    const run = createRun({ x: 0, yaw: 0 })
+    run.advance(8, now => ({ goalX: now < 0.5 ? 0.55 * legLength : null, step: 'sidestep', pace: now < 0.5 ? 'stroll' : 'walk' }))
+    const last = run.frames.at(-1)!
+    expect(last.mode).toBe('idle')
+    expect(last.root.position.x).toBeCloseTo(0.5 * legLength)
+    expect(last.feet.left.planted).toBe(true)
+    expect(last.feet.right.planted).toBe(true)
+    expect(eventsOf(run.frames, 'heelStrike')).toHaveLength(2)
+    expect(run.frames.some(frame => frame.mode === 'turning')).toBe(false)
+    const uninterrupted = createRun({ x: 0, yaw: 0 })
+    uninterrupted.advance(8, () => ({ goalX: 0.55 * legLength, step: 'sidestep', pace: 'stroll' }))
+    const firstPairEnd = eventsOf(run.frames, 'heelStrike')[1]!.tick
+    expect(run.frames.slice(0, firstPairEnd + 1).map(frame => frame.root))
+      .toEqual(uninterrupted.frames.slice(0, firstPairEnd + 1).map(frame => frame.root))
+  })
+
+  it('finishes the pair before a replacement beyond the sidestep limit walks', () => {
+    const run = createRun({ x: 0, yaw: 0 })
+    run.advance(12, now => ({ goalX: now < 0.5 ? 0.55 * legLength : 2 * legLength, step: 'sidestep', pace: 'stroll' }))
+    const last = run.frames.at(-1)!
+    expect(last.mode).toBe('idle')
+    expect(last.root.position.x).toBeCloseTo(2 * legLength)
+    expect(run.frames.some(frame => frame.mode === 'turning')).toBe(true)
+    const firstTurn = run.frames.find(frame => frame.mode === 'turning')!
+    expect(firstTurn.root.position.x).toBeCloseTo(0.5 * legLength)
+  })
+})
 
 function hip(frame: LocomotionFrame, foot: Foot): Vec3 {
   const { position, yaw } = frame.root

@@ -158,6 +158,20 @@ weight onto the stance foot, the pelvis dips 0.008 L and the trunk draws back 1.
 ends. The trunk's lean follows an under-damped response (omega 5 rad/s, zeta 0.55), so it overshoots once as she stops,
 and the pelvis dips 0.006 L over the settle.
 
+The ordinary modes are `idle`, `turning`, `starting`, `walking`, and `stopping`.
+An optional `step: 'sidestep'` on the input requests a lateral correction. At
+departure, a goal within exported `SIDESTEP_MAX_LEGS` (0.6 L) keeps the current
+yaw, including at arrival, and uses `starting`, `sidestepping`, then `stopping`.
+The limit is a tuning value from the owner's ruling of 2026-11-21 to step onto
+a resting pointer without turning. The leading foot opens the stance and the
+trailing foot closes it, using the existing swing, plant, and support cycle.
+Each pair travels at most the reference step length (0.5 L), with minimum-jerk
+root travel, flat feet, and a pelvis reach floor for the lateral stance. Both
+feet land before the next pair or the settle. Withdrawing or replacing the goal
+finishes the current pair before yielding; disabling or rebasing retains the
+gait's immediate-stop behavior. A farther goal follows the ordinary walk,
+including its arrival turn. Omitting `step` preserves the ordinary gait.
+
 No two strides are the same. `createLocomotion({ variability })` (default `youngAdultStrideVariability`) varies stride
 time and stride length independently by healthy young adults' coefficients of variation, 1.8 % and 3.9 % (Beauchet et
 al. 2005, J NeuroEng Rehabil 2:26, n = 49; independent draws reproduce their 4.3 % speed CV), through the package's
@@ -262,7 +276,9 @@ cursor. Under the owner's D16 ruling of 2026-11-21, once that chase has stopped,
 `memory.cursorStepPending` allows one corrective stroll onto the cursor, clamped
 to her zones, before the goal dwell. She must be idle with no goal, still inside
 the attend window, with the cursor on stage within `CHASE_STOP_LEGS` and farther
-than `STEP_ONTO_CURSOR_MIN_LEGS` (0.15 legs, a tuning value). Issuing any goal,
+than `STEP_ONTO_CURSOR_MIN_LEGS` (0.15 legs, a tuning value). This corrective
+goal alone carries `BodyIntent.locomotion.step: 'sidestep'`; the gait applies
+the departure limit above. Issuing any goal,
 resting within that threshold, or losing the range, stage cursor, or attend
 window spends the correction; its own arrival never arms another. A visit
 ended within reach lingers as on arrival. A visit due with the cursor already that

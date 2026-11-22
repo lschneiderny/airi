@@ -55,6 +55,10 @@ function simulate(scenario: PressScenario) {
   let travel = 0
   let correctiveGoals = 0
   let correctiveDistance = 0
+  let chaseRestAtS: number | null = null
+  let correctiveRestAtS: number | null = null
+  let correctiveTurning = false
+  let correcting = false
   for (let tick = 0; tick < durationS * 120; tick++) {
     const t = tick * dt
     if (t >= scenario.landAtS)
@@ -93,9 +97,19 @@ function simulate(scenario: PressScenario) {
     if (goal.goalX !== null && goal.reason === 'approach-cursor' && goal.pace === 'stroll' && result.memory.goalSinceMs !== memory.goalSinceMs) {
       correctiveGoals++
       correctiveDistance = Math.abs(goal.goalX - rootX)
+      correcting = true
     }
     memory = result.memory
-    const frame = locomotion.step({ now: t, goalX: goal.goalX, pace: goal.pace, arriveFacing: 0, enabled: true, idleSupport: 0, plantedFeet: planted }, dt)
+    const frame = locomotion.step({ now: t, goalX: goal.goalX, pace: goal.pace, step: goal.step, arriveFacing: 0, enabled: true, idleSupport: 0, plantedFeet: planted }, dt)
+    if (aim !== null && frame.mode === 'idle')
+      chaseRestAtS ??= t
+    if (correcting) {
+      correctiveTurning ||= frame.mode === 'turning'
+      if (frame.mode === 'idle') {
+        correctiveRestAtS = t
+        correcting = false
+      }
+    }
     planted = { left: frame.feet.left.target, right: frame.feet.right.target }
     // She is at rest once her root stops travelling; the feet may still close up under her.
     if (Math.abs(frame.root.position.x - rootX) > restEpsilon)
@@ -115,6 +129,9 @@ function simulate(scenario: PressScenario) {
     travelLegs: travel / leg,
     correctiveDistanceLegs: correctiveDistance / leg,
     correctiveGoals,
+    correctiveTurning,
+    // No correction is needed when the first rest already lies on the pointer.
+    correctiveRestToRestS: chaseRestAtS === null ? null : (correctiveRestAtS ?? chaseRestAtS) - chaseRestAtS,
     gait,
   }
 }
@@ -152,6 +169,18 @@ describe('body director press loop', () => {
 
     expect(result.offsetLegs).toBeLessThanOrEqual(0.02)
     expect(result.goalX).toBeNull()
+  })
+
+  it.each([1, 2, 4])('keeps facing through the correction after a pointer lands at %i s', (landAtS) => {
+    const result = simulate({ mode: 'watching', landAtS, farX: 8 * leg, landOffset: 0, chase: true, wanderAtS: null })
+
+    expect(result.offsetLegs).toBeLessThanOrEqual(STEP_ONTO_CURSOR_MIN_LEGS)
+    expect(result.gait).toBe('idle')
+    expect(result.correctiveTurning).toBe(false)
+    expect(result.correctiveRestToRestS).not.toBeNull()
+    if (result.correctiveGoals > 0)
+      expect(result.correctiveRestToRestS).toBeGreaterThan(0)
+    console.info('corrective sidestep', JSON.stringify({ landAtS, ...result }))
   })
 
   it('does not move for a visit while the pointer rests on her', () => {

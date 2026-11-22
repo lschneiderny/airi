@@ -78,6 +78,8 @@ export interface BodyLocomotionIntent {
   homeX: number
   goalX: number | null
   pace: LocomotionPace
+  /** Request a short lateral step that keeps the current yaw; longer goals still walk. */
+  step?: 'sidestep'
   /** Facing yaw in radians to settle into on arrival; 0 faces the camera. */
   arriveFacing: number
   reason: BodyLocomotionReason

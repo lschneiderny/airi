@@ -2,6 +2,7 @@ import type { Band, PerformanceEmotion } from '@proj-airi/stage-shared/expressio
 import type { PerformanceMode } from '@proj-airi/stage-shared/performance-state'
 
 import type { ClipMaskGroup } from '../clip-mask'
+import type { LocomotionFrame } from '../locomotion'
 import type { TurnStep } from '../look-at'
 import type { RestRelativeRotation, Vec3 } from '../types'
 import type { BodySide } from './channels'
@@ -223,7 +224,7 @@ export interface BodyPerformanceInput {
   readonly gait: {
     readonly weight: number
     readonly support: number
-    readonly mode: 'idle' | 'turning' | 'starting' | 'walking' | 'stopping'
+    readonly mode: LocomotionFrame['mode']
     readonly channels: ArrayLike<number>
     /**
      * The ankle targets the leg IK reaches this tick (the gait's foot targets with their roll), in the stance frame and

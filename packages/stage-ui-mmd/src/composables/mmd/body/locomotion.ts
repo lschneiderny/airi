@@ -5,8 +5,8 @@ import type { BodyLocomotionIntent, RigTraits } from '@proj-airi/motion-driver-h
 import { createLocomotion } from '@proj-airi/motion-driver-humanoid/locomotion'
 import { BODY_TICK, channelIndex } from '@proj-airi/motion-driver-humanoid/performance'
 
-/** Where the body walks. Todo 12's director supplies it; until then the `requestGoal` diagnostics command does. */
-export type MMDLocomotionGoal = Pick<BodyLocomotionIntent, 'goalX' | 'pace' | 'arriveFacing' | 'reason'>
+/** The director's goal, including the optional corrective sidestep. */
+export type MMDLocomotionGoal = Pick<BodyLocomotionIntent, 'goalX' | 'pace' | 'arriveFacing' | 'reason' | 'step'>
 
 /**
  * Moves the model root on the ground line. Per-frame root motion never requests a physics reset, so hair and skirts

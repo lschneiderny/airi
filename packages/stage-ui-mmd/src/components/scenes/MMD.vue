@@ -757,7 +757,7 @@ function renderLoop(now = performance.now()) {
     // Sent every frame: the body drops a goal set while a clip owns the root, so the intent is the only source of truth.
     const locomotion = stance.intent?.locomotion
     body?.setLocomotionGoal(locomotion && locomotion.goalX !== null
-      ? { goalX: locomotion.goalX, pace: locomotion.pace, arriveFacing: locomotion.arriveFacing, reason: locomotion.reason }
+      ? { goalX: locomotion.goalX, pace: locomotion.pace, arriveFacing: locomotion.arriveFacing, reason: locomotion.reason, step: locomotion.step }
       : null)
   }
   layerClip = animation?.snapshot().layer?.name ?? null

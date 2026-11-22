@@ -45,7 +45,7 @@ These decisions were taken on 2026-11-02 for M3 and recorded in `.omo/drafts/mmd
 
 ## Idle agency (2026-11-12)
 
-CM6a's D16 ruling of 2026-11-21 adds one corrective stroll after a cursor chase brakes beside a resting pointer. The body director issues it once she is idle, inside the attend window, beyond `STEP_ONTO_CURSOR_MIN_LEGS` (0.15 legs); the procedural gait stays unchanged. The [character mind roadmap](character-mind-roadmap.md) tracks the press acceptance.
+CM6a's D16 ruling of 2026-11-21 adds one corrective stroll after a cursor chase brakes beside a resting pointer. The body director issues it once she is idle, inside the attend window, beyond `STEP_ONTO_CURSOR_MIN_LEGS` (0.15 legs). The owner's follow-up ruling of 2026-11-21 makes that goal request `step: 'sidestep'`: within `SIDESTEP_MAX_LEGS` (0.6 legs, a tuning value) at departure, the gait keeps her yaw and takes leading/trailing step pairs onto the pointer. Farther goals still walk. The [character mind roadmap](character-mind-roadmap.md) tracks the press acceptance.
 
 Outside the milestone order, the [idle agency ADR](../adr/2026-11-12-idle-agency.md) added self-directed behaviour to every Natural renderer: idle activities and sleep in `motion-driver-natural`, and for MMD unasked clips ("Idle may use"), visits toward the cursor, and lingering after a walk. On Live2D she can use the rig's own expressions unasked: pastimes such as a game, and what she sleeps with. The M4 window-rect sensor would replace the cursor as the target of a visit. The work is on `luke/feat/idle-agency` and is not visually reviewed.
 
