@@ -237,9 +237,9 @@ A pure check that decides whether the character may speak unprompted now. The ha
 
 ### Gaze arbiter
 
-The rule in Natural's gaze layer that decides between [glances](#glance) under the Natural driver, on both renderers. Each request names its source, and the arbiter ranks it by a fixed priority: the long-pet camera glance and a poke, then the desktop wake and the wake from sleep, then a chat read and the idle voice cues, then look tools, cue gestures, and emotions, then the screen change, then a noticed cursor, then idle acts. A request starts unless the running glance ranks higher; a lower one is refused and dropped, never queued. While the pet override holds, only the long-pet camera glance starts. It runs at frame rate on Natural's active seconds, and the [character mind](#character-mind) does not rank glances.
+The rule in Natural's gaze layer that decides between [glances](#glance) under the Natural driver, on both renderers. Each request names its source, and the arbiter ranks it by a fixed priority: the long-pet camera glance and a poke, then the desktop wake and the wake from sleep, then a chat read and the idle voice cues, then look tools, cue gestures, and emotions, then the screen change, then a noticed cursor, then idle acts. A request starts unless the running glance ranks higher; a lower one is refused and dropped, never queued. While the pet override holds, only the long-pet camera glance starts. On MMD, walking is an input that ranks between the chat class and the model's cues: while she walks, a lower request is refused, and a higher glance holds over the walk for at most 1.5 s. It runs at frame rate on Natural's active seconds, and the [character mind](#character-mind) does not rank glances.
 
-**Code:** `packages/motion-driver-natural/src/gaze.ts` `NaturalGazeLayer` (`glance`, `orient`, `claim`), `GLANCE_PRIORITY`, `GlanceSource`.
+**Code:** `packages/motion-driver-natural/src/gaze.ts` `NaturalGazeLayer` (`glance`, `orient`, `claim`, `setTravel`, `held`), `GLANCE_PRIORITY`, `TRAVEL_PRIORITY`, `GlanceSource`.
 **Not to be confused with:** cursor attention, which decides whether she notices the cursor at all; and MMD's head and eye aim, which follows the gaze target the arbiter leaves.
 **Avoid:** "gaze policy" (the mind has none), "glance queue".
 
