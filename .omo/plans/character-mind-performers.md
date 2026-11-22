@@ -452,3 +452,16 @@ shared component.
 The key used by both expression stores and the conductor is the display model
 id (`avatarModels[].displayModelId`), not the card's avatar reference id
 (`avatarModels[].id`). The editor uses that same display model id for weights.
+
+## Departures during implementation (CM7a)
+
+- **a1:** Rechecked section 2 against the implementation. CM6b now routes chat,
+  cue gestures, attend causes, away edges, and the director's look hand-off;
+  CM5b forwards beats separately from intents. The director also retains CM6a's
+  rest position and pending sidestep. These are preserved. Section 2.5's
+  mapping-weights limitation is obsolete after c6: its live catalog mirror is
+  independent of LLM exposure and remains published under every driver.
+  Other driver gates, expression draws, settings homes, and register ownership
+  still match section 2. The declaration matrix test lives in stage-ui, which
+  already depends on both renderers, so character-mind gains no renderer
+  dependency. It tests the actual adapter declarations.

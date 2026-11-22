@@ -41,6 +41,7 @@ import type { MMDMotionTraceSource } from '../../stores/motion-trace'
 import type { ResolvedMMDModel } from '../../utils/mmd-loader'
 
 import { errorMessageFrom } from '@moeru/std'
+import { NO_CAPABILITIES } from '@proj-airi/character-mind'
 import { deriveClipMeta, effectiveLayer } from '@proj-airi/motion-driver-humanoid/clip-meta'
 import { initialIdleClipHistory, pickIdleClip } from '@proj-airi/motion-driver-humanoid/idle-clips'
 import { dormantIdleView } from '@proj-airi/motion-driver-natural/idle-schedule'
@@ -92,7 +93,7 @@ import { ARM_SWING_REACH, resolveFrameBounds } from '../../composables/mmd/camer
 import { createMMDMorphRuntime } from '../../composables/mmd/morph-runtime'
 import { MotionRegistrations } from '../../composables/mmd/motion-registrations'
 import { createMMDMotionTraceSampler } from '../../composables/mmd/motion-trace'
-import { MMDNaturalAdapter, mmdScreenInwardness, projectMMDHead } from '../../composables/mmd/natural/adapter'
+import { MMD_NATURAL_CAPABILITIES, MMDNaturalAdapter, mmdScreenInwardness, projectMMDHead } from '../../composables/mmd/natural/adapter'
 import { fnv1a32 } from '../../composables/mmd/natural/seed'
 import { createOverlayLabel } from '../../composables/mmd/overlay-label'
 import { MMDOverlays } from '../../composables/mmd/overlays'
@@ -1821,6 +1822,7 @@ watch(materialOpacity, () => {
 }, { deep: true })
 
 defineExpose({
+  capabilities: computed(() => motionDriver.value === 'natural' ? MMD_NATURAL_CAPABILITIES : NO_CAPABILITIES),
   canvasElement,
   captureFrame,
   setClassicEmotion,

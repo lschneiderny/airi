@@ -11,6 +11,11 @@ Natural is the default. It generates continuous autonomous motion from layered r
 Universal uses model motions, idle eyes, and mouse tracking.
 MAGIC retains its dataset-based motion controls.
 
+The scene exposes its performer capabilities: Natural declares posture, face,
+gaze, and the nod, shake, and glance cue gestures. It declares no body channel;
+shrug and lean cannot be realised on the head and bust. Universal and MAGIC
+declare no mind capabilities.
+
 ### Expressions
 
 ZIP imports and OPFS-restored archives discover every `.exp3.json`, including files absent from the model settings references. URL-loaded models discover only expressions referenced by their model settings; remote folders are not enumerated.

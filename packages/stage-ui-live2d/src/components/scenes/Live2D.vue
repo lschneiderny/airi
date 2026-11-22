@@ -17,6 +17,7 @@ import type { SpeechEvent } from '../../composables/live2d/expression/slots'
 import type { NaturalChatActivity, NaturalChatTarget } from '../../composables/live2d/natural-chat-input'
 import type { Live2DContext } from '../../contexts/live2d'
 
+import { NO_CAPABILITIES } from '@proj-airi/character-mind'
 import { presenceBubbleIdle } from '@proj-airi/stage-shared'
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { useScreenAmbientLightEnvironment, useSettingsScreenAmbientLight } from '@proj-airi/stage-shared/stores/screen-ambient-light'
@@ -30,6 +31,7 @@ import Live2DModel from './live2d/Model.vue'
 import Live2DPresenceBubble from './live2d/presence-bubble.vue'
 
 import { createLive2DTouchGestureTracker, useLive2DEyeFocusFor, useLive2DNaturalSettings, useSettingsLive2d } from '../../composables/live2d'
+import { LIVE2D_NATURAL_CAPABILITIES } from '../../composables/live2d/natural-motion-adapter'
 import { createLive2D, provideLive2D } from '../../contexts/live2d'
 import { createCursorExpiry } from './live2d/cursor-expiry'
 
@@ -118,6 +120,7 @@ const {
   live2dShadowEnabled,
 } = storeToRefs(useSettingsLive2d())
 const naturalSettings = useLive2DNaturalSettings()
+const capabilities = computed(() => live2dMotionDriver.value === 'natural' ? LIVE2D_NATURAL_CAPABILITIES : NO_CAPABILITIES)
 const universalMotionEnabled = computed(() => live2dMotionDriver.value === 'universal')
 const magicMotionEnabled = computed(() => live2dMotionDriver.value === 'magic')
 const {
@@ -274,6 +277,7 @@ watch([componentStateModel, componentStateCanvas], () => {
 })
 
 defineExpose({
+  capabilities,
   canvasElement: () => {
     return live2dCanvasRef.value?.canvasElement()
   },
