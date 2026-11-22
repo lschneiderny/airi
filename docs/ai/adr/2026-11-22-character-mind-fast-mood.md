@@ -69,12 +69,18 @@ difference is a defect.
 
 ## Acceptance
 
-Headless (orchestrator): PENDING. Record here the base (CM9a tip) and tip run directories, the `pnpm qa:motion3d diff`
-lines for all eleven scenarios at seed 1, and the rig hashes for `angry` and `happy`.
+Headless (orchestrator, macOS, 2026-11-22): base the CM9a tip `85b577568`, tip `bb8ffbbd4`, seed 1. All eleven
+scenarios are `IDENTICAL` (`idle`, `idle-drive`, `music`, `music-beat`, `gaze-shift`, `speak`, `gesture-under-clip`,
+`emotions`, `walk`, `sleepy-no-clip`, `touch`), and both rig hashes are unchanged (`angry` `446b746a`, `happy`
+`a273e525`): the dose arithmetic moved without changing a frame.
 
-Rendered (orchestrator): PENDING. Record here plan section 8 check 3: `happy` three times, Natural's `moodState`, then a
-model reload and a switch to Universal and back, with event kinds and counts and 0 renderer and 0 main-process errors
-per launch.
+Rendered (orchestrator, macOS, 2026-11-22, ForBOOTH Live2D in the window, Natural): with state feedback on, the
+performance runtime state publishes Natural's sampled mood. `happy` three times raises it to valence 0.3, arousal 0.2.
+A switch to Universal and back keeps the same Natural controller, so it keeps the mood at both ends and proves nothing.
+A model reload does create a new controller: the stage switches to the preset model and back to the imported one. On
+the CM9a tip the new controllers read 0 on the preset and 0 after the reload. On the CM9b tip they come up seeded,
+at valence 0.3 and arousal 0.1 on the preset and again after the reload, the mind's level after a few seconds of decay.
+Every launch recorded 0 renderer and 0 main-process errors.
 
 Scores prove direction, size relative to the recipe, release, and detectability above the rig's idle noise. They do
 not prove naturalness, which stays a visual review.

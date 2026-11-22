@@ -331,6 +331,8 @@ Each worker builds one slice and runs its Node, browser, and dependent typecheck
 4. **Record:** run directories, diff lines, gate and report lines, refusal counts by source, and the limitations wording, in the PR description and the slice ADR.
 5. **Land:** rebase-merge the PR to `lschneiderny/airi`, update the slice's roadmap Status, and start the next slice of the lane. CM10 starts only after CM9b, CM9e, and CM9f have merged.
 
+**Applied (orchestrator, 2026-11-22):** the lanes land as one PR each (lane A: CM9a and CM9b; lane B: CM9c, CM9d, and CM9e; lane C: CM9f), with every slice's commits kept atomic, instead of seven PRs. Lane B branches before lane A lands and must rebase, which changes its tree, so its headless and rendered acceptance runs on the rebased tip against the lane's base. Each slice still records its own acceptance in its ADR.
+
 Scores prove direction, size relative to the recipe, release, and detectability above the rig's idle noise. They do not prove naturalness, which stays a visual review.
 
 ## Slice records
