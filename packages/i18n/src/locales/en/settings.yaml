@@ -2045,6 +2045,13 @@ pages:
           cancelled: Cancelled before dispatch. This request did not execute.
           expired: Approval expired before dispatch. This request did not execute.
       description: Configure MCP servers and bring their tools into AIRI.
+      tools:
+        title: Tools
+        description: Choose which tools from each connected server AIRI can use.
+        search: Search tools
+        empty: No tools match. Connect a server or change the search.
+        enabled: Enabled
+        router-only: Router only
       config-path: Config file
       runtime-title: Runtime status
       empty: No MCP servers yet — click "Add server" below to create one, or paste a config via "Edit JSON".
