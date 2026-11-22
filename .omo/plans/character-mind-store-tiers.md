@@ -320,6 +320,14 @@ The implementation must record departures from these recommendations with their 
 - Splitting registrations also requires updating the partial reset id lists in `use-data-maintenance.ts`; otherwise a module or desktop reset would stop sweeping the moved locations. The underlying owner reset still runs once.
 - The implementation assignment replaces per-commit `pnpm verify` with explicit package suites, dependent typechecks, lint, and policy guards. Rendered, Electron, QA, and branch gate checks belong to the orchestrator.
 - Item 2 resolves same-file template parameters to their literal callers and keeps unresolved factory suffixes. Without that refinement, the existing dynamic-site exemption would admit a new undeclared literal or factory member. The two existing dynamic declarations remain; no new ownership list was added.
+- Item 3 confirmed that VueUse catches synchronous storage failures: the added update/reset regressions first failed because both promises resolved. `useSettingsDocument` now observes `onError` with `flush: 'sync'` and publishes only after a successful save; all existing document callers share that fix.
+- The desktop consent boundary is injected into the settings owner. The startup bridge creates the store in every window and awaits `initialize` only in the leader host; synced routing waits for actual leadership. Updates and resets await that same boundary, so no watcher or SDK performs a second mirror write.
+- `stage-pages` declares only a browser suite, so its full `vitest run` is used instead of a nonexistent Node project.
+- The app's first jsdom storage test exposed Node 26's own undefined `localStorage` shadowing jsdom. Its Node project now uses the existing `domStorageExecArgv` configuration, already included in Turbo test inputs. No global replacement or new workaround was added.
+- The touched renderer startup function no longer needs its old double assertion of `autoAnimatePlugin`; the direct plugin value passes the dependent typechecks.
+- Item 3 confirmed that VueUse catches synchronous storage failures: the added update/reset regressions first failed because both promises resolved. `useSettingsDocument` now observes `onError` with `flush: 'sync'` and publishes only after a successful save; all existing document callers share that fix.
+- The desktop consent boundary is injected into the settings owner. The startup bridge creates the store in every window and awaits `initialize` only in the leader host; synced routing waits for actual leadership. Updates and resets await that same boundary, so no watcher or SDK performs a second mirror write.
+- `stage-pages` declares only a browser suite, so its full `vitest run` is used instead of a nonexistent Node project.
 
 ## Checks run
 
@@ -333,9 +341,22 @@ The implementation must record departures from these recommendations with their 
 - Item 2: `pnpm -F @proj-airi/stage-ui exec vitest run --project browser src/persistence/state-registry.browser.test.ts src/composables/use-data-maintenance.browser.test.ts` passed 2 files / 32 tests.
 - Item 2: `pnpm --filter "...@proj-airi/stage-ui" --workspace-concurrency=2 typecheck` passed all 7 selected projects.
 - Item 2: `pnpm exec vitest run --project dev-tools scripts/dev-tools/policy-docs.test.ts` passed 1 file / 11 tests; changed-file ESLint and `git diff --check` passed.
+- Item 3: the helper regression first reproduced 2 failed / 16 passed tests; after the fix, `pnpm -F @proj-airi/stage-shared exec vitest run src/composables/use-settings-document/index.test.ts` passed all 18.
+- Item 3: `pnpm -F @proj-airi/stage-ui exec vitest run --project node src/stores/settings/analytics.test.ts src/stores/modules/hearing.analytics.test.ts` passed 2 files / 13 tests.
+- Item 3: `pnpm -F @proj-airi/stage-shared exec vitest run` passed 96 files / 1880 tests.
+- Item 3: `pnpm -F @proj-airi/stage-ui exec vitest run --project node` passed 195 files / 1896 tests.
+- Item 3: `pnpm -F @proj-airi/stage-pages exec vitest run` passed 33 browser files / 102 tests.
+- Item 3: the app suite initially failed only the 3 new bridge tests because Node's storage global shadowed jsdom. After applying the existing worker flag, `pnpm -F @proj-airi/stage-tamagotchi exec vitest run --project node src/renderer/bridges/analytics-consent.test.ts` passed 1 file / 3 tests, and the full `pnpm -F @proj-airi/stage-tamagotchi exec vitest run --project node` passed 195 files / 2169 tests, with 3 files / 8 existing environment-gated tests skipped.
+- Item 3: `pnpm -F @proj-airi/stage-ui exec vitest run --project browser src/stores/settings/analytics.browser.test.ts src/persistence/state-registry.browser.test.ts src/composables/use-data-maintenance.browser.test.ts src/features/conversation/settings.browser.test.ts src/features/performance/settings.browser.test.ts src/features/situation/settings.browser.test.ts src/features/host-capabilities/notice-settings.browser.test.ts` passed 7 files / 124 tests.
+- Item 3: `pnpm -F @proj-airi/stage-ui-mmd exec vitest run --project browser src/stores/natural-settings.browser.test.ts` and `pnpm -F @proj-airi/stage-ui-live2d exec vitest run --project browser src/composables/live2d/natural-settings.browser.test.ts` each passed 1 file / 13 tests.
+- Item 3: `pnpm --filter "...@proj-airi/stage-shared" --filter "...@proj-airi/stage-ui" --filter "...@proj-airi/stage-pages" --filter "...@proj-airi/stage-tamagotchi" --workspace-concurrency=2 typecheck` passed all 28 selected projects.
+- Item 3: after the app test-config fix, `pnpm --filter "...@proj-airi/stage-tamagotchi" --workspace-concurrency=2 typecheck` passed. The initial focused `pnpm -F @proj-airi/stage-ui exec vitest run --project browser src/stores/settings/analytics.browser.test.ts` also passed 1 file / 1 test before the complete browser run above.
+- Item 3: changed-file ESLint and the policy/storage guard command passed (2 files / 12 tests). Vite still reports the pre-existing extensionless import in the app's `uno.config.ts`; no warning was suppressed.
 
 **Orchestrator placeholder:** rendered scenarios, applicable motion checks, and `pnpm verify --gate` results are not run by this worker.
 
 ## Commits
 
 - `623bfe20d` - `refactor(stage-ui): declare upstream persistence exceptions by owner`.
+- `dcfaebb3a` - `test(stage-ui): reject new fork state in the plain persistence tier`.
+- `dcfaebb3a` - `test(stage-ui): reject new fork state in the plain persistence tier`.

@@ -41,7 +41,7 @@ export const useSettings = defineStore('settings', () => {
 
   async function resetState() {
     await stageModel.resetState()
-    analytics.resetState()
+    await analytics.reset()
     general.resetState()
     spine.resetState()
     tachie.resetState()

@@ -438,13 +438,13 @@ export const stateRegistry = defineStateRegistry([
     id: 'settings-analytics',
     owner: 'useSettingsAnalytics',
     writers: ['packages/stage-ui/src/stores/settings/analytics.ts'],
-    tier: 'plain',
-    exception: 'Fork state awaiting S2 migration',
+    tier: 1,
     locations: [
-      { area: 'localStorage', key: 'settings/analytics/opted-in' },
+      { area: 'localStorage', key: 'settings/analytics' },
+      { area: 'localStorage', key: 'settings/analytics/opted-in', legacy: true },
       { area: 'localStorage', key: 'settings/analytics/enabled', legacy: true },
     ],
-    reset: ({ pinia }) => useSettingsAnalytics(pinia).resetState(),
+    reset: ({ pinia }) => useSettingsAnalytics(pinia).reset(),
   },
   {
     id: 'settings-spine',

@@ -13,6 +13,9 @@ import { defineConfig } from 'vitest/config'
 // eslint-disable-next-line no-restricted-syntax -- Vite's native config loader, its planned default, resolves a relative import only with its extension.
 import unoConfig from './uno.config.ts'
 
+// eslint-disable-next-line no-restricted-syntax -- Vite's native config loader resolves a relative import only with its extension.
+import { domStorageExecArgv } from '../../vitest.dom-storage.ts'
+
 export default defineConfig({
   root: import.meta.dirname,
   plugins: [
@@ -51,6 +54,7 @@ export default defineConfig({
         extends: true,
         test: {
           name: 'node',
+          execArgv: domStorageExecArgv,
           include: ['src/**/*.test.ts', 'scripts/**/*.test.ts'],
           exclude: ['src/**/*.browser.test.ts', '**/node_modules/**', '**/.git/**'],
           fileParallelism: false,

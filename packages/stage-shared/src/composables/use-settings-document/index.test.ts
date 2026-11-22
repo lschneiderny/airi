@@ -104,4 +104,35 @@ describe('useSettingsDocument', () => {
     window.dispatchEvent(new StorageEvent('storage', { key, newValue, storageArea: localStorage }))
     expect(settings.document.value).toEqual({ enabled: true, level: 1 })
   })
+
+  it('rejects a failed save before publishing the document, and allows a later successful command', async () => {
+    const settings = useSettingsDocument(key, entries, options)
+    const failure = new DOMException('Synthetic storage failure', 'QuotaExceededError')
+    const save = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw failure
+    })
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await expect(settings.update({ enabled: false })).rejects.toThrow('Synthetic storage failure')
+    expect(settings.document.value).toEqual({ enabled: true, level: 5 })
+    expect(localStorage.getItem(key)).toBeNull()
+
+    save.mockRestore()
+    await settings.update({ enabled: false })
+    expect(settings.document.value.enabled).toBe(false)
+    expect(JSON.parse(localStorage.getItem(key)!).enabled).toBe(false)
+  })
+
+  it('rejects a failed reset without replacing the live document', async () => {
+    const settings = useSettingsDocument(key, entries, options)
+    await settings.update({ enabled: false })
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('Reset save failed')
+    })
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await expect(settings.reset()).rejects.toThrow('Reset save failed')
+    expect(settings.document.value.enabled).toBe(false)
+    expect(JSON.parse(localStorage.getItem(key)!).enabled).toBe(false)
+  })
 })

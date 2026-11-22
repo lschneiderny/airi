@@ -29,7 +29,7 @@ import { useWebSearchStore } from '../stores/modules/web-search'
 import { useOnboardingStore } from '../stores/onboarding'
 import { useProviderStore } from '../stores/providers/provider'
 import { useRecipesStore } from '../stores/recipes'
-import { useSettingsAudioDevice, useSettingsGeneral, useSettingsStageModel } from '../stores/settings'
+import { useSettingsAnalytics, useSettingsAudioDevice, useSettingsGeneral, useSettingsStageModel } from '../stores/settings'
 import { moduleSettingsSchema, moduleSettingsSchemas } from './data-maintenance-schemas'
 
 interface StoreStateOwner {
@@ -142,6 +142,7 @@ export function useDataMaintenance() {
   useChatStore()
   useProviderStore()
   useSettingsGeneral()
+  useSettingsAnalytics()
   useSettingsAudioDevice()
   useAiriCardStore()
   const speechStore = useSpeechStore()
