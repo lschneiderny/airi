@@ -101,7 +101,7 @@ import { readMMDRigProfile } from '../../composables/mmd/rig'
 import { buildMMDClipMask, mmdClipMaskBones } from '../../composables/mmd/rig/clip-mask'
 import { composeMMDStages } from '../../composables/mmd/stage-composition'
 import { applyStageCamera, applyStageRoot, measureStageExtent, projectCharacterPlacement, rowInputs, stagePixelRatio } from '../../composables/mmd/stage-world'
-import { chatStandX, directorIdleStates, frameClocks, MMDAttendInbox, MMDStanceDirector } from '../../composables/mmd/stance'
+import { chatStandX, directorIdleStates, frameClocks, MMDAttendInbox, MMDStanceDirector, wanderErrandAnswer } from '../../composables/mmd/stance'
 import { buildMMDTouchColliders, MMDTouch, mmdTouchRegionRoots } from '../../composables/mmd/touch'
 import { useMMDClipMetadata } from '../../stores/clip-metadata'
 import { useMMDExpressionStore } from '../../stores/expression-store'
@@ -1087,10 +1087,11 @@ function reportBody(intent: BodyIntent | null) {
   reportedBody = next
 }
 
-/** Natural's wander errand while it waits for the director's answer, for `world.wander`; null otherwise. */
-function naturalWander(): { seq: number, pick: number } | null {
+/** Natural's wander errand while it runs, with the stay the mind drew for it, for `world.wander`; null otherwise. */
+function naturalWander(): { seq: number, pick: number, lingerSeconds: number } | null {
   const errand = motionDriver.value === 'natural' ? natural?.idleErrand : null
-  return errand?.kind === 'wander' && errand.endedAt === null ? { seq: errand.seq, pick: errand.pick } : null
+  // The mind draws every wander's stay with the errand, so its hold is set.
+  return errand?.kind === 'wander' && errand.endedAt === null ? { seq: errand.seq, pick: errand.pick, lingerSeconds: errand.holdSeconds ?? 0 } : null
 }
 
 /**
@@ -1110,8 +1111,10 @@ function realiseErrands(directorMs: number, intent: BodyIntent | null) {
   }
   const diagnostics = stance.diagnostics
   if (errand.kind === 'wander') {
-    if (diagnostics.wanderAnswer?.seq === errand.seq)
-      answer(diagnostics.wanderAnswer.accepted ? 'done' : 'refused')
+    // The errand runs through the walk and the stay, and ends when she leaves where it took her.
+    const outcome = wanderErrandAnswer(diagnostics, errand.seq)
+    if (outcome)
+      answer(outcome)
     return
   }
   if (errand.kind !== 'idle-clip')

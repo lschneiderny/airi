@@ -264,8 +264,10 @@ director gets no attend counters or window), returns home
 `RETURN_HOME_DELAY_MS` after the last reason, and wanders in roam mode only,
 when Natural forwards the mind's idle draw (`input.wander`, a new `seq` per wander).
 The errand's `pick` chooses a visit below `VISIT_SHARE` (0.6) when one is possible;
-the director draws only the wander position and the linger, and keeps that pick
-while a wander waits.
+the director draws only the wander position, and keeps that pick while a wander
+waits. On arrival she stays for the errand's `lingerSeconds`, which the mind drew
+with it, before she walks home; `memory.wanderStay` names the errand until she
+leaves where it took her, and the host ends the errand then.
 A wander goes at least three leg lengths, or, where three legs fit on neither
 side, half the longer free side but never less than one leg length. The
 director holds an asked wander while she cannot walk yet and refuses it without
