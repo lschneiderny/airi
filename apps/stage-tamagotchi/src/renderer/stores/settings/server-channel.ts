@@ -14,9 +14,14 @@ import {
 } from '../../../shared/eventa'
 
 export const useServerChannelSettingsStore = defineStore('tamagotchi-server-channel-settings', () => {
-  const tlsConfig = useLocalStorage<{ cert?: string, key?: string, passphrase?: string } | null | undefined>('settings/server-channel/websocket-tls-config', null)
-  const hostname = useLocalStorage<string>('settings/server-channel/hostname', '127.0.0.1')
-  const authToken = useLocalStorage<string>('settings/server-channel/auth-token', '')
+  // The main process owns this config, and the watcher below applies every change of these values to it. A window that
+  // followed the values that other windows store would apply their changes too. "Delete all data" removes the stored
+  // token, which each window then applies as an empty token that the main process replaces with a new one, so the
+  // windows would apply each other's tokens without end. A window reads the config from the main process instead.
+  const storage = { listenToStorageChanges: false }
+  const tlsConfig = useLocalStorage<{ cert?: string, key?: string, passphrase?: string } | null | undefined>('settings/server-channel/websocket-tls-config', null, storage)
+  const hostname = useLocalStorage<string>('settings/server-channel/hostname', '127.0.0.1', storage)
+  const authToken = useLocalStorage<string>('settings/server-channel/auth-token', '', storage)
   const lastApplyError = shallowRef<string | null>(null)
   const appliedConfig = shallowRef<ElectronServerChannelConfig>()
 
