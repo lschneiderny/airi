@@ -233,10 +233,24 @@ export function createExpressionPerformanceSettingsSchema(mood: MoodBounds) {
   return settingsObject(createExpressionPerformanceSettingsEntries(mood))
 }
 
-/** Top-level fields of the persisted settings document. */
+/** Combined inputs used by performers and recorded decider contexts. Each persisted owner takes its subset below. */
 export const expressionPerformanceSettingsEntries = createExpressionPerformanceSettingsEntries({ gain: moodGainRange, tau: moodTauRange })
+const { bands, mood, heldEmotions, intensity, held, moodDynamics, ...realisation } = expressionPerformanceSettingsEntries
+
+/** What the mind decides, stored in the character-behavior document and scaled by the turn's card profile. */
+export const emotionBehaviorSettingsEntries = { bands, mood, heldEmotions, intensity, held, moodDynamics }
+export const EmotionBehaviorSettingsSchema = settingsObject(emotionBehaviorSettingsEntries)
+export type EmotionBehaviorSettings = InferOutput<typeof EmotionBehaviorSettingsSchema>
+export const defaultEmotionBehaviorSettings = parse(EmotionBehaviorSettingsSchema, {})
+
+/** How a performer maps and plays decisions, stored independently from character behavior. */
+export const expressionRealisationSettingsEntries = realisation
+export const ExpressionRealisationSettingsSchema = settingsObject(expressionRealisationSettingsEntries)
+export type ExpressionRealisationSettings = InferOutput<typeof ExpressionRealisationSettingsSchema>
+export const defaultExpressionRealisationSettings = parse(ExpressionRealisationSettingsSchema, {})
+
 export const ExpressionPerformanceSettingsSchema = settingsObject(expressionPerformanceSettingsEntries)
-export type ExpressionPerformanceSettings = InferOutput<typeof ExpressionPerformanceSettingsSchema>
+export type ExpressionPerformanceSettings = EmotionBehaviorSettings & ExpressionRealisationSettings
 export const defaultExpressionPerformanceSettings = parse(ExpressionPerformanceSettingsSchema, {})
 
 /** Invalid documents return a fresh default document and issues for the caller to log. */

@@ -1,5 +1,5 @@
 import type { CatalogEntry } from './catalog'
-import type { ExpressionPerformanceSettings } from './settings'
+import type { EmotionBehaviorSettings, ExpressionPerformanceSettings, ExpressionRealisationSettings } from './settings'
 import type { AffectSignal, DeciderContext, HoldCommand, PerformanceEmotion, ReactionEpisode, SlotCommand } from './types'
 
 import { isAutoEligible } from './catalog'
@@ -195,7 +195,7 @@ export function neutralCommands(turnId: string | undefined): SlotCommand[] {
  * alike after its speech. A turnless one has no speech to wait for and lasts `held.turnlessSeconds` for every emotion:
  * the emotion gates and the MMD body's pulse are timed on that length.
  */
-export function emotionHold(episode: ReactionEpisode, turnId: string | undefined, settings: ExpressionPerformanceSettings): HoldCommand {
+export function emotionHold(episode: ReactionEpisode, turnId: string | undefined, settings: EmotionBehaviorSettings & Pick<ExpressionRealisationSettings, 'slots'>): HoldCommand {
   const turnless = turnId === undefined
   return {
     emotion: episode.emotion,

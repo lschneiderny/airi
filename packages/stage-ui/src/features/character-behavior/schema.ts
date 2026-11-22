@@ -1,10 +1,10 @@
 import type { SettingsDocument } from '@proj-airi/stage-shared/composables'
 
 import { isElectronWindow } from '@proj-airi/stage-shared'
-import { expressionPerformanceSettingsEntries } from '@proj-airi/stage-shared/expression-performance'
+import { EmotionBehaviorSettingsSchema } from '@proj-airi/stage-shared/expression-performance'
 import { withoutAppExtension } from '@proj-airi/stage-shared/situation'
 import { clamp, uniq } from 'es-toolkit'
-import { array, boolean, number, optional, parse, pipe, strictObject, string, transform } from 'valibot'
+import { array, boolean, check, number, optional, parse, pipe, strictObject, string, transform, unknown } from 'valibot'
 
 /** Quiet-app defaults have explicit suffixes; a host keeps the entries whose suffix it strips. */
 const quietAppDefaults = ['zoom.exe', 'ms-teams.exe', 'teams.exe', 'webex*.exe', 'zoom.us.app', 'Microsoft Teams.app', 'FaceTime.app', 'Webex*.app']
@@ -23,24 +23,18 @@ export const speakingBehaviorEntries = {
   speakDuringGames: optional(boolean(), true),
 }
 
-export const emotionBehaviorEntries = {
-  bands: expressionPerformanceSettingsEntries.bands,
-  mood: expressionPerformanceSettingsEntries.mood,
-  heldEmotions: expressionPerformanceSettingsEntries.heldEmotions,
-  intensity: expressionPerformanceSettingsEntries.intensity,
-  held: expressionPerformanceSettingsEntries.held,
-  moodDynamics: expressionPerformanceSettingsEntries.moodDynamics,
-}
-
-const emotionSchema = strictObject(emotionBehaviorEntries)
-const speakingSchema = strictObject(speakingBehaviorEntries)
+const speakingSchema = pipe(
+  unknown(),
+  check(value => !Array.isArray(value), 'Expected a speaking settings object'),
+  strictObject(speakingBehaviorEntries),
+)
 
 export const characterBehaviorEntries = {
   idleActivities: optional(boolean(), true),
   touchReactions: optional(boolean(), true),
   cursorAttention: optional(boolean(), true),
   chatAttention: optional(boolean(), true),
-  emotion: optional(emotionSchema, () => parse(emotionSchema, {})),
+  emotion: optional(EmotionBehaviorSettingsSchema, () => parse(EmotionBehaviorSettingsSchema, {})),
   speaking: optional(speakingSchema, () => parse(speakingSchema, {})),
 }
 

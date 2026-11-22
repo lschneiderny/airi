@@ -1,8 +1,9 @@
 import type { ObjectEntries } from 'valibot'
 
+import { emotionBehaviorSettingsEntries } from '@proj-airi/stage-shared/expression-performance'
 import { safeParse } from 'valibot'
 
-import { characterBehaviorEntries, emotionBehaviorEntries, speakingBehaviorEntries } from './schema'
+import { characterBehaviorEntries, speakingBehaviorEntries } from './schema'
 
 // NOTICE:
 // Import old behavior before narrowing its documents.
@@ -66,7 +67,7 @@ export function importCharacterBehaviorSettings(read: (key: string) => string | 
   switches.cursorAttention = live2d.cursorAttention
   switches.chatAttention = live2d.screenAwareness
   const imported = validFields(characterBehaviorEntries, switches)
-  const emotion = validFields(emotionBehaviorEntries, document('settings/expression-performance'))
+  const emotion = validFields(emotionBehaviorSettingsEntries, document('settings/expression-performance'))
   const speaking = validFields(speakingBehaviorEntries, document('settings/situation'))
   if (Object.keys(emotion).length > 0)
     imported.emotion = emotion

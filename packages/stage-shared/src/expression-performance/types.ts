@@ -1,5 +1,5 @@
 import type { CatalogEntry } from './catalog'
-import type { ExpressionPerformanceSettings } from './settings'
+import type { EmotionBehaviorSettings, ExpressionRealisationSettings } from './settings'
 
 export const PERFORMANCE_EMOTIONS = ['happy', 'sad', 'angry', 'think', 'surprised', 'awkward', 'question', 'curious', 'neutral', 'love', 'flustered', 'sleepy'] as const
 export type PerformanceEmotion = typeof PERFORMANCE_EMOTIONS[number]
@@ -80,7 +80,8 @@ export interface ExpressionRefusal {
 
 export interface DeciderContext {
   catalog: readonly CatalogEntry[]
-  settings: ExpressionPerformanceSettings
+  /** Effective behavior for the speaking character alongside this performer's realisation settings. */
+  settings: EmotionBehaviorSettings & ExpressionRealisationSettings
 }
 
 /**

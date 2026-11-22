@@ -1,4 +1,4 @@
-import type { ExpressionPerformanceSettings } from './settings'
+import type { EmotionBehaviorSettings } from './settings'
 
 /** Where a touch lands; matches the regions of the Live2D touch classifier. */
 export type TouchRegion = 'head' | 'body'
@@ -72,11 +72,11 @@ const POKE_VECTOR = [0, 1, 0] as const
 const BURST_VECTOR = [0, 0.5, 1] as const
 
 /** The mood dose of one band: its profile-resolved mood gain times its nominal intensity. */
-function unit(band: 'slight' | 'clear', settings: ExpressionPerformanceSettings) {
+function unit(band: 'slight' | 'clear', settings: EmotionBehaviorSettings) {
   return settings.moodDynamics[`${band}Gain`] * settings.intensity[band]
 }
 
-function habituation(times: readonly number[], settings: ExpressionPerformanceSettings) {
+function habituation(times: readonly number[], settings: EmotionBehaviorSettings) {
   return Math.max(settings.intensity.habituationFloor, settings.intensity.habituationBase ** times.length)
 }
 
@@ -103,7 +103,7 @@ function last(times: readonly number[]) {
  *
  * Zero-sized doses, such as under a zero mood gain scale, are not returned.
  */
-export function touchAffect(memory: TouchAffectMemory, input: TouchAffectInput, settings: ExpressionPerformanceSettings): { dose: MoodDose | null, memory: TouchAffectMemory } {
+export function touchAffect(memory: TouchAffectMemory, input: TouchAffectInput, settings: EmotionBehaviorSettings): { dose: MoodDose | null, memory: TouchAffectMemory } {
   const at = input.at
   if (!Number.isFinite(at) || (memory.lastAt !== null && at < memory.lastAt))
     return { dose: null, memory }
