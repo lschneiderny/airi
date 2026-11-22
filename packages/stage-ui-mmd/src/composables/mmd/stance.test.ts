@@ -482,11 +482,11 @@ describe('mmd stance director with clip performances', () => {
 })
 
 describe('directorIdleStates', () => {
-  it('reports asleep only while a sleep is under way, and settled as Natural says', () => {
+  it('reports asleep only while a sleep is under way, and settled as the mind\'s settle intent says', () => {
     const sleep = { kind: 'sleep', releasedAt: null }
-    expect(directorIdleStates({ settled: false, behaviour: null })).toEqual({ settled: false, asleep: false })
-    expect(directorIdleStates({ settled: true, behaviour: { kind: 'yawn', releasedAt: null } })).toEqual({ settled: true, asleep: false })
-    expect(directorIdleStates({ settled: true, behaviour: sleep })).toEqual({ settled: true, asleep: true })
-    expect(directorIdleStates({ settled: false, behaviour: { ...sleep, releasedAt: 12 } })).toEqual({ settled: false, asleep: false })
+    expect(directorIdleStates(false, null)).toEqual({ settled: false, asleep: false })
+    expect(directorIdleStates(true, { kind: 'yawn', releasedAt: null })).toEqual({ settled: true, asleep: false })
+    expect(directorIdleStates(true, sleep)).toEqual({ settled: true, asleep: true })
+    expect(directorIdleStates(false, { ...sleep, releasedAt: 12 })).toEqual({ settled: false, asleep: false })
   })
 })

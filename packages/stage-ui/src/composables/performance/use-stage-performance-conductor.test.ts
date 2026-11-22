@@ -6,7 +6,7 @@ import type { BodyToolPort } from '../../tools/body'
 import type { VoicePort } from './mind-voice'
 import type { ListedAction, StagePerformanceConductorOptions, StagePerformanceScene } from './use-stage-performance-conductor'
 
-import { NO_CAPABILITIES } from '@proj-airi/character-mind'
+import { NO_CAPABILITIES, SETTLE_SECONDS } from '@proj-airi/character-mind'
 import { naturalEmotions } from '@proj-airi/motion-driver-natural/emotions'
 import { createDecider, createPickerDecider, defaultExpressionPerformanceSettings, initialTouchAffectMemory, parseAffectTrace, parseExpressionPerformanceSettings, replayAffectTrace, touchAffect } from '@proj-airi/stage-shared/expression-performance'
 import { LIVE2D_NATURAL_CAPABILITIES } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion-adapter'
@@ -716,6 +716,38 @@ describe('stage performance conductor', () => {
       driver = 'natural'
       conductor.syncScene()
       expect(second.setAway.mock.calls).toEqual([[true], [false]])
+    })
+
+    it('hands the settle to a posture scene only, and seeds it from the mind on attach and when posture returns', () => {
+      const first = { ...fakeScene(), setSettled: vi.fn<NonNullable<StagePerformanceScene['setSettled']>>() }
+      const second = { ...fakeScene(), setSettled: vi.fn<NonNullable<StagePerformanceScene['setSettled']>>() }
+      let scene: StagePerformanceScene | undefined = first
+      let driver: TestPerformer = 'natural'
+      let nowMs = 0
+      const mind = naturalMind({ seed: 7, clock: () => nowMs })
+      const conductor = new StagePerformanceConductor({ scene: () => scene, capabilities: () => driver === 'natural' ? MMD_NATURAL_CAPABILITIES : NO_CAPABILITIES, settings: () => defaultExpressionPerformanceSettings, catalog: () => catalog, seed: 7, mind })
+      conductor.syncScene()
+      expect(first.setSettled.mock.calls).toEqual([[false]])
+
+      // A body drive that starts no act settles her once its deadline passes.
+      const drive = { energy: 0, valence: 0, tension: 0, sleepiness: 0, solitude: 0, rate: 0, body: true }
+      mind.receive({ kind: 'idle', reports: [{ kind: 'view', view: { drive, active: true, mode: 'idle', away: false, blocked: false, current: null, errand: null } }] })
+      nowMs = SETTLE_SECONDS * 1000
+      const settle = mind.receive({ kind: 'idle-wake' }).find(intent => intent.kind === 'settle')
+      expect(settle).toMatchObject({ channel: 'posture', settled: true })
+      conductor.settle(true)
+      expect(first.setSettled.mock.calls).toEqual([[false], [true]])
+
+      scene = second
+      conductor.syncScene()
+      expect(second.setSettled.mock.calls).toEqual([[true]])
+      driver = 'basic'
+      conductor.syncScene()
+      conductor.settle(false)
+      expect(second.setSettled.mock.calls).toEqual([[true]])
+      driver = 'natural'
+      conductor.syncScene()
+      expect(second.setSettled.mock.calls).toEqual([[true], [true]])
     })
 
     it('performs the posture intents on the scene under Natural and marks the welcome back', () => {

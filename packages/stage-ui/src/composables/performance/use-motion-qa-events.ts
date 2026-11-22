@@ -85,7 +85,7 @@ export function useMotionQaEvents(options: {
         outcome: outcomes.length ? outcomes.map(stimulus => stimulus.outcome).join(',') : null,
         // A JSON array, because a payload holds scalars only. A touch yields at most five intents of about 80
         // characters each, which stays under the 500 characters `record` keeps of a string.
-        // Idle acts, idle errands, cursor episodes, attend windows, chat reads, and gestures also name what they decided.
+        // Idle acts, idle errands, settles, cursor episodes, attend windows, chat reads, and gestures also name what they decided.
         intents: JSON.stringify(step.intents.map(intent => ({
           channel: intent.channel,
           kind: intent.kind,
@@ -93,6 +93,7 @@ export function useMotionQaEvents(options: {
           cause: intent.cause,
           ...intent.kind === 'idle-act' && { act: intent.act, requested: intent.requested },
           ...intent.kind === 'idle-errand' && { errand: intent.errand },
+          ...intent.kind === 'settle' && { settled: intent.settled },
           ...intent.kind === 'cursor-episode' && { band: intent.episode.band, engaging: intent.episode.engaging },
           ...intent.kind === 'attend' && { target: intent.target, attendCause: intent.attendCause, ...intent.target === 'cursor' && { windowMs: intent.windowMs } },
           ...intent.kind === 'away' && { away: intent.away },

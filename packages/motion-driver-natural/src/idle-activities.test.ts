@@ -75,28 +75,6 @@ describe('idle activity layer', () => {
     expect(idle.view).toEqual({ drive: null, active: true, mode: 'idle', away: false, blocked: false, current: null, errand: null })
   })
 
-  it('settles in after two minutes of idle only when the host performs a body, and gets up when the mode changes', () => {
-    const live2d = layer(7, neutralDrive)
-    live2d.run(300)
-    expect(live2d.idle.settled).toBe(false)
-
-    const { idle, gaze, run, now } = layer(7, { ...neutralDrive, body: true })
-    run(119)
-    expect(idle.settled).toBe(false)
-    run(121)
-    expect(idle.settled).toBe(true)
-    idle.step(now(), dt, { ...idleInput, mode: 'talking' }, gaze)
-    expect(idle.settled).toBe(false)
-    const talked = now()
-    run(talked + 60)
-    expect(idle.settled).toBe(false)
-    // The count starts again after the interruption: she settles in two minutes after it, not before.
-    run(talked + 119)
-    expect(idle.settled).toBe(false)
-    run(talked + 121)
-    expect(idle.settled).toBe(true)
-  })
-
   it('records the running behaviour with its timing and drawn parameters, and keeps it after it ends', () => {
     const { idle, run, now, reports } = layer()
     expect(idle.record).toBeNull()
@@ -422,11 +400,11 @@ describe('idle activities in the controller', () => {
     }
   })
 
-  it('hands the latest behaviour and the settled state to the body intent', () => {
+  it('hands the latest behaviour to the body intent and keeps it after it ends', () => {
     const motion = new NaturalMotion({ seed: 41 })
     motion.setPerformance(idleState, 0.5, 0)
     motion.advance(0)
-    expect(motion.bodyIntent().idle).toEqual({ behaviour: null, settled: false, errand: null, groovePhase: null })
+    expect(motion.bodyIntent().idle).toEqual({ behaviour: null, errand: null, groovePhase: null })
     motion.setIdleDrive({ ...neutralDrive, body: true }, 0)
     motion.idle(act('shoulder-roll', { requested: true }), 1)
     motion.advance(1.1)
@@ -434,7 +412,6 @@ describe('idle activities in the controller', () => {
     for (let frame = 1; frame <= 125 * 60; frame++)
       motion.advance(1.1 + frame / 60)
     expect(motion.bodyIntent().idle.behaviour?.releasedAt).not.toBeNull()
-    expect(motion.bodyIntent().idle.settled).toBe(true)
   })
 
   it('reports each activity once as a start and an end, in order', () => {

@@ -371,6 +371,7 @@ onMounted(() => {
     capabilities: () => performanceRenderer.value.capabilities,
     idleCue: cue => performanceConductor.idleCue(cue),
     idle: intent => performanceConductor.idle(intent),
+    settle: settled => performanceConductor.settle(settled),
     beat: intervalSeconds => performanceConductor.beat(intervalSeconds),
   })
 })

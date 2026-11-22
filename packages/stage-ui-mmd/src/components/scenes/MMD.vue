@@ -201,6 +201,8 @@ const expressions = useMMDExpressionStore()
 // The character mind owns every attend cause; the inbox stamps cursor windows on the next director frame.
 const attendInbox = new MMDAttendInbox()
 let bodyAway = false
+/** The character mind's last `settle` intent, also seeded when this scene attaches; the director sits or rests her on it. */
+let mindSettled = false
 // The host reports a drag in progress; the director refuses clips and ends broad ones while it lasts.
 let dragging = false
 const bodyToolPort = new MMDBodyToolPort()
@@ -1064,13 +1066,13 @@ function bodyActivity(intent: BodyIntent | null): MMDSelfReport | null {
 }
 
 /**
- * Natural's long idle states for the director, which realises them (idle agency ADR, amendment of 2026-11-13); absent
- * while another driver runs, when she neither settles nor sleeps.
+ * Her long idle states for the director, which realises them (idle agency ADR, amendment of 2026-11-13): the mind's
+ * settle and Natural's sleep. Absent while another driver runs, when she neither settles nor sleeps.
  */
 function naturalIdleStates(): { settled: boolean, asleep: boolean } | undefined {
   if (motionDriver.value !== 'natural' || !natural)
     return undefined
-  return directorIdleStates(natural.bodyFrame.intent.idle)
+  return directorIdleStates(mindSettled, natural.bodyFrame.intent.idle.behaviour)
 }
 
 /** Emits a `self` report when her body starts or stops doing something on its own. */
@@ -1132,14 +1134,14 @@ function realiseErrands(directorMs: number, intent: BodyIntent | null) {
 }
 
 /**
- * The drive this scene hands to Natural: the stage's drive for a host that performs a whole body (`body`), so she
- * settles in and draws the whole-body kinds, and without new activities while a clip plays. Natural decides when she
+ * The drive this scene hands to Natural: the stage's drive for a host that performs a whole body (`body`), so the mind
+ * settles her in and she draws the whole-body kinds, and without new activities while a clip plays. Natural decides when she
  * sleeps; the director plays the model's sleep clip for it, or the procedural doze. `errands` lists unasked clips
  * while the user allowed one and wanders in roam mode on the desktop stage. Rebuilt only when the stage's drive, the
  * rate, the body or the errands change, so Natural sees a new drive only then.
  */
 function resolveIdleDrive(): NaturalIdleDrive | null {
-  // Null also withdraws energy offsets, active acts, settling, and cues; the mind separately suppresses decisions.
+  // Null also withdraws energy offsets, active acts, and cues; the mind separately suppresses decisions and settling.
   if (hostIdleDrive === null || !props.idleActivities)
     return sceneIdleDrive = null
   const rate = stance?.intent?.action ? 0 : hostIdleDrive.rate
@@ -1902,6 +1904,8 @@ defineExpose({
   attend: (intent: AttendIntent) => attendInbox.receive(intent),
   /** Natural only: the mind's current presence answer, also seeded when this scene attaches. */
   setAway: (away: boolean) => { bodyAway = away },
+  /** Natural only: the mind's settle, also seeded when this scene attaches; the director reads it at the next frame. */
+  setSettled: (settled: boolean) => { mindSettled = settled },
   /** Natural only: ends a sleep with the gentle wake; ignored while she is awake. */
   wakeFromSleep: () => natural?.wake(),
   /** Natural only: a brief reaction to the desktop; `wake` also rouses her from sleep with a start. */

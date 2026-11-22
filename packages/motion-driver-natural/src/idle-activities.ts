@@ -246,8 +246,6 @@ const letGoWindowSeconds = 30
 const maxShiftCalm = 0.6
 /** Seconds a requested sleep lasts before she wakes on her own: the settle and one slow nod, into the next. */
 const playedSleepSeconds = 24
-/** Seconds of continuous `idle` mode after which a body host's character settles in: the director's idle-to-sit time (architecture 4f). */
-const settleSeconds = 120
 /** Rise over `attack`, hold, fall over `release`; 0 outside. Zero slope at every joint. */
 function trapezoid(age: number, attack: number, hold: number, release: number) {
   if (age <= 0 || age >= attack + hold + release)
@@ -336,8 +334,6 @@ export class NaturalIdleActivities {
   record: IdleBehaviourRecord | null = null
   /** The latest sway that bound to the beat clock, kept after it ends; null before the first. */
   grooveLock: IdleGrooveLock | null = null
-  /** A body host's character has been idle long enough to settle in; always false without `body`. */
-  settled = false
   /** What she could see at the latest step; a new object only when a field changed. Null before the first step. */
   view: IdleView | null = null
 
@@ -351,8 +347,6 @@ export class NaturalIdleActivities {
   /** Start time of the about-to-speak hold that a let-go already answered. */
   private answeredHold: number | null = null
   private eyesUntil = 0
-  /** Start of the continuous `idle` mode that settling counts from; null outside it or without `body`. */
-  private idleSince: number | null = null
   /** The latest errand started, kept after it ends; null before the first. */
   errand: IdleErrandRecord | null = null
   private errandSeq = 0
@@ -456,20 +450,11 @@ export class NaturalIdleActivities {
       this.pendingCue = null
       for (const order of this.orders.splice(0))
         this.refuse(order)
-      this.idleSince = null
-      this.settled = false
       this.updateView(null, input, undefined)
       this.advanceGrooves(at + dt, input.beatClock)
       this.sample(at + dt)
       return
     }
-
-    // Like the director's idle clock: anything that takes her out of `idle` mode, or must be answered, stands her up.
-    if (drive.body === true && input.mode === 'idle' && !input.interrupt)
-      this.idleSince ??= at
-    else
-      this.idleSince = null
-    this.settled = this.idleSince !== null && at - this.idleSince >= settleSeconds
 
     const cue = this.pendingCue
     this.pendingCue = null
