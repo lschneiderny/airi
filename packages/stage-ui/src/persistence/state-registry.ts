@@ -700,15 +700,12 @@ export const stateRegistry = defineStateRegistry([
     ],
   },
   {
-    id: 'mmd-clip-metadata',
-    owner: 'useMMD',
-    writers: ['packages/stage-ui-mmd/src/stores/mmd.ts'],
+    id: 'mmd-clip-metadata-legacy',
+    owner: 'Retired MMD clip metadata',
+    writers: ['packages/stage-ui-mmd/src/stores/clip-metadata.ts'],
     tier: 'plain',
-    exception: 'Fork state awaiting S2 migration',
-    // The mmd reset owns the live state and runs once before this sweep.
-    locations: [
-      { area: 'localStorage', perModel: 'settings/mmd/available-clip-meta' },
-    ],
+    exception: 'Legacy sweep only',
+    locations: [{ area: 'localStorage', perModel: 'settings/mmd/available-clip-meta', legacy: true }],
   },
   {
     id: 'mmd-performance-settings',

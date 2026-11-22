@@ -5,6 +5,7 @@ import { createSyncedPiniaPlugin } from 'pinia-plugin-synced'
 import { afterEach, expect, it, vi } from 'vitest'
 import { createApp, watch } from 'vue'
 
+import { useMMDClipMetadata } from './clip-metadata'
 import { useMMD } from './mmd'
 import { useMMDPerformanceSettings } from './performance-settings'
 
@@ -104,4 +105,48 @@ it('still delivers the upstream transient perform request to another window', as
   expect(sender.performRequest?.nonce).toBe(1)
   sender.requestPerform(null, { source: 'lab' })
   expect(sender.performRequest).toEqual({ name: null, loop: false, source: 'lab', nonce: 2 })
+})
+
+it('replicates the runtime catalog without persistence or follower proposals and resets from a follower', async () => {
+  const namespace = `mmd-metadata:${crypto.randomUUID()}`
+  const leader = context(namespace, 'leader-only')
+  await coordinated(leader.runtime, () => leader.runtime.isLeader())
+  const follower = context(namespace, 'follower-only')
+  await coordinated(follower.runtime, () => follower.runtime.getLeaderId() === leader.runtime.participantId)
+  const producer = useMMDClipMetadata(leader.pinia)
+  const reader = useMMDClipMetadata(follower.pinia)
+  const writes = vi.spyOn(Storage.prototype, 'setItem')
+  const traffic = vi.spyOn(BroadcastChannel.prototype, 'postMessage')
+  const observe = (ready: () => boolean) => new Promise<void>((resolve, reject) => {
+    let stop: (() => void) | undefined
+    const timeout = setTimeout(() => {
+      stop?.()
+      reject(new Error('Metadata snapshot timed out'))
+    }, 5000)
+    stop = watch(() => reader.snapshot, () => {
+      if (ready()) {
+        clearTimeout(timeout)
+        stop?.()
+        resolve()
+      }
+    }, { flush: 'sync' })
+  })
+  const a = observe(() => reader.snapshot.modelId === 'model-a' && !!reader.snapshot.clips.wave)
+  const epochA = producer.beginLoad('model-a')
+  producer.publish('model-a', epochA, { name: 'wave', label: 'wave', kind: 'gesture', layer: 'upper', loop: false, durationMs: 2000, notes: [] })
+  await a
+  const b = observe(() => reader.snapshot.modelId === 'model-b' && !!reader.snapshot.clips.bow)
+  const epochB = producer.beginLoad('model-b')
+  expect(producer.snapshot.clips).toEqual({})
+  expect(producer.publish('model-a', epochA, { name: 'late', label: 'late', kind: 'gesture', layer: 'upper', loop: false, durationMs: 2000, notes: [] })).toBe(false)
+  producer.publish('model-b', epochB, { name: 'bow', label: 'bow', kind: 'gesture', layer: 'upper', loop: false, durationMs: 2000, notes: [] })
+  await b
+  const cleared = observe(() => reader.snapshot.modelId === null)
+  await reader.removeModel('model-b')
+  await cleared
+  expect(producer.snapshot.clips).toEqual({})
+  expect(producer.publish('model-b', epochB, { name: 'late', label: 'late', kind: 'gesture', layer: 'upper', loop: false, durationMs: 2000, notes: [] })).toBe(false)
+  expect((await follower.store.update({ stageCharacterHeight: -1 })).success).toBe(false)
+  expect(writes).not.toHaveBeenCalled()
+  expect(traffic.mock.calls.filter(([message]) => JSON.stringify(message).includes('"replaceState"'))).toEqual([])
 })

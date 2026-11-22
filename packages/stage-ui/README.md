@@ -37,6 +37,9 @@ before publishing the model; model deletion removes its entries. Upstream
 display preferences and imported motion files keep their existing owners.
 Use this document for realisation settings, not character behavior or runtime
 clip metadata. The state registry includes it in desktop reset and Delete all data.
+`useMMDClipMetadata().clipFor(modelId, name)` supplies the matching runtime catalog
+to Settings. A model or library load clears the previous snapshot; Settings
+never saves it or proposes it back to the stage.
 
 ## OpenCode Go desktop transport
 

@@ -7,7 +7,7 @@ import type { ModelSettingsRuntimeSnapshot } from './runtime'
 import en from '@proj-airi/i18n/locales/en'
 
 import { setActiveDisplayModelForSettings } from '@proj-airi/stage-shared/composables'
-import { useMMDPerformanceSettings } from '@proj-airi/stage-ui-mmd/stores'
+import { useMMDClipMetadata, useMMDPerformanceSettings } from '@proj-airi/stage-ui-mmd/stores'
 import { createPinia } from 'pinia'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { cleanup, render } from 'vitest-browser-vue'
@@ -522,12 +522,16 @@ describe('mmd model settings clips', () => {
       { id: 'mmd-motion-3', name: 'dance-long' },
       { id: 'mmd-motion-4', name: 'empty' },
     ]
-    store.availableClipMeta = {
+    const metadata = useMMDClipMetadata(pinia)
+    const epoch = metadata.beginLoad(MODEL_ID)
+    const clips = {
       'arms-wave': clipMeta('arms-wave', 'gesture', 'upper', 2_000),
       'legs-step': clipMeta('legs-step', 'action', 'full', 3_000),
       'dance-long': clipMeta('dance-long', 'dance', 'full', 50_000),
       'empty': clipMeta('empty', 'unusable', 'none', 1_000, ['no-animated-bones']),
     }
+    for (const clip of Object.values(clips))
+      metadata.publish(MODEL_ID, epoch, clip)
     const screen = await render(MMDSettings, {
       props: { palette: [], runtimeSnapshot: localSnapshot },
       global: { plugins: [pinia, createTestI18n()] },
@@ -602,7 +606,7 @@ describe('mmd model settings clips', () => {
     await expect.element(exposed).not.toBeDisabled()
     await exposed.click()
     await nextTick()
-    expect(performance.exposedActions(MODEL_ID, store.availableMotions, store.availableClipMeta)).toEqual([{ name: 'arms-wave', label: 'wave', kind: 'gesture', layer: 'upper', exposed: true, idle: false }])
+    expect(performance.exposedActions(MODEL_ID, store.availableMotions)).toEqual([{ name: 'arms-wave', label: 'wave', kind: 'gesture', layer: 'upper', exposed: true, idle: false }])
     expect(JSON.parse(localStorage.getItem('settings/mmd/performance')!).clipCuration[MODEL_ID]['arms-wave']).toEqual({ label: 'wave', kind: null, loop: null, aiMayUse: true, idleMayUse: false })
   })
 
@@ -617,8 +621,8 @@ describe('mmd model settings clips', () => {
     await expect.element(idle).not.toBeDisabled()
     await idle.click()
     await nextTick()
-    expect(performance.labeledClips(MODEL_ID, store.availableMotions, store.availableClipMeta).find(clip => clip.name === 'arms-wave')).toMatchObject({ exposed: false, idle: true })
-    expect(performance.exposedActions(MODEL_ID, store.availableMotions, store.availableClipMeta)).toEqual([])
+    expect(performance.labeledClips(MODEL_ID, store.availableMotions).find(clip => clip.name === 'arms-wave')).toMatchObject({ exposed: false, idle: true })
+    expect(performance.exposedActions(MODEL_ID, store.availableMotions)).toEqual([])
   })
 
   it('disables the switch for an unlabeled or unusable clip and the loop toggle for a dance', async () => {

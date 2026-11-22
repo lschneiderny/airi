@@ -1,3 +1,4 @@
+export * from './clip-metadata'
 export * from './expression-store'
 export * from './mmd'
 export * from './motion-diagnostics'

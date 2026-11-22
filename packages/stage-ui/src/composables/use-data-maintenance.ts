@@ -126,7 +126,7 @@ const settingsRegistrations = [
   'mmd',
   'mmd-motion-files',
   'mmd-performance-settings',
-  'mmd-clip-metadata',
+  'mmd-clip-metadata-legacy',
   'situation-settings',
   'expression-performance-settings',
   'host-notice-settings',

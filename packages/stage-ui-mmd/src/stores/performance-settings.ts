@@ -1,4 +1,4 @@
-import type { ClipKind, ClipLayer, DerivedClipMeta } from '@proj-airi/motion-driver-humanoid/clip-meta'
+import type { ClipKind, ClipLayer } from '@proj-airi/motion-driver-humanoid/clip-meta'
 import type { SettingsDocument } from '@proj-airi/stage-shared/composables'
 import type {} from 'pinia-plugin-synced'
 
@@ -11,6 +11,8 @@ import { defineStore } from 'pinia'
 import { computed } from 'vue'
 
 import * as v from 'valibot'
+
+import { useMMDClipMetadata } from './clip-metadata'
 
 export type MMDMotionDriver = 'natural' | 'classic'
 export type MMDRoamMode = 'stay' | 'roam'
@@ -166,16 +168,26 @@ function removeLegacySettings() {
 
 /** MMD realisation settings. Read projections; await commands instead of proposing whole maps from a follower. */
 export const useMMDPerformanceSettings = defineStore('mmd-performance-settings', () => {
+  const clipMetadata = useMMDClipMetadata()
   const settings = useSettingsDocument(documentKey, entries, { label: 'mmd-performance-settings', initial: readLegacySettings })
-  const motionDriver = computed(() => settings.document.value.motionDrivers[activeDisplayModelForSettings('mmd')] ?? 'natural')
+  const motionDriver = computed(() => {
+    const modelId = activeDisplayModelForSettings('mmd')
+    const drivers = settings.document.value.motionDrivers
+    return Object.hasOwn(drivers, modelId) ? drivers[modelId] : 'natural'
+  })
   const stageCharacterHeight = computed(() => settings.document.value.stageCharacterHeight)
   const roamMode = computed(() => settings.document.value.roamMode)
   const stanceSlots = computed(() => settings.document.value.stanceSlots)
   const clipCuration = computed(() => settings.document.value.clipCuration)
-  const curationFor = computed(() => (modelId: string, name: string): MMDClipCuration => clipCuration.value[modelId]?.[name] ?? defaultCuration)
-  const labeledClips = computed(() => (modelId: string, motions: readonly { name: string }[], metadata: Record<string, DerivedClipMeta & { name: string }>): MMDLabeledClip[] => {
+  const curationFor = computed(() => (modelId: string, name: string): MMDClipCuration => {
+    if (!Object.hasOwn(clipCuration.value, modelId))
+      return defaultCuration
+    const clips = clipCuration.value[modelId]
+    return Object.hasOwn(clips, name) ? clips[name] : defaultCuration
+  })
+  const labeledClips = computed(() => (modelId: string, motions: readonly { name: string }[]): MMDLabeledClip[] => {
     return motions.flatMap(({ name }) => {
-      const meta = metadata[name]
+      const meta = clipMetadata.clipFor(modelId, name)
       const curation = curationFor.value(modelId, name)
       const kind = curation.kind ?? meta?.kind
       if (!meta || curation.label === null || !kind || kind === 'stance' || kind === 'unusable')
@@ -183,8 +195,8 @@ export const useMMDPerformanceSettings = defineStore('mmd-performance-settings',
       return [{ name, label: curation.label, kind, layer: effectiveLayer(meta, curation.kind), exposed: curation.aiMayUse, idle: curation.idleMayUse }]
     })
   })
-  const exposedActions = computed(() => (modelId: string, motions: readonly { name: string }[], metadata: Record<string, DerivedClipMeta & { name: string }>) =>
-    labeledClips.value(modelId, motions, metadata).filter(clip => clip.exposed))
+  const exposedActions = computed(() => (modelId: string, motions: readonly { name: string }[]) =>
+    labeledClips.value(modelId, motions).filter(clip => clip.exposed))
 
   async function commit(patch: Partial<MMDPerformanceSettings>) {
     const result = await settings.update(patch)
@@ -194,6 +206,7 @@ export const useMMDPerformanceSettings = defineStore('mmd-performance-settings',
   }
 
   async function initialize() {
+    await clipMetadata.initialize()
     const modelId = activeDisplayModelForSettings('mmd')
     const pending = settings.document.value.unassignedMotionDriver
     await commit(modelId && pending && !Object.hasOwn(settings.document.value.motionDrivers, modelId)
@@ -231,7 +244,7 @@ export const useMMDPerformanceSettings = defineStore('mmd-performance-settings',
     return (await commit({ stanceSlots: { ...settings.document.value.stanceSlots, [modelId]: next } })).success
   }
 
-  async function setCuration(modelId: string, name: string, patch: Partial<MMDClipCuration>, derivedKind?: ClipKind) {
+  async function setCuration(modelId: string, name: string, patch: Partial<MMDClipCuration>) {
     if (!modelId || !isRecord(patch))
       return false
     const previous = curationFor.value(modelId, name)
@@ -242,7 +255,7 @@ export const useMMDPerformanceSettings = defineStore('mmd-performance-settings',
     const model = clipCuration.value[modelId] ?? {}
     if (next.label !== null && Object.entries(model).some(([other, curation]) => other !== name && curation.label === next.label))
       return false
-    const kind = next.kind ?? derivedKind
+    const kind = next.kind ?? clipMetadata.clipFor(modelId, name)?.kind
     if (next.label === null || kind === 'stance' || kind === 'unusable') {
       next.aiMayUse = false
       next.idleMayUse = false
@@ -254,6 +267,7 @@ export const useMMDPerformanceSettings = defineStore('mmd-performance-settings',
 
   /** Motion files are shared by name; removing one drops references across the same model maps as before. */
   async function removeClip(name: string) {
+    await clipMetadata.removeClip(name)
     await commit({
       stanceSlots: Object.fromEntries(Object.entries(stanceSlots.value).map(([id, slots]) => [id, Object.fromEntries(Object.entries(slots).filter(([, clip]) => clip !== name))])),
       clipCuration: Object.fromEntries(Object.entries(clipCuration.value).map(([id, clips]) => [id, omit(clips, [name])])),
@@ -261,6 +275,7 @@ export const useMMDPerformanceSettings = defineStore('mmd-performance-settings',
   }
 
   async function removeModel(modelId: string) {
+    await clipMetadata.removeModel(modelId)
     const current = settings.document.value
     if (![current.motionDrivers, current.stanceSlots, current.clipCuration].some(map => Object.hasOwn(map, modelId)))
       return
@@ -268,6 +283,7 @@ export const useMMDPerformanceSettings = defineStore('mmd-performance-settings',
   }
 
   async function reset() {
+    await clipMetadata.reset()
     await settings.reset()
     removeLegacySettings()
   }

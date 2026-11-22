@@ -7,6 +7,7 @@ import { createPinia, disposePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 
+import { useMMDClipMetadata } from './clip-metadata'
 import { useMMD } from './mmd'
 import { useMMDPerformanceSettings } from './performance-settings'
 
@@ -38,7 +39,9 @@ let pinias: ReturnType<typeof createPinia>[] = []
 function freshStore() {
   const pinia = createPinia()
   pinias.push(pinia)
-  return { motions: useMMD(pinia), settings: useMMDPerformanceSettings(pinia) }
+  const metadata = useMMDClipMetadata(pinia)
+  const epoch = metadata.beginLoad(MODEL)
+  return { motions: useMMD(pinia), settings: useMMDPerformanceSettings(pinia), metadata, epoch }
 }
 
 beforeEach(() => {
@@ -55,7 +58,7 @@ afterEach(() => {
 
 async function importWithMeta(store: ReturnType<typeof freshStore>, name: string, kind: DerivedClipMeta['kind'], layer: DerivedClipMeta['layer']) {
   await store.motions.addMotion(vmd(name))
-  store.motions.availableClipMeta = { ...store.motions.availableClipMeta, [name]: meta(name, kind, layer) }
+  store.metadata.publish(MODEL, store.epoch, meta(name, kind, layer))
 }
 
 describe('mmd clip curation store', () => {
@@ -112,19 +115,19 @@ describe('mmd clip curation store', () => {
     await store.settings.setCuration(MODEL, 'idle', { label: 'idle', aiMayUse: true })
     await store.settings.setCuration(MODEL, 'broken', { label: 'broken', aiMayUse: true })
 
-    expect(store.settings.labeledClips(MODEL, store.motions.availableMotions, store.motions.availableClipMeta).map(clip => clip.name)).toEqual(['wave', 'spin', 'hidden'])
-    expect(store.settings.exposedActions(MODEL, store.motions.availableMotions, store.motions.availableClipMeta)).toEqual([
+    expect(store.settings.labeledClips(MODEL, store.motions.availableMotions).map(clip => clip.name)).toEqual(['wave', 'spin', 'hidden'])
+    expect(store.settings.exposedActions(MODEL, store.motions.availableMotions)).toEqual([
       { name: 'wave', label: 'wave', kind: 'gesture', layer: 'upper', exposed: true, idle: false },
       { name: 'spin', label: 'spin', kind: 'action', layer: 'full', exposed: true, idle: false },
     ])
-    expect(store.settings.exposedActions('model-b', store.motions.availableMotions, store.motions.availableClipMeta)).toEqual([])
+    expect(store.settings.exposedActions('model-b', store.motions.availableMotions)).toEqual([])
   })
 
   it('applies a kind override to the listed kind and layer', async () => {
     const store = freshStore()
     await importWithMeta(store, 'long-wave', 'action', 'upper')
     await store.settings.setCuration(MODEL, 'long-wave', { label: 'long-wave', kind: 'gesture', aiMayUse: true })
-    expect(store.settings.exposedActions(MODEL, store.motions.availableMotions, store.motions.availableClipMeta)).toEqual([
+    expect(store.settings.exposedActions(MODEL, store.motions.availableMotions)).toEqual([
       { name: 'long-wave', label: 'long-wave', kind: 'gesture', layer: 'upper', exposed: true, idle: false },
     ])
   })
@@ -140,9 +143,9 @@ describe('mmd clip curation store', () => {
     await store.motions.removeMotion(id)
 
     expect(store.settings.curationFor(MODEL, 'wave')).toEqual({ label: null, kind: null, loop: null, aiMayUse: false, idleMayUse: false })
-    expect(store.motions.availableClipMeta.wave).toBeUndefined()
+    expect(store.metadata.clipFor(MODEL, 'wave')).toBeUndefined()
     expect(store.settings.curationFor(MODEL, 'bow').label).toBe('bow')
-    expect(store.motions.availableClipMeta.bow).toBeDefined()
+    expect(store.metadata.clipFor(MODEL, 'bow')).toBeDefined()
   })
 
   it('lists a clip as allowed for idle, and reads a record saved before the field existed as not allowed', async () => {
@@ -150,10 +153,10 @@ describe('mmd clip curation store', () => {
     const store = freshStore()
     await importWithMeta(store, 'wave', 'gesture', 'upper')
     expect(store.settings.curationFor(MODEL, 'wave')).toEqual({ label: 'wave', kind: null, loop: null, aiMayUse: true, idleMayUse: false })
-    expect(store.settings.labeledClips(MODEL, store.motions.availableMotions, store.motions.availableClipMeta)).toEqual([{ name: 'wave', label: 'wave', kind: 'gesture', layer: 'upper', exposed: true, idle: false }])
+    expect(store.settings.labeledClips(MODEL, store.motions.availableMotions)).toEqual([{ name: 'wave', label: 'wave', kind: 'gesture', layer: 'upper', exposed: true, idle: false }])
 
     expect(await store.settings.setCuration(MODEL, 'wave', { idleMayUse: true })).toBe(true)
-    expect(store.settings.labeledClips(MODEL, store.motions.availableMotions, store.motions.availableClipMeta)[0]).toMatchObject({ exposed: true, idle: true })
+    expect(store.settings.labeledClips(MODEL, store.motions.availableMotions)[0]).toMatchObject({ exposed: true, idle: true })
   })
 
   it('keeps valid siblings when old clip curation is corrupt', async () => {
