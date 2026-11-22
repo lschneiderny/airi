@@ -123,10 +123,16 @@ export interface StagePerformanceScene {
    */
   action?: (label: string, gesture?: { kind: CueGestureKind, count: number }) => void
   /**
-   * Live2D and MMD Natural: adds the mood dose the mind decided, deduplicated by id. A scene without it, such as a
-   * scenario sink, drops the dose; the mind's state still advances.
+   * Live2D and MMD Natural: adds the mood dose the mind decided, a touch's or an emotion episode's, deduplicated by id.
+   * A scene without it drops the dose; the mind's state still advances.
    */
   addMood?: (dose: MoodDose) => void
+  /**
+   * Live2D and MMD Natural: seeds her mood. The scene reads `level` once now for its Natural controller and once for each
+   * controller it creates later (a model reload), so a new controller starts from the mind's level; the controller then
+   * decays it on its own clock. A scene without it starts each controller at rest.
+   */
+  seedMood?: (level: () => Omit<MoodDose, 'id'>) => void
   /**
    * Live2D and MMD Natural: performs the mind's reaction to a touch. A poke starts at its point. A pet `start` lets
    * the pet hand reach Natural and `end` withdraws it, so no pet shows that the mind did not grant.
@@ -260,8 +266,12 @@ const browserTimers: Required<StagePerformanceConductorOptions>['timers'] = {
  * fewer channels than the newest stage that the mind follows; that miss emits a performer refusal.
  * Beats, baseline and idle drive remain continuous performer inputs.
  *
- * Moodless turns: `markMoodless(turnId)` makes every later episode decided for that turn carry `moodGain` 0, so a
- * reaction to a touch shows on the face without dosing mood a second time; the touch already dosed it.
+ * Moodless turns: `markMoodless(turnId)` marks every later emotion or expression stimulus of that turn `moodless`, so
+ * the mind doses no mood for a reaction to a touch that already dosed it, and the reaction still shows on the face.
+ *
+ * Mood: the mind keeps her fast mood and sends each dose as a posture `mood` intent, which follows the episode it
+ * belongs to. A scene that attaches or becomes Natural again gets the mind's level as a seed source
+ * (`seedMood`), which it reads once for each Natural controller it creates.
  *
  * Timing events: the conductor derives `TimingEvent`s from playback and sends them to the
  * decider as `timing` signals, each carrying its turn id:
@@ -281,9 +291,8 @@ const browserTimers: Required<StagePerformanceConductorOptions>['timers'] = {
  * Character profiles: every signal is decided under the effective context of its character
  * (see `profile`): `resolveEffectiveSettings` scales the mood dynamics, `applyMappingWeights`
  * scales or disables catalog mappings, and `expressiveness` scales an emotion's nominal
- * intensity, clamped to [0, 1], before the mind bands it. Each decided episode carries
- * `moodGain`, the mood dose gain of its band under that context, so Natural doses it under the
- * character that produced it even when a later decision uses another profile.
+ * intensity, clamped to [0, 1], before the mind bands it. The mind doses each episode's mood under the
+ * settings of that context, so a later decision under another profile cannot change the dose.
  *
  * Affect recording: an explicit session (see {@link StagePerformanceConductor.startRecording}).
  */
@@ -312,7 +321,7 @@ export class StagePerformanceConductor {
   private timingSeq = 0
   /** The open affect recording and the JSON of the last context it recorded. */
   private recording: { trace: Omit<AffectTrace, 'endAt'>, context: string } | undefined
-  /** Turns whose episodes dose no mood, in insertion order; see {@link maxMoodlessTurns}. */
+  /** Turns whose stimuli are moodless, in insertion order; see {@link maxMoodlessTurns}. */
   private readonly moodlessTurns = new Set<string>()
   /** Every mind step that may touch the voice state goes through it, so the voice port sees what changed. */
   private readonly voice: MindVoice
@@ -321,6 +330,9 @@ export class StagePerformanceConductor {
   private idleDormant = false
   private presenceScene: StagePerformanceScene | undefined
   private presenceBody = false
+  /** The scene last given the mood seed, and whether it declared posture then. */
+  private moodScene: StagePerformanceScene | undefined
+  private moodPosture = false
   private readonly refusalListeners = new Set<(refusal: PerformerRefusal) => void>()
 
   constructor(private readonly options: StagePerformanceConductorOptions) {
@@ -345,18 +357,18 @@ export class StagePerformanceConductor {
     const scaled = Math.min(1, Math.max(0, nominal * expressiveness))
     // A repeat that neither starts nor escalates an episode yields no intent, and the decider hears nothing.
     // An idle intent that fell due before the stimulus comes first; the store dispatches it.
-    const intents = this.options.mind.receive({ kind: 'emotion', source, emotion, nominal: scaled, turnId, settings: context.settings })
+    const intents = this.options.mind.receive({ kind: 'emotion', source, emotion, nominal: scaled, turnId, moodless: this.moodless(turnId), settings: context.settings })
     const intent = intents.find(each => each.kind === 'emotion' || each.kind === 'release')
     if (!intent || !this.permitted(intent))
       return
     let slots: SlotCommand[] = []
     if (intent?.kind === 'emotion') {
       slots = this.decide({ kind: 'reaction', intentId: intent.id, episode: intent.episode, turnId, at }, context).slots
-      this.dispatchNatural(this.naturalEpisode(intent.episode, intents, context, turnId), intent.hold, at)
+      this.dispatchNatural(this.naturalEpisode(intent.episode, intents), intents, intent.hold, at)
     }
     else if (intent?.kind === 'release') {
       slots = this.decide({ kind: 'neutral', intentId: intent.id, turnId, at }, context).slots
-      this.dispatchNatural(null, intent.hold, at)
+      this.dispatchNatural(null, intents, intent.hold, at)
     }
     this.dispatchSlots(slots, at)
   }
@@ -395,6 +407,7 @@ export class StagePerformanceConductor {
       lease: { holdSeconds: lease.holdSeconds, until: lease.until },
       mapping: mapping && { emotion: mapping.emotion, minBand: mapping.minBand },
       turnId,
+      moodless: this.moodless(turnId),
       settings: context.settings,
     })
     const intent = intents.find(each => each.kind === 'entry')
@@ -403,7 +416,7 @@ export class StagePerformanceConductor {
     const request = intent
     const episode = request?.episode ?? null
     const decision = this.decide({ kind: 'expression', intentId: intent.id, source, expressionId: entry.id, holdSeconds, episode, turnId, at }, context)
-    this.dispatchNatural(episode && this.naturalEpisode(episode, intents, context, turnId), request?.hold ?? null, at)
+    this.dispatchNatural(episode && this.naturalEpisode(episode, intents), intents, request?.hold ?? null, at)
     this.dispatchSlots(decision.slots, at)
     return entry
   }
@@ -419,7 +432,7 @@ export class StagePerformanceConductor {
     if (!intent || !this.permitted(intent))
       return
     const decision = this.decide({ kind: 'clear', intentId: intent.id, source, slot, turnId, at })
-    this.dispatchNatural(null, intent?.kind === 'release' ? intent.hold : null, at)
+    this.dispatchNatural(null, [], intent?.kind === 'release' ? intent.hold : null, at)
     this.dispatchSlots(decision.slots, at)
   }
 
@@ -565,6 +578,11 @@ export class StagePerformanceConductor {
       scene?.setAway?.(this.options.mind.state.presence.away)
     this.presenceScene = scene
     this.presenceBody = body
+    // A scene that attaches or becomes Natural again starts from her mood, not from its controller's.
+    if (posture && (scene !== this.moodScene || !this.moodPosture))
+      scene?.seedMood?.(() => this.options.mind.moodLevel())
+    this.moodScene = scene
+    this.moodPosture = posture
     if (!posture && !this.idleDormant) {
       this.idleDormant = true
       this.options.idleReports?.([{ kind: 'view', view: dormantIdleView() }])
@@ -585,7 +603,7 @@ export class StagePerformanceConductor {
     this.options.scene()?.action?.(label, gesture)
   }
 
-  /** Every episode decided for `turnId` from now on carries `moodGain` 0. Marking a turn again keeps it marked. */
+  /** Every emotion or expression of `turnId` from now on doses no mood. Marking a turn again keeps it marked. */
   markMoodless(turnId: string) {
     this.moodlessTurns.delete(turnId)
     this.moodlessTurns.add(turnId)
@@ -796,19 +814,14 @@ export class StagePerformanceConductor {
     this.dispatchSlots(this.decide({ kind: 'deadline', at }).slots, at)
   }
 
-  /**
-   * The episode as Natural plays it: with the mood dose gain of its band under the context it was decided in, or 0 for
-   * a moodless turn, so Natural doses it under the character that produced it even when a later decision uses another
-   * profile; and with the body gesture the mind ordered for it, only when this scene declares posture.
-   */
-  private naturalEpisode(episode: ReactionEpisode, intents: readonly MindIntent[], context: DeciderContext, turnId: string | undefined): NaturalEpisode {
-    const moodless = turnId !== undefined && this.moodlessTurns.has(turnId)
+  private moodless(turnId: string | undefined) {
+    return turnId !== undefined && this.moodlessTurns.has(turnId)
+  }
+
+  /** The episode as Natural plays it: with the body gesture the mind ordered for it, only when this scene declares posture. */
+  private naturalEpisode(episode: ReactionEpisode, intents: readonly MindIntent[]): NaturalEpisode {
     const gesture = intents.find(each => each.kind === 'emotion-gesture' && each.episodeId === episode.id)
-    return {
-      ...episode,
-      moodGain: moodless ? 0 : context.settings.moodDynamics[`${episode.band}Gain`],
-      ...gesture?.kind === 'emotion-gesture' && this.permitted(gesture) && { gesture: gesture.gesture },
-    }
+    return { ...episode, ...gesture?.kind === 'emotion-gesture' && this.permitted(gesture) && { gesture: gesture.gesture } }
   }
 
   /** Dispatches the response to one touch in the mind's order: body, mood, moment, line, attend. */
@@ -831,11 +844,15 @@ export class StagePerformanceConductor {
     }
   }
 
-  /** Natural only: the episode first, so a hold never precedes the episode it accompanies. */
-  private dispatchNatural(episode: NaturalEpisode | null, hold: HoldCommand | null, at: number) {
+  /** Natural only: the episode first, then its mood dose, so neither a hold nor a dose precedes the episode it accompanies. */
+  private dispatchNatural(episode: NaturalEpisode | null, intents: readonly MindIntent[], hold: HoldCommand | null, at: number) {
     const scene = this.options.scene()
     if (episode)
       scene?.setEmotion(episode)
+    for (const intent of intents) {
+      if (intent.kind === 'mood' && this.permitted(intent))
+        scene?.addMood?.(intent.dose)
+    }
     if (hold) {
       // Like dispatchSlots: a scene that mounted after the last mute change has not heard it, and its
       // performer would keep an unstarted speech hold for the full unstarted expiry.

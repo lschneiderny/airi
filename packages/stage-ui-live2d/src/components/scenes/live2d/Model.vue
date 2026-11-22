@@ -242,6 +242,14 @@ let hostIdleDrive: NaturalIdleDrive | null = null
 let composedChat: NaturalChatInput | null = null
 /** Owned by the loaded model; replaced on load and cleared before destruction. */
 let rebuildNaturalMotion: (() => void) | undefined
+/** The mind's mood level, read once for each Natural controller this model creates; set by the stage's `seedMood`. */
+let moodSource: (() => Omit<MoodDose, 'id'>) | undefined
+
+/** Seeds the current controller now, and every controller a later rebuild creates, from the mind's mood. */
+function seedMood(source: () => Omit<MoodDose, 'id'>) {
+  moodSource = source
+  naturalMotion?.setMood(source())
+}
 /** A capture can span an adapter rebuild; reattach its observer without restarting the recorder. */
 let naturalCaptureObserver: NaturalMotionObserver | null = null
 /** Detaches the running trace capture without answering it; set only while a capture runs. */
@@ -787,6 +795,8 @@ async function performModelLoad() {
     naturalAdapter.setPaused(paused.value)
     naturalAdapter.setPerformanceSettings(props.performanceSettings)
     naturalAdapter.setReview(naturalDiagnostics.reviewSettings)
+    if (moodSource)
+      naturalAdapter.setMood(moodSource())
     rebuildNaturalMotion = () => {
       naturalAdapter.natural.setObserver(null)
       naturalAdapter.dispose()
@@ -801,6 +811,8 @@ async function performModelLoad() {
       naturalAdapter.setPerformanceSettings(props.performanceSettings)
       naturalAdapter.setReview(naturalDiagnostics.reviewSettings)
       naturalAdapter.natural.setObserver(naturalCaptureObserver)
+      if (moodSource)
+        naturalAdapter.setMood(moodSource())
     }
     // Physics normally loads inside setupLive2DModel; a late load must still hand its outputs back to physics.
     live2DModel.on('physicsLoaded', () => naturalAdapter.setRigProfile(readRigProfile()))
@@ -2046,6 +2058,7 @@ defineExpose({
   setEmotion: (episode: NaturalEpisode) => { pendingNaturalEmotions.push(episode) },
   gesture: (kind: CueGestureKind, count: number) => naturalMotion?.gesture(kind, count),
   addMood: (dose: MoodDose) => naturalMotion?.addMood(dose),
+  seedMood,
   reactToTouch,
   /** Natural only: ends a sleep with the gentle wake; ignored while she is awake. */
   wakeFromSleep: () => naturalMotion?.wake(),

@@ -87,6 +87,8 @@ export class MMDNaturalAdapter {
   private readonly pending: NaturalEpisode[] = []
   private readonly pendingGestures: { kind: CueGestureKind, count: number }[] = []
   private readonly pendingMoods: MoodDose[] = []
+  /** The mind's mood seed, applied on the next frame; a newer seed replaces it. */
+  private pendingMoodLevel: Omit<MoodDose, 'id'> | null = null
   private readonly pendingIdleCues: IdleCueKind[] = []
   private readonly pendingIdleOrders: IdleOrder[] = []
   private readonly pendingCursorOrders: CursorOrder[] = []
@@ -137,6 +139,10 @@ export class MMDNaturalAdapter {
       this.natural.impulse(episode, this.time)
     for (const { kind, count } of this.pendingGestures.splice(0))
       this.natural.gesture(kind, count, this.time)
+    if (this.pendingMoodLevel) {
+      this.natural.setMood(this.pendingMoodLevel, this.time)
+      this.pendingMoodLevel = null
+    }
     for (const dose of this.pendingMoods.splice(0))
       this.natural.addMood(dose, this.time)
     for (const cue of this.pendingIdleCues.splice(0))
@@ -288,9 +294,14 @@ export class MMDNaturalAdapter {
     this.pendingGestures.push({ kind, count })
   }
 
-  /** A decided mood dose, such as a touch; Natural ignores a repeated dose id. */
+  /** A mood dose the mind decided, a touch's or an emotion episode's; Natural ignores a repeated dose id. */
   addMood(dose: MoodDose): void {
     this.pendingMoods.push({ ...dose })
+  }
+
+  /** Seeds Natural's mood with the mind's level on the next frame, before that frame's doses. */
+  setMood(level: Omit<MoodDose, 'id'>): void {
+    this.pendingMoodLevel = { valence: level.valence, arousal: level.arousal, tension: level.tension }
   }
 
   /** Sets the resting face target; Natural filters it on its grid and the face mapping reads the result. */

@@ -264,7 +264,7 @@ export class NaturalMotion {
 
   constructor(options: NaturalMotionOptions = {}) {
     this.emotions = options.emotionTable ?? naturalEmotions
-    this.mood = new NaturalMood(this.emotions)
+    this.mood = new NaturalMood()
     this.hold = new NaturalHoldLayer(this.emotions)
     const seed = options.seed ?? Math.floor((options.random ?? Math.random)() * 2 ** 32)
     const stream = (layer: keyof typeof streamIndex) => createRandomStream(deriveSeed(seed, streamIndex[layer]))
@@ -656,10 +656,19 @@ export class NaturalMotion {
     this.pending.push({ kind: 'gesture', gesture: kind, count })
   }
 
-  /** External affect uses the same grid and mood switch as emotion episode doses. */
+  /** A mood dose the character mind decided (a touch's or an emotion episode's), applied on the next grid step. */
   addMood(dose: MoodDose, nowSeconds: number) {
     this.advance(nowSeconds)
     this.pending.push({ kind: 'mood', dose: { ...dose } })
+  }
+
+  /**
+   * Replaces the mood level with the character mind's, on the next grid step, under the same mood switch as doses. The
+   * scene seeds a controller once when it is created or becomes Natural again; the level then decays on this clock.
+   */
+  setMood(level: Omit<MoodDose, 'id'>, nowSeconds: number) {
+    this.advance(nowSeconds)
+    this.pending.push({ kind: 'mood-level', level: { valence: level.valence, arousal: level.arousal, tension: level.tension } })
   }
 
   /** Advances first; the held target takes effect on the next grid step. Repeated targets keep their side and onset. */

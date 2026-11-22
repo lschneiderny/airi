@@ -111,6 +111,12 @@ provideLive2D(live2d)
 
 const live2dCanvasRef = ref<InstanceType<typeof Live2DCanvas>>()
 const live2dModelRef = ref<InstanceType<typeof Live2DModel>>()
+/** The stage's mood seed, kept here so a model that mounts later (a model switch) is seeded too. */
+let moodSource: (() => Omit<MoodDose, 'id'>) | undefined
+watch(live2dModelRef, (model) => {
+  if (model && moodSource)
+    model.seedMood(moodSource)
+})
 const activeCursorPosition = ref<Live2DEyeFocusSource | null>(null)
 const cursorExpiry = createCursorExpiry(() => {
   activeCursorPosition.value = null
@@ -297,6 +303,11 @@ defineExpose({
   setEmotion: (episode: NaturalEpisode) => live2dModelRef.value?.setEmotion(episode),
   gesture: (kind: CueGestureKind, count: number) => live2dModelRef.value?.gesture(kind, count),
   addMood: (dose: MoodDose) => live2dModelRef.value?.addMood(dose),
+  /** Natural only: seeds every Natural controller of this scene from the mind's mood. */
+  seedMood: (source: () => Omit<MoodDose, 'id'>) => {
+    moodSource = source
+    live2dModelRef.value?.seedMood(source)
+  },
   /** Natural only: performs the mind's reaction to a touch this scene reported. */
   reactToTouch: (intent: TouchReactionIntent) => live2dModelRef.value?.reactToTouch(intent),
   /** Natural only: ends a sleep with the gentle wake; ignored while she is awake. */

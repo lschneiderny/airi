@@ -8,6 +8,7 @@ import type { Component, ComponentInternalInstance, VNode } from 'vue'
 import type { StagePerformanceScene } from '../../composables/performance/use-stage-performance-conductor'
 
 import { NaturalMotion } from '@proj-airi/motion-driver-natural'
+import { naturalEmotions } from '@proj-airi/motion-driver-natural/emotions'
 import { presenceBubbleIdle, presenceBubbleThinking } from '@proj-airi/stage-shared'
 import { DEFAULT_CHARACTER_PROFILE, faceBaselineOf, initialCharacterState, NEUTRAL_FACE_BASELINE, readCharacter } from '@proj-airi/stage-shared/character-state'
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
@@ -289,7 +290,6 @@ describe('stage emotion routing on Live2D', () => {
       intensity: expect.closeTo(0.7, 1),
       band: 'clear',
       escalation: false,
-      moodGain: defaultExpressionPerformanceSettings.moodDynamics.clearGain,
       // The mind's emotion gesture for the episode.
       gesture: 'laugh',
     }])
@@ -534,7 +534,7 @@ describe('stage emotion routing on Live2D', () => {
     ['an unprompted turn at its band gain', 'unprompted-1', clearGain, chat => chat.submitUnprompted({ topicKey: 'qa', topicText: 'QA topic', messageId: 'unprompted-1' })],
     ['a user turn at its band gain', 'user-1', clearGain, (chat, sessionId) => chat.send({ sessionId, messageId: 'user-1', text: 'hello' })],
   ])('doses the ACT emotion of %s', async (_name, turnId, moodGain, start) => {
-    const { episodes } = await renderStage('natural')
+    const { episodes, moods } = await renderStage('natural')
     const { sessionId, requests } = await holdProviderRequests()
 
     const started = until(() => requests.value.length, count => count === 1)
@@ -544,7 +544,13 @@ describe('stage emotion routing on Live2D', () => {
     await useLlmStreamingControlStore().dispatchWith('<|ACT {"emotion":{"name":"happy","intensity":0.6}}|>', { turnId })
     await delivered
 
-    expect(episodes.value.map(episode => [episode.emotion, episode.band, episode.moodGain])).toEqual([[Emotion.Happy, 'clear', moodGain]])
+    expect(episodes.value.map(episode => [episode.emotion, episode.band])).toEqual([[Emotion.Happy, 'clear']])
+    // The mind sends the episode's dose beside it, none for a turn a touch already dosed.
+    const [episode] = episodes.value
+    const doses = moods.value.filter(dose => dose.id.startsWith(`${episode.id}@`))
+    expect(doses).toHaveLength(moodGain === 0 ? 0 : 1)
+    if (moodGain > 0)
+      expect(doses[0].valence).toBeCloseTo(moodGain * episode.intensity * naturalEmotions.happy.mood[0], 12)
     requests.value[0].release()
     await turn
   })
@@ -813,7 +819,7 @@ describe('per-signal character profiles at the Natural consumer', () => {
 
     // The mind's decision is unchanged: the trace records exactly the dispatched episodes.
     const recorded = conductor.exportTrace()!.entries.flatMap(entry => entry.type === 'signal' && entry.signal.kind === 'reaction' ? [entry.signal.episode] : [])
-    expect(pending.map(({ moodGain: _moodGain, gesture: _gesture, ...episode }) => episode)).toEqual(recorded)
+    expect(pending.map(({ gesture: _gesture, ...episode }) => episode)).toEqual(recorded)
     expect(pending).toHaveLength(1)
 
     for (const episode of pending)

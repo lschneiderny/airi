@@ -1,6 +1,7 @@
 import type { NaturalAttentionEvent, NaturalMotionEvent } from '@proj-airi/motion-driver-natural/natural-motion'
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
 
+import { initialMindMoodState, moodEpisodeDose } from '@proj-airi/character-mind'
 import { NaturalBreathLayer } from '@proj-airi/motion-driver-natural/breath'
 import { lostTau, mapCursor, releaseAt } from '@proj-airi/motion-driver-natural/cursor-attention'
 import { answerCursorReports } from '@proj-airi/motion-driver-natural/cursor-report-answers'
@@ -79,9 +80,12 @@ it.each([
   motion.setPerformanceSettings({ ...defaultExpressionPerformanceSettings, heldEmotions: false })
   matched.setPerformanceSettings(withoutRecruitment)
   rest.setPerformanceSettings({ ...withoutRecruitment, mood: false })
+  // The mind's mood dose travels beside the episode; `rest` has mood off and ignores it.
+  const { dose } = moodEpisodeDose(initialMindMoodState, episode, defaultExpressionPerformanceSettings, false, 0)
   for (const instance of [motion, matched, rest]) {
     instance.advance(0)
     instance.impulse(episode, 0)
+    instance.addMood(dose!, 0)
   }
   let moodHeadPeak = 0
   let headPulsePeak = 0

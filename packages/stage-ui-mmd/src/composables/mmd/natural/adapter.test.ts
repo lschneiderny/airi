@@ -3,7 +3,6 @@ import type { NaturalGlanceEvent } from '@proj-airi/motion-driver-natural/frame-
 import type { IdleReport } from '@proj-airi/motion-driver-natural/idle-schedule'
 
 import { mapCursor } from '@proj-airi/motion-driver-natural/cursor-attention'
-import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { describe, expect, it, vi } from 'vitest'
 
 import { MMDNaturalAdapter } from './adapter'
@@ -96,12 +95,12 @@ describe('mmd Natural adapter', () => {
     adapter.impulse(happy)
     adapter.advance(2 / 120, silenced, 100)
     adapter.advance(2 / 120, silenced, 100 + 2 / 120)
-    expect(adapter.mood.valence).toBe(0)
+    expect(adapter.natural.bodyIntent().impulse).toBeNull()
     const { adapter: standard } = fixture()
     standard.impulse(happy)
     standard.advance(2 / 120, input, 100)
     standard.advance(2 / 120, input, 100 + 2 / 120)
-    expect(standard.mood.valence).toBeGreaterThan(0)
+    expect(standard.natural.bodyIntent().impulse).toMatchObject({ emotion: 'happy' })
   })
 
   it('adds a decided mood dose at the next frame', () => {
@@ -186,9 +185,8 @@ describe('mmd Natural adapter', () => {
     expect(reports).toHaveLength(1)
   })
 
-  it('queues episodes until settings reach the next frame and exposes the resulting mood', () => {
+  it('queues episodes until the next frame and doses mood only from the mind\'s dose', () => {
     const { adapter } = fixture()
-    adapter.setPerformanceSettings({ ...defaultExpressionPerformanceSettings, moodDynamics: { ...defaultExpressionPerformanceSettings.moodDynamics, clearGain: 0 } })
     const impulse = vi.spyOn(adapter.natural, 'impulse')
     adapter.impulse({ id: 'happy', emotion: 'happy', nominal: 0.7, intensity: 0.7, band: 'clear', escalation: false })
     expect(impulse).not.toHaveBeenCalled()
@@ -196,11 +194,24 @@ describe('mmd Natural adapter', () => {
     expect(impulse).toHaveBeenCalledOnce()
     adapter.advance(2 / 120, input, 100 + 2 / 120)
     expect(adapter.mood.valence).toBe(0)
-    const { adapter: enabled } = fixture()
-    enabled.impulse({ id: 'happy', emotion: 'happy', nominal: 0.7, intensity: 0.7, band: 'clear', escalation: false })
-    enabled.advance(2 / 120, input, 100)
-    enabled.advance(2 / 120, input, 100 + 2 / 120)
-    expect(enabled.mood.valence).toBeGreaterThan(0)
+    const { adapter: dosed } = fixture()
+    dosed.impulse({ id: 'happy', emotion: 'happy', nominal: 0.7, intensity: 0.7, band: 'clear', escalation: false })
+    dosed.addMood({ id: 'happy@0', valence: 0.12, arousal: 0.09, tension: 0 })
+    dosed.advance(2 / 120, input, 100)
+    dosed.advance(2 / 120, input, 100 + 2 / 120)
+    expect(dosed.mood.valence).toBeGreaterThan(0)
+  })
+
+  it('seeds Natural\'s mood with the mind\'s level at the next frame, before that frame\'s doses', () => {
+    const { adapter } = fixture()
+    adapter.setMood({ valence: 0.5, arousal: -0.2, tension: 0.3 })
+    expect(adapter.mood.valence).toBe(0)
+    adapter.addMood({ id: 'touch', valence: 0.1, arousal: 0, tension: 0 })
+    adapter.advance(2 / 120, input, 100)
+    adapter.advance(2 / 120, input, 100 + 2 / 120)
+    expect(adapter.mood.valence).toBeGreaterThan(0.55)
+    expect(adapter.mood.valence).toBeLessThanOrEqual(0.6)
+    expect(adapter.mood.arousal).toBeLessThan(0)
   })
 
   it('hands the face baseline to Natural, whose face output feeds the morph mapping', () => {

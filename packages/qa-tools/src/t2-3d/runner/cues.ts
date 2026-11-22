@@ -1,4 +1,4 @@
-import type { MindGestureState } from '@proj-airi/character-mind'
+import type { MindGestureState, MindMoodState } from '@proj-airi/character-mind'
 import type { MotionTraceEvent } from '@proj-airi/motion-driver-humanoid/motion-trace'
 import type { NaturalChatInput, NaturalMotionVoice } from '@proj-airi/motion-driver-natural/natural-motion'
 import type { ReactionEpisode } from '@proj-airi/stage-shared/expression-performance'
@@ -8,7 +8,7 @@ import type { MMDStanceWorld } from '@proj-airi/stage-ui-mmd/composables/mmd/sta
 
 import type { Motion3dCue } from '../scenarios'
 
-import { emotionGesture, initialMindGestureState } from '@proj-airi/character-mind'
+import { emotionGesture, initialMindGestureState, initialMindMoodState, moodEpisodeDose } from '@proj-airi/character-mind'
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 
 /**
@@ -44,9 +44,11 @@ export class Motion3dCueDriver {
    * gesture an emotion cue plays, on the run's clock. Routing cues through a whole mind would add its intensity jitter.
    */
   private gestures: MindGestureState = initialMindGestureState
+  /** The mind's mood, kept for the same reason: each emotion cue doses Natural with the mind's delta, after its episode. */
+  private mood: MindMoodState = initialMindMoodState
 
   constructor(
-    private readonly adapter: Pick<MMDNaturalAdapter, 'impulse' | 'gesture' | 'poke' | 'setPet' | 'chatRead'>,
+    private readonly adapter: Pick<MMDNaturalAdapter, 'impulse' | 'addMood' | 'gesture' | 'poke' | 'setPet' | 'chatRead'>,
     private readonly legLength: number,
     private readonly event: (event: MotionTraceEvent) => void,
     private readonly clip: Motion3dClipControl | null = null,
@@ -84,6 +86,10 @@ export class Motion3dCueDriver {
         const decided = emotionGesture(this.gestures, episode, defaultExpressionPerformanceSettings, t)
         this.gestures = decided.memory
         this.adapter.impulse(decided.gesture ? { ...episode, gesture: decided.gesture } : episode)
+        const dosed = moodEpisodeDose(this.mood, episode, defaultExpressionPerformanceSettings, false, t * 1000)
+        this.mood = dosed.mood
+        if (dosed.dose)
+          this.adapter.addMood(dosed.dose)
         this.event({ t, kind: 'emotion', emotion: cue.emotion, band: cue.band, phase: 'pulse', ...(cue.trialId ? { trialId: cue.trialId } : {}) })
         return
       }

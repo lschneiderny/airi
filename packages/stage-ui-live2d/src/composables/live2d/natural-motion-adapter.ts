@@ -211,6 +211,8 @@ export class Live2DNaturalMotionAdapter {
   private chat: NaturalChatInput | null = null
   private readonly pendingGestures: { kind: CueGestureKind, count: number }[] = []
   private readonly pendingMoods: MoodDose[] = []
+  /** The mind's mood seed, applied on the next frame that Natural drives; a newer seed replaces it. */
+  private pendingMoodLevel: Omit<MoodDose, 'id'> | null = null
   private readonly pendingIdleCues: IdleCueKind[] = []
   private readonly pendingIdleOrders: IdleOrder[] = []
   private readonly pendingBeats: number[] = []
@@ -335,6 +337,12 @@ export class Live2DNaturalMotionAdapter {
     const { driver, exclusive } = this.attention()
     if (!this.disposed && driver === 'natural' && !exclusive)
       this.pendingMoods.push({ ...dose })
+  }
+
+  /** Seeds the controller's mood with the mind's level on the next frame Natural drives, before that frame's doses. */
+  setMood(level: Omit<MoodDose, 'id'>) {
+    if (!this.disposed)
+      this.pendingMoodLevel = { valence: level.valence, arousal: level.arousal, tension: level.tension }
   }
 
   /**
@@ -498,6 +506,10 @@ export class Live2DNaturalMotionAdapter {
     for (const gesture of this.pendingGestures.splice(0)) {
       if (active)
         this.controller.gesture(gesture.kind, gesture.count, this.time)
+    }
+    if (active && this.pendingMoodLevel) {
+      this.controller.setMood(this.pendingMoodLevel, this.time)
+      this.pendingMoodLevel = null
     }
     for (const dose of this.pendingMoods.splice(0)) {
       if (active)
