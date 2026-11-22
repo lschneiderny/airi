@@ -60,9 +60,6 @@ export const pokeStrength: Record<NaturalTouchRegion, { nudge: number, surprise:
 /** Seconds the poked character keeps looking at the camera before her gaze wanders again. */
 export const pokeGlanceHold = 0.9
 
-/** Seconds after a poke's surprise during which another poke only flinches, so repeated pokes do not stack surprise. */
-export const pokeSurpriseDedupeSeconds = 2
-
 /**
  * Continuous pet response: a level that fades in while the user pets the head and out
  * after, and the pose and face offsets it scales.

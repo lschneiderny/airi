@@ -98,8 +98,15 @@ it('maps poke and pet start/end to their production touch inputs', () => {
   driver.apply({ at: 0, kind: 'touch', touch: 'poke', region: 'body', x: 0.2, y: -0.4 }, 0)
   driver.apply({ at: 1, kind: 'touch', touch: 'pet-start', region: 'head', x: 0.1, y: 0.3 }, 1)
   driver.apply({ at: 2, kind: 'touch', touch: 'pet-end', region: 'head', x: 0, y: 0 }, 2)
-  expect(adapter.poke).toHaveBeenCalledWith('body', { x: 0.2, y: -0.4 })
+  expect(adapter.poke).toHaveBeenCalledWith('body', { x: 0.2, y: -0.4 }, true)
   expect(adapter.setPet.mock.calls).toEqual([[{ x: 0.1, y: 0.3 }], [null]])
+})
+
+it('asks the mind\'s poke dedupe on the run clock, so a poke within 2 s only flinches', () => {
+  const { adapter, driver } = boundary()
+  for (const t of [0, 1.999, 2])
+    driver.apply({ at: t, kind: 'touch', touch: 'poke', region: 'head', x: 0, y: 0 }, t)
+  expect(adapter.poke.mock.calls.map(call => call[2])).toEqual([true, false, true])
 })
 
 it('scales goals by leg length and signals cancellation', () => {

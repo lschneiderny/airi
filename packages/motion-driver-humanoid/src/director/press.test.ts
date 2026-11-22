@@ -5,7 +5,7 @@ import type { BodyDirectorInput, BodyDirectorMemory } from './index'
 import { describe, expect, it } from 'vitest'
 
 import { createLocomotion } from '../locomotion'
-import { decideBody, initialBodyDirectorMemory, NO_WORLD_BODY_INPUT, STEP_ONTO_CURSOR_MIN_LEGS } from './index'
+import { decideBody, initialBodyDirectorMemory, NO_BODY_REFRACTORY, NO_WORLD_BODY_INPUT, STEP_ONTO_CURSOR_MIN_LEGS } from './index'
 
 // The locomotion tests' fixture traits: leg 10, on a ground of 60 legs each side.
 const leg = 10
@@ -82,6 +82,7 @@ function simulate(scenario: PressScenario) {
 
       actionRequest: null,
       actionFeedback: null,
+      refractory: NO_BODY_REFRACTORY,
       dragging: false,
       cursorX,
       cursorOnStage: true,

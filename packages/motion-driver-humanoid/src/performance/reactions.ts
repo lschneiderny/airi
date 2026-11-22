@@ -8,7 +8,7 @@ import { ARM_START, BODY_CHANNELS, BODY_TICK, CHANNEL_GROUPS, channelIndex, DEG,
 
 /** 4d flinch: a step through the 3a response at 3.5 Hz and damping 0.45, released after 0.25 s; it peaks near 80 ms and rings once. */
 const FLINCH = { response: secondOrderCoefficients({ f: 3.5, zeta: 0.45, r: 0 }, BODY_TICK), release: 0.25 }
-/** Natural's poke dedupe window (`touch.ts` `pokeSurpriseDedupeSeconds`): a poke this soon after the last flinches at 0.6. */
+/** The poke surprise dedupe window (the character mind's `POKE_SURPRISE_DEDUPE_MS`): a poke this soon after the last flinches at 0.6. */
 const REPEAT = { seconds: 2, scale: 0.6 }
 /**
  * How long the trunk follows Natural's head pulse after a head poke: 15 of the longest poke nudge tau (`touch.ts`

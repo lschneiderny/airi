@@ -1,4 +1,4 @@
-import type { AttendIntent, CharacterMind, ChatReadIntent, ChatStimulus, CueGestureStimulus, MindIdleIntent, MindIntent, PerformerCapabilities, TouchReactionIntent, TouchReport } from '@proj-airi/character-mind'
+import type { AttendIntent, CharacterMind, ChatReadIntent, ChatStimulus, CueGestureStimulus, MindIdleIntent, MindIntent, PerformerCapabilities, PerformerReport, RefractoryRemaining, TouchReactionIntent, TouchReport } from '@proj-airi/character-mind'
 import type { FaceBaseline } from '@proj-airi/motion-driver-natural/baseline'
 import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
 import type { CursorOrder, CursorReport } from '@proj-airi/motion-driver-natural/cursor-notice'
@@ -59,7 +59,7 @@ const maxMoodlessTurns = 32
 
 /** Intents the mind store hands to every attached stage; the conductor's own answers skip them. */
 function storeDispatched(intent: MindIntent): boolean {
-  return intent.kind === 'idle-act' || intent.kind === 'idle-errand' || intent.kind === 'settle'
+  return intent.kind === 'idle-act' || intent.kind === 'idle-errand' || intent.kind === 'settle' || intent.kind === 'refractory'
 }
 
 /** The turn a signal belongs to; deadline and muted signals belong to none. */
@@ -189,6 +189,11 @@ export interface StagePerformanceScene {
    * attaches or its posture returns. A scene without a body director drops it.
    */
   setSettled?: (settled: boolean) => void
+  /**
+   * MMD Natural: the mind's director refractories as durations left, which the body director stamps on its clock at its
+   * next frame; seeded again when a scene attaches or its body returns. A scene without a body director drops them.
+   */
+  setRefractory?: (remaining: RefractoryRemaining) => void
   /**
    * Live2D and MMD Natural: reads the chat, as the mind decided for a sent message or an unfolded chat. Natural draws
    * the read's delay and hold and drops it without a chat target or while she talks. A scene without it drops the read.
@@ -529,6 +534,20 @@ export class StagePerformanceConductor {
       this.options.scene()?.setSettled?.(settled)
   }
 
+  /**
+   * Hands the mind what a performer stamped: the body director's clip ends, gesture clips, and accepted tools, and the
+   * moment entries `useIdleProps` marked. The store dispatches the `refractory` answer to every attached stage.
+   */
+  performerReport(report: PerformerReport) {
+    this.options.mind.receive({ kind: 'performer-report', report })
+  }
+
+  /** Hands the mind's refractories to the declared body performer; `syncScene` seeds them when the body returns. */
+  refractory(remaining: RefractoryRemaining) {
+    if (this.options.capabilities().body)
+      this.options.scene()?.setRefractory?.(remaining)
+  }
+
   /** Asks the mind for a named idle act. The store dispatches its answer to attached stages. */
   idlePlay(kind: IdleBehaviourKind) {
     this.voice.receive({ kind: 'idle-play', act: kind })
@@ -592,12 +611,14 @@ export class StagePerformanceConductor {
     this.options.idleReports?.(reports)
   }
 
-  /** Synchronizes scene and declaration changes. A body becoming available receives current presence; posture receives the current settle and controls the idle view. */
+  /** Synchronizes scene and declaration changes. A body becoming available receives current presence and refractories; posture receives the current settle and controls the idle view. */
   syncScene() {
     const scene = this.options.scene()
     const { posture, body } = this.options.capabilities()
-    if (body && (scene !== this.presenceScene || !this.presenceBody))
+    if (body && (scene !== this.presenceScene || !this.presenceBody)) {
       scene?.setAway?.(this.options.mind.state.presence.away)
+      scene?.setRefractory?.(this.options.mind.refractories())
+    }
     this.presenceScene = scene
     this.presenceBody = body
     // A scene that attaches or becomes Natural again starts from her mood and her settle, not from its controller's.

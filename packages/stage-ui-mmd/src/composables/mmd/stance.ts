@@ -1,9 +1,9 @@
-import type { AttendIntent } from '@proj-airi/character-mind'
-import type { BodyDirectorInput, BodyDirectorMemory } from '@proj-airi/motion-driver-humanoid/director'
+import type { AttendIntent, RefractoryRemaining } from '@proj-airi/character-mind'
+import type { BodyDirectorInput, BodyDirectorMemory, BodyDirectorReport, BodyRefractory } from '@proj-airi/motion-driver-humanoid/director'
 import type { BodyIntent } from '@proj-airi/motion-driver-humanoid/types'
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
 
-import { decideBody, initialBodyDirectorMemory, NO_WORLD_BODY_INPUT } from '@proj-airi/motion-driver-humanoid/director'
+import { decideBody, initialBodyDirectorMemory, NO_BODY_REFRACTORY, NO_WORLD_BODY_INPUT } from '@proj-airi/motion-driver-humanoid/director'
 
 /** Imported VMD motion names assigned to one model's stances. */
 export interface MMDStanceSlots {
@@ -14,8 +14,8 @@ export interface MMDStanceSlots {
 
 export type MMDStance = BodyIntent['stance']
 
-/** Intents, clip requests and the held body; every host supplies them, with or without a stage world. */
-export type MMDStanceInteraction = Pick<BodyDirectorInput, 'attend' | 'away' | 'actionRequest' | 'actionFeedback' | 'dragging'>
+/** Intents, clip requests, the mind's refractories, and the held body; every host supplies them, with or without a stage world. */
+export type MMDStanceInteraction = Pick<BodyDirectorInput, 'attend' | 'away' | 'actionRequest' | 'actionFeedback' | 'refractory' | 'dragging'>
 
 /** The world half of the director input; `NO_WORLD_BODY_INPUT` is its inert value. */
 export type MMDStanceWorld = Omit<BodyDirectorInput, 'nowMs' | 'performance' | 'slots' | 'idle' | keyof MMDStanceInteraction>
@@ -33,6 +33,7 @@ export interface MMDStanceDiagnostics {
   goalX: number | null
   pace: BodyIntent['locomotion']['pace']
   pendingGoal: { x: number, reason: string } | null
+  /** Director-clock times until which the movement tools and the look tool are refused, from the character mind's refractories. */
   moveRefractoryUntilMs: number
   lookRefractoryUntilMs: number
   lastToolSeq: number
@@ -149,6 +150,38 @@ export class MMDAttendInbox {
 }
 
 /**
+ * The director's inbox for the mind's refractories (CM10): the durations its `refractory` intent left.
+ *
+ * The intent arrives outside the frame loop, so the durations start on the director time of the next frame, as the
+ * attend window does. The inbox outlives a model reload, so a new director reads the same refractories.
+ */
+export class MMDRefractoryInbox {
+  private requested: RefractoryRemaining | null = null
+  private stamped: BodyRefractory = NO_BODY_REFRACTORY
+
+  /** Keeps the latest durations; the next frame stamps them. */
+  receive(remaining: RefractoryRemaining): void {
+    this.requested = remaining
+  }
+
+  /** The refractories for this frame, stamped on its director clock when new durations arrived. */
+  atFrame(directorMs: number): BodyRefractory {
+    const remaining = this.requested
+    if (remaining !== null) {
+      this.stamped = {
+        actionUntilMs: directorMs + remaining.actionMs,
+        danceUntilMs: directorMs + remaining.danceMs,
+        gesture: remaining.gesture && { clipId: remaining.gesture.clipId, untilMs: directorMs + remaining.gesture.remainingMs },
+        moveToolUntilMs: directorMs + remaining.moveToolMs,
+        lookToolUntilMs: directorMs + remaining.lookToolMs,
+      }
+      this.requested = null
+    }
+    return this.stamped
+  }
+}
+
+/**
  * Resolves the looping base clip while standing.
  *
  * The per-model idle slot wins over the global idle selection. A motion in
@@ -180,10 +213,11 @@ export class MMDStanceDirector {
   private candidates = new Set<string>()
   private lastIntent: BodyIntent | null = null
   private roamMode: BodyDirectorInput['roamMode'] = 'stay'
+  private refractory: BodyRefractory = NO_BODY_REFRACTORY
 
   /**
-   * @returns The base motion for this frame (`null` for the rest pose) and
-   * whether it differs from the base motion returned by the previous call.
+   * @returns The base motion for this frame (`null` for the rest pose), whether it differs from the base motion
+   * returned by the previous call, and what the director stamped, for the character mind.
    */
   update(input: {
     nowMs: number
@@ -199,7 +233,7 @@ export class MMDStanceDirector {
     interaction: MMDStanceInteraction
     /** Her long idle states (`directorIdleStates`); absent under another driver, when she neither settles nor sleeps. */
     idle?: BodyDirectorInput['idle']
-  }): { motion: string | null, changed: boolean } {
+  }): { motion: string | null, changed: boolean, reports: BodyDirectorReport[] } {
     const ready = (name: string | undefined) => name !== undefined && name !== '' && input.isRegistered(name)
     const available = { sit: ready(input.slots.sit), sleep: ready(input.slots.sleep) }
     const world = input.world ?? NO_WORLD_BODY_INPUT
@@ -215,7 +249,7 @@ export class MMDStanceDirector {
         lastDebugSeq: world.debugGoal?.seq ?? 0,
       }
     }
-    const { intent, memory } = decideBody({
+    const { intent, memory, reports } = decideBody({
       nowMs: input.nowMs,
       performance: input.performance,
       slots: available,
@@ -226,6 +260,7 @@ export class MMDStanceDirector {
     this.memory = memory
     this.lastIntent = intent
     this.roamMode = world.roamMode
+    this.refractory = input.interaction.refractory
     this.startMs ??= memory.nowMs
 
     const standing = standingBaseMotion(input.idleMotionName, input.slots, input.baseEligible)
@@ -254,7 +289,7 @@ export class MMDStanceDirector {
 
     const changed = motion !== this.applied
     this.applied = motion
-    return { motion, changed }
+    return { motion, changed, reports }
   }
 
   /** The latest body directives; null before the first frame. */
@@ -292,8 +327,8 @@ export class MMDStanceDirector {
       goalX: this.memory.goalX,
       pace: this.memory.goalPace,
       pendingGoal: this.memory.pendingGoal && { x: this.memory.pendingGoal.x, reason: this.memory.pendingGoal.reason },
-      moveRefractoryUntilMs: this.memory.moveRefractoryUntilMs,
-      lookRefractoryUntilMs: this.memory.lookRefractoryUntilMs,
+      moveRefractoryUntilMs: this.refractory.moveToolUntilMs,
+      lookRefractoryUntilMs: this.refractory.lookToolUntilMs,
       lastToolSeq: this.memory.lastToolSeq,
       toolRefused: this.memory.toolRefused,
       toolRetryAfterMs: this.memory.toolRetryAfterMs,

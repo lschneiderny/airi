@@ -269,7 +269,7 @@ export interface NaturalBodyIntent {
     readonly side: -1 | 1
   } | null
   readonly touch: {
-    /** Every performed poke, including those whose surprise is deduplicated. */
+    /** Every performed poke, including those the character mind ordered without surprise. */
     readonly poke: {
       readonly seq: number
       readonly at: number

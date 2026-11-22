@@ -3,11 +3,12 @@ import type { PerformanceState } from '@proj-airi/stage-shared/performance-state
 
 import type { MMDActionClip } from './action-port'
 
-import { DANCE_REFRACTORY_MS } from '@proj-airi/motion-driver-humanoid/director'
+import { CharacterMind, DANCE_REFRACTORY_MS } from '@proj-airi/character-mind'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { MMDActionPort } from './action-port'
-import { MMDStanceDirector } from './stance'
+import { MMD_NATURAL_CAPABILITIES } from './natural/adapter'
+import { MMDRefractoryInbox, MMDStanceDirector } from './stance'
 
 const EPOCH_MS = 1_000_000
 const DANCE_MS = 8_000
@@ -26,9 +27,16 @@ interface FramePatch {
   feedback?: BodyActionFeedback
 }
 
-/** Drives the real director and the port the way the MMD scene does, one frame per call, without a stage world. */
+/**
+ * Drives the real director and the port the way the MMD scene does, one frame per call, without a stage world. The
+ * director's reports reach a real mind, whose refractories the next frame stamps, as the scene and the stage wire them.
+ */
 function stage(clips: readonly MMDActionClip[] = library) {
   const director = new MMDStanceDirector()
+  let directorMs = EPOCH_MS
+  const mind = new CharacterMind({ seed: 1, clock: () => directorMs })
+  mind.receive({ kind: 'performer', capabilities: MMD_NATURAL_CAPABILITIES })
+  const refractory = new MMDRefractoryInbox()
   let seq = 0
   let request: BodyActionRequest | null = null
   const submit = vi.fn((name: string | null) => {
@@ -48,15 +56,21 @@ function stage(clips: readonly MMDActionClip[] = library) {
   })
   function frame(atMs: number, patch: FramePatch = {}) {
     const performance: Pick<PerformanceState, 'mode' | 'attention'> = { mode: 'idle', attention: 'camera' }
-    const directorMs = EPOCH_MS + atMs
-    director.update({
+    directorMs = EPOCH_MS + atMs
+    const { reports } = director.update({
       nowMs: directorMs,
       performance,
       slots: {},
       idleMotionName: '',
       isRegistered: () => true,
-      interaction: { away: patch.away ?? false, attend: { untilMs: null, touchSeq: 0, chatSeq: 0, chatOpenSeq: 0 }, actionRequest: request, actionFeedback: patch.feedback ?? null, dragging: patch.dragging ?? false },
+      interaction: { away: patch.away ?? false, attend: { untilMs: null, touchSeq: 0, chatSeq: 0, chatOpenSeq: 0 }, actionRequest: request, actionFeedback: patch.feedback ?? null, refractory: refractory.atFrame(directorMs), dragging: patch.dragging ?? false },
     })
+    for (const report of reports) {
+      for (const intent of mind.receive({ kind: 'performer-report', report })) {
+        if (intent.kind === 'refractory')
+          refractory.receive(intent.remaining)
+      }
+    }
     port.observe({ directorMs, diagnostics: director.diagnostics })
   }
   return { director, port, frame, submit, pendingRequest: () => request }
@@ -95,15 +109,18 @@ describe('mmd action port with the stance director', () => {
     frame(100)
     expect((await first).success).toBe(true)
     frame(9_000, { feedback: { seq: pendingRequest()!.seq, state: 'finished' } })
+    // The mind's refractory starts on the next frame's director clock.
+    frame(9_016)
 
     const second = port.perform('moonwalk')
     frame(19_000)
 
+    const retryAfterSeconds = Math.ceil((9_016 + DANCE_REFRACTORY_MS - 19_000) / 1000)
     expect(await second).toEqual({
       success: false,
       state: { performing: null },
-      error: `She can do that again in ${(DANCE_REFRACTORY_MS - 10_000) / 1000} s.`,
-      retryAfterSeconds: (DANCE_REFRACTORY_MS - 10_000) / 1000,
+      error: `She can do that again in ${retryAfterSeconds} s.`,
+      retryAfterSeconds,
     })
   })
 

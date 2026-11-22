@@ -585,7 +585,7 @@ describe('natural motion', () => {
     const control = new NaturalMotion({ seed: 61 })
     poked.advance(0)
     control.advance(0)
-    poked.poke('head', 1, 0, 2)
+    poked.poke('head', 1, 0, true, 2)
     let flinch = 0
     let brow = 0
     let glanceDistance = Number.NaN
@@ -603,13 +603,13 @@ describe('natural motion', () => {
     expect(glanceDistance).toBeLessThan(0.05)
   })
 
-  it('only flinches at a repeat poke within 2 s, then surprises again after', () => {
+  it('only flinches at a poke the mind ordered without surprise, and surprises again at one with it', () => {
     const single = new NaturalMotion({ seed: 61 })
     const repeated = new NaturalMotion({ seed: 61 })
     single.advance(0)
     repeated.advance(0)
-    single.poke('head', 1, 0, 2)
-    repeated.poke('head', 1, 0, 2)
+    single.poke('head', 1, 0, true, 2)
+    repeated.poke('head', 1, 0, true, 2)
     // Time only moves forward: each window starts one frame after the previous one ends.
     const browPeak = (motion: NaturalMotion, from: number, to: number) => {
       let brow = 0
@@ -619,12 +619,12 @@ describe('natural motion', () => {
     }
     browPeak(single, 2, 3)
     browPeak(repeated, 2, 3)
-    repeated.poke('head', 1, 0, 3)
+    repeated.poke('head', 1, 0, false, 3)
     // The repeat adds no surprise of its own, so the brows match the single poke.
     expect(browPeak(repeated, 3, 4)).toBeCloseTo(browPeak(single, 3, 4), 6)
     browPeak(single, 4, 5)
     browPeak(repeated, 4, 5)
-    repeated.poke('head', 1, 0, 5)
+    repeated.poke('head', 1, 0, true, 5)
     expect(browPeak(repeated, 5, 6)).toBeGreaterThan(browPeak(single, 5, 6) + 0.05)
   })
 
@@ -878,7 +878,7 @@ describe('continuous cursor attention and touch', () => {
     const { motion, events } = observed(61)
     const baseline = new NaturalMotion({ seed: 61 })
     baseline.advance(0)
-    motion.poke('head', 0, -1, 2)
+    motion.poke('head', 0, -1, true, 2)
     let lowest = 0
     for (let frame = 241; frame <= 300; frame++) {
       const time = frame / 120
@@ -1098,7 +1098,7 @@ describe('continuous cursor attention and touch', () => {
         instance.setCursor({ x: 1, y: 0.2 * Math.sin(time * 5) }, time)
         instance.setPet(time >= 1 && time < 3 ? { x: Math.sin(time), y: 0.5 } : null, time)
         if (frame === 480)
-          instance.poke('body', 0.5, -1, time)
+          instance.poke('body', 0.5, -1, true, time)
       }
       expect(motion.advance(time)).toEqual(quiet.advance(time))
     }
@@ -1106,7 +1106,7 @@ describe('continuous cursor attention and touch', () => {
     expect(events.filter(event => event.kind === 'touch').map(event => event.touch)).toEqual(['pet-start', 'pet-end', 'poke'])
     const reported = events.length
     motion.setObserver(null)
-    motion.poke('head', 0, 0, 6)
+    motion.poke('head', 0, 0, true, 6)
     motion.setPet({ x: 0, y: 0 }, 6)
     motion.advance(7)
     expect(events).toHaveLength(reported)
@@ -1117,7 +1117,7 @@ describe('continuous cursor attention and touch', () => {
     motion.setPet({ x: 0.4, y: 0 }, 0)
     for (let frame = 1; frame <= 240; frame++)
       motion.advance(frame / 120)
-    motion.poke('head', 0.5, 0, 2)
+    motion.poke('head', 0.5, 0, true, 2)
     motion.advance(2 + 2 / 120)
 
     expect(events.filter(event => event.kind === 'glance' && event.cause === 'poke')).toEqual([expect.objectContaining({ outcome: 'refused' })])
@@ -1578,7 +1578,7 @@ describe('reacting overlay', () => {
   })
 
   it('still applies the fixed x1.3 / x1.5 overlay for a poke', () => {
-    const poked = peaks(motion => motion.poke('head', 0, 0, 0))
+    const poked = peaks(motion => motion.poke('head', 0, 0, true, 0))
     expect(poked.amplitude).toBeGreaterThan(rest.amplitude + 0.2)
     expect(poked.amplitude).toBeLessThanOrEqual(rest.amplitude * 1.3)
     expect(poked.shiftRate).toBeGreaterThan(rest.shiftRate + 0.3)

@@ -1776,7 +1776,7 @@ function handleTouchEvents(events: NaturalTouchGesture[]) {
 /** Performs the mind's reaction: a poke joins Natural's queue, and a pet grants or withdraws the pet hand. */
 function reactToTouch(intent: TouchReactionIntent) {
   if (intent.gesture === 'poke')
-    pendingNaturalPokes.push({ region: intent.region, x: intent.point.x, y: intent.point.y })
+    pendingNaturalPokes.push({ region: intent.region, x: intent.point.x, y: intent.point.y, surprise: intent.surprise })
   else
     naturalPetGranted = intent.phase === 'start'
 }

@@ -1068,7 +1068,7 @@ describe('natural motion adapter', () => {
     const setPet = vi.spyOn(NaturalMotion.prototype, 'setPet')
     try {
       const f = fixture()
-      f.state.pendingPokes.push({ region: 'head', x: 0.5, y: -0.25 })
+      f.state.pendingPokes.push({ region: 'head', x: 0.5, y: -0.25, surprise: true })
       f.state.pet = { x: 0.2, y: -0.4 }
       // Touch from while Natural is inactive is dropped, not replayed on resume.
       f.frame(0)
@@ -1076,11 +1076,11 @@ describe('natural motion adapter', () => {
       expect(poke).not.toHaveBeenCalled()
       expect(setPet).toHaveBeenLastCalledWith(null, 0)
       f.state.eligible = true
-      f.state.pendingPokes.push({ region: 'body', x: -1, y: 0.5 })
+      f.state.pendingPokes.push({ region: 'body', x: -1, y: 0.5, surprise: false })
       f.frame(0.1)
       expect(f.state.pendingPokes).toHaveLength(0)
       expect(poke).toHaveBeenCalledTimes(1)
-      expect(poke).toHaveBeenCalledWith('body', -1, 0.5, 0.1)
+      expect(poke).toHaveBeenCalledWith('body', -1, 0.5, false, 0.1)
       expect(setPet).toHaveBeenLastCalledWith({ x: 0.2, y: -0.4 }, 0.1)
       f.frame(0.2)
       expect(poke).toHaveBeenCalledTimes(1)

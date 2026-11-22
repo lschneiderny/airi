@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { PerformerReport } from '@proj-airi/character-mind'
 import type { ChatStreamEventContext, SpeechClip, SpeechClipEnd } from '@proj-airi/core-agent'
 import type { Live2DLipSync, Live2DLipSyncOptions } from '@proj-airi/model-driver-lipsync'
 import type { Profile } from '@proj-airi/model-driver-lipsync/shared/wlipsync'
@@ -372,6 +373,7 @@ onMounted(() => {
     idleCue: cue => performanceConductor.idleCue(cue),
     idle: intent => performanceConductor.idle(intent),
     settle: settled => performanceConductor.settle(settled),
+    refractory: remaining => performanceConductor.refractory(remaining),
     beat: intervalSeconds => performanceConductor.beat(intervalSeconds),
   })
 })
@@ -656,6 +658,9 @@ const idleProps = useIdleProps({
   report: entry => stageSelf.report(entry),
   answer: (seq, outcome) => live2dSceneRef.value?.answerIdleErrand(seq, outcome),
   occasions: activeOccasions,
+  // The moment rest lives in the window's mind, so every stage and a remount share it.
+  momentRest: () => characterMind.state.refractory.momentRest,
+  momentMarked: entryId => performanceConductor.performerReport({ kind: 'moment-marked', entryId }),
 })
 const idleReports = createEventHook<IdleBehaviourReport>()
 /**
@@ -666,6 +671,12 @@ function onIdle(report: IdleBehaviourReport) {
   idleProps.onIdleBehaviour(report)
   stageSelf.idle(report)
   void idleReports.trigger(report)
+}
+
+/** What the MMD body director stamped; the mind keeps the refractories and sends them back to every stage. */
+function onBodyReports(reports: readonly PerformerReport[]) {
+  for (const report of reports)
+    performanceConductor.performerReport(report)
 }
 
 /** A moment the mind decided, such as a poke or a finished pet; she may mark it with one of her own expressions. */
@@ -1322,6 +1333,7 @@ defineExpose({
         @idle="onIdle"
         @idle-reports="performanceConductor.idleReport($event)"
         @cursor-reports="performanceConductor.cursor($event)"
+        @body-reports="onBodyReports"
         @self="stageSelf.report"
         @placement="emit('placement', $event)"
         @root="emit('root', $event)"

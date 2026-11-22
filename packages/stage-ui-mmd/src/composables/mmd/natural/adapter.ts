@@ -268,9 +268,9 @@ export class MMDNaturalAdapter {
     return this.idleReports.read({ seq: this.natural.idleState.seq, behaviour: null })
   }
 
-  /** Touch coordinates are region-relative, X right and Y down. */
-  poke(region: NaturalTouchRegion, point: { x: number, y: number }): void {
-    this.natural.poke(region, point.x, point.y, this.time)
+  /** Touch coordinates are region-relative, X right and Y down; `surprise` is the character mind's dedupe. */
+  poke(region: NaturalTouchRegion, point: { x: number, y: number }, surprise: boolean): void {
+    this.natural.poke(region, point.x, point.y, surprise, this.time)
   }
 
   /** Ends a sleep with the gentle wake at the next step; ignored while she is awake. */

@@ -170,7 +170,7 @@ export function runScenarioSink(input: MotionScenario, options: ScenarioSinkOpti
       },
       reactToTouch: (intent) => {
         if (intent.gesture === 'poke')
-          pendingPokes.push({ region: intent.region, ...intent.point })
+          pendingPokes.push({ region: intent.region, ...intent.point, surprise: intent.surprise })
         else
           petGranted = intent.phase === 'start'
       },
