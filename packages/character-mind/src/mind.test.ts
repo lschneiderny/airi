@@ -7,6 +7,9 @@ import { describe, expect, it } from 'vitest'
 import { CharacterMind } from './mind'
 import { seededRandom } from './random'
 import { initialMindState, step } from './step'
+import { allCapabilities } from './test/fixtures'
+
+const performer = { kind: 'performer', capabilities: allCapabilities } as const
 
 function happy(nominal: number): MindStimulus {
   return { kind: 'emotion', source: 'act', emotion: 'happy', nominal, turnId: 'A', settings }
@@ -22,9 +25,9 @@ describe('character mind', () => {
   it('answers on its own clock and keeps the state of the last step', () => {
     const mind = new CharacterMind({ seed: 41, clock: scriptedClock(10_000, 11_000) })
     expect(mind.state.seq).toBe(0)
-    expect(mind.receive(happy(0.6))).toMatchObject([{ kind: 'emotion', episode: { id: 'happy-1', escalation: false } }])
+    expect(mind.receive(performer, happy(0.6))).toMatchObject([{ kind: 'emotion', episode: { id: 'happy-1', escalation: false } }])
     expect(mind.receive(happy(0.9))).toMatchObject([{ kind: 'emotion', episode: { id: 'happy-1', escalation: true } }])
-    expect(mind.state.seq).toBe(2)
+    expect(mind.state.seq).toBe(3)
     expect(mind.state.reaction.lastAt).toBe(11)
   })
 
@@ -32,7 +35,7 @@ describe('character mind', () => {
     const mind = new CharacterMind({ seed: 41, clock: scriptedClock(10_000, 4_000, 10_500) })
     const steps: MindStep[] = []
     mind.onStep(step => steps.push(step))
-    mind.receive(happy(0.6))
+    mind.receive(performer, happy(0.6))
     // On the raw clock this stimulus would be older than the last one, and the rule would drop it.
     expect(mind.receive(happy(0.9))).toMatchObject([{ kind: 'emotion', episode: { escalation: true } }])
     mind.receive()
@@ -43,7 +46,7 @@ describe('character mind', () => {
     const script = [happy(0.6), happy(0.9), { kind: 'expression-clear', source: 'act' } as const]
     function run(seed: number) {
       const mind = new CharacterMind({ seed, clock: scriptedClock(0, 1000, 2000) })
-      return script.map(stimulus => mind.receive(stimulus))
+      return script.map(stimulus => mind.receive(performer, stimulus))
     }
     expect(run(41)).toEqual(run(41))
     expect(run(42)).not.toEqual(run(41))
@@ -54,8 +57,8 @@ describe('character mind', () => {
     const steps: MindStep[] = []
     const stop = mind.onStep(step => steps.push(step))
     const stimulus = happy(0.6)
-    const intents = mind.receive(stimulus)
-    expect(steps).toEqual([{ atMs: 1000, stimuli: [stimulus], intents, state: mind.state }])
+    const intents = mind.receive(performer, stimulus)
+    expect(steps).toEqual([{ atMs: 1000, stimuli: [performer, stimulus], intents, refusals: [], state: mind.state }])
     stop()
     mind.receive(happy(0.9))
     expect(steps).toHaveLength(1)
@@ -66,16 +69,16 @@ describe('character mind', () => {
     const mind = new CharacterMind({ seed: 41, clock: scriptedClock(10_000, 4_000) })
     const steps: MindStep[] = []
     mind.onStep(step => steps.push(step))
-    mind.receive(happy(0.6))
+    mind.receive(performer, happy(0.6))
 
     mind.reset(slow)
     expect(mind.state).toEqual(initialMindState(slow))
-    const intents = mind.receive(happy(0.6))
+    const intents = mind.receive(performer, happy(0.6))
 
     // The episode's jitter is the stream's second draw, and the step keeps the time of the one before the reset.
     const random = seededRandom(41)
     random()
-    expect(intents).toEqual(step(initialMindState(slow), [happy(0.6)], 10_000, random).intents)
+    expect(intents).toEqual(step(initialMindState(slow), [performer, happy(0.6)], 10_000, random).intents)
     expect(steps.map(({ atMs }) => atMs)).toEqual([10_000, 10_000])
   })
 })

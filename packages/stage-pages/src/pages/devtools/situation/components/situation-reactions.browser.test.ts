@@ -47,6 +47,7 @@ function touchEvent(overrides: Partial<SituationEvent> = {}): SituationEvent {
 
 function reactions(overrides: Partial<SituationReactionInspection> = {}): SituationReactionInspection {
   return {
+    refusals: [],
     decision: { speak: false, kind: 'pet-soft', reason: 'refractory', roll: null, probability: null, atMs: T0 - 5 * SEC },
     memory: { ...initialReactionMemory(), sessionId: 'chat-a', petsSeen: 3, lastLineAtMs: T0 - 30 * SEC, lastAttemptAtMs: T0 - 30 * SEC },
     refractoryRemainingMs: 15 * SEC,

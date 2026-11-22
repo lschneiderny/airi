@@ -5,7 +5,8 @@ import type { MindIntent, MindRandom, MindState, MindStimulus } from './types'
 import { defaultExpressionPerformanceSettings as settings } from '@proj-airi/stage-shared/expression-performance'
 import { describe, expect, it, vi } from 'vitest'
 
-import { initialMindState, step } from './step'
+import { step } from './step'
+import { naturalMindState } from './test/fixtures'
 
 const SEC = 1000
 /** Epoch milliseconds of the first touch of every script. */
@@ -36,7 +37,7 @@ function petEnd(durationMs: number, voice: TouchVoiceView | null = null): Touch 
 
 /** One mind fed in order; every poke carries the view of the pokes so far, as the situation reports them. */
 function script(rng = speaks) {
-  let state = initialMindState()
+  let state = naturalMindState()
   const pokeTimesMs: number[] = []
   function send(atMs: number, stimulus: MindStimulus) {
     const answer = step(state, [stimulus], atMs, rng)
@@ -70,7 +71,7 @@ function kinds(intents: readonly MindIntent[]) {
 
 describe('step: touch', () => {
   it('answers a poke with a touch reaction at its point, a mood dose, and a moment, under one cause', () => {
-    const { state, intents } = step(initialMindState(), [poke(null, 'body')], T0, speaks)
+    const { state, intents } = step(naturalMindState(), [poke(null, 'body')], T0, speaks)
 
     expect(intents).toEqual([
       { id: '1-touch-reaction', cause: 1, channel: 'posture', kind: 'touch-reaction', gesture: 'poke', region: 'body', point: { x: 0.2, y: -0.4 } },
@@ -104,7 +105,7 @@ describe('step: touch', () => {
   })
 
   it('decides no line, draws nothing, and leaves the voice memory untouched without a voice view', () => {
-    const initial = initialMindState()
+    const initial = naturalMindState()
     const draw = vi.fn(speaks)
     let state = initial
     for (const [index, stimulus] of [poke(), poke(), poke(), petStart, petEnd(5 * SEC)].entries())
@@ -115,7 +116,7 @@ describe('step: touch', () => {
   })
 
   it('decides no line for a pet start, whatever its view', () => {
-    const initial = initialMindState()
+    const initial = naturalMindState()
     const { state, intents } = step(initial, [{ ...petStart, voice: view() }], T0, speaks)
 
     expect(kinds(intents)).toEqual(['posture/touch-reaction', 'posture/mood', 'body/attend'])
@@ -173,7 +174,7 @@ describe('step: the spoken touch reaction', () => {
     ['first-pet', petEnd(5 * SEC, view({ pet: { startedAtMs: T0 - 5 * SEC, durationMs: 5 * SEC } }))],
   ])('holds with %s, draws nothing, and still reacts with the body', (reason, stimulus) => {
     const draw = vi.fn(speaks)
-    const { state, intents } = step(initialMindState(), [stimulus], T0, draw)
+    const { state, intents } = step(naturalMindState(), [stimulus], T0, draw)
 
     expect(state.voice.lastDecision).toMatchObject({ speak: false, reason, roll: null })
     expect(draw).not.toHaveBeenCalled()
@@ -183,7 +184,7 @@ describe('step: the spoken touch reaction', () => {
 
   it('speaks a soft line for the second long pet of a session, and stays silent right after her last line', () => {
     const second = (lastCharacterLineAtMs: number | null) => {
-      let state = initialMindState()
+      let state = naturalMindState()
       state = step(state, [petEnd(5 * SEC, view({ pet: { startedAtMs: T0 - 5 * SEC, durationMs: 5 * SEC } }))], T0, speaks).state
       const atMs = T0 + 30 * SEC
       return step(state, [petEnd(5 * SEC, view({ pet: { startedAtMs: atMs - 5 * SEC, durationMs: 5 * SEC }, lastCharacterLineAtMs }))], atMs, speaks)

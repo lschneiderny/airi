@@ -1,7 +1,7 @@
 import process from 'node:process'
 
 import { MOTION_TRACE_CHANNELS } from '@proj-airi/motion-driver-humanoid/motion-trace'
-import { MMDNaturalAdapter } from '@proj-airi/stage-ui-mmd/composables/mmd/natural/adapter'
+import { MMD_NATURAL_CAPABILITIES, MMDNaturalAdapter } from '@proj-airi/stage-ui-mmd/composables/mmd/natural/adapter'
 import { Quaternion, Vector3 } from 'three'
 import { expect, it, vi } from 'vitest'
 
@@ -10,12 +10,14 @@ import { parseTrace } from '../read-trace'
 import { scriptBeats } from '../scenarios'
 import { createRunnerMind, runMotion3dScenario } from './run'
 
-it('tells the mind of a music scenario that music plays before the first frame, and the mind of any other nothing', () => {
+it('declares the MMD performer before the first frame and adds music only for a music scenario', () => {
   const scenario = { version: 1, id: 'm', class: 'idle', seconds: 1, warmupSeconds: 0, timeline: () => [] } as const
   const heard = createRunnerMind({ seed: 1, scenario: { ...scenario, music: true } }, () => 0)
-  expect([heard.state.seq, heard.state.music.playing]).toEqual([1, true])
+  expect([heard.state.seq, heard.state.music.playing]).toEqual([2, true])
   const silent = createRunnerMind({ seed: 1, scenario }, () => 0)
-  expect([silent.state.seq, silent.state.music.playing]).toEqual([0, false])
+  expect([silent.state.seq, silent.state.music.playing]).toEqual([1, false])
+  expect(heard.state.performer).toBe(MMD_NATURAL_CAPABILITIES)
+  expect(silent.state.performer).toBe(MMD_NATURAL_CAPABILITIES)
 })
 
 it.runIf(process.env.AIRI_QA_MMD_MODEL)('records the stance reason on each change only in a scenario that asks for it', async () => {

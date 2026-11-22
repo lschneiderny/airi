@@ -1,10 +1,12 @@
-import type { MindIntent, MindState, MindStimulus } from './types'
+import type { MindIntent, MindState, MindStimulus, Refusal } from './types'
+
+import { refusedAnswer } from './capabilities'
 
 /** A screen change within this span of the last stamped reaction gets no new reaction. */
 export const SCREEN_CHANGE_REFRACTORY_MS = 10_000
 
 type Stimulus<K extends MindStimulus['kind']> = Extract<MindStimulus, { kind: K }>
-interface Answer { state: MindState, intents: MindIntent[] }
+interface Answer { state: MindState, intents: MindIntent[], refusals?: Refusal[] }
 
 /**
  * A presence report gets one response, in the order posture, face, voice, body:
@@ -50,6 +52,9 @@ export function answerPresence(state: MindState, stimulus: Stimulus<'presence'>,
  * {@link SCREEN_CHANGE_REFRACTORY_MS} ago or a desktop wake arrives in the same `step` call. A wake stamps nothing.
  */
 export function answerScreenChange(state: MindState, cause: number, nowMs: number, wakes: boolean): Answer {
+  if (!state.performer.posture)
+    return refusedAnswer(state, cause, 'desktop-reaction')
+
   const last = state.desktop.screenReactAtMs
   if (wakes || (last !== null && nowMs - last < SCREEN_CHANGE_REFRACTORY_MS))
     return { state, intents: [] }

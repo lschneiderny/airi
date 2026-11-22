@@ -20,6 +20,7 @@ import type { ChatActivity, ChatComposerReport } from './chat-activity'
 import { defineInvokeHandler } from '@moeru/eventa'
 import { errorMessageFrom, sleep } from '@moeru/std'
 import { BrowserPlayback } from '@proj-airi/audio/browser'
+import { NO_CAPABILITIES } from '@proj-airi/character-mind'
 import { createLive2DLipSync } from '@proj-airi/model-driver-lipsync'
 import { wlipsyncProfile } from '@proj-airi/model-driver-lipsync/shared/wlipsync'
 import { normalizeActPayload, Playback } from '@proj-airi/pipelines-audio'
@@ -366,6 +367,7 @@ const { conductor: performanceConductor, settings: performanceSettings } = useSt
 })
 onMounted(() => {
   mindStage = characterMindStore.attachStage({
+    capabilities: () => (stageModelRenderer.value === 'live2d' ? live2dSceneRef.value?.capabilities : stageModelRenderer.value === 'mmd' ? mmdSceneRef.value?.capabilities : undefined) ?? NO_CAPABILITIES,
     idleCue: cue => performanceConductor.idleCue(cue),
     idle: intent => performanceConductor.idle(intent),
     beat: intervalSeconds => performanceConductor.beat(intervalSeconds),

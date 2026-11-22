@@ -2,6 +2,7 @@ import type { StagePerformanceScene } from '@proj-airi/stage-ui/composables/perf
 
 import { CharacterMind } from '@proj-airi/character-mind'
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
+import { MMD_NATURAL_CAPABILITIES } from '@proj-airi/stage-ui-mmd/composables/mmd/natural/adapter'
 import { StagePerformanceConductor } from '@proj-airi/stage-ui/composables/performance/use-stage-performance-conductor'
 import { createPinia, setActivePinia } from 'pinia'
 import { describe, expect, it, vi } from 'vitest'
@@ -20,13 +21,15 @@ describe('stagePerformanceConductor in the qa-tools node project', () => {
       onSpeech: vi.fn<StagePerformanceScene['onSpeech']>(),
       setMuted: vi.fn<StagePerformanceScene['setMuted']>(),
     }
+    const mind = new CharacterMind({ seed: 7, clock: () => 10_000 })
+    mind.receive({ kind: 'performer', capabilities: MMD_NATURAL_CAPABILITIES })
     const conductor = new StagePerformanceConductor({
       scene: () => scene,
       driver: () => 'natural',
       playMotion: () => {},
       settings: () => defaultExpressionPerformanceSettings,
       catalog: () => [],
-      mind: new CharacterMind({ seed: 7, clock: () => 10_000 }),
+      mind,
       seed: 7,
       clock: () => 10,
       timers: { setTimeout: () => noHandle, clearTimeout: () => {} },

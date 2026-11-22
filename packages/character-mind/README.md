@@ -8,7 +8,8 @@ The pure core of the character mind and its thin shell. The mind receives stimul
 import { CharacterMind } from '@proj-airi/character-mind'
 
 const mind = new CharacterMind({ seed: 41 })
-const stop = mind.onStep(({ atMs, intents }) => console.info(atMs, intents))
+mind.receive({ kind: 'performer', capabilities })
+const stop = mind.onStep(({ atMs, intents, refusals }) => console.info(atMs, intents, refusals))
 const intents = mind.receive({ kind: 'emotion', source: 'act', emotion: 'happy', nominal: 0.6, turnId, settings })
 ```
 
@@ -16,10 +17,21 @@ const intents = mind.receive({ kind: 'emotion', source: 'act', emotion: 'happy',
 - `CharacterMind` is the shell. It owns the clock, the random source, and the state, and it never passes the core an earlier time than the last one. It persists nothing itself: the host saves `state.slow` (`MindSlowState`, her pacing memory) and hands it back through the `slow` option or `reset(slow)`, which starts the state over from `initialMindState(slow)` and keeps the random stream and the monotonic clock.
 - `seededRandom(seed)` is the shell's random source: the same seed gives the same draws.
 
+### Capabilities and refusals
+
+The newest attached stage declares `PerformerCapabilities` through a `performer`
+stimulus. Fast state starts at `NO_CAPABILITIES`; the host replays the declaration
+after each reset and when the stage or its driver changes. Voice remains
+permitted without a performer. Random policies refuse before drawing or changing
+episode state; deterministic mixed answers retain their permitted channels.
+`step` and `MindStep` report `refusals`, naming the stimulus sequence (`cause`),
+intent kind, and `undeclared` reason. Refusals are observer data only.
+
 ### Stimuli and intents
 
 | Stimulus | Intents |
 | --- | --- |
+| `performer` | None. Sets the declaration before any idle decision; without posture, idle is dormant. |
 | `emotion` | `face`: `emotion`, with the episode and its hold, when the emotion starts or escalates an episode. `release` with scope `neutral` when a neutral resets the reaction state. Nothing for a repeat that does neither. |
 | `expression-request` | `face`: `entry`. With an emotion mapping and held emotions on, it carries a hold for the entry's lease, and the episode when the request started one. |
 | `expression-clear` | `face`: `release` with the named slot as its scope, or scope `all` and a hold release when no slot is named. |

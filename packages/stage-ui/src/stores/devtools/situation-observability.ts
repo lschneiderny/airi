@@ -1,3 +1,4 @@
+import type { Refusal } from '@proj-airi/character-mind'
 import type { CharacterEventKind } from '@proj-airi/stage-shared/character-state'
 import type {
   ReactionDecision,
@@ -231,6 +232,8 @@ export interface SituationReactionOutcome {
 export type SituationReactionOutcomeStatus = keyof SituationReactionOutcome
 
 export interface SituationReactionInspection {
+  /** Newest first, bounded by the reaction history cap; no stimulus content. */
+  refusals: readonly (Refusal & { atMs: number })[]
   /** `null` until a touch was evaluated in this window. */
   decision: SituationReactionDecisionRecord | null
   /** The mind's voice memory now; `null` while no stage of this window runs a mind. */
@@ -365,6 +368,7 @@ export const useSituationObservabilityStore = defineStore('devtools:situation-ob
   const extractionLedger = shallowRef<readonly ThreadExtractionLedgerEntry[]>([])
   const extractionInFlight = shallowRef(false)
   const outcomes = shallowRef<SituationReasonOutcomes>(NO_OUTCOMES)
+  const mindRefusals = shallowRef<readonly (Refusal & { atMs: number })[]>([])
   const reactionDecision = shallowRef<SituationReactionDecisionRecord | null>(null)
   const reactionMemory = shallowRef<ReactionMemory | null>(null)
   const reactionOutcomes = shallowRef<Readonly<Record<ReactionKind, SituationReactionOutcome>>>(NO_REACTION_OUTCOMES)
@@ -487,6 +491,11 @@ export const useSituationObservabilityStore = defineStore('devtools:situation-ob
       countOutcome(spoken.kind, atMs - spoken.spokenAtMs <= SITUATION_ENGAGEMENT_WINDOW_MS ? 'engaged' : 'ignored')
   }
 
+  function recordMindRefusals(refusals: readonly Refusal[], atMs: number) {
+    if (refusals.length)
+      mindRefusals.value = [...refusals.map(refusal => ({ ...refusal, atMs })), ...mindRefusals.value].slice(0, SITUATION_URGE_HISTORY_MAX)
+  }
+
   /** Called by the character mind store of this window after every touch reaction evaluation, with the memory it left. */
   function recordReactionDecision(decision: ReactionDecision, memory: ReactionMemory, atMs: number) {
     reactionDecision.value = decision.speak
@@ -516,6 +525,7 @@ export const useSituationObservabilityStore = defineStore('devtools:situation-ob
    * user said or did: the rendered situation blocks, the open threads, and the extraction ledger.
    */
   function forget() {
+    mindRefusals.value = []
     renders.value = []
     threads.value = NO_THREADS
     extractionLedger.value = []
@@ -583,6 +593,7 @@ export const useSituationObservabilityStore = defineStore('devtools:situation-ob
       extraction: { ledger: [...extractionLedger.value], inFlight: extractionInFlight.value },
       outcomes: outcomes.value,
       reactions: {
+        refusals: mindRefusals.value,
         decision: reactionDecision.value,
         memory,
         refractoryRemainingMs: remainingMs(memory?.lastLineAtMs ?? null, REACTION_REFRACTORY_MS, nowMs),
@@ -626,6 +637,7 @@ export const useSituationObservabilityStore = defineStore('devtools:situation-ob
     publishUrgeState,
     recordReasonOutcome,
     recordUserTurn,
+    recordMindRefusals,
     recordReactionDecision,
     publishReactionMemory,
     recordReactionOutcome,

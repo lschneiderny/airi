@@ -5,7 +5,6 @@ import type { EmotionPulse, GestureRequest } from '../../../../stores/natural-pe
 
 import en from '@proj-airi/i18n/locales/en'
 
-import { CharacterMind } from '@proj-airi/character-mind'
 import { neutralReviewGains } from '@proj-airi/motion-driver-natural/review'
 import { defaultExpressionPerformanceSettings, parseAffectTrace } from '@proj-airi/stage-shared/expression-performance'
 import { useSettingsLive2d } from '@proj-airi/stage-ui-live2d/composables/live2d'
@@ -22,6 +21,7 @@ import NaturalMotionDevtools from './devtools.vue'
 import { answerAffectTraceRequest, StagePerformanceConductor } from '../../../../composables/performance/use-stage-performance-conductor'
 import { useExpressionPerformanceSettings } from '../../../../features/performance/settings'
 import { useNaturalPerformanceOverride } from '../../../../stores/natural-performance-override'
+import { naturalMind } from '../../../../test/natural-mind'
 
 import '@proj-airi/ui/main.css'
 
@@ -93,7 +93,7 @@ function createStage(diagnostics: ReturnType<typeof useNaturalMotionDiagnostics>
     settings: () => defaultExpressionPerformanceSettings,
     catalog: () => [],
     seed: 7,
-    mind: new CharacterMind({ seed: 7, clock: () => now * 1000 }),
+    mind: naturalMind({ seed: 7, clock: () => now * 1000 }),
     clock: () => now,
   })
   const stop = watch(() => diagnostics.affectTraceRequest, (request) => {

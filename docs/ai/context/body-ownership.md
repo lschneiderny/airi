@@ -12,6 +12,14 @@ Live2D has three [motion drivers](glossary.md#motion-driver): [Natural](glossary
 
 Under Universal and MAGIC, Natural is inactive. The adapter eases its [posture](glossary.md#posture) weight to zero, suspends the controller, and stops its face, blink, and breath writes (`Live2DNaturalMotionAdapter` `compose` in `packages/stage-ui-live2d/src/composables/live2d/natural-motion-adapter.ts`). Every adapter write happens inside the SDK `updateFocus` wrap, which the SDK brackets with `saveParameters` and `loadParameters`, so each write is a stateless overlay on that frame's values.
 
+The Live2D scene declares `LIVE2D_NATURAL_CAPABILITIES`: posture, face, gaze,
+and nod, shake, and glance gestures, without body. Universal and MAGIC declare
+`NO_CAPABILITIES`. The character mind keeps the newest attached declaration
+and reports an `undeclared` refusal for shrug and lean, before performance.
+The declarations live beside `Live2DNaturalMotionAdapter` and
+`MMDNaturalAdapter`; `permits` in `packages/character-mind/src/capabilities.ts`
+defines the channel contract. Voice always passes because chat realises it.
+
 ### Channel ownership
 
 | Channel | Parameters | Natural | Universal and MAGIC | Composition | Code |
@@ -84,6 +92,10 @@ Under Universal and MAGIC, Natural is inactive. The adapter eases its [posture](
 - **Cancellation releases clip ownership.** `getClipOwnedIds` clears the clip mask when the SDK's `currentGroup` is empty. `stopAllMotions` resets that state at once, but only a later SDK update emits `motionFinish`, and the idle-disable plugin can skip every later update.
 
 ## MMD
+
+MMD Natural declares `MMD_NATURAL_CAPABILITIES`: posture, face, gaze, every cue
+gesture, and body. Classic declares `NO_CAPABILITIES`. The mind decides no
+performer episode without its declared channel.
 
 MMD has two motion drivers: Natural and [classic](glossary.md#classic) (`packages/stage-ui-mmd/src/stores/mmd.ts` `MMDMotionDriver`). The driver is stored for each display model, and the default is Natural. Under Natural, `MMDNaturalAdapter` (`packages/stage-ui-mmd/src/composables/mmd/natural/adapter.ts`) advances the controller and writes only the face. The body is posed by `MMDBody` (`packages/stage-ui-mmd/src/composables/mmd/body/index.ts`), whose [performer](glossary.md#performer) turns Natural's `bodyIntent()` into bone channels. The body runs only while the driver is Natural (its input's `enabled`). Under classic, the body stages do nothing. [Clips](glossary.md#clip), classic gaze, the classic emote, and the classic blink move her instead.
 
@@ -230,7 +242,6 @@ This section states the design that refactors move toward. It does not describe 
 
 | Known gap | Closed by |
 | --- | --- |
-| Live2D skips shrug and lean cue gestures | Rule 4: Live2D either realises them or stops declaring them |
 | No ADR records the Live2D posture overwrite | Rule 2, recorded by the character mind ADR |
 | Stale text in the 3D motion, clip actions, and idle agency ADRs | No target rule. ADR bodies are frozen history; the current sections above state the code. |
 
@@ -238,7 +249,6 @@ This section states the design that refactors move toward. It does not describe 
 
 Each entry names a rule that an ADR states and the code does not follow. This section only describes the gaps; it does not decide how to close them.
 
-- **Live2D skips shrug and lean cue gestures.** The [interaction portability ADR](../adr/2026-11-04-interaction-portability.md) ("Shared vocabulary") says every Natural renderer plays the ACT `gesture` vocabulary, including shrug and lean. `Live2DNaturalMotionAdapter` `gesture` in `packages/stage-ui-live2d/src/composables/live2d/natural-motion-adapter.ts` drops `shrug` and `lean` on Live2D. Only the MMD body performs them.
 - **The 3D motion ADR still lists the old MMD stages and writers.** The [3D character motion ADR](../adr/2026-10-30-3d-character-motion.md) lists the pose stages `natural`, `weight-shift`, `foot-contact`, `look-at`, `eyes`, and so on, and two surface stages. It also says `MMDNaturalAdapter` writes the neck, head, spine, and chest. In the code, the stage order is `MMD_POSE_STAGE_IDS` and `MMD_SURFACE_STAGE_IDS` in `packages/stage-ui-mmd/src/composables/mmd/stage-composition.ts`, which add `motion-trace`. `MMDNaturalAdapter` writes no bones; `MMDBodyPerformer` writes them. The [whole-body performer ADR](../adr/2026-11-11-whole-body-performer.md) records the change, but the 3D motion ADR carries no amendment.
 - **The 3D motion ADR still says every non-stance clip ducks the whole body and head.** The [3D character motion ADR](../adr/2026-10-30-3d-character-motion.md) ("Rig profile and body layers") says other clips duck the body and the head fully. `MMDBody` `updateOwnership` in `packages/stage-ui-mmd/src/composables/mmd/body/index.ts` ducks each group by the clip's mask, so a clip that does not key the head leaves the gaze alone.
 - **The clip actions ADR names different ducking groups.** The [clip actions ADR](../adr/2026-11-03-mmd-clip-actions.md) ("Layered playback and the base partition") says breath, sway, and weight shift duck by the larger of the stance weight and the owned share of `root` and `upperBody`. `MMDBody` `updateOwnership` uses separate weights: pelvis is max(stance, `root`, `lowerBody`), hips is max(stance, `lowerBody`), and torso is max(stance, `upperBody`).

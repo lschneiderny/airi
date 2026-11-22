@@ -2,13 +2,13 @@ import type { CatalogEntry } from '@proj-airi/stage-shared/expression-performanc
 
 import type { ExpressionToolPort } from './expression'
 
-import { CharacterMind } from '@proj-airi/character-mind'
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { useExpressionStore } from '@proj-airi/stage-ui-live2d/stores/expression-store'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createExpressionToolPort, StagePerformanceConductor } from '../composables/performance/use-stage-performance-conductor'
+import { naturalMind } from '../test/natural-mind'
 import { createExpressionTools } from './expression'
 
 type Overrides = Pick<CatalogEntry, 'kind'> & Partial<Pick<CatalogEntry, 'label' | 'exposedToLlm' | 'confirmed'>>
@@ -47,7 +47,7 @@ async function mount(curate = true) {
     settings: () => defaultExpressionPerformanceSettings,
     catalog: () => store.catalog,
     seed: 1,
-    mind: new CharacterMind({ seed: 1, clock: () => 10_000 }),
+    mind: naturalMind({ seed: 1, clock: () => 10_000 }),
     clock: () => 10,
   })
   const tools = await createExpressionTools(createExpressionToolPort(conductor, store))

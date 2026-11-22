@@ -6,6 +6,8 @@ import type { IdleReport, IdleScheduleState, IdleView } from '@proj-airi/motion-
 import type { Band, ExpressionPerformanceSettings, HoldCommand, MoodDose, PerformanceEmotion, ReactionEpisode, ReactionState, SlotCommand, TouchAffectMemory } from '@proj-airi/stage-shared/expression-performance'
 import type { CharacterPacingMemory, GateLocalTime, GateOutcome, GateSettings, GateSignals, ReactionDecision, ReactionKind, ReactionMemory, ReasonCategory, ReasonKind, ReasonState, SituationState, TouchVoiceView, UrgeGateDecision, UrgeGateMemory, UserGateMemory } from '@proj-airi/stage-shared/situation'
 
+import type { PerformerCapabilities } from './capabilities'
+
 /** Uniform draws in [0, 1). The shell owns the source; the core stores none. */
 export type MindRandom = () => number
 
@@ -97,6 +99,8 @@ export type MindStimulus
     | ChatStimulus
   /** An ACT cue gesture of the model's reply, or the devtools lab's; the mind answers with one `gesture` intent. */
     | CueGestureStimulus
+  /** The newest attached stage's declaration, replayed by the host after a reset. */
+    | { kind: 'performer', capabilities: PerformerCapabilities }
 
 /** A cue gesture the model or the devtools lab asked for, `count` times. `turnId` names the reply of an ACT gesture. */
 export interface CueGestureStimulus {
@@ -179,6 +183,19 @@ export type MindIntent
   /** Play a cue gesture `count` times. The performer queues or refuses it when a running gesture holds its channels. */
     | (IntentBase & { channel: 'posture', kind: 'gesture', gesture: CueGestureKind, count: number })
 
+/** An answer the declaration excludes. Refusals are observer data, never policy input. */
+export interface Refusal {
+  cause: number
+  kind: MindIntent['kind']
+  reason: 'undeclared'
+}
+
+export interface MindAnswer {
+  state: MindState
+  intents: MindIntent[]
+  refusals?: Refusal[]
+}
+
 /** The posture intent a scene performs for a touch. */
 export type TouchReactionIntent = Extract<MindIntent, { kind: 'touch-reaction' }>
 /** The intents a performer carries out as idle orders. */
@@ -200,6 +217,8 @@ export interface MindSlowState {
 export interface MindState {
   /** Stimuli answered so far. */
   seq: number
+  /** Fast state. A mind without an attached performer declares no body channels. */
+  performer: PerformerCapabilities
   /** Emotion strength and habituation: the emotion half of the expression decider. */
   reaction: ReactionState
   /** Pacing and habituation of the mood doses of touches, in seconds of the mind's clock. */

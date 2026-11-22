@@ -1,13 +1,14 @@
-import type { MindIntent, MindRandom, MindState, MindStimulus } from './types'
+import type { MindIntent, MindRandom, MindState, MindStimulus, Refusal } from './types'
 
 import { touchAffect } from '@proj-airi/stage-shared/expression-performance'
 import { reactionPolicy } from '@proj-airi/stage-shared/situation'
 
 import { attendIntent } from './attention'
+import { refusedAnswer } from './capabilities'
 import { reactionTurnId } from './voice'
 
 type Stimulus<K extends MindStimulus['kind']> = Extract<MindStimulus, { kind: K }>
-interface Answer { state: MindState, intents: MindIntent[] }
+interface Answer { state: MindState, intents: MindIntent[], refusals?: Refusal[] }
 
 /**
  * One touch gets one response, decided together on the same state and clock:
@@ -19,6 +20,9 @@ interface Answer { state: MindState, intents: MindIntent[] }
  * - Body: a poke and a pet start end with `attend`, which opens the director's attend window. A pet end opens none.
  */
 export function answerTouch(state: MindState, stimulus: Stimulus<'touch'>, cause: number, nowMs: number, rng: MindRandom): Answer {
+  if (!state.performer.posture)
+    return refusedAnswer(state, cause, 'touch-reaction')
+
   const intents: MindIntent[] = []
   if (stimulus.gesture === 'poke')
     intents.push({ id: `${cause}-touch-reaction`, cause, channel: 'posture', kind: 'touch-reaction', gesture: 'poke', region: stimulus.region, point: stimulus.point })

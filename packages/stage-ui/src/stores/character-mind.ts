@@ -1,9 +1,9 @@
-import type { MindIdleIntent, MindIntent, MindStep } from '@proj-airi/character-mind'
+import type { MindIdleIntent, MindIntent, MindStep, PerformerCapabilities } from '@proj-airi/character-mind'
 import type { IdleReport, IdleView } from '@proj-airi/motion-driver-natural/idle-schedule'
 import type { ReactionDecision } from '@proj-airi/stage-shared/situation'
 import type { SyncedPiniaRuntime } from 'pinia-plugin-synced'
 
-import { CharacterMind, nextIdleWakeAt } from '@proj-airi/character-mind'
+import { CharacterMind, nextIdleWakeAt, NO_CAPABILITIES } from '@proj-airi/character-mind'
 import { dormantIdleView } from '@proj-airi/motion-driver-natural/idle-schedule'
 import { isBeatSyncSupported, listenBeatSyncBeatSignal } from '@proj-airi/stage-shared/beat-sync'
 import { defineStore } from 'pinia'
@@ -17,6 +17,7 @@ import { useSituationStore } from './situation'
 
 /** What a mounted stage lends the mind: the body around a line and its idle acts. The conductor gates both by driver. */
 export interface MindStage {
+  capabilities: () => PerformerCapabilities
   idleCue: (cue: Extract<MindIntent, { kind: 'cue' }>['cue']) => void
   /** Performs one idle intent; a stage under another driver drops it. */
   idle: (intent: MindIdleIntent) => void
@@ -37,7 +38,7 @@ export interface MindStageHandle {
  * finished pet with a voice view does. The state keeps the last decision between steps, so it alone cannot tell.
  */
 export function voiceDecisionOf({ stimuli, state }: Pick<MindStep, 'stimuli' | 'state'>): ReactionDecision | null {
-  const decided = stimuli.some(stimulus => stimulus.kind === 'touch' && stimulus.voice !== null && stimulus.gesture !== 'pet-start')
+  const decided = state.performer.posture && stimuli.some(stimulus => stimulus.kind === 'touch' && stimulus.voice !== null && stimulus.gesture !== 'pet-start')
   return decided ? state.voice.lastDecision : null
 }
 
@@ -76,6 +77,7 @@ export const useCharacterMindStore = defineStore('character-mind', () => {
   const mind = markRaw(new CharacterMind({ seed: crypto.getRandomValues(new Uint32Array(1))[0] }))
   /** Mounted stages, oldest first; the newest receives the cues. */
   const stages: MindStage[] = []
+  const capabilityWatches = new Set<() => void>()
   /** Answers the voice port's stimuli; its cues go to the newest attached stage, or nowhere. */
   const voice = new MindVoice(mind, () => situation, cue => stages.at(-1)?.idleCue(cue))
 
@@ -131,6 +133,7 @@ export const useCharacterMindStore = defineStore('character-mind', () => {
 
   observability.publishReactionMemory(mind.state.voice.reaction)
   let stopInspector: (() => void) | undefined = mind.onStep((step) => {
+    observability.recordMindRefusals(step.refusals, step.atMs)
     const { reaction } = step.state.voice
     const decision = voiceDecisionOf(step)
     if (decision)
@@ -164,7 +167,10 @@ export const useCharacterMindStore = defineStore('character-mind', () => {
     // Presence reaches the mind only as edges, so a reset while the user is away would lose the span and her return.
     const away = mind.state.presence.away
     mind.reset({ pacing: record?.pacing ?? null })
+    loaded = record && { cardId: record.cardId, epoch: characterState.leaderEpoch }
+    lastPacing = mind.state.slow.pacing
     clearIdleWake()
+    mind.receive({ kind: 'performer', capabilities: stages.at(-1)?.capabilities() ?? NO_CAPABILITIES })
     // The span reopens at the reset; the return after it still gets its response.
     if (away)
       mind.receive({ kind: 'presence', away: true, wake: null })
@@ -172,8 +178,6 @@ export const useCharacterMindStore = defineStore('character-mind', () => {
     if (reportedView && stages.length > 0)
       mind.receive({ kind: 'idle', reports: [{ kind: 'view', view: reportedView }] })
     music.replay()
-    loaded = record && { cardId: record.cardId, epoch: characterState.leaderEpoch }
-    lastPacing = mind.state.slow.pacing
     disconnectVoice = situation.connect(stimulus => voice.answer(stimulus))
   }
 
@@ -212,6 +216,11 @@ export const useCharacterMindStore = defineStore('character-mind', () => {
       mind.receive({ kind: 'idle', reports: [{ kind: 'view', view: dormantIdleView() }] })
     }
     stages.push(attached)
+    const stopCapabilities = watch(attached.capabilities, (capabilities) => {
+      if (stages.at(-1) === attached)
+        mind.receive({ kind: 'performer', capabilities })
+    }, { immediate: true, deep: true, flush: 'sync' })
+    capabilityWatches.add(stopCapabilities)
     return {
       report(reports) {
         if (stages.at(-1) !== attached)
@@ -227,8 +236,11 @@ export const useCharacterMindStore = defineStore('character-mind', () => {
         if (index === -1)
           return
         const reporting = index === stages.length - 1
+        stopCapabilities()
+        capabilityWatches.delete(stopCapabilities)
         stages.splice(index, 1)
         if (reporting) {
+          mind.receive({ kind: 'performer', capabilities: stages.at(-1)?.capabilities() ?? NO_CAPABILITIES })
           reportedView = null
           mind.receive({ kind: 'idle', reports: [{ kind: 'view', view: dormantIdleView() }] })
         }
@@ -243,6 +255,9 @@ export const useCharacterMindStore = defineStore('character-mind', () => {
 
   /** Stops the leadership subscription, disconnects from the gate, and clears the inspector's memory. */
   function dispose() {
+    for (const stop of capabilityWatches)
+      stop()
+    capabilityWatches.clear()
     stopLeadershipListener?.()
     stopLeadershipListener = undefined
     stopLeading()

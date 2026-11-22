@@ -2,7 +2,8 @@ import type { CueGestureStimulus, MindRandom } from './types'
 
 import { describe, expect, it } from 'vitest'
 
-import { initialMindState, step } from './step'
+import { step } from './step'
+import { naturalMindState } from './test/fixtures'
 
 const T0 = 1_700_000_000_000
 
@@ -13,7 +14,7 @@ describe('chat activity', () => {
       draws++
       return 0.5
     }
-    const sent = step(initialMindState(), [{ kind: 'chat', cue: 'sent', words: 7 }], T0, rng)
+    const sent = step(naturalMindState(), [{ kind: 'chat', cue: 'sent', words: 7 }], T0, rng)
     const unfold = step(sent.state, [{ kind: 'chat', cue: 'unfold' }], T0 + 1000, rng)
 
     expect(sent.intents).toEqual([
@@ -35,7 +36,7 @@ describe('cue gestures', () => {
       draws++
       return 0.5
     }
-    const act = step(initialMindState(), [{ kind: 'cue-gesture', gesture, count: 2, source: 'act', turnId: 'turn-1' }], T0, rng)
+    const act = step(naturalMindState(), [{ kind: 'cue-gesture', gesture, count: 2, source: 'act', turnId: 'turn-1' }], T0, rng)
     const devtools = step(act.state, [{ kind: 'cue-gesture', gesture, count: 1, source: 'devtools' }], T0 + 1000, rng)
 
     expect(act.intents).toEqual([{ id: '1-gesture', cause: 1, channel: 'posture', kind: 'gesture', gesture, count: 2 }])

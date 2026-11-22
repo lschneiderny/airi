@@ -3,7 +3,8 @@ import type { MindState, MindStimulus } from './types'
 import { describe, expect, it } from 'vitest'
 
 import { seededRandom } from './random'
-import { initialMindState, step } from './step'
+import { step } from './step'
+import { naturalMindState } from './test/fixtures'
 
 const SEC = 1000
 /** Epoch milliseconds of the first stimulus of every script. */
@@ -21,7 +22,7 @@ function unlock(atMs: number, away = false): MindStimulus {
 /** One mind fed in order with a seeded source. */
 function script() {
   const rng = seededRandom(7)
-  let state: MindState = initialMindState()
+  let state: MindState = naturalMindState()
   return {
     get state() { return state },
     send(atMs: number, ...stimuli: MindStimulus[]) {

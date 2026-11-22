@@ -1,9 +1,11 @@
-import type { MindIntent, MindRandom, MindSlowState, MindState, MindStimulus } from './types'
+import type { MindAnswer, MindIntent, MindRandom, MindSlowState, MindState, MindStimulus, Refusal } from './types'
 
+import { dormantIdleView } from '@proj-airi/motion-driver-natural/idle-schedule'
 import { createReactionState, initialTouchAffectMemory } from '@proj-airi/stage-shared/expression-performance'
 import { initialReactionMemory } from '@proj-airi/stage-shared/situation'
 
 import { answerCursor, answerInteraction } from './attention'
+import { declaredAnswer, NO_CAPABILITIES } from './capabilities'
 import { answerChat } from './chat'
 import { answerEmotion, answerExpressionClear, answerExpressionRequest } from './expression'
 import { advanceIdle, answerIdle, answerIdlePlay, initialMindIdleState } from './idle'
@@ -19,6 +21,7 @@ import { answerUserTurn, answerVoiceOutcome, answerVoiceRequest, answerVoiceTick
 export function initialMindState(slow: MindSlowState = { pacing: null }): MindState {
   return {
     seq: 0,
+    performer: NO_CAPABILITIES,
     reaction: createReactionState(),
     touch: { affect: initialTouchAffectMemory },
     voice: { reaction: initialReactionMemory(), lastDecision: null, gate: null, runId: null, stageShown: false, line: null, requests: [], lastGate: null },
@@ -43,21 +46,29 @@ export function initialMindState(slow: MindSlowState = { pacing: null }): MindSt
  * the last one they accepted. Every stimulus advances `seq`, also when it yields no intent. After each answer,
  * `slow.pacing` follows her pacing in the gate memory.
  */
-export function step(state: MindState, stimuli: readonly MindStimulus[], nowMs: number, rng: MindRandom): { state: MindState, intents: MindIntent[] } {
+export function step(state: MindState, stimuli: readonly MindStimulus[], nowMs: number, rng: MindRandom): { state: MindState, intents: MindIntent[], refusals: Refusal[] } {
   const atSeconds = nowMs / 1000
   const intents: MindIntent[] = []
+  const refusals: Refusal[] = []
   // A desktop wake anywhere in the call wins over a screen change in the same call.
   const wakes = stimuli.some(stimulus => stimulus.kind === 'presence' && stimulus.wake !== null)
   let next = state
   for (const stimulus of stimuli) {
     const cause = next.seq + 1
     next = { ...next, seq: cause }
+    if (stimulus.kind === 'performer') {
+      next = { ...next, performer: stimulus.capabilities }
+      // Retire the previous performer's view before any due decision; a new stage reports its own view.
+      if (!stimulus.capabilities.posture)
+        next = { ...next, idle: { ...next.idle, view: dormantIdleView(), pending: null, atMs: nowMs, schedule: { ...next.idle.schedule, followUp: null, awaySince: null } } }
+      continue
+    }
     // The idle clock catches up first, so a decision that fell due before this stimulus comes before its answer.
     const due = advanceIdle(next, cause, nowMs)
     next = due.state
     intents.push(...due.intents)
 
-    let answer: { state: MindState, intents: MindIntent[] }
+    let answer: MindAnswer
     if (stimulus.kind === 'emotion')
       answer = answerEmotion(next, stimulus, cause, atSeconds, rng)
     else if (stimulus.kind === 'expression-request')
@@ -95,9 +106,11 @@ export function step(state: MindState, stimuli: readonly MindStimulus[], nowMs: 
     else
       answer = answerVoiceOutcome(next, stimulus, cause, nowMs)
 
+    answer = declaredAnswer(answer)
+    refusals.push(...answer.refusals ?? [])
     next = answer.state.voice.gate === next.voice.gate ? answer.state : followPacing(answer.state)
     intents.push(...answer.intents)
   }
 
-  return { state: next, intents }
+  return { state: next, intents, refusals }
 }

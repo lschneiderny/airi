@@ -6,7 +6,6 @@ import type { Component, ComponentInternalInstance, VNode } from 'vue'
 
 import type { StagePerformanceScene } from '../../composables/performance/use-stage-performance-conductor'
 
-import { CharacterMind } from '@proj-airi/character-mind'
 import { NaturalMotion } from '@proj-airi/motion-driver-natural'
 import { presenceBubbleIdle, presenceBubbleThinking } from '@proj-airi/stage-shared'
 import { DEFAULT_CHARACTER_PROFILE, faceBaselineOf, initialCharacterState, NEUTRAL_FACE_BASELINE, readCharacter } from '@proj-airi/stage-shared/character-state'
@@ -40,6 +39,7 @@ import { useNaturalPerformanceOverride } from '../../stores/natural-performance-
 import { useSettingsStageModel } from '../../stores/settings/stage-model'
 import { useSituationStore } from '../../stores/situation'
 import { useSpeechOutputControlStore } from '../../stores/speech-output-control'
+import { naturalMind } from '../../test/natural-mind'
 import { createSyncedContextPlugin } from '../../test/synced-context'
 import { ChatHistory } from '../scenarios/chat'
 
@@ -743,7 +743,7 @@ describe('per-signal character profiles at the Natural consumer', () => {
           scene: () => ({ setEmotion: episode => pending.push(episode), applySlots: () => {}, applyHolds: () => {}, onSpeech: () => {}, setMuted: () => {} }),
           driver: () => 'natural',
           playMotion: () => {},
-          mind: new CharacterMind({ seed: 7 }),
+          mind: naturalMind({ seed: 7 }),
           mood: () => motion.moodState,
           profile: turnId => turnId === 'turn-a' ? { moodGainScale: 0, moodDecayScale: 2 } : undefined,
         })
@@ -809,7 +809,7 @@ describe('resting face from the replicated character reading', () => {
           scene: () => ({ setEmotion: () => {}, applySlots: () => {}, applyHolds: () => {}, onSpeech: () => {}, setMuted: () => {}, setFaceBaseline: baseline => motion.setFaceBaseline(baseline) }),
           driver: () => 'natural',
           playMotion: () => {},
-          mind: new CharacterMind({ seed: 7 }),
+          mind: naturalMind({ seed: 7 }),
           mood: () => motion.moodState,
           characterReading: () => reading,
         })

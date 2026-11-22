@@ -7,6 +7,7 @@ import { DOUBLE_TEXT_PROBABILITY, FLOOR_MS, HOUR_MS, initialSituationState, prom
 import { describe, expect, it } from 'vitest'
 
 import { initialMindState, step } from './step'
+import { naturalMindState } from './test/fixtures'
 import { nextVoiceWakeAt, WIDGET_DEADLINE_MARGIN_MS, WIDGET_START_WAIT_MS } from './voice'
 
 const SEC = 1000
@@ -54,7 +55,7 @@ function script(seed = SEED, slow?: MindSlowState) {
     draws++
     return source()
   }
-  let state = initialMindState(slow)
+  let state = naturalMindState(slow)
   return {
     get state() { return state },
     get gate() { return state.voice.gate! },
@@ -77,6 +78,17 @@ const user: UserGateMemory = { lastFireAtMs: T0 - 30 * MIN, fires: [T0 - 30 * MI
 const pacing: CharacterPacingMemory = { lastSpokenAtMs: T0 - 30 * MIN, unanswered: 2, awaitingSinceMs: T0 - 30 * MIN, damp: null, lastOwnDayAtMs: null }
 
 describe('voice-tick', () => {
+  it('keeps the reach-out and its random stream without an undeclared cue', () => {
+    const naturalRandom = randomSource(SEED)
+    const undeclaredRandom = randomSource(SEED)
+    const stimulus = tick({}, true)
+    const natural = step(naturalMindState(), [stimulus], T0, naturalRandom)
+    const undeclared = step(initialMindState(), [stimulus], T0, undeclaredRandom)
+    expect(undeclared.intents).toEqual(natural.intents.filter(intent => intent.channel === 'voice'))
+    expect(undeclared.intents.map(intent => intent.kind)).toEqual(['speak'])
+    expect(undeclared.refusals).toEqual([{ cause: 1, kind: 'cue', reason: 'undeclared' }])
+    expect(undeclaredRandom()).toBe(naturalRandom())
+  })
   it('restores a new run from the user\'s slice and her pacing over a promotion, normalized at the tick', () => {
     // A stored time ahead of the tick (the clock moved back) is pulled back to it.
     const ahead = { ...pacing, lastOwnDayAtMs: T0 + HOUR_MS }
@@ -367,7 +379,7 @@ describe('cues', () => {
   it('cues nothing around a touch line', () => {
     // Every draw speaks the line that reaches its roll.
     const speaks: MindRandom = () => 0.1
-    let state = initialMindState()
+    let state = naturalMindState()
     const send = (atMs: number, stimulus: MindStimulus) => {
       const answer = step(state, [stimulus], atMs, speaks)
       state = answer.state
