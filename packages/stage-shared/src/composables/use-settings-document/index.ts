@@ -43,6 +43,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * - `update(patch)`: merges the patch over the document one level deep, validates, then commits and persists. An
  *   invalid patch changes nothing and returns the issues.
  * - `reset()`: commits and persists the schema defaults.
+ * - A storage failure rejects the action before publishing the new document. Migration cleanup may run only after
+ *   the action resolves successfully.
  *
  * localStorage is outside the app's control, so each stored field is validated on its own: an invalid field falls
  * back to its default while valid siblings survive, and unknown fields are dropped. Storage changes from other
@@ -86,16 +88,33 @@ export function useSettingsDocument<const TEntries extends ObjectEntries>(key: s
 
   // Persistence is private: applying a remote snapshot never writes back into
   // synchronized state or persists an uncommitted follower proposal.
+  const persistence = { failed: false, error: undefined as unknown }
   const persisted = useLocalStorageManualReset<Document>(key, () => sanitize(options.initial?.() ?? {}), {
     listenToStorageChanges: false,
     writeDefaults: false,
     flush: 'sync',
+    onError(error) {
+      persistence.failed = true
+      persistence.error = error
+    },
     serializer: {
       read: readStored,
       write: value => JSON.stringify(value),
     },
   })
+  if (persistence.failed)
+    throw persistence.error
   const document = shallowRef<Document>(structuredClone(toRaw(persisted.value)))
+
+  function commit(value: Document) {
+    persistence.failed = false
+    // VueUse catches storage errors and calls onError. With flush: 'sync', that acknowledgment arrives before the
+    // assignment returns; publishing first would report success and let a migration delete the only saved copy.
+    persisted.value = value
+    if (persistence.failed)
+      throw persistence.error
+    document.value = value
+  }
 
   async function update(patch: Partial<Document>) {
     const candidate = isRecord(patch) ? { ...structuredClone(toRaw(document.value)), ...patch } : patch
@@ -103,15 +122,13 @@ export function useSettingsDocument<const TEntries extends ObjectEntries>(key: s
     if (!result.success)
       return { success: false as const, issues: result.issues }
 
-    document.value = result.output
-    persisted.value = result.output
+    commit(result.output)
     return { success: true as const }
   }
 
   async function reset() {
     const value = parse(schema, {})
-    document.value = value
-    persisted.value = value
+    commit(value)
   }
 
   return { document, update, reset }

@@ -1,4 +1,3 @@
-import type { Plugin } from 'vue'
 import type { RouteRecordRaw } from 'vue-router'
 
 import { autoAnimatePlugin } from '@formkit/auto-animate/vue'
@@ -24,6 +23,7 @@ import { handleHotUpdate, routes } from 'vue-router/auto-routes'
 import App from './App.vue'
 
 import { electronWindowBackdropUpdate } from '../shared/eventa'
+import { initializeAnalyticsConsent } from './bridges/analytics-consent'
 import { installGoNetwork } from './bridges/opencode-go'
 import { migrateGoCredentials } from './bridges/opencode-go-migration'
 import { nestFullscreenSurfaces } from './components/fullscreen/surfaces'
@@ -105,8 +105,10 @@ if (import.meta.hot) {
   })
 }
 
-function mount() {
+async function mount() {
   const app = createApp(App)
+  app.use(synced.vue).use(pinia)
+  await initializeAnalyticsConsent(app, pinia, windowContext.leadership === 'leader-only')
   // Main sends every report. Without a DSN in the build, main starts no SDK, so the renderer starts none either.
   if (import.meta.env.AIRI_ERROR_REPORT_DSN) {
     startErrorReporting(app, () => useSettingsAnalytics(pinia).analyticsEnabled, async (options) => {
@@ -116,12 +118,9 @@ function mount() {
   }
 
   app
-    .use(synced.vue)
     .use(MotionPlugin)
-    // TODO: Fix autoAnimatePlugin type error
-    .use(autoAnimatePlugin as unknown as Plugin)
+    .use(autoAnimatePlugin)
     .use(router)
-    .use(pinia)
     .use(PiniaColada)
     .use(i18n)
     .use(trackButtonPlugin)
@@ -145,7 +144,7 @@ async function start() {
       console.warn('OpenCode Go credential transfer failed. Existing local copies were retained. Open Go settings to save the key again.')
     }
   }
-  mount()
+  await mount()
 }
 
 void start()

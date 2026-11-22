@@ -38,10 +38,10 @@ vi.mock('vue-i18n', () => ({
 }))
 
 describe('useHearingStore analytics lifecycle', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     setActivePinia(createPinia())
     analyticsMock.capture.mockReset()
-    useSettingsAnalytics().analyticsEnabled = true
+    await useSettingsAnalytics().update({ optedIn: true })
     transcriptionMock.generateTranscription.mockReset()
     transcriptionMock.generateTranscription.mockResolvedValue({ text: 'hello' })
   })

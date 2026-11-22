@@ -3,6 +3,7 @@ import { all } from '@proj-airi/i18n'
 import { useAnalytics } from '@proj-airi/stage-ui/composables/use-analytics'
 import { isAnalyticsAvailableInBuild } from '@proj-airi/stage-ui/libs/product-signals'
 import { useSettings } from '@proj-airi/stage-ui/stores/settings'
+import { useSettingsAnalytics } from '@proj-airi/stage-ui/stores/settings/analytics'
 import { FieldCheckbox, FieldCombobox, useTheme } from '@proj-airi/ui'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -18,10 +19,12 @@ const showStreamerMode = import.meta.env.RUNTIME_ENVIRONMENT === 'electron'
 
 const showControlsIsland = computed(() => props.needsControlsIslandIconSizeSetting)
 const showAnalyticsSettings = computed(() => isAnalyticsAvailableInBuild())
-const analyticsToggleValue = computed({
-  get: () => showAnalyticsSettings.value ? settings.analyticsEnabled : false,
-  set: (value: boolean) => settings.analyticsEnabled = value,
-})
+const analytics = useSettingsAnalytics()
+const analyticsToggleValue = computed(() => showAnalyticsSettings.value ? analytics.analyticsEnabled : false)
+
+async function updateAnalytics(optedIn: boolean) {
+  await analytics.update({ optedIn })
+}
 
 const { t } = useI18n()
 const { themeMode } = useTheme()
@@ -91,14 +94,15 @@ const languages = computed(() => {
     />
 
     <FieldCheckbox
-      v-model="analyticsToggleValue"
       v-motion
+      :model-value="analyticsToggleValue"
       :disabled="!showAnalyticsSettings"
       :initial="{ opacity: 0, y: 10 }"
       :enter="{ opacity: 1, y: 0 }"
       :duration="250 + (5 * 10)"
       :delay="5 * 50"
       :label="t('settings.analytics.toggle.title')"
+      @update:model-value="updateAnalytics"
     >
       <template #description>
         <div :class="['flex', 'flex-col', 'gap-2', 'text-xs', 'leading-relaxed']">
