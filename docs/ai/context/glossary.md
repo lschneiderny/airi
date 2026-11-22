@@ -12,11 +12,10 @@ Each entry names the defining path and its exported symbol. Symbols are cited by
 
 ### Performer
 
-The per-stage, renderer-side module (Live2D or MMD, under the Natural driver) that realises the mind's intents with continuous per-frame control and declares the capabilities it can realise. It may contain renderer deciders that act on intents and on the renderer's own world.
+The per-stage, renderer-side module (Live2D or MMD, under Natural) that realises the mind's intents with continuous per-frame control and declares its capabilities. It may contain renderer deciders that act on intents and the renderer's own world. Within it, MMD's whole-body synthesizer turns Natural's intent, gaze goals, director stance, gait, and clip ownership into bone channels; the Live2D expression store and hold performer apply slot commands and emotion holds.
 
-**Code:** `packages/character-mind/src/capabilities.ts` `PerformerCapabilities`, `permits`; `packages/stage-ui-live2d/src/composables/live2d/natural-motion-adapter.ts` `LIVE2D_NATURAL_CAPABILITIES`; `packages/stage-ui-mmd/src/composables/mmd/natural/adapter.ts` `MMD_NATURAL_CAPABILITIES`.
-
-**Not to be confused with:** the current usages listed under [Conflicting usages](#conflicting-usages).
+**Code:** `packages/character-mind/src/capabilities.ts` `PerformerCapabilities`, `permits`; `packages/stage-ui-live2d/src/composables/live2d/natural-motion-adapter.ts` `LIVE2D_NATURAL_CAPABILITIES`; `packages/stage-ui-mmd/src/composables/mmd/natural/adapter.ts` `MMD_NATURAL_CAPABILITIES`; `packages/motion-driver-humanoid/src/performance/index.ts` `createBodyPerformer`; `packages/stage-ui-mmd/src/composables/mmd/body/performer.ts` `MMDBodyPerformer`; `packages/stage-ui-live2d/src/composables/live2d/expression/hold.ts` `EmotionHoldPerformer`.
+**Not to be confused with:** the conductor, which dispatches; the mind, which decides episodes; and the renderer, which draws the model. Earlier narrower usages remain listed under [Conflicting usages](#conflicting-usages).
 
 ### Capability
 
@@ -28,7 +27,7 @@ A declaration of the mind channels and cue gesture kinds a performer can realise
 
 An observer event naming a request that the performer declaration excludes. The mind records the stimulus sequence, intended kind, and `undeclared` reason without drawing for the refused episode. No policy reads the report. A conductor refusal uses `not-declared-by-stage`, so a second attached stage can report a narrower declaration.
 
-**Code:** `packages/character-mind/src/types.ts` `Refusal`; `packages/character-mind/src/mind.ts` `MindStep`.
+**Code:** `packages/character-mind/src/types.ts` `Refusal`; `packages/character-mind/src/mind.ts` `MindStep`; `packages/stage-ui/src/features/performance/runtime-state.ts` `PerformerRefusal`; `packages/stage-ui/src/composables/performance/use-stage-performance-conductor.ts` `StagePerformanceConductor` (`onRefusal`).
 
 ### ACT and DELAY cues
 
@@ -374,14 +373,6 @@ An unprompted turn whose reason is something from her own day, improvised when t
 **Code:** `packages/stage-shared/src/situation/reasons/collect.ts` (reason kind `'own-day'`); `packages/stage-shared/src/situation/reasons/types.ts` `REASON_TEXT`; `packages/stage-shared/src/situation/urge-gate.ts` `recordUrgeFireOutcome`, `CharacterPacingMemory`.
 **Not to be confused with:** a ritual reach-out (greetings tied to the logical day) and a thread continuation.
 **Avoid:** "diary", "daily story".
-
-### Performer
-
-The part that executes decisions without making them. On MMD, the whole-body performer is a pure kinematic synthesizer that turns Natural's intent, gaze goals, the director's stance, the gait, and clip ownership into bone channels each 120 Hz tick, and `MMDBodyPerformer` writes those channels to the model's bones. On Live2D, the expression performer is the Live2D expression store with its hold performer, which applies slot commands and emotion holds.
-
-**Code:** `packages/motion-driver-humanoid/src/performance/index.ts` `createBodyPerformer`; `packages/stage-ui-mmd/src/composables/mmd/body/performer.ts` `MMDBodyPerformer`; `packages/stage-ui-live2d/src/composables/live2d/expression/hold.ts` `EmotionHoldPerformer`; tool-facing view `packages/stage-ui/src/composables/performance/use-stage-performance-conductor.ts` `ExpressionToolPerformer`.
-**Not to be confused with:** the conductor, which dispatches; the character mind, which decides the emotion; the decider, which picks expression entries; and the body director, which decides body behavior.
-**Avoid:** "renderer" for a performer (the renderer draws the model).
 
 ### Persistence tier
 
