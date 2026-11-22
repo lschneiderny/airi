@@ -5,6 +5,7 @@ import type { MindIntent, MindRandom, MindState, MindStimulus } from './types'
 import { defaultExpressionPerformanceSettings as settings } from '@proj-airi/stage-shared/expression-performance'
 import { describe, expect, it, vi } from 'vitest'
 
+import { NO_CAPABILITIES } from './capabilities'
 import { step } from './step'
 import { naturalMindState } from './test/fixtures'
 
@@ -212,6 +213,42 @@ describe('step: the spoken touch reaction', () => {
     mind.burstAt(T0 + 13 * SEC)
 
     expect(mind.decision).toMatchObject({ speak: false, reason: 'refractory', kind: 'poke-protest' })
+  })
+
+  it('keeps the refractory across a performer switch that leaves and returns to Natural', () => {
+    const mind = script()
+    const natural = mind.state.performer
+    mind.burstAt(T0)
+    mind.outcomeAt(T0 + 3 * SEC, 'spoken')
+    mind.send(T0 + 4 * SEC, { kind: 'performer', capabilities: NO_CAPABILITIES })
+    mind.send(T0 + 5 * SEC, { kind: 'performer', capabilities: natural })
+
+    mind.burstAt(T0 + 13 * SEC)
+
+    expect(mind.decision).toMatchObject({ speak: false, reason: 'refractory', kind: 'poke-protest' })
+  })
+
+  it('closes a granted pet on cancellation without a dose, moment, line, attend, or draw', () => {
+    const mind = script(() => {
+      throw new Error('A cancellation must not draw')
+    })
+    mind.send(T0, petStart)
+    const before = mind.state.voice
+
+    expect(mind.send(T0 + 5 * SEC, { kind: 'touch', gesture: 'pet-cancel', region: 'head', settings, voice: null })).toEqual([
+      { id: '2-touch-reaction', cause: 2, channel: 'posture', kind: 'touch-reaction', gesture: 'pet', phase: 'end' },
+    ])
+    expect(mind.state.touch.affect.pet).toBeNull()
+    expect(mind.state.voice).toBe(before)
+  })
+
+  it('answers nothing to a cancellation without a granted pet, under any declaration', () => {
+    const mind = script()
+    expect(mind.send(T0, { kind: 'touch', gesture: 'pet-cancel', region: 'head', settings, voice: null })).toEqual([])
+    mind.send(T0 + SEC, petStart)
+    mind.send(T0 + 2 * SEC, { kind: 'performer', capabilities: NO_CAPABILITIES })
+    expect(mind.send(T0 + 3 * SEC, { kind: 'touch', gesture: 'pet-cancel', region: 'head', settings, voice: null })).toEqual([])
+    expect(mind.state.touch.affect.pet).toBeNull()
   })
 
   it.each(['declined', 'cancelled', 'failed'] as const)('holds the next burst for the retry wait after a %s line', (outcome) => {

@@ -26,6 +26,8 @@ export type TouchReport
   = | { gesture: 'poke', region: 'head' | 'body', point: { x: number, y: number } }
     | { gesture: 'pet-start', region: 'head' }
     | { gesture: 'pet-end', region: 'head', durationMs: number }
+  /** Cleanup withdrew a running pet. It is not a finished pet: no dose, moment, line, or attend follows. */
+    | { gesture: 'pet-cancel', region: 'head' }
 
 /** What woke the desktop: a screen unlock or a resume from suspend. */
 export type WakeCause = 'unlock' | 'resume'

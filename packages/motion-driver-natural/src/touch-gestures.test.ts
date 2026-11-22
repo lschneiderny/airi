@@ -108,11 +108,20 @@ describe('live2d touch gestures', () => {
     expect(gestures.inspect(1500)).toMatchObject({ petting: true, offHeadMs: null })
   })
 
-  it('ends any pet at once on reset', () => {
+  it('cancels a running pet at once on reset, without reporting a finished pet', () => {
     const gestures = new NaturalTouchGestures()
     stroke(gestures, 0, 1000)
-    expect(gestures.reset(1010)).toEqual([{ kind: 'pet-end', durationMs: expect.any(Number) }])
+    expect(gestures.reset(1010)).toEqual([{ kind: 'pet-cancel' }])
+    expect(gestures.petting).toBe(false)
     expect(gestures.reset(1020)).toEqual([])
+    expect(gestures.update(1020 + naturalPetThresholds.idleMs + 1)).toEqual([])
+  })
+
+  it('drops a pending hover poke on reset, so no late poke follows', () => {
+    const gestures = new NaturalTouchGestures()
+    gestures.pressed(at(0, 0))
+    expect(gestures.reset(10)).toEqual([])
+    expect(gestures.update(200)).toEqual([])
   })
 
   it.each([

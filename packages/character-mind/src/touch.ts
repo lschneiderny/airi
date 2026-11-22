@@ -20,6 +20,14 @@ interface Answer { state: MindState, intents: MindIntent[], refusals?: Refusal[]
  * - Body: a poke and a pet start end with `attend`, which opens the director's attend window. A pet end opens none.
  */
 export function answerTouch(state: MindState, stimulus: Stimulus<'touch'>, cause: number, nowMs: number, rng: MindRandom): Answer {
+  // Cleanup closes only a pet the mind granted, so the hand cannot stay stuck. It draws nothing and speaks nothing.
+  if (stimulus.gesture === 'pet-cancel') {
+    if (state.touch.affect.pet === null)
+      return { state, intents: [] }
+    const next = { ...state, touch: { affect: { ...state.touch.affect, pet: null } } }
+    const end: MindIntent = { id: `${cause}-touch-reaction`, cause, channel: 'posture', kind: 'touch-reaction', gesture: 'pet', phase: 'end' }
+    return { state: next, intents: state.performer.posture ? [end] : [] }
+  }
   if (!state.behavior.touchReactions)
     return { state, intents: [] }
   if (!state.performer.posture)

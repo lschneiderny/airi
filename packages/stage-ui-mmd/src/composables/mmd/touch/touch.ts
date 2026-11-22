@@ -133,7 +133,7 @@ export class MMDTouch {
       if (event.kind === 'pet-start')
         return { gesture: 'pet-start', region: 'head' }
       this.pet = null
-      return { gesture: 'pet-end', region: 'head', durationMs: event.durationMs }
+      return event.kind === 'pet-end' ? { gesture: 'pet-end', region: 'head', durationMs: event.durationMs } : { gesture: 'pet-cancel', region: 'head' }
     })
   }
 

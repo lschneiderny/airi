@@ -22,6 +22,8 @@ export type NaturalTouchGesture
   = | { kind: 'poke', region: NaturalTouchRegion, x: number, y: number }
     | { kind: 'pet-start' }
     | { kind: 'pet-end', durationMs: number }
+  /** Cleanup ended a pet (model swap, pause, touch off, driver change): not a finished pet, so it earns no response. */
+    | { kind: 'pet-cancel' }
 
 export interface NaturalRigTraits {
   bodyFromHeadPhysics: { x: boolean, y: boolean, z: boolean }
