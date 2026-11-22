@@ -1,3 +1,4 @@
+import type { RendererEvaluator } from './bridge-client'
 import type { Point } from './pointer-macos'
 
 import { setTimeout as wait } from 'node:timers/promises'
@@ -61,4 +62,21 @@ export async function playStageDrag(stage: CdpInputSender, steps: readonly Stage
     await warp?.(step.screen)
     await stage.send('Input.dispatchMouseEvent', step.mouse)
   }
+}
+
+/**
+ * Opens the chat from the stage window the way the user does, through the controls island's chat button, which
+ * invokes the main process's chat open. The floating chat toggles on that button, so a pressed button is left alone.
+ * Resolves `opened`, `already-open`, or `no-button` when the island has no chat button mounted.
+ */
+export function openChatFromStage(stage: RendererEvaluator): Promise<'opened' | 'already-open' | 'no-button'> {
+  return stage.evaluate(`(() => {
+    const button = document.querySelector('[data-testid="controls-island-chat"]')
+    if (!button)
+      return 'no-button'
+    if (button.getAttribute('aria-pressed') === 'true')
+      return 'already-open'
+    button.click()
+    return 'opened'
+  })()`)
 }
