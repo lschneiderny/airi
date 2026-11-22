@@ -1,9 +1,11 @@
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
 
 import type { LocomotionFrame } from '../locomotion'
-import type { BodyIntent, BodyLocomotionReason, LocomotionPace, Vec3 } from '../types'
+import type { BodyIntent, BodyLocomotionReason, BodyLookTarget, LocomotionPace } from '../types'
 
 import { createRandomStream } from '../random'
+
+export type { BodyLookTarget } from '../types'
 
 /**
  * Continuous idle time in milliseconds after which she settles in: Natural's idle layer times it (`settleSeconds`),
@@ -81,9 +83,6 @@ const WANDER_MIN_LEGS = 3
  */
 const WANDER_FLOOR_LEGS = 1
 
-/** Target of a look-at tool request. */
-export type BodyLookTarget = 'camera' | 'cursor' | 'chat' | 'away'
-
 /** A tool request from the model; a new `seq` marks a new request. */
 export interface BodyToolRequest {
   seq: number
@@ -136,14 +135,10 @@ export interface BodyGoalRequest {
 export interface BodyDirectorInput {
   /** Epoch milliseconds supplied by the caller; this module never reads a clock. */
   nowMs: number
-  /** The resolved mode and attention from stage-shared. */
-  performance: Pick<PerformanceState, 'mode' | 'attention'>
+  /** The resolved performance mode remains continuous world state. */
+  performance: Pick<PerformanceState, 'mode'>
   /** The character mind's presence answer; false under drivers that receive no intents. */
   away: boolean
-  /** Optional target positions in model units. */
-  cursorPoint: Vec3 | null
-  chatPoint: Vec3 | null
-  cameraPoint: Vec3 | null
   /** Imported stance clips available for this model. */
   slots: {
     sit: boolean
@@ -212,11 +207,10 @@ export interface BodyDirectorInput {
 }
 
 /**
- * Director inputs for hosts without a stage world (classic window mode).
- * Spread it under the six legacy fields; every goal rule stays inert. Clips, pokes and drags exist without a world, so
- * every host supplies the interaction and action inputs itself.
+ * Inert geometry for hosts without a stage world: every goal rule stays inactive.
+ * Every host still supplies mode, slots, attend and away, clip requests, dragging, and idle states.
  */
-export const NO_WORLD_BODY_INPUT: Omit<BodyDirectorInput, 'nowMs' | 'performance' | 'cursorPoint' | 'chatPoint' | 'cameraPoint' | 'slots' | 'away' | 'attend' | 'actionRequest' | 'actionFeedback' | 'dragging' | 'idle'> = Object.freeze({
+export const NO_WORLD_BODY_INPUT: Omit<BodyDirectorInput, 'nowMs' | 'performance' | 'slots' | 'away' | 'attend' | 'actionRequest' | 'actionFeedback' | 'dragging' | 'idle'> = Object.freeze({
   ground: null,
   rootX: 0,
   restX: null,
@@ -285,7 +279,7 @@ export interface BodyDirectorMemory {
   readonly lingerUntilMs: number
   /** Mulberry32 seed advanced after every draw; null until seeded from the input. */
   readonly rngState: number | null
-  readonly lookOverride: { target: BodyLookTarget, untilMs: number } | null
+  readonly lookOverride: { seq: number, target: BodyLookTarget, untilMs: number } | null
 }
 
 /** Initial pure director state for a newly loaded rig. */
@@ -324,33 +318,6 @@ export const initialBodyDirectorMemory: BodyDirectorMemory = Object.freeze({
   rngState: null,
   lookOverride: null,
 })
-
-function attentionIntent(input: BodyDirectorInput): BodyIntent['attention'] {
-  const { attention } = input.performance
-
-  if (attention === 'camera')
-    return { kind: 'camera', point: input.cameraPoint }
-  if (attention === 'cursor')
-    return { kind: 'cursor', point: input.cursorPoint }
-
-  // Screen targets are supplied by the renderer-specific adapter; the chat
-  // glance point is owned by the Natural adapter, not the body director.
-  if (attention === 'screen')
-    return { kind: 'screen', point: null }
-
-  return { kind: 'aside', point: null }
-}
-
-function lookIntent(input: BodyDirectorInput, target: BodyLookTarget): BodyIntent['attention'] {
-  if (target === 'camera')
-    return { kind: 'camera', point: input.cameraPoint }
-  if (target === 'cursor')
-    return { kind: 'cursor', point: input.cursorPoint }
-  if (target === 'chat')
-    return { kind: 'chat', point: input.chatPoint }
-
-  return { kind: 'aside', point: null }
-}
 
 function clampToGround(x: number, ground: { minX: number, maxX: number }): number {
   return Math.min(Math.max(x, ground.minX), ground.maxX)
@@ -396,7 +363,7 @@ function drawRandom(state: number): { value: number, state: number } {
 }
 
 /**
- * Produces a body stance and attention target without side effects.
+ * Produces body directives without side effects.
  *
  * Time is supplied in milliseconds and clamped against the latest finite
  * timestamp in memory. Idle duration and stance dwell are retained only in the
@@ -702,7 +669,7 @@ export function decideBody(
       toolRefusalReason = null
       if (isLook) {
         lookRefractoryUntilMs = nowMs + LOOK_TOOL_REFRACTORY_MS
-        lookOverride = { target: tool.target ?? 'camera', untilMs: nowMs + LOOK_OVERRIDE_MS }
+        lookOverride = { seq: tool.seq, target: tool.target ?? 'camera', untilMs: nowMs + LOOK_OVERRIDE_MS }
       }
       else if (ground !== null) {
         // A move tool is a user intent: it ends a looping clip. A one-shot plays on with the goal pending.
@@ -864,7 +831,7 @@ export function decideBody(
     intent: {
       stance,
       rest,
-      attention: lookOverride !== null ? lookIntent(input, lookOverride.target) : attentionIntent(input),
+      look: lookOverride === null ? null : { seq: lookOverride.seq, target: lookOverride.target, holdMs: LOOK_OVERRIDE_MS },
       facingYaw: 0,
       locomotion: ground === null
         ? { homeX: input.homeX, goalX: null, pace: 'walk', arriveFacing: 0, reason: 'stay' }

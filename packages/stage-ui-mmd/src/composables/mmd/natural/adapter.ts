@@ -1,3 +1,4 @@
+import type { BodyLookTarget } from '@proj-airi/motion-driver-humanoid/types'
 import type { FaceBaseline } from '@proj-airi/motion-driver-natural/baseline'
 import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
 import type { CursorOrder, CursorReport } from '@proj-airi/motion-driver-natural/cursor-notice'
@@ -17,6 +18,7 @@ import type { MorphSlot } from '../../../constants/morphs'
 import type { SlotLease, SpeechEvent } from '../../../stores/expression-slots'
 import type { createMMDMorphRuntime } from '../morph-runtime'
 
+import { mapCursor } from '@proj-airi/motion-driver-natural/cursor-attention'
 import { IdleBehaviourReports } from '@proj-airi/motion-driver-natural/idle-activities'
 import { NaturalMotion } from '@proj-airi/motion-driver-natural/natural-motion'
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
@@ -80,6 +82,7 @@ export class MMDNaturalAdapter {
   private readonly pendingCursorOrders: CursorOrder[] = []
   /** Chat reads the character mind decided; applied after the frame's chat input, so an unfolded chat has its target. */
   private readonly pendingChatReads: NaturalChatRead[] = []
+  private readonly pendingLooks: { target: BodyLookTarget, holdSeconds: number }[] = []
   private readonly pendingBeats: number[] = []
   private idleDrive: NaturalIdleDrive | null = null
   private appliedIdleDrive: NaturalIdleDrive | null = null
@@ -146,6 +149,21 @@ export class MMDNaturalAdapter {
     this.natural.setChat(input.chat, this.time)
     for (const read of this.pendingChatReads.splice(0))
       this.natural.chatRead(read, this.time)
+    for (const look of this.pendingLooks.splice(0)) {
+      let target: Parameters<NaturalMotion['look']>[0] = null
+      if (look.target === 'camera') {
+        target = { x: 0, y: 0 }
+      }
+      else if (look.target === 'away') {
+        target = 'away'
+      }
+      else {
+        const point = look.target === 'chat' ? input.chat?.target : input.cursor
+        if (point)
+          target = mapCursor(point).eye
+      }
+      this.natural.look(target, look.holdSeconds, this.time)
+    }
     if (input.placement !== this.placement) {
       this.placement = input.placement
       this.natural.setPlacement(input.placement, this.time)
@@ -206,6 +224,11 @@ export class MMDNaturalAdapter {
   /** Reads the chat at the next frame, as the character mind decided for a sent message or an unfolded chat. */
   chatRead(read: NaturalChatRead): void {
     this.pendingChatReads.push({ ...read })
+  }
+
+  /** Queues one director look request; the next frame supplies its cursor or chat geometry before it starts. */
+  look(target: BodyLookTarget, holdSeconds: number): void {
+    this.pendingLooks.push({ target, holdSeconds })
   }
 
   /** Calls `listener` with Natural's cursor reports for the character mind; returns the function that stops it. */

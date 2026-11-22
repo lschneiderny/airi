@@ -210,6 +210,7 @@ let performSeq = 0
 let pendingAction: BodyActionRequest | null = null
 let actionFeedback: { seq: number, state: 'finished' | 'failed' } | null = null
 let playedActionSeq: number | null = null
+let playedLookSeq = 0
 let layerClip: string | null = null
 const requestedKinds = new Map<number, BodyActionKind>()
 const loadedClips = new Map<string, { clip: AnimationClip, mask: ClipBoneMask }>()
@@ -700,7 +701,6 @@ function renderLoop(now = performance.now()) {
       slots: stanceSlots.value[loadedModelKey] ?? {},
       idleMotionName: idleMotionName.value,
       isRegistered: name => registeredMotions.has(name),
-      points: bodyPoints ?? undefined,
       world: props.stageWorld ? directorWorld(props.stageWorld, loadedModelKey) : undefined,
       // Attend intents and clip requests also apply without a stage world.
       baseEligible: isBaseEligible,
@@ -710,6 +710,12 @@ function renderLoop(now = performance.now()) {
     if (base.changed)
       animation.setBaseMotion(base.motion)
     obeyAction()
+    const look = stance.intent?.look
+    if (look && look.seq > playedLookSeq) {
+      playedLookSeq = look.seq
+      if (motionDriver.value === 'natural')
+        natural?.look(look.target, look.holdMs / 1000)
+    }
     // Outside the stage-world block: perform_action answers in the classic window too.
     actionPort.observe({ directorMs: clocks.directorMs, diagnostics: stance.diagnostics })
     reportBody(stance.intent)
@@ -890,6 +896,7 @@ function disposeModel() {
   pendingAction = null
   actionFeedback = null
   playedActionSeq = null
+  playedLookSeq = 0
   layerClip = null
   dragging = false
   modelGroup = undefined

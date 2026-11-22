@@ -1,4 +1,5 @@
-import type { BodyIntent } from '@proj-airi/motion-driver-humanoid/types'
+import type { BodyIntent, BodyLookTarget } from '@proj-airi/motion-driver-humanoid/types'
+import type { PerformanceAttention } from '@proj-airi/stage-shared/performance-state'
 
 import { Vector3 } from 'three'
 import { describe, expect, it } from 'vitest'
@@ -13,15 +14,11 @@ const points: Points = {
   camera: new Vector3(7, 8, 9),
 }
 
-function frame(onChat: boolean) {
-  return { onChat }
-}
-
-function intent(point: BodyIntent['attention']['point']): BodyIntent {
+function intent(look: BodyIntent['look'] = null): BodyIntent {
   return {
     stance: 'stand',
     rest: 'none',
-    attention: { kind: 'cursor', point },
+    look,
     facingYaw: 0,
     locomotion: { homeX: 0, goalX: null, pace: 'walk', arriveFacing: 0, reason: 'stay' },
     action: null,
@@ -29,24 +26,46 @@ function intent(point: BodyIntent['attention']['point']): BodyIntent {
 }
 
 describe('resolveBodyTarget', () => {
-  it('follows the director intent point, as a copy', () => {
-    const target = resolveBodyTarget(points, frame(false), 'mouse', intent(points.cursor))
-    expect(target).toEqual(points.cursor)
-    expect(target).not.toBe(points.cursor)
+  it.each<{ attention: PerformanceAttention, point: Vector3 | null }>([
+    { attention: 'camera', point: points.camera },
+    { attention: 'cursor', point: points.cursor },
+    { attention: 'screen', point: null },
+    { attention: 'aside', point: null },
+  ])('maps resolver attention $attention to the same diagnostic point', ({ attention, point }) => {
+    const target = resolveBodyTarget(points, { onChat: false }, 'mouse', intent(), attention)
+    expect(target).toEqual(point)
+    if (point)
+      expect(target).not.toBe(point)
   })
 
-  it('has no target before the director has produced an intent', () => {
-    expect(resolveBodyTarget(points, frame(false), 'mouse', null)).toBeNull()
-    expect(resolveBodyTarget(points, frame(false), 'mouse', intent(null))).toBeNull()
+  it.each<{ target: BodyLookTarget, point: Vector3 | null }>([
+    { target: 'camera', point: points.camera },
+    { target: 'cursor', point: points.cursor },
+    { target: 'chat', point: points.chat },
+    { target: 'away', point: null },
+  ])('maps a look at $target over resolver attention', ({ target, point }) => {
+    const looked = resolveBodyTarget(points, { onChat: false }, 'mouse', intent({ seq: 1, target, holdMs: 8000 }), 'aside')
+    expect(looked).toEqual(point)
+    if (point)
+      expect(looked).not.toBe(point)
   })
 
-  it('looks at the chat while Natural glances at it, whatever the intent says', () => {
-    expect(resolveBodyTarget(points, frame(true), 'mouse', intent(points.cursor))).toEqual(points.chat)
+  it.each(['cursor', 'chat'] as const)('has no diagnostic point when the requested %s is absent', (target) => {
+    const missing = { ...points, [target]: null }
+    expect(resolveBodyTarget(missing, { onChat: false }, 'mouse', intent({ seq: 1, target, holdMs: 8000 }), 'camera')).toBeNull()
+    if (target === 'cursor')
+      expect(resolveBodyTarget(missing, { onChat: false }, 'mouse', intent(), 'cursor')).toBeNull()
   })
 
-  it('looks at the camera in camera mode and nowhere without gaze or points', () => {
-    expect(resolveBodyTarget(points, frame(false), 'camera', intent(points.cursor))).toEqual(points.camera)
-    expect(resolveBodyTarget(points, frame(false), 'none', intent(points.cursor))).toBeNull()
-    expect(resolveBodyTarget(null, frame(false), 'mouse', intent(points.cursor))).toBeNull()
+  it('has no resolver target before the first directive', () => {
+    expect(resolveBodyTarget(points, { onChat: false }, 'mouse', null, 'camera')).toBeNull()
+  })
+
+  it('keeps chat-read and camera-mode precedence over a look override', () => {
+    const look = intent({ seq: 1, target: 'away', holdMs: 8000 })
+    expect(resolveBodyTarget(points, { onChat: true }, 'mouse', look, 'cursor')).toBe(points.chat)
+    expect(resolveBodyTarget(points, { onChat: true }, 'camera', look, 'cursor')).toBe(points.camera)
+    expect(resolveBodyTarget(points, { onChat: false }, 'none', look, 'cursor')).toBeNull()
+    expect(resolveBodyTarget(null, { onChat: false }, 'mouse', look, 'cursor')).toBeNull()
   })
 })

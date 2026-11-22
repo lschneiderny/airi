@@ -138,7 +138,7 @@ it('pre-empts the gait for a full clip and issues the walk goal again after it f
     atMs += 1000 / 60
     director.update({
       nowMs: atMs,
-      performance: { mode: 'idle', attention: 'camera' },
+      performance: { mode: 'idle' },
       slots: {},
       idleMotionName: '',
       isRegistered: () => true,

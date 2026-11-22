@@ -59,7 +59,7 @@ type Target = GazePoint | 'cursor'
  */
 export type GlanceSource
   = | 'pet-end' | 'poke' | 'desktop-wake' | 'sleep-wake' | 'chat-sent' | 'chat-unfold' | 'voice-cue'
-    | 'cue-gesture' | 'emotion' | 'screen-change' | 'cursor-notice' | 'idle-act'
+    | 'look-tool' | 'cue-gesture' | 'emotion' | 'screen-change' | 'cursor-notice' | 'idle-act'
 
 /**
  * The gaze arbiter's priorities; higher wins. A request starts unless the running glance ranks higher, so equal
@@ -78,6 +78,7 @@ export const GLANCE_PRIORITY: Readonly<Record<GlanceSource, number>> = {
   'chat-unfold': 5,
   'voice-cue': 5,
   // The model's cues.
+  'look-tool': 4,
   'cue-gesture': 4,
   'emotion': 4,
   // Something changed on the desktop.
@@ -88,19 +89,19 @@ export const GLANCE_PRIORITY: Readonly<Record<GlanceSource, number>> = {
   'idle-act': 1,
 }
 
-/** What the gaze arbiter did with one request: `point` is where it aimed, `hold` its hold, null for a cursor notice. */
+/** The arbiter's answer: point is null for a missing target, and hold is null for a cursor notice. */
 export interface GlanceOutcome {
   at: number
   source: GlanceSource | 'chat-typing'
   outcome: 'started' | 'refused'
-  point: GazePoint
+  point: GazePoint | null
   hold: number | null
 }
 
-/** A held glance: saccade to `point`, then hold it for `hold` seconds. */
+/** A held glance: saccade to `point`, then hold it for `hold` seconds. A null point reports a refusal without moving. */
 export interface GlanceRequest {
   source: GlanceSource
-  point: GazePoint
+  point: GazePoint | null
   hold: number
 }
 
@@ -321,12 +322,12 @@ export class NaturalGazeLayer {
    * Asks the gaze arbiter for a held glance at `at`. When it starts, the gaze saccades to the request's point and holds
    * it for its hold before autonomous fixations resume, and the request holds the claim until then. Returns the
    * active-time end of the hold, including the approach saccade, or null when the arbiter refused the request: a
-   * running glance ranks higher, or an override holds. A refused request is dropped, never queued.
+   * running glance ranks higher, an override holds, or the target is missing. A refusal is dropped, never queued.
    * A chat read relinquishes its hold when the chat target is cleared, including while talking.
    */
   glance(request: GlanceRequest, at: number): number | null {
-    const point = { ...request.point }
-    if (!this.admits(request.source)) {
+    const point = request.point === null ? null : { ...request.point }
+    if (request.point === null || !this.admits(request.source)) {
       this.report?.({ at, source: request.source, outcome: 'refused', point, hold: request.hold })
       return null
     }
@@ -337,6 +338,14 @@ export class NaturalGazeLayer {
     this.claimed = { source: request.source, until: this.nextFixationAt }
     this.report?.({ at, source: request.source, outcome: 'started', point, hold: request.hold })
     return this.nextFixationAt
+  }
+
+  /** Realises a look tool in eye space; away draws an aside side, and a missing target is reported as refused. */
+  look(target: GazePoint | 'away' | null, hold: number, at: number): number | null {
+    const point = target === 'away'
+      ? { x: (this.random() < 0.5 - 0.15 * this.inward ? -1 : 1) * targets.aside.x, y: targets.aside.y }
+      : target
+    return this.glance({ source: 'look-tool', point, hold }, at)
   }
 
   /**

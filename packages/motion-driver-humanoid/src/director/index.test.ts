@@ -1,4 +1,4 @@
-import type { PerformanceAttention, PerformanceMode, PerformanceState } from '@proj-airi/stage-shared/performance-state'
+import type { PerformanceMode } from '@proj-airi/stage-shared/performance-state'
 
 import type { BodyIntent } from '../types'
 import type { BodyActionRequest } from './index'
@@ -27,9 +27,6 @@ import {
 
 type DirectorInput = Parameters<typeof decideBody>[0]
 
-const cameraPoint = { x: 0, y: 1, z: 2 }
-const cursorPoint = { x: 3, y: 4, z: 5 }
-const chatPoint = { x: 6, y: 7, z: 8 }
 /** Natural's long idle states: settled in after a long idle, asleep while the user is away. */
 const SETTLED = { settled: true, asleep: false }
 const ASLEEP = { settled: false, asleep: true }
@@ -40,11 +37,7 @@ function input(overrides: Partial<DirectorInput> = {}): DirectorInput {
     away: false,
     performance: {
       mode: 'idle',
-      attention: 'camera',
     },
-    cursorPoint,
-    chatPoint,
-    cameraPoint,
     slots: { sit: true, sleep: true },
     ground: null,
     rootX: 0,
@@ -74,10 +67,8 @@ function input(overrides: Partial<DirectorInput> = {}): DirectorInput {
 
 function performance(
   mode: PerformanceMode = 'idle',
-  attention: PerformanceAttention = 'camera',
 ): DirectorInput['performance'] {
-  const state: Pick<PerformanceState, 'mode' | 'attention'> = { mode, attention }
-  return state
+  return { mode }
 }
 
 function decide(
@@ -102,7 +93,7 @@ describe('body director', () => {
   it('rests and dozes procedurally when Natural settles her in or she sleeps and the model has no clip for it', () => {
     const noClips = { slots: { sit: false, sleep: false } }
     const resting = decide(input({ nowMs: 0, idle: SETTLED, ...noClips }))
-    const dozing = decide(input({ nowMs: 4_000, idle: ASLEEP, away: true, performance: performance('idle', 'camera'), ...noClips }), resting.memory)
+    const dozing = decide(input({ nowMs: 4_000, idle: ASLEEP, away: true, performance: performance('idle'), ...noClips }), resting.memory)
     const awake = decide(input({ nowMs: 8_000, ...noClips }), dozing.memory)
 
     expect(resting.intent).toMatchObject({ stance: 'stand', rest: 'rest' })
@@ -131,8 +122,8 @@ describe('body director', () => {
 
   it('sleeps when Natural is asleep and the sleep slot is present, and not merely because the user is away', () => {
     const prior = decide(input({ nowMs: 0 }))
-    const away = decide(input({ nowMs: 3_000, away: true, performance: performance('idle', 'camera') }), prior.memory)
-    const asleep = decide(input({ nowMs: 3_000, away: true, performance: performance('idle', 'camera'), idle: ASLEEP }), prior.memory)
+    const away = decide(input({ nowMs: 3_000, away: true, performance: performance('idle') }), prior.memory)
+    const asleep = decide(input({ nowMs: 3_000, away: true, performance: performance('idle'), idle: ASLEEP }), prior.memory)
 
     expect(away.intent.stance).toBe('stand')
     expect(asleep.intent).toMatchObject({ stance: 'sleep', rest: 'none' })
@@ -144,13 +135,13 @@ describe('body director', () => {
     const beforeDwell = decide(input({
       nowMs: 122_999,
       away: true,
-      performance: performance('idle', 'camera'),
+      performance: performance('idle'),
       idle: ASLEEP,
     }), sitting.memory)
     const afterDwell = decide(input({
       nowMs: 123_000,
       away: true,
-      performance: performance('idle', 'camera'),
+      performance: performance('idle'),
       idle: ASLEEP,
     }), beforeDwell.memory)
 
@@ -185,23 +176,6 @@ describe('body director', () => {
     const invalidTime = decide(input({ nowMs: Number.NaN }), atTime.memory)
 
     expect(invalidTime.memory.nowMs).toBe(7_000)
-  })
-
-  it('maps performance attention to available points without using chat glance', () => {
-    const camera = decide(input({ performance: performance('idle', 'camera') }))
-    const screen = decide(input({ performance: performance('watching', 'screen') }))
-    const cursor = decide(input({ performance: performance('watching', 'cursor') }))
-    const cursorWithoutPoint = decide(input({
-      performance: performance('watching', 'cursor'),
-      cursorPoint: null,
-    }))
-    const aside = decide(input({ performance: performance('talking', 'aside') }))
-
-    expect(camera.intent.attention).toEqual({ kind: 'camera', point: cameraPoint })
-    expect(screen.intent.attention).toEqual({ kind: 'screen', point: null })
-    expect(cursor.intent.attention).toEqual({ kind: 'cursor', point: cursorPoint })
-    expect(cursorWithoutPoint.intent.attention).toEqual({ kind: 'cursor', point: null })
-    expect(aside.intent.attention).toEqual({ kind: 'aside', point: null })
   })
 })
 
@@ -242,9 +216,6 @@ describe('body director home, goals, roam and tools', () => {
       nowMs,
       performance: performance(mode),
       away,
-      cursorPoint,
-      chatPoint,
-      cameraPoint,
       slots: { sit: true, sleep: true },
       ...NO_WORLD_BODY_INPUT,
       attend: { untilMs: null, touchSeq: 0, chatSeq: 0, chatOpenSeq: 0 },
@@ -261,7 +232,7 @@ describe('body director home, goals, roam and tools', () => {
 
     expect([started, sitting, sleeping, talking].map(result => result.intent.stance)).toEqual(['stand', 'sit', 'sleep', 'stand'])
     expect(talking.intent.locomotion).toEqual({ homeX: 0, goalX: null, pace: 'walk', arriveFacing: 0, reason: 'stay' })
-    expect(talking.intent.attention).toEqual({ kind: 'camera', point: cameraPoint })
+    expect(talking.intent.look).toBeNull()
   })
 
   it.each(blockers)('holds a goal as pending while %s blocks it', (_name, blocked) => {
@@ -593,16 +564,17 @@ describe('body director home, goals, roam and tools', () => {
     expect(after.memory.toolRefused).toBe(false)
   })
 
-  it('lets a look-at override the attention for the override duration', () => {
-    const accepted = decide(world({ toolRequest: { seq: 1, kind: 'look-at', target: 'chat' } }))
-    const still = decide(world({ nowMs: LOOK_OVERRIDE_MS - 1, toolRequest: { seq: 1, kind: 'look-at', target: 'chat' } }), accepted.memory)
-    const expired = decide(world({ nowMs: LOOK_OVERRIDE_MS, toolRequest: { seq: 1, kind: 'look-at', target: 'chat' } }), still.memory)
-    const away = decide(world({ toolRequest: { seq: 1, kind: 'look-at', target: 'away' } }))
+  it.each(['camera', 'cursor', 'chat', 'away'] as const)('carries a stable look request for %s until the override expires', (target) => {
+    const accepted = decide(world({ toolRequest: { seq: 1, kind: 'look-at', target } }))
+    const still = decide(world({ nowMs: LOOK_OVERRIDE_MS - 1, toolRequest: { seq: 2, kind: 'look-at', target } }), accepted.memory)
+    const expired = decide(world({ nowMs: LOOK_OVERRIDE_MS, toolRequest: { seq: 2, kind: 'look-at', target } }), still.memory)
+    const next = decide(world({ nowMs: LOOK_TOOL_REFRACTORY_MS, toolRequest: { seq: 3, kind: 'look-at', target } }), expired.memory)
 
-    expect(accepted.intent.attention).toEqual({ kind: 'chat', point: chatPoint })
-    expect(still.intent.attention.kind).toBe('chat')
-    expect(expired.intent.attention).toEqual({ kind: 'camera', point: cameraPoint })
-    expect(away.intent.attention).toEqual({ kind: 'aside', point: null })
+    expect(accepted.intent.look).toEqual({ seq: 1, target, holdMs: LOOK_OVERRIDE_MS })
+    expect(still.intent.look).toEqual(accepted.intent.look)
+    expect(still.memory).toMatchObject({ lastToolSeq: 2, toolRefused: true })
+    expect(expired.intent.look).toBeNull()
+    expect(next.intent.look).toEqual({ seq: 3, target, holdMs: LOOK_OVERRIDE_MS })
   })
 
   it('allows sit and sleep only when idle at home', () => {
@@ -612,7 +584,7 @@ describe('body director home, goals, roam and tools', () => {
     }
     const sleep = (overrides: Partial<DirectorInput>) => {
       const started = decide(world({ nowMs: 0, ...overrides }))
-      return decide(world({ nowMs: 3_000, away: true, performance: performance('idle', 'camera'), idle: ASLEEP, ...overrides }), started.memory).intent.stance
+      return decide(world({ nowMs: 3_000, away: true, performance: performance('idle'), idle: ASLEEP, ...overrides }), started.memory).intent.stance
     }
 
     expect(sit({ rootX: 5 })).toBe('stand')
@@ -908,7 +880,7 @@ describe('body director actions', () => {
   })
 
   it('refuses asleep while away and busy while another clip runs, and lets an action replace a gesture', () => {
-    const away = decide(world({ away: true, performance: performance('idle', 'camera'), actionRequest: action(1) }))
+    const away = decide(world({ away: true, performance: performance('idle'), actionRequest: action(1) }))
     const full = decide(world({ actionRequest: action(1, { durationMs: 10_000 }) }))
     const busy = decide(world({ nowMs: 3_000, actionRequest: action(2, { clipId: 'other' }) }), full.memory)
     const loopBusy = decide(world({ nowMs: 3_000, actionRequest: gesture(2) }), decide(world({ actionRequest: dance(1, { loop: true }) })).memory)
@@ -945,7 +917,7 @@ describe('body director actions', () => {
       ['an interaction', { attend: { untilMs: null, touchSeq: 1, chatSeq: 0, chatOpenSeq: 0 } }],
       ['a drag', { dragging: true }],
       ['a chat unfold', { attend: { untilMs: null, touchSeq: 0, chatSeq: 1, chatOpenSeq: 1 }, chatX: 6 }],
-      ['going away', { away: true, performance: performance('idle', 'camera') }],
+      ['going away', { away: true, performance: performance('idle') }],
     ]
 
     it.each(enders)('refreshes the pending goal time to live when %s ends a performance, then accepts a re-request after the refractory', (_name, ender) => {
@@ -1021,9 +993,6 @@ describe('body director actions', () => {
       nowMs,
       performance: performance(),
       away: false,
-      cursorPoint,
-      chatPoint,
-      cameraPoint,
       slots: { sit: true, sleep: true },
       ...quiet,
       ...patch,

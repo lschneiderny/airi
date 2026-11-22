@@ -43,7 +43,7 @@ reaction, and `away` turning false does not end a sleep: only `wake`, or a
 Every held glance goes through one gaze arbiter in `NaturalGazeLayer`
 (`./gaze`). A caller passes `glance({ source, point, hold }, at)` with a
 `GlanceSource`; `GLANCE_PRIORITY` ranks it (a touch, then a wake, then a chat
-read or an idle voice cue, then the model's cues and emotions, then a screen
+read or an idle voice cue, then look tools, cue gestures, and emotions, then a screen
 change, then a noticed cursor, then idle acts). The request starts unless the
 running glance (`claim`) ranks higher, and `glance` returns its hold's end, or
 `null` when it was refused and dropped. While the pet override holds, only the
@@ -58,6 +58,14 @@ as `chatRead({ cue, words }, at)`, a read the character mind decided; send it
 after the frame's `setChat`. Natural draws the read's delay on its `chat`
 stream, holds longer for more words, and drops the read while chat is disabled,
 without a target, while she talks, or when the arbiter refuses it.
+
+`look(target, holdSeconds, nowSeconds)` queues a tool glance on the next grid
+step. The MMD adapter resolves named camera, cursor, and chat targets into
+normalized eye points; `away` asks Natural to draw an aside side, and `null`
+reports a missing-target refusal. It uses the arbiter's `look-tool` priority 4.
+An 8 s tool hold survives autonomous posture-led fixations and yields to a
+higher-priority glance or pet override. Observer points are null only for a
+missing-target refusal. No humanoid dependency is needed by this package.
 
 After `advance()`, `motion.bodyIntent()` returns the cached `NaturalBodyIntent`
 for the frame it most recently produced. Call `advance()` before the first read;

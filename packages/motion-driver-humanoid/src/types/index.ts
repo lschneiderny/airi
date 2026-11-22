@@ -95,7 +95,10 @@ export interface BodyActionIntent {
   phase: 'settling' | 'playing'
 }
 
-/** A renderer-neutral intent for body stance, attention, and facing. */
+/** Target of a model's look-at request, realised by the performer's gaze arbiter. */
+export type BodyLookTarget = 'camera' | 'cursor' | 'chat' | 'away'
+
+/** A renderer-neutral intent for body stance, look requests, and facing. */
 export interface BodyIntent {
   stance: 'stand' | 'sit' | 'sleep'
   /**
@@ -103,10 +106,8 @@ export interface BodyIntent {
    * `doze` where she would sleep; `none` otherwise, also while a clip realises the stance.
    */
   rest: 'none' | 'rest' | 'doze'
-  attention: {
-    kind: 'camera' | 'cursor' | 'chat' | 'screen' | 'aside'
-    point: Vec3 | null
-  }
+  /** The accepted look tool while its override holds. Perform each new seq once; holdMs is a duration. */
+  look: { seq: number, target: BodyLookTarget, holdMs: number } | null
   /** Facing direction in radians. */
   facingYaw: number
   locomotion: BodyLocomotionIntent

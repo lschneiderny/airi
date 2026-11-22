@@ -299,13 +299,23 @@ screen inwardness and touch inputs. `Stage.vue` passes the resolved
 placement, chat target and activity, mouth level and speaking state, and routes
 the stage performance conductor to this scene when the MMD renderer is active
 (`selectStagePerformanceRenderer` in `@proj-airi/stage-ui`). The MMD Natural
-driver is the conductor's `natural` driver and Classic is `universal`. The
+driver is the conductor's `natural` driver and Classic is `basic`. The
 exposed `setEmotion`, `applyHolds`, `applySlots`, `onSpeech`, `setMuted`,
 `getMood` and `action` methods form the `StagePerformanceScene` surface. A sent
 message or an opened chat reaches Natural only as the character mind's
 `chat-read` intent, through the scene's `chatRead`; the adapter applies it after
-the frame's chat input. Until the director acts on intents, the scene still
-counts typed sends (`chatActivity.sentSeq`) and unfolds for the director.
+the frame's chat input. The director receives chat activity only through
+`attend`; `setAway` supplies the mind's presence answer. There are no raw chat
+counters in this scene.
+
+Each new `BodyIntent.look.seq` reaches `MMDNaturalAdapter.look(target, holdSeconds)`
+once under Natural. The next frame resolves camera, cursor, and chat targets
+into eye points, or asks Natural for an aside point for `away`. The gaze arbiter
+starts or refuses the `look-tool` glance; missing cursor or chat targets are
+refused, and higher-priority glances can interrupt the 8 s hold. Classic does
+not perform it. `resolveBodyTarget(points, natural, gazeMode, intent, attention)`
+keeps diagnostic and headless trace points from the resolver's attention and
+the look request; it is not a second gaze writer.
 `action(label, gesture?)` receives an ACT `action` label (under Natural and
 Classic alike) and runs `resolveActAction`
 (`src/composables/mmd/actions/resolve-act-action.ts`) against
