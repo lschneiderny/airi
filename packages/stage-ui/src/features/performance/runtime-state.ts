@@ -42,8 +42,9 @@ export interface PerformanceMoodSnapshot {
 }
 
 export interface PerformanceRuntimeSnapshot {
+  /** Derived by the conductor; empty unless its scene declares face. */
   exposed: ExposedExpression[]
-  /** Exposed clips of the loaded model; empty for scenes without a clip library. */
+  /** Exposed clips of the loaded model; empty unless its scene declares body. */
   exposedActions: ExposedAction[]
   active: ActiveExpression[]
   /** `null` while no Natural mood is published (other drivers, or state feedback off). */

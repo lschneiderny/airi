@@ -1719,6 +1719,56 @@ describe('stage performance conductor', () => {
     })
   })
 
+  it('never lends body or action ports without body declared, and removes existing registrations on a switch', async () => {
+    setActivePinia(createPinia())
+    const tools = useLlmToolsStore()
+    const capabilities = ref<PerformerCapabilities>(NO_CAPABILITIES)
+    const bodyState = { position: 'home' as const, moving: false, refractorySeconds: 0 }
+    const bodyPort = vi.fn((): BodyToolPort => ({ state: () => bodyState, comeHere: async () => ({ success: true, state: bodyState }), goHome: async () => ({ success: true, state: bodyState }), lookAt: async () => ({ success: true, state: bodyState }) }))
+    const actionPort = vi.fn((): ActionToolPort => ({ exposed: () => [{ label: 'dance', kind: 'dance' }], perform: async () => ({ success: true }), state: () => ({ performing: null }) }))
+    const scope = effectScope()
+    onTestFinished(() => scope.stop())
+    scope.run(() => useStagePerformanceConductor({
+      renderer: () => 'mmd',
+      scene: () => undefined,
+      capabilities: () => capabilities.value,
+      expressionBackend: () => undefined,
+      bodyPort,
+      actionPort,
+      listActions: () => [{ label: 'dance', kind: 'dance', exposed: true }],
+      mind: naturalMind({ seed: 1 }),
+      mood: () => null,
+    }))
+    expect(bodyPort).not.toHaveBeenCalled()
+    expect(actionPort).not.toHaveBeenCalled()
+    expect(tools.tools).toEqual([])
+    function nextTools(count: number) {
+      return new Promise<void>((resolve, reject) => {
+        let stop: (() => void) | undefined
+        const timeout = setTimeout(() => {
+          stop?.()
+          reject(new Error('Tool registration did not settle'))
+        }, 5000)
+        stop = tools.$subscribe(() => {
+          if (tools.tools.length === count) {
+            clearTimeout(timeout)
+            stop?.()
+            resolve()
+          }
+        }, { flush: 'sync' })
+      })
+    }
+    const registered = nextTools(4)
+    capabilities.value = MMD_NATURAL_CAPABILITIES
+    await registered
+    expect(tools.tools.map(tool => tool.id).sort()).toEqual([...bodyToolIds, 'action:perform_action'].sort())
+    const removed = nextTools(0)
+    capabilities.value = LIVE2D_NATURAL_CAPABILITIES
+    await removed
+    expect(tools.tools).toEqual([])
+    expect(usePerformanceRuntimeState().exposedActions).toEqual([])
+  })
+
   it('action tools follow the exposed set: add, change, remove, and publish every exposed clip to the runtime state', async () => {
     setActivePinia(createPinia())
     const tools = useLlmToolsStore()

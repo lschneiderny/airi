@@ -1,12 +1,20 @@
+import type { PerformerCapabilities } from '@proj-airi/character-mind'
+import type { CatalogEntry } from '@proj-airi/stage-shared/expression-performance'
 import type { LeadershipMode, SyncedPiniaRuntime } from 'pinia-plugin-synced'
 
 import type { PerformanceRuntimeSnapshot } from './runtime-state'
 
-import { createPinia, disposePinia } from 'pinia'
+import { NO_CAPABILITIES } from '@proj-airi/character-mind'
+import { LIVE2D_NATURAL_CAPABILITIES } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion-adapter'
+import { MMD_NATURAL_CAPABILITIES } from '@proj-airi/stage-ui-mmd/composables/mmd/natural/adapter'
+import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { createSyncedPiniaPlugin } from 'pinia-plugin-synced'
 import { afterEach, describe, expect, it } from 'vitest'
-import { createApp } from 'vue'
+import { createApp, effectScope, nextTick, ref } from 'vue'
 
+import { useStagePerformanceConductor } from '../../composables/performance/use-stage-performance-conductor'
+import { useStageExpressionCatalogStore } from '../../stores/stage-expression-catalog'
+import { naturalMind } from '../../test/natural-mind'
 import { usePerformanceRuntimeState } from './runtime-state'
 
 const contexts: Array<{ pinia: ReturnType<typeof createPinia>, runtime: SyncedPiniaRuntime }> = []
@@ -17,7 +25,7 @@ function createContext(namespace: string, leadership: LeadershipMode) {
   pinia.use(runtime.plugin)
   createApp({}).use(pinia)
   contexts.push({ pinia, runtime })
-  return { store: usePerformanceRuntimeState(pinia), runtime }
+  return { store: usePerformanceRuntimeState(pinia), runtime, pinia }
 }
 
 function coordinated(runtime: SyncedPiniaRuntime, predicate: () => boolean) {
@@ -51,6 +59,40 @@ describe('performance runtime state', () => {
     for (const { pinia, runtime } of contexts.splice(0)) {
       runtime.dispose()
       disposePinia(pinia)
+    }
+  })
+
+  it('publishes only declared exposure while preserving the c6 mapping catalog', async () => {
+    const { pinia, runtime, store } = createContext(`performance-declarations:${crypto.randomUUID()}`, 'leader-only')
+    await coordinated(runtime, () => runtime.isLeader())
+    setActivePinia(pinia)
+    const capabilities = ref<PerformerCapabilities>(MMD_NATURAL_CAPABILITIES)
+    const entry: CatalogEntry = { id: 'smile', label: 'Smile', kind: 'face', group: null, confirmed: true, exposedToLlm: true, mappings: [{ emotion: 'happy', weight: 1, minBand: 'clear' }], fileName: 'smile.exp3.json', parameterIds: ['Smile'] }
+    const scope = effectScope()
+    try {
+      scope.run(() => useStagePerformanceConductor({
+        renderer: () => 'mmd',
+        scene: () => undefined,
+        capabilities: () => capabilities.value,
+        expressionBackend: () => ({ modelId: 'rig', catalog: [entry], llmEligibleEntries: [entry], leases: { face: null, effect: null, prop: null } }),
+        listActions: () => [{ label: 'wave', kind: 'gesture', exposed: true }],
+        mind: naturalMind({ seed: 1 }),
+        mood: () => null,
+      }))
+      expect(store.exposed).toEqual([{ label: 'Smile', kind: 'face' }])
+      expect(store.exposedActions).toEqual([{ label: 'wave', kind: 'gesture' }])
+      capabilities.value = NO_CAPABILITIES
+      await nextTick()
+      expect(store.exposed).toEqual([])
+      expect(store.exposedActions).toEqual([])
+      expect(useStageExpressionCatalogStore().snapshot?.entries.map(entry => entry.id)).toEqual(['smile'])
+      capabilities.value = LIVE2D_NATURAL_CAPABILITIES
+      await nextTick()
+      expect(store.exposed).toEqual([{ label: 'Smile', kind: 'face' }])
+      expect(store.exposedActions).toEqual([])
+    }
+    finally {
+      scope.stop()
     }
   })
 

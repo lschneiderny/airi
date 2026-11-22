@@ -1071,7 +1071,7 @@ export function useStagePerformanceConductor(options: Pick<StagePerformanceCondu
   expressionBackend: () => StageExpressionBackend | undefined
   /** The body tool port of the active scene; undefined when it has no body support (Live2D, classic MMD). */
   bodyPort?: () => BodyToolPort | undefined
-  /** The action tool port of the active scene; undefined when it has no clip library (Live2D). Not stage-gated. */
+  /** The action tool port of the active scene; consulted only with body declared. */
   actionPort?: () => ActionToolPort | undefined
   /** The labeled clips of the active scene, exposed or not; read reactively. */
   listActions?: () => readonly ListedAction[]
@@ -1122,8 +1122,8 @@ export function useStagePerformanceConductor(options: Pick<StagePerformanceCondu
 
   watch([() => options.scene(), () => options.capabilities()], () => conductor.syncScene(), { immediate: true })
 
-  const exposed = computed(() => toExposedExpressions(expressions.llmEligibleEntries))
-  const exposedActions = computed(() => toExposedActions(options.listActions?.() ?? []))
+  const exposed = computed(() => options.capabilities().face ? toExposedExpressions(expressions.llmEligibleEntries) : [])
+  const exposedActions = computed(() => options.capabilities().body ? toExposedActions(options.listActions?.() ?? []) : [])
   const active = computed(() => activeExpressionsOf(expressions))
   const moodWanted = computed(() => settings.value.stateFeedback && settings.value.mood && options.capabilities().posture)
   const mood = shallowRef<PerformanceMoodSnapshot | null>(null)
@@ -1160,13 +1160,13 @@ export function useStagePerformanceConductor(options: Pick<StagePerformanceCondu
     registration.sync(exposed.value).catch(error => console.error('[performance-conductor] Expression tools failed to register:', errorMessageFrom(error)))
   }, { immediate: true })
   const bodyRegistration = createBodyToolRegistration(useLlmToolsStore())
-  watch(() => options.bodyPort?.(), (port) => {
+  watch(() => options.capabilities().body ? options.bodyPort?.() : undefined, (port) => {
     bodyRegistration.sync(port).catch(error => console.error('[performance-conductor] Body tools failed to register:', errorMessageFrom(error)))
   }, { immediate: true })
   // The tool enum names actions and dances only; the key changes whenever that set does.
   const toolActionsKey = computed(() => JSON.stringify(exposedActions.value.filter((entry): entry is ExposedToolAction => entry.kind !== 'gesture')))
   const actionRegistration = createActionToolRegistration(useLlmToolsStore())
-  watch([() => options.actionPort?.(), toolActionsKey], ([port, key]) => {
+  watch([() => options.capabilities().body ? options.actionPort?.() : undefined, toolActionsKey], ([port, key]) => {
     actionRegistration.sync(port, key).catch(error => console.error('[performance-conductor] Action tools failed to register:', errorMessageFrom(error)))
   }, { immediate: true })
   const diagnostics = useNaturalMotionDiagnostics()
