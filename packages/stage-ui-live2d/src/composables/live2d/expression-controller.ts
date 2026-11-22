@@ -1,5 +1,6 @@
 import type { Ref } from 'vue'
 
+import type { Live2DExpressionsContext } from '../../contexts/expressions'
 import type { NamedExpressionDefinition } from '../../stores/expression-store'
 import type { FreeParameter } from '../../utils/expression-catalog/free-parameters'
 import type { PixiLive2DInternalModel } from './motion-manager'
@@ -83,11 +84,14 @@ export function useExpressionController(options: ExpressionControllerOptions) {
     }
   }
 
-  function restoreExpressionBases(coreModel: PixiLive2DInternalModel['coreModel']) {
+  function restoreExpressionBases(coreModel: PixiLive2DInternalModel['coreModel'], context?: Live2DExpressionsContext) {
+    // On entry to Natural, withdraw direct upstream writes before capturing the lease's clean base.
+    context?.release(coreModel)
     store.composer.restoreBases((id, value) => coreModel.setParameterValueById(id, value))
   }
 
-  function applyExpressions(coreModel: PixiLive2DInternalModel['coreModel']) {
+  function applyExpressions(coreModel: PixiLive2DInternalModel['coreModel'], context?: Live2DExpressionsContext) {
+    store.contextPreview = context?.sample().map(({ parameterId, value, blend }) => ({ id: parameterId, value, blend })) ?? []
     const now = performance.now() / 1000
     store.tickLeases(now)
     store.composer.compose(
@@ -98,6 +102,7 @@ export function useExpressionController(options: ExpressionControllerOptions) {
         const index = coreModel.getParameterIndex(id)
         return [coreModel.getParameterMinimumValue(index), coreModel.getParameterMaximumValue(index)]
       },
+      store.contextPreview,
     )
   }
 

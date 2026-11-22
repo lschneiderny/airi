@@ -770,10 +770,11 @@ export function useMotionUpdatePluginLightSquint(
  */
 export function useMotionUpdatePluginExpression(
   expressions: Pick<Live2DExpressionsContext, 'apply'>,
+  enabled: () => boolean = () => true,
 ): MotionManagerPlugin {
   return (ctx) => {
-    // Always apply regardless of handled state – expressions layer on top.
-    expressions.apply(ctx.model)
+    if (enabled())
+      expressions.apply(ctx.model)
   }
 }
 

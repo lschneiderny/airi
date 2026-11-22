@@ -115,6 +115,8 @@ export class ExpressionComposer {
     read: (paramId: string) => number,
     write: (paramId: string, value: number) => void,
     clampOf: (paramId: string) => [number, number],
+    /** A frame-scoped context lease wins over every catalog claim, without restarting their transitions. */
+    preview: readonly ExpressionDefinition['parameters'][number][] = [],
   ): void {
     const values = new Map<string, number>()
     const ordered = [...this.instances.values()].sort((a, b) => a.activationSequence - b.activationSequence)
@@ -144,6 +146,18 @@ export class ExpressionComposer {
             break
         }
       }
+    }
+    for (const { id, value, blend } of preview) {
+      const [min, max] = clampOf(id)
+      const base = values.has(id) ? Math.max(min, Math.min(max, values.get(id)!)) : read(id)
+      if (!this.capturedBase.has(id))
+        this.capturedBase.set(id, read(id))
+      let next = value
+      if (blend === 'Multiply')
+        next = base * value
+      else if (blend === 'Add')
+        next = base + value
+      values.set(id, next)
     }
     for (const [id, value] of values) {
       const [min, max] = clampOf(id)
