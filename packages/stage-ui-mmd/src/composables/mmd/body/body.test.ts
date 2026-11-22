@@ -140,6 +140,45 @@ describe('mmd full-body stages', () => {
     expect(Math.abs(away.yaw)).toBeLessThan(3)
   })
 
+  it('looks along the walk unless a glance that outranks travel holds, and follows Natural again once she stops', () => {
+    const walk = (held: boolean) => {
+      const { pipeline, body, input, setInput } = bodyFixture()
+      setInput({
+        rootMotion: true,
+        intent: { ...input.intent, gaze: { ...input.intent.gaze, held } },
+        frame: { ...input.frame, fixation: { x: 0.5, y: 0 } },
+      })
+      for (let frame = 0; frame < 30; frame++)
+        pipeline.step(1 / 60)
+      body.setLocomotionGoal({ goalX: 10, pace: 'walk', arriveFacing: 0, reason: 'debug' })
+      // The gaze goal of a frame reads the gait the previous frame left, so key each frame's kind by that gait.
+      const kinds = { traveling: new Set<string>(), stopping: new Set<string>() }
+      let walked = false
+      for (let frame = 0; frame < 1200 && (!walked || body.locomotionFrame?.mode !== 'idle'); frame++) {
+        const traveling = body.traveling
+        const stopping = body.locomotionFrame?.mode === 'stopping'
+        pipeline.step(1 / 60)
+        const kind = body.diagnostics.performance?.gaze.kind ?? 'none'
+        if (traveling)
+          kinds.traveling.add(kind)
+        if (stopping)
+          kinds.stopping.add(kind)
+        walked ||= body.locomotionFrame?.mode === 'walking'
+      }
+      expect(walked).toBe(true)
+      pipeline.step(1 / 60)
+      return { ...kinds, after: body.diagnostics.performance?.gaze.kind }
+    }
+    const free = walk(false)
+    const held = walk(true)
+
+    expect([...free.traveling]).toEqual(['travel'])
+    expect([...free.stopping]).toEqual(['free'])
+    expect(free.after).toBe('free')
+    expect([...held.traveling]).toEqual(['free'])
+    expect(held.after).toBe('free')
+  })
+
   it('raises one blink event per lid closure the face shows, naming Natural as its source', () => {
     const { pipeline, body, input, setInput } = bodyFixture()
     const events: MMDBodyEvent[] = []

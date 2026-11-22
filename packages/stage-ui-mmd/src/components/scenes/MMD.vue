@@ -1430,6 +1430,7 @@ async function loadModel(src: string) {
                 ? screenInwardness(placement.displays, placement.windowBounds.x + headX * dipScale)
                 : mmdScreenInwardness(rect, headX),
             emotionStrengths: naturalSettings.document.emotionStrength[props.modelId ?? ''] ?? defaultEmotionStrengths,
+            traveling: activeBody.traveling,
           }, naturalSeconds)
           for (const report of natural.idleBehaviours)
             emit('idle', report)

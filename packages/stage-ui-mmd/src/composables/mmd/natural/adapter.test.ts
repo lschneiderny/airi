@@ -15,6 +15,7 @@ const input = {
   chat: null,
   placement: null,
   emotionStrengths: {},
+  traveling: false,
 } as const
 
 const happy = { id: 'happy', emotion: 'happy', nominal: 0.7, intensity: 0.7, band: 'clear', escalation: false } as const
@@ -24,6 +25,24 @@ function fixture() {
 }
 
 describe('mmd Natural adapter', () => {
+  it('hands the body travel to the gaze arbiter, which refuses a look while she walks', () => {
+    const outcomes = (traveling: boolean) => {
+      const { adapter } = fixture()
+      const events: NaturalGlanceEvent[] = []
+      adapter.onEvent((event) => {
+        if (event.kind === 'glance')
+          events.push(event)
+      })
+      adapter.look('camera', 8)
+      for (let frame = 0; frame < 12; frame++)
+        adapter.advance(1 / 60, { ...input, traveling }, 10_000 + frame / 60)
+      return events.filter(event => event.cause === 'look-tool').map(event => event.outcome)
+    }
+
+    expect(outcomes(false)).toEqual(['started'])
+    expect(outcomes(true)).toEqual(['refused'])
+  })
+
   it.each(['camera', 'cursor', 'chat', 'away'] as const)('realises a look at %s from the next frame geometry', (target) => {
     const { adapter } = fixture()
     const events: NaturalGlanceEvent[] = []

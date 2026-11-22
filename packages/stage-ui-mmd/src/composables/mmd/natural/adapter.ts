@@ -49,6 +49,11 @@ export interface MMDNaturalInput {
   readonly placement: number | null
   /** This model's per-emotion strengths; the same setting shape as Live2D's. */
   readonly emotionStrengths: NaturalEmotionStrengths
+  /**
+   * `MMDBody` `traveling` of the latest body frame. The Natural stage runs before the body's, so the arbiter reads the
+   * gait state that the body's gaze goal reads in the same frame.
+   */
+  readonly traveling: boolean
 }
 
 /** Projects bind head geometry, not the already posed head (which would feed gaze back into itself). */
@@ -161,6 +166,7 @@ export class MMDNaturalAdapter {
     this.energy = input.energy
     this.natural.setVoice(input.voice)
     this.natural.setPerformance(input.performance, input.energy, this.time)
+    this.natural.setTravel(input.traveling, this.time)
     this.natural.setCursor(input.cursor, this.time)
     this.natural.setChat(input.chat, this.time)
     for (const read of this.pendingChatReads.splice(0))
