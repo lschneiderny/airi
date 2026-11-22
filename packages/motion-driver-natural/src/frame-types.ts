@@ -202,6 +202,8 @@ export interface NaturalBodyIntent {
     readonly on: 'cursor' | 'chat' | 'pet' | 'aside' | 'free'
     readonly saccadeSeq: number
     readonly saccadeSize: number
+    /** A glance that outranks travel holds the eyes (`NaturalGazeLayer` `held`); a walking body shows its fixation. */
+    readonly held: boolean
   }
   readonly breath: {
     readonly phase: number
