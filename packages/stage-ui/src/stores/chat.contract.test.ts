@@ -610,6 +610,22 @@ describe('chat store contract', () => {
     expect(finished).toBe(true)
   })
 
+  it('answers a repeated terminal delivery with one receipt, one stored notice, and one announcement', async () => {
+    const store = useChatStore()
+    leadQuietSituation()
+    const notice = { source: 'airi:terminal-settlement', text: 'Controlled execution result.', messageId: 'terminal:repeated-action' }
+    const [first, second] = await Promise.all([
+      store.notifyConversation('session-1', notice, { waitForCompletion: false }),
+      store.notifyConversation('session-1', notice, { waitForCompletion: false }),
+    ])
+    expect(first).toEqual({ sessionId: 'session-1', messageId: notice.messageId })
+    expect(second).toEqual(first)
+    await store.notifyConversation('session-1', notice)
+    expect(await store.notifyConversation('session-1', notice, { waitForCompletion: false })).toEqual(first)
+    expect(sessionMessages['session-1'].filter(message => message.id === notice.messageId)).toHaveLength(1)
+    expect(llmStreamMock).toHaveBeenCalledOnce()
+  })
+
   it('keeps a notice store-only when no leader mind can admit its announcement', async () => {
     const store = useChatStore()
     const notice = { source: 'host:task', text: 'A task result.', messageId: 'notice-without-mind' }
