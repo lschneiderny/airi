@@ -1,8 +1,10 @@
 import type { MoodLevel } from './mood'
+import type { RefractoryRemaining } from './refractory'
 import type { MindIntent, MindRandom, MindSlowState, MindState, MindStimulus, Refusal } from './types'
 
 import { moodLevelAt } from './mood'
 import { seededRandom } from './random'
+import { refractoryRemaining } from './refractory'
 import { initialMindState, step } from './step'
 
 /** One call of the core, as a listener sees it. */
@@ -58,6 +60,14 @@ export class CharacterMind {
    */
   moodLevel(): MoodLevel {
     return moodLevelAt(this.current.mood, Math.max(this.previousAtMs, this.clock()))
+  }
+
+  /**
+   * Her director refractories left now, to seed a stage that attaches or gains a body. The stage stamps them once on its
+   * director clock; it is not a frame input.
+   */
+  refractories(): RefractoryRemaining {
+    return refractoryRemaining(this.current.refractory, Math.max(this.previousAtMs, this.clock()))
   }
 
   /** Calls the listener after every step; returns the function that stops it. */

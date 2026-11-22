@@ -826,7 +826,7 @@ describe('stage performance conductor', () => {
 
       conductor.touch({ gesture: 'poke', region: 'head', point })
 
-      expect(scene.reactToTouch.mock.calls).toEqual([[{ id: '2-touch-reaction', cause: 2, channel: 'posture', kind: 'touch-reaction', gesture: 'poke', region: 'head', point }]])
+      expect(scene.reactToTouch.mock.calls).toEqual([[{ id: '2-touch-reaction', cause: 2, channel: 'posture', kind: 'touch-reaction', gesture: 'poke', region: 'head', point, surprise: true }]])
       // The mind's clock reads 10 000 ms, so the dose is paced at 10 s.
       const expected = touchAffect(initialTouchAffectMemory, { touch: 'poke', region: 'head', at: 10 }, defaultExpressionPerformanceSettings).dose
       expect(expected).not.toBeNull()

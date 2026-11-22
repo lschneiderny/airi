@@ -6,6 +6,7 @@ import { reactionPolicy } from '@proj-airi/stage-shared/situation'
 import { attendIntent } from './attention'
 import { refusedAnswer } from './capabilities'
 import { moodTouchDose } from './mood'
+import { pokeSurprise } from './refractory'
 import { reactionTurnId } from './voice'
 
 type Stimulus<K extends MindStimulus['kind']> = Extract<MindStimulus, { kind: K }>
@@ -13,7 +14,8 @@ interface Answer { state: MindState, intents: MindIntent[], refusals?: Refusal[]
 
 /**
  * One touch gets one response, decided together on the same state and clock:
- * - Posture: every touch gets a touch reaction, a poke at its point or a pet that starts or ends.
+ * - Posture: every touch gets a touch reaction, a poke at its point or a pet that starts or ends. A poke surprises her
+ *   unless one did within `POKE_SURPRISE_DEDUPE_MS`.
  * - Mood: `touchAffect` paces and habituates the dose, in seconds; with mood on it also moves her level.
  * - Face: a poke and a finished pet are moments.
  * - Voice: for a poke or a finished pet with a voice view, `reactionPolicy` decides whether she says a line. The
@@ -35,10 +37,15 @@ export function answerTouch(state: MindState, stimulus: Stimulus<'touch'>, cause
     return refusedAnswer(state, cause, 'touch-reaction')
 
   const intents: MindIntent[] = []
-  if (stimulus.gesture === 'poke')
-    intents.push({ id: `${cause}-touch-reaction`, cause, channel: 'posture', kind: 'touch-reaction', gesture: 'poke', region: stimulus.region, point: stimulus.point })
-  else
+  let { refractory } = state
+  if (stimulus.gesture === 'poke') {
+    const poked = pokeSurprise(refractory, nowMs)
+    refractory = poked.state
+    intents.push({ id: `${cause}-touch-reaction`, cause, channel: 'posture', kind: 'touch-reaction', gesture: 'poke', region: stimulus.region, point: stimulus.point, surprise: poked.surprise })
+  }
+  else {
     intents.push({ id: `${cause}-touch-reaction`, cause, channel: 'posture', kind: 'touch-reaction', gesture: 'pet', phase: stimulus.gesture === 'pet-start' ? 'start' : 'end' })
+  }
 
   const affect = touchAffect(state.touch.affect, {
     touch: stimulus.gesture,
@@ -72,5 +79,5 @@ export function answerTouch(state: MindState, stimulus: Stimulus<'touch'>, cause
   if (stimulus.gesture !== 'pet-end')
     intents.push(attendIntent(cause, 'touch'))
 
-  return { state: { ...state, touch: { affect: affect.memory }, voice, mood }, intents }
+  return { state: { ...state, touch: { affect: affect.memory }, voice, mood, refractory }, intents }
 }

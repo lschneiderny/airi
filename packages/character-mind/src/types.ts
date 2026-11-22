@@ -10,6 +10,7 @@ import type { CharacterPacingMemory, GateLocalTime, GateOutcome, GateSettings, G
 import type { PerformerCapabilities } from './capabilities'
 import type { MindGestureState } from './gesture'
 import type { MindMoodState } from './mood'
+import type { MindRefractoryState, PerformerReport, RefractoryRemaining } from './refractory'
 
 /** Uniform draws in [0, 1). The shell owns the source; the core stores none. */
 export type MindRandom = () => number
@@ -134,6 +135,8 @@ export type MindStimulus
     | ChatStimulus
   /** An ACT cue gesture of the model's reply, or the devtools lab's; the mind answers with one `gesture` intent. */
     | CueGestureStimulus
+  /** What a performer stamped: a clip, a tool, or a moment's entry. The mind keeps the refractories once per character. */
+    | { kind: 'performer-report', report: PerformerReport }
   /** The newest attached stage's declaration, replayed by the host after a reset. */
     | { kind: 'performer', capabilities: PerformerCapabilities }
   /** Decision permissions from the character-behavior document; cursor tracking remains a performer permission. */
@@ -167,8 +170,11 @@ interface IntentBase {
 }
 
 export type MindIntent
-  /** The body's answer to a poke, at the point the scene reported. */
-  = | (IntentBase & { channel: 'posture', kind: 'touch-reaction', gesture: 'poke', region: 'head' | 'body', point: { x: number, y: number } })
+  /**
+   * The body's answer to a poke, at the point the scene reported. `surprise` is false for a poke within
+   * `POKE_SURPRISE_DEDUPE_MS` of the last one that surprised her: she only flinches.
+   */
+  = | (IntentBase & { channel: 'posture', kind: 'touch-reaction', gesture: 'poke', region: 'head' | 'body', point: { x: number, y: number }, surprise: boolean })
   /** The mind's pet runs from `start` to `end`; the performer follows the hand only between them. */
     | (IntentBase & { channel: 'posture', kind: 'touch-reaction', gesture: 'pet', phase: 'start' | 'end' })
   /** A mood dose for the Natural performer: a touch's, or the delta of a new or escalated emotion episode. */
@@ -223,6 +229,11 @@ export type MindIntent
    */
     | (IntentBase & { channel: 'body', kind: 'attend', target: 'cursor', attendCause: 'touch' | 'drag' | 'chat-send', windowMs: number })
     | (IntentBase & { channel: 'body', kind: 'attend', target: 'chat', attendCause: 'chat-unfold' })
+  /**
+   * The director's refractories as durations left at the answer, after each director report. Every attached stage
+   * stamps them on its director clock at its next frame; the host also seeds them into a stage that attaches.
+   */
+    | (IntentBase & { channel: 'body', kind: 'refractory', remaining: RefractoryRemaining })
   /** The presence answer for the body director, emitted once on each away edge. */
     | (IntentBase & { channel: 'body', kind: 'away', away: boolean })
   /**
@@ -254,6 +265,8 @@ export type MindIdleIntent = Extract<MindIntent, { kind: 'idle-act' | 'idle-erra
 export type SettleIntent = Extract<MindIntent, { kind: 'settle' }>
 /** The body intent that opens the director's attend window. */
 export type AttendIntent = Extract<MindIntent, { kind: 'attend' }>
+/** The body intent that carries the director's refractories. */
+export type RefractoryIntent = Extract<MindIntent, { kind: 'refractory' }>
 /** The gaze intent that reads the chat. */
 export type ChatReadIntent = Extract<MindIntent, { kind: 'chat-read' }>
 /** The posture intent that plays a cue gesture. */
@@ -280,6 +293,8 @@ export interface MindState {
   gesture: MindGestureState
   /** Her fast mood, which every emotion and touch dose moves; it seeds a new performer. */
   mood: MindMoodState
+  /** The director's clip and tool refractories, the poke surprise dedupe, and the moment entry rest. */
+  refractory: MindRefractoryState
   /** Pacing and habituation of the mood doses of touches, in seconds of the mind's clock. */
   touch: { affect: TouchAffectMemory }
   voice: MindVoiceState

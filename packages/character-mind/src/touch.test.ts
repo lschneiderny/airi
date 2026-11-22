@@ -75,7 +75,7 @@ describe('step: touch', () => {
     const { state, intents } = step(naturalMindState(), [poke(null, 'body')], T0, speaks)
 
     expect(intents).toEqual([
-      { id: '1-touch-reaction', cause: 1, channel: 'posture', kind: 'touch-reaction', gesture: 'poke', region: 'body', point: { x: 0.2, y: -0.4 } },
+      { id: '1-touch-reaction', cause: 1, channel: 'posture', kind: 'touch-reaction', gesture: 'poke', region: 'body', point: { x: 0.2, y: -0.4 }, surprise: true },
       { id: '1-mood', cause: 1, channel: 'posture', kind: 'mood', dose: { id: 'touch-1-poke', valence: 0, arousal: slight * 0.6, tension: 0 } },
       { id: '1-moment', cause: 1, channel: 'face', kind: 'moment', moment: 'poked' },
       { id: '1-attend', cause: 1, channel: 'body', kind: 'attend', target: 'cursor', attendCause: 'touch', windowMs: 60_000 },
