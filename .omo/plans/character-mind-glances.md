@@ -1,6 +1,6 @@
 # character-mind-glances - Work Plan
 
-Status: the owner approved D1 to D11 as recommended on 2026-11-21. CM6b1 (items 1 to 7) is built, and its section 8 checks passed on macOS; CM6b2 is not started. Roadmap row: step CM6b in [`docs/ai/context/character-mind-roadmap.md`](../../docs/ai/context/character-mind-roadmap.md#steps). Rulings: the [character mind ADR](../../docs/ai/adr/2026-11-17-character-mind-direction.md) (decisions 2, 5, 6, 7, and 8), the [core ADR](../../docs/ai/adr/2026-11-18-character-mind-core.md) (D15: realisation details stay in the performers), the [idle ADR](../../docs/ai/adr/2026-11-20-character-mind-idle.md) (the report-and-order pattern, D2: pure rules stay in `motion-driver-natural`), and the [gaze ADR](../../docs/ai/adr/2026-11-20-character-mind-gaze.md) (CM6a: D13, D14, D20, D21). Plan branch: `luke/feat/character-mind-glances`, cut from `main` at `bec508cae`, which contains CM6a. The implementation branches are cut later, as section 7 says.
+Status: the owner approved D1 to D11 as recommended on 2026-11-21. CM6b1 (items 1 to 7) is built, and its section 8 checks passed on macOS; CM6b2 implementation is done in six commits, with the worker's Node, browser, and dependent typechecks complete; headless and rendered acceptance belongs to the orchestrator and remains explicitly pending in the CM6b2 ADR. Roadmap row: step CM6b in [`docs/ai/context/character-mind-roadmap.md`](../../docs/ai/context/character-mind-roadmap.md#steps). Rulings: the [character mind ADR](../../docs/ai/adr/2026-11-17-character-mind-direction.md) (decisions 2, 5, 6, 7, and 8), the [core ADR](../../docs/ai/adr/2026-11-18-character-mind-core.md) (D15: realisation details stay in the performers), the [idle ADR](../../docs/ai/adr/2026-11-20-character-mind-idle.md) (the report-and-order pattern, D2: pure rules stay in `motion-driver-natural`), and the [gaze ADR](../../docs/ai/adr/2026-11-20-character-mind-gaze.md) (CM6a: D13, D14, D20, D21). Plan branch: `luke/feat/character-mind-glances`, cut from `main` at `bec508cae`, which contains CM6a. The implementation branches are cut later, as section 7 says.
 
 **Parallel work this plan composes with.**
 
@@ -410,3 +410,80 @@ Each item is one commit that passes `pnpm verify` and `pnpm verify --gate`.
 - `1727104cb` feat(character-mind,motion-driver-natural,stage-ui,stage-ui-live2d,stage-ui-mmd,qa-tools): move chat activity into the character mind
 - `9db8f8c1a` feat(character-mind,stage-ui): route ACT cue gestures through the character mind
 - `7f239f4d1` chore(agents): say that every glance goes through the gaze arbiter
+
+## Departures during implementation (CM6b2)
+
+1. **The current base includes the CM6a and CM5b additions.** The director has `restX` and `cursorStepPending`, and Natural's body intent has `groovePhase`. They are preserved. The wander's held request also retains its mind-supplied `pick`; its diagnostic record includes that field. No seeded numeric expectation required re-pinning.
+2. **The semantic attend cause is `attendCause`.** `IntentBase.cause` already holds the numeric stimulus sequence, so the plan's intersection with a string cause would be impossible. The separate field follows the existing `wakeCause` convention and keeps correlation intact.
+3. **D9's abbreviated list omitted dragging in progress.** It remains a world input, as section 2.3 requires, and retains its refusal and broad-clip ending rules under both drivers. Classic no longer ends clips on a drag release, chat activity, or away. A rendered release check must distinguish the release from the unchanged held-drag behavior.
+4. **The runner cannot always pass `away: false` and preserve its existing trace.** `sleepy-no-clip` has a scripted away edge and records stance reasons; the model-gated `runner/run.test.ts` expects `stance:no-sleep-slot` on that edge. The runner now sends those edges through its existing mind and consumes the body `away` answer. It still supplies no attends. The orchestrator must confirm identity, especially that scenario; the model-gated test was not exercised by the worker's environment.
+5. **The existing MMD adapter resolves the look vocabulary.** Natural and humanoid have no dependency on each other, so the adapter maps named camera, cursor, and chat targets into eye points, while Natural draws the away side. Missing targets are null-point refusals. `BodyLookTarget` belongs to the side-effect-free humanoid types module and remains exported by the director. No package manifest or dependency changed.
+6. **Look holds join the existing eye-owner gate.** An autonomous posture-led fixation could otherwise shorten the new 8 s tool hold. The controller honors the running `look-tool` claim in that existing gate; priority is still decided only by the arbiter. The plan's `natural-motion.test.ts` does not exist on this base, so `look.test.ts` covers the explicit hold, wall versus active clocks, suspension, refusal, and interruption. Diagnostic mapping cases moved from the director to `body/attention.test.ts`. The live scene already uses actual body gaze diagnostics; `resolveBodyTarget` is the headless mapper rather than the live overlay owner described by the older plan.
+7. **The execution brief replaced the plan's verify commands.** Full touched-package Node suites, applicable browser projects, and all dependent typechecks ran sequentially. The orchestrator owns headless and rendered acceptance. Item 12 deliberately leaves its requested placeholder in the ADR, and the roadmap records implementation done with that acceptance pending.
+
+## Checks run (CM6b2)
+
+The following ledger lists every executed test and typecheck command, including corrected failures. Package suites ran one at a time; no timeout or threshold was raised. The failed assertions were expected-contract updates, not changed numeric motion pins. Items 12 and 13 change documentation only and touch no package, so they require no package-suite or typecheck repeat. Commit hooks ran normally. Scoped lint left pre-existing warnings in untouched Stage helpers, conductor disposal, and the gaze constructor JSDoc.
+
+| Item | Command | Result |
+| --- | --- | --- |
+| 11 | `pnpm exec vitest run --project dev-tools scripts/dev-tools/policy-docs.test.ts` | 11 passed (1 file) |
+| 11 | `pnpm -F @proj-airi/motion-driver-humanoid exec vitest run` | 435 passed (25 files) |
+| 11 | `pnpm -F @proj-airi/stage-ui-mmd exec vitest run --project node` | 394 passed (47 files) |
+| 11 | `pnpm -F @proj-airi/stage-ui-mmd exec vitest run --project browser` | 31 passed (6 files) |
+| 11 | `pnpm --filter "...@proj-airi/motion-driver-humanoid" --filter "...@proj-airi/stage-ui-mmd" --workspace-concurrency=2 typecheck` | 9 projects passed |
+| 8 | `pnpm exec vitest run --project dev-tools scripts/dev-tools/policy-docs.test.ts` | 11 passed (1 file; first doc wave) |
+| 8 | `pnpm -F @proj-airi/character-mind exec vitest run` | 129 passed (9 files) |
+| 8 | `pnpm -F @proj-airi/motion-driver-humanoid exec vitest run src/director` | 111 passed (2 files) |
+| 8 | `pnpm -F @proj-airi/stage-ui-mmd exec vitest run --project node src/composables/mmd/stance.test.ts src/composables/mmd/body-tool-port.test.ts src/composables/mmd/action-port.test.ts` | 47 passed (3 files) |
+| 8 | `pnpm -F @proj-airi/stage-ui exec vitest run --project node src/composables/performance/use-stage-performance-conductor.test.ts` | 81 passed (1 file) |
+| 8 | `pnpm exec vitest run --project dev-tools scripts/dev-tools/policy-docs.test.ts` | 11 passed (1 file; final doc wave) |
+| 8 | `pnpm -F @proj-airi/motion-driver-humanoid exec vitest run` | 435 passed (25 files) |
+| 8 | `pnpm -F @proj-airi/stage-ui-mmd exec vitest run --project node` | 398 passed (47 files) |
+| 8 | `pnpm -F @proj-airi/stage-ui exec vitest run --project node` | 1884 passed, 1 failed: QA event expectations lacked the new attend metadata; corrected |
+| 8 | `pnpm -F @proj-airi/stage-ui exec vitest run --project node` | 1885 passed (194 files), after correcting QA expected metadata |
+| 8 | `pnpm -F @proj-airi/qa-tools exec vitest run --project node` | 880 passed, 9 skipped (67 passed files, 1 skipped) |
+| 8 | `pnpm -F @proj-airi/stage-ui-mmd exec vitest run --project browser` | 31 passed (6 files) |
+| 8 | `pnpm -F @proj-airi/stage-ui exec vitest run --project browser` | 1009 passed, 5 skipped (138 files) |
+| 8 | `pnpm --filter "...@proj-airi/character-mind" --filter "...@proj-airi/motion-driver-humanoid" --filter "...@proj-airi/stage-ui" --filter "...@proj-airi/stage-ui-mmd" --filter "...@proj-airi/qa-tools" --workspace-concurrency=2 typecheck` | 11 projects passed |
+| 9 | `pnpm exec vitest run --project dev-tools scripts/dev-tools/policy-docs.test.ts` | 11 passed (1 file) |
+| 9 | `pnpm -F @proj-airi/character-mind exec vitest run` | 130 passed (9 files) |
+| 9 | `pnpm -F @proj-airi/motion-driver-humanoid exec vitest run src/director` | 111 passed (2 files) |
+| 9 | `pnpm -F @proj-airi/stage-ui-mmd exec vitest run --project node src/composables/mmd/stance.test.ts src/composables/mmd/action-port.test.ts` | 39 passed (2 files) |
+| 9 | `pnpm -F @proj-airi/stage-ui exec vitest run --project node src/composables/performance/use-stage-performance-conductor.test.ts src/composables/performance/use-motion-qa-bridge.test.ts` | 2 files failed to transform due misplaced insertions; repaired |
+| 9 | `pnpm -F @proj-airi/stage-ui exec vitest run --project node src/composables/performance/use-stage-performance-conductor.test.ts src/composables/performance/use-motion-qa-bridge.test.ts` | 123 passed (2 files) |
+| 9 | `pnpm -F @proj-airi/character-mind exec vitest run` | 130 passed (9 files), after type insertion repair |
+| 9 | `pnpm -F @proj-airi/motion-driver-humanoid exec vitest run` | 435 passed (25 files) |
+| 9 | `pnpm -F @proj-airi/stage-ui-mmd exec vitest run --project node` | 398 passed (47 files) |
+| 9 | `pnpm -F @proj-airi/stage-ui exec vitest run --project node` | 1887 passed, 1 failed: card-switch response expected no away intent; corrected |
+| 9 | `pnpm -F @proj-airi/stage-ui exec vitest run --project node` | 1888 passed (194 files), after updating the card-switch response expectation |
+| 9 | `pnpm -F @proj-airi/qa-tools exec vitest run --project node` | 880 passed, 9 skipped (67 passed files, 1 skipped) |
+| 9 | `pnpm -F @proj-airi/stage-ui-mmd exec vitest run --project browser` | 31 passed (6 files) |
+| 9 | `pnpm -F @proj-airi/stage-ui exec vitest run --project browser` | 1009 passed, 5 skipped (138 files) |
+| 9 | `pnpm --filter "...@proj-airi/character-mind" --filter "...@proj-airi/motion-driver-humanoid" --filter "...@proj-airi/stage-ui" --filter "...@proj-airi/stage-ui-mmd" --filter "...@proj-airi/qa-tools" --workspace-concurrency=2 typecheck` | failed: MMD browser fixture retained performance.away after narrowing; removed |
+| 9 | `pnpm -F @proj-airi/qa-tools exec vitest run --project node` | 880 passed, 9 skipped (67 passed files, 1 skipped), after presence routing departure |
+| 9 | `pnpm -F @proj-airi/stage-ui-mmd exec vitest run --project browser` | 31 passed (6 files), after fixture type correction |
+| 9 | `pnpm --filter "...@proj-airi/character-mind" --filter "...@proj-airi/motion-driver-humanoid" --filter "...@proj-airi/stage-ui" --filter "...@proj-airi/stage-ui-mmd" --filter "...@proj-airi/qa-tools" --workspace-concurrency=2 typecheck` | 11 projects passed |
+| 10 | `pnpm -F @proj-airi/motion-driver-natural exec vitest run src/gaze.test.ts src/look.test.ts` | 179 passed (2 files) |
+| 10 | `pnpm -F @proj-airi/motion-driver-humanoid exec vitest run src/director src/types` | 119 passed (3 files) |
+| 10 | `pnpm -F @proj-airi/stage-ui-mmd exec vitest run --project node src/composables/mmd/body/attention.test.ts src/composables/mmd/natural/adapter.test.ts` | 28 passed (2 files) |
+| 10 | `pnpm exec vitest run --project dev-tools scripts/dev-tools/policy-docs.test.ts` | 11 passed (1 file) |
+| 10 | `pnpm -F @proj-airi/motion-driver-natural exec vitest run` | 519 passed (28 files) |
+| 10 | `pnpm -F @proj-airi/motion-driver-humanoid exec vitest run` | 437 passed (25 files) |
+| 10 | `pnpm -F @proj-airi/stage-ui-mmd exec vitest run --project node` | 412 passed (47 files) |
+| 10 | `pnpm -F @proj-airi/qa-tools exec vitest run --project node` | 880 passed, 9 skipped (67 passed files, 1 skipped) |
+| 10 | `pnpm -F @proj-airi/stage-ui-mmd exec vitest run --project browser` | 31 passed (6 files) |
+| 10 | `pnpm --filter "...@proj-airi/motion-driver-natural" --filter "...@proj-airi/motion-driver-humanoid" --filter "...@proj-airi/stage-ui-mmd" --filter "...@proj-airi/qa-tools" --workspace-concurrency=2 typecheck` | 12 projects passed |
+| 12 | `pnpm exec vitest run --project dev-tools scripts/dev-tools/policy-docs.test.ts` | 11 passed (1 file) |
+| 13 | `pnpm exec vitest run --project dev-tools scripts/dev-tools/policy-docs.test.ts` | 11 passed (1 file) |
+
+Headless identity, model-gated runs, and rendered acceptance are intentionally left to the orchestrator. Compare `idle`, `idle-drive`, `gaze-shift`, `speak`, `gesture-under-clip`, `emotions`, `walk`, `sleepy-no-clip`, and `touch` at seed 1 across each code item, expecting `IDENTICAL`. Confirm there are no director wander/visit events and that the sleepy scenario keeps its away stance markers. Rendered checks must show attend-caused clip endings and chat approach under Natural, away delivery and scene reseeding, a visible 8 s look-tool glance with priority interruptions and missing-target refusals, and the intentional classic release/chat/away change while retaining held-drag rules. Every launch needs zero renderer and main-process errors. The ADR contains the explicit acceptance placeholder.
+
+## Commits (CM6b2)
+
+- `1675e13f1` refactor(motion-driver-humanoid,stage-ui-mmd): draw the visit share from the mind's wander pick
+- `503c1d841` feat(character-mind,motion-driver-humanoid,stage-ui,stage-ui-mmd,qa-tools): end the director's clips and approach the chat on the mind's attend intents
+- `64e3847b8` feat(character-mind,motion-driver-humanoid,stage-ui,stage-ui-mmd,qa-tools): take away from the mind's presence answer
+- `3d45be270` feat(motion-driver-natural,motion-driver-humanoid,stage-ui-mmd,qa-tools): realise the look tool through the gaze arbiter
+- `a4a774da7` docs(ai): record the director input decisions and close CM6
+- This commit (item 13): docs(plan): mark the glances slice of the character mind done
