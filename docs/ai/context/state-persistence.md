@@ -123,7 +123,9 @@ The desktop app's main process writes files under the Electron user data directo
 
 The desktop `mountRenderer` boundary creates the synchronization runtime and mounts App without an intervening await. App setup registers its chat, speech, and other action owners before election can expose their RPC API. Consent and MMD initialization start in that same synchronous sequence; startup awaits their acknowledgments after mounting, so a slow main consent response cannot expose an elected but unregistered leader.
 
-Eight tier 1 stores and one helper exist:
+Nine tier 1 stores and one helper exist:
+
+- `useCharacterBehaviorSettings` owns `settings/character-behavior`: idle, touch, cursor and chat attention, emotion behavior, and speaking-up rules. Its leader-routed startup `initialize` saves validated values imported from the four older renderer, expression, and situation documents. Either renderer being off wins for idle and touch. Live2D supplies cursor and chat attention; pre-document Natural keys are read only when their document is absent. An existing behavior document always wins. The document is user-wide and is never included in a character share or backup.
 
 - `useLive2DNaturalSettings` and `useMMDNaturalSettings` are built on `useSettingsDocument`. Each starts from the old per-setting [Natural](glossary.md#natural) keys while no document is stored, and its first leader-routed `update` or `reset` writes the document and deletes those keys. Each store's `// NOTICE:` block states when that import can be removed.
 - `useSituationSettings`, `useConversationSettings`, and `useHostNoticeSettings` are built on `useSettingsDocument` with their original keys and stored shapes. `useHostNoticeSettings` declares the leader-routed actions `dismiss` and `reset`.
@@ -132,7 +134,7 @@ Eight tier 1 stores and one helper exist:
 
 - `useMMDPerformanceSettings` owns `settings/mmd/performance`: per-model drivers, stance slots and clip curation, plus stage character height and roam mode. The leader schedules document initialization during renderer startup. It imports every old model driver, including inactive models, and the four old global fields; a new document always wins. A valid old unscoped driver is saved as `unassignedMotionDriver` until `selectModel` claims it for the first model without a scoped choice. The claim and old-key cleanup follow acknowledged saves. Curation and stance edits merge into the leader's current model maps, and curation actions reject duplicate labels and clear permissions for stance/unusable kinds. Model deletion removes only that model's entries. Reset ignores imports and clears every old key. These are realisation settings; CM7c still owns the character-behavior document.
 
-All eight stores are built on `useSettingsDocument`, and new tier 1 stores use it too. The helper observes VueUse's synchronous persistence error callback and rejects a failed save before publishing the document; a migration must await that acknowledgment before removing old keys. `upgrade` rewrites a stored document before its fields are validated; use it only for a `// NOTICE:` fallback that removes or renames stored fields.
+All nine stores are built on `useSettingsDocument`, and new tier 1 stores use it too. The helper observes VueUse's synchronous persistence error callback and rejects a failed save before publishing the document; a migration must await that acknowledgment before removing old keys. `upgrade` rewrites a stored document before its fields are validated; use it only for a `// NOTICE:` fallback that removes or renames stored fields.
 
 ## Named exceptions
 

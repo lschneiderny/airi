@@ -31,7 +31,7 @@ import { useSpeechStore } from '@proj-airi/stage-ui/stores/modules/speech'
 import { useVisionStore } from '@proj-airi/stage-ui/stores/modules/vision'
 import { usePerfTracerBridgeStore } from '@proj-airi/stage-ui/stores/perf-tracer-bridge'
 import { listProvidersForPluginHost, shouldPublishPluginHostCapabilities } from '@proj-airi/stage-ui/stores/plugin-host-capabilities'
-import { useSettings, useSettingsAudioDevice } from '@proj-airi/stage-ui/stores/settings'
+import { useCharacterBehaviorSettings, useSettings, useSettingsAudioDevice } from '@proj-airi/stage-ui/stores/settings'
 import { useSettingsStageModel } from '@proj-airi/stage-ui/stores/settings/stage-model'
 import { useSituationStore } from '@proj-airi/stage-ui/stores/situation'
 import { useTheme } from '@proj-airi/ui'
@@ -88,6 +88,8 @@ import {
 import { resolveInitialRendererRoutePath, resolvePerfStageWindow, resolveRendererWindowContext } from './window-context'
 
 const { isDark: dark } = useTheme()
+const characterBehaviorSettings = useCharacterBehaviorSettings()
+const behaviorInitialized = characterBehaviorSettings.initialize()
 const settingsStore = useSettings()
 const { language, themeColorsHue, themeColorsHueDynamic } = storeToRefs(settingsStore)
 const router = useRouter()
@@ -404,6 +406,7 @@ if (isSettingsWindow) {
 }
 
 onMounted(async () => {
+  await behaviorInitialized
   void listModelAssets().then((statuses) => {
     for (const status of statuses) {
       if (!isSherpawModelBundled(status.id))

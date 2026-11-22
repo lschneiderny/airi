@@ -13,6 +13,7 @@ import { getActivePinia } from 'pinia'
 
 import * as v from 'valibot'
 
+import { useCharacterBehaviorSettings } from '../features/character-behavior/settings'
 import { useExpressionPerformanceSettings } from '../features/performance/settings'
 import { createJsonDataExportAdapter, decodeJsonFile } from '../libs/data-transfer'
 import { resetRegisteredState } from '../persistence/state-registry'
@@ -127,6 +128,7 @@ const settingsRegistrations = [
   'mmd-motion-files',
   'mmd-performance-settings',
   'mmd-clip-metadata-legacy',
+  'character-behavior-settings',
   'situation-settings',
   'expression-performance-settings',
   'host-notice-settings',
@@ -140,6 +142,7 @@ const settingsRegistrations = [
 export function useDataMaintenance() {
   // Owners that need a component context when they are created. Create them here, so that the registry's owner
   // resets find them already created.
+  useCharacterBehaviorSettings()
   useChatStore()
   useProviderStore()
   useSettingsGeneral()

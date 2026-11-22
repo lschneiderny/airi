@@ -2,6 +2,17 @@
 
 Shared core for stage
 
+## Character behavior settings
+
+`useCharacterBehaviorSettings` owns the user-wide tier 1
+`settings/character-behavior` document. Read `document` and await `update`
+or `reset`; only the leader persists commands. Startup creates this owner
+before the mind and awaits `initialize`, which saves the one-time import.
+Idle and touch are off when either old renderer setting was off. Cursor
+and chat attention come from Live2D, and emotion and speaking rules retain
+their validated values. An existing document always wins. Per-character
+performance scales stay on the card; sensor permissions stay with Presence.
+
 ## Performer dispatch
 
 The scene exposes its capabilities. `StagePerformanceConductor` reads that

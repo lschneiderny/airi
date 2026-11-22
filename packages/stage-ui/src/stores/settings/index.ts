@@ -9,6 +9,7 @@ import { useSettingsSpine } from './spine'
 import { useSettingsStageModel } from './stage-model'
 import { useSettingsTheme } from './theme'
 
+export * from '../../features/character-behavior/settings'
 export * from './analytics'
 // Export sub-stores
 export * from './audio-device'
