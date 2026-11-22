@@ -1,6 +1,6 @@
 # character-mind-cm9 - Work Plan
 
-Status: planned on 2026-11-22; CM9a and CM9b built on their branches (see [Slice records](#slice-records)). Roadmap rows: steps CM9a to CM9f and CM10 in [`docs/ai/context/character-mind-roadmap.md`](../../docs/ai/context/character-mind-roadmap.md#steps). Source of the open items: the [Target audit](../drafts/character-mind-target-audit.md), checked again against `main` at `87c2f24f5` for this plan (section 2.8 lists where the audit is wrong or incomplete). Rulings: the [character mind ADR](../../docs/ai/adr/2026-11-17-character-mind-direction.md) (decisions 2, 4, 5, 6, and 14), the [core ADR](../../docs/ai/adr/2026-11-18-character-mind-core.md) (D15: realisation details stay in the performers), the [idle ADR](../../docs/ai/adr/2026-11-20-character-mind-idle.md), the [glances ADR](../../docs/ai/adr/2026-11-21-character-mind-glances.md), the [director input ADR](../../docs/ai/adr/2026-11-21-character-mind-director-intents.md), and the [performer capabilities ADR](../../docs/ai/adr/2026-11-22-character-mind-performers.md). Required reading for every worker: the `enforce-rules-for-render-loops` and `motion-qa` skills.
+Status: planned on 2026-11-22; CM9a and CM9b built (see [Slice records](#slice-records)); CM9f built on its branch (see [CM9f record](#cm9f-record)), with its headless and rendered acceptance pending. Roadmap rows: steps CM9a to CM9f and CM10 in [`docs/ai/context/character-mind-roadmap.md`](../../docs/ai/context/character-mind-roadmap.md#steps). Source of the open items: the [Target audit](../drafts/character-mind-target-audit.md), checked again against `main` at `87c2f24f5` for this plan (section 2.8 lists where the audit is wrong or incomplete). Rulings: the [character mind ADR](../../docs/ai/adr/2026-11-17-character-mind-direction.md) (decisions 2, 4, 5, 6, and 14), the [core ADR](../../docs/ai/adr/2026-11-18-character-mind-core.md) (D15: realisation details stay in the performers), the [idle ADR](../../docs/ai/adr/2026-11-20-character-mind-idle.md), the [glances ADR](../../docs/ai/adr/2026-11-21-character-mind-glances.md), the [director input ADR](../../docs/ai/adr/2026-11-21-character-mind-director-intents.md), and the [performer capabilities ADR](../../docs/ai/adr/2026-11-22-character-mind-performers.md). Required reading for every worker: the `enforce-rules-for-render-loops` and `motion-qa` skills.
 
 **Owner answers recorded for this plan (2026-11-22).**
 
@@ -42,7 +42,7 @@ Upstream files a slice changes, and why (ADR decision 14):
 | Upstream file | Slices | Why |
 | --- | --- | --- |
 | `packages/stage-ui/src/components/scenes/Stage.vue` | CM9e, CM10 | Act moments carry the order's intent id to `useIdleProps`; the moment entry rest comes from the mind |
-| `packages/stage-ui-mmd/src/components/scenes/MMD.vue` | CM9b, CM9c, CM9d, CM10 | The scene seeds mood, feeds the mind's settle and linger to the director, ends the wander errand at the walk home, and seeds the refractories |
+| `packages/stage-ui-mmd/src/components/scenes/MMD.vue` | CM9b, CM9c, CM9d, CM9f, CM10 | The scene seeds mood, feeds the mind's settle and linger to the director, ends the wander errand at the walk home, hands the body's travel to the Natural adapter, and seeds the refractories |
 | `packages/stage-ui-live2d/src/components/scenes/live2d/Model.vue`, `packages/stage-ui-live2d/src/components/scenes/Live2D.vue` | CM9b | The scene surface gains the mood seed beside `addMood` |
 
 Each slice starts by rerunning `git log --oneline main..upstream/main -- <the paths of its section 4 row>` after a fresh `git fetch upstream`; if it prints anything, the slice stops and reports it.
@@ -173,7 +173,7 @@ Recommended, applied without an explicit answer (D16):
 | CM9c | `character-mind`, `motion-driver-natural`, `stage-ui`, `stage-ui-mmd`, `qa-tools` | `character-mind/src/idle.ts` (`advanceIdle`, `answerIdle`, `nextIdleWakeAt`), `step.ts`; `motion-driver-natural/src/idle-activities.ts` (`settleSeconds`, `settled`), `idle-schedule.ts` (`IdleView`, `IdleContext`, `idleActivityWeights` callers); `stage-ui-mmd` `stance.ts` (`directorIdleStates`), `MMD.vue`; conductor `syncScene`; `qa-tools/src/t2-3d/runner/run.ts` (`perform`) |
 | CM9d | `motion-driver-natural`, `motion-driver-humanoid`, `stage-ui-mmd`, `qa-tools`, `lab-tools` | `idle-schedule.ts` (errand decision), `idle-errands.ts`; `director/index.ts` (`decideBody`, `BodyDirectorInput.wander`, `BodyDirectorMemory`); `MMD.vue` (`realiseErrands`, the `world.wander` source); any `lab-tools` report that reads the linger constants |
 | CM9e | `motion-driver-natural`, `stage-ui`, `stage-ui-live2d`, `stage-ui-mmd` | `idle-activities.ts` (`IdleBehaviourRecord`, `IdleBehaviourReports`, `cue`), `natural-motion.ts` (`idleCue`); `use-idle-props.ts` (`onIdleBehaviour`); conductor `idleCue`; both scenes' `idleCue` |
-| CM9f | `motion-driver-natural`, `stage-ui-mmd`, `qa-tools` | `gaze.ts` (`GLANCE_PRIORITY`, `admits`, a `setTravel`), `frame-types.ts` (`NaturalBodyIntent`), `natural-motion.ts`; `stage-ui-mmd` `composables/mmd/natural/adapter.ts`, `body/index.ts` (`resolveGaze`) |
+| CM9f | `motion-driver-natural`, `stage-ui-mmd`, `qa-tools` | `gaze.ts` (`GLANCE_PRIORITY`, `admits`, a `setTravel`), `frame-types.ts` (`NaturalBodyIntent`), `natural-motion.ts`; `stage-ui-mmd` `composables/mmd/natural/adapter.ts` (`MMDNaturalInput.traveling`), `body/index.ts` (`resolveGaze`, `traveling`), `MMD.vue`; `qa-tools/src/t2-3d/runner/run.ts` |
 | CM10 | `character-mind`, `motion-driver-humanoid`, `motion-driver-natural`, `stage-ui`, `stage-ui-mmd`, `qa-tools` | `touch.ts`, `types.ts`, `step.ts`, a new `refractory.ts`; `director/index.ts` (`BodyDirectorMemory` refractory fields, `decideBody`); `pending-actions.ts`, `natural-motion.ts` (`lastPokeSurprise`); `use-idle-props.ts`, `Stage.vue`; `stance.ts`, `MMD.vue`; conductor; `t2-3d/runner/cues.ts` |
 
 ## 5. What is deleted
@@ -320,6 +320,16 @@ If a gate or report status differs, run seeds 1 to 5 at both ends. A flip that t
 | D18 | CM10 now or after a second stage | (a) Build now; (b) wait | (b) leaves model reloads resetting her refractories | **(a), owner answer "Build now", 2026-11-22** |
 | D19 | Where the director refractories live | (a) Mind state stamped by performer reports, sent as remaining durations; (b) the mind receives clip and tool requests as stimuli and accepts or refuses them | (b) reverses glances D6 (requests from the model stay requests the director takes) | (a) |
 | D20 | Where the moment entry rest lives | (a) Mind state keyed by opaque entry ids from a `moment-marked` report; (b) the mind store shell, outside the core | (b) puts fast state outside the state that resets together | (a) |
+
+## CM9f record
+
+Built on `luke/feat/character-mind-travel-gaze` from `main` at `c3cb484e4`. The slice ADR is [`2026-11-22-character-mind-travel-gaze.md`](../../docs/ai/adr/2026-11-22-character-mind-travel-gaze.md).
+
+**Departures.** Recorded under Deviations in the slice ADR: the travel input reaches the adapter as `MMDNaturalInput.traveling`, so `MMD.vue` and the headless runner change too (rows above amended); travel lags the gait by one display frame, as `resolveGaze` does; a higher claim running at a walk's start is capped at 1.5 s from then. The upstream drift check (`git fetch upstream`) could not run: the worker had no access to the upstream remote.
+
+**Checks run.** `motion-driver-natural` node project: 29 files, 544 tests. `stage-ui-mmd` node project: 49 files, 435 tests; `body/body.browser.test.ts`: 6 tests. `qa-tools` node project: 69 files passed and 1 skipped, 893 tests passed and 9 skipped. Dependents typecheck of `motion-driver-natural` (11 projects) and of `stage-ui-mmd` and `qa-tools` (8 projects): clean. Policy-docs test: 11 tests. `pnpm verify`, the headless runs, and the rendered check are the orchestrator's.
+
+**Commits.** `6517f394e` feat(motion-driver-natural): rank travel in the gaze arbiter; `bfc7afe00` feat(stage-ui-mmd,qa-tools): look where she walks unless a glance holds; `71a4f7412` docs(ai): record the travel gaze decisions.
 
 ## Orchestrator handoff
 
