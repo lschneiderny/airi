@@ -25,7 +25,6 @@ describe('behavior permissions', () => {
       mode: 'idle',
       away,
       blocked: false,
-      settled: true,
       current: null,
       errand: null,
     }

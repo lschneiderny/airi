@@ -24,6 +24,7 @@ const channels = {
   'observe-return': 'voice',
   'idle-act': 'posture',
   'idle-errand': 'posture',
+  'settle': 'posture',
   'cursor-episode': 'gaze',
   'attend': 'body',
   'away': 'body',

@@ -83,7 +83,7 @@ describe('cursor attention', () => {
   })
 
   it('leaves the idle draws unchanged when cursor stimuli come between them', () => {
-    const view: MindStimulus = { kind: 'idle', reports: [{ kind: 'view', view: { drive, active: true, mode: 'idle', away: false, blocked: false, settled: false, current: null, errand: null } }] }
+    const view: MindStimulus = { kind: 'idle', reports: [{ kind: 'view', view: { drive, active: true, mode: 'idle', away: false, blocked: false, current: null, errand: null } }] }
     const firstAct = (withCursor: boolean) => {
       const mind = script(1)
       mind.send(T0, view)

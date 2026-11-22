@@ -18,9 +18,60 @@ interface Answer { state: MindState, intents: MindIntent[], refusals?: Refusal[]
 const DEADLINE_SLACK_SECONDS = 1e-6
 /** The urge's shortfall at a hazard crossing that is float rounding, relative to the threshold. */
 const CROSSING_SLACK = 1e-9
+/**
+ * Active seconds of continuous idle with a body drive after which she settles in: the director's idle-to-sit time
+ * (architecture 4f), which `IDLE_TO_SIT_MS` documents for the reports.
+ */
+export const SETTLE_SECONDS = 120
 
 export function initialMindIdleState(): MindIdleState {
-  return { view: null, activeSeconds: 0, atMs: null, schedule: initialIdleSchedule(), pending: null, started: null, random: null }
+  return { view: null, activeSeconds: 0, atMs: null, schedule: initialIdleSchedule(), pending: null, started: null, settle: { since: null, settled: false }, random: null }
+}
+
+/**
+ * Whether the view lets her settle: its mode is `idle` and its drive performs a body. An inactive view keeps the count,
+ * because the idle clock stops with it.
+ */
+function settles(view: IdleView | null): boolean {
+  return view !== null && view.mode === 'idle' && view.drive?.body === true
+}
+
+/** The settle intent for a changed `settled`, or none. */
+function settleEdge(before: MindIdleState['settle'], after: MindIdleState['settle'], id: string, cause: number): MindIntent[] {
+  return before.settled === after.settled ? [] : [{ id, cause, channel: 'posture', kind: 'settle', settled: after.settled }]
+}
+
+/**
+ * Follows the idle view: a view that does not let her settle clears the count and gets her up; one that does starts the
+ * count at the current active time unless it runs.
+ */
+export function followSettleView(state: MindState, id: string, cause: number): Answer {
+  const idle = state.idle
+  let settle = idle.settle
+  if (!settles(idle.view))
+    settle = settle.since === null && !settle.settled ? settle : { since: null, settled: false }
+  else if (settle.since === null)
+    settle = { since: idle.activeSeconds, settled: false }
+  return settle === idle.settle
+    ? { state, intents: [] }
+    : { state: { ...state, idle: { ...idle, settle } }, intents: settleEdge(idle.settle, settle, id, cause) }
+}
+
+/**
+ * Starts the count over at the current active time after a stimulus that claims her, as Natural's `interrupt` stood her
+ * up (CM9c, decision D11). Nothing changes while the view does not let her settle.
+ */
+export function interruptSettle(state: MindState, cause: number): Answer {
+  const idle = state.idle
+  if (!settles(idle.view) || (idle.settle.since === idle.activeSeconds && !idle.settle.settled))
+    return { state, intents: [] }
+  const settle = { since: idle.activeSeconds, settled: false }
+  return { state: { ...state, idle: { ...idle, settle } }, intents: settleEdge(idle.settle, settle, `${cause}-settle`, cause) }
+}
+
+/** When she settles in, in active seconds, or null while she is settled or does not count. */
+function settleDeadline(settle: MindIdleState['settle']): number | null {
+  return settle.since === null || settle.settled ? null : settle.since + SETTLE_SECONDS
 }
 
 type IdleStream = ReturnType<typeof checkpointStream>
@@ -74,7 +125,7 @@ function runSchedule(schedule: IdleScheduleState, view: IdleView, context: IdleC
 
 /** What the schedule reads of the rest of the mind. */
 function idleContextOf(state: MindState): IdleContext {
-  return { music: state.music.playing }
+  return { music: state.music.playing, settled: state.idle.settle.settled }
 }
 
 /** Brings the schedule up to `idle.activeSeconds` and turns a decision into an intent with its seed. */
@@ -110,8 +161,23 @@ export function advanceIdle(state: MindState, cause: number, nowMs: number): Ans
   const advanced = { ...idle, atMs: nowMs, activeSeconds: from + span }
   if (span === 0 && idle.atMs === nowMs)
     return { state, intents: [] }
-  const { idle: next, intents } = decide(advanced, idleContextOf(state), from, `${cause}-idle-due`, cause)
-  return { state: { ...state, idle: next }, intents }
+  const context = idleContextOf(state)
+  const settleAt = settleDeadline(idle.settle)
+  if (settleAt === null || settleAt > advanced.activeSeconds + DEADLINE_SLACK_SECONDS) {
+    const { idle: next, intents } = decide(advanced, context, from, `${cause}-idle-due`, cause)
+    return { state: { ...state, idle: next }, intents }
+  }
+  // She stands until the settle deadline and is settled for the rest of the span, so a decision on either side reads
+  // the pool of its own time. At most one decision comes: the second run waits while the first one's is pending.
+  const at = Math.max(from, settleAt)
+  const standing = decide({ ...advanced, activeSeconds: at }, context, from, `${cause}-idle-due`, cause)
+  const settle = { since: idle.settle.since, settled: true }
+  const settledIdle = { ...standing.idle, activeSeconds: Math.max(standing.idle.activeSeconds, advanced.activeSeconds), settle }
+  const settled = decide(settledIdle, { ...context, settled: true }, at, `${cause}-idle-due`, cause)
+  return {
+    state: { ...state, idle: settled.idle },
+    intents: [...standing.intents, ...settleEdge(idle.settle, settle, `${cause}-settle-due`, cause), ...settled.intents],
+  }
 }
 
 /** Seeds the idle stream from the mind's source at the first idle stimulus. */
@@ -167,8 +233,9 @@ export function answerIdle(state: MindState, stimulus: Stimulus<'idle'>, cause: 
     }
   }
   idle = { ...idle, view, schedule, pending, started, random: stream.checkpoint() }
-  const decided = decide(idle, idleContextOf(state), at, `${cause}-idle`, cause)
-  return { state: { ...state, idle: decided.idle }, intents: decided.intents }
+  const followed = followSettleView({ ...state, idle }, `${cause}-settle`, cause)
+  const decided = decide(followed.state.idle, idleContextOf(followed.state), at, `${cause}-idle`, cause)
+  return { state: { ...state, idle: decided.idle }, intents: [...followed.intents, ...decided.intents] }
 }
 
 /** A requested play starts at once; the performer keeps its own test, and its `started` report stamps the cooldowns. */
@@ -196,11 +263,14 @@ export function idleOrderOf(intent: MindIdleIntent): IdleOrder {
 
 /**
  * The earliest wake the host must arm, in epoch milliseconds of the mind's clock, or null: none while no active view
- * reports, while an intent waits for its answer, or while nothing is due.
+ * reports or while nothing is due. The settle deadline counts also while an intent waits for its answer, which holds
+ * only the schedule.
  */
 export function nextIdleWakeAt(idle: MindIdleState): number | null {
-  if (idle.view === null || !idle.view.active || idle.atMs === null || idle.pending !== null || idle.random === null)
+  if (idle.view === null || !idle.view.active || idle.atMs === null)
     return null
-  const deadline = nextIdleDeadline(idle.schedule, idle.view, idle.activeSeconds)
-  return deadline === null ? null : idle.atMs + (deadline - idle.activeSeconds) * 1000
+  const scheduled = idle.pending !== null || idle.random === null ? null : nextIdleDeadline(idle.schedule, idle.view, idle.activeSeconds)
+  const settleAt = settleDeadline(idle.settle)
+  const deadlines = [scheduled, settleAt === null ? null : Math.max(idle.activeSeconds, settleAt)].filter(deadline => deadline !== null)
+  return deadlines.length === 0 ? null : idle.atMs + (Math.min(...deadlines) - idle.activeSeconds) * 1000
 }

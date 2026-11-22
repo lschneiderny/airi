@@ -72,7 +72,7 @@ describe('idle activity layer', () => {
     expect(idle.contributing).toBe(false)
     expect(idle.output.lidClose).toBe(0)
     expect(reports).toEqual([{ kind: 'refused', intentId: order.id }])
-    expect(idle.view).toEqual({ drive: null, active: true, mode: 'idle', away: false, blocked: false, settled: false, current: null, errand: null })
+    expect(idle.view).toEqual({ drive: null, active: true, mode: 'idle', away: false, blocked: false, current: null, errand: null })
   })
 
   it('settles in after two minutes of idle only when the host performs a body, and gets up when the mode changes', () => {
@@ -85,7 +85,6 @@ describe('idle activity layer', () => {
     expect(idle.settled).toBe(false)
     run(121)
     expect(idle.settled).toBe(true)
-    expect(idle.view?.settled).toBe(true)
     idle.step(now(), dt, { ...idleInput, mode: 'talking' }, gaze)
     expect(idle.settled).toBe(false)
     const talked = now()
@@ -466,8 +465,8 @@ describe('idle activities in the controller', () => {
     }
     // The controller's first grid step ran before the drive was set.
     expect(batches).toEqual([
-      [{ kind: 'view', view: { drive: null, active: true, mode: 'idle', away: false, blocked: false, settled: false, current: null, errand: null } }],
-      [{ kind: 'view', view: { drive: neutralDrive, active: true, mode: 'idle', away: false, blocked: false, settled: false, current: null, errand: null } }],
+      [{ kind: 'view', view: { drive: null, active: true, mode: 'idle', away: false, blocked: false, current: null, errand: null } }],
+      [{ kind: 'view', view: { drive: neutralDrive, active: true, mode: 'idle', away: false, blocked: false, current: null, errand: null } }],
     ])
 
     const order = act('check-in')

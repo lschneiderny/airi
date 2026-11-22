@@ -92,7 +92,7 @@ describe('idle activity odds', () => {
 
 describe('idle schedule', () => {
   it('names the time of the first decision: the end of the rest, then the crossing of the hazard that a grid search finds', () => {
-    const view: IdleView = { drive: neutralDrive, active: true, mode: 'idle', away: false, blocked: false, settled: false, current: null, errand: null }
+    const view: IdleView = { drive: neutralDrive, active: true, mode: 'idle', away: false, blocked: false, current: null, errand: null }
     for (const seed of [1, 2, 3, 4, 5]) {
       const random = createRandomStream(seed)
       let state = applyIdleEdge(applyIdleEdge(initialIdleSchedule(), { kind: 'started', act: 'yawn' }, 0, random), { kind: 'ended', act: 'yawn', how: 'finished', sleptSeconds: null }, 0, random)
@@ -103,7 +103,7 @@ describe('idle schedule', () => {
       let decidedAt: number | null = null
       for (let step = 0; decidedAt === null && step < 3600 / dt; step++) {
         at = step * dt
-        const result = advanceIdleSchedule(state, view, { music: false }, at, dt, random)
+        const result = advanceIdleSchedule(state, view, { music: false, settled: false }, at, dt, random)
         state = result.state
         if (result.decision !== null)
           decidedAt = at
@@ -125,14 +125,14 @@ describe('idle schedule', () => {
     const since = 7784.220062792753
     const at = since + 600
     expect(at - since).toBeLessThan(600)
-    const view: IdleView = { drive: { ...neutralDrive, body: true, errands: ['wander'] }, active: true, mode: 'idle', away: false, blocked: false, settled: false, current: { seq: 1, kind: 'sigh' }, errand: null }
+    const view: IdleView = { drive: { ...neutralDrive, body: true, errands: ['wander'] }, active: true, mode: 'idle', away: false, blocked: false, current: { seq: 1, kind: 'sigh' }, errand: null }
     const state = { ...initialIdleSchedule(), threshold: 3, urge: 0, errandStarts: { wander: since }, errandListedSince: { wander: 0 } }
     expect(nextIdleDeadline(state, view, at)).toBeGreaterThan(at)
   })
 
   it('decides nothing under the dormant view and names no deadline', () => {
     const random = createRandomStream(1)
-    const result = advanceIdleSchedule(initialIdleSchedule(), dormantIdleView(true), { music: false }, 0, 3600, random)
+    const result = advanceIdleSchedule(initialIdleSchedule(), dormantIdleView(true), { music: false, settled: false }, 0, 3600, random)
     expect(result.decision).toBeNull()
     expect(nextIdleDeadline(result.state, dormantIdleView(true), 3600)).toBeNull()
   })
