@@ -1,4 +1,4 @@
-import type { VoiceLine, VoiceRequest, VoiceRun, VoiceView } from '@proj-airi/character-mind'
+import type { NoticeRequest, VoiceLine, VoiceRequest, VoiceRun, VoiceView } from '@proj-airi/character-mind'
 import type { ChatHistoryItem, ChatHookRegistry, TurnRef } from '@proj-airi/core-agent'
 import type {
   AppCategory,
@@ -157,6 +157,8 @@ export interface SituationChatControls {
   submitUnprompted: (payload: ChatUnpromptedPayload) => Promise<ChatUnpromptedResult>
   /** Starts a touch reaction turn; it shares the single pending unprompted turn with `submitUnprompted`. */
   submitReaction: (payload: ChatReactionPayload) => Promise<ChatUnpromptedResult>
+  /** Executes the exact stored notice that the mind admitted. */
+  submitNotice: (request: NoticeRequest) => Promise<ChatUnpromptedResult>
   /** Cancels one chat turn, for a widget line that missed its caller's deadline. */
   cancelTurn: (turn: { sessionId: string, turnId: string }) => Promise<void>
   /** The loaded messages of a session, oldest first, for thread extraction; empty when it is not loaded. */
@@ -409,6 +411,11 @@ export const useSituationStore = defineStore('situation', () => {
       },
     })
     const stopSpokenListener = chatHooks.onTokenLiteral(async (_literal, context) => {
+      if (speaking?.line.kind === 'notice' && speaking.chatTurnId === context.turnId) {
+        if (!speaking.spoken)
+          lineSpoke(speaking, Date.now())
+        return
+      }
       // The runtime holds an unprompted reply until it decides to speak, so its first literal means spoken.
       if (context.origin !== 'unprompted' || context.turnId === lastSpokenUnpromptedTurnId)
         return
@@ -881,6 +888,11 @@ export const useSituationStore = defineStore('situation', () => {
         messageId: turnId,
         supplement: line.supplement ?? undefined,
       }), () => {}, result => settleWidget(turnId, result))
+    }
+    if (line.kind === 'notice') {
+      if (speaking || controls.unpromptedPending())
+        return Promise.resolve('refused')
+      return runLine(turnId, line, () => controls.submitNotice(line.request), () => {}, result => settleWidget(turnId, result))
     }
     const { topicKey, reason } = line
     const aboutNotify = reason.kind === 'notify'

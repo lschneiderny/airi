@@ -1,18 +1,21 @@
 import type { CharacterPacingMemory, GateOutcome, UrgeGateInput, UrgeGateMemory } from '@proj-airi/stage-shared/situation'
 
-import type { MindIntent, MindRandom, MindState, MindStimulus, MindVoiceState, VoiceLineState, VoiceView } from './types'
+import type { MindIntent, MindRandom, MindState, MindStimulus, MindVoiceState, NoticeRequest, VoiceLineState, VoiceView } from './types'
 
 import {
   evaluateUrgeGate,
+  hardReason,
   initialUrgeMemory,
   pacingMemoryOf,
   promotionUrgeMemory,
   recordExternalSpeech,
+  recordNoticeSpeech,
   recordUrgeFireOutcome,
   recordUrgeUserTurn,
   restoreGateMemory,
   settleReaction,
   visibilityRegainUrgeMemory,
+  voiceBudgetHold,
 } from '@proj-airi/stage-shared/situation'
 
 type Stimulus<K extends MindStimulus['kind']> = Extract<MindStimulus, { kind: K }>
@@ -25,6 +28,8 @@ const REACTION_TURN_PREFIX = 'reaction:'
 export const WIDGET_START_WAIT_MS = 20_000
 /** Taken off the caller's wait for a widget line, for the bridge round trip of its cancel. */
 export const WIDGET_DEADLINE_MARGIN_MS = 1_000
+/** Results remain readable forever; their optional announcement must start within five minutes of acceptance. */
+export const NOTICE_START_WAIT_MS = 5 * 60_000
 
 /** The turn id of the spoken touch reaction about the situation event `eventId`. */
 export function reactionTurnId(eventId: string): string {
@@ -149,8 +154,47 @@ export function answerVoiceRequest(state: MindState, stimulus: Stimulus<'voice-r
 
 /** The earliest widget deadline (`startBy` of a waiting request, `speakBy` of an open line), or null without one. */
 export function nextVoiceWakeAt(voice: MindVoiceState): number | null {
-  const deadlines = [...voice.requests.map(({ startBy }) => startBy), ...(voice.line && voice.line.speakBy !== null ? [voice.line.speakBy] : [])]
+  const deadlines = [...voice.requests.map(({ startBy }) => startBy), ...voice.notices.map(({ startBy }) => startBy), ...(voice.line && voice.line.speakBy !== null ? [voice.line.speakBy] : [])]
   return deadlines.length > 0 ? Math.min(...deadlines) : null
+}
+
+function currentNotice(request: NoticeRequest, view: VoiceView): boolean {
+  const target = view.noticeTarget
+  return target?.open === true && request.sessionId === view.sessionId && request.sessionId === target.sessionId
+    && request.characterId === target.characterId && request.generation === target.generation && request.ownerTurnId === target.ownerTurnId
+}
+
+function expireNotices(voice: MindVoiceState, view: VoiceView, cause: number, nowMs: number): { voice: MindVoiceState, intents: MindIntent[] } {
+  const intents: MindIntent[] = []
+  const notices = voice.notices.map(entry => ({ ...entry, startBy: Math.min(entry.startBy, nowMs + NOTICE_START_WAIT_MS) })).filter(({ request, startBy, runId }) => {
+    if (runId === view.run.id && nowMs < startBy && currentNotice(request, view))
+      return true
+    intents.push({ id: `${cause}-drop-${request.turnId}`, cause, channel: 'voice', kind: 'drop', turnId: request.turnId })
+    return false
+  })
+  let { line } = voice
+  if (line?.notice && (line.runId !== view.run.id || !currentNotice(line.notice, view))) {
+    intents.push({ id: `${cause}-cancel`, cause, channel: 'voice', kind: 'cancel', turnId: line.turnId })
+    line = null
+  }
+  return { voice: { ...voice, notices, line }, intents }
+}
+
+/** Accepts a stored result without spending an urge draw. Ineligible results wait for ordinary voice ticks. */
+export function answerNoticeRequest(state: MindState, stimulus: Stimulus<'notice-request'>, cause: number, nowMs: number, random: MindRandom): Answer {
+  const voice = inRun(state, stimulus.view, nowMs, random)
+  if (voice.line?.turnId === stimulus.request.turnId || voice.notices.some(entry => entry.request.turnId === stimulus.request.turnId))
+    return { state: { ...state, voice }, intents: [] }
+  const entry = { request: stimulus.request, startBy: Math.min(stimulus.request.acceptedAtMs, nowMs) + NOTICE_START_WAIT_MS, runId: stimulus.view.run.id }
+  const notices = [...voice.notices, entry].sort((a, b) => {
+    const acceptedOrder = a.request.acceptedAtMs - b.request.acceptedAtMs
+    if (acceptedOrder)
+      return acceptedOrder
+    if (a.request.turnId === b.request.turnId)
+      return 0
+    return a.request.turnId < b.request.turnId ? -1 : 1
+  })
+  return answerVoiceTick({ ...state, voice: { ...voice, notices } }, { kind: 'voice-tick', view: stimulus.view, forceTiming: false }, cause, nowMs, random, false)
 }
 
 /**
@@ -159,14 +203,17 @@ export function nextVoiceWakeAt(voice: MindVoiceState): number | null {
  * open; otherwise a fire yields `cue` `about-to-speak` and one `speak` with a reach-out line, which occupies the line
  * slot until its outcome.
  */
-export function answerVoiceTick(state: MindState, stimulus: Stimulus<'voice-tick'>, cause: number, nowMs: number, random: MindRandom): Answer {
+export function answerVoiceTick(state: MindState, stimulus: Stimulus<'voice-tick'>, cause: number, nowMs: number, random: MindRandom, ordinary = true): Answer {
   const { view } = stimulus
   let voice = inRun(state, view, nowMs, random)
 
+  const expired = expireNotices(voice, view, cause, nowMs)
+  voice = expired.voice
   const served = serveRequests(voice, view, cause, nowMs)
+  const intents = [...expired.intents, ...served.intents]
   voice = served.voice
   if (voice.line !== null || voice.requests.length > 0 || view.unpromptedPending)
-    return { state: { ...state, voice }, intents: served.intents }
+    return { state: { ...state, voice }, intents }
 
   let gate = voice.gate!
   // A stage that comes back on screen eases in again, like a new leader, instead of speaking at once.
@@ -174,10 +221,26 @@ export function answerVoiceTick(state: MindState, stimulus: Stimulus<'voice-tick
   if (stageShown && !voice.stageShown)
     gate = visibilityRegainUrgeMemory(gate, nowMs)
 
-  const { decision, memory } = evaluateUrgeGate(gateInput(view, voice.requests, nowMs, stimulus.forceTiming), gate, random)
+  const nextNotice = voice.notices[0]
+  const noticeReady = nextNotice !== undefined && !busy(view, voice) && Number.isFinite(nowMs)
+    && hardReason(view, false, 'owner-result') === null && voiceBudgetHold(gate, nowMs) === null
+  if (!ordinary && !noticeReady)
+    return { state: { ...state, voice }, intents }
+
+  const input = gateInput(view, voice.requests, nowMs, stimulus.forceTiming)
+  const { decision, memory } = evaluateUrgeGate({ ...input, deferOrdinary: noticeReady }, gate, random)
   voice = { ...voice, gate: memory, stageShown, lastGate: decision }
+  if (!decision.fire && noticeReady) {
+    const { request } = nextNotice
+    const line: VoiceLineState = { turnId: request.turnId, kind: 'notice', runId: voice.runId, before: null, speakBy: null, notice: request }
+    const cue = state.performer.posture ? [aboutToSpeak(cause)] : []
+    return {
+      state: { ...state, voice: { ...voice, line, notices: voice.notices.slice(1) } },
+      intents: [...intents, ...cue, { id: `${cause}-speak`, cause, channel: 'voice', kind: 'speak', turnId: request.turnId, line: { kind: 'notice', request } }],
+    }
+  }
   if (!decision.fire)
-    return { state: { ...state, voice }, intents: served.intents }
+    return { state: { ...state, voice }, intents }
 
   // Unique among this mind's lines; the time keeps it apart from the lines of an earlier mind in the same run.
   const turnId = `reach-out:${nowMs}-${cause}`
@@ -190,7 +253,7 @@ export function answerVoiceTick(state: MindState, stimulus: Stimulus<'voice-tick
   }
   return {
     state: { ...state, voice: { ...voice, line } },
-    intents: [...served.intents, aboutToSpeak(cause), {
+    intents: [...intents, aboutToSpeak(cause), {
       id: `${cause}-speak`,
       cause,
       channel: 'voice',
@@ -231,9 +294,12 @@ export function answerVoiceOutcome(state: MindState, stimulus: Stimulus<'voice-o
   const open = own ? voice.line : null
   if (open === null)
     return { state, intents: [] }
-  // A widget line, and a reach-out that opened before a restore replaced the gate memory: a spoken one starts the
-  // floor, which holds after any spoken line, and never counts as an unanswered opening. Nothing else of their outcome
-  // reaches the gate, so a refused reach-out of an earlier run restores none of its fields.
+  if (open.kind === 'notice') {
+    const gate = stimulus.outcome === 'spoken' && voice.gate ? recordNoticeSpeech(voice.gate, nowMs) : voice.gate
+    return { state: { ...state, voice: { ...voice, gate, line } }, intents: state.performer.posture ? letGo(stimulus.outcome, cause) : [] }
+  }
+  // Widgets and reach-outs from an earlier run start the floor when spoken, without an unanswered opening.
+  // A refused reach-out from an earlier run restores no fields of the current gate.
   if (open.kind === 'widget' || open.runId !== voice.runId) {
     const gate = stimulus.outcome === 'spoken' && voice.gate ? recordExternalSpeech(voice.gate, nowMs) : voice.gate
     return { state: { ...state, voice: { ...voice, gate, line } }, intents: letGo(stimulus.outcome, cause) }
@@ -253,7 +319,13 @@ export function answerVoiceOutcome(state: MindState, stimulus: Stimulus<'voice-o
  * applies at `nowMs`, the mind's clock, also when the host held the turn back until a restore: an earlier time would
  * pull the restored ease-in and the gate's other times back to it.
  */
-export function answerUserTurn(state: MindState, nowMs: number): Answer {
+export function answerUserTurn(state: MindState, nowMs: number, cause: number): Answer {
   const { gate } = state.voice
-  return { state: gate ? { ...state, voice: { ...state.voice, gate: recordUrgeUserTurn(gate, nowMs) } } : state, intents: [] }
+  const intents: MindIntent[] = state.voice.notices.map(({ request }) => ({ id: `${cause}-drop-${request.turnId}`, cause, channel: 'voice', kind: 'drop', turnId: request.turnId }))
+  let { line } = state.voice
+  if (line?.kind === 'notice') {
+    intents.push({ id: `${cause}-cancel`, cause, channel: 'voice', kind: 'cancel', turnId: line.turnId })
+    line = null
+  }
+  return { state: { ...state, voice: { ...state.voice, gate: gate ? recordUrgeUserTurn(gate, nowMs) : null, line, notices: [] } }, intents }
 }

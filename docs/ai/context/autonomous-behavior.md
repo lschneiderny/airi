@@ -97,6 +97,8 @@ Slice names (CM1 to CM7) and prerequisite steps refer to the [character mind roa
 
 ## Known overlaps
 
+The pure voice policy now supports an owner-result `notice-request` and `notice` line. It skips reach-out enablement, urge, and unanswered-opening holds, while retaining all other hard suppressors and the shared floor/cap. Widgets precede urgent reasons, then eligible notices, then ordinary selection; the gate defers ordinary accrual and draws when a notice owns that slot. A spoken notice charges the cap once and never counts as an unanswered opening. Requests expire after five minutes or a target/run/owner-turn change. Automatic notice producers are not connected to this policy until CM8 item 4; overlap 12 remains open at this intermediate commit.
+
 CM8 reminder policy: notebook reminders carry trusted task identity, schedule revision, priority, and effective due time through `NotifyObservation`, `SituationEvent`, and `Reason`. The 60-second look-ahead is context only. A due critical occurrence ranks before immediate plugin notifies, then by due time and task id; other priorities enter the due hazard. Every settled attempt consumes the occurrence in the runtime notebook, even on decline or failure. A genuine reschedule creates a new revision; delivery and situation eviction do not. Protocol inputs always retain plugin provenance, including a forged scheduler source. Upstream avatar notifies keep their existing urgency and speech pacing under the D2 ruling of 2026-11-21.
 
 Each case below has two or more deciders acting on the same trigger or channel with no single arbiter between them. This list describes the code; it proposes nothing.

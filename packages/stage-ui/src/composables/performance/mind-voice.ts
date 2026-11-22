@@ -5,7 +5,7 @@ import { errorMessageFrom } from '@moeru/std'
 import { nextVoiceWakeAt } from '@proj-airi/character-mind'
 
 /** The stimuli the voice port sends to the connected mind. A `voice-outcome` reports a touch line the port no longer tracked. */
-export type VoiceStimulus = Extract<MindStimulus, { kind: 'voice-tick' | 'user-turn' | 'voice-request' | 'voice-outcome' }>
+export type VoiceStimulus = Extract<MindStimulus, { kind: 'voice-tick' | 'user-turn' | 'voice-request' | 'notice-request' | 'voice-outcome' }>
 
 /**
  * The voice channel the mind can reach: the leader's situation store. It senses and folds the situation, runs the
