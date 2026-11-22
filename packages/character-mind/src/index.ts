@@ -1,5 +1,6 @@
 export * from './attention'
-export * from './capabilities'
+export type { PerformerCapabilities } from './capabilities'
+export { NO_CAPABILITIES, permits } from './capabilities'
 export * from './chat'
 export * from './idle'
 export * from './mind'

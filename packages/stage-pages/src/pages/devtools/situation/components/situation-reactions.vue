@@ -86,6 +86,7 @@ const pendingText = computed(() => {
 const policyRows = computed<Row[]>(() => {
   const memory = props.reactions.memory
   return [
+    { id: 'refusals', label: t(`${KEY}.columns.refused`), value: props.reactions.refusals.map(refusal => `${refusal.cause}: ${refusal.kind} (${refusal.reason}, ${formatAgo(refusal.atMs, props.nowMs)})`).join('; ') || t(`${KEY}.none`) },
     { id: 'decision', label: t(`${KEY}.decision`), value: decisionText.value },
     { id: 'pets-seen', label: t(`${KEY}.pets-seen`), value: memory ? String(memory.petsSeen) : '-' },
     { id: 'poke-times', label: t(`${KEY}.poke-times`), value: pokeTimesText.value },

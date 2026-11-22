@@ -8,7 +8,8 @@ import { describe, expect, it } from 'vitest'
 
 import { nextIdleWakeAt } from './idle'
 import { CharacterMind } from './mind'
-import { initialMindState, step } from './step'
+import { step } from './step'
+import { naturalMindState } from './test/fixtures'
 
 const T0 = 1_700_000_000_000
 const drive: NaturalIdleDrive = { energy: 0, valence: 0, tension: 0, sleepiness: 0, solitude: 0, rate: 1 }
@@ -29,7 +30,7 @@ function counted(seed: number) {
 describe('music stimulus', () => {
   it('draws nothing and yields nothing, before and after the idle stream is seeded', () => {
     const rng = counted(1)
-    const started = step(initialMindState(), [musicOn], T0, rng)
+    const started = step(naturalMindState(), [musicOn], T0, rng)
     expect([started.intents, rng.draws, started.state.music]).toEqual([[], 0, { playing: true }])
     const idle = step(started.state, [viewed], T0, rng).state
     const draws = rng.draws
@@ -39,16 +40,16 @@ describe('music stimulus', () => {
   })
 
   it('leaves the idle seed unchanged when it reaches the mind before the first idle report', () => {
-    const plain = step(initialMindState(), [viewed], T0, randomSource(1)).state
+    const plain = step(naturalMindState(), [viewed], T0, randomSource(1)).state
     const rng = randomSource(1)
-    const heard = step(step(initialMindState(), [musicOn], T0, rng).state, [viewed], T0, rng).state
+    const heard = step(step(naturalMindState(), [musicOn], T0, rng).state, [viewed], T0, rng).state
     expect(heard.idle.random).toBe(plain.idle.random)
     expect(heard.idle.schedule).toEqual(plain.idle.schedule)
     expect(nextIdleWakeAt(heard.idle)).toBe(nextIdleWakeAt(plain.idle))
   })
 
   it('round-trips the state through JSON', () => {
-    const state: MindState = step(initialMindState(), [musicOn, viewed], T0, randomSource(1)).state
+    const state: MindState = step(naturalMindState(), [musicOn, viewed], T0, randomSource(1)).state
     expect(JSON.parse(JSON.stringify(state))).toEqual(state)
   })
 

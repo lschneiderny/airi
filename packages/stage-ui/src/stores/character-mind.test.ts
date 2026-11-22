@@ -6,13 +6,14 @@ import type { Mock } from 'vitest'
 
 import type { VoicePort, VoiceStimulus } from '../composables/performance/mind-voice'
 
-import { nextIdleWakeAt } from '@proj-airi/character-mind'
+import { nextIdleWakeAt, NO_CAPABILITIES } from '@proj-airi/character-mind'
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { MUSIC_SETTLE_MS } from '@proj-airi/stage-shared/music'
 import { initialSituationState, userGateMemoryOf } from '@proj-airi/stage-shared/situation'
+import { MMD_NATURAL_CAPABILITIES } from '@proj-airi/stage-ui-mmd/composables/mmd/natural/adapter'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { isReactive, shallowReactive } from 'vue'
+import { isReactive, ref, shallowReactive } from 'vue'
 
 import { useCharacterMindStore } from './character-mind'
 import { useSituationObservabilityStore } from './devtools/situation-observability'
@@ -186,6 +187,31 @@ describe('character mind store', () => {
     vi.useRealTimers()
   })
 
+  it('uses the newest declaration, observes a switch synchronously, and replays it after a reset', async () => {
+    const store = useCharacterMindStore()
+    const older = store.attachStage({ capabilities: () => MMD_NATURAL_CAPABILITIES, idleCue: vi.fn(), idle: vi.fn(), beat: vi.fn() })
+    const capabilities = ref(NO_CAPABILITIES)
+    const newer = store.attachStage({ capabilities: () => capabilities.value, idleCue: vi.fn(), idle: vi.fn(), beat: vi.fn() })
+    expect(store.mind.state.performer).toEqual(NO_CAPABILITIES)
+    capabilities.value = MMD_NATURAL_CAPABILITIES
+    expect(store.mind.state.performer).toEqual(MMD_NATURAL_CAPABILITIES)
+    await connected(store)
+    characterState.replace('card-b', herPacing)
+    expect(store.mind.state.performer).toEqual(MMD_NATURAL_CAPABILITIES)
+    capabilities.value = NO_CAPABILITIES
+    newer.detach()
+    expect(store.mind.state.performer).toEqual(MMD_NATURAL_CAPABILITIES)
+    older.detach()
+    expect(store.mind.state.performer).toEqual(NO_CAPABILITIES)
+  })
+
+  it('reports a refused request to the reaction inspector', async () => {
+    const store = useCharacterMindStore()
+    store.mind.receive({ kind: 'cue-gesture', gesture: 'shrug', count: 1, source: 'act' })
+    const inspection = await useSituationObservabilityStore().inspect()
+    expect(inspection.reactions.refusals).toEqual([{ cause: 1, kind: 'gesture', reason: 'undeclared', atMs: T0 }])
+  })
+
   it('hears music only while the window leads, and a demotion stops it', async () => {
     const store = useCharacterMindStore()
     const leadership = createLeadership(false)
@@ -218,8 +244,8 @@ describe('character mind store', () => {
     store.initialize(leadership.runtime)
     const older = vi.fn()
     const newer = vi.fn()
-    store.attachStage({ idleCue: vi.fn(), idle: vi.fn(), beat: older })
-    store.attachStage({ idleCue: vi.fn(), idle: vi.fn(), beat: newer })
+    store.attachStage({ capabilities: () => MMD_NATURAL_CAPABILITIES, idleCue: vi.fn(), idle: vi.fn(), beat: older })
+    store.attachStage({ capabilities: () => MMD_NATURAL_CAPABILITIES, idleCue: vi.fn(), idle: vi.fn(), beat: newer })
     await flush()
     leadership.set(true)
     await flush()
@@ -297,7 +323,7 @@ describe('character mind store', () => {
     const store = useCharacterMindStore()
     port.speak.mockResolvedValue('declined')
     const idleCue = vi.fn()
-    store.attachStage({ idleCue, idle: vi.fn(), beat: vi.fn() })
+    store.attachStage({ capabilities: () => MMD_NATURAL_CAPABILITIES, idleCue, idle: vi.fn(), beat: vi.fn() })
     const send = await connected(store)
     const outcome = settled(store)
 
@@ -312,7 +338,7 @@ describe('character mind store', () => {
     const store = useCharacterMindStore()
     port.speak.mockResolvedValue('declined')
     const idleCue = vi.fn()
-    store.attachStage({ idleCue, idle: vi.fn(), beat: vi.fn() }).detach()
+    store.attachStage({ capabilities: () => MMD_NATURAL_CAPABILITIES, idleCue, idle: vi.fn(), beat: vi.fn() }).detach()
     const send = await connected(store)
     const outcome = settled(store)
 
@@ -328,8 +354,8 @@ describe('character mind store', () => {
     port.speak.mockResolvedValue('declined')
     const older = vi.fn()
     const newer = vi.fn()
-    const olderStage = store.attachStage({ idleCue: older, idle: vi.fn(), beat: vi.fn() })
-    store.attachStage({ idleCue: newer, idle: vi.fn(), beat: vi.fn() })
+    const olderStage = store.attachStage({ capabilities: () => MMD_NATURAL_CAPABILITIES, idleCue: older, idle: vi.fn(), beat: vi.fn() })
+    store.attachStage({ capabilities: () => MMD_NATURAL_CAPABILITIES, idleCue: newer, idle: vi.fn(), beat: vi.fn() })
     olderStage.detach()
     const send = await connected(store)
     const outcome = settled(store)
@@ -345,8 +371,8 @@ describe('character mind store', () => {
     const store = useCharacterMindStore()
     const older = vi.fn()
     const newer = vi.fn()
-    const olderStage = store.attachStage({ idleCue: vi.fn(), idle: older, beat: vi.fn() })
-    const newerStage = store.attachStage({ idleCue: vi.fn(), idle: newer, beat: vi.fn() })
+    const olderStage = store.attachStage({ capabilities: () => MMD_NATURAL_CAPABILITIES, idleCue: vi.fn(), idle: older, beat: vi.fn() })
+    const newerStage = store.attachStage({ capabilities: () => MMD_NATURAL_CAPABILITIES, idleCue: vi.fn(), idle: newer, beat: vi.fn() })
 
     olderStage.report([{ kind: 'view', view: idleView }])
     expect(store.mind.state.idle.view).toBeNull()
@@ -361,8 +387,8 @@ describe('character mind store', () => {
 
   it('tells the mind the dormant view when the reporting stage detaches', () => {
     const store = useCharacterMindStore()
-    const olderStage = store.attachStage({ idleCue: vi.fn(), idle: vi.fn(), beat: vi.fn() })
-    const newerStage = store.attachStage({ idleCue: vi.fn(), idle: vi.fn(), beat: vi.fn() })
+    const olderStage = store.attachStage({ capabilities: () => MMD_NATURAL_CAPABILITIES, idleCue: vi.fn(), idle: vi.fn(), beat: vi.fn() })
+    const newerStage = store.attachStage({ capabilities: () => MMD_NATURAL_CAPABILITIES, idleCue: vi.fn(), idle: vi.fn(), beat: vi.fn() })
     newerStage.report([{ kind: 'view', view: idleView }])
 
     // An older stage leaving changes nothing: it never reported.
@@ -378,13 +404,13 @@ describe('character mind store', () => {
     vi.setSystemTime(T0)
     const store = useCharacterMindStore()
     const older = vi.fn()
-    store.attachStage({ idleCue: vi.fn(), idle: older, beat: vi.fn() }).report([{ kind: 'view', view: idleView }])
+    store.attachStage({ capabilities: () => MMD_NATURAL_CAPABILITIES, idleCue: vi.fn(), idle: older, beat: vi.fn() }).report([{ kind: 'view', view: idleView }])
     vi.advanceTimersByTime(Math.ceil(nextIdleWakeAt(store.mind.state.idle)! - T0))
     expect(older).toHaveBeenCalledOnce()
 
     // The older stage's answer to that act no longer counts, so only the newer stage's view can free the mind.
     const newer = vi.fn()
-    store.attachStage({ idleCue: vi.fn(), idle: newer, beat: vi.fn() }).report([{ kind: 'view', view: idleView }])
+    store.attachStage({ capabilities: () => MMD_NATURAL_CAPABILITIES, idleCue: vi.fn(), idle: newer, beat: vi.fn() }).report([{ kind: 'view', view: idleView }])
     const wakeAt = nextIdleWakeAt(store.mind.state.idle)
     expect(wakeAt).not.toBeNull()
     vi.advanceTimersByTime(Math.ceil(wakeAt! - Date.now()))
@@ -398,7 +424,7 @@ describe('character mind store', () => {
     vi.setSystemTime(T0)
     const store = useCharacterMindStore()
     const idle = vi.fn()
-    store.attachStage({ idleCue: vi.fn(), idle, beat: vi.fn() }).report([{ kind: 'view', view: idleView }])
+    store.attachStage({ capabilities: () => MMD_NATURAL_CAPABILITIES, idleCue: vi.fn(), idle, beat: vi.fn() }).report([{ kind: 'view', view: idleView }])
     const wakeAt = nextIdleWakeAt(store.mind.state.idle)!
     expect(wakeAt).toBeGreaterThan(T0)
 
@@ -418,6 +444,7 @@ describe('character mind store', () => {
 
   it('feeds the reaction inspector a touch decision and clears it on dispose', () => {
     const store = useCharacterMindStore()
+    store.attachStage({ capabilities: () => MMD_NATURAL_CAPABILITIES, idleCue: vi.fn(), idle: vi.fn(), beat: vi.fn() })
     const observability = useSituationObservabilityStore()
     const recordReactionDecision = vi.spyOn(observability, 'recordReactionDecision')
     const publishReactionMemory = vi.spyOn(observability, 'publishReactionMemory')
@@ -501,6 +528,7 @@ describe('character mind store', () => {
 
     it('keeps an away span open across a card switch, so the return after it gets its response', async () => {
       const store = useCharacterMindStore()
+      store.attachStage({ capabilities: () => MMD_NATURAL_CAPABILITIES, idleCue: vi.fn(), idle: vi.fn(), beat: vi.fn() })
       await connected(store)
       store.mind.receive({ kind: 'presence', away: true, wake: null })
       vi.setSystemTime(T0 + 60_000)

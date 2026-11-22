@@ -10,7 +10,8 @@ import { HOUR_MS, initialSituationState, randomSource } from '@proj-airi/stage-s
 import { describe, expect, it } from 'vitest'
 
 import { nextIdleWakeAt } from './idle'
-import { initialMindState, step } from './step'
+import { step } from './step'
+import { naturalMindState } from './test/fixtures'
 
 const SEC = 1000
 const MIN = 60 * SEC
@@ -55,7 +56,7 @@ function voiceTick(atMs: number): MindStimulus {
 }
 
 /** One mind fed in order from one seeded source. */
-function script(seed = SEED, initial: MindState = initialMindState()) {
+function script(seed = SEED, initial: MindState = naturalMindState()) {
   const random: MindRandom = randomSource(seed)
   let state = initial
   return {

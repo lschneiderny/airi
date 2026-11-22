@@ -63,7 +63,7 @@ export function useMotionQaEvents(options: {
       const gate = step.state.voice.lastGate !== lastGate ? step.state.voice.lastGate : null
       lastGate = step.state.voice.lastGate
       const quiet = step.stimuli.every(stimulus => stimulus.kind === 'idle' || stimulus.kind === 'idle-wake' || (stimulus.kind === 'voice-tick' && !stimulus.forceTiming))
-      if (quiet && !step.intents.length)
+      if (quiet && !step.intents.length && !step.refusals.length)
         return
       const touches = step.stimuli.filter(stimulus => stimulus.kind === 'touch')
       const outcomes = step.stimuli.filter(stimulus => stimulus.kind === 'voice-outcome')
@@ -76,6 +76,7 @@ export function useMotionQaEvents(options: {
       const lines = step.intents.flatMap(intent => intent.channel === 'voice' && intent.kind === 'speak' ? [intent.line.kind] : [])
       const cues = step.intents.flatMap(intent => intent.channel === 'posture' && intent.kind === 'cue' ? [intent.cue] : [])
       record('mind', {
+        refusals: JSON.stringify(step.refusals),
         stimulus: step.stimuli.map(stimulus => stimulus.kind).join(','),
         gesture: touches.length ? touches.map(touch => touch.gesture).join(',') : null,
         outcome: outcomes.length ? outcomes.map(stimulus => stimulus.outcome).join(',') : null,

@@ -24,7 +24,7 @@ import { MMDBodyPose } from '@proj-airi/stage-ui-mmd/composables/mmd/body/pose'
 import { MMDFramePipeline } from '@proj-airi/stage-ui-mmd/composables/mmd/frame-pipeline'
 import { LAYER_FADE_SECONDS, stepLayerFade } from '@proj-airi/stage-ui-mmd/composables/mmd/layer-fade'
 import { createMMDMotionTraceSampler } from '@proj-airi/stage-ui-mmd/composables/mmd/motion-trace'
-import { MMDNaturalAdapter } from '@proj-airi/stage-ui-mmd/composables/mmd/natural/adapter'
+import { MMD_NATURAL_CAPABILITIES, MMDNaturalAdapter } from '@proj-airi/stage-ui-mmd/composables/mmd/natural/adapter'
 import { readMMDRigProfile } from '@proj-airi/stage-ui-mmd/composables/mmd/rig'
 import { composeMMDStages } from '@proj-airi/stage-ui-mmd/composables/mmd/stage-composition'
 import { directorIdleStates, MMDStanceDirector } from '@proj-airi/stage-ui-mmd/composables/mmd/stance'
@@ -53,6 +53,7 @@ const modes = { idle: 0, turning: 1, starting: 2, walking: 3, stopping: 4, sides
  */
 export function createRunnerMind(options: Pick<Motion3dRunOptions, 'seed' | 'scenario'>, clock: () => number): CharacterMind {
   const mind = new CharacterMind({ seed: deriveSeed(options.seed, mindSeedLayer), clock })
+  mind.receive({ kind: 'performer', capabilities: MMD_NATURAL_CAPABILITIES })
   if (options.scenario.music)
     mind.receive({ kind: 'music', playing: true })
   return mind

@@ -7,7 +7,8 @@ import { randomSource } from '@proj-airi/stage-shared/situation'
 import { describe, expect, it } from 'vitest'
 
 import { nextIdleWakeAt } from './idle'
-import { initialMindState, step } from './step'
+import { step } from './step'
+import { naturalMindState } from './test/fixtures'
 
 const T0 = 1_700_000_000_000
 const drive: NaturalIdleDrive = { energy: 0, valence: 0, tension: 0, sleepiness: 0, solitude: 0, rate: 1 }
@@ -17,7 +18,7 @@ function cursor(requestId: number, band: CursorReport['band'] = 'medium'): MindS
 }
 
 /** One mind fed in order from one seeded source that counts its draws. */
-function script(seed: number, initial: MindState = initialMindState()) {
+function script(seed: number, initial: MindState = naturalMindState()) {
   const source = randomSource(seed)
   let draws = 0
   const random: MindRandom = () => {

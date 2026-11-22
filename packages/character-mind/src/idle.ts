@@ -1,14 +1,15 @@
 import type { IdleContext, IdleDecision, IdleOrder, IdleScheduleState, IdleView } from '@proj-airi/motion-driver-natural/idle-schedule'
 
-import type { MindIdleIntent, MindIdleState, MindIntent, MindRandom, MindState, MindStimulus } from './types'
+import type { MindIdleIntent, MindIdleState, MindIntent, MindRandom, MindState, MindStimulus, Refusal } from './types'
 
 import { advanceIdleSchedule, applyIdleEdge, initialIdleSchedule, nextIdleDeadline } from '@proj-airi/motion-driver-natural/idle-schedule'
 import { seedRng } from '@proj-airi/stage-shared/situation'
 
+import { refusedAnswer } from './capabilities'
 import { checkpointStream, drawSeed } from './random'
 
 type Stimulus<K extends MindStimulus['kind']> = Extract<MindStimulus, { kind: K }>
-interface Answer { state: MindState, intents: MindIntent[] }
+interface Answer { state: MindState, intents: MindIntent[], refusals?: Refusal[] }
 
 /**
  * Seconds by which a step may fall short of a deadline and still reach it. A wake armed at `nextIdleWakeAt` comes back
@@ -101,6 +102,8 @@ function decide(idle: MindIdleState, context: IdleContext, from: number, id: str
  * other channels step.
  */
 export function advanceIdle(state: MindState, cause: number, nowMs: number): Answer {
+  if (!state.performer.posture)
+    return { state: { ...state, idle: { ...state.idle, atMs: nowMs } }, intents: [] }
   const idle = state.idle
   const from = idle.activeSeconds
   const span = idle.atMs === null || idle.view?.active !== true ? 0 : Math.max(0, nowMs - idle.atMs) / 1000
@@ -121,6 +124,8 @@ function seeded(idle: MindIdleState, rng: MindRandom): MindIdleState {
  * dormant: it clears the follow-up, the away run, and the pending intent, and the policy decides nothing.
  */
 export function answerIdle(state: MindState, stimulus: Stimulus<'idle'>, cause: number, rng: MindRandom): Answer {
+  if (!state.performer.posture)
+    return { state, intents: [] }
   let idle = seeded(state.idle, rng)
   const stream = checkpointStream(idle.random!)
   const at = idle.activeSeconds
@@ -168,6 +173,9 @@ export function answerIdle(state: MindState, stimulus: Stimulus<'idle'>, cause: 
 
 /** A requested play starts at once; the performer keeps its own test, and its `started` report stamps the cooldowns. */
 export function answerIdlePlay(state: MindState, stimulus: Stimulus<'idle-play'>, cause: number, rng: MindRandom): Answer {
+  if (!state.performer.posture)
+    return refusedAnswer(state, cause, 'idle-act')
+
   const idle = seeded(state.idle, rng)
   const stream = checkpointStream(idle.random!)
   const seed = drawSeed(stream.random)

@@ -1,18 +1,23 @@
-import type { MindIntent, MindRandom, MindState, MindStimulus } from './types'
+import type { MindIntent, MindRandom, MindState, MindStimulus, Refusal } from './types'
 
 import { acceptReaction, emotionHold, releaseHold } from '@proj-airi/stage-shared/expression-performance'
+
+import { refusedAnswer } from './capabilities'
 
 /** The dose of every emotion when the card turns band recruitment off. */
 const BANDLESS_NOMINAL = 0.6
 
 type Stimulus<K extends MindStimulus['kind']> = Extract<MindStimulus, { kind: K }>
-interface Answer { state: MindState, intents: MindIntent[] }
+interface Answer { state: MindState, intents: MindIntent[], refusals?: Refusal[] }
 
 /**
  * An emotion becomes an episode with its hold. A neutral that resets the reaction state releases the automatic
  * slots and the hold. A repeat that neither starts nor escalates an episode yields no intent.
  */
 export function answerEmotion(state: MindState, stimulus: Stimulus<'emotion'>, cause: number, atSeconds: number, rng: MindRandom): Answer {
+  if (!state.performer.face)
+    return refusedAnswer(state, cause, 'emotion')
+
   const { settings, turnId } = stimulus
   const reaction = acceptReaction(state.reaction, stimulus.emotion, settings.bands ? stimulus.nominal : BANDLESS_NOMINAL, atSeconds, settings, rng)
   const next = { ...state, reaction: reaction.state }
@@ -34,6 +39,9 @@ export function answerEmotion(state: MindState, stimulus: Stimulus<'emotion'>, c
  * Without a mapping, or with held emotions off, the reaction state is untouched and the entry travels alone.
  */
 export function answerExpressionRequest(state: MindState, stimulus: Stimulus<'expression-request'>, cause: number, atSeconds: number, rng: MindRandom): Answer {
+  if (!state.performer.face)
+    return refusedAnswer(state, cause, 'entry')
+
   const { settings, turnId, lease } = stimulus
   const entry = { id: `${cause}-entry`, cause, channel: 'face', kind: 'entry', entryId: stimulus.entryId, reason: stimulus.source, turnId } as const
   const mapping = settings.heldEmotions ? stimulus.mapping : null
@@ -58,6 +66,9 @@ export function answerExpressionRequest(state: MindState, stimulus: Stimulus<'ex
 
 /** A clear keeps the reaction history, so a later escalation may show again. Only a clear of every slot releases the hold. */
 export function answerExpressionClear(state: MindState, stimulus: Stimulus<'expression-clear'>, cause: number): Answer {
+  if (!state.performer.face)
+    return refusedAnswer(state, cause, 'release')
+
   const { slot, turnId } = stimulus
 
   return { state, intents: [{ id: `${cause}-release`, cause, channel: 'face', kind: 'release', scope: slot ?? 'all', hold: slot ? null : releaseHold(turnId), reason: stimulus.source, turnId }] }

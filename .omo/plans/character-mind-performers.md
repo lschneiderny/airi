@@ -465,3 +465,12 @@ id (`avatarModels[].displayModelId`), not the card's avatar reference id
   still match section 2. The declaration matrix test lives in stage-ui, which
   already depends on both renderers, so character-mind gains no renderer
   dependency. It tests the actual adapter declarations.
+- **a2:** Section 2 gates remain as checked for a1. Capability checks before
+  random policies prevent refused draws; one deterministic answer filter in
+  the core reports denied channels of mixed answers, preserving voice draws
+  and their ordering. The reaction inspector needs one existing-table row in
+  stage-pages. Declaration replay now sets the loaded pacing owner before its
+  first step, so it cannot publish the new card's pacing to the previous card.
+  The store observes capability getters synchronously, preserving beats and
+  the latest idle view. Scene attachment begins carrying the declaration in
+  this item so the new default cannot disable Natural before a3 lands.

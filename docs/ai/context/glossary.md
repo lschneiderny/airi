@@ -8,6 +8,28 @@ Each entry names the defining path and its exported symbol. Symbols are cited by
 
 ## Terms
 
+<a id="performer-target"></a>
+
+### Performer
+
+The per-stage, renderer-side module (Live2D or MMD, under the Natural driver) that realises the mind's intents with continuous per-frame control and declares the capabilities it can realise. It may contain renderer deciders that act on intents and on the renderer's own world.
+
+**Code:** `packages/character-mind/src/capabilities.ts` `PerformerCapabilities`, `permits`; `packages/stage-ui-live2d/src/composables/live2d/natural-motion-adapter.ts` `LIVE2D_NATURAL_CAPABILITIES`; `packages/stage-ui-mmd/src/composables/mmd/natural/adapter.ts` `MMD_NATURAL_CAPABILITIES`.
+
+**Not to be confused with:** the current usages listed under [Conflicting usages](#conflicting-usages).
+
+### Capability
+
+A declaration of the mind channels and cue gesture kinds a performer can realise. It describes ability, not current assets or world geometry. The newest attached stage supplies it; voice always remains permitted.
+
+**Code:** `packages/character-mind/src/capabilities.ts` `PerformerCapabilities`, `NO_CAPABILITIES`, `permits`.
+
+### Refusal
+
+An observer event naming a request that the performer declaration excludes. The mind records the stimulus sequence, intended kind, and `undeclared` reason without drawing for the refused episode. No policy reads the report.
+
+**Code:** `packages/character-mind/src/types.ts` `Refusal`; `packages/character-mind/src/mind.ts` `MindStep`.
+
 ### ACT and DELAY cues
 
 Inline control markers that the model writes into a reply. `<|ACT {...}|>` carries an emotion, gesture, or expression for the stage to perform at the next matching speech timing event, and `<|DELAY n|>` pauses the stage and the speech track for at most 5 seconds. The chat runtime rewrites near-miss spellings such as `[ACT happy]` into real cues instead of speaking them, and a reply that holds only ACT cues and the decline marker `<|SILENT|>` is a wordless reply.
@@ -258,6 +280,8 @@ The part of the character mind that decides her idle episodes. It runs the idle 
 
 ### Intent
 
+Only declared performer channels and gesture kinds are issued; voice is always permitted.
+
 What the character mind emits in answer to a stimulus, for one [channel](#channel). Each intent carries an `id` and a `cause`, the sequence number of the stimulus it answers. On the face channel: `emotion` (a reaction episode with its hold), `entry` (a named expression entry, with the episode and the hold that its emotion mapping gave, or none), `release` (a neutral reset or a clear), and `moment` (`poked`, `petted`, or `welcome-back`, which the performer may mark with one of the model's expressions). On the posture channel: `gesture` (an ACT or devtools cue gesture of its kind and count, sent to the scene only under Natural), `touch-reaction` (a poke at its point, or a pet `start` or `end`), `mood` (a dose for Natural's mood), `wake` (a gentle end of idle sleep, which does nothing while she is awake), `desktop-reaction` (`wake` or `screen-change`), `cue` (`about-to-speak` before a reach-out or widget line, `let-go` when she declines one; never for a touch line, and performed only under Natural), `idle-act` (an idle activity or sleep, with the seed of its shape and whether it was requested), and `idle-errand` (an idle errand with its pick and hold). The conductor hands the idle intents to the scene only under Natural, and Natural answers each with a report. On the gaze channel: `cursor-episode` (a [cursor attention](#cursor-attention) episode for one report's `requestId`), which the conductor returns only to the scene that reported, and `chat-read` (she reads the chat after a typed send of `words` words or when it unfolds, a [glance](#glance) Natural times and holds), which the conductor sends to the scene only under Natural. On the body channel: `attend` (a target and `attendCause`: `touch`, `drag`, or `chat-send` opens the cursor [attend window](#attend-window) for `windowMs`; `chat-unfold` asks for an approach to the chat without a cursor window), and `away` (the mind's presence answer on each away edge), which the conductor sends to the scene only under Natural; classic receives neither. On the voice channel: `speak` (one line, with a `turnId` and a `VoiceLine`: a `reaction` about a touch, a `reach-out` with its topic and reason, or a `widget` line with its topic and supplement), `cancel` (stop a widget line past its caller's deadline), `drop` (give up a widget request that did not start in time), `observe-wake`, and `observe-return` (a desktop wake and a return for the situation). The conductor dispatches each: an expression intent becomes a signal for the decider and, under Natural, an episode and a hold for the scene; a touch intent goes to the scene, to the moment marker, or to the voice port.
 
 **Code:** `packages/character-mind/src/types.ts` `MindIntent`; produced by `packages/character-mind/src/expression.ts` `answerEmotion`, `answerExpressionRequest`, `answerExpressionClear`, and `packages/character-mind/src/touch.ts` `answerTouch`, and `packages/character-mind/src/presence.ts` `answerPresence`, `answerScreenChange`, and `packages/character-mind/src/voice.ts` `answerVoiceTick`, `answerVoiceRequest`, `answerVoiceOutcome`, and `packages/character-mind/src/idle.ts` `answerIdle`, `advanceIdle`, `answerIdlePlay`, and `packages/character-mind/src/attention.ts` `answerCursor`, `answerInteraction`; `idleOrderOf` turns an idle intent into Natural's order; `VoiceLine` names the three lines; `TouchReactionIntent` names the two `touch-reaction` forms; `AttendIntent` names `attend`.
@@ -507,6 +531,8 @@ The one list of every piece of persisted renderer state. Each registration names
 
 ### Stimulus
 
+The `performer` stimulus sets the newest stage declaration in fast state and is replayed after a reset.
+
 An observation the character mind answers. Today eighteen kinds exist: `emotion` (an ACT emotion, a tool call, or a devtools pulse, with a nominal strength already scaled by the card's expressiveness), `expression-request` (the model named an entry; the conductor reads the entry's lease and primary emotion mapping, so the mind needs no catalog), `expression-clear`, `touch` (a `TouchReport` from a scene: a poke with its point, a pet start, or a pet end, with what the leader's voice channel shows of it, or `null`), `voice-outcome` (what became of a `speak` intent, named by its `turnId`), `voice-tick` (the situation store's 2 s tick, with a `VoiceView` and `forceTiming`), `user-turn` (the user sent a turn), `voice-request` (a widget or plugin asks her to speak, with its topic, supplement, and timeout), `presence` (the resolver's `away` changed or a desktop wake appeared), `screen-change` (the screen content changed sharply), `idle` (Natural's idle reports: its view, and the starts, ends, and refusals of the orders it was given), `idle-wake` (the store's timer at `nextIdleWakeAt`), `idle-play` (a requested idle act), `music` (the music detector's edge: whether she hears music from now on), `cursor` (a `CursorReport` from the reporting Natural performer: a notice it could start, with the cursor's band and what made it possible), `interaction` (the user dragged her and let go; `source` is `drag`), `chat` (the user typed and sent a message, `cue: 'sent'` with its word count and never its text, or the host's chat unfolded, `cue: 'unfold'`), and `cue-gesture` (an ACT or devtools cue gesture, with its kind, count, source, and the ACT reply's `turnId`).
 
 **Code:** `packages/character-mind/src/types.ts` `MindStimulus`, `TouchReport`; sent by `packages/stage-ui/src/composables/performance/use-stage-performance-conductor.ts` `StagePerformanceConductor` (`emotion`, `expression`, `clearExpression`, `touch`, `desktop`, `idleReport`, `idlePlay`, `cursor`, `interaction`, `chat`, `gesture`); `idle-wake` and `music` come from `useCharacterMindStore`, `music` through `packages/stage-ui/src/composables/performance/mind-music.ts` `MindMusic`; the voice stimuli come from `packages/stage-ui/src/stores/situation/index.ts` `useSituationStore` through `VoicePort` `connect`, to which `packages/stage-ui/src/stores/character-mind.ts` `useCharacterMindStore` connects.
@@ -562,12 +588,6 @@ These terms name parts of the target design in the [character mind ADR](../adr/2
 One part of her output with a single owner: gaze, head and posture, face and expression slots, body (stance, clips, locomotion), and voice. The gaze channel's owner under Natural is Natural's gaze layer, whose [gaze arbiter](#gaze-arbiter) decides every glance.
 
 **Not to be confused with:** a Live2D parameter or an MMD bone, several of which make up one channel.
-
-### Performer (target)
-
-The per-stage, renderer-side module (Live2D or MMD, under the Natural driver) that realises the mind's intents with continuous per-frame control and declares the capabilities it can realise. It may contain renderer deciders that act on intents and on the renderer's own world.
-
-**Not to be confused with:** the current usages listed under [Conflicting usages](#conflicting-usages).
 
 ## Conflicting usages
 

@@ -1,6 +1,6 @@
 import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
 
-import type { MindIntent } from './types'
+import type { MindAnswer, MindIntent, MindState } from './types'
 
 /** Episodes a performer can realise at all; current assets and world geometry remain performer inputs. */
 export interface PerformerCapabilities {
@@ -27,4 +27,22 @@ export function permits(capabilities: PerformerCapabilities, intent: MindIntent)
   if (intent.channel === 'voice')
     return true
   return capabilities[intent.channel]
+}
+
+/** Rejects a policy before it spends a draw or changes episode state. */
+export function refusedAnswer(state: MindState, cause: number, kind: MindIntent['kind']): MindAnswer {
+  return { state, intents: [], refusals: [{ cause, kind, reason: 'undeclared' }] }
+}
+
+/** Separates deterministic answers by channel. Random policies check permission before drawing. */
+export function declaredAnswer(answer: MindAnswer): MindAnswer {
+  const intents: MindIntent[] = []
+  const refusals = [...answer.refusals ?? []]
+  for (const intent of answer.intents) {
+    if (permits(answer.state.performer, intent))
+      intents.push(intent)
+    else
+      refusals.push({ cause: intent.cause, kind: intent.kind, reason: 'undeclared' })
+  }
+  return { ...answer, intents, refusals }
 }

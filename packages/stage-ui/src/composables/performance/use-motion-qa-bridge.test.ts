@@ -1,4 +1,4 @@
-import type { MindStimulus } from '@proj-airi/character-mind'
+import type { CharacterMind, MindStimulus } from '@proj-airi/character-mind'
 import type { IdleBehaviourReport } from '@proj-airi/motion-driver-natural/idle-activities'
 import type { MotionScenario } from '@proj-airi/stage-shared/motion-scenario'
 import type { PerformanceInputs, PerformanceMode } from '@proj-airi/stage-shared/performance-state'
@@ -10,7 +10,6 @@ import type { SituationGateEvaluation } from '../../stores/devtools/situation-ob
 import type { MotionQaFrames } from './use-motion-qa-bridge'
 
 import { defineInvoke } from '@moeru/eventa'
-import { CharacterMind } from '@proj-airi/character-mind'
 import { createChatHooks } from '@proj-airi/core-agent'
 import { normalizeActPayload } from '@proj-airi/pipelines-audio'
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
@@ -32,6 +31,7 @@ import { usePerformanceRuntimeState } from '../../features/performance/runtime-s
 import { useExpressionPerformanceSettings } from '../../features/performance/settings'
 import { useLlmStreamingControlStore } from '../../stores/ai/chat-llm/streaming-control'
 import { useNaturalPerformanceOverride } from '../../stores/natural-performance-override'
+import { naturalMind } from '../../test/natural-mind'
 import { useMotionQaBridge } from './use-motion-qa-bridge'
 
 /** Frames advance only when the test steps them, so scenario time is exactly the stepped time. */
@@ -141,7 +141,7 @@ describe('useMotionQaBridge', () => {
     chat = createChatHooks()
     mindNowMs = 1_700_000_000_000
     // Seed 17 speaks the protest of the first burst of three pokes.
-    mind = new CharacterMind({ seed: 17, clock: () => mindNowMs })
+    mind = naturalMind({ seed: 17, clock: () => mindNowMs })
     idle = createEventHook<IdleBehaviourReport>()
     evaluateVoice = vi.fn(async (): Promise<SituationGateEvaluation> => ({ status: 'skipped', reason: 'gate-not-running' }))
     voicing.value = false
@@ -255,13 +255,14 @@ describe('useMotionQaBridge', () => {
     expect(steps).toEqual([
       {
         kind: 'mind',
+        refusals: '[]',
         stimulus: 'touch',
         gesture: 'pet-start',
         outcome: null,
         intents: [
-          { channel: 'posture', kind: 'touch-reaction', id: '1-touch-reaction', cause: 1 },
-          { channel: 'posture', kind: 'mood', id: '1-mood', cause: 1 },
-          { channel: 'body', kind: 'attend', id: '1-attend', cause: 1, target: 'cursor', attendCause: 'touch', windowMs: 60_000 },
+          { channel: 'posture', kind: 'touch-reaction', id: '2-touch-reaction', cause: 2 },
+          { channel: 'posture', kind: 'mood', id: '2-mood', cause: 2 },
+          { channel: 'body', kind: 'attend', id: '2-attend', cause: 2, target: 'cursor', attendCause: 'touch', windowMs: 60_000 },
         ],
         voice: null,
         voiceLine: null,
@@ -272,14 +273,15 @@ describe('useMotionQaBridge', () => {
       },
       {
         kind: 'mind',
+        refusals: '[]',
         stimulus: 'touch',
         gesture: 'poke',
         outcome: null,
         intents: [
-          { channel: 'posture', kind: 'touch-reaction', id: '2-touch-reaction', cause: 2 },
-          { channel: 'posture', kind: 'mood', id: '2-mood', cause: 2 },
-          { channel: 'face', kind: 'moment', id: '2-moment', cause: 2 },
-          { channel: 'body', kind: 'attend', id: '2-attend', cause: 2, target: 'cursor', attendCause: 'touch', windowMs: 60_000 },
+          { channel: 'posture', kind: 'touch-reaction', id: '3-touch-reaction', cause: 3 },
+          { channel: 'posture', kind: 'mood', id: '3-mood', cause: 3 },
+          { channel: 'face', kind: 'moment', id: '3-moment', cause: 3 },
+          { channel: 'body', kind: 'attend', id: '3-attend', cause: 3, target: 'cursor', attendCause: 'touch', windowMs: 60_000 },
         ],
         voice: 'hold',
         voiceLine: 'poke-protest',
@@ -291,15 +293,16 @@ describe('useMotionQaBridge', () => {
       expect.objectContaining({ gesture: 'poke', voice: 'hold', voiceReason: 'poke-count' }),
       {
         kind: 'mind',
+        refusals: '[]',
         stimulus: 'touch',
         gesture: 'poke',
         outcome: null,
         intents: [
-          { channel: 'posture', kind: 'touch-reaction', id: '4-touch-reaction', cause: 4 },
-          { channel: 'posture', kind: 'mood', id: '4-mood', cause: 4 },
-          { channel: 'face', kind: 'moment', id: '4-moment', cause: 4 },
-          { channel: 'voice', kind: 'speak', id: '4-speak', cause: 4 },
-          { channel: 'body', kind: 'attend', id: '4-attend', cause: 4, target: 'cursor', attendCause: 'touch', windowMs: 60_000 },
+          { channel: 'posture', kind: 'touch-reaction', id: '5-touch-reaction', cause: 5 },
+          { channel: 'posture', kind: 'mood', id: '5-mood', cause: 5 },
+          { channel: 'face', kind: 'moment', id: '5-moment', cause: 5 },
+          { channel: 'voice', kind: 'speak', id: '5-speak', cause: 5 },
+          { channel: 'body', kind: 'attend', id: '5-attend', cause: 5, target: 'cursor', attendCause: 'touch', windowMs: 60_000 },
         ],
         voice: 'speak',
         voiceLine: 'poke-protest',
@@ -308,7 +311,7 @@ describe('useMotionQaBridge', () => {
         cues: null,
         music: null,
       },
-      { kind: 'mind', stimulus: 'voice-outcome', gesture: null, outcome: 'spoken', intents: [], voice: null, voiceLine: null, voiceReason: null, lines: null, cues: null, music: null },
+      { kind: 'mind', refusals: '[]', stimulus: 'voice-outcome', gesture: null, outcome: 'spoken', intents: [], voice: null, voiceLine: null, voiceReason: null, lines: null, cues: null, music: null },
     ])
     // Neither the poke's point nor the situation's event and session ids leave the window.
     expect(JSON.stringify(reply)).not.toMatch(/touch-event|session-1|-0\.4/)

@@ -1,10 +1,10 @@
-import type { MindIntent, MindRandom, MindSlowState, MindState, MindStimulus } from './types'
+import type { MindIntent, MindRandom, MindSlowState, MindState, MindStimulus, Refusal } from './types'
 
 import { seededRandom } from './random'
 import { initialMindState, step } from './step'
 
 /** One call of the core, as a listener sees it. */
-export interface MindStep { atMs: number, stimuli: readonly MindStimulus[], intents: readonly MindIntent[], state: MindState }
+export interface MindStep { atMs: number, stimuli: readonly MindStimulus[], intents: readonly MindIntent[], refusals: readonly Refusal[], state: MindState }
 
 /**
  * The shell around {@link step}: it owns the clock, the random source, and the state. The app constructs one, in the
@@ -42,10 +42,10 @@ export class CharacterMind {
     // The rules drop a stimulus older than the last one, so a clock that steps back must not reach them.
     const atMs = Math.max(this.previousAtMs, this.clock())
     this.previousAtMs = atMs
-    const { state, intents } = step(this.current, stimuli, atMs, this.rng)
+    const { state, intents, refusals } = step(this.current, stimuli, atMs, this.rng)
     this.current = state
     for (const listener of this.listeners)
-      listener({ atMs, stimuli, intents, state })
+      listener({ atMs, stimuli, intents, refusals, state })
 
     return intents
   }

@@ -1,4 +1,4 @@
-import type { MindStep } from '@proj-airi/character-mind'
+import type { CharacterMind, MindStep } from '@proj-airi/character-mind'
 import type { AffectSignal, AffectTrace, CatalogEntry, ExpressionPerformanceSettings, PerformanceProfile, SlotCommand, TimingEvent } from '@proj-airi/stage-shared/expression-performance'
 
 import type { ActionToolPort } from '../../tools/action'
@@ -6,7 +6,6 @@ import type { BodyToolPort } from '../../tools/body'
 import type { VoicePort } from './mind-voice'
 import type { ListedAction, StagePerformanceConductorOptions, StagePerformanceDriver, StagePerformanceScene } from './use-stage-performance-conductor'
 
-import { CharacterMind } from '@proj-airi/character-mind'
 import { createDecider, createPickerDecider, defaultExpressionPerformanceSettings, initialTouchAffectMemory, parseAffectTrace, parseExpressionPerformanceSettings, replayAffectTrace, touchAffect } from '@proj-airi/stage-shared/expression-performance'
 import { useNaturalMotionDiagnostics } from '@proj-airi/stage-ui-live2d/stores'
 import { useExpressionStore } from '@proj-airi/stage-ui-live2d/stores/expression-store'
@@ -20,6 +19,7 @@ import { selectStagePerformanceRenderer } from '../../features/performance/rende
 import { usePerformanceRuntimeState } from '../../features/performance/runtime-state'
 import { useLlmToolsStore } from '../../stores/ai/chat-llm/tools'
 import { useStageExpressionCatalogStore } from '../../stores/stage-expression-catalog'
+import { naturalMind } from '../../test/natural-mind'
 import { bodyToolIds, createBodyToolRegistration, createExpressionToolPort, createExpressionToolRegistration, expressionToolIds, maxAffectTraceEntries, StagePerformanceConductor, toExposedExpressions, useStagePerformanceConductor } from './use-stage-performance-conductor'
 
 // `createDecider` stays the real factory, wrapped in a spy so the timing tests can replace the
@@ -68,7 +68,7 @@ function attendingScene() {
 function createConductor(driver: StagePerformanceDriver, scene: StagePerformanceScene = fakeScene(), settings: ExpressionPerformanceSettings = defaultExpressionPerformanceSettings, profile?: PerformanceProfile, entries: readonly CatalogEntry[] = catalog, touch: Pick<StagePerformanceConductorOptions, 'markMoment' | 'voice' | 'idleReports'> & { mindSeed?: number } = {}) {
   let now = 10
   // The mind counts the conductor's seconds as milliseconds, so both read 10 s at the start.
-  const mind = new CharacterMind({ seed: touch.mindSeed ?? 7, clock: () => now * 1000 })
+  const mind = naturalMind({ seed: touch.mindSeed ?? 7, clock: () => now * 1000 })
   const playMotion = vi.fn<(group: string) => void>()
   const conductor = new StagePerformanceConductor({
     scene: () => scene,
@@ -140,7 +140,7 @@ describe('stage performance renderer selection', () => {
       driver: () => selected.value.driver,
       expressionBackend: () => selected.value.expressionBackend,
       playMotion: vi.fn(),
-      mind: new CharacterMind({ seed: 7 }),
+      mind: naturalMind({ seed: 7 }),
       mood: () => null,
     }))
     if (!result)
@@ -485,7 +485,7 @@ describe('stage performance conductor', () => {
       settings: () => defaultExpressionPerformanceSettings,
       catalog: () => local,
       seed: 7,
-      mind: new CharacterMind({ seed: 7, clock: () => 10_000 }),
+      mind: naturalMind({ seed: 7, clock: () => 10_000 }),
       clock: () => 10,
     })
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
@@ -525,7 +525,7 @@ describe('stage performance conductor', () => {
       const second = { ...fakeScene(), setAway: vi.fn<NonNullable<StagePerformanceScene['setAway']>>() }
       let scene: StagePerformanceScene | undefined
       let driver: StagePerformanceDriver = 'basic'
-      const mind = new CharacterMind({ seed: 7 })
+      const mind = naturalMind({ seed: 7 })
       const conductor = new StagePerformanceConductor({ scene: () => scene, driver: () => driver, playMotion: vi.fn(), settings: () => defaultExpressionPerformanceSettings, catalog: () => catalog, seed: 7, mind })
       mind.receive(lock)
       conductor.syncScene()
@@ -627,7 +627,7 @@ describe('stage performance conductor', () => {
 
       conductor.touch({ gesture: 'poke', region: 'head', point })
 
-      expect(scene.reactToTouch.mock.calls).toEqual([[{ id: '1-touch-reaction', cause: 1, channel: 'posture', kind: 'touch-reaction', gesture: 'poke', region: 'head', point }]])
+      expect(scene.reactToTouch.mock.calls).toEqual([[{ id: '2-touch-reaction', cause: 2, channel: 'posture', kind: 'touch-reaction', gesture: 'poke', region: 'head', point }]])
       // The mind's clock reads 10 000 ms, so the dose is paced at 10 s.
       const expected = touchAffect(initialTouchAffectMemory, { touch: 'poke', region: 'head', at: 10 }, defaultExpressionPerformanceSettings).dose
       expect(expected).not.toBeNull()
@@ -705,7 +705,7 @@ describe('stage performance conductor', () => {
       conductor.touch({ gesture: 'pet-start', region: 'head' })
       conductor.touch({ gesture: 'poke', region: 'body', point })
 
-      expect(mind.state.seq).toBe(0)
+      expect(mind.state.seq).toBe(1)
       expect(scene.reactToTouch).not.toHaveBeenCalled()
       expect(scene.addMood).not.toHaveBeenCalled()
       expect(voice.observeTouch).not.toHaveBeenCalled()
@@ -778,7 +778,7 @@ describe('stage performance conductor', () => {
     })
 
     it('answers cursor reports under Natural on the reporting scene only, and drops them under a basic driver', () => {
-      const mind = new CharacterMind({ seed: 7, clock: () => 10_000 })
+      const mind = naturalMind({ seed: 7, clock: () => 10_000 })
       const stage = (driver: StagePerformanceDriver) => {
         const scene = { ...fakeScene(), cursorEpisode: vi.fn<NonNullable<StagePerformanceScene['cursorEpisode']>>() }
         const conductor = new StagePerformanceConductor({ scene: () => scene, driver: () => driver, playMotion: vi.fn(), settings: () => defaultExpressionPerformanceSettings, catalog: () => catalog, seed: 7, mind })
@@ -841,14 +841,14 @@ describe('stage performance conductor', () => {
 
       conductor.touch({ gesture: 'poke', region: 'head', point: { x: 0, y: 0 } })
 
-      expect(scene.attend.mock.calls).toEqual([[{ id: '1-attend', cause: 1, channel: 'body', kind: 'attend', target: 'cursor', attendCause: 'touch', windowMs: 60_000 }]])
+      expect(scene.attend.mock.calls).toEqual([[{ id: '2-attend', cause: 2, channel: 'body', kind: 'attend', target: 'cursor', attendCause: 'touch', windowMs: 60_000 }]])
       expect(scene.reactToTouch.mock.invocationCallOrder[0]).toBeLessThan(scene.attend.mock.invocationCallOrder[0])
     })
 
     it('hands idle reports to the mind under Natural, the dormant view once it leaves, and the latest view again on return', () => {
       let driver: StagePerformanceDriver = 'natural'
       const idleReports = vi.fn<NonNullable<StagePerformanceConductorOptions['idleReports']>>()
-      const conductor = new StagePerformanceConductor({ scene: () => fakeScene(), driver: () => driver, playMotion: vi.fn(), settings: () => defaultExpressionPerformanceSettings, catalog: () => catalog, seed: 7, mind: new CharacterMind({ seed: 7 }), idleReports })
+      const conductor = new StagePerformanceConductor({ scene: () => fakeScene(), driver: () => driver, playMotion: vi.fn(), settings: () => defaultExpressionPerformanceSettings, catalog: () => catalog, seed: 7, mind: naturalMind({ seed: 7 }), idleReports })
       const view = { drive: { energy: 0, valence: 0, tension: 0, sleepiness: 0, solitude: 0, rate: 1 }, active: true, mode: 'idle', away: false, blocked: false, settled: false, current: null, errand: null } as const
       conductor.idleReport([{ kind: 'view', view }])
       driver = 'basic'
@@ -921,7 +921,7 @@ describe('stage performance conductor', () => {
         settings: () => defaultExpressionPerformanceSettings,
         catalog: () => catalog,
         seed: 7,
-        mind: new CharacterMind({ seed: 7, clock: () => 10_000 }),
+        mind: naturalMind({ seed: 7, clock: () => 10_000 }),
         clock: () => 10,
         profile: () => undefined,
         modelId: () => 'rig',
@@ -1063,7 +1063,7 @@ describe('stage performance conductor', () => {
         settings: () => defaultExpressionPerformanceSettings,
         catalog: () => catalog,
         seed: 7,
-        mind: new CharacterMind({ seed: 7, clock: () => 10_000 }),
+        mind: naturalMind({ seed: 7, clock: () => 10_000 }),
         clock: () => 10,
       })
       conductor.setMuted(true)
@@ -1170,7 +1170,7 @@ describe('stage performance conductor', () => {
         settings: () => defaultExpressionPerformanceSettings,
         catalog: () => catalog,
         seed: 7,
-        mind: new CharacterMind({ seed: 7, clock: () => Date.now() }),
+        mind: naturalMind({ seed: 7, clock: () => Date.now() }),
         clock: () => Date.now() / 1000,
         profile: () => profile,
         modelId: () => 'rig',
@@ -1266,7 +1266,7 @@ describe('stage performance conductor', () => {
         settings: () => defaultExpressionPerformanceSettings,
         catalog: () => catalog,
         seed: 7,
-        mind: new CharacterMind({ seed: 7, clock: () => now * 1000 }),
+        mind: naturalMind({ seed: 7, clock: () => now * 1000 }),
         clock: () => now,
         profile: turnId => turnId === 'turn-a' ? { moodGainScale: 0 } : turnId === 'turn-b' ? { moodGainScale: 2 } : undefined,
       })
@@ -1338,7 +1338,7 @@ describe('stage performance conductor', () => {
         settings: () => settings,
         catalog: () => catalog,
         seed: 7,
-        mind: new CharacterMind({ seed: 7, clock: () => Date.now() }),
+        mind: naturalMind({ seed: 7, clock: () => Date.now() }),
         clock: () => Date.now() / 1000,
       })
       function timing(kind?: TimingEvent['kind']) {
@@ -1655,7 +1655,7 @@ describe('stage performance conductor', () => {
         expressionBackend: () => undefined,
         bodyPort: () => bodyPort.value,
         playMotion: vi.fn(),
-        mind: new CharacterMind({ seed: 7 }),
+        mind: naturalMind({ seed: 7 }),
         mood: () => null,
       }))
       await nextTick()
@@ -1686,7 +1686,7 @@ describe('stage performance conductor', () => {
       actionPort: () => actionPort.value,
       listActions: () => library.value,
       playMotion: vi.fn(),
-      mind: new CharacterMind({ seed: 7 }),
+      mind: naturalMind({ seed: 7 }),
       mood: () => null,
     }))
     const enumOf = () => (tools.tools.find(tool => tool.id === 'action:perform_action')?.function.parameters as { properties: { action: { enum: string[] } } } | undefined)?.properties.action.enum
