@@ -2,6 +2,8 @@
 
 Status: CM7a and CM7d implemented on 2026-11-22. CM7d's headless, rig and rendered acceptance is assigned to the orchestrator. The owner approved every recommended option, D1 to D12, on 2026-11-21. c6 landed separately; CM7b and the remainder of CM7c are not implemented in this worktree. The [roadmap](../../docs/ai/context/character-mind-roadmap.md#steps) tracks the four parts.
 
+Status: CM7a and CM7b implemented on 2026-11-22, with headless and rendered acceptance assigned to the orchestrator. The owner approved every recommended option, D1 to D12, on 2026-11-21. c6 landed separately; the remainder of CM7c and CM7d are not implemented here. The [roadmap](../../docs/ai/context/character-mind-roadmap.md#steps) tracks the four parts.
+
 The labels D1 to D12 name the forks in [Decisions for the owner](#decisions-for-the-owner). Each section is written on the recommended option.
 
 **Parallel work this plan composes with.**
@@ -721,6 +723,12 @@ contains the requested placeholder for these results.
   entry deleted before emission, since otherwise no command reaches a store.
   Shared report types belong in stage-shared, rather than renderer copies.
   Reports describe admission, not later fades or normal lease replacement.
+- **b4:** Rechecked the final gates and routes; no new runtime departure.
+  The ADR records the actual mask precedence rather than promising new
+  clip/manual masks under Natural. It leaves the required orchestrator
+  acceptance placeholder. As in CM7a, the final plan status, checks, and
+  commit record are included in the prescribed ADR commit, keeping four
+  CM7b commits rather than adding an unnumbered fifth plan commit.
 
 ## Checks run (CM7b)
 
@@ -766,6 +774,12 @@ change is part of this implementation.
 | b3 | `pnpm -F @proj-airi/stage-ui-live2d exec vitest run --project node src/composables/live2d` | 513 passed |
 | b3 | `pnpm exec vitest run --project dev-tools scripts/dev-tools/policy-docs.test.ts` | 11 passed |
 | b3 | `pnpm --filter "...@proj-airi/stage-shared" --filter "...@proj-airi/stage-ui-live2d" --filter "...@proj-airi/stage-ui-mmd" --filter "...@proj-airi/stage-ui" --workspace-concurrency=2 typecheck` | 28 packages, exit 0 |
+| b4 | `pnpm exec vitest run --project dev-tools scripts/dev-tools/policy-docs.test.ts` | 11 passed |
+| b4 | `pnpm -F @proj-airi/character-mind exec vitest run src` | 138 passed |
+| b4 | `pnpm -F @proj-airi/stage-ui exec vitest run --project node src/composables/performance src/features` | 282 passed |
+| b4 | `pnpm -F @proj-airi/stage-shared exec vitest run src/expression-performance` | 295 passed |
+| b4 | `pnpm -F @proj-airi/stage-ui-live2d exec vitest run --project node src/composables/live2d` | 513 passed |
+| b4 | `pnpm -F @proj-airi/stage-ui exec vitest run --project browser src/components/scenes/stage-emotion-routing.browser.test.ts src/persistence` | 53 passed |
 
 b1 changed TypeScript files passed ESLint. Its first focused run found a fixture
 that depended on the previous random pick; its first stage-ui Node run found
@@ -780,6 +794,22 @@ indentation diagnostics were fixed and ESLint passed. Its clip-refusal tests
 exercise the observer contract; no current renderer has clip ownership of an
 expression slot. The real stores' tests assert their actual missing-asset,
 manual protection, cross-slot protection, and shown-entry outcomes.
+b4 changes documentation only. No package source changed after the successful
+b3 full suites and dependent typecheck. It ran every named inner loop and the
+policy guard.
+
+## Commits (CM7b)
+
+| Item | Commit | Title |
+| --- | --- | --- |
+| b1 | `93684d379` | `feat(stage-shared,stage-ui): seed each expression pick from its intent` |
+| b2 | `4b336df86` | `feat(stage-ui): seed moment expressions from the moment intent` |
+| b3 | `ff0750775` | `feat(stage-ui-live2d,stage-ui-mmd,stage-ui): report masked and refused expressions` |
+| b4 | This final documentation commit | `docs(ai): record the expression pick decisions` |
+
+The [CM7b ADR](../../docs/ai/adr/2026-11-22-character-mind-expression-picks.md)
+leaves an explicit placeholder for the orchestrator's headless and rendered
+results. No acceptance run, hash re-pin, or visual result is claimed here.
 
 ## Checks run (CM7a)
 
