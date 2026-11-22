@@ -1,46 +1,52 @@
-# Character mind handoff, 2026-11-21
+# Character mind handoff, final state (2026-11-22)
 
-The remaining character mind slices stopped mid-flight on the Linux machine so the work can resume on the MacBook. Every branch below is pushed. Delete this note when the last lane lands.
+Every character mind slice has landed on `main`. This note now records the end state and the follow-ups the QA pass left open; delete it once those follow-ups have homes of their own.
 
-## Owner rulings already made
+## Owner rulings
 
-- D16 (CM6a): stop early, then cut the cursor delay, then rerun the press check. The gait stays unchanged. If presses still miss, the owner chooses between a harder brake near the pointer and a short step back.
-- CM5b plan: D1 to D7 approved as recommended.
-- CM6b plan: D1 to D11 approved as recommended (two PRs, CM6b1 and CM6b2).
-- CM7 plan: D1 to D12 approved as recommended, including the removals in D3 and D4. The plan's status line records it.
-- Review cadence: the owner reviews each slice plan's "Decisions for the owner" before implementation. After sign-off, implementation runs through PR without a second gate.
+- D16 (CM6a): stop early, cut the cursor delay, rerun the press check; gait unchanged. 2026-11-21: the sidestep without a turn was approved (#73) and a shorter brake was declined.
+- CM5b D1 to D7, CM6b D1 to D11, CM7 D1 to D12: approved as recommended.
+- CM8 D2 (2026-11-21): touch changes only under Natural; Universal, MAGIC, and classic keep upstream's touch as shipped, so overlap 11 stays recorded as kept for them.
+- The owner's standing preference: take the recommended option at a decision point and record it.
 
-## Lanes
+## Landed
 
-| Lane | Branch, head | Done | Left |
-| --- | --- | --- | --- |
-| Upstream sync to `bd4f30391` | landed on `main` at `91299da23` | `main` merged in, `225242a8c` reviewed, `pnpm test:run` (89 of 89 tasks) and `pnpm verify` passed on macOS | Nothing. `pnpm test:run` had never finished on Linux because `character-mind`'s idle tests looped forever; `42572a15c` fixed that on `main` |
-| CM6a close-out | landed: #70, then the sidestep in #73 | Stop early, the cursor delay cut (28.4 to 16.4 ms on macOS), the corrective step, and the owner's sidestep without a turn. All nine headless scenarios `IDENTICAL`. After a 4 s rest every press pokes; presses 0.6 to 2 s after landing still miss about half the time, because she is still braking | The owner ruled against a shorter brake (2026-11-21); nothing left |
-| CM5b beat lock | landed: #71 (#68 rebased after #69; #68 closed) | Everything | Nothing |
-| CM6b1 glances | landed: #69 | Everything | Nothing |
-| CM6b2 director on intents | landed: #74 | Items 8 to 13, all nine scenarios `IDENTICAL`, rendered away step, and the rendered clip endings with a freely redistributable VMD: under Natural a sent message and an opened chat end a looping clip, under classic they do not | The drag release and the walk to the chat cannot be staged by the QA harness; Node tests cover them |
-| CM7 performers | landed: c6 #72, CM7a #76, CM7d #77, CM7b #78, CM7c #79 | Each slice's ten headless scenarios `IDENTICAL`, the Live2D rig hash unchanged, and its gate green; on `main` at `e05978398` `pnpm test:run` 89 of 89 and smoke on both hosts with 0 errors | CM7c's rendered checks 6 to 9 and Behavior page captures run in the QA pass |
-| S2 store tiers | landed: #75 | Fork-owned state moved to the persistence tiers; the relaunch shows 0 follower errors and "Delete all data" clears every new and legacy key | Nothing |
-| CM8 touch and notices | plan on `main`: `.omo/plans/character-mind-notify-touch.md` | Overlaps 11 to 13 planned; the owner ruled D2 on 2026-11-21: touch changes only under Natural, and the upstream drivers keep theirs as shipped | Waits for CM7a and CM7c |
-| L2 | `main` | The observer golden hashes pass unchanged on macOS; roadmap row L is done | Nothing |
+| Slice | PR | Acceptance |
+| --- | --- | --- |
+| CM6a close-out, sidestep | #70, #73 | Nine headless scenarios `IDENTICAL`; after a 4 s rest every press pokes |
+| CM6b1 glances | #69 | Gate green |
+| CM5b beat lock | #71 | Gate green |
+| c6 mapping weights editor | #72 | Settings window lists the stage's mapped expressions |
+| CM6b2 director on intents | #74 | Nine scenarios `IDENTICAL`; rendered clip endings under Natural and classic |
+| S2 store tiers | #75 | Relaunch 0 follower errors; "Delete all data" clears every key |
+| CM7a performers declare capabilities | #76 | Ten scenarios `IDENTICAL`; four rendered modes pass |
+| CM7d Live2D channel owners | #77 | Ten scenarios `IDENTICAL`; Live2D rig hash unchanged |
+| CM7b seeded picks and reports | #78 | Ten scenarios `IDENTICAL`; rig hash unchanged |
+| CM7c character-behavior document | #79 | Ten scenarios `IDENTICAL`; rendered checks 7 to 9 pass |
+| CM8 touch and notices | #80 | Ten scenarios `IDENTICAL`; rig hash unchanged; six rendered checks pass |
 
-## Resuming a WIP branch
+## QA pass on `main` `c2799922f`
 
-Restore the uncommitted state onto the real branch without a force push:
+- `pnpm test:run`: 89 of 89 tasks.
+- Headless, seed 1: all ten scenarios (`idle`, `idle-drive`, `gaze-shift`, `speak`, `gesture-under-clip`, `emotions`, `walk`, `sleepy-no-clip`, `touch`, `music`) `IDENTICAL` against the pre-CM7a base.
+- `pnpm qa:live2d-rig`: `sha256` unchanged.
+- `pnpm qa:smoke` on the window and desktop stage hosts: 0 renderer and 0 main-process errors.
+- Every slice's own `pnpm verify --gate` passed on the tree that landed.
 
-```sh
-git fetch origin
-git switch luke/fix/character-mind-gaze-stop-early
-git cherry-pick -n origin/luke/wip/cm6a-delay-cut
-git reset
-```
+Fixed during the pass, each on `main`: the settings-window mapping editor (#72); follower windows calling leader actions before owner registration (#75); mapping-weight rows naming their emotions (`3e87520bf`); two load-flaky `stage-ui` browser tests made deterministic (`2df3ddecf`), and the two MMD motion lab locomotion tests made to await the lab snapshot (`396265d28`); QA `configure` accepting every driver (`72825bf7e`); windows exchanging server-channel tokens after "Delete all data", which restarted the channel thousands of times (`691d4cbe4`); light-mode slider fill and settings breadcrumb contrast (`a0d4a050f`).
 
-Commit the work properly, then delete the WIP branch with `git push origin --delete luke/wip/cm6a-delay-cut`. The CM6b1 WIP is folded in and deleted.
+## Open follow-ups
 
-The CM6a WIP is not product code: it is `[cursor-hop]` latency instrumentation, plus a revert of `cfd603522` in `window.ts` that measures the "before" latency. Do not commit it. The delay cut itself is `cfd603522`.
+- **Load-flaky browser test:** `stage-emotion-routing` "keeps presence idle ... shows no placeholder" failed once under a loaded gate and never again, even with 40 CPU burners. It needs a captured failure: dump `history.container.innerHTML`, the session messages, and `chat.activeTurns` at that assertion when it next fails.
+- **MMD has no motion QA capture**, so glances and upstream playback under Universal and classic are covered by Node and browser tests, not rendered evidence.
+- **`masked-by-clip`** is supported and tested but no renderer produces it; `masked-by-manual` was not demonstrated rendered.
+- **Harness gaps:** the QA harness cannot stage an MMD drag, the director's walk to a chat window, or an old-profile import (sessions do not keep localStorage across launches).
+- **CM6a presses** within about 2 s of the pointer landing can miss while she brakes (owner ruling: keep).
+- **`pnpm verify --gate` did not rebuild `core-agent`** before lab-tools ran, so a stale git-ignored build failed CM8's first gate; rebuild `core-agent` after runtime changes until verify does it.
+- **Touch after touch-off:** a new press-and-rub is still classified as a pet by the scene (the mind ignores it; predates CM8). The devtools forced "Evaluate now" can start a reach-out while a notice waits.
+- **`qa:bench` is Linux-only**, so gait performance is unmeasured on macOS.
 
-## Notes for the new machine
+## Notes for the next machine
 
-- Rendered QA on Linux ran through `pnpm qa:display`. macOS has no QA display and no harness pointer: a rendered run uses the real desktop, and the owner allows agents to drive the cursor with notice. Cursor warps need no permission; posted clicks need Accessibility for the app that runs the agent.
-- The local QA model locations are machine-specific and not in the repository. On the MacBook, the main checkout's `.env.qa` sets both. `pnpm wt new --qa` writes only `AIRI_QA_MMD_MODEL`, so copy the main checkout's `.env.qa` into a new worktree.
-- The scratch harnesses from the Linux runs (latency hops, pointer driver, sweep scripts) stayed on that machine. They are not needed to resume.
+- `.env.qa` in the main checkout sets `AIRI_QA_MMD_MODEL`, `AIRI_QA_RIG_FORBOOTH`, `AIRI_QA_CUBISM_CORE`, and `AIRI_QA_MMD_CLIP`; copy it into new worktrees.
+- macOS rendered QA uses the real desktop; cursor warps need no permission.
