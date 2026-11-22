@@ -56,13 +56,13 @@ reaching feature parity with the Live2D and VRM renderers:
   over idle, sitting and walking; full-body actions and dances pre-empt the
   walk through the director. See [Clip library and actions](#clip-library-and-actions).
 - **Stance slots**: assign imported motions to a model's `idle`, `sit` and
-  `sleep` slots (`stanceSlots` in `useMMDPerformanceSettings`). Natural settles her in
-  after two minutes idle and sleeps while the user is away; the body director
+  `sleep` slots (`stanceSlots` in `useMMDPerformanceSettings`). The character mind settles
+  her in after two minutes idle and Natural sleeps while the user is away; the body director
   plays the sit or sleep clip for it with a 0.6 s eased cross-fade on the base
   layer, or rests or dozes her without a clip when the slot is empty. A sit or
   sleep clip never plays as the standing idle. The sit starts after 120 s of
-  continuous idle mode as before, but anything Natural must answer (a touch, a
-  noticed cursor) also restarts the count; the sleep starts when Natural falls
+  continuous idle mode as before, but anything that claims her in the mind (a
+  touch, an engaged cursor, a chat cue) also restarts the count; the sleep starts when Natural falls
   asleep, 12 to 31 s after the user leaves, not as soon as the stance dwell
   allows. **Without an idle drive she never sits or sleeps**: with Idle
   activities off, under the classic motion driver, or in a host that sets no
