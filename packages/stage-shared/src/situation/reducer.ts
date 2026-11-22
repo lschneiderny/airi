@@ -386,11 +386,15 @@ function applyNotify(draft: Draft, o: NotifyObservation, at: number): void {
   if (!nonEmpty(o.sourceKey) || !nonEmpty(o.eventId) || !nonEmpty(o.headline) || !URGENCIES.has(o.urgency))
     return
   const topicKey = notifyTopicKey(o.sourceKey, o.eventId)
-  if (draft.events.some(event => event.topicKey === topicKey))
+  const previous = draft.events.find(event => event.topicKey === topicKey)
+  if (previous)
     return
-  const key: SalienceKey = o.reminder && o.critical === true ? 'notify-critical' : `notify-${o.urgency}`
+  const key: SalienceKey = o.provenance.kind === 'task-reminder' && o.provenance.priority === 'critical' ? 'notify-critical' : `notify-${o.urgency}`
   const note = nonEmpty(o.note) ? `: ${o.note.trim()}` : ''
-  pushEvent(draft, makeEvent('notify', key, topicKey, `${o.headline.trim()}${note}`, at))
+  pushEvent(draft, {
+    ...makeEvent('notify', key, topicKey, `${o.headline.trim()}${note}`, at),
+    notify: { urgency: o.urgency, provenance: o.provenance },
+  })
 }
 
 /**

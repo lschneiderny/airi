@@ -112,6 +112,23 @@ function reasonOf(overrides: Partial<Reason>): Reason {
 }
 
 describe('collectReasons', () => {
+  it.each(['low', 'normal', 'high', 'critical'] as const)('waits for the exact due instant of a %s notebook occurrence', (priority) => {
+    const event = worldEvent({
+      kind: 'notify',
+      topicKey: 'notify:task:0',
+      salience: 1,
+      notify: { urgency: 'immediate', provenance: { kind: 'task-reminder', taskId: 'task', revision: 0, dueAtMs: T0, priority } },
+    })
+    expect(collect({ events: [event], nowMs: T0 - 1 }).filter(reason => reason.kind === 'notify')).toEqual([])
+    expect(collect({ events: [event], nowMs: T0 }).find(reason => reason.kind === 'notify')).toMatchObject({
+      category: 'due',
+      dueAtMs: T0,
+      dueNow: true,
+      urgent: priority === 'critical',
+      provenance: event.notify?.provenance,
+    })
+  })
+
   it('drops a held urgent notify until the topic is released', () => {
     const events = [urgentNotify()]
     expect(collect({ events, heldTopics: new Set(['notify:timer']) }).some(reason => reason.kind === 'notify')).toBe(false)

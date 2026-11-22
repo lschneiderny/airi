@@ -61,18 +61,24 @@ function screenReasons(situation: SituationState, nowMs: number): Reason[] {
     }
     if (kind === 'returned' && nowMs - event.atMs < RETURNED_MIN_AGE_MS)
       continue
+    const provenance = event.notify?.provenance
+    const task = provenance?.kind === 'task-reminder' ? provenance : undefined
+    // Look-ahead delivery is context only. It cannot win either the ordinary or urgent path early.
+    if (task && task.dueAtMs > nowMs)
+      continue
     const ripeness = event.salience > 0 ? effectiveSalience(event, nowMs) / event.salience : 0
     reasons.push({
       key: event.topicKey,
       kind,
-      category: 'open',
+      category: task ? 'due' : 'open',
       text,
       sourceEventId: event.id,
       ripeness,
       weight: SCREEN_SELECTION_WEIGHT[kind] * ripeness ** SELECTION_BETA,
-      urgent: kind === 'notify' && event.salience >= URGENT_SALIENCE,
-      dueAtMs: null,
-      dueNow: false,
+      urgent: task ? task.priority === 'critical' : kind === 'notify' && event.salience >= URGENT_SALIENCE,
+      dueAtMs: task?.dueAtMs ?? null,
+      dueNow: task !== undefined,
+      ...(provenance ? { provenance } : {}),
     })
   }
   return reasons

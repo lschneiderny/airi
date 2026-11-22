@@ -19,8 +19,8 @@ export const TASK_SCHEDULER_SOURCE = 'character:task-scheduler'
  *
  * Plugin text is untrusted: the headline and note go through {@link situationContextText}, and the note is capped at
  * {@link NOTIFY_NOTE_MAX_CHARS}. A missing or non-string headline or event id becomes an empty string, which the
- * reducer drops, so a malformed payload never throws; an unknown urgency counts as `later`. `critical` is set only
- * for scheduler reminders whose `payload.priority` is `critical`.
+ * reducer drops, so a malformed payload never throws; an unknown urgency counts as `later`. Even a scheduler-looking
+ * source is plugin provenance here. The notebook constructs trusted reminder observations directly.
  */
 export function notifyObservationFrom(event: WebSocketEventOf<'spark:notify'>, nowMs: number): NotifyObservation {
   const data: Partial<WebSocketEventOf<'spark:notify'>['data']> = event.data ?? {}
@@ -36,7 +36,7 @@ export function notifyObservationFrom(event: WebSocketEventOf<'spark:notify'>, n
     ...(note ? { note } : {}),
     urgency,
     reminder,
-    critical: reminder && event.source === TASK_SCHEDULER_SOURCE && data.payload?.priority === 'critical',
+    provenance: { kind: 'plugin' },
     atMs: nowMs,
   }
 }

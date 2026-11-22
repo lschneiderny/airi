@@ -497,6 +497,8 @@ The short flat-bullet text that renders the situation into the prompt under a `[
 
 ### Spark Notify
 
+Notebook reminders have trusted local `task-reminder` provenance, a stable schedule revision, priority, and effective due time. Before due they supply context only; due critical reminders outrank immediate plugin events, while other priorities enter the due hazard. One settled attempt consumes that occurrence. Protocol source names cannot grant local reminder authority. Upstream avatar notifies retain their original pacing under the CM8 D2 ruling.
+
 A `spark:notify` protocol event that tells the character something happened, and the agent that handles it. Plugins and the server channel send notifies, and the client makes two of its own: an avatar touch notify under the Universal and MAGIC drivers, and a reminder for a due notebook task. The client folds each notify into the leader's situation as an observation, so the gate decides whether she speaks about it. A notify that asks for a [widget reaction](#widget-reaction) is also a `voice-request` stimulus, which only the leader serves. Only for a notify addressed beyond the character, or one that forces a command, the character orchestrator also runs the commands-only Spark Notify agent, which emits `spark:command` events.
 
 **Code:** `packages/stage-ui/src/stores/situation/sensors/notify.ts` `ingestSparkNotify`; `packages/core-agent/src/agents/spark-notify/agent.ts` `createSparkNotifyAgent`; used in `packages/stage-ui/src/stores/character/orchestrator/store.ts` `useCharacterOrchestratorStore`; `packages/stage-ui/src/libs/avatar-touch/notify.ts` `toAvatarTouchSparkNotify`.

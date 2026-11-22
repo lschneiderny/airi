@@ -26,6 +26,19 @@ export type BusyState = 'accepts' | 'busy' | 'fullscreen' | 'presentation' | 'qu
 /** How soon a notify observation wants attention. */
 export type NotifyUrgency = 'immediate' | 'soon' | 'later'
 
+export type TaskPriority = 'low' | 'normal' | 'high' | 'critical'
+
+/** Local authority comes from the notebook producer, never a protocol source string. */
+export interface TaskReminder {
+  readonly kind: 'task-reminder'
+  readonly taskId: string
+  readonly revision: number
+  readonly dueAtMs: number
+  readonly priority: TaskPriority
+}
+
+export type NotifyProvenance = { readonly kind: 'plugin' } | TaskReminder
+
 export interface PresenceObservation {
   readonly kind: 'presence'
   readonly state: PresenceState
@@ -108,8 +121,7 @@ export interface NotifyObservation {
   readonly note?: string
   readonly urgency: NotifyUrgency
   readonly reminder: boolean
-  /** Set only for scheduler reminders whose priority is `critical`. */
-  readonly critical: boolean
+  readonly provenance: NotifyProvenance
   readonly atMs: number
 }
 
@@ -230,6 +242,8 @@ export interface SituationEvent {
   readonly shownAtMs: number | null
   /** When the character spoke about the event's topic, or `null` if never. */
   readonly addressedAtMs: number | null
+  /** Present on notify events; retained independently of display text and topic keys. */
+  readonly notify?: { readonly urgency: NotifyUrgency, readonly provenance: NotifyProvenance }
 }
 
 export interface SituationActivity {

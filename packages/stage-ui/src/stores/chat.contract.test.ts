@@ -3316,7 +3316,7 @@ describe('chat store contract', () => {
       // What the web extension sends for one video: a context update and a notify, from one module.
       const source = 'proj-airi:plugin-web-extension:module-a'
       situation.ingest({ kind: 'context', sourceKey: source, text: 'User is watching: Secret video Channel: QA channel. URL: https://example.test/watch?v=secret.', atMs: Date.now() })
-      situation.ingest({ kind: 'notify', sourceKey: source, eventId: 'video-1', headline: 'User is watching: Secret video', note: 'Channel: QA channel', urgency: 'soon', reminder: false, critical: false, atMs: Date.now() })
+      situation.ingest({ kind: 'notify', sourceKey: source, eventId: 'video-1', headline: 'User is watching: Secret video', note: 'Channel: QA channel', urgency: 'soon', reminder: false, provenance: { kind: 'plugin' }, atMs: Date.now() })
       const completed = new Promise<void>(resolve => store.onChatTurnComplete(async () => resolve()))
 
       const evaluation = await useSituationObservabilityStore().evaluateGate()

@@ -1,5 +1,27 @@
 # character-mind-notify-touch - Work Plan
 
+## Departures during implementation (CM8)
+
+Implementation base: `9ed509e3b`, after CM7a and CM7c. CM7a's capability contract and CM7c's behavior document are present. Their ADRs and Departures sections were read. The orchestrator restored the initially empty performers plan and roadmap in `6cfffa858`; CM8 adds only its row to the restored roadmap. CM8 retains the null idle-drive cutoff, capability gates, settings replay, renderer scene inputs, and independent catalog publication the CM7 departures describe.
+
+**D2 owner ruling (2026-11-21): option (a), binding.** Touch changes apply only under Natural. Universal, MAGIC, and classic retain upstream thresholds, hover recognition, reaction timing and count, touch-off behavior, and spoken touch lines. The original all-driver design below is superseded wherever it conflicts with this ruling. Overlap 11 closes only for Natural and stays open as kept for upstream drivers. CM7a's posture requirement is retained; CM7c's `touchReactions` permission remains Natural-only.
+
+1. Reminder ranking: confirmed that only critical reminders were sent as immediate, and the 60-second look-ahead could admit them early. Provenance now comes from the notebook producer rather than its source string. Explicit requeue creates a revision and a new occurrence topic; delivery preserves its timestamp and revision. The notebook owns consumption beyond situation eviction. D2 forbids the proposed intermediate downgrade of upstream avatar notifies, so their urgency and pacing remain unchanged.
+
+## Checks during implementation (CM8)
+
+Suites run separately with existing timeouts and thresholds. Headless and rendered acceptance belongs to the orchestrator; no worker `qa:*` or Electron run is claimed.
+
+| Item | Command | Result |
+| --- | --- | --- |
+| 1 | `pnpm -F @proj-airi/stage-shared exec vitest run` | 96 files, 1,890 tests passed; this package has one unnamed Node project |
+| 1 | `pnpm --filter "...@proj-airi/stage-shared" --filter "...@proj-airi/stage-ui" --workspace-concurrency=2 typecheck` | 28 packages, exit 0 |
+| 1 | `pnpm -F @proj-airi/stage-ui exec vitest run --project node` | Final run: 199 files, 1,979 tests passed |
+| 1 | `pnpm -F @proj-airi/stage-ui exec vitest run --project browser` | Final run: 140 files, 1,024 tests passed, 5 existing skips |
+| 1 | `pnpm exec vitest run --project dev-tools scripts/dev-tools/policy-docs.test.ts` | 11 passed |
+
+Item 1's first stage-ui Node run found one remaining fixture on the retired `critical` field. It was migrated to plugin provenance; the next run passed all 1,978 tests. The final refusal regression adds one more case. Changed TypeScript passed ESLint; one existing comment-length warning remains in an unrelated chat-contract test comment.
+
 Status: planned on 2026-11-21. Evidence checked on 2026-11-22 against `main` at `92ee63665`, which contains upstream `bd4f30391`. Planning branch: `luke/feat/character-mind-notify-touch`. The owner's standing preference is to take the recommended options. That preference does not silently reverse the explicit ruling that Universal, MAGIC, and classic stay as upstream ships them; D2 below requires an explicit owner decision before its implementation.
 
 This planning delivery contains two implementation slices. This file specifies proposed roadmap row **CM8**, overlaps 11 to 13 of [Autonomous behavior](../../docs/ai/context/autonomous-behavior.md). [character-mind-store-tiers.md](character-mind-store-tiers.md) specifies proposed row **S2**, State persistence Target rule 3. Neither row exists at the evidence revision. Add the rows when their implementation starts, with the dependencies and Done-when below. This planning commit changes no current-policy claims or product code.
@@ -298,7 +320,7 @@ The recommendations are the design above. Only **D2** requires a fresh owner rul
 | # | Fork | Options | Trade-off | Recommendation |
 | --- | --- | --- | --- | --- |
 | D1 | Slice boundary | (a) One PR for touch/notice/persistence; (b) CM8 for behavior and S2 for fork persistence | One PR mixes voice contracts with a storage migration; separate PRs let S2 land while D2 is unresolved. | (b), two plans and two implementation branches. |
-| D2 **OWNER DECISION REQUIRED; visible** | Unified input under upstream drivers | (a) Retain upstream tracker/pacing and leave overlap 11 open; (b) common Natural classifier and reaction pacing, preserve upstream visual realisers only; (c) give all drivers Natural capabilities | (a) preserves the prior guarantee but does not meet the requested unification. (b) changes thresholds, hover, impulse timing/count, touch-off, and classic voice. (c) rewrites CM7 and changes far more behavior. | (b), with an explicit exception recorded in the new ADR and ledger before implementation. |
+| D2 **OWNER RULING 2026-11-21; visible** | Natural-only touch changes | (a) Retain upstream tracker/pacing and leave overlap 11 open there; (b) common classifier/pacing for every driver; (c) give every driver Natural capabilities | The owner rejected changes to upstream thresholds, hover, timing/count, touch-off, and classic voice. | **(a), binding.** Natural alone changes. Upstream touch remains exactly as shipped; overlap 11 remains open as kept there. |
 | D3 | Recognizer choice and home | (a) Extend upstream pressed-pat tracker with hover/lifetime; (b) reuse existing `NaturalTouchGestures`; (c) create a new generic tracker | (a) rebuilds Natural's existing behavior and risks its touch rulings; (c) adds a third implementation. (b) already serves both renderers and needs no new dependency or relocation. | (b); keep the implementation where it is for this slice. |
 | D4 **visible** | Owner-result voice permission | (a) Treat as an ordinary reach-out; (b) treat as an explicit owner result, skipping reach-out enablement/urge/backoff but obeying hard quiet rules and budget; (c) use widget busy-only policy | (a) can make requested work inaudible solely because reach-outs are off; (c) preserves quiet-setting violations. (b) preserves the owner-started nuance and caps interruptions. | (b). |
 | D5 **visible** | Notice floor and cap | (a) Only call `recordExternalSpeech`; (b) check floor/cap before admission and charge a spoken notice once; (c) make every voice source consume the same cap | (a) fixes only the floor. (c) changes accepted widget/touch/urgent policy beyond this scope. (b) extends the existing user budget precisely for notices. | (b), no unanswered-opening charge. |

@@ -1,3 +1,5 @@
+import type { TaskPriority } from '@proj-airi/stage-shared/situation'
+
 import { nanoid } from 'nanoid'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
@@ -13,7 +15,7 @@ export interface NotebookEntry {
   metadata?: Record<string, unknown>
 }
 
-export type TaskPriority = 'low' | 'normal' | 'high' | 'critical'
+export type { TaskPriority } from '@proj-airi/stage-shared/situation'
 export type TaskStatus = 'queued' | 'scheduled' | 'done' | 'dropped'
 
 export interface ScheduledTask {
@@ -27,6 +29,10 @@ export interface ScheduledTask {
   updatedAt: number
   lastNotifiedAt?: number
   nextNotifyAt?: number
+  /** Explicit rescheduling creates a new occurrence; delivery bookkeeping never does. */
+  revision: number
+  addressedRevision?: number
+  firstNotifiedAt?: number
   metadata?: Record<string, unknown>
 }
 
@@ -80,6 +86,7 @@ export const useCharacterNotebookStore = defineStore('character-notebook', () =>
       dueAt: payload.dueAt,
       createdAt: now,
       updatedAt: now,
+      revision: 0,
       metadata: payload.metadata,
     }
 
@@ -104,6 +111,9 @@ export const useCharacterNotebookStore = defineStore('character-notebook', () =>
     task.status = 'queued'
     task.dueAt = options?.dueAt
     task.updatedAt = Date.now()
+    task.revision += 1
+    task.firstNotifiedAt = undefined
+    task.nextNotifyAt = undefined
     task.metadata = {
       ...task.metadata,
       requeueReason: options?.reason,
@@ -116,15 +126,25 @@ export const useCharacterNotebookStore = defineStore('character-notebook', () =>
       return
 
     task.lastNotifiedAt = Date.now()
+    task.firstNotifiedAt ??= task.lastNotifiedAt
     task.nextNotifyAt = nextNotifyAt
     task.updatedAt = Date.now()
+  }
+
+  /** Every settled attempt consumes its occurrence, including a decline or failed generation. */
+  function addressTask(taskId: string, revision: number) {
+    const task = tasks.value.find(item => item.id === taskId)
+    if (task?.revision === revision)
+      task.addressedRevision = revision
   }
 
   function getDueTasks(now: number, windowMs: number) {
     return tasks.value.filter((task) => {
       if (task.status === 'done' || task.status === 'dropped')
         return false
-      const dueAt = task.dueAt ?? now
+      if (task.addressedRevision === task.revision)
+        return false
+      const dueAt = task.dueAt ?? task.createdAt
       if (dueAt > now + windowMs)
         return false
       if (typeof task.nextNotifyAt === 'number' && task.nextNotifyAt > now)
@@ -145,6 +165,7 @@ export const useCharacterNotebookStore = defineStore('character-notebook', () =>
     markTaskDone,
     requeueTask,
     markTaskNotified,
+    addressTask,
     getDueTasks,
   }
 })

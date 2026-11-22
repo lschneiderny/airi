@@ -315,7 +315,7 @@ describe('store character-orchestrator', () => {
     store.initialize(leaderRuntime())
     await vi.advanceTimersByTimeAsync(store.attentionConfig.tickIntervalMs)
 
-    const topicKey = notifyTopicKey(TASK_SCHEDULER_SOURCE, task.id)
+    const topicKey = notifyTopicKey(TASK_SCHEDULER_SOURCE, `${task.id}:${task.revision}`)
     const [reminder] = notifyEvents(situation)
     expect(reminder?.topicKey).toBe(topicKey)
     expect(store.sparkNotifyIdOf(topicKey)).toBe(`task-${task.id}`)
