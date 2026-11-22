@@ -152,16 +152,21 @@ const props = withDefaults(defineProps<{
   naturalAutoBlink?: boolean
   /** Expression-performance switches and tunables; Natural and the expression slots apply them on change. */
   performanceSettings?: ExpressionPerformanceSettings
+  /** Decision permissions supplied by the stage's character-behavior document. */
+  idleActivities?: boolean
+  touchReactions?: boolean
+  cursorAttention?: boolean
+  chatAttention?: boolean
   /** This model's per-emotion strength multipliers from the user's settings; absent means 1 for every emotion. */
   naturalEmotionStrength?: Partial<Record<PerformanceEmotion, number>>
   /**
    * Displays and this window's content bounds in Electron DIP screen coordinates. Natural turns the head toward
-   * the screen interior while the screen-aware setting is on; hosts without window bounds leave it undefined.
+   * the screen interior while screen lean is enabled; hosts without window bounds leave it undefined.
    */
   screenPlacement?: { displays: PlacementRect[], windowBounds: PlacementRect }
   /**
    * The host's chat window: shown or not, and its bounds in the same DIP space as `screenPlacement`. Natural looks at
-   * it while the screen-aware setting is on; hosts without a chat window target (web, pocket) leave it undefined.
+   * it while chat attention is enabled; hosts without a chat window target (web, pocket) leave it undefined.
    */
   chatTarget?: NaturalChatTarget
   /** Typing timing and typed-send counters from the host's composers; never text. */
@@ -195,6 +200,10 @@ const props = withDefaults(defineProps<{
   naturalEnergy: 0.5,
   naturalAutoBlink: true,
   performanceSettings: () => defaultExpressionPerformanceSettings,
+  idleActivities: true,
+  touchReactions: true,
+  cursorAttention: true,
+  chatAttention: true,
 })
 
 const emits = defineEmits<{
@@ -221,10 +230,7 @@ const {
 } = storeToRefs(useLive2DMotionControl())
 const { live2dMotionDriver } = storeToRefs(useSettingsLive2d())
 const naturalSettings = useLive2DNaturalSettings()
-const live2dNaturalCursorAttention = computed(() => naturalSettings.document.cursorAttention)
-const live2dNaturalScreenAwareness = computed(() => naturalSettings.document.screenAwareness)
-const live2dNaturalTouch = computed(() => naturalSettings.document.touch)
-const live2dNaturalIdleActivities = computed(() => naturalSettings.document.idleActivities)
+const live2dNaturalScreenLean = computed(() => naturalSettings.document.screenLean)
 const live2dNaturalTouchPetRequiresHold = computed(() => naturalSettings.document.touchPetRequiresHold)
 /** Size of the petting area relative to this model's measured head. A model without an entry uses 1. */
 const naturalTouchHeadScale = computed(() => naturalSettings.document.touchHeadScale[props.modelId ?? ''] ?? 1)
@@ -718,7 +724,7 @@ async function performModelLoad() {
         let cursor = null
         const pointer = activeCanvasPointer(latestPointer, performance.now(), { hostCursor: props.eyeFocusSourceActive, pointerOver })
         // The controller decides what an aside or screen cue does with the cursor; the host only reports it.
-        if (live2dNaturalCursorAttention.value && (props.eyeFocusSourceActive || pointer)) {
+        if (props.cursorAttention && (props.eyeFocusSourceActive || pointer)) {
           if (pointer) {
             localFocus.set(pointer.x, pointer.y)
           }
@@ -736,7 +742,7 @@ async function performModelLoad() {
         const chat = chatOverride !== undefined
           ? chatOverride
           : naturalChatInput({
-              enabled: live2dNaturalScreenAwareness.value,
+              enabled: props.chatAttention,
               chatTarget: props.chatTarget,
               activity: props.chatActivity,
               locate: bounds => locateChat(bounds, live2DModel, eyeUnit()),
@@ -758,7 +764,7 @@ async function performModelLoad() {
           heldEmotion: holdPerformer.current(holdClock()),
           emotionStrengths: props.naturalEmotionStrength ?? defaultEmotionStrengths,
           cursor,
-          cursorDismissed: !live2dNaturalCursorAttention.value || props.performance.attention === 'aside',
+          cursorDismissed: !props.cursorAttention || props.performance.attention === 'aside',
           placement,
           chat,
           pendingPokes: pendingNaturalPokes,
@@ -1411,7 +1417,7 @@ const releaseStageReader = naturalDiagnostics.registerStageReader(() => ({
 
 const measuredPlacement = new ScreenPlacement()
 watch(model, () => measuredPlacement.update(false, null), { flush: 'sync' })
-watch([live2dMotionDriver, live2dNaturalScreenAwareness, () => props.screenPlacement], ([driver, enabled, screen]) => {
+watch([live2dMotionDriver, live2dNaturalScreenLean, () => props.screenPlacement], ([driver, enabled, screen]) => {
   if (driver !== 'natural' || !enabled || !screen)
     measuredPlacement.update(false, null)
 }, { flush: 'sync' })
@@ -1429,7 +1435,7 @@ function naturalPlacement(): number | null {
   }
   const screen = props.screenPlacement
   // Only the Natural driver reads placement, so other drivers skip the per-frame head measurement.
-  if (live2dMotionDriver.value !== 'natural' || !live2dNaturalScreenAwareness.value || !screen)
+  if (live2dMotionDriver.value !== 'natural' || !live2dNaturalScreenLean.value || !screen)
     return measuredPlacement.update(false, null)
   const head = headViewportRect()
   if (!head)
@@ -1630,7 +1636,7 @@ watch(live2dExpressionEnabled, (enabled) => {
 // --- Touch
 // Pokes and pets are a Natural reaction, so touch runs only while Natural drives the model.
 const capabilities = computed(() => live2dMotionDriver.value === 'natural' ? LIVE2D_NATURAL_CAPABILITIES : NO_CAPABILITIES)
-const touchActive = computed(() => live2dNaturalTouch.value && capabilities.value.posture && !paused.value)
+const touchActive = computed(() => props.touchReactions && capabilities.value.posture && !paused.value)
 
 watch(live2dNaturalTouchPetRequiresHold, (requireHold) => {
   touchGestures.requireHold = requireHold
@@ -2037,7 +2043,7 @@ defineExpose({
    * and a changed setting both take effect then. The user's idle-activities setting turns it off here. While the model
    * has an entry the user marked as a pastime and has not switched on, Natural may draw pastimes (`errands`).
    */
-  setIdleDrive: (drive: NaturalIdleDrive | null) => naturalMotion?.setIdleDrive(live2dNaturalIdleActivities.value && drive ? withPastimes(drive) : null),
+  setIdleDrive: (drive: NaturalIdleDrive | null) => naturalMotion?.setIdleDrive(props.idleActivities && drive ? withPastimes(drive) : null),
   /** The stage's answer to a pastime Natural started: shown (`done` when put away early) or `refused`. */
   answerIdleErrand: (seq: number, outcome: 'done' | 'refused') => naturalMotion?.answerIdleErrand(seq, outcome),
   idleCue: (kind: IdleCueKind) => naturalMotion?.idleCue(kind),

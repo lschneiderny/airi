@@ -7,7 +7,7 @@ import { uniq } from 'es-toolkit'
 import { defineStore } from 'pinia'
 import { array, boolean, optional, parse, pipe, strictObject, string, transform } from 'valibot'
 
-import { speakingBehaviorEntries } from '../character-behavior/schema'
+import { useCharacterBehaviorSettings } from '../character-behavior/settings'
 
 /**
  * Trims app-name glob entries and drops blank or repeated ones, so a newline-separated draft stores only usable
@@ -32,12 +32,6 @@ const BLOCKED_APP_DEFAULTS: Record<string, readonly string[]> = {
 }
 
 const situationSettingsEntries = {
-  /** False keeps the character from starting a turn on its own. @default true */
-  unpromptedEnabled: speakingBehaviorEntries.unpromptedEnabled,
-  /** How readily the character speaks unprompted, from 0 (rarely) to 1 (often); out-of-range numbers are clamped. @default 0.5 */
-  chattiness: speakingBehaviorEntries.chattiness,
-  /** True suppresses unprompted turns until the user turns it off. @default false */
-  dontDisturb: speakingBehaviorEntries.dontDisturb,
   /**
    * False stops reading the user's foreground app and window title: the Electron host stops sampling, and the situation
    * keeps no app, title, or app category. The opportunity gate then holds as it does on a host without a foreground
@@ -57,8 +51,6 @@ const situationSettingsEntries = {
    * `shareForegroundWindow`. @default true
    */
   shareBrowserActivity: optional(boolean(), true),
-  /** Foreground app-name globs (Windows `.exe`, macOS `.app`) during which the character stays quiet. */
-  quietApps: speakingBehaviorEntries.quietApps,
   /**
    * App-name globs the character never sees. The Electron main process drops a foreground reading of these apps
    * before it reaches a renderer, so their name, category, and window title appear in no situation, prompt, or log.
@@ -68,8 +60,6 @@ const situationSettingsEntries = {
   blockedApps: appPatterns(platform => BLOCKED_APP_DEFAULTS[platform ?? ''] ?? []),
   /** False hides the chat cue that marks an unprompted turn. @default true */
   showUnpromptedCue: optional(boolean(), true),
-  /** False keeps the character quiet while a game is in the foreground, except for urgent notifications. @default true */
-  speakDuringGames: speakingBehaviorEntries.speakDuringGames,
 }
 
 export type SituationSettings = SettingsDocument<typeof situationSettingsEntries>
@@ -98,9 +88,20 @@ export function foregroundReadPolicyKey(settings: Pick<SituationSettings, 'block
 
 /** Replicates one presence settings document; only leader-routed commands persist changes. */
 export const useSituationSettings = defineStore('situation-settings', () => {
+  const behavior = useCharacterBehaviorSettings()
   const settings = useSettingsDocument('settings/situation', situationSettingsEntries, { label: 'situation-settings' })
 
-  return { document: settings.document, update: settings.update, reset: settings.reset }
+  async function update(patch: Partial<SituationSettings>) {
+    await behavior.initialize()
+    return settings.update(patch)
+  }
+
+  async function reset() {
+    await behavior.initialize()
+    await settings.reset()
+  }
+
+  return { document: settings.document, update, reset }
 }, {
   synced: {
     state: true,

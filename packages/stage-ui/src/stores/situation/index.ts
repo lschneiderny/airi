@@ -61,6 +61,7 @@ import { nanoid } from 'nanoid'
 import { defineStore } from 'pinia'
 import { computed, shallowRef, watch } from 'vue'
 
+import { useCharacterBehaviorSettings } from '../../features/character-behavior/settings'
 import { localLogicalDayKey, useSituationInnerState } from '../../features/situation/inner-state'
 import { foregroundReadPolicyKey, useSituationSettings } from '../../features/situation/settings'
 import { createThreadExtractor } from '../../features/situation/thread-extraction'
@@ -247,6 +248,7 @@ export const useSituationStore = defineStore('situation', () => {
   const memoryObservability = useMemoryObservabilityStore()
   const characterStateObservability = useCharacterStateObservabilityStore()
   const settings = useSituationSettings()
+  const behaviorSettings = useCharacterBehaviorSettings()
   const desktopActivity = useDesktopActivityStore()
   const foregroundWindow = useForegroundWindowStore()
 
@@ -604,9 +606,9 @@ export const useSituationStore = defineStore('situation', () => {
     }
   }
 
-  /** The gate settings from the user's situation settings; the reaction policy reads the same ones. */
+  /** The gate and touch voice policy read the same speaking rules from character behavior. */
   function gateSettings(): GateSettings {
-    const document = settings.document
+    const document = behaviorSettings.document.speaking
     return {
       enabled: document.unpromptedEnabled,
       chattiness: document.chattiness,

@@ -15,6 +15,7 @@ import { userEvent } from 'vitest/browser'
 import { nextTick, shallowRef } from 'vue'
 import { createI18n } from 'vue-i18n'
 
+import { useCharacterBehaviorSettings } from '../../../../features/character-behavior/settings'
 import { desktopStageHostKey } from './desktop-stage'
 
 import '@unocss/reset/tailwind.css'
@@ -392,6 +393,7 @@ describe('mmd model settings motion', () => {
     const performance = useMMDPerformanceSettings(pinia)
     await performance.reset()
     const natural = useMMDNaturalSettings(pinia)
+    const behavior = useCharacterBehaviorSettings(pinia)
     // The stage-model store replaces an unknown id with the default preset, so use a known one.
     useSettingsStageModel(pinia).stageModelSelected = MODEL_ID
     const screen = await render(MMDSettings, {
@@ -400,11 +402,11 @@ describe('mmd model settings motion', () => {
     })
     expect(t('settings.mmd.motion.title')).not.toBe('settings.mmd.motion.title')
     await screen.getByText(t('settings.mmd.motion.title'), { exact: true }).click()
-    return { screen, store, natural, performance }
+    return { screen, store, natural, performance, behavior }
   }
 
   it('switches the driver through the radio and writes the store, hiding Natural controls under Classic', async () => {
-    const { screen, performance, natural } = await renderMotionSection()
+    const { screen, performance, natural, behavior } = await renderMotionSection()
     const energy = screen.getByRole('slider', { name: t('settings.mmd.motion.natural-energy.title') })
     const touch = screen.getByRole('switch', { name: t('settings.mmd.motion.natural-touch.title') })
     await expect.element(screen.getByRole('radio', { name: t('settings.mmd.motion.driver.options.natural.title'), exact: true })).toBeChecked()
@@ -431,8 +433,8 @@ describe('mmd model settings motion', () => {
     expect(JSON.parse(localStorage.getItem('settings/mmd/natural')!).touchPetRequiresHold).toBe(true)
     await touch.click()
     await nextTick()
-    expect(natural.document.touch).toBe(false)
-    expect(JSON.parse(localStorage.getItem('settings/mmd/natural')!).touch).toBe(false)
+    expect(behavior.document.touchReactions).toBe(false)
+    expect(JSON.parse(localStorage.getItem('settings/character-behavior')!).touchReactions).toBe(false)
     await expect.element(hold).not.toBeInTheDocument()
   })
 

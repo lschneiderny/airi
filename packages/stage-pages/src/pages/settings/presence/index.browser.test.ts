@@ -1,6 +1,7 @@
 import en from '@proj-airi/i18n/locales/en'
 
 import { useSituationSettings } from '@proj-airi/stage-ui/features/situation/settings'
+import { useCharacterBehaviorSettings } from '@proj-airi/stage-ui/stores/settings'
 import { createPinia, disposePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render } from 'vitest-browser-vue'
@@ -33,11 +34,11 @@ describe('presence settings page', () => {
 
   async function renderPage() {
     const screen = await render(PresencePage, { global: { plugins: [pinia, i18n()] } })
-    return { screen, settings: useSituationSettings(pinia) }
+    return { screen, settings: useSituationSettings(pinia), behavior: useCharacterBehaviorSettings(pinia) }
   }
 
   it('moves chattiness with the slider and persists one settings document', async () => {
-    const { screen, settings } = await renderPage()
+    const { screen, behavior } = await renderPage()
     // A missing locale entry renders the key, which the role query would still match.
     expect(t('settings.pages.presence.chattiness.title')).not.toBe('settings.pages.presence.chattiness.title')
     const chattiness = screen.getByRole('slider', { name: t('settings.pages.presence.chattiness.title') })
@@ -46,12 +47,12 @@ describe('presence settings page', () => {
     await chattiness.click()
     await userEvent.keyboard('{ArrowRight}')
     await expect.element(screen.getByText('55%', { exact: true })).toBeVisible()
-    expect(settings.document.chattiness).toBe(0.55)
-    expect(JSON.parse(localStorage.getItem(key)!).chattiness).toBe(0.55)
+    expect(behavior.document.speaking.chattiness).toBe(0.55)
+    expect(JSON.parse(localStorage.getItem('settings/character-behavior')!).speaking.chattiness).toBe(0.55)
 
     await screen.getByRole('switch', { name: t('settings.pages.presence.dont-disturb.title') }).click()
-    expect(settings.document.dontDisturb).toBe(true)
-    expect(JSON.parse(localStorage.getItem(key)!)).toEqual(settings.document)
+    expect(behavior.document.speaking.dontDisturb).toBe(true)
+    expect(JSON.parse(localStorage.getItem('settings/character-behavior')!)).toEqual(behavior.document)
   })
 
   it('turns foreground sharing off and on, and persists it', async () => {
@@ -89,7 +90,7 @@ describe('presence settings page', () => {
   })
 
   it('commits a quiet app list on change and shows the normalized entries', async () => {
-    const { screen, settings } = await renderPage()
+    const { screen, behavior } = await renderPage()
     const quietApps = screen.getByRole('textbox', { name: t('settings.pages.presence.quiet-apps.title') })
     await expect.element(quietApps).toHaveValue('zoom.exe\nms-teams.exe\nteams.exe\nwebex*.exe')
 
@@ -99,12 +100,12 @@ describe('presence settings page', () => {
     field.setSelectionRange(field.value.length, field.value.length)
     await userEvent.keyboard('{Enter}{Enter}  notepad.exe  ')
     // Typing alone stays a local draft until the field loses focus.
-    expect(settings.document.quietApps).not.toContain('notepad.exe')
+    expect(behavior.document.speaking.quietApps).not.toContain('notepad.exe')
     await userEvent.tab()
 
     await expect.element(quietApps).toHaveValue('zoom.exe\nms-teams.exe\nteams.exe\nwebex*.exe\nnotepad.exe')
-    expect(settings.document.quietApps).toEqual(['zoom.exe', 'ms-teams.exe', 'teams.exe', 'webex*.exe', 'notepad.exe'])
-    expect(JSON.parse(localStorage.getItem(key)!).quietApps).toEqual(settings.document.quietApps)
+    expect(behavior.document.speaking.quietApps).toEqual(['zoom.exe', 'ms-teams.exe', 'teams.exe', 'webex*.exe', 'notepad.exe'])
+    expect(JSON.parse(localStorage.getItem('settings/character-behavior')!).speaking.quietApps).toEqual(behavior.document.speaking.quietApps)
   })
 
   it('shows the default chattiness when the stored value is invalid', async () => {
@@ -114,7 +115,7 @@ describe('presence settings page', () => {
     const { screen } = await renderPage()
     await expect.element(screen.getByText('50%', { exact: true })).toBeVisible()
     await expect.element(screen.getByRole('textbox', { name: t('settings.pages.presence.quiet-apps.title') })).toHaveValue('notepad.exe')
-    expect(warning).toHaveBeenCalledOnce()
+    expect(warning).not.toHaveBeenCalled()
     expect(error).not.toHaveBeenCalled()
   })
 

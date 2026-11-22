@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, onTestFinished } from 'vitest'
 import { buildEmotionTrial, claimMotionQaHandlers, createMotionQaContext, hasMotionQaHandlers, isMotionQaBridgeEnabled, MotionQaAwaitCaptureResultSchema, MotionQaCommandSchema, MotionQaConfigureInputSchema, MotionQaEventSchema, MotionQaRunScenarioInputSchema, MotionQaRunScenarioResultSchema, MotionQaStartCaptureInputSchema, motionQaStateInvokeEventa, MotionQaStateSchema } from '.'
 import { capabilitiesForHost } from '../host-capabilities'
 
-const state = { modelId: 'm', modelLoaded: true, driver: 'natural', cursorAttention: false, expressionEnabled: true, heldEmotions: true, naturalActive: true, hold: { emotion: 'angry', strength: 0.9 }, captureActive: false, head: { x: 100, y: 50, width: 80, height: 90 }, screen: { x: -1200, y: 20, devicePixelRatio: 1.5 }, screenAwareness: true, placement: -0.75, placementYawBias: -0.08, chat: { hasTarget: true, typing: false }, host: capabilitiesForHost('linux-wayland'), foreground: null, desktopIdleSeconds: 12.5, performanceMode: 'watching', performance: { resolvedAtMs: 20_000, away: false, cursorMovedAtMs: null, desktop: { idleSeconds: 12.5, locked: false, suspendedAtMs: null, resumedAtMs: null, unlockedAtMs: null, screenChange: 0.2, systemAudioLevel: null, sampledAtMs: 19_000 } } } as const
+const state = { modelId: 'm', modelLoaded: true, driver: 'natural', cursorAttention: false, chatAttention: true, idleActivities: true, touchReactions: true, expressionEnabled: true, heldEmotions: true, naturalActive: true, hold: { emotion: 'angry', strength: 0.9 }, captureActive: false, head: { x: 100, y: 50, width: 80, height: 90 }, screen: { x: -1200, y: 20, devicePixelRatio: 1.5 }, screenLean: true, placement: -0.75, placementYawBias: -0.08, chat: { hasTarget: true, typing: false }, host: capabilitiesForHost('linux-wayland'), foreground: null, desktopIdleSeconds: 12.5, performanceMode: 'watching', performance: { resolvedAtMs: 20_000, away: false, cursorMovedAtMs: null, desktop: { idleSeconds: 12.5, locked: false, suspendedAtMs: null, resumedAtMs: null, unlockedAtMs: null, screenChange: 0.2, systemAudioLevel: null, sampledAtMs: 19_000 } } } as const
 
 describe('motion QA bridge schemas', () => {
   it('accepts a mind event whose appended music field is a boolean or null', () => {
@@ -28,7 +28,7 @@ describe('motion QA bridge schemas', () => {
       expect(safeParse(MotionQaStateSchema, { ...state, placementYawBias: value }).success).toBe(false)
     }
     expect(safeParse(MotionQaStateSchema, { ...state, placementYawBias: null }).success).toBe(false)
-    const { screenAwareness: _, ...withoutSetting } = state
+    const { screenLean: _, ...withoutSetting } = state
     expect(safeParse(MotionQaStateSchema, withoutSetting).success).toBe(false)
   })
 
@@ -87,7 +87,7 @@ describe('motion QA bridge schemas', () => {
       [MotionQaStateSchema, state],
       [MotionQaStateSchema, { ...state, performance: null }],
       [MotionQaConfigureInputSchema, { driver: 'natural', heldEmotions: false }],
-      [MotionQaConfigureInputSchema, { screenAwareness: false }],
+      [MotionQaConfigureInputSchema, { screenLean: false }],
       [MotionQaStateSchema, { ...state, placement: null, placementYawBias: 0 }],
       [MotionQaStateSchema, { ...state, chat: null }],
       [MotionQaStartCaptureInputSchema, { durationSeconds: 30, extraParameterIds: ['Param60'], label: 'angry' }],
@@ -107,7 +107,7 @@ describe('motion QA bridge schemas', () => {
     expect(safeParse(MotionQaStartCaptureInputSchema, { durationSeconds: 601, label: 'x' }).success).toBe(false)
     expect(safeParse(MotionQaConfigureInputSchema, { driver: 'sdk' }).success).toBe(false)
     expect(safeParse(MotionQaConfigureInputSchema, { extra: true }).success).toBe(false)
-    expect(safeParse(MotionQaConfigureInputSchema, { screenAwareness: 'true' }).success).toBe(false)
+    expect(safeParse(MotionQaConfigureInputSchema, { screenLean: 'true' }).success).toBe(false)
     expect(safeParse(MotionQaAwaitCaptureResultSchema, { trace: { version: 1 } }).success).toBe(false)
   })
 

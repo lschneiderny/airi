@@ -6,6 +6,7 @@ import { createSyncedPiniaPlugin } from 'pinia-plugin-synced'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp } from 'vue'
 
+import { defaultCharacterBehaviorSettings, useCharacterBehaviorSettings } from '../character-behavior/settings'
 import { defaultSituationSettings, useSituationSettings } from './settings'
 
 const key = 'settings/situation'
@@ -18,7 +19,7 @@ function createContext(namespace?: string, leadership?: LeadershipMode) {
     pinia.use(runtime.plugin)
   createApp({}).use(pinia)
   contexts.push({ pinia, runtime })
-  return { store: useSituationSettings(pinia), runtime }
+  return { store: useSituationSettings(pinia), behavior: useCharacterBehaviorSettings(pinia), runtime }
 }
 
 function coordinated(runtime: SyncedPiniaRuntime, predicate: () => boolean) {
@@ -59,23 +60,26 @@ describe('situation settings', () => {
   })
 
   it('loads defaults and persists updates and resets as one document', async () => {
-    const { store } = createContext()
+    const { store, behavior } = createContext()
     expect(store.document).toEqual({
-      unpromptedEnabled: true,
-      chattiness: 0.5,
-      dontDisturb: false,
       shareForegroundWindow: true,
       shareWindowTitles: true,
       shareBrowserActivity: true,
-      quietApps: ['zoom.exe', 'ms-teams.exe', 'teams.exe', 'webex*.exe', 'zoom.us.app', 'Microsoft Teams.app', 'FaceTime.app', 'Webex*.app'],
       blockedApps: ['1Password*.app', 'Bitwarden.app', 'KeePassXC.app', 'Passwords.app', 'Keychain Access.app'],
       showUnpromptedCue: true,
+    })
+    expect(behavior.document.speaking).toEqual({
+      unpromptedEnabled: true,
+      chattiness: 0.5,
+      dontDisturb: false,
+      quietApps: ['zoom.exe', 'ms-teams.exe', 'teams.exe', 'webex*.exe', 'zoom.us.app', 'Microsoft Teams.app', 'FaceTime.app', 'Webex*.app'],
       speakDuringGames: true,
     })
     expect(localStorage.getItem(key)).toBeNull()
-    expect(await store.update({ chattiness: 0.8, quietApps: ['zoom.exe', 'notepad.exe'] })).toEqual({ success: true })
+    expect(await behavior.update({ speaking: { chattiness: 0.8, quietApps: ['zoom.exe', 'notepad.exe'] } })).toEqual({ success: true })
+    expect(await store.update({ shareWindowTitles: false })).toEqual({ success: true })
     expect(JSON.parse(localStorage.getItem(key)!)).toEqual(store.document)
-    expect(store.document.chattiness).toBe(0.8)
+    expect(behavior.document.speaking.chattiness).toBe(0.8)
     expect(Object.keys(localStorage).filter(storageKey => storageKey.startsWith('settings/situation'))).toEqual([key])
     await store.reset()
     expect(store.document).toEqual(defaultSituationSettings())
@@ -89,8 +93,8 @@ describe('situation settings', () => {
     { entry: 'Webex*.app', appId: 'webex meetings' },
     { entry: 'zoom.exe', appId: 'zoom' },
   ])('matches the app id $appId with the default quiet app $entry after the extension strip', ({ entry, appId }) => {
-    const stripped = defaultSituationSettings().quietApps.map(pattern => withoutAppExtension(pattern.trim(), 'darwin'))
-    expect(defaultSituationSettings().quietApps).toContain(entry)
+    const stripped = defaultCharacterBehaviorSettings().speaking.quietApps.map(pattern => withoutAppExtension(pattern.trim(), 'darwin'))
+    expect(defaultCharacterBehaviorSettings().speaking.quietApps).toContain(entry)
     expect(isDenylisted(appId, stripped)).toBe(true)
   })
 
@@ -124,29 +128,30 @@ describe('situation settings', () => {
 
   it('keeps a stored quiet list untouched by the macOS defaults', () => {
     localStorage.setItem(key, JSON.stringify({ quietApps: ['only-mine.exe'] }))
-    const { store } = createContext()
-    expect(store.document.quietApps).toEqual(['only-mine.exe'])
+    const { store, behavior } = createContext()
+    expect(behavior.document.speaking.quietApps).toEqual(['only-mine.exe'])
     expect(store.document.blockedApps).toEqual(defaultSituationSettings().blockedApps)
   })
 
   it('retains the exact Windows quiet and blocked defaults without rewriting custom .app globs', () => {
     vi.stubGlobal('platform', 'win32')
-    expect(defaultSituationSettings().quietApps).toEqual(['zoom.exe', 'ms-teams.exe', 'teams.exe', 'webex*.exe'])
+    expect(defaultCharacterBehaviorSettings().speaking.quietApps).toEqual(['zoom.exe', 'ms-teams.exe', 'teams.exe', 'webex*.exe'])
     expect(defaultSituationSettings().blockedApps).toEqual(['1password*.exe', 'keepass*.exe', 'bitwarden.exe', 'keepassxc.exe'])
     localStorage.setItem(key, JSON.stringify({ quietApps: ['zed.app', 'z*.APP'], blockedApps: ['custom.app'] }))
 
-    const { store } = createContext()
+    const { store, behavior } = createContext()
 
-    expect(store.document.quietApps).toEqual(['zed.app', 'z*.APP'])
+    expect(behavior.document.speaking.quietApps).toEqual(['zed.app', 'z*.APP'])
     expect(store.document.blockedApps).toEqual(['custom.app'])
   })
 
   it('falls back per field when a stored field is invalid', () => {
-    localStorage.setItem(key, JSON.stringify({ chattiness: 'banana', quietApps: ['notepad.exe'], dontDisturb: true }))
+    localStorage.setItem(key, JSON.stringify({ shareWindowTitles: 'banana', shareForegroundWindow: false, chattiness: 'banana', quietApps: ['notepad.exe'], dontDisturb: true }))
     const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const { store } = createContext()
-    expect(store.document).toEqual({ ...defaultSituationSettings(), quietApps: ['notepad.exe'], dontDisturb: true })
-    expect(warning).toHaveBeenCalledExactlyOnceWith('[situation-settings] Invalid stored fields reset to defaults:', 'chattiness')
+    const { store, behavior } = createContext()
+    expect(store.document).toEqual({ ...defaultSituationSettings(), shareForegroundWindow: false })
+    expect(behavior.document.speaking).toEqual({ ...defaultCharacterBehaviorSettings().speaking, quietApps: ['notepad.exe'], dontDisturb: true })
+    expect(warning).toHaveBeenCalledExactlyOnceWith('[situation-settings] Invalid stored fields reset to defaults:', 'shareWindowTitles')
   })
 
   it.each(['{corrupt', '[]', 'null', '"banana"'])('replaces a stored document that is not an object (%s) with defaults', (value) => {
@@ -163,36 +168,40 @@ describe('situation settings', () => {
   ])('clamps a stored chattiness of $stored to $expected', ({ stored, expected }) => {
     localStorage.setItem(key, JSON.stringify({ chattiness: stored }))
     const warning = vi.spyOn(console, 'warn')
-    expect(createContext().store.document).toEqual({ ...defaultSituationSettings(), chattiness: expected })
+    const { store, behavior } = createContext()
+    expect(store.document).toEqual(defaultSituationSettings())
+    expect(behavior.document.speaking.chattiness).toBe(expected)
     expect(warning).not.toHaveBeenCalled()
   })
 
   it('drops unknown fields, blank and repeated app entries from storage', () => {
     localStorage.setItem(key, JSON.stringify({ extra: true, quietApps: ['  notepad.exe ', '', '   ', 'notepad.exe', 'zoom.exe'], blockedApps: [] }))
-    const { store } = createContext()
-    expect(store.document).toEqual({ ...defaultSituationSettings(), quietApps: ['notepad.exe', 'zoom.exe'], blockedApps: [] })
+    const { store, behavior } = createContext()
+    expect(store.document).toEqual({ ...defaultSituationSettings(), blockedApps: [] })
+    expect(behavior.document.speaking.quietApps).toEqual(['notepad.exe', 'zoom.exe'])
   })
 
   it('clamps and normalizes valid patches', async () => {
-    const { store } = createContext()
-    expect(await store.update({ chattiness: 2, blockedApps: [' keepass*.exe', '', 'keepass*.exe'] })).toEqual({ success: true })
-    expect(store.document.chattiness).toBe(1)
+    const { store, behavior } = createContext()
+    expect(await behavior.update({ speaking: { chattiness: 2 } })).toEqual({ success: true })
+    expect(await store.update({ blockedApps: [' keepass*.exe', '', 'keepass*.exe'] })).toEqual({ success: true })
+    expect(behavior.document.speaking.chattiness).toBe(1)
     expect(store.document.blockedApps).toEqual(['keepass*.exe'])
     expect(JSON.parse(localStorage.getItem(key)!)).toEqual(store.document)
   })
 
   it.each([{ chattiness: 'banana' }, { chattiness: Number.NaN }, { quietApps: 'zoom.exe' }, { quietApps: [1] }, { extra: true }, [], null])('rejects invalid patches without changing state or storage: %j', async (patch) => {
-    const { store } = createContext()
-    await store.update({ dontDisturb: true })
-    const before = structuredClone(store.document)
-    const stored = localStorage.getItem(key)
+    const { behavior } = createContext()
+    await behavior.update({ speaking: { dontDisturb: true } })
+    const before = structuredClone(behavior.document)
+    const stored = localStorage.getItem('settings/character-behavior')
     // @ts-expect-error Deliberately exercise malformed runtime input.
-    const result = await store.update(patch)
+    const result = await behavior.update({ speaking: patch })
     expect(result.success).toBe(false)
     if (!result.success)
       expect(result.issues.length).toBeGreaterThan(0)
-    expect(store.document).toEqual(before)
-    expect(localStorage.getItem(key)).toBe(stored)
+    expect(behavior.document).toEqual(before)
+    expect(localStorage.getItem('settings/character-behavior')).toBe(stored)
   })
 
   it('replicates leader-owned updates without follower proposals or persistence', async () => {
@@ -208,20 +217,20 @@ describe('situation settings', () => {
     leader.store.$subscribe(() => mutations++, { flush: 'sync' })
     const snapshot = new Promise<void>((resolve) => {
       const stop = follower.store.$subscribe(() => {
-        if (follower.store.document.chattiness === 0.8) {
+        if (!follower.store.document.shareForegroundWindow) {
           stop()
           resolve()
         }
       }, { flush: 'sync' })
     })
-    expect(await follower.store.update({ chattiness: 0.8, quietApps: ['notepad.exe'], shareForegroundWindow: false })).toEqual({ success: true })
+    expect(await follower.store.update({ blockedApps: ['notepad.exe'], shareForegroundWindow: false })).toEqual({ success: true })
     await snapshot
     // A second leader-routed command is a transport barrier, not a timing wait.
     // @ts-expect-error Deliberately exercise malformed runtime input.
-    const rejected = await follower.store.update({ chattiness: 'banana' })
+    const rejected = await follower.store.update({ shareForegroundWindow: 'banana' })
     expect(rejected.success).toBe(false)
     expect(leader.store.document).toEqual(follower.store.document)
-    expect(leader.store.document.quietApps).toEqual(['notepad.exe'])
+    expect(leader.store.document.blockedApps).toEqual(['notepad.exe'])
     expect(leader.store.document.shareForegroundWindow).toBe(false)
     expect(mutations).toBe(1)
     expect(leaderAction).toHaveBeenCalledTimes(2)

@@ -16,6 +16,7 @@ import { useI18n } from 'vue-i18n'
 import ExpressionPanel from './expressions/panel.vue'
 import NaturalEmotionStrength from './natural-emotion-strength.vue'
 
+import { useCharacterBehaviorSettings } from '../../../../features/character-behavior/settings'
 import { useSettingsStageModel } from '../../../../stores/settings/stage-model'
 import { Container, PropertyColor, PropertyNumber } from '../../../data-pane'
 import { Section } from '../../../layouts'
@@ -94,9 +95,15 @@ const {
 } = storeToRefs(mmdStore)
 
 const naturalSettings = useMMDNaturalSettings()
+const behaviorSettings = useCharacterBehaviorSettings()
 // `update` is a leader-routed synced action, so callers await it instead of dropping the promise.
 async function updateNaturalSettings(patch: Parameters<typeof naturalSettings.update>[0]) {
+  await behaviorSettings.initialize()
   await naturalSettings.update(patch)
+}
+
+async function updateBehaviorSettings(patch: Parameters<typeof behaviorSettings.update>[0]) {
+  await behaviorSettings.update(patch)
 }
 
 const desktopStage = useDesktopStageHost()
@@ -628,22 +635,22 @@ async function removeMotion(id: string) {
     />
     <FieldCheckbox
       v-if="motionDriver === 'natural'"
-      :model-value="naturalSettings.document.idleActivities"
+      :model-value="behaviorSettings.document.idleActivities"
       :label="t('settings.mmd.motion.natural-idle-activities.title')"
       :description="t('settings.mmd.motion.natural-idle-activities.description')"
       placement="right"
-      @update:model-value="updateNaturalSettings({ idleActivities: $event })"
+      @update:model-value="updateBehaviorSettings({ idleActivities: $event })"
     />
     <FieldCheckbox
       v-if="motionDriver === 'natural'"
-      :model-value="naturalSettings.document.touch"
+      :model-value="behaviorSettings.document.touchReactions"
       :label="t('settings.mmd.motion.natural-touch.title')"
       :description="t('settings.mmd.motion.natural-touch.description')"
       placement="right"
-      @update:model-value="updateNaturalSettings({ touch: $event })"
+      @update:model-value="updateBehaviorSettings({ touchReactions: $event })"
     />
     <FieldCheckbox
-      v-if="motionDriver === 'natural' && naturalSettings.document.touch"
+      v-if="motionDriver === 'natural' && behaviorSettings.document.touchReactions"
       :model-value="naturalSettings.document.touchPetRequiresHold"
       :label="t('settings.mmd.motion.natural-touch-pet-requires-hold.title')"
       :description="t('settings.mmd.motion.natural-touch-pet-requires-hold.description')"

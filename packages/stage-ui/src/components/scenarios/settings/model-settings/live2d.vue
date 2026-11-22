@@ -21,6 +21,7 @@ import ExpressionPanel from './expressions/panel.vue'
 import Live2DExpressionList from './live2d-expression-list.vue'
 import NaturalEmotionStrength from './natural-emotion-strength.vue'
 
+import { useCharacterBehaviorSettings } from '../../../../features/character-behavior/settings'
 import { useExpressionPerformanceSettings } from '../../../../features/performance/settings'
 import { useSettingsStageModel } from '../../../../stores/settings/stage-model'
 import { PropertyPoint } from '../../../data-pane'
@@ -58,9 +59,15 @@ const {
 } = storeToRefs(settings)
 
 const naturalSettings = useLive2DNaturalSettings()
+const behaviorSettings = useCharacterBehaviorSettings()
 // `update` is a leader-routed synced action, so callers await it instead of dropping the promise.
 async function updateNaturalSettings(patch: Parameters<typeof naturalSettings.update>[0]) {
+  await behaviorSettings.initialize()
   await naturalSettings.update(patch)
+}
+
+async function updateBehaviorSettings(patch: Parameters<typeof behaviorSettings.update>[0]) {
+  await behaviorSettings.update(patch)
 }
 
 const motionDriverOptions = computed<SelectTabOption<Live2DMotionDriver>[]>(() => [
@@ -365,38 +372,38 @@ const showAllExpressions = ref(false)
     />
     <FieldCheckbox
       v-if="live2dMotionDriver === 'natural'"
-      :model-value="naturalSettings.document.cursorAttention"
+      :model-value="behaviorSettings.document.cursorAttention"
       :label="t('settings.live2d.animation.natural-cursor-attention.title')"
       :description="t('settings.live2d.animation.natural-cursor-attention.description')"
       placement="right"
-      @update:model-value="updateNaturalSettings({ cursorAttention: $event })"
+      @update:model-value="updateBehaviorSettings({ cursorAttention: $event })"
     />
     <FieldCheckbox
       v-if="live2dMotionDriver === 'natural'"
-      :model-value="naturalSettings.document.screenAwareness"
+      :model-value="naturalSettings.document.screenLean"
       :label="t('settings.live2d.animation.natural-screen-awareness.title')"
       :description="t('settings.live2d.animation.natural-screen-awareness.description')"
       placement="right"
-      @update:model-value="updateNaturalSettings({ screenAwareness: $event })"
+      @update:model-value="updateNaturalSettings({ screenLean: $event })"
     />
     <FieldCheckbox
       v-if="live2dMotionDriver === 'natural'"
-      :model-value="naturalSettings.document.idleActivities"
+      :model-value="behaviorSettings.document.idleActivities"
       :label="t('settings.live2d.animation.natural-idle-activities.title')"
       :description="t('settings.live2d.animation.natural-idle-activities.description')"
       placement="right"
-      @update:model-value="updateNaturalSettings({ idleActivities: $event })"
+      @update:model-value="updateBehaviorSettings({ idleActivities: $event })"
     />
     <FieldCheckbox
       v-if="live2dMotionDriver === 'natural'"
-      :model-value="naturalSettings.document.touch"
+      :model-value="behaviorSettings.document.touchReactions"
       :label="t('settings.live2d.animation.natural-touch.title')"
       :description="t('settings.live2d.animation.natural-touch.description')"
       placement="right"
-      @update:model-value="updateNaturalSettings({ touch: $event })"
+      @update:model-value="updateBehaviorSettings({ touchReactions: $event })"
     />
     <FieldCheckbox
-      v-if="live2dMotionDriver === 'natural' && naturalSettings.document.touch"
+      v-if="live2dMotionDriver === 'natural' && behaviorSettings.document.touchReactions"
       :model-value="naturalSettings.document.touchPetRequiresHold"
       :label="t('settings.live2d.animation.natural-touch-pet-requires-hold.title')"
       :description="t('settings.live2d.animation.natural-touch-pet-requires-hold.description')"
@@ -404,7 +411,7 @@ const showAllExpressions = ref(false)
       @update:model-value="updateNaturalSettings({ touchPetRequiresHold: $event })"
     />
     <FieldRange
-      v-if="live2dMotionDriver === 'natural' && naturalSettings.document.touch"
+      v-if="live2dMotionDriver === 'natural' && behaviorSettings.document.touchReactions"
       :model-value="naturalTouchHeadScale"
       :min="0.5"
       :max="2"
@@ -427,7 +434,7 @@ const showAllExpressions = ref(false)
       :model-id="stageModelSelected"
       @update:model-value="updateNaturalSettings({ emotionStrength: $event })"
     />
-    <div v-if="(live2dMotionDriver === 'universal' && live2dEyeTracking) || (live2dMotionDriver === 'natural' && naturalSettings.document.cursorAttention)" :class="['grid grid-cols-4']">
+    <div v-if="(live2dMotionDriver === 'universal' && live2dEyeTracking) || (live2dMotionDriver === 'natural' && behaviorSettings.document.cursorAttention)" :class="['grid grid-cols-4']">
       <PropertyPoint
         v-model:x="live2dModelEyeOffset.x"
         v-model:y="live2dModelEyeOffset.y"
@@ -852,25 +859,25 @@ const showAllExpressions = ref(false)
     :expand="false"
   >
     <FieldCheckbox
-      :model-value="performanceSettings.document.bands"
+      :model-value="behaviorSettings.document.emotion.bands"
       :label="t('settings.live2d.performance.bands.title')"
       :description="t('settings.live2d.performance.bands.description')"
       placement="right"
-      @update:model-value="updatePerformanceSettings({ bands: $event })"
+      @update:model-value="updateBehaviorSettings({ emotion: { bands: $event } })"
     />
     <FieldCheckbox
-      :model-value="performanceSettings.document.mood"
+      :model-value="behaviorSettings.document.emotion.mood"
       :label="t('settings.live2d.performance.mood.title')"
       :description="t('settings.live2d.performance.mood.description')"
       placement="right"
-      @update:model-value="updatePerformanceSettings({ mood: $event })"
+      @update:model-value="updateBehaviorSettings({ emotion: { mood: $event } })"
     />
     <FieldCheckbox
-      :model-value="performanceSettings.document.heldEmotions"
+      :model-value="behaviorSettings.document.emotion.heldEmotions"
       :label="t('settings.live2d.performance.held-emotions.title')"
       :description="t('settings.live2d.performance.held-emotions.description')"
       placement="right"
-      @update:model-value="updatePerformanceSettings({ heldEmotions: $event })"
+      @update:model-value="updateBehaviorSettings({ emotion: { heldEmotions: $event } })"
     />
     <FieldCheckbox
       :model-value="performanceSettings.document.autoExpressions"

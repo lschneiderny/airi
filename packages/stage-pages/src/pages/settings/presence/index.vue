@@ -2,6 +2,7 @@
 import type { SituationSettings } from '@proj-airi/stage-ui/features/situation/settings'
 
 import { useSituationSettings } from '@proj-airi/stage-ui/features/situation/settings'
+import { useCharacterBehaviorSettings } from '@proj-airi/stage-ui/stores/settings'
 import { FieldCheckbox, FieldRange, Textarea } from '@proj-airi/ui'
 import { computed, reactive, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -10,23 +11,32 @@ type AppListField = 'quietApps' | 'blockedApps'
 
 const { t } = useI18n()
 const settings = useSituationSettings()
+const behaviorSettings = useCharacterBehaviorSettings()
 
 // `update` is a leader-routed synced action, so callers await it instead of dropping the promise.
 async function updateSettings(patch: Partial<SituationSettings>) {
   await settings.update(patch)
 }
 
+async function updateSpeaking(patch: Parameters<typeof behaviorSettings.update>[0]['speaking']) {
+  await behaviorSettings.update({ speaking: patch })
+}
+
 // Drafts keep the raw text while the user types; a list is committed when its field loses focus
 // (`change`), and the store trims entries and drops blank lines.
 const drafts = reactive<Record<AppListField, string>>({ quietApps: '', blockedApps: '' })
 for (const field of ['quietApps', 'blockedApps'] as const) {
-  watch(() => settings.document[field].join('\n'), (text) => {
+  watch(() => (field === 'quietApps' ? behaviorSettings.document.speaking.quietApps : settings.document.blockedApps).join('\n'), (text) => {
     drafts[field] = text
   }, { immediate: true })
 }
 
 async function commitAppList(field: AppListField) {
-  await updateSettings({ [field]: drafts[field].split('\n') })
+  const entries = drafts[field].split('\n')
+  if (field === 'quietApps')
+    await updateSpeaking({ quietApps: entries })
+  else
+    await updateSettings({ blockedApps: entries })
 }
 
 const appLists = computed(() => [
@@ -50,35 +60,35 @@ function formatChattiness(value: number) {
 <template>
   <div :class="['flex flex-col gap-6 pb-4']">
     <FieldCheckbox
-      :model-value="settings.document.unpromptedEnabled"
+      :model-value="behaviorSettings.document.speaking.unpromptedEnabled"
       :label="t('settings.pages.presence.unprompted-enabled.title')"
       :description="t('settings.pages.presence.unprompted-enabled.description')"
       placement="right"
-      @update:model-value="updateSettings({ unpromptedEnabled: $event })"
+      @update:model-value="updateSpeaking({ unpromptedEnabled: $event })"
     />
     <FieldRange
-      :model-value="settings.document.chattiness"
+      :model-value="behaviorSettings.document.speaking.chattiness"
       :min="0"
       :max="1"
       :step="0.05"
       :label="t('settings.pages.presence.chattiness.title')"
       :description="t('settings.pages.presence.chattiness.description')"
       :format-value="formatChattiness"
-      @update:model-value="updateSettings({ chattiness: $event })"
+      @update:model-value="updateSpeaking({ chattiness: $event })"
     />
     <FieldCheckbox
-      :model-value="settings.document.dontDisturb"
+      :model-value="behaviorSettings.document.speaking.dontDisturb"
       :label="t('settings.pages.presence.dont-disturb.title')"
       :description="t('settings.pages.presence.dont-disturb.description')"
       placement="right"
-      @update:model-value="updateSettings({ dontDisturb: $event })"
+      @update:model-value="updateSpeaking({ dontDisturb: $event })"
     />
     <FieldCheckbox
-      :model-value="settings.document.speakDuringGames"
+      :model-value="behaviorSettings.document.speaking.speakDuringGames"
       :label="t('settings.pages.presence.speak-during-games.title')"
       :description="t('settings.pages.presence.speak-during-games.description')"
       placement="right"
-      @update:model-value="updateSettings({ speakDuringGames: $event })"
+      @update:model-value="updateSpeaking({ speakDuringGames: $event })"
     />
     <FieldCheckbox
       :model-value="settings.document.showUnpromptedCue"

@@ -1,5 +1,15 @@
 # @proj-airi/qa-tools
 
+## Character behavior inputs
+
+The motion QA bridge reads shared behavior from `settings/character-behavior`.
+`configure` accepts `cursorAttention`, `chatAttention`, `touchReactions`,
+`idleActivities`, and `heldEmotions`; these affect the shared document. The
+Live2D-only `screenLean` input replaces `screenAwareness` and changes placement
+without changing chat attention. State replies expose all four behavior
+switches and screen lean separately. Default headless scenarios keep their
+existing settings and motion inputs.
+
 ## Purpose
 
 This private, Node-only package runs repository QA checks: headless body motion for MMD (`qa:motion3d`) and Live2D (`qa:live2d-rig`), rendered Electron app sessions, desktop stage gates, and perf reports. Motion quality scoring, LLM evaluation, and the character-state simulator are in [`@proj-airi/lab-tools`](../lab-tools/README.md). Product packages must not depend on it.

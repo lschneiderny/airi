@@ -10,8 +10,6 @@ import { useMMDNaturalSettings } from './natural-settings'
 const key = 'settings/mmd/natural'
 const defaults = {
   energy: 0.5,
-  idleActivities: true,
-  touch: true,
   touchPetRequiresHold: false,
   emotionStrength: {},
 }
@@ -63,6 +61,11 @@ describe('mmd natural settings', () => {
     vi.restoreAllMocks()
   })
 
+  it('reads an old document and keeps only its realisation settings', () => {
+    localStorage.setItem(key, JSON.stringify({ energy: 0.8, idleActivities: false, touch: false, touchPetRequiresHold: true }))
+    expect(createContext().store.document).toEqual({ ...defaults, energy: 0.8, touchPetRequiresHold: true })
+  })
+
   it('loads defaults and persists updates and resets as one document', async () => {
     const { store } = createContext()
     expect(store.document).toEqual(defaults)
@@ -86,9 +89,9 @@ describe('mmd natural settings', () => {
     expect(store.document.emotionStrength).toEqual({ shuka: { happy: 2 } })
   })
 
-  it.each([{ energy: 'banana' }, { energy: Number.NaN }, { touch: 'yes' }, { cursorAttention: false }, { extra: true }, [], null])('rejects invalid patches without changing state or storage: %j', async (patch) => {
+  it.each([{ energy: 'banana' }, { energy: Number.NaN }, { touchPetRequiresHold: 'yes' }, { cursorAttention: false }, { extra: true }, [], null])('rejects invalid patches without changing state or storage: %j', async (patch) => {
     const { store } = createContext()
-    await store.update({ touch: false })
+    await store.update({ touchPetRequiresHold: true })
     const before = structuredClone(store.document)
     const stored = localStorage.getItem(key)
     // @ts-expect-error Deliberately exercise malformed runtime input.
@@ -99,9 +102,9 @@ describe('mmd natural settings', () => {
   })
 
   it('falls back per field when a stored field is invalid', () => {
-    localStorage.setItem(key, JSON.stringify({ energy: 'banana', touch: false, extra: 1 }))
+    localStorage.setItem(key, JSON.stringify({ energy: 'banana', touchPetRequiresHold: true, extra: 1 }))
     const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    expect(createContext().store.document).toEqual({ ...defaults, touch: false })
+    expect(createContext().store.document).toEqual({ ...defaults, touchPetRequiresHold: true })
     expect(warning).toHaveBeenCalledExactlyOnceWith('[mmd-natural-settings] Invalid stored fields reset to defaults:', 'energy')
   })
 
@@ -129,10 +132,10 @@ describe('mmd natural settings', () => {
     // Reading alone writes nothing: a follower may be the first window to read.
     expect(localStorage.getItem(key)).toBeNull()
 
-    await store.update({ touch: false })
+    await store.update({ touchPetRequiresHold: true })
 
     expect(naturalKeys()).toEqual([key])
-    expect(JSON.parse(localStorage.getItem(key)!)).toEqual({ ...store.document, touch: false })
+    expect(JSON.parse(localStorage.getItem(key)!)).toEqual({ ...store.document, touchPetRequiresHold: true })
     expect(store.document.energy).toBe(0.85)
   })
 
@@ -168,7 +171,7 @@ describe('mmd natural settings', () => {
       }, { flush: 'sync' })
     })
 
-    expect(await follower.store.update({ energy: 0.8, touch: false })).toEqual({ success: true })
+    expect(await follower.store.update({ energy: 0.8, touchPetRequiresHold: true })).toEqual({ success: true })
     await snapshot
     // A second leader-routed command is a transport barrier, not a timing wait.
     // @ts-expect-error Deliberately exercise malformed runtime input.
@@ -176,7 +179,7 @@ describe('mmd natural settings', () => {
 
     expect(rejected.success).toBe(false)
     expect(leader.store.document).toEqual(follower.store.document)
-    expect(leader.store.document.touch).toBe(false)
+    expect(leader.store.document.touchPetRequiresHold).toBe(true)
     expect(mutations).toBe(1)
     expect(leaderAction).toHaveBeenCalledTimes(2)
     expect(persist.mock.calls.filter(([storageKey]) => storageKey === key)).toHaveLength(1)

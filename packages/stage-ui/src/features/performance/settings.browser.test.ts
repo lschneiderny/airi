@@ -1,6 +1,6 @@
 import type { LeadershipMode, SyncedPiniaRuntime } from 'pinia-plugin-synced'
 
-import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
+import { defaultExpressionRealisationSettings } from '@proj-airi/stage-shared/expression-performance'
 import { createPinia, disposePinia } from 'pinia'
 import { createSyncedPiniaPlugin } from 'pinia-plugin-synced'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -53,25 +53,25 @@ describe('expression performance settings', () => {
 
   it('loads defaults and resets persisted updates', async () => {
     const { store } = createContext()
-    expect(store.document).toEqual(defaultExpressionPerformanceSettings)
-    await store.update({ bands: false })
+    expect(store.document).toEqual(defaultExpressionRealisationSettings)
+    await store.update({ autoExpressions: false })
     expect(JSON.parse(localStorage.getItem(key)!)).toEqual(store.document)
     await store.reset()
-    expect(store.document).toEqual(defaultExpressionPerformanceSettings)
-    expect(JSON.parse(localStorage.getItem(key)!)).toEqual(defaultExpressionPerformanceSettings)
+    expect(store.document).toEqual(defaultExpressionRealisationSettings)
+    expect(JSON.parse(localStorage.getItem(key)!)).toEqual(defaultExpressionRealisationSettings)
   })
 
-  it.each(['{"intensity":{"clear":2}}', '{"bands":"true"}', '{"intensity":[]}'])('rejects invalid stored input %s', (value) => {
+  it.each(['{"picker":{"recencyDepth":2}}', '{"autoExpressions":"true"}', '{"picker":[]}'])('rejects invalid stored input %s', (value) => {
     localStorage.setItem(key, value)
     const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    expect(createContext().store.document).toEqual(defaultExpressionPerformanceSettings)
+    expect(createContext().store.document).toEqual(defaultExpressionRealisationSettings)
     expect(warning).toHaveBeenCalledOnce()
   })
 
   it('drops an unknown stored top-level field without a warning', () => {
     localStorage.setItem(key, '{"extra":true}')
     const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    expect(createContext().store.document).toEqual(defaultExpressionPerformanceSettings)
+    expect(createContext().store.document).toEqual(defaultExpressionRealisationSettings)
     expect(warning).not.toHaveBeenCalled()
   })
 
@@ -79,8 +79,8 @@ describe('expression performance settings', () => {
     localStorage.setItem(key, JSON.stringify({ naturalBands: { headGain: 2 }, picker: { recencyTau: 3 } }))
     const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
     expect(createContext().store.document).toEqual({
-      ...defaultExpressionPerformanceSettings,
-      picker: { ...defaultExpressionPerformanceSettings.picker, recencyTau: 3 },
+      ...defaultExpressionRealisationSettings,
+      picker: { ...defaultExpressionRealisationSettings.picker, recencyTau: 3 },
     })
     expect(warning).toHaveBeenCalledExactlyOnceWith('[expression-performance] Invalid stored fields reset to defaults:', 'naturalBands')
   })
@@ -89,7 +89,7 @@ describe('expression performance settings', () => {
     localStorage.setItem(key, '{corrupt')
     const warning = vi.spyOn(console, 'warn')
     const { store } = createContext()
-    expect(store.document).toEqual(defaultExpressionPerformanceSettings)
+    expect(store.document).toEqual(defaultExpressionRealisationSettings)
     expect(warning).toHaveBeenCalledWith('[expression-performance] Stored settings are not an object; using defaults')
     console.warn('PASS corrupt storage recovered:', JSON.stringify(store.document))
   })
@@ -97,20 +97,20 @@ describe('expression performance settings', () => {
   const removedEnergyKeys = { energyAmplitude: 0.3, energyRate: 0.5, energySeconds: 2 }
   const withBands = (extra: Record<string, unknown>, rest: Record<string, unknown> = {}) => JSON.stringify({
     ...rest,
-    naturalBands: { ...defaultExpressionPerformanceSettings.naturalBands, ...extra },
+    naturalBands: { ...defaultExpressionRealisationSettings.naturalBands, ...extra },
   })
 
   it('drops the removed energy keys from a stored document and keeps every other field', () => {
-    const { energyAmplitude: _a, energyRate: _r, energySeconds: _s, ...kept } = { ...defaultExpressionPerformanceSettings.naturalBands, ...removedEnergyKeys }
-    localStorage.setItem(key, withBands({ ...removedEnergyKeys, headGain: 0.2 }, { bands: false, intensity: { ...defaultExpressionPerformanceSettings.intensity, clear: 0.7 }, mood: false }))
+    const { energyAmplitude: _a, energyRate: _r, energySeconds: _s, ...kept } = { ...defaultExpressionRealisationSettings.naturalBands, ...removedEnergyKeys }
+    localStorage.setItem(key, withBands({ ...removedEnergyKeys, headGain: 0.2 }, { autoExpressions: false, picker: { ...defaultExpressionRealisationSettings.picker, recencyDepth: 0.7 }, stateFeedback: true }))
     const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const { store } = createContext()
     expect(warning).not.toHaveBeenCalled()
     expect(store.document).toEqual({
-      ...defaultExpressionPerformanceSettings,
-      bands: false,
-      mood: false,
-      intensity: { ...defaultExpressionPerformanceSettings.intensity, clear: 0.7 },
+      ...defaultExpressionRealisationSettings,
+      autoExpressions: false,
+      stateFeedback: true,
+      picker: { ...defaultExpressionRealisationSettings.picker, recencyDepth: 0.7 },
       naturalBands: { ...kept, headGain: 0.2 },
     })
     expect(store.document.naturalBands).not.toHaveProperty('energySeconds')
@@ -121,7 +121,7 @@ describe('expression performance settings', () => {
     ['another unknown naturalBands key', withBands({ energyBogus: 1 }), true],
     ['another unknown key beside the removed keys', withBands({ ...removedEnergyKeys, energyBogus: 1 }), true],
     ['an unknown top-level key beside the removed keys', withBands(removedEnergyKeys, { extra: true }), false],
-    ['an invalid field beside the removed keys', withBands(removedEnergyKeys, { intensity: { clear: 2 } }), true],
+    ['an invalid field beside the removed keys', withBands(removedEnergyKeys, { picker: { recencyDepth: 2 } }), true],
     ['a non-object naturalBands', '{"naturalBands":5}', true],
     ['a null naturalBands', '{"naturalBands":null}', true],
     ['an array naturalBands', '{"naturalBands":[]}', true],
@@ -132,30 +132,30 @@ describe('expression performance settings', () => {
     localStorage.setItem(key, stored)
     const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const { store } = createContext()
-    expect(store.document).toEqual(defaultExpressionPerformanceSettings)
+    expect(store.document).toEqual(defaultExpressionRealisationSettings)
     expect(warning).toHaveBeenCalledTimes(fallsBack ? 1 : 0)
   })
 
   it('fills missing persisted fields from defaults', () => {
-    localStorage.setItem(key, '{"bands":false,"intensity":{"clear":0.7}}')
+    localStorage.setItem(key, '{"autoExpressions":false,"picker":{"recencyDepth":0.7}}')
     const { store } = createContext()
     expect(store.document).toEqual({
-      ...defaultExpressionPerformanceSettings,
-      bands: false,
-      intensity: { ...defaultExpressionPerformanceSettings.intensity, clear: 0.7 },
+      ...defaultExpressionRealisationSettings,
+      autoExpressions: false,
+      picker: { ...defaultExpressionRealisationSettings.picker, recencyDepth: 0.7 },
     })
   })
 
   it('deep-merges valid partial patches without losing siblings', async () => {
     const { store } = createContext()
-    expect(await store.update({ intensity: { clear: 0.7 }, naturalBands: { slight: { faceHold: 0.2 } } })).toEqual({ success: true })
-    expect(store.document.intensity).toEqual({ ...defaultExpressionPerformanceSettings.intensity, clear: 0.7 })
-    expect(store.document.naturalBands.slight).toEqual({ ...defaultExpressionPerformanceSettings.naturalBands.slight, faceHold: 0.2 })
+    expect(await store.update({ picker: { recencyDepth: 0.7 }, naturalBands: { slight: { faceHold: 0.2 } } })).toEqual({ success: true })
+    expect(store.document.picker).toEqual({ ...defaultExpressionRealisationSettings.picker, recencyDepth: 0.7 })
+    expect(store.document.naturalBands.slight).toEqual({ ...defaultExpressionRealisationSettings.naturalBands.slight, faceHold: 0.2 })
   })
 
-  it.each([{ intensity: { clear: 2 } }, { bands: 'true' }, { extra: true }, { intensity: null }, { intensity: [] }])('rejects invalid patches without changing state or storage: %j', async (patch) => {
+  it.each([{ picker: { recencyDepth: 2 } }, { autoExpressions: 'true' }, { extra: true }, { picker: null }, { picker: [] }])('rejects invalid patches without changing state or storage: %j', async (patch) => {
     const { store } = createContext()
-    await store.update({ bands: false })
+    await store.update({ autoExpressions: false })
     const before = structuredClone(store.document)
     const stored = localStorage.getItem(key)
     // @ts-expect-error Deliberately exercise malformed runtime input.
@@ -180,22 +180,22 @@ describe('expression performance settings', () => {
     leader.store.$subscribe(() => mutations++, { flush: 'sync' })
     const snapshot = new Promise<void>((resolve) => {
       const stop = follower.store.$subscribe(() => {
-        if (!follower.store.document.mood) {
+        if (follower.store.document.stateFeedback) {
           stop()
           resolve()
         }
       }, { flush: 'sync' })
     })
-    await follower.store.update({ mood: false })
+    await follower.store.update({ stateFeedback: true })
     await snapshot
     // A second leader-routed command is a transport barrier, not a timing wait.
-    const rejected = await follower.store.update({ intensity: { clear: 2 } })
+    const rejected = await follower.store.update({ picker: { recencyDepth: 2 } })
     expect(rejected.success).toBe(false)
     expect(leader.store.document).toEqual(follower.store.document)
     expect(mutations).toBe(1)
     expect(leaderAction).toHaveBeenCalledTimes(2)
     expect(persist.mock.calls.filter(([storageKey]) => storageKey === key)).toHaveLength(1)
     await follower.store.reset()
-    expect(leader.store.document).toEqual(defaultExpressionPerformanceSettings)
+    expect(leader.store.document).toEqual(defaultExpressionRealisationSettings)
   })
 })

@@ -24,8 +24,8 @@ import { createI18n } from 'vue-i18n'
 
 import { StagePerformanceConductor, useStagePerformanceConductor } from '../../composables/performance/use-stage-performance-conductor'
 import { Emotion, EMOTION_EmotionMotionName_value, EmotionThinkMotionName } from '../../constants/emotions'
+import { useCharacterBehaviorSettings } from '../../features/character-behavior/settings'
 import { useLive2DExpressionBackend } from '../../features/performance/expression-backend'
-import { useExpressionPerformanceSettings } from '../../features/performance/settings'
 import { avatarTouchSettleMs } from '../../libs/avatar-touch/notify'
 import { useLLM } from '../../stores/ai/chat-llm/llm'
 import { useLlmStreamingControlStore } from '../../stores/ai/chat-llm/streaming-control'
@@ -726,10 +726,14 @@ describe('stage emotion routing on Live2D', () => {
     const { scene } = await renderStage('natural')
 
     expect(scene.props.performanceSettings).toMatchObject({ bands: true })
+    expect(scene.props.cursorAttention).toBe(true)
+    expect(scene.props.chatAttention).toBe(true)
     const received = until(() => (scene.props.performanceSettings as { bands: boolean }).bands, bands => !bands)
-    await useExpressionPerformanceSettings().update({ bands: false })
+    await useCharacterBehaviorSettings().update({ emotion: { bands: false }, cursorAttention: false, chatAttention: false })
 
     expect(await received).toBe(false)
+    expect(scene.props.cursorAttention).toBe(false)
+    expect(scene.props.chatAttention).toBe(false)
   })
 
   it('applies the active card\'s mood multipliers to the Natural scene without changing the shared document', async () => {
@@ -756,7 +760,7 @@ describe('stage emotion routing on Live2D', () => {
       arousalTau: 2 * defaults.arousalTau,
       tensionTau: 2 * defaults.tensionTau,
     })
-    expect(useExpressionPerformanceSettings().document.moodDynamics).toEqual(defaults)
+    expect(useCharacterBehaviorSettings().document.emotion.moodDynamics).toEqual(defaults)
 
     // A lab pulse is decided under the same profile, and the scene keeps the scaled mood.
     const delivered = until(() => episodes.value.length, count => count === 1)

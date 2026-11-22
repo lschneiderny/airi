@@ -591,11 +591,11 @@ Do not send ambient context to the model in any other way: the situation block i
 
 ### Presence settings
 
-`useSituationSettings` in `features/situation/settings` stores one document at `settings/situation`: `unpromptedEnabled`, `chattiness` (0 to 1, default 0.5), `dontDisturb`, `shareForegroundWindow` (default true), `shareWindowTitles` (default true), `shareBrowserActivity` (default true), `quietApps`, `blockedApps`, `showUnpromptedCue`, and `speakDuringGames`.
+`useSituationSettings` in `features/situation/settings` stores sensor and privacy permissions at `settings/situation`: `shareForegroundWindow`, `shareWindowTitles`, `shareBrowserActivity`, `blockedApps`, and the chat-display switch `showUnpromptedCue`. Character behavior owns the five speaking rules, including chattiness and quiet apps.
 An invalid field falls back to its default. The leader routes `update` and `reset`.
 **Settings > Presence** edits it in the Electron app.
 
-Use these settings to control the mean rate of unprompted turns and which foreground details the model may see.
+Use Presence to control which details the model may see. Character behavior controls the rate and quiet rules of unprompted turns.
 Turning `shareForegroundWindow` off also stops unprompted speech, because the gate needs a fresh foreground sample. Replies to the user still work.
 Turning `shareBrowserActivity` off removes the web extension's page and video titles, links, subtitles, and video notifications from the situation. It does not affect foreground sharing or the gate.
 Do not read them in the Electron main process.

@@ -1,6 +1,5 @@
 import type { SettingsDocument } from '@proj-airi/stage-shared/composables'
 
-import { isElectronWindow } from '@proj-airi/stage-shared'
 import { EmotionBehaviorSettingsSchema } from '@proj-airi/stage-shared/expression-performance'
 import { withoutAppExtension } from '@proj-airi/stage-shared/situation'
 import { clamp, uniq } from 'es-toolkit'
@@ -16,7 +15,9 @@ export const speakingBehaviorEntries = {
   quietApps: optional(
     pipe(array(string()), transform(entries => uniq(entries.map(entry => entry.trim()).filter(Boolean)))),
     () => {
-      const platform = typeof window !== 'undefined' && isElectronWindow(window) ? window.platform : undefined
+      // Read the preload boundary directly: this schema also runs in Node, without Vite's build environment.
+      const host = typeof window === 'undefined' ? undefined : window
+      const platform = host && 'electron' in host && 'platform' in host && typeof host.platform === 'string' ? host.platform : undefined
       return quietAppDefaults.filter(pattern => withoutAppExtension(pattern, platform) !== pattern)
     },
   ),

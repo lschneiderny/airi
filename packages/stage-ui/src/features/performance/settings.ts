@@ -1,11 +1,13 @@
-import type { ExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
+import type { ExpressionRealisationSettings } from '@proj-airi/stage-shared/expression-performance'
 import type {} from 'pinia-plugin-synced'
 
 import { useSettingsDocument } from '@proj-airi/stage-shared/composables'
-import { expressionPerformanceSettingsEntries } from '@proj-airi/stage-shared/expression-performance'
+import { expressionRealisationSettingsEntries } from '@proj-airi/stage-shared/expression-performance'
 import { isPlainObject, mergeWith } from 'es-toolkit'
 import { defineStore } from 'pinia'
 import { toRaw } from 'vue'
+
+import { useCharacterBehaviorSettings } from '../character-behavior/settings'
 
 type SettingsPatch<T> = { [K in keyof T]?: T[K] extends object ? SettingsPatch<T[K]> : T[K] }
 
@@ -34,20 +36,27 @@ function dropRemovedExpressionPerformanceFields(stored: Record<string, unknown>)
 
 /** Replicates one settings document; only leader-routed commands persist changes. */
 export const useExpressionPerformanceSettings = defineStore('expression-performance-settings', () => {
-  const settings = useSettingsDocument('settings/expression-performance', expressionPerformanceSettingsEntries, {
+  const behavior = useCharacterBehaviorSettings()
+  const settings = useSettingsDocument('settings/expression-performance', expressionRealisationSettingsEntries, {
     label: 'expression-performance',
     upgrade: dropRemovedExpressionPerformanceFields,
   })
 
   /** Merges the patch at every depth; arrays replace instead of merging into records. */
-  async function update(patch: SettingsPatch<ExpressionPerformanceSettings>) {
+  async function update(patch: SettingsPatch<ExpressionRealisationSettings>) {
+    await behavior.initialize()
     const merged = mergeWith(structuredClone(toRaw(settings.document.value)), patch, (_target, source) => {
       return Array.isArray(source) ? source : undefined
     })
     return settings.update(merged)
   }
 
-  return { document: settings.document, update, reset: settings.reset }
+  async function reset() {
+    await behavior.initialize()
+    await settings.reset()
+  }
+
+  return { document: settings.document, update, reset }
 }, {
   synced: {
     state: true,

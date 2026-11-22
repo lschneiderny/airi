@@ -31,7 +31,7 @@ import { isMotionQaBridgeEnabled } from '@proj-airi/stage-shared/motion-scenario
 import { initialResolverMemory, resolvePerformanceState } from '@proj-airi/stage-shared/performance-state'
 import { TOUCH_TOPIC_KEY } from '@proj-airi/stage-shared/situation'
 import { useDesktopActivityStore } from '@proj-airi/stage-shared/stores/desktop-activity'
-import { createLive2D, Live2DScene, useLive2DNaturalSettings, useLive2dParams, useSettingsLive2d } from '@proj-airi/stage-ui-live2d'
+import { createLive2D, Live2DScene, useLive2dParams, useSettingsLive2d } from '@proj-airi/stage-ui-live2d'
 import { SpineScene } from '@proj-airi/stage-ui-spine'
 import { TachieScene } from '@proj-airi/stage-ui-tachie'
 import { animations } from '@proj-airi/stage-ui-three/assets/vrm'
@@ -53,6 +53,7 @@ import { useStagePerformanceConductor } from '../../composables/performance/use-
 import { useDataMaintenance } from '../../composables/use-data-maintenance'
 // import { useDuckDb } from '../../composables/use-duck-db'
 import { Emotion, EMOTION_EmotionMotionName_value, EMOTION_VRMExpressionName_value, EmotionThinkMotionName } from '../../constants/emotions'
+import { useCharacterBehaviorSettings } from '../../features/character-behavior/settings'
 import { useLive2DStageMotionMagic } from '../../features/motions/live2d/use-live2d-stage-motion-magic'
 import { useLive2DExpressionBackend, useMMDExpressionBackend } from '../../features/performance/expression-backend'
 import { selectStagePerformanceRenderer } from '../../features/performance/renderer'
@@ -647,10 +648,10 @@ function activeOccasions() {
 }
 
 // Pastimes and sleep props from the model's own expressions; only the Live2D expression store supports them.
-const live2dNaturalSettings = useLive2DNaturalSettings()
+const behaviorSettings = useCharacterBehaviorSettings()
 const idleProps = useIdleProps({
   backend: () => stageModelRenderer.value === 'live2d' ? live2dExpressionBackend : undefined,
-  enabled: () => performanceRenderer.value.capabilities.posture && live2dNaturalSettings.document.idleActivities && !props.paused,
+  enabled: () => performanceRenderer.value.capabilities.posture && behaviorSettings.document.idleActivities && !props.paused,
   report: entry => stageSelf.report(entry),
   answer: (seq, outcome) => live2dSceneRef.value?.answerIdleErrand(seq, outcome),
   occasions: activeOccasions,
@@ -1208,6 +1209,10 @@ defineExpose({
         :performance="performance"
         :natural-energy="performanceOverride?.energy ?? undefined"
         :performance-settings="performanceSettings"
+        :idle-activities="behaviorSettings.document.idleActivities"
+        :touch-reactions="behaviorSettings.document.touchReactions"
+        :cursor-attention="behaviorSettings.document.cursorAttention"
+        :chat-attention="behaviorSettings.document.chatAttention"
         min-w="50% <lg:full"
         h-full w-full flex-1
         :model-src="stageModelSelectedUrl"
@@ -1291,6 +1296,10 @@ defineExpose({
         :performance="performance"
         :natural-energy="performanceOverride?.energy ?? undefined"
         :performance-settings="performanceSettings"
+        :idle-activities="behaviorSettings.document.idleActivities"
+        :touch-reactions="behaviorSettings.document.touchReactions"
+        :cursor-attention="behaviorSettings.document.cursorAttention"
+        :chat-attention="behaviorSettings.document.chatAttention"
         :screen-placement="screenPlacement"
         :chat-target="chatTarget"
         :chat-activity="chatActivity"

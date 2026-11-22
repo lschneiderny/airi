@@ -8,11 +8,11 @@ import { useI18n } from 'vue-i18n'
 
 import { Section } from '../../../../../components/layouts'
 import { useNaturalPerformanceOverride } from '../../../../../stores/natural-performance-override'
-import { useExpressionPerformanceSettings } from '../../../../performance/settings'
+import { useCharacterBehaviorSettings } from '../../../../character-behavior/settings'
 
 const { t } = useI18n()
 const override = useNaturalPerformanceOverride()
-const performanceSettings = useExpressionPerformanceSettings()
+const behaviorSettings = useCharacterBehaviorSettings()
 const band = ref<Band>('clear')
 const bands: Band[] = ['slight', 'clear', 'strong']
 </script>
@@ -45,7 +45,7 @@ const bands: Band[] = ['slight', 'clear', 'strong']
         size="sm"
         variant="secondary"
         :label="t(`tamagotchi.settings.devtools.pages.live2d-natural-motion.emotions.names.${emotion}`)"
-        @click="override.pulseEmotion(emotion, performanceSettings.document.intensity[band])"
+        @click="override.pulseEmotion(emotion, behaviorSettings.document.emotion.intensity[band])"
       />
     </div>
   </Section>

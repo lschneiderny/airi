@@ -15,6 +15,8 @@ import { page, userEvent } from 'vitest/browser'
 import { nextTick, watch } from 'vue'
 import { createI18n } from 'vue-i18n'
 
+import { useCharacterBehaviorSettings } from '../../../../features/character-behavior/settings'
+
 import '@unocss/reset/tailwind.css'
 import '@proj-airi/ui/main.css'
 
@@ -476,13 +478,10 @@ describe('live2D model settings', () => {
 
   it('updates the performance settings store from the Emotion performance switches', async () => {
     Object.assign(window, { Live2DCubismCore: {} })
-    const [{ useExpressionPerformanceSettings }, { default: Live2DSettings }] = await Promise.all([
-      import('../../../../features/performance/settings'),
-      import('./live2d.vue'),
-    ])
+    const { default: Live2DSettings } = await import('./live2d.vue')
     await import('virtual:uno.css')
     const pinia = createPinia()
-    const performance = useExpressionPerformanceSettings(pinia)
+    const behavior = useCharacterBehaviorSettings(pinia)
     const screen = await render(Live2DSettings, {
       props: { palette: [], runtimeSnapshot: remoteSnapshot([]) },
       global: { plugins: [pinia, createTestI18n()] },
@@ -490,23 +489,23 @@ describe('live2D model settings', () => {
     await screen.getByText(t('settings.live2d.performance.title'), { exact: true }).click()
     const bands = screen.getByRole('switch', { name: t('settings.live2d.performance.bands.title') })
     await expect.element(bands).toBeChecked()
-    expect(performance.document.bands).toBe(true)
+    expect(behavior.document.emotion.bands).toBe(true)
     const bandsChanged = new Promise<boolean>((resolve, reject) => {
-      const stop = watch(() => performance.document.bands, (value) => {
+      const stop = watch(() => behavior.document.emotion.bands, (value) => {
         stop()
         resolve(value)
       }, { flush: 'sync' })
       AbortSignal.timeout(5000).addEventListener('abort', () => {
         stop()
-        reject(new Error('performance.document.bands did not change after the switch click'))
+        reject(new Error('behavior.document.emotion.bands did not change after the switch click'))
       })
     })
     await bands.click()
     expect(await bandsChanged).toBe(false)
-    expect(performance.document.bands).toBe(false)
+    expect(behavior.document.emotion.bands).toBe(false)
     await expect.element(bands).not.toBeChecked()
-    expect(JSON.parse(localStorage.getItem('settings/expression-performance') ?? '{}').bands).toBe(false)
-    expect(performance.document.mood).toBe(true)
+    expect(JSON.parse(localStorage.getItem('settings/character-behavior') ?? '{}').emotion.bands).toBe(false)
+    expect(behavior.document.emotion.mood).toBe(true)
   })
 
   it('switches the expression decider between picker and planner', async () => {
@@ -630,12 +629,12 @@ describe('live2D model settings', () => {
       await screen.getByRole('radio', { name: 'Natural', exact: true }).click()
       const cursor = screen.getByRole('switch', { name: t('settings.live2d.animation.natural-cursor-attention.title') })
       await expect.element(cursor).toBeEnabled()
-      if (natural.document.cursorAttention !== enabled)
+      if (useCharacterBehaviorSettings(pinia).document.cursorAttention !== enabled)
         await cursor.click()
       await nextTick()
-      expect(natural.document.cursorAttention).toBe(enabled)
+      expect(useCharacterBehaviorSettings(pinia).document.cursorAttention).toBe(enabled)
       expect(localStorage.getItem('settings/live2d/motion-driver')).toBe('natural')
-      expect(JSON.parse(localStorage.getItem('settings/live2d/natural')!).cursorAttention).toBe(enabled)
+      expect(JSON.parse(localStorage.getItem('settings/character-behavior')!).cursorAttention).toBe(enabled)
       expect(settings.live2dEyeTracking).toBe(false)
       await expect.element(screen.getByRole('switch', { name: t('settings.live2d.animation.force-idle-eye-animation.title') })).toBeDisabled()
       await expect.element(screen.getByRole('combobox')).toBeDisabled()
@@ -659,9 +658,10 @@ describe('live2D model settings', () => {
     await expect.element(switches[switches.length - 1]).toBeEnabled()
     settings.resetState()
     await natural.reset()
+    await useCharacterBehaviorSettings(pinia).reset()
     await nextTick()
     await expect.element(screen.getByRole('radio', { name: 'Natural', exact: true })).toBeChecked()
-    expect(natural.document.cursorAttention).toBe(true)
+    expect(useCharacterBehaviorSettings(pinia).document.cursorAttention).toBe(true)
     expect(settings.live2dEyeTracking).toBe(true)
   })
 
@@ -702,24 +702,24 @@ describe('live2D model settings', () => {
     await screen.getByRole('radio', { name: 'Natural', exact: true }).click()
     const awareness = screen.getByRole('switch', { name })
     await expect.element(awareness).toBeChecked()
-    expect(natural.document.screenAwareness).toBe(true)
+    expect(natural.document.screenLean).toBe(true)
     await awareness.click()
     await nextTick()
-    expect(natural.document.screenAwareness).toBe(false)
-    expect(JSON.parse(localStorage.getItem('settings/live2d/natural')!).screenAwareness).toBe(false)
+    expect(natural.document.screenLean).toBe(false)
+    expect(JSON.parse(localStorage.getItem('settings/live2d/natural')!).screenLean).toBe(false)
 
     settings.resetState()
     await natural.reset()
     await nextTick()
-    expect(natural.document.screenAwareness).toBe(true)
-    expect(JSON.parse(localStorage.getItem('settings/live2d/natural')!).screenAwareness).toBe(true)
+    expect(natural.document.screenLean).toBe(true)
+    expect(JSON.parse(localStorage.getItem('settings/live2d/natural')!).screenLean).toBe(true)
     await expect.element(screen.getByRole('radio', { name: 'Natural', exact: true })).toBeChecked()
     await expect.element(screen.getByRole('switch', { name })).toBeChecked()
   })
 
   it('hides eye tracking under Natural whether touch is on or off', async () => {
     Object.assign(window, { Live2DCubismCore: {} })
-    const [{ useLive2DNaturalSettings, useSettingsLive2d }, { default: Live2DSettings }] = await Promise.all([
+    const [{ useSettingsLive2d }, { default: Live2DSettings }] = await Promise.all([
       import('@proj-airi/stage-ui-live2d'),
       import('./live2d.vue'),
     ])
@@ -729,8 +729,8 @@ describe('live2D model settings', () => {
     settings.resetState()
     // The page opens on a stored Universal choice; the default driver is Natural.
     settings.live2dMotionDriver = 'universal'
-    const natural = useLive2DNaturalSettings(pinia)
-    await natural.update({ touch: true })
+    const behavior = useCharacterBehaviorSettings(pinia)
+    await behavior.update({ touchReactions: true })
     const screen = await render(Live2DSettings, {
       props: {
         palette: [],
@@ -755,7 +755,7 @@ describe('live2D model settings', () => {
     // Natural replaces eye tracking with cursor attention, so turning touch off must not bring it back.
     await screen.getByRole('switch', { name: t('settings.live2d.animation.natural-touch.title') }).click()
     await nextTick()
-    expect(natural.document.touch).toBe(false)
+    expect(behavior.document.touchReactions).toBe(false)
     await expect.element(eyeTracking).not.toBeInTheDocument()
     await screen.getByRole('radio', { name: 'MAGIC', exact: true }).click()
     await expect.element(eyeTracking).toBeInTheDocument()
@@ -929,13 +929,10 @@ describe('live2D model settings', () => {
 
   it('toggles held emotions in the synced performance document', async () => {
     Object.assign(window, { Live2DCubismCore: {} })
-    const [{ useExpressionPerformanceSettings }, { default: Live2DSettings }] = await Promise.all([
-      import('../../../../features/performance/settings'),
-      import('./live2d.vue'),
-    ])
+    const { default: Live2DSettings } = await import('./live2d.vue')
     await import('virtual:uno.css')
     const pinia = createPinia()
-    const performance = useExpressionPerformanceSettings(pinia)
+    const behavior = useCharacterBehaviorSettings(pinia)
     const screen = await render(Live2DSettings, {
       props: { palette: [], runtimeSnapshot: remoteSnapshot([]) },
       global: { plugins: [pinia, createTestI18n()] },
@@ -943,25 +940,25 @@ describe('live2D model settings', () => {
     await screen.getByText(t('settings.live2d.performance.title'), { exact: true }).click()
     const held = screen.getByRole('switch', { name: t('settings.live2d.performance.held-emotions.title') })
     await expect.element(held).toBeChecked()
-    expect(performance.document.heldEmotions).toBe(true)
+    expect(behavior.document.emotion.heldEmotions).toBe(true)
     const heldChanged = new Promise<boolean>((resolve, reject) => {
-      const stop = watch(() => performance.document.heldEmotions, (value) => {
+      const stop = watch(() => behavior.document.emotion.heldEmotions, (value) => {
         stop()
         resolve(value)
       }, { flush: 'sync' })
       AbortSignal.timeout(5000).addEventListener('abort', () => {
         stop()
-        reject(new Error('performance.document.heldEmotions did not change after the switch click'))
+        reject(new Error('behavior.document.emotion.heldEmotions did not change after the switch click'))
       })
     })
     await held.click()
     expect(await heldChanged).toBe(false)
     await expect.element(held).not.toBeChecked()
-    expect(JSON.parse(localStorage.getItem('settings/expression-performance') ?? '{}').heldEmotions).toBe(false)
-    expect(performance.document.mood).toBe(true)
+    expect(JSON.parse(localStorage.getItem('settings/character-behavior') ?? '{}').emotion.heldEmotions).toBe(false)
+    expect(behavior.document.emotion.mood).toBe(true)
     await held.click()
     await expect.element(held).toBeChecked()
-    expect(performance.document.heldEmotions).toBe(true)
+    expect(behavior.document.emotion.heldEmotions).toBe(true)
   })
 
   it.each([
