@@ -9,10 +9,12 @@ import type { Ref } from 'vue'
 
 import { errorMessageFrom } from '@moeru/std'
 import { isCustomProvidersDisabled } from '@proj-airi/stage-shared'
+import { useExpressionStore } from '@proj-airi/stage-ui-live2d/stores/expression-store'
+import { useMMDExpressionStore } from '@proj-airi/stage-ui-mmd/stores'
 import { useAnalytics } from '@proj-airi/stage-ui/composables'
 import { useSettingsSearchReveal } from '@proj-airi/stage-ui/composables/use-settings-search'
 import { DEFAULT_ARTISTRY_WIDGET_INSTRUCTION } from '@proj-airi/stage-ui/constants/prompts/artistry-instruction'
-import { applyAiriCardEditorModules, getAiriCardEditorModuleSettings, safeParseAiriCardDraft } from '@proj-airi/stage-ui/services/airi-card-editor'
+import { applyAiriCardEditorModules, getAiriCardEditorModuleSettings, getAiriCardMappingEditor, safeParseAiriCardDraft, setAiriCardMappingWeight } from '@proj-airi/stage-ui/services/airi-card-editor'
 import { resolveModuleSelection } from '@proj-airi/stage-ui/services/airi-card-modules'
 import { characterProfileOf } from '@proj-airi/stage-ui/stores/character-state'
 import { useDisplayModelsStore } from '@proj-airi/stage-ui/stores/display-models'
@@ -114,6 +116,20 @@ const temperatureInput = computed<number | undefined>({
   },
 })
 const selectedPerformance = ref<PerformanceProfile>()
+const live2dExpressions = useExpressionStore()
+const mmdExpressions = useMMDExpressionStore()
+const mappingEditor = computed(() => {
+  const modelId = selectedDisplayModelId.value
+  const backend = live2dExpressions.modelId === modelId ? live2dExpressions : mmdExpressions
+  return getAiriCardMappingEditor(modelId, backend)
+})
+
+function setMappingWeight(entryId: string, weight: number) {
+  const editor = mappingEditor.value
+  if (editor.loaded)
+    selectedPerformance.value = setAiriCardMappingWeight(selectedPerformance.value, editor.modelId, entryId, weight)
+}
+
 const performanceFields = [
   { key: 'expressiveness', min: 0.5, max: 1.5 },
   { key: 'moodGainScale', min: 0, max: 2 },
@@ -1052,6 +1068,27 @@ function handleBack() {
                   <p :class="['text-xs text-neutral-500 dark:text-neutral-400']">
                     {{ t('settings.pages.card.performance.mapping_help') }}
                   </p>
+                  <Alert v-if="!mappingEditor.loaded" tone="info">
+                    {{ t('settings.pages.card.performance.mapping_not_loaded') }}
+                  </Alert>
+                  <div v-else :class="['flex flex-col gap-5']">
+                    <h4 :class="['text-sm font-medium']">
+                      {{ displayModels.find(model => model.id === mappingEditor.modelId)?.name ?? mappingEditor.modelId }}
+                    </h4>
+                    <Alert v-if="mappingEditor.entries.length === 0" tone="info">
+                      {{ t('settings.pages.card.performance.mapping_empty') }}
+                    </Alert>
+                    <FieldRange
+                      v-for="entry in mappingEditor.entries"
+                      :key="entry.id"
+                      :model-value="selectedPerformance?.mappingWeights?.[mappingEditor.modelId]?.[entry.id] ?? 1"
+                      :min="0"
+                      :max="5"
+                      :step="0.1"
+                      :label="entry.label"
+                      @update:model-value="setMappingWeight(entry.id, $event)"
+                    />
+                  </div>
                 </div>
               </section>
 

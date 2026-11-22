@@ -22,6 +22,15 @@ Keep application-specific pages in the owning application. Put reusable business
 
 Put primitive UI components in `@proj-airi/ui`. Put shared layouts in `@proj-airi/stage-layouts`.
 
+## Character expression mapping weights
+
+Open Settings > Character Cards, edit a card, and choose Modules > Performance.
+The editor lists mapped expressions from that character's model only while it is
+loaded in this window. Load the character's model first if the editor shows the
+empty state. Each slider ranges from 0 to 5: 0 disables the mapping and 1 removes
+the override. Save the card to persist the weights across model switches and
+reloads. The editor never changes the model's expression catalog.
+
 ## Provider settings
 
 The active chat and vision provider routes live under `/settings/providers`. They use `ProviderGenerationSettings` from stage-ui to render protocol and native search options from the provider catalog. The V2 editor is a separate consumer and does not replace these routes.
