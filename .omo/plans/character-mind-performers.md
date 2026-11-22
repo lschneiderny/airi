@@ -474,3 +474,16 @@ id (`avatarModels[].displayModelId`), not the card's avatar reference id
   The store observes capability getters synchronously, preserving beats and
   the latest idle view. Scene attachment begins carrying the declaration in
   this item so the new default cannot disable Natural before a3 lands.
+- **a3:** Rechecked section 2: a2 now prevents undeclared mind decisions; the
+  conductor still had every listed driver branch and is now declaration-only.
+  The Live2D emotion motion-group handoff moves to Stage in a3, because
+  removing the conductor option otherwise breaks the existing upstream route
+  until a4. a4 still restores context expressions and classic clips. Voice
+  cues carry the complete intent through MindStage so refusal causes survive.
+  The conductor matrix uses a full mind declaration and each scene declaration
+  to exercise the second-stage refusal contract. Its combo fixture now names
+  its real members: slots alone never made it a usable combo. CM5b beats,
+  CM6b attends and chat reads, and c6 catalog publication remain intact.
+  The T1/T2 Live2D scenario sink is also a conductor consumer, so it now
+  declares the Live2D set. Inspector composition stays in Stage: importing
+  that browser store from the conductor would pull chat assets into Node QA.

@@ -6,6 +6,7 @@ import type { SituationState, TouchVoiceView } from '@proj-airi/stage-shared/sit
 import type { NaturalCaptureResult } from '@proj-airi/stage-ui-live2d/stores'
 import type { Mock } from 'vitest'
 
+import type { PerformerRefusal } from '../../features/performance/runtime-state'
 import type { SituationGateEvaluation } from '../../stores/devtools/situation-observability'
 import type { MotionQaFrames } from './use-motion-qa-bridge'
 
@@ -125,6 +126,7 @@ describe('useMotionQaBridge', () => {
   /** Epoch milliseconds of the mind's clock; a test moves it by hand. */
   let mindNowMs: number
   let idle: ReturnType<typeof createEventHook<IdleBehaviourReport>>
+  let refused: ReturnType<typeof createEventHook<PerformerRefusal>>
   let evaluateVoice: Mock<() => Promise<SituationGateEvaluation>>
 
   /** Stands in for the capture that Model.vue runs: scenario events stamped into it land in the log. */
@@ -143,6 +145,7 @@ describe('useMotionQaBridge', () => {
     // Seed 17 speaks the protest of the first burst of three pokes.
     mind = naturalMind({ seed: 17, clock: () => mindNowMs })
     idle = createEventHook<IdleBehaviourReport>()
+    refused = createEventHook<PerformerRefusal>()
     evaluateVoice = vi.fn(async (): Promise<SituationGateEvaluation> => ({ status: 'skipped', reason: 'gate-not-running' }))
     voicing.value = false
     mode.value = 'idle'
@@ -162,6 +165,7 @@ describe('useMotionQaBridge', () => {
       })
       watch(() => useNaturalPerformanceOverride().overrideMode, mode => log.push(`mode:${mode}`), { flush: 'sync' })
       useMotionQaBridge({
+        onRefusal: listener => refused.on(listener).off,
         chat,
         sendChat: async (text) => { log.push(`send:${text}`) },
         voicing: () => voicing.value,
@@ -315,6 +319,12 @@ describe('useMotionQaBridge', () => {
     ])
     // Neither the poke's point nor the situation's event and session ids leave the window.
     expect(JSON.stringify(reply)).not.toMatch(/touch-event|session-1|-0\.4/)
+  })
+
+  it('records a performer refusal without request content', async () => {
+    await refused.trigger({ cause: 7, kind: 'gesture', reason: 'not-declared-by-stage' })
+    const reply = await dispatch({ name: 'events', input: {} }) as { result: { events: { kind: string, payload: Record<string, unknown> }[] } }
+    expect(reply.result.events.map(event => ({ kind: event.kind, ...event.payload }))).toEqual([{ kind: 'mind', stimulus: 'performer-refusal', refusals: JSON.stringify([{ cause: 7, kind: 'gesture', reason: 'not-declared-by-stage' }]) }])
   })
 
   it('records a presence step with its away state and wake cause, and each idle report', async () => {

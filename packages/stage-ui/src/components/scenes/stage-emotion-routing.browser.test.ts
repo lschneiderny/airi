@@ -1,3 +1,4 @@
+import type { MindStep } from '@proj-airi/character-mind'
 import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
 import type { GenerationProvider } from '@proj-airi/provider-inference'
 import type { CharacterReading } from '@proj-airi/stage-shared/character-state'
@@ -12,6 +13,7 @@ import { DEFAULT_CHARACTER_PROFILE, faceBaselineOf, initialCharacterState, NEUTR
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { useDesktopActivityStore } from '@proj-airi/stage-shared/stores/desktop-activity'
 import { MMDScene } from '@proj-airi/stage-ui-mmd'
+import { MMD_NATURAL_CAPABILITIES } from '@proj-airi/stage-ui-mmd/composables/mmd/natural/adapter'
 import { useMMDExpressionStore, useMMDPerformanceSettings } from '@proj-airi/stage-ui-mmd/stores'
 import { createPinia, disposePinia, getActivePinia, setActivePinia } from 'pinia'
 import { afterEach, beforeAll, describe, expect, it, onTestFinished, vi } from 'vitest'
@@ -27,6 +29,7 @@ import { avatarTouchSettleMs } from '../../libs/avatar-touch/notify'
 import { useLLM } from '../../stores/ai/chat-llm/llm'
 import { useLlmStreamingControlStore } from '../../stores/ai/chat-llm/streaming-control'
 import { useLlmToolsStore } from '../../stores/ai/chat-llm/tools'
+import { useCharacterMindStore } from '../../stores/character-mind'
 import { characterStateContext, useCharacterStateStore } from '../../stores/character-state'
 import { useAvatarTouchStore } from '../../stores/character/avatar-touch'
 import { useChatStore } from '../../stores/chat'
@@ -276,7 +279,7 @@ describe('stage emotion routing on Live2D', () => {
     override.pulseEmotion('happy', 0.7)
 
     await delivered
-    expect(emotion).toHaveBeenCalledWith(Emotion.Happy, 0.7, 'devtools', undefined, { suppressMotionGroup: undefined })
+    expect(emotion).toHaveBeenCalledWith(Emotion.Happy, 0.7, 'devtools', undefined)
     expect(episodes.value).toEqual([{
       id: expect.any(String),
       emotion: Emotion.Happy,
@@ -302,23 +305,37 @@ describe('stage emotion routing on Live2D', () => {
     expect(holds.value).toHaveLength(1)
   })
 
-  it.each(['universal', 'magic'] as const)('requests only the ACT motion group under %s, with no emotion motion group', async (driver) => {
-    // The spy wraps the real method, and a reactive counter lets `until` observe each call.
-    const original = StagePerformanceConductor.prototype.emotion
-    const calls = shallowRef(0)
-    const emotion = vi.spyOn(StagePerformanceConductor.prototype, 'emotion').mockImplementation(function (this: StagePerformanceConductor, ...args: Parameters<StagePerformanceConductor['emotion']>) {
-      calls.value++
-      return original.apply(this, args)
-    })
+  it.each(['universal', 'magic'] as const)('requests only the ACT motion group under %s, without entering the conductor', async (driver) => {
+    const emotion = vi.spyOn(StagePerformanceConductor.prototype, 'emotion')
     const { params, motionGroups } = await renderStage(driver)
-
-    const delivered = until(() => calls.value, count => count === 1)
+    const delivered = until(() => motionGroups.value.length, count => count === 1)
     await useLlmStreamingControlStore().dispatchWith('<|ACT {"emotion":{"name":"happy","intensity":0.7},"motion":"Nod"}|>')
     await delivered
-
-    expect(emotion).toHaveBeenCalledWith(Emotion.Happy, 0.7, 'act', undefined, { suppressMotionGroup: true })
+    expect(emotion).not.toHaveBeenCalled()
     expect(params.currentMotion).toEqual({ group: 'Nod' })
     expect(motionGroups.value).toEqual(['Nod'])
+  })
+
+  it('reports a Live2D shrug refusal and plays a declared nod', async () => {
+    const { gestures } = await renderStage('natural')
+    const mind = useCharacterMindStore().mind
+    const answered = new Promise<MindStep>((resolve) => {
+      const stop = mind.onStep((step) => {
+        if (step.stimuli.some(stimulus => stimulus.kind === 'cue-gesture' && stimulus.gesture === 'shrug')) {
+          stop()
+          resolve(step)
+        }
+      })
+    })
+    await useLlmStreamingControlStore().dispatchWith('<|ACT {"gesture":"shrug"}|>')
+    const step = await answered
+    expect(step.intents).toEqual([])
+    expect(step.refusals).toEqual([{ cause: step.state.seq, kind: 'gesture', reason: 'undeclared' }])
+    expect(gestures.value).toEqual([])
+    const played = until(() => gestures.value.length, count => count === 1)
+    await useLlmStreamingControlStore().dispatchWith('<|ACT {"gesture":{"kind":"nod","count":1}}|>')
+    await played
+    expect(gestures.value).toEqual([['nod', 1]])
   })
 
   it('plays a gesture-only ACT cue on the Natural scene', async () => {
@@ -741,8 +758,7 @@ describe('per-signal character profiles at the Natural consumer', () => {
           renderer: () => 'live2d',
           expressionBackend: () => useLive2DExpressionBackend(),
           scene: () => ({ setEmotion: episode => pending.push(episode), applySlots: () => {}, applyHolds: () => {}, onSpeech: () => {}, setMuted: () => {} }),
-          driver: () => 'natural',
-          playMotion: () => {},
+          capabilities: () => MMD_NATURAL_CAPABILITIES,
           mind: naturalMind({ seed: 7 }),
           mood: () => motion.moodState,
           profile: turnId => turnId === 'turn-a' ? { moodGainScale: 0, moodDecayScale: 2 } : undefined,
@@ -807,8 +823,7 @@ describe('resting face from the replicated character reading', () => {
           renderer: () => 'live2d',
           expressionBackend: () => useLive2DExpressionBackend(),
           scene: () => ({ setEmotion: () => {}, applySlots: () => {}, applyHolds: () => {}, onSpeech: () => {}, setMuted: () => {}, setFaceBaseline: baseline => motion.setFaceBaseline(baseline) }),
-          driver: () => 'natural',
-          playMotion: () => {},
+          capabilities: () => MMD_NATURAL_CAPABILITIES,
           mind: naturalMind({ seed: 7 }),
           mood: () => motion.moodState,
           characterReading: () => reading,

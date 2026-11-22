@@ -4,6 +4,7 @@ import type { ExpressionToolPort } from './expression'
 
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { useExpressionStore } from '@proj-airi/stage-ui-live2d/stores/expression-store'
+import { MMD_NATURAL_CAPABILITIES } from '@proj-airi/stage-ui-mmd/composables/mmd/natural/adapter'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -42,8 +43,7 @@ async function mount(curate = true) {
       onSpeech: (event, turnId, now) => store.onSpeech(event, turnId, now),
       setMuted: muted => store.setMuted(muted),
     }),
-    driver: () => 'natural',
-    playMotion: () => {},
+    capabilities: () => MMD_NATURAL_CAPABILITIES,
     settings: () => defaultExpressionPerformanceSettings,
     catalog: () => store.catalog,
     seed: 1,

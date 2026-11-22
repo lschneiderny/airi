@@ -2,6 +2,15 @@
 
 Shared core for stage
 
+## Performer dispatch
+
+The scene exposes its capabilities. `StagePerformanceConductor` reads that
+declaration, never a motion driver, and checks mind intents through `permits`
+before dispatch. `onRefusal` reports `not-declared-by-stage` with the intended
+kind and cause; the inspector and motion QA record it. The mind follows the
+newest attached stage, while every conductor checks its own declaration.
+Voice cues carry their full intent so refusals retain the cause.
+
 ## Character mapping weight editor
 
 `services/airi-card-editor` reads and writes card-owned performance weights.
@@ -625,7 +634,7 @@ The scene performs only what `reactToTouch` hands it: a poke starts Natural's po
 
 ### Stage chat
 
-`Stage.vue` sends the mind each typed send (`chatComposerSentEvent`, with its word count, never its text) and each time the host's chat turns visible (`chatTarget.visible`; the first observation only records it) through `conductor.chat(cue, words)`. The conductor steps the mind under every driver and, only under Natural, hands the mind's `chat-read` intent to the scene's `chatRead` and its `attend` intent to the scene's `attend`. The scene's chat input (`chatTarget`, `chatActivity`) carries only the target and typing for Natural; `chatActivity.sentSeq` stays for the MMD body director until it acts on intents. The motion QA bridge sends scripted `chat-sent` and `chat-unfold` events through the same call.
+`Stage.vue` sends the mind each typed send (`chatComposerSentEvent`, with its word count, never its text) and each time the host's chat turns visible (`chatTarget.visible`; the first observation only records it) through `conductor.chat(cue, words)`. The conductor steps the mind under every driver and, only under Natural, hands the mind's `chat-read` intent to the scene's `chatRead` and its `attend` intent to the scene's `attend`. The scene's chat input (`chatTarget`, `chatActivity`) carries only the target and typing for Natural; the MMD director reads the mind's attend intents. The motion QA bridge sends scripted `chat-sent` and `chat-unfold` events through the same call.
 
 The conductor reaches the leader's situation store through its `VoicePort` (`composables/performance/mind-voice.ts`). `conductor.desktop(events)` dispatches the mind's `observe-wake` and `observe-return` intents, in intent order and under every driver, to `voice().observeReturn`, which folds a `WakeObservation` or a `ReturnObservation` into the situation in the leader and does nothing in a follower window.
 
@@ -651,11 +660,11 @@ The mind hears music only while the window leads. At promotion, where beat sync 
 The pacing of these lines (the 45 s refractory, the retry wait, the burst roll) is the mind's fast state. It is not saved, so it starts over at every launch. `useCharacterMindStore` feeds the mind's voice decisions to the devtools reaction inspector of its window. Two stages that render in one window share its one mind; only their Natural idle draws stay separate.
 
 A reaction turn's own cues dose no mood, because the touch already did. When a turn's trigger has the `touch` topic key, `Stage.vue` calls `markMoodless(turnId)` on the conductor, and every episode of that turn carries a mood gain of 0.
-Under a Natural driver, `conductor.cursor(reports)` answers the scene's `cursorReports`: it steps the mind once per report and sends each `cursor-episode` intent back to its own scene's `cursorEpisode`, because the cursor's geometry belongs to the stage that saw it. Under another driver it drops the reports and the mind draws nothing.
-`conductor.interaction(source)` tells the mind of a drag release (`Stage.vue` calls it when its `interactionSeq` prop changes). `conductor.chat(cue, words)` tells it of a sent message or an unfolded chat. Both step the mind under every driver and send its `attend` to the scene only under Natural. The intent names its target and `attendCause`; the MMD inbox turns these into clip-ending counters and a chat approach or cursor window. Classic receives no attends. A scene without `attend`, such as Live2D, drops it.
-`conductor.desktop(events)` dispatches the mind's body `away` answer to `scene.setAway` only under Natural. `syncScene()` seeds an attached scene or a driver returning to Natural from the mind's current presence. The composable watches both scene and driver; the existing idle-driver synchronization shares this lifecycle.
+Under a Natural driver, `conductor.cursor(reports)` answers the scene's `cursorReports`: it steps the mind once per report and sends each `cursor-episode` intent back to its own scene's `cursorEpisode`, because the cursor's geometry belongs to the stage that saw it. The mind draws no episode without gaze; a stage whose declaration differs reports its refused episode.
+`conductor.interaction(source)` tells the mind of a drag release (`Stage.vue` calls it when its `interactionSeq` prop changes). `conductor.chat(cue, words)` tells it of a sent message or an unfolded chat. Both step the mind under every driver and send its `attend` to the scene only under Natural. The intent names its target and `attendCause`; the MMD inbox turns these into clip-ending counters and a chat approach or cursor window. Classic receives no attends. Live2D declares no body, so it reports any attend decided for another stage.
+`conductor.desktop(events)` dispatches the mind's body `away` answer to `scene.setAway` only under Natural. `syncScene()` seeds an attached scene or a driver returning to Natural from the mind's current presence. The composable watches both scene and declaration; the existing idle-driver synchronization shares this lifecycle.
 The conductor's `gesture(kind, count, source, turnId?)` sends an ACT or devtools request to the mind as a `cue-gesture` stimulus under every driver. The mind answers with one `posture` `gesture` intent of its kind and count, and the conductor hands it to the scene only under the Natural driver of Live2D and MMD. `Stage.vue` names an ACT reply with `turnId` and sends its gesture before its action label, so MMD can record a gesture superseded by a clip. Natural starts or queues the cue on its own frame clock; the mind passes no timestamp to it.
-The conductor's `action(label, gesture?)` forwards an ACT `action` label to the scene under every driver. `Stage.vue` routes an action label, with its cue gesture, only while the MMD renderer is active, and the MMD scene resolves the label against the clips the user exposed. A Live2D scene never receives one.
+The conductor's `action(label, gesture?)` forwards an ACT `action` label only when body is declared. `Stage.vue` routes an action label, with its cue gesture, only while the MMD renderer is active, and the MMD scene resolves the label against the clips the user exposed. A Live2D scene never receives one.
 The [nonverbal channels ADR](../../docs/ai/adr/2026-10-31-nonverbal-channels.md) records the design and its consequences.
 
 ### Stage action tool

@@ -25,8 +25,7 @@ describe('stagePerformanceConductor in the qa-tools node project', () => {
     mind.receive({ kind: 'performer', capabilities: MMD_NATURAL_CAPABILITIES })
     const conductor = new StagePerformanceConductor({
       scene: () => scene,
-      driver: () => 'natural',
-      playMotion: () => {},
+      capabilities: () => MMD_NATURAL_CAPABILITIES,
       settings: () => defaultExpressionPerformanceSettings,
       catalog: () => [],
       mind,

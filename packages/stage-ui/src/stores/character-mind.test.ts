@@ -331,7 +331,7 @@ describe('character mind store', () => {
     await outcome
 
     expect(port.speak).toHaveBeenCalledOnce()
-    expect(idleCue.mock.calls).toEqual([['about-to-speak'], ['let-go']])
+    expect(idleCue.mock.calls.map(([intent]) => [intent.cue])).toEqual([['about-to-speak'], ['let-go']])
   })
 
   it('drops the cues with no stage attached', async () => {
@@ -364,7 +364,7 @@ describe('character mind store', () => {
     await outcome
 
     expect(older).not.toHaveBeenCalled()
-    expect(newer.mock.calls).toEqual([['about-to-speak'], ['let-go']])
+    expect(newer.mock.calls.map(([intent]) => [intent.cue])).toEqual([['about-to-speak'], ['let-go']])
   })
 
   it('sends every idle intent to every attached stage, and takes idle reports only from the newest', () => {

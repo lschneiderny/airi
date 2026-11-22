@@ -15,11 +15,11 @@ import { useCharacterStateStore } from './character-state'
 import { useSituationObservabilityStore } from './devtools/situation-observability'
 import { useSituationStore } from './situation'
 
-/** What a mounted stage lends the mind: the body around a line and its idle acts. The conductor gates both by driver. */
+/** What a mounted stage lends the mind: the body around a line and its idle acts. The conductor checks each complete intent against its own declaration. */
 export interface MindStage {
   capabilities: () => PerformerCapabilities
-  idleCue: (cue: Extract<MindIntent, { kind: 'cue' }>['cue']) => void
-  /** Performs one idle intent; a stage under another driver drops it. */
+  idleCue: (cue: Extract<MindIntent, { kind: 'cue' }>) => void
+  /** Performs one idle intent; an undeclared stage reports a refusal. */
   idle: (intent: MindIdleIntent) => void
   /** Hands one detected beat to the stage's beat clock, which a groove plays on; a stage under another driver drops it. */
   beat: (intervalSeconds: number) => void

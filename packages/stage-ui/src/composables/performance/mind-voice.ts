@@ -41,11 +41,11 @@ export interface VoicePort {
  * outcome to the mind as a `voice-outcome` stimulus with the same `turnId`.
  */
 export class MindVoice {
-  /** `cue` performs the body around a reach-out or widget line; the conductor gates it by driver. */
+  /** `cue` performs the body around a reach-out or widget line; the conductor checks its complete intent against the declaration. */
   constructor(
     private readonly mind: CharacterMind,
     private readonly voice: () => VoicePort | undefined,
-    private readonly cue: (cue: Extract<MindIntent, { kind: 'cue' }>['cue']) => void,
+    private readonly cue: (cue: Extract<MindIntent, { kind: 'cue' }>) => void,
   ) {}
 
   /** Answers the stimuli in one step, publishes the voice state when the step changed it, and returns the intents. */
@@ -64,7 +64,7 @@ export class MindVoice {
   answer(stimulus: VoiceStimulus): void {
     for (const intent of this.receive(stimulus)) {
       if (intent.kind === 'cue')
-        this.cue(intent.cue)
+        this.cue(intent)
       else if (intent.kind === 'speak')
         void this.speak(intent)
       else if (intent.kind === 'cancel')
@@ -85,7 +85,7 @@ export class MindVoice {
     }
     for (const answer of this.receive({ kind: 'voice-outcome', turnId: intent.turnId, outcome })) {
       if (answer.kind === 'cue')
-        this.cue(answer.cue)
+        this.cue(answer)
     }
   }
 }

@@ -32,7 +32,6 @@ import { initialResolverMemory, resolvePerformanceState } from '@proj-airi/stage
 import { TOUCH_TOPIC_KEY } from '@proj-airi/stage-shared/situation'
 import { useDesktopActivityStore } from '@proj-airi/stage-shared/stores/desktop-activity'
 import { createLive2D, Live2DScene, useLive2DNaturalSettings, useLive2dParams, useSettingsLive2d } from '@proj-airi/stage-ui-live2d'
-import { useMMDPerformanceSettings } from '@proj-airi/stage-ui-mmd/stores'
 import { SpineScene } from '@proj-airi/stage-ui-spine'
 import { TachieScene } from '@proj-airi/stage-ui-tachie'
 import { animations } from '@proj-airi/stage-ui-three/assets/vrm'
@@ -53,7 +52,7 @@ import { useIdleProps } from '../../composables/performance/use-idle-props'
 import { useStagePerformanceConductor } from '../../composables/performance/use-stage-performance-conductor'
 import { useDataMaintenance } from '../../composables/use-data-maintenance'
 // import { useDuckDb } from '../../composables/use-duck-db'
-import { Emotion, EMOTION_VRMExpressionName_value, EmotionThinkMotionName } from '../../constants/emotions'
+import { Emotion, EMOTION_EmotionMotionName_value, EMOTION_VRMExpressionName_value, EmotionThinkMotionName } from '../../constants/emotions'
 import { useLive2DStageMotionMagic } from '../../features/motions/live2d/use-live2d-stage-motion-magic'
 import { useLive2DExpressionBackend, useMMDExpressionBackend } from '../../features/performance/expression-backend'
 import { selectStagePerformanceRenderer } from '../../features/performance/renderer'
@@ -134,7 +133,6 @@ const live2dSceneRef = ref<InstanceType<typeof Live2DScene>>()
 const spineSceneRef = ref<InstanceType<typeof SpineScene>>()
 const tachieSceneRef = ref<InstanceType<typeof TachieScene>>()
 const mmdSceneRef = ref<InstanceType<typeof MMDScene>>()
-const { motionDriver: mmdMotionDriver } = storeToRefs(useMMDPerformanceSettings())
 
 const settingsStore = useSettings()
 const {
@@ -326,11 +324,11 @@ const live2dExpressionBackend = useLive2DExpressionBackend()
 const mmdExpressionBackend = useMMDExpressionBackend()
 const performanceRenderer = computed(() => selectStagePerformanceRenderer(stageModelRenderer.value, {
   scene: live2dSceneRef.value,
-  driver: live2dMotionDriver.value === 'natural' ? 'natural' : 'basic',
+  capabilities: live2dSceneRef.value?.capabilities ?? NO_CAPABILITIES,
   expressionBackend: live2dExpressionBackend,
 }, {
   scene: mmdSceneRef.value,
-  driver: mmdMotionDriver.value === 'natural' ? 'natural' : 'basic',
+  capabilities: mmdSceneRef.value?.capabilities ?? NO_CAPABILITIES,
   expressionBackend: mmdExpressionBackend,
 }))
 const situationStore = useSituationStore()
@@ -348,12 +346,11 @@ let mindStage: MindStageHandle | undefined
 const { conductor: performanceConductor, settings: performanceSettings } = useStagePerformanceConductor({
   renderer: () => stageModelRenderer.value,
   scene: () => performanceRenderer.value.scene,
-  driver: () => performanceRenderer.value.driver,
+  capabilities: () => performanceRenderer.value.capabilities,
   expressionBackend: () => performanceRenderer.value.expressionBackend,
   bodyPort: () => stageModelRenderer.value === 'mmd' ? mmdSceneRef.value?.bodyPort ?? undefined : undefined,
   actionPort: () => stageModelRenderer.value === 'mmd' ? mmdSceneRef.value?.actionPort : undefined,
   listActions: () => stageModelRenderer.value === 'mmd' ? mmdSceneRef.value?.listActions() ?? [] : [],
-  playMotion: (group) => { currentMotion.value = { group } },
   mood: () => stageModelRenderer.value === 'mmd' ? mmdSceneRef.value?.getMood() ?? null : live2dSceneRef.value?.getMood() ?? null,
   profile: performanceProfileOf,
   characterReading,
@@ -365,9 +362,12 @@ const { conductor: performanceConductor, settings: performanceSettings } = useSt
   // The conductor hands the scene's idle reports to the mind under Natural; only the newest stage's reach it.
   idleReports: reports => mindStage?.report(reports),
 })
+const observability = useSituationObservabilityStore()
+const stopPerformerRefusals = performanceConductor.onRefusal(refusal => observability.recordPerformerRefusal(refusal))
+onUnmounted(stopPerformerRefusals)
 onMounted(() => {
   mindStage = characterMindStore.attachStage({
-    capabilities: () => (stageModelRenderer.value === 'live2d' ? live2dSceneRef.value?.capabilities : stageModelRenderer.value === 'mmd' ? mmdSceneRef.value?.capabilities : undefined) ?? NO_CAPABILITIES,
+    capabilities: () => performanceRenderer.value.capabilities,
     idleCue: cue => performanceConductor.idleCue(cue),
     idle: intent => performanceConductor.idle(intent),
     beat: intervalSeconds => performanceConductor.beat(intervalSeconds),
@@ -413,10 +413,15 @@ const emotionsQueue = createQueue<StageCue>({
         // The conductor sends Natural episodes to the scene and plays the motion group for
         // Universal and MAGIC; the store defers a motion group while the model loads.
         if (emotion) {
-          if (stageModelRenderer.value === 'mmd' && mmdMotionDriver.value === 'classic')
+          if (performanceRenderer.value.capabilities.face) {
+            performanceConductor.emotion(emotion.name, emotion.intensity, ctx.data.source, ctx.data.turnId)
+          }
+          else if (stageModelRenderer.value === 'mmd') {
             mmdSceneRef.value?.setClassicEmotion(emotion.name, emotion.intensity)
-          else
-            performanceConductor.emotion(emotion.name, emotion.intensity, ctx.data.source, ctx.data.turnId, { suppressMotionGroup: ctx.data.motionHandled })
+          }
+          else if (!ctx.data.motionHandled) {
+            currentMotion.value = { group: EMOTION_EmotionMotionName_value[emotion.name] }
+          }
         }
         // After the emotion, so an explicit expression replaces the auto pick for its slot.
         if (expression)
@@ -642,7 +647,7 @@ function activeOccasions() {
 const live2dNaturalSettings = useLive2DNaturalSettings()
 const idleProps = useIdleProps({
   backend: () => stageModelRenderer.value === 'live2d' ? live2dExpressionBackend : undefined,
-  enabled: () => live2dMotionDriver.value === 'natural' && live2dNaturalSettings.document.idleActivities && !props.paused,
+  enabled: () => performanceRenderer.value.capabilities.posture && live2dNaturalSettings.document.idleActivities && !props.paused,
   report: entry => stageSelf.report(entry),
   answer: (seq, outcome) => live2dSceneRef.value?.answerIdleErrand(seq, outcome),
   occasions: activeOccasions,
@@ -761,6 +766,7 @@ if (import.meta.env.DEV && isMotionQaBridgeEnabled()) {
           },
           voicing: () => speechVoicing.value,
           mind: characterMind,
+          onRefusal: listener => performanceConductor.onRefusal(listener),
           onIdle: idleReports.on,
           modelLoaded: () => componentState.value === 'mounted',
           prepareModelImport: () => { componentState.value = 'pending' },
@@ -803,7 +809,7 @@ const avatarTouchAggregator = createAvatarTouchAggregator({
   onSummary: (summary) => {
     // A reply in progress keeps the floor. A notification reply would play over it.
     // A burst that ends after a change to Natural is dropped, because Natural has its own touch reaction.
-    if (voice.activeTurns.length > 0 || live2dMotionDriver.value === 'natural')
+    if (voice.activeTurns.length > 0 || performanceRenderer.value.capabilities.posture)
       return
     void avatarTouch.notifyTouch(summary).catch(error => console.error('Avatar touch notification failed', error))
   },
@@ -813,7 +819,7 @@ const avatarTouchAggregator = createAvatarTouchAggregator({
  * only reaction to a touch (`performanceConductor.touch`), so the character is not also notified here.
  */
 function onAvatarTouch(touch: AvatarTouch) {
-  if (live2dMotionDriver.value !== 'natural')
+  if (!performanceRenderer.value.capabilities.posture)
     avatarTouchAggregator.record(touch)
 }
 // Lip sync and the spectrum analyser connect to the playback through voice output plugins.
