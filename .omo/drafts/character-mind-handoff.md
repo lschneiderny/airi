@@ -19,7 +19,7 @@ The remaining character mind slices stopped mid-flight on the Linux machine so t
 | CM5b beat lock | landed: #71 (#68 rebased after #69; #68 closed) | Everything | Nothing |
 | CM6b1 glances | landed: #69 | Everything | Nothing |
 | CM6b2 director on intents | landed: #74 | Items 8 to 13, all nine scenarios `IDENTICAL`, rendered away step, and the rendered clip endings with a freely redistributable VMD: under Natural a sent message and an opened chat end a looping clip, under classic they do not | The drag release and the walk to the chat cannot be staged by the QA harness; Node tests cover them |
-| CM7 performers | c6 landed in #72; CM7a done on `luke/feat/character-mind-capabilities` (ten scenarios `IDENTICAL`, four rendered checks pass), being rebased onto S2 | The plan is on `main` | Land CM7a, then CM7b, CM7c, and CM7d in parallel |
+| CM7 performers | c6 landed in #72; CM7a landed in #76 (ten scenarios `IDENTICAL`, four rendered checks pass); CM7b, CM7c, and CM7d in progress on `luke/feat/character-mind-expression-picks`, `luke/feat/character-behavior-settings`, and `luke/feat/live2d-channel-owners` | The plan, c6, and CM7a | CM7b, CM7c, and CM7d: acceptance, gates, PRs |
 | S2 store tiers | landed: #75 | Fork-owned state moved to the persistence tiers; the relaunch shows 0 follower errors and "Delete all data" clears every new and legacy key | Nothing |
 | CM8 touch and notices | plan on `main`: `.omo/plans/character-mind-notify-touch.md` | Overlaps 11 to 13 planned; the owner ruled D2 on 2026-11-21: touch changes only under Natural, and the upstream drivers keep theirs as shipped | Waits for CM7a and CM7c |
 | L2 | `main` | The observer golden hashes pass unchanged on macOS; roadmap row L is done | Nothing |
