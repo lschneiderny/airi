@@ -479,6 +479,12 @@ The following ledger lists every executed test and typecheck command, including 
 
 Headless identity, model-gated runs, and rendered acceptance are intentionally left to the orchestrator. Compare `idle`, `idle-drive`, `gaze-shift`, `speak`, `gesture-under-clip`, `emotions`, `walk`, `sleepy-no-clip`, and `touch` at seed 1 across each code item, expecting `IDENTICAL`. Confirm there are no director wander/visit events and that the sleepy scenario keeps its away stance markers. Rendered checks must show attend-caused clip endings and chat approach under Natural, away delivery and scene reseeding, a visible 8 s look-tool glance with priority interruptions and missing-target refusals, and the intentional classic release/chat/away change while retaining held-drag rules. Every launch needs zero renderer and main-process errors. The ADR contains the explicit acceptance placeholder.
 
+### Orchestrator acceptance (CM6b2, macOS, 2026-11-21)
+
+- **Headless, `main` against the tip, seed 1:** all nine scenarios `IDENTICAL`, `sleepy-no-clip` included (the runner sends its presence edges through the mind).
+- **Rebase onto `main`:** two policy-doc conflicts merged word by word, and one import conflict in `director/index.ts` with the sidestep (`LocomotionFrame` kept, `Vec3` dropped as unused). The sidestep's `step: 'sidestep'` mark survives; `motion-driver-humanoid` director and locomotion: 161 passed.
+- **Rendered, MMD on the desktop stage, Natural:** step 7 (away): a locked desktop gave one `presence` step with `body/away`, and unlocking gave the wake reaction with `body/away`. Step 8 (look tool): `look_at` registered and accepted; the glance is not observable rendered because capture runs only on Live2D. Steps 6 and 9 (clip endings, classic): not exercised, because no motion clip is available on the test machine. 0 renderer and 0 main-process errors.
+
 ## Commits (CM6b2)
 
 - `1675e13f1` refactor(motion-driver-humanoid,stage-ui-mmd): draw the visit share from the mind's wander pick

@@ -31,7 +31,7 @@ The plan's neutral headless away input would remove the existing away-sensitive 
 
 The wander request and its pending diagnostic record carry `pick`. No seeded numeric expectation needed re-pinning in this implementation; visit-share tests now provide explicit mind picks and verify that the director spends one fewer draw.
 
-ORCHESTRATOR ACCEPTANCE PENDING: replace this sentence with the nine headless identity results and rendered clip, away, look-tool, and classic-driver results.
+On macOS the nine headless scenarios (`idle`, `idle-drive`, `gaze-shift`, `speak`, `gesture-under-clip`, `emotions`, `walk`, `sleepy-no-clip`, and `touch`, seed 1) are `IDENTICAL` against `main` with the beat lock, CM6a's close-out, and the sidestep. In the rendered app on the desktop stage under Natural, locking the desktop gave one `presence` step with a `body/away` intent, and unlocking gave the wake reaction with `body/away` back; the look tool was registered and accepted with 0 errors. The glance itself could not be observed rendered, because the motion QA capture runs only on Live2D; the Node tests cover it. The clip endings under Natural and classic (D9) were not exercised rendered: no motion clip is available on the test machine, and the app ships none.
 
 Scores prove direction, size relative to the recipe, release, and detectability above the rig's idle noise. They do not prove naturalness, which stays a visual review.
 
