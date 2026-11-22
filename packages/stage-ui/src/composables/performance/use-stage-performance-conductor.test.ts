@@ -97,6 +97,35 @@ function createConductor(driver: TestPerformer, scene: StagePerformanceScene = f
 }
 
 describe('performer dispatch declarations', () => {
+  it.each(['picker', 'planner'] as const)('two conductors using %s agree on picks and recorded intent ids', (decider) => {
+    let now = 10
+    const entries = ['one', 'two', 'three'].map(id => entry(id, 'face', [{ emotion: 'happy', weight: 1, minBand: 'slight' }]))
+    const scenes = [fakeScene(), fakeScene()]
+    const conductors = scenes.map((scene, index) => new StagePerformanceConductor({
+      scene: () => scene,
+      capabilities: () => MMD_NATURAL_CAPABILITIES,
+      settings: () => ({ ...defaultExpressionPerformanceSettings, decider }),
+      catalog: () => entries,
+      seed: index === 0 ? 7 : 9001,
+      mind: naturalMind({ seed: 7, clock: () => now * 1000 }),
+      clock: () => now,
+    }))
+    for (const conductor of conductors)
+      conductor.startRecording()
+    for (let i = 0; i < 20; i++) {
+      for (const conductor of conductors)
+        conductor.emotion('happy', 0.9, 'devtools')
+      now += 10
+    }
+    expect(scenes[0].applySlots.mock.calls).toEqual(scenes[1].applySlots.mock.calls)
+    expect(scenes[0].applySlots).toHaveBeenCalled()
+    const traces = conductors.map(conductor => parseAffectTrace(conductor.exportTrace()))
+    expect(traces[0].entries).toEqual(traces[1].entries)
+    expect(traces[0].entries).toContainEqual({ type: 'signal', signal: expect.objectContaining({ kind: 'reaction', intentId: expect.any(String) }) })
+    for (const conductor of conductors)
+      conductor.dispose()
+  })
+
   it.each([
     ['none', NO_CAPABILITIES],
     ['Live2D', LIVE2D_NATURAL_CAPABILITIES],
@@ -1069,8 +1098,8 @@ describe('stage performance conductor', () => {
 
     expect(replaySlots(trace)).toEqual(dispatched)
     expect(trace.entries.flatMap(entry => entry.type === 'signal' && entry.signal.kind === 'clear' ? [entry.signal] : [])).toEqual([
-      { kind: 'clear', source: 'tool', slot: 'prop', at: 11 },
-      { kind: 'clear', source: 'tool', at: 12 },
+      { kind: 'clear', intentId: '4-release', source: 'tool', slot: 'prop', at: 11 },
+      { kind: 'clear', intentId: '6-release', source: 'tool', at: 12 },
     ])
     expect(dispatched.map(command => [command.slot, command.expressionId])).toEqual([
       ['face', 'anger'],

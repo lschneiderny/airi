@@ -24,7 +24,7 @@ function episode(name: PerformanceEmotion, nominal: number, at: number, escalati
 }
 /** A new episode of a turn. The scripts below never repeat an emotion inside its escalation window. */
 function reaction(nominal: number, at: number, turnId = 'A', name: PerformanceEmotion = 'happy'): AffectSignal {
-  return { kind: 'reaction', episode: episode(name, nominal, at), turnId, at }
+  return { kind: 'reaction', intentId: `${at}-intent`, episode: episode(name, nominal, at), turnId, at }
 }
 function timing(kind: TimingEvent['kind'], at: number, turnId = 'A'): AffectSignal {
   return { kind: 'timing', event: { id: `${turnId}-${kind}-${at}`, kind, turnId, at }, at }
@@ -90,7 +90,7 @@ describe('planner', () => {
   it('drops a pending effect plan when an emitted combo spans it', () => {
     const pending = run([reaction(0.6, 0)], effectCtx).state
     expect(pending.scheduler.plans.map(plan => plan.payload.slot)).toEqual(['face', 'effect'])
-    const explicit = run([{ kind: 'expression', source: 'tool', expressionId: combo.id, episode: null, at: 0.2 }], { ...comboCtx, catalog: comboCtx.catalog.map(entry => ({ ...entry, mappings: [] })) }, pending)
+    const explicit = run([{ kind: 'expression', intentId: '93-expression', source: 'tool', expressionId: combo.id, episode: null, at: 0.2 }], { ...comboCtx, catalog: comboCtx.catalog.map(entry => ({ ...entry, mappings: [] })) }, pending)
     expect(explicit.state.scheduler.plans).toEqual([])
     expect(changes(run([timing('pause', 1)], comboCtx, explicit.state).decisions)).toEqual([[]])
     // An automatic combo emitted at sentence_start also drops a still-pending pause plan.
@@ -113,7 +113,7 @@ describe('planner', () => {
   it('drops a pending spanning plan when only its effect is explicitly replaced or cleared', () => {
     const pending = run([reaction(0.6, 0)], comboCtx).state
     expect(pending.scheduler.plans).toHaveLength(1)
-    for (const signal of [{ kind: 'expression', source: 'tool', expressionId: 'sparkle', episode: null, at: 0.2 }, { kind: 'clear', source: 'tool', slot: 'effect', at: 0.2 }] as const) {
+    for (const signal of [{ kind: 'expression', intentId: '116-expression', source: 'tool', expressionId: 'sparkle', episode: null, at: 0.2 }, { kind: 'clear', intentId: '116-clear', source: 'tool', slot: 'effect', at: 0.2 }] as const) {
       const changed = run([signal, timing('sentence_start', 1)], comboCtx, pending)
       expect(changed.decisions[1].slots).toEqual([])
       expect(changed.state.scheduler.plans).toEqual([])
@@ -145,7 +145,7 @@ describe('planner', () => {
   })
 
   it('shows a slight or clear devtools pulse without a turn immediately', () => {
-    expect(changes(run([{ kind: 'reaction', episode: episode('happy', 0.25, 0), at: 0 }]).decisions)).toEqual([[['face', 'smile']]])
+    expect(changes(run([{ kind: 'reaction', intentId: '148-reaction', episode: episode('happy', 0.25, 0), at: 0 }]).decisions)).toEqual([[['face', 'smile']]])
   })
 
   it('caps automatic slot changes at 3 per 5 s and 1 per 0.8 s, dropping instead of queueing over-budget picks', () => {
@@ -153,8 +153,8 @@ describe('planner', () => {
     const times = [0, 1, 2, 3, 4, 6.5, 7, 8]
     const signals = times.map((at, i) => reaction(0.9, at, 'A', names[i]))
     // The named entry starts a think episode, so the think emotion half a second later escalates it.
-    signals[4] = { kind: 'reaction', episode: { ...episode('think', 0.9, 3.5, true), id: 'think-3.5' }, turnId: 'A', at: 4 }
-    signals.splice(4, 0, { kind: 'expression', source: 'tool', expressionId: 'ponder', episode: episode('think', settings.intensity.slight, 3.5), turnId: 'A', at: 3.5 })
+    signals[4] = { kind: 'reaction', intentId: '156-reaction', episode: { ...episode('think', 0.9, 3.5, true), id: 'think-3.5' }, turnId: 'A', at: 4 }
+    signals.splice(4, 0, { kind: 'expression', intentId: '157-expression', source: 'tool', expressionId: 'ponder', episode: episode('think', settings.intensity.slight, 3.5), turnId: 'A', at: 3.5 })
     const { decisions, state } = run(signals)
     const emitted = decisions.flatMap((decision, i) => decision.slots.map(command => [signals[i].at, command.expressionId]))
 
@@ -209,12 +209,12 @@ describe('planner', () => {
 
   it('handles a clear like the picker: immediate null commands that ignore the budget and drop pending plans', () => {
     const exhausted = run(['happy', 'sad', 'angry'].map((name, i) => reaction(0.9, i, 'A', name as PerformanceEmotion))).state
-    const cleared = run([{ kind: 'clear', source: 'tool', turnId: 'A', at: 2.1 }], ctx, exhausted)
+    const cleared = run([{ kind: 'clear', intentId: '212-clear', source: 'tool', turnId: 'A', at: 2.1 }], ctx, exhausted)
 
     expect(cleared.decisions[0]).toEqual({ slots: (['face', 'effect', 'prop'] as const).map(slot => ({ slot, expressionId: null, holdSeconds: 0, until: 'hold', turnId: 'A' })) })
     expect(cleared.state.occupants).toEqual({ face: null, effect: null })
     expect(cleared.state.tickets).toEqual(exhausted.tickets)
-    const pending = run([reaction(0.6, 0), { kind: 'clear', source: 'tool', slot: 'face', at: 0.5 }, timing('sentence_start', 1)])
+    const pending = run([reaction(0.6, 0), { kind: 'clear', intentId: '217-clear', source: 'tool', slot: 'face', at: 0.5 }, timing('sentence_start', 1)])
     expect(changes(pending.decisions)).toEqual([[], [['face', null]], []])
   })
 
@@ -233,13 +233,13 @@ describe('planner', () => {
 
   it('keeps explicit expressions and clears working while automatic expressions are off', () => {
     const disabled: DeciderContext = { ...ctx, settings: { ...ctx.settings, autoExpressions: false } }
-    const { decisions } = run([reaction(0.6, 0), { kind: 'expression', source: 'tool', expressionId: 'ponder', episode: episode('think', settings.intensity.slight, 1), turnId: 'A', at: 1 }, { kind: 'clear', source: 'tool', slot: 'face', turnId: 'A', at: 2 }], disabled)
+    const { decisions } = run([reaction(0.6, 0), { kind: 'expression', intentId: '236-expression', source: 'tool', expressionId: 'ponder', episode: episode('think', settings.intensity.slight, 1), turnId: 'A', at: 1 }, { kind: 'clear', intentId: '236-clear', source: 'tool', slot: 'face', turnId: 'A', at: 2 }], disabled)
 
     expect(changes(decisions)).toEqual([[], [['face', 'ponder']], [['face', null]]])
   })
 
   it('clears face and effect immediately on neutral and drops every pending plan', () => {
-    const { decisions, state } = run([reaction(0.6, 0), { kind: 'neutral', turnId: 'A', at: 1 }, timing('sentence_start', 2)])
+    const { decisions, state } = run([reaction(0.6, 0), { kind: 'neutral', intentId: '242-neutral', turnId: 'A', at: 1 }, timing('sentence_start', 2)])
 
     expect(changes(decisions)).toEqual([[], [['face', null], ['effect', null]], []])
     expect(planner.nextDeadline(state)).toBeNull()
@@ -259,7 +259,7 @@ describe('planner', () => {
   })
 
   it('keeps a chatty picker-recorded conversation within budget in compare mode, unlike the picker', () => {
-    const trace = { version: 2 as const, decider: 'picker' as const, checkpoint: createDecider('picker').initial(1), initialContext: ctx, entries: chattyConversation().map(signal => ({ type: 'signal' as const, signal })), truncated: false, endAt: 40 }
+    const trace = { version: 3 as const, decider: 'picker' as const, checkpoint: createDecider('picker').initial(1), initialContext: ctx, entries: chattyConversation().map(signal => ({ type: 'signal' as const, signal })), truncated: false, endAt: 40 }
     const fromPicker = replayAffectTrace(trace, { ...createDecider('picker'), kind: 'picker' }, { mode: 'compare', seed: 1 })
     const fromPlanner = replayAffectTrace(trace, { ...createDecider('planner'), kind: 'planner' }, { mode: 'compare', seed: 1 })
 

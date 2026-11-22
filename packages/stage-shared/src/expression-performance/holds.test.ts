@@ -26,11 +26,11 @@ function episode(name: PerformanceEmotion, nominal: number, escalation = false):
   return { id: `${name}-1`, emotion: name, nominal, intensity: nominal, band: bandOf(nominal, settings)!, escalation }
 }
 function reaction(name: PerformanceEmotion, nominal: number, at: number, turnId?: string, escalation = false): AffectSignal {
-  return { kind: 'reaction', episode: episode(name, nominal, escalation), turnId, at }
+  return { kind: 'reaction', intentId: `${at}-intent`, episode: episode(name, nominal, escalation), turnId, at }
 }
 /** `derived` is the episode the mind derived from the entry's mapping, or null when the request started none. */
 function expression(expressionId: string, at: number, turnId?: string, holdSeconds?: number, derived: ReactionEpisode | null = null): AffectSignal {
-  return { kind: 'expression', source: 'tool', expressionId, holdSeconds, episode: derived, turnId, at }
+  return { kind: 'expression', intentId: `${at}-intent`, source: 'tool', expressionId, holdSeconds, episode: derived, turnId, at }
 }
 
 it('reads the heaviest mapping of an entry as its primary one, the earliest on ties', () => {
@@ -69,7 +69,7 @@ function slotsSuite<S>(name: 'picker' | 'planner', decider: Decider<S>) {
     it('clearing either slot vacates the entire combo', () => {
       const first = decider.decide(expression(combo.id, 0), comboCtx, decider.initial(17))
       for (const slot of ['face', 'effect'] as const) {
-        const cleared = decider.decide({ kind: 'clear', source: 'tool', slot, at: 1 }, comboCtx, first.state)
+        const cleared = decider.decide({ kind: 'clear', intentId: '72-clear', source: 'tool', slot, at: 1 }, comboCtx, first.state)
         expect(cleared.state).toMatchObject({ occupants: { face: null, effect: null } })
       }
     })
@@ -80,19 +80,19 @@ function slotsSuite<S>(name: 'picker' | 'planner', decider: Decider<S>) {
       const first = decider.decide(expression(faceProp.id, 0), context, decider.initial(17))
       expect(first.decision.slots.map(command => command.slot)).toEqual(['face', 'prop'])
       expect(first.state).toMatchObject({ occupants: { face: faceProp.id, effect: null } })
-      for (const signal of [expression('plain', 1), { kind: 'clear', source: 'tool', slot: 'prop', at: 1 } as const])
+      for (const signal of [expression('plain', 1), { kind: 'clear', intentId: '83-clear', source: 'tool', slot: 'prop', at: 1 } as const])
         expect(decider.decide(signal, context, first.state).state).toMatchObject({ occupants: { face: null, effect: null } })
     })
 
     it('exactly replays a combo expression, escalation and face clear', () => {
-      const signals: AffectSignal[] = [expression(combo.id, 0, 'A', undefined, episode('angry', 0.6)), reaction('angry', 0.9, 1, 'A', true), { kind: 'clear', source: 'tool', slot: 'face', at: 2 }]
+      const signals: AffectSignal[] = [expression(combo.id, 0, 'A', undefined, episode('angry', 0.6)), reaction('angry', 0.9, 1, 'A', true), { kind: 'clear', intentId: '88-clear', source: 'tool', slot: 'face', at: 2 }]
       let state = decider.initial(17)
       const live = signals.map((signal) => {
         const result = decider.decide(signal, comboCtx, state)
         state = result.state
         return { at: signal.at, decision: result.decision }
       })
-      const trace = parse(AffectTraceSchema, JSON.parse(JSON.stringify({ version: 2, decider: name, checkpoint: decider.initial(17), initialContext: comboCtx, entries: signals.map(signal => ({ type: 'signal', signal })), truncated: false, endAt: 2 })))
+      const trace = parse(AffectTraceSchema, JSON.parse(JSON.stringify({ version: 3, decider: name, checkpoint: decider.initial(17), initialContext: comboCtx, entries: signals.map(signal => ({ type: 'signal', signal })), truncated: false, endAt: 2 })))
       expect(replayAffectTrace(trace, withKind, { mode: 'exact' })).toEqual(live)
     })
 
@@ -143,7 +143,7 @@ function slotsSuite<S>(name: 'picker' | 'planner', decider: Decider<S>) {
 
   describe(`${name} replay`, () => {
     function trace(signals: AffectSignal[]) {
-      return parse(AffectTraceSchema, { version: 2, decider: name, checkpoint: decider.initial(1), initialContext: ctx, entries: signals.map(signal => ({ type: 'signal', signal })), truncated: false, endAt: 99 })
+      return parse(AffectTraceSchema, { version: 3, decider: name, checkpoint: decider.initial(1), initialContext: ctx, entries: signals.map(signal => ({ type: 'signal', signal })), truncated: false, endAt: 99 })
     }
     function live(signals: AffectSignal[]) {
       let state = decider.initial(1)
@@ -162,7 +162,7 @@ function slotsSuite<S>(name: 'picker' | 'planner', decider: Decider<S>) {
     })
 
     it('replays a trace of reactions, a clear and a neutral to the live decisions', () => {
-      const signals = [reaction('happy', 0.6, 0, 'A'), reaction('happy', 0.9, 1, 'A', true), reaction('sad', 0.6, 5), { kind: 'clear', source: 'act', at: 6 } as const, { kind: 'neutral', turnId: 'B', at: 7 } as const]
+      const signals = [reaction('happy', 0.6, 0, 'A'), reaction('happy', 0.9, 1, 'A', true), reaction('sad', 0.6, 5), { kind: 'clear', intentId: '165-clear', source: 'act', at: 6 } as const, { kind: 'neutral', intentId: '165-neutral', turnId: 'B', at: 7 } as const]
       const replayed = replayAffectTrace(trace(signals), withKind, { mode: 'exact' })
       expect(replayed).toEqual(live(signals))
       expect(replayed.slice(3).map(step => step.decision.slots.map(command => command.slot))).toEqual([['face', 'effect', 'prop'], ['face', 'effect']])

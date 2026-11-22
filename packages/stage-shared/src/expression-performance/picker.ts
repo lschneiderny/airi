@@ -36,7 +36,7 @@ export function createPickerDecider(): Decider<PickerState> {
         decision.slots.push(...commands)
         // An episode the entry started draws its tickets, so a later escalation picks from them. The entry is the
         // pick, so no automatic pick runs and the other slot keeps its occupant.
-        const drawn = signal.episode && !signal.episode.escalation ? drawEpisodeTickets(state.streams) : {}
+        const drawn = signal.episode && !signal.episode.escalation ? drawEpisodeTickets(signal.intentId) : {}
         const occupants = applySlotOccupants(state.occupants, commands, ctx.catalog)
         return { decision, state: { ...state, ...drawn, occupants, recency: { ...state.recency, [commands[0].expressionId]: signal.at } } }
       }
@@ -53,7 +53,7 @@ export function createPickerDecider(): Decider<PickerState> {
       if (signal.kind !== 'reaction')
         return { decision, state }
       const { episode } = signal
-      let next = enterEpisode(state, episode)
+      let next = enterEpisode(state, episode, signal.intentId)
       if (!ctx.settings.autoExpressions)
         return { decision, state: next }
       for (const { slot: picked, expressionId } of autoPicks(episode, ctx, next.tickets, next.occupants, next.recency, signal.at)) {

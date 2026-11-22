@@ -678,6 +678,48 @@ contains the requested placeholder for these results.
 4. `90127ba0d` - `docs(ai): record the Live2D channel owners`
 5. This record - `docs(plan): record CM7d implementation and checks`
 
+## Departures during implementation (CM7b)
+
+- **b1:** Rechecked section 2. CM7a now gates mind decisions and dispatch by
+  capabilities, restores upstream faces and classic clips, and gates exposed
+  actions and tools. CM5b beats, CM6b chat/gesture/attend/away/look, CM6a
+  rest-position and sidestep state, and c6 catalog publication remain intact.
+  Settings and register homes still match section 2, except c6 already edits
+  mapping weights through its live mirror. Picks still used conductor streams
+  and traces were v2. Intent-answering signals now require their intent id;
+  FNV-1a of id and slot seeds the existing Mulberry32 draw. Escalations retain
+  episode tickets, preserving their no-reroll rule. A decider switched mid-episode
+  seeds its first tickets from the escalation intent it actually receives.
+  The mapping-weight replay test now favors the entry opposite the original
+  seeded pick, so it tests the override without depending on the old RNG.
+  The orchestrator owns the Live2D rig run and any b1 hash re-pin; no rig hash
+  was changed here and old/new trial picks remain unmeasured.
+
+## Checks run (CM7b)
+
+The owner reserved all headless and rendered checks for the orchestrator and
+replaced repository-wide verify with package suites and dependent typechecks.
+No QA, Electron, install, package manifest, lockfile, timeout, or threshold
+change is part of this implementation.
+
+| Item | Command | Result |
+| --- | --- | --- |
+| b1 | `pnpm -F @proj-airi/stage-shared exec vitest run` | 1,883 passed |
+| b1 | `pnpm -F @proj-airi/stage-ui exec vitest run --project node` | 1,947 passed |
+| b1 | `pnpm -F @proj-airi/stage-ui exec vitest run --project browser` | 1,018 passed, 5 existing skips; includes the named scene and persistence inner loop |
+| b1 | `pnpm -F @proj-airi/character-mind exec vitest run src` | 138 passed |
+| b1 | `pnpm -F @proj-airi/stage-ui exec vitest run --project node src/composables/performance src/features` | 270 passed |
+| b1 | `pnpm -F @proj-airi/stage-shared exec vitest run src/expression-performance` | 294 passed |
+| b1 | `pnpm -F @proj-airi/stage-ui-live2d exec vitest run --project node src/composables/live2d` | 513 passed |
+| b1 | `pnpm exec vitest run --project dev-tools scripts/dev-tools/policy-docs.test.ts` | 11 passed |
+| b1 | `pnpm --filter "...@proj-airi/stage-shared" --filter "...@proj-airi/stage-ui" --workspace-concurrency=2 typecheck` | 28 packages, exit 0 |
+
+b1 changed TypeScript files passed ESLint. Its first focused run found a fixture
+that depended on the previous random pick; its first stage-ui Node run found
+an exact trace assertion missing the newly required intent id. Both assertions
+were repaired without weakening their behavioral checks, and the suites above
+passed. Browser fixtures retain their existing localization and teardown logs.
+
 ## Checks run (CM7a)
 
 The implementation base is `e57dd1393`. The owner requested package checks,

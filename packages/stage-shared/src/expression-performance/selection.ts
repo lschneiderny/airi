@@ -40,10 +40,18 @@ export function drawPickerTickets(random: number) {
   return { random: pick.random, tickets: { gate: gate.value, pick: pick.value } }
 }
 
-/** Draws one ticket pair per slot for a new episode, even when no candidate exists, so replays stay aligned. */
-export function drawEpisodeTickets(streams: Record<AutoSlot, number>) {
-  const face = drawPickerTickets(streams.face)
-  const effect = drawPickerTickets(streams.effect)
+/** FNV-1a over the intent id and slot gives every stage the same independent Mulberry32 stream. */
+export function expressionSeed(intentId: string, slot: AutoSlot | 'moment'): number {
+  let seed = 0x811C9DC5
+  for (const character of `${intentId}\0${slot}`)
+    seed = Math.imul(seed ^ character.codePointAt(0)!, 0x01000193) >>> 0
+  return seed
+}
+
+/** Draws one ticket pair per slot for a new intent, even when no candidate exists. */
+export function drawEpisodeTickets(intentId: string) {
+  const face = drawPickerTickets(expressionSeed(intentId, 'face'))
+  const effect = drawPickerTickets(expressionSeed(intentId, 'effect'))
   return { streams: { face: face.random, effect: effect.random }, tickets: { face: face.tickets, effect: effect.tickets } }
 }
 
@@ -58,12 +66,12 @@ interface EpisodeState {
  * The state an episode picks from. A new episode draws its tickets and vacates the automatic slots. An escalation
  * keeps both, so it cannot reroll a pick and fills only the slots that are still empty.
  */
-export function enterEpisode<S extends EpisodeState>(state: S, episode: ReactionEpisode): S & { tickets: Record<AutoSlot, Tickets> } {
+export function enterEpisode<S extends EpisodeState>(state: S, episode: ReactionEpisode, intentId: string): S & { tickets: Record<AutoSlot, Tickets> } {
   if (!episode.escalation)
-    return { ...state, ...drawEpisodeTickets(state.streams), occupants: { face: null, effect: null } }
+    return { ...state, ...drawEpisodeTickets(intentId), occupants: { face: null, effect: null } }
   // The mind keeps the reaction history, so an escalation can reach a state that never saw its episode start:
   // after a decider switch, or in a compare replay of a recording that began mid-episode. It draws its own tickets.
-  return state.tickets ? { ...state, tickets: state.tickets } : { ...state, ...drawEpisodeTickets(state.streams) }
+  return state.tickets ? { ...state, tickets: state.tickets } : { ...state, ...drawEpisodeTickets(intentId) }
 }
 
 /** Zero tau disables recency, including a selection at the current signal time. */

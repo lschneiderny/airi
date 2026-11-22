@@ -32,6 +32,14 @@ reports `not-declared-by-stage` through `StagePerformanceConductor.onRefusal`,
 the motion QA mind event, and the reaction inspector. The mind's own refusals
 use `undeclared`. Baselines, idle drives, and beats remain performer inputs.
 
+Both renderers' expression deciders seed each new episode's slot tickets from
+its mind intent id and the slot (`expressionSeed` and `drawEpisodeTickets` in
+`packages/stage-shared/src/expression-performance/selection.ts`). The same
+intents, catalog, settings, and selection history therefore give the same picks
+across stages, regardless of conductor seeds. Escalations reuse their episode's
+tickets. Timing and deadline signals only release existing picks. Affect traces
+are version 3 and record intent ids; versions 1 and 2 no longer parse.
+
 ### Channel ownership
 
 | Channel | Parameters | Natural | Universal and MAGIC | Composition | Code |
@@ -249,7 +257,7 @@ Slot names resolve to model morph names through `createMorphController` (`packag
 This section states the design that refactors move toward. It does not describe the code. The [character mind ADR](../adr/2026-11-17-character-mind-direction.md) records the decision. When a refactor lands a rule, the rule moves into the sections above and the gaps it closes leave the list below.
 
 3. **One writer per channel per frame in the remaining renderers.** Every [channel](glossary.md#channel) has exactly one owner. A second contribution enters through the owner's inputs. Live2D under Natural now follows the final-owner reading in its current rules; the gaze arbiter also owns gaze on MMD. CM7d makes no broader ownership claim for other renderer channels.
-5. **Performers seed their picks and report refusals.** The mind already sends an emotion, its strength, and its hold, and each performer's [decider](glossary.md#decider) picks its own model's expression entries for it. What remains: each pick is seeded by the intent's id so stages agree, and the performer reports masked or refused expressions.
+5. **Performers seed their picks and report refusals.** The expression deciders now seed picks by intent id. What remains: moment picks use the moment intent id, and the performer reports masked or refused expressions.
 6. **Feel targets survive the rewrite.** A held emotion fills roughly 50 to 70 % of a parameter's range at the clear band and nearly all of it at strong. Each emotion reads unmistakably on the whole face at corner size, even when a rig's expression files only switch decorations. `dizzy` is not part of the emotion vocabulary. Sources: owner rulings in the 2026-10-19 natural emotion revamp plan.
 7. **The app ships no motion clips.** MMD motion is a procedural core plus VMD clips the user imports locally; model terms forbid redistributing clips. Source: owner ruling in the MMD natural full-body plan.
 
