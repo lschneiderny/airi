@@ -1,7 +1,7 @@
 # Live2D channel owners under Natural
 
 Date: 2026-11-22
-Status: accepted; CM7d implemented, with orchestrator acceptance pending.
+Status: accepted; CM7d implemented and accepted on macOS (results below).
 
 Current rules are in [Body ownership](../context/body-ownership.md). The
 [performers plan](../../../.omo/plans/character-mind-performers.md) records the
@@ -84,9 +84,7 @@ and the expression tilt contributes zero to the rendered posture.
 Target rule 3 remains explicitly open for renderer channels outside this
 Live2D inventory; this slice does not claim to have audited them.
 
-**Pending orchestrator acceptance:** Replace this sentence with the headless
-scenario comparisons, the unchanged Live2D rig hash, and rendered Natural
-and Universal preview results, including renderer and main-process errors.
+On macOS, all ten headless scenarios (`idle`, `idle-drive`, `gaze-shift`, `speak`, `gesture-under-clip`, `emotions`, `walk`, `sleepy-no-clip`, `touch`, and `music`, seed 1) are `IDENTICAL` against `main`, and the `pnpm qa:live2d-rig` trial's `sha256` is unchanged. In the rendered app with 0 renderer and 0 main-process errors, Live2D Natural refused an ACT `shrug` as `undeclared`, played an ACT `nod`, and issued the emotion; under Universal both gestures were refused and the mind took no emotion step. The context preview itself was not exercised rendered, because it is driven from the card editor's Live2D controls; the expression controller tests cover the lease, its release, and upstream's plugin path.
 
 Scores prove direction, size relative to the recipe, release, and detectability
 above the rig's idle noise. They do not prove naturalness, which stays a visual
