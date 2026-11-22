@@ -2,6 +2,7 @@ import type { Cubism4InternalModel } from 'pixi-live2d-display/cubism4'
 
 import { Application } from '@pixi/app'
 import { BatchRenderer, extensions, Renderer } from '@pixi/core'
+import { TickerPlugin } from '@pixi/ticker'
 import { Live2DFactory, Live2DModel } from 'pixi-live2d-display/cubism4'
 
 import '@proj-airi/stage-ui-live2d/utils/live2d-zip-loader'
@@ -49,6 +50,9 @@ async function fetchPresetModel(): Promise<File> {
 export function createLive2DModelFixture(size: { width: number, height: number }): Live2DModelFixture {
   // As `Canvas.vue` does for the stage: inserted sprites draw through the batch renderer.
   extensions.add(BatchRenderer)
+  // As `Canvas.vue` does: stage items run their clock on `app.ticker`. With `autoStart` off,
+  // the ticker advances only through explicit `app.ticker.update(time)` calls.
+  extensions.add(TickerPlugin)
   const app = new Application({
     width: size.width,
     height: size.height,

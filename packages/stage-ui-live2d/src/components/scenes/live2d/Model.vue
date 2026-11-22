@@ -28,6 +28,7 @@ import type { CanvasPointerSample } from '../../../composables/live2d/canvas-poi
 import type { ArchiveExpressionFile, Model3ExpressionRef } from '../../../composables/live2d/expression-controller'
 import type { SpeechEvent } from '../../../composables/live2d/expression/slots'
 import type { Live2DModelCanvasRect } from '../../../composables/live2d/head-anchor'
+import type { Live2DItemRenderState, Live2DStageItem } from '../../../composables/live2d/items/layer'
 import type { NaturalChatActivity, NaturalChatTarget } from '../../../composables/live2d/natural-chat-input'
 import type { Live2DNaturalMotionAttention } from '../../../composables/live2d/natural-motion-adapter'
 import type { PhysicsRigLike } from '../../../composables/live2d/natural-motion/rig-profile'
@@ -55,6 +56,7 @@ import { Live2DFactory, Live2DModel, MotionPriority } from 'pixi-live2d-display/
 import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef, toRef, watch } from 'vue'
 
 import Live2DExpression from '../../live2d/expression.vue'
+import Live2DItems from './items.vue'
 import ReviewCaption from './review-caption.vue'
 import TouchDebugOverlay from './touch-debug-overlay.vue'
 
@@ -171,6 +173,8 @@ const props = withDefaults(defineProps<{
   chatTarget?: NaturalChatTarget
   /** Typing timing and typed-send counters from the host's composers; never text. */
   chatActivity?: NaturalChatActivity
+  /** Stage items to draw inside her render pass. */
+  items?: readonly Live2DStageItem[]
 }>(), {
   mouthOpenSize: 0,
   nowSpeaking: false,
@@ -204,6 +208,7 @@ const props = withDefaults(defineProps<{
   touchReactions: true,
   cursorAttention: true,
   chatAttention: true,
+  items: () => [],
 })
 
 const emits = defineEmits<{
@@ -219,6 +224,8 @@ const emits = defineEmits<{
   (e: 'idleReports', reports: readonly IdleReport[]): void
   /** Natural's cursor reports for the character mind, once per composition that had one. */
   (e: 'cursorReports', reports: readonly CursorReport[]): void
+  /** Every shown stage item's state, replacing the previous report. */
+  (e: 'itemStates', states: Readonly<Record<string, Live2DItemRenderState>>): void
 }>()
 
 const componentState = defineModel<'pending' | 'loading' | 'mounted'>('state', { default: 'pending' })
@@ -2117,6 +2124,7 @@ import.meta.hot?.dispose(() => {
     :load="expressionLoader!"
   />
   <div ref="dropShadowColorComputer" hidden bg="primary-400 dark:primary-500" />
+  <Live2DItems v-if="pixiApp" :app="pixiApp" :model="model" :items="items" @states="states => emits('itemStates', states)" />
   <TouchDebugOverlay v-if="touchOverlay" :overlay="touchOverlay" />
   <ReviewCaption v-if="reviewCaption" :lines="reviewCaption" />
   <slot />

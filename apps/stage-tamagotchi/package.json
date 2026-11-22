@@ -92,6 +92,7 @@
     "@pixi/app": "catalog:",
     "@pixi/core": "catalog:",
     "@pixi/sprite": "catalog:",
+    "@pixi/ticker": "catalog:",
     "@proj-airi/audio": "workspace:^",
     "@proj-airi/ccc": "workspace:^",
     "@proj-airi/computer-use-mcp": "workspace:^",
