@@ -455,6 +455,14 @@ A named set of steps, or one question with an action for each answer, that the o
 **Not to be confused with:** long-term memory, which holds facts and not steps; and the toolset prompt, which says how to use a tool.
 **Avoid:** "skill" in prose (the code's `ChatInvokedSkill` is the text a keyword-invoked recipe adds to a message), "macro", "workflow".
 
+### Refractory
+
+A time after an episode during which the same kind of episode is refused or plays smaller. Under Natural the character mind holds her refractories once per character, as fast state on its clock: the body director's clip refractories (after an action or a dance, and the repeat window of a gesture clip) and tool refractories (movement and look), the poke surprise dedupe, and the rest of a moment expression entry. Performers report what they stamped and read the refractories back, so a model reload, a driver switch, or a stage remount keeps them, and a card switch clears them. The voice and desktop refractories (a spoken touch reaction, a screen change) were in the mind already.
+
+**Code:** `packages/character-mind/src/refractory.ts` `MindRefractoryState`, `PerformerReport`, `reportRefractory`, `refractoryRemaining`, `pokeSurprise`; `packages/motion-driver-humanoid/src/director/index.ts` `BodyRefractory`, `BodyDirectorReport`; `packages/stage-ui-mmd/src/composables/mmd/stance.ts` `MMDRefractoryInbox`.
+**Not to be confused with:** a cooldown of an emotion gesture (`EMOTION_GESTURE_COOLDOWN_SECONDS`) or of an idle errand, which the same mind keeps under those names; and the conductor's emphasis refractory, a timing rule of the expression decider.
+**Avoid:** "cooldown" for the director's refractories.
+
 ### Reply shape
 
 The stage-contract rules for what a reply looks like: spoken and short unless the content or the user asks for more, from a person rather than an assistant (no offers of help, recaps, or check-ins), with at most one question that she wants answered, and allowed to be only an ACT cue plus `<|SILENT|>`. A token cap per request backs the rules.
