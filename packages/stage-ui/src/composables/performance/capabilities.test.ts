@@ -27,6 +27,7 @@ const channels = {
   'settle': 'posture',
   'cursor-episode': 'gaze',
   'attend': 'body',
+  'refractory': 'body',
   'away': 'body',
   'chat-read': 'gaze',
   'gesture': 'posture',

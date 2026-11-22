@@ -13,6 +13,7 @@ import { advanceIdle, answerIdle, answerIdlePlay, followSettleView, initialMindI
 import { initialMindMoodState } from './mood'
 import { answerMusic } from './music'
 import { answerPresence, answerScreenChange } from './presence'
+import { answerPerformerReport, initialMindRefractoryState } from './refractory'
 import { answerTouch } from './touch'
 import { answerNoticeRequest, answerUserTurn, answerVoiceOutcome, answerVoiceRequest, answerVoiceTick, followPacing } from './voice'
 
@@ -28,6 +29,7 @@ export function initialMindState(slow: MindSlowState = { pacing: null }): MindSt
     reaction: createReactionState(),
     gesture: initialMindGestureState,
     mood: initialMindMoodState,
+    refractory: initialMindRefractoryState,
     touch: { affect: initialTouchAffectMemory },
     voice: { reaction: initialReactionMemory(), lastDecision: null, gate: null, runId: null, stageShown: false, line: null, requests: [], notices: [], lastGate: null },
     presence: { away: false, awaySinceMs: null },
@@ -158,6 +160,8 @@ export function step(state: MindState, stimuli: readonly MindStimulus[], nowMs: 
       answer = { state: next, intents: [] }
     else if (stimulus.kind === 'music')
       answer = answerMusic(next, stimulus)
+    else if (stimulus.kind === 'performer-report')
+      answer = answerPerformerReport(next, stimulus, cause, nowMs)
     else
       answer = answerVoiceOutcome(next, stimulus, cause, nowMs)
 
