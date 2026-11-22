@@ -6,6 +6,7 @@ import { acceptReaction, emotionHold, releaseHold } from '@proj-airi/stage-share
 
 import { refusedAnswer } from './capabilities'
 import { emotionGesture } from './gesture'
+import { moodEpisodeDose } from './mood'
 
 /** The dose of every emotion when the card turns band recruitment off. */
 const BANDLESS_NOMINAL = 0.6
@@ -28,10 +29,23 @@ function gestureOf(state: MindState, episode: ReactionEpisode, settings: Emotion
 }
 
 /**
- * An emotion becomes an episode with its hold, followed by its body gesture when it has one. A neutral that resets the reaction state releases the automatic
+ * The mood dose of a new or escalated episode, with mood on. The mood is the character's, so it moves whatever the
+ * performer declares; without posture the dose intent is reported as undeclared.
+ */
+function moodOf(state: MindState, episode: ReactionEpisode, settings: EmotionBehaviorSettings, moodless: boolean, cause: number, nowMs: number): { state: MindState, intents: MindIntent[] } {
+  if (!settings.mood)
+    return { state, intents: [] }
+  const dosed = moodEpisodeDose(state.mood, episode, settings, moodless, nowMs)
+  const next = { ...state, mood: dosed.mood }
+  return { state: next, intents: dosed.dose ? [{ id: `${cause}-mood`, cause, channel: 'posture', kind: 'mood', dose: dosed.dose }] : [] }
+}
+
+/**
+ * An emotion becomes an episode with its hold, followed by its body gesture when it has one and its mood dose. A neutral that resets the reaction state releases the automatic
  * slots and the hold. A repeat that neither starts nor escalates an episode yields no intent.
  */
-export function answerEmotion(state: MindState, stimulus: Stimulus<'emotion'>, cause: number, atSeconds: number, rng: MindRandom): Answer {
+export function answerEmotion(state: MindState, stimulus: Stimulus<'emotion'>, cause: number, nowMs: number, rng: MindRandom): Answer {
+  const atSeconds = nowMs / 1000
   if (!state.performer.face)
     return refusedAnswer(state, cause, 'emotion')
 
@@ -46,18 +60,20 @@ export function answerEmotion(state: MindState, stimulus: Stimulus<'emotion'>, c
     return { state: next, intents: [] }
 
   const gesture = gestureOf(next, episode, settings, cause, atSeconds)
-  return { state: gesture.state, intents: [{ id: `${cause}-emotion`, cause, channel: 'face', kind: 'emotion', episode, hold: emotionHold(episode, turnId, settings), reason: stimulus.source, turnId }, ...gesture.intents] }
+  const mood = moodOf(gesture.state, episode, settings, stimulus.moodless ?? false, cause, nowMs)
+  return { state: mood.state, intents: [{ id: `${cause}-emotion`, cause, channel: 'face', kind: 'emotion', episode, hold: emotionHold(episode, turnId, settings), reason: stimulus.source, turnId }, ...gesture.intents, ...mood.intents] }
 }
 
 /**
  * A named entry with an emotion mapping is accepted like an emotion at the mapping's minimum band, so the held
  * face follows what the model chose. The hold mirrors the entry's lease. A new or escalated episode is followed by its
- * body gesture, as for an emotion. A repeat inside the running episode yields no new episode but still refreshes the
+ * body gesture and its mood dose, as for an emotion. A repeat inside the running episode yields no new episode but still refreshes the
  * hold at the running episode's strength.
  *
  * Without a mapping, or with held emotions off, the reaction state is untouched and the entry travels alone.
  */
-export function answerExpressionRequest(state: MindState, stimulus: Stimulus<'expression-request'>, cause: number, atSeconds: number, rng: MindRandom): Answer {
+export function answerExpressionRequest(state: MindState, stimulus: Stimulus<'expression-request'>, cause: number, nowMs: number, rng: MindRandom): Answer {
+  const atSeconds = nowMs / 1000
   if (!state.performer.face)
     return refusedAnswer(state, cause, 'entry')
 
@@ -73,15 +89,16 @@ export function answerExpressionRequest(state: MindState, stimulus: Stimulus<'ex
   const held = reaction.episode ?? (running?.emotion === mapping.emotion ? running : null)
   const next = { ...state, reaction: reaction.state }
   const gesture = reaction.episode ? gestureOf(next, reaction.episode, settings, cause, atSeconds) : { state: next, intents: [] }
+  const mood = reaction.episode ? moodOf(gesture.state, reaction.episode, settings, stimulus.moodless ?? false, cause, nowMs) : { state: gesture.state, intents: [] }
 
   return {
-    state: gesture.state,
+    state: mood.state,
     intents: [{
       ...entry,
       episode: reaction.episode,
       // A configured zero dose has no running episode, but still refreshes the hold for the entry's lease.
       hold: { emotion: mapping.emotion, strength: held?.intensity ?? nominal, holdSeconds: lease.holdSeconds, until: lease.until, turnId },
-    }, ...gesture.intents],
+    }, ...gesture.intents, ...mood.intents],
   }
 }
 

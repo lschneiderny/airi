@@ -1,5 +1,7 @@
+import type { MoodLevel } from './mood'
 import type { MindIntent, MindRandom, MindSlowState, MindState, MindStimulus, Refusal } from './types'
 
+import { moodLevelAt } from './mood'
 import { seededRandom } from './random'
 import { initialMindState, step } from './step'
 
@@ -48,6 +50,14 @@ export class CharacterMind {
       listener({ atMs, stimuli, intents, refusals, state })
 
     return intents
+  }
+
+  /**
+   * Her fast mood decayed to now, to seed a Natural performer that attaches, is rebuilt, or becomes Natural again. A
+   * performer reads it once at that moment and decays its copy on its own clock afterwards; it is not a frame input.
+   */
+  moodLevel(): MoodLevel {
+    return moodLevelAt(this.current.mood, Math.max(this.previousAtMs, this.clock()))
   }
 
   /** Calls the listener after every step; returns the function that stops it. */

@@ -5,6 +5,7 @@ import { reactionPolicy } from '@proj-airi/stage-shared/situation'
 
 import { attendIntent } from './attention'
 import { refusedAnswer } from './capabilities'
+import { moodTouchDose } from './mood'
 import { reactionTurnId } from './voice'
 
 type Stimulus<K extends MindStimulus['kind']> = Extract<MindStimulus, { kind: K }>
@@ -13,7 +14,7 @@ interface Answer { state: MindState, intents: MindIntent[], refusals?: Refusal[]
 /**
  * One touch gets one response, decided together on the same state and clock:
  * - Posture: every touch gets a touch reaction, a poke at its point or a pet that starts or ends.
- * - Mood: `touchAffect` paces and habituates the dose, in seconds.
+ * - Mood: `touchAffect` paces and habituates the dose, in seconds; with mood on it also moves her level.
  * - Face: a poke and a finished pet are moments.
  * - Voice: for a poke or a finished pet with a voice view, `reactionPolicy` decides whether she says a line. The
  *   decision is kept either way. A line takes the line slot unless a reach-out holds it. Without a view nobody could speak the line, so the voice state is untouched.
@@ -45,8 +46,12 @@ export function answerTouch(state: MindState, stimulus: Stimulus<'touch'>, cause
     durationSeconds: stimulus.gesture === 'pet-end' ? stimulus.durationMs / 1000 : undefined,
     at: nowMs / 1000,
   }, stimulus.settings)
-  if (affect.dose)
+  let { mood } = state
+  if (affect.dose) {
     intents.push({ id: `${cause}-mood`, cause, channel: 'posture', kind: 'mood', dose: affect.dose })
+    if (stimulus.settings.mood)
+      mood = moodTouchDose(mood, affect.dose, stimulus.settings, nowMs)
+  }
 
   let { voice } = state
   if (stimulus.gesture !== 'pet-start') {
@@ -67,5 +72,5 @@ export function answerTouch(state: MindState, stimulus: Stimulus<'touch'>, cause
   if (stimulus.gesture !== 'pet-end')
     intents.push(attendIntent(cause, 'touch'))
 
-  return { state: { ...state, touch: { affect: affect.memory }, voice }, intents }
+  return { state: { ...state, touch: { affect: affect.memory }, voice, mood }, intents }
 }

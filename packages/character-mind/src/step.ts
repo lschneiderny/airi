@@ -10,6 +10,7 @@ import { answerChat } from './chat'
 import { answerEmotion, answerExpressionClear, answerExpressionRequest } from './expression'
 import { initialMindGestureState } from './gesture'
 import { advanceIdle, answerIdle, answerIdlePlay, initialMindIdleState } from './idle'
+import { initialMindMoodState } from './mood'
 import { answerMusic } from './music'
 import { answerPresence, answerScreenChange } from './presence'
 import { answerTouch } from './touch'
@@ -26,6 +27,7 @@ export function initialMindState(slow: MindSlowState = { pacing: null }): MindSt
     behavior: { idleActivities: true, touchReactions: true, chatAttention: true },
     reaction: createReactionState(),
     gesture: initialMindGestureState,
+    mood: initialMindMoodState,
     touch: { affect: initialTouchAffectMemory },
     voice: { reaction: initialReactionMemory(), lastDecision: null, gate: null, runId: null, stageShown: false, line: null, requests: [], notices: [], lastGate: null },
     presence: { away: false, awaySinceMs: null },
@@ -50,7 +52,6 @@ export function initialMindState(slow: MindSlowState = { pacing: null }): MindSt
  * `slow.pacing` follows her pacing in the gate memory.
  */
 export function step(state: MindState, stimuli: readonly MindStimulus[], nowMs: number, rng: MindRandom): { state: MindState, intents: MindIntent[], refusals: Refusal[] } {
-  const atSeconds = nowMs / 1000
   const intents: MindIntent[] = []
   const refusals: Refusal[] = []
   // A desktop wake anywhere in the call wins over a screen change in the same call.
@@ -92,9 +93,9 @@ export function step(state: MindState, stimuli: readonly MindStimulus[], nowMs: 
 
     let answer: MindAnswer
     if (stimulus.kind === 'emotion')
-      answer = answerEmotion(next, stimulus, cause, atSeconds, rng)
+      answer = answerEmotion(next, stimulus, cause, nowMs, rng)
     else if (stimulus.kind === 'expression-request')
-      answer = answerExpressionRequest(next, stimulus, cause, atSeconds, rng)
+      answer = answerExpressionRequest(next, stimulus, cause, nowMs, rng)
     else if (stimulus.kind === 'expression-clear')
       answer = answerExpressionClear(next, stimulus, cause)
     else if (stimulus.kind === 'touch')

@@ -7,9 +7,13 @@ import { seededRandom } from './random'
 import { step } from './step'
 import { naturalMindState } from './test/fixtures'
 
-/** Without jitter an episode's intensity is its dose, so the cases below can state it. */
+/**
+ * Without jitter an episode's intensity is its dose, so the cases below can state it. Mood is off so the face and
+ * gesture cases list no mood dose; `mood.test.ts` covers the doses.
+ */
 const settings = {
   ...defaultExpressionPerformanceSettings,
+  mood: false,
   intensity: { ...defaultExpressionPerformanceSettings.intensity, jitter: 0 },
 }
 /** The draw of the cases without jitter, where its value cannot show. */
@@ -235,9 +239,9 @@ describe('step: state', () => {
   it('numbers stimuli across calls and gives the intents of one stimulus its number', () => {
     const { state, intents } = run()
     expect(state.seq).toBe(7)
-    // The escalation at 1 s and the angry repeat at 12 s fall inside their gestures' cooldowns.
-    expect(intents.map(intent => intent.id)).toEqual(['1-emotion', '1-emotion-gesture', '2-emotion', '3-release', '4-entry', '5-emotion', '5-emotion-gesture', '6-release', '7-emotion'])
-    expect(intents.map(intent => intent.cause)).toEqual([1, 1, 2, 3, 4, 5, 5, 6, 7])
+    // The escalation at 1 s and the angry repeat at 12 s fall inside their gestures' cooldowns; every new or escalated episode doses mood.
+    expect(intents.map(intent => intent.id)).toEqual(['1-emotion', '1-emotion-gesture', '1-mood', '2-emotion', '2-mood', '3-release', '4-entry', '4-mood', '5-emotion', '5-emotion-gesture', '5-mood', '6-release', '7-emotion', '7-mood'])
+    expect(intents.map(intent => intent.cause)).toEqual([1, 1, 1, 2, 2, 3, 4, 4, 5, 5, 5, 6, 7, 7])
   })
 
   it('gives the same intents for the same seed and script, and others for another seed', () => {
