@@ -1080,6 +1080,7 @@ function handleBack() {
                       :max="5"
                       :step="0.1"
                       :label="entry.label"
+                      :description="t('settings.pages.card.performance.mapping_entry_emotions', { emotions: [...new Set(entry.mappings.map(mapping => mapping.emotion))].join(', ') })"
                       @update:model-value="setMappingWeight(entry.id, $event)"
                     />
                   </div>
