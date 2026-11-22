@@ -765,6 +765,23 @@ describe('stage performance conductor', () => {
       expect(markMoment.mock.calls).toEqual([['petted', expect.any(String)]])
     })
 
+    it('withdraws a cancelled pet through the scene without a situation touch, a moment, or a line', () => {
+      const scene = fakeScene()
+      const voice = fakeVoice()
+      const markMoment = vi.fn<NonNullable<StagePerformanceConductorOptions['markMoment']>>()
+      const { conductor, advance } = createConductor('natural', scene, undefined, undefined, undefined, { markMoment, voice: () => voice })
+
+      conductor.touch({ gesture: 'pet-start', region: 'head' })
+      advance(4)
+      conductor.touch({ gesture: 'pet-cancel', region: 'head' })
+
+      expect(scene.reactToTouch.mock.calls.map(([intent]) => intent)).toMatchObject([{ gesture: 'pet', phase: 'start' }, { gesture: 'pet', phase: 'end' }])
+      expect(scene.addMood.mock.calls.map(([dose]) => dose.id)).toEqual(['touch-1-pet'])
+      expect(markMoment).not.toHaveBeenCalled()
+      expect(voice.observeTouch).not.toHaveBeenCalled()
+      expect(voice.speak).not.toHaveBeenCalled()
+    })
+
     it('records a finished pet and a poke in the situation, and never a pet start', () => {
       vi.useFakeTimers({ toFake: ['Date'] })
       onTestFinished(() => {
