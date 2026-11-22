@@ -120,6 +120,7 @@ function leadWithMind() {
     submitUnprompted: payload => submitUnprompted(payload),
     submitReaction: async () => ({ status: 'failed', error: 'No reaction turns in this test' }),
     submitNotice: async () => ({ status: 'declined' }),
+    noticeTarget: () => null,
     cancelTurn: async () => {},
     sessionMessages: () => [],
     extractionSelection: async () => null,

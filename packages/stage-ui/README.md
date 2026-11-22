@@ -8,7 +8,10 @@ Shared core for stage
 continuation references. `notifyConversation` commits one source-attributed
 notice in its original owner conversation before preparing a reply.
 `waitForCompletion: false` returns the storage receipt; the default waits
-for the announcement request to settle. Duplicate identities join an active
+for the announcement request to settle. The leader's character mind decides
+that announcement through `useSituationStore().requestNotice`; with no leader
+mind, an inactive or archived target, or an expired request, the result stays
+stored without a reply. Duplicate identities join an active
 delivery or return the already stored receipt without another announcement.
 A delivery signal cancels before the durable commit starts; after storage
 the announcement has its own chat cancellation. Teardown settles all waiters.

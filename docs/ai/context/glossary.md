@@ -375,9 +375,9 @@ The procedural motion driver for Live2D and MMD characters. `NaturalMotion` owns
 
 ### Notice
 
-A message that tells a conversation about something the owner did not say, today only the result of a settled background task. It is stored as a user-role message marked with its source. Each request renders it with a prefix that says it is not from the owner, and the request that delivers it lets the model stay quiet. Sensors and the character state do not count it as owner speech. Only the owner's own conversation receives notices.
+A message that tells a conversation about something the owner did not say: the result of a settled background task or a terminal outcome. It is stored at once as a user-role message marked with its source, and the character mind decides whether a `notice` line answers it. Each request renders it with a prefix that says it is not from the owner, and the request that delivers it lets the model stay quiet. Sensors and the character state do not count it as owner speech. Only the owner's own conversation receives notices.
 
-**Code:** `packages/stage-ui/src/stores/chat.ts` `useChatStore` (`notifyConversation`); `packages/core-agent/src/runtime/chat-orchestrator-runtime.ts` `createChatOrchestratorRuntime` (send option `notice`).
+**Code:** `packages/stage-ui/src/features/notice/owner.ts` `NoticeOwner`; `packages/stage-ui/src/stores/chat.ts` `useChatStore` (`notifyConversation`); `packages/character-mind/src/voice.ts` `answerNoticeRequest`; `packages/core-agent/src/runtime/chat-orchestrator-runtime.ts` `createChatOrchestratorRuntime` (`submitNotice`, send option `notice`).
 **Not to be confused with:** a Spark Notify, which enters the situation and waits for the gate; the presence notice and the host notice settings, which tell the user about missing host signals; and the trigger message of an unprompted turn.
 **Avoid:** "notification" (upstream's account inbox uses that word, and the fork does not ship it), "system message".
 

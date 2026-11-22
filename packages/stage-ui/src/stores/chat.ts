@@ -35,7 +35,7 @@ import { useI18n } from 'vue-i18n'
 import { getTraceSink, LOCAL_AGENT_ACTOR } from '../composables/use-trace'
 import { modelDeclaresImageInput, useChatVision } from '../composables/vision/use-chat-vision'
 import { useVisionInference } from '../composables/vision/use-vision-inference'
-import { NoticeOwner } from '../features/notice/owner'
+import { NoticeOwner, ownerTurnIdOf } from '../features/notice/owner'
 import { chatAssetIdFrom, inlineConversationAssets, storeChatAttachments } from '../libs/chat-assets'
 import { extractMessageText } from '../libs/chat-message'
 import { CONVERSATION_COMPACT_FLAG } from '../libs/feature-flags'
@@ -574,7 +574,14 @@ export const useChatStore = defineStore('chat', () => {
     session: {
       target: (sessionId) => {
         const meta = chatSession.sessionMetas[sessionId]
-        return meta ? { characterId: chatSession.personaOf(sessionId), generation: chatSession.getSessionGeneration(sessionId), owner: isOwnerSession(sessionId) && !isTaskSession(sessionId) } : null
+        return meta
+          ? {
+              characterId: chatSession.personaOf(sessionId),
+              generation: chatSession.getSessionGeneration(sessionId),
+              owner: isOwnerSession(sessionId) && !isTaskSession(sessionId),
+              open: activeSessionId.value === sessionId && meta.archivedAt === undefined,
+            }
+          : null
       },
       load: sessionId => chatSession.loadSession(sessionId),
       messages: sessionId => chatSession.getSessionMessagesIfLoaded(sessionId),
@@ -583,7 +590,17 @@ export const useChatStore = defineStore('chat', () => {
     },
     now: Date.now,
     createId: nanoid,
-    request: record => notices.execute(record.target),
+    // The leader's mind decides whether the stored result is announced; its turn id is the stored message id.
+    request: record => situationStore.requestNotice({
+      turnId: record.target.messageId,
+      messageId: record.target.messageId,
+      source: record.target.source,
+      sessionId: record.target.sessionId,
+      characterId: record.characterId,
+      generation: record.target.generation,
+      ownerTurnId: record.ownerTurnId,
+      acceptedAtMs: record.acceptedAtMs,
+    }),
     run: async (record) => {
       const { sessionId, messageId } = record.target
       await startSend({ sessionId, messageId, text: record.text, tools: record.tools }, false, { notice: { source: record.target.source } }, undefined, record.target).done
@@ -1365,6 +1382,11 @@ export const useChatStore = defineStore('chat', () => {
     submitUnprompted: payload => submitUnprompted(payload),
     submitReaction: payload => submitReaction(payload),
     submitNotice: request => notices.execute(request),
+    noticeTarget: () => {
+      const sessionId = activeSessionId.value
+      const target = notices.targetOf(sessionId)
+      return target && { sessionId, characterId: target.characterId, generation: target.generation, ownerTurnId: ownerTurnIdOf(chatSession.getSessionMessagesIfLoaded(sessionId) ?? []), open: target.owner && target.open }
+    },
     cancelTurn: turn => cancelTurn(turn),
     sessionMessages: sessionId => chatSession.getSessionMessagesIfLoaded(sessionId) ?? [],
     // Thread extraction runs on the active chat selection, like the chat itself, with the session character's name.

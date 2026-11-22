@@ -113,6 +113,7 @@ function createChatControls() {
     submitUnprompted,
     submitReaction: async () => ({ status: 'spoken', text: 'Hey!' }),
     submitNotice: async () => ({ status: 'declined' }),
+    noticeTarget: () => null,
     cancelTurn: async () => {},
     sessionMessages: () => state.messages,
     extractionSelection: async () => ({ provider: extractionProvider, model: 'chat-model', characterName: 'Airi' }),
