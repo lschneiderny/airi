@@ -6,6 +6,8 @@ import type { LlmStreamOptions } from './ai/chat-llm/llm'
 
 import en from '@proj-airi/i18n/locales/en'
 
+import { useDesktopActivityStore } from '@proj-airi/stage-shared/stores/desktop-activity'
+import { useForegroundWindowStore } from '@proj-airi/stage-shared/stores/foreground-window'
 import { createPinia, disposePinia } from 'pinia'
 import { afterEach, expect, it, vi } from 'vitest'
 import { render } from 'vitest-browser-vue'
@@ -14,6 +16,7 @@ import { createI18n } from 'vue-i18n'
 
 import { recipesRepo } from '../database/repos/recipes.repo'
 import { CONVERSATION_COMPACT_FLAG } from '../libs/feature-flags'
+import { connectMind } from '../test/connect-mind'
 import { MCP_AGENT_EXECUTION_PROMPT } from '../tools/mcp'
 import { useLLM } from './ai/chat-llm/llm'
 import { useLlmToolsStore } from './ai/chat-llm/tools'
@@ -24,6 +27,7 @@ import { useFeatureFlagsStore } from './feature-flags'
 import { useModsServerChannelStore } from './mods/api/channel-server'
 import { useConsciousnessStore } from './modules/consciousness'
 import { useRecipesStore } from './recipes'
+import { useSituationStore } from './situation'
 
 const pinias: ReturnType<typeof createPinia>[] = []
 
@@ -74,6 +78,35 @@ async function setupChat(reply: (prompt: string, options?: LlmStreamOptions) => 
 }
 
 /**
+ * Makes this window the leader with a connected mind and a quiet, present user, so stored results can be announced.
+ * Only the first of several results speaks: the shared floor then holds the rest, which stay stored.
+ */
+function leadMind(pinia: ReturnType<typeof createPinia>) {
+  const situation = useSituationStore(pinia)
+  situation.initialize({
+    addRole: () => () => {},
+    dispose: () => {},
+    getLeaderId: () => undefined,
+    getParticipantCount: () => 1,
+    getParticipants: () => [],
+    getRoles: () => [],
+    isLeader: () => true,
+    onCoordinationChange: () => () => {},
+    onLeadershipChange: (listener) => {
+      listener(true)
+      return () => {}
+    },
+    participantId: 'fixture-leader',
+    plugin: () => {},
+  })
+  situation.setHostCapabilities({ unprompted: true })
+  situation.setStageVisible(true)
+  useDesktopActivityStore(pinia).setSnapshot({ idleSeconds: 0, locked: false, suspendedAtMs: null, resumedAtMs: null, unlockedAtMs: null, systemAudioLevel: null, screenChange: null, sampledAtMs: Date.now() })
+  useForegroundWindowStore(pinia).setSample({ exePath: '/home/user/notes', exeName: 'notes', title: 'notes.txt', pid: 7, ownProcess: false, busy: 'accepts', sampledAtMs: Date.now() })
+  connectMind(situation, 1)
+}
+
+/**
  * Waits until the conversation holds `count` notices and no turn runs.
  * A finished task sends its notice in the background, so a test that ends sooner leaves the send running into the next test.
  */
@@ -86,6 +119,7 @@ afterEach(async () => {
   vi.restoreAllMocks()
   for (const pinia of pinias.splice(0)) {
     useModsServerChannelStore(pinia).dispose()
+    useSituationStore(pinia).dispose()
     useChatStore(pinia).dispose()
     disposePinia(pinia)
   }
@@ -213,20 +247,25 @@ it.each([
       resolveStep: resolveStep ? async () => ({ ...await resolveStep(), chatProvider: recordingProvider }) : undefined,
     })
   })
+  leadMind(pinia)
   const parent = sessions.activeSessionId
   await chat.send({ sessionId: parent, text: 'Use the selected observation tools.', messageId: 'owner-turn', tools: original.map(name => ({ name })) })
-  const character = sessions.sessionMetas[parent]!.characterId
-  const other = await sessions.createSession(character)
   await chat.notifyConversation(parent, { source: 'airi:terminal-settlement', messageId: 'notice-one', text: 'Controlled Terminal outcome. No new authorization.' }, {
     continueFrom: { turnId: sourceTurn, tools: selected.map(name => ({ name })) },
   })
   const actual = requests.at(-1)?.tools?.map(tool => tool.function.name).filter(name => names.includes(name)) ?? []
   console.info(JSON.stringify({ boundary: 'Real Chat stores, resolver, Core and SDK provider projection. Mock provider and executors.', original, selected, sourceTurn, actual, requestTools: requests.map(request => request.tools?.map(tool => tool.function.name)), dispatches: execute.mock.calls.length }))
   expect(actual).toEqual(expected)
+  // A result for a conversation that is no longer selected is stored there and announced nowhere.
+  const character = sessions.sessionMetas[parent]!.characterId
+  const other = await sessions.createSession(character)
+  const requestCount = requests.length
   await chat.notifyConversation(parent, { source: 'airi:terminal-settlement', messageId: 'notice-two', text: 'Next controlled outcome.' }, {
     continueFrom: { turnId: 'notice-one', tools: names.map(name => ({ name })) },
   })
-  const chained = requests.at(-1)?.tools?.map(tool => tool.function.name).filter(name => names.includes(name)) ?? []
+  expect(requests).toHaveLength(requestCount)
+  // The stored authority of the chained result is what a later announcement could use.
+  const chained = sessions.getSessionMessages(parent).find(message => message.id === 'notice-two')?.tools?.map(tool => tool.name) ?? []
   expect(chained).toEqual(expected)
   console.info(JSON.stringify({ boundary: 'Second Notice uses the first Notice as its exact source. A larger current selection cannot restore a dropped tool.', original, selected, chained, dispatches: execute.mock.calls.length }))
   expect(sessions.activeSessionId).toBe(other)
@@ -257,7 +296,8 @@ it('stops a running task without a result, while another task runs on', async ()
   // Each task runs in its own session, so the second one finishes while the first still runs.
   const statusOf = (name: string) => chat.backgroundTasks.find(task => task.recipeName === name)?.status
   await expect.poll(() => [statusOf('Watch'), statusOf('Sum')]).toEqual(['running', 'done'])
-  await expect.poll(() => prompts.some(prompt => prompt.includes('The background task \\"Sum\\" finished.'))).toBe(true)
+  // Without a leader mind the result is stored and announced nowhere.
+  await expect.poll(() => sessions.getSessionMessages(parent).some(message => message.role === 'user' && message.notice && String(message.content).includes('The background task "Sum" finished.'))).toBe(true)
 
   const watching = chat.backgroundTasks.find(task => task.recipeName === 'Watch')!
   await chat.stopBackgroundTask(watching.sessionId)

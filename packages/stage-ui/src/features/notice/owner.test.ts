@@ -9,7 +9,7 @@ import { NoticeOwner } from './owner'
 function harness() {
   const messages: ChatHistoryItem[] = []
   let generation = 1
-  const target = () => ({ characterId: 'character-a', generation, owner: true })
+  const target = () => ({ characterId: 'character-a', generation, owner: true, open: true })
   const commit = vi.fn<NoticePorts['session']['commit']>(async (_sessionId, message) => {
     const existing = messages.some(item => item.id === message.id)
     if (!existing)
@@ -44,12 +44,20 @@ const notice = { source: 'host:task', text: 'Controlled result.', messageId: 'no
 describe('notice storage owner', () => {
   it('never announces a failed commit or a non-owner target', async () => {
     const { owner, ports, request, commit } = harness()
-    ports.session.target = () => ({ characterId: 'character-a', generation: 1, owner: false })
+    ports.session.target = () => ({ characterId: 'character-a', generation: 1, owner: false, open: true })
     expect(await owner.deliver('scene-1', notice)).toBeUndefined()
     expect(commit).not.toHaveBeenCalled()
-    ports.session.target = () => ({ characterId: 'character-a', generation: 1, owner: true })
+    ports.session.target = () => ({ characterId: 'character-a', generation: 1, owner: true, open: true })
     commit.mockRejectedValueOnce(new Error('Storage unavailable'))
     await expect(owner.deliver('session-1', notice)).rejects.toThrow('Storage unavailable')
+    expect(request).not.toHaveBeenCalled()
+  })
+
+  it('stores an inactive or archived target without requesting an announcement', async () => {
+    const { owner, ports, request, messages } = harness()
+    ports.session.target = () => ({ characterId: 'character-a', generation: 1, owner: true, open: false })
+    expect(await owner.deliver('session-1', notice)).toEqual({ sessionId: 'session-1', messageId: notice.messageId })
+    expect(messages).toHaveLength(1)
     expect(request).not.toHaveBeenCalled()
   })
 

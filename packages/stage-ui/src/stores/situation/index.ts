@@ -1,4 +1,4 @@
-import type { NoticeRequest, VoiceLine, VoiceRequest, VoiceRun, VoiceView } from '@proj-airi/character-mind'
+import type { NoticeRequest, NoticeTarget, VoiceLine, VoiceRequest, VoiceRun, VoiceView } from '@proj-airi/character-mind'
 import type { ChatHistoryItem, ChatHookRegistry, TurnRef } from '@proj-airi/core-agent'
 import type {
   AppCategory,
@@ -159,6 +159,8 @@ export interface SituationChatControls {
   submitReaction: (payload: ChatReactionPayload) => Promise<ChatUnpromptedResult>
   /** Executes the exact stored notice that the mind admitted. */
   submitNotice: (request: NoticeRequest) => Promise<ChatUnpromptedResult>
+  /** The selected conversation as a stored result's announcement target, or null when it cannot take one. */
+  noticeTarget: () => NoticeTarget | null
   /** Cancels one chat turn, for a widget line that missed its caller's deadline. */
   cancelTurn: (turn: { sessionId: string, turnId: string }) => Promise<void>
   /** The loaded messages of a session, oldest first, for thread extraction; empty when it is not loaded. */
@@ -661,6 +663,7 @@ export const useSituationStore = defineStore('situation', () => {
       moodFactor: characterBridge?.urgeFactor() ?? 1,
       // A line of the mind that settled at its first literal is still pending in chat until its result arrives.
       unpromptedPending: speaking !== undefined || controls.unpromptedPending(),
+      noticeTarget: controls.noticeTarget(),
     }
   }
 
@@ -795,6 +798,22 @@ export const useSituationStore = defineStore('situation', () => {
       // Registered before the send: a mind that finds a quiet moment speaks the line within the same call.
       widgetCallers.set(request.turnId, resolve)
       connected.send({ kind: 'voice-request', request, view: voiceView(controls) })
+    })
+  }
+
+  /**
+   * Asks the leader's mind to announce a stored owner result, and resolves with what became of the announcement.
+   * The result is already durable; `failed` or `cancelled` leaves it store-only. Uses the widget caller table, keyed by
+   * the stored message id, so drops, cancels, and leadership loss settle it exactly once.
+   */
+  function requestNotice(request: NoticeRequest): Promise<ChatUnpromptedResult> {
+    const controls = chat
+    const connected = mind
+    if (!leading.value || !controls || !connected || gateTicker === undefined)
+      return Promise.resolve({ status: 'failed', error: 'No character mind can take the notice' })
+    return new Promise((resolve) => {
+      widgetCallers.set(request.turnId, resolve)
+      connected.send({ kind: 'notice-request', request, view: voiceView(controls) })
     })
   }
 
@@ -1341,6 +1360,7 @@ export const useSituationStore = defineStore('situation', () => {
     publishVoice,
     connect,
     requestVoice,
+    requestNotice,
     sharesSource,
     advance,
     renderForRequest,

@@ -1,4 +1,4 @@
-import type { MindSlowState, VoiceLine, VoiceRun } from '@proj-airi/character-mind'
+import type { MindSlowState, NoticeRequest, NoticeTarget, VoiceLine, VoiceRun } from '@proj-airi/character-mind'
 import type { ChatHistoryItem, ChatHookRegistry, ChatStreamEventContext } from '@proj-airi/core-agent'
 import type { GenerationProvider } from '@proj-airi/provider-inference'
 import type { DesktopActivitySnapshot } from '@proj-airi/stage-shared/performance-state'
@@ -11,7 +11,7 @@ import type { LlmStream } from '../../features/situation/thread-extraction'
 import type { ChatReactionPayload, ChatUnpromptedPayload, ChatUnpromptedResult } from '../chat'
 import type { ThreadExtractionLedgerEntry } from '../devtools/situation-observability'
 
-import { CharacterMind, reactionTurnId } from '@proj-airi/character-mind'
+import { CharacterMind, NOTICE_START_WAIT_MS, reactionTurnId } from '@proj-airi/character-mind'
 import { createChatHooks } from '@proj-airi/core-agent'
 import { DEFAULT_CHARACTER_PROFILE, initialCharacterState, readCharacter } from '@proj-airi/stage-shared/character-state'
 import { evaluateUrgeGate, FLOOR_MS, HOUR_MS, initialSituationState, notifyTopicKey, recordUrgeFireOutcome, SETTLE_MS, threadMinAgeMs, TOUCH_TOPIC_KEY, userGateMemoryOf } from '@proj-airi/stage-shared/situation'
@@ -163,7 +163,8 @@ const extractionProvider: GenerationProvider = {
  * session holds `state.messages`, and its thread extraction stream answers with no text unless a test replaces it.
  */
 function createChatControls() {
-  const state: { sending: boolean, queued: number, unpromptedPending: boolean, messages: ChatHistoryItem[] } = { sending: false, queued: 0, unpromptedPending: false, messages: [] }
+  const state: { sending: boolean, queued: number, unpromptedPending: boolean, messages: ChatHistoryItem[], noticeTarget: NoticeTarget | null } = { sending: false, queued: 0, unpromptedPending: false, messages: [], noticeTarget: null }
+  const submitNotice = vi.fn(async (_request: NoticeRequest): Promise<ChatUnpromptedResult> => ({ status: 'spoken', text: 'It finished.' }))
   const submitUnprompted = vi.fn(async (_payload: ChatUnpromptedPayload): Promise<ChatUnpromptedResult> => ({ status: 'spoken', text: 'Still at it?' }))
   const submitReaction = vi.fn(async (_payload: ChatReactionPayload): Promise<ChatUnpromptedResult> => ({ status: 'spoken', text: 'Hey!' }))
   const stream = vi.fn<LlmStream>(async () => {})
@@ -174,13 +175,14 @@ function createChatControls() {
     activeSessionId: () => 'session-1',
     submitUnprompted: payload => submitUnprompted(payload),
     submitReaction: payload => submitReaction(payload),
-    submitNotice: async () => ({ status: 'declined' }),
+    submitNotice: request => submitNotice(request),
+    noticeTarget: () => state.noticeTarget,
     cancelTurn: async () => {},
     sessionMessages: () => state.messages,
     extractionSelection: async () => ({ provider: extractionProvider, model: 'chat-model', characterName: 'Airi' }),
     stream: (...args) => stream(...args),
   }
-  return { state, controls, submitUnprompted, submitReaction, stream }
+  return { state, controls, submitUnprompted, submitReaction, submitNotice, stream }
 }
 
 /** Emits the hooks of one finished user turn, as the chat runtime does. */
@@ -906,6 +908,53 @@ describe('situation gate loop', () => {
     expect(store.state.events.some(event => event.topicKey === topicKey)).toBe(false)
     notebook.requeueTask(task.id, { dueAt: Date.now() })
     expect(notebook.getDueTasks(Date.now(), 0)).toHaveLength(1)
+  })
+
+  /** A result stored in the active conversation, as the notice owner asks the mind to announce it. */
+  function noticeFor(chat: ReturnType<typeof createChatControls>, messageId = 'notice-1'): NoticeRequest {
+    const target: NoticeTarget = { sessionId: 'session-1', characterId: 'default', generation: 1, ownerTurnId: 'owner-1', open: true }
+    chat.state.noticeTarget = target
+    const { open: _open, ...identity } = target
+    return { ...identity, turnId: messageId, messageId, source: 'recipe:Research', acceptedAtMs: Date.now() }
+  }
+
+  it('announces a stored result with reach-outs off, without an unanswered opening', async () => {
+    const { store, chat, observability } = startQuietLeader()
+    await useCharacterBehaviorSettings().update({ speaking: { unpromptedEnabled: false } })
+    const request = noticeFor(chat)
+
+    expect(await store.requestNotice(request)).toEqual({ status: 'spoken', text: 'It finished.' })
+    expect(chat.submitNotice).toHaveBeenCalledOnce()
+    expect(chat.submitNotice).toHaveBeenCalledWith(request)
+    expect(chat.submitUnprompted).not.toHaveBeenCalled()
+    expect((await observability.inspect()).urge.memory?.unanswered).toBe(0)
+  })
+
+  it('holds a stored result under do-not-disturb and leaves it store-only after five minutes', async () => {
+    const { store, chat } = startQuietLeader()
+    await useCharacterBehaviorSettings().update({ speaking: { dontDisturb: true } })
+    const result = store.requestNotice(noticeFor(chat))
+
+    await vi.advanceTimersByTimeAsync(NOTICE_START_WAIT_MS)
+    expect(await result).toEqual({ status: 'cancelled' })
+    expect(chat.submitNotice).not.toHaveBeenCalled()
+  })
+
+  it('drops a waiting result when the owner writes again or the conversation changes', async () => {
+    const { store, chat, hooks } = startQuietLeader()
+    chat.state.sending = true
+    const afterOwner = store.requestNotice(noticeFor(chat, 'notice-1'))
+    chat.state.sending = false
+    await userTurn(hooks, 'owner-2')
+    expect(await afterOwner).toEqual({ status: 'cancelled' })
+
+    chat.state.sending = true
+    const afterSwitch = store.requestNotice(noticeFor(chat, 'notice-2'))
+    chat.state.noticeTarget = { ...chat.state.noticeTarget!, sessionId: 'session-2' }
+    chat.state.sending = false
+    await nextGateTick()
+    expect(await afterSwitch).toEqual({ status: 'cancelled' })
+    expect(chat.submitNotice).not.toHaveBeenCalled()
   })
 
   it('withdraws a completed or rescheduled reminder before another gate decision', () => {

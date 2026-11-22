@@ -19,11 +19,17 @@ export interface NoticeRecord {
   sourceTurnId: string | null
 }
 
+/** The newest message the owner wrote; a newer one makes a waiting announcement stale. */
+export function ownerTurnIdOf(messages: readonly ChatHistoryItem[]): string | null {
+  return messages.findLast(message => message.role === 'user' && !message.notice && message.origin !== 'unprompted')?.id ?? null
+}
+
 type Receipt = Pick<StoredNoticeTarget, 'sessionId' | 'messageId'>
 
 export interface NoticePorts {
   session: {
-    target: (sessionId: string) => { characterId: string, generation: number, owner: boolean } | null
+    /** `open` means the conversation is selected in the leader and not archived, so an announcement can start. */
+    target: (sessionId: string) => { characterId: string, generation: number, owner: boolean, open: boolean } | null
     load: (sessionId: string) => Promise<boolean>
     messages: (sessionId: string) => readonly ChatHistoryItem[] | undefined
     commit: (sessionId: string, message: Extract<ChatHistoryItem, { role: 'user' }> & { id: string }) => Promise<{ status: 'inserted' | 'existing', messageId: string }>
@@ -111,13 +117,14 @@ export class NoticeOwner {
     entry.accepted.resolve({ sessionId, messageId: receipt.messageId })
     if (receipt.status === 'existing' || this.pending.get(key) !== entry)
       return
-    const messages = this.ports.session.messages(sessionId) ?? []
-    const ownerTurn = messages.findLast(message => message.role === 'user' && !message.notice && message.origin !== 'unprompted')
+    // An inactive or archived conversation keeps the result readable, but starts no late announcement.
+    if (!target.open)
+      return
     const record: NoticeRecord = {
       target: { sessionId, messageId, source: notice.source, generation: target.generation },
       characterId: target.characterId,
       acceptedAtMs: this.ports.now(),
-      ownerTurnId: ownerTurn?.id ?? null,
+      ownerTurnId: ownerTurnIdOf(this.ports.session.messages(sessionId) ?? []),
       text: notice.text,
       tools,
       sourceTurnId: options.continueFrom?.turnId ?? null,
@@ -148,6 +155,11 @@ export class NoticeOwner {
       })()
     }
     return entry.execution
+  }
+
+  /** The current announcement target of a conversation, from the same port that admitted its stored results. */
+  targetOf(sessionId: string) {
+    return this.ports.session.target(sessionId)
   }
 
   /** Teardown settles every waiter and cancels generations without deleting stored results. */

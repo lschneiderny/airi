@@ -261,6 +261,7 @@ describe('widget spark reactions', () => {
       submitUnprompted: payload => submitUnprompted(payload),
       submitReaction: async () => ({ status: 'failed', error: 'No reaction turns in this test' }),
       submitNotice: async () => ({ status: 'declined' }),
+      noticeTarget: () => null,
       cancelTurn: turn => cancelTurn(turn),
       sessionMessages: () => [],
       extractionSelection: async () => null,

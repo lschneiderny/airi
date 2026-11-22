@@ -407,6 +407,16 @@ function leadSituation() {
   })
 }
 
+/** A leader whose mind sees a quiet, present user, so only the voice policy decides whether a line starts. */
+function leadQuietSituation() {
+  leadSituation()
+  const situation = useSituationStore()
+  situation.setHostCapabilities({ unprompted: true })
+  situation.setStageVisible(true)
+  useDesktopActivityStore().setSnapshot({ idleSeconds: 0, locked: false, suspendedAtMs: null, resumedAtMs: null, unlockedAtMs: null, systemAudioLevel: null, screenChange: null, sampledAtMs: Date.now() })
+  useForegroundWindowStore().setSample({ exePath: 'C:\\Windows\\notepad.exe', exeName: 'notepad.exe', title: 'notes.txt - Notepad', pid: 7, ownProcess: false, busy: 'accepts', sampledAtMs: Date.now() })
+}
+
 /** A synced runtime in which this window leads. */
 function createLeaderRuntime(): SyncedPiniaRuntime {
   return {
@@ -564,6 +574,7 @@ describe('chat store contract', () => {
       await options.onStreamEvent?.({ type: 'finish' })
     })
     const store = useChatStore()
+    leadQuietSituation()
     const control = new AbortController()
     const receipt = await store.notifyConversation('session-1', { source: 'airi:terminal-settlement', text: 'Controlled execution result.', messageId: 'terminal:stored-action' }, { waitForCompletion: false, signal: control.signal })
     await started.promise
@@ -586,6 +597,7 @@ describe('chat store contract', () => {
       await held.promise
     })
     const store = useChatStore()
+    leadQuietSituation()
     let finished = false
     const delivery = store.notifyConversation('session-1', { source: 'background-task', text: 'Controlled task result.' }).then((receipt) => {
       finished = true
@@ -598,6 +610,14 @@ describe('chat store contract', () => {
     expect(finished).toBe(true)
   })
 
+  it('keeps a notice store-only when no leader mind can admit its announcement', async () => {
+    const store = useChatStore()
+    const notice = { source: 'host:task', text: 'A task result.', messageId: 'notice-without-mind' }
+    expect(await store.notifyConversation('session-1', notice)).toEqual({ sessionId: 'session-1', messageId: notice.messageId })
+    expect(sessionMessages['session-1'].filter(message => message.id === notice.messageId)).toHaveLength(1)
+    expect(llmStreamMock).not.toHaveBeenCalled()
+  })
+
   it('stores a notice while another generation holds the conversation FIFO', async () => {
     const held = Promise.withResolvers<void>()
     const started = Promise.withResolvers<void>()
@@ -606,6 +626,7 @@ describe('chat store contract', () => {
       await held.promise
     })
     const store = useChatStore()
+    leadQuietSituation()
     const first = store.send({ sessionId: 'session-1', text: 'An owner request.' })
     await started.promise
     const notice = { source: 'host:task', text: 'A task result.', messageId: 'notice-during-generation' }
@@ -615,6 +636,8 @@ describe('chat store contract', () => {
     const completed = store.notifyConversation('session-1', notice)
     held.resolve()
     await first
+    // The generating owner turn held the announcement; the next voice tick admits it.
+    expect(await useSituationObservabilityStore().evaluateGate()).toMatchObject({ status: 'evaluated', decision: { fire: false, reason: 'voice-priority' } })
     await completed
     expect(llmStreamMock).toHaveBeenCalledTimes(2)
     expect(sessionMessages['session-1'].filter(message => message.id === notice.messageId)).toHaveLength(1)
