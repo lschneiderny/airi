@@ -5,7 +5,7 @@ import type { GateSignals } from '@proj-airi/stage-shared/situation'
 
 import type { MindIntent, MindRandom, MindState, MindStimulus } from './types'
 
-import { IDLE_ERRAND_PACING, PASTIME_HOLD_SECONDS } from '@proj-airi/motion-driver-natural/idle-errands'
+import { IDLE_ERRAND_LINGER_SECONDS, IDLE_ERRAND_PACING, PASTIME_HOLD_SECONDS } from '@proj-airi/motion-driver-natural/idle-errands'
 import { dormantIdleView } from '@proj-airi/motion-driver-natural/idle-schedule'
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { HOUR_MS, initialSituationState, randomSource } from '@proj-airi/stage-shared/situation'
@@ -736,6 +736,20 @@ describe('idle errands with a performer', () => {
       expect(errand.holdSeconds).toBeLessThanOrEqual(PASTIME_HOLD_SECONDS.max)
     }
   })
+
+  it('orders a wander stay of 45 to 150 s, drawn log-uniformly', () => {
+    const { performer } = simulate({ seed: 5, view: { drive: { ...drive, body: true, errands: ['wander'] } }, seconds: 100 * 3600 })
+    const stays = performer.errands.map(errand => errand.holdSeconds!)
+    expect(stays.length).toBeGreaterThan(200)
+    for (const stay of stays) {
+      expect(stay).toBeGreaterThanOrEqual(IDLE_ERRAND_LINGER_SECONDS.min)
+      expect(stay).toBeLessThanOrEqual(IDLE_ERRAND_LINGER_SECONDS.max)
+    }
+    // Log-uniform: half the stays fall below the geometric mean of the bounds; four standard deviations bound the share.
+    const middle = Math.sqrt(IDLE_ERRAND_LINGER_SECONDS.min * IDLE_ERRAND_LINGER_SECONDS.max)
+    const below = stays.filter(stay => stay < middle).length / stays.length
+    expect(Math.abs(below - 0.5)).toBeLessThan(4 * Math.sqrt(0.25 / stays.length))
+  }, 30_000)
 
   it('treats a refused errand as spent and keeps its refractory', () => {
     for (const kind of ['pastime', 'idle-clip', 'wander'] as const) {

@@ -209,7 +209,10 @@ export type MindIntent
    * performer sits her or rests her; a performer without a body drops it.
    */
     | (IntentBase & { channel: 'posture', kind: 'settle', settled: boolean })
-  /** Start an idle errand. `pick` chooses among the realiser's candidates; `holdSeconds` is the pastime hold, null for other errands. */
+  /**
+   * Start an idle errand. `pick` chooses among the realiser's candidates. `holdSeconds` is the pastime's hold or the
+   * wander's stay where it took her, null for an unasked clip.
+   */
     | (IntentBase & { channel: 'posture', kind: 'idle-errand', errand: IdleErrandKind, pick: number, holdSeconds: number | null })
   /** The cursor episode for the report `requestId`: whether she engages, its span, dwell, and cooldown. Only the reporting performer plays it. */
     | (IntentBase & { channel: 'gaze', kind: 'cursor-episode', requestId: number, episode: CursorEpisode })

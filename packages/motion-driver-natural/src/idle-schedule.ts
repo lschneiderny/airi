@@ -2,7 +2,7 @@ import type { DrawnIdleActivityKind, IdleActivityKind, IdleBehaviourKind, Natura
 import type { IdleErrandKind, IdleErrandOutcome } from './idle-errands'
 import type { RandomStream } from './random'
 
-import { IDLE_ERRAND_KINDS, IDLE_ERRAND_PACING, PASTIME_HOLD_SECONDS } from './idle-errands'
+import { IDLE_ERRAND_KINDS, IDLE_ERRAND_LINGER_SECONDS, IDLE_ERRAND_PACING, PASTIME_HOLD_SECONDS } from './idle-errands'
 
 /**
  * The idle schedule: when she starts an idle act or an errand, which one, when she falls asleep while the user is away,
@@ -290,6 +290,18 @@ function errandRefractoryFrom(state: IdleScheduleState, kind: IdleErrandKind) {
   return last ?? (pacing.firstAfterListing ? state.errandListedSince[kind] : undefined)
 }
 
+/**
+ * The hold of an errand, drawn after its pick: a pastime's uniform duration, or a wander's log-uniform stay where it took
+ * her (`IDLE_ERRAND_LINGER_SECONDS`); an unasked clip has none and draws nothing.
+ */
+function errandHold(errand: IdleErrandKind, random: RandomStream): number | null {
+  if (errand === 'pastime')
+    return PASTIME_HOLD_SECONDS.min + (PASTIME_HOLD_SECONDS.max - PASTIME_HOLD_SECONDS.min) * random()
+  if (errand === 'wander')
+    return IDLE_ERRAND_LINGER_SECONDS.min * (IDLE_ERRAND_LINGER_SECONDS.max / IDLE_ERRAND_LINGER_SECONDS.min) ** random()
+  return null
+}
+
 /** One draw shares the start between the acts and each errand by rate; null picks an act. */
 function chooseErrand(errands: readonly { kind: IdleErrandKind, rate: number }[], actRate: number, random: RandomStream): IdleErrandKind | null {
   let draw = random() * (actRate + errands.reduce((sum, errand) => sum + errand.rate, 0)) - actRate
@@ -415,8 +427,7 @@ export function advanceIdleSchedule(state: IdleScheduleState, view: IdleView, co
       const errand = errands.length > 0 ? chooseErrand(errands, actRate, random) : null
       if (errand) {
         const errandPick = random()
-        const holdSeconds = errand === 'pastime' ? PASTIME_HOLD_SECONDS.min + (PASTIME_HOLD_SECONDS.max - PASTIME_HOLD_SECONDS.min) * random() : null
-        decision = { kind: 'errand', errand, pick: errandPick, holdSeconds }
+        decision = { kind: 'errand', errand, pick: errandPick, holdSeconds: errandHold(errand, random) }
       }
       else if (actsOpen) {
         const kind = pick(next, view, context, drive, at, random)

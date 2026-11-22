@@ -483,8 +483,9 @@ export class NaturalIdleActivities {
           this.refuse(order)
           continue
         }
-        const end = order.holdSeconds === null ? Number.POSITIVE_INFINITY : at + order.holdSeconds
-        this.errand = { seq: ++this.errandSeq, kind: order.errand, start: at, end, pick: order.pick, endedAt: null, outcome: null }
+        // Natural ends a pastime at its hold. A wander's hold is the stay its realiser keeps, and the realiser ends it.
+        const end = order.errand === 'pastime' && order.holdSeconds !== null ? at + order.holdSeconds : Number.POSITIVE_INFINITY
+        this.errand = { seq: ++this.errandSeq, kind: order.errand, start: at, end, holdSeconds: order.holdSeconds, pick: order.pick, endedAt: null, outcome: null }
         this.reports.push({ kind: 'errand-started', intentId: order.id, seq: this.errand.seq, errand: order.errand })
         continue
       }

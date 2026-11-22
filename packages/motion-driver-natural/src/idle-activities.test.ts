@@ -357,6 +357,18 @@ describe('idle activity layer', () => {
     expect(spoken.idle.errand).toMatchObject({ outcome: 'interrupted' })
   })
 
+  it('keeps a wander open past its hold, which is the stay its realiser keeps, until the realiser answers', () => {
+    const wander = layer(7, { ...neutralDrive, body: true, errands: ['wander'] })
+    wander.idle.order({ id: 'wander-1', kind: 'errand', errand: 'wander', pick: 0.9, holdSeconds: 60 })
+    wander.run(1)
+    expect(wander.idle.errand).toMatchObject({ seq: 1, kind: 'wander', end: Number.POSITIVE_INFINITY, holdSeconds: 60, endedAt: null })
+    wander.run(120)
+    expect(wander.idle.errand?.endedAt).toBeNull()
+    wander.idle.answerErrand(1, 'done')
+    wander.run(121)
+    expect(wander.idle.errand).toMatchObject({ outcome: 'done' })
+  })
+
   it('refuses an errand the drive does not list, or one she is not free for', () => {
     const unlisted = layer()
     unlisted.idle.order({ id: 'clip-1', kind: 'errand', errand: 'idle-clip', pick: 0, holdSeconds: null })
