@@ -87,10 +87,10 @@ describe('stage expression catalog mirror', () => {
     }
   })
 
-  it('copies only mapped editor fields and leaves an identical publication unchanged', () => {
+  it('copies only mapped editor fields, never a device-local stage item, and leaves an identical publication unchanged', () => {
     const { store } = createContext()
     const source = entry()
-    store.publish('rig', [source, { ...source, id: 'prop', mappings: [] }])
+    store.publish('rig', [source, { ...source, id: 'prop', mappings: [] }, { ...source, id: 'item:hat', label: 'Hat', kind: 'prop' }])
     expect(store.snapshot).toEqual({
       modelId: 'rig',
       entries: [{ id: 'smile', label: 'Smile', mappings: source.mappings }],

@@ -12,7 +12,7 @@ import type { IdleOrder, IdleReport } from '@proj-airi/motion-driver-natural/idl
 import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
 import type { NaturalChatInput } from '@proj-airi/motion-driver-natural/natural-motion'
 import type { NaturalTouchSample } from '@proj-airi/motion-driver-natural/touch-gestures'
-import type { ExpressionPerformanceSettings, HoldCommand, MoodDose, PerformanceEmotion, SlotCommand } from '@proj-airi/stage-shared/expression-performance'
+import type { ExpressionPerformanceSettings, HoldCommand, ItemRenderState, MoodDose, PerformanceEmotion, SlotCommand } from '@proj-airi/stage-shared/expression-performance'
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
 import type {
   AmbientLightEnvironment,
@@ -28,7 +28,7 @@ import type { CanvasPointerSample } from '../../../composables/live2d/canvas-poi
 import type { ArchiveExpressionFile, Model3ExpressionRef } from '../../../composables/live2d/expression-controller'
 import type { SpeechEvent } from '../../../composables/live2d/expression/slots'
 import type { Live2DModelCanvasRect } from '../../../composables/live2d/head-anchor'
-import type { Live2DItemRenderState, Live2DStageItem } from '../../../composables/live2d/items/layer'
+import type { Live2DStageItem } from '../../../composables/live2d/items/layer'
 import type { NaturalChatActivity, NaturalChatTarget } from '../../../composables/live2d/natural-chat-input'
 import type { Live2DNaturalMotionAttention } from '../../../composables/live2d/natural-motion-adapter'
 import type { PhysicsRigLike } from '../../../composables/live2d/natural-motion/rig-profile'
@@ -225,7 +225,7 @@ const emits = defineEmits<{
   /** Natural's cursor reports for the character mind, once per composition that had one. */
   (e: 'cursorReports', reports: readonly CursorReport[]): void
   /** Every shown stage item's state, replacing the previous report. */
-  (e: 'itemStates', states: Readonly<Record<string, Live2DItemRenderState>>): void
+  (e: 'itemStates', states: Readonly<Record<string, ItemRenderState>>): void
 }>()
 
 const componentState = defineModel<'pending' | 'loading' | 'mounted'>('state', { default: 'pending' })

@@ -61,7 +61,9 @@ disables automatic mapping while keeping manual expression access.
 
 `useStageExpressionCatalogStore` (`stage-expression-catalog`) mirrors a
 `snapshot` containing the loaded display model id and mapped entries (id, label,
-and mappings), or `null` when no model is loaded. The stage conductor publishes
+and mappings), or `null` when no model is loaded. Stage item entries (`item:` ids)
+are left out, because they name files in this device's item library and a card
+must not carry them. The stage conductor publishes
 local Live2D and MMD catalog changes and clears the snapshot on unload or stage
 disposal. Editors in settings and other windows read the mirror without loading
 a renderer. This is tier 5 runtime memory, registered by `pinia-plugin-synced`

@@ -1330,4 +1330,18 @@ describe('stage item entries', () => {
     expect(shown()).toEqual([])
     expect(removeItemsByAsset(['asset-hat'])).toEqual(new Map())
   })
+
+  it('publishes her model canvas in the panel snapshot only while the scene reports one', () => {
+    const { store } = setup()
+    expect(store.settingsSnapshot.canvas).toBeUndefined()
+
+    store.setModelCanvas({ width: 2400, height: 3200 })
+    expect(store.settingsSnapshot.canvas).toEqual({ width: 2400, height: 3200 })
+
+    store.setModelCanvas({ width: 0, height: 0 })
+    expect(store.settingsSnapshot.canvas).toBeUndefined()
+    store.setModelCanvas({ width: 1200, height: 1600 })
+    store.setModelCanvas(null)
+    expect(store.settingsSnapshot.canvas).toBeUndefined()
+  })
 })

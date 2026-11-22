@@ -20,12 +20,15 @@ export interface LoadedExpressionCatalog {
 export const useStageExpressionCatalogStore = defineStore('stage-expression-catalog', () => {
   const snapshot = ref<LoadedExpressionCatalog | null>(null)
 
-  /** Copies only mapped entries. Repeated publications do not send synchronization proposals. */
+  /**
+   * Copies only mapped entries. Stage item entries stay out: their ids name files in this device's item library, so a
+   * card that carried them would not work on another device. Repeated publications do not send synchronization proposals.
+   */
   function publish(modelId: string, catalog: readonly CatalogEntry[]) {
     const next: LoadedExpressionCatalog | null = modelId
       ? {
           modelId,
-          entries: catalog.filter(entry => entry.mappings.length > 0).map(entry => ({
+          entries: catalog.filter(entry => entry.mappings.length > 0 && !entry.id.startsWith('item:')).map(entry => ({
             id: entry.id,
             label: entry.label,
             mappings: entry.mappings.map(mapping => ({ ...mapping })),

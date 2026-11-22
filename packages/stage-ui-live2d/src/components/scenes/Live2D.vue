@@ -8,12 +8,13 @@ import type { IdleErrandReport } from '@proj-airi/motion-driver-natural/idle-err
 import type { IdleOrder, IdleReport } from '@proj-airi/motion-driver-natural/idle-schedule'
 import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
 import type { PresenceBubbleState } from '@proj-airi/stage-shared'
-import type { ExpressionPerformanceSettings, HoldCommand, MoodDose, SlotCommand } from '@proj-airi/stage-shared/expression-performance'
+import type { ExpressionPerformanceSettings, HoldCommand, ItemRenderState, MoodDose, SlotCommand } from '@proj-airi/stage-shared/expression-performance'
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
 import type { PlacementRect } from '@proj-airi/stage-shared/stage-placement'
 
 import type { Live2DEyeFocusSource, Live2DTouch } from '../../composables/live2d'
 import type { SpeechEvent } from '../../composables/live2d/expression/slots'
+import type { Live2DStageItem } from '../../composables/live2d/items/layer'
 import type { NaturalChatActivity, NaturalChatTarget } from '../../composables/live2d/natural-chat-input'
 import type { Live2DContext } from '../../contexts/live2d'
 
@@ -33,6 +34,7 @@ import Live2DPresenceBubble from './live2d/presence-bubble.vue'
 import { createLive2DTouchGestureTracker, useLive2DEyeFocusFor, useLive2DNaturalSettings, useSettingsLive2d } from '../../composables/live2d'
 import { LIVE2D_NATURAL_CAPABILITIES } from '../../composables/live2d/natural-motion-adapter'
 import { createLive2D, provideLive2D } from '../../contexts/live2d'
+import { useExpressionStore } from '../../stores/expression-store'
 import { createCursorExpiry } from './live2d/cursor-expiry'
 
 import '../../utils/live2d-zip-loader'
@@ -74,6 +76,8 @@ const props = withDefaults(defineProps<{
   chatTarget?: NaturalChatTarget
   /** Typing timing and typed-send counters from the host's composers; never text. */
   chatActivity?: NaturalChatActivity
+  /** Stage items drawn inside her render pass, with their library URLs; the host owns the URLs. */
+  items?: readonly Live2DStageItem[]
 }>(), {
   presence: () => presenceBubbleIdle,
   performance: () => ({ mode: 'idle', attention: 'camera', away: false }),
@@ -83,6 +87,7 @@ const props = withDefaults(defineProps<{
   touchReactions: true,
   cursorAttention: true,
   chatAttention: true,
+  items: () => [],
   paused: false,
   mouthOpenSize: 0,
   nowSpeaking: false,
@@ -100,6 +105,8 @@ const emit = defineEmits<{
   errand: [report: IdleErrandReport]
   idleReports: [reports: readonly IdleReport[]]
   cursorReports: [reports: readonly CursorReport[]]
+  /** How each shown item attached to her model. */
+  itemStates: [states: Readonly<Record<string, ItemRenderState>>]
 }>()
 
 const componentState = defineModel<'pending' | 'loading' | 'mounted'>('state', { default: 'pending' })
@@ -117,6 +124,13 @@ watch(live2dModelRef, (model) => {
   if (model && moodSource)
     model.seedMood(moodSource)
 })
+// Her model canvas at load, before the stage scales her, is the unit of item placement; the panel reads it.
+const expressionStore = useExpressionStore()
+watch(
+  () => [live2dModelRef.value?.initialModelWidth ?? 0, live2dModelRef.value?.initialModelHeight ?? 0] as const,
+  ([width, height]) => expressionStore.setModelCanvas({ width, height }),
+  { immediate: true },
+)
 const activeCursorPosition = ref<Live2DEyeFocusSource | null>(null)
 const cursorExpiry = createCursorExpiry(() => {
   activeCursorPosition.value = null
@@ -386,12 +400,14 @@ defineExpose({
         :screen-ambient-light-mode="screenAmbientLightMode"
         :screen-ambient-light-strength="screenAmbientLightStrength"
         :screen-ambient-light-squint="screenAmbientLightSquint"
+        :items="props.items"
         @error="emit('error', $event)"
         @touch="emit('naturalTouch', $event)"
         @idle="emit('idle', $event)"
         @errand="emit('errand', $event)"
         @idle-reports="emit('idleReports', $event)"
         @cursor-reports="emit('cursorReports', $event)"
+        @item-states="emit('itemStates', $event)"
       />
       <Live2DPresenceBubble
         v-if="app"
