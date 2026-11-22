@@ -14,7 +14,7 @@ function entry(id: string, patch: Partial<CatalogEntry> = {}): CatalogEntry {
 }
 
 function pastime(seq: number, pick = 0): IdleErrandRecord {
-  return { seq, kind: 'pastime', start: seq, end: seq + 120, pick, endedAt: null, outcome: null }
+  return { seq, kind: 'pastime', start: seq, end: seq + 120, holdSeconds: 120, pick, endedAt: null, outcome: null }
 }
 
 describe('useIdleProps', () => {

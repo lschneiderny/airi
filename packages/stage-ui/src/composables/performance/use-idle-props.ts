@@ -191,7 +191,7 @@ export function useIdleProps(options: IdlePropsOptions) {
   /** Starts a pastime now, as Natural's draw would, for the lab: the same pick, claim and report, kept for 30 s. */
   function playPastime() {
     previewSeq -= 1
-    onErrand({ phase: 'start', errand: { seq: previewSeq, kind: 'pastime', start: 0, end: 0, pick: random(), endedAt: null, outcome: null } })
+    onErrand({ phase: 'start', errand: { seq: previewSeq, kind: 'pastime', start: 0, end: 0, holdSeconds: null, pick: random(), endedAt: null, outcome: null } })
     if (held)
       held.untilMs = now() + PREVIEW_PASTIME_MS
   }

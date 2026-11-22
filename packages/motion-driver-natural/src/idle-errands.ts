@@ -29,6 +29,12 @@ export const IDLE_ERRAND_PACING: Readonly<Record<IdleErrandKind, { readonly mean
 export const PASTIME_HOLD_SECONDS = Object.freeze({ min: 90, max: 300 })
 
 /**
+ * Seconds she stays where a wander or a visit took her before she walks home: the bounds of a log-uniform draw, the
+ * body director's former linger, which the character mind draws with the wander errand since CM9d.
+ */
+export const IDLE_ERRAND_LINGER_SECONDS = Object.freeze({ min: 45, max: 150 })
+
+/**
  * How an errand ended: it ran its course or its realiser finished it (`done`), its realiser could not take it
  * (`refused`), or Natural ended it because she stopped being free for it (`interrupted`).
  */
@@ -41,6 +47,11 @@ export interface IdleErrandRecord {
   readonly start: number
   /** A pastime's drawn end; `Infinity` for an errand that lasts until its realiser answers. */
   readonly end: number
+  /**
+   * The order's hold: a pastime's duration, at which Natural ends it, or the stay a wander's realiser keeps where the
+   * wander took her; null for an unasked clip.
+   */
+  readonly holdSeconds: number | null
   /** A uniform draw in [0, 1) for the realiser's choice among what it can play (which prop, which clip). */
   readonly pick: number
   readonly endedAt: number | null
