@@ -77,12 +77,21 @@ reason and are re-pinned.
 
 ## Acceptance
 
-Headless (orchestrator): PENDING. Record here the base and tip run directories, the `pnpm qa:motion3d diff` lines for
-all eleven scenarios at seed 1, the rig hashes for `angry` and `happy`, the first differing event of each expected
-difference, and the gate and report statuses at both ends.
+Headless (orchestrator, macOS, 2026-11-22): base `main` at `c3cb484e4`, tip `85b577568`, seed 1. Ten scenarios are
+`IDENTICAL`: `idle`, `idle-drive`, `music`, `music-beat`, `gaze-shift`, `speak`, `gesture-under-clip`, `walk`,
+`sleepy-no-clip`, and `touch`. `emotions` differs as predicted: the first differing frame is at 23.650 s, the onset of
+the run's first `angry` episode (emotion at 23.63 s, posture onset at 23.65 s), and `lab:motion3d gate` reads the same
+verdict for all 14 metrics at both ends with the same exit status. Both rig hashes are unchanged (`angry` `446b746a`,
+`happy` `a273e525`): the `angry` trial plays one gesture, `drop` at 4 s, at both ends, because the episode id's hash
+chose the clip the removed draw had chosen, and no later gesture draw falls inside the 10 s trial.
 
-Rendered (orchestrator): PENDING. Record here the plan section 8 checks 1 and 2 (Live2D Natural, MMD Natural on the
-desktop stage, Universal refusal) with event kinds and counts and 0 renderer and 0 main-process errors per launch.
+Rendered (orchestrator, macOS, 2026-11-22, ForBOOTH Live2D in the window and the QA MMD model on the desktop stage):
+`angry`, `angry` 2 s later, then `happy`. Under Natural on both hosts the first `angry` step carries a face `emotion`
+and a posture `emotion-gesture` (`drop`), the second carries neither, and `happy` carries `emotion-gesture` (`laugh`);
+on Live2D, Natural's observer reports `drop` at 0.55 s and `laugh` at 7.05 s. The same run on `main` played the same
+gestures at the same times without the intents. Under Universal no mind step and no gesture event occur, as on
+`main`: Universal receives no emotion stimulus, so it never reaches an `undeclared` refusal. Every launch recorded 0
+renderer and 0 main-process errors.
 
 Scores prove direction, size relative to the recipe, release, and detectability above the rig's idle noise. They do
 not prove naturalness, which stays a visual review.
