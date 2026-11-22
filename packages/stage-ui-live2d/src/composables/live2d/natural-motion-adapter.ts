@@ -8,7 +8,7 @@ import type { IdleBehaviourReport, IdleCueKind, NaturalIdleDrive } from '@proj-a
 import type { IdleErrandReport } from '@proj-airi/motion-driver-natural/idle-errands'
 import type { IdleOrder, IdleReport } from '@proj-airi/motion-driver-natural/idle-schedule'
 import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
-import type { NaturalChatInput, NaturalChatRead, NaturalMotionFrame, NaturalMotionOptions, NaturalMotionPose } from '@proj-airi/motion-driver-natural/natural-motion'
+import type { NaturalChatInput, NaturalChatRead, NaturalExpressionTilt, NaturalMotionFrame, NaturalMotionOptions, NaturalMotionPose } from '@proj-airi/motion-driver-natural/natural-motion'
 import type { PostureHome } from '@proj-airi/motion-driver-natural/posture'
 import type { NaturalReviewGains } from '@proj-airi/motion-driver-natural/review'
 import type { ExpressionPerformanceSettings, MoodDose, PerformanceEmotion } from '@proj-airi/stage-shared/expression-performance'
@@ -63,6 +63,8 @@ export interface Live2DNaturalMotionAttention {
   manualBreathActive: boolean
   /** Parameter ids animated by the playing explicit clip. */
   clipOwnedIds: ReadonlySet<string>
+  /** Current expression contribution only, in rig parameter units. Omitted when the host has no expression input. */
+  expressionTilt?: { parameterOffsets: ReadonlyMap<string, number>, weight: number }
   /** Host emotion queue; the adapter empties it on every composition. */
   pendingEmotions: NaturalEpisode[]
   /** The emotion held on the face now; ignored (never kept) while Natural is inactive. */
@@ -556,7 +558,19 @@ export class Live2DNaturalMotionAdapter {
       if (active)
         this.controller.chatRead(read, this.time)
     }
-    const frame = this.controller.advance(this.time)
+    let expressionTilt: NaturalExpressionTilt | undefined
+    if (active && attention.expressionTilt) {
+      const input = attention.expressionTilt
+      expressionTilt = { headX: 0, headY: 0, headZ: 0, weight: input.weight }
+      for (const range of this.posture) {
+        if (range.axis !== 'headX' && range.axis !== 'headY' && range.axis !== 'headZ')
+          continue
+        const offset = input.parameterOffsets.get(range.id) ?? 0
+        const span = offset >= 0 ? range.max - range.neutral : range.neutral - range.min
+        expressionTilt[range.axis] = span === 0 ? 0 : offset / span
+      }
+    }
+    const frame = this.controller.advance(this.time, expressionTilt)
     this.onPlacementStep?.(this.placement, this.controller.placementYawBias)
     // While Natural does not drive the model the controller is frozen and nothing shows, so a behaviour in progress
     // counts as ended; it is reported again as started if Natural resumes with it.

@@ -25,6 +25,7 @@ export class ExpressionComposer {
   private definitions = new Map<string, ExpressionDefinition>()
   private instances = new Map<string, ExpressionInstance>()
   private capturedBase = new Map<string, number>()
+  private readonly composedOffsets = new Map<string, number>()
   private sequence = 0
   private defaultFade = { in: 1.5, out: 2.5 }
 
@@ -42,6 +43,7 @@ export class ExpressionComposer {
     this.definitions = new Map(defs.map(def => [def.id, def]))
     this.instances.clear()
     this.sequence = 0
+    this.composedOffsets.clear()
   }
 
   activate(id: string, now: number): void {
@@ -107,6 +109,12 @@ export class ExpressionComposer {
     for (const [id, value] of this.capturedBase)
       write(id, value)
     this.capturedBase.clear()
+    this.composedOffsets.clear()
+  }
+
+  /** Final expression contribution in parameter units, relative to this frame's clean base; empty after release. */
+  get parameterOffsets(): ReadonlyMap<string, number> {
+    return this.composedOffsets
   }
 
   /** Captures this frame's animated base and clamps only the final sequential blend. */
@@ -118,6 +126,7 @@ export class ExpressionComposer {
     /** A frame-scoped context lease wins over every catalog claim, without restarting their transitions. */
     preview: readonly ExpressionDefinition['parameters'][number][] = [],
   ): void {
+    this.composedOffsets.clear()
     const values = new Map<string, number>()
     const ordered = [...this.instances.values()].sort((a, b) => a.activationSequence - b.activationSequence)
     for (const instance of ordered) {
@@ -161,7 +170,9 @@ export class ExpressionComposer {
     }
     for (const [id, value] of values) {
       const [min, max] = clampOf(id)
-      write(id, Math.max(min, Math.min(max, value)))
+      const composed = Math.max(min, Math.min(max, value))
+      this.composedOffsets.set(id, composed - this.capturedBase.get(id)!)
+      write(id, composed)
     }
   }
 }

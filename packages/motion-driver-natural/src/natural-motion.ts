@@ -65,6 +65,17 @@ export interface NaturalChatRead {
   words: number
 }
 
+/** A frame-local expression offset in normalized head units. It never enters a seeded process or persists to another frame. */
+export interface NaturalExpressionTilt {
+  headX: number
+  headY: number
+  headZ: number
+  weight: number
+}
+
+/** Expression tilt ownership lands without changing motion; a positive weight belongs to the later motion review. */
+export const EXPRESSION_TILT_WEIGHT = 0
+
 // Layer stream indices for `deriveSeed`. Appending layers keeps existing sequences stable.
 // Index 4 belonged to the v1 fixation rule and now seeds the gaze layer that replaces it.
 const streamIndex = { drift: 0, continuous: 1, gain: 2, shift: 3, gaze: 4, attention: 5, body: 6, face: 7, blink: 8, breath: 9, emphasis: 10, impulses: 11, gestures: 12, chat: 14, cueGestures: 15, regime: 16, idle: 17 }
@@ -285,8 +296,8 @@ export class NaturalMotion {
     this.next = this.integrate()
   }
 
-  /** Returns a fresh normalized pose, the unclamped gaze point (before head compensation), and face, blink, and breath channels. */
-  advance(nowSeconds: number): NaturalMotionFrame {
+  /** Returns a fresh frame, composing an optional expression tilt only in this frame's head and eye compensation. */
+  advance(nowSeconds: number, expressionTilt?: NaturalExpressionTilt): NaturalMotionFrame {
     const elapsed = this.lastTimestamp === undefined ? 0 : nowSeconds - this.lastTimestamp
     this.lastTimestamp = nowSeconds
     if (!this.suspended && elapsed > 0) {
@@ -328,11 +339,22 @@ export class NaturalMotion {
     const weight = clamp((this.activeTime - (this.stepIndex - 1) * step) / step, 1)
     const { previous: a, next: b } = this
     const breath = lerpRecord(a.breath, b.breath, weight)
-    const [headX, postureY, headZ] = a.head.map((value, axis) => lerp(value, b.head[axis], weight))
+    let [headX, postureY, headZ] = a.head.map((value, axis) => lerp(value, b.head[axis], weight))
     // Breath coupling (0.001, see breath.ts) rides on the applied pitch, so eye compensation sees it too.
-    const headY = clamp(postureY + breath.headY, 1)
+    let headY = clamp(postureY + breath.headY, 1)
     // Same snapshot pair and weight as the head, so a wobble-free head gives exactly the old eye command.
-    const [compX, compPostureY] = a.compensationHead.map((value, axis) => lerp(value, b.compensationHead[axis], weight))
+    let [compX, compPostureY] = a.compensationHead.map((value, axis) => lerp(value, b.compensationHead[axis], weight))
+    // Keep the zero-weight path byte-identical, including signed zeros and existing clamps.
+    if (expressionTilt && expressionTilt.weight !== 0) {
+      const x = expressionTilt.headX * expressionTilt.weight
+      const y = expressionTilt.headY * expressionTilt.weight
+      const z = expressionTilt.headZ * expressionTilt.weight
+      headX = clamp(headX + x, 1)
+      headY = clamp(headY + y, 1)
+      headZ = clamp(headZ + z, 1)
+      compX += x
+      compPostureY += y
+    }
     const [bodyX, bodyY, bodyZ] = a.body.map((value, axis) => lerp(value, b.body[axis], weight))
     const fixation = { x: lerp(a.gaze.x, b.gaze.x, weight), y: lerp(a.gaze.y, b.gaze.y, weight) }
     const eye = NaturalGazeLayer.eye(fixation, { x: compX, y: clamp(compPostureY + breath.headY, 1) })

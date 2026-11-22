@@ -570,6 +570,30 @@ writes before capturing clean bases. Universal and MAGIC keep their plugin.
 The d2 regression is Node-only and exercises the real context, store, controller
 and plugin; no browser test was required by this item.
 
+### d3: Weighted expression tilt
+
+Section 2 was rechecked: capability gates and the d1 departures remain
+unchanged; d2 now gates the direct context plugin and supplies its lease.
+The tilt input uses the composer's final parameter delta, not the whole
+post-motion value, so motion clips, manual control and SDK focus cannot
+masquerade as an expression. The adapter normalizes the three head axes using
+their directional rig ranges. `NaturalMotion.advance` composes the explicit
+weight only in the sampled head and its eye compensation; it changes neither
+the seeded processes nor body intents. The stage declares
+`EXPRESSION_TILT_WEIGHT = 0`. Physics exclusions and clip residuals remain
+unchanged. Tests exercise weights 0 and 1 and immediate withdrawal, with
+unchanged observer hashes. Target rule 3 is moved for Live2D only; its
+remaining-renderer scope stays explicit, matching section 12's Done-when.
+
+The d3 full stage-ui browser run passed 1,012 tests and hit six timing failures
+in five unrelated files (mobile composer height, Silero VAD, history time
+separator, send button and sessions dialog), with five existing skips.
+Each failed file then passed alone with `--no-file-parallelism`: 1, 7, 12, 2
+and 22 tests respectively. No threshold, timeout, or test changed. The d2
+full browser run had already passed all 1,018 tests with five skips.
+ESLint reports one existing long-comment warning in the adapter test's
+untouched manual-control case; the new and changed code has no lint error.
+
 ## Checks run (CM7a)
 
 The implementation base is `e57dd1393`. The owner requested package checks,

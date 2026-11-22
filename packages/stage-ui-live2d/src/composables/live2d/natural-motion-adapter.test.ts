@@ -97,6 +97,7 @@ function fixture({ omit = '', fixed = '', physics, profile: editProfile, restore
     autoBlink: true,
     manualBreathActive: false,
     clipOwnedIds: new Set<string>() as ReadonlySet<string>,
+    expressionTilt: undefined as Live2DNaturalMotionAttention['expressionTilt'],
     pendingEmotions: [] as Live2DNaturalMotionAttention['pendingEmotions'],
     heldEmotion: null as Live2DNaturalMotionAttention['heldEmotion'],
     emotionStrengths: {} as Live2DNaturalMotionAttention['emotionStrengths'],
@@ -171,6 +172,36 @@ function fixture({ omit = '', fixed = '', physics, profile: editProfile, restore
 }
 
 describe('natural motion adapter', () => {
+  it('keeps composePosture identical with an expression tilt at weight zero', () => {
+    const actual = fixture()
+    const control = fixture()
+    actual.state.expressionTilt = { parameterOffsets: new Map([['ParamAngleX', 4], ['ParamAngleY', -2], ['ParamAngleZ', 3]]), weight: 0 }
+    for (const f of [actual, control]) {
+      f.state.driver = 'natural'
+      Object.assign(f.motion, { ParamAngleX: 10, ParamAngleY: 0, ParamAngleZ: 5 })
+    }
+    for (const atSeconds of [0, 0.1, 0.45, 0.6, 1])
+      expect(actual.frame(atSeconds).commanded).toEqual(control.frame(atSeconds).commanded)
+    actual.adapter.dispose()
+    control.adapter.dispose()
+  })
+
+  it('passes normalized expression tilt through composePosture at weight one', () => {
+    const f = fixture()
+    f.state.driver = 'natural'
+    f.state.expressionTilt = { parameterOffsets: new Map([['ParamAngleX', 4], ['ParamAngleY', -2], ['ParamAngleZ', 3]]), weight: 1 }
+    f.frame(0)
+    const reference = stream()
+    const base = reference.advance(0.5)
+    const { commanded } = f.frame(0.5)
+    expect(commanded[f.at('ParamAngleX')]).toBeCloseTo(command(base.pose.headX + 0.2), 6)
+    expect(commanded[f.at('ParamAngleY')]).toBeCloseTo(command(base.pose.headY - 0.2), 6)
+    expect(commanded[f.at('ParamAngleZ')]).toBeCloseTo(command(base.pose.headZ + 0.15), 6)
+    f.state.expressionTilt = undefined
+    expectNatural(f.frame(0.6).commanded, reference.advance(0.6))
+    f.adapter.dispose()
+  })
+
   it.each(['magic', 'universal'] as const)('discards cue gestures and mood doses under %s without parameter writes or later replay', (driver) => {
     const actual = fixture()
     const control = fixture()

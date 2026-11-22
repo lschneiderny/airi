@@ -21,6 +21,13 @@ with pointer samples; each renderer keeps its own hit-testing. Individual layers
 through source subpaths, such as `@proj-airi/motion-driver-natural/gaze`.
 Times are monotonic seconds; seeded inputs preserve deterministic output.
 
+`advance(nowSeconds, expressionTilt)` optionally composes a frame-local head
+offset in normalized units, with an explicit weight. It also adjusts the eye
+compensation for that offset. The input never changes the seeded processes or
+the body intent and disappears on the next call without it.
+`EXPRESSION_TILT_WEIGHT` is 0: Live2D declares ownership of expression tilts
+without changing its rendered motion. A positive weight is future motion tuning.
+
 The layers are blink, breath, gaze, posture, body, face and face hints,
 impulses, hold, gestures, cue gestures, mood and mood modulation, energy,
 cursor attention, placement, speech emphasis, pending actions, touch and idle

@@ -99,6 +99,14 @@ Screen-aware attention is controlled by the `screenAwareness` Natural setting, e
 `Live2DNaturalMotionAdapter` writes all Natural values inside the SDK focus update, which runs before physics.
 The SDK brackets each model update with `saveParameters()` and `loadParameters()`, so every Natural write is an overlay on that frame's post-motion values. Natural values never feed back into the next frame.
 
+The expression composer reports its final contribution relative to the clean
+base, in model parameter units. The adapter converts head XYZ contributions to
+normalized head units and supplies them to Natural with
+`EXPRESSION_TILT_WEIGHT = 0`. Thus expressions are posture inputs without
+changing today's motion. Motion curves, manual poses and SDK focus are not
+mistaken for expression contributions; physics exclusions and clip residuals
+keep their existing rules.
+
 Natural owns these channels when the model has them:
 
 - head XYZ (`ParamAngleX`, `ParamAngleY`, `ParamAngleZ`);
