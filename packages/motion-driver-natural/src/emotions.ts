@@ -47,7 +47,10 @@ export interface HeldSpec {
   }
 }
 
-/** Short head clips that an emotion can trigger; the clip shapes live with the gesture layer. `shake-or-drop` plays one of the two at random. */
+/**
+ * Short head clips that an emotion can trigger; the clip shapes live with the gesture layer. The character mind reads
+ * this column to order an episode's gesture and resolves `shake-or-drop` to one of the two; Natural plays the clip.
+ */
 export type GestureKind = 'laugh' | 'recoil' | 'shake' | 'drop' | 'shake-or-drop' | 'sway' | 'tilt-in' | 'look-away' | 'nod-off'
 
 /** A gesture that plays as one clip: the kind the mind orders and Natural performs. */

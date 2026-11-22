@@ -345,13 +345,14 @@ export class StagePerformanceConductor {
     const scaled = Math.min(1, Math.max(0, nominal * expressiveness))
     // A repeat that neither starts nor escalates an episode yields no intent, and the decider hears nothing.
     // An idle intent that fell due before the stimulus comes first; the store dispatches it.
-    const intent = this.options.mind.receive({ kind: 'emotion', source, emotion, nominal: scaled, turnId, settings: context.settings }).find(each => each.kind === 'emotion' || each.kind === 'release')
+    const intents = this.options.mind.receive({ kind: 'emotion', source, emotion, nominal: scaled, turnId, settings: context.settings })
+    const intent = intents.find(each => each.kind === 'emotion' || each.kind === 'release')
     if (!intent || !this.permitted(intent))
       return
     let slots: SlotCommand[] = []
     if (intent?.kind === 'emotion') {
       slots = this.decide({ kind: 'reaction', intentId: intent.id, episode: intent.episode, turnId, at }, context).slots
-      this.dispatchNatural(this.dosed(intent.episode, context, turnId), intent.hold, at)
+      this.dispatchNatural(this.naturalEpisode(intent.episode, intents, context, turnId), intent.hold, at)
     }
     else if (intent?.kind === 'release') {
       slots = this.decide({ kind: 'neutral', intentId: intent.id, turnId, at }, context).slots
@@ -387,7 +388,7 @@ export class StagePerformanceConductor {
       return undefined
     }
     const mapping = primaryMapping(context.catalog.find(candidate => candidate.id === entry.id))
-    const intent = this.options.mind.receive({
+    const intents = this.options.mind.receive({
       kind: 'expression-request',
       source,
       entryId: entry.id,
@@ -395,13 +396,14 @@ export class StagePerformanceConductor {
       mapping: mapping && { emotion: mapping.emotion, minBand: mapping.minBand },
       turnId,
       settings: context.settings,
-    }).find(each => each.kind === 'entry')
+    })
+    const intent = intents.find(each => each.kind === 'entry')
     if (!intent || !this.permitted(intent))
       return undefined
     const request = intent
     const episode = request?.episode ?? null
     const decision = this.decide({ kind: 'expression', intentId: intent.id, source, expressionId: entry.id, holdSeconds, episode, turnId, at }, context)
-    this.dispatchNatural(episode && this.dosed(episode, context, turnId), request?.hold ?? null, at)
+    this.dispatchNatural(episode && this.naturalEpisode(episode, intents, context, turnId), request?.hold ?? null, at)
     this.dispatchSlots(decision.slots, at)
     return entry
   }
@@ -795,12 +797,18 @@ export class StagePerformanceConductor {
   }
 
   /**
-   * The episode with the mood dose gain of its band under the context it was decided in, or 0 for a moodless turn.
-   * Natural doses it under the character that produced it even when a later decision uses another profile.
+   * The episode as Natural plays it: with the mood dose gain of its band under the context it was decided in, or 0 for
+   * a moodless turn, so Natural doses it under the character that produced it even when a later decision uses another
+   * profile; and with the body gesture the mind ordered for it, only when this scene declares posture.
    */
-  private dosed(episode: ReactionEpisode, context: DeciderContext, turnId: string | undefined): NaturalEpisode {
+  private naturalEpisode(episode: ReactionEpisode, intents: readonly MindIntent[], context: DeciderContext, turnId: string | undefined): NaturalEpisode {
     const moodless = turnId !== undefined && this.moodlessTurns.has(turnId)
-    return { ...episode, moodGain: moodless ? 0 : context.settings.moodDynamics[`${episode.band}Gain`] }
+    const gesture = intents.find(each => each.kind === 'emotion-gesture' && each.episodeId === episode.id)
+    return {
+      ...episode,
+      moodGain: moodless ? 0 : context.settings.moodDynamics[`${episode.band}Gain`],
+      ...gesture?.kind === 'emotion-gesture' && this.permitted(gesture) && { gesture: gesture.gesture },
+    }
   }
 
   /** Dispatches the response to one touch in the mind's order: body, mood, moment, line, attend. */

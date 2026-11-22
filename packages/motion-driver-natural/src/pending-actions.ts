@@ -51,7 +51,7 @@ export interface PendingActionTargets {
   emotionStrengths: Partial<Record<PerformanceEmotion, number>>
   /** The mood, held-emotion, and band switches read when each episode starts. */
   settings: ExpressionPerformanceSettings
-  /** The recipe table the controller was built with; it decides which emotions play a gesture. */
+  /** The recipe table the controller was built with; an emotion with a recipe gesture leaves the head to the gesture clip. */
   emotions: typeof naturalEmotions
   /** Receives started emotion impulses and gestures; absent while no observer is attached, so no event is built. */
   notify?: NaturalMotionObserver
@@ -102,12 +102,17 @@ export function startPending(actions: Exclude<PendingAction, { kind: 'chat' | 'w
       const enabled = settings.heldEmotions
       if (enabled && emotionStrengths[action.episode.emotion] === 0)
         continue
-      const gesture = enabled ? emotions[action.episode.emotion].gesture : undefined
-      const started = impulses.trigger(action.episode, at, { head: gesture === undefined })
+      // The head pulse of an emotion whose recipe has a gesture stays off even when the mind ordered no clip (a
+      // running cooldown), as before the mind chose the clip: the recipe decides how this impulse is realised.
+      const clipOwnsHead = enabled && emotions[action.episode.emotion].gesture !== undefined
+      const started = impulses.trigger(action.episode, at, { head: !clipOwnsHead })
       if (!started)
         continue
       notify?.({ kind: 'impulse', at, emotion: action.episode.emotion, band: started.band, intensity: started.intensity, side: started.side })
-      if (gesture && !cueGestures.headActive(at))
+      // The mind ordered the clip and spent its cooldown; a cue gesture that holds the head still refuses it here, and
+      // with held emotions off the facade shows no gesture, so none starts.
+      const gesture = action.episode.gesture
+      if (enabled && gesture && !cueGestures.headActive(at))
         gestures.trigger(gesture, action.episode.intensity, settings.bands ? action.episode.band : 'clear', at, notify && ((played, side) => notify({ kind: 'gesture', at, gesture: played, side })))
       if (settings.mood)
         mood.add(action.episode)

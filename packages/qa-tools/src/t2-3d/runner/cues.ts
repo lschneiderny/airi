@@ -1,11 +1,14 @@
+import type { MindGestureState } from '@proj-airi/character-mind'
 import type { MotionTraceEvent } from '@proj-airi/motion-driver-humanoid/motion-trace'
 import type { NaturalChatInput, NaturalMotionVoice } from '@proj-airi/motion-driver-natural/natural-motion'
+import type { ReactionEpisode } from '@proj-airi/stage-shared/expression-performance'
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
 import type { MMDNaturalAdapter } from '@proj-airi/stage-ui-mmd/composables/mmd/natural/adapter'
 import type { MMDStanceWorld } from '@proj-airi/stage-ui-mmd/composables/mmd/stance'
 
 import type { Motion3dCue } from '../scenarios'
 
+import { emotionGesture, initialMindGestureState } from '@proj-airi/character-mind'
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 
 /**
@@ -36,6 +39,11 @@ export class Motion3dCueDriver {
   private activity: PerformanceState = { mode: 'idle', attention: 'camera', away: false }
   private speech: { cue: Extract<Motion3dCue, { kind: 'voice' }>, start: number, peak: number } | null = null
   private currentVoice: NaturalMotionVoice = { speaking: false, speechActiveOrRecent: false, level: 0 }
+  /**
+   * The runner has no mind, so it keeps the mind's gesture cooldowns itself and asks the mind's pure policy which
+   * gesture an emotion cue plays, on the run's clock. Routing cues through a whole mind would add its intensity jitter.
+   */
+  private gestures: MindGestureState = initialMindGestureState
 
   constructor(
     private readonly adapter: Pick<MMDNaturalAdapter, 'impulse' | 'gesture' | 'poke' | 'setPet' | 'chatRead'>,
@@ -65,14 +73,17 @@ export class Motion3dCueDriver {
         return
       case 'emotion': {
         const intensity = defaultExpressionPerformanceSettings.intensity[cue.band]
-        this.adapter.impulse({
+        const episode: ReactionEpisode = {
           id: cue.trialId ?? `emotion-${++this.sequence}`,
           emotion: cue.emotion,
           nominal: intensity,
           intensity,
           band: cue.band,
           escalation: false,
-        })
+        }
+        const decided = emotionGesture(this.gestures, episode, defaultExpressionPerformanceSettings, t)
+        this.gestures = decided.memory
+        this.adapter.impulse(decided.gesture ? { ...episode, gesture: decided.gesture } : episode)
         this.event({ t, kind: 'emotion', emotion: cue.emotion, band: cue.band, phase: 'pulse', ...(cue.trialId ? { trialId: cue.trialId } : {}) })
         return
       }

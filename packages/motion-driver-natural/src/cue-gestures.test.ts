@@ -240,10 +240,10 @@ describe('cue gesture arbitration', () => {
       motion.setPerformanceSettings({ ...defaults, heldEmotions: true })
       motion.gesture('nod', 2, 0)
       motion.advance(0.1)
-      motion.impulse({ id: 'cue-active', emotion: 'happy', band: 'strong', nominal: 1, intensity: 1, escalation: false }, 0.1)
+      motion.impulse({ id: 'cue-active', emotion: 'happy', band: 'strong', nominal: 1, intensity: 1, escalation: false, gesture: 'laugh' }, 0.1)
       motion.advance(0.2)
       expect(recipe).not.toHaveBeenCalled()
-      motion.impulse({ id: 'cue-ended', emotion: 'happy', band: 'strong', nominal: 1, intensity: 1, escalation: false }, 1)
+      motion.impulse({ id: 'cue-ended', emotion: 'happy', band: 'strong', nominal: 1, intensity: 1, escalation: false, gesture: 'laugh' }, 1)
       motion.advance(1.1)
       expect(recipe).toHaveBeenCalledOnce()
     }
@@ -258,7 +258,7 @@ describe('cue gesture arbitration', () => {
       motion.setPerformanceSettings({ ...defaults, heldEmotions: true })
       motion.setPet({ x: 1, y: -1 }, 0)
       motion.setHeldEmotion({ emotion: 'angry', strength: 1 }, 0)
-      motion.impulse({ id: 'strong', emotion: 'angry', nominal: 1, intensity: 1, band: 'strong', escalation: false }, 0)
+      motion.impulse({ id: 'strong', emotion: 'angry', nominal: 1, intensity: 1, band: 'strong', escalation: false, gesture: seed === 7 ? 'drop' : 'shake' }, 0)
       motion.advance(0.1)
       motion.gesture(kind, 3, 0.1)
       for (let i = 12; i <= 5 * 120; i++) {

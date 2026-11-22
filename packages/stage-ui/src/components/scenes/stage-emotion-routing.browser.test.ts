@@ -290,6 +290,8 @@ describe('stage emotion routing on Live2D', () => {
       band: 'clear',
       escalation: false,
       moodGain: defaultExpressionPerformanceSettings.moodDynamics.clearGain,
+      // The mind's emotion gesture for the episode.
+      gesture: 'laugh',
     }])
     expect(params.currentMotion).toEqual({ group: 'Idle', index: 0 })
   })
@@ -811,7 +813,7 @@ describe('per-signal character profiles at the Natural consumer', () => {
 
     // The mind's decision is unchanged: the trace records exactly the dispatched episodes.
     const recorded = conductor.exportTrace()!.entries.flatMap(entry => entry.type === 'signal' && entry.signal.kind === 'reaction' ? [entry.signal.episode] : [])
-    expect(pending.map(({ moodGain: _moodGain, ...episode }) => episode)).toEqual(recorded)
+    expect(pending.map(({ moodGain: _moodGain, gesture: _gesture, ...episode }) => episode)).toEqual(recorded)
     expect(pending).toHaveLength(1)
 
     for (const episode of pending)

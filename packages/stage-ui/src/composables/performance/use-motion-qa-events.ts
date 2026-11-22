@@ -98,6 +98,7 @@ export function useMotionQaEvents(options: {
           ...intent.kind === 'away' && { away: intent.away },
           ...intent.kind === 'chat-read' && { cue: intent.cue, words: intent.words },
           ...intent.kind === 'gesture' && { gesture: intent.gesture, count: intent.count },
+          ...intent.kind === 'emotion-gesture' && { gesture: intent.gesture },
         }))),
         // The kinds of the step's spoken lines (`reaction`, `reach-out`, `widget`) and its body cues
         // (`about-to-speak`, `let-go`), comma-separated, or null.
