@@ -68,6 +68,21 @@ describe('mind mood', () => {
       expect(moodEpisodeDose(initialMindMoodState, episode({ intensity }), defaults, false, 0)).toEqual({ mood: initialMindMoodState, dose: null })
   })
 
+  it('doses love, flustered, and sleepy along their coefficients', () => {
+    // One strong dose is the same size for every emotion and stays far below the clamp, so each dimension is that
+    // dose times the emotion's coefficient.
+    const [happy, love, flustered, sleepy] = (['happy', 'love', 'flustered', 'sleepy'] as const).map(emotion => doseAll([episode({ emotion })]).mood)
+    expect(love.valence / happy.valence).toBeCloseTo(0.6 / 0.7, 12)
+    expect(love.arousal / happy.arousal).toBeCloseTo(0.2 / 0.5, 12)
+    expect(love.tension).toBe(0)
+    expect(flustered.valence / happy.valence).toBeCloseTo(0.2 / 0.7, 12)
+    expect(flustered.arousal / happy.arousal).toBeCloseTo(1, 12)
+    expect(flustered.tension).toBeGreaterThan(0)
+    expect(sleepy.valence).toBe(0)
+    expect(sleepy.arousal).toBeLessThan(0)
+    expect(sleepy.tension).toBe(0)
+  })
+
   it('bounds fifty strong angry doses like the performer', () => {
     const { mood } = doseAll(Array.from({ length: 50 }, (_, i) => episode({ id: String(i), emotion: 'angry' })))
     expect(dimensions(mood)).toEqual([-1, 1, 1])

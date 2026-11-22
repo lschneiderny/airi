@@ -7,6 +7,7 @@ import type { VoicePort } from './mind-voice'
 import type { ListedAction, StagePerformanceConductorOptions, StagePerformanceScene } from './use-stage-performance-conductor'
 
 import { NO_CAPABILITIES } from '@proj-airi/character-mind'
+import { naturalEmotions } from '@proj-airi/motion-driver-natural/emotions'
 import { createDecider, createPickerDecider, defaultExpressionPerformanceSettings, initialTouchAffectMemory, parseAffectTrace, parseExpressionPerformanceSettings, replayAffectTrace, touchAffect } from '@proj-airi/stage-shared/expression-performance'
 import { LIVE2D_NATURAL_CAPABILITIES } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion-adapter'
 import { useNaturalMotionDiagnostics } from '@proj-airi/stage-ui-live2d/stores'
@@ -153,6 +154,46 @@ describe('performer dispatch declarations', () => {
       conductor.dispose()
   })
 
+  it('seeds a scene that attaches or becomes Natural again with the mind\'s mood, once per change', () => {
+    let now = 10
+    const mind = naturalMind({ seed: 7, clock: () => now * 1000 })
+    const first = { ...fakeScene(), seedMood: vi.fn<NonNullable<StagePerformanceScene['seedMood']>>() }
+    const second = { ...fakeScene(), seedMood: vi.fn<NonNullable<StagePerformanceScene['seedMood']>>() }
+    let scene: StagePerformanceScene = first
+    let capabilities: PerformerCapabilities = LIVE2D_NATURAL_CAPABILITIES
+    const conductor = new StagePerformanceConductor({
+      scene: () => scene,
+      capabilities: () => capabilities,
+      settings: () => defaultExpressionPerformanceSettings,
+      catalog: () => catalog,
+      seed: 7,
+      mind,
+      clock: () => now,
+    })
+    conductor.syncScene()
+    expect(first.seedMood).toHaveBeenCalledOnce()
+    conductor.emotion('happy', 0.9, 'act')
+    now += 5
+    conductor.syncScene()
+    expect(first.seedMood).toHaveBeenCalledOnce()
+
+    // Another stage attaches: it starts from her mood, decayed to now.
+    scene = second
+    conductor.syncScene()
+    expect(second.seedMood).toHaveBeenCalledOnce()
+    const level = second.seedMood.mock.calls[0][0]()
+    expect(level).toEqual(mind.moodLevel())
+    expect(level.valence).toBeGreaterThan(0)
+
+    // A driver switch away and back seeds it again; the declaration without posture does not.
+    capabilities = NO_CAPABILITIES
+    conductor.syncScene()
+    capabilities = LIVE2D_NATURAL_CAPABILITIES
+    conductor.syncScene()
+    expect(second.seedMood).toHaveBeenCalledTimes(2)
+    conductor.dispose()
+  })
+
   it.each([true, false])('puts the mind\'s emotion gesture on the Natural episode only with posture declared (%s)', (posture) => {
     const scene = fakeScene()
     const capabilities = { ...LIVE2D_NATURAL_CAPABILITIES, posture }
@@ -194,7 +235,8 @@ describe('performer dispatch declarations', () => {
     conductor.expression('game', 3, 'act')
     conductor.clearExpression(undefined, 'act')
     expect(scene.reactToTouch).toHaveBeenCalledTimes(Number(capabilities.posture))
-    expect(scene.addMood).toHaveBeenCalledTimes(Number(capabilities.posture))
+    // The poke's dose and the emotion's.
+    expect(scene.addMood).toHaveBeenCalledTimes(capabilities.posture ? 2 : 0)
     expect(scene.reactToDesktop).toHaveBeenCalledTimes(Number(capabilities.posture))
     expect(scene.idleCue).toHaveBeenCalledTimes(Number(capabilities.posture))
     expect(scene.idle).toHaveBeenCalledTimes(capabilities.posture ? 2 : 0)
@@ -1073,10 +1115,9 @@ describe('stage performance conductor', () => {
       expect(clipless.gesture).not.toHaveBeenCalled()
     })
 
-    it('gives every episode of a moodless turn a zero mood gain and leaves other turns alone', () => {
+    it('doses no mood for the episodes of a moodless turn and leaves other turns alone', () => {
       const scene = fakeScene()
       const { conductor, advance } = createConductor('natural', scene)
-      const gains = defaultExpressionPerformanceSettings.moodDynamics
 
       conductor.markMoodless('reaction')
       conductor.emotion('happy', 0.6, 'act', 'reaction')
@@ -1085,11 +1126,18 @@ describe('stage performance conductor', () => {
       advance(3)
       conductor.emotion('angry', 0.6, 'act', 'user-turn')
 
-      expect(scene.setEmotion.mock.calls.map(([episode]) => [episode.emotion, episode.band, episode.moodGain])).toEqual([
-        ['happy', 'clear', 0],
-        ['sad', 'strong', 0],
-        ['angry', 'clear', gains.clearGain],
-      ])
+      expect(scene.setEmotion.mock.calls.map(([episode]) => [episode.emotion, episode.band])).toEqual([['happy', 'clear'], ['sad', 'strong'], ['angry', 'clear']])
+      const angry = scene.setEmotion.mock.calls[2][0]
+      expect(scene.addMood.mock.calls.map(([dose]) => dose.id.split('@')[0])).toEqual([angry.id])
+    })
+
+    it('hands the mood dose to the scene right after the episode it belongs to', () => {
+      const order: string[] = []
+      const scene = fakeScene()
+      scene.setEmotion.mockImplementation(() => order.push('episode'))
+      scene.addMood.mockImplementation(() => order.push('dose'))
+      createConductor('natural', scene).conductor.emotion('happy', 0.6, 'act')
+      expect(order).toEqual(['episode', 'dose'])
     })
   })
 
@@ -1414,11 +1462,13 @@ describe('stage performance conductor', () => {
       now += 3
       conductor.emotion('happy', 0.6, 'devtools')
 
-      expect(scene.setEmotion.mock.calls.map(([episode]) => [episode.emotion, episode.band, episode.moodGain])).toEqual([
-        ['angry', 'clear', 0],
-        ['sad', 'strong', 2 * gains.strongGain],
-        ['happy', 'clear', gains.clearGain],
-      ])
+      const episodes = scene.setEmotion.mock.calls.map(([episode]) => episode)
+      expect(episodes.map(episode => [episode.emotion, episode.band])).toEqual([['angry', 'clear'], ['sad', 'strong'], ['happy', 'clear']])
+      // The zero-gain turn doses nothing; each other dose is its profile's band gain times the intensity and coefficient.
+      const doses = scene.addMood.mock.calls.map(([dose]) => dose)
+      expect(doses.map(dose => dose.id.split('@')[0])).toEqual([episodes[1].id, episodes[2].id])
+      expect(doses[0].valence).toBeCloseTo(2 * gains.strongGain * episodes[1].intensity * naturalEmotions.sad.mood[0], 12)
+      expect(doses[1].valence).toBeCloseTo(gains.clearGain * episodes[2].intensity * naturalEmotions.happy.mood[0], 12)
     })
 
     it('removes an expression from auto picks when the card maps it with weight 0 for the mounted model', () => {

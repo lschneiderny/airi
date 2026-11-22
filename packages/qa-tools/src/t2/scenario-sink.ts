@@ -154,7 +154,8 @@ export function runScenarioSink(input: MotionScenario, options: ScenarioSinkOpti
     const pendingPokes: Live2DNaturalMotionAttention['pendingPokes'] = []
     /** Whether the mind's pet runs; the pet hand reaches Natural only meanwhile, as in the stage's Model.vue. */
     let petGranted = false
-    // The scene the stage's Model.vue exposes to the conductor. It keeps no `addMood`, so a touch doses no mood here.
+    // The scene the stage's Model.vue exposes to the conductor; `addMood` joins it once the adapter exists. A run starts
+    // at rest, so it needs no mood seed.
     const scene: StagePerformanceScene = {
       setEmotion: (episode) => { pendingEmotions.push(episode) },
       applySlots: (commands, now) => host.applySlots(commands, now),
@@ -248,6 +249,8 @@ export function runScenarioSink(input: MotionScenario, options: ScenarioSinkOpti
       pet,
     }), undefined, undefined, { seed: scenario.seed, home, emotionTable: options.emotionTable })
     adapter.setPerformanceSettings(settings)
+    // The mind's mood doses, a touch's or an emotion's, reach Natural on the frame that starts the episode, as on the stage.
+    scene.addMood = dose => adapter.addMood(dose)
 
     const recorder = host.recorder
     adapter.natural.setObserver(event => recorder.mark(event.at, 'natural', event))

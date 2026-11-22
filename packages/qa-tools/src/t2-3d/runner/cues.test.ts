@@ -6,7 +6,7 @@ import { expect, it, vi } from 'vitest'
 import { Motion3dCueDriver } from './cues'
 
 function boundary() {
-  const adapter = { impulse: vi.fn(), gesture: vi.fn(), poke: vi.fn(), setPet: vi.fn(), chatRead: vi.fn() }
+  const adapter = { impulse: vi.fn(), addMood: vi.fn(), gesture: vi.fn(), poke: vi.fn(), setPet: vi.fn(), chatRead: vi.fn() }
   const events: MotionTraceEvent[] = []
   const driver = new Motion3dCueDriver(adapter, 2, event => events.push(event))
   return { adapter, events, driver }
@@ -68,8 +68,12 @@ it('sends emotion pulses at their band dose and labels placebo without a pulse',
   driver.apply({ at: 0, kind: 'emotion', emotion: 'angry', band: 'clear', trialId: 'trial' }, 10)
   // The mind's gesture policy chooses the angry clip from the episode id.
   expect(adapter.impulse).toHaveBeenCalledWith({ id: 'trial', emotion: 'angry', nominal: 0.6, intensity: 0.6, band: 'clear', escalation: false, gesture: 'shake' })
+  // The mind's mood delta for the episode follows it, on the run's clock.
+  expect(adapter.addMood).toHaveBeenCalledWith(expect.objectContaining({ id: 'trial@10000' }))
+  expect(adapter.addMood.mock.invocationCallOrder[0]).toBeGreaterThan(adapter.impulse.mock.invocationCallOrder[0])
   driver.apply({ at: 12, kind: 'placebo', trialId: 'null' }, 22)
   expect(adapter.impulse).toHaveBeenCalledTimes(1)
+  expect(adapter.addMood).toHaveBeenCalledTimes(1)
   expect(events[1]).toMatchObject({ kind: 'emotion', phase: 'placebo', trialId: 'null' })
 })
 
@@ -109,7 +113,7 @@ it('scales goals by leg length and signals cancellation', () => {
 })
 
 it('sets energy, shows and hides the chat with an unfold read, and drives the clip with labelled markers', () => {
-  const adapter = { impulse: vi.fn(), gesture: vi.fn(), poke: vi.fn(), setPet: vi.fn(), chatRead: vi.fn() }
+  const adapter = { impulse: vi.fn(), addMood: vi.fn(), gesture: vi.fn(), poke: vi.fn(), setPet: vi.fn(), chatRead: vi.fn() }
   const clip = { claim: vi.fn(), release: vi.fn() }
   const events: MotionTraceEvent[] = []
   const driver = new Motion3dCueDriver(adapter, 2, event => events.push(event), clip)

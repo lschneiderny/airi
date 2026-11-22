@@ -2,6 +2,7 @@ import type { NaturalMotionEvent, NaturalMotionObserver, NaturalMotionOptions } 
 
 import { createHash } from 'node:crypto'
 
+import { initialMindMoodState, moodEpisodeDose } from '@proj-airi/character-mind'
 import { naturalEmotions } from '@proj-airi/motion-driver-natural/emotions'
 import { NaturalMotion } from '@proj-airi/motion-driver-natural/natural-motion'
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
@@ -27,15 +28,23 @@ const step = 1 / rate
 /** Inputs applied before `advance(t)` of the frame they are keyed by. */
 type Timeline = Record<number, (motion: NaturalMotion, t: number) => void>
 
-/** Angry strong at 20 s, happy clear at 40 s (each an impulse plus a hold), release at 50 s. */
+const angry20 = { id: 'angry-20', emotion: 'angry', nominal: 0.9, intensity: 0.9, band: 'strong', escalation: false } as const
+const happy40 = { id: 'happy-40', emotion: 'happy', nominal: 0.6, intensity: 0.6, band: 'clear', escalation: false } as const
+/** The mood doses the character mind sends with the two episodes. */
+const angryDose = moodEpisodeDose(initialMindMoodState, angry20, defaultExpressionPerformanceSettings, false, 20_000)
+const happyDose = moodEpisodeDose(angryDose.mood, happy40, defaultExpressionPerformanceSettings, false, 40_000).dose!
+
+/** Angry strong at 20 s, happy clear at 40 s (each an impulse, its mood dose, and a hold), release at 50 s. */
 const emotionTimeline: Timeline = {
   [20 * rate]: (motion, t) => {
     // `drop` is what the character mind's emotionGesture chooses for this episode id.
-    motion.impulse({ id: 'angry-20', emotion: 'angry', nominal: 0.9, intensity: 0.9, band: 'strong', escalation: false, gesture: 'drop' }, t)
+    motion.impulse({ ...angry20, gesture: 'drop' }, t)
+    motion.addMood(angryDose.dose!, t)
     motion.setHeldEmotion({ emotion: 'angry', strength: 0.9 }, t)
   },
   [40 * rate]: (motion, t) => {
-    motion.impulse({ id: 'happy-40', emotion: 'happy', nominal: 0.6, intensity: 0.6, band: 'clear', escalation: false, gesture: 'laugh' }, t)
+    motion.impulse({ ...happy40, gesture: 'laugh' }, t)
+    motion.addMood(happyDose, t)
     motion.setHeldEmotion({ emotion: 'happy', strength: 0.6 }, t)
   },
   [50 * rate]: (motion, t) => motion.setHeldEmotion(null, t),
@@ -218,8 +227,12 @@ describe('natural motion observer', () => {
     const empty = Object.fromEntries(Object.keys(naturalEmotions).map(emotion => [emotion, { mood: [0, 0, 0] as const }])) as typeof naturalEmotions
 
     expect(run(1, 60, emotionTimeline, { emotionTable: naturalEmotions })).toBe(emotionHashes[0])
-    // Without recipes no emotion performs anything, so the timeline replays idle motion exactly.
-    expect(run(1, 60, emotionTimeline, { emotionTable: empty, observer })).toBe(run(1, 60, {}))
+    // Without recipes no emotion performs anything, so the timeline replays idle motion with only the mind's mood doses.
+    const dosesOnly: Timeline = {
+      [20 * rate]: (motion, t) => motion.addMood(angryDose.dose!, t),
+      [40 * rate]: (motion, t) => motion.addMood(happyDose, t),
+    }
+    expect(run(1, 60, emotionTimeline, { emotionTable: empty, observer })).toBe(run(1, 60, dosesOnly))
     expect(events).toEqual([])
   })
 })

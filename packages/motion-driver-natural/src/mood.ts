@@ -4,34 +4,29 @@ import type { PlayedGesture } from './emotions'
 
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 
-import { naturalEmotions } from './emotions'
-
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value))
 }
 
 /**
- * An episode as the Natural performer consumes it. `moodGain` is the mood dose gain for the
- * episode's band under the character profile that produced it; the stage resolves it when it
- * decides the episode, so a later decision under another profile cannot change this dose.
- * Without it, the performer's own band gain applies. `gesture` is the body gesture the character mind
- * ordered for the episode (`emotion-gesture`); without it the episode plays no gesture.
+ * An episode as the Natural performer consumes it. `gesture` is the body gesture the character mind ordered for the
+ * episode (`emotion-gesture`); without it the episode plays no gesture. The episode doses no mood: the mind sends its
+ * dose as a separate `MoodDose`.
  */
 export interface NaturalEpisode extends ReactionEpisode {
-  moodGain?: number
   gesture?: PlayedGesture
 }
 
-/** Active-time afterglow. Episode doses survive decay so escalations add only the missing dose. */
+/**
+ * Active-time afterglow of the doses the character mind decided. The mind keeps her mood once per character and seeds
+ * a new controller with `set`; this copy decays on Natural's active seconds and drives the modulation readouts.
+ */
 export class NaturalMood {
   valence = 0
   arousal = 0
   tension = 0
   private settings = defaultExpressionPerformanceSettings.moodDynamics
-  private readonly episodes = new Map<string, { emotion: ReactionEpisode['emotion'], dose: number }>()
   private readonly doseIds = new Set<string>()
-
-  constructor(private readonly emotions = naturalEmotions) {}
 
   setPerformanceSettings(settings: ExpressionPerformanceSettings['moodDynamics']) {
     this.settings = { ...settings }
@@ -51,27 +46,13 @@ export class NaturalMood {
     this.tension = clamp(this.tension + dose.tension, 0, 1)
   }
 
-  /** Ignores malformed doses and stale escalations without changing accumulated state. */
-  add(episode: NaturalEpisode) {
-    if (!Number.isFinite(episode.intensity) || episode.intensity <= 0)
+  /** Replaces the level with the mind's seed, clamped; a malformed seed leaves the level. Dose ids stay applied. */
+  set(level: Omit<MoodDose, 'id'>) {
+    if (![level.valence, level.arousal, level.tension].every(Number.isFinite))
       return
-    const previous = this.episodes.get(episode.id)
-    if (episode.escalation && (!previous || previous.emotion !== episode.emotion))
-      return
-    if (!episode.escalation && previous)
-      return
-    // acceptReaction can escalate only its current episode. Retire dose bookkeeping,
-    // not accumulated mood, when a new episode replaces it.
-    if (!episode.escalation)
-      this.episodes.clear()
-    const gain = episode.moodGain ?? this.settings[`${episode.band}Gain`]
-    const dose = gain * clamp(episode.intensity, 0, 1)
-    const delta = Math.max(0, dose - (episode.escalation ? previous!.dose : 0))
-    const [valence, arousal, tension] = this.emotions[episode.emotion].mood
-    this.valence = clamp(this.valence + delta * valence, -1, 1)
-    this.arousal = clamp(this.arousal + delta * arousal, -1, 1)
-    this.tension = clamp(this.tension + delta * tension, 0, 1)
-    this.episodes.set(episode.id, { emotion: episode.emotion, dose: Math.max(dose, episode.escalation ? previous!.dose : 0) })
+    this.valence = clamp(level.valence, -1, 1)
+    this.arousal = clamp(level.arousal, -1, 1)
+    this.tension = clamp(level.tension, 0, 1)
   }
 
   /** Invalid or nonpositive steps leave state untouched; zero tau releases on the next positive step. */

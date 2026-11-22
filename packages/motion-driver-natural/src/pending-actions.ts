@@ -25,6 +25,7 @@ export type PendingAction
   = | { kind: 'emotion', episode: NaturalEpisode }
     | { kind: 'gesture', gesture: CueGestureKind, count: number }
     | { kind: 'mood', dose: MoodDose }
+    | { kind: 'mood-level', level: Omit<MoodDose, 'id'> }
     | { kind: 'react', reaction: 'wake' | 'screen-change' }
     /** Ends a sleep through the gentle wake; the idle layer reads it, and it is ignored while she is awake. */
     | { kind: 'wake' }
@@ -49,7 +50,7 @@ export interface PendingActionTargets {
   cueGestures: NaturalCueGestures
   /** Per-emotion performance strength; zero suppresses new episodes while held emotions are enabled. */
   emotionStrengths: Partial<Record<PerformanceEmotion, number>>
-  /** The mood, held-emotion, and band switches read when each episode starts. */
+  /** The mood, held-emotion, and band switches read when each action starts. */
   settings: ExpressionPerformanceSettings
   /** The recipe table the controller was built with; an emotion with a recipe gesture leaves the head to the gesture clip. */
   emotions: typeof naturalEmotions
@@ -83,6 +84,11 @@ export function startPending(actions: Exclude<PendingAction, { kind: 'chat' | 'w
         mood.addDose(action.dose)
       continue
     }
+    if (action.kind === 'mood-level') {
+      if (settings.mood)
+        mood.set(action.level)
+      continue
+    }
     if (action.kind === 'poke') {
       const strength = pokeStrength[action.region]
       impulses.nudge(pokeDirection(action.region, action.x, action.y), strength.nudge, at, pokeNudgeTau)
@@ -114,8 +120,6 @@ export function startPending(actions: Exclude<PendingAction, { kind: 'chat' | 'w
       const gesture = action.episode.gesture
       if (enabled && gesture && !cueGestures.headActive(at))
         gestures.trigger(gesture, action.episode.intensity, settings.bands ? action.episode.band : 'clear', at, notify && ((played, side) => notify({ kind: 'gesture', at, gesture: played, side })))
-      if (settings.mood)
-        mood.add(action.episode)
       if (started.glance)
         gaze.glance({ source: 'emotion', point: started.glance.point, hold: started.glance.hold }, at)
       continue

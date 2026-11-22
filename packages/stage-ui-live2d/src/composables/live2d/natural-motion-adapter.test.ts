@@ -918,11 +918,11 @@ describe('natural motion adapter', () => {
     const control = run(false)
     const zeroed = run(true, 0)
     expect(zeroed.frames).toEqual(control.frames)
+    // The episode doses no mood itself: the mind sends the dose separately, whatever the model strength.
     expect(zeroed.mood).toEqual(control.mood)
     // The same emotion at full strength does act, so the comparison above can fail.
     const performed = run(true, 1)
     expect(performed.frames).not.toEqual(control.frames)
-    expect(performed.mood).not.toEqual(control.mood)
   })
 
   it('(j) forwards a changed placement to the controller right after the cursor', () => {

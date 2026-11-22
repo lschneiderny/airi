@@ -287,6 +287,8 @@ let animation: MMDAnimationManager | undefined
 let emote: ReturnType<typeof useMMDEmote> | undefined
 let morphRuntime: ReturnType<typeof createMMDMorphRuntime> | undefined
 let natural: MMDNaturalAdapter | undefined
+/** The mind's mood level, read once for each Natural adapter this scene creates; set by the stage's `seedMood`. */
+let moodSource: (() => Omit<MoodDose, 'id'>) | undefined
 let stopNaturalIdleReports: (() => void) | undefined
 let stopNaturalCursorReports: (() => void) | undefined
 
@@ -295,6 +297,8 @@ let stopNaturalCursorReports: (() => void) | undefined
  * stops deciding for it and forgets an order it waited on, and then follows the new one's reports.
  */
 function replaceNatural(next: MMDNaturalAdapter | undefined) {
+  if (next && moodSource)
+    next.setMood(moodSource())
   stopNaturalIdleReports?.()
   stopNaturalIdleReports = undefined
   stopNaturalCursorReports?.()
@@ -1887,6 +1891,11 @@ defineExpose({
   applyHolds: (commands: HoldCommand[], now: number) => natural?.applyHolds(commands, now),
   gesture: (kind: CueGestureKind, count: number) => natural?.gesture(kind, count),
   addMood: (dose: MoodDose) => natural?.addMood(dose),
+  /** Natural only: seeds the current and every later Natural adapter from the mind's mood. */
+  seedMood: (source: () => Omit<MoodDose, 'id'>) => {
+    moodSource = source
+    natural?.setMood(source())
+  },
   reactToTouch,
   /** Natural only: counts the mind's attend cause and opens cursor windows on the next director frame. */
   attend: (intent: AttendIntent) => attendInbox.receive(intent),
