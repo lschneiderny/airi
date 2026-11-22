@@ -2,6 +2,17 @@
 
 Shared core for stage
 
+## Character mapping weight editor
+
+`services/airi-card-editor` reads and writes card-owned performance weights.
+`getAiriCardMappingEditor` lists mapped entries only when the selected display
+model matches the live expression backend. `setAiriCardMappingWeight` copies the
+profile and removes identity overrides without changing other models or imported
+profile fields. The card save path persists
+`extensions.airi.modules.performance.mappingWeights[displayModelId][entryId]`.
+The conductor applies these multipliers through `applyMappingWeights`; zero
+disables automatic mapping while keeping manual expression access.
+
 ## Account-free clients
 
 This fork uses local data and direct or local inference providers. Accounts, hosted providers, billing, and cloud synchronization have been retired.

@@ -1,4 +1,5 @@
 import type { Card } from '@proj-airi/ccc'
+import type { CatalogEntry, PerformanceProfile } from '@proj-airi/stage-shared/expression-performance'
 
 import type { AiriExtension } from '../types/airiCard'
 
@@ -22,6 +23,28 @@ import {
 import { normalizeContextWindow, normalizeTemperature } from '../types/airiCard'
 
 export type AiriCardDraftValidationError = 'name' | 'version' | 'invalid_artistry_json'
+
+/** Only the selected character model's live catalog may supply mapping controls. */
+export function getAiriCardMappingEditor(modelId: string, backend: { readonly modelId: string, readonly catalog: readonly CatalogEntry[] }) {
+  if (!modelId || backend.modelId !== modelId || backend.catalog.length === 0)
+    return { loaded: false as const }
+  return { loaded: true as const, modelId, entries: backend.catalog.filter(entry => entry.mappings.length > 0) }
+}
+
+/** Returns a new profile; identity removes the entry override and leaves other models untouched. */
+export function setAiriCardMappingWeight(profile: PerformanceProfile | undefined, modelId: string, entryId: string, weight: number): PerformanceProfile {
+  const weights = { ...profile?.mappingWeights?.[modelId] }
+  if (weight === 1)
+    delete weights[entryId]
+  else
+    weights[entryId] = weight
+  const mappingWeights = { ...profile?.mappingWeights }
+  if (Object.keys(weights).length === 0)
+    delete mappingWeights[modelId]
+  else
+    mappingWeights[modelId] = weights
+  return parse(PerformanceProfileSchema, { ...profile, mappingWeights })
+}
 
 /** Module settings owned by the AIRI Card editor form. */
 interface AiriCardEditorModules {

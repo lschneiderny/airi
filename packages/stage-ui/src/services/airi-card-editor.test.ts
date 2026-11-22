@@ -1,10 +1,105 @@
 import type { Card } from '@proj-airi/ccc'
+import type { CatalogEntry } from '@proj-airi/stage-shared/expression-performance'
 
 import type { AiriExtension } from '../types/airiCard'
 
+import { applyMappingWeights } from '@proj-airi/stage-shared/expression-performance'
 import { describe, expect, it } from 'vitest'
 
-import { applyAiriCardEditorModules, getAiriCardEditorModuleSettings, safeParseAiriCardDraft } from './airi-card-editor'
+import { applyAiriCardEditorModules, getAiriCardEditorModuleSettings, getAiriCardMappingEditor, safeParseAiriCardDraft, setAiriCardMappingWeight } from './airi-card-editor'
+
+describe('character mapping weights', () => {
+  const entry: CatalogEntry = {
+    id: 'smile',
+    label: 'Smile',
+    kind: 'face',
+    group: null,
+    confirmed: true,
+    exposedToLlm: true,
+    fileName: 'smile.exp3.json',
+    parameterIds: [],
+    mappings: [{ emotion: 'happy', weight: 2, minBand: 'clear' }],
+  }
+  const artistry = { provider: '', model: '', promptPrefix: '', widgetInstruction: '', spawnMode: 'bg_widget' as const, options: undefined, autonomousEnabled: false, autonomousThreshold: 70 }
+  function storedCard(): Card {
+    return {
+      ...createCard(),
+      extensions: {
+        thirdParty: { kept: true },
+        airi: {
+          contextWindow: -1,
+          avatarModels: [{ id: 'avatar', type: 'live2d', displayModelId: 'rig', config: {} }],
+          defaultAvatarModelId: 'avatar',
+          modules: {
+            consciousness: { provider: '', model: '' },
+            vision: { provider: '', model: '' },
+            speech: { provider: '', model: '', voice_id: '' },
+            artistry,
+            performance: { mappingWeights: { rig: { smile: 0.5 }, other: { smile: 3 } }, future: { kept: true } },
+          },
+          agents: {},
+        },
+      },
+    }
+  }
+  function save(card: Card, weight?: number) {
+    const settings = getAiriCardEditorModuleSettings(card)
+    return applyAiriCardEditorModules(card, {
+      ...settings,
+      artistry,
+      ...(weight === undefined ? {} : { performance: setAiriCardMappingWeight(settings.performance, settings.displayModelId, entry.id, weight) }),
+    })
+  }
+
+  it('writes a card-owned weight consumed by applyMappingWeights without changing the catalog', () => {
+    const card = storedCard()
+    const saved = save(card, 2.5)
+    const profile = getAiriCardEditorModuleSettings(saved).performance
+    expect(profile?.mappingWeights?.rig.smile).toBe(2.5)
+    expect(profile?.mappingWeights?.other.smile).toBe(3)
+    expect(profile?.future).toEqual({ kept: true })
+    expect(applyMappingWeights([entry], 'rig', profile)[0].mappings[0].weight).toBe(5)
+    expect(entry.mappings[0].weight).toBe(2)
+    expect(getAiriCardEditorModuleSettings(card).performance?.mappingWeights?.rig.smile).toBe(0.5)
+  })
+
+  it('keeps zero and removes the identity key after saving and reopening', () => {
+    const disabled = save(storedCard(), 0)
+    const profile = getAiriCardEditorModuleSettings(disabled).performance
+    expect(profile?.mappingWeights?.rig.smile).toBe(0)
+    expect(applyMappingWeights([entry], 'rig', profile)[0].mappings).toEqual([])
+    const restored = save(disabled, 1)
+    const restoredProfile = getAiriCardEditorModuleSettings(restored).performance
+    expect(restoredProfile?.mappingWeights).not.toHaveProperty('rig')
+    expect(restoredProfile?.mappingWeights?.other.smile).toBe(3)
+    expect(applyMappingWeights([entry], 'rig', restoredProfile)[0].mappings[0].weight).toBe(2)
+  })
+
+  it('removes the last weight without restoring the old mapping during the editor merge', () => {
+    const initial = setAiriCardMappingWeight(undefined, 'rig', 'smile', 0)
+    expect(initial.mappingWeights?.rig.smile).toBe(0)
+    expect(setAiriCardMappingWeight(initial, 'rig', 'smile', 1).mappingWeights).toEqual({})
+  })
+
+  it('round-trips the stored card unchanged when no weight is touched', () => {
+    const card = storedCard()
+    expect(JSON.parse(JSON.stringify(save(card)))).toEqual(JSON.parse(JSON.stringify(card)))
+  })
+
+  it('reports not loaded when the store has no catalog for the card model', () => {
+    expect(getAiriCardMappingEditor('rig', { modelId: '', catalog: [] })).toEqual({ loaded: false })
+    expect(getAiriCardMappingEditor('rig', { modelId: 'other', catalog: [entry] })).toEqual({ loaded: false })
+    expect(getAiriCardMappingEditor('rig', { modelId: 'rig', catalog: [] })).toEqual({ loaded: false })
+  })
+
+  it('lists only mapped entries from the matching live model', () => {
+    expect(getAiriCardMappingEditor('rig', { modelId: 'rig', catalog: [entry, { ...entry, id: 'prop', mappings: [] }] })).toEqual({
+      loaded: true,
+      modelId: 'rig',
+      entries: [entry],
+    })
+  })
+})
 
 describe('airi card editor validation', () => {
   // https://github.com/moeru-ai/airi/issues/2108

@@ -430,3 +430,19 @@ Marks: **[visible]** changes what the user sees; **[removes]** removes a behavio
 | D10 | Where mapping weights are edited | (a) The card editor's Performance section, per avatar model, from the stored catalogs; (b) the Live2D and MMD expression panels, for the active card | (a) puts the character's values on the character's page, where the help text already points, but a never-loaded model cannot be edited. (b) has the catalog at hand but edits a card from a model page | (a) **[visible]** |
 | D11 | Home of the conversation register | (a) It stays a user setting in its own document; (b) the behavior document; (c) per character on the card; (d) per conversation on `ChatSessionMeta`, beside upstream's new `pinnedAt`, `archivedAt`, and `folderId` | No mind policy reads it, so (b) only relocates it. (c) ties how she writes to who she is, not where. (d) fits scene sessions best but extends an upstream type that changed in this very sync and adds a control per conversation | (a); (d) is the follow-up when scenes need it |
 | D12 | How Body ownership Target rule 3 lands on Live2D | (a) The owner writes last and composes everything below it as input; fix the two second writers (the context preview becomes a lease; expression tilts become a posture input at weight 0, landing Target rule 2); (b) restructure the Live2D final plugin stages into one composer per channel; (c) leave rules 2 and 3 in Target for Live2D and amend the CM7 Done-when | (b) rewrites upstream's plugin chain in `motion-manager.ts` and `Model.vue` for no visible gain. (c) leaves the Done-when unmet. (a) changes nothing visible and makes the tilt weight a tunable for the backlog | (a) |
+
+## Departures during implementation (c6)
+
+The owner replaced section 3.8's stored-catalog reader with the loaded model's
+live expression store. Stored catalog documents contain curation only, not the
+derived entries. The editor lists mapped entries only when its selected display
+model matches a live Live2D or MMD catalog in this window. Otherwise it shows the
+shared empty state asking the user to load the character's model. No derived
+catalog persistence or catalog schema change is added. Weights remain per card
+and per display model, surviving switches and reloads. A Node regression covers
+the not-loaded state. Both the not-loaded and the no-entries messages use the
+shared `Alert` with the `info` tone, so c6 adds no shared component.
+
+The key used by both expression stores and the conductor is the display model
+id (`avatarModels[].displayModelId`), not the card's avatar reference id
+(`avatarModels[].id`). The editor uses that same display model id for weights.
