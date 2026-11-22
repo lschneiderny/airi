@@ -20,6 +20,29 @@ afterEach(() => {
 })
 
 describe('useSettingsDocument', () => {
+  it('reads authoritative storage at the first command after a peer replaces the construction projection', async () => {
+    const settings = useSettingsDocument(key, entries, options)
+    localStorage.setItem(key, JSON.stringify({ enabled: false, level: 9 }))
+    settings.document.value = { enabled: true, level: 5 }
+    await settings.update({ level: 8 })
+    expect(settings.document.value).toEqual({ enabled: false, level: 8 })
+    expect(JSON.parse(localStorage.getItem(key)!)).toEqual({ enabled: false, level: 8 })
+  })
+
+  it('reads an import only while the document is absent and never reimports after reset', async () => {
+    const initial = vi.fn(() => ({ enabled: false, level: 9 }))
+    const settings = useSettingsDocument(key, entries, { ...options, initial })
+    settings.document.value = { enabled: true, level: 5 }
+    await settings.update({ level: 8 })
+    expect(settings.document.value).toEqual({ enabled: false, level: 8 })
+    await settings.reset()
+    localStorage.removeItem(key)
+    initial.mockClear()
+    await settings.update({ level: 3 })
+    expect(settings.document.value).toEqual({ enabled: true, level: 3 })
+    expect(initial).not.toHaveBeenCalled()
+  })
+
   it('starts from the schema defaults and writes nothing until the first update', async () => {
     const settings = useSettingsDocument(key, entries, options)
     expect(settings.document.value).toEqual({ enabled: true, level: 5 })

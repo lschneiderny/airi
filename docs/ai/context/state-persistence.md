@@ -121,6 +121,8 @@ The desktop app's main process writes files under the Electron user data directo
 
 ## Settings documents
 
+Before the first acknowledged leader save, `useSettingsDocument.current()` reads the stored document, or the one-time initial values only when that document is absent. Replicated construction state is a read projection, not import authority: the synchronization runtime can seed a leader from an earlier follower snapshot. `update` merges against that authoritative input, and MMD model-map actions use the same input before building their patches. A failed save leaves this first-write boundary open for a later explicit command. Reset establishes defaults without importing again.
+
 Eight tier 1 stores and one helper exist:
 
 - `useLive2DNaturalSettings` and `useMMDNaturalSettings` are built on `useSettingsDocument`. Each starts from the old per-setting [Natural](glossary.md#natural) keys while no document is stored, and its first leader-routed `update` or `reset` writes the document and deletes those keys. Each store's `// NOTICE:` block states when that import can be removed.
