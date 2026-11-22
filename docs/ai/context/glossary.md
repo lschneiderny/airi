@@ -205,7 +205,7 @@ The input that shapes Natural's idle behavior, set by the host from the slower c
 
 ### Emotion impulse and emotion gesture
 
-Natural's motion answer to a reaction episode or a poke. An impulse is additive and decays: a head pulse, a body lean, face hints, and an optional glance, none of which reset posture. An emotion gesture is a short head and body clip for some emotions (laugh, recoil, shake, drop, sway, tilt-in, look-away, nod-off) that ducks continuous posture motion while it plays and has a cooldown per kind.
+Natural's motion answer to a reaction episode or a poke. An impulse is additive and decays: a head pulse, a body lean, face hints, and an optional glance, none of which reset posture. An emotion gesture is a short head and body clip for some emotions (laugh, recoil, shake, drop, sway, tilt-in, look-away, nod-off) that ducks continuous posture motion while it plays. The character mind decides which clip an episode plays and keeps its cooldown per kind; Natural draws the clip's side and shape.
 
 **Code:** `packages/motion-driver-natural/src/impulses.ts` `NaturalImpulses`, `HeadPulse`, `FaceHints`; `packages/motion-driver-natural/src/gestures.ts` `NaturalGestures`; `packages/motion-driver-natural/src/emotions.ts` `GestureKind`; routed by `packages/motion-driver-natural/src/pending-actions.ts` `startPending`.
 **Not to be confused with:** cue gestures that an ACT cue's gesture field requests, which outrank an emotion gesture on the head; and an MMD clip of kind `gesture`.
