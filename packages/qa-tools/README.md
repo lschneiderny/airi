@@ -235,6 +235,8 @@ Doctor's `pointer-platform` row is OK on Windows. On macOS it is OK when the Cor
 
 To drag the character on the desktop stage, plan the drag with `planStageDrag` from `src/t3/stage-pointer.ts` and play it with `playStageDrag`. Pass the macOS backend's warp as the `warp` argument, so the main process's polled cursor and the click-through hit test follow the CDP pointer. A release after a drag reaches the character mind as an `interaction` stimulus with source `drag` and a body `attend` intent, which the bridge `events` command returns.
 
+The director walks to the chat only while a chat window is open and unfolded, because the main process reports the chat's position to the stage only then. A bridge `chat-unfold` event alone makes the mind attend the chat, but the director stays. Open the chat first with `openChatFromStage`, which clicks the controls island's chat button in the stage window as the user does.
+
 On Linux inside `pnpm qa:display run --`, it is OK when the KWin pointer backend is available: `python3` with PyGObject (`gi`), `libei.so.1`, and the nested KWin's `org.kde.KWin.EIS.RemoteDesktop` D-Bus interface. Otherwise the row is WARN and names what is missing.
 
 The KWin backend needs the default `kwin` QA display (with or without `--portals`). The `x11` and `sway` QA display sessions (`pnpm qa:display up --compositor x11|sway`) have no KWin, so the row is WARN there. To place the pointer in any of the three sessions, use `pnpm qa:display pointer <x> <y>`. It plays one EIS move on `kwin` through `scripts/linux/kwin-pointer.py` (run with `python3 -I`), runs `xdotool mousemove` on `x11`, and runs `swaymsg seat - cursor set` on `sway`. `qa:host smoke` evidence steps and `qa:stage handoff` move the pointer this way.
