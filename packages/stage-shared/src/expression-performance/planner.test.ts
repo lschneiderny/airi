@@ -128,6 +128,13 @@ describe('planner', () => {
     expect(released.state.budget.changes).toEqual([1])
   })
 
+  it('reports a scheduled entry that disappeared before its timing event', () => {
+    const pending = run([reaction(0.6, 0)], comboCtx).state
+    const released = run([timing('sentence_start', 1)], { ...comboCtx, catalog: [] }, pending)
+    expect(released.decisions).toEqual([{ slots: [], refusals: [{ entryId: combo.id, reason: 'missing-asset' }] }])
+    expect(released.state.scheduler.plans).toEqual([])
+  })
+
   it('shows a clear face at the next sentence_start and its effect at the next pause', () => {
     const { decisions } = run([reaction(0.6, 0), timing('sentence_start', 1), timing('pause', 2)], effectCtx)
 

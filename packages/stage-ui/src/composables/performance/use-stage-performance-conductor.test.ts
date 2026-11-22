@@ -97,6 +97,33 @@ function createConductor(driver: TestPerformer, scene: StagePerformanceScene = f
 }
 
 describe('performer dispatch declarations', () => {
+  it.each(['masked-by-clip', 'masked-by-manual', 'masked-by-expression', 'missing-asset'] as const)('forwards one %s expression refusal with its entry id and no label', (reason) => {
+    const scene = fakeScene()
+    scene.applySlots.mockReturnValue([{ entryId: 'joy', reason }])
+    const { conductor, refusals } = createConductor('natural', scene)
+    conductor.emotion('happy', 0.9, 'act')
+    expect(refusals.mock.calls).toEqual([[{ cause: null, kind: 'entry', entryId: 'joy', reason }]])
+  })
+
+  it('reports an exposed entry with no usable slots without starting an episode', () => {
+    const scene = fakeScene()
+    const broken = entry('combo:missing', 'combo', [], { exposedToLlm: true, slots: ['face'], members: [{ expressionId: 'missing', strength: 1 }] })
+    const { conductor, refusals } = createConductor('natural', scene, undefined, undefined, [broken])
+    expect(conductor.expression(broken.id, undefined, 'act')).toBeUndefined()
+    expect(refusals.mock.calls).toEqual([[{ cause: null, kind: 'entry', entryId: broken.id, reason: 'missing-asset' }]])
+    expect(scene.applySlots).not.toHaveBeenCalled()
+    expect(scene.setEmotion).not.toHaveBeenCalled()
+  })
+
+  it('reports nothing for a shown expression', () => {
+    const scene = fakeScene()
+    scene.applySlots.mockReturnValue([])
+    const { conductor, refusals } = createConductor('natural', scene)
+    conductor.emotion('happy', 0.9, 'act')
+    expect(scene.applySlots).toHaveBeenCalledOnce()
+    expect(refusals).not.toHaveBeenCalled()
+  })
+
   it.each(['picker', 'planner'] as const)('two conductors using %s agree on picks and recorded intent ids', (decider) => {
     let now = 10
     const entries = ['one', 'two', 'three'].map(id => entry(id, 'face', [{ emotion: 'happy', weight: 1, minBand: 'slight' }]))

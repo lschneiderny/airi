@@ -1,4 +1,4 @@
-import type { CatalogEntry, SlotCommand } from '@proj-airi/stage-shared/expression-performance'
+import type { CatalogEntry, ExpressionRefusal, SlotCommand } from '@proj-airi/stage-shared/expression-performance'
 import type { ComputedRef, Ref } from 'vue'
 
 import type { ExpressionComposer } from '../composables/live2d/expression/compose'
@@ -31,11 +31,11 @@ export function createSlotLeases(context: SlotLeaseContext) {
   const { catalog, manualActive, leases, muted, slotSettings, composer, nextClaimSequence, reconcile } = context
 
   /** Checks every conflicting owner before replacing the previous lease. */
-  function admit(slot: SlotName, command: SlotCommand, now: number, batch: Map<string, SlotLease>): boolean {
+  function admit(slot: SlotName, command: SlotCommand, now: number, batch: Map<string, SlotLease>): ExpressionRefusal['reason'] | null {
     const id = resolveAlias(command.expressionId!, catalog.value)
     const entry = catalog.value.find(entry => entry.id === id)
     if (!entry || !entrySlots(entry, catalog.value).includes(slot))
-      return false
+      return 'missing-asset'
     if (entry.kind !== 'combo' && entry.group !== null) {
       const baseMembers = manualActive.value.flatMap((id) => {
         const base = catalog.value.find(entry => entry.id === id)!
@@ -58,7 +58,7 @@ export function createSlotLeases(context: SlotLeaseContext) {
         })
       })) {
         console.warn('[expression-store] Slot activation skipped for protected group:', id)
-        return false
+        return conflicts.length ? 'masked-by-manual' : 'masked-by-expression'
       }
       for (const otherSlot of conflictingSlots)
         releaseSlot(otherSlot, now, false)
@@ -72,13 +72,13 @@ export function createSlotLeases(context: SlotLeaseContext) {
       batch.set(id, lease)
     }
     leases.value = { ...leases.value, [slot]: { ...lease } }
-    return true
+    return null
   }
 
   function activateFromSlot(slot: SlotName, command: SlotCommand, now = performance.now() / 1000): boolean {
     const admitted = admit(slot, command, now, new Map())
     reconcile(now)
-    return admitted
+    return admitted === null
   }
 
   /** A trigger owns every spanned slot until any of its leases releases. */
@@ -95,10 +95,11 @@ export function createSlotLeases(context: SlotLeaseContext) {
   }
 
   /** Executes decider output; invalid commands are dropped, never partially applied. */
-  function applySlots(commands: SlotCommand[], now: number) {
+  function applySlots(commands: SlotCommand[], now: number): ExpressionRefusal[] {
     if (!Number.isFinite(now))
-      return
+      return []
     const batch = new Map<string, SlotLease>()
+    const refusals = new Map<string, ExpressionRefusal>()
     for (const command of commands) {
       const slot = command.slot
       if (!slotNames.includes(slot)) {
@@ -113,9 +114,14 @@ export function createSlotLeases(context: SlotLeaseContext) {
         console.warn('[expression-store] Slot command with invalid lifetime dropped:', command.expressionId)
         continue
       }
-      admit(slot, command, now, batch)
+      const reason = admit(slot, command, now, batch)
+      if (reason) {
+        const entryId = resolveAlias(command.expressionId, catalog.value)
+        refusals.set(entryId, { entryId, reason })
+      }
     }
     reconcile(now)
+    return [...refusals.values()]
   }
 
   /** Releases every lease whose lifetime ended; called from the final plugin before compose. */

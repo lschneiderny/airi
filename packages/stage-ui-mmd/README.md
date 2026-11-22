@@ -773,6 +773,10 @@ clears its channel instead of holding a zero weight. The store ignores an
 unknown expression id and warns once per model. The derived catalog and the
 curated document are replaced whole, never edited in place, so `catalog`
 entries are plain data: reading them on a lease change tracks no entry fields.
+`applySlots` also returns one `missing-asset` refusal per entry when its catalog
+entry or usable slot is missing, with its id and no label. Shown entries return
+none. Slot claims still outrank manual claims, and the expression morph layer
+still outranks clip morphs; reporting does not introduce new masking.
 
 ### Settings, expression panel, and Motion Lab
 

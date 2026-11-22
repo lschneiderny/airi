@@ -1,16 +1,15 @@
 import type { MindIntent } from '@proj-airi/character-mind'
-import type { SlotCommand } from '@proj-airi/stage-shared/expression-performance'
+import type { ExpressionRefusal, SlotCommand } from '@proj-airi/stage-shared/expression-performance'
 import type {} from 'pinia-plugin-synced'
 
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
-/** A request another attached stage can perform, but this stage cannot. Direct clip labels have no mind cause. */
-export interface PerformerRefusal {
+/** A declined declaration or expression request. Deferred picks and direct requests can have no mind cause. */
+export type PerformerRefusal = {
   cause: number | null
   kind: MindIntent['kind'] | 'action'
-  reason: 'not-declared-by-stage'
-}
+} & ({ reason: 'not-declared-by-stage' } | ExpressionRefusal)
 
 export type ExposedExpressionKind = SlotCommand['slot']
 

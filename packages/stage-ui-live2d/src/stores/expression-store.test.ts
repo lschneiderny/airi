@@ -462,6 +462,37 @@ describe('speech-bound expression slots', () => {
   const face = (expressionId: string | null, turnId?: string, until: 'speech' | 'hold' = 'speech', holdSeconds = 1.2) =>
     ({ slot: 'face' as const, expressionId, holdSeconds, until, turnId })
 
+  it('reports protected manual groups once per entry with no label and leaves the manual owner shown', () => {
+    const store = slotStore()
+    store.updateEntry('smile', { label: 'Manual face' })
+    store.updateEntry('frown', { label: 'Requested face' })
+    store.activate('smile', 0)
+    expect(store.applySlots([face('frown'), face('frown')], 0)).toEqual([{ entryId: 'frown', reason: 'masked-by-manual' }])
+    expect(store.leases.face).toBeNull()
+    expect(store.composer.weightOf('smile', 1)).toBe(1)
+  })
+
+  it('reports a protected slot of another kind without calling it a manual or clip mask', () => {
+    const store = slotStore()
+    store.updateEntry('glasses', { group: store.catalog.find(entry => entry.id === 'smile')!.group })
+    store.applySlots([{ ...face('glasses'), slot: 'effect' }], 0)
+    expect(store.applySlots([face('smile')], 1)).toEqual([{ entryId: 'smile', reason: 'masked-by-expression' }])
+    expect(store.leases.effect?.expressionId).toBe('glasses')
+    expect(store.leases.face).toBeNull()
+  })
+
+  it('reports missing assets and entries with no slots once, and reports nothing for a shown entry or clear', () => {
+    const store = slotStore()
+    store.updateEntry('glasses', { kind: 'outfit' })
+    expect(store.applySlots([face('missing'), face('missing'), face('glasses')], 0)).toEqual([
+      { entryId: 'missing', reason: 'missing-asset' },
+      { entryId: 'glasses', reason: 'missing-asset' },
+    ])
+    expect(store.applySlots([face('smile')], 1)).toEqual([])
+    expect(store.composer.weightOf('smile', 2)).toBe(1)
+    expect(store.applySlots([face(null)], 3)).toEqual([])
+  })
+
   it('keeps a speech face through the turn and releases it half of its hold after the speech ends', () => {
     const store = slotStore()
     store.applySlots([face('smile', 'A')], 0)

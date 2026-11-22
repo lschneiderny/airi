@@ -6,7 +6,7 @@ import type { IdleBehaviourKind, IdleCueKind, NaturalIdleDrive } from '@proj-air
 import type { IdleOrder, IdleReport, IdleView } from '@proj-airi/motion-driver-natural/idle-schedule'
 import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
 import type { CharacterReading } from '@proj-airi/stage-shared/character-state'
-import type { AffectSignal, AffectTrace, CatalogEntry, DeciderContext, ExpressionPerformanceSettings, HoldCommand, Moment, MoodDose, PerformanceDecision, PerformanceProfile, ReactionEpisode, SlotCommand, TimingEvent } from '@proj-airi/stage-shared/expression-performance'
+import type { AffectSignal, AffectTrace, CatalogEntry, DeciderContext, ExpressionPerformanceSettings, ExpressionRefusal, HoldCommand, Moment, MoodDose, PerformanceDecision, PerformanceProfile, ReactionEpisode, SlotCommand, TimingEvent } from '@proj-airi/stage-shared/expression-performance'
 import type { AffectTraceRequest } from '@proj-airi/stage-shared/expression-performance/affect-trace-diagnostics'
 import type { PerformanceEvent } from '@proj-airi/stage-shared/performance-state'
 import type { TouchObservation } from '@proj-airi/stage-shared/situation'
@@ -104,7 +104,8 @@ function shownSlotsOf(entry: CatalogEntry): SlotName[] {
 /** The active renderer's scene surface the conductor dispatches to. */
 export interface StagePerformanceScene {
   setEmotion: (episode: NaturalEpisode) => void
-  applySlots: (commands: SlotCommand[], now: number) => void
+  /** Reports each masked or missing entry once per batch; an empty result means every request was shown. */
+  applySlots: (commands: SlotCommand[], now: number) => readonly ExpressionRefusal[] | void
   /** Natural only: sets or releases the held emotion; `now` shares the conductor clock. */
   applyHolds: (commands: HoldCommand[], now: number) => void
   onSpeech: (event: SpeechEvent, turnId: string, now: number) => void
@@ -380,18 +381,20 @@ export class StagePerformanceConductor {
     // The mind reads no catalog, so the conductor reads the entry's lease and its primary emotion mapping for it.
     // An entry without slots shows nothing and derives no reaction.
     const lease = explicitExpressionCommand({ expressionId: entry.id, holdSeconds, turnId }, context)?.[0]
+    if (!lease) {
+      this.refuse({ cause: null, kind: 'entry', entryId: entry.id, reason: 'missing-asset' })
+      return undefined
+    }
     const mapping = primaryMapping(context.catalog.find(candidate => candidate.id === entry.id))
-    const intent = (lease
-      ? this.options.mind.receive({
-          kind: 'expression-request',
-          source,
-          entryId: entry.id,
-          lease: { holdSeconds: lease.holdSeconds, until: lease.until },
-          mapping: mapping && { emotion: mapping.emotion, minBand: mapping.minBand },
-          turnId,
-          settings: context.settings,
-        })
-      : []).find(each => each.kind === 'entry')
+    const intent = this.options.mind.receive({
+      kind: 'expression-request',
+      source,
+      entryId: entry.id,
+      lease: { holdSeconds: lease.holdSeconds, until: lease.until },
+      mapping: mapping && { emotion: mapping.emotion, minBand: mapping.minBand },
+      turnId,
+      settings: context.settings,
+    }).find(each => each.kind === 'entry')
     if (!intent || !this.permitted(intent))
       return undefined
     const request = intent
@@ -879,6 +882,8 @@ export class StagePerformanceConductor {
     }
     this.recordContext(context)
     const result = this.decider.decide(signal, context, this.state)
+    for (const refusal of result.decision.refusals ?? [])
+      this.refuse({ cause: null, kind: 'entry', ...refusal })
     this.state = result.state
     this.lastSignalAt = Math.max(this.lastSignalAt, signal.at)
     this.armDeadline()
@@ -893,7 +898,8 @@ export class StagePerformanceConductor {
     const scene = this.options.scene()
     // The model, and with it the performer's muted flag, can mount after the last mute change.
     scene?.setMuted(this.muted)
-    scene?.applySlots(commands, at)
+    for (const refusal of scene?.applySlots(commands, at) ?? [])
+      this.refuse({ cause: null, kind: 'entry', ...refusal })
   }
 }
 

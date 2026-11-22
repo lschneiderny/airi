@@ -65,6 +65,9 @@ when the context withdraws it; the underlying slot and its transition remain
 alive. Universal and MAGIC retain the context's direct plugin and release.
 
 The expression store executes the decider's slot commands in three slots: `face`, `effect`, and `prop`. The scene exposes `applySlots`, `onSpeech`, and `setMuted` for the stage performance conductor.
+`applySlots` returns one refusal per entry for missing assets or slots, protected
+manual groups, and protected groups owned by another slot. Each report contains
+the entry id and reason only; shown entries and clears produce no report.
 The scene also exposes `applyHolds`, which sets or releases the held emotion; see Held emotions below.
 Each slot holds at most one transient lease on top of the rest set and manual toggles. Releasing a lease never turns off an expression that the rest set or a manual toggle also owns.
 A speech-bound lease lasts while its own speech turn plays. It releases after the turn ends, plus a short grace, or at once when the turn's playback is stopped. A muted lease, or a lease with an explicit hold, releases after its hold. Every lease releases within `slots.holdCap` seconds.
