@@ -394,12 +394,20 @@ The recommendations above were implemented. Departures and verification evidence
 
 ### Orchestrator QA corrections
 
-- Finding 7: a real-runtime browser regression reproduced loss of both consent and MMD imports after a follower seeded the domain before leader store registration. Registration replaced the correctly read construction projection with defaults; initialization then saved that replicated projection and removed the old keys. The first leader save now reads storage again at execution time, gives an existing document precedence, and builds MMD map patches from that same authority. Three ordering/failure cases failed before the fix and pass afterward.
-- Finding 8: S2 inserted awaited settings RPCs and the main consent mirror before App mounted. Chat/session and speech actions are registered during App setup, while election already ran. This exposed a leader with no action registrations to the faster follower windows. The orchestrator confirmed zero errors on main and three on S2 with the same driver. A separate startup fix and regression follow.
+- Finding 7 was withdrawn by the orchestrator: an untouched sentinel disappeared too, proving that the two-launch harness did not retain localStorage. The regression added for 97ef2440c constructed a default follower before inserting legacy keys; it did not reproduce a normal startup from an already persisted old profile. No independent supported startup defect was established. Its code changes and artificial ordering tests are reverted in a new commit; the actual Node import tests remain and explicitly check absent new documents and saved results after initialize.
+- Finding 8: S2 inserted awaited settings RPCs and the main consent mirror before App mounted. Chat/session and speech actions are registered during App setup, while election already ran. This exposed a leader with no action registrations to the faster follower windows. The orchestrator confirmed zero errors on main and three on S2 with the same driver. Fixed by `ed94caafc`, which remains in place; its independent delayed-acknowledgment regression is rerun.
+
+### Harness correction verification (2026-11-22)
+
+- `pnpm --filter "...@proj-airi/stage-shared" --workspace-concurrency=2 typecheck`: all 28 dependent projects passed. Scanner/policy guards passed 3 files / 28 tests. Changed-file ESLint and whitespace checks passed. No Electron run was performed.
+- Focused Node imports: `performance-settings.test.ts` 1 file / 12 tests and `analytics.test.ts` 1 file / 11 tests. Both seed old keys with no new document and assert the stored document after initialize. MMD covers height 840, roam mode roam, both model drivers, slots, empty maps, and false permissions.
+- Retained startup regression: `pnpm -F @proj-airi/stage-tamagotchi exec vitest run --project browser src/renderer/startup.browser.test.ts`, 1 file / 1 test passed after reverting the persistence changes. Both action owners respond while consent acknowledgment is held.
+- Full suites: stage-shared 96 files / 1880 tests, MMD Node 49 / 431, stage-ui Node 196 / 1911, MMD browser 7 / 34, Live2D Natural browser 1 / 13, and related stage-ui browser 7 / 125 all passed. The commands are the same suite commands recorded below.
+- The four reverted code/test files match the parent of 97ef2440c exactly. The finding 8 source and regression match ed94caafc exactly.
 
 ### Original implementation
 
-- Finding 7 fix: `97ef2440c`. Finding 8 moves election creation into the mounting boundary, after the existing credential migration, and removes all waits between runtime creation and App setup. The focused real-runtime browser test first reproduced the missing ensureCurrentSession action while the main consent response was held; it checks both session and speech actions while that response remains pending and still requires startup to await the acknowledgment.
+- The code changes of `97ef2440c` are reverted after the harness correction. Finding 8 moves election creation into the mounting boundary, after the existing credential migration, and removes all waits between runtime creation and App setup. The focused real-runtime browser test first reproduced the missing ensureCurrentSession action while the main consent response was held; it checks both session and speech actions while that response remains pending and still requires startup to await the acknowledgment.
 
 
 QA verification (2026-11-22):
@@ -412,7 +420,7 @@ Finding 8 checks (2026-11-22):
 - `pnpm exec vitest run --project dev-tools scripts/dev-tools/lib/storage-writes.test.ts scripts/dev-tools/storage-writes.test.ts scripts/dev-tools/policy-docs.test.ts`: 3 files / 28 tests passed.
 - Changed-file ESLint passed. No Electron run was performed; the orchestrator reruns the two-launch driver.
 
-Finding 7 command results:
+Historical results for the discarded finding 7 change (not evidence of a product startup defect):
 
 - `pnpm -F @proj-airi/stage-shared exec vitest run src/composables/use-settings-document/index.test.ts`: 1 file / 20 tests.
 - `pnpm -F @proj-airi/stage-ui exec vitest run --project browser src/stores/settings/analytics.browser.test.ts`: 3 failed / 1 passed before the fix, then 4 passed.

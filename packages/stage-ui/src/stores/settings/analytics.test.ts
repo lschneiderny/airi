@@ -38,6 +38,7 @@ describe('analytics consent document', () => {
     expect(store.analyticsEnabled).toBe(expected)
     expect(writes).not.toHaveBeenCalled()
     expect(mirror).not.toHaveBeenCalled()
+    expect(localStorage.getItem(key)).toBeNull()
 
     await store.initialize()
 
