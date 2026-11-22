@@ -1,7 +1,7 @@
 # Character mind: Natural touch cleanup, owner-result notices, and reminder rank
 
 Date: 2026-11-22
-Status: accepted; CM8 implemented, with headless and rendered acceptance assigned to the orchestrator (placeholder below).
+Status: accepted; CM8 implemented. Rendered acceptance is recorded below; the headless rig checks are still open.
 
 Current rules are in [Autonomous behavior](../context/autonomous-behavior.md), [LLM prompt](../context/llm-prompt.md), the [glossary](../context/glossary.md), and the [upstream policy ledger](../context/upstream-policy.md). The [notify and touch plan](../../../.omo/plans/character-mind-notify-touch.md) records departures, commands, and results.
 
@@ -42,14 +42,67 @@ The notebook builds trusted `task-reminder` provenance with task id, schedule re
 - `generating` counts any session, so a running background task holds every announcement, as it already holds reach-outs.
 - A result delivered while its conversation is not selected stays readable but is never announced later.
 
-## Orchestrator acceptance placeholder
+## Rendered acceptance (CM8)
 
-**Pending; to be filled by the orchestrator.** This worker ran no `qa:*` command and no Electron launch. Record here the run directories, gate or report lines, scalar event kinds and counts without content, and renderer and main-process error counts for:
+Run on macOS from the CM8 tip (`51f32a7e9`) with the dev Electron app and AppSession drivers kept under `.temp/qa-drivers` (not committed). Run directories below are under `.temp/qa-drivers/runs/`. Live2D ran on the window stage host with the ForBOOTH rig; MMD ran on the desktop stage host with the local MMD model. Chat used the `qa:llm` replay server and silent replay TTS. Pointer input is CDP `Input.dispatchMouseEvent` on the stage page. The window lifecycle store's `minimized` flag stands in for a minimized window, a composer-activity event on the speech bus stands in for an open draft, and the desktop and foreground samplers are pinned to a present user so the gate does not hold on stale signals. The driver reads the event log before every setting change.
 
-- Headless: `qa:test:model`, `qa:live2d-rig`, and `qa:motion3d` `touch`, `idle`, and `speak` at seed 1 with `--verify-determinism`, identical to the pre-change base except for cleanup paths.
-- Rendered Live2D Natural: hover and held pets; pause, touch-off, model swap, and driver switch during a pet each release the hand with no pet line, mood dose, or moment afterward.
-- Rendered Live2D Universal and MAGIC: taps, pats, impulses, touch motions, and avatar notifies behave as before CM8.
-- Rendered MMD Natural and classic: Natural cleanup as above; classic unchanged.
-- Notices: a background result is stored at once; with a draft open nothing speaks; clearing it lets one announcement run or decline; do-not-disturb, a quiet app, a full floor or cap, and a conversation switch leave it store-only; reach-outs off still allow it.
-- Terminal outcome delivered twice with one action id returns one receipt and at most one announcement.
-- Reminders: a critical reminder does not fire before its due time, ranks above an immediate plugin notify at due, and does not repeat after the scheduler requeues it.
+Every launch below reports 0 renderer and 0 main-process errors, except one reminder launch that is named in check 6. No product bug was found. The headless rig checks (`qa:test:model`, `qa:live2d-rig`, `qa:motion3d`) were not part of this acceptance run and remain open.
+
+### 1. Live2D Natural cleanup
+
+Runs `cm8-touch-natural-cm8-1795340236116` (56 `mind` events) and `cm8-touch-natural-cm8-touchoff-1795345894542` (18 `mind` events). Evidence is the mind steps' scalar fields and the `situation` store's action calls.
+
+| Trial | Gestures | Intents after the pet starts |
+| --- | --- | --- |
+| Hover pet | `pet-start`, `pet-end` | start: touch reaction and mood; end: touch reaction and moment, voice `hold` (`pet-short`); no spoken line |
+| Held pet | `pet-start`, `pet-end` | the same as the hover pet |
+| Pause during a held pet | `pet-start`, `pet-cancel` | only the hand release; no `pet-end`, mood, moment, line, or `observeTouch` call |
+| Driver switched to Universal during a held pet | `pet-start`, `pet-cancel` | none; no `pet-end`, mood, moment, line, or `observeTouch` call |
+| Touch turned off during a held pet, button released at once | `pet-start` only | none; the scene withdraws the hand without a report, so no `pet-end`, mood, moment, line, or `observeTouch` call |
+
+A first touch-off trial that kept rubbing after the setting changed let the scene classify a new pet; its `pet-end` reached the situation (`observeTouch`) with no intent from the mind. That path predates CM8: the conductor does not gate the scene's reports on `touchReactions`. It is recorded as a follow-up, not a CM8 defect.
+
+### 2. Live2D Universal and MAGIC
+
+Runs `cm8-touch-upstream-cm8-1795345050995` and `cm8-touch-upstream-main-1795344506766` (the main checkout without CM8), each with a 45 s gap between drivers; the earlier pair `cm8-touch-upstream-cm8-1795344027538` and `cm8-touch-upstream-main-1795344285003` used a 25 s gap. The bridge's `configure` accepted both drivers and reported them. Each driver trial pressed the head three times, petted it, and tapped the body.
+
+- Both trees produced 0 mind touch steps and the same store calls for each driver: one `avatar-touch.notifyTouch` and one `situation.ingest` of a `notify`, nothing else touch-related.
+- With the 25 s gap, CM8 notified for both drivers while main did not notify for MAGIC. The avatar aggregator's 20 s cooldown sits near that gap, so the difference is timing; with 45 s the two trees match.
+- Touch motions are not in the QA event log, so they were not compared. The upstream touch module and its tests are unchanged by CM8.
+
+### 3. MMD Natural and classic
+
+Runs `cm8-touch-mmd-cm8-1795345333716` (28 `mind` events) and `cm8-touch-mmd-cm8-touchoff-1795345698552` (14).
+
+- Hover and held pets matched Live2D (`pet-start` and `pet-end` with the same intents; no line).
+- Driver switched to classic during a held pet: `pet-start`, a `performer` step, then `pet-cancel` with no intent; no `pet-end`, mood, moment, or line.
+- Touch off during a held pet: `pet-start`, then `behavior` steps with no intent and no `pet-end`. The first attempt formed no pet, so the second launch repeated only this trial.
+- Classic: three taps and a pat produced no mind step and no situation touch observation.
+- Pause was not staged on the desktop stage; its cleanup shares the classifier's `reset` path covered by `motion-driver-natural` `touch-gestures.test.ts` and `character-mind` `touch.test.ts`.
+
+### 4. Notices
+
+Runs `cm8-notice-1795342358252` (reach-outs on, 15 `mind`, 4 `turn`, 4 `tts` events) and `cm8-notice-1795343660809` (reach-outs off, 18 `mind`, 4 `turn`, 4 `tts`).
+
+- A result is stored 3 to 12 ms after delivery, before any announcement.
+- With a draft open, the gate reason was `user-typing`, no line spoke, and no model request was made. After the draft cleared, exactly one `notice` line ran and was `spoken` (one chat request and one speech request). With reach-outs off the announcement still ran.
+- Do-not-disturb and a quiet app: the gate reasons were `dont-disturb` and `quiet-app`, the result was stored, and no line spoke. A result held by do-not-disturb was announced once do-not-disturb lifted, inside its five-minute start window; that is the designed hold, not a drop.
+- Switching conversation dropped every pending request (0 pending), left the new result stored, and produced no reply.
+- A full floor (`floor`) held the next result stored with no reply. The hourly cap was not staged; the `character-mind` voice tests and the `stage-shared` urge-gate tests cover it.
+
+### 5. One action id, twice
+
+Two concurrent deliveries and one later delivery of `terminal:<id>` returned the same receipt, left one stored message with that id, and produced no reply (the floor held it). At most one reply holds. The chat contract test for a repeated terminal delivery covers the announced case.
+
+### 6. Reminders
+
+Runs `cm8-reminder-1795343292745` (14 `mind`, 6 `turn`, 6 `tts` events, 0 errors) and the earlier `cm8-reminder-1795342892423`, which reported 2 renderer errors (a failed blob fetch of the imported display model about 10 s after import, before any reminder step; the rerun reported none).
+
+- A critical reminder due in 100 s produced no mind step and no line during the first 75 s. It was ingested as context 60 s ahead; the earlier run's only pre-due lines were an ordinary `ritual` reach-out and a plugin notify, and the reminder spoke 1.2 s after its due time.
+- With the gate held by an open draft, a plugin `immediate` notify ingested 4 s before due, and the draft released 3 s after due, the first line's stated reason was the task reminder and the plugin alert followed second.
+- No further `task-reminder` ingest occurred in the next 100 s, past the 30 s requeue delay. The only later line was an ordinary `ritual` reach-out.
+
+### Observations for later
+
+- The devtools forced evaluation (`Evaluate now`) can start an ordinary reach-out while a notice waits, because forced timing bypasses the notice deferral. It is a development path; normal ticks defer to the notice.
+- Diagnostic launches `cm8-notice-1795340892605`, `1795340951067`, `1795341268250`, `1795341635524`, and `1795341984886` found only harness issues (module lookup, stale sensors, a forced evaluation that charged the floor) and are not evidence.
