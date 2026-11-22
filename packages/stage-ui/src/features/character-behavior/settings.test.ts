@@ -1,13 +1,17 @@
+import { safeParse, strictObject } from 'valibot'
 import { describe, expect, it } from 'vitest'
 
 import { importCharacterBehaviorSettings } from './import'
-import { defaultCharacterBehaviorSettings } from './schema'
+import { characterBehaviorEntries, defaultCharacterBehaviorSettings } from './schema'
 
 function importProfile(values: Record<string, unknown>) {
   return importCharacterBehaviorSettings(key => key in values ? JSON.stringify(values[key]) : null)
 }
 
 describe('character behavior import', () => {
+  it.each(['emotion', 'speaking'])('rejects an array as the %s settings group', (field) => {
+    expect(safeParse(strictObject(characterBehaviorEntries), { [field]: [] }).success).toBe(false)
+  })
   it('leaves an empty profile unwritten', () => {
     expect(importProfile({})).toBeUndefined()
     expect(defaultCharacterBehaviorSettings()).toMatchObject({

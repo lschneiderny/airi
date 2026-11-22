@@ -3,7 +3,7 @@ import type { CursorEpisode, CursorReport } from '@proj-airi/motion-driver-natur
 import type { IdleBehaviourKind } from '@proj-airi/motion-driver-natural/idle-activities'
 import type { IdleErrandKind } from '@proj-airi/motion-driver-natural/idle-errands'
 import type { IdleReport, IdleScheduleState, IdleView } from '@proj-airi/motion-driver-natural/idle-schedule'
-import type { Band, ExpressionPerformanceSettings, HoldCommand, MoodDose, PerformanceEmotion, ReactionEpisode, ReactionState, SlotCommand, TouchAffectMemory } from '@proj-airi/stage-shared/expression-performance'
+import type { Band, EmotionBehaviorSettings, ExpressionRealisationSettings, HoldCommand, MoodDose, PerformanceEmotion, ReactionEpisode, ReactionState, SlotCommand, TouchAffectMemory } from '@proj-airi/stage-shared/expression-performance'
 import type { CharacterPacingMemory, GateLocalTime, GateOutcome, GateSettings, GateSignals, ReactionDecision, ReactionKind, ReactionMemory, ReasonCategory, ReasonKind, ReasonState, SituationState, TouchVoiceView, UrgeGateDecision, UrgeGateMemory, UserGateMemory } from '@proj-airi/stage-shared/situation'
 
 import type { PerformerCapabilities } from './capabilities'
@@ -65,11 +65,11 @@ export interface VoiceRequest {
 
 export type MindStimulus
   /** `voice` is null for a pet start and when no leader gate runs; the mind then decides no line. */
-  = | (TouchReport & { kind: 'touch', settings: ExpressionPerformanceSettings, voice: TouchVoiceView | null })
+  = | (TouchReport & { kind: 'touch', settings: EmotionBehaviorSettings, voice: TouchVoiceView | null })
   /** An ACT emotion, a tool call, or a devtools pulse. `nominal` is already scaled by the card's expressiveness. */
-    | { kind: 'emotion', source: 'act' | 'tool' | 'devtools', emotion: PerformanceEmotion, nominal: number, turnId?: string, settings: ExpressionPerformanceSettings }
+    | { kind: 'emotion', source: 'act' | 'tool' | 'devtools', emotion: PerformanceEmotion, nominal: number, turnId?: string, settings: EmotionBehaviorSettings & Pick<ExpressionRealisationSettings, 'slots'> }
   /** The model named an entry. The performer read the entry's lease and its primary emotion mapping from its catalog. */
-    | { kind: 'expression-request', source: 'act' | 'tool', entryId: string, lease: { holdSeconds: number, until: 'speech' | 'hold' }, mapping: { emotion: PerformanceEmotion, minBand: Band } | null, turnId?: string, settings: ExpressionPerformanceSettings }
+    | { kind: 'expression-request', source: 'act' | 'tool', entryId: string, lease: { holdSeconds: number, until: 'speech' | 'hold' }, mapping: { emotion: PerformanceEmotion, minBand: Band } | null, turnId?: string, settings: EmotionBehaviorSettings }
     | { kind: 'expression-clear', source: 'act' | 'tool' | 'devtools', slot?: SlotCommand['slot'], turnId?: string }
   /** What became of a `speak` intent, named by its `turnId`. `refused` means another unprompted turn was pending. */
     | { kind: 'voice-outcome', turnId: string, outcome: GateOutcome | 'refused' }

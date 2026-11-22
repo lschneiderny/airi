@@ -828,6 +828,16 @@ results. No acceptance run, hash re-pin, or visual result is claimed here.
   dependency cycle; startup owns their ordering instead.
   The new feature has no package subpath in the base. With manifest edits
   forbidden, the existing settings barrel exports its public API.
+- **c2:** The section 2 gates remain as checked for c1; no driver code changed.
+  Contract narrowing lands first. Removing persisted fields and moving their
+  readers must be one atomic change to keep every commit buildable without
+  compatibility accessors, so c3 carries the four document removals, the
+  screenLean rename, and their old-document regressions. The combined runtime
+  `ExpressionPerformanceSettings` remains the intersection of the two owned
+  contracts for performers and traces. `emotionHold` also reads the face slot
+  hold rules for a turn, which section 2.5 omitted. Emotion stimuli therefore
+  carry that realisation constraint alongside behavior; touch and explicit
+  expression stimuli need only behavior. This preserves existing hold lengths.
 
 ## Checks run (CM7a)
 

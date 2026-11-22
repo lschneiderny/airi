@@ -1,4 +1,4 @@
-import type { ExpressionPerformanceSettings } from './settings'
+import type { EmotionBehaviorSettings } from './settings'
 import type { Band, PerformanceEmotion, ReactionEpisode } from './types'
 
 /** Checkpointable history for the uninterrupted current emotion, with seconds supplied by callers. It holds no random source. */
@@ -22,7 +22,7 @@ export function drawRandom(state: number): { random: number, value: number } {
 }
 
 /** Zero and non-finite doses have no band. Thresholds come from validated settings. */
-export function bandOf(intensity: number, settings: ExpressionPerformanceSettings): Band | null {
+export function bandOf(intensity: number, settings: EmotionBehaviorSettings): Band | null {
   if (!Number.isFinite(intensity) || intensity <= 0)
     return null
   if (intensity >= settings.intensity.strongFrom)
@@ -30,7 +30,7 @@ export function bandOf(intensity: number, settings: ExpressionPerformanceSetting
   return intensity >= settings.intensity.clearFrom ? 'clear' : 'slight'
 }
 
-function jittered(dose: number, u: number, settings: ExpressionPerformanceSettings) {
+function jittered(dose: number, u: number, settings: EmotionBehaviorSettings) {
   const band = bandOf(dose, settings)
   const { clearFrom, strongFrom, jitter } = settings.intensity
   // The open endpoints stay positive and cannot cross into the next band.
@@ -47,7 +47,7 @@ function jittered(dose: number, u: number, settings: ExpressionPerformanceSettin
  * `draw` returns a uniform value in [0, 1) from the caller's random source. It is called exactly once, for the
  * jitter of a new episode; an escalation reuses the episode's draw, and nothing else draws.
  */
-export function acceptReaction(state: ReactionState, emotion: PerformanceEmotion, nominal: number, at: number, settings: ExpressionPerformanceSettings, draw: () => number): { episode: ReactionEpisode | null, state: ReactionState } {
+export function acceptReaction(state: ReactionState, emotion: PerformanceEmotion, nominal: number, at: number, settings: EmotionBehaviorSettings, draw: () => number): { episode: ReactionEpisode | null, state: ReactionState } {
   if (!['happy', 'sad', 'angry', 'think', 'surprised', 'awkward', 'question', 'curious', 'neutral', 'love', 'flustered', 'sleepy'].includes(emotion)
     || !Number.isFinite(at) || (state.lastAt !== null && at < state.lastAt)) {
     return { episode: null, state }

@@ -1,8 +1,24 @@
+import { object, parse } from 'valibot'
 import { describe, expect, it } from 'vitest'
 
-import { defaultExpressionPerformanceSettings, parseExpressionPerformanceSettings } from '.'
+import { defaultExpressionPerformanceSettings, emotionBehaviorSettingsEntries, expressionRealisationSettingsEntries, parseExpressionPerformanceSettings, resolveEffectiveSettings } from '.'
 
 describe('performance settings', () => {
+  it('splits an old document without losing profile-scaled runtime behavior', () => {
+    const stored = parseExpressionPerformanceSettings({
+      mood: false,
+      moodDynamics: { strongGain: 0.6 },
+      decider: 'planner',
+      slots: { holdSeconds: 3 },
+    }).value
+    const behavior = parse(object(emotionBehaviorSettingsEntries), stored)
+    const realisation = parse(object(expressionRealisationSettingsEntries), stored)
+    expect(behavior).not.toHaveProperty('slots')
+    expect(realisation).not.toHaveProperty('moodDynamics')
+    expect(realisation.slots.holdSeconds).toBe(3)
+    expect(resolveEffectiveSettings({ ...behavior, ...realisation }, { moodGainScale: 1.5 }))
+      .toEqual(resolveEffectiveSettings(stored, { moodGainScale: 1.5 }))
+  })
   it('fills every default from an empty document', () => {
     const expected = {
       bands: true,
