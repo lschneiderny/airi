@@ -237,6 +237,7 @@ const naturalTouchHeadScale = computed(() => naturalSettings.document.touchHeadS
 const naturalDiagnostics = useNaturalMotionDiagnostics()
 const { pendingRequest: naturalCaptureRequest } = storeToRefs(naturalDiagnostics)
 let naturalMotion: Live2DNaturalMotionAdapter | undefined
+let hostIdleDrive: NaturalIdleDrive | null = null
 /** The chat input the latest composition handed to Natural; published to diagnostics after the adapter step. */
 let composedChat: NaturalChatInput | null = null
 /** Owned by the loaded model; replaced on load and cleared before destruction. */
@@ -1636,7 +1637,11 @@ watch(live2dExpressionEnabled, (enabled) => {
 // --- Touch
 // Pokes and pets are a Natural reaction, so touch runs only while Natural drives the model.
 const capabilities = computed(() => live2dMotionDriver.value === 'natural' ? LIVE2D_NATURAL_CAPABILITIES : NO_CAPABILITIES)
-const touchActive = computed(() => props.touchReactions && capabilities.value.posture && !paused.value)
+const touchActive = computed(() => capabilities.value.posture && !paused.value)
+
+// Permission edges withdraw the hand without reporting a pet the mind already closed or never granted.
+watch(() => props.touchReactions, () => resetTouch(performance.now(), false))
+watch(() => props.idleActivities, () => setIdleDrive(hostIdleDrive))
 
 watch(live2dNaturalTouchPetRequiresHold, (requireHold) => {
   touchGestures.requireHold = requireHold
@@ -1657,8 +1662,10 @@ watch(naturalTouchHeadScale, () => {
 })
 
 /** Ends any gesture in progress, drops queued pokes, and withdraws the pet hand, for a model swap or disabled touch. */
-function resetTouch(timeMs: number) {
-  handleTouchEvents(touchGestures.reset(timeMs))
+function resetTouch(timeMs: number, report = true) {
+  const reports = touchGestures.reset(timeMs)
+  if (report)
+    handleTouchEvents(reports)
   pendingNaturalPokes.length = 0
   naturalPetHand = null
   naturalPetGranted = false
@@ -2018,6 +2025,12 @@ function withPastimes(drive: NaturalIdleDrive): NaturalIdleDrive {
   return offered ? { ...drive, errands: ['pastime'] } : drive
 }
 
+function setIdleDrive(drive: NaturalIdleDrive | null) {
+  hostIdleDrive = drive
+  // Null also withdraws energy offsets, active acts, settling, and cues; the mind separately suppresses decisions.
+  naturalMotion?.setIdleDrive(props.idleActivities && drive ? withPastimes(drive) : null)
+}
+
 defineExpose({
   setMotion,
   listMotionGroups,
@@ -2043,7 +2056,7 @@ defineExpose({
    * and a changed setting both take effect then. The user's idle-activities setting turns it off here. While the model
    * has an entry the user marked as a pastime and has not switched on, Natural may draw pastimes (`errands`).
    */
-  setIdleDrive: (drive: NaturalIdleDrive | null) => naturalMotion?.setIdleDrive(props.idleActivities && drive ? withPastimes(drive) : null),
+  setIdleDrive,
   /** The stage's answer to a pastime Natural started: shown (`done` when put away early) or `refused`. */
   answerIdleErrand: (seq: number, outcome: 'done' | 'refused') => naturalMotion?.answerIdleErrand(seq, outcome),
   idleCue: (kind: IdleCueKind) => naturalMotion?.idleCue(kind),

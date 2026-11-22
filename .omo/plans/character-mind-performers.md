@@ -852,6 +852,20 @@ results. No acceptance run, hash re-pin, or visual result is claimed here.
   documentation is updated; neither renderer has an existing scene story.
   The controls keep their old locations until c5, but already write one owner.
 
+- **c4:** The section 2 capability and settings gates were rechecked. The mind
+  now owns the three decision switches and replays them after reset. Code
+  inspection found that a null idle drive also removes energy offsets, releases
+  active acts, prevents body settling, and drops cues (`NaturalIdleActivities`
+  `energyOffset`, `step`, and `updateErrand`). Removing that gate would change
+  existing Natural behavior, so it remains as a performer realisation cutoff;
+  the mind independently suppresses idle decisions, proved against a null-drive
+  reference. Live2D reapplies that cutoff on permission changes. Touch remains
+  classified while off; permission edges withdraw the hand without creating a
+  synthetic end for an ungranted pet. The settings watcher replaces no synced
+  state and ignores unrelated emotion/speaking changes. Its snapshot regression
+  uses the sync plugin's top-level function-patch semantics. Startup behavior is
+  an extra stimulus, so correlation tests account for its sequence number.
+
 ## Checks run (CM7a)
 
 The implementation base is `e57dd1393`. The owner requested package checks,

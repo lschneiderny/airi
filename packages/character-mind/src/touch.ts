@@ -20,6 +20,8 @@ interface Answer { state: MindState, intents: MindIntent[], refusals?: Refusal[]
  * - Body: a poke and a pet start end with `attend`, which opens the director's attend window. A pet end opens none.
  */
 export function answerTouch(state: MindState, stimulus: Stimulus<'touch'>, cause: number, nowMs: number, rng: MindRandom): Answer {
+  if (!state.behavior.touchReactions)
+    return { state, intents: [] }
   if (!state.performer.posture)
     return refusedAnswer(state, cause, 'touch-reaction')
 

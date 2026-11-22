@@ -2,7 +2,7 @@ import type { IdleContext, IdleDecision, IdleOrder, IdleScheduleState, IdleView 
 
 import type { MindIdleIntent, MindIdleState, MindIntent, MindRandom, MindState, MindStimulus, Refusal } from './types'
 
-import { advanceIdleSchedule, applyIdleEdge, initialIdleSchedule, nextIdleDeadline } from '@proj-airi/motion-driver-natural/idle-schedule'
+import { advanceIdleSchedule, applyIdleEdge, dormantIdleView, initialIdleSchedule, nextIdleDeadline } from '@proj-airi/motion-driver-natural/idle-schedule'
 import { seedRng } from '@proj-airi/stage-shared/situation'
 
 import { refusedAnswer } from './capabilities'
@@ -133,7 +133,7 @@ export function answerIdle(state: MindState, stimulus: Stimulus<'idle'>, cause: 
   for (const report of stimulus.reports) {
     switch (report.kind) {
       case 'view':
-        view = report.view
+        view = state.behavior.idleActivities ? report.view : dormantIdleView(report.view.active)
         if (view.drive === null) {
           schedule = { ...schedule, followUp: null, awaySince: null }
           pending = null
@@ -173,6 +173,8 @@ export function answerIdle(state: MindState, stimulus: Stimulus<'idle'>, cause: 
 
 /** A requested play starts at once; the performer keeps its own test, and its `started` report stamps the cooldowns. */
 export function answerIdlePlay(state: MindState, stimulus: Stimulus<'idle-play'>, cause: number, rng: MindRandom): Answer {
+  if (!state.behavior.idleActivities)
+    return { state, intents: [] }
   if (!state.performer.posture)
     return refusedAnswer(state, cause, 'idle-act')
 

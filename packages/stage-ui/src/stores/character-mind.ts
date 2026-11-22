@@ -11,6 +11,7 @@ import { markRaw, watch } from 'vue'
 
 import { MindMusic } from '../composables/performance/mind-music'
 import { MindVoice } from '../composables/performance/mind-voice'
+import { useCharacterBehaviorSettings } from '../features/character-behavior/settings'
 import { useCharacterStateStore } from './character-state'
 import { useSituationObservabilityStore } from './devtools/situation-observability'
 import { useSituationStore } from './situation'
@@ -72,6 +73,7 @@ export const useCharacterMindStore = defineStore('character-mind', () => {
   const situation = useSituationStore()
   const characterState = useCharacterStateStore()
   const observability = useSituationObservabilityStore()
+  const behaviorSettings = useCharacterBehaviorSettings()
 
   // markRaw: the mind's state is replaced on every step and must not become reactive.
   const mind = markRaw(new CharacterMind({ seed: crypto.getRandomValues(new Uint32Array(1))[0] }))
@@ -155,6 +157,18 @@ export const useCharacterMindStore = defineStore('character-mind', () => {
       void characterState.recordPacing(loaded.cardId, loaded.epoch, pacing)
   })
 
+  function replayBehavior() {
+    const { idleActivities, touchReactions, chatAttention } = behaviorSettings.document
+    mind.receive({ kind: 'behavior', idleActivities, touchReactions, chatAttention })
+  }
+
+  // Primitive sources ignore emotion and speaking updates, and a replicated snapshot never writes back.
+  const stopBehaviorWatch = watch([
+    () => behaviorSettings.document.idleActivities,
+    () => behaviorSettings.document.touchReactions,
+    () => behaviorSettings.document.chatAttention,
+  ], replayBehavior, { immediate: true, flush: 'sync' })
+
   let stopLeadershipListener: (() => void) | undefined
   let disconnectVoice: (() => void) | undefined
   /** Bumped at every leadership change, so a promotion that a demotion overtook does not connect. */
@@ -171,6 +185,7 @@ export const useCharacterMindStore = defineStore('character-mind', () => {
     lastPacing = mind.state.slow.pacing
     clearIdleWake()
     mind.receive({ kind: 'performer', capabilities: stages.at(-1)?.capabilities() ?? NO_CAPABILITIES })
+    replayBehavior()
     // The span reopens at the reset; the return after it still gets its response.
     if (away)
       mind.receive({ kind: 'presence', away: true, wake: null })
@@ -270,6 +285,7 @@ export const useCharacterMindStore = defineStore('character-mind', () => {
     clearIdleWake()
     stopRecordWatch()
     stopCategoryWatch()
+    stopBehaviorWatch()
     observability.publishReactionMemory(null)
   }
 

@@ -15,6 +15,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { isReactive, ref, shallowReactive } from 'vue'
 
+import { useCharacterBehaviorSettings } from '../features/character-behavior/settings'
 import { useCharacterMindStore } from './character-mind'
 import { useSituationObservabilityStore } from './devtools/situation-observability'
 
@@ -205,11 +206,54 @@ describe('character mind store', () => {
     expect(store.mind.state.performer).toEqual(NO_CAPABILITIES)
   })
 
+  it('reads the behavior document at creation and replays every switch after a reset', async () => {
+    const settings = useCharacterBehaviorSettings()
+    await settings.update({ idleActivities: false, touchReactions: false, chatAttention: false })
+    const store = useCharacterMindStore()
+    const disabled = { idleActivities: false, touchReactions: false, chatAttention: false }
+    expect(store.mind.state.behavior).toEqual(disabled)
+    await connected(store)
+    characterState.replace('card-b', herPacing)
+    expect(store.mind.state.behavior).toEqual(disabled)
+    const sequence = store.mind.state.seq
+    await settings.update({ speaking: { chattiness: 0.7 }, emotion: { bands: false } })
+    expect(store.mind.state.seq).toBe(sequence)
+  })
+
+  it('observes a settings snapshot once without writing settings or pacing back', () => {
+    const store = useCharacterMindStore()
+    const settings = useCharacterBehaviorSettings()
+    const action = vi.fn()
+    settings.$onAction(action)
+    let mutations = 0
+    settings.$subscribe(() => mutations++, { flush: 'sync' })
+    // The sync plugin replaces top-level values with a function patch; an object patch merges inside shallow refs.
+    settings.$patch((current) => {
+      current.document = { ...current.document, touchReactions: false }
+    })
+    const sequence = store.mind.state.seq
+    expect(store.mind.state.behavior.touchReactions).toBe(false)
+    expect(mutations).toBe(1)
+    settings.$patch((current) => {
+      current.document = { ...current.document, touchReactions: false }
+    })
+    expect(store.mind.state.seq).toBe(sequence)
+    expect(mutations).toBe(2)
+    expect(action).not.toHaveBeenCalled()
+    expect(characterState.recordPacing).not.toHaveBeenCalled()
+    store.dispose()
+    settings.$patch((current) => {
+      current.document = { ...current.document, touchReactions: true }
+    })
+    expect(store.mind.state.seq).toBe(sequence)
+  })
+
   it('reports a refused request to the reaction inspector', async () => {
     const store = useCharacterMindStore()
+    const cause = store.mind.state.seq + 1
     store.mind.receive({ kind: 'cue-gesture', gesture: 'shrug', count: 1, source: 'act' })
     const inspection = await useSituationObservabilityStore().inspect()
-    expect(inspection.reactions.refusals).toEqual([{ cause: 1, kind: 'gesture', reason: 'undeclared', atMs: T0 }])
+    expect(inspection.reactions.refusals).toEqual([{ cause, kind: 'gesture', reason: 'undeclared', atMs: T0 }])
   })
 
   it('hears music only while the window leads, and a demotion stops it', async () => {
@@ -300,7 +344,8 @@ describe('character mind store', () => {
 
     store.mind.receive({ kind: 'touch', gesture: 'poke', region: 'head', point: { x: 0.2, y: -0.4 }, settings: defaultExpressionPerformanceSettings, voice: null })
 
-    expect(store.mind.state.seq).toBe(1)
+    // The initial behavior snapshot precedes this touch.
+    expect(store.mind.state.seq).toBe(2)
     expect(port.connect).not.toHaveBeenCalled()
   })
 

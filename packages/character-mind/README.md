@@ -27,15 +27,28 @@ episode state; deterministic mixed answers retain their permitted channels.
 `step` and `MindStep` report `refusals`, naming the stimulus sequence (`cause`),
 intent kind, and `undeclared` reason. Refusals are observer data only.
 
+### Behavior permissions
+
+The `behavior` stimulus carries `idleActivities`, `touchReactions`, and
+`chatAttention`. They start true in `MindState.behavior`, remain fast state,
+and are replayed by the host after every reset. Idle off makes reported views
+dormant and decides no act, errand, or sleep, independently of the performer.
+Touch off produces no touch intent or draw; withdrawing permission closes an
+open pet without a dose. Chat attention off produces neither `chat-read` nor
+chat `attend`. Cursor tracking remains a continuous performer permission.
+Emotion behavior travels in each stimulus under its character profile;
+speaking rules travel in the situation's `VoiceView`.
+
 ### Stimuli and intents
 
 | Stimulus | Intents |
 | --- | --- |
 | `performer` | None. Sets the declaration before any idle decision; without posture, idle is dormant. |
+| `behavior` | None. Sets decision permissions before any due idle decision; idle off makes the view dormant. |
 | `emotion` | `face`: `emotion`, with the episode and its hold, when the emotion starts or escalates an episode. `release` with scope `neutral` when a neutral resets the reaction state. Nothing for a repeat that does neither. |
 | `expression-request` | `face`: `entry`. With an emotion mapping and held emotions on, it carries a hold for the entry's lease, and the episode when the request started one. |
 | `expression-clear` | `face`: `release` with the named slot as its scope, or scope `all` and a hold release when no slot is named. |
-| `touch` | One response, decided together. `posture`: `touch-reaction` for every touch, a poke at its point or a pet `start` or `end`, and `mood` when `touchAffect` returns a dose. `face`: `moment` (`poked` or `petted`) for a poke and a finished pet. `voice`: `speak` when `reactionPolicy` decides a line, with no `cue`: her body already answered the touch. `body`: `attend` for a poke and a pet start, after the others (see below). |
+| `touch` | With touch reactions enabled, one response, decided together. `posture`: `touch-reaction` for every touch, a poke at its point or a pet `start` or `end`, and `mood` when `touchAffect` returns a dose. `face`: `moment` (`poked` or `petted`) for a poke and a finished pet. `voice`: `speak` when `reactionPolicy` decides a line, with no `cue`: her body already answered the touch. `body`: `attend` for a poke and a pet start, after the others (see below). |
 | `voice-tick` | In the order posture, voice: `cue` `about-to-speak` and `speak` with a `reach-out` line when the urge gate fires. A new `run.id` first restores the gate memory: a promotion with `run.user` (the user's floor, hourly-cap fires, and ritual day) and `slow.pacing` laid over it and normalized (`restoreGateMemory`). A shown edge eases her in (`visibilityRegainUrgeMemory`). Widget deadlines and requests come first (see below). The gate skips while a line is open, a widget request waits, or `unpromptedPending` is set. |
 | `voice-outcome` | `posture`: `cue` `let-go` when she declined a reach-out or a widget line; otherwise none. It settles the line named by `turnId` and closes it. A touch line (`reaction:<eventId>`) settles its pending attempt; a `spoken` one always starts the refractory and the gate's floor. A widget line's `spoken` starts the gate's floor (`recordExternalSpeech`) and never counts as an unanswered opening. A reach-out applies its outcome to the gate (`recordUrgeFireOutcome`); `refused` restores the gate fields of before the fire, with its draws spent. A reach-out that opened in an earlier run only starts the floor when spoken, because the restore replaced the memory its outcome would update. |
 | `voice-request` | `posture` `cue` `about-to-speak`, then `voice` `speak` with a `widget` line, at once when nobody is busy; otherwise the request waits. A new `run.id` first restores the gate memory, and deadlines are handled first, as at a tick. |
@@ -44,11 +57,11 @@ intent kind, and `undeclared` reason. Refusals are observer data only.
 | `screen-change` | `posture`: `desktop-reaction` `screen-change`, unless one was stamped less than `SCREEN_CHANGE_REFRACTORY_MS` (10 s) ago or a desktop wake is in the same `step` call. |
 | `idle` | `posture`: `idle-act` or `idle-errand` when the idle schedule decides at the current time after the reports are applied (see below). |
 | `idle-wake` | Nothing of its own. Like every stimulus, it first brings the idle clock up to `nowMs`, which can yield `posture` `idle-act` or `idle-errand`. |
-| `idle-play` | `posture`: `idle-act` with `requested: true`, at once. |
+| `idle-play` | With idle activities enabled, `posture`: `idle-act` with `requested: true`, at once. |
 | `music` | None, and no draw. It sets `MindState.music.playing`, fast state that a reset clears. While it is true the idle schedule may draw the groove, the `sway` act (`IdleContext` `music`). Like every stimulus, it first brings the idle clock up to `nowMs` under the old value. A `music` stimulus before the first `idle` report leaves the idle stream's seed unchanged. |
 | `cursor` | `gaze`: `cursor-episode` for the report's `requestId`, at once: whether she engages, the interest span, the notice dwell, and the cooldown (see below). |
 | `interaction` | `body`: `attend`, at once, for a drag release (`source: 'drag'`). |
-| `chat` | A typed send (`cue: 'sent'`, with its word count): `gaze` `chat-read` with the words, then `body` `attend`. A chat that unfolds (`cue: 'unfold'`): `gaze` `chat-read` with 0 words, then `body` `attend` targeting `chat` with `attendCause: 'chat-unfold'`. No draw; the performer draws the read's delay and hold and drops it without a chat target or while she talks. |
+| `chat` | With chat attention enabled, a typed send (`cue: 'sent'`, with its word count): `gaze` `chat-read` with the words, then `body` `attend`. A chat that unfolds (`cue: 'unfold'`): `gaze` `chat-read` with 0 words, then `body` `attend` targeting `chat` with `attendCause: 'chat-unfold'`. No draw; the performer draws the read's delay and hold and drops it without a chat target or while she talks. |
 | `cue-gesture` | One `posture` `gesture` intent of the requested kind and count, without a draw. ACT cues name their reply with `turnId`; devtools requests take the same path. The conductor steps the mind under every driver and dispatches the intent only under Natural; the performer queues or refuses it when a running cue holds its channels. |
 
 A scene reports a touch as a `TouchReport`: a poke with its region and a point relative to that region, a pet start, or a pet end with its duration. The `touch` stimulus adds the settings and a `TouchVoiceView`, which is what the voice channel shows of the touch the situation just recorded. Without a view (a pet start, a follower window, no running gate) the mind decides no line and leaves its voice state untouched. The caller runs a `speak` intent and returns what became of it as a `voice-outcome` with the intent's `turnId`.
@@ -65,7 +78,7 @@ Widget and plugin turns arrive as `voice-request` stimuli and wait in `MindVoice
 
 - Before every stimulus the idle clock catches up to `nowMs` and the schedule runs in pieces that end at its deadlines, so a hazard crossing lands exactly on its deadline and each decision is taken at its own time. `nextIdleWakeAt(idle)` returns the next deadline in epoch milliseconds, or null while no active view reports, while nothing is due, or while an intent waits. The host arms one timer at it and sends `idle-wake`: in the app `useCharacterMindStore`, in the headless MMD runner the frame loop before each advance.
 - A decided intent waits in `pending` until the performer reports it `started` (or `errand-started`) or `refused`; no other decision is taken meanwhile. A refusal spends the fire.
-- A view with no drive is dormant: it clears the follow-up, the away run, and `pending`, and the policy decides nothing.
+- Idle off makes every reported view dormant, and a view with no drive is dormant: it clears the follow-up, the away run, and `pending`, and the policy decides nothing.
 - Each act carries a 32-bit `seed`, drawn after the decision's own draws, from which the performer draws its shape.
 - `idleOrderOf(intent)` turns an `idle-act` or `idle-errand` intent (`MindIdleIntent`) into the `IdleOrder` that Natural's `idle` performs.
 - The policy draws from its own stream, `MindIdleState.random`, seeded by one draw of `rng` at the first `idle` or `idle-play` stimulus. The idle draws therefore do not depend on how often the other channels draw.

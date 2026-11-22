@@ -22,6 +22,7 @@ export function initialMindState(slow: MindSlowState = { pacing: null }): MindSt
   return {
     seq: 0,
     performer: NO_CAPABILITIES,
+    behavior: { idleActivities: true, touchReactions: true, chatAttention: true },
     reaction: createReactionState(),
     touch: { affect: initialTouchAffectMemory },
     voice: { reaction: initialReactionMemory(), lastDecision: null, gate: null, runId: null, stageShown: false, line: null, requests: [], lastGate: null },
@@ -56,6 +57,25 @@ export function step(state: MindState, stimuli: readonly MindStimulus[], nowMs: 
   for (const stimulus of stimuli) {
     const cause = next.seq + 1
     next = { ...next, seq: cause }
+    if (stimulus.kind === 'behavior') {
+      const { idleActivities, touchReactions, chatAttention } = stimulus
+      next = { ...next, behavior: { idleActivities, touchReactions, chatAttention } }
+      if (!idleActivities) {
+        next = {
+          ...next,
+          idle: {
+            ...next.idle,
+            view: next.idle.view === null ? null : dormantIdleView(next.idle.view.active),
+            pending: null,
+            schedule: { ...next.idle.schedule, followUp: null, awaySince: null },
+          },
+        }
+      }
+      // Withdrawing touch permission closes a granted pet without dosing or speaking for its cancellation.
+      if (!touchReactions && next.touch.affect.pet !== null)
+        next = { ...next, touch: { affect: { ...next.touch.affect, pet: null } } }
+      continue
+    }
     if (stimulus.kind === 'performer') {
       next = { ...next, performer: stimulus.capabilities }
       // Retire the previous performer's view before any due decision; a new stage reports its own view.
