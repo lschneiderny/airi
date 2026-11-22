@@ -594,6 +594,15 @@ full browser run had already passed all 1,018 tests with five skips.
 ESLint reports one existing long-comment warning in the adapter test's
 untouched manual-control case; the new and changed code has no lint error.
 
+### d4: Ownership record
+
+The section 2 gates were checked again and still match the d1 inventory and
+d2/d3 changes. The new Live2D channel owners ADR records D12, the policy now
+links that record, and the old posture-overwrite documentation gap is removed.
+The CM7d roadmap row records implementation completion, with the orchestrator's
+headless, rig and rendered results explicitly pending in the ADR Consequences.
+No existing ADR body or another CM7 part's implementation is changed.
+
 ## Checks run (CM7a)
 
 The implementation base is `e57dd1393`. The owner requested package checks,
