@@ -915,7 +915,7 @@ pages:
       moodGainScale: Mood strength
       moodDecayScale: Mood length
       mapping_help: Adjust how often each mapped expression is picked for this character. A weight of 1 uses the model's mapping, and 0 disables it. Save the card to keep your changes.
-      mapping_not_loaded: Load this character's model in this window to edit its expression mapping weights.
+      mapping_not_loaded: Show this character on the stage to edit its expression mapping weights.
       mapping_empty: This model has no expressions with emotion mappings. Add mappings in the model's expression settings.
     character_profile:
       title: Personality

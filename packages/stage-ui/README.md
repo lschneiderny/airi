@@ -6,12 +6,20 @@ Shared core for stage
 
 `services/airi-card-editor` reads and writes card-owned performance weights.
 `getAiriCardMappingEditor` lists mapped entries only when the selected display
-model matches the live expression backend. `setAiriCardMappingWeight` copies the
+model matches the stage's replicated catalog. `setAiriCardMappingWeight` copies the
 profile and removes identity overrides without changing other models or imported
 profile fields. The card save path persists
 `extensions.airi.modules.performance.mappingWeights[displayModelId][entryId]`.
 The conductor applies these multipliers through `applyMappingWeights`; zero
 disables automatic mapping while keeping manual expression access.
+
+`useStageExpressionCatalogStore` (`stage-expression-catalog`) mirrors a
+`snapshot` containing the loaded display model id and mapped entries (id, label,
+and mappings), or `null` when no model is loaded. The stage conductor publishes
+local Live2D and MMD catalog changes and clears the snapshot on unload or stage
+disposal. Editors in settings and other windows read the mirror without loading
+a renderer. This is tier 5 runtime memory, registered by `pinia-plugin-synced`
+when the store is created; it has no persisted location or state-registry entry.
 
 ## Account-free clients
 

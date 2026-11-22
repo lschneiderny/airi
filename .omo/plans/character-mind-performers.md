@@ -435,13 +435,19 @@ Marks: **[visible]** changes what the user sees; **[removes]** removes a behavio
 
 The owner replaced section 3.8's stored-catalog reader with the loaded model's
 live expression store. Stored catalog documents contain curation only, not the
-derived entries. The editor lists mapped entries only when its selected display
-model matches a live Live2D or MMD catalog in this window. Otherwise it shows the
-shared empty state asking the user to load the character's model. No derived
-catalog persistence or catalog schema change is added. Weights remain per card
-and per display model, surviving switches and reloads. A Node regression covers
-the not-loaded state. Both the not-loaded and the no-entries messages use the
-shared `Alert` with the `info` tone, so c6 adds no shared component.
+derived entries. Desktop QA found that the stage and settings use separate
+windows, so the card editor now reads a tier 5 runtime mirror,
+`useStageExpressionCatalogStore` (`stage-expression-catalog`). The stage
+conductor publishes the loaded display model id and mapped entries (id, label,
+mappings) when its Live2D or MMD catalog changes and clears the mirror on unload
+or disposal. Settings windows read the replicated snapshot. If no stage has the
+character's model loaded, the editor asks the user to show the character on the
+stage. No derived catalog persistence or catalog schema change is added. Weights
+remain per card and per display model, surviving switches and reloads. Node
+regressions cover publishing, clearing, editor selection, and replication to a
+late settings window without reader proposals. Both the not-loaded and the
+no-entries messages use the shared `Alert` with the `info` tone, so c6 adds no
+shared component.
 
 The key used by both expression stores and the conductor is the display model
 id (`avatarModels[].displayModelId`), not the card's avatar reference id

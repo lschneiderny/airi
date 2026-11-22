@@ -4,8 +4,10 @@ import type { CatalogEntry } from '@proj-airi/stage-shared/expression-performanc
 import type { AiriExtension } from '../types/airiCard'
 
 import { applyMappingWeights } from '@proj-airi/stage-shared/expression-performance'
-import { describe, expect, it } from 'vitest'
+import { createPinia, disposePinia } from 'pinia'
+import { describe, expect, it, onTestFinished } from 'vitest'
 
+import { useStageExpressionCatalogStore } from '../stores/stage-expression-catalog'
 import { applyAiriCardEditorModules, getAiriCardEditorModuleSettings, getAiriCardMappingEditor, safeParseAiriCardDraft, setAiriCardMappingWeight } from './airi-card-editor'
 
 describe('character mapping weights', () => {
@@ -86,18 +88,35 @@ describe('character mapping weights', () => {
     expect(JSON.parse(JSON.stringify(save(card)))).toEqual(JSON.parse(JSON.stringify(card)))
   })
 
-  it('reports not loaded when the store has no catalog for the card model', () => {
-    expect(getAiriCardMappingEditor('rig', { modelId: '', catalog: [] })).toEqual({ loaded: false })
-    expect(getAiriCardMappingEditor('rig', { modelId: 'other', catalog: [entry] })).toEqual({ loaded: false })
-    expect(getAiriCardMappingEditor('rig', { modelId: 'rig', catalog: [] })).toEqual({ loaded: false })
+  it('reports not loaded when the mirror is empty or another model is on stage', () => {
+    const pinia = createPinia()
+    onTestFinished(() => disposePinia(pinia))
+    const mirror = useStageExpressionCatalogStore(pinia)
+    expect(getAiriCardMappingEditor('rig', mirror.snapshot)).toEqual({ loaded: false })
+    mirror.publish('other', [entry])
+    expect(getAiriCardMappingEditor('rig', mirror.snapshot)).toEqual({ loaded: false })
+    mirror.clear('other')
+    expect(getAiriCardMappingEditor('rig', mirror.snapshot)).toEqual({ loaded: false })
   })
 
-  it('lists only mapped entries from the matching live model', () => {
-    expect(getAiriCardMappingEditor('rig', { modelId: 'rig', catalog: [entry, { ...entry, id: 'prop', mappings: [] }] })).toEqual({
+  it('reads only mapped fields from the matching model in the mirror', () => {
+    const pinia = createPinia()
+    onTestFinished(() => disposePinia(pinia))
+    const mirror = useStageExpressionCatalogStore(pinia)
+    mirror.publish('rig', [entry, { ...entry, id: 'prop', mappings: [] }])
+    expect(getAiriCardMappingEditor('rig', mirror.snapshot)).toEqual({
       loaded: true,
       modelId: 'rig',
-      entries: [entry],
+      entries: [{ id: entry.id, label: entry.label, mappings: entry.mappings }],
     })
+  })
+
+  it('distinguishes a loaded model without mappings from no loaded model', () => {
+    const pinia = createPinia()
+    onTestFinished(() => disposePinia(pinia))
+    const mirror = useStageExpressionCatalogStore(pinia)
+    mirror.publish('rig', [{ ...entry, mappings: [] }])
+    expect(getAiriCardMappingEditor('rig', mirror.snapshot)).toEqual({ loaded: true, modelId: 'rig', entries: [] })
   })
 })
 

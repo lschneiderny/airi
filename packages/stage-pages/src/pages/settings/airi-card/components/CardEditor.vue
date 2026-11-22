@@ -9,8 +9,6 @@ import type { Ref } from 'vue'
 
 import { errorMessageFrom } from '@moeru/std'
 import { isCustomProvidersDisabled } from '@proj-airi/stage-shared'
-import { useExpressionStore } from '@proj-airi/stage-ui-live2d/stores/expression-store'
-import { useMMDExpressionStore } from '@proj-airi/stage-ui-mmd/stores'
 import { useAnalytics } from '@proj-airi/stage-ui/composables'
 import { useSettingsSearchReveal } from '@proj-airi/stage-ui/composables/use-settings-search'
 import { DEFAULT_ARTISTRY_WIDGET_INSTRUCTION } from '@proj-airi/stage-ui/constants/prompts/artistry-instruction'
@@ -22,6 +20,7 @@ import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import { useConsciousnessStore } from '@proj-airi/stage-ui/stores/modules/consciousness'
 import { useVisionStore } from '@proj-airi/stage-ui/stores/modules/vision'
 import { useProviderStore } from '@proj-airi/stage-ui/stores/providers/provider'
+import { useStageExpressionCatalogStore } from '@proj-airi/stage-ui/stores/stage-expression-catalog'
 import { Alert, Button, FieldInput, FieldRange, FieldSelect, FieldValues, GhostButton, IconButton } from '@proj-airi/ui'
 import { ComboboxSelect } from '@proj-airi/ui/components/form'
 import { clamp, isEqual } from 'es-toolkit'
@@ -116,13 +115,8 @@ const temperatureInput = computed<number | undefined>({
   },
 })
 const selectedPerformance = ref<PerformanceProfile>()
-const live2dExpressions = useExpressionStore()
-const mmdExpressions = useMMDExpressionStore()
-const mappingEditor = computed(() => {
-  const modelId = selectedDisplayModelId.value
-  const backend = live2dExpressions.modelId === modelId ? live2dExpressions : mmdExpressions
-  return getAiriCardMappingEditor(modelId, backend)
-})
+const stageCatalog = useStageExpressionCatalogStore()
+const mappingEditor = computed(() => getAiriCardMappingEditor(selectedDisplayModelId.value, stageCatalog.snapshot))
 
 function setMappingWeight(entryId: string, weight: number) {
   const editor = mappingEditor.value

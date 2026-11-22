@@ -33,6 +33,7 @@ import { EMOTION_EmotionMotionName_value, EMOTION_VALUES } from '../../constants
 import { usePerformanceRuntimeState } from '../../features/performance/runtime-state'
 import { useExpressionPerformanceSettings } from '../../features/performance/settings'
 import { useLlmToolsStore } from '../../stores/ai/chat-llm/tools'
+import { useStageExpressionCatalogStore } from '../../stores/stage-expression-catalog'
 import { createActionToolRegistration } from '../../tools/action'
 import { createBodyTools } from '../../tools/body'
 import { createExpressionTools } from '../../tools/expression'
@@ -1129,6 +1130,13 @@ export function useStagePerformanceConductor(options: Pick<StagePerformanceCondu
     get leases() { return options.expressionBackend()?.leases ?? { face: null, effect: null, prop: null } },
   }
   const runtimeState = usePerformanceRuntimeState()
+  const catalogMirror = useStageExpressionCatalogStore()
+  let publishedModelId = ''
+  // Only the local renderer is watched. Receiving the mirrored snapshot in another window never republishes it.
+  watch([() => expressions.modelId, () => expressions.catalog], ([modelId, catalog]) => {
+    catalogMirror.publish(modelId, catalog)
+    publishedModelId = modelId
+  }, { immediate: true, deep: true })
   // The shared document; the conductor applies each signal's character profile on top of it.
   const settingsDocument = computed(() => performanceSettings.document)
   /**
@@ -1204,6 +1212,7 @@ export function useStagePerformanceConductor(options: Pick<StagePerformanceCondu
   })
 
   onScopeDispose(() => {
+    catalogMirror.clear(publishedModelId)
     registration.dispose()
     bodyRegistration.dispose()
     actionRegistration.dispose()
