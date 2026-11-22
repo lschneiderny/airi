@@ -44,15 +44,14 @@ export function answerTouch(state: MindState, stimulus: Stimulus<'touch'>, cause
   if (stimulus.gesture !== 'pet-start') {
     intents.push({ id: `${cause}-moment`, cause, channel: 'face', kind: 'moment', moment: stimulus.gesture === 'poke' ? 'poked' : 'petted' })
     if (stimulus.voice) {
-      const { decision, memory } = reactionPolicy({ nowMs, gesture: stimulus.gesture === 'poke' ? 'poke' : 'pet', view: stimulus.voice }, voice.reaction, rng)
+      // A reserved line owns the slot before its host has begun generating.
+      const view = voice.line === null ? stimulus.voice : { ...stimulus.voice, held: stimulus.voice.held ?? 'generating' as const }
+      const { decision, memory } = reactionPolicy({ nowMs, gesture: stimulus.gesture === 'poke' ? 'poke' : 'pet', view }, voice.reaction, rng)
       voice = { ...voice, reaction: memory, lastDecision: decision }
       if (decision.speak) {
         const turnId = reactionTurnId(decision.eventId)
         intents.push({ id: `${cause}-speak`, cause, channel: 'voice', kind: 'speak', turnId, line: { kind: 'reaction', reaction: decision.kind, eventId: decision.eventId } })
-        // The touch line takes the line slot, so the gate skips until it settles. A reach-out on its way keeps the
-        // slot; chat refuses the touch line then.
-        if (voice.line === null || voice.line.kind === 'reaction')
-          voice = { ...voice, line: { turnId, kind: 'reaction', runId: voice.runId, before: null, speakBy: null } }
+        voice = { ...voice, line: { turnId, kind: 'reaction', runId: voice.runId, before: null, speakBy: null } }
       }
     }
   }

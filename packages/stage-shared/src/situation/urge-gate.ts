@@ -61,6 +61,8 @@ export interface UrgeGateInput {
   readonly heldTopics: ReadonlySet<string>
   /** Skips the timing holds only (devtools "Evaluate now"); hard suppressors still apply and the fire still draws and picks. */
   readonly forceTiming?: boolean
+  /** A higher-priority voice has the idle slot unless an eligible urgent reason wins. No ordinary accrual or draw. */
+  readonly deferOrdinary?: boolean
   /** Mood multiplier on the opening hazard only; default 1, non-finite values count as 1, clamped to [{@link MOOD_FACTOR_MIN}, {@link MOOD_FACTOR_MAX}]. */
   readonly moodFactor?: number
 }
@@ -108,7 +110,7 @@ export interface UrgeGateMemory {
   readonly urge: number
   /** Exp(1) ticket the urge must reach; redrawn at every ordinary fire. */
   readonly urgeThreshold: number
-  /** Ordinary fire times within the last hour, oldest first; the safety cap counts them. */
+  /** Ordinary attempts and spoken owner-result notices within the last hour; other external voices do not charge it. */
   readonly fires: readonly number[]
   readonly pending: UrgeGatePending | null
   /** Spoken openings and continuations since his last reply. */
@@ -132,7 +134,7 @@ export type CharacterPacingMemory = Pick<UrgeGateMemory, 'lastSpokenAtMs' | 'una
 export type UrgeGateTimingReason = 'floor' | 'awaiting-reply' | 'quiet-unanswered' | 'urge' | 'safety-cap'
 
 /** Why the gate held. `no-topic` means the drawn category had no reason to pick. */
-export type UrgeGateHoldReason = GateHardReason | UrgeGateTimingReason | 'no-topic'
+export type UrgeGateHoldReason = GateHardReason | UrgeGateTimingReason | 'no-topic' | 'voice-priority'
 
 /**
  * Why the gate fired: `urge` when the urge crossed its threshold (open, due, or
@@ -555,6 +557,9 @@ export function evaluateUrgeGate(input: UrgeGateInput, memory: UrgeGateMemory, r
     }
   }
 
+  if (input.deferOrdinary)
+    return { decision: { fire: false, reason: 'voice-priority', trace: traceFor(base.urge, null) }, memory: base }
+
   // (C) Double-text fire: no floor, no draw, no accrual; consumed once.
   if (doubleText !== null && nowMs >= doubleText.dueAtMs) {
     const picked = syntheticReason('double-text', doubleText.topicKey)
@@ -571,12 +576,13 @@ export function evaluateUrgeGate(input: UrgeGateInput, memory: UrgeGateMemory, r
 
   const accrued: UrgeGateMemory = { ...base, urge: accrue(base.urge, hazards.total, dtMs) }
   const ready = accrued.urge >= accrued.urgeThreshold
+  const budget = voiceBudgetHold(accrued, nowMs)
   let timing: UrgeGateTimingReason | null = null
-  if (accrued.lastFireAtMs !== null && nowMs - accrued.lastFireAtMs < FLOOR_MS)
+  if (budget === 'floor')
     timing = 'floor'
   else if (phase.phase === 'quiet')
     timing = 'quiet-unanswered'
-  else if (accrued.fires.length >= SAFETY_CAP_PER_HOUR)
+  else if (budget === 'safety-cap')
     timing = 'safety-cap'
   else if (phase.phase === 'continuation-window' && !ready)
     timing = 'awaiting-reply'
@@ -731,4 +737,20 @@ export function recordExternalSpeech(memory: UrgeGateMemory, nowMs: number): Urg
   if (!isTime(nowMs))
     return memory
   return { ...normalizeMemory(memory, nowMs), lastFireAtMs: nowMs, lastSpokenAtMs: nowMs, doubleText: null }
+}
+
+/** The shared user floor and hourly budget. Normalize clock reversals exactly as the urge gate does. */
+export function voiceBudgetHold(memory: UrgeGateMemory, nowMs: number): 'floor' | 'safety-cap' | null {
+  const normalized = normalizeMemory(memory, nowMs)
+  if (normalized.lastFireAtMs !== null && nowMs - normalized.lastFireAtMs < FLOOR_MS)
+    return 'floor'
+  return normalized.fires.length >= SAFETY_CAP_PER_HOUR ? 'safety-cap' : null
+}
+
+/** A spoken owner result charges the shared cap once without counting an unanswered opening. */
+export function recordNoticeSpeech(memory: UrgeGateMemory, nowMs: number): UrgeGateMemory {
+  if (!isTime(nowMs))
+    return memory
+  const spoken = recordExternalSpeech(memory, nowMs)
+  return { ...spoken, fires: [...spoken.fires, nowMs] }
 }

@@ -12,7 +12,7 @@ import { advanceIdle, answerIdle, answerIdlePlay, initialMindIdleState } from '.
 import { answerMusic } from './music'
 import { answerPresence, answerScreenChange } from './presence'
 import { answerTouch } from './touch'
-import { answerUserTurn, answerVoiceOutcome, answerVoiceRequest, answerVoiceTick, followPacing } from './voice'
+import { answerNoticeRequest, answerUserTurn, answerVoiceOutcome, answerVoiceRequest, answerVoiceTick, followPacing } from './voice'
 
 /**
  * The state of a mind that has answered nothing, with the slow state the host loaded. It holds no random source:
@@ -25,7 +25,7 @@ export function initialMindState(slow: MindSlowState = { pacing: null }): MindSt
     behavior: { idleActivities: true, touchReactions: true, chatAttention: true },
     reaction: createReactionState(),
     touch: { affect: initialTouchAffectMemory },
-    voice: { reaction: initialReactionMemory(), lastDecision: null, gate: null, runId: null, stageShown: false, line: null, requests: [], lastGate: null },
+    voice: { reaction: initialReactionMemory(), lastDecision: null, gate: null, runId: null, stageShown: false, line: null, requests: [], notices: [], lastGate: null },
     presence: { away: false, awaySinceMs: null },
     desktop: { screenReactAtMs: null },
     idle: initialMindIdleState(),
@@ -104,9 +104,11 @@ export function step(state: MindState, stimuli: readonly MindStimulus[], nowMs: 
     else if (stimulus.kind === 'voice-tick')
       answer = answerVoiceTick(next, stimulus, cause, nowMs, rng)
     else if (stimulus.kind === 'user-turn')
-      answer = answerUserTurn(next, nowMs)
+      answer = answerUserTurn(next, nowMs, cause)
     else if (stimulus.kind === 'voice-request')
       answer = answerVoiceRequest(next, stimulus, cause, nowMs, rng)
+    else if (stimulus.kind === 'notice-request')
+      answer = answerNoticeRequest(next, stimulus, cause, nowMs, rng)
     else if (stimulus.kind === 'idle')
       answer = answerIdle(next, stimulus, cause, rng)
     else if (stimulus.kind === 'idle-play')

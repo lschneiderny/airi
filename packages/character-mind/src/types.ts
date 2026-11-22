@@ -37,6 +37,23 @@ export type VoiceLine
     | { kind: 'reach-out', topicKey: string, topicText: string, reason: { kind: ReasonKind, category: ReasonCategory } }
   /** A widget or plugin turn the mind let through. */
     | { kind: 'widget', topicKey: string, topicText: string, supplement: string | null }
+  /** An owner result already stored in its exact conversation. Text and tool authority remain with the host. */
+    | { kind: 'notice', request: NoticeRequest }
+
+export interface NoticeTarget {
+  sessionId: string
+  characterId: string
+  generation: number
+  ownerTurnId: string | null
+  open: boolean
+}
+
+export interface NoticeRequest extends Omit<NoticeTarget, 'open'> {
+  turnId: string
+  messageId: string
+  source: string
+  acceptedAtMs: number
+}
 
 export interface VoiceRun {
   /** The store bumps it at each promotion and at "Delete all data". A new id makes the mind restore its gate memory. */
@@ -57,6 +74,8 @@ export interface VoiceView {
   moodFactor: number
   /** An unprompted turn the mind did not start is pending in chat. */
   unpromptedPending: boolean
+  /** No target means this host cannot announce stored results. */
+  noticeTarget?: NoticeTarget | null
 }
 
 /** A widget or plugin asks her to speak. */
@@ -86,6 +105,7 @@ export type MindStimulus
     | { kind: 'user-turn' }
   /** A widget or plugin asks her to speak; the mind holds it until she and the user are quiet. */
     | { kind: 'voice-request', request: VoiceRequest, view: VoiceView }
+    | { kind: 'notice-request', request: NoticeRequest, view: VoiceView }
   /** `away` changed, or a desktop wake appeared. `wake` names the newer of a new unlock and resume time. */
     | { kind: 'presence', away: boolean, wake: { cause: WakeCause, atMs: number } | null }
   /** The screen changed sharply. The mind keeps the refractory. */
@@ -259,6 +279,8 @@ export interface VoiceLineState {
   before: Pick<UrgeGateMemory, 'lastFireAtMs' | 'fires' | 'pending' | 'urge' | 'urgeThreshold' | 'doubleText'> | null
   /** When a widget line must have spoken, on the mind's clock; null for other lines. */
   speakBy: number | null
+  /** Only a notice line carries an exact target for cancellation before its first spoken outcome. */
+  notice?: NoticeRequest
 }
 
 export interface MindVoiceState {
@@ -276,6 +298,7 @@ export interface MindVoiceState {
   line: VoiceLineState | null
   /** Widget requests waiting for a quiet moment, oldest first. */
   requests: Array<{ request: VoiceRequest, startBy: number, speakBy: number }>
+  notices: Array<{ request: NoticeRequest, startBy: number, runId: number }>
   /** The last gate decision, for the inspector and QA. */
   lastGate: UrgeGateDecision | null
 }

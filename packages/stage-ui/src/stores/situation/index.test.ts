@@ -174,6 +174,7 @@ function createChatControls() {
     activeSessionId: () => 'session-1',
     submitUnprompted: payload => submitUnprompted(payload),
     submitReaction: payload => submitReaction(payload),
+    submitNotice: async () => ({ status: 'declined' }),
     cancelTurn: async () => {},
     sessionMessages: () => state.messages,
     extractionSelection: async () => ({ provider: extractionProvider, model: 'chat-model', characterName: 'Airi' }),

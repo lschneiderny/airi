@@ -364,6 +364,7 @@ function leadWithMind() {
     activeSessionId: () => 'session-1',
     submitUnprompted: payload => chatOrchestratorMock.submitUnprompted(payload),
     submitReaction: async () => ({ status: 'failed', error: 'No reaction turns in this test' }),
+    submitNotice: async () => ({ status: 'declined' }),
     cancelTurn: turn => chatOrchestratorMock.cancelTurn(turn),
     sessionMessages: () => [],
     extractionSelection: async () => null,

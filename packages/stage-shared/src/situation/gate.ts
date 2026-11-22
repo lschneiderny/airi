@@ -76,9 +76,9 @@ const BUSY_HOLD_STATES: ReadonlySet<string> = new Set<BusyState>(['busy', 'fulls
  * or `null` when none does. Every signal fails closed. `urgent` is whether an
  * urgent notify is on offer: it lets `busy-game` through and nothing else.
  */
-export function hardReason(input: GateHardInput, urgent: boolean): GateHardReason | null {
+export function hardReason(input: GateHardInput, urgent: boolean, permission: 'unprompted' | 'owner-result' = 'unprompted'): GateHardReason | null {
   const { signals, settings, situation } = input
-  if (settings.enabled !== true)
+  if (settings.enabled !== true && permission !== 'owner-result')
     return 'disabled'
   if (settings.dontDisturb !== false)
     return 'dont-disturb'
