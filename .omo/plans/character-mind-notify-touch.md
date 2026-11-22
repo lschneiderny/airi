@@ -76,6 +76,17 @@ Suites run separately with existing timeouts and thresholds. Headless and render
 
 Rows are grouped by item; an earlier row number may follow a later one. Item 1's first stage-ui Node run found one remaining fixture on the retired `critical` field. It was migrated to plugin provenance; the next run passed all 1,978 tests. The final refusal regression adds one more case. Changed TypeScript passed ESLint; one existing comment-length warning remains in an unrelated chat-contract test comment.
 
+## Rendered acceptance (CM8)
+
+Rendered runs on macOS, with 0 renderer and 0 main-process errors in every launch except one reminder launch (2 renderer errors from a failed model blob fetch after import; its rerun had none). Details, run directories, and event counts are in the [CM8 ADR](../../docs/ai/adr/2026-11-22-character-mind-touch-notices.md#rendered-acceptance-cm8). No product bug was found.
+
+- Live2D Natural: hover and held pets end with `pet-end`; pause and a driver switch during a held pet give `pet-cancel` with no mood, moment, line, or situation touch; touch-off withdraws the hand silently.
+- Live2D Universal and MAGIC: no mind touch steps, and the same avatar notify calls as main once the runs were spaced beyond the 20 s cooldown.
+- MMD Natural: the same cleanup for driver switch and touch-off; MMD classic produced no mind step. MMD pause was not staged.
+- Notices: stored in milliseconds; held by an open draft (`user-typing`), do-not-disturb, a quiet app, and the floor; dropped on a conversation switch; one announcement after the draft cleared, with reach-outs off. The hourly cap was not staged.
+- A repeated terminal action id gave one receipt and one stored message. A critical reminder stayed silent before due, outranked an immediate plugin notify at due, and did not repeat after the requeue delay.
+- Open: the headless rig checks, a touch-off follow-up (a held button still classifies a new pet), and the devtools forced evaluation that can pre-empt a waiting notice.
+
 Status: planned on 2026-11-21. Evidence checked on 2026-11-22 against `main` at `92ee63665`, which contains upstream `bd4f30391`. Planning branch: `luke/feat/character-mind-notify-touch`. The owner's standing preference is to take the recommended options. That preference does not silently reverse the explicit ruling that Universal, MAGIC, and classic stay as upstream ships them; D2 below requires an explicit owner decision before its implementation.
 
 This planning delivery contains two implementation slices. This file specifies proposed roadmap row **CM8**, overlaps 11 to 13 of [Autonomous behavior](../../docs/ai/context/autonomous-behavior.md). [character-mind-store-tiers.md](character-mind-store-tiers.md) specifies proposed row **S2**, State persistence Target rule 3. Neither row exists at the evidence revision. Add the rows when their implementation starts, with the dependencies and Done-when below. This planning commit changes no current-policy claims or product code.
