@@ -96,6 +96,7 @@ describe('findStorageWrites', () => {
 describe('checkStorageWrites', () => {
   const registry: RegistrySource[] = [{
     id: 'example',
+    tier: 1,
     writers: [file],
     locations: [
       { area: 'localStorage', key: 'settings/example/a' },
@@ -127,8 +128,70 @@ describe('readStateRegistry', () => {
     const registration = (location: string) => `export const stateRegistry = defineStateRegistry([{ id: 'a', owner: 'x', writers: ['w.ts'], tier: 1, locations: [${location}] }])`
 
     expect(readStateRegistry(registration(`{ area: 'localStorage', key: 'k', legacy: true }`))).toEqual([
-      { id: 'a', writers: ['w.ts'], locations: [{ area: 'localStorage', key: 'k', legacy: true }] },
+      { id: 'a', tier: 1, writers: ['w.ts'], locations: [{ area: 'localStorage', key: 'k', legacy: true }] },
     ])
     expect(() => readStateRegistry(registration(`{ area: 'localStorage', key: KEY }`))).toThrow('is not a literal')
+  })
+})
+
+describe('persistence ownership', () => {
+  const upstream: RegistrySource = {
+    id: 'upstream-settings',
+    tier: 'plain',
+    upstream: 'bd4f30391',
+    writers: [file],
+    locations: [{ area: 'localStorage', key: 'settings/example/enabled' }],
+  }
+
+  it('rejects fork plain state and open upstream prefixes', () => {
+    expect(checkStorageWrites([], [{ ...upstream, upstream: undefined }], [])[0]).toContain('new fork state')
+    expect(checkStorageWrites([], [{ ...upstream, locations: [{ area: 'localStorage', prefix: 'settings/example/' }] }], [])[0]).toContain('not an open prefix')
+    expect(checkStorageWrites([], [{ ...upstream, upstream: 'main' }], [])[0]).toContain('pinned source revision')
+  })
+
+  it('rejects an extra key, an undeclared writer, and overlapping owners', () => {
+    expect(checkStorageWrites(findStorageWrites(file, `useLocalStorage('settings/example/extra', true)`), [upstream], [])[0]).toContain('matches no registration')
+    expect(checkStorageWrites(findStorageWrites('other.ts', `useLocalStorage('settings/example/enabled', true)`), [upstream], [])[0]).toContain('not one of its writers')
+    expect(checkStorageWrites([], [upstream, { ...upstream, id: 'other' }], [])[0]).toContain('overlapping storage owners')
+  })
+
+  it('accepts legacy per-model removals and rejects both helper and literal writes', () => {
+    const registry = [{
+      id: 'retired',
+      tier: 'plain',
+      exception: 'Legacy sweep only',
+      writers: [file],
+      locations: [{ area: 'localStorage', perModel: 'settings/example/old', legacy: true }],
+    }]
+    for (const key of [`modelScopedStorageKey(modelId, 'settings/example/old')`, `'settings/models/model-a/example/old'`, `'settings/example/old'`]) {
+      expect(checkStorageWrites(findStorageWrites(file, `localStorage.removeItem(${key})`), registry, [])).toEqual([])
+      expect(checkStorageWrites(findStorageWrites(file, `localStorage.setItem(${key}, 'true')`), registry, [])[0]).toContain('matches a legacy location')
+    }
+  })
+
+  it('bounds dynamic factory keys to their declared members', () => {
+    const dynamic = [{ file, registration: upstream.id, reason: 'Synthetic parameterized factory.' }]
+    const accepted = findStorageWrites(file, `useLocalStorage(\`settings/\${moduleName}/enabled\`, true)`)
+    const unknown = findStorageWrites(file, `useLocalStorage(\`settings/\${moduleName}/extra\`, true)`)
+    expect(checkStorageWrites(accepted, [upstream], dynamic)).toEqual([])
+    expect(checkStorageWrites(unknown, [upstream], dynamic)[0]).toContain('no declared member')
+    expect(checkStorageWrites(findStorageWrites(file, `useLocalStorage('settings/example/extra', true)`), [upstream], dynamic)[0]).toContain('matches no registration')
+  })
+
+  it('resolves direct-command template parameters through their callers', () => {
+    const source = `function save(key: string) { localStorage.setItem(\`settings/example/\${key}\`, 'true') }\nsave('enabled')\nsave('extra')`
+    expect(keysOf(source)).toEqual([{ exact: 'settings/example/enabled' }, { exact: 'settings/example/extra' }])
+    expect(checkStorageWrites(findStorageWrites(file, source), [upstream], [])[0]).toContain('matches no registration')
+  })
+
+  it('reads ownership and legacy per-model flags from the single registration point', () => {
+    const source = `defineStateRegistry([{ id: 'old', tier: 'plain', upstream: 'bd4f30391', writers: ['writer.ts'], locations: [{ area: 'localStorage', perModel: 'settings/example/old', legacy: true }] }])`
+    expect(readStateRegistry(source)).toEqual([{
+      id: 'old',
+      tier: 'plain',
+      upstream: 'bd4f30391',
+      writers: ['writer.ts'],
+      locations: [{ area: 'localStorage', perModel: 'settings/example/old', legacy: true }],
+    }])
   })
 })
