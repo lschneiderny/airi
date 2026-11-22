@@ -11,6 +11,7 @@ import { stripVTControlCharacters } from 'node:util'
 
 import { errorMessageFrom } from '@moeru/std'
 
+import { newestMtime } from '../../packages/lab-tools/src/model/core-agent-dist'
 import { loadQaEnv } from '../../packages/qa-tools/src/env/load'
 import { compileCacheEnv } from './lib/compile-cache'
 import { capture, chunkByLength, nodeCommandChunkLimitsFor, run, shimCommandChunkLimits } from './lib/exec'
@@ -18,12 +19,16 @@ import { gatedNotice, listGatedTestFiles, planGatedRun, qaGatedFiles } from './l
 import { changedFiles, git, gitCommonDir, repoRoot, workingTreeHash } from './lib/git'
 import { appendVerifyRun, formatVerifyStats, readVerifyStats } from './verify-history'
 import { readLastPass, writeLastPass } from './verify-last-pass'
-import { advanceLastPass, defaultWaitSeconds, followUpChecks, gateQaCommand, gateQaFor, gateQaOutcome, lintAllFixable, modelTestsOutcome, parseVerifyArgs, planVerify, relatedTestCommand, selectVerifyScope, testPrerequisiteTurboArgs, typecheckFilters, verifyUsage } from './verify-plan'
+import { advanceLastPass, defaultWaitSeconds, followUpChecks, gateQaCommand, gateQaFor, gateQaOutcome, lintAllFixable, modelTestsOutcome, parseVerifyArgs, planVerify, relatedTestCommand, selectVerifyScope, staleBuildPackagePaths, staleBuildTurboArgs, testPrerequisiteTurboArgs, typecheckFilters, verifyUsage } from './verify-plan'
 import { createRunRecord, latestRunRecord, newRunId, pruneRuns, runLogPath, runsDir, waitForRun, writeRunRecord } from './verify-runs'
 
 interface Command {
   label: string
-  args: string[]
+  /**
+   * The arguments, or a function that decides them when the command's turn comes, from what the commands before it left
+   * on disk. A function that returns `null` skips the command.
+   */
+  args: string[] | (() => string[] | null)
   /** The package directory the command runs in, relative to the root. Without it, the command runs in the root. */
   packagePath?: string
   env?: Record<string, string>
@@ -119,7 +124,7 @@ function testRunScript(root: string, packagePath: string): string | undefined {
   return (JSON.parse(readFileSync(join(root, packagePath, 'package.json'), 'utf8')) as { scripts?: Record<string, string> }).scripts?.['test:run']
 }
 
-function commandsFor(step: VerifyStep, root: string, plan: ReturnType<typeof planVerify>, testedPackagePaths: string[]): Command[] | string {
+function commandsFor(step: VerifyStep, root: string, plan: ReturnType<typeof planVerify>, testedPackagePaths: string[], packagePaths: string[]): Command[] | string {
   const node = (entry: string, args: string[]) => [join(root, entry), ...args]
   if (step === 'typecheck') {
     if (plan.typecheck.kind === 'none')
@@ -144,6 +149,14 @@ function commandsFor(step: VerifyStep, root: string, plan: ReturnType<typeof pla
     label: 'rebuild stale workspace packages',
     args: node('node_modules/turbo/bin/turbo', testPrerequisiteTurboArgs),
   }
+  // Decided after the rebuild, so a package Turbo just rebuilt is not built twice.
+  const forceStale: Command = {
+    label: 'force-rebuild packages whose dist is older than src',
+    args: () => {
+      const stale = staleBuildPackagePaths(packagePaths, path => newestMtime(join(root, path)))
+      return stale.length ? node('node_modules/turbo/bin/turbo', staleBuildTurboArgs(stale)) : null
+    },
+  }
   const rootRelated: Command[] = chunks.map(files => ({
     label: 'tests related to changes (root projects)',
     args: node('node_modules/vitest/vitest.mjs', ['related', '--run', '--passWithNoTests', '--config', 'vitest.config.ts', ...files]),
@@ -161,7 +174,7 @@ function commandsFor(step: VerifyStep, root: string, plan: ReturnType<typeof pla
       env: command.env,
     }))
   })
-  return [rebuild, ...rootRelated, ...packageRelated]
+  return [rebuild, forceStale, ...rootRelated, ...packageRelated]
 }
 
 /** The plan `pnpm qa:test:model` makes in this environment: the same files, with `.env.qa` loaded without overriding. */
@@ -353,7 +366,7 @@ async function verifyRun(args: VerifyArgs, root: string, cacheDir: string, histo
     }
     const plan = planVerify(changed, workspaces.paths, workspaces.rootDependencyPaths)
     const affected = step === 'test' ? withDependents(root, plan.testPackagePaths) : []
-    const commands = commandsFor(step, root, plan, affected)
+    const commands = commandsFor(step, root, plan, affected, workspaces.paths)
     if (typeof commands === 'string') {
       finish({ step, status: 'skipped', detail: commands, durationMs: 0 }, history)
       continue
@@ -361,8 +374,10 @@ async function verifyRun(args: VerifyArgs, root: string, cacheDir: string, histo
     if (step === 'test')
       gatedTestNotice = gatedNotice(listGatedTestFiles(root), affected, changed.map(file => file.path), process.env)
     if (args.dryRun) {
-      for (const item of commands)
-        out.say(`[${step}] ${item.label}\n  ${item.packagePath ? `(in ${item.packagePath}) ` : ''}node ${[relative(root, item.args[0]), ...item.args.slice(1)].join(' ')}`)
+      for (const item of commands) {
+        const line = typeof item.args === 'function' ? '(decided after the commands before it)' : `node ${[relative(root, item.args[0]), ...item.args.slice(1)].join(' ')}`
+        out.say(`[${step}] ${item.label}\n  ${item.packagePath ? `(in ${item.packagePath}) ` : ''}${line}`)
+      }
       finish({ step, status: 'skipped', detail: 'dry run', durationMs: 0 }, history)
       continue
     }
@@ -373,9 +388,14 @@ async function verifyRun(args: VerifyArgs, root: string, cacheDir: string, histo
     let stepOutput = ''
     try {
       for (const item of commands) {
+        const args = typeof item.args === 'function' ? item.args() : item.args
+        if (!args) {
+          out.detail(`\n[${step}] ${item.label}: none`)
+          continue
+        }
         out.detail(`\n[${step}] ${item.label}`)
-        executed.push([process.execPath, ...item.args])
-        const { exitCode, output } = await runLogged(out, `[${step}] ${item.label}`, process.execPath, item.args, { cwd: item.packagePath ? join(root, item.packagePath) : root, env: { ...env, ...item.env } })
+        executed.push([process.execPath, ...args])
+        const { exitCode, output } = await runLogged(out, `[${step}] ${item.label}`, process.execPath, args, { cwd: item.packagePath ? join(root, item.packagePath) : root, env: { ...env, ...item.env } })
         stepOutput += output
         if (exitCode !== 0) {
           failed = `${item.label} exited ${exitCode}`

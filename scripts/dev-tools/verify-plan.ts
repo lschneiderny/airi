@@ -229,6 +229,28 @@ const binaryFile = /\.(?:png|jpe?g|gif|webp|avif|ico|icns|bmp|svgz|mp[34]|wav|og
  */
 export const testPrerequisiteTurboArgs = ['run', 'build', '-F=./packages/*', '--output-logs=errors-only']
 
+/**
+ * The package directories, of those `testPrerequisiteTurboArgs` builds, whose newest `dist` file is older than their
+ * newest `src` file. Turbo hashes file contents, so a source that a rebase or checkout rewrote with content Turbo built
+ * before is a cache hit; when the outputs on disk already match, Turbo leaves them alone and `dist` keeps its old
+ * modification time. Checks that compare modification times, such as lab-tools' `assertCoreAgentDistCurrent`, then
+ * refuse the build. A package without `src` or `dist` has nothing to compare.
+ */
+export function staleBuildPackagePaths(packagePaths: string[], newestMtime: (path: string) => number | undefined): string[] {
+  return packagePaths.filter((path) => {
+    if (!/^packages\/[^/]+$/.test(path))
+      return false
+    const output = newestMtime(`${path}/dist`)
+    const source = newestMtime(`${path}/src`)
+    return output !== undefined && source !== undefined && output < source
+  })
+}
+
+/** Turbo arguments that rebuild only the given packages, ignoring the cache, after `testPrerequisiteTurboArgs` built their dependencies. */
+export function staleBuildTurboArgs(packagePaths: string[]): string[] {
+  return ['run', 'build', '--force', '--only', ...packagePaths.map(path => `-F=./${path}`), '--output-logs=errors-only']
+}
+
 export interface RelatedTestCommand {
   /** Variables the package's `test:run` script sets before Vitest, such as `NODE_OPTIONS`. */
   env: Record<string, string>

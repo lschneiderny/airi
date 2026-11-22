@@ -1,7 +1,7 @@
 import process from 'node:process'
 
 import { execFile, execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -17,7 +17,8 @@ describe('verify step execution', () => {
   let root: string
 
   beforeEach(() => {
-    root = mkdtempSync(join(tmpdir(), 'verify-runner-'))
+    // Resolved, because the receipts compare it with the commands' working directory, and macOS's tmpdir is a symlink.
+    root = realpathSync(mkdtempSync(join(tmpdir(), 'verify-runner-')))
     const git = (...args: string[]) => execFileSync('git', args, { cwd: root, stdio: 'pipe' })
     git('init', '--initial-branch=main')
     git('-c', 'user.name=Verify test', '-c', 'user.email=verify@example.invalid', '-c', 'commit.gpgSign=false', '-c', `core.hooksPath=${join(root, '.git/hooks')}`, 'commit', '--allow-empty', '-m', 'fixture')
@@ -32,11 +33,16 @@ describe('verify step execution', () => {
       import { join, relative } from 'node:path'
       const fixtureRoot = ${JSON.stringify(root)}
       if (process.argv.includes('ls')) {
-        console.log(JSON.stringify({ packages: { items: [{ name: 'pkg', path: 'pkg' }] } }))
+        const items = [{ name: 'pkg', path: 'pkg' }]
+        if (process.env.VERIFY_FIXTURE_ACTION === 'stale-build')
+          items.push({ name: 'lib', path: 'packages/lib' })
+        console.log(JSON.stringify({ packages: { items } }))
         process.exit(0)
       }
+      const force = process.argv.includes('--force')
       appendFileSync(join(fixtureRoot, 'receipts.jsonl'), JSON.stringify({
-        command: process.argv.includes('build') ? 'build' : 'related',
+        command: process.argv.includes('build') ? (force ? 'force-build' : 'build') : 'related',
+        filters: force ? process.argv.filter(arg => arg.startsWith('-F=')) : undefined,
         directory: relative(fixtureRoot, process.cwd()),
         config: process.argv.includes('--config') ? process.argv[process.argv.indexOf('--config') + 1] : null,
         flag: process.env.FIXTURE_FLAG ?? null,
@@ -77,13 +83,33 @@ describe('verify step execution', () => {
     })
   }
 
+  function receipts(): { command: string, filters?: string[], directory: string, config: string | null, flag: string | null }[] {
+    return JSON.parse(`[${readFileSync(join(root, 'receipts.jsonl'), 'utf8').trim().split('\n').join(',')}]`)
+  }
+
   it('runs the build, the root related tests, and each package\'s related tests in order, in their own directories', async () => {
     await verify(['--only', 'test'])
-    const receipts: { command: string, directory: string, config: string | null, flag: string | null }[] = JSON.parse(`[${readFileSync(join(root, 'receipts.jsonl'), 'utf8').trim().split('\n').join(',')}]`)
-    expect(receipts).toEqual([
+    expect(receipts()).toEqual([
       { command: 'build', directory: '', config: null, flag: null },
       { command: 'related', directory: '', config: 'vitest.config.ts', flag: null },
       { command: 'related', directory: 'pkg', config: 'vitest.config.ts', flag: 'on' },
+    ])
+  }, 20_000)
+
+  it('force-rebuilds a package whose dist is older than its src after the build, before the related tests', async () => {
+    mkdirSync(join(root, 'packages/lib/src'), { recursive: true })
+    mkdirSync(join(root, 'packages/lib/dist'))
+    writeFileSync(join(root, 'packages/lib/package.json'), '{"name":"lib"}')
+    writeFileSync(join(root, 'packages/lib/src/index.ts'), 'export const lib = true\n')
+    writeFileSync(join(root, 'packages/lib/dist/index.mjs'), 'export const lib = true\n')
+    // The state a Turbo cache hit leaves after a rebase rewrote the source with content it built before.
+    utimesSync(join(root, 'packages/lib/dist/index.mjs'), 0, 0)
+    await verify(['--only', 'test'], 'stale-build')
+    expect(receipts().map(({ command, filters, directory }) => ({ command, filters, directory }))).toEqual([
+      { command: 'build', directory: '' },
+      { command: 'force-build', filters: ['-F=./packages/lib'], directory: '' },
+      { command: 'related', directory: '' },
+      { command: 'related', directory: 'pkg' },
     ])
   }, 20_000)
 

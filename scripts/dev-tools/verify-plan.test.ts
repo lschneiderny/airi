@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { followUpChecks, lintAllFixable, parseVerifyArgs, planVerify, relatedTestCommand } from './verify-plan'
+import { followUpChecks, lintAllFixable, parseVerifyArgs, planVerify, relatedTestCommand, staleBuildPackagePaths } from './verify-plan'
 
 const packages = ['packages/stage-ui', 'apps/stage-tamagotchi']
 const file = (path: string, deleted = false) => ({ path, deleted })
@@ -144,6 +144,23 @@ describe('parseVerifyArgs', () => {
     expect(parseVerifyArgs(['--wait', '17-42', '--timeout', '30'])).toMatchObject({ ok: true, args: { wait: { id: '17-42', timeoutMs: 30_000 } } })
     expect(parseVerifyArgs(['--wait', '--gate']).ok).toBe(false)
     expect(parseVerifyArgs(['--wait', '--timeout', 'soon']).ok).toBe(false)
+  })
+})
+
+describe('staleBuildPackagePaths', () => {
+  it('lists the packages whose newest dist file is older than their newest src file', () => {
+    const mtimes: Record<string, number> = {
+      'packages/stale/dist': 100,
+      'packages/stale/src': 200,
+      'packages/current/dist': 200,
+      'packages/current/src': 100,
+      'packages/unbuilt/src': 200,
+      'packages/no-src/dist': 100,
+      'apps/app/dist': 100,
+      'apps/app/src': 200,
+    }
+    const paths = ['packages/stale', 'packages/current', 'packages/unbuilt', 'packages/no-src', 'apps/app']
+    expect(staleBuildPackagePaths(paths, path => mtimes[path])).toEqual(['packages/stale'])
   })
 })
 
