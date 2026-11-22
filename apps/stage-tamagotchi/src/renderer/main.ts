@@ -5,6 +5,7 @@ import { errorMessageFrom } from '@moeru/std'
 import { PiniaColada } from '@pinia/colada'
 import { useElectronEventaInvoke } from '@proj-airi/electron-vueuse'
 import { settingsSearchModules } from '@proj-airi/stage-pages/settings-search'
+import { useMMDPerformanceSettings } from '@proj-airi/stage-ui-mmd/stores'
 import { backdropSurfaceHostKey } from '@proj-airi/stage-ui/composables/backdrop-surface'
 import { hostDataDeletionKey } from '@proj-airi/stage-ui/composables/host-data-deletion'
 import { pushToTalkTriggerKey } from '@proj-airi/stage-ui/composables/push-to-talk-trigger'
@@ -109,6 +110,9 @@ async function mount() {
   const app = createApp(App)
   app.use(synced.vue).use(pinia)
   await initializeAnalyticsConsent(app, pinia, windowContext.leadership === 'leader-only')
+  const mmdPerformance = useMMDPerformanceSettings(pinia)
+  if (windowContext.leadership === 'leader-only')
+    await mmdPerformance.initialize()
   // Main sends every report. Without a DSN in the build, main starts no SDK, so the renderer starts none either.
   if (import.meta.env.AIRI_ERROR_REPORT_DSN) {
     startErrorReporting(app, () => useSettingsAnalytics(pinia).analyticsEnabled, async (options) => {

@@ -1,4 +1,4 @@
-import type { MMDLabeledClip } from '../../../stores/mmd'
+import type { MMDLabeledClip } from '../../../stores/performance-settings'
 
 export type ActActionDropReason = 'unknown' | 'not-exposed' | 'not-gesture' | 'superseded'
 

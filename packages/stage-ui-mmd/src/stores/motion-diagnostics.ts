@@ -10,8 +10,8 @@ import type { FrameMeasurement, MMDFrameRing, StageTiming } from '../composables
 import type { MMDOverlayFlags } from '../composables/mmd/overlay-flags'
 import type { MMDRigProfile } from '../composables/mmd/rig'
 import type { MMDStanceDiagnostics } from '../composables/mmd/stance'
-import type { MMDRoamMode } from './mmd'
 import type { MMDMotionTraceCommand, MMDMotionTraceSnapshot, MMDMotionTraceSource } from './motion-trace'
+import type { MMDRoamMode } from './performance-settings'
 
 import { createContext, defineEventa } from '@moeru/eventa'
 import { createContext as createBroadcastChannelContext } from '@moeru/eventa/adapters/broadcast-channel'

@@ -4,6 +4,7 @@ import { modelScopedStorageKey } from '@proj-airi/stage-shared/composables'
 import { useSettingsScreenAmbientLight } from '@proj-airi/stage-shared/stores/screen-ambient-light'
 import { useLive2DNaturalSettings, useSettingsLive2d } from '@proj-airi/stage-ui-live2d/composables/live2d'
 import { useLive2dParams } from '@proj-airi/stage-ui-live2d/stores/model-parameters'
+import { useMMDPerformanceSettings } from '@proj-airi/stage-ui-mmd/stores'
 import { useMMD } from '@proj-airi/stage-ui-mmd/stores/mmd'
 import { useMMDNaturalSettings } from '@proj-airi/stage-ui-mmd/stores/natural-settings'
 import { useSpine } from '@proj-airi/stage-ui-spine/stores/spine'
@@ -711,18 +712,18 @@ export const stateRegistry = defineStateRegistry([
   },
   {
     id: 'mmd-performance-settings',
-    owner: 'useMMD',
-    writers: ['packages/stage-ui-mmd/src/stores/mmd.ts'],
-    tier: 'plain',
-    exception: 'Fork state awaiting S2 migration',
-    // The mmd reset owns the live state and runs once before this sweep.
+    owner: 'useMMDPerformanceSettings',
+    writers: ['packages/stage-ui-mmd/src/stores/performance-settings.ts'],
+    tier: 1,
     locations: [
-      { area: 'localStorage', perModel: 'settings/mmd/motion-driver' },
-      { area: 'localStorage', key: 'settings/mmd/stage-character-height' },
-      { area: 'localStorage', key: 'settings/mmd/roam-mode' },
-      { area: 'localStorage', key: 'settings/mmd/stance-slots' },
-      { area: 'localStorage', key: 'settings/mmd/clip-curation' },
+      { area: 'localStorage', key: 'settings/mmd/performance' },
+      { area: 'localStorage', perModel: 'settings/mmd/motion-driver', legacy: true },
+      { area: 'localStorage', key: 'settings/mmd/stage-character-height', legacy: true },
+      { area: 'localStorage', key: 'settings/mmd/roam-mode', legacy: true },
+      { area: 'localStorage', key: 'settings/mmd/stance-slots', legacy: true },
+      { area: 'localStorage', key: 'settings/mmd/clip-curation', legacy: true },
     ],
+    reset: ({ pinia }) => useMMDPerformanceSettings(pinia).reset(),
   },
   {
     id: 'situation-settings',
@@ -810,18 +811,6 @@ export const stateRegistry = defineStateRegistry([
       { area: 'localStorage', key: 'settings/stage/model', legacy: true },
     ],
     reset: ({ pinia }) => useAiriCardStore(pinia).resetState(),
-  },
-  {
-    id: 'sherpaw-model-assets',
-    owner: 'sherpawModelAssets',
-    writers: [
-      'packages/stage-ui/src/libs/providers/providers/sherpaw/model-assets.ts',
-      'packages/stage-ui/src/libs/inference/model-assets-opfs.ts',
-    ],
-    tier: 'cache',
-    locations: [{ area: 'opfs', directory: 'airi-model-assets' }],
-    // In the desktop app the main process keeps the assets, and only this call reaches them.
-    reset: () => clearSherpawModelAssets(),
   },
   {
     id: 'situation-inner-state',
@@ -1247,6 +1236,18 @@ export const stateRegistry = defineStateRegistry([
 
   // Caches go last.
 
+  {
+    id: 'sherpaw-model-assets',
+    owner: 'sherpawModelAssets',
+    writers: [
+      'packages/stage-ui/src/libs/providers/providers/sherpaw/model-assets.ts',
+      'packages/stage-ui/src/libs/inference/model-assets-opfs.ts',
+    ],
+    tier: 'cache',
+    locations: [{ area: 'opfs', directory: 'airi-model-assets' }],
+    // In the desktop app the main process keeps the assets, and only this call reaches them.
+    reset: () => clearSherpawModelAssets(),
+  },
   {
     id: 'display-model-caches',
     owner: 'OPFSCache (Live2D and MMD)',

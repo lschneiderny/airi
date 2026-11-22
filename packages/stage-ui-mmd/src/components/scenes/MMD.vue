@@ -106,6 +106,7 @@ import { useMMDExpressionStore } from '../../stores/expression-store'
 import { useMMD } from '../../stores/mmd'
 import { useMMDMotionDiagnostics } from '../../stores/motion-diagnostics'
 import { useMMDNaturalSettings } from '../../stores/natural-settings'
+import { useMMDPerformanceSettings } from '../../stores/performance-settings'
 import { loadMMDModelFromSource } from '../../utils/mmd-loader'
 import {
   applyMMDMaterialOpacity,
@@ -178,6 +179,8 @@ const emit = defineEmits<{
 const componentState = defineModel<'pending' | 'loading' | 'mounted'>('state', { default: 'pending' })
 
 const mmdStore = useMMD()
+const performanceSettings = useMMDPerformanceSettings()
+const { motionDriver, stanceSlots, clipCuration, roamMode } = storeToRefs(performanceSettings)
 const naturalSettings = useMMDNaturalSettings()
 const diagnostics = useMMDMotionDiagnostics()
 const expressions = useMMDExpressionStore()
@@ -229,7 +232,6 @@ const {
   grantEnabled,
   physicsGravity,
   gazeMode,
-  motionDriver,
   position,
   scale,
   rotationY,
@@ -238,9 +240,7 @@ const {
   materialOpacity,
   idleMotionName,
   availableMotions,
-  stanceSlots,
   performRequest,
-  clipCuration,
   availableClipMeta,
   cameraFov,
   ambientColor,
@@ -250,7 +250,6 @@ const {
   directionalPosition,
   albedoGlow,
   renderScale,
-  roamMode,
 } = storeToRefs(mmdStore)
 /** A model without saved strengths performs every emotion at 1. */
 const defaultEmotionStrengths: NaturalEmotionStrengths = {}
@@ -314,11 +313,11 @@ let loadedModelKey: string | null = null
 const libraryModelKey = shallowRef<string | null>(null)
 /** The clips the user allowed her to play on her own while idle. */
 const idleClips = computed<IdleClipCandidate[]>(() => libraryModelKey.value
-  ? mmdStore.labeledClips(libraryModelKey.value).flatMap(clip => clip.idle && clip.kind !== 'stance' && clip.kind !== 'unusable' ? [{ clipId: clip.name, kind: clip.kind }] : [])
+  ? performanceSettings.labeledClips(libraryModelKey.value, availableMotions.value, availableClipMeta.value).flatMap(clip => clip.idle && clip.kind !== 'stance' && clip.kind !== 'unusable' ? [{ clipId: clip.name, kind: clip.kind }] : [])
   : [])
 // perform_action queues through `requestPerform` like every other clip, so the director reads one request queue.
 const actionPort = new MMDActionPort({
-  clips: () => libraryModelKey.value ? mmdStore.labeledClips(libraryModelKey.value) : [],
+  clips: () => libraryModelKey.value ? performanceSettings.labeledClips(libraryModelKey.value, availableMotions.value, availableClipMeta.value) : [],
   submit: name => requestPerform(name, { source: 'tool' }) ? performSeq : null,
   withdraw: (seq) => {
     if (pendingAction?.seq === seq)
@@ -1006,7 +1005,7 @@ function bodyActivity(intent: BodyIntent | null): MMDSelfReport | null {
   if (!intent || motionDriver.value !== 'natural')
     return null
   if (intent.action !== null && intent.action.seq === unaskedActionSeq && intent.action.phase === 'playing') {
-    const label = loadedModelKey ? mmdStore.curationFor(loadedModelKey, intent.action.clipId).label : null
+    const label = loadedModelKey ? performanceSettings.curationFor(loadedModelKey, intent.action.clipId).label : null
     return { activity: 'clip', phase: 'start', ...(label === null ? {} : { label }) }
   }
   const walk = { 'wander': 'wander', 'visit': 'visit', 'return-home': 'go-home' } as const
@@ -1119,7 +1118,7 @@ function registerBodyClip(name: string) {
   const loaded = loadedClips.get(name)
   if (!loaded || !body || !loadedModelKey)
     return
-  const kind = mmdStore.curationFor(loadedModelKey, name).kind ?? availableClipMeta.value[name]?.kind
+  const kind = performanceSettings.curationFor(loadedModelKey, name).kind ?? availableClipMeta.value[name]?.kind
   body.registerClip(name, loaded.clip, { forceGroups: kind === 'action' || kind === 'dance' ? FULL_BODY_GROUPS : undefined })
 }
 
@@ -1131,12 +1130,12 @@ function isBaseEligible(name: string): boolean {
   const key = loadedModelKey
   if (!key)
     return true
-  if (mmdStore.exposedActions(key).some(clip => clip.name === name))
+  if (performanceSettings.exposedActions(key, availableMotions.value, availableClipMeta.value).some(clip => clip.name === name))
     return false
   const slots = stanceSlots.value[key] ?? {}
   if (name === slots.idle || name === slots.sit || name === slots.sleep)
     return true
-  const kind = mmdStore.curationFor(key, name).kind ?? availableClipMeta.value[name]?.kind
+  const kind = performanceSettings.curationFor(key, name).kind ?? availableClipMeta.value[name]?.kind
   return kind === undefined || kind === 'stance'
 }
 
@@ -1161,7 +1160,7 @@ function requestPerform(name: string | null, options: { loop?: boolean, source: 
     return false
   }
   const meta = availableClipMeta.value[name]
-  const curation = mmdStore.curationFor(loadedModelKey, name)
+  const curation = performanceSettings.curationFor(loadedModelKey, name)
   const kind = curation.kind ?? meta?.kind ?? 'gesture'
   if (kind === 'unusable') {
     console.warn(`[mmd] perform skipped: "${name}" is unusable`)
@@ -1228,7 +1227,7 @@ function clipsSnapshot(): MMDMotionSnapshot['clips'] {
     const meta = availableClipMeta.value[name]
     if (!meta || !registeredMotions.has(name))
       continue
-    const curation = mmdStore.curationFor(key, name)
+    const curation = performanceSettings.curationFor(key, name)
     const layer = effectiveLayer(meta, curation.kind)
     clips.push({
       name,
@@ -1648,9 +1647,9 @@ watch(() => diagnostics.overlays, (flags) => {
   overlays?.apply(flags)
 })
 
-watch(() => diagnostics.roamModeRequest, (request) => {
+watch(() => diagnostics.roamModeRequest, async (request) => {
   if (request)
-    roamMode.value = request.mode
+    await performanceSettings.update({ roamMode: request.mode })
 })
 
 // Tuning switches one performance layer at a time; the stack eases it in or out.
@@ -1849,11 +1848,11 @@ defineExpose({
   getMood: () => natural?.mood ?? null,
   listMorphs: () => morphs?.availableMorphs ?? [],
   listMotions: () => animation?.availableClips() ?? [],
-  listActions: () => libraryModelKey.value ? mmdStore.labeledClips(libraryModelKey.value) : [],
+  listActions: () => libraryModelKey.value ? performanceSettings.labeledClips(libraryModelKey.value, availableMotions.value, availableClipMeta.value) : [],
   action: (label: string, gesture?: { kind: string }) => {
     if (!loadedModelKey)
       return false
-    const { perform, drops } = resolveActAction(label, gesture, mmdStore.labeledClips(loadedModelKey))
+    const { perform, drops } = resolveActAction(label, gesture, performanceSettings.labeledClips(loadedModelKey, availableMotions.value, availableClipMeta.value))
     for (const drop of drops)
       actionDrops[ACT_DROP_COUNTER[drop.reason]]++
     return perform ? requestPerform(perform, { source: 'act' }) : false

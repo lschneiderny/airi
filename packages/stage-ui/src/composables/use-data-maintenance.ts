@@ -6,6 +6,7 @@ import type { HostDataDeletion } from './host-data-deletion'
 
 import { isStageTamagotchi } from '@proj-airi/stage-shared'
 import { useLive2DNaturalSettings } from '@proj-airi/stage-ui-live2d/composables/live2d'
+import { useMMDPerformanceSettings } from '@proj-airi/stage-ui-mmd/stores'
 import { useMMDNaturalSettings } from '@proj-airi/stage-ui-mmd/stores/natural-settings'
 import { pick } from 'es-toolkit'
 import { getActivePinia } from 'pinia'
@@ -160,6 +161,7 @@ export function useDataMaintenance() {
   useExpressionPerformanceSettings()
   useLive2DNaturalSettings()
   useMMDNaturalSettings()
+  useMMDPerformanceSettings()
   useOnboardingStore()
   // The stores above set the Pinia instance of this component's app as the active one.
   const pinia = getActivePinia()

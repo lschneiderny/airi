@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import type { ClipKind, MMDClipCuration, MMDGazeMode, MMDMotionDriver, MMDRoamMode, MorphSlot } from '@proj-airi/stage-ui-mmd'
+import type { ClipKind, MMDGazeMode, MMDMotionDriver, MMDRoamMode, MorphSlot } from '@proj-airi/stage-ui-mmd'
 import type { SelectTabOption } from '@proj-airi/ui'
 
 import type { DesktopStageDisplay } from './desktop-stage'
 import type { ExpressionPanelCommand, ExpressionPanelSnapshot, ExpressionPanelSource } from './expressions/source'
 import type { ModelSettingsRuntimeSnapshot } from './runtime'
 
-import { CLIP_LABEL_PATTERN, controlConfig, effectiveLayer, useMMD, useMMDExpressionStore, useMMDNaturalSettings } from '@proj-airi/stage-ui-mmd/stores'
+import { CLIP_LABEL_PATTERN, controlConfig, effectiveLayer, useMMD, useMMDExpressionStore, useMMDNaturalSettings, useMMDPerformanceSettings } from '@proj-airi/stage-ui-mmd/stores'
 import { Button, Checkbox, FieldCheckbox, FieldCombobox, FieldRange, GhostButton, Input, Select, SelectTab } from '@proj-airi/ui'
 import { useFileDialog } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
@@ -37,9 +37,20 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 
-const mmdStore = useMMD()
 // Stance slots are keyed by the id the stage passes to the MMD scene as `modelId`.
 const { stageModelSelected } = storeToRefs(useSettingsStageModel())
+
+const mmdStore = useMMD()
+const performanceSettings = useMMDPerformanceSettings()
+const { motionDriver, stanceSlots, stageCharacterHeight, roamMode } = storeToRefs(performanceSettings)
+
+async function updatePerformance(patch: Parameters<typeof performanceSettings.update>[0]) {
+  await performanceSettings.update(patch)
+}
+
+async function setMotionDriver(driver: MMDMotionDriver) {
+  await performanceSettings.setMotionDriver(stageModelSelected.value, driver)
+}
 // In Electron the settings window has no model; the stage window publishes `mmdExpressions` and applies the commands.
 const localExpressionSource: ExpressionPanelSource = useMMDExpressionStore()
 const usesRemoteExpressionRuntime = computed(() => props.runtimeSnapshot.mmdExpressions != null)
@@ -65,8 +76,6 @@ const {
   grantEnabled,
   physicsGravity,
   gazeMode,
-  motionDriver,
-  stanceSlots,
   idleMotionName,
   availableMotions,
   availableClipMeta,
@@ -82,8 +91,6 @@ const {
   directionalPosition,
   albedoGlow,
   renderScale,
-  stageCharacterHeight,
-  roamMode,
 } = storeToRefs(mmdStore)
 
 const naturalSettings = useMMDNaturalSettings()
@@ -193,12 +200,11 @@ function stanceSlotValue(slot: StanceSlotName): string {
   return name && availableMotions.value.some(motion => motion.name === name) ? name : STANCE_NONE
 }
 
-function setStanceSlot(slot: StanceSlotName, value: string | number | undefined) {
+async function setStanceSlot(slot: StanceSlotName, value: string | number | undefined) {
   if (typeof value !== 'string')
     return
   const modelId = stageModelSelected.value
-  const { [slot]: _, ...rest } = stanceSlots.value[modelId] ?? {}
-  stanceSlots.value = { ...stanceSlots.value, [modelId]: value === STANCE_NONE ? rest : { ...rest, [slot]: value } }
+  await performanceSettings.setStanceSlot(modelId, slot, value === STANCE_NONE ? null : value)
 }
 
 // '(auto)' lets the renderer pick the morph by its standard-name candidates.
@@ -289,7 +295,7 @@ interface ClipRow {
 // `curationFor` reads the store's `clipCuration`, so an edit from another window recomputes the rows.
 const clipRows = computed<ClipRow[]>(() => availableMotions.value.map(({ name }) => {
   const meta = availableClipMeta.value[name]
-  const curation = mmdStore.curationFor(stageModelSelected.value, name)
+  const curation = performanceSettings.curationFor(stageModelSelected.value, name)
   const effectiveKind = curation.kind ?? meta?.kind ?? null
   const layer = meta ? effectiveLayer(meta, curation.kind) : null
   const exposeHint = curation.label === null
@@ -333,14 +339,14 @@ function labelError(name: string): 'invalid' | 'duplicate' | undefined {
   return labelErrors.value[draftKey(name)]
 }
 
-function setClipLabel(name: string, value: string | undefined) {
+async function setClipLabel(name: string, value: string | undefined) {
   const draft = value ?? ''
   const key = draftKey(name)
   labelDrafts.value = { ...labelDrafts.value, [key]: draft }
   const { [key]: _, ...otherErrors } = labelErrors.value
   // An empty input removes the label; the store refuses an empty string, so clear it with `null`.
   if (draft === '') {
-    mmdStore.setCuration(stageModelSelected.value, name, { label: null, aiMayUse: false, idleMayUse: false })
+    await performanceSettings.setCuration(stageModelSelected.value, name, { label: null, aiMayUse: false, idleMayUse: false })
     labelErrors.value = otherErrors
     return
   }
@@ -348,39 +354,32 @@ function setClipLabel(name: string, value: string | undefined) {
     labelErrors.value = { ...otherErrors, [key]: 'invalid' }
     return
   }
-  labelErrors.value = mmdStore.setCuration(stageModelSelected.value, name, { label: draft })
+  labelErrors.value = await performanceSettings.setCuration(stageModelSelected.value, name, { label: draft })
     ? otherErrors
     : { ...otherErrors, [key]: 'duplicate' }
 }
 
-function setClipKind(name: string, value: string | undefined) {
+async function setClipKind(name: string, value: string | undefined) {
   if (value === undefined)
     return
   const kind = value === KIND_AUTO ? null : value as ClipKind
-  const patch: Partial<MMDClipCuration> = { kind }
-  const meta = availableClipMeta.value[name]
-  // A stance or unusable clip cannot stay exposed, to the AI or to idle.
-  if ((kind ?? meta?.kind) === 'stance' || (kind ?? meta?.kind) === 'unusable') {
-    patch.aiMayUse = false
-    patch.idleMayUse = false
-  }
-  mmdStore.setCuration(stageModelSelected.value, name, patch)
+  await performanceSettings.setCuration(stageModelSelected.value, name, { kind }, availableClipMeta.value[name]?.kind)
 }
 
-function setClipLoop(name: string, loop: boolean) {
-  mmdStore.setCuration(stageModelSelected.value, name, { loop })
+async function setClipLoop(name: string, loop: boolean) {
+  await performanceSettings.setCuration(stageModelSelected.value, name, { loop })
 }
 
-function setClipExposed(name: string, aiMayUse: boolean) {
-  mmdStore.setCuration(stageModelSelected.value, name, { aiMayUse })
+async function setClipExposed(name: string, aiMayUse: boolean) {
+  await performanceSettings.setCuration(stageModelSelected.value, name, { aiMayUse }, availableClipMeta.value[name]?.kind)
 }
 
-function setClipIdle(name: string, idleMayUse: boolean) {
-  mmdStore.setCuration(stageModelSelected.value, name, { idleMayUse })
+async function setClipIdle(name: string, idleMayUse: boolean) {
+  await performanceSettings.setCuration(stageModelSelected.value, name, { idleMayUse }, availableClipMeta.value[name]?.kind)
 }
 
-function removeMotion(id: string) {
-  void mmdStore.removeMotion(id)
+async function removeMotion(id: string) {
+  await mmdStore.removeMotion(id)
 }
 </script>
 
@@ -541,13 +540,14 @@ function removeMotion(id: string) {
         :description="t('settings.mmd.stage.follow-me.description')"
       />
       <FieldRange
-        v-model="stageCharacterHeight"
+        :model-value="stageCharacterHeight"
         :min="200"
         :max="1200"
         :step="10"
         :label="t('settings.mmd.stage.character-height.title')"
         :description="t('settings.mmd.stage.character-height.description')"
         :format-value="formatCharacterHeight"
+        @update:model-value="value => updatePerformance({ stageCharacterHeight: value })"
       />
       <label :class="['flex flex-wrap gap-4']">
         <div :class="['min-w-0 flex-1 basis-full sm:basis-auto']">
@@ -559,10 +559,11 @@ function removeMotion(id: string) {
           </div>
         </div>
         <SelectTab
-          v-model="roamMode"
+          :model-value="roamMode"
           :options="roamModeOptions"
           size="sm"
           :class="['shrink-0']"
+          @update:model-value="value => updatePerformance({ roamMode: value })"
         />
       </label>
     </template>
@@ -607,10 +608,11 @@ function removeMotion(id: string) {
         </div>
       </div>
       <SelectTab
-        v-model="motionDriver"
+        :model-value="motionDriver"
         :options="motionDriverOptions"
         size="sm"
         :class="['shrink-0']"
+        @update:model-value="setMotionDriver"
       />
     </label>
     <FieldRange

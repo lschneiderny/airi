@@ -11,7 +11,7 @@ import { electron } from '@proj-airi/electron-eventa'
 import { useElectronEventaContext, useElectronEventaInvoke } from '@proj-airi/electron-vueuse'
 import { defaultHomeDipX, dipToPlane, homeDipToWorldX, layoutStageRow, placementRectAt, worldToHomeDipX } from '@proj-airi/stage-shared/stage-world'
 import { useHostCapabilitiesStore } from '@proj-airi/stage-shared/stores/host-capabilities'
-import { useMMD, useMMDExpressionStore, useMMDMotionDiagnostics } from '@proj-airi/stage-ui-mmd/stores'
+import { useMMDExpressionStore, useMMDMotionDiagnostics, useMMDPerformanceSettings } from '@proj-airi/stage-ui-mmd/stores'
 import {
   createEmptyModelSettingsRuntimeSnapshot,
   resolveComponentStateToRuntimePhase,
@@ -57,7 +57,7 @@ const provisionalModelHeight = 20
 
 const settingsStore = useSettings()
 const { stageModelRenderer, stageModelSelectedUrl } = storeToRefs(settingsStore)
-const { stageCharacterHeight } = storeToRefs(useMMD())
+const { stageCharacterHeight } = storeToRefs(useMMDPerformanceSettings())
 const motionDiagnostics = useMMDMotionDiagnostics()
 const mmdExpressionStore = useMMDExpressionStore()
 const { stagePaused } = storeToRefs(useStageWindowLifecycleStore())

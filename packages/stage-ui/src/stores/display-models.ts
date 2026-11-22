@@ -1,4 +1,5 @@
 import { removeDisplayModelSettings } from '@proj-airi/stage-shared/composables'
+import { useMMDPerformanceSettings } from '@proj-airi/stage-ui-mmd/stores'
 import { createEventHook, until } from '@vueuse/core'
 import { nanoid } from 'nanoid'
 import { defineStore } from 'pinia'
@@ -57,6 +58,7 @@ const displayModelsPresets: DisplayModel[] = [
 ]
 
 export const useDisplayModelsStore = defineStore('display-models', () => {
+  const performanceSettings = useMMDPerformanceSettings()
   const displayModels = ref<DisplayModel[]>([])
 
   // Reports the IDs of models that were removed from this device. The card store removes the
@@ -209,6 +211,7 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
   /** Removes the model from this device and reports it, so the card store drops its references. */
   async function removeDisplayModel(id: string) {
     await removeLocalCopy(id)
+    await performanceSettings.removeModel(id)
     removeDisplayModelSettings(id)
     await displayModelsDeleted.trigger([id])
   }
@@ -221,8 +224,10 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
     }
 
     displayModels.value = [...displayModelsPresets].sort((a, b) => b.importedAt - a.importedAt)
-    for (const id of userModelIds)
+    for (const id of userModelIds) {
+      await performanceSettings.removeModel(id)
       removeDisplayModelSettings(id)
+    }
     if (userModelIds.length > 0)
       await displayModelsDeleted.trigger(userModelIds)
   }

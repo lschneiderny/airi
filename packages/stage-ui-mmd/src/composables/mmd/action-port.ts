@@ -1,6 +1,6 @@
 import type { BodyActionRefusal } from '@proj-airi/motion-driver-humanoid/director'
 
-import type { MMDLabeledClip } from '../../stores/mmd'
+import type { MMDLabeledClip } from '../../stores/performance-settings'
 import type { MMDStanceDiagnostics } from './stance'
 
 /** Time in milliseconds a request waits for the director's answer before it fails; the body tool port waits as long. */
