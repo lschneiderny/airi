@@ -119,7 +119,7 @@ export const providerOpenRouterAudioSpeech = defineProvider<OpenRouterAudioConfi
   icon: 'i-lobe-icons:openrouter',
   createProviderConfig: () => openRouterAudioConfigSchema,
   createProvider(config) {
-    const apiKey = config.apiKey.trim()
+    const apiKey = config.apiKey?.trim() ?? ''
     const baseUrl = normalizeBaseUrl(config.baseUrl)
     return {
       speech: (model?: string) => {
