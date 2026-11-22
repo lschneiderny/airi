@@ -91,7 +91,7 @@ function simulate(scenario: PressScenario) {
       legLength: leg,
       seed: 1,
       idle: { settled: false, asleep: false },
-      wander: scenario.wanderAtS !== null && t >= scenario.wanderAtS ? { seq: 1 } : null,
+      wander: scenario.wanderAtS !== null && t >= scenario.wanderAtS ? { seq: 1, pick: 0.5 } : null,
     }, memory)
     const goal = result.intent.locomotion
     if (goal.goalX !== null && goal.reason === 'approach-cursor' && goal.pace === 'stroll' && result.memory.goalSinceMs !== memory.goalSinceMs) {
