@@ -118,10 +118,12 @@ vi.mock('@proj-airi/stage-ui-three/stores/model-store', async () => {
 vi.mock('@proj-airi/stage-ui-live2d/stores/expression-store', () => ({
   useExpressionStore: () => ({ modelId: null, settingsSnapshot: null }),
 }))
-vi.mock('@proj-airi/stage-ui-mmd/stores', async () => {
+vi.mock('@proj-airi/stage-ui-mmd/stores', async (importOriginal) => {
+  const stores = await importOriginal<typeof import('@proj-airi/stage-ui-mmd/stores')>()
   const { defineStore } = await import('pinia')
   return {
-    useMMD: defineStore('placement-mmd', () => ({ stageCharacterHeight: ref(500) })),
+    ...stores,
+    useMMD: defineStore('placement-mmd', () => ({})),
     useMMDExpressionStore: () => ({ modelId: null, settingsSnapshot: null }),
     useMMDMotionDiagnostics: () => ({ snapshot: { stageModel: null }, reportReadback: () => {} }),
   }

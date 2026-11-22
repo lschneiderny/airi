@@ -405,6 +405,14 @@ The recommendations above were implemented. Departures and verification evidence
 - Full suites: stage-shared 96 files / 1880 tests, MMD Node 49 / 431, stage-ui Node 196 / 1911, MMD browser 7 / 34, Live2D Natural browser 1 / 13, and related stage-ui browser 7 / 125 all passed. The commands are the same suite commands recorded below.
 - The four reverted code/test files match the parent of 97ef2440c exactly. The finding 8 source and regression match ed94caafc exactly.
 
+### Browser gate correction (2026-11-22)
+
+- `pnpm --filter "...@proj-airi/stage-ui-mmd" --workspace-concurrency=2 typecheck`: all 8 projects passed. Scanner/policy guards passed 3 files / 28 tests. Changed-file ESLint and whitespace checks passed.
+- Complete requested suites passed: desktop browser 42 files / 309 tests; desktop Node 195 passed files / 2169 passed tests, with 3 files / 8 existing skips; MMD browser 7 files / 34 tests; MMD Node 49 files / 431 tests. Commands: `pnpm -F @proj-airi/stage-tamagotchi exec vitest run --project browser`, then `--project node`; `pnpm -F @proj-airi/stage-ui-mmd exec vitest run --project browser`, then `--project node`. The full desktop browser run also logged ResizeObserver and fullscreen fixture diagnostics; they did not fail the suite and are outside this import correction.
+- The isolated `host-screen-placement.browser.test.ts` failed before any tests ran. Its imported `host-screen-placement.fixtures.ts` replaced the entire MMD stores barrel with three old exports. S2 consumers in `stage.vue` and `bridges/perf-recording.ts` now import `useMMDPerformanceSettings`, which that local fixture omitted. No other test needed to run; this was not evidence of cross-file mock leakage or a production star-export cycle.
+- The fixture now preserves the real barrel exports and uses the real performance-settings owner, while retaining its unrelated asset/expression/diagnostic stubs. The obsolete stageCharacterHeight field is removed from the asset stub. Production imports, export order, and existing test assertions are unchanged.
+- Focused reproduction command: `pnpm -F @proj-airi/stage-tamagotchi exec vitest run --project browser src/renderer/pages/host-screen-placement.browser.test.ts`. After the fix, running it with `src/renderer/pages/host-cursor-interaction.browser.test.ts` passed 2 files / 33 tests (24 placement and 9 cursor tests).
+
 ### Original implementation
 
 - The code changes of `97ef2440c` are reverted after the harness correction. Finding 8 moves election creation into the mounting boundary, after the existing credential migration, and removes all waits between runtime creation and App setup. The focused real-runtime browser test first reproduced the missing ensureCurrentSession action while the main consent response was held; it checks both session and speech actions while that response remains pending and still requires startup to await the acknowledgment.
