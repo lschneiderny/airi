@@ -25,8 +25,8 @@ Put primitive UI components in `@proj-airi/ui`. Put shared layouts in `@proj-air
 ## Character expression mapping weights
 
 Open Settings > Character Cards, edit a card, and choose Modules > Performance.
-The editor lists mapped expressions from that character's model only while it is
-loaded in this window. Load the character's model first if the editor shows the
+The editor lists mapped expressions from that character's model while it is
+shown on the stage, including when settings open in a separate window. Show the character on the stage if the editor shows the
 empty state. Each slider ranges from 0 to 5: 0 disables the mapping and 1 removes
 the override. Save the card to persist the weights across model switches and
 reloads. The editor never changes the model's expression catalog.

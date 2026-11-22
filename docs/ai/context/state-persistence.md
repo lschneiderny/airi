@@ -26,6 +26,20 @@ A store that fits no tier needs an amendment to this document before it lands.
 
 **Caches.** A copy that the app can download or rebuild again is not a tier: the copies of imported Live2D and MMD models in the origin private file system, the Sherpaw model assets, and the Transformers.js Cache Storage `transformers-cache`. Each registers in the state registry with the tier `cache`. A cache does not hold the user's only copy: the imported model files stay in IndexedDB, and the other caches download again.
 
+## Runtime replicated state
+
+Tier 5 stores register with `pinia-plugin-synced` when they are created. They have
+no persisted locations and do not register in `stateRegistry`, which owns
+persisted renderer state.
+
+`useStageExpressionCatalogStore` (`packages/stage-ui/src/stores/stage-expression-catalog.ts`,
+store id `stage-expression-catalog`) holds the loaded display model id and mapped
+expression entries (id, label, mappings), or `null` when no model is loaded.
+`useStagePerformanceConductor` publishes the local Live2D or MMD catalog when it
+changes and clears it on model unload or conductor disposal. Card editors in
+other windows read the snapshot without loading a renderer or publishing it back.
+No derived catalog is written to storage.
+
 ## State registry
 
 `stateRegistry` (`packages/stage-ui/src/persistence/state-registry.ts`) declares every piece of persisted renderer state. Each `StateRegistration` names its owner, the files that write it, its tier, its locations, and an optional owner reset. A location is a localStorage key, key prefix, or per-model key; a sessionStorage key; an IndexedDB object store, optionally narrowed by a key prefix; an OPFS directory; or a Cache Storage cache. `resetRegisteredState` runs the owner reset of each registration in registry order, then removes everything its locations match. A registration marked `sweepFirst` is swept before its owner reset, because that reset saves a record the owner keeps using: the chat sessions' reset saves a new empty session and the chat index.

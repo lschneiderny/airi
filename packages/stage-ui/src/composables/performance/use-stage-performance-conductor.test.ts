@@ -19,6 +19,7 @@ import { useLive2DExpressionBackend, useMMDExpressionBackend } from '../../featu
 import { selectStagePerformanceRenderer } from '../../features/performance/renderer'
 import { usePerformanceRuntimeState } from '../../features/performance/runtime-state'
 import { useLlmToolsStore } from '../../stores/ai/chat-llm/tools'
+import { useStageExpressionCatalogStore } from '../../stores/stage-expression-catalog'
 import { bodyToolIds, createBodyToolRegistration, createExpressionToolPort, createExpressionToolRegistration, expressionToolIds, maxAffectTraceEntries, StagePerformanceConductor, toExposedExpressions, useStagePerformanceConductor } from './use-stage-performance-conductor'
 
 // `createDecider` stays the real factory, wrapped in a spy so the timing tests can replace the
@@ -199,6 +200,38 @@ describe('stage performance renderer selection', () => {
     conductor.emotion('happy', 0.7, 'act', 'turn-a')
     expect(scene.setEmotion).toHaveBeenCalledTimes(1)
     expect(scene.applySlots).toHaveBeenCalledTimes(1)
+  })
+
+  it('mirrors Live2D and MMD catalog edits and clears when the model unloads', async () => {
+    const { store, mmdStore, renderer } = mountConductor()
+    const mirror = useStageExpressionCatalogStore()
+    expect(mirror.snapshot?.modelId).toBe('rig')
+    expect(mirror.snapshot?.entries.map(entry => entry.id).sort()).toEqual(['anger', 'joy', 'tear'])
+    store.updateEntry('anger', { label: 'Irritated', mappings: [{ emotion: 'angry', weight: 3, minBand: 'strong' }] })
+    await nextTick()
+    expect(mirror.snapshot?.entries.find(entry => entry.id === 'anger')).toEqual({
+      id: 'anger',
+      label: 'Irritated',
+      mappings: [{ emotion: 'angry', weight: 3, minBand: 'strong' }],
+    })
+
+    renderer.value = 'mmd'
+    await nextTick()
+    expect(mirror.snapshot?.modelId).toBe('mmd-rig')
+    mmdStore.updateEntry('mmd:0:smile', { label: 'Grin' })
+    await nextTick()
+    expect(mirror.snapshot?.entries[0].label).toBe('Grin')
+    mmdStore.dispose()
+    await nextTick()
+    expect(mirror.snapshot).toBeNull()
+  })
+
+  it('clears the catalog when the stage conductor is disposed', () => {
+    mountConductor()
+    const mirror = useStageExpressionCatalogStore()
+    expect(mirror.snapshot?.modelId).toBe('rig')
+    scope.stop()
+    expect(mirror.snapshot).toBeNull()
   })
 
   it('advances without throwing when the Live2D scene is undefined', () => {

@@ -1,6 +1,7 @@
 import type { Card } from '@proj-airi/ccc'
-import type { CatalogEntry, PerformanceProfile } from '@proj-airi/stage-shared/expression-performance'
+import type { PerformanceProfile } from '@proj-airi/stage-shared/expression-performance'
 
+import type { LoadedExpressionCatalog } from '../stores/stage-expression-catalog'
 import type { AiriExtension } from '../types/airiCard'
 
 import { PerformanceProfileSchema } from '@proj-airi/stage-shared/expression-performance'
@@ -24,11 +25,11 @@ import { normalizeContextWindow, normalizeTemperature } from '../types/airiCard'
 
 export type AiriCardDraftValidationError = 'name' | 'version' | 'invalid_artistry_json'
 
-/** Only the selected character model's live catalog may supply mapping controls. */
-export function getAiriCardMappingEditor(modelId: string, backend: { readonly modelId: string, readonly catalog: readonly CatalogEntry[] }) {
-  if (!modelId || backend.modelId !== modelId || backend.catalog.length === 0)
+/** Only the selected character model's catalog published by the stage may supply mapping controls. */
+export function getAiriCardMappingEditor(modelId: string, catalog: LoadedExpressionCatalog | null) {
+  if (!modelId || catalog?.modelId !== modelId)
     return { loaded: false as const }
-  return { loaded: true as const, modelId, entries: backend.catalog.filter(entry => entry.mappings.length > 0) }
+  return { loaded: true as const, modelId, entries: catalog.entries }
 }
 
 /** Returns a new profile; identity removes the entry override and leaves other models untouched. */
