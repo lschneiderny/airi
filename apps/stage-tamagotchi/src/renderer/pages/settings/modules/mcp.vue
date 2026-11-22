@@ -13,7 +13,7 @@ import { errorMessageFrom } from '@moeru/std'
 import { useElectronEventaInvoke } from '@proj-airi/electron-vueuse'
 import { bundledTerminalServerName } from '@proj-airi/stage-shared/terminal-approval'
 import { useAnalytics } from '@proj-airi/stage-ui/composables'
-import { Alert, Button, Checkbox, GhostButton, SettingsCard, TransitionVertical } from '@proj-airi/ui'
+import { Alert, Button, Checkbox, FieldCheckbox, GhostButton, SettingsCard, TransitionVertical } from '@proj-airi/ui'
 import { useIntervalFn } from '@vueuse/core'
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -140,6 +140,8 @@ const RUNTIME_BADGE: Record<'running' | 'stopped' | 'error', string> = {
   error: 'bg-red-500/15 text-red-700 dark:text-red-300',
   stopped: 'bg-neutral-400/20 text-neutral-600 dark:text-neutral-300',
 }
+
+const RUNTIME_PILL = 'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium tracking-wide uppercase'
 
 function badgeClass(state: 'running' | 'stopped' | 'error' | undefined) {
   return RUNTIME_BADGE[state ?? 'stopped']
@@ -438,13 +440,20 @@ useIntervalFn(() => {
     </SettingsCard>
 
     <SettingsCard>
-      <Checkbox data-testid="terminal-enabled-switch" :model-value="terminalEnabled ?? false" :label="tn('terminal.title')" @update:model-value="terminalEnabled = $event" />
-      <p :class="['text-sm', 'text-neutral-500 dark:text-neutral-400']">
-        {{ tn('terminal.description') }}
-      </p>
-      <p :class="['text-xs', badgeClass(runtimeStateOf('airi-terminal'))]" data-testid="terminal-connection-status">
-        {{ tn(`status.${runtimeStateOf('airi-terminal') ?? 'unknown'}`) }}
-      </p>
+      <FieldCheckbox
+        data-testid="terminal-enabled-switch"
+        :model-value="terminalEnabled ?? false"
+        :description="tn('terminal.description')"
+        @update:model-value="terminalEnabled = $event"
+      >
+        <template #label>
+          <span>{{ tn('terminal.title') }}</span>
+          <span :class="[RUNTIME_PILL, badgeClass(runtimeStateOf('airi-terminal'))]" data-testid="terminal-connection-status">
+            <span :class="['size-1 rounded-full', 'bg-current opacity-80']" />
+            {{ tn(`status.${runtimeStateOf('airi-terminal') ?? 'unknown'}`) }}
+          </span>
+        </template>
+      </FieldCheckbox>
       <p v-if="runtime?.servers.find(server => server.name === 'airi-terminal')?.lastError" :class="['text-xs', 'text-red-600']" role="alert">
         {{ runtime?.servers.find(server => server.name === 'airi-terminal')?.lastError }}
       </p>
@@ -554,10 +563,7 @@ useIntervalFn(() => {
               <span class="truncate text-sm font-medium">
                 {{ server.identifier || tn('test.untitled') }}
               </span>
-              <span
-                class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium tracking-wide uppercase"
-                :class="badgeClass(runtimeStateOf(server.identifier))"
-              >
+              <span :class="[RUNTIME_PILL, badgeClass(runtimeStateOf(server.identifier))]">
                 <span class="size-1 rounded-full bg-current opacity-80" />
                 {{ runtimeStateOf(server.identifier) ?? tn('status.unknown') }}
               </span>
