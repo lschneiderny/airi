@@ -4,19 +4,21 @@ import type { PerformanceState } from '@proj-airi/stage-shared/performance-state
 
 import type { MMDStanceInteraction, MMDStanceSlots, MMDStanceWorld } from './stance'
 
-import { NO_WORLD_BODY_INPUT } from '@proj-airi/motion-driver-humanoid/director'
+import { ACTION_REFRACTORY_MS, CharacterMind } from '@proj-airi/character-mind'
+import { NO_BODY_REFRACTORY, NO_WORLD_BODY_INPUT } from '@proj-airi/motion-driver-humanoid/director'
 import { AnimationClip, Euler, Quaternion, QuaternionKeyframeTrack, Vector3, VectorKeyframeTrack } from 'three'
 import { describe, expect, it } from 'vitest'
 
 import { createMMDAnimationManager } from './animation-manager'
 import { MMDBody } from './body'
 import { bodyFixture } from './body/fixture'
-import { CHAT_STAND_GAP_LEGS, chatStandX, directorIdleStates, frameClocks, MMDAttendInbox, MMDStanceDirector, standingBaseMotion, wanderErrandAnswer } from './stance'
+import { MMD_NATURAL_CAPABILITIES } from './natural/adapter'
+import { CHAT_STAND_GAP_LEGS, chatStandX, directorIdleStates, frameClocks, MMDAttendInbox, MMDRefractoryInbox, MMDStanceDirector, standingBaseMotion, wanderErrandAnswer } from './stance'
 
 const idle: Pick<PerformanceState, 'mode' | 'attention' | 'away'> = { mode: 'idle', attention: 'camera', away: false }
 const away: Pick<PerformanceState, 'mode' | 'attention' | 'away'> = { mode: 'idle', attention: 'camera', away: true }
 const EPOCH_MS = 1_000_000
-const quiet: MMDStanceInteraction = { away: false, attend: { untilMs: null, touchSeq: 0, chatSeq: 0, chatOpenSeq: 0 }, actionRequest: null, actionFeedback: null, dragging: false }
+const quiet: MMDStanceInteraction = { away: false, attend: { untilMs: null, touchSeq: 0, chatSeq: 0, chatOpenSeq: 0 }, actionRequest: null, actionFeedback: null, refractory: NO_BODY_REFRACTORY, dragging: false }
 
 describe('mMDAttendInbox', () => {
   it.each(['touch', 'drag', 'chat-send'] as const)('counts %s and stamps the full window on the next frame', (attendCause) => {
@@ -41,6 +43,20 @@ describe('mMDAttendInbox', () => {
     inbox.receive({ id: '3-attend', cause: 3, channel: 'body', kind: 'attend', target: 'chat', attendCause: 'chat-unfold' })
     expect(inbox.atFrame(300)).toEqual({ untilMs: 60_200, touchSeq: 1, chatSeq: 2, chatOpenSeq: 2 })
     expect(touched.chatSeq).toBe(1)
+  })
+})
+
+describe('mMDRefractoryInbox', () => {
+  it('stamps the durations left on the director time of the next frame and keeps them until new ones arrive', () => {
+    const inbox = new MMDRefractoryInbox()
+    expect(inbox.atFrame(100)).toEqual(NO_BODY_REFRACTORY)
+
+    // The loop stalls for two minutes before the next frame; the durations start there, not at the intent.
+    inbox.receive({ actionMs: 15_000, danceMs: 0, gesture: { clipId: 'wave', remainingMs: 4_000 }, moveToolMs: 60_000, lookToolMs: 0 })
+    const stamped = inbox.atFrame(120_000)
+
+    expect(stamped).toEqual({ actionUntilMs: 135_000, danceUntilMs: 120_000, gesture: { clipId: 'wave', untilMs: 124_000 }, moveToolUntilMs: 180_000, lookToolUntilMs: 120_000 })
+    expect(inbox.atFrame(121_000)).toEqual(stamped)
   })
 })
 
@@ -117,7 +133,7 @@ describe('mmd stance director', () => {
 
     const result = director.update({ interaction: { ...quiet, away: true }, nowMs: EPOCH_MS + 310_000, performance: away, slots: { sleep: 'sleep-vmd' }, idleMotionName: '', isRegistered: registered, idle: asleep })
     expect(director.diagnostics.stance).toBe('sleep')
-    expect(result).toEqual({ motion: 'sleep-vmd', changed: true })
+    expect(result).toEqual({ motion: 'sleep-vmd', changed: true, reports: [] })
   })
 
   it('ignores a stance slot whose motion is not registered on this model and rests without a clip instead', () => {
@@ -417,6 +433,44 @@ describe('mmd stance director with clip performances', () => {
     expect(result.motion).toBeNull()
     director.update({ interaction: quiet, nowMs: EPOCH_MS + 1, performance: idle, slots: { idle: 'wave' }, idleMotionName: 'wave', isRegistered: () => true, baseEligible: eligible })
     expect(director.baseClips.has('wave')).toBe(false)
+  })
+
+  it('keeps the mind\'s refractories across a model reload, which builds a new director', () => {
+    let directorMs = EPOCH_MS
+    const mind = new CharacterMind({ seed: 1, clock: () => directorMs })
+    mind.receive({ kind: 'performer', capabilities: MMD_NATURAL_CAPABILITIES })
+    const inbox = new MMDRefractoryInbox()
+    /** One scene frame: the director runs on the inbox, and its reports reach the mind, whose answer the inbox keeps. */
+    const frame = (director: MMDStanceDirector, atMs: number, interaction: Partial<MMDStanceInteraction>) => {
+      directorMs = EPOCH_MS + atMs
+      const { reports } = run(director, atMs, { ...interaction, refractory: inbox.atFrame(directorMs) })
+      for (const report of reports) {
+        for (const intent of mind.receive({ kind: 'performer-report', report })) {
+          if (intent.kind === 'refractory')
+            inbox.receive(intent.remaining)
+        }
+      }
+    }
+    const first = new MMDStanceDirector()
+    frame(first, 0, {})
+    let at = 100
+    frame(first, at, { actionRequest: full })
+    while (first.intent?.action?.phase !== 'playing' && at < 20_000) {
+      at += 100
+      frame(first, at, { actionRequest: full })
+    }
+    expect(first.intent?.action).toMatchObject({ seq: 1, phase: 'playing' })
+    // The action ends at `at + 100`; the mind stamps its refractory then.
+    frame(first, at + 100, { actionRequest: full, actionFeedback: { seq: 1, state: 'finished' } })
+
+    // The model reloads: a new director reads the same scene inbox, which stamps the refractory on this frame.
+    const second = new MMDStanceDirector()
+    frame(second, at + 200, { actionRequest: full })
+    frame(second, at + 300, { actionRequest: { ...full, seq: 2 } })
+
+    expect(second.diagnostics).toMatchObject({ lastActionSeq: 2, actionRefusal: 'refractory', actionRetryAfterMs: ACTION_REFRACTORY_MS - 100 })
+    expect(second.intent?.action).toBeNull()
+    expect(mind.refractories().actionMs).toBe(ACTION_REFRACTORY_MS - 200)
   })
 
   it('keeps a walk goal across a full action and issues it again after the clip finishes', () => {

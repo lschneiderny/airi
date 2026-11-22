@@ -1,4 +1,4 @@
-import type { MindGestureState, MindMoodState } from '@proj-airi/character-mind'
+import type { MindGestureState, MindMoodState, MindRefractoryState } from '@proj-airi/character-mind'
 import type { MotionTraceEvent } from '@proj-airi/motion-driver-humanoid/motion-trace'
 import type { NaturalChatInput, NaturalMotionVoice } from '@proj-airi/motion-driver-natural/natural-motion'
 import type { ReactionEpisode } from '@proj-airi/stage-shared/expression-performance'
@@ -8,7 +8,7 @@ import type { MMDStanceWorld } from '@proj-airi/stage-ui-mmd/composables/mmd/sta
 
 import type { Motion3dCue } from '../scenarios'
 
-import { emotionGesture, initialMindGestureState, initialMindMoodState, moodEpisodeDose } from '@proj-airi/character-mind'
+import { emotionGesture, initialMindGestureState, initialMindMoodState, initialMindRefractoryState, moodEpisodeDose, pokeSurprise } from '@proj-airi/character-mind'
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 
 /**
@@ -46,6 +46,8 @@ export class Motion3dCueDriver {
   private gestures: MindGestureState = initialMindGestureState
   /** The mind's mood, kept for the same reason: each emotion cue doses Natural with the mind's delta, after its episode. */
   private mood: MindMoodState = initialMindMoodState
+  /** The mind's poke surprise dedupe, kept for the same reason: each poke cue asks the mind's policy on the run's clock. */
+  private refractory: MindRefractoryState = initialMindRefractoryState
 
   constructor(
     private readonly adapter: Pick<MMDNaturalAdapter, 'impulse' | 'addMood' | 'gesture' | 'poke' | 'setPet' | 'chatRead'>,
@@ -102,9 +104,12 @@ export class Motion3dCueDriver {
         return
       case 'touch':
         switch (cue.touch) {
-          case 'poke':
-            this.adapter.poke(cue.region, { x: cue.x, y: cue.y })
+          case 'poke': {
+            const poked = pokeSurprise(this.refractory, t * 1000)
+            this.refractory = poked.state
+            this.adapter.poke(cue.region, { x: cue.x, y: cue.y }, poked.surprise)
             break
+          }
           case 'pet-start':
             this.adapter.setPet({ x: cue.x, y: cue.y })
             break

@@ -288,9 +288,9 @@ resting within that threshold, or losing the range, stage cursor, or attend
 window spends the correction; its own arrival never arms another. A visit
 ended within reach lingers as on arrival. A visit due with the cursor already that
 close arrives in place without walking. A goal waits while
-she speaks and is dropped after `PENDING_GOAL_TTL_MS`. Tool requests share
-`MOVE_TOOL_REFRACTORY_MS` for movement and use `LOOK_TOOL_REFRACTORY_MS` for a
-glance. The boundary is fixed: the director chooses goals and never moves the
+she speaks and is dropped after `PENDING_GOAL_TTL_MS`. Tool requests are
+refused inside the movement or look refractory of the `refractory` input. The
+boundary is fixed: the director chooses goals and never moves the
 root; locomotion integrates the position, gait phase, step targets, arm swing
 and root yaw, and never chooses a goal.
 
@@ -303,6 +303,13 @@ between two zones is a wing that no display shows. There a clip that stops her
 `enter-stage` goal to the nearest zone. Without `reach`, `ground` is the only
 zone and neither wing rule applies.
 
+The director keeps no refractory of its own. The character mind keeps them once
+per character, so a model reload keeps them: `decideBody` returns `reports` of
+what it stamped (`BodyDirectorReport`: a counted clip end, an accepted gesture
+clip, an accepted tool), and the host stamps the durations the mind answers
+into the `refractory` input (`BodyRefractory`) on the director clock at its next
+frame. A host without a mind passes `NO_BODY_REFRACTORY`.
+
 `NO_WORLD_BODY_INPUT` supplies inert world inputs for the classic window. The
 MMD stance director spreads it only when the scene has no stage world; in stage
 mode the scene supplies the ground, root, home, clip ownership, speech, chat,
@@ -312,9 +319,8 @@ The director also performs clips. A `BodyActionRequest` (`gesture`, `action` or
 `dance`, layer `full` or `upper`, source `act`, `tool` or `debug`) is decided in
 a fixed order, first match wins: an empty `clipId` from `tool` or `debug` stops
 the running performance; then `asleep` (away or sleeping), `dragging`, the
-gesture repeat cooldown (`GESTURE_REPEAT_MS`, 4 s per clip, refused without a
-retry time), the action and dance refractories (`ACTION_REFRACTORY_MS` 15 s and
-`DANCE_REFRACTORY_MS` 60 s from the end of the last one), and `busy` (a full clip
+gesture repeat cooldown of the `refractory` input (per clip, refused without a
+retry time), the action and dance refractories of the `refractory` input, and `busy` (a full clip
 runs, or a gesture arrives while any clip runs). A request whose source is
 `debug` and whose `loop` is true skips the gesture repeat cooldown and no other
 rule, so the Motion Lab and the QA gates can keep a gesture playing. An action

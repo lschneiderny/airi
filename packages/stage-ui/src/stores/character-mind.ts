@@ -1,4 +1,4 @@
-import type { MindIdleIntent, MindIntent, MindStep, PerformerCapabilities } from '@proj-airi/character-mind'
+import type { MindIdleIntent, MindIntent, MindStep, PerformerCapabilities, RefractoryRemaining } from '@proj-airi/character-mind'
 import type { IdleReport, IdleView } from '@proj-airi/motion-driver-natural/idle-schedule'
 import type { ReactionDecision } from '@proj-airi/stage-shared/situation'
 import type { SyncedPiniaRuntime } from 'pinia-plugin-synced'
@@ -24,6 +24,8 @@ export interface MindStage {
   idle: (intent: MindIdleIntent) => void
   /** Hands the mind's settle to the stage's body; a stage without posture drops it. */
   settle: (settled: boolean) => void
+  /** Hands the mind's director refractories to the stage's body; a stage without a body drops them. */
+  refractory: (remaining: RefractoryRemaining) => void
   /** Hands one detected beat to the stage's beat clock, which a groove plays on; a stage under another driver drops it. */
   beat: (intervalSeconds: number) => void
 }
@@ -61,7 +63,8 @@ export function voiceDecisionOf({ stimuli, state }: Pick<MindStep, 'stimuli' | '
  * `recordPacing`, named by the card and epoch it loaded, so a write for a replaced record is dropped.
  *
  * Idle: every `idle-act`, `idle-errand`, and `settle` intent of any step goes to every attached stage, so two stages show the
- * same act from the same seed, and only the newest stage reports what its performer saw. After every step the store
+ * same act from the same seed, and only the newest stage reports what its performer saw. Every `refractory` intent also
+ * goes to every attached stage, so each stage's body director keeps her one set of refractories. After every step the store
  * arms one timer at `nextIdleWakeAt` and sends `idle-wake` when it fires. A reset clears the timer and hands the new
  * state the reporting stage's latest view, because a performer reports its view only when it changes. A newer stage
  * that attaches hands the mind the dormant view until it reports, so an act the older stage was asked for no longer
@@ -131,6 +134,8 @@ export const useCharacterMindStore = defineStore('character-mind', () => {
         [...stages].forEach(stage => stage.idle(intent))
       else if (intent.kind === 'settle')
         [...stages].forEach(stage => stage.settle(intent.settled))
+      else if (intent.kind === 'refractory')
+        [...stages].forEach(stage => stage.refractory(intent.remaining))
     }
     armIdleWake()
   })
@@ -183,8 +188,11 @@ export const useCharacterMindStore = defineStore('character-mind', () => {
     // Presence reaches the mind only as edges, so a reset while the user is away would lose the span and her return.
     const away = mind.state.presence.away
     mind.reset({ pacing: record?.pacing ?? null })
-    // A reset gets her up: the new state has not settled, and no edge would tell the stages.
-    stages.forEach(stage => stage.settle(mind.state.idle.settle.settled))
+    // A reset gets her up and clears her refractories: the new state has not settled, and no edge would tell the stages.
+    stages.forEach((stage) => {
+      stage.settle(mind.state.idle.settle.settled)
+      stage.refractory(mind.refractories())
+    })
     loaded = record && { cardId: record.cardId, epoch: characterState.leaderEpoch }
     lastPacing = mind.state.slow.pacing
     clearIdleWake()

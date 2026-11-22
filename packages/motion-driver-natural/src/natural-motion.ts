@@ -212,8 +212,6 @@ export class NaturalMotion {
   private petGlanceUntil = 0
   /** Gives each poke's surprise its own episode id; reaction ids reject reuse without escalation. */
   private pokes = 0
-  /** Active seconds of the last poke surprise; a repeat within `pokeSurpriseDedupeSeconds` only flinches. */
-  private lastPokeSurprise = Number.NEGATIVE_INFINITY
   private readonly pending: PendingAction[] = []
   private voice: NaturalMotionVoice = { speaking: false, speechActiveOrRecent: false, level: 0 }
   private saccadeCount = 0
@@ -733,11 +731,12 @@ export class NaturalMotion {
   /**
    * Starts a poke reaction after advancing to this timestamp; it begins at the next grid step.
    * Position is relative to the touched region's center: x from -1 left to 1 right, y from
-   * -1 top to 1 bottom. The head flinches away, the face shows surprise, and gaze meets the camera.
+   * -1 top to 1 bottom. The head flinches away, the face shows surprise when `surprise` is set (the character mind's
+   * dedupe), and gaze meets the camera.
    */
-  poke(region: NaturalTouchRegion, x: number, y: number, nowSeconds: number) {
+  poke(region: NaturalTouchRegion, x: number, y: number, surprise: boolean, nowSeconds: number) {
     this.advance(nowSeconds)
-    this.pending.push({ kind: 'poke', region, x, y })
+    this.pending.push({ kind: 'poke', region, x, y, surprise })
   }
 
   /**
@@ -924,13 +923,12 @@ export class NaturalMotion {
           this.notify({ kind: 'touch', at: stepStart, touch: 'poke', region: action.region })
       }
     }
-    const pokeState = startPending(pending.filter(action => action.kind !== 'chat' && action.kind !== 'wake'), stepStart, { impulses: this.impulses, gaze: this.gaze, energy: this.energy, mood: this.mood, gestures: this.gestures, cueGestures: this.cueGestures, emotionStrengths: this.emotionStrengths, settings: this.performanceSettings, emotions: this.emotions, notify: this.observer ? this.notify : undefined }, { pokes: this.pokes, lastPokeSurprise: this.lastPokeSurprise })
+    const pokeState = startPending(pending.filter(action => action.kind !== 'chat' && action.kind !== 'wake'), stepStart, { impulses: this.impulses, gaze: this.gaze, energy: this.energy, mood: this.mood, gestures: this.gestures, cueGestures: this.cueGestures, emotionStrengths: this.emotionStrengths, settings: this.performanceSettings, emotions: this.emotions, notify: this.observer ? this.notify : undefined }, { pokes: this.pokes })
     this.pokeSeq += pokeState.pokeEvents.length
     this.reactEventSeq += pokeState.reactEvents.length
     this.latestPoke = pokeState.pokeEvents.length ? { seq: this.pokeSeq, ...pokeState.pokeEvents[pokeState.pokeEvents.length - 1] } : this.latestPoke
     this.latestReact = pokeState.reactEvents.length ? { seq: this.reactEventSeq, ...pokeState.reactEvents[pokeState.reactEvents.length - 1] } : this.latestReact
     this.pokes = pokeState.pokes
-    this.lastPokeSurprise = pokeState.lastPokeSurprise
     this.energy.step(step)
     this.mood.step(step)
     this.faceBaseline.step(step)

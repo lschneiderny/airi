@@ -538,7 +538,8 @@ holds: `idle-timeout`, `away`, `rest-fallback`, `doze-fallback`, `dwell`,
 `goalX`, `pace`, `pendingGoal { x, reason }` (a goal held while she speaks),
 `moveRefractoryUntilMs` and
 `lookRefractoryUntilMs` (director-clock times until which `come_here` and
-`go_home`, or `look_at`, are refused), `lastToolSeq`, `toolRefused` (whether the
+`go_home`, or `look_at`, are refused; the character mind's refractories, which
+the scene stamps at the next frame), `lastToolSeq`, `toolRefused` (whether the
 last tool request was refused) and `toolRetryAfterMs` (how long the refused
 request must wait, `null` when it was accepted), and, appended, `roamMode`,
 `pendingWander { seq, pick, sinceMs }` (a wander Natural asked for, with the mind's

@@ -35,12 +35,6 @@ export const VISIT_SHARE = 0.6
 /** Distance, in leg lengths, at which a visit stops short of the cursor: near enough to watch, not on top of it. */
 export const VISIT_STOP_LEGS = 1.5
 
-/** Refractory in milliseconds shared by the come-here and go-home tools. */
-export const MOVE_TOOL_REFRACTORY_MS = 60_000
-
-/** Refractory in milliseconds for the look-at tool. */
-export const LOOK_TOOL_REFRACTORY_MS = 15_000
-
 /** Minimum time in milliseconds a goal in progress is kept before it is replaced. */
 export const GOAL_MIN_DWELL_MS = 3_000
 
@@ -49,15 +43,6 @@ export const LOOK_OVERRIDE_MS = 8_000
 
 /** Time in milliseconds a goal blocked by a gate is held before it is dropped. */
 export const PENDING_GOAL_TTL_MS = 30_000
-
-/** Refractory in milliseconds after a full-body action ends, before another action or dance is accepted. */
-export const ACTION_REFRACTORY_MS = 15_000
-
-/** Refractory in milliseconds after a dance ends. */
-export const DANCE_REFRACTORY_MS = 60_000
-
-/** Minimum time in milliseconds before the same gesture clip is accepted again. */
-export const GESTURE_REPEAT_MS = 4_000
 
 /** Time in milliseconds a character must have stood after standing up before a full-body clip starts. */
 export const STAND_SETTLE_MS = 800
@@ -101,8 +86,8 @@ export type BodyActionRefusal = 'refractory' | 'busy' | 'asleep' | 'dragging'
  * running performance.
  *
  * The `idle` source is a clip she plays unasked while nothing else claims her. It is the weakest request: it is
- * refused while anything performs, while she walks, and while she talks, listens or thinks; it arms no refractory and
- * no gesture cooldown, so it never makes the model's own request wait; a request from any other source replaces it;
+ * refused while anything performs, while she walks, and while she talks, listens or thinks; the character mind arms no
+ * refractory and no gesture cooldown for it, so it never makes the model's own request wait; a request from any other source replaces it;
  * and it ends when the user touches her, drags her, opens the chat, sends a message, or when she starts to talk.
  */
 export interface BodyActionRequest {
@@ -114,6 +99,39 @@ export interface BodyActionRequest {
   durationMs: number
   source: 'act' | 'tool' | 'debug' | 'idle'
 }
+
+/**
+ * The character mind's refractories on the director clock (CM10): the host stamps the durations the mind's `refractory`
+ * intent left at its next director frame. A clip or tool request inside one is refused `refractory`; 0 is none.
+ */
+export interface BodyRefractory {
+  /** Until when another action is refused, after an action ended. */
+  actionUntilMs: number
+  /** Until when another dance is refused, after a dance ended. */
+  danceUntilMs: number
+  /** The gesture clip that may not repeat yet. */
+  gesture: { clipId: string, untilMs: number } | null
+  /** Until when the come-here and go-home tools are refused. */
+  moveToolUntilMs: number
+  /** Until when the look-at tool is refused. */
+  lookToolUntilMs: number
+}
+
+/** No refractory runs: for a host without a character mind, and before the first `refractory` intent. */
+export const NO_BODY_REFRACTORY: BodyRefractory = Object.freeze({ actionUntilMs: 0, danceUntilMs: 0, gesture: null, moveToolUntilMs: 0, lookToolUntilMs: 0 })
+
+/**
+ * What one director call stamped, in order, for the character mind, which keeps the refractories once per character.
+ * The director reports every counted clip end and every accepted gesture clip, whatever its source; the mind decides
+ * which of them arm a refractory.
+ */
+export type BodyDirectorReport
+  /** A performance ended and counts: it finished, the watchdog ended it, or a user intent or a stop ended it. A failed or replaced clip is not reported. */
+  = | { kind: 'clip-ended', clip: BodyActionKind, source: BodyActionRequest['source'] }
+  /** A gesture clip was accepted. */
+    | { kind: 'gesture-clip', clipId: string, source: BodyActionRequest['source'] }
+  /** A tool request was accepted. */
+    | { kind: 'tool-accepted', tool: BodyToolRequest['kind'] }
 
 /** The adapter's report on the clip the director last accepted. */
 export interface BodyActionFeedback {
@@ -177,6 +195,8 @@ export interface BodyDirectorInput {
   }
   actionRequest: BodyActionRequest | null
   actionFeedback: BodyActionFeedback | null
+  /** The character mind's refractories; `NO_BODY_REFRACTORY` without a mind. */
+  refractory: BodyRefractory
   /** True while the user drags the character. */
   dragging: boolean
   cursorX: number | null
@@ -208,7 +228,7 @@ export interface BodyDirectorInput {
  * Inert geometry for hosts without a stage world: every goal rule stays inactive.
  * Every host still supplies mode, slots, attend and away, clip requests, dragging, and idle states.
  */
-export const NO_WORLD_BODY_INPUT: Omit<BodyDirectorInput, 'nowMs' | 'performance' | 'slots' | 'away' | 'attend' | 'actionRequest' | 'actionFeedback' | 'dragging' | 'idle'> = Object.freeze({
+export const NO_WORLD_BODY_INPUT: Omit<BodyDirectorInput, 'nowMs' | 'performance' | 'slots' | 'away' | 'attend' | 'actionRequest' | 'actionFeedback' | 'refractory' | 'dragging' | 'idle'> = Object.freeze({
   ground: null,
   rootX: 0,
   restX: null,
@@ -261,10 +281,6 @@ export interface BodyDirectorMemory {
   readonly actionRefusal: BodyActionRefusal | null
   /** Milliseconds until a refused action may be retried; null when none applies. */
   readonly actionRetryAfterMs: number | null
-  readonly actionRefractoryUntilMs: { action: number, dance: number }
-  readonly gestureCooldown: { clipId: string, untilMs: number } | null
-  readonly moveRefractoryUntilMs: number
-  readonly lookRefractoryUntilMs: number
   /** Latest time a goal reason held, used for the return-home delay. */
   readonly lastReasonMs: number | null
   /** The latest wander request read; a request with a higher `seq` is new. */
@@ -309,10 +325,6 @@ export const initialBodyDirectorMemory: BodyDirectorMemory = Object.freeze({
   lastActionSeq: 0,
   actionRefusal: null,
   actionRetryAfterMs: null,
-  actionRefractoryUntilMs: Object.freeze({ action: 0, dance: 0 }),
-  gestureCooldown: null,
-  moveRefractoryUntilMs: 0,
-  lookRefractoryUntilMs: 0,
   lastReasonMs: null,
   lastWanderSeq: 0,
   pendingWander: null,
@@ -376,7 +388,7 @@ function drawRandom(state: number): { value: number, state: number } {
 export function decideBody(
   input: BodyDirectorInput,
   previous: BodyDirectorMemory,
-): { intent: BodyIntent, memory: BodyDirectorMemory } {
+): { intent: BodyIntent, memory: BodyDirectorMemory, reports: BodyDirectorReport[] } {
   const finiteNowMs = Number.isFinite(input.nowMs) ? input.nowMs : previous.nowMs ?? 0
   const nowMs = previous.nowMs === null ? finiteNowMs : Math.max(previous.nowMs, finiteNowMs)
   const { ground } = input
@@ -388,6 +400,8 @@ export function decideBody(
   const atHome = Math.abs(input.rootX - input.homeX) <= ARRIVAL_TOLERANCE
 
   const leg = input.legLength
+  const { refractory } = input
+  const reports: BodyDirectorReport[] = []
   let rngState = previous.rngState ?? input.seed >>> 0
   let goalX = ground === null ? null : previous.goalX
   let goalSinceMs = previous.goalSinceMs
@@ -409,8 +423,6 @@ export function decideBody(
   let toolRefused = previous.toolRefused
   let toolRetryAfterMs = previous.toolRetryAfterMs
   let toolRefusalReason = previous.toolRefusalReason
-  let moveRefractoryUntilMs = previous.moveRefractoryUntilMs
-  let lookRefractoryUntilMs = previous.lookRefractoryUntilMs
   let lookOverride = previous.lookOverride !== null && nowMs < previous.lookOverride.untilMs
     ? previous.lookOverride
     : null
@@ -466,22 +478,17 @@ export function decideBody(
   let lastActionSeq = previous.lastActionSeq
   let actionRefusal = previous.actionRefusal
   let actionRetryAfterMs = previous.actionRetryAfterMs
-  let actionRefractoryUntilMs = previous.actionRefractoryUntilMs
-  let gestureCooldown = previous.gestureCooldown
   let fullEnded = false
-  const endPerformance = (armRefractory: boolean) => {
+  // A counted end is reported; the mind arms the refractory and leaves an unasked clip's end unarmed. The report
+  // reaches the director again from the next frame on, so a request in this very call still passes.
+  const endPerformance = (counts: boolean) => {
     if (performing === null)
       return
     const { kind, layer, source } = performing.request
     if (layer === 'full')
       fullEnded = true
-    // A clip she played unasked never makes a requested one wait.
-    if (source === 'idle')
-      armRefractory = false
-    if (armRefractory && kind === 'action')
-      actionRefractoryUntilMs = { ...actionRefractoryUntilMs, action: nowMs + ACTION_REFRACTORY_MS }
-    if (armRefractory && kind === 'dance')
-      actionRefractoryUntilMs = { ...actionRefractoryUntilMs, dance: nowMs + DANCE_REFRACTORY_MS }
+    if (counts)
+      reports.push({ kind: 'clip-ended', clip: kind, source })
     performing = null
   }
   const remainingMs = () => {
@@ -519,7 +526,7 @@ export function decideBody(
   if (requested !== null && requested.seq > lastActionSeq) {
     lastActionSeq = requested.seq
     const isGesture = requested.kind === 'gesture'
-    const refractoryKey = requested.kind === 'dance' ? 'dance' : 'action'
+    const refractoryUntilMs = requested.kind === 'dance' ? refractory.danceUntilMs : refractory.actionUntilMs
     const refuse = (reason: BodyActionRefusal, retryAfterMs: number | null) => {
       actionRefusal = reason
       actionRetryAfterMs = retryAfterMs
@@ -543,12 +550,12 @@ export function decideBody(
       refuse('dragging', null)
     }
     // A looping debug request (the lab, QA gates) repeats a gesture on demand; it still meets the busy rule below.
-    else if (isGesture && (requested.source !== 'debug' || !requested.loop) && gestureCooldown !== null && gestureCooldown.clipId === requested.clipId && nowMs < gestureCooldown.untilMs) {
+    else if (isGesture && (requested.source !== 'debug' || !requested.loop) && refractory.gesture !== null && refractory.gesture.clipId === requested.clipId && nowMs < refractory.gesture.untilMs) {
       // ACT has no answer channel: the gesture is dropped without a retry time.
       refuse('refractory', null)
     }
-    else if (!isGesture && nowMs < actionRefractoryUntilMs[refractoryKey]) {
-      refuse('refractory', actionRefractoryUntilMs[refractoryKey] - nowMs)
+    else if (!isGesture && nowMs < refractoryUntilMs) {
+      refuse('refractory', refractoryUntilMs - nowMs)
     }
     else if (performing !== null && (performing.request.layer === 'full' || isGesture)) {
       refuse('busy', remainingMs())
@@ -563,8 +570,7 @@ export function decideBody(
       actionRefusal = null
       actionRetryAfterMs = null
       if (isGesture) {
-        if (!unasked)
-          gestureCooldown = { clipId: requested.clipId, untilMs: nowMs + GESTURE_REPEAT_MS }
+        reports.push({ kind: 'gesture-clip', clipId: requested.clipId, source: requested.source })
         performing = { request: requested, phase: 'playing', sinceMs: nowMs }
       }
       else {
@@ -654,7 +660,7 @@ export function decideBody(
   const tool = input.toolRequest
   if (tool !== null && tool.seq > previous.lastToolSeq) {
     const isLook = tool.kind === 'look-at'
-    const untilMs = isLook ? lookRefractoryUntilMs : moveRefractoryUntilMs
+    const untilMs = isLook ? refractory.lookToolUntilMs : refractory.moveToolUntilMs
     const unavailable = !isLook && (ground === null || (tool.kind === 'come-here' && input.chatX === null))
     if (nowMs < untilMs) {
       toolRefused = true
@@ -671,14 +677,14 @@ export function decideBody(
       toolRetryAfterMs = null
       toolRefusalReason = null
       if (isLook) {
-        lookRefractoryUntilMs = nowMs + LOOK_TOOL_REFRACTORY_MS
+        reports.push({ kind: 'tool-accepted', tool: tool.kind })
         lookOverride = { seq: tool.seq, target: tool.target ?? 'camera', untilMs: nowMs + LOOK_OVERRIDE_MS }
       }
       else if (ground !== null) {
         // A move tool is a user intent: it ends a looping clip. A one-shot plays on with the goal pending.
         if (performing?.request.loop)
           endPerformance(true)
-        moveRefractoryUntilMs = nowMs + MOVE_TOOL_REFRACTORY_MS
+        reports.push({ kind: 'tool-accepted', tool: tool.kind })
         // Come-here stops where an unfolded chat does: the same stand spot, with the same leg offset.
         const toolX = tool.kind === 'come-here' && input.chatX !== null
           ? chatStandGoal(input.chatX, input.homeX, leg, zones)
@@ -856,6 +862,7 @@ export function decideBody(
         ? null
         : { seq: performing.request.seq, clipId: performing.request.clipId, layer: performing.request.layer, loop: performing.request.loop, phase: performing.phase },
     },
+    reports,
     memory: {
       nowMs,
       idleSinceMs,
@@ -879,10 +886,6 @@ export function decideBody(
       lastActionSeq,
       actionRefusal,
       actionRetryAfterMs,
-      actionRefractoryUntilMs,
-      gestureCooldown,
-      moveRefractoryUntilMs,
-      lookRefractoryUntilMs,
       lastReasonMs,
       lastWanderSeq,
       pendingWander,

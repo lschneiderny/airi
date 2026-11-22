@@ -6,7 +6,7 @@ import type { BodyToolPort } from '../../tools/body'
 import type { VoicePort } from './mind-voice'
 import type { ListedAction, StagePerformanceConductorOptions, StagePerformanceScene } from './use-stage-performance-conductor'
 
-import { NO_CAPABILITIES, SETTLE_SECONDS } from '@proj-airi/character-mind'
+import { DANCE_REFRACTORY_MS, NO_CAPABILITIES, SETTLE_SECONDS } from '@proj-airi/character-mind'
 import { naturalEmotions } from '@proj-airi/motion-driver-natural/emotions'
 import { createDecider, createPickerDecider, defaultExpressionPerformanceSettings, initialTouchAffectMemory, parseAffectTrace, parseExpressionPerformanceSettings, replayAffectTrace, touchAffect } from '@proj-airi/stage-shared/expression-performance'
 import { LIVE2D_NATURAL_CAPABILITIES } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion-adapter'
@@ -716,6 +716,34 @@ describe('stage performance conductor', () => {
       driver = 'natural'
       conductor.syncScene()
       expect(second.setAway.mock.calls).toEqual([[true], [false]])
+    })
+
+    it('hands the refractories to a body scene only, and seeds a new scene with what is left on the mind clock', () => {
+      const first = { ...fakeScene(), setRefractory: vi.fn<NonNullable<StagePerformanceScene['setRefractory']>>() }
+      const second = { ...fakeScene(), setRefractory: vi.fn<NonNullable<StagePerformanceScene['setRefractory']>>() }
+      let scene: StagePerformanceScene | undefined = first
+      let driver: TestPerformer = 'natural'
+      let nowMs = 0
+      const mind = naturalMind({ seed: 7, clock: () => nowMs })
+      const conductor = new StagePerformanceConductor({ scene: () => scene, capabilities: () => driver === 'natural' ? MMD_NATURAL_CAPABILITIES : NO_CAPABILITIES, settings: () => defaultExpressionPerformanceSettings, catalog: () => catalog, seed: 7, mind })
+      const none = { actionMs: 0, danceMs: 0, gesture: null, moveToolMs: 0, lookToolMs: 0 }
+      conductor.syncScene()
+      expect(first.setRefractory.mock.calls).toEqual([[none]])
+
+      // The store hands the mind's answer to the stage, which hands it to the scene.
+      conductor.performerReport({ kind: 'clip-ended', clip: 'dance', source: 'act' })
+      conductor.refractory(mind.refractories())
+      expect(first.setRefractory.mock.calls.at(-1)).toEqual([{ ...none, danceMs: DANCE_REFRACTORY_MS }])
+
+      nowMs = 10_000
+      scene = second
+      conductor.syncScene()
+      expect(second.setRefractory.mock.calls).toEqual([[{ ...none, danceMs: DANCE_REFRACTORY_MS - 10_000 }]])
+
+      driver = 'basic'
+      conductor.syncScene()
+      conductor.refractory(mind.refractories())
+      expect(second.setRefractory).toHaveBeenCalledOnce()
     })
 
     it('hands the settle to a posture scene only, and seeds it from the mind on attach and when posture returns', () => {

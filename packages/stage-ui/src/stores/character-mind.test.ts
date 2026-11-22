@@ -6,7 +6,7 @@ import type { Mock } from 'vitest'
 
 import type { VoicePort, VoiceStimulus } from '../composables/performance/mind-voice'
 
-import { nextIdleWakeAt, NO_CAPABILITIES, SETTLE_SECONDS } from '@proj-airi/character-mind'
+import { LOOK_TOOL_REFRACTORY_MS, nextIdleWakeAt, NO_CAPABILITIES, SETTLE_SECONDS } from '@proj-airi/character-mind'
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { MUSIC_SETTLE_MS } from '@proj-airi/stage-shared/music'
 import { initialSituationState, userGateMemoryOf } from '@proj-airi/stage-shared/situation'
@@ -189,9 +189,9 @@ describe('character mind store', () => {
 
   it('uses the newest declaration, observes a switch synchronously, and replays it after a reset', async () => {
     const store = useCharacterMindStore()
-    const older = store.attachStage({ capabilities: () => MMD_NATURAL_CAPABILITIES, idleCue: vi.fn(), idle: vi.fn(), settle: vi.fn(), beat: vi.fn() })
+    const older = store.attachStage({ capabilities: () => MMD_NATURAL_CAPABILITIES, idleCue: vi.fn(), idle: vi.fn(), settle: vi.fn(), refractory: vi.fn(), beat: vi.fn() })
     const capabilities = ref(NO_CAPABILITIES)
-    const newer = store.attachStage({ capabilities: () => capabilities.value, idleCue: vi.fn(), idle: vi.fn(), settle: vi.fn(), beat: vi.fn() })
+    const newer = store.attachStage({ capabilities: () => capabilities.value, idleCue: vi.fn(), idle: vi.fn(), settle: vi.fn(), refractory: vi.fn(), beat: vi.fn() })
     expect(store.mind.state.performer).toEqual(NO_CAPABILITIES)
     capabilities.value = MMD_NATURAL_CAPABILITIES
     expect(store.mind.state.performer).toEqual(MMD_NATURAL_CAPABILITIES)
@@ -287,8 +287,8 @@ describe('character mind store', () => {
     store.initialize(leadership.runtime)
     const older = vi.fn()
     const newer = vi.fn()
-    store.attachStage({ capabilities: () => MMD_NATURAL_CAPABILITIES, idleCue: vi.fn(), idle: vi.fn(), settle: vi.fn(), beat: older })
-    store.attachStage({ capabilities: () => MMD_NATURAL_CAPABILITIES, idleCue: vi.fn(), idle: vi.fn(), settle: vi.fn(), beat: newer })
+    store.attachStage({ capabilities: () => MMD_NATURAL_CAPABILITIES, idleCue: vi.fn(), idle: vi.fn(), settle: vi.fn(), refractory: vi.fn(), beat: older })
+    store.attachStage({ capabilities: () => MMD_NATURAL_CAPABILITIES, idleCue: vi.fn(), idle: vi.fn(), settle: vi.fn(), refractory: vi.fn(), beat: newer })
     await flush()
     leadership.set(true)
     await flush()
@@ -367,7 +367,7 @@ describe('character mind store', () => {
     const store = useCharacterMindStore()
     port.speak.mockResolvedValue('declined')
     const idleCue = vi.fn()
-    store.attachStage({ capabilities: () => MMD_NATURAL_CAPABILITIES, idleCue, idle: vi.fn(), settle: vi.fn(), beat: vi.fn() })
+    store.attachStage({ capabilities: () => MMD_NATURAL_CAPABILITIES, idleCue, idle: vi.fn(), settle: vi.fn(), refractory: vi.fn(), beat: vi.fn() })
     const send = await connected(store)
     const outcome = settled(store)
 
@@ -382,7 +382,7 @@ describe('character mind store', () => {
     const store = useCharacterMindStore()
     port.speak.mockResolvedValue('declined')
     const idleCue = vi.fn()
-    store.attachStage({ capabilities: () => MMD_NATURAL_CAPABILITIES, idleCue, idle: vi.fn(), settle: vi.fn(), beat: vi.fn() }).detach()
+    store.attachStage({ capabilities: () => MMD_NATURAL_CAPABILITIES, idleCue, idle: vi.fn(), settle: vi.fn(), refractory: vi.fn(), beat: vi.fn() }).detach()
     const send = await connected(store)
     const outcome = settled(store)
 
@@ -398,8 +398,8 @@ describe('character mind store', () => {
     port.speak.mockResolvedValue('declined')
     const older = vi.fn()
     const newer = vi.fn()
-    const olderStage = store.attachStage({ capabilities: () => MMD_NATURAL_CAPABILITIES, idleCue: older, idle: vi.fn(), settle: vi.fn(), beat: vi.fn() })
-    store.attachStage({ capabilities: () => MMD_NATURAL_CAPABILITIES, idleCue: newer, idle: vi.fn(), settle: vi.fn(), beat: vi.fn() })
+    const olderStage = store.attachStage({ capabilities: () => MMD_NATURAL_CAPABILITIES, idleCue: older, idle: vi.fn(), settle: vi.fn(), refractory: vi.fn(), beat: vi.fn() })
+    store.attachStage({ capabilities: () => MMD_NATURAL_CAPABILITIES, idleCue: newer, idle: vi.fn(), settle: vi.fn(), refractory: vi.fn(), beat: vi.fn() })
     olderStage.detach()
     const send = await connected(store)
     const outcome = settled(store)
@@ -415,8 +415,8 @@ describe('character mind store', () => {
     const store = useCharacterMindStore()
     const older = vi.fn()
     const newer = vi.fn()
-    const olderStage = store.attachStage({ capabilities: () => MMD_NATURAL_CAPABILITIES, idleCue: vi.fn(), idle: older, settle: vi.fn(), beat: vi.fn() })
-    const newerStage = store.attachStage({ capabilities: () => MMD_NATURAL_CAPABILITIES, idleCue: vi.fn(), idle: newer, settle: vi.fn(), beat: vi.fn() })
+    const olderStage = store.attachStage({ capabilities: () => MMD_NATURAL_CAPABILITIES, idleCue: vi.fn(), idle: older, settle: vi.fn(), refractory: vi.fn(), beat: vi.fn() })
+    const newerStage = store.attachStage({ capabilities: () => MMD_NATURAL_CAPABILITIES, idleCue: vi.fn(), idle: newer, settle: vi.fn(), refractory: vi.fn(), beat: vi.fn() })
 
     olderStage.report([{ kind: 'view', view: idleView }])
     expect(store.mind.state.idle.view).toBeNull()
@@ -435,10 +435,10 @@ describe('character mind store', () => {
     const store = useCharacterMindStore()
     const older = vi.fn()
     const newer = vi.fn()
-    store.attachStage({ capabilities: () => MMD_NATURAL_CAPABILITIES, idleCue: vi.fn(), idle: vi.fn(), settle: older, beat: vi.fn() })
+    store.attachStage({ capabilities: () => MMD_NATURAL_CAPABILITIES, idleCue: vi.fn(), idle: vi.fn(), settle: older, refractory: vi.fn(), beat: vi.fn() })
     // A body drive that starts no act, so the only idle deadline is the settle.
     const still = { ...idleView, drive: { ...idleView.drive!, body: true, rate: 0 } }
-    store.attachStage({ capabilities: () => MMD_NATURAL_CAPABILITIES, idleCue: vi.fn(), idle: vi.fn(), settle: newer, beat: vi.fn() }).report([{ kind: 'view', view: still }])
+    store.attachStage({ capabilities: () => MMD_NATURAL_CAPABILITIES, idleCue: vi.fn(), idle: vi.fn(), settle: newer, refractory: vi.fn(), beat: vi.fn() }).report([{ kind: 'view', view: still }])
 
     vi.advanceTimersByTime(SETTLE_SECONDS * 1000 - 1)
     expect(newer).not.toHaveBeenCalled()
@@ -451,10 +451,30 @@ describe('character mind store', () => {
     expect(newer.mock.calls).toEqual([[true], [false]])
   })
 
+  it('sends each refractory intent to every attached stage, and clears the refractories at a reset', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] })
+    vi.setSystemTime(T0)
+    const store = useCharacterMindStore()
+    const older = vi.fn()
+    const newer = vi.fn()
+    store.attachStage({ capabilities: () => MMD_NATURAL_CAPABILITIES, idleCue: vi.fn(), idle: vi.fn(), settle: vi.fn(), refractory: older, beat: vi.fn() })
+    store.attachStage({ capabilities: () => MMD_NATURAL_CAPABILITIES, idleCue: vi.fn(), idle: vi.fn(), settle: vi.fn(), refractory: newer, beat: vi.fn() })
+
+    const [intent] = store.mind.receive({ kind: 'performer-report', report: { kind: 'tool-accepted', tool: 'look-at' } })
+    expect(intent).toMatchObject({ kind: 'refractory', remaining: { lookToolMs: LOOK_TOOL_REFRACTORY_MS } })
+    expect(older.mock.calls).toEqual([[intent?.kind === 'refractory' && intent.remaining]])
+    expect(newer.mock.calls).toEqual(older.mock.calls)
+
+    await connected(store)
+    const cleared = { actionMs: 0, danceMs: 0, gesture: null, moveToolMs: 0, lookToolMs: 0 }
+    expect(older.mock.calls.at(-1)).toEqual([cleared])
+    expect(newer.mock.calls.at(-1)).toEqual([cleared])
+  })
+
   it('tells the mind the dormant view when the reporting stage detaches', () => {
     const store = useCharacterMindStore()
-    const olderStage = store.attachStage({ capabilities: () => MMD_NATURAL_CAPABILITIES, idleCue: vi.fn(), idle: vi.fn(), settle: vi.fn(), beat: vi.fn() })
-    const newerStage = store.attachStage({ capabilities: () => MMD_NATURAL_CAPABILITIES, idleCue: vi.fn(), idle: vi.fn(), settle: vi.fn(), beat: vi.fn() })
+    const olderStage = store.attachStage({ capabilities: () => MMD_NATURAL_CAPABILITIES, idleCue: vi.fn(), idle: vi.fn(), settle: vi.fn(), refractory: vi.fn(), beat: vi.fn() })
+    const newerStage = store.attachStage({ capabilities: () => MMD_NATURAL_CAPABILITIES, idleCue: vi.fn(), idle: vi.fn(), settle: vi.fn(), refractory: vi.fn(), beat: vi.fn() })
     newerStage.report([{ kind: 'view', view: idleView }])
 
     // An older stage leaving changes nothing: it never reported.
@@ -470,13 +490,13 @@ describe('character mind store', () => {
     vi.setSystemTime(T0)
     const store = useCharacterMindStore()
     const older = vi.fn()
-    store.attachStage({ capabilities: () => MMD_NATURAL_CAPABILITIES, idleCue: vi.fn(), idle: older, settle: vi.fn(), beat: vi.fn() }).report([{ kind: 'view', view: idleView }])
+    store.attachStage({ capabilities: () => MMD_NATURAL_CAPABILITIES, idleCue: vi.fn(), idle: older, settle: vi.fn(), refractory: vi.fn(), beat: vi.fn() }).report([{ kind: 'view', view: idleView }])
     vi.advanceTimersByTime(Math.ceil(nextIdleWakeAt(store.mind.state.idle)! - T0))
     expect(older).toHaveBeenCalledOnce()
 
     // The older stage's answer to that act no longer counts, so only the newer stage's view can free the mind.
     const newer = vi.fn()
-    store.attachStage({ capabilities: () => MMD_NATURAL_CAPABILITIES, idleCue: vi.fn(), idle: newer, settle: vi.fn(), beat: vi.fn() }).report([{ kind: 'view', view: idleView }])
+    store.attachStage({ capabilities: () => MMD_NATURAL_CAPABILITIES, idleCue: vi.fn(), idle: newer, settle: vi.fn(), refractory: vi.fn(), beat: vi.fn() }).report([{ kind: 'view', view: idleView }])
     const wakeAt = nextIdleWakeAt(store.mind.state.idle)
     expect(wakeAt).not.toBeNull()
     vi.advanceTimersByTime(Math.ceil(wakeAt! - Date.now()))
@@ -490,7 +510,7 @@ describe('character mind store', () => {
     vi.setSystemTime(T0)
     const store = useCharacterMindStore()
     const idle = vi.fn()
-    store.attachStage({ capabilities: () => MMD_NATURAL_CAPABILITIES, idleCue: vi.fn(), idle, settle: vi.fn(), beat: vi.fn() }).report([{ kind: 'view', view: idleView }])
+    store.attachStage({ capabilities: () => MMD_NATURAL_CAPABILITIES, idleCue: vi.fn(), idle, settle: vi.fn(), refractory: vi.fn(), beat: vi.fn() }).report([{ kind: 'view', view: idleView }])
     const wakeAt = nextIdleWakeAt(store.mind.state.idle)!
     expect(wakeAt).toBeGreaterThan(T0)
 
@@ -510,7 +530,7 @@ describe('character mind store', () => {
 
   it('feeds the reaction inspector a touch decision and clears it on dispose', () => {
     const store = useCharacterMindStore()
-    store.attachStage({ capabilities: () => MMD_NATURAL_CAPABILITIES, idleCue: vi.fn(), idle: vi.fn(), settle: vi.fn(), beat: vi.fn() })
+    store.attachStage({ capabilities: () => MMD_NATURAL_CAPABILITIES, idleCue: vi.fn(), idle: vi.fn(), settle: vi.fn(), refractory: vi.fn(), beat: vi.fn() })
     const observability = useSituationObservabilityStore()
     const recordReactionDecision = vi.spyOn(observability, 'recordReactionDecision')
     const publishReactionMemory = vi.spyOn(observability, 'publishReactionMemory')
@@ -594,7 +614,7 @@ describe('character mind store', () => {
 
     it('keeps an away span open across a card switch, so the return after it gets its response', async () => {
       const store = useCharacterMindStore()
-      store.attachStage({ capabilities: () => MMD_NATURAL_CAPABILITIES, idleCue: vi.fn(), idle: vi.fn(), settle: vi.fn(), beat: vi.fn() })
+      store.attachStage({ capabilities: () => MMD_NATURAL_CAPABILITIES, idleCue: vi.fn(), idle: vi.fn(), settle: vi.fn(), refractory: vi.fn(), beat: vi.fn() })
       await connected(store)
       store.mind.receive({ kind: 'presence', away: true, wake: null })
       vi.setSystemTime(T0 + 60_000)

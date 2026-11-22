@@ -10,7 +10,7 @@ import type { NaturalImpulses } from './impulses'
 import type { NaturalEpisode, NaturalMood } from './mood'
 import type { Vec3 } from './posture'
 
-import { pokeDirection, pokeGlanceHold, pokeNudgeTau, pokeStrength, pokeSurpriseDedupeSeconds } from './touch'
+import { pokeDirection, pokeGlanceHold, pokeNudgeTau, pokeStrength } from './touch'
 
 // Desktop reactions. Wake lifts the head slightly and glances at the camera; a screen
 // change glances at the desk for 0.4 s. The wake nudge stays small: intensity 0.4 gives a
@@ -29,7 +29,8 @@ export type PendingAction
     | { kind: 'react', reaction: 'wake' | 'screen-change' }
     /** Ends a sleep through the gentle wake; the idle layer reads it, and it is ignored while she is awake. */
     | { kind: 'wake' }
-    | { kind: 'poke', region: NaturalTouchRegion, x: number, y: number }
+    /** `surprise` is the character mind's: false for a poke within its surprise dedupe, which only flinches. */
+    | { kind: 'poke', region: NaturalTouchRegion, x: number, y: number, surprise: boolean }
     | { kind: 'chat', cue: 'sent' | 'unfold', words: number }
     | { kind: 'look', target: GazePoint | 'away' | null, holdSeconds: number }
 
@@ -37,8 +38,6 @@ export type PendingAction
 export interface PokeSurpriseState {
   /** Gives each poke's surprise its own episode id; reaction ids reject reuse without escalation. */
   pokes: number
-  /** Active seconds of the last poke surprise; a repeat within `pokeSurpriseDedupeSeconds` only flinches. */
-  lastPokeSurprise: number
 }
 
 export interface PendingActionTargets {
@@ -67,7 +66,7 @@ interface StartedActions extends PokeSurpriseState {
 /** Starts reactions, gestures, and look requests queued since the previous step; returns the updated poke surprise state. */
 export function startPending(actions: Exclude<PendingAction, { kind: 'chat' | 'wake' }>[], at: number, targets: PendingActionTargets, pokeState: PokeSurpriseState): StartedActions {
   const { impulses, gaze, energy, mood, gestures, cueGestures, emotionStrengths, settings, emotions, notify } = targets
-  let { pokes, lastPokeSurprise } = pokeState
+  let { pokes } = pokeState
   const pokeEvents: { at: number, region: NaturalTouchRegion, x: number, y: number }[] = []
   const reactEvents: { at: number, kind: 'wake' | 'screen-change' }[] = []
   for (const action of actions) {
@@ -92,10 +91,9 @@ export function startPending(actions: Exclude<PendingAction, { kind: 'chat' | 'w
     if (action.kind === 'poke') {
       const strength = pokeStrength[action.region]
       impulses.nudge(pokeDirection(action.region, action.x, action.y), strength.nudge, at, pokeNudgeTau)
-      // Surprise carries no glance of its own; a repeat within its 2 s dedupe only flinches.
+      // Surprise carries no glance of its own; a poke the mind deduplicated only flinches.
       // A poke uses the `clear` band, which is how reactions run with band recruitment disabled.
-      if (at - lastPokeSurprise >= pokeSurpriseDedupeSeconds) {
-        lastPokeSurprise = at
+      if (action.surprise) {
         impulses.trigger({ id: `poke-${++pokes}`, emotion: 'surprised', nominal: strength.surprise, intensity: strength.surprise, band: 'clear', escalation: false }, at)
       }
       gaze.glance({ source: 'poke', point: glanceTargets.camera, hold: pokeGlanceHold }, at)
@@ -134,5 +132,5 @@ export function startPending(actions: Exclude<PendingAction, { kind: 'chat' | 'w
     energy.react(at)
     reactEvents.push({ at, kind: action.reaction })
   }
-  return { pokes, lastPokeSurprise, pokeEvents, reactEvents }
+  return { pokes, pokeEvents, reactEvents }
 }

@@ -15,7 +15,7 @@ import { dirname, resolve } from 'node:path'
 import { setImmediate } from 'node:timers/promises'
 
 import { CharacterMind, idleOrderOf, nextIdleWakeAt } from '@proj-airi/character-mind'
-import { NO_WORLD_BODY_INPUT } from '@proj-airi/motion-driver-humanoid/director'
+import { NO_BODY_REFRACTORY, NO_WORLD_BODY_INPUT } from '@proj-airi/motion-driver-humanoid/director'
 import { MOTION_TRACE_KIND, MOTION_TRACE_VERSION } from '@proj-airi/motion-driver-humanoid/motion-trace'
 import { deriveSeed } from '@proj-airi/motion-driver-natural/random'
 import { idleKindsOutOfReach, MMDBody } from '@proj-airi/stage-ui-mmd/composables/mmd/body'
@@ -303,7 +303,8 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
         idleMotionName: '',
         isRegistered: () => false,
         idle: directorIdleStates(settled, natural.bodyFrame.intent.idle.behaviour),
-        interaction: { away: bodyAway, attend: { untilMs: null, touchSeq: 0, chatSeq: 0, chatOpenSeq: 0 }, actionRequest: null, actionFeedback: null, dragging: false },
+        // The runner requests no clip and no tool, so no refractory of the mind ever applies.
+        interaction: { away: bodyAway, attend: { untilMs: null, touchSeq: 0, chatSeq: 0, chatOpenSeq: 0 }, actionRequest: null, actionFeedback: null, refractory: NO_BODY_REFRACTORY, dragging: false },
         world: {
           ...NO_WORLD_BODY_INPUT,
           ground: rig.legLength ? { minX: -60 * rig.legLength, maxX: 60 * rig.legLength } : null,

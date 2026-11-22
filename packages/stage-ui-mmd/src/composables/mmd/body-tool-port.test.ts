@@ -2,15 +2,17 @@ import type { PerformanceState } from '@proj-airi/stage-shared/performance-state
 
 import type { MMDStanceInteraction, MMDStanceWorld } from './stance'
 
-import { MOVE_TOOL_REFRACTORY_MS, NO_WORLD_BODY_INPUT } from '@proj-airi/motion-driver-humanoid/director'
+import { CharacterMind, MOVE_TOOL_REFRACTORY_MS } from '@proj-airi/character-mind'
+import { NO_BODY_REFRACTORY, NO_WORLD_BODY_INPUT } from '@proj-airi/motion-driver-humanoid/director'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { MMDBodyToolPort } from './body-tool-port'
-import { CHAT_STAND_GAP_LEGS, chatStandX, MMDStanceDirector } from './stance'
+import { MMD_NATURAL_CAPABILITIES } from './natural/adapter'
+import { CHAT_STAND_GAP_LEGS, chatStandX, MMDRefractoryInbox, MMDStanceDirector } from './stance'
 
 const idle: Pick<PerformanceState, 'mode' | 'attention' | 'away'> = { mode: 'idle', attention: 'camera', away: false }
 const EPOCH_MS = 1_000_000
-const quiet: MMDStanceInteraction = { away: false, attend: { untilMs: null, touchSeq: 0, chatSeq: 0, chatOpenSeq: 0 }, actionRequest: null, actionFeedback: null, dragging: false }
+const quiet: MMDStanceInteraction = { away: false, attend: { untilMs: null, touchSeq: 0, chatSeq: 0, chatOpenSeq: 0 }, actionRequest: null, actionFeedback: null, refractory: NO_BODY_REFRACTORY, dragging: false }
 const unitsPerDip = 1 / 15
 const legLength = 9
 const halfWidth = 2.7
@@ -21,9 +23,16 @@ interface Setup {
   homeX: number
 }
 
-/** Drives the real director and the port the way the scene does, one frame per call. */
+/**
+ * Drives the real director and the port the way the scene does, one frame per call. The director's reports reach a real
+ * mind, whose refractories the next frame stamps, as the scene and the stage wire them.
+ */
 function stage({ rootX, homeX }: Setup) {
   const director = new MMDStanceDirector()
+  let directorMs = EPOCH_MS
+  const mind = new CharacterMind({ seed: 1, clock: () => directorMs })
+  mind.receive({ kind: 'performer', capabilities: MMD_NATURAL_CAPABILITIES })
+  const refractory = new MMDRefractoryInbox()
   const port = new MMDBodyToolPort()
   const standX = chatStandX(chat, rootX, homeX, halfWidth, legLength, { minX: -80, maxX: 80 })
   function frame(atMs: number, patch: Partial<MMDStanceWorld> = {}, interaction: MMDStanceInteraction = quiet) {
@@ -37,8 +46,14 @@ function stage({ rootX, homeX }: Setup) {
       toolRequest: port.request,
       ...patch,
     }
-    const directorMs = EPOCH_MS + atMs
-    director.update({ interaction, nowMs: directorMs, performance: idle, slots: {}, idleMotionName: '', isRegistered: () => true, world })
+    directorMs = EPOCH_MS + atMs
+    const { reports } = director.update({ interaction: { ...interaction, refractory: refractory.atFrame(directorMs) }, nowMs: directorMs, performance: idle, slots: {}, idleMotionName: '', isRegistered: () => true, world })
+    for (const report of reports) {
+      for (const intent of mind.receive({ kind: 'performer-report', report })) {
+        if (intent.kind === 'refractory')
+          refractory.receive(intent.remaining)
+      }
+    }
     port.observe({
       rootX,
       homeX,
@@ -99,12 +114,14 @@ describe('mmd body tool port with the stance director', () => {
     const first = port.comeHere()
     frame(100)
     expect((await first).success).toBe(true)
+    // The mind's refractory starts on the next frame's director clock.
+    frame(116)
 
     const second = port.comeHere()
     frame(10_100)
     const refused = await second
     expect(refused.success).toBe(false)
-    expect(refused.retryAfterSeconds).toBe(Math.ceil((MOVE_TOOL_REFRACTORY_MS - 10_000) / 1000))
+    expect(refused.retryAfterSeconds).toBe(Math.ceil((116 + MOVE_TOOL_REFRACTORY_MS - 10_100) / 1000))
     expect(director.diagnostics.toolRefused).toBe(true)
 
     const look = port.lookAt('cursor')
@@ -132,8 +149,10 @@ describe('mmd body tool port with the stance director', () => {
     const answer = atHome.port.goHome()
     atHome.frame(1_000)
     await answer
+    // The mind's refractory starts on the next frame's director clock.
+    atHome.frame(1_016)
     expect(atHome.port.state().refractorySeconds).toBe(60)
-    atHome.frame(31_000)
+    atHome.frame(31_016)
     expect(atHome.port.state().refractorySeconds).toBe(30)
   })
 

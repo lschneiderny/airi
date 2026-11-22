@@ -1,6 +1,6 @@
 import type { IdleBehaviourReport } from '@proj-airi/motion-driver-natural/idle-activities'
 import type { IdleErrandReport } from '@proj-airi/motion-driver-natural/idle-errands'
-import type { IdlePropCandidate, Moment, MomentCandidate, Occasion, PastimeHistory } from '@proj-airi/stage-shared/expression-performance'
+import type { IdlePropCandidate, Moment, MomentCandidate, MomentHistory, Occasion, PastimeHistory } from '@proj-airi/stage-shared/expression-performance'
 
 import type { StageExpressionBackend } from '../../features/performance/expression-backend'
 import type { NaturalLabIdleLife } from '../../stores/natural-performance-override'
@@ -36,6 +36,13 @@ export interface IdlePropsOptions {
    */
   occasions?: () => readonly Occasion[]
   /**
+   * When each entry last marked a moment, read at each moment: the character mind's moment rest
+   * (`MindState.refractory.momentRest`), which every stage shares and a remount keeps. Its times share the `now` clock.
+   */
+  momentRest: () => MomentHistory
+  /** Tells the character mind that an entry marked a moment, so it rests in every stage. */
+  momentMarked: (entryId: string) => void
+  /**
    * Uniform draws for previews and for a behaviour reported without the mind's intent id; defaults to a local
    * Mulberry32 stream starting at 0.
    */
@@ -57,7 +64,8 @@ export interface IdlePropsOptions {
  * - A moment (`onMoment`, and the idle acts `onIdleBehaviour` sees) is marked with one entry the user tagged for it,
  *   some of the times it happens, drawn from the seed of the mind's intent that caused it, so every stage picks the
  *   same: until the act ends for a moment that is an act, for a few seconds otherwise. One
- *   moment is marked at a time. A moment is not reported to the situation.
+ *   moment is marked at a time. An entry that marked one rests by the mind's moment rest, which every stage shares.
+ *   A moment is not reported to the situation.
  * - All of them are claims below the slot leases, so an expression the model asks for still shows on top, and above
  *   the user's switches. Each pastime is reported to the situation as a `prop` activity with the entry's label.
  *
@@ -77,7 +85,6 @@ export function useIdleProps(options: IdlePropsOptions) {
   /** A pastime started by hand has a negative `seq`, which Natural never issues, and ends at `untilMs`. */
   let held: (IdlePropCandidate & { seq: number, untilMs?: number }) | null = null
   let previewSeq = 0
-  let momentHistory: Record<string, number> = {}
   let marking: (MomentCandidate & { moment: Moment, untilMs: number }) | null = null
   let occasions: readonly Occasion[] = []
   /** When she started to fall asleep, or `null` while she is awake. */
@@ -180,7 +187,7 @@ export function useIdleProps(options: IdlePropsOptions) {
     const tickets = options_.intentId === undefined
       ? { gate: random(), pick: random() }
       : drawPickerTickets(expressionSeed(options_.intentId, options_.purpose ?? 'moment')).tickets
-    const picked = chooseMomentEntry(offered, moment, momentHistory, { nowMs, chance: tickets.gate, pick: tickets.pick, force: options_.force })
+    const picked = chooseMomentEntry(offered, moment, options.momentRest(), { nowMs, chance: tickets.gate, pick: tickets.pick, force: options_.force })
     if (!picked)
       return
     const hold = MOMENT_HOLD_MS[moment]
@@ -189,7 +196,7 @@ export function useIdleProps(options: IdlePropsOptions) {
       marking = null
       return
     }
-    momentHistory = { ...momentHistory, [picked.id]: nowMs }
+    options.momentMarked(picked.id)
   }
 
   /** Starts a pastime now, as Natural's draw would, for the lab: the same pick, claim and report, kept for 30 s. */

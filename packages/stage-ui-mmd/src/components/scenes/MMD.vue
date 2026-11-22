@@ -9,9 +9,9 @@
   * contract Stage.vue expects from every renderer.
 */
 
-import type { AttendIntent, ChatReadIntent, TouchReactionIntent, TouchReport } from '@proj-airi/character-mind'
+import type { AttendIntent, ChatReadIntent, RefractoryRemaining, TouchReactionIntent, TouchReport } from '@proj-airi/character-mind'
 import type { ClipBoneMask, ClipMaskGroup } from '@proj-airi/motion-driver-humanoid/clip-mask'
-import type { BodyActionKind, BodyActionRequest } from '@proj-airi/motion-driver-humanoid/director'
+import type { BodyActionKind, BodyActionRequest, BodyDirectorReport } from '@proj-airi/motion-driver-humanoid/director'
 import type { IdleClipCandidate, IdleClipHistory } from '@proj-airi/motion-driver-humanoid/idle-clips'
 import type { MotionTraceEvent } from '@proj-airi/motion-driver-humanoid/motion-trace'
 import type { BodyIntent } from '@proj-airi/motion-driver-humanoid/types'
@@ -101,7 +101,7 @@ import { readMMDRigProfile } from '../../composables/mmd/rig'
 import { buildMMDClipMask, mmdClipMaskBones } from '../../composables/mmd/rig/clip-mask'
 import { composeMMDStages } from '../../composables/mmd/stage-composition'
 import { applyStageCamera, applyStageRoot, measureStageExtent, projectCharacterPlacement, rowInputs, stagePixelRatio } from '../../composables/mmd/stage-world'
-import { chatStandX, directorIdleStates, frameClocks, MMDAttendInbox, MMDStanceDirector, wanderErrandAnswer } from '../../composables/mmd/stance'
+import { chatStandX, directorIdleStates, frameClocks, MMDAttendInbox, MMDRefractoryInbox, MMDStanceDirector, wanderErrandAnswer } from '../../composables/mmd/stance'
 import { buildMMDTouchColliders, MMDTouch, mmdTouchRegionRoots } from '../../composables/mmd/touch'
 import { useMMDClipMetadata } from '../../stores/clip-metadata'
 import { useMMDExpressionStore } from '../../stores/expression-store'
@@ -179,6 +179,8 @@ const emit = defineEmits<{
   (e: 'idleReports', reports: readonly IdleReport[]): void
   /** Natural's cursor reports for the character mind, once per frame that had one. */
   (e: 'cursorReports', reports: readonly CursorReport[]): void
+  /** What the body director stamped (clip ends, gesture clips, accepted tools), once per frame that had one, for the character mind's refractories. */
+  (e: 'bodyReports', reports: readonly BodyDirectorReport[]): void
   /** Something her body did on its own started or ended: sitting down, sleeping, a walk of her own, an unasked clip. */
   (e: 'self', report: MMDSelfReport): void
   /** The character's projected rect in work-area DIP changed (stage mode only). */
@@ -200,6 +202,8 @@ const diagnostics = useMMDMotionDiagnostics()
 const expressions = useMMDExpressionStore()
 // The character mind owns every attend cause; the inbox stamps cursor windows on the next director frame.
 const attendInbox = new MMDAttendInbox()
+/** The mind's refractories; it outlives a model reload, so a new director keeps them. */
+const refractoryInbox = new MMDRefractoryInbox()
 let bodyAway = false
 /** The character mind's last `settle` intent, also seeded when this scene attaches; the director sits or rests her on it. */
 let mindSettled = false
@@ -726,8 +730,10 @@ function renderLoop(now = performance.now()) {
       // Attend intents and clip requests also apply without a stage world.
       baseEligible: isBaseEligible,
       idle: naturalIdleStates(),
-      interaction: { away: motionDriver.value === 'natural' && bodyAway, attend: attendInbox.atFrame(clocks.directorMs), actionRequest: pendingAction, actionFeedback, dragging },
+      interaction: { away: motionDriver.value === 'natural' && bodyAway, attend: attendInbox.atFrame(clocks.directorMs), actionRequest: pendingAction, actionFeedback, refractory: refractoryInbox.atFrame(clocks.directorMs), dragging },
     })
+    if (base.reports.length > 0)
+      emit('bodyReports', base.reports)
     if (base.changed || !directorBaseApplied) {
       animation.setBaseMotion(base.motion)
       directorBaseApplied = true
@@ -1634,7 +1640,7 @@ function handleTouchEvents(reports: TouchReport[]) {
 /** Performs the mind's touch reaction; its separate attend intent reaches the director. */
 function reactToTouch(intent: TouchReactionIntent) {
   if (intent.gesture === 'poke') {
-    natural?.poke(intent.region, intent.point)
+    natural?.poke(intent.region, intent.point, intent.surprise)
   }
   else if (intent.phase === 'start') {
     petGranted = true
@@ -1907,6 +1913,8 @@ defineExpose({
   attend: (intent: AttendIntent) => attendInbox.receive(intent),
   /** Natural only: the mind's current presence answer, also seeded when this scene attaches. */
   setAway: (away: boolean) => { bodyAway = away },
+  /** Natural only: the mind's refractories, also seeded when this scene attaches; the director stamps them at the next frame. */
+  setRefractory: (remaining: RefractoryRemaining) => refractoryInbox.receive(remaining),
   /** Natural only: the mind's settle, also seeded when this scene attaches; the director reads it at the next frame. */
   setSettled: (settled: boolean) => { mindSettled = settled },
   /** Natural only: ends a sleep with the gentle wake; ignored while she is awake. */

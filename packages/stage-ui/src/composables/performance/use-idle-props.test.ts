@@ -4,6 +4,7 @@ import type { CatalogEntry, Occasion } from '@proj-airi/stage-shared/expression-
 import type { StageExpressionBackend } from '../../features/performance/expression-backend'
 import type { StageSelfReport } from '../../stores/self'
 
+import { CharacterMind } from '@proj-airi/character-mind'
 import { afterEach, describe, expect, it } from 'vitest'
 import { effectScope } from 'vue'
 
@@ -21,8 +22,14 @@ describe('useIdleProps', () => {
   let scope: ReturnType<typeof effectScope> | undefined
   afterEach(() => scope?.stop())
 
-  function setup(catalog: CatalogEntry[], withClaims = true) {
-    const state: { nowMs: number, enabled: boolean, occasions: Occasion[], random: number } = { nowMs: 0, enabled: true, occasions: [], random: 0 }
+  /** The window's mind, which keeps the moment rest; a stage that shares it passes the same one. */
+  function windowMind(clock: { nowMs: number }) {
+    return new CharacterMind({ seed: 1, clock: () => clock.nowMs })
+  }
+
+  function setup(catalog: CatalogEntry[], withClaims = true, shared?: { mind: CharacterMind, clock: { nowMs: number } }) {
+    const state: { nowMs: number, enabled: boolean, occasions: Occasion[], random: number } = { nowMs: shared?.clock.nowMs ?? 0, enabled: true, occasions: [], random: 0 }
+    const mind = shared?.mind ?? windowMind(state)
     const reports: string[] = []
     const answers: string[] = []
     const backend: StageExpressionBackend & { idleActive: string[], manualActive: string[] } = {
@@ -46,6 +53,8 @@ describe('useIdleProps', () => {
       report: (report: StageSelfReport) => reports.push(`${report.activity}:${report.phase}:${report.label}`),
       answer: (seq, outcome) => answers.push(`${seq}:${outcome}`),
       occasions: () => state.occasions,
+      momentRest: () => mind.state.refractory.momentRest,
+      momentMarked: entryId => mind.receive({ kind: 'performer-report', report: { kind: 'moment-marked', entryId } }),
       random: () => state.random,
       now: () => state.nowMs,
     }))!
@@ -58,8 +67,32 @@ describe('useIdleProps', () => {
     }
     const start = (errand: IdleErrandRecord) => props.onErrand({ phase: 'start', errand })
     const end = (errand: IdleErrandRecord) => props.onErrand({ phase: 'end', errand: { ...errand, endedAt: errand.end, outcome: 'done' } })
-    return { state, backend, reports, answers, props, run, start, end }
+    return { state, backend, reports, answers, props, run, start, end, mind }
   }
+
+  it('rests an entry another stage marked, by the moment rest the mind keeps', () => {
+    const catalog = [entry('wink', { moments: ['poked'] })]
+    const clock = { nowMs: 0 }
+    const mind = windowMind(clock)
+    const first = setup(catalog, true, { mind, clock })
+    const firstScope = scope!
+    const second = setup(catalog, true, { mind, clock })
+    try {
+      first.props.onMoment('poked')
+      expect(first.backend.idleActive).toEqual(['wink'])
+
+      clock.nowMs = second.state.nowMs = 59_999
+      second.props.onMoment('poked')
+      expect(second.backend.idleActive).toEqual([])
+
+      clock.nowMs = second.state.nowMs = 60_000
+      second.props.onMoment('poked')
+      expect(second.backend.idleActive).toEqual(['wink'])
+    }
+    finally {
+      firstScope.stop()
+    }
+  })
 
   it('holds the pastime Natural starts, tells the situation, and puts it away when Natural ends it', () => {
     const { backend, reports, answers, run, start, end } = setup([entry('game', { idleUse: 'activity', label: 'handheld' }), entry('glasses')])

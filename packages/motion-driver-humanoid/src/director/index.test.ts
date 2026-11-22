@@ -1,19 +1,16 @@
 import type { PerformanceMode } from '@proj-airi/stage-shared/performance-state'
 
 import type { BodyIntent } from '../types'
-import type { BodyActionRequest } from './index'
+import type { BodyActionRequest, BodyDirectorReport, BodyRefractory } from './index'
 
 import { describe, expect, it } from 'vitest'
 
 import {
-  ACTION_REFRACTORY_MS,
-  DANCE_REFRACTORY_MS,
   decideBody,
   GOAL_MIN_DWELL_MS,
   initialBodyDirectorMemory,
   LOOK_OVERRIDE_MS,
-  LOOK_TOOL_REFRACTORY_MS,
-  MOVE_TOOL_REFRACTORY_MS,
+  NO_BODY_REFRACTORY,
   NO_WORLD_BODY_INPUT,
   PENDING_GOAL_TTL_MS,
   RETURN_HOME_DELAY_MS,
@@ -28,6 +25,21 @@ type DirectorInput = Parameters<typeof decideBody>[0]
 /** Natural's long idle states: settled in after a long idle, asleep while the user is away. */
 const SETTLED = { settled: true, asleep: false }
 const ASLEEP = { settled: false, asleep: true }
+
+/**
+ * Refractory lengths the character mind stamps, in milliseconds. The director reads only the times its input carries,
+ * so these are the mind's values only to keep the scripts familiar.
+ */
+const ACTION_MS = 15_000
+const DANCE_MS = 60_000
+const GESTURE_MS = 4_000
+const MOVE_TOOL_MS = 60_000
+const LOOK_TOOL_MS = 15_000
+
+/** The mind's refractories on the director clock, as the host stamps them into the input. */
+function refractory(patch: Partial<BodyRefractory>): BodyRefractory {
+  return { ...NO_BODY_REFRACTORY, ...patch }
+}
 
 function input(overrides: Partial<DirectorInput> = {}): DirectorInput {
   return {
@@ -50,6 +62,7 @@ function input(overrides: Partial<DirectorInput> = {}): DirectorInput {
 
     actionRequest: null,
     actionFeedback: null,
+    refractory: NO_BODY_REFRACTORY,
     dragging: false,
     cursorX: null,
     cursorOnStage: false,
@@ -72,7 +85,7 @@ function performance(
 function decide(
   frame: DirectorInput,
   memory = initialBodyDirectorMemory,
-): { intent: BodyIntent, memory: typeof initialBodyDirectorMemory } {
+): { intent: BodyIntent, memory: typeof initialBodyDirectorMemory, reports: BodyDirectorReport[] } {
   return decideBody(frame, memory)
 }
 
@@ -220,6 +233,7 @@ describe('body director home, goals, roam and tools', () => {
 
       actionRequest: null,
       actionFeedback: null,
+      refractory: NO_BODY_REFRACTORY,
       dragging: false,
       idle,
     })
@@ -536,37 +550,44 @@ describe('body director home, goals, roam and tools', () => {
     const home = decide(world({ rootX: 8, homeX: 1, toolRequest: { seq: 1, kind: 'go-home' } }))
 
     expect(come.intent.locomotion).toMatchObject({ goalX: 5, reason: 'tool', pace: 'walk', arriveFacing: 0 })
-    expect(come.memory).toMatchObject({ lastToolSeq: 1, toolRefused: false, moveRefractoryUntilMs: MOVE_TOOL_REFRACTORY_MS })
+    expect(come.memory).toMatchObject({ lastToolSeq: 1, toolRefused: false })
+    expect(come.reports).toEqual([{ kind: 'tool-accepted', tool: 'come-here' }])
+    expect(home.reports).toEqual([{ kind: 'tool-accepted', tool: 'go-home' }])
     expect(home.intent.locomotion).toMatchObject({ goalX: 1, reason: 'tool', pace: 'walk' })
   })
 
-  it('refuses a second movement tool inside the shared refractory and accepts it after', () => {
+  it('refuses a second movement tool inside the shared refractory the input carries and accepts it after', () => {
+    const moving = refractory({ moveToolUntilMs: MOVE_TOOL_MS })
     const first = decide(world({ chatX: 6, toolRequest: { seq: 1, kind: 'come-here' } }))
-    const refused = decide(world({ nowMs: 1_000, chatX: 6, toolRequest: { seq: 2, kind: 'go-home' } }), first.memory)
-    const accepted = decide(world({ nowMs: MOVE_TOOL_REFRACTORY_MS, rootX: 6, chatX: 6, toolRequest: { seq: 3, kind: 'go-home' } }), refused.memory)
+    const refused = decide(world({ nowMs: 1_000, chatX: 6, refractory: moving, toolRequest: { seq: 2, kind: 'go-home' } }), first.memory)
+    const accepted = decide(world({ nowMs: MOVE_TOOL_MS, rootX: 6, chatX: 6, refractory: moving, toolRequest: { seq: 3, kind: 'go-home' } }), refused.memory)
 
-    expect(refused.memory).toMatchObject({ lastToolSeq: 2, toolRefused: true, toolRetryAfterMs: MOVE_TOOL_REFRACTORY_MS - 1_000 })
+    expect(refused.memory).toMatchObject({ lastToolSeq: 2, toolRefused: true, toolRetryAfterMs: MOVE_TOOL_MS - 1_000 })
+    expect(refused.reports).toEqual([])
     expect(refused.intent.locomotion).toMatchObject({ goalX: 5, reason: 'tool' })
     expect(accepted.memory.toolRefused).toBe(false)
     expect(accepted.intent.locomotion.goalX).toBe(0)
   })
 
   it('keeps the look refractory independent of the movement refractory', () => {
+    const looking = refractory({ lookToolUntilMs: LOOK_TOOL_MS })
     const first = decide(world({ toolRequest: { seq: 1, kind: 'look-at', target: 'camera' } }))
-    const refused = decide(world({ nowMs: 1_000, toolRequest: { seq: 2, kind: 'look-at', target: 'chat' } }), first.memory)
-    const move = decide(world({ nowMs: 2_000, chatX: 6, toolRequest: { seq: 3, kind: 'come-here' } }), refused.memory)
-    const after = decide(world({ nowMs: LOOK_TOOL_REFRACTORY_MS, toolRequest: { seq: 4, kind: 'look-at', target: 'chat' } }), move.memory)
+    const refused = decide(world({ nowMs: 1_000, refractory: looking, toolRequest: { seq: 2, kind: 'look-at', target: 'chat' } }), first.memory)
+    const move = decide(world({ nowMs: 2_000, chatX: 6, refractory: looking, toolRequest: { seq: 3, kind: 'come-here' } }), refused.memory)
+    const after = decide(world({ nowMs: LOOK_TOOL_MS, refractory: { ...looking, moveToolUntilMs: 2_000 + MOVE_TOOL_MS }, toolRequest: { seq: 4, kind: 'look-at', target: 'chat' } }), move.memory)
 
-    expect(refused.memory).toMatchObject({ toolRefused: true, toolRetryAfterMs: LOOK_TOOL_REFRACTORY_MS - 1_000 })
+    expect(first.reports).toEqual([{ kind: 'tool-accepted', tool: 'look-at' }])
+    expect(refused.memory).toMatchObject({ toolRefused: true, toolRetryAfterMs: LOOK_TOOL_MS - 1_000 })
     expect(move.memory.toolRefused).toBe(false)
     expect(after.memory.toolRefused).toBe(false)
   })
 
   it.each(['camera', 'cursor', 'chat', 'away'] as const)('carries a stable look request for %s until the override expires', (target) => {
     const accepted = decide(world({ toolRequest: { seq: 1, kind: 'look-at', target } }))
-    const still = decide(world({ nowMs: LOOK_OVERRIDE_MS - 1, toolRequest: { seq: 2, kind: 'look-at', target } }), accepted.memory)
-    const expired = decide(world({ nowMs: LOOK_OVERRIDE_MS, toolRequest: { seq: 2, kind: 'look-at', target } }), still.memory)
-    const next = decide(world({ nowMs: LOOK_TOOL_REFRACTORY_MS, toolRequest: { seq: 3, kind: 'look-at', target } }), expired.memory)
+    const looking = refractory({ lookToolUntilMs: LOOK_TOOL_MS })
+    const still = decide(world({ nowMs: LOOK_OVERRIDE_MS - 1, refractory: looking, toolRequest: { seq: 2, kind: 'look-at', target } }), accepted.memory)
+    const expired = decide(world({ nowMs: LOOK_OVERRIDE_MS, refractory: looking, toolRequest: { seq: 2, kind: 'look-at', target } }), still.memory)
+    const next = decide(world({ nowMs: LOOK_TOOL_MS, refractory: looking, toolRequest: { seq: 3, kind: 'look-at', target } }), expired.memory)
 
     expect(accepted.intent.look).toEqual({ seq: 1, target, holdMs: LOOK_OVERRIDE_MS })
     expect(still.intent.look).toEqual(accepted.intent.look)
@@ -750,27 +771,32 @@ describe('body director actions', () => {
   it('(d) reports the retry time of a refractory refusal and still advances the sequence', () => {
     const started = decide(world({ actionRequest: action(1) }))
     const finished = decide(world({ nowMs: 5_000, actionRequest: action(1), actionFeedback: { seq: 1, state: 'finished' } }), started.memory)
+    const acting = refractory({ actionUntilMs: 5_000 + ACTION_MS })
     const refused = decide(world({
       nowMs: 6_000,
+      refractory: acting,
       actionRequest: action(2),
       toolRequest: { seq: 1, kind: 'look-at', target: 'chat' },
     }), finished.memory)
-    const accepted = decide(world({ nowMs: 5_000 + ACTION_REFRACTORY_MS, actionRequest: action(3) }), refused.memory)
+    const accepted = decide(world({ nowMs: 5_000 + ACTION_MS, refractory: acting, actionRequest: action(3) }), refused.memory)
 
     expect(finished.intent.action).toBeNull()
-    expect(refused.memory).toMatchObject({ lastActionSeq: 2, actionRefusal: 'refractory', actionRetryAfterMs: ACTION_REFRACTORY_MS - 1_000, toolRefused: false })
+    expect(finished.reports).toEqual([{ kind: 'clip-ended', clip: 'action', source: 'tool' }])
+    expect(refused.memory).toMatchObject({ lastActionSeq: 2, actionRefusal: 'refractory', actionRetryAfterMs: ACTION_MS - 1_000, toolRefused: false })
     expect(refused.intent.action).toBeNull()
     expect(accepted.memory).toMatchObject({ lastActionSeq: 3, actionRefusal: null, actionRetryAfterMs: null })
     expect(accepted.intent.action?.seq).toBe(3)
   })
 
   it('(d) drops a repeated gesture inside the per-clip cooldown without a retry time', () => {
+    const waved = refractory({ gesture: { clipId: 'wave', untilMs: GESTURE_MS } })
     const first = decide(world({ actionRequest: gesture(1) }))
-    const finished = decide(world({ nowMs: 1_000, actionRequest: gesture(1), actionFeedback: { seq: 1, state: 'finished' } }), first.memory)
-    const repeated = decide(world({ nowMs: 2_000, actionRequest: gesture(2) }), finished.memory)
-    const other = decide(world({ nowMs: 2_500, actionRequest: gesture(3, { clipId: 'nod' }) }), repeated.memory)
-    const again = decide(world({ nowMs: 4_000, actionRequest: gesture(4) }), other.memory)
+    const finished = decide(world({ nowMs: 1_000, refractory: waved, actionRequest: gesture(1), actionFeedback: { seq: 1, state: 'finished' } }), first.memory)
+    const repeated = decide(world({ nowMs: 2_000, refractory: waved, actionRequest: gesture(2) }), finished.memory)
+    const other = decide(world({ nowMs: 2_500, refractory: waved, actionRequest: gesture(3, { clipId: 'nod' }) }), repeated.memory)
+    const again = decide(world({ nowMs: GESTURE_MS, refractory: waved, actionRequest: gesture(4) }), other.memory)
 
+    expect(first.reports).toEqual([{ kind: 'gesture-clip', clipId: 'wave', source: 'tool' }])
     expect(repeated.memory).toMatchObject({ lastActionSeq: 2, actionRefusal: 'refractory', actionRetryAfterMs: null })
     expect(repeated.intent.action).toBeNull()
     expect(other.intent.action).toMatchObject({ seq: 3, clipId: 'nod' })
@@ -778,14 +804,17 @@ describe('body director actions', () => {
   })
 
   it('lets a looping debug gesture repeat inside the per-clip cooldown and keeps the busy and dragging rules', () => {
+    const waved = refractory({ gesture: { clipId: 'wave', untilMs: GESTURE_MS } })
     const first = decide(world({ actionRequest: gesture(1, { source: 'debug', loop: true }) }))
-    const stopped = decide(world({ nowMs: 1_000, actionRequest: gesture(2, { clipId: '', source: 'debug' }) }), first.memory)
-    const again = decide(world({ nowMs: 1_500, actionRequest: gesture(3, { source: 'debug', loop: true }) }), stopped.memory)
-    const oneShot = decide(world({ nowMs: 1_500, actionRequest: gesture(3, { source: 'debug' }) }), stopped.memory)
-    const toolLoop = decide(world({ nowMs: 1_500, actionRequest: gesture(3, { loop: true }) }), stopped.memory)
-    const busy = decide(world({ nowMs: 2_000, actionRequest: gesture(4, { clipId: 'nod', source: 'debug', loop: true }) }), again.memory)
-    const dragged = decide(world({ nowMs: 1_500, dragging: true, actionRequest: gesture(3, { source: 'debug', loop: true }) }), stopped.memory)
+    const stopped = decide(world({ nowMs: 1_000, refractory: waved, actionRequest: gesture(2, { clipId: '', source: 'debug' }) }), first.memory)
+    const again = decide(world({ nowMs: 1_500, refractory: waved, actionRequest: gesture(3, { source: 'debug', loop: true }) }), stopped.memory)
+    const oneShot = decide(world({ nowMs: 1_500, refractory: waved, actionRequest: gesture(3, { source: 'debug' }) }), stopped.memory)
+    const toolLoop = decide(world({ nowMs: 1_500, refractory: waved, actionRequest: gesture(3, { loop: true }) }), stopped.memory)
+    const busy = decide(world({ nowMs: 2_000, refractory: waved, actionRequest: gesture(4, { clipId: 'nod', source: 'debug', loop: true }) }), again.memory)
+    const dragged = decide(world({ nowMs: 1_500, refractory: waved, dragging: true, actionRequest: gesture(3, { source: 'debug', loop: true }) }), stopped.memory)
 
+    expect(first.reports).toEqual([{ kind: 'gesture-clip', clipId: 'wave', source: 'debug' }])
+    expect(stopped.reports).toEqual([{ kind: 'clip-ended', clip: 'gesture', source: 'debug' }])
     expect(stopped.intent.action).toBeNull()
     expect(again.memory).toMatchObject({ lastActionSeq: 3, actionRefusal: null })
     expect(again.intent.action).toMatchObject({ seq: 3, clipId: 'wave', loop: true, phase: 'playing' })
@@ -820,7 +849,7 @@ describe('body director actions', () => {
     expect(loop.intent.action?.loop).toBe(true)
     expect(unfolded.intent.action).toBeNull()
     expect(unfolded.intent.locomotion).toMatchObject({ goalX: 5, reason: 'approach-chat' })
-    expect(unfolded.memory.actionRefractoryUntilMs.dance).toBe(1_000 + DANCE_REFRACTORY_MS)
+    expect(unfolded.reports).toEqual([{ kind: 'clip-ended', clip: 'dance', source: 'tool' }])
     expect(moved.intent.action).toBeNull()
     expect(moved.intent.locomotion).toMatchObject({ goalX: 5, reason: 'tool' })
     expect(oneShotUnfolded.intent.action?.phase).toBe('playing')
@@ -839,16 +868,16 @@ describe('body director actions', () => {
     expect(started.intent.action?.phase).toBe('playing')
     expect(nearly.intent.action).not.toBeNull()
     expect(ended.intent.action).toBeNull()
-    expect(ended.memory.actionRefractoryUntilMs.action).toBe(12_000 + ACTION_REFRACTORY_MS)
+    expect(ended.reports).toEqual([{ kind: 'clip-ended', clip: 'action', source: 'tool' }])
   })
 
-  it('ends a failed performance without arming the refractory', () => {
+  it('ends a failed performance without reporting it, so no refractory is armed', () => {
     const started = decide(world({ actionRequest: action(1) }))
     const failed = decide(world({ nowMs: 1_000, actionRequest: action(1), actionFeedback: { seq: 1, state: 'failed' } }), started.memory)
     const again = decide(world({ nowMs: 1_500, actionRequest: action(2) }), failed.memory)
 
     expect(failed.intent.action).toBeNull()
-    expect(failed.memory.actionRefractoryUntilMs).toEqual({ action: 0, dance: 0 })
+    expect(failed.reports).toEqual([])
     expect(again.intent.action?.seq).toBe(2)
   })
 
@@ -899,13 +928,14 @@ describe('body director actions', () => {
     const closed = decide(world({ chatX: null, toolRequest: { seq: 1, kind: 'come-here' } }))
     const noWorld = decide(input({ toolRequest: { seq: 1, kind: 'go-home' } }))
     const first = decide(world({ chatX: 6, toolRequest: { seq: 1, kind: 'come-here' } }))
-    const refractory = decide(world({ nowMs: 1_000, chatX: 6, toolRequest: { seq: 2, kind: 'go-home' } }), first.memory)
-    const accepted = decide(world({ nowMs: MOVE_TOOL_REFRACTORY_MS, chatX: 6, toolRequest: { seq: 3, kind: 'go-home' } }), refractory.memory)
+    const moving = refractory({ moveToolUntilMs: MOVE_TOOL_MS })
+    const refused = decide(world({ nowMs: 1_000, chatX: 6, refractory: moving, toolRequest: { seq: 2, kind: 'go-home' } }), first.memory)
+    const accepted = decide(world({ nowMs: MOVE_TOOL_MS, chatX: 6, refractory: moving, toolRequest: { seq: 3, kind: 'go-home' } }), refused.memory)
 
     expect(closed.memory).toMatchObject({ toolRefused: true, toolRefusalReason: 'chat-closed' })
     expect(noWorld.memory).toMatchObject({ toolRefused: true, toolRefusalReason: 'no-world' })
     expect(first.memory.toolRefusalReason).toBeNull()
-    expect(refractory.memory).toMatchObject({ toolRefused: true, toolRefusalReason: 'refractory' })
+    expect(refused.memory).toMatchObject({ toolRefused: true, toolRefusalReason: 'refractory' })
     expect(accepted.memory.toolRefusalReason).toBeNull()
   })
 
@@ -927,13 +957,16 @@ describe('body director actions', () => {
       const ended = decide(world({ nowMs: 40_000, rootX: 4, clipOwnsRoot: true, debugGoal: goal, actionRequest: request, ...ender }), playing.memory)
       const settled = decide(world({ nowMs: 40_001, rootX: 4, clipOwnsRoot: true, debugGoal: goal, actionRequest: request, ...ender, dragging: false }), ended.memory)
       const stillHeld = decide(world({ nowMs: 69_999, rootX: 4, clipOwnsRoot: true, debugGoal: goal, actionRequest: request }), settled.memory)
-      const early = decide(world({ nowMs: 40_000 + DANCE_REFRACTORY_MS - 1, rootX: 4, actionRequest: dance(2) }), stillHeld.memory)
+      // The mind stamps the dance refractory from the reported end.
+      const dancing = refractory({ danceUntilMs: 40_000 + DANCE_MS })
+      const early = decide(world({ nowMs: 40_000 + DANCE_MS - 1, rootX: 4, refractory: dancing, actionRequest: dance(2) }), stillHeld.memory)
       // A refused request is consumed; the caller asks again with a new sequence number.
-      const again = decide(world({ nowMs: 40_000 + DANCE_REFRACTORY_MS, rootX: 4, actionRequest: dance(3) }), early.memory)
+      const again = decide(world({ nowMs: 40_000 + DANCE_MS, rootX: 4, refractory: dancing, actionRequest: dance(3) }), early.memory)
 
       expect(playing.intent.action?.phase).toBe('playing')
       expect(playing.memory.pendingGoal).toMatchObject({ requestedAtMs: 5_000 })
       expect(ended.intent.action).toBeNull()
+      expect(ended.reports).toEqual([{ kind: 'clip-ended', clip: 'dance', source: 'tool' }])
       expect(ended.memory.pendingGoal?.requestedAtMs).toBe(40_000)
       expect(stillHeld.memory.pendingGoal).not.toBeNull()
       expect(early.memory).toMatchObject({ lastActionSeq: 2, actionRefusal: 'refractory', actionRetryAfterMs: 1 })
@@ -986,7 +1019,7 @@ describe('body director actions', () => {
   })
 
   it('works without a world: the classic window still performs and ends on a poke', () => {
-    const quiet = { ...NO_WORLD_BODY_INPUT, attend: { untilMs: null, touchSeq: 0, chatSeq: 0, chatOpenSeq: 0 }, actionRequest: null, actionFeedback: null, dragging: false, idle: { settled: false, asleep: false } }
+    const quiet = { ...NO_WORLD_BODY_INPUT, attend: { untilMs: null, touchSeq: 0, chatSeq: 0, chatOpenSeq: 0 }, actionRequest: null, actionFeedback: null, refractory: NO_BODY_REFRACTORY, dragging: false, idle: { settled: false, asleep: false } }
     const frame = (nowMs: number, patch: Partial<DirectorInput> = {}): DirectorInput => ({
       nowMs,
       performance: performance(),
@@ -1323,16 +1356,16 @@ describe('body director visits and lingering', () => {
 describe('body director unasked clips', () => {
   const idle = (seq: number, overrides: Partial<BodyActionRequest> = {}) => gesture(seq, { source: 'idle', ...overrides })
 
-  it('plays an unasked clip on a quiet body without arming a cooldown or a refractory', () => {
+  it('plays an unasked clip on a quiet body and reports it with its source, which the mind leaves unarmed', () => {
     const playing = decide(world({ actionRequest: idle(1) }))
     const ended = decide(world({ nowMs: 2_100, actionRequest: idle(1), actionFeedback: { seq: 1, state: 'finished' } }), playing.memory)
     const full = decide(world({ nowMs: 3_000, actionRequest: action(2, { source: 'idle' }) }), ended.memory)
     const fullEnded = decide(world({ nowMs: 20_000, actionRequest: action(2, { source: 'idle' }), actionFeedback: { seq: 2, state: 'finished' } }), full.memory)
 
     expect(playing.intent.action).toMatchObject({ seq: 1, clipId: 'wave', phase: 'playing' })
-    expect(playing.memory.gestureCooldown).toBeNull()
+    expect(playing.reports).toEqual([{ kind: 'gesture-clip', clipId: 'wave', source: 'idle' }])
     expect(full.intent.action).toMatchObject({ seq: 2, layer: 'full' })
-    expect(fullEnded.memory.actionRefractoryUntilMs).toEqual({ action: 0, dance: 0 })
+    expect(fullEnded.reports).toEqual([{ kind: 'clip-ended', clip: 'action', source: 'idle' }])
   })
 
   it('refuses an unasked clip while she talks, thinks, walks, or already performs', () => {
