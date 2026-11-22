@@ -1,4 +1,4 @@
-import type { ChatAttachment, ChatInvokedSkill, ChatOrchestratorRuntimeState, ChatOrchestratorSendOptions, CompactMode, Conversation, Recipe, StreamEvent, StreamOptions } from '@proj-airi/core-agent'
+import type { ChatAttachment, ChatInvokedSkill, ChatOrchestratorRuntimeState, ChatOrchestratorSendOptions, CompactMode, Conversation, Recipe, StoredNoticeTarget, StreamEvent, StreamOptions } from '@proj-airi/core-agent'
 import type { GenerationProvider, GenerationRequest } from '@proj-airi/provider-inference'
 import type { WebSocketEventInputs } from '@proj-airi/server-sdk'
 import type { ReactionKind, ReasonCategory, ReasonKind } from '@proj-airi/stage-shared/situation'
@@ -7,6 +7,7 @@ import type { TraceSpan } from '@proj-airi/trace-kit'
 import type { Message } from '@xsai/shared-chat'
 import type { SyncedPiniaRuntime } from 'pinia-plugin-synced'
 
+import type { NoticeOptions } from '../features/notice/owner'
 import type { ChatHistoryItem, ChatToolReference, ContextMessage } from '../types/chat'
 import type { ChatSessionTaskStatus, StoredUnpromptedDecline, StoredVoiceInterruption } from '../types/chat-session'
 import type { ChatPromptInput } from './chat/prompt'
@@ -34,6 +35,7 @@ import { useI18n } from 'vue-i18n'
 import { getTraceSink, LOCAL_AGENT_ACTOR } from '../composables/use-trace'
 import { modelDeclaresImageInput, useChatVision } from '../composables/vision/use-chat-vision'
 import { useVisionInference } from '../composables/vision/use-vision-inference'
+import { NoticeOwner } from '../features/notice/owner'
 import { chatAssetIdFrom, inlineConversationAssets, storeChatAttachments } from '../libs/chat-assets'
 import { extractMessageText } from '../libs/chat-message'
 import { CONVERSATION_COMPACT_FLAG } from '../libs/feature-flags'
@@ -524,15 +526,6 @@ export const useChatStore = defineStore('chat', () => {
       await interruptOrphanedTasks()
   }
 
-  /** Stops chat consumers that belong to this window. */
-  function dispose() {
-    stopLeadershipListener?.()
-    stopLeadershipListener = undefined
-    for (const compact of conversationCompacts.values())
-      compact.reset()
-    conversationCompacts.clear()
-  }
-
   /**
    * Failed image reads of this leader, grouped by session. Each key holds the
    * vision provider, model, turn, and image index. The cache lives in memory
@@ -577,40 +570,46 @@ export const useChatStore = defineStore('chat', () => {
    * Tells a conversation about finished background work. The main agent reads the notice and decides what to say, or stays quiet.
    * Only the owner's own conversation gets a notice, so background results never reach a scene.
    */
-  async function notifyConversation(sessionId: string, notice: { source: string, text: string, messageId?: string }, options: {
-    waitForCompletion?: boolean
-    signal?: AbortSignal
-    /** Continue with only the source turn's tools that the current request selection still permits. */
-    continueFrom?: { turnId: string, tools: ChatToolReference[] }
-  } = {}) {
-    if (!chatSession.sessionMetas[sessionId] || !isOwnerSession(sessionId))
-      return
+  const notices: NoticeOwner = new NoticeOwner({
+    session: {
+      target: (sessionId) => {
+        const meta = chatSession.sessionMetas[sessionId]
+        return meta ? { characterId: chatSession.personaOf(sessionId), generation: chatSession.getSessionGeneration(sessionId), owner: isOwnerSession(sessionId) && !isTaskSession(sessionId) } : null
+      },
+      load: sessionId => chatSession.loadSession(sessionId),
+      messages: sessionId => chatSession.getSessionMessagesIfLoaded(sessionId),
+      commit: (sessionId, message) => chatSession.commitUserMessage(sessionId, message),
+      store: (sessionId, message) => chatSession.storeMessage(sessionId, message),
+    },
+    now: Date.now,
+    createId: nanoid,
+    request: record => notices.execute(record.target),
+    run: async (record) => {
+      const { sessionId, messageId } = record.target
+      await startSend({ sessionId, messageId, text: record.text, tools: record.tools }, false, { notice: { source: record.target.source } }, undefined, record.target).done
+      const reply = chatSession.getSessionMessagesIfLoaded(sessionId)?.find(message => message.role === 'assistant' && message.proactive?.turnId === messageId)
+      return reply?.role === 'assistant' && !reply.interrupted ? { status: 'spoken', text: extractMessageText(reply) } : { status: 'declined' }
+    },
+    cancel: (target) => { void cancelTurn({ sessionId: target.sessionId, turnId: target.messageId }) },
+  })
+
+  async function notifyConversation(sessionId: string, notice: { source: string, text: string, messageId?: string }, options: NoticeOptions = {}) {
     try {
-      const messageId = notice.messageId ?? nanoid()
-      const continuation = options.continueFrom
-      const source = continuation && chatSession.getSessionMessagesIfLoaded(sessionId)?.find(message => message.id === continuation.turnId && message.role === 'user')
-      // Loaded history binds the original turn in this session. Missing history grants no restricted tools.
-      // Resolve synchronously, before startSend owns cancellation, rather than hydrating a stale session here.
-      const tools = source?.tools?.filter(tool => continuation?.tools.some(selected => selected.name === tool.name))
-      const request = startSend({ sessionId, text: notice.text, messageId, tools }, false, { notice: { source: notice.source } })
-      const cancel = () => {
-        void cancelTurn({ sessionId, turnId: messageId })
-      }
-      options.signal?.addEventListener('abort', cancel, { once: true })
-      if (options.signal?.aborted)
-        cancel()
-      const done = request.done.catch((error) => {
-        console.warn('[chat] Failed to finish a notice turn:', errorMessageFrom(error))
-      })
-      // Once stored, this is a new turn with its own Chat cancellation. The old request only controls its queued admission.
-      const receipt = request.accepted.catch(() => undefined).finally(() => options.signal?.removeEventListener('abort', cancel))
-      if (options.waitForCompletion !== false)
-        await done
-      return await receipt
+      return await notices.deliver(sessionId, notice, options)
     }
     catch (error) {
       console.warn('[chat] Failed to deliver a notice:', errorMessageFrom(error))
     }
+  }
+
+  /** Stops chat consumers that belong to this window. */
+  function dispose() {
+    notices.dispose()
+    stopLeadershipListener?.()
+    stopLeadershipListener = undefined
+    for (const compact of conversationCompacts.values())
+      compact.reset()
+    conversationCompacts.clear()
   }
 
   /** Whether a session is a background task's own space. */
@@ -1710,7 +1709,7 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   /** Starts one request. A user send first cancels the unprompted turns of its session, queued or generating. */
-  function startSend(payload: ChatSendPayload, voice = false, extra: HostSendOptions = {}, unprompted?: UnpromptedSend): ReturnType<typeof runtime.submit> {
+  function startSend(payload: ChatSendPayload, voice = false, extra: HostSendOptions = {}, unprompted?: UnpromptedSend, storedNotice?: StoredNoticeTarget): ReturnType<typeof runtime.submit> {
     const messageId = payload.messageId ?? nanoid()
     const key = JSON.stringify([payload.sessionId, messageId])
     const existing = requests.get(key)
@@ -1732,7 +1731,7 @@ export const useChatStore = defineStore('chat', () => {
     const invokedRecipes = recipes.ready().then(() => unprompted ? [] : keywordRecipesFor(payload, extra))
     const prepared = Promise.all([invokedRecipes, memory.ready()])
       .then(([invoked]) => prepareSend({ ...payload, messageId }, abort.signal, voice, { ...extra, skills: invokedSkillsOf(invoked) }, invoked, unprompted))
-      .then(options => runtime.submit(payload.text, options, payload.sessionId))
+      .then(options => storedNotice ? runtime.submitNotice(storedNotice, options) : runtime.submit(payload.text, options, payload.sessionId))
     const request = {
       accepted: prepared.then(value => value.accepted),
       done: prepared.then(value => value.done),

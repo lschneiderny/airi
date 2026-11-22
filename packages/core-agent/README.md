@@ -82,6 +82,15 @@ Runtime context keeps one bucket per writer. `replace-self` replaces the writer'
 
 ## Turn history
 
+`submitNotice(target, options)` executes an already committed text notice.
+The target names its session, message, source, and session generation.
+The runtime checks that identity again when its FIFO starts and before
+projection, uses history through that exact trigger, and appends no second
+user message. The host owns storage receipts, announcement admission, and
+deduplication. Ordinary `submit` retains its existing-message early return.
+Use this operation for an accepted external result, never to replay an owner
+turn or a generation that already began executing tools.
+
 `getContextWindow` limits conversation turns, including the current input's turn. Each turn contains a user group and its assistant replies and tool exchanges.
 Consecutive messages from the same role stay together, including groups joined by manual deletion. System messages do not count toward the limit.
 When the limit is exceeded, the newest `ceil(limit * 0.9)` turns remain. The retained start stays fixed until the limit is exceeded again.

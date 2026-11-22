@@ -296,6 +296,61 @@ function createHarness(getActiveProvider = () => 'mock-provider', stage = liveSt
 }
 
 describe('createChatOrchestratorRuntime', () => {
+  it('answers an exact committed notice without committing its trigger again', async () => {
+    const harness = createHarness()
+    const target = { sessionId: 'session-1', messageId: 'notice-1', source: 'host:task', generation: 1 }
+    const notice = { role: 'user' as const, id: target.messageId, content: 'The task finished.', createdAt: 123, notice: { source: target.source } }
+    await harness.commitUserMessage(target.sessionId, notice)
+    harness.sessionMessages['session-1'].push({ role: 'user', id: 'later', content: 'A later result', notice: { source: 'host:other' } })
+    harness.commitUserMessage.mockClear()
+    const request = harness.runtime.submitNotice(target, { model: 'test', chatProvider: provider })
+    expect(await request.accepted).toEqual({ sessionId: target.sessionId, messageId: target.messageId })
+    await request.done
+    expect(harness.commitUserMessage).not.toHaveBeenCalled()
+    expect(harness.sessionMessages['session-1'].filter(message => message.id === target.messageId)).toEqual([notice])
+    expect(harness.sessionMessages['session-1'].at(-1)).toMatchObject({ role: 'assistant', proactive: { turnId: target.messageId, source: target.source } })
+    expect(JSON.stringify(harness.stream.mock.calls[0][2])).toContain('Speak about this notice only if it fits now')
+    expect(JSON.stringify(harness.stream.mock.calls[0][2])).toContain('not a message from the owner')
+    expect(JSON.stringify(harness.stream.mock.calls[0][2])).not.toContain('A later result')
+    await harness.runtime.submit(notice.content, { model: 'test', chatProvider: provider, messageId: notice.id }, target.sessionId).done
+    expect(harness.stream).toHaveBeenCalledOnce()
+  })
+
+  it.each(['source', 'generation', 'message'] as const)('refuses a stored notice when its %s identity changed', (field) => {
+    const harness = createHarness()
+    const target = { sessionId: 'session-1', messageId: 'notice-1', source: 'host:task', generation: 1 }
+    harness.sessionMessages['session-1'].push({ role: 'user', id: target.messageId, content: 'Result', notice: { source: target.source } })
+    if (field === 'source')
+      target.source = 'host:other'
+    if (field === 'generation')
+      harness.generation.set(2)
+    if (field === 'message')
+      harness.sessionMessages['session-1'].pop()
+    expect(() => harness.runtime.submitNotice(target, { model: 'test', chatProvider: provider })).toThrow('Stored notice identity')
+    expect(harness.stream).not.toHaveBeenCalled()
+  })
+
+  it('rechecks a stored notice after another queued generation releases the FIFO', async () => {
+    const harness = createHarness()
+    const held = Promise.withResolvers<void>()
+    const started = Promise.withResolvers<void>()
+    harness.stream.mockImplementationOnce(async () => {
+      started.resolve()
+      await held.promise
+    })
+    const first = harness.runtime.submit('Owner question', { model: 'test', chatProvider: provider })
+    await started.promise
+    const target = { sessionId: 'session-1', messageId: 'notice-1', source: 'host:task', generation: 1 }
+    harness.sessionMessages['session-1'].push({ role: 'user', id: target.messageId, content: 'Result', notice: { source: target.source } })
+    const notice = harness.runtime.submitNotice(target, { model: 'test', chatProvider: provider })
+    const rejected = expect(notice.done).rejects.toThrow('Stored notice identity')
+    harness.sessionMessages['session-1'] = harness.sessionMessages['session-1'].filter(message => message.id !== target.messageId)
+    held.resolve()
+    await first.done
+    await rejected
+    expect(harness.stream).toHaveBeenCalledOnce()
+  })
+
   // https://github.com/moeru-ai/airi/pull/3289#pullrequestreview-5731937285
   // ROOT CAUSE:
   // Message counts and rounded-down retention split turns and discarded recent replies in small windows.
