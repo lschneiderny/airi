@@ -1186,7 +1186,7 @@ describe('held Natural composition', () => {
   })
 
   it('adds the laugh face only with held emotions on, and opens the mouth only in silence', () => {
-    const episode = { id: 'laugh', emotion: 'happy', band: 'strong', nominal: 0.9, intensity: 0.9, escalation: false } as const
+    const episode = { id: 'laugh', emotion: 'happy', band: 'strong', nominal: 0.9, intensity: 0.9, escalation: false, gesture: 'laugh' } as const
     const facePeaks = (heldEmotions: boolean, speaking: boolean, withEpisode: boolean) => {
       const motion = new NaturalMotion({ seed: 41 })
       motion.setPerformanceSettings({ ...defaultExpressionPerformanceSettings, heldEmotions })
@@ -1229,7 +1229,7 @@ describe('held Natural composition', () => {
     })
     try {
       motion.advance(0)
-      motion.impulse({ id: 'duck', emotion: 'happy', band: 'strong', nominal: 0.9, intensity: 0.9, escalation: false }, 0)
+      motion.impulse({ id: 'duck', emotion: 'happy', band: 'strong', nominal: 0.9, intensity: 0.9, escalation: false, gesture: 'laugh' }, 0)
       for (let frame = 1; frame <= 600; frame++)
         motion.advance(frame / 120)
     }
@@ -1457,7 +1457,7 @@ describe('held Natural composition', () => {
     }
     accented.setHeldEmotion({ emotion: 'happy', strength: 1 }, 0)
     held.setHeldEmotion({ emotion: 'happy', strength: 1 }, 0)
-    const episode = { id: 'accent', emotion: 'happy', intensity: 0.9, nominal: 0.9, band: 'clear', escalation: false } as const
+    const episode = { id: 'accent', emotion: 'happy', intensity: 0.9, nominal: 0.9, band: 'clear', escalation: false, gesture: 'laugh' } as const
 
     accented.impulse(episode, 4)
     accentOnly.impulse(episode, 4)

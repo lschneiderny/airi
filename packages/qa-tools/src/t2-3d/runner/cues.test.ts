@@ -66,10 +66,21 @@ it('samples voice envelopes at 60 Hz, records peaks when due and ends speech', (
 it('sends emotion pulses at their band dose and labels placebo without a pulse', () => {
   const { adapter, driver, events } = boundary()
   driver.apply({ at: 0, kind: 'emotion', emotion: 'angry', band: 'clear', trialId: 'trial' }, 10)
-  expect(adapter.impulse).toHaveBeenCalledWith({ id: 'trial', emotion: 'angry', nominal: 0.6, intensity: 0.6, band: 'clear', escalation: false })
+  // The mind's gesture policy chooses the angry clip from the episode id.
+  expect(adapter.impulse).toHaveBeenCalledWith({ id: 'trial', emotion: 'angry', nominal: 0.6, intensity: 0.6, band: 'clear', escalation: false, gesture: 'shake' })
   driver.apply({ at: 12, kind: 'placebo', trialId: 'null' }, 22)
   expect(adapter.impulse).toHaveBeenCalledTimes(1)
   expect(events[1]).toMatchObject({ kind: 'emotion', phase: 'placebo', trialId: 'null' })
+})
+
+it('keeps the mind\'s gesture cooldowns on the run clock', () => {
+  const { adapter, driver } = boundary()
+  driver.apply({ at: 0, kind: 'emotion', emotion: 'happy', band: 'clear' }, 10)
+  driver.apply({ at: 2, kind: 'emotion', emotion: 'happy', band: 'clear' }, 12)
+  driver.apply({ at: 4, kind: 'emotion', emotion: 'happy', band: 'slight' }, 14)
+  driver.apply({ at: 5, kind: 'emotion', emotion: 'happy', band: 'strong' }, 15)
+  // Inside the 4 s laugh cooldown, a slight band, then past the cooldown.
+  expect(adapter.impulse.mock.calls.map(([episode]) => episode.gesture)).toEqual(['laugh', undefined, undefined, 'laugh'])
 })
 
 it('forwards gesture counts to the Natural adapter', () => {

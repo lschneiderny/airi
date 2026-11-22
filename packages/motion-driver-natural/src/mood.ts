@@ -1,5 +1,7 @@
 import type { ExpressionPerformanceSettings, MoodDose, ReactionEpisode } from '@proj-airi/stage-shared/expression-performance'
 
+import type { PlayedGesture } from './emotions'
+
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 
 import { naturalEmotions } from './emotions'
@@ -12,10 +14,12 @@ function clamp(value: number, min: number, max: number) {
  * An episode as the Natural performer consumes it. `moodGain` is the mood dose gain for the
  * episode's band under the character profile that produced it; the stage resolves it when it
  * decides the episode, so a later decision under another profile cannot change this dose.
- * Without it, the performer's own band gain applies.
+ * Without it, the performer's own band gain applies. `gesture` is the body gesture the character mind
+ * ordered for the episode (`emotion-gesture`); without it the episode plays no gesture.
  */
 export interface NaturalEpisode extends ReactionEpisode {
   moodGain?: number
+  gesture?: PlayedGesture
 }
 
 /** Active-time afterglow. Episode doses survive decay so escalations add only the missing dose. */

@@ -17,9 +17,9 @@ const idleHashes = [
   '88e38d2409f558cce05a7304a46f34f048eb1db1d8545eec38590da837c7dc55',
 ]
 const emotionHashes = [
-  '9139707c3b0af7352dbaafaf783bc2272f5ee5ad40547f6f906eab51831df883',
-  '074f07d37ed0e04bc8df625aed8bc496fdc3ee65af37151ce1110bb0a0205f8d',
-  '309cfe3ceba5d56b44c3d414c57b90d094b6e9db35070562505a588b538e82cc',
+  'aabdbd2b759b21fa293a8cdd3b2f135d4fe7303ae582106cd552c0f1576035d7',
+  '9f71eb2d012340d6cc563b2813e975c8b812091447a246d2b4558b9d855f62d5',
+  '6292267891a3f36db7b6500e9b2850af7d8474a80bbb278d6b178a97010fcae6',
 ]
 
 const rate = 120
@@ -30,11 +30,12 @@ type Timeline = Record<number, (motion: NaturalMotion, t: number) => void>
 /** Angry strong at 20 s, happy clear at 40 s (each an impulse plus a hold), release at 50 s. */
 const emotionTimeline: Timeline = {
   [20 * rate]: (motion, t) => {
-    motion.impulse({ id: 'angry-20', emotion: 'angry', nominal: 0.9, intensity: 0.9, band: 'strong', escalation: false }, t)
+    // `drop` is what the character mind's emotionGesture chooses for this episode id.
+    motion.impulse({ id: 'angry-20', emotion: 'angry', nominal: 0.9, intensity: 0.9, band: 'strong', escalation: false, gesture: 'drop' }, t)
     motion.setHeldEmotion({ emotion: 'angry', strength: 0.9 }, t)
   },
   [40 * rate]: (motion, t) => {
-    motion.impulse({ id: 'happy-40', emotion: 'happy', nominal: 0.6, intensity: 0.6, band: 'clear', escalation: false }, t)
+    motion.impulse({ id: 'happy-40', emotion: 'happy', nominal: 0.6, intensity: 0.6, band: 'clear', escalation: false, gesture: 'laugh' }, t)
     motion.setHeldEmotion({ emotion: 'happy', strength: 0.6 }, t)
   },
   [50 * rate]: (motion, t) => motion.setHeldEmotion(null, t),

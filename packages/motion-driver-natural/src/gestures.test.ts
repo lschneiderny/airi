@@ -1,4 +1,4 @@
-import type { GestureKind } from './emotions'
+import type { PlayedGesture } from './emotions'
 
 import { describe, expect, it } from 'vitest'
 
@@ -7,7 +7,7 @@ import { minJerk } from './processes'
 import { createRandomStream } from './random'
 
 const step = 1 / 120
-const kinds: GestureKind[] = ['laugh', 'recoil', 'shake', 'drop', 'shake-or-drop', 'sway', 'tilt-in', 'look-away', 'nod-off']
+const kinds: PlayedGesture[] = ['laugh', 'recoil', 'shake', 'drop', 'sway', 'tilt-in', 'look-away', 'nod-off']
 
 /** Head and body samples on the facade's grid from 0 to `seconds`. */
 function sampleTrack(gestures: NaturalGestures, seconds: number) {
@@ -40,38 +40,20 @@ describe('natural gestures', () => {
     }
   })
 
-  it('blocks a retrigger during the cooldown, allows one after it, and draws nothing when refused', () => {
+  it('plays every clip it is given, keeps no cooldown, and draws nothing when refused', () => {
+    // The character mind keeps the cooldowns (emotionGesture); a repeat it orders plays at once.
     const gestures = new NaturalGestures(createRandomStream(41))
     expect(gestures.trigger('laugh', 0.9, 'strong', 0)).toBe(true)
-    expect(gestures.trigger('laugh', 0.9, 'strong', 2)).toBe(false)
-    expect(gestures.trigger('laugh', 0.9, 'strong', 4)).toBe(true)
+    expect(gestures.trigger('laugh', 0.9, 'strong', 2)).toBe(true)
 
     const withRefusal = new NaturalGestures(createRandomStream(5))
     const withoutRefusal = new NaturalGestures(createRandomStream(5))
     withRefusal.trigger('sway', 0.8, 'clear', 0)
     withoutRefusal.trigger('sway', 0.8, 'clear', 0)
-    expect(withRefusal.trigger('sway', 0.8, 'clear', 1)).toBe(false)
+    expect(withRefusal.trigger('sway', 0.8, 'slight', 1)).toBe(false)
     withRefusal.trigger('tilt-in', 0.8, 'clear', 5)
     withoutRefusal.trigger('tilt-in', 0.8, 'clear', 5)
     expect(sampleTrack(withRefusal, 12).head).toEqual(sampleTrack(withoutRefusal, 12).head)
-  })
-
-  it('shares one cooldown across shake, drop, and shake-or-drop', () => {
-    const gestures = new NaturalGestures(createRandomStream(3))
-    expect(gestures.trigger('shake-or-drop', 0.9, 'strong', 0)).toBe(true)
-    expect(gestures.trigger('shake', 0.9, 'strong', 3)).toBe(false)
-    expect(gestures.trigger('drop', 0.9, 'strong', 5)).toBe(true)
-  })
-
-  it('plays both shake and drop for shake-or-drop across seeds', () => {
-    const axes = new Set<number>()
-    for (let seed = 1; seed <= 20; seed++) {
-      const gestures = new NaturalGestures(createRandomStream(seed))
-      gestures.trigger('shake-or-drop', 0.9, 'strong', 0)
-      const { head } = sampleTrack(gestures, 3)
-      axes.add(Math.max(...head.map(offset => Math.abs(offset[0]))) > 0.01 ? 0 : 1)
-    }
-    expect([...axes].sort()).toEqual([0, 1])
   })
 
   it('returns to exactly zero after the clip ends, stays within 0.12, and moves continuously', () => {
@@ -104,7 +86,7 @@ describe('natural gestures', () => {
     expect(gestures.trigger('laugh', 0.9, 'strong', Number.NaN)).toBe(false)
     expect(peak(sampleTrack(gestures, 2).head)).toBe(0)
     expect(gestures.activeUntil()).toBe(0)
-    // A refused trigger does not start a cooldown.
+    // A refused trigger leaves nothing behind.
     expect(gestures.trigger('laugh', 0.9, 'strong', 0)).toBe(true)
   })
 
@@ -133,23 +115,6 @@ describe('natural gestures', () => {
     clear.trigger('recoil', 1, 'clear', 0)
     strong.trigger('recoil', 1, 'strong', 0)
     expect(peak(sampleTrack(clear, 2).head)).toBeCloseTo(0.6 * peak(sampleTrack(strong, 2).head), 12)
-  })
-
-  it.each([
-    ['laugh', 4],
-    ['recoil', 3],
-    ['shake', 5],
-    ['drop', 5],
-    ['shake-or-drop', 5],
-    ['sway', 4],
-    ['tilt-in', 5],
-    ['look-away', 4],
-    ['nod-off', 8],
-  ] satisfies [GestureKind, number][])('enforces the %s cooldown of %s seconds', (kind, seconds) => {
-    const gestures = new NaturalGestures(createRandomStream(41))
-    gestures.trigger(kind, 1, 'strong', 0)
-    expect(gestures.trigger(kind, 1, 'strong', seconds - 0.001)).toBe(false)
-    expect(gestures.trigger(kind, 1, 'strong', seconds)).toBe(true)
   })
 
   it('draws laugh cycles, frequency, and amplitude after the side and plays the closed-form chuckle', () => {
@@ -275,18 +240,19 @@ describe('natural gestures', () => {
     }
   })
 
-  it('uses side before angry choice, and keeps explicit shake and drop meaningful', () => {
-    for (const choice of [0.1, 0.9]) {
-      const draws = [0.1, choice, 0.9]
-      let next = 0
-      const angry = new NaturalGestures(() => draws[next++])
-      const explicitDraws = [0.1, 0.9]
-      let explicitNext = 0
-      const explicit = new NaturalGestures(() => explicitDraws[explicitNext++])
-      angry.trigger('shake-or-drop', 1, 'strong', 0)
-      explicit.trigger(choice < 0.5 ? 'shake' : 'drop', 1, 'strong', 0)
-      expect(sampleTrack(angry, 3)).toEqual(sampleTrack(explicit, 3))
-    }
+  it('draws the side, then the clip\'s own draws: shake its cycles, drop nothing more', () => {
+    const shakeDraws = [0.1, 0.9]
+    let shakeNext = 0
+    const shake = new NaturalGestures(() => shakeDraws[shakeNext++])
+    shake.trigger('shake', 1, 'strong', 0)
+    expect(shakeNext).toBe(2)
+    // Side -1 and three cycles at 3 Hz.
+    expect(shake.activeUntil()).toBe(1)
+    expect(shake.headOffset(0.1)[0]).toBeLessThan(0)
+    let dropNext = 0
+    const drop = new NaturalGestures(() => [0.9][dropNext++])
+    drop.trigger('drop', 1, 'strong', 0)
+    expect(dropNext).toBe(1)
   })
 
   it('recoils to positive pitch, overshoots to negative pitch, and settles in 0.6 seconds', () => {
@@ -384,13 +350,6 @@ describe('natural gestures', () => {
           "0.000376313809395, 0, 0",
           "0.000863047737526, 0, 0",
         ],
-        "shake-or-drop": [
-          "0, 0, 0",
-          "0.00000643163992573, 0, 0",
-          "0.000050784822845, 0, 0",
-          "0.000167681292175, 0, 0",
-          "0.000385335540476, 0, 0",
-        ],
         "sway": [
           "0, 0, 0",
           "0.00000700962396316, 0, 5.10190336191e-7",
@@ -426,7 +385,7 @@ describe('gesture duck', () => {
     const twin = new NaturalGestures(createRandomStream(7))
     refused.trigger('sway', 1, 'strong', 0)
     twin.trigger('sway', 1, 'strong', 0)
-    expect(refused.trigger('sway', 1, 'strong', 1)).toBe(false)
+    expect(refused.trigger('sway', 1, 'slight', 1)).toBe(false)
     expect(scaleTrack(refused, 6)).toEqual(scaleTrack(twin, 6))
 
     for (const kind of kinds) {

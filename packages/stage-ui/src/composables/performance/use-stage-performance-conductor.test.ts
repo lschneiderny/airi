@@ -153,6 +153,17 @@ describe('performer dispatch declarations', () => {
       conductor.dispose()
   })
 
+  it.each([true, false])('puts the mind\'s emotion gesture on the Natural episode only with posture declared (%s)', (posture) => {
+    const scene = fakeScene()
+    const capabilities = { ...LIVE2D_NATURAL_CAPABILITIES, posture }
+    const { conductor } = createConductor('natural', scene, undefined, undefined, undefined, { capabilities })
+    conductor.emotion('happy', 0.8, 'act')
+    expect(scene.setEmotion).toHaveBeenCalledTimes(1)
+    const [episode] = scene.setEmotion.mock.calls[0]
+    expect(episode.emotion).toBe('happy')
+    expect(episode.gesture).toBe(posture ? 'laugh' : undefined)
+  })
+
   it.each([
     ['none', NO_CAPABILITIES],
     ['Live2D', LIVE2D_NATURAL_CAPABILITIES],

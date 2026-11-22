@@ -1,6 +1,6 @@
 import type { Band } from '@proj-airi/stage-shared/expression-performance'
 
-import type { GestureKind } from './emotions'
+import type { PlayedGesture } from './emotions'
 import type { NaturalBodyIntent } from './frame-types'
 import type { Vec3 } from './posture'
 import type { RandomStream } from './random'
@@ -39,15 +39,10 @@ interface FaceClip {
   readonly face: (age: number) => FaceTerm
 }
 
-/** A gesture that plays as one clip; `shake-or-drop` resolves to `shake` or `drop` when it triggers. */
-type PlayedGesture = Exclude<GestureKind, 'shake-or-drop'>
-
 /** Head amplitude per band; the slight band never triggers a gesture. */
 const bandAmplitude: Record<Band, number> = { slight: 0, clear: 0.6, strong: 1 }
 /** Body follows the head on yaw and roll only, at half the head amplitude. */
 const bodyGain = 0.5
-/** Seconds before the same gesture can retrigger. Shake, drop, and shake-or-drop share the angry cooldown. */
-const cooldowns = { 'laugh': 4, 'recoil': 3, 'angry': 5, 'sway': 4, 'tilt-in': 5, 'look-away': 4, 'nod-off': 8 } as const
 /** Idle continuous motion dips by `depth` x strength x band amplitude over `attack`, and returns over `release`. */
 const duck = { depth: 0.45, attack: 0.15, release: 0.3 }
 /** Seconds the duck takes to release after a clip's active span; QA waits this long after a clip. */
@@ -73,10 +68,6 @@ export const gestureLifetimes: Readonly<Record<PlayedGesture, number>> = {
   'nod-off': 1.2 + tailTaus * 0.3,
 }
 
-function cooldownKey(kind: GestureKind): keyof typeof cooldowns {
-  return kind === 'shake' || kind === 'drop' || kind === 'shake-or-drop' ? 'angry' : kind
-}
-
 function between(random: RandomStream, min: number, max: number) {
   return min + (max - min) * random()
 }
@@ -87,7 +78,7 @@ function raisedCosine(u: number) {
 }
 
 /**
- * Draw order, after the side and angry choice that `trigger` draws: laugh cycles, frequency,
+ * Draw order, after the side that `trigger` draws: laugh cycles, frequency,
  * amplitude; shake cycles. All other clips need only the side. `scale` is strength x band amplitude.
  */
 function createClip(kind: PlayedGesture, side: -1 | 1, scale: number, random: RandomStream): ClipShape {
@@ -222,11 +213,12 @@ function faceTerm(clips: FaceClip[], time: number): FaceTerm {
 /**
  * Short emotion-triggered clips (laugh, recoil, shake, ...). Clips add to the head and body offsets and
  * always return to exactly 0. The head and body offsets never touch posture; only the laugh also adds a face
- * term (`faceOffset`), in both the clear and strong bands.
+ * term (`faceOffset`), in both the clear and strong bands. The character mind decides which clip plays and keeps
+ * its cooldown (`emotionGesture`); this layer plays the clip it is given.
  *
  * All clip parameters are drawn from the given stream once, at trigger time (side first),
  * so two instances with equal seeds and triggers stay bit-identical. A refused trigger
- * (cooldown, slight band, no strength) draws nothing, so it cannot shift later clips.
+ * (slight band, no strength) draws nothing, so it cannot shift later clips.
  * Time is seconds of active motion.
  */
 export class NaturalGestures {
@@ -234,7 +226,6 @@ export class NaturalGestures {
   private readonly bodies: Clip[] = []
   private readonly faces: FaceClip[] = []
   private readonly ducks: DuckWindow[] = []
-  private readonly lastTrigger = new Map<string, number>()
   private latest: NaturalBodyIntent['gesture'] = null
 
   constructor(private readonly random: RandomStream) {}
@@ -244,21 +235,15 @@ export class NaturalGestures {
   }
 
   /**
-   * Returns whether a clip started. `shake-or-drop` plays one of the two with equal chance.
-   * `started` receives the played gesture and its side, synchronously, only when a clip starts.
+   * Returns whether a clip started. `started` receives the played gesture and its side, synchronously, only when a
+   * clip starts.
    */
-  trigger(kind: GestureKind, strength: number, band: Band, at: number, started?: (gesture: PlayedGesture, side: -1 | 1) => void): boolean {
+  trigger(played: PlayedGesture, strength: number, band: Band, at: number, started?: (gesture: PlayedGesture, side: -1 | 1) => void): boolean {
     const amplitude = bandAmplitude[band]
     if (!(strength > 0) || !Number.isFinite(strength) || amplitude === 0 || !Number.isFinite(at))
       return false
-    const key = cooldownKey(kind)
-    const last = this.lastTrigger.get(key)
-    if (last !== undefined && at - last < cooldowns[key])
-      return false
-    this.lastTrigger.set(key, at)
-    // Draw order: side, then the angry choice only for shake-or-drop, then the clip's own draws.
+    // Draw order: side, then the clip's own draws.
     const side = this.random() < 0.5 ? -1 : 1
-    const played = kind === 'shake-or-drop' ? (this.random() < 0.5 ? 'shake' : 'drop') : kind
     const clip: Clip = { ...createClip(played, side, Math.min(1, strength) * amplitude, this.random), start: at }
     this.heads.push(clip)
     this.latest = { seq: (this.latest?.seq ?? 0) + 1, at, kind: played, side, scale: clip.scale, lifetime: clip.lifetime }

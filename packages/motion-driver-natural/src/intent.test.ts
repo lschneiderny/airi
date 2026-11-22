@@ -28,7 +28,7 @@ function script(motion: NaturalMotion, time: number) {
     motion.setCursor(null, time)
   motion.setVoice({ speaking: time >= 25 && time < 45, speechActiveOrRecent: time >= 25 && time < 46, level: time >= 25 && time < 45 && time % 1.8 < 0.35 ? 0.9 : 0 })
   if (time === 50)
-    motion.impulse({ id: 'happy', emotion: 'happy', nominal: 0.9, intensity: 0.9, band: 'strong', escalation: false }, time)
+    motion.impulse({ id: 'happy', emotion: 'happy', nominal: 0.9, intensity: 0.9, band: 'strong', escalation: false, gesture: 'laugh' }, time)
   if (time === 60)
     motion.setHeldEmotion({ emotion: 'think', strength: 0.8 }, time)
   if (time === 70)
@@ -77,13 +77,29 @@ describe('natural body intent', () => {
     }
   }, 30_000)
 
+  it('plays an emotion gesture only when the episode carries the mind\'s order', () => {
+    const ordered = new NaturalMotion({ seed: 41 })
+    const unordered = new NaturalMotion({ seed: 41 })
+    const episode = { id: 'happy', emotion: 'happy', nominal: 0.9, intensity: 0.9, band: 'strong', escalation: false } as const
+    ordered.advance(0)
+    unordered.advance(0)
+    ordered.impulse({ ...episode, gesture: 'laugh' }, 0)
+    unordered.impulse(episode, 0)
+    ordered.advance(0.1)
+    unordered.advance(0.1)
+    expect(ordered.bodyIntent().gesture).toMatchObject({ kind: 'laugh' })
+    expect(unordered.bodyIntent().impulse).toMatchObject({ emotion: 'happy' })
+    expect(unordered.bodyIntent().gesture).toBeNull()
+  })
+
   it('numbers accepted impulses and emotion gestures independently of observer attachment and refusals', () => {
     const motion = new NaturalMotion({ seed: 41 })
     const episode = { id: 'happy', emotion: 'happy', nominal: 0.9, intensity: 0.9, band: 'strong', escalation: false } as const
     motion.advance(0)
     expect(motion.bodyIntent().impulse).toBeNull()
-    motion.impulse(episode, 0)
-    motion.impulse(episode, 0)
+    // The mind orders the laugh with a new episode and none with its escalation inside the laugh cooldown.
+    motion.impulse({ ...episode, gesture: 'laugh' }, 0)
+    motion.impulse({ ...episode, gesture: 'laugh' }, 0)
     motion.advance(2 * dt)
     const first = motion.bodyIntent()
     expect(first.impulse).toMatchObject({ seq: 1, at: dt, emotion: 'happy', band: 'strong', intensity: 0.9 })
@@ -98,7 +114,7 @@ describe('natural body intent', () => {
     expect(escalated.impulse).toMatchObject({ seq: 2, emotion: 'happy', intensity: 1, side: first.impulse?.side })
     expect(escalated.gesture).toEqual(first.gesture)
     motion.setObserver(null)
-    motion.impulse({ ...episode, id: 'next' }, 5)
+    motion.impulse({ ...episode, id: 'next', gesture: 'laugh' }, 5)
     motion.advance(5.1)
     const next = motion.bodyIntent()
     expect(next.impulse?.seq).toBe(3)

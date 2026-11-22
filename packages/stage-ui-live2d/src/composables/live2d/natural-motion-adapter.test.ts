@@ -884,7 +884,7 @@ describe('natural motion adapter', () => {
     const f = fixture()
     f.state.eligible = true
     f.frame(0)
-    f.state.pendingEmotions.push({ id: 'happy', emotion: Emotion.Happy, nominal: 1, intensity: 1, band: 'strong' as const, escalation: false })
+    f.state.pendingEmotions.push({ id: 'happy', emotion: Emotion.Happy, nominal: 1, intensity: 1, band: 'strong' as const, escalation: false, gesture: 'laugh' as const })
     const smile = Array.from({ length: 4 * 120 }, (_, index) => {
       f.state.heldEmotion = { emotion: Emotion.Happy, strength: 1 }
       const { commanded } = f.frame(0.01 + index / 120)
@@ -897,7 +897,7 @@ describe('natural motion adapter', () => {
   })
 
   it('(h4) drops an emotion queued on one frame when its model strength turns to zero before the next', () => {
-    const episode = { id: 'happy', emotion: Emotion.Happy, nominal: 1, intensity: 1, band: 'strong' as const, escalation: false }
+    const episode = { id: 'happy', emotion: Emotion.Happy, nominal: 1, intensity: 1, band: 'strong' as const, escalation: false, gesture: 'laugh' as const }
     const times = Array.from({ length: 60 }, (_, index) => index * 0.1)
     /** Frame 1 queues the emotion; `strengthAtNext` applies from frame 2, the first frame that can start it. */
     const run = (queued: boolean, strengthAtNext?: number) => {
