@@ -1,7 +1,7 @@
 # Character mind: declared performer capabilities
 
 Date: 2026-11-22
-Status: accepted; CM7a implemented. Headless and rendered acceptance belongs to the orchestrator and remains explicitly pending below.
+Status: accepted; CM7a implemented and accepted on macOS (headless and rendered results below).
 
 Current rules are in [Body ownership](../context/body-ownership.md), [Autonomous behavior](../context/autonomous-behavior.md), and [LLM prompt](../context/llm-prompt.md). The [performers plan](../../../.omo/plans/character-mind-performers.md) records the implementation departures and checks.
 
@@ -71,7 +71,7 @@ Declaration replay assigns the loaded pacing owner before its first step, so a r
 
 Two acceptance details differ from the plan's shorthand. The prompt contains no rendered `actions` segment under classic, but `composePrompt` deliberately reports every supplied segment, including a zero-character `actions` row. Removing that row would change the existing report contract; this slice preserves it. Section 9 also says nine headless scenarios but enumerates ten when `music` is included. The orchestrator should account for that extra named scenario explicitly.
 
-**ORCHESTRATOR ACCEPTANCE PLACEHOLDER:** Replace this sentence with the headless comparison results and rendered CM7a checks 1 to 4, including run directories, refusal counts, and renderer/main-process error counts; this worker did not run headless motion QA, rendered QA, or Electron.
+On macOS, all ten headless scenarios (`idle`, `idle-drive`, `gaze-shift`, `speak`, `gesture-under-clip`, `emotions`, `walk`, `sleepy-no-clip`, `touch`, and `music`, seed 1) are `IDENTICAL` against `main` at `e57dd1393`. In the rendered app, with 0 renderer and 0 main-process errors in every launch: (1) under Live2D Natural an ACT `shrug` gave a mind step with one `undeclared` refusal and no gesture, and an ACT `nod` played; (2) under Live2D Universal both gestures were refused as `undeclared` and the mind took no emotion step; (3) under MMD classic `perform_action`, `look_at`, and `come_here` were not registered; (4) under MMD Natural on the desktop stage, with a curated clip, all three were registered and the shrug, nod, and emotion intents were issued. The checks did not observe upstream's own playback under Universal and classic, because motion QA capture records only Natural; the routing browser tests cover it.
 
 Scores prove direction, size relative to the recipe, release, and detectability above the rig's idle noise. They do not prove naturalness, which stays a visual review.
 
