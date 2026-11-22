@@ -277,9 +277,9 @@ Something the character does on her own while nobody asks anything of her, decid
 
 ### Idle errand
 
-A long idle behavior that the character mind's idle policy decides, that Natural starts and records, and that the host realizes in its own form: a `pastime` with one of her props (Live2D), an `idle-clip` she plays unasked (MMD, only clips the user allowed for idle), or a `wander` along the ground (MMD roam mode). The host answers whether it took the errand, and each errand is paced by its own mean gap and refractory time.
+A long idle behavior that the character mind's idle policy decides, that Natural starts and records, and that the host realizes in its own form: a `pastime` with one of her props (Live2D), an `idle-clip` she plays unasked (MMD, only clips the user allowed for idle), or a `wander` along the ground (MMD roam mode). The host answers whether it took the errand, and each errand is paced by its own mean gap and refractory time. A pastime's hold and a wander's stay are drawn with the errand: Natural ends a pastime at its hold, while a wander runs until she leaves where it took her, and her walk home ends it.
 
-**Code:** `packages/motion-driver-natural/src/idle-errands.ts` `IDLE_ERRAND_KINDS`, `IdleErrandKind`, `IDLE_ERRAND_PACING`, `IdleErrandReports`.
+**Code:** `packages/motion-driver-natural/src/idle-errands.ts` `IDLE_ERRAND_KINDS`, `IdleErrandKind`, `IDLE_ERRAND_PACING`, `IDLE_ERRAND_LINGER_SECONDS`, `IdleErrandReports`; `packages/stage-ui-mmd/src/composables/mmd/stance.ts` `wanderErrandAnswer`.
 **Not to be confused with:** an idle activity, which Natural plays itself.
 **Avoid:** "idle task", "idle job".
 
