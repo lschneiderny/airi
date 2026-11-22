@@ -44,6 +44,7 @@
     "./stores/expression-slot-leases": "./src/stores/expression-slot-leases.ts",
     "./stores/expression-store": "./src/stores/expression-store.ts",
     "./types/avatar-model": "./src/types/avatar-model.ts",
+    "./types/live2d-item-insertions": "./src/types/live2d-item-insertions.d.ts",
     "./utils/ambient-light-test-card": "./src/utils/ambient-light-test-card.ts",
     "./utils/eye-motions": "./src/utils/eye-motions.ts",
     "./utils/live2d-preview": "./src/utils/live2d-preview.ts",

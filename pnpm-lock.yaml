@@ -1218,7 +1218,7 @@ patchedDependencies:
   '@xsai-ext/responses@0.5.1': 46fe7d9840dd621747bb87f1c779d26ac5a43f506a3e02770b2ab84aef2ab84b
   mineflayer-pathfinder: 4bbfdca823ab48b74086e6e7d4b2f9baf5ee7c0ba9aee0c279b3c91c50bfd797
   nano-staged@1.0.2: 7adccb45ff0d8775fa8575872dd1e1a926de538efca6a12eb5b12ddf74d30c61
-  pixi-live2d-display: cee60f8b5121eb195718c1935f9a3a6012cc8d4e8b6deeafd29bad772c678530
+  pixi-live2d-display: 083c9715b7d2b54bb3a2d0ece123d00798057a39cbdeda9b51d4594c4789a3c0
   tab-election@4.6.2: ff8fe3c9aed66469fa00180f039fbf9f4f8e682430bfb3f6a07d9baf3f850674
   uiohook-napi@1.5.5: 012c5e5ad881d5ae40fc0af58832e31a0772ab0a74c038c8f4dfe51efaf398dd
 
@@ -1573,6 +1573,15 @@ importers:
       '@pinia/colada':
         specifier: 'catalog:'
         version: 1.4.2(pinia@4.0.3(@vue/devtools-api@8.2.1)(typescript@6.0.3)(vue@3.5.41(typescript@6.0.3)))(vue@3.5.41(typescript@6.0.3))
+      '@pixi/app':
+        specifier: 'catalog:'
+        version: 6.5.10(@pixi/core@6.5.10(@pixi/constants@6.5.10)(@pixi/extensions@6.5.10)(@pixi/math@6.5.10)(@pixi/runner@6.5.10)(@pixi/settings@6.5.10(@pixi/constants@6.5.10))(@pixi/ticker@6.5.10(@pixi/extensions@6.5.10)(@pixi/settings@6.5.10(@pixi/constants@6.5.10)))(@pixi/utils@6.5.10(@pixi/constants@6.5.10)(@pixi/settings@6.5.10(@pixi/constants@6.5.10))))(@pixi/display@6.5.10(@pixi/constants@6.5.10)(@pixi/math@6.5.10)(@pixi/settings@6.5.10(@pixi/constants@6.5.10))(@pixi/utils@6.5.10(@pixi/constants@6.5.10)(@pixi/settings@6.5.10(@pixi/constants@6.5.10))))(@pixi/math@6.5.10)(@pixi/utils@6.5.10(@pixi/constants@6.5.10)(@pixi/settings@6.5.10(@pixi/constants@6.5.10)))
+      '@pixi/core':
+        specifier: 'catalog:'
+        version: 6.5.10(@pixi/constants@6.5.10)(@pixi/extensions@6.5.10)(@pixi/math@6.5.10)(@pixi/runner@6.5.10)(@pixi/settings@6.5.10(@pixi/constants@6.5.10))(@pixi/ticker@6.5.10(@pixi/extensions@6.5.10)(@pixi/settings@6.5.10(@pixi/constants@6.5.10)))(@pixi/utils@6.5.10(@pixi/constants@6.5.10)(@pixi/settings@6.5.10(@pixi/constants@6.5.10)))
+      '@pixi/sprite':
+        specifier: 'catalog:'
+        version: 6.5.10(@pixi/constants@6.5.10)(@pixi/core@6.5.10(@pixi/constants@6.5.10)(@pixi/extensions@6.5.10)(@pixi/math@6.5.10)(@pixi/runner@6.5.10)(@pixi/settings@6.5.10(@pixi/constants@6.5.10))(@pixi/ticker@6.5.10(@pixi/extensions@6.5.10)(@pixi/settings@6.5.10(@pixi/constants@6.5.10)))(@pixi/utils@6.5.10(@pixi/constants@6.5.10)(@pixi/settings@6.5.10(@pixi/constants@6.5.10))))(@pixi/display@6.5.10(@pixi/constants@6.5.10)(@pixi/math@6.5.10)(@pixi/settings@6.5.10(@pixi/constants@6.5.10))(@pixi/utils@6.5.10(@pixi/constants@6.5.10)(@pixi/settings@6.5.10(@pixi/constants@6.5.10))))(@pixi/math@6.5.10)(@pixi/settings@6.5.10(@pixi/constants@6.5.10))(@pixi/utils@6.5.10(@pixi/constants@6.5.10)(@pixi/settings@6.5.10(@pixi/constants@6.5.10)))
       '@proj-airi/audio':
         specifier: workspace:^
         version: link:../../packages/audio
@@ -1876,6 +1885,9 @@ importers:
       pinia:
         specifier: 'catalog:'
         version: 4.0.3(@vue/devtools-api@8.2.1)(typescript@6.0.3)(vue@3.5.41(typescript@6.0.3))
+      pixi-live2d-display:
+        specifier: 'catalog:'
+        version: 0.4.0(patch_hash=083c9715b7d2b54bb3a2d0ece123d00798057a39cbdeda9b51d4594c4789a3c0)(0736f5bd67d2e4de7e9fff36ad63fa2e)
       popmotion:
         specifier: 'catalog:'
         version: 11.0.5
@@ -3030,7 +3042,7 @@ importers:
         version: 4.0.3(@vue/devtools-api@8.2.1)(typescript@6.0.3)(vue@3.5.41(typescript@6.0.3))
       pixi-live2d-display:
         specifier: 'catalog:'
-        version: 0.4.0(patch_hash=cee60f8b5121eb195718c1935f9a3a6012cc8d4e8b6deeafd29bad772c678530)(0736f5bd67d2e4de7e9fff36ad63fa2e)
+        version: 0.4.0(patch_hash=083c9715b7d2b54bb3a2d0ece123d00798057a39cbdeda9b51d4594c4789a3c0)(0736f5bd67d2e4de7e9fff36ad63fa2e)
       three:
         specifier: 'catalog:'
         version: 0.185.1
@@ -4147,7 +4159,7 @@ importers:
         version: 4.2.0(5af797a0b5bd919a06578c24a7479046)
       pixi-live2d-display:
         specifier: 'catalog:'
-        version: 0.4.0(patch_hash=cee60f8b5121eb195718c1935f9a3a6012cc8d4e8b6deeafd29bad772c678530)(0736f5bd67d2e4de7e9fff36ad63fa2e)
+        version: 0.4.0(patch_hash=083c9715b7d2b54bb3a2d0ece123d00798057a39cbdeda9b51d4594c4789a3c0)(0736f5bd67d2e4de7e9fff36ad63fa2e)
       three:
         specifier: 'catalog:'
         version: 0.185.1
@@ -30519,7 +30531,7 @@ snapshots:
       - '@pixi/settings'
       - '@pixi/utils'
 
-  pixi-live2d-display@0.4.0(patch_hash=cee60f8b5121eb195718c1935f9a3a6012cc8d4e8b6deeafd29bad772c678530)(0736f5bd67d2e4de7e9fff36ad63fa2e):
+  pixi-live2d-display@0.4.0(patch_hash=083c9715b7d2b54bb3a2d0ece123d00798057a39cbdeda9b51d4594c4789a3c0)(0736f5bd67d2e4de7e9fff36ad63fa2e):
     dependencies:
       '@pixi/core': 6.5.10(@pixi/constants@6.5.10)(@pixi/extensions@6.5.10)(@pixi/math@6.5.10)(@pixi/runner@6.5.10)(@pixi/settings@6.5.10(@pixi/constants@6.5.10))(@pixi/ticker@6.5.10(@pixi/extensions@6.5.10)(@pixi/settings@6.5.10(@pixi/constants@6.5.10)))(@pixi/utils@6.5.10(@pixi/constants@6.5.10)(@pixi/settings@6.5.10(@pixi/constants@6.5.10)))
       '@pixi/display': 6.5.10(@pixi/constants@6.5.10)(@pixi/math@6.5.10)(@pixi/settings@6.5.10(@pixi/constants@6.5.10))(@pixi/utils@6.5.10(@pixi/constants@6.5.10)(@pixi/settings@6.5.10(@pixi/constants@6.5.10)))
