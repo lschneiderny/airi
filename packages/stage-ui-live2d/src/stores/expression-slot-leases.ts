@@ -25,10 +25,12 @@ export interface SlotLeaseContext {
   composer: ExpressionComposer
   nextClaimSequence: () => number
   reconcile: (now: number) => void
+  /** Whether a lease on `expressionId` that replaces the slot's lease on `replacedId` would show too many stage items. */
+  exceedsItemLimit: (expressionId: string, replacedId: string | undefined) => boolean
 }
 
 export function createSlotLeases(context: SlotLeaseContext) {
-  const { catalog, manualActive, leases, muted, slotSettings, composer, nextClaimSequence, reconcile } = context
+  const { catalog, manualActive, leases, muted, slotSettings, composer, nextClaimSequence, reconcile, exceedsItemLimit } = context
 
   /** Checks every conflicting owner before replacing the previous lease. */
   function admit(slot: SlotName, command: SlotCommand, now: number, batch: Map<string, SlotLease>): ExpressionRefusal['reason'] | null {
@@ -36,6 +38,8 @@ export function createSlotLeases(context: SlotLeaseContext) {
     const entry = catalog.value.find(entry => entry.id === id)
     if (!entry || !entrySlots(entry, catalog.value).includes(slot))
       return 'missing-asset'
+    if (exceedsItemLimit(id, leases.value[slot]?.expressionId))
+      return 'item-limit'
     if (entry.kind !== 'combo' && entry.group !== null) {
       const baseMembers = manualActive.value.flatMap((id) => {
         const base = catalog.value.find(entry => entry.id === id)!

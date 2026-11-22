@@ -75,8 +75,17 @@ export interface PerformanceDecision {
 /** One expression request that cannot be shown. Reports contain catalog ids, never labels or model paths. */
 export interface ExpressionRefusal {
   entryId: string
-  reason: 'masked-by-clip' | 'masked-by-manual' | 'masked-by-expression' | 'missing-asset'
+  /** `item-limit`: showing the entry would put more stage items on screen than the renderer allows at once. */
+  reason: 'masked-by-clip' | 'masked-by-manual' | 'masked-by-expression' | 'missing-asset' | 'item-limit'
 }
+
+/**
+ * What the renderer reports for one shown stage item: drawn at its pin (`attached`), drawn at a pin re-picked in
+ * memory because her mesh changed (`reattached`), drawn at its fallback point because the pinned drawable is gone
+ * (`missing-drawable`), drawn in front because its layer drawable is gone (`missing-layer`), or not drawn because its
+ * file could not be read or decoded (`failed`).
+ */
+export type ItemRenderState = 'attached' | 'reattached' | 'missing-drawable' | 'missing-layer' | 'failed'
 
 export interface DeciderContext {
   catalog: readonly CatalogEntry[]

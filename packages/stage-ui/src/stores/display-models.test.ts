@@ -1,5 +1,5 @@
 import { createPinia, setActivePinia } from 'pinia'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { DisplayModelFormat, useDisplayModelsStore } from './display-models'
 
@@ -37,10 +37,21 @@ vi.mock('@proj-airi/stage-ui-tachie/utils/tachie-preview', () => ({ loadTachieMo
 vi.mock('@proj-airi/stage-ui-mmd/utils/mmd-preview', () => ({ loadMMDModelPreview: async () => 'mmd-preview' }))
 
 describe('display models store', () => {
+  // Node has no localStorage; model removal deletes the model's expression documents from it.
+  const local = new Map<string, string>()
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
     records.clear()
+    local.clear()
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => local.get(key) ?? null,
+      setItem: (key: string, value: string) => local.set(key, value),
+      removeItem: (key: string) => local.delete(key),
+    })
+  })
+  afterEach(() => {
+    vi.unstubAllGlobals()
   })
 
   it('resolves newly imported display models from memory before IndexedDB', async () => {
@@ -77,6 +88,19 @@ describe('display models store', () => {
     await store.removeDisplayModel('display-model-local')
 
     expect(deleted.mock.calls).toEqual([[['display-model-local']]])
+  })
+
+  it('removes the expression documents of a removed model and keeps those of other models', async () => {
+    const store = useDisplayModelsStore()
+    localStorage.setItem('expression-catalog:display-model-local', '{}')
+    localStorage.setItem('expression-rest:display-model-local', '{}')
+    localStorage.setItem('expression-catalog:display-model-other', '{}')
+
+    await store.removeDisplayModel('display-model-local')
+
+    expect(localStorage.getItem('expression-catalog:display-model-local')).toBeNull()
+    expect(localStorage.getItem('expression-rest:display-model-local')).toBeNull()
+    expect(localStorage.getItem('expression-catalog:display-model-other')).toBe('{}')
   })
 
   it('loads stored models once when several callers initialize at the same time', async () => {

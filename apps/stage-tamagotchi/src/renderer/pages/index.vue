@@ -22,12 +22,13 @@ import {
 } from '@proj-airi/stage-ui/components/scenarios/settings/model-settings/runtime'
 import { WidgetStage } from '@proj-airi/stage-ui/components/scenes'
 import { useCanvasPixelIsTransparentAtPoint } from '@proj-airi/stage-ui/composables/canvas-alpha'
+import { useStageItemPruning } from '@proj-airi/stage-ui/composables/use-stage-item-pruning'
 import { FULLSCREEN_WORKSPACE_FLAG } from '@proj-airi/stage-ui/libs/feature-flags'
 import { useFeatureFlagsStore } from '@proj-airi/stage-ui/stores/feature-flags'
 import { useSettings } from '@proj-airi/stage-ui/stores/settings'
 import { refDebounced, until } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
-import { computed, nextTick, onMounted, ref, shallowRef, toRef, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef, toRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
 import FullscreenBackdrop from '../components/fullscreen/fullscreen-backdrop.vue'
@@ -116,6 +117,7 @@ function handleStageReset() {
 }
 const modelStore = useModelStore()
 const expressionStore = useExpressionStore()
+onUnmounted(useStageItemPruning())
 const mmdExpressionStore = useMMDExpressionStore()
 const motionDiagnostics = useMMDMotionDiagnostics()
 const { sceneMutationLocked, scenePhase } = storeToRefs(modelStore)

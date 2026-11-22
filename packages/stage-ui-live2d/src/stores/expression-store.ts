@@ -1,25 +1,47 @@
-import type { CatalogEntry, CuratedCatalogDocument, CustomExpressionDocument } from '@proj-airi/stage-shared/expression-performance'
+import type { CatalogEntry, CuratedCatalogDocument, CustomExpressionDocument, ExpressionRefusal, ItemExpressionDocument, ItemRenderState } from '@proj-airi/stage-shared/expression-performance'
 
 import type { ExpressionDefinition } from '../composables/live2d/expression/compose'
 import type { SlotLeaseSettings } from '../composables/live2d/expression/slots'
 import type { FreeParameter } from '../utils/expression-catalog/free-parameters'
-import type { ComboPatch, CreateComboInput, CustomPatch, EntryPatch } from './expression-catalog-persistence'
+import type { ComboPatch, CreateComboInput, CreateItemInput, CustomPatch, EntryPatch, ItemPatch } from './expression-catalog-persistence'
 import type { SlotLeases } from './expression-slot-leases'
 
 import { errorMessageFrom } from '@moeru/std'
-import { customEntryFromDocument, defaultExpressionPerformanceSettings, expandEntry, isAutoEligible, isLlmEligible, mergeCatalog, parseCuratedCatalogDocument, parseRestSet, resolveAlias } from '@proj-airi/stage-shared/expression-performance'
+import { customEntryFromDocument, defaultExpressionPerformanceSettings, expandEntry, isAutoEligible, isLlmEligible, itemEntryFromDocument, mergeCatalog, parseCuratedCatalogDocument, parseRestSet, resolveAlias } from '@proj-airi/stage-shared/expression-performance'
+import { createEventHook } from '@vueuse/core'
 import { defineStore } from 'pinia'
-import { computed, markRaw, ref, shallowRef } from 'vue'
+import { computed, markRaw, ref, shallowRef, toRaw } from 'vue'
 
 import { ExpressionComposer } from '../composables/live2d/expression/compose'
 import { slotNames } from '../composables/live2d/expression/slots'
 import { suggestArea } from '../utils/expression-catalog/area'
 import { deriveCatalog, suggestKind } from '../utils/expression-catalog/derive'
-import { createCatalogPersistence } from './expression-catalog-persistence'
+import { createCatalogPersistence, removeItemsByAsset } from './expression-catalog-persistence'
 import { createSlotLeases, emptyLeases } from './expression-slot-leases'
 
 export interface NamedExpressionDefinition extends ExpressionDefinition {
   name: string
+}
+
+/** At most this many stage items show at once, so frame cost stays bounded; a further show is refused `item-limit`. */
+const MAX_SHOWN_ITEMS = 16
+/** Of the shown items, at most this many are Live2D models, the costly kind. */
+const MAX_SHOWN_LIVE2D_ITEMS = 4
+
+/** One stage item of the loaded model as the panel sees it. `state` is the renderer's last report, null while it draws nothing. */
+export interface Live2DItemSnapshot {
+  document: ItemExpressionDocument
+  /** The item's library asset exists on this device. */
+  available: boolean
+  /** The entry is in the resolved effective set, whoever claims it. */
+  shown: boolean
+  state: ItemRenderState | null
+}
+
+/** A shown item the renderer draws, with the strength of the claim that shows it. */
+export interface ItemTarget {
+  document: ItemExpressionDocument
+  weight: number
 }
 
 /** Target activation state; fading releases remain owned by the composer until zero. */
@@ -32,6 +54,8 @@ export interface Live2DExpressionSettingsSnapshot {
   freeParameters: FreeParameter[]
   /** This renderer lets her use entries on her own, so the panel offers the choice. The store always sets it. */
   supportsIdleUse?: true
+  /** Every stored item of the model, including those whose asset is missing. The store always sets it. */
+  items?: Live2DItemSnapshot[]
 }
 
 export interface ExpressionClaim {
@@ -96,6 +120,9 @@ export type Live2DExpressionSettingsCommand
     | { type: 'create-custom', custom: { label: string, parameterId: string, target: number } }
     | { type: 'update-custom', id: string, patch: Omit<CustomPatch, 'delta'> & { target?: number } }
     | { type: 'delete-custom', id: string }
+    | { type: 'create-item', item: CreateItemInput }
+    | { type: 'update-item', id: string, patch: ItemPatch }
+    | { type: 'delete-item', id: string }
 
 /** Local to the renderer that owns the model. Other windows use snapshots and commands. */
 export const useExpressionStore = defineStore('live2d-expressions', () => {
@@ -110,6 +137,8 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
   const idleActive = ref<string[]>([])
   const idleSeq = ref<Record<string, number>>({})
   let claimSeq = 0
+  // Entries the last idle request left out at a cap, so a repeated request does not report them again.
+  let idleRefused = new Set<string>()
   const composer = markRaw(new ExpressionComposer())
   /** Highest-priority, frame-scoped input from the Root context; never persisted or exposed as catalog entries. */
   const contextPreview = shallowRef<ExpressionDefinition['parameters']>([])
@@ -126,7 +155,20 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
       entry.area = entry.kind === 'unsorted' ? 'hidden' : suggestArea(entry.kind, entry.parameterIds, entry.label)
     return entry
   }
-  const catalog = computed(() => mergeCatalog(derived.value, curated.value, validCustoms.value.map(withKindArea)))
+  // Library assets on this device; the stage sets them from the item library. An item without its asset is not in the
+  // catalog, so every request for it is refused `missing-asset`, but its document and rest-set place stay.
+  const availableItemAssets = shallowRef<ReadonlySet<string>>(new Set())
+  const live2dItemAssets = shallowRef<ReadonlySet<string>>(new Set())
+  const itemStates = ref<Record<string, ItemRenderState>>({})
+  // Fires once per item refusal outside `applySlots`, which returns its own: a switch, her own claims, a renderer failure.
+  const itemRefusals = createEventHook<ExpressionRefusal>()
+  const validItems = computed(() => (curated.value.items ?? []).filter(item => availableItemAssets.value.has(item.assetId)))
+  function itemEntry(item: ItemExpressionDocument): CatalogEntry {
+    const entry = itemEntryFromDocument(item)
+    entry.area ??= suggestArea(entry.kind, entry.parameterIds, entry.label)
+    return entry
+  }
+  const catalog = computed(() => mergeCatalog(derived.value, curated.value, [...validCustoms.value.map(withKindArea), ...validItems.value.map(itemEntry)]))
   const llmEligibleEntries = computed(() => catalog.value.filter(isLlmEligible))
   const autoEligibleEntries = computed(() => catalog.value.filter(isAutoEligible))
   // Rest-set members the user toggled off this session; cleared by resetAll and saveDefaults.
@@ -161,6 +203,42 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
     composer.setTargets(resolved.value.targets, now)
   }
 
+  /** Shown items for the renderer, in catalog order. The composer ignores item ids, because no definition names them. */
+  const itemTargets = computed<ItemTarget[]>(() => {
+    const weights = new Map(resolved.value.targets.map(target => [target.id, target.weight]))
+    return validItems.value
+      .filter(item => resolved.value.effective.has(item.id))
+      .map(document => ({ document, weight: weights.get(document.id) ?? 1 }))
+  })
+
+  function shownItemCounts(effective: ReadonlySet<string>) {
+    let all = 0
+    let live2d = 0
+    for (const item of validItems.value) {
+      if (!effective.has(item.id))
+        continue
+      all++
+      if (live2dItemAssets.value.has(item.assetId))
+        live2d++
+    }
+    return { all, live2d }
+  }
+
+  /**
+   * Whether adding `claim` to `base` would show more items than the caps allow. A claim that adds no item, or that
+   * shows no more items than are shown now, always passes, so a look already over a cap can still change.
+   */
+  function exceedsItemLimit(base: readonly ExpressionClaim[], claim: ExpressionClaim) {
+    const next = shownItemCounts(resolve([...base, claim], catalog.value).effective)
+    const now = shownItemCounts(resolved.value.effective)
+    return (next.all > MAX_SHOWN_ITEMS && next.all > now.all) || (next.live2d > MAX_SHOWN_LIVE2D_ITEMS && next.live2d > now.live2d)
+  }
+
+  function refuseItem(entryId: string, reason: ExpressionRefusal['reason']) {
+    console.warn('[expression-store] Item refused:', entryId, reason)
+    void itemRefusals.trigger({ entryId, reason })
+  }
+
   const { activateFromSlot, releaseSlot, applySlots, onSpeech, setMuted, setSlotSettings, tickLeases } = createSlotLeases({
     catalog,
     manualActive,
@@ -170,6 +248,10 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
     composer,
     reconcile,
     nextClaimSequence: () => ++claimSeq,
+    exceedsItemLimit: (expressionId, replacedId) => exceedsItemLimit(
+      claims.value.filter(claim => claim.layer !== 1 || claim.expressionId !== replacedId),
+      { expressionId, layer: 1, seq: claimSeq + 1 },
+    ),
   })
   const persistence = createCatalogPersistence({ modelId, derived, curated, catalog })
   function updateEntry(id: string, patch: EntryPatch) {
@@ -211,6 +293,12 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
       })),
       freeParameters: freeParameters.value.filter(parameter => !validCustoms.value.some(custom => custom.parameterId === parameter.id)).map(parameter => ({ ...parameter })),
       supportsIdleUse: true,
+      items: (curated.value.items ?? []).map(document => ({
+        document: structuredClone(toRaw(document)),
+        available: availableItemAssets.value.has(document.assetId),
+        shown: resolved.value.effective.has(document.id),
+        state: itemStates.value[document.id] ?? null,
+      })),
     }
   })
 
@@ -232,7 +320,8 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
 
   /** Prune deleted triggers, not the members they masked. Reconciliation restores those members. */
   function removeDeletedClaims() {
-    const ids = new Set(catalog.value.map(entry => entry.id))
+    // An item whose asset is missing is not in the catalog, but it still exists: keep its claims and rest-set place.
+    const ids = new Set([...catalog.value.map(entry => entry.id), ...(curated.value.items ?? []).map(item => item.id)])
     manualActive.value = manualActive.value.filter(id => ids.has(id))
     manualSeq.value = Object.fromEntries(Object.entries(manualSeq.value).filter(([id]) => ids.has(id)))
     restSuppressed.value = restSuppressed.value.filter(id => ids.has(id))
@@ -298,6 +387,71 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
     }
   }
 
+  function createItem(input: CreateItemInput) {
+    const id = persistence.createItem(input)
+    if (id)
+      reconcile()
+    return id
+  }
+
+  function updateItem(id: string, patch: ItemPatch) {
+    if (persistence.updateItem(id, patch))
+      reconcile()
+  }
+
+  function deleteItem(id: string) {
+    if (persistence.deleteItem(id)) {
+      forgetItemStates([id])
+      removeDeletedClaims()
+      reconcile()
+    }
+  }
+
+  function forgetItemStates(ids: Iterable<string>) {
+    const states = { ...itemStates.value }
+    for (const id of ids)
+      delete states[id]
+    itemStates.value = states
+  }
+
+  /**
+   * Sets the library assets on this device. `live2dIds` names the ones that are Live2D models, which count against
+   * their own cap. An item whose asset leaves keeps its claims, so it shows again when the asset returns.
+   */
+  function setAvailableItemAssets(ids: ReadonlySet<string>, live2dIds: ReadonlySet<string> = new Set()) {
+    availableItemAssets.value = new Set(ids)
+    live2dItemAssets.value = new Set(live2dIds)
+    reconcile()
+  }
+
+  /**
+   * Removes deleted library assets from every model's stored documents, then from the loaded model in memory. Run it
+   * in the stage window only, which writes expression documents. The loaded model's rest set is pruned in memory
+   * first, so a model whose documents were already swept is not written back.
+   */
+  function removeItemAssets(assetIds: readonly string[]) {
+    removeItemsByAsset(assetIds)
+    const removed = persistence.forgetItemAssets(assetIds)
+    if (removed.size === 0)
+      return
+    restSet.value = restSet.value.filter(id => !removed.has(id))
+    forgetItemStates(removed)
+    removeDeletedClaims()
+    reconcile()
+  }
+
+  /**
+   * Takes the renderer's per-item states, replacing the previous report. An item that turns `failed` after it was
+   * admitted is refused `missing-asset` once, never dropped silently; it stays claimed, so the panel shows it failed.
+   */
+  function reportItemStates(states: Readonly<Record<string, ItemRenderState>>) {
+    for (const [id, state] of Object.entries(states)) {
+      if (state === 'failed' && itemStates.value[id] !== 'failed')
+        refuseItem(id, 'missing-asset')
+    }
+    itemStates.value = { ...states }
+  }
+
   function createCombo(input: CreateComboInput) {
     const id = persistence.createCombo(input)
     if (id)
@@ -355,10 +509,13 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
       if (raw !== null) {
         restSaved = true
         const parsed = parseRestSet(JSON.parse(raw))
-        if (parsed.success)
-          restSet.value = [...new Set(parsed.value.active.map(activeId => resolveAlias(activeId, catalog.value)))].filter(activeId => catalog.value.some(entry => entry.id === activeId))
-        else
+        if (parsed.success) {
+          restSet.value = [...new Set(parsed.value.active.map(activeId => resolveAlias(activeId, catalog.value)))]
+            .filter(activeId => catalog.value.some(entry => entry.id === activeId) || curated.value.items?.some(item => item.id === activeId))
+        }
+        else {
           console.warn('[expression-store] Invalid rest set:', parsed.issues)
+        }
       }
     }
     catch (error) {
@@ -379,8 +536,24 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
    * entries are left out, and so are entries the user already switched on: those stay the user's.
    */
   function setIdleClaims(ids: readonly string[], now = performance.now() / 1000): string[] {
-    const wanted = [...new Set(ids.map(id => resolveAlias(id, catalog.value)))]
+    const requested = [...new Set(ids.map(id => resolveAlias(id, catalog.value)))]
       .filter(id => catalog.value.some(entry => entry.id === id) && !manualActive.value.includes(id))
+    // Items past a cap are left out in request order. A refusal is reported when an entry is first left out, not again
+    // while the same request repeats.
+    const base = claims.value.filter(claim => claim.layer !== 0.5)
+    const wanted: string[] = []
+    const refused = new Set<string>()
+    for (const id of requested) {
+      const claim = { expressionId: id, layer: 0.5, seq: idleSeq.value[id] ?? claimSeq + 1 }
+      if (exceedsItemLimit([...base, ...wanted.map(expressionId => ({ expressionId, layer: 0.5, seq: idleSeq.value[expressionId] ?? claimSeq + 1 }))], claim)) {
+        refused.add(id)
+        if (!idleRefused.has(id))
+          refuseItem(id, 'item-limit')
+        continue
+      }
+      wanted.push(id)
+    }
+    idleRefused = refused
     if (wanted.length === idleActive.value.length && wanted.every(id => idleActive.value.includes(id)))
       return idleActive.value
     idleSeq.value = Object.fromEntries(wanted.map(id => [id, idleSeq.value[id] ?? ++claimSeq]))
@@ -402,6 +575,11 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
     const entry = catalog.value.find(entry => entry.id === id)
     if (!entry)
       return
+    // Switching on drops her own claims first, so they do not count against the caps.
+    if (exceedsItemLimit(claims.value.filter(claim => claim.layer !== 0.5), { expressionId: id, layer: 0, seq: claimSeq + 1 })) {
+      refuseItem(id, 'item-limit')
+      return
+    }
     dropIdleClaims()
     if (entry.kind !== 'combo' && entry.group !== null) {
       for (const other of catalog.value) {
@@ -486,6 +664,8 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
     manualSeq.value = {}
     idleActive.value = []
     idleSeq.value = {}
+    idleRefused = new Set()
+    itemStates.value = {}
     claimSeq = 0
     restSuppressed.value = []
     leases.value = emptyLeases()
@@ -521,8 +701,14 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
         return updateCustom(command.id, command.patch)
       case 'delete-custom':
         return deleteCustom(command.id)
+      case 'create-item':
+        return createItem(command.item)
+      case 'update-item':
+        return updateItem(command.id, command.patch)
+      case 'delete-item':
+        return deleteItem(command.id)
     }
   }
 
-  return { definitions, modelId, restSet, restSuppressed, manualActive, manualSeq, idleActive, setIdleClaims, leases, contextPreview, composer, derived, curated, catalog, llmEligibleEntries, autoEligibleEntries, settingsSnapshot, ownersOf, reconcile, registerDefinitions, rederive, activate, activateFromSlot, releaseSlot, applySlots, onSpeech, setMuted, setSlotSettings, tickLeases, deactivate, toggle, saveDefaults, resetAll, updateEntry, resetEntry, dispose, applySettingsCommand }
+  return { definitions, modelId, restSet, restSuppressed, manualActive, manualSeq, idleActive, setIdleClaims, leases, contextPreview, composer, derived, curated, catalog, llmEligibleEntries, autoEligibleEntries, settingsSnapshot, itemTargets, ownersOf, reconcile, registerDefinitions, rederive, activate, activateFromSlot, releaseSlot, applySlots, onSpeech, setMuted, setSlotSettings, tickLeases, deactivate, toggle, saveDefaults, resetAll, updateEntry, resetEntry, setAvailableItemAssets, removeItemAssets, reportItemStates, dispose, applySettingsCommand, onItemRefusal: itemRefusals.on }
 })

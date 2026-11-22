@@ -142,6 +142,7 @@ describe('airi-card store', () => {
   // Read a store after an await through `testPinia`. Production has one Pinia, so this affects only tests.
   afterEach(() => {
     disposePinia(testPinia)
+    vi.unstubAllGlobals()
   })
 
   it('migrates retired provider instances on saved cards without losing their local content', async () => {
@@ -666,6 +667,8 @@ describe('airi-card store', () => {
       },
     }, 'import')
     const referencedModels = () => cardStore.getCard(cardId)?.extensions.airi.avatarModels.map(model => model.displayModelId)
+    // Node has no localStorage; model removal deletes the model's expression documents from it.
+    vi.stubGlobal('localStorage', { removeItem: () => {} })
 
     await displayModelsStore.removeDisplayModel('display-model-removed')
     expect(referencedModels()).toEqual(['display-model-kept'])
