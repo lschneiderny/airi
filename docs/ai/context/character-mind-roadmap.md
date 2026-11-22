@@ -58,6 +58,8 @@ CM9 is split into six slices in three lanes: CM9a then CM9b; CM9c, then CM9d and
 
 CM6a's D16 ruling of 2026-11-21 adds one corrective stroll after a chase stops beside a resting pointer. The pure director remembers the opportunity in `cursorStepPending` and spends it at rest inside the attend window, beyond `STEP_ONTO_CURSOR_MIN_LEGS` (0.15 legs). Under the owner's follow-up ruling of 2026-11-21, only that goal requests `step: 'sidestep'`. The gait keeps her yaw for a departure within `SIDESTEP_MAX_LEGS` (0.6 legs, a tuning value), using leading/trailing step pairs; farther goals still walk. Node closed-loop regressions cover landings at 1, 2, and 4 s, assert no corrective turning, and report the correction's rest-to-rest duration. Rendered press acceptance remains a separate close-out check.
 
+The owner answered "Scope to Natural" on 2026-11-22: Autonomous behavior Target rules 1, 2, and 5 cover Natural only, and the deciders of Universal, MAGIC, and classic stay as upstream ships them, so they are not open work.
+
 Tuning a behavior that a slice is about to rewrite is wasted work. Feature and tuning work waits for the slice that rewrites it. Work outside the slices proceeds at any time.
 
 | Work | Waits for |
