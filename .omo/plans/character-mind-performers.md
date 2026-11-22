@@ -1,6 +1,6 @@
 # character-mind-performers - Work Plan
 
-Status: CM7a implemented on 2026-11-22, with headless and rendered acceptance assigned to the orchestrator. The owner approved every recommended option, D1 to D12, on 2026-11-21. c6 landed separately; CM7b, the remainder of CM7c, and CM7d are not implemented. The [roadmap](../../docs/ai/context/character-mind-roadmap.md#steps) tracks the four parts.
+Status: CM7a and CM7d implemented on 2026-11-22. CM7d's headless, rig and rendered acceptance is assigned to the orchestrator. The owner approved every recommended option, D1 to D12, on 2026-11-21. c6 landed separately; CM7b and the remainder of CM7c are not implemented in this worktree. The [roadmap](../../docs/ai/context/character-mind-roadmap.md#steps) tracks the four parts.
 
 The labels D1 to D12 name the forks in [Decisions for the owner](#decisions-for-the-owner). Each section is written on the recommended option.
 
@@ -602,6 +602,81 @@ links that record, and the old posture-overwrite documentation gap is removed.
 The CM7d roadmap row records implementation completion, with the orchestrator's
 headless, rig and rendered results explicitly pending in the ADR Consequences.
 No existing ADR body or another CM7 part's implementation is changed.
+
+## Checks run (CM7d)
+
+The owner requested package checks instead of repository-wide verify. No
+`qa:*` command, Electron launch, install, package manifest or lockfile change,
+push, threshold change, or timeout increase ran in this worker. Suites ran
+one at a time. Markdown-only items did not rerun package typechecks.
+
+Required inner loops and policy checks, with passing test counts:
+
+| Command | d1 | d2 | d3 | d4 |
+| --- | --- | --- | --- | --- |
+| `pnpm -F @proj-airi/character-mind exec vitest run src` | 138 | 138 | 138 | 138 |
+| `pnpm -F @proj-airi/stage-ui exec vitest run --project node src/composables/performance src/features` | 268 | 268 | 268 | 268 |
+| `pnpm -F @proj-airi/stage-ui exec vitest run --project browser src/components/scenes/stage-emotion-routing.browser.test.ts src/persistence` | 53 | 53 | 53 | 53 |
+| `pnpm -F @proj-airi/stage-shared exec vitest run src/expression-performance` | 291 | 291 | 291 | 291 |
+| `pnpm -F @proj-airi/stage-ui-live2d exec vitest run --project node src/composables/live2d` | 513 | 516 | 518 | 518 |
+| `pnpm exec vitest run --project dev-tools scripts/dev-tools/policy-docs.test.ts` | Not needed | 11 | 11 | 11 |
+
+The final record-only commit repeated all five inner loops and the policy
+check; they passed with the same counts as d4. It changes no runtime file.
+
+Focused regressions and full touched-package suites:
+
+| Command | Result |
+| --- | --- |
+| `pnpm -F @proj-airi/stage-ui-live2d exec vitest run --project node src/composables/live2d/expression-controller.test.ts src/contexts/expressions.test.ts src/composables/live2d/expression/compose.test.ts` | d2: 54 passed |
+| `pnpm -F @proj-airi/motion-driver-natural exec vitest run src/expression-tilt.test.ts` | d3: 3 passed |
+| `pnpm -F @proj-airi/stage-ui-live2d exec vitest run --project node src/composables/live2d/natural-motion-adapter.test.ts src/composables/live2d/expression-controller.test.ts src/composables/live2d/natural-motion/observer.test.ts` | d3: 92 passed; existing observer hashes unchanged |
+| `pnpm -F @proj-airi/motion-driver-natural exec vitest run` | d3: 522 passed |
+| `pnpm -F @proj-airi/stage-ui-live2d exec vitest run --project node` | d2: 790 passed; d3: 792 passed |
+| `pnpm -F @proj-airi/stage-ui-live2d exec vitest run --project browser` | d2 and d3: 43 passed |
+| `pnpm -F @proj-airi/stage-ui exec vitest run --project browser` | d2: 1,018 passed, 5 existing skips. d3: 1,012 passed, 6 timing failures, 5 existing skips; isolated retries below passed |
+
+Every failed d3 browser file was rerun once on its own, without changing
+timeouts or assertions:
+
+| Command | Result |
+| --- | --- |
+| `pnpm -F @proj-airi/stage-ui exec vitest run --project browser src/components/misc/mobile-composer-height.browser.test.ts --no-file-parallelism` | 1 passed |
+| `pnpm -F @proj-airi/stage-ui exec vitest run --project browser src/workers/vad/silero-vad.browser.test.ts --no-file-parallelism` | 7 passed |
+| `pnpm -F @proj-airi/stage-ui exec vitest run --project browser src/components/scenarios/chat/components/history-time-separator.browser.test.ts --no-file-parallelism` | 12 passed |
+| `pnpm -F @proj-airi/stage-ui exec vitest run --project browser src/components/scenarios/chat/components/send-button.browser.test.ts --no-file-parallelism` | 2 passed |
+| `pnpm -F @proj-airi/stage-ui exec vitest run --project browser src/components/scenarios/chat/components/sessions-dialog.browser.test.ts --no-file-parallelism` | 22 passed |
+
+Both dependent typecheck commands passed with exit code 0:
+
+| Item | Command | Selected projects, including the touched packages |
+| --- | --- | --- |
+| d2 | `pnpm --filter "...@proj-airi/stage-ui-live2d" --workspace-concurrency=2 typecheck` | 8 |
+| d3 | `pnpm --filter "...@proj-airi/motion-driver-natural" --filter "...@proj-airi/stage-ui-live2d" --workspace-concurrency=2 typecheck` | 11 |
+
+ESLint passed on changed TypeScript and Vue files. The adapter test retains
+one pre-existing long-comment warning in an untouched test. The commit hooks
+linted each named staged file. Browser fixtures retain their existing loader,
+missing injection and synchronization-teardown console messages; those are
+not rendered-app acceptance.
+
+The orchestrator still owns section 9's headless identity comparisons and
+the unchanged Live2D rig hash. Section 9 enumerates ten scenarios when `music`
+is included, despite its nine-scenario shorthand. It also owns rendered
+check 10: a preview through the card's Live2D controls must show and end on
+Natural and Universal. Natural must show the highest-priority lease and
+reveal the underlying expression after withdrawal without changing posture;
+Universal must keep its direct context preview and release. Every launch
+must have zero renderer and zero main-process errors. The ADR Consequences
+contains the requested placeholder for these results.
+
+## Commits (CM7d)
+
+1. `2617e1a5a` - `docs(plan): inventory the Live2D channel writers under Natural`
+2. `5bd36f180` - `feat(stage-ui-live2d): make the context preview a lease under Natural`
+3. `c67ec64cb` - `feat(motion-driver-natural,stage-ui-live2d): compose expression tilts as a weighted posture input`
+4. `90127ba0d` - `docs(ai): record the Live2D channel owners`
+5. This record - `docs(plan): record CM7d implementation and checks`
 
 ## Checks run (CM7a)
 
