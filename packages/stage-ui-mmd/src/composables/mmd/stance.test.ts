@@ -297,7 +297,7 @@ describe('mmd stance director in the stage world', () => {
     const wander = (roamMode: 'stay' | 'roam') => {
       const director = new MMDStanceDirector()
       frame(director, 0, world({ roamMode, seed: 7 }))
-      frame(director, 1_000, world({ roamMode, seed: 7, wander: { seq: 1 } }))
+      frame(director, 1_000, world({ roamMode, seed: 7, wander: { seq: 1, pick: 0.9 } }))
       return director.diagnostics
     }
     expect(wander('roam')).toMatchObject({ reason: 'wander', roamMode: 'roam', wanderAnswer: { seq: 1, accepted: true } })
@@ -309,18 +309,18 @@ describe('mmd stance director in the stage world', () => {
     const director = new MMDStanceDirector()
     const roam = (patch: Partial<MMDStanceWorld> = {}) => world({ roamMode: 'roam', seed: 7, ...patch })
     frame(director, 0, roam())
-    frame(director, 100, roam({ wander: { seq: 1 } }))
+    frame(director, 100, roam({ wander: { seq: 1, pick: 0.9 } }))
     const first = director.diagnostics
     expect(first.reason).toBe('wander')
     const goalX = first.goalX!
 
-    frame(director, 2_000, roam({ rootX: goalX / 2, locomotionMode: 'walking', wander: { seq: 2 } }))
-    expect(director.diagnostics).toMatchObject({ reason: 'wander', goalX, pendingWander: { seq: 2 } })
+    frame(director, 2_000, roam({ rootX: goalX / 2, locomotionMode: 'walking', wander: { seq: 2, pick: 0.9 } }))
+    expect(director.diagnostics).toMatchObject({ reason: 'wander', goalX, pendingWander: { seq: 2, pick: 0.9 } })
 
-    frame(director, 4_000, roam({ rootX: goalX, locomotionMode: 'idle', wander: { seq: 2 } }))
+    frame(director, 4_000, roam({ rootX: goalX, locomotionMode: 'idle', wander: { seq: 2, pick: 0.9 } }))
     expect(director.diagnostics).toMatchObject({ goalX: null, reason: 'stay', pendingWander: null, wanderAnswer: { seq: 2, accepted: false } })
 
-    frame(director, 4_100, roam({ rootX: goalX, locomotionMode: 'idle', wander: { seq: 2 } }))
+    frame(director, 4_100, roam({ rootX: goalX, locomotionMode: 'idle', wander: { seq: 2, pick: 0.9 } }))
     expect(director.diagnostics.goalX).toBeNull()
   })
 

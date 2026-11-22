@@ -521,7 +521,8 @@ holds: `idle-timeout`, `away`, `rest-fallback`, `doze-fallback`, `dwell`,
 `go_home`, or `look_at`, are refused), `lastToolSeq`, `toolRefused` (whether the
 last tool request was refused) and `toolRetryAfterMs` (how long the refused
 request must wait, `null` when it was accepted), and, appended, `roamMode`,
-`pendingWander { seq, sinceMs }` (a wander Natural asked for and the director
+`pendingWander { seq, pick, sinceMs }` (a wander Natural asked for, with the mind's
+visit-share pick retained while the director
 holds) and `wanderAnswer { seq, accepted }`. `nextWanderAtMs` was removed on
 2026-11-14 with the wander interval it reported.
 

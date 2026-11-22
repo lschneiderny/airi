@@ -262,7 +262,10 @@ intent, 60 s after a poke, pet start, drag or sent message; the conductor
 dispatches it only under the Natural driver, so under the classic driver the
 director gets no attend window), returns home
 `RETURN_HOME_DELAY_MS` after the last reason, and wanders in roam mode only,
-when Natural's idle draw asks for one (`input.wander`, a new `seq` per wander).
+when Natural forwards the mind's idle draw (`input.wander`, a new `seq` per wander).
+The errand's `pick` chooses a visit below `VISIT_SHARE` (0.6) when one is possible;
+the director draws only the wander position and the linger, and keeps that pick
+while a wander waits.
 A wander goes at least three leg lengths, or, where three legs fit on neither
 side, half the longer free side but never less than one leg length. The
 director holds an asked wander while she cannot walk yet and refuses it without

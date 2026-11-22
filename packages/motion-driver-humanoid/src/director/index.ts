@@ -200,11 +200,11 @@ export interface BodyDirectorInput {
   idle: { settled: boolean, asleep: boolean }
   /**
    * A wander Natural's idle draw started (its errand `seq`; idle agency ADR, amendment of 2026-11-14), or null. A new
-   * `seq` is a new request. The director walks it in roam mode as a wander or a visit, holds it while she cannot walk
+   * `seq` is a new request. The mind's `pick` decides the visit share. The director walks it in roam mode as a wander or a visit, holds it while she cannot walk
    * yet, and refuses it without ground, outside roam mode, on arrival from another goal, without room to wander, or
    * when it could not be walked within `PENDING_GOAL_TTL_MS`. `BodyDirectorMemory.wanderAnswer` carries the answer.
    */
-  wander: { seq: number } | null
+  wander: { seq: number, pick: number } | null
 }
 
 /**
@@ -275,7 +275,7 @@ export interface BodyDirectorMemory {
   /** The latest wander request read; a request with a higher `seq` is new. */
   readonly lastWanderSeq: number
   /** A wander asked for and not walked yet, and since when. */
-  readonly pendingWander: { seq: number, sinceMs: number } | null
+  readonly pendingWander: { seq: number, pick: number, sinceMs: number } | null
   /** The answer to the latest wander request: walked (`accepted`) or refused; null before the first. */
   readonly wanderAnswer: { seq: number, accepted: boolean } | null
   /** Until when she stays where a wander or a visit took her before walking home; 0 when no stay applies. */
@@ -484,7 +484,7 @@ export function decideBody(
   if (input.wander !== null && input.wander.seq > lastWanderSeq) {
     lastWanderSeq = input.wander.seq
     refuseWander()
-    pendingWander = { seq: input.wander.seq, sinceMs: nowMs }
+    pendingWander = { seq: input.wander.seq, pick: input.wander.pick, sinceMs: nowMs }
   }
   if (ground === null || input.roamMode !== 'roam' || arrived)
     refuseWander()
@@ -816,12 +816,7 @@ export function decideBody(
         issue({ x: visitX, pace: 'stroll', reason: 'visit' })
     }
     else {
-      let visiting = false
-      if (visitInPlace || visitX !== null) {
-        const draw = drawRandom(rngState)
-        rngState = draw.state
-        visiting = draw.value < VISIT_SHARE
-      }
+      const visiting = (visitInPlace || visitX !== null) && asked.pick < VISIT_SHARE
       if (visiting && visitInPlace) {
         arriveInPlace()
       }

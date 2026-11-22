@@ -1067,9 +1067,9 @@ function reportBody(intent: BodyIntent | null) {
 }
 
 /** Natural's wander errand while it waits for the director's answer, for `world.wander`; null otherwise. */
-function naturalWander(): { seq: number } | null {
+function naturalWander(): { seq: number, pick: number } | null {
   const errand = motionDriver.value === 'natural' ? natural?.idleErrand : null
-  return errand?.kind === 'wander' && errand.endedAt === null ? { seq: errand.seq } : null
+  return errand?.kind === 'wander' && errand.endedAt === null ? { seq: errand.seq, pick: errand.pick } : null
 }
 
 /**
