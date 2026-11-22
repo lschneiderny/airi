@@ -112,7 +112,8 @@ export const MotionQaStateSchema = strictObject({
 export type MotionQaState = InferOutput<typeof MotionQaStateSchema>
 
 export const MotionQaConfigureInputSchema = strictObject({
-  driver: optional(literal('natural')),
+  /** The loaded renderer must support the requested driver. */
+  driver: optional(picklist(['natural', 'universal', 'magic', 'classic'])),
   cursorAttention: optional(boolean()),
   chatAttention: optional(boolean()),
   touchReactions: optional(boolean()),

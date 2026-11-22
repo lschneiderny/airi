@@ -30,6 +30,7 @@ import { useForegroundWindowStore } from '@proj-airi/stage-shared/stores/foregro
 import { useHostCapabilitiesStore } from '@proj-airi/stage-shared/stores/host-capabilities'
 import { useLive2DNaturalSettings, useSettingsLive2d } from '@proj-airi/stage-ui-live2d/composables/live2d'
 import { useExpressionStore, useNaturalMotionDiagnostics } from '@proj-airi/stage-ui-live2d/stores'
+import { useMMDPerformanceSettings } from '@proj-airi/stage-ui-mmd/stores'
 import { nextTick, onScopeDispose, toRaw, watch } from 'vue'
 
 import { EMOTION_VALUES } from '../../constants/emotions'
@@ -109,6 +110,7 @@ export function useMotionQaBridge(options: MotionQaBridgeOptions) {
   const live2dNatural = useLive2DNaturalSettings()
   const behaviorSettings = useCharacterBehaviorSettings()
   const stageModel = useSettingsStageModel()
+  const mmd = useMMDPerformanceSettings()
   const displayModels = useDisplayModelsStore()
   const diagnostics = useNaturalMotionDiagnostics()
   const override = useNaturalPerformanceOverride()
@@ -135,7 +137,7 @@ export function useMotionQaBridge(options: MotionQaBridgeOptions) {
     return {
       modelId,
       modelLoaded: modelId !== null && (options.modelLoaded?.() ?? diagnostics.loadedModelId === modelId),
-      driver: live2d.live2dMotionDriver,
+      driver: stageModel.stageModelRenderer === 'mmd' ? mmd.motionDriver : live2d.live2dMotionDriver,
       cursorAttention: behaviorSettings.document.cursorAttention,
       chatAttention: behaviorSettings.document.chatAttention,
       idleActivities: behaviorSettings.document.idleActivities,
@@ -336,9 +338,20 @@ export function useMotionQaBridge(options: MotionQaBridgeOptions) {
     defineInvokeHandler(context, motionQaEventsInvokeEventa, ({ sinceSeq }) => eventLog.read(sinceSeq)),
     defineInvokeHandler(context, motionQaStateInvokeEventa, () => readState()),
     defineInvokeHandler(context, motionQaConfigureInvokeEventa, async (input) => {
+      if (input.driver) {
+        const renderer = stageModel.stageModelRenderer
+        if (renderer === 'live2d' && (input.driver === 'natural' || input.driver === 'universal' || input.driver === 'magic')) {
+          live2d.live2dMotionDriver = input.driver
+        }
+        else if (renderer === 'mmd' && (input.driver === 'natural' || input.driver === 'classic')) {
+          if (!await mmd.setMotionDriver(stageModel.stageModelSelected, input.driver))
+            throw new Error(`The MMD realisation settings rejected driver "${input.driver}"`)
+        }
+        else {
+          throw new Error(`The renderer "${renderer ?? 'unavailable'}" does not support driver "${input.driver}"`)
+        }
+      }
       await behaviorSettings.initialize()
-      if (input.driver)
-        live2d.live2dMotionDriver = input.driver
       if (input.expressionEnabled !== undefined)
         live2d.live2dExpressionEnabled = input.expressionEnabled
       if (input.screenLean !== undefined) {

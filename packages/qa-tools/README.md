@@ -7,7 +7,11 @@ The motion QA bridge reads shared behavior from `settings/character-behavior`.
 `idleActivities`, and `heldEmotions`; these affect the shared document. The
 Live2D-only `screenLean` input replaces `screenAwareness` and changes placement
 without changing chat attention. State replies expose all four behavior
-switches and screen lean separately. Default headless scenarios keep their
+switches and screen lean separately. `configure.driver` accepts `natural`,
+`universal`, and `magic` for Live2D, or `natural` and `classic` for MMD. MMD
+changes go through its realisation settings document command. A driver the loaded
+renderer does not support is rejected; state replies report that renderer's driver.
+Default headless scenarios keep their
 existing settings and motion inputs.
 
 ## Purpose

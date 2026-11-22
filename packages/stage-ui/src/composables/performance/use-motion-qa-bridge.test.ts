@@ -23,6 +23,7 @@ import { useForegroundWindowStore } from '@proj-airi/stage-shared/stores/foregro
 import { useHostCapabilitiesStore } from '@proj-airi/stage-shared/stores/host-capabilities'
 import { useLive2DNaturalSettings, useSettingsLive2d } from '@proj-airi/stage-ui-live2d/composables/live2d'
 import { useNaturalMotionDiagnostics } from '@proj-airi/stage-ui-live2d/stores'
+import { useMMDPerformanceSettings } from '@proj-airi/stage-ui-mmd/stores'
 import { createEventHook } from '@vueuse/core'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -31,7 +32,9 @@ import { effectScope, ref, watch } from 'vue'
 import { useCharacterBehaviorSettings } from '../../features/character-behavior/settings'
 import { usePerformanceRuntimeState } from '../../features/performance/runtime-state'
 import { useLlmStreamingControlStore } from '../../stores/ai/chat-llm/streaming-control'
+import { DisplayModelFormat, useDisplayModelsStore } from '../../stores/display-models'
 import { useNaturalPerformanceOverride } from '../../stores/natural-performance-override'
+import { useSettingsStageModel } from '../../stores/settings/stage-model'
 import { naturalMind } from '../../test/natural-mind'
 import { useMotionQaBridge } from './use-motion-qa-bridge'
 
@@ -135,7 +138,7 @@ describe('useMotionQaBridge', () => {
   }
 
   beforeEach(() => {
-    vi.stubGlobal('window', { screenX: -1200, screenY: 20, devicePixelRatio: 1.5 })
+    vi.stubGlobal('window', { screenX: -1200, screenY: 20, devicePixelRatio: 1.5, localStorage: { getItem: () => null } })
     pinia = createPinia()
     setActivePinia(pinia)
     log = []
@@ -461,6 +464,7 @@ describe('useMotionQaBridge', () => {
   })
 
   it('writes the settings that configure names and reports them back', async () => {
+    useSettingsStageModel().setStageModelRenderer('live2d')
     const reply = await dispatch({ name: 'configure', input: { driver: 'natural', cursorAttention: false, chatAttention: false, touchReactions: false, idleActivities: false, expressionEnabled: true, heldEmotions: false } })
 
     const live2d = useSettingsLive2d()
@@ -470,6 +474,62 @@ describe('useMotionQaBridge', () => {
     expect(useCharacterBehaviorSettings().document.touchReactions).toBe(false)
     expect(useCharacterBehaviorSettings().document.idleActivities).toBe(false)
     expect(reply).toMatchObject({ ok: true, result: { driver: 'natural', cursorAttention: false, expressionEnabled: true, heldEmotions: false, captureActive: false, head: null, screen: { x: -1200, y: 20, devicePixelRatio: 1.5 } } })
+  })
+
+  it.each(['natural', 'universal', 'magic'] as const)('configures the Live2D driver %s', async (driver) => {
+    useSettingsStageModel().setStageModelRenderer('live2d')
+    useSettingsLive2d().live2dMotionDriver = driver === 'natural' ? 'magic' : 'natural'
+    expect(await dispatch({ name: 'configure', input: { driver } })).toMatchObject({ ok: true, result: { driver } })
+    expect(useSettingsLive2d().live2dMotionDriver).toBe(driver)
+    expect(useMMDPerformanceSettings().document.motionDrivers).toEqual({})
+  })
+
+  it.each(['natural', 'classic'] as const)('configures the MMD driver %s through its document command', async (driver) => {
+    const stageModel = useSettingsStageModel(pinia)
+    useDisplayModelsStore(pinia).displayModels.push({ id: 'mmd-qa-test', format: DisplayModelFormat.PMXZip, type: 'url', url: 'https://example.com/model.zip', name: 'QA model', importedAt: 0 })
+    stageModel.stageModelSelected = 'mmd-qa-test'
+    await stageModel.updateStageModel()
+    const settings = useMMDPerformanceSettings(pinia)
+    await settings.setMotionDriver('mmd-qa-test', driver === 'natural' ? 'classic' : 'natural')
+    useSettingsLive2d(pinia).live2dMotionDriver = 'magic'
+    const command = vi.spyOn(settings, 'setMotionDriver')
+
+    expect(await dispatch({ name: 'configure', input: { driver } })).toMatchObject({ ok: true, result: { driver } })
+    expect(command).toHaveBeenCalledWith('mmd-qa-test', driver)
+    expect(settings.document.motionDrivers['mmd-qa-test']).toBe(driver)
+    expect(useSettingsLive2d(pinia).live2dMotionDriver).toBe('magic')
+    expect(await dispatch({ name: 'state' })).toMatchObject({ ok: true, result: { driver } })
+  })
+
+  it.each([
+    ['live2d', 'classic'],
+    ['mmd', 'universal'],
+    ['mmd', 'magic'],
+    ['vrm', 'natural'],
+    ['spine', 'natural'],
+    ['tachie', 'natural'],
+    ['godot', 'natural'],
+    ['disabled', 'natural'],
+    [undefined, 'natural'],
+  ] as const)('rejects the %s renderer driver %s before changing settings', async (renderer, driver) => {
+    useSettingsStageModel().setStageModelRenderer(renderer)
+    const before = { ...useMMDPerformanceSettings().document.motionDrivers }
+    const cursorAttention = useCharacterBehaviorSettings().document.cursorAttention
+    expect(await dispatch({ name: 'configure', input: { driver, cursorAttention: !cursorAttention } })).toMatchObject({
+      ok: false,
+      error: expect.stringContaining(`does not support driver "${driver}"`),
+    })
+    expect(useSettingsLive2d().live2dMotionDriver).toBe('natural')
+    expect(useMMDPerformanceSettings().document.motionDrivers).toEqual(before)
+    expect(useCharacterBehaviorSettings().document.cursorAttention).toBe(cursorAttention)
+  })
+
+  it('reports a rejected MMD document command', async () => {
+    useSettingsStageModel().setStageModelRenderer('mmd')
+    expect(await dispatch({ name: 'configure', input: { driver: 'classic' } })).toMatchObject({
+      ok: false,
+      error: expect.stringContaining('MMD realisation settings rejected'),
+    })
   })
 
   it('writes screen lean independently and reports it back', async () => {
@@ -695,7 +755,7 @@ describe('useMotionQaBridge', () => {
   })
 
   it('returns schema errors as replies with their paths', async () => {
-    const reply = await dispatch({ name: 'configure', input: { driver: 'magic' } })
+    const reply = await dispatch({ name: 'configure', input: { driver: 'sdk' } })
     expect(reply.ok).toBe(false)
     expect(reply.issues?.map(issue => issue.path)).toEqual(['input.driver'])
 

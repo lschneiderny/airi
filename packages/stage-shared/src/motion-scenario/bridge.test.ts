@@ -8,6 +8,10 @@ import { capabilitiesForHost } from '../host-capabilities'
 const state = { modelId: 'm', modelLoaded: true, driver: 'natural', cursorAttention: false, chatAttention: true, idleActivities: true, touchReactions: true, expressionEnabled: true, heldEmotions: true, naturalActive: true, hold: { emotion: 'angry', strength: 0.9 }, captureActive: false, head: { x: 100, y: 50, width: 80, height: 90 }, screen: { x: -1200, y: 20, devicePixelRatio: 1.5 }, screenLean: true, placement: -0.75, placementYawBias: -0.08, chat: { hasTarget: true, typing: false }, host: capabilitiesForHost('linux-wayland'), foreground: null, desktopIdleSeconds: 12.5, performanceMode: 'watching', performance: { resolvedAtMs: 20_000, away: false, cursorMovedAtMs: null, desktop: { idleSeconds: 12.5, locked: false, suspendedAtMs: null, resumedAtMs: null, unlockedAtMs: null, screenChange: 0.2, systemAudioLevel: null, sampledAtMs: 19_000 } } } as const
 
 describe('motion QA bridge schemas', () => {
+  it.each(['natural', 'universal', 'magic', 'classic'])('accepts the configure driver %s', (driver) => {
+    expect(safeParse(MotionQaConfigureInputSchema, { driver }).success).toBe(true)
+  })
+
   it('accepts a mind event whose appended music field is a boolean or null', () => {
     const event = { seq: 1, time: 1_000, kind: 'mind', payload: { stimulus: 'music', intents: '[]', lines: null, cues: null, music: true } }
     expect(safeParse(MotionQaEventSchema, event).success).toBe(true)
