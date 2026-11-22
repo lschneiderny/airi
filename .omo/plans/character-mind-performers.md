@@ -514,6 +514,49 @@ id (`avatarModels[].displayModelId`), not the card's avatar reference id
   definition is merged with the newly implemented per-stage definition.
   The final plan record is included in a7, keeping the requested seven commits.
 
+## Departures during implementation (CM7d)
+
+### d1: Natural channel inventory
+
+Section 2 was rechecked after CM7a. Sections 2.1 to 2.3 and findings 1 to 3
+now use declarations and reported refusals: the mind checks before deciding,
+the conductor checks `permits`, tools and actions follow face/body, and classic
+does not run the director. Universal and MAGIC use upstream ACT expressions
+and motion groups. Voice remains independent. CM5b beats, CM6b chat, gesture,
+attend, away and look inputs, and CM6a rest and sidestep state remain present.
+Section 2.4's random picker and moment streams and sections 2.5 to 2.6's
+settings and register homes still match. The mapping-weights limitation in
+section 2.5 is obsolete: c6 uses the live catalog mirror and display model id.
+
+The inventory follows `Model.vue`'s registrations, `motion-manager.ts`,
+`Live2DNaturalMotionAdapter`, `ExpressionComposer`, `readLive2DRigProfile`,
+and the installed SDK's `Cubism4InternalModel.update`. Here an owner means
+the final composition boundary, not each intermediate parameter assignment.
+This is section 3.10's reading: upstream stages and values explicitly consumed
+by the final owner are inputs. A writer that replaces the owner's result is
+an ownership conflict.
+
+| Channel | Inputs and final owner under Natural | Finding |
+| --- | --- | --- |
+| Expression-only parameters, art switches and brow form | SDK motion, then the fork expression composer; context expressions currently write afterward | Planned d2 conflict: context preview must become the composer's highest-priority lease |
+| Head angles | Motion and expression values precede Natural's `composePosture`; full ownership replaces them, clip channels retain the 0.1 residual | Planned d3 conflict: expression tilt must be a declared weighted input, initially 0 |
+| Body angles | Natural posture, except physics outputs and axes derived from head physics; manual control releases posture weight | Same posture boundary as head; physics exclusions are explicit |
+| Gaze | Natural posture consumes the gaze arbiter; SDK focus is skipped at full posture weight | One final owner; manual/spring handoff keeps the existing fade |
+| Eyelids and blink | Idle-disable bases, expressions, light squint and manual squint feed Natural's lid composition; clip-owned lids skip that composition | Natural composes the base, micro multiplier, emotion hint and blink factor; light squint is an input, not a later override |
+| Brows, eye smile, mouth form and cheek | Expressions and manual values feed Natural's additive face composition, excluding clip and physics channels | One final composition boundary |
+| Mouth open | Lipsync owns speech, its 200 ms release and 500 ms hold; Natural explicitly skips that window and otherwise adds silent mouth motion | Exclusive ownership window, reported every frame |
+| Breath | Manual breath owns its active window; otherwise Natural writes, except clip/physics channels | SDK breath is deleted; Natural explicitly yields to manual breath |
+| Physics outputs | Natural excludes every non-zero physics output; SDK physics evaluates after Natural | Physics owns those outputs and consumes Natural's inputs |
+| Part opacity and pose | SDK pose runs after physics; no Natural part-opacity writer exists | SDK-owned |
+| Saved manual parameters | Load-time and setting-change writes become subsequent frame bases | Configuration inputs, not a frame writer after the owner |
+| Upstream beat and touch | Beat mode is `silent`; touch is not triggered with posture declared and resets on entry to Natural | No Natural-frame write from these plugins |
+
+No third independent owner was found under that reading. The SDK saves before
+Natural's focus wrapper and loads after model update, so Natural remains a
+stateless overlay; physics and pose are the only subsequent live writers.
+Headless and rendered acceptance remain assigned to the orchestrator, and
+the requested package checks replace repository-wide verify in this worktree.
+
 ## Checks run (CM7a)
 
 The implementation base is `e57dd1393`. The owner requested package checks,
