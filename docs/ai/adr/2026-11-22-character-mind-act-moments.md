@@ -1,7 +1,7 @@
 # Character mind: act moments from the mind's orders
 
 Date: 2026-11-22
-Status: accepted; CM9e implemented. Headless and rendered acceptance are pending (see the placeholder below).
+Status: accepted; CM9e implemented. Headless and rendered acceptance are recorded below.
 
 Current rules are in [Autonomous behavior](../context/autonomous-behavior.md) (the Moment expression row) and the [glossary](../context/glossary.md) (Moment expression). The [CM9 plan](../../../.omo/plans/character-mind-cm9.md) records the split, the decisions table, and the checks. This slice builds on the [settle ADR](2026-11-22-character-mind-settle.md) and the [wander linger ADR](2026-11-22-character-mind-wander-linger.md).
 
@@ -35,4 +35,6 @@ A forced lab moment, the preview pastime pick, and a report without an intent id
 
 ## Headless and rendered acceptance
 
-Placeholder for the orchestrator: the base and tip `qa:motion3d` runs for all eleven scenarios at seed 1 and the Live2D rig hashes for `angry` and `happy` (all expected `IDENTICAL`), the `diff` lines, and rendered check 6 of plan section 8 (the `check-in` moment's pick against `expressionSeed` of the order's id).
+Placeholder for the oHeadless (orchestrator, macOS, 2026-11-22): lane B (CM9c, CM9d, CM9e) against the lane C tip, seed 1. All eleven `qa:motion3d` scenarios are `IDENTICAL` and both rig hashes are unchanged (`angry` `446b746a`, `happy` `a273e525`). The lane was later rebased onto `main` after PR #83; the only tree difference was two lines of the CM9f ADR, which no runner reads. Neither runner runs `useIdleProps`.
+
+Rendered (orchestrator, macOS, 2026-11-22, ForBOOTH Live2D in the window, Natural, three entries tagged for `check-in`): eight `idle-play` `check-in` orders. In every trial the moment the stage picked matched the pick `expressionSeed` gives for the order's intent id: three trials marked an entry, and five drew a gate ticket of 0.6 or more and marked none. 0 renderer and 0 main-process errors.

@@ -1,7 +1,7 @@
 # Character mind: settling in the idle policy
 
 Date: 2026-11-22
-Status: accepted; CM9c implemented. Headless and rendered acceptance are pending (see the placeholder below).
+Status: accepted; CM9c implemented. Headless and rendered acceptance are recorded below.
 
 Current rules are in [Autonomous behavior](../context/autonomous-behavior.md) (Precedence rules 6 and 8, the Body director row) and the [glossary](../context/glossary.md) (Idle policy, Intent, Stance). The [CM9 plan](../../../.omo/plans/character-mind-cm9.md) records the split, the decisions table, and the checks.
 
@@ -43,4 +43,6 @@ The mind's own interrupting stimuli restart it: a touch, an emotion, an `express
 
 ## Headless and rendered acceptance
 
-Placeholder for the orchestrator: the base and tip `qa:motion3d` runs for all eleven scenarios at seed 1, the `diff` lines, `pnpm lab:motion3d report rest` verdicts at both ends for `idle` and `sleepy-no-clip`, the Live2D rig hashes, and rendered check 4 of plan section 8 (event kinds and counts, renderer and main-process error counts).
+Placeholder for the oHeadless (orchestrator, macOS, 2026-11-22): lane B (CM9c, CM9d, CM9e) against the lane C tip, seed 1. All eleven `qa:motion3d` scenarios are `IDENTICAL` and both rig hashes are unchanged (`angry` `446b746a`, `happy` `a273e525`). The lane was later rebased onto `main` after PR #83; the only tree difference was two lines of the CM9f ADR, which no runner reads. No scenario reaches 120 s of continuous idle, so the settle onset never fires in a headless run and the rest verdicts cannot move.
+
+Rendered (orchestrator, macOS, 2026-11-22, the QA MMD model on the desktop stage, Natural, desktop idle pinned at 60 s, no sit clip imported): the mind's `idle-wake` step carried `settle` true 119.7 s after the stage went idle, and the director, with no sit slot, kept her standing with the reason `rest-fallback`. A poke then produced an `idle` step carrying `settle` false before the poke's touch reaction, and the director read `active`. 0 renderer and 0 main-process errors.
