@@ -1,6 +1,6 @@
 # character-mind-store-tiers - Work Plan
 
-Status: implementation complete on 2026-11-22; worker checks passed and orchestrator rendered/gate acceptance remains explicitly pending. Started from `6e223c22b` plus plan commit `819043291`, against adopted upstream `bd4f30391`. The owner's standing preference is to take the recommended options. This is slice **S2**, paired with [character-mind-notify-touch.md](character-mind-notify-touch.md); roadmap row S2 records implementation completion and the remaining orchestrator acceptance.
+Status: implementation complete on 2026-11-22; worker checks passed, and the orchestrator's rendered checks and `pnpm verify --gate` passed on macOS. Started from `6e223c22b` plus plan commit `819043291`, against adopted upstream `bd4f30391`. The owner's standing preference is to take the recommended options. This is slice **S2**, paired with [character-mind-notify-touch.md](character-mind-notify-touch.md); roadmap row S2 records implementation completion and the remaining orchestrator acceptance.
 
 Implementation branch: **`luke/refactor/character-mind-store-tiers`**. Depends on completed roadmap S and the upstream sync. It does not depend on CM8's upstream-driver decision. Coordinate shared MMD consumers with CM7a/c, but do not implement their capability or behavior-document work.
 
@@ -388,7 +388,7 @@ The recommendations above were implemented. Departures and verification evidence
 
 - Item 6: ESLint passed for the ADR, current policy, roadmap, and plan. `pnpm exec vitest run --project dev-tools scripts/dev-tools/policy-docs.test.ts` passed 1 file / 11 tests. This commit changes documentation only; the product checks are recorded under item 5.
 
-**Orchestrator placeholder:** rendered scenarios, applicable motion checks, and `pnpm verify --gate` results are not run by this worker.
+**Orchestrator acceptance (macOS, 2026-11-22):** `pnpm verify --gate` passed on the rebased tip: lint, typecheck of the changed packages and their dependents, 27 test commands, `qa:smoke`, and `qa:test:model`; `qa:motion3d affected` reads NOT AFFECTED. In two launches on one profile, the relaunch logged 3 follower errors before the owner-registration fix and 0 after it (`main` logs 0); "Delete all data" from the app cleared every new document and every legacy key. The one-time import is covered by Node tests only, because QA app sessions do not keep localStorage across launches. The first gate failed on a placement-test fixture that replaced the MMD stores barrel without `useMMDPerformanceSettings`; the fixture fix is its own commit.
 
 ## Commits
 
