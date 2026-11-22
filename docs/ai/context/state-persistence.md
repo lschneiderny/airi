@@ -22,6 +22,8 @@ Two tiers are closed to new state:
 - **Plain localStorage refs** (`useLocalStorageManualReset`, `useModelScopedLocalStorage`, or `useLocalStorage` from `@vueuse/core`), and direct `localStorage` writes from a store action. This is the upstream convention, and most stores in [Members](#members) still use it. New settings use tier 1.
 - **A main-process ring with disk recording.** It stays specific to the IO trace hub. Use it only for diagnostics that must outlive a renderer.
 
+**Fork-owned state fits a tier.** Active fork-owned durable settings use the tier that fits them; no such location uses the closed plain tier. Upstream stores keep their keys and formats under explicit pinned exceptions, including their replica-write limitation. Legacy sweeps and session diagnostics remain named exceptions rather than permission for new durable plain state. The [store tiers ADR](../adr/2026-11-21-character-mind-store-tiers.md) records S2's cutover.
+
 A store that fits no tier needs an amendment to this document before it lands.
 
 **Caches.** A copy that the app can download or rebuild again is not a tier: the copies of imported Live2D and MMD models in the origin private file system, the Sherpaw model assets, and the Transformers.js Cache Storage `transformers-cache`. Each registers in the state registry with the tier `cache`. A cache does not hold the user's only copy: the imported model files stay in IndexedDB, and the other caches download again.
@@ -148,24 +150,19 @@ All eight stores are built on `useSettingsDocument`, and new tier 1 stores use i
 
 This section states the design that refactors move toward. It does not describe the code. The [character mind ADR](../adr/2026-11-17-character-mind-direction.md) records the decision. When a refactor lands a rule, the rule moves into the sections above and the gaps it closes leave the list below.
 
-3. **Every store fits a tier.** Plain localStorage refs and synced stores that persist replicated plain refs migrate to a tier where the fork owns them. Upstream's stores keep upstream's keys and are registered as they are. The closed tiers stay closed.
 4. **Behavior settings form one document.** The character-behavior settings that the [character mind](glossary.md#character-mind) reads are one tier 1 document. Renderer settings documents hold only realisation settings.
-
-| Known gap | Closed by |
-| --- | --- |
-| Synced stores that persist plain refs as replicated state | Rule 3 |
 
 ## Known gaps
 
-These are observations, not fixes. Each needs either a registration, a move to the right tier, or an amendment to this document.
+These observations remain outside S2. Upstream exceptions keep their storage contracts; they are not claims of tier 1 safety. Other items need separate decisions.
 
-**Stores outside the tiers:**
+**Upstream persistence limitations:**
 
 - Synced stores that persist plain refs as replicated state (`useAiriCardStore`, `useConsciousnessStore`, `useHearingStore`, `useSpeechStore`, `useProviderConfigStore`, `useVisionStore`, and `useArtistryStore`) write storage from every window that receives a committed snapshot. Tier 1 forbids this for settings documents. These stores predate the tiers and are upstream code.
 - The stage-layouts `useBackgroundStore` (`packages/stage-layouts/src/stores/background.ts`) shares the `device` mount with `useDisplayModelsStore` and the stage-ui `useBackgroundStore`, and `useMMD` opens the same database through its own unstorage instance. The records are separated only by key prefix. The desktop app does not render the stage-layouts background components that use it.
 - The unstorage `outbox` mount (`keyval-store`, keys prefixed `airi-sync-queue:`) in `storage` has no reader or writer in the client. The `outbox` registration sweeps it.
 - Onboarding step records, the active card id, the consciousness request settings, and the saved tool cards are written with direct `localStorage` calls from synced actions. The leader is the only writer, but none of them is a tier 1 document or carries the tier 2 leadership token.
-- Per-model display settings are plain refs keyed by model id that any window writes, so they are not tier 3.
+- Upstream's per-model display settings are plain refs keyed by model id that any window writes, so they are not tier 3.
 
 **Data that leaves the device:**
 

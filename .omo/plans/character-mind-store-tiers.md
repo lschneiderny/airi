@@ -1,6 +1,6 @@
 # character-mind-store-tiers - Work Plan
 
-Status: implementation in progress on 2026-11-22 from `6e223c22b` plus plan commit `819043291`, against adopted upstream `bd4f30391`. The owner's standing preference is to take the recommended options. This is slice **S2**, paired with [character-mind-notify-touch.md](character-mind-notify-touch.md); roadmap row S2 is in progress.
+Status: implementation complete on 2026-11-22; worker checks passed and orchestrator rendered/gate acceptance remains explicitly pending. Started from `6e223c22b` plus plan commit `819043291`, against adopted upstream `bd4f30391`. The owner's standing preference is to take the recommended options. This is slice **S2**, paired with [character-mind-notify-touch.md](character-mind-notify-touch.md); roadmap row S2 records implementation completion and the remaining orchestrator acceptance.
 
 Implementation branch: **`luke/refactor/character-mind-store-tiers`**. Depends on completed roadmap S and the upstream sync. It does not depend on CM8's upstream-driver decision. Coordinate shared MMD consumers with CM7a/c, but do not implement their capability or behavior-document work.
 
@@ -312,7 +312,7 @@ The standing preference covers the recommendations below. None requires overridi
 | S6 | Migration cutover | (a) Remove old keys before saving; (b) leader command, new-document precedence, successful save before cleanup, explicit deferred first-model claim; (c) dual write indefinitely | (a) loses data on failure. (c) creates competing ownership and compatibility maintenance. (b) needs focused failure/lifecycle tests but has one durable owner. | (b). |
 | S7 | Relationship to CM7 and CM8 | (a) Bundle all refactors; (b) independent S2 PR, coordinate MMD consumers on rebase; (c) wait for all character-mind work | (a) mixes review concerns; (c) delays independent persistence fixes. (b) uses separate keys/responsibilities and keeps CM7c's scope intact. | (b). |
 
-The implementation must record departures from these recommendations with their evidence. This planning delivery makes no product changes.
+The recommendations above were implemented. Departures and verification evidence follow; rendered and gate results remain reserved for the orchestrator.
 
 ## Departures during implementation
 
@@ -339,6 +339,8 @@ The implementation must record departures from these recommendations with their 
 - Item 5 scopes epochs to library loads as well as model loads. The old scene checked only model generation, so a removed or re-imported clip could finish late within the same model. A library epoch now rejects that completion before registration and republishes already loaded clips from their cached masks.
 - The runtime catalog is reset through the realisation owner's lifecycle. Its legacy registration is sweep-only; no fake persisted location was added for tier 5 state. The temporary S2 plain-tier admission is removed.
 - Item 5 regression tests exposed inherited-property lookups for valid clip names such as `constructor`: one returned the Object constructor as curation, and another offered an unloaded clip. Owner projections now require own dictionary keys; the same valid clip is still offered after its metadata is published.
+
+- The assignment explicitly names a 2026-11-21 ADR filename, so the final ADR keeps that decision date and separately records implementation on 2026-11-22. The roadmap marks implementation done while leaving rendered and branch-gate acceptance pending, as those runs are forbidden to this worker.
 
 ## Checks run
 
@@ -384,6 +386,8 @@ The implementation must record departures from these recommendations with their 
 - Item 5: `pnpm -F @proj-airi/stage-ui exec vitest run --project browser src/persistence/state-registry.browser.test.ts src/composables/use-data-maintenance.browser.test.ts src/components/scenarios/settings/model-settings/mmd.browser.test.ts src/components/scenes/stage-emotion-routing.browser.test.ts` passed 4 files / 94 tests. The existing browser fixtures also log missing/invalid Live2D archive errors; these are not a rendered app acceptance result.
 - Item 5: changed-file ESLint passed with no errors or warnings.
 
+- Item 6: ESLint passed for the ADR, current policy, roadmap, and plan. `pnpm exec vitest run --project dev-tools scripts/dev-tools/policy-docs.test.ts` passed 1 file / 11 tests. This commit changes documentation only; the product checks are recorded under item 5.
+
 **Orchestrator placeholder:** rendered scenarios, applicable motion checks, and `pnpm verify --gate` results are not run by this worker.
 
 ## Commits
@@ -392,4 +396,6 @@ The implementation must record departures from these recommendations with their 
 - `dcfaebb3a` - `test(stage-ui): reject new fork state in the plain persistence tier`.
 - `64f7f2530` - `refactor(stage-ui,stage-pages,stage-tamagotchi): persist analytics consent through one leader document`.
 - `e8d5082c2` - `refactor(stage-ui-mmd,stage-ui,stage-tamagotchi): persist MMD realisation settings through leader actions`.
+- `252e09c93` - `refactor(stage-ui-mmd,stage-ui): keep derived clip metadata in synced memory`.
+- This final record commit - `docs(stage-ui): record the store tier decisions and close S2`. Its hash is included in the worker handoff.
 - `dcfaebb3a` - `test(stage-ui): reject new fork state in the plain persistence tier`.
