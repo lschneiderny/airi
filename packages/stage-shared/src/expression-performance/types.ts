@@ -82,10 +82,11 @@ export interface ExpressionRefusal {
 /**
  * What the renderer reports for one shown stage item: drawn at its pin (`attached`), drawn at a pin re-picked in
  * memory because her mesh changed (`reattached`), drawn at its fallback point because the pinned drawable is gone
- * (`missing-drawable`), drawn in front because its layer drawable is gone (`missing-layer`), or not drawn because its
- * file could not be read or decoded (`failed`).
+ * (`missing-drawable`), drawn in front because its layer drawable is gone (`missing-layer`), drawn while hiding only
+ * the parts of hers that exist because a hide-list id names none (`missing-part`), or not drawn because its file could
+ * not be read or decoded (`failed`).
  */
-export type ItemRenderState = 'attached' | 'reattached' | 'missing-drawable' | 'missing-layer' | 'failed'
+export type ItemRenderState = 'attached' | 'reattached' | 'missing-drawable' | 'missing-layer' | 'missing-part' | 'failed'
 
 export interface DeciderContext {
   catalog: readonly CatalogEntry[]

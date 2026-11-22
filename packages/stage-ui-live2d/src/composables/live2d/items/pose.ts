@@ -27,6 +27,24 @@ export interface Live2DItemPose {
 
 export type Live2DItemPoseSource = Pick<Live2DMeshSource, 'getDrawableVertexPositions' | 'getDrawableOpacity' | 'getDrawableDynamicFlagIsVisible'>
 
+/**
+ * The outfit preset: the placement that lays a Live2D item's canvas over hers, centered on
+ * her canvas and scaled to her canvas width, so a rig built on her canvas lines up.
+ */
+export function canvasAlignedPlacement(
+  her: Pick<Live2DCanvasScale, 'originalWidth' | 'originalHeight'>,
+  item: Pick<Live2DCanvasScale, 'originalWidth'>,
+) {
+  return {
+    x: her.originalWidth / 2,
+    y: her.originalHeight / 2,
+    rotation: 0,
+    scale: her.originalWidth / item.originalWidth,
+    flipX: false,
+    anchor: { x: 0.5, y: 0.5 },
+  }
+}
+
 /** Bounds of the scale the mesh may apply, so a stretched or squeezed triangle cannot blow an item up or make it vanish. */
 const minimumMeshScale = 0.25
 const maximumMeshScale = 4
