@@ -1,7 +1,7 @@
 # Character mind: Natural touch cleanup, owner-result notices, and reminder rank
 
 Date: 2026-11-22
-Status: accepted; CM8 implemented. Rendered acceptance is recorded below; the headless rig checks are still open.
+Status: accepted; CM8 implemented and accepted on macOS (headless and rendered results below).
 
 Current rules are in [Autonomous behavior](../context/autonomous-behavior.md), [LLM prompt](../context/llm-prompt.md), the [glossary](../context/glossary.md), and the [upstream policy ledger](../context/upstream-policy.md). The [notify and touch plan](../../../.omo/plans/character-mind-notify-touch.md) records departures, commands, and results.
 
@@ -46,7 +46,7 @@ The notebook builds trusted `task-reminder` provenance with task id, schedule re
 
 Run on macOS from the CM8 tip (`51f32a7e9`) with the dev Electron app and AppSession drivers kept under `.temp/qa-drivers` (not committed). Run directories below are under `.temp/qa-drivers/runs/`. Live2D ran on the window stage host with the ForBOOTH rig; MMD ran on the desktop stage host with the local MMD model. Chat used the `qa:llm` replay server and silent replay TTS. Pointer input is CDP `Input.dispatchMouseEvent` on the stage page. The window lifecycle store's `minimized` flag stands in for a minimized window, a composer-activity event on the speech bus stands in for an open draft, and the desktop and foreground samplers are pinned to a present user so the gate does not hold on stale signals. The driver reads the event log before every setting change.
 
-Every launch below reports 0 renderer and 0 main-process errors, except one reminder launch that is named in check 6. No product bug was found. The headless rig checks (`qa:test:model`, `qa:live2d-rig`, `qa:motion3d`) were not part of this acceptance run and remain open.
+Every launch below reports 0 renderer and 0 main-process errors, except one reminder launch that is named in check 6. No product bug was found. Headless, seed 1: all ten `qa:motion3d` scenarios (`idle`, `idle-drive`, `gaze-shift`, `speak`, `gesture-under-clip`, `emotions`, `walk`, `sleepy-no-clip`, `touch`, `music`) are `IDENTICAL` against `main`, the `pnpm qa:live2d-rig` trial's `sha256` is unchanged, and `qa:test:model` passed in `pnpm verify --gate`.
 
 ### 1. Live2D Natural cleanup
 
