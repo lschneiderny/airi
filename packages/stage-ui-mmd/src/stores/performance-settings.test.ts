@@ -28,8 +28,8 @@ afterEach(() => {
 it('imports every inactive model and preserves curation, empty maps, and false permissions', async () => {
   oldDriver('model-a', 'classic')
   oldDriver('model-b', 'natural')
-  localStorage.setItem('settings/mmd/stage-character-height', '700')
-  localStorage.setItem('settings/mmd/roam-mode', 'stay')
+  localStorage.setItem('settings/mmd/stage-character-height', '840')
+  localStorage.setItem('settings/mmd/roam-mode', 'roam')
   const slots = { 'model-a': { idle: 'rest' }, 'model-b': { sleep: 'sleep' } }
   const clips = { 'model-a': { wave: { label: null, kind: 'gesture', loop: false, aiMayUse: false, idleMayUse: false } }, 'model-b': {} }
   localStorage.setItem('settings/mmd/stance-slots', JSON.stringify(slots))
@@ -38,10 +38,18 @@ it('imports every inactive model and preserves curation, empty maps, and false p
   const writes = vi.spyOn(Storage.prototype, 'setItem')
   const store = context()
   expect(writes).not.toHaveBeenCalled()
+  expect(localStorage.getItem(key)).toBeNull()
   await store.initialize()
+  expect(JSON.parse(localStorage.getItem(key)!)).toEqual({
+    motionDrivers: { 'model-a': 'classic', 'model-b': 'natural' },
+    stageCharacterHeight: 840,
+    roamMode: 'roam',
+    stanceSlots: slots,
+    clipCuration: clips,
+  })
   expect(store.document.motionDrivers).toEqual({ 'model-a': 'classic', 'model-b': 'natural' })
-  expect(store.stageCharacterHeight).toBe(700)
-  expect(store.roamMode).toBe('stay')
+  expect(store.stageCharacterHeight).toBe(840)
+  expect(store.roamMode).toBe('roam')
   expect(store.stanceSlots).toEqual(slots)
   expect(store.clipCuration).toEqual(clips)
   expect(writes.mock.calls.filter(([name]) => name === key)).toHaveLength(1)

@@ -208,17 +208,17 @@ export const useMMDPerformanceSettings = defineStore('mmd-performance-settings',
   async function initialize() {
     await clipMetadata.initialize()
     const modelId = activeDisplayModelForSettings('mmd')
-    const pending = settings.current().unassignedMotionDriver
-    await commit(modelId && pending && !Object.hasOwn(settings.current().motionDrivers, modelId)
-      ? { motionDrivers: { ...settings.current().motionDrivers, [modelId]: pending }, unassignedMotionDriver: undefined }
+    const pending = settings.document.value.unassignedMotionDriver
+    await commit(modelId && pending && !Object.hasOwn(settings.document.value.motionDrivers, modelId)
+      ? { motionDrivers: { ...settings.document.value.motionDrivers, [modelId]: pending }, unassignedMotionDriver: undefined }
       : {})
   }
 
   async function selectModel(modelId: string) {
-    const pending = settings.current().unassignedMotionDriver
-    if (!modelId || !pending || Object.hasOwn(settings.current().motionDrivers, modelId))
+    const pending = settings.document.value.unassignedMotionDriver
+    if (!modelId || !pending || Object.hasOwn(settings.document.value.motionDrivers, modelId))
       return
-    await commit({ motionDrivers: { ...settings.current().motionDrivers, [modelId]: pending }, unassignedMotionDriver: undefined })
+    await commit({ motionDrivers: { ...settings.document.value.motionDrivers, [modelId]: pending }, unassignedMotionDriver: undefined })
   }
 
   async function update(patch: Partial<Pick<MMDPerformanceSettings, 'stageCharacterHeight' | 'roamMode'>>) {
@@ -229,31 +229,30 @@ export const useMMDPerformanceSettings = defineStore('mmd-performance-settings',
   async function setMotionDriver(modelId: string, driver: MMDMotionDriver) {
     if (!modelId || !v.safeParse(driverSchema, driver).success)
       return false
-    if (settings.current().motionDrivers[modelId] === driver)
+    if (settings.document.value.motionDrivers[modelId] === driver)
       return true
-    return (await commit({ motionDrivers: { ...settings.current().motionDrivers, [modelId]: driver } })).success
+    return (await commit({ motionDrivers: { ...settings.document.value.motionDrivers, [modelId]: driver } })).success
   }
 
   async function setStanceSlot(modelId: string, slot: keyof MMDStanceSlots, name: string | null) {
     if (!modelId || !v.safeParse(v.picklist(['idle', 'sit', 'sleep']), slot).success || (name !== null && typeof name !== 'string'))
       return false
-    const slots = settings.current().stanceSlots[modelId] ?? {}
+    const slots = settings.document.value.stanceSlots[modelId] ?? {}
     const next = name === null ? omit(slots, [slot]) : { ...slots, [slot]: name }
     if (isEqual(slots, next))
       return true
-    return (await commit({ stanceSlots: { ...settings.current().stanceSlots, [modelId]: next } })).success
+    return (await commit({ stanceSlots: { ...settings.document.value.stanceSlots, [modelId]: next } })).success
   }
 
   async function setCuration(modelId: string, name: string, patch: Partial<MMDClipCuration>) {
     if (!modelId || !isRecord(patch))
       return false
-    const models = settings.current().clipCuration
-    const model = Object.hasOwn(models, modelId) ? models[modelId] : {}
-    const previous = Object.hasOwn(model, name) ? model[name] : defaultCuration
+    const previous = curationFor.value(modelId, name)
     const result = v.safeParse(curationSchema, { ...previous, ...patch })
     if (!result.success)
       return false
     const next = result.output
+    const model = clipCuration.value[modelId] ?? {}
     if (next.label !== null && Object.entries(model).some(([other, curation]) => other !== name && curation.label === next.label))
       return false
     const kind = next.kind ?? clipMetadata.clipFor(modelId, name)?.kind
@@ -263,21 +262,21 @@ export const useMMDPerformanceSettings = defineStore('mmd-performance-settings',
     }
     if (isEqual(previous, next))
       return true
-    return (await commit({ clipCuration: { ...models, [modelId]: { ...model, [name]: next } } })).success
+    return (await commit({ clipCuration: { ...clipCuration.value, [modelId]: { ...model, [name]: next } } })).success
   }
 
   /** Motion files are shared by name; removing one drops references across the same model maps as before. */
   async function removeClip(name: string) {
     await clipMetadata.removeClip(name)
     await commit({
-      stanceSlots: Object.fromEntries(Object.entries(settings.current().stanceSlots).map(([id, slots]) => [id, Object.fromEntries(Object.entries(slots).filter(([, clip]) => clip !== name))])),
-      clipCuration: Object.fromEntries(Object.entries(settings.current().clipCuration).map(([id, clips]) => [id, omit(clips, [name])])),
+      stanceSlots: Object.fromEntries(Object.entries(stanceSlots.value).map(([id, slots]) => [id, Object.fromEntries(Object.entries(slots).filter(([, clip]) => clip !== name))])),
+      clipCuration: Object.fromEntries(Object.entries(clipCuration.value).map(([id, clips]) => [id, omit(clips, [name])])),
     })
   }
 
   async function removeModel(modelId: string) {
     await clipMetadata.removeModel(modelId)
-    const current = settings.current()
+    const current = settings.document.value
     if (![current.motionDrivers, current.stanceSlots, current.clipCuration].some(map => Object.hasOwn(map, modelId)))
       return
     await commit({ motionDrivers: omit(current.motionDrivers, [modelId]), stanceSlots: omit(current.stanceSlots, [modelId]), clipCuration: omit(current.clipCuration, [modelId]) })

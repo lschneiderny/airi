@@ -105,18 +105,6 @@ export function useSettingsDocument<const TEntries extends ObjectEntries>(key: s
   if (persistence.failed)
     throw persistence.error
   const document = shallowRef<Document>(structuredClone(toRaw(persisted.value)))
-  let hasCommitted = false
-
-  /**
-   * Leader-action input before the first acknowledged save. Registration may apply a peer's initial snapshot over
-   * document, so that projection is not migration authority. Later commands use the leader's committed live state.
-   */
-  function current(): Document {
-    if (hasCommitted)
-      return document.value
-    const raw = typeof localStorage === 'undefined' ? null : localStorage.getItem(key)
-    return raw === null ? sanitize(options.initial?.() ?? {}) : readStored(raw)
-  }
 
   function commit(value: Document) {
     persistence.failed = false
@@ -125,12 +113,11 @@ export function useSettingsDocument<const TEntries extends ObjectEntries>(key: s
     persisted.value = value
     if (persistence.failed)
       throw persistence.error
-    hasCommitted = true
     document.value = value
   }
 
   async function update(patch: Partial<Document>) {
-    const candidate = isRecord(patch) ? { ...structuredClone(toRaw(current())), ...patch } : patch
+    const candidate = isRecord(patch) ? { ...structuredClone(toRaw(document.value)), ...patch } : patch
     const result = safeParse(schema, candidate)
     if (!result.success)
       return { success: false as const, issues: result.issues }
@@ -144,5 +131,5 @@ export function useSettingsDocument<const TEntries extends ObjectEntries>(key: s
     commit(value)
   }
 
-  return { document, current, update, reset }
+  return { document, update, reset }
 }
