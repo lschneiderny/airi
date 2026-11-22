@@ -6,10 +6,12 @@ import type { GateSignals } from '@proj-airi/stage-shared/situation'
 import type { MindIntent, MindRandom, MindState, MindStimulus } from './types'
 
 import { IDLE_ERRAND_PACING, PASTIME_HOLD_SECONDS } from '@proj-airi/motion-driver-natural/idle-errands'
+import { dormantIdleView } from '@proj-airi/motion-driver-natural/idle-schedule'
+import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { HOUR_MS, initialSituationState, randomSource } from '@proj-airi/stage-shared/situation'
 import { describe, expect, it } from 'vitest'
 
-import { nextIdleWakeAt } from './idle'
+import { nextIdleWakeAt, SETTLE_SECONDS } from './idle'
 import { step } from './step'
 import { naturalMindState } from './test/fixtures'
 
@@ -22,7 +24,7 @@ const SEED = 1
 const drive: NaturalIdleDrive = { energy: 0, valence: 0, tension: 0, sleepiness: 0, solitude: 0, rate: 1 }
 
 function idleView(overrides: Partial<IdleView> = {}): IdleView {
-  return { drive, active: true, mode: 'idle', away: false, blocked: false, settled: false, current: null, errand: null, ...overrides }
+  return { drive, active: true, mode: 'idle', away: false, blocked: false, current: null, errand: null, ...overrides }
 }
 
 function idle(...reports: IdleReport[]): MindStimulus {
@@ -582,7 +584,7 @@ describe('idle policy with a performer', () => {
   it('follows a long sleep with a yawn and never a stretch while she is settled in', () => {
     const seen = new Set<IdleBehaviourKind>()
     for (let seed = 1; seed <= 30; seed++) {
-      for (const act of afterLongSleep(seed, { settled: true }))
+      for (const act of afterLongSleep(seed, {}))
         seen.add(act)
     }
     expect([...seen]).toEqual(['yawn'])
@@ -598,6 +600,88 @@ describe('idle policy with a performer', () => {
   })
 })
 
+describe('settling', () => {
+  /** A body drive that starts no act, so the only idle deadline is the settle. */
+  const still: NaturalIdleDrive = { ...drive, body: true, rate: 0 }
+  const settles = (intents: readonly MindIntent[]) => intents.filter(intent => intent.kind === 'settle').map(intent => intent.kind === 'settle' && intent.settled)
+
+  it('settles her in exactly 120 s of active idle with a body drive, and arms the wake for it', () => {
+    const mind = script()
+    expect(settles(mind.send(T0, viewed({ drive: still })))).toEqual([])
+    expect(mind.wakeAt).toBe(T0 + SETTLE_SECONDS * SEC)
+    expect(settles(mind.send(T0 + SETTLE_SECONDS * SEC - 1, wake))).toEqual([])
+    expect(settles(mind.send(T0 + SETTLE_SECONDS * SEC, wake))).toEqual([true])
+    expect(mind.state.idle.settle.settled).toBe(true)
+    expect(mind.wakeAt).toBeNull()
+  })
+
+  it('does not count while the view is inactive', () => {
+    const mind = script()
+    mind.send(T0, viewed({ drive: still }))
+    mind.send(T0 + 60 * SEC, viewed({ drive: still, active: false }))
+    expect(mind.send(T0 + HOUR_MS, wake)).toEqual([])
+    mind.send(T0 + HOUR_MS, viewed({ drive: still }))
+    expect(mind.wakeAt).toBe(T0 + HOUR_MS + 60 * SEC)
+  })
+
+  it('never settles a head-only host or outside idle mode', () => {
+    for (const view of [{ drive: { ...still, body: undefined } }, { drive: still, mode: 'watching' as const }]) {
+      const mind = script()
+      mind.send(T0, viewed(view))
+      expect(mind.wakeAt).toBeNull()
+      expect(settles(mind.send(T0 + HOUR_MS, wake))).toEqual([])
+    }
+  })
+
+  it('gets her up with a false edge when the mode changes or the view goes dormant, and counts again from there', () => {
+    for (const away of [viewed({ drive: still, mode: 'talking' }), idle({ kind: 'view', view: dormantIdleView(true) })]) {
+      const mind = script()
+      mind.send(T0, viewed({ drive: still }))
+      mind.send(T0 + SETTLE_SECONDS * SEC, wake)
+      expect(settles(mind.send(T0 + 200 * SEC, away))).toEqual([false])
+      expect(mind.state.idle.settle).toEqual({ since: null, settled: false })
+      mind.send(T0 + 210 * SEC, viewed({ drive: still }))
+      expect(mind.wakeAt).toBe(T0 + (210 + SETTLE_SECONDS) * SEC)
+    }
+  })
+
+  const interruptions: MindStimulus[] = [
+    { kind: 'touch', gesture: 'poke', region: 'head', point: { x: 0, y: 0 }, settings: defaultExpressionPerformanceSettings, voice: null },
+    { kind: 'emotion', source: 'act', emotion: 'happy', nominal: 0.7, settings: defaultExpressionPerformanceSettings },
+    { kind: 'cue-gesture', gesture: 'nod', count: 1, source: 'act' },
+    { kind: 'presence', away: false, wake: { cause: 'unlock', atMs: T0 } },
+    { kind: 'screen-change' },
+    { kind: 'chat', cue: 'sent', words: 3 },
+    { kind: 'chat', cue: 'unfold' },
+  ]
+  it.each(interruptions)('starts the count over after a $kind stimulus and gets her up', (stimulus) => {
+    const mind = script()
+    mind.send(T0, viewed({ drive: still }))
+    expect(settles(mind.send(T0 + 100 * SEC, stimulus))).toEqual([])
+    expect(mind.state.idle.settle.since).toBe(100)
+    mind.send(T0 + 220 * SEC - 1, wake)
+    expect(mind.state.idle.settle.settled).toBe(false)
+    expect(settles(mind.send(T0 + 220 * SEC, wake))).toEqual([true])
+    expect(settles(mind.send(T0 + 300 * SEC, stimulus))).toEqual([false])
+  })
+
+  it('does not start the count over for stimuli that do not claim her', () => {
+    const mind = script()
+    mind.send(T0, viewed({ drive: still }))
+    mind.send(T0 + 100 * SEC, { kind: 'music', playing: true }, voiceTick(T0 + 100 * SEC), { kind: 'presence', away: true, wake: null })
+    expect(mind.state.idle.settle.since).toBe(0)
+  })
+
+  it('draws only the settled pool once she is settled in', () => {
+    const out = new Set(['stretch', 'peer', 'shoulder-roll', 'clasp-hands', 'hair-touch', 'heel-rock', 'arm-swing'])
+    const { performer } = simulate({ seed: 3, view: { drive: { ...drive, body: true } }, seconds: 3 * 3600 })
+    const settledAt = T0 + SETTLE_SECONDS * SEC
+    const later = performer.started.filter(start => start.atMs > settledAt)
+    expect(later.length).toBeGreaterThan(20)
+    expect(later.filter(start => out.has(start.act))).toEqual([])
+  })
+})
+
 /**
  * Puts her to sleep by the away rule on a body host, wakes her on request after 130 s with the view `after`, and
  * returns the act the mind decides within 4 s of the wake, if any.
@@ -605,7 +689,7 @@ describe('idle policy with a performer', () => {
 function afterLongSleep(seed: number, after: Partial<IdleView>): [IdleBehaviourKind] | [] {
   const body = { ...drive, body: true }
   const mind = script(seed)
-  const performer = new FakePerformer(idleView({ drive: body, away: true, settled: after.settled ?? false }), T0)
+  const performer = new FakePerformer(idleView({ drive: body, away: true }), T0)
   const send = (atMs: number, stimulus: MindStimulus): IdleBehaviourKind | null => {
     let decided: IdleBehaviourKind | null = null
     for (const intent of mind.send(atMs, stimulus)) {
@@ -617,7 +701,7 @@ function afterLongSleep(seed: number, after: Partial<IdleView>): [IdleBehaviourK
     }
     return decided
   }
-  send(T0, viewed({ drive: body, away: true, settled: after.settled ?? false }))
+  send(T0, viewed({ drive: body, away: true }))
   expect(send(mind.wakeAt!, wake)).toBe('sleep')
   const wokeAt = T0 + 160 * SEC
   send(wokeAt, idle(...performer.setView({ away: false, ...after }), ...performer.wake(wokeAt)))

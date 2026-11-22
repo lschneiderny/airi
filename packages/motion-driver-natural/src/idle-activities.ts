@@ -587,7 +587,7 @@ export class NaturalIdleActivities {
       return
     }
     if (view !== null && view.drive === drive && view.mode === input.mode && view.away === input.away && view.blocked === input.blocked
-      && view.settled === this.settled && view.current?.seq === current?.seq && view.errand?.seq === errand?.seq) {
+      && view.current?.seq === current?.seq && view.errand?.seq === errand?.seq) {
       return
     }
     this.view = {
@@ -596,7 +596,6 @@ export class NaturalIdleActivities {
       mode: input.mode,
       away: input.away,
       blocked: input.blocked,
-      settled: this.settled,
       current: current ? { seq: current.seq, kind: current.kind } : null,
       errand: errand && { seq: errand.seq, kind: errand.kind },
     }

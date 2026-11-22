@@ -204,6 +204,11 @@ export type MindIntent
     | (IntentBase & { channel: 'voice', kind: 'observe-return', atMs: number, awayMs: number })
   /** Start an idle act whose shape the performer draws from `seed`. `requested` marks an `idle-play`; the performer answers with `started` or `refused`. */
     | (IntentBase & { channel: 'posture', kind: 'idle-act', act: IdleBehaviourKind, seed: number, requested: boolean })
+  /**
+   * She settles in after a long idle (`true`) or gets up (`false`), sent on each edge of `MindIdleState.settle`. A body
+   * performer sits her or rests her; a performer without a body drops it.
+   */
+    | (IntentBase & { channel: 'posture', kind: 'settle', settled: boolean })
   /** Start an idle errand. `pick` chooses among the realiser's candidates; `holdSeconds` is the pastime hold, null for other errands. */
     | (IntentBase & { channel: 'posture', kind: 'idle-errand', errand: IdleErrandKind, pick: number, holdSeconds: number | null })
   /** The cursor episode for the report `requestId`: whether she engages, its span, dwell, and cooldown. Only the reporting performer plays it. */
@@ -242,6 +247,8 @@ export interface MindAnswer {
 export type TouchReactionIntent = Extract<MindIntent, { kind: 'touch-reaction' }>
 /** The intents a performer carries out as idle orders. */
 export type MindIdleIntent = Extract<MindIntent, { kind: 'idle-act' | 'idle-errand' }>
+/** The posture intent that settles her in or gets her up. */
+export type SettleIntent = Extract<MindIntent, { kind: 'settle' }>
 /** The body intent that opens the director's attend window. */
 export type AttendIntent = Extract<MindIntent, { kind: 'attend' }>
 /** The gaze intent that reads the chat. */
@@ -340,6 +347,11 @@ export interface MindIdleState {
   pending: string | null
   /** The behavior the performer last reported started, with its intent and its start in active seconds. */
   started: { seq: number, intentId: string | null, at: number } | null
+  /**
+   * Her settling, in active seconds: `since` is the start of the continuous idle she settles in after, null while the
+   * view does not let her settle; `settled` turns true `SETTLE_SECONDS` after it.
+   */
+  settle: { since: number | null, settled: boolean }
   /**
    * The checkpoint of the idle policy's own stream, seeded by one draw of `rng` at the first idle stimulus; null
    * before it. Its own stream keeps the idle draws apart from how often the other channels draw.

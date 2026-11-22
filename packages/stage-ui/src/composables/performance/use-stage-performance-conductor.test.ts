@@ -1033,7 +1033,7 @@ describe('stage performance conductor', () => {
       let driver: TestPerformer = 'natural'
       const idleReports = vi.fn<NonNullable<StagePerformanceConductorOptions['idleReports']>>()
       const conductor = new StagePerformanceConductor({ scene: () => fakeScene(), capabilities: () => driver === 'natural' ? MMD_NATURAL_CAPABILITIES : NO_CAPABILITIES, settings: () => defaultExpressionPerformanceSettings, catalog: () => catalog, seed: 7, mind: naturalMind({ seed: 7 }), idleReports })
-      const view = { drive: { energy: 0, valence: 0, tension: 0, sleepiness: 0, solitude: 0, rate: 1 }, active: true, mode: 'idle', away: false, blocked: false, settled: false, current: null, errand: null } as const
+      const view = { drive: { energy: 0, valence: 0, tension: 0, sleepiness: 0, solitude: 0, rate: 1 }, active: true, mode: 'idle', away: false, blocked: false, current: null, errand: null } as const
       conductor.idleReport([{ kind: 'view', view }])
       driver = 'basic'
       conductor.idleReport([{ kind: 'view', view: { ...view, active: false } }])
@@ -1051,7 +1051,7 @@ describe('stage performance conductor', () => {
     it('leaves the idle intents of a touch step to the mind store', () => {
       const scene = { ...fakeScene(), idle: vi.fn<NonNullable<StagePerformanceScene['idle']>>() }
       const { conductor, mind, advance } = createConductor('natural', scene)
-      mind.receive({ kind: 'idle', reports: [{ kind: 'view', view: { drive: { energy: 0, valence: 0, tension: 0, sleepiness: 0, solitude: 0, rate: 1 }, active: true, mode: 'idle', away: false, blocked: false, settled: false, current: null, errand: null } }] })
+      mind.receive({ kind: 'idle', reports: [{ kind: 'view', view: { drive: { energy: 0, valence: 0, tension: 0, sleepiness: 0, solitude: 0, rate: 1 }, active: true, mode: 'idle', away: false, blocked: false, current: null, errand: null } }] })
       const steps: MindStep[] = []
       mind.onStep(step => steps.push(step))
       advance(3600)

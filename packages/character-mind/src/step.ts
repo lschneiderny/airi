@@ -9,7 +9,7 @@ import { declaredAnswer, NO_CAPABILITIES } from './capabilities'
 import { answerChat } from './chat'
 import { answerEmotion, answerExpressionClear, answerExpressionRequest } from './expression'
 import { initialMindGestureState } from './gesture'
-import { advanceIdle, answerIdle, answerIdlePlay, initialMindIdleState } from './idle'
+import { advanceIdle, answerIdle, answerIdlePlay, followSettleView, initialMindIdleState, interruptSettle } from './idle'
 import { initialMindMoodState } from './mood'
 import { answerMusic } from './music'
 import { answerPresence, answerScreenChange } from './presence'
@@ -36,6 +36,30 @@ export function initialMindState(slow: MindSlowState = { pacing: null }): MindSt
     music: { playing: false },
     attention: { random: null },
     slow,
+  }
+}
+
+/**
+ * Whether an answered stimulus claims her as Natural's `interrupt` did, so her settling starts over (CM9c, decision
+ * D11): a touch, an emotion, an entry that started an episode, a cue gesture, a desktop wake, a screen change, a chat
+ * cue, an engaged cursor episode, and every posture cue around a line.
+ */
+function interruptsSettle(stimulus: MindStimulus, intents: readonly MindIntent[]): boolean {
+  switch (stimulus.kind) {
+    case 'touch':
+    case 'emotion':
+    case 'cue-gesture':
+    case 'screen-change':
+    case 'chat':
+      return true
+    case 'presence':
+      return stimulus.wake !== null
+    case 'expression-request':
+      return intents.some(intent => intent.kind === 'entry' && intent.episode !== null)
+    case 'cursor':
+      return intents.some(intent => intent.kind === 'cursor-episode' && intent.episode.engaging)
+    default:
+      return intents.some(intent => intent.kind === 'cue')
   }
 }
 
@@ -73,6 +97,10 @@ export function step(state: MindState, stimuli: readonly MindStimulus[], nowMs: 
             schedule: { ...next.idle.schedule, followUp: null, awaySince: null },
           },
         }
+        // The dormant view gets her up.
+        const followed = followSettleView(next, `${cause}-settle`, cause)
+        next = followed.state
+        intents.push(...followed.intents)
       }
       // Withdrawing touch permission closes a granted pet without dosing or speaking for its cancellation.
       if (!touchReactions && next.touch.affect.pet !== null)
@@ -82,8 +110,10 @@ export function step(state: MindState, stimuli: readonly MindStimulus[], nowMs: 
     if (stimulus.kind === 'performer') {
       next = { ...next, performer: stimulus.capabilities }
       // Retire the previous performer's view before any due decision; a new stage reports its own view.
+      // A performer without posture cannot take the settle edge: the count clears without one, and the conductor seeds
+      // the mind's settle into a stage whose posture returns.
       if (!stimulus.capabilities.posture)
-        next = { ...next, idle: { ...next.idle, view: dormantIdleView(), pending: null, atMs: nowMs, schedule: { ...next.idle.schedule, followUp: null, awaySince: null } } }
+        next = { ...next, idle: { ...next.idle, view: dormantIdleView(), pending: null, atMs: nowMs, settle: { since: null, settled: false }, schedule: { ...next.idle.schedule, followUp: null, awaySince: null } } }
       continue
     }
     // The idle clock catches up first, so a decision that fell due before this stimulus comes before its answer.
@@ -135,6 +165,11 @@ export function step(state: MindState, stimuli: readonly MindStimulus[], nowMs: 
     refusals.push(...answer.refusals ?? [])
     next = answer.state.voice.gate === next.voice.gate ? answer.state : followPacing(answer.state)
     intents.push(...answer.intents)
+    if (interruptsSettle(stimulus, answer.intents)) {
+      const interrupted = interruptSettle(next, cause)
+      next = interrupted.state
+      intents.push(...interrupted.intents)
+    }
   }
 
   return { state: next, intents, refusals }

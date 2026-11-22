@@ -8,8 +8,9 @@ import { IDLE_ERRAND_KINDS, IDLE_ERRAND_PACING, PASTIME_HOLD_SECONDS } from './i
  * The idle schedule: when she starts an idle act or an errand, which one, when she falls asleep while the user is away,
  * and the stretch or yawn after a long sleep. Pure rules over plain JSON state, in active seconds (the idle agency
  * ADR's unit), with every random draw taken from the `random` argument. The character mind's idle policy runs them on
- * its own clock and source. The performer (`NaturalIdleActivities`) plays what the mind orders: it keeps the shape of
- * each act, its interruption, settling, and cue acceptance, and reports what it saw as `IdleReport`s.
+ * its own clock and source, and decides when she settles in. The performer (`NaturalIdleActivities`) plays what the
+ * mind orders: it keeps the shape of each act, its interruption, and cue acceptance, and reports what it saw as
+ * `IdleReport`s.
  */
 
 /** Seconds between two activities: the minimum and maximum of the uniform rest draw. */
@@ -127,7 +128,6 @@ export interface IdleView {
   mode: 'idle' | 'watching' | 'listening' | 'thinking' | 'talking'
   away: boolean
   blocked: boolean
-  settled: boolean
   /** The behavior that has not been released, or null. */
   current: { seq: number, kind: IdleBehaviourKind } | null
   /** The errand that has not ended, or null. */
@@ -136,7 +136,7 @@ export interface IdleView {
 
 /** The view of a performer that runs no idle layer: the schedule decides nothing under it. */
 export function dormantIdleView(active = false): IdleView {
-  return { drive: null, active, mode: 'idle', away: false, blocked: false, settled: false, current: null, errand: null }
+  return { drive: null, active, mode: 'idle', away: false, blocked: false, current: null, errand: null }
 }
 
 /** Whether two drives hold the same values, so a host that sends a fresh copy every second changes nothing. */
@@ -310,7 +310,7 @@ function pick(state: IdleScheduleState, view: IdleView, context: IdleContext, dr
     if (last !== undefined)
       since[kind] = at - last
   }
-  const weights = idleActivityWeights(drive, { watching: view.mode === 'watching', music: context.music, settled: view.settled, since })
+  const weights = idleActivityWeights(drive, { watching: view.mode === 'watching', music: context.music, settled: context.settled, since })
   const eligible = drawnKinds.filter((kind) => {
     const last = state.lastStart[kind]
     return weights[kind] > 0 && (last === undefined || at - last >= cooldowns[kind])
@@ -349,6 +349,11 @@ function listErrands(state: IdleScheduleState, drive: NaturalIdleDrive | null, a
 export interface IdleContext {
   /** Whether the mind hears music: the groove (`sway`) weighs above 0 only then. */
   music: boolean
+  /**
+   * Whether the mind has settled her in after a long idle with a body drive: the settled pool and the yawn in place of a
+   * stretch after a long sleep read it.
+   */
+  settled: boolean
 }
 
 /**
@@ -393,7 +398,7 @@ export function advanceIdleSchedule(state: IdleScheduleState, view: IdleView, co
   const actsOpen = free && at >= next.restUntil
   if (next.followUp && at >= next.followUp.at) {
     // A settled character does not stretch (SETTLED_OUT), so the stretch after a long sleep becomes the yawn.
-    const kind = view.settled && next.followUp.kind === 'stretch' ? 'yawn' : next.followUp.kind
+    const kind = context.settled && next.followUp.kind === 'stretch' ? 'yawn' : next.followUp.kind
     next.followUp = null
     if (free)
       decision = { kind: 'act', act: kind }

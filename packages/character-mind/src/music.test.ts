@@ -13,7 +13,7 @@ import { naturalMindState } from './test/fixtures'
 
 const T0 = 1_700_000_000_000
 const drive: NaturalIdleDrive = { energy: 0, valence: 0, tension: 0, sleepiness: 0, solitude: 0, rate: 1 }
-const view: IdleView = { drive, active: true, mode: 'idle', away: false, blocked: false, settled: false, current: null, errand: null }
+const view: IdleView = { drive, active: true, mode: 'idle', away: false, blocked: false, current: null, errand: null }
 const viewed: MindStimulus = { kind: 'idle', reports: [{ kind: 'view', view }] }
 const musicOn: MindStimulus = { kind: 'music', playing: true }
 

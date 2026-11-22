@@ -25,7 +25,6 @@ const idleView: IdleView = {
   mode: 'idle',
   away: false,
   blocked: false,
-  settled: false,
   current: null,
   errand: null,
 }
