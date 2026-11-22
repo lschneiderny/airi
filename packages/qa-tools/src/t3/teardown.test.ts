@@ -80,7 +80,7 @@ describe('teardownRun', () => {
     const closes: string[] = []
     const report = await teardownRun(ownership, { ...system.deps, closeBrowser: async () => {
       closes.push('Browser.close')
-    }, waitRootExit: async () => false }, ['C:/wt/qa-tooling-t11/.temp/qa/run-1/rig.zip'])
+    }, waitRootExit: async () => false }, { extraPaths: ['C:/wt/qa-tooling-t11/.temp/qa/run-1/rig.zip'] })
 
     expect(closes).toEqual(['Browser.close'])
     expect(system.kills).toEqual([100])
@@ -88,6 +88,15 @@ describe('teardownRun', () => {
     expect(report.ok).toBe(true)
     expect(system.removed).toEqual([profileDir, 'C:/wt/qa-tooling-t11/.temp/qa/run-1/rig.zip'])
     expect((await system.deps.list()).map(entry => entry.pid)).toEqual([200, 201, 7])
+  })
+
+  it('keeps the profile for a relaunch and still removes the extra paths', async () => {
+    const system = fakeSystem([root, vite, electron])
+    const report = await teardownRun(ownership, system.deps, { extraPaths: ['C:/wt/qa-tooling-t11/.temp/qa/run-1/rig.zip'], keepProfile: true })
+
+    expect(system.removed).toEqual(['C:/wt/qa-tooling-t11/.temp/qa/run-1/rig.zip'])
+    expect(report.profileRemoved).toBe(false)
+    expect(report.ok).toBe(true)
   })
 
   it('kills an orphan that lost its parent link individually', async () => {
