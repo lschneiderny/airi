@@ -155,16 +155,16 @@ export default defineConfig({
           name,
           message: 'The character mind imports only the pure rules of @proj-airi/stage-shared/expression-performance and /situation.',
         })),
-        { name: '@proj-airi/motion-driver-natural', message: 'The character mind imports only the pure rules: /idle-schedule, /idle-errands, and /cursor-notice, and types from /idle-activities and /cue-gestures.' },
+        { name: '@proj-airi/motion-driver-natural', message: 'The character mind imports only the pure rules: /idle-schedule, /idle-errands, /cursor-notice, and the /emotions recipe table, and types from /idle-activities and /cue-gestures.' },
       ],
       patterns: [{
         group: ['@vueuse/*', '@proj-airi/stage-ui*', '@proj-airi/stage-shared/stores/*'],
         message: 'The character mind imports only the pure rules of @proj-airi/stage-shared/expression-performance and /situation.',
       }, {
-        // The idle schedule, the errand pacing, and the cursor episode draw are pure (airi/idle-schedule-pure); the rest
-        // of Natural is the performer.
-        regex: '^@proj-airi/motion-driver-natural/(?!idle-schedule$|idle-errands$|idle-activities$|cursor-notice$|cue-gestures$)',
-        message: 'The character mind imports only the pure rules: /idle-schedule, /idle-errands, and /cursor-notice, and types from /idle-activities and /cue-gestures.',
+        // The idle schedule, the errand pacing, and the cursor episode draw are pure (airi/idle-schedule-pure), and the
+        // emotion recipe table is data the mind's gesture policy reads; the rest of Natural is the performer.
+        regex: '^@proj-airi/motion-driver-natural/(?!idle-schedule$|idle-errands$|idle-activities$|cursor-notice$|cue-gestures$|emotions$)',
+        message: 'The character mind imports only the pure rules: /idle-schedule, /idle-errands, /cursor-notice, and the /emotions recipe table, and types from /idle-activities and /cue-gestures.',
       }, {
         regex: '^@proj-airi/motion-driver-natural/(?:idle-activities|cue-gestures)$',
         allowTypeImports: true,
@@ -189,10 +189,10 @@ export default defineConfig({
     }))],
   },
 }, {
-  // The idle schedule, the errand pacing, and the cursor episode draw are pure rules that the character mind composes:
-  // time and random draws come in as arguments, as in the mind's core.
+  // The idle schedule, the errand pacing, the cursor episode draw, and the emotion recipe table are pure rules that the
+  // character mind composes: time and random draws come in as arguments, as in the mind's core.
   name: 'airi/idle-schedule-pure',
-  files: ['packages/motion-driver-natural/src/idle-schedule.ts', 'packages/motion-driver-natural/src/idle-errands.ts', 'packages/motion-driver-natural/src/cursor-notice.ts'],
+  files: ['packages/motion-driver-natural/src/idle-schedule.ts', 'packages/motion-driver-natural/src/idle-errands.ts', 'packages/motion-driver-natural/src/cursor-notice.ts', 'packages/motion-driver-natural/src/emotions.ts'],
   rules: {
     'no-restricted-properties': ['error', ...[['Math', 'random'], ['Date', 'now'], ['performance', 'now']].map(([object, property]) => ({
       object,

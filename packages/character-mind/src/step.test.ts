@@ -36,13 +36,13 @@ describe('step: emotion', () => {
       hold: { emotion: 'happy', strength: 0.6, holdSeconds: 4, until: 'speech', turnId: 'A' },
       reason: 'act',
       turnId: 'A',
-    }])
+    }, { id: '1-emotion-gesture', cause: 1, channel: 'posture', kind: 'emotion-gesture', gesture: 'laugh', episodeId: 'happy-1' }])
     expect(state.seq).toBe(1)
   })
 
   it('holds a turnless emotion for the configured seconds and a lingering one twice as long', () => {
     const turnless = step(naturalMindState(), [emotion('happy', 0.6)], 0, rng).intents
-    expect(turnless).toMatchObject([{ hold: { emotion: 'happy', holdSeconds: 4, until: 'hold' } }])
+    expect(turnless).toMatchObject([{ hold: { emotion: 'happy', holdSeconds: 4, until: 'hold' } }, { kind: 'emotion-gesture' }])
     const lingering = step(naturalMindState(), [emotion('sad', 0.6, 'A')], 0, rng).intents
     expect(lingering).toMatchObject([{ hold: { emotion: 'sad', holdSeconds: 8, until: 'speech' } }])
   })
@@ -66,7 +66,8 @@ describe('step: emotion', () => {
   it('decides the episode whether or not automatic expressions are on', () => {
     const off = step(naturalMindState(), [emotion('happy', 0.9, 'A', { ...settings, autoExpressions: false })], 0, rng)
     expect(off.intents).toEqual(step(naturalMindState(), [emotion('happy', 0.9, 'A')], 0, rng).intents)
-    expect(off.intents).toHaveLength(1)
+    // The episode and its laugh.
+    expect(off.intents).toHaveLength(2)
   })
 
   it('holds each emotion of a script and releases the hold on a clear and on a neutral', () => {
@@ -81,7 +82,7 @@ describe('step: emotion', () => {
     const held = script.map(([atMs, stimulus]) => {
       const answer = step(state, [stimulus], atMs, rng)
       state = answer.state
-      return answer.intents.map(intent => 'hold' in intent ? intent.hold?.emotion : undefined)
+      return answer.intents.filter(intent => intent.channel === 'face').map(intent => 'hold' in intent ? intent.hold?.emotion : undefined)
     })
     expect(held).toEqual([['happy'], ['happy'], ['sad'], [null], [null]])
   })
@@ -96,7 +97,7 @@ describe('step: emotion', () => {
 
   it('doses every emotion alike when bands are off', () => {
     const { intents } = step(naturalMindState(), [emotion('happy', 0.95, undefined, { ...settings, bands: false })], 0, rng)
-    expect(intents).toMatchObject([{ episode: { nominal: 0.6, intensity: 0.6 } }])
+    expect(intents).toMatchObject([{ episode: { nominal: 0.6, intensity: 0.6 } }, { kind: 'emotion-gesture', gesture: 'laugh' }])
   })
 
   it('releases the automatic slots and the hold when a neutral resets the reaction', () => {
@@ -158,6 +159,52 @@ describe('step: named entries', () => {
   })
 })
 
+describe('step: emotion gestures', () => {
+  it('follows the face intent of a new episode with its gesture and spends the cooldown on the mind clock', () => {
+    const first = step(naturalMindState(), [emotion('happy', 0.6, 'A')], 10_000, rng)
+    expect(first.intents).toEqual([
+      expect.objectContaining({ id: '1-emotion', kind: 'emotion' }),
+      { id: '1-emotion-gesture', cause: 1, channel: 'posture', kind: 'emotion-gesture', gesture: 'laugh', episodeId: 'happy-1' },
+    ])
+    expect(first.state.gesture.lastAtSeconds).toEqual({ laugh: 10 })
+    // A stronger repeat escalates the episode inside the laugh cooldown: a face intent and no gesture.
+    const escalated = step(first.state, [emotion('happy', 0.9, 'A')], 11_000, rng)
+    expect(escalated.intents.map(intent => intent.kind)).toEqual(['emotion'])
+    // Past the cooldown a new episode plays it again.
+    const again = step(escalated.state, [emotion('happy', 0.9, 'B')], 14_000, rng)
+    expect(again.intents.map(intent => intent.kind)).toEqual(['emotion', 'emotion-gesture'])
+  })
+
+  it('answers a mapped expression request that starts an episode with a gesture', () => {
+    const { intents } = step(naturalMindState(), [request({ emotion: 'surprised', minBand: 'clear' })], 0, rng)
+    expect(intents).toEqual([
+      expect.objectContaining({ kind: 'entry', episode: expect.objectContaining({ id: 'surprised-1' }) }),
+      { id: '1-emotion-gesture', cause: 1, channel: 'posture', kind: 'emotion-gesture', gesture: 'recoil', episodeId: 'surprised-1' },
+    ])
+  })
+
+  it('reports the gesture undeclared without posture and spends no cooldown', () => {
+    const faceOnly = { ...naturalMindState(), performer: { ...naturalMindState().performer, posture: false } }
+    const answer = step(faceOnly, [emotion('happy', 0.6, 'A')], 0, rng)
+    expect(answer.intents.map(intent => intent.kind)).toEqual(['emotion'])
+    expect(answer.refusals).toEqual([{ cause: 1, kind: 'emotion-gesture', reason: 'undeclared' }])
+    expect(answer.state.gesture).toBe(faceOnly.gesture)
+  })
+
+  it('plays no gesture with held emotions off', () => {
+    const { intents, state } = step(naturalMindState(), [emotion('happy', 0.6, 'A', { ...settings, heldEmotions: false })], 0, rng)
+    expect(intents.map(intent => intent.kind)).toEqual(['emotion'])
+    expect(state.gesture.lastAtSeconds).toEqual({})
+  })
+
+  it('draws nothing for a gesture', () => {
+    const draw = vi.fn(rng)
+    step(naturalMindState(), [emotion('angry', 0.9, 'A')], 0, draw)
+    // The one draw is the new episode's jitter.
+    expect(draw).toHaveBeenCalledTimes(1)
+  })
+})
+
 describe('step: clears', () => {
   it('releases the hold when no slot is named, and keeps it and the reaction history when one is', () => {
     const first = step(naturalMindState(), [emotion('happy', 0.6, 'A')], 0, rng)
@@ -188,8 +235,9 @@ describe('step: state', () => {
   it('numbers stimuli across calls and gives the intents of one stimulus its number', () => {
     const { state, intents } = run()
     expect(state.seq).toBe(7)
-    expect(intents.map(intent => intent.id)).toEqual(['1-emotion', '2-emotion', '3-release', '4-entry', '5-emotion', '6-release', '7-emotion'])
-    expect(intents.map(intent => intent.cause)).toEqual([1, 2, 3, 4, 5, 6, 7])
+    // The escalation at 1 s and the angry repeat at 12 s fall inside their gestures' cooldowns.
+    expect(intents.map(intent => intent.id)).toEqual(['1-emotion', '1-emotion-gesture', '2-emotion', '3-release', '4-entry', '5-emotion', '5-emotion-gesture', '6-release', '7-emotion'])
+    expect(intents.map(intent => intent.cause)).toEqual([1, 1, 2, 3, 4, 5, 5, 6, 7])
   })
 
   it('gives the same intents for the same seed and script, and others for another seed', () => {

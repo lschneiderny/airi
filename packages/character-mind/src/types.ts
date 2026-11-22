@@ -1,5 +1,6 @@
 import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
 import type { CursorEpisode, CursorReport } from '@proj-airi/motion-driver-natural/cursor-notice'
+import type { PlayedGesture } from '@proj-airi/motion-driver-natural/emotions'
 import type { IdleBehaviourKind } from '@proj-airi/motion-driver-natural/idle-activities'
 import type { IdleErrandKind } from '@proj-airi/motion-driver-natural/idle-errands'
 import type { IdleReport, IdleScheduleState, IdleView } from '@proj-airi/motion-driver-natural/idle-schedule'
@@ -7,6 +8,7 @@ import type { Band, EmotionBehaviorSettings, ExpressionRealisationSettings, Hold
 import type { CharacterPacingMemory, GateLocalTime, GateOutcome, GateSettings, GateSignals, ReactionDecision, ReactionKind, ReactionMemory, ReasonCategory, ReasonKind, ReasonState, SituationState, TouchVoiceView, UrgeGateDecision, UrgeGateMemory, UserGateMemory } from '@proj-airi/stage-shared/situation'
 
 import type { PerformerCapabilities } from './capabilities'
+import type { MindGestureState } from './gesture'
 
 /** Uniform draws in [0, 1). The shell owns the source; the core stores none. */
 export type MindRandom = () => number
@@ -167,6 +169,11 @@ export type MindIntent
     | (IntentBase & { channel: 'posture', kind: 'touch-reaction', gesture: 'pet', phase: 'start' | 'end' })
   /** A mood dose for the Natural performer. */
     | (IntentBase & { channel: 'posture', kind: 'mood', dose: MoodDose })
+  /**
+   * The body gesture of the episode `episodeId` names, decided with its cooldown by `emotionGesture`. It follows the face
+   * intent that carries the episode; the conductor puts it on that episode for Natural. Natural draws its side and shape.
+   */
+    | (IntentBase & { channel: 'posture', kind: 'emotion-gesture', gesture: PlayedGesture, episodeId: string })
   /** A new or escalated episode of an emotion, with the hold that keeps it on the face. */
     | (IntentBase & { channel: 'face', kind: 'emotion', episode: ReactionEpisode, hold: HoldCommand, reason: 'act' | 'tool' | 'devtools', turnId?: string })
   /** A named entry. `episode` is null when the request started no new episode; `hold` is null when the entry maps to no emotion or held emotions are off. */
@@ -237,6 +244,8 @@ export type AttendIntent = Extract<MindIntent, { kind: 'attend' }>
 export type ChatReadIntent = Extract<MindIntent, { kind: 'chat-read' }>
 /** The posture intent that plays a cue gesture. */
 export type GestureIntent = Extract<MindIntent, { kind: 'gesture' }>
+/** The posture intent that plays the body gesture of an emotion episode. */
+export type EmotionGestureIntent = Extract<MindIntent, { kind: 'emotion-gesture' }>
 
 /** The part of the mind's state that the leader saves in the active card's character-state record. */
 export interface MindSlowState {
@@ -253,6 +262,8 @@ export interface MindState {
   behavior: BehaviorSwitches
   /** Emotion strength and habituation: the emotion half of the expression decider. */
   reaction: ReactionState
+  /** The emotion gesture cooldowns, in seconds of the mind's clock. */
+  gesture: MindGestureState
   /** Pacing and habituation of the mood doses of touches, in seconds of the mind's clock. */
   touch: { affect: TouchAffectMemory }
   voice: MindVoiceState
