@@ -157,8 +157,11 @@ export interface StagePerformanceScene {
    * without it, such as a scenario sink, performs none.
    */
   setIdleDrive?: (drive: NaturalIdleDrive | null) => void
-  /** Live2D and MMD Natural: plays the body language around a reach-out. A scene without it drops the cue. */
-  idleCue?: (kind: IdleCueKind) => void
+  /**
+   * Live2D and MMD Natural: plays the body language around a reach-out for the mind's `cue` intent `intentId`, which
+   * the behaviour's reports carry. A scene without it drops the cue.
+   */
+  idleCue?: (kind: IdleCueKind, intentId: string) => void
   /**
    * Live2D and MMD Natural: hands one detected beat, `intervalSeconds` after the previous, to Natural's beat clock, on
    * which a groove plays. A scene without it drops the beat.
@@ -508,7 +511,7 @@ export class StagePerformanceConductor {
   /** Performs the complete cue intent, preserving its cause in a refusal report. */
   idleCue(intent: Extract<MindIntent, { kind: 'cue' }>) {
     if (this.permitted(intent))
-      this.options.scene()?.idleCue?.(intent.cue)
+      this.options.scene()?.idleCue?.(intent.cue, intent.id)
   }
 
   /** Hands a beat to the declared posture performer. Upstream drivers hear their own detector and receive no beat here. */

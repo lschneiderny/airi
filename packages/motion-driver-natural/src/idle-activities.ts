@@ -80,6 +80,8 @@ export interface NaturalIdleDrive {
 export interface IdleBehaviourRecord {
   readonly seq: number
   readonly kind: IdleBehaviourKind
+  /** The character mind's intent that started it: the idle order, or the cue around a line; null for a cue sent without one. */
+  readonly intentId: string | null
   readonly start: number
   /** `Infinity` for a behaviour that lasts until it is released. */
   readonly end: number
@@ -267,6 +269,11 @@ function neutral(): IdleOutput {
 export interface IdleBehaviourReport {
   phase: 'start' | 'end'
   behaviour: IdleBehaviourKind
+  /**
+   * The intent that started the behaviour (`IdleBehaviourRecord.intentId`), on its start and its end, so a host seeds
+   * what it marks the behaviour with from the mind's order; null when the reader was not given one.
+   */
+  intentId: string | null
   /** Only on the start of a sway that bound to the beat clock: the clock's beat length and the sway's beats per cycle. */
   groove?: { beatSeconds: number, beatsPerCycle: number }
 }
@@ -277,22 +284,25 @@ export interface IdleBehaviourReport {
  */
 export class IdleBehaviourReports {
   private behaviour: IdleBehaviourKind | null = null
+  private intentId: string | null = null
   private seq = 0
 
   /**
    * The reports since the previous read, an end before the start that follows it. A start carries `groove` when the
    * state's `grooveLock` belongs to the behaviour that started.
    */
-  read(state: { seq: number, behaviour: IdleBehaviourKind | null, grooveLock?: IdleGrooveLock | null }): IdleBehaviourReport[] {
+  read(state: { seq: number, behaviour: IdleBehaviourKind | null, intentId?: string | null, grooveLock?: IdleGrooveLock | null }): IdleBehaviourReport[] {
     const reports: IdleBehaviourReport[] = []
     const restarted = state.seq !== this.seq
     if (this.behaviour !== null && (restarted || state.behaviour === null))
-      reports.push({ phase: 'end', behaviour: this.behaviour })
+      reports.push({ phase: 'end', behaviour: this.behaviour, intentId: this.intentId })
     if (state.behaviour !== null && (restarted || this.behaviour === null)) {
       const lock = state.grooveLock
+      const intentId = state.intentId ?? null
       reports.push(lock && lock.seq === state.seq
-        ? { phase: 'start', behaviour: state.behaviour, groove: { beatSeconds: lock.beatSeconds, beatsPerCycle: lock.beatsPerCycle } }
-        : { phase: 'start', behaviour: state.behaviour })
+        ? { phase: 'start', behaviour: state.behaviour, intentId, groove: { beatSeconds: lock.beatSeconds, beatsPerCycle: lock.beatsPerCycle } }
+        : { phase: 'start', behaviour: state.behaviour, intentId })
+      this.intentId = intentId
     }
     this.behaviour = state.behaviour
     this.seq = state.seq
@@ -339,7 +349,7 @@ export class NaturalIdleActivities {
 
   private drive: NaturalIdleDrive | null = null
   private readonly clips: Clip[] = []
-  private pendingCue: IdleCueKind | null = null
+  private pendingCue: { kind: IdleCueKind, intentId: string | null } | null = null
   private readonly orders: IdleOrder[] = []
   private readonly reports: IdleReport[] = []
   /** Start time of the latest about-to-speak hold, which a let-go may answer. */
@@ -377,8 +387,8 @@ export class NaturalIdleActivities {
   }
 
   /** Requests a reach-out cue; it starts at the next step and is dropped when the layer is off or she is busy. */
-  cue(kind: IdleCueKind) {
-    this.pendingCue = kind
+  cue(kind: IdleCueKind, intentId: string | null) {
+    this.pendingCue = { kind, intentId }
   }
 
   /**
@@ -458,20 +468,20 @@ export class NaturalIdleActivities {
 
     const cue = this.pendingCue
     this.pendingCue = null
-    if (cue === 'about-to-speak' && performing && !input.blocked && current?.kind !== 'sleep') {
+    if (cue?.kind === 'about-to-speak' && performing && !input.blocked && current?.kind !== 'sleep') {
       if (current)
         this.release(current, at, interruptSeconds, gaze)
-      current = this.start('about-to-speak', at, drive, input, this.random, null)
+      current = this.start('about-to-speak', at, drive, input, this.random, cue.intentId)
       this.heldAt = at
     }
-    else if (cue === 'let-go' && performing && !input.blocked) {
+    else if (cue?.kind === 'let-go' && performing && !input.blocked) {
       // A slow model can decide after the hold ran out; she still lets the thought go if nothing else started since.
       const held = this.heldAt
       const recent = !current && held !== null && at - held <= letGoWindowSeconds && this.answeredHold !== held
       if (current?.kind === 'about-to-speak' || recent) {
         if (current)
           this.release(current, at, 0.5, gaze)
-        current = this.start('let-go', at, drive, input, this.random, null)
+        current = this.start('let-go', at, drive, input, this.random, cue.intentId)
         // One hold earns one let-go.
         this.answeredHold = held
       }
@@ -647,7 +657,7 @@ export class NaturalIdleActivities {
     this.reports.push({ kind: 'ended', seq: clip.seq, act: clip.kind, how: asked ? 'woken-on-request' : 'woken' })
   }
 
-  /** Starts `kind`, drawing its shape from `random`; `intentId` names the order that started it, null for a cue. */
+  /** Starts `kind`, drawing its shape from `random`; `intentId` names the order or the cue intent that started it. */
   private start(kind: IdleBehaviourKind, at: number, drive: NaturalIdleDrive, input: IdleStepInput, random: RandomStream, intentId: string | null): Clip {
     const between = (min: number, max: number) => min + (max - min) * random()
     const drawnSide: -1 | 1 = random() < 0.5 ? -1 : 1
@@ -779,6 +789,7 @@ export class NaturalIdleActivities {
     this.record = {
       seq: clip.seq,
       kind,
+      intentId,
       start: at,
       end: clip.end,
       releasedAt: null,

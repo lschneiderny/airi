@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 
 import { advanceBeatClock, BEAT_TIMEOUT_SECONDS, initialBeatClock } from './beat-clock'
 import { NaturalGazeLayer } from './gaze'
-import { idleEnergyOffset, NaturalIdleActivities } from './idle-activities'
+import { IdleBehaviourReports, idleEnergyOffset, NaturalIdleActivities } from './idle-activities'
 import { NaturalMotion } from './natural-motion'
 import { createRandomStream } from './random'
 
@@ -103,9 +103,9 @@ describe('idle activity layer', () => {
     const shape = (seed: number, cues: number) => {
       const { idle, run, now } = layer(3 + cues)
       for (let index = 0; index < cues; index++) {
-        idle.cue('about-to-speak')
+        idle.cue('about-to-speak', null)
         run(now() + 0.1)
-        idle.cue('let-go')
+        idle.cue('let-go', null)
         run(now() + 4)
       }
       idle.order(act('look-around', { seed }))
@@ -229,46 +229,68 @@ describe('idle activity layer', () => {
     expect(idle.output.lidClose).toBe(0)
   })
 
+  it('carries the intent that started a behaviour on its start and its end report', () => {
+    const reports = new IdleBehaviourReports()
+    expect(reports.read({ seq: 1, behaviour: 'yawn', intentId: 'order-1' })).toEqual([{ phase: 'start', behaviour: 'yawn', intentId: 'order-1' }])
+    expect(reports.read({ seq: 2, behaviour: 'let-go', intentId: 'cue-1' })).toEqual([
+      { phase: 'end', behaviour: 'yawn', intentId: 'order-1' },
+      { phase: 'start', behaviour: 'let-go', intentId: 'cue-1' },
+    ])
+    expect(reports.read({ seq: 2, behaviour: null })).toEqual([{ phase: 'end', behaviour: 'let-go', intentId: 'cue-1' }])
+  })
+
+  it('records the order that started an act on its record and in the controller state', () => {
+    const motion = new NaturalMotion({ seed: 41 })
+    motion.setPerformance(idleState, 0.5, 0)
+    motion.setIdleDrive(neutralDrive, 0)
+    const order = act('yawn', { requested: true })
+    motion.idle(order, 1)
+    motion.advance(1.1)
+    expect(motion.idleState).toMatchObject({ behaviour: 'yawn', intentId: order.id })
+  })
+
   it('holds a look at the user before a reach-out and lets it go when she stays silent', () => {
     const { idle, gaze, run, now, reports } = layer()
     run(1)
-    idle.cue('about-to-speak')
+    idle.cue('about-to-speak', 'cue-1')
     run(2)
     expect(idle.behaviour).toBe('about-to-speak')
+    expect(idle.record?.intentId).toBe('cue-1')
     expect(idle.eyesOwned(now())).toBe(true)
     expect(idle.output.head[1]).toBeGreaterThan(0.04)
     // Thinking about her own turn does not end the hold.
     run(3, { ...idleInput, mode: 'thinking' })
     expect(idle.behaviour).toBe('about-to-speak')
-    idle.cue('let-go')
+    idle.cue('let-go', 'cue-2')
     run(now() + 0.8)
     expect(idle.behaviour).toBe('let-go')
+    expect(idle.record?.intentId).toBe('cue-2')
     expect(idle.output.head[1]).toBeLessThan(0)
     run(now() + 3)
     expect(idle.behaviour).toBeNull()
     // A second let-go has no hold left to answer.
-    idle.cue('let-go')
+    idle.cue('let-go', null)
     idle.step(now(), dt, idleInput, gaze)
     expect(idle.behaviour).toBeNull()
-    // A cue names no order.
+    // A cue names the mind's cue intent, not an order.
     expect(reports.filter(report => report.kind === 'started')).toEqual([
-      { kind: 'started', intentId: null, seq: 1, act: 'about-to-speak' },
-      { kind: 'started', intentId: null, seq: 2, act: 'let-go' },
+      { kind: 'started', intentId: 'cue-1', seq: 1, act: 'about-to-speak' },
+      { kind: 'started', intentId: 'cue-2', seq: 2, act: 'let-go' },
     ])
   })
 
   it('drops the hold when she speaks, and still lets go when the decision comes after the hold ran out', () => {
     const speaking = layer()
-    speaking.idle.cue('about-to-speak')
+    speaking.idle.cue('about-to-speak', null)
     speaking.run(1)
     speaking.idle.step(speaking.now(), dt, { ...idleInput, mode: 'talking' }, speaking.gaze)
     expect(speaking.idle.behaviour).toBeNull()
 
     const slow = layer()
-    slow.idle.cue('about-to-speak')
+    slow.idle.cue('about-to-speak', null)
     slow.run(11)
     expect(slow.idle.behaviour).toBeNull()
-    slow.idle.cue('let-go')
+    slow.idle.cue('let-go', null)
     slow.run(11.5)
     expect(slow.idle.behaviour).toBe('let-go')
   })
@@ -276,7 +298,7 @@ describe('idle activity layer', () => {
   it('lets a cue that arrives in the same step win over an ordered act', () => {
     const { idle, run, reports } = layer()
     const order = act('look-around')
-    idle.cue('about-to-speak')
+    idle.cue('about-to-speak', null)
     idle.order(order)
     run(0.1)
     expect(idle.behaviour).toBe('about-to-speak')

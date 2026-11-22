@@ -318,7 +318,7 @@ defineExpose({
   chatRead: (intent: ChatReadIntent) => live2dModelRef.value?.chatRead(intent),
   setFaceBaseline: (baseline: FaceBaseline) => live2dModelRef.value?.setFaceBaseline(baseline),
   setIdleDrive: (drive: NaturalIdleDrive | null) => live2dModelRef.value?.setIdleDrive(drive),
-  idleCue: (kind: IdleCueKind) => live2dModelRef.value?.idleCue(kind),
+  idleCue: (kind: IdleCueKind, intentId: string) => live2dModelRef.value?.idleCue(kind, intentId),
   idle: (order: IdleOrder) => live2dModelRef.value?.idle(order),
   beat: (intervalSeconds: number) => live2dModelRef.value?.beat(intervalSeconds),
   cursorEpisode: (order: CursorOrder) => live2dModelRef.value?.cursorEpisode(order),

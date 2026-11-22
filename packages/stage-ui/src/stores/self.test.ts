@@ -32,20 +32,20 @@ function observeForwarded() {
 
 describe('selfReportOf', () => {
   it('passes an idle activity through with its phase', () => {
-    expect(selfReportOf({ behaviour: 'yawn', phase: 'start' })).toEqual({ activity: 'yawn', phase: 'start' })
-    expect(selfReportOf({ behaviour: 'sleep', phase: 'end' })).toEqual({ activity: 'sleep', phase: 'end' })
+    expect(selfReportOf({ behaviour: 'yawn', phase: 'start', intentId: null })).toEqual({ activity: 'yawn', phase: 'start' })
+    expect(selfReportOf({ behaviour: 'sleep', phase: 'end', intentId: null })).toEqual({ activity: 'sleep', phase: 'end' })
   })
 
   it('does not tell the small acts only a whole body shows', () => {
-    expect(selfReportOf({ behaviour: 'sigh', phase: 'start' })).toBeNull()
-    expect(selfReportOf({ behaviour: 'shift-stance', phase: 'end' })).toBeNull()
+    expect(selfReportOf({ behaviour: 'sigh', phase: 'start', intentId: null })).toBeNull()
+    expect(selfReportOf({ behaviour: 'shift-stance', phase: 'end', intentId: null })).toBeNull()
   })
 
   it('tells a reach-out she decided against once, as a finished moment, and never the wait before it', () => {
-    expect(selfReportOf({ behaviour: 'about-to-speak', phase: 'start' })).toBeNull()
-    expect(selfReportOf({ behaviour: 'about-to-speak', phase: 'end' })).toBeNull()
-    expect(selfReportOf({ behaviour: 'let-go', phase: 'start' })).toEqual({ activity: 'held-back', phase: 'end' })
-    expect(selfReportOf({ behaviour: 'let-go', phase: 'end' })).toBeNull()
+    expect(selfReportOf({ behaviour: 'about-to-speak', phase: 'start', intentId: null })).toBeNull()
+    expect(selfReportOf({ behaviour: 'about-to-speak', phase: 'end', intentId: null })).toBeNull()
+    expect(selfReportOf({ behaviour: 'let-go', phase: 'start', intentId: null })).toEqual({ activity: 'held-back', phase: 'end' })
+    expect(selfReportOf({ behaviour: 'let-go', phase: 'end', intentId: null })).toBeNull()
   })
 })
 
@@ -67,8 +67,8 @@ describe('stage self store', () => {
   it('forwards idle behaviours and body reports to the situation leader with the time', async () => {
     const store = useStageSelfStore()
 
-    store.idle({ behaviour: 'about-to-speak', phase: 'start' })
-    store.idle({ behaviour: 'stretch', phase: 'start' })
+    store.idle({ behaviour: 'about-to-speak', phase: 'start', intentId: null })
+    store.idle({ behaviour: 'stretch', phase: 'start', intentId: null })
     store.report({ activity: 'clip', phase: 'start', label: 'wave' })
     await forwarded.next(2)
 

@@ -941,7 +941,7 @@ describe('stage performance conductor', () => {
       })
 
       expect(sent).toEqual([
-        ['natural', [[drive]], [['about-to-speak']]],
+        ['natural', [[drive]], [['about-to-speak', 'cue-1']]],
         ['basic', [[null]], []],
       ])
     })

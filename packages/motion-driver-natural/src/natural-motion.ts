@@ -524,11 +524,12 @@ export class NaturalMotion {
   /**
    * Requests the body language around a reach-out on the next grid step: `about-to-speak` holds a lifted look at the
    * user until she talks, `let-go` answers it, or it times out; `let-go` shows that she decided not to say it.
-   * Ignored without an idle drive and while she is busy or asleep.
+   * Ignored without an idle drive and while she is busy or asleep. `intentId` names the mind's `cue` intent, which the
+   * behaviour's record and reports carry.
    */
-  idleCue(kind: IdleCueKind, nowSeconds: number) {
+  idleCue(kind: IdleCueKind, intentId: string | null, nowSeconds: number) {
     this.advance(nowSeconds)
-    this.idleLayer.cue(kind)
+    this.idleLayer.cue(kind, intentId)
   }
 
   /**
@@ -602,8 +603,8 @@ export class NaturalMotion {
    * The idle behaviour of the latest grid step, and a counter that increments at every start, so a host that reads
    * once per frame also sees a behaviour that started and ended between two reads.
    */
-  get idleState(): { seq: number, behaviour: IdleBehaviourKind | null, grooveLock: IdleGrooveLock | null } {
-    return { seq: this.idleLayer.seq, behaviour: this.idleLayer.behaviour, grooveLock: this.idleLayer.grooveLock }
+  get idleState(): { seq: number, behaviour: IdleBehaviourKind | null, intentId: string | null, grooveLock: IdleGrooveLock | null } {
+    return { seq: this.idleLayer.seq, behaviour: this.idleLayer.behaviour, intentId: this.idleLayer.record?.intentId ?? null, grooveLock: this.idleLayer.grooveLock }
   }
 
   /** The latest errand the idle draw started for the host to realise, kept after it ends; null before the first. */
@@ -958,7 +959,7 @@ export class NaturalMotion {
     if (this.observer) {
       // The observer hears a bind as its own `groove-lock` event, so its `idle` events carry no groove.
       for (const report of this.idleReports.read({ seq: this.idleLayer.seq, behaviour: this.idleLayer.behaviour }))
-        this.notify({ kind: 'idle', at: stepStart, ...report })
+        this.notify({ kind: 'idle', at: stepStart, phase: report.phase, behaviour: report.behaviour })
       const lock = this.idleLayer.grooveLock
       if (lock !== null && lock !== this.reportedGrooveLock)
         this.notify({ kind: 'groove-lock', at: lock.at, beatSeconds: lock.beatSeconds, beatsPerCycle: lock.beatsPerCycle })

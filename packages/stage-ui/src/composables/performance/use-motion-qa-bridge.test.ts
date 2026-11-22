@@ -340,10 +340,10 @@ describe('useMotionQaBridge', () => {
 
   it('records a presence step with its away state and wake cause, and each idle report', async () => {
     mind.receive({ kind: 'presence', away: true, wake: null })
-    await idle.trigger({ phase: 'start', behaviour: 'sleep' })
+    await idle.trigger({ phase: 'start', behaviour: 'sleep', intentId: null })
     mindNowMs += 60_000
     mind.receive({ kind: 'presence', away: false, wake: { cause: 'unlock', atMs: mindNowMs } })
-    await idle.trigger({ phase: 'end', behaviour: 'sleep' })
+    await idle.trigger({ phase: 'end', behaviour: 'sleep', intentId: null })
 
     const reply = await dispatch({ name: 'events', input: {} }) as { result: { events: { kind: string, payload: Record<string, unknown> }[] } }
     expect(reply.result.events.map(({ kind, payload }) => ({ kind, ...payload, intents: undefined }))).toEqual([

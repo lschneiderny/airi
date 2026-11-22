@@ -469,7 +469,7 @@ describe('natural motion adapter', () => {
     f.adapter.idle(sway('bound'))
     f.frame(frameAt(8 + 1 / 60))
     f.frame(frameAt(8 + 2 / 60))
-    expect(reports.filter(report => report.phase === 'start')).toEqual([{ phase: 'start', behaviour: 'sway', groove: { beatSeconds: 0.5, beatsPerCycle: 4 } }])
+    expect(reports.filter(report => report.phase === 'start')).toEqual([{ phase: 'start', behaviour: 'sway', intentId: 'bound', groove: { beatSeconds: 0.5, beatsPerCycle: 4 } }])
 
     // Under another driver beats are dropped: no clock locks, and a sway played later starts unbound.
     const other = fixture()
@@ -485,7 +485,7 @@ describe('natural motion adapter', () => {
     other.adapter.idle(sway('free'))
     other.frame(6 + 1 / 60)
     other.frame(6 + 2 / 60)
-    expect(unbound.filter(report => report.phase === 'start')).toEqual([{ phase: 'start', behaviour: 'sway' }])
+    expect(unbound.filter(report => report.phase === 'start')).toEqual([{ phase: 'start', behaviour: 'sway', intentId: 'free' }])
   })
 
   it('preserves cursor distance, reversal, expiry, and asymmetric bounds', () => {
@@ -1229,12 +1229,12 @@ describe('natural motion adapter idle behaviour', () => {
     f.state.performance = { ...f.state.performance, away: false }
     f.adapter.setIdleDrive(drive)
     f.state.driver = 'universal'
-    f.adapter.idleCue('about-to-speak')
+    f.adapter.idleCue('about-to-speak', 'cue-1')
     f.state.driver = 'natural'
     run(f, 45.1, 47)
     expect(reports).toEqual([])
 
-    f.adapter.idleCue('about-to-speak')
+    f.adapter.idleCue('about-to-speak', 'cue-1')
     run(f, 47.1, 48)
     expect(reports).toEqual(['about-to-speak:start'])
   })

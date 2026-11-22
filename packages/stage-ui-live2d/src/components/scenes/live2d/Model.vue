@@ -2076,7 +2076,7 @@ defineExpose({
   setIdleDrive,
   /** The stage's answer to a pastime Natural started: shown (`done` when put away early) or `refused`. */
   answerIdleErrand: (seq: number, outcome: 'done' | 'refused') => naturalMotion?.answerIdleErrand(seq, outcome),
-  idleCue: (kind: IdleCueKind) => naturalMotion?.idleCue(kind),
+  idleCue: (kind: IdleCueKind, intentId: string) => naturalMotion?.idleCue(kind, intentId),
   /** Natural only: plays what the character mind's idle policy decided; Natural answers it in `idleReports`. */
   idle: (order: IdleOrder) => naturalMotion?.idle(order),
   /** Natural only: a detected beat for Natural's beat clock, on which a groove plays. */

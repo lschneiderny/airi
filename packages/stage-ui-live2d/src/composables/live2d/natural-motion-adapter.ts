@@ -213,7 +213,7 @@ export class Live2DNaturalMotionAdapter {
   private readonly pendingMoods: MoodDose[] = []
   /** The mind's mood seed, applied on the next frame that Natural drives; a newer seed replaces it. */
   private pendingMoodLevel: Omit<MoodDose, 'id'> | null = null
-  private readonly pendingIdleCues: IdleCueKind[] = []
+  private readonly pendingIdleCues: { kind: IdleCueKind, intentId: string }[] = []
   private readonly pendingIdleOrders: IdleOrder[] = []
   private readonly pendingBeats: number[] = []
   private readonly pendingCursorOrders: CursorOrder[] = []
@@ -374,11 +374,11 @@ export class Live2DNaturalMotionAdapter {
     this.reviewActs = review.acts
   }
 
-  /** Reach-out body language, accepted like a cue gesture: only for the selected Natural driver. */
-  idleCue(kind: IdleCueKind) {
+  /** Reach-out body language for the mind's `cue` intent `intentId`, accepted like a cue gesture: only for the selected Natural driver. */
+  idleCue(kind: IdleCueKind, intentId: string) {
     const { driver, exclusive } = this.attention()
     if (!this.disposed && driver === 'natural' && !exclusive)
-      this.pendingIdleCues.push(kind)
+      this.pendingIdleCues.push({ kind, intentId })
   }
 
   /** The realiser's answer to errand `seq`, applied at the next composition while Natural drives the model. */
@@ -515,9 +515,9 @@ export class Live2DNaturalMotionAdapter {
       if (active)
         this.controller.addMood(dose, this.time)
     }
-    for (const cue of this.pendingIdleCues.splice(0)) {
+    for (const { kind, intentId } of this.pendingIdleCues.splice(0)) {
       if (active)
-        this.controller.idleCue(cue, this.time)
+        this.controller.idleCue(kind, intentId, this.time)
     }
     // Not gated by `active`: a suspended controller refuses the order, and the mind hears it.
     for (const order of this.pendingIdleOrders.splice(0))
