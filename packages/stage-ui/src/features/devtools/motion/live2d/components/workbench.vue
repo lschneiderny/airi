@@ -32,11 +32,17 @@ const components: Record<string, VueComponent> = {
   timeline: createPanelComponent('timeline'),
 }
 
+const SIDE_MINIMUM_WIDTH = 200
+const PREVIEW_MINIMUM_WIDTH = 280
+const PANEL_GAP = 8
+/** Narrower than this, the two side panels and the preview cannot sit side by side at their minimum widths. */
+const THREE_COLUMN_WIDTH = SIDE_MINIMUM_WIDTH * 2 + PREVIEW_MINIMUM_WIDTH + PANEL_GAP * 2
+
 const theme = computed<DockviewTheme>(() => ({
   name: 'airi',
   className: 'dockview-theme-airi',
   colorScheme: isDark.value ? 'dark' : 'light',
-  gap: 8,
+  gap: PANEL_GAP,
   dndOverlayMounting: 'relative',
   dndPanelOverlay: 'group',
   dndTabIndicator: 'line',
@@ -45,34 +51,17 @@ const theme = computed<DockviewTheme>(() => ({
 function handleReady({ api }: DockviewReadyEvent) {
   const layoutWidth = api.width
   const layoutHeight = api.height
-  const sideWidth = Math.max(200, Math.round(layoutWidth / 6))
+  const threeColumns = layoutWidth >= THREE_COLUMN_WIDTH
+  const sideWidth = Math.max(SIDE_MINIMUM_WIDTH, Math.round(layoutWidth / 6))
   const previewHeight = Math.max(180, Math.round(layoutHeight / 4))
 
   const preview = api.addPanel({
     id: 'preview',
     component: 'preview',
     title: t('tamagotchi.settings.devtools.pages.live2d-motion.panels.preview'),
-    initialWidth: Math.max(280, layoutWidth - sideWidth * 2),
-    minimumWidth: 280,
+    initialWidth: threeColumns ? Math.max(PREVIEW_MINIMUM_WIDTH, layoutWidth - sideWidth * 2) : layoutWidth,
+    minimumWidth: threeColumns ? PREVIEW_MINIMUM_WIDTH : undefined,
     minimumHeight: 180,
-  })
-
-  const directControl = api.addPanel({
-    id: 'direct-control',
-    component: 'directControl',
-    title: t('tamagotchi.settings.devtools.pages.live2d-motion.panels.direct-control'),
-    position: { referencePanel: 'preview', direction: 'left' },
-    initialWidth: sideWidth,
-    minimumWidth: 200,
-  })
-
-  const inference = api.addPanel({
-    id: 'inference',
-    component: 'inference',
-    title: t('tamagotchi.settings.devtools.pages.live2d-motion.panels.inference'),
-    position: { referencePanel: 'preview', direction: 'right' },
-    initialWidth: sideWidth,
-    minimumWidth: 200,
   })
 
   const timeline = api.addPanel({
@@ -84,8 +73,32 @@ function handleReady({ api }: DockviewReadyEvent) {
     minimumHeight: 240,
   })
 
-  directControl.group.api.setSize({ width: sideWidth })
-  inference.group.api.setSize({ width: sideWidth })
+  // In a narrow window the side panels become tabs beside the timeline, so every panel stays usable.
+  const directControl = api.addPanel({
+    id: 'direct-control',
+    component: 'directControl',
+    title: t('tamagotchi.settings.devtools.pages.live2d-motion.panels.direct-control'),
+    position: threeColumns ? { referencePanel: 'preview', direction: 'left' } : { referencePanel: 'timeline', direction: 'within' },
+    initialWidth: threeColumns ? sideWidth : undefined,
+    minimumWidth: threeColumns ? SIDE_MINIMUM_WIDTH : undefined,
+  })
+
+  const inference = api.addPanel({
+    id: 'inference',
+    component: 'inference',
+    title: t('tamagotchi.settings.devtools.pages.live2d-motion.panels.inference'),
+    position: threeColumns ? { referencePanel: 'preview', direction: 'right' } : { referencePanel: 'timeline', direction: 'within' },
+    initialWidth: threeColumns ? sideWidth : undefined,
+    minimumWidth: threeColumns ? SIDE_MINIMUM_WIDTH : undefined,
+  })
+
+  if (threeColumns) {
+    directControl.group.api.setSize({ width: sideWidth })
+    inference.group.api.setSize({ width: sideWidth })
+  }
+  else {
+    timeline.api.setActive()
+  }
   preview.group.api.setSize({ height: previewHeight })
   timeline.group.api.setSize({ height: Math.max(240, layoutHeight - previewHeight) })
 }
