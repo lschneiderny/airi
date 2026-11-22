@@ -6,7 +6,7 @@ import en from '@proj-airi/i18n/locales/en'
 import { createPinia, disposePinia } from 'pinia'
 import { createSyncedPiniaPlugin } from 'pinia-plugin-synced'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createApp } from 'vue'
+import { createApp, watch } from 'vue'
 import { createI18n } from 'vue-i18n'
 import { createMemoryHistory, createRouter } from 'vue-router'
 
@@ -74,9 +74,21 @@ describe('useProviderValidation', () => {
 
     const markProviderAdded = vi.spyOn(follower.providerConfigStore(), 'markProviderAdded')
     const apiKey: WritableComputedRef<string> = follower.validation().apiKey
+    // The leader commits configured status before its validation RPC reply
+    // reaches this window. Subscribe before the edit to the follower's result,
+    // rather than treating the leader snapshot as completion of local validation.
+    const validated = new Promise<void>((resolve) => {
+      const stop = watch(follower.validation().isValid, (valid) => {
+        if (valid) {
+          stop()
+          resolve()
+        }
+      }, { flush: 'sync' })
+    })
     apiKey.value = 'sk-ant-test'
     expect(apiKey.value).toBe('sk-ant-test')
 
+    await validated
     await expect.poll(() => leader.providerConfigStore().getProviderConfig('anthropic')?.apiKey, { timeout: 3000 })
       .toBe('sk-ant-test')
     await expect.poll(() => leader.providerConfigStore().providers.anthropic?.status, { timeout: 3000 })
