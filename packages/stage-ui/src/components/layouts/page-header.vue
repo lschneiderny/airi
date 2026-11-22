@@ -90,7 +90,7 @@ watch([() => props.title, () => props.subtitle, route], async () => {
     </button>
     <h1 relative>
       <div v-if="subtitle" absolute left-0 top-0 translate-y="[-80%]">
-        <span text="neutral-300 dark:neutral-500" text-nowrap>{{ subtitle }}</span>
+        <span :class="['text-nowrap', 'text-neutral-500']">{{ subtitle }}</span>
       </div>
       <div text-nowrap text-3xl font-normal>
         {{ title }}

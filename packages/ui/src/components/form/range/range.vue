@@ -97,9 +97,10 @@ https://toughengineer.github.io/demo/slider-styler*/
   --track-background-hover: rgba(238, 238, 238, 0.6);
   --track-background-active: rgba(238, 238, 238, 0.6);
 
-  --track-value-background: rgb(255, 255, 255);
-  --track-value-background-hover: rgb(255, 255, 255);
-  --track-value-background-active: rgb(255, 255, 255);
+  /* The fill must differ from white: the track also sits directly on white pages, not only on tinted panels. */
+  --track-value-background: theme('colors.neutral.400', rgb(163, 163, 163));
+  --track-value-background-hover: theme('colors.neutral.400', rgb(163, 163, 163));
+  --track-value-background-active: theme('colors.neutral.400', rgb(163, 163, 163));
   --track-value-padding: 2px;
 }
 
