@@ -811,6 +811,24 @@ The [CM7b ADR](../../docs/ai/adr/2026-11-22-character-mind-expression-picks.md)
 leaves an explicit placeholder for the orchestrator's headless and rendered
 results. No acceptance run, hash re-pin, or visual result is claimed here.
 
+## Departures during implementation (CM7c)
+
+- **c1:** Section 2 was checked against the CM7a and S2 base. The conductor
+  now uses capabilities and upstream face routing, and classic no longer runs
+  the director, as CM7a records. Beats, groove phase, chat and cue-gesture
+  stimuli, gaze arbitration, look hand-off, restX, and sidesteps remain.
+  `screenAwareness` now gates placement and chat only: cursor dismissal already
+  follows `cursorAttention` and the aside intent. c6 already uses display model
+  ids and the live catalog mirror, not a stored-catalog reader. S2 has eight
+  tier 1 stores, making this the ninth rather than the plan's seventh.
+  Import persistence uses an idempotent leader-routed `initialize`, scheduled
+  during App setup and awaited before mind startup, following S2's acknowledged
+  startup writes. It does not write from an unwrapped store-setup action before
+  leadership. Renderer packages cannot import the stage-ui owner without a
+  dependency cycle; startup owns their ordering instead.
+  The new feature has no package subpath in the base. With manifest edits
+  forbidden, the existing settings barrel exports its public API.
+
 ## Checks run (CM7a)
 
 The implementation base is `e57dd1393`. The owner requested package checks,

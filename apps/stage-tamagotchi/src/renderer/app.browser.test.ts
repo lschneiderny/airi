@@ -22,6 +22,7 @@ import { useModsServerChannelStore } from '@proj-airi/stage-ui/stores/mods/api/c
 import { useSpeechStore } from '@proj-airi/stage-ui/stores/modules/speech'
 import { useVisionStore } from '@proj-airi/stage-ui/stores/modules/vision'
 import { useProviderConfigStore } from '@proj-airi/stage-ui/stores/providers/config'
+import { useCharacterBehaviorSettings } from '@proj-airi/stage-ui/stores/settings'
 import { createPinia, disposePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { render } from 'vitest-browser-vue'
@@ -238,6 +239,7 @@ async function renderStage(routePath: string, search: string) {
     leaderPinia.use(leaderSynced.pinia)
     const leaderApp = createApp(defineComponent({
       setup() {
+        useCharacterBehaviorSettings()
         useChatStore()
         // Card actions run in this leader. Create their module stores during
         // setup so their i18n consumers retain a component context.

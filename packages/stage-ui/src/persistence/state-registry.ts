@@ -12,6 +12,7 @@ import { useTachie } from '@proj-airi/stage-ui-tachie/stores/tachie'
 import { useModelStore } from '@proj-airi/stage-ui-three/stores/model-store'
 import { useTheme } from '@proj-airi/ui'
 
+import { useCharacterBehaviorSettings } from '../features/character-behavior/settings'
 import { useConversationSettings } from '../features/conversation/settings'
 import { useHostNoticeSettings } from '../features/host-capabilities/notice-settings'
 import { useLive2DMotionMagicSettings } from '../features/motions/live2d'
@@ -721,6 +722,14 @@ export const stateRegistry = defineStateRegistry([
       { area: 'localStorage', key: 'settings/mmd/clip-curation', legacy: true },
     ],
     reset: ({ pinia }) => useMMDPerformanceSettings(pinia).reset(),
+  },
+  {
+    id: 'character-behavior-settings',
+    owner: 'useCharacterBehaviorSettings',
+    writers: ['packages/stage-ui/src/features/character-behavior/settings.ts'],
+    tier: 1,
+    locations: [{ area: 'localStorage', key: 'settings/character-behavior' }],
+    reset: ({ pinia }) => useCharacterBehaviorSettings(pinia).reset(),
   },
   {
     id: 'situation-settings',
