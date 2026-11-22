@@ -109,9 +109,11 @@ async function waitUntilGone(ownership: RunOwnership, deps: TeardownDeps, timeou
 /**
  * Tears a run down: `Browser.close` over CDP, then (only after a live ownership check) `taskkill /PID <root> /T /F`,
  * then every remaining run process individually, then a final listing. The profile and `extraPaths` are removed only
- * when no run process remains; otherwise the report lists the leftovers and `ok` is false.
+ * when no run process remains; otherwise the report lists the leftovers and `ok` is false. `keepProfile` leaves the
+ * profile in place for a later launch on the same directory; the run's last teardown removes it.
  */
-export async function teardownRun(ownership: RunOwnership, deps: TeardownDeps, extraPaths: readonly string[] = []): Promise<TeardownReport> {
+export async function teardownRun(ownership: RunOwnership, deps: TeardownDeps, options: { extraPaths?: readonly string[], keepProfile?: boolean } = {}): Promise<TeardownReport> {
+  const { extraPaths = [], keepProfile = false } = options
   const report: TeardownReport = {
     browserClose: { attempted: false, ok: false, detail: 'no CDP connection' },
     rootExitedAfterBrowserClose: null,
@@ -164,7 +166,7 @@ export async function teardownRun(ownership: RunOwnership, deps: TeardownDeps, e
 
   report.leftovers = remaining.map(entry => ({ pid: entry.pid, commandLine: entry.commandLine }))
   if (report.leftovers.length === 0) {
-    for (const path of [ownership.profileDir, ...extraPaths]) {
+    for (const path of keepProfile ? extraPaths : [ownership.profileDir, ...extraPaths]) {
       try {
         deps.removeDir(path)
         report.removed.push(path)
@@ -175,6 +177,6 @@ export async function teardownRun(ownership: RunOwnership, deps: TeardownDeps, e
     }
     report.profileRemoved = report.removed.includes(ownership.profileDir)
   }
-  report.ok = report.leftovers.length === 0 && report.profileRemoved && report.refused.length === 0
+  report.ok = report.leftovers.length === 0 && (keepProfile || report.profileRemoved) && report.refused.length === 0
   return report
 }

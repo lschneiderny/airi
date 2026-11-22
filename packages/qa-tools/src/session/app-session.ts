@@ -66,7 +66,7 @@ export interface AppSessionTeardownReport extends TeardownReport {
 
 export interface AppSessionContext {
   repoRoot: string
-  /** The fresh profile the app runs on; teardown removes it once no run process is left. */
+  /** The profile the app runs on; teardown removes it once no run process is left, unless told to keep it for a relaunch. */
   profileDir: string
   /** This CLI and its parent; never counted or killed. Defaults to the current process and its parent. */
   selfPids?: readonly number[]
@@ -238,11 +238,12 @@ export class AppSessionCore<Stage extends SessionStage> {
 
   /**
    * Stops the page-error collector, closes the browser over CDP, kills the owned process tree, and removes the profile
-   * and `extraPaths` only when nothing of the run is left. It then waits until the launch's process group has exited or
+   * and `extraPaths` only when nothing of the run is left; `keepProfile` leaves the profile, so a new session on the
+   * same `profileDir` starts with this launch's local storage and settings. It then waits until the launch's process group has exited or
    * 30 s have passed, and closes the stage connection even when the teardown throws. A command that launches several
    * times relies on that wait. The report's `ok` is the caller's to judge.
    */
-  async teardown(options: { extraPaths?: readonly string[], removeDir?: (path: string) => void } = {}): Promise<AppSessionTeardownReport> {
+  async teardown(options: { extraPaths?: readonly string[], keepProfile?: boolean, removeDir?: (path: string) => void } = {}): Promise<AppSessionTeardownReport> {
     this.context.signal?.removeEventListener('abort', this.onAbort)
     await this.errorCollector?.stop()
     const app = this.launched
@@ -257,7 +258,7 @@ export class AppSessionCore<Stage extends SessionStage> {
         waitRootExit: app?.waitExit,
         removeDir: options.removeDir ?? (path => rmSync(path, { recursive: true, force: true })),
         sleep: this.deps.sleep,
-      }, options.extraPaths)
+      }, { extraPaths: options.extraPaths, keepProfile: options.keepProfile })
     }
     finally {
       if (app)
