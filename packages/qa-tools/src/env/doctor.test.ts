@@ -33,6 +33,9 @@ function healthyProbes(overrides: Partial<DoctorProbes> = {}): DoctorProbes {
     kwinPointer: async () => {
       throw new Error('kwinPointer must not run outside a Linux QA display')
     },
+    macPointer: async () => {
+      throw new Error('macPointer must not run outside macOS')
+    },
     repoRoot: 'C:/repo',
     tempDir: () => '/tmp',
     diskUsage: () => ({ inodes: { used: 200, total: 1000 }, space: { used: 30, total: 100 } }),
@@ -232,7 +235,7 @@ describe('runDoctor', () => {
     expect(rows).toHaveLength(10)
   })
 
-  it.each(['darwin', 'linux'])('pointer-platform warns about separate pointer limitations on %s', async (platform) => {
+  it.each(['freebsd', 'linux'])('pointer-platform warns about separate pointer limitations on %s', async (platform) => {
     const row = await rowOf('pointer-platform', healthyProbes({ platform: () => platform }))
 
     expect(row.status).toBe('warn')
@@ -241,6 +244,31 @@ describe('runDoctor', () => {
     expect(row.detail).toContain('stage-frame-budget readback is unmeasured')
     expect(row.detail).not.toContain('#2521')
     expect(row.fix).toContain('pnpm qa:display run --')
+  })
+
+  it('pointer-platform is ok on macOS when posted pointer events are allowed', async () => {
+    const row = await rowOf('pointer-platform', healthyProbes({
+      platform: () => 'darwin',
+      macPointer: async () => ({ ok: true, warp: true, postEvents: true, responsibleApp: 'com.example.terminal', missing: [], screen: { width: 1440, height: 900 } }),
+    }))
+
+    expect(row.status).toBe('ok')
+    expect(row.detail).toContain('drags the real cursor on a 1440x900 main display')
+    expect(row.detail).toContain('cursor parking is Windows-only')
+    expect(row.fix).toBe('')
+  })
+
+  it('pointer-platform warns on macOS and names the app that needs Accessibility when posted events are dropped', async () => {
+    const missing = 'post-event access: macOS drops posted mouse events because com.example.terminal lacks Accessibility access'
+    const row = await rowOf('pointer-platform', healthyProbes({
+      platform: () => 'darwin',
+      macPointer: async () => ({ ok: false, warp: true, postEvents: false, responsibleApp: 'com.example.terminal', missing: [missing], screen: { width: 1440, height: 900 } }),
+    }))
+
+    expect(row.status).toBe('warn')
+    expect(row.detail).toContain('cursor warps still work')
+    expect(row.detail).toContain(missing)
+    expect(row.fix).toContain('Grant Accessibility to com.example.terminal')
   })
 
   it('pointer-platform is ok inside a Linux QA display when the KWin EIS backend is available', async () => {

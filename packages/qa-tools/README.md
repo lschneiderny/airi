@@ -231,7 +231,9 @@ Every `bin/` command that reads QA settings loads this file first or recording t
 
 ## Pointer platform preflight
 
-Doctor's `pointer-platform` row is OK on Windows. On Linux inside `pnpm qa:display run --`, it is OK when the KWin pointer backend is available: `python3` with PyGObject (`gi`), `libei.so.1`, and the nested KWin's `org.kde.KWin.EIS.RemoteDesktop` D-Bus interface. Otherwise the row is WARN and names what is missing.
+Doctor's `pointer-platform` row is OK on Windows. On macOS it is OK when the CoreGraphics pointer backend may post mouse events. The backend is `src/t3/pointer-macos.ts` over `scripts/macos/mac-pointer.py`, run with `python3 -I`. It plays step tables built by `warpSteps`, `moveSteps`, `pressSteps`, `releaseSteps`, and `dragSteps` in global display points, the space of Electron's `screen` and CDP's `screenX`/`screenY`. A warp needs no permission. Posted moves, presses, releases, and drags need Accessibility access for the app that started the QA command, such as the terminal. macOS drops posted events silently without it, so the helper refuses such a table with exit code 3. Doctor's row is then WARN and names that app. Rendered runs without the access warp the cursor through the backend and send button input over CDP.
+
+On Linux inside `pnpm qa:display run --`, it is OK when the KWin pointer backend is available: `python3` with PyGObject (`gi`), `libei.so.1`, and the nested KWin's `org.kde.KWin.EIS.RemoteDesktop` D-Bus interface. Otherwise the row is WARN and names what is missing.
 
 The KWin backend needs the default `kwin` QA display (with or without `--portals`). The `x11` and `sway` QA display sessions (`pnpm qa:display up --compositor x11|sway`) have no KWin, so the row is WARN there. To place the pointer in any of the three sessions, use `pnpm qa:display pointer <x> <y>`. It plays one EIS move on `kwin` through `scripts/linux/kwin-pointer.py` (run with `python3 -I`), runs `xdotool mousemove` on `x11`, and runs `swaymsg seat - cursor set` on `sway`. `qa:host smoke` evidence steps and `qa:stage handoff` move the pointer this way.
 

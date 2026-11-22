@@ -1,4 +1,5 @@
 import type { KwinProbe } from '../t3/pointer-kwin'
+import type { MacPointerProbe } from '../t3/pointer-macos'
 
 import { spawn } from 'node:child_process'
 import { existsSync, readdirSync, readFileSync, statfsSync, statSync } from 'node:fs'
@@ -12,6 +13,7 @@ import { errorMessageFrom } from '@moeru/std'
 import { defaultCompileCacheDir } from '../../../../scripts/dev-tools/lib/compile-cache'
 import { isPathInside } from '../../../../scripts/dev-tools/lib/paths'
 import { parseKwinProbe, runKwinProbe } from '../t3/pointer-kwin'
+import { runMacPointerProbe } from '../t3/pointer-macos'
 import { resolvePnpm, resolveVitestEntry } from './pnpm'
 import { commandLineContainsPath, killOwnedTree, killTree, listLiveProcesses } from './processes'
 
@@ -73,6 +75,8 @@ export interface DoctorProbes {
   listProcesses: () => Promise<ProcessEntry[]>
   /** Runs the KWin pointer helper's probe in the current session; called only inside a `pnpm qa:display` session. */
   kwinPointer: () => Promise<KwinProbe>
+  /** Runs the macOS pointer helper's probe; called only on macOS. */
+  macPointer: () => Promise<MacPointerProbe>
   /** The checkout the doctor checks; `stray-electron` reports only processes of this worktree. */
   repoRoot: string
   /** The system temporary directory (`os.tmpdir()`). */
@@ -296,6 +300,21 @@ function createDoctorChecks(probes: DoctorProbes): DoctorCheck[] {
         const wayland = platform === 'linux' && probes.sessionType()?.toLowerCase() === 'wayland'
           ? ['Linux Wayland: classic window only, click-through is disabled and the polled cursor can stick stale (#2521)']
           : []
+        if (platform === 'darwin') {
+          const probe = await probes.macPointer()
+          if (probe.ok) {
+            const output = probe.screen ? ` on a ${probe.screen.width}x${probe.screen.height} main display` : ''
+            return ok([`macOS: the CoreGraphics pointer backend warps, moves, presses, releases, and drags the real cursor${output}`, 'cursor parking is Windows-only', measure].join('; '))
+          }
+          const warp = probe.warp ? 'cursor warps still work, but posted moves, presses, releases, and drags are dropped' : 'the pointer backend cannot load'
+          return {
+            status: 'warn',
+            detail: [`macOS: ${warp} (${probe.missing.join('; ')})`, 'cursor parking is Windows-only', measure].join('; '),
+            fix: probe.warp
+              ? `Grant Accessibility to ${probe.responsibleApp ?? 'the terminal app that runs the QA tools'} in System Settings > Privacy & Security > Accessibility, then restart it.`
+              : 'Use a python3 that can load the system CoreGraphics framework through ctypes.',
+          }
+        }
         const display = platform === 'linux' ? probes.env.AIRI_QA_DISPLAY : undefined
         if (display) {
           const probe = await probes.kwinPointer()
@@ -320,7 +339,7 @@ function createDoctorChecks(probes: DoctorProbes): DoctorCheck[] {
         return {
           status: 'warn',
           detail: limits.join('; '),
-          fix: platform === 'linux' ? 'Run rendered pointer QA inside `pnpm qa:display run -- ...`, or on Windows.' : 'Run rendered pointer QA on Windows, or on Linux inside `pnpm qa:display run -- ...`.',
+          fix: platform === 'linux' ? 'Run rendered pointer QA inside `pnpm qa:display run -- ...`, or on Windows or macOS.' : 'Run rendered pointer QA on Windows or macOS, or on Linux inside `pnpm qa:display run -- ...`.',
         }
       },
     },
@@ -551,6 +570,14 @@ export function createSystemProbes(repoRoot: string, env: Record<string, string 
       }
       catch (error) {
         return { ok: false, missing: [errorMessageFrom(error) ?? 'the KWin pointer probe failed'] }
+      }
+    },
+    macPointer: async () => {
+      try {
+        return await runMacPointerProbe({ timeoutMs: 10_000 })
+      }
+      catch (error) {
+        return { ok: false, warp: false, postEvents: false, responsibleApp: null, missing: [errorMessageFrom(error) ?? 'the macOS pointer probe failed'] }
       }
     },
     repoRoot,
