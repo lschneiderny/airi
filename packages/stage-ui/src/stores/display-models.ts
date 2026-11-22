@@ -1,4 +1,5 @@
 import { removeDisplayModelSettings } from '@proj-airi/stage-shared/composables'
+import { removeExpressionDocuments } from '@proj-airi/stage-ui-live2d/stores/expression-catalog-persistence'
 import { useMMDPerformanceSettings } from '@proj-airi/stage-ui-mmd/stores'
 import { createEventHook, until } from '@vueuse/core'
 import { nanoid } from 'nanoid'
@@ -213,6 +214,7 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
     await removeLocalCopy(id)
     await performanceSettings.removeModel(id)
     removeDisplayModelSettings(id)
+    removeExpressionDocuments(id)
     await displayModelsDeleted.trigger([id])
   }
 
@@ -227,6 +229,7 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
     for (const id of userModelIds) {
       await performanceSettings.removeModel(id)
       removeDisplayModelSettings(id)
+      removeExpressionDocuments(id)
     }
     if (userModelIds.length > 0)
       await displayModelsDeleted.trigger(userModelIds)

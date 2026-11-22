@@ -217,6 +217,8 @@ export function runT2(input: MotionScenario, runtime: T2Runtime, options: RunT2O
         slotSettings,
         composer,
         nextClaimSequence: () => ++claimSeq,
+        // A rig catalog holds no stage items, so no lease can pass an item cap.
+        exceedsItemLimit: () => false,
         reconcile: (now) => {
           const claims = [...new Map(Object.values(leases.value).flatMap(lease => lease ? [[lease.expressionId, { expressionId: lease.expressionId, layer: 1, seq: lease.claimSequence }] as const] : [])).values()]
           composer.setTargets(resolve(claims, catalog).targets, now)

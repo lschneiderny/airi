@@ -1,12 +1,14 @@
-import type { SlotCommand } from '@proj-airi/stage-shared/expression-performance'
+import type { ExpressionRefusal, SlotCommand } from '@proj-airi/stage-shared/expression-performance'
 
 import type { SpeechEvent } from '../composables/live2d/expression/slots'
+import type { CreateItemInput } from './expression-catalog-persistence'
 import type { NamedExpressionDefinition } from './expression-store'
 
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { MAX_MODEL_ITEMS, removeExpressionDocuments, removeItemsByAsset } from './expression-catalog-persistence'
 import { resolve, useExpressionStore } from './expression-store'
 
 const defs: NamedExpressionDefinition[] = ['smile', 'frown', 'glasses'].map((id, index) => ({
@@ -1102,5 +1104,230 @@ describe('expression claims', () => {
     store.applySlots([command(null)], 7)
     expect(store.leases.face).toBeNull()
     expect(store.leases.effect).toBeNull()
+  })
+})
+
+describe('stage item entries', () => {
+  let storage: Map<string, string>
+  const placement = { x: 0, y: 0, rotation: 0, scale: 1, flipX: false, anchor: { x: 0.5, y: 0.5 }, layer: { kind: 'front' as const } }
+  const itemInput = (assetId: string, label = assetId, kind: CreateItemInput['kind'] = 'prop'): CreateItemInput => ({ assetId, label, kind, mappings: [], placement })
+  const stored = (modelId: string) => JSON.parse(storage.get(`expression-catalog:${modelId}`)!)
+  const propLease = (expressionId: string): SlotCommand => ({ slot: 'prop', expressionId, holdSeconds: 10, until: 'hold' })
+
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    storage = new Map()
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => storage.set(key, value),
+      removeItem: (key: string) => storage.delete(key),
+      key: (index: number) => [...storage.keys()][index] ?? null,
+      get length() {
+        return storage.size
+      },
+    })
+    vi.spyOn(performance, 'now').mockReturnValue(0)
+  })
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
+
+  function setup(modelId = 'a') {
+    const store = useExpressionStore()
+    store.registerDefinitions(modelId, defs)
+    const refusals: ExpressionRefusal[] = []
+    store.onItemRefusal(refusal => refusals.push(refusal))
+    const create = (input: CreateItemInput) => store.applySettingsCommand({ type: 'create-item', item: input }) as string | undefined
+    const shown = () => store.itemTargets.map(target => target.document.id)
+    return { store, refusals, create, shown }
+  }
+
+  it('creates, updates, and deletes an item with LLM exposure off by default', () => {
+    const { store, create } = setup()
+    const id = create(itemInput('asset-hat', 'Hat'))!
+    expect(id).toMatch(/^item:/)
+    expect(stored('a').items).toEqual([{ id, assetId: 'asset-hat', label: 'Hat', kind: 'prop', mappings: [], exposedToLlm: false, placement, hides: [], link: 'none' }])
+    store.applySettingsCommand({ type: 'update-item', id, patch: { label: 'Cap', placement: { ...placement, x: 12 } } })
+    expect(stored('a').items[0]).toMatchObject({ label: 'Cap', placement: { x: 12 } })
+    expect(store.settingsSnapshot.items).toEqual([{ document: stored('a').items[0], available: false, shown: false, state: null }])
+    expect(() => structuredClone(store.settingsSnapshot)).not.toThrow()
+    store.applySettingsCommand({ type: 'delete-item', id })
+    expect(stored('a').items).toEqual([])
+    expect(store.settingsSnapshot.items).toEqual([])
+  })
+
+  it('refuses an item past the per-model limit, an item without an asset id, and entry updates on an item id', () => {
+    const { store, create } = setup()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const ids = Array.from({ length: MAX_MODEL_ITEMS }, (_, index) => create(itemInput(`asset-${index}`)))
+    expect(ids.every(id => id?.startsWith('item:'))).toBe(true)
+    expect(create(itemInput('asset-extra'))).toBeUndefined()
+    expect(warn.mock.calls.filter(([message]) => String(message).includes(`at most ${MAX_MODEL_ITEMS} items`))).toHaveLength(1)
+    expect(stored('a').items).toHaveLength(MAX_MODEL_ITEMS)
+
+    store.applySettingsCommand({ type: 'delete-item', id: ids[0]! })
+    // A settings window may send anything; drop the asset id the type requires.
+    const withoutAsset = itemInput('ignored')
+    Reflect.deleteProperty(withoutAsset, 'assetId')
+    expect(create(withoutAsset)).toBeUndefined()
+    expect(stored('a').items).toHaveLength(MAX_MODEL_ITEMS - 1)
+
+    const before = storage.get('expression-catalog:a')
+    store.updateEntry(ids[1]!, { label: 'Renamed' })
+    expect(storage.get('expression-catalog:a')).toBe(before)
+    expect(warn).toHaveBeenCalledWith('[expression-store] Use the combo, custom, or item command:', ids[1])
+  })
+
+  it('refuses an item whose asset is missing and leases it once the asset is available', () => {
+    const { store, create, shown } = setup()
+    const id = create({ ...itemInput('asset-hat'), exposedToLlm: true })!
+    expect(store.catalog.some(entry => entry.id === id)).toBe(false)
+    expect(store.applySlots([propLease(id)], 0)).toEqual([{ entryId: id, reason: 'missing-asset' }])
+    store.setAvailableItemAssets(new Set(['asset-hat']))
+    expect(store.llmEligibleEntries.map(entry => entry.id)).toContain(id)
+    expect(store.applySlots([propLease(id)], 1)).toEqual([])
+    expect(store.leases.prop?.expressionId).toBe(id)
+    expect(store.itemTargets).toEqual([{ document: expect.objectContaining({ id }), weight: 1 }])
+    expect(shown()).toEqual([id])
+  })
+
+  it('shows an item she holds on her own and an item in the rest set, which survives a load before the library', () => {
+    const { store, create, shown } = setup()
+    const pastime = create({ ...itemInput('asset-book'), idleUse: 'activity' })!
+    const worn = create(itemInput('asset-hat'))!
+    store.setAvailableItemAssets(new Set(['asset-book', 'asset-hat']))
+    expect(store.setIdleClaims([pastime])).toEqual([pastime])
+    expect(shown()).toEqual([pastime])
+
+    store.activate(worn)
+    store.saveDefaults()
+    store.registerDefinitions('a', defs)
+    expect(store.restSet).toEqual([worn])
+    expect(shown()).toEqual([worn])
+
+    // The library may finish loading after the model: the rest set keeps the item until its asset is known.
+    store.setAvailableItemAssets(new Set())
+    store.registerDefinitions('a', defs)
+    expect(store.restSet).toEqual([worn])
+    expect(shown()).toEqual([])
+    store.setAvailableItemAssets(new Set(['asset-hat']))
+    expect(shown()).toEqual([worn])
+    expect(store.settingsSnapshot.items?.find(item => item.document.id === worn)?.shown).toBe(true)
+  })
+
+  it('strips a deleted item from its combos and the rest set', () => {
+    const { store, create } = setup()
+    const id = create(itemInput('asset-hat'))!
+    store.setAvailableItemAssets(new Set(['asset-hat']))
+    store.applySettingsCommand({ type: 'create-combo', combo: { label: 'Party', members: [{ expressionId: 'smile', strength: 1 }, { expressionId: id, strength: 1 }] } })
+    store.activate(id)
+    store.saveDefaults()
+    store.applySettingsCommand({ type: 'delete-item', id })
+    expect(stored('a').combos[0].members).toEqual([{ expressionId: 'smile', strength: 1 }])
+    expect(store.restSet).toEqual([])
+    expect(JSON.parse(storage.get('expression-rest:a')!).active).toEqual([])
+  })
+
+  it('refuses a seventeenth shown item with item-limit, once per refusal, for switches and leases', () => {
+    const { store, create, refusals, shown } = setup()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const images = Array.from({ length: 17 }, (_, index) => create({ ...itemInput(`asset-image-${index}`), exposedToLlm: true })!)
+    store.setAvailableItemAssets(new Set(Array.from({ length: 17 }, (_, index) => `asset-image-${index}`)))
+    for (const id of images.slice(0, 16))
+      store.activate(id)
+    expect(shown()).toHaveLength(16)
+    store.activate(images[16])
+    expect(shown()).toHaveLength(16)
+    expect(refusals).toEqual([{ entryId: images[16], reason: 'item-limit' }])
+    expect(store.applySlots([propLease(images[16])], 1)).toEqual([{ entryId: images[16], reason: 'item-limit' }])
+    expect(refusals).toHaveLength(1)
+    // A lease that replaces a shown item's lease shows no more items, so it passes.
+    store.deactivate(images[15])
+    store.applySlots([propLease(images[15])], 2)
+    expect(store.applySlots([propLease(images[16])], 3)).toEqual([])
+    expect(shown()).toContain(images[16])
+    expect(warn.mock.calls.filter(([message]) => message === '[expression-store] Item refused:')).toHaveLength(1)
+  })
+
+  it('caps shown Live2D items at four, for switches and for her own claims, reporting each refusal once', () => {
+    const { store, create, refusals, shown } = setup()
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const models = Array.from({ length: 6 }, (_, index) => create({ ...itemInput(`asset-model-${index}`), idleUse: 'activity' })!)
+    const assets = new Set(Array.from({ length: 6 }, (_, index) => `asset-model-${index}`))
+    store.setAvailableItemAssets(assets, assets)
+    for (const id of models.slice(0, 4))
+      store.activate(id)
+    store.activate(models[4])
+    expect(shown()).toEqual(models.slice(0, 4))
+    expect(refusals).toEqual([{ entryId: models[4], reason: 'item-limit' }])
+
+    store.resetAll()
+    expect(store.setIdleClaims(models)).toEqual(models.slice(0, 4))
+    expect(store.setIdleClaims(models)).toEqual(models.slice(0, 4))
+    expect(refusals.slice(1)).toEqual([{ entryId: models[4], reason: 'item-limit' }, { entryId: models[5], reason: 'item-limit' }])
+  })
+
+  it('reports a failed item as missing-asset once, however often the renderer repeats it', () => {
+    const { store, create, refusals } = setup()
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const id = create(itemInput('asset-hat'))!
+    store.setAvailableItemAssets(new Set(['asset-hat']))
+    store.activate(id)
+    store.reportItemStates({ [id]: 'attached' })
+    store.reportItemStates({ [id]: 'failed' })
+    store.reportItemStates({ [id]: 'failed' })
+    expect(refusals).toEqual([{ entryId: id, reason: 'missing-asset' }])
+    expect(store.settingsSnapshot.items?.[0]).toMatchObject({ shown: true, state: 'failed' })
+  })
+
+  it('removes both expression documents of a model', () => {
+    storage.set('expression-catalog:gone', '{}')
+    storage.set('expression-rest:gone', '{}')
+    storage.set('expression-catalog:kept', '{}')
+    removeExpressionDocuments('gone')
+    expect([...storage.keys()]).toEqual(['expression-catalog:kept'])
+  })
+
+  it('strips removed assets from the stored documents of every model and from the loaded model', () => {
+    const { store, create, shown } = setup('a')
+    const hat = create(itemInput('asset-hat'))!
+    const book = create(itemInput('asset-book'))!
+    store.setAvailableItemAssets(new Set(['asset-hat', 'asset-book']))
+    store.applySettingsCommand({ type: 'create-combo', combo: { label: 'Hat only', members: [{ expressionId: hat, strength: 1 }] } })
+    store.activate(hat)
+    store.activate(book)
+    store.saveDefaults()
+    const unloaded = { version: 1, overrides: [], items: [{ ...itemInput('asset-hat'), id: 'item:b-hat', exposedToLlm: false }], combos: [{ id: 'combo:b', label: 'B', members: [{ expressionId: 'item:b-hat', strength: 1 }, { expressionId: 'smile', strength: 1 }], mappings: [], exposedToLlm: false }] }
+    storage.set('expression-catalog:b', JSON.stringify(unloaded))
+    storage.set('expression-rest:b', JSON.stringify({ version: 1, active: ['item:b-hat', 'smile'] }))
+
+    store.removeItemAssets(['asset-hat'])
+
+    expect(stored('a').items.map((item: { id: string }) => item.id)).toEqual([book])
+    expect(stored('a').combos).toEqual([])
+    expect(JSON.parse(storage.get('expression-rest:a')!).active).toEqual([book])
+    expect(stored('b').items).toEqual([])
+    expect(stored('b').combos[0].members).toEqual([{ expressionId: 'smile', strength: 1 }])
+    expect(JSON.parse(storage.get('expression-rest:b')!).active).toEqual(['smile'])
+    expect(store.manualActive).toEqual([book])
+    expect(store.restSet).toEqual([book])
+    expect(shown()).toEqual([book])
+  })
+
+  it('prunes the loaded model in memory without writing back documents that were already swept', () => {
+    const { store, create, shown } = setup('a')
+    const hat = create(itemInput('asset-hat'))!
+    store.setAvailableItemAssets(new Set(['asset-hat']))
+    store.activate(hat)
+    store.saveDefaults()
+    storage.clear()
+
+    store.removeItemAssets(['asset-hat'])
+
+    expect([...storage.keys()]).toEqual([])
+    expect(store.restSet).toEqual([])
+    expect(shown()).toEqual([])
+    expect(removeItemsByAsset(['asset-hat'])).toEqual(new Map())
   })
 })
