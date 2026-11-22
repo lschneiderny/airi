@@ -89,6 +89,37 @@ MMD has two motion drivers: Natural and [classic](glossary.md#classic) (`package
 
 The [body director](glossary.md#body-director) (`decideBody`, wrapped by `MMDStanceDirector` in `packages/stage-ui-mmd/src/composables/mmd/stance.ts`) decides the [stance](glossary.md#stance), the rest, [locomotion](glossary.md#locomotion) goals, and which clip action plays. It never starts a clip itself. The scene obeys its intent: it sets the [base clip](glossary.md#clip-layer) with `setBaseMotion` and plays or stops a clip action through `obeyAction` (`packages/stage-ui-mmd/src/components/scenes/MMD.vue`). Every clip request goes through the scene's `requestPerform`, including requests from `MMDActionPort` (`packages/stage-ui-mmd/src/composables/mmd/action-port.ts`). Body tool requests go through `MMDBodyToolPort` (`packages/stage-ui-mmd/src/composables/mmd/body-tool-port.ts`). Each port reads the director's answer back and decides nothing.
 
+### Director inputs
+
+The director acts on the mind's intents, requests from the model or user, and
+its own world. It does not subscribe to raw touches, drag releases, chat, or
+presence. This lands former Target rule 8 and D6 to D11 of the
+[director input ADR](../adr/2026-11-21-character-mind-director-intents.md).
+
+- **Intents:** `MMDAttendInbox` counts `attendCause` into touch/drag, chat,
+  and chat-open sequences and stamps the cursor window on the next director
+  frame. The director keeps the clip-ending and chat-approach rules. `away`
+  comes from the mind's presence answer, seeded on scene attach and return to
+  Natural. Natural's idle states and wander errand realise the mind's idle
+  intents; the wander keeps its `pick` while held and uses it for the visit
+  share. The scene resolves an idle-clip errand against the model's library
+  before requesting that clip.
+- **Requests:** ACT action labels, body tools, and user/debug clip requests still go
+  to the director. A look tool yields `BodyIntent.look` for Natural's gaze
+  arbiter. ACT look remains resolver input, outside this path.
+- **World:** performance mode, speaking, dragging in progress, geometry and
+  positions, gait state including `restX`, clip ownership and availability,
+  settings, and the lab goal remain renderer inputs. The resolver's attention
+  goes only to the diagnostic mapper, and its away overlay no longer reaches
+  the director.
+
+The conductor sends these intents only under Natural. Classic receives no new
+attends and its director reads `away: false`: drag releases, chat activity,
+and leaving no longer end its clips. A drag in progress retains its world
+refusal and broad-clip ending rules. Feedback, watchdogs, stop requests, and
+replacement requests still end clips. Universal and MAGIC receive no new
+intents either.
+
 The scene performs each new `BodyIntent.look.seq` once under Natural through
 `MMDNaturalAdapter.look`. The `look-tool` glance has priority 4 and an 8 s hold;
 missing chat or cursor geometry produces a refusal event. The director no longer
@@ -196,7 +227,6 @@ This section states the design that refactors move toward. It does not describe 
 5. **Performers seed their picks and report refusals.** The mind already sends an emotion, its strength, and its hold, and each performer's [decider](glossary.md#decider) picks its own model's expression entries for it. What remains: each pick is seeded by the intent's id so stages agree, and the performer reports masked or refused expressions.
 6. **Feel targets survive the rewrite.** A held emotion fills roughly 50 to 70 % of a parameter's range at the clear band and nearly all of it at strong. Each emotion reads unmistakably on the whole face at corner size, even when a rig's expression files only switch decorations. `dizzy` is not part of the emotion vocabulary. Sources: owner rulings in the 2026-10-19 natural emotion revamp plan.
 7. **The app ships no motion clips.** MMD motion is a procedural core plus VMD clips the user imports locally; model terms forbid redistributing clips. Source: owner ruling in the MMD natural full-body plan.
-8. **Renderer decisions answer intents.** The MMD body director's stance, clip, and locomotion choices realise the mind's intents within the renderer's world. They do not start from raw stimuli. Locomotion toward the cursor already answers the mind's `attend` intent: the director chases only inside the attend window it opened (`attend.untilMs`). The conductor dispatches `attend` only under the Natural driver; under the classic driver the attend intent is not dispatched, so the director gets no attend window there, as Target rule 1 requires. Clip endings and the chat approach now also come from `attend` causes counted by `MMDAttendInbox`; the director reads no raw touch, drag-release, chat-send, or chat-unfold counters. Classic receives no attends. The director's `away` now comes from the mind's presence answer and stays false under classic. Mode stays world. The look tool now reaches Natural's gaze arbiter as `BodyIntent.look`; resolver attention is diagnostic input outside the director.
 
 | Known gap | Closed by |
 | --- | --- |
