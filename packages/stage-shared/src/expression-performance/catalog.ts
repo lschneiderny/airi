@@ -5,6 +5,7 @@ import type { NumberRange } from './settings'
 import { array, boolean, check, finite, literal, maxValue, minLength, minValue, nullable, number, optional, parse, picklist, pipe, safeParse, startsWith, strictObject, string, transform } from 'valibot'
 
 import { entrySlots, usableMembers } from './combos'
+import { StageItemPlacementSchema } from './items'
 import { MomentSchema } from './moments'
 import { OccasionSchema } from './occasions'
 
@@ -122,11 +123,33 @@ export const CustomExpressionDocumentSchema = strictObject({
   moments: momentsField,
 })
 export type CustomExpressionDocument = InferOutput<typeof CustomExpressionDocumentSchema>
+/**
+ * A stage item placed on one character model. `assetId` names the file in the device-wide item library, which stays
+ * separate from this per-model placement; the document never holds file bytes or URLs. `hides` lists her part ids the
+ * item replaces while it shows, and `link: 'parameters'` mirrors her final parameter values into a Live2D item.
+ */
+export const ItemExpressionDocumentSchema = strictObject({
+  id: pipe(string(), startsWith('item:')),
+  assetId: string(),
+  label: pipe(string(), minLength(1)),
+  kind: picklist(['prop', 'effect', 'outfit']),
+  area: optional(ExpressionAreaSchema),
+  mappings: array(persistedPendingMappingSchema),
+  exposedToLlm: boolean(),
+  idleUse: optional(IdleUseSchema),
+  occasions: occasionsField,
+  moments: momentsField,
+  placement: StageItemPlacementSchema,
+  hides: optional(array(string()), []),
+  link: optional(picklist(['none', 'parameters']), 'none'),
+})
+export type ItemExpressionDocument = InferOutput<typeof ItemExpressionDocumentSchema>
 export const CuratedCatalogDocumentSchema = strictObject({
   version: literal(1),
   overrides: array(CuratedOverrideSchema),
   combos: optional(array(ComboDocumentSchema)),
   customs: optional(array(CustomExpressionDocumentSchema)),
+  items: optional(array(ItemExpressionDocumentSchema)),
 })
 export type CuratedCatalogDocument = InferOutput<typeof CuratedCatalogDocumentSchema>
 export const RestSetSchema = strictObject({ version: literal(1), active: array(string()) })
@@ -187,6 +210,26 @@ export function customEntryFromDocument(document: CustomExpressionDocument): Cat
     moments: document.moments,
     fileName: '',
     parameterIds: [document.parameterId],
+    group: null,
+    confirmed: true,
+    labelSource: 'user',
+  })
+}
+
+/** Outfits never reach the chat model, whatever the stored switch says. */
+export function itemEntryFromDocument(document: ItemExpressionDocument): CatalogEntry {
+  return parse(CatalogEntrySchema, {
+    id: document.id,
+    label: document.label,
+    kind: document.kind,
+    area: document.area,
+    mappings: document.mappings,
+    exposedToLlm: document.kind === 'outfit' ? false : document.exposedToLlm,
+    idleUse: document.idleUse,
+    occasions: document.occasions,
+    moments: document.moments,
+    fileName: '',
+    parameterIds: [],
     group: null,
     confirmed: true,
     labelSource: 'user',
