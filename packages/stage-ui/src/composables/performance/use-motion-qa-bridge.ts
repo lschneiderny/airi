@@ -36,6 +36,7 @@ import { nextTick, onScopeDispose, toRaw, watch } from 'vue'
 import { EMOTION_VALUES } from '../../constants/emotions'
 import { useCharacterBehaviorSettings } from '../../features/character-behavior/settings'
 import { DisplayModelFormat, useDisplayModelsStore } from '../../stores/display-models'
+import { useAiriCardStore } from '../../stores/modules/airi-card'
 import { useNaturalPerformanceOverride } from '../../stores/natural-performance-override'
 import { useSettingsStageModel } from '../../stores/settings/stage-model'
 import { useMotionQaEvents } from './use-motion-qa-events'
@@ -379,13 +380,16 @@ export function useMotionQaBridge(options: MotionQaBridgeOptions) {
       const file = input instanceof HTMLInputElement ? input.files?.[0] : undefined
       if (!file)
         throw new Error(`#${inputId} is not a file input with a selected file`)
-      // The settings model picker's import: add the display model, select it, and publish it to the stage.
+      // The settings model picker's import: add the display model, select it for the active card, and publish it to
+      // the stage. Binding it to the card keeps a later card save from restoring the card's previous model.
       const format = kind === 'vrm' ? DisplayModelFormat.VRM : kind === 'mmd' ? DisplayModelFormat.PMXZip : DisplayModelFormat.Live2dZip
       const model = await displayModels.addDisplayModel(format, file)
       // Clear the previous renderer's mounted state before selecting the new model.
       // nextTick lets the shared scene lifecycle publish loading for this selection.
       options.prepareModelImport?.()
       stageModel.stageModelSelected = model.id
+      if (!await useAiriCardStore().setActiveCardDefaultAvatarModel(model.id))
+        throw new Error(`The active card could not take the imported model ${model.id}`)
       await stageModel.updateStageModel()
       await nextTick()
       return waitFor(() => {
