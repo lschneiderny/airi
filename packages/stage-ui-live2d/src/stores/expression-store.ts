@@ -7,7 +7,7 @@ import type { ComboPatch, CreateComboInput, CreateItemInput, CustomPatch, EntryP
 import type { SlotLeases } from './expression-slot-leases'
 
 import { errorMessageFrom } from '@moeru/std'
-import { customEntryFromDocument, defaultExpressionPerformanceSettings, expandEntry, isAutoEligible, isLlmEligible, itemEntryFromDocument, mergeCatalog, parseCuratedCatalogDocument, parseRestSet, resolveAlias } from '@proj-airi/stage-shared/expression-performance'
+import { customEntryFromDocument, defaultExpressionPerformanceSettings, expandEntry, isAutoEligible, isLlmEligible, itemEntryFromDocument, MAX_SHOWN_ITEMS, MAX_SHOWN_LIVE2D_ITEMS, mergeCatalog, parseCuratedCatalogDocument, parseRestSet, resolveAlias } from '@proj-airi/stage-shared/expression-performance'
 import { createEventHook } from '@vueuse/core'
 import { defineStore } from 'pinia'
 import { computed, markRaw, ref, shallowRef, toRaw } from 'vue'
@@ -22,11 +22,6 @@ import { createSlotLeases, emptyLeases } from './expression-slot-leases'
 export interface NamedExpressionDefinition extends ExpressionDefinition {
   name: string
 }
-
-/** At most this many stage items show at once, so frame cost stays bounded; a further show is refused `item-limit`. */
-const MAX_SHOWN_ITEMS = 16
-/** Of the shown items, at most this many are Live2D models, the costly kind. */
-const MAX_SHOWN_LIVE2D_ITEMS = 4
 
 /** One stage item of the loaded model as the panel sees it. `state` is the renderer's last report, null while it draws nothing. */
 export interface Live2DItemSnapshot {

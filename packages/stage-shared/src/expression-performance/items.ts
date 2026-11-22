@@ -55,3 +55,8 @@ export const StageItemPlacementSchema = strictObject({
   fadeWithMesh: optional(boolean()),
 })
 export type StageItemPlacement = InferOutput<typeof StageItemPlacementSchema>
+
+/** At most this many stage items show at once, so frame cost stays bounded; a further show is refused `item-limit`. */
+export const MAX_SHOWN_ITEMS = 16
+/** Of the shown items, at most this many are Live2D models, the costly kind. The Live2D renderer never loads more. */
+export const MAX_SHOWN_LIVE2D_ITEMS = 4
