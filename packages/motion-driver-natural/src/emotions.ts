@@ -50,6 +50,9 @@ export interface HeldSpec {
 /** Short head clips that an emotion can trigger; the clip shapes live with the gesture layer. `shake-or-drop` plays one of the two at random. */
 export type GestureKind = 'laugh' | 'recoil' | 'shake' | 'drop' | 'shake-or-drop' | 'sway' | 'tilt-in' | 'look-away' | 'nod-off'
 
+/** A gesture that plays as one clip: the kind the mind orders and Natural performs. */
+export type PlayedGesture = Exclude<GestureKind, 'shake-or-drop'>
+
 export interface NaturalEmotionSpec {
   /** Absent for emotions that do nothing, such as neutral. */
   impulse?: EmotionSpec

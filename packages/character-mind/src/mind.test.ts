@@ -25,7 +25,7 @@ describe('character mind', () => {
   it('answers on its own clock and keeps the state of the last step', () => {
     const mind = new CharacterMind({ seed: 41, clock: scriptedClock(10_000, 11_000) })
     expect(mind.state.seq).toBe(0)
-    expect(mind.receive(performer, happy(0.6))).toMatchObject([{ kind: 'emotion', episode: { id: 'happy-1', escalation: false } }])
+    expect(mind.receive(performer, happy(0.6))).toMatchObject([{ kind: 'emotion', episode: { id: 'happy-1', escalation: false } }, { kind: 'emotion-gesture', episodeId: 'happy-1' }])
     expect(mind.receive(happy(0.9))).toMatchObject([{ kind: 'emotion', episode: { id: 'happy-1', escalation: true } }])
     expect(mind.state.seq).toBe(3)
     expect(mind.state.reaction.lastAt).toBe(11)

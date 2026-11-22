@@ -8,6 +8,7 @@ import { answerCursor, answerInteraction } from './attention'
 import { declaredAnswer, NO_CAPABILITIES } from './capabilities'
 import { answerChat } from './chat'
 import { answerEmotion, answerExpressionClear, answerExpressionRequest } from './expression'
+import { initialMindGestureState } from './gesture'
 import { advanceIdle, answerIdle, answerIdlePlay, initialMindIdleState } from './idle'
 import { answerMusic } from './music'
 import { answerPresence, answerScreenChange } from './presence'
@@ -24,6 +25,7 @@ export function initialMindState(slow: MindSlowState = { pacing: null }): MindSt
     performer: NO_CAPABILITIES,
     behavior: { idleActivities: true, touchReactions: true, chatAttention: true },
     reaction: createReactionState(),
+    gesture: initialMindGestureState,
     touch: { affect: initialTouchAffectMemory },
     voice: { reaction: initialReactionMemory(), lastDecision: null, gate: null, runId: null, stageShown: false, line: null, requests: [], notices: [], lastGate: null },
     presence: { away: false, awaySinceMs: null },

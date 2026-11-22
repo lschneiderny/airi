@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest'
 const channels = {
   'touch-reaction': 'posture',
   'mood': 'posture',
+  'emotion-gesture': 'posture',
   'emotion': 'face',
   'entry': 'face',
   'release': 'face',
