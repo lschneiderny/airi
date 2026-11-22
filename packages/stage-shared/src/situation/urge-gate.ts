@@ -412,7 +412,7 @@ function hazardsOf(input: UrgeGateInput, memory: UrgeGateMemory, phase: PhaseInf
   return { hazards: { open, continuation, ritual, due, total: open + continuation + ritual + due }, multipliers }
 }
 
-/** The urgent reason with the highest effective salience, then the smallest source event id. */
+/** Due critical tasks rank first by due time and task id; plugins keep their salience and event-id order. */
 function pickUrgent(reasons: readonly Reason[], situation: SituationState, nowMs: number): { reason: Reason, salience: number } | null {
   let best: { reason: Reason, salience: number } | null = null
   for (const reason of reasons) {
@@ -421,7 +421,12 @@ function pickUrgent(reasons: readonly Reason[], situation: SituationState, nowMs
     const event = situation.events.find(candidate => candidate.id === reason.sourceEventId)
     const salience = event === undefined ? 0 : effectiveSalience(event, nowMs)
     const id = reason.sourceEventId ?? ''
-    if (best === null || salience > best.salience || (salience === best.salience && id < (best.reason.sourceEventId ?? '')))
+    const task = reason.provenance?.kind === 'task-reminder' ? reason.provenance : undefined
+    const previous = best?.reason.provenance?.kind === 'task-reminder' ? best.reason.provenance : undefined
+    const outranks = task
+      ? !previous || task.dueAtMs < previous.dueAtMs || (task.dueAtMs === previous.dueAtMs && task.taskId < previous.taskId)
+      : !previous && (best === null || salience > best.salience || (salience === best.salience && id < (best.reason.sourceEventId ?? '')))
+    if (best === null || outranks)
       best = { reason, salience }
   }
   return best

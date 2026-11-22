@@ -67,6 +67,7 @@ import { foregroundReadPolicyKey, useSituationSettings } from '../../features/si
 import { createThreadExtractor } from '../../features/situation/thread-extraction'
 import { chatComposerActivityChangedEvent, getSpeechBusContext, situationForgetRequestedEvent, situationNotifyObservedEvent, speechInputUserSpeakingChangedEvent, voiceRequestSnapshot, voiceRequestTurns, voiceSnapshotChanged, voiceTurnsChanged, watchVoiceHostEnd } from '../../services/speech/bus'
 import { bridgeSituationToCharacter } from '../character-state/situation-bridge'
+import { useCharacterNotebookStore } from '../character/notebook'
 import { useCharacterStateObservabilityStore } from '../devtools/character-state-observability'
 import { useMemoryObservabilityStore } from '../devtools/memory-observability'
 import { useSituationObservabilityStore } from '../devtools/situation-observability'
@@ -249,6 +250,7 @@ export const useSituationStore = defineStore('situation', () => {
   const characterStateObservability = useCharacterStateObservabilityStore()
   const settings = useSituationSettings()
   const behaviorSettings = useCharacterBehaviorSettings()
+  const notebook = useCharacterNotebookStore()
   const desktopActivity = useDesktopActivityStore()
   const foregroundWindow = useForegroundWindowStore()
 
@@ -308,6 +310,19 @@ export const useSituationStore = defineStore('situation', () => {
   /** Feeds the character state from this leader's observations; see `bridgeSituationToCharacter`. */
   let characterBridge: SituationBridge | undefined
   const notifySpokenListeners = new Set<(spoken: { topicKey: string, text: string }) => void>()
+
+  // The notebook owns occurrence lifetime independently of the bounded situation history.
+  watch(() => notebook.tasks.map(task => [task.id, task.revision, task.status, task.addressedRevision]), () => {
+    const events = current.value.events.filter((event) => {
+      const source = event.notify?.provenance
+      if (source?.kind !== 'task-reminder')
+        return true
+      return notebook.tasks.some(task => task.id === source.taskId && task.revision === source.revision
+        && task.status !== 'done' && task.status !== 'dropped' && task.addressedRevision !== source.revision)
+    })
+    if (events.length !== current.value.events.length)
+      current.value = { ...current.value, events }
+  }, { flush: 'sync' })
 
   // Feeds the devtools Situation inspector of this window. Sync flush keeps it equal to the state after every call.
   watch([leading, current], ([isLeading, state]) => observability.publishLiveState(isLeading, state), { flush: 'sync', immediate: true })
@@ -867,10 +882,14 @@ export const useSituationStore = defineStore('situation', () => {
         supplement: line.supplement ?? undefined,
       }), () => {}, result => settleWidget(turnId, result))
     }
-    if (speaking || controls.unpromptedPending())
-      return Promise.resolve('refused')
     const { topicKey, reason } = line
     const aboutNotify = reason.kind === 'notify'
+    const source = current.value.events.find(event => event.topicKey === topicKey)?.notify?.provenance
+    if (speaking || controls.unpromptedPending()) {
+      if (source?.kind === 'task-reminder')
+        notebook.addressTask(source.taskId, source.revision)
+      return Promise.resolve('refused')
+    }
     // The chat message id is the store's own; the mind's turn id names the line only between the mind and this store.
     const messageId = nanoid()
     if (!isThreadTopic(topicKey))
@@ -881,6 +900,8 @@ export const useSituationStore = defineStore('situation', () => {
       reason,
       messageId,
     }), (outcome) => {
+      if (source?.kind === 'task-reminder')
+        notebook.addressTask(source.taskId, source.revision)
       if (outcome !== 'refused')
         observability.recordReasonOutcome(reason.kind, outcome, Date.now())
     }, (result) => {

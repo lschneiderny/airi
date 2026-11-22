@@ -83,6 +83,23 @@ function urgentNotify(): SituationEvent {
   }
 }
 
+describe('notebook urgent ranking', () => {
+  it('ranks due critical tasks before immediate plugins, then due time and stable task id', () => {
+    const task = (taskId: string, dueAtMs: number): SituationEvent => ({
+      ...urgentNotify(),
+      id: `task:${taskId}`,
+      topicKey: `task:${taskId}`,
+      salience: 0.4,
+      notify: { urgency: 'soon', provenance: { kind: 'task-reminder', taskId, revision: 0, dueAtMs, priority: 'critical' } },
+    })
+    const events = [urgentNotify(), task('later', T0), task('b', T0 - 1), task('a', T0 - 1)]
+    const result = evaluateUrgeGate(gateInput({ situation: quietSituation({ events }) }), initialUrgeMemory, () => {
+      throw new Error('Urgent selection must not draw')
+    })
+    expect(result.decision).toMatchObject({ fire: true, topicKey: 'task:a', reason: 'urgent' })
+  })
+})
+
 function laterThread(overrides: Partial<Thread> = {}): Thread {
   return {
     id: 'thread:later:0:0',

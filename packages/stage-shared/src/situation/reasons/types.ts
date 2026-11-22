@@ -1,4 +1,4 @@
-import type { SituationEventKind } from '../types'
+import type { NotifyProvenance, SituationEventKind } from '../types'
 
 export type ReasonCategory = 'open' | 'continuation' | 'ritual' | 'due' | 'double-text' | 'urgent'
 
@@ -65,6 +65,7 @@ export interface Reason {
   readonly urgent: boolean
   readonly dueAtMs: number | null
   readonly dueNow: boolean
+  readonly provenance?: NotifyProvenance
 }
 
 /** Tuning: conversion from minutes to the explicit millisecond durations used by the tables. */

@@ -30,6 +30,7 @@ import { EXTRACTION_MAX_TOKENS } from '../../features/situation/thread-extractio
 import { chatComposerActivityChangedEvent, getSpeechBusContext, situationForgetRequestedEvent, speechInputUserSpeakingChangedEvent, voiceRequestSnapshot, voiceRequestTurns, voiceSnapshotChanged, voiceTurnsChanged } from '../../services/speech/bus'
 import { connectMind } from '../../test/connect-mind'
 import { characterStateContext, useCharacterStateStore } from '../character-state'
+import { useCharacterNotebookStore } from '../character/notebook'
 import { useSituationObservabilityStore } from '../devtools/situation-observability'
 import { DESKTOP_SAMPLE_STALE_MS } from './sensors/desktop'
 import { EXCHANGE_QUIET_MS } from './sensors/exchange'
@@ -768,7 +769,7 @@ describe('situation store', () => {
     const settings = useSituationSettings()
     // The extension's source keys name its module inside the extension: `<extension id>:<module id>`.
     const browsing = (text: string): ContextObservation => ({ kind: 'context', sourceKey: 'proj-airi:plugin-web-extension:module-a', text, atMs: Date.now() })
-    const watching = (eventId: string, headline: string): NotifyObservation => ({ kind: 'notify', sourceKey: 'proj-airi:plugin-web-extension:module-b', eventId, headline, urgency: 'soon', reminder: false, critical: false, atMs: Date.now() })
+    const watching = (eventId: string, headline: string): NotifyObservation => ({ kind: 'notify', sourceKey: 'proj-airi:plugin-web-extension:module-b', eventId, headline, urgency: 'soon', reminder: false, provenance: { kind: 'plugin' }, atMs: Date.now() })
     expect(settings.document.shareBrowserActivity).toBe(true)
     store.ingest(browsing('User is browsing: Secret page (https://example.test/secret).'))
     store.ingest(watching('video-1', 'User is watching: Secret video'))
@@ -855,7 +856,7 @@ describe('situation gate loop', () => {
   function offerTopic(headline = 'Package shipped') {
     notifyCount += 1
     const eventId = `evt-${notifyCount}`
-    useSituationStore().ingest({ kind: 'notify', sourceKey: 'plugin:qa', eventId, headline, urgency: 'soon', reminder: false, critical: false, atMs: Date.now() })
+    useSituationStore().ingest({ kind: 'notify', sourceKey: 'plugin:qa', eventId, headline, urgency: 'soon', reminder: false, provenance: { kind: 'plugin' }, atMs: Date.now() })
     return notifyTopicKey('plugin:qa', eventId)
   }
 
@@ -863,13 +864,71 @@ describe('situation gate loop', () => {
   function offerUrgentTopic(headline = 'Doorbell') {
     notifyCount += 1
     const eventId = `evt-${notifyCount}`
-    useSituationStore().ingest({ kind: 'notify', sourceKey: 'plugin:qa', eventId, headline, urgency: 'immediate', reminder: false, critical: false, atMs: Date.now() })
+    useSituationStore().ingest({ kind: 'notify', sourceKey: 'plugin:qa', eventId, headline, urgency: 'immediate', reminder: false, provenance: { kind: 'plugin' }, atMs: Date.now() })
     return notifyTopicKey('plugin:qa', eventId)
   }
 
   async function nextGateTick() {
     await vi.advanceTimersByTimeAsync(GATE_INTERVAL_MS)
   }
+
+  it.each(['spoken', 'declined', 'cancelled', 'failed', 'refused'] as const)('consumes a notebook occurrence after a %s attempt, independently of event history', async (status) => {
+    const { store, chat } = startQuietLeader()
+    const notebook = useCharacterNotebookStore()
+    const task = notebook.scheduleTask({ title: 'Take a break', priority: 'critical' })
+    const observation: NotifyObservation = {
+      kind: 'notify',
+      sourceKey: 'character:task-scheduler',
+      eventId: `${task.id}:${task.revision}`,
+      headline: task.title,
+      urgency: 'immediate',
+      reminder: true,
+      provenance: { kind: 'task-reminder', taskId: task.id, revision: task.revision, dueAtMs: task.createdAt, priority: task.priority },
+      atMs: task.firstNotifiedAt ?? Date.now(),
+    }
+    store.ingest(observation)
+    const topicKey = notifyTopicKey(observation.sourceKey, observation.eventId)
+    let result: ChatUnpromptedResult
+    if (status === 'spoken')
+      result = { status, text: 'Take a break?' }
+    else if (status === 'failed')
+      result = { status, error: 'Provider failed' }
+    else if (status === 'refused')
+      result = { status: 'failed', error: 'Another unprompted turn is still pending' }
+    else
+      result = { status }
+    chat.state.unpromptedPending = status === 'refused'
+    chat.submitUnprompted.mockResolvedValueOnce(result)
+    expect(await store.speak('reminder-attempt', { kind: 'reach-out', topicKey, topicText: task.title, reason: { kind: 'notify', category: 'urgent' } })).toBe(status)
+    expect(task.addressedRevision).toBe(0)
+    expect(notebook.getDueTasks(Date.now(), 60_000)).toEqual([])
+    expect(store.state.events.some(event => event.topicKey === topicKey)).toBe(false)
+    notebook.requeueTask(task.id, { dueAt: Date.now() })
+    expect(notebook.getDueTasks(Date.now(), 0)).toHaveLength(1)
+  })
+
+  it('withdraws a completed or rescheduled reminder before another gate decision', () => {
+    const { store } = startQuietLeader()
+    const notebook = useCharacterNotebookStore()
+    const task = notebook.scheduleTask({ title: 'Take a break' })
+    const offer = () => store.ingest({
+      kind: 'notify',
+      sourceKey: 'character:task-scheduler',
+      eventId: `${task.id}:${task.revision}`,
+      headline: task.title,
+      urgency: 'soon',
+      reminder: true,
+      provenance: { kind: 'task-reminder', taskId: task.id, revision: task.revision, dueAtMs: task.createdAt, priority: task.priority },
+      atMs: task.firstNotifiedAt ?? Date.now(),
+    })
+    offer()
+    expect(store.state.events.filter(event => event.kind === 'notify')).toHaveLength(1)
+    notebook.requeueTask(task.id, { dueAt: Date.now() + 60_000 })
+    expect(store.state.events.filter(event => event.kind === 'notify')).toEqual([])
+    offer()
+    notebook.markTaskDone(task.id)
+    expect(store.state.events.filter(event => event.kind === 'notify')).toEqual([])
+  })
 
   /** The newest urge gate evaluation: its input, the memory it started from, and its decision and memory. */
   function lastEvaluation() {
@@ -1212,7 +1271,7 @@ describe('situation gate loop', () => {
 
   it('names a web extension page topic by its kind in the unprompted trigger, never by its title or link', async () => {
     const { store, chat, observability } = startQuietLeader()
-    store.ingest({ kind: 'notify', sourceKey: 'proj-airi:plugin-web-extension:module-a', eventId: 'video-1', headline: 'User is watching: Secret page', note: 'https://example.test/secret', urgency: 'immediate', reminder: false, critical: false, atMs: Date.now() })
+    store.ingest({ kind: 'notify', sourceKey: 'proj-airi:plugin-web-extension:module-a', eventId: 'video-1', headline: 'User is watching: Secret page', note: 'https://example.test/secret', urgency: 'immediate', reminder: false, provenance: { kind: 'plugin' }, atMs: Date.now() })
 
     await nextGateTick()
 
@@ -1271,7 +1330,7 @@ describe('situation gate loop', () => {
     useSituationStore().dispose()
     setActivePinia(createPinia())
     const follower = startQuietLeader({ leader: false })
-    useSituationStore().ingest({ kind: 'notify', sourceKey: 'plugin:qa', eventId: 'follower-1', headline: 'Doorbell', urgency: 'immediate', reminder: false, critical: false, atMs: Date.now() })
+    useSituationStore().ingest({ kind: 'notify', sourceKey: 'plugin:qa', eventId: 'follower-1', headline: 'Doorbell', urgency: 'immediate', reminder: false, provenance: { kind: 'plugin' }, atMs: Date.now() })
     await vi.advanceTimersByTimeAsync(10 * GATE_INTERVAL_MS)
     expect((await follower.observability.inspect()).urge.decision).toBeNull()
     expect(follower.chat.submitUnprompted).not.toHaveBeenCalled()

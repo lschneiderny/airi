@@ -43,7 +43,7 @@ function notify(overrides: Partial<NotifyObservation> = {}): NotifyObservation {
     headline: 'Tea is ready',
     urgency: 'soon',
     reminder: false,
-    critical: false,
+    provenance: { kind: 'plugin' },
     atMs: T0,
     ...overrides,
   }
@@ -328,7 +328,7 @@ describe('reduceSituation conversation, context, notify, stage, busy', () => {
       notify({ eventId: 'a', urgency: 'immediate' }),
       notify({ eventId: 'b', urgency: 'soon' }),
       notify({ eventId: 'c', urgency: 'later' }),
-      notify({ eventId: 'd', urgency: 'later', reminder: true, critical: true, note: 'now' }),
+      notify({ eventId: 'd', urgency: 'later', reminder: true, provenance: { kind: 'task-reminder', taskId: 'task', revision: 0, dueAtMs: T0, priority: 'critical' }, note: 'now' }),
     ])
 
     expect(state.events.map(e => [e.topicKey, e.salience, e.text])).toEqual([

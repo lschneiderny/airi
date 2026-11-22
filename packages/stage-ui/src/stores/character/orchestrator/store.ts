@@ -19,7 +19,7 @@ import { useChatSessionStore } from '../../chat/session-store'
 import { useModsServerChannelStore } from '../../mods/api/channel-server'
 import { useConsciousnessStore } from '../../modules/consciousness'
 import { useSituationStore } from '../../situation'
-import { ingestSparkNotify } from '../../situation/sensors/notify'
+import { ingestSparkNotify, notifyObservationFrom, TASK_SCHEDULER_SOURCE } from '../../situation/sensors/notify'
 
 export { sparkNotifyCommandSchema } from '@proj-airi/core-agent/agents/spark-notify'
 
@@ -243,10 +243,10 @@ export const useCharacterOrchestratorStore = defineStore('character-orchestrator
     for (const task of dueTasks) {
       const event: WebSocketEventOf<'spark:notify'> = {
         type: 'spark:notify',
-        source: 'character:task-scheduler',
+        source: TASK_SCHEDULER_SOURCE,
         data: {
           id: `task-${task.id}`,
-          eventId: task.id,
+          eventId: `${task.id}:${task.revision}`,
           kind: 'reminder',
           urgency: task.priority === 'critical' ? 'immediate' : 'soon',
           headline: `Task reminder: ${task.title}`,
@@ -261,7 +261,18 @@ export const useCharacterOrchestratorStore = defineStore('character-orchestrator
       }
 
       // A reminder is for the character only, so it is an observation and never an agent run.
-      rememberSparkNotifyId(event, ingestSparkNotify(event))
+      const observation: NotifyObservation = {
+        ...notifyObservationFrom(event, task.firstNotifiedAt ?? now),
+        provenance: {
+          kind: 'task-reminder',
+          taskId: task.id,
+          revision: task.revision,
+          dueAtMs: task.dueAt ?? task.createdAt,
+          priority: task.priority,
+        },
+      }
+      situationStore.ingest(observation)
+      rememberSparkNotifyId(event, observation)
       notebookStore.markTaskNotified(task.id, now + attentionConfig.value.requeueDelayMs)
     }
   }

@@ -23,17 +23,17 @@ describe('notifyObservationFrom', () => {
       headline: 'Headline',
       urgency: 'soon',
       reminder: false,
-      critical: false,
+      provenance: { kind: 'plugin' },
       atMs: T0,
     })
   })
 
-  it('marks only scheduler reminders with critical priority as critical', () => {
+  it('never grants notebook authority to a protocol source or payload', () => {
     const payload = { priority: 'critical' }
 
-    expect(notifyObservationFrom(notify(TASK_SCHEDULER_SOURCE, { kind: 'reminder', payload }), T0).critical).toBe(true)
-    expect(notifyObservationFrom(notify('plugin:spoof', { kind: 'reminder', payload }), T0).critical).toBe(false)
-    expect(notifyObservationFrom(notify(TASK_SCHEDULER_SOURCE, { kind: 'alarm', payload }), T0).critical).toBe(false)
+    expect(notifyObservationFrom(notify(TASK_SCHEDULER_SOURCE, { kind: 'reminder', payload }), T0).provenance).toEqual({ kind: 'plugin' })
+    expect(notifyObservationFrom(notify('plugin:spoof', { kind: 'reminder', payload }), T0).provenance).toEqual({ kind: 'plugin' })
+    expect(notifyObservationFrom(notify(TASK_SCHEDULER_SOURCE, { kind: 'alarm', payload }), T0).provenance).toEqual({ kind: 'plugin' })
   })
 
   it('neutralizes cue markers in plugin text and caps the note', () => {
