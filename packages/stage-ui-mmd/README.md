@@ -625,7 +625,11 @@ intent reaches `MMDAttendInbox`: `touch` and `drag` increment `touchSeq`,
 `chatOpenSeq` for the approach. Only cursor attends open the cursor window.
 The scene keeps no raw touch, drag-release, sent-message, or unfold counters.
 Classic receives no attends: drag releases and chat activity no longer end its
-clips. The world still reports a drag in progress, which retains its clip rules. The response is pre-physics head
+clips. The world still reports a drag in progress, which retains its clip rules.
+`setAway(away)` stores the mind's presence answer for the director under Natural.
+The conductor seeds it on scene attach and on a switch to Natural. Classic's
+director always reads `away: false`, so leaving no longer ends its clips.
+Natural's own performance input still carries the resolver's away overlay. The response is pre-physics head
 and body motion. The scene also exposes `wakeFromSleep()` and
 `reactToDesktop(reaction)`, which `Stage.vue` calls under Natural when the mind
 answers the user's return or a desktop event; they forward to

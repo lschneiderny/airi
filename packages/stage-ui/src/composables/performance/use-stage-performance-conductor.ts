@@ -166,6 +166,8 @@ export interface StagePerformanceScene {
    * cursor window, and the approach to an opened chat. A scene without a body director, such as the Live2D scene, drops it.
    */
   attend?: (intent: AttendIntent) => void
+  /** MMD Natural: the mind's presence answer, seeded again when a scene attaches or its driver becomes Natural. */
+  setAway?: (away: boolean) => void
   /**
    * Live2D and MMD Natural: reads the chat, as the mind decided for a sent message or an unfolded chat. Natural draws
    * the read's delay and hold and drops it without a chat target or while she talks. A scene without it drops the read.
@@ -342,6 +344,8 @@ export class StagePerformanceConductor {
   /** The latest idle view the scene reported under any driver, and whether the mind was last told the dormant view. */
   private idleView: IdleView | null = null
   private idleDormant = false
+  private presenceScene: StagePerformanceScene | undefined
+  private presenceNatural = false
 
   constructor(private readonly options: StagePerformanceConductorOptions) {
     this.seed = options.seed
@@ -479,6 +483,8 @@ export class StagePerformanceConductor {
         scene?.wakeFromSleep?.()
       else if (intent.kind === 'desktop-reaction' && natural)
         scene?.reactToDesktop?.(intent.reaction)
+      else if (intent.kind === 'away' && natural)
+        scene?.setAway?.(intent.away)
       else if (intent.kind === 'moment')
         this.options.markMoment?.(intent.moment)
       else if (intent.kind === 'observe-wake')
@@ -513,7 +519,7 @@ export class StagePerformanceConductor {
    */
   idleDrive(drive: NaturalIdleDrive | null) {
     this.options.scene()?.setIdleDrive?.(this.options.driver() === 'natural' ? drive : null)
-    this.followIdleDriver()
+    this.syncScene()
   }
 
   /** Plays the body around a reach-out or widget line under the Natural driver; other drivers drop it. The mind decides it. */
@@ -546,7 +552,7 @@ export class StagePerformanceConductor {
    */
   idle(intent: MindIdleIntent) {
     if (this.options.driver() !== 'natural') {
-      this.followIdleDriver()
+      this.syncScene()
       return
     }
     this.options.scene()?.idle?.(idleOrderOf(intent))
@@ -606,7 +612,7 @@ export class StagePerformanceConductor {
         this.idleView = report.view
     }
     if (this.options.driver() !== 'natural') {
-      this.followIdleDriver()
+      this.syncScene()
       return
     }
     this.idleDormant = false
@@ -614,11 +620,16 @@ export class StagePerformanceConductor {
   }
 
   /**
-   * Tells the mind the dormant view once the driver left Natural, and the scene's latest view again once it is back:
-   * a performer reports its view only when it changes, and a scene that stopped advancing Natural reports nothing.
+   * Synchronizes scene and driver changes: the mind hears a dormant idle view outside Natural and the latest view
+   * on return. A newly attached or reactivated Natural scene receives the mind's current away state.
    */
-  private followIdleDriver() {
+  syncScene() {
     const natural = this.options.driver() === 'natural'
+    const scene = this.options.scene()
+    if (natural && (scene !== this.presenceScene || !this.presenceNatural))
+      scene?.setAway?.(this.options.mind.state.presence.away)
+    this.presenceScene = scene
+    this.presenceNatural = natural
     if (!natural && !this.idleDormant) {
       this.idleDormant = true
       this.options.idleReports?.([{ kind: 'view', view: dormantIdleView() }])
@@ -1157,6 +1168,8 @@ export function useStagePerformanceConductor(options: Pick<StagePerformanceCondu
     modelId: () => expressions.modelId,
     seed: crypto.getRandomValues(new Uint32Array(1))[0],
   })
+
+  watch([() => options.scene(), () => options.driver()], () => conductor.syncScene(), { immediate: true })
 
   const exposed = computed(() => toExposedExpressions(expressions.llmEligibleEntries))
   const exposedActions = computed(() => toExposedActions(options.listActions?.() ?? []))

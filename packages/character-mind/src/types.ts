@@ -169,6 +169,8 @@ export type MindIntent
    */
     | (IntentBase & { channel: 'body', kind: 'attend', target: 'cursor', attendCause: 'touch' | 'drag' | 'chat-send', windowMs: number })
     | (IntentBase & { channel: 'body', kind: 'attend', target: 'chat', attendCause: 'chat-unfold' })
+  /** The presence answer for the body director, emitted once on each away edge. */
+    | (IntentBase & { channel: 'body', kind: 'away', away: boolean })
   /**
    * Read the chat: a sent message of `words` words (0 for an unfold). The performer draws the read's delay and hold, and
    * drops it without a chat target or while she talks.

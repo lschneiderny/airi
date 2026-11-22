@@ -37,10 +37,10 @@ const ASLEEP = { settled: false, asleep: true }
 function input(overrides: Partial<DirectorInput> = {}): DirectorInput {
   return {
     nowMs: 0,
+    away: false,
     performance: {
       mode: 'idle',
       attention: 'camera',
-      away: false,
     },
     cursorPoint,
     chatPoint,
@@ -75,9 +75,8 @@ function input(overrides: Partial<DirectorInput> = {}): DirectorInput {
 function performance(
   mode: PerformanceMode = 'idle',
   attention: PerformanceAttention = 'camera',
-  away = false,
 ): DirectorInput['performance'] {
-  const state: Pick<PerformanceState, 'mode' | 'attention' | 'away'> = { mode, attention, away }
+  const state: Pick<PerformanceState, 'mode' | 'attention'> = { mode, attention }
   return state
 }
 
@@ -103,7 +102,7 @@ describe('body director', () => {
   it('rests and dozes procedurally when Natural settles her in or she sleeps and the model has no clip for it', () => {
     const noClips = { slots: { sit: false, sleep: false } }
     const resting = decide(input({ nowMs: 0, idle: SETTLED, ...noClips }))
-    const dozing = decide(input({ nowMs: 4_000, idle: ASLEEP, performance: performance('idle', 'camera', true), ...noClips }), resting.memory)
+    const dozing = decide(input({ nowMs: 4_000, idle: ASLEEP, away: true, performance: performance('idle', 'camera'), ...noClips }), resting.memory)
     const awake = decide(input({ nowMs: 8_000, ...noClips }), dozing.memory)
 
     expect(resting.intent).toMatchObject({ stance: 'stand', rest: 'rest' })
@@ -132,8 +131,8 @@ describe('body director', () => {
 
   it('sleeps when Natural is asleep and the sleep slot is present, and not merely because the user is away', () => {
     const prior = decide(input({ nowMs: 0 }))
-    const away = decide(input({ nowMs: 3_000, performance: performance('idle', 'camera', true) }), prior.memory)
-    const asleep = decide(input({ nowMs: 3_000, performance: performance('idle', 'camera', true), idle: ASLEEP }), prior.memory)
+    const away = decide(input({ nowMs: 3_000, away: true, performance: performance('idle', 'camera') }), prior.memory)
+    const asleep = decide(input({ nowMs: 3_000, away: true, performance: performance('idle', 'camera'), idle: ASLEEP }), prior.memory)
 
     expect(away.intent.stance).toBe('stand')
     expect(asleep.intent).toMatchObject({ stance: 'sleep', rest: 'none' })
@@ -144,12 +143,14 @@ describe('body director', () => {
     const sitting = decide(input({ nowMs: 120_000, idle: SETTLED }), started.memory)
     const beforeDwell = decide(input({
       nowMs: 122_999,
-      performance: performance('idle', 'camera', true),
+      away: true,
+      performance: performance('idle', 'camera'),
       idle: ASLEEP,
     }), sitting.memory)
     const afterDwell = decide(input({
       nowMs: 123_000,
-      performance: performance('idle', 'camera', true),
+      away: true,
+      performance: performance('idle', 'camera'),
       idle: ASLEEP,
     }), beforeDwell.memory)
 
@@ -239,7 +240,8 @@ describe('body director home, goals, roam and tools', () => {
   it('keeps the legacy six-field input on the old stance behaviour when spread with the no-world constant', () => {
     const legacy = (nowMs: number, mode: PerformanceMode = 'idle', away = false, idle = { settled: false, asleep: false }): DirectorInput => ({
       nowMs,
-      performance: performance(mode, 'camera', away),
+      performance: performance(mode),
+      away,
       cursorPoint,
       chatPoint,
       cameraPoint,
@@ -610,7 +612,7 @@ describe('body director home, goals, roam and tools', () => {
     }
     const sleep = (overrides: Partial<DirectorInput>) => {
       const started = decide(world({ nowMs: 0, ...overrides }))
-      return decide(world({ nowMs: 3_000, performance: performance('idle', 'camera', true), idle: ASLEEP, ...overrides }), started.memory).intent.stance
+      return decide(world({ nowMs: 3_000, away: true, performance: performance('idle', 'camera'), idle: ASLEEP, ...overrides }), started.memory).intent.stance
     }
 
     expect(sit({ rootX: 5 })).toBe('stand')
@@ -906,7 +908,7 @@ describe('body director actions', () => {
   })
 
   it('refuses asleep while away and busy while another clip runs, and lets an action replace a gesture', () => {
-    const away = decide(world({ performance: performance('idle', 'camera', true), actionRequest: action(1) }))
+    const away = decide(world({ away: true, performance: performance('idle', 'camera'), actionRequest: action(1) }))
     const full = decide(world({ actionRequest: action(1, { durationMs: 10_000 }) }))
     const busy = decide(world({ nowMs: 3_000, actionRequest: action(2, { clipId: 'other' }) }), full.memory)
     const loopBusy = decide(world({ nowMs: 3_000, actionRequest: gesture(2) }), decide(world({ actionRequest: dance(1, { loop: true }) })).memory)
@@ -943,7 +945,7 @@ describe('body director actions', () => {
       ['an interaction', { attend: { untilMs: null, touchSeq: 1, chatSeq: 0, chatOpenSeq: 0 } }],
       ['a drag', { dragging: true }],
       ['a chat unfold', { attend: { untilMs: null, touchSeq: 0, chatSeq: 1, chatOpenSeq: 1 }, chatX: 6 }],
-      ['going away', { performance: performance('idle', 'camera', true) }],
+      ['going away', { away: true, performance: performance('idle', 'camera') }],
     ]
 
     it.each(enders)('refreshes the pending goal time to live when %s ends a performance, then accepts a re-request after the refractory', (_name, ender) => {
@@ -1018,6 +1020,7 @@ describe('body director actions', () => {
     const frame = (nowMs: number, patch: Partial<DirectorInput> = {}): DirectorInput => ({
       nowMs,
       performance: performance(),
+      away: false,
       cursorPoint,
       chatPoint,
       cameraPoint,

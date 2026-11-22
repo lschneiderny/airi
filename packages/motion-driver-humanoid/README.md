@@ -325,11 +325,14 @@ A refusal still advances `lastActionSeq` and names `actionRefusal` with
 the body is clear and then `playing`; the adapter echoes `actionFeedback`, and
 `PERFORM_WATCHDOG_MS` ends a one-shot that never reports. A full clip closes the
 locomotion gate, parks the goal in progress as the pending goal, and hands the
-pending goal a fresh time to live when it ends. A poke, a drag, going away, a
-chat unfold (loops only), a chat-send attend (`attend.chatSeq`, loops only) or a move tool (loops only) ends it. Every host supplies
-`attend`, `actionRequest`, `actionFeedback` and
+pending goal a fresh time to live when it ends. Touch and drag attends end broad
+clips; chat attends end looping or unasked clips. The mind's `away` answer ends
+a performance and refuses new clips. A move tool ends looping clips. Every host supplies
+`attend`, `away`, `actionRequest`, `actionFeedback` and
 `dragging`, with or without a stage world; `NO_WORLD_BODY_INPUT` no longer
-defaults them.
+defaults them. Classic receives no attends and keeps `away` false. Dragging
+in progress remains world and keeps its existing clip rules. The resolved
+performance mode stays a continuous world input.
 
 `MMDBody` and `MMDStanceDirector` in `@proj-airi/stage-ui-mmd` are the first
 consumers. The architecture is recorded in

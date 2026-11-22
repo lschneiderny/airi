@@ -15,7 +15,7 @@ export interface MMDStanceSlots {
 export type MMDStance = BodyIntent['stance']
 
 /** Intents, clip requests and the held body; every host supplies them, with or without a stage world. */
-export type MMDStanceInteraction = Pick<BodyDirectorInput, 'attend' | 'actionRequest' | 'actionFeedback' | 'dragging'>
+export type MMDStanceInteraction = Pick<BodyDirectorInput, 'attend' | 'away' | 'actionRequest' | 'actionFeedback' | 'dragging'>
 
 /** The world half of the director input; `NO_WORLD_BODY_INPUT` is its inert value. */
 export type MMDStanceWorld = Omit<BodyDirectorInput, 'nowMs' | 'performance' | 'cursorPoint' | 'chatPoint' | 'cameraPoint' | 'slots' | 'idle' | keyof MMDStanceInteraction>
@@ -171,7 +171,7 @@ export class MMDStanceDirector {
    */
   update(input: {
     nowMs: number
-    performance: Pick<PerformanceState, 'mode' | 'attention' | 'away'>
+    performance: Pick<PerformanceState, 'mode' | 'attention'>
     slots: MMDStanceSlots
     idleMotionName: string
     isRegistered: (name: string) => boolean
@@ -234,7 +234,7 @@ export class MMDStanceDirector {
       this.reason = 'rest-fallback'
     else if (intent.rest === 'doze')
       this.reason = 'doze-fallback'
-    else if (input.performance.away)
+    else if (input.interaction.away)
       this.reason = available.sleep ? 'dwell' : 'no-sleep-slot'
     else if (input.performance.mode === 'idle')
       this.reason = available.sit ? 'idle' : 'no-sit-slot'

@@ -35,10 +35,21 @@ function script() {
 const shape = (intents: { channel: string, kind: string }[]) => intents.map(intent => `${intent.channel}/${intent.kind}`)
 
 describe('answerPresence', () => {
-  it('opens a span without intents', () => {
+  it('answers each away edge once and ignores repeated presence readings', () => {
+    const mind = script()
+    const awayIntents = (intents: ReturnType<typeof mind.send>) => intents.filter(intent => intent.kind === 'away')
+
+    expect(awayIntents(mind.send(T0, comeBack))).toEqual([])
+    expect(awayIntents(mind.send(T0 + SEC, goAway))).toEqual([{ id: '2-away', cause: 2, channel: 'body', kind: 'away', away: true }])
+    expect(awayIntents(mind.send(T0 + 2 * SEC, goAway))).toEqual([])
+    expect(awayIntents(mind.send(T0 + 3 * SEC, comeBack))).toEqual([{ id: '4-away', cause: 4, channel: 'body', kind: 'away', away: false }])
+    expect(awayIntents(mind.send(T0 + 4 * SEC, comeBack))).toEqual([])
+  })
+
+  it('opens a span with one away intent', () => {
     const mind = script()
 
-    expect(mind.send(T0, goAway)).toEqual([])
+    expect(mind.send(T0, goAway)).toEqual([{ id: '1-away', cause: 1, channel: 'body', kind: 'away', away: true }])
     expect(mind.state.presence).toEqual({ away: true, awaySinceMs: T0 })
   })
 
@@ -47,7 +58,7 @@ describe('answerPresence', () => {
     mind.send(T0, goAway)
     const intents = mind.send(T0 + SPAN, comeBack)
 
-    expect(shape(intents)).toEqual(['posture/wake', 'face/moment', 'voice/observe-return'])
+    expect(shape(intents)).toEqual(['posture/wake', 'face/moment', 'voice/observe-return', 'body/away'])
     expect(intents[1]).toMatchObject({ moment: 'welcome-back' })
     expect(intents[2]).toMatchObject({ atMs: T0 + SPAN, awayMs: SPAN })
     expect(new Set(intents.map(intent => intent.cause)).size).toBe(1)
@@ -59,7 +70,7 @@ describe('answerPresence', () => {
     mind.send(T0, goAway)
     const intents = mind.send(T0 + SPAN, unlock(T0 + SPAN))
 
-    expect(shape(intents)).toEqual(['posture/desktop-reaction', 'face/moment', 'voice/observe-wake', 'voice/observe-return'])
+    expect(shape(intents)).toEqual(['posture/desktop-reaction', 'face/moment', 'voice/observe-wake', 'voice/observe-return', 'body/away'])
     expect(intents[0]).toMatchObject({ reaction: 'wake' })
     expect(intents[2]).toMatchObject({ wakeCause: 'unlock', awayMs: SPAN })
   })

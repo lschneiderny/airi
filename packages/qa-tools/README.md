@@ -821,7 +821,10 @@ the mind, its idle intents return to the adapter as orders, and before each
 Natural advance it sends `idle-wake` when `nextIdleWakeAt` is due. Without a
 drive the view stays dormant and the mind decides no idle act. The same mind
 draws every cursor episode: the adapter's cursor reports go to it, and its
-`cursor-episode` intents return to the adapter as orders for the next frame. Four scenarios set one,
+`cursor-episode` intents return to the adapter as orders for the next frame.
+Scripted away edges also reach this mind; the director reads its body `away`
+answer, preserving away-sensitive stance markers such as `sleepy-no-clip`.
+The runner supplies no attend intents. Four scenarios set one,
 each with the product's documented neutral drive (all mood fields 0, sleepiness 0,
 solitude 0, no music except in `music` and `music-beat`, sleep allowed, rate 1) and the whole-body capability the MMD
 scene declares (`body: true`, rules amendment 9; without it she never settles,

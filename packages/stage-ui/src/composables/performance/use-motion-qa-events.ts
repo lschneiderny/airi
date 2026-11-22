@@ -91,6 +91,7 @@ export function useMotionQaEvents(options: {
           ...intent.kind === 'idle-errand' && { errand: intent.errand },
           ...intent.kind === 'cursor-episode' && { band: intent.episode.band, engaging: intent.episode.engaging },
           ...intent.kind === 'attend' && { target: intent.target, attendCause: intent.attendCause, ...intent.target === 'cursor' && { windowMs: intent.windowMs } },
+          ...intent.kind === 'away' && { away: intent.away },
           ...intent.kind === 'chat-read' && { cue: intent.cue, words: intent.words },
           ...intent.kind === 'gesture' && { gesture: intent.gesture, count: intent.count },
         }))),
