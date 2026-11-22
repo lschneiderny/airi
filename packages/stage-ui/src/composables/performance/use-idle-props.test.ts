@@ -72,6 +72,43 @@ describe('useIdleProps', () => {
     expect(answers).toEqual([])
   })
 
+  it('uses the same moment id for the same pick independently of the local stream', () => {
+    const catalog = ['one', 'two', 'three'].map(id => entry(id, { moments: ['poked'] }))
+    const first = setup(catalog)
+    const firstScope = scope!
+    const second = setup(catalog)
+    second.state.random = 0.99
+    try {
+      const picks = new Set<string>()
+      for (let i = 0; i < 100; i++) {
+        const intentId = `${i}-moment`
+        first.props.onMoment('poked', { intentId })
+        second.props.onMoment('poked', { intentId })
+        expect(first.backend.idleActive).toEqual(second.backend.idleActive)
+        for (const id of first.backend.idleActive)
+          picks.add(id)
+        first.run(61)
+        second.run(61)
+      }
+      expect([...picks].sort()).toEqual(['one', 'three', 'two'])
+    }
+    finally {
+      firstScope.stop()
+    }
+  })
+
+  it('keeps the 0.6 chance across 10000 distinct moment ids', () => {
+    const { backend, props, state } = setup([entry('puff', { moments: ['poked'] })])
+    let shown = 0
+    for (let i = 0; i < 10000; i++) {
+      props.onMoment('poked', { intentId: `${i}-moment` })
+      shown += Number(backend.idleActive.length > 0)
+      state.nowMs += 61_000
+      props.tick()
+    }
+    expect(Math.abs(shown / 10000 - 0.6)).toBeLessThan(0.02)
+  })
+
   it('picks a different pastime from the last one while another is offered', () => {
     const { reports, start, end } = setup([entry('game', { idleUse: 'activity' }), entry('snack', { idleUse: 'activity' })])
     start(pastime(1, 0))

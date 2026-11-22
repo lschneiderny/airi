@@ -667,8 +667,8 @@ function onIdle(report: IdleBehaviourReport) {
 }
 
 /** A moment the mind decided, such as a poke or a finished pet; she may mark it with one of her own expressions. */
-function markMoment(moment: Moment) {
-  idleProps.onMoment(moment)
+function markMoment(moment: Moment, intentId: string) {
+  idleProps.onMoment(moment, { intentId })
 }
 
 function updatePerformance() {
