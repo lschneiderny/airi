@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest'
 import { createMMDAnimationManager } from './animation-manager'
 import { MMDBody } from './body'
 import { bodyFixture } from './body/fixture'
-import { CHAT_STAND_GAP_LEGS, chatStandX, directorIdleStates, frameClocks, MMDAttendInbox, MMDStanceDirector, standingBaseMotion } from './stance'
+import { CHAT_STAND_GAP_LEGS, chatStandX, directorIdleStates, frameClocks, MMDAttendInbox, MMDStanceDirector, standingBaseMotion, wanderErrandAnswer } from './stance'
 
 const idle: Pick<PerformanceState, 'mode' | 'attention' | 'away'> = { mode: 'idle', attention: 'camera', away: false }
 const away: Pick<PerformanceState, 'mode' | 'attention' | 'away'> = { mode: 'idle', attention: 'camera', away: true }
@@ -324,7 +324,7 @@ describe('mmd stance director in the stage world', () => {
     const wander = (roamMode: 'stay' | 'roam') => {
       const director = new MMDStanceDirector()
       frame(director, 0, world({ roamMode, seed: 7 }))
-      frame(director, 1_000, world({ roamMode, seed: 7, wander: { seq: 1, pick: 0.9 } }))
+      frame(director, 1_000, world({ roamMode, seed: 7, wander: { seq: 1, pick: 0.9, lingerSeconds: 60 } }))
       return director.diagnostics
     }
     expect(wander('roam')).toMatchObject({ reason: 'wander', roamMode: 'roam', wanderAnswer: { seq: 1, accepted: true } })
@@ -336,19 +336,33 @@ describe('mmd stance director in the stage world', () => {
     const director = new MMDStanceDirector()
     const roam = (patch: Partial<MMDStanceWorld> = {}) => world({ roamMode: 'roam', seed: 7, ...patch })
     frame(director, 0, roam())
-    frame(director, 100, roam({ wander: { seq: 1, pick: 0.9 } }))
+    frame(director, 100, roam({ wander: { seq: 1, pick: 0.9, lingerSeconds: 60 } }))
     const first = director.diagnostics
     expect(first.reason).toBe('wander')
     const goalX = first.goalX!
 
-    frame(director, 2_000, roam({ rootX: goalX / 2, locomotionMode: 'walking', wander: { seq: 2, pick: 0.9 } }))
-    expect(director.diagnostics).toMatchObject({ reason: 'wander', goalX, pendingWander: { seq: 2, pick: 0.9 } })
+    frame(director, 2_000, roam({ rootX: goalX / 2, locomotionMode: 'walking', wander: { seq: 2, pick: 0.9, lingerSeconds: 60 } }))
+    expect(director.diagnostics).toMatchObject({ reason: 'wander', goalX, pendingWander: { seq: 2, pick: 0.9, lingerSeconds: 60 } })
 
-    frame(director, 4_000, roam({ rootX: goalX, locomotionMode: 'idle', wander: { seq: 2, pick: 0.9 } }))
+    frame(director, 4_000, roam({ rootX: goalX, locomotionMode: 'idle', wander: { seq: 2, pick: 0.9, lingerSeconds: 60 } }))
     expect(director.diagnostics).toMatchObject({ goalX: null, reason: 'stay', pendingWander: null, wanderAnswer: { seq: 2, accepted: false } })
 
-    frame(director, 4_100, roam({ rootX: goalX, locomotionMode: 'idle', wander: { seq: 2, pick: 0.9 } }))
+    frame(director, 4_100, roam({ rootX: goalX, locomotionMode: 'idle', wander: { seq: 2, pick: 0.9, lingerSeconds: 60 } }))
     expect(director.diagnostics.goalX).toBeNull()
+  })
+
+  it('keeps the errand through the walk and the stay, and ends it at the walk home', () => {
+    const director = new MMDStanceDirector()
+    const roam = (nowMs: number, overrides: Partial<MMDStanceWorld> = {}) => frame(director, nowMs, world({ roamMode: 'roam', seed: 7, wander: { seq: 1, pick: 0.9, lingerSeconds: 45 }, ...overrides }))
+    roam(100)
+    const goalX = director.diagnostics.goalX as number
+    expect(wanderErrandAnswer(director.diagnostics, 1)).toBeNull()
+    roam(5_000, { rootX: goalX })
+    expect(director.diagnostics.reason).toBe('stay')
+    expect(wanderErrandAnswer(director.diagnostics, 1)).toBeNull()
+    roam(50_000, { rootX: goalX })
+    expect(director.diagnostics.reason).toBe('return-home')
+    expect(wanderErrandAnswer(director.diagnostics, 1)).toBe('done')
   })
 
   it('drops its goal and held goal when the host places her, and waits before walking home', () => {
@@ -478,6 +492,17 @@ describe('mmd stance director with clip performances', () => {
     run(director, at + 100, { actionRequest: dance, attend: { untilMs: EPOCH_MS + at + 60_100, touchSeq: 1, chatSeq: 0, chatOpenSeq: 0 } })
     expect(director.intent?.action).toBeNull()
     expect(director.diagnostics.lastActionSeq).toBe(2)
+  })
+})
+
+describe('wanderErrandAnswer', () => {
+  it('answers a refused wander at once, and an accepted one only once she has left where it took her', () => {
+    expect(wanderErrandAnswer({ wanderAnswer: null, wanderStay: null }, 1)).toBeNull()
+    expect(wanderErrandAnswer({ wanderAnswer: { seq: 1, accepted: false }, wanderStay: null }, 1)).toBe('refused')
+    expect(wanderErrandAnswer({ wanderAnswer: { seq: 1, accepted: true }, wanderStay: { seq: 1, lingerSeconds: 60 } }, 1)).toBeNull()
+    expect(wanderErrandAnswer({ wanderAnswer: { seq: 1, accepted: true }, wanderStay: null }, 1)).toBe('done')
+    // An answer to an older errand says nothing about this one.
+    expect(wanderErrandAnswer({ wanderAnswer: { seq: 1, accepted: true }, wanderStay: null }, 2)).toBeNull()
   })
 })
 

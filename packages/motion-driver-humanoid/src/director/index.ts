@@ -35,10 +35,6 @@ export const VISIT_SHARE = 0.6
 /** Distance, in leg lengths, at which a visit stops short of the cursor: near enough to watch, not on top of it. */
 export const VISIT_STOP_LEGS = 1.5
 
-/** Lower and upper bound, in milliseconds, of the time she stays where a wander or a visit took her. */
-export const LINGER_MIN_MS = 45_000
-export const LINGER_MAX_MS = 150_000
-
 /** Refractory in milliseconds shared by the come-here and go-home tools. */
 export const MOVE_TOOL_REFRACTORY_MS = 60_000
 
@@ -200,11 +196,12 @@ export interface BodyDirectorInput {
   idle: { settled: boolean, asleep: boolean }
   /**
    * A wander Natural's idle draw started (its errand `seq`; idle agency ADR, amendment of 2026-11-14), or null. A new
-   * `seq` is a new request. The mind's `pick` decides the visit share. The director walks it in roam mode as a wander or a visit, holds it while she cannot walk
+   * `seq` is a new request. The mind's `pick` decides the visit share, and `lingerSeconds` is how long she stays where
+   * the wander or visit took her, which the mind drew with the errand. The director walks it in roam mode as a wander or a visit, holds it while she cannot walk
    * yet, and refuses it without ground, outside roam mode, on arrival from another goal, without room to wander, or
    * when it could not be walked within `PENDING_GOAL_TTL_MS`. `BodyDirectorMemory.wanderAnswer` carries the answer.
    */
-  wander: { seq: number, pick: number } | null
+  wander: { seq: number, pick: number, lingerSeconds: number } | null
 }
 
 /**
@@ -273,12 +270,17 @@ export interface BodyDirectorMemory {
   /** The latest wander request read; a request with a higher `seq` is new. */
   readonly lastWanderSeq: number
   /** A wander asked for and not walked yet, and since when. */
-  readonly pendingWander: { seq: number, pick: number, sinceMs: number } | null
+  readonly pendingWander: { seq: number, pick: number, lingerSeconds: number, sinceMs: number } | null
   /** The answer to the latest wander request: walked (`accepted`) or refused; null before the first. */
   readonly wanderAnswer: { seq: number, accepted: boolean } | null
   /** Until when she stays where a wander or a visit took her before walking home; 0 when no stay applies. */
   readonly lingerUntilMs: number
-  /** Mulberry32 seed advanced after every draw; null until seeded from the input. */
+  /**
+   * The accepted wander errand she is on, from its acceptance until she leaves where it took her: at the walk home, at
+   * home once its linger passed, or when another goal takes her away. Its realiser ends the errand when it clears.
+   */
+  readonly wanderStay: { seq: number, lingerSeconds: number } | null
+  /** Mulberry32 seed advanced after every wander position draw; null until seeded from the input. */
   readonly rngState: number | null
   readonly lookOverride: { seq: number, target: BodyLookTarget, untilMs: number } | null
 }
@@ -316,6 +318,7 @@ export const initialBodyDirectorMemory: BodyDirectorMemory = Object.freeze({
   pendingWander: null,
   wanderAnswer: null,
   lingerUntilMs: 0,
+  wanderStay: null,
   rngState: null,
   lookOverride: null,
 })
@@ -402,6 +405,7 @@ export function decideBody(
     pendingWander = null
   }
   let lingerUntilMs = previous.lingerUntilMs
+  let wanderStay = ground === null ? null : previous.wanderStay
   let toolRefused = previous.toolRefused
   let toolRetryAfterMs = previous.toolRetryAfterMs
   let toolRefusalReason = previous.toolRefusalReason
@@ -431,12 +435,10 @@ export function decideBody(
     // Chases walk; the corrective approach strolls, so its own arrival never arms a second step.
     if (reachedCursor && reason === 'approach-cursor' && goalPace === 'walk')
       cursorStepPending = true
-    // A walk of her own choosing has a destination worth staying at: she does not turn around after 20 seconds.
-    if (reason === 'wander' || reason === 'visit') {
-      const draw = drawRandom(rngState)
-      rngState = draw.state
-      lingerUntilMs = nowMs + LINGER_MIN_MS * (LINGER_MAX_MS / LINGER_MIN_MS) ** draw.value
-    }
+    // A walk of her own choosing has a destination worth staying at: she does not turn around after 20 seconds, but
+    // stays as long as the mind drew with the errand.
+    if ((reason === 'wander' || reason === 'visit') && wanderStay !== null)
+      lingerUntilMs = nowMs + wanderStay.lingerSeconds * 1000
     goalX = null
     reason = 'stay'
   }
@@ -453,7 +455,7 @@ export function decideBody(
   if (input.wander !== null && input.wander.seq > lastWanderSeq) {
     lastWanderSeq = input.wander.seq
     refuseWander()
-    pendingWander = { seq: input.wander.seq, pick: input.wander.pick, sinceMs: nowMs }
+    pendingWander = { seq: input.wander.seq, pick: input.wander.pick, lingerSeconds: input.wander.lingerSeconds, sinceMs: nowMs }
   }
   if (ground === null || input.roamMode !== 'roam' || arrived)
     refuseWander()
@@ -708,6 +710,9 @@ export function decideBody(
   const canIssue = () => gateOpen && !issued && (goalX === null || goalSinceMs === null || nowMs - goalSinceMs >= GOAL_MIN_DWELL_MS)
   const issue = (goal: BodyGoalRequest) => {
     cursorStepPending = false
+    // Any other goal takes her away from where a wander took her, the walk home included.
+    if (goal.reason !== 'wander' && goal.reason !== 'visit')
+      wanderStay = null
     goalX = goal.x
     goalPace = goal.pace
     reason = goal.reason
@@ -747,6 +752,9 @@ export function decideBody(
   ) {
     issue({ x: clampToZones(input.homeX, zones), pace: 'stroll', reason: 'return-home' })
   }
+  // A stay that ends at home needs no walk home.
+  if (wanderStay !== null && goalX === null && nowMs >= lingerUntilMs && atHome)
+    wanderStay = null
 
   // A root at rest in a wing is unseen, so she walks to the nearest zone. Issuing here also keeps a wander from starting there.
   if (inWing && input.reach !== undefined && pending === null && goalX === null && input.locomotionMode === 'idle' && canIssue())
@@ -764,9 +772,7 @@ export function decideBody(
     // A cursor already within a visit's stop distance is a visit that has arrived: she stays where she is.
     const visitInPlace = cursorDistance !== null && cursorDistance <= VISIT_STOP_LEGS * leg
     const arriveInPlace = () => {
-      const draw = drawRandom(rngState)
-      rngState = draw.state
-      lingerUntilMs = nowMs + LINGER_MIN_MS * (LINGER_MAX_MS / LINGER_MIN_MS) ** draw.value
+      lingerUntilMs = nowMs + asked.lingerSeconds * 1000
       lastReasonMs = nowMs
       issued = true
     }
@@ -815,6 +821,7 @@ export function decideBody(
     }
     if (issued) {
       wanderAnswer = { seq: asked.seq, accepted: true }
+      wanderStay = { seq: asked.seq, lingerSeconds: asked.lingerSeconds }
       pendingWander = null
     }
   }
@@ -881,6 +888,7 @@ export function decideBody(
       pendingWander,
       wanderAnswer,
       lingerUntilMs,
+      wanderStay,
       rngState,
       lookOverride,
     },

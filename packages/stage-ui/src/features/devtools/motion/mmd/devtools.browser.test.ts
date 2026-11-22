@@ -91,6 +91,7 @@ const fixture: Partial<MMDMotionSnapshot> = {
     roamMode: 'stay',
     pendingWander: null,
     wanderAnswer: null,
+    wanderStay: null,
     clockOffsetMs: 60_000,
     centerY: -6.512,
   },

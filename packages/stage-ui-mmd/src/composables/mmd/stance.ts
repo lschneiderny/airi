@@ -53,6 +53,21 @@ export interface MMDStanceDiagnostics {
   pendingWander: BodyDirectorMemory['pendingWander']
   /** The director's answer to the latest wander Natural asked for. */
   wanderAnswer: BodyDirectorMemory['wanderAnswer']
+  /** The accepted wander she is on until she leaves where it took her; null otherwise. */
+  wanderStay: BodyDirectorMemory['wanderStay']
+}
+
+/**
+ * The realiser's answer to wander errand `seq`, or null while it runs: `refused` when the director refused it, and
+ * `done` once the director accepted it and she has left where it took her, at the walk home or when another goal took
+ * her away (CM9d, decision D12).
+ */
+export function wanderErrandAnswer(diagnostics: Pick<MMDStanceDiagnostics, 'wanderAnswer' | 'wanderStay'>, seq: number): 'done' | 'refused' | null {
+  if (diagnostics.wanderAnswer?.seq !== seq)
+    return null
+  if (!diagnostics.wanderAnswer.accepted)
+    return 'refused'
+  return diagnostics.wanderStay?.seq === seq ? null : 'done'
 }
 
 /**
@@ -298,6 +313,7 @@ export class MMDStanceDirector {
       roamMode: this.roamMode,
       pendingWander: this.memory.pendingWander,
       wanderAnswer: this.memory.wanderAnswer,
+      wanderStay: this.memory.wanderStay,
     }
   }
 }
