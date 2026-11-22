@@ -404,6 +404,14 @@ export class MMDBody {
     return this.gait
   }
 
+  /**
+   * The gait carries her: it turns, starts, walks, or sidesteps, but is neither idle nor stopping. The gaze arbiter
+   * reads it as travel (`MMDNaturalInput` `traveling`), and `resolveGaze` aims along the walk while no glance holds.
+   */
+  get traveling(): boolean {
+    return this.gait !== null && this.gait.mode !== 'idle' && this.gait.mode !== 'stopping'
+  }
+
   /** Runs this display frame's ticks: the gait first, then the performer with that tick's gait frame. */
   private advance({ dt }: MMDFrameContext): void {
     const input = this.input
@@ -525,9 +533,10 @@ export class MMDBody {
 
   /**
    * The gaze goal in the stance frame (mesh-local, so facing is the hip yaw on the center bone), architecture 3e, first
-   * match wins: the travel direction while walking; the cursor while Natural fixates it; the chat while Natural looks
-   * at it; otherwise the camera direction deflected by Natural's free fixation. Without points (gaze mode `none`) the
-   * free fixation is taken around the facing. No forced attention point exists yet, so 3e's forced row is absent.
+   * match wins: the travel direction while walking unless a glance that outranks travel holds (Natural's `gaze.held`);
+   * the cursor while Natural fixates it; the chat while Natural looks at it; otherwise the camera direction deflected by
+   * Natural's free fixation, which is where a held glance shows. Without points (gaze mode `none`) the free fixation is
+   * taken around the facing. No forced attention point exists yet, so 3e's forced row is absent.
    */
   private resolveGaze(input: MMDBodyInput): void {
     const { pose } = this
@@ -538,11 +547,9 @@ export class MMDBody {
     const points = input.disableLookAt ? null : input.points
     const on = input.intent.gaze.on
     this.gazeTarget = (on === 'cursor' ? points?.cursor : on === 'chat' ? points?.chat : null) ?? null
-    const moving = this.gait !== null && this.gait.mode !== 'idle' && this.gait.mode !== 'stopping'
-    if (this.gait && moving) {
-      // Architecture 5.5: while she turns, the eyes and head go to the facing still to come, and the body turns under
-      // them; on a straight walk nothing is left to turn and the gaze runs along the travel line. The root turns the
-      // stance frame about up, so that direction is the stance forward turned by the remaining yaw.
+    if (this.gait && this.traveling && !input.intent.gaze.held) {
+      // Architecture 5.5: the eyes and head lead a turn toward the facing still to come; on a straight walk they run
+      // along the travel line. That direction is the stance forward turned about up by the remaining yaw.
       const ahead = this.scratch.copy(this.pose.forward).applyAxisAngle(this.pose.up, this.gait.lookAhead - this.gait.root.yaw)
       this.gazeGoal.yaw = Math.atan2(ahead.dot(this.pose.right), ahead.dot(this.pose.forward))
       this.gazeGoal.pitch = TRAVEL_PITCH

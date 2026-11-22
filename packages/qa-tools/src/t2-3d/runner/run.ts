@@ -203,6 +203,7 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
             chat,
             placement: null,
             emotionStrengths: {},
+            traveling: body.traveling,
           }, naturalSeconds)
           for (const report of natural.idleBehaviours)
             sampler.recorder.event({ t: naturalSeconds, kind: 'marker', label: idleMarkerLabel(report) })
