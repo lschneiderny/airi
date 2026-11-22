@@ -18,10 +18,10 @@ The remaining character mind slices stopped mid-flight on the Linux machine so t
 | CM6a close-out | landed: #70, then the sidestep in #73 | Stop early, the cursor delay cut (28.4 to 16.4 ms on macOS), the corrective step, and the owner's sidestep without a turn. All nine headless scenarios `IDENTICAL`. After a 4 s rest every press pokes; presses 0.6 to 2 s after landing still miss about half the time, because she is still braking | The owner ruled against a shorter brake (2026-11-21); nothing left |
 | CM5b beat lock | landed: #71 (#68 rebased after #69; #68 closed) | Everything | Nothing |
 | CM6b1 glances | landed: #69 | Everything | Nothing |
-| CM6b2 director on intents | landed: #74 | Items 8 to 13, all nine scenarios `IDENTICAL`, rendered away step | The rendered clip-ending checks (steps 6 and 9) need a motion clip; no `.vmd` is on the test machine (question pending) |
-| CM7 performers | c6 landed in #72 (the mapping-weights editor, with a window-synced `stage-expression-catalog` mirror so the settings window sees the stage's model); CM7a in progress on `luke/feat/character-mind-capabilities` | The plan is on `main` | CM7a, then CM7b, CM7c, and CM7d in parallel |
-| S2 store tiers | in progress on `luke/refactor/character-mind-store-tiers` | Plan `.omo/plans/character-mind-store-tiers.md`; upstream exceptions declared by owner, the scanner rejects new plain fork state, consent in one leader document | The remaining commits, gate, PR |
-| CM8 touch and notices | plan only: `.omo/plans/character-mind-notify-touch.md` (on the S2 branch) | Overlaps 11 to 13 planned | Waits for CM7a and CM7c, and for the owner's D2 ruling on touch under the upstream drivers (question pending) |
+| CM6b2 director on intents | landed: #74 | Items 8 to 13, all nine scenarios `IDENTICAL`, rendered away step, and the rendered clip endings with a freely redistributable VMD: under Natural a sent message and an opened chat end a looping clip, under classic they do not | The drag release and the walk to the chat cannot be staged by the QA harness; Node tests cover them |
+| CM7 performers | c6 landed in #72; CM7a done on `luke/feat/character-mind-capabilities` (ten scenarios `IDENTICAL`, four rendered checks pass), being rebased onto S2 | The plan is on `main` | Land CM7a, then CM7b, CM7c, and CM7d in parallel |
+| S2 store tiers | landed: #75 | Fork-owned state moved to the persistence tiers; the relaunch shows 0 follower errors and "Delete all data" clears every new and legacy key | Nothing |
+| CM8 touch and notices | plan on `main`: `.omo/plans/character-mind-notify-touch.md` | Overlaps 11 to 13 planned; the owner ruled D2 on 2026-11-21: touch changes only under Natural, and the upstream drivers keep theirs as shipped | Waits for CM7a and CM7c |
 | L2 | `main` | The observer golden hashes pass unchanged on macOS; roadmap row L is done | Nothing |
 
 ## Resuming a WIP branch
