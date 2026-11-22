@@ -14,11 +14,16 @@ import { cleanup, render } from 'vitest-browser-vue'
 import { page, userEvent } from 'vitest/browser'
 import { nextTick, watch } from 'vue'
 import { createI18n } from 'vue-i18n'
+import { createMemoryHistory, createRouter } from 'vue-router'
 
 import { useCharacterBehaviorSettings } from '../../../../features/character-behavior/settings'
 
 import '@unocss/reset/tailwind.css'
 import '@proj-airi/ui/main.css'
+
+function createTestRouter() {
+  return createRouter({ history: createMemoryHistory(), routes: [{ path: '/:pathMatch(.*)*', component: { render: () => null } }] })
+}
 
 function createTestI18n() {
   return createI18n({
@@ -88,7 +93,7 @@ async function renderRemoteExpressions(groups: ExpressionEntry[], options: { sho
   const onLive2dExpressionCommand = vi.fn()
   const screen = await render(Live2DSettings, {
     props: { palette: [], runtimeSnapshot: remoteSnapshot(groups), onLive2dExpressionCommand },
-    global: { plugins: [pinia, createTestI18n()] },
+    global: { plugins: [pinia, createTestI18n(), createTestRouter()] },
   })
   await screen.getByText(t('settings.live2d.expressions.title'), { exact: true }).click()
   if (options.showAll)
@@ -109,7 +114,7 @@ async function renderNaturalEmotionStrength(pinia: Pinia, errorHandler?: (error:
   const natural = useLive2DNaturalSettings(pinia)
   const screen = await render(Live2DSettings, {
     props: { palette: [], runtimeSnapshot: remoteSnapshot([]) },
-    global: { plugins: [pinia, createTestI18n()], config: { errorHandler } },
+    global: { plugins: [pinia, createTestI18n(), createTestRouter()], config: { errorHandler } },
   })
   await screen.getByText(t('settings.live2d.animation.title'), { exact: true }).click()
   await screen.getByRole('radio', { name: 'Natural', exact: true }).click()
@@ -215,7 +220,7 @@ describe('live2D model settings', () => {
         onLive2dExpressionCommand,
       },
       global: {
-        plugins: [pinia, createTestI18n()],
+        plugins: [pinia, createTestI18n(), createTestRouter()],
       },
     })
 
@@ -476,36 +481,19 @@ describe('live2D model settings', () => {
     await expect.element(screen.getByText(t('settings.live2d.expressions.stale'), { exact: true })).not.toBeInTheDocument()
   })
 
-  it('updates the performance settings store from the Emotion performance switches', async () => {
-    Object.assign(window, { Live2DCubismCore: {} })
-    const { default: Live2DSettings } = await import('./live2d.vue')
-    await import('virtual:uno.css')
+  it('keeps emotion behavior when expression realisation is reset', async () => {
+    const { useExpressionPerformanceSettings } = await import('../../../../features/performance/settings')
     const pinia = createPinia()
     const behavior = useCharacterBehaviorSettings(pinia)
-    const screen = await render(Live2DSettings, {
-      props: { palette: [], runtimeSnapshot: remoteSnapshot([]) },
-      global: { plugins: [pinia, createTestI18n()] },
-    })
-    await screen.getByText(t('settings.live2d.performance.title'), { exact: true }).click()
-    const bands = screen.getByRole('switch', { name: t('settings.live2d.performance.bands.title') })
-    await expect.element(bands).toBeChecked()
+    const realisation = useExpressionPerformanceSettings(pinia)
     expect(behavior.document.emotion.bands).toBe(true)
-    const bandsChanged = new Promise<boolean>((resolve, reject) => {
-      const stop = watch(() => behavior.document.emotion.bands, (value) => {
-        stop()
-        resolve(value)
-      }, { flush: 'sync' })
-      AbortSignal.timeout(5000).addEventListener('abort', () => {
-        stop()
-        reject(new Error('behavior.document.emotion.bands did not change after the switch click'))
-      })
-    })
-    await bands.click()
-    expect(await bandsChanged).toBe(false)
+    await behavior.update({ emotion: { bands: false } })
+    await realisation.update({ autoExpressions: false })
+    await realisation.reset()
     expect(behavior.document.emotion.bands).toBe(false)
-    await expect.element(bands).not.toBeChecked()
-    expect(JSON.parse(localStorage.getItem('settings/character-behavior') ?? '{}').emotion.bands).toBe(false)
     expect(behavior.document.emotion.mood).toBe(true)
+    expect(realisation.document.autoExpressions).toBe(true)
+    expect(JSON.parse(localStorage.getItem('settings/character-behavior')!).emotion.bands).toBe(false)
   })
 
   it('switches the expression decider between picker and planner', async () => {
@@ -519,7 +507,7 @@ describe('live2D model settings', () => {
     const performance = useExpressionPerformanceSettings(pinia)
     const screen = await render(Live2DSettings, {
       props: { palette: [], runtimeSnapshot: remoteSnapshot([]) },
-      global: { plugins: [pinia, createTestI18n()] },
+      global: { plugins: [pinia, createTestI18n(), createTestRouter()] },
     })
     await screen.getByText(t('settings.live2d.performance.title'), { exact: true }).click()
     const picker = screen.getByRole('radio', { name: t('settings.live2d.performance.decider.options.picker.title'), exact: true })
@@ -563,7 +551,7 @@ describe('live2D model settings', () => {
     const screen = await render(Live2DSettings, {
       props: { palette: [], runtimeSnapshot: remoteSnapshot([]) },
       global: {
-        plugins: [pinia, createTestI18n()],
+        plugins: [pinia, createTestI18n(), createTestRouter()],
         config: {
           errorHandler: (error) => {
             handledErrors.push(error)
@@ -621,16 +609,13 @@ describe('live2D model settings', () => {
           updatedAt: 1,
         },
       },
-      global: { plugins: [pinia, createTestI18n()] },
+      global: { plugins: [pinia, createTestI18n(), createTestRouter()] },
     })
     await screen.getByText(t('settings.live2d.animation.title'), { exact: true }).click()
     await expect.element(screen.getByRole('radio', { name: 'Universal', exact: true })).toBeChecked()
     for (const enabled of [false, true, false]) {
       await screen.getByRole('radio', { name: 'Natural', exact: true }).click()
-      const cursor = screen.getByRole('switch', { name: t('settings.live2d.animation.natural-cursor-attention.title') })
-      await expect.element(cursor).toBeEnabled()
-      if (useCharacterBehaviorSettings(pinia).document.cursorAttention !== enabled)
-        await cursor.click()
+      await useCharacterBehaviorSettings(pinia).update({ cursorAttention: enabled })
       await nextTick()
       expect(useCharacterBehaviorSettings(pinia).document.cursorAttention).toBe(enabled)
       expect(localStorage.getItem('settings/live2d/motion-driver')).toBe('natural')
@@ -644,7 +629,6 @@ describe('live2D model settings', () => {
       else
         await expect.element(screen.getByText(t('settings.live2d.animation.focus.offset'), { exact: true })).not.toBeInTheDocument()
       await screen.getByRole('radio', { name: 'MAGIC', exact: true }).click()
-      await expect.element(cursor).not.toBeInTheDocument()
       await screen.getByRole('radio', { name: 'Universal', exact: true }).click()
       await expect.element(screen.getByRole('switch', { name: t('settings.live2d.animation.focus.title') })).not.toBeChecked()
       await expect.element(screen.getByRole('combobox')).toBeEnabled()
@@ -692,7 +676,7 @@ describe('live2D model settings', () => {
           updatedAt: 1,
         },
       },
-      global: { plugins: [pinia, createTestI18n()] },
+      global: { plugins: [pinia, createTestI18n(), createTestRouter()] },
     })
     const name = t('settings.live2d.animation.natural-screen-awareness.title')
     await screen.getByText(t('settings.live2d.animation.title'), { exact: true }).click()
@@ -745,7 +729,7 @@ describe('live2D model settings', () => {
           updatedAt: 1,
         },
       },
-      global: { plugins: [pinia, createTestI18n()] },
+      global: { plugins: [pinia, createTestI18n(), createTestRouter()] },
     })
     await screen.getByText(t('settings.live2d.animation.title'), { exact: true }).click()
     const eyeTracking = screen.getByRole('switch', { name: t('settings.live2d.animation.focus.title') })
@@ -753,7 +737,7 @@ describe('live2D model settings', () => {
     await screen.getByRole('radio', { name: 'Natural', exact: true }).click()
     await expect.element(eyeTracking).not.toBeInTheDocument()
     // Natural replaces eye tracking with cursor attention, so turning touch off must not bring it back.
-    await screen.getByRole('switch', { name: t('settings.live2d.animation.natural-touch.title') }).click()
+    await behavior.update({ touchReactions: false })
     await nextTick()
     expect(behavior.document.touchReactions).toBe(false)
     await expect.element(eyeTracking).not.toBeInTheDocument()
@@ -788,7 +772,7 @@ describe('live2D model settings', () => {
           updatedAt: 1,
         },
       },
-      global: { plugins: [pinia, createTestI18n()] },
+      global: { plugins: [pinia, createTestI18n(), createTestRouter()] },
     })
     await screen.getByText(t('settings.live2d.animation.title'), { exact: true }).click()
     // A missing locale entry renders the key, which the role query would still match.
@@ -927,37 +911,20 @@ describe('live2D model settings', () => {
     }
   })
 
-  it('toggles held emotions in the synced performance document', async () => {
-    Object.assign(window, { Live2DCubismCore: {} })
-    const { default: Live2DSettings } = await import('./live2d.vue')
-    await import('virtual:uno.css')
+  it('updates held emotions without changing expression realisation', async () => {
+    const { useExpressionPerformanceSettings } = await import('../../../../features/performance/settings')
     const pinia = createPinia()
     const behavior = useCharacterBehaviorSettings(pinia)
-    const screen = await render(Live2DSettings, {
-      props: { palette: [], runtimeSnapshot: remoteSnapshot([]) },
-      global: { plugins: [pinia, createTestI18n()] },
-    })
-    await screen.getByText(t('settings.live2d.performance.title'), { exact: true }).click()
-    const held = screen.getByRole('switch', { name: t('settings.live2d.performance.held-emotions.title') })
-    await expect.element(held).toBeChecked()
+    const realisation = useExpressionPerformanceSettings(pinia)
+    await realisation.update({ slots: { holdSeconds: 3 } })
+    const stored = localStorage.getItem('settings/expression-performance')
     expect(behavior.document.emotion.heldEmotions).toBe(true)
-    const heldChanged = new Promise<boolean>((resolve, reject) => {
-      const stop = watch(() => behavior.document.emotion.heldEmotions, (value) => {
-        stop()
-        resolve(value)
-      }, { flush: 'sync' })
-      AbortSignal.timeout(5000).addEventListener('abort', () => {
-        stop()
-        reject(new Error('behavior.document.emotion.heldEmotions did not change after the switch click'))
-      })
-    })
-    await held.click()
-    expect(await heldChanged).toBe(false)
-    await expect.element(held).not.toBeChecked()
-    expect(JSON.parse(localStorage.getItem('settings/character-behavior') ?? '{}').emotion.heldEmotions).toBe(false)
+    await behavior.update({ emotion: { heldEmotions: false } })
+    expect(behavior.document.emotion.heldEmotions).toBe(false)
     expect(behavior.document.emotion.mood).toBe(true)
-    await held.click()
-    await expect.element(held).toBeChecked()
+    expect(JSON.parse(localStorage.getItem('settings/character-behavior')!).emotion.heldEmotions).toBe(false)
+    expect(localStorage.getItem('settings/expression-performance')).toBe(stored)
+    await behavior.update({ emotion: { heldEmotions: true } })
     expect(behavior.document.emotion.heldEmotions).toBe(true)
   })
 
@@ -993,15 +960,15 @@ describe('live2D model settings', () => {
           updatedAt: 1,
         },
       },
-      global: { plugins: [pinia, createTestI18n()] },
+      global: { plugins: [pinia, createTestI18n(), createTestRouter()] },
     })
     await screen.getByText(t('settings.live2d.animation.title'), { exact: true }).click()
     await screen.getByRole('radio', { name: 'Natural', exact: true }).click()
-    const cursor = screen.getByRole('switch', { name: t('settings.live2d.animation.natural-cursor-attention.title') })
-    await expect.element(cursor).toBeChecked()
+    const screenLean = screen.getByRole('switch', { name: t('settings.live2d.animation.natural-screen-awareness.title') })
+    await expect.element(screenLean).toBeChecked()
     const energy = screen.getByRole('slider', { name: t('settings.live2d.animation.natural-energy.title') })
     await expect.element(energy).toBeVisible()
-    for (const control of [cursor, energy, screen.getByRole('radio', { name: 'Natural', exact: true })]) {
+    for (const control of [screenLean, energy, screen.getByRole('radio', { name: 'Natural', exact: true })]) {
       const bounds = control.element().getBoundingClientRect()
       expect(bounds.left).toBeGreaterThanOrEqual(0)
       expect(bounds.right).toBeLessThanOrEqual(width)
@@ -1067,7 +1034,7 @@ describe('live2D model settings', () => {
 
     const screen = await render(Live2DSettings, {
       props: { palette: [], runtimeSnapshot },
-      global: { plugins: [pinia, createTestI18n()] },
+      global: { plugins: [pinia, createTestI18n(), createTestRouter()] },
     })
 
     const cards = useAiriCardStore(pinia)

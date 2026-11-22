@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
+import type { ExpressionRealisationSettings } from '@proj-airi/stage-shared/expression-performance'
 import type {
   Live2DContext,
   Live2DExpressionSettingsCommand,
@@ -15,6 +15,7 @@ import { Button, Checkbox, FieldCheckbox, FieldCombobox, FieldRange, SelectTab }
 import { storeToRefs } from 'pinia'
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { RouterLink } from 'vue-router'
 
 import MagicMotionSettings from '../../../../features/motions/live2d/components/magic-settings.vue'
 import ExpressionPanel from './expressions/panel.vue'
@@ -66,10 +67,6 @@ async function updateNaturalSettings(patch: Parameters<typeof naturalSettings.up
   await naturalSettings.update(patch)
 }
 
-async function updateBehaviorSettings(patch: Parameters<typeof behaviorSettings.update>[0]) {
-  await behaviorSettings.update(patch)
-}
-
 const motionDriverOptions = computed<SelectTabOption<Live2DMotionDriver>[]>(() => [
   {
     value: 'universal',
@@ -111,7 +108,7 @@ function applyExpressionSettingsCommand(command: Live2DExpressionSettingsCommand
 }
 
 const performanceSettings = useExpressionPerformanceSettings()
-const deciderOptions = computed<SelectTabOption<ExpressionPerformanceSettings['decider']>[]>(() => [
+const deciderOptions = computed<SelectTabOption<ExpressionRealisationSettings['decider']>[]>(() => [
   {
     value: 'picker',
     label: t('settings.live2d.performance.decider.options.picker.title'),
@@ -358,6 +355,9 @@ const showAllExpressions = ref(false)
         :class="['shrink-0']"
       />
     </label>
+    <RouterLink to="/settings/behavior" :class="['text-sm text-primary-600 dark:text-primary-400 hover:underline']">
+      {{ t('settings.pages.behavior.link') }}
+    </RouterLink>
     <MagicMotionSettings v-if="live2dMotionDriver === 'magic'" />
     <FieldRange
       v-if="live2dMotionDriver === 'natural'"
@@ -372,35 +372,11 @@ const showAllExpressions = ref(false)
     />
     <FieldCheckbox
       v-if="live2dMotionDriver === 'natural'"
-      :model-value="behaviorSettings.document.cursorAttention"
-      :label="t('settings.live2d.animation.natural-cursor-attention.title')"
-      :description="t('settings.live2d.animation.natural-cursor-attention.description')"
-      placement="right"
-      @update:model-value="updateBehaviorSettings({ cursorAttention: $event })"
-    />
-    <FieldCheckbox
-      v-if="live2dMotionDriver === 'natural'"
       :model-value="naturalSettings.document.screenLean"
       :label="t('settings.live2d.animation.natural-screen-awareness.title')"
       :description="t('settings.live2d.animation.natural-screen-awareness.description')"
       placement="right"
       @update:model-value="updateNaturalSettings({ screenLean: $event })"
-    />
-    <FieldCheckbox
-      v-if="live2dMotionDriver === 'natural'"
-      :model-value="behaviorSettings.document.idleActivities"
-      :label="t('settings.live2d.animation.natural-idle-activities.title')"
-      :description="t('settings.live2d.animation.natural-idle-activities.description')"
-      placement="right"
-      @update:model-value="updateBehaviorSettings({ idleActivities: $event })"
-    />
-    <FieldCheckbox
-      v-if="live2dMotionDriver === 'natural'"
-      :model-value="behaviorSettings.document.touchReactions"
-      :label="t('settings.live2d.animation.natural-touch.title')"
-      :description="t('settings.live2d.animation.natural-touch.description')"
-      placement="right"
-      @update:model-value="updateBehaviorSettings({ touchReactions: $event })"
     />
     <FieldCheckbox
       v-if="live2dMotionDriver === 'natural' && behaviorSettings.document.touchReactions"
@@ -858,27 +834,6 @@ const showAllExpressions = ref(false)
     size="sm"
     :expand="false"
   >
-    <FieldCheckbox
-      :model-value="behaviorSettings.document.emotion.bands"
-      :label="t('settings.live2d.performance.bands.title')"
-      :description="t('settings.live2d.performance.bands.description')"
-      placement="right"
-      @update:model-value="updateBehaviorSettings({ emotion: { bands: $event } })"
-    />
-    <FieldCheckbox
-      :model-value="behaviorSettings.document.emotion.mood"
-      :label="t('settings.live2d.performance.mood.title')"
-      :description="t('settings.live2d.performance.mood.description')"
-      placement="right"
-      @update:model-value="updateBehaviorSettings({ emotion: { mood: $event } })"
-    />
-    <FieldCheckbox
-      :model-value="behaviorSettings.document.emotion.heldEmotions"
-      :label="t('settings.live2d.performance.held-emotions.title')"
-      :description="t('settings.live2d.performance.held-emotions.description')"
-      placement="right"
-      @update:model-value="updateBehaviorSettings({ emotion: { heldEmotions: $event } })"
-    />
     <FieldCheckbox
       :model-value="performanceSettings.document.autoExpressions"
       :label="t('settings.live2d.performance.auto-expressions.title')"

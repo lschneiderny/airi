@@ -2,94 +2,34 @@
 import type { SituationSettings } from '@proj-airi/stage-ui/features/situation/settings'
 
 import { useSituationSettings } from '@proj-airi/stage-ui/features/situation/settings'
-import { useCharacterBehaviorSettings } from '@proj-airi/stage-ui/stores/settings'
-import { FieldCheckbox, FieldRange, Textarea } from '@proj-airi/ui'
-import { computed, reactive, watch } from 'vue'
+import { FieldCheckbox, Textarea } from '@proj-airi/ui'
+import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-
-type AppListField = 'quietApps' | 'blockedApps'
+import { RouterLink } from 'vue-router'
 
 const { t } = useI18n()
 const settings = useSituationSettings()
-const behaviorSettings = useCharacterBehaviorSettings()
+const blockedAppsDraft = ref('')
 
-// `update` is a leader-routed synced action, so callers await it instead of dropping the promise.
 async function updateSettings(patch: Partial<SituationSettings>) {
   await settings.update(patch)
 }
 
-async function updateSpeaking(patch: Parameters<typeof behaviorSettings.update>[0]['speaking']) {
-  await behaviorSettings.update({ speaking: patch })
-}
+// Keep raw text while typing; the owner normalizes the list when the field loses focus.
+watch(() => settings.document.blockedApps.join('\n'), (value) => {
+  blockedAppsDraft.value = value
+}, { immediate: true })
 
-// Drafts keep the raw text while the user types; a list is committed when its field loses focus
-// (`change`), and the store trims entries and drops blank lines.
-const drafts = reactive<Record<AppListField, string>>({ quietApps: '', blockedApps: '' })
-for (const field of ['quietApps', 'blockedApps'] as const) {
-  watch(() => (field === 'quietApps' ? behaviorSettings.document.speaking.quietApps : settings.document.blockedApps).join('\n'), (text) => {
-    drafts[field] = text
-  }, { immediate: true })
-}
-
-async function commitAppList(field: AppListField) {
-  const entries = drafts[field].split('\n')
-  if (field === 'quietApps')
-    await updateSpeaking({ quietApps: entries })
-  else
-    await updateSettings({ blockedApps: entries })
-}
-
-const appLists = computed(() => [
-  {
-    field: 'quietApps' as const,
-    title: t('settings.pages.presence.quiet-apps.title'),
-    description: t('settings.pages.presence.quiet-apps.description'),
-  },
-  {
-    field: 'blockedApps' as const,
-    title: t('settings.pages.presence.blocked-apps.title'),
-    description: t('settings.pages.presence.blocked-apps.description'),
-  },
-])
-
-function formatChattiness(value: number) {
-  return `${Math.round(value * 100)}%`
+async function commitBlockedApps() {
+  await updateSettings({ blockedApps: blockedAppsDraft.value.split('\n') })
 }
 </script>
 
 <template>
   <div :class="['flex flex-col gap-6 pb-4']">
-    <FieldCheckbox
-      :model-value="behaviorSettings.document.speaking.unpromptedEnabled"
-      :label="t('settings.pages.presence.unprompted-enabled.title')"
-      :description="t('settings.pages.presence.unprompted-enabled.description')"
-      placement="right"
-      @update:model-value="updateSpeaking({ unpromptedEnabled: $event })"
-    />
-    <FieldRange
-      :model-value="behaviorSettings.document.speaking.chattiness"
-      :min="0"
-      :max="1"
-      :step="0.05"
-      :label="t('settings.pages.presence.chattiness.title')"
-      :description="t('settings.pages.presence.chattiness.description')"
-      :format-value="formatChattiness"
-      @update:model-value="updateSpeaking({ chattiness: $event })"
-    />
-    <FieldCheckbox
-      :model-value="behaviorSettings.document.speaking.dontDisturb"
-      :label="t('settings.pages.presence.dont-disturb.title')"
-      :description="t('settings.pages.presence.dont-disturb.description')"
-      placement="right"
-      @update:model-value="updateSpeaking({ dontDisturb: $event })"
-    />
-    <FieldCheckbox
-      :model-value="behaviorSettings.document.speaking.speakDuringGames"
-      :label="t('settings.pages.presence.speak-during-games.title')"
-      :description="t('settings.pages.presence.speak-during-games.description')"
-      placement="right"
-      @update:model-value="updateSpeaking({ speakDuringGames: $event })"
-    />
+    <RouterLink to="/settings/behavior" :class="['text-sm text-primary-600 dark:text-primary-400 hover:underline']">
+      {{ t('settings.pages.behavior.link') }}
+    </RouterLink>
     <FieldCheckbox
       :model-value="settings.document.showUnpromptedCue"
       :label="t('settings.pages.presence.show-unprompted-cue.title')"
@@ -119,25 +59,20 @@ function formatChattiness(value: number) {
       placement="right"
       @update:model-value="updateSettings({ shareBrowserActivity: $event })"
     />
-    <label
-      v-for="list in appLists"
-      :key="list.field"
-      :class="['flex flex-col gap-4']"
-    >
+    <label :class="['flex flex-col gap-4']">
       <div>
         <div :class="['text-sm font-medium']">
-          {{ list.title }}
+          {{ t('settings.pages.presence.blocked-apps.title') }}
         </div>
         <div :class="['text-xs text-neutral-500 dark:text-neutral-400']">
-          {{ list.description }}
+          {{ t('settings.pages.presence.blocked-apps.description') }}
         </div>
       </div>
-      <!-- Enter inserts a newline here; the native change event falls through to the textarea. -->
       <Textarea
-        v-model="drafts[list.field]"
+        v-model="blockedAppsDraft"
         :submit-on-enter="false"
         :class="['font-mono']"
-        @change="commitAppList(list.field)"
+        @change="commitBlockedApps"
       />
     </label>
   </div>

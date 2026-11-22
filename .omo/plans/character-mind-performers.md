@@ -866,6 +866,22 @@ results. No acceptance run, hash re-pin, or visual result is claimed here.
   uses the sync plugin's top-level function-patch semantics. Startup behavior is
   an extra stimulus, so correlation tests account for its sequence number.
 
+- **c5:** Section 2 now reflects the c1-c4 ownership split; driver gates and
+  Natural policy values are unchanged by the UI move. Both settings homes
+  discover route metadata and both layouts read generic headers, so the new
+  route supplies its entry/icon without duplicate layout tables. It also owns
+  a settings-search registration. Existing labels are reused; four unused MMD
+  duplicates were removed from English only after checking their callers.
+  The two new route title/description keys are used through metadata despite
+  the i18n scanner's unused-key warnings; the baseline is unchanged. Existing
+  moved-control regressions now assert document ownership without mounting the
+  old controls. Remaining renderer and sensor interactions keep their checks,
+  with real memory routers for the links and unchanged geometry thresholds.
+  One new focused browser test clicks the Behavior idle toggle and awaits the
+  actual update action. Light/dark Vishot and rendered app checks remain in the
+  orchestrator's assigned rendered acceptance; this worker runs no qa command
+  or Electron launch.
+
 ## Checks run (CM7a)
 
 The implementation base is `e57dd1393`. The owner requested package checks,

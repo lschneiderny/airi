@@ -12,6 +12,7 @@ import { useFileDialog } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { RouterLink } from 'vue-router'
 
 import ExpressionPanel from './expressions/panel.vue'
 import NaturalEmotionStrength from './natural-emotion-strength.vue'
@@ -100,10 +101,6 @@ const behaviorSettings = useCharacterBehaviorSettings()
 async function updateNaturalSettings(patch: Parameters<typeof naturalSettings.update>[0]) {
   await behaviorSettings.initialize()
   await naturalSettings.update(patch)
-}
-
-async function updateBehaviorSettings(patch: Parameters<typeof behaviorSettings.update>[0]) {
-  await behaviorSettings.update(patch)
 }
 
 const desktopStage = useDesktopStageHost()
@@ -622,6 +619,9 @@ async function removeMotion(id: string) {
         @update:model-value="setMotionDriver"
       />
     </label>
+    <RouterLink to="/settings/behavior" :class="['text-sm text-primary-600 dark:text-primary-400 hover:underline']">
+      {{ t('settings.pages.behavior.link') }}
+    </RouterLink>
     <FieldRange
       v-if="motionDriver === 'natural'"
       :model-value="naturalSettings.document.energy"
@@ -632,22 +632,6 @@ async function removeMotion(id: string) {
       :description="t('settings.mmd.motion.natural-energy.description')"
       :format-value="formatNaturalEnergy"
       @update:model-value="updateNaturalSettings({ energy: $event })"
-    />
-    <FieldCheckbox
-      v-if="motionDriver === 'natural'"
-      :model-value="behaviorSettings.document.idleActivities"
-      :label="t('settings.mmd.motion.natural-idle-activities.title')"
-      :description="t('settings.mmd.motion.natural-idle-activities.description')"
-      placement="right"
-      @update:model-value="updateBehaviorSettings({ idleActivities: $event })"
-    />
-    <FieldCheckbox
-      v-if="motionDriver === 'natural'"
-      :model-value="behaviorSettings.document.touchReactions"
-      :label="t('settings.mmd.motion.natural-touch.title')"
-      :description="t('settings.mmd.motion.natural-touch.description')"
-      placement="right"
-      @update:model-value="updateBehaviorSettings({ touchReactions: $event })"
     />
     <FieldCheckbox
       v-if="motionDriver === 'natural' && behaviorSettings.document.touchReactions"

@@ -22,6 +22,17 @@ Keep application-specific pages in the owning application. Put reusable business
 
 Put primitive UI components in `@proj-airi/ui`. Put shared layouts in `@proj-airi/stage-layouts`.
 
+## Character behavior settings
+
+Open `/settings/behavior` for Idle, Touch, Attention, Feelings, and Speaking up.
+These controls edit the user-wide character-behavior document. Live2D and MMD
+keep energy, emotion strength, petting realisation, and model-specific motion
+controls. Presence keeps sensor permissions, blocked apps, and the chat cue;
+all three pages link to Behavior. Route metadata registers the entry and icon
+in both settings homes, and `settingsSearchModules` owns the route for search.
+The page uses existing controls, reports save failures, and keeps quiet-app text
+local until the field loses focus.
+
 ## Character expression mapping weights
 
 Open Settings > Character Cards, edit a card, and choose Modules > Performance.
