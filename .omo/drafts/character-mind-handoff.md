@@ -15,7 +15,7 @@ The remaining character mind slices stopped mid-flight on the Linux machine so t
 | Lane | Branch, head | Done | Left |
 | --- | --- | --- | --- |
 | Upstream sync to `bd4f30391` | landed on `main` at `91299da23` | `main` merged in, `225242a8c` reviewed, `pnpm test:run` (89 of 89 tasks) and `pnpm verify` passed on macOS | Nothing. `pnpm test:run` had never finished on Linux because `character-mind`'s idle tests looped forever; `42572a15c` fixed that on `main` |
-| CM6a close-out | landed: #70, then the sidestep in #73 | Stop early, the cursor delay cut (28.4 to 16.4 ms on macOS), the corrective step, and the owner's sidestep without a turn. All nine headless scenarios `IDENTICAL`. After a 4 s rest every press pokes; presses 0.6 to 2 s after landing still miss about half the time, because she is still braking | The owner decides whether to shorten the brake when a chase ends on the pointer (question pending) |
+| CM6a close-out | landed: #70, then the sidestep in #73 | Stop early, the cursor delay cut (28.4 to 16.4 ms on macOS), the corrective step, and the owner's sidestep without a turn. All nine headless scenarios `IDENTICAL`. After a 4 s rest every press pokes; presses 0.6 to 2 s after landing still miss about half the time, because she is still braking | The owner ruled against a shorter brake (2026-11-21); nothing left |
 | CM5b beat lock | landed: #71 (#68 rebased after #69; #68 closed) | Everything | Nothing |
 | CM6b1 glances | landed: #69 | Everything | Nothing |
 | CM6b2 director on intents | landed: #74 | Items 8 to 13, all nine scenarios `IDENTICAL`, rendered away step | The rendered clip-ending checks (steps 6 and 9) need a motion clip; no `.vmd` is on the test machine (question pending) |
