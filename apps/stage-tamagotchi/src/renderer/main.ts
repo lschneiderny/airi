@@ -5,17 +5,13 @@ import { errorMessageFrom } from '@moeru/std'
 import { PiniaColada } from '@pinia/colada'
 import { useElectronEventaInvoke } from '@proj-airi/electron-vueuse'
 import { settingsSearchModules } from '@proj-airi/stage-pages/settings-search'
-import { useMMDPerformanceSettings } from '@proj-airi/stage-ui-mmd/stores'
 import { backdropSurfaceHostKey } from '@proj-airi/stage-ui/composables/backdrop-surface'
 import { hostDataDeletionKey } from '@proj-airi/stage-ui/composables/host-data-deletion'
 import { pushToTalkTriggerKey } from '@proj-airi/stage-ui/composables/push-to-talk-trigger'
 import { trackButtonPlugin } from '@proj-airi/stage-ui/directives/track-button'
-import { piniaPluginTracing, setupSynced } from '@proj-airi/stage-ui/libs/pinia'
-import { configureAnalyticsAdapter, startErrorReporting } from '@proj-airi/stage-ui/libs/product-signals'
+import { configureAnalyticsAdapter } from '@proj-airi/stage-ui/libs/product-signals'
 import { settingsSearch } from '@proj-airi/stage-ui/libs/settings-search'
-import { useSettingsAnalytics } from '@proj-airi/stage-ui/stores/settings/analytics'
 import { MotionPlugin } from '@vueuse/motion'
-import { createPinia } from 'pinia'
 import { setupLayouts } from 'virtual:generated-layouts'
 import { createApp } from 'vue'
 import { createRouter, createWebHashHistory } from 'vue-router'
@@ -24,13 +20,13 @@ import { handleHotUpdate, routes } from 'vue-router/auto-routes'
 import App from './App.vue'
 
 import { electronWindowBackdropUpdate } from '../shared/eventa'
-import { initializeAnalyticsConsent } from './bridges/analytics-consent'
 import { installGoNetwork } from './bridges/opencode-go'
 import { migrateGoCredentials } from './bridges/opencode-go-migration'
 import { nestFullscreenSurfaces } from './components/fullscreen/surfaces'
 import { createMainProcessDataDeletion } from './composables/main-process-data-deletion'
 import { createWindowBackdropHost } from './composables/window-backdrop'
 import { i18n } from './modules/i18n'
+import { mountRenderer } from './startup'
 import { resolveRendererWindowContext } from './window-context'
 
 import '@unocss/reset/tailwind.css'
@@ -78,13 +74,6 @@ if (import.meta.env.DEV && windowContext.motionQaBridge) {
 }
 
 const goNetwork = installGoNetwork()
-const pinia = createPinia()
-const synced = setupSynced({
-  leadership: windowContext.leadership,
-})
-pinia.use(synced.pinia)
-if (import.meta.env.DEV)
-  pinia.use(piniaPluginTracing)
 
 /** The app routes with layouts. A window that hosts the fullscreen mode also routes the surfaces under its own page. */
 function windowRoutes(appRoutes: RouteRecordRaw[]) {
@@ -108,33 +97,21 @@ if (import.meta.hot) {
 
 async function mount() {
   const app = createApp(App)
-  app.use(synced.vue).use(pinia)
-  await initializeAnalyticsConsent(app, pinia, windowContext.leadership === 'leader-only')
-  const mmdPerformance = useMMDPerformanceSettings(pinia)
-  if (windowContext.leadership === 'leader-only')
-    await mmdPerformance.initialize()
-  // Main sends every report. Without a DSN in the build, main starts no SDK, so the renderer starts none either.
-  if (import.meta.env.AIRI_ERROR_REPORT_DSN) {
-    startErrorReporting(app, () => useSettingsAnalytics(pinia).analyticsEnabled, async (options) => {
-      const { createSentryAdapter } = await import('./modules/sentry')
-      return createSentryAdapter(options)
-    })
-  }
-
-  app
-    .use(MotionPlugin)
-    .use(autoAnimatePlugin)
-    .use(router)
-    .use(PiniaColada)
-    .use(i18n)
-    .use(trackButtonPlugin)
-    // The stage window registers a global hold shortcut. Every window shares this app, so the settings window offers the mode too.
-    .provide(pushToTalkTriggerKey, true)
-    // Translucent surfaces in every window get native glass where the platform has it.
-    .provide(backdropSurfaceHostKey, createWindowBackdropHost(useElectronEventaInvoke(electronWindowBackdropUpdate)))
-    // "Delete all data" on the Data page and through the QA bridge runs this host step after the renderer's own.
-    .provide(hostDataDeletionKey, createMainProcessDataDeletion())
-    .mount('#app')
+  await mountRenderer(app, windowContext.leadership, () => {
+    app
+      .use(MotionPlugin)
+      .use(autoAnimatePlugin)
+      .use(router)
+      .use(PiniaColada)
+      .use(i18n)
+      .use(trackButtonPlugin)
+      // The stage window registers a global hold shortcut. Every window shares this app, so the settings window offers the mode too.
+      .provide(pushToTalkTriggerKey, true)
+      // Translucent surfaces in every window get native glass where the platform has it.
+      .provide(backdropSurfaceHostKey, createWindowBackdropHost(useElectronEventaInvoke(electronWindowBackdropUpdate)))
+      // "Delete all data" on the Data page and through the QA bridge runs this host step after the renderer's own.
+      .provide(hostDataDeletionKey, createMainProcessDataDeletion())
+  }, '#app')
 }
 
 async function start() {

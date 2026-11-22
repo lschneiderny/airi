@@ -399,7 +399,20 @@ The recommendations above were implemented. Departures and verification evidence
 
 ### Original implementation
 
-Finding 7 checks (2026-11-22):
+- Finding 7 fix: `97ef2440c`. Finding 8 moves election creation into the mounting boundary, after the existing credential migration, and removes all waits between runtime creation and App setup. The focused real-runtime browser test first reproduced the missing ensureCurrentSession action while the main consent response was held; it checks both session and speech actions while that response remains pending and still requires startup to await the acknowledgment.
+
+
+QA verification (2026-11-22):
+
+Finding 8 checks (2026-11-22):
+
+- `pnpm -F @proj-airi/stage-tamagotchi exec vitest run --project browser src/renderer/startup.browser.test.ts`: first reproduced the missing leader action, then passed 1 file / 1 test with both action owners callable while consent acknowledgment remained pending.
+- `pnpm -F @proj-airi/stage-tamagotchi exec vitest run --project node`: 195 files / 2169 tests passed, with 3 files / 8 existing skips.
+- `pnpm --filter "...@proj-airi/stage-tamagotchi" --workspace-concurrency=2 typecheck`: passed.
+- `pnpm exec vitest run --project dev-tools scripts/dev-tools/lib/storage-writes.test.ts scripts/dev-tools/storage-writes.test.ts scripts/dev-tools/policy-docs.test.ts`: 3 files / 28 tests passed.
+- Changed-file ESLint passed. No Electron run was performed; the orchestrator reruns the two-launch driver.
+
+Finding 7 command results:
 
 - `pnpm -F @proj-airi/stage-shared exec vitest run src/composables/use-settings-document/index.test.ts`: 1 file / 20 tests.
 - `pnpm -F @proj-airi/stage-ui exec vitest run --project browser src/stores/settings/analytics.browser.test.ts`: 3 failed / 1 passed before the fix, then 4 passed.
