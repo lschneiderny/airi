@@ -231,7 +231,7 @@ it('splits mixed owners without repeating their reset or changing its order', ()
   for (const [ownerId, splitIds] of [
     ['memory', ['memory-settings']],
     ['recipes', ['recipe-settings']],
-    ['mmd', ['mmd-motion-files', 'mmd-clip-metadata']],
+    ['mmd', ['mmd-motion-files', 'mmd-clip-metadata-legacy']],
     ['layout-backgrounds', ['layout-background-settings']],
     ['stickers', ['sticker-settings']],
   ] as const) {

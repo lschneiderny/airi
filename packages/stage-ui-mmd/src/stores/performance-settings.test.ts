@@ -4,6 +4,7 @@ import { resetModelScopedLocalStorageForTesting, setActiveDisplayModelForSetting
 import { createPinia, disposePinia } from 'pinia'
 import { afterEach, expect, it, vi } from 'vitest'
 
+import { useMMDClipMetadata } from './clip-metadata'
 import { useMMDPerformanceSettings } from './performance-settings'
 
 const key = 'settings/mmd/performance'
@@ -146,7 +147,10 @@ it('enforces labels and kind permissions in the action and makes repeated edits 
   await store.setCuration('model-a', 'wave', { kind: 'stance', aiMayUse: true, idleMayUse: true })
   expect(store.curationFor('model-a', 'wave').aiMayUse).toBe(false)
   expect(store.curationFor('model-a', 'wave').idleMayUse).toBe(false)
-  await store.setCuration('model-a', 'wave', { kind: null, aiMayUse: true }, 'unusable')
+  const metadata = useMMDClipMetadata(contexts.at(-1)!)
+  const epoch = metadata.beginLoad('model-a')
+  metadata.publish('model-a', epoch, { name: 'wave', label: 'wave', kind: 'unusable', layer: 'none', loop: false, durationMs: 0, notes: ['bad-duration'] })
+  await store.setCuration('model-a', 'wave', { kind: null, aiMayUse: true })
   expect(store.curationFor('model-a', 'wave').aiMayUse).toBe(false)
 })
 
@@ -166,4 +170,22 @@ it('accepts only scalar patches and removes one model without changing another',
   expect(Object.keys(store.clipCuration)).toEqual(['model-b'])
   await store.setStanceSlot('model-b', 'sleep', null)
   expect(store.stanceSlots['model-b']).toEqual({})
+})
+
+it('treats arbitrary clip names as dictionary keys rather than inherited properties', async () => {
+  const store = context()
+  setActiveDisplayModelForSettings('mmd', 'constructor')
+  expect(store.motionDriver).toBe('natural')
+  await store.setCuration('model-a', 'wave', { label: 'wave' })
+  expect(store.curationFor('model-a', 'constructor')).toEqual({ label: null, kind: null, loop: null, aiMayUse: false, idleMayUse: false })
+})
+
+it('offers a curated constructor-named clip only after its metadata was published', async () => {
+  const store = context()
+  const metadata = useMMDClipMetadata(contexts.at(-1)!)
+  const epoch = metadata.beginLoad('model-a')
+  await store.setCuration('model-a', 'constructor', { label: 'constructor', kind: 'gesture', aiMayUse: true })
+  expect(store.exposedActions('model-a', [{ name: 'constructor' }])).toEqual([])
+  metadata.publish('model-a', epoch, { name: 'constructor', label: 'constructor', kind: 'gesture', layer: 'upper', loop: false, durationMs: 2000, notes: [] })
+  expect(store.exposedActions('model-a', [{ name: 'constructor' }]).map(clip => clip.name)).toEqual(['constructor'])
 })

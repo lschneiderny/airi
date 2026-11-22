@@ -319,7 +319,7 @@ the look request; it is not a second gaze writer.
 `action(label, gesture?)` receives an ACT `action` label (under Natural and
 Classic alike) and runs `resolveActAction`
 (`src/composables/mmd/actions/resolve-act-action.ts`) against
-`labeledClips(modelKey, motions, metadata)`: the label is compared exactly with the labels the user
+`labeledClips(modelKey, motions)`: the label is compared exactly with the labels the user
 curated and is never used as a clip name. An exposed gesture is queued for the
 director with `source: 'act'`; a label no clip carries counts `unknown`, a
 hidden clip `notExposed`, and an exposed action or dance `notGesture` (those
@@ -570,7 +570,7 @@ At import, `syncMotions` in `MMD.vue` builds the clip's bone mask
 (`buildMMDClipMask`), derives its meta with `deriveClipMeta` from
 `@proj-airi/motion-driver-humanoid/clip-meta` (kind `gesture`, `action`,
 `dance`, `stance` or `unusable`; layer `upper`, `full` or `none`), publishes it
-as `availableClipMeta`, and registers the clip with the animation manager and
+through `useMMDClipMetadata`, and registers the clip with the animation manager and
 the body. Action and dance clips are registered with `forceGroups` `root`,
 `leftLegIk` and `rightLegIk`, so they stop the gait even when their mask keys
 only the upper body. A clip that is removed and imported again under the same
@@ -582,9 +582,10 @@ The `useMMDPerformanceSettings` store keeps per-model `clipCuration` in
 Both permissions default to off. Await `setCuration`; it refuses a label that fails
 `CLIP_LABEL_PATTERN` or that another clip of the model already uses.
 `labeledClips(modelKey)` lists every clip with a label and a gesture, action or
-dance kind, and `exposedActions(modelKey, motions, metadata)` the exposed ones. `removeMotion`
-drops the clip's curation and meta. Derived data is never persisted as user
-state; the scene recomputes it on load.
+dance kind, and `exposedActions(modelKey, motions)` the exposed ones. `removeMotion`
+drops the clip's curation and invalidates its pending metadata load before
+changing the motion list. Derived metadata is never persisted; the scene
+recomputes it on load.
 
 Every one-shot goes through one entry, `requestPerform`, which turns a clip
 name into a `BodyActionRequest` for the director: the emotion map (`source:
@@ -825,3 +826,17 @@ fork keys across every model; a failed save keeps them. `removeModel` drops
 only that model's entries, and `reset` writes defaults instead of importing.
 Use upstream `useMMD` for its display and physics preferences and motion files.
 Do not put character behavior or derived clip metadata in the realisation document.
+
+## Runtime clip catalog
+
+`useMMDClipMetadata` is synced memory for the stage and its settings readers.
+The stage starts a new model/library epoch with `beginLoad` and publishes only
+plain derived clip values with `publish`. A completion with an older epoch
+cannot register a clip or replace the current catalog. A fresh library epoch
+republishes cached clips from their loaded masks, so removing or re-importing
+one clip does not lose the others. Settings reads `clipFor(modelId, name)` and
+sends no snapshot proposal.
+
+Use this store for reproducible clip metadata, never for curation or Three
+objects. Initialization and reset discard old metadata keys across all models.
+The realisation settings owner coordinates reset and model/clip deletion.

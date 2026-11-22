@@ -102,6 +102,7 @@ import { composeMMDStages } from '../../composables/mmd/stage-composition'
 import { applyStageCamera, applyStageRoot, measureStageExtent, projectCharacterPlacement, rowInputs, stagePixelRatio } from '../../composables/mmd/stage-world'
 import { chatStandX, directorIdleStates, frameClocks, MMDAttendInbox, MMDStanceDirector } from '../../composables/mmd/stance'
 import { buildMMDTouchColliders, MMDTouch, mmdTouchRegionRoots } from '../../composables/mmd/touch'
+import { useMMDClipMetadata } from '../../stores/clip-metadata'
 import { useMMDExpressionStore } from '../../stores/expression-store'
 import { useMMD } from '../../stores/mmd'
 import { useMMDMotionDiagnostics } from '../../stores/motion-diagnostics'
@@ -180,6 +181,9 @@ const componentState = defineModel<'pending' | 'loading' | 'mounted'>('state', {
 
 const mmdStore = useMMD()
 const performanceSettings = useMMDPerformanceSettings()
+const clipMetadata = useMMDClipMetadata()
+const catalogModelId = computed(() => props.modelId ?? props.modelSrc ?? '')
+let catalogToken: { modelId: string, loadEpoch: number } | undefined
 const { motionDriver, stanceSlots, clipCuration, roamMode } = storeToRefs(performanceSettings)
 const naturalSettings = useMMDNaturalSettings()
 const diagnostics = useMMDMotionDiagnostics()
@@ -241,7 +245,6 @@ const {
   idleMotionName,
   availableMotions,
   performRequest,
-  availableClipMeta,
   cameraFov,
   ambientColor,
   ambientIntensity,
@@ -313,11 +316,11 @@ let loadedModelKey: string | null = null
 const libraryModelKey = shallowRef<string | null>(null)
 /** The clips the user allowed her to play on her own while idle. */
 const idleClips = computed<IdleClipCandidate[]>(() => libraryModelKey.value
-  ? performanceSettings.labeledClips(libraryModelKey.value, availableMotions.value, availableClipMeta.value).flatMap(clip => clip.idle && clip.kind !== 'stance' && clip.kind !== 'unusable' ? [{ clipId: clip.name, kind: clip.kind }] : [])
+  ? performanceSettings.labeledClips(libraryModelKey.value, availableMotions.value).flatMap(clip => clip.idle && clip.kind !== 'stance' && clip.kind !== 'unusable' ? [{ clipId: clip.name, kind: clip.kind }] : [])
   : [])
 // perform_action queues through `requestPerform` like every other clip, so the director reads one request queue.
 const actionPort = new MMDActionPort({
-  clips: () => libraryModelKey.value ? performanceSettings.labeledClips(libraryModelKey.value, availableMotions.value, availableClipMeta.value) : [],
+  clips: () => libraryModelKey.value ? performanceSettings.labeledClips(libraryModelKey.value, availableMotions.value) : [],
   submit: name => requestPerform(name, { source: 'tool' }) ? performSeq : null,
   withdraw: (seq) => {
     if (pendingAction?.seq === seq)
@@ -862,6 +865,10 @@ function centerModelY(): number | null {
 }
 
 function disposeModel() {
+  if (catalogToken) {
+    clipMetadata.invalidate(catalogToken.modelId, catalogToken.loadEpoch)
+    catalogToken = undefined
+  }
   // Invalidate pending loader, physics initialization and motion continuations.
   loadGeneration++
   stopTraceEvents?.()
@@ -935,10 +942,14 @@ function disposeModel() {
  * is registered. Safe to call repeatedly; already-registered motions are skipped.
  */
 async function syncMotions() {
-  if (!animation || !mesh)
+  if (!animation || !mesh || !loadedModelKey)
     return
 
+  const modelId = loadedModelKey
+  const loadEpoch = clipMetadata.beginLoad(modelId)
+  catalogToken = { modelId, loadEpoch }
   const generation = loadGeneration
+  const isCurrent = () => generation === loadGeneration && clipMetadata.snapshot.modelId === modelId && clipMetadata.snapshot.loadEpoch === loadEpoch
   const activeAnimation = animation
   const activeMesh = mesh
   const activeRig = rig
@@ -949,13 +960,18 @@ async function syncMotions() {
     loadedClips.delete(name)
   for (const descriptor of availableMotions.value) {
     const revision = descriptor.revision ?? 0
-    if (registeredMotions.isCurrent(descriptor.name, revision))
+    if (registeredMotions.isCurrent(descriptor.name, revision)) {
+      // A current registration owns its clip and mask; dispose and prune remove both together.
+      const cached = loadedClips.get(descriptor.name)!
+      if (!clipMetadata.publish(modelId, loadEpoch, { name: descriptor.name, ...deriveClipMeta(cached.mask, cached.clip.duration * 1000, descriptor.name) }))
+        return
       continue
+    }
     try {
       // The VMD file lives in IndexedDB (shared across windows); build a
       // window-local object URL to load it, then revoke it once parsed.
       const file = await mmdStore.getMotionFile(descriptor.id)
-      if (generation !== loadGeneration)
+      if (!isCurrent())
         return
       if (!file) {
         console.warn(`[mmd] motion file "${descriptor.name}" (${descriptor.id}) not found in storage`)
@@ -964,12 +980,13 @@ async function syncMotions() {
       const url = URL.createObjectURL(file)
       try {
         const clip = await loadMMDAnimationClip(url, activeMesh)
-        if (generation !== loadGeneration)
+        if (!isCurrent())
           return
         const mask = buildMMDClipMask(clip, activeRig)
         const meta = deriveClipMeta(mask, clip.duration * 1000, descriptor.name)
+        if (!clipMetadata.publish(modelId, loadEpoch, { name: descriptor.name, ...meta }))
+          return
         loadedClips.set(descriptor.name, { clip, mask })
-        availableClipMeta.value = { ...availableClipMeta.value, [descriptor.name]: { name: descriptor.name, ...meta } }
         activeAnimation.registerClip(descriptor.name, clip, {
           layer: meta.layer === 'upper' ? 'upper' : 'full',
           split: meta.layer !== 'none',
@@ -989,7 +1006,7 @@ async function syncMotions() {
       }
     }
     catch (err) {
-      if (generation !== loadGeneration)
+      if (!isCurrent())
         return
       console.error('[mmd] failed to load motion', descriptor.name, errorMessageFrom(err))
       emit('error', err)
@@ -1118,7 +1135,7 @@ function registerBodyClip(name: string) {
   const loaded = loadedClips.get(name)
   if (!loaded || !body || !loadedModelKey)
     return
-  const kind = performanceSettings.curationFor(loadedModelKey, name).kind ?? availableClipMeta.value[name]?.kind
+  const kind = performanceSettings.curationFor(loadedModelKey, name).kind ?? clipMetadata.clipFor(catalogModelId.value, name)?.kind
   body.registerClip(name, loaded.clip, { forceGroups: kind === 'action' || kind === 'dance' ? FULL_BODY_GROUPS : undefined })
 }
 
@@ -1130,12 +1147,12 @@ function isBaseEligible(name: string): boolean {
   const key = loadedModelKey
   if (!key)
     return true
-  if (performanceSettings.exposedActions(key, availableMotions.value, availableClipMeta.value).some(clip => clip.name === name))
+  if (performanceSettings.exposedActions(key, availableMotions.value).some(clip => clip.name === name))
     return false
   const slots = stanceSlots.value[key] ?? {}
   if (name === slots.idle || name === slots.sit || name === slots.sleep)
     return true
-  const kind = performanceSettings.curationFor(key, name).kind ?? availableClipMeta.value[name]?.kind
+  const kind = performanceSettings.curationFor(key, name).kind ?? clipMetadata.clipFor(catalogModelId.value, name)?.kind
   return kind === undefined || kind === 'stance'
 }
 
@@ -1159,7 +1176,7 @@ function requestPerform(name: string | null, options: { loop?: boolean, source: 
     console.warn(`[mmd] perform skipped: "${name}" is not registered on this model`)
     return false
   }
-  const meta = availableClipMeta.value[name]
+  const meta = clipMetadata.clipFor(catalogModelId.value, name)
   const curation = performanceSettings.curationFor(loadedModelKey, name)
   const kind = curation.kind ?? meta?.kind ?? 'gesture'
   if (kind === 'unusable') {
@@ -1224,7 +1241,7 @@ function clipsSnapshot(): MMDMotionSnapshot['clips'] {
     return []
   const clips: MMDMotionSnapshot['clips'] = []
   for (const { name } of availableMotions.value) {
-    const meta = availableClipMeta.value[name]
+    const meta = clipMetadata.clipFor(catalogModelId.value, name)
     if (!meta || !registeredMotions.has(name))
       continue
     const curation = performanceSettings.curationFor(key, name)
@@ -1252,6 +1269,7 @@ async function loadModel(src: string) {
   const generation = loadGeneration
   const modelId = props.modelId
   const modelKey = modelId ?? src
+  catalogToken = { modelId: modelKey, loadEpoch: clipMetadata.beginLoad(modelKey) }
 
   try {
     const loaded = await loadMMDModelFromSource(src, { cacheKey: modelId })
@@ -1761,8 +1779,8 @@ watch(clipCuration, () => {
 }, { deep: true })
 
 // Newly imported VMD motions: load and register them against the live model.
-watch(availableMotions, () => {
-  void syncMotions()
+watch(availableMotions, async () => {
+  await syncMotions()
 }, { deep: true })
 
 // Scene settings — lighting.
@@ -1848,11 +1866,11 @@ defineExpose({
   getMood: () => natural?.mood ?? null,
   listMorphs: () => morphs?.availableMorphs ?? [],
   listMotions: () => animation?.availableClips() ?? [],
-  listActions: () => libraryModelKey.value ? performanceSettings.labeledClips(libraryModelKey.value, availableMotions.value, availableClipMeta.value) : [],
+  listActions: () => libraryModelKey.value ? performanceSettings.labeledClips(libraryModelKey.value, availableMotions.value) : [],
   action: (label: string, gesture?: { kind: string }) => {
     if (!loadedModelKey)
       return false
-    const { perform, drops } = resolveActAction(label, gesture, performanceSettings.labeledClips(loadedModelKey, availableMotions.value, availableClipMeta.value))
+    const { perform, drops } = resolveActAction(label, gesture, performanceSettings.labeledClips(loadedModelKey, availableMotions.value))
     for (const drop of drops)
       actionDrops[ACT_DROP_COUNTER[drop.reason]]++
     return perform ? requestPerform(perform, { source: 'act' }) : false

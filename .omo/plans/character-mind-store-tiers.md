@@ -336,6 +336,10 @@ The implementation must record departures from these recommendations with their 
 - The existing MMD settings browser suite also consumed the moved fields. Its assertions now use the owning actions and new document shape; its synthetic model fixture explicitly selects the MMD settings scope. No new page suite was added.
 - The inventory's "caches last" statement differed from the registry: Sherpaw assets were interleaved before situation state. Item 4 moves that registration to the existing cache tail and adds an ordering regression, preserving its owner and locations.
 
+- Item 5 scopes epochs to library loads as well as model loads. The old scene checked only model generation, so a removed or re-imported clip could finish late within the same model. A library epoch now rejects that completion before registration and republishes already loaded clips from their cached masks.
+- The runtime catalog is reset through the realisation owner's lifecycle. Its legacy registration is sweep-only; no fake persisted location was added for tier 5 state. The temporary S2 plain-tier admission is removed.
+- Item 5 regression tests exposed inherited-property lookups for valid clip names such as `constructor`: one returned the Object constructor as curation, and another offered an unloaded clip. Owner projections now require own dictionary keys; the same valid clip is still offered after its metadata is published.
+
 ## Checks run
 
 - Item 1: `pnpm exec vitest run --project dev-tools scripts/dev-tools/policy-docs.test.ts scripts/dev-tools/storage-writes.test.ts` passed 2 files / 12 tests.
@@ -370,6 +374,16 @@ The implementation must record departures from these recommendations with their 
 - Item 4: `pnpm --filter "...@proj-airi/stage-ui-mmd" --filter "...@proj-airi/stage-ui" --filter "...@proj-airi/stage-tamagotchi" --workspace-concurrency=2 typecheck` passed MMD, then exposed the old API references in the existing settings browser test. After updating that consumer, `pnpm --filter "...@proj-airi/stage-ui" --workspace-concurrency=2 typecheck` passed all 7 remaining projects and passed again after the awaited watcher change.
 - Item 4: policy/storage guards passed 2 files / 12 tests. The first policy run could not see the new untracked owner; staging that file made it visible to the guard's existing tracked-source search. ESLint has no errors; five unchanged warnings remain in untouched functions/comments of `Stage.vue` and `display-models.ts`.
 
+- Item 5: `pnpm -F @proj-airi/stage-ui-mmd exec vitest run --project node src/stores/clip-metadata.test.ts src/stores/mmd.test.ts src/stores/performance-settings.test.ts` passed 3 files / 24 tests initially, then 3 files / 26 tests after the dictionary regressions were added and fixed. The isolated `pnpm -F @proj-airi/stage-ui-mmd exec vitest run --project node src/stores/performance-settings.test.ts` first reproduced 2 failed / 10 passed tests for inherited-property lookups.
+- Item 5: `pnpm -F @proj-airi/stage-ui-mmd exec vitest run --project browser src/stores/performance-settings.browser.test.ts` passed 1 file / 3 tests, including real follower metadata replication without storage writes or proposals.
+- Item 5: `pnpm exec vitest run --project dev-tools scripts/dev-tools/lib/storage-writes.test.ts scripts/dev-tools/storage-writes.test.ts scripts/dev-tools/policy-docs.test.ts` passed 3 files / 28 tests.
+- Item 5: `pnpm --filter "...@proj-airi/stage-ui-mmd" --filter "...@proj-airi/stage-ui" --workspace-concurrency=2 typecheck` passed all 8 projects. An earlier run correctly rejected mutation of a readonly test input; the test now spreads it into its own mutable input before proving that publication copies it.
+- Item 5: `pnpm -F @proj-airi/stage-ui-mmd exec vitest run --project node` passed 49 files / 411 tests.
+- Item 5: `pnpm -F @proj-airi/stage-ui exec vitest run --project node` passed 195 files / 1896 tests.
+- Item 5: `pnpm -F @proj-airi/stage-ui-mmd exec vitest run --project browser` passed 7 files / 34 tests.
+- Item 5: `pnpm -F @proj-airi/stage-ui exec vitest run --project browser src/persistence/state-registry.browser.test.ts src/composables/use-data-maintenance.browser.test.ts src/components/scenarios/settings/model-settings/mmd.browser.test.ts src/components/scenes/stage-emotion-routing.browser.test.ts` passed 4 files / 94 tests. The existing browser fixtures also log missing/invalid Live2D archive errors; these are not a rendered app acceptance result.
+- Item 5: changed-file ESLint passed with no errors or warnings.
+
 **Orchestrator placeholder:** rendered scenarios, applicable motion checks, and `pnpm verify --gate` results are not run by this worker.
 
 ## Commits
@@ -377,4 +391,5 @@ The implementation must record departures from these recommendations with their 
 - `623bfe20d` - `refactor(stage-ui): declare upstream persistence exceptions by owner`.
 - `dcfaebb3a` - `test(stage-ui): reject new fork state in the plain persistence tier`.
 - `64f7f2530` - `refactor(stage-ui,stage-pages,stage-tamagotchi): persist analytics consent through one leader document`.
+- `e8d5082c2` - `refactor(stage-ui-mmd,stage-ui,stage-tamagotchi): persist MMD realisation settings through leader actions`.
 - `dcfaebb3a` - `test(stage-ui): reject new fork state in the plain persistence tier`.

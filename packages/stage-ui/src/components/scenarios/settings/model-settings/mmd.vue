@@ -6,7 +6,7 @@ import type { DesktopStageDisplay } from './desktop-stage'
 import type { ExpressionPanelCommand, ExpressionPanelSnapshot, ExpressionPanelSource } from './expressions/source'
 import type { ModelSettingsRuntimeSnapshot } from './runtime'
 
-import { CLIP_LABEL_PATTERN, controlConfig, effectiveLayer, useMMD, useMMDExpressionStore, useMMDNaturalSettings, useMMDPerformanceSettings } from '@proj-airi/stage-ui-mmd/stores'
+import { CLIP_LABEL_PATTERN, controlConfig, effectiveLayer, useMMD, useMMDClipMetadata, useMMDExpressionStore, useMMDNaturalSettings, useMMDPerformanceSettings } from '@proj-airi/stage-ui-mmd/stores'
 import { Button, Checkbox, FieldCheckbox, FieldCombobox, FieldRange, GhostButton, Input, Select, SelectTab } from '@proj-airi/ui'
 import { useFileDialog } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
@@ -42,6 +42,7 @@ const { stageModelSelected } = storeToRefs(useSettingsStageModel())
 
 const mmdStore = useMMD()
 const performanceSettings = useMMDPerformanceSettings()
+const clipMetadata = useMMDClipMetadata()
 const { motionDriver, stanceSlots, stageCharacterHeight, roamMode } = storeToRefs(performanceSettings)
 
 async function updatePerformance(patch: Parameters<typeof performanceSettings.update>[0]) {
@@ -78,7 +79,6 @@ const {
   gazeMode,
   idleMotionName,
   availableMotions,
-  availableClipMeta,
   availableMorphs,
   availableMaterials,
   materialOpacity,
@@ -294,7 +294,7 @@ interface ClipRow {
 
 // `curationFor` reads the store's `clipCuration`, so an edit from another window recomputes the rows.
 const clipRows = computed<ClipRow[]>(() => availableMotions.value.map(({ name }) => {
-  const meta = availableClipMeta.value[name]
+  const meta = clipMetadata.clipFor(stageModelSelected.value, name)
   const curation = performanceSettings.curationFor(stageModelSelected.value, name)
   const effectiveKind = curation.kind ?? meta?.kind ?? null
   const layer = meta ? effectiveLayer(meta, curation.kind) : null
@@ -363,7 +363,7 @@ async function setClipKind(name: string, value: string | undefined) {
   if (value === undefined)
     return
   const kind = value === KIND_AUTO ? null : value as ClipKind
-  await performanceSettings.setCuration(stageModelSelected.value, name, { kind }, availableClipMeta.value[name]?.kind)
+  await performanceSettings.setCuration(stageModelSelected.value, name, { kind })
 }
 
 async function setClipLoop(name: string, loop: boolean) {
@@ -371,11 +371,11 @@ async function setClipLoop(name: string, loop: boolean) {
 }
 
 async function setClipExposed(name: string, aiMayUse: boolean) {
-  await performanceSettings.setCuration(stageModelSelected.value, name, { aiMayUse }, availableClipMeta.value[name]?.kind)
+  await performanceSettings.setCuration(stageModelSelected.value, name, { aiMayUse })
 }
 
 async function setClipIdle(name: string, idleMayUse: boolean) {
-  await performanceSettings.setCuration(stageModelSelected.value, name, { idleMayUse }, availableClipMeta.value[name]?.kind)
+  await performanceSettings.setCuration(stageModelSelected.value, name, { idleMayUse })
 }
 
 async function removeMotion(id: string) {

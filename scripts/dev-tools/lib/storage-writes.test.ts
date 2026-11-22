@@ -145,6 +145,7 @@ describe('persistence ownership', () => {
 
   it('rejects fork plain state and open upstream prefixes', () => {
     expect(checkStorageWrites([], [{ ...upstream, upstream: undefined }], [])[0]).toContain('new fork state')
+    expect(checkStorageWrites([], [{ ...upstream, upstream: undefined, exception: 'Fork state awaiting S2 migration' }], [])[0]).toContain('new fork state')
     expect(checkStorageWrites([], [{ ...upstream, locations: [{ area: 'localStorage', prefix: 'settings/example/' }] }], [])[0]).toContain('not an open prefix')
     expect(checkStorageWrites([], [{ ...upstream, upstream: 'main' }], [])[0]).toContain('pinned source revision')
   })

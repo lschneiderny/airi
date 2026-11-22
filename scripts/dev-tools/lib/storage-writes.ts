@@ -641,7 +641,7 @@ function checkRegistryOwnership(registry: readonly RegistrySource[]): string[] {
   for (const [index, registration] of registry.entries()) {
     if (registration.tier === 'plain') {
       const active = registration.locations.filter(location => !location.legacy && location.area === 'localStorage')
-      if (active.length && !registration.upstream && registration.exception !== 'Fork state awaiting S2 migration')
+      if (active.length && !registration.upstream)
         problems.push(`${registration.id}: new fork state cannot use the plain persistence tier.`)
       if (registration.upstream && !/^[a-f\d]{9,40}$/.test(registration.upstream))
         problems.push(`${registration.id}: upstream plain state needs a pinned source revision.`)

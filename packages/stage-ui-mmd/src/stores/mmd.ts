@@ -1,4 +1,3 @@
-import type { DerivedClipMeta } from '@proj-airi/motion-driver-humanoid/clip-meta'
 import type { Emotion } from '@proj-airi/stage-shared/expression-performance'
 
 import type { MorphSlot } from '../constants/morphs'
@@ -180,8 +179,6 @@ export const useMMD = defineStore('mmd', () => {
    * files live in IndexedDB.
    */
   const availableMotions = useModelScopedLocalStorageManualReset<MMDMotionDescriptor[]>('mmd', 'settings/mmd/motions', () => [])
-  /** Derived metadata of the imported clips, published by the scene so the settings window can render it. */
-  const availableClipMeta = useModelScopedLocalStorageManualReset<Record<string, DerivedClipMeta & { name: string }>>('mmd', 'settings/mmd/available-clip-meta', () => ({}))
 
   /**
    * Persists a VMD file to IndexedDB and adds it to the synced list.
@@ -219,14 +216,12 @@ export const useMMD = defineStore('mmd', () => {
   /** Removes a single imported motion (from the synced list and IndexedDB). */
   async function removeMotion(id: string): Promise<void> {
     const motion = availableMotions.value.find(m => m.id === id)
+    if (motion)
+      await performanceSettings.removeClip(motion.name)
     availableMotions.value = availableMotions.value.filter(m => m.id !== id)
     // Drop the idle selection if it pointed at the removed motion.
     if (motion && idleMotionName.value === motion.name)
       idleMotionName.value = ''
-    if (motion) {
-      await performanceSettings.removeClip(motion.name)
-      availableClipMeta.value = Object.fromEntries(Object.entries(availableClipMeta.value).filter(([name]) => name !== motion.name))
-    }
     await motionFiles.removeItem(id)
   }
   /** Per-emotion gesture motion overrides; falls back to EMOTION_ACTION_NAME. */
@@ -309,7 +304,6 @@ export const useMMD = defineStore('mmd', () => {
     albedoGlow.reset()
     renderScale.reset()
     idleMotionName.reset()
-    availableClipMeta.reset()
     void clearMotions()
     performRequest.value = undefined
     emotionActionMap.reset()
@@ -342,7 +336,6 @@ export const useMMD = defineStore('mmd', () => {
 
     idleMotionName,
     availableMotions,
-    availableClipMeta,
     addMotion,
     getMotionFile,
     clearMotions,
