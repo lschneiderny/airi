@@ -6,14 +6,18 @@ import { join } from 'node:path'
 
 import messages from '@proj-airi/i18n/locales'
 
+import { NO_CAPABILITIES } from '@proj-airi/character-mind'
 import { createFallbackOptions } from '@proj-airi/i18n'
 import { STAGE_CONTRACT_EN_SHA256 } from '@proj-airi/stage-shared/stage-contract'
+import { MMD_NATURAL_CAPABILITIES } from '@proj-airi/stage-ui-mmd/composables/mmd/natural/adapter'
 import { createPinia, setActivePinia } from 'pinia'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
+import { effectScope, nextTick, ref } from 'vue'
 
 import { usePerformanceRuntimeState } from '../features/performance/runtime-state'
 import { useExpressionPerformanceSettings } from '../features/performance/settings'
-import { toExposedExpressions } from './performance/use-stage-performance-conductor'
+import { naturalMind } from '../test/natural-mind'
+import { toExposedExpressions, useStagePerformanceConductor } from './performance/use-stage-performance-conductor'
 import { useStageActionsPrompt, useStageContractPrompt, useStageLiveStatePrompt } from './use-airi-runtime-prompt'
 
 type Translate = (key: string, params?: Record<string, string>) => string
@@ -198,15 +202,32 @@ describe('useStageLiveStatePrompt', () => {
   // this test pins the fixture it compares against to the output of the stage-ui renderer.
   // Source: packages/lab-tools/src/model/exposed-actions.test.ts.
   // Removal condition: lab-tools can import the stage-ui renderer.
-  it('renders the text that the lab-tools fixture pins for the same exposed actions', async () => {
+  it('keeps the pinned MMD Natural actions bytes and removes the segment under classic', async () => {
     const { createI18n } = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
     const i18n = createI18n({ legacy: false, locale: 'en', messages, ...createFallbackOptions(() => {}) })
     i18nMock.t = (key, params) => i18n.global.t(key, params ?? {})
     const pinned = JSON.parse(readFileSync(join(import.meta.dirname, '../../../lab-tools/fixtures/model/actions-prompt.json'), 'utf8')) as { exposedActions: { label: string, kind: 'gesture' | 'action' | 'dance' }[], text: string }
 
-    usePerformanceRuntimeState().publish({ exposedActions: pinned.exposedActions, exposed: [], active: [], mood: null })
-
-    expect(useStageActionsPrompt().value).toBe(pinned.text)
+    const capabilities = ref(MMD_NATURAL_CAPABILITIES)
+    const scope = effectScope()
+    onTestFinished(() => scope.stop())
+    scope.run(() => useStagePerformanceConductor({
+      renderer: () => 'mmd',
+      scene: () => undefined,
+      capabilities: () => capabilities.value,
+      expressionBackend: () => undefined,
+      listActions: () => pinned.exposedActions.map(entry => ({ ...entry, exposed: true })),
+      mind: naturalMind({ seed: 1 }),
+      mood: () => null,
+    }))
+    const prompt = useStageActionsPrompt()
+    expect(prompt.value).toBe(pinned.text)
+    capabilities.value = NO_CAPABILITIES
+    await nextTick()
+    expect(prompt.value).toBe('')
+    capabilities.value = MMD_NATURAL_CAPABILITIES
+    await nextTick()
+    expect(prompt.value).toBe(pinned.text)
   })
 
   it('renders each action sentence in English and omits the sentence whose list is empty', async () => {

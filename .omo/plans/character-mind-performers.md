@@ -496,3 +496,8 @@ id (`avatarModels[].displayModelId`), not the card's avatar reference id
   The existing real MMD browser scene fixture supplies the scene regression;
   it uses generated assets and a controlled frame, without Electron. The
   settings notes reuse existing Natural-only copy, so no locale keys change.
+- **a5:** Section 2.3 still held after a4: runtime exposure and registrations
+  read the raw catalog and clip library. They now follow face and body in
+  the scene declaration. Runtime-state and prompt tests exercise the real
+  conductor producer, so the existing snapshot API and fixed contract bytes
+  stay unchanged. The c6 mapping catalog is deliberately not gated.
