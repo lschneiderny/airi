@@ -1,7 +1,7 @@
 # Character mind: the wander's stay in the errand
 
 Date: 2026-11-22
-Status: accepted; CM9d implemented. Headless and rendered acceptance are pending (see the placeholder below).
+Status: accepted; CM9d implemented. Headless and rendered acceptance are recorded below.
 
 Current rules are in [Autonomous behavior](../context/autonomous-behavior.md) (the Locomotion row and Precedence rule 8) and the [glossary](../context/glossary.md) (Idle errand). The [CM9 plan](../../../.omo/plans/character-mind-cm9.md) records the split, the decisions table, and the checks. This slice builds on the [settle ADR](2026-11-22-character-mind-settle.md).
 
@@ -39,4 +39,6 @@ A visit due with the cursor already within `VISIT_STOP_LEGS` arrives in place an
 
 ## Headless and rendered acceptance
 
-Placeholder for the orchestrator: the base and tip `qa:motion3d` runs for all eleven scenarios at seed 1 (expected `IDENTICAL`, since no scenario lists errands; confirm from the runs' events), the `diff` lines, the Live2D rig hashes, and rendered check 5 of plan section 8 (the wander intent's `holdSeconds`, the body readout's linger, the errand's `done` at `return-home`, or "not exercised").
+Placeholder for the oHeadless (orchestrator, macOS, 2026-11-22): lane B (CM9c, CM9d, CM9e) against the lane C tip, seed 1. All eleven `qa:motion3d` scenarios are `IDENTICAL` and both rig hashes are unchanged (`angry` `446b746a`, `happy` `a273e525`). The lane was later rebased onto `main` after PR #83; the only tree difference was two lines of the CM9f ADR, which no runner reads. No scenario lists errands, so no wander is drawn headless.
+
+Rendered (orchestrator, macOS, 2026-11-22, the QA MMD model on the desktop stage, roam mode, cursor parked off the stage): the first wander came 971 s after roaming began. Its intent carried `holdSeconds` 87.92, the director's `wanderStay` stamped the same `lingerSeconds` (87.92) on arrival, and the errand answered `done` 97.4 s after it was accepted, at the walk home after the stay. 0 renderer and 0 main-process errors.
