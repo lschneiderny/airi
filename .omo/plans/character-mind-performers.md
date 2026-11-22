@@ -4,6 +4,8 @@ Status: CM7a and CM7d implemented on 2026-11-22. CM7d's headless, rig and render
 
 Status: CM7a and CM7b implemented on 2026-11-22, with headless and rendered acceptance assigned to the orchestrator. The owner approved every recommended option, D1 to D12, on 2026-11-21. c6 landed separately; the remainder of CM7c and CM7d are not implemented here. The [roadmap](../../docs/ai/context/character-mind-roadmap.md#steps) tracks the four parts.
 
+Status: CM7a implemented on 2026-11-22, with headless and rendered acceptance assigned to the orchestrator. The owner approved every recommended option, D1 to D12, on 2026-11-21. CM7c is implemented, with headless, rendered, and Vishot acceptance assigned to the orchestrator; c6 landed separately. CM7b and CM7d are not implemented on this branch. The [roadmap](../../docs/ai/context/character-mind-roadmap.md#steps) tracks the four parts.
+
 The labels D1 to D12 name the forks in [Decisions for the owner](#decisions-for-the-owner). Each section is written on the recommended option.
 
 **Parallel work this plan composes with.**
@@ -882,6 +884,14 @@ results. No acceptance run, hash re-pin, or visual result is claimed here.
   orchestrator's assigned rendered acceptance; this worker runs no qa command
   or Electron launch.
 
+- **c7:** The final section 2 check retains the capability gates and all prior
+  departures above. D6 to D11 are recorded in the behavior ADR. The register
+  remains a user setting in its own document; no prompt or upstream session
+  type changes. The roadmap marks implementation complete while the ADR
+  explicitly reserves headless, rendered, and Vishot acceptance for the
+  orchestrator. This item includes the final plan ledger instead of adding a
+  seventh worker commit.
+
 ## Checks run (CM7a)
 
 The implementation base is `e57dd1393`. The owner requested package checks,
@@ -964,3 +974,138 @@ check; no package type changed after the successful a6 dependent checks.
 
 The [CM7a ADR](../../docs/ai/adr/2026-11-22-character-mind-performers.md) leaves an
 explicit placeholder for the orchestrator's headless and rendered results.
+
+## Checks run (CM7c)
+
+The implementation base is `bc63fa4ef`. The worker completed c1 to c5 and c7;
+c6 was already present. The owner requested package checks instead of
+`pnpm verify` and reserved headless and rendered acceptance for the orchestrator.
+No install, dependency manifest edit, lockfile edit, `qa:*` command, Electron
+launch, threshold change, timeout increase, push, or branch switch was used.
+
+The following table records the test commands and their final successful
+results. Counts at earlier item boundaries are included where the suite grew.
+Commands with paths use paths relative to the filtered package.
+
+| Command | Result |
+| --- | --- |
+| `pnpm -F @proj-airi/character-mind exec vitest run src` | 146 passed at c4, c5, and c7; 138 at c1 to c3 |
+| `pnpm -F @proj-airi/stage-ui exec vitest run --project node` | 1,957 passed at c4 and c5; 1,953 at c1, 1,955 at c2 and c3 |
+| `pnpm -F @proj-airi/stage-ui exec vitest run --project browser` | 1,024 passed and 5 existing skips at c3 to c5; 1,021 passed at c1 and c2 |
+| `pnpm -F @proj-airi/stage-shared exec vitest run` | 1,881 passed at c2 and c3 |
+| `pnpm -F @proj-airi/stage-ui-live2d exec vitest run --project node` | 787 passed at c3 and c4 |
+| `pnpm -F @proj-airi/stage-ui-live2d exec vitest run --project browser` | 45 passed at c3 and c4 |
+| `pnpm -F @proj-airi/stage-ui-mmd exec vitest run --project node` | 431 passed at c3 and c4 |
+| `pnpm -F @proj-airi/stage-ui-mmd exec vitest run --project browser` | 35 passed at c3 and c4 |
+| `pnpm -F @proj-airi/qa-tools exec vitest run --project node` | 880 passed and 9 existing environment-gated skips at c3 |
+| `pnpm -F @proj-airi/stage-pages exec vitest run` | 103 browser tests passed at c5; 102 at c3 |
+| `pnpm -F @proj-airi/i18n exec vitest run` | 20 passed at c5 |
+| `pnpm -F @proj-airi/stage-tamagotchi exec vitest run --project node` | 2,169 passed and 8 existing skips at c1 |
+| `pnpm -F @proj-airi/stage-ui exec vitest run --project node src/composables/performance src/features` | 278 passed at c2 to c5 and c7; 276 at c1 |
+| `pnpm -F @proj-airi/stage-ui exec vitest run --project browser src/components/scenes/stage-emotion-routing.browser.test.ts src/persistence` | 53 passed at c2 and c3 |
+| `pnpm -F @proj-airi/stage-ui exec vitest run --project browser src/components/scenes/stage-emotion-routing.browser.test.ts src/persistence src/composables/use-data-maintenance.browser.test.ts` | 79 passed at c1, c4, c5, and c7 |
+| `pnpm -F @proj-airi/stage-shared exec vitest run src/expression-performance` | 292 passed at c2 to c5 and c7; 291 at c1 |
+| `pnpm -F @proj-airi/stage-ui-live2d exec vitest run --project node src/composables/live2d` | 513 passed at every worker item |
+| `pnpm exec vitest run --project dev-tools scripts/dev-tools/policy-docs.test.ts` | 11 passed after policy edits and at c7 |
+| `pnpm exec vitest run --project dev-tools scripts/dev-tools/storage-writes.test.ts` | 1 passed at c1 and c3; the initial c3 failure was repaired without an exception |
+
+Focused and diagnostic test commands also ran:
+
+| Command | Result |
+| --- | --- |
+| `pnpm -F @proj-airi/stage-ui exec vitest run --project node src/features/character-behavior/settings.test.ts` | 8 passed at c1; the later full suite includes 10 after malformed-group regressions |
+| `pnpm -F @proj-airi/stage-ui exec vitest run --project browser src/features/character-behavior/settings.browser.test.ts` | 3 passed at c1; the later full suite includes 6 after import and deletion regressions |
+| `pnpm -F @proj-airi/stage-ui exec vitest run --project node src/composables/performance src/features src/stores/situation` | 470 passed at c3 |
+| `pnpm -F @proj-airi/stage-ui exec vitest run --project browser src/features/character-behavior/settings.browser.test.ts src/features/performance/settings.browser.test.ts src/features/situation/settings.browser.test.ts src/persistence src/composables/use-data-maintenance.browser.test.ts` | 110 passed at c3 |
+| `pnpm -F @proj-airi/stage-ui-live2d exec vitest run --project browser src/composables/live2d/natural-settings.browser.test.ts` | 15 passed at c3 |
+| `pnpm -F @proj-airi/stage-ui-mmd exec vitest run --project browser src/stores/natural-settings.browser.test.ts` | 14 passed at c3 |
+| `pnpm -F @proj-airi/stage-ui exec vitest run --project node src/stores/character-mind.test.ts` | 26 passed at c4 after repairing the initial 23-pass, 3-failure fixture run |
+| `pnpm -F @proj-airi/stage-pages exec vitest run src/pages/settings/behavior/index.browser.test.ts` | 1 passed at c5 |
+| `pnpm -F @proj-airi/stage-pages exec vitest run src/pages/settings/behavior/index.browser.test.ts src/pages/settings/presence/index.browser.test.ts` | 7 passed at c5 |
+| `pnpm -F @proj-airi/stage-ui exec vitest run --project browser src/components/scenarios/settings/model-settings/live2d.browser.test.ts src/components/scenarios/settings/model-settings/mmd.browser.test.ts` | MMD's 20 passed; Live2D's suite import failed after an accidental value-store rename. Restoring the existing export fixed it |
+| `pnpm -F @proj-airi/stage-ui exec vitest run --project browser src/components/scenarios/settings/model-settings/live2d.browser.test.ts --no-file-parallelism` | 42 passed; the first rerun had 38 passes and 4 stale cursor-control locators. Geometry checks now target the remaining Screen lean control with the same thresholds |
+| `pnpm -F @proj-airi/stage-tamagotchi exec vitest run --project browser` | Initial c1 attempts exposed the unsupported new subpath and optimizer reloads, then concurrent ResizeObserver failures; no complete passing run is claimed |
+| `pnpm -F @proj-airi/stage-tamagotchi exec vitest run --project browser src/renderer/app.browser.test.ts --no-file-parallelism` | The initial focused run had 1 pass and 2 failures; the leader fixture was missing the new owner and was corrected |
+| `pnpm -F @proj-airi/stage-tamagotchi exec vitest run --project browser --no-file-parallelism` | 308 passed and 1 failed in c1; the reset path lacked the owner. `useDataMaintenance` now creates it |
+| `pnpm -F @proj-airi/stage-tamagotchi exec vitest run --project browser src/renderer/composables/use-presence-notice-sync.browser.test.ts --no-file-parallelism` | The repaired reset test passed alone (1 test). No later full desktop browser pass is claimed |
+
+All final dependent typechecks exited 0:
+
+| Item | Command | Workspace projects selected |
+| --- | --- | --- |
+| c1 | `pnpm --filter "...@proj-airi/stage-ui" --filter "...@proj-airi/stage-tamagotchi" --workspace-concurrency=2 typecheck` | 7 |
+| c2 | `pnpm --filter "...@proj-airi/stage-shared" --filter "...@proj-airi/character-mind" --filter "...@proj-airi/stage-ui" --workspace-concurrency=2 typecheck` | 28 |
+| c3 | `pnpm --filter "...@proj-airi/stage-shared" --filter "...@proj-airi/stage-ui" --filter "...@proj-airi/stage-ui-live2d" --filter "...@proj-airi/stage-ui-mmd" --filter "...@proj-airi/stage-pages" --filter "...@proj-airi/qa-tools" --workspace-concurrency=2 typecheck` | 28 |
+| c4 | `pnpm --filter "...@proj-airi/character-mind" --filter "...@proj-airi/stage-ui" --filter "...@proj-airi/stage-ui-live2d" --filter "...@proj-airi/stage-ui-mmd" --workspace-concurrency=2 typecheck` | 10 |
+| c5 | `pnpm --filter "...@proj-airi/stage-ui" --filter "...@proj-airi/stage-pages" --filter "...@proj-airi/i18n" --workspace-concurrency=2 typecheck` | 29 |
+
+Diagnostic typechecks used `pnpm -F @proj-airi/stage-ui typecheck` and the
+following exact package selections with `--workspace-concurrency=2 typecheck`:
+
+- `pnpm --filter @proj-airi/stage-shared --filter @proj-airi/stage-ui-live2d --filter @proj-airi/stage-ui-mmd --filter @proj-airi/stage-ui --filter @proj-airi/stage-pages --filter @proj-airi/qa-tools --workspace-concurrency=2 typecheck`
+- `pnpm --filter @proj-airi/stage-ui-mmd --filter @proj-airi/stage-ui --filter @proj-airi/stage-pages --filter @proj-airi/qa-tools --workspace-concurrency=2 typecheck`
+- `pnpm --filter @proj-airi/stage-ui --filter @proj-airi/stage-pages --filter @proj-airi/qa-tools --workspace-concurrency=2 typecheck`
+- `pnpm --filter @proj-airi/character-mind --filter @proj-airi/stage-ui --filter @proj-airi/stage-ui-live2d --filter @proj-airi/stage-ui-mmd --workspace-concurrency=2 typecheck`
+
+The c3 diagnostics found stale settings assertions, a stale QA variable, an
+unused import, and a browser-only shared barrel reaching Node QA through quiet
+application defaults. The owning readers and fixtures were migrated; the
+schema now reads the existing preload platform directly. No tsconfig or type
+suppression was added. The c4 diagnostic selection passed before its dependent
+run. Mind-store snapshot tests now use the sync plugin's actual top-level
+function patch, and sequence assertions account for the initial behavior
+stimulus. The storage scanner required literal retired-key removals instead of
+an unresolved spread; no whitelist or test exemption was added.
+
+`pnpm -F @proj-airi/i18n build` passed after the English changes. Both
+`pnpm i18n:check` runs exited 0: first 825 warnings, then 821 after removing four
+unused MMD leaf keys. The final report excludes 641 known baseline diagnostics
+and reports 25 fixed diagnostics; the baseline file was untouched. Two remaining
+unused-key reports name the new route's metadata title and description, which
+are consumed by the generic settings layouts. Final c5 ESLint had no warnings.
+c3's lint had eight existing warnings in unchanged helpers/comments; none was
+suppressed. Every commit's hook passed. Package browser fixtures retain their
+model-loader and synchronization teardown logs; these do not establish app
+error counts.
+
+c7 changes documentation only. Its policy guard passed 11 tests and the five
+named inner loops passed 146, 278, 79, 292, and 513 tests. No package type changed
+after the successful c5 dependent check.
+
+## Orchestrator acceptance handoff (CM7c)
+
+The [behavior settings ADR](../../docs/ai/adr/2026-11-22-character-behavior-settings.md#consequences)
+contains an explicit placeholder. The worker has not run these checks:
+
+1. Compare seed-1 defaults against the base for all ten headless scenarios:
+   `idle`, `idle-drive`, `gaze-shift`, `speak`, `gesture-under-clip`, `emotions`,
+   `walk`, `sleepy-no-clip`, `touch`, and `music`. Require `IDENTICAL` in each.
+   Check disabled idle separately: no idle act, matching the null-drive behavior.
+2. Run both-host smoke and rendered checks 6 to 9 from section 9. Seed all four
+   old documents with MMD-only idle off; confirm the Behavior page and stored
+   new key, and the absence of old renderer behavior controls. Disable MMD
+   cursor attention and require no cursor episode. Set a c6 mapping weight to
+   zero and require no pick over ten ACT emotions. Delete all data and confirm
+   the behavior key stays absent.
+3. Capture Behavior in light and dark, at desktop and mobile widths. Check all
+   five sections, the save-error treatment, and renderer/Presence navigation.
+4. Record run directories, gate/report lines, event kinds and counts without
+   content, and zero renderer and main-process errors for every app launch.
+   Publish those results in the ADR placeholder and the eventual PR report.
+
+Scores prove direction, size relative to the recipe, release, and detectability
+above the rig's idle noise. They do not prove naturalness, which stays a visual
+review.
+
+## Commits (CM7c)
+
+| Item | Commit | Title |
+| --- | --- | --- |
+| c1 | `664f2f846` | `feat(stage-ui): add the character-behavior settings document` |
+| c2 | `852fcbdfb` | `refactor(stage-shared,stage-ui,stage-ui-live2d,stage-ui-mmd): narrow the renderer, expression, and presence documents` |
+| c3 | `e59df1ecf` | `refactor(stage-ui,stage-ui-live2d,stage-ui-mmd,stage-shared,qa-tools): read behavior from one document` |
+| c4 | `82e34ca0e` | `feat(character-mind,stage-ui): let the mind read the behavior switches` |
+| c5 | `325fdefc7` | `feat(stage-pages,stage-ui,i18n): put behavior on one settings page` |
+| c7 | This final documentation commit | `docs(ai): record the character-behavior settings and the register's home` |
+
+c6 was already on the implementation base and was not recreated by this worker.
