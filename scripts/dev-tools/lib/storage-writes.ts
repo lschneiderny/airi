@@ -7,7 +7,7 @@ export type StorageArea = 'localStorage' | 'sessionStorage' | 'indexedDB' | 'opf
 
 export type StorageWriteKey
   = | { exact: string }
-    | { prefix: string }
+    | { prefix: string, suffix?: string }
     | { perModel: string }
   /** An IndexedDB driver: its database, its object store when the scan resolves it, and its `base` as a key prefix. */
     | { database: string, store?: string, prefix?: string }
@@ -98,7 +98,7 @@ function contextOf(path: string, file: ts.SourceFile): FileContext {
   return context
 }
 
-type Resolved = { exact: string } | { prefix: string } | undefined
+type Resolved = { exact: string } | { prefix: string, suffix?: string } | undefined
 
 /** Whether a declared name or binding pattern binds `name`. */
 function binds(node: ts.BindingName, name: string): boolean {
@@ -216,8 +216,10 @@ class KeyResolver {
       let text = node.head.text
       for (const span of node.templateSpans) {
         const part = this.resolve(context, span.expression, seen)
-        if (!part || !('exact' in part))
-          return text ? { prefix: part && 'prefix' in part ? text + part.prefix : text } : undefined
+        if (!part || !('exact' in part)) {
+          const suffix = node.templateSpans.at(-1)?.literal.text
+          return text ? { prefix: part && 'prefix' in part ? text + part.prefix : text, ...(suffix ? { suffix } : {}) } : undefined
+        }
         text += part.exact + span.literal.text
       }
       return { exact: text }
@@ -251,6 +253,19 @@ class KeyResolver {
    */
   resolveAll(context: FileContext, node: ts.Expression, depth = 0): Exclude<Resolved, undefined>[] {
     node = unwrap(node)
+    if (ts.isTemplateExpression(node) && depth <= 3) {
+      let values = [node.head.text]
+      for (const span of node.templateSpans) {
+        const parts = this.resolveAll(context, span.expression, depth + 1)
+        if (!parts.length || parts.some(part => !('exact' in part))) {
+          values = []
+          break
+        }
+        values = values.flatMap(value => parts.flatMap(part => 'exact' in part ? [value + part.exact + span.literal.text] : []))
+      }
+      if (values.length)
+        return values.map(exact => ({ exact }))
+    }
     const single = this.resolve(context, node)
     if (single)
       return [single]
@@ -392,6 +407,10 @@ export function findStorageWrites(path: string, source: string, read: ReadReposi
   const keysOf = (node: ts.Expression | undefined): StorageWriteKey[] => {
     if (!node)
       return [{ unresolved: '' }]
+    const expression = unwrap(node)
+    if (ts.isCallExpression(expression) && calleeName(expression) === 'modelScopedStorageKey') {
+      return keysOf(expression.arguments[1]).map(key => 'exact' in key ? { perModel: key.exact } : key)
+    }
     const keys = resolver.resolveAll(context, node)
     return keys.length ? keys : [{ unresolved: node.getText(file) }]
   }
@@ -462,6 +481,9 @@ export type RegistryLocation = Record<string, string | boolean>
 
 export interface RegistrySource {
   id: string
+  tier: string | number
+  upstream?: string
+  exception?: string
   writers: string[]
   locations: RegistryLocation[]
 }
@@ -500,11 +522,17 @@ export function readStateRegistry(source: string): RegistrySource[] {
     const id = propertyOf(element, 'id')
     const writers = propertyOf(element, 'writers')
     const locations = propertyOf(element, 'locations')
-    if (!id || !writers || !locations || !ts.isArrayLiteralExpression(writers) || !ts.isArrayLiteralExpression(locations))
+    const tier = propertyOf(element, 'tier')
+    const upstream = propertyOf(element, 'upstream')
+    const exception = propertyOf(element, 'exception')
+    if (!id || !tier || !writers || !locations || !ts.isArrayLiteralExpression(writers) || !ts.isArrayLiteralExpression(locations))
       throw new Error(`A registration lacks a literal id, writers, or locations: ${element.getText().slice(0, 200)}`)
     const name = String(literal(id, 'A registration id'))
     return {
       id: name,
+      tier: ts.isNumericLiteral(tier) ? Number(tier.text) : String(literal(tier, `The tier of ${name}`)),
+      ...(upstream ? { upstream: String(literal(upstream, `The upstream revision of ${name}`)) } : {}),
+      ...(exception ? { exception: String(literal(exception, `The exception of ${name}`)) } : {}),
       writers: writers.elements.map(writer => String(literal(writer, `A writer of ${name}`))),
       locations: locations.elements.map((location) => {
         if (!ts.isObjectLiteralExpression(location))
@@ -532,6 +560,15 @@ interface Match {
   location: RegistryLocation
 }
 
+function matchesPerModel(key: string, unscoped: string): boolean {
+  const prefix = 'settings/models/'
+  const suffix = `/${unscoped.replace(/^settings\//, '')}`
+  if (!key.startsWith(prefix) || !key.endsWith(suffix))
+    return false
+  const modelId = key.slice(prefix.length, -suffix.length)
+  return modelId.length > 0 && !modelId.includes('/')
+}
+
 function siteMatches(site: StorageWriteSite, location: RegistryLocation): boolean {
   const { key } = site
   if (location.area !== site.area)
@@ -549,13 +586,82 @@ function siteMatches(site: StorageWriteSite, location: RegistryLocation): boolea
   }
   if (site.area === 'cacheStorage')
     return 'exact' in key && location.cache === key.exact
-  if ('exact' in key)
-    return location.key === key.exact || location.perModel === key.exact || (typeof location.prefix === 'string' && key.exact.startsWith(location.prefix))
+  if ('exact' in key) {
+    return location.key === key.exact || location.perModel === key.exact
+      || (typeof location.perModel === 'string' && matchesPerModel(key.exact, location.perModel))
+      || (typeof location.prefix === 'string' && key.exact.startsWith(location.prefix))
+  }
   if ('prefix' in key && !('database' in key))
     return typeof location.prefix === 'string' && key.prefix.startsWith(location.prefix)
   if ('perModel' in key)
     return location.perModel === key.perModel
   return false
+}
+
+function locationsOverlap(left: RegistryLocation, right: RegistryLocation): boolean {
+  if (left.area !== right.area)
+    return false
+  if (left.area === 'indexedDB') {
+    if (left.database !== right.database)
+      return false
+    if (!('store' in left) || !('store' in right))
+      return true
+    if (left.store !== right.store)
+      return false
+    const a = String(left.prefix ?? '')
+    const b = String(right.prefix ?? '')
+    return a.startsWith(b) || b.startsWith(a)
+  }
+  if (left.area === 'cacheStorage')
+    return left.cache === right.cache
+  if (left.area === 'opfs')
+    return left.directory === right.directory && left.displayModelCaches === right.displayModelCaches
+
+  const samples = (location: RegistryLocation): string[] => {
+    if (typeof location.key === 'string')
+      return [location.key]
+    if (typeof location.prefix === 'string')
+      return [location.prefix]
+    if (typeof location.perModel === 'string')
+      return [location.perModel, `settings/models/model-a/${location.perModel.replace(/^settings\//, '')}`]
+    return []
+  }
+  const matches = (key: string, location: RegistryLocation) => siteMatches({
+    file: '',
+    line: 0,
+    area: left.area as 'localStorage' | 'sessionStorage',
+    operation: 'write',
+    key: { exact: key },
+  }, location)
+  return samples(left).some(key => matches(key, right)) || samples(right).some(key => matches(key, left))
+}
+
+function checkRegistryOwnership(registry: readonly RegistrySource[]): string[] {
+  const problems: string[] = []
+  for (const [index, registration] of registry.entries()) {
+    if (registration.tier === 'plain') {
+      const active = registration.locations.filter(location => !location.legacy && location.area === 'localStorage')
+      if (active.length && !registration.upstream && registration.exception !== 'Fork state awaiting S2 migration')
+        problems.push(`${registration.id}: new fork state cannot use the plain persistence tier.`)
+      if (registration.upstream && !/^[a-f\d]{9,40}$/.test(registration.upstream))
+        problems.push(`${registration.id}: upstream plain state needs a pinned source revision.`)
+      if (registration.upstream && active.some(location => 'prefix' in location))
+        problems.push(`${registration.id}: upstream plain state must declare exact keys or per-model keys, not an open prefix.`)
+      if (!active.length && !registration.upstream) {
+        const legacyOnly = registration.exception === 'Legacy sweep only' && registration.locations.every(location => location.legacy)
+        const sessionOnly = registration.exception === 'Session diagnostics' && registration.locations.every(location => location.area === 'sessionStorage')
+        if (!legacyOnly && !sessionOnly)
+          problems.push(`${registration.id}: plain state needs an explicit legacy or session exception.`)
+      }
+    }
+    for (const other of registry.slice(index + 1)) {
+      if (other.id === registration.id)
+        problems.push(`${registration.id}: duplicate registration id.`)
+      if (registration.locations.some(left => other.locations.some(right => locationsOverlap(left, right))))
+        problems.push(`${registration.id} and ${other.id}: overlapping storage owners.`)
+    }
+  }
+  return problems
 }
 
 function describeKey(key: StorageWriteKey): string {
@@ -577,7 +683,7 @@ function describeKey(key: StorageWriteKey): string {
  * writers of an OPFS location, by file. IndexedDB drivers are mounts that several repositories share, so they skip rule 6.
  */
 export function checkStorageWrites(sites: readonly StorageWriteSite[], registry: readonly RegistrySource[], dynamicSites: readonly DynamicSite[]): string[] {
-  const problems: string[] = []
+  const problems = checkRegistryOwnership(registry)
   for (const site of sites) {
     const where = `${site.file}:${site.line}`
     // OPFS directory names are built at run time, so an OPFS site is owned by file: its file writes an OPFS location.
@@ -588,7 +694,10 @@ export function checkStorageWrites(sites: readonly StorageWriteSite[], registry:
     }
     const matches: Match[] = registry.flatMap(registration => registration.locations.filter(location => siteMatches(site, location)).map(location => ({ registration, location })))
     if (!matches.length) {
-      const dynamic = dynamicSites.find(entry => entry.file === site.file)
+      // A dynamic declaration never authorizes an undeclared literal added to the same writer.
+      const dynamic = ('unresolved' in site.key || ('prefix' in site.key && !('database' in site.key)))
+        ? dynamicSites.find(entry => entry.file === site.file)
+        : undefined
       const owner = dynamic && registry.find(registration => registration.id === dynamic.registration)
       if (!dynamic) {
         problems.push(`${where}: ${site.area} ${site.operation} of ${describeKey(site.key)} matches no registration in the state registry. Register the key in packages/stage-ui/src/persistence/state-registry.ts, or, when the key cannot be a constant, add the site to the dynamic sites of scripts/dev-tools/storage-writes.test.ts.`)
@@ -598,6 +707,11 @@ export function checkStorageWrites(sites: readonly StorageWriteSite[], registry:
       }
       else if (!owner.writers.includes(site.file)) {
         problems.push(`${where}: ${site.file} is not a writer of ${owner.id}, which the dynamic sites name for it.`)
+      }
+      else if ('prefix' in site.key && !('database' in site.key)) {
+        const { prefix, suffix } = site.key
+        if (!owner.locations.some(location => typeof location.key === 'string' && location.key.startsWith(prefix) && (!suffix || location.key.endsWith(suffix))))
+          problems.push(`${where}: the dynamic key has no declared member in ${owner.id}.`)
       }
       continue
     }

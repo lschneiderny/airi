@@ -319,6 +319,7 @@ The implementation must record departures from these recommendations with their 
 - Item 1 splits the fork MMD locations immediately so that the upstream MMD registration describes upstream locations only. Until items 3 to 5 migrate them, consent and the split MMD locations carry the explicit temporary exception "Fork state awaiting S2 migration".
 - Splitting registrations also requires updating the partial reset id lists in `use-data-maintenance.ts`; otherwise a module or desktop reset would stop sweeping the moved locations. The underlying owner reset still runs once.
 - The implementation assignment replaces per-commit `pnpm verify` with explicit package suites, dependent typechecks, lint, and policy guards. Rendered, Electron, QA, and branch gate checks belong to the orchestrator.
+- Item 2 resolves same-file template parameters to their literal callers and keeps unresolved factory suffixes. Without that refinement, the existing dynamic-site exemption would admit a new undeclared literal or factory member. The two existing dynamic declarations remain; no new ownership list was added.
 
 ## Checks run
 
@@ -327,9 +328,14 @@ The implementation must record departures from these recommendations with their 
 - Item 1: `pnpm -F @proj-airi/stage-ui exec vitest run --project browser src/persistence/state-registry.browser.test.ts src/composables/use-data-maintenance.browser.test.ts` passed 2 files / 32 tests.
 - Item 1: `pnpm --filter "...@proj-airi/stage-ui" --workspace-concurrency=2 typecheck` passed all 7 selected projects.
 - Item 1: ESLint over the seven changed files and `git diff --check` passed after correcting list formatting.
+- Item 2: `pnpm exec vitest run --project dev-tools scripts/dev-tools/lib/storage-writes.test.ts scripts/dev-tools/storage-writes.test.ts` passed 2 files / 17 tests.
+- Item 2: `pnpm -F @proj-airi/stage-ui exec vitest run --project node` passed 194 files / 1885 tests.
+- Item 2: `pnpm -F @proj-airi/stage-ui exec vitest run --project browser src/persistence/state-registry.browser.test.ts src/composables/use-data-maintenance.browser.test.ts` passed 2 files / 32 tests.
+- Item 2: `pnpm --filter "...@proj-airi/stage-ui" --workspace-concurrency=2 typecheck` passed all 7 selected projects.
+- Item 2: `pnpm exec vitest run --project dev-tools scripts/dev-tools/policy-docs.test.ts` passed 1 file / 11 tests; changed-file ESLint and `git diff --check` passed.
 
 **Orchestrator placeholder:** rendered scenarios, applicable motion checks, and `pnpm verify --gate` results are not run by this worker.
 
 ## Commits
 
-Implementation commits pending.
+- `623bfe20d` - `refactor(stage-ui): declare upstream persistence exceptions by owner`.

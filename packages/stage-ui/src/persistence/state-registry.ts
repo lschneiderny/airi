@@ -77,7 +77,7 @@ export type StorageLocation
    * A per-model display setting, declared with its unscoped key such as `settings/live2d/scale`. It matches that key
    * and `modelScopedStorageKey(id, key)` of every model id, so the sweep reaches models that are not active.
    */
-    | { area: 'localStorage', perModel: string }
+    | (LocationFlags & { area: 'localStorage', perModel: string })
     | { area: 'sessionStorage', key: string }
   /** Records of one IndexedDB object store, all of them or those whose key starts with `prefix`. */
     | (LocationFlags & { area: 'indexedDB', database: string, store: string, prefix?: string })
