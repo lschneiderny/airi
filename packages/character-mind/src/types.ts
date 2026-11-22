@@ -9,6 +9,7 @@ import type { CharacterPacingMemory, GateLocalTime, GateOutcome, GateSettings, G
 
 import type { PerformerCapabilities } from './capabilities'
 import type { MindGestureState } from './gesture'
+import type { MindMoodState } from './mood'
 
 /** Uniform draws in [0, 1). The shell owns the source; the core stores none. */
 export type MindRandom = () => number
@@ -96,10 +97,13 @@ export interface VoiceRequest {
 export type MindStimulus
   /** `voice` is null for a pet start and when no leader gate runs; the mind then decides no line. */
   = | (TouchReport & { kind: 'touch', settings: EmotionBehaviorSettings, voice: TouchVoiceView | null })
-  /** An ACT emotion, a tool call, or a devtools pulse. `nominal` is already scaled by the card's expressiveness. */
-    | { kind: 'emotion', source: 'act' | 'tool' | 'devtools', emotion: PerformanceEmotion, nominal: number, turnId?: string, settings: EmotionBehaviorSettings & Pick<ExpressionRealisationSettings, 'slots'> }
-  /** The model named an entry. The performer read the entry's lease and its primary emotion mapping from its catalog. */
-    | { kind: 'expression-request', source: 'act' | 'tool', entryId: string, lease: { holdSeconds: number, until: 'speech' | 'hold' }, mapping: { emotion: PerformanceEmotion, minBand: Band } | null, turnId?: string, settings: EmotionBehaviorSettings }
+  /**
+   * An ACT emotion, a tool call, or a devtools pulse. `nominal` is already scaled by the card's expressiveness.
+   * `moodless` marks a turn whose mood a touch already dosed (the conductor's `markMoodless`); absent means false.
+   */
+    | { kind: 'emotion', source: 'act' | 'tool' | 'devtools', emotion: PerformanceEmotion, nominal: number, turnId?: string, moodless?: boolean, settings: EmotionBehaviorSettings & Pick<ExpressionRealisationSettings, 'slots'> }
+  /** The model named an entry. The performer read the entry's lease and its primary emotion mapping from its catalog. `moodless` as for `emotion`. */
+    | { kind: 'expression-request', source: 'act' | 'tool', entryId: string, lease: { holdSeconds: number, until: 'speech' | 'hold' }, mapping: { emotion: PerformanceEmotion, minBand: Band } | null, turnId?: string, moodless?: boolean, settings: EmotionBehaviorSettings }
     | { kind: 'expression-clear', source: 'act' | 'tool' | 'devtools', slot?: SlotCommand['slot'], turnId?: string }
   /** What became of a `speak` intent, named by its `turnId`. `refused` means another unprompted turn was pending. */
     | { kind: 'voice-outcome', turnId: string, outcome: GateOutcome | 'refused' }
@@ -167,7 +171,7 @@ export type MindIntent
   = | (IntentBase & { channel: 'posture', kind: 'touch-reaction', gesture: 'poke', region: 'head' | 'body', point: { x: number, y: number } })
   /** The mind's pet runs from `start` to `end`; the performer follows the hand only between them. */
     | (IntentBase & { channel: 'posture', kind: 'touch-reaction', gesture: 'pet', phase: 'start' | 'end' })
-  /** A mood dose for the Natural performer. */
+  /** A mood dose for the Natural performer: a touch's, or the delta of a new or escalated emotion episode. */
     | (IntentBase & { channel: 'posture', kind: 'mood', dose: MoodDose })
   /**
    * The body gesture of the episode `episodeId` names, decided with its cooldown by `emotionGesture`. It follows the face
@@ -264,6 +268,8 @@ export interface MindState {
   reaction: ReactionState
   /** The emotion gesture cooldowns, in seconds of the mind's clock. */
   gesture: MindGestureState
+  /** Her fast mood, which every emotion and touch dose moves; it seeds a new performer. */
+  mood: MindMoodState
   /** Pacing and habituation of the mood doses of touches, in seconds of the mind's clock. */
   touch: { affect: TouchAffectMemory }
   voice: MindVoiceState

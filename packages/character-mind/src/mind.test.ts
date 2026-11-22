@@ -25,8 +25,8 @@ describe('character mind', () => {
   it('answers on its own clock and keeps the state of the last step', () => {
     const mind = new CharacterMind({ seed: 41, clock: scriptedClock(10_000, 11_000) })
     expect(mind.state.seq).toBe(0)
-    expect(mind.receive(performer, happy(0.6))).toMatchObject([{ kind: 'emotion', episode: { id: 'happy-1', escalation: false } }, { kind: 'emotion-gesture', episodeId: 'happy-1' }])
-    expect(mind.receive(happy(0.9))).toMatchObject([{ kind: 'emotion', episode: { id: 'happy-1', escalation: true } }])
+    expect(mind.receive(performer, happy(0.6))).toMatchObject([{ kind: 'emotion', episode: { id: 'happy-1', escalation: false } }, { kind: 'emotion-gesture', episodeId: 'happy-1' }, { kind: 'mood' }])
+    expect(mind.receive(happy(0.9))).toMatchObject([{ kind: 'emotion', episode: { id: 'happy-1', escalation: true } }, { kind: 'mood' }])
     expect(mind.state.seq).toBe(3)
     expect(mind.state.reaction.lastAt).toBe(11)
   })
@@ -37,7 +37,7 @@ describe('character mind', () => {
     mind.onStep(step => steps.push(step))
     mind.receive(performer, happy(0.6))
     // On the raw clock this stimulus would be older than the last one, and the rule would drop it.
-    expect(mind.receive(happy(0.9))).toMatchObject([{ kind: 'emotion', episode: { escalation: true } }])
+    expect(mind.receive(happy(0.9))).toMatchObject([{ kind: 'emotion', episode: { escalation: true } }, { kind: 'mood' }])
     mind.receive()
     expect(steps.map(step => step.atMs)).toEqual([10_000, 10_000, 10_500])
   })
