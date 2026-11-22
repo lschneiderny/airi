@@ -26,6 +26,11 @@ A declaration of the mind channels and cue gesture kinds a performer can realise
 ### Refusal
 
 An observer event naming a request that the performer declaration excludes. The mind records the stimulus sequence, intended kind, and `undeclared` reason without drawing for the refused episode. No policy reads the report. A conductor refusal uses `not-declared-by-stage`, so a second attached stage can report a narrower declaration.
+Expression refusals use the same conductor observer path and carry an entry id
+and reason without a label: a missing asset or usable slot, a protected manual
+group, or another expression slot's protected group. The contract also names
+clip masking, though neither current renderer gives clips ownership of an
+expression slot. A refusal report never changes the existing composition.
 
 **Code:** `packages/character-mind/src/types.ts` `Refusal`; `packages/character-mind/src/mind.ts` `MindStep`; `packages/stage-ui/src/features/performance/runtime-state.ts` `PerformerRefusal`; `packages/stage-ui/src/composables/performance/use-stage-performance-conductor.ts` `StagePerformanceConductor` (`onRefusal`).
 

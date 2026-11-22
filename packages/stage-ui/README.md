@@ -10,6 +10,11 @@ before dispatch. `onRefusal` reports `not-declared-by-stage` with the intended
 kind and cause; the inspector and motion QA record it. The mind follows the
 newest attached stage, while every conductor checks its own declaration.
 Voice cues carry their full intent so refusals retain the cause.
+Expression stores return one refusal per entry from `applySlots`; the conductor
+forwards its entry id and reason through the same observer path, without labels.
+The planner also reports an entry that disappeared before its timing event.
+Expression reports have `kind: 'entry'` and no stimulus cause; they never feed
+back into a mind policy or change the existing ownership rules.
 
 ## Character mapping weight editor
 

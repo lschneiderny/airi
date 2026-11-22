@@ -1,4 +1,4 @@
-import type { CatalogEntry, ComboDocument, CuratedCatalogDocument, CuratedOverride, SlotCommand } from '@proj-airi/stage-shared/expression-performance'
+import type { CatalogEntry, ComboDocument, CuratedCatalogDocument, CuratedOverride, ExpressionRefusal, SlotCommand } from '@proj-airi/stage-shared/expression-performance'
 
 import type { MorphLayer } from '../composables/mmd/morph-runtime'
 import type { PmxMorphInfo } from '../utils/expression-catalog/derive'
@@ -183,9 +183,10 @@ export const useMMDExpressionStore = defineStore('mmd-expressions', () => {
   }
 
   /** Executes decider output; invalid commands are dropped, never partially applied. */
-  function applySlots(commands: readonly SlotCommand[], now = performance.now() / 1000) {
+  function applySlots(commands: readonly SlotCommand[], now = performance.now() / 1000): ExpressionRefusal[] {
     if (!Number.isFinite(now))
-      return
+      return []
+    const refusals = new Map<string, ExpressionRefusal>()
     for (const command of commands) {
       if (!slotNames.includes(command.slot)) {
         console.warn('[mmd-expression-store] Unknown slot dropped:', command.slot)
@@ -200,13 +201,17 @@ export const useMMDExpressionStore = defineStore('mmd-expressions', () => {
         continue
       }
       const entry = findEntry(command.expressionId)
-      if (!entry || !entrySlots(entry, catalog.value).includes(command.slot))
+      if (!entry || !entrySlots(entry, catalog.value).includes(command.slot)) {
+        const entryId = resolveAlias(command.expressionId, catalog.value)
+        refusals.set(entryId, { entryId, reason: 'missing-asset' })
         continue
+      }
       if (leases.value[command.slot]?.expressionId !== entry.id)
         releaseSlot(command.slot)
       leases.value = { ...leases.value, [command.slot]: createLease(entry.id, command, now, ++claimSeq) }
     }
     reconcile(now)
+    return [...refusals.values()]
   }
 
   /** Only leases of the same turn react; leases without a turn follow their hold rule. */

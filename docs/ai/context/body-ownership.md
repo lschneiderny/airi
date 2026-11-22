@@ -44,6 +44,23 @@ Mind moment intents also seed their chance and entry pick by id
 Performer idle reports and lab previews have no moment intent id and keep a
 separate local random stream. The moment chance remains 0.6.
 
+Expression requests that cannot be shown return one `ExpressionRefusal` per
+entry in the command batch, with its catalog id and no label. The conductor
+forwards these through `onRefusal`, the motion QA `performer-refusal` mind
+event, and the reaction inspector. Missing catalog entries or entries with no
+usable slots report `missing-asset`; this also covers a planner entry removed
+before its timing event. Live2D's existing protected manual group reports
+`masked-by-manual`, and a protected group owned by another slot reports
+`masked-by-expression`. A shown expression reports nothing.
+
+These reports preserve existing composition. Live2D applies expression
+parameters after motion curves; MMD's `expression` morph layer outranks `clip`
+and its slot claims outrank manual claims. Neither currently has a clip-owned
+expression slot, so neither manufactures `masked-by-clip`; the report contract
+can carry that reason when a performer actually refuses for clip ownership.
+Reporting does not add a mask, change a lease, or feed a refusal into the mind.
+This lands former Target rule 5 for the expression ownership that exists.
+
 ### Channel ownership
 
 | Channel | Parameters | Natural | Universal and MAGIC | Composition | Code |
@@ -261,7 +278,6 @@ Slot names resolve to model morph names through `createMorphController` (`packag
 This section states the design that refactors move toward. It does not describe the code. The [character mind ADR](../adr/2026-11-17-character-mind-direction.md) records the decision. When a refactor lands a rule, the rule moves into the sections above and the gaps it closes leave the list below.
 
 3. **One writer per channel per frame in the remaining renderers.** Every [channel](glossary.md#channel) has exactly one owner. A second contribution enters through the owner's inputs. Live2D under Natural now follows the final-owner reading in its current rules; the gaze arbiter also owns gaze on MMD. CM7d makes no broader ownership claim for other renderer channels.
-5. **Performers seed their picks and report refusals.** Expression and mind moment picks now use their intent ids. What remains: the performer reports masked or refused expressions.
 6. **Feel targets survive the rewrite.** A held emotion fills roughly 50 to 70 % of a parameter's range at the clear band and nearly all of it at strong. Each emotion reads unmistakably on the whole face at corner size, even when a rig's expression files only switch decorations. `dizzy` is not part of the emotion vocabulary. Sources: owner rulings in the 2026-10-19 natural emotion revamp plan.
 7. **The app ships no motion clips.** MMD motion is a procedural core plus VMD clips the user imports locally; model terms forbid redistributing clips. Source: owner ruling in the MMD natural full-body plan.
 

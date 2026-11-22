@@ -177,6 +177,9 @@ A decider receives no raw emotion. Its signals are:
 A touch is not a decider signal: the mind answers it, and no entry shows it.
 
 A decision carries the slot commands in `slots`. It carries no episode, no hold, and no mood dose: the mind sends those with its intents.
+If a scheduled entry disappeared before its timing event, `refusals` carries
+its id and `missing-asset`. Expression stores return the same `ExpressionRefusal`
+contract for commands they cannot show; the conductor owns reporting.
 
 A `HoldCommand` tells the Natural driver which emotion to hold and for how long. It has an `emotion`, or `null` to release the hold, a `strength`, and the same `holdSeconds`, `until`, and `turnId` lifetime fields as a slot command.
 The mind decides the hold:

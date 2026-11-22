@@ -39,6 +39,33 @@ describe('mmd expression store', () => {
     vi.unstubAllGlobals()
   })
 
+  it('reports missing assets and entries with no slots once, with ids only', () => {
+    const store = useMMDExpressionStore()
+    store.registerMorphs('model', morphInfos(ellenLikeMorphs))
+    const id = 'mmd:3:笑い'
+    store.updateEntry(id, { kind: 'outfit', label: 'Requested face' })
+    const command = { slot: 'face' as const, expressionId: 'missing', holdSeconds: 2, until: 'hold' as const }
+    expect(store.applySlots([command, command, { ...command, expressionId: id }], 0)).toEqual([
+      { entryId: 'missing', reason: 'missing-asset' },
+      { entryId: id, reason: 'missing-asset' },
+    ])
+    expect(store.leases.face).toBeNull()
+  })
+
+  it('reports nothing for shown entries and preserves slot precedence over manual morph claims', () => {
+    const { sink, calls } = fakeRuntime()
+    const store = useMMDExpressionStore()
+    store.registerMorphs('model', morphInfos(ellenLikeMorphs), sink, 0)
+    store.updateEntry('mmd:3:笑い', { group: 'face' })
+    store.updateEntry('mmd:18:にこり', { group: 'face' })
+    store.activate('mmd:18:にこり', 0)
+    expect(store.applySlots([{ slot: 'face', expressionId: 'mmd:3:笑い', holdSeconds: 3, until: 'hold' }], 0)).toEqual([])
+    store.update(2)
+    expect(calls).toContainEqual(['set', 'expression', '笑い', 1])
+    expect(store.settingsSnapshot.entries.find(entry => entry.id === 'mmd:18:にこり')?.effective).toBe(false)
+    expect(store.applySlots([{ slot: 'face', expressionId: null, holdSeconds: 0, until: 'hold' }], 2)).toEqual([])
+  })
+
   it('fades a face lease into the expression layer, holds it, then fades out and clears the channel', () => {
     const { sink, calls } = fakeRuntime()
     const store = useMMDExpressionStore()

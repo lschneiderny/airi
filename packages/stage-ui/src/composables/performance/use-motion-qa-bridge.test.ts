@@ -327,6 +327,14 @@ describe('useMotionQaBridge', () => {
     expect(reply.result.events.map(event => ({ kind: event.kind, ...event.payload }))).toEqual([{ kind: 'mind', stimulus: 'performer-refusal', refusals: JSON.stringify([{ cause: 7, kind: 'gesture', reason: 'not-declared-by-stage' }]) }])
   })
 
+  it.each(['masked-by-clip', 'masked-by-manual', 'masked-by-expression', 'missing-asset'] as const)('records one %s expression refusal event with no label', async (reason) => {
+    const refusal = { cause: null, kind: 'entry' as const, entryId: 'expression-1', reason }
+    await refused.trigger(refusal)
+    const reply = await dispatch({ name: 'events', input: {} }) as { result: { events: { kind: string, payload: Record<string, unknown> }[] } }
+    expect(reply.result.events.map(event => ({ kind: event.kind, ...event.payload }))).toEqual([{ kind: 'mind', stimulus: 'performer-refusal', refusals: JSON.stringify([refusal]) }])
+    expect(JSON.stringify(reply)).not.toContain('label')
+  })
+
   it('records a presence step with its away state and wake cause, and each idle report', async () => {
     mind.receive({ kind: 'presence', away: true, wake: null })
     await idle.trigger({ phase: 'start', behaviour: 'sleep' })

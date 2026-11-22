@@ -705,6 +705,23 @@ contains the requested placeholder for these results.
   Chance, cooldown, hold, and report timing are unchanged. Stage's callback
   needs the two-line wiring change so the id reaches the owning composable.
 
+- **b3:** Rechecked section 2: gates, routing, exposure, settings, and register
+  ownership remain unchanged; b1 and b2 replaced only the stated draw sources.
+  The plan assumed clip-owned expression slots, but neither renderer has one:
+  Live2D composes expressions after motion curves, and MMD's expression morph
+  layer outranks clip morphs. MMD also lets slot claims outrank manual claims.
+  Adding either mask would change Natural, so b3 preserves that precedence
+  and never emits a false clip or manual refusal. The observer contract carries
+  `masked-by-clip`, tested at the conductor and QA boundary, but there is no
+  current clip-mask producer. Live2D's existing protected manual-group branch
+  emits `masked-by-manual`. Its separate cross-slot protection requires the
+  additional accurate reason `masked-by-expression`; calling it a clip or
+  manual mask would misreport its owner. Both stores report missing assets and
+  unusable slots once per entry per batch. The planner also reports a scheduled
+  entry deleted before emission, since otherwise no command reaches a store.
+  Shared report types belong in stage-shared, rather than renderer copies.
+  Reports describe admission, not later fades or normal lease replacement.
+
 ## Checks run (CM7b)
 
 The owner reserved all headless and rendered checks for the orchestrator and
@@ -733,6 +750,22 @@ change is part of this implementation.
 | b2 | `pnpm -F @proj-airi/stage-ui-live2d exec vitest run --project node src/composables/live2d` | 513 passed |
 | b2 | `pnpm exec vitest run --project dev-tools scripts/dev-tools/policy-docs.test.ts` | 11 passed |
 | b2 | `pnpm --filter "...@proj-airi/stage-ui" --workspace-concurrency=2 typecheck` | 7 packages, exit 0 |
+| b3 | `pnpm -F @proj-airi/stage-ui-live2d exec vitest run --project node src/stores/expression-store.test.ts` | 77 passed |
+| b3 | `pnpm -F @proj-airi/stage-ui-mmd exec vitest run --project node src/stores/expression-store.test.ts` | 8 passed |
+| b3 | `pnpm -F @proj-airi/stage-ui exec vitest run --project node src/composables/performance/use-stage-performance-conductor.test.ts src/composables/performance/use-motion-qa-bridge.test.ts` | 142 passed |
+| b3 | `pnpm -F @proj-airi/stage-shared exec vitest run` | 1,884 passed |
+| b3 | `pnpm -F @proj-airi/stage-ui-live2d exec vitest run --project node` | 790 passed |
+| b3 | `pnpm -F @proj-airi/stage-ui-mmd exec vitest run --project node` | 433 passed |
+| b3 | `pnpm -F @proj-airi/stage-ui exec vitest run --project node` | 1,959 passed |
+| b3 | `pnpm -F @proj-airi/stage-ui exec vitest run --project browser` | 1,018 passed, 5 existing skips |
+| b3 | `pnpm -F @proj-airi/stage-ui-live2d exec vitest run --project browser` | 43 passed |
+| b3 | `pnpm -F @proj-airi/stage-ui-mmd exec vitest run --project browser` | 34 passed |
+| b3 | `pnpm -F @proj-airi/character-mind exec vitest run src` | 138 passed |
+| b3 | `pnpm -F @proj-airi/stage-ui exec vitest run --project node src/composables/performance src/features` | 282 passed |
+| b3 | `pnpm -F @proj-airi/stage-shared exec vitest run src/expression-performance` | 295 passed |
+| b3 | `pnpm -F @proj-airi/stage-ui-live2d exec vitest run --project node src/composables/live2d` | 513 passed |
+| b3 | `pnpm exec vitest run --project dev-tools scripts/dev-tools/policy-docs.test.ts` | 11 passed |
+| b3 | `pnpm --filter "...@proj-airi/stage-shared" --filter "...@proj-airi/stage-ui-live2d" --filter "...@proj-airi/stage-ui-mmd" --filter "...@proj-airi/stage-ui" --workspace-concurrency=2 typecheck` | 28 packages, exit 0 |
 
 b1 changed TypeScript files passed ESLint. Its first focused run found a fixture
 that depended on the previous random pick; its first stage-ui Node run found
@@ -742,6 +775,11 @@ passed. Browser fixtures retain their existing localization and teardown logs.
 b2 changed files passed ESLint with one existing trivial-function warning in
 Stage outside the changed callback. Its browser timeout failures passed alone
 without a timeout or threshold change.
+b3's focused and full suites passed on their first runs. The conductor's
+indentation diagnostics were fixed and ESLint passed. Its clip-refusal tests
+exercise the observer contract; no current renderer has clip ownership of an
+expression slot. The real stores' tests assert their actual missing-asset,
+manual protection, cross-slot protection, and shown-entry outcomes.
 
 ## Checks run (CM7a)
 

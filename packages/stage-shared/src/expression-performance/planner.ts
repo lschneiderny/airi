@@ -87,8 +87,12 @@ export function createPlannerDecider(): Decider<PlannerState> {
 
       function emitAuto(pick: PlannedPick, turnId: string | undefined) {
         const slots = pickSlots(pick, ctx.catalog)
-        if (slots.length === 0)
+        if (slots.length === 0) {
+          decision.refusals ??= []
+          if (!decision.refusals.some(refusal => refusal.entryId === pick.expressionId))
+            decision.refusals.push({ entryId: pick.expressionId, reason: 'missing-asset' })
           return false
+        }
         const budget = admit(next.budget, signal.at, ctx.settings.planner, admittedThisDecision, slots.length)
         if (!budget)
           return false

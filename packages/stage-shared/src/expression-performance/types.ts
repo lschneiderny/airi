@@ -68,6 +68,14 @@ export interface HoldCommand {
 
 export interface PerformanceDecision {
   slots: SlotCommand[]
+  /** A scheduled entry can disappear before its timing event; the conductor reports it without changing policy. */
+  refusals?: ExpressionRefusal[]
+}
+
+/** One expression request that cannot be shown. Reports contain catalog ids, never labels or model paths. */
+export interface ExpressionRefusal {
+  entryId: string
+  reason: 'masked-by-clip' | 'masked-by-manual' | 'masked-by-expression' | 'missing-asset'
 }
 
 export interface DeciderContext {
