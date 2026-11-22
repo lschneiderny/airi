@@ -2,6 +2,17 @@
 
 MMD (MikuMikuDance) scene components, composables, and stores for Project AIRI.
 
+## Drivers
+
+Natural declares every performer channel. Classic declares none and uses
+upstream emote, gaze, blink, global idle, and emotion-mapped `playAction`. The
+body director never updates under classic. Stance slots, curated clip actions,
+ACT action labels, `perform_action`, idle clips, and debug clips are Natural
+only; the settings page marks those controls. Switching to classic withdraws
+pending director requests and releases its layer before restoring upstream
+idle playback. Returning to Natural reapplies its base without resetting its
+director decisions.
+
 ## What it does
 
 Renders PMX/PMD models with VMD/VPD motion support inside AIRI's stage,
@@ -299,7 +310,7 @@ screen inwardness and touch inputs. `Stage.vue` passes the resolved
 placement, chat target and activity, mouth level and speaking state, and routes
 the stage performance conductor to this scene when the MMD renderer is active
 (`selectStagePerformanceRenderer` in `@proj-airi/stage-ui`). The MMD Natural
-driver is the conductor's `natural` driver and Classic is `basic`. The
+driver declares `MMD_NATURAL_CAPABILITIES` and Classic declares `NO_CAPABILITIES`. The
 exposed `setEmotion`, `applyHolds`, `applySlots`, `onSpeech`, `setMuted`,
 `getMood` and `action` methods form the `StagePerformanceScene` surface. A sent
 message or an opened chat reaches Natural only as the character mind's
@@ -316,8 +327,7 @@ refused, and higher-priority glances can interrupt the 8 s hold. Classic does
 not perform it. `resolveBodyTarget(points, natural, gazeMode, intent, attention)`
 keeps diagnostic and headless trace points from the resolver's attention and
 the look request; it is not a second gaze writer.
-`action(label, gesture?)` receives an ACT `action` label (under Natural and
-Classic alike) and runs `resolveActAction`
+`action(label, gesture?)` receives an ACT `action` label only with body declared and runs `resolveActAction`
 (`src/composables/mmd/actions/resolve-act-action.ts`) against
 `labeledClips(modelKey, motions)`: the label is compared exactly with the labels the user
 curated and is never used as a clip name. An exposed gesture is queued for the
@@ -635,11 +645,9 @@ intent reaches `MMDAttendInbox`: `touch` and `drag` increment `touchSeq`,
 `chat-send` and `chat-unfold` increment `chatSeq`, and `chat-unfold` also increments
 `chatOpenSeq` for the approach. Only cursor attends open the cursor window.
 The scene keeps no raw touch, drag-release, sent-message, or unfold counters.
-Classic receives no attends: drag releases and chat activity no longer end its
-clips. The world still reports a drag in progress, which retains its clip rules.
+Classic runs no director and receives no attends; drag and chat activity do not control its upstream mapped actions.
 `setAway(away)` stores the mind's presence answer for the director under Natural.
-The conductor seeds it on scene attach and on a switch to Natural. Classic's
-director always reads `away: false`, so leaving no longer ends its clips.
+The conductor seeds it on scene attach and on a switch to Natural. Classic runs no director, so leaving does not end its mapped actions.
 Natural's own performance input still carries the resolver's away overlay. The response is pre-physics head
 and body motion. The scene also exposes `wakeFromSleep()` and
 `reactToDesktop(reaction)`, which `Stage.vue` calls under Natural when the mind

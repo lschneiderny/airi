@@ -487,3 +487,12 @@ id (`avatarModels[].displayModelId`), not the card's avatar reference id
   The T1/T2 Live2D scenario sink is also a conductor consumer, so it now
   declares the Live2D set. Inspector composition stays in Stage: importing
   that browser store from the conductor would pull chat assets into Node QA.
+- **a4:** Rechecked section 2 against upstream bd4f30391: classic still ran
+  the director and sent its emotion map through requestPerform. It now uses
+  upstream setIdleMotion and playAction. The imported-motion and idle-selection
+  hooks are restored as well as the emotion path. A driver switch releases
+  director requests and its layer, then invalidates only the applied base so
+  returning to Natural reapplies the existing decision without resetting it.
+  The existing real MMD browser scene fixture supplies the scene regression;
+  it uses generated assets and a controlled frame, without Electron. The
+  settings notes reuse existing Natural-only copy, so no locale keys change.

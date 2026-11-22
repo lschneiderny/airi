@@ -12,6 +12,7 @@ import { presenceBubbleIdle, presenceBubbleThinking } from '@proj-airi/stage-sha
 import { DEFAULT_CHARACTER_PROFILE, faceBaselineOf, initialCharacterState, NEUTRAL_FACE_BASELINE, readCharacter } from '@proj-airi/stage-shared/character-state'
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { useDesktopActivityStore } from '@proj-airi/stage-shared/stores/desktop-activity'
+import { useExpressionStore } from '@proj-airi/stage-ui-live2d/stores/expression-store'
 import { MMDScene } from '@proj-airi/stage-ui-mmd'
 import { MMD_NATURAL_CAPABILITIES } from '@proj-airi/stage-ui-mmd/composables/mmd/natural/adapter'
 import { useMMDExpressionStore, useMMDPerformanceSettings } from '@proj-airi/stage-ui-mmd/stores'
@@ -314,6 +315,33 @@ describe('stage emotion routing on Live2D', () => {
     expect(emotion).not.toHaveBeenCalled()
     expect(params.currentMotion).toEqual({ group: 'Nod' })
     expect(motionGroups.value).toEqual(['Nod'])
+  })
+
+  it.each(['universal', 'magic'] as const)('plays upstream emotion groups under %s without a mind emotion or fork lease', async (driver) => {
+    const { motionGroups } = await renderStage(driver)
+    const mind = useCharacterMindStore().mind
+    const steps: MindStep[] = []
+    const stop = mind.onStep(step => steps.push(step))
+    onTestFinished(stop)
+    const applied = vi.spyOn(useExpressionStore(), 'applySlots')
+    const played = until(() => motionGroups.value.length, count => count === 3)
+    for (const name of ['happy', 'happy', 'neutral'])
+      await useLlmStreamingControlStore().dispatchWith(`<|ACT ${JSON.stringify({ emotion: name })}|>`)
+    await played
+    expect(motionGroups.value).toEqual(['Happy', 'Happy', 'Idle'])
+    expect(steps.flatMap(step => step.stimuli).filter(stimulus => stimulus.kind === 'emotion')).toEqual([])
+    expect(applied).not.toHaveBeenCalled()
+    expect(useExpressionStore().leases).toEqual({ face: null, effect: null, prop: null })
+  })
+
+  it.each(['universal', 'magic'] as const)('sends an ACT expression to the upstream context under %s', async (driver) => {
+    const { scene } = await renderStage(driver)
+    const context = scene.props.context as ReturnType<typeof live2d.createLive2D>
+    const execute = vi.spyOn(context.expressions, 'execute').mockResolvedValue(true)
+    const expression = vi.spyOn(StagePerformanceConductor.prototype, 'expression')
+    await useLlmStreamingControlStore().dispatchWith('<|ACT {"expression":"smile"}|>')
+    expect(execute).toHaveBeenCalledWith({ name: 'smile' })
+    expect(expression).not.toHaveBeenCalled()
   })
 
   it('reports a Live2D shrug refusal and plays a declared nod', async () => {

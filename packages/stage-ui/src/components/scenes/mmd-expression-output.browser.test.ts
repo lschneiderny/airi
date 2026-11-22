@@ -1,13 +1,16 @@
 import type { ResolvedMMDModel } from '@proj-airi/stage-ui-mmd/utils/mmd-loader'
 import type { ComponentInternalInstance } from 'vue'
 
+import { resetModelScopedLocalStorageForTesting, setActiveDisplayModelForSettings } from '@proj-airi/stage-shared/composables'
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { MMDScene } from '@proj-airi/stage-ui-mmd'
-import { useMMD, useMMDExpressionStore } from '@proj-airi/stage-ui-mmd/stores'
+import { loadMMDAnimationClip } from '@proj-airi/stage-ui-mmd/composables/mmd'
+import { MMDStanceDirector } from '@proj-airi/stage-ui-mmd/composables/mmd/stance'
+import { useMMD, useMMDExpressionStore, useMMDPerformanceSettings } from '@proj-airi/stage-ui-mmd/stores'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { afterEach, expect, it, vi } from 'vitest'
 import { cleanup, render } from 'vitest-browser-vue'
-import { defineComponent, getCurrentInstance, h, ref, watch } from 'vue'
+import { defineComponent, getCurrentInstance, h, nextTick, ref, watch } from 'vue'
 
 import { loadMMDModelFromSource } from '../../../../stage-ui-mmd/src/utils/mmd-loader'
 
@@ -80,9 +83,26 @@ function modelBlob(morphName: string) {
   return new Blob([buffer.slice(0, offset)], { type: 'application/octet-stream' })
 }
 
+/** VMD 2: one root-bone translation, no camera, light, shadow, or IK tracks. */
+function motionBlob() {
+  const bytes = new Uint8Array(30 + 20 + 4 + 111 * 2 + 4 * 5)
+  const view = new DataView(bytes.buffer)
+  bytes.set(new TextEncoder().encode('Vocaloid Motion Data 0002'))
+  view.setUint32(50, 2, true)
+  for (let frame = 0; frame < 2; frame++) {
+    const offset = 54 + 111 * frame
+    bytes.set(new TextEncoder().encode('root'), offset)
+    view.setUint32(offset + 15, frame * 30, true)
+    view.setFloat32(offset + 23, frame * 0.1, true)
+    view.setFloat32(offset + 43, 1, true)
+  }
+  return new Blob([bytes], { type: 'application/octet-stream' })
+}
+
 afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
+  resetModelScopedLocalStorageForTesting()
   localStorage.clear()
 })
 
@@ -108,13 +128,84 @@ function renderLifecycleScene(pinia: ReturnType<typeof createPinia>) {
   const state = () => (host!.subTree.component as ComponentInternalInstance & {
     setupState: {
       loadModel: (src: string) => Promise<void>
+      mesh: ResolvedMMDModel['mesh']
       scene: { children: { type: string, children: object[] }[] }
       animation: import('@proj-airi/stage-ui-mmd/composables/mmd').MMDAnimationManager
       morphRuntime: ReturnType<typeof import('../../../../stage-ui-mmd/src/composables/mmd/morph-runtime').createMMDMorphRuntime>
     }
   }).setupState
-  return { rendered, state }
+  const exposed = () => host!.subTree.component!.exposed as Pick<InstanceType<typeof MMDScene>, 'setClassicEmotion' | 'action'>
+  return { rendered, state, exposed }
 }
+
+it('plays classic mapped actions through upstream playback and never advances the director', async () => {
+  const pinia = createPinia()
+  setActivePinia(pinia)
+  const store = useMMD()
+  store.physicsEnabled = false
+  setActiveDisplayModelForSettings('mmd', 'classic-playback-test')
+  const settings = useMMDPerformanceSettings()
+  await settings.setMotionDriver('classic-playback-test', 'classic')
+  store.emotionActionMap = { ...store.emotionActionMap, happy: 'mapped' }
+  const frames = new Map<number, FrameRequestCallback>()
+  let frameId = 0
+  vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+    frames.set(++frameId, callback)
+    return frameId
+  })
+  vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(id => frames.delete(id))
+  const director = vi.spyOn(MMDStanceDirector.prototype, 'update')
+  const url = URL.createObjectURL(modelBlob('classic-face'))
+  const motionUrl = URL.createObjectURL(motionBlob())
+  const { rendered, state, exposed } = renderLifecycleScene(pinia)
+  try {
+    await state().loadModel(url)
+    const animation = state().animation
+    animation.registerClip('mapped', await loadMMDAnimationClip(motionUrl, state().mesh))
+    const playAction = vi.spyOn(animation, 'playAction')
+    const playLayer = vi.spyOn(animation, 'playLayer')
+    exposed().setClassicEmotion('happy', 0.7)
+    expect(playAction).toHaveBeenCalledWith('mapped', { loop: false })
+    let frameAtMs = performance.now()
+    function stepFrame() {
+      const pending = [...frames.values()]
+      frames.clear()
+      expect(pending.length).toBeGreaterThan(0)
+      frameAtMs += 16
+      for (const frame of pending)
+        frame(frameAtMs)
+    }
+    stepFrame()
+    expect(animation.snapshot().currentAction).toBe('mapped')
+    expect(director).not.toHaveBeenCalled()
+    expect(playLayer).not.toHaveBeenCalled()
+    expect(exposed().action('mapped')).toBe(false)
+
+    const base = vi.spyOn(animation, 'setBaseMotion')
+    await settings.setMotionDriver('classic-playback-test', 'natural')
+    await nextTick()
+    stepFrame()
+    expect(director).toHaveBeenCalledOnce()
+    expect(base).toHaveBeenCalledWith(null)
+    await settings.setMotionDriver('classic-playback-test', 'classic')
+    await nextTick()
+    base.mockClear()
+    await settings.setMotionDriver('classic-playback-test', 'natural')
+    await nextTick()
+    // The director's decision is unchanged, but classic replaced its base.
+    stepFrame()
+    expect(director).toHaveBeenCalledTimes(2)
+    expect(base).toHaveBeenCalledWith(null)
+    exposed().setClassicEmotion('happy', 0.7)
+    expect(playAction).toHaveBeenCalledTimes(1)
+  }
+  finally {
+    rendered.unmount()
+    disposePinia(pinia)
+    URL.revokeObjectURL(url)
+    URL.revokeObjectURL(motionUrl)
+  }
+})
 
 it.each([2, 3])('keeps one scene group and runtime after %i overlapping loads finish out of order', async (count) => {
   const pinia = createPinia()

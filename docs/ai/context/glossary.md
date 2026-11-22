@@ -111,7 +111,7 @@ The character's slow inner state for one character card, stored per card and hid
 
 ### Classic
 
-The MMD motion driver without Natural. Clips, the classic gaze controller, the classic emote, and the classic blink move her, and the body performer's stages do nothing. The body director still decides stances and clips.
+The MMD motion driver without Natural. Clips, the classic gaze controller, the classic emote, and the classic blink move her, and the body performer's stages do nothing. The body director does not run. Emotion mappings play directly through `playAction`; the global idle uses `setIdleMotion`. Stance slots, curated clip actions, body tools, and debug clips require Natural.
 
 **Code:** `packages/stage-ui-mmd/src/stores/mmd.ts` `MMDMotionDriver` (value `'classic'`); `packages/stage-ui-mmd/src/composables/mmd/gaze.ts` `createGazeController`; `packages/stage-ui-mmd/src/composables/mmd/expression.ts` `useMMDEmote`; `packages/stage-ui-mmd/src/composables/mmd/blink.ts` `useMMDBlink`.
 **Not to be confused with:** the classic window, which is the `window` stage host; and Universal, the Live2D driver that plays the model's own motions.
