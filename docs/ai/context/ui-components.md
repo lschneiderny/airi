@@ -1130,6 +1130,12 @@ realisation; Live2D alone keeps the inward `screenLean` setting. The
 `performanceSettings` input combines emotion behavior with expression
 realisation after applying the active character's profile.
 
+Touch classifiers continue reporting while reactions are off; the mind owns
+the decision. A permission edge resets the classifier and withdraws a granted
+hand without synthesizing a pet-end stimulus. Idle permission also withdraws
+the existing performer drive, preserving its energy, cancellation, settling,
+and cue semantics while the mind independently suppresses new idle decisions.
+
 ## Live2D scene API
 
 `Live2D.vue` in `@proj-airi/stage-ui-live2d` is a scene component, not a `@proj-airi/ui` primitive. It has two touch events. `naturalTouch` carries a `TouchReport` (`@proj-airi/character-mind`) for a poke, a pet start, or a pet end that the Natural classifier recognized. The scene shows nothing for it until the stage answers through the exposed `reactToTouch(intent: TouchReactionIntent)`. Under Natural, the scene also exposes `wakeFromSleep()`, which ends a sleep with the gentle wake and does nothing while she is awake, and `reactToDesktop(reaction: 'wake' | 'screen-change')`, which starts a desktop reaction; both do nothing under the Universal and MAGIC drivers. The `performance` prop is a `PerformanceState` (`@proj-airi/stage-shared/performance-state`) with `mode`, `attention`, and `away` only; it starts no reaction, and desktop reactions arrive only through `reactToDesktop`. `touch` carries a tap or a pat that the scene recognized under the Universal and MAGIC drivers, and it never fires under Natural. Its `naturalEnergy` and `performanceSettings` props, the Natural touch event, and its exposed `applySlots`, `applyHolds`, and `reactToTouch` methods are documented in the [stage-ui-live2d README](../../../packages/stage-ui-live2d/README.md), under Expression slots, Held emotions, Energy, and Touch: poke and pet.

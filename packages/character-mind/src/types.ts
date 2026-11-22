@@ -11,6 +11,13 @@ import type { PerformerCapabilities } from './capabilities'
 /** Uniform draws in [0, 1). The shell owns the source; the core stores none. */
 export type MindRandom = () => number
 
+/** User-wide decision permissions, replayed by the host after every mind reset. */
+export interface BehaviorSwitches {
+  idleActivities: boolean
+  touchReactions: boolean
+  chatAttention: boolean
+}
+
 /**
  * A classified touch, as a scene reports it. A poke's point is relative to the touched region: x from -1 (left) to
  * 1, y from -1 (top) to 1. Only the head is petted.
@@ -101,6 +108,8 @@ export type MindStimulus
     | CueGestureStimulus
   /** The newest attached stage's declaration, replayed by the host after a reset. */
     | { kind: 'performer', capabilities: PerformerCapabilities }
+  /** Decision permissions from the character-behavior document; cursor tracking remains a performer permission. */
+    | ({ kind: 'behavior' } & BehaviorSwitches)
 
 /** A cue gesture the model or the devtools lab asked for, `count` times. `turnId` names the reply of an ACT gesture. */
 export interface CueGestureStimulus {
@@ -219,6 +228,7 @@ export interface MindState {
   seq: number
   /** Fast state. A mind without an attached performer declares no body channels. */
   performer: PerformerCapabilities
+  behavior: BehaviorSwitches
   /** Emotion strength and habituation: the emotion half of the expression decider. */
   reaction: ReactionState
   /** Pacing and habituation of the mood doses of touches, in seconds of the mind's clock. */
@@ -277,7 +287,7 @@ export interface MindMusicState {
 
 /** The idle policy's memory. Plain JSON. */
 export interface MindIdleState {
-  /** The reporting performer's latest view, or null while no Natural performer has reported. */
+  /** The latest view, made dormant while idle activities are off; null before a Natural performer reports. */
   view: IdleView | null
   /** The mind's clock counted only while `view.active`: the idle schedule's time base, in seconds. */
   activeSeconds: number

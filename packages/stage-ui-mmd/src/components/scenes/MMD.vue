@@ -1135,6 +1135,7 @@ function realiseErrands(directorMs: number, intent: BodyIntent | null) {
  * rate, the body or the errands change, so Natural sees a new drive only then.
  */
 function resolveIdleDrive(): NaturalIdleDrive | null {
+  // Null also withdraws energy offsets, active acts, settling, and cues; the mind separately suppresses decisions.
   if (hostIdleDrive === null || !props.idleActivities)
     return sceneIdleDrive = null
   const rate = stance?.intent?.action ? 0 : hostIdleDrive.rate
@@ -1606,7 +1607,7 @@ watch(() => props.modelSrc, (src) => {
 
 // --- Touch
 // Pokes and pets are a Natural reaction, so touch runs only while Natural drives the model.
-const touchActive = computed(() => props.touchReactions && capabilities.value.posture && !props.paused)
+const touchActive = computed(() => capabilities.value.posture && !props.paused)
 
 /** Whether the mind's pet runs. The pet hand reaches Natural only meanwhile. */
 let petGranted = false
@@ -1634,11 +1635,19 @@ function reactToTouch(intent: TouchReactionIntent) {
 }
 
 /** Ends any gesture in progress and withdraws the pet hand. */
-function resetTouch() {
-  if (touch)
-    handleTouchEvents(touch.reset(performance.now()))
+function resetTouch(report = true) {
+  if (touch) {
+    const reports = touch.reset(performance.now())
+    if (report)
+      handleTouchEvents(reports)
+    else
+      natural?.setPet(null)
+  }
   petGranted = false
 }
+
+// Permission edges withdraw the hand without reporting a pet the mind already closed or never granted.
+watch(() => props.touchReactions, () => resetTouch(false))
 
 // The model is ready once the scene reports it mounted; any other state means it is gone or loading.
 watch(componentState, (state) => {

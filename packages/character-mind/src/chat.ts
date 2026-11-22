@@ -10,6 +10,8 @@ interface Answer { state: MindState, intents: MindIntent[] }
  * opens the cursor window; an unfold asks for an approach to the chat. It draws nothing and changes no state.
  */
 export function answerChat(state: MindState, stimulus: Stimulus<'chat'>, cause: number): Answer {
+  if (!state.behavior.chatAttention)
+    return { state, intents: [] }
   const words = stimulus.cue === 'sent' ? stimulus.words : 0
   const read: MindIntent = { id: `${cause}-chat-read`, cause, channel: 'gaze', kind: 'chat-read', cue: stimulus.cue, words }
   const attend: MindIntent = stimulus.cue === 'sent'
