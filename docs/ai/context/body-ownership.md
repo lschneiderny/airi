@@ -226,6 +226,8 @@ Morphs are persistent per-layer channels that `combineMorphChannels` (`packages/
 
 Slot names resolve to model morph names through `createMorphController` (`packages/stage-ui-mmd/src/composables/mmd/morph.ts`). Vertex and group influences, material morphs, and UV morphs reach the mesh in the `morphs` surface stage (`applySurfaceStage`), after physics.
 
+**One final owner per MMD channel under Natural.** `MMDFramePipeline` restores the clean morph values, and the morph runtime (`createMMDMorphRuntime`) writes the value `combineMorphChannels` folds from every layer. No other code writes morph influences, so each layer above is an input of one owner. Each bone group has one pose stage that composes its final transform on the clean pose, in `MMD_POSE_STAGE_IDS` order, and a clip enters through the ownership weights of `MMDBody` `updateOwnership`. This lands Target rule 3 for MMD under the final-owner reading of the Live2D rules. The gaze while she walks is the exception that Target rule 3 keeps open: `MMDBody` `resolveGaze` replaces Natural's gaze choice with the travel direction (Autonomous behavior [Precedence](autonomous-behavior.md#precedence) rule 9).
+
 ### Per state
 
 | State | Effect | Code |
@@ -277,7 +279,7 @@ Slot names resolve to model morph names through `createMorphController` (`packag
 
 This section states the design that refactors move toward. It does not describe the code. The [character mind ADR](../adr/2026-11-17-character-mind-direction.md) records the decision. When a refactor lands a rule, the rule moves into the sections above and the gaps it closes leave the list below.
 
-3. **One writer per channel per frame in the remaining renderers.** Every [channel](glossary.md#channel) has exactly one owner. A second contribution enters through the owner's inputs. Live2D under Natural now follows the final-owner reading in its current rules; the gaze arbiter also owns gaze on MMD. CM7d makes no broader ownership claim for other renderer channels.
+3. **One writer per channel per frame in the remaining renderers.** Every [channel](glossary.md#channel) has exactly one owner, and a second contribution enters through the owner's inputs. Still open: on MMD, `MMDBody` `resolveGaze` replaces the gaze arbiter's choice with the travel direction while she walks, so a glance the arbiter granted does not show; Live2D under Universal and MAGIC and MMD classic keep upstream's chains of writers, which ADR decision 14 keeps unless the owner decides otherwise; and VRM, Spine, and tachie have no channel owners until the VRM adapter (3D roadmap M5). Landed for Live2D under Natural as the Live2D rule "One owner composes each Live2D channel under Natural", and for MMD morphs and bones under Natural as the MMD rule "One final owner per MMD channel under Natural".
 6. **Feel targets survive the rewrite.** A held emotion fills roughly 50 to 70 % of a parameter's range at the clear band and nearly all of it at strong. Each emotion reads unmistakably on the whole face at corner size, even when a rig's expression files only switch decorations. `dizzy` is not part of the emotion vocabulary. Sources: owner rulings in the 2026-10-19 natural emotion revamp plan.
 7. **The app ships no motion clips.** MMD motion is a procedural core plus VMD clips the user imports locally; model terms forbid redistributing clips. Source: owner ruling in the MMD natural full-body plan.
 
