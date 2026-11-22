@@ -1,4 +1,4 @@
-import type { MMDLabeledClip } from '../../../stores/mmd'
+import type { MMDLabeledClip } from '../../../stores/performance-settings'
 
 import { describe, expect, it } from 'vitest'
 

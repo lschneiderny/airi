@@ -45,7 +45,7 @@ reaching feature parity with the Live2D and VRM renderers:
   over idle, sitting and walking; full-body actions and dances pre-empt the
   walk through the director. See [Clip library and actions](#clip-library-and-actions).
 - **Stance slots**: assign imported motions to a model's `idle`, `sit` and
-  `sleep` slots (`stanceSlots` in the `mmd` store). Natural settles her in
+  `sleep` slots (`stanceSlots` in `useMMDPerformanceSettings`). Natural settles her in
   after two minutes idle and sleeps while the user is away; the body director
   plays the sit or sleep clip for it with a 0.6 s eased cross-fade on the base
   layer, or rests or dozes her without a clip when the slot is empty. A sit or
@@ -63,7 +63,7 @@ reaching feature parity with the Live2D and VRM renderers:
   or sent message; `attend(intent)` stamps `attend.untilMs` at the director time of
   the next frame, through `MMDAttendInbox`, under the Natural driver; under the classic driver the attend intent is not
   dispatched, so the director gets no attend window), returns home 20 s after the last reason and, with
-  `roamMode` (`settings/mmd/roam-mode`, `'stay' | 'roam'`, default `'stay'`),
+  `roamMode` (in `settings/mmd/performance`, `'stay' | 'roam'`, default `'stay'`),
   wanders when Natural's idle draw asks for it (the `wander` errand, listed in
   the drive in roam mode on the desktop stage), so only under the Natural driver
   with Idle activities on (changed 2026-11-14). A wander walks over to where the
@@ -283,8 +283,8 @@ Classic gaze is a pose stage: it composes head and eye aim with the clean
 clip rotation before solvers and physics, rather than replacing VMD rotation
 with a rest-relative gaze override.
 
-`useMMD().motionDriver` persists at `settings/mmd/motion-driver` and defaults
-to `natural`. Natural seeds its shared controller with FNV-1a over the model
+`useMMDPerformanceSettings().motionDriver` reads the active model's choice from
+`settings/mmd/performance` and defaults to `natural`. Natural seeds its shared controller with FNV-1a over the model
 id's UTF-16 code units. Its pose stage advances Natural and prepares the face
 channels; it writes no bone. The body performer (below) reads Natural's state
 through `bodyFrame.intent` (`controller.bodyIntent()`) and poses the whole body.
@@ -319,7 +319,7 @@ the look request; it is not a second gaze writer.
 `action(label, gesture?)` receives an ACT `action` label (under Natural and
 Classic alike) and runs `resolveActAction`
 (`src/composables/mmd/actions/resolve-act-action.ts`) against
-`labeledClips(modelKey)`: the label is compared exactly with the labels the user
+`labeledClips(modelKey, motions, metadata)`: the label is compared exactly with the labels the user
 curated and is never used as a clip name. An exposed gesture is queued for the
 director with `source: 'act'`; a label no clip carries counts `unknown`, a
 hidden clip `notExposed`, and an exposed action or dance `notGesture` (those
@@ -546,7 +546,7 @@ holds) and `wanderAnswer { seq, accepted }`. `nextWanderAtMs` was removed on
 | `setOverlay` | `Partial<MMDOverlayFlags>` | Turns overlays on or off (the lab uses `mmdOverlaySetEvent`). |
 | `requestGoal` | `{ x, pace: 'stroll' \| 'walk' }` | The director's `debugGoal`: walks her to `x` on the ground line, clamped to `ground`. Any other pace is rejected with one warning. |
 | `setHome` | `{ x }` | Moves the resting root x the director returns to. |
-| `setRoamMode` | `{ mode: 'stay' \| 'roam' }` | Writes `roamMode` (`settings/mmd/roam-mode`) from the lab. |
+| `setRoamMode` | `{ mode: 'stay' \| 'roam' }` | Awaits a leader action that updates `roamMode` in `settings/mmd/performance`. |
 | `playClip` | `{ name, loop? }` | Queues the clip on the director as a `debug` request. The asleep, dragging, refractory and busy rules apply; `loop: true` skips only the gesture repeat cooldown. `loop` unset keeps the clip's curated or derived loop. An empty or non-string name is rejected with one warning. |
 | `stopClip` | none | Stops the running performance (a `debug` stop request). |
 | `startTrace` | `{ scenario: { id, class, seed }, maxSeconds }` | Replaces stopped data and records final bones, up to 130 s. Refuses with `measurement-running`, `trace-recording`, `no-mmd-model` or `invalid-trace-request`. |
@@ -577,12 +577,12 @@ only the upper body. A clip that is removed and imported again under the same
 name is derived and registered again without a model reload
 (`composables/mmd/motion-registrations.ts`).
 
-The `useMMD` store keeps the user's curation per model in `clipCuration`
-(`settings/mmd/clip-curation`: `label`, `kind` override, `loop` override and
-`aiMayUse`, which defaults to off). `setCuration` refuses a label that fails
+The `useMMDPerformanceSettings` store keeps per-model `clipCuration` in
+`settings/mmd/performance`: `label`, `kind`, `loop`, `aiMayUse`, and `idleMayUse`.
+Both permissions default to off. Await `setCuration`; it refuses a label that fails
 `CLIP_LABEL_PATTERN` or that another clip of the model already uses.
 `labeledClips(modelKey)` lists every clip with a label and a gesture, action or
-dance kind, and `exposedActions(modelKey)` the exposed ones. `removeMotion`
+dance kind, and `exposedActions(modelKey, motions, metadata)` the exposed ones. `removeMotion`
 drops the clip's curation and meta. Derived data is never persisted as user
 state; the scene recomputes it on load.
 
@@ -769,7 +769,7 @@ entries are plain data: reading them on a lease change tracks no entry fields.
 
 The MMD model settings expose the motion driver, Natural energy
 (the `energy` Natural setting), the touch toggles and the per-model stance
-slots (`settings/mmd/stance-slots`). Below the motion import list, a curation
+slots (the `stanceSlots` map in `settings/mmd/performance`). Below the motion import list, a curation
 table shows one row per clip with its derived kind and layer badge (plus
 `downgraded` and `unusable` badges), a label input with an inline duplicate
 error, a kind select, a loop toggle and the "AI may use" switch; its label
@@ -810,3 +810,18 @@ Pure motion math belongs in `@proj-airi/motion-driver-humanoid` or
 - For VRM avatars use `@proj-airi/stage-ui-three`; for Live2D use
   `@proj-airi/stage-ui-live2d`; for Spine use `@proj-airi/stage-ui-spine`.
 - In environments without WebGL support.
+
+## Realisation settings ownership
+
+Import `useMMDPerformanceSettings` from `@proj-airi/stage-ui-mmd/stores`. Use it
+for durable MMD driver, height, roam, stance, and curation choices. Read its
+projections and await `update`, `setMotionDriver`, `setStanceSlot`, or
+`setCuration`; never assign a follower's whole map. The host awaits `initialize`
+in the leader. Model selection awaits `selectModel` before publishing the model,
+so an old unscoped driver can be claimed once without a default flash.
+
+A new document wins over old keys. The first acknowledged save removes old
+fork keys across every model; a failed save keeps them. `removeModel` drops
+only that model's entries, and `reset` writes defaults instead of importing.
+Use upstream `useMMD` for its display and physics preferences and motion files.
+Do not put character behavior or derived clip metadata in the realisation document.

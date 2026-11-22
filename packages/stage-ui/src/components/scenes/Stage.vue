@@ -31,7 +31,7 @@ import { initialResolverMemory, resolvePerformanceState } from '@proj-airi/stage
 import { TOUCH_TOPIC_KEY } from '@proj-airi/stage-shared/situation'
 import { useDesktopActivityStore } from '@proj-airi/stage-shared/stores/desktop-activity'
 import { createLive2D, Live2DScene, useLive2DNaturalSettings, useLive2dParams, useSettingsLive2d } from '@proj-airi/stage-ui-live2d'
-import { useMMD } from '@proj-airi/stage-ui-mmd/stores'
+import { useMMDPerformanceSettings } from '@proj-airi/stage-ui-mmd/stores'
 import { SpineScene } from '@proj-airi/stage-ui-spine'
 import { TachieScene } from '@proj-airi/stage-ui-tachie'
 import { animations } from '@proj-airi/stage-ui-three/assets/vrm'
@@ -133,7 +133,7 @@ const live2dSceneRef = ref<InstanceType<typeof Live2DScene>>()
 const spineSceneRef = ref<InstanceType<typeof SpineScene>>()
 const tachieSceneRef = ref<InstanceType<typeof TachieScene>>()
 const mmdSceneRef = ref<InstanceType<typeof MMDScene>>()
-const { motionDriver: mmdMotionDriver } = storeToRefs(useMMD())
+const { motionDriver: mmdMotionDriver } = storeToRefs(useMMDPerformanceSettings())
 
 const settingsStore = useSettings()
 const {

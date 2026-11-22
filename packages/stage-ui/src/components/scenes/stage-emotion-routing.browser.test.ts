@@ -13,7 +13,7 @@ import { DEFAULT_CHARACTER_PROFILE, faceBaselineOf, initialCharacterState, NEUTR
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { useDesktopActivityStore } from '@proj-airi/stage-shared/stores/desktop-activity'
 import { MMDScene } from '@proj-airi/stage-ui-mmd'
-import { useMMD, useMMDExpressionStore } from '@proj-airi/stage-ui-mmd/stores'
+import { useMMDExpressionStore, useMMDPerformanceSettings } from '@proj-airi/stage-ui-mmd/stores'
 import { createPinia, disposePinia, getActivePinia, setActivePinia } from 'pinia'
 import { afterEach, beforeAll, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { cleanup, render } from 'vitest-browser-vue'
@@ -965,7 +965,7 @@ describe('stage performance routing on MMD', () => {
   async function renderMMD(component: Component = Stage, props: Record<string, unknown> = {}) {
     const pinia = createTestPinia()
     await showMMDRenderer()
-    useMMD().motionDriver = 'natural'
+    await useMMDPerformanceSettings().setMotionDriver('mmd-routing-test', 'natural')
     mmdHost = null
     render(defineComponent({
       setup() {

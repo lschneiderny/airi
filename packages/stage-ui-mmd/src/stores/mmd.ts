@@ -1,12 +1,10 @@
-import type { ClipKind, ClipLayer, DerivedClipMeta } from '@proj-airi/motion-driver-humanoid/clip-meta'
+import type { DerivedClipMeta } from '@proj-airi/motion-driver-humanoid/clip-meta'
 import type { Emotion } from '@proj-airi/stage-shared/expression-performance'
 
-import type { MMDStanceSlots } from '../composables/mmd/stance'
 import type { MorphSlot } from '../constants/morphs'
 
 import indexedDbDriver from 'unstorage/drivers/indexedb'
 
-import { CLIP_LABEL_PATTERN, effectiveLayer } from '@proj-airi/motion-driver-humanoid/clip-meta'
 import { useLocalStorageManualReset, useModelScopedLocalStorageManualReset } from '@proj-airi/stage-shared/composables'
 import { useBroadcastChannel } from '@vueuse/core'
 import { nanoid } from 'nanoid/non-secure'
@@ -15,6 +13,7 @@ import { createStorage } from 'unstorage'
 import { ref, watch } from 'vue'
 
 import { EMOTION_ACTION_NAME } from '../constants/actions'
+import { useMMDPerformanceSettings } from './performance-settings'
 import { supportedControl, useMMDViewControl } from './view-control'
 
 // The settings window curates clips against these contracts without a dependency on the humanoid package.
@@ -78,32 +77,6 @@ const motionFiles = createStorage({
 
 /** Eye/head tracking mode, mirroring the VRM renderer's tracking modes. */
 export type MMDGazeMode = 'camera' | 'mouse' | 'none'
-export type MMDMotionDriver = 'natural' | 'classic'
-/** Whether she stays near home (`stay`) or occasionally wanders the ground line (`roam`) on the desktop stage. */
-export type MMDRoamMode = 'stay' | 'roam'
-
-/** User-owned curation of one imported clip; derived fields are recomputed on load and never stored here. */
-export interface MMDClipCuration {
-  /** The name the chat model can use; `null` keeps the clip out of the library. */
-  label: string | null
-  kind: ClipKind | null
-  loop: boolean | null
-  /** Whether the chat model may trigger the clip. */
-  aiMayUse: boolean
-  /** Whether she may play the clip on her own while idle, without anyone asking. */
-  idleMayUse: boolean
-}
-
-export interface MMDLabeledClip {
-  name: string
-  label: string
-  kind: ClipKind
-  layer: ClipLayer
-  exposed: boolean
-  /** She may play it on her own while idle. */
-  idle: boolean
-}
-
 /** Transient request to perform a clip (or stop with `name: null`), bumped per request. */
 export interface MMDPerformRequest {
   name: string | null
@@ -112,13 +85,8 @@ export interface MMDPerformRequest {
   nonce: number
 }
 
-const LIBRARY_KINDS: readonly ClipKind[] = ['gesture', 'action', 'dance']
-
-function defaultCuration(): MMDClipCuration {
-  return { label: null, kind: null, loop: null, aiMayUse: false, idleMayUse: false }
-}
-
 export const useMMD = defineStore('mmd', () => {
+  const performanceSettings = useMMDPerformanceSettings()
   const { post, data } = useBroadcastChannel<BroadcastChannelEvents, BroadcastChannelEvents>({
     name: 'airi-stores-stage-ui-mmd',
   })
@@ -174,7 +142,6 @@ export const useMMD = defineStore('mmd', () => {
    * - `none`   — no tracking; idle saccades only
    */
   const gazeMode = useModelScopedLocalStorageManualReset<MMDGazeMode>('mmd', 'settings/mmd/gaze-mode', 'mouse')
-  const motionDriver = useModelScopedLocalStorageManualReset<MMDMotionDriver>('mmd', 'settings/mmd/motion-driver', 'natural')
 
   // === Scene: camera ===
   /** Vertical field of view in degrees. */
@@ -200,9 +167,6 @@ export const useMMD = defineStore('mmd', () => {
   const albedoGlow = useModelScopedLocalStorageManualReset<number>('mmd', 'settings/mmd/albedo-glow', 0.45)
   /** Device-pixel-ratio multiplier for render resolution. */
   const renderScale = useLocalStorageManualReset<number>('settings/mmd/render-scale', 1)
-  /** On-screen character height in DIP on the desktop stage; the stage page calibrates its camera from it. */
-  const stageCharacterHeight = useLocalStorageManualReset<number>('settings/mmd/stage-character-height', 560)
-  const roamMode = useLocalStorageManualReset<MMDRoamMode>('settings/mmd/roam-mode', 'stay')
 
   // === Animation ===
   /** Name of the persistent idle motion; empty means none/static. */
@@ -216,59 +180,8 @@ export const useMMD = defineStore('mmd', () => {
    * files live in IndexedDB.
    */
   const availableMotions = useModelScopedLocalStorageManualReset<MMDMotionDescriptor[]>('mmd', 'settings/mmd/motions', () => [])
-  /**
-   * Per-model stance clips, keyed by model id, naming imported motions. The
-   * body director plays `sit` after a long idle and `sleep` while away; `idle`
-   * replaces `idleMotionName` for that model.
-   */
-  const stanceSlots = useLocalStorageManualReset<Record<string, MMDStanceSlots>>('settings/mmd/stance-slots', () => ({}))
-  /** Per-model clip curation, keyed by model key then clip name. */
-  const clipCuration = useLocalStorageManualReset<Record<string, Record<string, MMDClipCuration>>>('settings/mmd/clip-curation', () => ({}))
   /** Derived metadata of the imported clips, published by the scene so the settings window can render it. */
   const availableClipMeta = useModelScopedLocalStorageManualReset<Record<string, DerivedClipMeta & { name: string }>>('mmd', 'settings/mmd/available-clip-meta', () => ({}))
-
-  function curationFor(modelKey: string, name: string): MMDClipCuration {
-    // A record saved before a field existed reads that field at its default.
-    return { ...defaultCuration(), ...clipCuration.value[modelKey]?.[name] }
-  }
-
-  /**
-   * Merges a patch into a clip's curation. Returns `false` and leaves the state untouched when the
-   * label fails `CLIP_LABEL_PATTERN` (an empty string and upper case included; `null` clears it) or
-   * another clip of the same model already uses it.
-   */
-  function setCuration(modelKey: string, name: string, patch: Partial<MMDClipCuration>): boolean {
-    const model = clipCuration.value[modelKey] ?? {}
-    if (patch.label != null) {
-      if (!CLIP_LABEL_PATTERN.test(patch.label))
-        return false
-      if (Object.entries(model).some(([other, curation]) => other !== name && curation.label === patch.label))
-        return false
-    }
-    clipCuration.value = {
-      ...clipCuration.value,
-      [modelKey]: { ...model, [name]: { ...curationFor(modelKey, name), ...patch } },
-    }
-    return true
-  }
-
-  /** Every imported clip with a label and a gesture, action or dance kind (override first), in import order. */
-  function labeledClips(modelKey: string): MMDLabeledClip[] {
-    const clips: MMDLabeledClip[] = []
-    for (const { name } of availableMotions.value) {
-      const meta = availableClipMeta.value[name]
-      const curation = curationFor(modelKey, name)
-      const kind = curation.kind ?? meta?.kind
-      if (!meta || curation.label === null || kind === undefined || !LIBRARY_KINDS.includes(kind))
-        continue
-      clips.push({ name, label: curation.label, kind, layer: effectiveLayer(meta, curation.kind), exposed: curation.aiMayUse, idle: curation.idleMayUse })
-    }
-    return clips
-  }
-
-  function exposedActions(modelKey: string): MMDLabeledClip[] {
-    return labeledClips(modelKey).filter(clip => clip.exposed)
-  }
 
   /**
    * Persists a VMD file to IndexedDB and adds it to the synced list.
@@ -311,14 +224,7 @@ export const useMMD = defineStore('mmd', () => {
     if (motion && idleMotionName.value === motion.name)
       idleMotionName.value = ''
     if (motion) {
-      stanceSlots.value = Object.fromEntries(Object.entries(stanceSlots.value).map(([modelId, slots]) => [
-        modelId,
-        Object.fromEntries(Object.entries(slots).filter(([, name]) => name !== motion.name)),
-      ]))
-      clipCuration.value = Object.fromEntries(Object.entries(clipCuration.value).map(([modelKey, clips]) => [
-        modelKey,
-        Object.fromEntries(Object.entries(clips).filter(([name]) => name !== motion.name)),
-      ]))
+      await performanceSettings.removeClip(motion.name)
       availableClipMeta.value = Object.fromEntries(Object.entries(availableClipMeta.value).filter(([name]) => name !== motion.name))
     }
     await motionFiles.removeItem(id)
@@ -394,7 +300,6 @@ export const useMMD = defineStore('mmd', () => {
     grantEnabled.reset()
     physicsGravity.reset()
     gazeMode.reset()
-    motionDriver.reset()
     cameraFov.reset()
     ambientColor.reset()
     ambientIntensity.reset()
@@ -403,11 +308,7 @@ export const useMMD = defineStore('mmd', () => {
     directionalPosition.reset()
     albedoGlow.reset()
     renderScale.reset()
-    stageCharacterHeight.reset()
-    roamMode.reset()
     idleMotionName.reset()
-    stanceSlots.reset()
-    clipCuration.reset()
     availableClipMeta.reset()
     void clearMotions()
     performRequest.value = undefined
@@ -429,7 +330,6 @@ export const useMMD = defineStore('mmd', () => {
     grantEnabled,
     physicsGravity,
     gazeMode,
-    motionDriver,
 
     cameraFov,
     ambientColor,
@@ -439,18 +339,10 @@ export const useMMD = defineStore('mmd', () => {
     directionalPosition,
     albedoGlow,
     renderScale,
-    stageCharacterHeight,
-    roamMode,
 
     idleMotionName,
     availableMotions,
-    stanceSlots,
-    clipCuration,
     availableClipMeta,
-    curationFor,
-    setCuration,
-    labeledClips,
-    exposedActions,
     addMotion,
     getMotionFile,
     clearMotions,

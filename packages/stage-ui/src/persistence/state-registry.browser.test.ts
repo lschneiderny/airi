@@ -221,11 +221,17 @@ it('registers every unstorage mount', () => {
   expect(unregistered).toEqual([])
 })
 
+it('runs every cache registration after the durable owners', () => {
+  const firstCache = registrations.findIndex(registration => registration.tier === 'cache')
+  expect(firstCache).toBeGreaterThan(0)
+  expect(registrations.slice(firstCache).every(registration => registration.tier === 'cache')).toBe(true)
+})
+
 it('splits mixed owners without repeating their reset or changing its order', () => {
   for (const [ownerId, splitIds] of [
     ['memory', ['memory-settings']],
     ['recipes', ['recipe-settings']],
-    ['mmd', ['mmd-motion-files', 'mmd-performance-settings', 'mmd-clip-metadata']],
+    ['mmd', ['mmd-motion-files', 'mmd-clip-metadata']],
     ['layout-backgrounds', ['layout-background-settings']],
     ['stickers', ['sticker-settings']],
   ] as const) {

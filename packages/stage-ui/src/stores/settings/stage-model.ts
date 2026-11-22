@@ -4,6 +4,7 @@ import type {} from 'pinia-plugin-synced'
 import type { DisplayModel } from '../display-models'
 
 import { setActiveDisplayModelForSettings } from '@proj-airi/stage-shared/composables'
+import { useMMDPerformanceSettings } from '@proj-airi/stage-ui-mmd/stores'
 import { refManualReset, useEventListener } from '@vueuse/core'
 import { defineStore, getActivePinia, storeToRefs } from 'pinia'
 import { computed, onScopeDispose, shallowRef, watch } from 'vue'
@@ -43,6 +44,7 @@ const useStageModelSelectionStore = defineStore('settings-stage-model-selection'
 
 export const useSettingsStageModel = defineStore('settings-stage-model', () => {
   const displayModelsStore = useDisplayModelsStore()
+  const performanceSettings = useMMDPerformanceSettings()
   const stageModelSelectionStore = useStageModelSelectionStore()
   const { selected: stageModelSelectedState } = storeToRefs(stageModelSelectionStore)
   let stageModelUpdateSequence = 0
@@ -175,6 +177,13 @@ export const useSettingsStageModel = defineStore('settings-stage-model', () => {
       return
     }
 
+    const builtInRenderer = resolveBuiltInStageModelRenderer(model)
+    if (builtInRenderer === 'mmd') {
+      await performanceSettings.selectModel(model.id)
+      if (requestId !== stageModelUpdateSequence)
+        return
+    }
+
     let nextUrl: string
     if (model.type === 'file') {
       nextUrl = URL.createObjectURL(model.file)
@@ -186,8 +195,6 @@ export const useSettingsStageModel = defineStore('settings-stage-model', () => {
     else {
       nextUrl = model.url
     }
-
-    const builtInRenderer = resolveBuiltInStageModelRenderer(model)
 
     // The renderer reads the settings of this model from its first frame. Select them before
     // the refs publish the model.
@@ -220,8 +227,8 @@ export const useSettingsStageModel = defineStore('settings-stage-model', () => {
     revokeStageModelUrl(stageModelSelectedUrl.value)
   })
 
-  watch(stageModelSelectedState, (_newValue, _oldValue) => {
-    void updateStageModel()
+  watch(stageModelSelectedState, async () => {
+    await updateStageModel()
   })
 
   async function resetState() {

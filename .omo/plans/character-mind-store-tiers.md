@@ -329,6 +329,13 @@ The implementation must record departures from these recommendations with their 
 - The desktop consent boundary is injected into the settings owner. The startup bridge creates the store in every window and awaits `initialize` only in the leader host; synced routing waits for actual leadership. Updates and resets await that same boundary, so no watcher or SDK performs a second mirror write.
 - `stage-pages` declares only a browser suite, so its full `vitest run` is used instead of a nonexistent Node project.
 
+- Item 4 adds the required claim at `useSettingsStageModel.loadStageModel`, the actual model-publication boundary, and initializes the new owner in renderer startup. Type-only MMD action/diagnostic consumers and the scene-routing regression now import the owning contract.
+- Package manifests cannot change in this assignment, so new MMD stores are exposed through the existing supported `stores` barrel.
+- The MMD Node integration tests now use jsdom and the existing `domStorageExecArgv` instead of replacing Node globals and dynamically importing the store. The unchanged transient BroadcastChannel regression moved to the focused real-browser store suite.
+
+- The existing MMD settings browser suite also consumed the moved fields. Its assertions now use the owning actions and new document shape; its synthetic model fixture explicitly selects the MMD settings scope. No new page suite was added.
+- The inventory's "caches last" statement differed from the registry: Sherpaw assets were interleaved before situation state. Item 4 moves that registration to the existing cache tail and adds an ordering regression, preserving its owner and locations.
+
 ## Checks run
 
 - Item 1: `pnpm exec vitest run --project dev-tools scripts/dev-tools/policy-docs.test.ts scripts/dev-tools/storage-writes.test.ts` passed 2 files / 12 tests.
@@ -353,10 +360,21 @@ The implementation must record departures from these recommendations with their 
 - Item 3: after the app test-config fix, `pnpm --filter "...@proj-airi/stage-tamagotchi" --workspace-concurrency=2 typecheck` passed. The initial focused `pnpm -F @proj-airi/stage-ui exec vitest run --project browser src/stores/settings/analytics.browser.test.ts` also passed 1 file / 1 test before the complete browser run above.
 - Item 3: changed-file ESLint and the policy/storage guard command passed (2 files / 12 tests). Vite still reports the pre-existing extensionless import in the app's `uno.config.ts`; no warning was suppressed.
 
+- Item 4: `pnpm -F @proj-airi/stage-ui-mmd exec vitest run --project node src/stores/mmd.test.ts src/stores/performance-settings.test.ts` passed 2 files / 18 tests. `pnpm -F @proj-airi/stage-ui-mmd exec vitest run --project browser src/stores/performance-settings.browser.test.ts` passed 2 tests; its transient-request fixture was then changed to plain Pinia contexts to avoid disposing an unrelated pending synchronization RPC. The complete browser suite below passed after that fix.
+- Item 4: `pnpm -F @proj-airi/stage-ui-mmd exec vitest run --project node` passed 48 files / 403 tests.
+- Item 4: `pnpm -F @proj-airi/stage-ui exec vitest run --project node` passed 195 files / 1896 tests, including a complete rerun after making the model-selection watcher await its claim.
+- Item 4: `pnpm -F @proj-airi/stage-tamagotchi exec vitest run --project node` passed 195 files / 2169 tests, with the same 3 files / 8 existing gated skips.
+- Item 4: `pnpm -F @proj-airi/stage-ui-mmd exec vitest run --project browser` passed 7 files / 33 tests.
+- Item 4: `pnpm -F @proj-airi/stage-ui exec vitest run --project browser src/components/scenarios/settings/model-settings/mmd.browser.test.ts` passed 1 file / 20 tests.
+- Item 4: `pnpm -F @proj-airi/stage-ui exec vitest run --project browser src/persistence/state-registry.browser.test.ts src/composables/use-data-maintenance.browser.test.ts src/components/scenes/stage-emotion-routing.browser.test.ts` passed 3 files / 74 tests.
+- Item 4: `pnpm --filter "...@proj-airi/stage-ui-mmd" --filter "...@proj-airi/stage-ui" --filter "...@proj-airi/stage-tamagotchi" --workspace-concurrency=2 typecheck` passed MMD, then exposed the old API references in the existing settings browser test. After updating that consumer, `pnpm --filter "...@proj-airi/stage-ui" --workspace-concurrency=2 typecheck` passed all 7 remaining projects and passed again after the awaited watcher change.
+- Item 4: policy/storage guards passed 2 files / 12 tests. The first policy run could not see the new untracked owner; staging that file made it visible to the guard's existing tracked-source search. ESLint has no errors; five unchanged warnings remain in untouched functions/comments of `Stage.vue` and `display-models.ts`.
+
 **Orchestrator placeholder:** rendered scenarios, applicable motion checks, and `pnpm verify --gate` results are not run by this worker.
 
 ## Commits
 
 - `623bfe20d` - `refactor(stage-ui): declare upstream persistence exceptions by owner`.
 - `dcfaebb3a` - `test(stage-ui): reject new fork state in the plain persistence tier`.
+- `64f7f2530` - `refactor(stage-ui,stage-pages,stage-tamagotchi): persist analytics consent through one leader document`.
 - `dcfaebb3a` - `test(stage-ui): reject new fork state in the plain persistence tier`.

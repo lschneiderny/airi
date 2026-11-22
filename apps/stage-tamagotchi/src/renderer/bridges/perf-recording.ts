@@ -7,7 +7,7 @@ import type { PerfStageWindow } from '../window-context'
 import { useLogg } from '@guiiai/logg'
 import { defineInvoke, defineInvokeHandler } from '@moeru/eventa'
 import { useNaturalMotionDiagnostics, useSettingsLive2d } from '@proj-airi/stage-ui-live2d'
-import { useMMD, useMMDMotionDiagnostics } from '@proj-airi/stage-ui-mmd/stores'
+import { useMMD, useMMDMotionDiagnostics, useMMDPerformanceSettings } from '@proj-airi/stage-ui-mmd/stores'
 import { useChatStore } from '@proj-airi/stage-ui/stores/chat'
 import { useHearingStore } from '@proj-airi/stage-ui/stores/modules/hearing'
 import { useStageSelfStore } from '@proj-airi/stage-ui/stores/self'
@@ -45,6 +45,7 @@ export function initializePerfRecordingBridge(context: ReturnType<typeof getElec
   const lifecycle = useStageWindowLifecycleStore()
   const settings = useSettings()
   const mmd = useMMD()
+  const mmdPerformance = useMMDPerformanceSettings()
   const live2d = useSettingsLive2d()
   const speechOutput = useSpeechOutputControlStore()
   const wakeWord = useWakeWordDetectionStore()
@@ -64,7 +65,7 @@ export function initializePerfRecordingBridge(context: ReturnType<typeof getElec
       renderer: settings.stageModelRenderer,
       model: model ? { id: model.id, fileName: model.name } : null,
       speechMuted: speechOutput.speechMuted,
-      mmd: { physicsEnabled: mmd.physicsEnabled, naturalDriver: mmd.motionDriver === 'natural', roamMode: mmd.roamMode },
+      mmd: { physicsEnabled: mmd.physicsEnabled, naturalDriver: mmdPerformance.motionDriver === 'natural', roamMode: mmdPerformance.roamMode },
       live2dNaturalDriver: live2d.live2dMotionDriver === 'natural',
       wakeWordRunning: wakeWord.preparation !== 'unconfigured',
       hearing: hearing.enabled ? hearing.inputMode : false,

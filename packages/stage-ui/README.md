@@ -27,6 +27,17 @@ This fork uses local data and direct or local inference providers. Accounts, hos
 Startup removes saved AIRI account credentials without contacting a server. Direct provider credentials remain unchanged.
 The local-only provider cleanup removes retired hosted records and resets their module selections. Cards that still name those providers inherit the local defaults; their other fields and local chat histories remain intact. No hosted adapter is needed to load existing local data.
 
+## MMD realisation settings
+
+The MMD settings controls read `useMMDPerformanceSettings` from
+`@proj-airi/stage-ui-mmd/stores` and await its leader-routed commands. The
+settings document owns fork driver choices, stage height, roam mode, stance
+slots, and clip curation. Model selection claims an unassigned old driver
+before publishing the model; model deletion removes its entries. Upstream
+display preferences and imported motion files keep their existing owners.
+Use this document for realisation settings, not character behavior or runtime
+clip metadata. The state registry includes it in desktop reset and Delete all data.
+
 ## OpenCode Go desktop transport
 
 `createOpenCodeGoDesktopProvider` in `libs/providers/providers/opencode-go/index` creates the desktop definition.

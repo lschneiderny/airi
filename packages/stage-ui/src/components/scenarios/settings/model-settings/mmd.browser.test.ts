@@ -6,6 +6,8 @@ import type { ModelSettingsRuntimeSnapshot } from './runtime'
 
 import en from '@proj-airi/i18n/locales/en'
 
+import { setActiveDisplayModelForSettings } from '@proj-airi/stage-shared/composables'
+import { useMMDPerformanceSettings } from '@proj-airi/stage-ui-mmd/stores'
 import { createPinia } from 'pinia'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { cleanup, render } from 'vitest-browser-vue'
@@ -223,8 +225,11 @@ describe('mmd model settings desktop stage', () => {
       import('./mmd.vue'),
     ])
     const pinia = createPinia()
+    setActiveDisplayModelForSettings('mmd', MODEL_ID)
     const store = useMMD(pinia)
     store.resetState()
+    const performance = useMMDPerformanceSettings(pinia)
+    await performance.reset()
     const screen = await render(MMDSettings, {
       props: { palette: [], runtimeSnapshot: localSnapshot },
       global: {
@@ -232,7 +237,7 @@ describe('mmd model settings desktop stage', () => {
         provide: host ? { [desktopStageHostKey as symbol]: host } : {},
       },
     })
-    return { screen, store }
+    return { screen, store, performance }
   }
 
   it('hides the section and the classic-only note when no desktop host is provided', async () => {
@@ -341,22 +346,22 @@ describe('mmd model settings desktop stage', () => {
 
   it('writes the character height and the roam mode to the store and persists them', async () => {
     const host = fakeDesktopStageHost({ experimental: true, running: 'desktop', homeDisplayId: '1', displays: [builtInDisplay] })
-    const { screen, store } = await renderWithHost(host)
+    const { screen, performance } = await renderWithHost(host)
     await screen.getByText(t('settings.mmd.stage.title'), { exact: true }).click()
 
     await expect.element(screen.getByRole('radio', { name: t('settings.mmd.stage.roam.options.stay.title'), exact: true })).toBeChecked()
     await screen.getByRole('radio', { name: t('settings.mmd.stage.roam.options.roam.title'), exact: true }).click()
     await nextTick()
-    expect(store.roamMode).toBe('roam')
-    expect(localStorage.getItem('settings/mmd/roam-mode')).toBe('roam')
+    expect(performance.roamMode).toBe('roam')
+    expect(JSON.parse(localStorage.getItem('settings/mmd/performance')!).roamMode).toBe('roam')
 
     // The Range input scales its value, so read the formatted readout next to the label.
     await expect.element(screen.getByRole('slider', { name: t('settings.mmd.stage.character-height.title') })).toBeVisible()
     await expect.element(screen.getByText('560 pt', { exact: true })).toBeVisible()
-    store.stageCharacterHeight = 400
+    await performance.update({ stageCharacterHeight: 400 })
     await nextTick()
     await expect.element(screen.getByText('400 pt', { exact: true })).toBeVisible()
-    expect(localStorage.getItem('settings/mmd/stage-character-height')).toBe('400')
+    expect(JSON.parse(localStorage.getItem('settings/mmd/performance')!).stageCharacterHeight).toBe(400)
   })
 })
 
@@ -381,8 +386,11 @@ describe('mmd model settings motion', () => {
       import('./mmd.vue'),
     ])
     const pinia = createPinia()
+    setActiveDisplayModelForSettings('mmd', MODEL_ID)
     const store = useMMD(pinia)
     store.resetState()
+    const performance = useMMDPerformanceSettings(pinia)
+    await performance.reset()
     const natural = useMMDNaturalSettings(pinia)
     // The stage-model store replaces an unknown id with the default preset, so use a known one.
     useSettingsStageModel(pinia).stageModelSelected = MODEL_ID
@@ -392,11 +400,11 @@ describe('mmd model settings motion', () => {
     })
     expect(t('settings.mmd.motion.title')).not.toBe('settings.mmd.motion.title')
     await screen.getByText(t('settings.mmd.motion.title'), { exact: true }).click()
-    return { screen, store, natural }
+    return { screen, store, natural, performance }
   }
 
   it('switches the driver through the radio and writes the store, hiding Natural controls under Classic', async () => {
-    const { screen, store, natural } = await renderMotionSection()
+    const { screen, performance, natural } = await renderMotionSection()
     const energy = screen.getByRole('slider', { name: t('settings.mmd.motion.natural-energy.title') })
     const touch = screen.getByRole('switch', { name: t('settings.mmd.motion.natural-touch.title') })
     await expect.element(screen.getByRole('radio', { name: t('settings.mmd.motion.driver.options.natural.title'), exact: true })).toBeChecked()
@@ -405,14 +413,14 @@ describe('mmd model settings motion', () => {
 
     await screen.getByRole('radio', { name: t('settings.mmd.motion.driver.options.classic.title'), exact: true }).click()
     await nextTick()
-    expect(store.motionDriver).toBe('classic')
-    expect(localStorage.getItem('settings/mmd/motion-driver')).toBe('classic')
+    expect(performance.motionDriver).toBe('classic')
+    expect(JSON.parse(localStorage.getItem('settings/mmd/performance')!).motionDrivers[MODEL_ID]).toBe('classic')
     await expect.element(energy).not.toBeInTheDocument()
     await expect.element(touch).not.toBeInTheDocument()
 
     await screen.getByRole('radio', { name: t('settings.mmd.motion.driver.options.natural.title'), exact: true }).click()
     await nextTick()
-    expect(store.motionDriver).toBe('natural')
+    expect(performance.motionDriver).toBe('natural')
     await expect.element(energy).toBeVisible()
 
     // Pet-requires-hold depends on the touch toggle, and both write the settings document.
@@ -444,10 +452,10 @@ describe('mmd model settings motion', () => {
   })
 
   it('writes the stance slot for the selected stage model and shows None for a removed motion', async () => {
-    const { screen, store } = await renderMotionSection()
+    const { screen, store, performance } = await renderMotionSection()
     store.availableMotions = [{ id: 'mmd-motion-sit', name: 'sit' }, { id: 'mmd-motion-wave', name: 'wave' }]
     // A slot naming a motion that no longer exists reads as the none state.
-    store.stanceSlots = { [MODEL_ID]: { sleep: 'gone' } }
+    await performance.setStanceSlot(MODEL_ID, 'sleep', 'gone')
     await nextTick()
 
     const sit = screen.getByRole('combobox', { name: t('settings.mmd.motion.stance.sit') })
@@ -458,14 +466,14 @@ describe('mmd model settings motion', () => {
     await sit.click()
     await screen.getByRole('option', { name: 'sit', exact: true }).click()
     // The combobox commits its selection after its own tick, so wait for the store rather than one render.
-    await vi.waitFor(() => expect(store.stanceSlots[MODEL_ID]).toEqual({ sleep: 'gone', sit: 'sit' }))
-    expect(JSON.parse(localStorage.getItem('settings/mmd/stance-slots') ?? 'null')).toEqual({ [MODEL_ID]: { sleep: 'gone', sit: 'sit' } })
+    await vi.waitFor(() => expect(performance.stanceSlots[MODEL_ID]).toEqual({ sleep: 'gone', sit: 'sit' }))
+    expect(JSON.parse(localStorage.getItem('settings/mmd/performance')!).stanceSlots).toEqual({ [MODEL_ID]: { sleep: 'gone', sit: 'sit' } })
     await expect.element(sit).toHaveValue('sit')
 
     // Choosing None removes only that slot.
     await sit.click()
     await screen.getByRole('option', { name: t('settings.mmd.motion.stance.none'), exact: true }).click()
-    await vi.waitFor(() => expect(store.stanceSlots[MODEL_ID]).toEqual({ sleep: 'gone' }))
+    await vi.waitFor(() => expect(performance.stanceSlots[MODEL_ID]).toEqual({ sleep: 'gone' }))
     await expect.element(sit).toHaveValue(t('settings.mmd.motion.stance.none'))
   })
 })
@@ -499,8 +507,11 @@ describe('mmd model settings clips', () => {
       import('./mmd.vue'),
     ])
     const pinia = createPinia()
+    setActiveDisplayModelForSettings('mmd', MODEL_ID)
     const store = useMMD(pinia)
     store.resetState()
+    const performance = useMMDPerformanceSettings(pinia)
+    await performance.reset()
     // The reset's storage write settles on the next tick and would overwrite a seed made in the same tick.
     await nextTick()
     const stageModel = useSettingsStageModel(pinia)
@@ -523,7 +534,7 @@ describe('mmd model settings clips', () => {
     })
     expect(t('settings.mmd.animation.clips.headers.ai-may-use')).not.toBe('settings.mmd.animation.clips.headers.ai-may-use')
     await screen.getByText(t('settings.mmd.animation.title'), { exact: true }).click()
-    return { screen, store, stageModel }
+    return { screen, store, stageModel, performance }
   }
 
   it('renders one row per imported clip with the derived kind and layer badges and the unusable note', async () => {
@@ -543,39 +554,39 @@ describe('mmd model settings clips', () => {
   })
 
   it('refuses a duplicate or malformed label with an inline error and leaves the store unchanged', async () => {
-    const { screen, store } = await renderClipTable()
+    const { screen, performance } = await renderClipTable()
 
     await screen.getByRole('textbox', { name: label('arms-wave') }).fill('wave')
-    await vi.waitFor(() => expect(store.curationFor(MODEL_ID, 'arms-wave').label).toBe('wave'))
+    await vi.waitFor(() => expect(performance.curationFor(MODEL_ID, 'arms-wave').label).toBe('wave'))
 
     const second = screen.getByRole('textbox', { name: label('legs-step') })
     await second.fill('wave')
     await expect.element(screen.getByText(t('settings.mmd.animation.clips.errors.duplicate'), { exact: true })).toBeVisible()
-    expect(store.curationFor(MODEL_ID, 'legs-step').label).toBeNull()
-    expect(Object.values(store.clipCuration[MODEL_ID] ?? {}).filter(curation => curation.label === 'wave')).toHaveLength(1)
+    expect(performance.curationFor(MODEL_ID, 'legs-step').label).toBeNull()
+    expect(Object.values(performance.clipCuration[MODEL_ID] ?? {}).filter(curation => curation.label === 'wave')).toHaveLength(1)
 
     for (const malformed of ['Wave', 'wave!', 'a'.repeat(33)]) {
       await second.fill(malformed)
       await expect.element(screen.getByText(t('settings.mmd.animation.clips.errors.invalid'), { exact: true })).toBeVisible()
-      expect(store.curationFor(MODEL_ID, 'legs-step').label).toBeNull()
+      expect(performance.curationFor(MODEL_ID, 'legs-step').label).toBeNull()
     }
 
     // A valid label clears the error and lands in the store.
     await second.fill('step')
-    await vi.waitFor(() => expect(store.curationFor(MODEL_ID, 'legs-step').label).toBe('step'))
+    await vi.waitFor(() => expect(performance.curationFor(MODEL_ID, 'legs-step').label).toBe('step'))
     await expect.element(screen.getByText(t('settings.mmd.animation.clips.errors.invalid'), { exact: true })).not.toBeInTheDocument()
   })
 
   it('shows an empty label input for a same-named clip after the loaded model changes', async () => {
-    const { screen, store, stageModel } = await renderClipTable()
+    const { screen, performance, stageModel } = await renderClipTable()
     const input = screen.getByRole('textbox', { name: label('arms-wave') })
     await input.fill('wave')
-    await vi.waitFor(() => expect(store.curationFor(MODEL_ID, 'arms-wave').label).toBe('wave'))
+    await vi.waitFor(() => expect(performance.curationFor(MODEL_ID, 'arms-wave').label).toBe('wave'))
 
     stageModel.stageModelSelected = 'mmd-other-model'
-    await vi.waitFor(() => expect(store.curationFor('mmd-other-model', 'arms-wave').label).toBeNull())
+    await vi.waitFor(() => expect(performance.curationFor('mmd-other-model', 'arms-wave').label).toBeNull())
     await expect.element(input).toHaveValue('')
-    expect(store.curationFor(MODEL_ID, 'arms-wave').label).toBe('wave')
+    expect(performance.curationFor(MODEL_ID, 'arms-wave').label).toBe('wave')
 
     // Switching back shows model A's stored label again.
     stageModel.stageModelSelected = MODEL_ID
@@ -583,31 +594,31 @@ describe('mmd model settings clips', () => {
   })
 
   it('exposes a labeled gesture to the AI through the switch and persists it', async () => {
-    const { screen, store } = await renderClipTable()
+    const { screen, store, performance } = await renderClipTable()
     await screen.getByRole('textbox', { name: label('arms-wave') }).fill('wave')
-    await vi.waitFor(() => expect(store.curationFor(MODEL_ID, 'arms-wave').label).toBe('wave'))
+    await vi.waitFor(() => expect(performance.curationFor(MODEL_ID, 'arms-wave').label).toBe('wave'))
 
     const exposed = screen.getByRole('switch', { name: aiMayUse('arms-wave') })
     await expect.element(exposed).not.toBeDisabled()
     await exposed.click()
     await nextTick()
-    expect(store.exposedActions(MODEL_ID)).toEqual([{ name: 'arms-wave', label: 'wave', kind: 'gesture', layer: 'upper', exposed: true, idle: false }])
-    expect(JSON.parse(localStorage.getItem('settings/mmd/clip-curation') ?? 'null')[MODEL_ID]['arms-wave']).toEqual({ label: 'wave', kind: null, loop: null, aiMayUse: true, idleMayUse: false })
+    expect(performance.exposedActions(MODEL_ID, store.availableMotions, store.availableClipMeta)).toEqual([{ name: 'arms-wave', label: 'wave', kind: 'gesture', layer: 'upper', exposed: true, idle: false }])
+    expect(JSON.parse(localStorage.getItem('settings/mmd/performance')!).clipCuration[MODEL_ID]['arms-wave']).toEqual({ label: 'wave', kind: null, loop: null, aiMayUse: true, idleMayUse: false })
   })
 
   it('lets her play a labeled clip on her own through the idle switch, without exposing it to the AI', async () => {
-    const { screen, store } = await renderClipTable()
+    const { screen, store, performance } = await renderClipTable()
     const idleMayUse = (name: string) => `${t('settings.mmd.animation.clips.headers.idle-may-use')}: ${name}`
     await expect.element(screen.getByRole('switch', { name: idleMayUse('arms-wave') })).toBeDisabled()
     await screen.getByRole('textbox', { name: label('arms-wave') }).fill('wave')
-    await vi.waitFor(() => expect(store.curationFor(MODEL_ID, 'arms-wave').label).toBe('wave'))
+    await vi.waitFor(() => expect(performance.curationFor(MODEL_ID, 'arms-wave').label).toBe('wave'))
 
     const idle = screen.getByRole('switch', { name: idleMayUse('arms-wave') })
     await expect.element(idle).not.toBeDisabled()
     await idle.click()
     await nextTick()
-    expect(store.labeledClips(MODEL_ID).find(clip => clip.name === 'arms-wave')).toMatchObject({ exposed: false, idle: true })
-    expect(store.exposedActions(MODEL_ID)).toEqual([])
+    expect(performance.labeledClips(MODEL_ID, store.availableMotions, store.availableClipMeta).find(clip => clip.name === 'arms-wave')).toMatchObject({ exposed: false, idle: true })
+    expect(performance.exposedActions(MODEL_ID, store.availableMotions, store.availableClipMeta)).toEqual([])
   })
 
   it('disables the switch for an unlabeled or unusable clip and the loop toggle for a dance', async () => {
