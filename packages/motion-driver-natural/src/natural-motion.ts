@@ -158,6 +158,8 @@ export class NaturalMotion {
   private chatGlance: { at: number, point: GazePoint, hold: number, cause: 'chat-sent' | 'chat-unfold' } | null = null
   /** A reading glance keeps its drawn hold instead of being interrupted by a posture-led fixation. */
   private chatGlanceUntil = 0
+  /** The renderer's gait moves her; the gaze arbiter reads it from the next grid step. */
+  private traveling = false
   private readonly cursorAttention: NaturalCursorAttention
   private readonly body: NaturalBodyLayer
   private readonly attention: NaturalAttentionShifts
@@ -322,7 +324,7 @@ export class NaturalMotion {
         cue: [...this.headTerms.cue],
       },
       posture: { shiftSeq: this.posture.shiftCount, amplitude: this.posture.amplitudeScale, shiftRate: this.posture.shiftRateScale, activityGain: this.posture.activityGain },
-      gaze: { on: this.petOverride ? 'pet' : this.gaze.onCursor ? 'cursor' : this.onChat ? 'chat' : this.energy.aside ? 'aside' : 'free', saccadeSeq: this.gaze.saccadeCount, saccadeSize: this.gaze.saccadeSize },
+      gaze: { on: this.petOverride ? 'pet' : this.gaze.onCursor ? 'cursor' : this.onChat ? 'chat' : this.energy.aside ? 'aside' : 'free', saccadeSeq: this.gaze.saccadeCount, saccadeSize: this.gaze.saccadeSize, held: this.gaze.held },
       breath: { phase: this.breath.phaseRadians, period: this.breath.period * this.breath.periodScale, scale: this.breath.amplitudeScale },
       voice: { speaking: this.voice.speaking, level: this.voice.level, slow: this.emphasis.slowEnvelope, onsetSeq: this.emphasis.onsetCount, emphasis: this.emphasis.latestEmphasis && { ...this.emphasis.latestEmphasis } },
       mood: this.moodState,
@@ -447,6 +449,15 @@ export class NaturalMotion {
   look(target: GazePoint | 'away' | null, holdSeconds: number, nowSeconds: number) {
     this.advance(nowSeconds)
     this.pending.push({ kind: 'look', target: target && typeof target === 'object' ? { ...target } : target, holdSeconds })
+  }
+
+  /**
+   * Tells the gaze arbiter whether the body walks, from the next grid step after advancing to this timestamp. Only a
+   * renderer that owns a gait sets it; it ranks travel among glances (`TRAVEL_PRIORITY` in `gaze.ts`).
+   */
+  setTravel(walking: boolean, nowSeconds: number) {
+    this.advance(nowSeconds)
+    this.traveling = walking
   }
 
   /** Whether gaze is currently in an autonomous typing fixation. */
@@ -823,6 +834,8 @@ export class NaturalMotion {
     this.cueGestures.advance(stepStart)
     this.gaze.setInward(this.placement.value)
     this.gaze.setScreenPointActive(this.energy.screen || this.energy.watching)
+    // Before any glance of this step, so a walk that started refuses the lower ones.
+    this.gaze.setTravel(this.traveling, stepStart)
     const chatTarget = this.chat?.target
     this.gaze.setChatTarget(chatTarget && !this.energy.talking ? mapCursor(chatTarget).eye : null, this.chat?.typing === true && !this.energy.talking, stepStart)
     if (this.energy.talking) {

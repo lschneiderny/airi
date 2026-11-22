@@ -89,6 +89,19 @@ export const GLANCE_PRIORITY: Readonly<Record<GlanceSource, number>> = {
   'idle-act': 1,
 }
 
+/**
+ * Where walking ranks among glances while she travels ({@link NaturalGazeLayer.setTravel}): below the touch, wake, and
+ * chat classes, above the model's cues. A glance below it is refused while she walks, so the eyes follow the travel
+ * line; a glance at or above it holds over the walk, briefly ({@link TRAVEL_GLANCE_MAX_SECONDS}).
+ */
+export const TRAVEL_PRIORITY = 4.5
+
+/**
+ * Seconds a glance may hold over the travel line while she walks, after its approach saccade. A chat read can ask for
+ * up to 3 s, which reads as a stumble mid-walk. A tuning value (CM9 plan, D17).
+ */
+export const TRAVEL_GLANCE_MAX_SECONDS = 1.5
+
 /** The arbiter's answer: point is null for a missing target, and hold is null for a cursor notice. */
 export interface GlanceOutcome {
   at: number
@@ -176,6 +189,8 @@ export class NaturalGazeLayer {
   private chatRead = false
   /** The running glance and the active-time end of its hold, or null while autonomous fixations run. */
   private claimed: { source: GlanceSource, until: number } | null = null
+  /** The body walks; the renderer that owns the gait sets it ({@link NaturalGazeLayer.setTravel}). */
+  private traveling = false
 
   /**
    * @param report Receives every glance the arbiter starts or refuses, and every typing fixation on the chat. It draws
@@ -240,6 +255,35 @@ export class NaturalGazeLayer {
     return this.claimed
   }
 
+  /**
+   * Whether a glance that outranks travel holds the eyes. While it is true a renderer that aims the gaze along the walk
+   * shows the fixation instead.
+   */
+  get held(): boolean {
+    return this.claimed !== null && GLANCE_PRIORITY[this.claimed.source] >= TRAVEL_PRIORITY
+  }
+
+  /**
+   * Makes walking an input of the arbiter from `at`: while `walking`, a request below {@link TRAVEL_PRIORITY} is
+   * refused and a granted hold is capped at {@link TRAVEL_GLANCE_MAX_SECONDS}. A walk that starts under a lower claim
+   * ends it at `at`; a higher claim keeps holding, capped from `at`. Ending the walk lifts both limits for later
+   * requests and does not lengthen a capped hold.
+   */
+  setTravel(walking: boolean, at: number) {
+    if (walking === this.traveling)
+      return
+    this.traveling = walking
+    if (!walking || this.claimed === null)
+      return
+    if (!this.held) {
+      this.nextFixationAt = Math.min(this.nextFixationAt, at)
+      this.claimed = null
+      return
+    }
+    this.nextFixationAt = Math.min(this.nextFixationAt, at + TRAVEL_GLANCE_MAX_SECONDS)
+    this.claimed = { ...this.claimed, until: this.nextFixationAt }
+  }
+
   /** Ends pursuit in place, letting the next autonomous fixation resume within 300 ms. */
   disengage(at: number) {
     if (!this.onCursor)
@@ -269,10 +313,13 @@ export class NaturalGazeLayer {
 
   /**
    * Whether a request from `source` may start now. While an override (the petting hand) holds, only the pet-end glance
-   * starts: no look-up and no camera snap while a pet runs. Otherwise it starts unless the running glance ranks higher.
+   * starts: no look-up and no camera snap while a pet runs. While she walks, a source below travel is refused.
+   * Otherwise it starts unless the running glance ranks higher.
    */
   private admits(source: GlanceSource) {
     if (this.override && source !== 'pet-end')
+      return false
+    if (this.traveling && GLANCE_PRIORITY[source] < TRAVEL_PRIORITY)
       return false
     return this.claimed === null || GLANCE_PRIORITY[this.claimed.source] <= GLANCE_PRIORITY[source]
   }
@@ -322,8 +369,10 @@ export class NaturalGazeLayer {
    * Asks the gaze arbiter for a held glance at `at`. When it starts, the gaze saccades to the request's point and holds
    * it for its hold before autonomous fixations resume, and the request holds the claim until then. Returns the
    * active-time end of the hold, including the approach saccade, or null when the arbiter refused the request: a
-   * running glance ranks higher, an override holds, or the target is missing. A refusal is dropped, never queued.
-   * A chat read relinquishes its hold when the chat target is cleared, including while talking.
+   * running glance ranks higher, an override holds, she walks and the source ranks below travel, or the target is
+   * missing. A refusal is dropped, never queued. While she walks the hold is capped at {@link TRAVEL_GLANCE_MAX_SECONDS},
+   * and the report carries the capped hold. A chat read relinquishes its hold when the chat target is cleared,
+   * including while talking.
    */
   glance(request: GlanceRequest, at: number): number | null {
     const point = request.point === null ? null : { ...request.point }
@@ -332,11 +381,12 @@ export class NaturalGazeLayer {
       return null
     }
     const read = request.source === 'chat-sent' || request.source === 'chat-unfold'
-    this.saccadeTo(request.point, at, request.hold)
+    const hold = this.traveling ? Math.min(request.hold, TRAVEL_GLANCE_MAX_SECONDS) : request.hold
+    this.saccadeTo(request.point, at, hold)
     this.chatRead = read
     this.targetKind = read ? 'chat' : 'glance'
     this.claimed = { source: request.source, until: this.nextFixationAt }
-    this.report?.({ at, source: request.source, outcome: 'started', point, hold: request.hold })
+    this.report?.({ at, source: request.source, outcome: 'started', point, hold })
     return this.nextFixationAt
   }
 

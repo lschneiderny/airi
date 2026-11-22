@@ -3,7 +3,7 @@ import type { RandomStream } from './random'
 
 import { describe, expect, it, vi } from 'vitest'
 
-import { GLANCE_PRIORITY, NaturalAttentionShifts, NaturalGazeLayer } from './gaze'
+import { GLANCE_PRIORITY, NaturalAttentionShifts, NaturalGazeLayer, TRAVEL_GLANCE_MAX_SECONDS, TRAVEL_PRIORITY } from './gaze'
 import { NaturalPostureLayers } from './posture'
 import { createRandomStream } from './random'
 
@@ -490,5 +490,111 @@ describe('gaze arbiter', () => {
     expect(idle.onCursor).toBe(true)
     expect(idle.claim?.source).toBe('cursor-notice')
     expect(outcomes.map(outcome => [outcome.source, outcome.outcome])).toEqual([['screen-change', 'started'], ['cursor-notice', 'refused']])
+  })
+
+  describe('while she walks', () => {
+    const below = requested.filter(source => GLANCE_PRIORITY[source] < TRAVEL_PRIORITY)
+    const above = requested.filter(source => GLANCE_PRIORITY[source] >= TRAVEL_PRIORITY)
+
+    it('ranks travel below the touch, wake, and chat classes and above the model cues', () => {
+      expect(above.sort()).toEqual(['chat-sent', 'chat-unfold', 'desktop-wake', 'pet-end', 'poke', 'sleep-wake', 'voice-cue'])
+    })
+
+    it.each(below)('refuses %s and reports it', (source) => {
+      const { gaze, outcomes } = arbiter()
+      gaze.setTravel(true, 0)
+      const saccades = gaze.saccadeCount
+
+      expect(gaze.glance({ source, point: left, hold: 1 }, 0.2)).toBeNull()
+      expect(gaze.saccadeCount).toBe(saccades)
+      expect(gaze.claim).toBeNull()
+      expect(outcomes).toEqual([{ at: 0.2, source, outcome: 'refused', point: left, hold: 1 }])
+    })
+
+    it('refuses the cursor notice', () => {
+      const { gaze, outcomes } = arbiter()
+      gaze.setCursorTarget({ x: 0.4, y: 0.1 }, 1)
+      gaze.setTravel(true, 0)
+
+      expect(gaze.orient(0.2)).toBe(false)
+      expect(gaze.onCursor).toBe(false)
+      expect(outcomes.map(outcome => [outcome.source, outcome.outcome])).toEqual([['cursor-notice', 'refused']])
+    })
+
+    it.each(above)('starts %s with its hold capped at the travel maximum', (source) => {
+      const { gaze, outcomes } = arbiter()
+      gaze.setTravel(true, 0)
+      const end = gaze.glance({ source, point: left, hold: 3 }, 0.2)!
+
+      expect(end - 0.2).toBeGreaterThan(TRAVEL_GLANCE_MAX_SECONDS)
+      expect(end - 0.2).toBeLessThanOrEqual(TRAVEL_GLANCE_MAX_SECONDS + 0.09)
+      expect(gaze.claim).toEqual({ source, until: end })
+      expect(outcomes).toEqual([{ at: 0.2, source, outcome: 'started', point: left, hold: TRAVEL_GLANCE_MAX_SECONDS }])
+    })
+
+    it('keeps a shorter hold as asked', () => {
+      const { gaze, outcomes } = arbiter()
+      gaze.setTravel(true, 0)
+      gaze.glance({ source: 'poke', point: left, hold: 0.9 }, 0)
+
+      expect(outcomes.at(-1)?.hold).toBe(0.9)
+    })
+
+    it('ends a lower claim when the walk starts, and the next fixation is drawn then', () => {
+      const { gaze } = arbiter()
+      gaze.glance({ source: 'idle-act', point: left, hold: 3 }, 0)
+      sample(gaze, 0, 0.5)
+      const saccades = gaze.saccadeCount
+      gaze.setTravel(true, 0.5)
+
+      expect(gaze.claim).toBeNull()
+      sample(gaze, 0.5, 0.5 + 2 * dt)
+      expect(gaze.saccadeCount).toBe(saccades + 1)
+    })
+
+    it('keeps a higher claim when the walk starts, capped from then', () => {
+      const { gaze } = arbiter()
+      gaze.glance({ source: 'chat-sent', point: left, hold: 3 }, 0)
+      gaze.setTravel(true, 0.5)
+
+      expect(gaze.claim).toEqual({ source: 'chat-sent', until: 0.5 + TRAVEL_GLANCE_MAX_SECONDS })
+      const points = sample(gaze, 0, 0.5 + TRAVEL_GLANCE_MAX_SECONDS - dt)
+      expect(points.at(-1)!.x).toBeCloseTo(left.x, 6)
+      sample(gaze, 0.5 + TRAVEL_GLANCE_MAX_SECONDS - dt, 0.5 + TRAVEL_GLANCE_MAX_SECONDS + dt)
+      expect(gaze.claim).toBeNull()
+    })
+
+    it('keeps a higher claim that ends before the cap unchanged', () => {
+      const { gaze } = arbiter()
+      const end = gaze.glance({ source: 'poke', point: left, hold: 0.9 }, 0)!
+      gaze.setTravel(true, 0.5)
+
+      expect(gaze.claim).toEqual({ source: 'poke', until: end })
+    })
+
+    it('admits every source again with its own hold once the walk ends', () => {
+      const { gaze, outcomes } = arbiter()
+      gaze.setTravel(true, 0)
+      gaze.setTravel(false, 0.5)
+      gaze.glance({ source: 'idle-act', point: left, hold: 3 }, 0.6)
+
+      expect(outcomes).toEqual([{ at: 0.6, source: 'idle-act', outcome: 'started', point: left, hold: 3 }])
+    })
+
+    it('reports held only while a claim at or above travel holds', () => {
+      const { gaze } = arbiter()
+      expect(gaze.held).toBe(false)
+      const lower = gaze.glance({ source: 'emotion', point: left, hold: 1 }, 0)!
+      expect(gaze.held).toBe(false)
+      sample(gaze, 0, lower + dt)
+
+      gaze.setTravel(true, lower + dt)
+      const end = gaze.glance({ source: 'poke', point: right, hold: 0.9 }, lower + dt)!
+      expect(gaze.held).toBe(true)
+      sample(gaze, lower + dt, end - dt)
+      expect(gaze.held).toBe(true)
+      sample(gaze, end - dt, end + dt)
+      expect(gaze.held).toBe(false)
+    })
   })
 })

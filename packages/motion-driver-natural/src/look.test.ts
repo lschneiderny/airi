@@ -67,4 +67,24 @@ describe('look tools', () => {
     expect(motion.advance(1.2).fixation).toEqual({ x: 0, y: 0 })
     expect(events.map(event => [event.cause, event.outcome])).toEqual([['look-tool', 'started'], ['poke', 'started']])
   })
+
+  it('refuses a look while she walks, and a poke holds over the walk with held set', () => {
+    const motion = new NaturalMotion({ seed: 7 })
+    const events: NaturalGlanceEvent[] = []
+    motion.setObserver((event) => {
+      if (event.kind === 'glance')
+        events.push(event)
+    })
+    motion.advance(0)
+    motion.setTravel(true, 0)
+    motion.look(point, 8, 0)
+    motion.advance(0.2)
+    expect(motion.bodyIntent().gaze.held).toBe(false)
+    motion.poke('head', 0.2, -0.3, 0.2)
+    expect(motion.advance(0.4).fixation).toEqual({ x: 0, y: 0 })
+    expect(motion.bodyIntent().gaze.held).toBe(true)
+    motion.advance(2)
+    expect(motion.bodyIntent().gaze.held).toBe(false)
+    expect(events.map(event => [event.cause, event.outcome])).toEqual([['look-tool', 'refused'], ['poke', 'started']])
+  })
 })
