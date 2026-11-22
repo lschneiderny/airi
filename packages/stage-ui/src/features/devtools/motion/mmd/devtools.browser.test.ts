@@ -247,8 +247,12 @@ describe('mmd motion lab', () => {
     const stagePinia = createPinia()
     setActivePinia(stagePinia)
     const stage = useMMDMotionDiagnostics()
-    const { screen } = await renderLab()
+    const { screen, diagnostics } = await renderLab()
+    // The lab receives the stage snapshot over a BroadcastChannel. Its controls enable only after it arrives, and
+    // the default 1 s retry of expect.element is shorter than that delivery on a loaded machine.
+    const delivered = until(() => diagnostics.snapshot.locomotion).toMatch(locomotion => locomotion !== null, { timeout: 5000, throwOnTimeout: true })
     stage.publish(fixture)
+    await delivered
 
     const walked = until(() => stage.goalRequest).toMatch(request => request !== null, { timeout: 5000, throwOnTimeout: true })
     await expect.element(screen.getByTestId('mmd-locomotion-walk')).toBeEnabled()
