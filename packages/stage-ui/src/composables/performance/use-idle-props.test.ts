@@ -5,7 +5,9 @@ import type { StageExpressionBackend } from '../../features/performance/expressi
 import type { StageSelfReport } from '../../stores/self'
 
 import { CharacterMind } from '@proj-airi/character-mind'
-import { afterEach, describe, expect, it } from 'vitest'
+import { useExpressionStore } from '@proj-airi/stage-ui-live2d/stores/expression-store'
+import { createPinia, setActivePinia } from 'pinia'
+import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { effectScope } from 'vue'
 
 import { useIdleProps } from './use-idle-props'
@@ -352,6 +354,43 @@ describe('useIdleProps', () => {
     plain.start(pastime(1))
     expect(plain.answers).toEqual(['1:refused'])
     expect(plain.reports).toEqual([])
+  })
+
+  it('holds a stage item as her only pastime, and the Live2D store shows it as an item', () => {
+    const storage = new Map<string, string>()
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => storage.set(key, value),
+    })
+    onTestFinished(() => {
+      vi.unstubAllGlobals()
+    })
+    setActivePinia(createPinia())
+    const store = useExpressionStore()
+    store.registerDefinitions('model', [])
+    const placement = { x: 0, y: 0, rotation: 0, scale: 1, flipX: false, anchor: { x: 0.5, y: 0.5 }, layer: { kind: 'front' as const } }
+    const handheld = store.applySettingsCommand({ type: 'create-item', item: { assetId: 'asset-handheld', label: 'handheld', kind: 'prop', mappings: [], idleUse: 'activity', placement } }) as string
+    store.setAvailableItemAssets(new Set(['asset-handheld']))
+    const reports: string[] = []
+    const mind = windowMind({ nowMs: 0 })
+    scope = effectScope()
+    const props = scope.run(() => useIdleProps({
+      backend: () => store,
+      enabled: () => true,
+      report: (report: StageSelfReport) => reports.push(`${report.activity}:${report.phase}:${report.label}`),
+      answer: () => {},
+      occasions: () => [],
+      momentRest: () => mind.state.refractory.momentRest,
+      momentMarked: () => {},
+      random: () => 0,
+      now: () => 0,
+    }))!
+
+    props.onErrand({ phase: 'start', errand: pastime(1) })
+
+    expect(store.idleActive).toEqual([handheld])
+    expect(store.itemTargets.map(target => target.document.id)).toEqual([handheld])
+    expect(reports).toEqual(['prop:start:handheld'])
   })
 
   it('clears her claims when the stage goes away', () => {

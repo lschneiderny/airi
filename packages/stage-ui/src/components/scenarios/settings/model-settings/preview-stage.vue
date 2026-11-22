@@ -11,6 +11,7 @@ import { useMouse } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
 import { computed, defineAsyncComponent, ref, watch } from 'vue'
 
+import { useLive2DStageItems } from '../../../../composables/use-live2d-stage-items'
 import { useLive2DStageMotionMagic } from '../../../../features/motions/live2d/use-live2d-stage-motion-magic'
 import { useSharedLive2DExpressionPreview } from '../../../../stores/live2d'
 import { useAiriCardStore } from '../../../../stores/modules/airi-card'
@@ -74,6 +75,9 @@ const { live2dMotionDriver } = storeToRefs(useSettingsLive2d())
 useLive2DStageMotionMagic({
   active: () => stageModelRenderer.value === 'live2d' && live2dMotionDriver.value === 'magic',
 })
+
+// The preview draws the items its window's expression store shows; it loads the same stored item documents.
+const { items: live2dItems, reportStates: reportLive2DItemStates } = useLive2DStageItems({ active: () => stageModelRenderer.value === 'live2d' })
 
 const live2dSceneClassList = computed(() => normalizeClassList(props.live2dSceneClass))
 const vrmSceneClassList = computed(() => normalizeClassList(props.vrmSceneClass))
@@ -230,6 +234,8 @@ const cursorPosition = computed(() => ({
         :cursor-position="cursorPosition"
         :theme-colors-hue="themeColorsHue"
         :theme-colors-hue-dynamic="themeColorsHueDynamic"
+        :items="live2dItems"
+        @item-states="reportLive2DItemStates"
       />
     </div>
   </template>

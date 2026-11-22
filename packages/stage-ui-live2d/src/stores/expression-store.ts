@@ -56,6 +56,8 @@ export interface Live2DExpressionSettingsSnapshot {
   supportsIdleUse?: true
   /** Every stored item of the model, including those whose asset is missing. The store always sets it. */
   items?: Live2DItemSnapshot[]
+  /** Her model canvas in canvas units, once the scene reports it; new items are placed relative to it. */
+  canvas?: { width: number, height: number }
 }
 
 export interface ExpressionClaim {
@@ -160,6 +162,7 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
   const availableItemAssets = shallowRef<ReadonlySet<string>>(new Set())
   const live2dItemAssets = shallowRef<ReadonlySet<string>>(new Set())
   const itemStates = ref<Record<string, ItemRenderState>>({})
+  const modelCanvas = shallowRef<{ width: number, height: number } | null>(null)
   // Fires once per item refusal outside `applySlots`, which returns its own: a switch, her own claims, a renderer failure.
   const itemRefusals = createEventHook<ExpressionRefusal>()
   const validItems = computed(() => (curated.value.items ?? []).filter(item => availableItemAssets.value.has(item.assetId)))
@@ -299,6 +302,7 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
         shown: resolved.value.effective.has(document.id),
         state: itemStates.value[document.id] ?? null,
       })),
+      ...modelCanvas.value ? { canvas: { ...modelCanvas.value } } : {},
     }
   })
 
@@ -438,6 +442,11 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
     forgetItemStates(removed)
     removeDeletedClaims()
     reconcile()
+  }
+
+  /** The scene reports her model canvas after each model load, and null while no model is loaded. */
+  function setModelCanvas(canvas: { width: number, height: number } | null) {
+    modelCanvas.value = canvas && canvas.width > 0 && canvas.height > 0 ? { ...canvas } : null
   }
 
   /**
@@ -710,5 +719,5 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
     }
   }
 
-  return { definitions, modelId, restSet, restSuppressed, manualActive, manualSeq, idleActive, setIdleClaims, leases, contextPreview, composer, derived, curated, catalog, llmEligibleEntries, autoEligibleEntries, settingsSnapshot, itemTargets, ownersOf, reconcile, registerDefinitions, rederive, activate, activateFromSlot, releaseSlot, applySlots, onSpeech, setMuted, setSlotSettings, tickLeases, deactivate, toggle, saveDefaults, resetAll, updateEntry, resetEntry, setAvailableItemAssets, removeItemAssets, reportItemStates, dispose, applySettingsCommand, onItemRefusal: itemRefusals.on }
+  return { definitions, modelId, restSet, restSuppressed, manualActive, manualSeq, idleActive, setIdleClaims, leases, contextPreview, composer, derived, curated, catalog, llmEligibleEntries, autoEligibleEntries, settingsSnapshot, itemTargets, ownersOf, reconcile, registerDefinitions, rederive, activate, activateFromSlot, releaseSlot, applySlots, onSpeech, setMuted, setSlotSettings, tickLeases, deactivate, toggle, saveDefaults, resetAll, updateEntry, resetEntry, setAvailableItemAssets, removeItemAssets, reportItemStates, setModelCanvas, dispose, applySettingsCommand, onItemRefusal: itemRefusals.on }
 })

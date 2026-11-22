@@ -52,6 +52,7 @@ import { useHostDataDeletion } from '../../composables/host-data-deletion'
 import { useIdleProps } from '../../composables/performance/use-idle-props'
 import { useStagePerformanceConductor } from '../../composables/performance/use-stage-performance-conductor'
 import { useDataMaintenance } from '../../composables/use-data-maintenance'
+import { useLive2DStageItems } from '../../composables/use-live2d-stage-items'
 // import { useDuckDb } from '../../composables/use-duck-db'
 import { Emotion, EMOTION_EmotionMotionName_value, EMOTION_VRMExpressionName_value, EmotionThinkMotionName } from '../../constants/emotions'
 import { useCharacterBehaviorSettings } from '../../features/character-behavior/settings'
@@ -323,6 +324,8 @@ const live2d = createLive2D({
 useSharedLive2DExpressionPreview(live2d, selectedCharacterId, () => selectedAvatarModel.value?.id)
 
 const live2dExpressionBackend = useLive2DExpressionBackend()
+// Stage items exist only for Live2D models; another renderer on stage leaves no item file open.
+const { items: live2dItems, reportStates: reportLive2DItemStates } = useLive2DStageItems({ active: () => stageModelRenderer.value === 'live2d' })
 const mmdExpressionBackend = useMMDExpressionBackend()
 const performanceRenderer = computed(() => selectStagePerformanceRenderer(stageModelRenderer.value, {
   scene: live2dSceneRef.value,
@@ -1242,6 +1245,7 @@ defineExpose({
         :live2d-shadow-enabled="live2dShadowEnabled"
         :live2d-max-fps="live2dMaxFps"
         :live2d-render-scale="live2dRenderScale"
+        :items="live2dItems"
         @error="handleStageRenderError"
         @touch="onAvatarTouch"
         @natural-touch="performanceConductor.touch($event)"
@@ -1249,6 +1253,7 @@ defineExpose({
         @errand="idleProps.onErrand"
         @idle-reports="performanceConductor.idleReport($event)"
         @cursor-reports="performanceConductor.cursor($event)"
+        @item-states="reportLive2DItemStates"
       />
       <ThreeScene
         v-if="stageModelRenderer === 'vrm' && showStage"
