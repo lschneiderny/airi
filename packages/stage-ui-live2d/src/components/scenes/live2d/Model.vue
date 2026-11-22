@@ -37,6 +37,7 @@ import type { NaturalCaptureRequest } from '../../../stores'
 
 import { errorMessageFrom } from '@moeru/std'
 import { Point } from '@pixi/math'
+import { NO_CAPABILITIES } from '@proj-airi/character-mind'
 import { NaturalTouchGestures } from '@proj-airi/motion-driver-natural/touch-gestures'
 import { isBeatSyncSupported, listenBeatSyncBeatSignal } from '@proj-airi/stage-shared/beat-sync'
 import { defaultExpressionPerformanceSettings, idleActivityEntries } from '@proj-airi/stage-shared/expression-performance'
@@ -90,7 +91,7 @@ import { EmotionHoldPerformer, selectManualHold } from '../../../composables/liv
 import { useFitModel } from '../../../composables/live2d/fit-model'
 import { live2DCanvasRectToViewport } from '../../../composables/live2d/head-anchor'
 import { naturalChatInput } from '../../../composables/live2d/natural-chat-input'
-import { Live2DNaturalMotionAdapter } from '../../../composables/live2d/natural-motion-adapter'
+import { LIVE2D_NATURAL_CAPABILITIES, Live2DNaturalMotionAdapter } from '../../../composables/live2d/natural-motion-adapter'
 import { scoreLiveliness } from '../../../composables/live2d/natural-motion/liveliness'
 import { NaturalReviewLog } from '../../../composables/live2d/natural-motion/review'
 import { manualControlParameterIds, readLive2DRigProfile } from '../../../composables/live2d/natural-motion/rig-profile'
@@ -1625,7 +1626,8 @@ watch(live2dExpressionEnabled, (enabled) => {
 
 // --- Touch
 // Pokes and pets are a Natural reaction, so touch runs only while Natural drives the model.
-const touchActive = computed(() => live2dNaturalTouch.value && live2dMotionDriver.value === 'natural' && !paused.value)
+const capabilities = computed(() => live2dMotionDriver.value === 'natural' ? LIVE2D_NATURAL_CAPABILITIES : NO_CAPABILITIES)
+const touchActive = computed(() => live2dNaturalTouch.value && capabilities.value.posture && !paused.value)
 
 watch(live2dNaturalTouchPetRequiresHold, (requireHold) => {
   touchGestures.requireHold = requireHold

@@ -9,6 +9,7 @@ import { neutralReviewGains } from '@proj-airi/motion-driver-natural/review'
 import { defaultExpressionPerformanceSettings, parseAffectTrace } from '@proj-airi/stage-shared/expression-performance'
 import { useSettingsLive2d } from '@proj-airi/stage-ui-live2d/composables/live2d'
 import { setAffectTraceSink, setNaturalTraceSink, useNaturalMotionDiagnostics } from '@proj-airi/stage-ui-live2d/stores'
+import { MMD_NATURAL_CAPABILITIES } from '@proj-airi/stage-ui-mmd/composables/mmd/natural/adapter'
 import { until } from '@vueuse/core'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest'
@@ -88,8 +89,7 @@ function createStage(diagnostics: ReturnType<typeof useNaturalMotionDiagnostics>
   let now = 10
   const conductor = new StagePerformanceConductor({
     scene: () => undefined,
-    driver: () => 'natural',
-    playMotion: () => {},
+    capabilities: () => MMD_NATURAL_CAPABILITIES,
     settings: () => defaultExpressionPerformanceSettings,
     catalog: () => [],
     seed: 7,

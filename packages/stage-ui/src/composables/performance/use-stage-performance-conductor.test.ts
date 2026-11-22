@@ -1,14 +1,17 @@
-import type { CharacterMind, MindStep } from '@proj-airi/character-mind'
+import type { CharacterMind, MindStep, PerformerCapabilities } from '@proj-airi/character-mind'
 import type { AffectSignal, AffectTrace, CatalogEntry, ExpressionPerformanceSettings, PerformanceProfile, SlotCommand, TimingEvent } from '@proj-airi/stage-shared/expression-performance'
 
 import type { ActionToolPort } from '../../tools/action'
 import type { BodyToolPort } from '../../tools/body'
 import type { VoicePort } from './mind-voice'
-import type { ListedAction, StagePerformanceConductorOptions, StagePerformanceDriver, StagePerformanceScene } from './use-stage-performance-conductor'
+import type { ListedAction, StagePerformanceConductorOptions, StagePerformanceScene } from './use-stage-performance-conductor'
 
+import { NO_CAPABILITIES } from '@proj-airi/character-mind'
 import { createDecider, createPickerDecider, defaultExpressionPerformanceSettings, initialTouchAffectMemory, parseAffectTrace, parseExpressionPerformanceSettings, replayAffectTrace, touchAffect } from '@proj-airi/stage-shared/expression-performance'
+import { LIVE2D_NATURAL_CAPABILITIES } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion-adapter'
 import { useNaturalMotionDiagnostics } from '@proj-airi/stage-ui-live2d/stores'
 import { useExpressionStore } from '@proj-airi/stage-ui-live2d/stores/expression-store'
+import { MMD_NATURAL_CAPABILITIES } from '@proj-airi/stage-ui-mmd/composables/mmd/natural/adapter'
 import { useMMDExpressionStore } from '@proj-airi/stage-ui-mmd/stores'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
@@ -65,15 +68,16 @@ function attendingScene() {
   return { ...fakeScene(), attend: vi.fn<NonNullable<StagePerformanceScene['attend']>>() }
 }
 
-function createConductor(driver: StagePerformanceDriver, scene: StagePerformanceScene = fakeScene(), settings: ExpressionPerformanceSettings = defaultExpressionPerformanceSettings, profile?: PerformanceProfile, entries: readonly CatalogEntry[] = catalog, touch: Pick<StagePerformanceConductorOptions, 'markMoment' | 'voice' | 'idleReports'> & { mindSeed?: number } = {}) {
+type TestPerformer = 'natural' | 'basic'
+
+function createConductor(driver: TestPerformer, scene: StagePerformanceScene = fakeScene(), settings: ExpressionPerformanceSettings = defaultExpressionPerformanceSettings, profile?: PerformanceProfile, entries: readonly CatalogEntry[] = catalog, touch: Pick<StagePerformanceConductorOptions, 'markMoment' | 'voice' | 'idleReports'> & { mindSeed?: number, capabilities?: PerformerCapabilities } = {}) {
   let now = 10
   // The mind counts the conductor's seconds as milliseconds, so both read 10 s at the start.
   const mind = naturalMind({ seed: touch.mindSeed ?? 7, clock: () => now * 1000 })
-  const playMotion = vi.fn<(group: string) => void>()
+  const refusals = vi.fn()
   const conductor = new StagePerformanceConductor({
     scene: () => scene,
-    driver: () => driver,
-    playMotion,
+    capabilities: () => touch.capabilities ?? (driver === 'natural' ? MMD_NATURAL_CAPABILITIES : NO_CAPABILITIES),
     settings: () => settings,
     catalog: () => entries,
     seed: 7,
@@ -85,11 +89,75 @@ function createConductor(driver: StagePerformanceDriver, scene: StagePerformance
     profile: () => profile,
     modelId: () => 'rig',
   })
+  conductor.onRefusal(refusals)
   function advance(seconds: number) {
     now += seconds
   }
-  return { conductor, mind, playMotion, advance }
+  return { conductor, mind, refusals, advance }
 }
+
+describe('performer dispatch declarations', () => {
+  it.each([
+    ['none', NO_CAPABILITIES],
+    ['Live2D', LIVE2D_NATURAL_CAPABILITIES],
+    ['MMD', MMD_NATURAL_CAPABILITIES],
+  ] as const)('dispatches only declared channels on %s and reports every denied request', (_name, capabilities) => {
+    const scene = {
+      ...fakeScene(),
+      attend: vi.fn(),
+      setAway: vi.fn(),
+      chatRead: vi.fn(),
+      cursorEpisode: vi.fn(),
+      idle: vi.fn(),
+      idleCue: vi.fn(),
+    }
+    const markMoment = vi.fn()
+    const { conductor, refusals } = createConductor('natural', scene, undefined, undefined, undefined, { capabilities, markMoment })
+    conductor.touch({ gesture: 'poke', region: 'body', point: { x: 0, y: 0 } })
+    conductor.desktop([{ kind: 'presence', away: true, wake: null }])
+    conductor.desktop([{ kind: 'presence', away: false, wake: { cause: 'unlock', atMs: 10_000 } }])
+    conductor.chat('sent', 3)
+    conductor.cursor([{ requestId: 1, band: 'near', opportunity: 'moved' }])
+    conductor.gesture('nod', 1, 'act')
+    conductor.gesture('shrug', 1, 'act')
+    conductor.idleCue({ id: 'cue', cause: 20, channel: 'posture', kind: 'cue', cue: 'about-to-speak' })
+    conductor.idle({ id: 'act', cause: 21, channel: 'posture', kind: 'idle-act', act: 'yawn', seed: 1, requested: true })
+    conductor.idle({ id: 'errand', cause: 22, channel: 'posture', kind: 'idle-errand', errand: 'pastime', pick: 0.5, holdSeconds: 60 })
+    conductor.emotion('happy', 0.8, 'act')
+    conductor.expression('game', 3, 'act')
+    conductor.clearExpression(undefined, 'act')
+    expect(scene.reactToTouch).toHaveBeenCalledTimes(Number(capabilities.posture))
+    expect(scene.addMood).toHaveBeenCalledTimes(Number(capabilities.posture))
+    expect(scene.reactToDesktop).toHaveBeenCalledTimes(Number(capabilities.posture))
+    expect(scene.idleCue).toHaveBeenCalledTimes(Number(capabilities.posture))
+    expect(scene.idle).toHaveBeenCalledTimes(capabilities.posture ? 2 : 0)
+    expect(scene.chatRead).toHaveBeenCalledTimes(Number(capabilities.gaze))
+    expect(scene.cursorEpisode).toHaveBeenCalledTimes(Number(capabilities.gaze))
+    expect(scene.gesture).toHaveBeenCalledTimes((['nod', 'shrug'] as const).filter(kind => capabilities.gestures.includes(kind)).length)
+    expect(scene.attend).toHaveBeenCalledTimes(capabilities.body ? 2 : 0)
+    expect(scene.setAway).toHaveBeenCalledTimes(capabilities.body ? 2 : 0)
+    expect(markMoment).toHaveBeenCalledTimes(capabilities.face ? 2 : 0)
+    expect(scene.setEmotion).toHaveBeenCalledTimes(Number(capabilities.face))
+    expect(scene.applySlots).toHaveBeenCalledTimes(capabilities.face ? 3 : 0)
+    const refused = refusals.mock.calls.map(([refusal]) => refusal.kind)
+    expect(refused).toEqual([
+      ...capabilities.posture ? [] : ['touch-reaction', 'mood'],
+      ...capabilities.face ? [] : ['moment'],
+      ...capabilities.body ? [] : ['attend', 'away'],
+      ...capabilities.posture ? [] : ['desktop-reaction'],
+      ...capabilities.face ? [] : ['moment'],
+      ...capabilities.body ? [] : ['away'],
+      ...capabilities.gaze ? [] : ['chat-read'],
+      ...capabilities.body ? [] : ['attend'],
+      ...capabilities.gaze ? [] : ['cursor-episode'],
+      ...capabilities.gestures.includes('nod') ? [] : ['gesture'],
+      ...capabilities.gestures.includes('shrug') ? [] : ['gesture'],
+      ...capabilities.posture ? [] : ['cue', 'idle-act', 'idle-errand'],
+      ...capabilities.face ? [] : ['emotion', 'entry', 'release'],
+    ])
+    expect(refusals.mock.calls.every(([refusal]) => refusal.reason === 'not-declared-by-stage')).toBe(true)
+  })
+})
 
 describe('stage performance renderer selection', () => {
   let pinia: ReturnType<typeof createPinia>
@@ -127,19 +195,18 @@ describe('stage performance renderer selection', () => {
     mmdStore.updateEntry('mmd:0:smile', { kind: 'face', exposedToLlm: true, confirmed: true, mappings: [{ emotion: 'happy', weight: 1, minBand: 'clear' }] })
     const selected = computed(() => selectStagePerformanceRenderer(renderer.value, {
       scene: mounted ? scene : undefined,
-      driver: 'natural',
+      capabilities: MMD_NATURAL_CAPABILITIES,
       expressionBackend: backend,
     }, {
       scene: mounted ? mmdScene : undefined,
-      driver: 'natural',
+      capabilities: MMD_NATURAL_CAPABILITIES,
       expressionBackend: useMMDExpressionBackend(),
     }))
     const result = scope.run(() => useStagePerformanceConductor({
       renderer: () => renderer.value,
       scene: () => selected.value.scene,
-      driver: () => selected.value.driver,
+      capabilities: () => selected.value.capabilities,
       expressionBackend: () => selected.value.expressionBackend,
-      playMotion: vi.fn(),
       mind: naturalMind({ seed: 7 }),
       mood: () => null,
     }))
@@ -160,7 +227,7 @@ describe('stage performance renderer selection', () => {
 
     expect(Object.values(scene).map(method => method.mock.calls.length)).toEqual([0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
     expect(selected.value.expressionBackend).toBeUndefined()
-    expect(selected.value.driver).toBe('natural')
+    expect(selected.value.capabilities).toBe(NO_CAPABILITIES)
   })
 
   it.each(['vrm'])('does not dispatch or throw for an ACT expression after switching to %s', async (renderer) => {
@@ -274,7 +341,7 @@ describe('stage performance conductor', () => {
 
   it('hands banded episodes to the Natural scene and plays no motion group', () => {
     const scene = fakeScene()
-    const { conductor, playMotion, advance } = createConductor('natural', scene)
+    const { conductor, refusals, advance } = createConductor('natural', scene)
 
     conductor.emotion('angry', 0.6, 'act', 'turn-a')
     advance(3)
@@ -287,7 +354,7 @@ describe('stage performance conductor', () => {
       ['sad', 'strong'],
       ['happy', 'slight'],
     ])
-    expect(playMotion).not.toHaveBeenCalled()
+    expect(refusals).not.toHaveBeenCalled()
   })
 
   it('hands the episode to the Natural scene at once under the planner, while its face waits for the sentence start', () => {
@@ -305,9 +372,9 @@ describe('stage performance conductor', () => {
     conductor.dispose()
   })
 
-  it.each(['basic'] as const)('plays a motion group for every recognized emotion under %s and still applies slots', (driver) => {
+  it.each(['basic'] as const)('reports undeclared face intents under %s without applying slots', (driver) => {
     const scene = fakeScene()
-    const { conductor, playMotion, advance } = createConductor(driver, scene)
+    const { conductor, refusals, advance } = createConductor(driver, scene)
 
     conductor.emotion('happy', 0.6, 'act', 'turn-a')
     // The repeat lands inside the 2 s escalation window, where the reaction tracker drops it.
@@ -316,46 +383,38 @@ describe('stage performance conductor', () => {
     advance(1)
     conductor.emotion('neutral', 0.6, 'act', 'turn-a')
 
-    expect(playMotion.mock.calls).toEqual([['Happy'], ['Happy'], ['Idle']])
+    expect(refusals.mock.calls.map(([refusal]) => refusal.kind)).toEqual(['emotion', 'release'])
     expect(scene.setEmotion).not.toHaveBeenCalled()
-    expect(scene.applySlots.mock.calls.map(([commands]) => commands)).toEqual([
-      [{ slot: 'face', expressionId: 'joy', holdSeconds: 4, until: 'speech', turnId: 'turn-a' }],
-      [
-        { slot: 'face', expressionId: null, holdSeconds: 0, until: 'speech', turnId: 'turn-a' },
-        { slot: 'effect', expressionId: null, holdSeconds: 0, until: 'speech', turnId: 'turn-a' },
-      ],
-    ])
+    expect(scene.applySlots).not.toHaveBeenCalled()
   })
 
-  it('plays the fallback motion group for love, flustered, and sleepy under Universal', () => {
+  it('reports undeclared love, flustered, and sleepy episodes', () => {
     // Non-Natural drivers play the group unconditionally, so no clock advance is needed.
-    const { conductor, playMotion } = createConductor('basic')
+    const { conductor, refusals } = createConductor('basic')
 
     for (const emotion of ['love', 'flustered', 'sleepy'])
       conductor.emotion(emotion, 0.6, 'act', 'turn-a')
 
-    expect(playMotion.mock.calls).toEqual([['Happy'], ['Awkward'], ['Idle']])
+    expect(refusals.mock.calls.map(([refusal]) => refusal.kind)).toEqual(['emotion', 'emotion', 'emotion'])
   })
 
-  it.each(['basic'] as const)('skips the emotion motion group under %s when an ACT already played its motion, and still applies slots', (driver) => {
+  it.each(['basic'] as const)('refuses a face request under %s independently of an ACT motion', (driver) => {
     const scene = fakeScene()
-    const { conductor, playMotion } = createConductor(driver, scene)
+    const { conductor, refusals } = createConductor(driver, scene)
 
-    conductor.emotion('happy', 0.6, 'act', 'turn-a', { suppressMotionGroup: true })
+    conductor.emotion('happy', 0.6, 'act', 'turn-a')
 
-    expect(playMotion).not.toHaveBeenCalled()
-    expect(scene.applySlots.mock.calls.flatMap(([commands]) => commands)).toEqual([
-      expect.objectContaining({ expressionId: 'joy', turnId: 'turn-a' }),
-    ])
+    expect(refusals).toHaveBeenCalledWith({ cause: 2, kind: 'emotion', reason: 'not-declared-by-stage' })
+    expect(scene.applySlots).not.toHaveBeenCalled()
   })
 
   it('keeps the Natural episode and hold when an ACT already played its motion', () => {
     const scene = fakeScene()
-    const { conductor, playMotion } = createConductor('natural', scene)
+    const { conductor, refusals } = createConductor('natural', scene)
 
-    conductor.emotion('happy', 0.6, 'act', 'turn-a', { suppressMotionGroup: true })
+    conductor.emotion('happy', 0.6, 'act', 'turn-a')
 
-    expect(playMotion).not.toHaveBeenCalled()
+    expect(refusals).not.toHaveBeenCalled()
     expect(scene.setEmotion).toHaveBeenCalledTimes(1)
     expect(scene.applyHolds.mock.calls).toEqual([[[expect.objectContaining({ emotion: 'happy', turnId: 'turn-a' })], 10]])
   })
@@ -378,7 +437,7 @@ describe('stage performance conductor', () => {
 
   it('drops expressions that are not exposed to the LLM and emotions it does not know', () => {
     const scene = fakeScene()
-    const { conductor, playMotion } = createConductor('basic', scene)
+    const { conductor, refusals } = createConductor('basic', scene)
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
     conductor.expression('anger', undefined, 'act', 'turn-a')
@@ -386,7 +445,7 @@ describe('stage performance conductor', () => {
     conductor.emotion('furious', 0.6, 'act', 'turn-a')
 
     expect(scene.applySlots).not.toHaveBeenCalled()
-    expect(playMotion).not.toHaveBeenCalled()
+    expect(refusals).not.toHaveBeenCalled()
     expect(warn).toHaveBeenCalledTimes(3)
   })
 
@@ -480,8 +539,7 @@ describe('stage performance conductor', () => {
     ]
     const conductor = new StagePerformanceConductor({
       scene: () => scene,
-      driver: () => 'natural',
-      playMotion: () => {},
+      capabilities: () => MMD_NATURAL_CAPABILITIES,
       settings: () => defaultExpressionPerformanceSettings,
       catalog: () => local,
       seed: 7,
@@ -524,9 +582,9 @@ describe('stage performance conductor', () => {
       const first = { ...fakeScene(), setAway: vi.fn<NonNullable<StagePerformanceScene['setAway']>>() }
       const second = { ...fakeScene(), setAway: vi.fn<NonNullable<StagePerformanceScene['setAway']>>() }
       let scene: StagePerformanceScene | undefined
-      let driver: StagePerformanceDriver = 'basic'
+      let driver: TestPerformer = 'basic'
       const mind = naturalMind({ seed: 7 })
-      const conductor = new StagePerformanceConductor({ scene: () => scene, driver: () => driver, playMotion: vi.fn(), settings: () => defaultExpressionPerformanceSettings, catalog: () => catalog, seed: 7, mind })
+      const conductor = new StagePerformanceConductor({ scene: () => scene, capabilities: () => driver === 'natural' ? MMD_NATURAL_CAPABILITIES : NO_CAPABILITIES, settings: () => defaultExpressionPerformanceSettings, catalog: () => catalog, seed: 7, mind })
       mind.receive(lock)
       conductor.syncScene()
       scene = first
@@ -572,7 +630,7 @@ describe('stage performance conductor', () => {
       expect(markMoment.mock.calls).toEqual([['welcome-back'], ['welcome-back']])
     })
 
-    it('marks only the moment under a basic driver, while the mind still steps', () => {
+    it('refuses performer answers without declarations while the mind still steps', () => {
       const scene = fakeScene()
       const markMoment = vi.fn<NonNullable<StagePerformanceConductorOptions['markMoment']>>()
       const { conductor, mind, advance } = createConductor('basic', scene, undefined, undefined, undefined, { markMoment })
@@ -587,7 +645,7 @@ describe('stage performance conductor', () => {
       expect(steps).toHaveBeenCalledTimes(2)
       expect(scene.wakeFromSleep).not.toHaveBeenCalled()
       expect(scene.reactToDesktop).not.toHaveBeenCalled()
-      expect(markMoment.mock.calls).toEqual([['welcome-back']])
+      expect(markMoment).not.toHaveBeenCalled()
     })
 
     it('records the wake and the return in the situation in intent order under a basic driver', () => {
@@ -696,21 +754,21 @@ describe('stage performance conductor', () => {
       expect(mind.state.voice.reaction.pending).toBeNull()
     })
 
-    it.each(['basic'] as const)('never reaches the mind, the scene, or the situation for a touch under %s', (driver) => {
+    it.each(['basic'] as const)('reports touch intents another stage declared but this %s scene cannot perform', (driver) => {
       const scene = fakeScene()
       const voice = fakeVoice()
       const markMoment = vi.fn<NonNullable<StagePerformanceConductorOptions['markMoment']>>()
-      const { conductor, mind, playMotion } = createConductor(driver, scene, undefined, undefined, undefined, { voice: () => voice, markMoment })
+      const { conductor, mind, refusals } = createConductor(driver, scene, undefined, undefined, undefined, { voice: () => voice, markMoment })
 
       conductor.touch({ gesture: 'pet-start', region: 'head' })
       conductor.touch({ gesture: 'poke', region: 'body', point })
 
-      expect(mind.state.seq).toBe(1)
+      expect(mind.state.seq).toBe(3)
       expect(scene.reactToTouch).not.toHaveBeenCalled()
       expect(scene.addMood).not.toHaveBeenCalled()
-      expect(voice.observeTouch).not.toHaveBeenCalled()
+      expect(voice.observeTouch).toHaveBeenCalledOnce()
       expect(markMoment).not.toHaveBeenCalled()
-      expect(playMotion).not.toHaveBeenCalled()
+      expect(refusals.mock.calls.map(([refusal]) => refusal.kind)).toEqual(['touch-reaction', 'mood', 'attend', 'touch-reaction', 'mood', 'moment', 'attend'])
       expect(scene.setEmotion).not.toHaveBeenCalled()
     })
 
@@ -720,7 +778,7 @@ describe('stage performance conductor', () => {
         const scene = { ...fakeScene(), setIdleDrive: vi.fn<NonNullable<StagePerformanceScene['setIdleDrive']>>(), idleCue: vi.fn<NonNullable<StagePerformanceScene['idleCue']>>() }
         const { conductor } = createConductor(driver, scene)
         conductor.idleDrive(drive)
-        conductor.idleCue('about-to-speak')
+        conductor.idleCue({ id: 'cue-1', cause: 1, kind: 'cue', channel: 'posture', cue: 'about-to-speak' })
         return [driver, scene.setIdleDrive.mock.calls, scene.idleCue.mock.calls]
       })
 
@@ -741,7 +799,7 @@ describe('stage performance conductor', () => {
 
       expect(asked).toEqual([
         ['natural', [[[{ kind: 'idle-play', act: 'yawn' }], [['yawn', true]]]]],
-        ['basic', []],
+        ['basic', [[[{ kind: 'idle-play', act: 'yawn' }], [['yawn', true]]]]],
       ])
     })
 
@@ -779,9 +837,9 @@ describe('stage performance conductor', () => {
 
     it('answers cursor reports under Natural on the reporting scene only, and drops them under a basic driver', () => {
       const mind = naturalMind({ seed: 7, clock: () => 10_000 })
-      const stage = (driver: StagePerformanceDriver) => {
+      const stage = (driver: TestPerformer) => {
         const scene = { ...fakeScene(), cursorEpisode: vi.fn<NonNullable<StagePerformanceScene['cursorEpisode']>>() }
-        const conductor = new StagePerformanceConductor({ scene: () => scene, driver: () => driver, playMotion: vi.fn(), settings: () => defaultExpressionPerformanceSettings, catalog: () => catalog, seed: 7, mind })
+        const conductor = new StagePerformanceConductor({ scene: () => scene, capabilities: () => driver === 'natural' ? MMD_NATURAL_CAPABILITIES : NO_CAPABILITIES, settings: () => defaultExpressionPerformanceSettings, catalog: () => catalog, seed: 7, mind })
         return { scene, conductor }
       }
       const reporting = stage('natural')
@@ -799,7 +857,7 @@ describe('stage performance conductor', () => {
 
       basic.conductor.cursor([{ requestId: 1, band: 'near', opportunity: 'appeared' }])
       expect(basic.scene.cursorEpisode).not.toHaveBeenCalled()
-      expect(mind.state.seq).toBe(steps + 2)
+      expect(mind.state.seq).toBe(steps + 3)
     })
 
     it('sends the attend of a drag release to the scene under Natural only', () => {
@@ -846,9 +904,9 @@ describe('stage performance conductor', () => {
     })
 
     it('hands idle reports to the mind under Natural, the dormant view once it leaves, and the latest view again on return', () => {
-      let driver: StagePerformanceDriver = 'natural'
+      let driver: TestPerformer = 'natural'
       const idleReports = vi.fn<NonNullable<StagePerformanceConductorOptions['idleReports']>>()
-      const conductor = new StagePerformanceConductor({ scene: () => fakeScene(), driver: () => driver, playMotion: vi.fn(), settings: () => defaultExpressionPerformanceSettings, catalog: () => catalog, seed: 7, mind: naturalMind({ seed: 7 }), idleReports })
+      const conductor = new StagePerformanceConductor({ scene: () => fakeScene(), capabilities: () => driver === 'natural' ? MMD_NATURAL_CAPABILITIES : NO_CAPABILITIES, settings: () => defaultExpressionPerformanceSettings, catalog: () => catalog, seed: 7, mind: naturalMind({ seed: 7 }), idleReports })
       const view = { drive: { energy: 0, valence: 0, tension: 0, sleepiness: 0, solitude: 0, rate: 1 }, active: true, mode: 'idle', away: false, blocked: false, settled: false, current: null, errand: null } as const
       conductor.idleReport([{ kind: 'view', view }])
       driver = 'basic'
@@ -909,15 +967,14 @@ describe('stage performance conductor', () => {
         return [driver, scene.action.mock.calls]
       })
 
-      expect(forwarded).toEqual((['natural', 'basic'] as const).map(driver => [driver, [['wave', undefined], ['bow', { kind: 'nod', count: 2 }]]]))
+      expect(forwarded).toEqual([['natural', [['wave', undefined], ['bow', { kind: 'nod', count: 2 }]]], ['basic', []]])
     })
 
     it('drops an ACT action label without a scene or with a scene that plays no clips', () => {
       const clipless = fakeScene()
       const withoutScene = new StagePerformanceConductor({
         scene: () => undefined,
-        driver: () => 'natural',
-        playMotion: vi.fn(),
+        capabilities: () => MMD_NATURAL_CAPABILITIES,
         settings: () => defaultExpressionPerformanceSettings,
         catalog: () => catalog,
         seed: 7,
@@ -953,7 +1010,7 @@ describe('stage performance conductor', () => {
   })
 
   describe('combos', () => {
-    const combo = entry('pair', 'combo', [], { label: 'Pair', exposedToLlm: true, slots: ['face', 'effect'], fileName: '', parameterIds: [] })
+    const combo = entry('pair', 'combo', [], { label: 'Pair', exposedToLlm: true, members: [{ expressionId: 'anger', strength: 1 }, { expressionId: 'tear', strength: 1 }], slots: ['face', 'effect'], fileName: '', parameterIds: [] })
     const withCombos: CatalogEntry[] = [
       ...catalog,
       combo,
@@ -1058,8 +1115,7 @@ describe('stage performance conductor', () => {
       let mounted = false
       const conductor = new StagePerformanceConductor({
         scene: () => mounted ? scene : undefined,
-        driver: () => 'natural',
-        playMotion: () => {},
+        capabilities: () => MMD_NATURAL_CAPABILITIES,
         settings: () => defaultExpressionPerformanceSettings,
         catalog: () => catalog,
         seed: 7,
@@ -1089,23 +1145,21 @@ describe('stage performance conductor', () => {
       expect(scene.setEmotion).not.toHaveBeenCalled()
     })
 
-    it.each(['basic'] as const)('keeps the held-emotion-free slot history under %s after a mapped expression', (driver) => {
-      const run = (settings: ExpressionPerformanceSettings) => {
+    it.each(['basic'] as const)('refuses mapped expressions and emotion slots under %s without changing settings', (driver) => {
+      for (const heldEmotions of [false, true]) {
         const scene = fakeScene()
-        const { conductor, advance } = createConductor(driver, scene, settings, undefined, heldCatalog)
+        const settings = { ...defaultExpressionPerformanceSettings, heldEmotions }
+        const { conductor, advance, refusals } = createConductor(driver, scene, settings, undefined, heldCatalog)
         conductor.expression('Rage', 5, 'act', 'turn-a')
         advance(1)
         conductor.emotion('angry', 0.6, 'act', 'turn-a')
         advance(3)
         conductor.emotion('angry', 0.9, 'act', 'turn-a')
-        return scene.applySlots.mock.calls.map(([commands]) => commands)
+        expect(scene.applySlots).not.toHaveBeenCalled()
+        expect(refusals.mock.calls[0][0]).toMatchObject({ kind: 'entry', reason: 'not-declared-by-stage' })
+        expect(refusals.mock.calls.length).toBeGreaterThan(1)
+        expect(settings.heldEmotions).toBe(heldEmotions)
       }
-
-      const base = run({ ...defaultExpressionPerformanceSettings, heldEmotions: false })
-      expect(run(defaultExpressionPerformanceSettings)).toEqual(base)
-      // The sequence does drive slots, so equality is not vacuous.
-      expect(base.length).toBeGreaterThan(1)
-      expect(defaultExpressionPerformanceSettings.heldEmotions).toBe(true)
     })
 
     it('releases the hold on a slotless clear and keeps it on a named slot clear', () => {
@@ -1165,8 +1219,7 @@ describe('stage performance conductor', () => {
       let profile: PerformanceProfile | undefined
       const conductor = new StagePerformanceConductor({
         scene: () => scene,
-        driver: () => 'natural',
-        playMotion: () => {},
+        capabilities: () => MMD_NATURAL_CAPABILITIES,
         settings: () => defaultExpressionPerformanceSettings,
         catalog: () => catalog,
         seed: 7,
@@ -1261,8 +1314,7 @@ describe('stage performance conductor', () => {
       let now = 10
       const conductor = new StagePerformanceConductor({
         scene: () => scene,
-        driver: () => 'natural',
-        playMotion: () => {},
+        capabilities: () => MMD_NATURAL_CAPABILITIES,
         settings: () => defaultExpressionPerformanceSettings,
         catalog: () => catalog,
         seed: 7,
@@ -1333,8 +1385,7 @@ describe('stage performance conductor', () => {
       const settings = options.settings ?? defaultExpressionPerformanceSettings
       const conductor = new StagePerformanceConductor({
         scene: () => fakeScene(),
-        driver: () => 'natural',
-        playMotion: () => {},
+        capabilities: () => MMD_NATURAL_CAPABILITIES,
         settings: () => settings,
         catalog: () => catalog,
         seed: 7,
@@ -1651,10 +1702,9 @@ describe('stage performance conductor', () => {
       scope.run(() => useStagePerformanceConductor({
         renderer: () => 'mmd',
         scene: () => undefined,
-        driver: () => 'natural',
+        capabilities: () => MMD_NATURAL_CAPABILITIES,
         expressionBackend: () => undefined,
         bodyPort: () => bodyPort.value,
-        playMotion: vi.fn(),
         mind: naturalMind({ seed: 7 }),
         mood: () => null,
       }))
@@ -1681,11 +1731,10 @@ describe('stage performance conductor', () => {
     scope.run(() => useStagePerformanceConductor({
       renderer: () => 'mmd',
       scene: () => undefined,
-      driver: () => 'natural',
+      capabilities: () => MMD_NATURAL_CAPABILITIES,
       expressionBackend: () => undefined,
       actionPort: () => actionPort.value,
       listActions: () => library.value,
-      playMotion: vi.fn(),
       mind: naturalMind({ seed: 7 }),
       mood: () => null,
     }))

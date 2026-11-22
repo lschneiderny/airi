@@ -21,7 +21,7 @@ import { createScenarioPlayer, hostProfileViolations, MotionScenarioSchema, next
 import { initialResolverMemory, resolvePerformanceState } from '@proj-airi/stage-shared/performance-state'
 import { EmotionHoldPerformer } from '@proj-airi/stage-ui-live2d/composables/live2d/expression/hold'
 import { lipSyncHandoffHoldMs, lipSyncReleaseMs } from '@proj-airi/stage-ui-live2d/composables/live2d/lipsync-handoff'
-import { Live2DNaturalMotionAdapter } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion-adapter'
+import { LIVE2D_NATURAL_CAPABILITIES, Live2DNaturalMotionAdapter } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion-adapter'
 import { syllableFixture } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/speech-fixture'
 import { eyeAnchorShare } from '@proj-airi/stage-ui-live2d/composables/live2d/touch-regions'
 import { StagePerformanceConductor } from '@proj-airi/stage-ui/composables/performance/use-stage-performance-conductor'
@@ -175,14 +175,15 @@ export function runScenarioSink(input: MotionScenario, options: ScenarioSinkOpti
       },
     }
     setActivePinia(createPinia())
+    const mind = new CharacterMind({ seed: scenario.seed, clock: () => simTime * 1000 })
+    mind.receive({ kind: 'performer', capabilities: LIVE2D_NATURAL_CAPABILITIES })
     const conductor = new StagePerformanceConductor({
       scene: () => scene,
-      driver: () => 'natural',
-      playMotion: () => {},
+      capabilities: () => LIVE2D_NATURAL_CAPABILITIES,
       settings: () => settings,
       catalog: () => catalog,
       // The mind answers on the sim clock too, so a run decides the same episodes every time.
-      mind: new CharacterMind({ seed: scenario.seed, clock: () => simTime * 1000 }),
+      mind,
       seed: scenario.seed,
       clock: () => simTime,
       timers: {

@@ -2,6 +2,7 @@ import type { CharacterMind, MindState } from '@proj-airi/character-mind'
 import type { IdleBehaviourReport } from '@proj-airi/motion-driver-natural/idle-activities'
 import type { MotionQaEvent, MotionQaEventsResult } from '@proj-airi/stage-shared/motion-scenario'
 
+import type { PerformerRefusal } from '../../features/performance/runtime-state'
 import type { useChatStore } from '../../stores/chat'
 
 import { normalizeActPayload } from '@proj-airi/pipelines-audio'
@@ -22,6 +23,7 @@ export function useMotionQaEvents(options: {
   voicing: () => boolean
   mind: Pick<CharacterMind, 'onStep'>
   onIdle: MotionQaIdleHook
+  onRefusal?: (listener: (refusal: PerformerRefusal) => void) => () => void
 }) {
   const events: MotionQaEvent[] = []
   let seq = 0
@@ -37,6 +39,7 @@ export function useMotionQaEvents(options: {
   }
 
   const disposers = [
+    ...options.onRefusal ? [options.onRefusal(refusal => record('mind', { stimulus: 'performer-refusal', refusals: JSON.stringify([refusal]) }))] : [],
     options.chat.onBeforeMessageComposed(async (_text, context) => {
       record('turn', { phase: 'start', turnId: context.turnId })
     }),

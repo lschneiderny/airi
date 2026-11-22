@@ -21,6 +21,7 @@ import type {
 } from '@proj-airi/stage-shared/situation'
 import type { Message } from '@xsai/shared-chat'
 
+import type { PerformerRefusal } from '../../features/performance/runtime-state'
 import type { ChatUnpromptedResult } from '../chat'
 
 import { defineInvoke, defineInvokeEventa, defineInvokeHandler } from '@moeru/eventa'
@@ -233,7 +234,7 @@ export type SituationReactionOutcomeStatus = keyof SituationReactionOutcome
 
 export interface SituationReactionInspection {
   /** Newest first, bounded by the reaction history cap; no stimulus content. */
-  refusals: readonly (Refusal & { atMs: number })[]
+  refusals: readonly ((Refusal | PerformerRefusal) & { atMs: number })[]
   /** `null` until a touch was evaluated in this window. */
   decision: SituationReactionDecisionRecord | null
   /** The mind's voice memory now; `null` while no stage of this window runs a mind. */
@@ -368,7 +369,7 @@ export const useSituationObservabilityStore = defineStore('devtools:situation-ob
   const extractionLedger = shallowRef<readonly ThreadExtractionLedgerEntry[]>([])
   const extractionInFlight = shallowRef(false)
   const outcomes = shallowRef<SituationReasonOutcomes>(NO_OUTCOMES)
-  const mindRefusals = shallowRef<readonly (Refusal & { atMs: number })[]>([])
+  const mindRefusals = shallowRef<readonly ((Refusal | PerformerRefusal) & { atMs: number })[]>([])
   const reactionDecision = shallowRef<SituationReactionDecisionRecord | null>(null)
   const reactionMemory = shallowRef<ReactionMemory | null>(null)
   const reactionOutcomes = shallowRef<Readonly<Record<ReactionKind, SituationReactionOutcome>>>(NO_REACTION_OUTCOMES)
@@ -489,6 +490,10 @@ export const useSituationObservabilityStore = defineStore('devtools:situation-ob
     awaitingEngagement = []
     for (const spoken of awaited)
       countOutcome(spoken.kind, atMs - spoken.spokenAtMs <= SITUATION_ENGAGEMENT_WINDOW_MS ? 'engaged' : 'ignored')
+  }
+
+  function recordPerformerRefusal(refusal: PerformerRefusal) {
+    mindRefusals.value = [{ ...refusal, atMs: Date.now() }, ...mindRefusals.value].slice(0, SITUATION_URGE_HISTORY_MAX)
   }
 
   function recordMindRefusals(refusals: readonly Refusal[], atMs: number) {
@@ -637,6 +642,7 @@ export const useSituationObservabilityStore = defineStore('devtools:situation-ob
     publishUrgeState,
     recordReasonOutcome,
     recordUserTurn,
+    recordPerformerRefusal,
     recordMindRefusals,
     recordReactionDecision,
     publishReactionMemory,

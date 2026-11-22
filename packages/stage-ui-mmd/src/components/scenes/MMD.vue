@@ -1586,7 +1586,8 @@ watch(() => props.modelSrc, (src) => {
 
 // --- Touch
 // Pokes and pets are a Natural reaction, so touch runs only while Natural drives the model.
-const touchActive = computed(() => naturalSettings.document.touch && motionDriver.value === 'natural' && !props.paused)
+const capabilities = computed(() => motionDriver.value === 'natural' ? MMD_NATURAL_CAPABILITIES : NO_CAPABILITIES)
+const touchActive = computed(() => naturalSettings.document.touch && capabilities.value.posture && !props.paused)
 
 /** Whether the mind's pet runs. The pet hand reaches Natural only meanwhile. */
 let petGranted = false
@@ -1822,7 +1823,7 @@ watch(materialOpacity, () => {
 }, { deep: true })
 
 defineExpose({
-  capabilities: computed(() => motionDriver.value === 'natural' ? MMD_NATURAL_CAPABILITIES : NO_CAPABILITIES),
+  capabilities,
   canvasElement,
   captureFrame,
   setClassicEmotion,

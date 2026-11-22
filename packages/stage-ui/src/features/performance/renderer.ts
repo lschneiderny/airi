@@ -1,9 +1,13 @@
-import type { StagePerformanceDriver, StagePerformanceScene } from '../../composables/performance/use-stage-performance-conductor'
+import type { PerformerCapabilities } from '@proj-airi/character-mind'
+
+import type { StagePerformanceScene } from '../../composables/performance/use-stage-performance-conductor'
 import type { StageExpressionBackend } from './expression-backend'
+
+import { NO_CAPABILITIES } from '@proj-airi/character-mind'
 
 interface StagePerformanceRenderer {
   scene: StagePerformanceScene | undefined
-  driver: StagePerformanceDriver
+  capabilities: PerformerCapabilities
   expressionBackend: StageExpressionBackend | undefined
 }
 
@@ -15,6 +19,6 @@ export function selectStagePerformanceRenderer(renderer: string | undefined, liv
     case 'mmd':
       return mmd
     default:
-      return { scene: undefined, driver: live2d.driver, expressionBackend: undefined }
+      return { scene: undefined, capabilities: NO_CAPABILITIES, expressionBackend: undefined }
   }
 }

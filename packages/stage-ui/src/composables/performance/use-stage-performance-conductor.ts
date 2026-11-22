@@ -1,4 +1,4 @@
-import type { AttendIntent, CharacterMind, ChatReadIntent, ChatStimulus, CueGestureStimulus, MindIdleIntent, MindIntent, TouchReactionIntent, TouchReport } from '@proj-airi/character-mind'
+import type { AttendIntent, CharacterMind, ChatReadIntent, ChatStimulus, CueGestureStimulus, MindIdleIntent, MindIntent, PerformerCapabilities, TouchReactionIntent, TouchReport } from '@proj-airi/character-mind'
 import type { FaceBaseline } from '@proj-airi/motion-driver-natural/baseline'
 import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
 import type { CursorOrder, CursorReport } from '@proj-airi/motion-driver-natural/cursor-notice'
@@ -12,7 +12,7 @@ import type { PerformanceEvent } from '@proj-airi/stage-shared/performance-state
 import type { TouchObservation } from '@proj-airi/stage-shared/situation'
 
 import type { StageExpressionBackend } from '../../features/performance/expression-backend'
-import type { ActiveExpression, ExposedAction, ExposedExpression, ExposedExpressionGroup, PerformanceMoodSnapshot } from '../../features/performance/runtime-state'
+import type { ActiveExpression, ExposedAction, ExposedExpression, ExposedExpressionGroup, PerformanceMoodSnapshot, PerformerRefusal } from '../../features/performance/runtime-state'
 import type { ExecutableTool } from '../../stores/ai/chat-llm/tools'
 import type { ActionToolPort, ExposedToolAction } from '../../tools/action'
 import type { BodyToolPort } from '../../tools/body'
@@ -20,7 +20,7 @@ import type { ExpressionToolPort } from '../../tools/expression'
 import type { VoicePort } from './mind-voice'
 
 import { errorMessageFrom } from '@moeru/std'
-import { idleOrderOf } from '@proj-airi/character-mind'
+import { idleOrderOf, permits } from '@proj-airi/character-mind'
 import { dormantIdleView } from '@proj-airi/motion-driver-natural/idle-schedule'
 import { SpeechOnsetDetector } from '@proj-airi/motion-driver-natural/speech-emphasis'
 import { faceBaselineOf, idleDriveOf } from '@proj-airi/stage-shared/character-state'
@@ -29,7 +29,7 @@ import { useNaturalMotionDiagnostics } from '@proj-airi/stage-ui-live2d/stores'
 import { useIntervalFn } from '@vueuse/core'
 import { computed, onScopeDispose, shallowRef, watch } from 'vue'
 
-import { EMOTION_EmotionMotionName_value, EMOTION_VALUES } from '../../constants/emotions'
+import { EMOTION_VALUES } from '../../constants/emotions'
 import { usePerformanceRuntimeState } from '../../features/performance/runtime-state'
 import { useExpressionPerformanceSettings } from '../../features/performance/settings'
 import { useLlmToolsStore } from '../../stores/ai/chat-llm/tools'
@@ -175,18 +175,10 @@ export interface StagePerformanceScene {
   chatRead?: (intent: ChatReadIntent) => void
 }
 
-/**
- * How the scene performs. `natural` is Live2D or MMD under the Natural driver. `basic` is every
- * other driver (Live2D Universal and MAGIC, MMD Classic), which plays motion groups instead of episodes.
- */
-export type StagePerformanceDriver = 'natural' | 'basic'
-
 export interface StagePerformanceConductorOptions {
   /** Undefined while no performance scene is mounted; decisions still advance the decider state. */
   scene: () => StagePerformanceScene | undefined
-  driver: () => StagePerformanceDriver
-  /** Plays a motion group under a basic driver. */
-  playMotion: (group: string) => void
+  capabilities: () => PerformerCapabilities
   settings: () => ExpressionPerformanceSettings
   catalog: () => readonly CatalogEntry[]
   /**
@@ -262,28 +254,9 @@ const browserTimers: Required<StagePerformanceConductorOptions>['timers'] = {
  * and its hold, and owns the reaction history; the decider picks the entries that show it. An emotion, a named
  * expression, and a clear reach the mind first, and the decider then receives what the mind decided.
  *
- * Routing per driver:
- * - Natural: the mind's episodes go to `scene.setEmotion` and its holds to `scene.applyHolds`.
- * - Basic (Live2D Universal and MAGIC, MMD Classic): every recognized emotion plays its motion group, repeats and
- *   `neutral` (`Idle`) included, independently of episode filtering.
- *   The mind's settings report `heldEmotions` off there, so explicit expressions derive no
- *   reaction state and later slot decisions match the held-emotion-free behavior.
- * - Slot commands go to `scene.applySlots` for every driver.
- * - A touch reaches the mind only under Natural (see {@link StagePerformanceConductor.touch}). ACT and devtools cue
- *   gestures step the mind under every driver, and its `gesture` intent goes to `scene.gesture` only under the Natural
- *   driver of Live2D and MMD (see {@link StagePerformanceConductor.gesture}). Universal, MAGIC, and MMD Classic have no
- *   touch path and play no cue gestures.
- * - Presence and screen-change events reach the mind under every driver (see {@link StagePerformanceConductor.desktop});
- *   only Natural performs the posture intents it answers with.
- * - A cursor report reaches the mind only under Natural, and its episode returns to this conductor's scene (see
- *   {@link StagePerformanceConductor.cursor}).
- * - A drag release reaches the mind under every driver, and its `attend` goes to `scene.attend` only under Natural,
- *   because the MMD body walks only under Natural (see {@link StagePerformanceConductor.interaction}). A touch's
- *   `attend` goes the same way.
- * - A sent chat message and an unfolded chat reach the mind under every driver, and its `chat-read` and `attend` go to
- *   the scene only under Natural (see {@link StagePerformanceConductor.chat}).
- * - The resting face baseline goes to `scene.setFaceBaseline` for every driver. Natural composes it only while it
- *   drives the face, so Universal and MAGIC hold it without writing.
+ * Every mind intent is checked against this scene's declaration before dispatch. A second stage may declare
+ * fewer channels than the newest stage that the mind follows; that miss emits a performer refusal.
+ * Beats, baseline and idle drive remain continuous performer inputs.
  *
  * Moodless turns: `markMoodless(turnId)` makes every later episode decided for that turn carry `moodGain` 0, so a
  * reaction to a touch shows on the face without dosing mood a second time; the touch already dosed it.
@@ -345,7 +318,8 @@ export class StagePerformanceConductor {
   private idleView: IdleView | null = null
   private idleDormant = false
   private presenceScene: StagePerformanceScene | undefined
-  private presenceNatural = false
+  private presenceBody = false
+  private readonly refusalListeners = new Set<(refusal: PerformerRefusal) => void>()
 
   constructor(private readonly options: StagePerformanceConductorOptions) {
     this.seed = options.seed
@@ -357,11 +331,8 @@ export class StagePerformanceConductor {
     this.timers = options.timers ?? browserTimers
   }
 
-  /**
-   * Plays an emotion. `suppressMotionGroup` skips only the Universal and MAGIC motion group, for an
-   * ACT that already set its own motion; Natural still gets its episodes and holds, and slots apply.
-   */
-  emotion(name: string, nominal: number, source: 'act' | 'tool' | 'devtools', turnId?: string, options: { suppressMotionGroup?: boolean } = {}) {
+  /** Plays the episode and hold the mind decided, then the picked slots. */
+  emotion(name: string, nominal: number, source: 'act' | 'tool' | 'devtools', turnId?: string) {
     const emotion = EMOTION_VALUES.find(value => value === name)
     if (!emotion || !Number.isFinite(nominal)) {
       console.warn('[performance-conductor] Unrecognized emotion dropped:', name, nominal)
@@ -373,6 +344,8 @@ export class StagePerformanceConductor {
     // A repeat that neither starts nor escalates an episode yields no intent, and the decider hears nothing.
     // An idle intent that fell due before the stimulus comes first; the store dispatches it.
     const intent = this.options.mind.receive({ kind: 'emotion', source, emotion, nominal: scaled, turnId, settings: context.settings }).find(each => each.kind === 'emotion' || each.kind === 'release')
+    if (!intent || !this.permitted(intent))
+      return
     let slots: SlotCommand[] = []
     if (intent?.kind === 'emotion') {
       slots = this.decide({ kind: 'reaction', episode: intent.episode, turnId, at }, context).slots
@@ -382,8 +355,6 @@ export class StagePerformanceConductor {
       slots = this.decide({ kind: 'neutral', turnId, at }, context).slots
       this.dispatchNatural(null, intent.hold, at)
     }
-    if (this.options.driver() !== 'natural' && !options.suppressMotionGroup)
-      this.options.playMotion(EMOTION_EmotionMotionName_value[emotion])
     this.dispatchSlots(slots, at)
   }
 
@@ -421,7 +392,9 @@ export class StagePerformanceConductor {
           settings: context.settings,
         })
       : []).find(each => each.kind === 'entry')
-    const request = intent?.kind === 'entry' ? intent : undefined
+    if (!intent || !this.permitted(intent))
+      return undefined
+    const request = intent
     const episode = request?.episode ?? null
     const decision = this.decide({ kind: 'expression', source, expressionId: entry.id, holdSeconds, episode, turnId, at }, context)
     this.dispatchNatural(episode && this.dosed(episode, context, turnId), request?.hold ?? null, at)
@@ -437,26 +410,15 @@ export class StagePerformanceConductor {
   clearExpression(slot: SlotName | undefined, source: 'act' | 'tool' | 'devtools', turnId?: string) {
     const at = this.clock()
     const intent = this.options.mind.receive({ kind: 'expression-clear', source, slot, turnId }).find(each => each.kind === 'release')
+    if (!intent || !this.permitted(intent))
+      return
     const decision = this.decide({ kind: 'clear', source, slot, turnId, at })
     this.dispatchNatural(null, intent?.kind === 'release' ? intent.hold : null, at)
     this.dispatchSlots(decision.slots, at)
   }
 
-  /**
-   * Answers a classified touch once, under the Natural driver of Live2D and MMD; Universal, MAGIC, and MMD Classic
-   * have no touch path and never reach the mind. The mind decides the response and the conductor dispatches it:
-   * - `touch-reaction` to `scene.reactToTouch` and `mood` to `scene.addMood`;
-   * - `moment` to `markMoment`;
-   * - `speak` to the voice port, whose outcome returns to the mind as a `voice-outcome` stimulus;
-   * - `attend` to `scene.attend`.
-   *
-   * A finished pet and a poke are first recorded in the situation (`voice().observeTouch`), on the wall clock the
-   * situation counts in; a pet start is not, because the situation reports a pet once, when it ends. A touch belongs
-   * to no turn, so it is decided under the active card's profile. The asset decider is not involved.
-   */
+  /** Answers a classified touch through the mind and dispatches each permitted channel in response order. The scenes classify only with posture declared. A finished pet or poke is first recorded in the situation. */
   touch(report: TouchReport) {
-    if (this.options.driver() !== 'natural')
-      return
     let observation: TouchObservation | undefined
     if (report.gesture === 'pet-end')
       observation = { kind: 'touch', gesture: 'pet', region: 'head', atMs: Date.now(), durationMs: report.durationMs }
@@ -467,23 +429,20 @@ export class StagePerformanceConductor {
     this.performTouch(this.voice.receive({ kind: 'touch', ...report, settings, voice }))
   }
 
-  /**
-   * Sends the performance resolver's events of one call to the mind as one step, under every driver, and dispatches
-   * the response: `wake` to `scene.wakeFromSleep` and `desktop-reaction` to `scene.reactToDesktop` only under Natural,
-   * `moment` to `markMoment` under every driver, and `observe-wake` and `observe-return` to `voice().observeReturn`
-   * under every driver, in intent order.
-   */
+  /** Answers desktop events in one mind step. Voice observations always pass; each performer channel is checked against this scene. */
   desktop(events: readonly PerformanceEvent[]) {
     if (events.length === 0)
       return
-    const natural = this.options.driver() === 'natural'
     const scene = this.options.scene()
     for (const intent of this.voice.receive(...events)) {
-      if (intent.kind === 'wake' && natural)
+      // Idle orders from the same step are dispatched by the mind store.
+      if (intent.kind === 'idle-act' || intent.kind === 'idle-errand' || !this.permitted(intent))
+        continue
+      if (intent.kind === 'wake')
         scene?.wakeFromSleep?.()
-      else if (intent.kind === 'desktop-reaction' && natural)
+      else if (intent.kind === 'desktop-reaction')
         scene?.reactToDesktop?.(intent.reaction)
-      else if (intent.kind === 'away' && natural)
+      else if (intent.kind === 'away')
         scene?.setAway?.(intent.away)
       else if (intent.kind === 'moment')
         this.options.markMoment?.(intent.moment)
@@ -494,16 +453,14 @@ export class StagePerformanceConductor {
     }
   }
 
-  /**
-   * Sends an ACT or devtools cue gesture to the mind as a `cue-gesture` stimulus under every driver, and plays the mind's
-   * `gesture` intent on the scene under the Natural driver of Live2D and MMD only; Universal, MAGIC, and MMD Classic play
-   * none. The decider is not involved.
-   */
+  /** Asks the mind for a cue gesture and dispatches only a kind this scene declares. */
   gesture(kind: CueGestureKind, count: number, source: CueGestureStimulus['source'], turnId?: string) {
-    const natural = this.options.driver() === 'natural'
     const stimulus: CueGestureStimulus = { kind: 'cue-gesture', gesture: kind, count, source, ...turnId !== undefined && { turnId } }
     for (const intent of this.options.mind.receive(stimulus)) {
-      if (natural && intent.kind === 'gesture')
+      // Idle orders from the same step are dispatched by the mind store.
+      if (intent.kind === 'idle-act' || intent.kind === 'idle-errand' || !this.permitted(intent))
+        continue
+      if (intent.kind === 'gesture')
         this.options.scene()?.gesture?.(intent.gesture, intent.count)
     }
   }
@@ -513,90 +470,65 @@ export class StagePerformanceConductor {
     this.options.scene()?.setFaceBaseline?.(baseline)
   }
 
-  /**
-   * Sets the idle drive of the mounted scene. Only the Natural driver performs idle behaviour, so every other driver
-   * receives `null`. The decider is not involved.
-   */
+  /** Sends the drive while posture is declared, and null otherwise. The drive is a continuous performer input. */
   idleDrive(drive: NaturalIdleDrive | null) {
-    this.options.scene()?.setIdleDrive?.(this.options.driver() === 'natural' ? drive : null)
+    this.options.scene()?.setIdleDrive?.(this.options.capabilities().posture ? drive : null)
     this.syncScene()
   }
 
-  /** Plays the body around a reach-out or widget line under the Natural driver; other drivers drop it. The mind decides it. */
-  idleCue(kind: IdleCueKind) {
-    if (this.options.driver() === 'natural')
-      this.options.scene()?.idleCue?.(kind)
+  /** Performs the complete cue intent, preserving its cause in a refusal report. */
+  idleCue(intent: Extract<MindIntent, { kind: 'cue' }>) {
+    if (this.permitted(intent))
+      this.options.scene()?.idleCue?.(intent.cue)
   }
 
-  /**
-   * Hands a detected beat to the scene's Natural beat clock under the Natural driver. Under another driver it is
-   * dropped: there, upstream's beat sync hears every beat on its own.
-   */
+  /** Hands a beat to the declared posture performer. Upstream drivers hear their own detector and receive no beat here. */
   beat(intervalSeconds: number) {
-    if (this.options.driver() === 'natural')
+    if (this.options.capabilities().posture)
       this.options.scene()?.beat?.(intervalSeconds)
   }
 
-  /**
-   * Asks the mind for one idle act by name under the Natural driver, for the devtools lab and scripted QA runs. The mind
-   * answers with a requested `idle-act`, which the mind store sends to every stage; other drivers drop the request.
-   */
+  /** Asks the mind for a named idle act. The store dispatches its answer to attached stages. */
   idlePlay(kind: IdleBehaviourKind) {
-    if (this.options.driver() === 'natural')
-      this.voice.receive({ kind: 'idle-play', act: kind })
+    this.voice.receive({ kind: 'idle-play', act: kind })
   }
 
-  /**
-   * Performs one idle intent of the mind under the Natural driver. Under another driver it is dropped, and the mind
-   * hears the dormant view, so it waits on no answer and decides nothing that no performer would show.
-   */
+  /** Performs a declared idle order or reports the refusal and synchronizes the dormant view. */
   idle(intent: MindIdleIntent) {
-    if (this.options.driver() !== 'natural') {
+    if (!this.permitted(intent)) {
       this.syncScene()
       return
     }
     this.options.scene()?.idle?.(idleOrderOf(intent))
   }
 
-  /**
-   * Answers the scene's cursor reports under the Natural driver: the mind steps once per report and draws the
-   * episode, which goes back to this conductor's scene, because cursor geometry belongs to the stage that saw it.
-   * Under another driver the reports are dropped and the mind draws nothing.
-   */
+  /** Answers cursor reports on the mind clock and sends permitted episodes only to this reporting scene. */
   cursor(reports: readonly CursorReport[]) {
-    if (this.options.driver() !== 'natural')
-      return
     for (const report of reports) {
       for (const intent of this.options.mind.receive({ kind: 'cursor', report })) {
-        if (intent.kind === 'cursor-episode')
+        if (intent.kind === 'cursor-episode' && this.permitted(intent))
           this.options.scene()?.cursorEpisode?.({ requestId: intent.requestId, episode: intent.episode })
       }
     }
   }
 
-  /**
-   * Tells the mind that the user dragged her and let go, under every driver, and sends its `attend` to `scene.attend`
-   * only under Natural: the MMD body walks only under Natural, so the classic director gets no attend window (Body
-   * ownership Target rule 1).
-   */
+  /** Answers a drag release and dispatches the attend only when this scene declares body. */
   interaction(source: 'drag') {
-    const natural = this.options.driver() === 'natural'
     for (const intent of this.options.mind.receive({ kind: 'interaction', source })) {
-      if (intent.kind === 'attend' && natural)
+      // Idle orders from the same step are dispatched by the mind store.
+      if (intent.kind === 'idle-act' || intent.kind === 'idle-errand' || !this.permitted(intent))
+        continue
+      if (intent.kind === 'attend')
         this.options.scene()?.attend?.(intent)
     }
   }
 
-  /**
-   * Tells the mind that the user sent a typed message of `words` words (`sent`), or that the chat unfolded (`unfold`),
-   * under every driver. Its `chat-read` goes to `scene.chatRead` and its `attend` to `scene.attend`, both only under
-   * Natural: no other driver reads the chat, and the classic director gets no attend window.
-   */
+  /** Answers a chat send or unfold. Reading requires gaze; attending requires body. */
   chat(cue: 'sent' | 'unfold', words = 0) {
-    const natural = this.options.driver() === 'natural'
     const stimulus: ChatStimulus = cue === 'sent' ? { kind: 'chat', cue, words } : { kind: 'chat', cue }
     for (const intent of this.options.mind.receive(stimulus)) {
-      if (!natural)
+      // Idle orders from the same step are dispatched by the mind store.
+      if (intent.kind === 'idle-act' || intent.kind === 'idle-errand' || !this.permitted(intent))
         continue
       if (intent.kind === 'chat-read')
         this.options.scene()?.chatRead?.(intent)
@@ -605,13 +537,13 @@ export class StagePerformanceConductor {
     }
   }
 
-  /** Hands the scene's idle reports to the mind under the Natural driver; under another one the mind hears the dormant view. */
+  /** Reports the latest idle view while posture is declared; otherwise synchronizes the dormant view. */
   idleReport(reports: readonly IdleReport[]) {
     for (const report of reports) {
       if (report.kind === 'view')
         this.idleView = report.view
     }
-    if (this.options.driver() !== 'natural') {
+    if (!this.options.capabilities().posture) {
       this.syncScene()
       return
     }
@@ -619,33 +551,31 @@ export class StagePerformanceConductor {
     this.options.idleReports?.(reports)
   }
 
-  /**
-   * Synchronizes scene and driver changes: the mind hears a dormant idle view outside Natural and the latest view
-   * on return. A newly attached or reactivated Natural scene receives the mind's current away state.
-   */
+  /** Synchronizes scene and declaration changes. A body becoming available receives current presence; posture controls the idle view. */
   syncScene() {
-    const natural = this.options.driver() === 'natural'
     const scene = this.options.scene()
-    if (natural && (scene !== this.presenceScene || !this.presenceNatural))
+    const { posture, body } = this.options.capabilities()
+    if (body && (scene !== this.presenceScene || !this.presenceBody))
       scene?.setAway?.(this.options.mind.state.presence.away)
     this.presenceScene = scene
-    this.presenceNatural = natural
-    if (!natural && !this.idleDormant) {
+    this.presenceBody = body
+    if (!posture && !this.idleDormant) {
       this.idleDormant = true
       this.options.idleReports?.([{ kind: 'view', view: dormantIdleView() }])
     }
-    else if (natural && this.idleDormant) {
+    else if (posture && this.idleDormant) {
       this.idleDormant = false
       if (this.idleView)
         this.options.idleReports?.([{ kind: 'view', view: this.idleView }])
     }
   }
 
-  /**
-   * Forwards an ACT action label to the scene under every driver: MMD Natural and Classic both play clips, so unlike
-   * `gesture` there is no driver gate.
-   */
+  /** Forwards a clip label only with body declared, otherwise reports a performer refusal. */
   action(label: string, gesture?: { kind: CueGestureKind, count: number }) {
+    if (!this.options.capabilities().body) {
+      this.refuse({ cause: null, kind: 'action', reason: 'not-declared-by-stage' })
+      return
+    }
     this.options.scene()?.action?.(label, gesture)
   }
 
@@ -740,8 +670,29 @@ export class StagePerformanceConductor {
     return trace && { ...trace, entries: [...trace.entries], endAt: this.clock() }
   }
 
+  /** Observes refusals without feeding them back into a mind policy. */
+  onRefusal(listener: (refusal: PerformerRefusal) => void): () => void {
+    this.refusalListeners.add(listener)
+    return () => {
+      this.refusalListeners.delete(listener)
+    }
+  }
+
+  private refuse(refusal: PerformerRefusal) {
+    for (const listener of this.refusalListeners)
+      listener(refusal)
+  }
+
+  private permitted(intent: MindIntent): boolean {
+    if (permits(this.options.capabilities(), intent))
+      return true
+    this.refuse({ cause: intent.cause, kind: intent.kind, reason: 'not-declared-by-stage' })
+    return false
+  }
+
   /** Cancels the pending deadline and pause timers; the conductor sends no further timed signals. */
   dispose() {
+    this.refusalListeners.clear()
     if (this.deadline)
       this.timers.clearTimeout(this.deadline.handle)
     this.deadline = undefined
@@ -852,6 +803,9 @@ export class StagePerformanceConductor {
   private performTouch(intents: readonly MindIntent[]) {
     const scene = this.options.scene()
     for (const intent of intents) {
+      // Idle orders from the same step are dispatched by the mind store.
+      if (intent.kind === 'idle-act' || intent.kind === 'idle-errand' || !this.permitted(intent))
+        continue
       if (intent.kind === 'touch-reaction')
         scene?.reactToTouch?.(intent)
       else if (intent.kind === 'mood')
@@ -867,8 +821,6 @@ export class StagePerformanceConductor {
 
   /** Natural only: the episode first, so a hold never precedes the episode it accompanies. */
   private dispatchNatural(episode: NaturalEpisode | null, hold: HoldCommand | null, at: number) {
-    if (this.options.driver() !== 'natural')
-      return
     const scene = this.options.scene()
     if (episode)
       scene?.setEmotion(episode)
@@ -885,10 +837,7 @@ export class StagePerformanceConductor {
     const profile = this.options.profile?.(turnId)
     const { settings, expressiveness } = resolveEffectiveSettings(this.options.settings(), profile)
     const catalog = applyMappingWeights(this.options.catalog(), this.options.modelId?.() ?? '', profile)
-    // Held emotions exist only in Natural. Elsewhere the flag is off in the effective copy only,
-    // so the shared document stays untouched and no reaction state leaks into Universal and MAGIC.
-    const effective = this.options.driver() === 'natural' ? settings : { ...settings, heldEmotions: false }
-    return { context: { catalog, settings: effective }, expressiveness }
+    return { context: { catalog, settings }, expressiveness }
   }
 
   /** The trace wrapper records each signal before the decider sees it. */
@@ -937,6 +886,8 @@ export class StagePerformanceConductor {
   }
 
   private dispatchSlots(commands: SlotCommand[], at: number) {
+    if (!this.options.capabilities().face)
+      return
     if (commands.length === 0)
       return
     const scene = this.options.scene()
@@ -1115,7 +1066,7 @@ export const FACE_BASELINE_SAMPLE_MS = 1000
  * Every {@link FACE_BASELINE_SAMPLE_MS}, and once at creation, it reads `characterReading` and sends its face baseline
  * and its idle drive to the scene; no reading sends the neutral baseline and a drive that follows only the hour.
  */
-export function useStagePerformanceConductor(options: Pick<StagePerformanceConductorOptions, 'scene' | 'driver' | 'playMotion' | 'profile' | 'mind' | 'markMoment' | 'voice' | 'idleReports'> & {
+export function useStagePerformanceConductor(options: Pick<StagePerformanceConductorOptions, 'scene' | 'capabilities' | 'profile' | 'mind' | 'markMoment' | 'voice' | 'idleReports'> & {
   renderer: () => string | undefined
   expressionBackend: () => StageExpressionBackend | undefined
   /** The body tool port of the active scene; undefined when it has no body support (Live2D, classic MMD). */
@@ -1169,12 +1120,12 @@ export function useStagePerformanceConductor(options: Pick<StagePerformanceCondu
     seed: crypto.getRandomValues(new Uint32Array(1))[0],
   })
 
-  watch([() => options.scene(), () => options.driver()], () => conductor.syncScene(), { immediate: true })
+  watch([() => options.scene(), () => options.capabilities()], () => conductor.syncScene(), { immediate: true })
 
   const exposed = computed(() => toExposedExpressions(expressions.llmEligibleEntries))
   const exposedActions = computed(() => toExposedActions(options.listActions?.() ?? []))
   const active = computed(() => activeExpressionsOf(expressions))
-  const moodWanted = computed(() => settings.value.stateFeedback && settings.value.mood && options.driver() === 'natural')
+  const moodWanted = computed(() => settings.value.stateFeedback && settings.value.mood && options.capabilities().posture)
   const mood = shallowRef<PerformanceMoodSnapshot | null>(null)
   function sampleMood() {
     const value = moodWanted.value ? options.mood() : null

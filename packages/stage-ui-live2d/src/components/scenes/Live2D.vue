@@ -178,7 +178,7 @@ watch(live2dMotionDriver, (driver, previousDriver) => {
 const touchGestures = createLive2DTouchGestureTracker()
 // One decider for each driver. Under Natural, the pokes and pets of the model are the only reaction to a touch,
 // so no gesture starts here: no pointer capture, no reaction, no touch motion, and no `touch` event.
-const touchGesturesActive = computed(() => live2dMotionDriver.value !== 'natural')
+const touchGesturesActive = computed(() => !capabilities.value.posture)
 
 function touchSampleOf(event: PointerEvent) {
   const rect = live2dCanvasRef.value?.canvasElement()?.getBoundingClientRect()

@@ -48,6 +48,7 @@ export interface MotionQaFrames {
 }
 
 export interface MotionQaBridgeOptions {
+  onRefusal?: Parameters<typeof useMotionQaEvents>[0]['onRefusal']
   chat: MotionQaChatHooks
   /** Must call useChatStore().send, preserving the elected leader's ownership of the turn. */
   sendChat: (text: string) => Promise<void>
