@@ -5,8 +5,9 @@ import { useCharacterBehaviorSettings } from '@proj-airi/stage-ui/stores/setting
 import { createPinia, disposePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render } from 'vitest-browser-vue'
-import { page, userEvent } from 'vitest/browser'
+import { page } from 'vitest/browser'
 import { createI18n } from 'vue-i18n'
+import { createMemoryHistory, createRouter } from 'vue-router'
 
 import PresencePage from './index.vue'
 
@@ -33,26 +34,20 @@ describe('presence settings page', () => {
   })
 
   async function renderPage() {
-    const screen = await render(PresencePage, { global: { plugins: [pinia, i18n()] } })
-    return { screen, settings: useSituationSettings(pinia), behavior: useCharacterBehaviorSettings(pinia) }
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/:pathMatch(.*)*', component: { render: () => null } }] })
+    const screen = await render(PresencePage, { global: { plugins: [pinia, i18n(), router] } })
+    return { screen, settings: useSituationSettings(pinia) }
   }
 
-  it('moves chattiness with the slider and persists one settings document', async () => {
-    const { screen, behavior } = await renderPage()
-    // A missing locale entry renders the key, which the role query would still match.
-    expect(t('settings.pages.presence.chattiness.title')).not.toBe('settings.pages.presence.chattiness.title')
-    const chattiness = screen.getByRole('slider', { name: t('settings.pages.presence.chattiness.title') })
-    await expect.element(screen.getByText('50%', { exact: true })).toBeVisible()
-
-    await chattiness.click()
-    await userEvent.keyboard('{ArrowRight}')
-    await expect.element(screen.getByText('55%', { exact: true })).toBeVisible()
+  it('persists speaking choices in the behavior document', async () => {
+    const behavior = useCharacterBehaviorSettings(pinia)
+    await behavior.update({ speaking: { chattiness: 0.55 } })
     expect(behavior.document.speaking.chattiness).toBe(0.55)
     expect(JSON.parse(localStorage.getItem('settings/character-behavior')!).speaking.chattiness).toBe(0.55)
-
-    await screen.getByRole('switch', { name: t('settings.pages.presence.dont-disturb.title') }).click()
+    await behavior.update({ speaking: { dontDisturb: true } })
     expect(behavior.document.speaking.dontDisturb).toBe(true)
     expect(JSON.parse(localStorage.getItem('settings/character-behavior')!)).toEqual(behavior.document)
+    expect(localStorage.getItem(key)).toBeNull()
   })
 
   it('turns foreground sharing off and on, and persists it', async () => {
@@ -89,32 +84,23 @@ describe('presence settings page', () => {
     expect(JSON.parse(localStorage.getItem(key)!).shareBrowserActivity).toBe(true)
   })
 
-  it('commits a quiet app list on change and shows the normalized entries', async () => {
-    const { screen, behavior } = await renderPage()
-    const quietApps = screen.getByRole('textbox', { name: t('settings.pages.presence.quiet-apps.title') })
-    await expect.element(quietApps).toHaveValue('zoom.exe\nms-teams.exe\nteams.exe\nwebex*.exe')
-
-    await quietApps.click()
-    // Ctrl+End does not move a textarea caret to the end on macOS, so place it explicitly.
-    const field = quietApps.element() as HTMLTextAreaElement
-    field.setSelectionRange(field.value.length, field.value.length)
-    await userEvent.keyboard('{Enter}{Enter}  notepad.exe  ')
-    // Typing alone stays a local draft until the field loses focus.
-    expect(behavior.document.speaking.quietApps).not.toContain('notepad.exe')
-    await userEvent.tab()
-
-    await expect.element(quietApps).toHaveValue('zoom.exe\nms-teams.exe\nteams.exe\nwebex*.exe\nnotepad.exe')
-    expect(behavior.document.speaking.quietApps).toEqual(['zoom.exe', 'ms-teams.exe', 'teams.exe', 'webex*.exe', 'notepad.exe'])
+  it('normalizes quiet apps without changing the sensor block list', async () => {
+    const behavior = useCharacterBehaviorSettings(pinia)
+    const sensors = useSituationSettings(pinia)
+    await sensors.update({ blockedApps: ['private-app'] })
+    await behavior.update({ speaking: { quietApps: ['zoom.exe', '', '  notepad.exe  ', 'notepad.exe'] } })
+    expect(behavior.document.speaking.quietApps).toEqual(['zoom.exe', 'notepad.exe'])
     expect(JSON.parse(localStorage.getItem('settings/character-behavior')!).speaking.quietApps).toEqual(behavior.document.speaking.quietApps)
+    expect(sensors.document.blockedApps).toEqual(['private-app'])
   })
 
-  it('shows the default chattiness when the stored value is invalid', async () => {
+  it('imports valid speaking fields while an invalid chattiness uses its default', () => {
     localStorage.setItem(key, JSON.stringify({ chattiness: 'banana', quietApps: ['notepad.exe'] }))
     const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const error = vi.spyOn(console, 'error')
-    const { screen } = await renderPage()
-    await expect.element(screen.getByText('50%', { exact: true })).toBeVisible()
-    await expect.element(screen.getByRole('textbox', { name: t('settings.pages.presence.quiet-apps.title') })).toHaveValue('notepad.exe')
+    const behavior = useCharacterBehaviorSettings(pinia)
+    expect(behavior.document.speaking.chattiness).toBe(0.5)
+    expect(behavior.document.speaking.quietApps).toEqual(['notepad.exe'])
     expect(warning).not.toHaveBeenCalled()
     expect(error).not.toHaveBeenCalled()
   })
@@ -122,7 +108,7 @@ describe('presence settings page', () => {
   it('fits a narrow window without horizontal overflow', async () => {
     await page.viewport(360, 720)
     const { screen } = await renderPage()
-    await expect.element(screen.getByRole('slider', { name: t('settings.pages.presence.chattiness.title') })).toBeVisible()
+    await expect.element(screen.getByRole('switch', { name: t('settings.pages.presence.share-foreground-window.title') })).toBeVisible()
     expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(360)
   })
 })

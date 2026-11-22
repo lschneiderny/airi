@@ -13,6 +13,10 @@ and chat attention come from Live2D, and emotion and speaking rules retain
 their validated values. An existing document always wins. Per-character
 performance scales stay on the card; sensor permissions stay with Presence.
 
+The Behavior page groups the shared controls into Idle, Touch, Attention,
+Feelings, and Speaking up. Renderer pages keep realisation controls; Presence
+keeps sensor permissions and the unprompted chat cue. Each links to Behavior.
+
 ## Performer dispatch
 
 The scene exposes its capabilities. `StagePerformanceConductor` reads that

@@ -14,12 +14,17 @@ import { cleanup, render } from 'vitest-browser-vue'
 import { userEvent } from 'vitest/browser'
 import { nextTick, shallowRef } from 'vue'
 import { createI18n } from 'vue-i18n'
+import { createMemoryHistory, createRouter } from 'vue-router'
 
 import { useCharacterBehaviorSettings } from '../../../../features/character-behavior/settings'
 import { desktopStageHostKey } from './desktop-stage'
 
 import '@unocss/reset/tailwind.css'
 import '@proj-airi/ui/main.css'
+
+function createTestRouter() {
+  return createRouter({ history: createMemoryHistory(), routes: [{ path: '/:pathMatch(.*)*', component: { render: () => null } }] })
+}
 
 function createTestI18n() {
   return createI18n({
@@ -124,7 +129,7 @@ describe('mmd model settings expressions', () => {
 
     const screen = await render(MMDSettings, {
       props: { palette: [], runtimeSnapshot: remoteSnapshot(entries), onMmdExpressionCommand },
-      global: { plugins: [pinia, createTestI18n()] },
+      global: { plugins: [pinia, createTestI18n(), createTestRouter()] },
     })
 
     expect(t('settings.mmd.expressions.title')).not.toBe('settings.mmd.expressions.title')
@@ -158,7 +163,7 @@ describe('mmd model settings expressions', () => {
 
     const screen = await render(MMDSettings, {
       props: { palette: [], runtimeSnapshot: localSnapshot, onMmdExpressionCommand },
-      global: { plugins: [pinia, createTestI18n()] },
+      global: { plugins: [pinia, createTestI18n(), createTestRouter()] },
     })
     await screen.getByText(t('settings.mmd.expressions.title'), { exact: true }).click()
     // Derived faces start inactive and unmapped, so the in-use filter hides them until Show all.
@@ -234,7 +239,7 @@ describe('mmd model settings desktop stage', () => {
     const screen = await render(MMDSettings, {
       props: { palette: [], runtimeSnapshot: localSnapshot },
       global: {
-        plugins: [pinia, createTestI18n()],
+        plugins: [pinia, createTestI18n(), createTestRouter()],
         provide: host ? { [desktopStageHostKey as symbol]: host } : {},
       },
     })
@@ -398,7 +403,7 @@ describe('mmd model settings motion', () => {
     useSettingsStageModel(pinia).stageModelSelected = MODEL_ID
     const screen = await render(MMDSettings, {
       props: { palette: [], runtimeSnapshot: localSnapshot },
-      global: { plugins: [pinia, createTestI18n()] },
+      global: { plugins: [pinia, createTestI18n(), createTestRouter()] },
     })
     expect(t('settings.mmd.motion.title')).not.toBe('settings.mmd.motion.title')
     await screen.getByText(t('settings.mmd.motion.title'), { exact: true }).click()
@@ -408,30 +413,28 @@ describe('mmd model settings motion', () => {
   it('switches the driver through the radio and writes the store, hiding Natural controls under Classic', async () => {
     const { screen, performance, natural, behavior } = await renderMotionSection()
     const energy = screen.getByRole('slider', { name: t('settings.mmd.motion.natural-energy.title') })
-    const touch = screen.getByRole('switch', { name: t('settings.mmd.motion.natural-touch.title') })
     await expect.element(screen.getByRole('radio', { name: t('settings.mmd.motion.driver.options.natural.title'), exact: true })).toBeChecked()
     await expect.element(energy).toBeVisible()
-    await expect.element(touch).toBeChecked()
+    expect(behavior.document.touchReactions).toBe(true)
 
     await screen.getByRole('radio', { name: t('settings.mmd.motion.driver.options.classic.title'), exact: true }).click()
     await nextTick()
     expect(performance.motionDriver).toBe('classic')
     expect(JSON.parse(localStorage.getItem('settings/mmd/performance')!).motionDrivers[MODEL_ID]).toBe('classic')
     await expect.element(energy).not.toBeInTheDocument()
-    await expect.element(touch).not.toBeInTheDocument()
 
     await screen.getByRole('radio', { name: t('settings.mmd.motion.driver.options.natural.title'), exact: true }).click()
     await nextTick()
     expect(performance.motionDriver).toBe('natural')
     await expect.element(energy).toBeVisible()
 
-    // Pet-requires-hold depends on the touch toggle, and both write the settings document.
+    // The pet hold control follows shared touch permission and writes only the renderer document.
     const hold = screen.getByRole('switch', { name: t('settings.mmd.motion.natural-touch-pet-requires-hold.title') })
     await hold.click()
     await nextTick()
     expect(natural.document.touchPetRequiresHold).toBe(true)
     expect(JSON.parse(localStorage.getItem('settings/mmd/natural')!).touchPetRequiresHold).toBe(true)
-    await touch.click()
+    await behavior.update({ touchReactions: false })
     await nextTick()
     expect(behavior.document.touchReactions).toBe(false)
     expect(JSON.parse(localStorage.getItem('settings/character-behavior')!).touchReactions).toBe(false)
@@ -536,7 +539,7 @@ describe('mmd model settings clips', () => {
       metadata.publish(MODEL_ID, epoch, clip)
     const screen = await render(MMDSettings, {
       props: { palette: [], runtimeSnapshot: localSnapshot },
-      global: { plugins: [pinia, createTestI18n()] },
+      global: { plugins: [pinia, createTestI18n(), createTestRouter()] },
     })
     expect(t('settings.mmd.animation.clips.headers.ai-may-use')).not.toBe('settings.mmd.animation.clips.headers.ai-may-use')
     await screen.getByText(t('settings.mmd.animation.title'), { exact: true }).click()

@@ -357,8 +357,8 @@ live2d:
       title: Cursor attention
       description: Let Natural follow the moving cursor. Turn this off for autonomous movement only.
     natural-screen-awareness:
-      title: Screen-aware attention
-      description: Turn slightly toward the middle of your screens when the model sits off to one side, look into the screen, and glance at the chat while you type.
+      title: Screen lean
+      description: Turn slightly toward the middle of your screens when the model sits off to one side. Chat attention is controlled in Behavior settings.
     natural-idle-activities:
       title: Idle activities
       description: Do things on its own while nobody talks to it, such as stretching, yawning, looking around, watching your screen, and dozing off while you are away.
@@ -1061,9 +1061,25 @@ pages:
       all_deleted: All local data deleted.
       desktop_window_centered: Desktop window moved to screen center.
       desktop_reset: Desktop data reset.
+  behavior:
+    title: Behavior
+    description: Choose how the character reacts, attends, feels, and speaks up
+    link: Open Behavior settings
+    natural-only: Idle, touch, attention, and feelings apply while Natural drives the character. Speaking rules apply with every driver.
+    save-failed: Could not save behavior settings
+    invalid-settings: Check the changed value and try again.
+    sections:
+      idle: Idle
+      touch: Touch
+      attention: Attention
+      feelings: Feelings
+      speaking: Speaking up
+    chat-attention:
+      title: Chat attention
+      description: Let the character look toward chat while you type and attend when chat opens or a message is sent.
   presence:
     title: Presence
-    description: Decide how and when the character reaches out on its own
+    description: Control what the character may see
     unprompted-enabled:
       title: Speak up unprompted
       description: Let the character message you on its own, a few times a day, like someone who has their own day going on.
@@ -3357,12 +3373,6 @@ mmd:
     natural-energy:
       title: Energy
       description: How lively Natural movement is, from calm to energetic.
-    natural-idle-activities:
-      title: Idle activities
-      description: Do things on its own while nobody talks to it, such as stretching, yawning, looking around, watching your screen, and playing the clips you allow for idle. It also sits after a long idle and sleeps while you are away; with this off, it does neither.
-    natural-touch:
-      title: Poke and pet
-      description: React when you click the model or stroke its head with the cursor.
     natural-touch-pet-requires-hold:
       title: Pet only while holding the button
       description: Count strokes as petting only while the left mouse button is held, so moving the cursor across the head does nothing.
