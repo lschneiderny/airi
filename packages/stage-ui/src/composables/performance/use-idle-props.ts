@@ -6,7 +6,7 @@ import type { StageExpressionBackend } from '../../features/performance/expressi
 import type { NaturalLabIdleLife } from '../../stores/natural-performance-override'
 import type { StageSelfReport } from '../../stores/self'
 
-import { chooseMomentEntry, choosePastime, idleActivityEntries, idleSleepEntryIds, MOMENT_HOLD_MS, MOMENT_SETTINGS, momentEntries } from '@proj-airi/stage-shared/expression-performance'
+import { chooseMomentEntry, choosePastime, drawPickerTickets, drawRandom, expressionSeed, idleActivityEntries, idleSleepEntryIds, MOMENT_HOLD_MS, MOMENT_SETTINGS, momentEntries } from '@proj-airi/stage-shared/expression-performance'
 import { useIntervalFn } from '@vueuse/core'
 import { onScopeDispose } from 'vue'
 
@@ -35,7 +35,7 @@ export interface IdlePropsOptions {
    * shown only during one of them. Absent means no occasion ever holds, so tagged pastimes stay away.
    */
   occasions?: () => readonly Occasion[]
-  /** Uniform draws in [0, 1) for moments and previews. @default Math.random */
+  /** Uniform draws for performer reports and previews only; defaults to a local Mulberry32 stream starting at 0. */
   random?: () => number
   now?: () => number
 }
@@ -63,7 +63,12 @@ export interface IdlePropsOptions {
  */
 export function useIdleProps(options: IdlePropsOptions) {
   const now = options.now ?? Date.now
-  const random = options.random ?? Math.random
+  let randomState = 0
+  const random = options.random ?? (() => {
+    const drawn = drawRandom(randomState)
+    randomState = drawn.random
+    return drawn.value
+  })
   let history: PastimeHistory = { lastId: null, heldAtMs: {} }
   /** A pastime started by hand has a negative `seq`, which Natural never issues, and ends at `untilMs`. */
   let held: (IdlePropCandidate & { seq: number, untilMs?: number }) | null = null
@@ -151,9 +156,10 @@ export function useIdleProps(options: IdlePropsOptions) {
   /**
    * Marks `moment` with one of the entries tagged for it, or lets it pass; see `chooseMomentEntry`. `phase: 'end'`
    * ends a moment that lasts as long as its act. `force` is the lab's preview: it replaces a moment in progress and
-   * skips the chance and the entry's rest.
+   * skips the chance and the entry's rest. A mind moment carries `intentId`, which seeds both draws independently
+   * of previews and local performer reports; those have no mind moment id and use the local stream.
    */
-  function onMoment(moment: Moment, options_: { phase?: 'start' | 'end', force?: boolean } = {}) {
+  function onMoment(moment: Moment, options_: { intentId?: string, phase?: 'start' | 'end', force?: boolean } = {}) {
     if (options_.phase === 'end') {
       if (marking?.moment === moment && MOMENT_HOLD_MS[moment] === 'act') {
         marking = null
@@ -167,7 +173,10 @@ export function useIdleProps(options: IdlePropsOptions) {
     const switchedOn = backend.manualActive ?? []
     const offered = momentEntries(backend.catalog).filter(candidate => !switchedOn.includes(candidate.id) && candidate.id !== held?.id)
     const nowMs = now()
-    const picked = chooseMomentEntry(offered, moment, momentHistory, { nowMs, chance: random(), pick: random(), force: options_.force })
+    const tickets = options_.intentId === undefined
+      ? { gate: random(), pick: random() }
+      : drawPickerTickets(expressionSeed(options_.intentId, 'moment')).tickets
+    const picked = chooseMomentEntry(offered, moment, momentHistory, { nowMs, chance: tickets.gate, pick: tickets.pick, force: options_.force })
     if (!picked)
       return
     const hold = MOMENT_HOLD_MS[moment]

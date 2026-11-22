@@ -192,7 +192,7 @@ export interface StagePerformanceConductorOptions {
    * Marks a moment the mind decided with one of the model's own expressions. The performer keeps the chance, the
    * pick, and the entry rest. Without it the moment is dropped.
    */
-  markMoment?: (moment: Moment) => void
+  markMoment?: (moment: Moment, intentId: string) => void
   /**
    * The voice channel, or undefined when this stage has none; the mind then decides no line and the situation
    * learns of no return.
@@ -445,7 +445,7 @@ export class StagePerformanceConductor {
       else if (intent.kind === 'away')
         scene?.setAway?.(intent.away)
       else if (intent.kind === 'moment')
-        this.options.markMoment?.(intent.moment)
+        this.options.markMoment?.(intent.moment, intent.id)
       else if (intent.kind === 'observe-wake')
         this.options.voice?.()?.observeReturn({ kind: 'wake', cause: intent.wakeCause, atMs: intent.atMs, awayMs: intent.awayMs })
       else if (intent.kind === 'observe-return')
@@ -811,7 +811,7 @@ export class StagePerformanceConductor {
       else if (intent.kind === 'mood')
         scene?.addMood?.(intent.dose)
       else if (intent.kind === 'moment')
-        this.options.markMoment?.(intent.moment)
+        this.options.markMoment?.(intent.moment, intent.id)
       else if (intent.kind === 'speak')
         void this.voice.speak(intent)
       else if (intent.kind === 'attend')

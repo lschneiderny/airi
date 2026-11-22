@@ -656,7 +656,7 @@ describe('stage performance conductor', () => {
       expect(scene.wakeFromSleep).toHaveBeenCalledTimes(1)
       // The wake wins over the screen change in the same step.
       expect(scene.reactToDesktop.mock.calls).toEqual([['wake']])
-      expect(markMoment.mock.calls).toEqual([['welcome-back'], ['welcome-back']])
+      expect(markMoment.mock.calls).toEqual([['welcome-back', expect.any(String)], ['welcome-back', expect.any(String)]])
     })
 
     it('refuses performer answers without declarations while the mind still steps', () => {
@@ -719,7 +719,7 @@ describe('stage performance conductor', () => {
       const expected = touchAffect(initialTouchAffectMemory, { touch: 'poke', region: 'head', at: 10 }, defaultExpressionPerformanceSettings).dose
       expect(expected).not.toBeNull()
       expect(scene.addMood.mock.calls).toEqual([[expected]])
-      expect(markMoment.mock.calls).toEqual([['poked']])
+      expect(markMoment.mock.calls).toEqual([['poked', expect.any(String)]])
       expect(scene.setEmotion).not.toHaveBeenCalled()
       expect(scene.applySlots).not.toHaveBeenCalled()
     })
@@ -735,7 +735,7 @@ describe('stage performance conductor', () => {
 
       expect(scene.reactToTouch.mock.calls.map(([intent]) => intent)).toMatchObject([{ gesture: 'pet', phase: 'start' }, { gesture: 'pet', phase: 'end' }])
       expect(scene.addMood.mock.calls.map(([dose]) => dose.id)).toEqual(['touch-1-pet', 'touch-2-pet-long'])
-      expect(markMoment.mock.calls).toEqual([['petted']])
+      expect(markMoment.mock.calls).toEqual([['petted', expect.any(String)]])
     })
 
     it('records a finished pet and a poke in the situation, and never a pet start', () => {

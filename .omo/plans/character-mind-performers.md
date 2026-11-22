@@ -695,6 +695,16 @@ contains the requested placeholder for these results.
   The orchestrator owns the Live2D rig run and any b1 hash re-pin; no rig hash
   was changed here and old/new trial picks remain unmeasured.
 
+- **b2:** Rechecked section 2 after b1: declarations, upstream routes, exposure,
+  settings, and register ownership are unchanged. The conductor previously
+  discarded the moment intent id at `markMoment`; it now forwards it to
+  `useIdleProps`. The plan did not distinguish mind moments from performer
+  idle-behaviour reports and lab previews. Those reports contain no intent id,
+  so they use a local Mulberry32 stream starting at 0; explicit mind moments
+  always use their id and never consume that stream. `Math.random` is gone.
+  Chance, cooldown, hold, and report timing are unchanged. Stage's callback
+  needs the two-line wiring change so the id reaches the owning composable.
+
 ## Checks run (CM7b)
 
 The owner reserved all headless and rendered checks for the orchestrator and
@@ -713,12 +723,25 @@ change is part of this implementation.
 | b1 | `pnpm -F @proj-airi/stage-ui-live2d exec vitest run --project node src/composables/live2d` | 513 passed |
 | b1 | `pnpm exec vitest run --project dev-tools scripts/dev-tools/policy-docs.test.ts` | 11 passed |
 | b1 | `pnpm --filter "...@proj-airi/stage-shared" --filter "...@proj-airi/stage-ui" --workspace-concurrency=2 typecheck` | 28 packages, exit 0 |
+| b2 | `pnpm -F @proj-airi/stage-ui exec vitest run --project node src/composables/performance/use-idle-props.test.ts src/composables/performance/use-stage-performance-conductor.test.ts` | 106 passed |
+| b2 | `pnpm -F @proj-airi/stage-ui exec vitest run --project node` | 1,949 passed |
+| b2 | `pnpm -F @proj-airi/stage-ui exec vitest run --project browser` | 1,014 passed, 5 existing skips, 4 timeout failures in the MMD devtools file |
+| b2 | `pnpm -F @proj-airi/stage-ui exec vitest run --project browser src/features/devtools/motion/mmd/devtools.browser.test.ts --no-file-parallelism` | All 8 passed on the single allowed isolated rerun |
+| b2 | `pnpm -F @proj-airi/character-mind exec vitest run src` | 138 passed |
+| b2 | `pnpm -F @proj-airi/stage-ui exec vitest run --project node src/composables/performance src/features` | 272 passed |
+| b2 | `pnpm -F @proj-airi/stage-shared exec vitest run src/expression-performance` | 294 passed |
+| b2 | `pnpm -F @proj-airi/stage-ui-live2d exec vitest run --project node src/composables/live2d` | 513 passed |
+| b2 | `pnpm exec vitest run --project dev-tools scripts/dev-tools/policy-docs.test.ts` | 11 passed |
+| b2 | `pnpm --filter "...@proj-airi/stage-ui" --workspace-concurrency=2 typecheck` | 7 packages, exit 0 |
 
 b1 changed TypeScript files passed ESLint. Its first focused run found a fixture
 that depended on the previous random pick; its first stage-ui Node run found
 an exact trace assertion missing the newly required intent id. Both assertions
 were repaired without weakening their behavioral checks, and the suites above
 passed. Browser fixtures retain their existing localization and teardown logs.
+b2 changed files passed ESLint with one existing trivial-function warning in
+Stage outside the changed callback. Its browser timeout failures passed alone
+without a timeout or threshold change.
 
 ## Checks run (CM7a)
 
