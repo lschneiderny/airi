@@ -7,6 +7,7 @@ Implementation base: `9ed509e3b`, after CM7a and CM7c. CM7a's capability contrac
 **D2 owner ruling (2026-11-21): option (a), binding.** Touch changes apply only under Natural. Universal, MAGIC, and classic retain upstream thresholds, hover recognition, reaction timing and count, touch-off behavior, and spoken touch lines. The original all-driver design below is superseded wherever it conflicts with this ruling. Overlap 11 closes only for Natural and stays open as kept for upstream drivers. CM7a's posture requirement is retained; CM7c's `touchReactions` permission remains Natural-only.
 
 1. Reminder ranking: confirmed that only critical reminders were sent as immediate, and the 60-second look-ahead could admit them early. Provenance now comes from the notebook producer rather than its source string. Explicit requeue creates a revision and a new occurrence topic; delivery preserves its timestamp and revision. The notebook owns consumption beyond situation eviction. D2 forbids the proposed intermediate downgrade of upstream avatar notifies, so their urgency and pacing remain unchanged.
+2. Stored notices: confirmed the runtime's existing-identity early return and the chat-owned receipt/cancellation coupling. Storage now precedes the send FIFO; the former queued-before-storage cancellation regression therefore moves to a held target load, and a post-storage duplicate joins the same completion. `commitUserMessage` already provides the durable identity receipt and needs no new session operation. The existing `storeMessage` operation saves a narrowed continuation intersection before execution, preventing a notice chain from regaining removed tools. Core-agent exports built `dist` files, so its build must precede consumer tests; the first host run exposed stale exports, and rebuilding repaired the actual production boundary without mocks or alternate imports.
 
 ## Checks during implementation (CM8)
 
@@ -19,6 +20,14 @@ Suites run separately with existing timeouts and thresholds. Headless and render
 | 1 | `pnpm -F @proj-airi/stage-ui exec vitest run --project node` | Final run: 199 files, 1,979 tests passed |
 | 1 | `pnpm -F @proj-airi/stage-ui exec vitest run --project browser` | Final run: 140 files, 1,024 tests passed, 5 existing skips |
 | 1 | `pnpm exec vitest run --project dev-tools scripts/dev-tools/policy-docs.test.ts` | 11 passed |
+| 2 | `pnpm -F @proj-airi/core-agent build` | Exit 0; public runtime and declarations rebuilt |
+| 2 | `pnpm -F @proj-airi/core-agent exec vitest run src/runtime/chat-orchestrator-runtime.test.ts src/runtime/chat-orchestrator-host-options.test.ts` | 248 passed |
+| 2 | `pnpm -F @proj-airi/stage-ui exec vitest run --project node src/features/notice/owner.test.ts src/stores/chat.contract.test.ts` | 131 passed after rebuilding the public exports; two later regressions are included in the full suite |
+| 2 | `pnpm -F @proj-airi/core-agent exec vitest run` | 48 files, 913 tests passed |
+| 2 | `pnpm -F @proj-airi/stage-ui exec vitest run --project node` | 200 files, 1,985 tests passed |
+| 2 | `pnpm -F @proj-airi/stage-ui exec vitest run --project browser` | 140 files, 1,024 tests passed, 5 existing skips |
+| 2 | `pnpm --filter "...@proj-airi/core-agent" --filter "...@proj-airi/stage-ui" --workspace-concurrency=2 typecheck` | 11 packages, exit 0 after completing the public runtime interface and explicitly typing the self-referencing notice owner |
+| 2 | `pnpm exec vitest run --project dev-tools scripts/dev-tools/policy-docs.test.ts` | 11 passed |
 
 Item 1's first stage-ui Node run found one remaining fixture on the retired `critical` field. It was migrated to plugin provenance; the next run passed all 1,978 tests. The final refusal regression adds one more case. Changed TypeScript passed ESLint; one existing comment-length warning remains in an unrelated chat-contract test comment.
 

@@ -2,6 +2,20 @@
 
 Shared core for stage
 
+## Stored result notices
+
+`features/notice/owner.ts` owns durable result delivery and transient
+continuation references. `notifyConversation` commits one source-attributed
+notice in its original owner conversation before preparing a reply.
+`waitForCompletion: false` returns the storage receipt; the default waits
+for the announcement request to settle. Duplicate identities join an active
+delivery or return the already stored receipt without another announcement.
+A delivery signal cancels before the durable commit starts; after storage
+the announcement has its own chat cancellation. Teardown settles all waiters.
+Restricted continuation tools are intersected again at execution, and the
+smaller set is stored on the notice before tools run. Use notices for finished
+owner work, not owner input, plugin urgency, scene messages, or recipe triggers.
+
 ## Character behavior settings
 
 `useCharacterBehaviorSettings` owns the user-wide tier 1

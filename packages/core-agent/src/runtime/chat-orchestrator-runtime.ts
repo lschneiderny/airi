@@ -264,6 +264,14 @@ export interface ChatOrchestratorSendOptions {
   }
 }
 
+/** Identity of an already committed text notice. Execution never appends its trigger again. */
+export interface StoredNoticeTarget {
+  sessionId: string
+  messageId: string
+  source: string
+  generation: number
+}
+
 interface QueuedSend {
   accepted: ReturnType<typeof Promise.withResolvers<{ sessionId: string, messageId: string }>>
   /** Keep provider identity paired with the client captured at enqueue time. */
@@ -272,6 +280,7 @@ interface QueuedSend {
   options: ChatOrchestratorSendOptions
   generation: number
   sessionId: string
+  storedNotice?: StoredNoticeTarget
   cancelled?: boolean
   deferred: {
     resolve: () => void
@@ -574,6 +583,8 @@ export interface ChatOrchestratorRuntime {
     accepted: Promise<{ sessionId: string, messageId: string }>
     done: Promise<void>
   }
+  /** Executes an exact precommitted text notice. It never inserts another user message or grants new tool authority. */
+  submitNotice: (target: StoredNoticeTarget, options: Omit<ChatOrchestratorSendOptions, 'notice' | 'messageId' | 'origin'>) => ReturnType<ChatOrchestratorRuntime['submit']>
   /** Enqueues a user send for the target session, preserving FIFO order. */
   ingest: (sendingMessage: string, options: ChatOrchestratorSendOptions, targetSessionId?: string) => Promise<void>
   /** Rejects queued sends that have not started yet. */
@@ -825,6 +836,7 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
     abortSignal: AbortSignal,
     activeProvider: string,
     accepted: QueuedSend['accepted'],
+    storedNotice?: StoredNoticeTarget,
   ) {
     if (!sendingMessage && !options.attachments?.length)
       return
@@ -840,9 +852,13 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
     const withoutDeclineMarkers = (text: string) => text.replace(declineMarkerPattern, '')
 
     const existingSessionMessages = deps.session.getSessionMessages(sessionId)
+    const committedNotice = storedNotice ? readStoredNotice(storedNotice) : undefined
     let replyToMessageId = resolveReplyTargetId(options.replyToMessageId, existingSessionMessages)
     // An unprompted turn recounts both values from committed history when it is decided as spoken.
-    let turnIndex = existingSessionMessages.filter(message => message.role === 'user').length + 1
+    const historyThroughTrigger = committedNotice
+      ? existingSessionMessages.slice(0, existingSessionMessages.findIndex(message => message.id === committedNotice.id) + 1)
+      : existingSessionMessages
+    let turnIndex = historyThroughTrigger.filter(message => message.role === 'user').length + (committedNotice ? 0 : 1)
 
     // Activation measures whether a conversation reaches its first assistant
     // response. Later turns still emit message and latency telemetry, but they
@@ -855,7 +871,7 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
     // its prefix stays cacheable.
     ingestRuntimeContexts()
 
-    const sendingCreatedAt = now()
+    const sendingCreatedAt = committedNotice?.createdAt ?? now()
 
     // TODO: Expire or prune stale runtime contexts from disconnected services before composing.
     // Allocate the three per-round ids in their historical order so callers
@@ -1079,6 +1095,13 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
       if (unprompted) {
         // The provider receives the uncommitted trigger as the trailing user turn, so runtime contexts attach to it.
         sessionMessagesForSend = [...deps.session.getSessionMessages(sessionId), userMessage]
+      }
+      else if (storedNotice) {
+        // Recheck after asynchronous preparation. Later history is not the trigger of this execution.
+        readStoredNotice(storedNotice)
+        accepted.resolve({ sessionId, messageId: storedNotice.messageId })
+        const messages = deps.session.getSessionMessages(sessionId)
+        sessionMessagesForSend = messages.slice(0, messages.findIndex(message => message.id === storedNotice.messageId) + 1)
       }
       else {
         const receipt = await deps.session.commitUserMessage(sessionId, userMessage)
@@ -1831,7 +1854,7 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
     const sendQueue = createQueue<QueuedSend>({
       handlers: [
         async ({ data }) => {
-          const { sendingMessage, options, generation, deferred, sessionId, cancelled, providerId } = data
+          const { sendingMessage, options, generation, deferred, sessionId, cancelled, providerId, storedNotice } = data
 
           if (cancelled)
             return
@@ -1846,7 +1869,7 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
           const controller = new AbortController()
           activeSends.set(sessionId, { controller })
           try {
-            await performSend(sendingMessage, options, generation, sessionId, options.signal ? AbortSignal.any([controller.signal, options.signal]) : controller.signal, providerId, data.accepted)
+            await performSend(sendingMessage, options, generation, sessionId, options.signal ? AbortSignal.any([controller.signal, options.signal]) : controller.signal, providerId, data.accepted, storedNotice)
             deferred.resolve()
           }
           catch (error) {
@@ -1879,13 +1902,14 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
     return sendQueue
   }
 
-  function submit(
+  function enqueueSend(
     sendingMessage: string,
     options: ChatOrchestratorSendOptions,
     targetSessionId?: string,
+    storedNotice?: StoredNoticeTarget,
   ) {
     const sessionId = targetSessionId ?? deps.getActiveSessionId()
-    const generation = deps.session.getSessionGeneration(sessionId)
+    const generation = storedNotice?.generation ?? deps.session.getSessionGeneration(sessionId)
     const accepted = Promise.withResolvers<{ sessionId: string, messageId: string }>()
     const deferred = Promise.withResolvers<void>()
     // Callers can await either boundary first. Failures remain visible on both original promises.
@@ -1900,10 +1924,35 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
       },
       generation,
       sessionId,
+      storedNotice,
       accepted,
       deferred,
     })
     return { accepted: accepted.promise, done: deferred.promise }
+  }
+
+  function submit(sendingMessage: string, options: ChatOrchestratorSendOptions, targetSessionId?: string) {
+    return enqueueSend(sendingMessage, options, targetSessionId)
+  }
+
+  function readStoredNotice(target: StoredNoticeTarget) {
+    const message = deps.session.getSessionMessages(target.sessionId).find(item => item.id === target.messageId)
+    if (deps.session.getSessionGeneration(target.sessionId) !== target.generation
+      || message?.role !== 'user' || message.notice?.source !== target.source || typeof message.content !== 'string') {
+      throw new Error('Stored notice identity no longer matches its conversation')
+    }
+    return { ...message, content: message.content }
+  }
+
+  /** Answers an exact stored notice through the ordinary FIFO. The host owns announcement admission and deduplication. */
+  function submitNotice(target: StoredNoticeTarget, options: Omit<ChatOrchestratorSendOptions, 'notice' | 'messageId' | 'origin'>) {
+    const message = readStoredNotice(target)
+    return enqueueSend(message.content, {
+      ...options,
+      origin: 'user',
+      messageId: target.messageId,
+      notice: { source: target.source },
+    }, target.sessionId, target)
   }
 
   function ingest(sendingMessage: string, options: ChatOrchestratorSendOptions, targetSessionId?: string) {
@@ -1966,6 +2015,7 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
   return {
     cancelTurn,
     submit,
+    submitNotice,
     ingest,
     cancelPendingSends,
     getPendingQueuedSendSnapshot,

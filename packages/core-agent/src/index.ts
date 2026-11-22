@@ -32,6 +32,7 @@ export type {
   ChatOrchestratorSessionPort,
   ChatOrchestratorStageConfig,
   QueuedSendSnapshot,
+  StoredNoticeTarget,
   ToolContent,
 } from './runtime/chat-orchestrator-runtime'
 export { createChatOrchestratorRuntime } from './runtime/chat-orchestrator-runtime'
