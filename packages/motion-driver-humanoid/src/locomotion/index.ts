@@ -1,6 +1,6 @@
 import type { SecondOrderCoefficients, SecondOrderState } from '../dynamics'
 import type { Foot, FootAnchor, TurnStep } from '../foot-contact'
-import type { LocomotionPace, RigTraits, Vec3 } from '../types'
+import type { BodyLocomotionIntent, LocomotionPace, RigTraits, Vec3 } from '../types'
 
 import { advanceSecondOrder, minJerk, secondOrderCoefficients } from '../dynamics'
 import { planFootSteps } from '../foot-contact'
@@ -53,6 +53,8 @@ export interface LocomotionInput {
   /** World x on the ground line; null means stay. */
   readonly goalX: number | null
   readonly pace: LocomotionPace
+  /** Checked at departure against SIDESTEP_MAX_LEGS; an accepted sidestep keeps yaw instead of arriveFacing. */
+  readonly step?: BodyLocomotionIntent['step']
   /** Facing at arrival, in radians; 0 faces the camera. */
   readonly arriveFacing: number
   /** False while sitting, during one-shots, or when a clip owns root or leg IK. */
@@ -120,7 +122,7 @@ export interface GaitEvent {
 }
 
 export interface LocomotionFrame {
-  readonly mode: 'idle' | 'turning' | 'starting' | 'walking' | 'stopping'
+  readonly mode: 'idle' | 'turning' | 'starting' | 'walking' | 'sidestepping' | 'stopping'
   readonly root: {
     /** World position; y = 0. */
     readonly position: Vec3
@@ -129,7 +131,7 @@ export interface LocomotionFrame {
   readonly speed: number
   /**
    * World x where the root comes to rest if the walk loses its goal now and brakes as hard as the gait allows
-   * (`brakingDistance`); the root x while she is not walking.
+   * (`brakingDistance`), or the current pair's destination while sidestepping; otherwise the root x.
    */
   readonly restX: number
   /** Continuous phase, in steps. */
@@ -184,6 +186,11 @@ const stepWidthShare = 0.7
 const swayShare = 0.03
 /** Goals closer than this share of the leg length are not worth a walk. */
 const minWalkShare = 0.05
+/**
+ * Maximum departure distance in leg lengths for an explicitly requested sidestep.
+ * Tuning value from the owner's ruling of 2026-11-21: step onto the pointer without turning.
+ */
+export const SIDESTEP_MAX_LEGS = 0.6
 /** After arrival each foot must sit within this fore-aft share of the root, or it takes a closing step. */
 const closingShare = 0.02
 const turnStepYaw = 45 * radians
@@ -345,6 +352,8 @@ interface Walk {
   starting: boolean
   arrived: boolean
   settle: { readonly phase: number, elapsed: number } | null
+  /** One leading/trailing pair. A withdrawn or replaced goal finishes this pair before yielding. */
+  sidestep?: { readonly goalX: number, readonly rate: number, fromX: number, toX: number, phase: number }
 }
 
 /** One link of the twist's lag chain (architecture 3a): critically damped, `f = 1 / (pi delay)`, steady lag `delay`. */
@@ -409,6 +418,8 @@ class Locomotion {
   private bob: number
   private swing: Swing | null = null
   private walk: Walk | null = null
+  /** Keep a rejected sidestep on the ordinary walk path through its arrival turn. */
+  private stepRequest: { goalX: number, sidestep: boolean } | null = null
   private turn: Turn | null = null
   private lastTurnFoot: Foot | null = null
   /** Phase of each foot's last heel strike in this walk: its stance progress, and so its roll, counts from it. */
@@ -458,6 +469,7 @@ class Locomotion {
     this.phase = 0.1
     this.swing = null
     this.walk = null
+    this.stepRequest = null
     this.turn = null
     this.lastTurnFoot = null
     this.feet = this.bindFeet()
@@ -476,6 +488,8 @@ class Locomotion {
     dt = Math.max(0, finite(dt))
     const events: GaitEvent[] = []
     const previousSpeed = this.speed
+    if (input.step !== 'sidestep' || input.goalX === null)
+      this.stepRequest = null
     let mode: LocomotionFrame['mode'] = 'idle'
     if (!input.enabled) {
       this.halt()
@@ -496,7 +510,7 @@ class Locomotion {
     const owned = mode === 'turning' || (this.walk !== null && this.walk.settle === null)
     this.blend = clamp(this.blend + (owned ? dt : -dt) / blendDuration, 0, 1)
     const acceleration = dt > 0 ? (this.speed - previousSpeed) / dt : 0
-    const leanTarget = 2 * radians * this.speed / this.referenceSpeed + 3 * radians * acceleration / this.maxAcceleration + this.leanBias
+    const leanTarget = this.walk?.sidestep ? 0 : 2 * radians * this.speed / this.referenceSpeed + 3 * radians * acceleration / this.maxAcceleration + this.leanBias
     this.leanBias = 0
     if (dt !== this.leanCoefficients.dt)
       this.leanCoefficients = secondOrderCoefficients(leanResponse, dt)
@@ -688,7 +702,15 @@ class Locomotion {
       return
     const walkTo = Math.abs(goal - this.x) > minWalkShare * this.traits.legLength
     const direction = goal > this.x ? 1 : -1
-    const facing = walkTo ? direction * Math.PI / 2 : finite(input.arriveFacing)
+    let sidestep = false
+    if (input.step === 'sidestep') {
+      if (this.stepRequest?.goalX !== goal)
+        this.stepRequest = { goalX: goal, sidestep: Math.abs(goal - this.x) <= SIDESTEP_MAX_LEGS * this.traits.legLength }
+      sidestep = this.stepRequest.sidestep
+    }
+    let facing = walkTo ? direction * Math.PI / 2 : finite(input.arriveFacing)
+    if (sidestep)
+      facing = this.yaw
     const turns = Math.abs(wrap(facing - this.yaw)) > turnTolerance
     if (!walkTo && !turns)
       return
@@ -701,7 +723,7 @@ class Locomotion {
     if (turns)
       this.startTurn(facing)
     else
-      this.startWalk(direction, facing, input.idleSupport)
+      this.startWalk(direction, facing, input.idleSupport, sidestep ? { goalX: goal, rate: this.stepRate(paceSpeeds[input.pace] * this.referenceSpeed) } : undefined)
   }
 
   private startTurn(facing: number) {
@@ -761,9 +783,11 @@ class Locomotion {
     return 'turning'
   }
 
-  private startWalk(direction: 1 | -1, heading: number, idleSupport: number) {
+  private startWalk(direction: 1 | -1, heading: number, idleSupport: number, sidestep?: { goalX: number, rate: number }) {
     let firstFoot: Foot
-    if (this.lastTurnFoot)
+    if (sidestep)
+      firstFoot = direction * (this.feet.left.position.x - this.feet.right.position.x) >= 0 ? 'left' : 'right'
+    else if (this.lastTurnFoot)
       firstFoot = opposite(this.lastTurnFoot)
     // Weight on the right (s > 0.2) leaves the left foot unloaded and free to swing.
     else if (idleSupport > 0.2)
@@ -779,6 +803,14 @@ class Locomotion {
     this.strikes = { [firstFoot]: doubleSupport - (1 + doubleSupport), [opposite(firstFoot)]: 0 } as Record<Foot, number>
     this.speed = 0
     this.walk = { preparation: 0, direction, heading, firstFoot, step: 0, starting: true, arrived: false, settle: null }
+    if (sidestep) {
+      this.walk.sidestep = {
+        ...sidestep,
+        fromX: this.x,
+        toX: this.x + direction * Math.min(Math.abs(sidestep.goalX - this.x), this.referenceLength),
+        phase: 0,
+      }
+    }
   }
 
   private advanceWalk(input: LocomotionInput, dt: number, events: GaitEvent[]): LocomotionFrame['mode'] {
@@ -789,6 +821,8 @@ class Locomotion {
       this.prepare(walk, dt)
       return 'starting'
     }
+    if (walk.sidestep)
+      return this.advanceSidestep(walk, walk.sidestep, input, dt, events)
     const command = paceSpeeds[input.pace] * this.referenceSpeed * this.speedFactor
     const goal = input.goalX !== null && Number.isFinite(input.goalX) ? input.goalX : null
     const ahead = goal === null ? 0 : (goal - this.x) * walk.direction
@@ -838,6 +872,47 @@ class Locomotion {
       return 'starting'
     walk.starting = false
     return 'walking'
+  }
+
+  /**
+   * The same swing, landing and support cycle as a walk, with fixed lateral landing targets.
+   * Root travel eases over a complete pair: the leading foot opens the stance and the trailing foot closes it.
+   * The reach floor follows the planted feet directly because lateral travel does not use the walking fore-aft bob.
+   */
+  private advanceSidestep(walk: Walk, pair: NonNullable<Walk['sidestep']>, input: LocomotionInput, dt: number, events: GaitEvent[]): LocomotionFrame['mode'] {
+    if (walk.settle) {
+      walk.settle.elapsed += dt
+      this.phase = Math.min(walk.settle.phase, this.phase + minRate * dt)
+      this.speed = 0
+      if (walk.settle.elapsed >= settleDuration - epsilon)
+        this.walk = null
+      return 'stopping'
+    }
+    // Keep the departure cadence when the director clears the goal and the host returns to its default pace.
+    this.phase = Math.min(pair.phase + 2, this.phase + pair.rate * dt)
+    const progress = clamp((this.phase - pair.phase - doubleSupport) / (2 - doubleSupport), 0, 1)
+    const nextX = pair.fromX + (pair.toX - pair.fromX) * minJerk(progress)
+    this.advanceFeet(walk, pair.toX, false, 0, dt, input.now, events)
+    this.posture = this.pelvis(0, nextX)
+    this.posture.drop = Math.max(this.posture.drop, this.requiredDrop(nextX, this.posture.lateral))
+    const advance = this.leash(Math.abs(nextX - this.x), walk.direction, this.posture)
+    this.x += walk.direction * advance
+    this.speed = advance / dt
+    if (this.phase >= pair.phase + 2) {
+      // Both swings have landed before either a new pair or the settle starts.
+      const goal = input.goalX
+      const ahead = input.step === 'sidestep' && goal === pair.goalX ? (goal - this.x) * walk.direction : 0
+      if (ahead > epsilon) {
+        pair.fromX = this.x
+        pair.toX = this.x + walk.direction * Math.min(ahead, this.referenceLength)
+        pair.phase += 2
+      }
+      else {
+        walk.settle = { phase: this.phase + 0.1, elapsed: 0 }
+        this.speed = 0
+      }
+    }
+    return 'sidestepping'
   }
 
   /**
@@ -920,6 +995,18 @@ class Locomotion {
    * D / 2 = beta * l; D reaches 0 once the root stops first, which lands the foot beside it.
    */
   private planLanding(walk: Walk, foot: Foot, lift: FootAnchor, t: number, rate: number, goal: number | null, braking: boolean, command: number, dt: number) {
+    if (walk.sidestep) {
+      const bind = this.traits.bindAnkles[foot]
+      const offset = this.toWorld(bind.x, bind.z)
+      return {
+        land: {
+          position: { x: offset.x + walk.sidestep.toX - this.x, y: this.traits.footBaselineY, z: offset.z },
+          yaw: walk.heading,
+        },
+        reach: Math.abs(walk.sidestep.toX - walk.sidestep.fromX) / 2,
+        height: swingHeightFloorShare * this.traits.legLength,
+      }
+    }
     const untilLanding = (1 - t) / rate
     const ahead = braking || goal === null ? null : Math.max(0, (goal - this.x) * walk.direction)
     const travel = this.speed * untilLanding
@@ -1012,7 +1099,7 @@ class Locomotion {
   private roll(side: Foot, strideScale: number): FootRoll {
     const foot = this.traits.foot?.[side]
     const swing = this.swing?.foot === side ? this.swing : null
-    if (!foot || !this.walk)
+    if (!foot || !this.walk || this.walk.sidestep)
       return { pitch: 0, ankleOffset: [0, 0], pivot: swing ? 'air' : 'flat' }
     const scale = Math.min(1, strideScale)
     const strike = heelStrikePitch * scale
@@ -1092,7 +1179,7 @@ class Locomotion {
       mode,
       root: { position: { x: this.x, y: 0, z: this.z }, yaw: this.yaw },
       speed: this.speed,
-      restX: this.walk ? this.x + this.walk.direction * brakingDistance(this.speed, this.traits.legLength) : this.x,
+      restX: this.walk?.sidestep?.toX ?? (this.walk ? this.x + this.walk.direction * brakingDistance(this.speed, this.traits.legLength) : this.x),
       phase: this.phase,
       feet: { left: this.footFrame('left', strideScale), right: this.footFrame('right', strideScale) },
       support,

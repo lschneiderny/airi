@@ -406,6 +406,34 @@ describe('mmd full-body stages', () => {
     expect(body.diagnostics.locomotion?.position.x).toBe(3)
   })
 
+  it.each([-1, 1])('forwards a corrective sidestep to the gait on side %i', (direction) => {
+    const { pipeline, body, mesh, rig, setInput } = bodyFixture(0, Math.PI, { toes: true })
+    setInput({ rootMotion: true })
+    for (let frame = 0; frame < 30; frame++)
+      pipeline.step(1 / 60)
+    const goalX = direction * 0.3 * rig.legLength!
+    body.setLocomotionGoal({ goalX, pace: 'stroll', arriveFacing: 0, reason: 'approach-cursor', step: 'sidestep' })
+    let stepped = false
+    let skate = 0
+    let maxError = 0
+    for (let frame = 0; frame < 360; frame++) {
+      pipeline.step(1 / 60)
+      const gait = body.locomotionFrame!
+      stepped ||= gait.mode === 'sidestepping'
+      expect(gait.mode).not.toBe('turning')
+      expect(Math.abs(gait.root.yaw)).toBeLessThan(Math.PI / 180)
+      skate = Math.max(skate, body.diagnostics.locomotion!.skateContact)
+      maxError = Math.max(maxError, body.diagnostics.feet.maxError)
+    }
+    expect(stepped).toBe(true)
+    expect(body.locomotionFrame?.mode).toBe('idle')
+    expect(mesh.position.x).toBeCloseTo(goalX)
+    expect(body.locomotionFrame?.feet.left.planted).toBe(true)
+    expect(body.locomotionFrame?.feet.right.planted).toBe(true)
+    expect(skate).toBeLessThan(0.01)
+    expect(maxError).toBeLessThan(0.05)
+  })
+
   it('leads a walking turn with the head: it reaches half its turn at least 33 ms before the root does', () => {
     const { pipeline, body, mesh, bone, setInput } = bodyFixture()
     setInput({ rootMotion: true })

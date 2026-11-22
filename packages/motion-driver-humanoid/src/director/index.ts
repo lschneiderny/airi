@@ -1,5 +1,6 @@
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
 
+import type { LocomotionFrame } from '../locomotion'
 import type { BodyIntent, BodyLocomotionReason, LocomotionPace, Vec3 } from '../types'
 
 import { createRandomStream } from '../random'
@@ -18,7 +19,7 @@ export const CHASE_STOP_LEGS = 1.0
 
 /**
  * Minimum rest offset in leg lengths for one corrective step onto the cursor after a chase.
- * Tuning value from the owner's D16 ruling of 2026-11-21: correct the final offset without changing the gait.
+ * Tuning value from the owner's D16 ruling of 2026-11-21: correct the final offset after the chase.
  */
 export const STEP_ONTO_CURSOR_MIN_LEGS = 0.15
 
@@ -163,7 +164,7 @@ export interface BodyDirectorInput {
    */
   restX: number | null
   homeX: number
-  locomotionMode: 'idle' | 'turning' | 'starting' | 'walking' | 'stopping'
+  locomotionMode: LocomotionFrame['mode']
   /** True while a clip owns the root. */
   clipOwnsRoot: boolean
   speaking: boolean
@@ -871,7 +872,15 @@ export function decideBody(
       facingYaw: 0,
       locomotion: ground === null
         ? { homeX: input.homeX, goalX: null, pace: 'walk', arriveFacing: 0, reason: 'stay' }
-        : { homeX: input.homeX, goalX, pace: goalPace, arriveFacing, reason },
+        : {
+            homeX: input.homeX,
+            goalX,
+            pace: goalPace,
+            arriveFacing,
+            reason,
+            // Only the one corrective approach strolls; every chase walks.
+            ...(goalX !== null && reason === 'approach-cursor' && goalPace === 'stroll' ? { step: 'sidestep' as const } : {}),
+          },
       action: performing === null
         ? null
         : { seq: performing.request.seq, clipId: performing.request.clipId, layer: performing.request.layer, loop: performing.request.loop, phase: performing.phase },

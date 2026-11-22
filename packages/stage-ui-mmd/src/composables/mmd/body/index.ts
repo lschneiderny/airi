@@ -443,6 +443,7 @@ export class MMDBody {
           now: (first + k + 1) * BODY_TICK,
           goalX: this.goal?.goalX ?? null,
           pace: this.goal?.pace ?? 'walk',
+          step: this.goal?.step,
           arriveFacing: this.goal?.arriveFacing ?? 0,
           enabled: this.gaitEnabled,
           idleSupport: this.support,

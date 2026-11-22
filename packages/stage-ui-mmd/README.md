@@ -73,6 +73,10 @@ reaching feature parity with the Live2D and VRM renderers:
   locomotion reason), `goalX`, `pace`, `pendingGoal` and the tool refractories;
   `stanceReason` is the stance's reason. The `requestGoal` command is the
   director's `debugGoal`. Without a stage world no goal is ever issued.
+  A corrective goal after a chase forwards `step: 'sidestep'` through the body
+  to the gait. Within `SIDESTEP_MAX_LEGS` (0.6 legs) at departure she keeps her
+  yaw and takes leading/trailing foot pairs; the locomotion diagnostics mode
+  is `sidestepping` between preparation and settling. Longer goals still walk.
 - **Morph-based lip-sync** driven by the shared wLipSync profile, mapping
   phonemes to the canonical あいうえお mouth morphs, with per-slot morph
   remapping for non-standard models.
