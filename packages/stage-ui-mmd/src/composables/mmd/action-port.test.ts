@@ -47,7 +47,7 @@ function stage(clips: readonly MMDActionClip[] = library) {
     },
   })
   function frame(atMs: number, patch: FramePatch = {}) {
-    const performance: Pick<PerformanceState, 'mode' | 'attention' | 'away'> = { mode: 'idle', attention: 'camera', away: patch.away ?? false }
+    const performance: Pick<PerformanceState, 'mode' | 'attention'> = { mode: 'idle', attention: 'camera' }
     const directorMs = EPOCH_MS + atMs
     director.update({
       nowMs: directorMs,
@@ -55,7 +55,7 @@ function stage(clips: readonly MMDActionClip[] = library) {
       slots: {},
       idleMotionName: '',
       isRegistered: () => true,
-      interaction: { attend: { untilMs: null, touchSeq: 0, chatSeq: 0, chatOpenSeq: 0 }, actionRequest: request, actionFeedback: patch.feedback ?? null, dragging: patch.dragging ?? false },
+      interaction: { away: patch.away ?? false, attend: { untilMs: null, touchSeq: 0, chatSeq: 0, chatOpenSeq: 0 }, actionRequest: request, actionFeedback: patch.feedback ?? null, dragging: patch.dragging ?? false },
     })
     port.observe({ directorMs, diagnostics: director.diagnostics })
   }

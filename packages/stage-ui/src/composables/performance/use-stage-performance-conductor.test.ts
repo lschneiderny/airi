@@ -508,6 +508,49 @@ describe('stage performance conductor', () => {
     const unlock = { kind: 'presence', away: false, wake: { cause: 'unlock', atMs: 189_000 } } as const
     const gentleReturn = { kind: 'presence', away: false, wake: null } as const
 
+    it.each(['natural', 'basic'] as const)('dispatches away edges only under Natural, driver %s', (driver) => {
+      const scene = { ...fakeScene(), setAway: vi.fn<NonNullable<StagePerformanceScene['setAway']>>() }
+      const { conductor, mind } = createConductor(driver, scene)
+
+      conductor.desktop([lock])
+      conductor.desktop([lock])
+      conductor.desktop([gentleReturn])
+
+      expect(scene.setAway.mock.calls).toEqual(driver === 'natural' ? [[true], [false]] : [])
+      expect(mind.state.presence.away).toBe(false)
+    })
+
+    it('seeds an attached scene and a driver returning to Natural from the current mind presence', () => {
+      const first = { ...fakeScene(), setAway: vi.fn<NonNullable<StagePerformanceScene['setAway']>>() }
+      const second = { ...fakeScene(), setAway: vi.fn<NonNullable<StagePerformanceScene['setAway']>>() }
+      let scene: StagePerformanceScene | undefined
+      let driver: StagePerformanceDriver = 'basic'
+      const mind = new CharacterMind({ seed: 7 })
+      const conductor = new StagePerformanceConductor({ scene: () => scene, driver: () => driver, playMotion: vi.fn(), settings: () => defaultExpressionPerformanceSettings, catalog: () => catalog, seed: 7, mind })
+      mind.receive(lock)
+      conductor.syncScene()
+      scene = first
+      conductor.syncScene()
+      expect(first.setAway).not.toHaveBeenCalled()
+
+      driver = 'natural'
+      conductor.syncScene()
+      conductor.syncScene()
+      expect(first.setAway.mock.calls).toEqual([[true]])
+
+      scene = second
+      conductor.syncScene()
+      expect(second.setAway.mock.calls).toEqual([[true]])
+      driver = 'basic'
+      conductor.syncScene()
+      mind.receive(gentleReturn)
+      expect(second.setAway.mock.calls).toEqual([[true]])
+
+      driver = 'natural'
+      conductor.syncScene()
+      expect(second.setAway.mock.calls).toEqual([[true], [false]])
+    })
+
     it('performs the posture intents on the scene under Natural and marks the welcome back', () => {
       const scene = fakeScene()
       const markMoment = vi.fn<NonNullable<StagePerformanceConductorOptions['markMoment']>>()

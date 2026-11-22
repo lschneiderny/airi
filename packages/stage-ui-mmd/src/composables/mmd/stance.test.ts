@@ -16,7 +16,7 @@ import { CHAT_STAND_GAP_LEGS, chatStandX, directorIdleStates, frameClocks, MMDAt
 const idle: Pick<PerformanceState, 'mode' | 'attention' | 'away'> = { mode: 'idle', attention: 'camera', away: false }
 const away: Pick<PerformanceState, 'mode' | 'attention' | 'away'> = { mode: 'idle', attention: 'camera', away: true }
 const EPOCH_MS = 1_000_000
-const quiet: MMDStanceInteraction = { attend: { untilMs: null, touchSeq: 0, chatSeq: 0, chatOpenSeq: 0 }, actionRequest: null, actionFeedback: null, dragging: false }
+const quiet: MMDStanceInteraction = { away: false, attend: { untilMs: null, touchSeq: 0, chatSeq: 0, chatOpenSeq: 0 }, actionRequest: null, actionFeedback: null, dragging: false }
 
 describe('mMDAttendInbox', () => {
   it.each(['touch', 'drag', 'chat-send'] as const)('counts %s and stamps the full window on the next frame', (attendCause) => {
@@ -109,13 +109,13 @@ describe('mmd stance director', () => {
     const director = new MMDStanceDirector()
     const asleep = { settled: false, asleep: true }
     for (let second = 0; second <= 300; second += 10)
-      director.update({ interaction: quiet, nowMs: EPOCH_MS + second * 1000, performance: away, slots: { sit: 'sit-vmd' }, idleMotionName: '', isRegistered: registered })
+      director.update({ interaction: { ...quiet, away: true }, nowMs: EPOCH_MS + second * 1000, performance: away, slots: { sit: 'sit-vmd' }, idleMotionName: '', isRegistered: registered })
     expect(director.diagnostics).toMatchObject({ stance: 'stand', stanceReason: 'no-sleep-slot' })
-    director.update({ interaction: quiet, nowMs: EPOCH_MS + 305_000, performance: away, slots: { sit: 'sit-vmd' }, idleMotionName: '', isRegistered: registered, idle: asleep })
+    director.update({ interaction: { ...quiet, away: true }, nowMs: EPOCH_MS + 305_000, performance: away, slots: { sit: 'sit-vmd' }, idleMotionName: '', isRegistered: registered, idle: asleep })
     expect(director.intent?.rest).toBe('doze')
     expect(director.diagnostics).toMatchObject({ stance: 'stand', stanceReason: 'doze-fallback' })
 
-    const result = director.update({ interaction: quiet, nowMs: EPOCH_MS + 310_000, performance: away, slots: { sleep: 'sleep-vmd' }, idleMotionName: '', isRegistered: registered, idle: asleep })
+    const result = director.update({ interaction: { ...quiet, away: true }, nowMs: EPOCH_MS + 310_000, performance: away, slots: { sleep: 'sleep-vmd' }, idleMotionName: '', isRegistered: registered, idle: asleep })
     expect(director.diagnostics.stance).toBe('sleep')
     expect(result).toEqual({ motion: 'sleep-vmd', changed: true })
   })

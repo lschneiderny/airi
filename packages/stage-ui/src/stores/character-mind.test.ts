@@ -509,9 +509,10 @@ describe('character mind store', () => {
       vi.setSystemTime(T0 + 120_000)
       const intents = store.mind.receive({ kind: 'presence', away: false, wake: null })
 
-      expect(intents.map(intent => intent.kind)).toEqual(['wake', 'moment', 'observe-return'])
+      expect(intents.map(intent => intent.kind)).toEqual(['wake', 'moment', 'observe-return', 'away'])
       // The span reopens at the switch, so the return counts from there.
-      expect(intents.at(-1)).toMatchObject({ kind: 'observe-return', awayMs: 60_000 })
+      expect(intents.at(-2)).toMatchObject({ kind: 'observe-return', awayMs: 60_000 })
+      expect(intents.at(-1)).toMatchObject({ channel: 'body', kind: 'away', away: false })
     })
 
     it('lets the outcome of a line opened before a card switch reach the reloaded mind without error', async () => {

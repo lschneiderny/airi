@@ -183,6 +183,7 @@ const diagnostics = useMMDMotionDiagnostics()
 const expressions = useMMDExpressionStore()
 // The character mind owns every attend cause; the inbox stamps cursor windows on the next director frame.
 const attendInbox = new MMDAttendInbox()
+let bodyAway = false
 // The host reports a drag in progress; the director refuses clips and ends broad ones while it lasts.
 let dragging = false
 const bodyToolPort = new MMDBodyToolPort()
@@ -704,7 +705,7 @@ function renderLoop(now = performance.now()) {
       // Attend intents and clip requests also apply without a stage world.
       baseEligible: isBaseEligible,
       idle: naturalIdleStates(),
-      interaction: { attend: attendInbox.atFrame(clocks.directorMs), actionRequest: pendingAction, actionFeedback, dragging },
+      interaction: { away: motionDriver.value === 'natural' && bodyAway, attend: attendInbox.atFrame(clocks.directorMs), actionRequest: pendingAction, actionFeedback, dragging },
     })
     if (base.changed)
       animation.setBaseMotion(base.motion)
@@ -1812,6 +1813,8 @@ defineExpose({
   reactToTouch,
   /** Natural only: counts the mind's attend cause and opens cursor windows on the next director frame. */
   attend: (intent: AttendIntent) => attendInbox.receive(intent),
+  /** Natural only: the mind's current presence answer, also seeded when this scene attaches. */
+  setAway: (away: boolean) => { bodyAway = away },
   /** Natural only: ends a sleep with the gentle wake; ignored while she is awake. */
   wakeFromSleep: () => natural?.wake(),
   /** Natural only: a brief reaction to the desktop; `wake` also rouses her from sleep with a start. */

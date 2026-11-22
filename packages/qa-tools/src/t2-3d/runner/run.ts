@@ -108,12 +108,15 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
     // intents come back as orders at the next frame. Without a drive the idle view stays dormant and the mind decides
     // no idle act.
     const mind = createRunnerMind(options, () => naturalSeconds * 1000)
+    let bodyAway = false
     const perform = (intents: ReturnType<CharacterMind['receive']>) => {
       for (const intent of intents) {
         if (intent.kind === 'idle-act' || intent.kind === 'idle-errand')
           natural.idle(idleOrderOf(intent))
         else if (intent.kind === 'cursor-episode')
           natural.cursorEpisode({ requestId: intent.requestId, episode: intent.episode })
+        else if (intent.kind === 'away')
+          bodyAway = intent.away
       }
     }
     natural.onIdleReports(reports => perform(mind.receive({ kind: 'idle', reports })))
@@ -272,6 +275,9 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
       while (nextBeat < beats.length && beats[nextBeat].at <= scoredTime + 1e-9)
         natural.beat(beats[nextBeat++].intervalSeconds)
       cues.step(naturalSeconds)
+      // Scripted presence must still reach stance diagnostics, through the same mind answer as the app.
+      if (cues.performance.away !== mind.state.presence.away)
+        perform(mind.receive({ kind: 'presence', away: cues.performance.away, wake: null }))
       const target = look.resolve(cues.cursor)
       // The camera sits straight ahead of the head at the scenario's look distance, as the app's camera faces her.
       const camera = look.resolve({ x: 0, y: 0 })?.target ?? null
@@ -292,7 +298,7 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
         isRegistered: () => false,
         points: points ?? undefined,
         idle: directorIdleStates(natural.bodyFrame.intent.idle),
-        interaction: { attend: { untilMs: null, touchSeq: 0, chatSeq: 0, chatOpenSeq: 0 }, actionRequest: null, actionFeedback: null, dragging: false },
+        interaction: { away: bodyAway, attend: { untilMs: null, touchSeq: 0, chatSeq: 0, chatOpenSeq: 0 }, actionRequest: null, actionFeedback: null, dragging: false },
         world: {
           ...NO_WORLD_BODY_INPUT,
           ground: rig.legLength ? { minX: -60 * rig.legLength, maxX: 60 * rig.legLength } : null,

@@ -7,11 +7,11 @@ type Stimulus<K extends MindStimulus['kind']> = Extract<MindStimulus, { kind: K 
 interface Answer { state: MindState, intents: MindIntent[] }
 
 /**
- * A presence report gets one response, in the order posture, face, voice:
+ * A presence report gets one response, in the order posture, face, voice, body:
  * - A desktop wake: a startled `desktop-reaction`, and `observe-wake` with the open span or null.
  * - A return (`away` turns false after it was true): a gentle `wake` unless the wake reaction already rouses her,
  *   the `welcome-back` moment, and `observe-return` with the span, which closes.
- * - `away` turning true opens the span at `nowMs` and yields no intent.
+ * - `away` turning true opens the span at `nowMs`. Every away edge yields one body `away` intent.
  * A wake while she is still away keeps the span open.
  */
 export function answerPresence(state: MindState, stimulus: Stimulus<'presence'>, cause: number, nowMs: number): Answer {
@@ -39,7 +39,10 @@ export function answerPresence(state: MindState, stimulus: Stimulus<'presence'>,
   else if (!wasAway && stimulus.away)
     presence = { away: true, awaySinceMs: nowMs }
 
-  return { state: presence === state.presence ? state : { ...state, presence }, intents: [...posture, ...face, ...voice] }
+  const body: MindIntent[] = wasAway === stimulus.away
+    ? []
+    : [{ id: `${cause}-away`, cause, channel: 'body', kind: 'away', away: stimulus.away }]
+  return { state: presence === state.presence ? state : { ...state, presence }, intents: [...posture, ...face, ...voice, ...body] }
 }
 
 /**

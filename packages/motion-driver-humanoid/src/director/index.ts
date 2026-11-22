@@ -136,8 +136,10 @@ export interface BodyGoalRequest {
 export interface BodyDirectorInput {
   /** Epoch milliseconds supplied by the caller; this module never reads a clock. */
   nowMs: number
-  /** The resolved mode, attention, and away overlay from stage-shared. */
-  performance: Pick<PerformanceState, 'mode' | 'attention' | 'away'>
+  /** The resolved mode and attention from stage-shared. */
+  performance: Pick<PerformanceState, 'mode' | 'attention'>
+  /** The character mind's presence answer; false under drivers that receive no intents. */
+  away: boolean
   /** Optional target positions in model units. */
   cursorPoint: Vec3 | null
   chatPoint: Vec3 | null
@@ -214,7 +216,7 @@ export interface BodyDirectorInput {
  * Spread it under the six legacy fields; every goal rule stays inert. Clips, pokes and drags exist without a world, so
  * every host supplies the interaction and action inputs itself.
  */
-export const NO_WORLD_BODY_INPUT: Omit<BodyDirectorInput, 'nowMs' | 'performance' | 'cursorPoint' | 'chatPoint' | 'cameraPoint' | 'slots' | 'attend' | 'actionRequest' | 'actionFeedback' | 'dragging' | 'idle'> = Object.freeze({
+export const NO_WORLD_BODY_INPUT: Omit<BodyDirectorInput, 'nowMs' | 'performance' | 'cursorPoint' | 'chatPoint' | 'cameraPoint' | 'slots' | 'away' | 'attend' | 'actionRequest' | 'actionFeedback' | 'dragging' | 'idle'> = Object.freeze({
   ground: null,
   rootX: 0,
   restX: null,
@@ -533,7 +535,7 @@ export function decideBody(
   if (performing !== null) {
     const unasked = performing.request.source === 'idle'
     const broad = performing.request.layer === 'full' || performing.request.loop || unasked
-    if (input.performance.away)
+    if (input.away)
       endPerformance(true)
     else if (broad && (input.dragging || input.attend.touchSeq > previous.lastTouchSeq))
       endPerformance(true)
@@ -564,7 +566,7 @@ export function decideBody(
       // Unasked clips wait for a quiet body: nothing performing, not walking, not talking, listening or thinking.
       refuse('busy', null)
     }
-    else if (input.performance.away || previous.stance === 'sleep') {
+    else if (input.away || previous.stance === 'sleep') {
       refuse('asleep', null)
     }
     else if (input.dragging) {
@@ -633,7 +635,7 @@ export function decideBody(
   const mayRest = ground === null || (input.locomotionMode === 'idle' && atHome)
   // A held goal or an asked wander stands the character up so the goal can be issued.
   const wakeForGoal = ground !== null
-    && !input.performance.away
+    && !input.away
     && (previous.pendingGoal !== null || (pendingWander !== null && input.performance.mode === 'idle'))
 
   // Natural decides that she settles in or sleeps; the director realises it with the stance clip, or with the
