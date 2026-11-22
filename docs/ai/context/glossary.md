@@ -351,9 +351,9 @@ An expression entry that the user tagged for a moment lasting seconds (`welcome-
 
 ### Mood
 
-Two codes use this word. The character-state mood is the slow layer: three axes (valence, energy, tension) built from contributions (model MOOD cues, touch, unanswered reach-outs, replies, returns, significant exchanges, rituals) that decay over hours toward the temperament baseline. Natural's mood is a fast afterglow of reaction episodes (valence, arousal, tension) that decays in seconds of active time and modulates Natural's motion scales. The fast mood stays in Natural; the mind sends it doses but does not hold it.
+Two codes use this word. The character-state mood is the slow layer: three axes (valence, energy, tension) built from contributions (model MOOD cues, touch, unanswered reach-outs, replies, returns, significant exchanges, rituals) that decay over hours toward the temperament baseline. The fast mood is an afterglow of reaction episodes and touches (valence, arousal, tension) that decays in seconds. The character mind holds it once per character and sends every dose; each Natural controller keeps a copy, seeded from the mind when it is created or becomes Natural again, that decays on its active seconds and modulates Natural's motion scales.
 
-**Code:** `packages/stage-shared/src/character-state/types.ts` `MoodState`, `MoodAxes`, `MoodSource`; `packages/stage-shared/src/character-state/mood.ts` `pruneMood`; `packages/motion-driver-natural/src/mood.ts` `NaturalMood`; `packages/motion-driver-natural/src/mood-modulation.ts` `modulateByMood`.
+**Code:** `packages/stage-shared/src/character-state/types.ts` `MoodState`, `MoodAxes`, `MoodSource`; `packages/stage-shared/src/character-state/mood.ts` `pruneMood`; `packages/character-mind/src/mood.ts` `MindMoodState`, `moodEpisodeDose`; `packages/motion-driver-natural/src/mood.ts` `NaturalMood`; `packages/motion-driver-natural/src/mood-modulation.ts` `modulateByMood`.
 **Not to be confused with:** temperament, the days-long average that sets the mood baseline; and the performance state's mode.
 **Avoid:** "emotion" for the slow layer (an emotion is one `PerformanceEmotion` of an episode).
 

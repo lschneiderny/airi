@@ -89,7 +89,7 @@ not prove naturalness, which stays a visual review.
 
 ## Verification
 
-Package checks run by the implementer: character-mind (211 tests), stage-shared (1897), motion-driver-natural (513),
+Package checks run by the implementer: character-mind (199 tests), stage-shared (1897), motion-driver-natural (513),
 stage-ui node (2010) and `stage-emotion-routing.browser.test.ts` (46), stage-ui-live2d node (795) and its two
 `composables/live2d` browser files (17), qa-tools node (894, 9 skipped), stage-ui-mmd node (433), and the dependent
 typechecks of `stage-shared` (28 packages) and `motion-driver-natural` (11 packages).

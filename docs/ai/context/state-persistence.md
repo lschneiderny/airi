@@ -100,7 +100,7 @@ A [character state](glossary.md#character-state) record (`CharacterStateRecordV1
 
 ### The mind's slow state
 
-The [character mind](glossary.md#character-mind)'s slow state is the per-card character state. The tier 4 record holds mood, energy, learned temperament, relationship, and her own pacing memory (last-spoke time, unanswered openings, the reply wait, the damping, the own-day mark). The floor after any spoken line, the hourly cap, and the ritual day are per user across characters and stay in the user's gate state. Fast state is not persisted.
+The [character mind](glossary.md#character-mind)'s slow state is the per-card character state. The tier 4 record holds mood, energy, learned temperament, relationship, and her own pacing memory (last-spoke time, unanswered openings, the reply wait, the damping, the own-day mark). The floor after any spoken line, the hourly cap, and the ritual day are per user across characters and stay in the user's gate state. Fast state is not persisted: her fast mood (`MindState.mood`) among it resets on launch and at a card switch and has no storage key.
 
 - Only the leader reads and writes the record. The leader advances the record on load, and the mind normalizes her pacing at its first tick (`restoreGateMemory` in `packages/stage-shared/src/situation/urge-gate.ts`).
 - `useCharacterMindStore` (`packages/stage-ui/src/stores/character-mind.ts`) resets the mind to the record's `pacing` at each promotion and whenever `leaderEpoch` changes: a card switch, an import over the active card, a forget, and "Delete all data". It writes `MindState.slow.pacing` back with `recordPacing` whenever the mind replaces that object. The store persists nothing itself and is not registered.
