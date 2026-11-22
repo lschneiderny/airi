@@ -28,8 +28,8 @@ import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { effectScope, ref, watch } from 'vue'
 
+import { useCharacterBehaviorSettings } from '../../features/character-behavior/settings'
 import { usePerformanceRuntimeState } from '../../features/performance/runtime-state'
-import { useExpressionPerformanceSettings } from '../../features/performance/settings'
 import { useLlmStreamingControlStore } from '../../stores/ai/chat-llm/streaming-control'
 import { useNaturalPerformanceOverride } from '../../stores/natural-performance-override'
 import { naturalMind } from '../../test/natural-mind'
@@ -461,24 +461,27 @@ describe('useMotionQaBridge', () => {
   })
 
   it('writes the settings that configure names and reports them back', async () => {
-    const reply = await dispatch({ name: 'configure', input: { driver: 'natural', cursorAttention: false, expressionEnabled: true, heldEmotions: false } })
+    const reply = await dispatch({ name: 'configure', input: { driver: 'natural', cursorAttention: false, chatAttention: false, touchReactions: false, idleActivities: false, expressionEnabled: true, heldEmotions: false } })
 
     const live2d = useSettingsLive2d()
-    expect([live2d.live2dMotionDriver, useLive2DNaturalSettings().document.cursorAttention, live2d.live2dExpressionEnabled]).toEqual(['natural', false, true])
-    expect(useExpressionPerformanceSettings().document.heldEmotions).toBe(false)
+    expect([live2d.live2dMotionDriver, useCharacterBehaviorSettings().document.cursorAttention, live2d.live2dExpressionEnabled]).toEqual(['natural', false, true])
+    expect(useCharacterBehaviorSettings().document.emotion.heldEmotions).toBe(false)
+    expect(useCharacterBehaviorSettings().document.chatAttention).toBe(false)
+    expect(useCharacterBehaviorSettings().document.touchReactions).toBe(false)
+    expect(useCharacterBehaviorSettings().document.idleActivities).toBe(false)
     expect(reply).toMatchObject({ ok: true, result: { driver: 'natural', cursorAttention: false, expressionEnabled: true, heldEmotions: false, captureActive: false, head: null, screen: { x: -1200, y: 20, devicePixelRatio: 1.5 } } })
   })
 
-  it('writes the screen-aware setting and reports it back', async () => {
+  it('writes screen lean independently and reports it back', async () => {
     const natural = useLive2DNaturalSettings()
-    expect(natural.document.screenAwareness).toBe(true)
+    expect(natural.document.screenLean).toBe(true)
 
-    expect(await dispatch({ name: 'configure', input: { screenAwareness: false } })).toMatchObject({ ok: true, result: { screenAwareness: false } })
-    expect(natural.document.screenAwareness).toBe(false)
+    expect(await dispatch({ name: 'configure', input: { screenLean: false } })).toMatchObject({ ok: true, result: { screenLean: false } })
+    expect(natural.document.screenLean).toBe(false)
     // Omitting the field leaves the setting as it is.
-    expect(await dispatch({ name: 'configure', input: {} })).toMatchObject({ ok: true, result: { screenAwareness: false } })
-    expect(await dispatch({ name: 'configure', input: { screenAwareness: true } })).toMatchObject({ ok: true, result: { screenAwareness: true } })
-    expect(natural.document.screenAwareness).toBe(true)
+    expect(await dispatch({ name: 'configure', input: {} })).toMatchObject({ ok: true, result: { screenLean: false } })
+    expect(await dispatch({ name: 'configure', input: { screenLean: true } })).toMatchObject({ ok: true, result: { screenLean: true } })
+    expect(natural.document.screenLean).toBe(true)
   })
 
   it('reports the placement the stage last handed to Natural and the applied yaw bias', async () => {
@@ -571,7 +574,7 @@ describe('useMotionQaBridge', () => {
     ]) } }))
 
     expect(await reply).toEqual({ ok: true, result: { dispatched: 4, rejected: [{ at: 3.2, kind: 'expression', reason: expect.any(String) }] } })
-    const clear = useExpressionPerformanceSettings().document.intensity.clear
+    const clear = useCharacterBehaviorSettings().document.emotion.intensity.clear
     expect(log).toEqual([`queue:happy:devtools:${clear}`, 'mark:emotion', 'queue:angry:act', 'mark:act', 'mode:thinking', 'mark:mode', 'mark:marker:end'])
     expect(useNaturalPerformanceOverride().performanceOverride).toEqual({ mode: 'thinking', energy: 0.4 })
   })

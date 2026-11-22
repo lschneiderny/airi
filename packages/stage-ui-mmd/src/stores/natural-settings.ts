@@ -10,10 +10,6 @@ import { boolean, finite, number, optional, pipe, transform, unknown } from 'val
 const mmdNaturalSettingsEntries = {
   /** Liveliness of Natural movement, from 0 (calm) to 1 (energetic), on the same scale as Live2D; out-of-range numbers are clamped. @default 0.5 */
   energy: optional(pipe(number(), finite(), transform(value => clamp(value, 0, 1))), 0.5),
-  /** Let Natural do things on its own while idle: stretch, yawn, look around, watch the screen, doze off. @default true */
-  idleActivities: optional(boolean(), true),
-  /** Let the user poke the model and pet its head with the cursor while Natural drives it. @default true */
-  touch: optional(boolean(), true),
   /** Count only strokes made with the primary button held as pets, so passing the cursor over the head never pets it. @default false */
   touchPetRequiresHold: optional(boolean(), false),
   /**
@@ -28,7 +24,6 @@ export type MMDNaturalSettings = SettingsDocument<typeof mmdNaturalSettingsEntri
 /** The pre-document key of each setting; a setting added after the document has none. */
 const legacyKeys = {
   energy: 'settings/mmd/natural-energy',
-  touch: 'settings/mmd/natural-touch',
   touchPetRequiresHold: 'settings/mmd/natural-touch-pet-requires-hold',
   emotionStrength: 'settings/mmd/natural-emotion-strength',
 } satisfies Partial<Record<keyof MMDNaturalSettings, string>>
@@ -65,12 +60,13 @@ function removeLegacyMMDNaturalSettings() {
     return
   for (const key of Object.values(legacyKeys))
     localStorage.removeItem(key)
+  localStorage.removeItem('settings/mmd/natural-touch')
 }
 
 /**
- * The Natural settings of the MMD renderer: one document that every window reads and only the leader persists.
- *
- * Read fields from `document`. Change them with `update`, awaited; never assign to `document`.
+ * Renderer realisation, replicated across windows with one leader persistence owner.
+ * Read `document`; change it only through awaited `update` and `reset`.
+ * The host initializes character behavior before its first write, preserving behavior values before this document narrows.
  */
 export const useMMDNaturalSettings = defineStore('mmd-natural-settings', () => {
   const settings = useSettingsDocument('settings/mmd/natural', mmdNaturalSettingsEntries, {

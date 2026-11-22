@@ -130,6 +130,11 @@ const props = withDefaults(defineProps<{
   performance?: PerformanceState
   naturalEnergy?: number
   performanceSettings?: ExpressionPerformanceSettings
+  /** Decision permissions supplied by the stage's character-behavior document. */
+  idleActivities?: boolean
+  touchReactions?: boolean
+  cursorAttention?: boolean
+  chatAttention?: boolean
   screenPlacement?: { displays: PlacementRect[], windowBounds: PlacementRect }
   chatTarget?: { visible: boolean, bounds: PlacementRect | null }
   /** Typing for Natural; `sentSeq` counts typed sends for the body director, which reads them until it acts on intents. */
@@ -155,6 +160,10 @@ const props = withDefaults(defineProps<{
   performance: () => ({ mode: 'idle', attention: 'camera', away: false }),
   naturalEnergy: undefined,
   performanceSettings: () => defaultExpressionPerformanceSettings,
+  idleActivities: true,
+  touchReactions: true,
+  cursorAttention: true,
+  chatAttention: true,
   mouthOpenSize: 0,
   nowSpeaking: false,
   enableOrbitControls: false,
@@ -1126,7 +1135,7 @@ function realiseErrands(directorMs: number, intent: BodyIntent | null) {
  * rate, the body or the errands change, so Natural sees a new drive only then.
  */
 function resolveIdleDrive(): NaturalIdleDrive | null {
-  if (hostIdleDrive === null || !naturalSettings.document.idleActivities)
+  if (hostIdleDrive === null || !props.idleActivities)
     return sceneIdleDrive = null
   const rate = stance?.intent?.action ? 0 : hostIdleDrive.rate
   const capabilities = body?.capabilities ?? null
@@ -1406,8 +1415,8 @@ async function loadModel(src: string) {
             performance: props.performance,
             energy: props.naturalEnergy ?? naturalSettings.document.energy,
             voice: { speaking, speechActiveOrRecent: speaking, level: props.mouthOpenSize },
-            cursor,
-            chat: props.chatTarget
+            cursor: props.cursorAttention ? cursor : null,
+            chat: props.chatAttention && props.chatTarget
               ? { typing: props.chatActivity?.typing ?? false, target: props.chatTarget.visible ? chatPoint : null }
               : null,
             placement: !head || headX === undefined
@@ -1597,7 +1606,7 @@ watch(() => props.modelSrc, (src) => {
 
 // --- Touch
 // Pokes and pets are a Natural reaction, so touch runs only while Natural drives the model.
-const touchActive = computed(() => naturalSettings.document.touch && capabilities.value.posture && !props.paused)
+const touchActive = computed(() => props.touchReactions && capabilities.value.posture && !props.paused)
 
 /** Whether the mind's pet runs. The pet hand reaches Natural only meanwhile. */
 let petGranted = false

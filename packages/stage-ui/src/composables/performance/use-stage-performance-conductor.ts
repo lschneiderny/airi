@@ -30,6 +30,7 @@ import { useIntervalFn } from '@vueuse/core'
 import { computed, onScopeDispose, shallowRef, watch } from 'vue'
 
 import { EMOTION_VALUES } from '../../constants/emotions'
+import { useCharacterBehaviorSettings } from '../../features/character-behavior/settings'
 import { usePerformanceRuntimeState } from '../../features/performance/runtime-state'
 import { useExpressionPerformanceSettings } from '../../features/performance/settings'
 import { useLlmToolsStore } from '../../stores/ai/chat-llm/tools'
@@ -1091,6 +1092,7 @@ export function useStagePerformanceConductor(options: Pick<StagePerformanceCondu
   characterReading?: () => CharacterReading | null
 }) {
   const performanceSettings = useExpressionPerformanceSettings()
+  const behaviorSettings = useCharacterBehaviorSettings()
   const expressions: StageExpressionBackend = {
     get catalog() { return options.expressionBackend()?.catalog ?? [] },
     get modelId() { return options.expressionBackend()?.modelId ?? '' },
@@ -1106,7 +1108,7 @@ export function useStagePerformanceConductor(options: Pick<StagePerformanceCondu
     publishedModelId = modelId
   }, { immediate: true, deep: true })
   // The shared document; the conductor applies each signal's character profile on top of it.
-  const settingsDocument = computed(() => performanceSettings.document)
+  const settingsDocument = computed(() => ({ ...performanceSettings.document, ...behaviorSettings.document.emotion }))
   /**
    * The settings the Natural scene performs with: the document under the active card's profile.
    * Mood doses do not depend on it, because each episode carries its own character's gain. The

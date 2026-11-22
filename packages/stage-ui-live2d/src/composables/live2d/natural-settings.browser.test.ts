@@ -10,10 +10,7 @@ import { useLive2DNaturalSettings } from './natural-settings'
 const key = 'settings/live2d/natural'
 const defaults = {
   energy: 0.5,
-  cursorAttention: true,
-  screenAwareness: true,
-  idleActivities: true,
-  touch: true,
+  screenLean: true,
   touchPetRequiresHold: false,
   touchHeadScale: {},
   emotionStrength: {},
@@ -66,6 +63,16 @@ describe('live2d natural settings', () => {
     vi.restoreAllMocks()
   })
 
+  it('reads an old document as realisation settings and renames screen awareness', () => {
+    localStorage.setItem(key, JSON.stringify({ energy: 0.8, screenAwareness: false, cursorAttention: false, idleActivities: false, touch: false, touchPetRequiresHold: true }))
+    expect(createContext().store.document).toEqual({ ...defaults, energy: 0.8, screenLean: false, touchPetRequiresHold: true })
+  })
+
+  it('keeps screenLean when the old spelling is also present', () => {
+    localStorage.setItem(key, JSON.stringify({ screenLean: true, screenAwareness: false }))
+    expect(createContext().store.document.screenLean).toBe(true)
+  })
+
   it('loads defaults and persists updates and resets as one document', async () => {
     const { store } = createContext()
     expect(store.document).toEqual(defaults)
@@ -89,9 +96,9 @@ describe('live2d natural settings', () => {
     expect(store.document.emotionStrength).toEqual({ shuka: { happy: 2 } })
   })
 
-  it.each([{ energy: 'banana' }, { energy: Number.NaN }, { touch: 'yes' }, { touchHeadScale: { shuka: 'big' } }, { extra: true }, [], null])('rejects invalid patches without changing state or storage: %j', async (patch) => {
+  it.each([{ energy: 'banana' }, { energy: Number.NaN }, { touchPetRequiresHold: 'yes' }, { touchHeadScale: { shuka: 'big' } }, { extra: true }, [], null])('rejects invalid patches without changing state or storage: %j', async (patch) => {
     const { store } = createContext()
-    await store.update({ touch: false })
+    await store.update({ touchPetRequiresHold: true })
     const before = structuredClone(store.document)
     const stored = localStorage.getItem(key)
     // @ts-expect-error Deliberately exercise malformed runtime input.
@@ -102,9 +109,9 @@ describe('live2d natural settings', () => {
   })
 
   it('falls back per field when a stored field is invalid', () => {
-    localStorage.setItem(key, JSON.stringify({ energy: 'banana', touch: false, extra: 1 }))
+    localStorage.setItem(key, JSON.stringify({ energy: 'banana', touchPetRequiresHold: true, extra: 1 }))
     const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    expect(createContext().store.document).toEqual({ ...defaults, touch: false })
+    expect(createContext().store.document).toEqual({ ...defaults, touchPetRequiresHold: true })
     expect(warning).toHaveBeenCalledExactlyOnceWith('[live2d-natural-settings] Invalid stored fields reset to defaults:', 'energy')
   })
 
@@ -128,7 +135,6 @@ describe('live2d natural settings', () => {
     expect(store.document).toEqual({
       ...defaults,
       energy: 0.85,
-      cursorAttention: false,
       touchPetRequiresHold: true,
       touchHeadScale: { shuka: 1.4 },
       emotionStrength: { shuka: { happy: 1.5, sad: 2 } },
@@ -136,10 +142,10 @@ describe('live2d natural settings', () => {
     // Reading alone writes nothing: a follower may be the first window to read.
     expect(localStorage.getItem(key)).toBeNull()
 
-    await store.update({ touch: false })
+    await store.update({ touchPetRequiresHold: true })
 
     expect(naturalKeys()).toEqual([key])
-    expect(JSON.parse(localStorage.getItem(key)!)).toEqual({ ...store.document, touch: false })
+    expect(JSON.parse(localStorage.getItem(key)!)).toEqual({ ...store.document, touchPetRequiresHold: true })
     expect(store.document.energy).toBe(0.85)
   })
 
@@ -175,7 +181,7 @@ describe('live2d natural settings', () => {
       }, { flush: 'sync' })
     })
 
-    expect(await follower.store.update({ energy: 0.8, screenAwareness: false })).toEqual({ success: true })
+    expect(await follower.store.update({ energy: 0.8, screenLean: false })).toEqual({ success: true })
     await snapshot
     // A second leader-routed command is a transport barrier, not a timing wait.
     // @ts-expect-error Deliberately exercise malformed runtime input.
@@ -183,7 +189,7 @@ describe('live2d natural settings', () => {
 
     expect(rejected.success).toBe(false)
     expect(leader.store.document).toEqual(follower.store.document)
-    expect(leader.store.document.screenAwareness).toBe(false)
+    expect(leader.store.document.screenLean).toBe(false)
     expect(mutations).toBe(1)
     expect(leaderAction).toHaveBeenCalledTimes(2)
     expect(persist.mock.calls.filter(([storageKey]) => storageKey === key)).toHaveLength(1)

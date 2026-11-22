@@ -32,7 +32,7 @@ reaching feature parity with the Live2D and VRM renderers:
   Sleepy map to no clip).
 - **Idle activities**: under Natural she stretches, yawns, looks around, watches
   the screen, sighs, rolls her shoulders, shifts her stance, swings her arms and
-  dozes on her own (`idleActivities` in the Natural settings,
+  dozes on her own (`idleActivities` in character behavior,
   on by default), and plays the clips the user marked "Idle may use" now and
   then while her body is quiet: Natural's idle draw decides when (the
   `idle-clip` errand, listed in the drive while a clip is allowed), the scene
@@ -653,17 +653,15 @@ and body motion. The scene also exposes `wakeFromSleep()` and
 `reactToDesktop(reaction)`, which `Stage.vue` calls under Natural when the mind
 answers the user's return or a desktop event; they forward to
 `MMDNaturalAdapter.wake` and `react`.
-The `touch` (default on) and `touchPetRequiresHold` (default off) Natural
-settings match the Live2D settings. The scene also plays ACT
-cue gestures (`gesture`) and takes mood doses (`addMood`), and
-the `emotionStrength` Natural setting holds per-model emotion strengths in the
-Live2D shape. The Natural settings are one synced settings document, held by
-`useMMDNaturalSettings` (`src/stores/natural-settings.ts`) and stored as
-`settings/mmd/natural`: every window reads `document`, and the leader-routed
-`update` and `reset` are the only writers. A profile saved before the document
-kept one `settings/mmd/natural-*` key per setting; the store starts from those
-keys while no document is stored, and the first `update` or `reset` writes the
-document and deletes them. Diagnostics
+Character behavior supplies the shared touch, idle, cursor, and chat permissions.
+The stage passes these read-only inputs to the scene; MMD gains the same cursor
+and chat switches as Live2D. The scene plays ACT cue gestures (`gesture`) and
+mood doses (`addMood`). `useMMDNaturalSettings` (`src/stores/natural-settings.ts`)
+holds realisation only: `energy`, `touchPetRequiresHold`, and per-model
+`emotionStrength`, stored at `settings/mmd/natural`. Await leader-routed
+`update` and `reset`. The host initializes the behavior import before writing
+this narrowed document. Its pre-document import keeps realisation values and
+removes old keys after an acknowledged save. Diagnostics
 publish `touch` with `lastRegion`, `hitBody`, `petActive`, `events`, and
 `headScreenPoint` in canvas client pixels.
 

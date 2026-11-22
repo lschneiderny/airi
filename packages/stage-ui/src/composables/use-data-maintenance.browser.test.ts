@@ -20,6 +20,7 @@ import { characterStateRepo } from '../database/repos/character-state.repo'
 import { chatSessionsRepo } from '../database/repos/chat-sessions.repo'
 import { stickersRepo } from '../database/repos/stickers.repo'
 import { storage } from '../database/storage'
+import { useCharacterBehaviorSettings } from '../features/character-behavior/settings'
 import { useHostNoticeSettings } from '../features/host-capabilities/notice-settings'
 import { useExpressionPerformanceSettings } from '../features/performance/settings'
 import { useSituationSettings } from '../features/situation/settings'
@@ -427,7 +428,8 @@ it('forgets derived conversation state, presence, expression, host notice, Natur
   expect(mmdNatural.document.energy).toBe(0.9)
   await live2dNatural.update({ energy: 0.9, touchHeadScale: { shuka: 1.5 } })
   await situationSettings.update({ shareForegroundWindow: false })
-  await expressionSettings.update({ bands: false })
+  await expressionSettings.update({ autoExpressions: false })
+  await useCharacterBehaviorSettings(pinia).update({ emotion: { bands: false }, idleActivities: false })
   await hostNotice.dismiss('linux-wayland:wayland-cursor-unreported')
   expect(JSON.parse(localStorage.getItem('settings/host-notice')!).dismissedKeys).toEqual(['linux-wayland:wayland-cursor-unreported'])
   mmd.physicsEnabled = false
@@ -437,7 +439,10 @@ it('forgets derived conversation state, presence, expression, host notice, Natur
   expect(localStorage.getItem('settings/situation-inner')).toBeNull()
   expect(Object.keys(localStorage).filter(key => key.startsWith('expression-'))).toEqual([])
   expect(situationSettings.document.shareForegroundWindow).toBe(true)
-  expect(expressionSettings.document.bands).toBe(true)
+  expect(expressionSettings.document.autoExpressions).toBe(true)
+  expect(useCharacterBehaviorSettings(pinia).document.emotion.bands).toBe(true)
+  expect(useCharacterBehaviorSettings(pinia).document.idleActivities).toBe(true)
+  expect(localStorage.getItem('settings/character-behavior')).toBeNull()
   expect(hostNotice.document.dismissedKeys).toEqual([])
   expect(localStorage.getItem('settings/host-notice')).toBeNull()
   expect(mmd.physicsEnabled).toBe(true)

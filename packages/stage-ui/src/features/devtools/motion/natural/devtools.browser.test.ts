@@ -20,7 +20,7 @@ import { createI18n } from 'vue-i18n'
 import NaturalMotionDevtools from './devtools.vue'
 
 import { answerAffectTraceRequest, StagePerformanceConductor } from '../../../../composables/performance/use-stage-performance-conductor'
-import { useExpressionPerformanceSettings } from '../../../../features/performance/settings'
+import { useCharacterBehaviorSettings } from '../../../../features/character-behavior/settings'
 import { useNaturalPerformanceOverride } from '../../../../stores/natural-performance-override'
 import { naturalMind } from '../../../../test/natural-mind'
 
@@ -294,8 +294,8 @@ describe('natural motion lab', () => {
 
   it('emits the configured clear nominal from the real pulse button', async () => {
     const { screen, override } = await renderLab()
-    const settings = useExpressionPerformanceSettings()
-    expect(await settings.update({ intensity: { clear: 0.7 } })).toEqual({ success: true })
+    const settings = useCharacterBehaviorSettings()
+    expect(await settings.update({ emotion: { intensity: { clear: 0.7 } } })).toEqual({ success: true })
 
     const pulses = shallowRef<EmotionPulse[]>([])
     onTestFinished(override.onEmotionPulse((pulse) => {

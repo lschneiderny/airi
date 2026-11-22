@@ -10,14 +10,8 @@ import { boolean, finite, number, optional, pipe, record, string, transform, unk
 const live2dNaturalSettingsEntries = {
   /** How lively Natural motion is, from 0 (calm) to 1 (energetic); out-of-range numbers are clamped. @default 0.5 */
   energy: optional(pipe(number(), finite(), transform(value => clamp(value, 0, 1))), 0.5),
-  /** Let Natural look at the cursor. @default true */
-  cursorAttention: optional(boolean(), true),
-  /** Let Natural lean toward the middle of the screens and glance at the chat. @default true */
-  screenAwareness: optional(boolean(), true),
-  /** Let Natural do things on its own while idle: stretch, yawn, look around, watch the screen, doze off. @default true */
-  idleActivities: optional(boolean(), true),
-  /** Let the user poke the model and pet its head with the cursor while Natural drives it. @default true */
-  touch: optional(boolean(), true),
+  /** Let Natural lean toward the middle of the screens. Chat attention belongs to character behavior. @default true */
+  screenLean: optional(boolean(), true),
   /** Count only strokes made with the primary button held as pets, so passing the cursor over the head never pets it. @default false */
   touchPetRequiresHold: optional(boolean(), false),
   /** Size of the petting area relative to the measured head, by stage model id. A model without an entry uses 1, the measured head. */
@@ -34,9 +28,7 @@ export type Live2DNaturalSettings = SettingsDocument<typeof live2dNaturalSetting
 /** The pre-document key of each setting; a setting added after the document has none. */
 const legacyKeys = {
   energy: 'settings/live2d/natural-energy',
-  cursorAttention: 'settings/live2d/natural-cursor-attention',
-  screenAwareness: 'settings/live2d/natural-screen-awareness',
-  touch: 'settings/live2d/natural-touch',
+  screenLean: 'settings/live2d/natural-screen-awareness',
   touchPetRequiresHold: 'settings/live2d/natural-touch-pet-requires-hold',
   touchHeadScale: 'settings/live2d/natural-touch-head-scale',
   emotionStrength: 'settings/live2d/natural-emotion-strength',
@@ -74,18 +66,29 @@ function removeLegacyLive2DNaturalSettings() {
     return
   for (const key of Object.values(legacyKeys))
     localStorage.removeItem(key)
+  localStorage.removeItem('settings/live2d/natural-touch')
+  localStorage.removeItem('settings/live2d/natural-cursor-attention')
+}
+
+// NOTICE:
+// Preserve screen lean when reading the old combined switch.
+// Root cause: screenAwareness owned both placement and chat before CM7c.
+// Source: this document before CM7c.
+// Removal condition: one release after CM7c, alongside the pre-document Natural import.
+function upgradeScreenLean(stored: Record<string, unknown>) {
+  return Object.hasOwn(stored, 'screenLean') ? stored : { ...stored, screenLean: stored.screenAwareness }
 }
 
 /**
- * The Natural settings of the Live2D renderer: one document that every window reads and only the leader persists.
- *
- * Read fields from `document`. Change them with `update`, awaited; never assign to `document`. The stage, the
- * settings panel, and the motion QA bridge all share this store.
+ * Renderer realisation, replicated across windows with one leader persistence owner.
+ * Read `document`; change it only through awaited `update` and `reset`.
+ * The host initializes character behavior before its first write, preserving behavior values before this document narrows.
  */
 export const useLive2DNaturalSettings = defineStore('live2d-natural-settings', () => {
   const settings = useSettingsDocument('settings/live2d/natural', live2dNaturalSettingsEntries, {
     label: 'live2d-natural-settings',
     initial: readLegacyLive2DNaturalSettings,
+    upgrade: upgradeScreenLean,
   })
 
   async function update(patch: Partial<Live2DNaturalSettings>) {

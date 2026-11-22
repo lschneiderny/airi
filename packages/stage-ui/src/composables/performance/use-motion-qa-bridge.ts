@@ -33,7 +33,7 @@ import { useExpressionStore, useNaturalMotionDiagnostics } from '@proj-airi/stag
 import { nextTick, onScopeDispose, toRaw, watch } from 'vue'
 
 import { EMOTION_VALUES } from '../../constants/emotions'
-import { useExpressionPerformanceSettings } from '../../features/performance/settings'
+import { useCharacterBehaviorSettings } from '../../features/character-behavior/settings'
 import { DisplayModelFormat, useDisplayModelsStore } from '../../stores/display-models'
 import { useNaturalPerformanceOverride } from '../../stores/natural-performance-override'
 import { useSettingsStageModel } from '../../stores/settings/stage-model'
@@ -107,7 +107,7 @@ export function useMotionQaBridge(options: MotionQaBridgeOptions) {
   const frames = options.frames ?? browserFrames
   const live2d = useSettingsLive2d()
   const live2dNatural = useLive2DNaturalSettings()
-  const performanceSettings = useExpressionPerformanceSettings()
+  const behaviorSettings = useCharacterBehaviorSettings()
   const stageModel = useSettingsStageModel()
   const displayModels = useDisplayModelsStore()
   const diagnostics = useNaturalMotionDiagnostics()
@@ -136,15 +136,18 @@ export function useMotionQaBridge(options: MotionQaBridgeOptions) {
       modelId,
       modelLoaded: modelId !== null && (options.modelLoaded?.() ?? diagnostics.loadedModelId === modelId),
       driver: live2d.live2dMotionDriver,
-      cursorAttention: live2dNatural.document.cursorAttention,
+      cursorAttention: behaviorSettings.document.cursorAttention,
+      chatAttention: behaviorSettings.document.chatAttention,
+      idleActivities: behaviorSettings.document.idleActivities,
+      touchReactions: behaviorSettings.document.touchReactions,
       expressionEnabled: live2d.live2dExpressionActive,
-      heldEmotions: performanceSettings.document.heldEmotions,
+      heldEmotions: behaviorSettings.document.emotion.heldEmotions,
       naturalActive: snapshot?.naturalActive ?? false,
       hold: snapshot?.hold ? { emotion: snapshot.hold.emotion, strength: snapshot.hold.strength } : null,
       captureActive: diagnostics.pendingRequest !== null,
       head: snapshot?.head ?? null,
       screen: { x: window.screenX, y: window.screenY, devicePixelRatio: window.devicePixelRatio },
-      screenAwareness: live2dNatural.document.screenAwareness,
+      screenLean: live2dNatural.document.screenLean,
       placement: diagnostics.lastPlacement,
       placementYawBias: diagnostics.lastPlacementYawBias,
       chat: diagnostics.lastChat && { ...diagnostics.lastChat },
@@ -205,7 +208,7 @@ export function useMotionQaBridge(options: MotionQaBridgeOptions) {
         if (!name)
           return `The stage has no emotion "${event.emotion}"`
         // Same nominal intensity the devtools lab pulse buttons send for a band.
-        options.emotionsQueue.enqueue({ emotion: { name, intensity: performanceSettings.document.intensity[event.band] }, source: event.source })
+        options.emotionsQueue.enqueue({ emotion: { name, intensity: behaviorSettings.document.emotion.intensity[event.band] }, source: event.source })
         return null
       }
       case 'act':
@@ -333,23 +336,28 @@ export function useMotionQaBridge(options: MotionQaBridgeOptions) {
     defineInvokeHandler(context, motionQaEventsInvokeEventa, ({ sinceSeq }) => eventLog.read(sinceSeq)),
     defineInvokeHandler(context, motionQaStateInvokeEventa, () => readState()),
     defineInvokeHandler(context, motionQaConfigureInvokeEventa, async (input) => {
+      await behaviorSettings.initialize()
       if (input.driver)
         live2d.live2dMotionDriver = input.driver
       if (input.expressionEnabled !== undefined)
         live2d.live2dExpressionEnabled = input.expressionEnabled
-      if (input.cursorAttention !== undefined || input.screenAwareness !== undefined || input.idleActivities !== undefined) {
+      if (input.screenLean !== undefined) {
         const updated = await live2dNatural.update({
-          ...(input.cursorAttention !== undefined && { cursorAttention: input.cursorAttention }),
-          ...(input.screenAwareness !== undefined && { screenAwareness: input.screenAwareness }),
-          ...(input.idleActivities !== undefined && { idleActivities: input.idleActivities }),
+          screenLean: input.screenLean,
         })
         if (!updated.success)
-          throw new Error('The Live2D Natural settings rejected "cursorAttention", "screenAwareness", or "idleActivities"')
+          throw new Error('The Live2D Natural settings rejected "screenLean"')
       }
-      if (input.heldEmotions !== undefined) {
-        const updated = await performanceSettings.update({ heldEmotions: input.heldEmotions })
+      if (input.cursorAttention !== undefined || input.chatAttention !== undefined || input.idleActivities !== undefined || input.touchReactions !== undefined || input.heldEmotions !== undefined) {
+        const updated = await behaviorSettings.update({
+          ...(input.cursorAttention !== undefined && { cursorAttention: input.cursorAttention }),
+          ...(input.chatAttention !== undefined && { chatAttention: input.chatAttention }),
+          ...(input.idleActivities !== undefined && { idleActivities: input.idleActivities }),
+          ...(input.touchReactions !== undefined && { touchReactions: input.touchReactions }),
+          ...(input.heldEmotions !== undefined && { emotion: { heldEmotions: input.heldEmotions } }),
+        })
         if (!updated.success)
-          throw new Error('The performance settings rejected "heldEmotions"')
+          throw new Error('The character behavior settings rejected the configuration')
       }
       return readState()
     }),

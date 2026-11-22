@@ -22,6 +22,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { GATE_INTERVAL_MS, useSituationStore } from '.'
 import { MindVoice } from '../../composables/performance/mind-voice'
+import { useCharacterBehaviorSettings } from '../../features/character-behavior/settings'
 import { usePerformanceRuntimeState } from '../../features/performance/runtime-state'
 import { useSituationInnerState } from '../../features/situation/inner-state'
 import { useSituationSettings } from '../../features/situation/settings'
@@ -1547,20 +1548,20 @@ describe('situation gate loop', () => {
     expect(chat.submitUnprompted).not.toHaveBeenCalled()
   })
 
-  it('stays quiet when presence settings say so', async () => {
+  it('stays quiet when behavior settings say so', async () => {
     const { chat, observability } = startQuietLeader()
-    const settings = useSituationSettings()
+    const settings = useCharacterBehaviorSettings()
     offerUrgentTopic()
 
-    settings.update({ unpromptedEnabled: false })
+    await settings.update({ speaking: { unpromptedEnabled: false } })
     await nextGateTick()
     expect((await observability.inspect()).urge.decision).toMatchObject({ fire: false, reason: 'disabled' })
 
-    settings.update({ unpromptedEnabled: true, dontDisturb: true })
+    await settings.update({ speaking: { unpromptedEnabled: true, dontDisturb: true } })
     await nextGateTick()
     expect((await observability.inspect()).urge.decision).toMatchObject({ fire: false, reason: 'dont-disturb' })
 
-    settings.update({ dontDisturb: false, quietApps: ['notepad.exe'] })
+    await settings.update({ speaking: { dontDisturb: false, quietApps: ['notepad.exe'] } })
     await nextGateTick()
     expect((await observability.inspect()).urge.decision).toMatchObject({ fire: false, reason: 'quiet-app' })
     expect(chat.submitUnprompted).not.toHaveBeenCalled()
@@ -1576,7 +1577,7 @@ describe('situation gate loop', () => {
     const { store, observability } = startQuietLeader({
       foreground: () => foregroundSample({ exePath: `C:\\Tools\\${exeName}`, exeName, title: 'Draft' }),
     })
-    await useSituationSettings().update({ quietApps: [pattern] })
+    await useCharacterBehaviorSettings().update({ speaking: { quietApps: [pattern] } })
     offerTopic()
 
     const evaluation = await observability.evaluateGate()
@@ -1645,7 +1646,7 @@ describe('situation gate loop', () => {
     const { store, chat, observability } = startQuietLeader({
       foreground: () => foregroundSample({ exePath: `/Applications/${exeName}`, exeName, title: 'Draft' }),
     })
-    await useSituationSettings().update({ quietApps: [pattern] })
+    await useCharacterBehaviorSettings().update({ speaking: { quietApps: [pattern] } })
     offerTopic()
 
     const evaluation = await observability.evaluateGate()
@@ -1653,7 +1654,7 @@ describe('situation gate loop', () => {
     expect(store.state.activity).toMatchObject({ appId, category: 'other' })
     expect(evaluation).toMatchObject({ status: 'evaluated', decision: { fire: false, reason: 'quiet-app' } })
     expect(chat.submitUnprompted).not.toHaveBeenCalled()
-    await useSituationSettings().update({ quietApps: [] })
+    await useCharacterBehaviorSettings().update({ speaking: { quietApps: [] } })
     expect(await observability.evaluateGate()).toMatchObject({ status: 'evaluated', decision: { fire: true } })
   })
 
@@ -1661,7 +1662,7 @@ describe('situation gate loop', () => {
     const game = { exePath: 'D:\\SteamLibrary\\steamapps\\common\\Hades\\Hades.exe', exeName: 'Hades.exe', title: 'Hades' }
     let producing = true
     const { store, chat, observability } = startQuietLeader({ foreground: () => producing ? foregroundSample(game) : null })
-    useSituationSettings().update({ speakDuringGames: false })
+    await useCharacterBehaviorSettings().update({ speaking: { speakDuringGames: false } })
     offerTopic()
     await nextGateTick()
     expect((await observability.inspect()).urge.decision).toMatchObject({ fire: false, reason: 'busy-game' })
@@ -1732,11 +1733,11 @@ describe('situation gate loop', () => {
   it('keeps every hard suppressor when evaluating now', async () => {
     const { chat, observability } = startQuietLeader()
     offerTopic()
-    await useSituationSettings().update({ dontDisturb: true })
+    await useCharacterBehaviorSettings().update({ speaking: { dontDisturb: true } })
 
     expect(await observability.evaluateGate()).toMatchObject({ status: 'evaluated', decision: { fire: false, reason: 'dont-disturb', trace: { forceTiming: true } } })
     chat.state.sending = true
-    await useSituationSettings().update({ dontDisturb: false })
+    await useCharacterBehaviorSettings().update({ speaking: { dontDisturb: false } })
     expect(await observability.evaluateGate()).toMatchObject({ status: 'evaluated', decision: { fire: false, reason: 'generating' } })
     expect(chat.submitUnprompted).not.toHaveBeenCalled()
   })

@@ -18,7 +18,7 @@ const repoRoot = '/wt/tqr-t8'
 const profileDir = '/wt/tqr-t8/.temp/qa/run-1/profile'
 const root: LiveProcess = { pid: 4242, parentPid: 1, created: 1, commandLine: `node pnpm.mjs --dir ${repoRoot} -F @proj-airi/stage-tamagotchi dev` }
 const electron: LiveProcess = { pid: 4243, parentPid: root.pid, created: 2, commandLine: `${repoRoot}/node_modules/electron/dist/electron .` }
-const state: MotionQaState = { modelId: 'm', modelLoaded: true, driver: 'natural', cursorAttention: true, expressionEnabled: true, heldEmotions: true, naturalActive: true, hold: null, captureActive: false, head: { x: 100, y: 50, width: 80, height: 100 }, screen: { x: 0, y: 0, devicePixelRatio: 1 }, screenAwareness: true, placement: null, placementYawBias: 0, chat: null, host: null, foreground: null, desktopIdleSeconds: null, performanceMode: null, performance: null }
+const state: MotionQaState = { modelId: 'm', modelLoaded: true, driver: 'natural', cursorAttention: true, chatAttention: true, idleActivities: true, touchReactions: true, expressionEnabled: true, heldEmotions: true, naturalActive: true, hold: null, captureActive: false, head: { x: 100, y: 50, width: 80, height: 100 }, screen: { x: 0, y: 0, devicePixelRatio: 1 }, screenLean: true, placement: null, placementYawBias: 0, chat: null, host: null, foreground: null, desktopIdleSeconds: null, performanceMode: null, performance: null }
 
 /** A stage window whose bridge answers `state` once `ready` resolves; every evaluation is recorded in `steps`. */
 class FakeStage implements SessionStage {

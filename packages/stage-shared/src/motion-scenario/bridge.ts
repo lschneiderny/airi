@@ -64,6 +64,9 @@ export const MotionQaStateSchema = strictObject({
   modelLoaded: boolean(),
   driver: string(),
   cursorAttention: boolean(),
+  chatAttention: boolean(),
+  idleActivities: boolean(),
+  touchReactions: boolean(),
   expressionEnabled: boolean(),
   heldEmotions: boolean(),
   naturalActive: boolean(),
@@ -73,8 +76,8 @@ export const MotionQaStateSchema = strictObject({
   head: nullable(strictObject({ x: pipe(number(), finite()), y: pipe(number(), finite()), width: pipe(number(), finite(), minValue(Number.MIN_VALUE)), height: pipe(number(), finite(), minValue(Number.MIN_VALUE)) })),
   /** DOM window origin in screen CSS pixels; the harness converts to physical pixels. */
   screen: strictObject({ x: pipe(number(), finite()), y: pipe(number(), finite()), devicePixelRatio: pipe(number(), finite(), minValue(Number.MIN_VALUE)) }),
-  /** The persisted Natural screen-aware attention setting. */
-  screenAwareness: boolean(),
+  /** The Live2D realisation setting for the inward screen lean, separate from chat attention. */
+  screenLean: boolean(),
   /** Screen inwardness (-1..1, positive toward screen +x) the stage last handed to Natural, or null without a signal. */
   placement: nullable(pipe(number(), finite())),
   /** Normalized head-X placement term the Natural controller last applied. */
@@ -111,10 +114,12 @@ export type MotionQaState = InferOutput<typeof MotionQaStateSchema>
 export const MotionQaConfigureInputSchema = strictObject({
   driver: optional(literal('natural')),
   cursorAttention: optional(boolean()),
+  chatAttention: optional(boolean()),
+  touchReactions: optional(boolean()),
   expressionEnabled: optional(boolean()),
   heldEmotions: optional(boolean()),
-  screenAwareness: optional(boolean()),
-  /** The persisted Natural idle-activities setting; a gate that scores the base idle motion pins it off. */
+  screenLean: optional(boolean()),
+  /** The character behavior switch; a gate that scores the base idle motion pins it off. */
   idleActivities: optional(boolean()),
 })
 

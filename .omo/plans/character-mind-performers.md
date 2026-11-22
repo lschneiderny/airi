@@ -839,6 +839,19 @@ results. No acceptance run, hash re-pin, or visual result is claimed here.
   carry that realisation constraint alongside behavior; touch and explicit
   expression stimuli need only behavior. This preserves existing hold lengths.
 
+- **c3:** Rechecked section 2: capabilities, beat lock, gaze arbitration, director
+  look, restX, and sidesteps remain unchanged. The four persisted documents now
+  narrow with every reader in the same commit. Stage passes behavior permissions
+  as boolean scene props rather than introducing a renderer-to-stage-ui cycle.
+  Presence/expression commands and renderer controls/QA await the import before
+  writing old documents. A settled import flag prevents reset followed by the
+  deletion sweep from resurrecting the new key. Quiet-app defaults read the
+  preload platform at their boundary, avoiding the Vite-only shared barrel in
+  Node conductor imports while keeping supported-host defaults. QA now names
+  screenLean separately and exposes chatAttention and touchReactions. Scene API
+  documentation is updated; neither renderer has an existing scene story.
+  The controls keep their old locations until c5, but already write one owner.
+
 ## Checks run (CM7a)
 
 The implementation base is `e57dd1393`. The owner requested package checks,

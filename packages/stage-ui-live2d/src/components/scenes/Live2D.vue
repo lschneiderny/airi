@@ -63,6 +63,11 @@ const props = withDefaults(defineProps<{
   naturalEnergy?: number
   /** Effective expression-performance settings from the stage; Natural and the expression slots read them. */
   performanceSettings?: ExpressionPerformanceSettings
+  /** Decision permissions supplied by the stage's character-behavior document. */
+  idleActivities?: boolean
+  touchReactions?: boolean
+  cursorAttention?: boolean
+  chatAttention?: boolean
   /** Displays and window content bounds in Electron DIP screen coordinates; Natural reads them for screen placement. */
   screenPlacement?: { displays: PlacementRect[], windowBounds: PlacementRect }
   /** The host's chat window, visible or not, in the same DIP space; hosts without one leave it undefined. */
@@ -74,6 +79,10 @@ const props = withDefaults(defineProps<{
   performance: () => ({ mode: 'idle', attention: 'camera', away: false }),
   naturalEnergy: undefined,
   performanceSettings: () => defaultExpressionPerformanceSettings,
+  idleActivities: true,
+  touchReactions: true,
+  cursorAttention: true,
+  chatAttention: true,
   paused: false,
   mouthOpenSize: 0,
   nowSpeaking: false,
@@ -350,6 +359,10 @@ defineExpose({
         :natural-energy="props.naturalEnergy ?? naturalSettings.document.energy"
         :natural-emotion-strength="naturalSettings.document.emotionStrength[props.modelId ?? '']"
         :performance-settings="props.performanceSettings"
+        :idle-activities="props.idleActivities"
+        :touch-reactions="props.touchReactions"
+        :cursor-attention="props.cursorAttention"
+        :chat-attention="props.chatAttention"
         :screen-placement="props.screenPlacement"
         :chat-target="props.chatTarget"
         :chat-activity="props.chatActivity"

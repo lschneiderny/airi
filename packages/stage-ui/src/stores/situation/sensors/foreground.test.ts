@@ -149,7 +149,7 @@ describe('foreground situation sensor', () => {
     const settings = useSituationSettings()
 
     publish(T0)
-    await settings.update({ chattiness: 0.9 })
+    await settings.update({ showUnpromptedCue: false })
     publish(T0 + 1_000)
 
     expect(activities()).toHaveLength(1)

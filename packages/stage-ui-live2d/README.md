@@ -95,7 +95,7 @@ The controller and its pure layers live in `packages/motion-driver-natural`, sha
 - Idle activities make her do things on her own while nobody asks anything of her: stretch, yawn, look around, check on the user, lean in to watch the screen, zone out, nod off, and sway to music. While the user is away she falls asleep with closed eyes, her head nodding slowly, and wakes when the stage asks her to. Two cues frame a reach-out: a lifted look before she may speak, and letting it go when she stays silent. See Idle activities below.
 - While the chat is visible, typing can draw periodic chat fixations with a partial head follow. A typed send and an opened chat reach the character mind as a `chat` stimulus, and the mind's `chat-read` intent reaches the model through the scene's `chatRead`: a delayed reading glance sized by word count for a send, and a brief glance for an unfold. The adapter applies a read after the frame's chat input, so a chat that just opened has its target, and drops it while the chat setting is off or no chat target exists. When talking starts, active and pending chat attention ends at once, so replies keep gaze on the camera. Chat text is not sent to Natural.
 
-Screen-aware attention is controlled by the `screenAwareness` Natural setting, enabled by default. The setting appears only for Natural and gates both placement and chat attention. Turning it off restores the no-signal behavior. The screen point currently applies to both screen attention and watching mode; Luke may revisit that choice.
+Live2D `screenLean` controls the inward screen placement. Character behavior supplies `chatAttention` and `cursorAttention` separately; the stage passes them to the scene. All three default to true.
 
 ### What Natural owns and what it never writes
 
@@ -179,7 +179,7 @@ The stage hands the resolver's presence and screen-change events to the characte
 
 Natural has an Energy setting, the `energy` field of the Natural settings document, from 0 (calm) to 1 (energetic). The default is 0.5.
 
-Every Natural setting of this renderer is a field of one settings document, held by `useLive2DNaturalSettings` (`src/composables/live2d/natural-settings.ts`) and stored as `settings/live2d/natural`: `energy`, `cursorAttention`, `screenAwareness`, `idleActivities`, `touch`, `touchPetRequiresHold`, `touchHeadScale`, and `emotionStrength`. The store is synced: every window reads `document`, and `update` and `reset` run on the leader, which is the only window that writes storage. Await `update`; never assign to `document`. A profile saved before the document kept one `settings/live2d/natural-*` key per setting; the store starts from those keys while no document is stored, and the first `update` or `reset` writes the document and deletes them.
+The Live2D realisation document, `useLive2DNaturalSettings` at `settings/live2d/natural`, holds `energy`, `screenLean`, `touchPetRequiresHold`, `touchHeadScale`, and `emotionStrength`. Only leader-routed `update` and `reset` persist it. The host initializes the character-behavior import before its first write. Old `screenAwareness` becomes `screenLean`; the pre-document import retains realisation fields and removes its old keys after an acknowledged save.
 The settings page shows it as a slider only while Natural is selected.
 Energy `E` scales posture amplitude by `0.7 + 0.6E` and posture shift rate by `0.6 + 0.8E`. It also sets the probability that a speech onset becomes an emphasis to `0.15 + 0.2E`.
 At the default of 0.5, Energy leaves every layer at its unscaled behavior.
@@ -187,7 +187,7 @@ Resetting Live2D settings restores the default Energy.
 
 ### Idle activities
 
-The Idle activities setting is the `idleActivities` field of the Natural settings document and is enabled by default. It is available only while Natural is selected.
+Idle activities is the user-wide `idleActivities` switch in character behavior, enabled by default. The stage supplies it to the Natural scene.
 
 The stage sends the scene an idle drive once a second through `setIdleDrive`: her slow mood relative to its resting value, sleepiness from the local hour, and the time since the last interaction. Music is not in the drive: the character mind hears it as a stimulus. The scene hands it to the adapter, or `null` while the setting is off. `idleCue` plays the reach-out cues. The adapter reports each behaviour's start and end through `onIdleBehaviour`, and the scene emits them as `idle` events, which the stage forwards to the situation so the model knows what she was doing. A behaviour in progress is reported as ended when another driver takes over or the model unloads.
 
@@ -210,7 +210,7 @@ The expression store holds what she picked as claims of their own (`idleActive`,
 While enabled, missing head or screen measurements retain the last valid placement rather than resetting the eased turn.
 Turning the setting off, removing the host placement prop, changing drivers, or replacing the model clears that cached measurement.
 
-The Screen-aware attention setting is the `screenAwareness` field of the Natural settings document and is enabled by default. It is available only while Natural is selected. The placement reference is the horizontal center of the bottom-layer displays; the turn eases toward it and fades while the cursor is engaged. Side glances favor the inward screen direction, and screen attention and watching mode use a screen point for desk fixations. Typing, typed sends, and chat opening can produce chat glances, while replies stay on camera. Disabling the setting removes these placement and chat signals.
+The `screenLean` realisation setting turns toward the horizontal center of the bottom-layer displays. The turn eases inward and fades while the cursor is engaged. Side glances favor the inward direction, and desk fixations use the screen point. Character behavior independently enables chat targets and typing fixation with `chatAttention`; disabling screen lean no longer disables chat attention.
 
 ### Emotions by intensity band
 
