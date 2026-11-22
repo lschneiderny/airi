@@ -410,8 +410,7 @@ const emotionsQueue = createQueue<StageCue>({
     async (ctx) => {
       const { emotion, expression } = ctx.data
       if (stageModelRenderer.value === 'live2d' || stageModelRenderer.value === 'mmd') {
-        // The conductor sends Natural episodes to the scene and plays the motion group for
-        // Universal and MAGIC; the store defers a motion group while the model loads.
+        // Declared faces use the mind; upstream drivers keep their own motion and expression paths.
         if (emotion) {
           if (performanceRenderer.value.capabilities.face) {
             performanceConductor.emotion(emotion.name, emotion.intensity, ctx.data.source, ctx.data.turnId)
@@ -424,8 +423,12 @@ const emotionsQueue = createQueue<StageCue>({
           }
         }
         // After the emotion, so an explicit expression replaces the auto pick for its slot.
-        if (expression)
-          performanceConductor.expression(expression, undefined, 'act', ctx.data.turnId)
+        if (expression) {
+          if (performanceRenderer.value.capabilities.face)
+            performanceConductor.expression(expression, undefined, 'act', ctx.data.turnId)
+          else if (stageModelRenderer.value === 'live2d')
+            await live2d.expressions.execute({ name: expression })
+        }
         return
       }
       if (!emotion)

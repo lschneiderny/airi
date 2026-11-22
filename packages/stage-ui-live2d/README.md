@@ -16,6 +16,11 @@ gaze, and the nod, shake, and glance cue gestures. It declares no body channel;
 shrug and lean cannot be realised on the head and bust. Universal and MAGIC
 declare no mind capabilities.
 
+Under Universal and MAGIC, ACT emotions play upstream motion groups and ACT
+expressions execute through the Live2D context. Automatic fork expression
+picks stop there; the expression panel, manual switches, and saved rest set
+remain available.
+
 ### Expressions
 
 ZIP imports and OPFS-restored archives discover every `.exp3.json`, including files absent from the model settings references. URL-loaded models discover only expressions referenced by their model settings; remote folders are not enumerated.

@@ -218,6 +218,8 @@ let performSeq = 0
 let pendingAction: BodyActionRequest | null = null
 let actionFeedback: { seq: number, state: 'finished' | 'failed' } | null = null
 let playedActionSeq: number | null = null
+/** A driver switch replaces the base outside the director; its next frame must reapply the selected stance. */
+let directorBaseApplied = false
 let playedLookSeq = 0
 let layerClip: string | null = null
 const requestedKinds = new Map<number, BodyActionKind>()
@@ -255,6 +257,7 @@ const {
   albedoGlow,
   renderScale,
 } = storeToRefs(mmdStore)
+const capabilities = computed(() => motionDriver.value === 'natural' ? MMD_NATURAL_CAPABILITIES : NO_CAPABILITIES)
 /** A model without saved strengths performs every emotion at 1. */
 const defaultEmotionStrengths: NaturalEmotionStrengths = {}
 
@@ -694,7 +697,7 @@ function renderLoop(now = performance.now()) {
   expressions.update(now / 1000)
   const clocks = frameClocks(now, diagnostics.directorClockOffsetMs)
   naturalSeconds = clocks.naturalSeconds
-  if (animation && stance && loadedModelKey) {
+  if (capabilities.value.body && animation && stance && loadedModelKey) {
     bodyPoints = motionDriver.value === 'natural' && natural && mesh && camera && canvasRef.value
       ? resolveBodyPoints({ mesh, camera, viewport: canvasRef.value.getBoundingClientRect(), gazeMode: gazeMode.value, calibration: props.stageWorld?.calibration }, natural.bodyFrame)
       : null
@@ -710,8 +713,10 @@ function renderLoop(now = performance.now()) {
       idle: naturalIdleStates(),
       interaction: { away: motionDriver.value === 'natural' && bodyAway, attend: attendInbox.atFrame(clocks.directorMs), actionRequest: pendingAction, actionFeedback, dragging },
     })
-    if (base.changed)
+    if (base.changed || !directorBaseApplied) {
       animation.setBaseMotion(base.motion)
+      directorBaseApplied = true
+    }
     obeyAction()
     const look = stance.intent?.look
     if (look && look.seq > playedLookSeq) {
@@ -764,7 +769,7 @@ function renderLoop(now = performance.now()) {
       locomotion: motionDriver.value === 'natural' ? body?.diagnostics.locomotion ?? null : null,
       arms: motionDriver.value === 'natural' ? body?.diagnostics.arms ?? null : null,
       touch: touch && canvasRef.value ? touch.diagnostics(activeCamera, canvasRef.value.getBoundingClientRect()) : null,
-      director: stance ? { ...stance.diagnostics, clockOffsetMs: diagnostics.directorClockOffsetMs, centerY: centerModelY() } : null,
+      director: capabilities.value.body && stance ? { ...stance.diagnostics, clockOffsetMs: diagnostics.directorClockOffsetMs, centerY: centerModelY() } : null,
       animation: animation?.snapshot() ?? { idle: null, currentAction: null, actionsStarted: 0, layer: null },
       action: actionSnapshot(),
       clips: clipsSnapshot(),
@@ -903,6 +908,7 @@ function disposeModel() {
   pendingAction = null
   actionFeedback = null
   playedActionSeq = null
+  directorBaseApplied = false
   playedLookSeq = 0
   layerClip = null
   dragging = false
@@ -1013,6 +1019,13 @@ async function syncMotions() {
       emit('error', err)
     }
   }
+  playClassicIdle()
+}
+
+/** The upstream idle selection is independent of Natural's stance slots and curation. */
+function playClassicIdle() {
+  if (!capabilities.value.body && idleMotionName.value && registeredMotions.has(idleMotionName.value))
+    animation?.setIdleMotion(idleMotionName.value)
 }
 
 /**
@@ -1162,7 +1175,7 @@ function isBaseEligible(name: string): boolean {
  * Kind, layer and loop come from the derived metadata and the user's curation; an unknown clip defaults to an upper gesture.
  */
 function requestPerform(name: string | null, options: { loop?: boolean, source: BodyActionRequest['source'] }): boolean {
-  if (!stance || !loadedModelKey)
+  if (!capabilities.value.body || !stance || !loadedModelKey)
     return false
   // A request the director has not read yet gives way to this one.
   if (pendingAction && pendingAction.seq > stance.diagnostics.lastActionSeq)
@@ -1226,7 +1239,7 @@ function obeyAction() {
 }
 
 function actionSnapshot(): MMDMotionSnapshot['action'] {
-  const diagnostics = stance?.diagnostics
+  const diagnostics = capabilities.value.body ? stance?.diagnostics : undefined
   return {
     performing: diagnostics?.performing ? { name: diagnostics.performing.clipId, layer: diagnostics.performing.layer, phase: diagnostics.performing.phase, seq: diagnostics.performing.seq } : null,
     lastActionSeq: diagnostics?.lastActionSeq ?? 0,
@@ -1532,14 +1545,12 @@ async function loadModel(src: string) {
 /** Plays the gesture motion mapped to an emotion, if the model has one. */
 function setClassicEmotion(emotion: string, intensity = 1) {
   const value = EMOTION_VALUES.includes(emotion as Emotion) ? emotion as Emotion : Emotion.Neutral
-  if (motionDriver.value === 'classic')
-    emote?.setEmotion(value, intensity)
-  else
-    natural?.setEmotion(value, intensity)
-
+  if (capabilities.value.face)
+    return
+  emote?.setEmotion(value, intensity)
   const actionName = emotionActionMap.value[value]
-  if (actionName && registeredMotions.has(actionName))
-    requestPerform(actionName, { source: 'act' })
+  if (actionName)
+    animation?.playAction(actionName, { loop: false })
 }
 
 let resizeObserver: ResizeObserver | undefined
@@ -1586,7 +1597,6 @@ watch(() => props.modelSrc, (src) => {
 
 // --- Touch
 // Pokes and pets are a Natural reaction, so touch runs only while Natural drives the model.
-const capabilities = computed(() => motionDriver.value === 'natural' ? MMD_NATURAL_CAPABILITIES : NO_CAPABILITIES)
 const touchActive = computed(() => naturalSettings.document.touch && capabilities.value.posture && !props.paused)
 
 /** Whether the mind's pet runs. The pet hand reaches Natural only meanwhile. */
@@ -1748,6 +1758,26 @@ function observeTraceEvents() {
 
 watch(motionDriver, () => {
   traceSource?.recorder.stop()
+  directorBaseApplied = false
+  if (!capabilities.value.body) {
+    // Withdraw director-owned requests before classic resumes upstream playback.
+    actionPort.dispose()
+    bodyToolPort.dispose()
+    pendingAction = null
+    const action = stance?.intent?.action
+    if (action)
+      actionFeedback = { seq: action.seq, state: 'failed' }
+    if (playedActionSeq !== null)
+      animation?.stopLayer(playedActionSeq)
+    playedActionSeq = null
+    animation?.setBaseMotion(null, 0)
+    animation?.playIdle(0)
+    playClassicIdle()
+  }
+  else {
+    // An upstream one-shot must relinquish playback before Natural reapplies its base.
+    animation?.playIdle(0)
+  }
   if (morphRuntime) {
     for (const morph of morphRuntime.morphs) {
       for (const layer of ['naturalFace', 'blink', 'expression', 'lipSync'] as const)
@@ -1759,6 +1789,8 @@ watch(motionDriver, () => {
   body?.resetPerformance()
   observeTraceEvents()
 })
+
+watch(idleMotionName, playClassicIdle)
 
 // Morph-slot overrides: rebind each slot the user remapped (empty = auto).
 watch(morphOverrides, (overrides) => {
@@ -1881,7 +1913,7 @@ defineExpose({
   setRootX,
   setDragging,
   characterPlacement,
-  bodyPort: computed(() => props.stageWorld ? bodyToolPort : null),
+  bodyPort: computed(() => capabilities.value.body && props.stageWorld ? bodyToolPort : null),
   actionPort,
 })
 </script>

@@ -658,6 +658,7 @@ async function removeMotion(id: string) {
     />
     <p :class="['mt-2', 'text-xs', 'text-neutral-500', 'dark:text-neutral-400']">
       {{ t('settings.mmd.motion.stance.description') }}
+      {{ t('tamagotchi.settings.devtools.pages.mmd-motion.body.natural-only') }}
     </p>
     <FieldCombobox
       v-for="slot in STANCE_SLOTS"
@@ -700,7 +701,7 @@ async function removeMotion(id: string) {
           {{ motion.name }}
         </div>
         <div :class="['flex', 'shrink-0', 'items-center', 'gap-1']">
-          <Button @click="playMotionOnce(motion.name)">
+          <Button :disabled="motionDriver !== 'natural'" @click="playMotionOnce(motion.name)">
             {{ t('settings.mmd.animation.play-once') }}
           </Button>
           <Button
@@ -719,6 +720,7 @@ async function removeMotion(id: string) {
       </div>
       <p :class="['mb-2', 'text-xs', 'text-neutral-500', 'dark:text-neutral-400']">
         {{ t('settings.mmd.animation.clips.description') }}
+        {{ t('tamagotchi.settings.devtools.pages.mmd-motion.body.natural-only') }}
       </p>
       <div :class="['overflow-x-auto', 'rounded-lg', 'border-2', 'border-neutral-100', 'dark:border-neutral-800']">
         <table :class="['w-full', 'text-left', 'text-xs']">
