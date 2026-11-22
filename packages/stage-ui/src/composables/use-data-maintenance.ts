@@ -102,7 +102,9 @@ export const modulesRegistrations = [
   'factorio',
   'minecraft',
   'memory',
+  'memory-settings',
   'recipes',
+  'recipe-settings',
 ] as const satisfies readonly StateRegistrationId[]
 
 /** The settings stores that the desktop reset clears with the modules. The stage model selection is reset apart. */
@@ -121,6 +123,9 @@ const settingsRegistrations = [
   'screen-ambient-light',
   'three',
   'mmd',
+  'mmd-motion-files',
+  'mmd-performance-settings',
+  'mmd-clip-metadata',
   'situation-settings',
   'expression-performance-settings',
   'host-notice-settings',

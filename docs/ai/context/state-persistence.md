@@ -65,6 +65,10 @@ The registry covers renderer storage only. Main-process files stay with `storedD
 
 `stateRegistry` is the list of members: each registration names its owner, tier, writers, and locations. A registration whose state is a named exception carries the heading in `exception`.
 
+Plain upstream state declares `upstream: 'bd4f30391'`, the adopted revision that supplies its storage contract. The declaration covers only the listed writers and exact keys, including explicitly listed per-model keys. A changed fork default does not transfer ownership of the upstream storage contract. These declarations do not make replicated plain refs single-writer: upstream's seven synced plain-ref stores still persist snapshots in every window.
+
+Mixed owners have separate registrations for their repositories and settings: `memory-settings`, `recipe-settings`, `layout-background-settings`, `sticker-settings`, and `mmd-motion-files`. Memory and recipes reset their live toggles with their preceding repository reset; the settings registrations only sweep. MMD runs its existing reset once before the split registrations sweep. Background and sticker settings remain sweep-only because constructing those owners loads their libraries. Partial module and desktop resets include the corresponding split registrations.
+
 ### Per-model display settings
 
 Upstream stores the display-model settings of five renderers once for each model. The fork follows it, and its MMD motion driver and clip metadata moved the same way.
@@ -116,6 +120,10 @@ Six tier 1 stores and one helper exist:
 All six stores are built on `useSettingsDocument`, and new tier 1 stores use it too. `upgrade` rewrites a stored document before its fields are validated; use it only for a `// NOTICE:` fallback that removes or renames stored fields.
 
 ## Named exceptions
+
+- **Legacy sweep only.** Retired account credentials and old Minecraft settings have no current durable writer. Their plain registration exists only to delete old data.
+- **Session diagnostics.** The OpenPanel device id and IO trace source id live in sessionStorage for one window lifetime. They are registered for deletion and are not durable settings or pure memory.
+- **Fork state awaiting S2 migration.** Analytics consent, the five fork MMD settings, and derived MMD clip metadata retain their current keys while S2 lands in buildable increments. Their separate registrations are temporary plain-state exceptions; S2 removes this exception when the documents and runtime metadata replace them.
 
 - **[Long-term memory](glossary.md#long-term-memory).** `useMemoryStore` is tier 4 data that any window may write, without leader routing. `memoryRepo` serializes writes with the `airi:memory` Web Lock, and a write invalidates the other windows over the `airi:memory` BroadcastChannel. This is safe while only the leader runs chat turns, which are the only writers besides Settings. A chat turn's write never stores a window or page title that the situation holds, unless the user stated it in the same turn, and never a credential shape (`memoryWriteRefusal` in `packages/stage-ui/src/tools/memory.ts`).
 - **The [gate](glossary.md#gate)'s inner state.** `settings/situation-inner` is the only tier 2 member. It holds the user's slice of the urge-gate memory (the floor's last fire and the ritual day, `SavedGateMemory`) and the conversation threads that the [situation](glossary.md#situation) extracts. It holds no pacing of hers; that is in the card's character-state record (see [The mind's slow state](#the-minds-slow-state)). The leader writes the user's slice from what the [character mind](glossary.md#character-mind) publishes (`publishVoice`), without the mind's random state. Both are personal and grow with every save, so the slice never replicates. A thread whose text repeats a window or page title that the situation holds is dropped before it is stored (`createThreadExtractor` in `packages/stage-ui/src/features/situation/thread-extraction.ts`). `useSituationStore().forget` clears it in the leader. The slice holds no pacing of spoken [touch reactions](glossary.md#touch-reaction): `SavedInnerState` has no `reaction` field. That pacing is state of the [character mind](glossary.md#character-mind) (`voice` in `MindState`, `packages/character-mind/src/types.ts`), which is not saved and starts over at each launch.

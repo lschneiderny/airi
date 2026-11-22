@@ -363,6 +363,8 @@ The part that executes decisions without making them. On MMD, the whole-body per
 
 The six places that client state may live, chosen in order: 1, a synced settings document; 2, leader-only localStorage written by explicit command with a leadership token; 3, localStorage keyed by display model id and written by the stage window; 4, IndexedDB; 5, synced Pinia memory, replicated and not persisted; 6, per-window memory. Plain localStorage refs and a main-process ring with disk recording are closed to new state. Upstream's per-model display settings are plain refs stored once for each display model, under `settings/models/<model id>/`; they are not tier 3. A copy that the app can download or rebuild is a cache, not a tier. A store that persists anything registers in the state registry.
 
+An upstream plain-state exception names its adopted revision, writers, and exact keys in that registry. A mixed owner registers its settings separately from its repository so that a tier describes the locations it actually owns. An exception preserves upstream behavior; it does not claim that snapshots have one persistence writer.
+
 **Code:** `packages/stage-ui/src/persistence/state-registry.ts` `PersistenceTier`, which adds the closed plain-ref tier and caches. Examples: `packages/stage-shared/src/composables/use-settings-document/index.ts` `useSettingsDocument` (tier 1); `packages/stage-ui/src/features/situation/inner-state.ts` `useSituationInnerState` (tier 2); `packages/stage-ui/src/libs/pinia/setup-synced.ts` `setupSynced` (tiers 1 and 5).
 **Not to be confused with:** leader and follower windows, which decide who writes, not where.
 **Avoid:** "storage layer", "cache level".

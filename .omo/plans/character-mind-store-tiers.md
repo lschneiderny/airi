@@ -1,6 +1,6 @@
 # character-mind-store-tiers - Work Plan
 
-Status: planned on 2026-11-21. Evidence checked on 2026-11-22 at `92ee63665`, against adopted upstream `bd4f30391`. The owner's standing preference is to take the recommended options. This is slice **S2**, paired with [character-mind-notify-touch.md](character-mind-notify-touch.md); proposed roadmap row S2 does not exist yet.
+Status: implementation in progress on 2026-11-22 from `6e223c22b` plus plan commit `819043291`, against adopted upstream `bd4f30391`. The owner's standing preference is to take the recommended options. This is slice **S2**, paired with [character-mind-notify-touch.md](character-mind-notify-touch.md); roadmap row S2 is in progress.
 
 Implementation branch: **`luke/refactor/character-mind-store-tiers`**. Depends on completed roadmap S and the upstream sync. It does not depend on CM8's upstream-driver decision. Coordinate shared MMD consumers with CM7a/c, but do not implement their capability or behavior-document work.
 
@@ -313,3 +313,23 @@ The standing preference covers the recommendations below. None requires overridi
 | S7 | Relationship to CM7 and CM8 | (a) Bundle all refactors; (b) independent S2 PR, coordinate MMD consumers on rebase; (c) wait for all character-mind work | (a) mixes review concerns; (c) delays independent persistence fixes. (b) uses separate keys/responsibilities and keeps CM7c's scope intact. | (b). |
 
 The implementation must record departures from these recommendations with their evidence. This planning delivery makes no product changes.
+
+## Departures during implementation
+
+- Item 1 splits the fork MMD locations immediately so that the upstream MMD registration describes upstream locations only. Until items 3 to 5 migrate them, consent and the split MMD locations carry the explicit temporary exception "Fork state awaiting S2 migration".
+- Splitting registrations also requires updating the partial reset id lists in `use-data-maintenance.ts`; otherwise a module or desktop reset would stop sweeping the moved locations. The underlying owner reset still runs once.
+- The implementation assignment replaces per-commit `pnpm verify` with explicit package suites, dependent typechecks, lint, and policy guards. Rendered, Electron, QA, and branch gate checks belong to the orchestrator.
+
+## Checks run
+
+- Item 1: `pnpm exec vitest run --project dev-tools scripts/dev-tools/policy-docs.test.ts scripts/dev-tools/storage-writes.test.ts` passed 2 files / 12 tests.
+- Item 1: `pnpm -F @proj-airi/stage-ui exec vitest run --project node` passed 194 files / 1885 tests.
+- Item 1: `pnpm -F @proj-airi/stage-ui exec vitest run --project browser src/persistence/state-registry.browser.test.ts src/composables/use-data-maintenance.browser.test.ts` passed 2 files / 32 tests.
+- Item 1: `pnpm --filter "...@proj-airi/stage-ui" --workspace-concurrency=2 typecheck` passed all 7 selected projects.
+- Item 1: ESLint over the seven changed files and `git diff --check` passed after correcting list formatting.
+
+**Orchestrator placeholder:** rendered scenarios, applicable motion checks, and `pnpm verify --gate` results are not run by this worker.
+
+## Commits
+
+Implementation commits pending.
