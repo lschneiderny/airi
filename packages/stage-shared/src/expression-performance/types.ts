@@ -33,13 +33,15 @@ export interface TimingEvent {
  *   or null when the request started none.
  * - A `clear` releases the named slot, or the face, effect, and prop slots when no slot is named.
  *
+ * Intent answers carry their mind intent id. Picks are seeded from that id and their slot, independently of the
+ * conductor's seed. Timing and performer lifecycle signals carry no intent and draw no new picks.
  * A touch is not a signal: the mind doses mood from it and no entry shows it.
  */
 export type AffectSignal
-  = | { kind: 'reaction', episode: ReactionEpisode, turnId?: string, at: number }
-    | { kind: 'neutral', turnId?: string, at: number }
-    | { kind: 'expression', source: 'act' | 'tool', expressionId: string, holdSeconds?: number, episode: ReactionEpisode | null, turnId?: string, at: number }
-    | { kind: 'clear', source: 'act' | 'tool' | 'devtools', slot?: SlotCommand['slot'], turnId?: string, at: number }
+  = | { kind: 'reaction', intentId: string, episode: ReactionEpisode, turnId?: string, at: number }
+    | { kind: 'neutral', intentId: string, turnId?: string, at: number }
+    | { kind: 'expression', intentId: string, source: 'act' | 'tool', expressionId: string, holdSeconds?: number, episode: ReactionEpisode | null, turnId?: string, at: number }
+    | { kind: 'clear', intentId: string, source: 'act' | 'tool' | 'devtools', slot?: SlotCommand['slot'], turnId?: string, at: number }
     | { kind: 'speech', event: 'clip-start' | 'clip-end' | 'clip-stopped' | 'turn-end', turnId: string, clipId?: string, at: number }
     | { kind: 'muted', muted: boolean, at: number }
     | { kind: 'timing', event: TimingEvent, at: number }

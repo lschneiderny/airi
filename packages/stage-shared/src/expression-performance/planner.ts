@@ -125,7 +125,7 @@ export function createPlannerDecider(): Decider<PlannerState> {
           const scheduler = started ? { ...state.scheduler, plans: [] } : state.scheduler
           return { decision, state: {
             ...state,
-            ...(started ? drawEpisodeTickets(state.streams) : {}),
+            ...(started ? drawEpisodeTickets(signal.intentId) : {}),
             occupants: applySlotOccupants(state.occupants, commands, ctx.catalog),
             recency,
             scheduler: withoutSlots(scheduler, commands.map(command => command.slot), ctx.catalog),
@@ -161,7 +161,7 @@ export function createPlannerDecider(): Decider<PlannerState> {
       }
 
       const { episode, turnId } = signal
-      const entered = enterEpisode(state, episode)
+      const entered = enterEpisode(state, episode, signal.intentId)
       next = entered
       if (!ctx.settings.autoExpressions)
         return { decision, state: next }

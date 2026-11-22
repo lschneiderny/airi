@@ -12,11 +12,11 @@ const context: DeciderContext = {
 }
 /** A new strong happy episode as the mind decides it under these settings; the scripts space them past the escalation window. */
 function reaction(at: number): AffectSignal {
-  return { kind: 'reaction', episode: { id: `happy-${at}`, emotion: 'happy', nominal: 0.9, intensity: 0.9, band: 'strong', escalation: false }, at }
+  return { kind: 'reaction', intentId: `${at}-intent`, episode: { id: `happy-${at}`, emotion: 'happy', nominal: 0.9, intensity: 0.9, band: 'strong', escalation: false }, at }
 }
 function fixture() {
   return parse(AffectTraceSchema, {
-    version: 2,
+    version: 3,
     decider: 'picker',
     checkpoint: picker.initial(1),
     initialContext: context,
@@ -27,6 +27,13 @@ function fixture() {
 }
 
 describe('affect trace', () => {
+  it('replays v3 picks with a different comparison seed and rejects v2', () => {
+    const trace = parseAffectTrace(JSON.parse(JSON.stringify(fixture())))
+    expect(replayAffectTrace(trace, picker, { mode: 'compare', seed: 9876 })).toEqual(replayAffectTrace(trace, picker, { mode: 'exact' }))
+    expect(() => parseAffectTrace({ ...trace, version: 2 })).toThrow()
+    expect(() => parseAffectTrace({ ...trace, entries: [{ type: 'signal', signal: { ...reaction(0), intentId: undefined } }] })).toThrow()
+  })
+
   it('replays deterministically from a checkpoint after 3000 earlier signals', () => {
     let state = picker.initial(17)
     for (let i = 0; i < 3000; i++)
@@ -42,7 +49,9 @@ describe('affect trace', () => {
   })
 
   it('applies changed mapping weights in order just as live', () => {
-    const changed = { ...context, catalog: context.catalog.map(entry => ({ ...entry, mappings: entry.mappings.map(mapping => ({ ...mapping, weight: entry.id === 'a' ? 1e100 : 1e-100 })) })) }
+    const original = replayAffectTrace(fixture(), picker, { mode: 'exact' })[1].decision.slots[0].expressionId
+    const favored = original === 'a' ? 'b' : 'a'
+    const changed = { ...context, catalog: context.catalog.map(entry => ({ ...entry, mappings: entry.mappings.map(mapping => ({ ...mapping, weight: entry.id === favored ? 1e100 : 1e-100 })) })) }
     const trace = fixture()
     trace.entries.splice(1, 0, { type: 'context', context: changed })
     let state = picker.initial(1)
@@ -50,7 +59,7 @@ describe('affect trace', () => {
     state = first.state
     const second = picker.decide(reaction(3), changed, state)
     expect(replayAffectTrace(trace, picker, { mode: 'exact' })).toEqual([{ at: 0, decision: first.decision }, { at: 3, decision: second.decision }])
-    expect(second.decision.slots[0].expressionId).toBe('a')
+    expect(second.decision.slots[0].expressionId).toBe(favored)
     expect(replayAffectTrace(fixture(), picker, { mode: 'exact' })[1].decision).not.toEqual(second.decision)
   })
 
@@ -67,7 +76,7 @@ describe('affect trace', () => {
   })
 
   it('validates a clear signal and replays it exactly to the live slot commands', () => {
-    const signals: AffectSignal[] = [reaction(0), { kind: 'clear', source: 'tool', slot: 'face', at: 1 }, reaction(4), { kind: 'clear', source: 'devtools', turnId: 'turn', at: 5 }]
+    const signals: AffectSignal[] = [reaction(0), { kind: 'clear', intentId: '70-clear', source: 'tool', slot: 'face', at: 1 }, reaction(4), { kind: 'clear', intentId: '70-clear', source: 'devtools', turnId: 'turn', at: 5 }]
     const trace = parse(AffectTraceSchema, { ...fixture(), entries: signals.map(signal => ({ type: 'signal', signal })) })
     let state = picker.initial(1)
     const live = signals.map((signal) => {
@@ -79,7 +88,7 @@ describe('affect trace', () => {
     expect(replayAffectTrace(trace, picker, { mode: 'exact' })).toEqual(live)
     expect(live[1].decision.slots).toEqual([{ slot: 'face', expressionId: null, holdSeconds: 0, until: 'hold' }])
     expect(live[3].decision.slots.map(command => [command.slot, command.expressionId, command.turnId])).toEqual([['face', null, 'turn'], ['effect', null, 'turn'], ['prop', null, 'turn']])
-    expect(safeParse(AffectTraceSchema, { ...fixture(), entries: [{ type: 'signal', signal: { kind: 'clear', source: 'tool', slot: 'outfit', at: 1 } }] }).success).toBe(false)
+    expect(safeParse(AffectTraceSchema, { ...fixture(), entries: [{ type: 'signal', signal: { kind: 'clear', intentId: '82-clear', source: 'tool', slot: 'outfit', at: 1 } }] }).success).toBe(false)
   })
 
   it('parses and exactly replays contexts expanded by a 2x mood gain profile', () => {
@@ -196,7 +205,7 @@ describe('affect trace', () => {
     { version: 1 },
     { checkpoint: undefined },
     { checkpoint: { invalid: Infinity } },
-    { entries: [{ type: 'signal', signal: { kind: 'reaction', at: 1 } }] },
+    { entries: [{ type: 'signal', signal: { kind: 'reaction', intentId: '199-reaction', at: 1 } }] },
     { entries: [{ type: 'signal', signal: { kind: 'emotion', source: 'act', emotion: 'happy', nominal: 0.9, at: 1 } }] },
     { entries: [{ type: 'signal', signal: reaction(3) }, { type: 'signal', signal: reaction(1) }] },
     { endAt: 1 },
@@ -211,7 +220,7 @@ describe('affect trace', () => {
     ['sleepy ', false],
     ['lovey', false],
   ])('accepts or rejects the recorded emotion name %j: %s', (name, success) => {
-    const signal = { kind: 'reaction', episode: { id: 'e-1', emotion: name, nominal: 0.6, intensity: 0.6, band: 'clear', escalation: false }, at: 1 }
+    const signal = { kind: 'reaction', intentId: '214-reaction', episode: { id: 'e-1', emotion: name, nominal: 0.6, intensity: 0.6, band: 'clear', escalation: false }, at: 1 }
     expect(safeParse(AffectTraceSchema, { ...fixture(), entries: [{ type: 'signal', signal }] }).success).toBe(success)
   })
 

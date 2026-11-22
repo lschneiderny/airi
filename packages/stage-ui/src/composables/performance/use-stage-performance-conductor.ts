@@ -348,11 +348,11 @@ export class StagePerformanceConductor {
       return
     let slots: SlotCommand[] = []
     if (intent?.kind === 'emotion') {
-      slots = this.decide({ kind: 'reaction', episode: intent.episode, turnId, at }, context).slots
+      slots = this.decide({ kind: 'reaction', intentId: intent.id, episode: intent.episode, turnId, at }, context).slots
       this.dispatchNatural(this.dosed(intent.episode, context, turnId), intent.hold, at)
     }
     else if (intent?.kind === 'release') {
-      slots = this.decide({ kind: 'neutral', turnId, at }, context).slots
+      slots = this.decide({ kind: 'neutral', intentId: intent.id, turnId, at }, context).slots
       this.dispatchNatural(null, intent.hold, at)
     }
     this.dispatchSlots(slots, at)
@@ -396,7 +396,7 @@ export class StagePerformanceConductor {
       return undefined
     const request = intent
     const episode = request?.episode ?? null
-    const decision = this.decide({ kind: 'expression', source, expressionId: entry.id, holdSeconds, episode, turnId, at }, context)
+    const decision = this.decide({ kind: 'expression', intentId: intent.id, source, expressionId: entry.id, holdSeconds, episode, turnId, at }, context)
     this.dispatchNatural(episode && this.dosed(episode, context, turnId), request?.hold ?? null, at)
     this.dispatchSlots(decision.slots, at)
     return entry
@@ -412,7 +412,7 @@ export class StagePerformanceConductor {
     const intent = this.options.mind.receive({ kind: 'expression-clear', source, slot, turnId }).find(each => each.kind === 'release')
     if (!intent || !this.permitted(intent))
       return
-    const decision = this.decide({ kind: 'clear', source, slot, turnId, at })
+    const decision = this.decide({ kind: 'clear', intentId: intent.id, source, slot, turnId, at })
     this.dispatchNatural(null, intent?.kind === 'release' ? intent.hold : null, at)
     this.dispatchSlots(decision.slots, at)
   }
@@ -651,7 +651,7 @@ export class StagePerformanceConductor {
     this.recording = {
       context,
       trace: {
-        version: 2,
+        version: 3,
         decider: this.deciderKind,
         checkpoint: structuredClone(this.state),
         initialContext: JSON.parse(context) as DeciderContext,

@@ -13,10 +13,10 @@ const unit = pipe(number(), finite(), minValue(0), maxValue(1))
 // The episode the mind decided, exactly as the live decider received it.
 const episode = strictObject({ id: string(), emotion, nominal: unit, intensity: unit, band: picklist(['slight', 'clear', 'strong']), escalation: boolean() })
 const signalSchema = variant('kind', [
-  strictObject({ kind: literal('reaction'), episode, turnId, at: seconds }),
-  strictObject({ kind: literal('neutral'), turnId, at: seconds }),
-  strictObject({ kind: literal('expression'), source: picklist(['act', 'tool']), expressionId: string(), holdSeconds: optional(seconds), episode: nullable(episode), turnId, at: seconds }),
-  strictObject({ kind: literal('clear'), source: picklist(['act', 'tool', 'devtools']), slot: optional(picklist(['face', 'effect', 'prop'])), turnId, at: seconds }),
+  strictObject({ kind: literal('reaction'), intentId: string(), episode, turnId, at: seconds }),
+  strictObject({ kind: literal('neutral'), intentId: string(), turnId, at: seconds }),
+  strictObject({ kind: literal('expression'), intentId: string(), source: picklist(['act', 'tool']), expressionId: string(), holdSeconds: optional(seconds), episode: nullable(episode), turnId, at: seconds }),
+  strictObject({ kind: literal('clear'), intentId: string(), source: picklist(['act', 'tool', 'devtools']), slot: optional(picklist(['face', 'effect', 'prop'])), turnId, at: seconds }),
   strictObject({ kind: literal('speech'), event: picklist(['clip-start', 'clip-end', 'clip-stopped', 'turn-end']), turnId: string(), clipId: optional(string()), at: seconds }),
   strictObject({ kind: literal('muted'), muted: boolean(), at: seconds }),
   strictObject({ kind: literal('timing'), event: strictObject({ id: string(), kind: picklist(['sentence_start', 'pause', 'utterance_end', 'emphasis']), turnId: string(), at: seconds }), at: seconds }),
@@ -36,11 +36,10 @@ function isJson(value: unknown): boolean {
 /**
  * Checkpoints and contexts belong to the recording start, not the decider's initial seed.
  *
- * Version 2 records the signals of the asset decider, which carry the episodes the mind decided. A version 1 trace
- * recorded raw emotions and no longer parses.
+ * Version 3 records the intent ids that seed asset picks. Earlier traces lack those ids and no longer parse.
  */
 export const AffectTraceSchema = pipe(strictObject({
-  version: literal(2),
+  version: literal(3),
   decider: picklist(['picker', 'planner']),
   checkpoint: pipe(unknown(), check(isJson, 'Expected a JSON checkpoint')),
   initialContext: contextSchema,
@@ -64,7 +63,7 @@ export const AffectTraceSchema = pipe(strictObject({
 
 /** An explicit recording session, including its terminal monotonic time for comparison deadlines. */
 export interface AffectTrace {
-  version: 2
+  version: 3
   decider: 'picker' | 'planner'
   checkpoint: unknown
   initialContext: DeciderContext

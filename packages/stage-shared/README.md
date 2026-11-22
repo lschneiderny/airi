@@ -161,7 +161,7 @@ The `expression-performance` entrypoint owns the pure rules for character expres
 - `resolveOccasions`, which names the occasions that hold now (`morning`, `gaming`, `music`, `lonely` and the rest of `OCCASIONS`) from the hour, the foreground app, the music and the idle drive. A pastime entry tagged with `occasions` is offered only during one of them and picked first then; `occasionCoverage` lists which pastimes cover each occasion;
 - `chooseMomentEntry`, which picks the entry tagged with `moments` that she shows for a few seconds at a short moment (`check-in`, `poked`, `waking` and the rest of `MOMENTS`), with `momentEntries` and `momentCoverage` to read the catalog;
 - `buildTagSuggestionPrompt` and `parseTagSuggestions`, the two ends of a request that asks a language model to suggest `idleUse`, `occasions` and `moments` for a catalog. The parser drops everything the model may not decide; a suggestion is applied only by the user;
-- affect traces and their replay (`withAffectTrace`, `parseAffectTrace`, `replayAffectTrace`). A trace is `version: 2`: it records the deciders' signals, which carry the episodes the mind decided, so a replay needs no mind. A version 1 trace no longer parses;
+- affect traces and their replay (`withAffectTrace`, `parseAffectTrace`, `replayAffectTrace`). A trace is `version: 3`: it records the deciders' signals, including the mind intent ids that seed picks, so a replay needs no mind. Versions 1 and 2 no longer parse;
 - character performance profiles (`resolveEffectiveSettings`, `applyMappingWeights`);
 - touch affect (`touchAffect`, `initialTouchAffectMemory`, `MoodDose`), which turns one classified pet or poke into at most one mood dose with cooldowns and habituation. The mind calls it for every `touch` stimulus and sends the dose as a `mood` intent. Touch never creates an emotion episode.
 
@@ -169,7 +169,7 @@ A decider never reads a clock, global randomness, or a store. Pass every time in
 
 A decider receives no raw emotion. Its signals are:
 
-- `reaction`, with the episode the mind decided. A new episode draws its pick tickets; an escalation reuses them and fills only empty slots.
+- `reaction`, with the episode the mind decided and its `intentId`. A new episode draws its pick tickets from a hash of the intent id and slot; an escalation reuses them and fills only empty slots.
 - `neutral`, when a neutral emotion reset the mind's reaction state. It releases the face and effect slots.
 - `expression`, for an entry the model named, with the episode the mind derived from the entry's emotion mapping, or `null`.
 - `clear`, `speech`, `muted`, `timing`, and `deadline`.
@@ -198,7 +198,7 @@ let state = decider.initial(42)
 
 // The episode comes from the mind's `emotion` intent.
 const result = decider.decide(
-  { kind: 'reaction', episode: { id: 'happy-1', emotion: 'happy', nominal: 0.6, intensity: 0.6, band: 'clear', escalation: false }, turnId: 'turn-1', at: 12.5 },
+  { kind: 'reaction', intentId: '1-emotion', episode: { id: 'happy-1', emotion: 'happy', nominal: 0.6, intensity: 0.6, band: 'clear', escalation: false }, turnId: 'turn-1', at: 12.5 },
   { catalog, settings: defaultExpressionPerformanceSettings },
   state,
 )
