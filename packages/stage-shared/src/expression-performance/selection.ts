@@ -41,10 +41,11 @@ export function drawPickerTickets(random: number) {
 }
 
 /**
- * FNV-1a over the intent id and slot gives every stage the same independent Mulberry32 stream. `gesture` seeds the
- * character mind's choice between an angry episode's shake and drop from the episode id.
+ * FNV-1a over the intent id and slot gives every stage the same independent Mulberry32 stream. `moment` seeds a moment
+ * the intent marks; `waking` seeds the moment after the sleep an idle order started, apart from that order's own;
+ * `gesture` seeds the character mind's choice between an angry episode's shake and drop from the episode id.
  */
-export function expressionSeed(intentId: string, slot: AutoSlot | 'moment' | 'gesture'): number {
+export function expressionSeed(intentId: string, slot: AutoSlot | 'moment' | 'waking' | 'gesture'): number {
   let seed = 0x811C9DC5
   for (const character of `${intentId}\0${slot}`)
     seed = Math.imul(seed ^ character.codePointAt(0)!, 0x01000193) >>> 0

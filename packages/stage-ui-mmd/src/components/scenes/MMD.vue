@@ -1918,7 +1918,7 @@ defineExpose({
   setFaceBaseline: (baseline: FaceBaseline) => natural?.setFaceBaseline(baseline),
   /** The drive of self-directed idle behaviour; the stage sends it again every second. */
   setIdleDrive: (drive: NaturalIdleDrive | null) => { hostIdleDrive = drive },
-  idleCue: (kind: IdleCueKind) => natural?.idleCue(kind),
+  idleCue: (kind: IdleCueKind, intentId: string) => natural?.idleCue(kind, intentId),
   /** Natural only: plays what the character mind's idle policy decided; Natural answers it in `idleReports`. */
   idle: (order: IdleOrder) => natural?.idle(order),
   /** Natural only: a detected beat for Natural's beat clock, on which a groove plays. */

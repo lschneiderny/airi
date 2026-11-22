@@ -186,8 +186,8 @@ export type IdleEdge
 
 /**
  * What the performer tells the schedule's owner, in the order it happened. `started` and `errand-started` name the
- * order that caused them, or null for a behavior the performer started itself (a cue). `refused` answers an order the
- * performer could not start when it arrived.
+ * intent that caused them: the order, or for a cue the mind's `cue` intent, null for a cue sent without one. `refused`
+ * answers an order the performer could not start when it arrived.
  */
 export type IdleReport
   = | { kind: 'view', view: IdleView }

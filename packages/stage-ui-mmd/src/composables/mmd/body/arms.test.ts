@@ -179,7 +179,7 @@ describe('mmd arm measurement and hang solver', () => {
     for (let frame = 0; frame < 600; frame++)
       fixture.pipeline.step(1 / 60)
     const before = fixture.body.diagnostics.arms?.hangDeg
-    const record: IdleBehaviourRecord = { seq: 1, kind: kind as IdleBehaviourKind, start: 0, end: seconds, releasedAt: null, releaseSeconds: 0, side: 1, period: 2, tone: 0, count: 2, variant, keys: [], glances: [] }
+    const record: IdleBehaviourRecord = { seq: 1, kind: kind as IdleBehaviourKind, intentId: null, start: 0, end: seconds, releasedAt: null, releaseSeconds: 0, side: 1, period: 2, tone: 0, count: 2, variant, keys: [], glances: [] }
     fixture.setInput({ intent: { ...fixture.input.intent, idle: { behaviour: record, errand: null, groovePhase: null } } })
     for (let frame = 0; frame < (seconds + 3) * 60; frame++)
       fixture.pipeline.step(1 / 60)

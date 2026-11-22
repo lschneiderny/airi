@@ -35,7 +35,10 @@ export interface IdlePropsOptions {
    * shown only during one of them. Absent means no occasion ever holds, so tagged pastimes stay away.
    */
   occasions?: () => readonly Occasion[]
-  /** Uniform draws for performer reports and previews only; defaults to a local Mulberry32 stream starting at 0. */
+  /**
+   * Uniform draws for previews and for a behaviour reported without the mind's intent id; defaults to a local
+   * Mulberry32 stream starting at 0.
+   */
   random?: () => number
   now?: () => number
 }
@@ -52,7 +55,8 @@ export interface IdlePropsOptions {
  * - Entries marked for sleep come on 5 s after she starts to fall asleep, when her eyes are nearly shut, and go off
  *   the moment she wakes.
  * - A moment (`onMoment`, and the idle acts `onIdleBehaviour` sees) is marked with one entry the user tagged for it,
- *   some of the times it happens: until the act ends for a moment that is an act, for a few seconds otherwise. One
+ *   some of the times it happens, drawn from the seed of the mind's intent that caused it, so every stage picks the
+ *   same: until the act ends for a moment that is an act, for a few seconds otherwise. One
  *   moment is marked at a time. A moment is not reported to the situation.
  * - All of them are claims below the slot leases, so an expression the model asks for still shows on top, and above
  *   the user's switches. Each pastime is reported to the situation as a `prop` activity with the entry's label.
@@ -156,10 +160,10 @@ export function useIdleProps(options: IdlePropsOptions) {
   /**
    * Marks `moment` with one of the entries tagged for it, or lets it pass; see `chooseMomentEntry`. `phase: 'end'`
    * ends a moment that lasts as long as its act. `force` is the lab's preview: it replaces a moment in progress and
-   * skips the chance and the entry's rest. A mind moment carries `intentId`, which seeds both draws independently
-   * of previews and local performer reports; those have no mind moment id and use the local stream.
+   * skips the chance and the entry's rest. A moment the mind caused carries `intentId`, which seeds both draws with
+   * `purpose` (`moment` unless given) independently of previews, which have none and use the local stream.
    */
-  function onMoment(moment: Moment, options_: { intentId?: string, phase?: 'start' | 'end', force?: boolean } = {}) {
+  function onMoment(moment: Moment, options_: { intentId?: string, purpose?: 'moment' | 'waking', phase?: 'start' | 'end', force?: boolean } = {}) {
     if (options_.phase === 'end') {
       if (marking?.moment === moment && MOMENT_HOLD_MS[moment] === 'act') {
         marking = null
@@ -175,7 +179,7 @@ export function useIdleProps(options: IdlePropsOptions) {
     const nowMs = now()
     const tickets = options_.intentId === undefined
       ? { gate: random(), pick: random() }
-      : drawPickerTickets(expressionSeed(options_.intentId, 'moment')).tickets
+      : drawPickerTickets(expressionSeed(options_.intentId, options_.purpose ?? 'moment')).tickets
     const picked = chooseMomentEntry(offered, moment, momentHistory, { nowMs, chance: tickets.gate, pick: tickets.pick, force: options_.force })
     if (!picked)
       return
@@ -203,15 +207,18 @@ export function useIdleProps(options: IdlePropsOptions) {
 
   /**
    * Follows her acts: the ones that are moments, and her sleep, so what she takes to bed is on while she sleeps and a
-   * pastime ends before it.
+   * pastime ends before it. Each moment draws from the intent that started the behaviour (CM9e, decision D14): an act
+   * from its idle order, `held-back` from the `let-go` cue, and `waking` from the sleep order with the `waking`
+   * purpose. A report without an intent id uses the local stream.
    */
   function onIdleBehaviour(report: IdleBehaviourReport) {
+    const intentId = report.intentId ?? undefined
     const moment = ACT_MOMENTS[report.behaviour]
     if (moment)
-      onMoment(moment, { phase: report.phase })
+      onMoment(moment, { phase: report.phase, intentId })
     // She held something back: the cue is over in a moment, so only its start counts.
     if (report.behaviour === 'let-go' && report.phase === 'start')
-      onMoment('held-back')
+      onMoment('held-back', { intentId })
     if (report.behaviour !== 'sleep')
       return
     asleepSinceMs = report.phase === 'start' ? now() : null
@@ -220,7 +227,7 @@ export function useIdleProps(options: IdlePropsOptions) {
       putAway(true)
     tick()
     if (report.phase === 'end')
-      onMoment('waking')
+      onMoment('waking', { intentId, purpose: 'waking' })
   }
 
   useIntervalFn(tick, IDLE_PROPS_TICK_MS)

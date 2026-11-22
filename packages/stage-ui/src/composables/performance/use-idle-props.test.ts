@@ -97,6 +97,77 @@ describe('useIdleProps', () => {
     }
   })
 
+  it('marks an act, a let-go, and a waking from the intent that started each, alike in two stages and apart from previews', () => {
+    const catalog = [
+      ...['one', 'two', 'three'].map(id => entry(id, { kind: 'face', moments: ['check-in'] })),
+      ...['four', 'five'].map(id => entry(id, { kind: 'face', moments: ['held-back'] })),
+      ...['six', 'seven'].map(id => entry(id, { kind: 'face', moments: ['waking'] })),
+    ]
+    const first = setup(catalog)
+    const firstScope = scope!
+    const second = setup(catalog)
+    // The second stage drew previews before, on another local stream.
+    second.state.random = 0.99
+    second.props.onMoment('check-in', { force: true })
+    second.run(61)
+    try {
+      const shown = { 'check-in': new Set<string>(), 'let-go': new Set<string>(), 'sleep': new Set<string>() }
+      let passed = 0
+      for (let i = 0; i < 100; i++) {
+        for (const behaviour of ['check-in', 'let-go', 'sleep'] as const) {
+          const intentId = `${i}-${behaviour}`
+          // An act and a let-go mark their start; a sleep marks its end, the waking.
+          const marking = behaviour === 'sleep' ? 'end' : 'start'
+          for (const stage of [first, second]) {
+            stage.props.onIdleBehaviour({ behaviour, phase: 'start', intentId })
+            if (marking === 'end')
+              stage.props.onIdleBehaviour({ behaviour, phase: 'end', intentId })
+          }
+          expect(first.backend.idleActive, intentId).toEqual(second.backend.idleActive)
+          for (const id of first.backend.idleActive)
+            shown[behaviour].add(id)
+          passed += Number(first.backend.idleActive.length === 0)
+          if (marking === 'start') {
+            for (const stage of [first, second])
+              stage.props.onIdleBehaviour({ behaviour, phase: 'end', intentId })
+          }
+          first.run(61)
+          second.run(61)
+        }
+      }
+      expect([...shown['check-in']].sort()).toEqual(['one', 'three', 'two'])
+      expect([...shown['let-go']].sort()).toEqual(['five', 'four'])
+      expect([...shown.sleep].sort()).toEqual(['seven', 'six'])
+      // The chance still lets some moments pass.
+      expect(passed).toBeGreaterThan(0)
+    }
+    finally {
+      firstScope.stop()
+    }
+  })
+
+  it('seeds the waking apart from a moment of the same sleep order', () => {
+    const catalog = ['six', 'seven'].map(id => entry(id, { kind: 'face', moments: ['waking'] }))
+    const woken = setup(catalog)
+    const wokenScope = scope!
+    const marked = setup(catalog)
+    try {
+      let differs = 0
+      for (let i = 0; i < 100; i++) {
+        const intentId = `${i}-idle`
+        woken.props.onIdleBehaviour({ behaviour: 'sleep', phase: 'end', intentId })
+        marked.props.onMoment('waking', { intentId })
+        differs += Number(woken.backend.idleActive.join() !== marked.backend.idleActive.join())
+        woken.run(61)
+        marked.run(61)
+      }
+      expect(differs).toBeGreaterThan(0)
+    }
+    finally {
+      wokenScope.stop()
+    }
+  })
+
   it('keeps the 0.6 chance across 10000 distinct moment ids', () => {
     const { backend, props, state } = setup([entry('puff', { moments: ['poked'] })])
     let shown = 0
@@ -138,11 +209,11 @@ describe('useIdleProps', () => {
 
   it('marks an act that is a moment with a tagged entry until the act ends', () => {
     const { backend, reports, props, run } = setup([entry('wink', { kind: 'face', moments: ['check-in'] }), entry('tongue', { kind: 'face', moments: ['peering'] })])
-    props.onIdleBehaviour({ behaviour: 'check-in', phase: 'start' })
+    props.onIdleBehaviour({ behaviour: 'check-in', phase: 'start', intentId: null })
     expect(backend.idleActive).toEqual(['wink'])
     run(3)
     expect(backend.idleActive).toEqual(['wink'])
-    props.onIdleBehaviour({ behaviour: 'check-in', phase: 'end' })
+    props.onIdleBehaviour({ behaviour: 'check-in', phase: 'end', intentId: null })
     expect(backend.idleActive).toEqual([])
     // A moment is seconds long and is not told to the situation.
     expect(reports).toEqual([])
@@ -168,13 +239,13 @@ describe('useIdleProps', () => {
 
   it('marks waking up and holding something back, and marks nothing while the setting is off', () => {
     const { state, backend, props, run } = setup([entry('sleepy', { kind: 'face', moments: ['waking'] }), entry('pout', { kind: 'face', moments: ['held-back'] })])
-    props.onIdleBehaviour({ behaviour: 'sleep', phase: 'start' })
+    props.onIdleBehaviour({ behaviour: 'sleep', phase: 'start', intentId: null })
     run(10)
-    props.onIdleBehaviour({ behaviour: 'sleep', phase: 'end' })
+    props.onIdleBehaviour({ behaviour: 'sleep', phase: 'end', intentId: null })
     expect(backend.idleActive).toEqual(['sleepy'])
     run(6)
     expect(backend.idleActive).toEqual([])
-    props.onIdleBehaviour({ behaviour: 'let-go', phase: 'start' })
+    props.onIdleBehaviour({ behaviour: 'let-go', phase: 'start', intentId: null })
     expect(backend.idleActive).toEqual(['pout'])
     run(4)
     state.enabled = false
@@ -210,7 +281,7 @@ describe('useIdleProps', () => {
   it('takes her sleep entries to bed, puts the pastime away first, and puts them away when she wakes', () => {
     const { backend, reports, answers, props, run, start } = setup([entry('pillow', { idleUse: 'sleep' }), entry('bubble', { idleUse: 'sleep', kind: 'effect' }), entry('game', { idleUse: 'activity' })])
     start(pastime(1))
-    props.onIdleBehaviour({ behaviour: 'sleep', phase: 'start' })
+    props.onIdleBehaviour({ behaviour: 'sleep', phase: 'start', intentId: null })
     expect(reports).toEqual(['prop:start:game', 'prop:end:game'])
     expect(answers).toEqual(['1:done'])
     // Her eyes are still closing.
@@ -218,9 +289,9 @@ describe('useIdleProps', () => {
     expect(backend.idleActive).toEqual([])
     run(1)
     expect(backend.idleActive).toEqual(['pillow', 'bubble'])
-    props.onIdleBehaviour({ behaviour: 'yawn', phase: 'start' })
+    props.onIdleBehaviour({ behaviour: 'yawn', phase: 'start', intentId: null })
     expect(backend.idleActive).toEqual(['pillow', 'bubble'])
-    props.onIdleBehaviour({ behaviour: 'sleep', phase: 'end' })
+    props.onIdleBehaviour({ behaviour: 'sleep', phase: 'end', intentId: null })
     expect(backend.idleActive).toEqual([])
     // What she sleeps with is part of the sleep the Natural driver already reports.
     expect(reports).toEqual(['prop:start:game', 'prop:end:game'])
@@ -229,7 +300,7 @@ describe('useIdleProps', () => {
   it('refuses the pastime while idle activities are off, for an entry the user switched on, or on a store without claims', () => {
     const off = setup([entry('game', { idleUse: 'activity' }), entry('pillow', { idleUse: 'sleep' })])
     off.state.enabled = false
-    off.props.onIdleBehaviour({ behaviour: 'sleep', phase: 'start' })
+    off.props.onIdleBehaviour({ behaviour: 'sleep', phase: 'start', intentId: null })
     off.run(10)
     expect(off.backend.idleActive).toEqual([])
     off.start(pastime(1))

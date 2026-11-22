@@ -94,7 +94,7 @@ export class MMDNaturalAdapter {
   private readonly pendingMoods: MoodDose[] = []
   /** The mind's mood seed, applied on the next frame; a newer seed replaces it. */
   private pendingMoodLevel: Omit<MoodDose, 'id'> | null = null
-  private readonly pendingIdleCues: IdleCueKind[] = []
+  private readonly pendingIdleCues: { kind: IdleCueKind, intentId: string }[] = []
   private readonly pendingIdleOrders: IdleOrder[] = []
   private readonly pendingCursorOrders: CursorOrder[] = []
   /** Chat reads the character mind decided; applied after the frame's chat input, so an unfolded chat has its target. */
@@ -150,8 +150,8 @@ export class MMDNaturalAdapter {
     }
     for (const dose of this.pendingMoods.splice(0))
       this.natural.addMood(dose, this.time)
-    for (const cue of this.pendingIdleCues.splice(0))
-      this.natural.idleCue(cue, this.time)
+    for (const { kind, intentId } of this.pendingIdleCues.splice(0))
+      this.natural.idleCue(kind, intentId, this.time)
     for (const order of this.pendingIdleOrders.splice(0))
       this.natural.idle(order, this.time)
     for (const order of this.pendingCursorOrders.splice(0))
@@ -209,9 +209,9 @@ export class MMDNaturalAdapter {
     this.natural.answerIdleErrand(seq, outcome, this.time)
   }
 
-  /** Reach-out body language, played at the next frame like a cue gesture. */
-  idleCue(kind: IdleCueKind): void {
-    this.pendingIdleCues.push(kind)
+  /** Reach-out body language for the mind's `cue` intent `intentId`, played at the next frame like a cue gesture. */
+  idleCue(kind: IdleCueKind, intentId: string): void {
+    this.pendingIdleCues.push({ kind, intentId })
   }
 
   /**

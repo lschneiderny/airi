@@ -29,7 +29,7 @@ describe('mmd body intent mapping', () => {
   })
 
   it('gives the performer an idle behaviour in its own seconds, with a release only when it was let go early', () => {
-    const base = { seq: 3, kind: 'yawn', start: 100, end: 105.5, releasedAt: null, releaseSeconds: 0, side: -1, period: 2, tone: 0, count: 1, variant: 0, keys: [], glances: [] } as const
+    const base = { seq: 3, kind: 'yawn', intentId: null, start: 100, end: 105.5, releasedAt: null, releaseSeconds: 0, side: -1, period: 2, tone: 0, count: 1, variant: 0, keys: [], glances: [] } as const
     expect(bodyIdleAct(base)).toMatchObject({ seq: 3, kind: 'yawn', duration: 5.5, release: null, side: -1 })
     expect(bodyIdleAct({ ...base, releasedAt: 102, releaseSeconds: 0.4 }).release).toBe(0.4)
     expect(bodyIdleAct({ ...base, releasedAt: 105.5, releaseSeconds: 0 }).release).toBeNull()
