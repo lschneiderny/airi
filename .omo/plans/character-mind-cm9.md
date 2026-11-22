@@ -226,6 +226,29 @@ Each item is one commit that passes `pnpm verify`; each PR passes `pnpm verify -
 2. **`feat(stage-ui,stage-ui-mmd,qa-tools): sit her down on the mind's settle`.** Tests: `stance.test.ts` maps the intent; a newly attached MMD scene is seeded; the runner dispatches `settle` to the adapter.
 3. Docs, 4. plan.
 
+### CM9d: the linger in the errand (`luke/feat/character-mind-wander-linger`, after CM9c)
+
+1. **`feat(motion-driver-natural,character-mind): draw the wander's stay with the errand`.** Tests: a wander decision carries `holdSeconds` in [45, 150] with the log-uniform law over seeds; a pastime's draw is unchanged; idle draws after a wander move by one (re-pin with the reason).
+2. **`feat(motion-driver-humanoid,stage-ui-mmd): stay for the errand's linger and end it at the walk home`.** Tests in `director/index.test.ts`: arrival and arrival in place stamp the input's linger; `return-home` waits for it; chase, chat, and tool walks still use `RETURN_HOME_DELAY_MS`; seeded wander-position tests re-pinned once; `realiseErrands` answers `done` at `return-home` (an `MMD.vue` browser test or a unit around the extracted function).
+3. Docs, 4. plan.
+
+### CM9e: act moments (`luke/feat/character-mind-act-moments`, after CM9c)
+
+1. **`feat(motion-driver-natural,stage-ui,stage-ui-live2d,stage-ui-mmd): seed act moments from the mind's orders`.** Tests: `IdleBehaviourReports` carries the intent id; a cue started by an intent carries its id; `use-idle-props.test.ts`: two instances given the same reports pick the same entry and chance, independent of earlier previews; `waking` and `held-back` use their seeds.
+2. Docs, 3. plan.
+
+### CM9f: travel gaze (`luke/feat/character-mind-travel-gaze`)
+
+1. **`feat(motion-driver-natural): rank travel in the gaze arbiter`.** Tests in `gaze.test.ts`: while traveling, every source below travel is refused and reported, every source at or above starts with its hold capped at 1.5 s, a walk start ends a lower claim and keeps a higher one, `held` follows the claim.
+2. **`feat(stage-ui-mmd): look where she walks unless a glance holds`.** Tests in `packages/stage-ui-mmd/src/composables/mmd/body/body.test.ts`: moving with `held` false aims along travel; with `held` true uses the free branch; stopping restores today's order.
+3. Docs, 4. plan.
+
+### CM10: character refractories (`luke/feat/character-mind-refractories`, after every CM9 slice)
+
+1. **`feat(character-mind): hold refractories once per character`.** Tests: each report stamps its field; the `refractory` intent carries remaining durations; the poke surprise is true once per 2 s on the mind's clock; reset clears them; `moment-marked` rests an entry 60 s.
+2. **`feat(motion-driver-humanoid,motion-driver-natural,stage-ui,stage-ui-mmd,qa-tools): read refractories from the mind`.** Tests: `decideBody` refuses an action, dance, gesture repeat, move tool, and look tool by the input's remaining durations exactly as by its old memory (port each existing refractory test); a refractory survives a new director (stance test with two directors and one mind); `startPending` plays surprise only when the intent says so; `useIdleProps` honours a rest the mind reports from another instance.
+3. Docs, 4. plan.
+
 ## 8. Checks
 
 **Each commit:** `pnpm verify` (with `--detach` and `--wait` under a 10-minute tool timeout); each PR: `pnpm verify --gate`. Inner loops: `pnpm -F @proj-airi/character-mind exec vitest run src`; `pnpm -F @proj-airi/motion-driver-natural exec vitest run src/gestures.test.ts src/mood.test.ts src/natural-motion.test.ts src/idle-activities.test.ts src/idle-schedule.test.ts src/gaze.test.ts`; `pnpm -F @proj-airi/motion-driver-humanoid exec vitest run src/director`; `pnpm -F @proj-airi/stage-ui exec vitest run --project node src/composables/performance`; `pnpm -F @proj-airi/stage-ui-mmd exec vitest run --project node src/composables/mmd`. The policy-docs test after each policy doc edit.
@@ -308,20 +331,6 @@ Built on `luke/feat/character-mind-travel-gaze` from `main` at `c3cb484e4`. The 
 
 **Commits.** `6517f394e` feat(motion-driver-natural): rank travel in the gaze arbiter; `bfc7afe00` feat(stage-ui-mmd,qa-tools): look where she walks unless a glance holds; `71a4f7412` docs(ai): record the travel gaze decisions.
 
-### CM9d (`luke/feat/character-mind-wander-linger`, on CM9c)
-
-- **Commits.** `ba5cb42af` (draw the wander's stay with the errand), `a2f1d4c40` (stay for the errand's linger and end it at the walk home), `715427588` (record the wander linger decisions), and this record.
-- **Departures.** Recorded in the [wander linger ADR](../../docs/ai/adr/2026-11-22-character-mind-wander-linger.md#deviations): the memory field is `wanderStay` rather than `lingerSeq`; `stage-ui` fixtures and the pastime preview record carry the new `holdSeconds`; Natural ends only a pastime at its hold; Autonomous behavior's Locomotion row and rule 8 change in the director commit, because the policy-docs test checks the constants they cited.
-- **Checks run by the worker.** `character-mind` vitest (202 passed); `motion-driver-natural` (523), `motion-driver-humanoid` (460); node projects of `stage-ui-mmd` (435) and `stage-ui` (2010, at both commits); `stage-ui` browser tests in `src/features/devtools/motion/mmd` (8); typechecks of `...@proj-airi/motion-driver-natural` and `...@proj-airi/motion-driver-humanoid` (passed); the policy-docs test (11). No `qa:*` run, app launch, or `pnpm verify`.
-- **Acceptance.** Pending: section 8's CM9d row and rendered check 5.
-
-### CM9e (`luke/feat/character-mind-act-moments`, on CM9d)
-
-- **Commits.** `44f94343d` (seed act moments from the mind's orders), `cef20166f` (record the act moment decisions), and this record.
-- **Departures.** Recorded in the [act moments ADR](../../docs/ai/adr/2026-11-22-character-mind-act-moments.md#deviations): `expressionSeed` in `stage-shared` gains the `waking` purpose; Natural's observer `idle` events keep only phase and kind; a cue's `started` idle report names the cue intent; fixtures in `stage-ui` and `stage-ui-mmd` gain the new fields.
-- **Checks run by the worker.** `motion-driver-natural` (525) and `stage-shared` (1897) vitest; node projects of `stage-ui-live2d` (795), `stage-ui-mmd` (435), and `stage-ui` (2012); browser tests in `stage-ui-mmd` `src/composables/mmd/body` (6) and `stage-ui-live2d` `src/composables/live2d` (17); typecheck of `...@proj-airi/stage-shared` and `...@proj-airi/motion-driver-natural` (passed); the policy-docs test (11). No `qa:*` run, app launch, or `pnpm verify`.
-- **Acceptance.** Pending: section 8's CM9e row and rendered check 6.
-
 ## Orchestrator handoff
 
 Each worker builds one slice and runs its Node, browser, and dependent typechecks; the orchestrator owns the headless and rendered acceptance and records it in the slice's ADR placeholder and in this plan, as for CM6b2 and CM7c.
@@ -361,25 +370,16 @@ Scores prove direction, size relative to the recipe, release, and detectability 
 - **Checks run by the worker.** `character-mind` vitest (201 passed); `motion-driver-natural` (522), `motion-driver-humanoid` (457); node projects of `stage-ui-mmd` (433), `qa-tools` (893, 9 skipped), `stage-ui` (2010); `stage-ui` browser tests in `src/components/scenes` (61); `pnpm --filter "...@proj-airi/motion-driver-natural" --filter "...@proj-airi/motion-driver-humanoid" --workspace-concurrency=2 typecheck` (passed); the policy-docs test (11). No `qa:*` run, app launch, or `pnpm verify`.
 - **Acceptance.** Pending: section 8's CM9c row and rendered check 4.
 
-### CM9d: the linger in the errand (`luke/feat/character-mind-wander-linger`, after CM9c)
+### CM9d (`luke/feat/character-mind-wander-linger`, on CM9c)
 
-1. **`feat(motion-driver-natural,character-mind): draw the wander's stay with the errand`.** Tests: a wander decision carries `holdSeconds` in [45, 150] with the log-uniform law over seeds; a pastime's draw is unchanged; idle draws after a wander move by one (re-pin with the reason).
-2. **`feat(motion-driver-humanoid,stage-ui-mmd): stay for the errand's linger and end it at the walk home`.** Tests in `director/index.test.ts`: arrival and arrival in place stamp the input's linger; `return-home` waits for it; chase, chat, and tool walks still use `RETURN_HOME_DELAY_MS`; seeded wander-position tests re-pinned once; `realiseErrands` answers `done` at `return-home` (an `MMD.vue` browser test or a unit around the extracted function).
-3. Docs, 4. plan.
+- **Commits.** `ba5cb42af` (draw the wander's stay with the errand), `a2f1d4c40` (stay for the errand's linger and end it at the walk home), `715427588` (record the wander linger decisions), and this record.
+- **Departures.** Recorded in the [wander linger ADR](../../docs/ai/adr/2026-11-22-character-mind-wander-linger.md#deviations): the memory field is `wanderStay` rather than `lingerSeq`; `stage-ui` fixtures and the pastime preview record carry the new `holdSeconds`; Natural ends only a pastime at its hold; Autonomous behavior's Locomotion row and rule 8 change in the director commit, because the policy-docs test checks the constants they cited.
+- **Checks run by the worker.** `character-mind` vitest (202 passed); `motion-driver-natural` (523), `motion-driver-humanoid` (460); node projects of `stage-ui-mmd` (435) and `stage-ui` (2010, at both commits); `stage-ui` browser tests in `src/features/devtools/motion/mmd` (8); typechecks of `...@proj-airi/motion-driver-natural` and `...@proj-airi/motion-driver-humanoid` (passed); the policy-docs test (11). No `qa:*` run, app launch, or `pnpm verify`.
+- **Acceptance.** Pending: section 8's CM9d row and rendered check 5.
 
-### CM9e: act moments (`luke/feat/character-mind-act-moments`, after CM9c)
+### CM9e (`luke/feat/character-mind-act-moments`, on CM9d)
 
-1. **`feat(motion-driver-natural,stage-ui,stage-ui-live2d,stage-ui-mmd): seed act moments from the mind's orders`.** Tests: `IdleBehaviourReports` carries the intent id; a cue started by an intent carries its id; `use-idle-props.test.ts`: two instances given the same reports pick the same entry and chance, independent of earlier previews; `waking` and `held-back` use their seeds.
-2. Docs, 3. plan.
-
-### CM9f: travel gaze (`luke/feat/character-mind-travel-gaze`)
-
-1. **`feat(motion-driver-natural): rank travel in the gaze arbiter`.** Tests in `gaze.test.ts`: while traveling, every source below travel is refused and reported, every source at or above starts with its hold capped at 1.5 s, a walk start ends a lower claim and keeps a higher one, `held` follows the claim.
-2. **`feat(stage-ui-mmd): look where she walks unless a glance holds`.** Tests in `packages/stage-ui-mmd/src/composables/mmd/body/body.test.ts`: moving with `held` false aims along travel; with `held` true uses the free branch; stopping restores today's order.
-3. Docs, 4. plan.
-
-### CM10: character refractories (`luke/feat/character-mind-refractories`, after every CM9 slice)
-
-1. **`feat(character-mind): hold refractories once per character`.** Tests: each report stamps its field; the `refractory` intent carries remaining durations; the poke surprise is true once per 2 s on the mind's clock; reset clears them; `moment-marked` rests an entry 60 s.
-2. **`feat(motion-driver-humanoid,motion-driver-natural,stage-ui,stage-ui-mmd,qa-tools): read refractories from the mind`.** Tests: `decideBody` refuses an action, dance, gesture repeat, move tool, and look tool by the input's remaining durations exactly as by its old memory (port each existing refractory test); a refractory survives a new director (stance test with two directors and one mind); `startPending` plays surprise only when the intent says so; `useIdleProps` honours a rest the mind reports from another instance.
-3. Docs, 4. plan.
+- **Commits.** `44f94343d` (seed act moments from the mind's orders), `cef20166f` (record the act moment decisions), and this record.
+- **Departures.** Recorded in the [act moments ADR](../../docs/ai/adr/2026-11-22-character-mind-act-moments.md#deviations): `expressionSeed` in `stage-shared` gains the `waking` purpose; Natural's observer `idle` events keep only phase and kind; a cue's `started` idle report names the cue intent; fixtures in `stage-ui` and `stage-ui-mmd` gain the new fields.
+- **Checks run by the worker.** `motion-driver-natural` (525) and `stage-shared` (1897) vitest; node projects of `stage-ui-live2d` (795), `stage-ui-mmd` (435), and `stage-ui` (2012); browser tests in `stage-ui-mmd` `src/composables/mmd/body` (6) and `stage-ui-live2d` `src/composables/live2d` (17); typecheck of `...@proj-airi/stage-shared` and `...@proj-airi/motion-driver-natural` (passed); the policy-docs test (11). No `qa:*` run, app launch, or `pnpm verify`.
+- **Acceptance.** Pending: section 8's CM9e row and rendered check 6.
