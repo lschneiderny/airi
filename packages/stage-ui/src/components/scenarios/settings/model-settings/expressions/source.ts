@@ -49,6 +49,11 @@ export interface ExpressionPanelSnapshot {
   supportsIdleUse?: boolean
   /** Present only when the renderer supports stage items. */
   items?: ExpressionPanelItem[]
+  /**
+   * Her model canvas in canvas units, once the renderer reports it. A new item is placed relative to it; the panel
+   * offers "Add to this model" only while it is known.
+   */
+  canvas?: { width: number, height: number }
 }
 
 export type CreateComboInput = Pick<ComboDocument, 'label' | 'members'> & Partial<Pick<ComboDocument, 'mappings' | 'area'>> & { emotion?: ComboDocument['mappings'][number]['emotion'] }
@@ -89,6 +94,13 @@ export type ExpressionPanelItemCommand
   = | { type: 'create-item', item: CreateItemInput }
     | { type: 'update-item', id: string, patch: ItemPatch }
     | { type: 'delete-item', id: string }
+
+/** What the panel's editors emit; the panel splits it onto the three events. */
+export type AnyExpressionPanelCommand = ExpressionPanelCommand | ExpressionPanelCustomCommand | ExpressionPanelItemCommand
+
+export function isExpressionPanelItemCommand(command: AnyExpressionPanelCommand): command is ExpressionPanelItemCommand {
+  return command.type === 'create-item' || command.type === 'update-item' || command.type === 'delete-item'
+}
 
 /** What a renderer store exposes to the panel; the Live2D and MMD expression stores both satisfy it. */
 export interface ExpressionPanelSource {

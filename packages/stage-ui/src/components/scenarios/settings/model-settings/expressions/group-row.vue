@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ExpressionPanelCommand, ExpressionPanelCustomCommand, ExpressionPanelEntry } from './source'
+import type { AnyExpressionPanelCommand, ExpressionPanelEntry } from './source'
 
 import { Button, Select } from '@proj-airi/ui'
 import { computed, ref } from 'vue'
@@ -23,7 +23,7 @@ const props = defineProps<{
   idleUse?: boolean
 }>()
 const emit = defineEmits<{
-  (e: 'command', command: ExpressionPanelCommand | ExpressionPanelCustomCommand): void
+  (e: 'command', command: AnyExpressionPanelCommand): void
 }>()
 
 const { t } = useI18n()

@@ -548,6 +548,50 @@ live2d:
       create: Create
       none-free: This model has no free switches left.
       delete: Delete custom expression
+    items:
+      title: Stage items
+      description: Images, GIFs, and small Live2D models you bring onto her. The library is shared by every model; each model places its own copies.
+      import: Import files
+      importing: Importing files.
+      library-empty: No items yet. Import a PNG, JPG, GIF, or Live2D zip.
+      library-error: The item library could not be read.
+      add: Add to this model
+      add-full: This model already holds {max} items.
+      add-no-canvas: Load the model on stage first; the item is placed on its canvas.
+      remove-action: Remove
+      remove: Remove {name}
+      remove-confirm: 'Remove {name} from the library? {count} models place it; it disappears from each of them.'
+      remove-confirm-unused: 'Remove {name} from the library? No model places it.'
+      confirm: Remove
+      cancel: Keep
+      refused: '{name}: {reason}'
+      refused-dismiss: Dismiss
+      formats:
+        image: Image
+        gif: GIF
+        live2d-zip: Live2D model
+      size: '{width} × {height} px'
+      frames: '{count} frames'
+      refusals:
+        unsupported-type: Only PNG, JPG, GIF, and Live2D zip files are supported.
+        too-large: The file is too large or too many pixels wide.
+        too-many-frames: The GIF has too many frames.
+        invalid-live2d: The zip holds no complete Live2D model.
+        unreadable: The file could not be read.
+        library-full: The library is full.
+        storage-full: This device has no storage left for it.
+        item-limit: Too many items are shown at once.
+        missing-asset: Its file is gone from the library.
+      states:
+        missing-asset: File missing
+        reattached: Pin re-attached
+        missing-drawable: Pinned mesh missing
+        missing-layer: Layer missing
+        missing-part: Hidden part missing
+        failed: Could not be drawn
+      delete: Delete item
+      llm-exposed-description: Her chat model sees the item's label and may show it. Off for new items, because the label comes from a file name.
+      system-off-hint: Items, outfits included, show only while the expression system is on. Her own use and the chat model need the Natural motion driver.
     fields:
       label: Label
       kind: Kind

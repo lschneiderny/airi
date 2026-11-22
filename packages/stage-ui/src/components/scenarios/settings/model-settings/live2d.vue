@@ -795,6 +795,7 @@ const showAllExpressions = ref(false)
       :enabled="live2dExpressionActive"
       @command="applyExpressionSettingsCommand"
       @custom-command="applyExpressionSettingsCommand"
+      @item-command="applyExpressionSettingsCommand"
     >
       <template #disabled>
         <div py-2 text-xs text-neutral-500 dark:text-neutral-400>

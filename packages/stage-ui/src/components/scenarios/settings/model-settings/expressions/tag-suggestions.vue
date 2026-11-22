@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { CatalogEntry, TagSuggestion } from '@proj-airi/stage-shared/expression-performance'
 
-import type { ExpressionPanelCommand, ExpressionPanelCustomCommand } from './source'
+import type { AnyExpressionPanelCommand } from './source'
 
 import { errorMessageFrom } from '@moeru/std'
 import { tagSuggestionPatch } from '@proj-airi/stage-shared/expression-performance'
@@ -24,7 +24,7 @@ const props = defineProps<{
   request?: (entries: readonly CatalogEntry[], signal: AbortSignal) => Promise<TagSuggestion[]>
 }>()
 const emit = defineEmits<{
-  (e: 'command', command: ExpressionPanelCommand | ExpressionPanelCustomCommand): void
+  (e: 'command', command: AnyExpressionPanelCommand): void
 }>()
 
 const { t } = useI18n()
@@ -71,9 +71,12 @@ function apply() {
     if (!accepted.value[suggestion.id])
       continue
     const patch = tagSuggestionPatch(suggestion)
-    emit('command', suggestion.id.startsWith('custom:')
-      ? { type: 'update-custom', id: suggestion.id, patch }
-      : { type: 'update-entry', id: suggestion.id, patch })
+    if (suggestion.id.startsWith('item:'))
+      emit('command', { type: 'update-item', id: suggestion.id, patch })
+    else if (suggestion.id.startsWith('custom:'))
+      emit('command', { type: 'update-custom', id: suggestion.id, patch })
+    else
+      emit('command', { type: 'update-entry', id: suggestion.id, patch })
   }
   dismiss()
 }

@@ -37,6 +37,33 @@ function withoutItemAssets(document: CuratedCatalogDocument, assetIds: ReadonlyS
   }
 }
 
+/** The ids of every model with a stored expression catalog, loaded or not. */
+function storedCatalogModelIds(): string[] {
+  const modelIds: string[] = []
+  for (let index = 0; index < localStorage.length; index++) {
+    const key = localStorage.key(index)
+    if (key?.startsWith(catalogKeyPrefix))
+      modelIds.push(key.slice(catalogKeyPrefix.length))
+  }
+  return modelIds
+}
+
+/** How many models place the library asset, so a removal confirmation can name them. A document that fails to parse counts as none. */
+export function countModelsPlacingAsset(assetId: string): number {
+  let count = 0
+  for (const modelId of storedCatalogModelIds()) {
+    try {
+      const parsed = parseCuratedCatalogDocument(JSON.parse(localStorage.getItem(`${catalogKeyPrefix}${modelId}`) ?? 'null'))
+      if (parsed.success && parsed.value.items?.some(item => item.assetId === assetId))
+        count++
+    }
+    catch {
+      // Not JSON: the model's own load discards it.
+    }
+  }
+  return count
+}
+
 /**
  * Strips the given library assets from the stored expression documents of every model, loaded or not: their item
  * documents, combo members, and rest-set entries. A document that fails to parse is left for its model's load to
@@ -45,13 +72,7 @@ function withoutItemAssets(document: CuratedCatalogDocument, assetIds: ReadonlyS
 export function removeItemsByAsset(assetIds: readonly string[]): Map<string, Set<string>> {
   const removed = new Map<string, Set<string>>()
   const assets = new Set(assetIds)
-  const modelIds: string[] = []
-  for (let index = 0; index < localStorage.length; index++) {
-    const key = localStorage.key(index)
-    if (key?.startsWith(catalogKeyPrefix))
-      modelIds.push(key.slice(catalogKeyPrefix.length))
-  }
-  for (const modelId of modelIds) {
+  for (const modelId of storedCatalogModelIds()) {
     try {
       const parsed = parseCuratedCatalogDocument(JSON.parse(localStorage.getItem(`expression-catalog:${modelId}`) ?? 'null'))
       if (!parsed.success)
