@@ -30,6 +30,8 @@ storage.mount('recipes', indexedDbDriver({ dbName: 'airi-recipes', storeName: 'r
 storage.mount('character-state', indexedDbDriver({ dbName: 'airi-character-state', storeName: 'cards' }))
 /** The sticker library. Entries and images have their own key prefixes. */
 storage.mount('stickers', indexedDbDriver({ dbName: 'airi-sticker-library', storeName: 'records' }))
+/** The stage item library. Entries and files have their own key prefixes. */
+storage.mount('stage-items', indexedDbDriver({ dbName: 'airi-stage-item-library', storeName: 'records' }))
 
 /**
  * Reads the raw value of each key that starts with `prefix`.

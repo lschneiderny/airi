@@ -55,6 +55,7 @@ import {
 } from '../stores/settings'
 import { useSituationStore } from '../stores/situation'
 import { useSpeechOutputControlStore } from '../stores/speech-output-control'
+import { useStageItemLibraryStore } from '../stores/stage-item-library'
 import { useToolCardsStore } from '../stores/tool-cards'
 import { useVoiceprintStore } from '../stores/voiceprint'
 
@@ -135,6 +136,8 @@ export function defineStateRegistry<const T extends readonly StateRegistration[]
  * - A store whose creation connects or loads (the sticker library, the background stores) has no owner reset; the
  *   sweep alone resets it. Every other owner that keeps the state in memory has one, because removing a localStorage
  *   key fires no `storage` event in the window that removes it, so that window would keep and later save the old values.
+ * - The stage item library loads on creation and still has an owner reset: it empties the library under its Web Lock
+ *   and broadcasts the removed ids, so the stage window drops the items it shows.
  *
  * Not registered, and named in `docs/ai/context/state-persistence.md`: the main-process files that
  * `storedDataDeleteActivity` deletes (session logs, IO traces, the computer-use store), the perf records with their own
@@ -169,6 +172,19 @@ export const stateRegistry = defineStateRegistry([
       { area: 'localStorage', prefix: 'expression-catalog:' },
       { area: 'localStorage', prefix: 'expression-rest:' },
     ],
+  },
+  {
+    id: 'stage-item-library',
+    owner: 'useStageItemLibraryStore',
+    writers: ['packages/stage-ui/src/database/repos/stage-items.repo.ts'],
+    tier: 4,
+    exception: 'Stage item library',
+    locations: [
+      { area: 'indexedDB', database: 'airi-stage-item-library', store: 'records', prefix: 'entries:' },
+      { area: 'indexedDB', database: 'airi-stage-item-library', store: 'records', prefix: 'files:' },
+    ],
+    // Empties the library under its Web Lock and tells every window, so no window keeps showing a deleted asset.
+    reset: ({ pinia }) => useStageItemLibraryStore(pinia).resetState(),
   },
   {
     id: 'display-models',
