@@ -1,3 +1,4 @@
+import type { PerformerCapabilities } from '@proj-airi/character-mind'
 import type { BodyLookTarget } from '@proj-airi/motion-driver-humanoid/types'
 import type { FaceBaseline } from '@proj-airi/motion-driver-natural/baseline'
 import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
@@ -28,6 +29,15 @@ import { Vector3 } from 'three'
 import { applySpeechEvent, createLease, leaseReleaseAt } from '../../../stores/expression-slots'
 import { applyNaturalFace } from './face'
 import { fnv1a32 } from './seed'
+
+/** Natural realises every mind channel; the director still resolves available clips and stage geometry. */
+export const MMD_NATURAL_CAPABILITIES: PerformerCapabilities = {
+  posture: true,
+  face: true,
+  gaze: true,
+  gestures: ['nod', 'shake', 'glance', 'shrug', 'lean'],
+  body: true,
+}
 
 export interface MMDNaturalInput {
   readonly performance: PerformanceState

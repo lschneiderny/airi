@@ -1,3 +1,4 @@
+import type { PerformerCapabilities } from '@proj-airi/character-mind'
 import type { FaceBaseline } from '@proj-airi/motion-driver-natural/baseline'
 import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
 import type { CursorOrder, CursorReport } from '@proj-airi/motion-driver-natural/cursor-notice'
@@ -22,6 +23,15 @@ import { IdleBehaviourReports } from '@proj-airi/motion-driver-natural/idle-acti
 import { IdleErrandReports } from '@proj-airi/motion-driver-natural/idle-errands'
 import { dormantIdleView } from '@proj-airi/motion-driver-natural/idle-schedule'
 import { NaturalMotion } from '@proj-airi/motion-driver-natural/natural-motion'
+
+/** Shrug and lean do not read on a Live2D head and bust; the mind refuses those requests. */
+export const LIVE2D_NATURAL_CAPABILITIES: PerformerCapabilities = {
+  posture: true,
+  face: true,
+  gaze: true,
+  gestures: ['nod', 'shake', 'glance'],
+  body: false,
+}
 
 type Core = PixiLive2DInternalModel['coreModel']
 interface FocusModel {
