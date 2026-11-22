@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { EmotionMapping } from '@proj-airi/stage-shared/expression-performance'
 
-import type { ExpressionPanelCommand, ExpressionPanelCustomCommand, ExpressionPanelEntry } from './source'
+import type { AnyExpressionPanelCommand, ExpressionPanelEntry } from './source'
 
 import { Button, Checkbox, FieldCombobox } from '@proj-airi/ui'
 import { computed, ref } from 'vue'
@@ -18,7 +18,7 @@ const props = defineProps<{
   entries: Entry[]
 }>()
 const emit = defineEmits<{
-  (e: 'command', command: ExpressionPanelCommand | ExpressionPanelCustomCommand): void
+  (e: 'command', command: AnyExpressionPanelCommand): void
 }>()
 
 const { t } = useI18n()
@@ -60,12 +60,14 @@ function candidatesFor(emotion: Emotion) {
     .map(entry => ({ value: entry.id, label: entry.label }))
 }
 
-/** Combos and custom switches keep their mappings in their own documents; every other id is an override. */
-function mappingsCommand(entry: Entry, mappings: EmotionMapping[]): ExpressionPanelCommand | ExpressionPanelCustomCommand {
+/** Combos, custom switches, and items keep their mappings in their own documents; every other id is an override. */
+function mappingsCommand(entry: Entry, mappings: EmotionMapping[]): AnyExpressionPanelCommand {
   if (entry.id.startsWith('combo:'))
     return { type: 'update-combo', id: entry.id, patch: { mappings } }
   if (entry.id.startsWith('custom:'))
     return { type: 'update-custom', id: entry.id, patch: { mappings } }
+  if (entry.id.startsWith('item:'))
+    return { type: 'update-item', id: entry.id, patch: { mappings } }
   return { type: 'update-entry', id: entry.id, patch: { mappings } }
 }
 

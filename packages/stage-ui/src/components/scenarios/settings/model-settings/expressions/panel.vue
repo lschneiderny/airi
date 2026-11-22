@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ExpressionPanelCommand, ExpressionPanelCustomCommand, ExpressionPanelSnapshot } from './source'
+import type { AnyExpressionPanelCommand, ExpressionPanelCommand, ExpressionPanelCustomCommand, ExpressionPanelItemCommand, ExpressionPanelSnapshot } from './source'
 
 import { Button } from '@proj-airi/ui'
 import { useI18n } from 'vue-i18n'
@@ -7,8 +7,9 @@ import { useI18n } from 'vue-i18n'
 import ExpressionAreas from './areas.vue'
 import ExpressionCombos from './combos.vue'
 import ExpressionReactions from './reactions.vue'
+import ExpressionStageItems from './stage-items.vue'
 
-import { isExpressionPanelCustomCommand } from './source'
+import { isExpressionPanelCustomCommand, isExpressionPanelItemCommand } from './source'
 
 const props = withDefaults(defineProps<{
   snapshot: ExpressionPanelSnapshot
@@ -20,13 +21,16 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   (e: 'command', command: ExpressionPanelCommand): void
   (e: 'customCommand', command: ExpressionPanelCustomCommand): void
+  (e: 'itemCommand', command: ExpressionPanelItemCommand): void
 }>()
 
 const { t } = useI18n()
 
-// Custom switches exist only for sources that publish free parameters, so they travel on their own event.
-function applyExpressionSettingsCommand(command: ExpressionPanelCommand | ExpressionPanelCustomCommand) {
-  if (isExpressionPanelCustomCommand(command))
+// Custom switches and stage items exist only for sources that publish them, so each travels on its own event.
+function applyExpressionSettingsCommand(command: AnyExpressionPanelCommand) {
+  if (isExpressionPanelItemCommand(command))
+    emit('itemCommand', command)
+  else if (isExpressionPanelCustomCommand(command))
     emit('customCommand', command)
   else
     emit('command', command)
@@ -38,11 +42,22 @@ const showAllExpressions = defineModel<boolean>('showAll', { required: true })
 </script>
 
 <template>
-  <slot v-if="!props.enabled" name="disabled" />
+  <template v-if="!props.enabled">
+    <slot name="disabled" />
+    <!-- Stored items stay stored, but nothing draws them while the expression system is off. -->
+    <p
+      v-if="(props.snapshot.items?.length ?? 0) > 0"
+      role="note"
+      :class="['py-2', 'text-xs text-neutral-500 dark:text-neutral-400']"
+    >
+      {{ t('settings.live2d.expressions.items.system-off-hint') }}
+    </p>
+  </template>
   <template v-else-if="props.snapshot.entries.length === 0">
     <div py-2 text-sm text-neutral-500 dark:text-neutral-400>
       {{ t('settings.live2d.expressions.no-expression') }}
     </div>
+    <ExpressionStageItems v-if="props.snapshot.items" :snapshot="props.snapshot" @command="applyExpressionSettingsCommand" />
   </template>
   <template v-else>
     <!-- Emotion first: what the character shows, then the combos behind it, then every single expression. -->
@@ -53,6 +68,14 @@ const showAllExpressions = defineModel<boolean>('showAll', { required: true })
     <ExpressionAreas
       v-model:search="expressionSearch"
       v-model:show-all="showAllExpressions"
+      :snapshot="props.snapshot"
+      :class="['mt-4']"
+      @command="applyExpressionSettingsCommand"
+    />
+
+    <!-- The library and the way into this model's catalog; item entries themselves sit in the areas above. -->
+    <ExpressionStageItems
+      v-if="props.snapshot.items"
       :snapshot="props.snapshot"
       :class="['mt-4']"
       @command="applyExpressionSettingsCommand"

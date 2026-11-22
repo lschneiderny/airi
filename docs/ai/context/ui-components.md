@@ -1152,9 +1152,11 @@ The MMD settings desktop section receives `DesktopStageHost` through `provideDes
 
 **Props:** `snapshot: ExpressionPanelSnapshot`, `enabled?: boolean` (default `true`).
 **Models:** `search: string`, `showAll: boolean` (required; the parent owns them so they survive a collapsed section).
-**Emits:** `command(ExpressionPanelCommand)`; `customCommand(ExpressionPanelCustomCommand)` for Live2D custom switches only.
-**Slots:** `disabled`, rendered instead of the controls when `enabled` is `false`.
+**Emits:** `command(ExpressionPanelCommand)`; `customCommand(ExpressionPanelCustomCommand)` for Live2D custom switches only; `itemCommand(ExpressionPanelItemCommand)` for stage items only.
+**Slots:** `disabled`, rendered instead of the controls when `enabled` is `false`. With stored items, a note under it says that items show only while the expression system is on.
 
-Layout is emotion first: Reactions, then Combos, then every expression by area. The strings stay under `settings.live2d.expressions.*`.
+Layout is emotion first: Reactions, then Combos, then every expression by area, then the stage items. The strings stay under `settings.live2d.expressions.*`.
+
+**Stage items** (`expressions/stage-items.vue`, rendered when the snapshot has `items`): the device-wide library from `useStageItemLibraryStore` (thumbnail, name, format, size or frame count), a multi-file import that lists one refusal per refused file, a removal that first names how many models place the asset (`countModelsPlacingAsset` from `@proj-airi/stage-ui-live2d/stores/expression-catalog-persistence`), and "Add to this model", which emits `create-item` with a `prop` in front of her, centered on her canvas and one third of its width wide. The snapshot's optional `canvas` gives that size; without it the button is disabled with a note. An `item:` entry edits through `update-item` and `delete-item`, offers the kinds `prop`, `effect`, and `outfit` only, shows no chat-model switch for an outfit, and carries a badge for a missing asset or a renderer state other than `attached`; `reactions.vue` and `tag-suggestions.vue` route item ids the same way.
 
 `ModelSettingsPanel` (`model-settings/panel.vue`) re-emits `live2dExpressionCommand` and `mmdExpressionCommand`. In Electron the settings window reads `runtimeSnapshot.live2dExpressions` or `runtimeSnapshot.mmdExpressions` and forwards the command over the model-settings runtime channel (`apps/stage-tamagotchi/src/shared/model-settings-runtime.ts`); the stage window applies it to its store and answers with the next snapshot.

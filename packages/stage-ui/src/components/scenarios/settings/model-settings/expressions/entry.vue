@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import type { ExpressionArea, ExpressionKind, IdleUse, Moment, Occasion } from '@proj-airi/stage-shared/expression-performance'
+import type { ExpressionArea, ExpressionKind, IdleUse, ItemExpressionDocument, Moment, Occasion } from '@proj-airi/stage-shared/expression-performance'
 
-import type { ExpressionPanelCommand, ExpressionPanelCustomCommand, ExpressionPanelEntry } from './source'
+import type { AnyExpressionPanelCommand, ExpressionPanelEntry, ExpressionPanelItem } from './source'
 import type { DraftMapping } from './trigger-editor.vue'
 
 import { MOMENTS, OCCASIONS } from '@proj-airi/stage-shared/expression-performance'
@@ -24,27 +24,45 @@ const props = defineProps<{
   labelOf?: (id: string) => string
   /** The renderer lets the character use entries on her own, so the editor offers the choice. */
   idleUse?: boolean
+  /** The stored stage item behind an `item:` entry, for its asset and render state badges. */
+  item?: ExpressionPanelItem
 }>()
 const emit = defineEmits<{
-  (e: 'command', command: ExpressionPanelCommand | ExpressionPanelCustomCommand): void
+  (e: 'command', command: AnyExpressionPanelCommand): void
 }>()
 
 const { t } = useI18n()
 
 const kinds: ExpressionKind[] = ['face', 'effect', 'outfit', 'prop', 'system']
+/** A stage item is something she holds, an effect around her, or an outfit; never a face. */
+const itemKinds: ExpressionKind[] = ['prop', 'effect', 'outfit']
 const llmKinds: ExpressionKind[] = ['face', 'effect', 'prop']
 const areas: ExpressionArea[] = ['whole-look', 'eyes', 'mouth', 'cheeks', 'effects', 'outfit-hair', 'props', 'hidden']
 const idleUses: IdleUse[] = ['never', 'activity', 'sleep']
 const noGroup = '__none__'
 const noArea = '__none__'
 
-// Custom switches live in their own document, so their edits take the custom commands.
+// Custom switches and stage items live in their own documents, so their edits take their own commands.
 const isCustom = computed(() => props.entry.id.startsWith('custom:'))
+const isItem = computed(() => props.entry.id.startsWith('item:'))
+// Items and customs have no detected origin, so they take no choose-one set and no inverted switch.
+const hasOwnDocument = computed(() => isCustom.value || isItem.value)
 const isUnsorted = computed(() => props.entry.kind === 'unsorted')
 const labelOf = (id: string) => props.labelOf?.(id) ?? id
 const aliasLabels = computed(() => (props.entry.aliases ?? []).map(alias => ({ id: alias, label: labelOf(alias) })))
 
-const kindOptions = computed(() => kinds.map(kind => ({ value: kind, label: t(`settings.live2d.expressions.kinds.${kind}`) })))
+/** What the panel can tell about an item at a glance: its file is gone, or the renderer could not place it as stored. */
+const itemBadge = computed(() => {
+  if (!isItem.value || !props.item)
+    return ''
+  if (!props.item.available)
+    return t('settings.live2d.expressions.items.states.missing-asset')
+  if (props.item.state === null || props.item.state === 'attached')
+    return ''
+  return t(`settings.live2d.expressions.items.states.${props.item.state}`)
+})
+
+const kindOptions = computed(() => (isItem.value ? itemKinds : kinds).map(kind => ({ value: kind, label: t(`settings.live2d.expressions.kinds.${kind}`) })))
 const areaOptions = computed(() => [
   { value: noArea, label: t('settings.live2d.expressions.areas.none') },
   ...areas.map(area => ({ value: area, label: t(`settings.live2d.expressions.areas.${area}`) })),
@@ -121,13 +139,15 @@ const hasErrors = computed<boolean>(() => labelError.value !== '' || (triggerEdi
 const draftExposedToLlm = ref(false)
 
 function setExposedToLlm(exposedToLlm: boolean) {
-  if (isCustom.value)
+  if (isItem.value)
+    emit('command', { type: 'update-item', id: props.entry.id, patch: { exposedToLlm } })
+  else if (isCustom.value)
     emit('command', { type: 'update-custom', id: props.entry.id, patch: { exposedToLlm } })
   else
     emit('command', { type: 'update-entry', id: props.entry.id, patch: { exposedToLlm } })
 }
 
-/** Gives an unsorted entry its kind and opens the editor so a mapping can follow right away. */
+/** Gives an unsorted entry its kind and opens the editor so a mapping can follow right away. Items are never unsorted. */
 function setKind(kind: ExpressionKind) {
   const patch = { kind, exposedToLlm: llmKinds.includes(kind) }
   if (isCustom.value)
@@ -156,7 +176,12 @@ function apply() {
   const occasions = props.idleUse === true && draftIdleUse.value === 'activity' && JSON.stringify(draftOccasions.value) !== JSON.stringify(props.entry.occasions ?? []) ? { occasions: draftOccasions.value } : {}
   // Tagging a moment is the permission to use the entry for it; an empty list takes it back.
   const moments = props.idleUse === true && JSON.stringify(draftMoments.value) !== JSON.stringify(props.entry.moments ?? []) ? { moments: draftMoments.value } : {}
-  if (isCustom.value) {
+  if (isItem.value) {
+    // The kind picker offers item kinds only, so the draft kind is one of them.
+    const kind = draftKind.value as ItemExpressionDocument['kind']
+    emit('command', { type: 'update-item', id: props.entry.id, patch: { label, kind, mappings, ...area, ...clearArea, ...idleUse, ...occasions, ...moments } })
+  }
+  else if (isCustom.value) {
     emit('command', { type: 'update-custom', id: props.entry.id, patch: { label, kind: draftKind.value, mappings, ...area, ...clearArea, ...idleUse, ...occasions, ...moments } })
   }
   else {
@@ -183,6 +208,11 @@ function apply() {
 
 function deleteCustom() {
   emit('command', { type: 'delete-custom', id: props.entry.id })
+  open.value = false
+}
+
+function deleteItem() {
+  emit('command', { type: 'delete-item', id: props.entry.id })
   open.value = false
 }
 
@@ -225,6 +255,12 @@ function resetEntry() {
           :class="['break-words', 'text-xs text-amber-700 dark:text-amber-300']"
           role="status"
         >{{ t('settings.live2d.expressions.overridden-by', { label: entry.overriddenBy }) }}</span>
+        <span
+          v-if="itemBadge"
+          data-testid="item-state"
+          :class="['break-words', 'text-xs text-amber-700 dark:text-amber-300']"
+          role="status"
+        >{{ itemBadge }}</span>
         <div
           v-if="aliasLabels.length > 0"
           :class="['flex flex-wrap items-center gap-1.5', 'text-xs text-neutral-500 dark:text-neutral-400']"
@@ -313,7 +349,7 @@ function resetEntry() {
           {{ t('settings.live2d.expressions.fields.kind') }}
           <Select v-model="draftKind" :options="kindOptions" />
         </div>
-        <div v-if="!isCustom" :class="['flex flex-col gap-1', 'text-xs text-neutral-500 dark:text-neutral-400']">
+        <div v-if="!hasOwnDocument" :class="['flex flex-col gap-1', 'text-xs text-neutral-500 dark:text-neutral-400']">
           <span>{{ t('settings.live2d.expressions.fields.group') }}</span>
           <Select v-model="draftGroup" :options="groupOptions" />
         </div>
@@ -350,7 +386,11 @@ function resetEntry() {
         <span>{{ t('settings.live2d.expressions.moments.description') }}</span>
       </div>
 
-      <label v-if="!isCustom" :class="['flex items-center justify-between gap-2', 'text-sm text-neutral-700 dark:text-neutral-300']">
+      <p v-if="isItem && llmKinds.includes(draftKind)" :class="['text-xs text-neutral-500 dark:text-neutral-400']">
+        {{ t('settings.live2d.expressions.items.llm-exposed-description') }}
+      </p>
+
+      <label v-if="!hasOwnDocument" :class="['flex items-center justify-between gap-2', 'text-sm text-neutral-700 dark:text-neutral-300']">
         <span :class="['min-w-0 flex flex-1 flex-col gap-0.5']">
           {{ t('settings.live2d.expressions.fields.inverted') }}
           <span :class="['text-xs text-neutral-500 dark:text-neutral-400']">{{ t('settings.live2d.expressions.fields.inverted-description') }}</span>
@@ -370,7 +410,10 @@ function resetEntry() {
         <Button @click="apply">
           {{ t('settings.live2d.expressions.apply') }}
         </Button>
-        <Button v-if="isCustom" color="red" @click="deleteCustom">
+        <Button v-if="isItem" color="red" @click="deleteItem">
+          {{ t('settings.live2d.expressions.items.delete') }}
+        </Button>
+        <Button v-else-if="isCustom" color="red" @click="deleteCustom">
           {{ t('settings.live2d.expressions.custom.delete') }}
         </Button>
         <Button v-else @click="resetEntry">

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { CatalogEntry, ExpressionArea, TagSuggestion } from '@proj-airi/stage-shared/expression-performance'
 
-import type { ExpressionPanelCommand, ExpressionPanelCustomCommand, ExpressionPanelEntry, ExpressionPanelSnapshot } from './source'
+import type { AnyExpressionPanelCommand, ExpressionPanelEntry, ExpressionPanelSnapshot } from './source'
 
 import { idleActivityEntries, momentCoverage, momentEntries, MOMENTS, occasionCoverage, OCCASIONS } from '@proj-airi/stage-shared/expression-performance'
 import { Button, Collapsible, Input } from '@proj-airi/ui'
@@ -26,7 +26,7 @@ const props = defineProps<{
   suggest?: (entries: readonly CatalogEntry[], signal: AbortSignal) => Promise<TagSuggestion[]>
 }>()
 const emit = defineEmits<{
-  (e: 'command', command: ExpressionPanelCommand | ExpressionPanelCustomCommand): void
+  (e: 'command', command: AnyExpressionPanelCommand): void
 }>()
 
 const { t } = useI18n()
@@ -38,6 +38,8 @@ const labelById = computed(() => new Map(props.snapshot.entries.map(entry => [en
 function labelOf(id: string) {
   return labelById.value.get(id) ?? id
 }
+// An item entry's row also shows its stored item's asset and render state.
+const itemById = computed(() => new Map((props.snapshot.items ?? []).map(item => [item.document.id, item])))
 
 const expressionGroups = computed(() => {
   const groups = new Map<string, string[]>()
@@ -235,6 +237,7 @@ const coverage = computed(() => {
             :groups="expressionGroups"
             :label-of="labelOf"
             :idle-use="snapshot.supportsIdleUse === true"
+            :item="itemById.get(row.entry.id)"
             @command="emit('command', $event)"
           />
         </template>
