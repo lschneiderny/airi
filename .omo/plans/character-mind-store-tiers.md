@@ -392,6 +392,27 @@ The recommendations above were implemented. Departures and verification evidence
 
 ## Commits
 
+### Orchestrator QA corrections
+
+- Finding 7: a real-runtime browser regression reproduced loss of both consent and MMD imports after a follower seeded the domain before leader store registration. Registration replaced the correctly read construction projection with defaults; initialization then saved that replicated projection and removed the old keys. The first leader save now reads storage again at execution time, gives an existing document precedence, and builds MMD map patches from that same authority. Three ordering/failure cases failed before the fix and pass afterward.
+- Finding 8: S2 inserted awaited settings RPCs and the main consent mirror before App mounted. Chat/session and speech actions are registered during App setup, while election already ran. This exposed a leader with no action registrations to the faster follower windows. The orchestrator confirmed zero errors on main and three on S2 with the same driver. A separate startup fix and regression follow.
+
+### Original implementation
+
+Finding 7 checks (2026-11-22):
+
+- `pnpm -F @proj-airi/stage-shared exec vitest run src/composables/use-settings-document/index.test.ts`: 1 file / 20 tests.
+- `pnpm -F @proj-airi/stage-ui exec vitest run --project browser src/stores/settings/analytics.browser.test.ts`: 3 failed / 1 passed before the fix, then 4 passed.
+- `pnpm -F @proj-airi/stage-shared exec vitest run`: 96 files / 1882 tests.
+- `pnpm -F @proj-airi/stage-ui-mmd exec vitest run --project node`: 49 files / 431 tests.
+- `pnpm -F @proj-airi/stage-ui exec vitest run --project node`: 196 files / 1911 tests.
+- `pnpm -F @proj-airi/stage-ui-mmd exec vitest run --project browser`: 7 files / 34 tests.
+- `pnpm -F @proj-airi/stage-ui-live2d exec vitest run --project browser src/composables/live2d/natural-settings.browser.test.ts`: 1 file / 13 tests.
+- `pnpm -F @proj-airi/stage-ui exec vitest run --project browser src/stores/settings/analytics.browser.test.ts src/persistence/state-registry.browser.test.ts src/composables/use-data-maintenance.browser.test.ts src/features/conversation/settings.browser.test.ts src/features/performance/settings.browser.test.ts src/features/situation/settings.browser.test.ts src/features/host-capabilities/notice-settings.browser.test.ts`: 7 files / 128 tests.
+- `pnpm --filter "...@proj-airi/stage-shared" --workspace-concurrency=2 typecheck`: all 28 projects passed.
+- `pnpm exec vitest run --project dev-tools scripts/dev-tools/lib/storage-writes.test.ts scripts/dev-tools/storage-writes.test.ts scripts/dev-tools/policy-docs.test.ts`: 3 files / 28 tests.
+- Changed-file ESLint and whitespace checks passed. No Electron run was performed.
+
 - `623bfe20d` - `refactor(stage-ui): declare upstream persistence exceptions by owner`.
 - `dcfaebb3a` - `test(stage-ui): reject new fork state in the plain persistence tier`.
 - `64f7f2530` - `refactor(stage-ui,stage-pages,stage-tamagotchi): persist analytics consent through one leader document`.
