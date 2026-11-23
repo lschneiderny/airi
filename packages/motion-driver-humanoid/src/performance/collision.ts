@@ -14,11 +14,19 @@ export { colliderDistance, proxyColliders } from './colliders'
 const GUARD_OMEGA = 14
 /**
  * The soft skin outside the margin of every proxy while the gait carries the body, as a share of the segment length at
- * a gait weight of 1: the margin's own thickness. An arm entering it is pushed back by a smooth function of its depth
- * there, so a thigh that swings into the arm, or a trunk the walk twists into it, slows it over several ticks instead of
- * stopping it dead at the margin, and the arm never passes the margin.
+ * a gait weight of 1. An arm entering it is pushed back by a smooth function of its depth there, so a thigh that swings
+ * into the arm, or a trunk the walk twists into it, slows it over several ticks instead of stopping it dead at the
+ * margin, and the arm never passes the margin. At the margin's own 0.03 a walking arm crossed the skin in two ticks and
+ * its speed stepped by 30 to 55 degrees per second; at 0.1 the crossing takes about a tenth of a second.
  */
-const SKIN = 0.03
+const SKIN = 0.1
+const SIDESTEP_SKIN = 0.03
+
+/**
+ * The pose that probes an arm's room behind the hip, radians: the walk's full back swing (15.5 degrees) beyond the 10
+ * degrees the walking arm already trails its shoulder by, at the walk's narrowest hang.
+ */
+const BACK_SWING_PROBE = { swing: 15.5 * DEG, trail: 10 * DEG, abduct: 14 * DEG } as const
 
 /** Writes the rotation by `angle` about the unit axis (x, y, z) into a transform's row-major 3x3, as `setRotation` does. */
 function setAxisAngle(out: BodyTransform, x: number, y: number, z: number, angle: number): void {
@@ -68,6 +76,12 @@ export class BodyCollision {
   private readonly skeleton: BodySkeleton
   private readonly colliders: readonly BodyCollider[]
   private readonly posed: ReturnType<typeof identityTransform>[]
+  /**
+   * The share of the walk's back swing each arm has room for, 0 to 1: the largest of six steps at which the arm, swung
+   * back from its rest pose, clears every body with the gait's skin to spare. A tail or a wing behind the hips leaves
+   * less than a bare hip does.
+   */
+  readonly backSwing: Record<BodySide, number>
   /** Each leg's thigh and shin motion in the hips frame (about the hips bone), set by `prepare` while the gait carries the feet. */
   private readonly legPose = {
     left: { thigh: identityTransform(), shin: identityTransform() },
@@ -76,10 +90,10 @@ export class BodyCollision {
 
   private readonly legScratch = identityTransform()
   /**
-   * The gait weight of the latest `prepare`, 0 without a gait. The skin grows with it, so it closes in on an arm that
+   * The gait skin scale of the latest `prepare`, 0 without a gait. The skin grows with it, so it closes in on an arm that
    * already rests near a proxy over the gait's blend instead of pushing it out on the first walking tick.
    */
-  private gaitWeight = 0
+  private gaitSkinWeight = 0
   /** Each side's skin thickness in model units: `SKIN` of the shorter arm segment, so it is never thicker than a sample's own. */
   private readonly skin: Record<BodySide, number>
   private readonly local = identityTransform()
@@ -112,6 +126,24 @@ export class BodyCollision {
       guard[start + 3] = 45 * DEG
       guard[start + 4] = 0
       guard[start + 5] = 20 * DEG
+    }
+    const backSwing = (side: BodySide) => {
+      const start = ARM_START[side]
+      const probe = rest.slice()
+      probe[start + 3] = Math.max(probe[start + 3], BACK_SWING_PROBE.abduct)
+      for (let share = 1; share > 0; share -= 0.2) {
+        probe[start + 2] = rest[start + 2] - BACK_SWING_PROBE.trail - share * BACK_SWING_PROBE.swing
+        if (this.measure(side, probe, SKIN).depth <= 0)
+          return share
+      }
+      return 0
+    }
+    this.backSwing = { left: backSwing('left'), right: backSwing('right') }
+    for (const side of SIDES) {
+      const start = ARM_START[side]
+      // The standard guard can hit a proxy even when this arm has a clear rest pose.
+      if (this.measure(side, guard).depth > 0)
+        guard.set(rest.subarray(start + 2, start + 6), start + 2)
       gestures[side] = this.measure(side, guard).depth <= 0
       if (gestures[side]) {
         for (let j = 2; j <= 5; j++)
@@ -181,7 +213,7 @@ export class BodyCollision {
     this.skeleton.update(channels)
     const legs = this.traits.legs
     const ankles = gait && gait.weight > 0 ? gait.ankles : null
-    this.gaitWeight = gait ? gait.weight : 0
+    this.gaitSkinWeight = gait ? gait.weight * (gait.walkForm ? 1 : SIDESTEP_SKIN / SKIN) : 0
     if (legs && ankles && gait) {
       for (const side of SIDES)
         this.poseLeg(side, legs[side], ankles[side], gait.weight)
@@ -334,7 +366,7 @@ export class BodyCollision {
         channels[index] += this.previous[index] * Math.exp(-BODY_TICK / 0.3)
         channels[index] = Math.max(JOINT_LIMITS[index][0], Math.min(JOINT_LIMITS[index][1], channels[index]))
       }
-      if (this.gaitWeight > 0 && this.project(side, channels, this.gaitWeight))
+      if (this.gaitSkinWeight > 0 && this.project(side, channels, this.gaitSkinWeight))
         this.corrector.capHits++
       if (this.project(side, channels))
         this.corrector.capHits++

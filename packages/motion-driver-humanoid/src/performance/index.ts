@@ -61,7 +61,7 @@ const STEADY_GAIN = [0.5, 0.6, 0.6] as const
 const STEADY_LAG = 0.08
 /** A held gaze's eye residue. */
 const HELD_MICRO = Object.freeze({ yaw: 0, pitch: 0 })
-const GAIT_ABDUCT_CHANNELS: ReadonlySet<number> = new Set(SIDES.map(side => channelIndex(`${side}Abduct`)))
+const GAIT_SHAPED_CHANNELS: ReadonlySet<number> = new Set(SIDES.flatMap(side => [channelIndex(`${side}Abduct`), channelIndex(`${side}Flex`)]))
 
 /**
  * The arm channels the gait swings, each with its index in its side's arm block. The gait already times each joint (the
@@ -73,10 +73,20 @@ const GAIT_ABDUCT_CHANNELS: ReadonlySet<number> = new Set(SIDES.map(side => chan
  */
 /** The arm block index of the abduction channel: the gait's value there is a floor on the arm's hang, not an offset. */
 const ABDUCT_JOINT = 3
-const GAIT_ARM_CHANNELS: readonly (readonly [channel: number, joint: number])[] = SIDES.flatMap(side =>
+/**
+ * How far a walking arm opens beyond its rest hang at least, radians. The rest hang clears the rig's bodies while she
+ * stands; a walk sways and lists the hips into the arm and keeps a soft skin around every body, and without this room
+ * the arm rode the skin on rigs with a tail, wings or a flared skirt (18 velocity steps a minute on one, 2026-11-23).
+ * A clearance probed per rig against the skin asked for up to 10 degrees and held the arms wider still.
+ */
+const GAIT_ARM_CLEARANCE = 6 * DEG
+/** The arm block index of the flexion channel, and the gait's constant in it: the back swing is what falls below it. */
+const FLEX_JOINT = 2
+const GAIT_FLEX_REST = 2 * DEG
+const GAIT_ARM_CHANNELS: readonly (readonly [channel: number, joint: number, side: (typeof SIDES)[number]])[] = SIDES.flatMap(side =>
   (['ClavProt', 'Flex', 'Abduct', 'Elbow'] as const).map((joint) => {
     const channel = channelIndex(`${side}${joint}`)
-    return [channel, channel - ARM_START[side]] as const
+    return [channel, channel - ARM_START[side], side] as const
   }),
 )
 
@@ -243,7 +253,7 @@ class BodyPerformer {
     const gait = input.gait
     if (gait) {
       for (let c = 0; c < targets.length; c++) {
-        if (gait.walkForm && GAIT_ABDUCT_CHANNELS.has(c))
+        if (gait.walkForm && GAIT_SHAPED_CHANNELS.has(c))
           continue
         const lower = c < 6 || c === 47 || c === 48 || c === 75 || c === 76
         targets[c] += gait.weight * (gait.channels[c] - (lower ? targets[c] : 0))
@@ -253,14 +263,24 @@ class BodyPerformer {
       // The followers' inverse of the swing: x = y + lead y' + curvature y'', from the swing's last three ticks.
       const swing = state.gaitSwing
       const tension = this.context.tension
-      GAIT_ARM_CHANNELS.forEach(([c, joint], k) => {
-        // The arm opens to the gait's angle only as far as its own hang is narrower, through a soft corner of 2 degrees.
+      const corner = (value: number) => Math.sqrt(value * value + (2 * DEG) ** 2) - 2 * DEG
+      GAIT_ARM_CHANNELS.forEach(([c, joint, side], k) => {
+        // The arm opens by its walking clearance, or to the gait's angle where that is wider, and swings back only as far
+        // as the rig has room behind the hip, each through a soft corner of 2 degrees.
         const short = gait.channels[c] - targets[c]
-        const y = gait.weight * (joint === ABDUCT_JOINT ? (short + Math.sqrt(short * short + (2 * DEG) ** 2)) / 2 : gait.channels[c])
+        const room = state.collision.backSwing[side]
+        const swung = gait.channels[c] - GAIT_FLEX_REST
+        const beyond = short - GAIT_ARM_CLEARANCE
+        const shaped = joint === ABDUCT_JOINT
+          ? GAIT_ARM_CLEARANCE + (beyond + Math.sqrt(beyond * beyond + (2 * DEG) ** 2)) / 2
+          : joint === FLEX_JOINT
+            ? GAIT_FLEX_REST + (1 + room) / 2 * swung + (1 - room) / 2 * corner(swung)
+            : gait.channels[c]
+        const y = gait.weight * shaped
         const [lead, curvature] = followerInverse(joint, tension, 0)
         const first = swing.warm ? swing.last[k] : y
         const second = swing.warm ? swing.before[k] : y
-        if (joint === ABDUCT_JOINT)
+        if (joint === ABDUCT_JOINT || joint === FLEX_JOINT)
           targets[c] += y
         targets[c] += lead * (y - first) / BODY_TICK + curvature * (y - 2 * first + second) / BODY_TICK ** 2
         swing.before[k] = first

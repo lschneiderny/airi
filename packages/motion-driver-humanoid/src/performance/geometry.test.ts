@@ -246,6 +246,29 @@ describe('canonical geometry', () => {
     expect(collision.distance(ankle.x, ankle.y, ankle.z)).toBeLessThan(-0.45)
   })
 
+  it('falls back to a clear rest pose when the standard guard intersects a body', () => {
+    const rest = createBodyPerformer({ traits, seed: 1 }).restChannels()
+    const guard = rest.slice()
+    const start = ARM_START.left
+    guard.set([10 * DEG, 45 * DEG, 0, 20 * DEG], start + 2)
+    const skeleton = new BodySkeleton(traits)
+    skeleton.update(rest)
+    const { elbow } = skeleton.arm('left', guard)
+    const origin = traits.spineChain[0]!
+    const collider: BodyCollider = {
+      bone: 'spine0',
+      shape: 'sphere',
+      radius: 0.15,
+      centre: { x: elbow.x - origin.x, y: elbow.y - origin.y, z: elbow.z - origin.z },
+      rotation: { yaw: 0, pitch: 0, roll: 0 },
+    }
+    const collision = new BodyCollision({ ...traits, colliders: [collider] }, rest)
+    expect(collision.measure('left', guard).depth).toBeGreaterThan(0)
+    expect(collision.measure('left', rest).depth).toBe(0)
+    expect(collision.capabilities.gestures.left).toBe(true)
+    expect(collision.distance(elbow.x, elbow.y, elbow.z)).toBeLessThan(0)
+  })
+
   it('protects head proxies as well as torso proxies', () => {
     const head: BodyCollider = { bone: 'head', shape: 'sphere', radius: 1.1, centre: { x: 0, y: 0, z: 0 }, rotation: { yaw: 0, pitch: 0, roll: 0 } }
     const rig = { ...traits, colliders: [...proxyColliders(traits), head] }

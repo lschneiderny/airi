@@ -318,8 +318,8 @@ const upperArmLag = 0.0259
  * hold it 11 to 14 degrees out behind and 13 to 23 in front (same clips); 14 behind kept the arm off the body colliders. It is a floor on the arm's own hang, which
  * the performer applies: a rig that already stands with its arms wider keeps its own.
  */
-const armOutBack = 16
-const armOutForward = 20
+const armOutBack = 14
+const armOutForward = 19
 /** Seconds of shoulder-girdle history kept for the arms: the upper arm's lag, the elbow's after it, and drift room. */
 const girdleHistory = 0.5
 /**
