@@ -21,6 +21,8 @@ export interface Live2DModelFixture {
   gl: WebGLRenderingContext
   /** Loads another instance of the preset model. It updates only through `model.update(ms)`. */
   loadModel: () => Promise<Live2DModel<Cubism4InternalModel>>
+  /** The preset model's zip, for a test that loads it through a component or edits it first. */
+  presetModel: () => Promise<File>
   renderFrame: () => void
   /** Reads the whole drawing buffer as RGBA, bottom row first. */
   readPixels: () => Uint8Array
@@ -73,6 +75,10 @@ export function createLive2DModelFixture(size: { width: number, height: number }
   return {
     app,
     gl,
+    presetModel() {
+      presetModel ??= fetchPresetModel()
+      return presetModel
+    },
     async loadModel() {
       presetModel ??= fetchPresetModel()
       const file = await presetModel

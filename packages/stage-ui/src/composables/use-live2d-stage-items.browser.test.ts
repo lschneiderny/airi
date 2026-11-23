@@ -1,10 +1,11 @@
+import type { ItemExpressionDocument } from '@proj-airi/stage-shared/expression-performance'
 import type { Pinia } from 'pinia'
 
 import { useExpressionStore } from '@proj-airi/stage-ui-live2d/stores/expression-store'
 import { until } from '@vueuse/core'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { effectScope } from 'vue'
+import { effectScope, shallowRef } from 'vue'
 
 import { storage } from '../database/storage'
 import { useStageItemLibraryStore } from '../stores/stage-item-library'
@@ -103,6 +104,36 @@ describe('useLive2DStageItems', () => {
     expect(revoked).toHaveBeenCalledWith(bookUrl)
     expect(created).toHaveBeenCalledTimes(4)
     expect(revoked).toHaveBeenCalledTimes(4)
+  })
+
+  it('draws the documents a runtime-less window passes instead of its own store targets', async () => {
+    pinia = createPinia()
+    setActivePinia(pinia)
+    const library = useStageItemLibraryStore(pinia)
+    await library.load()
+    const hatAsset = await importAsset(library, 'hat.png')
+    const expressions = useExpressionStore(pinia)
+    expressions.registerDefinitions('model-a', [])
+    const hat = expressions.applySettingsCommand({ type: 'create-item', item: { assetId: hatAsset, label: 'Hat', kind: 'prop', mappings: [], placement } }) as string
+    const stored = expressions.settingsSnapshot.items!.find(item => item.document.id === hat)!.document
+    // The stage window shows the hat; this window's store does not.
+    const shown = shallowRef<ItemExpressionDocument[] | undefined>([{ ...stored, placement: { ...placement, x: 42 } }])
+    scope = effectScope()
+    const { items } = scope.run(() => useLive2DStageItems({ active: () => true, documents: () => shown.value }))!
+
+    expect(expressions.itemTargets).toEqual([])
+    await until(items).toMatch(list => list.length === 1, { timeout: 5000, throwOnTimeout: true })
+    expect(items.value[0].document.placement.x).toBe(42)
+    const url = items.value[0].url
+
+    const revoked = vi.spyOn(URL, 'revokeObjectURL')
+    shown.value = []
+    expect(items.value).toEqual([])
+    expect(revoked).toHaveBeenCalledWith(url)
+
+    // Without the list the window falls back to its own store, which shows nothing here.
+    shown.value = undefined
+    expect(items.value).toEqual([])
   })
 
   it('refuses an item whose asset the library does not have, draws nothing, and opens no file', async () => {

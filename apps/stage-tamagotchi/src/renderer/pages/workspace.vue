@@ -11,6 +11,7 @@ import FullscreenBackdrop from '../components/fullscreen/fullscreen-backdrop.vue
 import FullscreenOverlay from '../components/fullscreen/fullscreen-overlay.vue'
 
 import { defaultFullscreenSurface, electronFullscreenExit, electronWorkspaceWindowGetOpenRequest } from '../../shared/eventa'
+import { useModelSettingsRuntimeSnapshot } from '../composables/model-settings-runtime-snapshot'
 import { useFullscreenHost } from '../composables/use-fullscreen-host'
 import { provideFullscreenLayout } from '../composables/use-fullscreen-layout'
 import { useFullscreenStore } from '../stores/fullscreen'
@@ -38,6 +39,10 @@ const stageFrameStyle = computed(() => {
 })
 
 useFullscreenHost()
+
+// This window has no pastimes, leases, or switches of its own, so it draws the stage items the stage window shows.
+const { runtimeSnapshot } = useModelSettingsRuntimeSnapshot()
+const live2dShownItems = computed(() => runtimeSnapshot.value.live2dExpressions?.items?.filter(item => item.shown && item.available).map(item => item.document))
 
 const getOpenRequest = useElectronEventaInvoke(electronWorkspaceWindowGetOpenRequest)
 const closeWindow = useElectronEventaInvoke(electronFullscreenExit)
@@ -77,6 +82,7 @@ onMounted(async () => {
       <!-- The stage of the main window is the one host of voice. This view only renders the model, so it never speaks or listens. -->
       <ModelSettingsPreviewStage
         :live2d-context="live2d"
+        :live2d-items="live2dShownItems"
         :live2d-scene-class="SCENE_CLASS"
         :vrm-scene-class="SCENE_CLASS"
         :spine-scene-class="SCENE_CLASS"

@@ -1,33 +1,38 @@
 <script setup lang="ts">
-import type { ExpressionRealisationSettings } from '@proj-airi/stage-shared/expression-performance'
+import type { ExpressionRealisationSettings, ItemExpressionDocument } from '@proj-airi/stage-shared/expression-performance'
 import type {
   Live2DContext,
   Live2DExpressionSettingsCommand,
   Live2DMotionDriver,
 } from '@proj-airi/stage-ui-live2d'
+import type { Live2DItemEditor } from '@proj-airi/stage-ui-live2d/composables/live2d/items/editor'
 import type { SelectTabOption } from '@proj-airi/ui'
 
 import type { ExpressionPanelSource } from './expressions/source'
 import type { ModelSettingsRuntimeSnapshot } from './runtime'
 
-import { useExpressionStore, useLive2DNaturalSettings, useLive2dParams, useSettingsLive2d } from '@proj-airi/stage-ui-live2d'
+import { createLive2D, useExpressionStore, useLive2DNaturalSettings, useLive2dParams, useSettingsLive2d } from '@proj-airi/stage-ui-live2d'
 import { Button, Checkbox, FieldCheckbox, FieldCombobox, FieldRange, SelectTab } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
-import { computed, ref } from 'vue'
+import { computed, onUnmounted, provide, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterLink } from 'vue-router'
 
 import MagicMotionSettings from '../../../../features/motions/live2d/components/magic-settings.vue'
+import ItemPlacementEditor from './expressions/item-placement.vue'
 import ExpressionPanel from './expressions/panel.vue'
 import Live2DExpressionList from './live2d-expression-list.vue'
 import NaturalEmotionStrength from './natural-emotion-strength.vue'
+import ModelSettingsPreviewStage from './preview-stage.vue'
 
 import { useCharacterBehaviorSettings } from '../../../../features/character-behavior/settings'
 import { useExpressionPerformanceSettings } from '../../../../features/performance/settings'
 import { useSettingsStageModel } from '../../../../stores/settings/stage-model'
+import { useStageItemLibraryStore } from '../../../../stores/stage-item-library'
 import { PropertyPoint } from '../../../data-pane'
 import { Section } from '../../../layouts'
 import { ColorPalette } from '../../../widgets'
+import { openStageItemPlacementKey, previewItemsFor } from './expressions/item-placement'
 import { useLive2DModelSettings } from './use-live2d-model-settings'
 
 const props = withDefaults(defineProps<{
@@ -106,6 +111,34 @@ function applyExpressionSettingsCommand(command: Live2DExpressionSettingsCommand
 
   expressionStore.applySettingsCommand(command)
 }
+
+// --- Item placement: an item entry opens the editor, which hosts its own preview of her with the stage's shown items.
+const library = useStageItemLibraryStore()
+const placingItemId = ref<string | null>(null)
+const placementDraft = ref<ItemExpressionDocument | null>(null)
+const placementPreviewRef = ref<{ live2dItemEditor: () => Live2DItemEditor | undefined }>()
+provide(openStageItemPlacementKey, (itemId) => {
+  placingItemId.value = itemId
+})
+const placingItem = computed(() => expressionSettingsSnapshot.value.items?.find(item => item.document.id === placingItemId.value))
+// A deleted item, or a model swap, closes the editor.
+watch(placingItem, (item) => {
+  if (!item && placingItemId.value !== null)
+    placingItemId.value = null
+})
+watch(placingItemId, (id) => {
+  if (id === null)
+    placementDraft.value = null
+})
+const placingAsset = computed(() => library.assets.find(asset => asset.id === placingItem.value?.document.assetId))
+const isLive2DAsset = (assetId: string) => library.assets.some(asset => asset.id === assetId && asset.format === 'live2d-zip')
+const placementPreview = computed(() => previewItemsFor(expressionSettingsSnapshot.value.items ?? [], placingItem.value ? placementDraft.value : null, isLive2DAsset))
+const placementEnabled = computed(() => !props.runtimeSnapshot.controlsLocked)
+const placementEditorSource = () => placementPreviewRef.value?.live2dItemEditor()
+// The Electron settings page passes no Live2D context, because it renders no model of its own; the editor's preview needs one.
+const ownLive2DContext = props.live2dContext ? undefined : createLive2D()
+const placementLive2DContext = computed(() => props.live2dContext ?? ownLive2DContext!)
+onUnmounted(() => ownLive2DContext?.dispose())
 
 const performanceSettings = useExpressionPerformanceSettings()
 const deciderOptions = computed<SelectTabOption<ExpressionRealisationSettings['decider']>[]>(() => [
@@ -788,6 +821,25 @@ const showAllExpressions = ref(false)
       <span text-sm text-neutral-600 dark:text-neutral-400>{{ t('settings.live2d.expressions.override-toggle') }}</span>
       <Checkbox v-model="live2dExpressionEnabled" />
     </div>
+    <ItemPlacementEditor
+      v-if="placingItem"
+      :item="placingItem"
+      :asset="placingAsset"
+      :editor-source="placementEditorSource"
+      :enabled="placementEnabled"
+      :refusal="placementPreview.refusal"
+      :class="['mb-4']"
+      @command="applyExpressionSettingsCommand"
+      @draft="placementDraft = $event"
+      @close="placingItemId = null"
+    >
+      <ModelSettingsPreviewStage
+        ref="placementPreviewRef"
+        :live2d-context="placementLive2DContext"
+        :live2d-items="placementPreview.documents"
+        :live2d-scene-class="['h-full w-full']"
+      />
+    </ItemPlacementEditor>
     <ExpressionPanel
       v-model:search="expressionSearch"
       v-model:show-all="showAllExpressions"

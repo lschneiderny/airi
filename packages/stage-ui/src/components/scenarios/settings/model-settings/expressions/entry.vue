@@ -6,13 +6,14 @@ import type { DraftMapping } from './trigger-editor.vue'
 
 import { MOMENTS, OCCASIONS } from '@proj-airi/stage-shared/expression-performance'
 import { Button, Checkbox, Input, Select } from '@proj-airi/ui'
-import { computed, ref } from 'vue'
+import { computed, inject, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import TagPicker from './tag-picker.vue'
 import ExpressionTriggerEditor from './trigger-editor.vue'
 
 import { groupDisplayName } from './group-name'
+import { openStageItemPlacementKey } from './item-placement'
 
 type Entry = ExpressionPanelEntry
 
@@ -32,6 +33,8 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+// Only the Live2D section hosts the placement editor, so only there does an item entry offer to open it.
+const openPlacement = inject(openStageItemPlacementKey, undefined)
 
 const kinds: ExpressionKind[] = ['face', 'effect', 'outfit', 'prop', 'system']
 /** A stage item is something she holds, an effect around her, or an outfit; never a face. */
@@ -310,6 +313,9 @@ function resetEntry() {
             @update:model-value="setSwitch"
           />
         </label>
+        <Button v-if="isItem && openPlacement" size="sm" @click="openPlacement(entry.id)">
+          {{ t('settings.live2d.expressions.items.place') }}
+        </Button>
         <Button size="sm" :aria-expanded="open" @click="toggleEditor">
           {{ open ? t('settings.live2d.expressions.close-editor') : t('settings.live2d.expressions.edit') }}
         </Button>

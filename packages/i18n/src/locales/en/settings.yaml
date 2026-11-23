@@ -592,6 +592,50 @@ live2d:
       delete: Delete item
       llm-exposed-description: Her chat model sees the item's label and may show it. Off for new items, because the label comes from a file name.
       system-off-hint: Items, outfits included, show only while the expression system is on. Her own use and the chat model need the Natural motion driver.
+      place: Place
+      placement:
+        title: 'Place {label}'
+        done: Done
+        no-runtime: Load the model on stage first; items are placed on the model on stage.
+        loading: Loading her model for the preview.
+        refused-limit: The stage shows as many items as it can at once. Hide another item to preview this one.
+        hint: Drag the item to move it, a corner to scale it, and the top handle to turn it.
+        move: Move {label}
+        scale-handle: Scale {label}
+        rotate-handle: Turn {label}
+        fields:
+          x: X
+          y: Y
+          scale: Scale
+          rotation: Rotation (degrees)
+          anchor-x: Anchor X
+          anchor-y: Anchor Y
+          flip: Flip horizontally
+        layer:
+          title: Layer
+          behind: Behind her
+          front: In front of her
+          above: Above a layer of hers
+          drawable: Her layer
+          pick: Pick on model
+          picking: Click a layer of hers in the preview.
+          other-part: Other
+        pin:
+          title: Pin
+          pinned: 'Pinned to {drawable}'
+          unpinned: Not pinned. The item stays where it is placed.
+          click: Click to pin
+          picking: Click the spot on her the item should follow.
+          cancel: Cancel
+          unpin: Unpin
+          no-mesh: Nothing of her is there. Click on her to pin.
+        hides:
+          title: Hide parts of her
+          description: These parts of her stay hidden while this item shows, for an outfit that replaces them.
+        link:
+          title: Follow her motion
+          description: Copies her parameters into this Live2D item every frame, so it moves as one body with her.
+          align: Align to her canvas
     fields:
       label: Label
       kind: Kind
