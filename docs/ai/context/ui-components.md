@@ -108,7 +108,7 @@ Expandable/collapsible container with trigger button and vertical animation.
 | `label` | `string?` | — | Trigger button label |
 
 **v-model**: `modelValue: boolean` (the visibility)
-**Slots**: `trigger({ visible, setVisible })`, `default({ visible, setVisible })`
+**Slots**: `trigger({ visible, setVisible })`, `default({ visible, setVisible })`. The default slot may have any number of roots, including a `v-for` list. Collapsible wraps it in one full-width element, which the vertical animation animates.
 
 ### LinkGroup
 

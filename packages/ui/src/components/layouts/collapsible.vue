@@ -33,7 +33,10 @@ function setVisible(value: boolean) {
       </button>
     </slot>
     <TransitionVertical>
-      <slot v-if="visible" v-bind="{ visible, setVisible }" />
+      <!-- One root: the single-child Transition would keep only the first of several slot roots. -->
+      <div v-if="visible" :class="['w-full']">
+        <slot v-bind="{ visible, setVisible }" />
+      </div>
     </TransitionVertical>
   </div>
 </template>

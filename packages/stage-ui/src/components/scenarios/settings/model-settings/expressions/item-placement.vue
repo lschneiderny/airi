@@ -516,32 +516,29 @@ const pickingMessage = computed(() => {
 
     <!-- Her parts this item hides, as her part tree. -->
     <Collapsible v-model="hidesOpen" :label="s('hides.title')">
-      <!-- One root: the Collapsible animates its content with a single-child Transition, which drops every child after the first. -->
-      <div>
-        <p :class="['mb-2', 'text-xs text-neutral-500 dark:text-neutral-400']">
-          {{ s('hides.description') }}
-        </p>
-        <ul v-if="editor" data-testid="placement-hides" :class="['flex flex-col gap-1']">
-          <li
-            v-for="part in editor.parts"
-            :key="part.id"
-            :style="{ paddingLeft: `${part.depth * 0.75}rem` }"
-          >
-            <label :class="['flex items-center gap-2', 'text-xs text-neutral-700 dark:text-neutral-300']">
-              <Checkbox
-                :model-value="draft.hides.includes(part.id)"
-                :disabled="!enabled"
-                :aria-label="part.name"
-                @update:model-value="setHidden(part.id, $event)"
-              />
-              <span :class="['truncate']">{{ part.name }}</span>
-            </label>
-          </li>
-        </ul>
-        <p v-else :class="['text-xs text-neutral-500 dark:text-neutral-400']">
-          {{ s('loading') }}
-        </p>
-      </div>
+      <p :class="['mb-2', 'text-xs text-neutral-500 dark:text-neutral-400']">
+        {{ s('hides.description') }}
+      </p>
+      <ul v-if="editor" data-testid="placement-hides" :class="['flex flex-col gap-1']">
+        <li
+          v-for="part in editor.parts"
+          :key="part.id"
+          :style="{ paddingLeft: `${part.depth * 0.75}rem` }"
+        >
+          <label :class="['flex items-center gap-2', 'text-xs text-neutral-700 dark:text-neutral-300']">
+            <Checkbox
+              :model-value="draft.hides.includes(part.id)"
+              :disabled="!enabled"
+              :aria-label="part.name"
+              @update:model-value="setHidden(part.id, $event)"
+            />
+            <span :class="['truncate']">{{ part.name }}</span>
+          </label>
+        </li>
+      </ul>
+      <p v-else :class="['text-xs text-neutral-500 dark:text-neutral-400']">
+        {{ s('loading') }}
+      </p>
     </Collapsible>
   </section>
 </template>
