@@ -26,6 +26,11 @@ export interface FootContactInput {
   readonly feet: Record<Foot, FootSample>
   readonly enabled: boolean
   readonly duck: number
+  /**
+   * The share of its leg's length an anchor may stand from its hip before the pelvis drops; 0.985 when omitted. A gait
+   * that keeps its own reach passes its limit, so the pelvis drops only where the gait's own drop falls short.
+   */
+  readonly reach?: number
 }
 
 interface ContactState {
@@ -107,6 +112,7 @@ class FootContact {
     }
 
     const maxDrop = 0.06 * Math.min(this.lengths.left, this.lengths.right)
+    const reach = input.reach ?? 0.985
     const offset = input.pelvisOffset
     let lateralScale = 1
     // Intersect both legs' reachable horizontal disks at the maximum permitted drop.
@@ -116,7 +122,7 @@ class FootContact {
         continue
       const hip = this.options.legs[side].hip
       const ground = this.contacts[side].anchor.position
-      const rMax = 0.985 * this.lengths[side]
+      const rMax = reach * this.lengths[side]
       const vertical = hip.y + offset.y - maxDrop - ground.y
       const dx = hip.x - ground.x
       const dz = hip.z - ground.z
@@ -137,7 +143,7 @@ class FootContact {
       const hip = this.options.legs[side].hip
       const ground = this.contacts[side].anchor.position
       const rhoSquared = (hip.x + x - ground.x) ** 2 + (hip.z + z - ground.z) ** 2
-      const rMax = 0.985 * this.lengths[side]
+      const rMax = reach * this.lengths[side]
       required = Math.max(required, hip.y + offset.y - ground.y - Math.sqrt(Math.max(0, rMax ** 2 - rhoSquared)))
     }
     // Never smooth below the geometrically required drop; only recovery is eased.

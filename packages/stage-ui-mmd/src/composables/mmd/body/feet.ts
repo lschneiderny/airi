@@ -8,7 +8,7 @@ import type { MMDFrameContext } from '../frame-pipeline'
 import type { MMDBodyPose } from './pose'
 
 import { createFootContact, planFootSteps } from '@proj-airi/motion-driver-humanoid/foot-contact'
-import { ballRoll } from '@proj-airi/motion-driver-humanoid/locomotion'
+import { ballRoll, GAIT_REACH_SHARE } from '@proj-airi/motion-driver-humanoid/locomotion'
 import { Euler, Quaternion, Vector3 } from 'three'
 
 import { toRigTraits } from '../rig'
@@ -227,8 +227,9 @@ export class MMDFootContact {
       }
       // The gait leaves facing on the root, so the hip yaw that turn steps track is zero again.
       this.plannedYaw = 0
+      // The planner checks the legs' reach against the ankles the IK will be given, which the roll moves off the targets.
       const planted = this.anchors()
-      this.planner.setAnchors({ left: toMeshAnchor(planted.left, root), right: toMeshAnchor(planted.right, root) })
+      this.planner.setAnchors({ left: meshAnkleTarget(planted.left, input.gait.left.roll, root), right: meshAnkleTarget(planted.right, input.gait.right.roll, root) })
     }
     const previous = this.result
     // `duck` is the body's `contactDuck`, from non-stance clip ownership only: a one-shot owning the root, a leg IK
@@ -238,6 +239,7 @@ export class MMDFootContact {
       feet: samples,
       enabled: !input.disabled,
       duck: input.contactDuck,
+      ...input.gait ? { reach: GAIT_REACH_SHARE } : {},
     }, dt)
     for (const leg of this.legs) {
       const contact = this.result.feet[leg.side]

@@ -144,16 +144,23 @@ const frame = locomotion.step({ now, goalX, pace: 'walk', arriveFacing: 0, enabl
 ```
 
 `traits` are `GaitTraits`: leg length L, ankle baseline, bind hip-to-ankle height,
-and bind ankles. Step on the fixed 120 Hz grid. Positions are world model units on
+bind ankles, and bind hip joints (`bindHips`). Pass the hips: without them each hip is taken to sit above its ankle, and
+a rig whose ankles stand behind its hips walks with its feet ahead of its body and its knees bent. Step on the fixed 120 Hz grid. Positions are world model units on
 the ground line (y = 0, travel along x). Yaw 0 faces the camera, and walking faces
-+/-90 degrees. The reference step is 0.5 L at 1.8 Hz, so `v_ref = 0.9 L` per
-second; `pace` (`LocomotionPace` from `./types`) scales it by 0.6 or 1.0. Speed ramps at `v_ref` per second and
-stops exactly at `goalX`. A goal that needs a new heading first turns in place
-through `planFootSteps` about the root: at most 45 degrees per 0.45 second step,
-so 90 degrees takes two steps. The turn leaves and reaches its facing at rest: the first step eases in, the last eases
-out, and the steps between are linear, so every step still ends on its facing and the yaw rate never steps. After arrival the gait closes the stance, turns to
-`arriveFacing`, and returns to `idle` after both feet have been planted for 0.45
-seconds. A walk starts with a 0.22 second preparation (architecture 5.4): the root holds while the phase carries the
++/-90 degrees. The reference step is 0.625 L at 1.44 Hz, so `v_ref = 0.9 L` per
+second; `pace` (`LocomotionPace` from `./types`) scales it by 0.6 or 1.0. Speed ramps at up to `v_ref` per second,
+leaves rest at a quarter of that, and stops exactly at `goalX`. The stride, the swing, the foot roll, the pelvis and the
+turns were refitted to walking adults on 2026-11-23; the
+[natural walk refit ADR](../../docs/ai/adr/2026-11-23-natural-walk-refit.md) holds the measures.
+
+A walk turns while it steps. A start that must turn up to 100 degrees opens with the foot on the side it turns to and
+turns the body over its first 2.4 steps; a wider turn first turns the excess on the spot through `planFootSteps`
+(at most 45 degrees per 0.45 second step), and the walk takes the last 90 degrees over without a stop. From the first
+braking tick the body turns to `arriveFacing` over 2.6 steps, longer for a turn wider than 90 degrees. Each foot lands
+turned toward where the body faces a step later, at most 42 degrees from her facing at the landing, and the trunk
+leans into the turn. After the root stops, closing steps bring the feet to their bind stance at her facing, and the gait
+returns to `idle` after both feet have been planted for 0.45 seconds. A turn without a walk still turns on the spot: it
+leaves and reaches its facing at rest, the first step eases in, the last eases out, and the steps between are linear. A walk starts with a 0.22 second preparation (architecture 5.4): the root holds while the phase carries the
 weight onto the stance foot, the pelvis dips 0.008 L and the trunk draws back 1.5 degrees; the first foot lifts as it
 ends. The trunk's lean follows an under-damped response (omega 5 rad/s, zeta 0.55), so it overshoots once as she stops,
 and the pelvis dips 0.006 L over the settle.
@@ -187,9 +194,10 @@ cadence law evaluated at the unvaried speed so the two stay independent; the goa
 
 Planted foot targets are frozen world anchors. Landing targets are re-planned until
 75% of the swing, so the stance stays symmetric about the hip while the speed
-changes. The pelvis drop is the design bob, sized from the planned stance spans, plus
-a reach floor that may lower it by at most 0.01 L for off-centre stances. A leash
-shortens root travel if a planted ankle would end farther than 0.985 L from its hip;
+changes. The stance is centred on the line the bind ankles stand on. The pelvis drop is the design bob, sized from the
+planned stance spans, the true hip joints and each foot's roll, plus a reach floor that may lower it by at most 0.05 L
+for off-centre stances. A leash shortens root travel if a planted ankle would end farther than 0.993 L
+(`GAIT_REACH_SHARE`) from its hip;
 `leashClamps` counts those ticks and stays zero in normal driving. `frame.body` holds
 `GaitBodyChannels` (pelvis translation with positive `pelvisLateral` toward the
 character's right, and torso rotations in radians); the adapter maps them into the
