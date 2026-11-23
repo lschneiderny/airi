@@ -194,7 +194,8 @@ cadence law evaluated at the unvaried speed so the two stay independent; the goa
 
 Planted foot targets are frozen world anchors. Landing targets are re-planned until
 75% of the swing, so the stance stays symmetric about the hip while the speed
-changes. The stance is centred on the line the bind ankles stand on. The pelvis drop is the design bob, sized from the
+changes. A full stride's stance is centred 0.14 of the step behind the hip joints and 0.55 of their spacing wide; a foot
+set down beside a stopped root stands on the bind ankle line. The pelvis drop is the design bob, sized from the
 planned stance spans, the true hip joints and each foot's roll, plus a reach floor that may lower it by at most 0.05 L
 for off-centre stances. A leash shortens root travel if a planted ankle would end farther than 0.993 L
 (`GAIT_REACH_SHARE`) from its hip;
