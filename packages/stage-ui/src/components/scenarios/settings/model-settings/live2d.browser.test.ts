@@ -1086,4 +1086,48 @@ describe('live2D model settings', () => {
     screen.unmount()
     await expect.poll(() => useSharedLive2D(pinia).expressionPreview).toBeNull()
   })
+
+  it('notes the stored items while the expression system is off, and drops the note when it is on', async () => {
+    // With the system off the stage disposes its expression store, so the runtime snapshot carries no model and no items.
+    // The settings window then learns of her items from the stored catalog of the selected model.
+    Object.assign(window, { Live2DCubismCore: {} })
+    const [{ useSettingsLive2d }, { default: Live2DSettings }, { useSettingsStageModel }] = await Promise.all([
+      import('@proj-airi/stage-ui-live2d'),
+      import('./live2d.vue'),
+      import('../../../../stores/settings/stage-model'),
+    ])
+    localStorage.setItem('expression-catalog:test-model', JSON.stringify({
+      version: 1,
+      overrides: [],
+      items: [{
+        id: 'item:hat',
+        assetId: 'asset-hat',
+        label: 'Hat',
+        kind: 'prop',
+        mappings: [],
+        exposedToLlm: false,
+        placement: { x: 0, y: 0, rotation: 0, scale: 1, flipX: false, anchor: { x: 0.5, y: 0.5 }, layer: { kind: 'front' } },
+        hides: [],
+        link: 'none',
+      }],
+    }))
+    const pinia = createPinia()
+    const live2dSettings = useSettingsLive2d(pinia)
+    live2dSettings.live2dMotionDriver = 'universal'
+    live2dSettings.live2dExpressionEnabled = false
+    useSettingsStageModel(pinia).stageModelSelected = 'test-model'
+    const screen = await render(Live2DSettings, {
+      props: { palette: [], runtimeSnapshot: { ...remoteSnapshot([]), modelId: '', live2dExpressions: { ...remoteSnapshot([]).live2dExpressions!, items: [] } } },
+      global: { plugins: [pinia, createTestI18n(), createTestRouter()] },
+    })
+    await screen.getByText(t('settings.live2d.expressions.title'), { exact: true }).click()
+    const note = screen.getByRole('note').filter({ hasText: t('settings.live2d.expressions.items.system-off-hint') })
+    await expect.element(note).toBeVisible()
+
+    live2dSettings.live2dExpressionEnabled = true
+    await expect.element(note).not.toBeInTheDocument()
+
+    live2dSettings.live2dExpressionEnabled = false
+    await expect.element(note).toBeVisible()
+  })
 })
