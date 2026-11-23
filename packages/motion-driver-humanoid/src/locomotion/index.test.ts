@@ -187,7 +187,7 @@ describe('sidestep', () => {
     }
     // Full frames of the gait without a sidestep request: cruise, arrival, turns, pace changes, and reversal. Pinned again
     // on 2026-11-23, when the stride, the swing and the turns were refitted to walking adults.
-    expect(hash.digest('hex')).toBe('8dde6f65f8226e39e88b26f6a2e51fa7926df1dd1857549df66576a0a5c47b34')
+    expect(hash.digest('hex')).toBe('28b79e7d1b36cfeefb69048bd5caf4b3df111dc251eb127a9533af1cbe58715d')
   })
 
   it('finishes a withdrawn pair and settles with both feet planted', () => {
@@ -600,7 +600,7 @@ describe('procedural gait', () => {
     expect(spread(heads, mh) / spread(counters, mc)).toBeGreaterThan(0.9)
     expect(spread(heads, mh) / spread(counters, mc)).toBeLessThanOrEqual(1)
     // The torso's counter-rotation runs ahead of the pelvis's twist (walking adults' shoulder girdle reaches its turn
-    // before the pelvis reaches its own): minus the torso matches the pelvis yaw best some 15 to 40 ticks later, and
+    // before the pelvis reaches its own): minus the torso matches the pelvis yaw best some 8 to 30 ticks later, and
     // its size is the segments' shares, 0.6 of the pelvis's.
     const pelvis = steady.map(frame => frame.body.lowerBodyYaw)
     const torsos = steady.map(torso)
@@ -610,8 +610,8 @@ describe('procedural gait', () => {
       if (match(shift) > match(best))
         best = shift
     }
-    expect(best).toBeGreaterThanOrEqual(15)
-    expect(best).toBeLessThanOrEqual(40)
+    expect(best).toBeGreaterThanOrEqual(8)
+    expect(best).toBeLessThanOrEqual(30)
     const torsoPeak = Math.max(...torsos.map(Math.abs))
     expect(torsoPeak).toBeGreaterThan(0.55 * peak)
     expect(torsoPeak).toBeLessThan(0.62 * peak)
@@ -921,7 +921,7 @@ describe('procedural gait', () => {
     expect(run.locomotion.leashClamps).toBe(0)
   })
 
-  it('stance line: a rig whose ankles stand behind its hips walks with its feet centred on its ankle line', () => {
+  it('stance line: a rig whose ankles stand behind its hips walks with its stance centred behind its hips', () => {
     // Ankles 0.1 L behind the root and hips 0.075 L ahead of them, as on an MMD rig measured on 2026-11-23. With the
     // hips taken to sit above the ankles, the feet landed 0.1 L too far forward and the pelvis sank to cover it.
     const rig: GaitTraits = {
@@ -954,8 +954,9 @@ describe('procedural gait', () => {
       }
     }
     expect(ahead.length).toBeGreaterThan(4)
-    // Each foot lands 0.6 of the 0.625 L step ahead of the ankle line and lifts as far behind it, less the 0.08 L its
-    // toe-off roll has carried the ankle forward. Read on the tick of the event, up to a tick of travel late.
+    // The stance is centred 0.14 of the step behind the hips, here 0.0125 L behind the ankle line: each foot lands 0.6 of
+    // the 0.625 L step ahead of that and lifts as far behind it, less the 0.08 L its toe-off roll has carried the ankle
+    // forward. Read on the tick of the event, up to a tick of travel late.
     for (const offset of ahead)
       expect(Math.abs(offset / legLength - 0.375)).toBeLessThan(0.025)
     for (const offset of behind) {

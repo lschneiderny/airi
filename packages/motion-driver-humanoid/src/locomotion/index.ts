@@ -190,6 +190,19 @@ const liftFadeShare = 0.25
 /** Floor of the walking swing height; 0.03 L lets short closing steps slide more than 0.002 L. */
 const swingHeightFloorShare = 0.04
 const stepWidthShare = 0.5
+/**
+ * Step width as a share of the hip joints' spacing, when the rig gives its hips: walking adults step 0.12 to 0.15 L
+ * wide, about half to three quarters of that spacing. A rig's bind stance is no guide: over 13 rigs its ankles stood
+ * 0.15 to 0.32 L apart (measured 2026-11-23), and a walk half that wide waddled on the wide ones.
+ */
+const stepWidthHipShare = 0.55
+/**
+ * A full stride's stance is centred this share of the step length behind the hips: walking adults land the foot 0.46 of
+ * a step ahead of the hip, and the stance covers 0.6 of a step each way. A rig's bind ankles are no guide here either:
+ * they stood from 0.03 L ahead of the hips to 0.09 L behind them, and the pelvis bobbed twice as far on the rigs whose
+ * ankles stand under their hips.
+ */
+const stanceBack = 0.14
 const swayShare = 0.03
 /** Goals closer than this share of the leg length are not worth a walk. */
 const minWalkShare = 0.05
@@ -262,7 +275,7 @@ const heelOffAt = 0.72
 const pelvisTwist = 6 * radians
 const torsoTwist = [[-0.13, 0.03], [-0.29, 0.06], [-0.18, 0.09]] as const
 /** Steps by which the torso's counter-rotation and the arm swing run ahead of the pelvis twist. */
-const torsoLead = 0.45
+const torsoLead = 0.3
 /** Pelvis list at a full stride, and the steps by which it runs ahead of the lateral sway. */
 const pelvisList = 4.5 * radians
 const listLead = 0.3
@@ -498,8 +511,8 @@ class Locomotion {
   private readonly hips: Record<Foot, Vec3>
   /** Mesh-local fore-aft position of the line the ankles stand on: the stance is centred on it. */
   private readonly ankleLine: number
-  /** How far the hip joints stand ahead of the ankle line. */
-  private readonly hipAhead: number
+  /** Mesh-local fore-aft position of the hip joints. */
+  private readonly hipLine: number
   private x = 0
   private readonly z = 0
   private yaw = 0
@@ -552,9 +565,11 @@ class Locomotion {
     const above = (ankle: Vec3): Vec3 => ({ x: ankle.x, y: ankle.y + traits.hipToAnkleY, z: ankle.z })
     this.hips = traits.bindHips ?? { left: above(left), right: above(right) }
     this.ankleLine = (left.z + right.z) / 2
-    this.hipAhead = (this.hips.left.z + this.hips.right.z) / 2 - this.ankleLine
+    this.hipLine = (this.hips.left.z + this.hips.right.z) / 2
     const ankleSpacing = Math.hypot(left.x - right.x, left.z - right.z)
-    this.halfStepWidth = stepWidthShare * ankleSpacing / 2
+    this.halfStepWidth = traits.bindHips
+      ? stepWidthHipShare * Math.abs(this.hips.left.x - this.hips.right.x) / 2
+      : stepWidthShare * ankleSpacing / 2
     this.halfBindWidth = ankleSpacing / 2
     this.lateralError = Math.abs((Math.abs(this.hips.left.x) + Math.abs(this.hips.right.x)) / 2 - this.halfStepWidth) + swayShare * traits.legLength * Math.sin(Math.PI * doubleSupport / 2)
     this.feet = this.bindFeet()
@@ -753,6 +768,15 @@ class Locomotion {
    * A_bob = (h0 - c0 - sqrt(r_plan^2 - span^2 - e_lat^2)) / ((1 + cos(pi delta)) / 2), where span is
    * the fore-aft hip-to-ankle offset at heel strike and lift-off (beta * l at constant speed).
    */
+  /**
+   * Mesh-local fore-aft position a stance of half-span `reach` is centred on: the bind ankle line for a foot set down
+   * beside a stopped root, moving to `stanceBack` of the step behind the hips by half a full stride's reach.
+   */
+  private stanceCentre(reach: number) {
+    const stride = clamp(reach / (stanceShare * this.referenceLength / 2), 0, 1)
+    return this.ankleLine + stride * (this.hipLine - stanceBack * reach / stanceShare - this.ankleLine)
+  }
+
   private bobAmplitude(halfSpan: number, strideScale: number) {
     const legLength = this.traits.legLength
     const reach = planReach * legLength
@@ -766,14 +790,15 @@ class Locomotion {
     const foot = this.traits.foot
     const strike = heelStrikePitch * Math.min(1, strideScale)
     const [forward, up] = foot ? pivotOffset((foot.left.heelBack + foot.right.heelBack) / 2, (foot.left.ankleHeight + foot.right.ankleHeight) / 2, strike) : [0, 0]
-    const front = drop(Math.max(0, halfSpan - this.hipAhead + forward - ripple * Math.sin(-2 * Math.PI * rippleLag)), up) / shape(0)
+    const hipAhead = this.hipLine - this.stanceCentre(halfSpan)
+    const front = drop(Math.max(0, halfSpan - hipAhead + forward - ripple * Math.sin(-2 * Math.PI * rippleLag)), up) / shape(0)
     // The trailing foot is flat until its heel rises, `heelOffAt` of its stance after it landed `halfSpan` ahead.
     const flatUntil = heelOffAt * (1 + doubleSupport)
-    const behind = flatUntil * length - halfSpan + this.hipAhead + ripple * Math.sin(2 * Math.PI * (flatUntil - rippleLag))
+    const behind = flatUntil * length - halfSpan + hipAhead + ripple * Math.sin(2 * Math.PI * (flatUntil - rippleLag))
     const rear = drop(Math.max(0, behind), 0) / shape(flatUntil)
     // Without roll geometry the heel never rises: the trailing foot stays flat until it lifts, a full stance behind.
     const stance = 1 + doubleSupport
-    const lift = foot ? 0 : drop(Math.max(0, stance * length - halfSpan + this.hipAhead + ripple * Math.sin(2 * Math.PI * (stance - rippleLag))), 0) / shape(stance)
+    const lift = foot ? 0 : drop(Math.max(0, stance * length - halfSpan + hipAhead + ripple * Math.sin(2 * Math.PI * (stance - rippleLag))), 0) / shape(stance)
     return Math.max(0, front, rear, lift)
   }
 
@@ -1222,8 +1247,8 @@ class Locomotion {
     const travel = this.speed * untilLanding
     const room = ahead ?? this.speed ** 2 / (2 * this.maxAcceleration)
     const rootX = this.x + walk.direction * Math.min(travel, room)
-    // The stance is centred on the line the ankles stand on, as the standing feet are.
     const reach = this.predictStanceTravel(ahead, command, untilLanding, dt) / 2
+    const centre = this.stanceCentre(reach)
     // The foot lands turned toward where the body faces a step later, within `footLead` of her facing at the landing,
     // on its own side of the ankle line in that frame. A full stride narrows the stance; beside a stopped root the foot
     // stands at its bind width.
@@ -1234,9 +1259,9 @@ class Locomotion {
     const side = -footSign[foot] * (this.halfBindWidth + (this.halfStepWidth - this.halfBindWidth) * stride)
     const land: FootAnchor = {
       position: {
-        x: rootX + Math.cos(yaw) * side + Math.sin(yaw) * this.ankleLine + Math.sin(walk.heading) * reach,
+        x: rootX + Math.cos(yaw) * side + Math.sin(yaw) * centre + Math.sin(walk.heading) * reach,
         y: this.traits.footBaselineY,
-        z: this.z - Math.sin(yaw) * side + Math.cos(yaw) * this.ankleLine + Math.cos(walk.heading) * reach,
+        z: this.z - Math.sin(yaw) * side + Math.cos(yaw) * centre + Math.cos(walk.heading) * reach,
       },
       yaw,
     }
