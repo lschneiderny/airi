@@ -750,6 +750,16 @@ Unprompted turns receive only `builtIn_readMemory` through the core-agent runtim
 
 The [adoption ADR](../../docs/ai/adr/2026-10-30-long-term-memory-adoption.md) records the design and its consequences.
 
+## Stage items
+
+Stage items are pictures, GIFs, and Live2D models that the owner places beside the Live2D character. Each shown item is an expression catalog entry, so the expression store decides which items show and refuses the rest. At most 16 items show at once, and at most 4 of them are Live2D models (`MAX_SHOWN_ITEMS` and `MAX_SHOWN_LIVE2D_ITEMS` in `packages/stage-shared/src/expression-performance/items.ts`). A show beyond the limit is refused with `item-limit`. Refusals that do not go through a slot reach the caller through `onItemRefusal` in `packages/stage-ui-live2d/src/stores/expression-store.ts`.
+
+The library is an IndexedDB mount, `airi-stage-item-library`, set up in `packages/stage-ui/src/database/storage.ts`. It is registered in `packages/stage-ui/src/persistence/state-registry.ts`, and the owner reset clears it. Card export carries no items.
+
+Items draw on the Live2D stage only. The desktop stage host is built only for MMD, so Live2D runs in the classic window (`apps/stage-tamagotchi/src/renderer/pages/index.vue`). Outfit touch runs only on the Natural path.
+
+An item's entry in the Live2D expressions panel opens a placement editor. It shows her with the stage's shown items and the item being edited. Drag the item's shape to move it, use the corner handles to scale it, and the handle above its top edge to rotate it. The x, y, scale, rotation, and anchor fields take typed values. Flip mirrors the item. The layer control places it behind her, in front of her, or above one of her drawables. Pin attaches the item to a drawable under a click, and Unpin keeps the pose it was drawn in. Align to canvas clears the pin and places the item from her canvas size. Link, for Live2D items, makes the item follow her parameters. Hides lists her parts, and each checked part is hidden while the item shows.
+
 ## Persisted state
 
 `stateRegistry` in `persistence/state-registry.ts` declares every piece of persisted renderer state: localStorage and sessionStorage keys, IndexedDB stores, OPFS directories, and Cache Storage caches. Each registration names its owner, the files that write it, its tier, its locations, and an optional owner reset. `resetRegisteredState` runs the owner resets in registry order and then removes everything the locations match. "Delete all data" (`useDataMaintenance().deleteAllDataWithHost(useHostDataDeletion())`) runs it over every registration and then runs the host's own deletion step: every registration runs even when an earlier one fails, the host step runs even when the registry failed, and the first failure is thrown at the end. The narrower Data page actions run fixed lists of registration ids.

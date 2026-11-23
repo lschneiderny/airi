@@ -259,6 +259,13 @@ The character's response to music: an episode of Natural's `sway` idle act, whic
 **Not to be confused with:** beat sync, which moves the Live2D head on each beat under Universal and MAGIC; and the sway emotion gesture.
 **Avoid:** "dance" (an MMD clip kind), "music mode". The act kind keeps the name `sway`.
 
+### Hide list
+
+The part ids of her Live2D model that a [stage item](#stage-item) replaces while it draws (`hides`). At her `beforeModelUpdate`, after SDK pose and before her core update, the item layer sets each listed part to opacity 0 every frame, which also hides that part's child parts, and it restores a part's opacity, as captured when the layer attached to her model, once no drawn item lists it. A listed id her model lacks reports the item's state as `missing-part`.
+
+**Code:** `packages/stage-shared/src/expression-performance/catalog.ts` `ItemExpressionDocumentSchema` (`hides`); `packages/stage-ui-live2d/src/composables/live2d/items/layer.ts` `Live2DItemLayer`; the order of her frame is in [Body ownership](body-ownership.md).
+**Not to be confused with:** an expression that sets a part parameter; a hide list writes part opacity, never a parameter.
+
 ### Host capability
 
 What the running desktop host can actually report for each presence signal (for example foreground window, idle time, screen cursor, system audio), each resolved as `live`, `degraded`, or `unavailable` with a reason, from facts about the platform, the Wayland session, and runtime failures. Consumers read the resolved capabilities instead of assuming a platform; only a `live` cursor reading is trusted.
@@ -292,6 +299,14 @@ The part of the character mind that decides her idle episodes. It runs the idle 
 **Not to be confused with:** Natural's idle layer, which performs the orders and draws only their shapes; and the voice policy, which decides lines.
 **Avoid:** "idle scheduler" for the whole policy (the schedule is its pure rules).
 
+### Insertion layer
+
+Where a [stage item](#stage-item) draws in her Live2D draw order: `behind` draws before her first drawable, `above` right after a named drawable's current draw position, and `front` after her last drawable. Positions are read from her render orders every frame, so an `above` item follows a motion that reorders her drawables, and items at one position draw in list order. An `above` item whose drawable her model lacks draws in front and reports `missing-layer`.
+
+**Code:** `packages/stage-shared/src/expression-performance/items.ts` `StageItemLayerSchema`; `packages/stage-ui-live2d/src/composables/live2d/items/insertion.ts` `resolveInsertionSegments`, `Live2DItemInsertionLayer`.
+**Not to be confused with:** a [clip layer](#clip-layer), which is an MMD animation playing over the base clip.
+**Avoid:** "z-index", "depth".
+
 ### Intent
 
 Only declared performer channels and gesture kinds are issued; voice is always permitted.
@@ -300,6 +315,13 @@ What the character mind emits in answer to a stimulus, for one [channel](#channe
 
 **Code:** `packages/character-mind/src/types.ts` `MindIntent`; produced by `packages/character-mind/src/expression.ts` `answerEmotion`, `answerExpressionRequest`, `answerExpressionClear`, and `packages/character-mind/src/touch.ts` `answerTouch`, and `packages/character-mind/src/presence.ts` `answerPresence`, `answerScreenChange`, and `packages/character-mind/src/voice.ts` `answerVoiceTick`, `answerVoiceRequest`, `answerVoiceOutcome`, and `packages/character-mind/src/idle.ts` `answerIdle`, `advanceIdle`, `answerIdlePlay`, and `packages/character-mind/src/attention.ts` `answerCursor`, `answerInteraction`; `idleOrderOf` turns an idle intent into Natural's order; `VoiceLine` names the three lines; `TouchReactionIntent` names the two `touch-reaction` forms; `AttendIntent` names `attend`.
 **Not to be confused with:** `BodyIntent`, the MMD director's per-frame output.
+
+### Item library
+
+The device-wide store of imported stage item files (images, GIFs, and Live2D zips), kept in IndexedDB and shared by every model and card on the device. Each asset has a stable id that a model's [stage item](#stage-item) names, and the library never holds a placement. It holds at most 200 assets and refuses a further import as `library-full`. Any window may write it under a Web Lock, and each write tells the other windows over a BroadcastChannel, with removed asset ids but never file bytes.
+
+**Code:** `packages/stage-ui/src/stores/stage-item-library.ts` `useStageItemLibraryStore`; `packages/stage-ui/src/database/repos/stage-items.repo.ts` `StageItemAsset`, `stageItemsRepo`.
+**Not to be confused with:** the stage items of one model, which are stored in that model's curated catalog; and the display models, which are imported character models.
 
 ### Leader and follower windows
 
@@ -381,6 +403,14 @@ A message that tells a conversation about something the owner did not say: the r
 **Not to be confused with:** a Spark Notify, which enters the situation and waits for the gate; the presence notice and the host notice settings, which tell the user about missing host signals; and the trigger message of an unprompted turn.
 **Avoid:** "notification" (upstream's account inbox uses that word, and the fork does not ship it), "system message".
 
+### Outfit item
+
+A [stage item](#stage-item) of kind `outfit`, worn over her and usually paired with a [hide list](#hide-list) for the parts it replaces. It takes no expression slot and never reaches the chat model, whatever its stored switch says, and a combo that contains it takes no slot either. Under Natural, a touch outside her own head and body regions that lands on a shown outfit as it was last drawn counts as her body.
+
+**Code:** `packages/stage-shared/src/expression-performance/catalog.ts` `itemEntryFromDocument`; `packages/stage-shared/src/expression-performance/combos.ts` `entrySlots`; `packages/stage-ui-live2d/src/composables/live2d/items/layer.ts` `Live2DItemLayer` (`outfitAt`); `packages/stage-ui-live2d/src/composables/live2d/touch-regions.ts` `live2DTouchRegionAt`.
+**Not to be confused with:** an expression of kind `outfit` that the model file itself defines, which toggles her own parameters.
+**Avoid:** "skin".
+
 ### Own-day reach-out
 
 An unprompted turn whose reason is something from her own day, improvised when the turn is considered rather than stored. Its selection weight recovers after each use, and the urge gate stamps `lastOwnDayAtMs` when one is spoken. When the idle layer reports what she was doing, the reason text names it.
@@ -388,6 +418,13 @@ An unprompted turn whose reason is something from her own day, improvised when t
 **Code:** `packages/stage-shared/src/situation/reasons/collect.ts` (reason kind `'own-day'`); `packages/stage-shared/src/situation/reasons/types.ts` `REASON_TEXT`; `packages/stage-shared/src/situation/urge-gate.ts` `recordUrgeFireOutcome`, `CharacterPacingMemory`.
 **Not to be confused with:** a ritual reach-out (greetings tied to the logical day) and a thread continuation.
 **Avoid:** "diary", "daily story".
+
+### Parameter link
+
+The link of a Live2D [stage item](#stage-item) that mirrors her (`link: 'parameters'`). At her `beforeModelUpdate` the item captures her final parameter values, and after its own motion update it writes them by parameter id into each parameter it shares with her, except its own physics outputs, so its physics runs on her values. A linked item has no SDK eye blink, and it never writes her parameters. Without a link (`none`), a Live2D item only plays its own idle motion group.
+
+**Code:** `packages/stage-shared/src/expression-performance/catalog.ts` `ItemExpressionDocumentSchema` (`link`); `packages/stage-ui-live2d/src/composables/live2d/items/mirror.ts` `Live2DParameterMirror`; `packages/stage-ui-live2d/src/composables/live2d/items/live2d-item.ts` `Live2DItemModel`.
+**Not to be confused with:** a pin, which moves an item with her mesh but copies no parameters.
 
 ### Persistence tier
 
@@ -528,6 +565,14 @@ The Electron window that hosts the character. `window` is the classic 450x600 wi
 **Code:** `apps/stage-tamagotchi/src/shared/eventa/index.ts` `StageHostMode`, `StageHostState`; `apps/stage-tamagotchi/src/main/windows/stage/config.ts` `buildStageHostState`; `apps/stage-tamagotchi/src/renderer/composables/use-stage-host-wiring.ts` `useStageHostWiring`.
 **Not to be confused with:** the host in host capabilities (the platform and desktop session), and the Godot VRM stage sidecar (`engines/stage-tamagotchi-godot`, launched from `apps/stage-tamagotchi/src/main/services/airi/godot-stage`), which renders VRM models in a separate process.
 **Avoid:** "overlay mode", "fullscreen mode", "Kirie" (a removed Godot/CEF host app).
+
+### Stage item
+
+An image, GIF, or Live2D model drawn on her Live2D model as an expression entry with an `item:` id and kind `prop`, `effect`, or [`outfit`](#outfit-item). Each model stores its items in its curated catalog, each naming an [item library](#item-library) asset and holding a placement (position, rotation, scale, flip, anchor, an [insertion layer](#insertion-layer), and an optional pin that moves it with her mesh), a [hide list](#hide-list), and for a Live2D item a [parameter link](#parameter-link). An item whose asset is missing on the device stays stored but leaves the catalog. At most 16 items show at once, 4 of them Live2D models; a show past either cap is refused `item-limit`. Items draw inside her render pass and write none of her parameters, and their GIFs and Live2D models run on an item clock that stops while the stage is paused.
+
+**Code:** `packages/stage-shared/src/expression-performance/catalog.ts` `ItemExpressionDocumentSchema`; `packages/stage-shared/src/expression-performance/items.ts` `StageItemPlacementSchema`, `MAX_SHOWN_ITEMS`, `MAX_SHOWN_LIVE2D_ITEMS`; `packages/stage-ui-live2d/src/composables/live2d/items/layer.ts` `Live2DItemLayer`.
+**Not to be confused with:** an expression of kind `prop` that the model file itself defines, which toggles her own parameters; and an MMD prop, which no stage item covers.
+**Avoid:** "accessory", "sticker".
 
 ### Stance
 
