@@ -1,4 +1,4 @@
-import type { ItemRenderState } from '@proj-airi/stage-shared/expression-performance'
+import type { ItemExpressionDocument, ItemRenderState } from '@proj-airi/stage-shared/expression-performance'
 import type { Live2DStageItem } from '@proj-airi/stage-ui-live2d/composables/live2d/items/layer'
 
 import { errorMessageFrom } from '@moeru/std'
@@ -14,8 +14,12 @@ import { useStageItemLibraryStore } from '../stores/stage-item-library'
  *
  * Object URLs are owned here, one per shown asset. A URL is revoked as soon as no shown item needs its asset (the item
  * hides, the asset leaves the library, the model swaps, or `active` turns false) and when the calling scope ends.
+ *
+ * A window without the stage's runtime (the settings preview, the fullscreen window) has no pastimes, leases, or
+ * switches in its own store, so it passes `documents`: the item documents to draw as given, in place of the store's
+ * targets. The caller keeps them within the shown caps; the store's refusal never runs on this path.
  */
-export function useLive2DStageItems(options: { active: () => boolean }) {
+export function useLive2DStageItems(options: { active: () => boolean, documents?: () => readonly ItemExpressionDocument[] | undefined }) {
   const library = useStageItemLibraryStore()
   const expressions = useExpressionStore()
   /** Object URLs by asset id; replaced, never mutated, so `items` recomputes. */
@@ -30,8 +34,12 @@ export function useLive2DStageItems(options: { active: () => boolean }) {
     )
   }, { immediate: true })
 
-  const shownTargets = computed(() => options.active() ? expressions.itemTargets : [])
-  const neededAssets = computed(() => new Set(shownTargets.value.map(target => target.document.assetId)))
+  const shownDocuments = computed<readonly ItemExpressionDocument[]>(() => {
+    if (!options.active())
+      return []
+    return options.documents?.() ?? expressions.itemTargets.map(target => target.document)
+  })
+  const neededAssets = computed(() => new Set(shownDocuments.value.map(document => document.assetId)))
 
   async function load(assetId: string) {
     loading.add(assetId)
@@ -80,7 +88,7 @@ export function useLive2DStageItems(options: { active: () => boolean }) {
   /** In catalog order; an item waits here until its file's URL exists. */
   const items = computed<Live2DStageItem[]>(() => {
     const formats = new Map(library.assets.map(asset => [asset.id, asset.format]))
-    return shownTargets.value.flatMap(({ document }) => {
+    return shownDocuments.value.flatMap((document) => {
       const url = urls.value.get(document.assetId)
       const format = formats.get(document.assetId)
       return url && format ? [{ document, url, format }] : []

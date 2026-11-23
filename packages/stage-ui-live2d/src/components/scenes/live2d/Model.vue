@@ -28,6 +28,7 @@ import type { CanvasPointerSample } from '../../../composables/live2d/canvas-poi
 import type { ArchiveExpressionFile, Model3ExpressionRef } from '../../../composables/live2d/expression-controller'
 import type { SpeechEvent } from '../../../composables/live2d/expression/slots'
 import type { Live2DModelCanvasRect } from '../../../composables/live2d/head-anchor'
+import type { Live2DCoreDrawableParents, Live2DModelItemEditor } from '../../../composables/live2d/items/editor'
 import type { Live2DStageItem } from '../../../composables/live2d/items/layer'
 import type { NaturalChatActivity, NaturalChatTarget } from '../../../composables/live2d/natural-chat-input'
 import type { Live2DNaturalMotionAttention } from '../../../composables/live2d/natural-motion-adapter'
@@ -52,7 +53,7 @@ import { formatHex } from 'culori'
 import { Mutex } from 'es-toolkit'
 import { storeToRefs } from 'pinia'
 import { DropShadowFilter } from 'pixi-filters'
-import { Live2DFactory, Live2DModel, MotionPriority } from 'pixi-live2d-display/cubism4'
+import { Cubism4InternalModel, Live2DFactory, Live2DModel, MotionPriority } from 'pixi-live2d-display/cubism4'
 import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef, toRef, watch } from 'vue'
 
 import Live2DExpression from '../../live2d/expression.vue'
@@ -93,6 +94,8 @@ import { activeCanvasPointer } from '../../../composables/live2d/canvas-pointer'
 import { EmotionHoldPerformer, selectManualHold } from '../../../composables/live2d/expression/hold'
 import { useFitModel } from '../../../composables/live2d/fit-model'
 import { live2DCanvasRectToViewport } from '../../../composables/live2d/head-anchor'
+import { drawablesOf, partTreeOf, readPartDisplayNames } from '../../../composables/live2d/items/editor'
+import { pickLive2DItemPin } from '../../../composables/live2d/items/pin'
 import { naturalChatInput } from '../../../composables/live2d/natural-chat-input'
 import { LIVE2D_NATURAL_CAPABILITIES, Live2DNaturalMotionAdapter } from '../../../composables/live2d/natural-motion-adapter'
 import { scoreLiveliness } from '../../../composables/live2d/natural-motion/liveliness'
@@ -307,6 +310,9 @@ const focusAt = toRef(() => props.focusAt)
 const model = shallowRef<Live2DModel<PixiLive2DInternalModel>>()
 const initialModelWidth = ref<number>(0)
 const initialModelHeight = ref<number>(0)
+/** Her model canvas in its own pixels, before the model3 layout scale; the unit of item placement. */
+const originalModelWidth = ref<number>(0)
+const originalModelHeight = ref<number>(0)
 const mouthOpenSize = computed(() => Math.max(0, Math.min(100, props.mouthOpenSize)))
 const nowSpeaking = toRef(() => props.nowSpeaking)
 const lastUpdateTime = ref(0)
@@ -595,6 +601,8 @@ async function performModelLoad() {
     pixiApp.value!.stage.addChild(model.value)
     initialModelWidth.value = model.value.width
     initialModelHeight.value = model.value.height
+    originalModelWidth.value = model.value.internalModel.originalWidth
+    originalModelHeight.value = model.value.internalModel.originalHeight
     model.value.anchor.set(0.5, 0.5)
     setScaleAndPosition()
 
@@ -2044,6 +2052,43 @@ function headAnchor() {
   )
 }
 
+/**
+ * What the placement editor reads from the loaded model: her part tree and drawables, a pin
+ * picker that skips hit areas as touch does, the conversion between her canvas units and
+ * renderer pixels, and where each drawn item sits. `undefined` until a Cubism 4 model is
+ * loaded, the only kind items draw on. Built once per loaded model: the editor reads it every frame.
+ */
+let cachedItemEditor: { model: Live2DModel, editor: Live2DModelItemEditor } | undefined
+function itemEditor(): Live2DModelItemEditor | undefined {
+  const current = model.value
+  const internalModel = current?.internalModel
+  if (!current || !(internalModel instanceof Cubism4InternalModel))
+    return undefined
+  if (cachedItemEditor?.model === current)
+    return cachedItemEditor.editor
+  cachedItemEditor = { model: current, editor: buildItemEditor(current, internalModel) }
+  return cachedItemEditor.editor
+}
+
+function buildItemEditor(current: Live2DModel, internalModel: Cubism4InternalModel): Live2DModelItemEditor {
+  const coreModel = internalModel.coreModel
+  const core = coreModel.getModel()
+  const drawables: typeof core.drawables & Live2DCoreDrawableParents = core.drawables
+  const scale = { pixelsPerUnit: internalModel.pixelsPerUnit, originalWidth: internalModel.originalWidth, originalHeight: internalModel.originalHeight }
+  const hitAreaIndices = new Set(Object.values(internalModel.hitAreas).map(area => area.index))
+  const names = readPartDisplayNames((internalModel.settings as { _cdiData?: unknown })._cdiData)
+  return {
+    canvas: { width: internalModel.originalWidth, height: internalModel.originalHeight },
+    parts: partTreeOf(core.parts.ids, core.parts.parentIndices, names),
+    drawables: drawablesOf(core.drawables.ids, drawables.parentPartIndices ?? [], core.parts.ids),
+    pickPin: point => pickLive2DItemPin(point, coreModel, scale, hitAreaIndices),
+    // The inverse of `toModelPosition`, which the touch and focus paths use; `toGlobal` refreshes the transforms the same way.
+    canvasToGlobal: point => current.toGlobal(internalModel.localTransform.apply(new Point(point.x, point.y))),
+    globalToCanvas: point => current.toModelPosition(new Point(point.x, point.y)),
+    poseOf: id => itemsRef.value?.poseOf(id),
+  }
+}
+
 /** The drive with pastimes listed while the model offers one; Natural then draws them and the stage shows them. */
 function withPastimes(drive: NaturalIdleDrive): NaturalIdleDrive {
   const offered = idleActivityEntries(expressionStore.catalog).some(entry => !expressionStore.manualActive.includes(entry.id))
@@ -2062,6 +2107,9 @@ defineExpose({
   modelNormalizeParams,
   initialModelHeight,
   initialModelWidth,
+  originalModelWidth,
+  originalModelHeight,
+  itemEditor,
   headAnchor,
   /** The stage calls this only under Natural; Universal and MAGIC retain motion-group routing. */
   setEmotion: (episode: NaturalEpisode) => { pendingNaturalEmotions.push(episode) },

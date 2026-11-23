@@ -466,6 +466,11 @@ export class Live2DItemLayer {
       record?.live2d?.render(renderer)
     }
   }
+
+  /** Where an item drew last frame, for the placement editor's handles; `undefined` while nothing draws for it. */
+  poseOf(id: string): Live2DItemPose | undefined {
+    return this.records.get(id)?.pose
+  }
 }
 
 function destroyDisplay({ sprite, gif, live2d }: LoadedDisplay) {

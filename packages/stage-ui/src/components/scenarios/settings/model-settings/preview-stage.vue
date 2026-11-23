@@ -1,5 +1,7 @@
 <script setup lang="ts">
+import type { ItemExpressionDocument } from '@proj-airi/stage-shared/expression-performance'
 import type { Live2DContext } from '@proj-airi/stage-ui-live2d'
+import type { Live2DItemEditor } from '@proj-airi/stage-ui-live2d/composables/live2d/items/editor'
 
 import type { ModelSettingsRuntimeSnapshot } from './runtime'
 
@@ -28,6 +30,12 @@ const props = defineProps<{
   spineSceneClass?: string | string[]
   tachieSceneClass?: string | string[]
   mmdSceneClass?: string | string[]
+  /**
+   * The stage items to draw on the Live2D model, in place of this window's own expression store: a window without the
+   * stage runtime (the settings preview, the fullscreen window) passes the stage's shown items from the runtime snapshot.
+   * The host keeps them within the shown caps.
+   */
+  live2dItems?: readonly ItemExpressionDocument[]
 }>()
 
 const emit = defineEmits<{
@@ -42,7 +50,7 @@ const settingsStore = useSettings()
 const modelStore = useModelStore()
 const { activeCardId, selectedAvatarModelId } = storeToRefs(useAiriCardStore())
 useSharedLive2DExpressionPreview(props.live2dContext, activeCardId, selectedAvatarModelId)
-const live2dSceneRef = ref<{ canvasElement: () => HTMLCanvasElement | undefined }>()
+const live2dSceneRef = ref<{ canvasElement: () => HTMLCanvasElement | undefined, itemEditor: () => Live2DItemEditor | undefined }>()
 const vrmSceneRef = ref<{ canvasElement: () => HTMLCanvasElement | undefined }>()
 const spineSceneRef = ref<{ canvasElement: () => HTMLCanvasElement | undefined }>()
 const tachieSceneRef = ref<{ canvasElement: () => HTMLCanvasElement | undefined }>()
@@ -76,8 +84,11 @@ useLive2DStageMotionMagic({
   active: () => stageModelRenderer.value === 'live2d' && live2dMotionDriver.value === 'magic',
 })
 
-// The preview draws the items its window's expression store shows; it loads the same stored item documents.
-const { items: live2dItems, reportStates: reportLive2DItemStates } = useLive2DStageItems({ active: () => stageModelRenderer.value === 'live2d' })
+// Without `live2dItems` the preview draws the items its window's expression store shows, from the same stored documents.
+const { items: live2dItems, reportStates: reportLive2DItemStates } = useLive2DStageItems({
+  active: () => stageModelRenderer.value === 'live2d',
+  documents: () => props.live2dItems,
+})
 
 const live2dSceneClassList = computed(() => normalizeClassList(props.live2dSceneClass))
 const vrmSceneClassList = computed(() => normalizeClassList(props.vrmSceneClass))
@@ -213,6 +224,8 @@ watch(runtimeSnapshot, snapshot => emit('runtimeSnapshotChanged', snapshot), { i
 
 defineExpose({
   capturePreviewFrame,
+  /** The placement editor's view of the Live2D model; `undefined` until the Live2D scene has a model. */
+  live2dItemEditor: () => live2dSceneRef.value?.itemEditor(),
 })
 
 const { x: mouseX, y: mouseY } = useMouse()

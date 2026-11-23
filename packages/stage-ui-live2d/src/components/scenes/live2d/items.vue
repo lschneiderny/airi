@@ -53,6 +53,7 @@ watch(() => props.items, items => layer?.setItems(items))
 defineExpose({
   /** Whether a point in her model canvas units lies on a shown outfit; see `Live2DItemLayer.outfitAt`. */
   outfitAt: (point: { x: number, y: number }) => layer?.outfitAt(point) ?? false,
+  poseOf: (id: string) => layer?.poseOf(id),
 })
 </script>
 
