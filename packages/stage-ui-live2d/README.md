@@ -470,6 +470,12 @@ await live2d.motions.execute('motions/wave.motion3.json')
 - A tap or a pat on the canvas plays a reaction from `createLive2DTouchReaction`, and the scene emits `touch`.
   `Model.touchAt` resolves the head or the body from the author hit areas, the head box, or the drawable bounds.
 
+## Stage items
+
+`Live2DItems`, exported from `packages/stage-ui-live2d/src/components/scenes/live2d/index.ts`, draws the shown stage items beside her model. Each item is an expression catalog entry, so the expression store decides which items show. The layer draws each item between two of her draw segments through the vendored range draw (`drawSegments`) in `patches/pixi-live2d-display.patch`. Animated GIFs advance on item-local time through `gifFrameAt` and do not change her motion clock.
+
+An item's `hides` list sets the listed parts to opacity 0 with `setPartOpacityByIndex` at her `beforeModelUpdate`. The layer captures her part opacities once, in `partBaseline`, when it attaches to her model. A part returns to its baseline once no drawn item lists it, and destroying the layer restores the baseline of each part it hid, unless her model is already destroyed. A linked Live2D item copies her parameters at `beforeModelUpdate` through `Live2DParameterMirror` and applies them at `afterMotionUpdate`. Physics outputs are excluded from that copy.
+
 ## When to use
 
 Use this package to render Live2D models in AIRI hosts.
