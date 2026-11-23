@@ -138,7 +138,7 @@ export class MMDBody {
   private readonly gaitChannels = new Float64Array(BODY_CHANNELS.length)
   /** The leg IK's ankle targets of the latest gait tick, mesh-local: the performer's corrector poses the leg bodies from them. */
   private readonly gaitAnkles = { left: { x: 0, y: 0, z: 0 }, right: { x: 0, y: 0, z: 0 } }
-  private readonly gaitInput: { weight: number, support: number, mode: LocomotionFrame['mode'], channels: Float64Array, ankles: Record<'left' | 'right', Vec3> | null } = { weight: 0, support: 0, mode: 'idle', channels: this.gaitChannels, ankles: null }
+  private readonly gaitInput: { weight: number, support: number, mode: LocomotionFrame['mode'], walkForm: boolean, channels: Float64Array, ankles: Record<'left' | 'right', Vec3> | null } = { weight: 0, support: 0, mode: 'idle', walkForm: false, channels: this.gaitChannels, ankles: null }
   private gaitEnabled = false
   private rootX = 0
   private rootYaw = 0
@@ -216,7 +216,7 @@ export class MMDBody {
           now: this.clock.time,
           clips: this.clips,
           root: { x: this.rootX, yaw: this.rootYaw },
-          gait: this.gait && this.gait.weight > 0 ? this.gait.feet : null,
+          gait: this.gait && this.gait.weight > 0 ? this.gait : null,
           footPitch: this.performer?.footPitch,
         })
         if (center && before) {
@@ -463,6 +463,7 @@ export class MMDBody {
         this.gaitInput.weight = frame.weight
         this.gaitInput.support = frame.support
         this.gaitInput.mode = frame.mode
+        this.gaitInput.walkForm = frame.walkForm
         // The foot stage reaches these same targets while the gait weight is above 0 (`feet.apply`, `meshAnkleTarget`).
         this.gaitInput.ankles = this.performer?.traits.legs ? this.gaitAnkles : null
         for (const side of ['left', 'right'] as const) {
@@ -547,7 +548,7 @@ export class MMDBody {
     const points = input.disableLookAt ? null : input.points
     const on = input.intent.gaze.on
     this.gazeTarget = (on === 'cursor' ? points?.cursor : on === 'chat' ? points?.chat : null) ?? null
-    if (this.gait && this.traveling && !input.intent.gaze.held) {
+    if (this.gait && (this.traveling || this.gait.lookAhead !== this.gait.root.yaw) && !input.intent.gaze.held) {
       // Architecture 5.5: the eyes and head lead a turn toward the facing still to come; on a straight walk they run
       // along the travel line. That direction is the stance forward turned about up by the remaining yaw.
       const ahead = this.scratch.copy(this.pose.forward).applyAxisAngle(this.pose.up, this.gait.lookAhead - this.gait.root.yaw)

@@ -40,8 +40,10 @@ interface Walk {
   readonly armWithLeg?: boolean
   /** The knee's flexion through the whole stride, degrees; 0 keeps the leg straight. */
   readonly kneeBendDeg?: number
+  readonly lateKneeExtension?: boolean
   /** The root's speed while she turns, L/s; 0 turns on the spot. */
   readonly turnSpeed?: number
+  readonly hipPivotOffset?: number
 }
 
 /**
@@ -53,6 +55,19 @@ function walk(options: Walk = {}) {
   const walkSeconds = options.walkSeconds ?? 30
   const turns = options.turns ?? TURNS
   const phase = (t: number) => 2 * Math.PI * STRIDE_HZ * Math.min(t, walkSeconds)
+  const strikes = (['left', 'right'] as const).flatMap((foot, side) => Array.from({ length: Math.floor(walkSeconds * STRIDE_HZ) }, (_, stride) => ({
+    t: (stride + 0.25 + side * 0.5) / STRIDE_HZ + 0.1,
+    kind: 'gait' as const,
+    gait: 'heelStrike' as const,
+    foot,
+  })))
+  const kneeBend = (bone: MotionTraceBone, t: number) => {
+    if (!bone.endsWith('LowerLeg'))
+      return 0
+    if (options.lateKneeExtension)
+      return strikes.some(event => bone.startsWith(event.foot) && Math.abs(event.t - t) < 0.025) ? 10 * DEG : 32 * DEG
+    return (options.kneeBendDeg ?? 0) * DEG
+  }
   const turnYaw = (t: number) => turns.reduce((sum, [start, degrees, seconds]) => sum + degrees * DEG * Math.min(1, Math.max(0, (t - start) / seconds)), 0)
   const turning = (t: number) => turns.some(([start, , seconds]) => t >= start && t < start + seconds)
   const mode = (t: number) => t < walkSeconds ? 3 : turning(t) ? ((options.turnsInModeChannel ?? true) ? 1 : 3) : 0
@@ -76,7 +91,7 @@ function walk(options: Walk = {}) {
     if (bone === 'head')
       return rotY(turnYaw(t + leadAt(t)))
     if (bone.endsWith('UpperLeg') || bone.endsWith('LowerLeg'))
-      return multiply(yaw, rotX(-0.4 * side * swing(t) * Math.sin(phase(t)) + (bone.endsWith('LowerLeg') ? (options.kneeBendDeg ?? 0) * DEG : 0)))
+      return multiply(yaw, rotX(-0.4 * side * swing(t) * Math.sin(phase(t)) + kneeBend(bone, t)))
     if (bone.endsWith('Foot'))
       return multiply(yaw, rotX(-footPitch(bone.startsWith('left') ? 'left' : 'right', t) * DEG))
     if (bone.endsWith('UpperArm'))
@@ -90,18 +105,24 @@ function walk(options: Walk = {}) {
     bones: BONES,
     scenario: options.scenario ?? 'walk',
     world,
-    position: t => [0, 0, Math.min(t, walkSeconds) + (options.turnSpeed ?? 0.15) * Math.max(0, t - walkSeconds)],
+    position: t => [
+      (options.hipPivotOffset ?? 0) * Math.sin(turnYaw(t)),
+      0,
+      Math.min(t, walkSeconds) + (options.turnSpeed ?? 0.15) * Math.max(0, t - walkSeconds) + (options.hipPivotOffset ?? 0) * (Math.cos(turnYaw(t)) - 1),
+    ],
     yaw: t => turnYaw(t) + twist(t),
     mode,
+    events: options.lateKneeExtension ? strikes.sort((a, b) => a.t - b.t) : [],
   })
   input.trace.rig.restOffsets = input.trace.rig.bones.map(bone => LIMBS.test(bone) ? [0, -0.1, 0] : [0, 0.1, 0])
   const skate = options.skate ?? { ankle: 0.3, contact: 0.001 }
   const rows = Array.from({ length: input.trace.frames }, (_, i) => {
     const t = i / 60
     const name = ['idle', 'turning', 'starting', 'walking', 'stopping'][mode(t)]
-    return skate.contact === null ? [i * 1000 / 60, name, skate.ankle, 0.001] : [i * 1000 / 60, name, skate.ankle, 0.001, skate.contact]
+    const speed = t < walkSeconds ? 1 : options.turnSpeed ?? 0.15
+    return skate.contact === null ? [i * 1000 / 60, name, skate.ankle, 0.001, speed] : [i * 1000 / 60, name, skate.ankle, 0.001, skate.contact, speed]
   })
-  const columns = skate.contact === null ? ['t_ms', 'mode', 'skate', 'feetMaxError'] : ['t_ms', 'mode', 'skate', 'feetMaxError', 'skateContact']
+  const columns = skate.contact === null ? ['t_ms', 'mode', 'skate', 'feetMaxError', 'rootSpeed'] : ['t_ms', 'mode', 'skate', 'feetMaxError', 'skateContact', 'rootSpeed']
   return loadedRun(input, summaryStub(input, { perFrameSeries: { columns, rows } }), null)
 }
 
@@ -160,8 +181,14 @@ describe('walk-form report', () => {
     expect(statuses(walkFormReport(walk({ kneeBendDeg: 10 })))['knee-at-strike']).toBe('PASS')
   })
 
-  it('fails turns made on the spot, and prints each turn\'s speed where it is half made', () => {
-    const report = walkFormReport(walk({ turnSpeed: 0 }))
+  it('scores the recorded strike after the displacement peak', () => {
+    const report = walkFormReport(walk({ lateKneeExtension: true }))
+    expect(statuses(report)['knee-at-strike']).toBe('PASS')
+    expect(Math.max(...report.detail.kneeAtStrike)).toBeCloseTo(10)
+  })
+
+  it('fails turns with a stationary root even when the hips rotate off axis', () => {
+    const report = walkFormReport(walk({ turnSpeed: 0, hipPivotOffset: 0.075 }))
     expect(statuses(report)['turns-under-way']).toBe('FAIL')
     expect(report.detail.turns.every(turn => (turn.midSpeed ?? 1) < 0.01)).toBe(true)
     expect(formatWalkForm(walkFormReport(walk()))).toContain('mid speed 0.15 L/s')
@@ -179,6 +206,12 @@ describe('walk-form report', () => {
     const short = walkFormReport(walk({ walkSeconds: 18 }))
     expect(statuses(short)['scenario-walking-span']).toBe('NOT-EXERCISED')
     expect(short.verdict).toBe('FAIL')
+  })
+
+  it('finds the turnaround when braking and departure split the rotation', () => {
+    const report = walkFormReport(walk({ turns: [...TURNS.slice(0, 7), [52, -90, 1], [54, -90, 1]] }))
+    expect(report.detail.turns.every(turn => Math.abs(turn.rootDeg) < 135)).toBe(true)
+    expect(statuses(report)['scenario-turn-around']).toBe('PASS')
   })
 
   it('finds the turns in the root yaw, also when the mode channel does not label them', () => {

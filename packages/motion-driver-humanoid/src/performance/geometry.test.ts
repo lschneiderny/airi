@@ -192,7 +192,7 @@ describe('canonical geometry', () => {
     const thigh: BodyCollider = { bone: 'hips', shape: 'sphere', radius: 0.5, centre: { x: wrist.x - traits.hips.x, y: wrist.y - traits.hips.y, z: wrist.z - traits.hips.z }, rotation: { yaw: 0, pitch: 0, roll: 0 }, ...(body === 'leg' ? { leg: { side: 'left', segment: 'thigh' } as const } : {}) }
     const rig = { ...traits, colliders: [...proxyColliders(traits), thigh] }
     const collision = new BodyCollision(rig, rest)
-    const gait = { weight: 1, support: 0, mode: 'walking' as const, channels: rest, ankles: { left: legs.left.ankle, right: legs.right.ankle } }
+    const gait = { weight: 1, support: 0, mode: 'walking' as const, walkForm: true, channels: rest, ankles: { left: legs.left.ankle, right: legs.right.ankle } }
     const arm = [2, 3, 4, 5].map(j => ARM_START.left + j)
     // A walking swing speed, 60 deg/s, carries the hanging arm inward from 10 degrees of abduction into the body.
     const speed = 0.5 * DEG
@@ -226,7 +226,7 @@ describe('canonical geometry', () => {
     const reach = Math.hypot(ankle.x - hip.x, ankle.y - hip.y, ankle.z - hip.z)
     const thigh = Math.hypot(knee.x - hip.x, knee.y - hip.y, knee.z - hip.z)
     const along = (direction: { y: number, z: number }, length: number) => ({ x: hip.x, y: hip.y + direction.y * length, z: hip.z + direction.z * length })
-    const gait = (left: { x: number, y: number, z: number }, weight = 1) => ({ weight, support: 0, mode: 'walking' as const, channels, ankles: { left, right: legs.right.ankle } })
+    const gait = (left: { x: number, y: number, z: number }, weight = 1) => ({ weight, support: 0, mode: 'walking' as const, walkForm: true, channels, ankles: { left, right: legs.right.ankle } })
 
     // The leg swings 30 degrees forward at its bind length: the thigh body leaves its bind place and goes with it. The
     // bind knee is slightly bent, so the thigh lies within about 0.2 units of the hip-to-ankle line it is checked on.

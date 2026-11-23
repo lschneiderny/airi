@@ -24,7 +24,7 @@ export interface Motion3dRunSummary {
   }
   /**
    * One row per scored frame, read by column name. `skateContact` (the contact-point skate, owner decision O6) is appended
-   * after `feetMaxError`; summaries written before it have four columns.
+   * after `feetMaxError`. `rootSpeed` is the locomotion root's ground speed in model units per second.
    */
   perFrameSeries: { columns: readonly string[], rows: readonly (readonly (number | string)[])[] }
   perFrame: { t_ms: number[], penL: number[], penR: number[], clothL: number[], clothR: number[] }
@@ -63,7 +63,7 @@ const engineStages = new Set(['beforeUpdate', 'restore', 'commands', 'mixer.upda
 export class Motion3dMeasurement extends MMDFrameMetrics {
   scored = false
   private readonly samples = new Map<string, number[]>()
-  private readonly rows: [number, string, number, number, number][] = []
+  private readonly rows: [number, string, number, number, number, number][] = []
   private readonly perFrame: Motion3dRunSummary['perFrame'] = { t_ms: [], penL: [], penR: [], clothL: [], clothR: [] }
   private readonly owned: number[][] = []
   private readonly ownership: Motion3dRunSummary['ownership'] = { groups: WRITE_GROUPS, deviationRad: [], activation: { left: [], right: [] }, armDeg: { left: [], right: [] }, restArmDeg: { left: [], right: [] } }
@@ -91,7 +91,7 @@ export class Motion3dMeasurement extends MMDFrameMetrics {
       this.ownership.restArmDeg = { left: performance.arms.restDeg.left, right: performance.arms.restDeg.right }
     this.clip.push(clip)
     this.clipSeen ||= clip !== null
-    this.rows.push([t, locomotion?.mode ?? 'idle', locomotion?.skate ?? 0, locomotion ? feet.maxError : 0, locomotion?.skateContact ?? 0])
+    this.rows.push([t, locomotion?.mode ?? 'idle', locomotion?.skate ?? 0, locomotion ? feet.maxError : 0, locomotion?.skateContact ?? 0, locomotion?.speed ?? 0])
     this.perFrame.t_ms.push(t)
     this.perFrame.penL.push(arms?.penetration.left ?? 0)
     this.perFrame.penR.push(arms?.penetration.right ?? 0)
@@ -126,7 +126,7 @@ export class Motion3dMeasurement extends MMDFrameMetrics {
         wallMs: input.wallMs,
         realtime: input.simulatedSeconds * 1000 / input.wallMs,
       },
-      perFrameSeries: { columns: ['t_ms', 'mode', 'skate', 'feetMaxError', 'skateContact'], rows: this.rows },
+      perFrameSeries: { columns: ['t_ms', 'mode', 'skate', 'feetMaxError', 'skateContact', 'rootSpeed'], rows: this.rows },
       perFrame: this.perFrame,
       collisions: input.collisions,
       corrector: input.corrector,

@@ -1,5 +1,5 @@
 import type { Foot, FootAnchor, LegGeometry } from '@proj-airi/motion-driver-humanoid/foot-contact'
-import type { FootGeometry, LocomotionFoot } from '@proj-airi/motion-driver-humanoid/locomotion'
+import type { FootGeometry, LocomotionFoot, LocomotionFrame } from '@proj-airi/motion-driver-humanoid/locomotion'
 import type { TurnStep } from '@proj-airi/motion-driver-humanoid/look-at'
 import type { BodyFootStep } from '@proj-airi/motion-driver-humanoid/performance'
 import type { AnimationClip, Bone, Matrix4 } from 'three'
@@ -183,7 +183,7 @@ export class MMDFootContact {
     clips: ReadonlyMap<string, AnimationClip>
     root: MMDRootPose
     /** Gait foot targets in the ground frame; they own both feet while the gait weight is above 0. */
-    gait: Record<Foot, LocomotionFoot> | null
+    gait: Pick<LocomotionFrame, 'feet' | 'walkForm'> | null
     /**
      * The performer's foot pitch per foot, radians (its `FootPitch` channels); a negative pitch turns a standing foot
      * toe-down about its ball (architecture 5.1), as a heel raise does. Read while the gait does not own the feet and
@@ -221,7 +221,7 @@ export class MMDFootContact {
     const samples = { left: sample('left'), right: sample('right') }
     if (input.gait) {
       for (const side of sides) {
-        const target = input.gait[side].target
+        const target = input.gait.feet[side].target
         this.planted[side] = { position: { ...target.position }, yaw: target.yaw }
         delete this.steps[side]
       }
@@ -229,7 +229,9 @@ export class MMDFootContact {
       this.plannedYaw = 0
       // The planner checks the legs' reach against the ankles the IK will be given, which the roll moves off the targets.
       const planted = this.anchors()
-      this.planner.setAnchors({ left: meshAnkleTarget(planted.left, input.gait.left.roll, root), right: meshAnkleTarget(planted.right, input.gait.right.roll, root) })
+      this.planner.setAnchors(input.gait.walkForm
+        ? { left: meshAnkleTarget(planted.left, input.gait.feet.left.roll, root), right: meshAnkleTarget(planted.right, input.gait.feet.right.roll, root) }
+        : { left: toMeshAnchor(planted.left, root), right: toMeshAnchor(planted.right, root) })
     }
     const previous = this.result
     // `duck` is the body's `contactDuck`, from non-stance clip ownership only: a one-shot owning the root, a leg IK
@@ -239,7 +241,7 @@ export class MMDFootContact {
       feet: samples,
       enabled: !input.disabled,
       duck: input.contactDuck,
-      ...input.gait ? { reach: GAIT_REACH_SHARE } : {},
+      ...input.gait?.walkForm ? { reach: GAIT_REACH_SHARE } : {},
     }, dt)
     for (const leg of this.legs) {
       const contact = this.result.feet[leg.side]
@@ -274,12 +276,12 @@ export class MMDFootContact {
         if (input.now - step.start >= step.arc.duration)
           delete this.steps[side]
       }
-      const roll = input.gait ? input.gait[side].roll : this.standingRoll(side, input.footPitch)
+      const roll = input.gait ? input.gait.feet[side].roll : this.standingRoll(side, input.footPitch)
       this.pivots[side] = !input.gait && roll?.pivot === 'ball' ? 'ball' : 'flat'
       const ground = this.planted[side] ?? toGroundAnchor(contact.anchor, root)
       const anchor = meshAnkleTarget(ground, roll, root)
       this.targets[side] = anchor
-      this.carrying[side] = !input.disabled && contact.c >= 1 && (input.gait ? input.gait[side].planted : !this.steps[side])
+      this.carrying[side] = !input.disabled && contact.c >= 1 && (input.gait ? input.gait.feet[side].planted : !this.steps[side])
       if (input.disabled) {
         mmd.ikSolver.setEnabled(chain.ikBoneIndex, false)
         continue

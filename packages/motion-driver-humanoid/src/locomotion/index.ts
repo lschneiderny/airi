@@ -146,6 +146,8 @@ export interface LocomotionFrame {
   readonly support: number
   readonly body: GaitBodyChannels & { readonly chestCounterYaw: number, readonly twist: GaitTwist }
   /** Architecture 5.3, radians: shoulder flexion and abduction, elbow flexion and clavicle protraction per arm. */
+  /** True while the ordinary walk owns the gait, including its fade-out. */
+  readonly walkForm: boolean
   readonly armSwing: Record<Foot, {
     readonly flexion: number
     readonly elbowFlex: number
@@ -218,6 +220,11 @@ export const SIDESTEP_MAX_LEGS = 0.6
  */
 const sidestepPairShare = 0.5
 const sidestepReferenceRate = 1.8
+const sidestepPlanReach = 0.97
+const sidestepHardReach = 0.985
+const sidestepKneeSoftening = 0.02
+const sidestepFloorMargin = 0.01
+const sidestepTorsoTwist = [[-0.25, 0.03], [-0.55, 0.06], [-0.35, 0.09]] as const
 /** After arrival each foot must sit within this fore-aft share of the root, or it takes a closing step. */
 const closingShare = 0.02
 /** Step rate of the closing steps after the root has stopped, steps per second. */
@@ -425,6 +432,8 @@ interface Swing {
   readonly liftDrop: number
   /** How far the toe-off roll had raised the ankle at lift-off; the swing lowers it onto its own arc. */
   readonly liftUp: number
+  /** The toe-off pitch the swing leaves the ground with. */
+  readonly liftPitch: number
   land: FootAnchor
   /** Planned fore-aft offset of the landing ahead of the root. */
   reach: number
@@ -443,8 +452,8 @@ interface Walk {
   starting: boolean
   arrived: boolean
   settle: { readonly phase: number, elapsed: number } | null
-  /** True once this walk's braking has planned its turn to the arrival facing. */
-  arriving: boolean
+  /** The last facing planned during braking, or null on the way to the goal. */
+  arrivalFacing: number | null
   /** One leading/trailing pair. A withdrawn or replaced goal finishes this pair before yielding. */
   sidestep?: { readonly goalX: number, readonly rate: number, fromX: number, toX: number, phase: number }
 }
@@ -516,6 +525,7 @@ class Locomotion {
   private readonly lateralError: number
   /** Each hip joint in mesh-local model units. */
   private readonly hips: Record<Foot, Vec3>
+  private readonly hipsAboveAnkles: Record<Foot, Vec3>
   /** Mesh-local fore-aft position of the line the ankles stand on: the stance is centred on it. */
   private readonly ankleLine: number
   /** Mesh-local fore-aft position of the hip joints. */
@@ -530,6 +540,7 @@ class Locomotion {
   private feet: Record<Foot, FootAnchor>
   /** Fore-aft half-span each planted foot was placed for; it lifts about this far behind the hip. */
   private spans: Record<Foot, number> = { left: 0, right: 0 }
+  private walkForm = false
   private bob: number
   private swing: Swing | null = null
   private walk: Walk | null = null
@@ -570,7 +581,8 @@ class Locomotion {
     this.maxAcceleration = this.referenceSpeed
     const { left, right } = traits.bindAnkles
     const above = (ankle: Vec3): Vec3 => ({ x: ankle.x, y: ankle.y + traits.hipToAnkleY, z: ankle.z })
-    this.hips = traits.bindHips ?? { left: above(left), right: above(right) }
+    this.hipsAboveAnkles = { left: above(left), right: above(right) }
+    this.hips = traits.bindHips ?? this.hipsAboveAnkles
     this.ankleLine = (left.z + right.z) / 2
     this.hipLine = (this.hips.left.z + this.hips.right.z) / 2
     const ankleSpacing = Math.hypot(left.x - right.x, left.z - right.z)
@@ -599,6 +611,7 @@ class Locomotion {
     this.stepRequest = null
     this.turn = null
     this.yawPlan = null
+    this.walkForm = false
     this.yawRate = 0
     this.turnRoll = 0
     this.lastTurnFoot = null
@@ -644,6 +657,8 @@ class Locomotion {
 
     const owned = mode === 'turning' || (this.walk !== null && this.walk.settle === null)
     this.blend = clamp(this.blend + (owned ? dt : -dt) / blendDuration, 0, 1)
+    if (!this.walk && !this.turn && this.blend === 0)
+      this.setWalkForm(false)
     const acceleration = dt > 0 ? (this.speed - previousSpeed) / dt : 0
     const leanTarget = this.walk?.sidestep ? 0 : 2 * radians * this.speed / this.referenceSpeed + 3 * radians * acceleration / this.maxAcceleration + this.leanBias
     this.leanBias = 0
@@ -677,7 +692,9 @@ class Locomotion {
 
   /** The cadence law at the speed without this stride's variation, times this stride's cadence. */
   private stepRate(speed: number) {
-    return clamp(Math.sqrt(speed / this.speedFactor * this.referenceSpeed) / this.referenceLength, minRate, maxRate) * this.cadenceFactor
+    const length = this.walkForm ? this.referenceLength : sidestepPairShare * this.traits.legLength
+    const referenceSpeed = this.walkForm ? this.referenceSpeed : length * sidestepReferenceRate
+    return clamp(Math.sqrt(speed / this.speedFactor * referenceSpeed) / length, minRate, maxRate) * this.cadenceFactor
   }
 
   /**
@@ -784,8 +801,21 @@ class Locomotion {
     return this.ankleLine + stride * (this.hipLine - stanceBack * reach / stanceShare - this.ankleLine)
   }
 
+  private setWalkForm(walkForm: boolean) {
+    if (this.walkForm === walkForm)
+      return
+    this.walkForm = walkForm
+    this.bob = this.bobAmplitude(0, 0)
+  }
+
   private bobAmplitude(halfSpan: number, strideScale: number) {
     const legLength = this.traits.legLength
+    if (!this.walkForm) {
+      const reach = sidestepPlanReach * legLength
+      const lateral = this.halfBindWidth * 0.3 + swayShare * legLength * Math.sin(Math.PI * doubleSupport / 2)
+      const required = this.traits.hipToAnkleY - sidestepKneeSoftening * legLength - Math.sqrt(Math.max(0, reach ** 2 - halfSpan ** 2 - lateral ** 2))
+      return Math.max(0, required / ((1 + Math.cos(Math.PI * doubleSupport)) / 2))
+    }
     const reach = planReach * legLength
     const standing = (this.hips.left.y + this.hips.right.y) / 2 - this.traits.footBaselineY - kneeSoftening * legLength
     const shape = (phase: number) => (1 + Math.cos(2 * Math.PI * (phase - 0.1))) / 2
@@ -833,9 +863,9 @@ class Locomotion {
     const length = speed / this.stepRate(speed)
     const swayScale = 1 - 0.3 * clamp((speed - this.referenceSpeed) / (0.3 * this.referenceSpeed), 0, 1)
     const lateral = swayShare * this.traits.legLength * swayScale * this.support(this.phase)
-    const bobDrop = kneeSoftening * this.traits.legLength + this.bob * (1 + Math.cos(2 * Math.PI * (this.phase - 0.1))) / 2
-    const foreAft = this.walk?.sidestep ? 0 : speedRipple * length / (2 * Math.PI) * Math.sin(2 * Math.PI * (this.phase - rippleLag))
-    const required = Math.min(bobDrop + floorMarginShare * this.traits.legLength, this.requiredDrop(rootX + (this.walk?.direction ?? 1) * foreAft, lateral, length / this.referenceLength))
+    const bobDrop = (this.walkForm ? kneeSoftening : sidestepKneeSoftening) * this.traits.legLength + this.bob * (1 + Math.cos(2 * Math.PI * (this.phase - 0.1))) / 2
+    const foreAft = this.walkForm ? speedRipple * length / (2 * Math.PI) * Math.sin(2 * Math.PI * (this.phase - rippleLag)) : 0
+    const required = Math.min(bobDrop + (this.walkForm ? floorMarginShare : sidestepFloorMargin) * this.traits.legLength, this.requiredDrop(rootX + (this.walk?.direction ?? 1) * foreAft, lateral, length / this.referenceLength))
     return { length, lateral, foreAft, drop: Math.max(bobDrop, required) }
   }
 
@@ -861,13 +891,13 @@ class Locomotion {
   }
 
   private anchorDrop(side: Foot, anchor: Vec3, rootX: number, lateral: number) {
-    const hip = this.hips[side]
+    const hip = (this.walkForm ? this.hips : this.hipsAboveAnkles)[side]
     const cos = Math.cos(this.yaw)
     const sin = Math.sin(this.yaw)
     const hipX = rootX + cos * hip.x + sin * hip.z - cos * lateral
     const hipZ = this.z - sin * hip.x + cos * hip.z + sin * lateral
     const horizontal = (hipX - anchor.x) ** 2 + (hipZ - anchor.z) ** 2
-    const reach = planReach * this.traits.legLength
+    const reach = (this.walkForm ? planReach : sidestepPlanReach) * this.traits.legLength
     return hip.y - anchor.y - Math.sqrt(Math.max(0, reach ** 2 - horizontal))
   }
 
@@ -896,13 +926,15 @@ class Locomotion {
       this.phase = 0.1
     }
     const delta = wrap(facing - this.yaw)
-    if (turns && (!walkTo || sidestep))
+    this.setWalkForm(walkTo && !sidestep)
+    // A walk of less than one step has no room to turn out and back while moving.
+    if (turns && (!walkTo || Math.abs(goal - this.x) < this.referenceLength))
       this.startTurn(facing, false)
     // Further than a quarter turn from the heading: turn the excess on the spot, and let the walk take the rest over.
     else if (turns && Math.abs(delta) > mergedTurnMax)
       this.startTurn(facing - Math.sign(delta) * mergedTurn, true)
     else
-      this.startWalk(direction, facing, input.idleSupport, sidestep ? { goalX: goal, rate: clamp(sidestepReferenceRate * Math.sqrt(paceSpeeds[input.pace]), minRate, maxRate) } : undefined)
+      this.startWalk(direction, facing, input.idleSupport, sidestep ? { goalX: goal, rate: this.stepRate(paceSpeeds[input.pace] * (sidestepPairShare * this.traits.legLength * sidestepReferenceRate)) } : undefined)
   }
 
   private startTurn(facing: number, flows: boolean) {
@@ -986,7 +1018,7 @@ class Locomotion {
     // As if the walk had been running: the first swing foot lifts at phase delta, the other foot a step later.
     this.strikes = { [firstFoot]: doubleSupport - (1 + doubleSupport), [opposite(firstFoot)]: 0 } as Record<Foot, number>
     this.speed = 0
-    this.walk = { preparation: 0, direction, heading, firstFoot, step: 0, starting: true, arrived: false, settle: null, arriving: false }
+    this.walk = { preparation: 0, direction, heading, firstFoot, step: 0, starting: true, arrived: false, settle: null, arrivalFacing: null }
     this.yawPlan = Math.abs(turn) > turnTolerance
       ? { from: this.yaw, to: this.yaw + turn, fromPhase: this.phase, toPhase: this.phase + departTurnSteps, startRate: this.yawRate / minRate }
       : null
@@ -1011,12 +1043,12 @@ class Locomotion {
     return plan.from + (plan.to - plan.from) * minJerk(u) + plan.startRate * span * u * (1 - u) ** 2
   }
 
-  private followYawPlan() {
+  private followYawPlan(phase = this.phase) {
     const plan = this.yawPlan
     if (!plan)
       return
-    this.yaw = this.facingAt(this.phase)
-    if (this.phase >= plan.toPhase) {
+    this.yaw = this.facingAt(phase)
+    if (phase >= plan.toPhase) {
       this.yaw = plan.to
       this.yawPlan = null
     }
@@ -1029,7 +1061,7 @@ class Locomotion {
   private planYaw(facing: number, steps: number, rate: number): YawPlan | null {
     const turn = wrap(facing - this.yaw)
     const span = steps * Math.max(1, Math.abs(turn) / mergedTurn)
-    return Math.abs(turn) > turnTolerance
+    return Math.abs(turn) > turnTolerance || Math.abs(this.yawRate) > turnTolerance
       ? { from: this.yaw, to: this.yaw + turn, fromPhase: this.phase, toPhase: this.phase + span, startRate: this.yawRate / rate }
       : null
   }
@@ -1059,16 +1091,16 @@ class Locomotion {
     const change = this.maxAcceleration * dt
     const speed = Math.max(0, clamp(target, this.speed - change, this.speed + change * this.startShare(this.speed, command)))
 
-    // The body turns to the arrival facing over the braking steps, and back to the heading if a goal appears ahead.
-    if ((braking || profiled) !== walk.arriving && !walk.settle) {
-      walk.arriving = braking || profiled
-      this.yawPlan = walk.arriving
-        ? this.planYaw(finite(input.arriveFacing), arriveTurnSteps, this.stepRate(speed))
-        : this.planYaw(walk.heading, departTurnSteps, this.stepRate(speed))
-    }
-    // The steps quicken as she slows to a stop, up to the rate of the closing steps that bring the feet together.
-    const slowed = walk.arriving ? (1 - Math.min(1, speed / command)) ** 2 : 0
+    // Keep the departure turn through the first step. The braking cap can be below cruise speed while still accelerating.
+    const wasArriving = walk.arrivalFacing !== null
+    const arriving = braking || (profiled && (wasArriving || ((!this.yawPlan || walk.step > 0) && target <= this.speed + epsilon)))
+    const facing = arriving ? finite(input.arriveFacing) : walk.heading
+    const slowed = arriving ? (1 - Math.min(1, speed / command)) ** 2 : 0
     const rate = this.stepRate(speed) + (closingRate - minRate) * slowed
+    if (!walk.settle && (arriving !== wasArriving || (walk.arrivalFacing !== null && Math.abs(wrap(facing - walk.arrivalFacing)) > turnTolerance))) {
+      this.yawPlan = this.planYaw(facing, arriving ? arriveTurnSteps : departTurnSteps, rate)
+      walk.arrivalFacing = arriving ? facing : null
+    }
     if (walk.settle) {
       walk.settle.elapsed += dt
       this.phase = Math.min(walk.settle.phase, this.phase + rate * dt)
@@ -1105,7 +1137,7 @@ class Locomotion {
       this.walk = null
       return 'stopping'
     }
-    if (walk.settle || walk.arrived || braking || profiled)
+    if (walk.settle || walk.arrived || arriving)
       return 'stopping'
     if (walk.starting && this.speed < command - epsilon)
       return 'starting'
@@ -1164,7 +1196,9 @@ class Locomotion {
     const a = walk.preparation / preparationDuration
     const power = minRate * preparationDuration / (doubleSupport - 0.1) - 1
     this.phase = 0.1 + (doubleSupport - 0.1) * a ** power
-    this.followYawPlan()
+    // The yaw clock joins the preceding turn and the first walking tick at the minimum step rate.
+    const yawPhase = 0.1 + (doubleSupport - 0.1) * smoothstep(a) + minRate * preparationDuration * a * (1 - a) * (1 - 2 * a)
+    this.followYawPlan(this.yawPlan?.startRate ? yawPhase : this.phase)
     this.speed = 0
     this.leanBias = drawBackLean * Math.sin(Math.PI * a)
     this.posture = this.pelvis(0, this.x)
@@ -1173,12 +1207,12 @@ class Locomotion {
 
   /** Shortens root travel so no planted ankle ends farther than r_hard from its hip. */
   private leash(advance: number, direction: 1 | -1, pelvis: { length: number, lateral: number, drop: number, foreAft: number }) {
-    const hardLimit = hardReach * this.traits.legLength
+    const hardLimit = (this.walkForm ? hardReach : sidestepHardReach) * this.traits.legLength
     let limit = advance
     for (const side of sides) {
       if (this.swing?.foot === side)
         continue
-      const joint = this.hips[side]
+      const joint = (this.walkForm ? this.hips : this.hipsAboveAnkles)[side]
       const hip = this.toWorld(joint.x, joint.z)
       const anchor = this.ankle(side, pelvis.length / this.referenceLength)
       const dx = hip.x - Math.cos(this.yaw) * pelvis.lateral + direction * pelvis.foreAft - anchor.x
@@ -1215,10 +1249,12 @@ class Locomotion {
     const rate = this.stepRate(this.speed)
     if (!this.swing) {
       // The swing starts where the toe-off roll left the ankle, so the ankle never moves back to its planning anchor.
-      const ankle = this.ankle(foot, this.speed / rate / this.referenceLength)
+      const strideScale = this.speed / rate / this.referenceLength
+      const liftPitch = this.roll(foot, strideScale).pitch
+      const ankle = this.ankle(foot, strideScale)
       const liftDrop = this.anchorDrop(foot, ankle, this.x, this.posture?.lateral ?? 0)
       const lift: FootAnchor = { position: { x: ankle.x, y: this.traits.footBaselineY, z: ankle.z }, yaw: this.feet[foot].yaw }
-      this.swing = { foot, lift, bobFrom: this.bob, liftDrop, liftUp: ankle.y - this.traits.footBaselineY, progress, ...this.planLanding(walk, foot, lift, t, rate, goal, braking, command, dt) }
+      this.swing = { foot, lift, bobFrom: this.bob, liftDrop, liftUp: ankle.y - this.traits.footBaselineY, liftPitch, progress, ...this.planLanding(walk, foot, lift, t, rate, goal, braking, command, dt) }
       events.push({ kind: 'liftOff', foot, time: now })
     }
     else if (progress < replanUntil) {
@@ -1280,14 +1316,18 @@ class Locomotion {
   }
 
   private sampleSwing(swing: Swing): FootAnchor {
-    const blend = swingTravel(swing.progress)
+    const turn = cycloid(swing.progress)
+    const blend = this.walkForm ? swingTravel(swing.progress) : turn
+    const height = this.walkForm
+      ? swing.liftUp * (1 - minJerk(Math.min(1, swing.progress / 0.5))) + swing.height * swingLift(swing.progress)
+      : swing.height * Math.sin(Math.PI * swing.progress)
     return {
       position: {
         x: swing.lift.position.x + (swing.land.position.x - swing.lift.position.x) * blend,
-        y: this.traits.footBaselineY + swing.liftUp * (1 - minJerk(Math.min(1, swing.progress / 0.5))) + swing.height * swingLift(swing.progress),
+        y: this.traits.footBaselineY + height,
         z: swing.lift.position.z + (swing.land.position.z - swing.lift.position.z) * blend,
       },
-      yaw: swing.lift.yaw + wrap(swing.land.yaw - swing.lift.yaw) * cycloid(swing.progress),
+      yaw: swing.lift.yaw + wrap(swing.land.yaw - swing.lift.yaw) * turn,
     }
   }
 
@@ -1371,7 +1411,7 @@ class Locomotion {
       const w = swing.progress
       // The foot hangs toe-down behind the knee until 45 % of the swing, then turns toe-up for the strike.
       const hang = swingHangPitch * scale
-      const pitch = w < 0.45 ? -toeOff - (hang - toeOff) * minJerk(Math.min(1, w / 0.3)) : -hang + (hang + strike) * minJerk((w - 0.45) / 0.55)
+      const pitch = w < 0.45 ? swing.liftPitch - (hang + swing.liftPitch) * minJerk(Math.min(1, w / 0.3)) : -hang + (hang + strike) * minJerk((w - 0.45) / 0.55)
       // The swing's own path starts at the rolled ankle (`Swing.liftUp`), so only the strike's offset is added here.
       return { pitch, ankleOffset: scaleOffset(heel(Math.max(0, pitch)), minJerk((w - 0.7) / 0.3)), pivot: 'air' }
     }
@@ -1407,12 +1447,12 @@ class Locomotion {
     // Architecture 5.2's lags, in steps at the current rate, as links of 3a's lag chain: each torso segment follows the
     // one below it, and the head counters the torso 80 ms late.
     const rate = this.stepRate(this.speed)
-    const nod = trunkNod * Math.min(1, strideScale) * Math.cos(2 * Math.PI * (this.phase - nodLag))
+    const nod = (this.walkForm ? trunkNod : 0) * Math.min(1, strideScale) * Math.cos(2 * Math.PI * (this.phase - nodLag))
     const [lowerLink, midLink, upperLink, headLink] = this.twistLinks
-    const [[lowerShare, lowerLag], [midShare, midLag], [upperShare, upperLag]] = torsoTwist
+    const [[lowerShare, lowerLag], [midShare, midLag], [upperShare, upperLag]] = this.walkForm ? torsoTwist : sidestepTorsoTwist
     // The shoulder girdle reaches its counter-rotation before the pelvis reaches its twist, so the chain follows the twist
     // `torsoLead` steps ahead.
-    const lowerYaw = this.followTwist(lowerLink, pelvisTwist * strideScale * this.lead(this.phase + torsoLead), lowerLag / rate, dt)
+    const lowerYaw = this.followTwist(lowerLink, pelvisTwist * strideScale * this.lead(this.phase + (this.walkForm ? torsoLead : 0)), lowerLag / rate, dt)
     const midYaw = this.followTwist(midLink, lowerYaw, (midLag - lowerLag) / rate, dt)
     const upperYaw = this.followTwist(upperLink, midYaw, (upperLag - midLag) / rate, dt)
     const lower = lowerShare * lowerYaw
@@ -1424,7 +1464,7 @@ class Locomotion {
     // speed / v_ref, and architecture 5.3's shape is the target.
     if (mode !== 'idle')
       this.swingRate = rate
-    this.recordGirdle(this.swingRate / referenceRate * upperYaw / pelvisTwist, dt)
+    this.recordGirdle(this.swingRate / (this.walkForm ? referenceRate : sidestepReferenceRate) * upperYaw / pelvisTwist, dt)
     // A soft |x|, exact at 1: the swing's forward and back sizes differ, and a hard corner between them steps the arm's
     // speed.
     const soft = (value: number) => (Math.sqrt(value * value + 0.15 ** 2) - 0.15) / (Math.sqrt(1 + 0.15 ** 2) - 0.15)
@@ -1432,8 +1472,18 @@ class Locomotion {
       const lag = Math.max(0, upperArmLag + 2 * this.armDrift[side] / this.swingRate)
       const girdle = footSign[side] * this.girdleAt(0)
       const swing = footSign[side] * this.girdleAt(lag)
-      const late = footSign[side] * this.girdleAt(lag + elbowLag)
+      const late = footSign[side] * this.girdleAt(lag + (this.walkForm ? elbowLag : 0.2))
       const share = side === 'right' ? rightSwingShare : 1
+      if (!this.walkForm) {
+        const forward = Math.max(0, -swing)
+        const back = Math.max(0, swing)
+        return {
+          flexion: 2 * radians + share * (16 * radians * forward - 12 * radians * back),
+          elbowFlex: 12 * radians + share * (16 * radians * Math.max(0, -late) - 6 * radians * Math.max(0, late)),
+          abduct: -3 * radians * share * forward,
+          clavProt: -3 * radians * share * girdle,
+        }
+      }
       // 1 at the front of the swing and 0 at the back.
       const forward = (soft(swing) - swing) / 2
       // Walking adults swing the upper arm about 19 degrees forward and 17 to 24 back, and bend the elbow 34 degrees
@@ -1457,17 +1507,18 @@ class Locomotion {
         pelvisLateral: pelvis.lateral,
         pelvisDrop: pelvis.drop,
         pelvisForeAft: pelvis.foreAft,
-        lowerBodyRoll: -pelvisList * strideScale * this.support(this.phase + listLead),
+        lowerBodyRoll: this.walkForm ? -pelvisList * strideScale * this.support(this.phase + listLead) : -3 * radians * strideScale * support,
         lowerBodyYaw,
-        upperBodyRoll: 1.5 * radians * strideScale * support + this.turnRoll,
+        upperBodyRoll: 1.5 * radians * strideScale * support + (this.walkForm ? this.turnRoll : 0),
         chestCounterRoll: 0,
         spinePitch: 0.6 * (this.lean.y + nod),
         chestPitch: 0.4 * (this.lean.y + nod),
         chestCounterYaw: -0.5 * lowerBodyYaw,
         twist: { lower, mid, upper, head },
       },
+      walkForm: this.walkForm,
       armSwing: { left: arm('left'), right: arm('right') },
-      lookAhead: this.turn ? this.turnLookAhead(this.turn) : this.yawPlan ? this.planLookAhead(this.yawPlan) : this.walk && !this.walk.arriving ? this.yaw + wrap(this.walk.heading - this.yaw) : this.yaw,
+      lookAhead: this.turn ? this.turnLookAhead(this.turn) : this.yawPlan ? this.planLookAhead(this.yawPlan) : this.walk && this.walk.arrivalFacing === null ? this.yaw + wrap(this.walk.heading - this.yaw) : this.yaw,
       weight: smoothstep(this.blend),
       events,
     }

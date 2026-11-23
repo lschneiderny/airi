@@ -225,6 +225,7 @@ export interface BodyPerformanceInput {
     readonly weight: number
     readonly support: number
     readonly mode: LocomotionFrame['mode']
+    readonly walkForm: boolean
     readonly channels: ArrayLike<number>
     /**
      * The ankle targets the leg IK reaches this tick (the gait's foot targets with their roll), in the stance frame and
