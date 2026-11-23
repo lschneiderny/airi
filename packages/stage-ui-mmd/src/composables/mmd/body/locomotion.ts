@@ -68,6 +68,7 @@ export class MMDLocomotion {
         footBaselineY: traits.footBaselineY,
         hipToAnkleY: (legs.left.hip.y - legs.left.ankle.y + legs.right.hip.y - legs.right.ankle.y) / 2,
         bindAnkles: { left: { ...legs.left.ankle }, right: { ...legs.right.ankle } },
+        bindHips: { left: { ...legs.left.hip }, right: { ...legs.right.hip } },
         ...foot ? { foot } : {},
       },
       seed,

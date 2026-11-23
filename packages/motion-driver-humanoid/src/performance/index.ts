@@ -6,11 +6,12 @@ import { createLagChain } from '../dynamics'
 import { createTurnPlanner } from '../look-at'
 import { BodyArms } from './arms'
 import { BodyBreath } from './breath'
-import { ARM_START, BODY_CHANNELS, BODY_TICK, DEG, limitChannel, SIDES } from './channels'
+import { ARM_START, BODY_CHANNELS, BODY_TICK, channelIndex, DEG, limitChannel, SIDES } from './channels'
 import { BodyCollision } from './collision'
 import { BodyRigError } from './contracts'
 import { BodyGaze } from './gaze'
 import { GestureKeys } from './gesture-forms'
+import { followerInverse } from './gestures'
 import { BodyPosture } from './posture'
 import { BodySkeleton } from './skeleton'
 import { NEUTRAL_K, PerformanceStack } from './stack'
@@ -60,6 +61,20 @@ const STEADY_GAIN = [0.5, 0.6, 0.6] as const
 const STEADY_LAG = 0.08
 /** A held gaze's eye residue. */
 const HELD_MICRO = Object.freeze({ yaw: 0, pitch: 0 })
+/**
+ * The arm channels the gait swings, each with its index in its side's arm block. The gait already times each joint (the
+ * upper arm behind the shoulder girdle, the elbow behind the upper arm), and a relaxed follower driven at the stride
+ * rate, which is near its own resonance, lags a further third to half of a stride. That lag put each arm forward with
+ * the leg of its own side (measured on the walk scenario, 2026-11-23: upper arm and same-side ankle peaked together).
+ * So the swing reaches the followers through their inverse, as a gesture's planned motion does: the followed arm keeps
+ * the gait's timing, and the forearm, wrist and fingers still trail it.
+ */
+const GAIT_ARM_CHANNELS: readonly (readonly [channel: number, joint: number])[] = SIDES.flatMap(side =>
+  (['ClavProt', 'Flex', 'Abduct', 'Elbow'] as const).map((joint) => {
+    const channel = channelIndex(`${side}${joint}`)
+    return [channel, channel - ARM_START[side]] as const
+  }),
+)
 
 /** Pure state owner. Each step advances exactly one tick; the host owns accumulation/interpolation. */
 class BodyPerformer {
@@ -150,6 +165,8 @@ class BodyPerformer {
       turns: createTurnPlanner(),
       targets: new Float64Array(BODY_CHANNELS.length),
       steady: [0, 1, 2].map(() => createLagChain([STEADY_LAG], BODY_TICK)),
+      /** The gait's arm swing of the last two ticks, by `GAIT_ARM_CHANNELS` index, for its rate and curvature. */
+      gaitSwing: { warm: false, last: new Float64Array(GAIT_ARM_CHANNELS.length), before: new Float64Array(GAIT_ARM_CHANNELS.length) },
       sighs: 0,
     }
   }
@@ -225,6 +242,22 @@ class BodyPerformer {
         const lower = c < 6 || c === 47 || c === 48 || c === 75 || c === 76
         targets[c] += gait.weight * (gait.channels[c] - (lower ? targets[c] : 0))
       }
+      // The followers' inverse of the swing: x = y + lead y' + curvature y'', from the swing's last three ticks.
+      const swing = state.gaitSwing
+      const tension = this.context.tension
+      GAIT_ARM_CHANNELS.forEach(([c, joint], k) => {
+        const y = gait.weight * gait.channels[c]
+        const [lead, curvature] = followerInverse(joint, tension, 0)
+        const first = swing.warm ? swing.last[k] : y
+        const second = swing.warm ? swing.before[k] : y
+        targets[c] += lead * (y - first) / BODY_TICK + curvature * (y - 2 * first + second) / BODY_TICK ** 2
+        swing.before[k] = first
+        swing.last[k] = y
+      })
+      swing.warm = true
+    }
+    else {
+      state.gaitSwing.warm = false
     }
     stack.step(targets, this.context)
     if (traits.spineChain.length === 1) {

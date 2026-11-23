@@ -144,11 +144,13 @@ describe('body director press loop', () => {
     expect(result.offsetLegs).toBeLessThanOrEqual(0.5)
   })
 
-  // Total travel without the correction in this deterministic fixture, rounded up to six decimals.
+  // Total travel without the correction in this deterministic fixture, rounded up to six decimals. Pinned again on
+  // 2026-11-23: a walk now turns while it steps off, so she is under way sooner than when she first turned on the spot
+  // (0, 0.676 and 2.535001 L before).
   it.each([
-    { landAtS: 1, originalTravelLegs: 0 },
-    { landAtS: 2, originalTravelLegs: 0.676 },
-    { landAtS: 4, originalTravelLegs: 2.535001 },
+    { landAtS: 1, originalTravelLegs: 0.247382 },
+    { landAtS: 2, originalTravelLegs: 1.400606 },
+    { landAtS: 4, originalTravelLegs: 3.008447 },
   ])('takes at most one corrective step onto a pointer that lands on her $landAtS s into a chase', ({ landAtS, originalTravelLegs }) => {
     const result = simulate({ mode: 'watching', landAtS, farX: 8 * leg, landOffset: 0, chase: true, wanderAtS: null })
     // One 120 Hz tick at the nominal walk speed is 0.0075 L; allow 0.01 L for discrete stopping.
