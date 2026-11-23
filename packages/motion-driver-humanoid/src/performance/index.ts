@@ -61,6 +61,8 @@ const STEADY_GAIN = [0.5, 0.6, 0.6] as const
 const STEADY_LAG = 0.08
 /** A held gaze's eye residue. */
 const HELD_MICRO = Object.freeze({ yaw: 0, pitch: 0 })
+const GAIT_ABDUCT_CHANNELS: ReadonlySet<number> = new Set(SIDES.map(side => channelIndex(`${side}Abduct`)))
+
 /**
  * The arm channels the gait swings, each with its index in its side's arm block. The gait already times each joint (the
  * upper arm behind the shoulder girdle, the elbow behind the upper arm), and a relaxed follower driven at the stride
@@ -69,6 +71,8 @@ const HELD_MICRO = Object.freeze({ yaw: 0, pitch: 0 })
  * So the swing reaches the followers through their inverse, as a gesture's planned motion does: the followed arm keeps
  * the gait's timing, and the forearm, wrist and fingers still trail it.
  */
+/** The arm block index of the abduction channel: the gait's value there is a floor on the arm's hang, not an offset. */
+const ABDUCT_JOINT = 3
 const GAIT_ARM_CHANNELS: readonly (readonly [channel: number, joint: number])[] = SIDES.flatMap(side =>
   (['ClavProt', 'Flex', 'Abduct', 'Elbow'] as const).map((joint) => {
     const channel = channelIndex(`${side}${joint}`)
@@ -239,6 +243,8 @@ class BodyPerformer {
     const gait = input.gait
     if (gait) {
       for (let c = 0; c < targets.length; c++) {
+        if (GAIT_ABDUCT_CHANNELS.has(c))
+          continue
         const lower = c < 6 || c === 47 || c === 48 || c === 75 || c === 76
         targets[c] += gait.weight * (gait.channels[c] - (lower ? targets[c] : 0))
       }
@@ -246,10 +252,14 @@ class BodyPerformer {
       const swing = state.gaitSwing
       const tension = this.context.tension
       GAIT_ARM_CHANNELS.forEach(([c, joint], k) => {
-        const y = gait.weight * gait.channels[c]
+        // The arm opens to the gait's angle only as far as its own hang is narrower, through a soft corner of 2 degrees.
+        const short = gait.channels[c] - targets[c]
+        const y = gait.weight * (joint === ABDUCT_JOINT ? (short + Math.sqrt(short * short + (2 * DEG) ** 2)) / 2 : gait.channels[c])
         const [lead, curvature] = followerInverse(joint, tension, 0)
         const first = swing.warm ? swing.last[k] : y
         const second = swing.warm ? swing.before[k] : y
+        if (joint === ABDUCT_JOINT)
+          targets[c] += y
         targets[c] += lead * (y - first) / BODY_TICK + curvature * (y - 2 * first + second) / BODY_TICK ** 2
         swing.before[k] = first
         swing.last[k] = y
