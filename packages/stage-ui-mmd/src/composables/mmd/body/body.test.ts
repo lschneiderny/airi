@@ -140,7 +140,7 @@ describe('mmd full-body stages', () => {
     expect(Math.abs(away.yaw)).toBeLessThan(3)
   })
 
-  it('looks along the walk unless a glance that outranks travel holds, and follows Natural again once she stops', () => {
+  it('looks along the walk and leads the arrival turn unless a glance outranks travel', () => {
     const walk = (held: boolean) => {
       const { pipeline, body, input, setInput } = bodyFixture()
       setInput({
@@ -173,9 +173,10 @@ describe('mmd full-body stages', () => {
     const held = walk(true)
 
     expect([...free.traveling]).toEqual(['travel'])
-    expect([...free.stopping]).toEqual(['free'])
+    expect([...free.stopping]).toEqual(['travel', 'free'])
     expect(free.after).toBe('free')
     expect([...held.traveling]).toEqual(['free'])
+    expect([...held.stopping]).toEqual(['free'])
     expect(held.after).toBe('free')
   })
 

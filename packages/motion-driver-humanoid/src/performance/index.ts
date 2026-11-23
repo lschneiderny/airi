@@ -243,11 +243,13 @@ class BodyPerformer {
     const gait = input.gait
     if (gait) {
       for (let c = 0; c < targets.length; c++) {
-        if (GAIT_ABDUCT_CHANNELS.has(c))
+        if (gait.walkForm && GAIT_ABDUCT_CHANNELS.has(c))
           continue
         const lower = c < 6 || c === 47 || c === 48 || c === 75 || c === 76
         targets[c] += gait.weight * (gait.channels[c] - (lower ? targets[c] : 0))
       }
+    }
+    if (gait?.walkForm) {
       // The followers' inverse of the swing: x = y + lead y' + curvature y'', from the swing's last three ticks.
       const swing = state.gaitSwing
       const tension = this.context.tension

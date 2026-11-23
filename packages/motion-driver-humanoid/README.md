@@ -153,10 +153,12 @@ leaves rest at a quarter of that, and stops exactly at `goalX`. The stride, the 
 turns were refitted to walking adults on 2026-11-23; the
 [natural walk refit ADR](../../docs/ai/adr/2026-11-23-natural-walk-refit.md) holds the measures.
 
-A walk turns while it steps. A start that must turn up to 100 degrees opens with the foot on the side it turns to and
+A walk shorter than one reference step turns toward the goal before moving. For longer walks, a start that must turn up to
+100 degrees opens with the foot on the side it turns to and
 turns the body over its first 2.4 steps; a wider turn first turns the excess on the spot through `planFootSteps`
 (at most 45 degrees per 0.45 second step), and the walk takes the last 90 degrees over without a stop. From the first
-braking tick the body turns to `arriveFacing` over 2.6 steps, longer for a turn wider than 90 degrees. Each foot lands
+braking tick after departure the body turns to `arriveFacing` over 2.6 steps, longer for a turn wider than 90 degrees.
+A new arrival facing during braking changes the target from the current yaw and yaw rate. Each foot lands
 turned toward where the body faces a step later, at most 42 degrees from her facing at the landing, and the trunk
 leans into the turn. After the root stops, closing steps bring the feet to their bind stance at her facing, and the gait
 returns to `idle` after both feet have been planted for 0.45 seconds. A turn without a walk still turns on the spot: it

@@ -217,6 +217,8 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
           sampler.inputs.channels.locomotionMode = gait ? modes[gait.mode] : 0
           sampler.inputs.channels.gaitWeight = gait?.weight ?? 0
           sampler.stage.run(context)
+          for (const event of gait?.events ?? [])
+            sampler.recorder.event({ t: naturalSeconds, kind: 'gait', gait: event.kind, foot: event.foot })
         },
       },
     })
