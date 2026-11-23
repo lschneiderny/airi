@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest'
 
 import { ReportUsageError } from './report'
 import { loadedRun, rotX, rotY, summaryStub, TEST_BONES } from './test-runs'
-import { walkFormReport } from './walk-form'
+import { formatWalkForm, walkFormReport } from './walk-form'
 
 const BONES: readonly MotionTraceBone[] = [...TEST_BONES, 'leftUpperLeg', 'leftLowerLeg', 'leftFoot', 'rightUpperLeg', 'rightLowerLeg', 'rightFoot']
 const LIMBS = /UpperArm|LowerArm|Hand|UpperLeg|LowerLeg|Foot/
@@ -36,11 +36,17 @@ interface Walk {
   readonly rollDelay?: number
   /** The last seconds of walking close up: the legs swing a tenth as far and the feet stay flat. */
   readonly closing?: number
+  /** Each arm swings forward with the leg of its own side instead of against it. */
+  readonly armWithLeg?: boolean
+  /** The knee's flexion through the whole stride, degrees; 0 keeps the leg straight. */
+  readonly kneeBendDeg?: number
+  /** The root's speed while she turns, L/s; 0 turns on the spot. */
+  readonly turnSpeed?: number
 }
 
 /**
- * Walking forward at 1 L/s with legs and arms swinging at 0.9 strides per second, then turns in place. Limb rest offsets
- * point down, so a segment's sagittal angle is its swing angle.
+ * Walking forward at 1 L/s with legs and arms swinging at 0.9 strides per second, then turns while she drifts on at
+ * 0.15 L/s (`turnSpeed`). Limb rest offsets point down, so a segment's sagittal angle is its swing angle.
  */
 function walk(options: Walk = {}) {
   const roll = options.roll ?? { left: [14, -32], right: [14, -32] }
@@ -70,11 +76,11 @@ function walk(options: Walk = {}) {
     if (bone === 'head')
       return rotY(turnYaw(t + leadAt(t)))
     if (bone.endsWith('UpperLeg') || bone.endsWith('LowerLeg'))
-      return multiply(yaw, rotX(-0.4 * side * swing(t) * Math.sin(phase(t))))
+      return multiply(yaw, rotX(-0.4 * side * swing(t) * Math.sin(phase(t)) + (bone.endsWith('LowerLeg') ? (options.kneeBendDeg ?? 0) * DEG : 0)))
     if (bone.endsWith('Foot'))
       return multiply(yaw, rotX(-footPitch(bone.startsWith('left') ? 'left' : 'right', t) * DEG))
     if (bone.endsWith('UpperArm'))
-      return multiply(yaw, rotX(0.3 * side * Math.sin(phase(t))))
+      return multiply(yaw, rotX((options.armWithLeg ? -0.3 : 0.3) * side * Math.sin(phase(t))))
     if (bone.endsWith('LowerArm') || bone.endsWith('Hand'))
       return multiply(yaw, rotX(0.3 * side * Math.sin(phase(t - (options.forearmLag ?? 0.06)))))
     return yaw
@@ -84,7 +90,7 @@ function walk(options: Walk = {}) {
     bones: BONES,
     scenario: options.scenario ?? 'walk',
     world,
-    position: t => [0, 0, Math.min(t, walkSeconds)],
+    position: t => [0, 0, Math.min(t, walkSeconds) + (options.turnSpeed ?? 0.15) * Math.max(0, t - walkSeconds)],
     yaw: t => turnYaw(t) + twist(t),
     mode,
   })
@@ -105,7 +111,7 @@ const SCENARIO_PASS = { 'scenario-walking-span': 'PASS', 'scenario-strides': 'PA
 describe('walk-form report', () => {
   it('passes a walk with its scenario cases that rolls on every step and trails the forearm by 60 ms, and prints each turn\'s head lead', () => {
     const report = walkFormReport(walk())
-    expect(statuses(report)).toEqual({ ...SCENARIO_PASS, 'roll-every-step': 'PASS', 'skate': 'PASS', 'wrist-lags': 'PASS' })
+    expect(statuses(report)).toEqual({ ...SCENARIO_PASS, 'roll-every-step': 'PASS', 'skate': 'PASS', 'wrist-lags': 'PASS', 'arm-opposition': 'PASS', 'knee-at-strike': 'PASS', 'turns-under-way': 'PASS' })
     expect(report.verdict).toBe('PASS')
     expect(report.detail.turns.map(turn => Math.round(turn.rootDeg / 90))).toEqual([1, -1, 1, -1, 1, -1, 1, 2])
     expect(report.detail.turns.every(turn => (turn.leadMs ?? 0) > 100)).toBe(true)
@@ -140,6 +146,25 @@ describe('walk-form report', () => {
 
   it('fails a forearm that leads the upper arm by 50 ms', () => {
     expect(statuses(walkFormReport(walk({ forearmLag: -0.05 })))).toMatchObject({ 'roll-every-step': 'PASS', 'wrist-lags': 'FAIL' })
+  })
+
+  it('fails arms that swing forward with the leg of their own side', () => {
+    const report = walkFormReport(walk({ armWithLeg: true }))
+    expect(statuses(report)['arm-opposition']).toBe('FAIL')
+    expect(report.detail.armOpposition.left).toBeGreaterThan(0.5)
+    expect(walkFormReport(walk()).detail.armOpposition.left).toBeLessThan(-0.5)
+  })
+
+  it('fails a knee still bent 30 degrees at heel strike, and passes one bent 10', () => {
+    expect(statuses(walkFormReport(walk({ kneeBendDeg: 30 })))['knee-at-strike']).toBe('FAIL')
+    expect(statuses(walkFormReport(walk({ kneeBendDeg: 10 })))['knee-at-strike']).toBe('PASS')
+  })
+
+  it('fails turns made on the spot, and prints each turn\'s speed where it is half made', () => {
+    const report = walkFormReport(walk({ turnSpeed: 0 }))
+    expect(statuses(report)['turns-under-way']).toBe('FAIL')
+    expect(report.detail.turns.every(turn => (turn.midSpeed ?? 1) < 0.01)).toBe(true)
+    expect(formatWalkForm(walkFormReport(walk()))).toContain('mid speed 0.15 L/s')
   })
 
   it('reports a late head without judging it', () => {
