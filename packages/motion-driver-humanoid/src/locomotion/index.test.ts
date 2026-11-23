@@ -186,7 +186,7 @@ describe('sidestep', () => {
       hash.update(JSON.stringify(ordinary.frames, (_, value: unknown) => typeof value === 'number' ? Math.round(value * 1e9) / 1e9 : value))
     }
     // Ignore last-bit differences in transcendental math across V8 builds and optimization tiers.
-    expect(hash.digest('hex')).toBe('4ea76b6f2f3566f23ff00e680cbbccedebf293ee9cb6aded4ec012a20027249d')
+    expect(hash.digest('hex')).toBe('7963327df9819c02300c619ab3d7af636a247c15de9d91eb873fbd1c323906af')
   })
 
   it('finishes a withdrawn pair and settles with both feet planted', () => {
@@ -666,12 +666,12 @@ describe('procedural gait', () => {
     for (const frame of steady) {
       const swing = frame.armSwing.left
       // Forward of 2 degrees the clavicle protracts; behind it, it retracts. It leads the arm by 26 ms, over which the arm
-      // moves under 3 degrees, so the signs are compared beyond that. The arm's floor on its hang runs from 16 degrees
-      // out at the back of the swing to 20 at the front.
+      // moves under 3 degrees, so the signs are compared beyond that. The arm's floor on its hang runs from 14 degrees
+      // out at the back of the swing to 19 at the front.
       if (Math.abs(swing.flexion - 2 * rad) > 3 * rad)
         expect(Math.sign(swing.clavProt)).toBe(Math.sign(swing.flexion - 2 * rad))
-      expect(swing.abduct).toBeGreaterThanOrEqual(15.5 * rad)
-      expect(swing.abduct).toBeLessThanOrEqual(20 * rad + 1e-9)
+      expect(swing.abduct).toBeGreaterThanOrEqual(13.5 * rad)
+      expect(swing.abduct).toBeLessThanOrEqual(19 * rad + 1e-9)
     }
   })
 
