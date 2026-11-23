@@ -8,7 +8,7 @@ This page tracks the order and status of the work that moves the client to the t
 - **Docs move with code.** A slice moves each rule it lands from a policy doc's Target section into that doc's current sections, and removes the overlaps and gaps it closes, in the same PR. The open entries in the Target tables are the remaining work.
 - **Upstream first.** A slice starts after a sync. Its plan opens with what upstream has for that behavior today, and says what the slice adopts, builds beside, or changes. It names each upstream file it changes and why ([ADR decision 14](../adr/2026-11-17-character-mind-direction.md#scope-and-order)).
 - **One plan per slice.** A slice gets an `.omo/plans/<slug>.md` plan when it starts. The plan links back to its row here.
-- **One PR per slice**, against `lschneiderny/airi`, rebase-merged. Each commit passes `pnpm verify`; the PR passes `pnpm verify --gate`. A slice that changes app runtime behavior also passes a rendered check with `qa:app` or the `airi-qa` MCP server for the behavior it moves.
+- **One PR per slice**, against `lschneiderny/airi`, rebase-merged. Each commit passes `pnpm verify`. A slice that changes app runtime behavior also passes a rendered check with `qa:app` or the `airi-qa` MCP server for the behavior it moves.
 
 ## Steps
 

@@ -58,7 +58,7 @@ Use `AIRI_DEV_QUIET=1 pnpm dev` (or another `dev:*` command routed through `scri
 
 ```bash
 pnpm verify                      # changes since each step's last passing tree
-pnpm verify --gate               # full branch against the merge base with main
+pnpm verify --gate               # full branch against the merge base with main (upstream syncs)
 pnpm verify --only lint,test     # some steps
 pnpm verify --base origin/main   # another base
 pnpm verify --dry-run            # print the plan and commands
@@ -95,7 +95,7 @@ The per-branch record lives at `<git common dir>/airi-verify/last/<encoded-branc
 
 After a pass, only that step's entry advances. Skipped and failed steps leave their entries unchanged. A pass against a different merge base starts a new record so old entries cannot narrow the other steps. Dry runs never write records. Files must remain unchanged during the step before the last-pass record is written.
 
-Use `pnpm verify --gate` before landing to check the full branch regardless of previous passes. After the summary, every run lists the checks the branch still needs that verify does not run, under `also needed, not run by verify`. The list comes from the changed non-test paths since the merge base (`followUpChecks` in `verify-plan.ts`): app runtime paths need `qa:smoke`, Natural and Live2D motion packages need `qa:test:model` with the rig configured, MMD body packages need `qa:test:model` with the MMD model configured and `qa:motion3d` identity runs, and `qa:motion3d` report rules need labelled inject cases.
+Use `pnpm verify --gate` to check a full branch regardless of previous passes, as an upstream sync does. Pull requests use `pnpm verify`, and releases use `pnpm release`. After the summary, every run lists the checks the branch still needs that verify does not run, under `also needed, not run by verify`. The list comes from the changed non-test paths since the merge base (`followUpChecks` in `verify-plan.ts`): app runtime paths need `qa:smoke`, Natural and Live2D motion packages need `qa:test:model` with the rig configured, MMD body packages need `qa:test:model` with the MMD model configured and `qa:motion3d` identity runs, and `qa:motion3d` report rules need labelled inject cases.
 
 When its steps pass, `--gate` runs the QA those paths need (`gateQaFor` and `gateQaCommand`) and shows each as a `qa` row in the summary:
 

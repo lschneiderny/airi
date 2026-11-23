@@ -53,7 +53,7 @@ The fork states a different rule than upstream.
 | Area | Upstream | Fork | Reason | Revisit |
 | --- | --- | --- | --- | --- |
 | Checks after a task | Typecheck and test each changed workspace; root `pnpm typecheck` after a shared change; `pnpm lint` before finishing | `pnpm verify`, as the root COMMANDS section and `testing.md` state | One incremental command covers lint, typecheck of dependents, and related tests | When `testing.md` changes |
-| Branch tests and CI | Run the branch tests before a PR; confirm CI tested the PR head | `pnpm verify --gate` before landing; no CI | The fork has no workflows | If workflows are added |
+| Branch tests and CI | Run the branch tests before a PR; confirm CI tested the PR head | `pnpm verify` on pull requests and `pnpm release` before a release; no CI | The fork has no workflows | If workflows are added |
 | Source control | Branch and PR for every change | Small changes go directly to `main` after `pnpm verify`; plan-sized work uses a branch and a rebase-merged PR against the fork | One maintainer | Not planned |
 | Upstream intake | Not applicable | Merge on a sync branch, land by fast-forward, never rebase or cherry-pick | A rebase merge would re-create upstream commits under new hashes | Not planned |
 | Agent attribution | No `Co-authored-by` for an agent; add `Assisted-by: <harness>:<model>` | Agent commits end with a `Co-Authored-By` trailer that names the model | Owner requirement; it matches the harness default | If the owner changes it |
@@ -107,7 +107,7 @@ Decided on 2026-11-18 for upstream `f3e6a244e..b3a6d6071`, and on 2026-11-21 for
 | Agent-written PR and issue text names the request, harness, and model | Leave out | See Rule overrides |
 | Test one file through `pnpm -F <package> exec vitest run`, with the path relative to the package; `test:root` for the tests that belong to no package | Adopt | Root COMMANDS section |
 | Test a branch with `turbo run test:run --affected` | Override | `pnpm verify` runs the tests related to the changed files, in each changed package and its dependents |
-| Run the branch tests before a PR; confirm CI tested the PR head | Leave out | No CI; `pnpm verify --gate` |
+| Run the branch tests before a PR; confirm CI tested the PR head | Leave out | No CI; `pnpm verify`, and `pnpm release` before a release |
 | A UI change reviews its browser tests and is verified with stories, Vishot, and `agent-browser` | Adopt | Routing line for `enforce-rules-for-ui-tests`; pointer in the Vitest skill |
 | Do not delete an assertion only to pass; run the related tests on the final commit | Leave out | `testing.md` already forbids weakening tests, and `pnpm verify` runs per commit |
 | Routing: `enforce-rules-for-ui-tests`, `enforce-rules-for-fonts`, `enforce-rules-for-ui-components`, `enforce-rules-for-render-loops`, `design-audio-visualizations` | Adopt | Root TASK ROUTING; the five skills are upstream's bytes |
