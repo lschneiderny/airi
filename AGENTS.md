@@ -13,6 +13,7 @@ Agent guidance holds only what an agent cannot learn from the code, `package.jso
 - Put a rule in the nested file closest to the code it governs. Put it here only when it applies across packages.
 - Keep each nested `AGENTS.md` short. When one has no package-specific rules left, delete it and its `CLAUDE.md`.
 - The fork owns every `AGENTS.md`, including those under paths kept from upstream. At a sync, keep the fork's version and add only the upstream rules that meet this policy.
+- If a rule here fights the task in front of you, say so loudly and get the user's sign-off before breaking it.
 
 ## CONVENTIONS
 - Change only Supported projects for fork work. Projects kept from upstream stay as upstream ships them; fix them only to keep the workspace building. See [Support scope](README.md#support-scope).
@@ -28,6 +29,7 @@ Agent guidance holds only what an agent cannot learn from the code, `package.jso
 - Use `date-fns` for date and time code, with `@date-fns/utc` for UTC values and `@date-fns/tz` for named time zones, added through the pnpm catalog. Ask before researching or adding another date library. Render-loop clocks and `performance.now()` durations are not date code.
 - Settings/devtools pages need `<route lang="yaml"> meta: layout: settings </route>`. Register routes and icons in both settings layouts: `packages/stage-layouts/src/layouts/settings.vue` and `apps/stage-tamagotchi/src/renderer/layouts/settings.vue`.
 - Keep pure orchestration outside Vue/store integration.
+- Every state a user or the character can enter needs a way out and a way to see it: enable and disable, start and stop, show and hide. A one-way door is a bug.
 - Reuse existing animations in `apps/stage-tamagotchi/src/renderer/styles` before adding new ones.
 - Group UnoCSS classes only in the markup you change. Do not reformat a component's other classes; this overrides the `enforce-rules-for-unocss` skill.
 - Before changing host capabilities, read the [host capability contract ADR](docs/ai/adr/2026-11-08-host-capability-contract.md).
@@ -78,6 +80,7 @@ Agent guidance holds only what an agent cannot learn from the code, `package.jso
 ### Source control workflow
 - Commit small, self-contained changes directly to `main` after `pnpm verify` passes.
 - Put plan-sized or multi-commit work, such as a `.omo/plans` execution, on a branch. Open a pull request against `lschneiderny/airi`, never against upstream `moeru-ai/airi`. The fork allows only rebase merges, so keep each commit atomic and passing.
+- Write the pull request body as the problem in a sentence or two, then how you fixed it. End with the model and harness that did the work, for example `Created with <model> in <harness>.` For visible changes, include before and after screenshots, and a short video for motion or timing. Do not commit screenshots or other files that only the pull request needs.
 - Move tracked files with `git mv` in a commit of its own with no content edits, so Git detects the rename and history survives upstream syncs.
 - Work in the main checkout by default. Create a worktree with `pnpm wt new <name>` only for parallel or long-running work, and remove it with `pnpm wt rm <name>`.
 - `/tmp` is RAM-backed. Never export, clone, or install the repository under `/tmp`. To build or test another revision, use `pnpm wt new <name>` and remove it with `pnpm wt rm <name>`; to read an old file, use `git show <rev>:<path>`.
