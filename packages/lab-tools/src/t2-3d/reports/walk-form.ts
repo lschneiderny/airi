@@ -13,7 +13,7 @@ import { peaks, runs } from '../metrics/segments'
 import { caseReport, formatCaseReport, judged, notExercised } from './case-report'
 import { fixed, ReportUsageError, requireSummary } from './report'
 
-const WALK_FORM_VERSION = 4
+const WALK_FORM_VERSION = 5
 
 const C = {
   walkingSpeed: 0.2,
@@ -33,6 +33,10 @@ const C = {
   walkingSpan: 20,
   minTurns: 8,
   turnAround: 135,
+  armOpposition: -0.5,
+  kneeAtStrikeDeg: 20,
+  turnMidSpeed: 0.05,
+  turnsUnderWay: 0.8,
 } as const
 
 const WALK_FORM_CONSTANTS: readonly ReportConstant[] = [
@@ -54,6 +58,10 @@ const WALK_FORM_CONSTANTS: readonly ReportConstant[] = [
   { name: 'walking span', value: C.walkingSpan, unit: 's of continuous walking, at least (W1)', source: 'three 10 s gate windows, metrics/prepare.ts' },
   { name: 'turns', value: C.minTurns, unit: 'turns in the travel heading, at least (W3)', source: 'gait.headLeadMs episode minimum (O5)' },
   { name: 'turn-around', value: C.turnAround, unit: 'deg of travel heading in one turn, more than (W4)', source: 'C002 "a turn-around"' },
+  { name: 'arm opposition', value: C.armOpposition, unit: 'Pearson r of each upper arm\'s fore-aft swing with its own side\'s foot fore-aft offset over walking frames, at most', source: 'walking adults -0.82 and -0.87 over the mean cycle (Bandai Namco Research Motiondataset 2, walk clips, styles feminine and normal, measured 2026-11-23); the product read +0.9 before that date, each arm forward with its own leg, and the gate\'s gait.armSwingLagMs takes |r|, so it passed' },
+  { name: 'knee at strike', value: C.kneeAtStrikeDeg, unit: 'deg of knee flexion at heel strike, median over judged strikes, at most', source: 'walking adults 4.0 to 10.4 (P5 to P95 over the same dataset\'s walk clips, three styles); the product read 27 to 29 before 2026-11-23' },
+  { name: 'turn mid speed', value: C.turnMidSpeed, unit: 'L/s root speed where a turn is half made, at least', source: 'tells a turn made while stepping from a turn on the spot, no more: walking adults keep 0.69 or more of their walking speed through a quarter turn (P5, same dataset, 190 walk-turn clips)' },
+  { name: 'turns under way', value: C.turnsUnderWay, unit: 'share of turns at or above the turn mid speed, at least', source: 'a turn-around may start on the spot before the walk takes it over' },
 ]
 
 const SIDES = ['left', 'right'] as const
@@ -105,15 +113,20 @@ export interface WalkFormDetail {
   readonly skate: number | null
   readonly feetError: number | null
   readonly lags: Readonly<Record<'left' | 'right', readonly { readonly start: number, readonly lagMs: number, readonly r: number }[]>>
-  readonly turns: readonly { readonly start: number, readonly end: number, readonly rootDeg: number, readonly headDeg: number, readonly leadMs: number | null }[]
+  readonly turns: readonly { readonly start: number, readonly end: number, readonly rootDeg: number, readonly headDeg: number, readonly leadMs: number | null, readonly midSpeed: number | null }[]
   readonly counterCorrelation: number | null
+  /** Per side, Pearson r of the upper arm's fore-aft swing with the same side's foot fore-aft offset over walking frames. */
+  readonly armOpposition: Readonly<Record<'left' | 'right', number | null>>
+  /** Knee flexion at each judged heel strike, degrees. */
+  readonly kneeAtStrike: readonly number[]
 }
 
 /**
  * C002 and C003 (plan R2, revision 2): the scenario's walking span, strides, turns and turn-around (W1 to W4, read as not
  * exercised when missing), roll on every step, contact skate and forearm lag; turns come from the travel heading (the root
  * yaw low-passed at 0.5 Hz, so the pelvis twist of each stride is not a turn), and each turn's head lead is printed, not
- * judged.
+ * judged. Version 5 adds three lines a walk passed version 4 without: each arm swings against the leg of its own side, the
+ * knee is near straight at heel strike, and a turn is made while she steps.
  */
 export function walkFormReport(run: LoadedRun): CaseReport<WalkFormDetail> {
   const { p, input } = run
@@ -140,11 +153,24 @@ export function walkFormReport(run: LoadedRun): CaseReport<WalkFormDetail> {
   const toe: number[] = []
   const flatSteps: { t: number, foot: 'left' | 'right', event: 'heel-strike' | 'toe-off', pitch: number }[] = []
   const shortSteps: { t: number, foot: 'left' | 'right', event: 'heel-strike' | 'toe-off', reach: number }[] = []
+  const kneeAtStrike: number[] = []
   const strideCounts = SIDES.map((side) => {
     const { series, q } = need(`${side}Foot`)
     const d = butterworth(series.slice(0, walking.length).map((v, i) => heading(sub(v, p.rootPosition[i]), p.yaw[i])[2] / legLength), 6)
     const heels = peaks(d, Number.NEGATIVE_INFINITY).filter(i => walking[i])
     const toes = peaks(d.map(v => -v), Number.NEGATIVE_INFINITY).filter(i => walking[i])
+    // Knee flexion at each full heel strike: the angle between the thigh and the shank.
+    const hipJoint = need(`${side}UpperLeg`).series
+    const kneeJoint = need(`${side}LowerLeg`).series
+    const typicalHeel = median(heels.map(i => d[i]))
+    for (const i of heels) {
+      if (d[i] / typicalHeel < C.minReach)
+        continue
+      const thigh = sub(kneeJoint[i], hipJoint[i])
+      const shank = sub(series[i], kneeJoint[i])
+      const cosine = (thigh[0] * shank[0] + thigh[1] * shank[1] + thigh[2] * shank[2]) / (norm(thigh) * norm(shank))
+      kneeAtStrike.push(Math.acos(Math.max(-1, Math.min(1, cosine))) * DEG)
+    }
     const contact = (i: number) => Array.from({ length: 2 * C.contactFrames + 1 }, (_, k) => i - C.contactFrames + k).filter(k => k >= 0 && k < q.length).map(k => pitch(q, k))
     const judge = (event: 'heel-strike' | 'toe-off', steps: readonly number[]) => {
       const sign = event === 'heel-strike' ? 1 : -1
@@ -232,6 +258,7 @@ export function walkFormReport(run: LoadedRun): CaseReport<WalkFormDetail> {
       rootDeg: (travel[span.end - 1] - travel[Math.max(0, span.start - 1)]) * DEG,
       headDeg: (headYaw[to] - headYaw[from]) * DEG,
       leadMs: root === null || head === null ? null : (root - head) * 1000 / HZ,
+      midSpeed: root === null ? null : norm(p.rootVelocity[Math.min(root, p.rootVelocity.length - 1)]),
     }
   })
   const turnAround = turns.some(turn => Math.abs(turn.rootDeg) > C.turnAround)
@@ -244,6 +271,23 @@ export function walkFormReport(run: LoadedRun): CaseReport<WalkFormDetail> {
   const chest = unwrap(need('chest').q.map(forwardYaw))
   const walkingFrames = walking.flatMap((on, i) => on ? [i] : [])
   const counterCorrelation = pearson(walkingFrames.map(i => hips[i] - p.yaw[i]), walkingFrames.map(i => chest[i] - hips[i]))
+
+  // (f) Each arm against the leg of its own side: walking adults swing them in opposition.
+  const armOpposition = Object.fromEntries(SIDES.map((side) => {
+    const shoulder = need(`${side}UpperArm`).series
+    const elbow = need(`${side}LowerArm`).series
+    const foot = need(`${side}Foot`).series
+    const swing = walkingFrames.map((i) => {
+      const arm = heading(sub(elbow[i], shoulder[i]), p.yaw[i])
+      return Math.atan2(arm[2], -arm[1])
+    })
+    return [side, pearson(swing, walkingFrames.map(i => heading(sub(foot[i], p.rootPosition[i]), p.yaw[i])[2]))]
+  })) as Record<'left' | 'right', number | null>
+  const armRule = `per side, r of the upper arm's fore-aft swing with its own side's foot fore-aft offset over walking frames <= ${C.armOpposition}`
+  const kneeRule = `median knee flexion at heel strike <= ${C.kneeAtStrikeDeg} deg over full strikes`
+  const turnRule = `at least ${C.turnsUnderWay} of the turns have a root speed >= ${C.turnMidSpeed} L/s where the turn is half made`
+  const timedTurns = turns.filter(turn => turn.midSpeed !== null)
+  const underWay = timedTurns.filter(turn => (turn.midSpeed ?? 0) >= C.turnMidSpeed).length
 
   const requirements: CaseRequirement[] = [
     scenario('scenario-walking-span', `one continuous walking span of at least ${C.walkingSpan} s (W1)`, `longest ${longestWalk.toFixed(2)} s`, longestWalk >= C.walkingSpan),
@@ -259,6 +303,15 @@ export function walkFormReport(run: LoadedRun): CaseReport<WalkFormDetail> {
     p.windows.length < C.minWindows
       ? notExercised('wrist-lags', lagRule, `${p.windows.length} walk windows, fewer than ${C.minWindows}`)
       : judged('wrist-lags', lagRule, sideResults.map(({ side, value }) => `${side} ${value ? `${value.lag.toFixed(1)} ms, r ${value.r.toFixed(3)}` : 'no window'}`).join('; '), sideResults.every(({ value }) => value !== null && value.lag >= C.minLagMs && value.r >= C.minR)),
+    strides < C.minStrides
+      ? notExercised('arm-opposition', armRule, `${strides} strides on the busier foot, fewer than ${C.minStrides}`)
+      : judged('arm-opposition', armRule, SIDES.map(side => `${side} r ${armOpposition[side] === null ? '-' : fixed(armOpposition[side] ?? 0, 3)}`).join('; '), SIDES.every(side => armOpposition[side] !== null && (armOpposition[side] ?? 1) <= C.armOpposition)),
+    kneeAtStrike.length < C.minStrides
+      ? notExercised('knee-at-strike', kneeRule, `${kneeAtStrike.length} full heel strikes, fewer than ${C.minStrides}`)
+      : judged('knee-at-strike', kneeRule, `median ${fixed(median(kneeAtStrike), 1)} deg over ${kneeAtStrike.length} strikes`, median(kneeAtStrike) <= C.kneeAtStrikeDeg),
+    timedTurns.length === 0
+      ? notExercised('turns-under-way', turnRule, 'no turn')
+      : judged('turns-under-way', turnRule, `${underWay} of ${timedTurns.length} turns`, underWay / timedTurns.length >= C.turnsUnderWay),
   ]
   return caseReport('walk-form', WALK_FORM_VERSION, [run.dir], WALK_FORM_CONSTANTS, requirements, {
     strides,
@@ -272,6 +325,8 @@ export function walkFormReport(run: LoadedRun): CaseReport<WalkFormDetail> {
     lags,
     turns,
     counterCorrelation,
+    armOpposition,
+    kneeAtStrike,
   })
 }
 
@@ -287,7 +342,7 @@ export function formatWalkForm(report: CaseReport<WalkFormDetail>): string {
     `limit: read at the most rolled frame within ${C.contactFrames} frames, the bars (half the reference's P5 and P95 at the displacement peak) are looser than at that peak; a closing or planted step is not judged, so a missing roll on it is not seen.`,
     ...(['left', 'right'] as const).map(side => `${side} forearm lag per window: ${d.lags[side].map(l => `${l.start.toFixed(1)} s ${l.lagMs.toFixed(1)} ms r ${l.r.toFixed(3)}`).join('; ') || 'none'}`),
     `turns in the travel heading (${d.turns.length}); head lead printed, not judged (a ${C.minLeadMs} ms bar sits inside the 0 to 100 ms noise of a product with no designed lead): ${d.turns.filter(turn => turn.leadMs !== null && turn.leadMs >= C.minLeadMs).length} of ${d.turns.length} at least ${C.minLeadMs} ms`,
-    ...d.turns.map(turn => `  ${turn.start.toFixed(3)}-${turn.end.toFixed(3)} s\troot ${turn.rootDeg.toFixed(1)} deg\thead ${turn.headDeg.toFixed(1)} deg\tlead ${turn.leadMs === null ? 'no head turn' : `${turn.leadMs.toFixed(1)} ms`}`),
+    ...d.turns.map(turn => `  ${turn.start.toFixed(3)}-${turn.end.toFixed(3)} s\troot ${turn.rootDeg.toFixed(1)} deg\thead ${turn.headDeg.toFixed(1)} deg\tlead ${turn.leadMs === null ? 'no head turn' : `${turn.leadMs.toFixed(1)} ms`}\tmid speed ${turn.midSpeed === null ? '-' : turn.midSpeed.toFixed(2)} L/s`),
     `counter-rotation (informative, expected <= -0.3): corr(pelvis twist, chest-on-pelvis yaw) ${fixed(d.counterCorrelation)}`,
     'limit (measured by the unit M2 review): the travel heading reads a turn 7 to 9 % small (90 deg reads about 82, 180 about 174), so a 140 deg turn-around reads about 133, under the 135 deg turn-around bar; a turn slower than 0.5 rad/s of travel heading is not a turn.',
   ])
