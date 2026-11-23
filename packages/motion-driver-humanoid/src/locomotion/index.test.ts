@@ -187,7 +187,7 @@ describe('sidestep', () => {
     }
     // Full frames of the gait without a sidestep request: cruise, arrival, turns, pace changes, and reversal. Pinned again
     // on 2026-11-23, when the stride, the swing and the turns were refitted to walking adults.
-    expect(hash.digest('hex')).toBe('28b79e7d1b36cfeefb69048bd5caf4b3df111dc251eb127a9533af1cbe58715d')
+    expect(hash.digest('hex')).toBe('181aa0d5aac8dff76a9bc7a3c8f6087c23222c56beaf8aae28af52f132f04f57')
   })
 
   it('finishes a withdrawn pair and settles with both feet planted', () => {
@@ -415,14 +415,14 @@ describe('procedural gait', () => {
     expect(window.length).toBeGreaterThan(200)
     expect(Math.abs(window.reduce((sum, frame) => sum + frame.support, 0) / window.length)).toBeLessThan(1e-3)
 
-    // The arms swing in antiphase from one trunk drive; the forward swing (16) is larger than the back swing (12), so the two
+    // The arms swing in antiphase from one trunk drive; the forward swing (19.5) is larger than the back swing (15.5), so the two
     // arms' offsets from 2 degrees, the right one taken at the left's size, sum to a seventh of their difference.
     for (const name of allScenarios) {
       for (const frame of scenario(name).frames) {
         const left = frame.armSwing.left.flexion - 2 * rad
         const right = (frame.armSwing.right.flexion - 2 * rad) / (1 - 0.219)
-        // Forward 16 and back 12 with a soft corner of 0.15 between them: the sum of the mirrored arms is that corner.
-        const corner = left + right - Math.abs(left - right) / 7
+        // Forward 19.5 and back 15.5 with a soft corner of 0.15 between them: the sum of the mirrored arms is that corner.
+        const corner = left + right - Math.abs(left - right) / 8.75
         expect(corner).toBeLessThanOrEqual(1e-9)
         expect(corner).toBeGreaterThanOrEqual(-4 * 0.15 * rad - 1e-9)
       }
@@ -645,16 +645,16 @@ describe('procedural gait', () => {
     }
   })
 
-  it('arm swing: the forward swing is larger, the elbow follows the shoulder 100 ms late, and the clavicle protracts', () => {
+  it('arm swing: the forward swing is larger, the elbow follows the shoulder 30 ms late, and the clavicle protracts', () => {
     const { frames } = scenario('cruise')
     const steady = frames.filter((frame, tick) => tick * dt >= 3 && frame.mode === 'walking')
     const flexion = steady.map(frame => frame.armSwing.left.flexion)
     // The trunk's three lag links pass the stride frequency at 0.99 of its size.
-    expect(Math.max(...flexion)).toBeLessThanOrEqual(2 * rad + 16 * rad)
-    expect(Math.max(...flexion)).toBeGreaterThan(2 * rad + 0.98 * 16 * rad)
-    expect(Math.min(...flexion)).toBeGreaterThanOrEqual(2 * rad - 12 * rad)
-    expect(Math.min(...flexion)).toBeLessThan(2 * rad - 0.98 * 12 * rad)
-    // The elbow's forward bend peaks when the shoulder's forward swing peaked 0.1 s (12 ticks) earlier.
+    expect(Math.max(...flexion)).toBeLessThanOrEqual(2 * rad + 19.5 * rad)
+    expect(Math.max(...flexion)).toBeGreaterThan(2 * rad + 0.98 * 19.5 * rad)
+    expect(Math.min(...flexion)).toBeGreaterThanOrEqual(2 * rad - 15.5 * rad)
+    expect(Math.min(...flexion)).toBeLessThan(2 * rad - 0.98 * 15.5 * rad)
+    // The elbow's forward bend peaks when the shoulder's forward swing peaked 0.03 s (3.6 ticks) earlier.
     const peaks = (values: readonly number[]) => values.flatMap((value, index) => index > 0 && index < values.length - 1 && value > (values[index - 1] ?? 0) && value >= (values[index + 1] ?? 0) ? [index] : [])
     const shoulder = peaks(flexion)
     const elbow = peaks(steady.map(frame => frame.armSwing.left.elbowFlex))
@@ -662,17 +662,17 @@ describe('procedural gait', () => {
     for (const peak of shoulder) {
       const next = elbow.find(index => index >= peak)
       if (next !== undefined)
-        expect(Math.abs(next - peak - 12)).toBeLessThanOrEqual(1)
+        expect(Math.abs(next - peak - 4)).toBeLessThanOrEqual(1)
     }
     for (const frame of steady) {
       const swing = frame.armSwing.left
       // Forward of 2 degrees the clavicle protracts; behind it, it retracts. It leads the arm by 26 ms, over which the arm
-      // moves under 3 degrees, so the signs are compared beyond that. The arm hangs 6 degrees wider than at rest, and
-      // up to 4 more going back.
+      // moves under 3 degrees, so the signs are compared beyond that. The arm's floor on its hang runs from 16 degrees
+      // out at the back of the swing to 20 at the front.
       if (Math.abs(swing.flexion - 2 * rad) > 3 * rad)
         expect(Math.sign(swing.clavProt)).toBe(Math.sign(swing.flexion - 2 * rad))
-      expect(swing.abduct).toBeGreaterThanOrEqual(5.5 * rad)
-      expect(swing.abduct).toBeLessThanOrEqual(10 * rad)
+      expect(swing.abduct).toBeGreaterThanOrEqual(15.5 * rad)
+      expect(swing.abduct).toBeLessThanOrEqual(20 * rad + 1e-9)
     }
   })
 

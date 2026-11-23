@@ -294,7 +294,7 @@ const headCounterLag = 0.08
  * `chain.upperArm-lowerArm.lagMs` p50, 100STYLE forward walks): at a 1.1 s stride its zero-lag correlation is the
  * reference's own (cos 65 deg = 0.42 against p50 0.44).
  */
-const elbowLag = 0.1
+const elbowLag = 0.03
 /**
  * The right arm's swing as a share of the left's, a fixed trait: adults walking overground at a comfortable pace swing
  * the left arm more, mean directional arm swing asymmetry index 21.9 (Killeen et al. 2018, Scientific Reports, n = 334,
@@ -306,6 +306,13 @@ const rightSwingShare = 1 - 0.219
  * `chain.shoulder-upperArm.lagMs` p50, n = 24, 100STYLE forward walks). Each arm's lag drifts about it on its own stream.
  */
 const upperArmLag = 0.0259
+/**
+ * The upper arm's angle out from the chest's vertical at the back and at the front of its swing, degrees: walking adults
+ * hold it 11 to 14 degrees out behind and 13 to 23 in front (same clips); 14 behind kept the arm off the body colliders. It is a floor on the arm's own hang, which
+ * the performer applies: a rig that already stands with its arms wider keeps its own.
+ */
+const armOutBack = 16
+const armOutForward = 20
 /** Seconds of shoulder-girdle history kept for the arms: the upper arm's lag, the elbow's after it, and drift room. */
 const girdleHistory = 0.5
 /**
@@ -1427,12 +1434,14 @@ class Locomotion {
       const swing = footSign[side] * this.girdleAt(lag)
       const late = footSign[side] * this.girdleAt(lag + elbowLag)
       const share = side === 'right' ? rightSwingShare : 1
-      // Forward 16 and back 12 degrees at the shoulder, forward 26 and back 6 at the elbow. The arm hangs 6 degrees wider
-      // than at rest and opens 4 more going back: closed going forward, the forearm met the body colliders.
+      // 1 at the front of the swing and 0 at the back.
+      const forward = (soft(swing) - swing) / 2
+      // Walking adults swing the upper arm about 19 degrees forward and 17 to 24 back, and bend the elbow 34 degrees
+      // more at the front, straight at the back; 15.5 back here, since a wider back swing met the body colliders (Bandai Namco Research Motiondataset 2 walk clips, measured 2026-11-23).
       return {
-        flexion: 2 * radians + share * radians * (-14 * swing + 2 * soft(swing)),
-        elbowFlex: 12 * radians + share * radians * (-16 * late + 10 * soft(late)),
-        abduct: radians * (6 + 2 * share * (swing + soft(swing))),
+        flexion: 2 * radians + share * radians * (-17.5 * swing + 2 * soft(swing)),
+        elbowFlex: 2 * radians + share * radians * 17 * (soft(late) - late),
+        abduct: radians * (armOutBack + (armOutForward - armOutBack) * forward),
         clavProt: -3 * radians * share * girdle,
       }
     }
