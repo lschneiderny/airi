@@ -22,6 +22,7 @@ import {
   rotationFromHandle,
   scaleFromHandle,
   unpinnedPlacement,
+  viewFrameMoved,
   withFieldPatch,
 } from './item-placement'
 
@@ -203,7 +204,10 @@ useRafFn(() => {
     return
   }
   const placement = draft.value.placement
-  frameView.value = itemFrame(currentPose(), itemSize, placement.anchor, placement.flipX).map(point => view.canvasToView(point))
+  const next = itemFrame(currentPose(), itemSize, placement.anchor, placement.flipX).map(point => view.canvasToView(point))
+  // Assigned only on a move, so the handles do not re-render at display rate while the item stands still.
+  if (viewFrameMoved(frameView.value, next))
+    frameView.value = next
 })
 
 function viewPoint(event: PointerEvent): PlanePoint {

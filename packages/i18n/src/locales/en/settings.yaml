@@ -566,6 +566,7 @@ live2d:
       cancel: Keep
       refused: '{name}: {reason}'
       refused-dismiss: Dismiss
+      import-failed: The files could not be imported. Try again.
       formats:
         image: Image
         gif: GIF

@@ -308,15 +308,32 @@ describe('other windows', () => {
   })
 })
 
-it('is emptied by Delete all data, which reports every removed asset', async () => {
+/** Resolves with the next ids a window's store reports removed; rejects when none arrive within the bound. */
+function nextRemoval(library: ReturnType<typeof useStageItemLibraryStore>) {
+  return new Promise<readonly string[]>((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error('No removal reported within 5000 ms')), 5_000)
+    library.onAssetsRemoved((ids) => {
+      clearTimeout(timeout)
+      resolve(ids)
+    })
+  })
+}
+
+it('is emptied by Delete all data, which reports every removed asset in this window and in another', async () => {
   const { pinia, library } = await openWindow()
+  // Delete all data runs in the settings window; the stage window drops its items from this broadcast.
+  const stage = await openWindow()
   const results = await library.importFiles([named(await png(4, 4), 'a.png'), named(gif(3), 'b.gif')])
   const ids = results.map(result => result.ok ? result.asset.id : '')
-  const removed = new Promise<readonly string[]>(resolve => library.onAssetsRemoved(resolve))
+  await until(storeToRefs(stage.library).assets).toMatch(assets => assets.length === 2, { timeout: 5_000, throwOnTimeout: true })
+  const removed = nextRemoval(library)
+  const removedInStage = nextRemoval(stage.library)
 
   await resetRegisteredState({ pinia }, ['stage-item-library'])
 
   expect([...await removed].sort()).toEqual([...ids].sort())
+  expect([...await removedInStage].sort()).toEqual([...ids].sort())
   expect(library.assets).toEqual([])
+  expect(stage.library.assets).toEqual([])
   expect(await storage.getKeys('stage-items')).toEqual([])
 })

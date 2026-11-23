@@ -1,3 +1,4 @@
+import type { Live2DItemRenderState } from '@proj-airi/stage-ui-live2d/composables/live2d/items/layer'
 import type { Cubism4InternalModel } from 'pixi-live2d-display/cubism4'
 
 import { Application } from '@pixi/app'
@@ -102,6 +103,41 @@ export function createLive2DModelFixture(size: { width: number, height: number }
       for (const model of models)
         model.destroy({ children: true, texture: true, baseTexture: true })
       app.destroy(true)
+    },
+  }
+}
+
+type ItemStates = Readonly<Record<string, Live2DItemRenderState>>
+
+/** Records the state reports of an item layer or the scene component, and waits on them for at most `timeoutMs`. */
+export function itemStateLog(timeoutMs: number) {
+  let latest: ItemStates = {}
+  const listeners = new Set<(states: ItemStates) => void>()
+  return {
+    report(states: ItemStates) {
+      latest = states
+      for (const listener of listeners)
+        listener(states)
+    },
+    /** Resolves with the first report, the current one included, that satisfies `accept`. */
+    until(accept: (states: ItemStates) => boolean) {
+      if (accept(latest))
+        return Promise.resolve(latest)
+      return new Promise<ItemStates>((resolve, reject) => {
+        let timeout: ReturnType<typeof setTimeout> | undefined
+        const listener = (states: ItemStates) => {
+          if (!accept(states))
+            return
+          clearTimeout(timeout)
+          listeners.delete(listener)
+          resolve(states)
+        }
+        timeout = setTimeout(() => {
+          listeners.delete(listener)
+          reject(new Error(`No matching item states within ${timeoutMs} ms; last report: ${JSON.stringify(latest)}`))
+        }, timeoutMs)
+        listeners.add(listener)
+      })
     },
   }
 }

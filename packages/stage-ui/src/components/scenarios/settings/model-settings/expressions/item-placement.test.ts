@@ -15,6 +15,7 @@ import {
   rotationFromHandle,
   scaleFromHandle,
   unpinnedPlacement,
+  viewFrameMoved,
   withFieldPatch,
 } from './item-placement'
 
@@ -94,6 +95,17 @@ describe('handles', () => {
   it('rotates by the angle the pointer swept around the center', () => {
     const center = { x: 0, y: 0 }
     expect(rotationFromHandle(0.5, center, { x: 10, y: 0 }, { x: 0, y: 10 })).toBeCloseTo(0.5 + Math.PI / 2)
+  })
+})
+
+describe('viewFrameMoved', () => {
+  const frame = [{ x: 10, y: 10 }, { x: 50, y: 10 }, { x: 50, y: 40 }, { x: 10, y: 40 }]
+
+  it('ignores a move within 0.01 px and reports one past it or a changed point count', () => {
+    expect(viewFrameMoved(frame, frame.map(point => ({ x: point.x + 0.005, y: point.y - 0.005 })))).toBe(false)
+    expect(viewFrameMoved(frame, frame.map((point, index) => index === 2 ? { x: point.x, y: point.y + 0.02 } : point))).toBe(true)
+    expect(viewFrameMoved([], frame)).toBe(true)
+    expect(viewFrameMoved(frame, [])).toBe(true)
   })
 })
 

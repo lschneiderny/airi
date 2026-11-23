@@ -1,6 +1,6 @@
 import type { FakeDrawable } from './mesh-source-fixture'
 import type { Live2DItemPinResolution } from './pin'
-import type { Live2DItemPlacement } from './pose'
+import type { Live2DItemPlacement, Live2DItemPose } from './pose'
 
 import { describe, expect, it } from 'vitest'
 
@@ -23,6 +23,11 @@ function transformed(map: { a: number, b: number, c: number, d: number }, shiftX
   return result
 }
 
+/** A pose object for `out`; the layer keeps one per item and passes it every frame. */
+function blankPose(rotation = 0, scale = 1): Live2DItemPose {
+  return { x: 0, y: 0, rotation, scale, alpha: 0, visible: false, held: false }
+}
+
 function rotation(radians: number, scale = 1) {
   return { a: scale * Math.cos(radians), b: -scale * Math.sin(radians), c: scale * Math.sin(radians), d: scale * Math.cos(radians) }
 }
@@ -35,16 +40,35 @@ function pinnedSetup(placement: Partial<Live2DItemPlacement> = {}) {
   const fullPlacement: Live2DItemPlacement = { x: 0, y: 0, rotation: 0.1, scale: 1.5, pin, ...placement }
   /** Moves the drawable's vertices to a canvas-space triangle. */
   const deform = (canvas: number[]) => void (drawable.positions = canvasToUnits(canvas))
-  const solve = (previous?: { rotation: number, scale: number }) => solveLive2DItemPose(fullPlacement, resolved, source, fakeCanvasScale, previous)
-  return { drawable, source, pin, resolved, solve, deform }
+  const solve = (out = blankPose(), previous?: { rotation: number, scale: number }) => solveLive2DItemPose(fullPlacement, resolved, source, fakeCanvasScale, out, previous)
+  /** Solves with one pose object as both `out` and `previous`, as the layer does from frame to frame. */
+  const solveFrom = (rotation: number, scale: number) => {
+    const pose = blankPose(rotation, scale)
+    return solve(pose, pose)
+  }
+  return { drawable, source, pin, resolved, solve, solveFrom, deform }
 }
 
 describe('solveLive2DItemPose', () => {
   it('returns the placement itself for an unpinned item', () => {
     const source = fakeMeshSource([])
 
-    expect(solveLive2DItemPose({ x: 40, y: 50, rotation: 0.3, scale: 2 }, undefined, source, fakeCanvasScale))
+    expect(solveLive2DItemPose({ x: 40, y: 50, rotation: 0.3, scale: 2 }, undefined, source, fakeCanvasScale, blankPose()))
       .toEqual({ x: 40, y: 50, rotation: 0.3, scale: 2, alpha: 1, visible: true, held: false })
+  })
+
+  it('writes every field into out and returns out on each path', () => {
+    const { solve, deform, pin } = pinnedSetup()
+    const out = blankPose()
+
+    expect(solve(out)).toBe(out)
+    expect(out.x).toBeCloseTo(130, 9)
+    deform(transformed({ a: -1, b: 0, c: 0, d: 1 }))
+    expect(solve(out, out)).toBe(out)
+    expect(out.held).toBe(true)
+    expect(solveLive2DItemPose({ x: 40, y: 50, rotation: 0.3, scale: 2 }, undefined, fakeMeshSource([]), fakeCanvasScale, out)).toBe(out)
+    expect(out).toEqual({ x: 40, y: 50, rotation: 0.3, scale: 2, alpha: 1, visible: true, held: false })
+    expect(solveLive2DItemPose({ x: 0, y: 0, rotation: 0.2, scale: 3, pin }, { state: 'missing-drawable' }, fakeMeshSource([]), fakeCanvasScale, out)).toBe(out)
   })
 
   it('places a pinned item at its pin point on the unchanged mesh', () => {
@@ -93,11 +117,11 @@ describe('solveLive2DItemPose', () => {
   })
 
   it('holds the previous rotation and scale when the triangle folds over', () => {
-    const { solve, deform } = pinnedSetup()
+    const { solve, solveFrom, deform } = pinnedSetup()
     // A mirror across the vertical axis reverses the winding.
     deform(transformed({ a: -1, b: 0, c: 0, d: 1 }))
 
-    const held = solve({ rotation: 0.7, scale: 1.2 })
+    const held = solveFrom(0.7, 1.2)
 
     expect(held).toMatchObject({ rotation: 0.7, scale: 1.2, held: true })
     expect(held.x).toBeCloseTo(70, 9)
@@ -106,16 +130,16 @@ describe('solveLive2DItemPose', () => {
   })
 
   it('holds when the triangle collapses below 5 % of its reference area', () => {
-    const { solve, deform } = pinnedSetup()
+    const { solveFrom, deform } = pinnedSetup()
 
     deform(transformed({ a: 1, b: 0, c: 0, d: 0.049 }))
-    expect(solve({ rotation: 0.4, scale: 2 })).toMatchObject({ rotation: 0.4, scale: 2, held: true })
+    expect(solveFrom(0.4, 2)).toMatchObject({ rotation: 0.4, scale: 2, held: true })
 
     deform(transformed({ a: 1, b: 0, c: 0, d: 0.051 }))
-    expect(solve({ rotation: 0.4, scale: 2 }).held).toBe(false)
+    expect(solveFrom(0.4, 2).held).toBe(false)
 
     deform([150, 150, 150, 150, 150, 150])
-    const collapsed = solve({ rotation: 0.4, scale: 2 })
+    const collapsed = solveFrom(0.4, 2)
     expect(collapsed).toMatchObject({ rotation: 0.4, scale: 2, held: true })
     expect(collapsed.x).toBeCloseTo(150, 9)
   })
@@ -149,7 +173,7 @@ describe('solveLive2DItemPose', () => {
     const { pin } = pinnedSetup()
     const missing: Live2DItemPinResolution = { state: 'missing-drawable' }
 
-    expect(solveLive2DItemPose({ x: 0, y: 0, rotation: 0.2, scale: 3, pin }, missing, fakeMeshSource([]), fakeCanvasScale))
+    expect(solveLive2DItemPose({ x: 0, y: 0, rotation: 0.2, scale: 3, pin }, missing, fakeMeshSource([]), fakeCanvasScale, blankPose()))
       .toEqual({ x: 130, y: 120, rotation: 0.2, scale: 3, alpha: 1, visible: true, held: false })
   })
 })
